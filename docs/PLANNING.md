@@ -6,6 +6,8 @@
 **Setting:** Abandoned research facility
 **Goal:** Learning sandbox — build each system properly to learn Godot FPS/horror development. No shipping pressure, but every system should be built as if it could ship.
 
+> **Status (2026-07-15):** M0–M2 done. Next up: **M3 — Combat** (pistol, Health component, target dummies). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory.
+
 ---
 
 ## 1. Vision
@@ -104,6 +106,15 @@ Each system is a self-contained learning unit. Rough build order in §5.
 ---
 
 ## 4. Technical Conventions
+
+### Imported asset packs (in `assets/models/`)
+
+| Pack | Contents | Earmarked for |
+|---|---|---|
+| `action_adventure_pack` | Mixamo-skeleton clips (idle, walk, run, sneak, cover…) + "The Boss" skinned character | **M4 enemy** — clips share one skeleton, so they load into any Mixamo character's AnimationPlayer at runtime (see `levels/animation_preview.gd`) |
+| `pistol_starter` | MoCap Online MotusMan character, 1911 pistol model, pistol aim/walk/fire animation set | **M3 reference** for weapon handling; the 1911 could become the viewmodel weapon |
+
+Notes: MotusMan FBXs reference textures by absolute paths from the author's machine — reapply `MotusMan/sourceimages/MCG_diff.jpg` as a material override. `levels/animation_preview.tscn` previews both packs inside the test room. ⚠️ If this repo ever goes public, check pack licenses first (game use OK, raw FBX redistribution generally not).
 
 ### Project structure
 ```
