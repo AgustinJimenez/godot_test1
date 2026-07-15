@@ -6,7 +6,7 @@
 **Setting:** Abandoned research facility
 **Goal:** Learning sandbox — build each system properly to learn Godot FPS/horror development. No shipping pressure, but every system should be built as if it could ship.
 
-> **Status (2026-07-15):** M0–M2 done. Next up: **M3 — Combat** (pistol, Health component, target dummies). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory.
+> **Status (2026-07-15):** M0–M3 done. Next up: **M4 — First enemy** (shambler state machine, navmesh, perception; the Mixamo "action_adventure_pack" is earmarked for it). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload.
 
 ---
 
@@ -167,10 +167,10 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 - [x] Inventory UI (8 slots, stacking), use/drop/examine
 - [x] Key item unlocks a locked door (keycard, consumed on use)
 
-### M3 — Combat
-- [ ] Pistol: aim, fire, reload from inventory ammo, feedback (sfx/flash/decals)
-- [ ] Health component + damage, player hurt/death, healing item
-- [ ] Target dummies to shoot
+### M3 — Combat ✅
+- [x] Pistol: aim, fire, reload from inventory ammo, feedback (sfx/flash/decals)
+- [x] Health component + damage, player hurt/death, healing item
+- [x] Target dummies to shoot
 
 ### M4 — First enemy
 - [ ] Shambler with patrol/investigate/chase/attack state machine
@@ -210,6 +210,11 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-15 | Reading a note pauses the game | Safe reading, RE-style; HUD runs with PROCESS_MODE_ALWAYS to close it |
 | 2026-07-15 | Slot inventory (8 slots + stacks), not RE grid | Same learning value, third of the UI code; can evolve later |
 | 2026-07-15 | Keys are consumed on unlock | Scarcity flavor; one key = one door |
+| 2026-07-15 | Hitscan pistol via direct space-state ray query | Planned in §3.4; instant feedback, no projectile bookkeeping to learn yet |
+| 2026-07-15 | Weapon auto-equips while its item is in inventory (single weapon slot) | Simplest ownership model; weapon-switch UI can come with the shotgun |
+| 2026-07-15 | Magazine lives on the weapon, reserve ammo lives in inventory stacks | Reload = inventory transaction, keeps ammo scarcity visible in the UI |
+| 2026-07-15 | Consumable effects are data on Item (`heal_amount`), not item subclasses | One resource schema; using at full health refuses to consume the item |
+| 2026-07-15 | Player death pauses tree + YOU DIED overlay, E reloads the scene | Placeholder until M5 save/load decides real death flow |
 
 Add new rows as we make calls (e.g., grid vs slot inventory, hitscan vs projectile).
 

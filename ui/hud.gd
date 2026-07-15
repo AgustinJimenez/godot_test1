@@ -6,12 +6,19 @@ extends CanvasLayer
 const ITEM_PICKUP_SCENE := preload("res://levels/props/item_pickup.tscn")
 
 var _inventory: Inventory
+var _health: Health
+var _weapon: PistolWeapon
 var _slot_buttons: Array[Button] = []
 var _selected := -1
 var _toast_tween: Tween
+var _hurt_tween: Tween
 
 @onready var prompt_label: Label = $PromptLabel
 @onready var stamina_bar: ProgressBar = $StaminaBar
+@onready var health_bar: ProgressBar = $HealthBar
+@onready var ammo_label: Label = $AmmoLabel
+@onready var hurt_flash: ColorRect = $HurtFlash
+@onready var death_overlay: Control = $DeathOverlay
 @onready var toast_label: Label = $ToastLabel
 @onready var note_overlay: Control = $NoteOverlay
 @onready var note_text: Label = $NoteOverlay/Center/Panel/Margin/VBox/NoteText
@@ -29,7 +36,12 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if note_overlay.visible and (event.is_action_pressed(&"interact")
+	if death_overlay.visible:
+		if event.is_action_pressed(&"interact"):
+			get_tree().paused = false
+			get_tree().reload_current_scene()
+		get_viewport().set_input_as_handled()
+	elif note_overlay.visible and (event.is_action_pressed(&"interact")
 			or event.is_action_pressed(&"pause")):
 		note_overlay.hide()
 		get_tree().paused = false
@@ -49,6 +61,42 @@ func bind_inventory(inventory: Inventory) -> void:
 		button.pressed.connect(_on_slot_pressed.bind(i))
 		slot_grid.add_child(button)
 		_slot_buttons.append(button)
+
+
+func bind_health(health: Health) -> void:
+	_health = health
+	_health.changed.connect(_set_health)
+	_health.damaged.connect(_on_player_damaged)
+	_set_health(_health.current, _health.max_health)
+
+
+func bind_weapon(weapon: PistolWeapon) -> void:
+	_weapon = weapon
+	_weapon.ammo_changed.connect(_set_ammo)
+
+
+func _set_health(current: float, max_value: float) -> void:
+	health_bar.max_value = max_value
+	health_bar.value = current
+
+
+func _on_player_damaged(_amount: float) -> void:
+	if _hurt_tween:
+		_hurt_tween.kill()
+	hurt_flash.color.a = 0.35
+	_hurt_tween = create_tween()
+	_hurt_tween.tween_property(hurt_flash, "color:a", 0.0, 0.45)
+
+
+func _set_ammo(magazine: int, reserve: int) -> void:
+	ammo_label.visible = _weapon.equipped
+	ammo_label.text = "%d / %d" % [magazine, reserve]
+
+
+func show_death() -> void:
+	death_overlay.show()
+	get_tree().paused = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func set_prompt(text: String) -> void:
@@ -124,16 +172,27 @@ func _on_slot_pressed(index: int) -> void:
 
 
 func _on_use_pressed() -> void:
+	if _selected < 0 or _inventory.slots[_selected].is_empty():
+		return
 	var item: Item = _inventory.slots[_selected]["item"]
-	if item.kind == Item.Kind.CONSUMABLE:
+	if item.kind == Item.Kind.CONSUMABLE and item.heal_amount > 0 and _health:
+		var restored := _health.heal(float(item.heal_amount))
+		if restored <= 0.0:
+			toast("Health is already full")
+		else:
+			_inventory.remove_at(_selected, 1)
+			toast("Used %s (+%d HP)" % [item.display_name, int(restored)])
+	elif item.kind == Item.Kind.CONSUMABLE:
 		_inventory.remove_at(_selected, 1)
-		toast("Used " + item.display_name)  # real effects arrive with health in M3
+		toast("Used " + item.display_name)
 	else:
 		toast("No use for that right now")
 	_refresh_inventory()
 
 
 func _on_drop_pressed() -> void:
+	if _selected < 0 or _inventory.slots[_selected].is_empty():
+		return
 	var item: Item = _inventory.slots[_selected]["item"]
 	_inventory.remove_at(_selected, 1)
 	var player := _inventory.get_parent() as Node3D

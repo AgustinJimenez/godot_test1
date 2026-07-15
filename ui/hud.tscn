@@ -6,6 +6,12 @@
 process_mode = 3
 script = ExtResource("1_hud")
 
+[node name="HurtFlash" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.65, 0.02, 0.02, 0)
+
 [node name="CenterDot" type="ColorRect" parent="."]
 anchor_left = 0.5
 anchor_top = 0.5
@@ -57,6 +63,31 @@ offset_top = -34.0
 offset_right = 204.0
 offset_bottom = -26.0
 show_percentage = false
+
+[node name="HealthBar" type="ProgressBar" parent="."]
+modulate = Color(0.85, 0.3, 0.25, 1)
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -52.0
+offset_right = 204.0
+offset_bottom = -42.0
+show_percentage = false
+
+[node name="AmmoLabel" type="Label" parent="."]
+visible = false
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -220.0
+offset_top = -58.0
+offset_right = -24.0
+offset_bottom = -28.0
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 22
+horizontal_alignment = 2
 
 [node name="NoteOverlay" type="Control" parent="."]
 visible = false
@@ -152,3 +183,32 @@ size_flags_horizontal = 3
 modulate = Color(1, 1, 1, 0.5)
 theme_override_font_sizes/font_size = 13
 text = "[Tab]  Close"
+
+[node name="DeathOverlay" type="Control" parent="."]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Dim" type="ColorRect" parent="DeathOverlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.06, 0, 0, 0.82)
+
+[node name="Center" type="CenterContainer" parent="DeathOverlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBox" type="VBoxContainer" parent="DeathOverlay/Center"]
+theme_override_constants/separation = 18
+
+[node name="Title" type="Label" parent="DeathOverlay/Center/VBox"]
+theme_override_colors/font_color = Color(0.75, 0.12, 0.1, 1)
+theme_override_font_sizes/font_size = 46
+text = "YOU DIED"
+horizontal_alignment = 1
+
+[node name="Hint" type="Label" parent="DeathOverlay/Center/VBox"]
+modulate = Color(1, 1, 1, 0.55)
+theme_override_font_sizes/font_size = 14
+text = "[E]  Restart"
+horizontal_alignment = 1

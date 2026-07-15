@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="PackedScene" path="res://levels/props/door.tscn" id="1_door"]
 [ext_resource type="PackedScene" path="res://levels/props/item_pickup.tscn" id="2_item_pickup"]
@@ -7,6 +7,9 @@
 [ext_resource type="Resource" path="res://items/battery.tres" id="5_battery"]
 [ext_resource type="Resource" path="res://items/keycard_maintenance.tres" id="6_keycard"]
 [ext_resource type="Resource" path="res://items/bandage.tres" id="7_bandage"]
+[ext_resource type="PackedScene" path="res://levels/props/target_dummy.tscn" id="8_dummy"]
+[ext_resource type="Resource" path="res://items/pistol_9mm.tres" id="9_pistol"]
+[ext_resource type="Resource" path="res://items/ammo_9mm.tres" id="10_ammo"]
 
 [sub_resource type="Environment" id="Environment_room"]
 background_mode = 1
@@ -171,6 +174,13 @@ light_energy = 0.7
 shadow_enabled = true
 omni_range = 5.0
 
+[node name="RangeLight" type="OmniLight3D" parent="Lights"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 3.8, 0)
+light_color = Color(0.85, 0.92, 1, 1)
+light_energy = 1.6
+shadow_enabled = true
+omni_range = 9.0
+
 [node name="Door" parent="." instance=ExtResource("1_door")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.45, 0, -10)
 locked = true
@@ -188,6 +198,29 @@ item = ExtResource("6_keycard")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, -3.2)
 item = ExtResource("7_bandage")
 count = 2
+
+[node name="PistolPickup" parent="." instance=ExtResource("2_item_pickup")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.9, 0, -2.9)
+item = ExtResource("9_pistol")
+
+[node name="AmmoPickupA" parent="." instance=ExtResource("2_item_pickup")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.2, 0, -3.2)
+item = ExtResource("10_ammo")
+count = 14
+
+[node name="AmmoPickupB" parent="." instance=ExtResource("2_item_pickup")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.8, 0, 1.2)
+item = ExtResource("10_ammo")
+count = 7
+
+[node name="Dummy1" parent="." instance=ExtResource("8_dummy")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 7.4, 0, -2.5)
+
+[node name="Dummy2" parent="." instance=ExtResource("8_dummy")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 8, 0, 0.2)
+
+[node name="Dummy3" parent="." instance=ExtResource("8_dummy")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 7.2, 0, 2.6)
 
 [node name="NotePaper" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1.5, -12.7)

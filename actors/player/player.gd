@@ -32,6 +32,7 @@ var stamina: float
 var _sprint_locked := false
 var _crouched := false
 var _bob_time := 0.0
+var _dead := false
 
 @onready var head: Node3D = $HeadPivot
 @onready var camera: Camera3D = $HeadPivot/Camera3D
@@ -42,15 +43,25 @@ var _bob_time := 0.0
 @onready var uncrouch_check: ShapeCast3D = $UncrouchCheck
 @onready var hud: CanvasLayer = $HUD
 @onready var inventory: Inventory = $Inventory
+@onready var health: Health = $Health
+@onready var weapon: PistolWeapon = $HeadPivot/Camera3D/WeaponRig
 
 
 func _ready() -> void:
 	stamina = sprint_duration
 	hud.bind_inventory(inventory)
+	hud.bind_health(health)
+	weapon.setup(inventory)
+	hud.bind_weapon(weapon)
+	inventory.changed.connect(_update_weapon_equip)
+	weapon.fired.connect(_on_weapon_fired)
+	health.died.connect(_on_died)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _dead:
+		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var motion := event as InputEventMouseMotion
 		rotate_y(-motion.relative.x * mouse_sensitivity)
@@ -78,6 +89,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _dead:
+		return
 	var input_dir := Input.get_vector(
 			&"move_left", &"move_right", &"move_forward", &"move_back")
 	var sprinting := _update_stamina(delta, input_dir)
@@ -128,6 +141,23 @@ func _update_head_bob(delta: float) -> void:
 		_bob_time += delta * ground_speed
 		bob = sin(_bob_time * bob_frequency) * bob_amplitude
 	head.position.y = lerpf(head.position.y, base_y + bob, 10.0 * delta)
+
+
+func _update_weapon_equip() -> void:
+	# Single weapon slot for now: owning the pistol item means it is equipped.
+	weapon.equipped = inventory.count_of(weapon.weapon_item) > 0
+
+
+func _on_weapon_fired() -> void:
+	# Recoil stays player-side: the weapon signals up, the player owns the head.
+	head.rotation.x = minf(head.rotation.x + 0.014, deg_to_rad(pitch_limit_deg))
+
+
+func _on_died() -> void:
+	_dead = true
+	weapon.equipped = false
+	hud.set_prompt("")
+	hud.show_death()
 
 
 func _current_interactable() -> Interactable:

@@ -4,9 +4,8 @@
 
 [resource]
 script = ExtResource("1")
-id = &"bandage"
-display_name = "Bandage"
-description = "Sterile dressing. Restores 35 HP."
-kind = 0
-max_stack = 4
-heal_amount = 35
+id = &"pistol_9mm"
+display_name = "9mm Pistol"
+description = "A worn service pistol. Seven rounds to a magazine. [R] to reload, right-click to aim."
+kind = 3
+max_stack = 1

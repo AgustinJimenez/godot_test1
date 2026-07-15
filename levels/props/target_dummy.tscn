@@ -1,0 +1,55 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://levels/props/target_dummy.gd" id="1_dummy"]
+[ext_resource type="Script" path="res://components/health.gd" id="2_health"]
+
+[sub_resource type="BoxMesh" id="Mesh_torso"]
+size = Vector3(0.5, 0.9, 0.28)
+
+[sub_resource type="SphereMesh" id="Mesh_head"]
+radius = 0.14
+height = 0.28
+
+[sub_resource type="CylinderMesh" id="Mesh_pole"]
+top_radius = 0.05
+bottom_radius = 0.05
+height = 0.7
+
+[sub_resource type="CylinderMesh" id="Mesh_base"]
+top_radius = 0.28
+bottom_radius = 0.34
+height = 0.1
+
+[sub_resource type="BoxShape3D" id="Shape_dummy"]
+size = Vector3(0.55, 1.9, 0.35)
+
+[node name="TargetDummy" type="StaticBody3D"]
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("1_dummy")
+
+[node name="Visual" type="Node3D" parent="."]
+
+[node name="Torso" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.15, 0)
+mesh = SubResource("Mesh_torso")
+
+[node name="Head" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.76, 0)
+mesh = SubResource("Mesh_head")
+
+[node name="Pole" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0)
+mesh = SubResource("Mesh_pole")
+
+[node name="Base" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
+mesh = SubResource("Mesh_base")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)
+shape = SubResource("Shape_dummy")
+
+[node name="Health" type="Node" parent="."]
+script = ExtResource("2_health")
+max_health = 75.0

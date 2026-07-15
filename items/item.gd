@@ -11,3 +11,5 @@ enum Kind { CONSUMABLE, KEY, AMMO, WEAPON, MISC }
 @export var kind: Kind = Kind.MISC
 @export var max_stack: int = 1
 @export var icon: Texture2D
+## For CONSUMABLE items: HP restored on use (0 = no healing effect).
+@export var heal_amount: int = 0
