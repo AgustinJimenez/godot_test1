@@ -1,0 +1,116 @@
+[gd_scene load_steps=4 format=3]
+
+[sub_resource type="Environment" id="Environment_room"]
+background_mode = 1
+background_color = Color(0.008, 0.008, 0.012, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.12, 0.13, 0.17, 1)
+ambient_light_energy = 0.35
+tonemap_mode = 3
+fog_enabled = true
+fog_light_color = Color(0.035, 0.04, 0.05, 1)
+fog_density = 0.04
+
+[sub_resource type="StandardMaterial3D" id="Material_concrete"]
+albedo_color = Color(0.32, 0.33, 0.35, 1)
+roughness = 0.95
+
+[sub_resource type="StandardMaterial3D" id="Material_crate"]
+albedo_color = Color(0.35, 0.28, 0.2, 1)
+roughness = 0.9
+
+[node name="TestRoom" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_room")
+
+[node name="Geometry" type="Node3D" parent="."]
+
+[node name="Floor" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, 0)
+use_collision = true
+size = Vector3(20, 0.5, 20)
+material = SubResource("Material_concrete")
+
+[node name="Ceiling" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.25, 0)
+use_collision = true
+size = Vector3(20, 0.5, 20)
+material = SubResource("Material_concrete")
+
+[node name="WallNorth" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -10)
+use_collision = true
+size = Vector3(20, 4, 0.5)
+material = SubResource("Material_concrete")
+
+[node name="WallSouth" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 10)
+use_collision = true
+size = Vector3(20, 4, 0.5)
+material = SubResource("Material_concrete")
+
+[node name="WallEast" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 2, 0)
+use_collision = true
+size = Vector3(0.5, 4, 20)
+material = SubResource("Material_concrete")
+
+[node name="WallWest" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 2, 0)
+use_collision = true
+size = Vector3(0.5, 4, 20)
+material = SubResource("Material_concrete")
+
+[node name="Pillar" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 2, -4)
+use_collision = true
+size = Vector3(1, 4, 1)
+material = SubResource("Material_concrete")
+
+[node name="Crate1" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.5, -5)
+use_collision = true
+size = Vector3(1, 1, 1)
+material = SubResource("Material_crate")
+
+[node name="Crate2" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(0.866025, 0, -0.5, 0, 1, 0, 0.5, 0, 0.866025, -3.8, 0.5, -3.9)
+use_collision = true
+size = Vector3(1, 1, 1)
+material = SubResource("Material_crate")
+
+[node name="Crate3" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.4, 1.5, -4.5)
+use_collision = true
+size = Vector3(1, 1, 1)
+material = SubResource("Material_crate")
+
+[node name="Lights" type="Node3D" parent="."]
+
+[node name="CeilingLamp" type="OmniLight3D" parent="Lights"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8, 0)
+light_color = Color(1, 0.92, 0.78, 1)
+light_energy = 1.2
+shadow_enabled = true
+omni_range = 9.0
+
+[node name="CornerSpot" type="SpotLight3D" parent="Lights"]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, -7, 3.9, -7)
+light_color = Color(0.85, 0.95, 1, 1)
+light_energy = 2.5
+shadow_enabled = true
+spot_range = 6.0
+spot_angle = 35.0
+
+[node name="EmergencyLight" type="OmniLight3D" parent="Lights"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 3.2, 8)
+light_color = Color(1, 0.15, 0.1, 1)
+light_energy = 0.8
+shadow_enabled = true
+omni_range = 6.0
+
+[node name="PlaceholderCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7, 8.5)
+current = true
+fov = 80.0
