@@ -1,0 +1,37 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://levels/props/door.gd" id="1_door"]
+[ext_resource type="Script" path="res://components/interactable.gd" id="2_interactable"]
+
+[sub_resource type="StandardMaterial3D" id="Material_door"]
+albedo_color = Color(0.24, 0.2, 0.17, 1)
+metallic = 0.2
+roughness = 0.7
+
+[sub_resource type="BoxMesh" id="Mesh_door"]
+material = SubResource("Material_door")
+size = Vector3(1.05, 2.15, 0.08)
+
+[sub_resource type="BoxShape3D" id="Shape_door"]
+size = Vector3(1.05, 2.15, 0.08)
+
+[node name="Door" type="Node3D"]
+script = ExtResource("1_door")
+
+[node name="Body" type="StaticBody3D" parent="."]
+collision_layer = 9
+collision_mask = 0
+
+[node name="Mesh" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.525, 1.075, 0)
+mesh = SubResource("Mesh_door")
+
+[node name="Collision" type="CollisionShape3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.525, 1.075, 0)
+shape = SubResource("Shape_door")
+
+[node name="Interactable" type="Node" parent="Body"]
+script = ExtResource("2_interactable")
+prompt = "Open door"
+
+[connection signal="interacted" from="Body/Interactable" to="." method="_on_interactable_interacted"]

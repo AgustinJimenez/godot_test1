@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://levels/test_room.tscn" id="1_room"]
+[ext_resource type="PackedScene" path="res://actors/player/player.tscn" id="2_player"]
+
+[node name="Playground" type="Node3D"]
+
+[node name="TestRoom" parent="." instance=ExtResource("1_room")]
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 7)

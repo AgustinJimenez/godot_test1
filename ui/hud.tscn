@@ -1,0 +1,80 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/hud.gd" id="1_hud"]
+
+[node name="HUD" type="CanvasLayer"]
+process_mode = 3
+script = ExtResource("1_hud")
+
+[node name="CenterDot" type="ColorRect" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -2.0
+offset_top = -2.0
+offset_right = 2.0
+offset_bottom = 2.0
+mouse_filter = 2
+color = Color(1, 1, 1, 0.28)
+
+[node name="PromptLabel" type="Label" parent="."]
+visible = false
+anchor_left = 0.5
+anchor_top = 0.72
+anchor_right = 0.5
+anchor_bottom = 0.72
+offset_left = -300.0
+offset_right = 300.0
+offset_bottom = 26.0
+grow_horizontal = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
+
+[node name="StaminaBar" type="ProgressBar" parent="."]
+visible = false
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -34.0
+offset_right = 204.0
+offset_bottom = -26.0
+show_percentage = false
+
+[node name="NoteOverlay" type="Control" parent="."]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Dim" type="ColorRect" parent="NoteOverlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.65)
+
+[node name="Center" type="CenterContainer" parent="NoteOverlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="NoteOverlay/Center"]
+
+[node name="Margin" type="MarginContainer" parent="NoteOverlay/Center/Panel"]
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 20
+
+[node name="VBox" type="VBoxContainer" parent="NoteOverlay/Center/Panel/Margin"]
+theme_override_constants/separation = 14
+
+[node name="NoteText" type="Label" parent="NoteOverlay/Center/Panel/Margin/VBox"]
+custom_minimum_size = Vector2(520, 0)
+theme_override_font_sizes/font_size = 17
+autowrap_mode = 3
+
+[node name="Hint" type="Label" parent="NoteOverlay/Center/Panel/Margin/VBox"]
+modulate = Color(1, 1, 1, 0.5)
+theme_override_font_sizes/font_size = 13
+text = "[E]  Close"
+horizontal_alignment = 2

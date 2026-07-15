@@ -146,10 +146,10 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 - [x] Folder structure, input map, physics layers, .gitignore/git init
 - [x] Greybox test room with lighting (placeholder camera until the M1 player exists)
 
-### M1 — Walking simulator
-- [ ] FPS controller: walk/sprint/crouch, stamina, mouse look
-- [ ] Interaction ray + first interactables (door, pickup, readable note)
-- [ ] Flashlight toggle (no battery yet)
+### M1 — Walking simulator ✅
+- [x] FPS controller: walk/sprint/crouch, stamina, mouse look (no jump — see decisions)
+- [x] Interaction ray + first interactables (door, pickup, readable note)
+- [x] Flashlight toggle (no battery yet)
 
 ### M2 — Inventory & items
 - [ ] Item resource definitions, pickup → inventory flow
@@ -194,6 +194,9 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-15 | Abandoned facility setting | Contained scope, interior lighting control, classic puzzle-box layout |
 | 2026-07-15 | One enemy type first | Depth over breadth; AI state machine is the learning goal |
 | 2026-07-15 | Saves only in safe rooms | Core to the tension model; simpler serialization scope |
+| 2026-07-15 | No jumping | Classic survival horror; keeps level design and animation scope tight |
+| 2026-07-15 | Crouch = toggle, sprint = hold; crouch on C (not Ctrl) | Comfort defaults; Ctrl collides with macOS shortcuts |
+| 2026-07-15 | Reading a note pauses the game | Safe reading, RE-style; HUD runs with PROCESS_MODE_ALWAYS to close it |
 
 Add new rows as we make calls (e.g., grid vs slot inventory, hitscan vs projectile).
 

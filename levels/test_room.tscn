@@ -1,4 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="PackedScene" path="res://levels/props/door.tscn" id="1_door"]
+[ext_resource type="Script" path="res://components/pickup.gd" id="2_pickup"]
+[ext_resource type="Script" path="res://components/note.gd" id="3_note"]
+[ext_resource type="Script" path="res://components/interactable.gd" id="4_interactable"]
 
 [sub_resource type="Environment" id="Environment_room"]
 background_mode = 1
@@ -18,6 +23,30 @@ roughness = 0.95
 [sub_resource type="StandardMaterial3D" id="Material_crate"]
 albedo_color = Color(0.35, 0.28, 0.2, 1)
 roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="Material_battery"]
+albedo_color = Color(0.2, 0.5, 0.25, 1)
+emission_enabled = true
+emission = Color(0.1, 0.4, 0.15, 1)
+emission_energy_multiplier = 0.5
+
+[sub_resource type="StandardMaterial3D" id="Material_paper"]
+albedo_color = Color(0.85, 0.83, 0.75, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="Mesh_battery"]
+material = SubResource("Material_battery")
+size = Vector3(0.06, 0.14, 0.06)
+
+[sub_resource type="BoxShape3D" id="Shape_battery"]
+size = Vector3(0.25, 0.3, 0.25)
+
+[sub_resource type="BoxMesh" id="Mesh_paper"]
+material = SubResource("Material_paper")
+size = Vector3(0.21, 0.297, 0.012)
+
+[sub_resource type="BoxShape3D" id="Shape_paper"]
+size = Vector3(0.3, 0.4, 0.08)
 
 [node name="TestRoom" type="Node3D"]
 
@@ -43,6 +72,11 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -10)
 use_collision = true
 size = Vector3(20, 4, 0.5)
 material = SubResource("Material_concrete")
+
+[node name="DoorCut" type="CSGBox3D" parent="Geometry/WallNorth"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, -0.9, 0)
+operation = 2
+size = Vector3(1.1, 2.2, 0.6)
 
 [node name="WallSouth" type="CSGBox3D" parent="Geometry"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 10)
@@ -86,6 +120,36 @@ use_collision = true
 size = Vector3(1, 1, 1)
 material = SubResource("Material_crate")
 
+[node name="ClosetWallWest" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 2, -11.5)
+use_collision = true
+size = Vector3(0.5, 4, 3)
+material = SubResource("Material_concrete")
+
+[node name="ClosetWallEast" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.5, 2, -11.5)
+use_collision = true
+size = Vector3(0.5, 4, 3)
+material = SubResource("Material_concrete")
+
+[node name="ClosetWallBack" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 2, -13)
+use_collision = true
+size = Vector3(3.5, 4, 0.5)
+material = SubResource("Material_concrete")
+
+[node name="ClosetFloor" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, -0.25, -11.5)
+use_collision = true
+size = Vector3(3, 0.5, 3)
+material = SubResource("Material_concrete")
+
+[node name="ClosetCeiling" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 4.25, -11.5)
+use_collision = true
+size = Vector3(3, 0.5, 3)
+material = SubResource("Material_concrete")
+
 [node name="Lights" type="Node3D" parent="."]
 
 [node name="CeilingLamp" type="OmniLight3D" parent="Lights"]
@@ -110,7 +174,61 @@ light_energy = 0.8
 shadow_enabled = true
 omni_range = 6.0
 
+[node name="ClosetLight" type="OmniLight3D" parent="Lights"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 3.4, -11.8)
+light_color = Color(0.7, 1, 0.8, 1)
+light_energy = 0.7
+shadow_enabled = true
+omni_range = 5.0
+
+[node name="Door" parent="." instance=ExtResource("1_door")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.45, 0, -10)
+
+[node name="Battery" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.35, 2.0, -4.45)
+collision_layer = 8
+collision_mask = 0
+script = ExtResource("2_pickup")
+
+[node name="Mesh" type="MeshInstance3D" parent="Battery"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.07, 0)
+mesh = SubResource("Mesh_battery")
+
+[node name="Collision" type="CollisionShape3D" parent="Battery"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+shape = SubResource("Shape_battery")
+
+[node name="Interactable" type="Node" parent="Battery"]
+script = ExtResource("4_interactable")
+prompt = "Take battery"
+
+[node name="NotePaper" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1.5, -12.7)
+collision_layer = 8
+collision_mask = 0
+script = ExtResource("3_note")
+text = "MAINTENANCE ROTA — WEEK 47
+
+Reyes hasn't shown since Tuesday. His cart is still in the corridor by B-wing.
+
+If the lights in storage flicker again, do NOT reset the breaker. Log it and leave.
+
+— T."
+
+[node name="Mesh" type="MeshInstance3D" parent="NotePaper"]
+mesh = SubResource("Mesh_paper")
+
+[node name="Collision" type="CollisionShape3D" parent="NotePaper"]
+shape = SubResource("Shape_paper")
+
+[node name="Interactable" type="Node" parent="NotePaper"]
+script = ExtResource("4_interactable")
+prompt = "Read note"
+
 [node name="PlaceholderCamera" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7, 8.5)
 current = true
 fov = 80.0
+
+[connection signal="interacted" from="Battery/Interactable" to="Battery" method="_on_interactable_interacted"]
+[connection signal="interacted" from="NotePaper/Interactable" to="NotePaper" method="_on_interactable_interacted"]
