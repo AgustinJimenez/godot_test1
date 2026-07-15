@@ -73,6 +73,11 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	if not hide_head:
+		# The clips have no scale tracks, so the collapse from hidden mode
+		# sticks until we explicitly restore the bones.
+		for idx in _hidden_indices:
+			skeleton.set_bone_pose_scale(idx, Vector3.ONE)
+			skeleton.set_bone_pose_position(idx, skeleton.get_bone_rest(idx).origin)
 		_pitch_head_bones()
 		return
 	for idx in _hidden_indices:

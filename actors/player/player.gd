@@ -5,8 +5,8 @@ extends CharacterBody3D
 
 const STAND_CAPSULE_HEIGHT := 1.8
 const CROUCH_CAPSULE_HEIGHT := 1.2
-const STAND_HEAD_Y := 1.62
-const CROUCH_HEAD_Y := 1.05
+const STAND_HEAD_Y := 1.7
+const CROUCH_HEAD_Y := 1.12
 
 @export_group("Look")
 @export var mouse_sensitivity: float = 0.002
@@ -51,6 +51,9 @@ var _dead := false
 
 
 func _ready() -> void:
+	# The debug camera ignores the player's transform once toggled; it is
+	# placed in world space each time V is pressed.
+	debug_cam.top_level = true
 	stamina = sprint_duration
 	hud.bind_inventory(inventory)
 	hud.bind_health(health)
@@ -83,14 +86,22 @@ func _unhandled_input(event: InputEvent) -> void:
 		if target:
 			target.interact(self)
 	elif event.is_action_pressed(&"debug_camera"):
-		# Dev view: watch the body from a camera fixed in front of the
-		# character; the yellow marker shows where the FP camera sits.
+		# Dev view: park a camera in the world ahead of the player and watch
+		# the body move. World-fixed on purpose — if it moved with the player,
+		# the character would never translate on screen and walking reads
+		# backwards. The yellow marker shows where the FP camera sits, and the
+		# full head is shown since this view is external.
 		if debug_cam.current:
 			camera.make_current()
 			cam_marker.visible = false
+			body.hide_head = true
 		else:
+			var ahead := global_position - global_transform.basis.z * 2.6
+			debug_cam.global_position = ahead + Vector3(0, 1.75, 0)
+			debug_cam.look_at(global_position + Vector3(0, 1.25, 0))
 			debug_cam.make_current()
 			cam_marker.visible = true
+			body.hide_head = false
 	elif event.is_action_pressed(&"inventory"):
 		hud.toggle_inventory()
 	elif event.is_action_pressed(&"pause"):
