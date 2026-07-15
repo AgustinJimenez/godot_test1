@@ -31,6 +31,14 @@ const CROUCH_REF_SPEED := 1.1
 const HIDDEN_BONES: PackedStringArray = ["Neck", "Head"]
 const HIDDEN_BONE_DROP := Vector3(0, -0.35, 0)
 
+## Experiment toggle: keep the full head and rely on the camera near plane
+## to clip the skull from the inside. In this mode the neck/head bones follow
+## the camera pitch (set via head_pitch) so looking down moves the skull too.
+@export var hide_head := true
+
+## Camera pitch in radians, pushed by the player each physics tick.
+var head_pitch := 0.0
+
 var _hidden_indices: PackedInt32Array = []
 
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
@@ -64,6 +72,9 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	if not hide_head:
+		_pitch_head_bones()
+		return
 	for idx in _hidden_indices:
 		skeleton.set_bone_pose_scale(idx, Vector3(0.001, 0.001, 0.001))
 		var parent := skeleton.get_bone_parent(idx)
@@ -71,6 +82,20 @@ func _process(_delta: float) -> void:
 		skeleton.set_bone_pose_position(idx,
 				skeleton.get_bone_rest(idx).origin
 				+ parent_basis.inverse() * HIDDEN_BONE_DROP)
+
+
+## Full-head mode: bend neck (35%) and head (65%) with the camera pitch so
+## the skull rotates with the view instead of the camera diving through it.
+## Runs after animation (process_priority), rotating the animated pose.
+func _pitch_head_bones() -> void:
+	var split := {&"Neck": 0.35, &"Head": 0.65}
+	for bone_name: StringName in split:
+		var idx := skeleton.find_bone(bone_name)
+		if idx < 0:
+			continue
+		var pose := skeleton.get_bone_global_pose(idx)
+		pose.basis = Basis(Vector3.RIGHT, head_pitch * split[bone_name]) * pose.basis
+		skeleton.set_bone_global_pose(idx, pose)
 
 
 ## Called by the player every physics tick (calls down, signals up).

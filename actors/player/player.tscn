@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://actors/player/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="1_body"]
@@ -20,6 +20,15 @@ height = 1.8
 
 [sub_resource type="SphereShape3D" id="Sphere_uncrouch"]
 radius = 0.3
+
+[sub_resource type="StandardMaterial3D" id="Material_cam_marker"]
+shading_mode = 0
+albedo_color = Color(1, 0.9, 0.1, 1)
+
+[sub_resource type="SphereMesh" id="Mesh_cam_marker"]
+material = SubResource("Material_cam_marker")
+radius = 0.045
+height = 0.09
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
@@ -87,6 +96,14 @@ volume_db = -8.0
 [node name="ReloadSound" type="AudioStreamPlayer" parent="HeadPivot/Camera3D/WeaponRig"]
 stream = ExtResource("11_reload_sfx")
 volume_db = -8.0
+
+[node name="CamMarker" type="MeshInstance3D" parent="HeadPivot/Camera3D"]
+visible = false
+mesh = SubResource("Mesh_cam_marker")
+
+[node name="DebugCam" type="Camera3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 0.990268, 0.139173, 0, 0.139173, -0.990268, 0, 1.75, -2.6)
+fov = 60.0
 
 [node name="UncrouchCheck" type="ShapeCast3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)

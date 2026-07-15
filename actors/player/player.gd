@@ -46,6 +46,8 @@ var _dead := false
 @onready var health: Health = $Health
 @onready var weapon: PistolWeapon = $HeadPivot/Camera3D/WeaponRig
 @onready var body: PlayerBody = $Body
+@onready var debug_cam: Camera3D = $DebugCam
+@onready var cam_marker: MeshInstance3D = $HeadPivot/Camera3D/CamMarker
 
 
 func _ready() -> void:
@@ -80,6 +82,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		var target := _current_interactable()
 		if target:
 			target.interact(self)
+	elif event.is_action_pressed(&"debug_camera"):
+		# Dev view: watch the body from a camera fixed in front of the
+		# character; the yellow marker shows where the FP camera sits.
+		if debug_cam.current:
+			camera.make_current()
+			cam_marker.visible = false
+		else:
+			debug_cam.make_current()
+			cam_marker.visible = true
 	elif event.is_action_pressed(&"inventory"):
 		hud.toggle_inventory()
 	elif event.is_action_pressed(&"pause"):
@@ -107,6 +118,7 @@ func _physics_process(delta: float) -> void:
 
 	body.update_motion(_crouched, weapon.equipped,
 			Vector2(velocity.x, velocity.z).length(), sprinting)
+	body.head_pitch = head.rotation.x
 
 	_update_head_bob(delta)
 	var target := _current_interactable()
