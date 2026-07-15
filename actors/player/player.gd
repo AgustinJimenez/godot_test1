@@ -45,6 +45,7 @@ var _dead := false
 @onready var inventory: Inventory = $Inventory
 @onready var health: Health = $Health
 @onready var weapon: PistolWeapon = $HeadPivot/Camera3D/WeaponRig
+@onready var body: PlayerBody = $Body
 
 
 func _ready() -> void:
@@ -103,6 +104,9 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity += get_gravity() * delta
 	move_and_slide()
+
+	body.update_motion(_crouched, weapon.equipped,
+			Vector2(velocity.x, velocity.z).length(), sprinting)
 
 	_update_head_bob(delta)
 	var target := _current_interactable()

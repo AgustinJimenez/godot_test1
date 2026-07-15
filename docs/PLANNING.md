@@ -215,6 +215,7 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-15 | Magazine lives on the weapon, reserve ammo lives in inventory stacks | Reload = inventory transaction, keeps ammo scarcity visible in the UI |
 | 2026-07-15 | Consumable effects are data on Item (`heal_amount`), not item subclasses | One resource schema; using at full health refuses to consume the item |
 | 2026-07-15 | Player death pauses tree + YOU DIED overlay, E reloads the scene | Placeholder until M5 save/load decides real death flow |
+| 2026-07-15 | First-person body: MotusMan mesh under the player, head bones collapsed into the chest each frame, camera 0.25m ahead of the face | Body awareness (see legs/shadow); MotusMan IPC clips cover idle/walk/jog/crouch with no retargeting |
 
 Add new rows as we make calls (e.g., grid vs slot inventory, hitscan vs projectile).
 
