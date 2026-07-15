@@ -41,10 +41,12 @@ var _bob_time := 0.0
 @onready var capsule: CapsuleShape3D = collision.shape
 @onready var uncrouch_check: ShapeCast3D = $UncrouchCheck
 @onready var hud: CanvasLayer = $HUD
+@onready var inventory: Inventory = $Inventory
 
 
 func _ready() -> void:
 	stamina = sprint_duration
+	hud.bind_inventory(inventory)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -66,6 +68,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var target := _current_interactable()
 		if target:
 			target.interact(self)
+	elif event.is_action_pressed(&"inventory"):
+		hud.toggle_inventory()
 	elif event.is_action_pressed(&"pause"):
 		# Until a pause menu exists, Esc just releases/captures the mouse.
 		Input.mouse_mode = (Input.MOUSE_MODE_VISIBLE

@@ -151,10 +151,10 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 - [x] Interaction ray + first interactables (door, pickup, readable note)
 - [x] Flashlight toggle (no battery yet)
 
-### M2 — Inventory & items
-- [ ] Item resource definitions, pickup → inventory flow
-- [ ] Inventory UI (limited slots), use/drop/examine
-- [ ] Key item unlocks a locked door
+### M2 — Inventory & items ✅
+- [x] Item resource definitions (.tres), pickup → inventory flow
+- [x] Inventory UI (8 slots, stacking), use/drop/examine
+- [x] Key item unlocks a locked door (keycard, consumed on use)
 
 ### M3 — Combat
 - [ ] Pistol: aim, fire, reload from inventory ammo, feedback (sfx/flash/decals)
@@ -197,6 +197,8 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-15 | No jumping | Classic survival horror; keeps level design and animation scope tight |
 | 2026-07-15 | Crouch = toggle, sprint = hold; crouch on C (not Ctrl) | Comfort defaults; Ctrl collides with macOS shortcuts |
 | 2026-07-15 | Reading a note pauses the game | Safe reading, RE-style; HUD runs with PROCESS_MODE_ALWAYS to close it |
+| 2026-07-15 | Slot inventory (8 slots + stacks), not RE grid | Same learning value, third of the UI code; can evolve later |
+| 2026-07-15 | Keys are consumed on unlock | Scarcity flavor; one key = one door |
 
 Add new rows as we make calls (e.g., grid vs slot inventory, hitscan vs projectile).
 
@@ -204,7 +206,7 @@ Add new rows as we make calls (e.g., grid vs slot inventory, hitscan vs projecti
 
 ## 7. Open Questions
 
-- Inventory style: RE-style grid with item sizes, or simple N slots? (decide at M2)
+- ~~Inventory style~~ → decided: simple slots (see Decisions Log)
 - Player death: reload last save only, or checkpoint mercy? (decide at M5)
 - Story delivery: notes only, or add audio logs? (decide at M6)
 - Should the flashlight occupy a "hand" (RE1-style tradeoff) or be free? (decide at M5)

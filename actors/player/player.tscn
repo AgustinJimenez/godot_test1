@@ -1,7 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://actors/player/player.gd" id="1_player"]
 [ext_resource type="PackedScene" path="res://ui/hud.tscn" id="2_hud"]
+[ext_resource type="Script" path="res://components/inventory.gd" id="3_inventory"]
 
 [sub_resource type="CapsuleShape3D" id="Capsule_player"]
 radius = 0.35
@@ -48,5 +49,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
 shape = SubResource("Sphere_uncrouch")
 target_position = Vector3(0, 0.65, 0)
 collision_mask = 1
+
+[node name="Inventory" type="Node" parent="."]
+script = ExtResource("3_inventory")
 
 [node name="HUD" parent="." instance=ExtResource("2_hud")]

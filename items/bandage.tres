@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="Item" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://items/item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bandage"
+display_name = "Bandage"
+description = "Sterile dressing. Will restore health once there is health to restore (M3)."
+kind = 0
+max_stack = 4
