@@ -14,6 +14,7 @@ config/name="SurvivalHorrorFps"
 run/main_scene="res://levels/playground.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
+run/max_fps=60
 
 [dotnet]
 

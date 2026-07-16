@@ -25,9 +25,25 @@ const SKIN_TEXTURE := "res://assets/models/pistol_starter/MotusMan/sourceimages/
 ## (see _retarget_clip). Already in-place (no baked root motion).
 const UAL_PATH := "res://assets/models/universal_animation_library/UAL1_Standard.glb"
 const UAL_WALK_ANIM := &"Walk"
+## The rest of UAL1_Standard.glb's 42 bundled clips, not used in real
+## gameplay - debug menu only, so the walk_relaxed situation (looked fine
+## recorded, broke in actual play) can be checked across the whole pack
+## instead of getting rediscovered one clip at a time. Retargeted lazily
+## (see play_debug_anim), not at _ready(), so a normal play session that
+## never opens the debug menu doesn't pay for 41 unused retargets.
+const UAL_EXTRA_CLIPS: PackedStringArray = [
+	"A_TPose", "Idle", "Idle_Talking", "Idle_Torch", "Walk_Formal", "Jog_Fwd", "Sprint",
+	"Crouch_Idle", "Crouch_Fwd", "Jump", "Jump_Start", "Jump_Land", "Roll",
+	"Pistol_Idle", "Pistol_Aim_Down", "Pistol_Aim_Neutral", "Pistol_Aim_Up",
+	"Pistol_Reload", "Pistol_Shoot", "Punch_Jab", "Punch_Cross", "Hit_Chest", "Hit_Head",
+	"Sword_Idle", "Sword_Attack", "Spell_Simple_Idle", "Spell_Simple_Enter",
+	"Spell_Simple_Exit", "Spell_Simple_Shoot", "Interact", "PickUp_Table", "Push",
+	"Fixing_Kneeling", "Sitting_Enter", "Sitting_Idle", "Sitting_Talking", "Sitting_Exit",
+	"Driving", "Swim_Idle", "Swim_Fwd", "Dance", "Death01",
+]
 ## Unreal Mannequin bone names, not Mixamo's - no shared prefix to strip, so
-## this is an explicit map instead. Fingers are left out (not load-bearing
-## for a walk cycle, MotusMan's finger names don't line up anyway).
+## this is an explicit map instead. Finger chains map joint-for-joint;
+## without them every clip fell back to MotusMan's curled finger rest pose.
 const BONE_MAP: Dictionary = {
 	&"pelvis": &"Hips",
 	&"spine_01": &"Spine",
@@ -39,10 +55,50 @@ const BONE_MAP: Dictionary = {
 	&"upperarm_r": &"RightArm",
 	&"lowerarm_r": &"RightForeArm",
 	&"hand_r": &"RightHand",
+	&"index_01_r": &"RightHandIndex1",
+	&"index_02_r": &"RightHandIndex2",
+	&"index_03_r": &"RightHandIndex3",
+	&"index_04_leaf_r": &"RightHandIndex4",
+	&"middle_01_r": &"RightHandMiddle1",
+	&"middle_02_r": &"RightHandMiddle2",
+	&"middle_03_r": &"RightHandMiddle3",
+	&"middle_04_leaf_r": &"RightHandMiddle4",
+	&"pinky_01_r": &"RightHandPinky1",
+	&"pinky_02_r": &"RightHandPinky2",
+	&"pinky_03_r": &"RightHandPinky3",
+	&"pinky_04_leaf_r": &"RightHandPinky4",
+	&"ring_01_r": &"RightHandRing1",
+	&"ring_02_r": &"RightHandRing2",
+	&"ring_03_r": &"RightHandRing3",
+	&"ring_04_leaf_r": &"RightHandRing4",
+	&"thumb_01_r": &"RightHandThumb1",
+	&"thumb_02_r": &"RightHandThumb2",
+	&"thumb_03_r": &"RightHandThumb3",
+	&"thumb_04_leaf_r": &"RightHandThumb4",
 	&"clavicle_l": &"LeftShoulder",
 	&"upperarm_l": &"LeftArm",
 	&"lowerarm_l": &"LeftForeArm",
 	&"hand_l": &"LeftHand",
+	&"index_01_l": &"LeftHandIndex1",
+	&"index_02_l": &"LeftHandIndex2",
+	&"index_03_l": &"LeftHandIndex3",
+	&"index_04_leaf_l": &"LeftHandIndex4",
+	&"middle_01_l": &"LeftHandMiddle1",
+	&"middle_02_l": &"LeftHandMiddle2",
+	&"middle_03_l": &"LeftHandMiddle3",
+	&"middle_04_leaf_l": &"LeftHandMiddle4",
+	&"pinky_01_l": &"LeftHandPinky1",
+	&"pinky_02_l": &"LeftHandPinky2",
+	&"pinky_03_l": &"LeftHandPinky3",
+	&"pinky_04_leaf_l": &"LeftHandPinky4",
+	&"ring_01_l": &"LeftHandRing1",
+	&"ring_02_l": &"LeftHandRing2",
+	&"ring_03_l": &"LeftHandRing3",
+	&"ring_04_leaf_l": &"LeftHandRing4",
+	&"thumb_01_l": &"LeftHandThumb1",
+	&"thumb_02_l": &"LeftHandThumb2",
+	&"thumb_03_l": &"LeftHandThumb3",
+	&"thumb_04_leaf_l": &"LeftHandThumb4",
 	&"thigh_r": &"RightUpLeg",
 	&"calf_r": &"RightLeg",
 	&"foot_r": &"RightFoot",
@@ -65,11 +121,42 @@ const SWING_BONES: Dictionary = {
 	&"LeftArm": &"LeftForeArm",
 	&"LeftForeArm": &"LeftHand",
 }
-## Hands: swing only reorients a bone by where ITS OWN child points, and
-## hands have no further mapped child - held at relaxed_idle's wrist pose
-## instead, same trick as the old held-bones approach. Not very noticeable
-## at typical camera distance for a walk cycle.
-const HELD_BONES: PackedStringArray = ["RightHand", "LeftHand"]
+## Legacy hand-mode comparison retained until the humanoid retarget work is
+## manually accepted and the old delta/swing paths can be removed. The normal
+## `use_humanoid_retarget` path ignores this mode and retargets hands/fingers
+## through the same parent-rest conversion as the rest of the skeleton.
+const HAND_BONES: PackedStringArray = ["RightHand", "LeftHand"]
+enum HandRetarget {
+	FROZEN, ## Locked to relaxed_idle's wrist pose all clip long (original behavior - loses aim/punch/hit direction entirely).
+	DELTA_ROTATION, ## Same global rest-relative delta transfer the spine/legs use.
+	LOCAL_COPY, ## Source hand's own LOCAL rotation applied directly under the target forearm's retargeted global pose - no rest-delta math, assumes both rigs' wrist axes are similarly oriented.
+}
+@export var hand_retarget_mode: HandRetarget = HandRetarget.DELTA_ROTATION
+
+## Legs default to the same global rest-relative delta transfer as spine -
+## fine for a walk cycle's shallow knee bend, but a deep crouch/hunch (e.g.
+## Pistol_Aim_Down) exposes the same rig-axis-mismatch problem that pushed
+## arms onto swing retargeting: a ~59 degree secondary-axis "twist" shows up
+## on the knee for that clip, where a real hinge joint should show almost
+## none - the leg swings out sideways instead of just bending forward.
+## SWING reuses the exact same technique arms use, applied to the leg chain.
+const LEG_SWING_MAP: Dictionary = {
+	&"RightUpLeg": &"RightLeg",
+	&"RightLeg": &"RightFoot",
+	&"LeftUpLeg": &"LeftLeg",
+	&"LeftLeg": &"LeftFoot",
+}
+enum LegRetarget {
+	DELTA_ROTATION, ## Original behavior - full rest-relative delta, same as spine.
+	SWING, ## Position-based swing, same technique/tradeoffs as arms (no twist, e.g. foot-turn-out doesn't survive).
+}
+@export var leg_retarget_mode: LegRetarget = LegRetarget.DELTA_ROTATION
+
+## Uses the same model-space local-pose conversion as Godot 4.6's
+## RetargetModifier3D. The legacy swing/delta modes remain available only
+## so the throwaway comparison scene can show the broken implementations
+## beside this one; gameplay and normal debug previews use this path.
+@export var use_humanoid_retarget := true
 
 ## Rough forward speeds (m/s) the clips were authored at, for foot matching.
 const WALK_REF_SPEED := 1.6
@@ -79,6 +166,20 @@ const CROUCH_REF_SPEED := 1.1
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
 var head_yaw := 0.0
+
+## The "moves" library and the pose UAL_EXTRA_CLIPS hold their spine/arms
+## to (see _retarget_clip) - kept around so play_debug_anim can retarget
+## and cache extra clips lazily, on first request, instead of upfront.
+var _lib: AnimationLibrary
+var _held_pose: Animation
+
+## True while a debug-menu clip is being previewed, so update_motion() doesn't
+## immediately stomp it back to relaxed_idle on the next physics tick (e.g.
+## right when the tree unpauses after closing the menu overlay). Cleared the
+## moment the player actually does something that should visibly change the
+## animation anyway (move, crouch, arm the weapon) - only suppressed while
+## they're just standing still watching the preview.
+var _debug_preview_active := false
 
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
 @onready var skeleton: Skeleton3D = $Skeleton3D
@@ -106,8 +207,9 @@ func _ready() -> void:
 		anim.loop_mode = Animation.LOOP_LINEAR
 		lib.add_animation(key, anim)
 		clip_root.free()
-	lib.add_animation(&"walk_relaxed",
-			_retarget_clip(UAL_PATH, UAL_WALK_ANIM, lib.get_animation(&"relaxed_idle")))
+	_held_pose = lib.get_animation(&"relaxed_idle")
+	lib.add_animation(&"walk_relaxed", _retarget_clip(UAL_PATH, UAL_WALK_ANIM, _held_pose, true))
+	_lib = lib
 	anim_player.add_animation_library(&"moves", lib)
 	anim_player.play("moves/relaxed_idle")
 
@@ -128,7 +230,8 @@ func _ready() -> void:
 ## on its whole ANIMATED ancestor chain, not just its own track.
 const RETARGET_SAMPLE_HZ := 30.0
 
-func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animation) -> Animation:
+func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animation,
+		force_loop: bool = false) -> Animation:
 	var clip_root: Node = (load(fbx_path) as PackedScene).instantiate()
 	var clip_ap := clip_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	var src_skeleton := clip_root.find_child("Skeleton3D", true, false) as Skeleton3D
@@ -156,25 +259,34 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 
 	var anim := Animation.new()
 	anim.length = src.length
-	anim.loop_mode = Animation.LOOP_LINEAR
+	anim.loop_mode = Animation.LOOP_LINEAR if force_loop else src.loop_mode
 
 	var out_rot_track: Dictionary = {}
 	for src_name in BONE_MAP:
 		var target_name: StringName = BONE_MAP[src_name]
-		if (target_name in HELD_BONES or not bone_tracks.has(src_name)
+		if ((target_name in HAND_BONES and hand_retarget_mode == HandRetarget.FROZEN)
+				or not bone_tracks.has(src_name)
 				or skeleton.find_bone(target_name) < 0 or src_skeleton.find_bone(src_name) < 0):
 			continue
 		var track := anim.add_track(Animation.TYPE_ROTATION_3D)
 		anim.track_set_path(track, NodePath("Skeleton3D:" + String(target_name)))
 		out_rot_track[target_name] = track
 	var out_pos_track := -1
-	if not (&"Hips" in HELD_BONES) and bone_tracks.has(&"pelvis"):
+	if bone_tracks.has(&"pelvis"):
 		out_pos_track = anim.add_track(Animation.TYPE_POSITION_3D)
 		anim.track_set_path(out_pos_track, NodePath("Skeleton3D:Hips"))
 
 	var reverse_map: Dictionary = {}
 	for src_name in BONE_MAP:
 		reverse_map[BONE_MAP[src_name]] = src_name
+	var source_hips := src_skeleton.find_bone(&"pelvis")
+	var target_hips := skeleton.find_bone(&"Hips")
+	var position_scale := 1.0
+	if source_hips >= 0 and target_hips >= 0:
+		var source_height := src_skeleton.get_bone_global_rest(source_hips).origin.length()
+		var target_height := skeleton.get_bone_global_rest(target_hips).origin.length()
+		if source_height > 0.0001:
+			position_scale = target_height / source_height
 
 	var sample_count := int(ceil(src.length * RETARGET_SAMPLE_HZ)) + 1
 	for i in sample_count:
@@ -206,13 +318,38 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 			var src_idx := src_skeleton.find_bone(src_name)
 			if target_idx < 0 or src_idx < 0 or not bone_tracks.has(src_name):
 				continue
+			var is_hand := target_name in HAND_BONES
+			if is_hand and hand_retarget_mode == HandRetarget.FROZEN:
+				continue
+			if use_humanoid_retarget:
+				var local := _humanoid_retarget_local_pose(
+						src_skeleton, src_idx, skeleton, target_idx, position_scale)
+				var parent_idx := skeleton.get_bone_parent(target_idx)
+				var parent_global: Transform3D = target_global.get(
+						parent_idx, skeleton.get_bone_global_rest(parent_idx)) if parent_idx >= 0 else Transform3D()
+				target_global[target_idx] = parent_global * local
+				if out_rot_track.has(target_name):
+					anim.track_insert_key(out_rot_track[target_name], time, local.basis.get_rotation_quaternion())
+				if target_name == &"Hips" and out_pos_track >= 0:
+					anim.track_insert_key(out_pos_track, time, local.origin)
+				continue
 			var target_rest := skeleton.get_bone_global_rest(target_idx)
 			var target_basis: Basis
 			var target_origin: Vector3 = target_rest.origin
-			if SWING_BONES.has(target_name) and reverse_map.has(SWING_BONES[target_name]):
+			if is_hand and hand_retarget_mode == HandRetarget.LOCAL_COPY:
+				var parent_idx := skeleton.get_bone_parent(target_idx)
+				var target_parent_global: Transform3D = target_global.get(
+						parent_idx, skeleton.get_bone_global_rest(parent_idx)) if parent_idx >= 0 else Transform3D()
+				target_basis = target_parent_global.basis * src_skeleton.get_bone_pose(src_idx).basis
+			elif SWING_BONES.has(target_name) and reverse_map.has(SWING_BONES[target_name]):
 				target_basis = _swing_retarget(src_skeleton, src_idx, skeleton, target_idx,
 						src_skeleton.find_bone(reverse_map[SWING_BONES[target_name]]),
 						skeleton.find_bone(SWING_BONES[target_name]))
+			elif (leg_retarget_mode == LegRetarget.SWING and LEG_SWING_MAP.has(target_name)
+					and reverse_map.has(LEG_SWING_MAP[target_name])):
+				target_basis = _swing_retarget(src_skeleton, src_idx, skeleton, target_idx,
+						src_skeleton.find_bone(reverse_map[LEG_SWING_MAP[target_name]]),
+						skeleton.find_bone(LEG_SWING_MAP[target_name]))
 			else:
 				var src_rest := src_skeleton.get_bone_global_rest(src_idx)
 				var src_pose_global := _manual_global_pose(src_skeleton, src_idx)
@@ -225,8 +362,6 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 					target_origin = target_rest.origin + offset
 			var pose_global := Transform3D(target_basis, target_origin)
 			target_global[target_idx] = pose_global
-			if target_name in HELD_BONES:
-				continue
 			var parent_idx := skeleton.get_bone_parent(target_idx)
 			var parent_global: Transform3D = target_global.get(
 					parent_idx, skeleton.get_bone_global_rest(parent_idx)) if parent_idx >= 0 else Transform3D()
@@ -236,8 +371,9 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 			if target_name == &"Hips" and out_pos_track >= 0:
 				anim.track_insert_key(out_pos_track, time, local.origin)
 	clip_root.free()
-	for held_bone in HELD_BONES:
-		_bake_held_track(anim, held_bone, held_pose, src.length)
+	if hand_retarget_mode == HandRetarget.FROZEN:
+		for hand_bone in HAND_BONES:
+			_bake_held_track(anim, hand_bone, held_pose, src.length)
 	return anim
 
 
@@ -250,6 +386,16 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 ## Trade-off: no roll/twist (e.g. forearm pronation) survives, only the
 ## swing - not very visible on this rig at typical camera distance for a
 ## walk cycle.
+##
+## This world-space version is known to overcorrect a bone low in a
+## heavily-pre-rotated chain (e.g. a knee under a hip that's bent forward a
+## lot - see CURRENT_TASK.md "Bug 3 update 3"). A parent-relative rework was
+## attempted twice and made things worse both times (see CURRENT_TASK.md
+## "Bug 3 update 4") - re-expressing the swing in the parent's own local
+## axis convention reintroduces exactly the axis-mismatch problem this
+## world-space approach was built to avoid in the first place. Reverted to
+## this version deliberately; do not re-attempt the same parent-relative
+## approach without a fundamentally different idea for avoiding that.
 func _swing_retarget(src_skel: Skeleton3D, src_idx: int, target_skel: Skeleton3D, target_idx: int,
 		src_child_idx: int, target_child_idx: int) -> Basis:
 	var target_rest := target_skel.get_bone_global_rest(target_idx)
@@ -261,6 +407,32 @@ func _swing_retarget(src_skel: Skeleton3D, src_idx: int, target_skel: Skeleton3D
 			- _manual_global_pose(src_skel, src_idx).origin).normalized()
 	var swing := _swing_between(src_rest_dir, src_pose_dir)
 	return swing * target_rest.basis
+
+
+## Synchronous equivalent of Godot 4.6 RetargetModifier3D's local-pose
+## algorithm. It moves a source local pose into model space through the
+## source parent's global rest, then into the target parent's rest frame.
+## That parent-rest conversion is what the earlier delta and swing methods
+## were missing, and it is independent of either rig's local bone axes.
+func _humanoid_retarget_local_pose(src_skel: Skeleton3D, src_idx: int,
+		target_skel: Skeleton3D, target_idx: int, position_scale: float) -> Transform3D:
+	var src_parent_rest := Transform3D()
+	var src_parent := src_skel.get_bone_parent(src_idx)
+	if src_parent >= 0:
+		src_parent_rest = src_skel.get_bone_global_rest(src_parent)
+	var target_parent_rest := Transform3D()
+	var target_parent := target_skel.get_bone_parent(target_idx)
+	if target_parent >= 0:
+		target_parent_rest = target_skel.get_bone_global_rest(target_parent)
+	var src_rest := src_skel.get_bone_rest(src_idx)
+	var target_rest := target_skel.get_bone_rest(target_idx)
+	var src_pose := src_skel.get_bone_pose(src_idx)
+	var pre_basis := target_parent_rest.basis.inverse() * src_parent_rest.basis
+	var post_basis := (src_rest.basis.inverse() * src_parent_rest.basis.inverse()
+			* target_parent_rest.basis * target_rest.basis)
+	var origin := (pre_basis * ((src_pose.origin - src_rest.origin) * position_scale)
+			+ target_rest.origin)
+	return Transform3D(pre_basis * src_pose.basis * post_basis, origin)
 
 
 ## Composes a bone's GLOBAL pose from the LOCAL pose getters directly,
@@ -487,6 +659,10 @@ func _bend_head_bones() -> void:
 ## Called by the player every physics tick (calls down, signals up).
 func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		sprinting: bool) -> void:
+	if _debug_preview_active:
+		if ground_speed <= 0.6 and not crouched and not armed:
+			return
+		_debug_preview_active = false
 	var target: StringName
 	var rate := 1.0
 	if ground_speed > 0.6:
@@ -513,21 +689,43 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 	anim_player.speed_scale = clampf(rate, 0.8, 2.2)
 
 
-## Every clip name the debug menu's animation preview can play - the native
-## MotusMan set plus any retargeted extras (walk_relaxed).
-func get_available_animations() -> Array[StringName]:
-	var names: Array[StringName] = []
+## Every clip the debug menu's animation preview can play, grouped for
+## display - "Default" is the native MotusMan set plus walk_relaxed (what
+## real gameplay actually uses or has tried), the rest are labeled by
+## source package. Dictionary preserves insertion order, so "Default" is
+## always the first group.
+func get_animation_groups() -> Dictionary:
+	var default_group: Array[StringName] = []
 	for key: StringName in CLIPS:
-		names.append(key)
-	names.append(&"walk_relaxed")
-	return names
+		default_group.append(key)
+	default_group.append(&"walk_relaxed")
+	var ual_group: Array[StringName] = []
+	for clip_name: String in UAL_EXTRA_CLIPS:
+		ual_group.append(StringName(clip_name))
+	return {
+		&"Default": default_group,
+		&"Universal Animation Library": ual_group,
+	}
 
 
 ## Debug menu only: play a clip once, directly, bypassing update_motion's
-## normal state machine entirely. Nothing needs to "restore" the real
-## animation afterward - update_motion() runs every physics tick and will
-## just pick the correct clip for whatever the player is actually doing on
-## the very next tick once gameplay (and physics processing) resumes.
-func play_debug_anim(anim_name: StringName) -> void:
-	anim_player.play("moves/" + anim_name, 0.2)
+## normal state machine. Sets _debug_preview_active so update_motion() leaves
+## it alone while the player just stands there watching it loop (closing the
+## menu unpauses the tree, and update_motion() runs every physics tick - it
+## would otherwise stomp the preview back to relaxed_idle on the very next
+## tick). The moment the player actually moves/crouches/arms up,
+## update_motion() reclaims control immediately, same as normal.
+## UAL_EXTRA_CLIPS entries retarget on this first request. Each gets its own
+## AnimationLibrary added on demand, rather than being merged into the
+## already-playing "moves" library - mutating a library the AnimationPlayer
+## is actively mid-crossfade on corrupts its internal blend state and
+## crashes the engine after a handful of distinct clips (reproduced: adding
+## a 5th distinct clip to a live-blending library segfaults every time,
+## regardless of which clips; a fresh per-clip library sidesteps it).
+func play_debug_anim(anim_name: StringName, blend_time: float = 0.2) -> void:
+	if not _lib.has_animation(anim_name) and String(anim_name) in UAL_EXTRA_CLIPS:
+		anim_player.stop()
+		_lib.add_animation(anim_name, _retarget_clip(UAL_PATH, anim_name, _held_pose))
+	anim_player.play("moves/" + anim_name, blend_time)
 	anim_player.speed_scale = 1.0
+	_debug_preview_active = true

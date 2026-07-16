@@ -42,7 +42,7 @@ var _hurt_tween: Tween
 @onready var fov_gizmo_button: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FovGizmoButton
 @onready var debug_back_button: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/BackButton
 @onready var anim_panel_anchor: Control = $DebugOverlay/AnimPanelAnchor
-@onready var anim_list: VBoxContainer = $DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/AnimList
+@onready var anim_list: VBoxContainer = $DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/AnimScroll/AnimList
 @onready var anim_back_button: Button = $DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/BackButton
 
 var _anim_list_built := false
@@ -255,24 +255,32 @@ func _show_anim_page() -> void:
 	anim_panel_anchor.show()
 
 
-## Lazily builds one button per PlayerBody animation clip - built from
-## PlayerBody.get_available_animations() rather than hardcoded here, so it
-## can't drift out of sync with whatever clips actually exist.
+## Lazily builds one section (label + buttons) per group returned by
+## PlayerBody.get_animation_groups(), rather than hardcoding clip names or
+## groups here, so this can't drift out of sync with whatever clips
+## actually exist.
 func _build_anim_list(player: Node) -> void:
 	if _anim_list_built or player == null or not ("body" in player):
 		return
 	var body: Node = player.body
-	if body == null or not body.has_method(&"get_available_animations"):
+	if body == null or not body.has_method(&"get_animation_groups"):
 		return
 	_anim_list_built = true
-	for anim_name: StringName in body.get_available_animations():
-		var button := Button.new()
-		# relaxed_idle is what the character actually rests in outside the
-		# preview, so it gets the friendlier "Default" label; every other
-		# clip just shows its own name.
-		button.text = "Default" if anim_name == &"relaxed_idle" else String(anim_name)
-		button.pressed.connect(_on_anim_button_pressed.bind(anim_name))
-		anim_list.add_child(button)
+	var groups: Dictionary = body.get_animation_groups()
+	for group_name: StringName in groups:
+		var header := Label.new()
+		header.text = String(group_name).to_upper()
+		header.add_theme_color_override(&"font_color", Color(0.6, 0.7, 1, 1))
+		header.add_theme_font_size_override(&"font_size", 13)
+		anim_list.add_child(header)
+		for anim_name: StringName in groups[group_name]:
+			var button := Button.new()
+			# relaxed_idle is what the character actually rests in outside
+			# the preview, so it gets the friendlier "Default" label; every
+			# other clip just shows its own name.
+			button.text = "Default" if anim_name == &"relaxed_idle" else String(anim_name)
+			button.pressed.connect(_on_anim_button_pressed.bind(anim_name))
+			anim_list.add_child(button)
 
 
 func _on_anim_button_pressed(anim_name: StringName) -> void:
