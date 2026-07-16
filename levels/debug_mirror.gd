@@ -16,8 +16,6 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
 	_mirror_z = global_position.z
-	# Seen from outside, so show the full head instead of the FP collapse.
-	mirror_body.hide_head = false
 
 
 func _process(_delta: float) -> void:
@@ -38,6 +36,7 @@ func _process(_delta: float) -> void:
 			Basis(Vector3.UP, PI - yaw),
 			Vector3(src.origin.x, src.origin.y, 2.0 * _mirror_z - src.origin.z))
 	mirror_body.head_pitch = body.head_pitch
+	mirror_body.head_yaw = body.head_yaw
 
 	# Copy the real body's animation state 1:1 so the double never drifts
 	# out of sync with what the player is actually doing.

@@ -23,24 +23,9 @@ const WALK_REF_SPEED := 1.6
 const JOG_REF_SPEED := 3.0
 const CROUCH_REF_SPEED := 1.1
 
-## Shrunk to nothing AND pulled down inside the chest every frame, so the
-## first-person camera never sees the head and the collapsed vertices hide
-## inside the torso instead of spiking at the neck. The drop is authored in
-## skeleton space (straight down) and converted to the parent bone's local
-## space per frame — bone pose positions live in parent-bone space.
-const HIDDEN_BONES: PackedStringArray = ["Neck", "Head"]
-const HIDDEN_BONE_DROP := Vector3(0, -0.35, 0)
-
-## Experiment toggle: keep the full head and rely on the camera near plane
-## to clip the skull from the inside. In this mode the neck/head bones follow
-## the camera pitch (set via head_pitch) so looking down moves the skull too.
-@export var hide_head := true
-
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
 var head_yaw := 0.0
-
-var _hidden_indices: PackedInt32Array = []
 
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
 @onready var skeleton: Skeleton3D = $Skeleton3D
@@ -48,13 +33,9 @@ var _hidden_indices: PackedInt32Array = []
 
 
 func _ready() -> void:
-	# Higher priority = processed later: our bone-hiding pass in _process must
+	# Higher priority = processed later: our head-bend pass in _process must
 	# run AFTER the AnimationPlayer has written this frame's pose.
 	process_priority = 100
-	for bone_name in HIDDEN_BONES:
-		var idx := skeleton.find_bone(bone_name)
-		if idx >= 0:
-			_hidden_indices.append(idx)
 	var material := StandardMaterial3D.new()
 	material.albedo_texture = load(SKIN_TEXTURE)
 	material.roughness = 0.85
@@ -73,17 +54,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	if not hide_head:
-		# The clips have no scale tracks, so the collapse from hidden mode
-		# sticks until we explicitly restore the bones.
-		for idx in _hidden_indices:
-			skeleton.set_bone_pose_scale(idx, Vector3.ONE)
-			skeleton.set_bone_pose_position(idx, skeleton.get_bone_rest(idx).origin)
-		_bend_head_bones()
-		return
-	for idx in _hidden_indices:
-		skeleton.set_bone_pose_scale(idx, Vector3(0.001, 0.001, 0.001))
-		skeleton.set_bone_pose_position(idx, skeleton.get_bone_rest(idx).origin)
+	_bend_head_bones()
 
 
 ## Looking straight down would bend the neck/head further than a real neck
@@ -99,9 +70,9 @@ func clamp_head_pitch(p: float) -> float:
 	return clampf(p, -deg_to_rad(MAX_BEND_DOWN_DEG), deg_to_rad(MAX_BEND_UP_DEG))
 
 
-## Full-head mode: bend neck (35%) and head (65%) with the camera pitch/yaw
-## so the skull rotates with the view instead of the camera diving through
-## it. Runs after animation (process_priority), rotating the animated pose.
+## Bend neck (35%) and head (65%) with the camera pitch/yaw so the skull
+## rotates with the view instead of the camera diving through it. Runs
+## after animation (process_priority), rotating the animated pose.
 func _bend_head_bones() -> void:
 	var split := {&"Neck": 0.35, &"Head": 0.65}
 	var clamped_pitch := clamp_head_pitch(head_pitch)

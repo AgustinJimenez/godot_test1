@@ -6,7 +6,7 @@
 **Setting:** Abandoned research facility
 **Goal:** Learning sandbox — build each system properly to learn Godot FPS/horror development. No shipping pressure, but every system should be built as if it could ship.
 
-> **Status (2026-07-16):** M0–M3 done, first-person body + independent head-look + debug tooling polished. Next up: **M4 — First enemy** (shambler state machine, navmesh, perception; the Mixamo "action_adventure_pack" is earmarked for it). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V debug camera / P debug menu.
+> **Status (2026-07-16):** M0–M3 done, first-person body (head always visible now, no more collapse trick) + independent head-look + debug tooling polished. Next up: **M4 — First enemy** (shambler state machine, navmesh, perception; the Mixamo "action_adventure_pack" is earmarked for it). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V debug camera / P debug menu.
 
 ---
 
@@ -223,6 +223,8 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-16 | Movement direction follows combined body+head yaw, not just body yaw | Otherwise glancing sideways while holding W would strafe instead of walking that way, once head and body could differ |
 | 2026-07-16 | Eye-clearance solve extended to per-bone radii (chest/shoulders/arms) and to yaw, not just pitch | The chest-only, pitch-only version (previous row) missed two things: turning the head to the side brings the shoulder/arm into range even before any downward pitch, and the shoulder/arm joints sit too close to the head bone for one shared clearance radius to be achievable — each bone now has its own minimum distance tuned to what's geometrically reachable |
 | 2026-07-16 | Debug eye marker has shadow casting explicitly disabled | It's invisible from the FP camera itself (inside the near-clip distance) but shadows ignore camera visibility, so it was showing up as a sphere-shaped blob in the player's own shadow where the (collapsed, low-shadow) head should be |
+| 2026-07-16 | Head is always visible now — removed the collapse-into-chest trick entirely, `_bend_head_bones()` runs unconditionally | The earlier rejection of full-head mode ("MotusMan wears a hood wrapping the eye point") predates the per-bone yaw+pitch eye-clearance solve; verified clean at neutral look, moderate glances, and hard extremes (left+down) with the solve in place, so the fallback is no longer needed. Own shadow now shows a proper head silhouette too |
+| 2026-07-16 | `head_yaw_limit_deg` tuned down from 75° to 60° | Playtest feel — narrower head-alone turn range before the body catches up |
 
 Add new rows as we make calls (e.g., grid vs slot inventory, hitscan vs projectile).
 

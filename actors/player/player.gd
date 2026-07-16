@@ -37,7 +37,7 @@ func set_eye_offset(v: Vector3) -> void:
 ## How far the head can turn from the body before the body starts rotating
 ## to catch up - real necks don't swivel a full 180, so past this the torso
 ## has to turn instead.
-@export var head_yaw_limit_deg: float = 75.0
+@export var head_yaw_limit_deg: float = 60.0
 
 @export_group("Movement")
 @export var walk_speed: float = 3.2
@@ -136,7 +136,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		# player — rotating the character lets you see them from any angle.
 		if debug_cam.current:
 			camera.make_current()
-			body.hide_head = true
 			_debug_cam_active = false
 		else:
 			debug_cam.top_level = true
@@ -144,7 +143,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			debug_cam.global_position = global_position + _debug_cam_offset
 			debug_cam.look_at(global_position + Vector3(0, 1.25, 0))
 			debug_cam.make_current()
-			body.hide_head = false
 			_debug_cam_active = true
 	elif event.is_action_pressed(&"inventory"):
 		hud.toggle_inventory()
