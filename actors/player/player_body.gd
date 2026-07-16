@@ -211,7 +211,7 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 						skeleton.find_bone(SWING_BONES[target_name]))
 			else:
 				var src_rest := src_skeleton.get_bone_global_rest(src_idx)
-				var src_pose_global := src_skeleton.get_bone_global_pose(src_idx)
+				var src_pose_global := _manual_global_pose(src_skeleton, src_idx)
 				var delta := src_rest.basis.inverse() * src_pose_global.basis
 				target_basis = target_rest.basis * delta
 				if target_name == &"Hips":
@@ -253,10 +253,27 @@ func _swing_retarget(src_skel: Skeleton3D, src_idx: int, target_skel: Skeleton3D
 		return target_rest.basis
 	var src_rest_dir := (src_skel.get_bone_global_rest(src_child_idx).origin
 			- src_skel.get_bone_global_rest(src_idx).origin).normalized()
-	var src_pose_dir := (src_skel.get_bone_global_pose(src_child_idx).origin
-			- src_skel.get_bone_global_pose(src_idx).origin).normalized()
+	var src_pose_dir := (_manual_global_pose(src_skel, src_child_idx).origin
+			- _manual_global_pose(src_skel, src_idx).origin).normalized()
 	var swing := _swing_between(src_rest_dir, src_pose_dir)
 	return swing * target_rest.basis
+
+
+## Composes a bone's GLOBAL pose from the LOCAL pose getters directly,
+## walking the parent chain by hand - Skeleton3D.get_bone_global_pose()
+## reads from a cache that's only refreshed on the engine's own per-frame
+## update, which never happens while baking offline inside _ready() (no
+## amount of set_bone_pose_rotation/position calls made it budge, even with
+## force_update_all_bone_transforms()). get_bone_pose() is a plain getter
+## with no such caching, so composing the chain from that manually is what
+## actually reflects poses just set this same sample.
+func _manual_global_pose(skel: Skeleton3D, idx: int) -> Transform3D:
+	var t := skel.get_bone_pose(idx)
+	var parent := skel.get_bone_parent(idx)
+	while parent >= 0:
+		t = skel.get_bone_pose(parent) * t
+		parent = skel.get_bone_parent(parent)
+	return t
 
 
 ## Shortest-arc rotation that takes `from` to `to` (both must be normalized).
