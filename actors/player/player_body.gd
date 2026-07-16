@@ -54,14 +54,22 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	# Torso first: Neck sits on Spine2, so leaning the spine forward moves
+	# where the neck/head bend starts from, same as a real body would.
+	_bend_torso()
 	_bend_head_bones()
 
 
 ## Looking straight down would bend the neck/head further than a real neck
 ## can, folding the chin/hood into the chest - clamp well short of the
 ## camera's own pitch_limit_deg so the mesh stops before it clips.
+##
+## The up limit is lower than you'd expect from anatomy alone: past ~72-75
+## the linear-blend skin between Neck and Head stretches visibly (the
+## classic "candy wrapper" artifact large joint rotations cause on this kind
+## of rig) - 60 leaves real margin below where that starts.
 const MAX_BEND_DOWN_DEG := 40.0
-const MAX_BEND_UP_DEG := 75.0
+const MAX_BEND_UP_DEG := 60.0
 
 ## Same clamp the mesh bend uses. The player reads this to keep the eye
 ## position locked to the actual bone pose - if the neck stops bending, the
@@ -70,19 +78,60 @@ func clamp_head_pitch(p: float) -> float:
 	return clampf(p, -deg_to_rad(MAX_BEND_DOWN_DEG), deg_to_rad(MAX_BEND_UP_DEG))
 
 
+## A small forward lean when looking down - just enough to read as leaning
+## to look rather than a rigid periscope neck. Pitch only (yaw already turns
+## the body itself via the head-yaw-limit/catch-up system), and only for
+## looking down, not up. Same clamped pitch as the neck/head bend so it
+## eases back out at the same rate.
+const TORSO_BEND: Dictionary = {
+	&"Spine": 0.04,
+	&"Spine1": 0.05,
+	&"Spine2": 0.06,
+}
+
+func _bend_torso() -> void:
+	var clamped_pitch := clamp_head_pitch(head_pitch)
+	if clamped_pitch >= 0.0:
+		return
+	for bone_name: StringName in TORSO_BEND:
+		var idx := skeleton.find_bone(bone_name)
+		if idx < 0:
+			continue
+		var portion: float = TORSO_BEND[bone_name]
+		var pose := skeleton.get_bone_global_pose(idx)
+		pose.basis = Basis(Vector3.RIGHT, -clamped_pitch * portion) * pose.basis
+		skeleton.set_bone_global_pose(idx, pose)
+
+
+## Each axis is clamped on its own (MAX_BEND_*_DEG, head_yaw_limit_deg), but
+## pitch and yaw near their limits *at the same time* compose into a larger
+## rotation than either alone - large enough to hit the same skin-stretch
+## artifact even though neither individual clamp was exceeded. Scale the
+## (yaw, pitch) pair down together, as a single vector, so their combined
+## magnitude never exceeds MAX_BEND_UP_DEG either - this only affects the
+## visible bend, not the camera's actual look direction.
+const MAX_COMBINED_BEND_DEG := MAX_BEND_UP_DEG
+
 ## Bend neck (35%) and head (65%) with the camera pitch/yaw so the skull
 ## rotates with the view instead of the camera diving through it. Runs
 ## after animation (process_priority), rotating the animated pose.
 func _bend_head_bones() -> void:
 	var split := {&"Neck": 0.35, &"Head": 0.65}
 	var clamped_pitch := clamp_head_pitch(head_pitch)
+	var yaw := head_yaw
+	var combined := Vector2(yaw, clamped_pitch)
+	var max_combined := deg_to_rad(MAX_COMBINED_BEND_DEG)
+	if combined.length() > max_combined:
+		combined = combined.normalized() * max_combined
+		yaw = combined.x
+		clamped_pitch = combined.y
 	for bone_name: StringName in split:
 		var idx := skeleton.find_bone(bone_name)
 		if idx < 0:
 			continue
 		var portion: float = split[bone_name]
 		var pose := skeleton.get_bone_global_pose(idx)
-		pose.basis = (Basis(Vector3.UP, head_yaw * portion)
+		pose.basis = (Basis(Vector3.UP, yaw * portion)
 				* Basis(Vector3.RIGHT, -clamped_pitch * portion) * pose.basis)
 		skeleton.set_bone_global_pose(idx, pose)
 
