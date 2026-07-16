@@ -59,7 +59,7 @@ roughness = 0.15
 agent_height = 1.8
 agent_radius = 0.4
 agent_max_climb = 0.3
-filter_baking_aabb = AABB(-10, -0.5, -13, 20, 4, 26)
+filter_baking_aabb = AABB(-16, -0.5, -19, 32, 4, 35)
 parsed_geometry_type = 1
 geometry_source_geometry_mode = 1
 geometry_source_group_name = &"navmesh_source"
@@ -74,19 +74,19 @@ environment = SubResource("Environment_room")
 [node name="Floor" type="CSGBox3D" parent="Geometry"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, 0)
 use_collision = true
-size = Vector3(20, 0.5, 20)
+size = Vector3(32, 0.5, 32)
 material = SubResource("Material_concrete")
 
 [node name="Ceiling" type="CSGBox3D" parent="Geometry"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.25, 0)
 use_collision = true
-size = Vector3(20, 0.5, 20)
+size = Vector3(32, 0.5, 32)
 material = SubResource("Material_concrete")
 
 [node name="WallNorth" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -16)
 use_collision = true
-size = Vector3(20, 4, 0.5)
+size = Vector3(32, 4, 0.5)
 material = SubResource("Material_concrete")
 
 [node name="DoorCut" type="CSGBox3D" parent="Geometry/WallNorth"]
@@ -95,21 +95,21 @@ operation = 2
 size = Vector3(1.1, 2.2, 0.6)
 
 [node name="WallSouth" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 16)
 use_collision = true
-size = Vector3(20, 4, 0.5)
+size = Vector3(32, 4, 0.5)
 material = SubResource("Material_concrete")
 
 [node name="WallEast" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 2, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 2, 0)
 use_collision = true
-size = Vector3(0.5, 4, 20)
+size = Vector3(0.5, 4, 32)
 material = SubResource("Material_concrete")
 
 [node name="WallWest" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 2, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 2, 0)
 use_collision = true
-size = Vector3(0.5, 4, 20)
+size = Vector3(0.5, 4, 32)
 material = SubResource("Material_concrete")
 
 [node name="Pillar" type="CSGBox3D" parent="Geometry"]
@@ -137,31 +137,31 @@ size = Vector3(1, 1, 1)
 material = SubResource("Material_crate")
 
 [node name="ClosetWallWest" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 2, -11.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 2, -17.5)
 use_collision = true
 size = Vector3(0.5, 4, 3)
 material = SubResource("Material_concrete")
 
 [node name="ClosetWallEast" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.5, 2, -11.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.5, 2, -17.5)
 use_collision = true
 size = Vector3(0.5, 4, 3)
 material = SubResource("Material_concrete")
 
 [node name="ClosetWallBack" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 2, -13)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 2, -19)
 use_collision = true
 size = Vector3(3.5, 4, 0.5)
 material = SubResource("Material_concrete")
 
 [node name="ClosetFloor" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, -0.25, -11.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, -0.25, -17.5)
 use_collision = true
 size = Vector3(3, 0.5, 3)
 material = SubResource("Material_concrete")
 
 [node name="ClosetCeiling" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 4.25, -11.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 4.25, -17.5)
 use_collision = true
 size = Vector3(3, 0.5, 3)
 material = SubResource("Material_concrete")
@@ -205,7 +205,7 @@ shadow_enabled = true
 omni_range = 6.0
 
 [node name="ClosetLight" type="OmniLight3D" parent="Lights"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 3.4, -11.8)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 3.4, -17.8)
 light_color = Color(0.7, 1, 0.8, 1)
 light_energy = 0.7
 shadow_enabled = true
@@ -219,7 +219,7 @@ shadow_enabled = true
 omni_range = 12.0
 
 [node name="Door" parent="." instance=ExtResource("1_door")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.45, 0, -10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.45, 0, -16)
 locked = true
 required_item = ExtResource("6_keycard")
 
@@ -276,10 +276,14 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 6)
 
 [node name="Shambler1" parent="." instance=ExtResource("15_shambler")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, 6)
+visible = false
+process_mode = 4
+collision_layer = 0
+collision_mask = 0
 patrol_points = [NodePath("../PatrolPoints/Point1"), NodePath("../PatrolPoints/Point2"), NodePath("../PatrolPoints/Point3")]
 
 [node name="NotePaper" type="Area3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1.5, -12.7)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1.5, -18.7)
 collision_layer = 8
 collision_mask = 0
 script = ExtResource("3_note")

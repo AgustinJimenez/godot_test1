@@ -89,6 +89,10 @@ func _ready() -> void:
 	# Higher priority = processed later: our head-bend pass in _process must
 	# run AFTER the AnimationPlayer has written this frame's pose.
 	process_priority = 100
+	# Lets the debug menu's animation preview keep looping while the pause
+	# menu has the rest of the game (including this node's own parent,
+	# Player, which is PAUSABLE by design) frozen.
+	anim_player.process_mode = Node.PROCESS_MODE_ALWAYS
 	var material := StandardMaterial3D.new()
 	material.albedo_texture = load(SKIN_TEXTURE)
 	material.roughness = 0.85
@@ -306,11 +310,102 @@ func _bake_held_track(
 			return
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# Torso first: Neck sits on Spine2, so leaning the spine forward moves
 	# where the neck/head bend starts from, same as a real body would.
 	_bend_torso()
 	_bend_head_bones()
+	_update_footstep_markers(delta)
+
+
+## Debug menu only: drops a small sphere where a foot actually PLANTS -
+## rises above FOOT_LIFT_ENTER (a real step, not idle sway or the foot
+## sliding along the ground while the body turns in place), then comes back
+## down below FOOT_LIFT_EXIT. Two thresholds instead of one (hysteresis) so
+## a foot hovering right at the edge of one threshold can't fire twice on
+## sensor noise alone. Markers free themselves after a few seconds so a long
+## test session doesn't pile up forever.
+const FOOT_LIFT_ENTER := 0.03
+const FOOT_LIFT_EXIT := 0.015
+const FOOTSTEP_MARKER_LIFETIME := 6.0
+const FOOTSTEP_COLORS: Dictionary = {
+	&"LeftFoot": Color(1.0, 0.25, 0.25),
+	&"RightFoot": Color(0.3, 0.5, 1.0),
+}
+
+var debug_footsteps := true
+## Per foot bone: whether it's currently airborne (past FOOT_LIFT_ENTER
+## above its last confirmed ground height) and what that ground height was.
+var _foot_lifted: Dictionary = {}
+var _foot_ground_y: Dictionary = {}
+
+func toggle_debug_footsteps() -> void:
+	debug_footsteps = not debug_footsteps
+
+
+func _update_footstep_markers(_delta: float) -> void:
+	if not debug_footsteps:
+		return
+	for bone_name: StringName in FOOTSTEP_COLORS:
+		_check_footstep(bone_name, FOOTSTEP_COLORS[bone_name])
+
+
+func _check_footstep(bone_name: StringName, color: Color) -> void:
+	var idx := skeleton.find_bone(bone_name)
+	if idx < 0:
+		return
+	var y := skeleton.get_bone_global_pose(idx).origin.y
+	if not _foot_ground_y.has(bone_name):
+		_foot_ground_y[bone_name] = y
+		_foot_lifted[bone_name] = false
+		return
+	var ground_y: float = _foot_ground_y[bone_name]
+	var lifted: bool = _foot_lifted[bone_name]
+	var height := y - ground_y
+	if lifted:
+		if height < FOOT_LIFT_EXIT:
+			# Came back down after a real lift - this is the plant.
+			_foot_lifted[bone_name] = false
+			_foot_ground_y[bone_name] = y
+			_drop_footstep_marker(bone_name, color)
+	else:
+		if height > FOOT_LIFT_ENTER:
+			_foot_lifted[bone_name] = true
+		else:
+			# Not lifted - keep tracking the lowest recent height as ground,
+			# so a foot sliding/pivoting on an uneven-looking pose doesn't
+			# get mistaken for a lift later.
+			_foot_ground_y[bone_name] = minf(ground_y, y)
+
+
+func _drop_footstep_marker(bone_name: StringName, color: Color) -> void:
+	var idx := skeleton.find_bone(bone_name)
+	if idx < 0:
+		return
+	var bone_pos: Vector3 = skeleton.global_transform * skeleton.get_bone_global_pose(idx).origin
+	# The foot BONE's pivot sits inside the ankle, well above the sole, so
+	# placing a marker directly there floats visibly above the floor -
+	# raycast straight down to the actual ground the character is standing
+	# on instead, same "world" collision layer the player itself walks on.
+	var query := PhysicsRayQueryParameters3D.create(
+			bone_pos + Vector3.UP * 0.3, bone_pos + Vector3.DOWN * 1.0, 1)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var ground_pos: Vector3 = hit.position if hit else Vector3(bone_pos.x, 0.0, bone_pos.z)
+
+	var marker := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.025
+	sphere.height = 0.05
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 2.0
+	marker.mesh = sphere
+	marker.material_override = mat
+	get_tree().current_scene.add_child(marker)
+	marker.global_position = ground_pos + Vector3.UP * 0.01
+	get_tree().create_timer(FOOTSTEP_MARKER_LIFETIME).timeout.connect(marker.queue_free)
 
 
 ## Looking straight down would bend the neck/head further than a real neck
@@ -402,7 +497,11 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 			target = &"jog"
 			rate = ground_speed / JOG_REF_SPEED
 		else:
-			target = &"walk" if armed else &"walk_relaxed"
+			# walk_relaxed (retargeted, unarmed) isn't used for real movement
+			# yet - still visibly wrong in actual play despite passing every
+			# automated check so far. Reachable only through the debug menu's
+			# animation preview until it's confirmed fixed by hand.
+			target = &"walk"
 			rate = ground_speed / WALK_REF_SPEED
 	elif crouched:
 		target = &"crouch_idle"
@@ -412,3 +511,23 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 	if anim_player.current_animation != full:
 		anim_player.play(full, 0.3)
 	anim_player.speed_scale = clampf(rate, 0.8, 2.2)
+
+
+## Every clip name the debug menu's animation preview can play - the native
+## MotusMan set plus any retargeted extras (walk_relaxed).
+func get_available_animations() -> Array[StringName]:
+	var names: Array[StringName] = []
+	for key: StringName in CLIPS:
+		names.append(key)
+	names.append(&"walk_relaxed")
+	return names
+
+
+## Debug menu only: play a clip once, directly, bypassing update_motion's
+## normal state machine entirely. Nothing needs to "restore" the real
+## animation afterward - update_motion() runs every physics tick and will
+## just pick the correct clip for whatever the player is actually doing on
+## the very next tick once gameplay (and physics processing) resumes.
+func play_debug_anim(anim_name: StringName) -> void:
+	anim_player.play("moves/" + anim_name, 0.2)
+	anim_player.speed_scale = 1.0

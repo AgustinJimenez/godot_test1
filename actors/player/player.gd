@@ -51,12 +51,25 @@ func set_eye_offset(v: Vector3) -> void:
 ## After draining fully, sprint stays locked until stamina recovers this fraction.
 @export var sprint_recover_fraction: float = 0.3
 
+## Third-person debug camera zoom range (SpringArm3D.spring_length), and how
+## much each scroll-wheel tick moves it.
+const THIRD_PERSON_ZOOM_MIN := 1.5
+const THIRD_PERSON_ZOOM_MAX := 8.0
+const THIRD_PERSON_ZOOM_STEP := 0.4
+
 var stamina: float
 var _sprint_locked := false
 var _crouched := false
 var _dead := false
 var _debug_cam_active := false
-var _debug_cam_offset := Vector3.ZERO
+## Debug menu toggle: the FOV gizmo already only shows up while the third-
+## person view is active (no point drawing the first-person camera's FOV
+## from inside its own view) - this is a second, manual gate on top of
+## that, for when it's just cluttering the third-person view too.
+var show_fov_gizmo := false
+
+func toggle_fov_gizmo() -> void:
+	show_fov_gizmo = not show_fov_gizmo
 var _head_bone_idx := -1
 var _torso_bone_indices: PackedInt32Array = []
 var _torso_bone_clearances: PackedFloat32Array = []
@@ -86,7 +99,8 @@ var _look_yaw := 0.0
 @onready var weapon: PistolWeapon = $HeadPivot/Camera3D/WeaponRig
 @onready var body: PlayerBody = $Body
 @onready var skeleton: Skeleton3D = $Body/Skeleton3D
-@onready var debug_cam: Camera3D = $DebugCam
+@onready var third_person_arm: SpringArm3D = $ThirdPersonArm
+@onready var debug_cam: Camera3D = $ThirdPersonArm/DebugCam
 
 
 func _ready() -> void:
@@ -118,7 +132,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		_apply_yaw(-motion.relative.x * mouse_sensitivity)
 		_look_pitch = clampf(_look_pitch - motion.relative.y * mouse_sensitivity,
 				-deg_to_rad(pitch_limit_deg), deg_to_rad(pitch_limit_deg))
-		head.rotation.x = _look_pitch
+		if _debug_cam_active:
+			# Third person: pitch orbits the camera itself (SpringArm3D's
+			# own rotation) using the raw, uncapped pitch - the head still
+			# follows it too, but only up to a natural limit (see
+			# _physics_process, where body.head_pitch is fed the clamped
+			# version), so the camera can keep tilting past where the neck
+			# would stop.
+			third_person_arm.rotation.x = _look_pitch
+		else:
+			head.rotation.x = _look_pitch
 	elif event.is_action_pressed(&"flashlight"):
 		flashlight.visible = not flashlight.visible
 	elif event.is_action_pressed(&"crouch"):
@@ -131,28 +154,45 @@ func _unhandled_input(event: InputEvent) -> void:
 		if target:
 			target.interact(self)
 	elif event.is_action_pressed(&"debug_camera"):
-		# Dev view: follow camera trails the player in world space, saving
-		# the offset direction at activation so it does not yaw with the
-		# player — rotating the character lets you see them from any angle.
+		# Third-person dev view: ThirdPersonArm is a plain child of the
+		# player (see player.tscn), tracking body yaw through normal node
+		# parenting plus _look_yaw directly (see _apply_yaw) - the same
+		# head-leads-then-body-catches-up system first person uses, just
+		# with the camera also picking up the head's yaw offset instead of
+		# only riding on HeadPivot. No reset needed on switch: both modes
+		# share the same _look_yaw/_look_pitch state continuously.
 		if debug_cam.current:
 			camera.make_current()
 			_debug_cam_active = false
+			hud.set_center_dot_visible(true)
 		else:
-			debug_cam.top_level = true
-			_debug_cam_offset = -global_transform.basis.z * 2.6 + Vector3(0, 1.75, 0)
-			debug_cam.global_position = global_position + _debug_cam_offset
-			debug_cam.look_at(global_position + Vector3(0, 1.25, 0))
 			debug_cam.make_current()
 			_debug_cam_active = true
+			hud.set_center_dot_visible(false)
+			# Pitch still gets a level start - the camera's orbit pitch has
+			# no equivalent "catch up" partner to stay consistent with like
+			# yaw does, so carrying over a steep first-person pitch would
+			# just be a jarring snap.
+			_look_pitch = 0.0
+			head.rotation.x = 0.0
+			third_person_arm.rotation.x = 0.0
+	elif _debug_cam_active and event.is_action_pressed(&"zoom_in"):
+		_set_third_person_zoom(third_person_arm.spring_length - THIRD_PERSON_ZOOM_STEP)
+	elif _debug_cam_active and event.is_action_pressed(&"zoom_out"):
+		_set_third_person_zoom(third_person_arm.spring_length + THIRD_PERSON_ZOOM_STEP)
 	elif event.is_action_pressed(&"inventory"):
 		hud.toggle_inventory()
-	elif event.is_action_pressed(&"debug_menu"):
-		hud.toggle_debug()
-	elif event.is_action_pressed(&"pause"):
-		# Until a pause menu exists, Esc just releases/captures the mouse.
-		Input.mouse_mode = (Input.MOUSE_MODE_VISIBLE
-				if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-				else Input.MOUSE_MODE_CAPTURED)
+	# "pause" (Esc) is handled entirely by hud.gd's own _unhandled_input,
+	# not here - it needs to check which overlay (if any) is already open
+	# to decide whether to close that or open the debug/pause menu, and
+	# handling it in both places would double-toggle on a single press.
+
+
+## SpringArm3D repositions its children itself every frame (to spring_length,
+## pulled closer via its own collision raycast when something's in the way)
+## - changing spring_length is the whole job, no manual position sync needed.
+func _set_third_person_zoom(length: float) -> void:
+	third_person_arm.spring_length = clampf(length, THIRD_PERSON_ZOOM_MIN, THIRD_PERSON_ZOOM_MAX)
 
 
 ## Head and body rotate about the same (world Y) axis, so their yaws are
@@ -165,6 +205,11 @@ func _apply_yaw(delta_yaw: float) -> void:
 	var new_head_yaw := _look_yaw + delta_yaw
 	_look_yaw = clampf(new_head_yaw, -limit, limit)
 	head.rotation.y = _look_yaw
+	# Third person has no HeadPivot in its parent chain (ThirdPersonArm
+	# hangs off the player root, not the head), so it needs this offset
+	# applied explicitly to see the same head-leads-then-body-catches-up
+	# turn first person gets for free through node parenting.
+	third_person_arm.rotation.y = _look_yaw
 	var overflow := new_head_yaw - _look_yaw
 	if overflow != 0.0:
 		rotate_y(overflow)
@@ -184,6 +229,7 @@ func _catch_up_body_yaw(input_dir: Vector2, delta: float) -> void:
 	var step := clampf(_look_yaw, -max_step, max_step)
 	_look_yaw -= step
 	head.rotation.y = _look_yaw
+	third_person_arm.rotation.y = _look_yaw
 	rotate_y(step)
 
 
@@ -210,7 +256,16 @@ func _physics_process(delta: float) -> void:
 
 	body.update_motion(_crouched, weapon.equipped,
 			Vector2(velocity.x, velocity.z).length(), sprinting)
-	body.head_pitch = _look_pitch
+	# Yaw: _look_yaw is already clamped to head_yaw_limit_deg in _apply_yaw
+	# (same head-leads-then-body-catches-up system in both modes now), so
+	# feeding it straight through is safe in third person too.
+	# Pitch: unlike yaw, the camera keeps orbiting past the neck's natural
+	# range (third_person_arm.rotation.x uses the raw, uncapped
+	# _look_pitch), but the head still visibly follows it up to the same
+	# anatomical limit first person uses, instead of staying rigidly level -
+	# it just stops following once the camera pitches further than a real
+	# neck could.
+	body.head_pitch = body.clamp_head_pitch(_look_pitch) if _debug_cam_active else _look_pitch
 	body.head_yaw = _look_yaw
 
 	if _head_bone_idx >= 0:
@@ -228,10 +283,6 @@ func _physics_process(delta: float) -> void:
 
 	var target := _current_interactable()
 	hud.set_prompt("[E] " + target.prompt if target else "")
-
-	if _debug_cam_active:
-		debug_cam.global_position = global_position + _debug_cam_offset
-		debug_cam.look_at(global_position + Vector3(0, 1.25, 0))
 
 
  
@@ -334,8 +385,8 @@ func _spawn_fov_gizmo() -> void:
 ## FOV_GIZMO_DISTANCE - lets you see the camera's viewing cone from outside
 ## (debug camera) instead of just where it sits.
 func _update_fov_gizmo() -> void:
-	_fov_gizmo.visible = _debug_cam_active
-	if not _debug_cam_active:
+	_fov_gizmo.visible = _debug_cam_active and show_fov_gizmo
+	if not _fov_gizmo.visible:
 		return
 	var cam_t := camera.global_transform
 	var half_h := tan(deg_to_rad(camera.fov * 0.5)) * FOV_GIZMO_DISTANCE

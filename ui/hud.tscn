@@ -227,61 +227,112 @@ color = Color(0, 0, 0, 0.55)
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="Panel" type="PanelContainer" parent="DebugOverlay/Center"]
-custom_minimum_size = Vector2(380, 0)
+[node name="MainPanel" type="PanelContainer" parent="DebugOverlay/Center"]
+custom_minimum_size = Vector2(240, 0)
 
-[node name="Margin" type="MarginContainer" parent="DebugOverlay/Center/Panel"]
+[node name="MainMargin" type="MarginContainer" parent="DebugOverlay/Center/MainPanel"]
 theme_override_constants/margin_left = 24
 theme_override_constants/margin_top = 20
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_bottom = 16
 
-[node name="VBox" type="VBoxContainer" parent="DebugOverlay/Center/Panel/Margin"]
+[node name="MainVBox" type="VBoxContainer" parent="DebugOverlay/Center/MainPanel/MainMargin"]
 theme_override_constants/separation = 10
 
-[node name="Title" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+[node name="Title" type="Label" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
 theme_override_font_sizes/font_size = 18
 text = "DEBUG MENU"
 
-[node name="SectionLabel" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+[node name="DebugButton" type="Button" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
+text = "Debug"
+
+[node name="CloseButton" type="Button" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
+text = "Close"
+
+[node name="DebugPanel" type="PanelContainer" parent="DebugOverlay/Center"]
+visible = false
+custom_minimum_size = Vector2(440, 0)
+
+[node name="DebugMargin" type="MarginContainer" parent="DebugOverlay/Center/DebugPanel"]
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 16
+
+[node name="DebugVBox" type="VBoxContainer" parent="DebugOverlay/Center/DebugPanel/DebugMargin"]
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+theme_override_font_sizes/font_size = 18
+text = "DEBUG"
+
+[node name="EyeOffsetLabel" type="Label" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 theme_override_colors/font_color = Color(0.6, 0.7, 1, 1)
 theme_override_font_sizes/font_size = 14
 text = "EYE OFFSET (camera pos rel to head bone)"
 
-[node name="RowX" type="HBoxContainer" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+[node name="EyeOffsetRow" type="HBoxContainer" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+theme_override_constants/separation = 6
 
-[node name="LabelX" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox/RowX"]
-custom_minimum_size = Vector2(24, 0)
+[node name="LabelX" type="Label" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow"]
 text = "X:"
 
-[node name="FieldX" type="LineEdit" parent="DebugOverlay/Center/Panel/Margin/VBox/RowX"]
-size_flags_horizontal = 3
+[node name="FieldX" type="LineEdit" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow"]
+custom_minimum_size = Vector2(54, 0)
 text = "0"
 
-[node name="RowY" type="HBoxContainer" parent="DebugOverlay/Center/Panel/Margin/VBox"]
-
-[node name="LabelY" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox/RowY"]
-custom_minimum_size = Vector2(24, 0)
+[node name="LabelY" type="Label" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow"]
 text = "Y:"
 
-[node name="FieldY" type="LineEdit" parent="DebugOverlay/Center/Panel/Margin/VBox/RowY"]
-size_flags_horizontal = 3
+[node name="FieldY" type="LineEdit" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow"]
+custom_minimum_size = Vector2(54, 0)
 text = "0.05"
 
-[node name="RowZ" type="HBoxContainer" parent="DebugOverlay/Center/Panel/Margin/VBox"]
-
-[node name="LabelZ" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox/RowZ"]
-custom_minimum_size = Vector2(24, 0)
+[node name="LabelZ" type="Label" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow"]
 text = "Z:"
 
-[node name="FieldZ" type="LineEdit" parent="DebugOverlay/Center/Panel/Margin/VBox/RowZ"]
-size_flags_horizontal = 3
+[node name="FieldZ" type="LineEdit" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow"]
+custom_minimum_size = Vector2(54, 0)
 text = "-0.15"
 
-[node name="ApplyButton" type="Button" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+[node name="ApplyButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow"]
 text = "Apply"
 
-[node name="Hint" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox"]
-modulate = Color(1, 1, 1, 0.5)
-theme_override_font_sizes/font_size = 13
-text = "[P]  Close"
+[node name="AnimClipsButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "Animation Clips  >"
+
+[node name="FootstepButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "Footstep Markers: ON"
+
+[node name="FovGizmoButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "FOV Gizmo: OFF"
+
+[node name="BackButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "< Back"
+
+[node name="AnimPanelAnchor" type="Control" parent="DebugOverlay"]
+visible = false
+offset_left = 16.0
+offset_top = 16.0
+
+[node name="AnimPanel" type="PanelContainer" parent="DebugOverlay/AnimPanelAnchor"]
+custom_minimum_size = Vector2(220, 0)
+
+[node name="AnimMargin" type="MarginContainer" parent="DebugOverlay/AnimPanelAnchor/AnimPanel"]
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 12
+
+[node name="AnimVBox" type="VBoxContainer" parent="DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin"]
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox"]
+theme_override_font_sizes/font_size = 15
+text = "ANIMATION CLIPS"
+
+[node name="AnimList" type="VBoxContainer" parent="DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox"]
+theme_override_constants/separation = 4
+
+[node name="BackButton" type="Button" parent="DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox"]
+text = "< Back"

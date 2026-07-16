@@ -13,6 +13,7 @@ var _selected := -1
 var _toast_tween: Tween
 var _hurt_tween: Tween
 
+@onready var center_dot: ColorRect = $CenterDot
 @onready var prompt_label: Label = $PromptLabel
 @onready var stamina_bar: ProgressBar = $StaminaBar
 @onready var health_bar: ProgressBar = $HealthBar
@@ -28,10 +29,23 @@ var _hurt_tween: Tween
 @onready var use_button: Button = $InventoryOverlay/Center/Panel/Margin/VBox/Buttons/UseButton
 @onready var drop_button: Button = $InventoryOverlay/Center/Panel/Margin/VBox/Buttons/DropButton
 @onready var debug_overlay: Control = $DebugOverlay
-@onready var debug_field_x: LineEdit = $DebugOverlay/Center/Panel/Margin/VBox/RowX/FieldX
-@onready var debug_field_y: LineEdit = $DebugOverlay/Center/Panel/Margin/VBox/RowY/FieldY
-@onready var debug_field_z: LineEdit = $DebugOverlay/Center/Panel/Margin/VBox/RowZ/FieldZ
-@onready var debug_apply: Button = $DebugOverlay/Center/Panel/Margin/VBox/ApplyButton
+@onready var main_panel: PanelContainer = $DebugOverlay/Center/MainPanel
+@onready var main_debug_button: Button = $DebugOverlay/Center/MainPanel/MainMargin/MainVBox/DebugButton
+@onready var main_close_button: Button = $DebugOverlay/Center/MainPanel/MainMargin/MainVBox/CloseButton
+@onready var debug_panel: PanelContainer = $DebugOverlay/Center/DebugPanel
+@onready var debug_field_x: LineEdit = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldX
+@onready var debug_field_y: LineEdit = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldY
+@onready var debug_field_z: LineEdit = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldZ
+@onready var debug_apply: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/ApplyButton
+@onready var anim_clips_button: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/AnimClipsButton
+@onready var footstep_button: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootstepButton
+@onready var fov_gizmo_button: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FovGizmoButton
+@onready var debug_back_button: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/BackButton
+@onready var anim_panel_anchor: Control = $DebugOverlay/AnimPanelAnchor
+@onready var anim_list: VBoxContainer = $DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/AnimList
+@onready var anim_back_button: Button = $DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/BackButton
+
+var _anim_list_built := false
 
 
 func _ready() -> void:
@@ -39,6 +53,13 @@ func _ready() -> void:
 	use_button.pressed.connect(_on_use_pressed)
 	drop_button.pressed.connect(_on_drop_pressed)
 	debug_apply.pressed.connect(_on_debug_apply)
+	footstep_button.pressed.connect(_on_footstep_button_pressed)
+	fov_gizmo_button.pressed.connect(_on_fov_gizmo_button_pressed)
+	main_debug_button.pressed.connect(_show_debug_page)
+	main_close_button.pressed.connect(_close_debug)
+	anim_clips_button.pressed.connect(_show_anim_page)
+	debug_back_button.pressed.connect(_show_debug_main)
+	anim_back_button.pressed.connect(_show_debug_page)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -60,7 +81,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			or event.is_action_pressed(&"inventory")):
 		toggle_debug()
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed(&"debug_menu"):
+	elif event.is_action_pressed(&"pause"):
 		toggle_debug()
 		get_viewport().set_input_as_handled()
 
@@ -115,6 +136,12 @@ func show_death() -> void:
 func set_prompt(text: String) -> void:
 	prompt_label.text = text
 	prompt_label.visible = text != ""
+
+
+## The center dot is a first-person aiming reference - meaningless once the
+## camera isn't riding on the character's own view anymore.
+func set_center_dot_visible(v: bool) -> void:
+	center_dot.visible = v
 
 
 func set_stamina(value: float, max_value: float) -> void:
@@ -183,19 +210,91 @@ func toggle_debug() -> void:
 	if note_overlay.visible or inv_overlay.visible:
 		return
 	if debug_overlay.visible:
-		debug_overlay.hide()
-		get_tree().paused = false
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_close_debug()
 	else:
-		var p := get_tree().get_first_node_in_group(&"player")
-		if p and p.has_method(&"set_eye_offset"):
-			var v: Vector3 = p.eye_offset
-			debug_field_x.text = "%.3f" % v.x
-			debug_field_y.text = "%.3f" % v.y
-			debug_field_z.text = "%.3f" % v.z
-		debug_overlay.show()
-		get_tree().paused = true
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_open_debug()
+
+
+func _open_debug() -> void:
+	var p := get_tree().get_first_node_in_group(&"player")
+	if p and p.has_method(&"set_eye_offset"):
+		var v: Vector3 = p.eye_offset
+		debug_field_x.text = "%.3f" % v.x
+		debug_field_y.text = "%.3f" % v.y
+		debug_field_z.text = "%.3f" % v.z
+	_build_anim_list(p)
+	_show_debug_main()
+	debug_overlay.show()
+	get_tree().paused = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _close_debug() -> void:
+	debug_overlay.hide()
+	get_tree().paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+## Debug menu is one overlay with three pages shown/hidden in place, not
+## three separate overlays - only one of these should ever be visible.
+func _show_debug_main() -> void:
+	main_panel.show()
+	debug_panel.hide()
+	anim_panel_anchor.hide()
+
+
+func _show_debug_page() -> void:
+	main_panel.hide()
+	debug_panel.show()
+	anim_panel_anchor.hide()
+
+
+func _show_anim_page() -> void:
+	main_panel.hide()
+	debug_panel.hide()
+	anim_panel_anchor.show()
+
+
+## Lazily builds one button per PlayerBody animation clip - built from
+## PlayerBody.get_available_animations() rather than hardcoded here, so it
+## can't drift out of sync with whatever clips actually exist.
+func _build_anim_list(player: Node) -> void:
+	if _anim_list_built or player == null or not ("body" in player):
+		return
+	var body: Node = player.body
+	if body == null or not body.has_method(&"get_available_animations"):
+		return
+	_anim_list_built = true
+	for anim_name: StringName in body.get_available_animations():
+		var button := Button.new()
+		# relaxed_idle is what the character actually rests in outside the
+		# preview, so it gets the friendlier "Default" label; every other
+		# clip just shows its own name.
+		button.text = "Default" if anim_name == &"relaxed_idle" else String(anim_name)
+		button.pressed.connect(_on_anim_button_pressed.bind(anim_name))
+		anim_list.add_child(button)
+
+
+func _on_anim_button_pressed(anim_name: StringName) -> void:
+	var player := get_tree().get_first_node_in_group(&"player")
+	if player and "body" in player and player.body.has_method(&"play_debug_anim"):
+		player.body.play_debug_anim(anim_name)
+
+
+func _on_footstep_button_pressed() -> void:
+	var player := get_tree().get_first_node_in_group(&"player")
+	if player == null or not ("body" in player) or not player.body.has_method(&"toggle_debug_footsteps"):
+		return
+	player.body.toggle_debug_footsteps()
+	footstep_button.text = "Footstep Markers: ON" if player.body.debug_footsteps else "Footstep Markers: OFF"
+
+
+func _on_fov_gizmo_button_pressed() -> void:
+	var player := get_tree().get_first_node_in_group(&"player")
+	if player == null or not player.has_method(&"toggle_fov_gizmo"):
+		return
+	player.toggle_fov_gizmo()
+	fov_gizmo_button.text = "FOV Gizmo: ON" if player.show_fov_gizmo else "FOV Gizmo: OFF"
 
 
 func _on_debug_apply() -> void:

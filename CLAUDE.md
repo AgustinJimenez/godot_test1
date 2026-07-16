@@ -50,3 +50,4 @@ Scene composition flows: `playground.tscn` (main scene) = `test_room.tscn` (pure
 - snake_case files/functions, PascalCase nodes/scenes; scene + its script live side by side (`actors/player/`, `levels/props/`).
 - `.tscn`/`.tres` files are hand-editable text; when writing them, `load_steps` = total ext+sub resources + 1.
 - Commit at milestone boundaries with a summary of what the milestone added.
+- **Never commit gameplay/visual/animation changes on the strength of automated verification alone (headless checks, Movie Maker frames, print diagnostics).** These have shipped broken twice in one session despite passing recorded-frame review each time — screenshots and logs can look plausible while the actual interactive behavior is wrong. Implement, verify as best as possible, then stop and wait for the user to manually test in the editor and explicitly confirm it's working before committing.
