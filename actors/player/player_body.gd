@@ -18,6 +18,54 @@ const CLIPS := {
 ## MotusMan FBXs bake broken absolute texture paths; reapply the diffuse.
 const SKIN_TEXTURE := "res://assets/models/pistol_starter/MotusMan/sourceimages/MCG_diff.jpg"
 
+## pistol_starter only ships an aim-pose walk - no unarmed walk clip exists
+## for MotusMan there. This one comes from the CC0 "Universal Animation
+## Library" pack instead (Unreal Mannequin-style rig, own bone names, own
+## mesh - not used, just the animation), retargeted onto MotusMan at runtime
+## (see _retarget_clip). Already in-place (no baked root motion).
+const UAL_PATH := "res://assets/models/universal_animation_library/UAL1_Standard.glb"
+const UAL_WALK_ANIM := &"Walk"
+## Unreal Mannequin bone names, not Mixamo's - no shared prefix to strip, so
+## this is an explicit map instead. Fingers are left out (not load-bearing
+## for a walk cycle, MotusMan's finger names don't line up anyway).
+const BONE_MAP: Dictionary = {
+	&"pelvis": &"Hips",
+	&"spine_01": &"Spine",
+	&"spine_02": &"Spine1",
+	&"spine_03": &"Spine2",
+	&"neck_01": &"Neck",
+	&"Head": &"Head",
+	&"clavicle_r": &"RightShoulder",
+	&"upperarm_r": &"RightArm",
+	&"lowerarm_r": &"RightForeArm",
+	&"hand_r": &"RightHand",
+	&"clavicle_l": &"LeftShoulder",
+	&"upperarm_l": &"LeftArm",
+	&"lowerarm_l": &"LeftForeArm",
+	&"hand_l": &"LeftHand",
+	&"thigh_r": &"RightUpLeg",
+	&"calf_r": &"RightLeg",
+	&"foot_r": &"RightFoot",
+	&"ball_r": &"RightToeBase",
+	&"thigh_l": &"LeftUpLeg",
+	&"calf_l": &"LeftLeg",
+	&"foot_l": &"LeftFoot",
+	&"ball_l": &"LeftToeBase",
+}
+## Excluded from the retarget (see _retarget_clip's doc comment) and instead
+## held at a fixed pose. The spine chain is included, not just the arms:
+## holding the arms' local rotation constant only keeps them right relative
+## to whatever Spine2 (their parent) is doing, and Spine2 is retargeted from
+## the walk clip - different enough from relaxed_idle's own spine pose that
+## the held arms still ended up looking wrong once cascaded through it.
+## Holding the whole upper body keeps arms and spine mutually consistent,
+## exactly as relaxed_idle poses them; only the legs actually animate.
+const HELD_BONES: PackedStringArray = [
+	"Spine", "Spine1", "Spine2",
+	"RightShoulder", "RightArm", "RightForeArm", "RightHand",
+	"LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+]
+
 ## Rough forward speeds (m/s) the clips were authored at, for foot matching.
 const WALK_REF_SPEED := 1.6
 const JOG_REF_SPEED := 3.0
@@ -49,8 +97,95 @@ func _ready() -> void:
 		anim.loop_mode = Animation.LOOP_LINEAR
 		lib.add_animation(key, anim)
 		clip_root.free()
+	lib.add_animation(&"walk_relaxed",
+			_retarget_clip(UAL_PATH, UAL_WALK_ANIM, lib.get_animation(&"relaxed_idle")))
 	anim_player.add_animation_library(&"moves", lib)
 	anim_player.play("moves/relaxed_idle")
+
+
+## Copies a differently-rigged clip's tracks onto MotusMan's skeleton via
+## BONE_MAP. The two rigs don't share a rest orientation (this pack points
+## bones along local Y; MotusMan points them along local X), so the raw
+## local rotation/position values aren't directly transferable - what DOES
+## transfer is each bone's rotation/offset AWAY FROM ITS OWN rest pose,
+## re-applied on top of MotusMan's own rest.
+##
+## HELD_BONES (the arm chain) are excluded from that and instead baked as a
+## constant track holding held_pose's pose: their rest orientations differ
+## too much between rigs for the "delta from rest" approach to resolve
+## correctly (confirmed with actual delta values, not just a guess - it
+## produces a mathematically consistent but anatomically wrong result,
+## roughly a T-pose-like spread, every time, regardless of source rig).
+## Simply omitting their tracks isn't enough either - once the crossfade
+## from the previous animation finishes, an unanimated bone settles back to
+## MotusMan's own rest (T-pose) rather than freezing where it was.
+func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animation) -> Animation:
+	var clip_root: Node = (load(fbx_path) as PackedScene).instantiate()
+	var clip_ap := clip_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var src_skeleton := clip_root.find_child("Skeleton3D", true, false) as Skeleton3D
+	# Not always in the default ("") library - UAL1_Standard.glb bundles all
+	# its clips in one AnimationPlayer, so search whichever library has it.
+	var src: Animation = null
+	for lib_name in clip_ap.get_animation_library_list():
+		var candidate_lib := clip_ap.get_animation_library(lib_name)
+		if candidate_lib.has_animation(anim_name):
+			src = candidate_lib.get_animation(anim_name)
+			break
+	var anim := Animation.new()
+	anim.length = src.length
+	anim.loop_mode = Animation.LOOP_LINEAR
+	for t in src.get_track_count():
+		var path := src.track_get_path(t)
+		if path.get_subname_count() == 0:
+			continue
+		var bone_name := StringName(path.get_subname(0))
+		if not BONE_MAP.has(bone_name):
+			continue
+		var mapped: StringName = BONE_MAP[bone_name]
+		if mapped in HELD_BONES:
+			continue
+		var target_idx := skeleton.find_bone(mapped)
+		var src_idx := src_skeleton.find_bone(bone_name)
+		if target_idx < 0 or src_idx < 0:
+			continue
+		var track_type := src.track_get_type(t)
+		var new_track := anim.add_track(track_type)
+		anim.track_set_path(new_track, NodePath("Skeleton3D:" + String(mapped)))
+		var src_rest := src_skeleton.get_bone_rest(src_idx)
+		var target_rest := skeleton.get_bone_rest(target_idx)
+		for k in src.track_get_key_count(t):
+			var time := src.track_get_key_time(t, k)
+			var value = src.track_get_key_value(t, k)
+			if track_type == Animation.TYPE_ROTATION_3D:
+				var delta := src_rest.basis.inverse() * Basis(value as Quaternion)
+				value = (target_rest.basis * delta).get_rotation_quaternion()
+			elif track_type == Animation.TYPE_POSITION_3D:
+				var offset: Vector3 = (value as Vector3) - src_rest.origin
+				if mapped == &"Hips":
+					offset.x = 0.0
+					offset.z = 0.0
+				value = target_rest.origin + offset
+			anim.track_insert_key(new_track, time, value)
+	clip_root.free()
+	for held_bone in HELD_BONES:
+		_bake_held_track(anim, held_bone, held_pose, src.length)
+	return anim
+
+
+## Adds a rotation track for held_bone holding a single fixed pose (its
+## value from held_pose's first keyframe) for the whole clip duration.
+func _bake_held_track(
+		anim: Animation, held_bone: StringName, held_pose: Animation, length: float) -> void:
+	for t in held_pose.get_track_count():
+		var path := held_pose.track_get_path(t)
+		if (path.get_subname_count() > 0 and StringName(path.get_subname(0)) == held_bone
+				and held_pose.track_get_type(t) == Animation.TYPE_ROTATION_3D):
+			var value = held_pose.track_get_key_value(t, 0)
+			var new_track := anim.add_track(Animation.TYPE_ROTATION_3D)
+			anim.track_set_path(new_track, NodePath("Skeleton3D:" + String(held_bone)))
+			anim.track_insert_key(new_track, 0.0, value)
+			anim.track_insert_key(new_track, length, value)
+			return
 
 
 func _process(_delta: float) -> void:
@@ -149,7 +284,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 			target = &"jog"
 			rate = ground_speed / JOG_REF_SPEED
 		else:
-			target = &"walk"
+			target = &"walk" if armed else &"walk_relaxed"
 			rate = ground_speed / WALK_REF_SPEED
 	elif crouched:
 		target = &"crouch_idle"
