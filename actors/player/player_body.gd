@@ -287,7 +287,14 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 		var target_height := skeleton.get_bone_global_rest(target_hips).origin.length()
 		if source_height > 0.0001:
 			position_scale = target_height / source_height
-
+	var source_facing := _skeleton_rest_facing(
+			src_skeleton, &"pelvis", &"Head", &"clavicle_l", &"clavicle_r")
+	var target_facing := _skeleton_rest_facing(
+			skeleton, &"Hips", &"Head", &"LeftShoulder", &"RightShoulder")
+	var source_to_target_facing := Basis(Vector3.UP,
+			source_facing.signed_angle_to(target_facing, Vector3.UP))
+	var arm_position_scale := _skeleton_height(skeleton, &"Hips", &"Head") / maxf(
+			_skeleton_height(src_skeleton, &"pelvis", &"Head"), 0.0001)
 	var sample_count := int(ceil(src.length * RETARGET_SAMPLE_HZ)) + 1
 	for i in sample_count:
 		var time: float = minf(i / RETARGET_SAMPLE_HZ, src.length)
@@ -324,10 +331,16 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 			if use_humanoid_retarget:
 				var local := _humanoid_retarget_local_pose(
 						src_skeleton, src_idx, skeleton, target_idx, position_scale)
+				# Animation rotation tracks store quaternions. Compose descendants
+				# from that serializable basis too; retaining FBX shear/scale here
+				# makes offline global positions differ from runtime playback.
+				local.basis = Basis(local.basis.get_rotation_quaternion())
 				var parent_idx := skeleton.get_bone_parent(target_idx)
 				var parent_global: Transform3D = target_global.get(
 						parent_idx, skeleton.get_bone_global_rest(parent_idx)) if parent_idx >= 0 else Transform3D()
 				target_global[target_idx] = parent_global * local
+				skeleton.set_bone_pose_rotation(target_idx, local.basis.get_rotation_quaternion())
+				skeleton.set_bone_pose_position(target_idx, local.origin)
 				if out_rot_track.has(target_name):
 					anim.track_insert_key(out_rot_track[target_name], time, local.basis.get_rotation_quaternion())
 				if target_name == &"Hips" and out_pos_track >= 0:
@@ -370,6 +383,9 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 				anim.track_insert_key(out_rot_track[target_name], time, local.basis.get_rotation_quaternion())
 			if target_name == &"Hips" and out_pos_track >= 0:
 				anim.track_insert_key(out_pos_track, time, local.origin)
+		if use_humanoid_retarget:
+			_match_arm_skeleton_positions(anim, src_skeleton, target_global,
+					out_rot_track, source_to_target_facing, arm_position_scale)
 	clip_root.free()
 	if hand_retarget_mode == HandRetarget.FROZEN:
 		for hand_bone in HAND_BONES:
@@ -389,9 +405,10 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 ##
 ## This world-space version is known to overcorrect a bone low in a
 ## heavily-pre-rotated chain (e.g. a knee under a hip that's bent forward a
-## lot - see CURRENT_TASK.md "Bug 3 update 3"). A parent-relative rework was
-## attempted twice and made things worse both times (see CURRENT_TASK.md
-## "Bug 3 update 4") - re-expressing the swing in the parent's own local
+## lot - see docs/task_history/ual_animation_retargeting.md "Bug 3 update 3").
+## A parent-relative rework was attempted twice and made things worse (see
+## "Bug 3 update 4" in that history) - re-expressing the swing in the parent's
+## own local
 ## axis convention reintroduces exactly the axis-mismatch problem this
 ## world-space approach was built to avoid in the first place. Reverted to
 ## this version deliberately; do not re-attempt the same parent-relative
@@ -433,6 +450,113 @@ func _humanoid_retarget_local_pose(src_skel: Skeleton3D, src_idx: int,
 	var origin := (pre_basis * ((src_pose.origin - src_rest.origin) * position_scale)
 			+ target_rest.origin)
 	return Transform3D(pre_basis * src_pose.basis * post_basis, origin)
+
+
+## Match source wrist positions without changing MotusMan's bone lengths.
+## A three-link FABRIK chain (shoulder, upper arm, forearm) reaches the source
+## wrist endpoint, then each target bone is swung onto its solved segment while
+## retaining the humanoid-retargeted twist as closely as possible.
+func _match_arm_skeleton_positions(anim: Animation, src_skel: Skeleton3D,
+		target_global: Dictionary, out_rot_track: Dictionary,
+		direction_map: Basis, position_scale: float) -> void:
+	var source_hips := _manual_global_pose(src_skel, src_skel.find_bone(&"pelvis")).origin
+	var target_hips := _manual_global_pose(skeleton, skeleton.find_bone(&"Hips")).origin
+	for side_data in [["l", "Left"], ["r", "Right"]]:
+		var source_side: String = side_data[0]
+		var target_side: String = side_data[1]
+		var source_hand := src_skel.find_bone(StringName("hand_" + source_side))
+		var shoulder_idx := skeleton.find_bone(StringName(target_side + "Shoulder"))
+		var arm_idx := skeleton.find_bone(StringName(target_side + "Arm"))
+		var forearm_idx := skeleton.find_bone(StringName(target_side + "ForeArm"))
+		var hand_idx := skeleton.find_bone(StringName(target_side + "Hand"))
+		if (source_hand < 0
+				or shoulder_idx < 0 or arm_idx < 0 or forearm_idx < 0 or hand_idx < 0
+				or not target_global.has(shoulder_idx) or not target_global.has(arm_idx)
+				or not target_global.has(forearm_idx) or not target_global.has(hand_idx)):
+			continue
+		var joints: Array[Vector3] = [
+			_manual_global_pose(skeleton, shoulder_idx).origin,
+			_manual_global_pose(skeleton, arm_idx).origin,
+			_manual_global_pose(skeleton, forearm_idx).origin,
+			_manual_global_pose(skeleton, hand_idx).origin,
+		]
+		var lengths: Array[float] = [
+			joints[0].distance_to(joints[1]),
+			joints[1].distance_to(joints[2]),
+			joints[2].distance_to(joints[3]),
+		]
+		var desired_wrist := target_hips + direction_map * (
+				(_manual_global_pose(src_skel, source_hand).origin - source_hips) * position_scale)
+		_solve_fabrik(joints, lengths, desired_wrist)
+		var chain := [shoulder_idx, arm_idx, forearm_idx]
+		for joint in chain.size():
+			_aim_bone_at_direction(anim, target_global, out_rot_track,
+					chain[joint], (joints[joint + 1] - joints[joint]).normalized())
+
+
+func _solve_fabrik(joints: Array[Vector3], lengths: Array[float], target: Vector3) -> void:
+	var root := joints[0]
+	var total_length := lengths[0] + lengths[1] + lengths[2]
+	if root.distance_to(target) >= total_length:
+		var direction := (target - root).normalized()
+		for i in lengths.size():
+			joints[i + 1] = joints[i] + direction * lengths[i]
+		return
+	for iteration in 12:
+		joints[3] = target
+		for i in range(2, -1, -1):
+			joints[i] = joints[i + 1] + (joints[i] - joints[i + 1]).normalized() * lengths[i]
+		joints[0] = root
+		for i in lengths.size():
+			joints[i + 1] = joints[i] + (joints[i + 1] - joints[i]).normalized() * lengths[i]
+		if joints[3].distance_to(target) < 0.00001:
+			break
+
+
+func _aim_bone_at_direction(anim: Animation, target_global: Dictionary,
+		out_rot_track: Dictionary, bone_idx: int, desired_direction: Vector3) -> void:
+	var child_idx := skeleton.get_bone_children(bone_idx)[0]
+	var parent_idx := skeleton.get_bone_parent(bone_idx)
+	var parent_global := _manual_global_pose(skeleton, parent_idx)
+	var bone_global := _manual_global_pose(skeleton, bone_idx)
+	var child_global := _manual_global_pose(skeleton, child_idx)
+	var current_direction := (child_global.origin - bone_global.origin).normalized()
+	var desired_global_basis := _swing_between(
+			current_direction, desired_direction) * bone_global.basis
+	var local_rotation := (parent_global.basis.inverse()
+			* desired_global_basis).get_rotation_quaternion()
+	skeleton.set_bone_pose_rotation(bone_idx, local_rotation)
+	target_global[bone_idx] = _manual_global_pose(skeleton, bone_idx)
+	_set_latest_rotation_key(anim, out_rot_track, skeleton.get_bone_name(bone_idx), local_rotation)
+
+
+func _set_latest_rotation_key(anim: Animation, out_rot_track: Dictionary,
+		bone_name: StringName, rotation: Quaternion) -> void:
+	if not out_rot_track.has(bone_name):
+		return
+	var track: int = out_rot_track[bone_name]
+	anim.track_set_key_value(track, anim.track_get_key_count(track) - 1, rotation)
+
+
+func _skeleton_height(skel: Skeleton3D, hips_name: StringName,
+		head_name: StringName) -> float:
+	var hips := skel.get_bone_global_rest(skel.find_bone(hips_name)).origin
+	var head := skel.get_bone_global_rest(skel.find_bone(head_name)).origin
+	return hips.distance_to(head)
+
+
+func _skeleton_rest_facing(skel: Skeleton3D, hips_name: StringName,
+		head_name: StringName, left_shoulder_name: StringName,
+		right_shoulder_name: StringName) -> Vector3:
+	var hips := skel.get_bone_global_rest(skel.find_bone(hips_name)).origin
+	var head := skel.get_bone_global_rest(skel.find_bone(head_name)).origin
+	var left := skel.get_bone_global_rest(skel.find_bone(left_shoulder_name)).origin
+	var right := skel.get_bone_global_rest(skel.find_bone(right_shoulder_name)).origin
+	var across := (right - left).normalized()
+	var up := (head - hips).normalized()
+	var facing := across.cross(up)
+	facing.y = 0.0
+	return facing.normalized()
 
 
 ## Composes a bone's GLOBAL pose from the LOCAL pose getters directly,

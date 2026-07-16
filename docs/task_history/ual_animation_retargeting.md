@@ -1,4 +1,11 @@
-# CURRENT TASK: fix broken retargeted poses in UAL_EXTRA_CLIPS
+# Task History: UAL Animation Retargeting
+
+Work paused on 2026-07-16. Commit `83632c9` stores the accepted retargeting
+checkpoint. The subsequent three-link FABRIK candidate for matching
+`Pistol_Idle` wrist positions was also saved at the user's request as an
+explicitly unfinished checkpoint. Resume from the latest follow-up notes below
+and require live multi-angle confirmation before describing the hand fix as
+complete.
 
 Status: **checkpoint accepted for commit**. The crash, menu-close reset,
 general body-pose retargeting, source loop modes, comparison camera, rest-facing
@@ -52,7 +59,7 @@ it hard-cuts instead of crossfading (tiny visual pop); every replay of an
 already-cached clip still crossfades normally. Acceptable — debug-only
 feature.
 
-This is also noted in `CLAUDE.md` under Commands, since it's a genuine
+This is also noted in `AGENTS.md` under Commands, since it's a genuine
 engine-level gotcha worth not rediscovering.
 
 ## Bug 2: debug preview reverts when menu closes — FIXED
@@ -180,7 +187,7 @@ scene) across all 43 clips:**
 
 **This still needs your manual editor confirmation before it gets
 committed** — automated frame review has been wrong before on this
-project (see CLAUDE.md's standing rule).
+project (see AGENTS.md's standing rule).
 
 ## Bug 4 (separate, lower priority): Crouch_Idle/Crouch_Fwd/Sitting_* don't bend
 
@@ -612,6 +619,27 @@ Verification completed:
   agreement does not prove matching skinned-mesh silhouettes or preserve a
   two-hand/prop contact; a future fix needs bind-pose/skin inspection and
   likely explicit hand or prop contact constraints, not more rotation metrics.
+- Follow-up after the checkpoint: wrist endpoint measurements identified a
+  separate placement error beneath the finger silhouette difference. In the
+  settled `Pistol_Shoot` pose, UAL's wrists were 9.88 cm apart while MotusMan's
+  rotation-only retarget collapsed them to 1.90 cm. A two-bone upper-arm/
+  forearm endpoint attempt was rejected: `Pistol_Idle` exposed that it shifted
+  both hands far left because its absolute source targets were unreachable from
+  MotusMan's differently placed shoulder joints.
+- Current uncommitted candidate: match the runtime skeleton positions with a
+  three-link FABRIK chain (`Shoulder -> Arm -> ForeArm -> Hand`). Source wrist
+  endpoints are expressed relative to the animated pelvis, aligned by the
+  known rest-facing yaw, and scaled by torso height. FABRIK preserves all three
+  MotusMan segment lengths while reaching those endpoints. Crucially, the bake
+  now applies each quaternion to the target `Skeleton3D` and measures
+  `_manual_global_pose()` before solving the next joint; the earlier offline
+  dictionary retained FBX basis information that rotation tracks cannot
+  serialize and differed from actual playback by about 15 degrees. In
+  `Pistol_Idle`, both wrist endpoints now match the normalized source positions
+  at runtime (the arm-chain direction check was within 0.00003 degrees before
+  the final FABRIK endpoint solve). Recorded close-ups show the centered source
+  grip, but live multi-angle confirmation is still mandatory before describing
+  the hand placement as fixed.
 - `Sword_Idle` exposed an apparent body-yaw mismatch in an oblique camera view.
   Numeric checks showed its settled animation-relative yaw differed by only
   about 1.31 degrees; the rigs' anatomical rest-facing directions were already
