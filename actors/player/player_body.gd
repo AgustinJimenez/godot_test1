@@ -36,8 +36,9 @@ const HIDDEN_BONE_DROP := Vector3(0, -0.35, 0)
 ## the camera pitch (set via head_pitch) so looking down moves the skull too.
 @export var hide_head := true
 
-## Camera pitch in radians, pushed by the player each physics tick.
+## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
+var head_yaw := 0.0
 
 var _hidden_indices: PackedInt32Array = []
 
@@ -78,7 +79,7 @@ func _process(_delta: float) -> void:
 		for idx in _hidden_indices:
 			skeleton.set_bone_pose_scale(idx, Vector3.ONE)
 			skeleton.set_bone_pose_position(idx, skeleton.get_bone_rest(idx).origin)
-		_pitch_head_bones()
+		_bend_head_bones()
 		return
 	for idx in _hidden_indices:
 		skeleton.set_bone_pose_scale(idx, Vector3(0.001, 0.001, 0.001))
@@ -98,18 +99,20 @@ func clamp_head_pitch(p: float) -> float:
 	return clampf(p, -deg_to_rad(MAX_BEND_DOWN_DEG), deg_to_rad(MAX_BEND_UP_DEG))
 
 
-## Full-head mode: bend neck (35%) and head (65%) with the camera pitch so
-## the skull rotates with the view instead of the camera diving through it.
-## Runs after animation (process_priority), rotating the animated pose.
-func _pitch_head_bones() -> void:
+## Full-head mode: bend neck (35%) and head (65%) with the camera pitch/yaw
+## so the skull rotates with the view instead of the camera diving through
+## it. Runs after animation (process_priority), rotating the animated pose.
+func _bend_head_bones() -> void:
 	var split := {&"Neck": 0.35, &"Head": 0.65}
 	var clamped_pitch := clamp_head_pitch(head_pitch)
 	for bone_name: StringName in split:
 		var idx := skeleton.find_bone(bone_name)
 		if idx < 0:
 			continue
+		var portion: float = split[bone_name]
 		var pose := skeleton.get_bone_global_pose(idx)
-		pose.basis = Basis(Vector3.RIGHT, -clamped_pitch * split[bone_name]) * pose.basis
+		pose.basis = (Basis(Vector3.UP, head_yaw * portion)
+				* Basis(Vector3.RIGHT, -clamped_pitch * portion) * pose.basis)
 		skeleton.set_bone_global_pose(idx, pose)
 
 

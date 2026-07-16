@@ -8,10 +8,24 @@ const CROUCH_CAPSULE_HEIGHT := 1.2
 ## How far out to draw the FOV wireframe in the debug view - purely visual,
 ## does not affect the camera's actual near/far planes.
 const FOV_GIZMO_DISTANCE := 2.5
-## Minimum distance the eye must keep from the chest bone while looking down,
-## so the camera's own near-clip volume never ends up inside the hood/collar
-## mesh - the neck-bend angle clamp alone isn't enough for that.
-const EYE_CHEST_CLEARANCE := 0.25
+## Minimum distance the eye must keep from each torso/arm bone, so the
+## camera's own near-clip volume never ends up inside the hood/collar/
+## shoulder/arm mesh - the neck-bend angle clamp alone isn't enough for
+## that. Per-bone, not one shared radius: the shoulder joints sit only
+## ~6.5cm from the head bone's own rest position in this rig (anatomically
+## close), so eye_offset (whose own magnitude is ~0.16m) can never clear a
+## 0.25m radius there - the best case is offset pointing directly away,
+## giving ~0.22m at most. The chest bone has more baseline room, so it
+## keeps the larger radius. The arms are included because the idle pose
+## holds them crossed low - looking down and to a side swings the eye
+## toward the upper arm, which was the closest obstacle of all of them.
+const TORSO_CLEARANCE: Dictionary = {
+	&"Spine2": 0.3,
+	&"LeftShoulder": 0.19,
+	&"RightShoulder": 0.19,
+	&"LeftArm": 0.17,
+	&"RightArm": 0.17,
+}
 var eye_offset := Vector3(0, 0.05, -0.15)
 
 func set_eye_offset(v: Vector3) -> void:
@@ -20,6 +34,10 @@ func set_eye_offset(v: Vector3) -> void:
 @export_group("Look")
 @export var mouse_sensitivity: float = 0.002
 @export var pitch_limit_deg: float = 85.0
+## How far the head can turn from the body before the body starts rotating
+## to catch up - real necks don't swivel a full 180, so past this the torso
+## has to turn instead.
+@export var head_yaw_limit_deg: float = 75.0
 
 @export_group("Movement")
 @export var walk_speed: float = 3.2
@@ -40,11 +58,20 @@ var _dead := false
 var _debug_cam_active := false
 var _debug_cam_offset := Vector3.ZERO
 var _head_bone_idx := -1
-var _chest_bone_idx := -1
+var _torso_bone_indices: PackedInt32Array = []
+var _torso_bone_clearances: PackedFloat32Array = []
 var _crouch_offset := 0.0
 var _eye_marker: MeshInstance3D
 var _fov_gizmo: MeshInstance3D
 var _fov_mesh := ImmediateMesh.new()
+## Pitch and head-yaw, owned here as plain floats and only ever written into
+## head.rotation - never read back out of it. Godot's Euler decomposition of
+## a Basis is ambiguous/unstable near the pitch extremes (gimbal lock), so
+## accumulating "next value = head.rotation.x + delta" round-trips through
+## that instability every event; sustained diagonal mouse movement pushed it
+## into visible spin. Plain float addition has no such ambiguity.
+var _look_pitch := 0.0
+var _look_yaw := 0.0
 
 @onready var head: Node3D = $HeadPivot
 @onready var camera: Camera3D = $HeadPivot/Camera3D
@@ -65,7 +92,11 @@ var _fov_mesh := ImmediateMesh.new()
 func _ready() -> void:
 	add_to_group(&"player")
 	_head_bone_idx = skeleton.find_bone("Head")
-	_chest_bone_idx = skeleton.find_bone("Spine2")
+	for bone_name: StringName in TORSO_CLEARANCE:
+		var idx := skeleton.find_bone(bone_name)
+		if idx >= 0:
+			_torso_bone_indices.append(idx)
+			_torso_bone_clearances.append(TORSO_CLEARANCE[bone_name])
 	_spawn_eye_marker()
 	_spawn_fov_gizmo()
 	stamina = sprint_duration
@@ -84,10 +115,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var motion := event as InputEventMouseMotion
-		rotate_y(-motion.relative.x * mouse_sensitivity)
-		head.rotate_x(-motion.relative.y * mouse_sensitivity)
-		head.rotation.x = clampf(head.rotation.x,
+		_apply_yaw(-motion.relative.x * mouse_sensitivity)
+		_look_pitch = clampf(_look_pitch - motion.relative.y * mouse_sensitivity,
 				-deg_to_rad(pitch_limit_deg), deg_to_rad(pitch_limit_deg))
+		head.rotation.x = _look_pitch
 	elif event.is_action_pressed(&"flashlight"):
 		flashlight.visible = not flashlight.visible
 	elif event.is_action_pressed(&"crouch"):
@@ -126,16 +157,53 @@ func _unhandled_input(event: InputEvent) -> void:
 				else Input.MOUSE_MODE_CAPTURED)
 
 
+## Head and body rotate about the same (world Y) axis, so their yaws are
+## simply additive - turn the head first, and once it hits the limit, any
+## further input carries over 1:1 into rotating the body instead. This way
+## total camera yaw always tracks the mouse exactly, whether it comes from
+## the head, the body, or a mix of both mid-turn.
+func _apply_yaw(delta_yaw: float) -> void:
+	var limit := deg_to_rad(head_yaw_limit_deg)
+	var new_head_yaw := _look_yaw + delta_yaw
+	_look_yaw = clampf(new_head_yaw, -limit, limit)
+	head.rotation.y = _look_yaw
+	var overflow := new_head_yaw - _look_yaw
+	if overflow != 0.0:
+		rotate_y(overflow)
+
+
+## While actually walking, gradually turn the body to face wherever the head
+## is looking - this transfers the offset from head to body (total yaw, and
+## so the camera's actual look direction, is unchanged), it doesn't add to
+## it. Otherwise walking toward a glanced-at direction would strafe there
+## forever with the body never turning to face it.
+const BODY_CATCHUP_DEG_PER_SEC := 220.0
+
+func _catch_up_body_yaw(input_dir: Vector2, delta: float) -> void:
+	if input_dir.length() < 0.1 or _look_yaw == 0.0:
+		return
+	var max_step := deg_to_rad(BODY_CATCHUP_DEG_PER_SEC) * delta
+	var step := clampf(_look_yaw, -max_step, max_step)
+	_look_yaw -= step
+	head.rotation.y = _look_yaw
+	rotate_y(step)
+
+
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
 	var input_dir := Input.get_vector(
 			&"move_left", &"move_right", &"move_forward", &"move_back")
+	_catch_up_body_yaw(input_dir, delta)
 	var sprinting := _update_stamina(delta, input_dir)
 	_update_capsule(delta)
 
 	var speed := crouch_speed if _crouched else (sprint_speed if sprinting else walk_speed)
-	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	# Movement follows where you're actually looking (body yaw + the head's
+	# offset from it), not just the body's facing - otherwise glancing to the
+	# side while walking forward would strafe instead of walking that way.
+	var look_basis := Basis(Vector3.UP, rotation.y + _look_yaw)
+	var direction := (look_basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 	velocity.x = move_toward(velocity.x, direction.x * speed, acceleration * delta)
 	velocity.z = move_toward(velocity.z, direction.z * speed, acceleration * delta)
 	if not is_on_floor():
@@ -144,13 +212,14 @@ func _physics_process(delta: float) -> void:
 
 	body.update_motion(_crouched, weapon.equipped,
 			Vector2(velocity.x, velocity.z).length(), sprinting)
-	body.head_pitch = head.rotation.x
+	body.head_pitch = _look_pitch
+	body.head_yaw = _look_yaw
 
 	if _head_bone_idx >= 0:
 		var head_pose := skeleton.get_bone_global_pose(_head_bone_idx)
 		var head_pos := body.transform * head_pose.origin
-		var safe_pitch := _solve_safe_pitch(head.rotation.x, head_pos)
-		var pitch_rot := Basis(Vector3.RIGHT, safe_pitch)
+		var safe_look := _solve_safe_look(_look_pitch, _look_yaw, head_pos)
+		var pitch_rot := Basis(Vector3.UP, safe_look.y) * Basis(Vector3.RIGHT, safe_look.x)
 		head.position = head_pos + pitch_rot * eye_offset
 
 	var target_crouch := -0.58 if _crouched else 0.0
@@ -168,33 +237,65 @@ func _physics_process(delta: float) -> void:
 
 
  
-## Starts from the neck-bend angle clamp (body.clamp_head_pitch), then binary
-## searches back toward level (0) for the largest look-down angle that still
-## keeps the eye at least EYE_CHEST_CLEARANCE from the chest bone. The angle
-## clamp alone stops the mesh from folding the chin into the chest, but the
-## hood still bulges out close enough to the eye that the camera's near clip
-## can end up inside it - this keeps the eye pinned outside that volume.
-func _solve_safe_pitch(raw_pitch: float, head_pos: Vector3) -> float:
-	var candidate := body.clamp_head_pitch(raw_pitch)
-	if candidate >= 0.0 or _chest_bone_idx < 0:
-		return candidate
-	var chest_pos := body.transform * skeleton.get_bone_global_pose(_chest_bone_idx).origin
-	if _eye_distance(head_pos, chest_pos, candidate) >= EYE_CHEST_CLEARANCE:
-		return candidate
-	var lo := 0.0
+## Keeps the eye clear of each torso bone's own TORSO_CLEARANCE radius. Only
+## affects this small position nudge, not the camera's actual look direction
+## (_look_pitch/_look_yaw, set directly from mouse input) - so you can still
+## look anywhere, this just stops the near clip from riding inside your own
+## mesh while doing it.
+##
+## Yaw is solved first, checked at level pitch (0): that's the least
+## constrained case for a given yaw, so if it's already unsafe there, no
+## amount of pitch clamping would help either (this is what plain pitch-only
+## clamping missed - turning far enough to the side puts the shoulder in the
+## way even before you look down at all). Pitch is then solved at whatever
+## yaw came out of that first step.
+func _solve_safe_look(raw_pitch: float, raw_yaw: float, head_pos: Vector3) -> Vector2:
+	var pitch_candidate := body.clamp_head_pitch(raw_pitch)
+	if _torso_bone_indices.is_empty():
+		return Vector2(pitch_candidate, raw_yaw)
+	var torso_points := _torso_points()
+	var safe_yaw := raw_yaw
+	if not _look_is_safe(head_pos, torso_points, 0.0, raw_yaw):
+		safe_yaw = _bisect_toward_safe(0.0, raw_yaw,
+				func(y): return _look_is_safe(head_pos, torso_points, 0.0, y))
+	var safe_pitch := pitch_candidate
+	if pitch_candidate < 0.0 and not _look_is_safe(head_pos, torso_points, pitch_candidate, safe_yaw):
+		safe_pitch = _bisect_toward_safe(0.0, pitch_candidate,
+				func(p): return _look_is_safe(head_pos, torso_points, p, safe_yaw))
+	return Vector2(safe_pitch, safe_yaw)
+
+
+## Binary search between a known-safe value and a candidate that failed
+## clearance, for the value closest to the candidate that's still safe.
+func _bisect_toward_safe(safe: float, candidate: float, is_safe_at: Callable) -> float:
+	var lo := safe
 	var hi := candidate
 	for i in 8:
 		var mid := (lo + hi) * 0.5
-		if _eye_distance(head_pos, chest_pos, mid) >= EYE_CHEST_CLEARANCE:
+		if is_safe_at.call(mid):
 			lo = mid
 		else:
 			hi = mid
 	return lo
 
 
-func _eye_distance(head_pos: Vector3, chest_pos: Vector3, pitch: float) -> float:
-	var eye := head_pos + Basis(Vector3.RIGHT, pitch) * eye_offset
-	return eye.distance_to(chest_pos)
+func _torso_points() -> Array[Vector3]:
+	var pts: Array[Vector3] = []
+	for idx in _torso_bone_indices:
+		pts.append(body.transform * skeleton.get_bone_global_pose(idx).origin)
+	return pts
+
+
+## Matches the real eye-position formula (head_pos + yaw-then-pitch rotated
+## eye_offset) exactly - a clearance check built from a different formula
+## than the one actually used to place the camera checks the wrong point.
+func _look_is_safe(
+		head_pos: Vector3, torso_points: Array[Vector3], pitch: float, yaw: float) -> bool:
+	var eye := head_pos + Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch) * eye_offset
+	for i in torso_points.size():
+		if eye.distance_to(torso_points[i]) < _torso_bone_clearances[i]:
+			return false
+	return true
 
 
 func _spawn_eye_marker() -> void:
@@ -207,6 +308,12 @@ func _spawn_eye_marker() -> void:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_color = Color(1, 0, 0)
 	_eye_marker.material_override = mat
+	# It's invisible from the FP camera itself (smaller than the near clip
+	# distance), but shadow casting ignores camera visibility entirely - left
+	# on, this shows up as a sphere-shaped blob in the player's own shadow
+	# instead of a head shape, since the actual (collapsed) head casts next
+	# to nothing by comparison.
+	_eye_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_eye_marker)
 
 
@@ -284,7 +391,8 @@ func _update_weapon_equip() -> void:
 
 func _on_weapon_fired() -> void:
 	# Recoil stays player-side: the weapon signals up, the player owns the head.
-	head.rotation.x = minf(head.rotation.x + 0.014, deg_to_rad(pitch_limit_deg))
+	_look_pitch = minf(_look_pitch + 0.014, deg_to_rad(pitch_limit_deg))
+	head.rotation.x = _look_pitch
 
 
 func _on_died() -> void:

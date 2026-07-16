@@ -6,7 +6,7 @@
 **Setting:** Abandoned research facility
 **Goal:** Learning sandbox — build each system properly to learn Godot FPS/horror development. No shipping pressure, but every system should be built as if it could ship.
 
-> **Status (2026-07-15):** M0–M3 done, first-person body + debug tooling polished. Next up: **M4 — First enemy** (shambler state machine, navmesh, perception; the Mixamo "action_adventure_pack" is earmarked for it). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V debug camera / P debug menu.
+> **Status (2026-07-16):** M0–M3 done, first-person body + independent head-look + debug tooling polished. Next up: **M4 — First enemy** (shambler state machine, navmesh, perception; the Mixamo "action_adventure_pack" is earmarked for it). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V debug camera / P debug menu.
 
 ---
 
@@ -219,6 +219,10 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-15 | Mirror prop is a puppeted body double (position/yaw/animation mirrored each frame), not a live SubViewport reflection | Godot 4.6 SubViewport/ViewportTexture rendering breaks once its scene is instanced inside another (godotengine/godot#115402); the double sidesteps the engine bug entirely — same trick classic RE mirrors use |
 | 2026-07-15 | Eye camera position is solved (angle clamp + binary-searched chest clearance), not just following raw look pitch | Full-head debug view let the camera's near clip end up inside the hood/collar past ~40° down; a fixed angle clamp stopped the chin-into-chest visual but not the camera itself, so eye position now also enforces a minimum distance from the chest bone |
 | 2026-07-15 | Debug tooling: P opens a menu to edit `eye_offset` live, V shows an external camera with a red eye marker + FOV wireframe gizmo | Iterating on camera placement previously required re-recording Movie Maker clips; this makes it self-service in-game |
+| 2026-07-16 | Independent head look: mouse yaw turns the head up to `head_yaw_limit_deg` (75°) before the body starts rotating; the body also auto-turns to catch up while actively moving | Real necks don't swivel a full 180 — RE-style body-awareness games (and real anatomy) turn the head first, body follows. Head and body yaw are stored as plain floats and only ever written into `head.rotation`, never read back out of it — Godot's Euler decomposition is unstable near the pitch extremes (gimbal lock), and reading it back to accumulate the next frame's value compounded that instability into a visible spin under sustained diagonal mouse input |
+| 2026-07-16 | Movement direction follows combined body+head yaw, not just body yaw | Otherwise glancing sideways while holding W would strafe instead of walking that way, once head and body could differ |
+| 2026-07-16 | Eye-clearance solve extended to per-bone radii (chest/shoulders/arms) and to yaw, not just pitch | The chest-only, pitch-only version (previous row) missed two things: turning the head to the side brings the shoulder/arm into range even before any downward pitch, and the shoulder/arm joints sit too close to the head bone for one shared clearance radius to be achievable — each bone now has its own minimum distance tuned to what's geometrically reachable |
+| 2026-07-16 | Debug eye marker has shadow casting explicitly disabled | It's invisible from the FP camera itself (inside the near-clip distance) but shadows ignore camera visibility, so it was showing up as a sphere-shaped blob in the player's own shadow where the (collapsed, low-shadow) head should be |
 
 Add new rows as we make calls (e.g., grid vs slot inventory, hitscan vs projectile).
 
