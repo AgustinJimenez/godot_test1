@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="PackedScene" path="res://levels/props/door.tscn" id="1_door"]
 [ext_resource type="PackedScene" path="res://levels/props/item_pickup.tscn" id="2_item_pickup"]
@@ -13,6 +13,8 @@
 [ext_resource type="Script" path="res://levels/debug_mirror.gd" id="11_mirror_debug"]
 [ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="12_body_model"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="13_body_script"]
+[ext_resource type="Script" path="res://levels/nav_bake.gd" id="14_nav_bake"]
+[ext_resource type="PackedScene" path="res://actors/enemies/shambler/shambler.tscn" id="15_shambler"]
 
 [sub_resource type="Environment" id="Environment_room"]
 background_mode = 1
@@ -52,6 +54,15 @@ transparency = 1
 albedo_color = Color(0.35, 0.4, 0.45, 0.1)
 metallic = 0.6
 roughness = 0.15
+
+[sub_resource type="NavigationMesh" id="NavigationMesh_room"]
+agent_height = 1.8
+agent_radius = 0.4
+agent_max_climb = 0.3
+filter_baking_aabb = AABB(-10, -0.5, -13, 20, 4, 26)
+parsed_geometry_type = 1
+geometry_source_geometry_mode = 1
+geometry_source_group_name = &"navmesh_source"
 
 [node name="TestRoom" type="Node3D"]
 
@@ -247,6 +258,25 @@ transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 8, 0, 0.2)
 
 [node name="Dummy3" parent="." instance=ExtResource("8_dummy")]
 transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 7.2, 0, 2.6)
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("NavigationMesh_room")
+script = ExtResource("14_nav_bake")
+
+[node name="PatrolPoints" type="Node3D" parent="."]
+
+[node name="Point1" type="Marker3D" parent="PatrolPoints"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, 6)
+
+[node name="Point2" type="Marker3D" parent="PatrolPoints"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, -6)
+
+[node name="Point3" type="Marker3D" parent="PatrolPoints"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 6)
+
+[node name="Shambler1" parent="." instance=ExtResource("15_shambler")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, 6)
+patrol_points = [NodePath("../PatrolPoints/Point1"), NodePath("../PatrolPoints/Point2"), NodePath("../PatrolPoints/Point3")]
 
 [node name="NotePaper" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1.5, -12.7)

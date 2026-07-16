@@ -6,7 +6,7 @@
 **Setting:** Abandoned research facility
 **Goal:** Learning sandbox — build each system properly to learn Godot FPS/horror development. No shipping pressure, but every system should be built as if it could ship.
 
-> **Status (2026-07-16):** M0–M3 done, first-person body (head always visible now, no more collapse trick) + independent head-look + debug tooling polished. Next up: **M4 — First enemy** (shambler state machine, navmesh, perception; the Mixamo "action_adventure_pack" is earmarked for it). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V debug camera / P debug menu.
+> **Status (2026-07-16):** M0–M4 done. First-person body has an unarmed walk clip (retargeted from Universal Animation Library) alongside the native MotusMan aim/jog/crouch set. The shambler (patrol/investigate/chase/attack/search, `NavigationAgent3D` + vision cone + hearing) is live in `test_room.tscn` on a runtime-baked navmesh. Next up: **M5 — Survival pressure** (flashlight battery, scarcity tuning, safe-room save/load). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V debug camera / P debug menu.
 
 ---
 
@@ -172,10 +172,10 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 - [x] Health component + damage, player hurt/death, healing item
 - [x] Target dummies to shoot
 
-### M4 — First enemy
-- [ ] Shambler with patrol/investigate/chase/attack state machine
-- [ ] Navigation mesh in test level, hearing + vision perception
-- [ ] Full loop test: sneak past OR spend scarce ammo
+### M4 — First enemy ✅
+- [x] Shambler with patrol/investigate/chase/attack/search state machine
+- [x] Navigation mesh in test level, hearing + vision perception
+- [x] Full loop test: sneak past OR spend scarce ammo (verified via scripted demo: heard → investigated → lost interest → seen → chased → attacked/damaged player)
 
 ### M5 — Survival pressure
 - [ ] Flashlight battery drain + battery items
@@ -227,6 +227,13 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-16 | `head_yaw_limit_deg` tuned down from 75° to 60° | Playtest feel — narrower head-alone turn range before the body catches up |
 | 2026-07-16 | Neck/head mesh bend: lowered `MAX_BEND_UP_DEG` 75°→60°, and added a small forward torso lean (Spine/Spine1/Spine2, 4%/5%/6% of the clamped pitch) on look-down | This rig's linear-blend skin stretches visibly ("candy wrapper" artifact) on the Neck-Head joint past ~72-75° of bend; 60° leaves real margin. Torso lean is deliberately subtle - a stronger version (tried live, reverted) pushed the cumulative spine→neck→head rotation back past the same stretch threshold |
 | 2026-07-16 | Head bend's pitch and yaw are radially clamped together (as one 2D vector, magnitude ≤ `MAX_BEND_UP_DEG`), not just independently per axis | Each axis clamped on its own still let combined near-limit pitch+yaw compose into a larger rotation than either alone, re-triggering the same skin-stretch artifact; only affects the visible bend, the camera's actual look direction is untouched |
+| 2026-07-16 | Unarmed walk clip sourced from Universal Animation Library (Godot-native-retargeting-labeled, CC0), not the Mixamo action_adventure_pack or "Human Basic Motions FREE" | Needed a plain walk with no gun-aim pose; UAL was the pack that actually retargeted cleanly onto MotusMan (see next row) |
+| 2026-07-16 | Retargeting formula is `target_rest.basis * (src_rest.basis.inverse() * src_pose_quat)` per bone (delta-from-own-rest, reapplied to target's own rest), and the whole spine chain (not just arms) is excluded and held at the relaxed-idle pose instead of retargeted | Copying raw local rotations is wrong when source/target rest orientations differ (MotusMan's bone-forward axis differs from UAL/Mixamo's). The delta formula works for spine/legs but the arms still came out T-pose-like even when individually held — root cause was their *parent* (Spine2) still being animated by the retargeted clip and cascading a wrong orientation into otherwise-correct child bones; holding the full spine chain fixed it |
+| 2026-07-16 | AnimationPlayer crossfades need an explicit constant-value track for any bone that should stay put, not just "leave it untracked" | A bone with no track in the new clip doesn't freeze at its last pose after the blend completes — it settles back toward the skeleton's rest pose. `_bake_held_track()` bakes a real 2-keyframe constant track instead |
+| 2026-07-16 | Shambler patrol/investigate/chase/attack/search state machine, built as a plain `CharacterBody3D` + `NavigationAgent3D`, reusing the animation_preview.gd clip-borrowing trick (idle/walking/running/hard-landing-as-death from action_adventure_pack, no retargeting needed since it's the native Mixamo rig) | Matches §3.5; "The Boss" shares a skeleton with the pack's standalone clip files, so unlike the player's MotusMan work, no retargeting math is needed here |
+| 2026-07-16 | Room navmesh is baked at runtime in `nav_bake.gd` (`NavigationRegion3D.bake_navigation_mesh(false)`), not pre-baked and checked in | No editor-driven baking step in this headless-first workflow; the room is small and static so a runtime bake at load is cheap enough |
+| 2026-07-16 | Navmesh source geometry uses `parsed_geometry_type = STATIC_COLLIDERS` + `geometry_source_geometry_mode = GROUPS_WITH_CHILDREN` (group joined via code in `nav_bake.gd`, not via a hand-authored `groups=[...]` line in the .tscn), baked after waiting 10 physics frames | The room's CSGBox3D geometry lives under a sibling "Geometry" node, not under the NavigationRegion3D itself, so the default ROOT_NODE_CHILDREN source mode found nothing (0 polygons). Hand-authoring `groups=["navmesh_source"]` directly in the .tscn was silently ignored by Godot 4.6 (`get_nodes_in_group()` came back empty) — joining the group from code in `_ready()` is what actually works. The 10-frame wait covers CSGShape3D's deferred collision-body generation; without it the geometry parser (and separately the NavigationServer's map sync) both raced the bake and produced an empty, unqueryable navmesh even though `bake_navigation_mesh()` itself didn't error |
+| 2026-07-16 | Shambler death plays the pack's "hard landing" clip once (`LOOP_NONE`) instead of a procedural topple tween | The generic `rotation:x` topple tween (reused from `target_dummy.gd`) visually sank the humanoid mesh into the floor when rotated 90° around its own origin — the target dummy's simple prop shape hid this, the Boss rig didn't. There's no dedicated death clip in the pack, but "hard landing" reads as a believable collapse and reuses the existing clip-borrowing pattern instead of new tween math |
 
 Add new rows as we make calls (e.g., grid vs slot inventory, hitscan vs projectile).
 

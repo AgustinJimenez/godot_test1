@@ -393,6 +393,17 @@ func _on_weapon_fired() -> void:
 	head.rotation.x = _look_pitch
 
 
+## Radius (meters) at which the player's current movement noise can be
+## heard by AI - crouching stays quiet, sprinting carries the farthest.
+func noise_radius() -> float:
+	if _crouched:
+		return 2.5
+	var speed := Vector2(velocity.x, velocity.z).length()
+	if speed < 0.1:
+		return 0.0
+	return lerp(4.0, 9.0, clamp(speed / sprint_speed, 0.0, 1.0))
+
+
 func _on_died() -> void:
 	_dead = true
 	weapon.equipped = false
