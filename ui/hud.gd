@@ -27,12 +27,18 @@ var _hurt_tween: Tween
 @onready var desc_label: Label = $InventoryOverlay/Center/Panel/Margin/VBox/Desc
 @onready var use_button: Button = $InventoryOverlay/Center/Panel/Margin/VBox/Buttons/UseButton
 @onready var drop_button: Button = $InventoryOverlay/Center/Panel/Margin/VBox/Buttons/DropButton
+@onready var debug_overlay: Control = $DebugOverlay
+@onready var debug_field_x: LineEdit = $DebugOverlay/Center/Panel/Margin/VBox/RowX/FieldX
+@onready var debug_field_y: LineEdit = $DebugOverlay/Center/Panel/Margin/VBox/RowY/FieldY
+@onready var debug_field_z: LineEdit = $DebugOverlay/Center/Panel/Margin/VBox/RowZ/FieldZ
+@onready var debug_apply: Button = $DebugOverlay/Center/Panel/Margin/VBox/ApplyButton
 
 
 func _ready() -> void:
 	add_to_group(&"hud")
 	use_button.pressed.connect(_on_use_pressed)
 	drop_button.pressed.connect(_on_drop_pressed)
+	debug_apply.pressed.connect(_on_debug_apply)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -49,6 +55,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif inv_overlay.visible and (event.is_action_pressed(&"inventory")
 			or event.is_action_pressed(&"pause")):
 		toggle_inventory()
+		get_viewport().set_input_as_handled()
+	elif debug_overlay.visible and (event.is_action_pressed(&"pause")
+			or event.is_action_pressed(&"inventory")):
+		toggle_debug()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(&"debug_menu"):
+		toggle_debug()
 		get_viewport().set_input_as_handled()
 
 
@@ -164,6 +177,35 @@ func _refresh_inventory() -> void:
 	drop_button.disabled = not has_selection
 	desc_label.text = (_inventory.slots[_selected]["item"].description
 			if has_selection else "")
+
+
+func toggle_debug() -> void:
+	if note_overlay.visible or inv_overlay.visible:
+		return
+	if debug_overlay.visible:
+		debug_overlay.hide()
+		get_tree().paused = false
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	else:
+		var p := get_tree().get_first_node_in_group(&"player")
+		if p and p.has_method(&"set_eye_offset"):
+			var v: Vector3 = p.eye_offset
+			debug_field_x.text = "%.3f" % v.x
+			debug_field_y.text = "%.3f" % v.y
+			debug_field_z.text = "%.3f" % v.z
+		debug_overlay.show()
+		get_tree().paused = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _on_debug_apply() -> void:
+	var x := float(debug_field_x.text)
+	var y := float(debug_field_y.text)
+	var z := float(debug_field_z.text)
+	var player := get_tree().get_first_node_in_group(&"player")
+	if player:
+		player.set_eye_offset(Vector3(x, y, z))
+	toast("EYE_OFFSET = (%.3f, %.3f, %.3f)" % [x, y, z])
 
 
 func _on_slot_pressed(index: int) -> void:

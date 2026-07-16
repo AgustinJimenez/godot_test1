@@ -82,11 +82,20 @@ func _process(_delta: float) -> void:
 		return
 	for idx in _hidden_indices:
 		skeleton.set_bone_pose_scale(idx, Vector3(0.001, 0.001, 0.001))
-		var parent := skeleton.get_bone_parent(idx)
-		var parent_basis := skeleton.get_bone_global_pose(parent).basis
-		skeleton.set_bone_pose_position(idx,
-				skeleton.get_bone_rest(idx).origin
-				+ parent_basis.inverse() * HIDDEN_BONE_DROP)
+		skeleton.set_bone_pose_position(idx, skeleton.get_bone_rest(idx).origin)
+
+
+## Looking straight down would bend the neck/head further than a real neck
+## can, folding the chin/hood into the chest - clamp well short of the
+## camera's own pitch_limit_deg so the mesh stops before it clips.
+const MAX_BEND_DOWN_DEG := 40.0
+const MAX_BEND_UP_DEG := 75.0
+
+## Same clamp the mesh bend uses. The player reads this to keep the eye
+## position locked to the actual bone pose - if the neck stops bending, the
+## eye must stop moving with it instead of sliding on past the frozen mesh.
+func clamp_head_pitch(p: float) -> float:
+	return clampf(p, -deg_to_rad(MAX_BEND_DOWN_DEG), deg_to_rad(MAX_BEND_UP_DEG))
 
 
 ## Full-head mode: bend neck (35%) and head (65%) with the camera pitch so
@@ -94,12 +103,13 @@ func _process(_delta: float) -> void:
 ## Runs after animation (process_priority), rotating the animated pose.
 func _pitch_head_bones() -> void:
 	var split := {&"Neck": 0.35, &"Head": 0.65}
+	var clamped_pitch := clamp_head_pitch(head_pitch)
 	for bone_name: StringName in split:
 		var idx := skeleton.find_bone(bone_name)
 		if idx < 0:
 			continue
 		var pose := skeleton.get_bone_global_pose(idx)
-		pose.basis = Basis(Vector3.RIGHT, head_pitch * split[bone_name]) * pose.basis
+		pose.basis = Basis(Vector3.RIGHT, -clamped_pitch * split[bone_name]) * pose.basis
 		skeleton.set_bone_global_pose(idx, pose)
 
 

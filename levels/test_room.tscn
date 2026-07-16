@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="PackedScene" path="res://levels/props/door.tscn" id="1_door"]
 [ext_resource type="PackedScene" path="res://levels/props/item_pickup.tscn" id="2_item_pickup"]
@@ -10,17 +10,20 @@
 [ext_resource type="PackedScene" path="res://levels/props/target_dummy.tscn" id="8_dummy"]
 [ext_resource type="Resource" path="res://items/pistol_9mm.tres" id="9_pistol"]
 [ext_resource type="Resource" path="res://items/ammo_9mm.tres" id="10_ammo"]
+[ext_resource type="Script" path="res://levels/debug_mirror.gd" id="11_mirror_debug"]
+[ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="12_body_model"]
+[ext_resource type="Script" path="res://actors/player/player_body.gd" id="13_body_script"]
 
 [sub_resource type="Environment" id="Environment_room"]
 background_mode = 1
 background_color = Color(0.008, 0.008, 0.012, 1)
 ambient_light_source = 2
 ambient_light_color = Color(0.12, 0.13, 0.17, 1)
-ambient_light_energy = 0.35
+ambient_light_energy = 2.0
 tonemap_mode = 3
 fog_enabled = true
 fog_light_color = Color(0.035, 0.04, 0.05, 1)
-fog_density = 0.04
+fog_density = 0.01
 
 [sub_resource type="StandardMaterial3D" id="Material_concrete"]
 albedo_color = Color(0.32, 0.33, 0.35, 1)
@@ -40,6 +43,15 @@ size = Vector3(0.21, 0.297, 0.012)
 
 [sub_resource type="BoxShape3D" id="Shape_paper"]
 size = Vector3(0.3, 0.4, 0.08)
+
+[sub_resource type="BoxMesh" id="Mesh_mirror"]
+size = Vector3(2.0, 2.0, 0.05)
+
+[sub_resource type="StandardMaterial3D" id="Material_mirror_glass"]
+transparency = 1
+albedo_color = Color(0.35, 0.4, 0.45, 0.1)
+metallic = 0.6
+roughness = 0.15
 
 [node name="TestRoom" type="Node3D"]
 
@@ -148,9 +160,23 @@ material = SubResource("Material_concrete")
 [node name="CeilingLamp" type="OmniLight3D" parent="Lights"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.8, 0)
 light_color = Color(1, 0.92, 0.78, 1)
-light_energy = 2.4
+light_energy = 6.0
 shadow_enabled = true
-omni_range = 12.0
+omni_range = 20.0
+
+[node name="CeilingLampSW" type="OmniLight3D" parent="Lights"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 3.8, 6)
+light_color = Color(1, 0.92, 0.78, 1)
+light_energy = 5.0
+shadow_enabled = true
+omni_range = 16.0
+
+[node name="CeilingLampNE" type="OmniLight3D" parent="Lights"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 3.8, -5)
+light_color = Color(1, 0.92, 0.78, 1)
+light_energy = 5.0
+shadow_enabled = true
+omni_range = 16.0
 
 [node name="CornerSpot" type="SpotLight3D" parent="Lights"]
 transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, -7, 3.9, -7)
@@ -177,9 +203,9 @@ omni_range = 5.0
 [node name="RangeLight" type="OmniLight3D" parent="Lights"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 3.8, 0)
 light_color = Color(0.85, 0.92, 1, 1)
-light_energy = 1.6
+light_energy = 3.0
 shadow_enabled = true
-omni_range = 9.0
+omni_range = 12.0
 
 [node name="Door" parent="." instance=ExtResource("1_door")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.45, 0, -10)
@@ -244,6 +270,17 @@ shape = SubResource("Shape_paper")
 [node name="Interactable" type="Node" parent="NotePaper"]
 script = ExtResource("4_interactable")
 prompt = "Read note"
+
+[node name="Mirror" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -4)
+script = ExtResource("11_mirror_debug")
+
+[node name="Screen" type="MeshInstance3D" parent="Mirror"]
+mesh = SubResource("Mesh_mirror")
+surface_material_override/0 = SubResource("Material_mirror_glass")
+
+[node name="MirrorBody" parent="Mirror" instance=ExtResource("12_body_model")]
+script = ExtResource("13_body_script")
 
 [node name="PlaceholderCamera" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7, 8.5)

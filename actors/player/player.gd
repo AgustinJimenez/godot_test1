@@ -5,8 +5,17 @@ extends CharacterBody3D
 
 const STAND_CAPSULE_HEIGHT := 1.8
 const CROUCH_CAPSULE_HEIGHT := 1.2
-const STAND_HEAD_Y := 1.7
-const CROUCH_HEAD_Y := 1.12
+## How far out to draw the FOV wireframe in the debug view - purely visual,
+## does not affect the camera's actual near/far planes.
+const FOV_GIZMO_DISTANCE := 2.5
+## Minimum distance the eye must keep from the chest bone while looking down,
+## so the camera's own near-clip volume never ends up inside the hood/collar
+## mesh - the neck-bend angle clamp alone isn't enough for that.
+const EYE_CHEST_CLEARANCE := 0.25
+var eye_offset := Vector3(0, 0.05, -0.15)
+
+func set_eye_offset(v: Vector3) -> void:
+	eye_offset = v
 
 @export_group("Look")
 @export var mouse_sensitivity: float = 0.002
@@ -24,15 +33,18 @@ const CROUCH_HEAD_Y := 1.12
 ## After draining fully, sprint stays locked until stamina recovers this fraction.
 @export var sprint_recover_fraction: float = 0.3
 
-@export_group("Head bob")
-@export var bob_amplitude: float = 0.035
-@export var bob_frequency: float = 2.2
-
 var stamina: float
 var _sprint_locked := false
 var _crouched := false
-var _bob_time := 0.0
 var _dead := false
+var _debug_cam_active := false
+var _debug_cam_offset := Vector3.ZERO
+var _head_bone_idx := -1
+var _chest_bone_idx := -1
+var _crouch_offset := 0.0
+var _eye_marker: MeshInstance3D
+var _fov_gizmo: MeshInstance3D
+var _fov_mesh := ImmediateMesh.new()
 
 @onready var head: Node3D = $HeadPivot
 @onready var camera: Camera3D = $HeadPivot/Camera3D
@@ -46,14 +58,16 @@ var _dead := false
 @onready var health: Health = $Health
 @onready var weapon: PistolWeapon = $HeadPivot/Camera3D/WeaponRig
 @onready var body: PlayerBody = $Body
+@onready var skeleton: Skeleton3D = $Body/Skeleton3D
 @onready var debug_cam: Camera3D = $DebugCam
-@onready var cam_marker: MeshInstance3D = $HeadPivot/Camera3D/CamMarker
 
 
 func _ready() -> void:
-	# The debug camera ignores the player's transform once toggled; it is
-	# placed in world space each time V is pressed.
-	debug_cam.top_level = true
+	add_to_group(&"player")
+	_head_bone_idx = skeleton.find_bone("Head")
+	_chest_bone_idx = skeleton.find_bone("Spine2")
+	_spawn_eye_marker()
+	_spawn_fov_gizmo()
 	stamina = sprint_duration
 	hud.bind_inventory(inventory)
 	hud.bind_health(health)
@@ -86,24 +100,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		if target:
 			target.interact(self)
 	elif event.is_action_pressed(&"debug_camera"):
-		# Dev view: park a camera in the world ahead of the player and watch
-		# the body move. World-fixed on purpose — if it moved with the player,
-		# the character would never translate on screen and walking reads
-		# backwards. The yellow marker shows where the FP camera sits, and the
-		# full head is shown since this view is external.
+		# Dev view: follow camera trails the player in world space, saving
+		# the offset direction at activation so it does not yaw with the
+		# player — rotating the character lets you see them from any angle.
 		if debug_cam.current:
 			camera.make_current()
-			cam_marker.visible = false
 			body.hide_head = true
+			_debug_cam_active = false
 		else:
-			var ahead := global_position - global_transform.basis.z * 2.6
-			debug_cam.global_position = ahead + Vector3(0, 1.75, 0)
+			debug_cam.top_level = true
+			_debug_cam_offset = -global_transform.basis.z * 2.6 + Vector3(0, 1.75, 0)
+			debug_cam.global_position = global_position + _debug_cam_offset
 			debug_cam.look_at(global_position + Vector3(0, 1.25, 0))
 			debug_cam.make_current()
-			cam_marker.visible = true
 			body.hide_head = false
+			_debug_cam_active = true
 	elif event.is_action_pressed(&"inventory"):
 		hud.toggle_inventory()
+	elif event.is_action_pressed(&"debug_menu"):
+		hud.toggle_debug()
 	elif event.is_action_pressed(&"pause"):
 		# Until a pause menu exists, Esc just releases/captures the mouse.
 		Input.mouse_mode = (Input.MOUSE_MODE_VISIBLE
@@ -131,11 +146,113 @@ func _physics_process(delta: float) -> void:
 			Vector2(velocity.x, velocity.z).length(), sprinting)
 	body.head_pitch = head.rotation.x
 
-	_update_head_bob(delta)
+	if _head_bone_idx >= 0:
+		var head_pose := skeleton.get_bone_global_pose(_head_bone_idx)
+		var head_pos := body.transform * head_pose.origin
+		var safe_pitch := _solve_safe_pitch(head.rotation.x, head_pos)
+		var pitch_rot := Basis(Vector3.RIGHT, safe_pitch)
+		head.position = head_pos + pitch_rot * eye_offset
+
+	var target_crouch := -0.58 if _crouched else 0.0
+	_crouch_offset = lerpf(_crouch_offset, target_crouch, 10.0 * delta)
+	head.position.y += _crouch_offset
+	_eye_marker.position = head.position
+	_update_fov_gizmo()
+
 	var target := _current_interactable()
 	hud.set_prompt("[E] " + target.prompt if target else "")
 
+	if _debug_cam_active:
+		debug_cam.global_position = global_position + _debug_cam_offset
+		debug_cam.look_at(global_position + Vector3(0, 1.25, 0))
 
+
+ 
+## Starts from the neck-bend angle clamp (body.clamp_head_pitch), then binary
+## searches back toward level (0) for the largest look-down angle that still
+## keeps the eye at least EYE_CHEST_CLEARANCE from the chest bone. The angle
+## clamp alone stops the mesh from folding the chin into the chest, but the
+## hood still bulges out close enough to the eye that the camera's near clip
+## can end up inside it - this keeps the eye pinned outside that volume.
+func _solve_safe_pitch(raw_pitch: float, head_pos: Vector3) -> float:
+	var candidate := body.clamp_head_pitch(raw_pitch)
+	if candidate >= 0.0 or _chest_bone_idx < 0:
+		return candidate
+	var chest_pos := body.transform * skeleton.get_bone_global_pose(_chest_bone_idx).origin
+	if _eye_distance(head_pos, chest_pos, candidate) >= EYE_CHEST_CLEARANCE:
+		return candidate
+	var lo := 0.0
+	var hi := candidate
+	for i in 8:
+		var mid := (lo + hi) * 0.5
+		if _eye_distance(head_pos, chest_pos, mid) >= EYE_CHEST_CLEARANCE:
+			lo = mid
+		else:
+			hi = mid
+	return lo
+
+
+func _eye_distance(head_pos: Vector3, chest_pos: Vector3, pitch: float) -> float:
+	var eye := head_pos + Basis(Vector3.RIGHT, pitch) * eye_offset
+	return eye.distance_to(chest_pos)
+
+
+func _spawn_eye_marker() -> void:
+	_eye_marker = MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.03
+	sm.height = 0.06
+	_eye_marker.mesh = sm
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1, 0, 0)
+	_eye_marker.material_override = mat
+	add_child(_eye_marker)
+
+
+func _spawn_fov_gizmo() -> void:
+	_fov_gizmo = MeshInstance3D.new()
+	_fov_gizmo.mesh = _fov_mesh
+	# The mesh's vertices are written in world space each frame (see
+	# _update_fov_gizmo), so this node must ignore the Player's own
+	# transform rather than compose with it.
+	_fov_gizmo.top_level = true
+	_fov_gizmo.visible = false
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1, 0.25, 0.25)
+	_fov_gizmo.material_override = mat
+	add_child(_fov_gizmo)
+
+
+## Wireframe pyramid from the camera's actual global transform/fov, out to
+## FOV_GIZMO_DISTANCE - lets you see the camera's viewing cone from outside
+## (debug camera) instead of just where it sits.
+func _update_fov_gizmo() -> void:
+	_fov_gizmo.visible = _debug_cam_active
+	if not _debug_cam_active:
+		return
+	var cam_t := camera.global_transform
+	var half_h := tan(deg_to_rad(camera.fov * 0.5)) * FOV_GIZMO_DISTANCE
+	var half_w := half_h * get_viewport().get_visible_rect().size.aspect()
+	var corners: Array[Vector3] = [
+		cam_t * Vector3(-half_w, half_h, -FOV_GIZMO_DISTANCE),
+		cam_t * Vector3(half_w, half_h, -FOV_GIZMO_DISTANCE),
+		cam_t * Vector3(half_w, -half_h, -FOV_GIZMO_DISTANCE),
+		cam_t * Vector3(-half_w, -half_h, -FOV_GIZMO_DISTANCE),
+	]
+	_fov_mesh.clear_surfaces()
+	_fov_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+	for corner in corners:
+		_fov_mesh.surface_add_vertex(cam_t.origin)
+		_fov_mesh.surface_add_vertex(corner)
+	for i in corners.size():
+		_fov_mesh.surface_add_vertex(corners[i])
+		_fov_mesh.surface_add_vertex(corners[(i + 1) % corners.size()])
+	_fov_mesh.surface_end()
+
+
+ 
 func _update_stamina(delta: float, input_dir: Vector2) -> bool:
 	# Sprint only counts while actually moving forward, standing up.
 	var wants_sprint: bool = (Input.is_action_pressed(&"sprint")
@@ -159,17 +276,7 @@ func _update_capsule(delta: float) -> void:
 	capsule.height = lerpf(capsule.height, target_height, 8.0 * delta)
 	collision.position.y = capsule.height * 0.5
 
-
-func _update_head_bob(delta: float) -> void:
-	var base_y := CROUCH_HEAD_Y if _crouched else STAND_HEAD_Y
-	var ground_speed := Vector2(velocity.x, velocity.z).length()
-	var bob := 0.0
-	if is_on_floor() and ground_speed > 0.5:
-		_bob_time += delta * ground_speed
-		bob = sin(_bob_time * bob_frequency) * bob_amplitude
-	head.position.y = lerpf(head.position.y, base_y + bob, 10.0 * delta)
-
-
+ 
 func _update_weapon_equip() -> void:
 	# Single weapon slot for now: owning the pistol item means it is equipped.
 	weapon.equipped = inventory.count_of(weapon.weapon_item) > 0

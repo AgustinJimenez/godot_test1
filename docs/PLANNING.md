@@ -6,7 +6,7 @@
 **Setting:** Abandoned research facility
 **Goal:** Learning sandbox — build each system properly to learn Godot FPS/horror development. No shipping pressure, but every system should be built as if it could ship.
 
-> **Status (2026-07-15):** M0–M3 done. Next up: **M4 — First enemy** (shambler state machine, navmesh, perception; the Mixamo "action_adventure_pack" is earmarked for it). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload.
+> **Status (2026-07-15):** M0–M3 done, first-person body + debug tooling polished. Next up: **M4 — First enemy** (shambler state machine, navmesh, perception; the Mixamo "action_adventure_pack" is earmarked for it). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V debug camera / P debug menu.
 
 ---
 
@@ -216,6 +216,9 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-15 | Consumable effects are data on Item (`heal_amount`), not item subclasses | One resource schema; using at full health refuses to consume the item |
 | 2026-07-15 | Player death pauses tree + YOU DIED overlay, E reloads the scene | Placeholder until M5 save/load decides real death flow |
 | 2026-07-15 | First-person body: MotusMan mesh under the player, head bones collapsed into the chest each frame, camera 0.25m ahead of the face | Body awareness (see legs/shadow); MotusMan IPC clips cover idle/walk/jog/crouch with no retargeting |
+| 2026-07-15 | Mirror prop is a puppeted body double (position/yaw/animation mirrored each frame), not a live SubViewport reflection | Godot 4.6 SubViewport/ViewportTexture rendering breaks once its scene is instanced inside another (godotengine/godot#115402); the double sidesteps the engine bug entirely — same trick classic RE mirrors use |
+| 2026-07-15 | Eye camera position is solved (angle clamp + binary-searched chest clearance), not just following raw look pitch | Full-head debug view let the camera's near clip end up inside the hood/collar past ~40° down; a fixed angle clamp stopped the chin-into-chest visual but not the camera itself, so eye position now also enforces a minimum distance from the chest bone |
+| 2026-07-15 | Debug tooling: P opens a menu to edit `eye_offset` live, V shows an external camera with a red eye marker + FOV wireframe gizmo | Iterating on camera placement previously required re-recording Movie Maker clips; this makes it self-service in-game |
 
 Add new rows as we make calls (e.g., grid vs slot inventory, hitscan vs projectile).
 

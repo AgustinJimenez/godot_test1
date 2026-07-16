@@ -212,3 +212,76 @@ modulate = Color(1, 1, 1, 0.55)
 theme_override_font_sizes/font_size = 14
 text = "[E]  Restart"
 horizontal_alignment = 1
+
+[node name="DebugOverlay" type="Control" parent="."]
+visible = false
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Dim" type="ColorRect" parent="DebugOverlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.55)
+
+[node name="Center" type="CenterContainer" parent="DebugOverlay"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="DebugOverlay/Center"]
+custom_minimum_size = Vector2(380, 0)
+
+[node name="Margin" type="MarginContainer" parent="DebugOverlay/Center/Panel"]
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="DebugOverlay/Center/Panel/Margin"]
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+theme_override_font_sizes/font_size = 18
+text = "DEBUG MENU"
+
+[node name="SectionLabel" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+theme_override_colors/font_color = Color(0.6, 0.7, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "EYE OFFSET (camera pos rel to head bone)"
+
+[node name="RowX" type="HBoxContainer" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+
+[node name="LabelX" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox/RowX"]
+custom_minimum_size = Vector2(24, 0)
+text = "X:"
+
+[node name="FieldX" type="LineEdit" parent="DebugOverlay/Center/Panel/Margin/VBox/RowX"]
+size_flags_horizontal = 3
+text = "0"
+
+[node name="RowY" type="HBoxContainer" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+
+[node name="LabelY" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox/RowY"]
+custom_minimum_size = Vector2(24, 0)
+text = "Y:"
+
+[node name="FieldY" type="LineEdit" parent="DebugOverlay/Center/Panel/Margin/VBox/RowY"]
+size_flags_horizontal = 3
+text = "0.05"
+
+[node name="RowZ" type="HBoxContainer" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+
+[node name="LabelZ" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox/RowZ"]
+custom_minimum_size = Vector2(24, 0)
+text = "Z:"
+
+[node name="FieldZ" type="LineEdit" parent="DebugOverlay/Center/Panel/Margin/VBox/RowZ"]
+size_flags_horizontal = 3
+text = "-0.15"
+
+[node name="ApplyButton" type="Button" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+text = "Apply"
+
+[node name="Hint" type="Label" parent="DebugOverlay/Center/Panel/Margin/VBox"]
+modulate = Color(1, 1, 1, 0.5)
+theme_override_font_sizes/font_size = 13
+text = "[P]  Close"
