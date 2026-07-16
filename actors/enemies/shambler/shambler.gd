@@ -20,8 +20,6 @@ const DEATH_CLIP := "res://assets/models/action_adventure_pack/hard landing.fbx"
 @export var patrol_points: Array[NodePath] = []
 @export var walk_speed: float = 1.1
 @export var chase_speed: float = 2.4
-@export var vision_range: float = 10.0
-@export var vision_angle_deg: float = 60.0
 @export var attack_range: float = 1.3
 @export var attack_damage: float = 15.0
 @export var attack_cooldown: float = 1.2
@@ -31,6 +29,7 @@ const DEATH_CLIP := "res://assets/models/action_adventure_pack/hard landing.fbx"
 
 @onready var nav_agent: NavigationAgent3D = $NavigationAgent3D
 @onready var health: Health = $Health
+@onready var perception: Perception = $Perception
 @onready var boss_ap: AnimationPlayer = $Boss/AnimationPlayer
 
 var state: State = State.PATROL
@@ -40,6 +39,7 @@ var _time_since_seen := 0.0
 var _search_timer := 0.0
 var _attack_cooldown_left := 0.0
 var _current_anim := &""
+var _nav_target := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -93,8 +93,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _update_perception(player: Node3D, delta: float) -> void:
-	var seen := _can_see_player(player)
-	if seen:
+	if perception.can_see(player):
 		_time_since_seen = 0.0
 		if state == State.PATROL or state == State.INVESTIGATE or state == State.SEARCH:
 			state = State.CHASE
@@ -103,34 +102,10 @@ func _update_perception(player: Node3D, delta: float) -> void:
 	if state == State.CHASE and _time_since_seen > lose_sight_time:
 		state = State.SEARCH
 		_search_timer = 0.0
-		nav_agent.target_position = player.global_position
-	elif state == State.PATROL and _can_hear_player(player):
+		_nav_target = player.global_position
+	elif state == State.PATROL and perception.can_hear(player):
 		state = State.INVESTIGATE
-		nav_agent.target_position = player.global_position
-
-
-func _can_see_player(player: Node3D) -> bool:
-	var to_player := player.global_position - global_position
-	var dist := to_player.length()
-	if dist > vision_range:
-		return false
-	var forward := -global_transform.basis.z
-	var angle := rad_to_deg(forward.angle_to(Vector3(to_player.x, 0.0, to_player.z).normalized()))
-	if angle > vision_angle_deg * 0.5:
-		return false
-	var eye_pos := global_position + Vector3(0, 1.6, 0)
-	var target_pos := player.global_position + Vector3(0, 1.0, 0)
-	var query := PhysicsRayQueryParameters3D.create(eye_pos, target_pos, 1)
-	query.exclude = [self]
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	return hit.is_empty()
-
-
-func _can_hear_player(player: Node3D) -> bool:
-	var noise: float = player.noise_radius()
-	if noise <= 0.0:
-		return false
-	return global_position.distance_to(player.global_position) <= noise
+		_nav_target = player.global_position
 
 
 func _process_patrol(delta: float) -> void:
@@ -154,7 +129,7 @@ func _process_investigate(delta: float) -> void:
 
 func _process_chase(player: Node3D, delta: float) -> void:
 	_play(&"running")
-	nav_agent.target_position = player.global_position
+	_nav_target = player.global_position
 	_move_toward_target(chase_speed, delta)
 	if global_position.distance_to(player.global_position) <= attack_range:
 		state = State.ATTACK
@@ -164,8 +139,7 @@ func _process_chase(player: Node3D, delta: float) -> void:
 func _process_attack(player: Node3D, delta: float) -> void:
 	velocity.x = 0.0
 	velocity.z = 0.0
-	if not is_on_floor():
-		velocity.y -= 9.8 * delta
+	_apply_gravity(delta)
 	move_and_slide()
 	_face_point(player.global_position, delta)
 	_play(&"idle")
@@ -193,30 +167,33 @@ func _process_search(delta: float) -> void:
 func _go_to_patrol_point() -> void:
 	if _patrol_positions.is_empty():
 		return
-	nav_agent.target_position = _patrol_positions[_patrol_idx]
+	_nav_target = _patrol_positions[_patrol_idx]
 
 
 func _move_toward_target(speed: float, delta: float) -> void:
-	if nav_agent.is_navigation_finished():
-		velocity.x = 0.0
-		velocity.z = 0.0
-		if not is_on_floor():
-			velocity.y -= 9.8 * delta
-		move_and_slide()
-		return
-	var next_pos := nav_agent.get_next_path_position()
-	var dir := next_pos - global_position
-	dir.y = 0.0
-	if dir.length() > 0.01:
-		dir = dir.normalized()
-		_face_direction(dir, delta)
+	# Reapplied every frame, not just on state entry: if this lands before
+	# the room's navmesh finishes its runtime bake, the agent finds no path
+	# and - since it then never moves - nothing else would prompt it to
+	# retry once the navmesh becomes ready.
+	nav_agent.target_position = _nav_target
+	var dir := Vector3.ZERO
+	if not nav_agent.is_navigation_finished():
+		dir = nav_agent.get_next_path_position() - global_position
+		dir.y = 0.0
+		if dir.length() > 0.01:
+			dir = dir.normalized()
+			_face_direction(dir, delta)
 	velocity.x = dir.x * speed
 	velocity.z = dir.z * speed
-	if not is_on_floor():
-		velocity.y -= 9.8 * delta
-	else:
-		velocity.y = 0.0
+	_apply_gravity(delta)
 	move_and_slide()
+
+
+func _apply_gravity(delta: float) -> void:
+	if is_on_floor():
+		velocity.y = 0.0
+	else:
+		velocity += get_gravity() * delta
 
 
 func _face_direction(dir: Vector3, delta: float) -> void:

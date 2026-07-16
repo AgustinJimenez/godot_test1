@@ -10,7 +10,8 @@ extends NavigationRegion3D
 func _ready() -> void:
 	get_parent().get_node(^"Geometry").add_to_group(&"navmesh_source")
 	# Give CSG shapes time to build their deferred collision bodies before
-	# the parser reads them.
-	for i in 10:
-		await get_tree().physics_frame
+	# the parser reads them. A fixed physics-frame count isn't reliable here
+	# - the deferred work is wall-clock/load bound, not tied to the physics
+	# tick rate, so a real-time wait is what actually needs to elapse.
+	await get_tree().create_timer(0.5).timeout
 	bake_navigation_mesh(false)
