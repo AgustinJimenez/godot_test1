@@ -197,6 +197,12 @@ func _ready() -> void:
 	if "show_bones" in OS.get_cmdline_user_args():
 		show_bones_toggle.set_pressed_no_signal(true)
 		_on_show_bones_toggled(true)
+	if EngineDebugger.is_active():
+		# Lets addons/mcp_bridge query this exact running instance's live
+		# pose over the editor debugger message channel, as opposed to the
+		# invocation-based dump_bones= automation arg, which only ever reads
+		# a fresh, separately-configured headless process.
+		EngineDebugger.register_message_capture("mcp", _on_mcp_debugger_message)
 	await get_tree().process_frame
 	_frame_full_body()
 	await _run_automation_args()
@@ -1642,7 +1648,7 @@ func _run_automation_args() -> void:
 		get_tree().quit()
 
 
-func _dump_bone_poses(name_filter: String) -> void:
+func _build_bone_pose_dump(name_filter: String) -> Dictionary:
 	var poses := {}
 	for bone_index in body.skeleton.get_bone_count():
 		var bone_name := body.skeleton.get_bone_name(bone_index)
@@ -1656,7 +1662,86 @@ func _dump_bone_poses(name_filter: String) -> void:
 			"global_rotation_degrees": _basis_euler_degrees(global_pose.basis),
 			"global_origin": [global_pose.origin.x, global_pose.origin.y, global_pose.origin.z],
 		}
-	print("POSE_DUMP:", JSON.stringify(poses))
+	return poses
+
+
+func _dump_bone_poses(name_filter: String) -> void:
+	print("POSE_DUMP:", JSON.stringify(_build_bone_pose_dump(name_filter)))
+
+
+func _on_mcp_debugger_message(message: String, data: Array) -> bool:
+	# EngineDebugger.register_message_capture("mcp", ...) strips the "mcp:"
+	# prefix before invoking this callback, so the message here is e.g.
+	# "request_pose_dump", not "mcp:request_pose_dump" - unlike
+	# EditorDebuggerPlugin._capture() on the editor side, which keeps the
+	# full prefixed string.
+	match message:
+		"request_pose_dump":
+			var name_filter := String(data[0]) if data.size() > 0 else ""
+			var poses := _build_bone_pose_dump(name_filter)
+			EngineDebugger.send_message("mcp:pose_dump", [JSON.stringify(poses)])
+			return true
+		"set_bone_rotation":
+			_mcp_set_bone_rotation(data)
+			return true
+		"set_object_transform":
+			_mcp_set_object_transform(data)
+			return true
+		"capture_screenshot":
+			_mcp_capture_screenshot(String(data[0]))
+			return true
+	return false
+
+
+func _mcp_set_bone_rotation(data: Array) -> void:
+	var bone_name := StringName(data[0])
+	if body.skeleton.find_bone(bone_name) < 0:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "Unknown bone %s" % bone_name})])
+		return
+	var rotation := Vector3(float(data[1]), float(data[2]), float(data[3]))
+	# Same call the UI's per-axis sliders make (_on_bone_slider_changed) -
+	# additive on top of the current animation pose, not a replacement.
+	_modifier.set_bone_rotation(bone_name, rotation)
+	_refresh_skeleton()
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "%s rotation set to %s" % [bone_name, rotation]})])
+
+
+func _mcp_set_object_transform(data: Array) -> void:
+	var payload = JSON.parse_string(String(data[0]))
+	if typeof(payload) != TYPE_DICTIONARY:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "Malformed set_object_transform payload"})])
+		return
+	# Same fields the UI's position/rotation/scale sliders write
+	# (_on_object_position_changed etc.) - relative to the attachment bone.
+	if payload.get("position") != null:
+		var p: Array = payload["position"]
+		_held_object.position = Vector3(p[0], p[1], p[2])
+	if payload.get("rotation") != null:
+		var r: Array = payload["rotation"]
+		_held_object.rotation_degrees = Vector3(r[0], r[1], r[2])
+	if payload.get("scale") != null:
+		_held_object.scale = Vector3.ONE * float(payload["scale"])
+	_refresh_skeleton()
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "Object transform updated"})])
+
+
+func _mcp_capture_screenshot(path: String) -> void:
+	# Deliberately not awaited from _on_mcp_debugger_message - it's
+	# uncertain whether EngineDebugger's message-capture dispatch correctly
+	# handles a callback that returns a suspended coroutine instead of an
+	# immediate bool, so this runs fire-and-forget instead and reports its
+	# own result asynchronously once the capture actually completes.
+	var result := await _capture_pose_image(path, false)
+	if result != OK:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "Capture failed: %s" % error_string(result)})])
+	else:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": true, "result": "Captured to %s" % path})])
 
 
 func _basis_euler_degrees(basis: Basis) -> Array[float]:

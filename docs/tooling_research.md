@@ -1013,3 +1013,39 @@ both options mean running a third-party server (Node.js for Godot MCP
 Pro, Python/`uv` for GDAI MCP) with editor and filesystem access, which is
 a real environment/trust decision, same category as the Git LFS TODO
 above, not something to do unprompted. Added as a new Open TODO.
+
+**Superseded, see above**: decided to build a custom MCP server instead of
+installing either third-party option - see the "MCP for the character
+editor" Open TODO entry and `docs/character_editor_mcp_plan.md`.
+
+## 2026-07-17, ninth pass — a third way to read a pose besides screenshot or raw numbers
+
+Prompted directly: besides a screenshot (vision) or a raw dump of bone
+quaternions/Euler angles (precise but hard to spatially reason about
+without mentally rendering it), is there another way for an agent to
+understand a humanoid pose? Yes - **posecodes**, from pose-to-text
+research: **[PoseScript](https://europe.naverlabs.com/research/publications/posescript-3d-human-poses-from-natural-language/)**
+and **[MotionScript](https://arxiv.org/html/2312.12634)**. Checked
+directly (fetched the paper, didn't just trust a summary) whether this
+needs a trained model - **it doesn't**: posecode extraction is confirmed
+rule-based geometry (angle between joint direction vectors, L2 distance
+between joint pairs, axis-aligned coordinate comparison, then if/elif
+bucketing into named categories). Three types: **angle posecodes**
+(`straight`/`slightly bent`/`partially bent`/`bent at a right angle`/
+`almost completely bent`/`completely bent`), **distance posecodes**
+(`close`/`shoulder width`/`spread`/`wide apart`), **relative-position
+posecodes** (`left of`/`right of`, `above`/`below`, `in front of`/`behind`,
+pure sign comparison, no trig). The angle computation is literally the
+same primitive (`angle_to()` between two bone direction vectors) already
+proven working this session for the knee-bend retargeting diagnosis - not
+new territory, just a new packaging of a technique already in hand.
+Exact degree/distance thresholds aren't published in the paper text
+(would need the linked codebase or to pick reasonable ones ourselves).
+
+Proposed as a new `describe_pose()` tool for the character editor MCP
+(full design in `docs/character_editor_mcp_plan.md`) - a genuinely third
+distinct modality alongside vision and raw numbers: a compact categorical
+summary like `{"right_elbow": "bent at a right angle", "hands_distance":
+"close"}`, complementing rather than replacing the raw bone dump.
+
+**Status: adopted into the character editor MCP plan, not yet built.**
