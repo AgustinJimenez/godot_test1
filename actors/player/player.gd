@@ -1,7 +1,7 @@
 class_name Player
 extends CharacterBody3D
 ## First-person controller: mouse look, walk/sprint/crouch, stamina,
-## flashlight toggle and interaction ray. No jump — classic survival horror.
+## jump, flashlight toggle and interaction ray.
 
 const STAND_CAPSULE_HEIGHT := 1.8
 const CROUCH_CAPSULE_HEIGHT := 1.2
@@ -44,6 +44,7 @@ func set_eye_offset(v: Vector3) -> void:
 @export var sprint_speed: float = 5.8
 @export var crouch_speed: float = 1.7
 @export var acceleration: float = 12.0
+@export var jump_velocity: float = 5.0
 
 @export_group("Stamina")
 @export var sprint_duration: float = 6.0
@@ -241,6 +242,9 @@ func _physics_process(delta: float) -> void:
 	_catch_up_body_yaw(input_dir, delta)
 	var sprinting := _update_stamina(delta, input_dir)
 	_update_capsule(delta)
+	if Input.is_action_just_pressed(&"jump") and is_on_floor():
+		_crouched = false
+		velocity.y = jump_velocity
 
 	var speed := crouch_speed if _crouched else (sprint_speed if sprinting else walk_speed)
 	# Movement follows where you're actually looking (body yaw + the head's
@@ -255,7 +259,8 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	body.update_motion(_crouched, weapon.equipped,
-			Vector2(velocity.x, velocity.z).length(), sprinting)
+			Vector2(velocity.x, velocity.z).length(), sprinting,
+			is_on_floor(), velocity.y, delta)
 	# Yaw: _look_yaw is already clamped to head_yaw_limit_deg in _apply_yaw
 	# (same head-leads-then-body-catches-up system in both modes now), so
 	# feeding it straight through is safe in third person too.

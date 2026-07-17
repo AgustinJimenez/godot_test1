@@ -29,7 +29,14 @@ const UAL_GAMEPLAY_CLIPS: Dictionary = {
 	&"unarmed_sprint": &"Sprint",
 	&"unarmed_crouch_idle": &"Crouch_Idle",
 	&"unarmed_crouch_walk": &"Crouch_Fwd",
+	&"unarmed_jump_start": &"Jump_Start",
+	&"unarmed_jump": &"Jump",
+	&"unarmed_jump_land": &"Jump_Land",
 }
+const UAL_LOOPING_GAMEPLAY_CLIPS: PackedStringArray = [
+	"unarmed_idle", "unarmed_walk", "unarmed_sprint",
+	"unarmed_crouch_idle", "unarmed_crouch_walk", "unarmed_jump",
+]
 ## UAL1_Standard.glb's raw clip names for the debug menu. Gameplay aliases
 ## above are baked eagerly; raw-name previews are still retargeted lazily so
 ## a normal play session does not pay for every unused clip.
@@ -165,6 +172,7 @@ const WALK_REF_SPEED := 1.6
 const SPRINT_REF_SPEED := 5.8
 const CROUCH_REF_SPEED := 1.1
 const LOCOMOTION_BLEND_TIME := 0.5
+const JUMP_PHASE_SPEED := 2.5
 
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
@@ -176,6 +184,8 @@ var head_yaw := 0.0
 var _lib: AnimationLibrary
 var _held_pose: Animation
 var _look_pose_modifier: PlayerLookPoseModifier
+var _airborne := false
+var _landing_time_left := 0.0
 
 ## True while a debug-menu clip is being previewed, so update_motion() doesn't
 ## immediately stomp it back to relaxed_idle on the next physics tick (e.g.
@@ -218,7 +228,8 @@ func _ready() -> void:
 	for gameplay_name: StringName in UAL_GAMEPLAY_CLIPS:
 		var source_name: StringName = UAL_GAMEPLAY_CLIPS[gameplay_name]
 		lib.add_animation(gameplay_name,
-				_retarget_clip(UAL_PATH, source_name, _held_pose, true))
+				_retarget_clip(UAL_PATH, source_name, _held_pose,
+						String(gameplay_name) in UAL_LOOPING_GAMEPLAY_CLIPS))
 	_lib = lib
 	anim_player.add_animation_library(&"moves", lib)
 	anim_player.play("moves/unarmed_idle")
@@ -739,11 +750,32 @@ func get_visual_bone_global_pose(bone_idx: int) -> Transform3D:
 
 ## Called by the player every physics tick (calls down, signals up).
 func update_motion(crouched: bool, armed: bool, ground_speed: float,
-		sprinting: bool) -> void:
+		sprinting: bool, on_floor: bool, vertical_velocity: float, delta: float) -> void:
 	if _debug_preview_active:
-		if ground_speed <= 0.6 and not crouched and not armed:
+		if ground_speed <= 0.6 and not crouched and not armed and on_floor:
 			return
 		_debug_preview_active = false
+	if not on_floor:
+		_landing_time_left = 0.0
+		if not _airborne:
+			_airborne = true
+			if vertical_velocity > 0.0:
+				_play_motion(&"unarmed_jump_start", 0.1, JUMP_PHASE_SPEED)
+			else:
+				_play_motion(&"unarmed_jump", 0.1)
+		elif vertical_velocity <= 0.0:
+			_play_motion(&"unarmed_jump", 0.2)
+		return
+	if _airborne:
+		_airborne = false
+		var land_animation := _lib.get_animation(&"unarmed_jump_land")
+		_landing_time_left = land_animation.length / JUMP_PHASE_SPEED
+		_play_motion(&"unarmed_jump_land", 0.1, JUMP_PHASE_SPEED)
+		return
+	if _landing_time_left > 0.0:
+		_landing_time_left = maxf(_landing_time_left - delta, 0.0)
+		if _landing_time_left > 0.0:
+			return
 	var target: StringName
 	var rate := 1.0
 	if ground_speed > 0.6:
@@ -760,10 +792,14 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		target = &"unarmed_crouch_idle"
 	else:
 		target = &"unarmed_idle"
+	_play_motion(target, LOCOMOTION_BLEND_TIME, clampf(rate, 0.8, 2.2))
+
+
+func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> void:
 	var full := "moves/" + target
 	if anim_player.current_animation != full:
-		anim_player.play(full, LOCOMOTION_BLEND_TIME)
-	anim_player.speed_scale = clampf(rate, 0.8, 2.2)
+		anim_player.play(full, blend_time)
+	anim_player.speed_scale = speed
 
 
 ## Every clip the debug menu's animation preview can play, grouped for

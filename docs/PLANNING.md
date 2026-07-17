@@ -6,7 +6,7 @@
 **Setting:** Abandoned research facility
 **Goal:** Learning sandbox — build each system properly to learn Godot FPS/horror development. No shipping pressure, but every system should be built as if it could ship.
 
-> **Status (2026-07-16):** M0–M4 done. Player locomotion now uses the live-accepted retargeted Universal Animation Library unarmed set for idle, walk, sprint, crouch idle, and crouch walk in both camera modes. The shambler (patrol/investigate/chase/attack/search, `NavigationAgent3D` + vision cone + hearing) is live in `test_room.tscn` on a runtime-baked navmesh. Next up: **M5 — Survival pressure** (flashlight battery, scarcity tuning, safe-room save/load). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V debug camera / P debug menu.
+> **Status (2026-07-16):** M0–M4 done. Player locomotion uses the live-accepted retargeted Universal Animation Library unarmed set for idle, walk, sprint, crouch, and an experimental three-phase jump. The shambler (patrol/investigate/chase/attack/search, `NavigationAgent3D` + vision cone + hearing) is live in `test_room.tscn` on a runtime-baked navmesh. Next up: **M5 — Survival pressure** (flashlight battery, scarcity tuning, safe-room save/load). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / Space jump / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V debug camera / P debug menu.
 
 ---
 
@@ -158,7 +158,7 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 - [x] Greybox test room with lighting (placeholder camera until the M1 player exists)
 
 ### M1 — Walking simulator ✅
-- [x] FPS controller: walk/sprint/crouch, stamina, mouse look (no jump — see decisions)
+- [x] FPS controller: walk/sprint/crouch/jump, stamina, mouse look
 - [x] Interaction ray + first interactables (door, pickup, readable note)
 - [x] Flashlight toggle (no battery yet)
 
@@ -206,6 +206,7 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-15 | One enemy type first | Depth over breadth; AI state machine is the learning goal |
 | 2026-07-15 | Saves only in safe rooms | Core to the tension model; simpler serialization scope |
 | 2026-07-15 | No jumping | Classic survival horror; keeps level design and animation scope tight |
+| 2026-07-16 | Reversed the no-jump constraint for experimentation: Space now applies vertical velocity and plays UAL `Jump_Start` → `Jump` → `Jump_Land` phases | This project is primarily a Godot learning sandbox, so testing a complete airborne animation/physics state is more valuable than preserving the earlier genre restriction. Level design still does not require jumping. |
 | 2026-07-15 | Crouch = toggle, sprint = hold; crouch on C (not Ctrl) | Comfort defaults; Ctrl collides with macOS shortcuts |
 | 2026-07-15 | Reading a note pauses the game | Safe reading, RE-style; HUD runs with PROCESS_MODE_ALWAYS to close it |
 | 2026-07-15 | Slot inventory (8 slots + stacks), not RE grid | Same learning value, third of the UI code; can evolve later |
