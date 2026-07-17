@@ -269,7 +269,7 @@ func _physics_process(delta: float) -> void:
 	body.head_yaw = _look_yaw
 
 	if _head_bone_idx >= 0:
-		var head_pose := skeleton.get_bone_global_pose(_head_bone_idx)
+		var head_pose := body.get_visual_bone_global_pose(_head_bone_idx)
 		var head_pos := body.transform * head_pose.origin
 		var safe_look := _solve_safe_look(_look_pitch, _look_yaw, head_pos)
 		var pitch_rot := Basis(Vector3.UP, safe_look.y) * Basis(Vector3.RIGHT, safe_look.x)
@@ -331,7 +331,7 @@ func _bisect_toward_safe(safe: float, candidate: float, is_safe_at: Callable) ->
 func _torso_points() -> Array[Vector3]:
 	var pts: Array[Vector3] = []
 	for idx in _torso_bone_indices:
-		pts.append(body.transform * skeleton.get_bone_global_pose(idx).origin)
+		pts.append(body.transform * body.get_visual_bone_global_pose(idx).origin)
 	return pts
 
 

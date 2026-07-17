@@ -656,15 +656,22 @@ Verification completed:
 The user authorized a checkpoint commit with the remaining hand limitation
 documented. Keep `_pose_compare.tscn` available for continuing that work.
 
+Follow-up accepted on 2026-07-16: gameplay now uses the UAL unarmed `Idle`,
+`Walk`, `Sprint`, `Crouch_Idle`, and `Crouch_Fwd` clips in both camera modes.
+The idle/walk transition uses a 0.5-second crossfade. Camera-driven torso and
+head corrections moved to `PlayerLookPoseModifier` so they are temporary
+post-animation modifications and cannot accumulate into an endless torso
+rotation. The user confirmed the result live before commit.
+
 ## Next steps (pick up here)
 
 1. Open `res://levels/_pose_compare.tscn` and press F6. Use the animation
    dropdown to play the same clip on `RETARGETED - MOTUSMAN` and
    `RAW SOURCE - UAL`. Click empty viewport space and free-fly around them to
    compare each pose from multiple angles; press Esc to return to the menu.
-2. Also test the main game live: unarmed walking uses the newly retargeted
-   `walk_relaxed` path by default. Confirm it reads naturally at gameplay
-   speed and from both first- and third-person debug cameras.
+2. The main-game unarmed locomotion set and look-down modifier were confirmed
+   live on 2026-07-16. Recheck them only when changing retargeting or look-pose
+   code.
 3. Continue the known hand mismatch with `Pistol_Shoot`. Inspect the source and
    target bind poses/skin weights and treat the two-hand grip as a contact or
    IK problem. Do not restore the rejected palm-frame/finger-direction pass or

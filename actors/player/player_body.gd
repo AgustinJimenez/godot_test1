@@ -2,9 +2,8 @@ class_name PlayerBody
 extends Node3D
 ## First-person body: the MotusMan mesh attached under the player so you see
 ## your own torso/legs and cast a shadow. The scene this script sits on is the
-## aim-idle clip FBX; the other clips share the same skeleton, so their
-## animations are merged into this AnimationPlayer at runtime (same trick as
-## levels/animation_preview.gd).
+## aim-idle clip FBX, but gameplay locomotion is retargeted from UAL onto its
+## skeleton. Native MotusMan clips remain loaded as debug references.
 
 const CLIP_DIR := "res://assets/models/pistol_starter/Animation/In-Place/"
 const CLIPS := {
@@ -18,19 +17,22 @@ const CLIPS := {
 ## MotusMan FBXs bake broken absolute texture paths; reapply the diffuse.
 const SKIN_TEXTURE := "res://assets/models/pistol_starter/MotusMan/sourceimages/MCG_diff.jpg"
 
-## pistol_starter only ships an aim-pose walk - no unarmed walk clip exists
-## for MotusMan there. This one comes from the CC0 "Universal Animation
-## Library" pack instead (Unreal Mannequin-style rig, own bone names, own
-## mesh - not used, just the animation), retargeted onto MotusMan at runtime
-## (see _retarget_clip). Already in-place (no baked root motion).
+## pistol_starter only ships aim-pose locomotion. These unarmed gameplay
+## states come from the CC0 Universal Animation Library instead (Unreal
+## Mannequin-style rig, own bone names, own mesh - not used, just animation),
+## retargeted onto MotusMan at startup. Dictionary keys are the local gameplay
+## names and values are the raw UAL clip names.
 const UAL_PATH := "res://assets/models/universal_animation_library/UAL1_Standard.glb"
-const UAL_WALK_ANIM := &"Walk"
-## The rest of UAL1_Standard.glb's 42 bundled clips, not used in real
-## gameplay - debug menu only, so the walk_relaxed situation (looked fine
-## recorded, broke in actual play) can be checked across the whole pack
-## instead of getting rediscovered one clip at a time. Retargeted lazily
-## (see play_debug_anim), not at _ready(), so a normal play session that
-## never opens the debug menu doesn't pay for 41 unused retargets.
+const UAL_GAMEPLAY_CLIPS: Dictionary = {
+	&"unarmed_idle": &"Idle",
+	&"unarmed_walk": &"Walk",
+	&"unarmed_sprint": &"Sprint",
+	&"unarmed_crouch_idle": &"Crouch_Idle",
+	&"unarmed_crouch_walk": &"Crouch_Fwd",
+}
+## UAL1_Standard.glb's raw clip names for the debug menu. Gameplay aliases
+## above are baked eagerly; raw-name previews are still retargeted lazily so
+## a normal play session does not pay for every unused clip.
 const UAL_EXTRA_CLIPS: PackedStringArray = [
 	"A_TPose", "Idle", "Idle_Talking", "Idle_Torch", "Walk_Formal", "Jog_Fwd", "Sprint",
 	"Crouch_Idle", "Crouch_Fwd", "Jump", "Jump_Start", "Jump_Land", "Roll",
@@ -160,8 +162,9 @@ enum LegRetarget {
 
 ## Rough forward speeds (m/s) the clips were authored at, for foot matching.
 const WALK_REF_SPEED := 1.6
-const JOG_REF_SPEED := 3.0
+const SPRINT_REF_SPEED := 5.8
 const CROUCH_REF_SPEED := 1.1
+const LOCOMOTION_BLEND_TIME := 0.5
 
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
@@ -172,6 +175,7 @@ var head_yaw := 0.0
 ## and cache extra clips lazily, on first request, instead of upfront.
 var _lib: AnimationLibrary
 var _held_pose: Animation
+var _look_pose_modifier: PlayerLookPoseModifier
 
 ## True while a debug-menu clip is being previewed, so update_motion() doesn't
 ## immediately stomp it back to relaxed_idle on the next physics tick (e.g.
@@ -187,8 +191,7 @@ var _debug_preview_active := false
 
 
 func _ready() -> void:
-	# Higher priority = processed later: our head-bend pass in _process must
-	# run AFTER the AnimationPlayer has written this frame's pose.
+	# Footstep inspection runs after the AnimationPlayer has written the pose.
 	process_priority = 100
 	# Lets the debug menu's animation preview keep looping while the pause
 	# menu has the rest of the game (including this node's own parent,
@@ -198,6 +201,10 @@ func _ready() -> void:
 	material.albedo_texture = load(SKIN_TEXTURE)
 	material.roughness = 0.85
 	mesh.material_override = material
+	_look_pose_modifier = PlayerLookPoseModifier.new()
+	_look_pose_modifier.name = &"LookPoseModifier"
+	_look_pose_modifier.player_body = self
+	skeleton.add_child(_look_pose_modifier)
 
 	var lib := AnimationLibrary.new()
 	for key: StringName in CLIPS:
@@ -208,10 +215,13 @@ func _ready() -> void:
 		lib.add_animation(key, anim)
 		clip_root.free()
 	_held_pose = lib.get_animation(&"relaxed_idle")
-	lib.add_animation(&"walk_relaxed", _retarget_clip(UAL_PATH, UAL_WALK_ANIM, _held_pose, true))
+	for gameplay_name: StringName in UAL_GAMEPLAY_CLIPS:
+		var source_name: StringName = UAL_GAMEPLAY_CLIPS[gameplay_name]
+		lib.add_animation(gameplay_name,
+				_retarget_clip(UAL_PATH, source_name, _held_pose, true))
 	_lib = lib
 	anim_player.add_animation_library(&"moves", lib)
-	anim_player.play("moves/relaxed_idle")
+	anim_player.play("moves/unarmed_idle")
 
 
 ## Copies a differently-rigged clip's tracks onto MotusMan's skeleton via
@@ -607,10 +617,6 @@ func _bake_held_track(
 
 
 func _process(delta: float) -> void:
-	# Torso first: Neck sits on Spine2, so leaning the spine forward moves
-	# where the neck/head bend starts from, same as a real body would.
-	_bend_torso()
-	_bend_head_bones()
 	_update_footstep_markers(delta)
 
 
@@ -722,62 +728,13 @@ func clamp_head_pitch(p: float) -> float:
 	return clampf(p, -deg_to_rad(MAX_BEND_DOWN_DEG), deg_to_rad(MAX_BEND_UP_DEG))
 
 
-## A small forward lean when looking down - just enough to read as leaning
-## to look rather than a rigid periscope neck. Pitch only (yaw already turns
-## the body itself via the head-yaw-limit/catch-up system), and only for
-## looking down, not up. Same clamped pitch as the neck/head bend so it
-## eases back out at the same rate.
-const TORSO_BEND: Dictionary = {
-	&"Spine": 0.04,
-	&"Spine1": 0.05,
-	&"Spine2": 0.06,
-}
-
-func _bend_torso() -> void:
-	var clamped_pitch := clamp_head_pitch(head_pitch)
-	if clamped_pitch >= 0.0:
-		return
-	for bone_name: StringName in TORSO_BEND:
-		var idx := skeleton.find_bone(bone_name)
-		if idx < 0:
-			continue
-		var portion: float = TORSO_BEND[bone_name]
-		var pose := skeleton.get_bone_global_pose(idx)
-		pose.basis = Basis(Vector3.RIGHT, -clamped_pitch * portion) * pose.basis
-		skeleton.set_bone_global_pose(idx, pose)
-
-
-## Each axis is clamped on its own (MAX_BEND_*_DEG, head_yaw_limit_deg), but
-## pitch and yaw near their limits *at the same time* compose into a larger
-## rotation than either alone - large enough to hit the same skin-stretch
-## artifact even though neither individual clamp was exceeded. Scale the
-## (yaw, pitch) pair down together, as a single vector, so their combined
-## magnitude never exceeds MAX_BEND_UP_DEG either - this only affects the
-## visible bend, not the camera's actual look direction.
-const MAX_COMBINED_BEND_DEG := MAX_BEND_UP_DEG
-
-## Bend neck (35%) and head (65%) with the camera pitch/yaw so the skull
-## rotates with the view instead of the camera diving through it. Runs
-## after animation (process_priority), rotating the animated pose.
-func _bend_head_bones() -> void:
-	var split := {&"Neck": 0.35, &"Head": 0.65}
-	var clamped_pitch := clamp_head_pitch(head_pitch)
-	var yaw := head_yaw
-	var combined := Vector2(yaw, clamped_pitch)
-	var max_combined := deg_to_rad(MAX_COMBINED_BEND_DEG)
-	if combined.length() > max_combined:
-		combined = combined.normalized() * max_combined
-		yaw = combined.x
-		clamped_pitch = combined.y
-	for bone_name: StringName in split:
-		var idx := skeleton.find_bone(bone_name)
-		if idx < 0:
-			continue
-		var portion: float = split[bone_name]
-		var pose := skeleton.get_bone_global_pose(idx)
-		pose.basis = (Basis(Vector3.UP, yaw * portion)
-				* Basis(Vector3.RIGHT, -clamped_pitch * portion) * pose.basis)
-		skeleton.set_bone_global_pose(idx, pose)
+## The modifier's cached pose is the one rendered this frame. Skeleton3D
+## restores the base animation pose after modifiers finish, so camera and
+## clearance consumers use this accessor instead of reading the reset pose.
+func get_visual_bone_global_pose(bone_idx: int) -> Transform3D:
+	if _look_pose_modifier != null:
+		return _look_pose_modifier.get_adjusted_global_pose(bone_idx)
+	return skeleton.get_bone_global_pose(bone_idx)
 
 
 ## Called by the player every physics tick (calls down, signals up).
@@ -791,43 +748,41 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 	var rate := 1.0
 	if ground_speed > 0.6:
 		if crouched:
-			target = &"crouch_walk"
+			target = &"unarmed_crouch_walk"
 			rate = ground_speed / CROUCH_REF_SPEED
 		elif sprinting:
-			target = &"jog"
-			rate = ground_speed / JOG_REF_SPEED
+			target = &"unarmed_sprint"
+			rate = ground_speed / SPRINT_REF_SPEED
 		else:
-			# walk_relaxed (retargeted, unarmed) isn't used for real movement
-			# yet - still visibly wrong in actual play despite passing every
-			# automated check so far. Reachable only through the debug menu's
-			# animation preview until it's confirmed fixed by hand.
-			target = &"walk"
+			target = &"unarmed_walk"
 			rate = ground_speed / WALK_REF_SPEED
 	elif crouched:
-		target = &"crouch_idle"
+		target = &"unarmed_crouch_idle"
 	else:
-		target = &"aim_idle" if armed else &"relaxed_idle"
+		target = &"unarmed_idle"
 	var full := "moves/" + target
 	if anim_player.current_animation != full:
-		anim_player.play(full, 0.3)
+		anim_player.play(full, LOCOMOTION_BLEND_TIME)
 	anim_player.speed_scale = clampf(rate, 0.8, 2.2)
 
 
 ## Every clip the debug menu's animation preview can play, grouped for
-## display - "Default" is the native MotusMan set plus walk_relaxed (what
-## real gameplay actually uses or has tried), the rest are labeled by
-## source package. Dictionary preserves insertion order, so "Default" is
-## always the first group.
+## display. Gameplay aliases come first, followed by the native MotusMan
+## references and then all raw UAL clips. Dictionary preserves insertion
+## order, so the active gameplay set is always the first group.
 func get_animation_groups() -> Dictionary:
-	var default_group: Array[StringName] = []
+	var gameplay_group: Array[StringName] = []
+	for key: StringName in UAL_GAMEPLAY_CLIPS:
+		gameplay_group.append(key)
+	var native_group: Array[StringName] = []
 	for key: StringName in CLIPS:
-		default_group.append(key)
-	default_group.append(&"walk_relaxed")
+		native_group.append(key)
 	var ual_group: Array[StringName] = []
 	for clip_name: String in UAL_EXTRA_CLIPS:
 		ual_group.append(StringName(clip_name))
 	return {
-		&"Default": default_group,
+		&"Gameplay - Unarmed": gameplay_group,
+		&"MotusMan References": native_group,
 		&"Universal Animation Library": ual_group,
 	}
 

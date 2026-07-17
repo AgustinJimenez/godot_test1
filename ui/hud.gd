@@ -275,10 +275,7 @@ func _build_anim_list(player: Node) -> void:
 		anim_list.add_child(header)
 		for anim_name: StringName in groups[group_name]:
 			var button := Button.new()
-			# relaxed_idle is what the character actually rests in outside
-			# the preview, so it gets the friendlier "Default" label; every
-			# other clip just shows its own name.
-			button.text = "Default" if anim_name == &"relaxed_idle" else String(anim_name)
+			button.text = "Default" if anim_name == &"unarmed_idle" else String(anim_name)
 			button.pressed.connect(_on_anim_button_pressed.bind(anim_name))
 			anim_list.add_child(button)
 

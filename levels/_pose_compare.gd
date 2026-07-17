@@ -69,8 +69,6 @@ func _rest_body_facing(skeleton: Skeleton3D, hips: StringName, head: StringName,
 
 
 func _build_animation_picker() -> void:
-	# Walk is exposed in gameplay as walk_relaxed; all other entries use the
-	# raw UAL name in both models.
 	_clip_names.append(&"Walk")
 	var groups := implementation.get_animation_groups()
 	for clip_name: StringName in groups[&"Universal Animation Library"]:
@@ -95,7 +93,7 @@ func _on_animation_selected(index: int) -> void:
 
 func _play_clip(raw_clip_name: StringName) -> void:
 	_set_preview_height(SWIM_PREVIEW_HEIGHT if String(raw_clip_name).begins_with("Swim_") else 0.0)
-	var target_clip := &"walk_relaxed" if raw_clip_name == &"Walk" else raw_clip_name
+	var target_clip := &"unarmed_walk" if raw_clip_name == &"Walk" else raw_clip_name
 	implementation.play_debug_anim(target_clip, 0.0)
 	for library_name in _raw_animation_player.get_animation_library_list():
 		var library := _raw_animation_player.get_animation_library(library_name)
