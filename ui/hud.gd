@@ -30,8 +30,11 @@ var _hurt_tween: Tween
 @onready var drop_button: Button = $InventoryOverlay/Center/Panel/Margin/VBox/Buttons/DropButton
 @onready var debug_overlay: Control = $DebugOverlay
 @onready var main_panel: PanelContainer = $DebugOverlay/Center/MainPanel
+@onready var main_guide_button: Button = $DebugOverlay/Center/MainPanel/MainMargin/MainVBox/GuideButton
 @onready var main_debug_button: Button = $DebugOverlay/Center/MainPanel/MainMargin/MainVBox/DebugButton
 @onready var main_close_button: Button = $DebugOverlay/Center/MainPanel/MainMargin/MainVBox/CloseButton
+@onready var guide_panel: PanelContainer = $DebugOverlay/Center/GuidePanel
+@onready var guide_back_button: Button = $DebugOverlay/Center/GuidePanel/GuideMargin/GuideVBox/BackButton
 @onready var debug_panel: PanelContainer = $DebugOverlay/Center/DebugPanel
 @onready var debug_field_x: LineEdit = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldX
 @onready var debug_field_y: LineEdit = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldY
@@ -56,7 +59,9 @@ func _ready() -> void:
 	footstep_button.pressed.connect(_on_footstep_button_pressed)
 	fov_gizmo_button.pressed.connect(_on_fov_gizmo_button_pressed)
 	main_debug_button.pressed.connect(_show_debug_page)
+	main_guide_button.pressed.connect(_show_guide_page)
 	main_close_button.pressed.connect(_close_debug)
+	guide_back_button.pressed.connect(_show_debug_main)
 	anim_clips_button.pressed.connect(_show_anim_page)
 	debug_back_button.pressed.connect(_show_debug_main)
 	anim_back_button.pressed.connect(_show_debug_page)
@@ -78,10 +83,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_inventory()
 		get_viewport().set_input_as_handled()
 	elif debug_overlay.visible and (event.is_action_pressed(&"pause")
+			or event.is_action_pressed(&"debug_menu")
 			or event.is_action_pressed(&"inventory")):
 		toggle_debug()
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed(&"pause"):
+	elif event.is_action_pressed(&"pause") or event.is_action_pressed(&"debug_menu"):
 		toggle_debug()
 		get_viewport().set_input_as_handled()
 
@@ -235,22 +241,32 @@ func _close_debug() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
-## Debug menu is one overlay with three pages shown/hidden in place, not
-## three separate overlays - only one of these should ever be visible.
+## Debug menu is one overlay with pages shown/hidden in place, not separate
+## overlays - only one of these should ever be visible.
 func _show_debug_main() -> void:
 	main_panel.show()
+	guide_panel.hide()
+	debug_panel.hide()
+	anim_panel_anchor.hide()
+
+
+func _show_guide_page() -> void:
+	main_panel.hide()
+	guide_panel.show()
 	debug_panel.hide()
 	anim_panel_anchor.hide()
 
 
 func _show_debug_page() -> void:
 	main_panel.hide()
+	guide_panel.hide()
 	debug_panel.show()
 	anim_panel_anchor.hide()
 
 
 func _show_anim_page() -> void:
 	main_panel.hide()
+	guide_panel.hide()
 	debug_panel.hide()
 	anim_panel_anchor.show()
 

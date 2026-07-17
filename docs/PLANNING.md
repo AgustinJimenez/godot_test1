@@ -6,7 +6,7 @@
 **Setting:** Abandoned research facility
 **Goal:** Learning sandbox — build each system properly to learn Godot FPS/horror development. No shipping pressure, but every system should be built as if it could ship.
 
-> **Status (2026-07-16):** M0–M4 done. Player locomotion uses the live-accepted retargeted Universal Animation Library unarmed set for idle, walk, sprint, crouch, and an experimental three-phase jump. The shambler (patrol/investigate/chase/attack/search, `NavigationAgent3D` + vision cone + hearing) is live in `test_room.tscn` on a runtime-baked navmesh. Next up: **M5 — Survival pressure** (flashlight battery, scarcity tuning, safe-room save/load). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / Space jump / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V debug camera / P debug menu.
+> **Status (2026-07-16):** M0–M4 done. Player locomotion uses the retargeted UAL unarmed set, including jump, roll, alternating punches, interaction/pickup actions, and flashlight-specific idle. The test room includes labeled action-preview stations and the P/Esc menu includes a controls guide. The shambler (patrol/investigate/chase/attack/search, `NavigationAgent3D` + vision cone + hearing) is live in `test_room.tscn` on a runtime-baked navmesh. Next up: **M5 — Survival pressure** (flashlight battery, scarcity tuning, safe-room save/load). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / Space jump / X roll / Q punch / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V camera / P or Esc menu.
 
 ---
 
@@ -207,6 +207,7 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-15 | Saves only in safe rooms | Core to the tension model; simpler serialization scope |
 | 2026-07-15 | No jumping | Classic survival horror; keeps level design and animation scope tight |
 | 2026-07-16 | Reversed the no-jump constraint for experimentation: Space now applies vertical velocity and plays UAL `Jump_Start` → `Jump` → `Jump_Land` phases | This project is primarily a Godot learning sandbox, so testing a complete airborne animation/physics state is more valuable than preserving the earlier genre restriction. Level design still does not require jumping. |
+| 2026-07-16 | Added an action-animation priority layer: X rolls with a short directional impulse, Q alternates jab/cross, E interactables request interact/pickup clips, and flashlight-on idle uses `Idle_Torch`; labeled test spheres and a menu controls guide expose the experiments | One-shot clips must temporarily outrank the locomotion selector or they are replaced on the next physics tick. Keeping the request as a semantic animation name on `Interactable` preserves the existing generic interaction contract. |
 | 2026-07-15 | Crouch = toggle, sprint = hold; crouch on C (not Ctrl) | Comfort defaults; Ctrl collides with macOS shortcuts |
 | 2026-07-15 | Reading a note pauses the game | Safe reading, RE-style; HUD runs with PROCESS_MODE_ALWAYS to close it |
 | 2026-07-15 | Slot inventory (8 slots + stacks), not RE grid | Same learning value, third of the UI code; can evolve later |

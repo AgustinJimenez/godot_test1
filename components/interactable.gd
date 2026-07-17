@@ -7,6 +7,7 @@ signal interacted(player: Node3D)
 
 @export var prompt: String = "Interact"
 @export var enabled: bool = true
+@export var animation_name: StringName = &"unarmed_interact"
 
 
 func interact(player: Node3D) -> void:

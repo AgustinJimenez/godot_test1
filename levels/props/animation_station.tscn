@@ -1,0 +1,44 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://levels/props/animation_station.gd" id="1_station"]
+[ext_resource type="Script" path="res://components/interactable.gd" id="2_interactable"]
+
+[sub_resource type="StandardMaterial3D" id="Material_station"]
+albedo_color = Color(0.12, 0.62, 0.72, 1)
+emission_enabled = true
+emission = Color(0.04, 0.3, 0.38, 1)
+emission_energy_multiplier = 0.7
+roughness = 0.35
+
+[sub_resource type="SphereMesh" id="Mesh_station"]
+material = SubResource("Material_station")
+radius = 0.28
+height = 0.56
+
+[sub_resource type="SphereShape3D" id="Shape_station"]
+radius = 0.4
+
+[node name="AnimationStation" type="Area3D"]
+collision_layer = 8
+collision_mask = 0
+script = ExtResource("1_station")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_station")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_station")
+
+[node name="Label" type="Label3D" parent="."]
+position = Vector3(0, 0.62, 0)
+billboard = 1
+no_depth_test = true
+font_size = 32
+outline_size = 8
+text = "ANIMATION"
+
+[node name="Interactable" type="Node" parent="."]
+script = ExtResource("2_interactable")
+animation_name = &""
+
+[connection signal="interacted" from="Interactable" to="." method="_on_interactable_interacted"]

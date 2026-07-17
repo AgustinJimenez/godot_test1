@@ -241,13 +241,41 @@ theme_override_constants/separation = 10
 
 [node name="Title" type="Label" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
 theme_override_font_sizes/font_size = 18
-text = "DEBUG MENU"
+text = "MENU"
+
+[node name="GuideButton" type="Button" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
+text = "Controls Guide"
 
 [node name="DebugButton" type="Button" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
 text = "Debug"
 
 [node name="CloseButton" type="Button" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
 text = "Close"
+
+[node name="GuidePanel" type="PanelContainer" parent="DebugOverlay/Center"]
+visible = false
+custom_minimum_size = Vector2(480, 0)
+
+[node name="GuideMargin" type="MarginContainer" parent="DebugOverlay/Center/GuidePanel"]
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 16
+
+[node name="GuideVBox" type="VBoxContainer" parent="DebugOverlay/Center/GuidePanel/GuideMargin"]
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="DebugOverlay/Center/GuidePanel/GuideMargin/GuideVBox"]
+theme_override_font_sizes/font_size = 20
+text = "CONTROLS GUIDE"
+
+[node name="GuideText" type="Label" parent="DebugOverlay/Center/GuidePanel/GuideMargin/GuideVBox"]
+theme_override_colors/font_color = Color(0.86, 0.88, 0.92, 1)
+theme_override_font_sizes/font_size = 16
+text = "WASD     Move\nMouse    Look\nShift    Sprint\nSpace    Jump\nX        Roll\nQ        Punch (alternates jab / cross)\nC        Toggle crouch\nF        Toggle flashlight / torch idle\nE        Interact / pick up\nLMB      Fire\nRMB      Aim\nR        Reload\nTab      Inventory\nV        First / third-person camera\nP / Esc  Menu"
+
+[node name="BackButton" type="Button" parent="DebugOverlay/Center/GuidePanel/GuideMargin/GuideVBox"]
+text = "< Back"
 
 [node name="DebugPanel" type="PanelContainer" parent="DebugOverlay/Center"]
 visible = false

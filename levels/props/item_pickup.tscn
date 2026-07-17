@@ -32,5 +32,6 @@ shape = SubResource("Shape_pickup")
 
 [node name="Interactable" type="Node" parent="."]
 script = ExtResource("2_interactable")
+animation_name = &"unarmed_pickup"
 
 [connection signal="interacted" from="Interactable" to="." method="_on_interactable_interacted"]

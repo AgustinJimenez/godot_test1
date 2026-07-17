@@ -45,6 +45,11 @@ func set_eye_offset(v: Vector3) -> void:
 @export var crouch_speed: float = 1.7
 @export var acceleration: float = 12.0
 @export var jump_velocity: float = 5.0
+@export var roll_speed: float = 7.0
+@export var roll_duration: float = 0.75
+@export var roll_cooldown: float = 0.4
+@export_range(0.0, 3.0, 0.05) var punch_delay_min: float = 0.25
+@export_range(0.0, 3.0, 0.05) var punch_delay_max: float = 0.75
 
 @export_group("Stamina")
 @export var sprint_duration: float = 6.0
@@ -63,6 +68,12 @@ var _sprint_locked := false
 var _crouched := false
 var _dead := false
 var _debug_cam_active := false
+var _roll_time_left := 0.0
+var _roll_cooldown_left := 0.0
+var _roll_direction := Vector3.ZERO
+var _next_punch_is_jab := true
+var _punch_cooldown_left := 0.0
+var _action_rng := RandomNumberGenerator.new()
 ## Debug menu toggle: the FOV gizmo already only shows up while the third-
 ## person view is active (no point drawing the first-person camera's FOV
 ## from inside its own view) - this is a second, manual gate on top of
@@ -121,7 +132,9 @@ func _ready() -> void:
 	hud.bind_weapon(weapon)
 	inventory.changed.connect(_update_weapon_equip)
 	weapon.fired.connect(_on_weapon_fired)
+	body.action_finished.connect(_on_body_action_finished)
 	health.died.connect(_on_died)
+	_action_rng.randomize()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -153,6 +166,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed(&"interact"):
 		var target := _current_interactable()
 		if target:
+			if target.animation_name != &"":
+				body.play_action_animation(target.animation_name, 1.35)
 			target.interact(self)
 	elif event.is_action_pressed(&"debug_camera"):
 		# Third-person dev view: ThirdPersonArm is a plain child of the
@@ -242,7 +257,29 @@ func _physics_process(delta: float) -> void:
 	_catch_up_body_yaw(input_dir, delta)
 	var sprinting := _update_stamina(delta, input_dir)
 	_update_capsule(delta)
-	if Input.is_action_just_pressed(&"jump") and is_on_floor():
+	_roll_cooldown_left = maxf(_roll_cooldown_left - delta, 0.0)
+	_punch_cooldown_left = maxf(_punch_cooldown_left - delta, 0.0)
+	var look_basis := Basis(Vector3.UP, rotation.y + _look_yaw)
+	if (Input.is_action_just_pressed(&"roll") and is_on_floor()
+			and _roll_time_left <= 0.0 and _roll_cooldown_left <= 0.0
+			and not body.is_action_active()):
+		var roll_input := Vector3(input_dir.x, 0.0, input_dir.y)
+		var requested_direction := (look_basis * (
+				roll_input.normalized() if not roll_input.is_zero_approx() else Vector3.FORWARD)
+				).normalized()
+		if body.play_action_animation(&"unarmed_roll", 1.8, 0.08):
+			_crouched = false
+			_roll_direction = requested_direction
+			_roll_time_left = roll_duration
+			_roll_cooldown_left = roll_duration + roll_cooldown
+	elif (Input.is_action_just_pressed(&"melee") and is_on_floor()
+			and _roll_time_left <= 0.0 and _punch_cooldown_left <= 0.0
+			and not body.is_action_active()):
+		var punch := &"unarmed_punch_jab" if _next_punch_is_jab else &"unarmed_punch_cross"
+		if body.play_action_animation(punch, 1.3, 0.08):
+			_next_punch_is_jab = not _next_punch_is_jab
+	if (Input.is_action_just_pressed(&"jump") and is_on_floor()
+			and _roll_time_left <= 0.0):
 		_crouched = false
 		velocity.y = jump_velocity
 
@@ -250,17 +287,28 @@ func _physics_process(delta: float) -> void:
 	# Movement follows where you're actually looking (body yaw + the head's
 	# offset from it), not just the body's facing - otherwise glancing to the
 	# side while walking forward would strafe instead of walking that way.
-	var look_basis := Basis(Vector3.UP, rotation.y + _look_yaw)
 	var direction := (look_basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
-	velocity.x = move_toward(velocity.x, direction.x * speed, acceleration * delta)
-	velocity.z = move_toward(velocity.z, direction.z * speed, acceleration * delta)
+	if _roll_time_left > 0.0:
+		_roll_time_left = maxf(_roll_time_left - delta, 0.0)
+		if _roll_time_left > 0.0:
+			velocity.x = _roll_direction.x * roll_speed
+			velocity.z = _roll_direction.z * roll_speed
+		else:
+			# The roll owns horizontal velocity, so it must also release it.
+			# Leaving the final roll velocity for normal acceleration to decay
+			# makes the idle pose visibly slide for another half-second.
+			velocity.x = direction.x * speed
+			velocity.z = direction.z * speed
+	else:
+		velocity.x = move_toward(velocity.x, direction.x * speed, acceleration * delta)
+		velocity.z = move_toward(velocity.z, direction.z * speed, acceleration * delta)
 	if not is_on_floor():
 		velocity += get_gravity() * delta
 	move_and_slide()
 
 	body.update_motion(_crouched, weapon.equipped,
 			Vector2(velocity.x, velocity.z).length(), sprinting,
-			is_on_floor(), velocity.y, delta)
+			is_on_floor(), velocity.y, delta, flashlight.visible)
 	# Yaw: _look_yaw is already clamped to head_yaw_limit_deg in _apply_yaw
 	# (same head-leads-then-body-catches-up system in both modes now), so
 	# feeding it straight through is safe in third person too.
@@ -447,6 +495,14 @@ func _on_weapon_fired() -> void:
 	# Recoil stays player-side: the weapon signals up, the player owns the head.
 	_look_pitch = minf(_look_pitch + 0.014, deg_to_rad(pitch_limit_deg))
 	head.rotation.x = _look_pitch
+
+
+func _on_body_action_finished(animation_name: StringName) -> void:
+	if animation_name not in [&"moves/unarmed_punch_jab", &"moves/unarmed_punch_cross"]:
+		return
+	var low := minf(punch_delay_min, punch_delay_max)
+	var high := maxf(punch_delay_min, punch_delay_max)
+	_punch_cooldown_left = _action_rng.randf_range(low, high)
 
 
 ## Radius (meters) at which the player's current movement noise can be

@@ -5,6 +5,8 @@ extends Node3D
 ## aim-idle clip FBX, but gameplay locomotion is retargeted from UAL onto its
 ## skeleton. Native MotusMan clips remain loaded as debug references.
 
+signal action_finished(animation_name: StringName)
+
 const CLIP_DIR := "res://assets/models/pistol_starter/Animation/In-Place/"
 const CLIPS := {
 	&"relaxed_idle": "W1_Stand_Relaxed_Idle_IPC",
@@ -32,10 +34,17 @@ const UAL_GAMEPLAY_CLIPS: Dictionary = {
 	&"unarmed_jump_start": &"Jump_Start",
 	&"unarmed_jump": &"Jump",
 	&"unarmed_jump_land": &"Jump_Land",
+	&"unarmed_roll": &"Roll",
+	&"unarmed_punch_jab": &"Punch_Jab",
+	&"unarmed_punch_cross": &"Punch_Cross",
+	&"unarmed_interact": &"Interact",
+	&"unarmed_pickup": &"PickUp_Table",
+	&"unarmed_torch_idle": &"Idle_Torch",
 }
 const UAL_LOOPING_GAMEPLAY_CLIPS: PackedStringArray = [
 	"unarmed_idle", "unarmed_walk", "unarmed_sprint",
 	"unarmed_crouch_idle", "unarmed_crouch_walk", "unarmed_jump",
+	"unarmed_torch_idle",
 ]
 ## UAL1_Standard.glb's raw clip names for the debug menu. Gameplay aliases
 ## above are baked eagerly; raw-name previews are still retargeted lazily so
@@ -186,6 +195,7 @@ var _held_pose: Animation
 var _look_pose_modifier: PlayerLookPoseModifier
 var _airborne := false
 var _landing_time_left := 0.0
+var _action_animation := &""
 
 ## True while a debug-menu clip is being previewed, so update_motion() doesn't
 ## immediately stomp it back to relaxed_idle on the next physics tick (e.g.
@@ -232,6 +242,7 @@ func _ready() -> void:
 						String(gameplay_name) in UAL_LOOPING_GAMEPLAY_CLIPS))
 	_lib = lib
 	anim_player.add_animation_library(&"moves", lib)
+	anim_player.animation_finished.connect(_on_animation_finished)
 	anim_player.play("moves/unarmed_idle")
 
 
@@ -750,12 +761,14 @@ func get_visual_bone_global_pose(bone_idx: int) -> Transform3D:
 
 ## Called by the player every physics tick (calls down, signals up).
 func update_motion(crouched: bool, armed: bool, ground_speed: float,
-		sprinting: bool, on_floor: bool, vertical_velocity: float, delta: float) -> void:
+		sprinting: bool, on_floor: bool, vertical_velocity: float, delta: float,
+		torch_enabled: bool) -> void:
 	if _debug_preview_active:
 		if ground_speed <= 0.6 and not crouched and not armed and on_floor:
 			return
 		_debug_preview_active = false
 	if not on_floor:
+		_action_animation = &""
 		_landing_time_left = 0.0
 		if not _airborne:
 			_airborne = true
@@ -776,6 +789,8 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		_landing_time_left = maxf(_landing_time_left - delta, 0.0)
 		if _landing_time_left > 0.0:
 			return
+	if _action_animation != &"":
+		return
 	var target: StringName
 	var rate := 1.0
 	if ground_speed > 0.6:
@@ -791,7 +806,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 	elif crouched:
 		target = &"unarmed_crouch_idle"
 	else:
-		target = &"unarmed_idle"
+		target = &"unarmed_torch_idle" if torch_enabled else &"unarmed_idle"
 	_play_motion(target, LOCOMOTION_BLEND_TIME, clampf(rate, 0.8, 2.2))
 
 
@@ -800,6 +815,31 @@ func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> 
 	if anim_player.current_animation != full:
 		anim_player.play(full, blend_time)
 	anim_player.speed_scale = speed
+
+
+## Starts a one-shot action that temporarily owns the body animation. Normal
+## locomotion resumes from animation_finished; jumping can interrupt it.
+func play_action_animation(animation_name: StringName, speed: float = 1.0,
+		blend_time: float = 0.12) -> bool:
+	if _action_animation != &"" or not _lib.has_animation(animation_name):
+		return false
+	var animation := _lib.get_animation(animation_name)
+	if animation.loop_mode != Animation.LOOP_NONE:
+		return false
+	_debug_preview_active = false
+	_action_animation = StringName("moves/" + String(animation_name))
+	_play_motion(animation_name, blend_time, speed)
+	return true
+
+
+func _on_animation_finished(animation_name: StringName) -> void:
+	if animation_name == _action_animation:
+		_action_animation = &""
+		action_finished.emit(animation_name)
+
+
+func is_action_active() -> bool:
+	return _action_animation != &""
 
 
 ## Every clip the debug menu's animation preview can play, grouped for
