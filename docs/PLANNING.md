@@ -6,7 +6,7 @@
 **Setting:** Abandoned research facility
 **Goal:** Learning sandbox — build each system properly to learn Godot FPS/horror development. No shipping pressure, but every system should be built as if it could ship.
 
-> **Status (2026-07-16):** M0–M4 done. Player locomotion uses the retargeted UAL unarmed set, including jump, roll, alternating punches, interaction/pickup actions, and flashlight-specific idle. The test room includes labeled action-preview stations and the P/Esc menu includes a controls guide. The shambler (patrol/investigate/chase/attack/search, `NavigationAgent3D` + vision cone + hearing) is live in `test_room.tscn` on a runtime-baked navmesh. Next up: **M5 — Survival pressure** (flashlight battery, scarcity tuning, safe-room save/load). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / Space jump / X roll / Q punch / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V camera / P or Esc menu.
+> **Status (2026-07-17):** M0–M4 done. Player locomotion uses the retargeted UAL unarmed set, including jump, roll, alternating punches, interaction/pickup actions, and an experimental right-hand flashlight pose copied from UAL2 `Idle_Lantern`. The test room includes labeled action-preview stations and the P/Esc menu includes a controls guide. The shambler (patrol/investigate/chase/attack/search, `NavigationAgent3D` + vision cone + hearing) is live in `test_room.tscn` on a runtime-baked navmesh. Next up: **M5 — Survival pressure** (flashlight battery, scarcity tuning, safe-room save/load). Main scene is `levels/playground.tscn`; controls: WASD / Shift sprint / Space jump / X roll / Q punch / C crouch / F flashlight / E interact / Tab inventory / LMB fire / RMB aim / R reload / V camera / P or Esc menu.
 
 ---
 
@@ -111,10 +111,12 @@ Each system is a self-contained learning unit. Rough build order in §5.
 
 | Pack | Contents | Earmarked for |
 |---|---|---|
-| `action_adventure_pack` | Mixamo-skeleton clips (idle, walk, run, sneak, cover…) + "The Boss" skinned character | **M4 enemy** — clips share one skeleton, so they load into any Mixamo character's AnimationPlayer at runtime (see `levels/animation_preview.gd`) |
+| `action_adventure_pack` | Mixamo-skeleton clips (idle, walk, run, sneak, cover…) + "The Boss" skinned character | **M4 enemy** — clips share one skeleton, so they load into any Mixamo character's AnimationPlayer at runtime (see `tests/manual/animation/animation_preview.gd`) |
 | `pistol_starter` | MoCap Online MotusMan character, 1911 pistol model, pistol aim/walk/fire animation set | **M3 reference** for weapon handling; the 1911 could become the viewmodel weapon |
+| `universal_animation_library` | Quaternius UAL1 in-place animation library and mannequin, CC0 | Current unarmed player locomotion/actions and raw comparison source |
+| `universal_animation_library_2` | Quaternius UAL2 in-place animation library and mannequin, CC0; 42 non-conflicting clips exposed in the animation viewer | Candidate held-object poses, especially `Idle_Lantern` and `Walk_Carry`; debug-only until manually accepted |
 
-Notes: MotusMan FBXs reference textures by absolute paths from the author's machine — reapply `MotusMan/sourceimages/MCG_diff.jpg` as a material override. `levels/animation_preview.tscn` previews both packs inside the test room. ⚠️ If this repo ever goes public, check pack licenses first (game use OK, raw FBX redistribution generally not).
+Notes: MotusMan FBXs reference textures by absolute paths from the author's machine — reapply `MotusMan/sourceimages/MCG_diff.jpg` as a material override. `tests/manual/animation/animation_preview.tscn` previews the older FBX packs inside the test room; `tests/manual/animation/animation_viewer.tscn` previews UAL1/UAL2 with raw-versus-retargeted comparison. The UAL packs include their CC0 license files. ⚠️ If this repo ever goes public, check the non-UAL pack licenses first (game use OK, raw FBX redistribution generally not).
 
 ### Project structure
 ```
@@ -208,6 +210,8 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 | 2026-07-15 | No jumping | Classic survival horror; keeps level design and animation scope tight |
 | 2026-07-16 | Reversed the no-jump constraint for experimentation: Space now applies vertical velocity and plays UAL `Jump_Start` → `Jump` → `Jump_Land` phases | This project is primarily a Godot learning sandbox, so testing a complete airborne animation/physics state is more valuable than preserving the earlier genre restriction. Level design still does not require jumping. |
 | 2026-07-16 | Added an action-animation priority layer: X rolls with a short directional impulse, Q alternates jab/cross, E interactables request interact/pickup clips, and flashlight-on idle uses `Idle_Torch`; labeled test spheres and a menu controls guide expose the experiments | One-shot clips must temporarily outrank the locomotion selector or they are replaced on the next physics tick. Keeping the request as a semantic animation name on `Interactable` preserves the existing generic interaction contract. |
+| 2026-07-16 | Flashlight visual is a scaled GLB attached to MotusMan's `LeftHand`; the functional spotlight remains camera-owned and offset left | `Idle_Torch` authors a forward left-hand grip, and `BoneAttachment3D` keeps the prop synchronized with it. Separating the beam from the animated wrist preserves predictable view-aligned illumination while still rendering the held object correctly in first and third person. |
+| 2026-07-17 | Added CC0 UAL2 to the grouped animation viewer and copied `Idle_Lantern` into the local looping `unarmed_torch_idle` gameplay state; moved the experimental prop attachment and beam offset to the right side | UAL2 shares UAL1's complete mannequin/finger skeleton, and `Idle_Lantern` supplies a purpose-authored right-hand held-object pose. Keep source assets immutable and tune only the local retargeted state/additive arm layer. |
 | 2026-07-15 | Crouch = toggle, sprint = hold; crouch on C (not Ctrl) | Comfort defaults; Ctrl collides with macOS shortcuts |
 | 2026-07-15 | Reading a note pauses the game | Safe reading, RE-style; HUD runs with PROCESS_MODE_ALWAYS to close it |
 | 2026-07-15 | Slot inventory (8 slots + stacks), not RE grid | Same learning value, third of the UI code; can evolve later |

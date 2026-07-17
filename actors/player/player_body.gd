@@ -18,6 +18,11 @@ const CLIPS := {
 }
 ## MotusMan FBXs bake broken absolute texture paths; reapply the diffuse.
 const SKIN_TEXTURE := "res://assets/models/pistol_starter/MotusMan/sourceimages/MCG_diff.jpg"
+const FLASHLIGHT_MODEL := preload("res://assets/models/flashlight/flashlight.glb")
+const HAND_GRIP_MODIFIER := preload("res://actors/player/player_hand_grip_modifier.gd")
+const FLASHLIGHT_HAND := &"RightHand"
+const FLASHLIGHT_MODEL_SCALE := 0.12
+const FLASHLIGHT_GRIP_POSE_PATH := "res://actors/player/flashlight_grip_pose.json"
 
 ## pistol_starter only ships aim-pose locomotion. These unarmed gameplay
 ## states come from the CC0 Universal Animation Library instead (Unreal
@@ -25,6 +30,7 @@ const SKIN_TEXTURE := "res://assets/models/pistol_starter/MotusMan/sourceimages/
 ## retargeted onto MotusMan at startup. Dictionary keys are the local gameplay
 ## names and values are the raw UAL clip names.
 const UAL_PATH := "res://assets/models/universal_animation_library/UAL1_Standard.glb"
+const UAL2_PATH := "res://assets/models/universal_animation_library_2/UAL2_Standard.glb"
 const UAL_GAMEPLAY_CLIPS: Dictionary = {
 	&"unarmed_idle": &"Idle",
 	&"unarmed_walk": &"Walk",
@@ -39,7 +45,9 @@ const UAL_GAMEPLAY_CLIPS: Dictionary = {
 	&"unarmed_punch_cross": &"Punch_Cross",
 	&"unarmed_interact": &"Interact",
 	&"unarmed_pickup": &"PickUp_Table",
-	&"unarmed_torch_idle": &"Idle_Torch",
+}
+const UAL2_GAMEPLAY_CLIPS: Dictionary = {
+	&"unarmed_torch_idle": &"Idle_Lantern",
 }
 const UAL_LOOPING_GAMEPLAY_CLIPS: PackedStringArray = [
 	"unarmed_idle", "unarmed_walk", "unarmed_sprint",
@@ -58,6 +66,21 @@ const UAL_EXTRA_CLIPS: PackedStringArray = [
 	"Spell_Simple_Exit", "Spell_Simple_Shoot", "Interact", "PickUp_Table", "Push",
 	"Fixing_Kneeling", "Sitting_Enter", "Sitting_Idle", "Sitting_Talking", "Sitting_Exit",
 	"Driving", "Swim_Idle", "Swim_Fwd", "Dance", "Death01",
+]
+## UAL2 uses the same Unreal mannequin skeleton as UAL1, so the existing
+## humanoid retarget map applies unchanged. A_TPose is omitted because that
+## debug name already belongs to UAL1 in the shared target animation library.
+const UAL2_EXTRA_CLIPS: PackedStringArray = [
+	"Chest_Open", "ClimbUp_1m", "Consume", "Farm_Harvest", "Farm_PlantSeed",
+	"Farm_Watering", "Hit_Knockback", "Idle_FoldArms", "Idle_Lantern", "Idle_No",
+	"Idle_Rail", "Idle_Rail_Call", "Idle_Shield", "Idle_Shield_Break",
+	"Idle_TalkingPhone", "LayToIdle", "Melee_Hook", "Melee_Hook_Rec",
+	"NinjaJump_Idle", "NinjaJump_Land", "NinjaJump_Start", "OverhandThrow",
+	"Shield_Dash", "Shield_OneShot", "Slide", "Slide_Exit", "Slide_Start",
+	"Sword_Block", "Sword_Dash", "Sword_Heavy_Combo", "Sword_Regular_A",
+	"Sword_Regular_A_Rec", "Sword_Regular_B", "Sword_Regular_B_Rec",
+	"Sword_Regular_C", "Sword_Regular_Combo", "TreeChopping", "Walk_Carry", "Yes",
+	"Zombie_Idle", "Zombie_Scratch", "Zombie_Walk_Fwd",
 ]
 ## Unreal Mannequin bone names, not Mixamo's - no shared prefix to strip, so
 ## this is an explicit map instead. Finger chains map joint-for-joint;
@@ -193,6 +216,9 @@ var head_yaw := 0.0
 var _lib: AnimationLibrary
 var _held_pose: Animation
 var _look_pose_modifier: PlayerLookPoseModifier
+var _hand_grip_modifier: PlayerHandGripModifier
+var _flashlight_attachment: BoneAttachment3D
+var _flashlight_model: Node3D
 var _airborne := false
 var _landing_time_left := 0.0
 var _action_animation := &""
@@ -225,6 +251,7 @@ func _ready() -> void:
 	_look_pose_modifier.name = &"LookPoseModifier"
 	_look_pose_modifier.player_body = self
 	skeleton.add_child(_look_pose_modifier)
+	_setup_held_flashlight()
 
 	var lib := AnimationLibrary.new()
 	for key: StringName in CLIPS:
@@ -239,6 +266,11 @@ func _ready() -> void:
 		var source_name: StringName = UAL_GAMEPLAY_CLIPS[gameplay_name]
 		lib.add_animation(gameplay_name,
 				_retarget_clip(UAL_PATH, source_name, _held_pose,
+						String(gameplay_name) in UAL_LOOPING_GAMEPLAY_CLIPS))
+	for gameplay_name: StringName in UAL2_GAMEPLAY_CLIPS:
+		var source_name: StringName = UAL2_GAMEPLAY_CLIPS[gameplay_name]
+		lib.add_animation(gameplay_name,
+				_retarget_clip(UAL2_PATH, source_name, _held_pose,
 						String(gameplay_name) in UAL_LOOPING_GAMEPLAY_CLIPS))
 	_lib = lib
 	anim_player.add_animation_library(&"moves", lib)
@@ -763,6 +795,8 @@ func get_visual_bone_global_pose(bone_idx: int) -> Transform3D:
 func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		sprinting: bool, on_floor: bool, vertical_velocity: float, delta: float,
 		torch_enabled: bool) -> void:
+	set_held_flashlight_visible(torch_enabled)
+	_hand_grip_modifier.active = false
 	if _debug_preview_active:
 		if ground_speed <= 0.6 and not crouched and not armed and on_floor:
 			return
@@ -807,6 +841,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		target = &"unarmed_crouch_idle"
 	else:
 		target = &"unarmed_torch_idle" if torch_enabled else &"unarmed_idle"
+	_hand_grip_modifier.active = target == &"unarmed_torch_idle"
 	_play_motion(target, LOCOMOTION_BLEND_TIME, clampf(rate, 0.8, 2.2))
 
 
@@ -815,6 +850,60 @@ func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> 
 	if anim_player.current_animation != full:
 		anim_player.play(full, blend_time)
 	anim_player.speed_scale = speed
+
+
+func _setup_held_flashlight() -> void:
+	var pose_data := _load_flashlight_grip_pose()
+	_hand_grip_modifier = HAND_GRIP_MODIFIER.new() as PlayerHandGripModifier
+	_hand_grip_modifier.name = &"FlashlightGripModifier"
+	var bone_rotations: Dictionary = pose_data.get("bone_rotations_degrees", {})
+	for bone_name: String in bone_rotations:
+		var values: Array = bone_rotations[bone_name]
+		if values.size() >= 3:
+			_hand_grip_modifier.set_bone_rotation(StringName(bone_name), Vector3(
+					float(values[0]), float(values[1]), float(values[2])))
+	_hand_grip_modifier.active = false
+	skeleton.add_child(_hand_grip_modifier)
+	_flashlight_attachment = BoneAttachment3D.new()
+	_flashlight_attachment.name = &"FlashlightAttachment"
+	_flashlight_attachment.bone_name = StringName(pose_data.get(
+			"attachment_bone", pose_data.get("hand", String(FLASHLIGHT_HAND))))
+	skeleton.add_child(_flashlight_attachment)
+	_flashlight_model = FLASHLIGHT_MODEL.instantiate() as Node3D
+	_flashlight_model.name = &"FlashlightModel"
+	var object_scale := float(pose_data.get("object_scale", FLASHLIGHT_MODEL_SCALE))
+	_flashlight_model.scale = Vector3.ONE * object_scale
+	var position_values: Array = pose_data.get(
+			"object_position", pose_data.get("flashlight_position", [0.02, 0.0, 0.0]))
+	var rotation_values: Array = pose_data.get(
+			"object_rotation_degrees",
+			pose_data.get("flashlight_rotation_degrees", [0.0, 0.0, 0.0]))
+	if position_values.size() < 3:
+		position_values = [0.02, 0.0, 0.0]
+	if rotation_values.size() < 3:
+		rotation_values = [0.0, 0.0, 0.0]
+	_flashlight_model.position = Vector3(
+			float(position_values[0]), float(position_values[1]), float(position_values[2]))
+	_flashlight_model.rotation_degrees = Vector3(
+			float(rotation_values[0]), float(rotation_values[1]), float(rotation_values[2]))
+	_flashlight_model.visible = false
+	_flashlight_attachment.add_child(_flashlight_model)
+
+
+func _load_flashlight_grip_pose() -> Dictionary:
+	var file := FileAccess.open(FLASHLIGHT_GRIP_POSE_PATH, FileAccess.READ)
+	if file == null:
+		push_warning("Could not load flashlight grip pose")
+		return {}
+	var parsed = JSON.parse_string(file.get_as_text())
+	if parsed is Dictionary:
+		return parsed
+	push_warning("Flashlight grip pose is not valid JSON")
+	return {}
+
+
+func set_held_flashlight_visible(enabled: bool) -> void:
+	_flashlight_model.visible = enabled
 
 
 ## Starts a one-shot action that temporarily owns the body animation. Normal
@@ -850,17 +939,46 @@ func get_animation_groups() -> Dictionary:
 	var gameplay_group: Array[StringName] = []
 	for key: StringName in UAL_GAMEPLAY_CLIPS:
 		gameplay_group.append(key)
+	for key: StringName in UAL2_GAMEPLAY_CLIPS:
+		gameplay_group.append(key)
 	var native_group: Array[StringName] = []
 	for key: StringName in CLIPS:
 		native_group.append(key)
 	var ual_group: Array[StringName] = []
 	for clip_name: String in UAL_EXTRA_CLIPS:
 		ual_group.append(StringName(clip_name))
+	var ual2_group: Array[StringName] = []
+	for clip_name: String in UAL2_EXTRA_CLIPS:
+		ual2_group.append(StringName(clip_name))
 	return {
 		&"Gameplay - Unarmed": gameplay_group,
 		&"MotusMan References": native_group,
 		&"Universal Animation Library": ual_group,
+		&"Universal Animation Library 2": ual2_group,
 	}
+
+
+## Resolves a local gameplay alias to the untouched UAL clip it was baked
+## from. Native MotusMan references return an empty name because there is no
+## equivalent animation on the UAL comparison model.
+func get_animation_source_clip(anim_name: StringName) -> StringName:
+	if UAL_GAMEPLAY_CLIPS.has(anim_name):
+		return UAL_GAMEPLAY_CLIPS[anim_name]
+	if UAL2_GAMEPLAY_CLIPS.has(anim_name):
+		return UAL2_GAMEPLAY_CLIPS[anim_name]
+	if String(anim_name) in UAL_EXTRA_CLIPS:
+		return anim_name
+	if String(anim_name) in UAL2_EXTRA_CLIPS:
+		return anim_name
+	return &""
+
+
+func get_animation_source_pack(anim_name: StringName) -> StringName:
+	if UAL_GAMEPLAY_CLIPS.has(anim_name) or String(anim_name) in UAL_EXTRA_CLIPS:
+		return &"ual1"
+	if UAL2_GAMEPLAY_CLIPS.has(anim_name) or String(anim_name) in UAL2_EXTRA_CLIPS:
+		return &"ual2"
+	return &""
 
 
 ## Debug menu only: play a clip once, directly, bypassing update_motion's
@@ -878,9 +996,11 @@ func get_animation_groups() -> Dictionary:
 ## a 5th distinct clip to a live-blending library segfaults every time,
 ## regardless of which clips; a fresh per-clip library sidesteps it).
 func play_debug_anim(anim_name: StringName, blend_time: float = 0.2) -> void:
-	if not _lib.has_animation(anim_name) and String(anim_name) in UAL_EXTRA_CLIPS:
+	if not _lib.has_animation(anim_name) and (String(anim_name) in UAL_EXTRA_CLIPS
+			or String(anim_name) in UAL2_EXTRA_CLIPS):
 		anim_player.stop()
-		_lib.add_animation(anim_name, _retarget_clip(UAL_PATH, anim_name, _held_pose))
+		var source_path := UAL2_PATH if String(anim_name) in UAL2_EXTRA_CLIPS else UAL_PATH
+		_lib.add_animation(anim_name, _retarget_clip(source_path, anim_name, _held_pose))
 	anim_player.play("moves/" + anim_name, blend_time)
 	anim_player.speed_scale = 1.0
 	_debug_preview_active = true

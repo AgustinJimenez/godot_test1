@@ -240,9 +240,9 @@ can run different retargeting behavior simultaneously:
   applied directly under the target forearm's already-retargeted global
   pose, no rest-delta math at all.
 
-`levels/_pose_compare.gd` + `.tscn` (retained in the checkpoint while the
+`tests/manual/animation/animation_viewer.gd` + `.tscn` (retained in the checkpoint while the
 remaining hand/contact mismatch is investigated):
-three `PlayerBody` copies side by side (`res://levels/_pose_compare.tscn`),
+three `PlayerBody` copies side by side (`res://tests/manual/animation/animation_viewer.tscn`),
 one per mode, all playing the same clip at once. Free-fly camera (click to
 capture mouse, WASD move, Q/E down/up, Esc to release), number keys 1-9
 switch clip across a preset list biased toward the previously-broken
@@ -317,7 +317,7 @@ used for arms, just applied to the leg chain instead. Default is
 `DELTA_ROTATION` (unchanged behavior) so nothing about default/real-gameplay
 retargeting changed by adding this - it's opt-in per instance, same as hands.
 
-`levels/_pose_compare.tscn` was reshuffled from "3 hand modes" to a clearer
+`tests/manual/animation/animation_viewer.tscn` was reshuffled from "3 hand modes" to a clearer
 before/after progression, all at `hand_retarget_mode = DELTA_ROTATION`
 (the earlier fix) except the baseline:
 - **ORIGINAL** - `hand=FROZEN, leg=DELTA_ROTATION` (fully original behavior)
@@ -343,17 +343,17 @@ check angle, or could be swing exposing a different problem. **Needs the
 user's live judgment in the editor, walking around it in 3D** - exactly why
 this comparison rig exists instead of continuing to guess from screenshots.
 
-To try it: open `res://levels/_pose_compare.tscn`, press F6 ("Play Current
+To try it: open `res://tests/manual/animation/animation_viewer.tscn`, press F6 ("Play Current
 Scene" - NOT the main F5 Play button, which runs the real game and won't
 show this). Click to capture mouse, WASD to move, mouse to look, Q/E for
 down/up, Esc to release, number keys 1-9 to switch clip (list is
-`_pose_compare.gd`'s `CLIPS` constant, biased toward the previously-broken
+`animation_viewer.gd`'s `CLIPS` constant, biased toward the previously-broken
 cluster).
 
 **Note (superseded):** the paragraph above about line-segment gizmos (thick
 `ImmediateMesh` quads) describes an intermediate iteration that was later
 replaced. See "Bug 3 update 3" below for the current, better approach (real
-per-vertex mesh coloring) and the final state of `_pose_compare.tscn`.
+per-vertex mesh coloring) and the final state of `animation_viewer.tscn`.
 
 ## Bug 3 update 3: mesh limb coloring, a 5th ground-truth reference body, and the actual remaining bug
 
@@ -385,7 +385,7 @@ level), not a real body part.
 
 **A 5th reference body was added: the raw UAL source, unretargeted, on its
 own native skeleton**, playing the same clip as the other four
-simultaneously (`levels/_pose_compare.gd`'s `raw_ref` / `_raw_ap` / `_play_raw_clip()`).
+simultaneously (`tests/manual/animation/animation_viewer.gd`'s `raw_ref` / `_raw_ap` / `_play_raw_clip()`).
 This is the actual ground truth the retargeted variants are trying to
 reproduce - and comparing against it immediately showed something important:
 **even HAND + LEG FIX doesn't match it.** The raw source is a controlled
@@ -469,7 +469,7 @@ BoneMap on MotusMan as Scene, both mapped to `SkeletonProfileHumanoid`;
 UAL is confirmed T-pose so "Fix Silhouette" shouldn't be needed) if that
 path is chosen instead of continuing to fix the hand-rolled retargeting code.
 
-`levels/_pose_compare.tscn` now has 5 bodies: ORIGINAL, HAND FIX ONLY,
+`tests/manual/animation/animation_viewer.tscn` now has 5 bodies: ORIGINAL, HAND FIX ONLY,
 HAND + LEG FIX, T-POSE (reference), RAW SOURCE (unretargeted, native
 skeleton, ground truth). Mesh coloring (not line gizmos) on all of them.
 Camera is close-in by request; T-pose arms and the raw reference's own body
@@ -649,12 +649,12 @@ Verification completed:
   post-alignment error). Do not bake this offset into gameplay animation data.
 - `Swim_Idle` and `Swim_Fwd` pose the body horizontally around a ground-level
   skeleton origin, which put most of both meshes below the comparison floor.
-  `_pose_compare.gd` applies the same 1.35 m display-only lift to both swim
+  `animation_viewer.gd` applies the same 1.35 m display-only lift to both swim
   models and counter-offsets their labels. This changes only presentation in
   the throwaway comparison scene, not either animation or gameplay transform.
 
 The user authorized a checkpoint commit with the remaining hand limitation
-documented. Keep `_pose_compare.tscn` available for continuing that work.
+documented. Keep `animation_viewer.tscn` available for continuing that work.
 
 Follow-up accepted on 2026-07-16: gameplay now uses the UAL unarmed `Idle`,
 `Walk`, `Sprint`, `Crouch_Idle`, and `Crouch_Fwd` clips in both camera modes.
@@ -665,7 +665,7 @@ rotation. The user confirmed the result live before commit.
 
 ## Next steps (pick up here)
 
-1. Open `res://levels/_pose_compare.tscn` and press F6. Use the animation
+1. Open `res://tests/manual/animation/animation_viewer.tscn` and press F6. Use the animation
    dropdown to play the same clip on `RETARGETED - MOTUSMAN` and
    `RAW SOURCE - UAL`. Click empty viewport space and free-fly around them to
    compare each pose from multiple angles; press Esc to return to the menu.
@@ -678,7 +678,7 @@ rotation. The user confirmed the result live before commit.
    return to either failed parent-relative swing approach from update 4.
 4. After the remaining poses are accepted, remove the legacy hand/leg mode
    enums and branches, leaving `_humanoid_retarget_local_pose()` as the sole
-   retarget path. Delete `_pose_compare.gd`/`.tscn` only when it is no longer
+   retarget path. Delete `animation_viewer.gd`/`.tscn` only when it is no longer
    needed for manual comparison.
 5. If the user wants it addressed: `debug_mirror.gd` loose end — see fix
    options above.

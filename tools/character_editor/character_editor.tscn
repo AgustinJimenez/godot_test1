@@ -1,0 +1,580 @@
+[gd_scene load_steps=16 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="1_body"]
+[ext_resource type="Script" path="res://actors/player/player_body.gd" id="2_body_script"]
+[ext_resource type="Script" path="res://tools/character_editor/character_editor.gd" id="3_tuner_script"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/rotate-3d.svg" id="4_rotate_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/move-3d.svg" id="5_move_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/zoom-out.svg" id="6_zoom_out_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/zoom-in.svg" id="7_zoom_in_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/chevron-up.svg" id="8_collapse_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/grip.svg" id="9_resize_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/rotate-ccw.svg" id="10_reset_view_icon"]
+
+[sub_resource type="Environment" id="Environment_tuner"]
+background_mode = 1
+background_color = Color(0.008, 0.009, 0.012, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.32, 0.34, 0.4, 1)
+ambient_light_energy = 1.4
+
+[sub_resource type="StyleBoxFlat" id="PanelStyle"]
+bg_color = Color(0.045, 0.12, 0.2, 0.97)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.42, 0.65, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="LabelSettings" id="HeadingSettings"]
+font_size = 19
+font_color = Color(0.95, 0.96, 0.98, 1)
+
+[sub_resource type="LabelSettings" id="SectionSettings"]
+font_size = 12
+font_color = Color(0.6, 0.7, 0.84, 1)
+
+[sub_resource type="LabelSettings" id="ValueSettings"]
+font_size = 12
+font_color = Color(0.78, 0.82, 0.88, 1)
+
+[node name="CharacterEditor" type="Node3D"]
+script = ExtResource("3_tuner_script")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_tuner")
+
+[node name="Body" parent="." instance=ExtResource("1_body")]
+position = Vector3(0, 0.1, 0)
+script = ExtResource("2_body_script")
+
+[node name="Camera" type="Camera3D" parent="."]
+fov = 38.0
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-38, -24, 0)
+light_energy = 1.6
+shadow_enabled = true
+
+[node name="FillLight" type="OmniLight3D" parent="."]
+position = Vector3(-0.6, 1.5, 1.0)
+light_color = Color(0.72, 0.82, 1, 1)
+light_energy = 3.0
+omni_range = 3.0
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="ViewportToolbar" type="PanelContainer" parent="UI"]
+offset_right = 294.0
+offset_bottom = 48.0
+theme_override_styles/panel = SubResource("PanelStyle")
+
+[node name="Margin" type="MarginContainer" parent="UI/ViewportToolbar"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 7
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 7
+
+[node name="Buttons" type="HBoxContainer" parent="UI/ViewportToolbar/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Orbit" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(56, 34)
+layout_mode = 2
+toggle_mode = true
+button_pressed = true
+tooltip_text = "Orbit camera"
+icon = ExtResource("4_rotate_icon")
+expand_icon = true
+icon_max_width = 22
+
+[node name="Move" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(56, 34)
+layout_mode = 2
+toggle_mode = true
+tooltip_text = "Move camera"
+icon = ExtResource("5_move_icon")
+expand_icon = true
+icon_max_width = 22
+
+[node name="ZoomOut" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+tooltip_text = "Zoom out"
+icon = ExtResource("6_zoom_out_icon")
+expand_icon = true
+icon_max_width = 20
+
+[node name="ZoomIn" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+tooltip_text = "Zoom in"
+icon = ExtResource("7_zoom_in_icon")
+expand_icon = true
+icon_max_width = 20
+
+[node name="ResetView" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+tooltip_text = "Reset camera view"
+icon = ExtResource("10_reset_view_icon")
+expand_icon = true
+icon_max_width = 20
+
+[node name="Panel" type="Panel" parent="UI"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 736.0
+offset_bottom = 648.0
+theme_override_styles/panel = SubResource("PanelStyle")
+
+[node name="PanelScroll" type="ScrollContainer" parent="UI/Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+
+[node name="Margin" type="MarginContainer" parent="UI/Panel/PanelScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="UI/Panel/PanelScroll/Margin"]
+theme_override_constants/separation = 4
+
+[node name="TitleBar" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+mouse_default_cursor_shape = 13
+
+[node name="Heading" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/TitleBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+text = "CHARACTER EDITOR"
+label_settings = SubResource("HeadingSettings")
+
+[node name="Collapse" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/TitleBar"]
+custom_minimum_size = Vector2(34, 32)
+layout_mode = 2
+tooltip_text = "Minimize panel"
+icon = ExtResource("8_collapse_icon")
+expand_icon = true
+icon_max_width = 18
+
+[node name="AnimationRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/AnimationRow"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+text = "ANIMATION"
+label_settings = SubResource("SectionSettings")
+
+[node name="GroupPicker" type="OptionButton" parent="UI/Panel/PanelScroll/Margin/VBox/AnimationRow"]
+custom_minimum_size = Vector2(180, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="AnimationPicker" type="OptionButton" parent="UI/Panel/PanelScroll/Margin/VBox/AnimationRow"]
+custom_minimum_size = Vector2(220, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ObjectRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/ObjectRow"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+text = "OBJECT"
+label_settings = SubResource("SectionSettings")
+
+[node name="ObjectPath" type="LineEdit" parent="UI/Panel/PanelScroll/Margin/VBox/ObjectRow"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+editable = false
+text_overrun_behavior = 3
+
+[node name="BrowseObject" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/ObjectRow"]
+custom_minimum_size = Vector2(90, 34)
+layout_mode = 2
+text = "Browse"
+
+[node name="AttachmentRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/AttachmentRow"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+text = "ATTACH TO"
+label_settings = SubResource("SectionSettings")
+
+[node name="AttachmentPicker" type="OptionButton" parent="UI/Panel/PanelScroll/Margin/VBox/AttachmentRow"]
+custom_minimum_size = Vector2(190, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ScaleLabel" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/AttachmentRow"]
+layout_mode = 2
+text = "SCALE"
+label_settings = SubResource("SectionSettings")
+
+[node name="ScaleSlider" type="HSlider" parent="UI/Panel/PanelScroll/Margin/VBox/AttachmentRow"]
+custom_minimum_size = Vector2(130, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.001
+max_value = 2.0
+step = 0.001
+
+[node name="ScaleValue" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/AttachmentRow"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+text = "0.120"
+horizontal_alignment = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="PresetRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/PresetRow"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+text = "PRESET"
+label_settings = SubResource("SectionSettings")
+
+[node name="PresetPath" type="LineEdit" parent="UI/Panel/PanelScroll/Margin/VBox/PresetRow"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+editable = false
+text_overrun_behavior = 3
+
+[node name="NewPreset" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/PresetRow"]
+custom_minimum_size = Vector2(68, 34)
+layout_mode = 2
+text = "New"
+
+[node name="OpenPreset" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/PresetRow"]
+custom_minimum_size = Vector2(76, 34)
+layout_mode = 2
+text = "Open"
+
+[node name="SavePresetAs" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/PresetRow"]
+custom_minimum_size = Vector2(88, 34)
+layout_mode = 2
+text = "Save As"
+
+[node name="ViewRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/ViewRow"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+text = "VIEW"
+label_settings = SubResource("SectionSettings")
+
+[node name="ViewPicker" type="OptionButton" parent="UI/Panel/PanelScroll/Margin/VBox/ViewRow"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DisplayOptions" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PauseAnimation" type="CheckButton" parent="UI/Panel/PanelScroll/Margin/VBox/DisplayOptions"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Pause animation"
+
+[node name="ShowBones" type="CheckButton" parent="UI/Panel/PanelScroll/Margin/VBox/DisplayOptions"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Show bones"
+
+[node name="FreeCamera" type="CheckButton" parent="UI/Panel/PanelScroll/Margin/VBox/DisplayOptions"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Free camera"
+
+[node name="BoneSection" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/BoneSection"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "SKELETON ROTATION"
+label_settings = SubResource("SectionSettings")
+
+[node name="XRing" type="CheckButton" parent="UI/Panel/PanelScroll/Margin/VBox/BoneSection"]
+layout_mode = 2
+button_pressed = true
+text = "X"
+theme_override_colors/font_color = Color(0.95, 0.35, 0.32, 1)
+
+[node name="YRing" type="CheckButton" parent="UI/Panel/PanelScroll/Margin/VBox/BoneSection"]
+layout_mode = 2
+button_pressed = true
+text = "Y"
+theme_override_colors/font_color = Color(0.38, 0.92, 0.45, 1)
+
+[node name="ZRing" type="CheckButton" parent="UI/Panel/PanelScroll/Margin/VBox/BoneSection"]
+layout_mode = 2
+button_pressed = true
+text = "Z"
+theme_override_colors/font_color = Color(0.36, 0.62, 1, 1)
+
+[node name="PoseHelpers" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+visible = false
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/PoseHelpers"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "POSE HELPERS"
+label_settings = SubResource("SectionSettings")
+
+[node name="Controls" type="HFlowContainer" parent="UI/Panel/PanelScroll/Margin/VBox/PoseHelpers"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 4
+
+[node name="BoneScroll" type="ScrollContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="BoneControls" type="VBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/BoneScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 3
+
+[node name="BoneButtons" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+[node name="ResetBone" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/BoneButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Reset Bone"
+[node name="ResetAll" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/BoneButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Reset All"
+
+[node name="ObjectPositionSection" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+text = "OBJECT POSITION"
+label_settings = SubResource("SectionSettings")
+
+[node name="PositionX" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+[node name="Axis" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/PositionX"]
+custom_minimum_size = Vector2(18, 0)
+layout_mode = 2
+text = "X"
+[node name="Slider" type="HSlider" parent="UI/Panel/PanelScroll/Margin/VBox/PositionX"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 2.0
+min_value = -2.0
+step = 0.005
+[node name="Value" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/PositionX"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+text = "+0.000"
+horizontal_alignment = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="PositionY" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+[node name="Axis" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/PositionY"]
+custom_minimum_size = Vector2(18, 0)
+layout_mode = 2
+text = "Y"
+[node name="Slider" type="HSlider" parent="UI/Panel/PanelScroll/Margin/VBox/PositionY"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 2.0
+min_value = -2.0
+step = 0.005
+[node name="Value" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/PositionY"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+text = "+0.000"
+horizontal_alignment = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="PositionZ" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+[node name="Axis" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/PositionZ"]
+custom_minimum_size = Vector2(18, 0)
+layout_mode = 2
+text = "Z"
+[node name="Slider" type="HSlider" parent="UI/Panel/PanelScroll/Margin/VBox/PositionZ"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 2.0
+min_value = -2.0
+step = 0.005
+[node name="Value" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/PositionZ"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+text = "+0.000"
+horizontal_alignment = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="RotationSection" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+text = "OBJECT ROTATION"
+label_settings = SubResource("SectionSettings")
+
+[node name="RotationX" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+[node name="Axis" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RotationX"]
+custom_minimum_size = Vector2(18, 0)
+layout_mode = 2
+text = "X"
+[node name="Slider" type="HSlider" parent="UI/Panel/PanelScroll/Margin/VBox/RotationX"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = -180.0
+max_value = 180.0
+step = 1.0
+[node name="Value" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RotationX"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+text = "+0.0"
+horizontal_alignment = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="RotationY" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+[node name="Axis" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RotationY"]
+custom_minimum_size = Vector2(18, 0)
+layout_mode = 2
+text = "Y"
+[node name="Slider" type="HSlider" parent="UI/Panel/PanelScroll/Margin/VBox/RotationY"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = -180.0
+max_value = 180.0
+step = 1.0
+[node name="Value" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RotationY"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+text = "+0.0"
+horizontal_alignment = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="RotationZ" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+[node name="Axis" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RotationZ"]
+custom_minimum_size = Vector2(18, 0)
+layout_mode = 2
+text = "Z"
+[node name="Slider" type="HSlider" parent="UI/Panel/PanelScroll/Margin/VBox/RotationZ"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = -180.0
+max_value = 180.0
+step = 1.0
+[node name="Value" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RotationZ"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+text = "+0.0"
+horizontal_alignment = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="PoseActions" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+
+[node name="SavePose" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/PoseActions"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Save"
+
+[node name="LoadPose" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/PoseActions"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Reload"
+
+[node name="SaveImage" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/PoseActions"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Save Image"
+
+[node name="Copy" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/PoseActions"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Copy Values"
+
+[node name="Status" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+text = "Choose an animation and object, then tune their contact pose"
+label_settings = SubResource("ValueSettings")
+
+[node name="ObjectDialog" type="FileDialog" parent="UI"]
+title = "Choose held object"
+size = Vector2i(900, 620)
+initial_position = 2
+access = 0
+filters = PackedStringArray("*.tscn, *.scn, *.glb, *.gltf, *.fbx, *.obj ; 3D scenes and models")
+
+[node name="OpenPresetDialog" type="FileDialog" parent="UI"]
+title = "Open pose preset"
+size = Vector2i(900, 620)
+initial_position = 2
+access = 2
+filters = PackedStringArray("*.json ; Pose presets")
+
+[node name="SavePresetDialog" type="FileDialog" parent="UI"]
+title = "Save pose preset"
+size = Vector2i(900, 620)
+initial_position = 2
+file_mode = 4
+access = 2
+filters = PackedStringArray("*.json ; Pose presets")
+
+[node name="PanelResizeHandle" type="Button" parent="UI"]
+offset_right = 30.0
+offset_bottom = 30.0
+mouse_default_cursor_shape = 12
+tooltip_text = "Resize panel"
+flat = true
+icon = ExtResource("9_resize_icon")
+expand_icon = true
+icon_max_width = 20
+
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/BoneButtons/ResetBone" to="." method="_on_reset_bone_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/BoneButtons/ResetAll" to="." method="_on_reset_all_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/ObjectRow/BrowseObject" to="." method="_on_browse_object_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PresetRow/NewPreset" to="." method="_on_new_preset_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PresetRow/OpenPreset" to="." method="_on_open_preset_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PresetRow/SavePresetAs" to="." method="_on_save_preset_as_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/SavePose" to="." method="_on_save_pose_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/LoadPose" to="." method="_on_load_pose_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/SaveImage" to="." method="_on_save_image_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/Copy" to="." method="_on_copy_pressed"]
+[connection signal="file_selected" from="UI/ObjectDialog" to="." method="_on_object_file_selected"]
+[connection signal="file_selected" from="UI/OpenPresetDialog" to="." method="_on_preset_file_selected"]
+[connection signal="file_selected" from="UI/SavePresetDialog" to="." method="_on_save_preset_file_selected"]

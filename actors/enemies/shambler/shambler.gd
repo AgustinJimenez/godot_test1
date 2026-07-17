@@ -1,7 +1,7 @@
 class_name Shambler
 extends CharacterBody3D
 ## First enemy: slow, tanky, relentless. Same clip-borrowing trick as
-## levels/animation_preview.gd - The Boss.fbx ships with no animation of its
+## tests/manual/animation/animation_preview.gd - The Boss.fbx ships with no animation of its
 ## own, so the pack's standalone clip files (same Mixamo skeleton) get copied
 ## into its AnimationPlayer at runtime. No retargeting needed here since,
 ## unlike the player's MotusMan rig, source and target share one skeleton.

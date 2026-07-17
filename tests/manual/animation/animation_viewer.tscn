@@ -1,9 +1,10 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
-[ext_resource type="Script" path="res://levels/_pose_compare.gd" id="1_script"]
+[ext_resource type="Script" path="res://tests/manual/animation/animation_viewer.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="2_body_model"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="3_body_script"]
 [ext_resource type="PackedScene" path="res://assets/models/universal_animation_library/UAL1_Standard.glb" id="4_ual_model"]
+[ext_resource type="PackedScene" path="res://assets/models/universal_animation_library_2/UAL2_Standard.glb" id="5_ual2_model"]
 
 [sub_resource type="StandardMaterial3D" id="FloorMaterial"]
 albedo_color = Color(0.055, 0.06, 0.065, 1)
@@ -49,7 +50,7 @@ corner_radius_bottom_left = 4
 content_margin_left = 10.0
 content_margin_right = 10.0
 
-[node name="PoseCompare" type="Node3D"]
+[node name="AnimationViewer" type="Node3D"]
 script = ExtResource("1_script")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
@@ -77,14 +78,25 @@ text = "RETARGETED - MOTUSMAN"
 font_size = 20
 outline_size = 6
 
-[node name="RawSource" parent="." instance=ExtResource("4_ual_model")]
+[node name="RawSourceUAL1" parent="." instance=ExtResource("4_ual_model")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.25, 0, 0)
 
-[node name="Label" type="Label3D" parent="RawSource"]
+[node name="Label" type="Label3D" parent="RawSourceUAL1"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.15, 0)
 billboard = 1
 no_depth_test = true
 text = "RAW SOURCE - UAL"
+font_size = 20
+outline_size = 6
+
+[node name="RawSourceUAL2" parent="." instance=ExtResource("5_ual2_model")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.25, 0, 0)
+
+[node name="Label" type="Label3D" parent="RawSourceUAL2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.15, 0)
+billboard = 1
+no_depth_test = true
+text = "RAW SOURCE - UAL2"
 font_size = 20
 outline_size = 6
 
@@ -107,7 +119,7 @@ omni_range = 8.0
 
 [node name="MenuMargin" type="MarginContainer" parent="UI"]
 offset_right = 320.0
-offset_bottom = 116.0
+offset_bottom = 176.0
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 16
 
@@ -124,6 +136,16 @@ theme_override_constants/margin_bottom = 12
 theme_override_constants/separation = 7
 
 [node name="Title" type="Label" parent="UI/MenuMargin/MenuPanel/MenuPadding/MenuVBox"]
+theme_override_colors/font_color = Color(0.68, 0.74, 0.84, 1)
+theme_override_font_sizes/font_size = 12
+text = "ANIMATION PACK"
+
+[node name="GroupPicker" type="OptionButton" parent="UI/MenuMargin/MenuPanel/MenuPadding/MenuVBox"]
+custom_minimum_size = Vector2(280, 38)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("PickerStyle")
+
+[node name="AnimationTitle" type="Label" parent="UI/MenuMargin/MenuPanel/MenuPadding/MenuVBox"]
 theme_override_colors/font_color = Color(0.68, 0.74, 0.84, 1)
 theme_override_font_sizes/font_size = 12
 text = "ANIMATION"

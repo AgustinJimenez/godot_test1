@@ -1,0 +1,100 @@
+{
+  "format_version": 2,
+  "animation": "unarmed_torch_idle",
+  "object_scene": "res://assets/models/flashlight/flashlight.glb",
+  "attachment_bone": "RightHand",
+  "hand": "RightHand",
+  "bone_rotations_degrees": {
+    "RightArm": [
+      14.0,
+      5.0,
+      10.0
+    ],
+    "RightHandIndex1": [
+      0.0,
+      0.0,
+      -8.0
+    ],
+    "RightHandIndex2": [
+      0.0,
+      0.0,
+      4.0
+    ],
+    "RightHandIndex3": [
+      0.0,
+      0.0,
+      8.0
+    ],
+    "RightHandMiddle1": [
+      0.0,
+      0.0,
+      -8.0
+    ],
+    "RightHandMiddle2": [
+      0.0,
+      0.0,
+      4.0
+    ],
+    "RightHandMiddle3": [
+      0.0,
+      0.0,
+      8.0
+    ],
+    "RightHandRing1": [
+      0.0,
+      0.0,
+      -6.0
+    ],
+    "RightHandRing2": [
+      0.0,
+      0.0,
+      4.0
+    ],
+    "RightHandRing3": [
+      0.0,
+      0.0,
+      7.0
+    ],
+    "RightHandPinky1": [
+      0.0,
+      0.0,
+      -4.0
+    ],
+    "RightHandPinky2": [
+      0.0,
+      0.0,
+      3.0
+    ],
+    "RightHandPinky3": [
+      0.0,
+      0.0,
+      6.0
+    ],
+    "RightHandThumb1": [
+      0.0,
+      0.0,
+      -10.0
+    ]
+  },
+  "flashlight_position": [
+    -0.09,
+    -0.03,
+    -0.01
+  ],
+  "flashlight_rotation_degrees": [
+    -95.0,
+    -180.0,
+    1.0
+  ],
+  "object_position": [
+    -0.09,
+    -0.03,
+    -0.01
+  ],
+  "object_rotation_degrees": [
+    -95.0,
+    -180.0,
+    1.0
+  ],
+  "object_scale": 0.08
+}
