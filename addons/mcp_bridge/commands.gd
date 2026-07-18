@@ -56,6 +56,9 @@ static func handle(request: Dictionary, editor_interface: EditorInterface, pose_
 					"mcp:pick_bone",
 					[float(request.get("screen_x", 0.0)), float(request.get("screen_y", 0.0))],
 					editor_interface, pose_debugger)
+		"get_live_object_state":
+			return await _cmd_forward_to_runtime(
+					"mcp:get_object_state", [], editor_interface, pose_debugger)
 		var other:
 			return {"ok": false, "error": "Unknown cmd: %s" % other}
 

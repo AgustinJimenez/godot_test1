@@ -1776,7 +1776,27 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 		"pick_bone":
 			_mcp_pick_bone(float(data[0]), float(data[1]))
 			return true
+		"get_object_state":
+			_mcp_get_object_state()
+			return true
 	return false
+
+
+func _mcp_get_object_state() -> void:
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify({
+		"ok": true,
+		"result": {
+			"object_scene": _current_object_path,
+			"attachment_bone": String(_attachment_bone),
+			"position": [_held_object.position.x, _held_object.position.y, _held_object.position.z],
+			"rotation_degrees": [
+				_held_object.rotation_degrees.x,
+				_held_object.rotation_degrees.y,
+				_held_object.rotation_degrees.z,
+			],
+			"scale": _held_object.scale.x,
+		},
+	})])
 
 
 func _mcp_load_pose(path: String) -> void:

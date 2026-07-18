@@ -496,6 +496,13 @@ def pick_live_bone(screen_x: float, screen_y: float) -> str:
 
 
 @mcp.tool()
+def get_live_object_state() -> dict:
+	"""Read back the held object's current scene path, attachment bone, and position/rotation/scale from the scene actually playing in the already-running editor - there's no invocation-based equivalent since set_object's Python-tracked state can drift from what a human has since changed live in the editor. Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "get_live_object_state"}, timeout=8.0)
+	return result
+
+
+@mcp.tool()
 def reload_editor_bridge() -> str:
 	"""Re-register addons/mcp_bridge/pose_debugger_plugin.gd fresh from disk in the already-running editor, without an editor restart. Only needed after editing pose_debugger_plugin.gd itself - commands.gd (open_scene, play_scene, dump_live_pose, etc.) already reloads fresh on every call and never needs this."""
 	result = editor_bridge.send_command({"cmd": "reload_bridge"})
