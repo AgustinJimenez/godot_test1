@@ -1749,7 +1749,8 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 			_mcp_set_object_transform(data)
 			return true
 		"capture_screenshot":
-			_mcp_capture_screenshot(String(data[0]))
+			var include_ui: bool = bool(data[1]) if data.size() > 1 else false
+			_mcp_capture_screenshot(String(data[0]), include_ui)
 			return true
 	return false
 
@@ -1790,13 +1791,13 @@ func _mcp_set_object_transform(data: Array) -> void:
 			{"ok": true, "result": "Object transform updated"})])
 
 
-func _mcp_capture_screenshot(path: String) -> void:
+func _mcp_capture_screenshot(path: String, include_ui: bool) -> void:
 	# Deliberately not awaited from _on_mcp_debugger_message - it's
 	# uncertain whether EngineDebugger's message-capture dispatch correctly
 	# handles a callback that returns a suspended coroutine instead of an
 	# immediate bool, so this runs fire-and-forget instead and reports its
 	# own result asynchronously once the capture actually completes.
-	var result := await _capture_pose_image(path, false)
+	var result := await _capture_pose_image(path, include_ui)
 	if result != OK:
 		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
 				{"ok": false, "error": "Capture failed: %s" % error_string(result)})])

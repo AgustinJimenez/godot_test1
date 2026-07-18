@@ -259,10 +259,13 @@ def pick_bone(screen_x: float, screen_y: float) -> str:
 
 
 @mcp.tool()
-def capture_pose() -> Image:
-	"""Render the current pose/view/camera state and return a screenshot."""
+def capture_pose(include_ui: bool = False) -> Image:
+	"""Render the current pose/view/camera state and return a screenshot. include_ui=True also renders the editor panel (animation/object/preset pickers, bone sliders, mode toggles) instead of just the 3D viewport."""
 	capture_path = SCRATCH_DIR / f"capture_{int(time.time() * 1000)}.png"
-	_run_godot([f"capture={capture_path}"], want_render=True)
+	extra_args = [f"capture={capture_path}"]
+	if include_ui:
+		extra_args.append("capture_ui=true")
+	_run_godot(extra_args, want_render=True)
 	if not capture_path.exists():
 		raise GodotInvocationError("Capture completed but no image file was produced")
 	# Image(path=...) reads the file lazily when FastMCP serializes the result,
@@ -463,10 +466,13 @@ def set_live_object(
 
 
 @mcp.tool()
-def capture_live_pose() -> Image:
+def capture_live_pose(include_ui: bool = False) -> Image:
 	"""Screenshot of the scene actually playing in the already-running editor (the embedded Game view) - the live counterpart to capture_pose, which only ever renders a fresh disposable process. Requires play_scene_in_editor first."""
 	capture_path = SCRATCH_DIR / f"live_capture_{int(time.time() * 1000)}.png"
-	editor_bridge.send_command({"cmd": "capture_live_pose", "path": str(capture_path)}, timeout=10.0)
+	editor_bridge.send_command(
+		{"cmd": "capture_live_pose", "path": str(capture_path), "include_ui": include_ui},
+		timeout=10.0,
+	)
 	if not capture_path.exists():
 		raise editor_bridge.EditorBridgeError("Capture completed but no image file was produced")
 	data = capture_path.read_bytes()

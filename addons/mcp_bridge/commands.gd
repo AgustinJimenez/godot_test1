@@ -132,7 +132,8 @@ static func _cmd_capture_live_pose(request: Dictionary, editor_interface: Editor
 	var path := String(request.get("path", ""))
 	if path.is_empty():
 		return {"ok": false, "error": "Missing 'path'"}
-	if not pose_debugger.send_to_runtime("mcp:capture_screenshot", [path]):
+	var include_ui: bool = request.get("include_ui", false)
+	if not pose_debugger.send_to_runtime("mcp:capture_screenshot", [path, include_ui]):
 		return {"ok": false, "error": "No active debugger session to query"}
 	return await _wait_for_command_result(pose_debugger, 8.0)
 
