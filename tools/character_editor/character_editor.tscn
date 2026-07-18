@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="1_body"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="2_body_script"]
@@ -10,6 +10,8 @@
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/chevron-up.svg" id="8_collapse_icon"]
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/grip.svg" id="9_resize_icon"]
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/rotate-ccw.svg" id="10_reset_view_icon"]
+[ext_resource type="PackedScene" path="res://assets/models/universal_animation_library/UAL1_Standard.glb" id="11_ual1"]
+[ext_resource type="PackedScene" path="res://assets/models/universal_animation_library_2/UAL2_Standard.glb" id="12_ual2"]
 
 [sub_resource type="Environment" id="Environment_tuner"]
 background_mode = 1
@@ -51,6 +53,39 @@ environment = SubResource("Environment_tuner")
 [node name="Body" parent="." instance=ExtResource("1_body")]
 position = Vector3(0, 0.1, 0)
 script = ExtResource("2_body_script")
+
+[node name="CompareLabel" type="Label3D" parent="Body"]
+visible = false
+position = Vector3(0, 2.15, 0)
+billboard = 1
+no_depth_test = true
+text = "RETARGETED - MOTUSMAN"
+font_size = 16
+outline_size = 6
+
+[node name="RawSourceUAL1" parent="." instance=ExtResource("11_ual1")]
+visible = false
+position = Vector3(1, 0, 0)
+
+[node name="Label" type="Label3D" parent="RawSourceUAL1"]
+position = Vector3(0, 2.15, 0)
+billboard = 1
+no_depth_test = true
+text = "RAW SOURCE - UAL1"
+font_size = 16
+outline_size = 6
+
+[node name="RawSourceUAL2" parent="." instance=ExtResource("12_ual2")]
+visible = false
+position = Vector3(1, 0, 0)
+
+[node name="Label" type="Label3D" parent="RawSourceUAL2"]
+position = Vector3(0, 2.15, 0)
+billboard = 1
+no_depth_test = true
+text = "RAW SOURCE - UAL2"
+font_size = 16
+outline_size = 6
 
 [node name="Camera" type="Camera3D" parent="."]
 fov = 38.0
@@ -192,6 +227,31 @@ size_flags_horizontal = 3
 custom_minimum_size = Vector2(220, 36)
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="EditorModeRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/EditorModeRow"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+text = "MODE"
+label_settings = SubResource("SectionSettings")
+
+[node name="Edit" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/EditorModeRow"]
+custom_minimum_size = Vector2(110, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+button_pressed = true
+text = "Edit"
+
+[node name="Compare" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/EditorModeRow"]
+custom_minimum_size = Vector2(110, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "Compare"
 
 [node name="ObjectRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
 layout_mode = 2

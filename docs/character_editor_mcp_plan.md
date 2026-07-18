@@ -35,7 +35,8 @@ which parses `OS.get_cmdline_user_args()` into `key=value` pairs and
 applies them in this order: load a pose preset, select an animation, load
 an attached object, set the attachment bone, set object position/rotation/
 scale, apply per-bone rotation overrides (`bones=Bone:x,y,z;...`), switch
-view mode, resize/collapse the side panel, seek/pause the animation, select
+view mode, optionally enable raw-source comparison (`comparison=true`),
+resize/collapse the side panel, seek/pause both animations, select
 a bone by name, **pick a bone by simulating a double-click at a screen
 position** (`pick=x,y`, prints `CHARACTER_EDITOR_PICKED:<bone>` if the
 selection changed), adjust hand-openness, orbit the focused camera to a
@@ -233,6 +234,8 @@ each tool is a thin, obviously-correct wrapper rather than new design:
 
 - `load_pose(path: str)` — load a saved preset.
 - `set_animation(name: str)`
+- `set_comparison(enabled: bool)` — show the retargeted target beside its
+  synchronized untouched UAL1/UAL2 source when one exists.
 - `set_bone_rotation(bone: str, x: float, y: float, z: float)` — maps to a
   single `bones=Bone:x,y,z` override layered on the current/loaded pose.
 - `select_bone(name: str)` / `pick_bone(screen_x: float, screen_y: float)`

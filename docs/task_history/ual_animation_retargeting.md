@@ -649,12 +649,14 @@ Verification completed:
   post-alignment error). Do not bake this offset into gameplay animation data.
 - `Swim_Idle` and `Swim_Fwd` pose the body horizontally around a ground-level
   skeleton origin, which put most of both meshes below the comparison floor.
-  `animation_viewer.gd` applies the same 1.35 m display-only lift to both swim
-  models and counter-offsets their labels. This changes only presentation in
-  the throwaway comparison scene, not either animation or gameplay transform.
+  The former viewer, now `raw_animation_comparison.gd` inside Character Editor,
+  applies the same 1.35 m display-only lift to both swim models and
+  counter-offsets their labels. This changes only presentation in the
+  comparison tool, not either animation or gameplay transform.
 
 The user authorized a checkpoint commit with the remaining hand limitation
-documented. Keep `animation_viewer.tscn` available for continuing that work.
+documented. The standalone viewer was later integrated into Character Editor's
+Compare mode so the comparison and pose-tuning workflows share one tool.
 
 Follow-up accepted on 2026-07-16: gameplay now uses the UAL unarmed `Idle`,
 `Walk`, `Sprint`, `Crouch_Idle`, and `Crouch_Fwd` clips in both camera modes.
@@ -665,8 +667,8 @@ rotation. The user confirmed the result live before commit.
 
 ## Next steps (pick up here)
 
-1. Open `res://tests/manual/animation/animation_viewer.tscn` and press F6. Use the animation
-   dropdown to play the same clip on `RETARGETED - MOTUSMAN` and
+1. Open `res://tools/character_editor/character_editor.tscn`, press F6, and select Compare
+   mode. Use the grouped animation dropdowns to play the same clip on MotusMan and
    `RAW SOURCE - UAL`. Click empty viewport space and free-fly around them to
    compare each pose from multiple angles; press Esc to return to the menu.
 2. The main-game unarmed locomotion set and look-down modifier were confirmed
@@ -678,8 +680,8 @@ rotation. The user confirmed the result live before commit.
    return to either failed parent-relative swing approach from update 4.
 4. After the remaining poses are accepted, remove the legacy hand/leg mode
    enums and branches, leaving `_humanoid_retarget_local_pose()` as the sole
-   retarget path. Delete `animation_viewer.gd`/`.tscn` only when it is no longer
-   needed for manual comparison.
+   retarget path. The old standalone animation viewer has already been removed;
+   retain comparison parity in Character Editor when changing the retarget path.
 5. If the user wants it addressed: `debug_mirror.gd` loose end — see fix
    options above.
 

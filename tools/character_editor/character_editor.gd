@@ -3,6 +3,7 @@ extends Node3D
 ## to the selected animation so presets remain reusable by gameplay systems.
 
 const GRIP_MODIFIER := preload("res://actors/player/player_hand_grip_modifier.gd")
+const RAW_COMPARISON := preload("res://tools/character_editor/raw_animation_comparison.gd")
 const DEFAULT_OBJECT_PATH := "res://assets/models/flashlight/flashlight.glb"
 const DEFAULT_POSE_PRESET_PATH := "res://actors/player/flashlight_grip_pose.json"
 const DEFAULT_ATTACHMENT_BONE := &"RightHand"
@@ -67,6 +68,9 @@ const BONE_SECTION_LAYOUT: Array[Dictionary] = [
 ]
 
 @onready var body: PlayerBody = $Body
+@onready var target_compare_label: Label3D = $Body/CompareLabel
+@onready var raw_source_ual1: Node3D = $RawSourceUAL1
+@onready var raw_source_ual2: Node3D = $RawSourceUAL2
 @onready var camera: Camera3D = $Camera
 @onready var ui_layer: CanvasLayer = $UI
 @onready var panel: Panel = $UI/Panel
@@ -82,6 +86,8 @@ const BONE_SECTION_LAYOUT: Array[Dictionary] = [
 @onready var reset_view_button: Button = $UI/ViewportToolbar/Margin/Buttons/ResetView
 @onready var animation_group_picker: OptionButton = $UI/Panel/PanelScroll/Margin/VBox/AnimationRow/GroupPicker
 @onready var animation_picker: OptionButton = $UI/Panel/PanelScroll/Margin/VBox/AnimationRow/AnimationPicker
+@onready var edit_mode_button: Button = $UI/Panel/PanelScroll/Margin/VBox/EditorModeRow/Edit
+@onready var compare_mode_button: Button = $UI/Panel/PanelScroll/Margin/VBox/EditorModeRow/Compare
 @onready var object_path_field: LineEdit = $UI/Panel/PanelScroll/Margin/VBox/ObjectRow/ObjectPath
 @onready var attachment_picker: OptionButton = $UI/Panel/PanelScroll/Margin/VBox/AttachmentRow/AttachmentPicker
 @onready var scale_slider: HSlider = $UI/Panel/PanelScroll/Margin/VBox/AttachmentRow/ScaleSlider
@@ -127,6 +133,7 @@ const BONE_SECTION_LAYOUT: Array[Dictionary] = [
 @onready var save_preset_dialog: FileDialog = $UI/SavePresetDialog
 
 var _modifier: PlayerHandGripModifier
+var _comparison: RawAnimationComparison
 var _held_object: Node3D
 var _object_attachment: BoneAttachment3D
 var _full_body_mesh: Mesh
@@ -181,6 +188,7 @@ var _panel_collapsed := false
 var _resizing_panel := false
 var _dragging_panel := false
 var _expanded_panel_size := Vector2.ZERO
+var _edit_panel_size_before_compare := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -192,6 +200,8 @@ func _ready() -> void:
 	_setup_modifier()
 	_setup_held_object()
 	_setup_bone_debug()
+	_comparison = RAW_COMPARISON.new()
+	_comparison.setup(body, target_compare_label, raw_source_ual1, raw_source_ual2)
 	_setup_controls()
 	_load_pose_from_path(DEFAULT_POSE_PRESET_PATH, true)
 	if "show_bones" in OS.get_cmdline_user_args():
@@ -425,6 +435,8 @@ func _make_debug_mesh_instance(mesh: Mesh, material: Material) -> MeshInstance3D
 func _setup_controls() -> void:
 	_setup_animation_controls()
 	_setup_attachment_controls()
+	edit_mode_button.pressed.connect(_on_editor_mode_pressed.bind(false))
+	compare_mode_button.pressed.connect(_on_editor_mode_pressed.bind(true))
 	view_picker.add_item("Full body")
 	view_picker.add_item("Attachment close-up")
 	view_picker.add_item("Isolated attachment")
@@ -452,6 +464,40 @@ func _setup_controls() -> void:
 	_sync_object_controls()
 	preset_path_field.text = _current_pose_path
 	_update_camera_mode_buttons()
+	_update_editor_mode_buttons()
+
+
+func _on_editor_mode_pressed(compare_enabled: bool) -> void:
+	var mode_changed: bool = compare_enabled != _comparison.enabled
+	if mode_changed and compare_enabled and not _panel_collapsed:
+		_edit_panel_size_before_compare = panel.size
+		panel.size.x = minf(panel.size.x, MIN_USER_PANEL_SIZE.x)
+		_expanded_panel_size = panel.size
+		_panel_user_layout = true
+	elif (mode_changed and not compare_enabled
+			and not _panel_collapsed and not _edit_panel_size_before_compare.is_zero_approx()):
+		panel.size = _edit_panel_size_before_compare
+		_expanded_panel_size = panel.size
+		_clamp_panel_to_viewport(get_viewport().get_visible_rect().size / _ui_scale)
+	_update_panel_dependent_layout()
+	_update_panel_resize_handle()
+	view_picker.select(0)
+	view_picker.disabled = compare_enabled
+	body.mesh.mesh = _full_body_mesh
+	_joint_focus_active = false
+	_orbiting = false
+	_orbiting_joint = false
+	var comparison_status: String = _comparison.set_enabled(
+			compare_enabled, _current_animation)
+	_comparison.set_paused(pause_toggle.button_pressed)
+	_update_editor_mode_buttons()
+	_frame_full_body()
+	status_label.text = comparison_status
+
+
+func _update_editor_mode_buttons() -> void:
+	edit_mode_button.set_pressed_no_signal(not _comparison.enabled)
+	compare_mode_button.set_pressed_no_signal(_comparison.enabled)
 
 
 func _on_camera_mode_pressed(mode: int) -> void:
@@ -589,9 +635,12 @@ func _on_animation_selected(index: int) -> void:
 func _set_animation(animation_name: StringName) -> void:
 	_current_animation = animation_name
 	body.play_debug_anim(animation_name, 0.0)
+	var comparison_status: String = _comparison.play_animation(animation_name)
 	if pause_toggle.button_pressed:
 		body.anim_player.pause()
-	status_label.text = "Playing %s" % animation_name
+		_comparison.set_paused(true)
+	status_label.text = (comparison_status if not comparison_status.is_empty()
+			else "Playing %s" % animation_name)
 
 
 func _select_animation_in_ui(animation_name: StringName) -> void:
@@ -855,6 +904,7 @@ func _focus_character_general() -> void:
 
 
 func _on_pause_toggled(paused: bool) -> void:
+	_comparison.set_paused(paused)
 	if paused:
 		body.anim_player.pause()
 		status_label.text = "Animation paused"
@@ -864,10 +914,16 @@ func _on_pause_toggled(paused: bool) -> void:
 
 
 func _frame_full_body() -> void:
-	camera.fov = 44.0
-	camera.h_offset = -0.95
-	camera.global_position = body.global_position + Vector3(0.5, 1.2, 2.5)
-	_orbit_target = body.global_position + Vector3(0.0, 1.05, 0.0)
+	if _comparison.enabled:
+		camera.fov = 50.0
+		camera.h_offset = -1.9
+		_orbit_target = _comparison.get_frame_target()
+		camera.global_position = _orbit_target + Vector3(0.35, 0.2, 4.6)
+	else:
+		camera.fov = 44.0
+		camera.h_offset = -0.95
+		camera.global_position = body.global_position + Vector3(0.5, 1.2, 2.5)
+		_orbit_target = body.global_position + Vector3(0.0, 1.05, 0.0)
 	camera.look_at(_orbit_target)
 	var orbit_offset := camera.global_position - _orbit_target
 	_orbit_distance = orbit_offset.length()
@@ -1575,6 +1631,8 @@ func _run_automation_args() -> void:
 				options["view"], 0)
 		view_picker.select(view_index)
 		_on_view_selected(view_index)
+	if options.get("comparison", "false") == "true":
+		_on_editor_mode_pressed(true)
 	if options.has("panel_size"):
 		var panel_size_components := String(options["panel_size"]).split(",")
 		if panel_size_components.size() >= 2:
@@ -1588,8 +1646,11 @@ func _run_automation_args() -> void:
 	if options.get("panel_collapsed", "false") == "true" and not _panel_collapsed:
 		_on_collapse_panel_pressed()
 	if options.has("time"):
-		body.anim_player.seek(float(options["time"]), true)
+		var preview_time := float(options["time"])
+		body.anim_player.seek(preview_time, true)
+		_comparison.seek(preview_time)
 		body.anim_player.pause()
+		_comparison.set_paused(true)
 		pause_toggle.set_pressed_no_signal(true)
 		_refresh_skeleton()
 	if options.has("bone"):

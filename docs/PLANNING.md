@@ -114,9 +114,9 @@ Each system is a self-contained learning unit. Rough build order in §5.
 | `action_adventure_pack` | Mixamo-skeleton clips (idle, walk, run, sneak, cover…) + "The Boss" skinned character | **M4 enemy** — clips share one skeleton, so they load into any Mixamo character's AnimationPlayer at runtime (see `tests/manual/animation/animation_preview.gd`) |
 | `pistol_starter` | MoCap Online MotusMan character, 1911 pistol model, pistol aim/walk/fire animation set | **M3 reference** for weapon handling; the 1911 could become the viewmodel weapon |
 | `universal_animation_library` | Quaternius UAL1 in-place animation library and mannequin, CC0 | Current unarmed player locomotion/actions and raw comparison source |
-| `universal_animation_library_2` | Quaternius UAL2 in-place animation library and mannequin, CC0; 42 non-conflicting clips exposed in the animation viewer | Candidate held-object poses, especially `Idle_Lantern` and `Walk_Carry`; debug-only until manually accepted |
+| `universal_animation_library_2` | Quaternius UAL2 in-place animation library and mannequin, CC0; 42 non-conflicting clips exposed in Character Editor | Candidate held-object poses, especially `Idle_Lantern` and `Walk_Carry`; debug-only until manually accepted |
 
-Notes: MotusMan FBXs reference textures by absolute paths from the author's machine — reapply `MotusMan/sourceimages/MCG_diff.jpg` as a material override. `tests/manual/animation/animation_preview.tscn` previews the older FBX packs inside the test room; `tests/manual/animation/animation_viewer.tscn` previews UAL1/UAL2 with raw-versus-retargeted comparison. The UAL packs include their CC0 license files. ⚠️ If this repo ever goes public, check the non-UAL pack licenses first (game use OK, raw FBX redistribution generally not).
+Notes: MotusMan FBXs reference textures by absolute paths from the author's machine — reapply `MotusMan/sourceimages/MCG_diff.jpg` as a material override. `tests/manual/animation/animation_preview.tscn` previews the older FBX packs inside the test room; Character Editor's Compare mode previews UAL1/UAL2 beside their retargeted MotusMan result. The UAL packs include their CC0 license files. ⚠️ If this repo ever goes public, check the non-UAL pack licenses first (game use OK, raw FBX redistribution generally not).
 
 ### Project structure
 ```
