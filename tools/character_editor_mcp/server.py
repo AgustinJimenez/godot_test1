@@ -503,6 +503,13 @@ def get_live_object_state() -> dict:
 
 
 @mcp.tool()
+def check_live_penetration() -> dict:
+	"""Exact mesh-vs-mesh penetration check between the held object and the character body in the scene actually playing in the already-running editor - answers "is it actually clipping" instead of relying on judging a screenshot. Bakes the body's real currently-deformed skin geometry via MeshInstance3D.bake_mesh_from_current_skeleton_pose() (not a bone-position approximation) and tests it against the held object's real mesh triangles two ways: surface-crossing (Geometry3D edge-vs-triangle tests) and full-containment (even-odd ray casting from each object vertex, since a small object fully swallowed inside the hand has no edges crossing the surface to detect). Returns any_penetrating, surface_crossing_count/points, and contained_vertex_count/points. Requires play_scene_in_editor first; can take a few seconds."""
+	result = editor_bridge.send_command({"cmd": "check_live_penetration"}, timeout=20.0)
+	return result
+
+
+@mcp.tool()
 def reload_editor_bridge() -> str:
 	"""Re-register addons/mcp_bridge/pose_debugger_plugin.gd fresh from disk in the already-running editor, without an editor restart. Only needed after editing pose_debugger_plugin.gd itself - commands.gd (open_scene, play_scene, dump_live_pose, etc.) already reloads fresh on every call and never needs this."""
 	result = editor_bridge.send_command({"cmd": "reload_bridge"})

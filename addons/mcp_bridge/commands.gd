@@ -59,6 +59,9 @@ static func handle(request: Dictionary, editor_interface: EditorInterface, pose_
 		"get_live_object_state":
 			return await _cmd_forward_to_runtime(
 					"mcp:get_object_state", [], editor_interface, pose_debugger)
+		"check_live_penetration":
+			return await _cmd_forward_to_runtime(
+					"mcp:check_penetration", [], editor_interface, pose_debugger, 25.0)
 		var other:
 			return {"ok": false, "error": "Unknown cmd: %s" % other}
 
@@ -168,14 +171,15 @@ static func _cmd_capture_live_pose(request: Dictionary, editor_interface: Editor
 
 
 static func _cmd_forward_to_runtime(
-		message: String, args: Array, editor_interface: EditorInterface, pose_debugger) -> Dictionary:
+		message: String, args: Array, editor_interface: EditorInterface, pose_debugger,
+		timeout_seconds: float = 5.0) -> Dictionary:
 	if pose_debugger == null:
 		return {"ok": false, "error": "Pose debugger plugin not initialized"}
 	if not editor_interface.is_playing_scene():
 		return {"ok": false, "error": "No scene is currently playing - call play_scene first"}
 	if not pose_debugger.send_to_runtime(message, args):
 		return {"ok": false, "error": "No active debugger session to query"}
-	return await _wait_for_command_result(pose_debugger, 5.0)
+	return await _wait_for_command_result(pose_debugger, timeout_seconds)
 
 
 static func _wait_for_command_result(pose_debugger, timeout_seconds: float) -> Dictionary:

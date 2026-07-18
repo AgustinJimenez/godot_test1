@@ -1779,6 +1779,9 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 		"get_object_state":
 			_mcp_get_object_state()
 			return true
+		"check_penetration":
+			_mcp_check_penetration()
+			return true
 	return false
 
 
@@ -1795,8 +1798,197 @@ func _mcp_get_object_state() -> void:
 				_held_object.rotation_degrees.z,
 			],
 			"scale": _held_object.scale.x,
+			"world_position": [
+				_held_object.global_position.x,
+				_held_object.global_position.y,
+				_held_object.global_position.z,
+			],
 		},
 	})])
+
+
+## Exact mesh-vs-mesh penetration check, not a bone-position approximation.
+## The earlier capsule-based approach (bone segment + estimated radius) was
+## verified geometrically correct but consistently failed to detect
+## penetration that was visually obvious in screenshots - a stylized/
+## armored glove's actual skinned surface bulges well beyond what a
+## bone-position estimate can capture. This uses
+## MeshInstance3D.bake_mesh_from_current_skeleton_pose() (Godot 4.4+) to
+## read back the REAL currently-deformed hand mesh, and tests its triangles
+## against the held object's real (rigid, unskinned) mesh triangles via
+## Geometry3D.segment_intersects_triangle() - the standard edge-vs-triangle
+## construction for exact triangle-triangle intersection, since Godot has
+## no built-in tri-tri test. PhysicsServer3D shape queries are deliberately
+## avoided: documented unreliable specifically in editor/@tool context
+## (godotengine/godot#87429), which is exactly where this runs.
+const _MAX_REPORTED_INTERSECTIONS := 25
+
+
+func _mcp_check_penetration() -> void:
+	var report := _build_penetration_report()
+	if report.has("error"):
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": report["error"]})])
+		return
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": report})])
+
+
+func _build_penetration_report() -> Dictionary:
+	if not is_instance_valid(_held_object):
+		return {"error": "No held object is loaded"}
+	if not is_instance_valid(body.mesh):
+		return {"error": "Character body mesh not found"}
+
+	var object_triangles := []
+	_collect_mesh_triangles(_held_object, object_triangles, AABB(), false)
+	if object_triangles.is_empty():
+		return {"error": "Held object has no mesh geometry to measure"}
+	var object_aabb := _triangles_aabb(object_triangles).grow(0.03)
+
+	var baked: ArrayMesh = body.mesh.bake_mesh_from_current_skeleton_pose()
+	var body_triangles := []
+	_append_mesh_triangles(baked, body.mesh.global_transform, body_triangles, object_aabb, true)
+
+	var intersections := []
+	for body_tri in body_triangles:
+		for object_tri in object_triangles:
+			var hit_point = _triangle_intersection_point(body_tri, object_tri)
+			if hit_point != null:
+				intersections.append([hit_point.x, hit_point.y, hit_point.z])
+				break
+		if intersections.size() >= _MAX_REPORTED_INTERSECTIONS:
+			break
+
+	# Edge-vs-triangle crossing tests (above) miss full containment: if the
+	# object is small enough to sit entirely inside the hand mesh's volume,
+	# none of its edges ever cross the hand's surface, so the crossing test
+	# alone reports zero intersections despite genuine, deep overlap.
+	# Confirmed this is a real, not theoretical, case: an object placed dead
+	# center on the attachment bone (guaranteed inside the wrist) produced
+	# zero crossings and vanished entirely from a screenshot at that pose.
+	# Ray-cast from each unique object vertex and count triangle crossings -
+	# odd count means the point is inside the body mesh (even-odd rule).
+	var unique_object_vertices := _unique_triangle_vertices(object_triangles)
+	var contained_points := []
+	if intersections.size() < _MAX_REPORTED_INTERSECTIONS:
+		# object_aabb is what body_triangles was filtered against, so its
+		# diagonal is already long enough to cross clean out the far side.
+		var ray_length := object_aabb.size.length()
+		for vertex in unique_object_vertices:
+			if _point_inside_triangles(vertex, body_triangles, ray_length):
+				contained_points.append([vertex.x, vertex.y, vertex.z])
+				if intersections.size() + contained_points.size() >= _MAX_REPORTED_INTERSECTIONS:
+					break
+
+	return {
+		"any_penetrating": not intersections.is_empty() or not contained_points.is_empty(),
+		"surface_crossing_count": intersections.size(),
+		"surface_crossing_points": intersections,
+		"contained_vertex_count": contained_points.size(),
+		"contained_vertex_points": contained_points,
+		"body_triangles_checked": body_triangles.size(),
+		"object_triangles_checked": object_triangles.size(),
+	}
+
+
+func _triangles_aabb(triangles: Array) -> AABB:
+	var result := AABB()
+	var has_any := false
+	for tri in triangles:
+		for point in tri:
+			if not has_any:
+				result = AABB(point, Vector3.ZERO)
+				has_any = true
+			else:
+				result = result.expand(point)
+	return result
+
+
+## Deduplicates by rounding to the nearest tenth of a millimeter - triangles
+## sharing an edge/vertex would otherwise produce many redundant containment
+## ray casts for the same physical point.
+func _unique_triangle_vertices(triangles: Array) -> Array:
+	var seen := {}
+	var unique := []
+	for tri in triangles:
+		for point in tri:
+			var key := Vector3i(round(point.x * 10000.0), round(point.y * 10000.0), round(point.z * 10000.0))
+			if not seen.has(key):
+				seen[key] = true
+				unique.append(point)
+	return unique
+
+
+## Even-odd ray casting rule: a point is inside a closed mesh if a ray cast
+## from it crosses the mesh's surface an odd number of times. The ray
+## direction is an arbitrary non-axis-aligned vector, deliberately not
+## X/Y/Z-aligned, to avoid coincidentally grazing triangle edges/vertices
+## along a suspiciously "clean" axis.
+func _point_inside_triangles(point: Vector3, triangles: Array, ray_length: float) -> bool:
+	var ray_dir := Vector3(1.0, 0.31, 0.17).normalized()
+	var ray_end := point + ray_dir * ray_length
+	var crossing_count := 0
+	for tri in triangles:
+		if Geometry3D.segment_intersects_triangle(point, ray_end, tri[0], tri[1], tri[2]) != null:
+			crossing_count += 1
+	return crossing_count % 2 == 1
+
+
+## Returns the intersection point if the two triangles cross, else null -
+## tests every edge of each triangle against the other triangle's face,
+## since Godot has no direct triangle-triangle intersection method.
+func _triangle_intersection_point(tri_a: Array, tri_b: Array):
+	for i in 3:
+		var hit = Geometry3D.segment_intersects_triangle(
+				tri_a[i], tri_a[(i + 1) % 3], tri_b[0], tri_b[1], tri_b[2])
+		if hit != null:
+			return hit
+	for i in 3:
+		var hit = Geometry3D.segment_intersects_triangle(
+				tri_b[i], tri_b[(i + 1) % 3], tri_a[0], tri_a[1], tri_a[2])
+		if hit != null:
+			return hit
+	return null
+
+
+func _collect_mesh_triangles(
+		node: Node, out: Array, filter_aabb: AABB, use_filter: bool) -> void:
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		_append_mesh_triangles(
+				(node as MeshInstance3D).mesh, (node as MeshInstance3D).global_transform,
+				out, filter_aabb, use_filter)
+	for child in node.get_children():
+		_collect_mesh_triangles(child, out, filter_aabb, use_filter)
+
+
+func _append_mesh_triangles(
+		mesh: Mesh, xform: Transform3D, out: Array, filter_aabb: AABB, use_filter: bool) -> void:
+	for surface_idx in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(surface_idx)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var indices = arrays[Mesh.ARRAY_INDEX]
+		var triangle_count: int = (indices.size() / 3) if indices != null else (verts.size() / 3)
+		for t in triangle_count:
+			var i0: int
+			var i1: int
+			var i2: int
+			if indices != null:
+				i0 = indices[t * 3]
+				i1 = indices[t * 3 + 1]
+				i2 = indices[t * 3 + 2]
+			else:
+				i0 = t * 3
+				i1 = t * 3 + 1
+				i2 = t * 3 + 2
+			var a: Vector3 = xform * verts[i0]
+			var b: Vector3 = xform * verts[i1]
+			var c: Vector3 = xform * verts[i2]
+			if use_filter:
+				var tri_aabb := AABB(a, Vector3.ZERO).expand(b).expand(c)
+				if not tri_aabb.intersects(filter_aabb):
+					continue
+			out.append([a, b, c])
 
 
 func _mcp_load_pose(path: String) -> void:

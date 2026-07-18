@@ -77,9 +77,9 @@
     ]
   },
   "flashlight_position": [
-    -0.09,
-    -0.03,
-    -0.01
+    -0.1253,
+    -0.071,
+    0.0362
   ],
   "flashlight_rotation_degrees": [
     -95.0,
@@ -87,9 +87,9 @@
     1.0
   ],
   "object_position": [
-    -0.09,
-    -0.03,
-    -0.01
+    -0.1253,
+    -0.071,
+    0.0362
   ],
   "object_rotation_degrees": [
     -95.0,
