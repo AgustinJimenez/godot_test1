@@ -61,9 +61,9 @@ func _setup_animations() -> void:
 ## Borrows CLIPS + DEATH_CLIP's standalone animations into anim_player's own
 ## "pack" library, exactly the trick tests/manual/animation/animation_preview.gd
 ## also uses. Extracted to a static function so tools/character_editor's
-## ShamblerAdapter can build the same library on a bare Boss.fbx instance
-## without needing a full Shambler (CharacterBody3D + AI/nav/patrol) - the
-## editor tool has no use for any of that.
+## MixamoCharacterAdapter can build the same library on a bare Mixamo FBX
+## instance without needing a full Shambler (CharacterBody3D + AI/nav/
+## patrol) - the editor tool has no use for any of that.
 static func build_clip_library(anim_player: AnimationPlayer) -> void:
 	var lib := AnimationLibrary.new()
 	for clip: StringName in CLIPS:

@@ -8,8 +8,40 @@ const DEFAULT_OBJECT_PATH := "res://assets/models/flashlight/flashlight.glb"
 const DEFAULT_POSE_PRESET_PATH := "res://actors/player/flashlight_grip_pose.json"
 const DEFAULT_ATTACHMENT_BONE := &"RightHand"
 const DEFAULT_ANIMATION := &"unarmed_torch_idle"
-const CHARACTER_KINDS: PackedStringArray = ["player", "shambler"]
+const CHARACTER_SPAWN_POSITION := Vector3(0, 0.1, 0)
+const CHARACTER_KINDS: PackedStringArray = [
+	"player", "shambler", "brute", "y_bot", "x_bot", "vanguard",
+	"parasite", "copzombie", "zombiegirl", "ch08", "ch10", "ch15",
+]
 const DEFAULT_CHARACTER_KIND := "player"
+## Every non-"player" kind maps to a bare Mixamo FBX + display name, loaded
+## through MixamoCharacterAdapter - see that file for why this works without
+## per-character adapter code. Ch15_nonPBR belongs here too, despite living
+## alongside Ch08/10 in the same download batch: inspection showed it
+## actually uses the plain "mixamorig_" prefix, not a numbered one.
+const MIXAMO_CHARACTERS := {
+	"shambler": ["res://assets/models/action_adventure_pack/The Boss.fbx", "Shambler"],
+	"brute": ["res://assets/models/mixamo_characters/Brute.fbx", "Brute"],
+	"y_bot": ["res://assets/models/mixamo_characters/Y Bot.fbx", "Y Bot"],
+	"x_bot": ["res://assets/models/mixamo_characters/X Bot.fbx", "X Bot"],
+	"vanguard": ["res://assets/models/mixamo_characters/Vanguard By T. Choonyung.fbx", "Vanguard"],
+	"parasite": ["res://assets/models/mixamo_characters/Parasite L Starkie.fbx", "Parasite"],
+	"copzombie": ["res://assets/models/mixamo_characters/copzombie_l_actisdato.fbx", "Cop Zombie"],
+	"zombiegirl": ["res://assets/models/mixamo_characters/Zombiegirl W Kurniawan.fbx", "Zombie Girl"],
+	"ch15": ["res://assets/models/mixamo_characters/Ch15_nonPBR.fbx", "Ch15"],
+}
+## Ch08/Ch10 use a numbered rig prefix ("mixamorig7_"/"mixamorig5_" -
+## Mixamo increments this per download to avoid bone-name collisions, and
+## the two ended up with different numbers despite being downloaded
+## together) instead of the plain "mixamorig_" MIXAMO_CHARACTERS share, so
+## they can't reuse action_adventure_pack's clips directly -
+## RetargetedMixamoAdapter bakes a small clip library from Human Basic
+## Motions FREE onto each one instead. Value is [model_path, display_name,
+## bone_prefix].
+const RETARGETED_MIXAMO_CHARACTERS := {
+	"ch08": ["res://assets/models/mixamo_characters/Ch08_nonPBR.fbx", "Ch08", "mixamorig7_"],
+	"ch10": ["res://assets/models/mixamo_characters/Ch10_nonPBR.fbx", "Ch10", "mixamorig5_"],
+}
 const DEFAULT_OBJECT_SCALE := 0.12
 const DEFAULT_OBJECT_POSITION := Vector3(-0.09, -0.03, -0.01)
 const DEFAULT_OBJECT_ROTATION := Vector3(-95.0, -180.0, 1.0)
@@ -117,6 +149,7 @@ var body: CharacterAdapter
 @onready var pause_toggle: CheckButton = $UI/Panel/PanelScroll/Margin/VBox/DisplayOptions/PauseAnimation
 @onready var show_bones_toggle: CheckButton = $UI/Panel/PanelScroll/Margin/VBox/DisplayOptions/ShowBones
 @onready var free_camera_toggle: CheckButton = $UI/Panel/PanelScroll/Margin/VBox/DisplayOptions/FreeCamera
+@onready var root_motion_toggle: CheckButton = $UI/Panel/PanelScroll/Margin/VBox/DisplayOptions/RootMotionMoving
 @onready var axis_ring_toggles: Array[CheckButton] = [
 	$UI/Panel/PanelScroll/Margin/VBox/BoneSection/XRing,
 	$UI/Panel/PanelScroll/Margin/VBox/BoneSection/YRing,
@@ -150,9 +183,47 @@ var body: CharacterAdapter
 @onready var status_label: Label = $UI/Panel/PanelScroll/Margin/VBox/Status
 @onready var object_dialog: FileDialog = $UI/ObjectDialog
 @onready var open_preset_dialog: FileDialog = $UI/OpenPresetDialog
+@onready var import_dialog: FileDialog = $UI/ImportDialog
+@onready var import_character_button: Button = $UI/Panel/PanelScroll/Margin/VBox/CharacterRow/ImportCharacter
+@onready var import_animation_button: Button = $UI/Panel/PanelScroll/Margin/VBox/AnimationRow/ImportAnimation
 @onready var save_preset_dialog: FileDialog = $UI/SavePresetDialog
 
 var _character_kind := DEFAULT_CHARACTER_KIND
+## When true, _process() applies each frame's root_motion_track delta to
+## body.node so the character actually walks/runs through world space -
+## otherwise the AnimationMixer already plays every animation "in place"
+## for free once root_motion_track is set (see _load_character()), since it
+## strips the root bone's own translation from the applied pose regardless
+## of whether anything reads get_root_motion_position().
+var _root_motion_moving := false
+## Populated by _on_mcp_debugger_message on "import_asset_result" - polled
+## by _request_import_asset's await loop. Empty means "no reply yet".
+var _pending_import_result: Dictionary = {}
+## kind_id -> {model_path, display_name, bone_prefix (String) or null
+## (unrecognized skeleton, posable only)}. Characters imported this session
+## via the "Import Character..." button - not persisted; ask your assistant
+## to add a character permanently once you know you want to keep it.
+var _custom_characters: Dictionary = {}
+## clip StringName -> Animation, retargeted onto whichever character was
+## active at import time. Session-only, like _custom_characters - imported
+## clips only ever target the character that was loaded when you imported
+## them (re-import to add the same clip to a different character).
+var _custom_clips: Dictionary = {}
+enum ImportMode { CHARACTER, ANIMATION }
+var _import_mode := ImportMode.CHARACTER
+## Copy + editor reimport + skeleton inspection + (for animations) retarget
+## runs the actual reimport synchronously on the EDITOR's own main thread
+## (EditorFileSystem.reimport_files() - see pose_debugger_plugin.gd's
+## _import_asset), which blocks the editor for however long that takes.
+## This played scene's own script keeps ticking normally throughout
+## (confirmed live: a per-frame file log showed continuous updates with no
+## gaps for the whole duration), but the window never actually presents a
+## new frame until the editor comes back - a live-tested animated spinner
+## here was provably running correctly and simply never visible on screen,
+## on both a multi-second big-file import and a sub-second small one. Only
+## the ONE status text set synchronously before the first await (in
+## _on_import_file_selected) is guaranteed to actually render.
+var _import_in_progress := false
 var _modifier: PlayerHandGripModifier
 var _comparison: RawAnimationComparison
 var _held_object: Node3D
@@ -244,8 +315,9 @@ func _ready() -> void:
 ## touch the held-object/hand-grip system, comparison mode, or the mesh
 ## directly do.
 func _load_character(kind: String) -> void:
-	if not kind in CHARACTER_KINDS:
+	if not kind in CHARACTER_KINDS and not _custom_characters.has(kind):
 		kind = DEFAULT_CHARACTER_KIND
+	_custom_clips.clear()
 	var previous_node: Node3D = body.node if body != null else null
 	if is_instance_valid(_modifier):
 		_modifier.queue_free()
@@ -260,11 +332,19 @@ func _load_character(kind: String) -> void:
 	if previous_node:
 		previous_node.queue_free()
 
-	if kind == "shambler":
-		body = ShamblerAdapter.create(self, Vector3(0, 0.1, 0))
+	if kind == "player":
+		body = PlayerBodyAdapter.create(self, CHARACTER_SPAWN_POSITION)
+	elif RETARGETED_MIXAMO_CHARACTERS.has(kind):
+		var config: Array = RETARGETED_MIXAMO_CHARACTERS[kind]
+		body = RetargetedMixamoAdapter.create(
+				self, CHARACTER_SPAWN_POSITION, config[0], config[1], config[2])
+	elif _custom_characters.has(kind):
+		body = _create_custom_character_adapter(_custom_characters[kind])
 	else:
-		body = PlayerBodyAdapter.create(self, Vector3(0, 0.1, 0))
+		var config: Array = MIXAMO_CHARACTERS[kind]
+		body = MixamoCharacterAdapter.create(self, CHARACTER_SPAWN_POSITION, config[0], config[1])
 	_character_kind = kind
+	_setup_root_motion_track()
 
 	_setup_modifier()
 	if body.supports_held_object:
@@ -325,6 +405,314 @@ func _load_character(kind: String) -> void:
 	_select_character_in_ui(_character_kind)
 	status_label.text = "Loaded %s" % body.display_name
 	_frame_full_body()
+
+
+## Picks the right adapter for a session-imported character based on the
+## bone_prefix _import_character detected: exact "mixamorig_" reuses
+## MixamoCharacterAdapter's action_adventure_pack-direct path, any other
+## numbered/empty prefix goes through RetargetedMixamoAdapter's full
+## retarget, and an unrecognized skeleton (null) falls back to the plain
+## CharacterAdapter base class directly - posable (skeleton/mesh work fine
+## generically) but with no animation pools, since there's no bone map for
+## a convention this tool has never seen.
+func _create_custom_character_adapter(info: Dictionary) -> CharacterAdapter:
+	var model_path: String = info["model_path"]
+	var display_name: String = info["display_name"]
+	var bone_prefix: Variant = info["bone_prefix"]
+	var adapter: CharacterAdapter
+	if bone_prefix == "mixamorig_":
+		adapter = MixamoCharacterAdapter.create(self, CHARACTER_SPAWN_POSITION, model_path, display_name)
+	elif bone_prefix != null:
+		adapter = RetargetedMixamoAdapter.create(
+				self, CHARACTER_SPAWN_POSITION, model_path, display_name, bone_prefix)
+	else:
+		adapter = _create_posable_only_adapter(model_path, display_name)
+	_disable_mesh_transparency(adapter.meshes)
+	_fix_unwired_textures(adapter.meshes, model_path)
+	return adapter
+
+
+func _create_posable_only_adapter(model_path: String, display_name: String) -> CharacterAdapter:
+	var instance: Node3D = (load(model_path) as PackedScene).instantiate()
+	instance.position = CHARACTER_SPAWN_POSITION
+	add_child(instance)
+	var adapter := CharacterAdapter.new()
+	adapter.node = instance
+	adapter.skeleton = instance.find_child("Skeleton3D", true, false)
+	adapter.meshes = []
+	for child in adapter.skeleton.get_children():
+		if child is MeshInstance3D:
+			adapter.meshes.append(child)
+	adapter.mesh = adapter.meshes[0] if not adapter.meshes.is_empty() else null
+	# Character-only exports commonly ship with no baked animation at all -
+	# other code (root-motion setup, custom-clip playback) assumes
+	# body.anim_player is always a real node to attach libraries to.
+	var found_anim_player: AnimationPlayer = instance.find_child("AnimationPlayer", true, false)
+	if found_anim_player == null:
+		found_anim_player = AnimationPlayer.new()
+		found_anim_player.name = &"AnimationPlayer"
+		instance.add_child(found_anim_player)
+	adapter.anim_player = found_anim_player
+	adapter.display_name = display_name
+	return adapter
+
+
+## Session-imported characters' materials sometimes come in with
+## transparency wrongly enabled - observed directly on a real import (via
+## a temporary live-bridge diagnostic, not guessed): every material had
+## transparency = TRANSPARENCY_ALPHA_DEPTH_PRE_PASS and albedo_color.a =
+## 0.8, making the whole character semi-transparent and letting other
+## meshes (e.g. eyeballs) show through skin/clothes. Most likely Godot's
+## FBX importer auto-detecting an alpha channel in the source texture and
+## assuming it means the surface should be translucent. The curated
+## characters already render correctly without this, so it's only applied
+## to the import pipeline, not every character load - a character mesh
+## being non-transparent is the correct default here, not a real texture
+## effect being lost.
+func _disable_mesh_transparency(meshes: Array[MeshInstance3D]) -> void:
+	for mesh_part in meshes:
+		for i in mesh_part.get_surface_override_material_count():
+			var mat: Material = mesh_part.get_active_material(i)
+			if mat is BaseMaterial3D:
+				var base_material: BaseMaterial3D = mat
+				base_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+				var albedo := base_material.albedo_color
+				albedo.a = 1.0
+				base_material.albedo_color = albedo
+
+
+## Some imported characters ship extra PBR-ish textures (normal map,
+## roughness/AO) alongside the color texture that never get wired into any
+## material - observed directly (via visual inspection, not guessed) on
+## Ch28_nonPBR: Godot's FBX importer only assigned albedo_texture, leaving
+## 3 more extracted "_1"/"_2"/"_3" PNGs as orphaned files, even though "_3"
+## is visibly a real tangent-space normal map (dominant blue channel, real
+## wrinkle/seam detail) and "_2" a real roughness/AO map (grayscale,
+## following the same UV layout as albedo). Confirmed this isn't the
+## import pipeline's fault: Ch08_nonPBR (imported the normal way, not
+## through this feature) has byte-identical .import settings and DOES get
+## its normal map auto-wired - the difference is in what each FBX's own
+## material graph references, which Godot's importer can only follow, not
+## infer. This scans sibling "<basename>_N.png" files next to the albedo
+## texture and classifies each by actual pixel content instead of assuming
+## a fixed slot order, since that order isn't guaranteed across sources.
+func _fix_unwired_textures(meshes: Array[MeshInstance3D], model_path: String) -> void:
+	var dir_path := model_path.get_base_dir()
+	var base_name := model_path.get_file().get_basename()
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	var candidate_paths: Array[String] = []
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if entry.begins_with(base_name + "_") and entry.get_extension().to_lower() in ["png", "jpg", "jpeg"]:
+			candidate_paths.append(dir_path.path_join(entry))
+		entry = dir.get_next()
+	dir.list_dir_end()
+	if candidate_paths.is_empty():
+		return
+
+	var seen_materials: Array[BaseMaterial3D] = []
+	for mesh_part in meshes:
+		for i in mesh_part.get_surface_override_material_count():
+			var mat: Material = mesh_part.get_active_material(i)
+			if not (mat is BaseMaterial3D):
+				continue
+			var base_material: BaseMaterial3D = mat
+			if base_material in seen_materials:
+				continue
+			seen_materials.append(base_material)
+			if base_material.normal_texture != null and base_material.roughness_texture != null:
+				continue
+			var albedo_path := (
+					base_material.albedo_texture.resource_path if base_material.albedo_texture else "")
+			for tex_path in candidate_paths:
+				if tex_path == albedo_path:
+					continue
+				var raw_image := Image.load_from_file(ProjectSettings.globalize_path(tex_path))
+				if raw_image == null:
+					continue
+				match _classify_texture_role(raw_image):
+					"normal":
+						if base_material.normal_texture == null:
+							base_material.normal_enabled = true
+							base_material.normal_texture = _linear_texture_from_image(raw_image)
+					"roughness":
+						if base_material.roughness_texture == null:
+							_invert_image_values(raw_image)
+							base_material.roughness_texture = _linear_texture_from_image(raw_image)
+
+
+## Normal/roughness maps encode literal numeric values (surface direction,
+## roughness amount), not perceptual color, so they must reach the shader
+## as linear data - loading via `load(tex_path)` (ResourceLoader) instead
+## would use the imported/compressed resource, which Godot by default
+## stores in an sRGB-flagged GPU format for any texture it doesn't know is
+## non-color data (exactly this case - these files were never recognized
+## as normal/roughness maps by the FBX import in the first place). Sampling
+## an sRGB-stored texture applies a gamma decode in hardware before the
+## shader ever sees it, silently brightening the roughness map's values
+## and making the whole character look shinier/wetter than authored -
+## confirmed via research, not guessed (see the doc comment on
+## _classify_texture_role's caller). Building a fresh ImageTexture directly
+## from the raw Image bypasses that decision entirely: it's just raw bytes
+## uploaded as a plain, non-sRGB-flagged texture, sampled literally.
+func _linear_texture_from_image(image: Image) -> ImageTexture:
+	return ImageTexture.create_from_image(image)
+
+
+## The "nonPBR" characters' grayscale channel map (identified by
+## _classify_texture_role as "roughness") turned out to be an old-style
+## gloss/specular map, not a modern roughness map - confirmed with real
+## pixel data, not guessed: sampled fabric regions read 0.04-0.20 and shoes
+## read literal 0.0 (pure black). Those are exactly backwards for Godot's
+## roughness_texture convention (0 = mirror-smooth, 1 = fully matte) - shoes
+## rendered as a perfect mirror is what gave the "wet latex" look. Gloss
+## and roughness are the same concept on an inverted scale (gloss: bright =
+## shiny; roughness: bright = matte), so inverting each channel converts
+## one into the other. Mutates in place (Image, not a Resource - safe,
+## this copy is never shared with anything else in the project).
+func _invert_image_values(image: Image) -> void:
+	if image.is_compressed():
+		image.decompress()
+	# Raw byte-array arithmetic instead of get_pixel()/set_pixel() in a
+	# loop - a real source texture here is 4096x4096 (16.7M pixels), and
+	# per-pixel Color-object round trips at that scale are slow enough to
+	# be worth avoiding even with the import spinner now giving cover for
+	# it. Normalizing to RGBA8 first keeps the byte-stride assumption
+	# below (4 bytes/pixel, alpha untouched) correct regardless of
+	# whatever format the source PNG decoded to.
+	if image.get_format() != Image.FORMAT_RGBA8:
+		image.convert(Image.FORMAT_RGBA8)
+	var data := image.get_data()
+	for i in range(0, data.size(), 4):
+		data[i] = 255 - data[i]
+		data[i + 1] = 255 - data[i + 1]
+		data[i + 2] = 255 - data[i + 2]
+	image.set_data(image.get_width(), image.get_height(), image.has_mipmaps(), image.get_format(), data)
+
+
+## Samples a grid of pixels to guess what a texture encodes, rather than
+## trusting filename order (not consistent across sources - see
+## _fix_unwired_textures's doc comment):
+## - Tangent-space normal maps are dominated by the blue channel (the
+##   mostly-forward-facing Z component, encoded as roughly (128,128,255) at
+##   a flat surface) - real surface detail shows as small deviations from
+##   that, not a shift away from blue being dominant.
+## - Roughness/AO/specular maps are low-saturation (grayscale) with real
+##   tonal variation, unlike a flat color mask.
+## - Anything else (color texture, mostly-flat/empty image) is left alone.
+##
+## Takes an already-loaded Image (see _fix_unwired_textures - loaded via
+## Image.load_from_file() reading the raw source PNG bytes directly, not
+## `load(path)` + get_image(); the imported/compressed resource distorts
+## normal maps enough to break the blue-channel check below, see
+## _linear_texture_from_image's doc comment for the same underlying cause).
+func _classify_texture_role(image: Image) -> String:
+	var sample_size := 24
+	var width := image.get_width()
+	var height := image.get_height()
+	if width < sample_size or height < sample_size:
+		return "unknown"
+	var blue_dominant_votes := 0
+	# Colorful/near-black/near-white pixels are excluded from the
+	# grayscale+variance tally entirely, not just weighted down - large
+	## areas of near-black fabric in a genuine color texture are trivially
+	# "grayscale" (r=g=b=0) regardless of the image's real hue content, and
+	# counted them straight into "roughness" votes on a real test case
+	# (Ch28's own albedo texture, dominated by black clothing) before this
+	# fix. Saturation is only meaningful once a pixel has enough brightness
+	# to judge in the first place.
+	var colorful_votes := 0
+	var grayscale_votes := 0
+	var judged_count := 0
+	var luma_samples: Array[float] = []
+	for gy in sample_size:
+		for gx in sample_size:
+			var x := int((float(gx) + 0.5) / sample_size * width)
+			var y := int((float(gy) + 0.5) / sample_size * height)
+			var pixel := image.get_pixel(x, y)
+			if pixel.b > pixel.r + 0.12 and pixel.b > pixel.g + 0.12:
+				blue_dominant_votes += 1
+			var value := maxf(pixel.r, maxf(pixel.g, pixel.b))
+			var saturation := 0.0 if value < 0.001 else (
+					value - minf(pixel.r, minf(pixel.g, pixel.b))) / value
+			if value > 0.12 and value < 0.95:
+				judged_count += 1
+				if saturation > 0.15:
+					colorful_votes += 1
+				else:
+					grayscale_votes += 1
+			luma_samples.append(0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b)
+	var total_samples := sample_size * sample_size
+	if blue_dominant_votes > total_samples * 0.6:
+		return "normal"
+	if judged_count < total_samples * 0.1:
+		return "unknown"
+	if colorful_votes > judged_count * 0.1:
+		return "unknown"  # real color content somewhere - treat as an albedo/detail texture
+	var total_variance := 0.0
+	for i in range(1, luma_samples.size()):
+		total_variance += absf(luma_samples[i] - luma_samples[i - 1])
+	# Roughness/AO maps have real tonal variation across the atlas (skin vs
+	# fabric vs rubber sole read differently) - a flat gray color mask
+	# wouldn't, so requiring both grayscale-ness AND variance rules that out.
+	if grayscale_votes > judged_count * 0.6 and total_variance / total_samples > 0.01:
+		return "roughness"
+	return "unknown"
+
+
+## Points anim_player at the skeleton's hips bone - "Hips" for PlayerBody/
+## UAL-retargeted clips, "mixamorig_Hips" for the Mixamo characters - so
+## every animation plays "in place" by default: once root_motion_track is
+## set, Godot's AnimationMixer strips that bone's own translation from the
+## applied pose every frame regardless of whether anything reads
+## get_root_motion_position() - confirmed empirically, see the root-motion
+## toggle investigation in task history. _process() opts back into real
+## translation by reading that same delta when root_motion_toggle is on.
+##
+## Not just skeleton bone 0: PlayerBody's MotusMan rig has an extra
+## technical "Root" bone above Hips at index 0 that carries no animation of
+## its own (every retargeted UAL clip writes its position track to "Hips"
+## specifically, per player_body.gd's _retarget_clip) - the Mixamo
+## characters happen to put Hips at index 0 with no such wrapper, but
+## searching by name handles both without needing a per-adapter override.
+func _setup_root_motion_track() -> void:
+	var root_bone_idx := -1
+	for i in body.skeleton.get_bone_count():
+		if body.skeleton.get_bone_name(i).ends_with("Hips"):
+			root_bone_idx = i
+			break
+	if root_bone_idx < 0 and body.skeleton.get_bone_count() > 0:
+		root_bone_idx = 0
+	if root_bone_idx < 0:
+		body.anim_player.root_motion_track = NodePath()
+		return
+	var root_bone_name := body.skeleton.get_bone_name(root_bone_idx)
+	# Track paths (root_motion_track included) resolve relative to
+	# anim_player's root_node (default: its own parent), the same way every
+	# other track in these animations already does - e.g. player_body.gd's
+	# _retarget_clip always writes plain NodePath("Skeleton3D:" + bone), not
+	# a path relative to the AnimationPlayer itself. get_path_to(skeleton)
+	# would prepend an extra ".." (skeleton is anim_player's sibling, not
+	# child) and resolve one level too far up, silently matching no track.
+	body.anim_player.root_motion_track = NodePath(
+			String(body.skeleton.name) + ":" + root_bone_name)
+
+
+## Drains the per-frame root-motion delta every frame regardless of the
+## toggle state, so switching the toggle mid-playback never dumps a huge
+## backlog of skipped deltas onto the character in one jump - only whether
+## the drained delta gets APPLIED to body.node depends on
+## root_motion_toggle. See _setup_root_motion_track() for why "in place"
+## needs no extra work at all.
+func _process_root_motion() -> void:
+	if body == null or not is_instance_valid(body.anim_player):
+		return
+	var delta_position := body.anim_player.get_root_motion_position()
+	if _root_motion_moving:
+		body.node.position += delta_position
 
 
 func _update_responsive_layout() -> void:
@@ -557,6 +945,7 @@ func _setup_controls() -> void:
 	pause_toggle.toggled.connect(_on_pause_toggled)
 	show_bones_toggle.toggled.connect(_on_show_bones_toggled)
 	free_camera_toggle.toggled.connect(_on_free_camera_toggled)
+	root_motion_toggle.toggled.connect(_on_root_motion_toggled)
 	orbit_camera_button.pressed.connect(_on_camera_mode_pressed.bind(CAMERA_MODE_ORBIT))
 	move_camera_button.pressed.connect(_on_camera_mode_pressed.bind(CAMERA_MODE_MOVE))
 	zoom_out_button.pressed.connect(_on_zoom_out_pressed)
@@ -722,6 +1111,11 @@ func _setup_animation_controls() -> void:
 func _populate_animation_controls() -> void:
 	animation_group_picker.clear()
 	_animation_groups = body.get_animation_groups()
+	if not _custom_clips.is_empty():
+		var custom_names: Array[StringName] = []
+		for clip_name: StringName in _custom_clips:
+			custom_names.append(clip_name)
+		_animation_groups[&"Custom"] = custom_names
 	for group_name in _animation_groups:
 		animation_group_picker.add_item(String(group_name))
 		animation_group_picker.set_item_metadata(
@@ -799,7 +1193,12 @@ func _on_animation_selected(index: int) -> void:
 
 func _set_animation(animation_name: StringName) -> void:
 	_current_animation = animation_name
-	body.play_debug_anim(animation_name, 0.0)
+	body.node.position = CHARACTER_SPAWN_POSITION
+	var custom_path := "custom/" + String(animation_name)
+	if body.anim_player.has_animation(custom_path):
+		body.anim_player.play(custom_path, 0.0)
+	else:
+		body.play_debug_anim(animation_name, 0.0)
 	var comparison_status: String = _comparison.play_animation(animation_name)
 	if pause_toggle.button_pressed:
 		body.anim_player.pause()
@@ -1039,8 +1438,21 @@ func _on_view_selected(index: int) -> void:
 	_joint_focus_active = false
 	_orbiting = false
 	_orbiting_joint = false
-	body.mesh.mesh = (_isolated_attachment_mesh
-			if index == 2 and _isolated_attachment_mesh != null else _full_body_mesh)
+	# _full_body_mesh/_isolated_attachment_mesh are only ever populated for
+	# held-object characters (see _load_character - every other character
+	# leaves _full_body_mesh explicitly null, since the "close-up"/"isolated
+	# attachment" views exist to inspect a held flashlight, which only
+	# Player has). Applying this swap unconditionally overwrote body.mesh's
+	# actual mesh resource with that null for any other character - this is
+	# Bug 9's real root cause (see docs/task_history/
+	# character_editor_import_feature.md): "Reset Camera View" selects view
+	# index 0 ("Full body"), which hit this exact line and wiped Ch28_Body's
+	# geometry entirely, leaving a head-shaped hole showing the black
+	# background behind it - not a lighting or material problem at all,
+	# despite looking like one from a screenshot.
+	if body.supports_held_object:
+		body.mesh.mesh = (_isolated_attachment_mesh
+				if index == 2 and _isolated_attachment_mesh != null else _full_body_mesh)
 	if index == 0:
 		_frame_full_body()
 	else:
@@ -1058,6 +1470,11 @@ func _on_free_camera_toggled(enabled: bool) -> void:
 		_frame_selected_joint()
 	else:
 		_focus_character_general()
+
+
+func _on_root_motion_toggled(moving: bool) -> void:
+	_root_motion_moving = moving
+	body.node.position = CHARACTER_SPAWN_POSITION
 
 
 func _focus_character_general() -> void:
@@ -1552,11 +1969,24 @@ func _on_reset_bone_pressed() -> void:
 
 func _on_reset_all_pressed() -> void:
 	_modifier.reset_all()
-	_held_object.position = Vector3.ZERO
-	_held_object.rotation = Vector3.ZERO
-	_held_object.scale = Vector3.ONE
+	# Held-object reset is meaningless - and _held_object is null - for
+	# characters that don't support held objects (see MIXAMO_CHARACTERS/
+	# RETARGETED_MIXAMO_CHARACTERS/_custom_characters). Previously crashed
+	# unconditionally here for every character except Player, aborting
+	# before _refresh_skeleton() ever ran - the modifier reset above would
+	# partially apply with no follow-up skeleton refresh, which is very
+	# likely why the mesh visually broke.
+	if body.supports_held_object:
+		_held_object.position = Vector3.ZERO
+		_held_object.rotation = Vector3.ZERO
+		# Not Vector3.ONE (100% scale) - confirmed via a live screenshot,
+		# not guessed: that balloons the flashlight to full size, engulfing
+		# the character's head/torso, which is what actually looked like
+		# "the skin disappearing." DEFAULT_OBJECT_SCALE (12%) is the
+		# object's real neutral size.
+		_held_object.scale = Vector3.ONE * DEFAULT_OBJECT_SCALE
+		_sync_object_controls()
 	_sync_bone_controls()
-	_sync_object_controls()
 	_refresh_skeleton()
 	status_label.text = "All values reset"
 
@@ -1625,12 +2055,20 @@ func _on_load_pose_pressed() -> void:
 
 func _on_new_preset_pressed() -> void:
 	_modifier.reset_all()
-	_held_object.position = Vector3.ZERO
-	_held_object.rotation = Vector3.ZERO
-	_held_object.scale = Vector3.ONE
+	# Same held-object bugs as _on_reset_all_pressed() had (see that
+	# function's comment): unconditional access would crash for characters
+	# without a held object (this button is only visible for Player in
+	# practice, via preset_row.visible = body.supports_held_object, so the
+	# crash itself was never actually reachable here - but the wrong
+	# Vector3.ONE scale default was, on Player, which is exactly the
+	# character this button is visible for).
+	if body.supports_held_object:
+		_held_object.position = Vector3.ZERO
+		_held_object.rotation = Vector3.ZERO
+		_held_object.scale = Vector3.ONE * DEFAULT_OBJECT_SCALE
+		_sync_object_controls()
 	_current_pose_path = ""
 	_sync_bone_controls()
-	_sync_object_controls()
 	preset_path_field.text = "(unsaved pose)"
 	_refresh_skeleton()
 	status_label.text = "New pose; choose Save or Save As when ready"
@@ -1663,6 +2101,194 @@ func _on_preset_file_selected(path: String) -> void:
 
 func _on_save_preset_file_selected(path: String) -> void:
 	_save_pose_to_path(_localize_resource_path(path))
+
+
+func _on_import_character_pressed() -> void:
+	_import_mode = ImportMode.CHARACTER
+	_open_import_dialog("Import character")
+
+
+func _on_import_animation_pressed() -> void:
+	_import_mode = ImportMode.ANIMATION
+	_open_import_dialog("Import animation onto %s" % body.display_name)
+
+
+## FileDialog's own use_native_dialog property has a real history of not
+## actually invoking the OS picker in various Godot versions (see e.g.
+## godotengine/godot#82531) - calling DisplayServer.file_dialog_show()
+## directly sidesteps that wrapper entirely and is what actually opens
+## Finder's real file picker on macOS. Falls back to the Godot-drawn
+## FileDialog node on any platform/build that doesn't report native
+## support at all (has_feature check), so this still works everywhere.
+func _open_import_dialog(title: String) -> void:
+	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
+		var err := DisplayServer.file_dialog_show(
+				title, "", "", false, DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
+				PackedStringArray(["*.fbx,*.glb,*.gltf ; 3D models and animations"]),
+				_on_native_import_file_selected)
+		if err != OK:
+			status_label.text = "Native file dialog failed (%s) - using built-in picker" % error_string(err)
+			import_dialog.title = title
+			import_dialog.popup_centered_ratio(0.82)
+	else:
+		import_dialog.title = title
+		import_dialog.popup_centered_ratio(0.82)
+
+
+func _on_native_import_file_selected(
+		status: bool, selected_paths: PackedStringArray, _selected_filter_index: int) -> void:
+	# The native OS picker (see _open_import_dialog) can close without
+	# actually raising this window back to the front on macOS - DisplayServer
+	# still reports window_is_focused()/window_can_draw() as true throughout
+	# (confirmed via a live file-based log spanning the entire import, no
+	# gaps), meaning the spinner genuinely is rendering the whole time; the
+	# user just isn't looking at an on-top window, which reads identically
+	# to a freeze. Forcing it to the front here is the fix, not anything
+	# about the spinner's own update logic, which was never broken.
+	DisplayServer.window_move_to_foreground(get_window().get_window_id())
+	if status and not selected_paths.is_empty():
+		_on_import_file_selected(selected_paths[0])
+
+
+func _on_import_file_selected(path: String) -> void:
+	_import_in_progress = true
+	import_character_button.disabled = true
+	import_animation_button.disabled = true
+	status_label.text = "Importing %s... this may take a few seconds" % path.get_file()
+	match _import_mode:
+		ImportMode.CHARACTER:
+			await _import_character(path)
+		ImportMode.ANIMATION:
+			await _import_animation(path)
+	_import_in_progress = false
+	import_character_button.disabled = false
+	import_animation_button.disabled = false
+
+
+## Copies source_path into assets/models/imported_characters/, detects its
+## skeleton's bone-name convention from its own bones (not assumed), and
+## registers it as a new selectable character for this session. See
+## _detect_bone_prefix's doc comment for what "detects" covers and what it
+## doesn't.
+func _import_character(source_path: String) -> void:
+	var dest_path := "res://assets/models/imported_characters/" + _sanitize_filename(source_path.get_file())
+	var result := await _request_import_asset(source_path, dest_path)
+	if not result.get("ok", false):
+		status_label.text = "Import failed: %s" % result.get("error", "unknown error")
+		return
+	var instance: Node = (load(dest_path) as PackedScene).instantiate()
+	var new_skeleton: Skeleton3D = instance.find_child("Skeleton3D", true, false)
+	if new_skeleton == null or new_skeleton.get_bone_count() == 0:
+		instance.free()
+		status_label.text = "Import failed: %s has no Skeleton3D" % dest_path.get_file()
+		return
+	var bone_prefix: Variant = _detect_bone_prefix(new_skeleton)
+	instance.free()
+
+	var kind_id := "custom_" + dest_path.get_file().get_basename().to_snake_case()
+	var display_name := dest_path.get_file().get_basename()
+	_custom_characters[kind_id] = {
+		"model_path": dest_path, "display_name": display_name, "bone_prefix": bone_prefix,
+	}
+	character_picker.add_item(display_name)
+	character_picker.set_item_metadata(character_picker.item_count - 1, kind_id)
+	var convention_note := "" if bone_prefix != null else (
+			" (unrecognized skeleton - posable only, no animation pools; "
+			+ "ask your assistant to add proper retargeting support)")
+	status_label.text = "Imported %s%s" % [display_name, convention_note]
+	_on_character_selected(character_picker.item_count - 1)
+
+
+## Copies source_path into assets/models/imported_animations/, detects its
+## skeleton's bone-name convention, retargets its primary animation onto
+## whichever character is CURRENTLY loaded, and adds it to a "Custom" group
+## for this session (see _custom_clips's doc comment for why this doesn't
+## persist across a character switch).
+func _import_animation(source_path: String) -> void:
+	var dest_path := "res://assets/models/imported_animations/" + _sanitize_filename(source_path.get_file())
+	var result := await _request_import_asset(source_path, dest_path)
+	if not result.get("ok", false):
+		status_label.text = "Import failed: %s" % result.get("error", "unknown error")
+		return
+	var instance: Node = (load(dest_path) as PackedScene).instantiate()
+	var source_skeleton: Skeleton3D = instance.find_child("Skeleton3D", true, false)
+	var clip_ap: AnimationPlayer = instance.find_child("AnimationPlayer", true, false)
+	if source_skeleton == null or clip_ap == null:
+		instance.free()
+		status_label.text = "Import failed: %s has no Skeleton3D/AnimationPlayer" % dest_path.get_file()
+		return
+	var source_prefix: Variant = _detect_bone_prefix(source_skeleton)
+	var src_animation := UniversalAnimationPools.find_primary_animation(clip_ap)
+	if source_prefix == null or src_animation == null:
+		instance.free()
+		status_label.text = ("Import failed: unrecognized skeleton or no animation found in %s "
+				+ "- ask your assistant to add support for this rig") % dest_path.get_file()
+		return
+
+	var config: HumanoidRetargeter.BoneMapConfig
+	if source_prefix.begins_with("B-"):
+		config = RetargetedMixamoAdapter._bone_map_config(_current_bone_prefix())
+	else:
+		config = UniversalAnimationPools.mixamo_family_bone_map_config(
+				source_prefix, _current_bone_prefix())
+	var retargeted := HumanoidRetargeter.retarget_clip(
+			source_skeleton, src_animation, body.skeleton, config, true)
+	instance.free()
+
+	var clip_name := StringName("custom_" + dest_path.get_file().get_basename().to_snake_case())
+	_custom_clips[clip_name] = retargeted
+	_rebuild_custom_clip_library()
+	status_label.text = "Imported %s onto %s" % [dest_path.get_file(), body.display_name]
+	_populate_animation_controls()
+	_select_animation_in_ui(clip_name)
+	_set_animation(clip_name)
+
+
+func _rebuild_custom_clip_library() -> void:
+	if body.anim_player.has_animation_library(&"custom"):
+		body.anim_player.remove_animation_library(&"custom")
+	var lib := AnimationLibrary.new()
+	for clip_name: StringName in _custom_clips:
+		lib.add_animation(clip_name, _custom_clips[clip_name])
+	body.anim_player.add_animation_library(&"custom", lib)
+
+
+## "" for MotusMan's bare names (only meaningful when body is the Player
+## adapter), otherwise whatever prefix the currently loaded character's own
+## bone 0 uses - covers plain "mixamorig_" characters, numbered ones, and
+## custom-imported ones alike without needing to ask which adapter is active.
+func _current_bone_prefix() -> String:
+	if _character_kind == "player":
+		return ""
+	return _detect_bone_prefix(body.skeleton) if body.skeleton.get_bone_count() > 0 else ""
+
+
+## Mixamo-family rigs (the vast majority of what gets imported) all name
+## their hip bone "<prefix>Hips" where prefix is "", "mixamorig_", or
+## "mixamorig<N>_" for some number N - detected here by searching for
+## whichever bone ends in "Hips" and taking what's left after stripping it,
+## rather than assuming bone 0 specifically (PlayerBody's MotusMan has an
+## extra non-Hips "Root" bone at index 0 - see _setup_root_motion_track's
+## doc comment for the same issue in a different context). Human Basic
+## Motions FREE-style rigs use "B-hips" instead - detected as a special
+## case since it doesn't fit the "<prefix>Hips" pattern. Returns null for
+## anything else: this only covers the two conventions this tool already
+## knows how to retarget from, not truly arbitrary skeletons.
+func _detect_bone_prefix(skeleton: Skeleton3D):
+	for i in skeleton.get_bone_count():
+		var name := skeleton.get_bone_name(i)
+		if name == "B-hips":
+			return "B-"
+		if name.ends_with("Hips") and not name.begins_with("B-"):
+			return name.substr(0, name.length() - "Hips".length())
+	return null
+
+
+func _sanitize_filename(filename: String) -> String:
+	var sanitized := filename
+	for bad_char in ["\"", ":", "?", "*", "<", ">", "|"]:
+		sanitized = sanitized.replace(bad_char, "_")
+	return sanitized
 
 
 func _globalize_if_resource(path: String) -> String:
@@ -1702,26 +2328,35 @@ func _load_pose_from_path(path: String, update_ui: bool) -> bool:
 		if values.size() >= 3 and body.skeleton.find_bone(StringName(bone_name)) >= 0:
 			_modifier.set_bone_rotation(StringName(bone_name), Vector3(
 					float(values[0]), float(values[1]), float(values[2])))
-	var position_values_data: Array = data.get(
-			"object_position", data.get("flashlight_position", []))
-	if position_values_data.size() >= 3:
-		_held_object.position = Vector3(
-				float(position_values_data[0]),
-				float(position_values_data[1]),
-				float(position_values_data[2]))
-	var rotation_values_data: Array = data.get(
-			"object_rotation_degrees", data.get("flashlight_rotation_degrees", []))
-	if rotation_values_data.size() >= 3:
-		_held_object.rotation_degrees = Vector3(
-				float(rotation_values_data[0]),
-				float(rotation_values_data[1]),
-				float(rotation_values_data[2]))
-	var object_scale := float(data.get("object_scale", _held_object.scale.x))
-	_held_object.scale = Vector3.ONE * object_scale
+	# Held-object fields are meaningless - and _held_object is null - for
+	# characters without one (see _on_reset_all_pressed's comment for the
+	# same issue found elsewhere in this file). Not currently reachable
+	# through the UI (pose load/save is hidden unless
+	# body.supports_held_object), but _run_automation_args' "pose=" CLI
+	# option calls this unconditionally regardless of character, so guard
+	# here once rather than at every call site.
+	if body.supports_held_object:
+		var position_values_data: Array = data.get(
+				"object_position", data.get("flashlight_position", []))
+		if position_values_data.size() >= 3:
+			_held_object.position = Vector3(
+					float(position_values_data[0]),
+					float(position_values_data[1]),
+					float(position_values_data[2]))
+		var rotation_values_data: Array = data.get(
+				"object_rotation_degrees", data.get("flashlight_rotation_degrees", []))
+		if rotation_values_data.size() >= 3:
+			_held_object.rotation_degrees = Vector3(
+					float(rotation_values_data[0]),
+					float(rotation_values_data[1]),
+					float(rotation_values_data[2]))
+		var object_scale := float(data.get("object_scale", _held_object.scale.x))
+		_held_object.scale = Vector3.ONE * object_scale
 	_current_pose_path = path
 	if update_ui:
 		_sync_bone_controls()
-		_sync_object_controls()
+		if body.supports_held_object:
+			_sync_object_controls()
 		_refresh_skeleton()
 		_update_bone_gizmo()
 		status_label.text = "Pose loaded from %s" % path.get_file()
@@ -1760,24 +2395,28 @@ func _run_automation_args() -> void:
 		var animation_name := StringName(options["animation"])
 		_select_animation_in_ui(animation_name)
 		_set_animation(animation_name)
-	if options.has("object"):
-		_load_object(options["object"], true)
-	if options.has("attachment"):
-		_set_attachment_bone(StringName(options["attachment"]), false)
-		_select_attachment_in_ui(_attachment_bone)
-	var position_option: String = options.get(
-			"object_position", options.get("flashlight_position", ""))
-	if not position_option.is_empty():
-		_held_object.position = _parse_vector3_option(
-				position_option, _held_object.position)
-	var rotation_option: String = options.get(
-			"object_rotation", options.get("flashlight_rotation", ""))
-	if not rotation_option.is_empty():
-		_held_object.rotation_degrees = _parse_vector3_option(
-				rotation_option, _held_object.rotation_degrees)
-	if options.has("object_scale"):
-		var object_scale := float(options["object_scale"])
-		_held_object.scale = Vector3.ONE * object_scale
+	# Held-object options (object/attachment/object_position/etc.) are
+	# meaningless - and _held_object is null - for characters that don't
+	# support held objects (see MIXAMO_CHARACTERS).
+	if body.supports_held_object:
+		if options.has("object"):
+			_load_object(options["object"], true)
+		if options.has("attachment"):
+			_set_attachment_bone(StringName(options["attachment"]), false)
+			_select_attachment_in_ui(_attachment_bone)
+		var position_option: String = options.get(
+				"object_position", options.get("flashlight_position", ""))
+		if not position_option.is_empty():
+			_held_object.position = _parse_vector3_option(
+					position_option, _held_object.position)
+		var rotation_option: String = options.get(
+				"object_rotation", options.get("flashlight_rotation", ""))
+		if not rotation_option.is_empty():
+			_held_object.rotation_degrees = _parse_vector3_option(
+					rotation_option, _held_object.rotation_degrees)
+		if options.has("object_scale"):
+			var object_scale := float(options["object_scale"])
+			_held_object.scale = Vector3.ONE * object_scale
 	if options.has("bones"):
 		for bone_override: String in String(options["bones"]).split(";"):
 			var separator := bone_override.find(":")
@@ -1789,7 +2428,8 @@ func _run_automation_args() -> void:
 						bone_override.substr(separator + 1),
 						_modifier.get_bone_rotation(bone_name)))
 	_sync_bone_controls()
-	_sync_object_controls()
+	if body.supports_held_object:
+		_sync_object_controls()
 	_refresh_skeleton()
 	if options.has("view"):
 		var view_index: int = {"full": 0, "hand": 1, "isolated": 2}.get(
@@ -1810,6 +2450,9 @@ func _run_automation_args() -> void:
 			_update_panel_resize_handle()
 	if options.get("panel_collapsed", "false") == "true" and not _panel_collapsed:
 		_on_collapse_panel_pressed()
+	if options.get("root_motion", "false") == "true":
+		root_motion_toggle.set_pressed_no_signal(true)
+		_on_root_motion_toggled(true)
 	if options.has("time"):
 		var preview_time := float(options["time"])
 		body.anim_player.seek(preview_time, true)
@@ -1956,13 +2599,55 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 		"set_character":
 			_mcp_set_character(String(data[0]))
 			return true
+		"import_asset_result":
+			var parsed = JSON.parse_string(String(data[0]) if data.size() > 0 else "{}")
+			_pending_import_result = parsed if typeof(parsed) == TYPE_DICTIONARY else (
+					{"ok": false, "error": "Malformed import result"})
+			return true
+		"test_import_character":
+			_mcp_test_import_character(String(data[0]))
+			return true
 	return false
 
 
+## Exercises the exact same _on_import_file_selected() the "Import
+## Character..." button's file dialog callback calls - not _import_character
+## directly, which would skip the spinner/button-disable state _on_
+## import_file_selected itself sets up around it - see _mcp_pick_bone's
+## doc comment for why this isn't awaited directly from the dispatcher.
+func _mcp_test_import_character(source_path: String) -> void:
+	var characters_before := _custom_characters.size()
+	_import_mode = ImportMode.CHARACTER
+	await _on_import_file_selected(source_path)
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify({
+		"ok": _custom_characters.size() > characters_before,
+		"result": status_label.text,
+	})])
+
+
+## Copies source_path (from the native file dialog, an absolute OS path)
+## into the project at dest_res_path and waits for the editor to import it -
+## see pose_debugger_plugin.gd's _import_asset for why this has to be a
+## round trip through the editor process rather than something this played
+## scene can do on its own (only the editor can run Godot's importer).
+func _request_import_asset(source_path: String, dest_res_path: String) -> Dictionary:
+	if not EngineDebugger.is_active():
+		return {"ok": false, "error":
+				"Import requires running inside the editor (Play the scene from the Godot editor, not a standalone build)"}
+	_pending_import_result = {}
+	EngineDebugger.send_message("mcp:import_asset_request", [source_path, dest_res_path])
+	var start_msec := Time.get_ticks_msec()
+	while _pending_import_result.is_empty() and (Time.get_ticks_msec() - start_msec) < 15000.0:
+		await get_tree().process_frame
+	if _pending_import_result.is_empty():
+		return {"ok": false, "error": "Timed out waiting for the editor to import the asset"}
+	return _pending_import_result
+
+
 func _mcp_set_character(kind: String) -> void:
-	if not kind in CHARACTER_KINDS:
+	if not kind in CHARACTER_KINDS and not _custom_characters.has(kind):
 		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
-				{"ok": false, "error": "Unknown character '%s' (expected %s)" % [
+				{"ok": false, "error": "Unknown character '%s' (expected %s, or a session-imported kind)" % [
 						kind, ", ".join(CHARACTER_KINDS)]})])
 		return
 	_load_character(kind)
@@ -2588,6 +3273,7 @@ func _drag_rotation_ring(mouse_position: Vector2) -> void:
 
 
 func _process(delta: float) -> void:
+	_process_root_motion()
 	if not free_camera_toggle.button_pressed:
 		if _joint_focus_active:
 			_update_focused_camera()

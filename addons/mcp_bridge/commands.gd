@@ -12,6 +12,8 @@ extends RefCounted
 
 static func handle(request: Dictionary, editor_interface: EditorInterface, pose_debugger):
 	match String(request.get("cmd", "")):
+		"rescan_filesystem":
+			return _cmd_rescan_filesystem(editor_interface)
 		"open_scene":
 			return _cmd_open_scene(request, editor_interface)
 		"select_node":
@@ -74,8 +76,23 @@ static func handle(request: Dictionary, editor_interface: EditorInterface, pose_
 			return await _cmd_forward_to_runtime(
 					"mcp:set_character", [String(request.get("kind", "player"))],
 					editor_interface, pose_debugger, 15.0)
+		"test_import_character":
+			return await _cmd_forward_to_runtime(
+					"mcp:test_import_character", [String(request.get("source_path", ""))],
+					editor_interface, pose_debugger, 60.0)
 		var other:
 			return {"ok": false, "error": "Unknown cmd: %s" % other}
+
+
+## A long-running editor session's global class_name cache can go stale
+## after new script files with class_name are added/renamed on disk - the
+## editor only rescans automatically on its own schedule (or window focus,
+## in some Godot versions), which doesn't necessarily happen just because a
+## played scene's script references the new class. scan() forces it
+## immediately instead of waiting.
+static func _cmd_rescan_filesystem(editor_interface: EditorInterface) -> Dictionary:
+	editor_interface.get_resource_filesystem().scan()
+	return {"ok": true, "result": "Filesystem rescan triggered"}
 
 
 static func _cmd_open_scene(request: Dictionary, editor_interface: EditorInterface) -> Dictionary:

@@ -219,6 +219,11 @@ custom_minimum_size = Vector2(180, 36)
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="ImportCharacter" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/CharacterRow"]
+custom_minimum_size = Vector2(90, 34)
+layout_mode = 2
+text = "Import..."
+
 [node name="AnimationRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 6
@@ -238,6 +243,11 @@ size_flags_horizontal = 3
 custom_minimum_size = Vector2(220, 36)
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="ImportAnimation" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/AnimationRow"]
+custom_minimum_size = Vector2(90, 34)
+layout_mode = 2
+text = "Import..."
 
 [node name="EditorModeRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
 layout_mode = 2
@@ -385,6 +395,11 @@ text = "Show bones"
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Free camera"
+
+[node name="RootMotionMoving" type="CheckButton" parent="UI/Panel/PanelScroll/Margin/VBox/DisplayOptions"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Root motion moves"
 
 [node name="BoneSection" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
 layout_mode = 2
@@ -626,6 +641,14 @@ file_mode = 4
 access = 2
 filters = PackedStringArray("*.json ; Pose presets")
 
+[node name="ImportDialog" type="FileDialog" parent="UI"]
+title = "Import character or animation"
+size = Vector2i(900, 620)
+initial_position = 2
+access = 2
+file_mode = 0
+filters = PackedStringArray("*.fbx, *.glb, *.gltf ; 3D models and animations")
+
 [node name="PanelResizeHandle" type="Button" parent="UI"]
 offset_right = 30.0
 offset_bottom = 30.0
@@ -646,6 +669,9 @@ icon_max_width = 20
 [connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/LoadPose" to="." method="_on_load_pose_pressed"]
 [connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/SaveImage" to="." method="_on_save_image_pressed"]
 [connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/Copy" to="." method="_on_copy_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/CharacterRow/ImportCharacter" to="." method="_on_import_character_pressed"]
+[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/AnimationRow/ImportAnimation" to="." method="_on_import_animation_pressed"]
 [connection signal="file_selected" from="UI/ObjectDialog" to="." method="_on_object_file_selected"]
 [connection signal="file_selected" from="UI/OpenPresetDialog" to="." method="_on_preset_file_selected"]
 [connection signal="file_selected" from="UI/SavePresetDialog" to="." method="_on_save_preset_file_selected"]
+[connection signal="file_selected" from="UI/ImportDialog" to="." method="_on_import_file_selected"]
