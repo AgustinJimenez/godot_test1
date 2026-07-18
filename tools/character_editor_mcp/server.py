@@ -436,6 +436,29 @@ def stop_scene_in_editor() -> str:
 
 
 @mcp.tool()
+def set_live_view(mode: Literal["full", "hand", "isolated"]) -> str:
+	"""Switch the camera framing preset in the scene actually playing in the already-running editor - the live counterpart to set_view. Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "set_live_view", "mode": mode}, timeout=8.0)
+	return str(result)
+
+
+@mcp.tool()
+def select_live_bone(name: str) -> str:
+	"""Select a bone (by name) in the scene actually playing in the already-running editor - the live counterpart to select_bone. Focuses the camera on it the same way clicking its slider row in the UI would. Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "select_live_bone", "name": name}, timeout=8.0)
+	return str(result)
+
+
+@mcp.tool()
+def set_live_camera_angle(
+	angle: Literal["front", "back", "left", "right", "top", "bottom"],
+) -> str:
+	"""Orbit the focused camera to a named angle in the scene actually playing in the already-running editor - the live counterpart to set_camera_angle. Only has an effect once a bone has focus (see select_live_bone). Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "set_live_camera_angle", "angle": angle}, timeout=8.0)
+	return str(result)
+
+
+@mcp.tool()
 def reload_editor_bridge() -> str:
 	"""Re-register addons/mcp_bridge/pose_debugger_plugin.gd fresh from disk in the already-running editor, without an editor restart. Only needed after editing pose_debugger_plugin.gd itself - commands.gd (open_scene, play_scene, dump_live_pose, etc.) already reloads fresh on every call and never needs this."""
 	result = editor_bridge.send_command({"cmd": "reload_bridge"})

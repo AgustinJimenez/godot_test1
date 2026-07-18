@@ -1752,7 +1752,62 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 			var include_ui: bool = bool(data[1]) if data.size() > 1 else false
 			_mcp_capture_screenshot(String(data[0]), include_ui)
 			return true
+		"set_view":
+			_mcp_set_view(String(data[0]))
+			return true
+		"select_bone":
+			_mcp_select_bone(String(data[0]))
+			return true
+		"set_camera_angle":
+			_mcp_set_camera_angle(String(data[0]))
+			return true
 	return false
+
+
+func _mcp_set_view(view_name: String) -> void:
+	var view_index: int = {"full": 0, "hand": 1, "isolated": 2}.get(view_name, -1)
+	if view_index < 0:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "Unknown view '%s' (expected full/hand/isolated)" % view_name})])
+		return
+	view_picker.select(view_index)
+	_on_view_selected(view_index)
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "View set to %s" % view_name})])
+
+
+func _mcp_select_bone(bone_name: String) -> void:
+	if body.skeleton.find_bone(StringName(bone_name)) < 0:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "Unknown bone %s" % bone_name})])
+		return
+	_select_bone(StringName(bone_name), true)
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "Selected bone %s" % bone_name})])
+
+
+func _mcp_set_camera_angle(angle_name: String) -> void:
+	if not _joint_focus_active:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "No bone is focused - call select_bone first"})])
+		return
+	var distance := _focused_camera_offset.length()
+	match angle_name:
+		"right":
+			_focused_camera_offset = Vector3.RIGHT * distance
+		"left":
+			_focused_camera_offset = Vector3.LEFT * distance
+		"top":
+			_focused_camera_offset = Vector3(0.0, 0.85, 0.5).normalized() * distance
+		"bottom":
+			_focused_camera_offset = Vector3(0.0, -0.85, 0.5).normalized() * distance
+		"back":
+			_focused_camera_offset = Vector3(0.0, 0.0, -distance)
+		_:
+			_focused_camera_offset = Vector3(0.0, 0.0, distance)
+	_update_focused_camera()
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "Camera angle set to %s" % angle_name})])
 
 
 func _mcp_set_bone_rotation(data: Array) -> void:

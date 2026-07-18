@@ -30,6 +30,15 @@ static func handle(request: Dictionary, editor_interface: EditorInterface, pose_
 			return await _cmd_set_object(request, editor_interface, pose_debugger)
 		"capture_live_pose":
 			return await _cmd_capture_live_pose(request, editor_interface, pose_debugger)
+		"set_live_view":
+			return await _cmd_forward_to_runtime(
+					"mcp:set_view", [String(request.get("mode", ""))], editor_interface, pose_debugger)
+		"select_live_bone":
+			return await _cmd_forward_to_runtime(
+					"mcp:select_bone", [String(request.get("name", ""))], editor_interface, pose_debugger)
+		"set_live_camera_angle":
+			return await _cmd_forward_to_runtime(
+					"mcp:set_camera_angle", [String(request.get("angle", ""))], editor_interface, pose_debugger)
 		var other:
 			return {"ok": false, "error": "Unknown cmd: %s" % other}
 
@@ -136,6 +145,17 @@ static func _cmd_capture_live_pose(request: Dictionary, editor_interface: Editor
 	if not pose_debugger.send_to_runtime("mcp:capture_screenshot", [path, include_ui]):
 		return {"ok": false, "error": "No active debugger session to query"}
 	return await _wait_for_command_result(pose_debugger, 8.0)
+
+
+static func _cmd_forward_to_runtime(
+		message: String, args: Array, editor_interface: EditorInterface, pose_debugger) -> Dictionary:
+	if pose_debugger == null:
+		return {"ok": false, "error": "Pose debugger plugin not initialized"}
+	if not editor_interface.is_playing_scene():
+		return {"ok": false, "error": "No scene is currently playing - call play_scene first"}
+	if not pose_debugger.send_to_runtime(message, args):
+		return {"ok": false, "error": "No active debugger session to query"}
+	return await _wait_for_command_result(pose_debugger, 5.0)
 
 
 static func _wait_for_command_result(pose_debugger, timeout_seconds: float) -> Dictionary:
