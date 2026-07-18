@@ -70,6 +70,10 @@ static func handle(request: Dictionary, editor_interface: EditorInterface, pose_
 			return await _cmd_forward_to_runtime(
 					"mcp:set_show_bones", [bool(request.get("enabled", true))],
 					editor_interface, pose_debugger)
+		"set_live_character":
+			return await _cmd_forward_to_runtime(
+					"mcp:set_character", [String(request.get("kind", "player"))],
+					editor_interface, pose_debugger, 15.0)
 		var other:
 			return {"ok": false, "error": "Unknown cmd: %s" % other}
 

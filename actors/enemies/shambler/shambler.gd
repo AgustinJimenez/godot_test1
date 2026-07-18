@@ -54,6 +54,17 @@ func _ready() -> void:
 
 
 func _setup_animations() -> void:
+	build_clip_library(boss_ap)
+	_play(&"idle")
+
+
+## Borrows CLIPS + DEATH_CLIP's standalone animations into anim_player's own
+## "pack" library, exactly the trick tests/manual/animation/animation_preview.gd
+## also uses. Extracted to a static function so tools/character_editor's
+## ShamblerAdapter can build the same library on a bare Boss.fbx instance
+## without needing a full Shambler (CharacterBody3D + AI/nav/patrol) - the
+## editor tool has no use for any of that.
+static func build_clip_library(anim_player: AnimationPlayer) -> void:
 	var lib := AnimationLibrary.new()
 	for clip: StringName in CLIPS:
 		var inst: Node = (load(CLIPS[clip]) as PackedScene).instantiate()
@@ -68,8 +79,7 @@ func _setup_animations() -> void:
 	death_anim.loop_mode = Animation.LOOP_NONE
 	lib.add_animation(&"death", death_anim)
 	death_inst.queue_free()
-	boss_ap.add_animation_library(&"pack", lib)
-	_play(&"idle")
+	anim_player.add_animation_library(&"pack", lib)
 
 
 func _physics_process(delta: float) -> void:

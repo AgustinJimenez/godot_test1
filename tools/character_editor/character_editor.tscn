@@ -50,13 +50,9 @@ script = ExtResource("3_tuner_script")
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_tuner")
 
-[node name="Body" parent="." instance=ExtResource("1_body")]
-position = Vector3(0, 0.1, 0)
-script = ExtResource("2_body_script")
-
-[node name="CompareLabel" type="Label3D" parent="Body"]
+[node name="CompareLabel" type="Label3D" parent="."]
 visible = false
-position = Vector3(0, 2.15, 0)
+position = Vector3(0, 2.25, 0)
 billboard = 1
 no_depth_test = true
 text = "RETARGETED - MOTUSMAN"
@@ -207,6 +203,21 @@ tooltip_text = "Minimize panel"
 icon = ExtResource("8_collapse_icon")
 expand_icon = true
 icon_max_width = 18
+
+[node name="CharacterRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/CharacterRow"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+text = "CHARACTER"
+label_settings = SubResource("SectionSettings")
+
+[node name="CharacterPicker" type="OptionButton" parent="UI/Panel/PanelScroll/Margin/VBox/CharacterRow"]
+custom_minimum_size = Vector2(180, 36)
+layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="AnimationRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
 layout_mode = 2

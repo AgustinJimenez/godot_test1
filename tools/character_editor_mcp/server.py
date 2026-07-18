@@ -47,6 +47,7 @@ mcp = FastMCP("character-editor")
 
 @dataclass
 class EditorState:
+	character: Literal["player", "shambler"] = "player"
 	pose: str | None = None
 	animation: str | None = None
 	object_scene: str | None = None
@@ -68,7 +69,7 @@ def _fmt_vec(v: tuple[float, float, float]) -> str:
 
 
 def _build_state_args() -> list[str]:
-	args: list[str] = []
+	args: list[str] = [f"character={_state.character}"]
 	if _state.pose:
 		args.append(f"pose={_state.pose}")
 	if _state.animation:
@@ -149,6 +150,14 @@ def _run_godot(extra_args: list[str], want_render: bool) -> str:
 # State-mutating tools - no Godot invocation, just update what the next
 # capture/dump/pick call will use.
 # ---------------------------------------------------------------------------
+
+@mcp.tool()
+def select_character(kind: Literal["player", "shambler"]) -> str:
+	"""Choose which character subsequent invocation-based tool calls (capture_pose, dump_bone_poses, etc.) operate on. shambler has no held-object/hand-grip/compare-mode support - those tools error against it. Clears bone overrides since they're bone-name-specific and the two characters use different skeletons (PlayerBody's MotusMan names vs Shambler's mixamorig_-prefixed Mixamo names)."""
+	_state.character = kind
+	_state.bone_overrides.clear()
+	return f"Character set to {kind} (bone overrides cleared)"
+
 
 @mcp.tool()
 def load_pose(path: str) -> str:
@@ -520,6 +529,13 @@ def set_live_mesh_visible(visible: bool) -> str:
 def set_live_show_bones(enabled: bool) -> str:
 	"""Toggle the bone-link/joint-sphere overlay in the scene actually playing in the already-running editor - the live counterpart to the UI's "Show bones" checkbox. Requires play_scene_in_editor first."""
 	result = editor_bridge.send_command({"cmd": "set_live_show_bones", "enabled": enabled}, timeout=8.0)
+	return str(result)
+
+
+@mcp.tool()
+def set_live_character(kind: Literal["player", "shambler"]) -> str:
+	"""Switch which character is loaded in the scene actually playing in the already-running editor - the live counterpart to the character= automation arg / the UI's Character dropdown. Tears down and rebuilds character-specific state (held object, hand-grip modifier, bone-debug overlay), so anything set via set_object/set_bone_rotation/etc. needs to be reapplied afterward. shambler has no held-object/hand-grip/compare-mode support - those tools return errors when it's loaded. Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "set_live_character", "kind": kind}, timeout=15.0)
 	return str(result)
 
 

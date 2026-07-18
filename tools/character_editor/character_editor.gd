@@ -8,6 +8,8 @@ const DEFAULT_OBJECT_PATH := "res://assets/models/flashlight/flashlight.glb"
 const DEFAULT_POSE_PRESET_PATH := "res://actors/player/flashlight_grip_pose.json"
 const DEFAULT_ATTACHMENT_BONE := &"RightHand"
 const DEFAULT_ANIMATION := &"unarmed_torch_idle"
+const CHARACTER_KINDS: PackedStringArray = ["player", "shambler"]
+const DEFAULT_CHARACTER_KIND := "player"
 const DEFAULT_OBJECT_SCALE := 0.12
 const DEFAULT_OBJECT_POSITION := Vector3(-0.09, -0.03, -0.01)
 const DEFAULT_OBJECT_ROTATION := Vector3(-95.0, -180.0, 1.0)
@@ -67,8 +69,10 @@ const BONE_SECTION_LAYOUT: Array[Dictionary] = [
 	{"key": &"other", "label": "Other joints", "parent": &"body", "depth": 1},
 ]
 
-@onready var body: PlayerBody = $Body
-@onready var target_compare_label: Label3D = $Body/CompareLabel
+## Not @onready - built dynamically by _load_character() so the tool can
+## switch between characters at runtime. See character_adapter.gd.
+var body: CharacterAdapter
+@onready var target_compare_label: Label3D = $CompareLabel
 @onready var raw_source_ual1: Node3D = $RawSourceUAL1
 @onready var raw_source_ual2: Node3D = $RawSourceUAL2
 @onready var camera: Camera3D = $Camera
@@ -84,6 +88,7 @@ const BONE_SECTION_LAYOUT: Array[Dictionary] = [
 @onready var zoom_out_button: Button = $UI/ViewportToolbar/Margin/Buttons/ZoomOut
 @onready var zoom_in_button: Button = $UI/ViewportToolbar/Margin/Buttons/ZoomIn
 @onready var reset_view_button: Button = $UI/ViewportToolbar/Margin/Buttons/ResetView
+@onready var character_picker: OptionButton = $UI/Panel/PanelScroll/Margin/VBox/CharacterRow/CharacterPicker
 @onready var animation_group_picker: OptionButton = $UI/Panel/PanelScroll/Margin/VBox/AnimationRow/GroupPicker
 @onready var animation_picker: OptionButton = $UI/Panel/PanelScroll/Margin/VBox/AnimationRow/AnimationPicker
 @onready var edit_mode_button: Button = $UI/Panel/PanelScroll/Margin/VBox/EditorModeRow/Edit
@@ -93,6 +98,21 @@ const BONE_SECTION_LAYOUT: Array[Dictionary] = [
 @onready var scale_slider: HSlider = $UI/Panel/PanelScroll/Margin/VBox/AttachmentRow/ScaleSlider
 @onready var scale_value: Label = $UI/Panel/PanelScroll/Margin/VBox/AttachmentRow/ScaleValue
 @onready var preset_path_field: LineEdit = $UI/Panel/PanelScroll/Margin/VBox/PresetRow/PresetPath
+@onready var object_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/ObjectRow
+@onready var attachment_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/AttachmentRow
+@onready var preset_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/PresetRow
+@onready var save_pose_button: Button = $UI/Panel/PanelScroll/Margin/VBox/PoseActions/SavePose
+@onready var load_pose_button: Button = $UI/Panel/PanelScroll/Margin/VBox/PoseActions/LoadPose
+@onready var object_transform_controls: Array[Control] = [
+	$UI/Panel/PanelScroll/Margin/VBox/ObjectPositionSection,
+	$UI/Panel/PanelScroll/Margin/VBox/PositionX,
+	$UI/Panel/PanelScroll/Margin/VBox/PositionY,
+	$UI/Panel/PanelScroll/Margin/VBox/PositionZ,
+	$UI/Panel/PanelScroll/Margin/VBox/RotationSection,
+	$UI/Panel/PanelScroll/Margin/VBox/RotationX,
+	$UI/Panel/PanelScroll/Margin/VBox/RotationY,
+	$UI/Panel/PanelScroll/Margin/VBox/RotationZ,
+]
 @onready var view_picker: OptionButton = $UI/Panel/PanelScroll/Margin/VBox/ViewRow/ViewPicker
 @onready var pause_toggle: CheckButton = $UI/Panel/PanelScroll/Margin/VBox/DisplayOptions/PauseAnimation
 @onready var show_bones_toggle: CheckButton = $UI/Panel/PanelScroll/Margin/VBox/DisplayOptions/ShowBones
@@ -132,6 +152,7 @@ const BONE_SECTION_LAYOUT: Array[Dictionary] = [
 @onready var open_preset_dialog: FileDialog = $UI/OpenPresetDialog
 @onready var save_preset_dialog: FileDialog = $UI/SavePresetDialog
 
+var _character_kind := DEFAULT_CHARACTER_KIND
 var _modifier: PlayerHandGripModifier
 var _comparison: RawAnimationComparison
 var _held_object: Node3D
@@ -195,15 +216,13 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_update_responsive_layout)
 	_update_responsive_layout()
 	camera.current = true
-	body.set_held_flashlight_visible(false)
-	_full_body_mesh = body.mesh.mesh
-	_setup_modifier()
-	_setup_held_object()
-	_setup_bone_debug()
 	_comparison = RAW_COMPARISON.new()
-	_comparison.setup(body, target_compare_label, raw_source_ual1, raw_source_ual2)
 	_setup_controls()
-	_load_pose_from_path(DEFAULT_POSE_PRESET_PATH, true)
+	var initial_kind := DEFAULT_CHARACTER_KIND
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("character="):
+			initial_kind = argument.get_slice("=", 1)
+	_load_character(initial_kind)
 	if "show_bones" in OS.get_cmdline_user_args():
 		show_bones_toggle.set_pressed_no_signal(true)
 		_on_show_bones_toggled(true)
@@ -216,6 +235,96 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_frame_full_body()
 	await _run_automation_args()
+
+
+## Builds (or rebuilds, when switching at runtime) whichever character
+## "kind" is requested, tearing down the previous one's character-specific
+## nodes first. See character_adapter.gd for why most of the tool's code
+## doesn't need to know which character is loaded - only the pieces that
+## touch the held-object/hand-grip system, comparison mode, or the mesh
+## directly do.
+func _load_character(kind: String) -> void:
+	if not kind in CHARACTER_KINDS:
+		kind = DEFAULT_CHARACTER_KIND
+	var previous_node: Node3D = body.node if body != null else null
+	if is_instance_valid(_modifier):
+		_modifier.queue_free()
+		_modifier = null
+	if is_instance_valid(_object_attachment):
+		_object_attachment.queue_free()
+		_object_attachment = null
+		_held_object = null
+	if is_instance_valid(_bone_debug_root):
+		_bone_debug_root.queue_free()
+		_bone_debug_root = null
+	if previous_node:
+		previous_node.queue_free()
+
+	if kind == "shambler":
+		body = ShamblerAdapter.create(self, Vector3(0, 0.1, 0))
+	else:
+		body = PlayerBodyAdapter.create(self, Vector3(0, 0.1, 0))
+	_character_kind = kind
+
+	_setup_modifier()
+	if body.supports_held_object:
+		body.set_held_flashlight_visible(false)
+		_full_body_mesh = body.mesh.mesh
+		_setup_held_object()
+	else:
+		_full_body_mesh = null
+	_setup_bone_debug()
+	if body.supports_comparison:
+		_comparison.setup(body.node as PlayerBody, target_compare_label, raw_source_ual1, raw_source_ual2)
+	else:
+		# Not _comparison.set_enabled(false, ...) - that touches _target/
+		# _target_label, which are still null if setup() was never called
+		# (e.g. Shambler loaded first, before any PlayerBody session).
+		_comparison.enabled = false
+		_comparison.has_raw_reference = false
+		target_compare_label.hide()
+		raw_source_ual1.hide()
+		raw_source_ual2.hide()
+	compare_mode_button.visible = body.supports_comparison
+	object_row.visible = body.supports_held_object
+	attachment_row.visible = body.supports_held_object
+	preset_row.visible = body.supports_held_object
+	for control in object_transform_controls:
+		control.visible = body.supports_held_object
+	# Save/Reload act on _current_pose_path, a held-object pose preset file -
+	# Save Image and Copy Values stay visible, they're generic utilities.
+	save_pose_button.visible = body.supports_held_object
+	load_pose_button.visible = body.supports_held_object
+	# "Isolated attachment" swaps body.mesh.mesh for a cutaway generated
+	# around the held-object attachment point - meaningless (and, since
+	# _full_body_mesh/_isolated_attachment_mesh are both null here, actively
+	# wrong: it would blank out one mesh part) for a character with no held
+	# objects at all.
+	view_picker.set_item_disabled(2, not body.supports_held_object)
+	if not body.supports_held_object and view_picker.selected == 2:
+		view_picker.select(0)
+		_on_view_selected(0)
+
+	_attachment_bone = DEFAULT_ATTACHMENT_BONE
+	_populate_attachment_controls()
+	_populate_animation_controls()
+	_populate_bone_controls()
+
+	# _selected_bone otherwise carries over from the previous character
+	# (or its "RightArm" default) - a name that generally doesn't exist on
+	# the new skeleton, leaving the pose-helper panel showing stale
+	# buttons for animations the new character doesn't have.
+	if body.skeleton.get_bone_count() > 0:
+		_select_bone(body.skeleton.get_bone_name(0), false)
+
+	if body.supports_held_object:
+		_load_pose_from_path(DEFAULT_POSE_PRESET_PATH, true)
+	else:
+		_sync_bone_controls()
+		_refresh_skeleton()
+	_select_character_in_ui(_character_kind)
+	status_label.text = "Loaded %s" % body.display_name
+	_frame_full_body()
 
 
 func _update_responsive_layout() -> void:
@@ -433,6 +542,10 @@ func _make_debug_mesh_instance(mesh: Mesh, material: Material) -> MeshInstance3D
 
 
 func _setup_controls() -> void:
+	for kind in CHARACTER_KINDS:
+		character_picker.add_item(kind.capitalize())
+		character_picker.set_item_metadata(character_picker.item_count - 1, kind)
+	character_picker.item_selected.connect(_on_character_selected)
 	_setup_animation_controls()
 	_setup_attachment_controls()
 	edit_mode_button.pressed.connect(_on_editor_mode_pressed.bind(false))
@@ -454,14 +567,16 @@ func _setup_controls() -> void:
 	panel_resize_handle.gui_input.connect(_on_panel_resize_handle_gui_input)
 	for axis in 3:
 		axis_ring_toggles[axis].toggled.connect(_on_axis_ring_toggled.bind(axis))
-	_populate_bone_controls()
+	# _populate_bone_controls() and _sync_object_controls() are NOT called
+	# here - both touch body/_held_object, which don't exist yet until
+	# _load_character() runs (right after _setup_controls(), including for
+	# the very first character load). _load_character() calls both itself.
 	for axis in 3:
 		position_sliders[axis].value_changed.connect(_on_object_position_changed.bind(axis))
 		rotation_sliders[axis].value_changed.connect(_on_object_rotation_changed.bind(axis))
 		_color_axis_slider(position_sliders[axis], position_values[axis], axis)
 		_color_axis_slider(rotation_sliders[axis], rotation_values[axis], axis)
 	scale_slider.value_changed.connect(_on_object_scale_changed)
-	_sync_object_controls()
 	preset_path_field.text = _current_pose_path
 	_update_camera_mode_buttons()
 	_update_editor_mode_buttons()
@@ -594,25 +709,75 @@ func _color_axis_slider(slider: HSlider, value_label: Label, axis: int) -> void:
 
 
 func _setup_animation_controls() -> void:
+	# One-time signal wiring only - unlike _populate_animation_controls(),
+	# which needs body to exist and is called by _load_character() instead,
+	# including for the very first character load.
+	animation_group_picker.item_selected.connect(_on_animation_group_selected)
+	animation_picker.item_selected.connect(_on_animation_selected)
+
+
+## Re-run on every character switch (unlike _setup_animation_controls, which
+## wires signals exactly once) - the animation groups and current animation
+## are entirely character-specific.
+func _populate_animation_controls() -> void:
+	animation_group_picker.clear()
 	_animation_groups = body.get_animation_groups()
 	for group_name in _animation_groups:
 		animation_group_picker.add_item(String(group_name))
 		animation_group_picker.set_item_metadata(
 				animation_group_picker.item_count - 1, StringName(group_name))
-	animation_group_picker.item_selected.connect(_on_animation_group_selected)
-	animation_picker.item_selected.connect(_on_animation_selected)
+	if not _animation_exists_in_groups(_current_animation):
+		_current_animation = _first_animation_in_groups()
 	_select_animation_in_ui(_current_animation)
 	body.play_debug_anim(_current_animation, 0.0)
 
 
+func _animation_exists_in_groups(animation_name: StringName) -> bool:
+	for group_name in _animation_groups:
+		if animation_name in _animation_groups.get(group_name, []):
+			return true
+	return false
+
+
+func _first_animation_in_groups() -> StringName:
+	for group_name in _animation_groups:
+		var clips: Array = _animation_groups[group_name]
+		if not clips.is_empty():
+			return clips[0]
+	return &""
+
+
 func _setup_attachment_controls() -> void:
+	# One-time signal wiring only - see _setup_animation_controls().
+	attachment_picker.item_selected.connect(_on_attachment_selected)
+
+
+## Re-run on every character switch - the attachment bone list is
+## character-specific (different skeletons, different bone names).
+func _populate_attachment_controls() -> void:
+	attachment_picker.clear()
 	for bone_index in body.skeleton.get_bone_count():
 		var bone_name := body.skeleton.get_bone_name(bone_index)
 		attachment_picker.add_item(String(bone_name))
 		attachment_picker.set_item_metadata(attachment_picker.item_count - 1, bone_name)
-	attachment_picker.item_selected.connect(_on_attachment_selected)
+	if body.skeleton.find_bone(_attachment_bone) < 0 and body.skeleton.get_bone_count() > 0:
+		_attachment_bone = body.skeleton.get_bone_name(0)
 	_select_attachment_in_ui(_attachment_bone)
-	_isolated_attachment_mesh = _build_isolated_attachment_mesh()
+	_isolated_attachment_mesh = (
+			_build_isolated_attachment_mesh() if body.supports_held_object else null)
+
+
+func _on_character_selected(index: int) -> void:
+	var kind: String = character_picker.get_item_metadata(index)
+	if kind != _character_kind:
+		_load_character(kind)
+
+
+func _select_character_in_ui(kind: String) -> void:
+	for index in character_picker.item_count:
+		if character_picker.get_item_metadata(index) == kind:
+			character_picker.select(index)
+			return
 
 
 func _on_animation_group_selected(index: int) -> void:
@@ -1788,11 +1953,26 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 		"set_show_bones":
 			_mcp_set_show_bones(bool(data[0]))
 			return true
+		"set_character":
+			_mcp_set_character(String(data[0]))
+			return true
 	return false
 
 
+func _mcp_set_character(kind: String) -> void:
+	if not kind in CHARACTER_KINDS:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "Unknown character '%s' (expected %s)" % [
+						kind, ", ".join(CHARACTER_KINDS)]})])
+		return
+	_load_character(kind)
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "Loaded %s" % body.display_name})])
+
+
 func _mcp_set_mesh_visible(visible: bool) -> void:
-	body.mesh.visible = visible
+	for mesh_part in body.meshes:
+		mesh_part.visible = visible
 	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
 			{"ok": true, "result": "Mesh visibility set to %s" % visible})])
 
@@ -1854,9 +2034,11 @@ func _mcp_check_penetration() -> void:
 
 
 func _build_penetration_report() -> Dictionary:
+	if not body.supports_held_object:
+		return {"error": "%s has no held-object system to check penetration against" % body.display_name}
 	if not is_instance_valid(_held_object):
 		return {"error": "No held object is loaded"}
-	if not is_instance_valid(body.mesh):
+	if body.meshes.is_empty():
 		return {"error": "Character body mesh not found"}
 
 	var object_triangles := []
@@ -1865,9 +2047,14 @@ func _build_penetration_report() -> Dictionary:
 		return {"error": "Held object has no mesh geometry to measure"}
 	var object_aabb := _triangles_aabb(object_triangles).grow(0.03)
 
-	var baked: ArrayMesh = body.mesh.bake_mesh_from_current_skeleton_pose()
+	# Bake and combine every mesh part - not every character is one single
+	# skinned mesh the way PlayerBody's MotusMan rig is (Shambler's Mixamo
+	# import is 11 separate parts), and a held object could plausibly clip
+	# any of them.
 	var body_triangles := []
-	_append_mesh_triangles(baked, body.mesh.global_transform, body_triangles, object_aabb, true)
+	for mesh_part in body.meshes:
+		var baked: ArrayMesh = mesh_part.bake_mesh_from_current_skeleton_pose()
+		_append_mesh_triangles(baked, mesh_part.global_transform, body_triangles, object_aabb, true)
 
 	var intersections := []
 	for body_tri in body_triangles:
