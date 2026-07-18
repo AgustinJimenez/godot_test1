@@ -14,16 +14,19 @@ Unlike the rest of this log (informational, no action implied), these are
 explicit follow-ups pulled out of the research below because they need a
 decision, not just awareness.
 
-- **[ ] Decide on Git LFS.** No LFS configured currently; several
-  multi-MB binaries (`UAL1_Standard.glb` 7.4MB, `The Boss.fbx` 6.1MB,
-  `MotusMan_v55.fbx` 4.9MB, more) are already committed as plain git blobs.
-  Adopting LFS now means rewriting history (`git lfs migrate`) for
-  everything already committed, not just a `.gitattributes` change - an
-  explicit, history-altering call for the user to make, not something to
-  do unprompted. Not urgent for a solo project; becomes worth revisiting
-  if the repo gets unwieldy to clone or a second contributor hits a binary
-  merge conflict. Full detail in the "2026-07-17, fifth pass" section
-  below.
+- **[x] Decide on Git LFS.** Done 2026-07-17: ran `git lfs migrate import
+  --include="*.fbx,*.glb,*.png,*.jpg,*.wav" --everything` (deliberately
+  excluding `.tscn`), rewriting all history. Backed up the working copy to
+  a sibling directory first since this changes every commit hash. `.git/
+  objects` shrank from 72M to 340K; the same binary content now lives
+  under `.git/lfs` locally instead (no net local disk savings without a
+  remote to push to - that's expected, not a bug). One real snag hit and
+  fixed: right after the migration, checked-out files were still 132-byte
+  LFS pointer stubs, not real content (`file <path>.glb` showed "ASCII
+  text" instead of "glTF binary model") - `git lfs pull` fixed it by
+  smudging the actual objects back into the working tree. Verified all 75
+  LFS-tracked files afterward (none under 1000 bytes). Full detail in the
+  "2026-07-17, fifth pass" section below.
 
 - **[~] MCP for the character editor — superseded by a build-our-own plan.**
   Originally framed as "decide between GDAI MCP and Godot MCP Pro" (full
