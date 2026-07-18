@@ -62,6 +62,14 @@ static func handle(request: Dictionary, editor_interface: EditorInterface, pose_
 		"check_live_penetration":
 			return await _cmd_forward_to_runtime(
 					"mcp:check_penetration", [], editor_interface, pose_debugger, 25.0)
+		"set_live_mesh_visible":
+			return await _cmd_forward_to_runtime(
+					"mcp:set_mesh_visible", [bool(request.get("visible", true))],
+					editor_interface, pose_debugger)
+		"set_live_show_bones":
+			return await _cmd_forward_to_runtime(
+					"mcp:set_show_bones", [bool(request.get("enabled", true))],
+					editor_interface, pose_debugger)
 		var other:
 			return {"ok": false, "error": "Unknown cmd: %s" % other}
 

@@ -510,6 +510,20 @@ def check_live_penetration() -> dict:
 
 
 @mcp.tool()
+def set_live_mesh_visible(visible: bool) -> str:
+	"""Show/hide the character's skinned mesh in the scene actually playing in the already-running editor, independent of the bone overlay (set_live_show_bones) - useful to see the bare skeleton without the mesh in the way. Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "set_live_mesh_visible", "visible": visible}, timeout=8.0)
+	return str(result)
+
+
+@mcp.tool()
+def set_live_show_bones(enabled: bool) -> str:
+	"""Toggle the bone-link/joint-sphere overlay in the scene actually playing in the already-running editor - the live counterpart to the UI's "Show bones" checkbox. Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "set_live_show_bones", "enabled": enabled}, timeout=8.0)
+	return str(result)
+
+
+@mcp.tool()
 def reload_editor_bridge() -> str:
 	"""Re-register addons/mcp_bridge/pose_debugger_plugin.gd fresh from disk in the already-running editor, without an editor restart. Only needed after editing pose_debugger_plugin.gd itself - commands.gd (open_scene, play_scene, dump_live_pose, etc.) already reloads fresh on every call and never needs this."""
 	result = editor_bridge.send_command({"cmd": "reload_bridge"})

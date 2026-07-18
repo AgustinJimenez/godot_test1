@@ -1782,7 +1782,26 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 		"check_penetration":
 			_mcp_check_penetration()
 			return true
+		"set_mesh_visible":
+			_mcp_set_mesh_visible(bool(data[0]))
+			return true
+		"set_show_bones":
+			_mcp_set_show_bones(bool(data[0]))
+			return true
 	return false
+
+
+func _mcp_set_mesh_visible(visible: bool) -> void:
+	body.mesh.visible = visible
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "Mesh visibility set to %s" % visible})])
+
+
+func _mcp_set_show_bones(enabled: bool) -> void:
+	show_bones_toggle.set_pressed_no_signal(enabled)
+	_on_show_bones_toggled(enabled)
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "Show bones set to %s" % enabled})])
 
 
 func _mcp_get_object_state() -> void:
