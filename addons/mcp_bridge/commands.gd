@@ -39,6 +39,23 @@ static func handle(request: Dictionary, editor_interface: EditorInterface, pose_
 		"set_live_camera_angle":
 			return await _cmd_forward_to_runtime(
 					"mcp:set_camera_angle", [String(request.get("angle", ""))], editor_interface, pose_debugger)
+		"load_live_pose":
+			return await _cmd_forward_to_runtime(
+					"mcp:load_pose", [String(request.get("path", ""))], editor_interface, pose_debugger)
+		"save_live_pose":
+			return await _cmd_forward_to_runtime(
+					"mcp:save_pose", [String(request.get("path", ""))], editor_interface, pose_debugger)
+		"set_live_animation":
+			return await _cmd_forward_to_runtime(
+					"mcp:set_animation", [String(request.get("name", ""))], editor_interface, pose_debugger)
+		"set_live_hand_openness":
+			return await _cmd_forward_to_runtime(
+					"mcp:set_hand_openness", [float(request.get("value", 0.0))], editor_interface, pose_debugger)
+		"pick_live_bone":
+			return await _cmd_forward_to_runtime(
+					"mcp:pick_bone",
+					[float(request.get("screen_x", 0.0)), float(request.get("screen_y", 0.0))],
+					editor_interface, pose_debugger)
 		var other:
 			return {"ok": false, "error": "Unknown cmd: %s" % other}
 

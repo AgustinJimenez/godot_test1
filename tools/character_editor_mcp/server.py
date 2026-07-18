@@ -459,6 +459,43 @@ def set_live_camera_angle(
 
 
 @mcp.tool()
+def load_live_pose(path: str) -> str:
+	"""Load a saved pose preset (res:// path) into the scene actually playing in the already-running editor - the live counterpart to load_pose. Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "load_live_pose", "path": path}, timeout=8.0)
+	return str(result)
+
+
+@mcp.tool()
+def save_live_pose(path: str) -> str:
+	"""Save the current pose of the scene actually playing in the already-running editor to a res:// path - the live counterpart to the UI's Save/Save As buttons (no invocation-based equivalent exists). Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "save_live_pose", "path": path}, timeout=8.0)
+	return str(result)
+
+
+@mcp.tool()
+def set_live_animation(name: str) -> str:
+	"""Select the base animation to pose from in the scene actually playing in the already-running editor - the live counterpart to set_animation. Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "set_live_animation", "name": name}, timeout=8.0)
+	return str(result)
+
+
+@mcp.tool()
+def set_live_hand_openness(value: float) -> str:
+	"""Set the hand-openness slider (-1 to 1) in the scene actually playing in the already-running editor. Only has an effect once a hand-side bone is focused (see select_live_bone). Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command({"cmd": "set_live_hand_openness", "value": value}, timeout=8.0)
+	return str(result)
+
+
+@mcp.tool()
+def pick_live_bone(screen_x: float, screen_y: float) -> str:
+	"""Simulate a click at a screen position (in the capture resolution's coordinate space) in the scene actually playing in the already-running editor, selecting whichever bone is nearest - the live counterpart to pick_bone. Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command(
+		{"cmd": "pick_live_bone", "screen_x": screen_x, "screen_y": screen_y}, timeout=8.0
+	)
+	return str(result)
+
+
+@mcp.tool()
 def reload_editor_bridge() -> str:
 	"""Re-register addons/mcp_bridge/pose_debugger_plugin.gd fresh from disk in the already-running editor, without an editor restart. Only needed after editing pose_debugger_plugin.gd itself - commands.gd (open_scene, play_scene, dump_live_pose, etc.) already reloads fresh on every call and never needs this."""
 	result = editor_bridge.send_command({"cmd": "reload_bridge"})

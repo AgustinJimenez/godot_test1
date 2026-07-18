@@ -1761,7 +1761,82 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 		"set_camera_angle":
 			_mcp_set_camera_angle(String(data[0]))
 			return true
+		"load_pose":
+			_mcp_load_pose(String(data[0]))
+			return true
+		"save_pose":
+			_mcp_save_pose(String(data[0]))
+			return true
+		"set_animation":
+			_mcp_set_animation(String(data[0]))
+			return true
+		"set_hand_openness":
+			_mcp_set_hand_openness(float(data[0]))
+			return true
+		"pick_bone":
+			_mcp_pick_bone(float(data[0]), float(data[1]))
+			return true
 	return false
+
+
+func _mcp_load_pose(path: String) -> void:
+	if not _load_pose_from_path(path, true):
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "Could not load pose from %s" % path})])
+		return
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "Pose loaded from %s" % path})])
+
+
+func _mcp_save_pose(path: String) -> void:
+	if not _save_pose_to_path(path):
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "Could not save pose to %s" % path})])
+		return
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "Pose saved to %s" % path})])
+
+
+func _mcp_set_animation(animation_name: String) -> void:
+	var name := StringName(animation_name)
+	_select_animation_in_ui(name)
+	_set_animation(name)
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "Animation set to %s" % animation_name})])
+
+
+func _mcp_set_hand_openness(value: float) -> void:
+	if _hand_helper_side.is_empty():
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "No hand is currently focused - select a hand-side bone first"})])
+		return
+	var openness := clampf(value, -1.0, 1.0)
+	if is_instance_valid(_hand_openness_slider):
+		_hand_openness_slider.set_value_no_signal(openness)
+	_on_hand_openness_changed(openness)
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": "Hand openness set to %s" % openness})])
+
+
+func _mcp_pick_bone(screen_x: float, screen_y: float) -> void:
+	# Deliberately not awaited from _on_mcp_debugger_message - same reasoning
+	# as _mcp_capture_screenshot: fire-and-forget so the message-capture
+	# dispatch always gets an immediate bool back.
+	for _frame in 2:
+		await get_tree().process_frame
+	var previous_bone := _selected_bone
+	var pick_event := InputEventMouseButton.new()
+	pick_event.position = Vector2(screen_x, screen_y)
+	pick_event.button_index = MOUSE_BUTTON_LEFT
+	pick_event.pressed = true
+	pick_event.double_click = true
+	_input(pick_event)
+	if _selected_bone != previous_bone:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": true, "result": "Picked bone %s" % _selected_bone})])
+	else:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": true, "result": "No bone was picked at that position (selection unchanged)"})])
 
 
 func _mcp_set_view(view_name: String) -> void:
