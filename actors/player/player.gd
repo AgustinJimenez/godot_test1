@@ -74,6 +74,9 @@ var _roll_direction := Vector3.ZERO
 var _next_punch_is_jab := true
 var _punch_cooldown_left := 0.0
 var _action_rng := RandomNumberGenerator.new()
+var _pending_melee_animation := &""
+var _pending_melee_damage := 0.0
+var _pending_melee_range := 0.0
 ## Debug menu toggle: the FOV gizmo already only shows up while the third-
 ## person view is active (no point drawing the first-person camera's FOV
 ## from inside its own view) - this is a second, manual gate on top of
@@ -97,6 +100,7 @@ var _fov_mesh := ImmediateMesh.new()
 ## into visible spin. Plain float addition has no such ambiguity.
 var _look_pitch := 0.0
 var _look_yaw := 0.0
+var equipped_item: Item
 
 @onready var head: Node3D = $HeadPivot
 @onready var camera: Camera3D = $HeadPivot/Camera3D
@@ -107,6 +111,7 @@ var _look_yaw := 0.0
 @onready var uncrouch_check: ShapeCast3D = $UncrouchCheck
 @onready var hud: CanvasLayer = $HUD
 @onready var inventory: Inventory = $Inventory
+@onready var melee_weapon: MeleeWeapon = $MeleeWeapon
 @onready var health: Health = $Health
 @onready var weapon: PistolWeapon = $HeadPivot/Camera3D/WeaponRig
 @onready var body: PlayerBody = $Body
@@ -133,6 +138,7 @@ func _ready() -> void:
 	inventory.changed.connect(_update_weapon_equip)
 	weapon.fired.connect(_on_weapon_fired)
 	body.action_finished.connect(_on_body_action_finished)
+	body.action_contact.connect(_on_body_action_contact)
 	health.died.connect(_on_died)
 	_action_rng.randomize()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -275,9 +281,18 @@ func _physics_process(delta: float) -> void:
 	elif (Input.is_action_just_pressed(&"melee") and is_on_floor()
 			and _roll_time_left <= 0.0 and _punch_cooldown_left <= 0.0
 			and not body.is_action_active()):
-		var punch := &"unarmed_punch_jab" if _next_punch_is_jab else &"unarmed_punch_cross"
-		if body.play_action_animation(punch, 1.3, 0.08):
-			_next_punch_is_jab = not _next_punch_is_jab
+		var held_melee := (equipped_item != null
+				and equipped_item != weapon.weapon_item
+				and equipped_item.melee_damage > 0.0)
+		var attack_animation := &"weapon_sword_attack" if held_melee else (
+				&"unarmed_punch_jab" if _next_punch_is_jab else &"unarmed_punch_cross")
+		var contact_ratio := 0.48 if held_melee else 0.42
+		if body.play_action_animation(attack_animation, 1.3, 0.08, contact_ratio):
+			_pending_melee_animation = StringName("moves/" + String(attack_animation))
+			_pending_melee_damage = equipped_item.melee_damage if held_melee else 8.0
+			_pending_melee_range = equipped_item.melee_range if held_melee else 1.15
+			if not held_melee:
+				_next_punch_is_jab = not _next_punch_is_jab
 	if (Input.is_action_just_pressed(&"jump") and is_on_floor()
 			and _roll_time_left <= 0.0):
 		_crouched = false
@@ -487,8 +502,31 @@ func _update_capsule(delta: float) -> void:
 
 
 func _update_weapon_equip() -> void:
-	# Single weapon slot for now: owning the pistol item means it is equipped.
-	weapon.equipped = inventory.count_of(weapon.weapon_item) > 0
+	if equipped_item != null and inventory.count_of(equipped_item) == 0:
+		equipped_item = null
+	if equipped_item == null and inventory.count_of(weapon.weapon_item) > 0:
+		equipped_item = weapon.weapon_item
+	_apply_equipped_item()
+
+
+func toggle_equip_item(item: Item) -> bool:
+	if item == null or item.kind != Item.Kind.WEAPON or inventory.count_of(item) == 0:
+		return false
+	equipped_item = null if equipped_item == item else item
+	_apply_equipped_item()
+	return equipped_item == item
+
+
+func is_item_equipped(item: Item) -> bool:
+	return equipped_item == item
+
+
+func _apply_equipped_item() -> void:
+	var pistol_selected := equipped_item == weapon.weapon_item
+	weapon.equipped = pistol_selected
+	body.set_equipped_item(null if pistol_selected else equipped_item)
+	if equipped_item != null and not pistol_selected:
+		flashlight.visible = false
 
 
 func _on_weapon_fired() -> void:
@@ -498,11 +536,30 @@ func _on_weapon_fired() -> void:
 
 
 func _on_body_action_finished(animation_name: StringName) -> void:
-	if animation_name not in [&"moves/unarmed_punch_jab", &"moves/unarmed_punch_cross"]:
+	if animation_name == _pending_melee_animation:
+		_clear_pending_melee()
+	if animation_name not in [
+			&"moves/unarmed_punch_jab",
+			&"moves/unarmed_punch_cross",
+			&"moves/weapon_sword_attack",
+	]:
 		return
 	var low := minf(punch_delay_min, punch_delay_max)
 	var high := maxf(punch_delay_min, punch_delay_max)
 	_punch_cooldown_left = _action_rng.randf_range(low, high)
+
+
+func _on_body_action_contact(animation_name: StringName) -> void:
+	if animation_name != _pending_melee_animation:
+		return
+	melee_weapon.attack(camera, _pending_melee_damage, _pending_melee_range)
+	_clear_pending_melee()
+
+
+func _clear_pending_melee() -> void:
+	_pending_melee_animation = &""
+	_pending_melee_damage = 0.0
+	_pending_melee_range = 0.0
 
 
 ## Radius (meters) at which the player's current movement noise can be

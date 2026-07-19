@@ -21,14 +21,16 @@ func is_dead() -> bool:
 	return current <= 0.0
 
 
-func apply_damage(amount: float) -> void:
-	if is_dead():
-		return
-	current = maxf(current - amount, 0.0)
-	damaged.emit(amount)
+func apply_damage(amount: float) -> float:
+	if is_dead() or amount <= 0.0:
+		return 0.0
+	var applied := minf(amount, current)
+	current -= applied
+	damaged.emit(applied)
 	changed.emit(current, max_health)
 	if current == 0.0:
 		died.emit()
+	return applied
 
 
 ## Restores up to `amount`; returns how much was actually restored

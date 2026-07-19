@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="Item" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://items/item.gd" id="1_item"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/sword_C.gltf" id="2_model"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"kaykit_sword_c"
+display_name = "Runed Sword"
+description = "A broad fantasy sword recovered from the forest. It has no combat behavior yet."
+kind = 3
+max_stack = 1
+world_scene = ExtResource("2_model")
+world_scale = 0.65
+world_rotation_degrees = Vector3(90, 0, -12)
+world_offset = Vector3(0, 0.12, 0)
+held_scale = 0.65
+melee_damage = 40.0
+melee_range = 1.45

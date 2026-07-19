@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="Item" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://items/item.gd" id="1_item"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/wand_A.gltf" id="2_model"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"kaykit_wand_a"
+display_name = "Crystal Wand"
+description = "A small crystal-tipped wand. This is an inventory-system test object."
+kind = 3
+max_stack = 1
+world_scene = ExtResource("2_model")
+world_scale = 0.8
+world_rotation_degrees = Vector3(90, 0, -20)
+world_offset = Vector3(0, 0.12, 0)
+held_scale = 0.8
+melee_damage = 25.0
+melee_range = 1.3

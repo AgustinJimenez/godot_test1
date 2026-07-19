@@ -6,11 +6,27 @@ extends Area3D
 @export var count: int = 1
 
 @onready var interactable: Interactable = $Interactable
+@onready var visual_anchor: Node3D = $VisualAnchor
+@onready var fallback_mesh: MeshInstance3D = $VisualAnchor/FallbackMesh
 
 
 func _ready() -> void:
 	if item:
 		interactable.prompt = "Take " + item.display_name
+		_load_item_visual()
+
+
+func _load_item_visual() -> void:
+	if item.world_scene == null:
+		return
+	var instance := item.world_scene.instantiate() as Node3D
+	if instance == null:
+		return
+	fallback_mesh.hide()
+	visual_anchor.add_child(instance)
+	instance.scale = Vector3.ONE * item.world_scale
+	instance.rotation_degrees = item.world_rotation_degrees
+	instance.position = item.world_offset
 
 
 func _on_interactable_interacted(player: Node3D) -> void:

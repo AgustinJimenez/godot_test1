@@ -13,12 +13,11 @@ height = 1.8
 collision_layer = 4
 collision_mask = 1
 script = ExtResource("1_script")
+character_scene = ExtResource("2_boss")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_shambler")
-
-[node name="Boss" parent="." instance=ExtResource("2_boss")]
 
 [node name="Health" type="Node" parent="."]
 script = ExtResource("3_health")

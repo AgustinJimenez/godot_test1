@@ -1,0 +1,289 @@
+[gd_resource type="Resource" script_class="ObjectCatalog" load_steps=65 format=3]
+
+[ext_resource type="Script" path="res://objects/object_definition.gd" id="1_definition"]
+[ext_resource type="Script" path="res://objects/object_catalog.gd" id="2_catalog"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/arrow_A.gltf" id="3_arrow_a"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/arrow_B.gltf" id="4_arrow_b"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/axe_A.gltf" id="5_axe_a"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/axe_B.gltf" id="6_axe_b"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/axe_C.gltf" id="7_axe_c"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/bow_A.gltf" id="8_bow_a"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/bow_A_withString.gltf" id="9_bow_a_string"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/bow_B.gltf" id="10_bow_b"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/bow_B_withString.gltf" id="11_bow_b_string"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/dagger_A.gltf" id="12_dagger_a"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/dagger_B.gltf" id="13_dagger_b"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/fistweapon_A.gltf" id="14_fist_a"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/fistweapon_A_stacked.gltf" id="15_fist_a_stacked"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/fistweapon_B.gltf" id="16_fist_b"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/fistweapon_B_stacked.gltf" id="17_fist_b_stacked"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/halberd.gltf" id="18_halberd"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/hammer_A.gltf" id="19_hammer_a"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/hammer_B.gltf" id="20_hammer_b"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/hammer_C.gltf" id="21_hammer_c"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/shield_A.gltf" id="22_shield_a"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/shield_B.gltf" id="23_shield_b"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/shield_C.gltf" id="24_shield_c"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/spear_A.gltf" id="25_spear_a"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/staff_A.gltf" id="26_staff_a"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/staff_B.gltf" id="27_staff_b"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/sword_A.gltf" id="28_sword_a"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/sword_B.gltf" id="29_sword_b"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/sword_C.gltf" id="30_sword_c"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/sword_D.gltf" id="31_sword_d"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/sword_E.gltf" id="32_sword_e"]
+[ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/wand_A.gltf" id="33_wand_a"]
+
+[sub_resource type="Resource" id="Object_arrow_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_arrow_a"
+display_name = "Arrow A"
+category = &"Projectiles"
+tags = PackedStringArray("weapon", "arrow", "ranged")
+scene = ExtResource("3_arrow_a")
+
+[sub_resource type="Resource" id="Object_arrow_b"]
+script = ExtResource("1_definition")
+id = &"kaykit_arrow_b"
+display_name = "Arrow B"
+category = &"Projectiles"
+tags = PackedStringArray("weapon", "arrow", "ranged")
+scene = ExtResource("4_arrow_b")
+
+[sub_resource type="Resource" id="Object_axe_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_axe_a"
+display_name = "Axe A"
+category = &"Axes"
+tags = PackedStringArray("weapon", "axe", "melee")
+scene = ExtResource("5_axe_a")
+
+[sub_resource type="Resource" id="Object_axe_b"]
+script = ExtResource("1_definition")
+id = &"kaykit_axe_b"
+display_name = "Axe B"
+category = &"Axes"
+tags = PackedStringArray("weapon", "axe", "melee")
+scene = ExtResource("6_axe_b")
+
+[sub_resource type="Resource" id="Object_axe_c"]
+script = ExtResource("1_definition")
+id = &"kaykit_axe_c"
+display_name = "Axe C"
+category = &"Axes"
+tags = PackedStringArray("weapon", "axe", "melee")
+scene = ExtResource("7_axe_c")
+
+[sub_resource type="Resource" id="Object_bow_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_bow_a"
+display_name = "Bow A"
+category = &"Bows"
+tags = PackedStringArray("weapon", "bow", "ranged", "without string")
+scene = ExtResource("8_bow_a")
+
+[sub_resource type="Resource" id="Object_bow_a_string"]
+script = ExtResource("1_definition")
+id = &"kaykit_bow_a_with_string"
+display_name = "Bow A with String"
+category = &"Bows"
+tags = PackedStringArray("weapon", "bow", "ranged", "string")
+scene = ExtResource("9_bow_a_string")
+
+[sub_resource type="Resource" id="Object_bow_b"]
+script = ExtResource("1_definition")
+id = &"kaykit_bow_b"
+display_name = "Bow B"
+category = &"Bows"
+tags = PackedStringArray("weapon", "bow", "ranged", "without string")
+scene = ExtResource("10_bow_b")
+
+[sub_resource type="Resource" id="Object_bow_b_string"]
+script = ExtResource("1_definition")
+id = &"kaykit_bow_b_with_string"
+display_name = "Bow B with String"
+category = &"Bows"
+tags = PackedStringArray("weapon", "bow", "ranged", "string")
+scene = ExtResource("11_bow_b_string")
+
+[sub_resource type="Resource" id="Object_dagger_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_dagger_a"
+display_name = "Dagger A"
+category = &"Daggers"
+tags = PackedStringArray("weapon", "dagger", "melee")
+scene = ExtResource("12_dagger_a")
+
+[sub_resource type="Resource" id="Object_dagger_b"]
+script = ExtResource("1_definition")
+id = &"kaykit_dagger_b"
+display_name = "Dagger B"
+category = &"Daggers"
+tags = PackedStringArray("weapon", "dagger", "melee")
+scene = ExtResource("13_dagger_b")
+
+[sub_resource type="Resource" id="Object_fist_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_fistweapon_a"
+display_name = "Fist Weapon A"
+category = &"Fist Weapons"
+tags = PackedStringArray("weapon", "claw", "melee")
+scene = ExtResource("14_fist_a")
+
+[sub_resource type="Resource" id="Object_fist_a_stacked"]
+script = ExtResource("1_definition")
+id = &"kaykit_fistweapon_a_stacked"
+display_name = "Fist Weapon A Stacked"
+category = &"Fist Weapons"
+tags = PackedStringArray("weapon", "claw", "melee", "stacked")
+scene = ExtResource("15_fist_a_stacked")
+
+[sub_resource type="Resource" id="Object_fist_b"]
+script = ExtResource("1_definition")
+id = &"kaykit_fistweapon_b"
+display_name = "Fist Weapon B"
+category = &"Fist Weapons"
+tags = PackedStringArray("weapon", "claw", "melee")
+scene = ExtResource("16_fist_b")
+
+[sub_resource type="Resource" id="Object_fist_b_stacked"]
+script = ExtResource("1_definition")
+id = &"kaykit_fistweapon_b_stacked"
+display_name = "Fist Weapon B Stacked"
+category = &"Fist Weapons"
+tags = PackedStringArray("weapon", "claw", "melee", "stacked")
+scene = ExtResource("17_fist_b_stacked")
+
+[sub_resource type="Resource" id="Object_halberd"]
+script = ExtResource("1_definition")
+id = &"kaykit_halberd"
+display_name = "Halberd"
+category = &"Polearms"
+tags = PackedStringArray("weapon", "halberd", "melee", "two handed")
+scene = ExtResource("18_halberd")
+
+[sub_resource type="Resource" id="Object_hammer_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_hammer_a"
+display_name = "Hammer A"
+category = &"Hammers"
+tags = PackedStringArray("weapon", "hammer", "melee")
+scene = ExtResource("19_hammer_a")
+
+[sub_resource type="Resource" id="Object_hammer_b"]
+script = ExtResource("1_definition")
+id = &"kaykit_hammer_b"
+display_name = "Hammer B"
+category = &"Hammers"
+tags = PackedStringArray("weapon", "hammer", "melee")
+scene = ExtResource("20_hammer_b")
+
+[sub_resource type="Resource" id="Object_hammer_c"]
+script = ExtResource("1_definition")
+id = &"kaykit_hammer_c"
+display_name = "Hammer C"
+category = &"Hammers"
+tags = PackedStringArray("weapon", "hammer", "melee")
+scene = ExtResource("21_hammer_c")
+
+[sub_resource type="Resource" id="Object_shield_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_shield_a"
+display_name = "Shield A"
+category = &"Shields"
+tags = PackedStringArray("weapon", "shield", "defense")
+scene = ExtResource("22_shield_a")
+
+[sub_resource type="Resource" id="Object_shield_b"]
+script = ExtResource("1_definition")
+id = &"kaykit_shield_b"
+display_name = "Shield B"
+category = &"Shields"
+tags = PackedStringArray("weapon", "shield", "defense")
+scene = ExtResource("23_shield_b")
+
+[sub_resource type="Resource" id="Object_shield_c"]
+script = ExtResource("1_definition")
+id = &"kaykit_shield_c"
+display_name = "Shield C"
+category = &"Shields"
+tags = PackedStringArray("weapon", "shield", "defense")
+scene = ExtResource("24_shield_c")
+
+[sub_resource type="Resource" id="Object_spear_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_spear_a"
+display_name = "Spear A"
+category = &"Polearms"
+tags = PackedStringArray("weapon", "spear", "melee", "two handed")
+scene = ExtResource("25_spear_a")
+
+[sub_resource type="Resource" id="Object_staff_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_staff_a"
+display_name = "Staff A"
+category = &"Magic"
+tags = PackedStringArray("weapon", "staff", "magic")
+scene = ExtResource("26_staff_a")
+
+[sub_resource type="Resource" id="Object_staff_b"]
+script = ExtResource("1_definition")
+id = &"kaykit_staff_b"
+display_name = "Staff B"
+category = &"Magic"
+tags = PackedStringArray("weapon", "staff", "magic")
+scene = ExtResource("27_staff_b")
+
+[sub_resource type="Resource" id="Object_sword_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_sword_a"
+display_name = "Sword A"
+category = &"Swords"
+tags = PackedStringArray("weapon", "sword", "melee")
+scene = ExtResource("28_sword_a")
+
+[sub_resource type="Resource" id="Object_sword_b"]
+script = ExtResource("1_definition")
+id = &"kaykit_sword_b"
+display_name = "Sword B"
+category = &"Swords"
+tags = PackedStringArray("weapon", "sword", "melee")
+scene = ExtResource("29_sword_b")
+
+[sub_resource type="Resource" id="Object_sword_c"]
+script = ExtResource("1_definition")
+id = &"kaykit_sword_c"
+display_name = "Sword C"
+category = &"Swords"
+tags = PackedStringArray("weapon", "sword", "melee")
+scene = ExtResource("30_sword_c")
+
+[sub_resource type="Resource" id="Object_sword_d"]
+script = ExtResource("1_definition")
+id = &"kaykit_sword_d"
+display_name = "Sword D"
+category = &"Swords"
+tags = PackedStringArray("weapon", "sword", "melee")
+scene = ExtResource("31_sword_d")
+
+[sub_resource type="Resource" id="Object_sword_e"]
+script = ExtResource("1_definition")
+id = &"kaykit_sword_e"
+display_name = "Sword E"
+category = &"Swords"
+tags = PackedStringArray("weapon", "sword", "melee")
+scene = ExtResource("32_sword_e")
+
+[sub_resource type="Resource" id="Object_wand_a"]
+script = ExtResource("1_definition")
+id = &"kaykit_wand_a"
+display_name = "Wand A"
+category = &"Magic"
+tags = PackedStringArray("weapon", "wand", "magic")
+scene = ExtResource("33_wand_a")
+
+[resource]
+script = ExtResource("2_catalog")
+id = &"kaykit_fantasy_weapons"
+display_name = "KayKit Fantasy Weapons"
+entries = Array[ExtResource("1_definition")]([SubResource("Object_arrow_a"), SubResource("Object_arrow_b"), SubResource("Object_axe_a"), SubResource("Object_axe_b"), SubResource("Object_axe_c"), SubResource("Object_bow_a"), SubResource("Object_bow_a_string"), SubResource("Object_bow_b"), SubResource("Object_bow_b_string"), SubResource("Object_dagger_a"), SubResource("Object_dagger_b"), SubResource("Object_fist_a"), SubResource("Object_fist_a_stacked"), SubResource("Object_fist_b"), SubResource("Object_fist_b_stacked"), SubResource("Object_halberd"), SubResource("Object_hammer_a"), SubResource("Object_hammer_b"), SubResource("Object_hammer_c"), SubResource("Object_shield_a"), SubResource("Object_shield_b"), SubResource("Object_shield_c"), SubResource("Object_spear_a"), SubResource("Object_staff_a"), SubResource("Object_staff_b"), SubResource("Object_sword_a"), SubResource("Object_sword_b"), SubResource("Object_sword_c"), SubResource("Object_sword_d"), SubResource("Object_sword_e"), SubResource("Object_wand_a")])

@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://actors/player/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="1_body"]
@@ -13,6 +13,7 @@
 [ext_resource type="AudioStream" path="res://assets/sfx/pistol_fire.wav" id="9_fire_sfx"]
 [ext_resource type="AudioStream" path="res://assets/sfx/pistol_dry.wav" id="10_dry_sfx"]
 [ext_resource type="AudioStream" path="res://assets/sfx/pistol_reload.wav" id="11_reload_sfx"]
+[ext_resource type="Script" path="res://components/melee_weapon.gd" id="12_melee"]
 
 [sub_resource type="CapsuleShape3D" id="Capsule_player"]
 radius = 0.35
@@ -104,6 +105,9 @@ collision_mask = 1
 
 [node name="Inventory" type="Node" parent="."]
 script = ExtResource("3_inventory")
+
+[node name="MeleeWeapon" type="Node" parent="."]
+script = ExtResource("12_melee")
 
 [node name="Health" type="Node" parent="."]
 script = ExtResource("4_health")

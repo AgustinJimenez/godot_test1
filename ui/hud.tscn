@@ -89,6 +89,22 @@ theme_override_constants/shadow_offset_y = 1
 theme_override_font_sizes/font_size = 22
 horizontal_alignment = 2
 
+[node name="InventoryHint" type="Label" parent="."]
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -220.0
+offset_top = -88.0
+offset_right = -24.0
+offset_bottom = -66.0
+theme_override_colors/font_color = Color(0.82, 0.86, 0.9, 0.82)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 14
+text = "[Tab]  Inventory"
+horizontal_alignment = 2
+
 [node name="NoteOverlay" type="Control" parent="."]
 visible = false
 anchor_right = 1.0
@@ -252,6 +268,9 @@ text = "Debug"
 [node name="CloseButton" type="Button" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
 text = "Close"
 
+[node name="CloseAppButton" type="Button" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
+text = "Close App"
+
 [node name="GuidePanel" type="PanelContainer" parent="DebugOverlay/Center"]
 visible = false
 custom_minimum_size = Vector2(480, 0)
@@ -272,7 +291,7 @@ text = "CONTROLS GUIDE"
 [node name="GuideText" type="Label" parent="DebugOverlay/Center/GuidePanel/GuideMargin/GuideVBox"]
 theme_override_colors/font_color = Color(0.86, 0.88, 0.92, 1)
 theme_override_font_sizes/font_size = 16
-text = "WASD     Move\nMouse    Look\nShift    Sprint\nSpace    Jump\nX        Roll\nQ        Punch (alternates jab / cross)\nC        Toggle crouch\nF        Toggle flashlight / torch idle\nE        Interact / pick up\nLMB      Fire\nRMB      Aim\nR        Reload\nTab      Inventory\nV        First / third-person camera\nP / Esc  Menu"
+text = "WASD     Move\nMouse    Look\nShift    Sprint\nSpace    Jump\nX        Roll\nQ        Punch / melee attack\nC        Toggle crouch\nF        Toggle flashlight / torch idle\nE        Interact / pick up\nLMB      Fire\nRMB      Aim\nR        Reload\nTab      Inventory\nV        First / third-person camera\nP / Esc  Menu"
 
 [node name="BackButton" type="Button" parent="DebugOverlay/Center/GuidePanel/GuideMargin/GuideVBox"]
 text = "< Back"
@@ -328,9 +347,6 @@ text = "Apply"
 
 [node name="AnimClipsButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Animation Clips  >"
-
-[node name="FootstepButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
-text = "Footstep Markers: ON"
 
 [node name="FovGizmoButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "FOV Gizmo: OFF"

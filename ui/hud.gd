@@ -18,6 +18,7 @@ var _hurt_tween: Tween
 @onready var stamina_bar: ProgressBar = $StaminaBar
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var ammo_label: Label = $AmmoLabel
+@onready var inventory_hint: Label = $InventoryHint
 @onready var hurt_flash: ColorRect = $HurtFlash
 @onready var death_overlay: Control = $DeathOverlay
 @onready var toast_label: Label = $ToastLabel
@@ -34,6 +35,8 @@ var _hurt_tween: Tween
 		^"DebugOverlay/Center/MainPanel/MainMargin/MainVBox/GuideButton")
 @onready var main_debug_button: Button = get_node(
 		^"DebugOverlay/Center/MainPanel/MainMargin/MainVBox/DebugButton")
+@onready var main_close_app_button: Button = get_node(
+		^"DebugOverlay/Center/MainPanel/MainMargin/MainVBox/CloseAppButton")
 @onready var main_close_button: Button = get_node(
 		^"DebugOverlay/Center/MainPanel/MainMargin/MainVBox/CloseButton")
 @onready var guide_panel: PanelContainer = $DebugOverlay/Center/GuidePanel
@@ -50,8 +53,6 @@ var _hurt_tween: Tween
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/ApplyButton")
 @onready var anim_clips_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/AnimClipsButton")
-@onready var footstep_button: Button = get_node(
-		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootstepButton")
 @onready var fov_gizmo_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FovGizmoButton")
 @onready var debug_back_button: Button = get_node(
@@ -70,10 +71,10 @@ func _ready() -> void:
 	use_button.pressed.connect(_on_use_pressed)
 	drop_button.pressed.connect(_on_drop_pressed)
 	debug_apply.pressed.connect(_on_debug_apply)
-	footstep_button.pressed.connect(_on_footstep_button_pressed)
 	fov_gizmo_button.pressed.connect(_on_fov_gizmo_button_pressed)
 	main_debug_button.pressed.connect(_show_debug_page)
 	main_guide_button.pressed.connect(_show_guide_page)
+	main_close_app_button.pressed.connect(_close_app)
 	main_close_button.pressed.connect(_close_debug)
 	guide_back_button.pressed.connect(_show_debug_main)
 	anim_clips_button.pressed.connect(_show_anim_page)
@@ -149,6 +150,7 @@ func _set_ammo(magazine: int, reserve: int) -> void:
 
 func show_death() -> void:
 	death_overlay.show()
+	set_prompt("")
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -184,6 +186,7 @@ func toast(message: String) -> void:
 func show_note(text: String) -> void:
 	note_text.text = text
 	note_overlay.show()
+	set_prompt("")
 	get_tree().paused = true
 
 
@@ -192,12 +195,15 @@ func toggle_inventory() -> void:
 		return
 	if inv_overlay.visible:
 		inv_overlay.hide()
+		inventory_hint.show()
 		get_tree().paused = false
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	else:
 		_selected = -1
 		_refresh_inventory()
 		inv_overlay.show()
+		inventory_hint.hide()
+		set_prompt("")
 		get_tree().paused = true
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -222,6 +228,14 @@ func _refresh_inventory() -> void:
 			and not _inventory.slots[_selected].is_empty())
 	use_button.disabled = not has_selection
 	drop_button.disabled = not has_selection
+	use_button.text = "Use"
+	if has_selection:
+		var selected_item: Item = _inventory.slots[_selected]["item"]
+		if selected_item.kind == Item.Kind.WEAPON:
+			var player := get_tree().get_first_node_in_group(&"player")
+			var equipped := (player != null
+					and bool(player.call(&"is_item_equipped", selected_item)))
+			use_button.text = "Unequip" if equipped else "Equip"
 	desc_label.text = (_inventory.slots[_selected]["item"].description
 			if has_selection else "")
 
@@ -245,6 +259,7 @@ func _open_debug() -> void:
 	_build_anim_list(p)
 	_show_debug_main()
 	debug_overlay.show()
+	set_prompt("")
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -253,6 +268,11 @@ func _close_debug() -> void:
 	debug_overlay.hide()
 	get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _close_app() -> void:
+	get_tree().paused = false
+	get_tree().quit()
 
 
 ## Debug menu is one overlay with pages shown/hidden in place, not separate
@@ -316,16 +336,6 @@ func _on_anim_button_pressed(anim_name: StringName) -> void:
 		player.body.play_debug_anim(anim_name)
 
 
-func _on_footstep_button_pressed() -> void:
-	var player := get_tree().get_first_node_in_group(&"player")
-	if (player == null or not ("body" in player)
-			or not player.body.has_method(&"toggle_debug_footsteps")):
-		return
-	player.body.toggle_debug_footsteps()
-	footstep_button.text = (
-			"Footstep Markers: ON" if player.body.debug_footsteps else "Footstep Markers: OFF")
-
-
 func _on_fov_gizmo_button_pressed() -> void:
 	var player := get_tree().get_first_node_in_group(&"player")
 	if player == null or not player.has_method(&"toggle_fov_gizmo"):
@@ -353,7 +363,13 @@ func _on_use_pressed() -> void:
 	if _selected < 0 or _inventory.slots[_selected].is_empty():
 		return
 	var item: Item = _inventory.slots[_selected]["item"]
-	if item.kind == Item.Kind.CONSUMABLE and item.heal_amount > 0 and _health:
+	if item.kind == Item.Kind.WEAPON:
+		var player := get_tree().get_first_node_in_group(&"player")
+		if player == null or not player.has_method(&"toggle_equip_item"):
+			return
+		var equipped := bool(player.call(&"toggle_equip_item", item))
+		toast(("Equipped " if equipped else "Unequipped ") + item.display_name)
+	elif item.kind == Item.Kind.CONSUMABLE and item.heal_amount > 0 and _health:
 		var restored := _health.heal(float(item.heal_amount))
 		if restored <= 0.0:
 			toast("Health is already full")

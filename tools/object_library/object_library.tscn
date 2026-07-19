@@ -1,0 +1,262 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Script" path="res://tools/object_library/object_library.gd" id="1_script"]
+[ext_resource type="Resource" path="res://objects/catalogs/kaykit_fantasy_weapons.tres" id="2_catalog"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/rotate-3d.svg" id="3_orbit_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/zoom-out.svg" id="4_zoom_out_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/zoom-in.svg" id="5_zoom_in_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/rotate-ccw.svg" id="6_reset_icon"]
+
+[sub_resource type="Environment" id="Environment_library"]
+background_mode = 1
+background_color = Color(0.025, 0.032, 0.04, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.5, 0.58, 0.68, 1)
+ambient_light_energy = 1.2
+tonemap_mode = 3
+
+[sub_resource type="StandardMaterial3D" id="Material_platform"]
+albedo_color = Color(0.12, 0.16, 0.2, 1)
+metallic = 0.18
+roughness = 0.72
+
+[sub_resource type="CylinderMesh" id="Mesh_platform"]
+material = SubResource("Material_platform")
+top_radius = 1.0
+bottom_radius = 1.0
+height = 0.08
+radial_segments = 64
+
+[sub_resource type="StyleBoxFlat" id="Style_panel"]
+bg_color = Color(0.045, 0.075, 0.105, 0.97)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.42, 0.58, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="Style_detail"]
+bg_color = Color(0.035, 0.055, 0.072, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.31, 0.4, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="LabelSettings" id="Label_heading"]
+font_size = 18
+font_color = Color(0.94, 0.97, 1, 1)
+
+[node name="ObjectLibrary" type="Node3D"]
+script = ExtResource("1_script")
+catalog = ExtResource("2_catalog")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_library")
+
+[node name="ModelAnchor" type="Node3D" parent="."]
+
+[node name="Platform" type="MeshInstance3D" parent="."]
+position = Vector3(0, -0.04, 0)
+mesh = SubResource("Mesh_platform")
+
+[node name="Camera" type="Camera3D" parent="."]
+position = Vector3(1.5, 1.0, 2.5)
+fov = 42.0
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.7, -0.55, 0)
+light_color = Color(1, 0.91, 0.78, 1)
+light_energy = 1.7
+shadow_enabled = true
+
+[node name="FillLight" type="OmniLight3D" parent="."]
+position = Vector3(-2.5, 2.2, 2.5)
+light_color = Color(0.55, 0.72, 1, 1)
+light_energy = 4.0
+omni_range = 7.0
+
+[node name="RimLight" type="OmniLight3D" parent="."]
+position = Vector3(2.5, 1.5, -2.0)
+light_color = Color(0.55, 1, 0.78, 1)
+light_energy = 2.5
+omni_range = 6.0
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Sidebar" type="PanelContainer" parent="UI"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 382.0
+anchor_bottom = 1.0
+offset_bottom = -16.0
+theme_override_styles/panel = SubResource("Style_panel")
+
+[node name="Margin" type="MarginContainer" parent="UI/Sidebar"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="VBox" type="VBoxContainer" parent="UI/Sidebar/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="UI/Sidebar/Margin/VBox"]
+layout_mode = 2
+
+[node name="CatalogTitle" type="Label" parent="UI/Sidebar/Margin/VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "OBJECT LIBRARY"
+label_settings = SubResource("Label_heading")
+
+[node name="Count" type="Label" parent="UI/Sidebar/Margin/VBox/Header"]
+layout_mode = 2
+text = "0 OBJECTS"
+theme_override_colors/font_color = Color(0.56, 0.7, 0.82, 1)
+
+[node name="Search" type="LineEdit" parent="UI/Sidebar/Margin/VBox"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+placeholder_text = "Search objects"
+clear_button_enabled = true
+
+[node name="FilterRow" type="HBoxContainer" parent="UI/Sidebar/Margin/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="UI/Sidebar/Margin/VBox/FilterRow"]
+layout_mode = 2
+text = "CATEGORY"
+theme_override_colors/font_color = Color(0.58, 0.7, 0.8, 1)
+
+[node name="Category" type="OptionButton" parent="UI/Sidebar/Margin/VBox/FilterRow"]
+custom_minimum_size = Vector2(190, 38)
+layout_mode = 2
+size_flags_horizontal = 10
+
+[node name="Separator" type="HSeparator" parent="UI/Sidebar/Margin/VBox"]
+layout_mode = 2
+
+[node name="ObjectScroll" type="ScrollContainer" parent="UI/Sidebar/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="ObjectGrid" type="GridContainer" parent="UI/Sidebar/Margin/VBox/ObjectScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="Details" type="PanelContainer" parent="UI"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -416.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 188.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Style_detail")
+
+[node name="Margin" type="MarginContainer" parent="UI/Details"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 14
+
+[node name="VBox" type="VBoxContainer" parent="UI/Details/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="ObjectName" type="Label" parent="UI/Details/Margin/VBox"]
+layout_mode = 2
+text = "No object selected"
+label_settings = SubResource("Label_heading")
+
+[node name="Category" type="Label" parent="UI/Details/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.38, 0.72, 0.92, 1)
+
+[node name="Tags" type="Label" parent="UI/Details/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.68, 0.75, 0.8, 1)
+
+[node name="Path" type="Label" parent="UI/Details/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.48, 0.58, 0.65, 1)
+text_overrun_behavior = 3
+
+[node name="CopyPath" type="Button" parent="UI/Details/Margin/VBox"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+text = "COPY RESOURCE PATH"
+
+[node name="ViewportToolbar" type="PanelContainer" parent="UI"]
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -218.0
+offset_top = -64.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("Style_panel")
+
+[node name="Margin" type="MarginContainer" parent="UI/ViewportToolbar"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 7
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 7
+
+[node name="Buttons" type="HBoxContainer" parent="UI/ViewportToolbar/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Orbit" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+disabled = true
+tooltip_text = "Drag to orbit"
+icon = ExtResource("3_orbit_icon")
+expand_icon = true
+icon_max_width = 20
+
+[node name="ZoomOut" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+tooltip_text = "Zoom out"
+icon = ExtResource("4_zoom_out_icon")
+expand_icon = true
+icon_max_width = 20
+
+[node name="ZoomIn" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+tooltip_text = "Zoom in"
+icon = ExtResource("5_zoom_in_icon")
+expand_icon = true
+icon_max_width = 20
+
+[node name="ResetView" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+tooltip_text = "Reset view"
+icon = ExtResource("6_reset_icon")
+expand_icon = true
+icon_max_width = 20

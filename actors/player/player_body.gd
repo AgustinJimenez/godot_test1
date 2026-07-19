@@ -6,6 +6,7 @@ extends Node3D
 ## skeleton. Native MotusMan clips remain loaded as debug references.
 
 signal action_finished(animation_name: StringName)
+signal action_contact(animation_name: StringName)
 
 const CLIP_DIR := "res://assets/models/pistol_starter/Animation/In-Place/"
 const CLIPS := {
@@ -43,6 +44,7 @@ const UAL_GAMEPLAY_CLIPS: Dictionary = {
 	&"unarmed_roll": &"Roll",
 	&"unarmed_punch_jab": &"Punch_Jab",
 	&"unarmed_punch_cross": &"Punch_Cross",
+	&"weapon_sword_attack": &"Sword_Attack",
 	&"unarmed_interact": &"Interact",
 	&"unarmed_pickup": &"PickUp_Table",
 }
@@ -228,9 +230,13 @@ var _look_pose_modifier: PlayerLookPoseModifier
 var _hand_grip_modifier: PlayerHandGripModifier
 var _flashlight_attachment: BoneAttachment3D
 var _flashlight_model: Node3D
+var _equipped_attachment: BoneAttachment3D
+var _equipped_model: Node3D
 var _airborne := false
 var _landing_time_left := 0.0
 var _action_animation := &""
+var _action_contact_ratio := -1.0
+var _action_contact_emitted := false
 
 ## True while a debug-menu clip is being previewed, so update_motion() doesn't
 ## immediately stomp it back to relaxed_idle on the next physics tick (e.g.
@@ -246,8 +252,6 @@ var _debug_preview_active := false
 
 
 func _ready() -> void:
-	# Footstep inspection runs after the AnimationPlayer has written the pose.
-	process_priority = 100
 	# Lets the debug menu's animation preview keep looping while the pause
 	# menu has the rest of the game (including this node's own parent,
 	# Player, which is PAUSABLE by design) frozen.
@@ -589,98 +593,21 @@ func _aim_bone_at_direction(anim: Animation, target_global: Dictionary,
 			anim, out_rot_track, skeleton.get_bone_name(bone_idx), local_rotation)
 
 
-func _process(delta: float) -> void:
-	_update_footstep_markers(delta)
+func _process(_delta: float) -> void:
+	_update_action_contact()
 
 
-## Debug menu only: drops a small sphere where a foot actually PLANTS -
-## rises above FOOT_LIFT_ENTER (a real step, not idle sway or the foot
-## sliding along the ground while the body turns in place), then comes back
-## down below FOOT_LIFT_EXIT. Two thresholds instead of one (hysteresis) so
-## a foot hovering right at the edge of one threshold can't fire twice on
-## sensor noise alone. Markers free themselves after a few seconds so a long
-## test session doesn't pile up forever.
-const FOOT_LIFT_ENTER := 0.03
-const FOOT_LIFT_EXIT := 0.015
-const FOOTSTEP_MARKER_LIFETIME := 6.0
-const FOOTSTEP_COLORS: Dictionary = {
-	&"LeftFoot": Color(1.0, 0.25, 0.25),
-	&"RightFoot": Color(0.3, 0.5, 1.0),
-}
-
-var debug_footsteps := true
-## Per foot bone: whether it's currently airborne (past FOOT_LIFT_ENTER
-## above its last confirmed ground height) and what that ground height was.
-var _foot_lifted: Dictionary = {}
-var _foot_ground_y: Dictionary = {}
-
-func toggle_debug_footsteps() -> void:
-	debug_footsteps = not debug_footsteps
-
-
-func _update_footstep_markers(_delta: float) -> void:
-	if not debug_footsteps:
+func _update_action_contact() -> void:
+	if (_action_animation == &"" or _action_contact_emitted
+			or _action_contact_ratio < 0.0
+			or anim_player.current_animation != _action_animation):
 		return
-	for bone_name: StringName in FOOTSTEP_COLORS:
-		_check_footstep(bone_name, FOOTSTEP_COLORS[bone_name])
-
-
-func _check_footstep(bone_name: StringName, color: Color) -> void:
-	var idx := skeleton.find_bone(bone_name)
-	if idx < 0:
+	var animation := anim_player.get_animation(_action_animation)
+	if animation == null or animation.length <= 0.0:
 		return
-	var y := skeleton.get_bone_global_pose(idx).origin.y
-	if not _foot_ground_y.has(bone_name):
-		_foot_ground_y[bone_name] = y
-		_foot_lifted[bone_name] = false
-		return
-	var ground_y: float = _foot_ground_y[bone_name]
-	var lifted: bool = _foot_lifted[bone_name]
-	var height := y - ground_y
-	if lifted:
-		if height < FOOT_LIFT_EXIT:
-			# Came back down after a real lift - this is the plant.
-			_foot_lifted[bone_name] = false
-			_foot_ground_y[bone_name] = y
-			_drop_footstep_marker(bone_name, color)
-	else:
-		if height > FOOT_LIFT_ENTER:
-			_foot_lifted[bone_name] = true
-		else:
-			# Not lifted - keep tracking the lowest recent height as ground,
-			# so a foot sliding/pivoting on an uneven-looking pose doesn't
-			# get mistaken for a lift later.
-			_foot_ground_y[bone_name] = minf(ground_y, y)
-
-
-func _drop_footstep_marker(bone_name: StringName, color: Color) -> void:
-	var idx := skeleton.find_bone(bone_name)
-	if idx < 0:
-		return
-	var bone_pos: Vector3 = skeleton.global_transform * skeleton.get_bone_global_pose(idx).origin
-	# The foot BONE's pivot sits inside the ankle, well above the sole, so
-	# placing a marker directly there floats visibly above the floor -
-	# raycast straight down to the actual ground the character is standing
-	# on instead, same "world" collision layer the player itself walks on.
-	var query := PhysicsRayQueryParameters3D.create(
-			bone_pos + Vector3.UP * 0.3, bone_pos + Vector3.DOWN * 1.0, 1)
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	var ground_pos: Vector3 = hit.position if hit else Vector3(bone_pos.x, 0.0, bone_pos.z)
-
-	var marker := MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.025
-	sphere.height = 0.05
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.emission_enabled = true
-	mat.emission = color
-	mat.emission_energy_multiplier = 2.0
-	marker.mesh = sphere
-	marker.material_override = mat
-	get_tree().current_scene.add_child(marker)
-	marker.global_position = ground_pos + Vector3.UP * 0.01
-	get_tree().create_timer(FOOTSTEP_MARKER_LIFETIME).timeout.connect(marker.queue_free)
+	if anim_player.current_animation_position >= animation.length * _action_contact_ratio:
+		_action_contact_emitted = true
+		action_contact.emit(_action_animation)
 
 
 ## Looking straight down would bend the neck/head further than a real neck
@@ -722,6 +649,8 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		_debug_preview_active = false
 	if not on_floor:
 		_action_animation = &""
+		_action_contact_ratio = -1.0
+		_action_contact_emitted = false
 		_landing_time_left = 0.0
 		if not _airborne:
 			_airborne = true
@@ -822,13 +751,39 @@ func _load_flashlight_grip_pose() -> Dictionary:
 
 
 func set_held_flashlight_visible(enabled: bool) -> void:
-	_flashlight_model.visible = enabled
+	_flashlight_model.visible = enabled and _equipped_model == null
 
 
-## Starts a one-shot action that temporarily owns the body animation. Normal
-## locomotion resumes from animation_finished; jumping can interrupt it.
+func set_equipped_item(item: Item) -> void:
+	if _equipped_attachment != null:
+		_equipped_attachment.free()
+		_equipped_attachment = null
+		_equipped_model = null
+	if item == null or item.world_scene == null:
+		return
+	_equipped_attachment = BoneAttachment3D.new()
+	_equipped_attachment.name = &"EquippedItemAttachment"
+	_equipped_attachment.bone_name = item.held_bone
+	skeleton.add_child(_equipped_attachment)
+	_equipped_model = item.world_scene.instantiate() as Node3D
+	if _equipped_model == null:
+		_equipped_attachment.free()
+		_equipped_attachment = null
+		return
+	_equipped_model.name = &"EquippedItemModel"
+	_equipped_model.scale = Vector3.ONE * item.held_scale
+	_equipped_model.position = item.held_position
+	_equipped_model.rotation_degrees = item.held_rotation_degrees
+	_equipped_attachment.add_child(_equipped_model)
+
+
+## Starts a one-shot action that temporarily owns the body animation. An
+## optional normalized contact point emits action_contact once, allowing
+## gameplay effects to align with the motion without living in this visual
+## component. Normal locomotion resumes from animation_finished; jumping can
+## interrupt the action and therefore prevent its pending contact.
 func play_action_animation(animation_name: StringName, speed: float = 1.0,
-		blend_time: float = 0.12) -> bool:
+		blend_time: float = 0.12, contact_ratio: float = -1.0) -> bool:
 	if _action_animation != &"" or not _lib.has_animation(animation_name):
 		return false
 	var animation := _lib.get_animation(animation_name)
@@ -836,6 +791,8 @@ func play_action_animation(animation_name: StringName, speed: float = 1.0,
 		return false
 	_debug_preview_active = false
 	_action_animation = StringName("moves/" + String(animation_name))
+	_action_contact_ratio = clampf(contact_ratio, 0.0, 1.0) if contact_ratio >= 0.0 else -1.0
+	_action_contact_emitted = false
 	_play_motion(animation_name, blend_time, speed)
 	return true
 
@@ -843,6 +800,8 @@ func play_action_animation(animation_name: StringName, speed: float = 1.0,
 func _on_animation_finished(animation_name: StringName) -> void:
 	if animation_name == _action_animation:
 		_action_animation = &""
+		_action_contact_ratio = -1.0
+		_action_contact_emitted = false
 		action_finished.emit(animation_name)
 
 

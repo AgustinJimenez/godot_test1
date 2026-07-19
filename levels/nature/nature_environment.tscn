@@ -1,0 +1,598 @@
+[gd_scene load_steps=39 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/CommonTree_1.gltf" id="1_common_1"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/CommonTree_2.gltf" id="2_common_2"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/CommonTree_4.gltf" id="3_common_4"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Pine_1.gltf" id="4_pine_1"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Pine_3.gltf" id="5_pine_3"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/TwistedTree_1.gltf" id="6_twisted_1"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/TwistedTree_3.gltf" id="7_twisted_3"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/DeadTree_1.gltf" id="8_dead_1"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Rock_Medium_1.gltf" id="9_rock_1"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Rock_Medium_2.gltf" id="10_rock_2"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Rock_Medium_3.gltf" id="11_rock_3"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/RockPath_Round_Wide.gltf" id="12_path_rock"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Bush_Common.gltf" id="13_bush"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Bush_Common_Flowers.gltf" id="14_flower_bush"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Grass_Common_Short.gltf" id="15_grass_short"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Grass_Common_Tall.gltf" id="16_grass_tall"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Grass_Wispy_Short.gltf" id="17_grass_wispy"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Fern_1.gltf" id="18_fern"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Mushroom_Common.gltf" id="19_mushroom"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Mushroom_Laetiporus.gltf" id="20_mushroom_cluster"]
+[ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/Clover_1.gltf" id="21_clover"]
+[ext_resource type="PackedScene" path="res://levels/props/item_pickup.tscn" id="22_pickup"]
+[ext_resource type="Resource" path="res://items/kaykit_sword_c.tres" id="23_sword"]
+[ext_resource type="Resource" path="res://items/kaykit_axe_c.tres" id="24_axe"]
+[ext_resource type="Resource" path="res://items/kaykit_shield_b.tres" id="25_shield"]
+[ext_resource type="Resource" path="res://items/kaykit_wand_a.tres" id="26_wand"]
+[ext_resource type="Script" path="res://levels/nav_bake.gd" id="27_nav_bake"]
+[ext_resource type="PackedScene" path="res://actors/enemies/shambler/shambler.tscn" id="28_shambler"]
+[ext_resource type="PackedScene" path="res://assets/models/mixamo_characters/Ch10_nonPBR.fbx" id="29_ch10_zombie"]
+[ext_resource type="PackedScene" path="res://assets/models/mixamo_characters/Zombiegirl W Kurniawan.fbx" id="30_zombie_girl"]
+
+[sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_meadow"]
+sky_top_color = Color(0.17, 0.36, 0.55, 1)
+sky_horizon_color = Color(0.66, 0.78, 0.76, 1)
+ground_bottom_color = Color(0.08, 0.11, 0.09, 1)
+ground_horizon_color = Color(0.34, 0.42, 0.32, 1)
+sun_angle_max = 18.0
+sun_curve = 0.08
+
+[sub_resource type="Sky" id="Sky_meadow"]
+sky_material = SubResource("SkyMaterial_meadow")
+
+[sub_resource type="Environment" id="Environment_meadow"]
+background_mode = 2
+sky = SubResource("Sky_meadow")
+ambient_light_source = 3
+ambient_light_color = Color(0.72, 0.8, 0.73, 1)
+ambient_light_energy = 0.65
+tonemap_mode = 3
+fog_enabled = true
+fog_light_color = Color(0.48, 0.59, 0.53, 1)
+fog_density = 0.004
+fog_height = 0.0
+fog_height_density = 0.08
+
+[sub_resource type="StandardMaterial3D" id="Material_meadow"]
+albedo_color = Color(0.16, 0.28, 0.12, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Material_path"]
+albedo_color = Color(0.29, 0.22, 0.13, 1)
+roughness = 1.0
+
+[sub_resource type="CylinderShape3D" id="Shape_trunk"]
+radius = 0.55
+height = 5.0
+
+[sub_resource type="CylinderShape3D" id="Shape_large_trunk"]
+radius = 0.9
+height = 6.0
+
+[sub_resource type="NavigationMesh" id="NavigationMesh_nature"]
+agent_height = 1.8
+agent_radius = 0.4
+agent_max_climb = 0.3
+filter_baking_aabb = AABB(-24, -0.5, -66, 48, 4, 104)
+parsed_geometry_type = 1
+geometry_source_geometry_mode = 1
+geometry_source_group_name = &"navmesh_source"
+
+[node name="NatureEnvironment" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_meadow")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.959931, -0.610865, 0)
+light_color = Color(1, 0.91, 0.74, 1)
+light_energy = 1.15
+shadow_enabled = true
+directional_shadow_max_distance = 60.0
+
+[node name="Geometry" type="Node3D" parent="."]
+
+[node name="Ground" type="CSGBox3D" parent="Geometry"]
+position = Vector3(0, -0.2, 0)
+use_collision = true
+size = Vector3(140, 0.4, 140)
+material = SubResource("Material_meadow")
+
+[node name="PathSpawn" type="CSGBox3D" parent="Geometry"]
+position = Vector3(1.7, 0.004, 26)
+rotation = Vector3(0, -0.08, 0)
+size = Vector3(4.8, 0.018, 16)
+material = SubResource("Material_path")
+
+[node name="PathSouth" type="CSGBox3D" parent="Geometry"]
+position = Vector3(0.8, 0.005, 12)
+rotation = Vector3(0, -0.12, 0)
+size = Vector3(4.8, 0.02, 14)
+material = SubResource("Material_path")
+
+[node name="PathCenter" type="CSGBox3D" parent="Geometry"]
+position = Vector3(-0.2, 0.006, 0)
+rotation = Vector3(0, 0.07, 0)
+size = Vector3(4.8, 0.022, 12)
+material = SubResource("Material_path")
+
+[node name="PathNorth" type="CSGBox3D" parent="Geometry"]
+position = Vector3(-1.2, 0.007, -12)
+rotation = Vector3(0, 0.15, 0)
+size = Vector3(4.8, 0.024, 14)
+material = SubResource("Material_path")
+
+[node name="PathFarNorthA" type="CSGBox3D" parent="Geometry"]
+position = Vector3(-3.1, 0.008, -25)
+rotation = Vector3(0, 0.15, 0)
+size = Vector3(4.8, 0.026, 14)
+material = SubResource("Material_path")
+
+[node name="PathFarNorthB" type="CSGBox3D" parent="Geometry"]
+position = Vector3(-4.1, 0.009, -38)
+rotation = Vector3(0, 0.02, 0)
+size = Vector3(4.8, 0.028, 14)
+material = SubResource("Material_path")
+
+[node name="PathFarNorthC" type="CSGBox3D" parent="Geometry"]
+position = Vector3(-2.8, 0.01, -51)
+rotation = Vector3(0, -0.2, 0)
+size = Vector3(4.8, 0.03, 14)
+material = SubResource("Material_path")
+
+[node name="Trees" type="Node3D" parent="."]
+
+[node name="CommonTreeNW" parent="Trees" instance=ExtResource("1_common_1")]
+position = Vector3(-8.5, 0, -8)
+rotation = Vector3(0, 0.523599, 0)
+scale = Vector3(1.05, 1.05, 1.05)
+
+[node name="CommonTreeNE" parent="Trees" instance=ExtResource("2_common_2")]
+position = Vector3(8.5, 0, -7)
+rotation = Vector3(0, 2.0944, 0)
+scale = Vector3(1.12, 1.12, 1.12)
+
+[node name="CommonTreeWest" parent="Trees" instance=ExtResource("3_common_4")]
+position = Vector3(-10.5, 0, 2)
+rotation = Vector3(0, 4.18879, 0)
+scale = Vector3(0.95, 0.95, 0.95)
+
+[node name="CommonTreeEast" parent="Trees" instance=ExtResource("1_common_1")]
+position = Vector3(10.5, 0, 4)
+rotation = Vector3(0, 2.61799, 0)
+scale = Vector3(1.08, 1.08, 1.08)
+
+[node name="CommonTreeSW" parent="Trees" instance=ExtResource("2_common_2")]
+position = Vector3(-8.5, 0, 15)
+rotation = Vector3(0, 5.23599, 0)
+
+[node name="CommonTreeSE" parent="Trees" instance=ExtResource("3_common_4")]
+position = Vector3(8.5, 0, 17)
+rotation = Vector3(0, 1.0472, 0)
+scale = Vector3(1.1, 1.1, 1.1)
+
+[node name="PineFarNW" parent="Trees" instance=ExtResource("4_pine_1")]
+position = Vector3(-15, 0, -19)
+rotation = Vector3(0, 1.5708, 0)
+scale = Vector3(1.25, 1.25, 1.25)
+
+[node name="PineFarNE" parent="Trees" instance=ExtResource("5_pine_3")]
+position = Vector3(15, 0, -18)
+rotation = Vector3(0, 3.66519, 0)
+scale = Vector3(1.2, 1.2, 1.2)
+
+[node name="PineFarWest" parent="Trees" instance=ExtResource("5_pine_3")]
+position = Vector3(-16, 0, 8)
+rotation = Vector3(0, 0.785398, 0)
+
+[node name="PineFarEast" parent="Trees" instance=ExtResource("4_pine_1")]
+position = Vector3(16, 0, 10)
+rotation = Vector3(0, 4.71239, 0)
+scale = Vector3(1.15, 1.15, 1.15)
+
+[node name="TwistedWest" parent="Trees" instance=ExtResource("6_twisted_1")]
+position = Vector3(-14, 0, 21)
+rotation = Vector3(0, 0.523599, 0)
+scale = Vector3(0.52, 0.52, 0.52)
+
+[node name="TwistedEast" parent="Trees" instance=ExtResource("7_twisted_3")]
+position = Vector3(14, 0, 22)
+rotation = Vector3(0, 2.61799, 0)
+scale = Vector3(0.48, 0.48, 0.48)
+
+[node name="DeadTreeNorth" parent="Trees" instance=ExtResource("8_dead_1")]
+position = Vector3(7, 0, -20)
+rotation = Vector3(0, 5.75959, 0)
+scale = Vector3(0.8, 0.8, 0.8)
+
+[node name="CommonTreeSpawnWest" parent="Trees" instance=ExtResource("3_common_4")]
+position = Vector3(-9.5, 0, 29)
+rotation = Vector3(0, 2.2, 0)
+scale = Vector3(1.1, 1.1, 1.1)
+
+[node name="CommonTreeSpawnEast" parent="Trees" instance=ExtResource("1_common_1")]
+position = Vector3(11, 0, 30)
+rotation = Vector3(0, 4.6, 0)
+
+[node name="CommonTreeFarNW" parent="Trees" instance=ExtResource("2_common_2")]
+position = Vector3(-10, 0, -29)
+rotation = Vector3(0, 0.7, 0)
+scale = Vector3(1.08, 1.08, 1.08)
+
+[node name="CommonTreeFarNE" parent="Trees" instance=ExtResource("3_common_4")]
+position = Vector3(7.5, 0, -31)
+rotation = Vector3(0, 3.8, 0)
+
+[node name="PineDeepNW" parent="Trees" instance=ExtResource("5_pine_3")]
+position = Vector3(-17, 0, -39)
+rotation = Vector3(0, 1.4, 0)
+scale = Vector3(1.25, 1.25, 1.25)
+
+[node name="PineDeepNE" parent="Trees" instance=ExtResource("4_pine_1")]
+position = Vector3(11, 0, -41)
+rotation = Vector3(0, 5.2, 0)
+scale = Vector3(1.2, 1.2, 1.2)
+
+[node name="TwistedDeepWest" parent="Trees" instance=ExtResource("7_twisted_3")]
+position = Vector3(-15, 0, -52)
+rotation = Vector3(0, 4.1, 0)
+scale = Vector3(0.45, 0.45, 0.45)
+
+[node name="TwistedDeepEast" parent="Trees" instance=ExtResource("6_twisted_1")]
+position = Vector3(14, 0, -54)
+rotation = Vector3(0, 1.1, 0)
+scale = Vector3(0.43, 0.43, 0.43)
+
+[node name="DeadTreeDeep" parent="Trees" instance=ExtResource("8_dead_1")]
+position = Vector3(-9, 0, -43)
+rotation = Vector3(0, 2.9, 0)
+scale = Vector3(0.72, 0.72, 0.72)
+
+[node name="CommonTreeDeepWest" parent="Trees" instance=ExtResource("1_common_1")]
+position = Vector3(-7.5, 0, -61)
+rotation = Vector3(0, 5.4, 0)
+
+[node name="CommonTreeDeepEast" parent="Trees" instance=ExtResource("2_common_2")]
+position = Vector3(8, 0, -60)
+rotation = Vector3(0, 2.5, 0)
+scale = Vector3(1.15, 1.15, 1.15)
+
+[node name="TreeCollisions" type="Node3D" parent="."]
+
+[node name="CommonTreeNW" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(-8.5, 2.5, -8)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeNW"]
+shape = SubResource("Shape_trunk")
+
+[node name="CommonTreeNE" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(8.5, 2.5, -7)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeNE"]
+shape = SubResource("Shape_trunk")
+
+[node name="CommonTreeWest" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(-10.5, 2.5, 2)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeWest"]
+shape = SubResource("Shape_trunk")
+
+[node name="CommonTreeEast" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(10.5, 2.5, 4)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeEast"]
+shape = SubResource("Shape_trunk")
+
+[node name="CommonTreeSW" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(-8.5, 2.5, 15)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeSW"]
+shape = SubResource("Shape_trunk")
+
+[node name="CommonTreeSE" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(8.5, 2.5, 17)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeSE"]
+shape = SubResource("Shape_trunk")
+
+[node name="TwistedWest" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(-14, 3, 21)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/TwistedWest"]
+shape = SubResource("Shape_large_trunk")
+
+[node name="TwistedEast" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(14, 3, 22)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/TwistedEast"]
+shape = SubResource("Shape_large_trunk")
+
+[node name="CommonTreeSpawnWest" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(-9.5, 2.5, 29)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeSpawnWest"]
+shape = SubResource("Shape_trunk")
+
+[node name="CommonTreeSpawnEast" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(11, 2.5, 30)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeSpawnEast"]
+shape = SubResource("Shape_trunk")
+
+[node name="CommonTreeFarNW" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(-10, 2.5, -29)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeFarNW"]
+shape = SubResource("Shape_trunk")
+
+[node name="CommonTreeFarNE" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(7.5, 2.5, -31)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeFarNE"]
+shape = SubResource("Shape_trunk")
+
+[node name="PineDeepNW" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(-17, 2.5, -39)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/PineDeepNW"]
+shape = SubResource("Shape_trunk")
+
+[node name="PineDeepNE" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(11, 2.5, -41)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/PineDeepNE"]
+shape = SubResource("Shape_trunk")
+
+[node name="TwistedDeepWest" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(-15, 3, -52)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/TwistedDeepWest"]
+shape = SubResource("Shape_large_trunk")
+
+[node name="TwistedDeepEast" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(14, 3, -54)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/TwistedDeepEast"]
+shape = SubResource("Shape_large_trunk")
+
+[node name="DeadTreeDeep" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(-9, 2.5, -43)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/DeadTreeDeep"]
+shape = SubResource("Shape_trunk")
+
+[node name="CommonTreeDeepWest" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(-7.5, 2.5, -61)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeDeepWest"]
+shape = SubResource("Shape_trunk")
+
+[node name="CommonTreeDeepEast" type="StaticBody3D" parent="TreeCollisions"]
+position = Vector3(8, 2.5, -60)
+[node name="Shape" type="CollisionShape3D" parent="TreeCollisions/CommonTreeDeepEast"]
+shape = SubResource("Shape_trunk")
+
+[node name="PathStones" type="Node3D" parent="."]
+
+[node name="StonesSouth" parent="PathStones" instance=ExtResource("12_path_rock")]
+position = Vector3(0.7, 0.02, 15)
+rotation = Vector3(0, 0.35, 0)
+scale = Vector3(1.35, 1.35, 1.35)
+
+[node name="StonesCenterSouth" parent="PathStones" instance=ExtResource("12_path_rock")]
+position = Vector3(-0.1, 0.02, 5)
+rotation = Vector3(0, 1.2, 0)
+
+[node name="StonesCenterNorth" parent="PathStones" instance=ExtResource("12_path_rock")]
+position = Vector3(-0.3, 0.02, -5)
+rotation = Vector3(0, 2.3, 0)
+scale = Vector3(1.2, 1.2, 1.2)
+
+[node name="StonesNorth" parent="PathStones" instance=ExtResource("12_path_rock")]
+position = Vector3(-1.5, 0.02, -15)
+rotation = Vector3(0, 4.1, 0)
+
+[node name="StonesFarNorthA" parent="PathStones" instance=ExtResource("12_path_rock")]
+position = Vector3(-3.4, 0.02, -28)
+rotation = Vector3(0, 5.2, 0)
+scale = Vector3(1.15, 1.15, 1.15)
+
+[node name="StonesFarNorthB" parent="PathStones" instance=ExtResource("12_path_rock")]
+position = Vector3(-4, 0.02, -41)
+rotation = Vector3(0, 1.8, 0)
+
+[node name="StonesFarNorthC" parent="PathStones" instance=ExtResource("12_path_rock")]
+position = Vector3(-2, 0.02, -54)
+rotation = Vector3(0, 3.3, 0)
+scale = Vector3(1.25, 1.25, 1.25)
+
+[node name="WeaponPickups" type="Node3D" parent="."]
+
+[node name="RunedSword" parent="WeaponPickups" instance=ExtResource("22_pickup")]
+position = Vector3(0.4, 0.03, 26.5)
+rotation = Vector3(0, 1.15, 0)
+item = ExtResource("23_sword")
+
+[node name="ForestAxe" parent="WeaponPickups" instance=ExtResource("22_pickup")]
+position = Vector3(-1.1, 0.03, 17.5)
+rotation = Vector3(0, 0.45, 0)
+item = ExtResource("24_axe")
+
+[node name="RoundShield" parent="WeaponPickups" instance=ExtResource("22_pickup")]
+position = Vector3(1.2, 0.03, 8.5)
+rotation = Vector3(0, -0.3, 0)
+item = ExtResource("25_shield")
+
+[node name="CrystalWand" parent="WeaponPickups" instance=ExtResource("22_pickup")]
+position = Vector3(-0.8, 0.03, -1.5)
+rotation = Vector3(0, 0.25, 0)
+item = ExtResource("26_wand")
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("NavigationMesh_nature")
+script = ExtResource("27_nav_bake")
+source_paths = [NodePath("Geometry"), NodePath("TreeCollisions")]
+
+[node name="EnemyPatrols" type="Node3D" parent="."]
+
+[node name="NearA" type="Marker3D" parent="EnemyPatrols"]
+position = Vector3(-3, 0, -10)
+
+[node name="NearB" type="Marker3D" parent="EnemyPatrols"]
+position = Vector3(4, 0, -19)
+
+[node name="MiddleA" type="Marker3D" parent="EnemyPatrols"]
+position = Vector3(-4, 0, -28)
+
+[node name="MiddleB" type="Marker3D" parent="EnemyPatrols"]
+position = Vector3(3, 0, -38)
+
+[node name="FarA" type="Marker3D" parent="EnemyPatrols"]
+position = Vector3(-3, 0, -46)
+
+[node name="FarB" type="Marker3D" parent="EnemyPatrols"]
+position = Vector3(4, 0, -58)
+
+[node name="Enemies" type="Node3D" parent="."]
+
+[node name="ShamblerNear" parent="Enemies" instance=ExtResource("28_shambler")]
+position = Vector3(-3, 0, -10)
+patrol_points = [NodePath("../../EnemyPatrols/NearA"), NodePath("../../EnemyPatrols/NearB")]
+character_scene = ExtResource("29_ch10_zombie")
+character_bone_prefix = "mixamorig5_"
+
+[node name="ShamblerMiddle" parent="Enemies" instance=ExtResource("28_shambler")]
+position = Vector3(-4, 0, -28)
+patrol_points = [NodePath("../../EnemyPatrols/MiddleA"), NodePath("../../EnemyPatrols/MiddleB")]
+character_scene = ExtResource("30_zombie_girl")
+
+[node name="ShamblerFar" parent="Enemies" instance=ExtResource("28_shambler")]
+position = Vector3(-3, 0, -46)
+patrol_points = [NodePath("../../EnemyPatrols/FarA"), NodePath("../../EnemyPatrols/FarB")]
+character_scene = ExtResource("29_ch10_zombie")
+character_bone_prefix = "mixamorig5_"
+
+[node name="Boulders" type="Node3D" parent="."]
+
+[node name="RockWest" parent="Boulders" instance=ExtResource("9_rock_1")]
+position = Vector3(-7.5, 0, -3)
+rotation = Vector3(0, 0.8, 0)
+scale = Vector3(0.55, 0.55, 0.55)
+
+[node name="RockEast" parent="Boulders" instance=ExtResource("10_rock_2")]
+position = Vector3(7.8, 0, 7)
+rotation = Vector3(0, 2.4, 0)
+scale = Vector3(0.7, 0.7, 0.7)
+
+[node name="RockNorth" parent="Boulders" instance=ExtResource("11_rock_3")]
+position = Vector3(5.5, 0, -18)
+rotation = Vector3(0, 5.1, 0)
+scale = Vector3(0.65, 0.65, 0.65)
+
+[node name="RockSouthWest" parent="Boulders" instance=ExtResource("10_rock_2")]
+position = Vector3(-8.5, 0, 20)
+rotation = Vector3(0, 1.7, 0)
+scale = Vector3(0.5, 0.5, 0.5)
+
+[node name="RockFarWest" parent="Boulders" instance=ExtResource("9_rock_1")]
+position = Vector3(-8, 0, -34)
+rotation = Vector3(0, 4.2, 0)
+scale = Vector3(0.5, 0.5, 0.5)
+
+[node name="RockFarEast" parent="Boulders" instance=ExtResource("11_rock_3")]
+position = Vector3(6.5, 0, -46)
+rotation = Vector3(0, 1.1, 0)
+scale = Vector3(0.7, 0.7, 0.7)
+
+[node name="Foliage" type="Node3D" parent="."]
+
+[node name="BushNW" parent="Foliage" instance=ExtResource("13_bush")]
+position = Vector3(-5.5, 0, -10)
+rotation = Vector3(0, 0.5, 0)
+
+[node name="BushNE" parent="Foliage" instance=ExtResource("14_flower_bush")]
+position = Vector3(5.8, 0, -9)
+rotation = Vector3(0, 2.1, 0)
+
+[node name="BushWest" parent="Foliage" instance=ExtResource("14_flower_bush")]
+position = Vector3(-6, 0, 5)
+rotation = Vector3(0, 4.2, 0)
+scale = Vector3(0.85, 0.85, 0.85)
+
+[node name="BushEast" parent="Foliage" instance=ExtResource("13_bush")]
+position = Vector3(6.5, 0, 10)
+rotation = Vector3(0, 1.2, 0)
+
+[node name="FernWest" parent="Foliage" instance=ExtResource("18_fern")]
+position = Vector3(-7, 0, 11)
+rotation = Vector3(0, 0.9, 0)
+scale = Vector3(0.32, 0.32, 0.32)
+
+[node name="FernEast" parent="Foliage" instance=ExtResource("18_fern")]
+position = Vector3(7, 0, -12)
+rotation = Vector3(0, 3.4, 0)
+scale = Vector3(0.28, 0.28, 0.28)
+
+[node name="GrassA" parent="Foliage" instance=ExtResource("15_grass_short")]
+position = Vector3(-5, 0, 17)
+[node name="GrassB" parent="Foliage" instance=ExtResource("16_grass_tall")]
+position = Vector3(5.5, 0, 15)
+rotation = Vector3(0, 1.5, 0)
+scale = Vector3(0.8, 0.8, 0.8)
+[node name="GrassC" parent="Foliage" instance=ExtResource("17_grass_wispy")]
+position = Vector3(-6.5, 0, 1)
+rotation = Vector3(0, 2.8, 0)
+[node name="GrassD" parent="Foliage" instance=ExtResource("16_grass_tall")]
+position = Vector3(6, 0, 0)
+rotation = Vector3(0, 4.4, 0)
+scale = Vector3(0.75, 0.75, 0.75)
+[node name="GrassE" parent="Foliage" instance=ExtResource("15_grass_short")]
+position = Vector3(-5.5, 0, -15)
+rotation = Vector3(0, 5.5, 0)
+[node name="GrassF" parent="Foliage" instance=ExtResource("17_grass_wispy")]
+position = Vector3(5, 0, -20)
+rotation = Vector3(0, 0.7, 0)
+
+[node name="CloverSouth" parent="Foliage" instance=ExtResource("21_clover")]
+position = Vector3(-3.5, 0, 10)
+scale = Vector3(1.2, 1.2, 1.2)
+
+[node name="CloverNorth" parent="Foliage" instance=ExtResource("21_clover")]
+position = Vector3(3.5, 0, -9)
+rotation = Vector3(0, 2.2, 0)
+
+[node name="MushroomsWest" parent="Foliage" instance=ExtResource("19_mushroom")]
+position = Vector3(-11.5, 0, -10.5)
+rotation = Vector3(0, 1.8, 0)
+scale = Vector3(1.4, 1.4, 1.4)
+
+[node name="MushroomsEast" parent="Foliage" instance=ExtResource("20_mushroom_cluster")]
+position = Vector3(15.5, 0, 3.5)
+rotation = Vector3(0, 4.7, 0)
+
+[node name="BushFarNW" parent="Foliage" instance=ExtResource("14_flower_bush")]
+position = Vector3(-6.5, 0, -24)
+rotation = Vector3(0, 3.1, 0)
+
+[node name="BushFarNE" parent="Foliage" instance=ExtResource("13_bush")]
+position = Vector3(5.5, 0, -27)
+rotation = Vector3(0, 0.8, 0)
+
+[node name="BushDeepWest" parent="Foliage" instance=ExtResource("13_bush")]
+position = Vector3(-7, 0, -47)
+rotation = Vector3(0, 4.9, 0)
+
+[node name="BushDeepEast" parent="Foliage" instance=ExtResource("14_flower_bush")]
+position = Vector3(6, 0, -52)
+rotation = Vector3(0, 2.4, 0)
+
+[node name="FernFarWest" parent="Foliage" instance=ExtResource("18_fern")]
+position = Vector3(-6, 0, -35)
+rotation = Vector3(0, 1.9, 0)
+scale = Vector3(0.28, 0.28, 0.28)
+
+[node name="FernDeepEast" parent="Foliage" instance=ExtResource("18_fern")]
+position = Vector3(6.5, 0, -58)
+rotation = Vector3(0, 4.6, 0)
+scale = Vector3(0.3, 0.3, 0.3)
+
+[node name="GrassFarA" parent="Foliage" instance=ExtResource("16_grass_tall")]
+position = Vector3(5.5, 0, -34)
+rotation = Vector3(0, 3.7, 0)
+scale = Vector3(0.8, 0.8, 0.8)
+
+[node name="GrassFarB" parent="Foliage" instance=ExtResource("17_grass_wispy")]
+position = Vector3(-5.5, 0, -43)
+rotation = Vector3(0, 0.4, 0)
+
+[node name="CloverFar" parent="Foliage" instance=ExtResource("21_clover")]
+position = Vector3(3.8, 0, -37)
+rotation = Vector3(0, 5.5, 0)
+
+[node name="MushroomsDeep" parent="Foliage" instance=ExtResource("20_mushroom_cluster")]
+position = Vector3(-7.8, 0, -59)
+rotation = Vector3(0, 2.7, 0)
