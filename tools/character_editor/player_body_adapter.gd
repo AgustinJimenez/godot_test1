@@ -29,6 +29,7 @@ static func create(parent: Node3D, at_position: Vector3) -> PlayerBodyAdapter:
 	instance.name = &"Body"
 	instance.position = at_position
 	instance.set_script(load(_SCRIPT_PATH))
+	instance.set("autoplay_default_animation", false)
 	parent.add_child(instance)
 	var adapter := PlayerBodyAdapter.new()
 	adapter._bind(instance)
@@ -42,6 +43,7 @@ func _bind(player_body: Node) -> void:
 	meshes = [player_body.mesh]
 	anim_player = player_body.anim_player
 	supports_held_object = true
+	supports_isolated_attachment = true
 	supports_comparison = true
 	display_name = "Player"
 	UniversalAnimationPools.build_action_pack_library(skeleton, anim_player, _BONE_PREFIX)

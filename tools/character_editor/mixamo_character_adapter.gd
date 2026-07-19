@@ -3,7 +3,7 @@ extends CharacterAdapter
 
 ## Generic adapter for any standalone Mixamo character FBX that uses the
 ## standard "mixamorig_"-prefixed skeleton (the same convention as
-## Shambler's "The Boss.fbx") - covers every character under
+## "The Boss.fbx") - covers every character under
 ## assets/models/mixamo_characters/ except the Ch08/10_nonPBR pair, whose
 ## numbered-prefix convention needs RetargetedMixamoAdapter instead. Pulls
 ## its animations entirely from UniversalAnimationPools (action_adventure_
@@ -39,7 +39,7 @@ func _bind(instance: Node3D, character_display_name: String) -> void:
 	mesh = meshes[0] if not meshes.is_empty() else null
 	_anim_player = instance.get_node(^"AnimationPlayer")
 	anim_player = _anim_player
-	supports_held_object = false
+	supports_held_object = true
 	supports_comparison = false
 	display_name = character_display_name
 	UniversalAnimationPools.build_action_pack_library(skeleton, _anim_player, _BONE_PREFIX)

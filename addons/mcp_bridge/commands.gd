@@ -183,6 +183,7 @@ static func _cmd_set_object(
 	if not editor_interface.is_playing_scene():
 		return {"ok": false, "error": "No scene is currently playing - call play_scene first"}
 	var payload := {
+		"attachment_index": request.get("attachment_index"),
 		"position": request.get("position"),
 		"rotation": request.get("rotation"),
 		"scale": request.get("scale"),

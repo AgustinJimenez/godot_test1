@@ -18,6 +18,7 @@ func _update_responsive_layout() -> void:
 	editor._ui_scale = clampf(viewport_size.y / editor.BASE_UI_HEIGHT, 1.0, editor.MAX_UI_SCALE)
 	editor.ui_layer.transform = Transform2D.IDENTITY.scaled(Vector2.ONE * editor._ui_scale)
 	var logical_viewport_size := viewport_size / editor._ui_scale
+	editor.pose_library_overlay.size = logical_viewport_size
 	var panel_width := clampf(
 			logical_viewport_size.x * editor.PANEL_WIDTH_RATIO,
 			editor.MIN_PANEL_WIDTH,
@@ -32,6 +33,17 @@ func _update_responsive_layout() -> void:
 		editor._expanded_panel_size = editor.panel.size
 	else:
 		_clamp_panel_to_viewport(logical_viewport_size)
+	# The empty-state message belongs to the unused panel workspace below the
+	# character controls. It lives outside PanelScroll so it can stay centered
+	# without adding artificial scrollable content.
+	var empty_margin := 24.0
+	var empty_top := editor.panel.position.y + 178.0
+	editor.empty_state.position = Vector2(
+			editor.panel.position.x + empty_margin,
+			empty_top)
+	editor.empty_state.size = Vector2(
+			maxf(editor.panel.size.x - empty_margin * 2.0, 1.0),
+			maxf(editor.panel.position.y + editor.panel.size.y - empty_top - empty_margin, 1.0))
 	editor.viewport_toolbar.position = Vector2(
 			logical_viewport_size.x - editor.viewport_toolbar.size.x - 16.0,
 			logical_viewport_size.y - editor.viewport_toolbar.size.y - 16.0)
@@ -70,6 +82,8 @@ func _update_panel_resize_handle() -> void:
 
 
 func _setup_controls() -> void:
+	editor.character_picker.add_item("Select character...")
+	editor.character_picker.set_item_metadata(0, "")
 	for kind in editor.CHARACTER_KINDS:
 		editor.character_picker.add_item(kind.capitalize())
 		editor.character_picker.set_item_metadata(editor.character_picker.item_count - 1, kind)
@@ -235,6 +249,7 @@ func _on_collapse_panel_pressed() -> void:
 		editor.panel.size.y = editor.COLLAPSED_PANEL_HEIGHT
 	else:
 		editor.panel.size = editor._expanded_panel_size
+		editor._stage_handler.refresh()
 	_update_panel_dependent_layout()
 	_update_panel_resize_handle()
 
@@ -294,19 +309,18 @@ func _setup_animation_controls() -> void:
 func _populate_animation_controls() -> void:
 	editor.animation_group_picker.clear()
 	editor._animation_groups = editor.body.get_animation_groups()
-	if not editor._custom_clips.is_empty():
-		var custom_names: Array[StringName] = []
-		for clip_name: StringName in editor._custom_clips:
-			custom_names.append(clip_name)
-		editor._animation_groups[&"Custom"] = custom_names
+	editor._animation_groups[&"Base Pose"] = [&""]
+	var package_groups := editor._animation_package_handler.groups()
+	for package_name: StringName in package_groups:
+		editor._animation_groups[package_name] = package_groups[package_name]
 	for group_name in editor._animation_groups:
 		editor.animation_group_picker.add_item(String(group_name))
 		editor.animation_group_picker.set_item_metadata(
 				editor.animation_group_picker.item_count - 1, StringName(group_name))
 	if not _animation_exists_in_groups(editor._current_animation):
-		editor._current_animation = _first_animation_in_groups()
+		editor._current_animation = &""
 	_select_animation_in_ui(editor._current_animation)
-	editor.body.play_debug_anim(editor._current_animation, 0.0)
+	_set_animation(editor._current_animation)
 
 
 func _animation_exists_in_groups(animation_name: StringName) -> bool:
@@ -314,14 +328,6 @@ func _animation_exists_in_groups(animation_name: StringName) -> bool:
 		if animation_name in editor._animation_groups.get(group_name, []):
 			return true
 	return false
-
-
-func _first_animation_in_groups() -> StringName:
-	for group_name in editor._animation_groups:
-		var clips: Array = editor._animation_groups[group_name]
-		if not clips.is_empty():
-			return clips[0]
-	return &""
 
 
 func _setup_attachment_controls() -> void:
@@ -342,11 +348,15 @@ func _populate_attachment_controls() -> void:
 		editor._attachment_bone = editor.body.skeleton.get_bone_name(0)
 	_select_attachment_in_ui(editor._attachment_bone)
 	editor._isolated_attachment_mesh = (
-			editor._build_isolated_attachment_mesh() if editor.body.supports_held_object else null)
+			editor._build_isolated_attachment_mesh()
+			if editor.body.supports_isolated_attachment else null)
 
 
 func _on_character_selected(index: int) -> void:
 	var kind: String = editor.character_picker.get_item_metadata(index)
+	if kind.is_empty():
+		editor._unload_character()
+		return
 	if kind != editor._character_kind:
 		editor._load_character(kind)
 
@@ -359,14 +369,24 @@ func _select_character_in_ui(kind: String) -> void:
 
 
 func _on_animation_group_selected(index: int) -> void:
-	_populate_animation_picker(editor.animation_group_picker.get_item_metadata(index))
+	var group_name: StringName = editor.animation_group_picker.get_item_metadata(index)
+	editor._animation_package_handler.select_group(group_name)
+	editor._animation_package_handler.ensure_group_loaded(group_name)
+	_populate_animation_picker(group_name)
+	_set_animation(&"")
 
 
 func _populate_animation_picker(group_name: StringName) -> void:
 	editor.animation_picker.clear()
 	var animations: Array = editor._animation_groups.get(group_name, [])
+	if group_name != &"Base Pose":
+		editor.animation_picker.add_item("No animation")
+		editor.animation_picker.set_item_metadata(0, &"")
 	for animation_name in animations:
-		editor.animation_picker.add_item(String(animation_name))
+		var display_name := (
+				"Base pose" if StringName(animation_name) == &""
+				else editor._animation_package_handler.animation_display_name(animation_name))
+		editor.animation_picker.add_item(display_name)
 		editor.animation_picker.set_item_metadata(
 				editor.animation_picker.item_count - 1, StringName(animation_name))
 
@@ -376,8 +396,23 @@ func _on_animation_selected(index: int) -> void:
 
 
 func _set_animation(animation_name: StringName) -> void:
+	var previous_animation := editor._current_animation
 	editor._current_animation = animation_name
 	editor.body.node.position = editor.CHARACTER_SPAWN_POSITION
+	if animation_name == &"":
+		editor.pause_toggle.set_pressed_no_signal(false)
+		editor.pause_toggle.disabled = true
+		editor.root_motion_toggle.disabled = true
+		if previous_animation != &"" and editor.body.anim_player.is_playing():
+			editor.body.anim_player.stop()
+		editor.body.skeleton.reset_bone_poses()
+		editor.body.skeleton.advance(0.0)
+		if editor._comparison.enabled:
+			_on_editor_mode_pressed(false)
+		editor.status_label.text = "No animation selected; showing base pose"
+		return
+	editor.pause_toggle.disabled = false
+	editor.root_motion_toggle.disabled = false
 	var custom_path := "custom/" + String(animation_name)
 	if editor.body.anim_player.has_animation(custom_path):
 		editor.body.anim_player.play(custom_path, 0.0)
@@ -410,8 +445,11 @@ func _on_attachment_selected(index: int) -> void:
 func _set_attachment_bone(bone_name: StringName, update_view: bool) -> void:
 	if editor.body.skeleton.find_bone(bone_name) < 0:
 		return
+	if not is_instance_valid(editor._object_attachment):
+		return
 	editor._attachment_bone = bone_name
 	editor._object_attachment.bone_name = bone_name
+	editor._attachment_handler.sync_selected_bone(bone_name)
 	editor._isolated_attachment_mesh = editor._build_isolated_attachment_mesh()
 	if update_view and editor.view_picker.selected == 2:
 		editor.body.mesh.mesh = (editor._isolated_attachment_mesh

@@ -8,6 +8,9 @@ extends RefCounted
 
 var editor: CharacterEditor
 
+const ATTACHMENT_VIEW_DIRECTION := Vector3(-0.48, 0.12, 0.55)
+const ATTACHMENT_VIEW_DISTANCE := 0.95
+
 
 func _init(editor_ref: CharacterEditor) -> void:
 	editor = editor_ref
@@ -29,7 +32,7 @@ func _on_view_selected(index: int) -> void:
 	# geometry entirely, leaving a head-shaped hole showing the black
 	# background behind it - not a lighting or material problem at all,
 	# despite looking like one from a screenshot.
-	if editor.body.supports_held_object:
+	if editor.body.supports_isolated_attachment:
 		editor.body.mesh.mesh = (editor._isolated_attachment_mesh
 				if index == 2 and editor._isolated_attachment_mesh != null else editor._full_body_mesh)
 	if index == 0:
@@ -65,6 +68,10 @@ func _focus_character_general() -> void:
 
 
 func _on_pause_toggled(paused: bool) -> void:
+	if editor._current_animation == &"":
+		editor.pause_toggle.set_pressed_no_signal(false)
+		editor.status_label.text = "No animation selected; showing base pose"
+		return
 	editor._comparison.set_paused(paused)
 	if paused:
 		editor.body.anim_player.pause()
@@ -143,9 +150,11 @@ func _frame_attachment() -> void:
 	var attachment_position := editor.body.skeleton.to_global(
 			editor.body.skeleton.get_bone_global_pose(attachment_index).origin)
 	editor.camera.fov = 38.0
-	editor.camera.h_offset = -0.68
-	editor.camera.global_position = attachment_position + Vector3(-0.48, 0.12, 0.55)
+	editor.camera.h_offset = 0.0
+	editor.camera.global_position = attachment_position + (
+			ATTACHMENT_VIEW_DIRECTION.normalized() * ATTACHMENT_VIEW_DISTANCE)
 	editor.camera.look_at(attachment_position)
+	_frame_target_in_visible_area(attachment_position)
 	editor._orbit_target = attachment_position
 	var orbit_offset := editor.camera.global_position - editor._orbit_target
 	editor._orbit_distance = orbit_offset.length()
@@ -154,6 +163,26 @@ func _frame_attachment() -> void:
 			orbit_offset.y / maxf(editor._orbit_distance, 0.001), -1.0, 1.0))
 	editor._pitch = editor.camera.rotation.x
 	editor._yaw = editor.camera.rotation.y
+
+
+## Camera3D centers its target in the whole window, which can place a close-up
+## behind the resizable tuner panel. Solve h_offset from the projected target
+## so it stays centered in the portion of the viewport that is actually visible.
+func _frame_target_in_visible_area(target: Vector3) -> void:
+	var viewport_width := editor.get_viewport().get_visible_rect().size.x
+	var panel_right := editor.panel.get_global_rect().end.x * editor._ui_scale
+	panel_right = clampf(panel_right, 0.0, viewport_width * 0.9)
+	var desired_x := (panel_right + viewport_width) * 0.5
+	var centered_x := editor.camera.unproject_position(target).x
+	const SAMPLE_OFFSET := -0.25
+	editor.camera.h_offset = SAMPLE_OFFSET
+	var sampled_x := editor.camera.unproject_position(target).x
+	var pixels_per_offset := (sampled_x - centered_x) / SAMPLE_OFFSET
+	if absf(pixels_per_offset) <= 0.001:
+		editor.camera.h_offset = 0.0
+		return
+	editor.camera.h_offset = clampf(
+			(desired_x - centered_x) / pixels_per_offset, -4.0, 4.0)
 
 
 func _frame_selected_joint() -> void:

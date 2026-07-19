@@ -46,7 +46,6 @@ const RETARGETED_MIXAMO_CHARACTERS := {
 const DEFAULT_OBJECT_SCALE := 0.12
 const DEFAULT_OBJECT_POSITION := Vector3(-0.09, -0.03, -0.01)
 const DEFAULT_OBJECT_ROTATION := Vector3(-95.0, -180.0, 1.0)
-const INITIAL_RIGHT_ARM_ROTATION := Vector3(14.0, 5.0, 10.0)
 const MOVE_SPEED := 1.0
 const LOOK_SENS := 0.003
 const ORBIT_SENS := 0.006
@@ -115,20 +114,43 @@ var body: CharacterAdapter
 @onready var panel_vbox: VBoxContainer = $UI/Panel/PanelScroll/Margin/VBox
 @onready var title_bar: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/TitleBar
 @onready var collapse_panel_button: Button = $UI/Panel/PanelScroll/Margin/VBox/TitleBar/Collapse
+@onready var stage_buttons: Array[Button] = [
+	$UI/Panel/PanelScroll/Margin/VBox/StageRow/Character,
+	$UI/Panel/PanelScroll/Margin/VBox/StageRow/Animation,
+	$UI/Panel/PanelScroll/Margin/VBox/StageRow/Attachments,
+	$UI/Panel/PanelScroll/Margin/VBox/StageRow/Pose,
+	$UI/Panel/PanelScroll/Margin/VBox/StageRow/Review,
+]
+@onready var empty_state: Label = $UI/EmptyState
 @onready var panel_resize_handle: Button = $UI/PanelResizeHandle
 @onready var orbit_camera_button: Button = $UI/ViewportToolbar/Margin/Buttons/Orbit
 @onready var move_camera_button: Button = $UI/ViewportToolbar/Margin/Buttons/Move
 @onready var zoom_out_button: Button = $UI/ViewportToolbar/Margin/Buttons/ZoomOut
 @onready var zoom_in_button: Button = $UI/ViewportToolbar/Margin/Buttons/ZoomIn
 @onready var reset_view_button: Button = $UI/ViewportToolbar/Margin/Buttons/ResetView
+@onready var character_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/CharacterRow
+@onready var animation_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/AnimationRow
+@onready var editor_mode_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/EditorModeRow
 @onready var character_picker: OptionButton = get_node(
 		^"UI/Panel/PanelScroll/Margin/VBox/CharacterRow/CharacterPicker")
 @onready var animation_group_picker: OptionButton = get_node(
 		^"UI/Panel/PanelScroll/Margin/VBox/AnimationRow/GroupPicker")
 @onready var animation_picker: OptionButton = get_node(
 		^"UI/Panel/PanelScroll/Margin/VBox/AnimationRow/AnimationPicker")
+@onready var animation_package_menu: MenuButton = get_node(
+		^"UI/Panel/PanelScroll/Margin/VBox/AnimationRow/PackageMenu")
 @onready var edit_mode_button: Button = $UI/Panel/PanelScroll/Margin/VBox/EditorModeRow/Edit
 @onready var compare_mode_button: Button = $UI/Panel/PanelScroll/Margin/VBox/EditorModeRow/Compare
+@onready var attachment_slots_row: HBoxContainer = get_node(
+		^"UI/Panel/PanelScroll/Margin/VBox/AttachmentSlotsRow")
+@onready var attachment_slot_picker: OptionButton = get_node(
+		^"UI/Panel/PanelScroll/Margin/VBox/AttachmentSlotsRow/SlotPicker")
+@onready var add_attachment_button: Button = get_node(
+		^"UI/Panel/PanelScroll/Margin/VBox/AttachmentSlotsRow/Add")
+@onready var remove_attachment_button: Button = get_node(
+		^"UI/Panel/PanelScroll/Margin/VBox/AttachmentSlotsRow/Remove")
+@onready var attachment_visible_toggle: CheckButton = get_node(
+		^"UI/Panel/PanelScroll/Margin/VBox/AttachmentSlotsRow/Visible")
 @onready var object_path_field: LineEdit = $UI/Panel/PanelScroll/Margin/VBox/ObjectRow/ObjectPath
 @onready var attachment_picker: OptionButton = get_node(
 		^"UI/Panel/PanelScroll/Margin/VBox/AttachmentRow/AttachmentPicker")
@@ -138,6 +160,11 @@ var body: CharacterAdapter
 @onready var object_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/ObjectRow
 @onready var attachment_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/AttachmentRow
 @onready var preset_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/PresetRow
+@onready var view_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/ViewRow
+@onready var display_options: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/DisplayOptions
+@onready var bone_section: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/BoneSection
+@onready var bone_buttons: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/BoneButtons
+@onready var pose_actions: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/PoseActions
 @onready var save_pose_button: Button = $UI/Panel/PanelScroll/Margin/VBox/PoseActions/SavePose
 @onready var load_pose_button: Button = $UI/Panel/PanelScroll/Margin/VBox/PoseActions/LoadPose
 @onready var object_transform_controls: Array[Control] = [
@@ -192,6 +219,30 @@ var body: CharacterAdapter
 	$UI/Panel/PanelScroll/Margin/VBox/RotationZ/Value,
 ]
 @onready var status_label: Label = $UI/Panel/PanelScroll/Margin/VBox/Status
+@onready var pose_library_overlay: Control = $UI/PoseLibraryOverlay
+@onready var pose_library_search: LineEdit = get_node(
+		^"UI/PoseLibraryOverlay/Center/LibraryPanel/Margin/VBox/Content/Browser/Search")
+@onready var pose_library_grid: GridContainer = get_node(
+		^"UI/PoseLibraryOverlay/Center/LibraryPanel/Margin/VBox/Content/Browser/Scroll/PoseGrid")
+@onready var pose_library_viewport: SubViewport = %Viewport
+@onready var pose_library_viewport_container: SubViewportContainer = get_node(
+		^"UI/PoseLibraryOverlay/Center/LibraryPanel/Margin/VBox/Content/Preview/ViewportContainer")
+@onready var pose_library_rotate_left_button: Button = %RotateLeft
+@onready var pose_library_rotate_right_button: Button = %RotateRight
+@onready var pose_library_rotate_up_button: Button = %RotateUp
+@onready var pose_library_rotate_down_button: Button = %RotateDown
+@onready var pose_library_zoom_out_button: Button = %ZoomOut
+@onready var pose_library_zoom_in_button: Button = %ZoomIn
+@onready var pose_library_preview_name: Label = get_node(
+		^"UI/PoseLibraryOverlay/Center/LibraryPanel/Margin/VBox/Content/Preview/PoseName")
+@onready var pose_library_preview_details: Label = get_node(
+		^"UI/PoseLibraryOverlay/Center/LibraryPanel/Margin/VBox/Content/Preview/Details")
+@onready var pose_library_browse_button: Button = get_node(
+		^"UI/PoseLibraryOverlay/Center/LibraryPanel/Margin/VBox/Actions/Browse")
+@onready var pose_library_load_button: Button = get_node(
+		^"UI/PoseLibraryOverlay/Center/LibraryPanel/Margin/VBox/Actions/LoadSelected")
+@onready var pose_library_close_button: Button = get_node(
+		^"UI/PoseLibraryOverlay/Center/LibraryPanel/Margin/VBox/Actions/Close")
 @onready var object_dialog: FileDialog = $UI/ObjectDialog
 @onready var open_preset_dialog: FileDialog = $UI/OpenPresetDialog
 @onready var import_dialog: FileDialog = $UI/ImportDialog
@@ -200,8 +251,11 @@ var body: CharacterAdapter
 @onready var import_animation_button: Button = get_node(
 		^"UI/Panel/PanelScroll/Margin/VBox/AnimationRow/ImportAnimation")
 @onready var save_preset_dialog: FileDialog = $UI/SavePresetDialog
+@onready var animation_package_name_dialog: ConfirmationDialog = $UI/AnimationPackageNameDialog
+@onready var animation_package_name_field: LineEdit = $UI/AnimationPackageNameDialog/Margin/Name
+@onready var animation_package_delete_dialog: ConfirmationDialog = $UI/AnimationPackageDeleteDialog
 
-var _character_kind := DEFAULT_CHARACTER_KIND
+var _character_kind := ""
 ## When true, _process() applies each frame's root_motion_track delta to
 ## body.node so the character actually walks/runs through world space -
 ## otherwise the AnimationMixer already plays every animation "in place"
@@ -217,10 +271,8 @@ var _pending_import_result: Dictionary = {}
 ## via the "Import Character..." button - not persisted; ask your assistant
 ## to add a character permanently once you know you want to keep it.
 var _custom_characters: Dictionary = {}
-## clip StringName -> Animation, retargeted onto whichever character was
-## active at import time. Session-only, like _custom_characters - imported
-## clips only ever target the character that was loaded when you imported
-## them (re-import to add the same clip to a different character).
+## clip StringName -> Animation, rebuilt for the currently selected character
+## from persistent CharacterAnimationPackage source paths.
 var _custom_clips: Dictionary = {}
 enum ImportMode { CHARACTER, ANIMATION }
 var _import_mode := ImportMode.CHARACTER
@@ -261,9 +313,9 @@ var _section_expanded: Dictionary = {}
 var _section_parents: Dictionary = {}
 var _selected_bone := &"RightArm"
 var _attachment_bone := DEFAULT_ATTACHMENT_BONE
-var _current_animation := DEFAULT_ANIMATION
+var _current_animation := &""
 var _current_object_path := DEFAULT_OBJECT_PATH
-var _current_pose_path := DEFAULT_POSE_PRESET_PATH
+var _current_pose_path := ""
 var _animation_groups: Dictionary = {}
 var _hand_helper_baseline: Dictionary = {}
 var _hand_helper_side := ""
@@ -302,6 +354,10 @@ var _ui_setup_handler: CharacterEditorUiSetupHandler
 var _bone_controls_handler: CharacterEditorBoneControlsHandler
 var _camera_handler: CharacterEditorCameraHandler
 var _gizmo_handler: CharacterEditorGizmoHandler
+var _pose_library_handler: CharacterEditorPoseLibraryHandler
+var _attachment_handler: CharacterEditorAttachmentHandler
+var _stage_handler: CharacterEditorStageHandler
+var _animation_package_handler: CharacterEditorAnimationPackageHandler
 
 
 func _ready() -> void:
@@ -312,16 +368,28 @@ func _ready() -> void:
 	_bone_controls_handler = CharacterEditorBoneControlsHandler.new(self)
 	_camera_handler = CharacterEditorCameraHandler.new(self)
 	_gizmo_handler = CharacterEditorGizmoHandler.new(self)
+	_pose_library_handler = CharacterEditorPoseLibraryHandler.new(self)
+	_attachment_handler = CharacterEditorAttachmentHandler.new(self)
+	_stage_handler = CharacterEditorStageHandler.new(self)
+	_animation_package_handler = CharacterEditorAnimationPackageHandler.new(self)
 	get_viewport().size_changed.connect(_ui_setup_handler._update_responsive_layout)
 	_ui_setup_handler._update_responsive_layout()
 	camera.current = true
 	_comparison = RAW_COMPARISON.new()
 	_ui_setup_handler._setup_controls()
-	var initial_kind := DEFAULT_CHARACTER_KIND
-	for argument in OS.get_cmdline_user_args():
+	_attachment_handler.setup()
+	_pose_library_handler.setup()
+	_animation_package_handler.setup()
+	_stage_handler.setup()
+	var arguments := OS.get_cmdline_user_args()
+	var initial_kind := ""
+	for argument in arguments:
 		if argument.begins_with("character="):
 			initial_kind = argument.get_slice("=", 1)
-	_load_character(initial_kind)
+	if initial_kind.is_empty() and not arguments.is_empty():
+		initial_kind = DEFAULT_CHARACTER_KIND
+	if not initial_kind.is_empty():
+		_load_character(initial_kind)
 	if "show_bones" in OS.get_cmdline_user_args():
 		show_bones_toggle.set_pressed_no_signal(true)
 		_gizmo_handler._on_show_bones_toggled(true)
@@ -332,7 +400,8 @@ func _ready() -> void:
 		# a fresh, separately-configured headless process.
 		EngineDebugger.register_message_capture("mcp", _mcp_handler._on_mcp_debugger_message)
 	await get_tree().process_frame
-	_camera_handler._frame_full_body()
+	if body != null:
+		_camera_handler._frame_full_body()
 	await _mcp_handler._run_automation_args()
 
 
@@ -345,20 +414,8 @@ func _ready() -> void:
 func _load_character(kind: String) -> void:
 	if not kind in CHARACTER_KINDS and not _custom_characters.has(kind):
 		kind = DEFAULT_CHARACTER_KIND
+	_clear_loaded_character()
 	_custom_clips.clear()
-	var previous_node: Node3D = body.node if body != null else null
-	if is_instance_valid(_modifier):
-		_modifier.queue_free()
-		_modifier = null
-	if is_instance_valid(_object_attachment):
-		_object_attachment.queue_free()
-		_object_attachment = null
-		_held_object = null
-	if is_instance_valid(_bone_debug_root):
-		_bone_debug_root.queue_free()
-		_bone_debug_root = null
-	if previous_node:
-		previous_node.queue_free()
 
 	if kind == "player":
 		body = PlayerBodyAdapter.create(self, CHARACTER_SPAWN_POSITION)
@@ -372,13 +429,15 @@ func _load_character(kind: String) -> void:
 		var config: Array = MIXAMO_CHARACTERS[kind]
 		body = MixamoCharacterAdapter.create(self, CHARACTER_SPAWN_POSITION, config[0], config[1])
 	_character_kind = kind
+	_current_animation = &""
+	_animation_package_handler.on_character_changed()
 	_setup_root_motion_track()
 
 	_setup_modifier()
 	if body.supports_held_object:
 		body.set_held_flashlight_visible(false)
-		_full_body_mesh = body.mesh.mesh
-		_setup_held_object()
+		_full_body_mesh = (body.mesh.mesh
+				if body.supports_isolated_attachment and body.mesh != null else null)
 	else:
 		_full_body_mesh = null
 	_setup_bone_debug()
@@ -394,6 +453,7 @@ func _load_character(kind: String) -> void:
 		raw_source_ual1.hide()
 		raw_source_ual2.hide()
 	compare_mode_button.visible = body.supports_comparison
+	attachment_slots_row.visible = body.supports_held_object
 	object_row.visible = body.supports_held_object
 	attachment_row.visible = body.supports_held_object
 	preset_row.visible = body.supports_held_object
@@ -408,8 +468,8 @@ func _load_character(kind: String) -> void:
 	# _full_body_mesh/_isolated_attachment_mesh are both null here, actively
 	# wrong: it would blank out one mesh part) for a character with no held
 	# objects at all.
-	view_picker.set_item_disabled(2, not body.supports_held_object)
-	if not body.supports_held_object and view_picker.selected == 2:
+	view_picker.set_item_disabled(2, not body.supports_isolated_attachment)
+	if not body.supports_isolated_attachment and view_picker.selected == 2:
 		view_picker.select(0)
 		_camera_handler._on_view_selected(0)
 
@@ -425,14 +485,55 @@ func _load_character(kind: String) -> void:
 	if body.skeleton.get_bone_count() > 0:
 		_gizmo_handler._select_bone(body.skeleton.get_bone_name(0), false)
 
-	if body.supports_held_object:
-		_pose_io_handler._load_pose_from_path(DEFAULT_POSE_PRESET_PATH, true)
-	else:
-		_bone_controls_handler._sync_bone_controls()
-		_gizmo_handler._refresh_skeleton()
+	_bone_controls_handler._sync_bone_controls()
+	_gizmo_handler._refresh_skeleton()
 	_ui_setup_handler._select_character_in_ui(_character_kind)
-	status_label.text = "Loaded %s" % body.display_name
 	_camera_handler._frame_full_body()
+	_stage_handler.on_character_loaded()
+
+
+func _unload_character() -> void:
+	_clear_loaded_character()
+	_custom_clips.clear()
+	_character_kind = ""
+	_current_animation = &""
+	_current_pose_path = ""
+	_current_object_path = ""
+	_animation_groups.clear()
+	_animation_package_handler.on_character_changed()
+	animation_group_picker.clear()
+	animation_picker.clear()
+	attachment_picker.clear()
+	character_picker.select(0)
+	compare_mode_button.hide()
+	preset_path_field.text = ""
+	status_label.text = "Select a character model"
+	_stage_handler.enter_empty()
+
+
+func _clear_loaded_character() -> void:
+	if body != null and body.supports_comparison and _comparison.enabled:
+		_comparison.set_enabled(false, _current_animation)
+	_comparison.enabled = false
+	_comparison.has_raw_reference = false
+	target_compare_label.hide()
+	raw_source_ual1.hide()
+	raw_source_ual2.hide()
+	if is_instance_valid(_modifier):
+		_modifier.queue_free()
+	_modifier = null
+	_attachment_handler.clear()
+	if is_instance_valid(_bone_debug_root):
+		_bone_debug_root.queue_free()
+	_bone_debug_root = null
+	if body != null:
+		body.free_node()
+	body = null
+	_bone_segments.clear()
+	_joint_instances.clear()
+	_rotation_rings.clear()
+	_visible_bone_indices.clear()
+	_joint_focus_active = false
 
 
 ## Picks the right adapter for a session-imported character based on the
@@ -481,6 +582,7 @@ func _create_posable_only_adapter(model_path: String, display_name: String) -> C
 		found_anim_player.name = &"AnimationPlayer"
 		instance.add_child(found_anim_player)
 	adapter.anim_player = found_anim_player
+	adapter.supports_held_object = true
 	adapter.display_name = display_name
 	return adapter
 
@@ -540,7 +642,6 @@ func _process_root_motion() -> void:
 func _setup_modifier() -> void:
 	_modifier = GRIP_MODIFIER.new() as PlayerHandGripModifier
 	_modifier.name = &"HeldObjectPoseModifier"
-	_modifier.set_bone_rotation(&"RightArm", INITIAL_RIGHT_ARM_ROTATION)
 	body.skeleton.add_child(_modifier)
 
 
@@ -605,15 +706,9 @@ func _bone_is_descendant_of(bone_index: int, ancestor_index: int) -> bool:
 	return false
 
 
-func _setup_held_object() -> void:
-	_object_attachment = BoneAttachment3D.new()
-	_object_attachment.name = &"HeldObjectAttachment"
-	_object_attachment.bone_name = _attachment_bone
-	body.skeleton.add_child(_object_attachment)
-	_load_object(DEFAULT_OBJECT_PATH, true)
-
-
 func _load_object(path: String, reset_transform: bool) -> bool:
+	if _attachment_handler.selected_slot() == null:
+		return _attachment_handler.add(path, DEFAULT_ATTACHMENT_BONE)
 	var resource_path := _localize_resource_path(path)
 	var resource := load(resource_path)
 	if not resource is PackedScene:
@@ -630,6 +725,7 @@ func _load_object(path: String, reset_transform: bool) -> bool:
 	_held_object.name = &"HeldObject"
 	_object_attachment.add_child(_held_object)
 	_current_object_path = resource_path
+	_attachment_handler.sync_selected_object(_held_object, resource_path)
 	if reset_transform:
 		_held_object.position = Vector3.ZERO
 		_held_object.rotation = Vector3.ZERO
@@ -697,6 +793,10 @@ func _make_debug_mesh_instance(mesh: Mesh, material: Material) -> MeshInstance3D
 
 
 func _input(event: InputEvent) -> void:
+	if pose_library_overlay.visible:
+		return
+	if body == null or not _stage_handler.is_pose_stage():
+		return
 	if not event is InputEventMouseButton:
 		return
 	var button_event := event as InputEventMouseButton
@@ -722,6 +822,13 @@ func _is_pointer_over_tuner_ui(screen_position: Vector2) -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if pose_library_overlay.visible:
+		if event.is_action_pressed(&"ui_cancel"):
+			_pose_library_handler.close()
+		get_viewport().set_input_as_handled()
+		return
+	if body == null:
+		return
 	if event.is_action_pressed(&"ui_cancel"):
 		_drag_axis = -1
 		_orbiting = false
@@ -798,6 +905,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if body == null:
+		return
 	_process_root_motion()
 	if not free_camera_toggle.button_pressed:
 		if _joint_focus_active:

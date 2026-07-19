@@ -27,6 +27,7 @@ var mesh: MeshInstance3D
 var meshes: Array[MeshInstance3D] = []
 var anim_player: AnimationPlayer
 var supports_held_object := false
+var supports_isolated_attachment := false
 var supports_comparison := false
 var display_name := ""
 

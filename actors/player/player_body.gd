@@ -250,6 +250,10 @@ var _debug_preview_active := false
 @onready var skeleton: Skeleton3D = $Skeleton3D
 @onready var mesh: MeshInstance3D = $Skeleton3D/MotusMan_v55
 
+## Tool instances can disable the gameplay idle so they initially expose the
+## imported skeleton pose. Gameplay scenes retain the existing default.
+var autoplay_default_animation := true
+
 
 func _ready() -> void:
 	# Lets the debug menu's animation preview keep looping while the pause
@@ -288,7 +292,8 @@ func _ready() -> void:
 	_lib = lib
 	anim_player.add_animation_library(&"moves", lib)
 	anim_player.animation_finished.connect(_on_animation_finished)
-	anim_player.play("moves/unarmed_idle")
+	if autoplay_default_animation:
+		anim_player.play("moves/unarmed_idle")
 
 
 ## Copies a differently-rigged clip's tracks onto MotusMan's skeleton via

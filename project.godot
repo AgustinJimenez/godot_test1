@@ -20,13 +20,13 @@ config/icon="res://icon.svg"
 
 GraphicsSettings="*res://components/graphics_settings.gd"
 
-[dotnet]
-
-project/assembly_name="SurvivalHorrorFps"
-
 [display]
 
 window/size/mode=2
+
+[dotnet]
+
+project/assembly_name="SurvivalHorrorFps"
 
 [editor_plugins]
 
@@ -139,7 +139,7 @@ zoom_out={
 
 3d_physics/layer_1="world"
 3d_physics/layer_2="player"
-3d_physics/layer_3="enemies"
+3d_physics/layer_3="damageables"
 3d_physics/layer_4="interactables"
 3d_physics/layer_5="projectiles"
 3d_physics/layer_6="ai_perception"

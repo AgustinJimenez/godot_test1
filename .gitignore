@@ -1,6 +1,7 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+.DS_Store
 
 # Python (tools/character_editor_mcp)
 .venv/

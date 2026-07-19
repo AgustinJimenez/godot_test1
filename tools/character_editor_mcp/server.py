@@ -57,6 +57,7 @@ class EditorState:
 	pose: str | None = None
 	animation: str | None = None
 	object_scene: str | None = None
+	attachment_index: int = 0
 	attachment_bone: str | None = None
 	object_position: tuple[float, float, float] | None = None
 	object_rotation: tuple[float, float, float] | None = None
@@ -82,6 +83,8 @@ def _build_state_args() -> list[str]:
 		args.append(f"animation={_state.animation}")
 	if _state.object_scene:
 		args.append(f"object={_state.object_scene}")
+	if _state.attachment_index:
+		args.append(f"attachment_index={_state.attachment_index}")
 	if _state.attachment_bone:
 		args.append(f"attachment={_state.attachment_bone}")
 	if _state.object_position:
@@ -224,14 +227,17 @@ def set_camera_angle(
 @mcp.tool()
 def set_object(
 	scene_path: str | None = None,
+	attachment_index: int | None = None,
 	attachment_bone: str | None = None,
 	position: tuple[float, float, float] | None = None,
 	rotation: tuple[float, float, float] | None = None,
 	scale: float | None = None,
 ) -> str:
-	"""Attach and position a held object (e.g. the flashlight) on a skeleton bone. Pass only the fields you want to change."""
+	"""Select and adjust one attachment. Load a multi-attachment pose first, then use attachment_index to target a specific slot."""
 	if scene_path is not None:
 		_state.object_scene = scene_path
+	if attachment_index is not None:
+		_state.attachment_index = attachment_index
 	if attachment_bone is not None:
 		_state.attachment_bone = attachment_bone
 	if position is not None:
@@ -563,13 +569,20 @@ def set_live_bone_rotation(bone: str, x: float, y: float, z: float) -> str:
 
 @mcp.tool()
 def set_live_object(
+	attachment_index: int | None = None,
 	position: tuple[float, float, float] | None = None,
 	rotation: tuple[float, float, float] | None = None,
 	scale: float | None = None,
 ) -> str:
-	"""Reposition/rotate/scale the held object (e.g. the flashlight) in the scene actually playing in the already-running editor - the live counterpart to set_object. Pass only the fields you want to change; values are relative to the attachment bone, matching the character editor UI's position/rotation/scale sliders. Requires play_scene_in_editor first."""
+	"""Select and transform one attachment in the running editor. Values are relative to that slot's attachment bone."""
 	result = editor_bridge.send_command(
-		{"cmd": "set_object", "position": position, "rotation": rotation, "scale": scale},
+		{
+			"cmd": "set_object",
+			"attachment_index": attachment_index,
+			"position": position,
+			"rotation": rotation,
+			"scale": scale,
+		},
 		timeout=8.0,
 	)
 	return str(result)

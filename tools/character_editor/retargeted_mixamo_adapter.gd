@@ -44,7 +44,7 @@ func _bind(instance: Node3D, character_display_name: String, bone_prefix: String
 	mesh = meshes[0] if not meshes.is_empty() else null
 	_anim_player = instance.get_node(^"AnimationPlayer")
 	anim_player = _anim_player
-	supports_held_object = false
+	supports_held_object = true
 	supports_comparison = false
 	display_name = character_display_name
 	UniversalAnimationPools.build_action_pack_library(skeleton, _anim_player, bone_prefix)

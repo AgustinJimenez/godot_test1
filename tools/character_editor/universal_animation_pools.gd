@@ -4,7 +4,7 @@ extends RefCounted
 ## Two animation pools every character in the editor tool can preview,
 ## regardless of its own native skeleton - purely a tool convenience so any
 ## character can play any animation, per the user's explicit ask. Actual
-## gameplay code (player_body.gd, shambler.gd) is untouched and keeps using
+## gameplay code (player_body.gd, humanoid_actor.gd) is untouched and keeps using
 ## its own specific, hand-picked animations; this only ever adds extra
 ## libraries onto a character's AnimationPlayer inside the editor tool.
 ##
@@ -95,7 +95,7 @@ static func try_play(
 ## naming convention, but its rest-pose bone ORIENTATIONS don't (it isn't a
 ## Mixamo export) - a raw name-prefix swap onto MotusMan produced a
 ## grotesquely contorted pose (leg wrenched straight up past the head).
-## Real Mixamo-exported rigs (Shambler/Brute/Ch08/10/etc.) all share
+## Real Mixamo-exported rigs (The Boss/Brute/Ch08/10/etc.) all share
 ## Mixamo's own rest-orientation convention, so a swap WOULD have worked
 ## for those specifically - but using the same correct-in-general retarget
 ## path for every target, instead of a swap that's only safe for a subset

@@ -114,35 +114,6 @@ func _add_bone_control_row(container: VBoxContainer, bone_name: StringName) -> v
 func _on_bone_section_toggled(expanded: bool, section_key: StringName) -> void:
 	editor._section_expanded[section_key] = expanded
 	_refresh_bone_section_visibility()
-	if expanded:
-		var representative := _get_section_representative_bone(section_key)
-		if representative != &"" and editor.body.skeleton.find_bone(representative) >= 0:
-			editor._gizmo_handler._select_bone(representative, true)
-
-
-func _get_section_representative_bone(section_key: StringName) -> StringName:
-	var representatives := {
-		&"body": &"Hips",
-		&"right_arm": &"RightArm",
-		&"right_hand": &"RightHand",
-		&"right_thumb": &"RightHandThumb1",
-		&"right_index": &"RightHandIndex1",
-		&"right_middle": &"RightHandMiddle1",
-		&"right_ring": &"RightHandRing1",
-		&"right_pinky": &"RightHandPinky1",
-		&"left_arm": &"LeftArm",
-		&"left_hand": &"LeftHand",
-		&"left_thumb": &"LeftHandThumb1",
-		&"left_index": &"LeftHandIndex1",
-		&"left_middle": &"LeftHandMiddle1",
-		&"left_ring": &"LeftHandRing1",
-		&"left_pinky": &"LeftHandPinky1",
-		&"right_leg": &"RightUpLeg",
-		&"right_foot": &"RightFoot",
-		&"left_leg": &"LeftUpLeg",
-		&"left_foot": &"LeftFoot",
-	}
-	return representatives.get(section_key, &"")
 
 
 func _refresh_bone_section_visibility() -> void:
@@ -220,6 +191,9 @@ func _update_pose_helpers() -> void:
 	for child in editor.pose_helper_controls.get_children():
 		child.free()
 	editor._hand_openness_slider = null
+	if editor._stage_handler == null or not editor._stage_handler.is_pose_stage():
+		editor.pose_helpers.hide()
+		return
 	var bone_name := String(editor._selected_bone)
 	var side := "Right" if bone_name.begins_with("Right") else (
 			"Left" if bone_name.begins_with("Left") else "")
@@ -393,15 +367,7 @@ func _on_reset_all_pressed() -> void:
 	# partially apply with no follow-up skeleton refresh, which is very
 	# likely why the mesh visually broke.
 	if editor.body.supports_held_object:
-		editor._held_object.position = Vector3.ZERO
-		editor._held_object.rotation = Vector3.ZERO
-		# Not Vector3.ONE (100% scale) - confirmed via a live screenshot,
-		# not guessed: that balloons the flashlight to full size, engulfing
-		# the character's head/torso, which is what actually looked like
-		# "the skin disappearing." DEFAULT_OBJECT_SCALE (12%) is the
-		# object's real neutral size.
-		editor._held_object.scale = Vector3.ONE * editor.DEFAULT_OBJECT_SCALE
-		editor._gizmo_handler._sync_object_controls()
+		editor._attachment_handler.reset_transforms()
 	_sync_bone_controls()
 	editor._gizmo_handler._refresh_skeleton()
 	editor.status_label.text = "All values reset"

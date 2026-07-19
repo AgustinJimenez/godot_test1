@@ -1,0 +1,24 @@
+{
+  "format_version": 2,
+  "animation": "unarmed_idle",
+  "object_scene": "res://assets/models/rusty_knife/rusty_knife.glb",
+  "attachment_bone": "RightHand",
+  "hand": "RightHand",
+  "bone_rotations_degrees": {},
+  "object_position": [
+    0.0,
+    -0.05,
+    0.0
+  ],
+  "object_rotation_degrees": [
+    180.0,
+    0.0,
+    0.0
+  ],
+  "thumbnail_rotation_degrees": [
+    0.0,
+    180.0,
+    0.0
+  ],
+  "object_scale": 0.32
+}

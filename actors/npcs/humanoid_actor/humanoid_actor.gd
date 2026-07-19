@@ -1,11 +1,7 @@
-class_name Shambler
+class_name HumanoidActor
 extends CharacterBody3D
-## First enemy: slow, tanky, relentless. Same clip-borrowing trick as
-## tests/manual/animation/animation_preview.gd - the configured character
-## uses the same Mixamo skeleton as the standalone action-pack clips, so they
-## are copied into its AnimationPlayer at runtime without retargeting.
-
-enum State { PATROL, INVESTIGATE, CHASE, ATTACK, SEARCH }
+## Biped-specific execution for an NPCController. Locomotion borrows the
+## compatible Mixamo action pack; its strike is retargeted from UAL2 at startup.
 
 const CLIPS: Dictionary = {
 	&"idle": "res://assets/models/action_adventure_pack/idle.fbx",
@@ -15,6 +11,8 @@ const CLIPS: Dictionary = {
 # No dedicated death clip in the pack; "hard landing" is the closest
 # collapse-like motion and reuses the same borrow-a-clip trick.
 const DEATH_CLIP := "res://assets/models/action_adventure_pack/hard landing.fbx"
+const ATTACK_SOURCE := "res://assets/models/universal_animation_library_2/UAL2_Standard.glb"
+const ATTACK_SOURCE_CLIP := &"Zombie_Scratch"
 const SOURCE_BONE_PREFIX := "mixamorig_"
 
 @export var patrol_points: Array[NodePath] = []
@@ -26,7 +24,8 @@ const SOURCE_BONE_PREFIX := "mixamorig_"
 @export var attack_range: float = 1.3
 @export var attack_damage: float = 15.0
 @export var attack_cooldown: float = 1.2
-@export var attack_windup: float = 0.4
+@export_range(0.0, 1.0, 0.01) var attack_contact_ratio: float = 0.48
+@export_range(0.1, 3.0, 0.05) var attack_animation_speed: float = 1.0
 @export_range(1.0, 90.0, 1.0) var attack_facing_angle_deg: float = 12.0
 @export var lose_sight_time: float = 4.0
 @export var search_time: float = 3.0
@@ -36,35 +35,33 @@ const SOURCE_BONE_PREFIX := "mixamorig_"
 @onready var nav_agent: NavigationAgent3D = $NavigationAgent3D
 @onready var health: Health = $Health
 @onready var perception: Perception = $Perception
+@onready var npc_controller: NPCController = $NPCController
 var character: Node3D
 var boss_ap: AnimationPlayer
-var _character_rest_position := Vector3.ZERO
-var _character_rest_rotation := Vector3.ZERO
-var _attack_tween: Tween
 
-var state: State = State.PATROL
 var _patrol_positions: Array[Vector3] = []
 var _patrol_idx := 0
 var _time_since_seen := 0.0
 var _search_timer := 0.0
 var _attack_cooldown_left := 0.0
-var _attack_windup_left := 0.0
+var _attack_animation_left := 0.0
+var _attack_contact_emitted := false
 var _attack_turn_locked := false
 var _current_anim := &""
 var _nav_target := Vector3.ZERO
 
 
 func _ready() -> void:
-	add_to_group(&"enemies")
 	_setup_character()
 	_setup_facing_debug()
 	if boss_ap == null:
-		push_error("Shambler character scene needs an AnimationPlayer")
+		push_error("HumanoidActor character scene needs an AnimationPlayer")
 		set_physics_process(false)
 		return
 	_setup_animations()
 	health.died.connect(_on_died)
 	health.damaged.connect(_on_damaged)
+	npc_controller.disposition_changed.connect(_on_disposition_changed)
 	for path: NodePath in patrol_points:
 		var point := get_node_or_null(path) as Node3D
 		if point:
@@ -84,8 +81,6 @@ func _setup_character() -> void:
 	# forward. Keep the correction on the visual child so AI/navigation retain
 	# the engine convention and alternative character assets remain configurable.
 	character.rotation.y += deg_to_rad(character_yaw_offset_deg)
-	_character_rest_position = character.position
-	_character_rest_rotation = character.rotation
 	boss_ap = character.find_child("AnimationPlayer", true, false) as AnimationPlayer
 
 
@@ -128,7 +123,11 @@ func _setup_facing_debug() -> void:
 
 
 func _setup_animations() -> void:
-	build_clip_library(boss_ap, character_bone_prefix)
+	var target_skeleton := character.find_child("Skeleton3D", true, false) as Skeleton3D
+	if target_skeleton == null:
+		push_error("HumanoidActor character scene needs a Skeleton3D")
+		return
+	build_clip_library(boss_ap, target_skeleton, character_bone_prefix)
 	_play(&"idle")
 
 
@@ -136,9 +135,9 @@ func _setup_animations() -> void:
 ## "pack" library, exactly the trick tests/manual/animation/animation_preview.gd
 ## also uses. Extracted to a static function so tools/character_editor's
 ## MixamoCharacterAdapter can build the same library on a bare Mixamo FBX
-## instance without needing a full Shambler (CharacterBody3D + AI/nav/
+## instance without needing a full HumanoidActor (CharacterBody3D + AI/nav/
 ## patrol) - the editor tool has no use for any of that.
-static func build_clip_library(anim_player: AnimationPlayer,
+static func build_clip_library(anim_player: AnimationPlayer, target_skeleton: Skeleton3D,
 		target_bone_prefix: String = SOURCE_BONE_PREFIX) -> void:
 	var lib := AnimationLibrary.new()
 	for clip: StringName in CLIPS:
@@ -158,6 +157,11 @@ static func build_clip_library(anim_player: AnimationPlayer,
 	death_anim.loop_mode = Animation.LOOP_NONE
 	lib.add_animation(&"death", death_anim)
 	death_inst.queue_free()
+	var attack_anim := UnrealMixamoAnimation.retarget_clip(
+			ATTACK_SOURCE, ATTACK_SOURCE_CLIP, target_skeleton, target_bone_prefix)
+	if attack_anim != null:
+		attack_anim.loop_mode = Animation.LOOP_NONE
+		lib.add_animation(&"attack", attack_anim)
 	anim_player.add_animation_library(&"pack", lib)
 
 
@@ -200,35 +204,65 @@ func _physics_process(delta: float) -> void:
 	if health.is_dead():
 		return
 	var player := get_tree().get_first_node_in_group(&"player") as Node3D
+	if not npc_controller.is_hostile():
+		_process_non_hostile(player, delta)
+		return
 	if not player:
+		_process_patrol(delta)
 		return
 	_update_perception(player, delta)
-	match state:
-		State.PATROL:
+	match npc_controller.behavior:
+		NPCController.Behavior.IDLE:
+			_stop_body(delta)
+			_play(&"idle")
+		NPCController.Behavior.PATROL:
 			_process_patrol(delta)
-		State.INVESTIGATE:
+		NPCController.Behavior.INVESTIGATE:
 			_process_investigate(delta)
-		State.CHASE:
+		NPCController.Behavior.CHASE:
 			_process_chase(player, delta)
-		State.ATTACK:
+		NPCController.Behavior.ATTACK:
 			_process_attack(player, delta)
-		State.SEARCH:
+		NPCController.Behavior.SEARCH:
 			_process_search(delta)
+		NPCController.Behavior.FLEE:
+			_stop_body(delta)
+			_play(&"idle")
+
+
+func _process_non_hostile(player: Node3D, delta: float) -> void:
+	if (npc_controller.disposition == NPCController.Disposition.SUSPICIOUS
+			and player != null and (perception.can_see(player) or perception.can_hear(player))):
+		_nav_target = player.global_position
+		npc_controller.set_behavior(NPCController.Behavior.INVESTIGATE)
+	if npc_controller.behavior == NPCController.Behavior.INVESTIGATE:
+		_process_investigate(delta)
+	elif npc_controller.behavior == NPCController.Behavior.IDLE:
+		_stop_body(delta)
+		_play(&"idle")
+	else:
+		if npc_controller.behavior != NPCController.Behavior.PATROL:
+			npc_controller.set_behavior(NPCController.Behavior.PATROL)
+		_process_patrol(delta)
 
 
 func _update_perception(player: Node3D, delta: float) -> void:
 	if perception.can_see(player):
 		_time_since_seen = 0.0
-		if state == State.PATROL or state == State.INVESTIGATE or state == State.SEARCH:
-			state = State.CHASE
-		return
+		if (npc_controller.behavior == NPCController.Behavior.PATROL
+				or npc_controller.behavior == NPCController.Behavior.INVESTIGATE
+				or npc_controller.behavior == NPCController.Behavior.SEARCH):
+			npc_controller.set_behavior(NPCController.Behavior.CHASE)
+			return
 	_time_since_seen += delta
-	if state == State.CHASE and _time_since_seen > lose_sight_time:
-		state = State.SEARCH
+	if (npc_controller.behavior == NPCController.Behavior.CHASE
+			and _time_since_seen > lose_sight_time):
+		npc_controller.set_behavior(NPCController.Behavior.SEARCH)
 		_search_timer = 0.0
 		_nav_target = player.global_position
-	elif state == State.PATROL and perception.can_hear(player):
-		state = State.INVESTIGATE
+	elif (npc_controller.behavior == NPCController.Behavior.PATROL
+			and perception.can_hear(player)):
+		npc_controller.set_behavior(NPCController.Behavior.INVESTIGATE)
 		_nav_target = player.global_position
 
 
@@ -247,7 +281,7 @@ func _process_investigate(delta: float) -> void:
 	_play(&"walking")
 	_move_toward_target(walk_speed, delta)
 	if nav_agent.is_navigation_finished():
-		state = State.PATROL
+		npc_controller.set_behavior(NPCController.Behavior.PATROL)
 		_go_to_patrol_point()
 
 
@@ -256,9 +290,8 @@ func _process_chase(player: Node3D, delta: float) -> void:
 	_nav_target = player.global_position
 	_move_toward_target(chase_speed, delta, player)
 	if global_position.distance_to(player.global_position) <= attack_range:
-		state = State.ATTACK
+		npc_controller.set_behavior(NPCController.Behavior.ATTACK)
 		_attack_cooldown_left = 0.0
-		_attack_windup_left = 0.0
 
 
 func _process_attack(player: Node3D, delta: float) -> void:
@@ -266,28 +299,37 @@ func _process_attack(player: Node3D, delta: float) -> void:
 	velocity.z = 0.0
 	_apply_gravity(delta)
 	move_and_slide()
+	if _attack_animation_left > 0.0:
+		_attack_animation_left = maxf(_attack_animation_left - delta, 0.0)
+		if _attack_animation_left == 0.0:
+			_finish_attack_animation()
 	if not _attack_turn_locked:
 		_face_point(player.global_position, delta)
-	_play(&"idle")
+		_play(&"idle")
 	var distance := global_position.distance_to(player.global_position)
-	if distance > attack_range * 1.5:
-		_attack_windup_left = 0.0
-		_cancel_attack_visual()
-		state = State.CHASE
-		return
-	if _attack_windup_left > 0.0:
-		_attack_windup_left = maxf(_attack_windup_left - delta, 0.0)
-		if _attack_windup_left == 0.0 and distance <= attack_range * 1.3:
-			_deal_attack_damage(player)
+	if distance > attack_range * 1.5 and not _attack_turn_locked:
+		npc_controller.set_behavior(NPCController.Behavior.CHASE)
 		return
 	_attack_cooldown_left -= delta
+	if _attack_turn_locked:
+		_try_attack_contact(player, distance)
+		return
 	if (_attack_cooldown_left <= 0.0
 			and _is_facing_point(player.global_position, attack_facing_angle_deg)):
-		_attack_cooldown_left = attack_cooldown
-		_attack_windup_left = maxf(attack_windup, 0.0)
-		_begin_attack_visual()
-		if _attack_windup_left == 0.0:
-			_deal_attack_damage(player)
+		if _begin_attack_animation():
+			_attack_cooldown_left = attack_cooldown
+
+
+func _try_attack_contact(player: Node3D, distance: float) -> void:
+	if _attack_contact_emitted or boss_ap.current_animation != &"pack/attack":
+		return
+	var attack_animation := boss_ap.get_animation(&"pack/attack")
+	var contact_time := attack_animation.length * attack_contact_ratio
+	if boss_ap.current_animation_position < contact_time:
+		return
+	_attack_contact_emitted = true
+	if distance <= attack_range * 1.3:
+		_deal_attack_damage(player)
 
 
 func _deal_attack_damage(player: Node3D) -> void:
@@ -296,42 +338,28 @@ func _deal_attack_damage(player: Node3D) -> void:
 		target_health.apply_damage(attack_damage)
 
 
-## Temporary readable telegraph until a Mixamo-compatible zombie strike clip
-## is imported: pull back, lunge at contact, then recover. This only translates
-## the visual child; navigation and collision remain authoritative.
-func _begin_attack_visual() -> void:
-	if character == null:
-		return
-	_cancel_attack_visual()
+func _begin_attack_animation() -> bool:
+	if not boss_ap.has_animation(&"pack/attack"):
+		return false
 	_attack_turn_locked = true
-	character.position = _character_rest_position
-	var windup_first := maxf(attack_windup * 0.6, 0.01)
-	var windup_second := maxf(attack_windup - windup_first, 0.01)
-	_attack_tween = create_tween().set_trans(Tween.TRANS_SINE)
-	_attack_tween.tween_property(character, ^"position",
-			_character_rest_position + Vector3(0.0, 0.0, 0.04), windup_first)
-	_attack_tween.tween_property(character, ^"position",
-			_character_rest_position + Vector3(0.0, 0.0, -0.12), windup_second)
-	_attack_tween.tween_property(character, ^"position", _character_rest_position, 0.25)
-	_attack_tween.finished.connect(_finish_attack_visual)
+	_attack_contact_emitted = false
+	_current_anim = &"attack"
+	boss_ap.play(&"pack/attack", 0.1, attack_animation_speed)
+	var attack_animation := boss_ap.get_animation(&"pack/attack")
+	_attack_animation_left = attack_animation.length / attack_animation_speed
+	return true
 
 
-func _finish_attack_visual() -> void:
-	_attack_tween = null
+func _finish_attack_animation() -> void:
 	_attack_turn_locked = false
-	if character != null:
-		character.position = _character_rest_position
-		character.rotation = _character_rest_rotation
+	_current_anim = &""
 
 
-func _cancel_attack_visual() -> void:
-	if _attack_tween != null:
-		_attack_tween.kill()
-		_attack_tween = null
+func _cancel_attack_animation() -> void:
+	_attack_animation_left = 0.0
+	_attack_contact_emitted = true
 	_attack_turn_locked = false
-	if character != null:
-		character.position = _character_rest_position
-		character.rotation = _character_rest_rotation
+	_current_anim = &""
 
 
 func _process_search(delta: float) -> void:
@@ -340,8 +368,15 @@ func _process_search(delta: float) -> void:
 	if nav_agent.is_navigation_finished():
 		_search_timer += delta
 		if _search_timer > search_time:
-			state = State.PATROL
+			npc_controller.set_behavior(NPCController.Behavior.PATROL)
 			_go_to_patrol_point()
+
+
+func _stop_body(delta: float) -> void:
+	velocity.x = 0.0
+	velocity.z = 0.0
+	_apply_gravity(delta)
+	move_and_slide()
 
 
 func _go_to_patrol_point() -> void:
@@ -413,7 +448,7 @@ func _play(anim_name: StringName) -> void:
 func _on_died() -> void:
 	set_physics_process(false)
 	collision_layer = 0
-	_cancel_attack_visual()
+	_cancel_attack_animation()
 	_current_anim = &"death"
 	boss_ap.play("pack/death", 0.15)
 
@@ -421,8 +456,21 @@ func _on_died() -> void:
 func _on_damaged(_amount: float) -> void:
 	if health.is_dead():
 		return
+	npc_controller.become_hostile()
 	var player := get_tree().get_first_node_in_group(&"player") as Node3D
 	if player:
-		state = State.CHASE
+		npc_controller.set_behavior(NPCController.Behavior.CHASE)
 		_time_since_seen = 0.0
 		_nav_target = player.global_position
+
+
+func _on_disposition_changed(_previous: int, current: int) -> void:
+	if current == NPCController.Disposition.HOSTILE:
+		return
+	_cancel_attack_animation()
+	_attack_cooldown_left = 0.0
+	if (npc_controller.behavior == NPCController.Behavior.CHASE
+			or npc_controller.behavior == NPCController.Behavior.ATTACK
+			or npc_controller.behavior == NPCController.Behavior.SEARCH):
+		npc_controller.set_behavior(NPCController.Behavior.PATROL)
+		_go_to_patrol_point()

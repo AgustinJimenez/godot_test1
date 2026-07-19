@@ -14,7 +14,7 @@
 [ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="12_body_model"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="13_body_script"]
 [ext_resource type="Script" path="res://levels/nav_bake.gd" id="14_nav_bake"]
-[ext_resource type="PackedScene" path="res://actors/enemies/shambler/shambler.tscn" id="15_shambler"]
+[ext_resource type="PackedScene" path="res://actors/npcs/humanoid_actor/humanoid_actor.tscn" id="15_npc"]
 [ext_resource type="PackedScene" path="res://levels/props/animation_station.tscn" id="16_animation_station"]
 
 [sub_resource type="Environment" id="Environment_room"]
@@ -313,7 +313,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, -6)
 [node name="Point3" type="Marker3D" parent="PatrolPoints"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 6)
 
-[node name="Shambler1" parent="." instance=ExtResource("15_shambler")]
+[node name="NPC1" parent="." instance=ExtResource("15_npc")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, 6)
 visible = false
 process_mode = 4

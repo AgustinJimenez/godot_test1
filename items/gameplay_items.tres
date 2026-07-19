@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemCatalog" load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://items/item_catalog.gd" id="1_catalog"]
+[ext_resource type="Resource" path="res://items/ammo_9mm.tres" id="2_ammo"]
+[ext_resource type="Resource" path="res://items/bandage.tres" id="3_bandage"]
+[ext_resource type="Resource" path="res://items/battery.tres" id="4_battery"]
+[ext_resource type="Resource" path="res://items/kaykit_axe_c.tres" id="5_axe"]
+[ext_resource type="Resource" path="res://items/kaykit_shield_b.tres" id="6_shield"]
+[ext_resource type="Resource" path="res://items/kaykit_sword_c.tres" id="7_sword"]
+[ext_resource type="Resource" path="res://items/kaykit_wand_a.tres" id="8_wand"]
+[ext_resource type="Resource" path="res://items/keycard_maintenance.tres" id="9_keycard"]
+[ext_resource type="Resource" path="res://items/pistol_9mm.tres" id="10_pistol"]
+[ext_resource type="Resource" path="res://items/rusty_knife.tres" id="11_knife"]
+
+[resource]
+script = ExtResource("1_catalog")
+items = Array[Resource]([ExtResource("5_axe"), ExtResource("6_shield"), ExtResource("7_sword"), ExtResource("8_wand"), ExtResource("10_pistol"), ExtResource("11_knife"), ExtResource("3_bandage"), ExtResource("2_ammo"), ExtResource("9_keycard"), ExtResource("4_battery")])

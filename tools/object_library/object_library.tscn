@@ -1,7 +1,7 @@
 [gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://tools/object_library/object_library.gd" id="1_script"]
-[ext_resource type="Resource" path="res://objects/catalogs/kaykit_fantasy_weapons.tres" id="2_catalog"]
+[ext_resource type="Resource" path="res://objects/catalogs/weapon_models.tres" id="2_catalog"]
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/rotate-3d.svg" id="3_orbit_icon"]
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/zoom-out.svg" id="4_zoom_out_icon"]
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/zoom-in.svg" id="5_zoom_in_icon"]

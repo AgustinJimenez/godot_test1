@@ -106,6 +106,22 @@ theme_override_font_sizes/font_size = 14
 text = "[Tab]  Inventory"
 horizontal_alignment = 2
 
+[node name="FPSLabel" type="Label" parent="."]
+visible = false
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -148.0
+offset_top = 16.0
+offset_right = -18.0
+offset_bottom = 44.0
+theme_override_colors/font_color = Color(0.78, 0.9, 1, 0.95)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.85)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 17
+text = "0 FPS"
+horizontal_alignment = 2
+
 [node name="NoteOverlay" type="Control" parent="."]
 visible = false
 anchor_right = 1.0
@@ -352,14 +368,48 @@ text = "Apply"
 [node name="AnimClipsButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Animation Clips  >"
 
+[node name="ObjectListButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "Object List  >"
+
 [node name="FovGizmoButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "FOV Gizmo: OFF"
+
+[node name="ShowFPSToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "Show FPS"
 
 [node name="BackButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "< Back"
 
 [node name="SettingsMenu" parent="DebugOverlay/Center" instance=ExtResource("2_settings")]
 visible = false
+
+[node name="ObjectPanel" type="PanelContainer" parent="DebugOverlay/Center"]
+visible = false
+custom_minimum_size = Vector2(620, 0)
+
+[node name="ObjectMargin" type="MarginContainer" parent="DebugOverlay/Center/ObjectPanel"]
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 16
+
+[node name="ObjectVBox" type="VBoxContainer" parent="DebugOverlay/Center/ObjectPanel/ObjectMargin"]
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="DebugOverlay/Center/ObjectPanel/ObjectMargin/ObjectVBox"]
+theme_override_font_sizes/font_size = 20
+text = "OBJECT LIST"
+
+[node name="ObjectScroll" type="ScrollContainer" parent="DebugOverlay/Center/ObjectPanel/ObjectMargin/ObjectVBox"]
+custom_minimum_size = Vector2(560, 440)
+horizontal_scroll_mode = 0
+
+[node name="ObjectList" type="VBoxContainer" parent="DebugOverlay/Center/ObjectPanel/ObjectMargin/ObjectVBox/ObjectScroll"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="BackButton" type="Button" parent="DebugOverlay/Center/ObjectPanel/ObjectMargin/ObjectVBox"]
+text = "< Back"
 
 [node name="AnimPanelAnchor" type="Control" parent="DebugOverlay"]
 visible = false

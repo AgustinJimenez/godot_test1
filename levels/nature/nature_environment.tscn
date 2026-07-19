@@ -1,4 +1,4 @@
-[gd_scene load_steps=39 format=3]
+[gd_scene load_steps=40 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/CommonTree_1.gltf" id="1_common_1"]
 [ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/CommonTree_2.gltf" id="2_common_2"]
@@ -26,8 +26,9 @@
 [ext_resource type="Resource" path="res://items/kaykit_axe_c.tres" id="24_axe"]
 [ext_resource type="Resource" path="res://items/kaykit_shield_b.tres" id="25_shield"]
 [ext_resource type="Resource" path="res://items/kaykit_wand_a.tres" id="26_wand"]
+[ext_resource type="Resource" path="res://items/rusty_knife.tres" id="31_rusty_knife"]
 [ext_resource type="Script" path="res://levels/nav_bake.gd" id="27_nav_bake"]
-[ext_resource type="PackedScene" path="res://actors/enemies/shambler/shambler.tscn" id="28_shambler"]
+[ext_resource type="PackedScene" path="res://actors/npcs/humanoid_actor/humanoid_actor.tscn" id="28_npc"]
 [ext_resource type="PackedScene" path="res://assets/models/mixamo_characters/Ch10_nonPBR.fbx" id="29_ch10_zombie"]
 [ext_resource type="PackedScene" path="res://assets/models/mixamo_characters/Zombiegirl W Kurniawan.fbx" id="30_zombie_girl"]
 
@@ -412,47 +413,52 @@ position = Vector3(-0.8, 0.03, -1.5)
 rotation = Vector3(0, 0.25, 0)
 item = ExtResource("26_wand")
 
+[node name="RustyKnife" parent="WeaponPickups" instance=ExtResource("22_pickup")]
+position = Vector3(0.75, 0.03, -3.5)
+rotation = Vector3(0, -0.35, 0)
+item = ExtResource("31_rusty_knife")
+
 [node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
 navigation_mesh = SubResource("NavigationMesh_nature")
 script = ExtResource("27_nav_bake")
 source_paths = [NodePath("Geometry"), NodePath("TreeCollisions")]
 
-[node name="EnemyPatrols" type="Node3D" parent="."]
+[node name="NPCPatrols" type="Node3D" parent="."]
 
-[node name="NearA" type="Marker3D" parent="EnemyPatrols"]
+[node name="NearA" type="Marker3D" parent="NPCPatrols"]
 position = Vector3(-3, 0, -10)
 
-[node name="NearB" type="Marker3D" parent="EnemyPatrols"]
+[node name="NearB" type="Marker3D" parent="NPCPatrols"]
 position = Vector3(4, 0, -19)
 
-[node name="MiddleA" type="Marker3D" parent="EnemyPatrols"]
+[node name="MiddleA" type="Marker3D" parent="NPCPatrols"]
 position = Vector3(-4, 0, -28)
 
-[node name="MiddleB" type="Marker3D" parent="EnemyPatrols"]
+[node name="MiddleB" type="Marker3D" parent="NPCPatrols"]
 position = Vector3(3, 0, -38)
 
-[node name="FarA" type="Marker3D" parent="EnemyPatrols"]
+[node name="FarA" type="Marker3D" parent="NPCPatrols"]
 position = Vector3(-3, 0, -46)
 
-[node name="FarB" type="Marker3D" parent="EnemyPatrols"]
+[node name="FarB" type="Marker3D" parent="NPCPatrols"]
 position = Vector3(4, 0, -58)
 
-[node name="Enemies" type="Node3D" parent="."]
+[node name="NPCs" type="Node3D" parent="."]
 
-[node name="ShamblerNear" parent="Enemies" instance=ExtResource("28_shambler")]
+[node name="NPCNear" parent="NPCs" instance=ExtResource("28_npc")]
 position = Vector3(-3, 0, -10)
-patrol_points = [NodePath("../../EnemyPatrols/NearA"), NodePath("../../EnemyPatrols/NearB")]
+patrol_points = [NodePath("../../NPCPatrols/NearA"), NodePath("../../NPCPatrols/NearB")]
 character_scene = ExtResource("29_ch10_zombie")
 character_bone_prefix = "mixamorig5_"
 
-[node name="ShamblerMiddle" parent="Enemies" instance=ExtResource("28_shambler")]
+[node name="NPCMiddle" parent="NPCs" instance=ExtResource("28_npc")]
 position = Vector3(-4, 0, -28)
-patrol_points = [NodePath("../../EnemyPatrols/MiddleA"), NodePath("../../EnemyPatrols/MiddleB")]
+patrol_points = [NodePath("../../NPCPatrols/MiddleA"), NodePath("../../NPCPatrols/MiddleB")]
 character_scene = ExtResource("30_zombie_girl")
 
-[node name="ShamblerFar" parent="Enemies" instance=ExtResource("28_shambler")]
+[node name="NPCFar" parent="NPCs" instance=ExtResource("28_npc")]
 position = Vector3(-3, 0, -46)
-patrol_points = [NodePath("../../EnemyPatrols/FarA"), NodePath("../../EnemyPatrols/FarB")]
+patrol_points = [NodePath("../../NPCPatrols/FarA"), NodePath("../../NPCPatrols/FarB")]
 character_scene = ExtResource("29_ch10_zombie")
 character_bone_prefix = "mixamorig5_"
 

@@ -2,7 +2,7 @@ class_name MeleeWeapon
 extends Node
 ## Forgiving short-range damage query shared by fists and held melee items.
 
-const ENEMY_MASK := 1 << 2
+const DAMAGEABLE_MASK := 1 << 2
 
 @export var hit_radius: float = 0.55
 
@@ -19,7 +19,7 @@ func attack(camera: Camera3D, damage: float, attack_range: float) -> bool:
 	query.transform = Transform3D(
 			Basis(Quaternion(Vector3.UP, forward)),
 			camera.global_position + forward * attack_range * 0.5)
-	query.collision_mask = ENEMY_MASK
+	query.collision_mask = DAMAGEABLE_MASK
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
 	var hits := camera.get_world_3d().direct_space_state.intersect_shape(query, 8)
@@ -38,4 +38,20 @@ func attack(camera: Camera3D, damage: float, attack_range: float) -> bool:
 	var health := nearest.get_node_or_null(^"Health") as Health
 	if health == null:
 		return false
-	return health.apply_damage(damage) > 0.0
+	if health.apply_damage(damage) <= 0.0:
+		return false
+	_spawn_hit_effect(camera, nearest)
+	return true
+
+
+func _spawn_hit_effect(camera: Camera3D, target: Node3D) -> void:
+	var target_point := target.global_position + Vector3.UP * 0.9
+	var query := PhysicsRayQueryParameters3D.create(
+			camera.global_position, target_point, DAMAGEABLE_MASK)
+	var hit := camera.get_world_3d().direct_space_state.intersect_ray(query)
+	var hit_position := target_point
+	var hit_normal := (camera.global_position - target_point).normalized()
+	if not hit.is_empty() and hit.get("collider") == target:
+		hit_position = hit["position"]
+		hit_normal = hit["normal"]
+	DamageHitEffect.spawn(get_tree().current_scene, hit_position, hit_normal)

@@ -10,7 +10,7 @@ extends Node3D
 signal fired
 signal ammo_changed(magazine: int, reserve: int)
 
-## world (1) + enemies (4) — bullets ignore the player and trigger areas.
+## World (1) + damageable actors (4); bullets ignore the player and trigger areas.
 const HIT_MASK := 0b101
 const HOLE_LIFETIME := 20.0
 
@@ -136,7 +136,10 @@ func _hitscan() -> void:
 	var collider := hit["collider"] as Node
 	var target_health := collider.get_node_or_null(^"Health") as Health
 	if target_health:
-		target_health.apply_damage(damage)
+		var applied := target_health.apply_damage(damage)
+		if applied > 0.0:
+			DamageHitEffect.spawn(
+					get_tree().current_scene, hit["position"], hit["normal"])
 	else:
 		_spawn_bullet_hole(hit["position"], hit["normal"])
 

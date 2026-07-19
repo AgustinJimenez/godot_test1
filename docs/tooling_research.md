@@ -68,7 +68,7 @@ decision, not just awareness.
   in the Godot editor itself.
 - **[Beehave](https://github.com/bitbrain/beehave)** — alternative
   behavior-tree addon, pure GDScript (no native compile step).
-- Either would give `actors/enemies/shambler/` a more standard, debuggable
+- Either would give `actors/npcs/humanoid_actor/` a more standard, debuggable
   structure than hand-rolled state logic if the enemy roster grows beyond
   one type.
 
@@ -601,7 +601,7 @@ milestone.
 ### AI perception / stealth detection — comparison against the shambler's existing vision cone + hearing
 
 This surfaced genuinely actionable design critique, not just addons, worth
-weighing against `actors/enemies/shambler/`'s existing perception system
+weighing against `actors/npcs/humanoid_actor/`'s existing perception system
 regardless of whether any addon gets adopted:
 
 - **Never sample player visibility from a single point.** Sample multiple

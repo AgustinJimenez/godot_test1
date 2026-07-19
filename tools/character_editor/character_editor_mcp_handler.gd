@@ -21,6 +21,8 @@ func _run_automation_args() -> void:
 	for argument in OS.get_cmdline_user_args():
 		if "=" in argument:
 			options[argument.get_slice("=", 0)] = argument.get_slice("=", 1)
+	if options.is_empty():
+		return
 	if options.has("pose"):
 		editor._pose_io_handler._load_pose_from_path(options["pose"], true)
 	if options.has("animation"):
@@ -31,6 +33,8 @@ func _run_automation_args() -> void:
 	# meaningless - and _held_object is null - for characters that don't
 	# support held objects (see MIXAMO_CHARACTERS).
 	if editor.body.supports_held_object:
+		if options.has("attachment_index"):
+			editor._attachment_handler.select(int(options["attachment_index"]))
 		if options.has("object"):
 			editor._load_object(options["object"], true)
 		if options.has("attachment"):
@@ -60,7 +64,7 @@ func _run_automation_args() -> void:
 						bone_override.substr(separator + 1),
 						editor._modifier.get_bone_rotation(bone_name)))
 	editor._bone_controls_handler._sync_bone_controls()
-	if editor.body.supports_held_object:
+	if editor.body.supports_held_object and is_instance_valid(editor._held_object):
 		editor._gizmo_handler._sync_object_controls()
 	editor._gizmo_handler._refresh_skeleton()
 	if options.has("view"):
@@ -135,6 +139,17 @@ func _run_automation_args() -> void:
 			_:
 				editor._focused_camera_offset = Vector3(0.0, 0.0, distance)
 		editor._camera_handler._update_focused_camera()
+	var requested_stage := CharacterEditorStageHandler.Stage.ANIMATION
+	if options.has("pose"):
+		requested_stage = CharacterEditorStageHandler.Stage.REVIEW
+	if (options.has("object") or options.has("attachment_index")
+			or options.has("attachment") or options.has("object_position")
+			or options.has("object_rotation") or options.has("object_scale")):
+		requested_stage = CharacterEditorStageHandler.Stage.ATTACHMENTS
+	if (options.has("bone") or options.has("bones")
+			or options.has("hand_openness") or options.has("pick")):
+		requested_stage = CharacterEditorStageHandler.Stage.POSE
+	editor._stage_handler.set_stage(requested_stage, true)
 	if options.has("capture"):
 		for _frame in 3:
 			await editor.get_tree().process_frame
@@ -177,6 +192,10 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 	# "request_pose_dump", not "mcp:request_pose_dump" - unlike
 	# EditorDebuggerPlugin._capture() on the editor side, which keeps the
 	# full prefixed string.
+	if editor.body == null and message not in [
+			"set_character", "capture_screenshot", "import_asset_result",
+			"test_import_character"]:
+		editor._load_character(editor.DEFAULT_CHARACTER_KIND)
 	match message:
 		"request_pose_dump":
 			var name_filter := String(data[0]) if data.size() > 0 else ""
@@ -304,9 +323,18 @@ func _mcp_set_show_bones(enabled: bool) -> void:
 
 
 func _mcp_get_object_state() -> void:
+	if not is_instance_valid(editor._held_object):
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify({
+			"ok": false,
+			"error": "The current pose has no selected attachment",
+			"attachments": editor._attachment_handler.serialize(),
+		})])
+		return
 	EngineDebugger.send_message("mcp:command_result", [JSON.stringify({
 		"ok": true,
 		"result": {
+			"selected_attachment_index": editor._attachment_handler.selected_index,
+			"attachments": editor._attachment_handler.serialize(),
 			"object_scene": editor._current_object_path,
 			"attachment_bone": String(editor._attachment_bone),
 			"position": [
@@ -549,6 +577,12 @@ func _mcp_set_object_transform(data: Array) -> void:
 	if typeof(payload) != TYPE_DICTIONARY:
 		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
 				{"ok": false, "error": "Malformed set_object_transform payload"})])
+		return
+	if payload.get("attachment_index") != null:
+		editor._attachment_handler.select(int(payload["attachment_index"]))
+	if not is_instance_valid(editor._held_object):
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "The current pose has no selected attachment"})])
 		return
 	# Same fields the UI's position/rotation/scale sliders write
 	# (_on_object_position_changed etc.) - relative to the attachment bone.

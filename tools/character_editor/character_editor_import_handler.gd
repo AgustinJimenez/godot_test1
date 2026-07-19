@@ -20,8 +20,12 @@ func _on_import_character_pressed() -> void:
 
 
 func _on_import_animation_pressed() -> void:
+	if editor._animation_package_handler.selected_package == null:
+		editor.status_label.text = "Create or select a user animation package before importing"
+		return
 	editor._import_mode = editor.ImportMode.ANIMATION
-	_open_import_dialog("Import animation onto %s" % editor.body.display_name)
+	_open_import_dialog("Import animation into %s" %
+			editor._animation_package_handler.selected_package.display_name)
 
 
 ## FileDialog's own use_native_dialog property has a real history of not
@@ -74,7 +78,7 @@ func _on_import_file_selected(path: String) -> void:
 			await _import_animation(path)
 	editor._import_in_progress = false
 	editor.import_character_button.disabled = false
-	editor.import_animation_button.disabled = false
+	editor._animation_package_handler.refresh_selection()
 
 
 ## Copies source_path into assets/models/imported_characters/, detects its
@@ -112,33 +116,57 @@ func _import_character(source_path: String) -> void:
 	editor._ui_setup_handler._on_character_selected(editor.character_picker.item_count - 1)
 
 
-## Copies source_path into assets/models/imported_animations/, detects its
+## Copies source_path into a package folder under imported_animations/, detects its
 ## skeleton's bone-name convention, retargets its primary animation onto
-## whichever character is CURRENTLY loaded, and adds it to a "Custom" group
-## for this session (see _custom_clips's doc comment for why this doesn't
-## persist across a character switch).
+## whichever character is currently loaded, and persists the source path in
+## the selected CharacterAnimationPackage.
 func _import_animation(source_path: String) -> void:
+	var package_id := editor._animation_package_handler.selected_package_id()
+	if package_id.is_empty():
+		editor.status_label.text = "No user animation package selected"
+		return
 	var dest_path := (
-			"res://assets/models/imported_animations/" + _sanitize_filename(source_path.get_file()))
+			"res://assets/models/imported_animations/%s/%s" % [
+				package_id, _sanitize_filename(source_path.get_file())])
 	var result := await editor._mcp_handler._request_import_asset(source_path, dest_path)
 	if not result.get("ok", false):
 		editor.status_label.text = "Import failed: %s" % result.get("error", "unknown error")
 		return
-	var instance: Node = (load(dest_path) as PackedScene).instantiate()
+	var retargeted := retarget_animation_source(dest_path)
+	if retargeted == null:
+		return
+	var clip_name := editor._animation_package_handler.add_source(dest_path)
+	editor._custom_clips[clip_name] = retargeted
+	rebuild_custom_clip_library()
+	editor.status_label.text = "Imported %s into %s" % [
+			dest_path.get_file(), editor._animation_package_handler.selected_package.display_name]
+	editor._ui_setup_handler._populate_animation_controls()
+	editor._animation_package_handler._refresh_groups_and_select(
+			editor._animation_package_handler.selected_package.display_name)
+	editor._ui_setup_handler._select_animation_in_ui(clip_name)
+	editor._ui_setup_handler._set_animation(clip_name)
+
+
+func retarget_animation_source(source_path: String) -> Animation:
+	var resource := load(source_path)
+	if not resource is PackedScene:
+		editor.status_label.text = "Animation source is not an imported 3D scene: %s" % source_path
+		return null
+	var instance: Node = (resource as PackedScene).instantiate()
 	var source_skeleton: Skeleton3D = instance.find_child("Skeleton3D", true, false)
 	var clip_ap: AnimationPlayer = instance.find_child("AnimationPlayer", true, false)
 	if source_skeleton == null or clip_ap == null:
 		instance.free()
 		editor.status_label.text = (
-				"Import failed: %s has no Skeleton3D/AnimationPlayer" % dest_path.get_file())
-		return
+				"Import failed: %s has no Skeleton3D/AnimationPlayer" % source_path.get_file())
+		return null
 	var source_prefix: Variant = _detect_bone_prefix(source_skeleton)
 	var src_animation := UniversalAnimationPools.find_primary_animation(clip_ap)
 	if source_prefix == null or src_animation == null:
 		instance.free()
 		editor.status_label.text = ("Import failed: unrecognized skeleton or no animation found in %s "
-				+ "- ask your assistant to add support for this rig") % dest_path.get_file()
-		return
+				+ "- ask your assistant to add support for this rig") % source_path.get_file()
+		return null
 
 	var config: HumanoidRetargeter.BoneMapConfig
 	if source_prefix.begins_with("B-"):
@@ -149,19 +177,16 @@ func _import_animation(source_path: String) -> void:
 	var retargeted := HumanoidRetargeter.retarget_clip(
 			source_skeleton, src_animation, editor.body.skeleton, config, true)
 	instance.free()
-
-	var clip_name := StringName("custom_" + dest_path.get_file().get_basename().to_snake_case())
-	editor._custom_clips[clip_name] = retargeted
-	_rebuild_custom_clip_library()
-	editor.status_label.text = "Imported %s onto %s" % [dest_path.get_file(), editor.body.display_name]
-	editor._ui_setup_handler._populate_animation_controls()
-	editor._ui_setup_handler._select_animation_in_ui(clip_name)
-	editor._ui_setup_handler._set_animation(clip_name)
+	return retargeted
 
 
-func _rebuild_custom_clip_library() -> void:
+func rebuild_custom_clip_library() -> void:
+	if editor.body.anim_player.is_playing():
+		editor.body.anim_player.stop()
 	if editor.body.anim_player.has_animation_library(&"custom"):
 		editor.body.anim_player.remove_animation_library(&"custom")
+	if editor._custom_clips.is_empty():
+		return
 	var lib := AnimationLibrary.new()
 	for clip_name: StringName in editor._custom_clips:
 		lib.add_animation(clip_name, editor._custom_clips[clip_name])

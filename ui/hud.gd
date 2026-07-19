@@ -4,6 +4,23 @@ extends CanvasLayer
 ## PROCESS_MODE_ALWAYS so it can close them.
 
 const ITEM_PICKUP_SCENE := preload("res://levels/props/item_pickup.tscn")
+const GAMEPLAY_ITEMS: ItemCatalog = preload("res://items/gameplay_items.tres")
+const ITEM_GROUP_ORDER: Array[int] = [
+	Item.Kind.WEAPON,
+	Item.Kind.CONSUMABLE,
+	Item.Kind.AMMO,
+	Item.Kind.KEY,
+	Item.Kind.MISC,
+]
+const ITEM_GROUP_NAMES: Dictionary[int, String] = {
+	Item.Kind.WEAPON: "WEAPONS",
+	Item.Kind.CONSUMABLE: "CONSUMABLES",
+	Item.Kind.AMMO: "AMMUNITION",
+	Item.Kind.KEY: "KEY ITEMS",
+	Item.Kind.MISC: "MISCELLANEOUS",
+}
+
+@export var show_fps_debug := false
 
 var _inventory: Inventory
 var _health: Health
@@ -12,7 +29,11 @@ var _slot_buttons: Array[Button] = []
 var _selected := -1
 var _toast_tween: Tween
 var _hurt_tween: Tween
+var _fps_refresh_left := 0.0
+var _object_list_built := false
+var _object_rows: Array[Dictionary] = []
 
+@onready var fps_label: Label = $FPSLabel
 @onready var center_dot: ColorRect = $CenterDot
 @onready var prompt_label: Label = $PromptLabel
 @onready var stamina_bar: ProgressBar = $StaminaBar
@@ -55,11 +76,20 @@ var _hurt_tween: Tween
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/ApplyButton")
 @onready var anim_clips_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/AnimClipsButton")
+@onready var object_list_button: Button = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/ObjectListButton")
 @onready var fov_gizmo_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FovGizmoButton")
+@onready var show_fps_toggle: CheckButton = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/ShowFPSToggle")
 @onready var debug_back_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/BackButton")
 @onready var settings_menu: SettingsMenu = $DebugOverlay/Center/SettingsMenu
+@onready var object_panel: PanelContainer = $DebugOverlay/Center/ObjectPanel
+@onready var object_list: VBoxContainer = get_node(
+		^"DebugOverlay/Center/ObjectPanel/ObjectMargin/ObjectVBox/ObjectScroll/ObjectList")
+@onready var object_back_button: Button = get_node(
+		^"DebugOverlay/Center/ObjectPanel/ObjectMargin/ObjectVBox/BackButton")
 @onready var anim_panel_anchor: Control = $DebugOverlay/AnimPanelAnchor
 @onready var anim_list: VBoxContainer = get_node(
 		^"DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/AnimScroll/AnimList")
@@ -75,6 +105,7 @@ func _ready() -> void:
 	drop_button.pressed.connect(_on_drop_pressed)
 	debug_apply.pressed.connect(_on_debug_apply)
 	fov_gizmo_button.pressed.connect(_on_fov_gizmo_button_pressed)
+	show_fps_toggle.toggled.connect(_on_show_fps_toggled)
 	main_debug_button.pressed.connect(_show_debug_page)
 	main_guide_button.pressed.connect(_show_guide_page)
 	main_settings_button.pressed.connect(_show_settings_page)
@@ -82,9 +113,22 @@ func _ready() -> void:
 	main_close_button.pressed.connect(_close_debug)
 	guide_back_button.pressed.connect(_show_debug_main)
 	anim_clips_button.pressed.connect(_show_anim_page)
+	object_list_button.pressed.connect(_show_object_page)
 	debug_back_button.pressed.connect(_show_debug_main)
 	settings_menu.back_requested.connect(_show_debug_main)
 	anim_back_button.pressed.connect(_show_debug_page)
+	object_back_button.pressed.connect(_show_debug_page)
+	show_fps_toggle.button_pressed = show_fps_debug
+	fps_label.visible = show_fps_debug
+
+
+func _process(delta: float) -> void:
+	if not fps_label.visible:
+		return
+	_fps_refresh_left -= delta
+	if _fps_refresh_left <= 0.0:
+		fps_label.text = "%d FPS" % roundi(Engine.get_frames_per_second())
+		_fps_refresh_left = 0.25
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -121,6 +165,7 @@ func bind_inventory(inventory: Inventory) -> void:
 		button.pressed.connect(_on_slot_pressed.bind(i))
 		slot_grid.add_child(button)
 		_slot_buttons.append(button)
+	_refresh_object_list()
 
 
 func bind_health(health: Health) -> void:
@@ -243,6 +288,7 @@ func _refresh_inventory() -> void:
 			use_button.text = "Unequip" if equipped else "Equip"
 	desc_label.text = (_inventory.slots[_selected]["item"].description
 			if has_selection else "")
+	_refresh_object_list()
 
 
 func toggle_debug() -> void:
@@ -287,6 +333,7 @@ func _show_debug_main() -> void:
 	guide_panel.hide()
 	debug_panel.hide()
 	settings_menu.hide()
+	object_panel.hide()
 	anim_panel_anchor.hide()
 
 
@@ -295,6 +342,7 @@ func _show_guide_page() -> void:
 	guide_panel.show()
 	debug_panel.hide()
 	settings_menu.hide()
+	object_panel.hide()
 	anim_panel_anchor.hide()
 
 
@@ -304,6 +352,7 @@ func _show_settings_page() -> void:
 	debug_panel.hide()
 	settings_menu.show()
 	settings_menu.refresh()
+	object_panel.hide()
 	anim_panel_anchor.hide()
 
 
@@ -312,6 +361,7 @@ func _show_debug_page() -> void:
 	guide_panel.hide()
 	debug_panel.show()
 	settings_menu.hide()
+	object_panel.hide()
 	anim_panel_anchor.hide()
 
 
@@ -320,7 +370,123 @@ func _show_anim_page() -> void:
 	guide_panel.hide()
 	debug_panel.hide()
 	settings_menu.hide()
+	object_panel.hide()
 	anim_panel_anchor.show()
+
+
+func _show_object_page() -> void:
+	_build_object_list()
+	main_panel.hide()
+	guide_panel.hide()
+	debug_panel.hide()
+	settings_menu.hide()
+	anim_panel_anchor.hide()
+	object_panel.show()
+	_refresh_object_list()
+
+
+func _build_object_list() -> void:
+	if _object_list_built:
+		return
+	_object_list_built = true
+	for kind: int in ITEM_GROUP_ORDER:
+		var group_items: Array[Item] = []
+		for resource: Resource in GAMEPLAY_ITEMS.items:
+			var item := resource as Item
+			if item != null and item.kind == kind:
+				group_items.append(item)
+		if group_items.is_empty():
+			continue
+		var header := Label.new()
+		header.text = ITEM_GROUP_NAMES[kind]
+		header.add_theme_color_override(&"font_color", Color(0.6, 0.7, 1, 1))
+		header.add_theme_font_size_override(&"font_size", 14)
+		object_list.add_child(header)
+		for item: Item in group_items:
+			_add_object_row(item)
+
+
+func _add_object_row(item: Item) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override(&"separation", 8)
+	object_list.add_child(row)
+
+	var name_label := Label.new()
+	name_label.text = item.display_name
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_label)
+
+	var count_label := Label.new()
+	count_label.custom_minimum_size.x = 72.0
+	count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(count_label)
+
+	var add_button := Button.new()
+	add_button.custom_minimum_size.x = 72.0
+	add_button.text = "Add"
+	add_button.pressed.connect(_on_debug_add_item.bind(item))
+	row.add_child(add_button)
+
+	var equip_button: Button = null
+	if item.kind == Item.Kind.WEAPON:
+		equip_button = Button.new()
+		equip_button.custom_minimum_size.x = 84.0
+		equip_button.text = "Equip"
+		equip_button.pressed.connect(_on_debug_equip_item.bind(item))
+		row.add_child(equip_button)
+
+	_object_rows.append({
+		"item": item,
+		"count_label": count_label,
+		"add_button": add_button,
+		"equip_button": equip_button,
+	})
+
+
+func _refresh_object_list() -> void:
+	if not _object_list_built or _inventory == null:
+		return
+	var player := get_tree().get_first_node_in_group(&"player")
+	for row: Dictionary in _object_rows:
+		var item: Item = row["item"]
+		var count: int = _inventory.count_of(item)
+		var count_label: Label = row["count_label"]
+		var add_button: Button = row["add_button"]
+		count_label.text = "Owned: %d" % count
+		add_button.disabled = item.max_stack == 1 and count > 0
+		add_button.text = "Owned" if add_button.disabled else "Add"
+		var equip_button: Button = row["equip_button"]
+		if equip_button == null:
+			continue
+		var equipped := (player != null
+				and bool(player.call(&"is_item_equipped", item)))
+		equip_button.text = "Equipped" if equipped else "Equip"
+		equip_button.disabled = equipped
+
+
+func _on_debug_add_item(item: Item) -> void:
+	if _inventory == null:
+		return
+	if _inventory.add_item(item, 1) == 0:
+		toast("Added " + item.display_name)
+	else:
+		toast("Inventory full")
+	_refresh_object_list()
+
+
+func _on_debug_equip_item(item: Item) -> void:
+	if _inventory == null:
+		return
+	if _inventory.count_of(item) == 0 and _inventory.add_item(item, 1) != 0:
+		toast("Inventory full")
+		return
+	var player := get_tree().get_first_node_in_group(&"player")
+	if player == null or not player.has_method(&"toggle_equip_item"):
+		return
+	if not bool(player.call(&"is_item_equipped", item)):
+		player.call(&"toggle_equip_item", item)
+	toast("Equipped " + item.display_name)
+	_refresh_inventory()
 
 
 ## Lazily builds one section (label + buttons) per group returned by
@@ -360,6 +526,12 @@ func _on_fov_gizmo_button_pressed() -> void:
 		return
 	player.toggle_fov_gizmo()
 	fov_gizmo_button.text = "FOV Gizmo: ON" if player.show_fov_gizmo else "FOV Gizmo: OFF"
+
+
+func _on_show_fps_toggled(enabled: bool) -> void:
+	show_fps_debug = enabled
+	fps_label.visible = enabled
+	_fps_refresh_left = 0.0
 
 
 func _on_debug_apply() -> void:

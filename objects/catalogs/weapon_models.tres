@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ObjectCatalog" load_steps=65 format=3]
+[gd_resource type="Resource" script_class="ObjectCatalog" load_steps=67 format=3]
 
 [ext_resource type="Script" path="res://objects/object_definition.gd" id="1_definition"]
 [ext_resource type="Script" path="res://objects/object_catalog.gd" id="2_catalog"]
@@ -33,6 +33,7 @@
 [ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/sword_D.gltf" id="31_sword_d"]
 [ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/sword_E.gltf" id="32_sword_e"]
 [ext_resource type="PackedScene" path="res://assets/models/kaykit_fantasy_weapons/wand_A.gltf" id="33_wand_a"]
+[ext_resource type="PackedScene" path="res://assets/models/rusty_knife/rusty_knife.glb" id="34_rusty_knife"]
 
 [sub_resource type="Resource" id="Object_arrow_a"]
 script = ExtResource("1_definition")
@@ -282,8 +283,17 @@ category = &"Magic"
 tags = PackedStringArray("weapon", "wand", "magic")
 scene = ExtResource("33_wand_a")
 
+[sub_resource type="Resource" id="Object_rusty_knife"]
+script = ExtResource("1_definition")
+id = &"rusty_knife"
+display_name = "Rusty Knife"
+category = &"Knives"
+tags = PackedStringArray("weapon", "knife", "melee", "rusty", "generated")
+scene = ExtResource("34_rusty_knife")
+preview_scale = 0.32
+
 [resource]
 script = ExtResource("2_catalog")
-id = &"kaykit_fantasy_weapons"
-display_name = "KayKit Fantasy Weapons"
-entries = Array[ExtResource("1_definition")]([SubResource("Object_arrow_a"), SubResource("Object_arrow_b"), SubResource("Object_axe_a"), SubResource("Object_axe_b"), SubResource("Object_axe_c"), SubResource("Object_bow_a"), SubResource("Object_bow_a_string"), SubResource("Object_bow_b"), SubResource("Object_bow_b_string"), SubResource("Object_dagger_a"), SubResource("Object_dagger_b"), SubResource("Object_fist_a"), SubResource("Object_fist_a_stacked"), SubResource("Object_fist_b"), SubResource("Object_fist_b_stacked"), SubResource("Object_halberd"), SubResource("Object_hammer_a"), SubResource("Object_hammer_b"), SubResource("Object_hammer_c"), SubResource("Object_shield_a"), SubResource("Object_shield_b"), SubResource("Object_shield_c"), SubResource("Object_spear_a"), SubResource("Object_staff_a"), SubResource("Object_staff_b"), SubResource("Object_sword_a"), SubResource("Object_sword_b"), SubResource("Object_sword_c"), SubResource("Object_sword_d"), SubResource("Object_sword_e"), SubResource("Object_wand_a")])
+id = &"weapon_models"
+display_name = "Weapon Models"
+entries = Array[ExtResource("1_definition")]([SubResource("Object_arrow_a"), SubResource("Object_arrow_b"), SubResource("Object_axe_a"), SubResource("Object_axe_b"), SubResource("Object_axe_c"), SubResource("Object_bow_a"), SubResource("Object_bow_a_string"), SubResource("Object_bow_b"), SubResource("Object_bow_b_string"), SubResource("Object_dagger_a"), SubResource("Object_dagger_b"), SubResource("Object_fist_a"), SubResource("Object_fist_a_stacked"), SubResource("Object_fist_b"), SubResource("Object_fist_b_stacked"), SubResource("Object_halberd"), SubResource("Object_hammer_a"), SubResource("Object_hammer_b"), SubResource("Object_hammer_c"), SubResource("Object_shield_a"), SubResource("Object_shield_b"), SubResource("Object_shield_c"), SubResource("Object_spear_a"), SubResource("Object_staff_a"), SubResource("Object_staff_b"), SubResource("Object_sword_a"), SubResource("Object_sword_b"), SubResource("Object_sword_c"), SubResource("Object_sword_d"), SubResource("Object_sword_e"), SubResource("Object_wand_a"), SubResource("Object_rusty_knife")])

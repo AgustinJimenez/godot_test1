@@ -1,15 +1,17 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
-[ext_resource type="Script" path="res://actors/enemies/shambler/shambler.gd" id="1_script"]
+[ext_resource type="Script" path="res://actors/npcs/humanoid_actor/humanoid_actor.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://assets/models/action_adventure_pack/The Boss.fbx" id="2_boss"]
 [ext_resource type="Script" path="res://components/health.gd" id="3_health"]
 [ext_resource type="Script" path="res://components/perception.gd" id="4_perception"]
+[ext_resource type="Script" path="res://components/npc_controller.gd" id="5_npc_controller"]
+[ext_resource type="Script" path="res://components/world_health_bar.gd" id="6_health_bar"]
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_shambler"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_enemy"]
 radius = 0.4
 height = 1.8
 
-[node name="Shambler" type="CharacterBody3D"]
+[node name="HumanoidActor" type="CharacterBody3D"]
 collision_layer = 4
 collision_mask = 1
 script = ExtResource("1_script")
@@ -17,7 +19,7 @@ character_scene = ExtResource("2_boss")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
-shape = SubResource("CapsuleShape3D_shambler")
+shape = SubResource("CapsuleShape3D_enemy")
 
 [node name="Health" type="Node" parent="."]
 script = ExtResource("3_health")
@@ -32,3 +34,10 @@ radius = 0.4
 script = ExtResource("4_perception")
 vision_range = 10.0
 vision_angle_deg = 60.0
+
+[node name="NPCController" type="Node" parent="."]
+script = ExtResource("5_npc_controller")
+
+[node name="WorldHealthBar" type="Node3D" parent="."]
+position = Vector3(0, 2.15, 0)
+script = ExtResource("6_health_bar")
