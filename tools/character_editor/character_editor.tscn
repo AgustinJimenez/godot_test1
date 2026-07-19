@@ -658,20 +658,3 @@ flat = true
 icon = ExtResource("9_resize_icon")
 expand_icon = true
 icon_max_width = 20
-
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/BoneButtons/ResetBone" to="." method="_on_reset_bone_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/BoneButtons/ResetAll" to="." method="_on_reset_all_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/ObjectRow/BrowseObject" to="." method="_on_browse_object_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PresetRow/NewPreset" to="." method="_on_new_preset_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PresetRow/OpenPreset" to="." method="_on_open_preset_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PresetRow/SavePresetAs" to="." method="_on_save_preset_as_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/SavePose" to="." method="_on_save_pose_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/LoadPose" to="." method="_on_load_pose_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/SaveImage" to="." method="_on_save_image_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/PoseActions/Copy" to="." method="_on_copy_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/CharacterRow/ImportCharacter" to="." method="_on_import_character_pressed"]
-[connection signal="pressed" from="UI/Panel/PanelScroll/Margin/VBox/AnimationRow/ImportAnimation" to="." method="_on_import_animation_pressed"]
-[connection signal="file_selected" from="UI/ObjectDialog" to="." method="_on_object_file_selected"]
-[connection signal="file_selected" from="UI/OpenPresetDialog" to="." method="_on_preset_file_selected"]
-[connection signal="file_selected" from="UI/SavePresetDialog" to="." method="_on_save_preset_file_selected"]
-[connection signal="file_selected" from="UI/ImportDialog" to="." method="_on_import_file_selected"]

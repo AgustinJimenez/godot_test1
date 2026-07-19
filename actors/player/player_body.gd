@@ -168,9 +168,15 @@ const SWING_BONES: Dictionary = {
 ## through the same parent-rest conversion as the rest of the skeleton.
 const HAND_BONES: PackedStringArray = ["RightHand", "LeftHand"]
 enum HandRetarget {
-	FROZEN, ## Locked to relaxed_idle's wrist pose all clip long (original behavior - loses aim/punch/hit direction entirely).
-	DELTA_ROTATION, ## Same global rest-relative delta transfer the spine/legs use.
-	LOCAL_COPY, ## Source hand's own LOCAL rotation applied directly under the target forearm's retargeted global pose - no rest-delta math, assumes both rigs' wrist axes are similarly oriented.
+	## Locked to relaxed_idle's wrist pose all clip long (original behavior -
+	## loses aim/punch/hit direction entirely).
+	FROZEN,
+	## Same global rest-relative delta transfer the spine/legs use.
+	DELTA_ROTATION,
+	## Source hand's own LOCAL rotation applied directly under the target
+	## forearm's retargeted global pose - no rest-delta math, assumes both
+	## rigs' wrist axes are similarly oriented.
+	LOCAL_COPY,
 }
 @export var hand_retarget_mode: HandRetarget = HandRetarget.DELTA_ROTATION
 
@@ -188,8 +194,11 @@ const LEG_SWING_MAP: Dictionary = {
 	&"LeftLeg": &"LeftFoot",
 }
 enum LegRetarget {
-	DELTA_ROTATION, ## Original behavior - full rest-relative delta, same as spine.
-	SWING, ## Position-based swing, same technique/tradeoffs as arms (no twist, e.g. foot-turn-out doesn't survive).
+	## Original behavior - full rest-relative delta, same as spine.
+	DELTA_ROTATION,
+	## Position-based swing, same technique/tradeoffs as arms (no twist, e.g.
+	## foot-turn-out doesn't survive).
+	SWING,
 }
 @export var leg_retarget_mode: LegRetarget = LegRetarget.DELTA_ROTATION
 
@@ -351,14 +360,14 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 		var target_height := skeleton.get_bone_global_rest(target_hips).origin.length()
 		if source_height > 0.0001:
 			position_scale = target_height / source_height
-	var source_facing := _skeleton_rest_facing(
+	var source_facing := PlayerBodyPoseMath.skeleton_rest_facing(
 			src_skeleton, &"pelvis", &"Head", &"clavicle_l", &"clavicle_r")
-	var target_facing := _skeleton_rest_facing(
+	var target_facing := PlayerBodyPoseMath.skeleton_rest_facing(
 			skeleton, &"Hips", &"Head", &"LeftShoulder", &"RightShoulder")
 	var source_to_target_facing := Basis(Vector3.UP,
 			source_facing.signed_angle_to(target_facing, Vector3.UP))
-	var arm_position_scale := _skeleton_height(skeleton, &"Hips", &"Head") / maxf(
-			_skeleton_height(src_skeleton, &"pelvis", &"Head"), 0.0001)
+	var arm_position_scale := PlayerBodyPoseMath.skeleton_height(skeleton, &"Hips", &"Head") / maxf(
+			PlayerBodyPoseMath.skeleton_height(src_skeleton, &"pelvis", &"Head"), 0.0001)
 	var sample_count := int(ceil(src.length * RETARGET_SAMPLE_HZ)) + 1
 	for i in sample_count:
 		var time: float = minf(i / RETARGET_SAMPLE_HZ, src.length)
@@ -377,7 +386,8 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 				local_rot = src.rotation_track_interpolate(tracks["rot"], time)
 			src_skeleton.set_bone_pose_rotation(src_idx, local_rot)
 			if tracks.has("pos"):
-				src_skeleton.set_bone_pose_position(src_idx, src.position_track_interpolate(tracks["pos"], time))
+				src_skeleton.set_bone_pose_position(
+						src_idx, src.position_track_interpolate(tracks["pos"], time))
 
 		# Pass 2: compute each target bone's retargeted GLOBAL pose, parent
 		# first (BONE_MAP lists each chain root-to-leaf), then convert down
@@ -429,7 +439,7 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 						skeleton.find_bone(LEG_SWING_MAP[target_name]))
 			else:
 				var src_rest := src_skeleton.get_bone_global_rest(src_idx)
-				var src_pose_global := _manual_global_pose(src_skeleton, src_idx)
+				var src_pose_global := PlayerBodyPoseMath.manual_global_pose(src_skeleton, src_idx)
 				var delta := src_rest.basis.inverse() * src_pose_global.basis
 				target_basis = target_rest.basis * delta
 				if target_name == &"Hips":
@@ -453,7 +463,7 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 	clip_root.free()
 	if hand_retarget_mode == HandRetarget.FROZEN:
 		for hand_bone in HAND_BONES:
-			_bake_held_track(anim, hand_bone, held_pose, src.length)
+			PlayerBodyPoseMath.bake_held_track(anim, hand_bone, held_pose, src.length)
 	return anim
 
 
@@ -484,9 +494,9 @@ func _swing_retarget(src_skel: Skeleton3D, src_idx: int, target_skel: Skeleton3D
 		return target_rest.basis
 	var src_rest_dir := (src_skel.get_bone_global_rest(src_child_idx).origin
 			- src_skel.get_bone_global_rest(src_idx).origin).normalized()
-	var src_pose_dir := (_manual_global_pose(src_skel, src_child_idx).origin
-			- _manual_global_pose(src_skel, src_idx).origin).normalized()
-	var swing := _swing_between(src_rest_dir, src_pose_dir)
+	var src_pose_dir := (PlayerBodyPoseMath.manual_global_pose(src_skel, src_child_idx).origin
+			- PlayerBodyPoseMath.manual_global_pose(src_skel, src_idx).origin).normalized()
+	var swing := PlayerBodyPoseMath.swing_between(src_rest_dir, src_pose_dir)
 	return swing * target_rest.basis
 
 
@@ -523,8 +533,10 @@ func _humanoid_retarget_local_pose(src_skel: Skeleton3D, src_idx: int,
 func _match_arm_skeleton_positions(anim: Animation, src_skel: Skeleton3D,
 		target_global: Dictionary, out_rot_track: Dictionary,
 		direction_map: Basis, position_scale: float) -> void:
-	var source_hips := _manual_global_pose(src_skel, src_skel.find_bone(&"pelvis")).origin
-	var target_hips := _manual_global_pose(skeleton, skeleton.find_bone(&"Hips")).origin
+	var source_hips := PlayerBodyPoseMath.manual_global_pose(
+			src_skel, src_skel.find_bone(&"pelvis")).origin
+	var target_hips := PlayerBodyPoseMath.manual_global_pose(
+			skeleton, skeleton.find_bone(&"Hips")).origin
 	for side_data in [["l", "Left"], ["r", "Right"]]:
 		var source_side: String = side_data[0]
 		var target_side: String = side_data[1]
@@ -539,10 +551,10 @@ func _match_arm_skeleton_positions(anim: Animation, src_skel: Skeleton3D,
 				or not target_global.has(forearm_idx) or not target_global.has(hand_idx)):
 			continue
 		var joints: Array[Vector3] = [
-			_manual_global_pose(skeleton, shoulder_idx).origin,
-			_manual_global_pose(skeleton, arm_idx).origin,
-			_manual_global_pose(skeleton, forearm_idx).origin,
-			_manual_global_pose(skeleton, hand_idx).origin,
+			PlayerBodyPoseMath.manual_global_pose(skeleton, shoulder_idx).origin,
+			PlayerBodyPoseMath.manual_global_pose(skeleton, arm_idx).origin,
+			PlayerBodyPoseMath.manual_global_pose(skeleton, forearm_idx).origin,
+			PlayerBodyPoseMath.manual_global_pose(skeleton, hand_idx).origin,
 		]
 		var lengths: Array[float] = [
 			joints[0].distance_to(joints[1]),
@@ -550,124 +562,31 @@ func _match_arm_skeleton_positions(anim: Animation, src_skel: Skeleton3D,
 			joints[2].distance_to(joints[3]),
 		]
 		var desired_wrist := target_hips + direction_map * (
-				(_manual_global_pose(src_skel, source_hand).origin - source_hips) * position_scale)
-		_solve_fabrik(joints, lengths, desired_wrist)
+				(PlayerBodyPoseMath.manual_global_pose(src_skel, source_hand).origin - source_hips)
+				* position_scale)
+		PlayerBodyPoseMath.solve_fabrik(joints, lengths, desired_wrist)
 		var chain := [shoulder_idx, arm_idx, forearm_idx]
 		for joint in chain.size():
 			_aim_bone_at_direction(anim, target_global, out_rot_track,
 					chain[joint], (joints[joint + 1] - joints[joint]).normalized())
 
 
-func _solve_fabrik(joints: Array[Vector3], lengths: Array[float], target: Vector3) -> void:
-	var root := joints[0]
-	var total_length := lengths[0] + lengths[1] + lengths[2]
-	if root.distance_to(target) >= total_length:
-		var direction := (target - root).normalized()
-		for i in lengths.size():
-			joints[i + 1] = joints[i] + direction * lengths[i]
-		return
-	for iteration in 12:
-		joints[3] = target
-		for i in range(2, -1, -1):
-			joints[i] = joints[i + 1] + (joints[i] - joints[i + 1]).normalized() * lengths[i]
-		joints[0] = root
-		for i in lengths.size():
-			joints[i + 1] = joints[i] + (joints[i + 1] - joints[i]).normalized() * lengths[i]
-		if joints[3].distance_to(target) < 0.00001:
-			break
-
-
 func _aim_bone_at_direction(anim: Animation, target_global: Dictionary,
 		out_rot_track: Dictionary, bone_idx: int, desired_direction: Vector3) -> void:
 	var child_idx := skeleton.get_bone_children(bone_idx)[0]
 	var parent_idx := skeleton.get_bone_parent(bone_idx)
-	var parent_global := _manual_global_pose(skeleton, parent_idx)
-	var bone_global := _manual_global_pose(skeleton, bone_idx)
-	var child_global := _manual_global_pose(skeleton, child_idx)
+	var parent_global := PlayerBodyPoseMath.manual_global_pose(skeleton, parent_idx)
+	var bone_global := PlayerBodyPoseMath.manual_global_pose(skeleton, bone_idx)
+	var child_global := PlayerBodyPoseMath.manual_global_pose(skeleton, child_idx)
 	var current_direction := (child_global.origin - bone_global.origin).normalized()
-	var desired_global_basis := _swing_between(
+	var desired_global_basis := PlayerBodyPoseMath.swing_between(
 			current_direction, desired_direction) * bone_global.basis
 	var local_rotation := (parent_global.basis.inverse()
 			* desired_global_basis).get_rotation_quaternion()
 	skeleton.set_bone_pose_rotation(bone_idx, local_rotation)
-	target_global[bone_idx] = _manual_global_pose(skeleton, bone_idx)
-	_set_latest_rotation_key(anim, out_rot_track, skeleton.get_bone_name(bone_idx), local_rotation)
-
-
-func _set_latest_rotation_key(anim: Animation, out_rot_track: Dictionary,
-		bone_name: StringName, rotation: Quaternion) -> void:
-	if not out_rot_track.has(bone_name):
-		return
-	var track: int = out_rot_track[bone_name]
-	anim.track_set_key_value(track, anim.track_get_key_count(track) - 1, rotation)
-
-
-func _skeleton_height(skel: Skeleton3D, hips_name: StringName,
-		head_name: StringName) -> float:
-	var hips := skel.get_bone_global_rest(skel.find_bone(hips_name)).origin
-	var head := skel.get_bone_global_rest(skel.find_bone(head_name)).origin
-	return hips.distance_to(head)
-
-
-func _skeleton_rest_facing(skel: Skeleton3D, hips_name: StringName,
-		head_name: StringName, left_shoulder_name: StringName,
-		right_shoulder_name: StringName) -> Vector3:
-	var hips := skel.get_bone_global_rest(skel.find_bone(hips_name)).origin
-	var head := skel.get_bone_global_rest(skel.find_bone(head_name)).origin
-	var left := skel.get_bone_global_rest(skel.find_bone(left_shoulder_name)).origin
-	var right := skel.get_bone_global_rest(skel.find_bone(right_shoulder_name)).origin
-	var across := (right - left).normalized()
-	var up := (head - hips).normalized()
-	var facing := across.cross(up)
-	facing.y = 0.0
-	return facing.normalized()
-
-
-## Composes a bone's GLOBAL pose from the LOCAL pose getters directly,
-## walking the parent chain by hand - Skeleton3D.get_bone_global_pose()
-## reads from a cache that's only refreshed on the engine's own per-frame
-## update, which never happens while baking offline inside _ready() (no
-## amount of set_bone_pose_rotation/position calls made it budge, even with
-## force_update_all_bone_transforms()). get_bone_pose() is a plain getter
-## with no such caching, so composing the chain from that manually is what
-## actually reflects poses just set this same sample.
-func _manual_global_pose(skel: Skeleton3D, idx: int) -> Transform3D:
-	var t := skel.get_bone_pose(idx)
-	var parent := skel.get_bone_parent(idx)
-	while parent >= 0:
-		t = skel.get_bone_pose(parent) * t
-		parent = skel.get_bone_parent(parent)
-	return t
-
-
-## Shortest-arc rotation that takes `from` to `to` (both must be normalized).
-func _swing_between(from: Vector3, to: Vector3) -> Basis:
-	var axis := from.cross(to)
-	var len := axis.length()
-	if len < 0.0001:
-		if from.dot(to) > 0.0:
-			return Basis.IDENTITY
-		var perp := from.cross(Vector3.UP)
-		if perp.length() < 0.0001:
-			perp = from.cross(Vector3.RIGHT)
-		return Basis(perp.normalized(), PI)
-	return Basis(axis / len, from.angle_to(to))
-
-
-## Adds a rotation track for held_bone holding a single fixed pose (its
-## value from held_pose's first keyframe) for the whole clip duration.
-func _bake_held_track(
-		anim: Animation, held_bone: StringName, held_pose: Animation, length: float) -> void:
-	for t in held_pose.get_track_count():
-		var path := held_pose.track_get_path(t)
-		if (path.get_subname_count() > 0 and StringName(path.get_subname(0)) == held_bone
-				and held_pose.track_get_type(t) == Animation.TYPE_ROTATION_3D):
-			var value = held_pose.track_get_key_value(t, 0)
-			var new_track := anim.add_track(Animation.TYPE_ROTATION_3D)
-			anim.track_set_path(new_track, NodePath("Skeleton3D:" + String(held_bone)))
-			anim.track_insert_key(new_track, 0.0, value)
-			anim.track_insert_key(new_track, length, value)
-			return
+	target_global[bone_idx] = PlayerBodyPoseMath.manual_global_pose(skeleton, bone_idx)
+	PlayerBodyPoseMath.set_latest_rotation_key(
+			anim, out_rot_track, skeleton.get_bone_name(bone_idx), local_rotation)
 
 
 func _process(delta: float) -> void:

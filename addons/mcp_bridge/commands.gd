@@ -80,6 +80,10 @@ static func handle(request: Dictionary, editor_interface: EditorInterface, pose_
 			return await _cmd_forward_to_runtime(
 					"mcp:test_import_character", [String(request.get("source_path", ""))],
 					editor_interface, pose_debugger, 60.0)
+		"test_button_click":
+			return await _cmd_forward_to_runtime(
+					"mcp:test_button_click", [String(request.get("node_path", ""))],
+					editor_interface, pose_debugger, 10.0)
 		var other:
 			return {"ok": false, "error": "Unknown cmd: %s" % other}
 
@@ -135,7 +139,8 @@ static func _cmd_stop_scene(editor_interface: EditorInterface) -> Dictionary:
 	return {"ok": true, "result": "Stopped"}
 
 
-static func _cmd_dump_live_pose(request: Dictionary, editor_interface: EditorInterface, pose_debugger) -> Dictionary:
+static func _cmd_dump_live_pose(
+		request: Dictionary, editor_interface: EditorInterface, pose_debugger) -> Dictionary:
 	if pose_debugger == null:
 		return {"ok": false, "error": "Pose debugger plugin not initialized"}
 	if not editor_interface.is_playing_scene():
@@ -151,7 +156,8 @@ static func _cmd_dump_live_pose(request: Dictionary, editor_interface: EditorInt
 	return {"ok": true, "result": (parsed if typeof(parsed) == TYPE_DICTIONARY else {})}
 
 
-static func _cmd_set_bone_rotation(request: Dictionary, editor_interface: EditorInterface, pose_debugger) -> Dictionary:
+static func _cmd_set_bone_rotation(
+		request: Dictionary, editor_interface: EditorInterface, pose_debugger) -> Dictionary:
 	if pose_debugger == null:
 		return {"ok": false, "error": "Pose debugger plugin not initialized"}
 	if not editor_interface.is_playing_scene():
@@ -170,7 +176,8 @@ static func _cmd_set_bone_rotation(request: Dictionary, editor_interface: Editor
 	return await _wait_for_command_result(pose_debugger, 5.0)
 
 
-static func _cmd_set_object(request: Dictionary, editor_interface: EditorInterface, pose_debugger) -> Dictionary:
+static func _cmd_set_object(
+		request: Dictionary, editor_interface: EditorInterface, pose_debugger) -> Dictionary:
 	if pose_debugger == null:
 		return {"ok": false, "error": "Pose debugger plugin not initialized"}
 	if not editor_interface.is_playing_scene():
@@ -185,7 +192,8 @@ static func _cmd_set_object(request: Dictionary, editor_interface: EditorInterfa
 	return await _wait_for_command_result(pose_debugger, 5.0)
 
 
-static func _cmd_capture_live_pose(request: Dictionary, editor_interface: EditorInterface, pose_debugger) -> Dictionary:
+static func _cmd_capture_live_pose(
+		request: Dictionary, editor_interface: EditorInterface, pose_debugger) -> Dictionary:
 	if pose_debugger == null:
 		return {"ok": false, "error": "Pose debugger plugin not initialized"}
 	if not editor_interface.is_playing_scene():

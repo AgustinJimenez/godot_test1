@@ -30,23 +30,37 @@ var _hurt_tween: Tween
 @onready var drop_button: Button = $InventoryOverlay/Center/Panel/Margin/VBox/Buttons/DropButton
 @onready var debug_overlay: Control = $DebugOverlay
 @onready var main_panel: PanelContainer = $DebugOverlay/Center/MainPanel
-@onready var main_guide_button: Button = $DebugOverlay/Center/MainPanel/MainMargin/MainVBox/GuideButton
-@onready var main_debug_button: Button = $DebugOverlay/Center/MainPanel/MainMargin/MainVBox/DebugButton
-@onready var main_close_button: Button = $DebugOverlay/Center/MainPanel/MainMargin/MainVBox/CloseButton
+@onready var main_guide_button: Button = get_node(
+		^"DebugOverlay/Center/MainPanel/MainMargin/MainVBox/GuideButton")
+@onready var main_debug_button: Button = get_node(
+		^"DebugOverlay/Center/MainPanel/MainMargin/MainVBox/DebugButton")
+@onready var main_close_button: Button = get_node(
+		^"DebugOverlay/Center/MainPanel/MainMargin/MainVBox/CloseButton")
 @onready var guide_panel: PanelContainer = $DebugOverlay/Center/GuidePanel
-@onready var guide_back_button: Button = $DebugOverlay/Center/GuidePanel/GuideMargin/GuideVBox/BackButton
+@onready var guide_back_button: Button = get_node(
+		^"DebugOverlay/Center/GuidePanel/GuideMargin/GuideVBox/BackButton")
 @onready var debug_panel: PanelContainer = $DebugOverlay/Center/DebugPanel
-@onready var debug_field_x: LineEdit = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldX
-@onready var debug_field_y: LineEdit = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldY
-@onready var debug_field_z: LineEdit = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldZ
-@onready var debug_apply: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/ApplyButton
-@onready var anim_clips_button: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/AnimClipsButton
-@onready var footstep_button: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootstepButton
-@onready var fov_gizmo_button: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FovGizmoButton
-@onready var debug_back_button: Button = $DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/BackButton
+@onready var debug_field_x: LineEdit = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldX")
+@onready var debug_field_y: LineEdit = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldY")
+@onready var debug_field_z: LineEdit = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/FieldZ")
+@onready var debug_apply: Button = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/EyeOffsetRow/ApplyButton")
+@onready var anim_clips_button: Button = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/AnimClipsButton")
+@onready var footstep_button: Button = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootstepButton")
+@onready var fov_gizmo_button: Button = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FovGizmoButton")
+@onready var debug_back_button: Button = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/BackButton")
 @onready var anim_panel_anchor: Control = $DebugOverlay/AnimPanelAnchor
-@onready var anim_list: VBoxContainer = $DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/AnimScroll/AnimList
-@onready var anim_back_button: Button = $DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/BackButton
+@onready var anim_list: VBoxContainer = get_node(
+		^"DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/AnimScroll/AnimList")
+@onready var anim_back_button: Button = get_node(
+		^"DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/BackButton")
 
 var _anim_list_built := false
 
@@ -304,10 +318,12 @@ func _on_anim_button_pressed(anim_name: StringName) -> void:
 
 func _on_footstep_button_pressed() -> void:
 	var player := get_tree().get_first_node_in_group(&"player")
-	if player == null or not ("body" in player) or not player.body.has_method(&"toggle_debug_footsteps"):
+	if (player == null or not ("body" in player)
+			or not player.body.has_method(&"toggle_debug_footsteps")):
 		return
 	player.body.toggle_debug_footsteps()
-	footstep_button.text = "Footstep Markers: ON" if player.body.debug_footsteps else "Footstep Markers: OFF"
+	footstep_button.text = (
+			"Footstep Markers: ON" if player.body.debug_footsteps else "Footstep Markers: OFF")
 
 
 func _on_fov_gizmo_button_pressed() -> void:

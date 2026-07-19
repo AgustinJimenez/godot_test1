@@ -338,7 +338,7 @@ func _physics_process(delta: float) -> void:
 	hud.set_prompt("[E] " + target.prompt if target else "")
 
 
- 
+
 ## Keeps the eye clear of each torso bone's own TORSO_CLEARANCE radius. Only
 ## affects this small position nudge, not the camera's actual look direction
 ## (_look_pitch/_look_yaw, set directly from mouse input) - so you can still
@@ -461,7 +461,7 @@ func _update_fov_gizmo() -> void:
 	_fov_mesh.surface_end()
 
 
- 
+
 func _update_stamina(delta: float, input_dir: Vector2) -> bool:
 	# Sprint only counts while actually moving forward, standing up.
 	var wants_sprint: bool = (Input.is_action_pressed(&"sprint")
@@ -485,7 +485,7 @@ func _update_capsule(delta: float) -> void:
 	capsule.height = lerpf(capsule.height, target_height, 8.0 * delta)
 	collision.position.y = capsule.height * 0.5
 
- 
+
 func _update_weapon_equip() -> void:
 	# Single weapon slot for now: owning the pistol item means it is equipped.
 	weapon.equipped = inventory.count_of(weapon.weapon_item) > 0

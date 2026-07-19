@@ -97,8 +97,9 @@ static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 			config.head_target, config.shoulder_l_target, config.shoulder_r_target)
 	var source_to_target_facing := Basis(Vector3.UP,
 			source_facing.signed_angle_to(target_facing, Vector3.UP))
-	var arm_position_scale := _skeleton_height(target_skeleton, config.hips_target, config.head_target) / maxf(
-			_skeleton_height(src_skeleton, config.hips_source, config.head_source), 0.0001)
+	var arm_position_scale := (
+			_skeleton_height(target_skeleton, config.hips_target, config.head_target)
+			/ maxf(_skeleton_height(src_skeleton, config.hips_source, config.head_source), 0.0001))
 	var sample_count := int(ceil(src_animation.length * RETARGET_SAMPLE_HZ)) + 1
 	for i in sample_count:
 		var time: float = minf(i / RETARGET_SAMPLE_HZ, src_animation.length)
@@ -127,8 +128,10 @@ static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 					src_skeleton, src_idx, target_skeleton, target_idx, position_scale)
 			local.basis = Basis(local.basis.get_rotation_quaternion())
 			var parent_idx := target_skeleton.get_bone_parent(target_idx)
-			var parent_global: Transform3D = target_global.get(
-					parent_idx, target_skeleton.get_bone_global_rest(parent_idx)) if parent_idx >= 0 else Transform3D()
+			var parent_global := Transform3D()
+			if parent_idx >= 0:
+				parent_global = target_global.get(
+						parent_idx, target_skeleton.get_bone_global_rest(parent_idx))
 			target_global[target_idx] = parent_global * local
 			target_skeleton.set_bone_pose_rotation(target_idx, local.basis.get_rotation_quaternion())
 			target_skeleton.set_bone_pose_position(target_idx, local.origin)
@@ -242,7 +245,8 @@ static func _aim_bone_at_direction(anim: Animation, target_skel: Skeleton3D,
 		anim.track_set_key_value(track, anim.track_get_key_count(track) - 1, local_rotation)
 
 
-static func _skeleton_height(skel: Skeleton3D, hips_name: StringName, head_name: StringName) -> float:
+static func _skeleton_height(
+		skel: Skeleton3D, hips_name: StringName, head_name: StringName) -> float:
 	var hips := skel.get_bone_global_rest(skel.find_bone(hips_name)).origin
 	var head := skel.get_bone_global_rest(skel.find_bone(head_name)).origin
 	return hips.distance_to(head)

@@ -53,8 +53,10 @@ const _ACTION_PACK_SIDED_SUFFIXES: PackedStringArray = [
 const HBM_SOURCE_MODEL_PATH := "res://assets/models/human_basic_motions/HumanM_Model.fbx"
 const HBM_CLIPS: Dictionary = {
 	&"hbm_idle": ["res://assets/models/human_basic_motions/HumanM@Idle01.fbx", "HumanM_Idle01"],
-	&"hbm_walk": ["res://assets/models/human_basic_motions/HumanM@Walk01_Forward.fbx", "HumanM_Walk01_Forward"],
-	&"hbm_run": ["res://assets/models/human_basic_motions/HumanM@Run01_Forward.fbx", "HumanM_Run01_Forward"],
+	&"hbm_walk": [
+		"res://assets/models/human_basic_motions/HumanM@Walk01_Forward.fbx", "HumanM_Walk01_Forward"],
+	&"hbm_run": [
+		"res://assets/models/human_basic_motions/HumanM@Run01_Forward.fbx", "HumanM_Run01_Forward"],
 }
 const HBM_LIBRARY := &"hbm"
 const HBM_GROUP := &"Human Basic Motions FREE"
@@ -76,7 +78,8 @@ static func groups() -> Dictionary:
 ## Tries anim_name against both pool libraries; returns true and starts
 ## playback if found, false (no-op) otherwise, so callers can fall through
 ## to their own character-specific library.
-static func try_play(anim_player: AnimationPlayer, anim_name: StringName, blend_time: float) -> bool:
+static func try_play(
+		anim_player: AnimationPlayer, anim_name: StringName, blend_time: float) -> bool:
 	for library in [ACTION_PACK_LIBRARY, HBM_LIBRARY]:
 		var path := String(library) + "/" + String(anim_name)
 		if anim_player.has_animation(path):
@@ -131,7 +134,8 @@ static func _retarget_action_pack_clip(fbx_path: String, source_skeleton: Skelet
 	return anim
 
 
-static func _action_pack_bone_map_config(target_bone_prefix: String) -> HumanoidRetargeter.BoneMapConfig:
+static func _action_pack_bone_map_config(
+		target_bone_prefix: String) -> HumanoidRetargeter.BoneMapConfig:
 	return mixamo_family_bone_map_config(ACTION_PACK_SOURCE_PREFIX, target_bone_prefix)
 
 

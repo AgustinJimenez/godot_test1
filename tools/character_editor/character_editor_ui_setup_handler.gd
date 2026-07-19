@@ -1,0 +1,428 @@
+class_name CharacterEditorUiSetupHandler
+extends RefCounted
+
+## Panel/control setup and population: editor mode, camera mode buttons,
+## panel resize/collapse, animation and attachment pickers, character
+## selection. Holds a back-reference to the main CharacterEditor -
+## extracted purely to keep character_editor.gd under a manageable size.
+
+var editor: CharacterEditor
+
+
+func _init(editor_ref: CharacterEditor) -> void:
+	editor = editor_ref
+
+
+func _update_responsive_layout() -> void:
+	var viewport_size := editor.get_viewport().get_visible_rect().size
+	editor._ui_scale = clampf(viewport_size.y / editor.BASE_UI_HEIGHT, 1.0, editor.MAX_UI_SCALE)
+	editor.ui_layer.transform = Transform2D.IDENTITY.scaled(Vector2.ONE * editor._ui_scale)
+	var logical_viewport_size := viewport_size / editor._ui_scale
+	var panel_width := clampf(
+			logical_viewport_size.x * editor.PANEL_WIDTH_RATIO,
+			editor.MIN_PANEL_WIDTH,
+			editor.MAX_PANEL_WIDTH)
+	var panel_height := clampf(
+			logical_viewport_size.y - 32.0,
+			editor.MIN_PANEL_HEIGHT,
+			editor.MAX_PANEL_HEIGHT)
+	if not editor._panel_user_layout:
+		editor.panel.position = Vector2(16.0, 16.0)
+		editor.panel.size = Vector2(panel_width, panel_height)
+		editor._expanded_panel_size = editor.panel.size
+	else:
+		_clamp_panel_to_viewport(logical_viewport_size)
+	editor.viewport_toolbar.position = Vector2(
+			logical_viewport_size.x - editor.viewport_toolbar.size.x - 16.0,
+			logical_viewport_size.y - editor.viewport_toolbar.size.y - 16.0)
+	_update_panel_dependent_layout()
+	_update_panel_resize_handle()
+
+
+func _clamp_panel_to_viewport(logical_viewport_size: Vector2) -> void:
+	var max_position := Vector2(
+			maxf(16.0, logical_viewport_size.x - 240.0),
+			maxf(16.0, logical_viewport_size.y - editor.COLLAPSED_PANEL_HEIGHT))
+	editor.panel.position = editor.panel.position.clamp(Vector2(0.0, 0.0), max_position)
+	var available_size := logical_viewport_size - editor.panel.position - Vector2(8.0, 8.0)
+	if editor._panel_collapsed:
+		editor.panel.size.y = editor.COLLAPSED_PANEL_HEIGHT
+		editor.panel.size.x = minf(editor.panel.size.x, available_size.x)
+	else:
+		editor.panel.size = Vector2(
+				clampf(editor.panel.size.x, minf(editor.MIN_USER_PANEL_SIZE.x, available_size.x),
+						available_size.x),
+				clampf(editor.panel.size.y, minf(editor.MIN_USER_PANEL_SIZE.y, available_size.y),
+						available_size.y))
+		editor._expanded_panel_size = editor.panel.size
+
+
+func _update_panel_dependent_layout() -> void:
+	if not editor._panel_collapsed:
+		editor.bone_scroll.custom_minimum_size.y = editor.MIN_BONE_SCROLL_HEIGHT + maxf(
+				editor.panel.size.y - editor.MIN_PANEL_HEIGHT, 0.0)
+
+
+func _update_panel_resize_handle() -> void:
+	editor.panel_resize_handle.visible = not editor._panel_collapsed
+	editor.panel_resize_handle.position = (
+			editor.panel.position + editor.panel.size - editor.panel_resize_handle.size)
+
+
+func _setup_controls() -> void:
+	for kind in editor.CHARACTER_KINDS:
+		editor.character_picker.add_item(kind.capitalize())
+		editor.character_picker.set_item_metadata(editor.character_picker.item_count - 1, kind)
+	editor.character_picker.item_selected.connect(_on_character_selected)
+	_setup_animation_controls()
+	_setup_attachment_controls()
+	editor.edit_mode_button.pressed.connect(_on_editor_mode_pressed.bind(false))
+	editor.compare_mode_button.pressed.connect(_on_editor_mode_pressed.bind(true))
+	editor.view_picker.add_item("Full body")
+	editor.view_picker.add_item("Attachment close-up")
+	editor.view_picker.add_item("Isolated attachment")
+	editor.view_picker.item_selected.connect(editor._camera_handler._on_view_selected)
+	editor.pause_toggle.toggled.connect(editor._camera_handler._on_pause_toggled)
+	editor.show_bones_toggle.toggled.connect(editor._gizmo_handler._on_show_bones_toggled)
+	editor.free_camera_toggle.toggled.connect(editor._camera_handler._on_free_camera_toggled)
+	editor.root_motion_toggle.toggled.connect(editor._camera_handler._on_root_motion_toggled)
+	editor.orbit_camera_button.pressed.connect(_on_camera_mode_pressed.bind(editor.CAMERA_MODE_ORBIT))
+	editor.move_camera_button.pressed.connect(_on_camera_mode_pressed.bind(editor.CAMERA_MODE_MOVE))
+	editor.zoom_out_button.pressed.connect(_on_zoom_out_pressed)
+	editor.zoom_in_button.pressed.connect(_on_zoom_in_pressed)
+	editor.reset_view_button.pressed.connect(_on_reset_camera_view_pressed)
+	editor.collapse_panel_button.pressed.connect(_on_collapse_panel_pressed)
+	editor.title_bar.gui_input.connect(_on_title_bar_gui_input)
+	editor.panel_resize_handle.gui_input.connect(_on_panel_resize_handle_gui_input)
+	for axis in 3:
+		editor.axis_ring_toggles[axis].toggled.connect(
+				editor._gizmo_handler._on_axis_ring_toggled.bind(axis))
+	# _populate_bone_controls() and _sync_object_controls() are NOT called
+	# here - both touch body/_held_object, which don't exist yet until
+	# _load_character() runs (right after _setup_controls(), including for
+	# the very first character load). _load_character() calls both itself.
+	for axis in 3:
+		editor.position_sliders[axis].value_changed.connect(
+				editor._gizmo_handler._on_object_position_changed.bind(axis))
+		editor.rotation_sliders[axis].value_changed.connect(
+				editor._gizmo_handler._on_object_rotation_changed.bind(axis))
+		_color_axis_slider(editor.position_sliders[axis], editor.position_values[axis], axis)
+		_color_axis_slider(editor.rotation_sliders[axis], editor.rotation_values[axis], axis)
+	editor.scale_slider.value_changed.connect(editor._gizmo_handler._on_object_scale_changed)
+	editor.preset_path_field.text = editor._current_pose_path
+	_update_camera_mode_buttons()
+	_update_editor_mode_buttons()
+	# These 16 used to be wired as scene-file (.tscn [connection]) signals
+	# pointing "to=. method=_on_x_pressed" - i.e. calling a method directly
+	# on the root CharacterEditor node. Moving their handler functions out
+	# to component objects (this whole file's worth of extraction) silently
+	# broke every one of them: the scene-file connections still existed,
+	# still fired, but called a method name that no longer exists on the
+	# root - Import Character's dialog simply never opened, with no error
+	# visible anywhere I was testing from (the MCP bridge always called
+	# component methods directly, never through the actual button-click ->
+	# scene-signal path). Reconnecting all of them here, in code, instead of
+	# leaving them as invisible-to-grep .tscn resource data - the matching
+	# [connection] blocks were removed from character_editor.tscn.
+	editor.get_node(^"UI/Panel/PanelScroll/Margin/VBox/BoneButtons/ResetBone").pressed.connect(
+			editor._bone_controls_handler._on_reset_bone_pressed)
+	editor.get_node(^"UI/Panel/PanelScroll/Margin/VBox/BoneButtons/ResetAll").pressed.connect(
+			editor._bone_controls_handler._on_reset_all_pressed)
+	editor.get_node(^"UI/Panel/PanelScroll/Margin/VBox/ObjectRow/BrowseObject").pressed.connect(
+			editor._pose_io_handler._on_browse_object_pressed)
+	editor.get_node(^"UI/Panel/PanelScroll/Margin/VBox/PresetRow/NewPreset").pressed.connect(
+			editor._pose_io_handler._on_new_preset_pressed)
+	editor.get_node(^"UI/Panel/PanelScroll/Margin/VBox/PresetRow/OpenPreset").pressed.connect(
+			editor._pose_io_handler._on_open_preset_pressed)
+	editor.get_node(^"UI/Panel/PanelScroll/Margin/VBox/PresetRow/SavePresetAs").pressed.connect(
+			editor._pose_io_handler._on_save_preset_as_pressed)
+	editor.save_pose_button.pressed.connect(editor._pose_io_handler._on_save_pose_pressed)
+	editor.load_pose_button.pressed.connect(editor._pose_io_handler._on_load_pose_pressed)
+	editor.get_node(^"UI/Panel/PanelScroll/Margin/VBox/PoseActions/SaveImage").pressed.connect(
+			editor._pose_io_handler._on_save_image_pressed)
+	editor.get_node(^"UI/Panel/PanelScroll/Margin/VBox/PoseActions/Copy").pressed.connect(
+			editor._pose_io_handler._on_copy_pressed)
+	editor.import_character_button.pressed.connect(
+			editor._import_handler._on_import_character_pressed)
+	editor.import_animation_button.pressed.connect(
+			editor._import_handler._on_import_animation_pressed)
+	editor.object_dialog.file_selected.connect(editor._pose_io_handler._on_object_file_selected)
+	editor.open_preset_dialog.file_selected.connect(editor._pose_io_handler._on_preset_file_selected)
+	editor.save_preset_dialog.file_selected.connect(
+			editor._pose_io_handler._on_save_preset_file_selected)
+	editor.import_dialog.file_selected.connect(editor._import_handler._on_import_file_selected)
+
+
+func _on_editor_mode_pressed(compare_enabled: bool) -> void:
+	var mode_changed: bool = compare_enabled != editor._comparison.enabled
+	if mode_changed and compare_enabled and not editor._panel_collapsed:
+		editor._edit_panel_size_before_compare = editor.panel.size
+		editor.panel.size.x = minf(editor.panel.size.x, editor.MIN_USER_PANEL_SIZE.x)
+		editor._expanded_panel_size = editor.panel.size
+		editor._panel_user_layout = true
+	elif (mode_changed and not compare_enabled
+			and not editor._panel_collapsed and not editor._edit_panel_size_before_compare.is_zero_approx()):
+		editor.panel.size = editor._edit_panel_size_before_compare
+		editor._expanded_panel_size = editor.panel.size
+		_clamp_panel_to_viewport(editor.get_viewport().get_visible_rect().size / editor._ui_scale)
+	_update_panel_dependent_layout()
+	_update_panel_resize_handle()
+	editor.view_picker.select(0)
+	editor.view_picker.disabled = compare_enabled
+	editor.body.mesh.mesh = editor._full_body_mesh
+	editor._joint_focus_active = false
+	editor._orbiting = false
+	editor._orbiting_joint = false
+	var comparison_status: String = editor._comparison.set_enabled(
+			compare_enabled, editor._current_animation)
+	editor._comparison.set_paused(editor.pause_toggle.button_pressed)
+	_update_editor_mode_buttons()
+	editor._camera_handler._frame_full_body()
+	editor.status_label.text = comparison_status
+
+
+func _update_editor_mode_buttons() -> void:
+	editor.edit_mode_button.set_pressed_no_signal(not editor._comparison.enabled)
+	editor.compare_mode_button.set_pressed_no_signal(editor._comparison.enabled)
+
+
+func _on_camera_mode_pressed(mode: int) -> void:
+	editor._camera_mode = mode
+	editor._captured = false
+	editor._orbiting = false
+	editor._orbiting_joint = false
+	editor._moving_camera = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if editor.free_camera_toggle.button_pressed:
+		editor.free_camera_toggle.set_pressed_no_signal(false)
+	_update_camera_mode_buttons()
+	editor.status_label.text = ("Drag empty 3D space to orbit" if mode == editor.CAMERA_MODE_ORBIT
+			else "Drag empty 3D space to move the camera")
+
+
+func _update_camera_mode_buttons() -> void:
+	editor.orbit_camera_button.set_pressed_no_signal(editor._camera_mode == editor.CAMERA_MODE_ORBIT)
+	editor.move_camera_button.set_pressed_no_signal(editor._camera_mode == editor.CAMERA_MODE_MOVE)
+
+
+func _on_zoom_out_pressed() -> void:
+	editor._camera_handler._apply_camera_zoom(1.0 / editor.ZOOM_STEP)
+
+
+func _on_zoom_in_pressed() -> void:
+	editor._camera_handler._apply_camera_zoom(editor.ZOOM_STEP)
+
+
+func _on_reset_camera_view_pressed() -> void:
+	editor.view_picker.select(0)
+	editor._camera_handler._on_view_selected(0)
+	editor.status_label.text = "Camera view reset"
+
+
+func _on_collapse_panel_pressed() -> void:
+	editor._panel_collapsed = not editor._panel_collapsed
+	editor._panel_user_layout = true
+	if editor._panel_collapsed:
+		editor._expanded_panel_size = editor.panel.size
+	for child in editor.panel_vbox.get_children():
+		if child != editor.title_bar:
+			(child as Control).visible = not editor._panel_collapsed
+	editor.collapse_panel_button.icon = (
+			editor.EXPAND_ICON if editor._panel_collapsed else editor.COLLAPSE_ICON)
+	editor.collapse_panel_button.tooltip_text = (
+			"Restore panel" if editor._panel_collapsed else "Minimize panel")
+	if editor._panel_collapsed:
+		editor.panel.size.y = editor.COLLAPSED_PANEL_HEIGHT
+	else:
+		editor.panel.size = editor._expanded_panel_size
+	_update_panel_dependent_layout()
+	_update_panel_resize_handle()
+
+
+func _on_title_bar_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		editor._dragging_panel = event.pressed
+		if event.pressed:
+			editor._panel_user_layout = true
+	elif event is InputEventMouseMotion and editor._dragging_panel:
+		editor.panel.position += event.relative / editor._ui_scale
+		_clamp_panel_to_viewport(editor.get_viewport().get_visible_rect().size / editor._ui_scale)
+		_update_panel_resize_handle()
+
+
+func _on_panel_resize_handle_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		editor._resizing_panel = event.pressed
+		if event.pressed:
+			editor._panel_user_layout = true
+	elif event is InputEventMouseMotion and editor._resizing_panel:
+		var logical_viewport_size := editor.get_viewport().get_visible_rect().size / editor._ui_scale
+		var available_size := logical_viewport_size - editor.panel.position - Vector2(8.0, 8.0)
+		var desired_size: Vector2 = editor.panel.size + event.relative / editor._ui_scale
+		desired_size = Vector2(
+				clampf(desired_size.x, minf(editor.MIN_USER_PANEL_SIZE.x, available_size.x),
+						available_size.x),
+				clampf(desired_size.y, minf(editor.MIN_USER_PANEL_SIZE.y, available_size.y),
+						available_size.y))
+		editor.bone_scroll.custom_minimum_size.y = editor.MIN_BONE_SCROLL_HEIGHT + maxf(
+				desired_size.y - editor.MIN_PANEL_HEIGHT, 0.0)
+		editor.panel.size = desired_size
+		editor._expanded_panel_size = editor.panel.size
+		_update_panel_resize_handle()
+
+
+func _color_axis_slider(slider: HSlider, value_label: Label, axis: int) -> void:
+	var axis_color: Color = editor.AXIS_COLORS[axis]
+	slider.modulate = axis_color
+	value_label.add_theme_color_override(&"font_color", axis_color)
+	var axis_label := slider.get_parent().get_node_or_null("Axis") as Label
+	if axis_label != null:
+		axis_label.add_theme_color_override(&"font_color", axis_color)
+
+
+func _setup_animation_controls() -> void:
+	# One-time signal wiring only - unlike _populate_animation_controls(),
+	# which needs body to exist and is called by _load_character() instead,
+	# including for the very first character load.
+	editor.animation_group_picker.item_selected.connect(_on_animation_group_selected)
+	editor.animation_picker.item_selected.connect(_on_animation_selected)
+
+
+## Re-run on every character switch (unlike _setup_animation_controls, which
+## wires signals exactly once) - the animation groups and current animation
+## are entirely character-specific.
+func _populate_animation_controls() -> void:
+	editor.animation_group_picker.clear()
+	editor._animation_groups = editor.body.get_animation_groups()
+	if not editor._custom_clips.is_empty():
+		var custom_names: Array[StringName] = []
+		for clip_name: StringName in editor._custom_clips:
+			custom_names.append(clip_name)
+		editor._animation_groups[&"Custom"] = custom_names
+	for group_name in editor._animation_groups:
+		editor.animation_group_picker.add_item(String(group_name))
+		editor.animation_group_picker.set_item_metadata(
+				editor.animation_group_picker.item_count - 1, StringName(group_name))
+	if not _animation_exists_in_groups(editor._current_animation):
+		editor._current_animation = _first_animation_in_groups()
+	_select_animation_in_ui(editor._current_animation)
+	editor.body.play_debug_anim(editor._current_animation, 0.0)
+
+
+func _animation_exists_in_groups(animation_name: StringName) -> bool:
+	for group_name in editor._animation_groups:
+		if animation_name in editor._animation_groups.get(group_name, []):
+			return true
+	return false
+
+
+func _first_animation_in_groups() -> StringName:
+	for group_name in editor._animation_groups:
+		var clips: Array = editor._animation_groups[group_name]
+		if not clips.is_empty():
+			return clips[0]
+	return &""
+
+
+func _setup_attachment_controls() -> void:
+	# One-time signal wiring only - see _setup_animation_controls().
+	editor.attachment_picker.item_selected.connect(_on_attachment_selected)
+
+
+## Re-run on every character switch - the attachment bone list is
+## character-specific (different skeletons, different bone names).
+func _populate_attachment_controls() -> void:
+	editor.attachment_picker.clear()
+	for bone_index in editor.body.skeleton.get_bone_count():
+		var bone_name := editor.body.skeleton.get_bone_name(bone_index)
+		editor.attachment_picker.add_item(String(bone_name))
+		editor.attachment_picker.set_item_metadata(editor.attachment_picker.item_count - 1, bone_name)
+	if (editor.body.skeleton.find_bone(editor._attachment_bone) < 0
+			and editor.body.skeleton.get_bone_count() > 0):
+		editor._attachment_bone = editor.body.skeleton.get_bone_name(0)
+	_select_attachment_in_ui(editor._attachment_bone)
+	editor._isolated_attachment_mesh = (
+			editor._build_isolated_attachment_mesh() if editor.body.supports_held_object else null)
+
+
+func _on_character_selected(index: int) -> void:
+	var kind: String = editor.character_picker.get_item_metadata(index)
+	if kind != editor._character_kind:
+		editor._load_character(kind)
+
+
+func _select_character_in_ui(kind: String) -> void:
+	for index in editor.character_picker.item_count:
+		if editor.character_picker.get_item_metadata(index) == kind:
+			editor.character_picker.select(index)
+			return
+
+
+func _on_animation_group_selected(index: int) -> void:
+	_populate_animation_picker(editor.animation_group_picker.get_item_metadata(index))
+
+
+func _populate_animation_picker(group_name: StringName) -> void:
+	editor.animation_picker.clear()
+	var animations: Array = editor._animation_groups.get(group_name, [])
+	for animation_name in animations:
+		editor.animation_picker.add_item(String(animation_name))
+		editor.animation_picker.set_item_metadata(
+				editor.animation_picker.item_count - 1, StringName(animation_name))
+
+
+func _on_animation_selected(index: int) -> void:
+	_set_animation(editor.animation_picker.get_item_metadata(index))
+
+
+func _set_animation(animation_name: StringName) -> void:
+	editor._current_animation = animation_name
+	editor.body.node.position = editor.CHARACTER_SPAWN_POSITION
+	var custom_path := "custom/" + String(animation_name)
+	if editor.body.anim_player.has_animation(custom_path):
+		editor.body.anim_player.play(custom_path, 0.0)
+	else:
+		editor.body.play_debug_anim(animation_name, 0.0)
+	var comparison_status: String = editor._comparison.play_animation(animation_name)
+	if editor.pause_toggle.button_pressed:
+		editor.body.anim_player.pause()
+		editor._comparison.set_paused(true)
+	editor.status_label.text = (comparison_status if not comparison_status.is_empty()
+			else "Playing %s" % animation_name)
+
+
+func _select_animation_in_ui(animation_name: StringName) -> void:
+	for group_index in editor.animation_group_picker.item_count:
+		var group_name: StringName = editor.animation_group_picker.get_item_metadata(group_index)
+		if animation_name in editor._animation_groups.get(group_name, []):
+			editor.animation_group_picker.select(group_index)
+			_populate_animation_picker(group_name)
+			for animation_index in editor.animation_picker.item_count:
+				if editor.animation_picker.get_item_metadata(animation_index) == animation_name:
+					editor.animation_picker.select(animation_index)
+					return
+
+
+func _on_attachment_selected(index: int) -> void:
+	_set_attachment_bone(editor.attachment_picker.get_item_metadata(index), true)
+
+
+func _set_attachment_bone(bone_name: StringName, update_view: bool) -> void:
+	if editor.body.skeleton.find_bone(bone_name) < 0:
+		return
+	editor._attachment_bone = bone_name
+	editor._object_attachment.bone_name = bone_name
+	editor._isolated_attachment_mesh = editor._build_isolated_attachment_mesh()
+	if update_view and editor.view_picker.selected == 2:
+		editor.body.mesh.mesh = (editor._isolated_attachment_mesh
+				if editor._isolated_attachment_mesh != null else editor._full_body_mesh)
+	if update_view and editor.view_picker.selected != 0:
+		editor._camera_handler._frame_attachment()
+	editor.status_label.text = "Object attached to %s" % bone_name
+
+
+func _select_attachment_in_ui(bone_name: StringName) -> void:
+	for index in editor.attachment_picker.item_count:
+		if editor.attachment_picker.get_item_metadata(index) == bone_name:
+			editor.attachment_picker.select(index)
+			return

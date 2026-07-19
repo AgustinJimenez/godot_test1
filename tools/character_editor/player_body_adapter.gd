@@ -18,7 +18,8 @@ extends CharacterAdapter
 ## stays untouched; this only ever adds extra libraries onto the same
 ## AnimationPlayer.
 
-const _MODEL_PATH := "res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx"
+const _MODEL_PATH := (
+		"res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx")
 const _SCRIPT_PATH := "res://actors/player/player_body.gd"
 const _BONE_PREFIX := ""
 
