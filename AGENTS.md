@@ -13,11 +13,22 @@ First-person survival horror game (Resident Evil-style scarcity) in **Godot 4.6*
 The `godot` binary is on PATH (Godot 4.6 mono build).
 
 ```sh
+python3 -m venv .venv                          # create the ignored development environment
+.venv/bin/pip install -r requirements-dev.txt # install pinned lint + hook tooling
+scripts/check.sh                    # canonical lint, import, and GDScript parse check
+.venv/bin/pre-commit install        # install the repository's local commit hook
 godot --headless --import          # reimport assets + register class_name scripts; run after adding files outside the editor
 godot --headless --quit-after 10   # boot the main scene for N frames; smoke test for runtime errors
 godot --path . res://levels/<scene>.tscn   # run a specific scene
 godot --doctool <path> --headless  # dump the FULL engine API reference (all ~900 classes) as XML into <path>/doc/classes
 ```
+
+`scripts/check.sh` is the single project-wide static validation entrypoint. It
+runs the pinned `gdlint` configuration, imports resources, and parses every
+GDScript file with Godot 4.6.2. The local pre-commit hook and GitHub Actions
+workflow both call this same script. Keep `.gdlintrc`'s 1000-line ceiling and
+disabled `class-definitions-order` rule unless a deliberate refactor or project
+convention change justifies updating them.
 
 Prefer `--doctool` over web search for any Godot API question: it's generated straight from the exact installed 4.6.2 binary, so it can't drift from a web page describing a different version, and it works offline. Verified against `SkeletonModifier3D`'s new (Jan 2026) IK framework - `doc/classes/FABRIK3D.xml`, `IKModifier3D.xml`, `RetargetModifier3D.xml` etc. all exist with complete, accurate method/property signatures and inheritance chains. Note: this specific binary distribution's dump has **empty prose `<description>` blocks across the board** (confirmed on long-established classes too, e.g. `SurfaceTool` - not just brand-new features), so treat `--doctool` as authoritative for method/property/inheritance structure, not for explanatory text; fall back to web search only for prose explanations of *why*, not *what exists*.
 

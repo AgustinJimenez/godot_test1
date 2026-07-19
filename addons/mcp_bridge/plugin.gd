@@ -33,6 +33,10 @@ var _pose_debugger  # pose_debugger_plugin.gd instance; untyped since it has
 
 
 func _enter_tree() -> void:
+	# The bridge exists for an agent sharing the visible editor. Headless import
+	# and CI processes neither need it nor should contend with that editor's port.
+	if DisplayServer.get_name() == "headless":
+		return
 	_server = TCPServer.new()
 	var err := _server.listen(PORT, HOST)
 	if err != OK:

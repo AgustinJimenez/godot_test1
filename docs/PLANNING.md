@@ -202,6 +202,7 @@ Ordered so each milestone produces something playable and teaches new ground. Ti
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-07-18 | Project checks use pinned `gdtoolkit`/`pre-commit` dependencies and one `scripts/check.sh` entrypoint, enforced by both a local pre-commit hook and GitHub Actions; the 1000-line limit stays in place and `class-definitions-order` stays disabled | Reproducible, automatic lint/import/parse validation prevents tool-version drift and forgotten manual checks. The current size threshold guards against renewed file growth without forcing another arbitrary split, while declaration reordering would add churn rather than correctness coverage. |
 | 2026-07-15 | GDScript over C# | Fastest iteration for learning; best docs/examples for Godot 4 |
 | 2026-07-15 | Scarcity survival over hide-only or action | Richest system mix to learn (inventory, combat, AI, economy) |
 | 2026-07-15 | Abandoned facility setting | Contained scope, interior lighting control, classic puzzle-box layout |

@@ -193,3 +193,25 @@ Result: `player_body.gd` ~1016 -> 922 lines, plus `player_body_pose_math.gd`
 ## Final state
 
 `gdlint .` reports zero findings project-wide.
+
+## Reproducible enforcement
+
+The initial setup committed `.gdlintrc` but relied on whichever `gdlint`
+happened to be installed globally, and nothing ran it automatically. The
+follow-up tooling work made the same checks reproducible and enforced:
+
+- `requirements-dev.txt` pins `gdtoolkit` and `pre-commit`.
+- `scripts/check.sh` is the canonical command. It runs `gdlint .`, performs a
+  Godot headless import, and parses every GDScript file with `--check-only`.
+- `.pre-commit-config.yaml` runs that command before every local commit once
+  `pre-commit install` has been run.
+- `.github/workflows/project-checks.yml` runs the same command on pushes and
+  pull requests using Godot 4.6.2 and a checkout that resolves Git LFS assets.
+
+The 1000-line limit remains intentional. `player_body.gd` and
+`character_editor.gd` are still large, cohesive integration points; lowering
+the threshold immediately would force another structural split without a
+specific ownership boundary. `class-definitions-order` also remains disabled
+because enabling it would reorder feature-grouped declarations without adding
+correctness coverage. Enforcement and repeatability provide more value than
+additional style churn.

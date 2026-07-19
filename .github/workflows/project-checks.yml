@@ -1,0 +1,43 @@
+name: Project checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository and LFS assets
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install development tools
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Install Godot 4.6.2
+        env:
+          GODOT_VERSION: 4.6.2
+        run: |
+          archive="Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl --fail --location --retry 3 \
+            --output "/tmp/${archive}" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${archive}"
+          unzip -q "/tmp/${archive}" -d /tmp/godot
+          install -m 0755 \
+            "/tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" \
+            /usr/local/bin/godot
+
+      - name: Run project checks
+        run: scripts/check.sh
