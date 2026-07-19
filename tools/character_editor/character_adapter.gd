@@ -47,6 +47,20 @@ func set_held_flashlight_visible(_enabled: bool) -> void:
 	pass
 
 
+func get_global_visual_bounds() -> AABB:
+	var combined := AABB()
+	var has_bounds := false
+	for mesh_instance in meshes:
+		if not is_instance_valid(mesh_instance) or mesh_instance.mesh == null:
+			continue
+		var bounds: AABB = mesh_instance.global_transform * mesh_instance.get_aabb()
+		combined = combined.merge(bounds) if has_bounds else bounds
+		has_bounds = true
+	if has_bounds:
+		return combined
+	return AABB(global_position + Vector3(-0.5, 0.0, -0.5), Vector3(1.0, 2.0, 1.0))
+
+
 ## Frees the wrapped character node. Called when switching to a different
 ## character; the adapter itself becomes unusable afterward.
 func free_node() -> void:

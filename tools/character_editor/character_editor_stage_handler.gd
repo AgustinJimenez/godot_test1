@@ -47,6 +47,7 @@ func enter_empty() -> void:
 	current = Stage.CHARACTER
 	highest_unlocked = Stage.CHARACTER
 	editor.viewport_toolbar.hide()
+	editor.playback_toolbar.hide()
 	_update()
 
 
@@ -98,7 +99,7 @@ func _update() -> void:
 			editor.character_row.show()
 		Stage.ANIMATION:
 			editor.animation_row.show()
-			editor.editor_mode_row.show()
+			editor.editor_mode_row.visible = editor.body.supports_comparison
 		Stage.ATTACHMENTS:
 			editor.attachment_slots_row.show()
 			editor.object_row.show()

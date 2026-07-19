@@ -111,6 +111,12 @@ var body: CharacterAdapter
 @onready var ui_layer: CanvasLayer = $UI
 @onready var panel: Panel = $UI/Panel
 @onready var viewport_toolbar: PanelContainer = $UI/ViewportToolbar
+@onready var playback_toolbar: PanelContainer = $UI/PlaybackToolbar
+@onready var playback_button: Button = $UI/PlaybackToolbar/Margin/Controls/PlayPause
+@onready var playback_slider: HSlider = $UI/PlaybackToolbar/Margin/Controls/Timeline
+@onready var playback_time_label: Label = $UI/PlaybackToolbar/Margin/Controls/Time
+@onready var play_icon: Texture2D = preload("res://assets/ui/icons/lucide/play.svg")
+@onready var pause_icon: Texture2D = preload("res://assets/ui/icons/lucide/pause.svg")
 @onready var panel_vbox: VBoxContainer = $UI/Panel/PanelScroll/Margin/VBox
 @onready var title_bar: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/TitleBar
 @onready var collapse_panel_button: Button = $UI/Panel/PanelScroll/Margin/VBox/TitleBar/Collapse
@@ -345,7 +351,6 @@ var _panel_collapsed := false
 var _resizing_panel := false
 var _dragging_panel := false
 var _expanded_panel_size := Vector2.ZERO
-var _edit_panel_size_before_compare := Vector2.ZERO
 
 var _mcp_handler: CharacterEditorMcpHandler
 var _import_handler: CharacterEditorImportHandler
@@ -358,6 +363,7 @@ var _pose_library_handler: CharacterEditorPoseLibraryHandler
 var _attachment_handler: CharacterEditorAttachmentHandler
 var _stage_handler: CharacterEditorStageHandler
 var _animation_package_handler: CharacterEditorAnimationPackageHandler
+var _animation_transport: CharacterEditorAnimationTransport
 
 
 func _ready() -> void:
@@ -372,6 +378,7 @@ func _ready() -> void:
 	_attachment_handler = CharacterEditorAttachmentHandler.new(self)
 	_stage_handler = CharacterEditorStageHandler.new(self)
 	_animation_package_handler = CharacterEditorAnimationPackageHandler.new(self)
+	_animation_transport = CharacterEditorAnimationTransport.new(self)
 	get_viewport().size_changed.connect(_ui_setup_handler._update_responsive_layout)
 	_ui_setup_handler._update_responsive_layout()
 	camera.current = true
@@ -380,6 +387,7 @@ func _ready() -> void:
 	_attachment_handler.setup()
 	_pose_library_handler.setup()
 	_animation_package_handler.setup()
+	_animation_transport.setup()
 	_stage_handler.setup()
 	var arguments := OS.get_cmdline_user_args()
 	var initial_kind := ""
@@ -816,6 +824,9 @@ func _is_pointer_over_tuner_ui(screen_position: Vector2) -> bool:
 	return (Rect2(panel.position, panel.size).has_point(logical_position)
 			or Rect2(viewport_toolbar.position, viewport_toolbar.size).has_point(
 					logical_position)
+			or (playback_toolbar.visible
+				and Rect2(playback_toolbar.position, playback_toolbar.size).has_point(
+						logical_position))
 			or (panel_resize_handle.visible
 				and Rect2(panel_resize_handle.position, panel_resize_handle.size).has_point(
 						logical_position)))
@@ -878,7 +889,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				_orbiting = true
 				_orbiting_joint = false
-				status_label.text = "Drag to orbit; use the wheel to zoom"
+				status_label.text = ""
 	elif event is InputEventMouseMotion and _drag_axis >= 0:
 		_gizmo_handler._drag_rotation_ring((event as InputEventMouseMotion).position)
 		get_viewport().set_input_as_handled()
@@ -905,6 +916,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	_animation_transport.update()
 	if body == null:
 		return
 	_process_root_motion()

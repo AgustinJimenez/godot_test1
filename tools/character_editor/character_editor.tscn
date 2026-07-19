@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="1_body"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="2_body_script"]
@@ -12,6 +12,8 @@
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/rotate-ccw.svg" id="10_reset_view_icon"]
 [ext_resource type="PackedScene" path="res://assets/models/universal_animation_library/UAL1_Standard.glb" id="11_ual1"]
 [ext_resource type="PackedScene" path="res://assets/models/universal_animation_library_2/UAL2_Standard.glb" id="12_ual2"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/play.svg" id="13_play_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/pause.svg" id="14_pause_icon"]
 
 [sub_resource type="Environment" id="Environment_tuner"]
 background_mode = 1
@@ -157,6 +159,46 @@ tooltip_text = "Reset camera view"
 icon = ExtResource("10_reset_view_icon")
 expand_icon = true
 icon_max_width = 20
+
+[node name="PlaybackToolbar" type="PanelContainer" parent="UI"]
+visible = false
+offset_right = 474.0
+offset_bottom = 50.0
+theme_override_styles/panel = SubResource("PanelStyle")
+
+[node name="Margin" type="MarginContainer" parent="UI/PlaybackToolbar"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 7
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 7
+
+[node name="Controls" type="HBoxContainer" parent="UI/PlaybackToolbar/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PlayPause" type="Button" parent="UI/PlaybackToolbar/Margin/Controls"]
+custom_minimum_size = Vector2(44, 36)
+layout_mode = 2
+tooltip_text = "Pause animation"
+icon = ExtResource("14_pause_icon")
+expand_icon = true
+icon_max_width = 22
+
+[node name="Timeline" type="HSlider" parent="UI/PlaybackToolbar/Margin/Controls"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.0166667
+
+[node name="Time" type="Label" parent="UI/PlaybackToolbar/Margin/Controls"]
+custom_minimum_size = Vector2(104, 0)
+layout_mode = 2
+text = "00:00.00 / 00:00.00"
+horizontal_alignment = 2
+vertical_alignment = 1
+label_settings = SubResource("ValueSettings")
 
 [node name="Panel" type="Panel" parent="UI"]
 offset_left = 16.0

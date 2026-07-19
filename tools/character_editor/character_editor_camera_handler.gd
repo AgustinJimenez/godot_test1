@@ -47,7 +47,7 @@ func _on_free_camera_toggled(enabled: bool) -> void:
 	editor._orbiting_joint = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if enabled:
-		editor.status_label.text = "Click the 3D view to move the camera"
+		editor.status_label.text = ""
 	elif editor._joint_focus_active:
 		_frame_selected_joint()
 	else:
@@ -70,15 +70,14 @@ func _focus_character_general() -> void:
 func _on_pause_toggled(paused: bool) -> void:
 	if editor._current_animation == &"":
 		editor.pause_toggle.set_pressed_no_signal(false)
-		editor.status_label.text = "No animation selected; showing base pose"
+		editor.status_label.text = ""
 		return
 	editor._comparison.set_paused(paused)
 	if paused:
 		editor.body.anim_player.pause()
-		editor.status_label.text = "Animation paused"
 	else:
 		editor.body.anim_player.play()
-		editor.status_label.text = "Animation playing"
+	editor.status_label.text = ""
 
 
 func _frame_full_body() -> void:
@@ -89,9 +88,26 @@ func _frame_full_body() -> void:
 		editor.camera.global_position = editor._orbit_target + Vector3(0.35, 0.2, 4.6)
 	else:
 		editor.camera.fov = 44.0
-		editor.camera.h_offset = -0.95
-		editor.camera.global_position = editor.body.global_position + Vector3(0.5, 1.2, 2.5)
-		editor._orbit_target = editor.body.global_position + Vector3(0.0, 1.05, 0.0)
+		var bounds := editor.body.get_global_visual_bounds()
+		editor._orbit_target = bounds.get_center()
+		var half_size := bounds.size * 0.5
+		var viewport_size := editor.get_viewport().get_visible_rect().size
+		var panel_right := (editor.panel.position.x + editor.panel.size.x) * editor._ui_scale
+		var uncovered_width := maxf(
+				viewport_size.x - panel_right - 16.0 * editor._ui_scale,
+				viewport_size.x * 0.25)
+		var aspect := maxf(uncovered_width / maxf(viewport_size.y, 1.0), 0.1)
+		var vertical_tangent := tan(deg_to_rad(editor.camera.fov * 0.5))
+		var horizontal_tangent := vertical_tangent * aspect
+		var fit_distance := maxf(
+				half_size.y / maxf(vertical_tangent, 0.01),
+				half_size.x / maxf(horizontal_tangent, 0.01))
+		fit_distance = maxf(
+				(fit_distance + half_size.z) * 1.1,
+				editor.MIN_ORBIT_DISTANCE)
+		editor.camera.h_offset = -fit_distance * 0.36
+		editor.camera.global_position = editor._orbit_target + Vector3(
+				fit_distance * 0.2, fit_distance * 0.06, fit_distance)
 	editor.camera.look_at(editor._orbit_target)
 	var orbit_offset := editor.camera.global_position - editor._orbit_target
 	editor._orbit_distance = orbit_offset.length()
@@ -125,7 +141,7 @@ func _begin_focused_joint_orbit() -> void:
 	var direction := editor._focused_camera_offset / editor._orbit_distance
 	editor._orbit_yaw = atan2(direction.x, direction.z)
 	editor._orbit_pitch = asin(clampf(direction.y, -1.0, 1.0))
-	editor.status_label.text = "Joint focus locked; drag to orbit and use the wheel to zoom"
+	editor.status_label.text = ""
 
 
 func _apply_camera_zoom(zoom_factor: float) -> void:
@@ -226,7 +242,7 @@ func _begin_camera_move() -> void:
 	editor._orbit_yaw = atan2(orbit_offset.x, orbit_offset.z)
 	editor._orbit_pitch = asin(clampf(
 			orbit_offset.y / maxf(editor._orbit_distance, 0.001), -1.0, 1.0))
-	editor.status_label.text = "Moving camera; drag and use +/- to zoom"
+	editor.status_label.text = ""
 
 
 func _move_camera_from_drag(relative: Vector2) -> void:

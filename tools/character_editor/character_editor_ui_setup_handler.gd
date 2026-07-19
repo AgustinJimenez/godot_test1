@@ -8,6 +8,10 @@ extends RefCounted
 
 var editor: CharacterEditor
 
+const TOGGLE_ON_COLOR := Color(0.22, 0.82, 0.42, 1.0)
+const TOGGLE_OFF_COLOR := Color(0.95, 0.28, 0.3, 1.0)
+const TOGGLE_ICON_SCALE := 1.45
+
 
 func _init(editor_ref: CharacterEditor) -> void:
 	editor = editor_ref
@@ -46,7 +50,10 @@ func _update_responsive_layout() -> void:
 			maxf(editor.panel.position.y + editor.panel.size.y - empty_top - empty_margin, 1.0))
 	editor.viewport_toolbar.position = Vector2(
 			logical_viewport_size.x - editor.viewport_toolbar.size.x - 16.0,
-			logical_viewport_size.y - editor.viewport_toolbar.size.y - 16.0)
+			16.0)
+	editor.playback_toolbar.position = Vector2(
+			logical_viewport_size.x - editor.playback_toolbar.size.x - 16.0,
+			logical_viewport_size.y - editor.playback_toolbar.size.y - 16.0)
 	_update_panel_dependent_layout()
 	_update_panel_resize_handle()
 
@@ -82,6 +89,7 @@ func _update_panel_resize_handle() -> void:
 
 
 func _setup_controls() -> void:
+	_style_binary_toggles()
 	editor.character_picker.add_item("Select character...")
 	editor.character_picker.set_item_metadata(0, "")
 	for kind in editor.CHARACTER_KINDS:
@@ -167,23 +175,51 @@ func _setup_controls() -> void:
 	editor.import_dialog.file_selected.connect(editor._import_handler._on_import_file_selected)
 
 
+func _style_binary_toggles() -> void:
+	var toggle_nodes: Array[Node] = editor.panel.find_children("*", "CheckButton", true, false)
+	if toggle_nodes.is_empty():
+		return
+	var source_toggle := toggle_nodes[0] as CheckButton
+	var scaled_icons: Dictionary = {}
+	var icon_names: Array[StringName] = [
+		&"checked",
+		&"unchecked",
+		&"checked_disabled",
+		&"unchecked_disabled",
+		&"checked_mirrored",
+		&"unchecked_mirrored",
+		&"checked_disabled_mirrored",
+		&"unchecked_disabled_mirrored",
+	]
+	for icon_name in icon_names:
+		var source_icon := source_toggle.get_theme_icon(icon_name, &"CheckButton")
+		if source_icon == null:
+			continue
+		var image := source_icon.get_image()
+		if image == null or image.is_empty():
+			continue
+		image.resize(
+				maxi(roundi(image.get_width() * TOGGLE_ICON_SCALE), 1),
+				maxi(roundi(image.get_height() * TOGGLE_ICON_SCALE), 1),
+				Image.INTERPOLATE_LANCZOS)
+		scaled_icons[icon_name] = ImageTexture.create_from_image(image)
+	for node in toggle_nodes:
+		var toggle := node as CheckButton
+		toggle.custom_minimum_size.y = maxf(toggle.custom_minimum_size.y, 42.0)
+		toggle.add_theme_color_override(&"button_checked_color", TOGGLE_ON_COLOR)
+		toggle.add_theme_color_override(&"button_unchecked_color", TOGGLE_OFF_COLOR)
+		for icon_name in scaled_icons:
+			toggle.add_theme_icon_override(icon_name, scaled_icons[icon_name])
+
+
 func _on_editor_mode_pressed(compare_enabled: bool) -> void:
-	var mode_changed: bool = compare_enabled != editor._comparison.enabled
-	if mode_changed and compare_enabled and not editor._panel_collapsed:
-		editor._edit_panel_size_before_compare = editor.panel.size
-		editor.panel.size.x = minf(editor.panel.size.x, editor.MIN_USER_PANEL_SIZE.x)
-		editor._expanded_panel_size = editor.panel.size
-		editor._panel_user_layout = true
-	elif (mode_changed and not compare_enabled
-			and not editor._panel_collapsed and not editor._edit_panel_size_before_compare.is_zero_approx()):
-		editor.panel.size = editor._edit_panel_size_before_compare
-		editor._expanded_panel_size = editor.panel.size
-		_clamp_panel_to_viewport(editor.get_viewport().get_visible_rect().size / editor._ui_scale)
-	_update_panel_dependent_layout()
-	_update_panel_resize_handle()
+	if editor.body == null or not editor.body.supports_comparison:
+		return
 	editor.view_picker.select(0)
 	editor.view_picker.disabled = compare_enabled
-	editor.body.mesh.mesh = editor._full_body_mesh
+	if (editor.body.supports_isolated_attachment
+			and editor.body.mesh != null and editor._full_body_mesh != null):
+		editor.body.mesh.mesh = editor._full_body_mesh
 	editor._joint_focus_active = false
 	editor._orbiting = false
 	editor._orbiting_joint = false
@@ -210,8 +246,7 @@ func _on_camera_mode_pressed(mode: int) -> void:
 	if editor.free_camera_toggle.button_pressed:
 		editor.free_camera_toggle.set_pressed_no_signal(false)
 	_update_camera_mode_buttons()
-	editor.status_label.text = ("Drag empty 3D space to orbit" if mode == editor.CAMERA_MODE_ORBIT
-			else "Drag empty 3D space to move the camera")
+	editor.status_label.text = ""
 
 
 func _update_camera_mode_buttons() -> void:
@@ -230,7 +265,7 @@ func _on_zoom_in_pressed() -> void:
 func _on_reset_camera_view_pressed() -> void:
 	editor.view_picker.select(0)
 	editor._camera_handler._on_view_selected(0)
-	editor.status_label.text = "Camera view reset"
+	editor.status_label.text = ""
 
 
 func _on_collapse_panel_pressed() -> void:
@@ -308,6 +343,8 @@ func _setup_animation_controls() -> void:
 ## are entirely character-specific.
 func _populate_animation_controls() -> void:
 	editor.animation_group_picker.clear()
+	editor.animation_group_picker.add_item("Select animation package...")
+	editor.animation_group_picker.set_item_metadata(0, &"")
 	editor._animation_groups = editor.body.get_animation_groups()
 	editor._animation_groups[&"Base Pose"] = [&""]
 	var package_groups := editor._animation_package_handler.groups()
@@ -319,7 +356,11 @@ func _populate_animation_controls() -> void:
 				editor.animation_group_picker.item_count - 1, StringName(group_name))
 	if not _animation_exists_in_groups(editor._current_animation):
 		editor._current_animation = &""
-	_select_animation_in_ui(editor._current_animation)
+	editor.animation_group_picker.select(0)
+	editor.animation_picker.clear()
+	editor.animation_picker.hide()
+	if editor._current_animation != &"":
+		_select_animation_in_ui(editor._current_animation)
 	_set_animation(editor._current_animation)
 
 
@@ -371,6 +412,11 @@ func _select_character_in_ui(kind: String) -> void:
 func _on_animation_group_selected(index: int) -> void:
 	var group_name: StringName = editor.animation_group_picker.get_item_metadata(index)
 	editor._animation_package_handler.select_group(group_name)
+	if group_name == &"":
+		editor.animation_picker.clear()
+		editor.animation_picker.hide()
+		_set_animation(&"")
+		return
 	editor._animation_package_handler.ensure_group_loaded(group_name)
 	_populate_animation_picker(group_name)
 	_set_animation(&"")
@@ -378,6 +424,7 @@ func _on_animation_group_selected(index: int) -> void:
 
 func _populate_animation_picker(group_name: StringName) -> void:
 	editor.animation_picker.clear()
+	editor.animation_picker.show()
 	var animations: Array = editor._animation_groups.get(group_name, [])
 	if group_name != &"Base Pose":
 		editor.animation_picker.add_item("No animation")
@@ -409,7 +456,8 @@ func _set_animation(animation_name: StringName) -> void:
 		editor.body.skeleton.advance(0.0)
 		if editor._comparison.enabled:
 			_on_editor_mode_pressed(false)
-		editor.status_label.text = "No animation selected; showing base pose"
+		editor.status_label.text = ""
+		editor._animation_transport.refresh()
 		return
 	editor.pause_toggle.disabled = false
 	editor.root_motion_toggle.disabled = false
@@ -422,8 +470,8 @@ func _set_animation(animation_name: StringName) -> void:
 	if editor.pause_toggle.button_pressed:
 		editor.body.anim_player.pause()
 		editor._comparison.set_paused(true)
-	editor.status_label.text = (comparison_status if not comparison_status.is_empty()
-			else "Playing %s" % animation_name)
+	editor.status_label.text = comparison_status
+	editor._animation_transport.refresh()
 
 
 func _select_animation_in_ui(animation_name: StringName) -> void:
