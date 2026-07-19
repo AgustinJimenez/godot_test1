@@ -1052,3 +1052,25 @@ summary like `{"right_elbow": "bent at a right angle", "hands_distance":
 "close"}`, complementing rather than replacing the raw bone dump.
 
 **Status: adopted into the character editor MCP plan, not yet built.**
+
+## 2026-07-19, graphics settings menu follow-up
+
+Rechecked this log before implementing the pause-menu Graphics tab. No
+general graphics-settings addon had been identified or recommended here;
+the relevant graphics-realism research already favors Godot Forward+'s
+built-in features. The installed 4.6.2 `--doctool` reference confirms the
+runtime APIs needed for a small native implementation:
+
+- `Viewport.scaling_3d_scale`, `screen_space_aa`, `use_taa`, and `msaa_3d`;
+- `Environment.ssao_enabled`, `ssil_enabled`, `fog_enabled`, and
+  `glow_enabled`;
+- `RenderingServer.directional_shadow_atlas_set_size()` plus ordinary
+  `DirectionalLight3D` shadow properties;
+- `DisplayServer.window_set_vsync_mode()`, `Engine.max_fps`, and `ConfigFile`.
+
+Decision: use those built-ins behind one persistent autoload instead of
+adding an external dependency. The accessibility addons recorded above
+solve different problems, and the post-process plugins are effect packs,
+not quality-setting managers. SDFGI remains a scene-authoring option rather
+than a universal preset toggle because its meshes and distances need
+per-level GI configuration.

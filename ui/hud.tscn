@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://ui/hud.gd" id="1_hud"]
+[ext_resource type="PackedScene" path="res://ui/settings_menu.tscn" id="2_settings"]
 
 [node name="HUD" type="CanvasLayer"]
 process_mode = 3
@@ -262,6 +263,9 @@ text = "MENU"
 [node name="GuideButton" type="Button" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
 text = "Controls Guide"
 
+[node name="SettingsButton" type="Button" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
+text = "Settings"
+
 [node name="DebugButton" type="Button" parent="DebugOverlay/Center/MainPanel/MainMargin/MainVBox"]
 text = "Debug"
 
@@ -353,6 +357,9 @@ text = "FOV Gizmo: OFF"
 
 [node name="BackButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "< Back"
+
+[node name="SettingsMenu" parent="DebugOverlay/Center" instance=ExtResource("2_settings")]
+visible = false
 
 [node name="AnimPanelAnchor" type="Control" parent="DebugOverlay"]
 visible = false

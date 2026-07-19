@@ -33,6 +33,8 @@ var _hurt_tween: Tween
 @onready var main_panel: PanelContainer = $DebugOverlay/Center/MainPanel
 @onready var main_guide_button: Button = get_node(
 		^"DebugOverlay/Center/MainPanel/MainMargin/MainVBox/GuideButton")
+@onready var main_settings_button: Button = get_node(
+		^"DebugOverlay/Center/MainPanel/MainMargin/MainVBox/SettingsButton")
 @onready var main_debug_button: Button = get_node(
 		^"DebugOverlay/Center/MainPanel/MainMargin/MainVBox/DebugButton")
 @onready var main_close_app_button: Button = get_node(
@@ -57,6 +59,7 @@ var _hurt_tween: Tween
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FovGizmoButton")
 @onready var debug_back_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/BackButton")
+@onready var settings_menu: SettingsMenu = $DebugOverlay/Center/SettingsMenu
 @onready var anim_panel_anchor: Control = $DebugOverlay/AnimPanelAnchor
 @onready var anim_list: VBoxContainer = get_node(
 		^"DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/AnimScroll/AnimList")
@@ -74,11 +77,13 @@ func _ready() -> void:
 	fov_gizmo_button.pressed.connect(_on_fov_gizmo_button_pressed)
 	main_debug_button.pressed.connect(_show_debug_page)
 	main_guide_button.pressed.connect(_show_guide_page)
+	main_settings_button.pressed.connect(_show_settings_page)
 	main_close_app_button.pressed.connect(_close_app)
 	main_close_button.pressed.connect(_close_debug)
 	guide_back_button.pressed.connect(_show_debug_main)
 	anim_clips_button.pressed.connect(_show_anim_page)
 	debug_back_button.pressed.connect(_show_debug_main)
+	settings_menu.back_requested.connect(_show_debug_main)
 	anim_back_button.pressed.connect(_show_debug_page)
 
 
@@ -281,6 +286,7 @@ func _show_debug_main() -> void:
 	main_panel.show()
 	guide_panel.hide()
 	debug_panel.hide()
+	settings_menu.hide()
 	anim_panel_anchor.hide()
 
 
@@ -288,6 +294,16 @@ func _show_guide_page() -> void:
 	main_panel.hide()
 	guide_panel.show()
 	debug_panel.hide()
+	settings_menu.hide()
+	anim_panel_anchor.hide()
+
+
+func _show_settings_page() -> void:
+	main_panel.hide()
+	guide_panel.hide()
+	debug_panel.hide()
+	settings_menu.show()
+	settings_menu.refresh()
 	anim_panel_anchor.hide()
 
 
@@ -295,6 +311,7 @@ func _show_debug_page() -> void:
 	main_panel.hide()
 	guide_panel.hide()
 	debug_panel.show()
+	settings_menu.hide()
 	anim_panel_anchor.hide()
 
 
@@ -302,6 +319,7 @@ func _show_anim_page() -> void:
 	main_panel.hide()
 	guide_panel.hide()
 	debug_panel.hide()
+	settings_menu.hide()
 	anim_panel_anchor.show()
 
 

@@ -1,0 +1,175 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/settings_menu.gd" id="1_settings"]
+
+[node name="SettingsMenu" type="PanelContainer"]
+custom_minimum_size = Vector2(720, 620)
+script = ExtResource("1_settings")
+
+[node name="Margin" type="MarginContainer" parent="."]
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 18
+
+[node name="VBox" type="VBoxContainer" parent="Margin"]
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Margin/VBox"]
+theme_override_font_sizes/font_size = 22
+text = "SETTINGS"
+
+[node name="Tabs" type="TabContainer" parent="Margin/VBox"]
+custom_minimum_size = Vector2(0, 515)
+size_flags_vertical = 3
+
+[node name="Graphics" type="VBoxContainer" parent="Margin/VBox/Tabs"]
+theme_override_constants/separation = 10
+metadata/_tab_index = 0
+
+[node name="PresetLabel" type="Label" parent="Margin/VBox/Tabs/Graphics"]
+theme_override_colors/font_color = Color(0.7, 0.8, 0.95, 1)
+theme_override_font_sizes/font_size = 14
+text = "QUALITY PRESET"
+
+[node name="PresetButtons" type="HBoxContainer" parent="Margin/VBox/Tabs/Graphics"]
+theme_override_constants/separation = 6
+
+[node name="LowButton" type="Button" parent="Margin/VBox/Tabs/Graphics/PresetButtons"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+toggle_mode = true
+text = "Low"
+
+[node name="MediumButton" type="Button" parent="Margin/VBox/Tabs/Graphics/PresetButtons"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+toggle_mode = true
+text = "Medium"
+
+[node name="HighButton" type="Button" parent="Margin/VBox/Tabs/Graphics/PresetButtons"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+toggle_mode = true
+text = "High"
+
+[node name="UltraButton" type="Button" parent="Margin/VBox/Tabs/Graphics/PresetButtons"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+toggle_mode = true
+text = "Ultra"
+
+[node name="CustomButton" type="Button" parent="Margin/VBox/Tabs/Graphics/PresetButtons"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+toggle_mode = true
+text = "Custom"
+
+[node name="Separator" type="HSeparator" parent="Margin/VBox/Tabs/Graphics"]
+
+[node name="Scroll" type="ScrollContainer" parent="Margin/VBox/Tabs/Graphics"]
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Controls" type="GridContainer" parent="Margin/VBox/Tabs/Graphics/Scroll"]
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 24
+theme_override_constants/v_separation = 10
+columns = 2
+
+[node name="RenderScaleLabel" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+text = "Render scale"
+
+[node name="RenderScaleControl" type="HBoxContainer" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="RenderScale" type="HSlider" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls/RenderScaleControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 0)
+size_flags_horizontal = 3
+min_value = 50.0
+max_value = 125.0
+step = 5.0
+value = 100.0
+
+[node name="RenderScaleValue" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls/RenderScaleControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "100%"
+horizontal_alignment = 2
+
+[node name="AntiAliasingLabel" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+text = "Anti-aliasing"
+
+[node name="AntiAliasing" type="OptionButton" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+
+[node name="ShadowQualityLabel" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+text = "Directional shadows"
+
+[node name="ShadowQuality" type="OptionButton" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+
+[node name="SSAOLabel" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+text = "Ambient occlusion (SSAO)"
+
+[node name="SSAO" type="CheckButton" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+unique_name_in_owner = true
+text = "Enabled"
+
+[node name="SSILLabel" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+text = "Indirect lighting (SSIL)"
+
+[node name="SSIL" type="CheckButton" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+unique_name_in_owner = true
+text = "Enabled"
+
+[node name="FogLabel" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+text = "Fog"
+
+[node name="Fog" type="CheckButton" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+unique_name_in_owner = true
+text = "Enabled"
+
+[node name="GlowLabel" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+text = "Glow"
+
+[node name="Glow" type="CheckButton" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+unique_name_in_owner = true
+text = "Enabled"
+
+[node name="VSyncLabel" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+text = "Vertical sync"
+
+[node name="VSync" type="CheckButton" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+unique_name_in_owner = true
+text = "Enabled"
+
+[node name="MaxFPSLabel" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+text = "Frame limit"
+
+[node name="MaxFPSControl" type="HBoxContainer" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="MaxFPS" type="HSlider" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls/MaxFPSControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 0)
+size_flags_horizontal = 3
+min_value = 30.0
+max_value = 240.0
+step = 30.0
+value = 120.0
+
+[node name="MaxFPSValue" type="Label" parent="Margin/VBox/Tabs/Graphics/Scroll/Controls/MaxFPSControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(70, 0)
+text = "120 FPS"
+horizontal_alignment = 2
+
+[node name="BackButton" type="Button" parent="Margin/VBox"]
+unique_name_in_owner = true
+text = "< Back"
