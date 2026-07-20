@@ -126,6 +126,15 @@ func _frame_full_body() -> void:
 	editor._yaw = editor.camera.rotation.y
 
 
+func position_inspection_floor() -> void:
+	if editor.body == null:
+		return
+	var bounds := editor.body.get_global_visual_bounds()
+	var center := bounds.get_center()
+	editor.inspection_floor.global_position = Vector3(
+			center.x, bounds.position.y - 0.004, center.z)
+
+
 func _update_orbit_camera() -> void:
 	var direction := _get_orbit_direction()
 	editor.camera.global_position = editor._orbit_target + direction * editor._orbit_distance

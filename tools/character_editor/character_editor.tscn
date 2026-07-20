@@ -1,4 +1,4 @@
-[gd_scene load_steps=26 format=3]
+[gd_scene load_steps=29 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="1_body"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="2_body_script"]
@@ -27,6 +27,43 @@ background_color = Color(0.008, 0.009, 0.012, 1)
 ambient_light_source = 3
 ambient_light_color = Color(0.32, 0.34, 0.4, 1)
 ambient_light_energy = 1.4
+
+[sub_resource type="Shader" id="Shader_inspection_grid"]
+code = "shader_type spatial;
+render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
+
+uniform vec4 floor_color : source_color = vec4(0.014, 0.018, 0.024, 1.0);
+uniform vec4 minor_grid_color : source_color = vec4(0.65, 0.68, 0.72, 0.22);
+uniform vec4 major_grid_color : source_color = vec4(0.92, 0.94, 0.98, 0.42);
+uniform float grid_cells = 96.0;
+uniform float major_every = 4.0;
+
+float grid_line(vec2 coordinate) {
+	vec2 pixel_width = fwidth(coordinate);
+	vec2 distance_to_line = abs(fract(coordinate - 0.5) - 0.5) / pixel_width;
+	return 1.0 - min(min(distance_to_line.x, distance_to_line.y), 1.0);
+}
+
+void fragment() {
+	vec2 minor_coordinate = UV * grid_cells;
+	float minor_line = grid_line(minor_coordinate);
+	float major_line = grid_line(minor_coordinate / major_every);
+	vec3 surface_color = mix(floor_color.rgb, minor_grid_color.rgb,
+			minor_line * minor_grid_color.a);
+	surface_color = mix(surface_color, major_grid_color.rgb,
+			major_line * major_grid_color.a);
+	ALBEDO = surface_color;
+	ROUGHNESS = 0.94;
+}
+"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_inspection_grid"]
+render_priority = -1
+shader = SubResource("Shader_inspection_grid")
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_inspection_floor"]
+material = SubResource("ShaderMaterial_inspection_grid")
+size = Vector2(24, 24)
 
 [sub_resource type="StyleBoxFlat" id="PanelStyle"]
 bg_color = Color(0.045, 0.12, 0.2, 0.97)
@@ -57,6 +94,9 @@ script = ExtResource("3_tuner_script")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_tuner")
+
+[node name="InspectionFloor" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_inspection_floor")
 
 [node name="CompareLabel" type="Label3D" parent="."]
 visible = false
@@ -797,6 +837,7 @@ layout_mode = 2
 theme_override_constants/separation = 12
 
 [node name="PauseAnimation" type="CheckButton" parent="UI/Panel/PanelScroll/Margin/VBox/DisplayOptions"]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Pause animation"

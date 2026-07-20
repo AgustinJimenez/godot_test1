@@ -118,6 +118,7 @@ var body: CharacterAdapter
 @onready var playback_button: Button = $UI/PlaybackToolbar/Margin/Controls/PlayPause
 @onready var playback_slider: HSlider = $UI/PlaybackToolbar/Margin/Controls/Timeline
 @onready var playback_time_label: Label = $UI/PlaybackToolbar/Margin/Controls/Time
+@onready var inspection_floor: MeshInstance3D = $InspectionFloor
 @onready var play_icon: Texture2D = preload("res://assets/ui/icons/lucide/play.svg")
 @onready var pause_icon: Texture2D = preload("res://assets/ui/icons/lucide/pause.svg")
 @onready var panel_vbox: VBoxContainer = $UI/Panel/PanelScroll/Margin/VBox
@@ -332,7 +333,7 @@ var _object_attachment: BoneAttachment3D
 var _full_body_mesh: Mesh
 var _isolated_attachment_mesh: ArrayMesh
 var _bone_debug_root: Node3D
-var _bone_segment_mesh: CylinderMesh
+var _bone_segment_mesh: ArrayMesh
 var _joint_mesh: SphereMesh
 var _rotation_ring_mesh: TorusMesh
 var _bone_segment_material: StandardMaterial3D
@@ -533,6 +534,7 @@ func _load_character(kind: String) -> void:
 	_bone_controls_handler._sync_bone_controls()
 	_gizmo_handler._refresh_skeleton()
 	_ui_setup_handler._select_character_in_ui(_character_kind)
+	_camera_handler.position_inspection_floor()
 	_camera_handler._frame_full_body()
 	_rig_handler.on_character_loaded()
 	_stage_handler.on_character_loaded()
@@ -815,14 +817,10 @@ func _localize_resource_path(path: String) -> String:
 func _setup_bone_debug() -> void:
 	_bone_debug_root = Node3D.new()
 	_bone_debug_root.name = &"BoneRotationGizmo"
-	_bone_debug_root.visible = false
+	_bone_debug_root.visible = show_bones_toggle.button_pressed
 	body.skeleton.add_child(_bone_debug_root)
 
-	_bone_segment_mesh = CylinderMesh.new()
-	_bone_segment_mesh.top_radius = BONE_RADIUS * 0.55
-	_bone_segment_mesh.bottom_radius = BONE_RADIUS
-	_bone_segment_mesh.height = 1.0
-	_bone_segment_mesh.radial_segments = 8
+	_bone_segment_mesh = _gizmo_handler.make_bone_segment_mesh()
 	_joint_mesh = SphereMesh.new()
 	_joint_mesh.radius = JOINT_RADIUS
 	_joint_mesh.height = JOINT_RADIUS * 2.0

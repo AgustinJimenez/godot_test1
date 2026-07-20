@@ -149,8 +149,8 @@ func _style_stage_button(button: Button, button_index: int) -> void:
 
 
 func _update_display_options() -> void:
-	var show_display := current in [Stage.ANIMATION, Stage.POSE, Stage.REVIEW]
-	editor.display_options.visible = show_display
-	editor.pause_toggle.visible = current in [Stage.ANIMATION, Stage.POSE, Stage.REVIEW]
+	editor.pause_toggle.hide()
 	editor.root_motion_toggle.visible = current == Stage.ANIMATION
 	editor.free_camera_toggle.visible = current == Stage.REVIEW
+	editor.display_options.visible = (
+			editor.root_motion_toggle.visible or editor.free_camera_toggle.visible)

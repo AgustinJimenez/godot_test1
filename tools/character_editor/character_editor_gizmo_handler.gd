@@ -24,6 +24,56 @@ func _init(editor_ref: CharacterEditor) -> void:
 	editor = editor_ref
 
 
+func make_bone_segment_mesh() -> ArrayMesh:
+	const RADIAL_SEGMENTS := 12
+	# Y is normalized to one unit so each instance can scale to its bone length.
+	# Narrow tips disappear into the joint spheres; the flared shoulders and
+	# slim center make the overlay read as an anatomical bone instead of a pipe.
+	var profile: Array[Vector2] = [
+		Vector2(-0.5, 0.55),
+		Vector2(-0.46, 1.6),
+		Vector2(-0.38, 2.1),
+		Vector2(-0.2, 0.85),
+		Vector2(0.2, 0.85),
+		Vector2(0.38, 2.1),
+		Vector2(0.46, 1.6),
+		Vector2(0.5, 0.55),
+	]
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var indices := PackedInt32Array()
+	for ring: Vector2 in profile:
+		for radial_index in RADIAL_SEGMENTS:
+			var angle := TAU * float(radial_index) / float(RADIAL_SEGMENTS)
+			var radial := Vector3(cos(angle), 0.0, sin(angle))
+			vertices.append(Vector3(
+					radial.x * editor.BONE_RADIUS * ring.y,
+					ring.x,
+					radial.z * editor.BONE_RADIUS * ring.y))
+			normals.append(radial)
+	for ring_index in profile.size() - 1:
+		var current_start := ring_index * RADIAL_SEGMENTS
+		var next_start := (ring_index + 1) * RADIAL_SEGMENTS
+		for radial_index in RADIAL_SEGMENTS:
+			var following := (radial_index + 1) % RADIAL_SEGMENTS
+			indices.append_array(PackedInt32Array([
+				current_start + radial_index,
+				next_start + radial_index,
+				current_start + following,
+				current_start + following,
+				next_start + radial_index,
+				next_start + following,
+			]))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
 func _setup_bone_debug_materials() -> void:
 	editor._bone_section_materials.clear()
 	editor._joint_section_materials.clear()
@@ -125,7 +175,7 @@ func _rebuild_bone_gizmo() -> void:
 		editor._joint_instances[bone_index] = joint
 		editor._bone_debug_root.add_child(joint)
 		var parent_index := editor.body.skeleton.get_bone_parent(bone_index)
-		if visible_set.has(parent_index):
+		if visible_set.has(parent_index) and not _is_technical_root(parent_index):
 			var segment_material: Material = editor._bone_section_materials.get(
 					group, editor._bone_segment_material)
 			var segment := editor._make_debug_mesh_instance(
@@ -153,7 +203,10 @@ func _update_bone_gizmo() -> void:
 				else editor._joint_section_materials.get(group, editor._joint_material)
 		)
 		var radius_scale := editor.SELECTED_JOINT_RADIUS / editor.JOINT_RADIUS if selected else 1.0
-		joint.scale = Vector3.ONE * radius_scale * _joint_visual_scale(bone_name)
+		if _is_technical_root(bone_index):
+			joint.scale = Vector3(2.4, 0.22, 2.4) * radius_scale
+		else:
+			joint.scale = Vector3.ONE * radius_scale * _joint_visual_scale(bone_name)
 		if editor._bone_segments.has(bone_index):
 			var parent_index := editor.body.skeleton.get_bone_parent(bone_index)
 			var parent_position := editor.body.skeleton.get_bone_global_pose(parent_index).origin
@@ -193,6 +246,21 @@ func _bone_visual_group(bone_name: StringName) -> StringName:
 		elif _contains_any(normalized, ["shoulder", "arm", "forearm", "hand", "wrist"]):
 			group = &"arm"
 	return group
+
+
+func _is_technical_root(bone_index: int) -> bool:
+	if bone_index < 0 or editor.body.skeleton.get_bone_parent(bone_index) >= 0:
+		return false
+	var normalized := String(editor.body.skeleton.get_bone_name(bone_index)).to_lower()
+	if not normalized.ends_with("root"):
+		return false
+	for child_index in editor.body.skeleton.get_bone_count():
+		if editor.body.skeleton.get_bone_parent(child_index) != bone_index:
+			continue
+		var child_name := String(editor.body.skeleton.get_bone_name(child_index)).to_lower()
+		if child_name.contains("hips") or child_name.contains("pelvis"):
+			return true
+	return false
 
 
 func _contains_any(value: String, candidates: Array[String]) -> bool:
