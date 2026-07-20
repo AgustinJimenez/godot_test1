@@ -77,6 +77,8 @@ func set_stage(stage: int, allow_locked: bool = false) -> void:
 		return
 	if allow_locked:
 		highest_unlocked = maxi(highest_unlocked, stage)
+	if stage == Stage.RIG:
+		editor._ui_setup_handler.reset_animation_state()
 	current = stage
 	if current < Stage.REVIEW:
 		highest_unlocked = maxi(highest_unlocked, current + 1)

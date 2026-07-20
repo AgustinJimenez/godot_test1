@@ -23,6 +23,13 @@ const SIDE_WEIGHT_BONES: Array[String] = [
 ]
 const INFLUENCE_CUTOFF := 0.02
 const MAX_VERTEX_INFLUENCES := 4
+const MAX_SMOOTHING_INFLUENCES := 8
+const WEIGHT_SMOOTHING_PASSES := 2
+const WEIGHT_SMOOTHING_FACTOR := 0.25
+const DEFAULT_PELVIS_HEIGHT := 0.515
+const PELVIS_PROFILE_START := 0.28
+const PELVIS_PROFILE_END := 0.68
+const PELVIS_PROFILE_STEP := 0.01
 
 
 static func generate(
@@ -60,7 +67,8 @@ static func generate(
 	skeleton.name = &"Skeleton3D"
 	output_root.add_child(skeleton)
 	skeleton.owner = output_root
-	_build_skeleton(skeleton, bounds, joint_positions, geometry_vertices)
+	var landmarks := _infer_pelvis_landmarks(bounds, geometry_vertices)
+	_build_skeleton(skeleton, bounds, joint_positions, geometry_vertices, landmarks)
 	var skin := _build_skin(skeleton)
 	for source_mesh: MeshInstance3D in source_meshes:
 		var baked_transform := _transform_relative_to(source_mesh, source_root)
@@ -101,6 +109,7 @@ static func generate(
 		"humanoid_map": humanoid_map,
 		"joint_positions": generated_joint_positions,
 		"bone_count": bone_count,
+		"landmarks": landmarks,
 	}
 
 
@@ -134,10 +143,12 @@ static func _transform_relative_to(node: Node3D, ancestor: Node3D) -> Transform3
 
 static func _build_skeleton(
 		skeleton: Skeleton3D, bounds: AABB, joint_positions: Dictionary,
-		geometry_vertices: PackedVector3Array) -> void:
+		geometry_vertices: PackedVector3Array, landmarks: Dictionary) -> void:
 	var definitions: Array[Dictionary] = CORE_BONES.duplicate(true)
 	var half_width := bounds.size.x * 0.5
 	var shoulder_height := _estimate_shoulder_height(bounds, geometry_vertices)
+	var pelvis_height: float = landmarks.get("pelvis_height", DEFAULT_PELVIS_HEIGHT)
+	var pelvis_y := bounds.position.y + bounds.size.y * pelvis_height
 	for side: String in ["Left", "Right"]:
 		var sign_value := 1.0 if side == "Left" else -1.0
 		definitions.append_array([
@@ -176,7 +187,13 @@ static func _build_skeleton(
 			bounds.position.y + normalized.y * bounds.size.y,
 			bounds.get_center().z + normalized.z * bounds.size.z)
 		var bone_name: String = definition["name"]
-		if bone_name == "Spine2":
+		if bone_name == "Hips" or bone_name.ends_with("UpLeg"):
+			global_point.y = pelvis_y
+		elif bone_name == "Spine":
+			global_point.y = lerpf(pelvis_y, shoulder_height, 0.25)
+		elif bone_name == "Spine1":
+			global_point.y = lerpf(pelvis_y, shoulder_height, 0.58)
+		elif bone_name == "Spine2":
 			global_point.y = shoulder_height
 		if _is_finger_bone(bone_name):
 			var side := "Left" if bone_name.begins_with("Left") else "Right"
@@ -203,6 +220,76 @@ static func _build_skeleton(
 		else:
 			skeleton.set_bone_rest(bone_index, Transform3D(Basis.IDENTITY, global_point))
 		global_points[bone_name] = global_point
+
+
+static func _infer_pelvis_landmarks(
+		bounds: AABB, vertices: PackedVector3Array) -> Dictionary:
+	var profiles: Array[Dictionary] = []
+	var normalized_y := PELVIS_PROFILE_START
+	while normalized_y <= PELVIS_PROFILE_END + 0.0001:
+		var profile := _horizontal_slice_profile(normalized_y, bounds, vertices)
+		if profile.get("valid", false):
+			profiles.append(profile)
+		normalized_y += PELVIS_PROFILE_STEP
+	var crotch_height := -1.0
+	for profile: Dictionary in profiles:
+		var sample_height: float = profile["height"]
+		if sample_height > 0.5:
+			break
+		if float(profile["center_gap"]) <= 0.005:
+			crotch_height = sample_height
+			break
+	var waist_height := -1.0
+	var narrowest_width := INF
+	var waist_search_start := maxf(crotch_height + 0.08, 0.5)
+	for profile: Dictionary in profiles:
+		var sample_height: float = profile["height"]
+		if sample_height < waist_search_start:
+			continue
+		var width: float = profile["half_width"]
+		if width < narrowest_width:
+			narrowest_width = width
+			waist_height = sample_height
+	var detection_valid := (
+			crotch_height >= 0.38 and crotch_height <= 0.5
+			and waist_height >= 0.54 and waist_height <= 0.68
+			and waist_height - crotch_height >= 0.08
+			and waist_height - crotch_height <= 0.25)
+	var detected_height := DEFAULT_PELVIS_HEIGHT
+	if detection_valid:
+		detected_height = clampf((crotch_height + waist_height) * 0.5, 0.48, 0.55)
+	# The silhouette transition is sensitive to clothing. Blending it with a
+	# conservative humanoid prior keeps the result stable while still allowing
+	# body geometry to move the pelvis away from a fixed bounds percentage.
+	var pelvis_height := lerpf(DEFAULT_PELVIS_HEIGHT, detected_height, 0.5)
+	return {
+		"pelvis_height": pelvis_height,
+		"crotch_height": crotch_height,
+		"waist_height": waist_height,
+		"detection_valid": detection_valid,
+		"confidence": "geometry" if detection_valid else "fallback",
+	}
+
+
+static func _horizontal_slice_profile(
+		normalized_y: float, bounds: AABB,
+		vertices: PackedVector3Array) -> Dictionary:
+	var coordinate := bounds.position.y + bounds.size.y * normalized_y
+	var radius := bounds.size.y * 0.015
+	var distances: Array[float] = []
+	var center_x := bounds.get_center().x
+	for vertex: Vector3 in vertices:
+		if absf(vertex.y - coordinate) <= radius:
+			distances.append(absf(vertex.x - center_x))
+	if distances.size() < 16 or bounds.size.x <= 0.0001:
+		return {"valid": false, "height": normalized_y}
+	distances.sort()
+	return {
+		"valid": true,
+		"height": normalized_y,
+		"center_gap": distances[int(distances.size() * 0.05)] / bounds.size.x,
+		"half_width": distances[int(distances.size() * 0.9)] / bounds.size.x,
+	}
 
 
 static func _estimate_shoulder_height(
@@ -437,10 +524,17 @@ static func _build_weighted_mesh(
 		var weights := PackedFloat32Array()
 		bones.resize(vertices.size() * 4)
 		weights.resize(vertices.size() * 4)
+		var candidate_weights: Array[Dictionary] = []
 		for vertex_index in vertices.size():
 			var vertex := baked_transform * vertices[vertex_index]
 			baked_vertices[vertex_index] = vertex
-			var influences := _weights_for_vertex(vertex, bounds, segments)
+			candidate_weights.append(_candidate_weights_for_vertex(vertex, bounds, segments))
+		var adjacency := _build_vertex_adjacency(
+				vertices.size(), arrays[Mesh.ARRAY_INDEX],
+				source.surface_get_primitive_type(surface_index))
+		candidate_weights = _smooth_candidate_weights(candidate_weights, adjacency)
+		for vertex_index in vertices.size():
+			var influences := _finalize_weight_map(candidate_weights[vertex_index])
 			for influence_index in influences.size():
 				var influence: Array = influences[influence_index]
 				bones[vertex_index * 4 + influence_index] = influence[0]
@@ -493,8 +587,8 @@ static func _segment_end(
 	return start
 
 
-static func _weights_for_vertex(
-		vertex: Vector3, bounds: AABB, segments: Dictionary) -> Array[Array]:
+static func _candidate_weights_for_vertex(
+		vertex: Vector3, bounds: AABB, segments: Dictionary) -> Dictionary:
 	var candidate_names: Array[String] = CENTER_WEIGHT_BONES.duplicate()
 	var side := "Left" if vertex.x >= bounds.get_center().x else "Right"
 	for suffix: String in SIDE_WEIGHT_BONES:
@@ -513,7 +607,99 @@ static func _weights_for_vertex(
 		scored.append([segment["bone_index"], 1.0 / (safe_distance * safe_distance)])
 	scored.sort_custom(func(a: Array, b: Array) -> bool:
 		return float(a[1]) > float(b[1]))
-	return _finalize_influences(scored)
+	var retained := _retain_influences(scored, MAX_SMOOTHING_INFLUENCES)
+	var result := {}
+	for influence: Array in retained:
+		result[int(influence[0])] = float(influence[1])
+	return result
+
+
+static func _build_vertex_adjacency(
+		vertex_count: int, index_data: Variant, primitive: int) -> Array[PackedInt32Array]:
+	var empty_result: Array[PackedInt32Array] = []
+	empty_result.resize(vertex_count)
+	for vertex_index in vertex_count:
+		empty_result[vertex_index] = PackedInt32Array()
+	if primitive != Mesh.PRIMITIVE_TRIANGLES:
+		return empty_result
+	var neighbors: Array[Dictionary] = []
+	neighbors.resize(vertex_count)
+	for vertex_index in vertex_count:
+		neighbors[vertex_index] = {}
+	var indices := PackedInt32Array()
+	if index_data is PackedInt32Array:
+		indices = index_data
+	if indices.is_empty():
+		indices.resize(vertex_count)
+		for vertex_index in vertex_count:
+			indices[vertex_index] = vertex_index
+	for triangle_start in range(0, indices.size() - 2, 3):
+		var first := indices[triangle_start]
+		var second := indices[triangle_start + 1]
+		var third := indices[triangle_start + 2]
+		_add_adjacency_edge(neighbors, first, second)
+		_add_adjacency_edge(neighbors, second, third)
+		_add_adjacency_edge(neighbors, third, first)
+	var result: Array[PackedInt32Array] = []
+	result.resize(vertex_count)
+	for vertex_index in vertex_count:
+		result[vertex_index] = PackedInt32Array(neighbors[vertex_index].keys())
+	return result
+
+
+static func _add_adjacency_edge(neighbors: Array[Dictionary], first: int, second: int) -> void:
+	if first < 0 or second < 0 or first >= neighbors.size() or second >= neighbors.size():
+		return
+	neighbors[first][second] = true
+	neighbors[second][first] = true
+
+
+static func _smooth_candidate_weights(
+		weights: Array[Dictionary], adjacency: Array[PackedInt32Array]) -> Array[Dictionary]:
+	var current := weights
+	for _pass_index in WEIGHT_SMOOTHING_PASSES:
+		var smoothed: Array[Dictionary] = []
+		smoothed.resize(current.size())
+		for vertex_index in current.size():
+			var neighbors := adjacency[vertex_index]
+			if neighbors.is_empty():
+				smoothed[vertex_index] = current[vertex_index].duplicate()
+				continue
+			var blended := {}
+			_accumulate_weight_map(blended, current[vertex_index], 1.0 - WEIGHT_SMOOTHING_FACTOR)
+			var neighbor_factor := WEIGHT_SMOOTHING_FACTOR / float(neighbors.size())
+			for neighbor_index: int in neighbors:
+				_accumulate_weight_map(blended, current[neighbor_index], neighbor_factor)
+			smoothed[vertex_index] = _prune_weight_map(blended, MAX_SMOOTHING_INFLUENCES)
+		current = smoothed
+	return current
+
+
+static func _accumulate_weight_map(target: Dictionary, source: Dictionary, factor: float) -> void:
+	for bone_index: int in source:
+		target[bone_index] = float(target.get(bone_index, 0.0)) + float(source[bone_index]) * factor
+
+
+static func _prune_weight_map(weights: Dictionary, maximum: int) -> Dictionary:
+	var scored := _weight_map_to_scored(weights)
+	var retained := _retain_influences(scored, maximum)
+	var result := {}
+	for influence: Array in retained:
+		result[int(influence[0])] = float(influence[1])
+	return result
+
+
+static func _weight_map_to_scored(weights: Dictionary) -> Array[Array]:
+	var scored: Array[Array] = []
+	for bone_index: int in weights:
+		scored.append([bone_index, float(weights[bone_index])])
+	scored.sort_custom(func(a: Array, b: Array) -> bool:
+		return float(a[1]) > float(b[1]))
+	return scored
+
+
+static func _finalize_weight_map(weights: Dictionary) -> Array[Array]:
+	return _retain_influences(_weight_map_to_scored(weights), MAX_VERTEX_INFLUENCES)
 
 
 static func _distance_to_segment(point: Vector3, start: Vector3, end: Vector3) -> float:
@@ -525,13 +711,13 @@ static func _distance_to_segment(point: Vector3, start: Vector3, end: Vector3) -
 	return point.distance_to(start + offset * amount)
 
 
-static func _finalize_influences(scored: Array[Array]) -> Array[Array]:
+static func _retain_influences(scored: Array[Array], maximum: int) -> Array[Array]:
 	if scored.is_empty():
 		return []
 	var retained: Array[Array] = []
 	var strongest := float(scored[0][1])
 	for influence: Array in scored:
-		if retained.size() >= MAX_VERTEX_INFLUENCES:
+		if retained.size() >= maximum:
 			break
 		if not retained.is_empty() and float(influence[1]) < strongest * INFLUENCE_CUTOFF:
 			break

@@ -404,12 +404,22 @@ func _on_generate_rig_pressed() -> void:
 	info["generated_rig"] = true
 	info["joint_positions"] = result["joint_positions"]
 	info["default_joint_positions"] = result["joint_positions"].duplicate(true)
+	info["rig_landmarks"] = result.get("landmarks", {})
 	editor._custom_characters[editor._character_kind] = info
 	_save_profile(result["path"], result["humanoid_map"])
 	_save_generated_character(info)
-	editor.status_label.text = "Generated %d-bone native rig · inspect it before using animations" % (
-			int(result["bone_count"]))
+	var landmarks: Dictionary = result.get("landmarks", {})
+	var landmark_source := (
+			"geometry analysis" if landmarks.get("detection_valid", false) else "fallback")
+	editor.status_label.text = (
+			"Generated %d-bone native rig · pelvis %.0f%% (%s) · inspect before animation" % [
+				int(result["bone_count"]),
+				float(landmarks.get("pelvis_height", AUTORIGGER.DEFAULT_PELVIS_HEIGHT)) * 100.0,
+				landmark_source,
+			])
 	editor._load_character(editor._character_kind)
+	editor.show_bones_toggle.set_pressed_no_signal(true)
+	editor._gizmo_handler._on_show_bones_toggled(true)
 	editor._stage_handler.set_stage(CharacterEditorStageHandler.Stage.RIG)
 
 
@@ -524,6 +534,7 @@ func _on_save_rig_pressed() -> void:
 	info["model_path"] = output_path
 	info["humanoid_map"] = result["humanoid_map"]
 	info["joint_positions"] = result["joint_positions"]
+	info["rig_landmarks"] = result.get("landmarks", {})
 	editor._custom_characters[editor._character_kind] = info
 	_save_profile(output_path, result["humanoid_map"])
 	_save_generated_character(info)

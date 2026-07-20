@@ -452,6 +452,14 @@ func _on_animation_selected(index: int) -> void:
 	_set_animation(editor.animation_picker.get_item_metadata(index))
 
 
+func reset_animation_state() -> void:
+	editor.animation_group_picker.select(0)
+	editor.animation_picker.clear()
+	editor.animation_picker.hide()
+	editor._animation_package_handler.select_group(&"")
+	_set_animation(&"")
+
+
 func _set_animation(animation_name: StringName) -> void:
 	var previous_animation := editor._current_animation
 	editor._current_animation = animation_name
@@ -460,7 +468,7 @@ func _set_animation(animation_name: StringName) -> void:
 		editor.pause_toggle.set_pressed_no_signal(false)
 		editor.pause_toggle.disabled = true
 		editor.root_motion_toggle.disabled = true
-		if previous_animation != &"" and editor.body.anim_player.is_playing():
+		if previous_animation != &"":
 			editor.body.anim_player.stop()
 		editor.body.skeleton.reset_bone_poses()
 		editor.body.skeleton.advance(0.0)
