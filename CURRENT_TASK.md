@@ -1,7 +1,8 @@
 # Current Task: One unified character + animation system
 
 **Branch:** `player-swappable-skin`
-**Status:** Planning — no implementation yet.
+**Status:** Phase 0 complete (catalog module + 3-character proof set migrated).
+Phase 1 (extend `HumanoidRetargeter`) not started.
 
 ## End goal (in plain terms)
 
@@ -144,10 +145,36 @@ character's `humanoid_map` on its own, outside the tool.
       Resource class yet, and left `REQUIRED_ROLES`/`auto_map`/
       `full_map_from_prefix` (rig-mapping *computation*, not storage) in
       `rig_handler.gd` - narrower, lower-risk first cut.
-- [ ] Migrate `CHARACTER_KINDS`/`MIXAMO_CHARACTERS` built-ins into real
-      catalog entries with a generated `humanoid_map` and auto-computed
-      rest-facing offset each, including MotusMan/`player` itself. Not
-      started.
+- [x] Migrated the 3 needed for the proof set (not all 12 - see below):
+      `builtin_motusman`, `builtin_x_bot`, `builtin_y_bot`. Each got a
+      manifest written next to its existing source model (
+      `pistol_starter/MotusMan/MotusMan_v55.character.json`,
+      `mixamo_characters/X Bot.character.json`,
+      `mixamo_characters/Y Bot.character.json`), with a full bone-level
+      `humanoid_map` (`full_map_from_prefix` maps every bone sharing the
+      prefix, not just the 19 `REQUIRED_ROLES` - 80 bones for MotusMan, 65
+      for each Mixamo bot, fingers included) and a computed
+      `rest_yaw_offset_deg` (via `PlayerBodyPoseMath.skeleton_rest_facing`
+      + `signed_angle_to` against Godot's canonical `-Z`). All three came
+      out ~0° - a genuinely useful, non-obvious finding: `x_bot`/`y_bot`
+      (Mixamo's own generic reference rigs) are *not* subject to the
+      "authored facing +Z, needs 180°" convention `AGENTS.md` documents for
+      the actual zombie/action-pack FBXs already in use - don't assume
+      that convention generalizes to every Mixamo-family asset without
+      computing it per-rig, which is exactly why this is computed, not
+      hardcoded.
+      **Deliberately used distinct `kind_id`s** (`builtin_x_bot`, not
+      `x_bot`) rather than reusing `CHARACTER_KINDS`' own strings -
+      `character_editor.gd`'s `_load_character()` checks
+      `_custom_characters.has(kind)` *before* falling back to the plain
+      `MIXAMO_CHARACTERS` adapter it uses today, so a same-named catalog
+      entry would have silently switched which adapter loads `x_bot`/`y_bot`
+      in the tool - an unverified, out-of-scope behavior change. Confirmed
+      via a live scan that `CharacterCatalog.list_all()` returns zero
+      entries under the literal `"player"`/`"x_bot"`/`"y_bot"` keys.
+      Remaining 9 (`shambler`, `brute`, `vanguard`, `parasite`,
+      `copzombie`, `zombiegirl`, `ch08`, `ch10`, `ch15`): explicitly
+      deferred to whenever they're actually needed, not migrated on spec.
 - [x] Decide the first two-or-three-character proof set for later phases:
       MotusMan + `x_bot` + `y_bot`, as recommended.
 - [x] Confirmed live (via the running editor's MCP bridge,

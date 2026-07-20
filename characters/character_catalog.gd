@@ -11,6 +11,20 @@ extends RefCounted
 const GENERATED_DIRECTORY := "res://assets/models/generated_characters"
 const IMPORTED_DIRECTORY := "res://assets/models/imported_characters"
 
+## Built-in characters (CHARACTER_KINDS in character_editor.gd) keep their
+## source models where they already lived before the catalog existed, not
+## copied into IMPORTED_DIRECTORY - their manifests are written directly
+## alongside those existing files instead (matching every other manifest's
+## "<model_basename>.character.json" convention), so these directories need
+## their own scan roots. Migrated one at a time as each is actually needed
+## (see CURRENT_TASK.md's Phase 0) rather than all of CHARACTER_KINDS at
+## once - directories are safe to list here before every file in them has
+## a manifest yet, since the scan just skips anything that doesn't.
+const BUILTIN_DIRECTORIES: PackedStringArray = [
+	"res://assets/models/pistol_starter/MotusMan",
+	"res://assets/models/mixamo_characters",
+]
+
 
 ## Every character (imported or generated) gets one of these at creation
 ## time, stored as its manifest's "id" field and used as its storage
@@ -48,6 +62,8 @@ static func list_all() -> Dictionary:
 	var found: Dictionary = {}
 	_scan_directory(IMPORTED_DIRECTORY, found)
 	_scan_directory(GENERATED_DIRECTORY, found)
+	for directory: String in BUILTIN_DIRECTORIES:
+		_scan_directory(directory, found)
 	return found
 
 
