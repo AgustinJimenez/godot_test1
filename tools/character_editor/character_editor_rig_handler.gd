@@ -15,6 +15,35 @@ const IMPORTED_DIRECTORY := "res://assets/models/imported_characters"
 const MENU_RENAME := 1
 const MENU_RESET_RIG := 2
 const MENU_REMOVE := 3
+const MENU_DELETE := 4
+
+
+## Every character (imported or generated) gets one of these at creation
+## time, stored as its manifest's "id" field and used as its storage
+## folder name under IMPORTED_DIRECTORY/GENERATED_DIRECTORY - unlike a
+## filename-derived kind_id, it can never collide with another character
+## and never changes across renames or re-imports. Crypto is used purely
+## as a convenient source of random bytes, not for any security property.
+static func generate_uuid_v4() -> String:
+	var bytes := Crypto.new().generate_random_bytes(16)
+	bytes[6] = (bytes[6] & 0x0F) | 0x40
+	bytes[8] = (bytes[8] & 0x3F) | 0x80
+	var hex := bytes.hex_encode()
+	return "%s-%s-%s-%s-%s" % [
+		hex.substr(0, 8), hex.substr(8, 4), hex.substr(12, 4),
+		hex.substr(16, 4), hex.substr(20, 12),
+	]
+
+
+## Returns info's existing "id", assigning one first if it predates
+## per-character ids. info is the live Dictionary stored in
+## _custom_characters, so this mutation needs no explicit write-back.
+static func _ensure_id(info: Dictionary) -> String:
+	var character_id: String = info.get("id", "")
+	if character_id.is_empty():
+		character_id = generate_uuid_v4()
+		info["id"] = character_id
+	return character_id
 
 const REQUIRED_ROLES: Array[Dictionary] = [
 	{"role": "Hips", "label": "Hips", "aliases": ["hips", "pelvis"]},
@@ -61,7 +90,11 @@ var _reset_joint_button: Button
 var _character_menu: MenuButton
 var _rename_dialog: ConfirmationDialog
 var _rename_field: LineEdit
-var _action_dialog: ConfirmationDialog
+var _action_modal: Control
+var _action_title: Label
+var _action_message: Label
+var _action_confirm_button: Button
+var _action_cancel_button: Button
 var _pending_catalog_action := 0
 var _reference_panel: PanelContainer
 var _reference_toggle: Button
@@ -105,16 +138,23 @@ func setup() -> void:
 			^"UI/Panel/PanelScroll/Margin/VBox/CharacterRow/CharacterMenu")
 	_rename_dialog = editor.get_node(^"UI/RenameCharacterDialog")
 	_rename_field = _rename_dialog.get_node(^"Name")
-	_action_dialog = editor.get_node(^"UI/CharacterActionDialog")
+	_action_modal = editor.get_node(^"UI/CharacterActionModal")
+	var action_vbox := _action_modal.get_node(^"Center/ActionPanel/Margin/VBox")
+	_action_title = action_vbox.get_node(^"Title")
+	_action_message = action_vbox.get_node(^"Message")
+	_action_cancel_button = action_vbox.get_node(^"Buttons/Cancel")
+	_action_confirm_button = action_vbox.get_node(^"Buttons/Confirm")
+	_action_cancel_button.pressed.connect(_on_action_modal_cancelled)
+	_action_confirm_button.pressed.connect(_on_action_modal_confirmed)
 	var popup := _character_menu.get_popup()
 	popup.add_item("Rename...", MENU_RENAME)
 	popup.add_item("Reset Generated Rig...", MENU_RESET_RIG)
 	popup.add_separator()
-	popup.add_item("Remove from Editor...", MENU_REMOVE)
+	popup.add_item("Unlink from Editor...", MENU_REMOVE)
+	popup.add_item("Delete Permanently...", MENU_DELETE)
 	popup.id_pressed.connect(_on_character_menu_pressed)
 	_character_menu.about_to_popup.connect(_update_character_menu)
 	_rename_dialog.confirmed.connect(_on_rename_confirmed)
-	_action_dialog.confirmed.connect(_on_catalog_action_confirmed)
 	editor.rig_auto_map_button.pressed.connect(_on_auto_map_pressed)
 	editor.rig_apply_button.pressed.connect(_on_apply_pressed)
 	editor.rig_generate_button.pressed.connect(_on_generate_rig_pressed)
@@ -242,26 +282,42 @@ func restore_generated_characters() -> void:
 	_restore_characters_from_directory(GENERATED_DIRECTORY)
 
 
+## Recurses one or more levels so both the flat legacy layout (manifests
+## directly under path) and per-character id folders (path/<uuid>/*) are
+## found; bounded in practice since these two directories only ever hold
+## this tool's own character assets.
 func _restore_characters_from_directory(path: String) -> void:
 	var directory := DirAccess.open(path)
 	if directory == null:
 		return
 	directory.list_dir_begin()
-	var filename := directory.get_next()
-	while not filename.is_empty():
-		if not directory.current_is_dir() and filename.ends_with(".character.json"):
-			var manifest_path := path.path_join(filename)
-			var file := FileAccess.open(manifest_path, FileAccess.READ)
-			var parsed: Variant = JSON.parse_string(file.get_as_text()) if file != null else null
-			if parsed is Dictionary:
-				var info: Dictionary = parsed
-				var kind_id: String = info.get("kind_id", "")
-				var model_path: String = info.get("model_path", "")
-				if not kind_id.is_empty() and ResourceLoader.exists(model_path):
-					info["manifest_path"] = manifest_path
-					editor._custom_characters[kind_id] = info
-		filename = directory.get_next()
+	var entry := directory.get_next()
+	while not entry.is_empty():
+		var entry_path := path.path_join(entry)
+		if directory.current_is_dir():
+			_restore_characters_from_directory(entry_path)
+		elif entry.ends_with(".character.json"):
+			_restore_character_manifest(entry_path)
+		entry = directory.get_next()
 	directory.list_dir_end()
+
+
+func _restore_character_manifest(manifest_path: String) -> void:
+	var file := FileAccess.open(manifest_path, FileAccess.READ)
+	var parsed: Variant = JSON.parse_string(file.get_as_text()) if file != null else null
+	if not parsed is Dictionary:
+		return
+	var info: Dictionary = parsed
+	var kind_id: String = info.get("kind_id", "")
+	var model_path: String = info.get("model_path", "")
+	if kind_id.is_empty() or not ResourceLoader.exists(model_path):
+		return
+	info["manifest_path"] = manifest_path
+	var had_id := not String(info.get("id", "")).is_empty()
+	_ensure_id(info)
+	if not had_id:
+		persist_character(info, manifest_path)
+	editor._custom_characters[kind_id] = info
 
 
 func on_character_loaded() -> void:
@@ -386,7 +442,7 @@ func _on_generate_rig_pressed() -> void:
 	if source_path.is_empty():
 		editor.rig_summary.text = "The imported character has no source model path"
 		return
-	var output_path := _generated_output_path(source_path)
+	var output_path := _generated_output_path(_ensure_id(info), source_path)
 	editor.rig_generate_button.disabled = true
 	editor.rig_summary.text = "Generating skeleton and anatomical skin weights..."
 	await editor.get_tree().process_frame
@@ -520,7 +576,7 @@ func _on_save_rig_pressed() -> void:
 	var source_path: String = info.get("source_model_path", "")
 	if source_path.is_empty():
 		return
-	var output_path := _generated_output_path(source_path)
+	var output_path := _generated_output_path(_ensure_id(info), source_path)
 	_save_button.disabled = true
 	editor.rig_summary.text = "Saving adjusted rig..."
 	await editor.get_tree().process_frame
@@ -543,9 +599,10 @@ func _on_save_rig_pressed() -> void:
 	editor.status_label.text = "Saved adjusted native rig"
 
 
-static func _generated_output_path(source_path: String) -> String:
-	return "res://assets/models/generated_characters/%s_rigged.tscn" % (
-			source_path.get_file().get_basename().to_snake_case())
+static func _generated_output_path(character_id: String, source_path: String) -> String:
+	return "%s/%s/%s_rigged.tscn" % [
+		GENERATED_DIRECTORY, character_id, source_path.get_file().get_basename().to_snake_case(),
+	]
 
 
 func _save_generated_character(info: Dictionary) -> void:
@@ -575,8 +632,9 @@ func _update_character_menu() -> void:
 	popup.set_item_disabled(popup.get_item_index(MENU_RENAME), info.is_empty())
 	popup.set_item_disabled(
 			popup.get_item_index(MENU_RESET_RIG), not info.get("generated_rig", false))
-	popup.set_item_disabled(
-			popup.get_item_index(MENU_REMOVE), editor._character_kind in editor.CHARACTER_KINDS)
+	var is_builtin := editor._character_kind in editor.CHARACTER_KINDS
+	popup.set_item_disabled(popup.get_item_index(MENU_REMOVE), is_builtin)
+	popup.set_item_disabled(popup.get_item_index(MENU_DELETE), is_builtin)
 
 
 func _on_character_menu_pressed(action_id: int) -> void:
@@ -591,16 +649,52 @@ func _on_character_menu_pressed(action_id: int) -> void:
 			_rename_field.select_all()
 		MENU_RESET_RIG:
 			_pending_catalog_action = MENU_RESET_RIG
-			_action_dialog.dialog_text = (
+			_open_action_modal(
+					"Reset Generated Rig",
 					"Delete the generated rig and return to the original unrigged source? "
-					+ "The source model will be preserved.")
-			_action_dialog.popup_centered()
+					+ "The source model will be preserved.",
+					"Reset Rig")
 		MENU_REMOVE:
 			_pending_catalog_action = MENU_REMOVE
-			_action_dialog.dialog_text = (
-					"Remove this character from the editor catalog? "
-					+ "Source and generated asset files will be preserved.")
-			_action_dialog.popup_centered()
+			_open_action_modal(
+					"Unlink from Editor",
+					"Unlink this character from the editor catalog? "
+					+ "Its source and generated asset files stay on disk untouched, "
+					+ "and it can be re-imported later.",
+					"Unlink")
+		MENU_DELETE:
+			_pending_catalog_action = MENU_DELETE
+			_open_action_modal(
+					"Delete Permanently",
+					"Permanently delete \"%s\" and its asset files from disk? "
+					% info.get("display_name", "this character")
+					+ "This cannot be undone.",
+					"Delete Permanently")
+
+
+func _open_action_modal(title: String, message: String, confirm_text: String) -> void:
+	_action_title.text = title
+	_action_message.text = message
+	_action_confirm_button.text = confirm_text
+	_action_modal.visible = true
+
+
+func is_action_modal_open() -> bool:
+	return _action_modal.visible
+
+
+func cancel_action_modal() -> void:
+	_on_action_modal_cancelled()
+
+
+func _on_action_modal_cancelled() -> void:
+	_pending_catalog_action = 0
+	_action_modal.visible = false
+
+
+func _on_action_modal_confirmed() -> void:
+	_action_modal.visible = false
+	_on_catalog_action_confirmed()
 
 
 func _on_rename_confirmed() -> void:
@@ -624,6 +718,8 @@ func _on_catalog_action_confirmed() -> void:
 			_reset_generated_rig()
 		MENU_REMOVE:
 			_remove_character_registration()
+		MENU_DELETE:
+			_delete_character_permanently()
 	_pending_catalog_action = 0
 
 
@@ -632,10 +728,8 @@ func _reset_generated_rig() -> void:
 	var info: Dictionary = editor._custom_characters.get(kind_id, {})
 	if info.is_empty() or not info.get("generated_rig", false):
 		return
-	var generated_path: String = info.get("model_path", "")
+	_delete_character_assets(info.get("model_path", ""), info.get("id", ""))
 	_remove_file(info.get("manifest_path", ""))
-	_remove_file(generated_path)
-	_remove_file(generated_path.get_basename() + ".rig.json")
 	var source_path: String = info.get("source_model_path", "")
 	info["model_path"] = source_path
 	info["has_skin"] = false
@@ -662,7 +756,31 @@ func _remove_character_registration() -> void:
 	editor._custom_characters.erase(kind_id)
 	editor.character_picker.remove_item(selected_item)
 	editor._unload_character()
-	editor.status_label.text = "Character removed from editor · asset files preserved"
+	editor.status_label.text = "Character unlinked from editor · asset files preserved"
+
+
+## Deletes every file this character owns on disk, not just its catalog
+## entry. Covers both the original imported source (model_path/
+## source_model_path under imported_characters/) and, if a rig was
+## generated, the separate generated scene/rig files under
+## generated_characters/ - those live at a different path with a different
+## basename, so both locations are swept independently.
+func _delete_character_permanently() -> void:
+	var kind_id := editor._character_kind
+	var info: Dictionary = editor._custom_characters.get(kind_id, {})
+	if info.is_empty() or kind_id in editor.CHARACTER_KINDS:
+		return
+	var display_name: String = info.get("display_name", kind_id)
+	var character_id: String = info.get("id", "")
+	_delete_character_assets(info.get("source_model_path", ""), character_id)
+	if info.get("generated_rig", false):
+		_delete_character_assets(info.get("model_path", ""), character_id)
+	_remove_file(info.get("manifest_path", ""))
+	var selected_item := editor.character_picker.selected
+	editor._custom_characters.erase(kind_id)
+	editor.character_picker.remove_item(selected_item)
+	editor._unload_character()
+	editor.status_label.text = "Deleted %s and its asset files" % display_name
 
 
 static func _manifest_path_for_info(info: Dictionary) -> String:
@@ -674,6 +792,81 @@ static func _remove_file(path: String) -> void:
 	if path.is_empty() or not FileAccess.file_exists(path):
 		return
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+## Removes everything this character owns at one asset path. Characters
+## imported/generated after per-character id folders were added have their
+## own folder (named after their id) holding nothing but their own files, so
+## that whole folder is removed outright. Characters from before that change
+## still share a flat directory with every other character and have no such
+## folder to remove - _delete_files_by_basename's basename sweep is the
+## fallback for those.
+static func _delete_character_assets(path: String, character_id: String) -> void:
+	if path.is_empty():
+		return
+	var directory := path.get_base_dir()
+	if not character_id.is_empty() and directory.get_file() == character_id:
+		_remove_directory_recursive(ProjectSettings.globalize_path(directory))
+	else:
+		_delete_files_by_basename(path)
+
+
+static func _remove_directory_recursive(absolute_path: String) -> void:
+	var directory := DirAccess.open(absolute_path)
+	if directory == null:
+		return
+	directory.list_dir_begin()
+	var entry := directory.get_next()
+	while entry != "":
+		if directory.current_is_dir():
+			_remove_directory_recursive(absolute_path.path_join(entry))
+		else:
+			directory.remove(entry)
+		entry = directory.get_next()
+	directory.list_dir_end()
+	DirAccess.remove_absolute(absolute_path)
+
+
+## Imports and rig generation both leave a cluster of sibling files next to
+## the primary asset - .import metadata, and textures Godot's importer
+## extracts to disk as "<basename>_<index>.<ext>" (seen with both FBX and
+## GLB sources). There is no manifest of exactly what got created at import
+## time, so this sweeps the asset's own directory for anything sharing its
+## basename instead of hardcoding an extension list: "<basename>.*" and
+## "<basename>_<digits>.*" only - never a bare prefix match - so an
+## unrelated file that merely starts with the same characters (e.g. a
+## separately imported "zombie2_details.glb" beside "zombie2.glb") is not
+## swept up by accident. Fallback for characters imported before
+## per-character id folders existed; see _delete_character_assets.
+static func _delete_files_by_basename(path: String) -> void:
+	if path.is_empty():
+		return
+	var directory := path.get_base_dir()
+	var basename := path.get_file().get_basename()
+	var dir_access := DirAccess.open(ProjectSettings.globalize_path(directory))
+	if dir_access == null:
+		return
+	dir_access.list_dir_begin()
+	var entry := dir_access.get_next()
+	while entry != "":
+		if not dir_access.current_is_dir() and _basename_owns_entry(entry, basename):
+			dir_access.remove(entry)
+		entry = dir_access.get_next()
+	dir_access.list_dir_end()
+
+
+static func _basename_owns_entry(entry: String, basename: String) -> bool:
+	if not entry.begins_with(basename):
+		return false
+	var remainder := entry.substr(basename.length())
+	if remainder.begins_with("."):
+		return true
+	if not remainder.begins_with("_"):
+		return false
+	var dot_index := remainder.find(".")
+	if dot_index <= 1:
+		return false
+	return remainder.substr(1, dot_index - 1).is_valid_int()
 
 
 func _mapping_from_selectors() -> Dictionary:

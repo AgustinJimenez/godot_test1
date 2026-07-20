@@ -22,7 +22,6 @@ func _update_responsive_layout() -> void:
 	editor._ui_scale = clampf(viewport_size.y / editor.BASE_UI_HEIGHT, 1.0, editor.MAX_UI_SCALE)
 	editor.ui_layer.transform = Transform2D.IDENTITY.scaled(Vector2.ONE * editor._ui_scale)
 	var logical_viewport_size := viewport_size / editor._ui_scale
-	editor.pose_library_overlay.size = logical_viewport_size
 	var panel_width := clampf(
 			logical_viewport_size.x * editor.PANEL_WIDTH_RATIO,
 			editor.MIN_PANEL_WIDTH,

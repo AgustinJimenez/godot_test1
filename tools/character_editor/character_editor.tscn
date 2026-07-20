@@ -469,10 +469,74 @@ offset_right = 448.0
 offset_bottom = 52.0
 placeholder_text = "Character name"
 
-[node name="CharacterActionDialog" type="ConfirmationDialog" parent="UI"]
-title = "Character Catalog"
-initial_position = 2
-size = Vector2i(500, 180)
+[node name="CharacterActionModal" type="Control" parent="UI"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="UI/CharacterActionModal"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.68)
+
+[node name="Center" type="CenterContainer" parent="UI/CharacterActionModal"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ActionPanel" type="PanelContainer" parent="UI/CharacterActionModal/Center"]
+custom_minimum_size = Vector2(460, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("PanelStyle")
+
+[node name="Margin" type="MarginContainer" parent="UI/CharacterActionModal/Center/ActionPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 18
+
+[node name="VBox" type="VBoxContainer" parent="UI/CharacterActionModal/Center/ActionPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="UI/CharacterActionModal/Center/ActionPanel/Margin/VBox"]
+layout_mode = 2
+text = "Character Catalog"
+label_settings = SubResource("HeadingSettings")
+
+[node name="Message" type="Label" parent="UI/CharacterActionModal/Center/ActionPanel/Margin/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(420, 0)
+autowrap_mode = 3
+theme_override_font_sizes/font_size = 16
+
+[node name="Buttons" type="HBoxContainer" parent="UI/CharacterActionModal/Center/ActionPanel/Margin/VBox"]
+layout_mode = 2
+alignment = 2
+theme_override_constants/separation = 10
+
+[node name="Cancel" type="Button" parent="UI/CharacterActionModal/Center/ActionPanel/Margin/VBox/Buttons"]
+custom_minimum_size = Vector2(100, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "Cancel"
+
+[node name="Confirm" type="Button" parent="UI/CharacterActionModal/Center/ActionPanel/Margin/VBox/Buttons"]
+custom_minimum_size = Vector2(170, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "Confirm"
 
 [node name="RigSection" type="VBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
 layout_mode = 2
@@ -1082,8 +1146,11 @@ label_settings = SubResource("HeadingSettings")
 
 [node name="PoseLibraryOverlay" type="Control" parent="UI"]
 visible = false
-offset_right = 1152.0
-offset_bottom = 648.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
 [node name="Dim" type="ColorRect" parent="UI/PoseLibraryOverlay"]
 layout_mode = 1

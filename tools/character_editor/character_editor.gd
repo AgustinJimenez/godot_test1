@@ -15,7 +15,7 @@ const DEFAULT_ANIMATION := &"unarmed_torch_idle"
 const CHARACTER_SPAWN_POSITION := Vector3(0, 0.1, 0)
 const CHARACTER_KINDS: PackedStringArray = [
 	"player", "shambler", "brute", "y_bot", "x_bot", "vanguard",
-	"parasite", "copzombie", "zombiegirl", "ch08", "ch10", "ch15", "zombie1",
+	"parasite", "copzombie", "zombiegirl", "ch08", "ch10", "ch15",
 ]
 const DEFAULT_CHARACTER_KIND := "player"
 ## Every non-"player" kind maps to a bare Mixamo FBX + display name, loaded
@@ -298,16 +298,7 @@ var _pending_import_result: Dictionary = {}
 ## (unrecognized skeleton, posable only)}. Characters imported this session
 ## via the "Import Character..." button - not persisted; ask your assistant
 ## to add a character permanently once you know you want to keep it.
-var _custom_characters: Dictionary = {
-	"zombie1": {
-		"model_path": "res://assets/models/zombie1/zombie1_source.glb",
-		"source_model_path": "res://assets/models/zombie1/zombie1_source.glb",
-		"display_name": "Zombie 1",
-		"bone_prefix": null,
-		"has_skin": false,
-		"humanoid_map": {},
-	},
-}
+var _custom_characters: Dictionary = {}
 ## clip StringName -> Animation, rebuilt for the currently selected character
 ## from persistent CharacterAnimationPackage source paths.
 var _custom_clips: Dictionary = {}
@@ -865,7 +856,7 @@ func _make_debug_mesh_instance(mesh: Mesh, material: Material) -> MeshInstance3D
 
 
 func _input(event: InputEvent) -> void:
-	if pose_library_overlay.visible:
+	if pose_library_overlay.visible or _rig_handler.is_action_modal_open():
 		return
 	if body == null or not _stage_handler.is_pose_stage():
 		return
@@ -897,9 +888,11 @@ func _is_pointer_over_tuner_ui(screen_position: Vector2) -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if pose_library_overlay.visible:
-		if event.is_action_pressed(&"ui_cancel"):
+	if pose_library_overlay.visible or _rig_handler.is_action_modal_open():
+		if event.is_action_pressed(&"ui_cancel") and pose_library_overlay.visible:
 			_pose_library_handler.close()
+		elif event.is_action_pressed(&"ui_cancel"):
+			_rig_handler.cancel_action_modal()
 		get_viewport().set_input_as_handled()
 		return
 	if body == null:

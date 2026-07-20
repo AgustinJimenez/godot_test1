@@ -83,14 +83,18 @@ func _on_import_file_selected(path: String) -> void:
 	editor._animation_package_handler.refresh_selection()
 
 
-## Copies source_path into assets/models/imported_characters/, detects its
-## skeleton's bone-name convention from its own bones (not assumed), and
-## registers it as a new selectable character for this session. See
-## _detect_bone_prefix's doc comment for what "detects" covers and what it
-## doesn't.
+## Copies source_path into its own id-named folder under
+## assets/models/imported_characters/ (so later Delete can remove exactly
+## and only this character's files - see character_editor_rig_handler.gd's
+## _delete_character_assets), detects its skeleton's bone-name convention
+## from its own bones (not assumed), and registers it as a new selectable
+## character for this session. See _detect_bone_prefix's doc comment for
+## what "detects" covers and what it doesn't.
 func _import_character(source_path: String) -> void:
-	var dest_path := (
-			"res://assets/models/imported_characters/" + _sanitize_filename(source_path.get_file()))
+	var character_id := RIG_HANDLER.generate_uuid_v4()
+	var dest_path := "%s/%s/%s" % [
+		RIG_HANDLER.IMPORTED_DIRECTORY, character_id, _sanitize_filename(source_path.get_file()),
+	]
 	var result := await editor._mcp_handler._request_import_asset(source_path, dest_path)
 	if not result.get("ok", false):
 		editor.status_label.text = "Import failed: %s" % result.get("error", "unknown error")
@@ -118,6 +122,7 @@ func _import_character(source_path: String) -> void:
 	var kind_id := "custom_" + dest_path.get_file().get_basename().to_snake_case()
 	var display_name := dest_path.get_file().get_basename()
 	var character_info := {
+		"id": character_id,
 		"kind_id": kind_id,
 		"model_path": dest_path,
 		"source_model_path": dest_path,
