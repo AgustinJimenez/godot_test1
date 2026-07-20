@@ -1,8 +1,9 @@
 # Current Task: One unified character + animation system
 
 **Branch:** `player-swappable-skin`
-**Status:** Phase 0 complete (catalog module + 3-character proof set migrated).
-Phase 1 (extend `HumanoidRetargeter`) not started.
+**Status:** Phase 0 and Phase 1 complete. `HumanoidRetargeter` proven
+equivalent to `PlayerBody`'s own retargeting, live, via a new permanent
+diagnostic. Phase 2 (cut `PlayerBody` over to it for real) not started.
 
 ## End goal (in plain terms)
 
@@ -241,20 +242,55 @@ added so future diagnostic additions never need a new dedicated Python tool
 Consolidation target decided (see above): `HumanoidRetargeter`, not
 `player_body_pose_math.gd` - it's already data-driven via `BoneMapConfig`
 and already proven in real gameplay (`HumanoidActor`'s attack clip).
-- [ ] Audit `HumanoidRetargeter.retarget_clip`/`use_humanoid_retarget`
-      against everything `player_body.gd`'s inline retargeting does that it
-      might not yet: root motion track handling, full finger-chain detail,
-      hand retarget modes, contact-timed combat baking. List gaps
-      precisely before writing anything.
-- [ ] Close those gaps inside `HumanoidRetargeter` (still consumed by
-      nobody real yet except `HumanoidActor`'s narrower attack-clip case,
-      which must keep working unchanged throughout).
-- [ ] Write the translation from a catalog entry's `humanoid_map: {role:
-      bone_name}` into a `BoneMapConfig` instance.
-- [ ] Prove the result bit-for-bit (or visually, via Compare mode)
-      equivalent to `PlayerBody`'s current MotusMan output before anything
-      real consumes it. This phase changes nothing a player or NPC can see
-      yet.
+- [x] **Audit complete - no algorithmic gaps found.** Read
+      `_humanoid_retarget_local_pose`/`_match_arm_skeleton_positions`/
+      `_swing_retarget`/`_aim_bone_at_direction`/`_solve_fabrik` in both
+      `player_body.gd` and `humanoid_retargeter.gd` line by line:
+      `HumanoidRetargeter` is already a complete, faithful generalization
+      of `PlayerBody`'s real (`use_humanoid_retarget=true`) gameplay path -
+      same formula, just parameterized via `BoneMapConfig` instead of
+      hardcoded `BONE_MAP`/`SWING_BONES` constants. What looked like
+      potential gaps turned out not to be:
+      - Hand retarget modes (`FROZEN`/`LOCAL_COPY`) and `bake_held_track`
+        only apply to `player_body.gd`'s *legacy* delta/swing comparison
+        branches - explicitly documented debug-only scaffolding, dead code
+        under the default `use_humanoid_retarget=true` + `DELTA_ROTATION`
+        gameplay config.
+      - Finger chains aren't a special case in either file - both iterate
+        the full bone map generically, so fingers already retarget
+        correctly as long as the caller's `bone_map`/`BONE_MAP` includes
+        them (data the caller supplies, not logic either file is missing).
+      - Root motion (`_setup_root_motion_track`/`_process_root_motion`)
+        lives in `character_editor.gd` (the *tool*), not `player_body.gd` -
+        a debug-preview feature unrelated to the retargeting bake itself.
+      - Contact-timed combat baking operates on an already-baked clip's
+        live playback position; orthogonal to retargeting, stays in
+        `PlayerBody` regardless of which engine baked the clip.
+- [x] Wrote `HumanoidRetargeter.build_bone_map_config(source_role_map,
+      humanoid_map)` (in `humanoid_retargeter.gd`), composing
+      `player_body.gd`'s existing `BONE_MAP` (reused directly via
+      `PlayerBody.BONE_MAP`, not duplicated a third time - it's just a
+      name table, not the retargeting math the duplication boundary was
+      protecting) with a catalog entry's `humanoid_map` to produce a full
+      `BoneMapConfig` for any target skeleton.
+- [x] **Proven equivalent, live, via a new permanent `test_retarget_parity`
+      MCP diagnostic** (bakes a clip through both paths on the actual live
+      `PlayerBody` instance and diffs every track numerically - not
+      Compare-mode eyeballing). First run showed 49/55 bones matching
+      exactly, with a real ~2-5° divergence on the 6 arm-chain bones
+      only. Chased this down with a second, one-off diagnostic (since
+      removed) that called `player_body.gd`'s *own* `_retarget_clip` a
+      second time against its own already-baked output: **the exact same
+      divergence appeared, same bones, same magnitude, against itself.**
+      This is the arm FABRIK step's redundant degree of freedom (the elbow
+      can swing around the shoulder-wrist axis while still reaching the
+      same target) - genuinely sensitive to tiny floating-point
+      differences in prior pose state, not a bug in the port. Confirmed on
+      a second, unrelated clip (`Walk`/`unarmed_walk`) with the identical
+      signature. **Phase 1's equivalence goal is met**: `HumanoidRetargeter`
+      reproduces `PlayerBody`'s algorithm exactly everywhere it's actually
+      deterministic, and matches its own self-consistency envelope
+      everywhere it isn't.
 
 ### Phase 2 — Cut PlayerBody over to the shared core
 - [ ] Swap `player_body.gd`'s internal retargeting calls to the new shared

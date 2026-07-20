@@ -283,6 +283,9 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 			EngineDebugger.send_message("mcp:command_result", [JSON.stringify({
 				"ok": true, "result": editor.status_label.text,
 			})])
+		"test_retarget_parity":
+			_mcp_test_retarget_parity(
+					String(data[0]), StringName(data[1]), StringName(data[2]), String(data[3]))
 		_:
 			return false
 	return true
@@ -301,6 +304,127 @@ func _mcp_test_import_character(source_path: String) -> void:
 		"ok": editor._custom_characters.size() > characters_before,
 		"result": editor.status_label.text,
 	})])
+
+
+## Regression check for the player-swappable-skin plan's Phase 1 (see
+## CURRENT_TASK.md): bakes source_clip from source_glb_path onto the
+## currently-loaded character's skeleton via HumanoidRetargeter +
+## build_bone_map_config (using manifest_path's persisted humanoid_map),
+## then diffs every track numerically against gameplay_clip - the same
+## clip already baked into editor.body's own "moves"/equivalent library by
+## whatever the currently-loaded character's normal retargeting path is.
+## Bit-for-bit (well within floating-point tolerance) equality here is the
+## actual proof that HumanoidRetargeter can replace a character's own
+## inline retargeting without changing what players see - not just "looks
+## right in Compare mode".
+func _mcp_test_retarget_parity(
+		source_glb_path: String, source_clip: StringName, gameplay_clip: StringName,
+		manifest_path: String) -> void:
+	var result := {"ok": false}
+	var reference_anim: Animation = editor.body.anim_player.get_animation_library(
+			&"moves").get_animation(gameplay_clip)
+	if reference_anim == null:
+		result["error"] = (
+				"gameplay_clip %s not found in the loaded character's moves library" % gameplay_clip)
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(result)])
+		return
+	var manifest_file := FileAccess.open(manifest_path, FileAccess.READ)
+	var manifest: Dictionary = JSON.parse_string(manifest_file.get_as_text()) if manifest_file else {}
+	var humanoid_map: Dictionary = manifest.get("humanoid_map", {})
+	var source_instance: Node = (load(source_glb_path) as PackedScene).instantiate()
+	var src_skeleton: Skeleton3D = source_instance.find_child("Skeleton3D", true, false)
+	var src_ap: AnimationPlayer = source_instance.find_child("AnimationPlayer", true, false)
+	var src_animation: Animation = null
+	for lib_name in src_ap.get_animation_library_list():
+		var lib := src_ap.get_animation_library(lib_name)
+		if lib.has_animation(source_clip):
+			src_animation = lib.get_animation(source_clip)
+			break
+	if src_animation == null:
+		source_instance.free()
+		result["error"] = "%s not found in %s" % [source_clip, source_glb_path]
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(result)])
+		return
+	const HUMANOID_RETARGETER := preload("res://tools/character_editor/humanoid_retargeter.gd")
+	var config := HUMANOID_RETARGETER.build_bone_map_config(PlayerBody.BONE_MAP, humanoid_map)
+	var new_anim: Animation = HUMANOID_RETARGETER.retarget_clip(
+			src_skeleton, src_animation, editor.body.skeleton, config, false)
+	source_instance.free()
+	var diff := _diff_animations(reference_anim, new_anim)
+	diff["bone_map_entries"] = config.bone_map.size()
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify({
+		"ok": true, "result": diff,
+	})])
+
+
+func _diff_animations(reference_anim: Animation, new_anim: Animation) -> Dictionary:
+	var ref_bones := _tracked_bone_names(reference_anim)
+	var new_bones := _tracked_bone_names(new_anim)
+	var max_rot_diff := 0.0
+	var max_pos_diff := 0.0
+	var mismatches := 0
+	var compared := 0
+	var per_bone_max_rot_diff: Dictionary = {}
+	for bone_name: String in ref_bones:
+		if not new_bones.has(bone_name):
+			mismatches += 1
+			continue
+		var ref_track: int = ref_bones[bone_name]
+		var new_track: int = new_bones[bone_name]
+		var key_count := reference_anim.track_get_key_count(ref_track)
+		if key_count != new_anim.track_get_key_count(new_track):
+			mismatches += 1
+			continue
+		for k in key_count:
+			compared += 1
+			if reference_anim.track_get_type(ref_track) == Animation.TYPE_ROTATION_3D:
+				var ref_val: Quaternion = reference_anim.track_get_key_value(ref_track, k)
+				var new_val: Quaternion = new_anim.track_get_key_value(new_track, k)
+				var diff: float = ref_val.angle_to(new_val)
+				max_rot_diff = maxf(max_rot_diff, diff)
+				per_bone_max_rot_diff[bone_name] = maxf(
+						per_bone_max_rot_diff.get(bone_name, 0.0), diff)
+				if diff > 0.001:
+					mismatches += 1
+			else:
+				var ref_val: Vector3 = reference_anim.track_get_key_value(ref_track, k)
+				var new_val: Vector3 = new_anim.track_get_key_value(new_track, k)
+				var diff: float = ref_val.distance_to(new_val)
+				max_pos_diff = maxf(max_pos_diff, diff)
+				if diff > 0.0001:
+					mismatches += 1
+	var worst_bones: Array = per_bone_max_rot_diff.keys()
+	worst_bones.sort_custom(
+			func(a, b): return per_bone_max_rot_diff[a] > per_bone_max_rot_diff[b])
+	var worst_summary := {}
+	for i in mini(8, worst_bones.size()):
+		var name: String = worst_bones[i]
+		worst_summary[name] = per_bone_max_rot_diff[name]
+	return {
+		"worst_bones_rot_diff_radians": worst_summary,
+		# The caller wraps this under a top-level "ok": true, "result": {...}
+		# - the MCP bridge client treats a top-level ok:false as the *call*
+		# failing and discards the rest of the payload (confirmed the hard
+		# way: a real mismatches>0 result came back as an opaque "Unknown
+		# editor bridge error" with none of this data visible). The actual
+		# parity verdict lives here as "parity_ok" instead.
+		"parity_ok": mismatches == 0,
+		"ref_bone_count": ref_bones.size(),
+		"new_bone_count": new_bones.size(),
+		"keys_compared": compared,
+		"max_rot_diff_radians": max_rot_diff,
+		"max_pos_diff_meters": max_pos_diff,
+		"mismatches": mismatches,
+	}
+
+
+func _tracked_bone_names(anim: Animation) -> Dictionary:
+	var result := {}
+	for t in anim.get_track_count():
+		var path := anim.track_get_path(t)
+		if path.get_subname_count() > 0:
+			result[String(path.get_subname(0))] = t
+	return result
 
 
 ## Copies source_path (from the native file dialog, an absolute OS path)

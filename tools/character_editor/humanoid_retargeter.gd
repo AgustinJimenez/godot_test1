@@ -43,6 +43,54 @@ class BoneMapConfig:
 	var arm_chains: Array[Dictionary] = []
 
 
+## Builds a BoneMapConfig retargeting an arbitrary source clip's skeleton
+## onto any catalog character - source_role_map describes the SOURCE
+## skeleton's own bone names via canonical role (e.g. player_body.gd's
+## BONE_MAP: "pelvis" -> "Hips", "clavicle_l" -> "LeftShoulder", ...; MotusMan's
+## own bone names happen to equal the canonical roles, which is why BONE_MAP's
+## values read as if they were target names - they're really role names).
+## humanoid_map is a catalog entry's own role -> that skeleton's bone name
+## (e.g. CharacterCatalog manifests' "humanoid_map" field). Every role in
+## source_role_map that also exists in humanoid_map becomes one bone_map
+## entry; a role missing from humanoid_map is simply not retargeted, the
+## same way player_body.gd already skips a BONE_MAP entry whose target bone
+## doesn't exist on the loaded skeleton.
+static func build_bone_map_config(
+		source_role_map: Dictionary, humanoid_map: Dictionary) -> BoneMapConfig:
+	var config := BoneMapConfig.new()
+	for source_name: StringName in source_role_map:
+		var role := String(source_role_map[source_name])
+		if humanoid_map.has(role):
+			config.bone_map[source_name] = StringName(humanoid_map[role])
+	config.hips_source = _role_source_name(source_role_map, "Hips")
+	config.hips_target = StringName(humanoid_map.get("Hips", ""))
+	config.head_source = _role_source_name(source_role_map, "Head")
+	config.head_target = StringName(humanoid_map.get("Head", ""))
+	config.shoulder_l_source = _role_source_name(source_role_map, "LeftShoulder")
+	config.shoulder_l_target = StringName(humanoid_map.get("LeftShoulder", ""))
+	config.shoulder_r_source = _role_source_name(source_role_map, "RightShoulder")
+	config.shoulder_r_target = StringName(humanoid_map.get("RightShoulder", ""))
+	for side in ["Left", "Right"]:
+		var hand_source := _role_source_name(source_role_map, side + "Hand")
+		if hand_source == &"" or not humanoid_map.has(side + "Shoulder"):
+			continue
+		config.arm_chains.append({
+			"source_hand": String(hand_source),
+			"target_shoulder": humanoid_map.get(side + "Shoulder", ""),
+			"target_arm": humanoid_map.get(side + "Arm", ""),
+			"target_forearm": humanoid_map.get(side + "ForeArm", ""),
+			"target_hand": humanoid_map.get(side + "Hand", ""),
+		})
+	return config
+
+
+static func _role_source_name(source_role_map: Dictionary, role: String) -> StringName:
+	for source_name: StringName in source_role_map:
+		if String(source_role_map[source_name]) == role:
+			return source_name
+	return &""
+
+
 ## Mirrors player_body.gd's _retarget_clip (use_humanoid_retarget path
 ## only - the legacy delta/swing comparison modes that method also supports
 ## are debug-only scaffolding from the original UAL investigation and have
