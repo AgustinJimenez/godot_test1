@@ -84,6 +84,11 @@ static func handle(request: Dictionary, editor_interface: EditorInterface, pose_
 			return await _cmd_forward_to_runtime(
 					"mcp:test_button_click", [String(request.get("node_path", ""))],
 					editor_interface, pose_debugger, 10.0)
+		"test_popup_item_click":
+			return await _cmd_forward_to_runtime(
+					"mcp:test_popup_item_click",
+					[String(request.get("node_path", "")), int(request.get("item_id", 0))],
+					editor_interface, pose_debugger, 10.0)
 		var other:
 			return {"ok": false, "error": "Unknown cmd: %s" % other}
 

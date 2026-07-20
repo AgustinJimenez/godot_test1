@@ -60,6 +60,13 @@ func _exit_tree() -> void:
 
 
 func _register_pose_debugger() -> void:
+	# CACHE_MODE_REPLACE alone is not enough for GDScript specifically - see
+	# _handle_command()'s identical comment for commands.gd. Without this
+	# update_file() call, reload_editor_bridge silently keeps serving the
+	# stale pre-edit pose_debugger_plugin.gd bytecode - confirmed by editing
+	# _import_asset, calling reload_editor_bridge, and observing the editor's
+	# own error log still cite the pre-edit line numbers.
+	get_editor_interface().get_resource_filesystem().update_file(POSE_DEBUGGER_SCRIPT_PATH)
 	var script := ResourceLoader.load(
 			POSE_DEBUGGER_SCRIPT_PATH, "GDScript", ResourceLoader.CACHE_MODE_REPLACE)
 	_pose_debugger = script.new()

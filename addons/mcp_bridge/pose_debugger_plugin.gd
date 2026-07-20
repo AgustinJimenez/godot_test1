@@ -47,7 +47,7 @@ func _on_message_received(message: String, data: Array) -> void:
 	if message == "mcp:import_asset_request":
 		var source_path := String(data[0]) if data.size() > 0 else ""
 		var dest_res_path := String(data[1]) if data.size() > 1 else ""
-		var result := _import_asset(source_path, dest_res_path)
+		var result := await _import_asset(source_path, dest_res_path)
 		send_to_runtime("mcp:import_asset_result", [JSON.stringify(result)])
 
 
@@ -56,6 +56,16 @@ func _on_message_received(message: String, data: Array) -> void:
 ## importer to run on it immediately - update_file() alone only registers
 ## the file with the filesystem cache, reimport_files() is what actually
 ## generates the .import metadata new files need before they're loadable.
+##
+## Per-character imports land in a never-before-seen "res://.../<uuid>/"
+## folder (see character_editor_import_handler.gd), not an already-tracked
+## flat directory - EditorFileSystem has no record of that folder yet, so
+## reimport_files() on a path inside it fails outright ("Can't find file
+## ... during file reimport", confirmed via the editor's own log, not
+## guessed). update_file() alone does not fix this either - empirically
+## confirmed it still leaves the new directory unknown to EditorFileSystem.
+## scan_sources() finds it, but runs on a background thread, so this must
+## wait for is_scanning() to clear before reimport_files() can find the file.
 func _import_asset(source_path: String, dest_res_path: String) -> Dictionary:
 	if source_path.is_empty() or dest_res_path.is_empty():
 		return {"ok": false, "error": "Missing source or destination path"}
@@ -67,6 +77,9 @@ func _import_asset(source_path: String, dest_res_path: String) -> Dictionary:
 	if copy_err != OK:
 		return {"ok": false, "error": "Copy failed: %s" % error_string(copy_err)}
 	var efs := EditorInterface.get_resource_filesystem()
+	efs.scan_sources()
+	while efs.is_scanning():
+		await Engine.get_main_loop().process_frame
 	efs.update_file(dest_res_path)
 	efs.reimport_files(PackedStringArray([dest_res_path]))
 	return {"ok": true, "path": dest_res_path}

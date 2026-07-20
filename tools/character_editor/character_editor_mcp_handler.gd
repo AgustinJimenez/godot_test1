@@ -271,6 +271,18 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 			EngineDebugger.send_message("mcp:command_result", [JSON.stringify({
 				"ok": true, "result": editor.status_label.text,
 			})])
+		"test_popup_item_click":
+			# Same reasoning as test_button_click, for MenuButton/PopupMenu
+			# item selections specifically - those fire id_pressed(id), not
+			# the zero-argument "pressed" test_button_click already covers,
+			# so they need their own emit_signal call with that argument.
+			# node_path names the MenuButton (its PopupMenu is created at
+			# runtime via get_popup(), not a distinct scene node/path).
+			var menu_button: MenuButton = editor.get_node(String(data[0]))
+			menu_button.get_popup().emit_signal("id_pressed", int(data[1]))
+			EngineDebugger.send_message("mcp:command_result", [JSON.stringify({
+				"ok": true, "result": editor.status_label.text,
+			})])
 		_:
 			return false
 	return true

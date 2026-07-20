@@ -32,7 +32,6 @@ import editor_bridge
 CharacterKind = Literal[
 	"player", "shambler", "brute", "y_bot", "x_bot", "vanguard",
 	"parasite", "copzombie", "zombiegirl", "ch08", "ch10", "ch15",
-	"zombie1",
 ]
 
 PROJECT_PATH = Path(__file__).resolve().parents[2]
@@ -549,6 +548,43 @@ def set_live_show_bones(enabled: bool) -> str:
 def set_live_character(kind: CharacterKind) -> str:
 	"""Switch which character is loaded in the scene actually playing in the already-running editor - the live counterpart to the character= automation arg / the UI's Character dropdown. Tears down and rebuilds character-specific state (held object, hand-grip modifier, bone-debug overlay), so anything set via set_object/set_bone_rotation/etc. needs to be reapplied afterward. shambler has no held-object/hand-grip/compare-mode support - those tools return errors when it's loaded. Requires play_scene_in_editor first."""
 	result = editor_bridge.send_command({"cmd": "set_live_character", "kind": kind}, timeout=15.0)
+	return str(result)
+
+
+@mcp.tool()
+def test_import_character(source_path: str) -> str:
+	"""Exercises the real "Import Character..." code path (copy + editor reimport + skeleton inspection) in the scene actually playing in the already-running editor, bypassing only the native OS file picker itself - source_path is an absolute OS path, exactly what that picker would have returned. Kept permanently as a diagnostic distinct from set_live_character: it proves the actual import pipeline works end-to-end (including landing in the character catalog), not just that a character can be switched to. Requires play_scene_in_editor first; can take up to a minute for large source files."""
+	result = editor_bridge.send_command(
+		{"cmd": "test_import_character", "source_path": source_path}, timeout=65.0
+	)
+	return str(result)
+
+
+@mcp.tool()
+def test_button_click(node_path: str) -> str:
+	"""Emits a node's real "pressed" signal (via emit_signal, not by calling its handler function directly) in the scene actually playing in the already-running editor - the only way to exercise whatever actually connects that signal to its handler, whether that's a GDScript .connect() call or a scene-file [connection] resource. node_path is relative to the CharacterEditor root, e.g. "UI/Panel/PanelScroll/Margin/VBox/BoneButtons/ResetAll". Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command(
+		{"cmd": "test_button_click", "node_path": node_path}, timeout=15.0
+	)
+	return str(result)
+
+
+@mcp.tool()
+def test_popup_item_click(node_path: str, item_id: int) -> str:
+	"""Emits a MenuButton's PopupMenu id_pressed(item_id) signal for real (via emit_signal, not calling the handler function directly) in the scene actually playing in the already-running editor - the popup-menu-item counterpart to test_button_click, needed because these fire id_pressed(id) rather than the zero-argument "pressed" signal test_button_click handles. node_path names the MenuButton itself (relative to the CharacterEditor root), not its popup - the popup is created at runtime via get_popup(), not a distinct scene node. item_id is the integer id the target menu item was registered with (e.g. character_editor_rig_handler.gd's MENU_RENAME/MENU_RESET_RIG/MENU_REMOVE/MENU_DELETE constants). Requires play_scene_in_editor first."""
+	result = editor_bridge.send_command(
+		{"cmd": "test_popup_item_click", "node_path": node_path, "item_id": item_id}, timeout=15.0
+	)
+	return str(result)
+
+
+@mcp.tool()
+def send_editor_bridge_command(cmd: str, params: dict | None = None, timeout: float = 15.0) -> str:
+	"""Generic escape hatch onto the live editor bridge (addons/mcp_bridge/) - forwards {"cmd": cmd, **params} over the same TCP connection every other live_*/*_live_* tool here uses, and returns the raw response. Exists so a *new* case added to commands.gd's dispatch or character_editor_mcp_handler.gd's "mcp:*" dispatch (both of which already reload fresh from disk on every request - see plugin.gd's _handle_command, and the fact play_scene_in_editor spawns a fresh subprocess) can be exercised immediately, without needing a new dedicated Python wrapper function here - registering a brand-new named tool requires the MCP client to reconnect to this server before it becomes callable, which this sidesteps entirely for anything already reachable through cmd. Prefer a dedicated named tool when one already exists (a better-documented, schema-checked call); reach for this only for a command that doesn't have one yet."""
+	payload: dict = {"cmd": cmd}
+	if params:
+		payload.update(params)
+	result = editor_bridge.send_command(payload, timeout=timeout)
 	return str(result)
 
 

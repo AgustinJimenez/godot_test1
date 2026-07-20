@@ -10,6 +10,7 @@ extends RefCounted
 var editor: CharacterEditor
 
 const RIG_HANDLER := preload("res://tools/character_editor/character_editor_rig_handler.gd")
+const CATALOG := preload("res://characters/character_catalog.gd")
 
 
 func _init(editor_ref: CharacterEditor) -> void:
@@ -91,9 +92,9 @@ func _on_import_file_selected(path: String) -> void:
 ## character for this session. See _detect_bone_prefix's doc comment for
 ## what "detects" covers and what it doesn't.
 func _import_character(source_path: String) -> void:
-	var character_id := RIG_HANDLER.generate_uuid_v4()
+	var character_id := CATALOG.generate_uuid_v4()
 	var dest_path := "%s/%s/%s" % [
-		RIG_HANDLER.IMPORTED_DIRECTORY, character_id, _sanitize_filename(source_path.get_file()),
+		CATALOG.IMPORTED_DIRECTORY, character_id, _sanitize_filename(source_path.get_file()),
 	]
 	var result := await editor._mcp_handler._request_import_asset(source_path, dest_path)
 	if not result.get("ok", false):
