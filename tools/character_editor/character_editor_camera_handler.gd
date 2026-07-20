@@ -10,6 +10,11 @@ var editor: CharacterEditor
 
 const ATTACHMENT_VIEW_DIRECTION := Vector3(-0.48, 0.12, 0.55)
 const ATTACHMENT_VIEW_DISTANCE := 0.95
+const CAMERA_MOVE_DRAG_THRESHOLD := 5.0
+
+var _camera_move_press_position := Vector2.ZERO
+var _camera_move_previous_position := Vector2.ZERO
+var _camera_move_started := false
 
 
 func _init(editor_ref: CharacterEditor) -> void:
@@ -93,8 +98,9 @@ func _frame_full_body() -> void:
 		var half_size := bounds.size * 0.5
 		var viewport_size := editor.get_viewport().get_visible_rect().size
 		var panel_right := (editor.panel.position.x + editor.panel.size.x) * editor._ui_scale
+		var visible_right: float = editor._rig_handler.get_visible_right_edge(viewport_size.x)
 		var uncovered_width := maxf(
-				viewport_size.x - panel_right - 16.0 * editor._ui_scale,
+				visible_right - panel_right - 16.0 * editor._ui_scale,
 				viewport_size.x * 0.25)
 		var aspect := maxf(uncovered_width / maxf(viewport_size.y, 1.0), 0.1)
 		var vertical_tangent := tan(deg_to_rad(editor.camera.fov * 0.5))
@@ -105,10 +111,12 @@ func _frame_full_body() -> void:
 		fit_distance = maxf(
 				(fit_distance + half_size.z) * 1.1,
 				editor.MIN_ORBIT_DISTANCE)
-		editor.camera.h_offset = -fit_distance * 0.36
+		editor.camera.h_offset = 0.0
 		editor.camera.global_position = editor._orbit_target + Vector3(
 				fit_distance * 0.2, fit_distance * 0.06, fit_distance)
 	editor.camera.look_at(editor._orbit_target)
+	if not editor._comparison.enabled:
+		_frame_target_in_visible_area(editor._orbit_target)
 	var orbit_offset := editor.camera.global_position - editor._orbit_target
 	editor._orbit_distance = orbit_offset.length()
 	editor._orbit_yaw = atan2(orbit_offset.x, orbit_offset.z)
@@ -186,9 +194,10 @@ func _frame_attachment() -> void:
 ## so it stays centered in the portion of the viewport that is actually visible.
 func _frame_target_in_visible_area(target: Vector3) -> void:
 	var viewport_width := editor.get_viewport().get_visible_rect().size.x
-	var panel_right := editor.panel.get_global_rect().end.x * editor._ui_scale
+	var panel_right := (editor.panel.position.x + editor.panel.size.x) * editor._ui_scale
 	panel_right = clampf(panel_right, 0.0, viewport_width * 0.9)
-	var desired_x := (panel_right + viewport_width) * 0.5
+	var visible_right: float = editor._rig_handler.get_visible_right_edge(viewport_width)
+	var desired_x := (panel_right + visible_right) * 0.5
 	var centered_x := editor.camera.unproject_position(target).x
 	const SAMPLE_OFFSET := -0.25
 	editor.camera.h_offset = SAMPLE_OFFSET
@@ -216,6 +225,7 @@ func _frame_selected_joint() -> void:
 	editor.camera.h_offset = 0.0
 	editor.camera.global_position = target + editor._focused_camera_offset
 	editor.camera.look_at(target)
+	_frame_target_in_visible_area(target)
 	editor._pitch = editor.camera.rotation.x
 	editor._yaw = editor.camera.rotation.y
 
@@ -230,24 +240,41 @@ func _update_focused_camera() -> void:
 	editor.camera.look_at(target)
 
 
-func _begin_camera_move() -> void:
+func _begin_camera_move(screen_position: Vector2) -> void:
 	editor._moving_camera = true
-	editor._joint_focus_active = false
-	editor._orbiting = false
-	editor._orbiting_joint = false
-	editor.camera.h_offset = 0.0
-	editor._orbit_target = (
-			editor.camera.global_position - editor.camera.global_basis.z * editor._orbit_distance)
-	var orbit_offset := editor.camera.global_position - editor._orbit_target
-	editor._orbit_yaw = atan2(orbit_offset.x, orbit_offset.z)
-	editor._orbit_pitch = asin(clampf(
-			orbit_offset.y / maxf(editor._orbit_distance, 0.001), -1.0, 1.0))
-	editor.status_label.text = ""
+	_camera_move_press_position = screen_position
+	_camera_move_previous_position = screen_position
+	_camera_move_started = false
 
 
-func _move_camera_from_drag(relative: Vector2) -> void:
+func _end_camera_move() -> void:
+	editor._moving_camera = false
+	_camera_move_started = false
+
+
+func _move_camera_from_drag(screen_position: Vector2) -> void:
+	if not _camera_move_started:
+		if screen_position.distance_to(_camera_move_press_position) < CAMERA_MOVE_DRAG_THRESHOLD:
+			return
+		_camera_move_started = true
+		_activate_camera_move()
+	var relative := screen_position - _camera_move_previous_position
+	_camera_move_previous_position = screen_position
 	var scale_factor := maxf(editor._orbit_distance, editor.MIN_ORBIT_DISTANCE) * 0.0015
 	var offset := (editor.camera.global_basis.x * -relative.x
 			+ editor.camera.global_basis.y * relative.y) * scale_factor
 	editor.camera.global_position += offset
 	editor._orbit_target += offset
+
+
+func _activate_camera_move() -> void:
+	editor._joint_focus_active = false
+	editor._orbiting = false
+	editor._orbiting_joint = false
+	editor._orbit_target = (
+			editor.camera.global_position - editor.camera.global_basis.z * editor._orbit_distance)
+	var orbit_offset := editor.camera.global_position - editor._orbit_target
+	editor._orbit_yaw = atan2(orbit_offset.x, orbit_offset.z)
+	editor._orbit_pitch = asin(clampf(
+				orbit_offset.y / maxf(editor._orbit_distance, 0.001), -1.0, 1.0))
+	editor.status_label.text = ""

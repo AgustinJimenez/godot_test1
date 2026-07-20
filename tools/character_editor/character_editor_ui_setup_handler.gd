@@ -54,6 +54,8 @@ func _update_responsive_layout() -> void:
 	editor.playback_toolbar.position = Vector2(
 			logical_viewport_size.x - editor.playback_toolbar.size.x - 16.0,
 			logical_viewport_size.y - editor.playback_toolbar.size.y - 16.0)
+	if editor._rig_handler != null:
+		editor._rig_handler.update_reference_layout(logical_viewport_size)
 	_update_panel_dependent_layout()
 	_update_panel_resize_handle()
 
@@ -93,7 +95,15 @@ func _setup_controls() -> void:
 	editor.character_picker.add_item("Select character...")
 	editor.character_picker.set_item_metadata(0, "")
 	for kind in editor.CHARACTER_KINDS:
-		editor.character_picker.add_item(kind.capitalize())
+		var built_in_info: Dictionary = editor._custom_characters.get(kind, {})
+		editor.character_picker.add_item(
+				built_in_info.get("display_name", kind.capitalize()))
+		editor.character_picker.set_item_metadata(editor.character_picker.item_count - 1, kind)
+	for kind: String in editor._custom_characters:
+		if kind in editor.CHARACTER_KINDS:
+			continue
+		var info: Dictionary = editor._custom_characters[kind]
+		editor.character_picker.add_item(info.get("display_name", kind.capitalize()))
 		editor.character_picker.set_item_metadata(editor.character_picker.item_count - 1, kind)
 	editor.character_picker.item_selected.connect(_on_character_selected)
 	_setup_animation_controls()
@@ -241,7 +251,7 @@ func _on_camera_mode_pressed(mode: int) -> void:
 	editor._captured = false
 	editor._orbiting = false
 	editor._orbiting_joint = false
-	editor._moving_camera = false
+	editor._camera_handler._end_camera_move()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if editor.free_camera_toggle.button_pressed:
 		editor.free_camera_toggle.set_pressed_no_signal(false)

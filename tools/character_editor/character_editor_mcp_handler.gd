@@ -123,23 +123,35 @@ func _run_automation_args() -> void:
 		if is_instance_valid(editor._hand_openness_slider):
 			editor._hand_openness_slider.set_value_no_signal(openness)
 		editor._bone_controls_handler._on_hand_openness_changed(openness)
-	if options.has("angle") and editor._joint_focus_active:
-		var distance := editor._focused_camera_offset.length()
-		match options["angle"]:
-			"right":
-				editor._focused_camera_offset = Vector3.RIGHT * distance
-			"left":
-				editor._focused_camera_offset = Vector3.LEFT * distance
-			"top":
-				editor._focused_camera_offset = Vector3(0.0, 0.85, 0.5).normalized() * distance
-			"bottom":
-				editor._focused_camera_offset = Vector3(0.0, -0.85, 0.5).normalized() * distance
-			"back":
-				editor._focused_camera_offset = Vector3(0.0, 0.0, -distance)
-			_:
-				editor._focused_camera_offset = Vector3(0.0, 0.0, distance)
-		editor._camera_handler._update_focused_camera()
+	if options.has("angle"):
+		if editor._joint_focus_active:
+			var distance := editor._focused_camera_offset.length()
+			match options["angle"]:
+				"right":
+					editor._focused_camera_offset = Vector3.RIGHT * distance
+				"left":
+					editor._focused_camera_offset = Vector3.LEFT * distance
+				"top":
+					editor._focused_camera_offset = Vector3(0.0, 0.85, 0.5).normalized() * distance
+				"bottom":
+					editor._focused_camera_offset = Vector3(0.0, -0.85, 0.5).normalized() * distance
+				"back":
+					editor._focused_camera_offset = Vector3(0.0, 0.0, -distance)
+				_:
+					editor._focused_camera_offset = Vector3(0.0, 0.0, distance)
+			editor._camera_handler._update_focused_camera()
+		else:
+			match options["angle"]:
+				"right": editor._orbit_yaw = PI * 0.5
+				"left": editor._orbit_yaw = -PI * 0.5
+				"back": editor._orbit_yaw = PI
+				"top": editor._orbit_pitch = 1.2
+				"bottom": editor._orbit_pitch = -1.2
+				_: editor._orbit_yaw = 0.0
+			editor._camera_handler._update_orbit_camera()
 	var requested_stage := CharacterEditorStageHandler.Stage.ANIMATION
+	if options.get("stage", "") == "rig":
+		requested_stage = CharacterEditorStageHandler.Stage.RIG
 	if options.has("pose"):
 		requested_stage = CharacterEditorStageHandler.Stage.REVIEW
 	if (options.has("object") or options.has("attachment_index")
@@ -149,6 +161,8 @@ func _run_automation_args() -> void:
 	if (options.has("bone") or options.has("bones")
 			or options.has("hand_openness") or options.has("pick")):
 		requested_stage = CharacterEditorStageHandler.Stage.POSE
+	if options.get("stage", "") == "rig":
+		requested_stage = CharacterEditorStageHandler.Stage.RIG
 	editor._stage_handler.set_stage(requested_stage, true)
 	if options.has("capture"):
 		for _frame in 3:

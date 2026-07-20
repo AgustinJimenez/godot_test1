@@ -32,6 +32,7 @@ import editor_bridge
 CharacterKind = Literal[
 	"player", "shambler", "brute", "y_bot", "x_bot", "vanguard",
 	"parasite", "copzombie", "zombiegirl", "ch08", "ch10", "ch15",
+	"zombie1",
 ]
 
 PROJECT_PATH = Path(__file__).resolve().parents[2]

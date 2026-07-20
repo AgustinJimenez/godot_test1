@@ -9,6 +9,8 @@ extends RefCounted
 
 var editor: CharacterEditor
 
+const RIG_HANDLER := preload("res://tools/character_editor/character_editor_rig_handler.gd")
+
 
 func _init(editor_ref: CharacterEditor) -> void:
 	editor = editor_ref
@@ -95,25 +97,58 @@ func _import_character(source_path: String) -> void:
 		return
 	var instance: Node = (load(dest_path) as PackedScene).instantiate()
 	var new_skeleton: Skeleton3D = instance.find_child("Skeleton3D", true, false)
-	if new_skeleton == null or new_skeleton.get_bone_count() == 0:
-		instance.free()
-		editor.status_label.text = "Import failed: %s has no Skeleton3D" % dest_path.get_file()
-		return
-	var bone_prefix: Variant = _detect_bone_prefix(new_skeleton)
+	var has_skeleton := new_skeleton != null and new_skeleton.get_bone_count() > 0
+	var bone_prefix: Variant = (
+			_detect_bone_prefix(new_skeleton)
+			if has_skeleton else null)
+	var has_skin := false
+	for found: Node in instance.find_children("*", "MeshInstance3D", true, false):
+		var found_mesh := found as MeshInstance3D
+		if found_mesh.skin != null or not found_mesh.skeleton.is_empty():
+			has_skin = true
+			break
+	var mapping: Dictionary = RIG_HANDLER.load_profile(dest_path)
+	if mapping.is_empty() and has_skeleton:
+		mapping = (
+				RIG_HANDLER.auto_map(new_skeleton)
+				if bone_prefix == null or bone_prefix == "B-"
+				else RIG_HANDLER.full_map_from_prefix(new_skeleton, bone_prefix))
 	instance.free()
 
 	var kind_id := "custom_" + dest_path.get_file().get_basename().to_snake_case()
 	var display_name := dest_path.get_file().get_basename()
-	editor._custom_characters[kind_id] = {
-		"model_path": dest_path, "display_name": display_name, "bone_prefix": bone_prefix,
+	var character_info := {
+		"kind_id": kind_id,
+		"model_path": dest_path,
+		"source_model_path": dest_path,
+		"display_name": display_name,
+		"bone_prefix": bone_prefix,
+		"has_skin": has_skin,
+		"humanoid_map": mapping,
 	}
-	editor.character_picker.add_item(display_name)
-	editor.character_picker.set_item_metadata(editor.character_picker.item_count - 1, kind_id)
-	var convention_note := "" if bone_prefix != null else (
-			" (unrecognized skeleton - posable only, no animation pools; "
-			+ "ask your assistant to add proper retargeting support)")
+	editor._custom_characters[kind_id] = character_info
+	editor._rig_handler.persist_character(
+			character_info, dest_path.get_basename() + ".character.json")
+	var picker_index := -1
+	for item_index in editor.character_picker.item_count:
+		if editor.character_picker.get_item_metadata(item_index) == kind_id:
+			picker_index = item_index
+			break
+	if picker_index < 0:
+		editor.character_picker.add_item(display_name)
+		picker_index = editor.character_picker.item_count - 1
+		editor.character_picker.set_item_metadata(picker_index, kind_id)
+	else:
+		editor.character_picker.set_item_text(picker_index, display_name)
+	var convention_note := ""
+	if not has_skeleton:
+		convention_note = " (unrigged - complete the Rig step)"
+	elif not has_skin:
+		convention_note = " (skeleton has no skinned mesh - complete the Rig step)"
+	elif not editor._rig_mapping_complete(mapping):
+		convention_note = " (humanoid mapping required)"
 	editor.status_label.text = "Imported %s%s" % [display_name, convention_note]
-	editor._ui_setup_handler._on_character_selected(editor.character_picker.item_count - 1)
+	editor._ui_setup_handler._on_character_selected(picker_index)
 
 
 ## Copies source_path into a package folder under imported_animations/, detects its

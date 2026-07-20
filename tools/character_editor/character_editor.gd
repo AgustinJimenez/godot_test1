@@ -5,6 +5,9 @@ extends Node3D
 
 const GRIP_MODIFIER := preload("res://actors/player/player_hand_grip_modifier.gd")
 const RAW_COMPARISON := preload("res://tools/character_editor/raw_animation_comparison.gd")
+const RIG_HANDLER := preload("res://tools/character_editor/character_editor_rig_handler.gd")
+const MAPPED_HUMANOID_ADAPTER := preload(
+		"res://tools/character_editor/mapped_humanoid_adapter.gd")
 const DEFAULT_OBJECT_PATH := "res://assets/models/flashlight/flashlight.glb"
 const DEFAULT_POSE_PRESET_PATH := "res://actors/player/flashlight_grip_pose.json"
 const DEFAULT_ATTACHMENT_BONE := &"RightHand"
@@ -12,7 +15,7 @@ const DEFAULT_ANIMATION := &"unarmed_torch_idle"
 const CHARACTER_SPAWN_POSITION := Vector3(0, 0.1, 0)
 const CHARACTER_KINDS: PackedStringArray = [
 	"player", "shambler", "brute", "y_bot", "x_bot", "vanguard",
-	"parasite", "copzombie", "zombiegirl", "ch08", "ch10", "ch15",
+	"parasite", "copzombie", "zombiegirl", "ch08", "ch10", "ch15", "zombie1",
 ]
 const DEFAULT_CHARACTER_KIND := "player"
 ## Every non-"player" kind maps to a bare Mixamo FBX + display name, loaded
@@ -52,12 +55,12 @@ const ORBIT_SENS := 0.006
 const MIN_ORBIT_DISTANCE := 0.45
 const MAX_ORBIT_DISTANCE := 5.0
 const ZOOM_STEP := 0.88
-const JOINT_RADIUS := 0.022
-const SELECTED_JOINT_RADIUS := 0.029
-const BONE_RADIUS := 0.009
-const ROTATION_RING_RADIUS := 0.105
-const ROTATION_RING_THICKNESS := 0.006
-const RING_PICK_TOLERANCE := 0.025
+const JOINT_RADIUS := 0.015
+const SELECTED_JOINT_RADIUS := 0.021
+const BONE_RADIUS := 0.006
+const ROTATION_RING_RADIUS := 0.085
+const ROTATION_RING_THICKNESS := 0.0035
+const RING_PICK_TOLERANCE := 0.018
 const CHARACTER_PICK_RADIUS_PIXELS := 72.0
 const CAMERA_MODE_ORBIT := 0
 const CAMERA_MODE_MOVE := 1
@@ -122,6 +125,7 @@ var body: CharacterAdapter
 @onready var collapse_panel_button: Button = $UI/Panel/PanelScroll/Margin/VBox/TitleBar/Collapse
 @onready var stage_buttons: Array[Button] = [
 	$UI/Panel/PanelScroll/Margin/VBox/StageRow/Character,
+	$UI/Panel/PanelScroll/Margin/VBox/StageRow/Rig,
 	$UI/Panel/PanelScroll/Margin/VBox/StageRow/Animation,
 	$UI/Panel/PanelScroll/Margin/VBox/StageRow/Attachments,
 	$UI/Panel/PanelScroll/Margin/VBox/StageRow/Pose,
@@ -135,6 +139,24 @@ var body: CharacterAdapter
 @onready var zoom_in_button: Button = $UI/ViewportToolbar/Margin/Buttons/ZoomIn
 @onready var reset_view_button: Button = $UI/ViewportToolbar/Margin/Buttons/ResetView
 @onready var character_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/CharacterRow
+@onready var rig_section: VBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/RigSection
+@onready var rig_summary: Label = $UI/Panel/PanelScroll/Margin/VBox/RigSection/Summary
+@onready var rig_mapping_scroll: ScrollContainer = (
+		$UI/Panel/PanelScroll/Margin/VBox/RigSection/MappingScroll)
+@onready var rig_mapping_list: VBoxContainer = (
+		$UI/Panel/PanelScroll/Margin/VBox/RigSection/MappingScroll/MappingList)
+@onready var rig_auto_map_button: Button = (
+		$UI/Panel/PanelScroll/Margin/VBox/RigSection/MappingActions/AutoMap)
+@onready var rig_apply_button: Button = (
+		$UI/Panel/PanelScroll/Margin/VBox/RigSection/MappingActions/Apply)
+@onready var rig_external_actions: VBoxContainer = (
+		$UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions)
+@onready var rig_generate_button: Button = (
+		$UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions/GenerateRig)
+@onready var rig_mixamo_button: Button = (
+		$UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions/Buttons/Mixamo)
+@onready var rig_blender_button: Button = (
+		$UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions/Buttons/Blender)
 @onready var animation_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/AnimationRow
 @onready var editor_mode_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/EditorModeRow
 @onready var character_picker: OptionButton = get_node(
@@ -186,8 +208,7 @@ var body: CharacterAdapter
 @onready var view_picker: OptionButton = $UI/Panel/PanelScroll/Margin/VBox/ViewRow/ViewPicker
 @onready var pause_toggle: CheckButton = get_node(
 		^"UI/Panel/PanelScroll/Margin/VBox/DisplayOptions/PauseAnimation")
-@onready var show_bones_toggle: CheckButton = get_node(
-		^"UI/Panel/PanelScroll/Margin/VBox/DisplayOptions/ShowBones")
+@onready var show_bones_toggle: Button = $UI/ViewportToolbar/Margin/Buttons/ShowBones
 @onready var free_camera_toggle: CheckButton = get_node(
 		^"UI/Panel/PanelScroll/Margin/VBox/DisplayOptions/FreeCamera")
 @onready var root_motion_toggle: CheckButton = get_node(
@@ -276,7 +297,16 @@ var _pending_import_result: Dictionary = {}
 ## (unrecognized skeleton, posable only)}. Characters imported this session
 ## via the "Import Character..." button - not persisted; ask your assistant
 ## to add a character permanently once you know you want to keep it.
-var _custom_characters: Dictionary = {}
+var _custom_characters: Dictionary = {
+	"zombie1": {
+		"model_path": "res://assets/models/zombie1/zombie1_source.glb",
+		"source_model_path": "res://assets/models/zombie1/zombie1_source.glb",
+		"display_name": "Zombie 1",
+		"bone_prefix": null,
+		"has_skin": false,
+		"humanoid_map": {},
+	},
+}
 ## clip StringName -> Animation, rebuilt for the currently selected character
 ## from persistent CharacterAnimationPackage source paths.
 var _custom_clips: Dictionary = {}
@@ -308,6 +338,9 @@ var _rotation_ring_mesh: TorusMesh
 var _bone_segment_material: StandardMaterial3D
 var _joint_material: StandardMaterial3D
 var _selected_joint_material: StandardMaterial3D
+var _selected_bone_material: StandardMaterial3D
+var _bone_section_materials: Dictionary = {}
+var _joint_section_materials: Dictionary = {}
 var _bone_segments: Dictionary = {}
 var _joint_instances: Dictionary = {}
 var _rotation_rings: Array[MeshInstance3D] = []
@@ -364,6 +397,7 @@ var _attachment_handler: CharacterEditorAttachmentHandler
 var _stage_handler: CharacterEditorStageHandler
 var _animation_package_handler: CharacterEditorAnimationPackageHandler
 var _animation_transport: CharacterEditorAnimationTransport
+var _rig_handler
 
 
 func _ready() -> void:
@@ -379,6 +413,8 @@ func _ready() -> void:
 	_stage_handler = CharacterEditorStageHandler.new(self)
 	_animation_package_handler = CharacterEditorAnimationPackageHandler.new(self)
 	_animation_transport = CharacterEditorAnimationTransport.new(self)
+	_rig_handler = RIG_HANDLER.new(self)
+	_rig_handler.restore_generated_characters()
 	get_viewport().size_changed.connect(_ui_setup_handler._update_responsive_layout)
 	_ui_setup_handler._update_responsive_layout()
 	camera.current = true
@@ -388,6 +424,7 @@ func _ready() -> void:
 	_pose_library_handler.setup()
 	_animation_package_handler.setup()
 	_animation_transport.setup()
+	_rig_handler.setup()
 	_stage_handler.setup()
 	var arguments := OS.get_cmdline_user_args()
 	var initial_kind := ""
@@ -497,11 +534,13 @@ func _load_character(kind: String) -> void:
 	_gizmo_handler._refresh_skeleton()
 	_ui_setup_handler._select_character_in_ui(_character_kind)
 	_camera_handler._frame_full_body()
+	_rig_handler.on_character_loaded()
 	_stage_handler.on_character_loaded()
 
 
 func _unload_character() -> void:
 	_clear_loaded_character()
+	_rig_handler.on_character_unloaded()
 	_custom_clips.clear()
 	_character_kind = ""
 	_current_animation = &""
@@ -556,30 +595,43 @@ func _create_custom_character_adapter(info: Dictionary) -> CharacterAdapter:
 	var model_path: String = info["model_path"]
 	var display_name: String = info["display_name"]
 	var bone_prefix: Variant = info["bone_prefix"]
+	var humanoid_map: Dictionary = info.get("humanoid_map", {})
 	var adapter: CharacterAdapter
-	if bone_prefix == "mixamorig_":
+	if bone_prefix == "mixamorig_" and info.get("has_skin", true):
 		adapter = MixamoCharacterAdapter.create(self, CHARACTER_SPAWN_POSITION, model_path, display_name)
-	elif bone_prefix != null:
+	elif bone_prefix != null and bone_prefix != "B-" and info.get("has_skin", true):
 		adapter = RetargetedMixamoAdapter.create(
 				self, CHARACTER_SPAWN_POSITION, model_path, display_name, bone_prefix)
+	elif _rig_mapping_complete(humanoid_map) and info.get("has_skin", false):
+		var mapped_adapter = MAPPED_HUMANOID_ADAPTER.new()
+		adapter = mapped_adapter.bind(
+				self, CHARACTER_SPAWN_POSITION, model_path, display_name, humanoid_map)
 	else:
-		adapter = _create_posable_only_adapter(model_path, display_name)
+		adapter = _create_posable_only_adapter(model_path, display_name, info)
+	adapter.model_path = model_path
+	adapter.humanoid_map = humanoid_map.duplicate(true)
+	adapter.has_skin = info.get("has_skin", true)
+	adapter.humanoid_ready = adapter.has_skin and _rig_mapping_complete(adapter.humanoid_map)
 	CharacterImportMaterialFixups.disable_mesh_transparency(adapter.meshes)
 	CharacterImportMaterialFixups.fix_unwired_textures(adapter.meshes, model_path)
 	return adapter
 
 
-func _create_posable_only_adapter(model_path: String, display_name: String) -> CharacterAdapter:
+func _create_posable_only_adapter(
+		model_path: String, display_name: String, info: Dictionary) -> CharacterAdapter:
 	var instance: Node3D = (load(model_path) as PackedScene).instantiate()
 	instance.position = CHARACTER_SPAWN_POSITION
 	add_child(instance)
 	var adapter := CharacterAdapter.new()
 	adapter.node = instance
 	adapter.skeleton = instance.find_child("Skeleton3D", true, false)
+	if adapter.skeleton == null:
+		adapter.skeleton = Skeleton3D.new()
+		adapter.skeleton.name = &"Skeleton3D"
+		instance.add_child(adapter.skeleton)
 	adapter.meshes = []
-	for child in adapter.skeleton.get_children():
-		if child is MeshInstance3D:
-			adapter.meshes.append(child)
+	for child: Node in instance.find_children("*", "MeshInstance3D", true, false):
+		adapter.meshes.append(child as MeshInstance3D)
 	adapter.mesh = adapter.meshes[0] if not adapter.meshes.is_empty() else null
 	# Character-only exports commonly ship with no baked animation at all -
 	# other code (root-motion setup, custom-clip playback) assumes
@@ -592,7 +644,19 @@ func _create_posable_only_adapter(model_path: String, display_name: String) -> C
 	adapter.anim_player = found_anim_player
 	adapter.supports_held_object = true
 	adapter.display_name = display_name
+	adapter.model_path = model_path
+	adapter.has_skin = info.get("has_skin", false)
+	adapter.humanoid_map = info.get("humanoid_map", {}).duplicate(true)
+	adapter.humanoid_ready = false
+	adapter.supports_held_object = adapter.skeleton.get_bone_count() > 0
 	return adapter
+
+
+func _rig_mapping_complete(mapping: Dictionary) -> bool:
+	for role_info: Dictionary in RIG_HANDLER.REQUIRED_ROLES:
+		if String(mapping.get(role_info["role"], "")).is_empty():
+			return false
+	return true
 
 
 ## Points anim_player at the skeleton's hips bone - "Hips" for PlayerBody/
@@ -755,7 +819,7 @@ func _setup_bone_debug() -> void:
 	body.skeleton.add_child(_bone_debug_root)
 
 	_bone_segment_mesh = CylinderMesh.new()
-	_bone_segment_mesh.top_radius = BONE_RADIUS
+	_bone_segment_mesh.top_radius = BONE_RADIUS * 0.55
 	_bone_segment_mesh.bottom_radius = BONE_RADIUS
 	_bone_segment_mesh.height = 1.0
 	_bone_segment_mesh.radial_segments = 8
@@ -773,6 +837,8 @@ func _setup_bone_debug() -> void:
 	_bone_segment_material = _make_debug_material(Color(0.12, 0.72, 0.95, 0.9))
 	_joint_material = _make_debug_material(Color(0.2, 0.86, 1.0, 1.0))
 	_selected_joint_material = _make_debug_material(Color(1.0, 0.72, 0.12, 1.0))
+	_selected_bone_material = _make_debug_material(Color(1.0, 0.64, 0.12, 0.95))
+	_gizmo_handler._setup_bone_debug_materials()
 	for axis in 3:
 		var ring := _make_debug_mesh_instance(
 				_rotation_ring_mesh, _make_debug_material(AXIS_COLORS[axis]))
@@ -818,7 +884,6 @@ func _input(event: InputEvent) -> void:
 	elif button_event.double_click and _gizmo_handler._select_character_bone_at(button_event.position):
 		get_viewport().set_input_as_handled()
 
-
 func _is_pointer_over_tuner_ui(screen_position: Vector2) -> bool:
 	var logical_position := screen_position / _ui_scale
 	return (Rect2(panel.position, panel.size).has_point(logical_position)
@@ -829,7 +894,8 @@ func _is_pointer_over_tuner_ui(screen_position: Vector2) -> bool:
 						logical_position))
 			or (panel_resize_handle.visible
 				and Rect2(panel_resize_handle.position, panel_resize_handle.size).has_point(
-						logical_position)))
+						logical_position))
+			or _rig_handler.is_pointer_over_reference(logical_position))
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -844,7 +910,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_drag_axis = -1
 		_orbiting = false
 		_orbiting_joint = false
-		_moving_camera = false
+		_camera_handler._end_camera_move()
 		_captured = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif (event is InputEventMagnifyGesture
@@ -874,7 +940,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_orbiting_joint = false
 			get_viewport().set_input_as_handled()
 		elif not button_event.pressed and _moving_camera:
-			_moving_camera = false
+			_camera_handler._end_camera_move()
 			get_viewport().set_input_as_handled()
 		elif button_event.pressed and not _captured:
 			if show_bones_toggle.button_pressed and _gizmo_handler._begin_ring_drag(button_event.position):
@@ -883,7 +949,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				_captured = true
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			elif _camera_mode == CAMERA_MODE_MOVE:
-				_camera_handler._begin_camera_move()
+				_camera_handler._begin_camera_move(button_event.position)
 			elif _joint_focus_active:
 				_camera_handler._begin_focused_joint_orbit()
 			else:
@@ -906,7 +972,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_camera_handler._update_orbit_camera()
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and _moving_camera:
-		_camera_handler._move_camera_from_drag((event as InputEventMouseMotion).relative)
+		_camera_handler._move_camera_from_drag((event as InputEventMouseMotion).position)
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and _captured:
 		_yaw -= event.relative.x * LOOK_SENS

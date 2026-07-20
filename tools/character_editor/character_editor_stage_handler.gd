@@ -3,7 +3,7 @@ extends RefCounted
 
 ## Progressive-disclosure workflow for the Character Editor panel.
 
-enum Stage { CHARACTER, ANIMATION, ATTACHMENTS, POSE, REVIEW }
+enum Stage { CHARACTER, RIG, ANIMATION, ATTACHMENTS, POSE, REVIEW }
 
 const CURRENT_STEP_COLOR := Color(0.96, 0.98, 1.0, 1.0)
 const AVAILABLE_STEP_COLOR := Color(0.42, 0.76, 1.0, 1.0)
@@ -25,6 +25,7 @@ func setup() -> void:
 		editor.stage_buttons[index].pressed.connect(set_stage.bind(index))
 	_controls = [
 		editor.character_row,
+		editor.rig_section,
 		editor.animation_row,
 		editor.editor_mode_row,
 		editor.attachment_slots_row,
@@ -55,7 +56,15 @@ func on_character_loaded() -> void:
 	editor.empty_state.hide()
 	editor.viewport_toolbar.show()
 	current = Stage.CHARACTER
-	highest_unlocked = Stage.ANIMATION
+	highest_unlocked = Stage.ANIMATION if editor._rig_handler.is_ready() else Stage.RIG
+	_update()
+
+
+func set_rig_ready(ready: bool) -> void:
+	if ready:
+		highest_unlocked = maxi(highest_unlocked, Stage.ANIMATION)
+	else:
+		highest_unlocked = mini(highest_unlocked, Stage.RIG)
 	_update()
 
 
@@ -97,6 +106,8 @@ func _update() -> void:
 	match current:
 		Stage.CHARACTER:
 			editor.character_row.show()
+		Stage.RIG:
+			editor.rig_section.show()
 		Stage.ANIMATION:
 			editor.animation_row.show()
 			editor.editor_mode_row.visible = editor.body.supports_comparison
@@ -115,6 +126,7 @@ func _update() -> void:
 			editor.preset_row.show()
 			editor.view_row.show()
 			editor.pose_actions.show()
+	editor._rig_handler.set_reference_stage_active(current == Stage.RIG and not is_empty)
 	_update_display_options()
 
 
@@ -139,5 +151,4 @@ func _update_display_options() -> void:
 	editor.display_options.visible = show_display
 	editor.pause_toggle.visible = current in [Stage.ANIMATION, Stage.POSE, Stage.REVIEW]
 	editor.root_motion_toggle.visible = current == Stage.ANIMATION
-	editor.show_bones_toggle.visible = current == Stage.POSE
 	editor.free_camera_toggle.visible = current == Stage.REVIEW

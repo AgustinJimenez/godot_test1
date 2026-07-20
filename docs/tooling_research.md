@@ -1074,3 +1074,30 @@ solve different problems, and the post-process plugins are effect packs,
 not quality-setting managers. SDFGI remains a scene-authoring option rather
 than a universal preset toggle because its meshes and distances need
 per-level GI configuration.
+
+## Character Editor rigging boundary (2026-07-19)
+
+- Godot's humanoid retarget workflow uses `BoneMap` plus
+  `SkeletonProfileHumanoid`; its importer can auto-map common English bone
+  names, validate mappings, and fix rest-pose conventions. It does not provide
+  an automatic vertex-weight solver:
+  https://docs.godotengine.org/en/latest/tutorials/assets_pipeline/retargeting_3d_skeletons.html
+- Blender is the fully local, free path for an unrigged mesh. Armature Deform
+  with Automatic Weights computes initial bone-heat weights, which still may
+  need manual cleanup around complex joints:
+  https://docs.blender.org/manual/en/latest/animation/armatures/skinning/parenting.html
+- Mixamo is the simplest hosted option for conventional biped humanoids. Adobe
+  documents that it is free with an Adobe ID, supports marker-guided automatic
+  rigging, and is limited to humanoids without large extra appendages:
+  https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html
+  https://helpx.adobe.com/creative-cloud/help/mixamo-rigging-animation.html
+
+Project decision after prototyping both paths: Character Editor owns diagnosis,
+humanoid mapping, validation, persistence, retargeting, and a deliberately
+limited first-pass generator for neutral T/A-pose humanoids. The native path
+constructs `Skeleton3D`, four-influence anatomical-region weights, `Skin`, and
+a bundled `.tscn`; its joint positions remain editable before saving. Blender
+or Mixamo remains appropriate for production weight cleanup, layered clothing,
+non-neutral poses, and unusual anatomy. This preserves an all-editor learning
+workflow without misrepresenting a simple deterministic heuristic as a general
+bone-heat or ML auto-rigger.

@@ -6,11 +6,32 @@ extends RefCounted
 ## Holds a back-reference to the main CharacterEditor - extracted purely
 ## to keep character_editor.gd under a manageable size.
 
+const BONE_DEBUG_COLORS := {
+	&"root": Color(1.0, 0.47, 0.16, 0.82),
+	&"hips": Color(1.0, 0.72, 0.12, 0.82),
+	&"spine": Color(0.22, 0.78, 1.0, 0.78),
+	&"head": Color(1.0, 0.78, 0.24, 0.82),
+	&"arm": Color(0.2, 0.58, 1.0, 0.78),
+	&"finger": Color(1.0, 0.5, 0.18, 0.82),
+	&"leg": Color(0.63, 0.42, 1.0, 0.78),
+	&"other": Color(0.12, 0.72, 0.95, 0.78),
+}
+
 var editor: CharacterEditor
 
 
 func _init(editor_ref: CharacterEditor) -> void:
 	editor = editor_ref
+
+
+func _setup_bone_debug_materials() -> void:
+	editor._bone_section_materials.clear()
+	editor._joint_section_materials.clear()
+	for section: StringName in BONE_DEBUG_COLORS:
+		var color: Color = BONE_DEBUG_COLORS[section]
+		editor._bone_section_materials[section] = editor._make_debug_material(color)
+		editor._joint_section_materials[section] = editor._make_debug_material(
+				Color(color.r, color.g, color.b, 0.96))
 
 
 func _on_bone_slider_changed(value: float, bone_name: StringName, axis: int,
@@ -38,6 +59,7 @@ func _on_bone_row_gui_input(event: InputEvent, bone_name: StringName) -> void:
 
 func _select_bone(bone_name: StringName, focus_joint: bool) -> void:
 	editor._selected_bone = bone_name
+	editor._rig_handler.on_bone_selected(bone_name)
 	editor._bone_controls_handler._expand_section_for_bone(bone_name)
 	if bone_name in [&"RightHand", &"LeftHand"]:
 		editor._bone_controls_handler._expand_finger_sections(String(bone_name).trim_suffix("Hand"))
@@ -94,15 +116,21 @@ func _rebuild_bone_gizmo() -> void:
 		editor._visible_bone_indices.append(bone_index)
 		visible_set[bone_index] = true
 	for bone_index in editor._visible_bone_indices:
-		var joint := editor._make_debug_mesh_instance(editor._joint_mesh, editor._joint_material)
-		joint.name = StringName("Joint_%s" % editor.body.skeleton.get_bone_name(bone_index))
+		var bone_name := editor.body.skeleton.get_bone_name(bone_index)
+		var group := _bone_visual_group(bone_name)
+		var joint_material: Material = editor._joint_section_materials.get(
+				group, editor._joint_material)
+		var joint := editor._make_debug_mesh_instance(editor._joint_mesh, joint_material)
+		joint.name = StringName("Joint_%s" % bone_name)
 		editor._joint_instances[bone_index] = joint
 		editor._bone_debug_root.add_child(joint)
 		var parent_index := editor.body.skeleton.get_bone_parent(bone_index)
 		if visible_set.has(parent_index):
+			var segment_material: Material = editor._bone_section_materials.get(
+					group, editor._bone_segment_material)
 			var segment := editor._make_debug_mesh_instance(
-					editor._bone_segment_mesh, editor._bone_segment_material)
-			segment.name = StringName("Bone_%s" % editor.body.skeleton.get_bone_name(bone_index))
+					editor._bone_segment_mesh, segment_material)
+			segment.name = StringName("Bone_%s" % bone_name)
 			editor._bone_segments[bone_index] = segment
 			editor._bone_debug_root.add_child(segment)
 	_update_bone_gizmo()
@@ -114,22 +142,103 @@ func _update_bone_gizmo() -> void:
 	var selected_index := editor.body.skeleton.find_bone(editor._selected_bone)
 	for bone_index in editor._visible_bone_indices:
 		var pose := editor.body.skeleton.get_bone_global_pose(bone_index)
+		var bone_name := editor.body.skeleton.get_bone_name(bone_index)
+		var group := _bone_visual_group(bone_name)
 		var joint: MeshInstance3D = editor._joint_instances[bone_index]
 		joint.position = pose.origin
 		var selected := bone_index == selected_index
-		joint.material_override = editor._selected_joint_material if selected else editor._joint_material
+		joint.material_override = (
+				editor._selected_joint_material
+				if selected
+				else editor._joint_section_materials.get(group, editor._joint_material)
+		)
 		var radius_scale := editor.SELECTED_JOINT_RADIUS / editor.JOINT_RADIUS if selected else 1.0
-		joint.scale = Vector3.ONE * radius_scale
+		joint.scale = Vector3.ONE * radius_scale * _joint_visual_scale(bone_name)
 		if editor._bone_segments.has(bone_index):
 			var parent_index := editor.body.skeleton.get_bone_parent(bone_index)
 			var parent_position := editor.body.skeleton.get_bone_global_pose(parent_index).origin
 			var offset := pose.origin - parent_position
 			var segment: MeshInstance3D = editor._bone_segments[bone_index]
+			segment.material_override = (
+					editor._selected_bone_material
+					if selected
+					else editor._bone_section_materials.get(group, editor._bone_segment_material)
+			)
 			segment.position = parent_position + offset * 0.5
 			if offset.length_squared() > 0.000001:
+				var width_scale := _bone_visual_scale(bone_name)
 				segment.basis = Basis(Quaternion(Vector3.UP, offset.normalized())).scaled_local(
-						Vector3(1.0, offset.length(), 1.0))
+						Vector3(width_scale, offset.length(), width_scale))
 	_update_rotation_rings(selected_index)
+
+
+func _bone_visual_group(bone_name: StringName) -> StringName:
+	var normalized := String(bone_name).to_lower().replace("_", "")
+	var group := &"other"
+	for finger_name: String in ["thumb", "index", "middle", "ring", "pinky", "little"]:
+		if normalized.contains(finger_name):
+			group = &"finger"
+			break
+	if group == &"other":
+		if normalized.ends_with("root"):
+			group = &"root"
+		elif normalized.contains("hips") or normalized.contains("pelvis"):
+			group = &"hips"
+		elif normalized.contains("neck") or normalized.contains("head"):
+			group = &"head"
+		elif normalized.contains("spine") or normalized.contains("chest"):
+			group = &"spine"
+		elif _contains_any(normalized, ["upleg", "thigh", "leg", "calf", "foot", "toe"]):
+			group = &"leg"
+		elif _contains_any(normalized, ["shoulder", "arm", "forearm", "hand", "wrist"]):
+			group = &"arm"
+	return group
+
+
+func _contains_any(value: String, candidates: Array[String]) -> bool:
+	for candidate: String in candidates:
+		if value.contains(candidate):
+			return true
+	return false
+
+
+func _joint_visual_scale(bone_name: StringName) -> float:
+	var group := _bone_visual_group(bone_name)
+	if group == &"finger":
+		return 0.48
+	if String(bone_name).to_lower().contains("toe"):
+		return 0.62
+	if group in [&"root", &"hips"]:
+		return 1.0
+	return 1.0
+
+
+func _bone_visual_scale(bone_name: StringName) -> float:
+	var group := _bone_visual_group(bone_name)
+	if group == &"finger":
+		return 0.48
+	if String(bone_name).to_lower().contains("toe"):
+		return 0.62
+	return 1.0
+
+
+func _rotation_ring_scale(bone_name: StringName) -> float:
+	var normalized := String(bone_name).to_lower().replace("_", "")
+	var group := _bone_visual_group(bone_name)
+	var ring_scale := 0.68
+	if group == &"finger":
+		ring_scale = 0.28
+	elif normalized.contains("hand") or normalized.contains("wrist"):
+		ring_scale = 0.45
+	elif normalized.contains("foot") or normalized.contains("toe"):
+		ring_scale = 0.45
+	elif group == &"root":
+		ring_scale = 0.8
+	elif group == &"hips":
+		ring_scale = 0.7
+	elif group in [&"arm", &"leg", &"head"]:
+		ring_scale = 0.58
+	return ring_scale
 
 
 func _update_rotation_rings(selected_index: int) -> void:
@@ -140,7 +249,9 @@ func _update_rotation_rings(selected_index: int) -> void:
 	if not rings_visible:
 		return
 	var pose := editor.body.skeleton.get_bone_global_pose(selected_index)
+	var bone_name := editor.body.skeleton.get_bone_name(selected_index)
 	var bone_basis := pose.basis.orthonormalized()
+	var ring_scale := _rotation_ring_scale(bone_name)
 	var axis_rotations := [
 		Basis.from_euler(Vector3(0.0, 0.0, -PI * 0.5)),
 		Basis.IDENTITY,
@@ -149,6 +260,7 @@ func _update_rotation_rings(selected_index: int) -> void:
 	for axis in 3:
 		editor._rotation_rings[axis].position = pose.origin
 		editor._rotation_rings[axis].basis = bone_basis * axis_rotations[axis]
+		editor._rotation_rings[axis].scale = Vector3.ONE * ring_scale
 
 
 func _on_object_position_changed(value: float, axis: int) -> void:
@@ -248,10 +360,12 @@ func _begin_ring_drag(mouse_position: Vector2) -> bool:
 	var pose := editor.body.skeleton.get_bone_global_pose(selected_index)
 	var center := editor.body.skeleton.to_global(pose.origin)
 	var bone_basis := pose.basis.orthonormalized()
+	var ring_scale := _rotation_ring_scale(editor._selected_bone)
+	var ring_radius := editor.ROTATION_RING_RADIUS * ring_scale
 	var ray_origin := editor.camera.project_ray_origin(mouse_position)
 	var ray_direction := editor.camera.project_ray_normal(mouse_position)
 	var best_axis := -1
-	var best_error := editor.RING_PICK_TOLERANCE
+	var best_error := editor.RING_PICK_TOLERANCE * maxf(ring_scale, 0.6)
 	var best_hit := Vector3.ZERO
 	var best_normal := Vector3.ZERO
 	for axis in 3:
@@ -263,7 +377,7 @@ func _begin_ring_drag(mouse_position: Vector2) -> bool:
 		if hit == null:
 			continue
 		var hit_position: Vector3 = hit
-		var radius_error := absf(hit_position.distance_to(center) - editor.ROTATION_RING_RADIUS)
+		var radius_error := absf(hit_position.distance_to(center) - ring_radius)
 		if radius_error < best_error:
 			best_error = radius_error
 			best_axis = axis

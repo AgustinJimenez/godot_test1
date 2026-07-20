@@ -102,9 +102,15 @@ static func try_play(
 ## of targets, avoids that footgun for whatever character gets added next.
 static func build_action_pack_library(target_skeleton: Skeleton3D,
 		target_anim_player: AnimationPlayer, target_bone_prefix: String) -> void:
+	build_action_pack_library_mapped(target_skeleton, target_anim_player,
+			_target_map_from_prefix(target_bone_prefix))
+
+
+static func build_action_pack_library_mapped(target_skeleton: Skeleton3D,
+		target_anim_player: AnimationPlayer, target_map: Dictionary) -> void:
 	var source_root: Node = (load(ACTION_PACK_SOURCE_MODEL_PATH) as PackedScene).instantiate()
 	var source_skeleton: Skeleton3D = source_root.get_node(^"Skeleton3D")
-	var config := _action_pack_bone_map_config(target_bone_prefix)
+	var config := mixamo_to_target_map_config(ACTION_PACK_SOURCE_PREFIX, target_map)
 	var lib := AnimationLibrary.new()
 	for clip_name: StringName in ACTION_PACK_CLIPS:
 		var anim := _retarget_action_pack_clip(
@@ -147,40 +153,57 @@ static func _action_pack_bone_map_config(
 ## another Mixamo-family export.
 static func mixamo_family_bone_map_config(
 		source_bone_prefix: String, target_bone_prefix: String) -> HumanoidRetargeter.BoneMapConfig:
+	return mixamo_to_target_map_config(
+			source_bone_prefix, _target_map_from_prefix(target_bone_prefix))
+
+
+static func mixamo_to_target_map_config(
+		source_bone_prefix: String, target_map: Dictionary) -> HumanoidRetargeter.BoneMapConfig:
 	var config := HumanoidRetargeter.BoneMapConfig.new()
 	config.hips_source = StringName(source_bone_prefix + "Hips")
-	config.hips_target = StringName(target_bone_prefix + "Hips")
+	config.hips_target = StringName(target_map.get("Hips", ""))
 	config.head_source = StringName(source_bone_prefix + "Head")
-	config.head_target = StringName(target_bone_prefix + "Head")
+	config.head_target = StringName(target_map.get("Head", ""))
 	config.shoulder_l_source = StringName(source_bone_prefix + "LeftShoulder")
-	config.shoulder_l_target = StringName(target_bone_prefix + "LeftShoulder")
+	config.shoulder_l_target = StringName(target_map.get("LeftShoulder", ""))
 	config.shoulder_r_source = StringName(source_bone_prefix + "RightShoulder")
-	config.shoulder_r_target = StringName(target_bone_prefix + "RightShoulder")
+	config.shoulder_r_target = StringName(target_map.get("RightShoulder", ""))
 	config.arm_chains = [
 		{
 			"source_hand": source_bone_prefix + "LeftHand",
-			"target_shoulder": target_bone_prefix + "LeftShoulder",
-			"target_arm": target_bone_prefix + "LeftArm",
-			"target_forearm": target_bone_prefix + "LeftForeArm",
-			"target_hand": target_bone_prefix + "LeftHand",
+			"target_shoulder": target_map.get("LeftShoulder", ""),
+			"target_arm": target_map.get("LeftArm", ""),
+			"target_forearm": target_map.get("LeftForeArm", ""),
+			"target_hand": target_map.get("LeftHand", ""),
 		},
 		{
 			"source_hand": source_bone_prefix + "RightHand",
-			"target_shoulder": target_bone_prefix + "RightShoulder",
-			"target_arm": target_bone_prefix + "RightArm",
-			"target_forearm": target_bone_prefix + "RightForeArm",
-			"target_hand": target_bone_prefix + "RightHand",
+			"target_shoulder": target_map.get("RightShoulder", ""),
+			"target_arm": target_map.get("RightArm", ""),
+			"target_forearm": target_map.get("RightForeArm", ""),
+			"target_hand": target_map.get("RightHand", ""),
 		},
 	]
 	config.bone_map = {}
 	for suffix in _ACTION_PACK_BONE_SUFFIXES:
-		config.bone_map[StringName(source_bone_prefix + suffix)] = (
-				StringName(target_bone_prefix + suffix))
-	for side in ["Left", "Right"]:
+		if target_map.has(suffix) and not String(target_map[suffix]).is_empty():
+			config.bone_map[StringName(source_bone_prefix + suffix)] = StringName(target_map[suffix])
+	for side: String in ["Left", "Right"]:
 		for suffix in _ACTION_PACK_SIDED_SUFFIXES:
-			config.bone_map[StringName(source_bone_prefix + side + suffix)] = (
-					StringName(target_bone_prefix + side + suffix))
+			var role: String = side + suffix
+			if target_map.has(role) and not String(target_map[role]).is_empty():
+				config.bone_map[StringName(source_bone_prefix + role)] = StringName(target_map[role])
 	return config
+
+
+static func _target_map_from_prefix(target_bone_prefix: String) -> Dictionary:
+	var target_map := {}
+	for suffix in _ACTION_PACK_BONE_SUFFIXES:
+		target_map[suffix] = target_bone_prefix + suffix
+	for side: String in ["Left", "Right"]:
+		for suffix in _ACTION_PACK_SIDED_SUFFIXES:
+			target_map[side + suffix] = target_bone_prefix + side + suffix
+	return target_map
 
 
 ## Best-effort lookup of "the" motion animation inside an arbitrary
@@ -202,9 +225,15 @@ static func find_primary_animation(anim_player: AnimationPlayer) -> Animation:
 
 static func build_human_basic_motions_library(target_skeleton: Skeleton3D,
 		target_anim_player: AnimationPlayer, target_bone_prefix: String) -> void:
+	build_human_basic_motions_library_mapped(target_skeleton, target_anim_player,
+			_target_map_from_prefix(target_bone_prefix))
+
+
+static func build_human_basic_motions_library_mapped(target_skeleton: Skeleton3D,
+		target_anim_player: AnimationPlayer, target_map: Dictionary) -> void:
 	var source_root: Node = (load(HBM_SOURCE_MODEL_PATH) as PackedScene).instantiate()
 	var source_skeleton: Skeleton3D = source_root.get_node(^"Skeleton3D")
-	var config := RetargetedMixamoAdapter._bone_map_config(target_bone_prefix)
+	var config := _hbm_to_target_map_config(target_map)
 	var lib := AnimationLibrary.new()
 	for clip_name: StringName in HBM_CLIPS:
 		var clip_info: Array = HBM_CLIPS[clip_name]
@@ -222,3 +251,22 @@ static func build_human_basic_motions_library(target_skeleton: Skeleton3D,
 		clip_root.free()
 	source_root.free()
 	target_anim_player.add_animation_library(HBM_LIBRARY, lib)
+
+
+static func _hbm_to_target_map_config(target_map: Dictionary) -> HumanoidRetargeter.BoneMapConfig:
+	var config := RetargetedMixamoAdapter._bone_map_config("")
+	var remapped := {}
+	for source_name: StringName in config.bone_map:
+		var canonical := String(config.bone_map[source_name])
+		if target_map.has(canonical) and not String(target_map[canonical]).is_empty():
+			remapped[source_name] = StringName(target_map[canonical])
+	config.bone_map = remapped
+	config.hips_target = StringName(target_map.get("Hips", ""))
+	config.head_target = StringName(target_map.get("Head", ""))
+	config.shoulder_l_target = StringName(target_map.get("LeftShoulder", ""))
+	config.shoulder_r_target = StringName(target_map.get("RightShoulder", ""))
+	for chain: Dictionary in config.arm_chains:
+		for key in ["target_shoulder", "target_arm", "target_forearm", "target_hand"]:
+			var canonical: String = chain[key]
+			chain[key] = target_map.get(canonical, "")
+	return config

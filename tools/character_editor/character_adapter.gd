@@ -30,6 +30,10 @@ var supports_held_object := false
 var supports_isolated_attachment := false
 var supports_comparison := false
 var display_name := ""
+var model_path := ""
+var humanoid_map: Dictionary = {}
+var has_skin := false
+var humanoid_ready := true
 
 var global_position: Vector3:
 	get: return node.global_position

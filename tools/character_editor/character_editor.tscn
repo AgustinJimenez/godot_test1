@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3]
+[gd_scene load_steps=26 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="1_body"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="2_body_script"]
@@ -14,6 +14,12 @@
 [ext_resource type="PackedScene" path="res://assets/models/universal_animation_library_2/UAL2_Standard.glb" id="12_ual2"]
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/play.svg" id="13_play_icon"]
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/pause.svg" id="14_pause_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/bone.svg" id="15_bone_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/image.svg" id="16_reference_icon"]
+[ext_resource type="Texture2D" path="res://tools/character_editor/reference/rig_reference.png" id="17_rig_reference"]
+[ext_resource type="Texture2D" path="res://tools/character_editor/reference/rig_reference_t_pose.png" id="18_rig_reference_t_pose"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/chevron-left.svg" id="19_chevron_left"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/chevron-right.svg" id="20_chevron_right"]
 
 [sub_resource type="Environment" id="Environment_tuner"]
 background_mode = 1
@@ -136,6 +142,26 @@ icon = ExtResource("5_move_icon")
 expand_icon = true
 icon_max_width = 22
 
+[node name="ShowBones" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+toggle_mode = true
+tooltip_text = "Show skeleton bones"
+icon = ExtResource("15_bone_icon")
+expand_icon = true
+icon_max_width = 20
+
+[node name="RigReference" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+visible = false
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+toggle_mode = true
+button_pressed = true
+tooltip_text = "Toggle rig reference"
+icon = ExtResource("16_reference_icon")
+expand_icon = true
+icon_max_width = 20
+
 [node name="ZoomOut" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
 custom_minimum_size = Vector2(46, 34)
 layout_mode = 2
@@ -159,6 +185,77 @@ tooltip_text = "Reset camera view"
 icon = ExtResource("10_reset_view_icon")
 expand_icon = true
 icon_max_width = 20
+
+[node name="RigReference" type="PanelContainer" parent="UI"]
+visible = false
+offset_left = 1264.0
+offset_top = 88.0
+offset_right = 1584.0
+offset_bottom = 616.0
+mouse_filter = 0
+theme_override_styles/panel = SubResource("PanelStyle")
+
+[node name="Margin" type="MarginContainer" parent="UI/RigReference"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="Content" type="VBoxContainer" parent="UI/RigReference/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleBar" type="HBoxContainer" parent="UI/RigReference/Margin/Content"]
+layout_mode = 2
+mouse_default_cursor_shape = 13
+
+[node name="Title" type="Label" parent="UI/RigReference/Margin/Content/TitleBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+text = "RIG REFERENCE"
+label_settings = SubResource("SectionSettings")
+
+[node name="Page" type="Label" parent="UI/RigReference/Margin/Content/TitleBar"]
+layout_mode = 2
+mouse_filter = 2
+text = "T-POSE  1 / 2"
+vertical_alignment = 1
+
+[node name="Previous" type="Button" parent="UI/RigReference/Margin/Content/TitleBar"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+tooltip_text = "Previous rig reference"
+icon = ExtResource("19_chevron_left")
+expand_icon = true
+icon_max_width = 18
+
+[node name="Next" type="Button" parent="UI/RigReference/Margin/Content/TitleBar"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+tooltip_text = "Next rig reference"
+icon = ExtResource("20_chevron_right")
+expand_icon = true
+icon_max_width = 18
+
+[node name="Image" type="TextureRect" parent="UI/RigReference/Margin/Content"]
+custom_minimum_size = Vector2(220, 330)
+layout_mode = 2
+size_flags_vertical = 3
+texture = ExtResource("18_rig_reference_t_pose")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="RigReferenceResizeHandle" type="Button" parent="UI"]
+visible = false
+offset_right = 28.0
+offset_bottom = 28.0
+tooltip_text = "Resize rig reference"
+mouse_default_cursor_shape = 12
+icon = ExtResource("9_resize_icon")
+expand_icon = true
+icon_max_width = 18
 
 [node name="PlaybackToolbar" type="PanelContainer" parent="UI"]
 visible = false
@@ -258,33 +355,40 @@ toggle_mode = true
 button_pressed = true
 text = "1 Character"
 
+[node name="Rig" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/StageRow"]
+custom_minimum_size = Vector2(96, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "2 Rig"
+
 [node name="Animation" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/StageRow"]
 custom_minimum_size = Vector2(96, 34)
 layout_mode = 2
 size_flags_horizontal = 3
 toggle_mode = true
-text = "2 Animation"
+text = "3 Animation"
 
 [node name="Attachments" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/StageRow"]
 custom_minimum_size = Vector2(104, 34)
 layout_mode = 2
 size_flags_horizontal = 3
 toggle_mode = true
-text = "3 Attachments"
+text = "4 Attachments"
 
 [node name="Pose" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/StageRow"]
 custom_minimum_size = Vector2(78, 34)
 layout_mode = 2
 size_flags_horizontal = 3
 toggle_mode = true
-text = "4 Pose"
+text = "5 Pose"
 
 [node name="Review" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/StageRow"]
 custom_minimum_size = Vector2(82, 34)
 layout_mode = 2
 size_flags_horizontal = 3
 toggle_mode = true
-text = "5 Review"
+text = "6 Review"
 
 [node name="CharacterRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
 layout_mode = 2
@@ -301,10 +405,200 @@ custom_minimum_size = Vector2(180, 36)
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="CharacterMenu" type="MenuButton" parent="UI/Panel/PanelScroll/Margin/VBox/CharacterRow"]
+custom_minimum_size = Vector2(42, 34)
+layout_mode = 2
+tooltip_text = "Manage selected character"
+disabled = true
+text = "..."
+
 [node name="ImportCharacter" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/CharacterRow"]
 custom_minimum_size = Vector2(90, 34)
 layout_mode = 2
 text = "Import..."
+
+[node name="RenameCharacterDialog" type="ConfirmationDialog" parent="UI"]
+title = "Rename Character"
+initial_position = 2
+size = Vector2i(460, 150)
+
+[node name="Name" type="LineEdit" parent="UI/RenameCharacterDialog"]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 448.0
+offset_bottom = 52.0
+placeholder_text = "Character name"
+
+[node name="CharacterActionDialog" type="ConfirmationDialog" parent="UI"]
+title = "Character Catalog"
+initial_position = 2
+size = Vector2i(500, 180)
+
+[node name="RigSection" type="VBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Summary" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection"]
+layout_mode = 2
+autowrap_mode = 2
+
+[node name="JointEditor" type="VBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor"]
+layout_mode = 2
+text = "JOINT PLACEMENT"
+label_settings = SubResource("SectionSettings")
+
+[node name="JointName" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor"]
+layout_mode = 2
+text = "Select a visible joint"
+
+[node name="X" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor"]
+layout_mode = 2
+
+[node name="Axis" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/X"]
+custom_minimum_size = Vector2(24, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.25, 0.22, 1)
+text = "X"
+
+[node name="Slider" type="HSlider" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/X"]
+custom_minimum_size = Vector2(120, 32)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = -2.0
+max_value = 2.0
+step = 0.001
+
+[node name="Value" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/X"]
+custom_minimum_size = Vector2(70, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.25, 0.22, 1)
+text = "+0.000"
+horizontal_alignment = 2
+
+[node name="Y" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor"]
+layout_mode = 2
+
+[node name="Axis" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/Y"]
+custom_minimum_size = Vector2(24, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 0.9, 0.38, 1)
+text = "Y"
+
+[node name="Slider" type="HSlider" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/Y"]
+custom_minimum_size = Vector2(120, 32)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = -2.0
+max_value = 2.0
+step = 0.001
+
+[node name="Value" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/Y"]
+custom_minimum_size = Vector2(70, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 0.9, 0.38, 1)
+text = "+0.000"
+horizontal_alignment = 2
+
+[node name="Z" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor"]
+layout_mode = 2
+
+[node name="Axis" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/Z"]
+custom_minimum_size = Vector2(24, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.25, 0.55, 1, 1)
+text = "Z"
+
+[node name="Slider" type="HSlider" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/Z"]
+custom_minimum_size = Vector2(120, 32)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = -2.0
+max_value = 2.0
+step = 0.001
+
+[node name="Value" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/Z"]
+custom_minimum_size = Vector2(70, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.25, 0.55, 1, 1)
+text = "+0.000"
+horizontal_alignment = 2
+
+[node name="Actions" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ResetJoint" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/Actions"]
+custom_minimum_size = Vector2(120, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Reset Joint"
+
+[node name="SaveRig" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/JointEditor/Actions"]
+custom_minimum_size = Vector2(120, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Save Rig"
+
+[node name="MappingScroll" type="ScrollContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection"]
+custom_minimum_size = Vector2(0, 360)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="MappingList" type="VBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/MappingScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="MappingActions" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="AutoMap" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/MappingActions"]
+custom_minimum_size = Vector2(120, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Auto-map"
+
+[node name="Apply" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/MappingActions"]
+custom_minimum_size = Vector2(120, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Use Mapping"
+
+[node name="ExternalActions" type="VBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Explanation" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions"]
+layout_mode = 2
+text = "Generate a native first-pass rig for a neutral T/A-pose humanoid. Inspect deformation before using it; layered clothing or unusual poses may still need manual weighting."
+autowrap_mode = 2
+
+[node name="GenerateRig" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "Generate Humanoid Rig"
+
+[node name="Buttons" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Mixamo" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions/Buttons"]
+custom_minimum_size = Vector2(140, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Open Mixamo"
+
+[node name="Blender" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions/Buttons"]
+custom_minimum_size = Vector2(140, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Blender Weights Guide"
 
 [node name="AnimationRow" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
 layout_mode = 2
@@ -506,11 +800,6 @@ theme_override_constants/separation = 12
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Pause animation"
-
-[node name="ShowBones" type="CheckButton" parent="UI/Panel/PanelScroll/Margin/VBox/DisplayOptions"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Show bones"
 
 [node name="FreeCamera" type="CheckButton" parent="UI/Panel/PanelScroll/Margin/VBox/DisplayOptions"]
 layout_mode = 2
