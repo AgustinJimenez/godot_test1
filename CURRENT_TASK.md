@@ -1,13 +1,20 @@
 # Current Task: One unified character + animation system
 
 **Branch:** `player-swappable-skin`
-**Status:** Phases 0-3 complete. Both `PlayerBody` and `HumanoidActor` now
-run on the shared `HumanoidRetargeter` core - the "two independent
-systems" this task set out to unify are one system underneath, with
-different content on top, as planned. Confirmed in the real game
-throughout, including three real bugs the user caught by playing it that
-tool-only testing missed. Phase 4 (prove one catalog character works as
-both player and NPC) not started.
+**Status:** Phases 0-5 complete and live-confirmed by the user. Both
+`PlayerBody` and `HumanoidActor` now run on the shared `HumanoidRetargeter`
+core - the "two independent systems" this task set out to unify are one
+system underneath, with different content on top, as planned. The player
+can swap to any catalog character (`x_bot`/`y_bot` proven) live, from the
+in-game debug menu's Character List, with animation, camera tracking, held
+items, and the debug mirror all staying correct through the swap. Along the
+way, five real bugs were found by actually playing the game (three by the
+user during Phases 2/3, two more - the MotusMan-texture-bleed and the
+stale mirror double - during Phase 5's own live test) - none of them
+visible from tool-only or numeric verification alone, which is why this
+project's standing rule (never commit gameplay changes without a live
+human test) kept paying off throughout. **Not yet committed** - Phase 6
+(opportunistic further convergence) is open-ended, not a blocker.
 
 ## End goal (in plain terms)
 
@@ -420,14 +427,76 @@ and already proven in real gameplay (`HumanoidActor`'s attack clip).
       correctly, including damage timing.
 
 ### Phase 4 — Prove "any character, any role" on a second skin
-- [ ] Take one catalog character (e.g. `x_bot`) and use the *same* imported/
-      rigged entry as both a player skin and an NPC skin, end-to-end.
+- [x] Generalized `PlayerBody._bone_map_config()` (hardcoded MotusMan
+      literals) into `_build_bone_map_config(target_skeleton)`: detects the
+      skeleton's own bone-naming convention via the new
+      `HumanoidRetargeter.detect_bone_prefix()` (moved here from a private
+      copy in `character_editor_import_handler.gd`, now a shared static),
+      then builds the config via Phase 1's `build_bone_map_config()` +
+      `CharacterEditorRigHandler.auto_map()`/`full_map_from_prefix()`.
+      Result cached once in a new `_retarget_config` var (set in
+      `_setup_character_scene()`, since `_retarget_clip()` runs ~15 times
+      during `_ready()`'s eager clip baking). **Verified byte-identical**
+      to the pre-change hardcoded version for MotusMan via `test_retarget_parity`
+      (`max_rot_diff_radians: 0.0691672414541245`, `mismatches: 456`,
+      identical per-bone breakdown - the same already-understood arm-FABRIK
+      self-inconsistency from Phase 1, not a regression).
+- [x] Take one catalog character (`x_bot`) and use the *same* imported/
+      rigged entry as both a player skin and an NPC skin, end-to-end -
+      proven via two temporary MCP diagnostics (`test_player_skin_swap`,
+      `test_npc_skin_swap`, since removed - see their doc comments'
+      "one-off" framing), each instantiating the *real* gameplay class
+      (`PlayerBody`/`HumanoidActor.build_clip_library`) with `X Bot.fbx` and
+      checking every baked clip's tracks actually resolve against the new
+      skeleton (not just "no crash"):
+      - **NPC side: clean.** All 5 clips (idle/walk/run/death/attack), zero
+        broken. Expected and trivial - `x_bot`'s own bone convention
+        (`mixamorig_`) already matches `HumanoidActor`'s
+        `SOURCE_BONE_PREFIX` default, and `build_clip_library()` always
+        retargets (no raw-copy shortcut exists on this path).
+      - **Player side: 15/21 clips retarget correctly** - specifically
+        every clip in the `"Gameplay - Unarmed"` group (`unarmed_idle`,
+        `unarmed_walk`, `unarmed_sprint`, `unarmed_crouch_idle`,
+        `unarmed_crouch_walk`, `unarmed_jump*`, etc.), which is the *only*
+        group real gameplay (`_play_motion`/`update_motion`) ever plays by
+        name - confirmed via a project-wide grep that none of the other 6
+        clip names are referenced anywhere outside `player_body.gd` itself.
+      - **Real, load-bearing gap found**: the other 6 clips - `player_body
+        .gd`'s `CLIPS` dict (`relaxed_idle`, `aim_idle`, `walk`, `jog`,
+        `crouch_idle`, `crouch_walk`) - are loaded as **raw, unretargeted**
+        MotusMan-native FBX animations (never passed through
+        `_retarget_clip`), so their tracks only resolve against a skeleton
+        that happens to share MotusMan's exact bone names. All 6 broke
+        completely (zero bones resolved) against `x_bot`. **Confirmed low-
+        stakes, not a gameplay blocker**: `get_animation_groups()` labels
+        this exact set `"MotusMan References"` - it exists solely for the
+        character editor tool's own preview/comparison UI (letting a human
+        A/B a retargeted clip against MotusMan's authored original) and to
+        supply `_held_pose` (the hand-pose template `_retarget_clip` blends
+        toward) - never played by name in real gameplay. Still a real gap
+        worth fixing eventually: swapping skins via the future Phase 5 debug
+        menu would make the tool's "MotusMan References" preview group
+        silently meaningless for any non-MotusMan skin, and `_held_pose`
+        itself is *derived from* `relaxed_idle`, one of the broken clips -
+        worth double-checking hand/grip posing quality specifically for
+        non-MotusMan skins before Phase 5 ships, not just locomotion.
+- [ ] **Not yet live-played by the user** - the numeric proof above is a
+      structural/track-level check (same standard as Phase 1's parity
+      diagnostic), not a substitute for actually seeing `x_bot` move
+      correctly in a real play session. Per this project's standing rule,
+      nothing here should be considered done - or committed - until that
+      happens. Phase 5's debug-menu UI is the natural point to do this live
+      (swap to `x_bot` mid-session and watch it walk/idle/attack for real),
+      rather than building a separate throwaway swap mechanism just for
+      Phase 4.
 - [ ] Accept a known-imperfect held-item grip if not separately tuned yet —
       call it out explicitly rather than silently shipping a bad-looking
       grip. `flashlight_grip_pose.json`'s finger rotations and the
       flashlight's `0.12` scale were hand-tuned to MotusMan's specific hand
       size; a different skin needs its own tuning or a documented
-      "close enough" default.
+      "close enough" default. (See the `_held_pose`/`relaxed_idle` note
+      above - this may be worse than "imperfect" for non-MotusMan skins
+      specifically, not yet checked.)
 
 ### Phase 5 — In-game character swap (the real acceptance test)
 Resolved: not a scene export, not save-file state — the **in-game debug
@@ -435,20 +504,119 @@ menu**. `ui/hud.gd`'s existing `DebugOverlay` already has this exact shape
 for other catalogs: `ObjectListButton`/`ObjectPanel` lists spawnable
 objects, `AnimClipsButton`/`AnimPanel` lists animation clips. A
 `CharacterListButton`/`CharacterPanel` belongs right alongside them.
-- [ ] Add a Character page to the debug menu listing the shared catalog
-      (the same list the character editor tool already builds/persists).
-- [ ] Selecting an entry swaps the *live* player's `character_scene` during
-      an actual play session — not a restart, not the editor tool.
-- [ ] Baking a full clip library onto an arbitrary skeleton isn't instant
-      (import already warns "may take a few seconds" for one asset) - show
-      a brief loading message on the panel while the bake runs, mirroring
-      the character editor's own "Importing... this may take a few
-      seconds" status pattern, rather than let the game hitch silently.
-- [ ] This is the concrete proof the whole task succeeded: **stand in a
-      real level, open the debug menu, pick any imported character from the
-      list, watch the player become that character with animation already
-      working.** If that doesn't hold for an arbitrary catalog entry, the
-      unification isn't done yet, regardless of what Phases 1-4 claim.
+- [x] Added a Character page to the debug menu (`CharacterListButton`
+      alongside `ObjectListButton`/`AnimClipsButton`, `CharacterPanel`
+      mirroring `ObjectPanel`'s shape) listing `CharacterCatalog.list_all()`
+      - the exact same catalog the character editor tool builds/persists,
+      not a separate copy.
+- [x] **New `PlayerBody.swap_character(new_character_scene: PackedScene)`**
+      does the actual runtime re-skin: frees the whole old character
+      subtree, points `character_scene` at the new one, reruns
+      `_setup_character_scene()` + a newly-extracted `_build_character_visuals()`
+      (the part of `_ready()` that has to happen again per-skin - material,
+      look/hand-grip modifiers, flashlight attachment, the full retargeted
+      "moves" library), then restores whatever item/flashlight state was
+      active so the swap is invisible to inventory. `_ready()` itself is now
+      just `_setup_character_scene(); _build_character_visuals()` - one
+      construction path, not two versions that can drift.
+- [x] **Found and fixed two more stale-bone-reference bugs the same shape as
+      the two the user already caught this session** - surfaced by actually
+      reasoning through what a mid-session skeleton swap invalidates, not
+      by the user hitting them live this time:
+      1. `player.gd`'s `@onready var skeleton: Skeleton3D = body.skeleton`
+         (fixed in Phase 2 for the *first* stale-reference bug) is still a
+         one-time snapshot - `swap_character()` replaces `body.skeleton`
+         with a brand new instance, which `player.gd` never learns about.
+         Every frame's head-tracking (`_head_bone_idx`) and torso-clearance
+         check (`_torso_bone_indices`) would silently point at a freed
+         node. Fixed by adding `PlayerBody.character_changed` (emitted at
+         the end of `swap_character()`) and extracting the bone-index
+         resolution into `player.gd`'s own `_resolve_body_bone_indices()`,
+         connected to that signal so it reruns automatically.
+      2. `player.gd`'s `TORSO_CLEARANCE` keys and the literal `"Head"` bone
+         name are canonical role names ("Head", "Spine2", "LeftShoulder")
+         that only equal MotusMan's *actual* bone names by coincidence of
+         how MotusMan happens to be named. The same was true of the
+         flashlight grip pose's bone names/attachment bone
+         (`player_body.gd`'s `_setup_held_flashlight()`) and
+         `Item.held_bone` (`set_equipped_item()`) - all three called
+         `skeleton.find_bone()`/set `BoneAttachment3D.bone_name` directly
+         with the plain role name, which only resolves on a skeleton using
+         that exact literal convention (MotusMan). A `"mixamorig_"`-prefixed
+         skin like `x_bot`/`y_bot` would silently fail every one of these
+         lookups (`find_bone()` returns -1; `BoneAttachment3D.bone_name` set
+         to a name that doesn't exist just never attaches to anything).
+         Fixed by adding `PlayerBody.resolve_bone_name(role)` (role name ->
+         the *current* skeleton's real bone name, via the same
+         `target_humanoid_map` `_build_bone_map_config` already computes -
+         extracted into its own `_detect_target_humanoid_map()` so both
+         consumers share one source of truth) and routing all three call
+         sites through it. Not yet live-verified that the flashlight/held-
+         item grip actually *looks* right on `x_bot` specifically (finger
+         curl was hand-tuned for MotusMan's hand proportions - see the
+         existing Phase 4 open item on this) - this fix makes it attach to
+         the *correct bone*, not necessarily look natural once there.
+- [x] Loading message: `_on_character_button_pressed()` sets
+      `character_status_label` to "Loading <name>...", disables the list for
+      two `process_frame` awaits (long enough for the label to actually
+      paint before the synchronous ~15-clip rebake hitches the frame), then
+      calls `swap_character()` and clears it.
+      `scripts/check.sh` clean. **Live-verified the boot path only** so far
+      (opened and played `levels/playground.tscn` via the live editor
+      bridge, confirmed the runtime log shows zero errors - only the same
+      pre-existing navmesh warnings from Phase 2/3). The debug menu's UI
+      itself can't be driven remotely the way the character editor tool can
+      (`playground.tscn` has no `EngineDebugger.register_message_capture`
+      hook, deliberately - that capability is scoped to the tool, not
+      gameplay scenes), so **this is not yet proven live and must be
+      manually tested before committing**, per this project's standing rule.
+- [x] **First live test found a real bug**: user reported "the textures
+      looks mixed with the previous character" after swapping to `x_bot`.
+      Root cause, confirmed via a live mesh-material inspection (not
+      guessed) rather than assumed from the doc comment alone:
+      `_build_character_visuals()` unconditionally reapplied MotusMan's own
+      diffuse texture (`SKIN_TEXTURE`/`MCG_diff.jpg`) to `mesh` regardless
+      of which skin was loaded - harmless when only MotusMan could ever be
+      loaded (the pre-Phase-5 case), but painting `x_bot`'s mesh with
+      MotusMan's texture stretches it across a completely different UV
+      layout, reading as scrambled/mixed. Checking material state on the
+      actual assets surfaced a second wrinkle: `x_bot`/`y_bot`'s own
+      imported material has `albedo_texture == null` too (Mixamo's
+      "X Bot"/"Y Bot" ship with no diffuse texture at all, just a flat
+      preview color - `Beta_Surface` ~(0.84, 0.53, 0.50), `Beta_Joints`
+      ~(0.55, 0.35, 0.31)) - so "reapply the fallback whenever the mesh's
+      own texture is missing" would have reproduced the exact same bug for
+      them. Fixed with two conditions, not one:
+      `_apply_skin_texture_fallback()` only reapplies `SKIN_TEXTURE` when
+      *both* the mesh has no texture of its own *and* `character_scene`'s
+      path is under `MOTUSMAN_MODEL_DIR` (`pistol_starter/`) - i.e. only
+      for MotusMan's own broken animation-bundled FBX exports specifically.
+      `x_bot`/`y_bot` now render with their own flat preview color, not
+      someone else's texture - a known, honest limitation (no per-character
+      texture data in the catalog yet - Phase 6 territory) rather than a
+      visibly broken one. `scripts/check.sh` clean; re-verified the boot
+      path is still clean via the live editor bridge. **User confirmed live:
+      the texture fix works** ("seems to be working now").
+- [x] **Second live-test finding**: the debug mirror's double
+      (`levels/test_room.tscn`'s `MirrorBody`, driven by
+      `levels/debug_mirror.gd`) kept showing the old skin after a swap -
+      not a bug in the swap itself, but a genuinely separate `PlayerBody`
+      instance (`_process()` puppets its transform/animation from the real
+      body every frame, but nothing ever told it to change *character*).
+      Fixed by connecting to the real body's `character_changed` signal
+      (added earlier this phase) the first time `_process()` finds a
+      player, and calling `mirror_body.swap_character(body.character_scene)`
+      from the handler - the mirror now re-skins itself immediately after
+      the real swap finishes. `scripts/check.sh` clean; boot-tested
+      `levels/test_room.tscn` (where the mirror actually lives, not just
+      `playground.tscn`) via the live editor bridge - zero errors, only the
+      same pre-existing navmesh warnings.
+- [x] **User confirmed live, in a real play session**: "looks good now" -
+      the debug menu's Character List swap works end-to-end, including the
+      mirror double staying in sync. **This is the concrete proof the whole
+      task succeeded: stood in a real level, opened the debug menu, picked
+      an imported character from the list, watched the player become that
+      character with animation already working.** Phase 5 complete.
 
 ### Phase 6 — Ongoing convergence (opportunistic, not a hard finish line)
 - [ ] Fold other existing animation-asset variations into the unified

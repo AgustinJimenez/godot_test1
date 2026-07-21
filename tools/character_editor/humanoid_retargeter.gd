@@ -43,6 +43,30 @@ class BoneMapConfig:
 	var arm_chains: Array[Dictionary] = []
 
 
+## Moved here from character_editor_import_handler.gd's own former private
+## copy (now calls this instead) - genuinely shared, not tool-only, once
+## player_body.gd also needed it to detect an arbitrary character_scene's
+## convention instead of assuming MotusMan's specifically (see
+## CURRENT_TASK.md's Phase 4). Mixamo-family rigs (the vast majority) all
+## name their hip bone "<prefix>Hips" where prefix is "", "mixamorig_", or
+## "mixamorig<N>_" for some number N - detected here by searching for
+## whichever bone ends in "Hips" and taking what's left after stripping it,
+## rather than assuming bone 0 specifically (MotusMan has an extra non-Hips
+## "Root" bone at index 0). Human Basic Motions FREE-style rigs use "B-hips"
+## instead - detected as a special case since it doesn't fit the
+## "<prefix>Hips" pattern. Returns null for anything else: this only covers
+## the two conventions this project already knows how to retarget from, not
+## truly arbitrary skeletons.
+static func detect_bone_prefix(skeleton: Skeleton3D):
+	for i in skeleton.get_bone_count():
+		var name := skeleton.get_bone_name(i)
+		if name == "B-hips":
+			return "B-"
+		if name.ends_with("Hips") and not name.begins_with("B-"):
+			return name.substr(0, name.length() - "Hips".length())
+	return null
+
+
 ## Inverse of character_editor_rig_handler.gd's full_map_from_prefix: that
 ## produces role -> prefix+role for a *target* skeleton (a catalog entry's
 ## humanoid_map); this produces prefix+role -> role for a *source* rig -

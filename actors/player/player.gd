@@ -127,12 +127,7 @@ var equipped_item: Item
 
 func _ready() -> void:
 	add_to_group(&"player")
-	_head_bone_idx = skeleton.find_bone("Head")
-	for bone_name: StringName in TORSO_CLEARANCE:
-		var idx := skeleton.find_bone(bone_name)
-		if idx >= 0:
-			_torso_bone_indices.append(idx)
-			_torso_bone_clearances.append(TORSO_CLEARANCE[bone_name])
+	_resolve_body_bone_indices()
 	_spawn_eye_marker()
 	_spawn_fov_gizmo()
 	stamina = sprint_duration
@@ -144,9 +139,31 @@ func _ready() -> void:
 	weapon.fired.connect(_on_weapon_fired)
 	body.action_finished.connect(_on_body_action_finished)
 	body.action_contact.connect(_on_body_action_contact)
+	body.character_changed.connect(_resolve_body_bone_indices)
 	health.died.connect(_on_died)
 	_action_rng.randomize()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+## TORSO_CLEARANCE's keys (and "Head") are canonical role names, not
+## necessarily this skeleton's own real bone names - resolve each through
+## body.resolve_bone_name() before find_bone() so this still works after
+## body.swap_character() puts on a differently-prefixed skin (e.g.
+## "Head" -> "mixamorig_Head" for x_bot/y_bot). Re-run via
+## body.character_changed whenever that happens - skeleton itself is
+## reassigned here too, since body.swap_character() replaces body.skeleton
+## with a brand new Skeleton3D instance, not the one this was last resolved
+## against.
+func _resolve_body_bone_indices() -> void:
+	skeleton = body.skeleton
+	_head_bone_idx = skeleton.find_bone(body.resolve_bone_name(&"Head"))
+	_torso_bone_indices.clear()
+	_torso_bone_clearances.clear()
+	for bone_name: StringName in TORSO_CLEARANCE:
+		var idx := skeleton.find_bone(body.resolve_bone_name(bone_name))
+		if idx >= 0:
+			_torso_bone_indices.append(idx)
+			_torso_bone_clearances.append(TORSO_CLEARANCE[bone_name])
 
 
 func _unhandled_input(event: InputEvent) -> void:

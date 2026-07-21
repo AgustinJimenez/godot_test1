@@ -7,6 +7,11 @@ extends Node3D
 
 signal action_finished(animation_name: StringName)
 signal action_contact(animation_name: StringName)
+## Emitted after swap_character() finishes rebuilding around a new skeleton -
+## anything that cached a bone index or the skeleton reference itself
+## (player.gd's head/torso-clearance tracking, namely) needs this to
+## recompute rather than silently keep pointing at a freed node/wrong index.
+signal character_changed
 
 const CLIP_DIR := "res://assets/models/pistol_starter/Animation/In-Place/"
 const CLIPS := {
@@ -17,8 +22,21 @@ const CLIPS := {
 	&"crouch_idle": "W1_Crouch_Aim_Idle_IPC",
 	&"crouch_walk": "W1_CrouchWalk_Aim_F_Loop_IPC",
 }
-## MotusMan FBXs bake broken absolute texture paths; reapply the diffuse.
+## Some MotusMan FBX exports (the animation-bundled clip files under
+## MotusMan_MODEL_DIR specifically - confirmed live via a mesh-material
+## inspection: W1_Stand_Aim_Idle_IPC.fbx's own material has a null
+## albedo_texture, while MotusMan_v55.fbx's own material already has a
+## correct one) bake a broken absolute texture path, leaving Godot's FBX
+## importer with no usable albedo. _apply_skin_texture_fallback() reapplies
+## this diffuse - but only for MotusMan specifically, and only when the
+## imported mesh doesn't already have its own working texture. Applying it
+## unconditionally to every character_scene (the pre-swap-character
+## behavior, when only MotusMan could ever be loaded) paints MotusMan's own
+## diffuse across whatever UV layout a *different* skin's mesh actually
+## has, looking like scrambled/mixed textures - a real bug a user found by
+## testing X Bot through the debug menu's character swap.
 const SKIN_TEXTURE := "res://assets/models/pistol_starter/MotusMan/sourceimages/MCG_diff.jpg"
+const MOTUSMAN_MODEL_DIR := "res://assets/models/pistol_starter/"
 const FLASHLIGHT_MODEL := preload("res://assets/models/flashlight/flashlight.glb")
 const HAND_GRIP_MODIFIER := preload("res://actors/player/player_hand_grip_modifier.gd")
 const FLASHLIGHT_HAND := &"RightHand"
@@ -232,6 +250,10 @@ var _flashlight_attachment: BoneAttachment3D
 var _flashlight_model: Node3D
 var _equipped_attachment: BoneAttachment3D
 var _equipped_model: Node3D
+## Remembered purely so swap_character() can restore it after rebuilding
+## around a new skeleton - the attachment/model themselves don't survive
+## the swap (they're children of the old skeleton, freed with it).
+var _equipped_item: Item
 var _airborne := false
 var _landing_time_left := 0.0
 var _action_animation := &""
@@ -265,6 +287,22 @@ var anim_player: AnimationPlayer
 var skeleton: Skeleton3D
 var mesh: MeshInstance3D
 
+## Computed once in _setup_character_scene() and reused for every clip
+## _retarget_clip() bakes (~15 calls during _ready() alone) - detecting the
+## skeleton's bone convention and building a full humanoid_map on every
+## single call would be redundant, avoidable work.
+var _retarget_config: HumanoidRetargeter.BoneMapConfig
+
+## role name (the same canonical names BONE_MAP's values and
+## player.gd's TORSO_CLEARANCE keys use, e.g. "Head"/"Spine2"/"LeftShoulder")
+## -> the *current* skeleton's own real bone name. Identity for MotusMan
+## (its bones already use these names literally) but not for a prefixed
+## skin like x_bot ("mixamorig_Head") - anything outside this script that
+## looks up a bone by its canonical role name (player.gd's head/torso-
+## clearance tracking) must resolve through resolve_bone_name() rather than
+## assuming the plain role name is also the real bone name.
+var _target_humanoid_map: Dictionary
+
 ## Tool instances can disable the gameplay idle so they initially expose the
 ## imported skeleton pose. Gameplay scenes retain the existing default.
 var autoplay_default_animation := true
@@ -282,18 +320,29 @@ func _setup_character_scene() -> void:
 	anim_player = character.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	var meshes := character.find_children("*", "MeshInstance3D", true, false)
 	mesh = meshes[0] as MeshInstance3D if not meshes.is_empty() else null
+	_target_humanoid_map = _detect_target_humanoid_map(skeleton)
+	_retarget_config = HumanoidRetargeter.build_bone_map_config(BONE_MAP, _target_humanoid_map)
 
 
 func _ready() -> void:
 	_setup_character_scene()
+	_build_character_visuals()
+
+
+## Rebuilds everything _ready() built around the skeleton - material, the
+## look/hand-grip modifiers, the held flashlight attachment, and the full
+## retargeted "moves" library - all of which reference the specific
+## Skeleton3D/AnimationPlayer _setup_character_scene() just found and can't
+## outlive it. Shared by _ready() (first setup) and swap_character() (a
+## later runtime re-skin, e.g. from the debug menu's character list) so
+## there is exactly one place this construction happens, not two versions
+## that can drift.
+func _build_character_visuals() -> void:
 	# Lets the debug menu's animation preview keep looping while the pause
 	# menu has the rest of the game (including this node's own parent,
 	# Player, which is PAUSABLE by design) frozen.
 	anim_player.process_mode = Node.PROCESS_MODE_ALWAYS
-	var material := StandardMaterial3D.new()
-	material.albedo_texture = load(SKIN_TEXTURE)
-	material.roughness = 0.85
-	mesh.material_override = material
+	_apply_skin_texture_fallback()
 	_look_pose_modifier = PlayerLookPoseModifier.new()
 	_look_pose_modifier.name = &"LookPoseModifier"
 	_look_pose_modifier.player_body = self
@@ -324,6 +373,54 @@ func _ready() -> void:
 	anim_player.animation_finished.connect(_on_animation_finished)
 	if autoplay_default_animation:
 		anim_player.play("moves/unarmed_idle")
+
+
+## Swaps the live player's visible skin at runtime - the debug menu's
+## character list (ui/hud.gd) calls this so a player can become any catalog
+## character mid-session without a scene reload, the concrete proof this
+## project's player-swappable-skin plan set out for (see CURRENT_TASK.md
+## Phase 5). Frees the whole old character subtree (skeleton and everything
+## attached to it - look/hand-grip modifiers, flashlight/held-item
+## attachments) and rebuilds fresh around the new one, then restores
+## whatever was equipped/visible so the swap is invisible to inventory
+## state. Not free: rebaking ~15 retargeted clips is the same synchronous
+## cost _ready() already pays once at scene start - callers on a paused
+## debug menu should let a frame render a loading message first (see
+## ui/hud.gd's character panel) rather than call this directly off a
+## button's pressed signal.
+func swap_character(new_character_scene: PackedScene) -> void:
+	var previous_torch_visible := is_instance_valid(_flashlight_model) and _flashlight_model.visible
+	var previous_item := _equipped_item
+	if character != null:
+		character.free()
+	# character.free() already destroyed all of these (they're children of
+	# the old skeleton, which was itself a child of character) - null them
+	# out rather than leave stale references to freed instances. Without
+	# this, set_equipped_item()/_setup_held_flashlight() below would call
+	# .free() a second time on an already-freed object.
+	_look_pose_modifier = null
+	_hand_grip_modifier = null
+	_flashlight_attachment = null
+	_flashlight_model = null
+	_equipped_attachment = null
+	_equipped_model = null
+	character_scene = new_character_scene
+	_setup_character_scene()
+	_build_character_visuals()
+	set_equipped_item(previous_item)
+	set_held_flashlight_visible(previous_torch_visible)
+	character_changed.emit()
+
+
+## Resolves a canonical role name (BONE_MAP's values, and the same names
+## player.gd's TORSO_CLEARANCE keys use - "Head", "Spine2", "LeftShoulder",
+## etc.) to the *current* skeleton's own real bone name. Identity for
+## MotusMan (its bones already use these names literally); not for a
+## prefixed skin ("Head" -> "mixamorig_Head" on x_bot). Falls back to the
+## role name itself if unmapped, matching the old hardcoded-name behavior
+## for any role a target skeleton's humanoid_map doesn't cover.
+func resolve_bone_name(role: StringName) -> StringName:
+	return StringName(_target_humanoid_map.get(role, role))
 
 
 ## Copies a differently-rigged clip's tracks onto MotusMan's skeleton via
@@ -366,7 +463,7 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 	# retarget-mode comparison scene and is never reached in real gameplay.
 	if use_humanoid_retarget:
 		var anim := HumanoidRetargeter.retarget_clip(
-				src_skeleton, src, skeleton, _bone_map_config(), force_loop)
+				src_skeleton, src, skeleton, _retarget_config, force_loop)
 		clip_root.free()
 		return anim
 
@@ -485,42 +582,23 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 	return anim
 
 
-## Describes both the UAL-family source rigs (via BONE_MAP, unchanged) and
-## MotusMan itself (whose own bone names already equal the canonical roles
-## BONE_MAP's values name) to HumanoidRetargeter. Kept as a hardcoded,
-## compile-time config rather than reading MotusMan's catalog manifest at
-## runtime (see characters/character_catalog.gd) - this function still only
-## ever describes MotusMan specifically, so a file-read dependency isn't
-## needed yet; that only becomes necessary once this actually accepts an
-## arbitrary character_scene (a later phase, see CURRENT_TASK.md).
-static func _bone_map_config() -> HumanoidRetargeter.BoneMapConfig:
-	var config := HumanoidRetargeter.BoneMapConfig.new()
-	config.bone_map = BONE_MAP
-	config.hips_source = &"pelvis"
-	config.hips_target = &"Hips"
-	config.head_source = &"Head"
-	config.head_target = &"Head"
-	config.shoulder_l_source = &"clavicle_l"
-	config.shoulder_l_target = &"LeftShoulder"
-	config.shoulder_r_source = &"clavicle_r"
-	config.shoulder_r_target = &"RightShoulder"
-	config.arm_chains = [
-		{
-			"source_hand": "hand_l",
-			"target_shoulder": "LeftShoulder",
-			"target_arm": "LeftArm",
-			"target_forearm": "LeftForeArm",
-			"target_hand": "LeftHand",
-		},
-		{
-			"source_hand": "hand_r",
-			"target_shoulder": "RightShoulder",
-			"target_arm": "RightArm",
-			"target_forearm": "RightForeArm",
-			"target_hand": "RightHand",
-		},
-	]
-	return config
+## Detects target_skeleton's own bone-naming convention (MotusMan by
+## default, but not assumed - see CURRENT_TASK.md's Phase 4) and returns its
+## role-name -> real-bone-name table (role names being BONE_MAP's target-side
+## convention, e.g. "Hips"/"Head"/"LeftShoulder"). Used both to build this
+## skeleton's BoneMapConfig (see _setup_character_scene()) and, via
+## resolve_bone_name(), by anything outside the retargeter that needs to
+## look up one specific bone by its canonical role (held-item/flashlight
+## attachment points, player.gd's head/torso-clearance tracking). Mirrors
+## the same null/"B-" special case character_editor_import_handler.gd's
+## _import_character already uses (those skeletons don't follow the simple
+## "prefix + role" pattern reliably enough for full_map_from_prefix).
+static func _detect_target_humanoid_map(target_skeleton: Skeleton3D) -> Dictionary:
+	var prefix = HumanoidRetargeter.detect_bone_prefix(target_skeleton)
+	return (
+			CharacterEditorRigHandler.auto_map(target_skeleton)
+			if prefix == null or prefix == "B-"
+			else CharacterEditorRigHandler.full_map_from_prefix(target_skeleton, prefix))
 
 
 ## Retargets a bone by matching WHERE IT POINTS (its own to its child's
@@ -663,22 +741,47 @@ func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> 
 	anim_player.speed_scale = speed
 
 
+## See SKIN_TEXTURE's doc comment for why this only reapplies MotusMan's own
+## diffuse, and only when the mesh's own imported material genuinely has no
+## texture of its own - most other catalog characters (x_bot/y_bot
+## included) import with either a real texture or an intentional flat
+## preview color (Mixamo's "Beta" material), and should be left alone.
+func _apply_skin_texture_fallback() -> void:
+	if mesh == null:
+		return
+	var existing := mesh.get_active_material(0) as BaseMaterial3D
+	if existing != null and existing.albedo_texture != null:
+		return
+	if not character_scene.resource_path.begins_with(MOTUSMAN_MODEL_DIR):
+		return
+	var material := StandardMaterial3D.new()
+	material.albedo_texture = load(SKIN_TEXTURE)
+	material.roughness = 0.85
+	mesh.material_override = material
+
+
 func _setup_held_flashlight() -> void:
 	var pose_data := _load_flashlight_grip_pose()
 	_hand_grip_modifier = HAND_GRIP_MODIFIER.new() as PlayerHandGripModifier
 	_hand_grip_modifier.name = &"FlashlightGripModifier"
+	# bone_rotations_degrees/attachment_bone are authored against MotusMan's
+	# canonical role names (matching BONE_MAP's target-side convention) -
+	# resolve_bone_name() translates that to whatever the *current* skeleton
+	# actually calls that bone (identity for MotusMan, "mixamorig_"-prefixed
+	# for x_bot/y_bot) so the grip pose still lands on the right joint after
+	# a runtime skin swap.
 	var bone_rotations: Dictionary = pose_data.get("bone_rotations_degrees", {})
 	for bone_name: String in bone_rotations:
 		var values: Array = bone_rotations[bone_name]
 		if values.size() >= 3:
-			_hand_grip_modifier.set_bone_rotation(StringName(bone_name), Vector3(
+			_hand_grip_modifier.set_bone_rotation(resolve_bone_name(StringName(bone_name)), Vector3(
 					float(values[0]), float(values[1]), float(values[2])))
 	_hand_grip_modifier.active = false
 	skeleton.add_child(_hand_grip_modifier)
 	_flashlight_attachment = BoneAttachment3D.new()
 	_flashlight_attachment.name = &"FlashlightAttachment"
-	_flashlight_attachment.bone_name = StringName(pose_data.get(
-			"attachment_bone", pose_data.get("hand", String(FLASHLIGHT_HAND))))
+	_flashlight_attachment.bone_name = resolve_bone_name(StringName(pose_data.get(
+			"attachment_bone", pose_data.get("hand", String(FLASHLIGHT_HAND)))))
 	skeleton.add_child(_flashlight_attachment)
 	_flashlight_model = FLASHLIGHT_MODEL.instantiate() as Node3D
 	_flashlight_model.name = &"FlashlightModel"
@@ -718,6 +821,7 @@ func set_held_flashlight_visible(enabled: bool) -> void:
 
 
 func set_equipped_item(item: Item) -> void:
+	_equipped_item = item
 	if _equipped_attachment != null:
 		_equipped_attachment.free()
 		_equipped_attachment = null
@@ -726,7 +830,9 @@ func set_equipped_item(item: Item) -> void:
 		return
 	_equipped_attachment = BoneAttachment3D.new()
 	_equipped_attachment.name = &"EquippedItemAttachment"
-	_equipped_attachment.bone_name = item.held_bone
+	# item.held_bone is authored as a canonical role name too - see
+	# _setup_held_flashlight()'s comment on resolve_bone_name().
+	_equipped_attachment.bone_name = resolve_bone_name(item.held_bone)
 	skeleton.add_child(_equipped_attachment)
 	_equipped_model = item.world_scene.instantiate() as Node3D
 	if _equipped_model == null:

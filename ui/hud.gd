@@ -19,6 +19,7 @@ const ITEM_GROUP_NAMES: Dictionary[int, String] = {
 	Item.Kind.KEY: "KEY ITEMS",
 	Item.Kind.MISC: "MISCELLANEOUS",
 }
+const CHARACTER_CATALOG := preload("res://characters/character_catalog.gd")
 
 @export var show_fps_debug := false
 
@@ -32,6 +33,7 @@ var _hurt_tween: Tween
 var _fps_refresh_left := 0.0
 var _object_list_built := false
 var _object_rows: Array[Dictionary] = []
+var _character_rows: Array[Dictionary] = []
 
 @onready var fps_label: Label = $FPSLabel
 @onready var center_dot: ColorRect = $CenterDot
@@ -90,6 +92,15 @@ var _object_rows: Array[Dictionary] = []
 		^"DebugOverlay/Center/ObjectPanel/ObjectMargin/ObjectVBox/ObjectScroll/ObjectList")
 @onready var object_back_button: Button = get_node(
 		^"DebugOverlay/Center/ObjectPanel/ObjectMargin/ObjectVBox/BackButton")
+@onready var character_list_button: Button = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/CharacterListButton")
+@onready var character_panel: PanelContainer = $DebugOverlay/Center/CharacterPanel
+@onready var character_status_label: Label = get_node(
+		^"DebugOverlay/Center/CharacterPanel/CharacterMargin/CharacterVBox/StatusLabel")
+@onready var character_list: VBoxContainer = get_node(
+		^"DebugOverlay/Center/CharacterPanel/CharacterMargin/CharacterVBox/CharacterScroll/CharacterList")
+@onready var character_back_button: Button = get_node(
+		^"DebugOverlay/Center/CharacterPanel/CharacterMargin/CharacterVBox/BackButton")
 @onready var anim_panel_anchor: Control = $DebugOverlay/AnimPanelAnchor
 @onready var anim_list: VBoxContainer = get_node(
 		^"DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/AnimScroll/AnimList")
@@ -97,6 +108,8 @@ var _object_rows: Array[Dictionary] = []
 		^"DebugOverlay/AnimPanelAnchor/AnimPanel/AnimMargin/AnimVBox/BackButton")
 
 var _anim_list_built := false
+var _character_list_built := false
+var _character_swap_in_progress := false
 
 
 func _ready() -> void:
@@ -114,10 +127,12 @@ func _ready() -> void:
 	guide_back_button.pressed.connect(_show_debug_main)
 	anim_clips_button.pressed.connect(_show_anim_page)
 	object_list_button.pressed.connect(_show_object_page)
+	character_list_button.pressed.connect(_show_character_page)
 	debug_back_button.pressed.connect(_show_debug_main)
 	settings_menu.back_requested.connect(_show_debug_main)
 	anim_back_button.pressed.connect(_show_debug_page)
 	object_back_button.pressed.connect(_show_debug_page)
+	character_back_button.pressed.connect(_show_debug_page)
 	show_fps_toggle.button_pressed = show_fps_debug
 	fps_label.visible = show_fps_debug
 
@@ -334,6 +349,7 @@ func _show_debug_main() -> void:
 	debug_panel.hide()
 	settings_menu.hide()
 	object_panel.hide()
+	character_panel.hide()
 	anim_panel_anchor.hide()
 
 
@@ -343,6 +359,7 @@ func _show_guide_page() -> void:
 	debug_panel.hide()
 	settings_menu.hide()
 	object_panel.hide()
+	character_panel.hide()
 	anim_panel_anchor.hide()
 
 
@@ -353,6 +370,7 @@ func _show_settings_page() -> void:
 	settings_menu.show()
 	settings_menu.refresh()
 	object_panel.hide()
+	character_panel.hide()
 	anim_panel_anchor.hide()
 
 
@@ -362,6 +380,7 @@ func _show_debug_page() -> void:
 	debug_panel.show()
 	settings_menu.hide()
 	object_panel.hide()
+	character_panel.hide()
 	anim_panel_anchor.hide()
 
 
@@ -371,6 +390,7 @@ func _show_anim_page() -> void:
 	debug_panel.hide()
 	settings_menu.hide()
 	object_panel.hide()
+	character_panel.hide()
 	anim_panel_anchor.show()
 
 
@@ -380,9 +400,22 @@ func _show_object_page() -> void:
 	guide_panel.hide()
 	debug_panel.hide()
 	settings_menu.hide()
+	character_panel.hide()
 	anim_panel_anchor.hide()
 	object_panel.show()
 	_refresh_object_list()
+
+
+func _show_character_page() -> void:
+	_build_character_list()
+	main_panel.hide()
+	guide_panel.hide()
+	debug_panel.hide()
+	settings_menu.hide()
+	object_panel.hide()
+	anim_panel_anchor.hide()
+	character_panel.show()
+	_refresh_character_list()
 
 
 func _build_object_list() -> void:
@@ -462,6 +495,85 @@ func _refresh_object_list() -> void:
 				and bool(player.call(&"is_item_equipped", item)))
 		equip_button.text = "Equipped" if equipped else "Equip"
 		equip_button.disabled = equipped
+
+
+## Lists whatever CharacterCatalog.list_all() finds on disk - the same
+## catalog the character editor tool builds/persists (see
+## characters/character_catalog.gd) - so this can never drift out of sync
+## with what's actually available to import/rig. Built lazily, once; new
+## imports made mid-session while the debug menu was never opened won't
+## appear until the next session, same tradeoff _build_object_list() and
+## _build_anim_list() already make for their own lists.
+func _build_character_list() -> void:
+	if _character_list_built:
+		return
+	_character_list_built = true
+	var catalog: Dictionary = CHARACTER_CATALOG.list_all()
+	var kind_ids := catalog.keys()
+	kind_ids.sort_custom(func(a, b):
+		return String(catalog[a].get("display_name", a)) < String(catalog[b].get("display_name", b)))
+	for kind_id: String in kind_ids:
+		_add_character_row(catalog[kind_id])
+	if kind_ids.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "No catalog characters yet - import one in the character editor tool."
+		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+		character_list.add_child(empty_label)
+
+
+func _add_character_row(info: Dictionary) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override(&"separation", 8)
+	character_list.add_child(row)
+
+	var name_label := Label.new()
+	name_label.text = String(info.get("display_name", info.get("kind_id", "?")))
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_label)
+
+	var select_button := Button.new()
+	select_button.custom_minimum_size.x = 84.0
+	select_button.text = "Select"
+	select_button.pressed.connect(_on_character_button_pressed.bind(info))
+	row.add_child(select_button)
+
+	_character_rows.append({"info": info, "select_button": select_button})
+
+
+func _refresh_character_list() -> void:
+	for row: Dictionary in _character_rows:
+		var select_button: Button = row["select_button"]
+		select_button.disabled = _character_swap_in_progress
+
+
+## Rebaking a full retargeted clip library onto an arbitrary skeleton isn't
+## instant (~15 clips, the same synchronous cost PlayerBody._ready() already
+## pays once at scene start) - shows a status message and disables the list
+## for two frames before doing the actual swap, so the message has a chance
+## to actually paint before the hitch, rather than the game visibly hanging
+## with no explanation (see CURRENT_TASK.md's Phase 5 checklist).
+func _on_character_button_pressed(info: Dictionary) -> void:
+	if _character_swap_in_progress:
+		return
+	var player := get_tree().get_first_node_in_group(&"player")
+	if player == null or not ("body" in player) or player.body == null:
+		return
+	var model_path: String = info.get("model_path", "")
+	if not ResourceLoader.exists(model_path):
+		toast("Character asset missing: %s" % model_path)
+		return
+	var display_name: String = info.get("display_name", model_path.get_file())
+	_character_swap_in_progress = true
+	character_status_label.text = "Loading %s..." % display_name
+	character_status_label.show()
+	_refresh_character_list()
+	for _frame in 2:
+		await get_tree().process_frame
+	player.body.swap_character(load(model_path) as PackedScene)
+	_character_swap_in_progress = false
+	character_status_label.hide()
+	_refresh_character_list()
+	toast("Switched to " + display_name)
 
 
 func _on_debug_add_item(item: Item) -> void:

@@ -371,6 +371,9 @@ text = "Animation Clips  >"
 [node name="ObjectListButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Object List  >"
 
+[node name="CharacterListButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "Character List  >"
+
 [node name="FovGizmoButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "FOV Gizmo: OFF"
 
@@ -409,6 +412,40 @@ size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
 [node name="BackButton" type="Button" parent="DebugOverlay/Center/ObjectPanel/ObjectMargin/ObjectVBox"]
+text = "< Back"
+
+[node name="CharacterPanel" type="PanelContainer" parent="DebugOverlay/Center"]
+visible = false
+custom_minimum_size = Vector2(460, 0)
+
+[node name="CharacterMargin" type="MarginContainer" parent="DebugOverlay/Center/CharacterPanel"]
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 16
+
+[node name="CharacterVBox" type="VBoxContainer" parent="DebugOverlay/Center/CharacterPanel/CharacterMargin"]
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="DebugOverlay/Center/CharacterPanel/CharacterMargin/CharacterVBox"]
+theme_override_font_sizes/font_size = 20
+text = "CHARACTER LIST"
+
+[node name="StatusLabel" type="Label" parent="DebugOverlay/Center/CharacterPanel/CharacterMargin/CharacterVBox"]
+visible = false
+theme_override_colors/font_color = Color(0.6, 0.7, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = ""
+
+[node name="CharacterScroll" type="ScrollContainer" parent="DebugOverlay/Center/CharacterPanel/CharacterMargin/CharacterVBox"]
+custom_minimum_size = Vector2(420, 360)
+horizontal_scroll_mode = 0
+
+[node name="CharacterList" type="VBoxContainer" parent="DebugOverlay/Center/CharacterPanel/CharacterMargin/CharacterVBox/CharacterScroll"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="BackButton" type="Button" parent="DebugOverlay/Center/CharacterPanel/CharacterMargin/CharacterVBox"]
 text = "< Back"
 
 [node name="AnimPanelAnchor" type="Control" parent="DebugOverlay"]

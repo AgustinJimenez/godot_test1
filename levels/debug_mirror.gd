@@ -10,6 +10,11 @@ extends Node3D
 @onready var mirror_body: PlayerBody = $MirrorBody
 
 var _mirror_z: float
+## Guards against reconnecting every frame - the real player's PlayerBody
+## node identity is stable for the scene's lifetime (swap_character()
+## rebuilds what's *inside* it, not the node itself), so this only needs to
+## happen once per real body instance found.
+var _character_signal_connected := false
 
 
 func _ready() -> void:
@@ -25,6 +30,9 @@ func _process(_delta: float) -> void:
 	if not player:
 		return
 	var body: PlayerBody = player.body
+	if not _character_signal_connected:
+		body.character_changed.connect(_on_player_character_changed.bind(body))
+		_character_signal_connected = true
 	var src := body.global_transform
 	# Mirror the position across the glass, and turn the double to face back
 	# out at the viewer (reflected_yaw = PI - yaw). We deliberately don't
@@ -46,3 +54,14 @@ func _process(_delta: float) -> void:
 		dst_anim.play(src_anim.current_animation, 0.0)
 	dst_anim.speed_scale = src_anim.speed_scale
 	dst_anim.seek(src_anim.current_animation_position, true)
+
+
+## The debug menu's character swap (PlayerBody.swap_character(), see
+## CURRENT_TASK.md Phase 5) only touches the real player's body - the
+## mirror double is a second, independent PlayerBody instance that has to
+## be told separately to become the same skin, or it keeps showing whoever
+## it started as. character_changed fires after the real body has already
+## rebuilt around its new character_scene, so this just mirrors that same
+## scene onto the double.
+func _on_player_character_changed(body: PlayerBody) -> void:
+	mirror_body.swap_character(body.character_scene)

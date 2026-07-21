@@ -89,8 +89,8 @@ func _on_import_file_selected(path: String) -> void:
 ## and only this character's files - see character_editor_rig_handler.gd's
 ## _delete_character_assets), detects its skeleton's bone-name convention
 ## from its own bones (not assumed), and registers it as a new selectable
-## character for this session. See _detect_bone_prefix's doc comment for
-## what "detects" covers and what it doesn't.
+## character for this session. See HumanoidRetargeter.detect_bone_prefix's
+## doc comment for what "detects" covers and what it doesn't.
 func _import_character(source_path: String) -> void:
 	var character_id := CATALOG.generate_uuid_v4()
 	var dest_path := "%s/%s/%s" % [
@@ -104,7 +104,7 @@ func _import_character(source_path: String) -> void:
 	var new_skeleton: Skeleton3D = instance.find_child("Skeleton3D", true, false)
 	var has_skeleton := new_skeleton != null and new_skeleton.get_bone_count() > 0
 	var bone_prefix: Variant = (
-			_detect_bone_prefix(new_skeleton)
+			HumanoidRetargeter.detect_bone_prefix(new_skeleton)
 			if has_skeleton else null)
 	var has_skin := false
 	for found: Node in instance.find_children("*", "MeshInstance3D", true, false):
@@ -201,7 +201,7 @@ func retarget_animation_source(source_path: String) -> Animation:
 		editor.status_label.text = (
 				"Import failed: %s has no Skeleton3D/AnimationPlayer" % source_path.get_file())
 		return null
-	var source_prefix: Variant = _detect_bone_prefix(source_skeleton)
+	var source_prefix: Variant = HumanoidRetargeter.detect_bone_prefix(source_skeleton)
 	var src_animation := UniversalAnimationPools.find_primary_animation(clip_ap)
 	if source_prefix == null or src_animation == null:
 		instance.free()
@@ -242,29 +242,8 @@ func _current_bone_prefix() -> String:
 	if editor._character_kind == "player":
 		return ""
 	return (
-			_detect_bone_prefix(editor.body.skeleton)
+			HumanoidRetargeter.detect_bone_prefix(editor.body.skeleton)
 			if editor.body.skeleton.get_bone_count() > 0 else "")
-
-
-## Mixamo-family rigs (the vast majority of what gets imported) all name
-## their hip bone "<prefix>Hips" where prefix is "", "mixamorig_", or
-## "mixamorig<N>_" for some number N - detected here by searching for
-## whichever bone ends in "Hips" and taking what's left after stripping it,
-## rather than assuming bone 0 specifically (PlayerBody's MotusMan has an
-## extra non-Hips "Root" bone at index 0 - see _setup_root_motion_track's
-## doc comment for the same issue in a different context). Human Basic
-## Motions FREE-style rigs use "B-hips" instead - detected as a special
-## case since it doesn't fit the "<prefix>Hips" pattern. Returns null for
-## anything else: this only covers the two conventions this tool already
-## knows how to retarget from, not truly arbitrary skeletons.
-func _detect_bone_prefix(skeleton: Skeleton3D):
-	for i in skeleton.get_bone_count():
-		var name := skeleton.get_bone_name(i)
-		if name == "B-hips":
-			return "B-"
-		if name.ends_with("Hips") and not name.begins_with("B-"):
-			return name.substr(0, name.length() - "Hips".length())
-	return null
 
 
 func _sanitize_filename(filename: String) -> String:
