@@ -1,11 +1,13 @@
 # Current Task: One unified character + animation system
 
 **Branch:** `player-swappable-skin`
-**Status:** Phases 0-2 complete. `PlayerBody` genuinely runs on the shared
-`HumanoidRetargeter` core now and its skin is a swappable
-`character_scene` (still defaulting to MotusMan). Confirmed in the real
-game, including two real bugs the user caught by playing it that tool-only
-testing missed. Phase 3 (cut `HumanoidActor`/NPCs over) not started.
+**Status:** Phases 0-3 complete. Both `PlayerBody` and `HumanoidActor` now
+run on the shared `HumanoidRetargeter` core - the "two independent
+systems" this task set out to unify are one system underneath, with
+different content on top, as planned. Confirmed in the real game
+throughout, including three real bugs the user caught by playing it that
+tool-only testing missed. Phase 4 (prove one catalog character works as
+both player and NPC) not started.
 
 ## End goal (in plain terms)
 
