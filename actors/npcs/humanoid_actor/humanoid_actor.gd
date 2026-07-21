@@ -133,36 +133,55 @@ func _setup_animations() -> void:
 
 ## Borrows CLIPS + DEATH_CLIP's standalone animations into anim_player's own
 ## "pack" library, exactly the trick tests/manual/animation/animation_preview.gd
-## also uses. Extracted to a static function so tools/character_editor's
-## MixamoCharacterAdapter can build the same library on a bare Mixamo FBX
-## instance without needing a full HumanoidActor (CharacterBody3D + AI/nav/
-## patrol) - the editor tool has no use for any of that.
+## also uses. A static function so it doesn't need a full HumanoidActor
+## (CharacterBody3D + AI/nav/patrol) to call.
+##
+## Retargets each clip for real via HumanoidRetargeter (same core
+## player_body.gd now runs on - see CURRENT_TASK.md's Phase 3) instead of
+## the previous _rewrite_bone_prefix() trick, which only ever relabeled an
+## animation's track paths and copied its rotation/position values onto the
+## target verbatim - correct only when source and target skeletons happen
+## to share near-identical rest poses/proportions (true of the Mixamo-family
+## skins used today, not guaranteed for an arbitrary catalog character).
 static func build_clip_library(anim_player: AnimationPlayer, target_skeleton: Skeleton3D,
 		target_bone_prefix: String = SOURCE_BONE_PREFIX) -> void:
+	var target_humanoid_map := CharacterEditorRigHandler.full_map_from_prefix(
+			target_skeleton, target_bone_prefix)
 	var lib := AnimationLibrary.new()
 	for clip: StringName in CLIPS:
-		var inst: Node = (load(CLIPS[clip]) as PackedScene).instantiate()
-		var src: AnimationPlayer = inst.get_node("AnimationPlayer")
-		var anim: Animation = src.get_animation(&"mixamo_com").duplicate()
+		var anim := _retarget_action_clip(CLIPS[clip], target_skeleton, target_humanoid_map)
 		if clip == &"walking" or clip == &"running":
 			_make_clip_in_place(anim)
-		_rewrite_bone_prefix(anim, target_bone_prefix)
 		anim.loop_mode = Animation.LOOP_LINEAR
 		lib.add_animation(clip, anim)
-		inst.queue_free()
-	var death_inst: Node = (load(DEATH_CLIP) as PackedScene).instantiate()
-	var death_anim: Animation = (death_inst.get_node("AnimationPlayer") as AnimationPlayer)\
-			.get_animation(&"mixamo_com").duplicate()
-	_rewrite_bone_prefix(death_anim, target_bone_prefix)
+	var death_anim := _retarget_action_clip(DEATH_CLIP, target_skeleton, target_humanoid_map)
 	death_anim.loop_mode = Animation.LOOP_NONE
 	lib.add_animation(&"death", death_anim)
-	death_inst.queue_free()
 	var attack_anim := UnrealMixamoAnimation.retarget_clip(
 			ATTACK_SOURCE, ATTACK_SOURCE_CLIP, target_skeleton, target_bone_prefix)
 	if attack_anim != null:
 		attack_anim.loop_mode = Animation.LOOP_NONE
 		lib.add_animation(&"attack", attack_anim)
 	anim_player.add_animation_library(&"pack", lib)
+
+
+## clip_path's own FBX ships one clip on one Skeleton3D+AnimationPlayer -
+## describes that skeleton via prefix_role_map() (all the action-pack/death
+## sources use the same "mixamorig_" convention SOURCE_BONE_PREFIX names)
+## and retargets its "mixamo_com" animation onto target_skeleton.
+static func _retarget_action_clip(clip_path: String, target_skeleton: Skeleton3D,
+		target_humanoid_map: Dictionary) -> Animation:
+	var inst: Node = (load(clip_path) as PackedScene).instantiate()
+	var src_skeleton := inst.find_child("Skeleton3D", true, false) as Skeleton3D
+	var src_ap: AnimationPlayer = inst.get_node("AnimationPlayer")
+	var src_animation := src_ap.get_animation(&"mixamo_com")
+	var config := HumanoidRetargeter.build_bone_map_config(
+			HumanoidRetargeter.prefix_role_map(src_skeleton, SOURCE_BONE_PREFIX),
+			target_humanoid_map)
+	var anim := HumanoidRetargeter.retarget_clip(
+			src_skeleton, src_animation, target_skeleton, config, false)
+	inst.queue_free()
+	return anim
 
 
 ## Mixamo's walk/run files translate the hips several meters per cycle. The
@@ -186,18 +205,6 @@ static func _make_clip_in_place(animation: Animation) -> void:
 			var value := animation.track_get_key_value(track_index, key_index) as Vector3
 			animation.track_set_key_value(track_index, key_index, value - travel * progress)
 		return
-
-
-static func _rewrite_bone_prefix(animation: Animation, target_bone_prefix: String) -> void:
-	if target_bone_prefix == SOURCE_BONE_PREFIX:
-		return
-	var source_marker := ":" + SOURCE_BONE_PREFIX
-	var target_marker := ":" + target_bone_prefix
-	for track_index in animation.get_track_count():
-		var path_text := String(animation.track_get_path(track_index))
-		if source_marker in path_text:
-			animation.track_set_path(
-					track_index, NodePath(path_text.replace(source_marker, target_marker)))
 
 
 func _physics_process(delta: float) -> void:

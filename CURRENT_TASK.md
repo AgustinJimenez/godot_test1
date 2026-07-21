@@ -1,9 +1,11 @@
 # Current Task: One unified character + animation system
 
 **Branch:** `player-swappable-skin`
-**Status:** Phase 0 and Phase 1 complete. `HumanoidRetargeter` proven
-equivalent to `PlayerBody`'s own retargeting, live, via a new permanent
-diagnostic. Phase 2 (cut `PlayerBody` over to it for real) not started.
+**Status:** Phases 0-2 complete. `PlayerBody` genuinely runs on the shared
+`HumanoidRetargeter` core now and its skin is a swappable
+`character_scene` (still defaulting to MotusMan). Confirmed in the real
+game, including two real bugs the user caught by playing it that tool-only
+testing missed. Phase 3 (cut `HumanoidActor`/NPCs over) not started.
 
 ## End goal (in plain terms)
 
@@ -390,12 +392,30 @@ and already proven in real gameplay (`HumanoidActor`'s attack clip).
       **User confirmed both fixes working in the real game.**
 
 ### Phase 3 — Cut HumanoidActor over to the shared core
-- [ ] Replace its bone-*prefix* mapping with the same `humanoid_map`
-      lookup the player now uses, keeping its existing (smaller) clip set.
-      NPC behavior must stay identical or improve — not regress.
-- [ ] Live-test patrol/chase/attack contact timing specifically, since
-      that's the NPC-side equivalent of the player's fragile action-contact
-      system.
+- [x] Replaced `_rewrite_bone_prefix()` (relabeled an animation's track
+      paths and copied its rotation/position values onto the target
+      verbatim - only correct because today's NPC skins happen to share
+      near-identical proportions with the source rig) with real
+      `HumanoidRetargeter` retargeting for the locomotion clips
+      (idle/walk/run/death). Added `HumanoidRetargeter.prefix_role_map()`
+      (inverse of `full_map_from_prefix` - describes a *source* rig whose
+      naming is already "known prefix + role", mirroring `BONE_MAP`'s
+      shape) so `build_clip_library()` can build a real `BoneMapConfig` via
+      the same `build_bone_map_config()` Phase 1 already built, using
+      `CharacterEditorRigHandler.full_map_from_prefix()` for the target
+      side (`character_bone_prefix` stays the same config surface - no
+      catalog dependency yet, matching Phase 2's same scoping choice for
+      `PlayerBody`). The attack clip (already real `HumanoidRetargeter`
+      retargeting via `UnrealMixamoAnimation`) is untouched.
+      `_rewrite_bone_prefix` removed entirely (confirmed unused).
+- [x] **Live-tested patrol/chase/attack contact timing** - the exact risk
+      this phase flagged, and not verifiable through the character editor
+      tool at all (it doesn't call `build_clip_library()` - confirmed via
+      grep, exactly one caller, `HumanoidActor._setup_animations()` itself).
+      Booted the real game (`levels/playground.tscn`) and confirmed zero
+      runtime errors (only pre-existing navmesh warnings), then the user
+      confirmed live: shambler/zombie NPCs patrol, chase, and land attacks
+      correctly, including damage timing.
 
 ### Phase 4 — Prove "any character, any role" on a second skin
 - [ ] Take one catalog character (e.g. `x_bot`) and use the *same* imported/

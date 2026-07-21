@@ -43,6 +43,24 @@ class BoneMapConfig:
 	var arm_chains: Array[Dictionary] = []
 
 
+## Inverse of character_editor_rig_handler.gd's full_map_from_prefix: that
+## produces role -> prefix+role for a *target* skeleton (a catalog entry's
+## humanoid_map); this produces prefix+role -> role for a *source* rig -
+## the shape build_bone_map_config's source_role_map parameter expects
+## (mirrors player_body.gd's BONE_MAP). For a source whose own naming is
+## already "some known prefix + canonical role" (e.g. the Mixamo action
+## pack humanoid_actor.gd borrows locomotion from) rather than an
+## unrelated naming convention needing an explicit table (UAL/Unreal
+## Mannequin, which is why BONE_MAP is hand-written instead of computed).
+static func prefix_role_map(skeleton: Skeleton3D, prefix: String) -> Dictionary:
+	var result := {}
+	for bone_index in skeleton.get_bone_count():
+		var bone_name := String(skeleton.get_bone_name(bone_index))
+		if bone_name.begins_with(prefix):
+			result[StringName(bone_name)] = bone_name.trim_prefix(prefix)
+	return result
+
+
 ## Builds a BoneMapConfig retargeting an arbitrary source clip's skeleton
 ## onto any catalog character - source_role_map describes the SOURCE
 ## skeleton's own bone names via canonical role (e.g. player_body.gd's
