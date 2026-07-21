@@ -157,6 +157,13 @@ func _set_bone_axis_from_gizmo(bone_name: StringName, axis: int, value: float) -
 
 
 func _on_show_bones_toggled(enabled: bool) -> void:
+	# _bone_debug_root is torn down and rebuilt on every character
+	# load/unload (see character_editor.gd's _unload_character/
+	# _setup_bone_debug) - this can fire during that window (e.g. the Rig
+	# tab's own "enable bones if not already on" step, or a stray toggle
+	# signal mid-switch), when it's null or already queue_free()'d.
+	if not is_instance_valid(editor._bone_debug_root):
+		return
 	editor._bone_debug_root.visible = enabled
 	if enabled:
 		_update_bone_gizmo()
@@ -171,6 +178,13 @@ func _on_axis_ring_toggled(_enabled: bool, axis: int) -> void:
 func _rebuild_bone_gizmo() -> void:
 	if editor._bone_debug_root == null:
 		return
+	# A bone's "pose" (what get_bone_global_pose() below actually reads) is
+	# a separate value from its "rest" (what set_bone_rest() sets) - a newly
+	# added or rest-edited bone's pose stays wherever it last was (often
+	# identity/piled at its parent's origin) until something resyncs pose to
+	# rest. Custom-rig placement only ever touches rest, never pose, so
+	# without this every joint below renders at the wrong position.
+	editor.body.skeleton.reset_bone_poses()
 	for instance: MeshInstance3D in editor._joint_instances.values():
 		instance.queue_free()
 	for instance: MeshInstance3D in editor._bone_segments.values():

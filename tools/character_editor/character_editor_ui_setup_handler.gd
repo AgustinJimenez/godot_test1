@@ -178,6 +178,8 @@ func _setup_controls() -> void:
 	editor.free_camera_toggle.toggled.connect(editor._camera_handler._on_free_camera_toggled)
 	editor.root_motion_toggle.toggled.connect(editor._camera_handler._on_root_motion_toggled)
 	editor.camera_mode_button.pressed.connect(_on_camera_mode_button_pressed)
+	editor.side_view_button.pressed.connect(_on_side_view_pressed)
+	editor.vertical_view_button.pressed.connect(_on_vertical_view_pressed)
 	editor.zoom_out_button.pressed.connect(_on_zoom_out_pressed)
 	editor.zoom_in_button.pressed.connect(_on_zoom_in_pressed)
 	editor.reset_view_button.pressed.connect(_on_reset_camera_view_pressed)
@@ -304,11 +306,11 @@ func _update_editor_mode_buttons() -> void:
 	editor.compare_mode_button.set_pressed_no_signal(editor._comparison.enabled)
 
 
-func _on_camera_mode_button_pressed() -> void:
-	var next_mode := (
-			editor.CAMERA_MODE_MOVE if editor._camera_mode == editor.CAMERA_MODE_ORBIT
-			else editor.CAMERA_MODE_ORBIT)
-	editor._camera_mode = next_mode
+## Shared by every toolbar action that jumps the camera to a new mode/angle
+## outright - cancels whatever interactive camera gesture might be mid-drag
+## (orbit, pan, free-camera look) so it doesn't fight the jump, and drops
+## Free Camera mode since these are all orbit-camera presets/modes.
+func _reset_camera_interaction_state() -> void:
 	editor._captured = false
 	editor._orbiting = false
 	editor._orbiting_joint = false
@@ -316,6 +318,14 @@ func _on_camera_mode_button_pressed() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if editor.free_camera_toggle.button_pressed:
 		editor.free_camera_toggle.set_pressed_no_signal(false)
+
+
+func _on_camera_mode_button_pressed() -> void:
+	var next_mode := (
+			editor.CAMERA_MODE_MOVE if editor._camera_mode == editor.CAMERA_MODE_ORBIT
+			else editor.CAMERA_MODE_ORBIT)
+	editor._camera_mode = next_mode
+	_reset_camera_interaction_state()
 	_update_camera_mode_button()
 	editor.status_label.text = ""
 
@@ -326,6 +336,27 @@ func _update_camera_mode_button() -> void:
 	editor.camera_mode_button.tooltip_text = (
 			"Orbit camera (click to switch to Move)" if is_orbit
 			else "Move camera (click to switch to Orbit)")
+
+
+func _on_side_view_pressed() -> void:
+	var names := CharacterEditorCameraHandler.SIDE_VIEW_NAMES
+	_reset_camera_interaction_state()
+	editor._camera_handler._snap_side_view(editor._side_view_index)
+	var current_name: String = names[editor._side_view_index]
+	editor._side_view_index = (editor._side_view_index + 1) % names.size()
+	editor.side_view_button.tooltip_text = "Snap to %s view (click to cycle to %s)" % [
+		current_name, names[editor._side_view_index]]
+	editor.status_label.text = ""
+
+
+func _on_vertical_view_pressed() -> void:
+	editor._vertical_view_is_top = not editor._vertical_view_is_top
+	_reset_camera_interaction_state()
+	editor._camera_handler._snap_vertical_view(editor._vertical_view_is_top)
+	editor.vertical_view_button.tooltip_text = (
+			"Snap to top view (click to switch to bottom)" if editor._vertical_view_is_top
+			else "Snap to bottom view (click to switch to top)")
+	editor.status_label.text = ""
 
 
 func _on_zoom_out_pressed() -> void:

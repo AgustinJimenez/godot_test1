@@ -140,6 +140,10 @@ var body: CharacterAdapter
 ## press (see _on_camera_mode_button_pressed) rather than a separate button per
 ## mode - its icon/tooltip update to reflect whichever mode is now active.
 @onready var camera_mode_button: Button = $UI/ViewportToolbar/Margin/Buttons/Orbit
+## Cycles left/right (and VerticalView below, top/bottom) on each press -
+## see _on_side_view_pressed in character_editor_ui_setup_handler.gd.
+@onready var side_view_button: Button = $UI/ViewportToolbar/Margin/Buttons/SideView
+@onready var vertical_view_button: Button = $UI/ViewportToolbar/Margin/Buttons/VerticalView
 @onready var zoom_out_button: Button = $UI/ViewportToolbar/Margin/Buttons/ZoomOut
 @onready var zoom_in_button: Button = $UI/ViewportToolbar/Margin/Buttons/ZoomIn
 @onready var reset_view_button: Button = $UI/ViewportToolbar/Margin/Buttons/ResetView
@@ -368,6 +372,9 @@ var _orbiting := false
 var _orbiting_joint := false
 var _moving_camera := false
 var _camera_mode := CAMERA_MODE_ORBIT
+## SideView cycles Front/Right/Back/Left; VerticalView flips Top/Bottom.
+var _side_view_index := 0
+var _vertical_view_is_top := true
 var _orbit_target := Vector3.ZERO
 var _orbit_distance := 2.5
 var _orbit_yaw := 0.0

@@ -1,4 +1,4 @@
-[gd_scene load_steps=29 format=3]
+[gd_scene load_steps=31 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="1_body"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="2_body_script"]
@@ -20,6 +20,8 @@
 [ext_resource type="Texture2D" path="res://tools/character_editor/reference/rig_reference_t_pose.png" id="18_rig_reference_t_pose"]
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/chevron-left.svg" id="19_chevron_left"]
 [ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/chevron-right.svg" id="20_chevron_right"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/move-horizontal.svg" id="21_side_view_icon"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/lucide/move-vertical.svg" id="22_vertical_view_icon"]
 
 [sub_resource type="Environment" id="Environment_tuner"]
 background_mode = 1
@@ -171,6 +173,24 @@ tooltip_text = "Orbit camera (click to switch to Move)"
 icon = ExtResource("4_rotate_icon")
 expand_icon = true
 icon_max_width = 22
+
+[node name="SideView" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+focus_mode = 0
+tooltip_text = "Snap to front view (click to cycle to right)"
+icon = ExtResource("21_side_view_icon")
+expand_icon = true
+icon_max_width = 20
+
+[node name="VerticalView" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
+custom_minimum_size = Vector2(46, 34)
+layout_mode = 2
+focus_mode = 0
+tooltip_text = "Snap to top view (click to switch to bottom)"
+icon = ExtResource("22_vertical_view_icon")
+expand_icon = true
+icon_max_width = 20
 
 [node name="ShowBones" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
 custom_minimum_size = Vector2(46, 34)
@@ -723,7 +743,7 @@ layout_mode = 2
 text = "Parent: none (next bone becomes a root)"
 
 [node name="BoneScroll" type="ScrollContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/CustomRigBuilder"]
-custom_minimum_size = Vector2(0, 280)
+custom_minimum_size = Vector2(0, 480)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0

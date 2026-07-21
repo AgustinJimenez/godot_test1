@@ -174,6 +174,32 @@ func _update_orbit_camera() -> void:
 	editor.camera.look_at(editor._orbit_target)
 
 
+## Front/Right/Back/Left, indexed by CharacterEditor._side_view_index -
+## yaw 0 matches the camera's own default startup angle, so index 0 reads
+## as "front" without needing to know which way the character mesh faces.
+const SIDE_VIEW_YAW_DEGREES: Array[float] = [0.0, 90.0, 180.0, -90.0]
+const SIDE_VIEW_NAMES: Array[String] = ["front", "right", "back", "left"]
+
+
+## SideView/VerticalView toolbar buttons - jump straight to a preset side
+## or top/bottom view of whatever _orbit_target/_orbit_distance already are
+## (same target/zoom, just a different angle), reusing the same yaw/pitch
+## state normal orbiting drives.
+func _snap_side_view(side_index: int) -> void:
+	editor._orbit_yaw = deg_to_rad(SIDE_VIEW_YAW_DEGREES[side_index])
+	editor._orbit_pitch = 0.0
+	_update_orbit_camera()
+
+
+## Pitch stops just short of the poles (matching the drag-orbit clamp
+## elsewhere) since Node3D.look_at()'s default up vector is parallel to the
+## view direction at an exact +/-90 degree pitch, which is undefined/
+## degenerate.
+func _snap_vertical_view(from_top: bool) -> void:
+	editor._orbit_pitch = deg_to_rad(80.0 if from_top else -80.0)
+	_update_orbit_camera()
+
+
 func _get_orbit_direction() -> Vector3:
 	var horizontal := cos(editor._orbit_pitch)
 	return Vector3(

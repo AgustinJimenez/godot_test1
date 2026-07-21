@@ -121,6 +121,10 @@ func place_custom_bone(global_point: Vector3) -> void:
 	else:
 		skeleton.set_bone_rest(bone_index, Transform3D(Basis.IDENTITY, origin))
 	_custom_rig_active_parent = StringName(bone_name)
+	# Set directly (not via _select_custom_bone) since the row rebuild and
+	# gizmo rebuild below already pick up the new editor._selected_bone -
+	# calling the helper first would just redo both a moment early.
+	editor._selected_bone = StringName(bone_name)
 	_rebuild_custom_rig_bone_list_ui()
 	_update_custom_rig_parent_label()
 	_update_finish_button_state()
@@ -157,11 +161,13 @@ func on_bone_clicked(bone_name: StringName) -> void:
 		return
 	_custom_rig_active_parent = bone_name
 	_update_custom_rig_parent_label()
+	_select_custom_bone(String(bone_name))
 
 
 func _on_custom_bone_set_parent_pressed(bone_name: String) -> void:
 	_custom_rig_active_parent = StringName(bone_name)
 	_update_custom_rig_parent_label()
+	_select_custom_bone(bone_name)
 
 
 func _on_custom_bone_renamed(new_name: String, old_name: String) -> void:
@@ -181,7 +187,14 @@ func _on_custom_bone_renamed(new_name: String, old_name: String) -> void:
 	if String(_custom_rig_active_parent) == old_name:
 		_custom_rig_active_parent = StringName(new_name)
 		_update_custom_rig_parent_label()
+	if String(editor._selected_bone) == old_name:
+		editor._selected_bone = StringName(new_name)
 	_rebuild_custom_rig_skeleton()
+	# Every row's Set Parent/Delete buttons (and the name field's own
+	# focus_entered selection binding) close over the bone name current at
+	# row-creation time - without this, they'd keep acting on old_name,
+	# which no longer exists in _custom_rig_bones after the rename above.
+	_rebuild_custom_rig_bone_list_ui()
 
 
 func _on_custom_bone_position_changed(value: float, bone_name: String, axis: int) -> void:
@@ -271,6 +284,14 @@ func _rebuild_custom_rig_skeleton() -> void:
 					bone_index, Transform3D(Basis.IDENTITY, entry["origin"] - parent_origin))
 		else:
 			new_skeleton.set_bone_rest(bone_index, Transform3D(Basis.IDENTITY, entry["origin"]))
+	# _bone_debug_root is a child of the skeleton (see character_editor.gd's
+	# _setup_bone_debug) - reparent it onto new_skeleton before old_skeleton
+	# is freed, or it (and every joint/segment mesh under it) gets destroyed
+	# along with old_skeleton, leaving editor._bone_debug_root pointing at a
+	# freed node that _rebuild_bone_gizmo()'s "== null" check doesn't catch.
+	if is_instance_valid(editor._bone_debug_root):
+		old_skeleton.remove_child(editor._bone_debug_root)
+		new_skeleton.add_child(editor._bone_debug_root)
 	old_skeleton.free()
 	editor.body.skeleton = new_skeleton
 	editor._gizmo_handler._rebuild_bone_gizmo()
@@ -286,9 +307,17 @@ func _rebuild_custom_rig_bone_list_ui() -> void:
 func _add_custom_bone_row(entry: Dictionary) -> void:
 	var bone_name: String = entry["name"]
 	var origin: Vector3 = entry["origin"]
+	var row_panel := PanelContainer.new()
+	row_panel.set_meta(&"bone_name", bone_name)
+	_custom_rig_bone_list.add_child(row_panel)
+	_style_custom_bone_row(row_panel, bone_name == String(editor._selected_bone))
+	var margin := MarginContainer.new()
+	for side in [&"margin_left", &"margin_right", &"margin_top", &"margin_bottom"]:
+		margin.add_theme_constant_override(side, 4)
+	row_panel.add_child(margin)
 	var row := VBoxContainer.new()
 	row.add_theme_constant_override(&"separation", 4)
-	_custom_rig_bone_list.add_child(row)
+	margin.add_child(row)
 
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override(&"separation", 6)
@@ -297,6 +326,7 @@ func _add_custom_bone_row(entry: Dictionary) -> void:
 	name_field.text = bone_name
 	name_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_field.text_submitted.connect(_on_custom_bone_renamed.bind(bone_name))
+	name_field.focus_entered.connect(_select_custom_bone.bind(bone_name))
 	header.add_child(name_field)
 	var is_active_parent := String(_custom_rig_active_parent) == bone_name
 	var set_parent_button := Button.new()
@@ -331,6 +361,37 @@ func _add_custom_bone_row(entry: Dictionary) -> void:
 		axis_row.add_child(slider)
 
 
+## Bone selection during Build Custom Rig mode - shared by clicking a bone
+## in the viewport (on_bone_clicked), pressing its "Set Parent" button, or
+## focusing its name field, all of which also make it the active parent.
+## Reuses the same editor._selected_bone the Pose tab's own gizmo
+## highlighting already reads (character_editor_gizmo_handler.gd's
+## _update_bone_gizmo), so the mesh highlight is free; only the bone-list
+## row highlight needs its own update here.
+func _select_custom_bone(bone_name: String) -> void:
+	editor._selected_bone = StringName(bone_name)
+	editor._gizmo_handler._update_bone_gizmo()
+	_update_custom_bone_row_highlights()
+
+
+func _update_custom_bone_row_highlights() -> void:
+	for row_panel: PanelContainer in _custom_rig_bone_list.get_children():
+		_style_custom_bone_row(
+				row_panel, String(row_panel.get_meta(&"bone_name", "")) == String(editor._selected_bone))
+
+
+func _style_custom_bone_row(row_panel: PanelContainer, selected: bool) -> void:
+	if not selected:
+		row_panel.remove_theme_stylebox_override(&"panel")
+		return
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(1.0, 0.72, 0.12, 0.12)
+	style.border_color = Color(1.0, 0.72, 0.12, 1.0)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	row_panel.add_theme_stylebox_override(&"panel", style)
+
+
 func _update_custom_rig_parent_label() -> void:
 	_custom_rig_active_parent_label.text = (
 			"Parent: none (next bone becomes a root)" if _custom_rig_active_parent == &""
@@ -346,6 +407,9 @@ func _on_cancel_custom_rig_pressed() -> void:
 	var new_skeleton := Skeleton3D.new()
 	new_skeleton.name = &"Skeleton3D"
 	old_skeleton.get_parent().add_child(new_skeleton)
+	if is_instance_valid(editor._bone_debug_root):
+		old_skeleton.remove_child(editor._bone_debug_root)
+		new_skeleton.add_child(editor._bone_debug_root)
 	old_skeleton.free()
 	editor.body.skeleton = new_skeleton
 	editor._gizmo_handler._rebuild_bone_gizmo()
