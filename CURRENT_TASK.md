@@ -480,21 +480,19 @@ and already proven in real gameplay (`HumanoidActor`'s attack clip).
         itself is *derived from* `relaxed_idle`, one of the broken clips -
         worth double-checking hand/grip posing quality specifically for
         non-MotusMan skins before Phase 5 ships, not just locomotion.
-- [ ] **Not yet live-played by the user** - the numeric proof above is a
-      structural/track-level check (same standard as Phase 1's parity
-      diagnostic), not a substitute for actually seeing `x_bot` move
-      correctly in a real play session. Per this project's standing rule,
-      nothing here should be considered done - or committed - until that
-      happens. Phase 5's debug-menu UI is the natural point to do this live
-      (swap to `x_bot` mid-session and watch it walk/idle/attack for real),
-      rather than building a separate throwaway swap mechanism just for
-      Phase 4.
-- [ ] Accept a known-imperfect held-item grip if not separately tuned yet —
-      call it out explicitly rather than silently shipping a bad-looking
-      grip. `flashlight_grip_pose.json`'s finger rotations and the
-      flashlight's `0.12` scale were hand-tuned to MotusMan's specific hand
-      size; a different skin needs its own tuning or a documented
-      "close enough" default. (See the `_held_pose`/`relaxed_idle` note
+- [x] Live-played by the user, exactly as planned: Phase 5's debug-menu
+      swap was the point this happened (not a separate throwaway mechanism
+      for Phase 4) - "looks good now" / "looks ok" across two rounds of
+      live testing (X Bot/Y Bot, then the 9 migrated NPCs).
+- [ ] **Still open, not blocking**: held-item grip *quality* for
+      non-MotusMan skins. The bone-attachment bug (wrong bone entirely) is
+      fixed - see Phase 5 - but nobody has specifically scrutinized whether
+      the flashlight/weapon's hand-tuned finger curl and `0.12` scale
+      actually *look* natural in `x_bot`'s differently-proportioned hand,
+      only that the game runs correctly with it equipped.
+      `flashlight_grip_pose.json` is still MotusMan-tuned data; a different
+      skin needs its own tuning or a documented "close enough" default
+      eventually. (See the `_held_pose`/`relaxed_idle` note
       above - this may be worse than "imperfect" for non-MotusMan skins
       specifically, not yet checked.)
 
