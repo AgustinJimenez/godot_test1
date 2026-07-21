@@ -113,6 +113,9 @@ func _update() -> void:
 				editor.mesh_stats_panel.show()
 		Stage.RIG:
 			editor.rig_section.show()
+			if not is_empty and not editor.show_bones_toggle.button_pressed:
+				editor.show_bones_toggle.set_pressed_no_signal(true)
+				editor._gizmo_handler._on_show_bones_toggled(true)
 		Stage.ANIMATION:
 			editor.animation_row.show()
 			editor.editor_mode_row.visible = editor.body.supports_comparison

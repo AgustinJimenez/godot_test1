@@ -52,6 +52,8 @@ const DEFAULT_OBJECT_ROTATION := Vector3(-95.0, -180.0, 1.0)
 const MOVE_SPEED := 1.0
 const LOOK_SENS := 0.003
 const ORBIT_SENS := 0.006
+const ARROW_ORBIT_SPEED := 1.2
+const ARROW_MOVE_SPEED := 0.9
 const MIN_ORBIT_DISTANCE := 0.45
 const MAX_ORBIT_DISTANCE := 5.0
 const ZOOM_STEP := 0.88
@@ -134,8 +136,10 @@ var body: CharacterAdapter
 ]
 @onready var empty_state: Label = $UI/EmptyState
 @onready var panel_resize_handle: Button = $UI/PanelResizeHandle
-@onready var orbit_camera_button: Button = $UI/ViewportToolbar/Margin/Buttons/Orbit
-@onready var move_camera_button: Button = $UI/ViewportToolbar/Margin/Buttons/Move
+## Single button that cycles CAMERA_MODE_ORBIT/CAMERA_MODE_MOVE on each
+## press (see _on_camera_mode_button_pressed) rather than a separate button per
+## mode - its icon/tooltip update to reflect whichever mode is now active.
+@onready var camera_mode_button: Button = $UI/ViewportToolbar/Margin/Buttons/Orbit
 @onready var zoom_out_button: Button = $UI/ViewportToolbar/Margin/Buttons/ZoomOut
 @onready var zoom_in_button: Button = $UI/ViewportToolbar/Margin/Buttons/ZoomIn
 @onready var reset_view_button: Button = $UI/ViewportToolbar/Margin/Buttons/ResetView
@@ -830,14 +834,14 @@ func _setup_bone_debug() -> void:
 	_rotation_ring_mesh.rings = 48
 	_rotation_ring_mesh.ring_segments = 8
 
-	_bone_segment_material = _make_debug_material(Color(0.12, 0.72, 0.95, 0.9))
-	_joint_material = _make_debug_material(Color(0.2, 0.86, 1.0, 1.0))
-	_selected_joint_material = _make_debug_material(Color(1.0, 0.72, 0.12, 1.0))
-	_selected_bone_material = _make_debug_material(Color(1.0, 0.64, 0.12, 0.95))
+	_bone_segment_material = _gizmo_handler._make_debug_material(Color(0.12, 0.72, 0.95, 0.9))
+	_joint_material = _gizmo_handler._make_debug_material(Color(0.2, 0.86, 1.0, 1.0))
+	_selected_joint_material = _gizmo_handler._make_debug_material(Color(1.0, 0.72, 0.12, 1.0))
+	_selected_bone_material = _gizmo_handler._make_debug_material(Color(1.0, 0.64, 0.12, 0.95))
 	_gizmo_handler._setup_bone_debug_materials()
 	for axis in 3:
-		var ring := _make_debug_mesh_instance(
-				_rotation_ring_mesh, _make_debug_material(AXIS_COLORS[axis]))
+		var ring := _gizmo_handler._make_debug_mesh_instance(
+				_rotation_ring_mesh, _gizmo_handler._make_debug_material(AXIS_COLORS[axis]))
 		ring.name = StringName("RotationRing%s" % "XYZ"[axis])
 		_rotation_rings.append(ring)
 		_bone_debug_root.add_child(ring)
@@ -845,29 +849,13 @@ func _setup_bone_debug() -> void:
 	_gizmo_handler._rebuild_bone_gizmo()
 
 
-func _make_debug_material(color: Color) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.no_depth_test = true
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	return material
-
-
-func _make_debug_mesh_instance(mesh: Mesh, material: Material) -> MeshInstance3D:
-	var instance := MeshInstance3D.new()
-	instance.mesh = mesh
-	instance.material_override = material
-	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	return instance
-
-
 func _input(event: InputEvent) -> void:
-	if pose_library_overlay.visible or _rig_handler.is_action_modal_open():
+	if pose_library_overlay.visible or _rig_handler.is_action_modal_open() or body == null:
 		return
-	if body == null or not _stage_handler.is_pose_stage():
-		return
-	if not event is InputEventMouseButton:
+	var placing_custom_bones: bool = (_rig_handler.custom_rig.active
+			and _stage_handler.current == CharacterEditorStageHandler.Stage.RIG)
+	if (not placing_custom_bones and not _stage_handler.is_pose_stage()
+			or not event is InputEventMouseButton):
 		return
 	var button_event := event as InputEventMouseButton
 	if (not button_event.pressed
@@ -875,10 +863,15 @@ func _input(event: InputEvent) -> void:
 			or _captured
 			or _is_pointer_over_tuner_ui(button_event.position)):
 		return
+	if placing_custom_bones:
+		_rig_handler.custom_rig.handle_click(button_event.position)
+		get_viewport().set_input_as_handled()
+		return
 	if show_bones_toggle.button_pressed and _gizmo_handler._begin_ring_drag(button_event.position):
 		get_viewport().set_input_as_handled()
 	elif button_event.double_click and _gizmo_handler._select_character_bone_at(button_event.position):
 		get_viewport().set_input_as_handled()
+
 
 func _is_pointer_over_tuner_ui(screen_position: Vector2) -> bool:
 	var logical_position := screen_position / _ui_scale
@@ -985,6 +978,7 @@ func _process(delta: float) -> void:
 		return
 	_process_root_motion()
 	if not free_camera_toggle.button_pressed:
+		_camera_handler._process_arrow_key_camera(delta)
 		if _joint_focus_active:
 			_camera_handler._update_focused_camera()
 		return

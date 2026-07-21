@@ -74,13 +74,30 @@ func make_bone_segment_mesh() -> ArrayMesh:
 	return mesh
 
 
+func _make_debug_material(color: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.no_depth_test = true
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	return material
+
+
+func _make_debug_mesh_instance(mesh: Mesh, material: Material) -> MeshInstance3D:
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	instance.material_override = material
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return instance
+
+
 func _setup_bone_debug_materials() -> void:
 	editor._bone_section_materials.clear()
 	editor._joint_section_materials.clear()
 	for section: StringName in BONE_DEBUG_COLORS:
 		var color: Color = BONE_DEBUG_COLORS[section]
-		editor._bone_section_materials[section] = editor._make_debug_material(color)
-		editor._joint_section_materials[section] = editor._make_debug_material(
+		editor._bone_section_materials[section] = _make_debug_material(color)
+		editor._joint_section_materials[section] = _make_debug_material(
 				Color(color.r, color.g, color.b, 0.96))
 
 
@@ -170,7 +187,7 @@ func _rebuild_bone_gizmo() -> void:
 		var group := _bone_visual_group(bone_name)
 		var joint_material: Material = editor._joint_section_materials.get(
 				group, editor._joint_material)
-		var joint := editor._make_debug_mesh_instance(editor._joint_mesh, joint_material)
+		var joint := _make_debug_mesh_instance(editor._joint_mesh, joint_material)
 		joint.name = StringName("Joint_%s" % bone_name)
 		editor._joint_instances[bone_index] = joint
 		editor._bone_debug_root.add_child(joint)
@@ -178,7 +195,7 @@ func _rebuild_bone_gizmo() -> void:
 		if visible_set.has(parent_index) and not _is_technical_root(parent_index):
 			var segment_material: Material = editor._bone_section_materials.get(
 					group, editor._bone_segment_material)
-			var segment := editor._make_debug_mesh_instance(
+			var segment := _make_debug_mesh_instance(
 					editor._bone_segment_mesh, segment_material)
 			segment.name = StringName("Bone_%s" % bone_name)
 			editor._bone_segments[bone_index] = segment
@@ -378,7 +395,14 @@ func _sync_object_controls() -> void:
 	editor._syncing_controls = false
 
 
-func _select_character_bone_at(mouse_position: Vector2) -> bool:
+## Finds the closest bone gizmo dot/segment to a screen position, among the
+## currently visible bones - the pure picking logic behind
+## _select_character_bone_at (which additionally applies pose-stage
+## selection side effects below: editor._selected_bone, a
+## pose-editing-specific status message). Returns "" if nothing is within
+## CHARACTER_PICK_RADIUS_PIXELS - used as-is (no side effects) by Build
+## Custom Rig mode's "click an existing bone to set its parent" picking.
+func _bone_at_screen_position(mouse_position: Vector2) -> StringName:
 	var closest_index := -1
 	var closest_distance := editor.CHARACTER_PICK_RADIUS_PIXELS
 	for bone_index in editor._visible_bone_indices:
@@ -405,8 +429,15 @@ func _select_character_bone_at(mouse_position: Vector2) -> bool:
 			closest_distance = segment_distance
 			closest_index = bone_index
 	if closest_index < 0:
+		return &""
+	return editor.body.skeleton.get_bone_name(closest_index)
+
+
+func _select_character_bone_at(mouse_position: Vector2) -> bool:
+	var bone_name := _bone_at_screen_position(mouse_position)
+	if bone_name == &"":
 		return false
-	_select_bone(editor.body.skeleton.get_bone_name(closest_index), true)
+	_select_bone(bone_name, true)
 	editor.status_label.text = "%s selected; drag an X, Y, or Z ring" % (
 			editor._bone_controls_handler._display_bone_name(editor._selected_bone))
 	return true

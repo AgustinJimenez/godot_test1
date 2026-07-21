@@ -10,7 +10,18 @@ extends RefCounted
 ## need a restart or explicit reload_bridge to pick up changes.
 
 
+## When run/window_placement/game_embed_mode embeds the played scene inside
+## the editor's own "Game" tab, that embedded viewport only renders new
+## frames while the Game tab is the active main-screen tab - otherwise
+## RenderingServer.frame_post_draw silently stops firing after the first
+## frame, and every live_*/*_live_* tool that awaits a rendered frame
+## (capture_live_pose chief among them) hangs until it times out. Whatever
+## other main-screen tab this request's own actions land on (open_scene
+## forces "3D", node selection can jump to "2D", etc.), re-assert "Game"
+## first so a playing scene never goes dark for the next call.
 static func handle(request: Dictionary, editor_interface: EditorInterface, pose_debugger):
+	if editor_interface.is_playing_scene():
+		editor_interface.set_main_screen_editor("Game")
 	match String(request.get("cmd", "")):
 		"rescan_filesystem":
 			return _cmd_rescan_filesystem(editor_interface)
@@ -96,6 +107,26 @@ static func handle(request: Dictionary, editor_interface: EditorInterface, pose_
 							String(request.get("source_clip", "")),
 							String(request.get("gameplay_clip", "")),
 							String(request.get("manifest_path", ""))],
+					editor_interface, pose_debugger, 30.0)
+		"get_live_character_bounds":
+			return await _cmd_forward_to_runtime(
+					"mcp:get_character_bounds", [], editor_interface, pose_debugger, 5.0)
+		"get_live_bone_screen_positions":
+			return await _cmd_forward_to_runtime(
+					"mcp:get_bone_screen_positions", [], editor_interface, pose_debugger, 5.0)
+		"click_live_custom_rig":
+			# A generous timeout - handle_click's raycast tests every
+			# triangle in the character's mesh synchronously (no early-out
+			# spatial structure), which can take real time on a dense mesh.
+			return await _cmd_forward_to_runtime(
+					"mcp:click_custom_rig",
+					[float(request.get("screen_x", 0.0)), float(request.get("screen_y", 0.0))],
+					editor_interface, pose_debugger, 30.0)
+		"custom_rig_action":
+			return await _cmd_forward_to_runtime(
+					"mcp:custom_rig_action",
+					[String(request.get("action", "")), String(request.get("bone", "")),
+							String(request.get("extra", ""))],
 					editor_interface, pose_debugger, 30.0)
 		var other:
 			return {"ok": false, "error": "Unknown cmd: %s" % other}

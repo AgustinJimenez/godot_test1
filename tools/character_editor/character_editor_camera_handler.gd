@@ -135,6 +135,39 @@ func position_inspection_floor() -> void:
 			center.x, bounds.position.y - 0.004, center.z)
 
 
+## Arrow-key camera control for the Orbit/Move viewport toolbar modes -
+## keyboard counterpart to the equivalent mouse-drag handling in
+## character_editor.gd's _input() (the _orbiting/_moving_camera branches),
+## since those only ever respond to an active mouse drag. Free Camera mode
+## has its own WASD-based movement in character_editor.gd's _process() and
+## isn't affected by this.
+func _process_arrow_key_camera(delta: float) -> void:
+	if editor._camera_mode == editor.CAMERA_MODE_ORBIT:
+		var yaw_input := Input.get_axis(&"ui_left", &"ui_right")
+		var pitch_input := Input.get_axis(&"ui_down", &"ui_up")
+		if yaw_input == 0.0 and pitch_input == 0.0:
+			return
+		editor._orbit_yaw += yaw_input * editor.ARROW_ORBIT_SPEED * delta
+		editor._orbit_pitch = clampf(
+				editor._orbit_pitch + pitch_input * editor.ARROW_ORBIT_SPEED * delta,
+				-deg_to_rad(80.0), deg_to_rad(80.0))
+		if editor._joint_focus_active:
+			editor._focused_camera_offset = _get_orbit_direction() * editor._orbit_distance
+		else:
+			_update_orbit_camera()
+	elif editor._camera_mode == editor.CAMERA_MODE_MOVE:
+		var pan := Input.get_vector(&"ui_left", &"ui_right", &"ui_down", &"ui_up")
+		if pan == Vector2.ZERO:
+			return
+		var scale_factor := (
+				maxf(editor._orbit_distance, editor.MIN_ORBIT_DISTANCE) * editor.ARROW_MOVE_SPEED * delta)
+		var offset := (
+				(editor.camera.global_basis.x * pan.x + editor.camera.global_basis.y * pan.y)
+				* scale_factor)
+		editor.camera.global_position += offset
+		editor._orbit_target += offset
+
+
 func _update_orbit_camera() -> void:
 	var direction := _get_orbit_direction()
 	editor.camera.global_position = editor._orbit_target + direction * editor._orbit_distance

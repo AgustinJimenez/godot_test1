@@ -11,6 +11,8 @@ var editor: CharacterEditor
 const TOGGLE_ON_COLOR := Color(0.22, 0.82, 0.42, 1.0)
 const TOGGLE_OFF_COLOR := Color(0.95, 0.28, 0.3, 1.0)
 const TOGGLE_ICON_SCALE := 1.45
+const ORBIT_ICON := preload("res://assets/ui/icons/lucide/rotate-3d.svg")
+const MOVE_ICON := preload("res://assets/ui/icons/lucide/move-3d.svg")
 
 
 func _init(editor_ref: CharacterEditor) -> void:
@@ -82,12 +84,22 @@ func _update_responsive_layout() -> void:
 	editor.empty_state.size = Vector2(
 			maxf(editor.panel.size.x - empty_margin * 2.0, 1.0),
 			maxf(editor.panel.position.y + editor.panel.size.y - empty_top - empty_margin, 1.0))
+	# get_combined_minimum_size() is a direct calculation from the toolbar's
+	# buttons, unlike .size (whatever size was last actually assigned/
+	# committed, which can still reflect a stale value - from startup or
+	# before the button set last changed - pushing position.x too far right
+	# and overflowing past the window's actual edge, particularly on a
+	# freshly-opened or non-maximized window).
+	var toolbar_size := editor.viewport_toolbar.get_combined_minimum_size()
+	editor.viewport_toolbar.size = toolbar_size
 	editor.viewport_toolbar.position = Vector2(
-			logical_viewport_size.x - editor.viewport_toolbar.size.x - 16.0,
+			logical_viewport_size.x - toolbar_size.x - 16.0,
 			16.0)
+	var playback_size := editor.playback_toolbar.get_combined_minimum_size()
+	editor.playback_toolbar.size = playback_size
 	editor.playback_toolbar.position = Vector2(
-			logical_viewport_size.x - editor.playback_toolbar.size.x - 16.0,
-			logical_viewport_size.y - editor.playback_toolbar.size.y - 16.0)
+			logical_viewport_size.x - playback_size.x - 16.0,
+			logical_viewport_size.y - playback_size.y - 16.0)
 	if editor._rig_handler != null:
 		editor._rig_handler.update_reference_layout(logical_viewport_size)
 	_update_panel_dependent_layout()
@@ -165,8 +177,7 @@ func _setup_controls() -> void:
 	editor.show_bones_toggle.toggled.connect(editor._gizmo_handler._on_show_bones_toggled)
 	editor.free_camera_toggle.toggled.connect(editor._camera_handler._on_free_camera_toggled)
 	editor.root_motion_toggle.toggled.connect(editor._camera_handler._on_root_motion_toggled)
-	editor.orbit_camera_button.pressed.connect(_on_camera_mode_pressed.bind(editor.CAMERA_MODE_ORBIT))
-	editor.move_camera_button.pressed.connect(_on_camera_mode_pressed.bind(editor.CAMERA_MODE_MOVE))
+	editor.camera_mode_button.pressed.connect(_on_camera_mode_button_pressed)
 	editor.zoom_out_button.pressed.connect(_on_zoom_out_pressed)
 	editor.zoom_in_button.pressed.connect(_on_zoom_in_pressed)
 	editor.reset_view_button.pressed.connect(_on_reset_camera_view_pressed)
@@ -189,7 +200,7 @@ func _setup_controls() -> void:
 		_color_axis_slider(editor.rotation_sliders[axis], editor.rotation_values[axis], axis)
 	editor.scale_slider.value_changed.connect(editor._gizmo_handler._on_object_scale_changed)
 	editor.preset_path_field.text = editor._current_pose_path
-	_update_camera_mode_buttons()
+	_update_camera_mode_button()
 	_update_editor_mode_buttons()
 	# These 16 used to be wired as scene-file (.tscn [connection]) signals
 	# pointing "to=. method=_on_x_pressed" - i.e. calling a method directly
@@ -293,8 +304,11 @@ func _update_editor_mode_buttons() -> void:
 	editor.compare_mode_button.set_pressed_no_signal(editor._comparison.enabled)
 
 
-func _on_camera_mode_pressed(mode: int) -> void:
-	editor._camera_mode = mode
+func _on_camera_mode_button_pressed() -> void:
+	var next_mode := (
+			editor.CAMERA_MODE_MOVE if editor._camera_mode == editor.CAMERA_MODE_ORBIT
+			else editor.CAMERA_MODE_ORBIT)
+	editor._camera_mode = next_mode
 	editor._captured = false
 	editor._orbiting = false
 	editor._orbiting_joint = false
@@ -302,13 +316,16 @@ func _on_camera_mode_pressed(mode: int) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if editor.free_camera_toggle.button_pressed:
 		editor.free_camera_toggle.set_pressed_no_signal(false)
-	_update_camera_mode_buttons()
+	_update_camera_mode_button()
 	editor.status_label.text = ""
 
 
-func _update_camera_mode_buttons() -> void:
-	editor.orbit_camera_button.set_pressed_no_signal(editor._camera_mode == editor.CAMERA_MODE_ORBIT)
-	editor.move_camera_button.set_pressed_no_signal(editor._camera_mode == editor.CAMERA_MODE_MOVE)
+func _update_camera_mode_button() -> void:
+	var is_orbit := editor._camera_mode == editor.CAMERA_MODE_ORBIT
+	editor.camera_mode_button.icon = ORBIT_ICON if is_orbit else MOVE_ICON
+	editor.camera_mode_button.tooltip_text = (
+			"Orbit camera (click to switch to Move)" if is_orbit
+			else "Move camera (click to switch to Orbit)")
 
 
 func _on_zoom_out_pressed() -> void:

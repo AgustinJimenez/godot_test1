@@ -166,25 +166,16 @@ theme_override_constants/separation = 6
 [node name="Orbit" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
 custom_minimum_size = Vector2(56, 34)
 layout_mode = 2
-toggle_mode = true
-button_pressed = true
-tooltip_text = "Orbit camera"
+focus_mode = 0
+tooltip_text = "Orbit camera (click to switch to Move)"
 icon = ExtResource("4_rotate_icon")
-expand_icon = true
-icon_max_width = 22
-
-[node name="Move" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
-custom_minimum_size = Vector2(56, 34)
-layout_mode = 2
-toggle_mode = true
-tooltip_text = "Move camera"
-icon = ExtResource("5_move_icon")
 expand_icon = true
 icon_max_width = 22
 
 [node name="ShowBones" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
 custom_minimum_size = Vector2(46, 34)
 layout_mode = 2
+focus_mode = 0
 toggle_mode = true
 tooltip_text = "Show skeleton bones"
 icon = ExtResource("15_bone_icon")
@@ -195,6 +186,7 @@ icon_max_width = 20
 visible = false
 custom_minimum_size = Vector2(46, 34)
 layout_mode = 2
+focus_mode = 0
 toggle_mode = true
 button_pressed = true
 tooltip_text = "Toggle rig reference"
@@ -205,6 +197,7 @@ icon_max_width = 20
 [node name="ZoomOut" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
 custom_minimum_size = Vector2(46, 34)
 layout_mode = 2
+focus_mode = 0
 tooltip_text = "Zoom out"
 icon = ExtResource("6_zoom_out_icon")
 expand_icon = true
@@ -213,6 +206,7 @@ icon_max_width = 20
 [node name="ZoomIn" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
 custom_minimum_size = Vector2(46, 34)
 layout_mode = 2
+focus_mode = 0
 tooltip_text = "Zoom in"
 icon = ExtResource("7_zoom_in_icon")
 expand_icon = true
@@ -221,6 +215,7 @@ icon_max_width = 20
 [node name="ResetView" type="Button" parent="UI/ViewportToolbar/Margin/Buttons"]
 custom_minimum_size = Vector2(46, 34)
 layout_mode = 2
+focus_mode = 0
 tooltip_text = "Reset camera view"
 icon = ExtResource("10_reset_view_icon")
 expand_icon = true
@@ -708,6 +703,51 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Save Rig"
 
+[node name="CustomRigBuilder" type="VBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/CustomRigBuilder"]
+layout_mode = 2
+text = "BUILD CUSTOM RIG"
+label_settings = SubResource("SectionSettings")
+
+[node name="Instructions" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/CustomRigBuilder"]
+layout_mode = 2
+autowrap_mode = 2
+text = "Click the mesh to place a bone. Click an existing bone first (in the list or the viewport) to choose its parent - otherwise the next bone becomes a new root."
+
+[node name="ActiveParent" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/CustomRigBuilder"]
+layout_mode = 2
+text = "Parent: none (next bone becomes a root)"
+
+[node name="BoneScroll" type="ScrollContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/CustomRigBuilder"]
+custom_minimum_size = Vector2(0, 280)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="BoneList" type="VBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/CustomRigBuilder/BoneScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="Actions" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/CustomRigBuilder"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Finish" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/CustomRigBuilder/Actions"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Finish & Weight Mesh"
+
+[node name="Cancel" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/CustomRigBuilder/Actions"]
+custom_minimum_size = Vector2(100, 42)
+layout_mode = 2
+text = "Cancel"
+
 [node name="MappingScroll" type="ScrollContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection"]
 custom_minimum_size = Vector2(0, 360)
 layout_mode = 2
@@ -748,6 +788,11 @@ autowrap_mode = 2
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 text = "Generate Humanoid Rig"
+
+[node name="BuildCustomRig" type="Button" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "Build Custom Rig"
 
 [node name="Buttons" type="HBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox/RigSection/ExternalActions"]
 layout_mode = 2

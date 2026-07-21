@@ -34,20 +34,11 @@ const PELVIS_PROFILE_STEP := 0.01
 
 static func generate(
 		source_path: String, output_path: String, joint_positions: Dictionary = {}) -> Dictionary:
-	var source_resource := load(source_path)
-	if not source_resource is PackedScene:
-		return _failure("Character source is not an imported 3D scene")
-	var source_root := (source_resource as PackedScene).instantiate() as Node3D
-	if source_root == null:
-		return _failure("Character source has no Node3D root")
-	var source_meshes: Array[MeshInstance3D] = []
-	for found: Node in source_root.find_children("*", "MeshInstance3D", true, false):
-		var found_mesh := found as MeshInstance3D
-		if found_mesh.mesh != null:
-			source_meshes.append(found_mesh)
-	if source_meshes.is_empty():
-		source_root.free()
-		return _failure("Character source contains no mesh surfaces")
+	var source_root_result := _load_source_meshes(source_path)
+	if not source_root_result["ok"]:
+		return source_root_result
+	var source_root: Node3D = source_root_result["source_root"]
+	var source_meshes: Array[MeshInstance3D] = source_root_result["source_meshes"]
 	var bounds_result := _combined_baked_geometry(source_root, source_meshes)
 	if not bounds_result["ok"]:
 		source_root.free()
@@ -69,15 +60,108 @@ static func generate(
 	skeleton.owner = output_root
 	var landmarks := _infer_pelvis_landmarks(bounds, geometry_vertices)
 	_build_skeleton(skeleton, bounds, joint_positions, geometry_vertices, landmarks)
+
+	var result := _finish_and_save(
+			output_root, skeleton, source_root, source_meshes, bounds, output_path,
+			_candidate_weights_for_vertex)
+	source_root.free()
+	if result["ok"]:
+		result["landmarks"] = landmarks
+	return result
+
+
+## Weights and saves a rigged scene for a skeleton the caller already built -
+## e.g. via manual bone placement in the Rig tab's "Build Custom Rig" mode -
+## instead of generating one from the fixed humanoid heuristic generate()
+## uses. skeleton is duplicated rather than packed directly, so this never
+## disturbs the live skeleton the caller is still showing/editing (that one
+## may be mid-scene, e.g. editor.body.skeleton). Considers every bone as a
+## weighting candidate for each vertex (see
+## _candidate_weights_for_vertex_generic) rather than a named humanoid
+## whitelist, since a custom skeleton's bone names carry no fixed meaning.
+static func generate_from_skeleton(
+		skeleton: Skeleton3D, source_path: String, output_path: String) -> Dictionary:
+	if skeleton.get_bone_count() == 0:
+		return _failure("No bones have been placed yet")
+	var source_root_result := _load_source_meshes(source_path)
+	if not source_root_result["ok"]:
+		return source_root_result
+	var source_root: Node3D = source_root_result["source_root"]
+	var source_meshes: Array[MeshInstance3D] = source_root_result["source_meshes"]
+	var bounds_result := _combined_baked_geometry(source_root, source_meshes)
+	if not bounds_result["ok"]:
+		source_root.free()
+		return bounds_result
+	var bounds: AABB = bounds_result["bounds"]
+
+	var output_root := Node3D.new()
+	output_root.name = StringName(source_path.get_file().get_basename().to_pascal_case() + "Rigged")
+	var skeleton_copy := _copy_skeleton(skeleton)
+	output_root.add_child(skeleton_copy)
+	skeleton_copy.owner = output_root
+
+	var result := _finish_and_save(
+			output_root, skeleton_copy, source_root, source_meshes, bounds, output_path,
+			_candidate_weights_for_vertex_generic)
+	source_root.free()
+	return result
+
+
+## Skeleton3D bones are internal engine state (added via add_bone()/
+## set_bone_rest()/set_bone_parent(), not regular exported properties), not
+## something Node.duplicate() is documented to clone - copying explicitly
+## bone-by-bone, the same way _build_skeleton() constructs one, is the only
+## reliable way to get an independent copy that doesn't disturb the live
+## skeleton the caller is still showing/editing.
+static func _copy_skeleton(source: Skeleton3D) -> Skeleton3D:
+	var copy := Skeleton3D.new()
+	copy.name = &"Skeleton3D"
+	for bone_index in source.get_bone_count():
+		copy.add_bone(source.get_bone_name(bone_index))
+		copy.set_bone_rest(bone_index, source.get_bone_rest(bone_index))
+	for bone_index in source.get_bone_count():
+		copy.set_bone_parent(bone_index, source.get_bone_parent(bone_index))
+	return copy
+
+
+static func _load_source_meshes(source_path: String) -> Dictionary:
+	var source_resource := load(source_path)
+	if not source_resource is PackedScene:
+		return _failure("Character source is not an imported 3D scene")
+	var source_root := (source_resource as PackedScene).instantiate() as Node3D
+	if source_root == null:
+		return _failure("Character source has no Node3D root")
+	var source_meshes: Array[MeshInstance3D] = []
+	for found: Node in source_root.find_children("*", "MeshInstance3D", true, false):
+		var found_mesh := found as MeshInstance3D
+		if found_mesh.mesh != null:
+			source_meshes.append(found_mesh)
+	if source_meshes.is_empty():
+		source_root.free()
+		return _failure("Character source contains no mesh surfaces")
+	return {"ok": true, "source_root": source_root, "source_meshes": source_meshes}
+
+
+## Shared tail of generate()/generate_from_skeleton(): weight every source
+## mesh against skeleton (via candidate_fn - the only thing that differs
+## between the humanoid and custom-skeleton paths), bind them to a shared
+## Skin, pack output_root, and save it to output_path. Does not free
+## source_root - callers still need it alive up to this call
+## (_transform_relative_to walks up to it) and are responsible for freeing
+## it themselves afterward.
+static func _finish_and_save(
+		output_root: Node3D, skeleton: Skeleton3D, source_root: Node3D,
+		source_meshes: Array[MeshInstance3D], bounds: AABB, output_path: String,
+		candidate_fn: Callable) -> Dictionary:
 	var skin := _build_skin(skeleton)
 	for source_mesh: MeshInstance3D in source_meshes:
 		var baked_transform := _transform_relative_to(source_mesh, source_root)
 		var rigged_mesh := MeshInstance3D.new()
 		rigged_mesh.name = source_mesh.name
-		rigged_mesh.mesh = _build_weighted_mesh(source_mesh.mesh, baked_transform, bounds, skeleton)
+		rigged_mesh.mesh = _build_weighted_mesh(
+				source_mesh.mesh, baked_transform, bounds, skeleton, candidate_fn)
 		if rigged_mesh.mesh == null:
 			output_root.free()
-			source_root.free()
 			return _failure("A mesh surface could not be converted to a weighted ArrayMesh")
 		output_root.add_child(rigged_mesh)
 		rigged_mesh.owner = output_root
@@ -92,7 +176,6 @@ static func generate(
 	var pack_error := packed.pack(output_root)
 	if pack_error != OK:
 		output_root.free()
-		source_root.free()
 		return _failure("Could not pack generated rig: %s" % error_string(pack_error))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(output_path.get_base_dir()))
 	var humanoid_map := _identity_map(skeleton)
@@ -100,7 +183,6 @@ static func generate(
 	var bone_count := skeleton.get_bone_count()
 	var save_error := ResourceSaver.save(packed, output_path, ResourceSaver.FLAG_BUNDLE_RESOURCES)
 	output_root.free()
-	source_root.free()
 	if save_error != OK:
 		return _failure("Could not save generated rig: %s" % error_string(save_error))
 	return {
@@ -109,7 +191,6 @@ static func generate(
 		"humanoid_map": humanoid_map,
 		"joint_positions": generated_joint_positions,
 		"bone_count": bone_count,
-		"landmarks": landmarks,
 	}
 
 
@@ -510,7 +591,7 @@ static func _build_skin(skeleton: Skeleton3D) -> Skin:
 
 static func _build_weighted_mesh(
 		source: Mesh, baked_transform: Transform3D, bounds: AABB,
-		skeleton: Skeleton3D) -> ArrayMesh:
+		skeleton: Skeleton3D, candidate_fn: Callable) -> ArrayMesh:
 	var result := ArrayMesh.new()
 	var segments := _build_influence_segments(skeleton, bounds)
 	for surface_index in source.get_surface_count():
@@ -528,7 +609,7 @@ static func _build_weighted_mesh(
 		for vertex_index in vertices.size():
 			var vertex := baked_transform * vertices[vertex_index]
 			baked_vertices[vertex_index] = vertex
-			candidate_weights.append(_candidate_weights_for_vertex(vertex, bounds, segments))
+			candidate_weights.append(candidate_fn.call(vertex, bounds, segments))
 		var adjacency := _build_vertex_adjacency(
 				vertices.size(), arrays[Mesh.ARRAY_INDEX],
 				source.surface_get_primitive_type(surface_index))
@@ -601,6 +682,30 @@ static func _candidate_weights_for_vertex(
 	for bone_name: String in candidate_names:
 		if not segments.has(bone_name):
 			continue
+		var segment: Dictionary = segments[bone_name]
+		var distance := _distance_to_segment(vertex, segment["start"], segment["end"])
+		var safe_distance := maxf(distance, distance_floor)
+		scored.append([segment["bone_index"], 1.0 / (safe_distance * safe_distance)])
+	scored.sort_custom(func(a: Array, b: Array) -> bool:
+		return float(a[1]) > float(b[1]))
+	var retained := _retain_influences(scored, MAX_SMOOTHING_INFLUENCES)
+	var result := {}
+	for influence: Array in retained:
+		result[int(influence[0])] = float(influence[1])
+	return result
+
+
+## Generic sibling of _candidate_weights_for_vertex for a custom (non-
+## humanoid) skeleton, used by generate_from_skeleton(): a custom skeleton's
+## bone names carry no fixed meaning, so there's no CENTER_WEIGHT_BONES/
+## SIDE_WEIGHT_BONES whitelist to draw candidates from - every bone in
+## segments is a candidate instead. Same inverse-square-distance scoring and
+## _retain_influences pruning as the humanoid version.
+static func _candidate_weights_for_vertex_generic(
+		vertex: Vector3, bounds: AABB, segments: Dictionary) -> Dictionary:
+	var scored: Array[Array] = []
+	var distance_floor := maxf(bounds.size.y * 0.002, 0.0001)
+	for bone_name: String in segments:
 		var segment: Dictionary = segments[bone_name]
 		var distance := _distance_to_segment(vertex, segment["start"], segment["end"])
 		var safe_distance := maxf(distance, distance_floor)

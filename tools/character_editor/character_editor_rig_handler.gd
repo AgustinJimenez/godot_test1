@@ -78,9 +78,16 @@ var _reference_user_layout := false
 var _dragging_reference := false
 var _resizing_reference := false
 
+## "Build Custom Rig" mode (manual bone placement for non-humanoid meshes) -
+## extracted to its own file purely to keep this one under the lint
+## line-count ceiling; see that file's own doc comment for why it's still
+## conceptually part of this handler, not an independent feature.
+var custom_rig: CharacterEditorCustomRigHandler
+
 
 func _init(editor_ref: CharacterEditor) -> void:
 	editor = editor_ref
+	custom_rig = CharacterEditorCustomRigHandler.new(editor_ref)
 
 
 ## Some kinds have a richer CharacterCatalog entry under "builtin_" + kind
@@ -151,6 +158,7 @@ func setup() -> void:
 	_reset_joint_button.pressed.connect(_on_reset_joint_pressed)
 	editor.rig_mixamo_button.pressed.connect(OS.shell_open.bind(MIXAMO_URL))
 	editor.rig_blender_button.pressed.connect(OS.shell_open.bind(BLENDER_URL))
+	custom_rig.setup()
 	update_reference_layout(editor.get_viewport().get_visible_rect().size / editor._ui_scale)
 
 
@@ -161,6 +169,12 @@ func set_reference_stage_active(active: bool) -> void:
 	_reference_panel.visible = active and _reference_toggle.button_pressed
 	_reference_resize_handle.visible = _reference_panel.visible
 	_update_reference_resize_handle()
+	# _reference_toggle.visible above changes the viewport toolbar's actual
+	# width (an HBoxContainer excludes hidden children from its minimum
+	# size) - re-run the layout pass that positions it, or its cached
+	# right-aligned position (computed for the old width) overflows past
+	# the window's edge once the extra button appears.
+	editor._ui_setup_handler._update_responsive_layout()
 	if was_visible != _reference_panel.visible and editor.body != null:
 		editor._camera_handler._frame_full_body()
 
@@ -270,6 +284,7 @@ func restore_generated_characters() -> void:
 
 
 func on_character_loaded() -> void:
+	custom_rig.on_character_loaded()
 	_character_menu.disabled = editor._custom_characters.get(
 			_resolved_custom_kind(), {}).is_empty()
 	_populate()

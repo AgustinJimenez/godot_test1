@@ -69,6 +69,41 @@ static func triangle_intersection_point(tri_a: Array, tri_b: Array):
 	return null
 
 
+## Ray-vs-mesh-surface hit test - returns the closest intersection point
+## along ray_origin + ray_direction * t (t clamped to [0, max_distance]), or
+## null if the ray misses every triangle. Reuses segment_intersects_triangle
+## (there's no infinite-ray variant in Godot's Geometry3D) with a segment
+## long enough to reach anything on-screen. Used for "click to place a bone"
+## (Rig tab's Build Custom Rig mode, character_editor_rig_handler.gd) -
+## unlike collect_mesh_triangles's own AABB-filtered use in the held-object
+## penetration checker, this always wants every triangle since there's no
+## known region of interest ahead of time.
+## The exact segment_intersects_triangle test is expensive enough (per
+## Geometry3D call) that running it against every triangle in a dense
+## character mesh (tens of thousands, for a real imported model) is
+## noticeably slow - a per-triangle AABB.intersects_segment() pre-check
+## first rejects the vast majority of triangles the ray segment can't
+## possibly reach, at a fraction of the cost per triangle.
+static func raycast_mesh_surface(
+		triangles: Array, ray_origin: Vector3, ray_direction: Vector3,
+		max_distance: float) -> Variant:
+	var ray_end := ray_origin + ray_direction.normalized() * max_distance
+	var closest_point: Variant = null
+	var closest_distance_squared := INF
+	for tri in triangles:
+		var tri_aabb := AABB(tri[0], Vector3.ZERO).expand(tri[1]).expand(tri[2])
+		if not tri_aabb.intersects_segment(ray_origin, ray_end):
+			continue
+		var hit = Geometry3D.segment_intersects_triangle(ray_origin, ray_end, tri[0], tri[1], tri[2])
+		if hit == null:
+			continue
+		var distance_squared: float = ray_origin.distance_squared_to(hit)
+		if distance_squared < closest_distance_squared:
+			closest_distance_squared = distance_squared
+			closest_point = hit
+	return closest_point
+
+
 static func collect_mesh_triangles(
 		node: Node, out: Array, filter_aabb: AABB, use_filter: bool) -> void:
 	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:

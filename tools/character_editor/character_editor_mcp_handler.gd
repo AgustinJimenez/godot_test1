@@ -286,9 +286,142 @@ func _on_mcp_debugger_message(message: String, data: Array) -> bool:
 		"test_retarget_parity":
 			_mcp_test_retarget_parity(
 					String(data[0]), StringName(data[1]), StringName(data[2]), String(data[3]))
+		"get_character_bounds":
+			_mcp_get_character_bounds()
+		"get_bone_screen_positions":
+			_mcp_get_bone_screen_positions()
+		"click_custom_rig":
+			_mcp_click_custom_rig(float(data[0]), float(data[1]))
+		"custom_rig_action":
+			_mcp_custom_rig_action(String(data[0]), String(data[1]), String(data[2]))
 		_:
 			return false
 	return true
+
+
+## Projects the loaded character's combined mesh AABB corners through the
+## live camera to screen space - lets an external caller compute click
+## coordinates for pick_live_bone/Build Custom Rig placement without a
+## working screenshot (capture_live_pose can be unavailable while this
+## can't, since it's pure camera math against already-live transforms, no
+## render needed).
+func _mcp_get_character_bounds() -> void:
+	if editor.body == null or editor.body.meshes.is_empty():
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "No character loaded"})])
+		return
+	var min_screen := Vector2.INF
+	var max_screen := -Vector2.INF
+	for mesh_part in editor.body.meshes:
+		var aabb: AABB = mesh_part.get_aabb()
+		var xform: Transform3D = mesh_part.global_transform
+		for corner_index in 8:
+			var local_corner := aabb.position + aabb.size * Vector3(
+					float(corner_index & 1), float((corner_index >> 1) & 1),
+					float((corner_index >> 2) & 1))
+			var screen_point := editor.camera.unproject_position(xform * local_corner)
+			min_screen = min_screen.min(screen_point)
+			max_screen = max_screen.max(screen_point)
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify({
+		"ok": true,
+		"result": {
+			"min": [min_screen.x, min_screen.y],
+			"max": [max_screen.x, max_screen.y],
+			"center": [(min_screen.x + max_screen.x) / 2.0, (min_screen.y + max_screen.y) / 2.0],
+			"stage": editor._stage_handler.current,
+			"custom_rig_active": editor._rig_handler.custom_rig.active,
+			"skeleton_bone_count": editor.body.skeleton.get_bone_count(),
+			"mesh_count": editor.body.meshes.size(),
+		},
+	})])
+
+
+## Drives the Build Custom Rig bone-list row handlers directly by bone name
+## instead of a node_path - those buttons/fields are created dynamically
+## (character_editor_custom_rig_handler.gd's _add_custom_bone_row), so they
+## have no stable scene node_path for test_button_click/test_popup_item_click
+## to target, and their handlers are wired via plain .connect() calls (not
+## scene-file [connection] resources), so calling them directly here carries
+## none of test_button_click's "does the wiring even exist" risk.
+func _mcp_custom_rig_action(action: String, bone_name: String, extra: String) -> void:
+	var rig_handler: CharacterEditorRigHandler = editor._rig_handler
+	var custom_rig := rig_handler.custom_rig
+	match action:
+		"delete":
+			custom_rig._on_custom_bone_delete_pressed(bone_name)
+		"set_parent":
+			custom_rig._on_custom_bone_set_parent_pressed(bone_name)
+		"rename":
+			custom_rig._on_custom_bone_renamed(extra, bone_name)
+		"force_rig_stage":
+			editor._stage_handler.set_stage(CharacterEditorStageHandler.Stage.RIG, true)
+		"finish":
+			# Deliberately not folded into the shared immediate-response path
+			# below - this one itself awaits (mesh weighting), so the
+			# command_result has to wait for it too, not fire before the
+			# work (and the status text it reports) has actually happened.
+			await custom_rig._on_finish_custom_rig_pressed()
+			EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+					{"ok": true, "result": editor.status_label.text})])
+			return
+		_:
+			EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+					{"ok": false, "error": "Unknown custom_rig_action '%s'" % action})])
+			return
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": editor.status_label.text})])
+
+
+## Calls custom_rig.handle_click() directly instead of routing through
+## pick_live_bone/_mcp_pick_bone's synthesized-event path - that path waits
+## on 2 real process_frame ticks before dispatching (to let a prior UI
+## action settle), which hangs indefinitely whenever this window isn't
+## actually getting frame time (e.g. occluded by other windows on the
+## user's desktop). Placement itself is pure camera-ray math against
+## already-live transforms, no rendering involved, so skipping straight to
+## it removes that dependency entirely - unlike pick_live_bone, only usable
+## while Build Custom Rig mode is active (editor._input() gates the two
+## paths on stage/mode the same way; this bypasses that gate on purpose,
+## since it's only ever meant to drive that one flow).
+func _mcp_click_custom_rig(screen_x: float, screen_y: float) -> void:
+	if editor.body == null or not editor._rig_handler.custom_rig.active:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "Build Custom Rig mode is not active"})])
+		return
+	var custom_rig: CharacterEditorCustomRigHandler = editor._rig_handler.custom_rig
+	var count_before := editor.body.skeleton.get_bone_count()
+	var parent_before := custom_rig._custom_rig_active_parent
+	custom_rig.handle_click(Vector2(screen_x, screen_y))
+	var count_after := editor.body.skeleton.get_bone_count()
+	var result_text: String
+	if count_after > count_before:
+		result_text = "Placed bone %d (parent: %s)" % [
+			count_after, custom_rig._custom_rig_active_parent]
+	elif custom_rig._custom_rig_active_parent != parent_before:
+		result_text = "Selected %s as active parent" % custom_rig._custom_rig_active_parent
+	else:
+		result_text = "No hit at that position (nothing changed)"
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": result_text})])
+
+
+## Screen-space projection of each existing bone's global pose origin - lets
+## an external caller click precisely on a specific bone (e.g. to select it
+## as the active parent in Build Custom Rig mode) instead of guessing.
+func _mcp_get_bone_screen_positions() -> void:
+	if editor.body == null:
+		EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+				{"ok": false, "error": "No character loaded"})])
+		return
+	var skeleton := editor.body.skeleton
+	var positions := {}
+	for bone_index in skeleton.get_bone_count():
+		var world_point: Vector3 = (
+				skeleton.global_transform * skeleton.get_bone_global_pose(bone_index).origin)
+		var screen_point := editor.camera.unproject_position(world_point)
+		positions[skeleton.get_bone_name(bone_index)] = [screen_point.x, screen_point.y]
+	EngineDebugger.send_message("mcp:command_result", [JSON.stringify(
+			{"ok": true, "result": positions})])
 
 
 ## Exercises the exact same _on_import_file_selected() the "Import

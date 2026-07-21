@@ -1,0 +1,22 @@
+{
+  "bone_prefix": null,
+  "display_name": "zombie2",
+  "generated_rig": false,
+  "has_skin": false,
+  "humanoid_map": {
+
+  },
+  "id": "3ed667ae-f165-49e4-b2e7-69b9fa3cfd4d",
+  "kind_id": "custom_zombie_2",
+  "manifest_path": "res://assets/models/imported_characters/3ed667ae-f165-49e4-b2e7-69b9fa3cfd4d/zombie2.character.json",
+  "model_path": "res://assets/models/imported_characters/3ed667ae-f165-49e4-b2e7-69b9fa3cfd4d/zombie2.glb",
+  "rig_landmarks": {
+    "confidence": "geometry",
+    "crotch_height": 0.42,
+    "detection_valid": true,
+    "pelvis_height": 0.5175,
+    "waist_height": 0.62
+  },
+  "source_model_path": "res://assets/models/imported_characters/3ed667ae-f165-49e4-b2e7-69b9fa3cfd4d/zombie2.glb",
+  "version": 1
+}

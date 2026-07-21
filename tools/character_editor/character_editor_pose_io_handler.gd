@@ -223,6 +223,7 @@ func _capture_pose_image(path: String, include_ui: bool) -> Error:
 	var ui_was_visible := editor.ui_layer.visible
 	if not include_ui:
 		editor.ui_layer.visible = false
+	await editor.get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var image := editor.get_viewport().get_texture().get_image()
 	var result := image.save_png(global_path)
