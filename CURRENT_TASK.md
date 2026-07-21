@@ -293,10 +293,31 @@ and already proven in real gameplay (`HumanoidActor`'s attack clip).
       everywhere it isn't.
 
 ### Phase 2 — Cut PlayerBody over to the shared core
-- [ ] Swap `player_body.gd`'s internal retargeting calls to the new shared
-      core, keeping MotusMan as the only real skin still. Behavior must be
-      provably unchanged (Compare mode, live playback of every gameplay
-      clip category).
+- [x] Swapped `player_body.gd`'s internal retargeting to
+      `HumanoidRetargeter.retarget_clip()` behind a new `_bone_map_config()`
+      (a hardcoded, compile-time `BoneMapConfig` describing MotusMan - not
+      yet reading the catalog manifest, deliberately: this step is scoped
+      to "still MotusMan only", so a runtime file-read dependency isn't
+      needed yet). Removed `_humanoid_retarget_local_pose`/
+      `_match_arm_skeleton_positions`/`_aim_bone_at_direction` from
+      `player_body.gd` entirely (~150 lines) - now genuinely dead code,
+      confirmed via grep that nothing else called them. `_swing_retarget`
+      and the legacy delta/swing/hand-mode branches stay untouched (still
+      reachable via the `use_humanoid_retarget=false` debug toggle, only
+      ever used by the tool's own comparison scene). File: 922 -> 817
+      lines. `scripts/check.sh` clean.
+      **Verified live** in the character editor tool (not yet the actual
+      game - see note below): `_ready()` builds the "moves" library
+      without error, and `unarmed_idle`/`unarmed_walk`/`unarmed_torch_idle`
+      all screenshot correctly (natural poses, no T-pose collapse, hand
+      curls naturally for the torch grip).
+      **Not yet committed** - per this project's own hard rule
+      (`AGENTS.md`: "Never commit gameplay/visual/animation changes on the
+      strength of automated verification alone... wait for the user to
+      manually test in the editor and explicitly confirm") this needs the
+      user to actually play the real game (not just the character editor
+      tool) before committing, given this touches the single most
+      gameplay-critical file in the project.
 - [ ] Generalize the body/skeleton/mesh wiring itself: `player.tscn`'s
       `Body` node currently *is* a direct instance of the MotusMan FBX
       (`W1_Stand_Aim_Idle_IPC.fbx`) with `skeleton`/`mesh` found via fixed
