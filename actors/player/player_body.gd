@@ -246,16 +246,46 @@ var _action_contact_emitted := false
 ## they're just standing still watching the preview.
 var _debug_preview_active := false
 
-@onready var anim_player: AnimationPlayer = $AnimationPlayer
-@onready var skeleton: Skeleton3D = $Skeleton3D
-@onready var mesh: MeshInstance3D = $Skeleton3D/MotusMan_v55
+## The visual skin - defaults to MotusMan so a plain player.tscn instance
+## needs zero config, same as before this became configurable. Instantiated
+## as a child in _setup_character_scene() rather than being the node this
+## script itself sits on (which is what a direct FBX-instance node/scene
+## like player.tscn's old "Body" node used to be) - mirrors
+## HumanoidActor._setup_character()'s existing pattern for NPCs, the
+## already-proven way to keep body execution independent of the visual skin.
+@export var character_scene: PackedScene = preload(
+		"res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx")
+
+## The instantiated character_scene root. Not @onready - it has to exist
+## before skeleton/anim_player/mesh can be found as its descendants, so
+## _setup_character_scene() builds all four together, explicitly, first
+## thing in _ready().
+var character: Node3D
+var anim_player: AnimationPlayer
+var skeleton: Skeleton3D
+var mesh: MeshInstance3D
 
 ## Tool instances can disable the gameplay idle so they initially expose the
 ## imported skeleton pose. Gameplay scenes retain the existing default.
 var autoplay_default_animation := true
 
 
+## Instantiates character_scene as a child and finds its Skeleton3D/
+## AnimationPlayer/mesh generically - mesh is "the first MeshInstance3D
+## found", matching MotusMan's own single-mesh shape today (see this var's
+## own doc comment for why this isn't done sooner, as @onready).
+func _setup_character_scene() -> void:
+	character = character_scene.instantiate() as Node3D
+	character.name = &"Character"
+	add_child(character)
+	skeleton = character.find_child("Skeleton3D", true, false) as Skeleton3D
+	anim_player = character.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var meshes := character.find_children("*", "MeshInstance3D", true, false)
+	mesh = meshes[0] as MeshInstance3D if not meshes.is_empty() else null
+
+
 func _ready() -> void:
+	_setup_character_scene()
 	# Lets the debug menu's animation preview keep looping while the pause
 	# menu has the rest of the game (including this node's own parent,
 	# Player, which is PAUSABLE by design) frozen.

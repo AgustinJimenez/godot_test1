@@ -318,20 +318,76 @@ and already proven in real gameplay (`HumanoidActor`'s attack clip).
       user to actually play the real game (not just the character editor
       tool) before committing, given this touches the single most
       gameplay-critical file in the project.
-- [ ] Generalize the body/skeleton/mesh wiring itself: `player.tscn`'s
-      `Body` node currently *is* a direct instance of the MotusMan FBX
-      (`W1_Stand_Aim_Idle_IPC.fbx`) with `skeleton`/`mesh` found via fixed
-      `@onready` paths (`$Skeleton3D`, `$Skeleton3D/MotusMan_v55`, a single
-      mesh, not a list). Change this to instantiate an `@export var
-      character_scene: PackedScene` at runtime and find `Skeleton3D` /
-      mesh parts dynamically — mirroring `HumanoidActor._setup_character()`
-      (`actors/npcs/humanoid_actor/humanoid_actor.gd:72`), the pattern that
-      already works for NPCs. Default `character_scene` to today's MotusMan
-      FBX so nothing changes with zero config.
-- [ ] Re-verify the documented Godot 4.6.2 `AnimationMixer` segfault gotcha
-      (mutating an `AnimationLibrary` mid-crossfade) under the new
-      instantiation timing — don't just assume the old mitigation still
-      applies unchanged.
+- [x] Generalized the body/skeleton/mesh wiring. `player.tscn`'s `Body`
+      node is now a plain `Node3D` (was a direct instance of the MotusMan
+      FBX) with a new `_setup_character_scene()` (called first thing in
+      `_ready()`) instantiating `@export var character_scene: PackedScene`
+      (defaults to the same MotusMan FBX, so nothing changes with zero
+      config) as a child, then finding `skeleton`/`anim_player`/`mesh`
+      dynamically via `find_child`/`find_children` - mirroring
+      `HumanoidActor._setup_character()`'s already-proven pattern for NPCs.
+      `anim_player`/`skeleton`/`mesh` changed from `@onready var X =
+      $FixedPath` to plain `var X` set explicitly (onready timing can't
+      depend on a child that doesn't exist yet). Kept `mesh` singular
+      (matches MotusMan's own single-mesh shape) rather than generalizing
+      to a mesh list now - deferred until an actual multi-mesh skin needs
+      it, not needed for this step.
+      Also updated `tools/character_editor/player_body_adapter.gd`
+      (instantiated the raw FBX directly before, which would now
+      double-instantiate under the new wiring - changed to create a plain
+      `Node3D`, matching `player.tscn`'s new shape) and removed the now-
+      unused `1_body_model` `ExtResource` from `player.tscn`.
+      Re-verified the documented Godot 4.6.2 `AnimationMixer` segfault
+      mitigation (in `play_debug_anim`, calls `anim_player.stop()` before
+      mutating the library): it only depends on `anim_player` being a
+      valid reference at runtime, not on node-hierarchy location, so it's
+      unaffected by this change.
+      **Verified live** in the character editor tool: character renders
+      correctly (material applied), `unarmed_idle`/`unarmed_torch_idle`
+      screenshot identically to before this change, and bone data
+      resolves correctly via `dump_live_bone_poses`.
+
+      **Real bug caught by the user actually playing the game** (tool
+      verification alone missed it, exactly the reason this project
+      requires playing the real game before committing): `actors/player/
+      player.gd` had its own separate `@onready var skeleton: Skeleton3D =
+      $Body/Skeleton3D` - a fixed path assuming the *old* flat hierarchy,
+      never searched for because it lives in a different script than
+      everything else touched in this step. Missed entirely until the user
+      hit it live. Fixed by deriving it from `body.skeleton` (PlayerBody's
+      own already-dynamically-resolved reference) instead of a second,
+      independent fixed path - `body`'s `@onready` resolves before
+      `skeleton`'s (declaration order), and `Body`'s `_ready()` (which sets
+      `body.skeleton`) runs before `Player`'s own (child-before-parent),
+      so this is valid by construction, not by luck. Re-verified by
+      opening and playing the actual main scene (`levels/playground.tscn`,
+      not just the character editor tool) via the live editor bridge and
+      confirming the project's own runtime log
+      (`~/Library/Application Support/Godot/app_userdata/SurvivalHorrorFps/logs/godot.log`)
+      shows zero errors - only pre-existing, unrelated navmesh-baking
+      performance warnings. Also broadened the search this time: grepped
+      the *whole* project for `$Body/`-style fixed paths, not just within
+      the files already being edited - found nothing else.
+
+      **Second bug, same class, caught by the user again**: the debug
+      mirror effect's `levels/test_room.tscn` `MirrorBody` node had the
+      exact same stale shape `player.tscn`'s `Body` node had before the
+      first fix - a direct MotusMan FBX instance with `player_body.gd`
+      attached, not found by the project-wide `$Body/`-path search above
+      because the bug here wasn't a fixed *path*, it was the node's own
+      *shape*. Once `_setup_character_scene()` started unconditionally
+      instantiating a skin as a child, this produced a second, duplicate
+      MotusMan copy sitting behind the real one - the original FBX
+      instance's own mesh, now untouched by anything, stayed frozen in its
+      default rest pose with its original unfixed (broken/plain) material,
+      showing up as a static plain mesh. Fixed the same way: `MirrorBody`
+      is now a plain `Node3D`. Grepped the whole project again, this time
+      for every remaining place the MotusMan FBX gets instanced at all
+      (not just `$Body/`-style paths) - found one more inert case
+      (`character_editor.tscn` has orphaned, unused `ExtResource`
+      declarations from before an earlier refactor - confirmed zero
+      `[node]` references them - harmless, unrelated, left alone).
+      **User confirmed both fixes working in the real game.**
 
 ### Phase 3 — Cut HumanoidActor over to the shared core
 - [ ] Replace its bone-*prefix* mapping with the same `humanoid_map`

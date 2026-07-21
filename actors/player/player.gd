@@ -115,7 +115,12 @@ var equipped_item: Item
 @onready var health: Health = $Health
 @onready var weapon: PistolWeapon = $HeadPivot/Camera3D/WeaponRig
 @onready var body: PlayerBody = $Body
-@onready var skeleton: Skeleton3D = $Body/Skeleton3D
+# Not a fixed $Body/Skeleton3D path anymore - Body's own _setup_character_scene()
+# instantiates its skin as a child and finds Skeleton3D dynamically underneath
+# that, not as Body's own direct child, so this has to go through body's
+# already-resolved reference instead (Body's _ready() runs before Player's own,
+# same as every other child-before-parent case, so body.skeleton is valid here).
+@onready var skeleton: Skeleton3D = body.skeleton
 @onready var third_person_arm: SpringArm3D = $ThirdPersonArm
 @onready var debug_cam: Camera3D = $ThirdPersonArm/DebugCam
 

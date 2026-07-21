@@ -1,4 +1,4 @@
-[gd_scene load_steps=26 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="PackedScene" path="res://levels/props/door.tscn" id="1_door"]
 [ext_resource type="PackedScene" path="res://levels/props/item_pickup.tscn" id="2_item_pickup"]
@@ -11,7 +11,6 @@
 [ext_resource type="Resource" path="res://items/pistol_9mm.tres" id="9_pistol"]
 [ext_resource type="Resource" path="res://items/ammo_9mm.tres" id="10_ammo"]
 [ext_resource type="Script" path="res://levels/debug_mirror.gd" id="11_mirror_debug"]
-[ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="12_body_model"]
 [ext_resource type="Script" path="res://actors/player/player_body.gd" id="13_body_script"]
 [ext_resource type="Script" path="res://levels/nav_bake.gd" id="14_nav_bake"]
 [ext_resource type="PackedScene" path="res://actors/npcs/humanoid_actor/humanoid_actor.tscn" id="15_npc"]
@@ -352,7 +351,7 @@ script = ExtResource("11_mirror_debug")
 mesh = SubResource("Mesh_mirror")
 surface_material_override/0 = SubResource("Material_mirror_glass")
 
-[node name="MirrorBody" parent="Mirror" instance=ExtResource("12_body_model")]
+[node name="MirrorBody" type="Node3D" parent="Mirror"]
 script = ExtResource("13_body_script")
 
 [node name="PlaceholderCamera" type="Camera3D" parent="."]

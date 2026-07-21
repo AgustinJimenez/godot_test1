@@ -1,11 +1,11 @@
 class_name PlayerBodyAdapter
 extends CharacterAdapter
 
-## Wraps the player character exactly the way character_editor.tscn's
-## original baked-in "Body" node did: the raw MotusMan model with
-## player_body.gd attached directly, not the full actors/player/player.tscn
-## (which pulls in gameplay-only pieces like weapons and the camera
-## controller that this tool has no use for).
+## Wraps the player character the same way actors/player/player.tscn's own
+## "Body" node does - a generic Node3D with player_body.gd attached, whose
+## _ready() instantiates character_scene (MotusMan by default) as a child
+## itself - not the full player.tscn (which pulls in gameplay-only pieces
+## like weapons and the camera controller that this tool has no use for).
 ##
 ## Also merges in UniversalAnimationPools (action_adventure_pack + Human
 ## Basic Motions FREE) alongside PlayerBody's own native/UAL/UAL2 groups -
@@ -25,10 +25,14 @@ const _BONE_PREFIX := ""
 
 
 static func create(parent: Node3D, at_position: Vector3) -> PlayerBodyAdapter:
-	var instance: Node3D = (load(_MODEL_PATH) as PackedScene).instantiate()
+	var instance := Node3D.new()
 	instance.name = &"Body"
 	instance.position = at_position
 	instance.set_script(load(_SCRIPT_PATH))
+	# Already player_body.gd's own default - set explicitly anyway so this
+	# tool's behavior stays pinned to MotusMan specifically even if that
+	# script's default is ever repointed at a different character.
+	instance.set("character_scene", load(_MODEL_PATH))
 	instance.set("autoplay_default_animation", false)
 	parent.add_child(instance)
 	var adapter := PlayerBodyAdapter.new()
