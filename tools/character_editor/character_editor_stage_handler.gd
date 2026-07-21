@@ -25,6 +25,7 @@ func setup() -> void:
 		editor.stage_buttons[index].pressed.connect(set_stage.bind(index))
 	_controls = [
 		editor.character_row,
+		editor.mesh_stats_panel,
 		editor.rig_section,
 		editor.animation_row,
 		editor.editor_mode_row,
@@ -108,6 +109,8 @@ func _update() -> void:
 	match current:
 		Stage.CHARACTER:
 			editor.character_row.show()
+			if not is_empty:
+				editor.mesh_stats_panel.show()
 		Stage.RIG:
 			editor.rig_section.show()
 		Stage.ANIMATION:

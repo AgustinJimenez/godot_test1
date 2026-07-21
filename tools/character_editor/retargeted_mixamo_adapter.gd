@@ -31,6 +31,7 @@ static func create(parent: Node3D, at_position: Vector3, model_path: String,
 	parent.add_child(instance)
 	var adapter := RetargetedMixamoAdapter.new()
 	adapter._bind(instance, character_display_name, bone_prefix)
+	adapter.model_path = model_path
 	return adapter
 
 

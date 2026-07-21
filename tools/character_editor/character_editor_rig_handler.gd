@@ -83,6 +83,21 @@ func _init(editor_ref: CharacterEditor) -> void:
 	editor = editor_ref
 
 
+## Some kinds have a richer CharacterCatalog entry under "builtin_" + kind
+## instead of (or alongside) the plain CHARACTER_KINDS-based entry (see
+## character_editor.gd's _load_character() - it prefers this same entry
+## when picking which adapter loads the character, for the same reason).
+## Every read or write of _custom_characters keyed by the currently loaded
+## character goes through this, so the Rig tab's display and its own edit
+## actions (auto-map, apply, generate, save, rename) always agree on which
+## catalog record they're looking at - resolving on the read side but not
+## the write side (or vice versa) would silently fork a "builtin_x_bot"
+## catalog entry from a newly created, disconnected "x_bot" one.
+func _resolved_custom_kind() -> String:
+	var builtin_kind := "builtin_" + editor._character_kind
+	return builtin_kind if editor._custom_characters.has(builtin_kind) else editor._character_kind
+
+
 func setup() -> void:
 	_reference_panel = editor.get_node(^"UI/RigReference")
 	_reference_toggle = editor.get_node(^"UI/ViewportToolbar/Margin/Buttons/RigReference")
@@ -256,7 +271,7 @@ func restore_generated_characters() -> void:
 
 func on_character_loaded() -> void:
 	_character_menu.disabled = editor._custom_characters.get(
-			editor._character_kind, {}).is_empty()
+			_resolved_custom_kind(), {}).is_empty()
 	_populate()
 	editor._stage_handler.set_rig_ready(is_ready())
 
@@ -276,7 +291,7 @@ func _populate() -> void:
 	if editor.body == null:
 		return
 	var bone_count := editor.body.skeleton.get_bone_count()
-	var custom_info: Dictionary = editor._custom_characters.get(editor._character_kind, {})
+	var custom_info: Dictionary = editor._custom_characters.get(_resolved_custom_kind(), {})
 	var is_custom := not custom_info.is_empty()
 	var has_skin: bool = editor.body.has_skin if is_custom else true
 	var mapped_count := _mapped_required_count(editor.body.humanoid_map)
@@ -356,11 +371,12 @@ func _on_apply_pressed() -> void:
 	if _mapped_required_count(mapping) != REQUIRED_ROLES.size():
 		editor.rig_summary.text = "Mapping incomplete · assign every required humanoid role"
 		return
-	var info: Dictionary = editor._custom_characters.get(editor._character_kind, {})
+	var resolved_kind := _resolved_custom_kind()
+	var info: Dictionary = editor._custom_characters.get(resolved_kind, {})
 	if info.is_empty():
 		return
 	info["humanoid_map"] = mapping
-	editor._custom_characters[editor._character_kind] = info
+	editor._custom_characters[resolved_kind] = info
 	_save_profile(info["model_path"], mapping)
 	var current_kind := editor._character_kind
 	editor._load_character(current_kind)
@@ -368,7 +384,8 @@ func _on_apply_pressed() -> void:
 
 
 func _on_generate_rig_pressed() -> void:
-	var info: Dictionary = editor._custom_characters.get(editor._character_kind, {})
+	var resolved_kind := _resolved_custom_kind()
+	var info: Dictionary = editor._custom_characters.get(resolved_kind, {})
 	if info.is_empty():
 		editor.rig_summary.text = "Native generation is available for imported characters"
 		return
@@ -386,7 +403,7 @@ func _on_generate_rig_pressed() -> void:
 		editor.rig_summary.text = "Could not generate rig · %s" % result.get("error", "unknown error")
 		return
 	info["source_model_path"] = source_path
-	info["kind_id"] = editor._character_kind
+	info["kind_id"] = resolved_kind
 	info["model_path"] = result["path"]
 	info["bone_prefix"] = null
 	info["has_skin"] = true
@@ -395,7 +412,7 @@ func _on_generate_rig_pressed() -> void:
 	info["joint_positions"] = result["joint_positions"]
 	info["default_joint_positions"] = result["joint_positions"].duplicate(true)
 	info["rig_landmarks"] = result.get("landmarks", {})
-	editor._custom_characters[editor._character_kind] = info
+	editor._custom_characters[resolved_kind] = info
 	_save_profile(result["path"], result["humanoid_map"])
 	_save_generated_character(info)
 	var landmarks: Dictionary = result.get("landmarks", {})
@@ -465,12 +482,13 @@ func _on_joint_axis_changed(value: float, axis: int) -> void:
 		editor.body.skeleton.set_bone_rest(current_index, current_rest)
 	editor.body.skeleton.reset_bone_poses()
 	_update_skin_binds()
-	var info: Dictionary = editor._custom_characters[editor._character_kind]
+	var resolved_kind := _resolved_custom_kind()
+	var info: Dictionary = editor._custom_characters[resolved_kind]
 	var positions: Dictionary = info.get("joint_positions", {})
 	positions[String(editor._selected_bone)] = [
 		global_position.x, global_position.y, global_position.z]
 	info["joint_positions"] = positions
-	editor._custom_characters[editor._character_kind] = info
+	editor._custom_characters[resolved_kind] = info
 	_joint_values[axis].text = "%+.3f" % value
 	editor._gizmo_handler._refresh_skeleton()
 	editor._gizmo_handler._update_bone_gizmo()
@@ -491,7 +509,7 @@ func _update_skin_binds() -> void:
 
 
 func _on_reset_joint_pressed() -> void:
-	var info: Dictionary = editor._custom_characters.get(editor._character_kind, {})
+	var info: Dictionary = editor._custom_characters.get(_resolved_custom_kind(), {})
 	var defaults: Dictionary = info.get("default_joint_positions", {})
 	var bone_name := String(editor._selected_bone)
 	if not defaults.has(bone_name):
@@ -506,7 +524,8 @@ func _on_reset_joint_pressed() -> void:
 
 
 func _on_save_rig_pressed() -> void:
-	var info: Dictionary = editor._custom_characters.get(editor._character_kind, {})
+	var resolved_kind := _resolved_custom_kind()
+	var info: Dictionary = editor._custom_characters.get(resolved_kind, {})
 	var source_path: String = info.get("source_model_path", "")
 	if source_path.is_empty():
 		return
@@ -525,7 +544,7 @@ func _on_save_rig_pressed() -> void:
 	info["humanoid_map"] = result["humanoid_map"]
 	info["joint_positions"] = result["joint_positions"]
 	info["rig_landmarks"] = result.get("landmarks", {})
-	editor._custom_characters[editor._character_kind] = info
+	editor._custom_characters[resolved_kind] = info
 	_save_profile(output_path, result["humanoid_map"])
 	_save_generated_character(info)
 	editor._load_character(editor._character_kind)
@@ -546,7 +565,7 @@ func persist_character(info: Dictionary, manifest_path: String) -> void:
 
 
 func _update_character_menu() -> void:
-	var info: Dictionary = editor._custom_characters.get(editor._character_kind, {})
+	var info: Dictionary = editor._custom_characters.get(_resolved_custom_kind(), {})
 	var popup := _character_menu.get_popup()
 	popup.set_item_disabled(popup.get_item_index(MENU_RENAME), info.is_empty())
 	popup.set_item_disabled(
@@ -557,7 +576,7 @@ func _update_character_menu() -> void:
 
 
 func _on_character_menu_pressed(action_id: int) -> void:
-	var info: Dictionary = editor._custom_characters.get(editor._character_kind, {})
+	var info: Dictionary = editor._custom_characters.get(_resolved_custom_kind(), {})
 	if info.is_empty():
 		return
 	match action_id:
@@ -620,11 +639,12 @@ func _on_rename_confirmed() -> void:
 	var new_name := _rename_field.text.strip_edges()
 	if new_name.is_empty():
 		return
-	var info: Dictionary = editor._custom_characters.get(editor._character_kind, {})
+	var resolved_kind := _resolved_custom_kind()
+	var info: Dictionary = editor._custom_characters.get(resolved_kind, {})
 	if info.is_empty():
 		return
 	info["display_name"] = new_name
-	editor._custom_characters[editor._character_kind] = info
+	editor._custom_characters[resolved_kind] = info
 	persist_character(info, info.get("manifest_path", CATALOG.manifest_path_for_info(info)))
 	editor.character_picker.set_item_text(editor.character_picker.selected, new_name)
 	editor.body.display_name = new_name

@@ -37,6 +37,7 @@ static func create(parent: Node3D, at_position: Vector3) -> PlayerBodyAdapter:
 	parent.add_child(instance)
 	var adapter := PlayerBodyAdapter.new()
 	adapter._bind(instance)
+	adapter.model_path = _MODEL_PATH
 	return adapter
 
 

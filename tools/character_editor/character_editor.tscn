@@ -457,6 +457,67 @@ custom_minimum_size = Vector2(90, 34)
 layout_mode = 2
 text = "Import..."
 
+[node name="MeshStats" type="VBoxContainer" parent="UI/Panel/PanelScroll/Margin/VBox"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats"]
+layout_mode = 2
+text = "MODEL INFO"
+label_settings = SubResource("SectionSettings")
+
+[node name="Grid" type="GridContainer" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats"]
+layout_mode = 2
+theme_override_constants/h_separation = 24
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="TrianglesLabel" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats/Grid"]
+layout_mode = 2
+text = "Triangles"
+label_settings = SubResource("SectionSettings")
+
+[node name="TrianglesValue" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats/Grid"]
+layout_mode = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="VertsLabel" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats/Grid"]
+layout_mode = 2
+text = "Vertices"
+label_settings = SubResource("SectionSettings")
+
+[node name="VertsValue" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats/Grid"]
+layout_mode = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="MeshPartsLabel" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats/Grid"]
+layout_mode = 2
+text = "Mesh parts"
+label_settings = SubResource("SectionSettings")
+
+[node name="MeshPartsValue" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats/Grid"]
+layout_mode = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="BonesLabel" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats/Grid"]
+layout_mode = 2
+text = "Bones"
+label_settings = SubResource("SectionSettings")
+
+[node name="BonesValue" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats/Grid"]
+layout_mode = 2
+label_settings = SubResource("ValueSettings")
+
+[node name="FileSizeLabel" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats/Grid"]
+layout_mode = 2
+text = "File size"
+label_settings = SubResource("SectionSettings")
+
+[node name="FileSizeValue" type="Label" parent="UI/Panel/PanelScroll/Margin/VBox/MeshStats/Grid"]
+layout_mode = 2
+label_settings = SubResource("ValueSettings")
+
 [node name="RenameCharacterDialog" type="ConfirmationDialog" parent="UI"]
 title = "Rename Character"
 initial_position = 2

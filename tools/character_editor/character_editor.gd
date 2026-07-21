@@ -140,6 +140,7 @@ var body: CharacterAdapter
 @onready var zoom_in_button: Button = $UI/ViewportToolbar/Margin/Buttons/ZoomIn
 @onready var reset_view_button: Button = $UI/ViewportToolbar/Margin/Buttons/ResetView
 @onready var character_row: HBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/CharacterRow
+@onready var mesh_stats_panel: VBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/MeshStats
 @onready var rig_section: VBoxContainer = $UI/Panel/PanelScroll/Margin/VBox/RigSection
 @onready var rig_summary: Label = $UI/Panel/PanelScroll/Margin/VBox/RigSection/Summary
 @onready var rig_mapping_scroll: ScrollContainer = (
@@ -454,8 +455,13 @@ func _load_character(kind: String) -> void:
 	_clear_loaded_character()
 	_custom_clips.clear()
 
+	# "builtin_<kind>" (CharacterCatalog's mirror of this asset) wins over
+	# the plain-adapter branches below, so the Rig tab shows full mapping
+	# controls, not just a summary. "player" always keeps PlayerBodyAdapter.
 	if kind == "player":
 		body = PlayerBodyAdapter.create(self, CHARACTER_SPAWN_POSITION)
+	elif _custom_characters.has("builtin_" + kind):
+		body = _create_custom_character_adapter(_custom_characters["builtin_" + kind])
 	elif RETARGETED_MIXAMO_CHARACTERS.has(kind):
 		var config: Array = RETARGETED_MIXAMO_CHARACTERS[kind]
 		body = RetargetedMixamoAdapter.create(
@@ -529,6 +535,7 @@ func _load_character(kind: String) -> void:
 	_camera_handler._frame_full_body()
 	_rig_handler.on_character_loaded()
 	_stage_handler.on_character_loaded()
+	_ui_setup_handler._update_mesh_stats_label()
 
 
 func _unload_character() -> void:

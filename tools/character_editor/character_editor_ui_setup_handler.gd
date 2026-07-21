@@ -17,6 +17,41 @@ func _init(editor_ref: CharacterEditor) -> void:
 	editor = editor_ref
 
 
+## Raw counts for "is this character heavy" - triangles/verts summed across
+## every mesh part (not just body.mesh - several characters here are
+## multi-part, e.g. Shambler's action_adventure_pack armor pieces), plus
+## bone count and the source file's size on disk. Computed fresh on every
+## load rather than cached: cheap (surface_get_arrays reads already-loaded
+## mesh data, no re-import), and only ever needed once per character switch.
+func _update_mesh_stats_label() -> void:
+	var vertex_count := 0
+	var triangle_count := 0
+	for mesh_part in editor.body.meshes:
+		if mesh_part == null or mesh_part.mesh == null:
+			continue
+		for surface in mesh_part.mesh.get_surface_count():
+			var arrays := mesh_part.mesh.surface_get_arrays(surface)
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			vertex_count += verts.size()
+			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+			triangle_count += (indices.size() / 3) if not indices.is_empty() else (verts.size() / 3)
+	var file_size := 0
+	if not editor.body.model_path.is_empty():
+		var file := FileAccess.open(editor.body.model_path, FileAccess.READ)
+		if file != null:
+			file_size = file.get_length()
+	# Visibility itself is stage-gated (see character_editor_stage_handler.gd's
+	# Stage.CHARACTER branch) - only the Character tab shows this panel. This
+	# just keeps the values current whenever a character (re)loads, so
+	# they're already right by the time that tab is shown.
+	var grid := editor.mesh_stats_panel.get_node(^"Grid")
+	(grid.get_node(^"TrianglesValue") as Label).text = "%d" % triangle_count
+	(grid.get_node(^"VertsValue") as Label).text = "%d" % vertex_count
+	(grid.get_node(^"MeshPartsValue") as Label).text = str(editor.body.meshes.size())
+	(grid.get_node(^"BonesValue") as Label).text = str(editor.body.skeleton.get_bone_count())
+	(grid.get_node(^"FileSizeValue") as Label).text = String.humanize_size(file_size)
+
+
 func _update_responsive_layout() -> void:
 	var viewport_size := editor.get_viewport().get_visible_rect().size
 	editor._ui_scale = clampf(viewport_size.y / editor.BASE_UI_HEIGHT, 1.0, editor.MAX_UI_SCALE)
@@ -99,7 +134,20 @@ func _setup_controls() -> void:
 				built_in_info.get("display_name", kind.capitalize()))
 		editor.character_picker.set_item_metadata(editor.character_picker.item_count - 1, kind)
 	for kind: String in editor._custom_characters:
-		if kind in editor.CHARACTER_KINDS:
+		# "builtin_"-prefixed entries are CharacterCatalog's mirror of an
+		# ALREADY-listed CHARACTER_KINDS entry (see CATALOG's own doc comment
+		# on that prefix) - they exist for the game's debug-menu character
+		# swap (PlayerBody.swap_character), not as a second, confusingly
+		# identical-looking option in this picker. Without this skip, e.g.
+		# "X Bot" appeared twice - once via MixamoCharacterAdapter (this
+		# tool's own posing/animation path, Rig tab shows just a summary
+		# line) and once via the catalog's own humanoid_map (Rig tab shows
+		# the full bone-mapping controls) - same display name, materially
+		# different behavior, no visual way to tell them apart. A real
+		# session-imported character still gets its own entry here: those
+		# use a "custom_"-prefixed kind_id instead (see
+		# character_editor_import_handler.gd's _import_character).
+		if kind in editor.CHARACTER_KINDS or kind.begins_with("builtin_"):
 			continue
 		var info: Dictionary = editor._custom_characters[kind]
 		editor.character_picker.add_item(info.get("display_name", kind.capitalize()))
