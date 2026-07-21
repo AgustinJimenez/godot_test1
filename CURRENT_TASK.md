@@ -622,6 +622,34 @@ objects, `AnimClipsButton`/`AnimPanel` lists animation clips. A
 - [ ] Fold other existing animation-asset variations into the unified
       system as opportunities come up, per "any other asset with variation,
       if possible, we will convert it."
+- [x] **Migrated the remaining 9 built-in `CHARACTER_KINDS` into the
+      catalog** (`shambler`, `brute`, `vanguard`, `parasite`, `copzombie`,
+      `zombiegirl`, `ch08`, `ch10`, `ch15` - the ones Phase 0 deliberately
+      deferred), completing the built-in set at 12/12. Ran the exact same
+      per-character process Phase 0 used for MotusMan/x_bot/y_bot, batched
+      through a one-off headless script (not checked into the repo - pure
+      data generation, same shape as `_import_character`'s own manifest
+      construction): detect each skeleton's bone-prefix convention live
+      (`HumanoidRetargeter.detect_bone_prefix`, not assumed from
+      `character_editor.gd`'s own doc comments - which turned out correct
+      for all 9, including cross-checking `ch08`/`ch10`'s hardcoded
+      `"mixamorig7_"`/`"mixamorig5_"` hints against live detection), build
+      the full bone-level `humanoid_map` (`full_map_from_prefix`, 63-72
+      bones each incl. fingers), and compute `rest_yaw_offset_deg` the same
+      way (`PlayerBodyPoseMath.skeleton_rest_facing` + `signed_angle_to`
+      against `-Z`) - all 9 came out near 0° (largest was `ch15` at
+      -1.18°), so none of these needed the 180°-flip convention either.
+      `kind_id`s use the same deliberately-distinct `builtin_<name>`
+      pattern Phase 0 established (`builtin_shambler`, not `shambler`) so
+      the character editor tool's existing `select_character` behavior for
+      these 9 is completely unchanged - confirmed via `CharacterCatalog
+      .list_all()` returning all 12 entries with the expected model paths.
+      `shambler`'s model (`action_adventure_pack/The Boss.fbx`) lives
+      outside the two existing `BUILTIN_DIRECTORIES` scan roots, so added
+      `action_adventure_pack` as a third one.
+      `scripts/check.sh` clean; boot-tested `levels/playground.tscn` via
+      the live editor bridge - zero errors. **User spot-checked live**
+      (Shambler/Brute via the debug menu's Character List): "looks ok".
 
 ## Explicit non-goals (for now)
 

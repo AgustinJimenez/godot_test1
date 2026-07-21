@@ -23,6 +23,7 @@ const IMPORTED_DIRECTORY := "res://assets/models/imported_characters"
 const BUILTIN_DIRECTORIES: PackedStringArray = [
 	"res://assets/models/pistol_starter/MotusMan",
 	"res://assets/models/mixamo_characters",
+	"res://assets/models/action_adventure_pack",
 ]
 
 
