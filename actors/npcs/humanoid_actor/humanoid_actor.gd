@@ -30,7 +30,7 @@ const SOURCE_BONE_PREFIX := "mixamorig_"
 @export var lose_sight_time: float = 4.0
 @export var search_time: float = 3.0
 @export var turn_speed: float = 6.0
-@export var show_facing_debug := true
+@export var show_facing_debug := false
 
 @onready var nav_agent: NavigationAgent3D = $NavigationAgent3D
 @onready var health: Health = $Health

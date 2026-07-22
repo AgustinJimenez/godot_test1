@@ -7,10 +7,8 @@ extends Node3D
 
 signal action_finished(animation_name: StringName)
 signal action_contact(animation_name: StringName)
-## Emitted after swap_character() finishes rebuilding around a new skeleton -
-## anything that cached a bone index or the skeleton reference itself
-## (player.gd's head/torso-clearance tracking, namely) needs this to
-## recompute rather than silently keep pointing at a freed node/wrong index.
+## Emitted after swap_character() rebuilds around a new skeleton - anything that cached a bone
+## index or the skeleton reference itself needs this to recompute rather than keep pointing stale.
 signal character_changed
 
 const CLIP_DIR := "res://assets/models/pistol_starter/Animation/In-Place/"
@@ -308,26 +306,58 @@ var _target_humanoid_map: Dictionary
 var autoplay_default_animation := true
 
 
-## Instantiates character_scene as a child and finds its Skeleton3D/
-## AnimationPlayer/mesh generically - mesh is "the first MeshInstance3D
-## found", matching MotusMan's own single-mesh shape today (see this var's
-## own doc comment for why this isn't done sooner, as @onready).
+## Instantiates character_scene and finds its Skeleton3D/AnimationPlayer/mesh generically - mesh
+## is "the first MeshInstance3D found", matching MotusMan's own single-mesh shape today.
 func _setup_character_scene() -> void:
 	character = character_scene.instantiate() as Node3D
 	character.name = &"Character"
 	add_child(character)
 	skeleton = character.find_child("Skeleton3D", true, false) as Skeleton3D
 	anim_player = character.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if anim_player == null:
+		anim_player = AnimationPlayer.new()
+		anim_player.name = &"AnimationPlayer"
+		character.add_child(anim_player)
+	# "Skeleton3D:bone" tracks resolve via root_node; Blender's Armature wrapper nests it deeper.
+	anim_player.root_node = anim_player.get_path_to(skeleton.get_parent())
 	var meshes := character.find_children("*", "MeshInstance3D", true, false)
 	mesh = meshes[0] as MeshInstance3D if not meshes.is_empty() else null
-	_target_humanoid_map = _detect_target_humanoid_map(skeleton)
+	_target_humanoid_map = _detect_target_humanoid_map(skeleton, character_scene.resource_path)
 	_retarget_config = HumanoidRetargeter.build_bone_map_config(BONE_MAP, _target_humanoid_map)
 
 
 func _ready() -> void:
+	_apply_stored_profile_character()
 	_setup_character_scene()
 	_build_character_visuals()
 
+## Spawns as the Creator's chosen catalog character (ui/character_creator.gd via PlayerProfile).
+func _apply_stored_profile_character() -> void:
+	if not PlayerProfile.has_profile:
+		return
+	var model_path: String = _stored_profile_info().get("model_path", "")
+	var scene: Variant = load(model_path) if not model_path.is_empty() else null
+	if scene is PackedScene:
+		character_scene = scene
+
+func _stored_profile_info() -> Dictionary:
+	return CharacterCatalog.list_all().get(PlayerProfile.character_kind, {})
+
+var _cosmetic_attachments: Dictionary = {}
+
+## Applies the Creator's cosmetic choices if character_scene matches the stored kind_id.
+func _apply_stored_profile_cosmetics() -> void:
+	var info := _stored_profile_info()
+	if String(info.get("model_path", "")) != character_scene.resource_path:
+		return
+	PlayerBodyCosmetics.apply_skin_tone(
+			character, PlayerProfile.character_kind, PlayerProfile.skin_tone)
+	PlayerBodyCosmetics.apply_eye_color(
+			character, PlayerProfile.character_kind, PlayerProfile.eye_color_id)
+	_cosmetic_attachments = PlayerBodyCosmetics.apply_head_attachments(
+			skeleton, resolve_bone_name(&"Head"), PlayerProfile.character_kind,
+			PlayerProfile.hairstyle_id, PlayerProfile.facial_hair_id, PlayerProfile.eyebrows_id,
+			PlayerProfile.hair_color_id, _cosmetic_attachments)
 
 ## Rebuilds everything _ready() built around the skeleton - material, the
 ## look/hand-grip modifiers, the held flashlight attachment, and the full
@@ -373,6 +403,7 @@ func _build_character_visuals() -> void:
 	anim_player.animation_finished.connect(_on_animation_finished)
 	if autoplay_default_animation:
 		anim_player.play("moves/unarmed_idle")
+	_apply_stored_profile_cosmetics()
 
 
 ## Swaps the live player's visible skin at runtime - the debug menu's
@@ -404,6 +435,7 @@ func swap_character(new_character_scene: PackedScene) -> void:
 	_flashlight_model = null
 	_equipped_attachment = null
 	_equipped_model = null
+	_cosmetic_attachments = {}
 	character_scene = new_character_scene
 	_setup_character_scene()
 	_build_character_visuals()
@@ -593,7 +625,21 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 ## the same null/"B-" special case character_editor_import_handler.gd's
 ## _import_character already uses (those skeletons don't follow the simple
 ## "prefix + role" pattern reliably enough for full_map_from_prefix).
-static func _detect_target_humanoid_map(target_skeleton: Skeleton3D) -> Dictionary:
+## Prefers a catalog manifest's own humanoid_map (curated, already verified
+## complete by the character editor's Rig tab when it was set up) over
+## re-detecting one from the skeleton - detect_bone_prefix() only
+## recognizes "<prefix>Hips"/"B-hips" conventions, not every bone naming a
+## catalog character might use (e.g. Universal Base Characters' UE-
+## Mannequin "pelvis"/"clavicle_l" names, which have no prefix to detect at
+## all). Falls back to the original re-detection for anything not in the
+## catalog (raw test scenes, characters added before this existed).
+static func _detect_target_humanoid_map(
+		target_skeleton: Skeleton3D, model_path: String) -> Dictionary:
+	for info: Dictionary in CharacterCatalog.list_all().values():
+		if String(info.get("model_path", "")) == model_path:
+			var humanoid_map: Dictionary = info.get("humanoid_map", {})
+			if not humanoid_map.is_empty():
+				return humanoid_map
 	var prefix = HumanoidRetargeter.detect_bone_prefix(target_skeleton)
 	return (
 			CharacterEditorRigHandler.auto_map(target_skeleton)

@@ -39,8 +39,17 @@ func _on_interactable_interacted(player: Node3D) -> void:
 		if hud:
 			var label := item.display_name if count == 1 else "%s ×%d" % [item.display_name, count]
 			hud.toast("Picked up " + label)
+		_auto_equip_if_empty_handed(player)
 		queue_free()
 	else:
 		count = leftover
 		if hud:
 			hud.toast("Inventory full")
+
+
+## Picking up a weapon while nothing is equipped equips it immediately, instead of leaving the
+## player to open the inventory and equip it manually.
+func _auto_equip_if_empty_handed(player: Node3D) -> void:
+	var typed_player := player as Player
+	if typed_player and item.kind == Item.Kind.WEAPON and typed_player.equipped_item == null:
+		typed_player.toggle_equip_item(item)

@@ -1,0 +1,143 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://ui/character_creator.gd" id="1_creator_script"]
+
+[sub_resource type="Environment" id="Environment_creator"]
+background_mode = 1
+background_color = Color(0.03, 0.035, 0.045, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.35, 0.37, 0.42, 1)
+ambient_light_energy = 1.3
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_floor"]
+size = Vector2(6, 6)
+
+[node name="CharacterCreator" type="Node3D"]
+script = ExtResource("1_creator_script")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_creator")
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_floor")
+
+[node name="PreviewRoot" type="Node3D" parent="."]
+
+[node name="Camera" type="Camera3D" parent="."]
+fov = 40.0
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-38, -24, 0)
+light_energy = 1.5
+shadow_enabled = true
+
+[node name="FillLight" type="OmniLight3D" parent="."]
+position = Vector3(-1.2, 1.6, 1.2)
+light_energy = 0.6
+omni_range = 4.0
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Panel" type="PanelContainer" parent="UI"]
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 380.0
+offset_bottom = 580.0
+
+[node name="Margin" type="MarginContainer" parent="UI/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 20
+
+[node name="VBox" type="VBoxContainer" parent="UI/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="UI/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "CHARACTER CREATOR"
+
+[node name="BodyRow" type="VBoxContainer" parent="UI/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BodyLabel" type="Label" parent="UI/Panel/Margin/VBox/BodyRow"]
+layout_mode = 2
+text = "Body"
+
+[node name="BodyOption" type="OptionButton" parent="UI/Panel/Margin/VBox/BodyRow"]
+layout_mode = 2
+
+[node name="HairRow" type="VBoxContainer" parent="UI/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="HairLabel" type="Label" parent="UI/Panel/Margin/VBox/HairRow"]
+layout_mode = 2
+text = "Hairstyle"
+
+[node name="HairOption" type="OptionButton" parent="UI/Panel/Margin/VBox/HairRow"]
+layout_mode = 2
+
+[node name="FacialHairRow" type="VBoxContainer" parent="UI/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="FacialHairLabel" type="Label" parent="UI/Panel/Margin/VBox/FacialHairRow"]
+layout_mode = 2
+text = "Facial Hair"
+
+[node name="FacialHairOption" type="OptionButton" parent="UI/Panel/Margin/VBox/FacialHairRow"]
+layout_mode = 2
+
+[node name="EyebrowsRow" type="VBoxContainer" parent="UI/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="EyebrowsLabel" type="Label" parent="UI/Panel/Margin/VBox/EyebrowsRow"]
+layout_mode = 2
+text = "Eyebrows"
+
+[node name="EyebrowsOption" type="OptionButton" parent="UI/Panel/Margin/VBox/EyebrowsRow"]
+layout_mode = 2
+
+[node name="HairColorRow" type="VBoxContainer" parent="UI/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="HairColorLabel" type="Label" parent="UI/Panel/Margin/VBox/HairColorRow"]
+layout_mode = 2
+text = "Hair Color"
+
+[node name="HairColorOption" type="OptionButton" parent="UI/Panel/Margin/VBox/HairColorRow"]
+layout_mode = 2
+
+[node name="EyeColorRow" type="VBoxContainer" parent="UI/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="EyeColorLabel" type="Label" parent="UI/Panel/Margin/VBox/EyeColorRow"]
+layout_mode = 2
+text = "Eye Color"
+
+[node name="EyeColorOption" type="OptionButton" parent="UI/Panel/Margin/VBox/EyeColorRow"]
+layout_mode = 2
+
+[node name="SkinToneRow" type="VBoxContainer" parent="UI/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="SkinToneLabel" type="Label" parent="UI/Panel/Margin/VBox/SkinToneRow"]
+layout_mode = 2
+text = "Skin Tone"
+
+[node name="SkinToneOption" type="OptionButton" parent="UI/Panel/Margin/VBox/SkinToneRow"]
+layout_mode = 2
+
+[node name="StartButton" type="Button" parent="UI/Panel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "Start Game"
