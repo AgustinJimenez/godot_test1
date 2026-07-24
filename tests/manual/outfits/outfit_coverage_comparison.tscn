@@ -1,0 +1,44 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://tests/manual/outfits/outfit_coverage_comparison.gd" id="1_script"]
+
+[sub_resource type="Environment" id="Environment_comparison"]
+background_mode = 1
+background_color = Color(0.008, 0.01, 0.014, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.55, 0.62, 0.75, 1)
+ambient_light_energy = 0.8
+
+[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
+albedo_color = Color(0.055, 0.065, 0.08, 1)
+roughness = 0.9
+
+[sub_resource type="PlaneMesh" id="FloorMesh"]
+material = SubResource("FloorMaterial")
+size = Vector2(14, 8)
+
+[node name="OutfitCoverageComparison" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_comparison")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-35, -25, 0)
+light_color = Color(0.88, 0.93, 1, 1)
+light_energy = 1.4
+shadow_enabled = true
+
+[node name="FillLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-20, 155, 0)
+light_color = Color(0.5, 0.62, 0.85, 1)
+light_energy = 0.7
+
+[node name="Models" type="Node3D" parent="."]
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+mesh = SubResource("FloorMesh")
+
+[node name="Camera" type="Camera3D" parent="."]
+current = true
+fov = 48.0

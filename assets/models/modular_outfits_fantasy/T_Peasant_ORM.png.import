@@ -2,8 +2,8 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bqtdk2rmg17co"
-path.s3tc="res://.godot/imported/T_Superhero_Male_Normal.png-1f66bddb04fd24995600b5401028eedd.s3tc.ctex"
+uid="uid://dtgqupa0q0sk5"
+path.s3tc="res://.godot/imported/T_Peasant_ORM.png-90810796aa7bccb5bab70cac2981f307.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -11,8 +11,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/models/imported_characters/8bcc06df-6c6e-42f0-b2c1-5f37ccf2b28b/T_Superhero_Male_Normal.png"
-dest_files=["res://.godot/imported/T_Superhero_Male_Normal.png-1f66bddb04fd24995600b5401028eedd.s3tc.ctex"]
+source_file="res://assets/models/modular_outfits_fantasy/T_Peasant_ORM.png"
+dest_files=["res://.godot/imported/T_Peasant_ORM.png-90810796aa7bccb5bab70cac2981f307.s3tc.ctex"]
 
 [params]
 
@@ -22,12 +22,12 @@ compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=1
+compress/normal_map=0
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=1
-roughness/src_normal="res://assets/models/imported_characters/8bcc06df-6c6e-42f0-b2c1-5f37ccf2b28b/T_Superhero_Male_Normal.png"
+roughness/mode=0
+roughness/src_normal=""
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

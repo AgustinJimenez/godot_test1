@@ -7,6 +7,34 @@ extends Node3D
 const FEMALE_DIR := "res://assets/models/imported_characters/402453fc-7d0e-4139-9cb0-f2dbe6276161/"
 const MALE_DIR := "res://assets/models/imported_characters/8bcc06df-6c6e-42f0-b2c1-5f37ccf2b28b/"
 const HAIR_DIR := "res://assets/models/universal_base_characters/hairstyles/"
+const OUTFIT_DIR := "res://assets/models/modular_outfits_fantasy/"
+
+## TEMPORARY debug feature to preview Quaternius's "Modular Character Outfits - Fantasy" pack
+## (dropped in ~/Downloads, not yet a real gameplay feature - no PlayerProfile field, no
+## player_body_cosmetics.gd wiring). Its own README confirms it's built for this exact base kit,
+## and its bone names match ours 1:1 (pelvis/spine_01-03/clavicle_l-r/full finger chains), so no
+## new humanoid_map is needed. Each outfit ships its own complete rest-pose skeleton at identity
+## transform, so it lines up with the base character without retargeting. The free base pack has
+## no separate head mesh even though the outfit README requires one. This baseline deliberately
+## renders the complete base body under clothing so overlap can be evaluated without masking.
+## These paths point at the original pack files, unmodified - no clearance adjustment applied.
+## See CURRENT_TASK.md.
+const OUTFITS := [
+	{"id": "none", "label": "None"},
+	{"id": "peasant", "label": "Peasant"},
+	{"id": "ranger", "label": "Ranger"},
+]
+const OUTFIT_PATHS := {
+	"custom_superhero_female_fullbody": {
+		"peasant": OUTFIT_DIR + "Female_Peasant.gltf",
+		"ranger": OUTFIT_DIR + "Female_Ranger.gltf",
+	},
+	"custom_superhero_male_fullbody": {
+		"peasant": OUTFIT_DIR + "Male_Peasant.gltf",
+		"ranger": OUTFIT_DIR + "Male_Ranger.gltf",
+	},
+}
+const DISCARD_SURFACE_SHADER := preload("res://shaders/discard_surface.gdshader")
 
 ## Both bodies were imported from the "Universal Base Characters" pack with
 ## a hand-built humanoid_map (see the character catalog manifests next to
@@ -115,7 +143,7 @@ const MAX_ORBIT_DISTANCE := 4.0
 const DEFAULT_ORBIT_TARGET := Vector3(0, 1.0, 0)
 const DEFAULT_ORBIT_DISTANCE := 2.4
 const FACE_ORBIT_TARGET := Vector3(0, 1.65, 0)
-const FACE_ORBIT_DISTANCE := 0.55
+const FACE_ORBIT_DISTANCE := 0.8
 
 @onready var camera: Camera3D = $Camera
 @onready var preview_root: Node3D = $PreviewRoot
@@ -128,6 +156,8 @@ const FACE_ORBIT_DISTANCE := 0.55
 @onready var hair_color_option: OptionButton = $UI/Panel/Margin/VBox/HairColorRow/HairColorOption
 @onready var eye_color_option: OptionButton = $UI/Panel/Margin/VBox/EyeColorRow/EyeColorOption
 @onready var skin_tone_option: OptionButton = $UI/Panel/Margin/VBox/SkinToneRow/SkinToneOption
+@onready var outfit_option: OptionButton = $UI/Panel/Margin/VBox/OutfitRow/OutfitOption
+@onready var outfit_debug_colors: CheckButton = $UI/Panel/Margin/VBox/OutfitRow/DebugColors
 @onready var start_button: Button = $UI/Panel/Margin/VBox/StartButton
 
 ## One independent OptionButton-backed choice (Hairstyle, Facial Hair, or Eyebrows). `items` is
@@ -172,16 +202,19 @@ var _body_index := 1
 var _hair_color := "brown"
 var _eye_color := "brown"
 var _skin_tone := "caramel"
+var _outfit_id := "peasant"
+var _outfit_debug_colors := true
 var _preview_body: Node3D
+var _preview_outfit: Node3D
 var _hair_slot: Slot
 var _facial_hair_slot: Slot
 var _eyebrows_slot: Slot
 var _orbit_yaw := 0.0
 var _orbit_pitch := -0.05
-var _orbit_distance := DEFAULT_ORBIT_DISTANCE
-var _orbit_target := DEFAULT_ORBIT_TARGET
+var _orbit_distance := FACE_ORBIT_DISTANCE
+var _orbit_target := FACE_ORBIT_TARGET
 var _orbiting := false
-var _face_focused := false
+var _face_focused := true
 
 
 func _ready() -> void:
@@ -193,6 +226,12 @@ func _ready() -> void:
 		hair_color_option.add_item(String(color["label"]))
 	for color in EYE_COLORS:
 		eye_color_option.add_item(String(color["label"]))
+	for outfit in OUTFITS:
+		outfit_option.add_item(String(outfit["label"]))
+	for i in OUTFITS.size():
+		if OUTFITS[i]["id"] == _outfit_id:
+			outfit_option.select(i)
+			break
 	_hair_slot = Slot.new(HAIRSTYLES, hair_option)
 	_find_slot_index(_hair_slot, "simple_parted")
 	_facial_hair_slot = Slot.new(FACIAL_HAIR, facial_hair_option)
@@ -205,6 +244,8 @@ func _ready() -> void:
 	hair_color_option.item_selected.connect(_on_hair_color_selected)
 	eye_color_option.item_selected.connect(_on_eye_color_selected)
 	skin_tone_option.item_selected.connect(_on_skin_tone_selected)
+	outfit_option.item_selected.connect(_on_outfit_selected)
+	outfit_debug_colors.toggled.connect(_on_outfit_debug_colors_toggled)
 	start_button.pressed.connect(_on_start_pressed)
 	if PlayerProfile.has_profile:
 		_select_stored_profile()
@@ -299,6 +340,18 @@ func _on_eye_color_selected(index: int) -> void:
 func _on_skin_tone_selected(index: int) -> void:
 	_skin_tone = String(SKIN_TONES[index]["id"])
 	_apply_skin_tone()
+	if _outfit_id != "none":
+		_rebuild_outfit()
+
+
+func _on_outfit_selected(index: int) -> void:
+	_outfit_id = String(OUTFITS[index]["id"])
+	_rebuild_outfit()
+
+
+func _on_outfit_debug_colors_toggled(enabled: bool) -> void:
+	_outfit_debug_colors = enabled
+	_rebuild_outfit()
 
 
 func _on_start_pressed() -> void:
@@ -321,6 +374,70 @@ func _rebuild_preview() -> void:
 	_apply_eye_color()
 	for slot in [_hair_slot, _facial_hair_slot, _eyebrows_slot]:
 		slot.preview = _rebuild_cosmetic(slot)
+	_rebuild_outfit()
+
+
+## TEMPORARY debug preview - see the OUTFITS/OUTFIT_PATHS doc comment. Each body/outfit pair uses
+## Baseline preview: keep the complete body and layer clothing over it. Outfit-authored duplicate
+## skin primitives are hidden so only the selected base character supplies skin.
+func _rebuild_outfit() -> void:
+	if is_instance_valid(_preview_outfit):
+		_preview_outfit.queue_free()
+		_preview_outfit = null
+	var body: Dictionary = BODIES[_body_index]
+	var base_mesh := _preview_body.find_child(
+			String(body["mesh_name"]), true, false) as MeshInstance3D
+	var path: String = OUTFIT_PATHS.get(body["kind_id"], {}).get(_outfit_id, "")
+	if base_mesh:
+		_apply_body_debug_material(base_mesh)
+	if path.is_empty():
+		return
+	var resource := load(path)
+	if not resource is PackedScene:
+		return
+	var instance := (resource as PackedScene).instantiate() as Node3D
+	if instance == null:
+		return
+	preview_root.add_child(instance)
+	_preview_outfit = instance
+	_apply_outfit_materials(instance)
+
+
+func _apply_body_debug_material(
+	mesh_instance: MeshInstance3D,
+) -> void:
+	if not _outfit_debug_colors:
+		mesh_instance.material_override = null
+		return
+	mesh_instance.material_override = _make_debug_material(Color(0.9, 0.04, 0.04))
+
+
+## Outfit meshes include duplicate exposed skin. Hide those surfaces in this baseline so the
+## complete base body is the only skin source; color only clothing blue in diagnostic mode.
+func _apply_outfit_materials(root: Node3D) -> void:
+	var hidden_skin_material := ShaderMaterial.new()
+	hidden_skin_material.shader = DISCARD_SURFACE_SHADER
+	var clothes_material := _make_debug_material(Color(0.03, 0.18, 0.95))
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		for surface_index in mesh_instance.mesh.get_surface_count():
+			var source_material := mesh_instance.mesh.surface_get_material(surface_index)
+			var material_name := ""
+			if source_material != null:
+				material_name = source_material.resource_name.to_lower()
+			var is_skin := "regular_male" in material_name or "regular_female" in material_name
+			if is_skin:
+				mesh_instance.set_surface_override_material(surface_index, hidden_skin_material)
+			elif _outfit_debug_colors:
+				mesh_instance.set_surface_override_material(surface_index, clothes_material)
+
+
+func _make_debug_material(color: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.metallic = 0.0
+	material.roughness = 0.9
+	return material
 
 
 ## The imported body ships its own permanently-visible, never-tinted "Eyebrows" sibling mesh (same
@@ -366,7 +483,9 @@ func _apply_skin_tone() -> void:
 			tint = tone["tint"]
 			break
 	for i in mesh_instance.mesh.get_surface_count():
-		var material := mesh_instance.get_active_material(i)
+		# mesh.surface_get_material(), not get_active_material(): the active material can
+		# currently be the outfit head-mask shader rather than the tintable base material.
+		var material := mesh_instance.mesh.surface_get_material(i)
 		if material is BaseMaterial3D:
 			(material as BaseMaterial3D).albedo_texture = texture
 			(material as BaseMaterial3D).albedo_color = tint
@@ -430,6 +549,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _orbiting:
 		var motion := event as InputEventMouseMotion
 		_orbit_yaw -= motion.relative.x * ORBIT_SENS
+		_orbit_pitch = clampf(
+				_orbit_pitch + motion.relative.y * ORBIT_SENS, -deg_to_rad(60.0), deg_to_rad(60.0))
 		_update_orbit_camera()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if (event as InputEventKey).physical_keycode == KEY_P:

@@ -1,669 +1,94 @@
-# Current Task: One unified character + animation system
+# Current Task: Modular outfit composition - reset to plain baseline
 
-**Branch:** `player-swappable-skin`
-**Status:** Phases 0-5 complete and live-confirmed by the user. Both
-`PlayerBody` and `HumanoidActor` now run on the shared `HumanoidRetargeter`
-core - the "two independent systems" this task set out to unify are one
-system underneath, with different content on top, as planned. The player
-can swap to any catalog character (`x_bot`/`y_bot` proven) live, from the
-in-game debug menu's Character List, with animation, camera tracking, held
-items, and the debug mirror all staying correct through the swap. Along the
-way, five real bugs were found by actually playing the game (three by the
-user during Phases 2/3, two more - the MotusMan-texture-bleed and the
-stale mirror double - during Phase 5's own live test) - none of them
-visible from tool-only or numeric verification alone, which is why this
-project's standing rule (never commit gameplay changes without a live
-human test) kept paying off throughout. **Not yet committed** - Phase 6
-(opportunistic further convergence) is open-ended, not a blocker.
+**Date:** 2026-07-23
+**Branch:** `main`
+**Status:** In progress, uncommitted. Reset back to a clean baseline after the clearance-adjustment
+pipeline (`tools/outfit_pipeline/fit_outfit_to_body.py`) produced a run of confusing, hard-to-verify
+results. The tool itself is left on disk but is not currently used anywhere - both
+`ui/character_creator.gd` and `tests/manual/outfits/outfit_coverage_comparison.gd` now point directly
+at the original, unmodified pack files.
 
-## End goal (in plain terms)
+## Current baseline
 
-1. **One onboarding pipeline.** Any humanoid asset — rigged or a bare mesh —
-   goes through the character editor once: import, auto-map or generate a
-   rig. That's already mostly built.
-2. **One shared catalog.** The result becomes a list of ready-to-use
-   characters, not tool-only preview subjects.
-3. **Any character, any role, anywhere.** Pull one from that catalog and use
-   it as the player *or* as an NPC in any scene, and animation just works,
-   because both roles are driven by the same underlying retargeting system
-   instead of two independent ones.
-4. **Converge over time.** Other existing character/animation assets
-   (UAL1, UAL2, the Mixamo action-pack NPCs use, MotusMan's native clips)
-   get folded into the unified system too, where practical — not a hard
-   deadline, an ongoing direction.
+`ui/character_creator.tscn` renders:
 
-## Reality check: there are three systems today, not one
+1. the complete selected Universal Base Character body, without vertex or fragment masking;
+2. the selected Quaternius outfit's original, unmodified clothing surfaces layered over that body;
+3. no outfit-authored duplicate skin surfaces (`Regular_Male`/`Regular_Female` outfit primitives are
+   discarded with `shaders/discard_surface.gdshader`, leaving the base body as the only skin source).
 
-- **`PlayerBody`** bakes its own rich UAL1/UAL2 locomotion+action set onto
-  MotusMan's skeleton at load, via `_humanoid_retarget_local_pose` (FABRIK +
-  swing retargeting, full finger chains, root motion, contact-timed combat).
-  The most capable of the three, and the most gameplay-critical/fragile.
-- **`HumanoidActor`** (NPCs) uses a simpler, separate system for
-  locomotion (a plain Mixamo-family bone-*prefix* strip via
-  `character_bone_prefix`, no full role-based mapping) - but its one
-  retargeted clip (the UAL2 attack, via `components/unreal_mixamo_animation.gd`)
-  already goes through `HumanoidRetargeter.retarget_clip`. So
-  `HumanoidRetargeter` is *not* tool-only today, despite living under
-  `tools/character_editor/` - it's already a real, if narrow, gameplay
-  dependency.
-- **The character editor tool** already has a third layer of abstraction —
-  per-character-type adapters (`player_body_adapter.gd`,
-  `mixamo_character_adapter.gd`, `retargeted_mixamo_adapter.gd`,
-  `mapped_humanoid_adapter.gd`) that normalize all of the above into one
-  common interface — but only for the tool's own posing/preview UI. None of
-  it feeds real gameplay today.
+Diagnostic colors remain enabled by default: complete base body red, clothing blue.
+`P` switches between face and full-body framing; left-drag orbits and the mouse wheel zooms.
 
-Notably, `tools/character_editor/humanoid_retargeter.gd`'s own doc comment
-says it's a **"Generic version of PlayerBody's UAL retarget engine...
-extracted as a standalone utility instead of shared code, deliberately, so
-nothing here can ever regress the already-hardened, gameplay-critical
-player rig. Duplicated on purpose; do not merge back into player_body.gd."**
-That boundary was drawn deliberately, to keep tool churn from ever risking
-the hardened gameplay copy. This task's end goal directly reverses that
-decision for `PlayerBody` specifically. That's fine — goals evolve — but
-the risk the old boundary was protecting against doesn't go away, so the
-migration needs its own safeguard: **build/extend the shared core as code
-proven equivalent side-by-side, and only ever cut a consumer over once its
-replacement is live-verified. Never edit the gameplay copy of the
-retargeting math in place.**
+No clearance adjustment is applied. Body and clothing meshes will overlap/clip wherever the pack's
+own geometry doesn't already clear the base body - that's expected right now, not a bug to chase.
 
-**This resolves Phase 1's "which module to consolidate into" question:**
-`HumanoidRetargeter` wins. It already has exactly the right shape - a
-`BoneMapConfig` describing both rigs via data instead of hardcoded bone-name
-constants (`bone_map`, `hips_source`/`hips_target`,
-`head_source`/`head_target`, `shoulder_l/r_source`/`target`, `arm_chains`)
-- and it's already proven safe in real gameplay via `HumanoidActor`'s
-attack clip. `player_body_pose_math.gd` is the outlier that should
-eventually retire, not the target. Phase 1's real work becomes: (a) confirm
-`HumanoidRetargeter`'s `use_humanoid_retarget` path covers everything
-`PlayerBody`'s own inline math does (root motion, hand/finger detail,
-contact-timed combat baking - `HumanoidRetargeter` doesn't obviously handle
-these yet, needs verification), and (b) write a translation from the
-catalog's `humanoid_map: {role: bone_name}` shape into `BoneMapConfig`.
+## Asset structure
 
-## The shared catalog module
+The male Peasant glTF includes:
 
-Today the catalog only exists as `CharacterEditor.gd`'s own
-`_custom_characters` dictionary, populated by walking disk when the tool
-scene runs — inaccessible from `player.tscn`/`ui/hud.gd`, a different scene
-entirely. This project already solved an identical problem for a different
-asset type: `objects/object_catalog.gd` + `objects/object_definition.gd`
-("Object catalogs are authoring data... collects explicit definitions and
-provides filtering", per `AGENTS.md`). Follow the same shape:
+- a complete humanoid skeleton;
+- `Male_Peasant_Arms`, with clothing and a separate `MI_Regular_Male` skin primitive;
+- `Male_Peasant_Body`, clothing only;
+- `Male_Peasant_Legs`, clothing only;
+- `Male_Peasant_Feet`, clothing only;
+- no head/face/neck mesh.
 
-- New `characters/character_catalog.gd` + `character_definition.gd`
-  (stateless/static, no autoload needed) - the single place that scans
-  `imported_characters/`/`generated_characters/`, lists entries, and loads
-  a given entry's scene + `humanoid_map` + rest-facing offset. Called from
-  the character editor tool, `PlayerBody`, `HumanoidActor`, and the debug
-  menu alike - none of them own catalog logic themselves.
-- `CharacterEditorRigHandler` becomes a *consumer* of this module instead
-  of owning catalog scanning/persistence itself (`tools/object_library/`
-  has the same relationship to `ObjectCatalog` already). Also relieves
-  `rig_handler.gd`, which is already at the 1000-line lint ceiling.
-- **Built-ins get migrated in, not kept separate.** `player`/MotusMan,
-  `shambler`, `ch10`, `zombiegirl`, `x_bot`, `y_bot`, and the rest of
-  `CHARACTER_KINDS` each get run through the rig tool once to produce a
-  real, persisted `humanoid_map`, becoming ordinary catalog entries -
-  exactly how `ObjectCatalog`'s "initial catalog is the CC0 KayKit weapon
-  pack" is just pre-registered data, not special-cased code. One list, not
-  "is this built-in or custom" branching in every consumer forever.
-- **Rest-facing becomes catalog metadata, not per-instance tuning.** Each
-  entry stores an auto-computed yaw offset (reusing `_skeleton_rest_facing`,
-  already implemented for the tool's comparison harness), with an optional
-  manual-override field for cases the automatic derivation gets wrong -
-  mirroring how auto-map already coexists with manual joint overrides.
-  Removes `HumanoidActor.character_yaw_offset_deg`'s current requirement to
-  hand-tune yaw every time a character gets placed in a new scene.
+## Comparison harness
 
-This module is a prerequisite for Phase 2 onward, not just Phase 5 - even
-"cut PlayerBody over to the shared core" implies PlayerBody can look up a
-character's `humanoid_map` on its own, outside the tool.
+`tests/manual/outfits/outfit_coverage_comparison.tscn` shows three columns side by side:
 
-## Migration philosophy
+1. full red base body;
+2. blue clothes only;
+3. full red body plus blue clothes.
 
-- **Non-destructive and incremental.** All three existing systems keep
-  running throughout. Nothing gets deleted until whatever replaces it has
-  been live-tested and confirmed equivalent (or better).
-- **Content variety can stay.** NPCs and the player don't need to play the
-  *same* clips — they can keep their own appropriate animation sets
-  forever. What unifies is the retargeting *machinery* underneath (one
-  `humanoid_map`-driven core), not the content choices on top of it.
-- **Cut over system-by-system**, each with its own explicit "old output vs.
-  new output" verification step. No big-bang rewrite.
-- **Live-test every phase before committing** — no exceptions, and this
-  now includes NPC combat-critical code (attack contact timing, damage
-  windows) which is just as easy to silently break as player code.
+Left-drag orbits all three around a shared target and the mouse wheel zooms. `OUTFIT_SCENE` at the
+top of `outfit_coverage_comparison.gd` currently points at the plain, unmodified
+`Male_Peasant.gltf`.
 
-## Phased plan
+Yaw angles near 90/270 with this harness's column layout put all three columns on nearly the same
+camera ray and make them occlude each other - use other angles to keep them visually separated.
 
-### Phase 0 — Inventory, catalog module, and built-in migration
-- [x] List every current animation source precisely. Done - see "Reality
-      check" above; also surfaced that `HumanoidRetargeter` is already a
-      real (if narrow) gameplay dependency via `HumanoidActor`'s attack
-      clip, which resolved Phase 1's consolidation-target question.
-- [x] Build the shared catalog module: `characters/character_catalog.gd`
-      now exists (`list_all`, `persist_character`, `generate_uuid_v4`,
-      `ensure_id`, `delete_character_assets`, and friends), extracted out
-      of `character_editor_rig_handler.gd` (which dropped from 1000 to 833
-      lines as a result) and `character_editor_import_handler.gd`, both of
-      which now consume it instead of owning disk I/O. Verified via
-      `scripts/check.sh`, a headless scene boot, and a live
-      `CharacterCatalog.list_all()` call confirming it correctly reads the
-      real (currently empty - see below) on-disk state.
-      Deliberately scoped down from the original plan: kept plain
-      `Dictionary` entries (matching how `_custom_characters` already
-      works) rather than introducing a typed `character_definition.gd`
-      Resource class yet, and left `REQUIRED_ROLES`/`auto_map`/
-      `full_map_from_prefix` (rig-mapping *computation*, not storage) in
-      `rig_handler.gd` - narrower, lower-risk first cut.
-- [x] Migrated the 3 needed for the proof set (not all 12 - see below):
-      `builtin_motusman`, `builtin_x_bot`, `builtin_y_bot`. Each got a
-      manifest written next to its existing source model (
-      `pistol_starter/MotusMan/MotusMan_v55.character.json`,
-      `mixamo_characters/X Bot.character.json`,
-      `mixamo_characters/Y Bot.character.json`), with a full bone-level
-      `humanoid_map` (`full_map_from_prefix` maps every bone sharing the
-      prefix, not just the 19 `REQUIRED_ROLES` - 80 bones for MotusMan, 65
-      for each Mixamo bot, fingers included) and a computed
-      `rest_yaw_offset_deg` (via `PlayerBodyPoseMath.skeleton_rest_facing`
-      + `signed_angle_to` against Godot's canonical `-Z`). All three came
-      out ~0° - a genuinely useful, non-obvious finding: `x_bot`/`y_bot`
-      (Mixamo's own generic reference rigs) are *not* subject to the
-      "authored facing +Z, needs 180°" convention `AGENTS.md` documents for
-      the actual zombie/action-pack FBXs already in use - don't assume
-      that convention generalizes to every Mixamo-family asset without
-      computing it per-rig, which is exactly why this is computed, not
-      hardcoded.
-      **Deliberately used distinct `kind_id`s** (`builtin_x_bot`, not
-      `x_bot`) rather than reusing `CHARACTER_KINDS`' own strings -
-      `character_editor.gd`'s `_load_character()` checks
-      `_custom_characters.has(kind)` *before* falling back to the plain
-      `MIXAMO_CHARACTERS` adapter it uses today, so a same-named catalog
-      entry would have silently switched which adapter loads `x_bot`/`y_bot`
-      in the tool - an unverified, out-of-scope behavior change. Confirmed
-      via a live scan that `CharacterCatalog.list_all()` returns zero
-      entries under the literal `"player"`/`"x_bot"`/`"y_bot"` keys.
-      Remaining 9 (`shambler`, `brute`, `vanguard`, `parasite`,
-      `copzombie`, `zombiegirl`, `ch08`, `ch10`, `ch15`): explicitly
-      deferred to whenever they're actually needed, not migrated on spec.
-- [x] Decide the first two-or-three-character proof set for later phases:
-      MotusMan + `x_bot` + `y_bot`, as recommended.
-- [x] Confirmed live (via the running editor's MCP bridge,
-      `dump_live_bone_poses`): both `x_bot` and `y_bot` use the plain
-      `mixamorig_<Role>` convention with no gaps (`mixamorig_Hips`,
-      `mixamorig_Spine1`, `mixamorig_Spine2` all present) - `
-      full_map_from_prefix` will produce a complete `REQUIRED_ROLES`
-      mapping for both with zero manual mapping needed.
+Use the clothes-only column to tell an authored opening (skin visible because the garment simply has
+no geometry there - e.g. an open collar, a ragged sleeve/boot edge) from an actual clearance problem
+(skin visible through a region the clothes-only column shows as fully covered).
 
-**Note on current catalog state:** while verifying the extraction, found
-that the catalog is presently *empty* - `zombie2` (the character used to
-test the Delete Permanently feature earlier this session) was actually
-deleted during that live testing, and no other character has a persisted
-manifest (`Ch28_nonPBR` predates the manifest convention entirely). Not a
-bug - confirmed via `git log`/`git status` that this matches the already-
-committed state. Worth knowing before Phase 0's remaining item (built-in
-migration): there's currently nothing in the catalog to migrate *to*
-alongside, it'll be the first real content in it.
+## Removed approach (do not restore without a materially different model)
 
-**End-to-end live import test (via the real `test_import_character`/
-`test_button_click` MCP tools, added to `server.py` specifically because
-this project's own principle is that the tool must be agent-testable, not
-just human-testable) surfaced and fixed two real, pre-existing bugs, both
-now fixed and verified:**
-1. `EditorFileSystem.reimport_files()` fails outright ("Can't find file...
-   during file reimport") on any path inside a directory it has never
-   scanned - true of every character's brand-new per-id folder now, never
-   true of the old shared flat directory. Fixed in
-   `addons/mcp_bridge/pose_debugger_plugin.gd`'s `_import_asset`: call
-   `EditorFileSystem.scan_sources()` and await `is_scanning()` clearing
-   before `update_file()`/`reimport_files()`.
-2. `reload_editor_bridge` has been silently non-functional for actual code
-   changes since it was built: `plugin.gd`'s `_register_pose_debugger()`
-   was missing the `update_file()` cache-bust call that its sibling reload
-   path (`commands.gd`'s, in `_handle_command()`) already documents as
-   required - GDScript keeps its own compiled-script cache independent of
-   `ResourceLoader`'s `CACHE_MODE_REPLACE`. Fixed by adding the same call.
-   (This bug is why the fix for #1 above needed a full editor restart to
-   verify, not just `reload_editor_bridge` - confirmed by observing the
-   error log still cite pre-edit line numbers after a "successful" reload.)
+An earlier automatic body-coverage mask system (UV-space proximity/ray mask baking, per-body/per-outfit
+PNG visibility masks, a runtime body-mask shader, Head/Neck ownership exceptions, runtime UV
+erosion/dilation) was removed at the user's request: broad masks hid the body but erased visible skin
+near open collars, narrow masks preserved junctions but exposed body through clothing, dilation
+suppressed pinholes by eating more junction skin, and results were inconsistent between viewing angles.
 
-Verified via a real live import of `x_bot`'s FBX: correct UUID folder,
-correct manifest location inside it, fully auto-mapped `humanoid_map` (63
-roles incl. fingers), `id` matching the folder name.
+## Set-aside approach: per-vertex clearance push
 
-**Full import -> delete round trip then verified live end-to-end**, using
-the actual `zombie2.glb` from Downloads: imported via `test_import_character`
-(correct UUID folder + manifest), selected via `set_live_character` (through
-the new `send_editor_bridge_command` passthrough, which accepts custom
-kind_ids the Python tool's enum-typed wrapper doesn't), the real
-"Delete Permanently..." popup menu item clicked via a new
-`test_popup_item_click` diagnostic (menus fire `id_pressed(id)`, not the
-zero-argument `pressed` `test_button_click` handles), confirmed visually via
-a live screenshot that the modal opened correctly with the full-window
-backdrop, then the real Confirm button clicked via `test_button_click` -
-`"Deleted zombie2 and its asset files"`, folder gone from disk, `Ch28_nonPBR`
-untouched. Two new permanent MCP diagnostics added as a result
-(`test_popup_item_click`, and `send_editor_bridge_command` - a generic
-passthrough onto any `commands.gd`/`character_editor_mcp_handler.gd` `cmd`,
-added so future diagnostic additions never need a new dedicated Python tool
-+ MCP reconnect again, since only the Godot-side files need to change).
+`tools/outfit_pipeline/fit_outfit_to_body.py` pushes clothing-material vertices outward from the body
+until they clear it by a configurable margin, with a Laplacian smoothing pass to keep the result
+visually coherent. It works for some cases but produced enough confusing, hard-to-verify results
+(see git history / prior session transcripts for the detailed attempts if picking this back up) that
+we're setting it aside for now rather than continuing to patch it blind. Not deleted - just not wired
+into anything currently. Revisit once the plain baseline above is well understood.
 
-### Phase 1 — Extend HumanoidRetargeter to cover PlayerBody's full feature set
-Consolidation target decided (see above): `HumanoidRetargeter`, not
-`player_body_pose_math.gd` - it's already data-driven via `BoneMapConfig`
-and already proven in real gameplay (`HumanoidActor`'s attack clip).
-- [x] **Audit complete - no algorithmic gaps found.** Read
-      `_humanoid_retarget_local_pose`/`_match_arm_skeleton_positions`/
-      `_swing_retarget`/`_aim_bone_at_direction`/`_solve_fabrik` in both
-      `player_body.gd` and `humanoid_retargeter.gd` line by line:
-      `HumanoidRetargeter` is already a complete, faithful generalization
-      of `PlayerBody`'s real (`use_humanoid_retarget=true`) gameplay path -
-      same formula, just parameterized via `BoneMapConfig` instead of
-      hardcoded `BONE_MAP`/`SWING_BONES` constants. What looked like
-      potential gaps turned out not to be:
-      - Hand retarget modes (`FROZEN`/`LOCAL_COPY`) and `bake_held_track`
-        only apply to `player_body.gd`'s *legacy* delta/swing comparison
-        branches - explicitly documented debug-only scaffolding, dead code
-        under the default `use_humanoid_retarget=true` + `DELTA_ROTATION`
-        gameplay config.
-      - Finger chains aren't a special case in either file - both iterate
-        the full bone map generically, so fingers already retarget
-        correctly as long as the caller's `bone_map`/`BONE_MAP` includes
-        them (data the caller supplies, not logic either file is missing).
-      - Root motion (`_setup_root_motion_track`/`_process_root_motion`)
-        lives in `character_editor.gd` (the *tool*), not `player_body.gd` -
-        a debug-preview feature unrelated to the retargeting bake itself.
-      - Contact-timed combat baking operates on an already-baked clip's
-        live playback position; orthogonal to retargeting, stays in
-        `PlayerBody` regardless of which engine baked the clip.
-- [x] Wrote `HumanoidRetargeter.build_bone_map_config(source_role_map,
-      humanoid_map)` (in `humanoid_retargeter.gd`), composing
-      `player_body.gd`'s existing `BONE_MAP` (reused directly via
-      `PlayerBody.BONE_MAP`, not duplicated a third time - it's just a
-      name table, not the retargeting math the duplication boundary was
-      protecting) with a catalog entry's `humanoid_map` to produce a full
-      `BoneMapConfig` for any target skeleton.
-- [x] **Proven equivalent, live, via a new permanent `test_retarget_parity`
-      MCP diagnostic** (bakes a clip through both paths on the actual live
-      `PlayerBody` instance and diffs every track numerically - not
-      Compare-mode eyeballing). First run showed 49/55 bones matching
-      exactly, with a real ~2-5° divergence on the 6 arm-chain bones
-      only. Chased this down with a second, one-off diagnostic (since
-      removed) that called `player_body.gd`'s *own* `_retarget_clip` a
-      second time against its own already-baked output: **the exact same
-      divergence appeared, same bones, same magnitude, against itself.**
-      This is the arm FABRIK step's redundant degree of freedom (the elbow
-      can swing around the shoulder-wrist axis while still reaching the
-      same target) - genuinely sensitive to tiny floating-point
-      differences in prior pose state, not a bug in the port. Confirmed on
-      a second, unrelated clip (`Walk`/`unarmed_walk`) with the identical
-      signature. **Phase 1's equivalence goal is met**: `HumanoidRetargeter`
-      reproduces `PlayerBody`'s algorithm exactly everywhere it's actually
-      deterministic, and matches its own self-consistency envelope
-      everywhere it isn't.
+## Next work
 
-### Phase 2 — Cut PlayerBody over to the shared core
-- [x] Swapped `player_body.gd`'s internal retargeting to
-      `HumanoidRetargeter.retarget_clip()` behind a new `_bone_map_config()`
-      (a hardcoded, compile-time `BoneMapConfig` describing MotusMan - not
-      yet reading the catalog manifest, deliberately: this step is scoped
-      to "still MotusMan only", so a runtime file-read dependency isn't
-      needed yet). Removed `_humanoid_retarget_local_pose`/
-      `_match_arm_skeleton_positions`/`_aim_bone_at_direction` from
-      `player_body.gd` entirely (~150 lines) - now genuinely dead code,
-      confirmed via grep that nothing else called them. `_swing_retarget`
-      and the legacy delta/swing/hand-mode branches stay untouched (still
-      reachable via the `use_humanoid_retarget=false` debug toggle, only
-      ever used by the tool's own comparison scene). File: 922 -> 817
-      lines. `scripts/check.sh` clean.
-      **Verified live** in the character editor tool (not yet the actual
-      game - see note below): `_ready()` builds the "moves" library
-      without error, and `unarmed_idle`/`unarmed_walk`/`unarmed_torch_idle`
-      all screenshot correctly (natural poses, no T-pose collapse, hand
-      curls naturally for the torch grip).
-      **Not yet committed** - per this project's own hard rule
-      (`AGENTS.md`: "Never commit gameplay/visual/animation changes on the
-      strength of automated verification alone... wait for the user to
-      manually test in the editor and explicitly confirm") this needs the
-      user to actually play the real game (not just the character editor
-      tool) before committing, given this touches the single most
-      gameplay-critical file in the project.
-- [x] Generalized the body/skeleton/mesh wiring. `player.tscn`'s `Body`
-      node is now a plain `Node3D` (was a direct instance of the MotusMan
-      FBX) with a new `_setup_character_scene()` (called first thing in
-      `_ready()`) instantiating `@export var character_scene: PackedScene`
-      (defaults to the same MotusMan FBX, so nothing changes with zero
-      config) as a child, then finding `skeleton`/`anim_player`/`mesh`
-      dynamically via `find_child`/`find_children` - mirroring
-      `HumanoidActor._setup_character()`'s already-proven pattern for NPCs.
-      `anim_player`/`skeleton`/`mesh` changed from `@onready var X =
-      $FixedPath` to plain `var X` set explicitly (onready timing can't
-      depend on a child that doesn't exist yet). Kept `mesh` singular
-      (matches MotusMan's own single-mesh shape) rather than generalizing
-      to a mesh list now - deferred until an actual multi-mesh skin needs
-      it, not needed for this step.
-      Also updated `tools/character_editor/player_body_adapter.gd`
-      (instantiated the raw FBX directly before, which would now
-      double-instantiate under the new wiring - changed to create a plain
-      `Node3D`, matching `player.tscn`'s new shape) and removed the now-
-      unused `1_body_model` `ExtResource` from `player.tscn`.
-      Re-verified the documented Godot 4.6.2 `AnimationMixer` segfault
-      mitigation (in `play_debug_anim`, calls `anim_player.stop()` before
-      mutating the library): it only depends on `anim_player` being a
-      valid reference at runtime, not on node-hierarchy location, so it's
-      unaffected by this change.
-      **Verified live** in the character editor tool: character renders
-      correctly (material applied), `unarmed_idle`/`unarmed_torch_idle`
-      screenshot identically to before this change, and bone data
-      resolves correctly via `dump_live_bone_poses`.
+1. With the plain baseline above, visually catalog where body/clothing actually overlap or clip,
+   per body/outfit combination, using the comparison harness and the clothes-only-column method
+   described above to separate authored openings from real overlap.
+2. Decide, from that clean picture, whether the per-vertex clearance push is worth revisiting, and if
+   so, verify each change against a fresh render at good zoom before calling it fixed - not from
+   memory or a lower-resolution glance.
+3. This whole outfit system is still debug-only: no `PlayerProfile` field, no
+   `player_body_cosmetics.gd` wiring, `ui/character_creator.gd`'s Outfit dropdown is explicitly
+   marked temporary.
 
-      **Real bug caught by the user actually playing the game** (tool
-      verification alone missed it, exactly the reason this project
-      requires playing the real game before committing): `actors/player/
-      player.gd` had its own separate `@onready var skeleton: Skeleton3D =
-      $Body/Skeleton3D` - a fixed path assuming the *old* flat hierarchy,
-      never searched for because it lives in a different script than
-      everything else touched in this step. Missed entirely until the user
-      hit it live. Fixed by deriving it from `body.skeleton` (PlayerBody's
-      own already-dynamically-resolved reference) instead of a second,
-      independent fixed path - `body`'s `@onready` resolves before
-      `skeleton`'s (declaration order), and `Body`'s `_ready()` (which sets
-      `body.skeleton`) runs before `Player`'s own (child-before-parent),
-      so this is valid by construction, not by luck. Re-verified by
-      opening and playing the actual main scene (`levels/playground.tscn`,
-      not just the character editor tool) via the live editor bridge and
-      confirming the project's own runtime log
-      (`~/Library/Application Support/Godot/app_userdata/SurvivalHorrorFps/logs/godot.log`)
-      shows zero errors - only pre-existing, unrelated navmesh-baking
-      performance warnings. Also broadened the search this time: grepped
-      the *whole* project for `$Body/`-style fixed paths, not just within
-      the files already being edited - found nothing else.
+## Verification
 
-      **Second bug, same class, caught by the user again**: the debug
-      mirror effect's `levels/test_room.tscn` `MirrorBody` node had the
-      exact same stale shape `player.tscn`'s `Body` node had before the
-      first fix - a direct MotusMan FBX instance with `player_body.gd`
-      attached, not found by the project-wide `$Body/`-path search above
-      because the bug here wasn't a fixed *path*, it was the node's own
-      *shape*. Once `_setup_character_scene()` started unconditionally
-      instantiating a skin as a child, this produced a second, duplicate
-      MotusMan copy sitting behind the real one - the original FBX
-      instance's own mesh, now untouched by anything, stayed frozen in its
-      default rest pose with its original unfixed (broken/plain) material,
-      showing up as a static plain mesh. Fixed the same way: `MirrorBody`
-      is now a plain `Node3D`. Grepped the whole project again, this time
-      for every remaining place the MotusMan FBX gets instanced at all
-      (not just `$Body/`-style paths) - found one more inert case
-      (`character_editor.tscn` has orphaned, unused `ExtResource`
-      declarations from before an earlier refactor - confirmed zero
-      `[node]` references them - harmless, unrelated, left alone).
-      **User confirmed both fixes working in the real game.**
+Run:
 
-### Phase 3 — Cut HumanoidActor over to the shared core
-- [x] Replaced `_rewrite_bone_prefix()` (relabeled an animation's track
-      paths and copied its rotation/position values onto the target
-      verbatim - only correct because today's NPC skins happen to share
-      near-identical proportions with the source rig) with real
-      `HumanoidRetargeter` retargeting for the locomotion clips
-      (idle/walk/run/death). Added `HumanoidRetargeter.prefix_role_map()`
-      (inverse of `full_map_from_prefix` - describes a *source* rig whose
-      naming is already "known prefix + role", mirroring `BONE_MAP`'s
-      shape) so `build_clip_library()` can build a real `BoneMapConfig` via
-      the same `build_bone_map_config()` Phase 1 already built, using
-      `CharacterEditorRigHandler.full_map_from_prefix()` for the target
-      side (`character_bone_prefix` stays the same config surface - no
-      catalog dependency yet, matching Phase 2's same scoping choice for
-      `PlayerBody`). The attack clip (already real `HumanoidRetargeter`
-      retargeting via `UnrealMixamoAnimation`) is untouched.
-      `_rewrite_bone_prefix` removed entirely (confirmed unused).
-- [x] **Live-tested patrol/chase/attack contact timing** - the exact risk
-      this phase flagged, and not verifiable through the character editor
-      tool at all (it doesn't call `build_clip_library()` - confirmed via
-      grep, exactly one caller, `HumanoidActor._setup_animations()` itself).
-      Booted the real game (`levels/playground.tscn`) and confirmed zero
-      runtime errors (only pre-existing navmesh warnings), then the user
-      confirmed live: shambler/zombie NPCs patrol, chase, and land attacks
-      correctly, including damage timing.
+```sh
+scripts/check.sh
+git diff --check
+```
 
-### Phase 4 — Prove "any character, any role" on a second skin
-- [x] Generalized `PlayerBody._bone_map_config()` (hardcoded MotusMan
-      literals) into `_build_bone_map_config(target_skeleton)`: detects the
-      skeleton's own bone-naming convention via the new
-      `HumanoidRetargeter.detect_bone_prefix()` (moved here from a private
-      copy in `character_editor_import_handler.gd`, now a shared static),
-      then builds the config via Phase 1's `build_bone_map_config()` +
-      `CharacterEditorRigHandler.auto_map()`/`full_map_from_prefix()`.
-      Result cached once in a new `_retarget_config` var (set in
-      `_setup_character_scene()`, since `_retarget_clip()` runs ~15 times
-      during `_ready()`'s eager clip baking). **Verified byte-identical**
-      to the pre-change hardcoded version for MotusMan via `test_retarget_parity`
-      (`max_rot_diff_radians: 0.0691672414541245`, `mismatches: 456`,
-      identical per-bone breakdown - the same already-understood arm-FABRIK
-      self-inconsistency from Phase 1, not a regression).
-- [x] Take one catalog character (`x_bot`) and use the *same* imported/
-      rigged entry as both a player skin and an NPC skin, end-to-end -
-      proven via two temporary MCP diagnostics (`test_player_skin_swap`,
-      `test_npc_skin_swap`, since removed - see their doc comments'
-      "one-off" framing), each instantiating the *real* gameplay class
-      (`PlayerBody`/`HumanoidActor.build_clip_library`) with `X Bot.fbx` and
-      checking every baked clip's tracks actually resolve against the new
-      skeleton (not just "no crash"):
-      - **NPC side: clean.** All 5 clips (idle/walk/run/death/attack), zero
-        broken. Expected and trivial - `x_bot`'s own bone convention
-        (`mixamorig_`) already matches `HumanoidActor`'s
-        `SOURCE_BONE_PREFIX` default, and `build_clip_library()` always
-        retargets (no raw-copy shortcut exists on this path).
-      - **Player side: 15/21 clips retarget correctly** - specifically
-        every clip in the `"Gameplay - Unarmed"` group (`unarmed_idle`,
-        `unarmed_walk`, `unarmed_sprint`, `unarmed_crouch_idle`,
-        `unarmed_crouch_walk`, `unarmed_jump*`, etc.), which is the *only*
-        group real gameplay (`_play_motion`/`update_motion`) ever plays by
-        name - confirmed via a project-wide grep that none of the other 6
-        clip names are referenced anywhere outside `player_body.gd` itself.
-      - **Real, load-bearing gap found**: the other 6 clips - `player_body
-        .gd`'s `CLIPS` dict (`relaxed_idle`, `aim_idle`, `walk`, `jog`,
-        `crouch_idle`, `crouch_walk`) - are loaded as **raw, unretargeted**
-        MotusMan-native FBX animations (never passed through
-        `_retarget_clip`), so their tracks only resolve against a skeleton
-        that happens to share MotusMan's exact bone names. All 6 broke
-        completely (zero bones resolved) against `x_bot`. **Confirmed low-
-        stakes, not a gameplay blocker**: `get_animation_groups()` labels
-        this exact set `"MotusMan References"` - it exists solely for the
-        character editor tool's own preview/comparison UI (letting a human
-        A/B a retargeted clip against MotusMan's authored original) and to
-        supply `_held_pose` (the hand-pose template `_retarget_clip` blends
-        toward) - never played by name in real gameplay. Still a real gap
-        worth fixing eventually: swapping skins via the future Phase 5 debug
-        menu would make the tool's "MotusMan References" preview group
-        silently meaningless for any non-MotusMan skin, and `_held_pose`
-        itself is *derived from* `relaxed_idle`, one of the broken clips -
-        worth double-checking hand/grip posing quality specifically for
-        non-MotusMan skins before Phase 5 ships, not just locomotion.
-- [x] Live-played by the user, exactly as planned: Phase 5's debug-menu
-      swap was the point this happened (not a separate throwaway mechanism
-      for Phase 4) - "looks good now" / "looks ok" across two rounds of
-      live testing (X Bot/Y Bot, then the 9 migrated NPCs).
-- [ ] **Still open, not blocking**: held-item grip *quality* for
-      non-MotusMan skins. The bone-attachment bug (wrong bone entirely) is
-      fixed - see Phase 5 - but nobody has specifically scrutinized whether
-      the flashlight/weapon's hand-tuned finger curl and `0.12` scale
-      actually *look* natural in `x_bot`'s differently-proportioned hand,
-      only that the game runs correctly with it equipped.
-      `flashlight_grip_pose.json` is still MotusMan-tuned data; a different
-      skin needs its own tuning or a documented "close enough" default
-      eventually. (See the `_held_pose`/`relaxed_idle` note
-      above - this may be worse than "imperfect" for non-MotusMan skins
-      specifically, not yet checked.)
-
-### Phase 5 — In-game character swap (the real acceptance test)
-Resolved: not a scene export, not save-file state — the **in-game debug
-menu**. `ui/hud.gd`'s existing `DebugOverlay` already has this exact shape
-for other catalogs: `ObjectListButton`/`ObjectPanel` lists spawnable
-objects, `AnimClipsButton`/`AnimPanel` lists animation clips. A
-`CharacterListButton`/`CharacterPanel` belongs right alongside them.
-- [x] Added a Character page to the debug menu (`CharacterListButton`
-      alongside `ObjectListButton`/`AnimClipsButton`, `CharacterPanel`
-      mirroring `ObjectPanel`'s shape) listing `CharacterCatalog.list_all()`
-      - the exact same catalog the character editor tool builds/persists,
-      not a separate copy.
-- [x] **New `PlayerBody.swap_character(new_character_scene: PackedScene)`**
-      does the actual runtime re-skin: frees the whole old character
-      subtree, points `character_scene` at the new one, reruns
-      `_setup_character_scene()` + a newly-extracted `_build_character_visuals()`
-      (the part of `_ready()` that has to happen again per-skin - material,
-      look/hand-grip modifiers, flashlight attachment, the full retargeted
-      "moves" library), then restores whatever item/flashlight state was
-      active so the swap is invisible to inventory. `_ready()` itself is now
-      just `_setup_character_scene(); _build_character_visuals()` - one
-      construction path, not two versions that can drift.
-- [x] **Found and fixed two more stale-bone-reference bugs the same shape as
-      the two the user already caught this session** - surfaced by actually
-      reasoning through what a mid-session skeleton swap invalidates, not
-      by the user hitting them live this time:
-      1. `player.gd`'s `@onready var skeleton: Skeleton3D = body.skeleton`
-         (fixed in Phase 2 for the *first* stale-reference bug) is still a
-         one-time snapshot - `swap_character()` replaces `body.skeleton`
-         with a brand new instance, which `player.gd` never learns about.
-         Every frame's head-tracking (`_head_bone_idx`) and torso-clearance
-         check (`_torso_bone_indices`) would silently point at a freed
-         node. Fixed by adding `PlayerBody.character_changed` (emitted at
-         the end of `swap_character()`) and extracting the bone-index
-         resolution into `player.gd`'s own `_resolve_body_bone_indices()`,
-         connected to that signal so it reruns automatically.
-      2. `player.gd`'s `TORSO_CLEARANCE` keys and the literal `"Head"` bone
-         name are canonical role names ("Head", "Spine2", "LeftShoulder")
-         that only equal MotusMan's *actual* bone names by coincidence of
-         how MotusMan happens to be named. The same was true of the
-         flashlight grip pose's bone names/attachment bone
-         (`player_body.gd`'s `_setup_held_flashlight()`) and
-         `Item.held_bone` (`set_equipped_item()`) - all three called
-         `skeleton.find_bone()`/set `BoneAttachment3D.bone_name` directly
-         with the plain role name, which only resolves on a skeleton using
-         that exact literal convention (MotusMan). A `"mixamorig_"`-prefixed
-         skin like `x_bot`/`y_bot` would silently fail every one of these
-         lookups (`find_bone()` returns -1; `BoneAttachment3D.bone_name` set
-         to a name that doesn't exist just never attaches to anything).
-         Fixed by adding `PlayerBody.resolve_bone_name(role)` (role name ->
-         the *current* skeleton's real bone name, via the same
-         `target_humanoid_map` `_build_bone_map_config` already computes -
-         extracted into its own `_detect_target_humanoid_map()` so both
-         consumers share one source of truth) and routing all three call
-         sites through it. Not yet live-verified that the flashlight/held-
-         item grip actually *looks* right on `x_bot` specifically (finger
-         curl was hand-tuned for MotusMan's hand proportions - see the
-         existing Phase 4 open item on this) - this fix makes it attach to
-         the *correct bone*, not necessarily look natural once there.
-- [x] Loading message: `_on_character_button_pressed()` sets
-      `character_status_label` to "Loading <name>...", disables the list for
-      two `process_frame` awaits (long enough for the label to actually
-      paint before the synchronous ~15-clip rebake hitches the frame), then
-      calls `swap_character()` and clears it.
-      `scripts/check.sh` clean. **Live-verified the boot path only** so far
-      (opened and played `levels/playground.tscn` via the live editor
-      bridge, confirmed the runtime log shows zero errors - only the same
-      pre-existing navmesh warnings from Phase 2/3). The debug menu's UI
-      itself can't be driven remotely the way the character editor tool can
-      (`playground.tscn` has no `EngineDebugger.register_message_capture`
-      hook, deliberately - that capability is scoped to the tool, not
-      gameplay scenes), so **this is not yet proven live and must be
-      manually tested before committing**, per this project's standing rule.
-- [x] **First live test found a real bug**: user reported "the textures
-      looks mixed with the previous character" after swapping to `x_bot`.
-      Root cause, confirmed via a live mesh-material inspection (not
-      guessed) rather than assumed from the doc comment alone:
-      `_build_character_visuals()` unconditionally reapplied MotusMan's own
-      diffuse texture (`SKIN_TEXTURE`/`MCG_diff.jpg`) to `mesh` regardless
-      of which skin was loaded - harmless when only MotusMan could ever be
-      loaded (the pre-Phase-5 case), but painting `x_bot`'s mesh with
-      MotusMan's texture stretches it across a completely different UV
-      layout, reading as scrambled/mixed. Checking material state on the
-      actual assets surfaced a second wrinkle: `x_bot`/`y_bot`'s own
-      imported material has `albedo_texture == null` too (Mixamo's
-      "X Bot"/"Y Bot" ship with no diffuse texture at all, just a flat
-      preview color - `Beta_Surface` ~(0.84, 0.53, 0.50), `Beta_Joints`
-      ~(0.55, 0.35, 0.31)) - so "reapply the fallback whenever the mesh's
-      own texture is missing" would have reproduced the exact same bug for
-      them. Fixed with two conditions, not one:
-      `_apply_skin_texture_fallback()` only reapplies `SKIN_TEXTURE` when
-      *both* the mesh has no texture of its own *and* `character_scene`'s
-      path is under `MOTUSMAN_MODEL_DIR` (`pistol_starter/`) - i.e. only
-      for MotusMan's own broken animation-bundled FBX exports specifically.
-      `x_bot`/`y_bot` now render with their own flat preview color, not
-      someone else's texture - a known, honest limitation (no per-character
-      texture data in the catalog yet - Phase 6 territory) rather than a
-      visibly broken one. `scripts/check.sh` clean; re-verified the boot
-      path is still clean via the live editor bridge. **User confirmed live:
-      the texture fix works** ("seems to be working now").
-- [x] **Second live-test finding**: the debug mirror's double
-      (`levels/test_room.tscn`'s `MirrorBody`, driven by
-      `levels/debug_mirror.gd`) kept showing the old skin after a swap -
-      not a bug in the swap itself, but a genuinely separate `PlayerBody`
-      instance (`_process()` puppets its transform/animation from the real
-      body every frame, but nothing ever told it to change *character*).
-      Fixed by connecting to the real body's `character_changed` signal
-      (added earlier this phase) the first time `_process()` finds a
-      player, and calling `mirror_body.swap_character(body.character_scene)`
-      from the handler - the mirror now re-skins itself immediately after
-      the real swap finishes. `scripts/check.sh` clean; boot-tested
-      `levels/test_room.tscn` (where the mirror actually lives, not just
-      `playground.tscn`) via the live editor bridge - zero errors, only the
-      same pre-existing navmesh warnings.
-- [x] **User confirmed live, in a real play session**: "looks good now" -
-      the debug menu's Character List swap works end-to-end, including the
-      mirror double staying in sync. **This is the concrete proof the whole
-      task succeeded: stood in a real level, opened the debug menu, picked
-      an imported character from the list, watched the player become that
-      character with animation already working.** Phase 5 complete.
-
-### Phase 6 — Ongoing convergence (opportunistic, not a hard finish line)
-- [ ] Fold other existing animation-asset variations into the unified
-      system as opportunities come up, per "any other asset with variation,
-      if possible, we will convert it."
-- [x] **Migrated the remaining 9 built-in `CHARACTER_KINDS` into the
-      catalog** (`shambler`, `brute`, `vanguard`, `parasite`, `copzombie`,
-      `zombiegirl`, `ch08`, `ch10`, `ch15` - the ones Phase 0 deliberately
-      deferred), completing the built-in set at 12/12. Ran the exact same
-      per-character process Phase 0 used for MotusMan/x_bot/y_bot, batched
-      through a one-off headless script (not checked into the repo - pure
-      data generation, same shape as `_import_character`'s own manifest
-      construction): detect each skeleton's bone-prefix convention live
-      (`HumanoidRetargeter.detect_bone_prefix`, not assumed from
-      `character_editor.gd`'s own doc comments - which turned out correct
-      for all 9, including cross-checking `ch08`/`ch10`'s hardcoded
-      `"mixamorig7_"`/`"mixamorig5_"` hints against live detection), build
-      the full bone-level `humanoid_map` (`full_map_from_prefix`, 63-72
-      bones each incl. fingers), and compute `rest_yaw_offset_deg` the same
-      way (`PlayerBodyPoseMath.skeleton_rest_facing` + `signed_angle_to`
-      against `-Z`) - all 9 came out near 0° (largest was `ch15` at
-      -1.18°), so none of these needed the 180°-flip convention either.
-      `kind_id`s use the same deliberately-distinct `builtin_<name>`
-      pattern Phase 0 established (`builtin_shambler`, not `shambler`) so
-      the character editor tool's existing `select_character` behavior for
-      these 9 is completely unchanged - confirmed via `CharacterCatalog
-      .list_all()` returning all 12 entries with the expected model paths.
-      `shambler`'s model (`action_adventure_pack/The Boss.fbx`) lives
-      outside the two existing `BUILTIN_DIRECTORIES` scan roots, so added
-      `action_adventure_pack` as a third one.
-      `scripts/check.sh` clean; boot-tested `levels/playground.tscn` via
-      the live editor bridge - zero errors. **User spot-checked live**
-      (Shambler/Brute via the debug menu's Character List): "looks ok".
-
-## Explicit non-goals (for now)
-
-- **Not** supporting fully arbitrary imported models as playable/NPC skins
-  in the near term — only the curated proof set from Phase 0, until Phase 4
-  demonstrates the pattern holds.
-- **Not** a single big rewrite — see migration philosophy above.
-
-## Open questions
-
-- Does `x_bot`/`y_bot` need finger-chain mapping for held-object grip to
-  look right, or is "roughly the same hand size" good enough for Phase 4's
-  bar?
-- Should `humanoid_retargeter.gd` physically move out of
-  `tools/character_editor/` (e.g. to `components/`, alongside
-  `unreal_mixamo_animation.gd`) once `PlayerBody` also depends on it? Its
-  current location is a misnomer once it's a real gameplay dependency for
-  two systems, not one — cosmetic, not blocking, worth doing whenever it's
-  convenient during Phase 1.
+No commit has been requested.
