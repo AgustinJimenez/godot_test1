@@ -157,6 +157,7 @@ const FACE_ORBIT_DISTANCE := 0.8
 @onready var eye_color_option: OptionButton = $UI/Panel/Margin/VBox/EyeColorRow/EyeColorOption
 @onready var skin_tone_option: OptionButton = $UI/Panel/Margin/VBox/SkinToneRow/SkinToneOption
 @onready var outfit_option: OptionButton = $UI/Panel/Margin/VBox/OutfitRow/OutfitOption
+@onready var cloth_visible: CheckButton = $UI/Panel/Margin/VBox/OutfitRow/ClothVisible
 @onready var outfit_debug_colors: CheckButton = $UI/Panel/Margin/VBox/OutfitRow/DebugColors
 @onready var start_button: Button = $UI/Panel/Margin/VBox/StartButton
 
@@ -203,6 +204,7 @@ var _hair_color := "brown"
 var _eye_color := "brown"
 var _skin_tone := "caramel"
 var _outfit_id := "peasant"
+var _cloth_visible := true
 var _outfit_debug_colors := true
 var _preview_body: Node3D
 var _preview_outfit: Node3D
@@ -245,6 +247,7 @@ func _ready() -> void:
 	eye_color_option.item_selected.connect(_on_eye_color_selected)
 	skin_tone_option.item_selected.connect(_on_skin_tone_selected)
 	outfit_option.item_selected.connect(_on_outfit_selected)
+	cloth_visible.toggled.connect(_on_cloth_visible_toggled)
 	outfit_debug_colors.toggled.connect(_on_outfit_debug_colors_toggled)
 	start_button.pressed.connect(_on_start_pressed)
 	if PlayerProfile.has_profile:
@@ -349,6 +352,11 @@ func _on_outfit_selected(index: int) -> void:
 	_rebuild_outfit()
 
 
+func _on_cloth_visible_toggled(enabled: bool) -> void:
+	_cloth_visible = enabled
+	_rebuild_outfit()
+
+
 func _on_outfit_debug_colors_toggled(enabled: bool) -> void:
 	_outfit_debug_colors = enabled
 	_rebuild_outfit()
@@ -390,7 +398,8 @@ func _rebuild_outfit() -> void:
 	var path: String = OUTFIT_PATHS.get(body["kind_id"], {}).get(_outfit_id, "")
 	if base_mesh:
 		_apply_body_debug_material(base_mesh)
-	if path.is_empty():
+	cloth_visible.disabled = path.is_empty()
+	if path.is_empty() or not _cloth_visible:
 		return
 	var resource := load(path)
 	if not resource is PackedScene:

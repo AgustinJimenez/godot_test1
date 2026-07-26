@@ -148,6 +148,12 @@ text = "Outfit (Debug)"
 [node name="OutfitOption" type="OptionButton" parent="UI/Panel/Margin/VBox/OutfitRow"]
 layout_mode = 2
 
+[node name="ClothVisible" type="CheckButton" parent="UI/Panel/Margin/VBox/OutfitRow"]
+layout_mode = 2
+tooltip_text = "Show or hide the selected clothing"
+button_pressed = true
+text = "Cloth visible"
+
 [node name="DebugColors" type="CheckButton" parent="UI/Panel/Margin/VBox/OutfitRow"]
 layout_mode = 2
 tooltip_text = "Render skin red and clothing blue"
