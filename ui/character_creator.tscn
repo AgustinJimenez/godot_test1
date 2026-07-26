@@ -160,6 +160,21 @@ tooltip_text = "Render skin red and clothing blue"
 button_pressed = true
 text = "Debug colors"
 
+[node name="GeometryDebugRow" type="HBoxContainer" parent="UI/Panel/Margin/VBox/OutfitRow"]
+layout_mode = 2
+
+[node name="SkeletonVisible" type="CheckButton" parent="UI/Panel/Margin/VBox/OutfitRow/GeometryDebugRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Show the character's bones and joints"
+text = "Skeleton"
+
+[node name="TrianglesVisible" type="CheckButton" parent="UI/Panel/Margin/VBox/OutfitRow/GeometryDebugRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Show body and clothing triangle edges"
+text = "Triangles"
+
 [node name="StartButton" type="Button" parent="UI/Panel/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2

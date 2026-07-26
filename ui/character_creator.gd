@@ -35,6 +35,7 @@ const OUTFIT_PATHS := {
 	},
 }
 const DISCARD_SURFACE_SHADER := preload("res://shaders/discard_surface.gdshader")
+const DEBUG_WIREFRAME_SHADER := preload("res://shaders/debug_wireframe.gdshader")
 
 ## Both bodies were imported from the "Universal Base Characters" pack with
 ## a hand-built humanoid_map (see the character catalog manifests next to
@@ -159,6 +160,10 @@ const FACE_ORBIT_DISTANCE := 0.8
 @onready var outfit_option: OptionButton = $UI/Panel/Margin/VBox/OutfitRow/OutfitOption
 @onready var cloth_visible: CheckButton = $UI/Panel/Margin/VBox/OutfitRow/ClothVisible
 @onready var outfit_debug_colors: CheckButton = $UI/Panel/Margin/VBox/OutfitRow/DebugColors
+@onready var skeleton_visible: CheckButton = \
+		$UI/Panel/Margin/VBox/OutfitRow/GeometryDebugRow/SkeletonVisible
+@onready var triangles_visible: CheckButton = \
+		$UI/Panel/Margin/VBox/OutfitRow/GeometryDebugRow/TrianglesVisible
 @onready var start_button: Button = $UI/Panel/Margin/VBox/StartButton
 
 ## One independent OptionButton-backed choice (Hairstyle, Facial Hair, or Eyebrows). `items` is
@@ -206,8 +211,11 @@ var _skin_tone := "caramel"
 var _outfit_id := "peasant"
 var _cloth_visible := true
 var _outfit_debug_colors := true
+var _skeleton_visible := false
+var _triangles_visible := false
 var _preview_body: Node3D
 var _preview_outfit: Node3D
+var _skeleton_debug: MeshInstance3D
 var _hair_slot: Slot
 var _facial_hair_slot: Slot
 var _eyebrows_slot: Slot
@@ -249,6 +257,8 @@ func _ready() -> void:
 	outfit_option.item_selected.connect(_on_outfit_selected)
 	cloth_visible.toggled.connect(_on_cloth_visible_toggled)
 	outfit_debug_colors.toggled.connect(_on_outfit_debug_colors_toggled)
+	skeleton_visible.toggled.connect(_on_skeleton_visible_toggled)
+	triangles_visible.toggled.connect(_on_triangles_visible_toggled)
 	start_button.pressed.connect(_on_start_pressed)
 	if PlayerProfile.has_profile:
 		_select_stored_profile()
@@ -362,6 +372,16 @@ func _on_outfit_debug_colors_toggled(enabled: bool) -> void:
 	_rebuild_outfit()
 
 
+func _on_skeleton_visible_toggled(enabled: bool) -> void:
+	_skeleton_visible = enabled
+	_refresh_skeleton_debug()
+
+
+func _on_triangles_visible_toggled(enabled: bool) -> void:
+	_triangles_visible = enabled
+	_refresh_triangle_debug()
+
+
 func _on_start_pressed() -> void:
 	var body: Dictionary = BODIES[_body_index]
 	PlayerProfile.set_profile(
@@ -383,12 +403,14 @@ func _rebuild_preview() -> void:
 	for slot in [_hair_slot, _facial_hair_slot, _eyebrows_slot]:
 		slot.preview = _rebuild_cosmetic(slot)
 	_rebuild_outfit()
+	_refresh_skeleton_debug()
 
 
 ## TEMPORARY debug preview - see the OUTFITS/OUTFIT_PATHS doc comment. Each body/outfit pair uses
 ## Baseline preview: keep the complete body and layer clothing over it. Outfit-authored duplicate
 ## skin primitives are hidden so only the selected base character supplies skin.
 func _rebuild_outfit() -> void:
+	call_deferred(&"_refresh_triangle_debug")
 	if is_instance_valid(_preview_outfit):
 		_preview_outfit.queue_free()
 		_preview_outfit = null
@@ -439,6 +461,61 @@ func _apply_outfit_materials(root: Node3D) -> void:
 				mesh_instance.set_surface_override_material(surface_index, hidden_skin_material)
 			elif _outfit_debug_colors:
 				mesh_instance.set_surface_override_material(surface_index, clothes_material)
+
+
+func _refresh_triangle_debug() -> void:
+	var overlay: ShaderMaterial
+	if _triangles_visible:
+		overlay = ShaderMaterial.new()
+		overlay.shader = DEBUG_WIREFRAME_SHADER
+	for node in preview_root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance == _skeleton_debug:
+			continue
+		mesh_instance.material_overlay = overlay
+
+
+func _refresh_skeleton_debug() -> void:
+	if is_instance_valid(_skeleton_debug):
+		_skeleton_debug.queue_free()
+		_skeleton_debug = null
+	if not _skeleton_visible or not is_instance_valid(_preview_body):
+		return
+	var skeleton := _preview_body.find_child("Skeleton3D", true, false) as Skeleton3D
+	if skeleton == null:
+		return
+	var line_material := StandardMaterial3D.new()
+	line_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	line_material.albedo_color = Color(0.0, 0.95, 1.0)
+	line_material.no_depth_test = true
+	var point_material := line_material.duplicate() as StandardMaterial3D
+	point_material.use_point_size = true
+	point_material.point_size = 7.0
+	var immediate_mesh := ImmediateMesh.new()
+	immediate_mesh.surface_begin(Mesh.PRIMITIVE_LINES, line_material)
+	for bone_index in skeleton.get_bone_count():
+		var parent_index := skeleton.get_bone_parent(bone_index)
+		if parent_index < 0:
+			continue
+		if String(skeleton.get_bone_name(parent_index)).to_lower() == "root":
+			continue
+		immediate_mesh.surface_add_vertex(preview_root.to_local(
+				skeleton.to_global(skeleton.get_bone_global_pose(parent_index).origin)))
+		immediate_mesh.surface_add_vertex(preview_root.to_local(
+				skeleton.to_global(skeleton.get_bone_global_pose(bone_index).origin)))
+	immediate_mesh.surface_end()
+	immediate_mesh.surface_begin(Mesh.PRIMITIVE_POINTS, point_material)
+	for bone_index in skeleton.get_bone_count():
+		if String(skeleton.get_bone_name(bone_index)).to_lower() == "root":
+			continue
+		immediate_mesh.surface_add_vertex(preview_root.to_local(
+				skeleton.to_global(skeleton.get_bone_global_pose(bone_index).origin)))
+	immediate_mesh.surface_end()
+	_skeleton_debug = MeshInstance3D.new()
+	_skeleton_debug.name = "SkeletonDebug"
+	_skeleton_debug.mesh = immediate_mesh
+	_skeleton_debug.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	preview_root.add_child(_skeleton_debug)
 
 
 func _make_debug_material(color: Color) -> StandardMaterial3D:
