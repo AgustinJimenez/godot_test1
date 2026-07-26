@@ -1,13 +1,79 @@
 # Current Task: Modular outfit composition - bone-region body masking
 
-**Date:** 2026-07-24
-**Branch:** `main`
-**Status:** Working solution verified on all four body/outfit combinations (Male Peasant, Female
-Peasant, Male Ranger, Female Ranger - front + back each), wired into `ui/character_creator.gd`. Three
-real defects found via real-materials review there (a forearm/hand gap caused by a skeleton mismatch
+**Date:** 2026-07-26
+**Branch:** `agent/cloth-visibility-toggle`
+**Status:** Active investigation. All automatic body-coverage implementations described in the
+historical log below have been reverted from the current code after live user inspection found
+collar gaps, mismatched arm radii, red pinholes, seams, or cloth artifacts. The current implementation
+is the plain full-body-under-clothing baseline plus independently committed debug controls. Read
+“Latest authoritative handoff” before relying on any older “working solution” statement below.
+
+## Latest authoritative handoff (2026-07-26)
+
+### Current repository state
+
+- `ui/character_creator.gd` is back to the plain baseline: it renders the complete selected base
+  body under the outfit and discards outfit-authored duplicate skin surfaces.
+- The cloth visibility checkbox was committed as `3c128c3`.
+- Skeleton and triangle visibility checkboxes plus the wireframe shader were committed as `28eb630`.
+- Both commits were pushed to `agent/cloth-visibility-toggle`.
+- Cloth visibility, debug colors, skeleton visibility, and triangle visibility remain independent.
+- No body-coverage/masking implementation is currently active or awaiting commit.
+
+### Attempts rejected or reverted
+
+1. Bone-region triangle removal created collar/shoulder holes and could not represent boundaries
+   that cross large skinned triangles.
+2. Generated `fitted/` outfit assets produced torn/spiky collar and shoulder geometry.
+3. Runtime cloth-ray and nearest-surface tests alternated between exposed chest clipping and missing
+   neckline skin.
+4. Outfit inflation changed the garment silhouette and could separate coincident trim surfaces.
+5. Skin pull-in and collar-specific hole/wedge/bridge patches became increasingly outfit-specific
+   and still left visible slivers or voids.
+6. The final geometry-derived fragment/UV coverage mask attempted arbitrary front/back openings,
+   but live inspection showed red pinholes and seams throughout covered blue cloth. Conservative
+   thresholds removed required collar skin. It was reverted completely, including
+   `runtime_cloth_body_mask.gd` and its shader.
+
+Do not resume any of these approaches without a materially different classification model.
+
+### Confirmed source-asset facts
+
+- The original Fantasy outfit package has no human head/face mesh. Ranger `*_Head_Hood` meshes are
+  clothing only; Peasant has no head mesh.
+- The outfit README says to combine the clothing with only the Universal Base Character head because
+  a complete underlying body clips.
+- Some outfit arm meshes contain authored `MI_Regular_Male/Female` exposed-skin surfaces that fit
+  their own cuffs.
+- The available Universal Base Characters Standard package contains only
+  `Superhero_Male_FullBody` and `Superhero_Female_FullBody`; it has no Regular model or separate head
+  mesh.
+- SHA-256 hashes confirm those downloaded glTF files are byte-identical to the versions already in
+  the project. Reimporting them cannot improve the fit.
+
+### Agreed next prototype: generate once and cache
+
+Generate a derived skinned `ArrayMesh` once per body/outfit combination, save it under `user://`,
+and load the cached result on later runs. Preserve positions, normals, UVs, bone indices, and skin
+weights. Keep the base head/neck and skin visible through intentional openings, remove body triangles
+under cloth, and use outfit-authored exposed-arm skin where it fits the cuff.
+
+The cache key must include body ID, outfit ID, source identity/hash, and algorithm version. Automatic
+classification should be conservative and support front, side, and back openings. Because arbitrary
+open-cloth geometry is ambiguous, allow persistent per-outfit triangle corrections reviewed with the
+Skeleton and Triangles overlays. This direction is agreed in principle but not implemented or
+validated yet.
+
+## Historical investigation log
+
+The following text records earlier experiments and may describe code as current even though it has
+since been reverted. Preserve it as failure history, but use the handoff above for present state.
+
+The earlier status reported that three real defects found via real-materials review (a forearm/hand
+gap caused by a skeleton mismatch
 between the outfit and the base body - initially "fixed" in a way that looked right in debug colors but
 wasn't, a neck/collar/shoulder gap, and foot-clipping past the boot sides - see "Outfit-supplied hand
-bridges", "Neck/collar exemption", and "Foot clipping" below) are all fixed and re-verified across all
+bridges", "Neck/collar exemption", and "Foot clipping" below) were fixed and re-verified across all
 four combinations. A fourth suspected defect (a Male-Peasant chest V-notch gap) turned out to be a
 false alarm from a flawed mesh measurement - but the debug tool built to fix it evolved, at the user's
 suggestion, into a genuine geometric cloth-coverage test that now runs on every combination (see
