@@ -23,6 +23,10 @@ const SELECTED_DOT_RADIUS := 0.016
 const SKIN_MATERIAL_PATTERNS := ["regular_male", "regular_female"]
 const BODY_GRID_CELL_SIZE := 0.08
 const DEFAULT_AUTO_CLEARANCE := 0.005
+const AUTO_FIT_PASSES := 3
+const AUTO_MAX_STEP := 0.03
+const AUTO_SMOOTH_PASSES := 2
+const AUTO_SMOOTH_BLEND := 0.4
 const COLLISION_STEP := 0.002
 const CLIP_SEARCH_RADIUS := 0.08
 const AUTO_SEARCH_RADIUS := 0.45
@@ -252,7 +256,7 @@ func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 	var adjusted := 0
 	var skipped := 0
 	# Solve every garment vertex, including the cloth between visible controls.
-	for iteration in 2:
+	for iteration in AUTO_FIT_PASSES:
 		var correction_count := 0
 		for mesh_key_variant in _mesh_states:
 			var mesh_key := String(mesh_key_variant)
@@ -265,12 +269,25 @@ func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 				if not surface["is_clothing"]:
 					continue
 				var vertices: PackedVector3Array = surface["vertices"]
-				var world_vertices := FIT_GEOMETRY.skin_vertices_world(
-						mesh_instance, surface["arrays"])
+				var arrays: Array = surface["arrays"]
+				var world_vertices := FIT_GEOMETRY.skin_vertices_world(mesh_instance, arrays)
+				var regions := FIT_GEOMETRY.vertex_regions(mesh_instance, arrays)
+				var smooth_surface := FIT_GEOMETRY.is_leg_surface(regions)
+				var intersections := FIT_GEOMETRY.find_intersections(
+						world_vertices,
+						arrays[Mesh.ARRAY_INDEX] as PackedInt32Array,
+						_body_triangles,
+						_body_triangle_grid,
+						BODY_GRID_CELL_SIZE,
+						_body_normal_sign)
+				var clipping_vertices: Dictionary = intersections["cloth_vertices"]
 				var offsets := mesh_offsets[surface_index] as PackedVector3Array
+				var corrections := PackedVector3Array()
+				corrections.resize(vertices.size())
 				for vertex_index in vertices.size():
 					var current_world := world_vertices[vertex_index]
-					var projection := _closest_body_projection(current_world)
+					var projection := _closest_body_projection(
+							current_world, regions[vertex_index])
 					if projection.is_empty():
 						if iteration == 0:
 							skipped += 1
@@ -278,26 +295,52 @@ func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 					var normal: Vector3 = projection["normal"]
 					var signed_distance := (
 							current_world - (projection["position"] as Vector3)).dot(normal)
-					var error := clearance - signed_distance
-					if error <= minf(clearance * 0.25, 0.00025):
+					var intersects := clipping_vertices.has(vertex_index)
+					var error := FIT_GEOMETRY.clipping_error(
+							signed_distance, clearance, intersects, COLLISION_STEP)
+					if error <= 0.0:
 						continue
+					if smooth_surface:
+						projection = FIT_GEOMETRY.outer_body_projection(
+								current_world, _body_triangles, _body_triangle_grid,
+								BODY_GRID_CELL_SIZE, AUTO_SEARCH_RADIUS, _body_normal_sign,
+								regions[vertex_index])
+						normal = projection["normal"]
+						signed_distance = (
+								current_world - (projection["position"] as Vector3)
+								).dot(normal)
+						error = FIT_GEOMETRY.clipping_error(
+								signed_distance, clearance, intersects, COLLISION_STEP)
+						if error <= 0.0:
+							continue
 					var corrected_world := current_world + normal * error
 					var local_correction := (
 							mesh_instance.to_local(corrected_world)
 							- mesh_instance.to_local(current_world))
-					offsets[vertex_index] = (
-							offsets[vertex_index] + local_correction).limit_length(
-									AUTO_MAX_OFFSET)
+					corrections[vertex_index] = (
+							local_correction.limit_length(AUTO_MAX_STEP)
+							if smooth_surface else local_correction)
 					correction_count += 1
 					if iteration == 0:
 						adjusted += 1
+				if smooth_surface:
+					corrections = FIT_GEOMETRY.smooth_offsets(
+							vertices,
+							arrays[Mesh.ARRAY_INDEX] as PackedInt32Array,
+							corrections,
+							AUTO_SMOOTH_PASSES,
+							AUTO_SMOOTH_BLEND)
+				for vertex_index in offsets.size():
+					offsets[vertex_index] = (
+							offsets[vertex_index] + corrections[vertex_index]
+							).limit_length(AUTO_MAX_OFFSET)
 				mesh_offsets[surface_index] = offsets
 			_auto_surface_offsets[mesh_key] = mesh_offsets
 		if correction_count == 0:
 			break
 		_rebuild_geometry_only()
 	var remaining_intersections := 0
-	for _collision_pass in 64:
+	for _collision_pass in 16:
 		var pushed_vertices := 0
 		for mesh_key_variant in _mesh_states:
 			var mesh_key := String(mesh_key_variant)
@@ -321,10 +364,9 @@ func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 				var marked: Dictionary = intersections["cloth_vertices"]
 				var collision_normals: Dictionary = intersections["cloth_normals"]
 				var offsets := mesh_offsets[surface_index] as PackedVector3Array
-				var local_vertices: PackedVector3Array = surface["vertices"]
 				for vertex_index_variant in marked:
 					var vertex_index := int(vertex_index_variant)
-					var current_world := mesh_instance.to_global(local_vertices[vertex_index])
+					var current_world := world_vertices[vertex_index]
 					var normal := (collision_normals.get(
 							vertex_index, Vector3.ZERO) as Vector3).normalized()
 					if normal.is_zero_approx():
@@ -715,6 +757,7 @@ func _build_body_triangle_grid() -> void:
 	for surface_index in _body_source_mesh.get_surface_count():
 		var arrays := _body_source_mesh.surface_get_arrays(surface_index)
 		var vertices := FIT_GEOMETRY.skin_vertices_world(_body_mesh, arrays)
+		var regions := FIT_GEOMETRY.vertex_regions(_body_mesh, arrays)
 		var indices := arrays[Mesh.ARRAY_INDEX] as PackedInt32Array
 		var triangle_count := indices.size() / 3 if not indices.is_empty() else vertices.size() / 3
 		for triangle_index in triangle_count:
@@ -736,11 +779,12 @@ func _build_body_triangle_grid() -> void:
 				"b": b,
 				"c": c,
 				"normal": normal,
+				"region": FIT_GEOMETRY.triangle_region(regions, vertex_indices),
 				"surface": surface_index,
 				"vertices": vertex_indices,
 			})
-			var minimum_cell := _body_grid_cell(bounds.position)
-			var maximum_cell := _body_grid_cell(bounds.end)
+			var minimum_cell := FIT_GEOMETRY.grid_cell(bounds.position, BODY_GRID_CELL_SIZE)
+			var maximum_cell := FIT_GEOMETRY.grid_cell(bounds.end, BODY_GRID_CELL_SIZE)
 			for x in range(minimum_cell.x, maximum_cell.x + 1):
 				for y in range(minimum_cell.y, maximum_cell.y + 1):
 					for z in range(minimum_cell.z, maximum_cell.z + 1):
@@ -752,47 +796,15 @@ func _build_body_triangle_grid() -> void:
 	_body_normal_sign = 1.0 if orientation_score >= 0.0 else -1.0
 
 
-func _closest_body_projection(point: Vector3) -> Dictionary:
-	var center_cell := _body_grid_cell(point)
-	var maximum_ring := ceili(AUTO_SEARCH_RADIUS / BODY_GRID_CELL_SIZE)
-	var tested: Dictionary = {}
-	var best_distance_squared := INF
-	var result: Dictionary = {}
-	var first_occupied_ring := -1
-	for ring in range(maximum_ring + 1):
-		for x_offset in range(-ring, ring + 1):
-			for y_offset in range(-ring, ring + 1):
-				for z_offset in range(-ring, ring + 1):
-					if maxi(
-							absi(x_offset), maxi(absi(y_offset), absi(z_offset))) != ring:
-						continue
-					var cell := center_cell + Vector3i(x_offset, y_offset, z_offset)
-					var triangle_indices := _body_triangle_grid.get(
-							cell, PackedInt32Array()) as PackedInt32Array
-					for triangle_index in triangle_indices:
-						if tested.has(triangle_index):
-							continue
-						tested[triangle_index] = true
-						var triangle: Dictionary = _body_triangles[triangle_index]
-						var closest := FIT_GEOMETRY.closest_point_on_triangle(
-								point, triangle["a"], triangle["b"], triangle["c"])
-						var distance_squared := point.distance_squared_to(closest)
-						if distance_squared >= best_distance_squared:
-							continue
-						var normal: Vector3 = triangle["normal"]
-						if normal.is_zero_approx():
-							continue
-						best_distance_squared = distance_squared
-						result = {
-							"position": closest,
-							"normal": normal * _body_normal_sign,
-						}
-		if not result.is_empty() and first_occupied_ring < 0:
-			first_occupied_ring = ring
-		# One extra ring accounts for a closer triangle just across a cell boundary.
-		if first_occupied_ring >= 0 and ring >= first_occupied_ring + 1:
-			break
-	return result
+func _closest_body_projection(point: Vector3, region: String = "") -> Dictionary:
+	return FIT_GEOMETRY.closest_body_projection(
+			point,
+			_body_triangles,
+			_body_triangle_grid,
+			BODY_GRID_CELL_SIZE,
+			AUTO_SEARCH_RADIUS,
+			_body_normal_sign,
+			region)
 
 
 func _clipping_colors(world_vertices: PackedVector3Array, arrays: Array) -> PackedColorArray:
@@ -816,8 +828,8 @@ func _clipping_colors(world_vertices: PackedVector3Array, arrays: Array) -> Pack
 
 func _mark_body_triangles_near_point(point: Vector3) -> void:
 	var bounds := AABB(point, Vector3.ZERO).grow(CLIP_SEARCH_RADIUS)
-	var minimum_cell := _body_grid_cell(bounds.position)
-	var maximum_cell := _body_grid_cell(bounds.end)
+	var minimum_cell := FIT_GEOMETRY.grid_cell(bounds.position, BODY_GRID_CELL_SIZE)
+	var maximum_cell := FIT_GEOMETRY.grid_cell(bounds.end, BODY_GRID_CELL_SIZE)
 	var tested: Dictionary = {}
 	var best_distance_squared := INF
 	var best_triangle := -1
@@ -887,13 +899,6 @@ func _apply_body_clipping_colors() -> void:
 		rebuilt.surface_set_name(
 				surface_index, _body_source_mesh.surface_get_name(surface_index))
 	_body_mesh.mesh = rebuilt
-
-
-func _body_grid_cell(point: Vector3) -> Vector3i:
-	return Vector3i(
-			floori(point.x / BODY_GRID_CELL_SIZE),
-			floori(point.y / BODY_GRID_CELL_SIZE),
-			floori(point.z / BODY_GRID_CELL_SIZE))
 
 
 func _load_profile() -> void:
@@ -968,7 +973,8 @@ func _load_profile() -> void:
 
 
 func _profile_path() -> String:
-	return "%s/%s__%s.json" % [PROFILE_DIR, _safe_id(_body_id), _safe_id(_outfit_id)]
+	return "%s/%s__%s.json" % [
+			PROFILE_DIR, PROFILE_CODEC.safe_id(_body_id), PROFILE_CODEC.safe_id(_outfit_id)]
 
 
 func _handle_key(mesh_key: String, surface_index: int, vertex_index: int) -> String:
@@ -991,10 +997,3 @@ func _make_dot_material(color: Color) -> StandardMaterial3D:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.disable_receive_shadows = true
 	return material
-
-
-func _safe_id(value: String) -> String:
-	var result := ""
-	for character in value:
-		result += character if character.is_valid_identifier() or character == "-" else "_"
-	return result

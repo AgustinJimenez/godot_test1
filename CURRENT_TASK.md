@@ -12,7 +12,13 @@ automatic clearance. Its final collision pass welds coincident positions before 
 open rims, so UV/hard-normal vertex splits no longer create false holes in collision coverage;
 triangles merely touching a rim are still checked. Clearance is enforced outward-only rather than
 used as a shared target shell, preserving authored shirt/pants/boots layer distances for vertices
-that already clear the body. GPU Cloth Sim is vendored only for an isolated Male Peasant harness:
+that already clear the body. Leg-dominant surfaces additionally match body triangles by dominant
+left/right bone region, raycast from outside the matching limb, move at most 3 cm per pass, and smooth
+the correction over welded mesh adjacency. Only detected intersection vertices and garment vertices
+inside the body seed corrections; however, this gross mismatch genuinely selects 2,538 vertices
+versus 2,696 before, taking about 11.4 seconds. The actual Male Peasant front/oblique harness keeps
+pants and boots smooth with fewer large leg artifacts, but a thin outer-thigh body line remains. GPU
+Cloth Sim is vendored only for an isolated Male Peasant harness:
 static fit, gentle spine motion, animated body collision, and shirt/pants peer collision work, but
 thigh motion destabilizes the procedurally weighted pants and the add-on reports invalid GPU
 resources during shutdown on Godot 4.6.2/Metal.
@@ -825,9 +831,9 @@ wheel zooms. `OUTFIT_SCENE`/body swapped by editing the top-of-file consts.
 
 ## Next work
 
-1. Visually confirm that the 4 cm grid remains usable and responsive in Character Creator.
-2. Re-run Auto Adjust and confirm the former leg patches clear with position-welded boundary
-   detection; inspect collars, cuffs, hems, and authored tears for unwanted opening distortion.
+1. Inspect the remaining thin outer-thigh body line; it is not marked as an intersecting triangle,
+   so the next check must sample body coverage rather than repeat garment-edge intersection tests.
+2. Visually confirm that the 4 cm grid remains usable and responsive in Character Creator.
 3. Exercise saved profiles after the density change; handle identity is vertex-based, so existing
    edits should load unchanged.
 4. Author proper cloth-weight vertex colors in Blender instead of deriving them from vertex height.

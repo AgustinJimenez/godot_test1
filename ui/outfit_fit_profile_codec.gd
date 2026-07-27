@@ -3,6 +3,13 @@ extends RefCounted
 ## Compact JSON conversion for the per-vertex contact-fit layer.
 
 
+static func safe_id(value: String) -> String:
+	var result := ""
+	for character in value:
+		result += character if character.is_valid_identifier() or character == "-" else "_"
+	return result
+
+
 static func encode_auto_offsets(
 	auto_surface_offsets: Dictionary,
 	mesh_states: Dictionary,

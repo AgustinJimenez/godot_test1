@@ -16,6 +16,8 @@ const PANTS_FREE_Y := 0.86
 var _creator: Node3D
 var _capture_path := ""
 var _capture_settle_frames := CAPTURE_SETTLE_FRAMES
+var _use_gpu_cloth := true
+var _show_debug := false
 var _frames_after_setup := 0
 var _setup_done := false
 var _animation_time := 0.0
@@ -25,6 +27,8 @@ var _outfit_skeleton: Skeleton3D
 
 func _ready() -> void:
 	_capture_path = _argument_value("capture")
+	_use_gpu_cloth = _argument_value("cloth") != "false"
+	_show_debug = _argument_value("debug") == "true"
 	var settle_argument := _argument_value("settle_frames")
 	if settle_argument.is_valid_int():
 		_capture_settle_frames = maxi(settle_argument.to_int(), 1)
@@ -75,18 +79,26 @@ func _setup_cloth() -> void:
 		return
 	_body_skeleton = body_skeleton
 	_outfit_skeleton = outfit_skeleton
-	_creator._fit_editor.auto_adjust(0.005)
-	_creator._on_outfit_debug_colors_toggled(false)
-	_creator.outfit_debug_colors.set_pressed_no_signal(false)
-	var collider_mesh := _make_body_collider_mesh(
-			body_mesh, outfit_skeleton, outfit_root)
-	_apply_cloth_weights(shirt_mesh, SHIRT_FREE_Y, SHIRT_ANCHOR_Y, 1.0)
-	_apply_cloth_weights(pants_mesh, PANTS_FREE_Y, PANTS_ANCHOR_Y, 0.08)
-	_add_peer_solvers(
-			shirt_mesh, pants_mesh, collider_mesh, outfit_skeleton)
+	var fit_started := Time.get_ticks_msec()
+	var adjusted: int = _creator._fit_editor.auto_adjust(0.005)
+	print("OUTFIT_FIT_RESULT:%d:%dms" % [
+			adjusted, Time.get_ticks_msec() - fit_started])
+	if not _show_debug:
+		_creator._on_outfit_debug_colors_toggled(false)
+		_creator.outfit_debug_colors.set_pressed_no_signal(false)
+	if _use_gpu_cloth:
+		var collider_mesh := _make_body_collider_mesh(
+				body_mesh, outfit_skeleton, outfit_root)
+		_apply_cloth_weights(shirt_mesh, SHIRT_FREE_Y, SHIRT_ANCHOR_Y, 1.0)
+		_apply_cloth_weights(pants_mesh, PANTS_FREE_Y, PANTS_ANCHOR_Y, 0.08)
+		_add_peer_solvers(
+				shirt_mesh, pants_mesh, collider_mesh, outfit_skeleton)
 	_creator._face_focused = false
 	_creator._orbit_target = _creator.DEFAULT_ORBIT_TARGET
 	_creator._orbit_distance = _creator.DEFAULT_ORBIT_DISTANCE
+	var yaw_argument := _argument_value("yaw_degrees")
+	if yaw_argument.is_valid_float():
+		_creator._orbit_yaw = deg_to_rad(yaw_argument.to_float())
 	_creator._update_orbit_camera()
 	_setup_done = true
 	print("GPU_CLOTH_OUTFIT_READY")
