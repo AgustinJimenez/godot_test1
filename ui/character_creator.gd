@@ -35,6 +35,7 @@ const OUTFIT_PATHS := {
 	},
 }
 const DISCARD_SURFACE_SHADER := preload("res://shaders/discard_surface.gdshader")
+const BODY_REGION_MASK := preload("res://tools/outfit_pipeline/body_region_mask.gd")
 
 ## Both bodies were imported from the "Universal Base Characters" pack with
 ## a hand-built humanoid_map (see the character catalog manifests next to
@@ -583,6 +584,10 @@ func _rebuild_outfit() -> void:
 	preview_root.add_child(instance)
 	_preview_outfit = instance
 	_apply_outfit_materials(instance)
+	if base_mesh:
+		var masked := BODY_REGION_MASK.apply(base_mesh, instance)
+		if masked != null:
+			base_mesh.mesh = masked
 	_fit_editor.load_outfit(
 			instance, base_mesh, String(body["kind_id"]), _outfit_id,
 			_outfit_debug_colors and _show_outfit_clipping)
@@ -603,12 +608,15 @@ func _apply_body_debug_material(
 
 ## Outfit meshes include duplicate exposed skin. Hide those surfaces in this baseline so the
 ## complete base body is the only skin source; color only clothing blue in diagnostic mode.
+## When the outfit supplies a hand bridge (a skin surface bridging sleeve cuff to fingertips),
+## keep it visible so the bridge replaces the body's hidden hand geometry.
 func _apply_outfit_materials(root: Node3D) -> void:
 	var hidden_skin_material := ShaderMaterial.new()
 	hidden_skin_material.shader = DISCARD_SURFACE_SHADER
 	var clothes_material := _make_debug_material(
 			Color.WHITE if _show_outfit_clipping else Color(0.03, 0.18, 0.95))
 	clothes_material.vertex_color_use_as_albedo = _show_outfit_clipping
+	var has_hand_bridge := BODY_REGION_MASK.outfit_supplies_hand_bridge(root)
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
 		for surface_index in mesh_instance.mesh.get_surface_count():
@@ -617,8 +625,10 @@ func _apply_outfit_materials(root: Node3D) -> void:
 			if source_material != null:
 				material_name = source_material.resource_name.to_lower()
 			var is_skin := "regular_male" in material_name or "regular_female" in material_name
-			if is_skin:
+			if is_skin and not has_hand_bridge:
 				mesh_instance.set_surface_override_material(surface_index, hidden_skin_material)
+			elif is_skin and has_hand_bridge:
+				mesh_instance.set_surface_override_material(surface_index, null)
 			elif _outfit_debug_colors:
 				mesh_instance.set_surface_override_material(surface_index, clothes_material)
 			else:
