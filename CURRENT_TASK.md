@@ -4,24 +4,19 @@
 
 **Branch:** `feature/gpu-cloth-outfit-fit`
 
-**Status:** The body-normal outfit fitter and GPU cloth experiment are checkpointed. The manual
-fitting overlay now uses a direction-aware 4 cm surface grid (roughly four times the controls of the
-original 8 cm grid), one scalar body distance per point, per-row reset, persistent body/outfit
-profiles, independently hideable control-point spheres, clipping visualization, and vertex-level
-automatic clearance. Its final collision pass welds coincident positions before identifying real
-open rims, so UV/hard-normal vertex splits no longer create false holes in collision coverage;
-triangles merely touching a rim are still checked. Clearance is enforced outward-only rather than
-used as a shared target shell, preserving authored shirt/pants/boots layer distances for vertices
-that already clear the body. Leg-dominant surfaces additionally match body triangles by dominant
-left/right bone region, raycast from outside the matching limb, move at most 3 cm per pass, and smooth
-the correction over welded mesh adjacency. Only detected intersection vertices and garment vertices
-inside the body seed corrections; however, this gross mismatch genuinely selects 2,538 vertices
-versus 2,696 before, taking about 11.4 seconds. The actual Male Peasant front/oblique harness keeps
-pants and boots smooth with fewer large leg artifacts, but a thin outer-thigh body line remains. GPU
-Cloth Sim is vendored only for an isolated Male Peasant harness:
-static fit, gentle spine motion, animated body collision, and shirt/pants peer collision work, but
-thigh motion destabilizes the procedurally weighted pants and the add-on reports invalid GPU
-resources during shutdown on Godot 4.6.2/Metal.
+**Status:** BodyRegionMask is implemented in `tools/outfit_pipeline/body_region_mask.gd` and integrated into `ui/character_creator.gd`. The character creator now uses bone-weight-based masking (DEFAULT_HIDDEN_BONES, HAND_BONES, NECK_EXEMPT_BONES) to rebuild the body mesh with covered triangles dropped, replacing the crude discard-shader baseline. The manual fitting overlay uses a direction-aware 4 cm surface grid, one scalar body distance per point, per-row reset, persistent body/outfit profiles, independently hideable control-point spheres, clipping visualization, and vertex-level automatic clearance. Its final collision pass welds coincident positions before identifying real open rims, so UV/hard-normal vertex splits no longer create false holes in collision coverage; triangles merely touching a rim are still checked. Clearance is enforced outward-only rather than used as a shared target shell, preserving authored shirt/pants/boots layer distances for vertices that already clear the body. Leg-dominant surfaces additionally match body triangles by dominant left/right bone region, raycast from outside the matching limb, move at most 3 cm per pass, and smooth the correction over welded mesh adjacency. Only detected intersection vertices and garment vertices inside the body seed corrections; however, this gross mismatch genuinely selects 2,538 vertices versus 2,696 before, taking about 11.4 seconds. The actual Male Peasant front/oblique harness keeps pants and boots smooth with fewer large leg artifacts, but a thin outer-thigh body line remains. GPU Cloth Sim is vendored only for an isolated Male Peasant harness: static fit, gentle spine motion, animated body collision, and shirt/pants peer collision work, but thigh motion destabilizes the procedurally weighted pants and the add-on reports invalid GPU resources during shutdown on Godot 4.6.2/Metal.
+
+## BodyRegionMask implementation
+
+`tools/outfit_pipeline/body_region_mask.gd` (`BodyRegionMask`) replaces the discard-shader baseline in `character_creator.gd` with bone-weight-based body masking:
+
+- `DEFAULT_HIDDEN_BONES` covers torso, arms to the wrist, legs, and feet (pelvis, spine 01-03, clavicle, upperarm, lowerarm, thigh, calf, foot/ball, both sides) - what all four combinations fully cover. Hands/fingers are the deliberate exception (see "Outfit-supplied hand bridges" below) - confirmed by every render this session that both outfit styles leave hands bare.
+- `HAND_BONES` is kept separately from `DEFAULT_HIDDEN_BONES`. `outfit_supplies_hand_bridge(outfit_root)` checks whether the *specific* outfit about to be shown has a bridge surface. When a bridge exists, both `DEFAULT_HIDDEN_BONES + HAND_BONES` are passed into `apply()` (hiding the base body's hand/fingers entirely for that combination) and the outfit's bridge is kept visible (not discarded). When no bridge exists, only `DEFAULT_HIDDEN_BONES` applies and the body's hand as always.
+- `NECK_EXEMPT_BONES` (`neck_01`, `Head`) and `NECK_EXEMPT_WEIGHT` (`0.15`) prevent the neck/collar boundary from being hidden - a vertex already assigned to a hidden bone is exempted only when it also carries at least that much combined weight on an exempt bone.
+- `apply()` rebuilds the body mesh by dropping triangles where all three vertices are hidden. This preserves boundary triangles (authored openings at collar notch, ragged sleeve/boot edges) while removing fully-covered geometry underneath clothing.
+- The bridge's own texture (`T_Regular_Male_Dark_BaseColor.png`) is tinted to the selected `SKIN_TONES` value in `character_creator.gd`.
+
+Verified on all four body/outfit combinations (Male Peasant, Female Peasant, Male Ranger, Female Ranger), front and back view each, using the plain unmodified outfit + masked body through the character creator preview.
 
 ## Active implementation
 
