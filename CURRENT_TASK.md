@@ -1,40 +1,33 @@
-# Current Task: Modular outfit composition - bone-region body masking
+# Current Task: Body-specific outfit fitting and cloth-layer collision
 
-**Date:** 2026-07-24
-**Branch:** `main`
-**Status:** Working solution verified on all four body/outfit combinations (Male Peasant, Female
-Peasant, Male Ranger, Female Ranger - front + back each), wired into `ui/character_creator.gd`. Three
-real defects found via real-materials review there (a forearm/hand gap caused by a skeleton mismatch
-between the outfit and the base body - initially "fixed" in a way that looked right in debug colors but
-wasn't, a neck/collar/shoulder gap, and foot-clipping past the boot sides - see "Outfit-supplied hand
-bridges", "Neck/collar exemption", and "Foot clipping" below) are all fixed and re-verified across all
-four combinations. A fourth suspected defect (a Male-Peasant chest V-notch gap) turned out to be a
-false alarm from a flawed mesh measurement - but the debug tool built to fix it evolved, at the user's
-suggestion, into a genuine geometric cloth-coverage test that now runs on every combination (see
-"Chest V-notch" and "Geometric cloth-coverage test" below). The remaining Male Peasant collar-base gap
-that a distance/margin heuristic couldn't close without reopening fold-noise streaking elsewhere (see
-git history) was later replaced entirely by an exact point-in-hole test against the outfit's own mesh
-topology (see "Exact collar-hole detection" below) - no sliders needed for it anymore. That test then
-surfaced two of its own real bugs, both causing actual base-body skin to render through the shirt's
-back (not a masking void) on Male Peasant specifically: a 2D point-in-polygon test with no check on
-distance along the hole's own plane normal, and the older neck-weight blend-zone exemption running
-unconditionally ahead of the exact test instead of only as its fallback - see "Exact collar-hole
-detection" for both. A tiny remaining sliver at Male Peasant's back nape was initially assessed (by
-measurement) as a real, correctly-traced dip in the outfit's own collar hole, not a bug - and a
-manual, generic per-wedge trim control was added as the way to address it, since no automatic
-threshold could safely distinguish it from a legitimate same-size disconnected skin fragment found
-on Female Peasant (see "Collar wedge trim" below). That "not a bug" assessment was later proven
-wrong after the user pushed back twice: rendering the outfit's own mesh alone (no body) at that
-exact spot showed completely continuous, unbroken fabric - a real false positive in
-`_point_in_hole()`, caused by a single best-fit plane failing to represent a collar hole loop that
-isn't actually flat. Fixed by replacing the plane-projection approach with a fan-triangulated cap
-built from the loop's own real 3D vertices (see "A real bug in the collar-hole test itself" under
-"Collar wedge trim" below) - re-verified clean across all four combinations. The wedge-trim tool
-itself stays, now for genuine cases the automatic test still can't safely resolve, not as a
-workaround for this specific false positive. Remaining: confirm masking holds up under actual
-animation, not just rest pose.
+**Date:** 2026-07-27
 
-## The actual problem, and the simple fix
+**Branch:** `feature/gpu-cloth-outfit-fit`
+
+**Status:** The body-normal outfit fitter and GPU cloth experiment are checkpointed. The manual
+fitting overlay now uses a direction-aware 4 cm surface grid (roughly four times the controls of the
+original 8 cm grid), one scalar body distance per point, per-row reset, persistent body/outfit
+profiles, independently hideable control-point spheres, clipping visualization, and vertex-level
+automatic clearance. Its final collision pass welds coincident positions before identifying real
+open rims, so UV/hard-normal vertex splits no longer create false holes in collision coverage;
+triangles merely touching a rim are still checked. Clearance is enforced outward-only rather than
+used as a shared target shell, preserving authored shirt/pants/boots layer distances for vertices
+that already clear the body. GPU Cloth Sim is vendored only for an isolated Male Peasant harness:
+static fit, gentle spine motion, animated body collision, and shirt/pants peer collision work, but
+thigh motion destabilizes the procedurally weighted pants and the add-on reports invalid GPU
+resources during shutdown on Godot 4.6.2/Metal.
+
+## Active implementation
+
+- `ui/outfit_fit_editor.gd` owns manual controls, saved offsets, automatic fitting, and diagnostics.
+- `ui/outfit_fit_grid_sampler.gd` selects direction-aware garment vertices on the 4 cm grid.
+- `assets/outfit_fit_profiles/` stores reusable body/outfit-specific adjustments.
+- `tests/manual/outfit_cloth/gpu_cloth_outfit_test.tscn` is the isolated GPU cloth trial.
+- `addons/godot_gpu_cloth/` is pinned to upstream commit `bd917afd15a8389370c7e12ec9c074555834cf68`;
+  it is deliberately not enabled in `project.godot`.
+- Checkpoints: `c6c7b12` (body-specific fitter) and `bf24ff5` (GPU cloth trial).
+
+## Earlier body-masking baseline
 
 The outfit pack's own `Readme.txt` (in the source download, `~/Downloads/Modular Character Outfits -
 Fantasy[Standard]/Readme.txt`) says:
@@ -832,21 +825,16 @@ wheel zooms. `OUTFIT_SCENE`/body swapped by editing the top-of-file consts.
 
 ## Next work
 
-1. ~~Roll out to the other three body/outfit combinations~~ - DONE, all four combinations verified.
-2. ~~Wire into `ui/character_creator.gd`~~ - DONE. `_rebuild_outfit()` resets the selected body's
-   mesh to a cached original (`_preview_body_original_mesh`, captured once per body load in
-   `_rebuild_preview()`) and calls `BodyRegionMask.apply()` on it whenever an outfit is selected;
-   selecting "None" leaves the mesh at the cached original, unmasked. Live-verified in the actual
-   `character_creator.tscn` (not just the standalone test harness): Male body with Peasant selected
-   renders clean (face close-up and full-body framing both checked), and switching back to "None"
-   correctly restores the complete, hole-free body.
-3. Confirm this holds up under actual animation (walking, etc.), not just the rest T-pose - masking is
-   bone-based so it should, but hasn't been checked against a playing animation yet.
-4. This whole outfit system is still debug-only: no `PlayerProfile` field, no
-   `player_body_cosmetics.gd` wiring, `ui/character_creator.gd`'s Outfit dropdown is explicitly
-   marked temporary.
-5. ~~Replace the tunable-sliders collar-gap workaround with exact position-based mesh boundary
-   detection~~ - DONE, see "Exact collar-hole detection" above.
+1. Visually confirm that the 4 cm grid remains usable and responsive in Character Creator.
+2. Re-run Auto Adjust and confirm the former leg patches clear with position-welded boundary
+   detection; inspect collars, cuffs, hems, and authored tears for unwanted opening distortion.
+3. Exercise saved profiles after the density change; handle identity is vertex-based, so existing
+   edits should load unchanged.
+4. Author proper cloth-weight vertex colors in Blender instead of deriving them from vertex height.
+5. Retest shirt/pants collision through representative spine, hip, and leg animations.
+6. Diagnose or patch the upstream RenderingDevice teardown errors before enabling the solver in
+   Character Creator or gameplay.
+7. Keep body masking as the stable fallback until the animated fitting/cloth path passes those tests.
 
 ## Superseded work: shrinkwrap-conform fitting (do not resume without a reason)
 

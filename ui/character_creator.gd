@@ -162,6 +162,8 @@ const FACE_ORBIT_DISTANCE := 0.8
 @onready var edit_fit_button: Button = $UI/Panel/Margin/VBox/OutfitRow/EditFit
 @onready var start_button: Button = $UI/Panel/Margin/VBox/StartButton
 @onready var fit_panel: PanelContainer = $UI/FitPanel
+@onready var fit_show_control_points: CheckButton = (
+		$UI/FitPanel/Margin/VBox/ShowControlPoints)
 @onready var fit_selection: Label = $UI/FitPanel/Margin/VBox/Selection
 @onready var fit_distance: SpinBox = $UI/FitPanel/Margin/VBox/Grid/Distance
 @onready var fit_distance_slider: HSlider = $UI/FitPanel/Margin/VBox/Grid/DistanceSlider
@@ -268,6 +270,7 @@ func _ready() -> void:
 	outfit_debug_colors.toggled.connect(_on_outfit_debug_colors_toggled)
 	outfit_show_clipping.toggled.connect(_on_outfit_show_clipping_toggled)
 	edit_fit_button.toggled.connect(_on_edit_fit_toggled)
+	fit_show_control_points.toggled.connect(_on_fit_show_control_points_toggled)
 	fit_distance.value_changed.connect(_on_fit_value_changed)
 	fit_radius.value_changed.connect(_on_fit_value_changed)
 	fit_distance_slider.value_changed.connect(
@@ -427,6 +430,10 @@ func _on_edit_fit_toggled(enabled: bool) -> void:
 		_orbit_target = DEFAULT_ORBIT_TARGET
 		_orbit_distance = DEFAULT_ORBIT_DISTANCE
 		_update_orbit_camera()
+
+
+func _on_fit_show_control_points_toggled(enabled: bool) -> void:
+	_fit_editor.set_control_points_visible(enabled)
 
 
 func _on_fit_selection_changed(label: String, distance: float, radius: float) -> void:

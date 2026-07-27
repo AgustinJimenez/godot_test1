@@ -2,6 +2,15 @@ class_name OutfitFitGeometry
 extends RefCounted
 ## Pure geometry queries shared by contact fitting and penetration visualization.
 
+const BOUNDARY_POSITION_EPSILON := 0.0001
+
+
+static func solid_colors(count: int, color: Color) -> PackedColorArray:
+	var colors := PackedColorArray()
+	colors.resize(count)
+	colors.fill(color)
+	return colors
+
 
 static func closest_point_on_triangle(
 	point: Vector3,
@@ -67,7 +76,7 @@ static func find_intersections(
 	var cloth_vertices: Dictionary = {}
 	var cloth_normals: Dictionary = {}
 	var body_indices: Dictionary = {}
-	var boundary_vertices := _boundary_vertices(indices)
+	var boundary_vertices := _boundary_vertices(world_vertices, indices)
 	var triangle_count := (
 			indices.size() / 3 if not indices.is_empty() else world_vertices.size() / 3)
 	for triangle_index in triangle_count:
@@ -77,9 +86,12 @@ static func find_intersections(
 			cloth_indices[corner] = (
 					indices[triangle_index * 3 + corner]
 					if not indices.is_empty() else triangle_index * 3 + corner)
+		# A triangle made entirely from a real open rim belongs to an intentional
+		# collar/cuff/tear opening. Triangles merely touching that rim still need
+		# collision checks; skipping them created an unchecked band around openings.
 		if (boundary_vertices.has(cloth_indices[0])
-				or boundary_vertices.has(cloth_indices[1])
-				or boundary_vertices.has(cloth_indices[2])):
+				and boundary_vertices.has(cloth_indices[1])
+				and boundary_vertices.has(cloth_indices[2])):
 			continue
 		var a := world_vertices[cloth_indices[0]]
 		var b := world_vertices[cloth_indices[1]]
@@ -115,21 +127,48 @@ static func find_intersections(
 	}
 
 
-static func _boundary_vertices(indices: PackedInt32Array) -> Dictionary:
+static func _boundary_vertices(
+	vertices: PackedVector3Array,
+	indices: PackedInt32Array,
+) -> Dictionary:
 	var edge_counts: Dictionary = {}
+	var edge_vertices: Dictionary = {}
 	for triangle_start in range(0, indices.size(), 3):
 		for corner in 3:
 			var first := indices[triangle_start + corner]
 			var second := indices[triangle_start + (corner + 1) % 3]
-			var edge := Vector2i(mini(first, second), maxi(first, second))
+			var first_position := _position_key(vertices[first])
+			var second_position := _position_key(vertices[second])
+			if first_position == second_position:
+				continue
+			var edge := _edge_key(first_position, second_position)
 			edge_counts[edge] = int(edge_counts.get(edge, 0)) + 1
+			var members: Dictionary = edge_vertices.get(edge, {})
+			members[first] = true
+			members[second] = true
+			edge_vertices[edge] = members
 	var result: Dictionary = {}
 	for edge_variant in edge_counts:
 		if edge_counts[edge_variant] == 1:
-			var edge := edge_variant as Vector2i
-			result[edge.x] = true
-			result[edge.y] = true
+			for vertex_index in (edge_vertices[edge_variant] as Dictionary):
+				result[vertex_index] = true
 	return result
+
+
+static func _position_key(position: Vector3) -> Vector3i:
+	return Vector3i(
+			roundi(position.x / BOUNDARY_POSITION_EPSILON),
+			roundi(position.y / BOUNDARY_POSITION_EPSILON),
+			roundi(position.z / BOUNDARY_POSITION_EPSILON))
+
+
+static func _edge_key(first: Vector3i, second: Vector3i) -> String:
+	var first_text := "%d,%d,%d" % [first.x, first.y, first.z]
+	var second_text := "%d,%d,%d" % [second.x, second.y, second.z]
+	return (
+			first_text + "|" + second_text
+			if first_text < second_text
+			else second_text + "|" + first_text)
 
 
 static func _cell(point: Vector3, size: float) -> Vector3i:

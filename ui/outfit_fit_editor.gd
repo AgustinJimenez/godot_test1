@@ -15,7 +15,7 @@ const GRID_SAMPLER := preload("res://ui/outfit_fit_grid_sampler.gd")
 const FIT_GEOMETRY := preload("res://ui/outfit_fit_geometry.gd")
 const PROFILE_CODEC := preload("res://ui/outfit_fit_profile_codec.gd")
 const PROFILE_SCHEMA := 1
-const HANDLE_GRID_SPACING := 0.08
+const HANDLE_GRID_SPACING := 0.04
 const DEFAULT_RADIUS := 0.08
 const PICK_RADIUS_PX := 14.0
 const DOT_RADIUS := 0.009
@@ -45,6 +45,7 @@ var _auto_surface_offsets: Dictionary = {}
 var _dots: Dictionary = {}
 var _selected_key := ""
 var _editing := false
+var _show_control_points := true
 var _body_triangles: Array[Dictionary] = []
 var _body_triangle_grid: Dictionary = {}
 var _body_normal_sign := 1.0
@@ -116,6 +117,11 @@ func set_editing(enabled: bool) -> void:
 		selection_cleared.emit()
 	_update_dot_visibility()
 	_refresh_dot_styles()
+
+
+func set_control_points_visible(enabled: bool) -> void:
+	_show_control_points = enabled
+	_update_dot_visibility()
 
 func set_clipping_visualization(enabled: bool) -> void:
 	if enabled == _visualize_clipping:
@@ -273,7 +279,7 @@ func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 					var signed_distance := (
 							current_world - (projection["position"] as Vector3)).dot(normal)
 					var error := clearance - signed_distance
-					if absf(error) < minf(clearance * 0.25, 0.00025):
+					if error <= minf(clearance * 0.25, 0.00025):
 						continue
 					var corrected_world := current_world + normal * error
 					var local_correction := (
@@ -478,7 +484,7 @@ func _update_dot_visibility() -> void:
 	for dot_variant in _dots.values():
 		var dot := dot_variant as MeshInstance3D
 		if is_instance_valid(dot):
-			dot.visible = _editing
+			dot.visible = _editing and _show_control_points
 
 
 func _refresh_dot_positions() -> void:
@@ -616,7 +622,8 @@ func _rebuild_mesh(mesh_key: String, clipping_colors: Dictionary = {}) -> void:
 		arrays[Mesh.ARRAY_VERTEX] = vertices
 		if _visualize_clipping and surface["is_clothing"]:
 			arrays[Mesh.ARRAY_COLOR] = clipping_colors.get(
-					surface_index, _solid_colors(vertices.size(), CLOTH_DEBUG_COLOR))
+					surface_index,
+					FIT_GEOMETRY.solid_colors(vertices.size(), CLOTH_DEBUG_COLOR))
 		surface["arrays"] = arrays
 	var rebuilt := ArrayMesh.new()
 	for blend_shape_index in source.get_blend_shape_count():
@@ -887,13 +894,6 @@ func _body_grid_cell(point: Vector3) -> Vector3i:
 			floori(point.x / BODY_GRID_CELL_SIZE),
 			floori(point.y / BODY_GRID_CELL_SIZE),
 			floori(point.z / BODY_GRID_CELL_SIZE))
-
-
-func _solid_colors(count: int, color: Color) -> PackedColorArray:
-	var colors := PackedColorArray()
-	colors.resize(count)
-	colors.fill(color)
-	return colors
 
 
 func _load_profile() -> void:

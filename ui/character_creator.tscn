@@ -202,6 +202,12 @@ layout_mode = 2
 text = "Click a cyan surface point, then adjust its distance from the body."
 autowrap_mode = 2
 
+[node name="ShowControlPoints" type="CheckButton" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+tooltip_text = "Hide the cyan/orange fitting spheres without leaving Edit Fit"
+button_pressed = true
+text = "Show control points"
+
 [node name="Selection" type="Label" parent="UI/FitPanel/Margin/VBox"]
 layout_mode = 2
 text = "No point selected"
