@@ -141,7 +141,7 @@ const ZOOM_STEP := 0.15
 const MIN_ORBIT_DISTANCE := 0.5
 const MAX_ORBIT_DISTANCE := 4.0
 const DEFAULT_ORBIT_TARGET := Vector3(0, 1.0, 0)
-const DEFAULT_ORBIT_DISTANCE := 2.4
+const DEFAULT_ORBIT_DISTANCE := 3.0
 const FACE_ORBIT_TARGET := Vector3(0, 1.65, 0)
 const FACE_ORBIT_DISTANCE := 0.8
 
@@ -158,7 +158,24 @@ const FACE_ORBIT_DISTANCE := 0.8
 @onready var skin_tone_option: OptionButton = $UI/Panel/Margin/VBox/SkinToneRow/SkinToneOption
 @onready var outfit_option: OptionButton = $UI/Panel/Margin/VBox/OutfitRow/OutfitOption
 @onready var outfit_debug_colors: CheckButton = $UI/Panel/Margin/VBox/OutfitRow/DebugColors
+@onready var outfit_show_clipping: CheckButton = $UI/Panel/Margin/VBox/OutfitRow/ShowClipping
+@onready var edit_fit_button: Button = $UI/Panel/Margin/VBox/OutfitRow/EditFit
 @onready var start_button: Button = $UI/Panel/Margin/VBox/StartButton
+@onready var fit_panel: PanelContainer = $UI/FitPanel
+@onready var fit_selection: Label = $UI/FitPanel/Margin/VBox/Selection
+@onready var fit_distance: SpinBox = $UI/FitPanel/Margin/VBox/Grid/Distance
+@onready var fit_distance_slider: HSlider = $UI/FitPanel/Margin/VBox/Grid/DistanceSlider
+@onready var fit_reset_distance: Button = $UI/FitPanel/Margin/VBox/Grid/ResetDistance
+@onready var fit_radius: SpinBox = $UI/FitPanel/Margin/VBox/Grid/Radius
+@onready var fit_radius_slider: HSlider = $UI/FitPanel/Margin/VBox/Grid/RadiusSlider
+@onready var fit_reset_radius: Button = $UI/FitPanel/Margin/VBox/Grid/ResetRadius
+@onready var fit_auto_clearance: SpinBox = $UI/FitPanel/Margin/VBox/Grid/AutoClearance
+@onready var fit_auto_clearance_slider: HSlider = $UI/FitPanel/Margin/VBox/Grid/AutoClearanceSlider
+@onready var fit_reset_auto_clearance: Button = $UI/FitPanel/Margin/VBox/Grid/ResetAutoClearance
+@onready var fit_auto_adjust: Button = $UI/FitPanel/Margin/VBox/ButtonRow/AutoAdjust
+@onready var fit_reset_all: Button = $UI/FitPanel/Margin/VBox/ButtonRow/ResetAll
+@onready var fit_save: Button = $UI/FitPanel/Margin/VBox/Save
+@onready var fit_status: Label = $UI/FitPanel/Margin/VBox/Status
 
 ## One independent OptionButton-backed choice (Hairstyle, Facial Hair, or Eyebrows). `items` is
 ## one of the consts above; `indices` maps each dropdown row back to an `items` index since
@@ -204,6 +221,7 @@ var _eye_color := "brown"
 var _skin_tone := "caramel"
 var _outfit_id := "peasant"
 var _outfit_debug_colors := true
+var _show_outfit_clipping := true
 var _preview_body: Node3D
 var _preview_outfit: Node3D
 var _hair_slot: Slot
@@ -215,6 +233,8 @@ var _orbit_distance := FACE_ORBIT_DISTANCE
 var _orbit_target := FACE_ORBIT_TARGET
 var _orbiting := false
 var _face_focused := true
+var _fit_editor: OutfitFitEditor
+var _updating_fit_controls := false
 
 
 func _ready() -> void:
@@ -246,7 +266,29 @@ func _ready() -> void:
 	skin_tone_option.item_selected.connect(_on_skin_tone_selected)
 	outfit_option.item_selected.connect(_on_outfit_selected)
 	outfit_debug_colors.toggled.connect(_on_outfit_debug_colors_toggled)
+	outfit_show_clipping.toggled.connect(_on_outfit_show_clipping_toggled)
+	edit_fit_button.toggled.connect(_on_edit_fit_toggled)
+	fit_distance.value_changed.connect(_on_fit_value_changed)
+	fit_radius.value_changed.connect(_on_fit_value_changed)
+	fit_distance_slider.value_changed.connect(
+			_on_fit_slider_changed.bind(fit_distance))
+	fit_radius_slider.value_changed.connect(
+			_on_fit_slider_changed.bind(fit_radius))
+	fit_reset_distance.pressed.connect(_on_fit_reset_distance)
+	fit_reset_radius.pressed.connect(_on_fit_reset_radius)
+	fit_auto_clearance.value_changed.connect(_on_fit_auto_clearance_changed)
+	fit_auto_clearance_slider.value_changed.connect(_on_fit_auto_clearance_changed)
+	fit_reset_auto_clearance.pressed.connect(_on_fit_reset_auto_clearance)
+	fit_auto_adjust.pressed.connect(_on_fit_auto_adjust)
+	fit_reset_all.pressed.connect(_on_fit_reset_all)
+	fit_save.pressed.connect(_on_fit_save)
 	start_button.pressed.connect(_on_start_pressed)
+	_fit_editor = OutfitFitEditor.new()
+	add_child(_fit_editor)
+	_fit_editor.setup(camera)
+	_fit_editor.selection_changed.connect(_on_fit_selection_changed)
+	_fit_editor.selection_cleared.connect(_on_fit_selection_cleared)
+	_fit_editor.status_changed.connect(_on_fit_status_changed)
 	if PlayerProfile.has_profile:
 		_select_stored_profile()
 	body_option.select(_body_index)
@@ -351,7 +393,134 @@ func _on_outfit_selected(index: int) -> void:
 
 func _on_outfit_debug_colors_toggled(enabled: bool) -> void:
 	_outfit_debug_colors = enabled
-	_rebuild_outfit()
+	outfit_show_clipping.disabled = not enabled
+	_refresh_outfit_debug_preview()
+
+
+func _on_outfit_show_clipping_toggled(enabled: bool) -> void:
+	_show_outfit_clipping = enabled
+	_refresh_outfit_debug_preview()
+
+
+func _refresh_outfit_debug_preview() -> void:
+	if not is_instance_valid(_preview_body) or not is_instance_valid(_preview_outfit):
+		return
+	var body: Dictionary = BODIES[_body_index]
+	var base_mesh := _preview_body.find_child(
+			String(body["mesh_name"]), true, false) as MeshInstance3D
+	if base_mesh == null:
+		return
+	_fit_editor.set_clipping_visualization(
+			_outfit_debug_colors and _show_outfit_clipping)
+	_apply_body_debug_material(base_mesh)
+	_apply_outfit_materials(_preview_outfit)
+
+
+func _on_edit_fit_toggled(enabled: bool) -> void:
+	if enabled and not _fit_editor.has_outfit():
+		edit_fit_button.set_pressed_no_signal(false)
+		return
+	fit_panel.visible = enabled
+	_fit_editor.set_editing(enabled)
+	if enabled:
+		_face_focused = false
+		_orbit_target = DEFAULT_ORBIT_TARGET
+		_orbit_distance = DEFAULT_ORBIT_DISTANCE
+		_update_orbit_camera()
+
+
+func _on_fit_selection_changed(label: String, distance: float, radius: float) -> void:
+	_updating_fit_controls = true
+	fit_selection.text = label
+	fit_distance.value = distance * 100.0
+	fit_radius.value = radius
+	fit_distance_slider.value = distance * 100.0
+	fit_radius_slider.value = radius
+	_updating_fit_controls = false
+	_set_fit_controls_enabled(true)
+
+
+func _on_fit_selection_cleared() -> void:
+	fit_selection.text = "No point selected"
+	_set_fit_controls_enabled(false)
+
+
+func _on_fit_value_changed(_value: float) -> void:
+	if _updating_fit_controls:
+		return
+	_updating_fit_controls = true
+	fit_distance_slider.value = fit_distance.value
+	fit_radius_slider.value = fit_radius.value
+	_updating_fit_controls = false
+	_apply_fit_control_values()
+
+
+func _on_fit_slider_changed(value: float, input: SpinBox) -> void:
+	if _updating_fit_controls:
+		return
+	_updating_fit_controls = true
+	input.value = value
+	_updating_fit_controls = false
+	_apply_fit_control_values()
+
+
+func _apply_fit_control_values() -> void:
+	_fit_editor.set_selected_distance(fit_distance.value / 100.0, fit_radius.value)
+
+
+func _on_fit_reset_distance() -> void:
+	_fit_editor.reset_selected_distance()
+
+
+func _on_fit_reset_radius() -> void:
+	_updating_fit_controls = true
+	fit_radius.value = 0.08
+	fit_radius_slider.value = 0.08
+	_updating_fit_controls = false
+	_apply_fit_control_values()
+
+
+func _on_fit_reset_all() -> void:
+	_fit_editor.reset_all()
+
+
+func _on_fit_auto_clearance_changed(value: float) -> void:
+	if _updating_fit_controls:
+		return
+	_updating_fit_controls = true
+	fit_auto_clearance.value = value
+	fit_auto_clearance_slider.value = value
+	_updating_fit_controls = false
+
+
+func _on_fit_reset_auto_clearance() -> void:
+	fit_auto_clearance.value = 0.5
+
+
+func _on_fit_auto_adjust() -> void:
+	fit_auto_adjust.disabled = true
+	fit_status.text = "Contact-fitting with %.1f mm clearance..." % [
+		fit_auto_clearance.value * 10.0]
+	await get_tree().process_frame
+	_fit_editor.auto_adjust(fit_auto_clearance.value / 100.0)
+	fit_auto_adjust.disabled = false
+
+
+func _on_fit_save() -> void:
+	_fit_editor.save_profile()
+
+
+func _on_fit_status_changed(message: String) -> void:
+	fit_status.text = message
+
+
+func _set_fit_controls_enabled(enabled: bool) -> void:
+	fit_distance.editable = enabled
+	fit_radius.editable = enabled
+	fit_distance_slider.editable = enabled
+	fit_radius_slider.editable = enabled
+	fit_reset_distance.disabled = not enabled
+	fit_reset_radius.disabled = not enabled
 
 
 func _on_start_pressed() -> void:
@@ -381,6 +550,9 @@ func _rebuild_preview() -> void:
 ## Baseline preview: keep the complete body and layer clothing over it. Outfit-authored duplicate
 ## skin primitives are hidden so only the selected base character supplies skin.
 func _rebuild_outfit() -> void:
+	if is_instance_valid(_fit_editor):
+		_fit_editor.clear_outfit()
+	edit_fit_button.disabled = true
 	if is_instance_valid(_preview_outfit):
 		_preview_outfit.queue_free()
 		_preview_outfit = null
@@ -391,6 +563,9 @@ func _rebuild_outfit() -> void:
 	if base_mesh:
 		_apply_body_debug_material(base_mesh)
 	if path.is_empty():
+		edit_fit_button.set_pressed_no_signal(false)
+		fit_panel.visible = false
+		_fit_editor.set_editing(false)
 		return
 	var resource := load(path)
 	if not resource is PackedScene:
@@ -401,6 +576,10 @@ func _rebuild_outfit() -> void:
 	preview_root.add_child(instance)
 	_preview_outfit = instance
 	_apply_outfit_materials(instance)
+	_fit_editor.load_outfit(
+			instance, base_mesh, String(body["kind_id"]), _outfit_id,
+			_outfit_debug_colors and _show_outfit_clipping)
+	edit_fit_button.disabled = not _fit_editor.has_outfit()
 
 
 func _apply_body_debug_material(
@@ -409,7 +588,10 @@ func _apply_body_debug_material(
 	if not _outfit_debug_colors:
 		mesh_instance.material_override = null
 		return
-	mesh_instance.material_override = _make_debug_material(Color(0.9, 0.04, 0.04))
+	var material := _make_debug_material(
+			Color.WHITE if _show_outfit_clipping else Color(0.9, 0.04, 0.04))
+	material.vertex_color_use_as_albedo = _show_outfit_clipping
+	mesh_instance.material_override = material
 
 
 ## Outfit meshes include duplicate exposed skin. Hide those surfaces in this baseline so the
@@ -417,7 +599,9 @@ func _apply_body_debug_material(
 func _apply_outfit_materials(root: Node3D) -> void:
 	var hidden_skin_material := ShaderMaterial.new()
 	hidden_skin_material.shader = DISCARD_SURFACE_SHADER
-	var clothes_material := _make_debug_material(Color(0.03, 0.18, 0.95))
+	var clothes_material := _make_debug_material(
+			Color.WHITE if _show_outfit_clipping else Color(0.03, 0.18, 0.95))
+	clothes_material.vertex_color_use_as_albedo = _show_outfit_clipping
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
 		for surface_index in mesh_instance.mesh.get_surface_count():
@@ -430,6 +614,8 @@ func _apply_outfit_materials(root: Node3D) -> void:
 				mesh_instance.set_surface_override_material(surface_index, hidden_skin_material)
 			elif _outfit_debug_colors:
 				mesh_instance.set_surface_override_material(surface_index, clothes_material)
+			else:
+				mesh_instance.set_surface_override_material(surface_index, null)
 
 
 func _make_debug_material(color: Color) -> StandardMaterial3D:
@@ -537,7 +723,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var button_event := event as InputEventMouseButton
 		if button_event.button_index == MOUSE_BUTTON_LEFT:
-			_orbiting = button_event.pressed
+			if button_event.pressed and _fit_editor.pick(button_event.position):
+				_orbiting = false
+				get_viewport().set_input_as_handled()
+			else:
+				_orbiting = button_event.pressed
 		elif button_event.pressed and button_event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_orbit_distance = clampf(
 					_orbit_distance - ZOOM_STEP, MIN_ORBIT_DISTANCE, MAX_ORBIT_DISTANCE)
@@ -546,6 +736,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			_orbit_distance = clampf(
 					_orbit_distance + ZOOM_STEP, MIN_ORBIT_DISTANCE, MAX_ORBIT_DISTANCE)
 			_update_orbit_camera()
+	elif event is InputEventMagnifyGesture:
+		# Trackpad pinch gestures report a scale around 1.0. Dividing the orbit
+		# distance makes pinch-out magnify the character and pinch-in zoom away.
+		var magnify_event := event as InputEventMagnifyGesture
+		_orbit_distance = clampf(
+				_orbit_distance / maxf(magnify_event.factor, 0.01),
+				MIN_ORBIT_DISTANCE,
+				MAX_ORBIT_DISTANCE)
+		_update_orbit_camera()
+		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and _orbiting:
 		var motion := event as InputEventMouseMotion
 		_orbit_yaw -= motion.relative.x * ORBIT_SENS

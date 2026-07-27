@@ -150,11 +150,172 @@ layout_mode = 2
 
 [node name="DebugColors" type="CheckButton" parent="UI/Panel/Margin/VBox/OutfitRow"]
 layout_mode = 2
-tooltip_text = "Render skin red and clothing blue"
+tooltip_text = "Render all body skin red, including exposed skin and skin visible through authored garment holes; render clothing blue"
 button_pressed = true
-text = "Debug colors"
+text = "Debug: red body / blue cloth"
+
+[node name="ShowClipping" type="CheckButton" parent="UI/Panel/Margin/VBox/OutfitRow"]
+layout_mode = 2
+tooltip_text = "Highlight body regions penetrated by clothing in green"
+button_pressed = true
+text = "Show clipping (green)"
+
+[node name="EditFit" type="Button" parent="UI/Panel/Margin/VBox/OutfitRow"]
+layout_mode = 2
+toggle_mode = true
+text = "Edit Fit"
 
 [node name="StartButton" type="Button" parent="UI/Panel/Margin/VBox"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 text = "Start Game"
+
+[node name="FitPanel" type="PanelContainer" parent="UI"]
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -494.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = 520.0
+grow_horizontal = 0
+
+[node name="Margin" type="MarginContainer" parent="UI/FitPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
+
+[node name="VBox" type="VBoxContainer" parent="UI/FitPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "OUTFIT FIT"
+
+[node name="Help" type="Label" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+text = "Click a cyan surface point, then adjust its distance from the body."
+autowrap_mode = 2
+
+[node name="Selection" type="Label" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+text = "No point selected"
+autowrap_mode = 2
+
+[node name="Grid" type="GridContainer" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+columns = 4
+
+[node name="DistanceLabel" type="Label" parent="UI/FitPanel/Margin/VBox/Grid"]
+layout_mode = 2
+tooltip_text = "Signed distance from this clothing point to the nearest body surface"
+text = "Distance"
+
+[node name="Distance" type="SpinBox" parent="UI/FitPanel/Margin/VBox/Grid"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+tooltip_text = "Move this point along the nearest body surface normal"
+min_value = 0.1
+max_value = 35.0
+step = 0.1
+suffix = " cm"
+
+[node name="DistanceSlider" type="HSlider" parent="UI/FitPanel/Margin/VBox/Grid"]
+custom_minimum_size = Vector2(145, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Move this point along the nearest body surface normal"
+min_value = 0.1
+max_value = 35.0
+step = 0.1
+
+[node name="ResetDistance" type="Button" parent="UI/FitPanel/Margin/VBox/Grid"]
+layout_mode = 2
+disabled = true
+text = "Reset"
+
+[node name="RadiusLabel" type="Label" parent="UI/FitPanel/Margin/VBox/Grid"]
+layout_mode = 2
+text = "Influence"
+
+[node name="Radius" type="SpinBox" parent="UI/FitPanel/Margin/VBox/Grid"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+min_value = 0.01
+max_value = 0.3
+step = 0.005
+value = 0.08
+suffix = " m"
+
+[node name="RadiusSlider" type="HSlider" parent="UI/FitPanel/Margin/VBox/Grid"]
+custom_minimum_size = Vector2(145, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.01
+max_value = 0.3
+step = 0.005
+value = 0.08
+
+[node name="ResetRadius" type="Button" parent="UI/FitPanel/Margin/VBox/Grid"]
+layout_mode = 2
+disabled = true
+text = "Reset"
+
+[node name="AutoClearanceLabel" type="Label" parent="UI/FitPanel/Margin/VBox/Grid"]
+layout_mode = 2
+tooltip_text = "Minimum body-to-cloth separation used by Auto Adjust"
+text = "Auto clearance"
+
+[node name="AutoClearance" type="SpinBox" parent="UI/FitPanel/Margin/VBox/Grid"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+tooltip_text = "Increase this when shallow body breakthroughs remain after Auto Adjust"
+min_value = 0.1
+max_value = 5.0
+step = 0.1
+value = 0.5
+suffix = " cm"
+
+[node name="AutoClearanceSlider" type="HSlider" parent="UI/FitPanel/Margin/VBox/Grid"]
+custom_minimum_size = Vector2(145, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Minimum body-to-cloth separation used by Auto Adjust"
+min_value = 0.1
+max_value = 5.0
+step = 0.1
+value = 0.5
+
+[node name="ResetAutoClearance" type="Button" parent="UI/FitPanel/Margin/VBox/Grid"]
+layout_mode = 2
+text = "Reset"
+
+[node name="ButtonRow" type="HBoxContainer" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AutoAdjust" type="Button" parent="UI/FitPanel/Margin/VBox/ButtonRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Fit every clothing vertex outside the body using the selected clearance"
+text = "Auto Adjust"
+
+[node name="ResetAll" type="Button" parent="UI/FitPanel/Margin/VBox/ButtonRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Reset All Points"
+
+[node name="Save" type="Button" parent="UI/FitPanel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+text = "Save Body/Outfit Fit"
+
+[node name="Status" type="Label" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+text = "No saved fit loaded"
+autowrap_mode = 2
