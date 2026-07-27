@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cidpyrjrvrkxk"
+path="res://.godot/imported/cloth_collide_triangles.glsl-fb8cbc05ec46a60d6b076d112559205d.res"
+
+[deps]
+
+source_file="res://addons/godot_gpu_cloth/shaders/compute/cloth_collide_triangles.glsl"
+dest_files=["res://.godot/imported/cloth_collide_triangles.glsl-fb8cbc05ec46a60d6b076d112559205d.res"]
+
+[params]
+

@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://c0xom3v5rrqau"
+path="res://.godot/imported/cloth_predict.glsl-206c0a001c03d31480b80842bd1beb99.res"
+
+[deps]
+
+source_file="res://addons/godot_gpu_cloth/shaders/compute/cloth_predict.glsl"
+dest_files=["res://.godot/imported/cloth_predict.glsl-206c0a001c03d31480b80842bd1beb99.res"]
+
+[params]
+

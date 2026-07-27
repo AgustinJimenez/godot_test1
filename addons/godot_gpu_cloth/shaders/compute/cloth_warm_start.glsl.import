@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cdcg3lb62u85x"
+path="res://.godot/imported/cloth_warm_start.glsl-c64a0323281725356c88f765779ebbf3.res"
+
+[deps]
+
+source_file="res://addons/godot_gpu_cloth/shaders/compute/cloth_warm_start.glsl"
+dest_files=["res://.godot/imported/cloth_warm_start.glsl-c64a0323281725356c88f765779ebbf3.res"]
+
+[params]
+

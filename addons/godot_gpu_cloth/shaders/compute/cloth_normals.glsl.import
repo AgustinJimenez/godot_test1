@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://d3sgyhow7vais"
+path="res://.godot/imported/cloth_normals.glsl-0163b42924133c58e9deda7ee26d87f3.res"
+
+[deps]
+
+source_file="res://addons/godot_gpu_cloth/shaders/compute/cloth_normals.glsl"
+dest_files=["res://.godot/imported/cloth_normals.glsl-0163b42924133c58e9deda7ee26d87f3.res"]
+
+[params]
+

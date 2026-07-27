@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://bogf5b5orgfok"
+path="res://.godot/imported/cloth_collide_peer.glsl-76b3cfb203c3dc7d88dc70bcd2a517f8.res"
+
+[deps]
+
+source_file="res://addons/godot_gpu_cloth/shaders/compute/cloth_collide_peer.glsl"
+dest_files=["res://.godot/imported/cloth_collide_peer.glsl-76b3cfb203c3dc7d88dc70bcd2a517f8.res"]
+
+[params]
+

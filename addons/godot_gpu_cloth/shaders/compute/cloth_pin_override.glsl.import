@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://rpuh84p0xess"
+path="res://.godot/imported/cloth_pin_override.glsl-40752444eaa70667158629af65cb8168.res"
+
+[deps]
+
+source_file="res://addons/godot_gpu_cloth/shaders/compute/cloth_pin_override.glsl"
+dest_files=["res://.godot/imported/cloth_pin_override.glsl-40752444eaa70667158629af65cb8168.res"]
+
+[params]
+

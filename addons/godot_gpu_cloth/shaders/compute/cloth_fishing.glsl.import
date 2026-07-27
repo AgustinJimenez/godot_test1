@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://ce6a2uaqwpngc"
+path="res://.godot/imported/cloth_fishing.glsl-54a9d922532594d84726543ec8db8725.res"
+
+[deps]
+
+source_file="res://addons/godot_gpu_cloth/shaders/compute/cloth_fishing.glsl"
+dest_files=["res://.godot/imported/cloth_fishing.glsl-54a9d922532594d84726543ec8db8725.res"]
+
+[params]
+

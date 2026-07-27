@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://b5j27vx27fonx"
+path="res://.godot/imported/cloth_output.glsl-f6f4c5f952474d46e3cd0ede78064748.res"
+
+[deps]
+
+source_file="res://addons/godot_gpu_cloth/shaders/compute/cloth_output.glsl"
+dest_files=["res://.godot/imported/cloth_output.glsl-f6f4c5f952474d46e3cd0ede78064748.res"]
+
+[params]
+
