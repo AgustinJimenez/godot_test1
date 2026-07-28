@@ -165,6 +165,8 @@ const FACE_ORBIT_DISTANCE := 0.8
 @onready var fit_show_control_points: CheckButton = (
 		$UI/FitPanel/Margin/VBox/ShowControlPoints)
 @onready var fit_selection: Label = $UI/FitPanel/Margin/VBox/Selection
+@onready var fit_surface_selector: OptionButton = (
+		$UI/FitPanel/Margin/VBox/SurfaceRow/SurfaceSelector)
 @onready var fit_distance: SpinBox = $UI/FitPanel/Margin/VBox/Grid/Distance
 @onready var fit_distance_slider: HSlider = $UI/FitPanel/Margin/VBox/Grid/DistanceSlider
 @onready var fit_reset_distance: Button = $UI/FitPanel/Margin/VBox/Grid/ResetDistance
@@ -237,6 +239,7 @@ var _orbiting := false
 var _face_focused := true
 var _fit_editor: OutfitFitEditor
 var _updating_fit_controls := false
+var _camera_tween: Tween
 
 
 func _ready() -> void:
@@ -283,6 +286,7 @@ func _ready() -> void:
 	fit_auto_clearance_slider.value_changed.connect(_on_fit_auto_clearance_changed)
 	fit_reset_auto_clearance.pressed.connect(_on_fit_reset_auto_clearance)
 	fit_auto_adjust.pressed.connect(_on_fit_auto_adjust)
+	fit_surface_selector.item_selected.connect(_on_fit_surface_selected)
 	fit_reset_all.pressed.connect(_on_fit_reset_all)
 	fit_save.pressed.connect(_on_fit_save)
 	start_button.pressed.connect(_on_start_pressed)
@@ -443,13 +447,60 @@ func _on_fit_selection_changed(label: String, distance: float, radius: float) ->
 	fit_radius.value = radius
 	fit_distance_slider.value = distance * 100.0
 	fit_radius_slider.value = radius
-	_updating_fit_controls = false
 	_set_fit_controls_enabled(true)
+	_sync_surface_selector_to_selection(label)
+	_updating_fit_controls = false
+	var body: Dictionary = BODIES[_body_index]
+	var base_mesh := _preview_body.find_child(
+			String(body["mesh_name"]), true, false) as MeshInstance3D
+	if base_mesh != null:
+		_apply_body_debug_material(base_mesh)
+	_apply_outfit_materials(_preview_outfit)
+	_focus_camera_on_selected_surface()
+
+
+func _focus_camera_on_selected_surface() -> void:
+	var center := _fit_editor.get_selected_surface_center()
+	if center.is_zero_approx():
+		return
+	var current_pos := camera.global_position
+	var dir_h := (center - current_pos) * Vector3(1, 0, 1)
+	if dir_h.length_squared() < 0.0001:
+		dir_h = Vector3(0, 0, -1)
+	else:
+		dir_h = dir_h.normalized()
+	var target_pos := center - dir_h * 1.2
+	target_pos.y = center.y
+	var orbit_offset := target_pos - center
+	_face_focused = false
+	_orbit_target = center
+	_orbit_distance = orbit_offset.length()
+	if _orbit_distance > 0.0001:
+		_orbit_yaw = atan2(orbit_offset.x, orbit_offset.z)
+		_orbit_pitch = asin(clampf(
+				orbit_offset.y / _orbit_distance, -1.0, 1.0))
+	if is_instance_valid(_camera_tween):
+		_camera_tween.kill()
+	_camera_tween = create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	_camera_tween.tween_method(
+			func(p: Vector3) -> void:
+				camera.global_position = p
+				camera.look_at(center, Vector3.UP),
+			current_pos, target_pos, 0.35)
 
 
 func _on_fit_selection_cleared() -> void:
 	fit_selection.text = "No point selected"
 	_set_fit_controls_enabled(false)
+	if fit_surface_selector.item_count > 0:
+		fit_surface_selector.select(0)
+	var body: Dictionary = BODIES[_body_index]
+	var base_mesh := _preview_body.find_child(
+			String(body["mesh_name"]), true, false) as MeshInstance3D
+	if base_mesh != null:
+		_apply_body_debug_material(base_mesh)
+	if is_instance_valid(_preview_outfit):
+		_apply_outfit_materials(_preview_outfit)
 
 
 func _on_fit_value_changed(_value: float) -> void:
@@ -506,11 +557,64 @@ func _on_fit_reset_auto_clearance() -> void:
 
 func _on_fit_auto_adjust() -> void:
 	fit_auto_adjust.disabled = true
-	fit_status.text = "Contact-fitting with %.1f mm clearance..." % [
-		fit_auto_clearance.value * 10.0]
+	var selected_surface := _fit_editor.get_selected_surface()
+	if selected_surface.is_empty():
+		fit_status.text = "Contact-fitting all surfaces with %.1f mm clearance..." % [
+			fit_auto_clearance.value * 10.0]
+	else:
+		fit_status.text = "Contact-fitting selected surface with %.1f mm clearance..." % [
+			fit_auto_clearance.value * 10.0]
 	await get_tree().process_frame
-	_fit_editor.auto_adjust(fit_auto_clearance.value / 100.0)
+	if selected_surface.is_empty():
+		_fit_editor.auto_adjust(fit_auto_clearance.value / 100.0)
+	else:
+		_fit_editor.fit_selected_surface(fit_auto_clearance.value / 100.0)
 	fit_auto_adjust.disabled = false
+
+
+func _on_fit_surface_selected(index: int) -> void:
+	if _updating_fit_controls:
+		return
+	if index == 0:
+		_fit_editor.clear_surface_selection()
+		return
+	var items := _fit_editor.get_clothing_surfaces()
+	var surface_index := index - 1
+	if surface_index < 0 or surface_index >= items.size():
+		return
+	_fit_editor.select_surface(
+			items[surface_index]["mesh_key"], items[surface_index]["surface_index"])
+
+
+func _refresh_surface_selector() -> void:
+	fit_surface_selector.clear()
+	fit_surface_selector.add_item("All surfaces")
+	var items := _fit_editor.get_clothing_surfaces()
+	for item in items:
+		fit_surface_selector.add_item(item["name"])
+	fit_surface_selector.select(0)
+	if items.is_empty():
+		fit_status.text = "No clothing surfaces found"
+	else:
+		var names := PackedStringArray()
+		for item in items:
+			names.append("\"%s\"" % item["name"])
+		fit_status.text = "Surfaces: " + ", ".join(names)
+
+
+func _sync_surface_selector_to_selection(label: String) -> void:
+	var parts := label.split(" · ", false)
+	if parts.size() < 2:
+		fit_surface_selector.selected = -1
+		return
+	var selected_mesh := parts[0]
+	var selected_surface := parts[1].trim_prefix("surface ").to_int()
+	var items := _fit_editor.get_clothing_surfaces()
+	for i in items.size():
+		if items[i]["mesh_key"] == selected_mesh and items[i]["surface_index"] == selected_surface:
+			fit_surface_selector.selected = i + 1
+			return
+	fit_surface_selector.select(0)
 
 
 func _on_fit_save() -> void:
@@ -586,6 +690,7 @@ func _rebuild_outfit() -> void:
 	_fit_editor.load_outfit(
 			instance, base_mesh, String(body["kind_id"]), _outfit_id,
 			_outfit_debug_colors and _show_outfit_clipping)
+	_refresh_surface_selector()
 	edit_fit_button.disabled = not _fit_editor.has_outfit()
 
 
@@ -593,6 +698,11 @@ func _apply_body_debug_material(
 	mesh_instance: MeshInstance3D,
 ) -> void:
 	if not _outfit_debug_colors:
+		mesh_instance.material_override = null
+		return
+	if _show_outfit_clipping and not _fit_editor.get_selected_surface().is_empty():
+		# The rebuilt body mesh uses its authored material with per-vertex debug
+		# tinting, allowing unaffected body areas to remain visually unchanged.
 		mesh_instance.material_override = null
 		return
 	var material := _make_debug_material(
@@ -609,8 +719,11 @@ func _apply_outfit_materials(root: Node3D) -> void:
 	var clothes_material := _make_debug_material(
 			Color.WHITE if _show_outfit_clipping else Color(0.03, 0.18, 0.95))
 	clothes_material.vertex_color_use_as_albedo = _show_outfit_clipping
+	var selected := _fit_editor.get_selected_surface()
+	var filter_debug_surface := _show_outfit_clipping and not selected.is_empty()
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
+		var mesh_key := String(root.get_path_to(mesh_instance))
 		for surface_index in mesh_instance.mesh.get_surface_count():
 			var source_material := mesh_instance.mesh.surface_get_material(surface_index)
 			var material_name := ""
@@ -620,7 +733,15 @@ func _apply_outfit_materials(root: Node3D) -> void:
 			if is_skin:
 				mesh_instance.set_surface_override_material(surface_index, hidden_skin_material)
 			elif _outfit_debug_colors:
-				mesh_instance.set_surface_override_material(surface_index, clothes_material)
+				var is_selected: bool = (
+					not filter_debug_surface
+					or (
+						selected["mesh_key"] == mesh_key
+						and selected["surface_index"] == surface_index
+					)
+				)
+				mesh_instance.set_surface_override_material(
+						surface_index, clothes_material if is_selected else null)
 			else:
 				mesh_instance.set_surface_override_material(surface_index, null)
 
@@ -774,6 +895,9 @@ func _toggle_face_focus() -> void:
 
 
 func _update_orbit_camera() -> void:
+	if is_instance_valid(_camera_tween):
+		_camera_tween.kill()
+		_camera_tween = null
 	var horizontal := cos(_orbit_pitch)
 	var direction := Vector3(
 			sin(_orbit_yaw) * horizontal, sin(_orbit_pitch), cos(_orbit_yaw) * horizontal)

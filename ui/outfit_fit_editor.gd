@@ -55,6 +55,7 @@ var _body_triangle_grid: Dictionary = {}
 var _body_normal_sign := 1.0
 var _body_source_mesh: ArrayMesh
 var _clipped_body_vertices: Dictionary = {}
+var _debug_body_vertices: Dictionary = {}
 var _load_generation := 0
 var _clip_refresh_generation := 0
 var _dot_material: StandardMaterial3D
@@ -86,6 +87,7 @@ func clear_outfit() -> void:
 	_body_triangle_grid.clear()
 	_body_normal_sign = 1.0
 	_clipped_body_vertices.clear()
+	_debug_body_vertices.clear()
 	_selected_key = ""
 	_clear_dots()
 	selection_cleared.emit()
@@ -133,6 +135,7 @@ func set_clipping_visualization(enabled: bool) -> void:
 	_clip_refresh_generation += 1
 	_visualize_clipping = enabled
 	_clipped_body_vertices.clear()
+	_debug_body_vertices.clear()
 	if not enabled:
 		if is_instance_valid(_body_mesh) and _body_source_mesh != null:
 			_body_mesh.mesh = _body_source_mesh
@@ -237,9 +240,18 @@ func _clear_auto_offsets() -> void:
 
 
 func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
+	return _auto_adjust_surfaces(clearance)
+
+
+func _auto_adjust_surfaces(
+	clearance: float,
+	filter_mesh: String = "",
+	filter_surface: int = -1,
+) -> int:
 	if not has_outfit() or not is_instance_valid(_body_mesh):
 		status_changed.emit("No body/outfit pair is loaded")
 		return 0
+	var filter_enabled := not filter_mesh.is_empty() and filter_surface >= 0
 	for skeleton_node in _outfit_root.find_children("*", "Skeleton3D", true, false):
 		(skeleton_node as Skeleton3D).advance(0.0)
 	var body_skeleton := _body_mesh.get_node_or_null(_body_mesh.skeleton) as Skeleton3D
@@ -250,8 +262,13 @@ func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 	if _body_triangles.is_empty():
 		status_changed.emit("Could not build the body surface for Auto Adjust")
 		return 0
-	_edits.clear()
-	_clear_auto_offsets()
+	if filter_enabled:
+		var selected_offsets := _auto_surface_offsets[filter_mesh] as Array
+		(selected_offsets[filter_surface] as PackedVector3Array).fill(Vector3.ZERO)
+		_auto_surface_offsets[filter_mesh] = selected_offsets
+	else:
+		_edits.clear()
+		_clear_auto_offsets()
 	_rebuild_geometry_only()
 	var adjusted := 0
 	var skipped := 0
@@ -260,11 +277,15 @@ func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 		var correction_count := 0
 		for mesh_key_variant in _mesh_states:
 			var mesh_key := String(mesh_key_variant)
+			if filter_enabled and mesh_key != filter_mesh:
+				continue
 			var state: Dictionary = _mesh_states[mesh_key]
 			var mesh_instance := state["node"] as MeshInstance3D
 			var surfaces: Array = state["surfaces"]
 			var mesh_offsets := _auto_surface_offsets[mesh_key] as Array
 			for surface_index in surfaces.size():
+				if filter_enabled and surface_index != filter_surface:
+					continue
 				var surface: Dictionary = surfaces[surface_index]
 				if not surface["is_clothing"]:
 					continue
@@ -344,11 +365,15 @@ func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 		var pushed_vertices := 0
 		for mesh_key_variant in _mesh_states:
 			var mesh_key := String(mesh_key_variant)
+			if filter_enabled and mesh_key != filter_mesh:
+				continue
 			var state: Dictionary = _mesh_states[mesh_key]
 			var mesh_instance := state["node"] as MeshInstance3D
 			var surfaces: Array = state["surfaces"]
 			var mesh_offsets := _auto_surface_offsets[mesh_key] as Array
 			for surface_index in surfaces.size():
+				if filter_enabled and surface_index != filter_surface:
+					continue
 				var surface: Dictionary = surfaces[surface_index]
 				if not surface["is_clothing"]:
 					continue
@@ -390,15 +415,38 @@ func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 	_schedule_clipping_refresh()
 	if not _selected_key.is_empty():
 		_emit_selected()
+	var scope := " on selected surface" if filter_enabled else ""
 	status_changed.emit(
-			"Contact-fit %d cloth vertices at %.1f mm%s%s; inspect, then save or reset"
-			% [
-				adjusted, clearance * 1000.0,
-				" (%d skipped)" % skipped if skipped > 0 else "",
-				(" (%d intersection vertices remain)" % remaining_intersections
-						if remaining_intersections > 0 else ""),
-			])
+		"Contact-fit %d cloth vertices%s at %.1f mm%s%s; inspect, then save or reset"
+		% [
+			adjusted, scope, clearance * 1000.0,
+			" (%d skipped)" % skipped if skipped > 0 else "",
+			(" (%d intersection vertices remain)" % remaining_intersections
+					if remaining_intersections > 0 else ""),
+		])
 	return adjusted
+
+
+func fit_selected_surface(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
+	if not has_outfit() or not is_instance_valid(_body_mesh):
+		status_changed.emit("No body/outfit pair is loaded")
+		return 0
+	if _selected_key.is_empty():
+		status_changed.emit("No surface selected")
+		return 0
+	var handle: Dictionary = _handle_by_key.get(_selected_key, {})
+	var mesh_key := handle.get("mesh", "") as String
+	var surface_index := handle.get("surface", -1) as int
+	var state: Dictionary = _mesh_states.get(mesh_key, {})
+	var surfaces: Array = state.get("surfaces", [])
+	if state.is_empty():
+		return 0
+	var is_cloth := surface_index >= 0 and surface_index < surfaces.size()
+	if not is_cloth or not surfaces[surface_index]["is_clothing"]:
+		if is_cloth and not surfaces[surface_index]["is_clothing"]:
+			status_changed.emit("Selected surface is skin, not clothing")
+		return 0
+	return _auto_adjust_surfaces(clearance, mesh_key, surface_index)
 
 
 func save_profile() -> bool:
@@ -462,8 +510,12 @@ func _capture_meshes() -> void:
 		for surface_index in source.get_surface_count():
 			var arrays := source.surface_get_arrays(surface_index)
 			var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+			var source_colors: Variant = arrays[Mesh.ARRAY_COLOR]
+			if source_colors is PackedColorArray:
+				source_colors = (source_colors as PackedColorArray).duplicate()
 			surfaces.append({
 				"arrays": arrays,
+				"source_colors": source_colors,
 				"base_vertices": vertices.duplicate(),
 				"vertices": vertices.duplicate(),
 				"blend_shapes": source.surface_get_blend_shape_arrays(surface_index),
@@ -523,10 +575,19 @@ func _clear_dots() -> void:
 
 
 func _update_dot_visibility() -> void:
-	for dot_variant in _dots.values():
-		var dot := dot_variant as MeshInstance3D
+	var filter_key := ""
+	if not _selected_key.is_empty():
+		var parts := _selected_key.split("::")
+		if parts.size() >= 2:
+			filter_key = "%s::%s" % [parts[0], parts[1]]
+	for key_variant in _dots:
+		var key := String(key_variant)
+		var dot := _dots[key] as MeshInstance3D
 		if is_instance_valid(dot):
-			dot.visible = _editing and _show_control_points
+			if _editing and _show_control_points:
+				dot.visible = filter_key.is_empty() or key.begins_with(filter_key)
+			else:
+				dot.visible = false
 
 
 func _refresh_dot_positions() -> void:
@@ -559,7 +620,9 @@ func _refresh_dot_styles() -> void:
 func _select_handle(key: String) -> void:
 	_selected_key = key
 	_refresh_dot_styles()
+	_update_dot_visibility()
 	_emit_selected()
+	_refresh_clipping()
 
 
 func _measure_handle(handle: Dictionary) -> Dictionary:
@@ -611,19 +674,37 @@ func _rebuild_all_meshes() -> void:
 
 
 func _rebuild_geometry_only() -> void:
+	var saved := _visualize_clipping
+	_visualize_clipping = false
 	for mesh_key_variant in _mesh_states:
 		_rebuild_mesh(String(mesh_key_variant))
+	_visualize_clipping = saved
 
 
 func _refresh_clipping() -> void:
 	if not _visualize_clipping or _body_triangles.is_empty():
 		return
 	_clipped_body_vertices.clear()
+	_debug_body_vertices.clear()
 	for skeleton_node in _outfit_root.find_children("*", "Skeleton3D", true, false):
 		(skeleton_node as Skeleton3D).advance(0.0)
-	for mesh_key_variant in _mesh_states:
-		var mesh_key := String(mesh_key_variant)
-		_rebuild_mesh(mesh_key, _detect_clipping_colors(mesh_key))
+	var filter_mesh := ""
+	var filter_surface := -1
+	if not _selected_key.is_empty():
+		var parts := _selected_key.split("::")
+		if parts.size() >= 2:
+			filter_mesh = parts[0]
+			filter_surface = parts[1].to_int()
+	_rebuild_geometry_only()
+	if not filter_mesh.is_empty():
+		var colors := _detect_clipping_colors(filter_mesh)
+		var filtered: Dictionary = {}
+		filtered[filter_surface] = colors.get(filter_surface, PackedColorArray())
+		_rebuild_mesh(filter_mesh, filtered)
+	else:
+		for mesh_key_variant in _mesh_states:
+			var mesh_key := String(mesh_key_variant)
+			_rebuild_mesh(mesh_key, _detect_clipping_colors(mesh_key))
 	_apply_body_clipping_colors()
 
 
@@ -662,10 +743,17 @@ func _rebuild_mesh(mesh_key: String, clipping_colors: Dictionary = {}) -> void:
 		surface["vertices"] = vertices
 		var arrays: Array = surface["arrays"].duplicate(true)
 		arrays[Mesh.ARRAY_VERTEX] = vertices
-		if _visualize_clipping and surface["is_clothing"]:
-			arrays[Mesh.ARRAY_COLOR] = clipping_colors.get(
-					surface_index,
-					FIT_GEOMETRY.solid_colors(vertices.size(), CLOTH_DEBUG_COLOR))
+		var has_clipping: bool = _visualize_clipping \
+				and surface["is_clothing"] \
+				and clipping_colors.has(surface_index)
+		surface["_has_clipping"] = has_clipping
+		if has_clipping:
+			arrays[Mesh.ARRAY_COLOR] = clipping_colors[surface_index]
+		else:
+			# Rebuilds are cumulative, so restore the imported color channel explicitly.
+			# Otherwise a debug-color array written during an earlier rebuild survives
+			# after another surface is selected.
+			arrays[Mesh.ARRAY_COLOR] = surface["source_colors"]
 		surface["arrays"] = arrays
 	var rebuilt := ArrayMesh.new()
 	for blend_shape_index in source.get_blend_shape_count():
@@ -674,7 +762,8 @@ func _rebuild_mesh(mesh_key: String, clipping_colors: Dictionary = {}) -> void:
 	for surface_index in surfaces.size():
 		var surface: Dictionary = surfaces[surface_index]
 		var format: int = surface["format"]
-		if _visualize_clipping and surface["is_clothing"]:
+		var has_clipping: bool = surface.get("_has_clipping", false)
+		if has_clipping:
 			format |= Mesh.ARRAY_FORMAT_COLOR
 		rebuilt.add_surface_from_arrays(
 				surface["primitive"], surface["arrays"], surface["blend_shapes"], {},
@@ -854,12 +943,14 @@ func _mark_body_triangles_near_point(point: Vector3) -> void:
 	if best_triangle < 0:
 		return
 	var triangle: Dictionary = _body_triangles[best_triangle]
+	_mark_body_debug_triangle(best_triangle)
 	var outward_normal: Vector3 = triangle["normal"] * _body_normal_sign
 	if (point - best_closest).dot(outward_normal) < 0.0:
 		_mark_body_triangle(best_triangle)
 
 
 func _mark_body_triangle(triangle_index: int) -> void:
+	_mark_body_debug_triangle(triangle_index)
 	var triangle: Dictionary = _body_triangles[triangle_index]
 	var surface_index: int = triangle["surface"]
 	if not _clipped_body_vertices.has(surface_index):
@@ -869,9 +960,20 @@ func _mark_body_triangle(triangle_index: int) -> void:
 		marked[vertex_index] = true
 
 
+func _mark_body_debug_triangle(triangle_index: int) -> void:
+	var triangle: Dictionary = _body_triangles[triangle_index]
+	var surface_index: int = triangle["surface"]
+	if not _debug_body_vertices.has(surface_index):
+		_debug_body_vertices[surface_index] = {}
+	var marked: Dictionary = _debug_body_vertices[surface_index]
+	for vertex_index in triangle["vertices"]:
+		marked[vertex_index] = true
+
+
 func _apply_body_clipping_colors() -> void:
 	if not _visualize_clipping or _body_source_mesh == null:
 		return
+	var filter_to_selection := not _selected_key.is_empty()
 	var rebuilt := ArrayMesh.new()
 	for blend_shape_index in _body_source_mesh.get_blend_shape_count():
 		rebuilt.add_blend_shape(_body_source_mesh.get_blend_shape_name(blend_shape_index))
@@ -881,10 +983,15 @@ func _apply_body_clipping_colors() -> void:
 		var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
 		var colors := PackedColorArray()
 		colors.resize(vertices.size())
-		var marked: Dictionary = _clipped_body_vertices.get(surface_index, {})
+		var clipped: Dictionary = _clipped_body_vertices.get(surface_index, {})
+		var affected: Dictionary = _debug_body_vertices.get(surface_index, {})
 		for vertex_index in vertices.size():
-			colors[vertex_index] = (
-				CLIP_DEBUG_COLOR if marked.has(vertex_index) else BODY_DEBUG_COLOR)
+			if clipped.has(vertex_index):
+				colors[vertex_index] = CLIP_DEBUG_COLOR
+			elif not filter_to_selection or affected.has(vertex_index):
+				colors[vertex_index] = BODY_DEBUG_COLOR
+			else:
+				colors[vertex_index] = Color.WHITE
 		arrays[Mesh.ARRAY_COLOR] = colors
 		var format := _body_source_mesh.surface_get_format(surface_index)
 		format |= Mesh.ARRAY_FORMAT_COLOR
@@ -894,8 +1001,11 @@ func _apply_body_clipping_colors() -> void:
 				_body_source_mesh.surface_get_blend_shape_arrays(surface_index),
 				{},
 				format)
-		rebuilt.surface_set_material(
-				surface_index, _body_source_mesh.surface_get_material(surface_index))
+		var material := _body_source_mesh.surface_get_material(surface_index)
+		if filter_to_selection and material is BaseMaterial3D:
+			material = material.duplicate()
+			(material as BaseMaterial3D).vertex_color_use_as_albedo = true
+		rebuilt.surface_set_material(surface_index, material)
 		rebuilt.surface_set_name(
 				surface_index, _body_source_mesh.surface_get_name(surface_index))
 	_body_mesh.mesh = rebuilt
@@ -979,6 +1089,101 @@ func _profile_path() -> String:
 
 func _handle_key(mesh_key: String, surface_index: int, vertex_index: int) -> String:
 	return "%s::%d::%d" % [mesh_key, surface_index, vertex_index]
+
+
+func get_clothing_surfaces() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for mesh_key_variant in _mesh_states:
+		var mesh_key := String(mesh_key_variant)
+		var state: Dictionary = _mesh_states[mesh_key]
+		var mesh_instance := state.get("node") as MeshInstance3D
+		var node_name := ""
+		if is_instance_valid(mesh_instance):
+			node_name = String(mesh_instance.name)
+			if node_name.ends_with(":Mesh"):
+				node_name = node_name.trim_suffix(":Mesh")
+
+		var surfaces: Array = state["surfaces"]
+		var cloth_count := 0
+		for surface in surfaces:
+			if surface.get("is_clothing", false):
+				cloth_count += 1
+		for surface_index in surfaces.size():
+			var surface: Dictionary = surfaces[surface_index]
+			if not surface.get("is_clothing", false):
+				continue
+			var mat := surface.get("material") as Material
+			var mat_name := "" if mat == null else mat.resource_name
+			var surface_name := surface.get("name", "") as String
+			var display := node_name
+			if display.is_empty():
+				display = mat_name
+			if display.is_empty():
+				display = "Surface %d" % surface_index
+			if cloth_count > 1 and not surface_name.is_empty():
+				display += " / " + surface_name
+			result.append({
+				"name": display,
+				"mesh_key": mesh_key,
+				"surface_index": surface_index,
+			})
+	return result
+
+
+func select_surface(mesh_key: String, surface_index: int) -> bool:
+	for handle in _handles:
+		if handle["mesh"] == mesh_key and handle["surface"] == surface_index:
+			_select_handle(handle["key"])
+			return true
+	return false
+
+
+func clear_surface_selection() -> void:
+	if _selected_key.is_empty():
+		return
+	_selected_key = ""
+	_refresh_dot_styles()
+	_update_dot_visibility()
+	selection_cleared.emit()
+	_refresh_clipping()
+
+
+func get_selected_surface() -> Dictionary:
+	if _selected_key.is_empty():
+		return {}
+	var handle: Dictionary = _handle_by_key.get(_selected_key, {})
+	if handle.is_empty():
+		return {}
+	return {
+		"mesh_key": handle["mesh"],
+		"surface_index": handle["surface"],
+	}
+
+
+func get_selected_surface_center() -> Vector3:
+	if _selected_key.is_empty():
+		return Vector3.ZERO
+	var handle: Dictionary = _handle_by_key.get(_selected_key, {})
+	if handle.is_empty():
+		return Vector3.ZERO
+	var mesh_key := handle["mesh"] as String
+	var surface_index := handle["surface"] as int
+	var state: Dictionary = _mesh_states.get(mesh_key, {})
+	if state.is_empty():
+		return Vector3.ZERO
+	var surfaces: Array = state.get("surfaces", [])
+	if surface_index < 0 or surface_index >= surfaces.size():
+		return Vector3.ZERO
+	var surface: Dictionary = surfaces[surface_index]
+	var mesh_instance := state["node"] as MeshInstance3D
+	var arrays: Array = surface["arrays"]
+	var world_vertices := FIT_GEOMETRY.skin_vertices_world(
+			mesh_instance, arrays)
+	var center := Vector3.ZERO
+	for v in world_vertices:
+		center += v
+	center /= world_vertices.size()
+	return center
 
 
 func _is_clothing_surface(material: Material) -> bool:
