@@ -178,7 +178,7 @@ anchor_right = 1.0
 offset_left = -494.0
 offset_top = 24.0
 offset_right = -24.0
-offset_bottom = 520.0
+offset_bottom = 560.0
 grow_horizontal = 0
 
 [node name="Margin" type="MarginContainer" parent="UI/FitPanel"]
@@ -223,6 +223,23 @@ size_flags_horizontal = 3
 fit_to_longest_item = false
 text = "All surfaces"
 tooltip_text = "Choose a clothing surface to fit"
+
+[node name="ComponentRow" type="HBoxContainer" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ComponentLabel" type="Label" parent="UI/FitPanel/Margin/VBox/ComponentRow"]
+layout_mode = 2
+text = "Component:"
+vertical_alignment = 1
+
+[node name="ComponentSelector" type="OptionButton" parent="UI/FitPanel/Margin/VBox/ComponentRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+fit_to_longest_item = false
+disabled = true
+text = "All components"
+tooltip_text = "Optionally restrict fitting to one disconnected piece of the selected surface"
 
 [node name="Selection" type="Label" parent="UI/FitPanel/Margin/VBox"]
 layout_mode = 2

@@ -40,7 +40,25 @@ preserves the layer ordering measured from the imported garment geometry.
   checks after body fitting. Whole-outfit fitting pushes the authored outer layer outward. A
   selected-only fit changes only that selection: an outer selection moves outward, while an inner
   selection may move inward only until it reaches the requested body clearance. The pass is capped at
-  twelve 2 mm iterations and reports when that limit is reached.
+  twelve 3 mm iterations and reports when that limit is reached. Each imported surface is additionally
+  split into position-welded disconnected topology components, because the Peasant shirt, belt, and
+  buckle are five separate pieces baked into one `Male_Peasant_Body` surface. Pieces in that same
+  surface preserve their authored order through a body-relative depth constraint: each moving vertex
+  interpolates the four closest samples from the neighboring component within 6 cm and retains a 2 mm
+  separation. This fills sampling gaps around the belt without applying the broad maximum-depth push
+  that visibly inflated its silhouette.
+- The Edit Fit panel keeps `Surface` as the imported mesh/material scope and provides a dependent
+  `Component` selector for disconnected pieces inside that surface. `All components` is the default
+  and preserves the prior whole-surface behavior. The Peasant torso exposes Shirt, Leather belt,
+  Metal buckle, and two small accessories; choosing one scopes control points, camera focus, debug
+  colors, manual influence, and Auto Adjust to that piece. Component-only Auto Adjust was verified
+  to write 685 belt vertices and zero vertices outside the belt.
+- Whole-outfit Auto Adjust constructs an overlap-only directed layer graph from the imported local
+  body-relative depth. Components that never occupy the same body-space cells receive no ordering
+  relationship. Each cleanup iteration resolves and rebuilds one graph level at a time, so inner
+  shirt/pants corrections feed the belt level and belt corrections feed the buckle level. The
+  Peasant outfit produces 16 local relationships across four levels; its torso path is
+  Body → Shirt → Leather belt → Metal buckle.
 
 ## Debug colors on selected surfaces
 

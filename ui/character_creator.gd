@@ -167,6 +167,8 @@ const FACE_ORBIT_DISTANCE := 0.8
 @onready var fit_selection: Label = $UI/FitPanel/Margin/VBox/Selection
 @onready var fit_surface_selector: OptionButton = (
 		$UI/FitPanel/Margin/VBox/SurfaceRow/SurfaceSelector)
+@onready var fit_component_selector: OptionButton = (
+		$UI/FitPanel/Margin/VBox/ComponentRow/ComponentSelector)
 @onready var fit_distance: SpinBox = $UI/FitPanel/Margin/VBox/Grid/Distance
 @onready var fit_distance_slider: HSlider = $UI/FitPanel/Margin/VBox/Grid/DistanceSlider
 @onready var fit_reset_distance: Button = $UI/FitPanel/Margin/VBox/Grid/ResetDistance
@@ -287,6 +289,7 @@ func _ready() -> void:
 	fit_reset_auto_clearance.pressed.connect(_on_fit_reset_auto_clearance)
 	fit_auto_adjust.pressed.connect(_on_fit_auto_adjust)
 	fit_surface_selector.item_selected.connect(_on_fit_surface_selected)
+	fit_component_selector.item_selected.connect(_on_fit_component_selected)
 	fit_reset_all.pressed.connect(_on_fit_reset_all)
 	fit_save.pressed.connect(_on_fit_save)
 	start_button.pressed.connect(_on_start_pressed)
@@ -494,6 +497,7 @@ func _on_fit_selection_cleared() -> void:
 	_set_fit_controls_enabled(false)
 	if fit_surface_selector.item_count > 0:
 		fit_surface_selector.select(0)
+	_refresh_component_selector()
 	var body: Dictionary = BODIES[_body_index]
 	var base_mesh := _preview_body.find_child(
 			String(body["mesh_name"]), true, false) as MeshInstance3D
@@ -561,6 +565,9 @@ func _on_fit_auto_adjust() -> void:
 	if selected_surface.is_empty():
 		fit_status.text = "Contact-fitting all surfaces with %.1f mm clearance..." % [
 			fit_auto_clearance.value * 10.0]
+	elif selected_surface.get("component_index", -1) as int >= 0:
+		fit_status.text = "Contact-fitting selected component with %.1f mm clearance..." % [
+			fit_auto_clearance.value * 10.0]
 	else:
 		fit_status.text = "Contact-fitting selected surface with %.1f mm clearance..." % [
 			fit_auto_clearance.value * 10.0]
@@ -577,13 +584,59 @@ func _on_fit_surface_selected(index: int) -> void:
 		return
 	if index == 0:
 		_fit_editor.clear_surface_selection()
+		_refresh_component_selector()
 		return
 	var items := _fit_editor.get_clothing_surfaces()
 	var surface_index := index - 1
 	if surface_index < 0 or surface_index >= items.size():
 		return
+	var item: Dictionary = items[surface_index]
+	_fit_editor.select_surface(item["mesh_key"], item["surface_index"])
+	_refresh_component_selector(item["mesh_key"], item["surface_index"])
+
+
+func _on_fit_component_selected(index: int) -> void:
+	if _updating_fit_controls:
+		return
+	var selected := _fit_editor.get_selected_surface()
+	if selected.is_empty():
+		return
+	var mesh_key := selected["mesh_key"] as String
+	var surface_index := selected["surface_index"] as int
+	if index == 0:
+		_fit_editor.select_surface(mesh_key, surface_index)
+		return
+	var items := _fit_editor.get_surface_components(mesh_key, surface_index)
+	var item_index := index - 1
+	if item_index < 0 or item_index >= items.size():
+		return
 	_fit_editor.select_surface(
-			items[surface_index]["mesh_key"], items[surface_index]["surface_index"])
+			mesh_key,
+			surface_index,
+			items[item_index]["component_index"])
+
+
+func _refresh_component_selector(
+	mesh_key: String = "",
+	surface_index: int = -1,
+	selected_component: int = -1,
+) -> void:
+	_updating_fit_controls = true
+	fit_component_selector.clear()
+	fit_component_selector.add_item("All components")
+	var items: Array[Dictionary] = []
+	if not mesh_key.is_empty() and surface_index >= 0:
+		items = _fit_editor.get_surface_components(mesh_key, surface_index)
+	for item in items:
+		fit_component_selector.add_item(item["name"])
+	fit_component_selector.disabled = items.size() <= 1
+	fit_component_selector.select(0)
+	if selected_component >= 0:
+		for item_index in items.size():
+			if items[item_index]["component_index"] == selected_component:
+				fit_component_selector.select(item_index + 1)
+				break
+	_updating_fit_controls = false
 
 
 func _refresh_surface_selector() -> void:
@@ -593,6 +646,7 @@ func _refresh_surface_selector() -> void:
 	for item in items:
 		fit_surface_selector.add_item(item["name"])
 	fit_surface_selector.select(0)
+	_refresh_component_selector()
 	if items.is_empty():
 		fit_status.text = "No clothing surfaces found"
 	else:
@@ -602,19 +656,24 @@ func _refresh_surface_selector() -> void:
 		fit_status.text = "Surfaces: " + ", ".join(names)
 
 
-func _sync_surface_selector_to_selection(label: String) -> void:
-	var parts := label.split(" · ", false)
-	if parts.size() < 2:
+func _sync_surface_selector_to_selection(_label: String) -> void:
+	var selected := _fit_editor.get_selected_surface()
+	if selected.is_empty():
 		fit_surface_selector.selected = -1
+		_refresh_component_selector()
 		return
-	var selected_mesh := parts[0]
-	var selected_surface := parts[1].trim_prefix("surface ").to_int()
+	var selected_mesh := selected["mesh_key"] as String
+	var selected_surface := selected["surface_index"] as int
+	var selected_component := selected.get("component_index", -1) as int
 	var items := _fit_editor.get_clothing_surfaces()
 	for i in items.size():
 		if items[i]["mesh_key"] == selected_mesh and items[i]["surface_index"] == selected_surface:
 			fit_surface_selector.selected = i + 1
+			_refresh_component_selector(
+					selected_mesh, selected_surface, selected_component)
 			return
 	fit_surface_selector.select(0)
+	_refresh_component_selector()
 
 
 func _on_fit_save() -> void:

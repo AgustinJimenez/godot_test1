@@ -15,20 +15,20 @@ const GRID_SAMPLER := preload("res://ui/outfit_fit_grid_sampler.gd")
 const FIT_GEOMETRY := preload("res://ui/outfit_fit_geometry.gd")
 const PROFILE_CODEC := preload("res://ui/outfit_fit_profile_codec.gd")
 const OUTFIT_LAYERS := preload("res://ui/outfit_fit_layers.gd")
+const OUTFIT_COMPONENTS := preload("res://ui/outfit_fit_components.gd")
 const PROFILE_SCHEMA := 1
 const HANDLE_GRID_SPACING := 0.04
 const DEFAULT_RADIUS := 0.08
 const PICK_RADIUS_PX := 14.0
 const DOT_RADIUS := 0.009
 const SELECTED_DOT_RADIUS := 0.016
-const SKIN_MATERIAL_PATTERNS := ["regular_male", "regular_female"]
 const BODY_GRID_CELL_SIZE := 0.08
 const DEFAULT_AUTO_CLEARANCE := 0.005
 const AUTO_FIT_PASSES := 3
 const AUTO_MAX_STEP := 0.03
 const AUTO_SMOOTH_PASSES := 2
 const AUTO_SMOOTH_BLEND := 0.4
-const CLOTH_LAYER_STEP := 0.002
+const CLOTH_LAYER_STEP := 0.003
 const CLOTH_LAYER_MAX_PASSES := 12
 const COLLISION_STEP := 0.002
 const CLIP_SEARCH_RADIUS := 0.08
@@ -61,13 +61,14 @@ var _clipped_body_vertices: Dictionary = {}
 var _debug_body_vertices: Dictionary = {}
 var _load_generation := 0
 var _clip_refresh_generation := 0
+var _selected_component_index := -1
 var _dot_material: StandardMaterial3D
 var _selected_dot_material: StandardMaterial3D
 
 func setup(camera: Camera3D) -> void:
 	_camera = camera
-	_dot_material = _make_dot_material(Color(0.1, 0.95, 1.0))
-	_selected_dot_material = _make_dot_material(Color(1.0, 0.55, 0.05))
+	_dot_material = OUTFIT_COMPONENTS.dot_material(Color(0.1, 0.95, 1.0))
+	_selected_dot_material = OUTFIT_COMPONENTS.dot_material(Color(1.0, 0.55, 0.05))
 
 
 func clear_outfit() -> void:
@@ -92,6 +93,7 @@ func clear_outfit() -> void:
 	_clipped_body_vertices.clear()
 	_debug_body_vertices.clear()
 	_selected_key = ""
+	_selected_component_index = -1
 	_clear_dots()
 	selection_cleared.emit()
 
@@ -250,6 +252,7 @@ func _auto_adjust_surfaces(
 	clearance: float,
 	filter_mesh: String = "",
 	filter_surface: int = -1,
+	filter_component: int = -1,
 ) -> int:
 	if not has_outfit() or not is_instance_valid(_body_mesh):
 		status_changed.emit("No body/outfit pair is loaded")
@@ -279,12 +282,19 @@ func _auto_adjust_surfaces(
 		"body_normal_sign": _body_normal_sign,
 		"search_radius": AUTO_SEARCH_RADIUS,
 		"body_clearance": clearance,
+		"layer_clearance": 0.002,
 		"layer_step": CLOTH_LAYER_STEP,
 		"maximum_offset": AUTO_MAX_OFFSET,
 	}
 	if filter_enabled:
 		var selected_offsets := _auto_surface_offsets[filter_mesh] as Array
-		(selected_offsets[filter_surface] as PackedVector3Array).fill(Vector3.ZERO)
+		var offsets := selected_offsets[filter_surface] as PackedVector3Array
+		if filter_component < 0:
+			offsets.fill(Vector3.ZERO)
+		else:
+			for vertex_index in OUTFIT_COMPONENTS.vertex_indices(
+					_mesh_states, filter_mesh, filter_surface, filter_component):
+				offsets[vertex_index] = Vector3.ZERO
 		_auto_surface_offsets[filter_mesh] = selected_offsets
 	else:
 		_edits.clear()
@@ -309,6 +319,8 @@ func _auto_adjust_surfaces(
 				var surface: Dictionary = surfaces[surface_index]
 				if not surface["is_clothing"]:
 					continue
+				var allowed_vertices := OUTFIT_COMPONENTS.vertex_set(
+						surface, filter_component if filter_enabled else -1)
 				var vertices: PackedVector3Array = surface["vertices"]
 				var arrays: Array = surface["arrays"]
 				var world_vertices := FIT_GEOMETRY.skin_vertices_world(mesh_instance, arrays)
@@ -326,6 +338,8 @@ func _auto_adjust_surfaces(
 				var corrections := PackedVector3Array()
 				corrections.resize(vertices.size())
 				for vertex_index in vertices.size():
+					if not allowed_vertices.is_empty() and not allowed_vertices.has(vertex_index):
+						continue
 					var current_world := world_vertices[vertex_index]
 					var projection := _closest_body_projection(
 							current_world, regions[vertex_index])
@@ -371,6 +385,10 @@ func _auto_adjust_surfaces(
 							corrections,
 							AUTO_SMOOTH_PASSES,
 							AUTO_SMOOTH_BLEND)
+					if not allowed_vertices.is_empty():
+						for vertex_index in corrections.size():
+							if not allowed_vertices.has(vertex_index):
+								corrections[vertex_index] = Vector3.ZERO
 				for vertex_index in offsets.size():
 					offsets[vertex_index] = (
 							offsets[vertex_index] + corrections[vertex_index]
@@ -397,6 +415,8 @@ func _auto_adjust_surfaces(
 				var surface: Dictionary = surfaces[surface_index]
 				if not surface["is_clothing"]:
 					continue
+				var allowed_vertices := OUTFIT_COMPONENTS.vertex_set(
+						surface, filter_component if filter_enabled else -1)
 				var arrays: Array = surface["arrays"]
 				var world_vertices := FIT_GEOMETRY.skin_vertices_world(mesh_instance, arrays)
 				var intersections := FIT_GEOMETRY.find_intersections(
@@ -411,6 +431,8 @@ func _auto_adjust_surfaces(
 				var offsets := mesh_offsets[surface_index] as PackedVector3Array
 				for vertex_index_variant in marked:
 					var vertex_index := int(vertex_index_variant)
+					if not allowed_vertices.is_empty() and not allowed_vertices.has(vertex_index):
+						continue
 					var current_world := world_vertices[vertex_index]
 					var normal := (collision_normals.get(
 							vertex_index, Vector3.ZERO) as Vector3).normalized()
@@ -433,26 +455,32 @@ func _auto_adjust_surfaces(
 		_rebuild_geometry_only()
 	var layer_pushes := 0
 	var remaining_layer_intersections := 0
+	var layer_levels := int(authored_layer_order.get("levels", 0))
 	for _layer_pass in CLOTH_LAYER_MAX_PASSES:
-		var pushed := OUTFIT_LAYERS.resolve_pass(
-				_mesh_states,
-				_auto_surface_offsets,
-				authored_layer_order,
-				layer_context,
-				filter_mesh,
-				filter_surface)
-		remaining_layer_intersections = pushed
-		if pushed == 0:
+		var pass_pushes := 0
+		for layer_level in range(2, layer_levels + 1):
+			var pushed := OUTFIT_LAYERS.resolve_pass(
+					_mesh_states,
+					_auto_surface_offsets,
+					authored_layer_order,
+					layer_context,
+					filter_mesh, filter_surface, filter_component, layer_level)
+			pass_pushes += pushed
+			if pushed > 0:
+				_rebuild_geometry_only()
+		remaining_layer_intersections = pass_pushes
+		if pass_pushes == 0:
 			break
-		layer_pushes += pushed
-		_rebuild_geometry_only()
+		layer_pushes += pass_pushes
 	_refresh_dot_positions()
 	_schedule_clipping_refresh()
 	if not _selected_key.is_empty():
 		_emit_selected()
-	var scope := " on selected surface" if filter_enabled else ""
+	var scope := (" on selected component"
+			if filter_component >= 0
+			else " on selected surface" if filter_enabled else "")
 	status_changed.emit(
-		"Contact-fit %d cloth vertices%s at %.1f mm%s%s%s; inspect, then save or reset"
+		"Contact-fit %d cloth vertices%s at %.1f mm%s%s%s%s; inspect, then save or reset"
 		% [
 			adjusted, scope, clearance * 1000.0,
 			" (%d skipped)" % skipped if skipped > 0 else "",
@@ -462,6 +490,9 @@ func _auto_adjust_surfaces(
 					layer_pushes,
 					", limit reached" if remaining_layer_intersections > 0 else "",
 				] if layer_pushes > 0 else ""),
+			" (%d local layer relations across %d levels)" % [
+					(authored_layer_order.get("pairs", []) as Array).size(),
+					layer_levels] if layer_levels > 0 else "",
 		])
 	return adjusted
 
@@ -476,6 +507,7 @@ func fit_selected_surface(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 	var handle: Dictionary = _handle_by_key.get(_selected_key, {})
 	var mesh_key := handle.get("mesh", "") as String
 	var surface_index := handle.get("surface", -1) as int
+	var component_index := _selected_component_index
 	var state: Dictionary = _mesh_states.get(mesh_key, {})
 	var surfaces: Array = state.get("surfaces", [])
 	if state.is_empty():
@@ -485,7 +517,8 @@ func fit_selected_surface(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 		if is_cloth and not surfaces[surface_index]["is_clothing"]:
 			status_changed.emit("Selected surface is skin, not clothing")
 		return 0
-	return _auto_adjust_surfaces(clearance, mesh_key, surface_index)
+	return _auto_adjust_surfaces(
+			clearance, mesh_key, surface_index, component_index)
 
 
 func save_profile() -> bool:
@@ -549,6 +582,14 @@ func _capture_meshes() -> void:
 		for surface_index in source.get_surface_count():
 			var arrays := source.surface_get_arrays(surface_index)
 			var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+			var components := OUTFIT_LAYERS.surface_components(arrays)
+			var vertex_components := PackedInt32Array()
+			vertex_components.resize(vertices.size())
+			vertex_components.fill(-1)
+			for component_index in components.size():
+				var component := components[component_index] as Dictionary
+				for vertex_index in (component["vertex_indices"] as PackedInt32Array):
+					vertex_components[vertex_index] = component_index
 			var source_colors: Variant = arrays[Mesh.ARRAY_COLOR]
 			if source_colors is PackedColorArray:
 				source_colors = (source_colors as PackedColorArray).duplicate()
@@ -562,7 +603,10 @@ func _capture_meshes() -> void:
 				"material": source.surface_get_material(surface_index),
 				"name": source.surface_get_name(surface_index),
 				"primitive": source.surface_get_primitive_type(surface_index),
-				"is_clothing": _is_clothing_surface(source.surface_get_material(surface_index)),
+				"is_clothing": OUTFIT_COMPONENTS.is_clothing_surface(
+						source.surface_get_material(surface_index)),
+				"components": components,
+				"vertex_components": vertex_components,
 			})
 		_mesh_states[mesh_key] = {
 			"node": mesh_instance,
@@ -582,6 +626,11 @@ func _build_handles() -> void:
 		var key := _handle_key(
 				candidate["mesh"], candidate["surface"], candidate["vertex"])
 		var handle := candidate.duplicate()
+		var state: Dictionary = _mesh_states[handle["mesh"]]
+		var surfaces: Array = state["surfaces"]
+		var surface: Dictionary = surfaces[handle["surface"]]
+		var vertex_components := surface["vertex_components"] as PackedInt32Array
+		handle["component"] = vertex_components[handle["vertex"]]
 		handle["key"] = key
 		_handles.append(handle)
 		_handle_by_key[key] = handle
@@ -614,17 +663,27 @@ func _clear_dots() -> void:
 
 
 func _update_dot_visibility() -> void:
-	var filter_key := ""
+	var filter_mesh := ""
+	var filter_surface := -1
 	if not _selected_key.is_empty():
-		var parts := _selected_key.split("::")
-		if parts.size() >= 2:
-			filter_key = "%s::%s" % [parts[0], parts[1]]
+		var selected_handle: Dictionary = _handle_by_key.get(_selected_key, {})
+		filter_mesh = selected_handle.get("mesh", "") as String
+		filter_surface = selected_handle.get("surface", -1) as int
 	for key_variant in _dots:
 		var key := String(key_variant)
 		var dot := _dots[key] as MeshInstance3D
 		if is_instance_valid(dot):
 			if _editing and _show_control_points:
-				dot.visible = filter_key.is_empty() or key.begins_with(filter_key)
+				var handle: Dictionary = _handle_by_key.get(key, {})
+				dot.visible = (
+						filter_mesh.is_empty()
+						or (
+							handle.get("mesh", "") == filter_mesh
+							and handle.get("surface", -1) == filter_surface
+							and (
+								_selected_component_index < 0
+								or handle.get("component", -1)
+										== _selected_component_index)))
 			else:
 				dot.visible = false
 
@@ -656,7 +715,9 @@ func _refresh_dot_styles() -> void:
 		sphere.height = radius * 2.0
 
 
-func _select_handle(key: String) -> void:
+func _select_handle(key: String, preserve_component: bool = false) -> void:
+	if not preserve_component:
+		_selected_component_index = -1
 	_selected_key = key
 	_refresh_dot_styles()
 	_update_dot_visibility()
@@ -729,14 +790,16 @@ func _refresh_clipping() -> void:
 		(skeleton_node as Skeleton3D).advance(0.0)
 	var filter_mesh := ""
 	var filter_surface := -1
+	var filter_component := -1
 	if not _selected_key.is_empty():
-		var parts := _selected_key.split("::")
-		if parts.size() >= 2:
-			filter_mesh = parts[0]
-			filter_surface = parts[1].to_int()
+		var handle: Dictionary = _handle_by_key.get(_selected_key, {})
+		filter_mesh = handle.get("mesh", "") as String
+		filter_surface = handle.get("surface", -1) as int
+		filter_component = _selected_component_index
 	_rebuild_geometry_only()
 	if not filter_mesh.is_empty():
-		var colors := _detect_clipping_colors(filter_mesh)
+		var colors := _detect_clipping_colors(
+				filter_mesh, filter_surface, filter_component)
 		var filtered: Dictionary = {}
 		filtered[filter_surface] = colors.get(filter_surface, PackedColorArray())
 		_rebuild_mesh(filter_mesh, filtered)
@@ -813,7 +876,11 @@ func _rebuild_mesh(mesh_key: String, clipping_colors: Dictionary = {}) -> void:
 	mesh_instance.mesh = rebuilt
 
 
-func _detect_clipping_colors(mesh_key: String) -> Dictionary:
+func _detect_clipping_colors(
+	mesh_key: String,
+	filter_surface: int = -1,
+	filter_component: int = -1,
+) -> Dictionary:
 	var result: Dictionary = {}
 	var state: Dictionary = _mesh_states[mesh_key]
 	var mesh_instance := state["node"] as MeshInstance3D
@@ -822,9 +889,18 @@ func _detect_clipping_colors(mesh_key: String) -> Dictionary:
 		var surface: Dictionary = surfaces[surface_index]
 		if not surface["is_clothing"]:
 			continue
+		if filter_surface >= 0 and surface_index != filter_surface:
+			continue
 		var arrays: Array = surface["arrays"]
 		var world_vertices := FIT_GEOMETRY.skin_vertices_world(mesh_instance, arrays)
-		result[surface_index] = _clipping_colors(world_vertices, arrays)
+		var component_indices := PackedInt32Array()
+		if filter_component >= 0:
+			var components: Array = surface["components"]
+			if filter_component < components.size():
+				component_indices = (
+						components[filter_component]["indices"] as PackedInt32Array)
+		result[surface_index] = _clipping_colors(
+				world_vertices, arrays, component_indices)
 	return result
 
 
@@ -853,10 +929,14 @@ func _deform_vertices(
 						"position": base_vertices[handle["vertex"]],
 						"offset": edit["offset"],
 						"radius": edit["radius"],
+						"component": handle.get("component", -1),
 					})
 					direct_offsets[handle["vertex"]] = edit["offset"]
 	if relevant.is_empty():
 		return result
+	var vertex_components := (
+			(_mesh_states[mesh_key]["surfaces"] as Array)[surface_index][
+					"vertex_components"] as PackedInt32Array)
 	for vertex_index in base_vertices.size():
 		if direct_offsets.has(vertex_index):
 			result[vertex_index] += direct_offsets[vertex_index] as Vector3
@@ -864,6 +944,8 @@ func _deform_vertices(
 		var weighted_offset := Vector3.ZERO
 		var total_weight := 0.0
 		for edit in relevant:
+			if edit["component"] != vertex_components[vertex_index]:
+				continue
 			var radius: float = edit["radius"]
 			var distance := base_vertices[vertex_index].distance_to(edit["position"])
 			if distance >= radius:
@@ -935,13 +1017,24 @@ func _closest_body_projection(point: Vector3, region: String = "") -> Dictionary
 			region)
 
 
-func _clipping_colors(world_vertices: PackedVector3Array, arrays: Array) -> PackedColorArray:
+func _clipping_colors(
+	world_vertices: PackedVector3Array,
+	arrays: Array,
+	component_indices: PackedInt32Array = PackedInt32Array(),
+) -> PackedColorArray:
 	var colors := PackedColorArray()
 	colors.resize(world_vertices.size())
-	colors.fill(CLOTH_DEBUG_COLOR)
+	colors.fill(
+			CLOTH_DEBUG_COLOR if component_indices.is_empty() else Color.WHITE)
+	var indices := (
+			arrays[Mesh.ARRAY_INDEX] as PackedInt32Array
+			if component_indices.is_empty() else component_indices)
+	if not component_indices.is_empty():
+		for vertex_index in component_indices:
+			colors[vertex_index] = CLOTH_DEBUG_COLOR
 	var intersections := FIT_GEOMETRY.find_intersections(
 			world_vertices,
-			arrays[Mesh.ARRAY_INDEX] as PackedInt32Array,
+			indices,
 			_body_triangles,
 			_body_triangle_grid,
 			BODY_GRID_CELL_SIZE,
@@ -949,8 +1042,16 @@ func _clipping_colors(world_vertices: PackedVector3Array, arrays: Array) -> Pack
 	for triangle_index in (intersections["body_triangles"] as Dictionary):
 		_mark_body_triangle(triangle_index)
 	# Also catch a garment patch wholly embedded without crossing a body triangle.
-	for point in world_vertices:
-		_mark_body_triangles_near_point(point)
+	if component_indices.is_empty():
+		for point in world_vertices:
+			_mark_body_triangles_near_point(point)
+	else:
+		var visited: Dictionary = {}
+		for vertex_index in component_indices:
+			if visited.has(vertex_index):
+				continue
+			visited[vertex_index] = true
+			_mark_body_triangles_near_point(world_vertices[vertex_index])
 	return colors
 
 
@@ -1106,6 +1207,7 @@ func _load_profile() -> void:
 				"surface": surface_index,
 				"vertex": vertex_index,
 				"vertex_count": vertices.size(),
+				"component": (surface["vertex_components"] as PackedInt32Array)[vertex_index],
 			}
 			_handles.append(handle)
 			_handle_by_key[key] = handle
@@ -1131,48 +1233,30 @@ func _handle_key(mesh_key: String, surface_index: int, vertex_index: int) -> Str
 
 
 func get_clothing_surfaces() -> Array[Dictionary]:
-	var result: Array[Dictionary] = []
-	for mesh_key_variant in _mesh_states:
-		var mesh_key := String(mesh_key_variant)
-		var state: Dictionary = _mesh_states[mesh_key]
-		var mesh_instance := state.get("node") as MeshInstance3D
-		var node_name := ""
-		if is_instance_valid(mesh_instance):
-			node_name = String(mesh_instance.name)
-			if node_name.ends_with(":Mesh"):
-				node_name = node_name.trim_suffix(":Mesh")
-
-		var surfaces: Array = state["surfaces"]
-		var cloth_count := 0
-		for surface in surfaces:
-			if surface.get("is_clothing", false):
-				cloth_count += 1
-		for surface_index in surfaces.size():
-			var surface: Dictionary = surfaces[surface_index]
-			if not surface.get("is_clothing", false):
-				continue
-			var mat := surface.get("material") as Material
-			var mat_name := "" if mat == null else mat.resource_name
-			var surface_name := surface.get("name", "") as String
-			var display := node_name
-			if display.is_empty():
-				display = mat_name
-			if display.is_empty():
-				display = "Surface %d" % surface_index
-			if cloth_count > 1 and not surface_name.is_empty():
-				display += " / " + surface_name
-			result.append({
-				"name": display,
-				"mesh_key": mesh_key,
-				"surface_index": surface_index,
-			})
-	return result
+	return OUTFIT_COMPONENTS.clothing_surfaces(_mesh_states)
 
 
-func select_surface(mesh_key: String, surface_index: int) -> bool:
+func get_surface_components(
+	mesh_key: String,
+	surface_index: int,
+) -> Array[Dictionary]:
+	return OUTFIT_COMPONENTS.surface_components(
+			_mesh_states, mesh_key, surface_index)
+
+
+func select_surface(
+	mesh_key: String,
+	surface_index: int,
+	component_index: int = -1,
+) -> bool:
 	for handle in _handles:
-		if handle["mesh"] == mesh_key and handle["surface"] == surface_index:
-			_select_handle(handle["key"])
+		if (handle["mesh"] == mesh_key
+				and handle["surface"] == surface_index
+				and (
+					component_index < 0
+					or handle.get("component", -1) == component_index)):
+			_selected_component_index = component_index
+			_select_handle(handle["key"], true)
 			return true
 	return false
 
@@ -1181,6 +1265,7 @@ func clear_surface_selection() -> void:
 	if _selected_key.is_empty():
 		return
 	_selected_key = ""
+	_selected_component_index = -1
 	_refresh_dot_styles()
 	_update_dot_visibility()
 	selection_cleared.emit()
@@ -1196,6 +1281,7 @@ func get_selected_surface() -> Dictionary:
 	return {
 		"mesh_key": handle["mesh"],
 		"surface_index": handle["surface"],
+		"component_index": _selected_component_index,
 	}
 
 
@@ -1207,37 +1293,8 @@ func get_selected_surface_center() -> Vector3:
 		return Vector3.ZERO
 	var mesh_key := handle["mesh"] as String
 	var surface_index := handle["surface"] as int
-	var state: Dictionary = _mesh_states.get(mesh_key, {})
-	if state.is_empty():
-		return Vector3.ZERO
-	var surfaces: Array = state.get("surfaces", [])
-	if surface_index < 0 or surface_index >= surfaces.size():
-		return Vector3.ZERO
-	var surface: Dictionary = surfaces[surface_index]
-	var mesh_instance := state["node"] as MeshInstance3D
-	var arrays: Array = surface["arrays"]
-	var world_vertices := FIT_GEOMETRY.skin_vertices_world(
-			mesh_instance, arrays)
-	var center := Vector3.ZERO
-	for v in world_vertices:
-		center += v
-	center /= world_vertices.size()
-	return center
-
-
-func _is_clothing_surface(material: Material) -> bool:
-	if material == null:
-		return true
-	var material_name := material.resource_name.to_lower()
-	for pattern in SKIN_MATERIAL_PATTERNS:
-		if pattern in material_name:
-			return false
-	return true
-
-
-func _make_dot_material(color: Color) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.disable_receive_shadows = true
-	return material
+	return OUTFIT_COMPONENTS.center(
+			_mesh_states,
+			mesh_key,
+			surface_index,
+			_selected_component_index)
