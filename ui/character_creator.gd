@@ -8,6 +8,7 @@ const FEMALE_DIR := "res://assets/models/imported_characters/402453fc-7d0e-4139-
 const MALE_DIR := "res://assets/models/imported_characters/8bcc06df-6c6e-42f0-b2c1-5f37ccf2b28b/"
 const HAIR_DIR := "res://assets/models/universal_base_characters/hairstyles/"
 const OUTFIT_DIR := "res://assets/models/modular_outfits_fantasy/"
+const OUTFIT_COMPONENTS := preload("res://ui/outfit_fit_components.gd")
 
 ## TEMPORARY debug feature to preview Quaternius's "Modular Character Outfits - Fantasy" pack
 ## (dropped in ~/Downloads, not yet a real gameplay feature - no PlayerProfile field, no
@@ -169,6 +170,8 @@ const FACE_ORBIT_DISTANCE := 0.8
 		$UI/FitPanel/Margin/VBox/SurfaceRow/SurfaceSelector)
 @onready var fit_component_selector: OptionButton = (
 		$UI/FitPanel/Margin/VBox/ComponentRow/ComponentSelector)
+@onready var fit_isolate_selected: CheckButton = (
+		$UI/FitPanel/Margin/VBox/IsolateSelected)
 @onready var fit_distance: SpinBox = $UI/FitPanel/Margin/VBox/Grid/Distance
 @onready var fit_distance_slider: HSlider = $UI/FitPanel/Margin/VBox/Grid/DistanceSlider
 @onready var fit_reset_distance: Button = $UI/FitPanel/Margin/VBox/Grid/ResetDistance
@@ -293,6 +296,7 @@ func _ready() -> void:
 	fit_auto_adjust.pressed.connect(_on_fit_auto_adjust)
 	fit_surface_selector.item_selected.connect(_on_fit_surface_selected)
 	fit_component_selector.item_selected.connect(_on_fit_component_selected)
+	fit_isolate_selected.toggled.connect(_on_fit_isolate_selected_toggled)
 	fit_reset_all.pressed.connect(_on_fit_reset_all)
 	fit_save.pressed.connect(_on_fit_save)
 	start_button.pressed.connect(_on_start_pressed)
@@ -455,6 +459,7 @@ func _on_fit_selection_changed(label: String, distance: float, radius: float) ->
 	fit_radius_slider.value = radius
 	_set_fit_controls_enabled(true)
 	_sync_surface_selector_to_selection(label)
+	_sync_fit_isolation_control()
 	_updating_fit_controls = false
 	var body: Dictionary = BODIES[_body_index]
 	var base_mesh := _preview_body.find_child(
@@ -501,6 +506,7 @@ func _on_fit_selection_cleared() -> void:
 	if fit_surface_selector.item_count > 0:
 		fit_surface_selector.select(0)
 	_refresh_component_selector()
+	_sync_fit_isolation_control()
 	var body: Dictionary = BODIES[_body_index]
 	var base_mesh := _preview_body.find_child(
 			String(body["mesh_name"]), true, false) as MeshInstance3D
@@ -629,6 +635,30 @@ func _on_fit_component_selected(index: int) -> void:
 			items[item_index]["component_index"])
 
 
+func _on_fit_isolate_selected_toggled(enabled: bool) -> void:
+	if _updating_fit_controls:
+		return
+	_fit_editor._set_isolate_selected(enabled)
+	_sync_fit_isolation_control()
+	var body: Dictionary = BODIES[_body_index]
+	var base_mesh := _preview_body.find_child(
+			String(body["mesh_name"]), true, false) as MeshInstance3D
+	if base_mesh != null:
+		_apply_body_debug_material(base_mesh)
+	if is_instance_valid(_preview_outfit):
+		_apply_outfit_materials(_preview_outfit)
+
+
+func _sync_fit_isolation_control() -> void:
+	var selected := _fit_editor.get_selected_surface()
+	var can_isolate := (
+			not selected.is_empty()
+			and selected.get("component_index", -1) as int >= 0)
+	fit_isolate_selected.disabled = not can_isolate
+	fit_isolate_selected.set_pressed_no_signal(
+			can_isolate and _fit_editor._isolate_selected)
+
+
 func _refresh_component_selector(
 	mesh_key: String = "",
 	surface_index: int = -1,
@@ -660,6 +690,7 @@ func _refresh_surface_selector() -> void:
 		fit_surface_selector.add_item(item["name"])
 	fit_surface_selector.select(0)
 	_refresh_component_selector()
+	_sync_fit_isolation_control()
 	if items.is_empty():
 		fit_status.text = "No clothing surfaces found"
 	else:
@@ -796,26 +827,32 @@ func _apply_outfit_materials(root: Node3D) -> void:
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
 		var mesh_key := String(root.get_path_to(mesh_instance))
-		for surface_index in mesh_instance.mesh.get_surface_count():
-			var source_material := mesh_instance.mesh.surface_get_material(surface_index)
+		for rendered_surface_index in mesh_instance.mesh.get_surface_count():
+			var source_surface_index := OUTFIT_COMPONENTS.source_surface_index(
+					mesh_instance.mesh, rendered_surface_index)
+			var source_material := mesh_instance.mesh.surface_get_material(
+					rendered_surface_index)
 			var material_name := ""
 			if source_material != null:
 				material_name = source_material.resource_name.to_lower()
 			var is_skin := "regular_male" in material_name or "regular_female" in material_name
 			if is_skin:
-				mesh_instance.set_surface_override_material(surface_index, hidden_skin_material)
+				mesh_instance.set_surface_override_material(
+						rendered_surface_index, hidden_skin_material)
 			elif _outfit_debug_colors:
 				var is_selected: bool = (
 					not filter_debug_surface
 					or (
 						selected["mesh_key"] == mesh_key
-						and selected["surface_index"] == surface_index
+						and selected["surface_index"] == source_surface_index
 					)
 				)
 				mesh_instance.set_surface_override_material(
-						surface_index, clothes_material if is_selected else null)
+						rendered_surface_index,
+						clothes_material if is_selected else null)
 			else:
-				mesh_instance.set_surface_override_material(surface_index, null)
+				mesh_instance.set_surface_override_material(
+						rendered_surface_index, null)
 
 
 func _make_debug_material(color: Color) -> StandardMaterial3D:

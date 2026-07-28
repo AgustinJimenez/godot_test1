@@ -62,6 +62,8 @@ var _debug_body_vertices: Dictionary = {}
 var _load_generation := 0
 var _clip_refresh_generation := 0
 var _selected_component_index := -1
+var _isolate_selected := false
+var _body_visible_before_load := true
 var _dot_material: StandardMaterial3D
 var _selected_dot_material: StandardMaterial3D
 
@@ -74,8 +76,10 @@ func setup(camera: Camera3D) -> void:
 func clear_outfit() -> void:
 	_load_generation += 1
 	_clip_refresh_generation += 1
-	if is_instance_valid(_body_mesh) and _body_source_mesh != null:
-		_body_mesh.mesh = _body_source_mesh
+	if is_instance_valid(_body_mesh):
+		if _body_source_mesh != null:
+			_body_mesh.mesh = _body_source_mesh
+		_body_mesh.visible = _body_visible_before_load
 	_outfit_root = null
 	_body_mesh = null
 	_body_source_mesh = null
@@ -94,6 +98,8 @@ func clear_outfit() -> void:
 	_debug_body_vertices.clear()
 	_selected_key = ""
 	_selected_component_index = -1
+	_isolate_selected = false
+	_body_visible_before_load = true
 	_clear_dots()
 	selection_cleared.emit()
 
@@ -108,6 +114,7 @@ func load_outfit(
 	clear_outfit()
 	_outfit_root = root
 	_body_mesh = body_mesh
+	_body_visible_before_load = body_mesh.visible
 	_body_source_mesh = body_mesh.mesh as ArrayMesh if body_mesh.mesh is ArrayMesh else null
 	_body_id = body_id
 	_outfit_id = outfit_id
@@ -115,7 +122,7 @@ func load_outfit(
 	_capture_meshes()
 	_build_handles()
 	_load_profile()
-	OUTFIT_COMPONENTS.synchronize_auto_offset_seams(_mesh_states, _auto_surface_offsets)
+	OUTFIT_COMPONENTS.synchronize_auto_offset_constraints(_mesh_states, _auto_surface_offsets)
 	_rebuild_all_meshes()
 	_build_dots()
 	_update_dot_visibility()
@@ -134,6 +141,18 @@ func set_editing(enabled: bool) -> void:
 func set_control_points_visible(enabled: bool) -> void:
 	_show_control_points = enabled
 	_update_dot_visibility()
+
+func _set_isolate_selected(enabled: bool) -> void:
+	var selected := get_selected_surface()
+	var next_value := enabled and (
+			not selected.is_empty()
+			and selected.get("component_index", -1) as int >= 0)
+	if next_value == _isolate_selected:
+		return
+	_isolate_selected = next_value
+	_apply_body_isolation_visibility()
+	_rebuild_all_meshes()
+
 
 func set_clipping_visualization(enabled: bool) -> void:
 	if enabled == _visualize_clipping:
@@ -396,7 +415,7 @@ func _auto_adjust_surfaces(
 							).limit_length(AUTO_MAX_OFFSET)
 				mesh_offsets[surface_index] = offsets
 			_auto_surface_offsets[mesh_key] = mesh_offsets
-		OUTFIT_COMPONENTS.synchronize_auto_offset_seams(
+		OUTFIT_COMPONENTS.synchronize_auto_offset_constraints(
 				_mesh_states, _auto_surface_offsets, filter_mesh, filter_surface)
 		if correction_count == 0:
 			break
@@ -452,7 +471,7 @@ func _auto_adjust_surfaces(
 					pushed_vertices += 1
 				mesh_offsets[surface_index] = offsets
 			_auto_surface_offsets[mesh_key] = mesh_offsets
-		OUTFIT_COMPONENTS.synchronize_auto_offset_seams(
+		OUTFIT_COMPONENTS.synchronize_auto_offset_constraints(
 				_mesh_states, _auto_surface_offsets, filter_mesh, filter_surface)
 		remaining_intersections = pushed_vertices
 		if pushed_vertices == 0:
@@ -472,7 +491,7 @@ func _auto_adjust_surfaces(
 					filter_mesh, filter_surface, filter_component, layer_level)
 			pass_pushes += pushed
 			if pushed > 0:
-				OUTFIT_COMPONENTS.synchronize_auto_offset_seams(
+				OUTFIT_COMPONENTS.synchronize_auto_offset_constraints(
 						_mesh_states, _auto_surface_offsets, filter_mesh, filter_surface)
 				_rebuild_geometry_only()
 		remaining_layer_intersections = pass_pushes
@@ -721,11 +740,15 @@ func _refresh_dot_styles() -> void:
 		sphere.radius = radius
 		sphere.height = radius * 2.0
 
-
 func _select_handle(key: String, preserve_component: bool = false) -> void:
-	if not preserve_component:
+	var was_isolated := _isolate_selected
+	if not preserve_component or _selected_component_index < 0:
 		_selected_component_index = -1
+		_isolate_selected = false
 	_selected_key = key
+	_apply_body_isolation_visibility()
+	if _isolate_selected or was_isolated:
+		_rebuild_geometry_only()
 	_refresh_dot_styles()
 	_update_dot_visibility()
 	_emit_selected()
@@ -843,44 +866,11 @@ func _rebuild_mesh(mesh_key: String, clipping_colors: Dictionary = {}) -> void:
 	var state: Dictionary = _mesh_states[mesh_key]
 	var source := state["source"] as Mesh
 	var surfaces: Array = state["surfaces"]
-	for surface_index in surfaces.size():
-		var surface: Dictionary = surfaces[surface_index]
-		var base_vertices: PackedVector3Array = surface["base_vertices"]
-		var vertices := base_vertices.duplicate()
-		if surface["is_clothing"]:
-			vertices = _deform_vertices(mesh_key, surface_index, base_vertices)
-		surface["vertices"] = vertices
-		var arrays: Array = surface["arrays"].duplicate(true)
-		arrays[Mesh.ARRAY_VERTEX] = vertices
-		var has_clipping: bool = _visualize_clipping \
-				and surface["is_clothing"] \
-				and clipping_colors.has(surface_index)
-		surface["_has_clipping"] = has_clipping
-		if has_clipping:
-			arrays[Mesh.ARRAY_COLOR] = clipping_colors[surface_index]
-		else:
-			# Rebuilds are cumulative, so restore the imported color channel explicitly.
-			# Otherwise a debug-color array written during an earlier rebuild survives
-			# after another surface is selected.
-			arrays[Mesh.ARRAY_COLOR] = surface["source_colors"]
-		surface["arrays"] = arrays
-	var rebuilt := ArrayMesh.new()
-	for blend_shape_index in source.get_blend_shape_count():
-		rebuilt.add_blend_shape(source.get_blend_shape_name(blend_shape_index))
-	rebuilt.blend_shape_mode = source.blend_shape_mode
-	for surface_index in surfaces.size():
-		var surface: Dictionary = surfaces[surface_index]
-		var format: int = surface["format"]
-		var has_clipping: bool = surface.get("_has_clipping", false)
-		if has_clipping:
-			format |= Mesh.ARRAY_FORMAT_COLOR
-		rebuilt.add_surface_from_arrays(
-				surface["primitive"], surface["arrays"], surface["blend_shapes"], {},
-				format)
-		rebuilt.surface_set_material(surface_index, surface["material"])
-		rebuilt.surface_set_name(surface_index, surface["name"])
+	var result := OUTFIT_COMPONENTS.rebuild_preview_mesh(
+			source, surfaces, mesh_key, clipping_colors, _visualize_clipping,
+			_isolation_selection(), _deform_vertices)
 	var mesh_instance := state["node"] as MeshInstance3D
-	mesh_instance.mesh = rebuilt
+	mesh_instance.mesh = result["mesh"]
 
 
 func _detect_clipping_colors(
@@ -1263,6 +1253,9 @@ func clear_surface_selection() -> void:
 		return
 	_selected_key = ""
 	_selected_component_index = -1
+	_isolate_selected = false
+	_apply_body_isolation_visibility()
+	_rebuild_geometry_only()
 	_refresh_dot_styles()
 	_update_dot_visibility()
 	selection_cleared.emit()
@@ -1295,3 +1288,13 @@ func get_selected_surface_center() -> Vector3:
 			mesh_key,
 			surface_index,
 			_selected_component_index)
+
+
+func _isolation_selection() -> Dictionary:
+	return get_selected_surface() if _isolate_selected else {}
+
+
+func _apply_body_isolation_visibility() -> void:
+	if is_instance_valid(_body_mesh):
+		_body_mesh.visible = (
+				false if _isolate_selected else _body_visible_before_load)

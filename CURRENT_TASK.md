@@ -4,9 +4,9 @@
 
 **Branch:** `feature/gpu-cloth-outfit-fit`
 
-**Status:** Per-surface fitting was committed at `069fea1`. The current working tree adds an
-experimental replacement for the reverted cloth-on-cloth pass: pairwise intersection cleanup that
-preserves the layer ordering measured from the imported garment geometry.
+**Status:** This branch includes layer-aware component fitting, seam preservation, render-only
+component isolation, and generic solid-shell thickness/silhouette preservation. Reusable fitting
+guidance is recorded in `AGENTS.md` and the Decisions Log.
 
 ## What was added
 
@@ -53,6 +53,11 @@ preserves the layer ordering measured from the imported garment geometry.
   Metal buckle, and two small accessories; choosing one scopes control points, camera focus, debug
   colors, manual influence, and Auto Adjust to that piece. Component-only Auto Adjust was verified
   to write 685 belt vertices and zero vertices outside the belt.
+- **Isolate selected component** is enabled only for an individual component. It hides the base body
+  and rebuilds the outfit preview with only that component's triangle indices, even when the piece
+  shares an imported surface with other garments. Disabling it restores the complete body/outfit.
+  Isolation changes no source arrays, fit offsets, or saved profile data; `Show control points` can
+  be disabled independently for an unobstructed mesh inspection.
 - Whole-outfit Auto Adjust constructs an overlap-only directed layer graph from the imported local
   body-relative depth. Components that never occupy the same body-space cells receive no ordering
   relationship. Each cleanup iteration resolves and rebuilds one graph level at a time, so inner
@@ -64,6 +69,20 @@ preserves the layer ordering measured from the imported garment geometry.
   same garment position. Before synchronization, 51 Peasant pants seam groups diverged by as much as
   1.29 cm and exposed a vertical strip of leg without technically intersecting the body; the fitted
   side capture now measures zero divergence and keeps that seam closed.
+- Auto Fit also preserves authored thickness generically. Each topology component searches for
+  nearby opposite-facing walls within three median local edge lengths and classifies it as a solid
+  shell only when at least 80% of its vertices participate in wall pairs. Solid shells cache small
+  local groups that also include coincident UV/hard-normal seam copies. Every body, collision, and
+  garment layer stage averages each group's automatic displacement so inner and outer walls move
+  together; eight group-aware topology passes smooth neighboring displacement without making the
+  complete object rigid. The Leather belt is only the acceptance case: its median inner/outer
+  separation changed from 7.59 mm to 4.19 mm with independent fitting, versus 7.62 mm with the
+  general constraint. The belt and buckle qualify, while ordinary shirts, sleeves, pants, boots, and
+  open accessories retain their existing cloth-fitting path rather than being mistaken for solids.
+- On the isolated belt, merging seam copies into the wall groups reduced final paired-wall/seam
+  deviation to zero. Eight smoothing passes reduced the 95th-percentile neighboring offset jump from
+  2.13 mm to 1.20 mm and the maximum from 6.62 mm to 2.73 mm, keeping the fitted border close to the
+  smooth authored silhouette.
 - Auto Adjust renders a centered blocking overlay for two frames before its synchronous geometry
   work begins. The message identifies whether the complete outfit, selected surface, or selected
   component is being fitted, warns that the operation can take about a minute, blocks other input,
@@ -93,9 +112,11 @@ The fix addressed both sources of persistent color:
   `get_selected_surface_center()`, modified `_select_handle`, `_update_dot_visibility`, `_refresh_clipping`,
   `_rebuild_mesh`, `_rebuild_geometry_only`, and layer-cleanup integration
 - `ui/outfit_fit_layers.gd`: authored local order measurement and pairwise garment intersection cleanup
+- `ui/outfit_fit_components.gd`: topology component catalog, isolated preview mesh construction, and
+  rendered-to-source surface mapping
 - `ui/character_creator.gd`: `_on_fit_surface_selected()`, `_refresh_surface_selector()`,
-  `_sync_surface_selector_to_selection()`, `_focus_camera_on_selected_surface()`
-- `ui/character_creator.tscn`: `SurfaceRow`/`SurfaceSelector` OptionButton
+  `_sync_surface_selector_to_selection()`, `_focus_camera_on_selected_surface()`, and isolation control
+- `ui/character_creator.tscn`: Surface/Component selectors and `Isolate selected component`
 - `.gdlintrc`: max-file-lines bumped to 1300
 
 ## Verification
@@ -104,4 +125,8 @@ The fix addressed both sources of persistent color:
 scripts/check.sh
 ```
 
-The layer-aware experiment is not committed yet.
+Temporary acceptance scenes verified that the Leather belt renders exactly its 4,224
+triangle indices as the sole outfit surface, hides the body, and restores all five imported outfit
+surfaces plus the body when disabled. A second diagnostic measured belt thickness before and after
+selected-component fitting, and a full-outfit capture exercised the same topology constraint across
+all garments. The temporary scenes were deleted after verification.

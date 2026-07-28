@@ -241,6 +241,12 @@ disabled = true
 text = "All components"
 tooltip_text = "Optionally restrict fitting to one disconnected piece of the selected surface"
 
+[node name="IsolateSelected" type="CheckButton" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+disabled = true
+tooltip_text = "Show only the selected garment component without changing its fit"
+text = "Isolate selected component"
+
 [node name="Selection" type="Label" parent="UI/FitPanel/Margin/VBox"]
 layout_mode = 2
 text = "No point selected"
