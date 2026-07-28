@@ -8,7 +8,7 @@ const FEMALE_DIR := "res://assets/models/imported_characters/402453fc-7d0e-4139-
 const MALE_DIR := "res://assets/models/imported_characters/8bcc06df-6c6e-42f0-b2c1-5f37ccf2b28b/"
 const HAIR_DIR := "res://assets/models/universal_base_characters/hairstyles/"
 const OUTFIT_DIR := "res://assets/models/modular_outfits_fantasy/"
-const OUTFIT_COMPONENTS := preload("res://ui/outfit_fit_components.gd")
+const OUTFIT_PRESENTATION := preload("res://ui/outfit_fit/presentation.gd")
 
 ## TEMPORARY debug feature to preview Quaternius's "Modular Character Outfits - Fantasy" pack
 ## (dropped in ~/Downloads, not yet a real gameplay feature - no PlayerProfile field, no
@@ -800,67 +800,20 @@ func _rebuild_outfit() -> void:
 func _apply_body_debug_material(
 	mesh_instance: MeshInstance3D,
 ) -> void:
-	if not _outfit_debug_colors:
-		mesh_instance.material_override = null
-		return
-	if _show_outfit_clipping and not _fit_editor.get_selected_surface().is_empty():
-		# The rebuilt body mesh uses its authored material with per-vertex debug
-		# tinting, allowing unaffected body areas to remain visually unchanged.
-		mesh_instance.material_override = null
-		return
-	var material := _make_debug_material(
-			Color.WHITE if _show_outfit_clipping else Color(0.9, 0.04, 0.04))
-	material.vertex_color_use_as_albedo = _show_outfit_clipping
-	mesh_instance.material_override = material
+	OUTFIT_PRESENTATION.apply_body_debug_material(
+			mesh_instance,
+			_outfit_debug_colors,
+			_show_outfit_clipping,
+			not _fit_editor.get_selected_surface().is_empty())
 
 
-## Outfit meshes include duplicate exposed skin. Hide those surfaces in this baseline so the
-## complete base body is the only skin source; color only clothing blue in diagnostic mode.
 func _apply_outfit_materials(root: Node3D) -> void:
-	var hidden_skin_material := ShaderMaterial.new()
-	hidden_skin_material.shader = DISCARD_SURFACE_SHADER
-	var clothes_material := _make_debug_material(
-			Color.WHITE if _show_outfit_clipping else Color(0.03, 0.18, 0.95))
-	clothes_material.vertex_color_use_as_albedo = _show_outfit_clipping
-	var selected := _fit_editor.get_selected_surface()
-	var filter_debug_surface := _show_outfit_clipping and not selected.is_empty()
-	for node in root.find_children("*", "MeshInstance3D", true, false):
-		var mesh_instance := node as MeshInstance3D
-		var mesh_key := String(root.get_path_to(mesh_instance))
-		for rendered_surface_index in mesh_instance.mesh.get_surface_count():
-			var source_surface_index := OUTFIT_COMPONENTS.source_surface_index(
-					mesh_instance.mesh, rendered_surface_index)
-			var source_material := mesh_instance.mesh.surface_get_material(
-					rendered_surface_index)
-			var material_name := ""
-			if source_material != null:
-				material_name = source_material.resource_name.to_lower()
-			var is_skin := "regular_male" in material_name or "regular_female" in material_name
-			if is_skin:
-				mesh_instance.set_surface_override_material(
-						rendered_surface_index, hidden_skin_material)
-			elif _outfit_debug_colors:
-				var is_selected: bool = (
-					not filter_debug_surface
-					or (
-						selected["mesh_key"] == mesh_key
-						and selected["surface_index"] == source_surface_index
-					)
-				)
-				mesh_instance.set_surface_override_material(
-						rendered_surface_index,
-						clothes_material if is_selected else null)
-			else:
-				mesh_instance.set_surface_override_material(
-						rendered_surface_index, null)
-
-
-func _make_debug_material(color: Color) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.metallic = 0.0
-	material.roughness = 0.9
-	return material
+	OUTFIT_PRESENTATION.apply_outfit_materials(
+			root,
+			DISCARD_SURFACE_SHADER,
+			_outfit_debug_colors,
+			_show_outfit_clipping,
+			_fit_editor.get_selected_surface())
 
 
 ## The imported body ships its own permanently-visible, never-tinted "Eyebrows" sibling mesh (same

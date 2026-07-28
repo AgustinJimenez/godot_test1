@@ -2,7 +2,7 @@ class_name OutfitFitComponents
 extends RefCounted
 ## Catalogs disconnected topology pieces contained inside imported mesh surfaces.
 
-const FIT_GEOMETRY := preload("res://ui/outfit_fit_geometry.gd")
+const FIT_GEOMETRY := preload("res://ui/outfit_fit/geometry.gd")
 const SKIN_MATERIAL_PATTERNS := ["regular_male", "regular_female"]
 const THICK_SHAPE_SMOOTH_PASSES := 8
 const THICK_SHAPE_SMOOTH_BLEND := 0.35

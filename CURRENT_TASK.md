@@ -10,7 +10,7 @@ guidance is recorded in `AGENTS.md` and the Decisions Log.
 
 ## What was added
 
-- **`OutfitFitEditor.fit_selected_surface(clearance)`** (`ui/outfit_fit_editor.gd`): runs the body-projection
+- **`OutfitFitEditor.fit_selected_surface(clearance)`** (`ui/outfit_fit/editor.gd`): runs the body-projection
   fitting solver on a single selected surface. It now uses the same three projection passes and
   sixteen-pass collision cleanup as whole-outfit `auto_adjust`, while leaving every other garment
   surface untouched.
@@ -35,7 +35,7 @@ guidance is recorded in `AGENTS.md` and the Decisions Log.
   current horizontal angle). The focus also becomes the persistent orbit target, so subsequent drag
   and trackpad zoom input continues around the selected garment instead of snapping back to the
   previous full-body target. Manual camera input cancels an in-progress focus tween.
-- **Layer-aware garment cleanup** (`ui/outfit_fit_layers.gd`): measures each pair's imported ordering
+- **Layer-aware garment cleanup** (`ui/outfit_fit/layers.gd`): measures each pair's imported ordering
   only in body-space cells shared by both surfaces, then performs real triangle/triangle intersection
   checks after body fitting. Whole-outfit fitting pushes the authored outer layer outward. A
   selected-only fit changes only that selection: an outer selection moves outward, while an inner
@@ -108,16 +108,20 @@ The fix addressed both sources of persistent color:
 
 ## Files changed
 
-- `ui/outfit_fit_editor.gd`: `fit_selected_surface()`, `get_clothing_surfaces()`, `select_surface()`,
+- `ui/outfit_fit/editor.gd`: stateful façade with `fit_selected_surface()`,
+  `get_clothing_surfaces()`, `select_surface()`,
   `get_selected_surface_center()`, modified `_select_handle`, `_update_dot_visibility`, `_refresh_clipping`,
   `_rebuild_mesh`, `_rebuild_geometry_only`, and layer-cleanup integration
-- `ui/outfit_fit_layers.gd`: authored local order measurement and pairwise garment intersection cleanup
-- `ui/outfit_fit_components.gd`: topology component catalog, isolated preview mesh construction, and
+- `ui/outfit_fit/solver.gd`: body-contact, collision, and ordered garment-layer fitting pipeline
+- `ui/outfit_fit/visualization.gd`: body triangle cache and temporary clipping debug meshes
+- `ui/outfit_fit/presentation.gd`: Character Creator material overrides for normal/debug previews
+- `ui/outfit_fit/layers.gd`: authored local order measurement and pairwise garment intersection cleanup
+- `ui/outfit_fit/components.gd`: topology component catalog, isolated preview mesh construction, and
   rendered-to-source surface mapping
 - `ui/character_creator.gd`: `_on_fit_surface_selected()`, `_refresh_surface_selector()`,
   `_sync_surface_selector_to_selection()`, `_focus_camera_on_selected_surface()`, and isolation control
 - `ui/character_creator.tscn`: Surface/Component selectors and `Isolate selected component`
-- `.gdlintrc`: max-file-lines bumped to 1300
+- `.gdlintrc`: the project-wide 1000-line ceiling is restored after splitting the fitting subsystem
 
 ## Verification
 

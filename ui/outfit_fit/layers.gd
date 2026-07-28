@@ -6,7 +6,7 @@ extends RefCounted
 ## During cleanup the authored outer surface moves outward; for a selected-only fit, an
 ## authored inner selection may move inward only while preserving body clearance.
 
-const FIT_GEOMETRY := preload("res://ui/outfit_fit_geometry.gd")
+const FIT_GEOMETRY := preload("res://ui/outfit_fit/geometry.gd")
 const ORDER_CELL_SIZE := 0.08
 const COMPONENT_DEPTH_CELL_SIZE := 0.03
 
