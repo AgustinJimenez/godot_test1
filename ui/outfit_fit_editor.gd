@@ -14,6 +14,7 @@ const PROFILE_DIR := "res://assets/outfit_fit_profiles"
 const GRID_SAMPLER := preload("res://ui/outfit_fit_grid_sampler.gd")
 const FIT_GEOMETRY := preload("res://ui/outfit_fit_geometry.gd")
 const PROFILE_CODEC := preload("res://ui/outfit_fit_profile_codec.gd")
+const OUTFIT_LAYERS := preload("res://ui/outfit_fit_layers.gd")
 const PROFILE_SCHEMA := 1
 const HANDLE_GRID_SPACING := 0.04
 const DEFAULT_RADIUS := 0.08
@@ -27,6 +28,8 @@ const AUTO_FIT_PASSES := 3
 const AUTO_MAX_STEP := 0.03
 const AUTO_SMOOTH_PASSES := 2
 const AUTO_SMOOTH_BLEND := 0.4
+const CLOTH_LAYER_STEP := 0.002
+const CLOTH_LAYER_MAX_PASSES := 12
 const COLLISION_STEP := 0.002
 const CLIP_SEARCH_RADIUS := 0.08
 const AUTO_SEARCH_RADIUS := 0.45
@@ -262,6 +265,23 @@ func _auto_adjust_surfaces(
 	if _body_triangles.is_empty():
 		status_changed.emit("Could not build the body surface for Auto Adjust")
 		return 0
+	var authored_layer_order := OUTFIT_LAYERS.compute_authored_order(
+			_mesh_states,
+			_body_triangles,
+			_body_triangle_grid,
+			BODY_GRID_CELL_SIZE,
+			_body_normal_sign,
+			AUTO_SEARCH_RADIUS)
+	var layer_context := {
+		"body_triangles": _body_triangles,
+		"body_grid": _body_triangle_grid,
+		"body_cell_size": BODY_GRID_CELL_SIZE,
+		"body_normal_sign": _body_normal_sign,
+		"search_radius": AUTO_SEARCH_RADIUS,
+		"body_clearance": clearance,
+		"layer_step": CLOTH_LAYER_STEP,
+		"maximum_offset": AUTO_MAX_OFFSET,
+	}
 	if filter_enabled:
 		var selected_offsets := _auto_surface_offsets[filter_mesh] as Array
 		(selected_offsets[filter_surface] as PackedVector3Array).fill(Vector3.ZERO)
@@ -411,18 +431,37 @@ func _auto_adjust_surfaces(
 		if pushed_vertices == 0:
 			break
 		_rebuild_geometry_only()
+	var layer_pushes := 0
+	var remaining_layer_intersections := 0
+	for _layer_pass in CLOTH_LAYER_MAX_PASSES:
+		var pushed := OUTFIT_LAYERS.resolve_pass(
+				_mesh_states,
+				_auto_surface_offsets,
+				authored_layer_order,
+				layer_context,
+				filter_mesh,
+				filter_surface)
+		remaining_layer_intersections = pushed
+		if pushed == 0:
+			break
+		layer_pushes += pushed
+		_rebuild_geometry_only()
 	_refresh_dot_positions()
 	_schedule_clipping_refresh()
 	if not _selected_key.is_empty():
 		_emit_selected()
 	var scope := " on selected surface" if filter_enabled else ""
 	status_changed.emit(
-		"Contact-fit %d cloth vertices%s at %.1f mm%s%s; inspect, then save or reset"
+		"Contact-fit %d cloth vertices%s at %.1f mm%s%s%s; inspect, then save or reset"
 		% [
 			adjusted, scope, clearance * 1000.0,
 			" (%d skipped)" % skipped if skipped > 0 else "",
 			(" (%d intersection vertices remain)" % remaining_intersections
 					if remaining_intersections > 0 else ""),
+			(" (%d layer pushes%s)" % [
+					layer_pushes,
+					", limit reached" if remaining_layer_intersections > 0 else "",
+				] if layer_pushes > 0 else ""),
 		])
 	return adjusted
 

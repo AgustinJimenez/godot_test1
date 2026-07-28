@@ -4,9 +4,9 @@
 
 **Branch:** `feature/gpu-cloth-outfit-fit`
 
-**Status:** Changed tack from "fit all surfaces at once" to "select one surface, fit only that one." All
-cloth-on-cloth commits (`4934c90`, `05b408a`) reverted via `git reset --hard 98cc4fc` — codebase back
-to before any cloth-on-cloth work. Changes since then are staged or in working tree, nothing committed.
+**Status:** Per-surface fitting was committed at `069fea1`. The current working tree adds an
+experimental replacement for the reverted cloth-on-cloth pass: pairwise intersection cleanup that
+preserves the layer ordering measured from the imported garment geometry.
 
 ## What was added
 
@@ -35,6 +35,12 @@ to before any cloth-on-cloth work. Changes since then are staged or in working t
   current horizontal angle). The focus also becomes the persistent orbit target, so subsequent drag
   and trackpad zoom input continues around the selected garment instead of snapping back to the
   previous full-body target. Manual camera input cancels an in-progress focus tween.
+- **Layer-aware garment cleanup** (`ui/outfit_fit_layers.gd`): measures each pair's imported ordering
+  only in body-space cells shared by both surfaces, then performs real triangle/triangle intersection
+  checks after body fitting. Whole-outfit fitting pushes the authored outer layer outward. A
+  selected-only fit changes only that selection: an outer selection moves outward, while an inner
+  selection may move inward only until it reaches the requested body clearance. The pass is capped at
+  twelve 2 mm iterations and reports when that limit is reached.
 
 ## Debug colors on selected surfaces
 
@@ -58,7 +64,8 @@ The fix addressed both sources of persistent color:
 
 - `ui/outfit_fit_editor.gd`: `fit_selected_surface()`, `get_clothing_surfaces()`, `select_surface()`,
   `get_selected_surface_center()`, modified `_select_handle`, `_update_dot_visibility`, `_refresh_clipping`,
-  `_rebuild_mesh`, `_rebuild_geometry_only`
+  `_rebuild_mesh`, `_rebuild_geometry_only`, and layer-cleanup integration
+- `ui/outfit_fit_layers.gd`: authored local order measurement and pairwise garment intersection cleanup
 - `ui/character_creator.gd`: `_on_fit_surface_selected()`, `_refresh_surface_selector()`,
   `_sync_surface_selector_to_selection()`, `_focus_camera_on_selected_surface()`
 - `ui/character_creator.tscn`: `SurfaceRow`/`SurfaceSelector` OptionButton
@@ -70,4 +77,4 @@ The fix addressed both sources of persistent color:
 scripts/check.sh
 ```
 
-No commit has been requested.
+The layer-aware experiment is not committed yet.
