@@ -117,6 +117,51 @@ static func dot_material(color: Color) -> StandardMaterial3D:
 	return material
 
 
+static func synchronize_auto_offset_seams(
+	mesh_states: Dictionary,
+	auto_surface_offsets: Dictionary,
+	filter_mesh: String = "",
+	filter_surface: int = -1,
+) -> int:
+	var synchronized := 0
+	for mesh_key_variant in mesh_states:
+		var mesh_key := String(mesh_key_variant)
+		if not filter_mesh.is_empty() and mesh_key != filter_mesh:
+			continue
+		var state: Dictionary = mesh_states[mesh_key]
+		var surfaces: Array = state["surfaces"]
+		var mesh_offsets := auto_surface_offsets[mesh_key] as Array
+		for surface_index in surfaces.size():
+			if filter_surface >= 0 and surface_index != filter_surface:
+				continue
+			var surface: Dictionary = surfaces[surface_index]
+			if not surface["is_clothing"]:
+				continue
+			var vertices := surface["base_vertices"] as PackedVector3Array
+			var offsets := mesh_offsets[surface_index] as PackedVector3Array
+			var groups: Dictionary = {}
+			for vertex_index in vertices.size():
+				var key := _position_key(vertices[vertex_index])
+				var members: Array = groups.get(key, [])
+				members.append(vertex_index)
+				groups[key] = members
+			for members_variant in groups.values():
+				var members := members_variant as Array
+				if members.size() < 2:
+					continue
+				var average := Vector3.ZERO
+				for vertex_index in members:
+					average += offsets[vertex_index]
+				average /= float(members.size())
+				for vertex_index in members:
+					if not offsets[vertex_index].is_equal_approx(average):
+						synchronized += 1
+					offsets[vertex_index] = average
+			mesh_offsets[surface_index] = offsets
+		auto_surface_offsets[mesh_key] = mesh_offsets
+	return synchronized
+
+
 static func center(
 	mesh_states: Dictionary,
 	mesh_key: String,
@@ -143,6 +188,14 @@ static func center(
 			center_point += world_vertices[vertex_index]
 			count += 1
 	return center_point / float(count) if count > 0 else Vector3.ZERO
+
+
+static func _position_key(position: Vector3) -> Vector3i:
+	const WELD_EPSILON := 0.0001
+	return Vector3i(
+			roundi(position.x / WELD_EPSILON),
+			roundi(position.y / WELD_EPSILON),
+			roundi(position.z / WELD_EPSILON))
 
 
 static func _surface(

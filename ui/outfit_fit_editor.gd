@@ -115,6 +115,7 @@ func load_outfit(
 	_capture_meshes()
 	_build_handles()
 	_load_profile()
+	OUTFIT_COMPONENTS.synchronize_auto_offset_seams(_mesh_states, _auto_surface_offsets)
 	_rebuild_all_meshes()
 	_build_dots()
 	_update_dot_visibility()
@@ -395,6 +396,8 @@ func _auto_adjust_surfaces(
 							).limit_length(AUTO_MAX_OFFSET)
 				mesh_offsets[surface_index] = offsets
 			_auto_surface_offsets[mesh_key] = mesh_offsets
+		OUTFIT_COMPONENTS.synchronize_auto_offset_seams(
+				_mesh_states, _auto_surface_offsets, filter_mesh, filter_surface)
 		if correction_count == 0:
 			break
 		_rebuild_geometry_only()
@@ -449,6 +452,8 @@ func _auto_adjust_surfaces(
 					pushed_vertices += 1
 				mesh_offsets[surface_index] = offsets
 			_auto_surface_offsets[mesh_key] = mesh_offsets
+		OUTFIT_COMPONENTS.synchronize_auto_offset_seams(
+				_mesh_states, _auto_surface_offsets, filter_mesh, filter_surface)
 		remaining_intersections = pushed_vertices
 		if pushed_vertices == 0:
 			break
@@ -467,6 +472,8 @@ func _auto_adjust_surfaces(
 					filter_mesh, filter_surface, filter_component, layer_level)
 			pass_pushes += pushed
 			if pushed > 0:
+				OUTFIT_COMPONENTS.synchronize_auto_offset_seams(
+						_mesh_states, _auto_surface_offsets, filter_mesh, filter_surface)
 				_rebuild_geometry_only()
 		remaining_layer_intersections = pass_pushes
 		if pass_pushes == 0:
@@ -1234,20 +1241,10 @@ func _handle_key(mesh_key: String, surface_index: int, vertex_index: int) -> Str
 
 func get_clothing_surfaces() -> Array[Dictionary]:
 	return OUTFIT_COMPONENTS.clothing_surfaces(_mesh_states)
-
-
-func get_surface_components(
-	mesh_key: String,
-	surface_index: int,
-) -> Array[Dictionary]:
-	return OUTFIT_COMPONENTS.surface_components(
-			_mesh_states, mesh_key, surface_index)
-
-
+func get_surface_components(mesh_key: String, surface_index: int) -> Array[Dictionary]:
+	return OUTFIT_COMPONENTS.surface_components(_mesh_states, mesh_key, surface_index)
 func select_surface(
-	mesh_key: String,
-	surface_index: int,
-	component_index: int = -1,
+	mesh_key: String, surface_index: int, component_index: int = -1,
 ) -> bool:
 	for handle in _handles:
 		if (handle["mesh"] == mesh_key

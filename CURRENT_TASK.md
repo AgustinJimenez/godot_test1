@@ -59,6 +59,15 @@ preserves the layer ordering measured from the imported garment geometry.
   shirt/pants corrections feed the belt level and belt corrections feed the buckle level. The
   Peasant outfit produces 16 local relationships across four levels; its torso path is
   Body → Shirt → Leather belt → Metal buckle.
+- Auto Fit synchronizes offsets across position-welded duplicates after every body, collision, and
+  layer stage. These duplicates are separate indices for UV seams or hard normals but represent the
+  same garment position. Before synchronization, 51 Peasant pants seam groups diverged by as much as
+  1.29 cm and exposed a vertical strip of leg without technically intersecting the body; the fitted
+  side capture now measures zero divergence and keeps that seam closed.
+- Auto Adjust renders a centered blocking overlay for two frames before its synchronous geometry
+  work begins. The message identifies whether the complete outfit, selected surface, or selected
+  component is being fitted, warns that the operation can take about a minute, blocks other input,
+  and uses the wait cursor until the fit returns.
 
 ## Debug colors on selected surfaces
 

@@ -182,6 +182,9 @@ const FACE_ORBIT_DISTANCE := 0.8
 @onready var fit_reset_all: Button = $UI/FitPanel/Margin/VBox/ButtonRow/ResetAll
 @onready var fit_save: Button = $UI/FitPanel/Margin/VBox/Save
 @onready var fit_status: Label = $UI/FitPanel/Margin/VBox/Status
+@onready var auto_adjust_overlay: Control = $UI/AutoAdjustOverlay
+@onready var auto_adjust_message: Label = (
+		$UI/AutoAdjustOverlay/Center/Panel/Margin/VBox/Message)
 
 ## One independent OptionButton-backed choice (Hairstyle, Facial Hair, or Eyebrows). `items` is
 ## one of the consts above; `indices` maps each dropdown row back to an `items` index since
@@ -562,20 +565,30 @@ func _on_fit_reset_auto_clearance() -> void:
 func _on_fit_auto_adjust() -> void:
 	fit_auto_adjust.disabled = true
 	var selected_surface := _fit_editor.get_selected_surface()
+	var scope := "the complete outfit"
 	if selected_surface.is_empty():
 		fit_status.text = "Contact-fitting all surfaces with %.1f mm clearance..." % [
 			fit_auto_clearance.value * 10.0]
 	elif selected_surface.get("component_index", -1) as int >= 0:
+		scope = "the selected component"
 		fit_status.text = "Contact-fitting selected component with %.1f mm clearance..." % [
 			fit_auto_clearance.value * 10.0]
 	else:
+		scope = "the selected surface"
 		fit_status.text = "Contact-fitting selected surface with %.1f mm clearance..." % [
 			fit_auto_clearance.value * 10.0]
+	auto_adjust_message.text = (
+			"Fitting %s.\nPlease wait; this can take about a minute." % scope)
+	auto_adjust_overlay.visible = true
+	Input.set_default_cursor_shape(Input.CURSOR_WAIT)
+	await get_tree().process_frame
 	await get_tree().process_frame
 	if selected_surface.is_empty():
 		_fit_editor.auto_adjust(fit_auto_clearance.value / 100.0)
 	else:
 		_fit_editor.fit_selected_surface(fit_auto_clearance.value / 100.0)
+	auto_adjust_overlay.visible = false
+	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
 	fit_auto_adjust.disabled = false
 
 
