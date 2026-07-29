@@ -16,6 +16,7 @@ const FIT_GEOMETRY := preload("res://ui/outfit_fit/geometry.gd")
 const PROFILE_CODEC := preload("res://ui/outfit_fit/profile_codec.gd")
 const OUTFIT_LAYERS := preload("res://ui/outfit_fit/layers.gd")
 const OUTFIT_COMPONENTS := preload("res://ui/outfit_fit/components.gd")
+const OUTFIT_BODY_OCCLUSION := preload("res://ui/outfit_fit/body_occlusion.gd")
 const OUTFIT_LIMB_ALIGNER := preload("res://ui/outfit_fit/limb_aligner.gd")
 const OUTFIT_SOLVER := preload("res://ui/outfit_fit/solver.gd")
 const OUTFIT_VISUALIZATION := preload("res://ui/outfit_fit/visualization.gd")
@@ -51,6 +52,7 @@ var _body_normal_sign := 1.0
 var _body_source_mesh: ArrayMesh
 var _clipped_body_vertices: Dictionary = {}
 var _debug_body_vertices: Dictionary = {}
+var _occluded_body_triangles: Dictionary = {}
 var _load_generation := 0
 var _clip_refresh_generation := 0
 var _selected_component_index := -1
@@ -63,7 +65,6 @@ func setup(camera: Camera3D) -> void:
 	_camera = camera
 	_dot_material = OUTFIT_COMPONENTS.dot_material(Color(0.1, 0.95, 1.0))
 	_selected_dot_material = OUTFIT_COMPONENTS.dot_material(Color(1.0, 0.55, 0.05))
-
 
 func clear_outfit() -> void:
 	_load_generation += 1
@@ -88,13 +89,13 @@ func clear_outfit() -> void:
 	_body_normal_sign = 1.0
 	_clipped_body_vertices.clear()
 	_debug_body_vertices.clear()
+	_occluded_body_triangles.clear()
 	_selected_key = ""
 	_selected_component_index = -1
 	_isolate_selected = false
 	_body_visible_before_load = true
 	_clear_dots()
 	selection_cleared.emit()
-
 
 func load_outfit(
 	root: Node3D,
@@ -120,7 +121,6 @@ func load_outfit(
 	_update_dot_visibility()
 	_initialize_clipping(_load_generation)
 
-
 func _create_original_outfit_preview() -> Node3D:
 	if not is_instance_valid(_outfit_root) or _mesh_states.is_empty():
 		return null
@@ -137,10 +137,8 @@ func _create_original_outfit_preview() -> Node3D:
 		mesh_instance.mesh = state["source"] as Mesh
 	return duplicate
 
-
 func _get_original_body_mesh() -> ArrayMesh:
 	return _body_source_mesh
-
 
 func set_editing(enabled: bool) -> void:
 	_editing = enabled
@@ -149,7 +147,6 @@ func set_editing(enabled: bool) -> void:
 		selection_cleared.emit()
 	_update_dot_visibility()
 	_refresh_dot_styles()
-
 
 func set_control_points_visible(enabled: bool) -> void:
 	_show_control_points = enabled
@@ -166,7 +163,6 @@ func _set_isolate_selected(enabled: bool) -> void:
 	_apply_body_isolation_visibility()
 	_rebuild_all_meshes()
 
-
 func set_clipping_visualization(enabled: bool) -> void:
 	if enabled == _visualize_clipping:
 		return
@@ -175,9 +171,7 @@ func set_clipping_visualization(enabled: bool) -> void:
 	_clipped_body_vertices.clear()
 	_debug_body_vertices.clear()
 	if not enabled:
-		if is_instance_valid(_body_mesh) and _body_source_mesh != null:
-			_body_mesh.mesh = _body_source_mesh
-		_rebuild_geometry_only()
+		_refresh_body_occlusion()
 		return
 	if _body_triangles.is_empty():
 		_build_body_triangle_grid()
@@ -185,7 +179,6 @@ func set_clipping_visualization(enabled: bool) -> void:
 
 func has_outfit() -> bool:
 	return is_instance_valid(_outfit_root) and not _handles.is_empty()
-
 
 func pick(screen_position: Vector2) -> bool:
 	if not _editing or not is_instance_valid(_camera):
@@ -210,7 +203,6 @@ func pick(screen_position: Vector2) -> bool:
 		return false
 	_select_handle(best_key)
 	return true
-
 
 func set_selected_distance(distance: float, radius: float) -> void:
 	if _selected_key.is_empty():
@@ -240,7 +232,6 @@ func set_selected_distance(distance: float, radius: float) -> void:
 	_emit_selected()
 	status_changed.emit("Unsaved fit changes")
 
-
 func reset_selected_distance() -> void:
 	if _selected_key.is_empty():
 		return
@@ -257,17 +248,18 @@ func reset_selected_distance() -> void:
 	_emit_selected()
 	status_changed.emit("Selected point distance reset; save to persist")
 
-
 func reset_all() -> void:
 	_edits.clear()
 	_clear_auto_offsets()
+	_occluded_body_triangles.clear()
+	if is_instance_valid(_body_mesh) and _body_source_mesh != null:
+		_body_mesh.mesh = _body_source_mesh
 	_rebuild_geometry_only()
 	_refresh_dot_positions()
 	_schedule_clipping_refresh()
 	if not _selected_key.is_empty():
 		_emit_selected()
 	status_changed.emit("All points reset; save to persist")
-
 
 func _clear_auto_offsets() -> void:
 	for mesh_offsets_variant in _auto_surface_offsets.values():
@@ -276,10 +268,8 @@ func _clear_auto_offsets() -> void:
 			var offsets := offsets_variant as PackedVector3Array
 			offsets.fill(Vector3.ZERO)
 
-
 func auto_adjust(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 	return _auto_adjust_surfaces(clearance)
-
 
 func _auto_adjust_surfaces(
 	clearance: float,
@@ -334,6 +324,7 @@ func _auto_adjust_surfaces(
 		"rebuild_geometry": _rebuild_geometry_only,
 		"closest_body_projection": _closest_body_projection,
 	}, clearance, filter_mesh, filter_surface, filter_component)
+	_refresh_body_occlusion(true)
 	_refresh_dot_positions()
 	_schedule_clipping_refresh()
 	if not _selected_key.is_empty():
@@ -350,7 +341,6 @@ func _auto_adjust_surfaces(
 			]
 	status_changed.emit(alignment_status + String(result["status"]))
 	return result["adjusted"]
-
 
 func fit_selected_surface(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 	if not has_outfit() or not is_instance_valid(_body_mesh):
@@ -375,11 +365,11 @@ func fit_selected_surface(clearance: float = DEFAULT_AUTO_CLEARANCE) -> int:
 	return _auto_adjust_surfaces(
 			clearance, mesh_key, surface_index, component_index)
 
-
 func save_profile() -> bool:
 	if _body_id.is_empty() or _outfit_id.is_empty():
 		status_changed.emit("No body/outfit pair is loaded")
 		return false
+	_refresh_body_occlusion(true)
 	var handles: Array[Dictionary] = []
 	for key_variant in _edits:
 		var key := String(key_variant)
@@ -411,6 +401,7 @@ func save_profile() -> bool:
 		"handles": handles,
 		"auto_surfaces": PROFILE_CODEC.encode_auto_offsets(
 				_auto_surface_offsets, _mesh_states),
+		"body_occlusion": OUTFIT_BODY_OCCLUSION.encode(_occluded_body_triangles),
 	}
 	var absolute_dir := ProjectSettings.globalize_path(PROFILE_DIR)
 	var error := DirAccess.make_dir_recursive_absolute(absolute_dir)
@@ -424,7 +415,6 @@ func save_profile() -> bool:
 	file.store_string(JSON.stringify(document, "\t") + "\n")
 	status_changed.emit("Saved %d edited points to %s" % [handles.size(), _profile_path()])
 	return true
-
 
 func _capture_meshes() -> void:
 	for node in _outfit_root.find_children("*", "MeshInstance3D", true, false):
@@ -477,7 +467,6 @@ func _capture_meshes() -> void:
 			auto_offsets.append(offsets)
 		_auto_surface_offsets[mesh_key] = auto_offsets
 
-
 func _build_handles() -> void:
 	for candidate in GRID_SAMPLER.sample(_mesh_states, HANDLE_GRID_SPACING):
 		var key := _handle_key(
@@ -491,7 +480,6 @@ func _build_handles() -> void:
 		handle["key"] = key
 		_handles.append(handle)
 		_handle_by_key[key] = handle
-
 
 func _build_dots() -> void:
 	_clear_dots()
@@ -510,14 +498,12 @@ func _build_dots() -> void:
 	_refresh_dot_positions()
 	_refresh_dot_styles()
 
-
 func _clear_dots() -> void:
 	for dot_variant in _dots.values():
 		var dot := dot_variant as MeshInstance3D
 		if is_instance_valid(dot):
 			dot.queue_free()
 	_dots.clear()
-
 
 func _update_dot_visibility() -> void:
 	var filter_mesh := ""
@@ -544,7 +530,6 @@ func _update_dot_visibility() -> void:
 			else:
 				dot.visible = false
 
-
 func _refresh_dot_positions() -> void:
 	for handle in _handles:
 		var mesh_key: String = handle["mesh"]
@@ -558,7 +543,6 @@ func _refresh_dot_positions() -> void:
 		var mesh_instance := state["node"] as MeshInstance3D
 		if is_instance_valid(dot) and is_instance_valid(mesh_instance):
 			dot.global_position = mesh_instance.to_global(vertices[handle["vertex"]])
-
 
 func _refresh_dot_styles() -> void:
 	for key_variant in _dots:
@@ -584,7 +568,6 @@ func _select_handle(key: String, preserve_component: bool = false) -> void:
 	_update_dot_visibility()
 	_emit_selected()
 	_refresh_clipping()
-
 
 func _measure_handle(handle: Dictionary) -> Dictionary:
 	if handle.is_empty():
@@ -612,7 +595,6 @@ func _measure_handle(handle: Dictionary) -> Dictionary:
 		"distance": (world_position - (projection["position"] as Vector3)).dot(normal),
 	}
 
-
 func _emit_selected() -> void:
 	var handle: Dictionary = _handle_by_key.get(_selected_key, {})
 	if handle.is_empty():
@@ -628,11 +610,9 @@ func _emit_selected() -> void:
 		handle["mesh"], handle["surface"], handle["vertex"]]
 	selection_changed.emit(label, measurement["distance"], edit["radius"])
 
-
 func _rebuild_all_meshes() -> void:
 	_rebuild_geometry_only()
 	_refresh_clipping()
-
 
 func _rebuild_geometry_only() -> void:
 	var saved := _visualize_clipping
@@ -640,7 +620,6 @@ func _rebuild_geometry_only() -> void:
 	for mesh_key_variant in _mesh_states:
 		_rebuild_mesh(String(mesh_key_variant))
 	_visualize_clipping = saved
-
 
 func _refresh_clipping() -> void:
 	if not _visualize_clipping or _body_triangles.is_empty():
@@ -668,30 +647,35 @@ func _refresh_clipping() -> void:
 		for mesh_key_variant in _mesh_states:
 			var mesh_key := String(mesh_key_variant)
 			_rebuild_mesh(mesh_key, _detect_clipping_colors(mesh_key))
-	_apply_body_clipping_colors()
-
+	OUTFIT_VISUALIZATION.apply_body_clipping_colors(
+			_body_mesh,
+			_body_source_mesh,
+			_clipped_body_vertices,
+			_debug_body_vertices,
+			not _selected_key.is_empty())
 
 func _schedule_clipping_refresh() -> void:
 	_clip_refresh_generation += 1
 	_refresh_clipping_after_delay(_clip_refresh_generation)
 
-
 func _refresh_clipping_after_delay(generation: int) -> void:
 	await get_tree().create_timer(0.18).timeout
 	if generation != _clip_refresh_generation or not is_instance_valid(_outfit_root):
 		return
-	_refresh_clipping()
-
+	if _visualize_clipping:
+		_refresh_clipping()
+	else:
+		_refresh_body_occlusion()
 
 func _initialize_clipping(generation: int) -> void:
-	if not _visualize_clipping:
-		return
 	await get_tree().process_frame
 	if generation != _load_generation or not is_instance_valid(_outfit_root):
 		return
 	_build_body_triangle_grid()
-	_refresh_clipping()
-
+	if _visualize_clipping:
+		_refresh_clipping()
+	else:
+		_refresh_body_occlusion()
 
 func _rebuild_mesh(mesh_key: String, clipping_colors: Dictionary = {}) -> void:
 	var state: Dictionary = _mesh_states[mesh_key]
@@ -702,7 +686,6 @@ func _rebuild_mesh(mesh_key: String, clipping_colors: Dictionary = {}) -> void:
 			_isolation_selection(), _deform_vertices)
 	var mesh_instance := state["node"] as MeshInstance3D
 	mesh_instance.mesh = result["mesh"]
-
 
 func _detect_clipping_colors(
 	mesh_key: String,
@@ -738,7 +721,6 @@ func _detect_clipping_colors(
 				_clipped_body_vertices,
 				_debug_body_vertices)
 	return result
-
 
 func _deform_vertices(
 	mesh_key: String,
@@ -794,7 +776,6 @@ func _deform_vertices(
 			result[vertex_index] += weighted_offset / maxf(1.0, total_weight)
 	return result
 
-
 func _build_body_triangle_grid() -> void:
 	if (not _body_triangles.is_empty() or not is_instance_valid(_body_mesh)
 			or _body_source_mesh == null):
@@ -804,7 +785,6 @@ func _build_body_triangle_grid() -> void:
 	_body_triangles = result["triangles"]
 	_body_triangle_grid = result["grid"]
 	_body_normal_sign = result["normal_sign"]
-
 
 func _closest_body_projection(point: Vector3, region: String = "") -> Dictionary:
 	return FIT_GEOMETRY.closest_body_projection(
@@ -816,17 +796,22 @@ func _closest_body_projection(point: Vector3, region: String = "") -> Dictionary
 			_body_normal_sign,
 			region)
 
-
-func _apply_body_clipping_colors() -> void:
-	if not _visualize_clipping or _body_source_mesh == null:
-		return
-	OUTFIT_VISUALIZATION.apply_body_clipping_colors(
+func _refresh_body_occlusion(force_compute: bool = false) -> void:
+	if _body_triangles.is_empty():
+		_build_body_triangle_grid()
+	_occluded_body_triangles = OUTFIT_BODY_OCCLUSION.refresh(
 			_body_mesh,
 			_body_source_mesh,
-			_clipped_body_vertices,
-			_debug_body_vertices,
-			not _selected_key.is_empty())
-
+			_outfit_root,
+			_mesh_states,
+			_body_triangles,
+			_body_triangle_grid,
+			BODY_GRID_CELL_SIZE,
+			_body_normal_sign,
+			_visualize_clipping,
+			force_compute,
+			_rebuild_geometry_only,
+			_occluded_body_triangles)
 
 func _load_profile() -> void:
 	var path := _profile_path()
@@ -850,6 +835,9 @@ func _load_profile() -> void:
 	var loaded := 0
 	var loaded_auto := PROFILE_CODEC.decode_auto_offsets(
 			document.get("auto_surfaces", []), _mesh_states, _auto_surface_offsets)
+	_occluded_body_triangles = OUTFIT_BODY_OCCLUSION.decode(
+			document.get("body_occlusion", []),
+			_body_source_mesh.get_surface_count() if _body_source_mesh != null else 0)
 	for record_variant in document.get("handles", []):
 		var record := record_variant as Dictionary
 		var mesh_key := String(record.get("mesh", ""))
@@ -899,15 +887,12 @@ func _load_profile() -> void:
 	status_changed.emit(
 			"Loaded %d manual points and %d contact-fit vertices" % [loaded, loaded_auto])
 
-
 func _profile_path() -> String:
 	return "%s/%s__%s.json" % [
 			PROFILE_DIR, PROFILE_CODEC.safe_id(_body_id), PROFILE_CODEC.safe_id(_outfit_id)]
 
-
 func _handle_key(mesh_key: String, surface_index: int, vertex_index: int) -> String:
 	return "%s::%d::%d" % [mesh_key, surface_index, vertex_index]
-
 
 func get_clothing_surfaces() -> Array[Dictionary]:
 	return OUTFIT_COMPONENTS.clothing_surfaces(_mesh_states)
@@ -927,7 +912,6 @@ func select_surface(
 			return true
 	return false
 
-
 func clear_surface_selection() -> void:
 	if _selected_key.is_empty():
 		return
@@ -941,7 +925,6 @@ func clear_surface_selection() -> void:
 	selection_cleared.emit()
 	_refresh_clipping()
 
-
 func get_selected_surface() -> Dictionary:
 	if _selected_key.is_empty():
 		return {}
@@ -953,7 +936,6 @@ func get_selected_surface() -> Dictionary:
 		"surface_index": handle["surface"],
 		"component_index": _selected_component_index,
 	}
-
 
 func get_selected_surface_center() -> Vector3:
 	if _selected_key.is_empty():
@@ -969,10 +951,8 @@ func get_selected_surface_center() -> Vector3:
 			surface_index,
 			_selected_component_index)
 
-
 func _isolation_selection() -> Dictionary:
 	return get_selected_surface() if _isolate_selected else {}
-
 
 func _apply_body_isolation_visibility() -> void:
 	if is_instance_valid(_body_mesh):

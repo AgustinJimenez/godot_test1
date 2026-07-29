@@ -47,24 +47,32 @@ guidance is recorded in `AGENTS.md` and the Decisions Log.
   interpolates the four closest samples from the neighboring component within 6 cm and retains a 2 mm
   separation. This fills sampling gaps around the belt without applying the broad maximum-depth push
   that visibly inflated its silhouette.
-- **Rigid internal-panel preservation** keeps the position-welded component catalog used by selection
-  and seam continuity, but also caches raw index-connected islands. When bone-aware alignment
-  classifies a logical component as rigid and it contains at least three substantial islands (64+
-  vertices each), the largest island is the structural driver. Follower vertices project onto the
-  closest driver triangles within 6 cm to establish smooth barycentric correspondences, then the
-  complete follower assembly receives one best-fit translation/rotation/uniform-scale transform.
-  Nearest-vertex interpolation stretched the lower layer into triangular strips; copying the smooth
-  but non-uniform driver field still distorted the upper outline. The shared similarity transform
-  preserves every follower island's authored shape and their spacing from one another while following
-  the shaft's gross movement. The final constraint runs after seam synchronization; otherwise that
-  last seam average reintroduced about 9% local edge-scale variation. The final diagnostic measured
-  no more than 0.003% edge-ratio spread across all four cuff follower islands. Tiny trim, two-wall foot
-  shells, and ordinary shirt/pants panels do not enter this constraint.
-  **Known remaining issue:** manual authored-material inspection confirms the upper cuff recovered,
-  but the lower cuff layer still has an odd overall shape. The edge-ratio metric proves only that the
-  follower is internally similarity-transformed; it does not prove that the chosen shared transform,
-  driver correspondence, or layer placement is visually correct. Continue from this checkpoint by
-  isolating the two follower islands and comparing their fitted transforms against the source.
+- **Rigid component shape preservation** snapshots every component accepted by bone-aware distal-limb
+  alignment, lets ordinary contact fitting propose its clearance positions, then replaces the
+  nonuniform result with one best-fit translation/rotation/uniform-scale transform from the aligned
+  baseline. The rule covers the complete position-welded component, including foot shell/sole
+  structures and all shaft/cuff islands. Preserving only follower cuff islands restored the upper
+  layer but left the shaft rim with more than 5× edge-scale spread; preserving only shaft/cuff left
+  each foot with more than 3× spread and produced the catastrophic open rings visible from underneath.
+  Combining foot and shaft into one transform closed the mesh but prevented the articulated ankle
+  from settling and exposed the foot. Giving each logical component its own similarity transform
+  keeps the sole, foot, shaft, and layered cuff structurally intact while retaining their bone-aware
+  articulation. Same-side rigid components are connected by a cached nearest-boundary graph. The
+  fitted shoe remains the distal anchor and the shaft receives at most 3 cm of horizontal X/Z
+  correction; vertical correction is deliberately excluded because a full hard joint exposed the
+  toes or dragged the cuff into the pants. Scale uses the 90th percentile of projected requested
+  clearance, combined with the least-squares result, and is capped to 1.0–1.12 of the bone-aligned
+  baseline so fitting cannot thin an authored rigid shell; higher percentiles still left body
+  penetration while enlarging the boot. The final
+  constraint runs after seam
+  synchronization so later averaging cannot reintroduce distortion. The resulting boot silhouette
+  is substantially better and its shells remain closed, but manual underside/rear inspection still
+  shows body penetration. Any remaining intersection beneath a
+  classified rigid opaque component becomes a fitted body-triangle render mask: normal rendering
+  omits those covered body triangles plus one edge-connected triangle guard band to prevent
+  low-poly cracks, clipping-debug mode restores the complete source body, and
+  `Save` persists the mask in the body/outfit profile so it is regenerated on load without changing
+  the imported body mesh.
 - **Bone-aware distal-limb alignment** (`ui/outfit_fit/limb_aligner.gd`) runs before contact fitting.
   A topology component qualifies only when at least 85% of its skin weight belongs to one side's
   calf/shin/foot/ankle/ball/toe chain. For every matching body/outfit bone, the pass maps the
@@ -131,6 +139,60 @@ guidance is recorded in `AGENTS.md` and the Decisions Log.
   component is being fitted, warns that the operation can take about a minute, blocks other input,
   and uses the wait cursor until the fit returns.
 
+## Paused / incomplete: rigid boot body coverage
+
+Work is paused here pending a more reliable way to suppress body geometry covered by closed rigid
+garments. The current experimental branch state is deliberately **not committed**.
+
+What currently works:
+
+- Bone-aware alignment removes the large left/right rest-frame offset without twisting the boot.
+- A separate similarity transform per rigid topology component preserves the authored foot, shaft,
+  sole, cuff, and layered borders substantially better than per-vertex fitting.
+- Rigid scale is bounded to `1.0–1.12`, so the solver may add modest clearance but cannot shrink and
+  thin the authored shell.
+- Front and ordinary side silhouettes are broadly acceptable. The remaining failure is easiest to
+  see from the rear and underside.
+
+What is still wrong:
+
+- Body calf/foot triangles remain visible through the boot shaft and beneath the sole after
+  `Reset All` → `Auto Adjust`.
+- Clipping debug correctly restores the complete body and shows these contacts in green. With debug
+  disabled, the experimental render mask removes some contacts but still leaves triangular skin
+  fragments; a one-edge-connected guard band did not visibly resolve the failure.
+- The pants/upper-cuff overlap also remains to be evaluated after body coverage is solved.
+
+Rejected or insufficient approaches:
+
+- Per-vertex projection opened and stretched rigid boot shells.
+- One transform for the complete boot prevented ankle articulation.
+- Independent components without a tether drifted apart; a full 3D hard joint either exposed the
+  foot or pulled the cuff into the pants. The current horizontal-only tether is the best result.
+- A permissive `0.5–1.5` similarity-scale range grossly oversized the shoes.
+- Restoring the requested-scale percentile from 90% to 98%, even with the tight `1.0–1.12` bounds,
+  still left calf/sole penetration while enlarging the garment.
+- Masking only directly intersected body triangles under rigid opaque components, followed by one
+  shared-edge dilation pass, is incomplete. Do not keep adding blind dilation passes: that risks
+  deleting body triangles that should remain visible above an opening.
+
+Recommended resumption:
+
+1. Add temporary diagnostics comparing the complete debug-clipped body-triangle set against the
+   rigid-only occlusion set, including per-component and per-body-surface triangle counts. The likely
+   issue is that the visible patches are detected through garment pieces not present in
+   `rigid_fit_components`, or are fully protruding body triangles that never form the intersection
+   configuration used by the current mask.
+2. Inspect which of the four aligned Peasant boot components produces each calf/sole patch before
+   changing thresholds.
+3. Prefer an explicit covered-body classification—such as body skin-weight regions demonstrably
+   enclosed by a closed opaque distal garment, or a saved authorable body mask—over further boot
+   enlargement or unbounded adjacency dilation.
+4. Preserve clipping-debug behavior: it must always restore the complete source body so masking
+   cannot disguise unresolved fit contacts during calibration.
+5. Validate both normal-material and clipping-color captures from front, rear, side, and underneath
+   before keeping the mask, updating the decision log, or committing.
+
 ## Debug colors on selected surfaces
 
 With `_visualize_clipping` enabled, selecting a surface via the dropdown or 3D pick filters the
@@ -158,6 +220,8 @@ The fix addressed both sources of persistent color:
 - `ui/outfit_fit/solver.gd`: body-contact, collision, and ordered garment-layer fitting pipeline
 - `ui/outfit_fit/limb_aligner.gd`: weighted outfit-rest to body-rest alignment for distal garments
 - `ui/outfit_fit/visualization.gd`: body triangle cache and temporary clipping debug meshes
+- `ui/outfit_fit/body_occlusion.gd`: experimental rigid-garment body intersection mask,
+  profile encoding, and one-edge guard band
 - `ui/outfit_fit/presentation.gd`: Character Creator material overrides for normal/debug previews
 - `ui/outfit_fit/layers.gd`: authored local order measurement and pairwise garment intersection cleanup
 - `ui/outfit_fit/components.gd`: topology component catalog, isolated preview mesh construction, and
@@ -178,8 +242,9 @@ triangle indices as the sole outfit surface, hides the body, and restores all fi
 surfaces plus the body when disabled. A second diagnostic measured belt thickness before and after
 selected-component fitting, and a full-outfit capture exercised the same topology constraint across
 all garments. The temporary scenes were deleted after verification.
-The persistent GPU-cloth outfit harness also verified the limb-aligned full fit: it identified
-1,878 vertices across four boot components and showed straight and symmetric boot silhouettes in a
-close crop. A rear clipping-color capture reproduced small body patches when aligned vertices used
-only the nominal 5 mm clearance; adding the rigid-only 5 mm interpolation margin eliminated the toe
-patches without changing ordinary garments.
+The persistent GPU-cloth outfit harness verified that limb alignment identifies 1,878 vertices
+across four boot components and produces straighter, more symmetric boot silhouettes. Earlier front
+captures suggested that the rigid-only 5 mm interpolation margin eliminated toe patches, but later
+rear and underside manual inspection disproved complete coverage: large calf contacts and small sole
+fragments remain. `scripts/check.sh` passes for the paused experimental state; visual acceptance does
+not.

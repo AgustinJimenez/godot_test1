@@ -48,6 +48,7 @@ static func build_body_triangle_grid(
 				"normal": normal,
 				"region": FIT_GEOMETRY.triangle_region(regions, vertex_indices),
 				"surface": surface_index,
+				"surface_triangle": triangle_index,
 				"vertices": vertex_indices,
 			})
 			var minimum_cell := FIT_GEOMETRY.grid_cell(bounds.position, cell_size)
@@ -77,6 +78,7 @@ static func clipping_colors(
 	normal_sign: float,
 	clipped_body_vertices: Dictionary,
 	debug_body_vertices: Dictionary,
+	clipped_body_triangles: Dictionary = {},
 ) -> PackedColorArray:
 	var colors := PackedColorArray()
 	colors.resize(world_vertices.size())
@@ -97,13 +99,17 @@ static func clipping_colors(
 			normal_sign)
 	for triangle_index in (intersections["body_triangles"] as Dictionary):
 		_mark_body_triangle(
-				triangle_index, body_triangles, clipped_body_vertices, debug_body_vertices)
+				triangle_index,
+				body_triangles,
+				clipped_body_vertices,
+				debug_body_vertices,
+				clipped_body_triangles)
 	# Also catch a garment patch wholly embedded without crossing a body triangle.
 	if component_indices.is_empty():
 		for point in world_vertices:
 			_mark_body_triangles_near_point(
 					point, body_triangles, body_grid, cell_size, normal_sign,
-					clipped_body_vertices, debug_body_vertices)
+					clipped_body_vertices, debug_body_vertices, clipped_body_triangles)
 	else:
 		var visited: Dictionary = {}
 		for vertex_index in component_indices:
@@ -112,7 +118,11 @@ static func clipping_colors(
 			visited[vertex_index] = true
 			_mark_body_triangles_near_point(
 					world_vertices[vertex_index], body_triangles, body_grid,
-					cell_size, normal_sign, clipped_body_vertices, debug_body_vertices)
+					cell_size,
+					normal_sign,
+					clipped_body_vertices,
+					debug_body_vertices,
+					clipped_body_triangles)
 	return colors
 
 
@@ -160,6 +170,51 @@ static func apply_body_clipping_colors(
 	body_mesh.mesh = rebuilt
 
 
+static func apply_body_occlusion(
+	body_mesh: MeshInstance3D,
+	body_source_mesh: ArrayMesh,
+	occluded_body_triangles: Dictionary,
+) -> void:
+	if occluded_body_triangles.is_empty():
+		body_mesh.mesh = body_source_mesh
+		return
+	var rebuilt := ArrayMesh.new()
+	for blend_shape_index in body_source_mesh.get_blend_shape_count():
+		rebuilt.add_blend_shape(body_source_mesh.get_blend_shape_name(blend_shape_index))
+	rebuilt.blend_shape_mode = body_source_mesh.blend_shape_mode
+	for surface_index in body_source_mesh.get_surface_count():
+		var arrays := body_source_mesh.surface_get_arrays(surface_index)
+		var source_indices := arrays[Mesh.ARRAY_INDEX] as PackedInt32Array
+		var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+		var triangle_count := (
+				source_indices.size() / 3
+				if not source_indices.is_empty() else vertices.size() / 3)
+		var hidden := occluded_body_triangles.get(surface_index, {}) as Dictionary
+		var visible_indices := PackedInt32Array()
+		for triangle_index in triangle_count:
+			if hidden.has(triangle_index):
+				continue
+			for corner in 3:
+				visible_indices.append(
+						source_indices[triangle_index * 3 + corner]
+						if not source_indices.is_empty()
+						else triangle_index * 3 + corner)
+		arrays[Mesh.ARRAY_INDEX] = visible_indices
+		var format := body_source_mesh.surface_get_format(surface_index)
+		format |= Mesh.ARRAY_FORMAT_INDEX
+		rebuilt.add_surface_from_arrays(
+				body_source_mesh.surface_get_primitive_type(surface_index),
+				arrays,
+				body_source_mesh.surface_get_blend_shape_arrays(surface_index),
+				{},
+				format)
+		rebuilt.surface_set_material(
+				surface_index, body_source_mesh.surface_get_material(surface_index))
+		rebuilt.surface_set_name(
+				surface_index, body_source_mesh.surface_get_name(surface_index))
+	body_mesh.mesh = rebuilt
+
+
 static func _mark_body_triangles_near_point(
 	point: Vector3,
 	body_triangles: Array,
@@ -168,6 +223,7 @@ static func _mark_body_triangles_near_point(
 	normal_sign: float,
 	clipped_body_vertices: Dictionary,
 	debug_body_vertices: Dictionary,
+	clipped_body_triangles: Dictionary,
 ) -> void:
 	var bounds := AABB(point, Vector3.ZERO).grow(CLIP_SEARCH_RADIUS)
 	var minimum_cell := FIT_GEOMETRY.grid_cell(bounds.position, cell_size)
@@ -200,7 +256,11 @@ static func _mark_body_triangles_near_point(
 	var outward_normal: Vector3 = triangle["normal"] * normal_sign
 	if (point - best_closest).dot(outward_normal) < 0.0:
 		_mark_body_triangle(
-				best_triangle, body_triangles, clipped_body_vertices, debug_body_vertices)
+				best_triangle,
+				body_triangles,
+				clipped_body_vertices,
+				debug_body_vertices,
+				clipped_body_triangles)
 
 
 static func _mark_body_triangle(
@@ -208,10 +268,15 @@ static func _mark_body_triangle(
 	body_triangles: Array,
 	clipped_body_vertices: Dictionary,
 	debug_body_vertices: Dictionary,
+	clipped_body_triangles: Dictionary,
 ) -> void:
 	_mark_body_debug_triangle(triangle_index, body_triangles, debug_body_vertices)
 	var triangle: Dictionary = body_triangles[triangle_index]
 	var surface_index: int = triangle["surface"]
+	if not clipped_body_triangles.has(surface_index):
+		clipped_body_triangles[surface_index] = {}
+	var marked_triangles := clipped_body_triangles[surface_index] as Dictionary
+	marked_triangles[int(triangle["surface_triangle"])] = true
 	if not clipped_body_vertices.has(surface_index):
 		clipped_body_vertices[surface_index] = {}
 	var marked: Dictionary = clipped_body_vertices[surface_index]

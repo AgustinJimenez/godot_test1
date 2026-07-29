@@ -47,6 +47,9 @@ static func apply(
 				continue
 			var surface := (state["surfaces"] as Array)[surface_index] as Dictionary
 			surface["rigid_fit_components"] = {}
+			surface["rigid_fit_component_sides"] = {}
+			surface.erase("rigid_fit_baseline_offsets")
+			surface.erase("rigid_fit_component_links")
 	for mesh_key_variant in mesh_states:
 		var mesh_key := String(mesh_key_variant)
 		if filter_enabled and mesh_key != filter_mesh:
@@ -88,6 +91,10 @@ static func apply(
 						surface["rigid_fit_components"] as Dictionary)
 				rigid_components[component_index] = true
 				surface["rigid_fit_components"] = rigid_components
+				var rigid_component_sides := (
+						surface["rigid_fit_component_sides"] as Dictionary)
+				rigid_component_sides[component_index] = String(alignment["side"])
+				surface["rigid_fit_component_sides"] = rigid_component_sides
 				var offsets := mesh_offsets[surface_index] as PackedVector3Array
 				var component_offsets := alignment["offsets"] as Dictionary
 				if not aligned_vertex_sets.has(mesh_key):
@@ -107,6 +114,9 @@ static func apply(
 						maximum_rotation, float(alignment["maximum_rotation"]))
 				maximum_translation = maxf(
 						maximum_translation, float(alignment["maximum_translation"]))
+			if not (surface["rigid_fit_components"] as Dictionary).is_empty():
+				surface["rigid_fit_baseline_offsets"] = (
+						mesh_offsets[surface_index] as PackedVector3Array).duplicate()
 		auto_offsets[mesh_key] = mesh_offsets
 	if adjusted_vertices > 0:
 		OUTFIT_COMPONENTS.synchronize_auto_offset_constraints(
@@ -217,6 +227,7 @@ static func _component_alignment(
 				mesh_instance.to_local(aligned_world) - vertices[vertex_index])
 	return {
 		"offsets": aligned_offsets,
+		"side": dominant_side,
 		"maximum_rotation": maximum_rotation,
 		"maximum_translation": maximum_translation,
 	}

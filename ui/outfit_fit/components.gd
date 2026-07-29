@@ -6,9 +6,10 @@ const FIT_GEOMETRY := preload("res://ui/outfit_fit/geometry.gd")
 const SKIN_MATERIAL_PATTERNS := ["regular_male", "regular_female"]
 const THICK_SHAPE_SMOOTH_PASSES := 8
 const THICK_SHAPE_SMOOTH_BLEND := 0.35
-const MINIMUM_INTERNAL_PANEL_VERTICES := 64
-const INTERNAL_PANEL_SAMPLE_RADIUS := 0.06
-const INTERNAL_PANEL_LINK_SCHEMA := 3
+const MAXIMUM_RIGID_ATTACHMENT_CORRECTION := 0.03
+const RIGID_CLEARANCE_SCALE_PERCENTILE := 0.90
+const MINIMUM_RIGID_COMPONENT_SCALE := 1.0
+const MAXIMUM_RIGID_COMPONENT_SCALE := 1.12
 
 
 static func clothing_surfaces(mesh_states: Dictionary) -> Array[Dictionary]:
@@ -289,25 +290,42 @@ static func _synchronize_internal_panels(
 				continue
 			var vertices := surface["base_vertices"] as PackedVector3Array
 			var offsets := mesh_offsets[surface_index] as PackedVector3Array
-			var grouped_links: Dictionary = {}
-			for link_variant in _internal_panel_links(surface):
-				var link := link_variant as Dictionary
-				if not rigid_components.has(int(link["component"])):
+			var baseline_offsets := surface.get(
+					"rigid_fit_baseline_offsets",
+					PackedVector3Array()) as PackedVector3Array
+			if baseline_offsets.size() != vertices.size():
+				baseline_offsets = PackedVector3Array()
+				baseline_offsets.resize(vertices.size())
+			var components := surface["components"] as Array
+			var component_transforms: Dictionary = {}
+			for component_index_variant in rigid_components:
+				var component_index := int(component_index_variant)
+				if component_index < 0 or component_index >= components.size():
 					continue
-				var component_index := int(link["component"])
-				var component_links: Array = grouped_links.get(component_index, [])
-				component_links.append(link)
-				grouped_links[component_index] = component_links
-			for component_links_variant in grouped_links.values():
-				var component_links := component_links_variant as Array
-				var panel_transform := _panel_similarity_transform(
-						vertices, offsets, component_links)
-				for link_variant in component_links:
-					var link := link_variant as Dictionary
-					var target_index := int(link["target"])
-					var target_position := vertices[target_index]
+				var component := components[component_index] as Dictionary
+				var component_vertices := (
+						component["vertex_indices"] as PackedInt32Array)
+				if component_vertices.size() < 3:
+					continue
+				component_transforms[component_index] = _component_similarity_transform(
+						vertices, baseline_offsets, offsets, component_vertices)
+			_attach_rigid_component_transforms(
+					surface,
+					vertices,
+					baseline_offsets,
+					component_transforms)
+			for component_index_variant in component_transforms:
+				var component_index := int(component_index_variant)
+				var component := components[component_index] as Dictionary
+				var component_vertices := (
+						component["vertex_indices"] as PackedInt32Array)
+				var panel_transform := (
+						component_transforms[component_index] as Transform3D)
+				for target_index in component_vertices:
+					var target_position := (
+							vertices[target_index] + baseline_offsets[target_index])
 					var shared_offset := (
-							panel_transform * target_position - target_position)
+							panel_transform * target_position - vertices[target_index])
 					if not offsets[target_index].is_equal_approx(shared_offset):
 						synchronized += 1
 					offsets[target_index] = shared_offset
@@ -316,30 +334,159 @@ static func _synchronize_internal_panels(
 	return synchronized
 
 
-static func _panel_similarity_transform(
+static func _attach_rigid_component_transforms(
+	surface: Dictionary,
 	vertices: PackedVector3Array,
+	baseline_offsets: PackedVector3Array,
+	component_transforms: Dictionary,
+) -> void:
+	for link_variant in _rigid_component_links(
+			surface, vertices, baseline_offsets, component_transforms):
+		var link := link_variant as Dictionary
+		var parent_index := int(link["parent"])
+		var child_index := int(link["child"])
+		if (not component_transforms.has(parent_index)
+				or not component_transforms.has(child_index)):
+			continue
+		var parent_transform := component_transforms[parent_index] as Transform3D
+		var child_transform := component_transforms[child_index] as Transform3D
+		var child_anchor_index := int(link["child_anchor"])
+		var child_anchor := (
+				vertices[child_anchor_index] + baseline_offsets[child_anchor_index])
+		var desired_anchor := parent_transform * child_anchor
+		var current_anchor := child_transform * child_anchor
+		var correction := desired_anchor - current_anchor
+		correction.y = 0.0
+		if correction.length() > MAXIMUM_RIGID_ATTACHMENT_CORRECTION:
+			correction = (
+					correction.normalized() * MAXIMUM_RIGID_ATTACHMENT_CORRECTION)
+		child_transform.origin += correction
+		component_transforms[child_index] = child_transform
+
+
+static func _rigid_component_links(
+	surface: Dictionary,
+	vertices: PackedVector3Array,
+	baseline_offsets: PackedVector3Array,
+	component_transforms: Dictionary,
+) -> Array:
+	if surface.has("rigid_fit_component_links"):
+		return surface["rigid_fit_component_links"] as Array
+	var components := surface["components"] as Array
+	var component_sides := surface.get(
+			"rigid_fit_component_sides", {}) as Dictionary
+	var side_components: Dictionary = {}
+	for component_index_variant in component_transforms:
+		var component_index := int(component_index_variant)
+		var side := String(component_sides.get(
+				component_index, "component_%d" % component_index))
+		var members := side_components.get(side, []) as Array
+		members.append(component_index)
+		side_components[side] = members
+	var links: Array = []
+	for members_variant in side_components.values():
+		var members := members_variant as Array
+		if members.size() < 2:
+			continue
+		var root := int(members[0])
+		var root_height := _component_center_height(
+				components[root], vertices, baseline_offsets)
+		for component_index_variant in members:
+			var component_index := int(component_index_variant)
+			var height := _component_center_height(
+					components[component_index], vertices, baseline_offsets)
+			# Keep the distal shoe/foot correction on the body, then attach the
+			# proximal shaft to it. Reversing this exposes the fitted foot.
+			if height < root_height:
+				root = component_index
+				root_height = height
+		var attached := {root: true}
+		while attached.size() < members.size():
+			var nearest: Dictionary = {}
+			var nearest_distance_squared := INF
+			for parent_index_variant in attached:
+				var parent_index := int(parent_index_variant)
+				for child_index_variant in members:
+					var child_index := int(child_index_variant)
+					if attached.has(child_index):
+						continue
+					var candidate := _closest_component_anchor(
+							components[parent_index],
+							components[child_index],
+							vertices,
+							baseline_offsets)
+					if float(candidate["distance_squared"]) < nearest_distance_squared:
+						nearest_distance_squared = candidate["distance_squared"]
+						nearest = candidate
+						nearest["parent"] = parent_index
+						nearest["child"] = child_index
+			if nearest.is_empty():
+				break
+			links.append(nearest)
+			attached[int(nearest["child"])] = true
+	surface["rigid_fit_component_links"] = links
+	return links
+
+
+static func _component_center_height(
+	component: Dictionary,
+	vertices: PackedVector3Array,
+	baseline_offsets: PackedVector3Array,
+) -> float:
+	var component_vertices := component["vertex_indices"] as PackedInt32Array
+	var height := 0.0
+	for vertex_index in component_vertices:
+		height += (vertices[vertex_index] + baseline_offsets[vertex_index]).y
+	return height / float(component_vertices.size())
+
+
+static func _closest_component_anchor(
+	parent: Dictionary,
+	child: Dictionary,
+	vertices: PackedVector3Array,
+	baseline_offsets: PackedVector3Array,
+) -> Dictionary:
+	var nearest_parent := -1
+	var nearest_child := -1
+	var nearest_distance_squared := INF
+	for parent_index in (parent["vertex_indices"] as PackedInt32Array):
+		var parent_position := (
+				vertices[parent_index] + baseline_offsets[parent_index])
+		for child_index in (child["vertex_indices"] as PackedInt32Array):
+			var child_position := (
+					vertices[child_index] + baseline_offsets[child_index])
+			var distance_squared := parent_position.distance_squared_to(child_position)
+			if distance_squared < nearest_distance_squared:
+				nearest_parent = parent_index
+				nearest_child = child_index
+				nearest_distance_squared = distance_squared
+	return {
+		"parent_anchor": nearest_parent,
+		"child_anchor": nearest_child,
+		"distance_squared": nearest_distance_squared,
+	}
+
+
+static func _component_similarity_transform(
+	vertices: PackedVector3Array,
+	baseline_offsets: PackedVector3Array,
 	offsets: PackedVector3Array,
-	links: Array,
+	vertex_indices: PackedInt32Array,
 ) -> Transform3D:
 	var source_center := Vector3.ZERO
 	var destination_center := Vector3.ZERO
-	var source_points := PackedVector3Array()
-	var destination_points := PackedVector3Array()
-	for link_variant in links:
-		var link := link_variant as Dictionary
-		var source_point := _linked_panel_position(vertices, link)
-		var destination_point := source_point + _linked_panel_offset(offsets, link)
-		source_points.append(source_point)
-		destination_points.append(destination_point)
-		source_center += source_point
-		destination_center += destination_point
-	source_center /= float(links.size())
-	destination_center /= float(links.size())
+	for vertex_index in vertex_indices:
+		source_center += vertices[vertex_index] + baseline_offsets[vertex_index]
+		destination_center += vertices[vertex_index] + offsets[vertex_index]
+	source_center /= float(vertex_indices.size())
+	destination_center /= float(vertex_indices.size())
 	var covariance := PackedFloat64Array()
 	covariance.resize(9)
-	for point_index in source_points.size():
-		var source := source_points[point_index] - source_center
-		var destination := destination_points[point_index] - destination_center
+	for vertex_index in vertex_indices:
+		var source := (
+				vertices[vertex_index] + baseline_offsets[vertex_index] - source_center)
+		var destination := (
+				vertices[vertex_index] + offsets[vertex_index] - destination_center)
 		covariance[0] += source.x * destination.x
 		covariance[1] += source.x * destination.y
 		covariance[2] += source.x * destination.z
@@ -352,15 +499,32 @@ static func _panel_similarity_transform(
 	var rotation := _covariance_rotation(covariance)
 	var rotated_variance := 0.0
 	var source_variance := 0.0
-	for point_index in source_points.size():
-		var source := source_points[point_index] - source_center
-		var destination := destination_points[point_index] - destination_center
-		rotated_variance += destination.dot(rotation * source)
+	var clearance_scales: Array[float] = []
+	for vertex_index in vertex_indices:
+		var source := (
+				vertices[vertex_index] + baseline_offsets[vertex_index] - source_center)
+		var destination := (
+				vertices[vertex_index] + offsets[vertex_index] - destination_center)
+		var rotated_source := rotation * source
+		var projected_scale := (
+				destination.dot(rotated_source) / rotated_source.length_squared()
+				if rotated_source.length_squared() > 0.00000001 else 1.0)
+		if projected_scale > 0.0:
+			clearance_scales.append(projected_scale)
+		rotated_variance += destination.dot(rotated_source)
 		source_variance += source.length_squared()
-	var scale := clampf(
+	clearance_scales.sort()
+	var conservative_scale := 1.0
+	if not clearance_scales.is_empty():
+		var percentile_index := floori(
+				float(clearance_scales.size() - 1)
+				* RIGID_CLEARANCE_SCALE_PERCENTILE)
+		conservative_scale = clearance_scales[percentile_index]
+	var scale := clampf(maxf(
 			rotated_variance / source_variance if source_variance > 0.00000001 else 1.0,
-			0.5,
-			1.5)
+			conservative_scale),
+			MINIMUM_RIGID_COMPONENT_SCALE,
+			MAXIMUM_RIGID_COMPONENT_SCALE)
 	var basis := Basis(rotation).scaled(Vector3.ONE * scale)
 	return Transform3D(basis, destination_center - basis * source_center)
 
@@ -398,137 +562,6 @@ static func _covariance_rotation(covariance: PackedFloat64Array) -> Quaternion:
 		quaternion = next
 	return Quaternion(
 			quaternion[1], quaternion[2], quaternion[3], quaternion[0]).normalized()
-
-
-static func _linked_panel_position(
-	vertices: PackedVector3Array,
-	link: Dictionary,
-) -> Vector3:
-	var shared_position := Vector3.ZERO
-	var sample_indices := link["samples"] as PackedInt32Array
-	var sample_weights := link["weights"] as PackedFloat32Array
-	for sample_index in sample_indices.size():
-		shared_position += (
-				vertices[sample_indices[sample_index]]
-				* sample_weights[sample_index])
-	return shared_position
-
-
-static func _linked_panel_offset(
-	offsets: PackedVector3Array,
-	link: Dictionary,
-) -> Vector3:
-	var shared_offset := Vector3.ZERO
-	var sample_indices := link["samples"] as PackedInt32Array
-	var sample_weights := link["weights"] as PackedFloat32Array
-	for sample_index in sample_indices.size():
-		shared_offset += (
-				offsets[sample_indices[sample_index]]
-				* sample_weights[sample_index])
-	return shared_offset
-
-
-static func _internal_panel_links(surface: Dictionary) -> Array:
-	if int(surface.get("internal_panel_link_schema", 0)) == INTERNAL_PANEL_LINK_SCHEMA:
-		return surface.get("internal_panel_links", []) as Array
-	var vertices := surface["base_vertices"] as PackedVector3Array
-	var vertex_components := surface["vertex_components"] as PackedInt32Array
-	var grouped: Dictionary = {}
-	for raw_variant in (surface["layer_components"] as Array):
-		var raw := raw_variant as Dictionary
-		var raw_vertices := raw["vertex_indices"] as PackedInt32Array
-		if raw_vertices.size() < MINIMUM_INTERNAL_PANEL_VERTICES:
-			continue
-		var parent_index := vertex_components[int(raw["first_vertex"])]
-		var members: Array = grouped.get(parent_index, [])
-		members.append(raw)
-		grouped[parent_index] = members
-	var result: Array[Dictionary] = []
-	for members_variant in grouped.values():
-		var members := members_variant as Array
-		if members.size() < 3:
-			continue
-		members.sort_custom(
-			func(first: Dictionary, second: Dictionary) -> bool:
-				return (
-					(first["vertex_indices"] as PackedInt32Array).size()
-					> (second["vertex_indices"] as PackedInt32Array).size()))
-		var driver := members[0] as Dictionary
-		var driver_indices := driver["indices"] as PackedInt32Array
-		for member_index in range(1, members.size()):
-			var follower := members[member_index] as Dictionary
-			for target_index in (
-					follower["vertex_indices"] as PackedInt32Array):
-				var samples := _closest_panel_triangle_samples(
-						vertices, target_index, driver_indices)
-				if samples.is_empty():
-					continue
-				result.append({
-					"component": int(vertex_components[target_index]),
-					"target": target_index,
-					"samples": samples["indices"],
-					"weights": samples["weights"],
-				})
-	surface["internal_panel_links"] = result
-	surface["internal_panel_link_schema"] = INTERNAL_PANEL_LINK_SCHEMA
-	return result
-
-
-static func _closest_panel_triangle_samples(
-	vertices: PackedVector3Array,
-	target_index: int,
-	driver_indices: PackedInt32Array,
-) -> Dictionary:
-	var target := vertices[target_index]
-	var best_distance_squared := INF
-	var best_indices := PackedInt32Array()
-	var best_weights := PackedFloat32Array()
-	for triangle_start in range(0, driver_indices.size(), 3):
-		var a_index := driver_indices[triangle_start]
-		var b_index := driver_indices[triangle_start + 1]
-		var c_index := driver_indices[triangle_start + 2]
-		var a := vertices[a_index]
-		var b := vertices[b_index]
-		var c := vertices[c_index]
-		var closest := FIT_GEOMETRY.closest_point_on_triangle(target, a, b, c)
-		var distance_squared := target.distance_squared_to(closest)
-		if distance_squared >= best_distance_squared:
-			continue
-		var weights := _triangle_weights(closest, a, b, c)
-		if weights.is_empty():
-			continue
-		best_distance_squared = distance_squared
-		best_indices = PackedInt32Array([a_index, b_index, c_index])
-		best_weights = weights
-	if best_distance_squared > INTERNAL_PANEL_SAMPLE_RADIUS * INTERNAL_PANEL_SAMPLE_RADIUS:
-		return {}
-	return {
-		"indices": best_indices,
-		"weights": best_weights,
-	}
-
-
-static func _triangle_weights(
-	point: Vector3,
-	a: Vector3,
-	b: Vector3,
-	c: Vector3,
-) -> PackedFloat32Array:
-	var edge_ab := b - a
-	var edge_ac := c - a
-	var point_offset := point - a
-	var ab_ab := edge_ab.dot(edge_ab)
-	var ab_ac := edge_ab.dot(edge_ac)
-	var ac_ac := edge_ac.dot(edge_ac)
-	var point_ab := point_offset.dot(edge_ab)
-	var point_ac := point_offset.dot(edge_ac)
-	var denominator := ab_ab * ac_ac - ab_ac * ab_ac
-	if absf(denominator) <= 0.00000001:
-		return PackedFloat32Array()
-	var b_weight := (ac_ac * point_ab - ab_ac * point_ac) / denominator
-	var c_weight := (ab_ab * point_ac - ab_ac * point_ab) / denominator
-	var a_weight := 1.0 - b_weight - c_weight
-	return PackedFloat32Array([a_weight, b_weight, c_weight])
 
 
 static func _synchronize_auto_offset_thickness(
