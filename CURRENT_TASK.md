@@ -47,6 +47,37 @@ guidance is recorded in `AGENTS.md` and the Decisions Log.
   interpolates the four closest samples from the neighboring component within 6 cm and retains a 2 mm
   separation. This fills sampling gaps around the belt without applying the broad maximum-depth push
   that visibly inflated its silhouette.
+- **Rigid internal-panel preservation** keeps the position-welded component catalog used by selection
+  and seam continuity, but also caches raw index-connected islands. When bone-aware alignment
+  classifies a logical component as rigid and it contains at least three substantial islands (64+
+  vertices each), the largest island is the structural driver. Follower vertices project onto the
+  closest driver triangles within 6 cm to establish smooth barycentric correspondences, then the
+  complete follower assembly receives one best-fit translation/rotation/uniform-scale transform.
+  Nearest-vertex interpolation stretched the lower layer into triangular strips; copying the smooth
+  but non-uniform driver field still distorted the upper outline. The shared similarity transform
+  preserves every follower island's authored shape and their spacing from one another while following
+  the shaft's gross movement. The final constraint runs after seam synchronization; otherwise that
+  last seam average reintroduced about 9% local edge-scale variation. The final diagnostic measured
+  no more than 0.003% edge-ratio spread across all four cuff follower islands. Tiny trim, two-wall foot
+  shells, and ordinary shirt/pants panels do not enter this constraint.
+  **Known remaining issue:** manual authored-material inspection confirms the upper cuff recovered,
+  but the lower cuff layer still has an odd overall shape. The edge-ratio metric proves only that the
+  follower is internally similarity-transformed; it does not prove that the chosen shared transform,
+  driver correspondence, or layer placement is visually correct. Continue from this checkpoint by
+  isolating the two follower islands and comparing their fitted transforms against the source.
+- **Bone-aware distal-limb alignment** (`ui/outfit_fit/limb_aligner.gd`) runs before contact fitting.
+  A topology component qualifies only when at least 85% of its skin weight belongs to one side's
+  calf/shin/foot/ankle/ball/toe chain. For every matching body/outfit bone, the pass maps the
+  outfit's global rest frame into the body's frame, blends those rigid transforms with the
+  garment's existing skin weights, and writes the resulting rest-space offsets before projection.
+  This preserves an articulated boot's authored shaft/foot shape instead of asking independent
+  contact vertices to absorb a gross skeleton mismatch. The Male Peasant diagnostic selected only
+  four boot components (1,878 vertices). Its corresponding leg rotations already match at 0°; the
+  real mismatch is a mirrored 23.7 mm lateral rest offset, now corrected before Auto Adjust.
+  These aligned rigid components then enforce the requested clearance as a true minimum plus a
+  5 mm sub-triangle safety margin. Ordinary layered cloth retains outward-only correction, while
+  the extra rigid margin prevents a low-poly boot face from remaining nearly coplanar between
+  otherwise-clear corner vertices.
 - The Edit Fit panel keeps `Surface` as the imported mesh/material scope and provides a dependent
   `Component` selector for disconnected pieces inside that surface. `All components` is the default
   and preserves the prior whole-surface behavior. The Peasant torso exposes Shirt, Leather belt,
@@ -58,6 +89,18 @@ guidance is recorded in `AGENTS.md` and the Decisions Log.
   shares an imported surface with other garments. Disabling it restores the complete body/outfit.
   Isolation changes no source arrays, fit offsets, or saved profile data; `Show control points` can
   be disabled independently for an unobstructed mesh inspection.
+- **Compare with original** creates a read-only source-mesh duplicate to the left of the live fitted
+  character and labels both views. The duplicate replaces every rebuilt outfit mesh with its captured
+  imported `ArrayMesh`, so loaded profiles, manual edits, and Auto Adjust never leak into the original
+  side. Both characters share the current body/cosmetics, materials, pose, orbit, and zoom. Comparison
+  temporarily disables debug colors and control points for an authored-material inspection, disables
+  component isolation, and restores the exact prior toggles and single-character camera framing when
+  turned off. It cannot participate in fitting or saving.
+- **Free camera** is an optional Edit Fit inspection mode that preserves the current orbit framing,
+  captures the mouse for unrestricted look, and uses WASD for movement, Q/E for world-down/up, and
+  Shift for faster travel. Selecting another surface does not steal focus while it is active. Escape,
+  closing Edit Fit, or leaving the scene releases the cursor and restores the exact orbit view; it can
+  remain enabled while comparing original and fitted characters.
 - Whole-outfit Auto Adjust constructs an overlap-only directed layer graph from the imported local
   body-relative depth. Components that never occupy the same body-space cells receive no ordering
   relationship. Each cleanup iteration resolves and rebuilds one graph level at a time, so inner
@@ -113,6 +156,7 @@ The fix addressed both sources of persistent color:
   `get_selected_surface_center()`, modified `_select_handle`, `_update_dot_visibility`, `_refresh_clipping`,
   `_rebuild_mesh`, `_rebuild_geometry_only`, and layer-cleanup integration
 - `ui/outfit_fit/solver.gd`: body-contact, collision, and ordered garment-layer fitting pipeline
+- `ui/outfit_fit/limb_aligner.gd`: weighted outfit-rest to body-rest alignment for distal garments
 - `ui/outfit_fit/visualization.gd`: body triangle cache and temporary clipping debug meshes
 - `ui/outfit_fit/presentation.gd`: Character Creator material overrides for normal/debug previews
 - `ui/outfit_fit/layers.gd`: authored local order measurement and pairwise garment intersection cleanup
@@ -134,3 +178,8 @@ triangle indices as the sole outfit surface, hides the body, and restores all fi
 surfaces plus the body when disabled. A second diagnostic measured belt thickness before and after
 selected-component fitting, and a full-outfit capture exercised the same topology constraint across
 all garments. The temporary scenes were deleted after verification.
+The persistent GPU-cloth outfit harness also verified the limb-aligned full fit: it identified
+1,878 vertices across four boot components and showed straight and symmetric boot silhouettes in a
+close crop. A rear clipping-color capture reproduced small body patches when aligned vertices used
+only the nominal 5 mm clearance; adding the rigid-only 5 mm interpolation margin eliminated the toe
+patches without changing ordinary garments.

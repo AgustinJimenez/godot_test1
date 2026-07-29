@@ -18,6 +18,7 @@ const CLOTH_LAYER_MAX_PASSES := 12
 const COLLISION_STEP := 0.002
 const COLLISION_PASSES := 16
 const LAYER_CLEARANCE := 0.002
+const RIGID_CLEARANCE_MARGIN := 0.005
 
 
 static func run(
@@ -37,6 +38,8 @@ static func run(
 	var maximum_offset: float = context["maximum_offset"]
 	var rebuild_geometry := context["rebuild_geometry"] as Callable
 	var closest_body_projection := context["closest_body_projection"] as Callable
+	var minimum_clearance_vertices: Dictionary = context.get(
+			"minimum_clearance_vertices", {})
 	var filter_enabled := not filter_mesh.is_empty() and filter_surface >= 0
 	var authored_layer_order := OUTFIT_LAYERS.compute_authored_order(
 			mesh_states,
@@ -108,8 +111,16 @@ static func run(
 					var signed_distance := (
 							current_world - (projection["position"] as Vector3)).dot(normal)
 					var intersects := clipping_vertices.has(vertex_index)
-					var error := FIT_GEOMETRY.clipping_error(
-							signed_distance, clearance, intersects, COLLISION_STEP)
+					var enforce_clearance := _has_vertex(
+							minimum_clearance_vertices,
+							mesh_key,
+							surface_index,
+							vertex_index)
+					var error := _contact_error(
+							signed_distance,
+							clearance,
+							intersects,
+							enforce_clearance)
 					if error <= 0.0:
 						continue
 					if smooth_surface:
@@ -121,8 +132,11 @@ static func run(
 						signed_distance = (
 								current_world - (projection["position"] as Vector3)
 								).dot(normal)
-						error = FIT_GEOMETRY.clipping_error(
-								signed_distance, clearance, intersects, COLLISION_STEP)
+						error = _contact_error(
+								signed_distance,
+								clearance,
+								intersects,
+								enforce_clearance)
 						if error <= 0.0:
 							continue
 					var corrected_world := current_world + normal * error
@@ -178,6 +192,29 @@ static func run(
 				layer_result,
 				authored_layer_order),
 	}
+
+
+static func _contact_error(
+	signed_distance: float,
+	clearance: float,
+	intersects: bool,
+	enforce_clearance: bool,
+) -> float:
+	if enforce_clearance and not intersects:
+		return maxf(clearance + RIGID_CLEARANCE_MARGIN - signed_distance, 0.0)
+	return FIT_GEOMETRY.clipping_error(
+			signed_distance, clearance, intersects, COLLISION_STEP)
+
+
+static func _has_vertex(
+	vertex_sets: Dictionary,
+	mesh_key: String,
+	surface_index: int,
+	vertex_index: int,
+) -> bool:
+	var mesh_sets := vertex_sets.get(mesh_key, {}) as Dictionary
+	var surface_vertices := mesh_sets.get(surface_index, {}) as Dictionary
+	return surface_vertices.has(vertex_index)
 
 
 static func _resolve_body_intersections(

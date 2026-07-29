@@ -16,6 +16,7 @@ const FIT_GEOMETRY := preload("res://ui/outfit_fit/geometry.gd")
 const PROFILE_CODEC := preload("res://ui/outfit_fit/profile_codec.gd")
 const OUTFIT_LAYERS := preload("res://ui/outfit_fit/layers.gd")
 const OUTFIT_COMPONENTS := preload("res://ui/outfit_fit/components.gd")
+const OUTFIT_LIMB_ALIGNER := preload("res://ui/outfit_fit/limb_aligner.gd")
 const OUTFIT_SOLVER := preload("res://ui/outfit_fit/solver.gd")
 const OUTFIT_VISUALIZATION := preload("res://ui/outfit_fit/visualization.gd")
 const PROFILE_SCHEMA := 1
@@ -118,6 +119,27 @@ func load_outfit(
 	_build_dots()
 	_update_dot_visibility()
 	_initialize_clipping(_load_generation)
+
+
+func _create_original_outfit_preview() -> Node3D:
+	if not is_instance_valid(_outfit_root) or _mesh_states.is_empty():
+		return null
+	var duplicate := _outfit_root.duplicate() as Node3D
+	if duplicate == null:
+		return null
+	for mesh_key_variant in _mesh_states:
+		var mesh_key := String(mesh_key_variant)
+		var mesh_instance := duplicate.get_node_or_null(
+				NodePath(mesh_key)) as MeshInstance3D
+		if mesh_instance == null:
+			continue
+		var state := _mesh_states[mesh_key] as Dictionary
+		mesh_instance.mesh = state["source"] as Mesh
+	return duplicate
+
+
+func _get_original_body_mesh() -> ArrayMesh:
+	return _body_source_mesh
 
 
 func set_editing(enabled: bool) -> void:
@@ -292,6 +314,13 @@ func _auto_adjust_surfaces(
 	else:
 		_edits.clear()
 		_clear_auto_offsets()
+	var limb_alignment := OUTFIT_LIMB_ALIGNER.apply(
+			_mesh_states,
+			_auto_surface_offsets,
+			_body_mesh,
+			filter_mesh,
+			filter_surface,
+			filter_component)
 	var result := OUTFIT_SOLVER.run({
 		"mesh_states": _mesh_states,
 		"auto_offsets": _auto_surface_offsets,
@@ -301,6 +330,7 @@ func _auto_adjust_surfaces(
 		"body_normal_sign": _body_normal_sign,
 		"search_radius": AUTO_SEARCH_RADIUS,
 		"maximum_offset": AUTO_MAX_OFFSET,
+		"minimum_clearance_vertices": limb_alignment["vertex_sets"],
 		"rebuild_geometry": _rebuild_geometry_only,
 		"closest_body_projection": _closest_body_projection,
 	}, clearance, filter_mesh, filter_surface, filter_component)
@@ -308,7 +338,17 @@ func _auto_adjust_surfaces(
 	_schedule_clipping_refresh()
 	if not _selected_key.is_empty():
 		_emit_selected()
-	status_changed.emit(result["status"])
+	var alignment_status := ""
+	if int(limb_alignment["vertices"]) > 0:
+		alignment_status = (
+			"Aligned %d distal-limb vertices across %d components "
+			+ "(max %.1f mm / %.1f°). ") % [
+				limb_alignment["vertices"],
+				limb_alignment["components"],
+				float(limb_alignment["maximum_translation"]) * 1000.0,
+				rad_to_deg(float(limb_alignment["maximum_rotation"])),
+			]
+	status_changed.emit(alignment_status + String(result["status"]))
 	return result["adjusted"]
 
 
@@ -398,6 +438,7 @@ func _capture_meshes() -> void:
 			var arrays := source.surface_get_arrays(surface_index)
 			var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
 			var components := OUTFIT_LAYERS.surface_components(arrays)
+			var layer_components := OUTFIT_LAYERS.surface_layer_components(arrays)
 			var vertex_components := PackedInt32Array()
 			vertex_components.resize(vertices.size())
 			vertex_components.fill(-1)
@@ -421,6 +462,7 @@ func _capture_meshes() -> void:
 				"is_clothing": OUTFIT_COMPONENTS.is_clothing_surface(
 						source.surface_get_material(surface_index)),
 				"components": components,
+				"layer_components": layer_components,
 				"vertex_components": vertex_components,
 			})
 		_mesh_states[mesh_key] = {

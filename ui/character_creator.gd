@@ -8,6 +8,8 @@ const FEMALE_DIR := "res://assets/models/imported_characters/402453fc-7d0e-4139-
 const MALE_DIR := "res://assets/models/imported_characters/8bcc06df-6c6e-42f0-b2c1-5f37ccf2b28b/"
 const HAIR_DIR := "res://assets/models/universal_base_characters/hairstyles/"
 const OUTFIT_DIR := "res://assets/models/modular_outfits_fantasy/"
+const OUTFIT_CAMERA := preload("res://ui/outfit_fit/free_camera.gd")
+const OUTFIT_COMPARISON := preload("res://ui/outfit_fit/comparison.gd")
 const OUTFIT_PRESENTATION := preload("res://ui/outfit_fit/presentation.gd")
 
 ## TEMPORARY debug feature to preview Quaternius's "Modular Character Outfits - Fantasy" pack
@@ -15,7 +17,8 @@ const OUTFIT_PRESENTATION := preload("res://ui/outfit_fit/presentation.gd")
 ## player_body_cosmetics.gd wiring). Its own README confirms it's built for this exact base kit,
 ## and its bone names match ours 1:1 (pelvis/spine_01-03/clavicle_l-r/full finger chains), so no
 ## new humanoid_map is needed. Each outfit ships its own complete rest-pose skeleton at identity
-## transform, so it lines up with the base character without retargeting. The free base pack has
+## transform, but corresponding limb landmarks can still differ by centimeters; Auto Adjust uses
+## bone-aware distal-limb rest alignment before fine contact fitting. The free base pack has
 ## no separate head mesh even though the outfit README requires one. This baseline deliberately
 ## renders the complete base body under clothing so overlap can be evaluated without masking.
 ## These paths point at the original pack files, unmodified - no clearance adjustment applied.
@@ -140,12 +143,13 @@ const NEXT_SCENE := "res://levels/nature_playground.tscn"
 const ORBIT_SENS := 0.006
 const ZOOM_STEP := 0.15
 const MIN_ORBIT_DISTANCE := 0.5
-const MAX_ORBIT_DISTANCE := 4.0
+const MAX_ORBIT_DISTANCE := 6.0
 const DEFAULT_ORBIT_TARGET := Vector3(0, 1.0, 0)
 const DEFAULT_ORBIT_DISTANCE := 3.0
 const FACE_ORBIT_TARGET := Vector3(0, 1.65, 0)
 const FACE_ORBIT_DISTANCE := 0.8
-
+const COMPARISON_SPACING := 1.35
+const COMPARISON_DISTANCE_BONUS := 0.9
 @onready var camera: Camera3D = $Camera
 @onready var preview_root: Node3D = $PreviewRoot
 @onready var body_option: OptionButton = $UI/Panel/Margin/VBox/BodyRow/BodyOption
@@ -172,6 +176,8 @@ const FACE_ORBIT_DISTANCE := 0.8
 		$UI/FitPanel/Margin/VBox/ComponentRow/ComponentSelector)
 @onready var fit_isolate_selected: CheckButton = (
 		$UI/FitPanel/Margin/VBox/IsolateSelected)
+@onready var fit_compare_original: CheckButton = $UI/FitPanel/Margin/VBox/CompareOriginal
+@onready var fit_free_camera: CheckButton = $UI/FitPanel/Margin/VBox/FreeCamera
 @onready var fit_distance: SpinBox = $UI/FitPanel/Margin/VBox/Grid/Distance
 @onready var fit_distance_slider: HSlider = $UI/FitPanel/Margin/VBox/Grid/DistanceSlider
 @onready var fit_reset_distance: Button = $UI/FitPanel/Margin/VBox/Grid/ResetDistance
@@ -243,12 +249,12 @@ var _orbit_yaw := 0.0
 var _orbit_pitch := -0.05
 var _orbit_distance := FACE_ORBIT_DISTANCE
 var _orbit_target := FACE_ORBIT_TARGET
-var _orbiting := false
 var _face_focused := true
 var _fit_editor: OutfitFitEditor
+var _fit_camera := OUTFIT_CAMERA.new()
+var _fit_comparison := OUTFIT_COMPARISON.new()
 var _updating_fit_controls := false
 var _camera_tween: Tween
-
 
 func _ready() -> void:
 	for body in BODIES:
@@ -303,6 +309,25 @@ func _ready() -> void:
 	_fit_editor = OutfitFitEditor.new()
 	add_child(_fit_editor)
 	_fit_editor.setup(camera)
+	_fit_camera.setup(
+			self, camera, _fit_editor, func() -> bool: return _fit_comparison.enabled,
+			{
+				"orbit_sensitivity": ORBIT_SENS,
+				"zoom_step": ZOOM_STEP,
+				"minimum_distance": MIN_ORBIT_DISTANCE,
+				"maximum_distance": MAX_ORBIT_DISTANCE,
+				"face_target": FACE_ORBIT_TARGET,
+				"face_distance": FACE_ORBIT_DISTANCE,
+				"default_target": DEFAULT_ORBIT_TARGET,
+				"default_distance": DEFAULT_ORBIT_DISTANCE,
+				"comparison_spacing": COMPARISON_SPACING,
+				"comparison_distance_bonus": COMPARISON_DISTANCE_BONUS,
+			})
+	fit_free_camera.toggled.connect(_fit_camera.toggle)
+	_fit_comparison.setup(
+			self, _fit_editor, COMPARISON_SPACING, COMPARISON_DISTANCE_BONUS,
+			MIN_ORBIT_DISTANCE, MAX_ORBIT_DISTANCE)
+	fit_compare_original.toggled.connect(_fit_comparison.toggle)
 	_fit_editor.selection_changed.connect(_on_fit_selection_changed)
 	_fit_editor.selection_cleared.connect(_on_fit_selection_cleared)
 	_fit_editor.status_changed.connect(_on_fit_status_changed)
@@ -315,6 +340,14 @@ func _ready() -> void:
 	_populate_and_select_slots()
 	_update_orbit_camera()
 	_rebuild_preview()
+
+
+func _process(delta: float) -> void:
+	_fit_camera.process(delta)
+
+
+func _exit_tree() -> void:
+	_fit_camera.release()
 
 
 ## Defaults (Male/Simple Parted/no Beard/Regular eyebrows/Brown hair/Brown eyes/Caramel skin) are
@@ -381,6 +414,7 @@ func _on_body_selected(index: int) -> void:
 func _on_slot_selected(option_index: int, slot: Slot) -> void:
 	slot.index = slot.indices[option_index]
 	slot.preview = _rebuild_cosmetic(slot)
+	_fit_comparison.rebuild()
 
 
 ## Re-tints whichever of Hairstyle/Facial Hair/Eyebrows is currently attached - all three share
@@ -389,11 +423,13 @@ func _on_hair_color_selected(index: int) -> void:
 	_hair_color = String(HAIR_COLORS[index]["id"])
 	for slot in [_hair_slot, _facial_hair_slot, _eyebrows_slot]:
 		slot.preview = _rebuild_cosmetic(slot)
+	_fit_comparison.rebuild()
 
 
 func _on_eye_color_selected(index: int) -> void:
 	_eye_color = String(EYE_COLORS[index]["id"])
 	_apply_eye_color()
+	_fit_comparison.rebuild()
 
 
 func _on_skin_tone_selected(index: int) -> void:
@@ -431,6 +467,7 @@ func _refresh_outfit_debug_preview() -> void:
 			_outfit_debug_colors and _show_outfit_clipping)
 	_apply_body_debug_material(base_mesh)
 	_apply_outfit_materials(_preview_outfit)
+	_fit_comparison.refresh_materials()
 
 
 func _on_edit_fit_toggled(enabled: bool) -> void:
@@ -439,6 +476,11 @@ func _on_edit_fit_toggled(enabled: bool) -> void:
 		return
 	fit_panel.visible = enabled
 	_fit_editor.set_editing(enabled)
+	if not enabled:
+		_fit_camera.release()
+	if not enabled and _fit_comparison.enabled:
+		fit_compare_original.set_pressed_no_signal(false)
+		_fit_comparison.toggle(false)
 	if enabled:
 		_face_focused = false
 		_orbit_target = DEFAULT_ORBIT_TARGET
@@ -467,24 +509,32 @@ func _on_fit_selection_changed(label: String, distance: float, radius: float) ->
 	if base_mesh != null:
 		_apply_body_debug_material(base_mesh)
 	_apply_outfit_materials(_preview_outfit)
+	_fit_comparison.refresh_materials()
 	_focus_camera_on_selected_surface()
 
 
 func _focus_camera_on_selected_surface() -> void:
+	if _fit_camera.enabled:
+		return
 	var center := _fit_editor.get_selected_surface_center()
 	if center.is_zero_approx():
 		return
+	var focus_center := center
+	if _fit_comparison.enabled:
+		focus_center.x -= COMPARISON_SPACING * 0.5
 	var current_pos := camera.global_position
-	var dir_h := (center - current_pos) * Vector3(1, 0, 1)
+	var dir_h := (focus_center - current_pos) * Vector3(1, 0, 1)
 	if dir_h.length_squared() < 0.0001:
 		dir_h = Vector3(0, 0, -1)
 	else:
 		dir_h = dir_h.normalized()
-	var target_pos := center - dir_h * 1.2
-	target_pos.y = center.y
-	var orbit_offset := target_pos - center
+	var focus_distance := (
+			1.2 + COMPARISON_DISTANCE_BONUS if _fit_comparison.enabled else 1.2)
+	var target_pos := focus_center - dir_h * focus_distance
+	target_pos.y = focus_center.y
+	var orbit_offset := target_pos - focus_center
 	_face_focused = false
-	_orbit_target = center
+	_orbit_target = focus_center
 	_orbit_distance = orbit_offset.length()
 	if _orbit_distance > 0.0001:
 		_orbit_yaw = atan2(orbit_offset.x, orbit_offset.z)
@@ -496,7 +546,7 @@ func _focus_camera_on_selected_surface() -> void:
 	_camera_tween.tween_method(
 			func(p: Vector3) -> void:
 				camera.global_position = p
-				camera.look_at(center, Vector3.UP),
+				camera.look_at(focus_center, Vector3.UP),
 			current_pos, target_pos, 0.35)
 
 
@@ -514,6 +564,7 @@ func _on_fit_selection_cleared() -> void:
 		_apply_body_debug_material(base_mesh)
 	if is_instance_valid(_preview_outfit):
 		_apply_outfit_materials(_preview_outfit)
+	_fit_comparison.refresh_materials()
 
 
 func _on_fit_value_changed(_value: float) -> void:
@@ -649,11 +700,15 @@ func _on_fit_isolate_selected_toggled(enabled: bool) -> void:
 		_apply_outfit_materials(_preview_outfit)
 
 
+func _comparison_body_mesh_name() -> String:
+	return String(BODIES[_body_index]["mesh_name"])
+
 func _sync_fit_isolation_control() -> void:
 	var selected := _fit_editor.get_selected_surface()
 	var can_isolate := (
 			not selected.is_empty()
-			and selected.get("component_index", -1) as int >= 0)
+			and selected.get("component_index", -1) as int >= 0
+			and not _fit_comparison.enabled)
 	fit_isolate_selected.disabled = not can_isolate
 	fit_isolate_selected.set_pressed_no_signal(
 			can_isolate and _fit_editor._isolate_selected)
@@ -764,6 +819,7 @@ func _rebuild_preview() -> void:
 ## Baseline preview: keep the complete body and layer clothing over it. Outfit-authored duplicate
 ## skin primitives are hidden so only the selected base character supplies skin.
 func _rebuild_outfit() -> void:
+	_fit_comparison.clear()
 	if is_instance_valid(_fit_editor):
 		_fit_editor.clear_outfit()
 	edit_fit_button.disabled = true
@@ -777,6 +833,9 @@ func _rebuild_outfit() -> void:
 	if base_mesh:
 		_apply_body_debug_material(base_mesh)
 	if path.is_empty():
+		if _fit_comparison.enabled:
+			fit_compare_original.set_pressed_no_signal(false)
+			_fit_comparison.toggle(false)
 		edit_fit_button.set_pressed_no_signal(false)
 		fit_panel.visible = false
 		_fit_editor.set_editing(false)
@@ -795,6 +854,7 @@ func _rebuild_outfit() -> void:
 			_outfit_debug_colors and _show_outfit_clipping)
 	_refresh_surface_selector()
 	edit_fit_button.disabled = not _fit_editor.has_outfit()
+	_fit_comparison.rebuild()
 
 
 func _apply_body_debug_material(
@@ -910,58 +970,7 @@ func _rebuild_cosmetic(slot: Slot) -> BoneAttachment3D:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		var button_event := event as InputEventMouseButton
-		if button_event.button_index == MOUSE_BUTTON_LEFT:
-			if button_event.pressed and _fit_editor.pick(button_event.position):
-				_orbiting = false
-				get_viewport().set_input_as_handled()
-			else:
-				_orbiting = button_event.pressed
-		elif button_event.pressed and button_event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_orbit_distance = clampf(
-					_orbit_distance - ZOOM_STEP, MIN_ORBIT_DISTANCE, MAX_ORBIT_DISTANCE)
-			_update_orbit_camera()
-		elif button_event.pressed and button_event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_orbit_distance = clampf(
-					_orbit_distance + ZOOM_STEP, MIN_ORBIT_DISTANCE, MAX_ORBIT_DISTANCE)
-			_update_orbit_camera()
-	elif event is InputEventMagnifyGesture:
-		# Trackpad pinch gestures report a scale around 1.0. Dividing the orbit
-		# distance makes pinch-out magnify the character and pinch-in zoom away.
-		var magnify_event := event as InputEventMagnifyGesture
-		_orbit_distance = clampf(
-				_orbit_distance / maxf(magnify_event.factor, 0.01),
-				MIN_ORBIT_DISTANCE,
-				MAX_ORBIT_DISTANCE)
-		_update_orbit_camera()
-		get_viewport().set_input_as_handled()
-	elif event is InputEventMouseMotion and _orbiting:
-		var motion := event as InputEventMouseMotion
-		_orbit_yaw -= motion.relative.x * ORBIT_SENS
-		_orbit_pitch = clampf(
-				_orbit_pitch + motion.relative.y * ORBIT_SENS, -deg_to_rad(60.0), deg_to_rad(60.0))
-		_update_orbit_camera()
-	elif event is InputEventKey and event.pressed and not event.echo:
-		if (event as InputEventKey).physical_keycode == KEY_P:
-			_toggle_face_focus()
-
-
-## P toggles between the default full-body framing and a tight close-up on the face, so hair/
-## beard/eyebrow colors and placement can be checked without fighting the scroll-wheel zoom.
-func _toggle_face_focus() -> void:
-	_face_focused = not _face_focused
-	_orbit_target = FACE_ORBIT_TARGET if _face_focused else DEFAULT_ORBIT_TARGET
-	_orbit_distance = FACE_ORBIT_DISTANCE if _face_focused else DEFAULT_ORBIT_DISTANCE
-	_update_orbit_camera()
-
+	_fit_camera.handle_input(event)
 
 func _update_orbit_camera() -> void:
-	if is_instance_valid(_camera_tween):
-		_camera_tween.kill()
-		_camera_tween = null
-	var horizontal := cos(_orbit_pitch)
-	var direction := Vector3(
-			sin(_orbit_yaw) * horizontal, sin(_orbit_pitch), cos(_orbit_yaw) * horizontal)
-	camera.global_position = _orbit_target + direction * _orbit_distance
-	camera.look_at(_orbit_target)
+	_fit_camera.update_orbit_camera()

@@ -29,7 +29,30 @@ static func compute_authored_order(
 				body_cell_size,
 				body_normal_sign,
 				search_radius)
-	var pairs: Array[Dictionary] = []
+	var pairs := _authored_pairs(surfaces, depth_maps)
+	var levels := _assign_layer_levels(surfaces, pairs, depth_maps)
+	var maximum_level := 0
+	for pair in pairs:
+		var level := int(levels.get(pair["outer_id"], 1))
+		pair["level"] = level
+		maximum_level = maxi(maximum_level, level)
+	pairs.sort_custom(
+		func(first: Dictionary, second: Dictionary) -> bool:
+			if first["level"] == second["level"]:
+				return first["outer_id"] < second["outer_id"]
+			return first["level"] < second["level"])
+	return {
+		"pairs": pairs,
+		"levels": maximum_level,
+		"components": surfaces.size(),
+	}
+
+
+static func _authored_pairs(
+	surfaces: Array,
+	depth_maps: Dictionary,
+) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
 	for first_index in surfaces.size():
 		for second_index in range(first_index + 1, surfaces.size()):
 			var first: Dictionary = surfaces[first_index]
@@ -49,27 +72,12 @@ static func compute_authored_order(
 			var inner_id := (
 					second["id"] as String
 					if difference >= 0.0 else first["id"] as String)
-			pairs.append({
+			result.append({
 				"inner_id": inner_id,
 				"outer_id": outer_id,
 				"shared_cells": shared["count"],
 			})
-	var levels := _assign_layer_levels(surfaces, pairs, depth_maps)
-	var maximum_level := 0
-	for pair in pairs:
-		var level := int(levels.get(pair["outer_id"], 1))
-		pair["level"] = level
-		maximum_level = maxi(maximum_level, level)
-	pairs.sort_custom(
-			func(first: Dictionary, second: Dictionary) -> bool:
-				if first["level"] == second["level"]:
-					return first["outer_id"] < second["outer_id"]
-				return first["level"] < second["level"])
-	return {
-		"pairs": pairs,
-		"levels": maximum_level,
-		"components": surfaces.size(),
-	}
+	return result
 
 
 static func resolve_pass(
@@ -310,7 +318,7 @@ static func _clothing_surfaces(mesh_states: Dictionary) -> Array[Dictionary]:
 			var surface := surfaces[surface_index] as Dictionary
 			if not surface["is_clothing"]:
 				continue
-			var components := surface_components(surface["arrays"])
+			var components := surface["components"] as Array
 			for component_index in components.size():
 				var component := components[component_index] as Dictionary
 				result.append({
@@ -390,7 +398,7 @@ static func _shared_depth_difference(first: Dictionary, second: Dictionary) -> D
 
 
 static func _assign_layer_levels(
-	descriptors: Array[Dictionary],
+	descriptors: Array,
 	pairs: Array[Dictionary],
 	depth_maps: Dictionary,
 ) -> Dictionary:
@@ -541,6 +549,17 @@ static func _descriptor_is_selected(
 
 
 static func surface_components(arrays: Array) -> Array[Dictionary]:
+	return _surface_components(arrays, true)
+
+
+static func surface_layer_components(arrays: Array) -> Array[Dictionary]:
+	return _surface_components(arrays, false)
+
+
+static func _surface_components(
+	arrays: Array,
+	weld_positions: bool,
+) -> Array[Dictionary]:
 	var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
 	var source_indices := arrays[Mesh.ARRAY_INDEX] as PackedInt32Array
 	var indices := source_indices
@@ -553,13 +572,14 @@ static func surface_components(arrays: Array) -> Array[Dictionary]:
 	parents.resize(vertices.size())
 	for vertex_index in vertices.size():
 		parents[vertex_index] = vertex_index
-	var position_owners: Dictionary = {}
-	for vertex_index in vertices.size():
-		var position_key := _position_key(vertices[vertex_index])
-		if position_owners.has(position_key):
-			_union(parents, vertex_index, int(position_owners[position_key]))
-		else:
-			position_owners[position_key] = vertex_index
+	if weld_positions:
+		var position_owners: Dictionary = {}
+		for vertex_index in vertices.size():
+			var position_key := _position_key(vertices[vertex_index])
+			if position_owners.has(position_key):
+				_union(parents, vertex_index, int(position_owners[position_key]))
+			else:
+				position_owners[position_key] = vertex_index
 	for triangle_start in range(0, indices.size(), 3):
 		_union(parents, indices[triangle_start], indices[triangle_start + 1])
 		_union(parents, indices[triangle_start], indices[triangle_start + 2])

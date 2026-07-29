@@ -6,6 +6,9 @@ const FIT_GEOMETRY := preload("res://ui/outfit_fit/geometry.gd")
 const SKIN_MATERIAL_PATTERNS := ["regular_male", "regular_female"]
 const THICK_SHAPE_SMOOTH_PASSES := 8
 const THICK_SHAPE_SMOOTH_BLEND := 0.35
+const MINIMUM_INTERNAL_PANEL_VERTICES := 64
+const INTERNAL_PANEL_SAMPLE_RADIUS := 0.06
+const INTERNAL_PANEL_LINK_SCHEMA := 3
 
 
 static func clothing_surfaces(mesh_states: Dictionary) -> Array[Dictionary]:
@@ -247,11 +250,285 @@ static func synchronize_auto_offset_constraints(
 ) -> int:
 	var synchronized := synchronize_auto_offset_seams(
 			mesh_states, auto_surface_offsets, filter_mesh, filter_surface)
+	synchronized += _synchronize_internal_panels(
+			mesh_states, auto_surface_offsets, filter_mesh, filter_surface)
 	synchronized += _synchronize_auto_offset_thickness(
+			mesh_states, auto_surface_offsets, filter_mesh, filter_surface)
+	synchronized += _synchronize_internal_panels(
 			mesh_states, auto_surface_offsets, filter_mesh, filter_surface)
 	synchronized += synchronize_auto_offset_seams(
 			mesh_states, auto_surface_offsets, filter_mesh, filter_surface)
+	synchronized += _synchronize_internal_panels(
+			mesh_states, auto_surface_offsets, filter_mesh, filter_surface)
 	return synchronized
+
+
+static func _synchronize_internal_panels(
+	mesh_states: Dictionary,
+	auto_surface_offsets: Dictionary,
+	filter_mesh: String,
+	filter_surface: int,
+) -> int:
+	var synchronized := 0
+	for mesh_key_variant in mesh_states:
+		var mesh_key := String(mesh_key_variant)
+		if not filter_mesh.is_empty() and mesh_key != filter_mesh:
+			continue
+		var state := mesh_states[mesh_key] as Dictionary
+		var surfaces := state["surfaces"] as Array
+		var mesh_offsets := auto_surface_offsets[mesh_key] as Array
+		for surface_index in surfaces.size():
+			if filter_surface >= 0 and surface_index != filter_surface:
+				continue
+			var surface := surfaces[surface_index] as Dictionary
+			if not surface["is_clothing"]:
+				continue
+			var rigid_components := surface.get(
+					"rigid_fit_components", {}) as Dictionary
+			if rigid_components.is_empty():
+				continue
+			var vertices := surface["base_vertices"] as PackedVector3Array
+			var offsets := mesh_offsets[surface_index] as PackedVector3Array
+			var grouped_links: Dictionary = {}
+			for link_variant in _internal_panel_links(surface):
+				var link := link_variant as Dictionary
+				if not rigid_components.has(int(link["component"])):
+					continue
+				var component_index := int(link["component"])
+				var component_links: Array = grouped_links.get(component_index, [])
+				component_links.append(link)
+				grouped_links[component_index] = component_links
+			for component_links_variant in grouped_links.values():
+				var component_links := component_links_variant as Array
+				var panel_transform := _panel_similarity_transform(
+						vertices, offsets, component_links)
+				for link_variant in component_links:
+					var link := link_variant as Dictionary
+					var target_index := int(link["target"])
+					var target_position := vertices[target_index]
+					var shared_offset := (
+							panel_transform * target_position - target_position)
+					if not offsets[target_index].is_equal_approx(shared_offset):
+						synchronized += 1
+					offsets[target_index] = shared_offset
+			mesh_offsets[surface_index] = offsets
+		auto_surface_offsets[mesh_key] = mesh_offsets
+	return synchronized
+
+
+static func _panel_similarity_transform(
+	vertices: PackedVector3Array,
+	offsets: PackedVector3Array,
+	links: Array,
+) -> Transform3D:
+	var source_center := Vector3.ZERO
+	var destination_center := Vector3.ZERO
+	var source_points := PackedVector3Array()
+	var destination_points := PackedVector3Array()
+	for link_variant in links:
+		var link := link_variant as Dictionary
+		var source_point := _linked_panel_position(vertices, link)
+		var destination_point := source_point + _linked_panel_offset(offsets, link)
+		source_points.append(source_point)
+		destination_points.append(destination_point)
+		source_center += source_point
+		destination_center += destination_point
+	source_center /= float(links.size())
+	destination_center /= float(links.size())
+	var covariance := PackedFloat64Array()
+	covariance.resize(9)
+	for point_index in source_points.size():
+		var source := source_points[point_index] - source_center
+		var destination := destination_points[point_index] - destination_center
+		covariance[0] += source.x * destination.x
+		covariance[1] += source.x * destination.y
+		covariance[2] += source.x * destination.z
+		covariance[3] += source.y * destination.x
+		covariance[4] += source.y * destination.y
+		covariance[5] += source.y * destination.z
+		covariance[6] += source.z * destination.x
+		covariance[7] += source.z * destination.y
+		covariance[8] += source.z * destination.z
+	var rotation := _covariance_rotation(covariance)
+	var rotated_variance := 0.0
+	var source_variance := 0.0
+	for point_index in source_points.size():
+		var source := source_points[point_index] - source_center
+		var destination := destination_points[point_index] - destination_center
+		rotated_variance += destination.dot(rotation * source)
+		source_variance += source.length_squared()
+	var scale := clampf(
+			rotated_variance / source_variance if source_variance > 0.00000001 else 1.0,
+			0.5,
+			1.5)
+	var basis := Basis(rotation).scaled(Vector3.ONE * scale)
+	return Transform3D(basis, destination_center - basis * source_center)
+
+
+static func _covariance_rotation(covariance: PackedFloat64Array) -> Quaternion:
+	var xx := covariance[0]
+	var xy := covariance[1]
+	var xz := covariance[2]
+	var yx := covariance[3]
+	var yy := covariance[4]
+	var yz := covariance[5]
+	var zx := covariance[6]
+	var zy := covariance[7]
+	var zz := covariance[8]
+	var trace := xx + yy + zz
+	var quaternion := PackedFloat64Array([1.0, 0.0, 0.0, 0.0])
+	for _iteration in 20:
+		var next := PackedFloat64Array([
+			trace * quaternion[0] + (yz - zy) * quaternion[1]
+					+ (zx - xz) * quaternion[2] + (xy - yx) * quaternion[3],
+			(yz - zy) * quaternion[0] + (xx - yy - zz) * quaternion[1]
+					+ (xy + yx) * quaternion[2] + (zx + xz) * quaternion[3],
+			(zx - xz) * quaternion[0] + (xy + yx) * quaternion[1]
+					+ (-xx + yy - zz) * quaternion[2] + (yz + zy) * quaternion[3],
+			(xy - yx) * quaternion[0] + (zx + xz) * quaternion[1]
+					+ (yz + zy) * quaternion[2] + (-xx - yy + zz) * quaternion[3],
+		])
+		var length := sqrt(
+				next[0] * next[0] + next[1] * next[1]
+				+ next[2] * next[2] + next[3] * next[3])
+		if length <= 0.00000001:
+			return Quaternion.IDENTITY
+		for value_index in next.size():
+			next[value_index] /= length
+		quaternion = next
+	return Quaternion(
+			quaternion[1], quaternion[2], quaternion[3], quaternion[0]).normalized()
+
+
+static func _linked_panel_position(
+	vertices: PackedVector3Array,
+	link: Dictionary,
+) -> Vector3:
+	var shared_position := Vector3.ZERO
+	var sample_indices := link["samples"] as PackedInt32Array
+	var sample_weights := link["weights"] as PackedFloat32Array
+	for sample_index in sample_indices.size():
+		shared_position += (
+				vertices[sample_indices[sample_index]]
+				* sample_weights[sample_index])
+	return shared_position
+
+
+static func _linked_panel_offset(
+	offsets: PackedVector3Array,
+	link: Dictionary,
+) -> Vector3:
+	var shared_offset := Vector3.ZERO
+	var sample_indices := link["samples"] as PackedInt32Array
+	var sample_weights := link["weights"] as PackedFloat32Array
+	for sample_index in sample_indices.size():
+		shared_offset += (
+				offsets[sample_indices[sample_index]]
+				* sample_weights[sample_index])
+	return shared_offset
+
+
+static func _internal_panel_links(surface: Dictionary) -> Array:
+	if int(surface.get("internal_panel_link_schema", 0)) == INTERNAL_PANEL_LINK_SCHEMA:
+		return surface.get("internal_panel_links", []) as Array
+	var vertices := surface["base_vertices"] as PackedVector3Array
+	var vertex_components := surface["vertex_components"] as PackedInt32Array
+	var grouped: Dictionary = {}
+	for raw_variant in (surface["layer_components"] as Array):
+		var raw := raw_variant as Dictionary
+		var raw_vertices := raw["vertex_indices"] as PackedInt32Array
+		if raw_vertices.size() < MINIMUM_INTERNAL_PANEL_VERTICES:
+			continue
+		var parent_index := vertex_components[int(raw["first_vertex"])]
+		var members: Array = grouped.get(parent_index, [])
+		members.append(raw)
+		grouped[parent_index] = members
+	var result: Array[Dictionary] = []
+	for members_variant in grouped.values():
+		var members := members_variant as Array
+		if members.size() < 3:
+			continue
+		members.sort_custom(
+			func(first: Dictionary, second: Dictionary) -> bool:
+				return (
+					(first["vertex_indices"] as PackedInt32Array).size()
+					> (second["vertex_indices"] as PackedInt32Array).size()))
+		var driver := members[0] as Dictionary
+		var driver_indices := driver["indices"] as PackedInt32Array
+		for member_index in range(1, members.size()):
+			var follower := members[member_index] as Dictionary
+			for target_index in (
+					follower["vertex_indices"] as PackedInt32Array):
+				var samples := _closest_panel_triangle_samples(
+						vertices, target_index, driver_indices)
+				if samples.is_empty():
+					continue
+				result.append({
+					"component": int(vertex_components[target_index]),
+					"target": target_index,
+					"samples": samples["indices"],
+					"weights": samples["weights"],
+				})
+	surface["internal_panel_links"] = result
+	surface["internal_panel_link_schema"] = INTERNAL_PANEL_LINK_SCHEMA
+	return result
+
+
+static func _closest_panel_triangle_samples(
+	vertices: PackedVector3Array,
+	target_index: int,
+	driver_indices: PackedInt32Array,
+) -> Dictionary:
+	var target := vertices[target_index]
+	var best_distance_squared := INF
+	var best_indices := PackedInt32Array()
+	var best_weights := PackedFloat32Array()
+	for triangle_start in range(0, driver_indices.size(), 3):
+		var a_index := driver_indices[triangle_start]
+		var b_index := driver_indices[triangle_start + 1]
+		var c_index := driver_indices[triangle_start + 2]
+		var a := vertices[a_index]
+		var b := vertices[b_index]
+		var c := vertices[c_index]
+		var closest := FIT_GEOMETRY.closest_point_on_triangle(target, a, b, c)
+		var distance_squared := target.distance_squared_to(closest)
+		if distance_squared >= best_distance_squared:
+			continue
+		var weights := _triangle_weights(closest, a, b, c)
+		if weights.is_empty():
+			continue
+		best_distance_squared = distance_squared
+		best_indices = PackedInt32Array([a_index, b_index, c_index])
+		best_weights = weights
+	if best_distance_squared > INTERNAL_PANEL_SAMPLE_RADIUS * INTERNAL_PANEL_SAMPLE_RADIUS:
+		return {}
+	return {
+		"indices": best_indices,
+		"weights": best_weights,
+	}
+
+
+static func _triangle_weights(
+	point: Vector3,
+	a: Vector3,
+	b: Vector3,
+	c: Vector3,
+) -> PackedFloat32Array:
+	var edge_ab := b - a
+	var edge_ac := c - a
+	var point_offset := point - a
+	var ab_ab := edge_ab.dot(edge_ab)
+	var ab_ac := edge_ab.dot(edge_ac)
+	var ac_ac := edge_ac.dot(edge_ac)
+	var point_ab := point_offset.dot(edge_ab)
+	var point_ac := point_offset.dot(edge_ac)
+	var denominator := ab_ab * ac_ac - ab_ac * ab_ac
+	if absf(denominator) <= 0.00000001:
+		return PackedFloat32Array()
+	var b_weight := (ac_ac * point_ab - ab_ac * point_ac) / denominator
+	var c_weight := (ab_ab * point_ac - ab_ac * point_ab) / denominator
+	var a_weight := 1.0 - b_weight - c_weight
+	return PackedFloat32Array([a_weight, b_weight, c_weight])
 
 
 static func _synchronize_auto_offset_thickness(

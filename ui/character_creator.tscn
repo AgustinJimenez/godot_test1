@@ -23,6 +23,28 @@ mesh = SubResource("PlaneMesh_floor")
 
 [node name="PreviewRoot" type="Node3D" parent="."]
 
+[node name="FittedLabel" type="Label3D" parent="PreviewRoot"]
+visible = false
+position = Vector3(0, 2.15, 0)
+billboard = 1
+text = "FITTED"
+font_size = 48
+outline_size = 8
+modulate = Color(0.45, 0.9, 1, 1)
+pixel_size = 0.0025
+
+[node name="ComparisonRoot" type="Node3D" parent="."]
+
+[node name="OriginalLabel" type="Label3D" parent="ComparisonRoot"]
+visible = false
+position = Vector3(0, 2.15, 0)
+billboard = 1
+text = "ORIGINAL"
+font_size = 48
+outline_size = 8
+modulate = Color(1, 0.82, 0.42, 1)
+pixel_size = 0.0025
+
 [node name="Camera" type="Camera3D" parent="."]
 fov = 40.0
 
@@ -246,6 +268,16 @@ layout_mode = 2
 disabled = true
 tooltip_text = "Show only the selected garment component without changing its fit"
 text = "Isolate selected component"
+
+[node name="CompareOriginal" type="CheckButton" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+tooltip_text = "Show an untouched source copy beside the current fitted result"
+text = "Compare with original"
+
+[node name="FreeCamera" type="CheckButton" parent="UI/FitPanel/Margin/VBox"]
+layout_mode = 2
+tooltip_text = "Captured mouse-look; WASD moves, Q/E moves vertically, Shift moves faster, Escape exits"
+text = "Free camera"
 
 [node name="Selection" type="Label" parent="UI/FitPanel/Margin/VBox"]
 layout_mode = 2
