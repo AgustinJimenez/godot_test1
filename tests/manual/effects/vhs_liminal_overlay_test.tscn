@@ -1,0 +1,25 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="PackedScene" path="res://levels/backrooms_level0.tscn" id="1_level"]
+[ext_resource type="PackedScene" path="res://actors/player/player.tscn" id="2_player"]
+[ext_resource type="Shader" path="res://shaders/vhs_liminal_overlay.gdshader" id="3_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_overlay"]
+shader = ExtResource("3_shader")
+
+[node name="VhsLiminalOverlayTest" type="Node3D"]
+
+[node name="BackroomsLevel0" parent="." instance=ExtResource("1_level")]
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 15)
+
+[node name="OverlayLayer" type="CanvasLayer" parent="."]
+
+[node name="Overlay" type="ColorRect" parent="OverlayLayer"]
+material = SubResource("ShaderMaterial_overlay")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(1, 1, 1, 1)

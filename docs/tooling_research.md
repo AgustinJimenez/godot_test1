@@ -1101,3 +1101,68 @@ or Mixamo remains appropriate for production weight cleanup, layered clothing,
 non-neutral poses, and unusual anatomy. This preserves an all-editor learning
 workflow without misrepresenting a simple deterministic heuristic as a general
 bone-heat or ML auto-rigger.
+
+## VHS/camcorder liminal-horror look (2026-07-28)
+
+Prompted by reference screenshots from the itch.io game *Your Happy Place*
+(analog-horror/liminal-space, UE5): barrel/fisheye lens distortion, VHS grain
+and soft blur, warm sepia-to-pink desaturated color grading, exaggerated soft
+light blooms, over otherwise plain liminal-space geometry. Goal is a
+full-screen post-process shader that gets our own scenes close to that look,
+not a UE5 port.
+
+The look decomposes into independently well-covered effects, all of which
+exist as free/CC0 Godot 4 shaders rather than needing to be derived from
+scratch (per the standing "check engine/community source before hand-deriving"
+lesson):
+
+- **Barrel/fisheye distortion** — [2D Radial Distortion - Fisheye/Barrel](
+  https://godotshaders.com/shader/2d-radial-distortion-fisheye-barrel/)
+  (Godot 4, screen-space UV remap, meant for a `ColorRect`), based on
+  [a minimal-pixelation fisheye/barrel gist](
+  https://gist.github.com/aggregate1166877/a889083801d67917c26c12a98e7f57a7).
+  Also a plain [Barrel Distortion shader](
+  https://godotshaders.com/shader/barrel-distortion/) for `TextureRect`.
+- **Camcorder-specific combo (chromatic aberration + grain + color
+  bleed)** — [Camcorder Horror Shader](
+  https://godotshaders.com/shader/camcorder-horror-shader/), CC0, every
+  module toggleable for performance; closest single match to the reference
+  images' grain/aberration/softness combination.
+- **All-in-one VHS/CRT** — [VHS and CRT monitor effect (Godot 4)](
+  https://godotshaders.com/shader/vhs-and-crt-monitor-effect-2/) (scanlines,
+  roll distortion, noise, static, aberration, warp, discolor — usable as an
+  overlay `ColorRect` or applied directly to a viewport texture), and
+  [GodotRetro](https://github.com/ahopness/GodotRetro), a CC0-licensed pack
+  of ported ShaderToy/Unity/Book-of-Shaders retro shaders including VHS, NTSC,
+  TV, and lens distortion — its own docs note lens distortion + high FOV
+  "can give an MTV 2000 camcorder aesthetic."
+- **General post-process addon** — [Post Process (Asset Library #2604)](
+  https://godotengine.org/asset-library/asset/2604), MIT, bundles Pixelate,
+  Color Correction, Chromatic Aberration, Blur, Grain, Glitch, Vignette,
+  Fish Eye, and Analog Monitor as one dynamic addon rather than separate
+  shaders — lowest-effort starting point if we want one panel of sliders
+  instead of stacking several standalone shaders by hand.
+- **Paid, higher-polish option** — [Analog Horror & Retro Console Shader
+  Pack](
+  https://agavius.itch.io/analog-horror-retro-console-shader-pack-godot-4x)
+  ($4.49), ships curated presets (including a "Found Footage" preset) with
+  exact slider values — worth a look only if the free stack falls short of
+  the reference look.
+
+Mechanism: all of the above are 2D screen-space shaders applied to a
+full-screen `ColorRect`/`TextureRect` reading `hint_screen_texture`, the
+established Godot 3/4 pattern — not Godot 4.3's newer `CompositorEffect` RD
+compute-shader stack. `CompositorEffect` was checked as the "more proper"
+alternative but has very little Godot-4.3-specific example coverage yet (per
+[PPMagic](https://github.com/peterprickarz/PPMagic), a `CompositorEffect`
+post-processing project whose author notes the same gap) and no existing
+fisheye/barrel example was found built on it. Given the reference look is
+achievable entirely with the simpler screen-texture approach, there's no
+reason to reach for `CompositorEffect` for this.
+
+Not yet implemented or prototyped in-scene — this is the "investigate before
+coding" step. Next step if pursued: drop the Camcorder Horror Shader (or the
+VHS/CRT one) onto a `ColorRect` over an existing test scene, layer the
+fisheye gist on top, and compare a render against the reference screenshots
+before deciding whether an off-the-shelf addon (Post Process #2604) beats
+hand-stacking two or three standalone shaders.
