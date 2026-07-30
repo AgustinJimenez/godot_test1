@@ -380,6 +380,10 @@ text = "FOV Gizmo: OFF"
 [node name="ShowFPSToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Show FPS"
 
+[node name="VisualFiltersToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "Visual Filters"
+button_pressed = true
+
 [node name="BackButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "< Back"
 

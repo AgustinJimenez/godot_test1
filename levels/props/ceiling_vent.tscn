@@ -1,0 +1,69 @@
+[gd_scene load_steps=6 format=3]
+
+[sub_resource type="StandardMaterial3D" id="Material_vent_ring0"]
+albedo_color = Color(0.78, 0.78, 0.78, 1)
+metallic = 0.7
+roughness = 0.3
+
+[sub_resource type="StandardMaterial3D" id="Material_vent_ring1"]
+albedo_color = Color(0.7, 0.7, 0.7, 1)
+metallic = 0.7
+roughness = 0.3
+
+[sub_resource type="StandardMaterial3D" id="Material_vent_ring2"]
+albedo_color = Color(0.62, 0.62, 0.62, 1)
+metallic = 0.7
+roughness = 0.3
+
+[sub_resource type="StandardMaterial3D" id="Material_vent_ring3"]
+albedo_color = Color(0.55, 0.55, 0.55, 1)
+metallic = 0.7
+roughness = 0.3
+
+[sub_resource type="StandardMaterial3D" id="Material_vent_cap"]
+albedo_color = Color(0.48, 0.48, 0.48, 1)
+metallic = 0.6
+roughness = 0.35
+
+[node name="CeilingVent" type="Node3D"]
+
+[node name="Ring0" type="CSGBox3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.0232, 0)
+size = Vector3(1.16, 0.0464, 1.16)
+material = SubResource("Material_vent_ring0")
+
+[node name="Hole0" type="CSGBox3D" parent="Ring0"]
+operation = 2
+size = Vector3(0.928, 0.0928, 0.928)
+
+[node name="Ring1" type="CSGBox3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.0754, 0)
+size = Vector3(0.928, 0.058, 0.928)
+material = SubResource("Material_vent_ring1")
+
+[node name="Hole1" type="CSGBox3D" parent="Ring1"]
+operation = 2
+size = Vector3(0.696, 0.1044, 0.696)
+
+[node name="Ring2" type="CSGBox3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1334, 0)
+size = Vector3(0.696, 0.058, 0.696)
+material = SubResource("Material_vent_ring2")
+
+[node name="Hole2" type="CSGBox3D" parent="Ring2"]
+operation = 2
+size = Vector3(0.464, 0.1044, 0.464)
+
+[node name="Ring3" type="CSGBox3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1914, 0)
+size = Vector3(0.464, 0.058, 0.464)
+material = SubResource("Material_vent_ring3")
+
+[node name="Hole3" type="CSGBox3D" parent="Ring3"]
+operation = 2
+size = Vector3(0.232, 0.1044, 0.232)
+
+[node name="Cap" type="CSGBox3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2378, 0)
+size = Vector3(0.232, 0.0348, 0.232)
+material = SubResource("Material_vent_cap")

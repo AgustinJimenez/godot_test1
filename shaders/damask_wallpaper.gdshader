@@ -8,8 +8,11 @@ render_mode diffuse_lambert;
 // wall texture (see docs/tooling_research.md's "VHS/camcorder liminal-horror
 // look" entry): close up, the wallpaper isn't a bold diamond lattice but a
 // barely-visible ">>>" weave with a dashed tick-mark row between each
-// chevron row. Either way, a red wainscoting stripe, white baseboard, and
-// vertical panel seams are drawn on top.
+// chevron row. Vertical panel seams are drawn on top; the wall-base trim
+// (the vinyl cove base seen at the bottom of real office walls) is real
+// protruding geometry added per-wall in the level scene, not painted here
+// - baseboard_height/wainscoting_height default to 0 so this shader no
+// longer draws its own flat version underneath that real geometry.
 //
 // Flat walls (use_world_uv = true) pattern off world-space position rather
 // than mesh UV: CSGBox3D normalizes each face's UV to 0-1 regardless of the
@@ -39,10 +42,10 @@ uniform vec3 seam_color : source_color = vec3(0.05, 0.04, 0.03);
 uniform float seam_spacing = 1.4;
 uniform float seam_width = 0.012;
 uniform float roughness_value : hint_range(0.0, 1.0) = 0.85;
-uniform vec3 baseboard_color : source_color = vec3(0.92, 0.9, 0.85);
-uniform vec3 wainscoting_color : source_color = vec3(0.5, 0.11, 0.07);
-uniform float baseboard_height = 0.08;
-uniform float wainscoting_height = 0.16;
+uniform vec3 baseboard_color : source_color = vec3(0.8, 0.79, 0.76);
+uniform vec3 wainscoting_color : source_color = vec3(0.8, 0.79, 0.76);
+uniform float baseboard_height = 0.0;
+uniform float wainscoting_height = 0.0;
 
 varying vec3 world_pos;
 

@@ -84,6 +84,8 @@ var _character_rows: Array[Dictionary] = []
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FovGizmoButton")
 @onready var show_fps_toggle: CheckButton = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/ShowFPSToggle")
+@onready var visual_filters_toggle: CheckButton = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/VisualFiltersToggle")
 @onready var debug_back_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/BackButton")
 @onready var settings_menu: SettingsMenu = $DebugOverlay/Center/SettingsMenu
@@ -119,6 +121,7 @@ func _ready() -> void:
 	debug_apply.pressed.connect(_on_debug_apply)
 	fov_gizmo_button.pressed.connect(_on_fov_gizmo_button_pressed)
 	show_fps_toggle.toggled.connect(_on_show_fps_toggled)
+	visual_filters_toggle.toggled.connect(_on_visual_filters_toggled)
 	main_debug_button.pressed.connect(_show_debug_page)
 	main_guide_button.pressed.connect(_show_guide_page)
 	main_settings_button.pressed.connect(_show_settings_page)
@@ -644,6 +647,17 @@ func _on_show_fps_toggled(enabled: bool) -> void:
 	show_fps_debug = enabled
 	fps_label.visible = enabled
 	_fps_refresh_left = 0.0
+
+
+## Toggles any full-screen post-process overlay in the "visual_filters" group
+## (e.g. the VHS/liminal-horror camcorder shader). Scene-scoped rather than a
+## HUD-owned node, since only test scenes like
+## tests/manual/effects/vhs_liminal_overlay_test.tscn currently have one -
+## the toggle is a no-op with nothing to hide in scenes without one.
+func _on_visual_filters_toggled(enabled: bool) -> void:
+	for overlay in get_tree().get_nodes_in_group(&"visual_filters"):
+		if overlay is CanvasItem:
+			(overlay as CanvasItem).visible = enabled
 
 
 func _on_debug_apply() -> void:

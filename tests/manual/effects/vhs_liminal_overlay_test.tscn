@@ -16,7 +16,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 15)
 
 [node name="OverlayLayer" type="CanvasLayer" parent="."]
 
-[node name="Overlay" type="ColorRect" parent="OverlayLayer"]
+[node name="Overlay" type="ColorRect" parent="OverlayLayer" groups=["visual_filters"]]
 material = SubResource("ShaderMaterial_overlay")
 anchors_preset = 15
 anchor_right = 1.0

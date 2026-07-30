@@ -11,6 +11,13 @@ render_mode diffuse_lambert;
 // normalizes each face's UV to 0-1 regardless of the face's actual size, so
 // a non-square ceiling (the side room's 6x8m one, say) would stretch the
 // tiles into rectangles if driven by UV directly.
+//
+// This is the original flat-painted-line implementation, kept around as a
+// reference/comparison patch alongside the real physical tile geometry in
+// components/ceiling_tile_grid.gd - see that script's doc comment for why
+// the project moved to real geometry (a painted line reads flatter/less
+// convincing up close than an actual seam, though it never casts a
+// raking-light shadow the way real geometry can).
 
 uniform vec3 tile_color : source_color = vec3(0.78, 0.74, 0.58);
 uniform vec3 grid_line_color : source_color = vec3(0.5, 0.47, 0.36);
