@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://ui/hud.gd" id="1_hud"]
 [ext_resource type="PackedScene" path="res://ui/settings_menu.tscn" id="2_settings"]
+[ext_resource type="PackedScene" path="res://ui/vision_debug_panel.tscn" id="3_vision"]
 
 [node name="HUD" type="CanvasLayer"]
 process_mode = 3
@@ -387,10 +388,16 @@ button_pressed = true
 [node name="FreeModeToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Free Mode (noclip)"
 
+[node name="VisionButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "Vision / Atmosphere  >"
+
 [node name="BackButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "< Back"
 
 [node name="SettingsMenu" parent="DebugOverlay/Center" instance=ExtResource("2_settings")]
+visible = false
+
+[node name="VisionPanel" parent="DebugOverlay/Center" instance=ExtResource("3_vision")]
 visible = false
 
 [node name="ObjectPanel" type="PanelContainer" parent="DebugOverlay/Center"]

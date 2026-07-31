@@ -23,7 +23,6 @@ var _settings: Node
 @onready var shadow_quality: OptionButton = %ShadowQuality
 @onready var ssao: CheckButton = %SSAO
 @onready var ssil: CheckButton = %SSIL
-@onready var fog: CheckButton = %Fog
 @onready var glow: CheckButton = %Glow
 @onready var vsync: CheckButton = %VSync
 @onready var max_fps: HSlider = %MaxFPS
@@ -47,7 +46,6 @@ func _ready() -> void:
 	shadow_quality.item_selected.connect(_on_shadow_quality_selected)
 	ssao.toggled.connect(_on_toggle_changed.bind(&"ssao"))
 	ssil.toggled.connect(_on_toggle_changed.bind(&"ssil"))
-	fog.toggled.connect(_on_toggle_changed.bind(&"fog"))
 	glow.toggled.connect(_on_toggle_changed.bind(&"glow"))
 	vsync.toggled.connect(_on_toggle_changed.bind(&"vsync"))
 	max_fps.value_changed.connect(_on_max_fps_changed)
@@ -107,7 +105,6 @@ func _sync_controls() -> void:
 	shadow_quality.select(int(_settings.get_graphics_value(&"shadow_quality")))
 	ssao.button_pressed = bool(_settings.get_graphics_value(&"ssao"))
 	ssil.button_pressed = bool(_settings.get_graphics_value(&"ssil"))
-	fog.button_pressed = bool(_settings.get_graphics_value(&"fog"))
 	glow.button_pressed = bool(_settings.get_graphics_value(&"glow"))
 	vsync.button_pressed = bool(_settings.get_graphics_value(&"vsync"))
 	max_fps.value = float(_settings.get_graphics_value(&"max_fps"))

@@ -13,7 +13,7 @@ const SECTION := "graphics"
 const PRESET_NAMES: PackedStringArray = ["Low", "Medium", "High", "Ultra", "Custom"]
 const QUALITY_KEYS: Array[StringName] = [
 	&"render_scale", &"anti_aliasing", &"shadow_quality",
-	&"ssao", &"ssil", &"fog", &"glow",
+	&"ssao", &"ssil", &"glow",
 ]
 const DEFAULT_VALUES: Dictionary = {
 	&"render_scale": 1.0,
@@ -21,7 +21,6 @@ const DEFAULT_VALUES: Dictionary = {
 	&"shadow_quality": ShadowQuality.MEDIUM,
 	&"ssao": true,
 	&"ssil": false,
-	&"fog": true,
 	&"glow": false,
 	&"vsync": true,
 	&"max_fps": 120,
@@ -31,25 +30,25 @@ const PRESETS: Dictionary = {
 		&"render_scale": 0.65,
 		&"anti_aliasing": AntiAliasing.OFF,
 		&"shadow_quality": ShadowQuality.OFF,
-		&"ssao": false, &"ssil": false, &"fog": false, &"glow": false,
+		&"ssao": false, &"ssil": false, &"glow": false,
 	},
 	Preset.MEDIUM: {
 		&"render_scale": 0.8,
 		&"anti_aliasing": AntiAliasing.FXAA,
 		&"shadow_quality": ShadowQuality.LOW,
-		&"ssao": false, &"ssil": false, &"fog": true, &"glow": false,
+		&"ssao": false, &"ssil": false, &"glow": false,
 	},
 	Preset.HIGH: {
 		&"render_scale": 1.0,
 		&"anti_aliasing": AntiAliasing.TAA,
 		&"shadow_quality": ShadowQuality.MEDIUM,
-		&"ssao": true, &"ssil": false, &"fog": true, &"glow": false,
+		&"ssao": true, &"ssil": false, &"glow": false,
 	},
 	Preset.ULTRA: {
 		&"render_scale": 1.15,
 		&"anti_aliasing": AntiAliasing.TAA,
 		&"shadow_quality": ShadowQuality.HIGH,
-		&"ssao": true, &"ssil": true, &"fog": true, &"glow": true,
+		&"ssao": true, &"ssil": true, &"glow": true,
 	},
 }
 
@@ -150,6 +149,11 @@ func _apply_scene_node(node: Node) -> void:
 		_apply_scene_node(child)
 
 
+## Fog is deliberately not touched here - it's owned per-scene by whatever
+## the scene's own Environment resource bakes in (tunable live via the debug
+## menu's Vision/Atmosphere panel, see ui/vision_debug_panel.gd), not a
+## quality-preset toggle. It used to be one and would silently re-enable
+## itself on every settings apply() regardless of what a scene had baked in.
 func _apply_single_node(node: Node) -> void:
 	if node is WorldEnvironment:
 		var world_environment := node as WorldEnvironment
@@ -157,7 +161,6 @@ func _apply_single_node(node: Node) -> void:
 		if environment:
 			environment.ssao_enabled = bool(_values[&"ssao"])
 			environment.ssil_enabled = bool(_values[&"ssil"])
-			environment.fog_enabled = bool(_values[&"fog"])
 			environment.glow_enabled = bool(_values[&"glow"])
 	elif node is DirectionalLight3D:
 		var light := node as DirectionalLight3D
@@ -187,7 +190,7 @@ func _sanitize_value(key: StringName, value: Variant) -> Variant:
 			return clampi(int(value), ShadowQuality.OFF, ShadowQuality.HIGH)
 		&"max_fps":
 			return clampi(int(value), 30, 240)
-		&"ssao", &"ssil", &"fog", &"glow", &"vsync":
+		&"ssao", &"ssil", &"glow", &"vsync":
 			return bool(value)
 	return value
 

@@ -1,0 +1,407 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/vision_debug_panel.gd" id="1_vision"]
+
+[node name="VisionDebugPanel" type="PanelContainer"]
+custom_minimum_size = Vector2(560, 560)
+script = ExtResource("1_vision")
+
+[node name="Margin" type="MarginContainer" parent="."]
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="Margin"]
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Margin/VBox"]
+theme_override_font_sizes/font_size = 20
+text = "VISION / ATMOSPHERE"
+
+[node name="StatusLabel" type="Label" parent="Margin/VBox"]
+unique_name_in_owner = true
+visible = false
+theme_override_colors/font_color = Color(0.9, 0.6, 0.5, 1)
+theme_override_font_sizes/font_size = 14
+text = "No WorldEnvironment found in this scene."
+
+[node name="Scroll" type="ScrollContainer" parent="Margin/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 440)
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Content" type="VBoxContainer" parent="Margin/VBox/Scroll"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="AmbientLabel" type="Label" parent="Margin/VBox/Scroll/Content"]
+theme_override_colors/font_color = Color(0.7, 0.8, 0.95, 1)
+theme_override_font_sizes/font_size = 14
+text = "AMBIENT"
+
+[node name="AmbientGrid" type="GridContainer" parent="Margin/VBox/Scroll/Content"]
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 24
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="EnergyLabel" type="Label" parent="Margin/VBox/Scroll/Content/AmbientGrid"]
+text = "Energy"
+
+[node name="EnergyControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/AmbientGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="AmbientEnergy" type="HSlider" parent="Margin/VBox/Scroll/Content/AmbientGrid/EnergyControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 2.0
+step = 0.01
+
+[node name="AmbientEnergyValue" type="Label" parent="Margin/VBox/Scroll/Content/AmbientGrid/EnergyControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.00"
+horizontal_alignment = 2
+
+[node name="ColorLabel" type="Label" parent="Margin/VBox/Scroll/Content/AmbientGrid"]
+text = "Color"
+
+[node name="AmbientColor" type="ColorPickerButton" parent="Margin/VBox/Scroll/Content/AmbientGrid"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+size_flags_horizontal = 0
+
+[node name="FogLabel" type="Label" parent="Margin/VBox/Scroll/Content"]
+theme_override_colors/font_color = Color(0.7, 0.8, 0.95, 1)
+theme_override_font_sizes/font_size = 14
+text = "FOG"
+
+[node name="FogGrid" type="GridContainer" parent="Margin/VBox/Scroll/Content"]
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 24
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="EnabledLabel" type="Label" parent="Margin/VBox/Scroll/Content/FogGrid"]
+text = "Enabled"
+
+[node name="FogEnabled" type="CheckButton" parent="Margin/VBox/Scroll/Content/FogGrid"]
+unique_name_in_owner = true
+text = "Enabled"
+
+[node name="DensityLabel" type="Label" parent="Margin/VBox/Scroll/Content/FogGrid"]
+text = "Density"
+
+[node name="DensityControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/FogGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="FogDensity" type="HSlider" parent="Margin/VBox/Scroll/Content/FogGrid/DensityControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 0.05
+step = 0.0005
+
+[node name="FogDensityValue" type="Label" parent="Margin/VBox/Scroll/Content/FogGrid/DensityControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.0000"
+horizontal_alignment = 2
+
+[node name="LightColorLabel" type="Label" parent="Margin/VBox/Scroll/Content/FogGrid"]
+text = "Light Color"
+
+[node name="FogLightColor" type="ColorPickerButton" parent="Margin/VBox/Scroll/Content/FogGrid"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+size_flags_horizontal = 0
+
+[node name="LightEnergyLabel" type="Label" parent="Margin/VBox/Scroll/Content/FogGrid"]
+text = "Light Energy"
+
+[node name="LightEnergyControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/FogGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="FogLightEnergy" type="HSlider" parent="Margin/VBox/Scroll/Content/FogGrid/LightEnergyControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 2.0
+step = 0.01
+
+[node name="FogLightEnergyValue" type="Label" parent="Margin/VBox/Scroll/Content/FogGrid/LightEnergyControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.00"
+horizontal_alignment = 2
+
+[node name="SunScatterLabel" type="Label" parent="Margin/VBox/Scroll/Content/FogGrid"]
+text = "Sun Scatter"
+
+[node name="SunScatterControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/FogGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="FogSunScatter" type="HSlider" parent="Margin/VBox/Scroll/Content/FogGrid/SunScatterControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+
+[node name="FogSunScatterValue" type="Label" parent="Margin/VBox/Scroll/Content/FogGrid/SunScatterControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.00"
+horizontal_alignment = 2
+
+[node name="VolumetricLabel" type="Label" parent="Margin/VBox/Scroll/Content"]
+theme_override_colors/font_color = Color(0.7, 0.8, 0.95, 1)
+theme_override_font_sizes/font_size = 14
+text = "VOLUMETRIC FOG"
+
+[node name="VolumetricGrid" type="GridContainer" parent="Margin/VBox/Scroll/Content"]
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 24
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="EnabledLabel" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+text = "Enabled"
+
+[node name="VolumetricEnabled" type="CheckButton" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+unique_name_in_owner = true
+text = "Enabled"
+
+[node name="DensityLabel" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+text = "Density"
+
+[node name="DensityControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="VolumetricDensity" type="HSlider" parent="Margin/VBox/Scroll/Content/VolumetricGrid/DensityControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.001
+
+[node name="VolumetricDensityValue" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid/DensityControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.000"
+horizontal_alignment = 2
+
+[node name="AlbedoLabel" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+text = "Albedo"
+
+[node name="VolumetricAlbedo" type="ColorPickerButton" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+size_flags_horizontal = 0
+
+[node name="EmissionLabel" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+text = "Emission"
+
+[node name="VolumetricEmission" type="ColorPickerButton" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+size_flags_horizontal = 0
+
+[node name="EmissionEnergyLabel" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+text = "Emission Energy"
+
+[node name="EmissionEnergyControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="VolumetricEmissionEnergy" type="HSlider" parent="Margin/VBox/Scroll/Content/VolumetricGrid/EmissionEnergyControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 10.0
+step = 0.1
+
+[node name="VolumetricEmissionEnergyValue" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid/EmissionEnergyControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.00"
+horizontal_alignment = 2
+
+[node name="AnisotropyLabel" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+text = "Anisotropy"
+
+[node name="AnisotropyControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="VolumetricAnisotropy" type="HSlider" parent="Margin/VBox/Scroll/Content/VolumetricGrid/AnisotropyControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+min_value = -1.0
+max_value = 1.0
+step = 0.01
+
+[node name="VolumetricAnisotropyValue" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid/AnisotropyControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.00"
+horizontal_alignment = 2
+
+[node name="LengthLabel" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+text = "Length"
+
+[node name="LengthControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/VolumetricGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="VolumetricLength" type="HSlider" parent="Margin/VBox/Scroll/Content/VolumetricGrid/LengthControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 100.0
+step = 0.5
+
+[node name="VolumetricLengthValue" type="Label" parent="Margin/VBox/Scroll/Content/VolumetricGrid/LengthControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.0"
+horizontal_alignment = 2
+
+[node name="GlowLabel" type="Label" parent="Margin/VBox/Scroll/Content"]
+theme_override_colors/font_color = Color(0.7, 0.8, 0.95, 1)
+theme_override_font_sizes/font_size = 14
+text = "GLOW"
+
+[node name="GlowGrid" type="GridContainer" parent="Margin/VBox/Scroll/Content"]
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 24
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="EnabledLabel" type="Label" parent="Margin/VBox/Scroll/Content/GlowGrid"]
+text = "Enabled"
+
+[node name="GlowEnabled" type="CheckButton" parent="Margin/VBox/Scroll/Content/GlowGrid"]
+unique_name_in_owner = true
+text = "Enabled"
+
+[node name="IntensityLabel" type="Label" parent="Margin/VBox/Scroll/Content/GlowGrid"]
+text = "Intensity"
+
+[node name="IntensityControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/GlowGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="GlowIntensity" type="HSlider" parent="Margin/VBox/Scroll/Content/GlowGrid/IntensityControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 3.0
+step = 0.01
+
+[node name="GlowIntensityValue" type="Label" parent="Margin/VBox/Scroll/Content/GlowGrid/IntensityControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.00"
+horizontal_alignment = 2
+
+[node name="StrengthLabel" type="Label" parent="Margin/VBox/Scroll/Content/GlowGrid"]
+text = "Strength"
+
+[node name="StrengthControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/GlowGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="GlowStrength" type="HSlider" parent="Margin/VBox/Scroll/Content/GlowGrid/StrengthControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 2.0
+step = 0.01
+
+[node name="GlowStrengthValue" type="Label" parent="Margin/VBox/Scroll/Content/GlowGrid/StrengthControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.00"
+horizontal_alignment = 2
+
+[node name="BloomLabel" type="Label" parent="Margin/VBox/Scroll/Content/GlowGrid"]
+text = "Bloom"
+
+[node name="BloomControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/GlowGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="GlowBloom" type="HSlider" parent="Margin/VBox/Scroll/Content/GlowGrid/BloomControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+
+[node name="GlowBloomValue" type="Label" parent="Margin/VBox/Scroll/Content/GlowGrid/BloomControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.00"
+horizontal_alignment = 2
+
+[node name="HdrThresholdLabel" type="Label" parent="Margin/VBox/Scroll/Content/GlowGrid"]
+text = "HDR Threshold"
+
+[node name="HdrThresholdControl" type="HBoxContainer" parent="Margin/VBox/Scroll/Content/GlowGrid"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="GlowHdrThreshold" type="HSlider" parent="Margin/VBox/Scroll/Content/GlowGrid/HdrThresholdControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+size_flags_horizontal = 3
+max_value = 4.0
+step = 0.01
+
+[node name="GlowHdrThresholdValue" type="Label" parent="Margin/VBox/Scroll/Content/GlowGrid/HdrThresholdControl"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(54, 0)
+text = "0.00"
+horizontal_alignment = 2
+
+[node name="BackgroundLabel" type="Label" parent="Margin/VBox/Scroll/Content"]
+theme_override_colors/font_color = Color(0.7, 0.8, 0.95, 1)
+theme_override_font_sizes/font_size = 14
+text = "BACKGROUND"
+
+[node name="BackgroundGrid" type="GridContainer" parent="Margin/VBox/Scroll/Content"]
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 24
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="ColorLabel" type="Label" parent="Margin/VBox/Scroll/Content/BackgroundGrid"]
+text = "Color"
+
+[node name="BackgroundColor" type="ColorPickerButton" parent="Margin/VBox/Scroll/Content/BackgroundGrid"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+size_flags_horizontal = 0
+
+[node name="ButtonRow" type="HBoxContainer" parent="Margin/VBox"]
+theme_override_constants/separation = 10
+
+[node name="CopyButton" type="Button" parent="Margin/VBox/ButtonRow"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+text = "Copy Values"
+
+[node name="BackButton" type="Button" parent="Margin/VBox/ButtonRow"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+text = "< Back"

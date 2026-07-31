@@ -20,6 +20,7 @@ extends Node3D
 @export var width: float = 36.0
 @export var depth: float = 36.0
 @export var tile_size: float = 1.2
+@export var tile_size_z: float = 0.0 ## 0 = reuse tile_size (square tiles), matching prior behavior
 @export var tile_gap: float = 0.04
 @export var tile_thickness: float = 0.004
 @export var backing_thickness: float = 0.006
@@ -43,12 +44,12 @@ func _build_backing() -> void:
 
 
 func _build_tiles() -> void:
-	var panel_size := tile_size - tile_gap
+	var size_z := tile_size_z if tile_size_z > 0.0 else tile_size
 	var box := BoxMesh.new()
-	box.size = Vector3(panel_size, tile_thickness, panel_size)
+	box.size = Vector3(tile_size - tile_gap, tile_thickness, size_z - tile_gap)
 
 	var cols := int(round(width / tile_size))
-	var rows := int(round(depth / tile_size))
+	var rows := int(round(depth / size_z))
 
 	var multimesh := MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
@@ -56,14 +57,14 @@ func _build_tiles() -> void:
 	multimesh.instance_count = cols * rows
 
 	var start_x := -width * 0.5 + tile_size * 0.5
-	var start_z := -depth * 0.5 + tile_size * 0.5
+	var start_z := -depth * 0.5 + size_z * 0.5
 	var y := -backing_thickness - tile_thickness * 0.5
 
 	var index := 0
 	for row in rows:
 		for col in cols:
 			var x := start_x + col * tile_size
-			var z := start_z + row * tile_size
+			var z := start_z + row * size_z
 			multimesh.set_instance_transform(index, Transform3D(Basis(), Vector3(x, y, z)))
 			index += 1
 

@@ -88,9 +88,12 @@ var _character_rows: Array[Dictionary] = []
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/VisualFiltersToggle")
 @onready var free_mode_toggle: CheckButton = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FreeModeToggle")
+@onready var vision_button: Button = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/VisionButton")
 @onready var debug_back_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/BackButton")
 @onready var settings_menu: SettingsMenu = $DebugOverlay/Center/SettingsMenu
+@onready var vision_panel: VisionDebugPanel = $DebugOverlay/Center/VisionPanel
 @onready var object_panel: PanelContainer = $DebugOverlay/Center/ObjectPanel
 @onready var object_list: VBoxContainer = get_node(
 		^"DebugOverlay/Center/ObjectPanel/ObjectMargin/ObjectVBox/ObjectScroll/ObjectList")
@@ -135,7 +138,9 @@ func _ready() -> void:
 	object_list_button.pressed.connect(_show_object_page)
 	character_list_button.pressed.connect(_show_character_page)
 	debug_back_button.pressed.connect(_show_debug_main)
+	vision_button.pressed.connect(_show_vision_page)
 	settings_menu.back_requested.connect(_show_debug_main)
+	vision_panel.back_requested.connect(_show_debug_main)
 	anim_back_button.pressed.connect(_show_debug_page)
 	object_back_button.pressed.connect(_show_debug_page)
 	character_back_button.pressed.connect(_show_debug_page)
@@ -354,6 +359,7 @@ func _show_debug_main() -> void:
 	guide_panel.hide()
 	debug_panel.hide()
 	settings_menu.hide()
+	vision_panel.hide()
 	object_panel.hide()
 	character_panel.hide()
 	anim_panel_anchor.hide()
@@ -364,6 +370,7 @@ func _show_guide_page() -> void:
 	guide_panel.show()
 	debug_panel.hide()
 	settings_menu.hide()
+	vision_panel.hide()
 	object_panel.hide()
 	character_panel.hide()
 	anim_panel_anchor.hide()
@@ -375,6 +382,7 @@ func _show_settings_page() -> void:
 	debug_panel.hide()
 	settings_menu.show()
 	settings_menu.refresh()
+	vision_panel.hide()
 	object_panel.hide()
 	character_panel.hide()
 	anim_panel_anchor.hide()
@@ -385,9 +393,22 @@ func _show_debug_page() -> void:
 	guide_panel.hide()
 	debug_panel.show()
 	settings_menu.hide()
+	vision_panel.hide()
 	object_panel.hide()
 	character_panel.hide()
 	anim_panel_anchor.hide()
+
+
+func _show_vision_page() -> void:
+	main_panel.hide()
+	guide_panel.hide()
+	debug_panel.hide()
+	settings_menu.hide()
+	object_panel.hide()
+	character_panel.hide()
+	anim_panel_anchor.hide()
+	vision_panel.show()
+	vision_panel.open()
 
 
 func _show_anim_page() -> void:
@@ -395,6 +416,7 @@ func _show_anim_page() -> void:
 	guide_panel.hide()
 	debug_panel.hide()
 	settings_menu.hide()
+	vision_panel.hide()
 	object_panel.hide()
 	character_panel.hide()
 	anim_panel_anchor.show()
@@ -406,6 +428,7 @@ func _show_object_page() -> void:
 	guide_panel.hide()
 	debug_panel.hide()
 	settings_menu.hide()
+	vision_panel.hide()
 	character_panel.hide()
 	anim_panel_anchor.hide()
 	object_panel.show()
@@ -418,6 +441,7 @@ func _show_character_page() -> void:
 	guide_panel.hide()
 	debug_panel.hide()
 	settings_menu.hide()
+	vision_panel.hide()
 	object_panel.hide()
 	anim_panel_anchor.hide()
 	character_panel.show()

@@ -10,16 +10,29 @@ const HUMAN_WIDTH := 1.0
 const MIN_ROOM_PADDING := 1.0
 const MAX_CONNECTION_ATTEMPTS := 20
 const MAX_TOTAL_ATTEMPTS := 2000
+const DOOR_CORNER_MARGIN := 0.3 ## matches the preview's WALL_THICKNESS - see _try_place_room()
+const DOOR_HEIGHT_MIN := 2.0
+const DOOR_HEIGHT_MAX := 4.0 ## matches the preview's WALL_HEIGHT - door can't exceed its own wall
 
 ## Weighted room types. "room" is a square with a randomized side length;
 ## "corridor" is always elongated along whichever axis points away from its
-## connecting wall, with a fixed narrow width across it.
+## connecting wall, with a fixed narrow width across it. "ramp" is shaped
+## like a corridor but also climbs or descends by a random rise over its
+## random run (length), as a smooth incline or a staircase - see RoomRecord's
+## elevation/rise/has_stairs fields.
 const ROOM_TYPES := [
-	{"id": &"room", "weight": 70.0, "square_size_min": 4.0, "square_size_max": 30.0},
+	{"id": &"room", "weight": 60.0, "square_size_min": 4.0, "square_size_max": 30.0},
 	{
-		"id": &"corridor", "weight": 30.0,
+		"id": &"corridor", "weight": 25.0,
 		"width_min": 2.0, "width_max": 4.0,
 		"length_min": 6.0, "length_max": 40.0,
+	},
+	{
+		"id": &"ramp", "weight": 15.0,
+		"width_min": 2.0, "width_max": 3.0,
+		"length_min": 6.0, "length_max": 16.0,
+		"rise_min": 1.0, "rise_max": 4.0,
+		"stairs_chance": 0.5,
 	},
 ]
 
@@ -29,6 +42,10 @@ class RoomRecord:
 	extends RefCounted
 	var type_id: StringName
 	var rect: Rect2 ## position = min corner, size = (width along X, depth along Z)
+	var elevation: float = 0.0 ## floor height at this room's incoming end
+	var rise: float = 0.0 ## signed floor-height change to the outgoing end; nonzero only for "ramp"
+	var has_stairs: bool = false ## only meaningful when rise != 0.0
+	var outgoing_side: int = -1 ## Side this room continues "forward" through, for ramp anchoring
 
 class ConnectionRecord:
 	extends RefCounted
@@ -37,6 +54,7 @@ class ConnectionRecord:
 	var side: Side ## which wall of room_a the connection sits on
 	var wall_axis_min: float ## opening's extent along the shared wall, world space
 	var wall_axis_max: float
+	var door_height: float ## random per connection, [DOOR_HEIGHT_MIN, DOOR_HEIGHT_MAX]
 
 
 static func generate(target_room_count: int, generation_seed: int) -> Dictionary:
@@ -113,17 +131,27 @@ static func _pick_weighted_type(rng: RandomNumberGenerator) -> Dictionary:
 
 ## Builds a candidate room and its connection against `anchor`'s given wall,
 ## or returns {} if the opening can't fit (e.g. anchor wall too short for
-## even the human-minimum opening). Does not check collisions against other
-## rooms - the caller does that with the returned candidate's rect.
+## even the human-minimum opening) or the side is invalid (a ramp anchor can
+## only be extended from its own outgoing/far end - see RoomRecord.rise's
+## doc comment). Does not check collisions against other rooms - the caller
+## does that with the returned candidate's rect.
 static func _try_place_room(
 		rng: RandomNumberGenerator, anchor: RoomRecord, anchor_index: int,
 		side: Side, type: Dictionary) -> Dictionary:
+	# A ramp/staircase only has one valid attachment point: its far end.
+	# Its two long sides are sloped/stepped (nothing can anchor mid-slope
+	# without interpolating elevation at an arbitrary point, which this pass
+	# doesn't support), and its own incoming side would just double back on
+	# whatever it's already connected to.
+	if anchor.type_id == &"ramp" and side != anchor.outgoing_side:
+		return {}
+
 	var away_is_x := side == Side.EAST or side == Side.WEST
 	var anchor_wall_length := anchor.rect.size.y if away_is_x else anchor.rect.size.x
 
 	var new_width: float
 	var new_length: float ## along the away axis
-	if type["id"] == &"corridor":
+	if type["id"] == &"corridor" or type["id"] == &"ramp":
 		new_width = rng.randf_range(type["width_min"], type["width_max"])
 		new_length = rng.randf_range(type["length_min"], type["length_max"])
 	else:
@@ -136,18 +164,40 @@ static func _try_place_room(
 	if opening_size < HUMAN_WIDTH:
 		return {}
 
+	# Keeps the opening off both rooms' own corners by at least a wall's
+	# thickness (falling back to a tighter fit only when the wall is too
+	# short to afford it). Flat rooms never needed this - their perpendicular
+	# walls are just thin corner pieces that a corner-hugging door easily
+	# clears - but a "ramp" room's long side walls run its entire length, so
+	# a door placed flush against the corner can end up with the ramp's own
+	# side wall physically inside the opening (seed 12345, room 49's south
+	# door overlapped its own east side wall this way).
+	var anchor_margin := minf(DOOR_CORNER_MARGIN, (anchor_wall_length - opening_size) * 0.5)
 	var anchor_wall_start := anchor.rect.position.y if away_is_x else anchor.rect.position.x
 	var opening_start := rng.randf_range(
-			anchor_wall_start, anchor_wall_start + anchor_wall_length - opening_size)
+			anchor_wall_start + anchor_margin,
+			anchor_wall_start + anchor_wall_length - opening_size - anchor_margin)
 	var opening_center := opening_start + opening_size * 0.5
 
 	var new_wall_start := opening_center - new_wall_length * 0.5
-	# Keep the opening fully inside the new room's own wall segment too.
+	# Keep the opening fully inside the new room's own wall segment too, with
+	# the same corner margin.
+	var new_margin := minf(DOOR_CORNER_MARGIN, (new_wall_length - opening_size) * 0.5)
 	new_wall_start = clamp(
-			new_wall_start, opening_start + opening_size - new_wall_length, opening_start)
+			new_wall_start,
+			opening_start + opening_size - new_wall_length + new_margin,
+			opening_start - new_margin)
 
 	var candidate := RoomRecord.new()
 	candidate.type_id = type["id"]
+	candidate.outgoing_side = side
+	# Collapses to plain anchor.elevation for every non-ramp anchor, since
+	# their rise is always 0.
+	candidate.elevation = anchor.elevation + anchor.rise
+	if type["id"] == &"ramp":
+		var rise_magnitude := rng.randf_range(type["rise_min"], type["rise_max"])
+		candidate.rise = rise_magnitude * (1.0 if rng.randf() < 0.5 else -1.0)
+		candidate.has_stairs = rng.randf() < type["stairs_chance"]
 
 	var along_axis_position: float
 	match side:
@@ -172,6 +222,7 @@ static func _try_place_room(
 	connection.side = side
 	connection.wall_axis_min = opening_start
 	connection.wall_axis_max = opening_start + opening_size
+	connection.door_height = rng.randf_range(DOOR_HEIGHT_MIN, DOOR_HEIGHT_MAX)
 
 	return {"room": candidate, "connection": connection}
 

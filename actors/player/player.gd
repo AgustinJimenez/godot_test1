@@ -48,6 +48,17 @@ func set_eye_offset(v: Vector3) -> void:
 @export var roll_speed: float = 7.0
 @export var roll_duration: float = 0.75
 @export var roll_cooldown: float = 0.4
+## CharacterBody3D has no built-in stair-stepping - floor_snap_length only
+## pulls the body down onto ground within reach when leaving a ledge, not up
+## onto a raised one, so a bare move_and_slide() just catches on a riser's
+## vertical face like a wall. STEP_RISE (room_generation_preview.gd) targets
+## ~0.2m per riser, but with a small total rise forced into
+## STAIRS_MIN_STEPS=3 steps, the worst case is rise_min/3 (~0.33m) - this
+## needs to clear that worst case, not the ~0.2m typical one, or the
+## steepest generated stairs both fail to climb and free-fall a real gap on
+## the way down (not just a one-frame is_on_floor() flicker) - so real walls
+## (much taller) still block normally - see _apply_step_up().
+@export var step_height: float = 0.4
 @export_range(0.0, 3.0, 0.05) var punch_delay_min: float = 0.25
 @export_range(0.0, 3.0, 0.05) var punch_delay_max: float = 0.75
 
@@ -70,6 +81,16 @@ var _dead := false
 var _debug_cam_active := false
 var _roll_time_left := 0.0
 var _roll_cooldown_left := 0.0
+## See the report_on_floor comment in _physics_process(). Covers both
+## directions on stairs: stepping up (is_on_floor() can flicker false for a
+## frame around the step-up snap) and stepping down (each tread edge is a
+## real few-cm drop before the next tread catches it).
+const AIRBORNE_ANIMATION_GRACE := 0.15
+## A deliberate jump's velocity.y (jump_velocity, see @export above) is well
+## past this - used to tell "just jumped, animate instantly" apart from
+## "briefly airborne between stair treads, don't pop the fall pose yet".
+const JUMP_VELOCITY_THRESHOLD := 0.5
+var _airborne_time := 0.0
 var _roll_direction := Vector3.ZERO
 var _next_punch_is_jab := true
 var _punch_cooldown_left := 0.0
@@ -170,6 +191,13 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_free_mode_default_collision_layer = collision_layer
 	_free_mode_default_collision_mask = collision_mask
+	# Must reach at least as far as step_height, or apply_floor_snap() in
+	# _apply_step_up() can fail to find the tread it just lifted onto (the
+	# gap between the lift and the actual step surface varies with each
+	# step's real riser height, up to step_height) - a snap that occasionally
+	# comes up short reads as is_on_floor() flicking false for a frame, which
+	# is exactly what was triggering the falling animation on every step.
+	floor_snap_length = step_height
 
 
 ## TORSO_CLEARANCE's keys (and "Head") are canonical role names, not
@@ -371,11 +399,27 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, direction.z * speed, acceleration * delta)
 	if not is_on_floor():
 		velocity += get_gravity() * delta
+	_apply_step_up(Vector3(velocity.x, 0.0, velocity.z) * delta)
 	move_and_slide()
 
+	# update_motion() treats any not-on-floor frame as a launch into the
+	# jump/fall pose, but stairs make brief, real losses of floor contact in
+	# both directions: stepping up can leave is_on_floor() flickering false
+	# for a frame around the step-up snap, and stepping down means an actual
+	# few-cm gap to the next tread every time. Debounce it - a jump still
+	# reports instantly (clear upward velocity.y), but anything else has to
+	# stay airborne past the grace window before the fall pose kicks in, so
+	# neither direction pops it on every step.
+	if is_on_floor():
+		_airborne_time = 0.0
+	else:
+		_airborne_time += delta
+	var jumped := velocity.y > JUMP_VELOCITY_THRESHOLD
+	var report_on_floor := (
+			is_on_floor() or (not jumped and _airborne_time < AIRBORNE_ANIMATION_GRACE))
 	body.update_motion(_crouched, weapon.equipped,
 			Vector2(velocity.x, velocity.z).length(), sprinting,
-			is_on_floor(), velocity.y, delta, flashlight.visible)
+			report_on_floor, velocity.y, delta, flashlight.visible)
 	# Yaw: _look_yaw is already clamped to head_yaw_limit_deg in _apply_yaw
 	# (same head-leads-then-body-catches-up system in both modes now), so
 	# feeding it straight through is safe in third person too.
@@ -394,6 +438,52 @@ func _physics_process(delta: float) -> void:
 		var safe_look := _solve_safe_look(_look_pitch, _look_yaw, head_pos)
 		var pitch_rot := Basis(Vector3.UP, safe_look.y) * Basis(Vector3.RIGHT, safe_look.x)
 		head.position = head_pos + pitch_rot * eye_offset
+
+
+## Test-moves `motion` (this frame's flat horizontal movement) at the
+## current height and again lifted by `step_height`; if the flat move is
+## blocked but the lifted one isn't, the obstruction is a short ledge (a
+## stair riser, a curb) rather than a real wall, so this frame's full motion
+## (lift, forward step, and settling back down onto the actual tread) is
+## resolved here directly instead of leaving move_and_slide() to redo the
+## horizontal part afterward. The real riser can be much shorter than
+## step_height (e.g. a shallow staircase's tread rise), so blindly adding
+## step_height and letting apply_floor_snap() close the rest was not
+## reliable within the same frame - it left the body hovering above the
+## tread for several frames of real, unbroken freefall (and the fall
+## animation with it) on every single step. Probing downward by step_height
+## with test_move() and using its actual collision travel instead places
+## the body exactly on the tread in this same frame.
+func _apply_step_up(motion: Vector3) -> void:
+	# Deliberately not gated on is_on_floor(): the frame a moving character's
+	# feet actually reach the riser is exactly when bumping that near-
+	# vertical face can itself knock is_on_floor() false, which would block
+	# the step-up right when it's needed most. test_move() already only
+	# fires this on a real close-range obstruction, so it stays inert
+	# in open air.
+	if motion.is_zero_approx():
+		return
+	if not test_move(global_transform, motion):
+		return
+	var lifted := global_transform.translated(Vector3(0.0, step_height, 0.0))
+	if test_move(lifted, motion):
+		return
+	lifted.origin += motion
+	var collision := KinematicCollision3D.new()
+	if test_move(lifted, Vector3(0.0, -step_height, 0.0), collision):
+		lifted.origin += collision.get_travel()
+	else:
+		lifted.origin += Vector3(0.0, -step_height, 0.0)
+	global_position = lifted.origin
+	# This frame's horizontal motion was just applied directly above, so
+	# zero it out for the move_and_slide() call right after this - otherwise
+	# move_and_slide() would apply the same horizontal motion a second time
+	# and overshoot onto the next riser. Next frame's input recomputes
+	# velocity.x/z fresh, so this doesn't affect ongoing momentum.
+	velocity.x = 0.0
+	velocity.y = 0.0
+	velocity.z = 0.0
+	apply_floor_snap()
 
 
 ## Movement follows the camera's exact look direction (forward/back tilt up
