@@ -85,6 +85,31 @@ var show_fov_gizmo := false
 
 func toggle_fov_gizmo() -> void:
 	show_fov_gizmo = not show_fov_gizmo
+
+## Debug menu toggle: fly freely with no gravity and no collision, for
+## inspecting generated layouts (e.g. procedural rooms) from outside/above
+## without needing a valid walkable path. _physics_process() branches to
+## _process_free_mode() entirely instead of the normal grounded-movement
+## code while this is on; collision is zeroed rather than just skipping
+## move_and_slide() so the player also can't be hit/detected by other
+## collision-based systems (AI perception, hitscans) while noclipping.
+@export var free_mode_speed: float = 8.0
+@export var free_mode_sprint_multiplier: float = 3.0
+var free_mode_enabled := false
+var _free_mode_default_collision_layer := 0
+var _free_mode_default_collision_mask := 0
+
+func set_free_mode(enabled: bool) -> void:
+	if free_mode_enabled == enabled:
+		return
+	free_mode_enabled = enabled
+	if enabled:
+		collision_layer = 0
+		collision_mask = 0
+	else:
+		collision_layer = _free_mode_default_collision_layer
+		collision_mask = _free_mode_default_collision_mask
+	velocity = Vector3.ZERO
 var _head_bone_idx := -1
 var _torso_bone_indices: PackedInt32Array = []
 var _torso_bone_clearances: PackedFloat32Array = []
@@ -143,6 +168,8 @@ func _ready() -> void:
 	health.died.connect(_on_died)
 	_action_rng.randomize()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_free_mode_default_collision_layer = collision_layer
+	_free_mode_default_collision_mask = collision_mask
 
 
 ## TORSO_CLEARANCE's keys (and "Head") are canonical role names, not
@@ -280,6 +307,9 @@ func _catch_up_body_yaw(input_dir: Vector2, delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
+	if free_mode_enabled:
+		_process_free_mode(delta)
+		return
 	var input_dir := Input.get_vector(
 			&"move_left", &"move_right", &"move_forward", &"move_back")
 	_catch_up_body_yaw(input_dir, delta)
@@ -364,6 +394,28 @@ func _physics_process(delta: float) -> void:
 		var safe_look := _solve_safe_look(_look_pitch, _look_yaw, head_pos)
 		var pitch_rot := Basis(Vector3.UP, safe_look.y) * Basis(Vector3.RIGHT, safe_look.x)
 		head.position = head_pos + pitch_rot * eye_offset
+
+
+## Movement follows the camera's exact look direction (forward/back tilt up
+## and down with pitch, unlike normal grounded movement which stays flat) -
+## jump/crouch add pure world-space up/down independent of where the camera
+## is looking. Moves via direct position change, not move_and_slide(), so it
+## passes through every mesh regardless of collision_layer/mask.
+func _process_free_mode(delta: float) -> void:
+	var input_dir := Input.get_vector(
+			&"move_left", &"move_right", &"move_forward", &"move_back")
+	var move_direction := camera.global_transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)
+	if Input.is_action_pressed(&"jump"):
+		move_direction.y += 1.0
+	if Input.is_action_pressed(&"crouch"):
+		move_direction.y -= 1.0
+	if not move_direction.is_zero_approx():
+		move_direction = move_direction.normalized()
+	var current_speed := free_mode_speed
+	if Input.is_action_pressed(&"sprint"):
+		current_speed *= free_mode_sprint_multiplier
+	velocity = move_direction * current_speed
+	global_position += velocity * delta
 
 	var target_crouch := -0.58 if _crouched else 0.0
 	_crouch_offset = lerpf(_crouch_offset, target_crouch, 10.0 * delta)

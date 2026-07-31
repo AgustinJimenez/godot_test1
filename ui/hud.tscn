@@ -384,6 +384,9 @@ text = "Show FPS"
 text = "Visual Filters"
 button_pressed = true
 
+[node name="FreeModeToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "Free Mode (noclip)"
+
 [node name="BackButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "< Back"
 
