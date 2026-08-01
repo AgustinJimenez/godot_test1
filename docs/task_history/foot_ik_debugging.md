@@ -212,3 +212,39 @@ frame. Filtering to the real player specifically (`player_body.get_parent()
 is Player`, since the static dummies are bare `PlayerBody.new()` instances
 with no `Player` wrapper) revealed the actual, much saner per-character
 trace.
+
+## Bug 4 follow-up: a smaller residual dip right at the swing peak
+
+Added two "walk in place" dummy characters (one IK on, one off) to
+`foot_ik_preview.tscn` for an always-visible side-by-side comparison, and
+re-ran the same before/after frame-log technique on them. Confirmed Bug 4's
+fix works for the bulk of the stride, but found a smaller residual: at the
+very top of the swing arc, the corrected foot dipped ~13cm below the raw
+animation for about 4 consecutive frames before snapping back.
+
+Root cause: `|velocity| < swing_speed_threshold` alone isn't a precise
+enough "is this a landing" test, because a smooth swing arc genuinely
+*decelerates* for several consecutive frames approaching its peak - not
+just for one infinitesimal instant - so plain magnitude-based gating still
+read several real, slow-moving-but-still-rising frames as "grounded."
+
+First attempt at a fix (rate-limiting how fast `ground_weight` can rise,
+uncapping how fast it can fall - `ground_weight_rise_time`) helped smooth
+the transition but didn't address the root cause, since the raw signal
+itself was elevated for multiple consecutive frames, giving the rate
+limiter enough time to meaningfully rise anyway.
+
+The actual fix: gate on the *sign* of vertical velocity first, before
+magnitude. A foot that is still rising, however slowly its speed drops
+approaching the peak, is never a landing candidate - full stop, regardless
+of how close to zero its speed reads. Only a foot that is already falling
+(or exactly stationary) enters the speed-based blend at all. This cut the
+divergence window from 4 frames (~0.13m) down to 2 frames (~0.07m) -
+right after the peak, the foot is *genuinely* falling but still moving
+slowly for a frame or two, an inherent residual of any smooth-arc
+velocity-based blend rather than a bug with an exact fix. Measured over a
+120-frame two-stride capture: only 4 of 120 frames showed any divergence
+above 2cm, all clustered at the two swing peaks - everywhere else the
+corrected and raw traces matched exactly. Accepted as a reasonable
+trade-off rather than chased further, matching how most production foot-IK
+systems handle this same swing-apex edge case.

@@ -72,6 +72,19 @@ const GROUND_COLLISION_MASK := 1
 ## swinging through the air, by contrast, has real vertical speed - that's
 ## the actual distinguishing signal, not distance-to-target.
 @export var swing_speed_threshold: float = 0.35
+## Minimum time (seconds) for ground_weight to rise from 0 to 1 - caps how
+## fast the correction can snap back ON, without limiting how fast it can
+## snap OFF. A walk cycle's vertical velocity crosses exactly zero for a
+## single frame at the very top of the swing arc (same as a thrown ball's
+## velocity at its apex) - read literally, that one frame looks identical to
+## "foot has stopped, must be planted," briefly pulling the foot back down
+## toward the ground mid-air before the very next frame's real (non-zero)
+## velocity releases it again. Measured as a real, visible dip - not just a
+## theoretical edge case - comparing a walking dummy with IK against the raw
+## animation frame by frame (e.g. 0.282 vs the animation's own 0.353 at the
+## exact peak of one stride). Falling (real swing starting) stays instant,
+## since only the rise is capped.
+@export var ground_weight_rise_time: float = 0.12
 
 const LEGS := {
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot", "toe": &"LeftToeBase"},
@@ -115,6 +128,9 @@ var _smoothed_normal: Dictionary = {} # side -> Vector3 (world)
 ## Previous frame's *animated* (pre-IK) foot bone position, used to measure
 ## its vertical speed - see swing_speed_threshold's own doc comment.
 var _prev_animated_foot_pos: Dictionary = {} # side -> Vector3 (world)
+## Rate-limited (fast fall, slow rise) version of the raw velocity-derived
+## ground_weight - see ground_weight_rise_time's own doc comment.
+var _smoothed_ground_weight: Dictionary = {} # side -> float
 
 
 func _ready() -> void:
@@ -344,14 +360,43 @@ func _process_modification_with_delta(delta: float) -> void:
 		# zero measured movement, every single tick - only update the
 		# reference on calls with real delta so consecutive real samples are
 		# actually one physics tick apart.
-		var vertical_speed := 0.0
+		# SIGNED velocity (positive = rising, toward -smoothed_normal being
+		# down) - not just its magnitude. A parabolic swing arc decelerates
+		# for several consecutive frames approaching its peak, not just one
+		# instant, so gating on |velocity| alone (however it's smoothed)
+		# still lets a real multi-frame low-speed *ascending* stretch read
+		# as "grounded" and visibly pull the foot down before it's actually
+		# started descending - measured directly: several frames of
+		# increasing divergence from the raw animation right before the top
+		# of a stride, snapping back only once the foot was already well
+		# past the peak. Gating on the SIGN first is what actually fixes
+		# it: a foot that's still rising, however slowly, is never treated
+		# as grounded, no matter how close to zero its speed gets - only a
+		# foot that's already falling (or exactly stationary) is a landing
+		# candidate at all.
+		var vertical_velocity := 0.0
 		if delta > 0.0:
 			if _prev_animated_foot_pos.has(side):
 				var prev_pos: Vector3 = _prev_animated_foot_pos[side]
-				vertical_speed = absf((foot_pos - prev_pos).dot(_smoothed_normal[side] as Vector3)) \
+				vertical_velocity = (foot_pos - prev_pos).dot(_smoothed_normal[side] as Vector3) \
 						/ delta
 			_prev_animated_foot_pos[side] = foot_pos
-		var ground_weight := clampf(1.0 - vertical_speed / swing_speed_threshold, 0.0, 1.0)
+		var raw_ground_weight := 0.0
+		if vertical_velocity <= 0.0:
+			raw_ground_weight = clampf(1.0 - absf(vertical_velocity) / swing_speed_threshold, 0.0, 1.0)
+
+		# Only rate-limit the RISE - see ground_weight_rise_time's own doc
+		# comment for the single-frame swing-apex false positive this fixes.
+		# Falling (a real swing starting) must stay instant, or the foot
+		# would keep getting pulled toward the ground for a moment after
+		# it's actually started lifting.
+		var prev_weight: float = _smoothed_ground_weight.get(side, raw_ground_weight)
+		var ground_weight := raw_ground_weight
+		if raw_ground_weight > prev_weight and ground_weight_rise_time > 0.0:
+			var max_rise: float = delta / ground_weight_rise_time
+			ground_weight = minf(raw_ground_weight, prev_weight + max_rise)
+		_smoothed_ground_weight[side] = ground_weight
+
 		var target := foot_pos.lerp(ground_target, ground_weight)
 
 		per_leg[side]["target"] = target
