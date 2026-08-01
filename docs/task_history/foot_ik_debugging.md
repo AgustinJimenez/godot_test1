@@ -289,3 +289,19 @@ than the narrow edge case the cutoff was trying to fix in the first place.
 Prefer a continuous scale/penalty over a hard sign or threshold cutoff
 whenever the signal being gated isn't already smoothed enough to be
 trustworthy at exactly zero.
+
+**Follow-up**: `rising_penalty` alone reduced but didn't fully eliminate
+this - noise around the size of `swing_speed_threshold / rising_penalty`
+still produced a smaller, but still visible, *partial* dip (scaled down,
+not zeroed, but still a real dip). User-reported ("still a small
+twitching" after the sign-cutoff fix) rather than caught by the earlier
+single-platform spot check. Added `velocity_noise_floor` (0.03 m/s): below
+this magnitude, vertical motion is ignored entirely regardless of sign,
+before `rising_penalty` even applies - real swing motion is far faster
+than ordinary idle sway/animation jitter, so a small dead zone below it
+costs nothing during an actual step. Verified across all nine characters
+in the scene at once (seven idle dummies, the real player, both walking
+dummies) rather than just the one platform spot-checked for Bug 5: every
+idle character's foot now holds to sub-millimeter stability (max
+frame-to-frame jump ≤0.0003m) over a 300-frame (5s) capture, while both
+walking dummies retained their full swing-cycle motion unaffected.

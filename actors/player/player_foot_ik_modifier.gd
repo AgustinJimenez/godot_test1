@@ -79,6 +79,15 @@ const GROUND_COLLISION_MASK := 1
 ## at 0 (a hard cutoff there caused a real, visible twitch on completely
 ## static idle poses, from ordinary floating-point/animation noise).
 @export var rising_penalty: float = 4.0
+## Velocity magnitude (m/s) below which vertical motion is ignored entirely
+## - treated as exactly stationary regardless of sign, before rising_penalty
+## even applies. rising_penalty alone reduces sensitivity to idle noise but
+## doesn't remove it: noise around this size, scaled by rising_penalty, can
+## still be a meaningful fraction of swing_speed_threshold and cause a
+## smaller but still visible partial dip. Genuine swing motion is far
+## faster than ordinary idle sway/animation jitter, so a small dead zone
+## below it costs nothing during a real step.
+@export var velocity_noise_floor: float = 0.03
 ## Minimum time (seconds) for ground_weight to rise from 0 to 1 - caps how
 ## fast the correction can snap back ON, without limiting how fast it can
 ## snap OFF. A walk cycle's vertical velocity crosses exactly zero for a
@@ -398,10 +407,14 @@ func _process_modification_with_delta(delta: float) -> void:
 				vertical_velocity = (foot_pos - prev_pos).dot(_smoothed_normal[side] as Vector3) \
 						/ delta
 			_prev_animated_foot_pos[side] = foot_pos
-		var effective_speed := absf(vertical_velocity)
-		if vertical_velocity > 0.0:
-			effective_speed *= rising_penalty
-		var raw_ground_weight := clampf(1.0 - effective_speed / swing_speed_threshold, 0.0, 1.0)
+		var raw_ground_weight: float
+		if absf(vertical_velocity) < velocity_noise_floor:
+			raw_ground_weight = 1.0
+		else:
+			var effective_speed := absf(vertical_velocity)
+			if vertical_velocity > 0.0:
+				effective_speed *= rising_penalty
+			raw_ground_weight = clampf(1.0 - effective_speed / swing_speed_threshold, 0.0, 1.0)
 
 		# Only rate-limit the RISE - see ground_weight_rise_time's own doc
 		# comment for the single-frame swing-apex false positive this fixes.

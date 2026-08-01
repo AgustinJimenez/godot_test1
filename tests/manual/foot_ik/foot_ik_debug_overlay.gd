@@ -432,6 +432,7 @@ func _build_panel() -> void:
 	_add_slider(vbox, "toe_tip_margin", "Toe Tip Margin", 0.0, 0.1, 0.005)
 	_add_slider(vbox, "swing_speed_threshold", "Swing Speed", 0.05, 2.0, 0.05)
 	_add_slider(vbox, "rising_penalty", "Rising Penalty", 1.0, 10.0, 0.5)
+	_add_slider(vbox, "velocity_noise_floor", "Noise Floor", 0.0, 0.15, 0.005)
 	_add_slider(vbox, "ground_weight_rise_time", "Weight Rise Time", 0.0, 0.5, 0.01)
 	_add_slider(vbox, "smooth_rate", "Smooth Rate", 1.0, 40.0, 0.5)
 	_add_slider(vbox, "ray_up", "Ray Up", 0.1, 1.5, 0.05)
