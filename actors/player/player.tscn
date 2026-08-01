@@ -96,6 +96,8 @@ margin = 0.3
 [node name="DebugCam" type="Camera3D" parent="ThirdPersonArm"]
 fov = 60.0
 
+[node name="DetachedCam" type="Camera3D" parent="."]
+
 [node name="UncrouchCheck" type="ShapeCast3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
 shape = SubResource("Sphere_uncrouch")

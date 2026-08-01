@@ -388,6 +388,12 @@ button_pressed = true
 [node name="FreeModeToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Free Mode (noclip)"
 
+[node name="DetachedCameraToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "Detached Camera"
+
+[node name="SkeletonVisibleToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+text = "Show Skeleton"
+
 [node name="VisionButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Vision / Atmosphere  >"
 

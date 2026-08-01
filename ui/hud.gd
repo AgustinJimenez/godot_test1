@@ -88,6 +88,10 @@ var _character_rows: Array[Dictionary] = []
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/VisualFiltersToggle")
 @onready var free_mode_toggle: CheckButton = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FreeModeToggle")
+@onready var detached_camera_toggle: CheckButton = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/DetachedCameraToggle")
+@onready var skeleton_visible_toggle: CheckButton = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SkeletonVisibleToggle")
 @onready var vision_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/VisionButton")
 @onready var debug_back_button: Button = get_node(
@@ -128,6 +132,8 @@ func _ready() -> void:
 	show_fps_toggle.toggled.connect(_on_show_fps_toggled)
 	visual_filters_toggle.toggled.connect(_on_visual_filters_toggled)
 	free_mode_toggle.toggled.connect(_on_free_mode_toggled)
+	detached_camera_toggle.toggled.connect(_on_detached_camera_toggled)
+	skeleton_visible_toggle.toggled.connect(_on_skeleton_visible_toggled)
 	main_debug_button.pressed.connect(_show_debug_page)
 	main_guide_button.pressed.connect(_show_guide_page)
 	main_settings_button.pressed.connect(_show_settings_page)
@@ -691,6 +697,18 @@ func _on_free_mode_toggled(enabled: bool) -> void:
 	var player := get_tree().get_first_node_in_group(&"player")
 	if player != null and player.has_method(&"set_free_mode"):
 		player.set_free_mode(enabled)
+
+
+func _on_detached_camera_toggled(enabled: bool) -> void:
+	var player := get_tree().get_first_node_in_group(&"player")
+	if player != null and player.has_method(&"set_detached_camera_active"):
+		player.set_detached_camera_active(enabled)
+
+
+func _on_skeleton_visible_toggled(enabled: bool) -> void:
+	var player := get_tree().get_first_node_in_group(&"player")
+	if player != null and "body" in player and player.body.has_method(&"set_skeleton_visible"):
+		player.body.set_skeleton_visible(enabled)
 
 
 func _on_debug_apply() -> void:

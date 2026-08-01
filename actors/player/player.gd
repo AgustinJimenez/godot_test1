@@ -131,6 +131,60 @@ func set_free_mode(enabled: bool) -> void:
 		collision_layer = _free_mode_default_collision_layer
 		collision_mask = _free_mode_default_collision_mask
 	velocity = Vector3.ZERO
+
+## Debug menu toggle: a fully independent spectator camera with its own
+## yaw/pitch, unlike free_mode (which flies the player's own body/first-
+## person camera) or debug_camera (third-person, but still orbits using the
+## same look input the body's own head-then-body yaw catch-up reads) -
+## looking around here never touches the character's actual rotation, for
+## inspecting things (e.g. foot IK) where the body's own pose/facing has to
+## stay exactly what gameplay/animation put it at while the view moves
+## independently around it. Gravity/animation on the body continue normally
+## while this is active, but move_* input is deliberately ignored by the
+## body's own _physics_process() while it's on (see the input_dir override
+## there) - otherwise WASD, read independently by both this camera's own
+## _process() and the body's normal movement code, would walk the character
+## at the same time as flying the camera, which defeats the point of a
+## "detached" view for inspecting a character that should hold still.
+@export var detached_cam_speed: float = 6.0
+@export var detached_cam_sprint_multiplier: float = 3.0
+@export var detached_cam_sensitivity: float = 0.0015
+var detached_cam_active := false
+var _detached_yaw := 0.0
+var _detached_pitch := 0.0
+
+func set_detached_camera_active(enabled: bool) -> void:
+	if detached_cam_active == enabled:
+		return
+	detached_cam_active = enabled
+	if enabled:
+		var source_cam := debug_cam if _debug_cam_active else camera
+		detached_cam.global_transform = source_cam.global_transform
+		_detached_yaw = detached_cam.rotation.y
+		_detached_pitch = detached_cam.rotation.x
+		detached_cam.make_current()
+		hud.set_center_dot_visible(false)
+	else:
+		(debug_cam if _debug_cam_active else camera).make_current()
+		hud.set_center_dot_visible(not _debug_cam_active)
+
+
+func _process(delta: float) -> void:
+	if not detached_cam_active:
+		return
+	var input_dir := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+	var move_direction := detached_cam.global_transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)
+	if Input.is_action_pressed(&"jump"):
+		move_direction.y += 1.0
+	if Input.is_action_pressed(&"crouch"):
+		move_direction.y -= 1.0
+	if move_direction.is_zero_approx():
+		return
+	var speed := detached_cam_speed
+	if Input.is_action_pressed(&"sprint"):
+		speed *= detached_cam_sprint_multiplier
+	detached_cam.global_position += move_direction.normalized() * speed * delta
+
 var _head_bone_idx := -1
 var _torso_bone_indices: PackedInt32Array = []
 var _torso_bone_clearances: PackedFloat32Array = []
@@ -169,6 +223,7 @@ var equipped_item: Item
 @onready var skeleton: Skeleton3D = body.skeleton
 @onready var third_person_arm: SpringArm3D = $ThirdPersonArm
 @onready var debug_cam: Camera3D = $ThirdPersonArm/DebugCam
+@onready var detached_cam: Camera3D = $DetachedCam
 
 
 func _ready() -> void:
@@ -224,6 +279,17 @@ func _resolve_body_bone_indices() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _dead:
 		return
+	if detached_cam_active and event is InputEventMouseMotion \
+			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		# Deliberately bypasses _apply_yaw()/head.rotation entirely - this
+		# camera's yaw/pitch are its own state, never the body's, which is
+		# the whole point of "detached".
+		var detached_motion := event as InputEventMouseMotion
+		_detached_yaw -= detached_motion.relative.x * detached_cam_sensitivity
+		_detached_pitch = clampf(_detached_pitch - detached_motion.relative.y * detached_cam_sensitivity,
+				-1.5, 1.5)
+		detached_cam.rotation = Vector3(_detached_pitch, _detached_yaw, 0.0)
+		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var motion := event as InputEventMouseMotion
 		_apply_yaw(-motion.relative.x * mouse_sensitivity)
@@ -241,7 +307,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			head.rotation.x = _look_pitch
 	elif event.is_action_pressed(&"flashlight"):
 		flashlight.visible = not flashlight.visible
-	elif event.is_action_pressed(&"crouch"):
+	elif event.is_action_pressed(&"crouch") and not detached_cam_active:
+		# "crouch" also drives the detached camera's own descend - see
+		# _process() - without this guard it toggled the body's crouch
+		# state too every time you flew the camera downward.
 		if _crouched and uncrouch_check.is_colliding():
 			pass  # no headroom to stand up
 		else:
@@ -338,7 +407,17 @@ func _physics_process(delta: float) -> void:
 	if free_mode_enabled:
 		_process_free_mode(delta)
 		return
-	var input_dir := Input.get_vector(
+	# The detached spectator camera reads move_*/jump/crouch for its own
+	# flight (see set_detached_camera_active()'s doc comment and this
+	# script's own _process()) - without suppressing them here too, flying
+	# the camera also walked/jumped/crouched the body underneath it. A full
+	# early return was tried first and was worse: it also skipped gravity
+	# and move_and_slide() every frame this is on, so the body never
+	# settles onto the floor from spawn and just hovers at its spawn
+	# height - gravity/floor snapping/animation all need to keep running,
+	# only the *input-driven* reactions (movement, jump, crouch - crouch's
+	# own toggle is guarded separately in _unhandled_input) get suppressed.
+	var input_dir := Vector2.ZERO if detached_cam_active else Input.get_vector(
 			&"move_left", &"move_right", &"move_forward", &"move_back")
 	_catch_up_body_yaw(input_dir, delta)
 	var sprinting := _update_stamina(delta, input_dir)
@@ -374,7 +453,7 @@ func _physics_process(delta: float) -> void:
 			if not held_melee:
 				_next_punch_is_jab = not _next_punch_is_jab
 	if (Input.is_action_just_pressed(&"jump") and is_on_floor()
-			and _roll_time_left <= 0.0):
+			and _roll_time_left <= 0.0 and not detached_cam_active):
 		_crouched = false
 		velocity.y = jump_velocity
 

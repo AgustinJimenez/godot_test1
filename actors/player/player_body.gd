@@ -20,23 +20,23 @@ const CLIPS := {
 	&"crouch_idle": "W1_Crouch_Aim_Idle_IPC",
 	&"crouch_walk": "W1_CrouchWalk_Aim_F_Loop_IPC",
 }
-## Some MotusMan FBX exports (the animation-bundled clip files under
-## MotusMan_MODEL_DIR specifically - confirmed live via a mesh-material
-## inspection: W1_Stand_Aim_Idle_IPC.fbx's own material has a null
-## albedo_texture, while MotusMan_v55.fbx's own material already has a
-## correct one) bake a broken absolute texture path, leaving Godot's FBX
-## importer with no usable albedo. _apply_skin_texture_fallback() reapplies
-## this diffuse - but only for MotusMan specifically, and only when the
-## imported mesh doesn't already have its own working texture. Applying it
-## unconditionally to every character_scene (the pre-swap-character
-## behavior, when only MotusMan could ever be loaded) paints MotusMan's own
-## diffuse across whatever UV layout a *different* skin's mesh actually
-## has, looking like scrambled/mixed textures - a real bug a user found by
-## testing X Bot through the debug menu's character swap.
+## Some MotusMan FBX exports (the animation-bundled clip files under MotusMan_MODEL_DIR
+## specifically - confirmed live via a mesh-material inspection: W1_Stand_Aim_Idle_IPC.fbx's
+## own material has a null albedo_texture, while MotusMan_v55.fbx's own material already has
+## a correct one) bake a broken absolute texture path, leaving Godot's FBX importer with no
+## usable albedo. _apply_skin_texture_fallback() reapplies this diffuse - but only for
+## MotusMan specifically, and only when the imported mesh doesn't already have its own
+## working texture. Applying it unconditionally to every character_scene (the pre-swap-
+## character behavior, when only MotusMan could ever be loaded) paints MotusMan's own
+## diffuse across whatever UV layout a *different* skin's mesh actually has, looking like
+## scrambled/mixed textures - a real bug a user found by testing X Bot through the debug
+## menu's character swap.
 const SKIN_TEXTURE := "res://assets/models/pistol_starter/MotusMan/sourceimages/MCG_diff.jpg"
 const MOTUSMAN_MODEL_DIR := "res://assets/models/pistol_starter/"
 const FLASHLIGHT_MODEL := preload("res://assets/models/flashlight/flashlight.glb")
 const HAND_GRIP_MODIFIER := preload("res://actors/player/player_hand_grip_modifier.gd")
+const FOOT_IK_MODIFIER := preload("res://actors/player/player_foot_ik_modifier.gd")
+const SKELETON_VISUALIZER := preload("res://actors/player/player_skeleton_debug_visualizer.gd")
 const FLASHLIGHT_HAND := &"RightHand"
 const FLASHLIGHT_MODEL_SCALE := 0.12
 const FLASHLIGHT_GRIP_POSE_PATH := "res://actors/player/flashlight_grip_pose.json"
@@ -198,13 +198,12 @@ enum HandRetarget {
 }
 @export var hand_retarget_mode: HandRetarget = HandRetarget.DELTA_ROTATION
 
-## Legs default to the same global rest-relative delta transfer as spine -
-## fine for a walk cycle's shallow knee bend, but a deep crouch/hunch (e.g.
-## Pistol_Aim_Down) exposes the same rig-axis-mismatch problem that pushed
-## arms onto swing retargeting: a ~59 degree secondary-axis "twist" shows up
-## on the knee for that clip, where a real hinge joint should show almost
-## none - the leg swings out sideways instead of just bending forward.
-## SWING reuses the exact same technique arms use, applied to the leg chain.
+## Legs default to the same global rest-relative delta transfer as spine - fine for a walk
+## cycle's shallow knee bend, but a deep crouch/hunch (e.g. Pistol_Aim_Down) exposes the same
+## rig-axis-mismatch problem that pushed arms onto swing retargeting: a ~59 degree secondary-axis
+## "twist" shows up on the knee for that clip, where a real hinge joint should show almost none -
+## the leg swings out sideways instead of just bending forward. SWING reuses the exact same
+## technique arms use, on the leg chain.
 const LEG_SWING_MAP: Dictionary = {
 	&"RightUpLeg": &"RightLeg",
 	&"RightLeg": &"RightFoot",
@@ -244,6 +243,8 @@ var _lib: AnimationLibrary
 var _held_pose: Animation
 var _look_pose_modifier: PlayerLookPoseModifier
 var _hand_grip_modifier: PlayerHandGripModifier
+var _foot_ik_modifier: PlayerFootIKModifier
+var _skeleton_visualizer: PlayerSkeletonDebugVisualizer
 var _flashlight_attachment: BoneAttachment3D
 var _flashlight_model: Node3D
 var _equipped_attachment: BoneAttachment3D
@@ -258,21 +259,19 @@ var _action_animation := &""
 var _action_contact_ratio := -1.0
 var _action_contact_emitted := false
 
-## True while a debug-menu clip is being previewed, so update_motion() doesn't
-## immediately stomp it back to relaxed_idle on the next physics tick (e.g.
-## right when the tree unpauses after closing the menu overlay). Cleared the
-## moment the player actually does something that should visibly change the
-## animation anyway (move, crouch, arm the weapon) - only suppressed while
+## True while a debug-menu clip is being previewed, so update_motion() doesn't immediately stomp
+## it back to relaxed_idle on the next physics tick (e.g. right when the tree unpauses after
+## closing the menu overlay). Cleared the moment the player actually does something that should
+## visibly change the animation anyway (move, crouch, arm the weapon) - only suppressed while
 ## they're just standing still watching the preview.
 var _debug_preview_active := false
 
-## The visual skin - defaults to MotusMan so a plain player.tscn instance
-## needs zero config, same as before this became configurable. Instantiated
-## as a child in _setup_character_scene() rather than being the node this
-## script itself sits on (which is what a direct FBX-instance node/scene
-## like player.tscn's old "Body" node used to be) - mirrors
-## HumanoidActor._setup_character()'s existing pattern for NPCs, the
-## already-proven way to keep body execution independent of the visual skin.
+## The visual skin - defaults to MotusMan so a plain player.tscn instance needs zero config, same
+## as before this became configurable. Instantiated as a child in _setup_character_scene() rather
+## than being the node this script itself sits on (which is what a direct FBX-instance node/scene
+## like player.tscn's old "Body" node used to be) - mirrors HumanoidActor._setup_character()'s
+## existing pattern for NPCs, the already-proven way to keep body execution independent of the
+## visual skin.
 @export var character_scene: PackedScene = preload(
 		"res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx")
 
@@ -291,14 +290,12 @@ var mesh: MeshInstance3D
 ## single call would be redundant, avoidable work.
 var _retarget_config: HumanoidRetargeter.BoneMapConfig
 
-## role name (the same canonical names BONE_MAP's values and
-## player.gd's TORSO_CLEARANCE keys use, e.g. "Head"/"Spine2"/"LeftShoulder")
-## -> the *current* skeleton's own real bone name. Identity for MotusMan
-## (its bones already use these names literally) but not for a prefixed
-## skin like x_bot ("mixamorig_Head") - anything outside this script that
-## looks up a bone by its canonical role name (player.gd's head/torso-
-## clearance tracking) must resolve through resolve_bone_name() rather than
-## assuming the plain role name is also the real bone name.
+## role name (the same canonical names BONE_MAP's values and player.gd's TORSO_CLEARANCE keys
+## use, e.g. "Head"/"Spine2"/"LeftShoulder") -> the *current* skeleton's own real bone name.
+## Identity for MotusMan (its bones already use these names literally) but not for a prefixed
+## skin like x_bot ("mixamorig_Head") - anything outside this script that looks up a bone by its
+## canonical role name (player.gd's head/torso-clearance tracking) must resolve through
+## resolve_bone_name() rather than assuming the plain role name is also the real bone name.
 var _target_humanoid_map: Dictionary
 
 ## Tool instances can disable the gameplay idle so they initially expose the
@@ -360,13 +357,12 @@ func _apply_stored_profile_cosmetics() -> void:
 			PlayerProfile.hair_color_id, _cosmetic_attachments)
 
 ## Rebuilds everything _ready() built around the skeleton - material, the
-## look/hand-grip modifiers, the held flashlight attachment, and the full
-## retargeted "moves" library - all of which reference the specific
-## Skeleton3D/AnimationPlayer _setup_character_scene() just found and can't
-## outlive it. Shared by _ready() (first setup) and swap_character() (a
-## later runtime re-skin, e.g. from the debug menu's character list) so
-## there is exactly one place this construction happens, not two versions
-## that can drift.
+## look/hand-grip/foot-IK modifiers, the held flashlight attachment, and
+## the full retargeted "moves" library - all of which reference the specific
+## Skeleton3D/AnimationPlayer _setup_character_scene() just found and can't outlive it.
+## Shared by _ready() (first setup) and swap_character() (a later runtime re-skin,
+## e.g. from the debug menu's character list) so there is exactly one place this
+## construction happens, not two versions that can drift.
 func _build_character_visuals() -> void:
 	# Lets the debug menu's animation preview keep looping while the pause
 	# menu has the rest of the game (including this node's own parent,
@@ -377,6 +373,10 @@ func _build_character_visuals() -> void:
 	_look_pose_modifier.name = &"LookPoseModifier"
 	_look_pose_modifier.player_body = self
 	skeleton.add_child(_look_pose_modifier)
+	skeleton.set_modifier_callback_mode_process(Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_PHYSICS)
+	_foot_ik_modifier = FOOT_IK_MODIFIER.new() as PlayerFootIKModifier
+	_foot_ik_modifier.player_body = self
+	skeleton.add_child(_foot_ik_modifier)
 	_setup_held_flashlight()
 
 	var lib := AnimationLibrary.new()
@@ -406,19 +406,17 @@ func _build_character_visuals() -> void:
 	_apply_stored_profile_cosmetics()
 
 
-## Swaps the live player's visible skin at runtime - the debug menu's
-## character list (ui/hud.gd) calls this so a player can become any catalog
-## character mid-session without a scene reload, the concrete proof this
-## project's player-swappable-skin plan set out for (see CURRENT_TASK.md
-## Phase 5). Frees the whole old character subtree (skeleton and everything
-## attached to it - look/hand-grip modifiers, flashlight/held-item
-## attachments) and rebuilds fresh around the new one, then restores
-## whatever was equipped/visible so the swap is invisible to inventory
-## state. Not free: rebaking ~15 retargeted clips is the same synchronous
-## cost _ready() already pays once at scene start - callers on a paused
-## debug menu should let a frame render a loading message first (see
-## ui/hud.gd's character panel) rather than call this directly off a
-## button's pressed signal.
+## Swaps the live player's visible skin at runtime - the debug menu's character list
+## (ui/hud.gd) calls this so a player can become any catalog character mid-session
+## without a scene reload, the concrete proof this project's player-swappable-skin
+## plan set out for (see CURRENT_TASK.md Phase 5). Frees the whole old character
+## subtree (skeleton and everything attached to it - look/hand-grip/foot-IK
+## modifiers, flashlight/held-item attachments) and rebuilds fresh around the new
+## one, then restores whatever was equipped/visible so the swap is invisible to
+## inventory state. Not free: rebaking ~15 retargeted clips is the same synchronous
+## cost _ready() already pays once at scene start - callers on a paused debug menu
+## should let a frame render a loading message first (see ui/hud.gd's character
+## panel) rather than call this directly off a button's pressed signal.
 func swap_character(new_character_scene: PackedScene) -> void:
 	var previous_torch_visible := is_instance_valid(_flashlight_model) and _flashlight_model.visible
 	var previous_item := _equipped_item
@@ -431,6 +429,8 @@ func swap_character(new_character_scene: PackedScene) -> void:
 	# .free() a second time on an already-freed object.
 	_look_pose_modifier = null
 	_hand_grip_modifier = null
+	_foot_ik_modifier = null
+	_skeleton_visualizer = null
 	_flashlight_attachment = null
 	_flashlight_model = null
 	_equipped_attachment = null
@@ -455,20 +455,29 @@ func resolve_bone_name(role: StringName) -> StringName:
 	return StringName(_target_humanoid_map.get(role, role))
 
 
-## Copies a differently-rigged clip's tracks onto MotusMan's skeleton via
-## BONE_MAP. Deltas are computed and reapplied in GLOBAL (skeleton-root)
-## space, not each bone's parent-relative local space - see BONE_MAP's doc
-## comment for why: a naive local-space "delta from own rest, reapplied to
-## target's own rest" compounds the two rigs' differing bone-forward-axis
-## conventions at every parent hop, and arms sit 6-7 hops deep (through the
-## whole spine) versus 3-4 for legs, which is exactly why legs retargeted
-## fine before while arms spread into a T-pose every time. Working in global
-## space means each bone's delta is only ever relative to its OWN rest, with
-## no compounding, regardless of chain depth.
+## Debug menu "Show Skeleton" toggle - lazily builds the visualizer on
+## first use so a player who never opens the debug menu never pays for it.
+func set_skeleton_visible(enabled: bool) -> void:
+	if _skeleton_visualizer == null:
+		if not enabled:
+			return
+		_skeleton_visualizer = SKELETON_VISUALIZER.new() as PlayerSkeletonDebugVisualizer
+		skeleton.add_child(_skeleton_visualizer)
+	_skeleton_visualizer.mesh_instance.visible = enabled
+
+
+## Copies a differently-rigged clip's tracks onto MotusMan's skeleton via BONE_MAP. Deltas are
+## computed and reapplied in GLOBAL (skeleton-root) space, not each bone's parent-relative local
+## space - see BONE_MAP's doc comment for why: a naive local-space "delta from own rest,
+## reapplied to target's own rest" compounds the two rigs' differing bone-forward-axis
+## conventions at every parent hop, and arms sit 6-7 hops deep (through the whole spine) versus
+## 3-4 for legs, which is exactly why legs retargeted fine before while arms spread into a T-pose
+## every time. Working in global space means each bone's delta is only ever relative to its OWN
+## rest, with no compounding, regardless of chain depth.
 ##
-## This requires resampling the source clip at fixed intervals (its own
-## keyframe times aren't used directly) because a bone's global pose depends
-## on its whole ANIMATED ancestor chain, not just its own track.
+## This requires resampling the source clip at fixed intervals (its own keyframe times aren't
+## used directly) because a bone's global pose depends on its whole ANIMATED ancestor chain, not
+## just its own track.
 const RETARGET_SAMPLE_HZ := 30.0
 
 func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animation,
@@ -483,16 +492,14 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 			src = candidate_lib.get_animation(anim_name)
 			break
 
-	# The real gameplay path (use_humanoid_retarget defaults true) delegates
-	# entirely to HumanoidRetargeter - proven bit-for-bit equivalent to this
-	# function's own former inline copy of the same algorithm (see
-	# CURRENT_TASK.md's Phase 1: verified live via test_retarget_parity
-	# against this exact "moves" library, across two different clips, with
-	# the only divergence being the arm FABRIK step's inherent redundant-DOF
-	# sensitivity - present even when this function's old code retargeted
-	# the same clip twice in a row against itself). Everything below this
-	# early return is debug-only scaffolding for the throwaway hand/leg
-	# retarget-mode comparison scene and is never reached in real gameplay.
+	# The real gameplay path (use_humanoid_retarget defaults true) delegates entirely to
+	# HumanoidRetargeter - proven bit-for-bit equivalent to this function's own former inline copy
+	# of the same algorithm (see CURRENT_TASK.md's Phase 1: verified live via test_retarget_parity
+	# against this exact "moves" library, across two different clips, with the only divergence
+	# being the arm FABRIK step's inherent redundant-DOF sensitivity - present even when this
+	# function's old code retargeted the same clip twice in a row against itself). Everything
+	# below this early return is debug-only scaffolding for the throwaway hand/leg retarget-mode
+	# comparison scene and is never reached in real gameplay.
 	if use_humanoid_retarget:
 		var anim := HumanoidRetargeter.retarget_clip(
 				src_skeleton, src, skeleton, _retarget_config, force_loop)
@@ -614,25 +621,22 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 	return anim
 
 
-## Detects target_skeleton's own bone-naming convention (MotusMan by
-## default, but not assumed - see CURRENT_TASK.md's Phase 4) and returns its
-## role-name -> real-bone-name table (role names being BONE_MAP's target-side
-## convention, e.g. "Hips"/"Head"/"LeftShoulder"). Used both to build this
-## skeleton's BoneMapConfig (see _setup_character_scene()) and, via
-## resolve_bone_name(), by anything outside the retargeter that needs to
-## look up one specific bone by its canonical role (held-item/flashlight
-## attachment points, player.gd's head/torso-clearance tracking). Mirrors
-## the same null/"B-" special case character_editor_import_handler.gd's
-## _import_character already uses (those skeletons don't follow the simple
-## "prefix + role" pattern reliably enough for full_map_from_prefix).
-## Prefers a catalog manifest's own humanoid_map (curated, already verified
-## complete by the character editor's Rig tab when it was set up) over
-## re-detecting one from the skeleton - detect_bone_prefix() only
-## recognizes "<prefix>Hips"/"B-hips" conventions, not every bone naming a
-## catalog character might use (e.g. Universal Base Characters' UE-
-## Mannequin "pelvis"/"clavicle_l" names, which have no prefix to detect at
-## all). Falls back to the original re-detection for anything not in the
-## catalog (raw test scenes, characters added before this existed).
+## Detects target_skeleton's own bone-naming convention (MotusMan by default, but not assumed -
+## see CURRENT_TASK.md's Phase 4) and returns its role-name -> real-bone-name table (role names
+## being BONE_MAP's target-side convention, e.g. "Hips"/"Head"/"LeftShoulder"). Used both to
+## build this skeleton's BoneMapConfig (see _setup_character_scene()) and, via
+## resolve_bone_name(), by anything outside the retargeter that needs to look up one specific
+## bone by its canonical role (held-item/flashlight attachment points, player.gd's head/torso-
+## clearance tracking). Mirrors the same null/"B-" special case
+## character_editor_import_handler.gd's _import_character already uses (those skeletons don't
+## follow the simple "prefix + role" pattern reliably enough for full_map_from_prefix). Prefers
+## a catalog manifest's own humanoid_map (curated, already verified complete by the character
+## editor's Rig tab when it was set up) over re-detecting one from the skeleton -
+## detect_bone_prefix() only recognizes "<prefix>Hips"/"B-hips" conventions, not every bone
+## naming a catalog character might use (e.g. Universal Base Characters' UE-Mannequin
+## "pelvis"/"clavicle_l" names, which have no prefix to detect at all). Falls back to the
+## original re-detection for anything not in the catalog (raw test scenes, characters added
+## before this existed).
 static func _detect_target_humanoid_map(
 		target_skeleton: Skeleton3D, model_path: String) -> Dictionary:
 	for info: Dictionary in CharacterCatalog.list_all().values():
@@ -647,26 +651,22 @@ static func _detect_target_humanoid_map(
 			else CharacterEditorRigHandler.full_map_from_prefix(target_skeleton, prefix))
 
 
-## Retargets a bone by matching WHERE IT POINTS (its own to its child's
-## global position, i.e. the direction of the bone itself in world space)
-## rather than transferring its full rotation. Positions carry no "which
-## local axis means forward" ambiguity at all, so this sidesteps the exact
-## question full rotation transfer needs to get right - and gets wrong for
-## the arms specifically, every attempt so far (spread into a T-pose).
-## Trade-off: no roll/twist (e.g. forearm pronation) survives, only the
-## swing - not very visible on this rig at typical camera distance for a
-## walk cycle.
+## Retargets a bone by matching WHERE IT POINTS (its own to its child's global position, i.e.
+## the direction of the bone itself in world space) rather than transferring its full rotation.
+## Positions carry no "which local axis means forward" ambiguity at all, so this sidesteps the
+## exact question full rotation transfer needs to get right - and gets wrong for the arms
+## specifically, every attempt so far (spread into a T-pose). Trade-off: no roll/twist (e.g.
+## forearm pronation) survives, only the swing - not very visible on this rig at typical camera
+## distance for a walk cycle.
 ##
-## This world-space version is known to overcorrect a bone low in a
-## heavily-pre-rotated chain (e.g. a knee under a hip that's bent forward a
-## lot - see docs/task_history/ual_animation_retargeting.md "Bug 3 update 3").
-## A parent-relative rework was attempted twice and made things worse (see
-## "Bug 3 update 4" in that history) - re-expressing the swing in the parent's
-## own local
-## axis convention reintroduces exactly the axis-mismatch problem this
-## world-space approach was built to avoid in the first place. Reverted to
-## this version deliberately; do not re-attempt the same parent-relative
-## approach without a fundamentally different idea for avoiding that.
+## This world-space version is known to overcorrect a bone low in a heavily-pre-rotated chain
+## (e.g. a knee under a hip that's bent forward a lot - see
+## docs/task_history/ual_animation_retargeting.md "Bug 3 update 3"). A parent-relative rework was
+## attempted twice and made things worse (see "Bug 3 update 4" in that history) - re-expressing
+## the swing in the parent's own local axis convention reintroduces exactly the axis-mismatch
+## problem this world-space approach was built to avoid in the first place. Reverted to this
+## version deliberately; do not re-attempt the same parent-relative approach without a
+## fundamentally different idea for avoiding that.
 func _swing_retarget(src_skel: Skeleton3D, src_idx: int, target_skel: Skeleton3D, target_idx: int,
 		src_child_idx: int, target_child_idx: int) -> Basis:
 	var target_rest := target_skel.get_bone_global_rest(target_idx)
