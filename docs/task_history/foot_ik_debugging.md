@@ -248,3 +248,44 @@ above 2cm, all clustered at the two swing peaks - everywhere else the
 corrected and raw traces matched exactly. Accepted as a reasonable
 trade-off rather than chased further, matching how most production foot-IK
 systems handle this same swing-apex edge case.
+
+## Bug 5: the sign-gate fix caused a worse regression - twitching on completely static poses
+
+The sign gate above (`if vertical_velocity <= 0.0: ... else: raw_ground_weight
+= 0.0`) is a hard cutoff at exactly zero. That's fine for a genuine swing
+arc, but it also fires on a character that isn't moving at all: an idle
+clip's own subtle breathing/weight-shift sway, or plain floating-point
+noise in the animated pose, can put the foot's measured vertical velocity a
+hair on the positive side for a single frame - and a hard cutoff there
+means the correction drops to *zero* for that one frame, snapping the leg
+from "precisely planted on a stair tread" back to the raw animated pose
+(which, on a tall step, can be visibly far off) before recovering the very
+next frame. Reported as "the foot resets, then recalculates, then resets
+again" - a real, sudden, periodic twitch, and it hit **every** character
+including ones that were standing completely still, which is what made it
+obviously worse than the swing-apex dip it was meant to fix (that one only
+showed up during actual walking).
+
+Fix: replace the hard sign cutoff with a continuous scale-up
+(`rising_penalty`, default 4.0) - rising velocity is multiplied by this
+factor before comparing against `swing_speed_threshold`, instead of being
+outright disqualified at the first positive sample. Tiny rising noise
+(idle sway, float jitter) stays far below threshold even after the
+penalty and keeps full correction; genuine swing-phase rising velocity
+(much larger in magnitude) still gets suppressed well before the
+low-speed approach to the peak. Verified: a static idle stair pose held
+for 300 frames (5 seconds) showed a total range of 1cm with zero
+frame-to-frame jumps above 1cm (previously twitching every so often), while
+the walking dummies' swing amplitude and the Bug 4 peak-dip size were both
+unaffected (same ~0.07m/2-frame residual as before, not reintroduced or
+worsened).
+
+**Lesson**: a hard threshold/cutoff on a noisy real-world signal (any
+per-frame delta on animated data, even from a supposedly "static" pose,
+carries some noise) will eventually trigger on that noise, not just on the
+real event it was designed to detect - and the resulting flip-flop reads as
+a much more obvious, more universal bug (every character, all the time)
+than the narrow edge case the cutoff was trying to fix in the first place.
+Prefer a continuous scale/penalty over a hard sign or threshold cutoff
+whenever the signal being gated isn't already smoothed enough to be
+trustworthy at exactly zero.

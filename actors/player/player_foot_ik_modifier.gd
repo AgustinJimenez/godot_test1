@@ -72,6 +72,13 @@ const GROUND_COLLISION_MASK := 1
 ## swinging through the air, by contrast, has real vertical speed - that's
 ## the actual distinguishing signal, not distance-to-target.
 @export var swing_speed_threshold: float = 0.35
+## How much more harshly RISING vertical velocity counts against
+## swing_speed_threshold than the same-magnitude FALLING velocity does - see
+## the rising-velocity scaling comment in _process_modification_with_delta()
+## for why this is a continuous scale-up rather than an outright sign cutoff
+## at 0 (a hard cutoff there caused a real, visible twitch on completely
+## static idle poses, from ordinary floating-point/animation noise).
+@export var rising_penalty: float = 4.0
 ## Minimum time (seconds) for ground_weight to rise from 0 to 1 - caps how
 ## fast the correction can snap back ON, without limiting how fast it can
 ## snap OFF. A walk cycle's vertical velocity crosses exactly zero for a
@@ -369,11 +376,21 @@ func _process_modification_with_delta(delta: float) -> void:
 		# started descending - measured directly: several frames of
 		# increasing divergence from the raw animation right before the top
 		# of a stride, snapping back only once the foot was already well
-		# past the peak. Gating on the SIGN first is what actually fixes
-		# it: a foot that's still rising, however slowly, is never treated
-		# as grounded, no matter how close to zero its speed gets - only a
-		# foot that's already falling (or exactly stationary) is a landing
-		# candidate at all.
+		# past the peak.
+		#
+		# Rising velocity is scaled up by rising_penalty before comparing to
+		# swing_speed_threshold, rather than an outright sign cutoff at
+		# exactly 0 - a hard cutoff there means ANY positive velocity, down
+		# to floating-point noise or an idle clip's own subtle breathing
+		# sway, zeroes the correction completely for that one frame, and the
+		# foot visibly snaps back to the raw animated pose (a real, sudden
+		# twitch on an otherwise-static idle stair pose - a much worse
+		# regression than the swing-apex dip this was meant to fix, since it
+		# hit every character, moving or not). Scaling instead of cutting
+		# off keeps tiny rising noise well under threshold (so idle stays
+		# fully corrected, no twitch) while still suppressing genuine
+		# swing-phase rising motion (far larger in magnitude) well before it
+		# reaches the low-speed approach to the peak.
 		var vertical_velocity := 0.0
 		if delta > 0.0:
 			if _prev_animated_foot_pos.has(side):
@@ -381,9 +398,10 @@ func _process_modification_with_delta(delta: float) -> void:
 				vertical_velocity = (foot_pos - prev_pos).dot(_smoothed_normal[side] as Vector3) \
 						/ delta
 			_prev_animated_foot_pos[side] = foot_pos
-		var raw_ground_weight := 0.0
-		if vertical_velocity <= 0.0:
-			raw_ground_weight = clampf(1.0 - absf(vertical_velocity) / swing_speed_threshold, 0.0, 1.0)
+		var effective_speed := absf(vertical_velocity)
+		if vertical_velocity > 0.0:
+			effective_speed *= rising_penalty
+		var raw_ground_weight := clampf(1.0 - effective_speed / swing_speed_threshold, 0.0, 1.0)
 
 		# Only rate-limit the RISE - see ground_weight_rise_time's own doc
 		# comment for the single-frame swing-apex false positive this fixes.
