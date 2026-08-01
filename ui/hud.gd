@@ -92,6 +92,10 @@ var _character_rows: Array[Dictionary] = []
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/DetachedCameraToggle")
 @onready var skeleton_visible_toggle: CheckButton = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SkeletonVisibleToggle")
+@onready var slow_mo_slider: HSlider = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SlowMoRow/SlowMoSlider")
+@onready var slow_mo_value_label: Label = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SlowMoRow/SlowMoValueLabel")
 @onready var vision_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/VisionButton")
 @onready var debug_back_button: Button = get_node(
@@ -134,6 +138,7 @@ func _ready() -> void:
 	free_mode_toggle.toggled.connect(_on_free_mode_toggled)
 	detached_camera_toggle.toggled.connect(_on_detached_camera_toggled)
 	skeleton_visible_toggle.toggled.connect(_on_skeleton_visible_toggled)
+	slow_mo_slider.value_changed.connect(_on_slow_mo_value_changed)
 	main_debug_button.pressed.connect(_show_debug_page)
 	main_guide_button.pressed.connect(_show_guide_page)
 	main_settings_button.pressed.connect(_show_settings_page)
@@ -709,6 +714,17 @@ func _on_skeleton_visible_toggled(enabled: bool) -> void:
 	var player := get_tree().get_first_node_in_group(&"player")
 	if player != null and "body" in player and player.body.has_method(&"set_skeleton_visible"):
 		player.body.set_skeleton_visible(enabled)
+
+
+## Engine.time_scale, not get_tree().paused - a global engine setting rather
+## than per-scene, so it persists across this menu's own pause/unpause and
+## takes effect as soon as the debug menu closes and the tree resumes,
+## exactly like the other toggles in this same panel (Free Mode, Detached
+## Camera) already only take visible effect after closing the menu, not
+## while it's open and the tree is paused for editing.
+func _on_slow_mo_value_changed(value: float) -> void:
+	Engine.time_scale = value
+	slow_mo_value_label.text = "%d%%" % roundi(value * 100.0)
 
 
 func _on_debug_apply() -> void:

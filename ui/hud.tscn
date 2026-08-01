@@ -394,6 +394,23 @@ text = "Detached Camera"
 [node name="SkeletonVisibleToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Show Skeleton"
 
+[node name="SlowMoRow" type="HBoxContainer" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+theme_override_constants/separation = 6
+
+[node name="SlowMoLabel" type="Label" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SlowMoRow"]
+text = "Slow-Mo:"
+
+[node name="SlowMoSlider" type="HSlider" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SlowMoRow"]
+custom_minimum_size = Vector2(120, 0)
+min_value = 0.05
+max_value = 1.0
+step = 0.05
+value = 1.0
+
+[node name="SlowMoValueLabel" type="Label" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SlowMoRow"]
+custom_minimum_size = Vector2(50, 0)
+text = "100%"
+
 [node name="VisionButton" type="Button" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Vision / Atmosphere  >"
 

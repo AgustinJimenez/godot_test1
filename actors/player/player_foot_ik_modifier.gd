@@ -79,6 +79,18 @@ const GROUND_COLLISION_MASK := 1
 ## at 0 (a hard cutoff there caused a real, visible twitch on completely
 ## static idle poses, from ordinary floating-point/animation noise).
 @export var rising_penalty: float = 4.0
+## How many consecutive frames the animated foot must be clearly falling
+## (faster than velocity_noise_floor, downward) before it's trusted as a
+## real landing approach - see the falling-streak comment in
+## _process_modification_with_delta() for the swing-apex artifact this
+## fixes: a parabolic arc's low-speed stretch near its peak includes a
+## couple of technically-falling frames right after the top, fast enough to
+## slip past rising_penalty's rising-only gate and briefly nudge
+## ground_weight up before the leg's real (much faster, sustained) descent
+## begins. A real footfall falls for many frames in a row, not two, so
+## requiring a short streak filters the peak blip out without meaningfully
+## delaying genuine landings.
+@export var min_falling_streak: int = 3
 ## Velocity magnitude (m/s) below which vertical motion is ignored entirely
 ## - treated as exactly stationary regardless of sign, before rising_penalty
 ## even applies. rising_penalty alone reduces sensitivity to idle noise but
@@ -98,9 +110,24 @@ const GROUND_COLLISION_MASK := 1
 ## velocity releases it again. Measured as a real, visible dip - not just a
 ## theoretical edge case - comparing a walking dummy with IK against the raw
 ## animation frame by frame (e.g. 0.282 vs the animation's own 0.353 at the
-## exact peak of one stride). Falling (real swing starting) stays instant,
-## since only the rise is capped.
+## exact peak of one stride).
 @export var ground_weight_rise_time: float = 0.12
+## Same idea as ground_weight_rise_time, but for the opposite direction -
+## much shorter, not zero. An earlier version let the fall happen in a
+## single frame (uncapped), reasoning that a genuine swing needs to release
+## the correction immediately rather than holding the foot down for a
+## moment after it's actually started lifting. That's still true for a real
+## swing start, but the SAME instant-fall path also fires when recovering
+## from the small residual rise near a swing peak (see
+## ground_weight_rise_time above) - and snapping from "leg bent extra to
+## plant" back to "matches the animation" in exactly one physics frame is a
+## visible pop/cut regardless of which case caused it, confirmed by logging
+## the knee's own bend angle frame by frame (75.0 -> 89.4 degrees, a single-
+## frame jump, immediately after the capped-rise dip). A short but nonzero
+## fall time smooths that snap-back into a couple of frames instead of one,
+## while staying fast enough that a genuine swing start still reads as
+## essentially immediate.
+@export var ground_weight_fall_time: float = 0.05
 
 const LEGS := {
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot", "toe": &"LeftToeBase"},
@@ -147,6 +174,9 @@ var _prev_animated_foot_pos: Dictionary = {} # side -> Vector3 (world)
 ## Rate-limited (fast fall, slow rise) version of the raw velocity-derived
 ## ground_weight - see ground_weight_rise_time's own doc comment.
 var _smoothed_ground_weight: Dictionary = {} # side -> float
+## Consecutive frames the animated foot has been clearly falling - see
+## min_falling_streak's own doc comment.
+var _falling_streak: Dictionary = {} # side -> int
 
 
 func _ready() -> void:
@@ -407,25 +437,51 @@ func _process_modification_with_delta(delta: float) -> void:
 				vertical_velocity = (foot_pos - prev_pos).dot(_smoothed_normal[side] as Vector3) \
 						/ delta
 			_prev_animated_foot_pos[side] = foot_pos
+			# A parabolic arc's low-speed stretch approaching its peak isn't
+			# only ascending - by symmetry it also includes a couple of
+			# frames just PAST the peak that are technically falling, but
+			# barely, before the leg picks up real descent speed. Gating on
+			# sign alone (see rising_penalty above) let exactly those 1-2
+			# frames through, still fast enough to accumulate a small
+			# ground_weight rise even with the rate limit above (the rate
+			# limit only slows growth toward 1.0; from a near-zero starting
+			# point there's little to slow down) - confirmed by comparing
+			# the knee bend angle frame by frame against a still-swinging
+			# reference leg, which showed a matching ~2-frame dip followed
+			# by a hard single-frame snap back once real fast descent
+			# resumed and the rate-limited rise's small gains got wiped in
+			# one step. A genuine landing falls for many consecutive frames,
+			# not two - only trust "falling" as a landing candidate once
+			# it's held for min_falling_streak frames in a row.
+			if vertical_velocity < -velocity_noise_floor:
+				_falling_streak[side] = int(_falling_streak.get(side, 0)) + 1
+			else:
+				_falling_streak[side] = 0
 		var raw_ground_weight: float
 		if absf(vertical_velocity) < velocity_noise_floor:
 			raw_ground_weight = 1.0
-		else:
-			var effective_speed := absf(vertical_velocity)
-			if vertical_velocity > 0.0:
-				effective_speed *= rising_penalty
+		elif vertical_velocity > 0.0:
+			var effective_speed := vertical_velocity * rising_penalty
 			raw_ground_weight = clampf(1.0 - effective_speed / swing_speed_threshold, 0.0, 1.0)
+		elif int(_falling_streak.get(side, 0)) < min_falling_streak:
+			raw_ground_weight = 0.0
+		else:
+			raw_ground_weight = clampf(1.0 - absf(vertical_velocity) / swing_speed_threshold, 0.0, 1.0)
 
-		# Only rate-limit the RISE - see ground_weight_rise_time's own doc
-		# comment for the single-frame swing-apex false positive this fixes.
-		# Falling (a real swing starting) must stay instant, or the foot
-		# would keep getting pulled toward the ground for a moment after
-		# it's actually started lifting.
+		# Rate-limited both directions - see ground_weight_rise_time and
+		# ground_weight_fall_time's own doc comments. The fall is much
+		# shorter than the rise, not zero: a real swing start should still
+		# feel essentially immediate, but an uncapped one-frame fall also
+		# produced a visible pop/cut recovering from the small residual rise
+		# near a swing peak.
 		var prev_weight: float = _smoothed_ground_weight.get(side, raw_ground_weight)
 		var ground_weight := raw_ground_weight
 		if raw_ground_weight > prev_weight and ground_weight_rise_time > 0.0:
 			var max_rise: float = delta / ground_weight_rise_time
 			ground_weight = minf(raw_ground_weight, prev_weight + max_rise)
+		elif raw_ground_weight < prev_weight and ground_weight_fall_time > 0.0:
+			var max_fall: float = delta / ground_weight_fall_time
+			ground_weight = maxf(raw_ground_weight, prev_weight - max_fall)
 		_smoothed_ground_weight[side] = ground_weight
 
 		var target := foot_pos.lerp(ground_target, ground_weight)
