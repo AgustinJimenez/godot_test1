@@ -59,6 +59,9 @@ func set_eye_offset(v: Vector3) -> void:
 ## the way down (not just a one-frame is_on_floor() flicker) - so real walls
 ## (much taller) still block normally - see _apply_step_up().
 @export var step_height: float = 0.4
+## Collision/body step immediately; this eases the third-person camera.
+## Only safe above-tread body easing is retained for short descents.
+@export_range(1.0, 30.0, 0.5) var stair_hover_speed: float = 12.0
 @export_range(0.0, 3.0, 0.05) var punch_delay_min: float = 0.25
 @export_range(0.0, 3.0, 0.05) var punch_delay_max: float = 0.75
 
@@ -90,6 +93,11 @@ const AIRBORNE_ANIMATION_GRACE := 0.15
 ## past this - used to tell "just jumped, animate instantly" apart from
 ## "briefly airborne between stair treads, don't pop the fall pose yet".
 const JUMP_VELOCITY_THRESHOLD := 0.5
+## Push past the blocking face; its shared edge may report a riser normal.
+## edge and return the riser's normal instead of the horizontal tread.
+const STEP_TREAD_PROBE_FORWARD := 0.04
+const STEP_TREAD_NORMAL_MIN_DOT := 0.9
+const STEP_REPEAT_CONTACT_DISTANCE := 1.0
 var _airborne_time := 0.0
 var _roll_direction := Vector3.ZERO
 var _next_punch_is_jab := true
@@ -119,6 +127,15 @@ func toggle_fov_gizmo() -> void:
 var free_mode_enabled := false
 var _free_mode_default_collision_layer := 0
 var _free_mode_default_collision_mask := 0
+var movement_input_override: Variant = null
+var gameplay_action_input_enabled := true
+var _stair_hover_offset_y := 0.0
+var _last_step_tread_y := -INF
+var _last_step_contact := Vector3(INF, INF, INF)
+var _pending_step_down_y := -INF
+var _stair_consumed_horizontal_motion := false
+var _body_rest_y := 0.0
+var _third_person_arm_rest_y := 0.0
 
 func set_free_mode(enabled: bool) -> void:
 	if free_mode_enabled == enabled:
@@ -131,6 +148,7 @@ func set_free_mode(enabled: bool) -> void:
 		collision_layer = _free_mode_default_collision_layer
 		collision_mask = _free_mode_default_collision_mask
 	velocity = Vector3.ZERO
+	_reset_stair_hover()
 
 ## Debug menu toggle: a fully independent spectator camera with its own
 ## yaw/pitch, unlike free_mode (which flies the player's own body/first-
@@ -246,6 +264,8 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_free_mode_default_collision_layer = collision_layer
 	_free_mode_default_collision_mask = collision_mask
+	_body_rest_y = body.position.y
+	_third_person_arm_rest_y = third_person_arm.position.y
 	# Must reach at least as far as step_height, or apply_floor_snap() in
 	# _apply_step_up() can fail to find the tread it just lifted onto (the
 	# gap between the lift and the actual step surface varies with each
@@ -417,15 +437,19 @@ func _physics_process(delta: float) -> void:
 	# height - gravity/floor snapping/animation all need to keep running,
 	# only the *input-driven* reactions (movement, jump, crouch - crouch's
 	# own toggle is guarded separately in _unhandled_input) get suppressed.
-	var input_dir := Vector2.ZERO if detached_cam_active else Input.get_vector(
-			&"move_left", &"move_right", &"move_forward", &"move_back")
+	var input_dir := Vector2.ZERO
+	if not detached_cam_active:
+		input_dir = movement_input_override if movement_input_override is Vector2 else (
+				Input.get_vector(
+					&"move_left", &"move_right", &"move_forward", &"move_back")
+			)
 	_catch_up_body_yaw(input_dir, delta)
 	var sprinting := _update_stamina(delta, input_dir)
 	_update_capsule(delta)
 	_roll_cooldown_left = maxf(_roll_cooldown_left - delta, 0.0)
 	_punch_cooldown_left = maxf(_punch_cooldown_left - delta, 0.0)
 	var look_basis := Basis(Vector3.UP, rotation.y + _look_yaw)
-	if (Input.is_action_just_pressed(&"roll") and is_on_floor()
+	if (gameplay_action_input_enabled and Input.is_action_just_pressed(&"roll") and is_on_floor()
 			and _roll_time_left <= 0.0 and _roll_cooldown_left <= 0.0
 			and not body.is_action_active()):
 		var roll_input := Vector3(input_dir.x, 0.0, input_dir.y)
@@ -437,7 +461,7 @@ func _physics_process(delta: float) -> void:
 			_roll_direction = requested_direction
 			_roll_time_left = roll_duration
 			_roll_cooldown_left = roll_duration + roll_cooldown
-	elif (Input.is_action_just_pressed(&"melee") and is_on_floor()
+	elif (gameplay_action_input_enabled and Input.is_action_just_pressed(&"melee") and is_on_floor()
 			and _roll_time_left <= 0.0 and _punch_cooldown_left <= 0.0
 			and not body.is_action_active()):
 		var held_melee := (equipped_item != null
@@ -452,7 +476,7 @@ func _physics_process(delta: float) -> void:
 			_pending_melee_range = equipped_item.melee_range if held_melee else 1.15
 			if not held_melee:
 				_next_punch_is_jab = not _next_punch_is_jab
-	if (Input.is_action_just_pressed(&"jump") and is_on_floor()
+	if (gameplay_action_input_enabled and Input.is_action_just_pressed(&"jump") and is_on_floor()
 			and _roll_time_left <= 0.0 and not detached_cam_active):
 		_crouched = false
 		velocity.y = jump_velocity
@@ -478,8 +502,28 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, direction.z * speed, acceleration * delta)
 	if not is_on_floor():
 		velocity += get_gravity() * delta
-	_apply_step_up(Vector3(velocity.x, 0.0, velocity.z) * delta)
+	var horizontal_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
+	var frame_start_y := global_position.y
+	_stair_consumed_horizontal_motion = false
+	var stepped_up := _apply_step_up(horizontal_motion)
+	var stepped_down := _apply_step_down(horizontal_motion) if stepped_up <= 0.0 else 0.0
+	var preserved_horizontal_velocity := Vector2(velocity.x, velocity.z)
+	if _stair_consumed_horizontal_motion:
+		velocity.x = 0.0
+		velocity.z = 0.0
 	move_and_slide()
+	if _stair_consumed_horizontal_motion:
+		velocity.x = preserved_horizontal_velocity.x
+		velocity.z = preserved_horizontal_velocity.y
+	if stepped_up > 0.0:
+		_stair_hover_offset_y -= stepped_up
+	elif stepped_down > 0.0:
+		_stair_hover_offset_y += stepped_down
+	elif _is_short_step_down(frame_start_y, horizontal_motion):
+		_stair_hover_offset_y += frame_start_y - global_position.y
+	_stair_hover_offset_y = clampf(
+			_stair_hover_offset_y, -step_height, step_height)
+	_update_stair_hover(delta)
 
 	# update_motion() treats any not-on-floor frame as a launch into the
 	# jump/fall pose, but stairs make brief, real losses of floor contact in
@@ -519,50 +563,174 @@ func _physics_process(delta: float) -> void:
 		head.position = head_pos + pitch_rot * eye_offset
 
 
-## Test-moves `motion` (this frame's flat horizontal movement) at the
-## current height and again lifted by `step_height`; if the flat move is
-## blocked but the lifted one isn't, the obstruction is a short ledge (a
-## stair riser, a curb) rather than a real wall, so this frame's full motion
-## (lift, forward step, and settling back down onto the actual tread) is
-## resolved here directly instead of leaving move_and_slide() to redo the
-## horizontal part afterward. The real riser can be much shorter than
-## step_height (e.g. a shallow staircase's tread rise), so blindly adding
-## step_height and letting apply_floor_snap() close the rest was not
-## reliable within the same frame - it left the body hovering above the
-## tread for several frames of real, unbroken freefall (and the fall
-## animation with it) on every single step. Probing downward by step_height
-## with test_move() and using its actual collision travel instead places
-## the body exactly on the tread in this same frame.
-func _apply_step_up(motion: Vector3) -> void:
-	# Deliberately not gated on is_on_floor(): the frame a moving character's
-	# feet actually reach the riser is exactly when bumping that near-
-	# vertical face can itself knock is_on_floor() false, which would block
-	# the step-up right when it's needed most. test_move() already only
-	# fires this on a real close-range obstruction, so it stays inert
-	# in open air.
+## A ray finds the tread because a downward capsule sweep hits the riser corner first.
+func _apply_step_up(motion: Vector3) -> float:
+	# Do not gate on is_on_floor(): touching the riser can unset it briefly.
 	if motion.is_zero_approx():
-		return
-	if not test_move(global_transform, motion):
-		return
+		return 0.0
+	var wall_collision := KinematicCollision3D.new()
+	if not test_move(global_transform, motion, wall_collision):
+		return 0.0
 	var lifted := global_transform.translated(Vector3(0.0, step_height, 0.0))
 	if test_move(lifted, motion):
-		return
+		return 0.0
+	var tread := _find_step_up_tread(motion, wall_collision)
+	if tread.is_empty():
+		return 0.0
+	lifted.origin.y = global_position.y + tread["rise"]
+	if test_move(lifted, motion):
+		return 0.0
 	lifted.origin += motion
-	var collision := KinematicCollision3D.new()
-	if test_move(lifted, Vector3(0.0, -step_height, 0.0), collision):
-		lifted.origin += collision.get_travel()
-	else:
-		lifted.origin += Vector3(0.0, -step_height, 0.0)
+	var previous_y := global_position.y
 	global_position = lifted.origin
-	# This frame's horizontal motion was just applied directly above, so
-	# zero it out for the move_and_slide() call right after this - otherwise
-	# move_and_slide() would apply the same horizontal motion a second time
-	# and overshoot onto the next riser. Next frame's input recomputes
-	# velocity.x/z fresh, so this doesn't affect ongoing momentum.
-	velocity.x = 0.0
-	velocity.y = 0.0
-	velocity.z = 0.0
+	# Horizontal motion was applied above; do not apply it twice below.
+	velocity = Vector3.ZERO
+	_last_step_tread_y = tread["y"]
+	_last_step_contact = tread["contact"]
 	apply_floor_snap()
+	return maxf(global_position.y - previous_y, 0.0)
+
+
+func _find_step_up_tread(
+		motion: Vector3, wall_collision: KinematicCollision3D) -> Dictionary:
+	var direction := motion.normalized()
+	var contact := wall_collision.get_position()
+	var probe_xz := contact + direction * STEP_TREAD_PROBE_FORWARD
+	var probe_from := Vector3(
+			probe_xz.x, global_position.y + step_height + safe_margin, probe_xz.z)
+	var probe_to := Vector3(
+			probe_xz.x, global_position.y + safe_margin, probe_xz.z)
+	var query := PhysicsRayQueryParameters3D.create(probe_from, probe_to, collision_mask)
+	query.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return {}
+	# CharacterBody3D's origin is not necessarily at the collider sole (this
+	# player's capsule extends slightly below it). Compare surface heights,
+	# then add that difference to the origin; assigning tread_y directly
+	# would lose the authored collider offset and rediscover the same tread
+	# as a new "step" every frame.
+	var floor_from := global_position + Vector3.UP * (step_height + safe_margin)
+	var floor_to := global_position - Vector3.UP * (step_height + safe_margin)
+	var floor_query := PhysicsRayQueryParameters3D.create(
+			floor_from, floor_to, collision_mask)
+	floor_query.exclude = [get_rid()]
+	var current_floor := get_world_3d().direct_space_state.intersect_ray(floor_query)
+	if current_floor.is_empty():
+		return {}
+	var tread_normal: Vector3 = hit["normal"]
+	var tread_y: float = hit["position"].y
+	var current_floor_y: float = current_floor["position"].y
+	var rise := tread_y - current_floor_y
+	if tread_normal.dot(Vector3.UP) < STEP_TREAD_NORMAL_MIN_DOT:
+		return {}
+	var repeated_contact := Vector2(probe_xz.x, probe_xz.z).distance_to(
+			Vector2(_last_step_contact.x, _last_step_contact.z))
+	if (is_equal_approx(tread_y, _last_step_tread_y)
+			and repeated_contact < STEP_REPEAT_CONTACT_DISTANCE):
+		return {}
+	if rise <= safe_margin or rise > step_height + safe_margin:
+		return {}
+	return {"y": tread_y, "rise": rise, "contact": probe_xz}
+
+
+## Keeps a narrow lower tread pending until the rounded heel clears the old
+## edge; floor snap alone can otherwise fall past it at walking speed.
+func _apply_step_down(motion: Vector3) -> float:
+	if motion.is_zero_approx() or velocity.y > JUMP_VELOCITY_THRESHOLD:
+		_pending_step_down_y = -INF
+		return 0.0
+	if not is_finite(_pending_step_down_y):
+		var tread := _find_step_down_tread(motion)
+		if tread.is_empty():
+			return 0.0
+		_pending_step_down_y = tread["y"]
+	var remaining_drop := global_position.y - _pending_step_down_y
+	if remaining_drop <= safe_margin:
+		_pending_step_down_y = -INF
+		return 0.0
+	# Resolve the horizontal move first, then sweep the whole capsule down.
+	# Unlike an upward tread lookup, descent must keep the old tread behind
+	# the rounded heel from overlapping the lowered capsule. The shape sweep
+	# naturally releases that corner over the next few frames while still
+	# preventing a free-fall past the lower tread.
+	var moved := global_transform
+	moved.origin += motion
+	var collision := KinematicCollision3D.new()
+	if not test_move(moved, Vector3.DOWN * (remaining_drop + safe_margin), collision):
+		return 0.0
+	moved.origin += collision.get_travel()
+	var previous_y := global_position.y
+	global_transform = moved
+	velocity.y = 0.0
+	_stair_consumed_horizontal_motion = true
+	apply_floor_snap()
+	if global_position.y <= _pending_step_down_y + 0.06:
+		_pending_step_down_y = -INF
+	return maxf(previous_y - global_position.y, 0.0)
+
+
+func _find_step_down_tread(motion: Vector3) -> Dictionary:
+	var probe_height := step_height + safe_margin + 0.05
+	var current_query := PhysicsRayQueryParameters3D.create(
+			global_position + Vector3.UP * probe_height,
+			global_position - Vector3.UP * probe_height, collision_mask)
+	current_query.exclude = [get_rid()]
+	var next_position := global_position + motion
+	var next_query := PhysicsRayQueryParameters3D.create(
+			next_position + Vector3.UP * probe_height,
+			next_position - Vector3.UP * probe_height, collision_mask)
+	next_query.exclude = [get_rid()]
+	var space := get_world_3d().direct_space_state
+	var current_floor := space.intersect_ray(current_query)
+	var next_floor := space.intersect_ray(next_query)
+	if current_floor.is_empty() or next_floor.is_empty():
+		return {}
+	var current_normal: Vector3 = current_floor["normal"]
+	var next_normal: Vector3 = next_floor["normal"]
+	if (current_normal.dot(Vector3.UP) < STEP_TREAD_NORMAL_MIN_DOT
+			or next_normal.dot(Vector3.UP) < STEP_TREAD_NORMAL_MIN_DOT):
+		return {}
+	var drop: float = current_floor["position"].y - next_floor["position"].y
+	if drop <= safe_margin or drop > step_height + safe_margin:
+		return {}
+	return {"y": next_floor["position"].y}
+
+
+## Downward floor snapping is also a discrete root movement. Smooth only a
+## short drop onto a horizontal tread while the player is moving; slopes,
+## deliberate jumps, and real falls retain their physical vertical motion.
+func _is_short_step_down(frame_start_y: float, horizontal_motion: Vector3) -> bool:
+	var drop := frame_start_y - global_position.y
+	return (
+			not horizontal_motion.is_zero_approx()
+			and is_on_floor()
+			and get_floor_normal().dot(Vector3.UP) > 0.99
+			and drop > 0.001
+			and drop <= step_height + 0.01
+			and velocity.y <= JUMP_VELOCITY_THRESHOLD)
+
+
+func _update_stair_hover(delta: float) -> void:
+	var blend := 1.0 - exp(-stair_hover_speed * delta)
+	_stair_hover_offset_y = lerpf(_stair_hover_offset_y, 0.0, blend)
+	# Never ease the mesh below an upward collision step; foot IK absorbs it.
+	# Positive short-descent easing remains safely above the next tread.
+	body.position.y = _body_rest_y + maxf(_stair_hover_offset_y, 0.0)
+	third_person_arm.position.y = (
+			_third_person_arm_rest_y + _stair_hover_offset_y)
+
+
+func _reset_stair_hover() -> void:
+	_stair_hover_offset_y = 0.0
+	_last_step_tread_y = -INF
+	_last_step_contact = Vector3(INF, INF, INF)
+	_pending_step_down_y = -INF
+	_stair_consumed_horizontal_motion = false
+	if is_instance_valid(body):
+		body.position.y = _body_rest_y
+	if is_instance_valid(third_person_arm):
+		third_person_arm.position.y = _third_person_arm_rest_y
 
 
 ## Movement follows the camera's exact look direction (forward/back tilt up
@@ -718,11 +886,9 @@ func _update_fov_gizmo() -> void:
 		_fov_mesh.surface_add_vertex(corners[(i + 1) % corners.size()])
 	_fov_mesh.surface_end()
 
-
-
 func _update_stamina(delta: float, input_dir: Vector2) -> bool:
 	# Sprint only counts while actually moving forward, standing up.
-	var wants_sprint: bool = (Input.is_action_pressed(&"sprint")
+	var wants_sprint: bool = (gameplay_action_input_enabled and Input.is_action_pressed(&"sprint")
 			and not _crouched and input_dir.y < -0.1)
 	var sprinting := wants_sprint and not _sprint_locked and stamina > 0.0
 	if sprinting:

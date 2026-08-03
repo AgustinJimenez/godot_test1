@@ -231,7 +231,6 @@ const SPRINT_REF_SPEED := 5.8
 const CROUCH_REF_SPEED := 1.1
 const LOCOMOTION_BLEND_TIME := 0.5
 const JUMP_PHASE_SPEED := 2.5
-
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
 var head_yaw := 0.0
@@ -298,9 +297,9 @@ var _retarget_config: HumanoidRetargeter.BoneMapConfig
 ## resolve_bone_name() rather than assuming the plain role name is also the real bone name.
 var _target_humanoid_map: Dictionary
 
-## Tool instances can disable the gameplay idle so they initially expose the
-## imported skeleton pose. Gameplay scenes retain the existing default.
+## Tool instances can disable gameplay idle to expose the imported pose.
 var autoplay_default_animation := true
+var locomotion_playback_scale := 1.0 # Per-instance tool slow motion; gameplay stays 1.0.
 
 
 ## Instantiates character_scene and finds its Skeleton3D/AnimationPlayer/mesh generically - mesh
@@ -730,6 +729,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		torch_enabled: bool) -> void:
 	set_held_flashlight_visible(torch_enabled)
 	_hand_grip_modifier.active = false
+	_foot_ik_modifier.set_character_grounded(on_floor)
 	if _debug_preview_active:
 		if ground_speed <= 0.6 and not crouched and not armed and on_floor:
 			return
@@ -777,7 +777,8 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 	else:
 		target = &"unarmed_torch_idle" if torch_enabled else &"unarmed_idle"
 	_hand_grip_modifier.active = target == &"unarmed_torch_idle"
-	_play_motion(target, LOCOMOTION_BLEND_TIME, clampf(rate, 0.8, 2.2))
+	_play_motion(target, LOCOMOTION_BLEND_TIME, clampf(rate,
+			0.8 * locomotion_playback_scale, 2.2 * locomotion_playback_scale))
 
 
 func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> void:

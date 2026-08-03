@@ -391,6 +391,10 @@ text = "Free Mode (noclip)"
 [node name="DetachedCameraToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Detached Camera"
 
+[node name="FootIkFollowToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+visible = false
+text = "Follow 0.35m Right Foot"
+
 [node name="SkeletonVisibleToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Show Skeleton"
 

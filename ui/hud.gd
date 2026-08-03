@@ -90,6 +90,8 @@ var _character_rows: Array[Dictionary] = []
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FreeModeToggle")
 @onready var detached_camera_toggle: CheckButton = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/DetachedCameraToggle")
+@onready var foot_ik_follow_toggle: CheckButton = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootIkFollowToggle")
 @onready var skeleton_visible_toggle: CheckButton = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SkeletonVisibleToggle")
 @onready var slow_mo_slider: HSlider = get_node(
@@ -137,6 +139,7 @@ func _ready() -> void:
 	visual_filters_toggle.toggled.connect(_on_visual_filters_toggled)
 	free_mode_toggle.toggled.connect(_on_free_mode_toggled)
 	detached_camera_toggle.toggled.connect(_on_detached_camera_toggled)
+	foot_ik_follow_toggle.toggled.connect(_on_foot_ik_follow_toggled)
 	skeleton_visible_toggle.toggled.connect(_on_skeleton_visible_toggled)
 	slow_mo_slider.value_changed.connect(_on_slow_mo_value_changed)
 	main_debug_button.pressed.connect(_show_debug_page)
@@ -345,6 +348,11 @@ func _open_debug() -> void:
 		debug_field_y.text = "%.3f" % v.y
 		debug_field_z.text = "%.3f" % v.z
 	_build_anim_list(p)
+	var foot_follow := get_tree().get_first_node_in_group(&"foot_ik_camera_preset")
+	foot_ik_follow_toggle.visible = foot_follow != null
+	if foot_follow != null:
+		foot_ik_follow_toggle.set_pressed_no_signal(
+				bool(foot_follow.call(&"is_stair_foot_follow_enabled")))
 	_show_debug_main()
 	debug_overlay.show()
 	set_prompt("")
@@ -708,6 +716,16 @@ func _on_detached_camera_toggled(enabled: bool) -> void:
 	var player := get_tree().get_first_node_in_group(&"player")
 	if player != null and player.has_method(&"set_detached_camera_active"):
 		player.set_detached_camera_active(enabled)
+
+
+func _on_foot_ik_follow_toggled(enabled: bool) -> void:
+	var controller := get_tree().get_first_node_in_group(&"foot_ik_camera_preset")
+	if controller == null:
+		foot_ik_follow_toggle.set_pressed_no_signal(false)
+		return
+	controller.call(&"set_stair_foot_follow_enabled", enabled)
+	foot_ik_follow_toggle.set_pressed_no_signal(
+			bool(controller.call(&"is_stair_foot_follow_enabled")))
 
 
 func _on_skeleton_visible_toggled(enabled: bool) -> void:
