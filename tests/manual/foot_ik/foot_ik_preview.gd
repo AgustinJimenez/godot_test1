@@ -1,10 +1,6 @@
 extends Node3D
-## Static reference scene for foot IK development: the same idle character
-## standing on a row of different platform shapes (flat ground, ramps at
-## several angles, staircases with different step heights), all built and
-## laid out at once so foot penetration/floating is visible across every
-## case side by side instead of testing one shape at a time in a real level.
-
+## Static scene with idle characters on different platform shapes (flat, ramps,
+## stairs) laid out at once so foot penetration/floating is visible side by side.
 const PLATFORM_WIDTH := 3.0
 const PLATFORM_LENGTH := 4.0
 const PLATFORM_THICKNESS := 0.3
@@ -26,6 +22,8 @@ const FOOT_CONTACT_DISTANCE := 0.03
 const HIP_SKIN_STRETCH_LIMIT := 0.005
 const BODY_STAIR_PENETRATION_TOLERANCE := 0.005
 const FOOTSTEP_MARKER_LIFETIME := 10.0
+const INSPECTION_YAWS: Array[float] = [0.0, PI * 0.5, PI, PI * 1.5]
+const INSPECTION_ANGLE_HOLD_TIME := 1.25 # 4 angles × 1.25s = 5.0s total idle ( STAIR_IDLE_SECONDS)
 const PLAYER_SCENE := preload("res://actors/player/player.tscn")
 const FOOT_BONE_DEBUG_SHADER := preload(
 		"res://tests/manual/foot_ik/foot_bone_debug.gdshader")
@@ -143,7 +141,13 @@ func _physics_process(delta: float) -> void:
 			continue
 		walker["timer"] = float(walker["timer"]) - delta
 		if walker["timer"] <= 0.0:
-			_start_stair_walker(walker)
+			var next_angle := int(walker["inspection_angle"]) + 1
+			if next_angle < INSPECTION_YAWS.size():
+				walker["inspection_angle"] = next_angle
+				player.rotation = Vector3(0.0, INSPECTION_YAWS[next_angle], 0.0)
+				walker["timer"] = INSPECTION_ANGLE_HOLD_TIME
+			else:
+				_start_stair_walker(walker)
 	call_deferred(&"_update_step_prediction_markers")
 
 
@@ -191,10 +195,8 @@ func _sample_airborne_ik_release() -> void:
 		_airborne_check_failed = true
 
 
-## Temporary expected-failure diagnostic. Bone origins cannot prove the skin is
-## clear: a shin, toe, or another weighted body region can cross a stair face
-## while every joint remains above its target. Bake the actual deformed mesh and
-## count vertices lying meaningfully inside the stacked stair solids.
+## Temporary expected-failure diagnostic: bone origins can't prove skin is clear
+## (a weighted region can cross a stair face while joints stay above target).
 func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 	_body_penetration_attempts += 1
 	if not walker["walking"]:
@@ -390,7 +392,8 @@ func _place_stair_walker(origin: Vector3, contact: Vector3, stair_height: float)
 		"current_tread": -1,
 		"waiting_for_step": false,
 		"top_z": origin.z + STAIR_STEP_COUNT * STAIR_TREAD_DEPTH - 0.25,
-		"timer": STAIR_IDLE_SECONDS,
+		"inspection_angle": 0,
+		"timer": INSPECTION_ANGLE_HOLD_TIME,
 		"walking": false,
 	}
 	_stair_walkers.append(walker)
@@ -423,16 +426,14 @@ func _reset_stair_walker(walker: Dictionary) -> void:
 	var player: Player = walker["player"]
 	if int(walker["trace_frame"]) > 0:
 		walker["trace_complete"] = true
-	# Keep the calibrated split-tread stance exact during the five-second
-	# inspection phase. A live CharacterBody3D resolves its capsule away from
-	# the stair edge even with zero input, shifting the hips while foot IK keeps
-	# the feet planted and producing the apparent stretched mesh regression.
-	# Disabling this node's physics callback does not pause PlayerBody or its
-	# SkeletonModifier3D children, so idle animation and IK still update.
+	# Freeze physics callback during the idle phase so capsule depenration
+	# doesn't shift the hips while foot IK keeps the feet planted. PlayerBody
+	# and its modifiers still update.
 	player.set_physics_process(false)
 	player.movement_input_override = Vector2.ZERO
 	player.global_position = walker["idle_position"]
-	player.rotation = Vector3(0.0, PI * 0.5, 0.0)
+	walker["inspection_angle"] = 0
+	player.rotation = Vector3(0.0, INSPECTION_YAWS[0], 0.0)
 	player.velocity = Vector3.ZERO
 	player._reset_stair_hover()
 	var ik := _find_foot_ik(player)
@@ -442,7 +443,7 @@ func _reset_stair_walker(walker: Dictionary) -> void:
 	player.body.update_motion(false, false, 0.0, false, true, 0.0, 0.0, false)
 	walker["current_tread"] = -1
 	walker["waiting_for_step"] = false
-	walker["timer"] = STAIR_IDLE_SECONDS
+	walker["timer"] = INSPECTION_ANGLE_HOLD_TIME
 	walker["walking"] = false
 
 
@@ -459,8 +460,7 @@ func _start_stair_walker(walker: Dictionary) -> void:
 	player.movement_input_override = Vector2(0.0, -1.0)
 	player.body.update_motion(false, false, STAIR_WALK_ANIMATION_SPEED,
 			false, true, 0.0, 0.0, false)
-	# Only the traversable 0.35m acceptance case uses live player physics.
-	# Taller stair rows remain deliberately scripted pose-limit references.
+	# Only 0.35m uses live Player physics; taller stairs are scripted pose references.
 	player.set_physics_process(bool(walker["trace_enabled"]))
 	walker["walking"] = true
 	walker["trace_frame"] = 0
@@ -477,10 +477,8 @@ func _update_physical_walker_tread(walker: Dictionary) -> void:
 	walker["waiting_for_step"] = false
 
 
-## The very tall 0.50/0.65m cases are pose limits, not traversable gameplay
-## steps. Drive the reference root along the known staircase profile so all
-## cases can expose foot IK at normal speed; the interactive Player still tests
-## the real CharacterBody3D stair solver independently.
+## 0.50/0.65m cases are pose limits, not traversable steps. Drive the root along
+## the staircase profile at normal speed; the interactive Player tests real stairs.
 func _advance_stair_walker(walker: Dictionary, delta: float) -> void:
 	var player: Player = walker["player"]
 	var next_position := player.global_position
@@ -527,9 +525,7 @@ func _log_stair_foot_frame(walker: Dictionary) -> void:
 	print("STAIR_FOOT_TRACE ", JSON.stringify(trace))
 
 
-## A leg may rotate freely, but its thigh root must remain the authored distance
-## from the shared pelvis. A larger change means IK separated a child joint from
-## its parent and the vertices weighted across that seam will visibly stretch.
+## Thigh root distance from pelvis must stay at authored rest, else skinning stretches.
 func _sample_hip_skin_stretch(player: Player, ik: PlayerFootIKModifier) -> Dictionary:
 	var sides := {}
 	var sample_max_error := 0.0
@@ -720,9 +716,8 @@ func _update_foot_contact_rays() -> void:
 		var ray_from := _foot_surface_ray_start(side, foot_probe)
 		var ray_to := ray_from + Vector3.DOWN * (
 				_prediction_ik.ray_down + _prediction_ik.ray_up)
-		# Begin the physics query just above the rendered-surface estimate so a
-		# point already touching the tread still produces a stable zero-length
-		# contact instead of being rejected as starting exactly on a collider.
+		# Begin just above the surface estimate so a foot already touching the
+		# tread gets stable zero-length contact instead of being rejected.
 		var query := PhysicsRayQueryParameters3D.create(ray_from + Vector3.UP * 0.002, ray_to)
 		query.collision_mask = 1
 		query.collide_with_areas = false
@@ -781,9 +776,8 @@ func _on_foot_landed(
 		return
 	for walker: Dictionary in _stair_walkers:
 		if walker["player"] == player and walker["walking"]:
-			# The focused 0.35m harness advances from measured rendered-foot
-			# contact below, not this animation-velocity event. The old event can
-			# fire while the sole is still tens of centimeters above the tread.
+			# The 0.35m harness advances from measured rendered contact below, not
+			# this animation-velocity event (which fires while sole is still cm above).
 			if walker["trace_enabled"]:
 				return
 			call_deferred(&"_spawn_footstep_marker", side, ground_position)
@@ -813,12 +807,9 @@ func _try_accept_physical_stair_contact(walker: Dictionary) -> void:
 		var hit_position := Vector3(hit_values[0], hit_values[1], hit_values[2])
 		if absf(hit_position.y - expected_y) > STAIR_LANDING_Y_TOLERANCE:
 			continue
-		# Contact while the authored foot is still rising is a passing brush,
-		# not a landing. Descending or nearly stationary contact is stable enough
-		# to let the root advance onto this tread. A foot already selected by the
-		# modifier as its latched support has completed the predictive swing and
-		# owns a validated contact, so do not reject it merely because the raw
-		# animation has begun the next rising phase underneath that planted pose.
+		# Contact while foot is still rising = passing brush, not landing.
+		# A latched support foot owns validated contact, so don't reject it
+		# just because raw animation has begun the next rising phase.
 		var vertical_velocity: float = ik.debug_vertical_velocity.get(side, 0.0)
 		if (vertical_velocity > ik.velocity_noise_floor
 				and ik._forced_support_side != side):
@@ -866,13 +857,7 @@ func _spawn_footstep_marker(side: StringName, ground_position: Vector3) -> void:
 	get_tree().create_timer(FOOTSTEP_MARKER_LIFETIME).timeout.connect(marker.queue_free)
 
 
-## Two more flat platforms, past the CASES row, each with a character
-## looping the walk animation *in place* (no actual locomotion - these are
-## bare PlayerBody instances with nothing driving movement input) so the
-## up/down foot lift the walk cycle should produce is visible side by side
-## with and without the modifier - the whole point of the stance/swing
-## blend added to fix the "feet don't move up and down while walking" bug
-## (see docs/task_history/foot_ik_debugging.md, Bug 4).
+## Flat platforms with walk-in-place characters (IK ON vs OFF) — Bug 4 stance/swing blend check.
 func _build_walking_dummies() -> void:
 	var cases: Array[Dictionary] = [
 		{"label": "Walk (IK ON)", "ik_active": true},
@@ -897,10 +882,7 @@ func _place_walking_character(contact: Vector3, ik_active: bool) -> void:
 			break
 
 
-## Builds the platform for `case` at `origin` and returns the world-space
-## point a character should stand on to sit at roughly the platform's
-## mid-length - the actual foot-contact point IK will eventually need to
-## solve for exactly.
+## Builds the platform for `case` at `origin`; returns the world-space footing.
 func _build_platform(case: Dictionary, origin: Vector3) -> Vector3:
 	match case["kind"]:
 		&"ramp":
@@ -921,9 +903,7 @@ func _build_flat(origin: Vector3) -> Vector3:
 	return origin + Vector3(0.0, 0.0, PLATFORM_LENGTH * 0.5)
 
 
-## A single inclined slab, rotated about local X by `angle_deg` and sized so
-## its low edge sits at `origin`'s height - a smooth ramp needs no per-point
-## profile the way the procedural stair rooms do, just one rotated box.
+## A single inclined slab rotated about local X — no per-point profile needed.
 func _build_ramp(origin: Vector3, angle_deg: float) -> Vector3:
 	var angle_rad := deg_to_rad(angle_deg)
 	var box := CSGBox3D.new()
@@ -942,9 +922,8 @@ func _build_ramp(origin: Vector3, angle_deg: float) -> Vector3:
 	return origin + Vector3(0.0, mid_rise, PLATFORM_LENGTH * 0.5)
 
 
-## A simple stacked staircase (fixed tread depth, variable riser height) -
-## no ceiling/walls/openings needed here, so plain stacked boxes are enough,
-## unlike the procedural generator's ribbon-profile stairs.
+## Stacked staircase (fixed tread depth, variable riser height) — plain boxes
+## are enough here, no ceiling/walls needed (unlike the procedural generator).
 func _build_stairs(origin: Vector3, step_height: float) -> Vector3:
 	for step in STAIR_STEP_COUNT:
 		var step_rise := step_height * (step + 1)
@@ -956,8 +935,8 @@ func _build_stairs(origin: Vector3, step_height: float) -> Vector3:
 		box.position = origin + Vector3(
 				0.0, step_rise * 0.5, tread_start_z + STAIR_TREAD_DEPTH * 0.5)
 		add_child(box)
-		# CSGBox3D only supports one material for all faces. Keep the collision
-		# box blue, then place a non-colliding paper-thin red cap over its tread.
+		# CSGBox3D only supports one material for all faces: collision box blue,
+		# then a non-colliding paper-thin red cap over the tread.
 		var tread := CSGBox3D.new()
 		tread.size = Vector3(
 				PLATFORM_WIDTH, STAIR_TREAD_DEBUG_THICKNESS, STAIR_TREAD_DEPTH)
@@ -968,12 +947,9 @@ func _build_stairs(origin: Vector3, step_height: float) -> Vector3:
 				step_rise + STAIR_TREAD_DEBUG_THICKNESS * 0.5,
 				tread_start_z + STAIR_TREAD_DEPTH * 0.5)
 		add_child(tread)
-	# Stand right on the riser boundary between two middle steps, not a tread
-	# center - combined with the 90-degree yaw in _ready() (which turns the
-	# character's own left/right foot stance into a world-Z offset, the same
-	# axis steps progress along), this is what puts one foot on the lower
-	# tread and the other on the higher one instead of both feet on the same
-	# step.
+	# Stand on the riser boundary between two middle steps, not a tread center.
+	# Combined with the 90-degree yaw in _ready(), this puts one foot on the
+	# lower tread and the other on the higher one.
 	var mid_step := STAIR_STEP_COUNT / 2
 	var lower_rise := step_height * mid_step
 	var upper_rise := step_height * (mid_step + 1)
