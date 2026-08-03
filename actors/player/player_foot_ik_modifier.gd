@@ -27,6 +27,9 @@ const LOG_SOLE_AXIS := true
 const LEG_SOLVER := preload("res://actors/player/foot_ik/foot_ik_leg_solver.gd")
 const GAIT_TRACKER := preload("res://actors/player/foot_ik/foot_ik_gait_tracker.gd")
 const STAIR_PREDICTOR := preload("res://actors/player/foot_ik/foot_ik_stair_predictor.gd")
+const NATIVE_BACKEND := preload("res://actors/player/foot_ik/foot_ik_native_backend.gd")
+
+enum SolverBackend { CUSTOM, NATIVE_TWO_BONE }
 
 ## How far above/below the animated foot position to search for ground.
 ## The default `ray_down` comfortably covers the tallest single stair riser
@@ -148,6 +151,7 @@ const GROUND_CONTACT_DISTANCE := 0.03
 @export var step_lift_rate: float = 36.0
 @export var flat_idle_noop_distance: float = 0.01 # Preserve authored idle inside 1 cm.
 @export_range(0.0, 170.0, 1.0) var max_knee_flexion_degrees: float = 150.0
+@export var solver_backend := SolverBackend.CUSTOM
 const LEGS := {
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot", "toe": &"LeftToeBase"},
 	&"right": {
@@ -157,6 +161,7 @@ var player_body: PlayerBody
 var _leg_solver: RefCounted
 var _gait_tracker: RefCounted
 var _stair_predictor: RefCounted
+var _native_backend: RefCounted
 
 var _bone_indices: Dictionary = {} # side -> {hip, knee, foot, toe, leaf: int}
 var _leg_lengths: Dictionary = {} # side -> {upper, lower: float}
@@ -223,12 +228,31 @@ func set_character_grounded(value: bool) -> void:
 		return
 	reset_runtime_state()
 	active = value
+	if _native_backend != null:
+		_native_backend.set_enabled(value and solver_backend == SolverBackend.NATIVE_TWO_BONE)
+
+
+func set_solver_backend(value: SolverBackend) -> void:
+	if solver_backend == value:
+		return
+	reset_runtime_state()
+	solver_backend = value
+	if _native_backend != null:
+		_native_backend.set_enabled(active and solver_backend == SolverBackend.NATIVE_TWO_BONE)
+
+
+func set_debug_enabled(value: bool) -> void:
+	active = value
+	reset_runtime_state()
+	if _native_backend != null:
+		_native_backend.set_enabled(value and solver_backend == SolverBackend.NATIVE_TWO_BONE)
 
 
 func _ready() -> void:
 	_leg_solver = LEG_SOLVER.new(self)
 	_gait_tracker = GAIT_TRACKER.new(self)
 	_stair_predictor = STAIR_PREDICTOR.new(self)
+	_native_backend = NATIVE_BACKEND.new(self)
 	var skel := get_skeleton()
 	if skel == null:
 		return
@@ -293,6 +317,8 @@ func _ready() -> void:
 				sole_down_local, _toe_rest_offset.get(side, Vector3.ZERO))
 		var local_right := sole_down_local.cross(local_forward).normalized()
 		_foot_frame_local[side] = Basis(local_right, sole_down_local, local_forward)
+	_native_backend.setup(skel, _bone_indices)
+	_native_backend.set_enabled(active and solver_backend == SolverBackend.NATIVE_TWO_BONE)
 
 
 ## The rig's rest/bind pose is the one reference guaranteed to show the
@@ -520,6 +546,9 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			var pelvis_world := to_world * skel.get_bone_global_pose(pelvis_idx)
 			pelvis_world.origin -= Vector3.UP * shared_drop
 			skel.set_bone_global_pose(pelvis_idx, to_world.affine_inverse() * pelvis_world)
+	if solver_backend == SolverBackend.NATIVE_TWO_BONE:
+		_native_backend.update_targets(skel, per_leg)
+		return
 	for side: StringName in _bone_indices:
 		var leg: Dictionary = per_leg[side]
 		if not leg["hit"] or leg.get("preserve_idle_pose", false):

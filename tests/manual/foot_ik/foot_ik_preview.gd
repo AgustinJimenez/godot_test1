@@ -4,7 +4,6 @@ extends Node3D
 ## several angles, staircases with different step heights), all built and
 ## laid out at once so foot penetration/floating is visible across every
 ## case side by side instead of testing one shape at a time in a real level.
-## No IK is applied yet - this is deliberately "before" footage.
 
 const PLATFORM_WIDTH := 3.0
 const PLATFORM_LENGTH := 4.0
@@ -66,6 +65,7 @@ var _stretch_check_samples := 0
 var _stretch_check_max_error := 0.0
 var _stretch_check_failed := false
 var _automated_stretch_check := "--foot-ik-check" in OS.get_cmdline_user_args()
+var _use_native_backend := "--native-foot-ik" in OS.get_cmdline_user_args()
 var _automated_check_frame := 0
 var _airborne_check_samples := 0
 var _airborne_check_failed := false
@@ -363,6 +363,9 @@ func _place_stair_walker(origin: Vector3, contact: Vector3, stair_height: float)
 	_apply_stair_foot_debug_material(player)
 	for child in player.skeleton.get_children():
 		if child is PlayerFootIKModifier:
+			# Interactive focus defaults native; automation requires its explicit flag.
+			if _use_native_backend or (trace_enabled and not _automated_stretch_check):
+				child.set_solver_backend(PlayerFootIKModifier.SolverBackend.NATIVE_TWO_BONE)
 			child.ray_up = maxf(child.ray_up, stair_height + 0.2)
 			child.ray_down = maxf(child.ray_down, stair_height + 0.2)
 			child.foot_landed.connect(_on_foot_landed.bind(player))
@@ -507,6 +510,7 @@ func _log_stair_foot_frame(walker: Dictionary) -> void:
 	walker["trace_frame"] = int(walker["trace_frame"]) + 1
 	var trace := {
 		"frame": walker["trace_frame"],
+		"solver_backend": PlayerFootIKModifier.SolverBackend.keys()[ik.solver_backend],
 		"physics_frame": Engine.get_physics_frames(),
 		"animation_time": player.body.anim_player.current_animation_position,
 		"root": _vector_to_array(player.global_position),

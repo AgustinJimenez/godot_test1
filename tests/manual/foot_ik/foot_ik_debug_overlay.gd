@@ -1,23 +1,6 @@
 extends Node3D
-## Live foot-IK debug tool for foot_ik_preview.tscn only - finds the real,
-## player-controlled PlayerFootIKModifier (not the static test dummies) and
-## exposes it two ways at once, since neither alone was enough to diagnose
-## why the static-preview renders kept looking right while real gameplay
-## didn't:
-##   1. In-world gizmo spheres (green = raw raycast hit, blue = IK target
-##      i.e. hit + ankle offset, red = actual foot bone position, yellow =
-##      actual toe/ball bone position - all tracked via BoneAttachment3D
-##      since Skeleton3D.get_bone_global_pose() does not reflect modifier
-##      results when read from outside the modifier stack) for both feet,
-##      updated every physics frame so they follow the player while walking.
-##   2. An on-screen panel: toggle IK on/off and live-tune ankle
-##      offset/smooth rate/ray up/ray down against real movement, plus a
-##      numeric per-foot readout (hit, target Y, actual Y, gap, sole pitch,
-##      toe Y, toe gap) - this is the reliable source of truth; screenshots
-##      of the spheres are easy to misjudge, the printed numbers aren't.
-## The detached spectator camera used to live here too - moved to
-## Player.set_detached_camera_active()/the debug menu's "Detached Camera"
-## toggle instead, since that's useful in every scene, not just this one.
+## Live contact/target/bone markers, solver controls, and numeric pose data.
+## BoneAttachment3D probes expose the final post-modifier skeleton pose.
 
 const MARKER_RADIUS := 0.015
 ## The toe/ball bone's own origin sits at the base of the toes, not the
@@ -84,6 +67,7 @@ const READOUT_FIELDS := [
 ]
 
 var _active_check: CheckButton
+var _backend_option: OptionButton
 var _pause_button: Button
 var _paused_animation_process_modes: Dictionary = {}
 var _animation_timeline: HSlider
@@ -493,11 +477,27 @@ func _build_panel() -> void:
 	_active_check.custom_minimum_size = Vector2(0, 44)
 	_active_check.button_pressed = _ik.active
 	_active_check.toggled.connect(func(pressed: bool) -> void:
-		_ik.active = pressed
+		_ik.set_debug_enabled(pressed)
 		_style_active_check(pressed)
 		_refresh_paused_ik_pose())
 	_style_active_check(_ik.active)
 	vbox.add_child(_active_check)
+
+	var backend_row := HBoxContainer.new()
+	var backend_label := Label.new()
+	backend_label.text = "Solver Backend"
+	backend_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	backend_row.add_child(backend_label)
+	_backend_option = OptionButton.new()
+	_backend_option.add_item("Custom", PlayerFootIKModifier.SolverBackend.CUSTOM)
+	_backend_option.add_item(
+			"Native TwoBone", PlayerFootIKModifier.SolverBackend.NATIVE_TWO_BONE)
+	_backend_option.select(_backend_option.get_item_index(_ik.solver_backend))
+	_backend_option.item_selected.connect(func(index: int) -> void:
+		_ik.set_solver_backend(_backend_option.get_item_id(index))
+		_refresh_paused_ik_pose())
+	backend_row.add_child(_backend_option)
+	vbox.add_child(backend_row)
 
 	_pause_button = Button.new()
 	_pause_button.add_theme_font_size_override("font_size", 24)

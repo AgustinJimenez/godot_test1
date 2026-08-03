@@ -30,6 +30,24 @@ The current custom implementation is being preserved as the first checkpoint on
 Native IK is a solver replacement, not a complete stair solution. Regardless of backend, the target
 must still lift above the riser, cross its plane, and then descend onto the tread.
 
+Current prototype status:
+
+- `foot_ik_native_backend.gd` configures one native `TwoBoneIK3D` with two settings, separate
+  target nodes, and separate anatomical knee poles.
+- The Foot IK modifier retains target generation and switches exclusively between the custom and
+  native output backends.
+- The Foot IK debug panel has a `Solver Backend` dropdown for immediate Custom/Native comparison.
+- Interactive launches default the focused 0.35 m stair character to Native TwoBone while leaving
+  the general controllable player and other references on Custom. Automated checks stay Custom by
+  default; add `--native-foot-ik` to force the native focused run.
+- The automated custom and native runs currently produce effectively identical ankle endpoints and
+  the same penetration metrics. This confirms the native backend is wired to the shared targets; it
+  does **not** demonstrate a visible improvement, so the normal-speed manual comparison is decisive.
+- The native prototype has anatomical pole targets, but it does not yet apply the custom solver's
+  `max_knee_flexion_degrees` limit. Before adopting it for gameplay, verify knee direction throughout
+  idle, walking, stair contact, and landing, then add a native `BoneConstraint3D` if the pole alone is
+  insufficient.
+
 ## Current user-visible result
 
 - The controllable player and the focused 0.35 m reference character use the same shared stair
