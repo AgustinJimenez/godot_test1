@@ -11,14 +11,23 @@ func _init(owner) -> void:
 
 func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
 		ground_target: Vector3, contact_hit: bool, contact_distance: float,
-		to_world: Transform3D, delta: float) -> Dictionary:
+		to_world: Transform3D, delta: float, step_down: bool = false) -> Dictionary:
 	var velocity := _measure_velocity(side, animated_foot_pos, to_world, delta)
-	var contact_lost: bool = _owner.step_prediction_enabled and (not contact_hit
+	var force_plant: bool = _owner.force_plant_mode
+	# A stationary stance foot easing down onto a reachable lower surface must
+	# not be treated as contact-lost just because the sole is further than
+	# GROUND_CONTACT_DISTANCE above it - step-down bypasses the distance gate
+	# so the weight can rise and plant the foot on the lower target.
+	var contact_lost: bool = not step_down and _owner.step_prediction_enabled \
+			and not force_plant and (
+			not contact_hit
 			or contact_distance > _owner.GROUND_CONTACT_DISTANCE
 			or foot_pos.distance_to(ground_target) > _owner.GROUND_CONTACT_DISTANCE)
 	var raw_weight := _raw_weight(side, velocity)
 	if contact_lost:
 		raw_weight = 0.0
+	elif force_plant:
+		raw_weight = 1.0
 	var weight := _smooth_weight(side, raw_weight, contact_lost, delta)
 	var landed := _update_landing(side, velocity, delta)
 	return {"vertical_velocity": velocity, "ground_weight": weight, "landed": landed}

@@ -24,6 +24,11 @@ signal foot_landed(side: StringName, ground_position: Vector3)
 ## has a genuinely different bone-axis convention shows up as a readable log
 ## line instead of a silent wrong-looking foot.
 const LOG_SOLE_AXIS := true
+## Logs the measured planted sole depth for each leg once at rig setup (see
+## _measure_leg_sole_depth) - worth keeping so a rig whose bind geometry hangs
+## unusually low under the ball/toe shows up as a readable line instead of a
+## silent sole sinking into the floor.
+const LOG_SOLE_DEPTH := true
 const LEG_SOLVER := preload("res://actors/player/foot_ik/foot_ik_leg_solver.gd")
 const GAIT_TRACKER := preload("res://actors/player/foot_ik/foot_ik_gait_tracker.gd")
 const STAIR_PREDICTOR := preload("res://actors/player/foot_ik/foot_ik_stair_predictor.gd")
@@ -151,6 +156,31 @@ const GROUND_CONTACT_DISTANCE := 0.03
 @export var step_lift_rate: float = 36.0
 @export var flat_idle_noop_distance: float = 0.01 # Preserve authored idle inside 1 cm.
 @export_range(0.0, 170.0, 1.0) var max_knee_flexion_degrees: float = 150.0
+## When true, overrides the gait tracker's contact-lost check and forces both
+## feet to plant on the ground. Used by the foot IK harness during inspection
+## idle poses where the animated foot height does not match the step geometry
+## and would otherwise keep ground_weight at 0.0 (foot floats above the tread).
+var force_plant_mode: bool = false
+## Idle step-down planting: a stationary stance foot whose sole rests more than
+## GROUND_CONTACT_DISTANCE above a lower surface (e.g. the character stopped
+## straddling a stair riser) eases down onto it instead of floating. Requires
+## the foot to be essentially motionless for STEP_DOWN_STATIC_STREAK consecutive
+## real-delta frames and the drop to fit step_down_max_drop. step_down_pelvis_drop
+## is how far the shared pelvis may sink to reach it - a standing leg has only
+## ~4cm of slack (hip-to-foot already ~0.84 of the 0.887 max reach), so planting
+## a foot one riser below requires the pelvis to drop roughly the full step
+## height (minus that slack), which reads as a controlled crouch. These two caps
+## define the "step" envelope: anything within them is a step and never floats;
+## anything beyond is a ledge the standing leg physically cannot reach, and the
+## foot is left at its animated pose rather than bending the body into a squat.
+## Gameplay stairs stay below 0.40m, and the 0.35m focused harness case fits the
+## envelope with a ~0.33 sink; the 0.50m/0.65m pose-limit references are ledges.
+## Never engages while airborne (active is false) or when the harness has
+## force_plant_mode on.
+@export_range(0.0, 1.0, 0.01) var idle_step_down_speed: float = 0.06
+@export_range(0.0, 1.0, 0.01) var step_down_max_drop: float = 0.4
+@export_range(0.0, 0.75, 0.005) var step_down_pelvis_drop: float = 0.35
+const STEP_DOWN_STATIC_STREAK := 4
 @export var solver_backend := SolverBackend.CUSTOM
 const LEGS := {
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot", "toe": &"LeftToeBase"},
@@ -166,6 +196,12 @@ var _native_backend: RefCounted
 var _bone_indices: Dictionary = {} # side -> {hip, knee, foot, toe, leaf: int}
 var _leg_lengths: Dictionary = {} # side -> {upper, lower: float}
 var _sole_down_local: Dictionary = {} # side -> Vector3, one of the 6 principal axes
+## Max extent of this leg's planted bind geometry below the foot bone's origin
+## (meters), measured once at rig setup from the skinned mesh - see
+## _measure_leg_sole_depth. Fed into effective_offset in _sample_ground_contact
+## so a planted sole clears the ground even when the ball/toe geometry hangs
+## below the bone origins the offset would otherwise be computed from.
+var _sole_depth_below_foot: Dictionary = {} # side -> float
 ## Toe's rest-pose position/orientation relative to the foot, in the foot's
 ## own rest-pose local space - see _solve_leg's toe section for why this
 ## (not the toe's *animated* pose) is what the toe gets rigidly rebuilt
@@ -200,6 +236,7 @@ var _smoothed_ground_weight: Dictionary = {} # side -> float
 ## min_falling_streak's own doc comment.
 var _falling_streak: Dictionary = {} # side -> int
 var _landing_fell: Dictionary = {} # side -> bool
+var _step_down_static_streak: Dictionary = {} # side -> int
 var _smoothed_step_lift: Dictionary:
 	get:
 		return _stair_predictor.get_step_lifts() if _stair_predictor != null else {}
@@ -207,6 +244,19 @@ var predicted_step_targets: Dictionary:
 	get:
 		return _stair_predictor.get_predicted_targets() if _stair_predictor != null else {}
 var debug_vertical_velocity: Dictionary = {} # side -> pre-IK animation velocity
+## Surface-to-surface measurement used by the gait tracker: vertical distance
+## from the animated sole/toe lowest point to the secondary ground ray hit.
+## INF when no secondary contact exists; exposes the controlled character's
+## own value so harness readouts don't borrow the 0.35m walker's rays.
+var debug_contact_distance: Dictionary = {} # side -> float
+var debug_contact_hit: Dictionary = {} # side -> bool
+var debug_step_down: Dictionary = {} # side -> bool
+## Final post-IK skeleton-space global poses (bone index -> Transform3D),
+## captured at the end of each modification pass. External harnesses sample
+## these instead of get_bone_global_pose() at their own (idle) time, where the
+## skeleton may still hold the pre-IK animated pose from the last animation
+## update and would otherwise skin a mesh that was never actually rendered.
+var _final_bone_poses: Dictionary = {} # int bone index -> Transform3D (skeleton space)
 var _forced_support_side: StringName:
 	get:
 		return _stair_predictor.get_support_side() if _stair_predictor != null else &""
@@ -219,7 +269,11 @@ func reset_runtime_state() -> void:
 	_smoothed_ground_weight.clear()
 	_falling_streak.clear()
 	_landing_fell.clear()
+	_step_down_static_streak.clear()
 	debug_vertical_velocity.clear()
+	debug_contact_distance.clear()
+	debug_contact_hit.clear()
+	debug_step_down.clear()
 	if _stair_predictor != null:
 		_stair_predictor.reset()
 
@@ -319,6 +373,11 @@ func _ready() -> void:
 		_foot_frame_local[side] = Basis(local_right, sole_down_local, local_forward)
 	_native_backend.setup(skel, _bone_indices)
 	_native_backend.set_enabled(active and solver_backend == SolverBackend.NATIVE_TWO_BONE)
+	for side: StringName in _bone_indices:
+		_sole_depth_below_foot[side] = _measure_leg_sole_depth(skel, side)
+		if LOG_SOLE_DEPTH:
+			print("[FootIK] ", side, " measured planted sole depth below foot origin=",
+					_sole_depth_below_foot[side])
 
 
 ## The rig's rest/bind pose is the one reference guaranteed to show the
@@ -403,6 +462,115 @@ func _compute_new_foot_basis_world(
 	return target_basis * local_frame.inverse()
 
 
+## Measures how far this leg's own planted bind geometry extends below the foot
+## bone's origin, once at rig setup. Bone origins sit at joints, not at the
+## lowest skinned sole point - the ball/toe bind geometry can hang several cm
+## below the toe bone origin (measured ~9mm into the tread on the MotusMan rig
+## before this existed), so a clearance model built only from bone origins and
+## a toe-tip margin still leaves a planted foot looking sunk into the floor.
+## Data-driven (no per-asset constants): CPU-skins every skinned vertex that
+## influences this leg's foot/toe/leaf bones through their flat planted pose -
+## foot on the level-ground corrected basis (desired_down = world DOWN, the
+## same -smoothed_normal the solver passes on a flat tread) with origin at
+## ZERO, toe/leaf at their full-weight rest offsets and bases, exactly what
+## the solver produces on level ground at full ground_weight - and reports the
+## deepest point below the foot origin. Matches the solver's own output math
+## (see foot_ik_leg_solver.gd's solve/_solve_toes) so the measured extent
+## corresponds 1:1 with the rendered planted sole.
+func _measure_leg_sole_depth(skel: Skeleton3D, side: StringName) -> float:
+	var indices: Dictionary = _bone_indices[side]
+	var chain := {int(indices["foot"]): true}
+	if indices["toe"] >= 0:
+		chain[int(indices["toe"])] = true
+	if indices["leaf"] >= 0:
+		chain[int(indices["leaf"])] = true
+	var planted_basis := _compute_new_foot_basis_world(skel, side, Vector3.DOWN)
+	var chain_poses := {int(indices["foot"]): Transform3D(planted_basis, Vector3.ZERO)}
+	if indices["toe"] >= 0:
+		chain_poses[int(indices["toe"])] = Transform3D(
+				planted_basis * (_toe_rest_relative_basis[side] as Basis),
+				planted_basis * (_toe_rest_offset[side] as Vector3))
+	if indices["leaf"] >= 0:
+		chain_poses[int(indices["leaf"])] = Transform3D(
+				planted_basis * (_leaf_rest_relative_basis[side] as Basis),
+				planted_basis * (_leaf_rest_offset[side] as Vector3))
+	var max_depth := 0.0
+	if player_body == null or not is_instance_valid(player_body.character):
+		return max_depth
+	var meshes := player_body.character.find_children("*", "MeshInstance3D", true, false)
+	for mesh_node: Node in meshes:
+		var mesh_part := mesh_node as MeshInstance3D
+		if mesh_part == null or mesh_part.mesh == null:
+			continue
+		var skin_reference := mesh_part.get_skin_reference()
+		if skin_reference == null:
+			continue
+		var skin := skin_reference.get_skin()
+		if skin == null:
+			continue
+		var is_chain_bind: Array[bool] = []
+		is_chain_bind.resize(skin.get_bind_count())
+		var planted_bind_transforms: Array[Transform3D] = []
+		planted_bind_transforms.resize(skin.get_bind_count())
+		for bind_index in skin.get_bind_count():
+			var bone_index := skin.get_bind_bone(bind_index)
+			if bone_index < 0:
+				bone_index = skel.find_bone(skin.get_bind_name(bind_index))
+			var in_chain: bool = bone_index >= 0 and chain.has(bone_index)
+			is_chain_bind[bind_index] = in_chain
+			if in_chain:
+				# Same composition as the runtime skin (bone pose then the
+				# skin's per-bone bind pose), with the chain bone taking its
+				# flat planted pose - omitting the bind pose here made the
+				# measured sole depth ~1.5cm shallow vs the rendered mesh.
+				planted_bind_transforms[bind_index] = (
+						chain_poses[bone_index] * skin.get_bind_pose(bind_index))
+			elif bone_index >= 0:
+				# Non-chain influences (e.g. the shin pulling on ankle-top
+				# vertices) keep their rest pose; the deepest sole vertices
+				# are foot-chain-dominant, so this only biases the top edge.
+				planted_bind_transforms[bind_index] = (
+						skel.get_bone_global_pose(bone_index) * skin.get_bind_pose(bind_index))
+			else:
+				planted_bind_transforms[bind_index] = Transform3D.IDENTITY
+		for surface in mesh_part.mesh.get_surface_count():
+			var arrays := mesh_part.mesh.surface_get_arrays(surface)
+			var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+			var bones := (
+					arrays[Mesh.ARRAY_BONES] as PackedInt32Array
+					if arrays[Mesh.ARRAY_BONES] is PackedInt32Array else PackedInt32Array())
+			var weights := (
+					arrays[Mesh.ARRAY_WEIGHTS] as PackedFloat32Array
+					if arrays[Mesh.ARRAY_WEIGHTS] is PackedFloat32Array else PackedFloat32Array())
+			if vertices.is_empty() or bones.is_empty() or weights.is_empty():
+				continue
+			var influences := bones.size() / vertices.size()
+			for vertex_index in vertices.size():
+				var touches_chain := false
+				for influence in influences:
+					var bind_index: int = bones[vertex_index * influences + influence]
+					if (bind_index >= 0 and bind_index < is_chain_bind.size()
+							and is_chain_bind[bind_index]):
+						touches_chain = true
+						break
+				if not touches_chain:
+					continue
+				var planted := Vector3.ZERO
+				var total_weight := 0.0
+				for influence in influences:
+					var array_index := vertex_index * influences + influence
+					var weight: float = weights[array_index]
+					var bind_index: int = bones[array_index]
+					if (weight <= 0.0 or bind_index < 0
+							or bind_index >= planted_bind_transforms.size()):
+						continue
+					planted += (planted_bind_transforms[bind_index] * vertices[vertex_index]) * weight
+					total_weight += weight
+				if total_weight > 0.0:
+					max_depth = maxf(max_depth, -(planted / total_weight).y)
+	return max_depth
+
+
 func _process_modification_with_delta(delta: float) -> void:
 	var skel := get_skeleton()
 	if skel == null:
@@ -433,6 +601,9 @@ func _process_modification_with_delta(delta: float) -> void:
 		per_leg[side] = {"hip_pos": hip_pos, "hit": contact["hit"], "upper": upper_length,
 				"lower": lower_length, "vertical_velocity": 0.0}
 		if not contact["hit"]:
+			debug_contact_hit[side] = false
+			debug_contact_distance[side] = -1.0
+			debug_step_down[side] = false
 			continue
 		var raw_target: Vector3 = contact["raw_target"]
 		var raw_normal: Vector3 = contact["raw_normal"]
@@ -445,8 +616,15 @@ func _process_modification_with_delta(delta: float) -> void:
 		var animated_contact_position: Vector3 = contact["animated_contact_position"]
 		var animated_contact_normal: Vector3 = contact["animated_contact_normal"]
 
+		var anim_speed := _animated_vertical_speed(
+				side, animated_foot_pos, to_world, delta)
+		var step_down := _step_down_eligible(
+				side, hip_pos, ground_target, animated_contact_hit,
+				animated_contact_distance, anim_speed, upper_length, lower_length)
+		debug_step_down[side] = step_down
 		var gait: Dictionary = _gait_tracker.update(side, animated_foot_pos, foot_pos,
-				ground_target, animated_contact_hit, animated_contact_distance, to_world, delta)
+				ground_target, animated_contact_hit, animated_contact_distance, to_world,
+				delta, step_down)
 		var vertical_velocity: float = gait["vertical_velocity"]
 		var ground_weight: float = gait["ground_weight"]
 		var landed: bool = gait["landed"]
@@ -462,7 +640,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		if step_prediction_enabled:
 			target += Vector3.UP * _stair_predictor.update_swing_lift(
 					space, side, foot_pos, animated_foot_pose.basis, raw_target,
-					animated_lowest_point, ground_weight, landed, delta)
+					animated_lowest_point, ground_weight, landed, delta, step_down)
 
 		per_leg[side]["target"] = target
 		per_leg[side]["ground_target"] = ground_target
@@ -478,6 +656,9 @@ func _process_modification_with_delta(delta: float) -> void:
 		per_leg[side]["vertical_velocity"] = vertical_velocity
 		per_leg[side]["ground_weight"] = ground_weight
 		per_leg[side]["preserve_idle_pose"] = preserve_idle_pose
+		debug_contact_hit[side] = animated_contact_hit
+		debug_contact_distance[side] = (
+				animated_contact_distance if animated_contact_hit else -1.0)
 		if preserve_idle_pose:
 			continue
 		var max_reach := upper_length + lower_length - 0.001
@@ -487,6 +668,53 @@ func _process_modification_with_delta(delta: float) -> void:
 		shared_drop = maxf(shared_drop, needed_drop)
 
 	_apply_support_pelvis_and_legs(skel, to_world, per_leg, shared_drop)
+	for i in skel.get_bone_count():
+		_final_bone_poses[i] = skel.get_bone_global_pose(i)
+
+
+## Mirrors foot_ik_gait_tracker._measure_velocity so the step-down static test
+## uses the exact same per-frame foot speed the weight logic sees. Reads the
+## previous frame's skeleton-space foot position, which the gait tracker has
+## already stored, and measures relative to the skeleton so root stair-hover
+## translation cannot masquerade as foot motion.
+func _animated_vertical_speed(side: StringName, animated_foot_pos: Vector3,
+		to_world: Transform3D, delta: float) -> float:
+	if delta <= 0.0 or not _prev_animated_foot_pos.has(side):
+		return 0.0
+	var previous: Vector3 = _prev_animated_foot_pos[side]
+	var world_delta := to_world.basis * (animated_foot_pos - previous)
+	return world_delta.dot(_smoothed_normal[side] as Vector3) / (
+			delta * maxf(player_body.locomotion_playback_scale, 0.001))
+
+
+## Decides whether this foot should ease down onto a lower surface it hovers
+## over while stationary (stair-riser straddle). Requires a sustained streak
+## of static frames so a swing's single near-zero-velocity apex frame can
+## never fake "stationary", the sole to be meaningfully above the lower
+## surface (more than GROUND_CONTACT_DISTANCE, else ordinary planting already
+## handles it), the drop within step_down_max_drop, and the lower target to be
+## reachable without sinking the shared pelvis past step_down_pelvis_drop.
+## Drops beyond both caps are ledges (the standing leg cannot physically reach
+## them), so they stay at the animated pose instead of bending into a squat.
+func _step_down_eligible(side: StringName, hip_pos: Vector3, ground_target: Vector3,
+		contact_hit: bool, contact_distance: float, anim_speed: float,
+		upper_length: float, lower_length: float) -> bool:
+	if not step_prediction_enabled or force_plant_mode:
+		_step_down_static_streak[side] = 0
+		return false
+	_step_down_static_streak[side] = int(_step_down_static_streak.get(side, 0)) + 1 \
+			if absf(anim_speed) <= idle_step_down_speed else 0
+	if int(_step_down_static_streak.get(side, 0)) < STEP_DOWN_STATIC_STREAK:
+		return false
+	if not contact_hit or not is_finite(contact_distance):
+		return false
+	if contact_distance <= GROUND_CONTACT_DISTANCE or contact_distance > step_down_max_drop:
+		return false
+	var max_reach := upper_length + lower_length - 0.001
+	var horizontal_dist_sq := Vector2(
+			hip_pos.x - ground_target.x, hip_pos.z - ground_target.z).length_squared()
+	var max_vertical_diff := sqrt(maxf(0.0, max_reach * max_reach - horizontal_dist_sq))
+	return (hip_pos.y - ground_target.y) - max_vertical_diff <= step_down_pelvis_drop
 
 
 func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
@@ -510,7 +738,8 @@ func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 	var tip_offset := toe_offset
 	if not toe_offset.is_zero_approx():
 		tip_offset += toe_offset.normalized() * toe_tip_margin
-	var effective_offset := maxf(ankle_offset, tip_offset.dot(desired_down))
+	var effective_offset := maxf(ankle_offset, maxf(
+			tip_offset.dot(desired_down), _sole_depth_below_foot.get(side, 0.0)))
 	var animated_lowest_point := foot_pos
 	var surface_hit := {"hit": false}
 	if step_prediction_enabled:

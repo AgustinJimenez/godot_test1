@@ -26,11 +26,11 @@ if ! rg -q "FOOT_IK_AIRBORNE_CHECK PASS samples=[1-9]" "$log_file"; then
 	exit 1
 fi
 
-if ! rg -q "FOOT_IK_BODY_PENETRATION_CHECK (XFAIL|XPASS) samples=[1-9]" "$log_file"; then
+if ! rg -q "FOOT_IK_BODY_PENETRATION_CHECK PASS samples=[1-9]" "$log_file"; then
 	cat "$log_file"
-	printf '%s\n' "Foot IK rendered-body stair penetration check did not run."
+	printf '%s\n' "Foot IK rendered-body stair penetration check did not pass."
 	exit 1
 fi
 
-rg "FOOT_IK_(STRETCH|AIRBORNE)_CHECK PASS|FOOT_IK_BODY_PENETRATION_CHECK (XFAIL|XPASS)" \
+rg "FOOT_IK_(STRETCH|AIRBORNE)_CHECK PASS|FOOT_IK_BODY_PENETRATION_CHECK PASS" \
 	"$log_file"

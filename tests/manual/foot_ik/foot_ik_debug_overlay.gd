@@ -29,6 +29,7 @@ const STAIR_FOLLOW_ROOT_OFFSET := Vector3(-0.7034, 0.0967, -0.2845)
 const STAIR_FOLLOW_ORBIT_SENSITIVITY := 0.006
 const STAIR_FOLLOW_MIN_DISTANCE := 0.08
 const STAIR_FOLLOW_MAX_DISTANCE := 4.0
+const CONTROLLED_TRACE_FILE := "user://foot_ik_controlled.jsonl"
 
 var _player_body: PlayerBody
 var _ik: PlayerFootIKModifier
@@ -59,6 +60,7 @@ const READOUT_FIELDS := [
 	["toe_tip_y", "Toe Tip Y"],
 	["toe_tip_gap", "Toe Gap"],
 	["ground_weight", "IK Weight"],
+	["step_down", "StepDown"],
 	["vertical_velocity", "Anim VY"],
 	["thigh_angle", "Thigh°"],
 	["shin_angle", "Shin°"],
@@ -89,13 +91,13 @@ var _follow_has_anchor := false
 var _follow_orbit_dragging := false
 var _follow_orbit_last_mouse_position := Vector2.ZERO
 
-
 func _ready() -> void:
 	# This overlay must remain interactive while SceneTree.paused is true;
 	# everything else in the harness inherits the ordinary pausable mode.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	add_to_group(&"foot_ik_camera_preset")
-	call_deferred(&"set_stair_foot_follow_enabled", true)
+	FileAccess.open(CONTROLLED_TRACE_FILE, FileAccess.WRITE).close()
+	call_deferred(&"set_stair_foot_follow_enabled", false)
 	# Captured before any physics settling/movement, so it always reflects
 	# foot_ik_preview.tscn's own authored Player transform regardless of
 	# when in the scene's lifetime the close-up camera actually gets used.
@@ -132,7 +134,6 @@ func _ready() -> void:
 		_markers[str(side) + "_hit"] = _spawn_marker(Color.GREEN)
 		_markers[str(side) + "_target"] = _spawn_marker(Color.BLUE)
 		_markers[str(side) + "_actual"] = _spawn_marker(Color.RED)
-
 		# Separate probe/marker for the toe/ball bone specifically - the
 		# ankle marker above can sit right at the target while the toe still
 		# visibly pokes up, since it's a distinct bone with its own pose.
@@ -180,7 +181,6 @@ func _ready() -> void:
 	# that action too and would open/pause the inventory overlay on the same
 	# keypress, fighting this toggle instead of complementing it.
 
-
 ## DetachedCam is a child of Player (see player.tscn) - positioning it
 ## before the player has finished falling/settling onto the floor from its
 ## spawn height means the settle-fall that happens over the next several
@@ -198,7 +198,6 @@ func _wait_for_player_to_settle() -> void:
 			return
 		await get_tree().physics_frame
 
-
 ## A specific close-up-on-the-right-foot framing, read off the camera
 ## readout label after manually flying to a good spot - stored as an offset
 ## from the player's own authored spawn transform (captured once in _ready()
@@ -210,7 +209,6 @@ func _wait_for_player_to_settle() -> void:
 const DEFAULT_CAMERA_OFFSET := Vector3(0.57, -0.85, 0.45)
 const DEFAULT_CAMERA_ROTATION_DEG := Vector3(-27.8, 37.9, 0.0)
 var _player_spawn_position: Vector3
-
 
 ## Not default-on anymore - now that foot placement itself is solved, the
 ## close-up-on-the-foot framing this scene forced on load stopped being the
@@ -235,7 +233,6 @@ func _start_detached_camera_on_foot() -> void:
 	# straight back to that original orientation.
 	player._detached_yaw = cam.rotation.y
 	player._detached_pitch = cam.rotation.x
-
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _stair_follow_enabled and event is InputEventMouseButton:
@@ -284,7 +281,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			and (event as InputEventKey).keycode == KEY_K:
 		_activate_closeup_camera()
 
-
 ## Settles first in case this is pressed very soon after the scene loads
 ## (see _wait_for_player_to_settle's own doc comment for why positioning the
 ## camera before the player has finished its spawn-height fall would throw
@@ -294,7 +290,6 @@ func _unhandled_input(event: InputEvent) -> void:
 func _activate_closeup_camera() -> void:
 	await _wait_for_player_to_settle()
 	_start_detached_camera_on_foot()
-
 
 ## BoneAttachment3D + a plain Node3D child, same probe pattern _ready() uses
 ## for the foot/toe bones above - the only reliable way to read a bone's
@@ -307,7 +302,6 @@ func _make_probe(bone_idx: int) -> Node3D:
 	var probe := Node3D.new()
 	attach.add_child(probe)
 	return probe
-
 
 ## Each segment's OWN absolute angle from world Vector3.DOWN (0 = pointing
 ## straight down, 90 = horizontal, 180 = pointing straight up) - not the bend
@@ -345,7 +339,6 @@ func _compute_leg_angles(side: StringName) -> Dictionary:
 			result["leaf"] = rad_to_deg(toe_to_leaf.angle_to(Vector3.DOWN))
 	return result
 
-
 ## Moves each segment's floating Label3D (see _angle_labels/_spawn_angle_label)
 ## to that segment's own midpoint and refreshes its text - puts the exact
 ## same numbers the readout grid shows directly on the bone in the 3D view,
@@ -380,7 +373,6 @@ func _update_angle_labels(side: String, angles: Dictionary) -> void:
 		else:
 			label.visible = false
 
-
 ## Prints each leg's segment angles (world-space, from Vector3.DOWN) to the
 ## console, for a full-precision snapshot on demand - the on-screen readout
 ## (see _physics_process) shows the same numbers live, but at a size/
@@ -394,7 +386,6 @@ func _log_leg_angles() -> void:
 				line += " %s=%.1f" % [segment, angles[segment]]
 		print(line)
 
-
 func _spawn_marker(color: Color) -> MeshInstance3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
@@ -407,7 +398,6 @@ func _spawn_marker(color: Color) -> MeshInstance3D:
 	inst.mesh = mesh
 	add_child(inst)
 	return inst
-
 
 ## Floating world-space text for one segment's angle - billboarded (always
 ## faces the camera) and depth-test disabled like the skeleton ribbons
@@ -428,7 +418,6 @@ func _spawn_angle_label() -> Label3D:
 	label.text = "-"
 	add_child(label)
 	return label
-
 
 func _build_panel() -> void:
 	var layer := CanvasLayer.new()
@@ -534,10 +523,8 @@ func _build_panel() -> void:
 	_copy_data_button.pressed.connect(_copy_ik_panel_data)
 	vbox.add_child(_copy_data_button)
 
-
 func _toggle_scene_pause() -> void:
 	_set_scene_paused(not get_tree().paused)
-
 
 func _set_scene_paused(paused: bool) -> void:
 	if paused == get_tree().paused:
@@ -555,7 +542,6 @@ func _set_scene_paused(paused: bool) -> void:
 		get_tree().paused = false
 		_restore_animation_process_modes()
 	_pause_button.text = "Resume All" if get_tree().paused else "Pause All"
-
 
 func _build_animation_timeline(parent: VBoxContainer) -> void:
 	var title := Label.new()
@@ -580,16 +566,13 @@ func _build_animation_timeline(parent: VBoxContainer) -> void:
 	_animation_time_readout.text = "Frame -  0.000s"
 	row.add_child(_animation_time_readout)
 
-
 func _on_animation_scrub_started() -> void:
 	_set_scene_paused(true)
-
 
 func _on_animation_scrub_ended(_value_changed: bool) -> void:
 	# Deliberately remain paused on the selected frame. Resume All continues
 	# the full stair sequence from that inspected pose.
 	pass
-
 
 func _on_animation_timeline_changed(position: float) -> void:
 	if _timeline_syncing or _player_body == null or _player_body.anim_player == null:
@@ -605,7 +588,6 @@ func _on_animation_timeline_changed(position: float) -> void:
 	_skel.advance(0.0)
 	_update_animation_timeline()
 
-
 func _refresh_paused_ik_pose() -> void:
 	if get_tree().paused and _skel != null:
 		# A paused AnimationPlayer does not request another skeleton update when
@@ -613,7 +595,6 @@ func _refresh_paused_ik_pose() -> void:
 		# the selected animation frame stays fixed while the new IK values are
 		# rendered immediately.
 		_skel.advance(0.0)
-
 
 func _update_animation_timeline() -> void:
 	if (_animation_timeline == null or _player_body == null
@@ -629,9 +610,11 @@ func _update_animation_timeline() -> void:
 	if animation == null:
 		return
 	_animation_timeline.editable = true
+	# Guard max_value too - it can clamp value and emit value_changed, which
+	# leaked into the scrub handler and paused the whole tree on clip switches.
+	_timeline_syncing = true
 	_animation_timeline.max_value = maxf(animation.length, 1.0 / ANIMATION_DISPLAY_FPS)
 	var position := clampf(animation_player.current_animation_position, 0.0, animation.length)
-	_timeline_syncing = true
 	_animation_timeline.value = position
 	_timeline_syncing = false
 	var frame := mini(int(floor(position * ANIMATION_DISPLAY_FPS)),
@@ -639,13 +622,11 @@ func _update_animation_timeline() -> void:
 	_animation_time_readout.text = "Frame %d  %.3fs / %.3fs" % [
 			frame, position, animation.length]
 
-
 func _restore_animation_process_modes() -> void:
 	for node: Node in _paused_animation_process_modes:
 		if is_instance_valid(node):
 			node.process_mode = _paused_animation_process_modes[node]
 	_paused_animation_process_modes.clear()
-
 
 func _exit_tree() -> void:
 	# Do not let stopping/reloading this manual harness leave a paused tree
@@ -655,7 +636,6 @@ func _exit_tree() -> void:
 	if get_tree() != null:
 		get_tree().paused = false
 	_restore_animation_process_modes()
-
 
 ## A field/left/right grid instead of one long "key=value key=value ..."
 ## line per foot - once the leg-angle fields were added the single-line
@@ -690,7 +670,6 @@ func _build_readout_grid(parent: VBoxContainer) -> void:
 			value_label.text = "-"
 			grid.add_child(value_label)
 			(_readout_values[side] as Dictionary)[key] = value_label
-
 
 func _copy_ik_panel_data() -> void:
 	var lines: Array[String] = ["Foot IK Debug"]
@@ -732,7 +711,6 @@ func _copy_ik_panel_data() -> void:
 	if is_instance_valid(_copy_data_button):
 		_copy_data_button.text = "Copy IK Data"
 
-
 ## Text and font color make the "IK Active" state readable at a glance
 ## instead of relying on the small built-in toggle glyph, which is easy to
 ## miss (and, per one headless-capture investigation this session, doesn't
@@ -743,7 +721,6 @@ func _style_active_check(active: bool) -> void:
 	_active_check.add_theme_color_override("font_color", color)
 	_active_check.add_theme_color_override("font_hover_color", color)
 	_active_check.add_theme_color_override("font_pressed_color", color)
-
 
 func set_stair_foot_follow_enabled(enabled: bool) -> void:
 	var player := get_node("../Player") as Player
@@ -785,10 +762,8 @@ func set_stair_foot_follow_enabled(enabled: bool) -> void:
 			player.set_detached_camera_active(false)
 	_stair_follow_enabled = enabled
 
-
 func is_stair_foot_follow_enabled() -> bool:
 	return _stair_follow_enabled
-
 
 func _build_stair_follow_probe() -> Node3D:
 	var candidate := _find_stair_follow_player()
@@ -805,15 +780,8 @@ func _build_stair_follow_probe() -> Node3D:
 			return probe
 	return null
 
-
 func _find_stair_follow_player() -> Player:
-	for node: Node in get_tree().get_nodes_in_group(&"foot_ik_stair_walkers"):
-		var candidate := node as Player
-		if candidate != null and is_equal_approx(
-				float(candidate.get_meta(&"stair_height", -1.0)), STAIR_FOLLOW_HEIGHT):
-			return candidate
-	return null
-
+	return get_node("../Player") as Player
 
 func _process(_delta: float) -> void:
 	_update_animation_timeline()
@@ -838,7 +806,6 @@ func _process(_delta: float) -> void:
 	if get_tree().paused:
 		_move_paused_stair_follow_camera(player, _delta)
 	_focus_stair_follow_camera(player)
-
 
 func _focus_stair_follow_camera(player: Player) -> void:
 	if _stair_follow_probe == null:
@@ -929,15 +896,9 @@ func _add_slider(
 func _physics_process(_delta: float) -> void:
 	if _ik == null:
 		return
-	# The preview harness casts this ray from its estimate of the rendered
-	# sole's lowest point to the first collider below it. Show that direct
-	# surface-to-surface measurement separately from `Gap`, which compares
-	# the ankle bone against the IK ankle target and is therefore offset by
-	# ankle_offset.
-	var contact_debug_state: Dictionary = {}
-	var preview_contact_state: Variant = get_parent().get("_contact_debug_state")
-	if preview_contact_state is Dictionary:
-		contact_debug_state = preview_contact_state
+	# Surface-to-surface ray distance (sole vs ground), read from the
+	# controlled character's own modifier (debug_contact_*), not the 0.35m
+	# walker's preview rays.
 	# Whichever camera the viewport is actually rendering through right now -
 	# detached, first-person, or third-person - rather than assuming it's
 	# still the detached one this scene starts you in, since the debug menu
@@ -972,13 +933,15 @@ func _physics_process(_delta: float) -> void:
 		(values["target_y"] as Label).text = "%.3f" % ankle_target.y
 		(values["actual_y"] as Label).text = "%.3f" % actual_pos.y
 		(values["gap"] as Label).text = "%.3f" % gap
-		var contact: Dictionary = contact_debug_state.get(side, {})
-		var lower_distance: float = float(contact.get("distance", -1.0))
+		var contact_hit: bool = bool(_ik.debug_contact_hit.get(side, false))
+		var contact_distance: float = float(_ik.debug_contact_distance.get(side, -1.0))
+		var lower_distance: float = contact_distance if contact_hit else -1.0
 		(values["lower_distance"] as Label).text = (
 				"%.3f" % lower_distance if lower_distance >= 0.0 else "-")
 		(values["pitch"] as Label).text = "%.1f" % pitch_deg
 		(values["ground_weight"] as Label).text = "%.3f" % float(
 				_ik._smoothed_ground_weight.get(side, 0.0))
+		(values["step_down"] as Label).text = str(bool(_ik.debug_step_down.get(side, false)))
 		(values["vertical_velocity"] as Label).text = "%.3f" % float(
 				_ik.debug_vertical_velocity.get(side, 0.0))
 
@@ -998,3 +961,40 @@ func _physics_process(_delta: float) -> void:
 			if angles.has(segment):
 				(values[segment + "_angle"] as Label).text = "%.1f" % angles[segment]
 		_update_angle_labels(side, angles)
+	_capture_controlled_foot_frame()
+
+
+func _capture_controlled_foot_frame() -> void:
+	if _ik == null or _player_body == null:
+		return
+	var animation_player := _player_body.anim_player
+	var trace := {
+		"frame": Engine.get_physics_frames(),
+		"root": _player_body.global_position,
+		"animation": animation_player.current_animation if animation_player != null else "",
+		"time": animation_player.current_animation_position if animation_player != null else 0.0,
+		"feet": {},
+	}
+	for side: String in ["left", "right"]:
+		var probe: Node3D = _probes[side]
+		var actual_pos := probe.global_position
+		var target: Vector3 = _ik._smoothed_target.get(side, actual_pos)
+		var sole_down: Vector3 = probe.global_transform.basis * _ik._sole_down_local[side]
+		var sole_depth := float(_ik._sole_depth_below_foot.get(side, _ik.ankle_offset))
+		var sole: Vector3 = actual_pos + sole_down * sole_depth
+		var toe_probe: Node3D = _toe_probes.get(side)
+		trace["feet"][side] = {
+			"gap": actual_pos.y - target.y - sole_depth,
+			"sole_clearance": sole.y - target.y,
+			"pitch_deg": rad_to_deg(sole.normalized().angle_to(Vector3.DOWN)),
+			"ground_weight": float(_ik._smoothed_ground_weight.get(side, 0.0)),
+			"vertical_velocity": float(_ik.debug_vertical_velocity.get(side, 0.0)),
+			"contact_hit": bool(_ik.debug_contact_hit.get(side, false)),
+			"contact_distance": float(_ik.debug_contact_distance.get(side, -1.0)),
+			"step_down": bool(_ik.debug_step_down.get(side, false)),
+			"toe_tip_y": toe_probe.global_position.y if toe_probe != null else 0.0,
+		}
+	var file := FileAccess.open(CONTROLLED_TRACE_FILE, FileAccess.READ_WRITE)
+	file.seek_end()
+	file.store_line(JSON.stringify(trace))
+	file.close()

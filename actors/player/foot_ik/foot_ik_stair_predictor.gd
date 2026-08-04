@@ -63,9 +63,16 @@ func update_travel_direction(delta: float) -> void:
 func update_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName,
 		foot_pos: Vector3, foot_basis_local: Basis, raw_target: Vector3,
 		animated_lowest_point: Vector3, ground_weight: float, landed: bool,
-		delta: float) -> float:
+		delta: float, step_down: bool = false) -> float:
 	var state := _state(side)
 	if side == _support_side:
+		clear_swing(side)
+		state.smoothed_lift = 0.0
+		return 0.0
+	if step_down:
+		# A stationary stance foot easing down onto a lower surface is not a
+		# swing: clear any swing state so the forward prediction cannot keep
+		# lifting it back up toward the next higher tread.
 		clear_swing(side)
 		state.smoothed_lift = 0.0
 		return 0.0

@@ -4,9 +4,34 @@
 
 **Checkpoint branch:** `experiment/native-foot-ik`
 
-**Status:** Experimental and behaviorally incomplete. The refactor and the shared gameplay
-integration are in place. Latest manual testing reports no visible body/stair clipping, but the feet
-still bump into stair risers instead of clearing each step cleanly.
+**Status:** Two threads. (1) The swing foot still bumps stair risers instead of clearing each step
+cleanly — still open, next debugging target below. (2) Idle step-down planting for a stationary foot
+hovering over a lower surface is implemented (Option A below), passes all automated checks, but is
+**not yet manually confirmed and not committed** — see "Resume here".
+
+## Resume here (uncommitted work, mid-verification)
+
+All of the following is uncommitted and represents the current session's work. Do not assume any of
+it is finished or committed:
+
+- Idle step-down (Option A) in `player_foot_ik_modifier.gd`: exports `idle_step_down_speed = 0.06`,
+  `step_down_max_drop = 0.4`, `step_down_pelvis_drop = 0.35`; `_step_down_eligible()`, the
+  `_step_down_static_streak` gate, `debug_step_down`, and `debug_contact_distance`/`debug_contact_hit`
+  provenance fields. Gait tracker `update()` and stair predictor `update_swing_lift()` gained a
+  `step_down` bool. Debug overlay gained a `StepDown` readout column and a per-physics-frame probe
+  JSONL (`_capture_controlled_foot_frame()` → `user://foot_ik_controlled.jsonl`).
+- Provenance fix: the overlay's `Foot→Lower` (and the harness CPU-skinning) now read the controlled
+  character's own `debug_contact_*` / `_final_bone_poses` snapshot, not the 0.35m walker's state.
+  The overlay now follows `../Player` and no longer auto-enables stair-follow. This is what turned
+  the body-penetration check from XFAIL into PASS.
+- `scripts/check_foot_ik.sh` now requires the penetration check to literally PASS (was XFAIL|XPASS).
+- Full state: `git status` shows modifications to AGENTS.md, CURRENT_TASK_IK_FOOT.md,
+  actors/player/foot_ik/foot_ik_gait_tracker.gd, actors/player/foot_ik/foot_ik_stair_predictor.gd,
+  actors/player/player_foot_ik_modifier.gd, scripts/check_foot_ik.sh,
+  tests/manual/foot_ik/foot_ik_debug_overlay.gd, tests/manual/foot_ik/foot_ik_preview.gd.
+- **What is left:** the user manually verifies Option A in `foot_ik_preview.tscn` (straddle the bottom
+  riser of the 0.35 stair → foot plants with a ~0.33 sink; 0.50/0.65 bottom risers stay floating by
+  design), confirms it, then commits. After that, the user wants to try Options B and C below.
 
 ## Native IK experiment decision
 
@@ -123,23 +148,23 @@ scripts/check_foot_ik.sh
 scripts/check.sh
 ```
 
-Current automated result:
+Current automated result (as of the uncommitted provenance fix):
 
 ```text
 FOOT_IK_STRETCH_CHECK PASS samples=138 max_error_m=0.0 limit_m=0.005
 FOOT_IK_AIRBORNE_CHECK PASS samples=62
-FOOT_IK_BODY_PENETRATION_CHECK XFAIL samples=138 attempts=138 unavailable=0
-missing_mesh=0 penetrating_samples=39 penetrating_vertices=2202
-max_depth_m=0.051448 tolerance_m=0.005
+FOOT_IK_BODY_PENETRATION_CHECK PASS samples=138 attempts=138 unavailable=0
+missing_mesh=0 penetrating_samples=0 penetrating_vertices=0 max_depth_m=0.0
+tolerance_m=0.005
 ```
 
 The mesh check CPU-skins every current `MeshInstance3D` from mesh weights, live `Skin` bind poses,
 and final skeleton transforms. `bake_mesh_from_current_skeleton_pose()` does not work with this
-gameplay import. Before the latest fixes it measured 195,786 penetrating vertices and 0.582 m maximum
-depth. The latest manual test reports no visible clipping, while the numerical check still finds
-mostly `ball_l`/`foot_l` toe-edge intersections. Keep that mismatch visible: determine whether these
-are visible riser bumps, expected boundary contact, or a tolerance/contact-model issue before turning
-XFAIL into PASS.
+gameplay import. The penetration check used to report XFAIL with 39 penetrating samples (2202
+vertices, 0.051 m max depth) purely because the harness was skinning the *pre-IK animated pose*: at
+the harness's idle/deferred sample time the skeleton still held the last animation pose, not the
+modifier's output. Reading the modifier's post-solve `_final_bone_poses` snapshot instead (the
+provenance fix) made it PASS with zero penetrations.
 
 ## Next debugging target: clear the riser before advancing
 
@@ -180,6 +205,44 @@ Recommended next pass:
 - Increasing `toe_tip_margin` from 0.035 m to 0.09 m worsened the measured maximum penetration and was
   reverted.
 - Slow motion made the behavior appear better while the normal-speed timing remained broken.
+
+## Idle step-down envelope (big-drop policy) — three options to try
+
+The idle step-down feature plants a stationary foot that hovers over a lower surface by sinking the
+shared pelvis. The standing leg has only ~4cm of reach slack (hip-to-foot ≈ 0.84 of the 0.887 max
+reach), so planting a foot one riser below costs the pelvis roughly the full step height minus that
+slack. The two exported caps in `player_foot_ik_modifier.gd` define the "step" envelope:
+
+| Step drop | Pelvis must sink | Verdict |
+|---|---|---|
+| 0.20 | ~0.18 | natural settle (user-approved) |
+| 0.35 | ~0.33 | borderline crouch |
+| 0.50 | ~0.46 | obvious crouch |
+| 0.65 | ~0.61 | basically sitting |
+
+**Option A — envelope + accept float (currently implemented).** `step_down_max_drop = 0.4`,
+`step_down_pelvis_drop = 0.35`. Anything within the envelope plants and never floats; drops beyond it
+are ledges the standing leg physically cannot reach, so the foot stays at its animated pose (floats)
+instead of bending the body into a squat. Gameplay stairs stay ≤ 0.40m and the focused 0.35m harness
+case fits with a ~0.33 sink; the 0.50/0.65m pose-limit references are ledges. Note that middle-riser
+straddles on tall stairs still plant, because the hip sits high up the staircase and the needed sink
+is only ~0.5·step − 0.02; only a low hip straddling the bottom riser needs the full-step sink.
+
+**Option B — envelope + auto settle-step.** Keep the same caps, but when the dangling foot's needed
+pelvis drop exceeds `step_down_pelvis_drop`, the idle character eases the whole body down to the lower
+surface so both feet plant there (upright, never floats, never crouches). Requires a new eased capsule
+descent with collision and input-cancel handling; reuse the stair predictor's step-down support
+transfer rather than writing a second descent path.
+
+**Option C — envelope + partial reach.** Keep the sink capped but still ramp the ground weight so the
+foot is pulled to its lowest reachable point (max extension) even when it cannot touch, shrinking the
+visible gap while leaving it hovering above the lower surface — a half-measure that may still read as
+floating.
+
+How to toggle: A only changes the two exports. B and C change `_step_down_eligible()` /
+`_apply_support_pelvis_and_legs()`. After any switch, re-run `scripts/check_foot_ik.sh` +
+`scripts/check.sh` and manually straddle the bottom riser of the 0.35/0.50/0.65 rows with the
+controllable player.
 
 ## Manual acceptance checklist
 
