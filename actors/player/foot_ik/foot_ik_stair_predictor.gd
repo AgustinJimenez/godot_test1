@@ -154,9 +154,17 @@ func _support_target_is_reachable(leg: Dictionary) -> bool:
 	return (leg["hip_pos"] as Vector3).distance_to(_support_ground_target) <= max_reach
 
 
+## Wider than GROUND_CONTACT_DISTANCE (which idle planting still uses) - a
+## real stair-riser gap between the animated sole and the true tread is often
+## tens of cm even for a genuinely planted stance foot (flat-ground-authored
+## walk clip vs. real stair geometry), so 3cm almost never acquired support at
+## all during active walking, leaving both feet on the raw animated pose.
+const SUPPORT_CONTACT_DISTANCE := 0.15
+
+
 func _is_contacting(leg: Dictionary, clearance: float) -> bool:
 	return (leg.get("animated_contact_hit", false)
-			and clearance <= _owner.GROUND_CONTACT_DISTANCE)
+			and clearance <= SUPPORT_CONTACT_DISTANCE)
 
 
 func clear_swing(side: StringName) -> void:
@@ -288,16 +296,6 @@ func _apply_support_contact(side: StringName, leg: Dictionary) -> void:
 	leg["ground_target"] = _support_ground_target
 	leg["ground_weight"] = 1.0
 	leg["preserve_idle_pose"] = false
-	# Do not stomp gait_tracker's own weight for this leg when it just
-	# computed contact_lost this same frame - this ran unconditionally
-	# before, and if _support_side stays latched here (e.g. left over from
-	# the settle-walk's real stair-climbing movement) well past the point
-	# the character has actually gone idle, it forced ground_weight back to
-	# 1.0 every single frame even while gait_tracker's own math said that
-	# leg had genuinely lost contact - confirmed live: a paused/live readout
-	# showed the left foot's raw_weight=0.0, contact_lost=true, yet its
-	# displayed ground_weight was still 1.0.
-	if not bool(_owner.debug_contact_lost.get(side, false)):
-		_owner._smoothed_ground_weight[side] = 1.0
+	_owner._smoothed_ground_weight[side] = 1.0
 	_owner._smoothed_target[side] = _support_surface_target
 	_owner._smoothed_normal[side] = _support_normal

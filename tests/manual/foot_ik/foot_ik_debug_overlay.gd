@@ -77,6 +77,7 @@ var _pause_button: Button
 var _keep_playing_check: CheckButton
 var _paused_animation_process_modes: Dictionary = {}
 var _animation_timeline: HSlider
+var _animation_title: Label
 var _animation_time_readout: Label
 var _copy_data_button: Button
 var _timeline_syncing := false
@@ -521,9 +522,9 @@ func _set_scene_paused(paused: bool) -> void:
 	_pause_button.text = "Resume All" if get_tree().paused else "Pause All"
 
 func _build_animation_timeline(parent: VBoxContainer) -> void:
-	var title := Label.new()
-	title.text = "Animation Timeline (60 FPS)"
-	parent.add_child(title)
+	_animation_title = Label.new()
+	_animation_title.text = "Animation Timeline (60 FPS)"
+	parent.add_child(_animation_title)
 
 	var row := HBoxContainer.new()
 	parent.add_child(row)
@@ -579,6 +580,8 @@ func _update_animation_timeline() -> void:
 		return
 	var animation_player := _player_body.anim_player
 	var animation_name := animation_player.current_animation
+	_animation_title.text = "Animation Timeline (60 FPS) - %s" % (
+			animation_name if not animation_name.is_empty() else "-")
 	if animation_name.is_empty():
 		_animation_timeline.editable = false
 		_animation_time_readout.text = "No animation"

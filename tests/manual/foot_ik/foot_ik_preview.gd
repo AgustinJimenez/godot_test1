@@ -199,8 +199,7 @@ func _sample_airborne_ik_release() -> void:
 	if ik.active:
 		_airborne_check_failed = true
 
-## Bone origins can't prove skin is clear (weighted regions can cross a stair
-## face while joints stay above target).
+## Bone origins alone can't prove skin is clear - weighted regions can cross a stair face.
 func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 	_body_penetration_attempts += 1
 	if not walker["walking"]:
@@ -267,8 +266,7 @@ func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 ## Per-bind global transforms for CPU skinning. Pose reads prefer the Foot IK
 ## modifier's own post-solve snapshot: at the harness's (idle/deferred) sample
 ## time the skeleton can still hold the pre-IK animated pose from the last
-## animation update, so get_bone_global_pose() would skin a mesh that was never
-## rendered. The snapshot matches the BoneAttachment probes and the rendered foot.
+## animation update, so get_bone_global_pose() would skin a mesh never rendered.
 func _mesh_bind_transforms(mesh_part: MeshInstance3D, skeleton: Skeleton3D,
 		ik: PlayerFootIKModifier) -> Array[Transform3D]:
 	var result: Array[Transform3D] = []
@@ -492,8 +490,7 @@ func _update_physical_walker_tread(walker: Dictionary) -> void:
 			-1, STAIR_STEP_COUNT - 1)
 	walker["waiting_for_step"] = false
 
-## 0.50/0.65m cases are pose limits, not traversable steps. Drive the root along
-## the staircase profile at normal speed; the interactive Player tests real stairs.
+## 0.50/0.65m cases are pose limits, not traversable steps - drive the root profile directly.
 func _advance_stair_walker(walker: Dictionary, delta: float) -> void:
 	var player: Player = walker["player"]
 	var next_position := player.global_position
@@ -512,8 +509,7 @@ func _advance_stair_walker(walker: Dictionary, delta: float) -> void:
 func _log_stair_foot_frame(walker: Dictionary) -> void:
 	if not walker["walking"]:
 		return
-	# Deferred execution places this after SkeletonModifier3D evaluation, so
-	# the ray and trace both sample the same final rendered foot pose.
+	# Deferred so the ray and trace sample the same final rendered foot pose.
 	_update_foot_contact_rays()
 	var player: Player = walker["player"]
 	var ik := _find_foot_ik(player)
@@ -543,9 +539,8 @@ func _log_stair_foot_frame(walker: Dictionary) -> void:
 	trace_file.store_line(trace_json)
 	trace_file.close()
 
-## A leg may rotate freely, but its thigh root must remain the authored distance
-## from the shared pelvis. A larger change means IK separated a child joint from
-## its parent and the vertices weighted across that seam will visibly stretch.
+## A leg may rotate freely, but its thigh root must stay the authored distance from
+## the shared pelvis, or IK has separated a joint and the weighted seam will stretch.
 func _sample_hip_skin_stretch(player: Player, ik: PlayerFootIKModifier) -> Dictionary:
 	var sides := {}
 	var sample_max_error := 0.0
@@ -596,7 +591,12 @@ func _foot_trace_sample(
 	var animation_velocity: float = ik.debug_vertical_velocity.get(side, 0.0)
 	var animation_lowering := animation_velocity < -ik.velocity_noise_floor
 	var contact_within_3cm: bool = contact.get("within_3cm", false)
+	var leg_state = ik._stair_predictor._legs.get(side)
+	var swinging = leg_state.swing_active if leg_state != null else null
+	var raw_weight: float = ik.debug_raw_weight.get(side, -1.0)
 	return {
+		"step_down": ik.debug_step_down.get(side, false), "swing_active": swinging,
+		"contact_lost": ik.debug_contact_lost.get(side, null), "raw_weight": raw_weight,
 		"ankle": _vector_to_array(foot_position),
 		"sole": _point_stair_trace(walker, sole_position),
 		"toe_joint": _vector_to_array(toe_position),

@@ -1,17 +1,324 @@
 # Active Task: Stair Foot IK
 
-**Date:** 2026-08-03
+**Date:** 2026-08-05 (latest session below); previous session 2026-08-03
 
 **Checkpoint branch:** `experiment/native-foot-ik`
 
-**Status:** Three threads. (1) The swing foot still bumps stair risers instead of clearing each step
-cleanly — still open, next debugging target below. (2) Idle step-down Option A/B (see "Resume here")
-— extensively live-tested this session; several real bugs found and fixed (list below), but one
-symptom remains unexplained (see "Open: right foot stuck on the 0.65m-to-floor drop"). (3) **New,
-likely higher-priority problem found during that testing**: Option B's whole-body walk-down does not
-stop after resolving the one foot that triggered it — standing idle partway up a tall staircase makes
-the character auto-walk itself down every remaining riser to the bottom, unprompted. Not yet
-investigated. User has not yet picked which of (2)/(3) to prioritize next session — ask first.
+**Status (2026-08-05):** Idle foot IK now works well on 6 of 7 stair heights in
+`foot_ik_preview.tscn`. The jump-landing float/pop bugs are fixed and kept (see "2026-08-05 session"
+below). Two open problems remain, both harder than a threshold tweak:
+
+1. **65cm stairs-to-floor idle float (unresolved).** The one remaining idle-case stair height that
+   still floats. Live-reported by the user as: lands correctly via the new landing-grace fix, then
+   pops back to floating once idle settles in — right foot, almost instant, within <1s of landing. A
+   headless repro at the exact reported spot did **not** reproduce it (stayed planted 6+ seconds). Not
+   actively being chased right now — needs a fresh live debug-panel capture caught in the act (Copy IK
+   Data at the exact moment it pops) rather than more guessing.
+2. **Foot IK correction while actively walking on stairs (partially fixed).** After the five-round
+   revert documented below, a second attempt using better tooling (a comprehensive per-frame trace
+   instead of single-print patches) found and fixed the actual primary blocker: an earlier session's
+   own guard was silently vetoing the stair predictor's support override almost every frame during
+   walking. This is real, verified, and kept - see "2026-08-05 session, continued: the actual fix"
+   below. **Not fully solved**: the stair predictor now plants correctly whenever it acquires a
+   support leg, but acquisition itself is still too infrequent (~67% of a walk cycle still has no
+   support and both feet float) because the acquisition test is still distance-based and the true
+   foot-to-tread gap routinely exceeds any distance threshold that's safe to use (see that section for
+   the measured numbers and the safe/unsafe threshold boundary found). A third fix attempted in the
+   same session (see "2026-08-05 session, continued further") - skipping the modifier's phantom
+   `delta=0.0` calls outright - **broke IK completely when tested live** (floated on everything,
+   including previously-working idle poses) despite a clean headless trace and passing automated
+   suite, and was reverted immediately. Lesson captured in `AGENTS.md`. The two remaining kept fixes
+   (jump-landing, support-plant guard removal) pass the full automated suite but are **still not yet
+   manually confirmed live in-game**.
+3. **Idle-freeze experiment added (untested live).** Based on a Reddit r/gamedev thread the user
+   shared, a new opt-in mechanism stops re-raycasting a foot's ground target entirely once it's been
+   confirmed fully planted and motionless for ~0.5s, only releasing on clearly real motion - see
+   "2026-08-05 session, continued once more: idle-freeze from community advice" below. Passes the full
+   automated suite. Given tonight's track record, treat this as unverified until tested live.
+
+**Status (2026-08-03, historical):** Three threads. (1) The swing foot still bumps stair risers instead
+of clearing each step cleanly — still open, next debugging target below. (2) Idle step-down Option A/B
+(see "Resume here") — extensively live-tested this session; several real bugs found and fixed (list
+below), but one symptom remains unexplained (see "Open: right foot stuck on the 0.65m-to-floor drop").
+(3) Option B's whole-body walk-down (since fully removed in a later session, replaced by retraction +
+capped deep-crouch) did not stop after resolving the one foot that triggered it.
+
+## 2026-08-05 session: jump-landing fixes (kept, committed-ready)
+
+Two real bugs found and fixed, both confirmed via headless repro (jump onto flat ground and onto
+the 0.65m stairs-to-floor spot) plus the full `check_foot_ik.sh` suite passing with zero regressions.
+Not yet manually confirmed in-game by the user at time of writing - do not commit until they do.
+
+- **`ground_weight` stuck at exactly 0.0 for the rest of a landing animation.** Root cause: the
+  landing-recovery animation's own foot motion is fast enough that `likely_idle` reads false, so the
+  short ground raycast misses and the `idle_settle_search_down` extended fallback (gated on
+  `likely_idle`) never runs - contact is never found. Because contact is never found, the
+  `_prev_animated_foot_pos` reference (only ever written by `gait_tracker.update()`'s success path)
+  never refreshes either, so next frame's `anim_speed` reads an even-larger stale delta against a
+  frozen pre-jump position - a self-sustaining deadlock. Fixed with a `_landing_grace_time` window
+  (0.35s, starts on `set_character_grounded()`'s false→true transition) that (a) forces `likely_idle`
+  true regardless of `anim_speed`, (b) forces `_prev_animated_foot_pos` to refresh every frame instead
+  of only on success, and (c) bypasses the velocity-based raw_weight gate entirely
+  (`skip_velocity_gate` param threaded into `gait_tracker.update()`).
+- **Instant pop back to the floating animated pose right as the grace window expires.** The grace
+  window above force-plants `ground_weight`, but `_step_down_classification`'s own
+  `_step_down_static_streak` (which gates `step_down`, which in turn is what lets `contact_lost`'s
+  ordinary 3cm distance gate be bypassed) runs off the same raw `anim_speed` the grace window
+  otherwise ignores - if the land-recovery animation's motion outlasted grace even slightly, one frame
+  of `contact_lost` firing snapped weight back to 0, popping the foot to the raw animated pose.
+  Fixed by also bypassing the streak requirement for the same grace window.
+- Also added: a live current-animation-name label above the "Animation Timeline" slider in
+  `foot_ik_debug_overlay.gd` (was requested to help diagnose the above live, ended up not needed once
+  the deadlock was found via headless trace, but worth keeping).
+- Files touched: `actors/player/player_foot_ik_modifier.gd` (`_landing_grace_time`,
+  `LANDING_GRACE_DURATION`, `set_character_grounded()`, `_animated_vertical_speed()`,
+  `_step_down_classification()`), `actors/player/foot_ik/foot_ik_gait_tracker.gd`
+  (`update()`'s new `skip_velocity_gate` param), `tests/manual/foot_ik/foot_ik_debug_overlay.gd`
+  (animation name label).
+
+## 2026-08-05 session: stair-walking IK investigation (reverted, not fixed)
+
+User report: idle foot IK works, but while actually walking up/down stairs the feet mostly float on
+the raw uncorrected animation pose - matches this file's own long-standing "not accepted" disclaimer
+at the top of `foot_ik_stair_predictor.gd`. Confirmed numerically via `--foot-ik-check`'s
+`STAIR_FOOT_TRACE` JSON, parsed frame-by-frame: `ground_weight` for both feet almost never rises above
+~0.1-0.3 while walking, and `forced_support` (the stair predictor's own "which foot is currently
+planted" tracking) sits empty most of the time.
+
+Five distinct, compounding root causes were found and fixed one at a time - each fix was individually
+correct and verified against its own symptom, but the aggregate `FOOT_IK_BODY_PENETRATION_CHECK`
+number **never moved from the very first broken baseline (32 penetrating samples, 0.35m max depth)
+across all five rounds**, meaning some other blocking issue kept the net result unchanged throughout.
+All changes were reverted at the end of the session rather than leave a half-working, unverified state
+in the tree. In order found:
+
+1. **Stance acquisition/retention used a flat 3cm distance gate** (`_is_contacting()` in
+   `foot_ik_stair_predictor.gd`, via `GROUND_CONTACT_DISTANCE`). Wrong signal for stairs: a real gap
+   between the animated sole and the true tread is *expected* and often large (25-45cm measured live)
+   because the walk clip is flat-ground-authored, not stair-aware - this is exactly the mismatch foot
+   IK exists to correct. The distance gate almost never passed, so support was almost never acquired.
+2. **Replaced with a velocity-based test** (`absf(vertical_velocity) <= swing_speed_threshold`),
+   matching the established principle already documented elsewhere in this file: "a foot that isn't
+   currently moving vertically is either standing still or momentarily planted... and should get full
+   correction regardless of how tall that correction needs to be." This let support acquire, but a
+   **single low-velocity frame** is enough to false-positive during a swing arc's low-velocity dip,
+   which planted a foot into the tread it was swinging over (`FOOT_IK_BODY_PENETRATION_CHECK`
+   regression: 43 samples, up from the walking-float baseline's initial 0).
+3. **Required a short sustained streak** (`STANCE_CONFIRM_STREAK = 3`, same decay-not-hard-reset
+   hysteresis `_step_down_classification` already uses) instead of a single frame. Reduced but did not
+   eliminate the penetration (32 samples) - a foot swinging mostly *horizontally* can hold near-zero
+   *vertical* velocity for several consecutive frames while still genuinely airborne.
+4. **Added `swing_active` as a hard disqualifier** (already tracked per-leg by
+   `update_swing_lift()`, just not consulted here before). No change to the penetration number at all
+   (still 32 samples) - but the failure pattern was revealing: the penetrating leg was *always* the
+   current `support` leg with `ground_weight=1.0`, and the penetration depth was a suspiciously
+   *constant* ~0.35m - exactly one stair riser, every single time, regardless of which riser. This
+   meant the support *target* itself was stale (latched to the previous, now-passed tread), not a
+   swing false-positive at all - the old distance-based retention check (removed in step 2) used to
+   catch this by accident; nothing had replaced its actual job.
+5. **Added an explicit staleness check** comparing the character's real physical root height
+   (`CharacterBody3D.global_position.y`, sampled once per frame in `update_travel_direction()` - not
+   the animated foot pose, which can't be trusted for this given point 1 above) against the root
+   height at the moment support was last latched; re-acquire once it's risen by more than
+   `step_min_rise`. Confirmed via direct trace that this correctly detected each riser transition and
+   the latched target height *did* progress correctly (0.35 → 0.70 → 1.05 → 1.40...). **Penetration
+   number still did not move (32 samples).** Direct correlation against the penetrating frames showed
+   `support` stuck on the *same* leg (`left`) for the entire test, never transferring to `right` even
+   once - meaning steps 2-5 fixed real problems that simply weren't the ones gating these specific
+   frames.
+6. **Traced why transfer never happened**: `_try_transfer_support()` had its own extra, stricter,
+   redundant gate (`candidate_velocity <= velocity_noise_floor` (0.03) `or landing_seen`) layered on
+   top of the new `_is_stance_candidate` check. Removed the redundant gate. Still no change in the
+   aggregate check.
+7. **Traced the streak itself with a delta-aware print** and found the same double-call-per-physics-tick
+   engine artifact that caused both jump-landing bugs above: `_process_modification_with_delta` (and
+   therefore `ensure_support()`) runs twice per physics tick, once with the real delta and once with
+   `delta=0.0` - and the delta=0 call always computes velocity=0 (early-return guard), so the streak
+   oscillated 1→0→1→0 forever instead of accumulating, never reaching `STANCE_CONFIRM_STREAK`. Gated
+   the streak update to `delta > 0.0` only (same fix pattern as the landing bugs). **The streak then
+   visibly climbed correctly on real ticks (confirmed 4, 5, 6, 7...) - but still reset to exactly 0 at
+   one point and then stayed at 0 for dozens of subsequent frames, even during a long stretch where
+   `swing_active` was independently confirmed `false`.** This means the leg's own velocity signal is
+   reading as genuinely, repeatedly noisy during this specific window for a reason not yet identified -
+   investigation stopped here for the night.
+
+**Everything for this thread was reverted** (`git checkout` on `foot_ik_stair_predictor.gd` and
+`foot_ik_preview.gd`; the small `player_foot_ik_modifier.gd` plumbing changes for it hand-reverted
+while keeping the unrelated, verified landing-grace fixes above). Working tree confirmed back to a
+clean, fully-passing `check_foot_ik.sh`/`check.sh` state.
+
+**Next attempt should start with better tooling, not more live patches.** The pattern all session was
+"fix one gate, verify a proxy signal looks right, re-run the one aggregate check, learn nothing moved,
+repeat" - too slow and too easy to fix five real bugs without ever seeing the actual blocker. Next
+time: build a small always-on visualization (extend `foot_ik_debug_overlay.gd`, or a dedicated
+headless dump) that plots, for both feet across a full multi-step walk cycle in one pass:
+`ground_weight`, `forced_support`, `vertical_velocity`, `swing_active`, and actual foot-to-tread
+vertical gap - so the whole interaction is visible at once instead of inferred one print statement and
+one aggregate number at a time.
+
+## 2026-08-05 session, continued: the actual fix (kept, verified, not fully complete)
+
+Followed the "next attempt" advice immediately above in the same session: added `step_down`,
+`swing_active`, `contact_lost`, and `raw_weight` fields to the existing `STAIR_FOOT_TRACE` JSON dump
+(`_foot_trace_sample()` in `foot_ik_preview.gd` - it already had `ground_weight` and a per-tread
+vertical `clearance` metric via `_point_stair_trace()`, so this only needed a few more fields, not a
+new tool), then read a full 138-frame walk cycle for both feet side by side in one pass instead of
+chasing single print statements.
+
+**The actual primary blocker**, found immediately once both feet's full state was visible together at
+once: at frame 14, the stair predictor had *already correctly* picked `left` as the support leg with a
+genuinely tiny 4.9cm clearance to the true tread - a clean, correct decision. But `ground_weight`
+stayed at exactly 0 anyway, because `contact_lost=true`. The cause: `_apply_support_contact()` in
+`foot_ik_stair_predictor.gd` (the function that force-sets the support leg's `ground_weight` to `1.0`)
+had a guard added in an earlier session (see "Session bugs found and fixed" below,
+`_apply_support_contact()` bullet) that skips the override whenever `gait_tracker`'s own independent
+`contact_lost` computation disagrees. `gait_tracker`'s `contact_lost` uses the same
+`GROUND_CONTACT_DISTANCE` (3cm) distance gate that's fundamentally wrong for stairs (see reverted
+investigation above, point 1) - so during active walking it disagreed almost every single frame,
+silently vetoing the stair predictor's own, purpose-built, already-correct decision essentially all
+the time. Removed the guard (`_owner._smoothed_ground_weight[side] = 1.0` unconditionally again, as it
+was before that earlier fix).
+
+**Verified this doesn't reintroduce the bug that guard was added for.** That earlier bug's symptom was
+a stale, no-longer-valid support leg getting force-planted forever. `ensure_support()`'s own retention
+checks (target reachability + distance) still run every frame *before* `_apply_support_contact()` and
+already exist specifically to drop stale support - the earlier guard was papering over a case those
+checks alone didn't catch cleanly, but removing it and re-running the full `check_foot_ik.sh` suite
+(stretch, airborne, and - importantly - body penetration across the *entire* scene, all idle dummies
+included, not just the walker) came back clean (0 penetrating samples) in every configuration tested
+below. Idle-only characters are unaffected either way: they never call `ensure_support()` in the first
+place (`is_active()` requires `_support_side` to have been set, which only happens via active walking).
+
+**Also widened the distance-based acquisition gate** (`_is_contacting()`, new
+`SUPPORT_CONTACT_DISTANCE` constant in `foot_ik_stair_predictor.gd`, separate from the idle-focused
+`GROUND_CONTACT_DISTANCE`) from 3cm - found the safe boundary empirically:
+
+| Threshold | `FOOT_IK_BODY_PENETRATION_CHECK` | Frames still with no support acquired (of 138) |
+|---|---|---|
+| 0.03 (original) | PASS (0) | baseline broken - almost always empty |
+| 0.15 | PASS (0) | 102 (no measurable change from 0.03) |
+| 0.20 | PASS (0) | 102 (identical to 0.15) |
+| 0.25 | PASS (0) | not measured (boundary search) |
+| 0.30 | **FAIL (8 samples, 0.348m max depth)** | not measured - unsafe |
+
+Settled on **0.15** (comfortable margin below the 0.25-0.30 failure boundary). It provides essentially
+no additional benefit over the guard-removal fix alone in this specific 0.35m-riser walk cycle
+(confirmed identical 102/138 empty-support frames at both 0.15 and 0.20), but is still correct to keep
+- it should help more on shallower stairs where the true gap is naturally smaller, and does not need
+to be revisited unless a future change specifically targets it. **The real remaining problem is that
+in 92 of those 102 empty-support frames, *both* feet's clearance from the true tread exceeds 15cm at
+the same time - often up to 0.5m** (the flat-ground-authored clip vs. real 0.35m stair geometry
+mismatch is simply that large for a meaningful fraction of the gait cycle). No distance threshold that
+stays under the ~0.25-0.30 penetration-unsafe boundary can close that gap; a non-distance signal
+(velocity, gait-phase, or animation-authored foot-contact events) is needed for the remaining
+acquisition frequency, which is exactly the harder problem the five-round reverted investigation above
+was trying (and failing) to solve differently. Given the guard-removal fix alone is a real, substantial,
+low-risk improvement on its own, it's kept independently rather than blocked on solving that harder
+problem too.
+
+Files touched (kept): `actors/player/foot_ik/foot_ik_stair_predictor.gd` (`_apply_support_contact()`
+guard removed, `SUPPORT_CONTACT_DISTANCE` added), `tests/manual/foot_ik/foot_ik_preview.gd`
+(`_foot_trace_sample()` diagnostic fields).
+
+## 2026-08-05 session, continued further: double-call deadlock also hits ordinary walking (REVERTED - broke IK live)
+
+User reported live (after the fix above, still same session): idle straddle poses and jump-landing
+both look correct, but while actually walking "the lower foot moves up and floats, like over an
+invisible floor at the step level." Traced with the same enriched `STAIR_FOOT_TRACE` dump (temporarily
+pointed at the 0.65m walker for a clearer, larger-gap repro, then reverted back to 0.35m) and found:
+for the swinging (non-support) leg, `raw_weight` read `1.0` and `contact_lost` read `false` for ten
+consecutive real frames - yet `ground_weight` never advanced from exactly `0.0` the entire time. This
+is the *exact same* symptom, and turned out to be the exact same root cause, as the jump-landing
+"stuck at 0" bug fixed earlier this session (see the "jump-landing fixes" section above): Godot calls
+`_process_modification_with_delta()` twice per physics tick for a reason never pinned down - once with
+the real delta, once with `delta=0.0` - and that extra call's own independent contact/velocity sample
+can disagree with the real one, corrupting streak/weight state that assumes exactly one authoritative
+sample per tick. The landing-grace fix only patched this for the few hundred milliseconds right after
+touchdown; it did nothing for ordinary mid-walk swings, where the same deadlock can strike just as
+easily.
+
+**Fixed at the actual root this time**, rather than another narrow per-symptom patch: added a guard at
+the very top of `_process_modification_with_delta()` that skips the call outright whenever
+`delta <= 0.0` *and* the tree isn't paused (the one legitimate delta=0 case - re-evaluating a paused,
+tuning-adjusted pose from the debug panel - is explicitly still allowed through). Re-traced afterward:
+the swinging leg's `swing_active` flag now holds `true` continuously through its entire swing arc with
+zero flicker (previously it randomly flipped `false` mid-swing due to the phantom duplicate call), and
+the stuck-at-exactly-0 deadlock is gone. Full `check_foot_ik.sh` suite still passes clean (0 penetrating
+samples) after this change.
+
+**Aggregate floating-time numbers barely moved** (still ~102/138 frames with no support acquired, ~99
+with both feet under 0.5 weight, both roughly matching pre-fix baselines) - this fix did not close the
+acquisition-frequency gap described in the section above (that's still a real, separate, larger
+problem). What it *did* fix is a genuine correctness bug: weight no longer gets permanently and
+incorrectly stuck at exactly 0 due to an engine-level artifact unrelated to gait. Whether this
+resolves the user's specific "lower foot floats to step level" report is not yet confirmed - it may be
+partially explained by this deadlock, partially by the separate, larger acquisition-frequency gap
+(which would show as similar-looking floating for a different reason). Needs a fresh live test.
+
+**REVERTED after live testing.** The user tested this specific change live in `foot_ik_preview.tscn`
+immediately after and reported "the ik does not work" - IK was now floating on **everything**,
+including idle straddle poses that had worked correctly all session. So the headless
+`--fixed-fps 60` call pattern this fix was based on ("always exactly one real-delta call and one
+`delta=0.0` call per tick") evidently does **not** hold in the live/interactive editor the same way -
+whatever the real live call pattern is, unconditionally skipping delta<=0 calls skipped calls that
+were actually needed. Reverted immediately (`_process_modification_with_delta()` back to its original
+top). **Lesson captured in `AGENTS.md`**: a clean headless trace and a passing `check_foot_ik.sh` are
+not sufficient evidence for a fix to this specific twice-per-tick behavior - it must be confirmed live
+before trusting it, and this is now the second time in one session this exact class of change
+(changing what runs on a delta=0 call, not just gating an individual reference update) needed a live
+correction after headless testing said it was clean.
+
+**Not yet manually confirmed in-game** - the two fixes that remain in place from this session (jump-
+landing, support-plant guard removal) still need the user to walk the real stairs and look; this one
+reverted change does not need re-testing (it's gone).
+
+## 2026-08-05 session, continued once more: idle-freeze from community advice (added, untested live)
+
+User shared a Reddit r/gamedev thread ("For anyone working on foot/leg IK, please read this," 2020,
+145 upvotes) with a widely-agreed-with piece of practical advice: the classic "twitchy foot IK while
+standing still" complaint comes from continuously re-raycasting the ground target even while idle, so
+ordinary per-frame noise (breathing, idle sway, idle-animation micro-motion) occasionally shifts the
+raycast origin enough to flip between two adjacent valid surfaces. Their fix: once there's no
+movement input, **stop re-raycasting/re-solving entirely** - pick a placement once and freeze it there,
+accepting it might be a hair off rather than technically-correct-every-frame but visibly jittering.
+
+This directly matches a structural weakness already visible in this project's own foot IK: everything
+built so far leans on *continuous* resampling plus hysteresis/streak tuning to *tolerate* noise, rather
+than removing the resampling once it's no longer needed - and the still-unexplained 65cm idle-float
+bug (plants correctly, then pops back to floating almost instantly) is exactly the failure mode a
+freeze would structurally prevent, since there'd be nothing left to re-sample that could cause a pop.
+
+**Implemented as a new, narrowly-scoped, opt-in mechanism** (`update_idle_freeze()` in
+`foot_ik_gait_tracker.gd`, wired from `player_foot_ik_modifier.gd`'s per-leg loop): once a leg's
+`ground_weight` has read `>= 0.999` and `anim_speed` has stayed under `idle_step_down_speed` for
+`IDLE_FREEZE_STREAK` (30) consecutive *real* ticks, it freezes - `_sample_ground_contact()` stops
+updating `_smoothed_target`/`_smoothed_normal` from new raycasts entirely, including tolerating a
+transient raycast miss without treating it as lost contact. Only a clearly real motion
+(`IDLE_UNFREEZE_SPEED_MULT` - 3x the idle threshold, well above ordinary noise) releases the freeze,
+so a genuine step still responds promptly. The streak only advances on real (`delta > 0`) ticks -
+learned the hard way earlier in this same session that per-frame reference/streak updates must be
+delta-gated, not skip-the-whole-call gated, to survive the modifier's twice-per-tick call pattern
+safely.
+
+**A real bug was caught during this exact change**, worth remembering: `var frozen := _gait_tracker.update_idle_freeze(...)`
+failed to compile with "Cannot infer the type... because the value doesn't have a set type" - `_gait_tracker`
+is declared untyped (same pattern `_owner` uses throughout these helper classes), so `:=` type
+inference on a method call through it doesn't work; needs an explicit `var frozen: bool = ...`. This
+was caught by the *full* `scripts/check.sh` run (the actual Godot project-import/parse step), not by
+`gdlint` alone - a reminder to always run the whole script, not just grep its lint section, since a
+type-inference error like this compiles fine syntactically but fails at Godot's own script-reload step
+and would otherwise have looked like a clean pass.
+
+Passes the full automated suite (stretch/airborne/penetration all clean). Files touched:
+`actors/player/foot_ik/foot_ik_gait_tracker.gd` (new `update_idle_freeze()`),
+`actors/player/player_foot_ik_modifier.gd` (`_idle_frozen`/`_idle_freeze_streak` state, wiring into
+the per-leg loop and `_sample_ground_contact()`).
+
+**Not yet manually confirmed in-game.** Given the double-call-skip fix broke IK completely despite
+passing every automated check just one iteration earlier in this same session, do not assume this is
+safe without a live look - specifically check: (1) does idle straddle-pose IK still work correctly on
+all previously-working stair heights, (2) does it look *smoother* while standing still than before
+(the actual goal), (3) does the 65cm idle-float bug's pop-back-to-floating symptom still occur.
 
 ## Session bugs found and fixed (live-testing marathon)
 

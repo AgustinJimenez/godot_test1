@@ -55,6 +55,7 @@ enum SolverBackend { CUSTOM, NATIVE_TWO_BONE }
 ## (see e.g. player.tscn's own CharacterBody3D collision_mask).
 const GROUND_COLLISION_MASK := 1
 const GROUND_CONTACT_DISTANCE := 0.03
+const TARGET_NOISE_DEADBAND := 0.01 # sub-this raycast noise is rejected, not lerped toward
 ## Approximate sole thickness/ankle clearance so the ankle doesn't sink
 ## exactly to the raycast hit point. The foot/toe are no longer forced flat
 ## (see _compute_new_foot_basis_world's doc comment) - they now preserve
@@ -262,6 +263,16 @@ var _falling_streak: Dictionary = {} # side -> int
 var _weight_stuck_time: Dictionary = {} # side -> float (seconds)
 var _landing_fell: Dictionary = {} # side -> bool
 var _step_down_static_streak: Dictionary = {} # side -> int
+## Counts down from LANDING_GRACE_DURATION after set_character_grounded()
+## sees a real airborne->grounded transition. While positive, forces
+## _sample_ground_contact's extended fallback probe on regardless of
+## anim_speed - see the deadlock this breaks in that function's own comment.
+var _landing_grace_time := 0.0
+const LANDING_GRACE_DURATION := 0.35
+## Stops ground-target resampling once truly settled - see
+## foot_ik_gait_tracker.gd's update_idle_freeze() doc comment.
+var _idle_frozen: Dictionary = {} # side -> bool
+var _idle_freeze_streak: Dictionary = {} # side -> int
 var _smoothed_step_lift: Dictionary:
 	get:
 		return _stair_predictor.get_step_lifts() if _stair_predictor != null else {}
@@ -302,6 +313,9 @@ func reset_runtime_state() -> void:
 	_weight_stuck_time.clear()
 	_landing_fell.clear()
 	_step_down_static_streak.clear()
+	_idle_frozen.clear()
+	_idle_freeze_streak.clear()
+	_landing_grace_time = 0.0
 	debug_vertical_velocity.clear()
 	debug_contact_distance.clear()
 	debug_contact_hit.clear()
@@ -317,6 +331,7 @@ func set_character_grounded(value: bool) -> void:
 		return
 	reset_runtime_state()
 	active = value
+	_landing_grace_time = LANDING_GRACE_DURATION if value else 0.0
 	if _native_backend != null:
 		_native_backend.set_enabled(value and solver_backend == SolverBackend.NATIVE_TWO_BONE)
 
@@ -614,6 +629,8 @@ func _process_modification_with_delta(delta: float) -> void:
 	if space == null:
 		return
 	_stair_predictor.update_travel_direction(delta)
+	if delta > 0.0:
+		_landing_grace_time = maxf(0.0, _landing_grace_time - delta)
 
 	# Find the shared pelvis drop needed to keep both ground targets reachable.
 	var to_world := skel.global_transform
@@ -637,9 +654,11 @@ func _process_modification_with_delta(delta: float) -> void:
 		# foot apart from one mid-swing without waiting a frame.
 		var anim_speed := _animated_vertical_speed(
 				side, animated_foot_pos, to_world, delta)
-		var likely_idle := absf(anim_speed) <= idle_step_down_speed
-		var contact := _sample_ground_contact(
-				skel, space, side, animated_foot_pose, foot_pos, to_world, delta, likely_idle)
+		var likely_idle := absf(anim_speed) <= idle_step_down_speed \
+				or _landing_grace_time > 0.0 # see _landing_grace_time's doc comment
+		var frozen: bool = _gait_tracker.update_idle_freeze(side, anim_speed, delta)
+		var contact := _sample_ground_contact(skel, space, side, animated_foot_pose,
+				foot_pos, to_world, delta, likely_idle, frozen)
 		per_leg[side] = {"hip_pos": hip_pos, "hit": contact["hit"], "upper": upper_length,
 				"lower": lower_length, "vertical_velocity": 0.0}
 		if not contact["hit"]:
@@ -682,7 +701,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		debug_step_down[side] = step_down
 		var gait: Dictionary = _gait_tracker.update(side, animated_foot_pos, foot_pos,
 				ground_target, animated_contact_hit, animated_contact_distance, to_world,
-				delta, step_down)
+				delta, step_down, _landing_grace_time > 0.0)
 		var vertical_velocity: float = gait["vertical_velocity"]
 		var ground_weight: float = gait["ground_weight"]
 		var landed: bool = gait["landed"]
@@ -738,12 +757,21 @@ func _process_modification_with_delta(delta: float) -> void:
 ## translation cannot masquerade as foot motion.
 func _animated_vertical_speed(side: StringName, animated_foot_pos: Vector3,
 		to_world: Transform3D, delta: float) -> float:
-	if delta <= 0.0 or not _prev_animated_foot_pos.has(side):
-		return 0.0
-	var previous: Vector3 = _prev_animated_foot_pos[side]
-	var world_delta := to_world.basis * (animated_foot_pos - previous)
-	return world_delta.dot(_smoothed_normal[side] as Vector3) / (
-			delta * maxf(player_body.locomotion_playback_scale, 0.001))
+	var velocity := 0.0
+	if delta > 0.0 and _prev_animated_foot_pos.has(side):
+		var previous: Vector3 = _prev_animated_foot_pos[side]
+		var world_delta := to_world.basis * (animated_foot_pos - previous)
+		velocity = world_delta.dot(_smoothed_normal[side] as Vector3) / (
+				delta * maxf(player_body.locomotion_playback_scale, 0.001))
+	# Only gait_tracker's own successful update() writes this reference
+	# normally (see _prev_animated_foot_pos's doc comment) - deliberately
+	# frozen during a genuine swing, which is the correct signal there. But
+	# within landing grace we already distrust anim_speed entirely (see
+	# _landing_grace_time), so refresh here too or this leg can exit grace
+	# still stale and fall right back into the deadlock grace fixed.
+	if _landing_grace_time > 0.0:
+		_prev_animated_foot_pos[side] = animated_foot_pos
+	return velocity
 
 
 ## Classifies this stationary foot's relationship to a lower surface it
@@ -788,7 +816,9 @@ func _step_down_classification(side: StringName, hip_pos: Vector3, ground_target
 	else:
 		streak = 0
 	_step_down_static_streak[side] = streak
-	if int(_step_down_static_streak.get(side, 0)) < STEP_DOWN_STATIC_STREAK:
+	# Also bypass during landing grace (else a contact_lost frame pops weight).
+	if (int(_step_down_static_streak.get(side, 0)) < STEP_DOWN_STATIC_STREAK
+			and _landing_grace_time <= 0.0):
 		return {"plant": false, "settle": false}
 	if not contact_hit or not is_finite(contact_distance):
 		return {"plant": false, "settle": false}
@@ -843,8 +873,8 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, hip_pos: Vector3,
 
 
 func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
-		side: StringName, foot_pose: Transform3D, foot_pos: Vector3,
-		to_world: Transform3D, delta: float, likely_idle: bool = false) -> Dictionary:
+		side: StringName, foot_pose: Transform3D, foot_pos: Vector3, to_world: Transform3D,
+		delta: float, likely_idle: bool = false, frozen: bool = false) -> Dictionary:
 	var hit := _raycast_ground(space, foot_pos)
 	if not hit["hit"] and likely_idle and step_prediction_enabled:
 		# Nothing within the ordinary ray_down at the raw ankle position
@@ -861,11 +891,14 @@ func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 	if not _smoothed_target.has(side):
 		_smoothed_target[side] = raw_target
 		_smoothed_normal[side] = raw_normal
-	var amount := clampf(delta * smooth_rate, 0.0, 1.0)
-	_smoothed_target[side] = (_smoothed_target[side] as Vector3).lerp(raw_target, amount)
-	_smoothed_normal[side] = (_smoothed_normal[side] as Vector3).lerp(
-			raw_normal, amount).normalized()
-	if not hit["hit"]:
+	# Frozen: keep target fixed. Else reject sub-deadband noise outright.
+	if not frozen and raw_target.distance_to(
+			_smoothed_target[side] as Vector3) > TARGET_NOISE_DEADBAND:
+		var amount := clampf(delta * smooth_rate, 0.0, 1.0)
+		_smoothed_target[side] = (_smoothed_target[side] as Vector3).lerp(raw_target, amount)
+		_smoothed_normal[side] = (_smoothed_normal[side] as Vector3).lerp(
+				raw_normal, amount).normalized()
+	if not hit["hit"] and not frozen:
 		return {"hit": false}
 	var desired_down := -(_smoothed_normal[side] as Vector3)
 	var foot_basis := _compute_new_foot_basis_world(skel, side, desired_down)

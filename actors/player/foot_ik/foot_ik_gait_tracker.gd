@@ -11,7 +11,8 @@ func _init(owner) -> void:
 
 func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
 		ground_target: Vector3, contact_hit: bool, contact_distance: float,
-		to_world: Transform3D, delta: float, step_down: bool = false) -> Dictionary:
+		to_world: Transform3D, delta: float, step_down: bool = false,
+		skip_velocity_gate: bool = false) -> Dictionary:
 	var velocity := _measure_velocity(side, animated_foot_pos, to_world, delta)
 	var force_plant: bool = _owner.force_plant_mode
 	# A stationary stance foot easing down onto a reachable lower surface must
@@ -27,6 +28,15 @@ func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
 	if contact_lost:
 		raw_weight = 0.0
 	elif force_plant:
+		raw_weight = 1.0
+	elif skip_velocity_gate:
+		# Landing-grace window (see player_foot_ik_modifier.gd's
+		# _landing_grace_time): the land-recovery animation's own foot motion
+		# right after a real touchdown is fast enough to read as a genuine
+		# swing to the velocity-based gate below, even though the character
+		# has already landed and contact is confirmed close by (contact_lost
+		# false). Plant fully instead of fighting that animation noise for
+		# the grace window's duration.
 		raw_weight = 1.0
 	_owner.debug_raw_weight[side] = raw_weight
 	_owner.debug_contact_lost[side] = contact_lost
@@ -126,3 +136,36 @@ func _update_landing(side: StringName, velocity: float, delta: float) -> bool:
 		_owner.foot_landed.emit(side, _owner._smoothed_target[side] as Vector3)
 		return true
 	return false
+
+
+const IDLE_FREEZE_STREAK := 30
+const IDLE_UNFREEZE_SPEED_MULT := 3.0
+
+## Reddit r/gamedev thread on foot IK (2020, "for anyone working on foot/leg
+## IK please read this"): the classic "twitchy IK while standing still" bug
+## comes from continuously re-raycasting even when idle, so ordinary noise
+## (breathing, idle sway) occasionally flips the target between two adjacent
+## valid surfaces. Their fix - stop resampling entirely once idle, freeze the
+## last placement - matches this project's own repeated experience fighting
+## that exact class of flicker with hysteresis/streak tuning instead of
+## removing the resampling. Once a fully-planted foot (ground_weight >= 0.999)
+## has read near-motionless for IDLE_FREEZE_STREAK real ticks, freeze; only a
+## clearly real motion (IDLE_UNFREEZE_SPEED_MULT times the idle threshold, not
+## just noise) releases it, so a genuine step still un-freezes promptly. The
+## streak only advances on real (delta > 0) ticks - see
+## player_foot_ik_modifier.gd's own note on the twice-per-tick call pattern.
+func update_idle_freeze(side: StringName, anim_speed: float, delta: float) -> bool:
+	var frozen: bool = _owner._idle_frozen.get(side, false)
+	if frozen:
+		if absf(anim_speed) > _owner.idle_step_down_speed * IDLE_UNFREEZE_SPEED_MULT:
+			frozen = false
+			_owner._idle_freeze_streak[side] = 0
+	elif delta > 0.0:
+		if (_owner._smoothed_ground_weight.get(side, 0.0) >= 0.999
+				and absf(anim_speed) <= _owner.idle_step_down_speed):
+			_owner._idle_freeze_streak[side] = int(_owner._idle_freeze_streak.get(side, 0)) + 1
+		else:
+			_owner._idle_freeze_streak[side] = 0
+		frozen = int(_owner._idle_freeze_streak.get(side, 0)) >= IDLE_FREEZE_STREAK
+	_owner._idle_frozen[side] = frozen
+	return frozen
