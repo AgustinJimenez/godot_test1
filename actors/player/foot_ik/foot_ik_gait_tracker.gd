@@ -28,6 +28,8 @@ func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
 		raw_weight = 0.0
 	elif force_plant:
 		raw_weight = 1.0
+	_owner.debug_raw_weight[side] = raw_weight
+	_owner.debug_contact_lost[side] = contact_lost
 	var weight := _smooth_weight(side, raw_weight, contact_lost, delta)
 	var landed := _update_landing(side, velocity, delta)
 	return {"vertical_velocity": velocity, "ground_weight": weight, "landed": landed}
@@ -44,8 +46,24 @@ func _measure_velocity(side: StringName, foot_pos: Vector3,
 		velocity = world_delta.dot(_owner._smoothed_normal[side] as Vector3) / (
 				delta * maxf(_owner.player_body.locomotion_playback_scale, 0.001))
 	_owner._prev_animated_foot_pos[side] = foot_pos
-	_owner._falling_streak[side] = (int(_owner._falling_streak.get(side, 0)) + 1
-			if velocity < -_owner.velocity_noise_floor else 0)
+	# Same fix as _step_down_classification's static streak (see that comment
+	# for the full story): idle-animation noise can tick velocity back above
+	# -velocity_noise_floor for a single frame without the foot having
+	# actually started rising, and a hard reset here made min_falling_streak
+	# never sustain, which pinned _raw_weight's falling branch at 0.0
+	# indefinitely - confirmed live (paused=false, animation genuinely
+	# advancing, ground_weight stuck at exactly 0.0 the whole time). Only
+	# decay by 1 for that near-zero noise band; a real reversal into
+	# genuinely positive (rising) velocity still resets immediately, same as
+	# a genuine swing start must.
+	var falling: int = _owner._falling_streak.get(side, 0)
+	if velocity < -_owner.velocity_noise_floor:
+		falling += 1
+	elif velocity < _owner.velocity_noise_floor:
+		falling = maxi(0, falling - 1)
+	else:
+		falling = 0
+	_owner._falling_streak[side] = falling
 	_owner.debug_vertical_velocity[side] = velocity
 	return velocity
 
@@ -71,6 +89,30 @@ func _smooth_weight(side: StringName, raw_weight: float,
 		weight = maxf(raw_weight, previous - delta / _owner.ground_weight_fall_time)
 	if contact_lost:
 		weight = 0.0
+	# Watchdog: a normal ramp finishes within a handful of
+	# ground_weight_rise_time windows. If raw_weight/contact_lost say weight
+	# should clearly be rising and it has stayed far below raw_weight much
+	# longer than that, something has gotten stuck by a mechanism testing
+	# never reproduced (jump-in-place, jump-and-reposition, and 60 real
+	# seconds of just standing still all recovered correctly in isolation -
+	# only live play has shown a genuine, lasting stuck state, previously
+	# clearable only by manually toggling "IK Active", which force-calls
+	# reset_runtime_state() unconditionally; set_character_grounded()'s own
+	# reset only fires on an actual airborne<->grounded transition). Self-heal
+	# the same way that manual click does, automatically.
+	# A brief single-frame contact_lost blip (the same kind of flicker the
+	# streak fixes above tolerate) must not wipe out accumulated stuck time
+	# in one shot, or the watchdog can never reach its threshold if that
+	# flicker recurs every so often - decay gently instead of resetting to 0.
+	var stuck: float = float(_owner._weight_stuck_time.get(side, 0.0))
+	if not contact_lost and raw_weight - weight > 0.05 and delta > 0.0:
+		stuck += delta
+		if stuck > maxf(_owner.ground_weight_rise_time * 5.0, 0.5):
+			weight = raw_weight
+			stuck = 0.0
+	else:
+		stuck = maxf(0.0, stuck - delta * 4.0)
+	_owner._weight_stuck_time[side] = stuck
 	_owner._smoothed_ground_weight[side] = weight
 	return weight
 

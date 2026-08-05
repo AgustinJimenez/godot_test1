@@ -109,12 +109,15 @@ func _ready() -> void:
 			if walker["trace_enabled"]:
 				_start_stair_walker(walker)
 				break
+	## Confirmed live repro spot: bottom riser of the 0.65m stairs, straddling
+	## the final drop to ground level - right foot's ground_weight stuck at 0.
+	$Player.global_position = Vector3(20.88115, 0.7, -0.067287)
+	$Player.rotation = Vector3(0.0, PI * 0.5, 0.0)
 	$Player.camera.current = true
 	for child in $Player.skeleton.get_children():
 		if child is PlayerFootIKModifier:
 			child.foot_landed.connect(_on_foot_landed.bind($Player))
 			break
-
 
 func _physics_process(delta: float) -> void:
 	if _automated_stretch_check:
@@ -134,7 +137,11 @@ func _physics_process(delta: float) -> void:
 				_update_physical_walker_tread(walker)
 			else:
 				_advance_stair_walker(walker, delta)
-			if walker["trace_enabled"] and not walker["trace_complete"]:
+			# _automated_stretch_check-only: this walker repeats its climb
+			# forever during interactive play, reprinting a full per-frame
+			# JSON trace each time - ungated, a long session overflows
+			# Godot's console buffer and silently kills the debug process.
+			if _automated_stretch_check and walker["trace_enabled"] and not walker["trace_complete"]:
 				call_deferred(&"_log_stair_foot_frame", walker)
 			if player.global_position.z >= walker["top_z"]:
 				_reset_stair_walker(walker)
@@ -149,7 +156,6 @@ func _physics_process(delta: float) -> void:
 			else:
 				_start_stair_walker(walker)
 	call_deferred(&"_update_step_prediction_markers")
-
 
 func _exit_tree() -> void:
 	if _stretch_check_samples == 0:
@@ -174,7 +180,6 @@ func _exit_tree() -> void:
 			" max_depth_m=", snappedf(_body_penetration_max_depth, 0.000001),
 			" tolerance_m=", BODY_STAIR_PENETRATION_TOLERANCE)
 
-
 func _sample_airborne_ik_release() -> void:
 	var player := $Player as Player
 	if _airborne_check_complete:
@@ -193,7 +198,6 @@ func _sample_airborne_ik_release() -> void:
 	_airborne_check_samples += 1
 	if ik.active:
 		_airborne_check_failed = true
-
 
 ## Bone origins can't prove skin is clear (weighted regions can cross a stair
 ## face while joints stay above target).
@@ -260,7 +264,6 @@ func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 	return {"available": true, "vertices": sample_vertices,
 			"max_depth": sample_max_depth, "bones": penetrating_bones}
 
-
 ## Per-bind global transforms for CPU skinning. Pose reads prefer the Foot IK
 ## modifier's own post-solve snapshot: at the harness's (idle/deferred) sample
 ## time the skeleton can still hold the pre-IK animated pose from the last
@@ -289,7 +292,6 @@ func _mesh_bind_transforms(mesh_part: MeshInstance3D, skeleton: Skeleton3D,
 		result[bind_index] = skeleton.global_transform * pose * skin.get_bind_pose(bind_index)
 	return result
 
-
 func _mesh_bind_bone_names(
 		mesh_part: MeshInstance3D, skeleton: Skeleton3D) -> Array[StringName]:
 	var result: Array[StringName] = []
@@ -304,7 +306,6 @@ func _mesh_bind_bone_names(
 			bone_index = skeleton.find_bone(skin.get_bind_name(bind_index))
 		result[bind_index] = skeleton.get_bone_name(bone_index) if bone_index >= 0 else &"unknown"
 	return result
-
 
 func _dominant_skin_bone(vertex_index: int, vertices: PackedVector3Array,
 		bones: PackedInt32Array, weights: PackedFloat32Array,
@@ -321,7 +322,6 @@ func _dominant_skin_bone(vertex_index: int, vertices: PackedVector3Array,
 			best_bind = bones[array_index]
 	return (bind_bone_names[best_bind]
 			if best_bind >= 0 and best_bind < bind_bone_names.size() else &"unknown")
-
 
 func _skin_vertex(vertex_index: int, vertices: PackedVector3Array,
 		bones: PackedInt32Array, weights: PackedFloat32Array,

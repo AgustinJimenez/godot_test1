@@ -2,7 +2,6 @@ extends Node3D
 ## Live contact/target/bone markers, solver controls, and numeric pose data.
 ## BoneAttachment3D probes expose the final post-modifier skeleton pose.
 
-const MARKER_RADIUS := 0.015
 ## The toe/ball bone's own origin sits at the base of the toes, not the
 ## visual tip of the foot mesh - extending a bit further past it along the
 ## same foot-to-toe direction approximates where the actual toe tip is, so
@@ -60,7 +59,11 @@ const READOUT_FIELDS := [
 	["toe_tip_y", "Toe Tip Y"],
 	["toe_tip_gap", "Toe Gap"],
 	["ground_weight", "IK Weight"],
+	["is_floating", "Floating?"],
 	["step_down", "StepDown"],
+	["raw_weight", "RawWeight"],
+	["contact_lost", "CtcLost"],
+	["stuck_time", "StuckSec"],
 	["vertical_velocity", "Anim VY"],
 	["thigh_angle", "Thigh°"],
 	["shin_angle", "Shin°"],
@@ -71,6 +74,7 @@ const READOUT_FIELDS := [
 var _active_check: CheckButton
 var _backend_option: OptionButton
 var _pause_button: Button
+var _keep_playing_check: CheckButton
 var _paused_animation_process_modes: Dictionary = {}
 var _animation_timeline: HSlider
 var _animation_time_readout: Label
@@ -131,9 +135,10 @@ func _ready() -> void:
 		var probe := Node3D.new()
 		attach.add_child(probe)
 		_probes[side] = probe
-		_markers[str(side) + "_hit"] = _spawn_marker(Color.GREEN)
-		_markers[str(side) + "_target"] = _spawn_marker(Color.BLUE)
-		_markers[str(side) + "_actual"] = _spawn_marker(Color.RED)
+		_markers[str(side) + "_hit"] = FootIkDebugMarkers.spawn_marker(self, Color.GREEN)
+		_markers[str(side) + "_target"] = FootIkDebugMarkers.spawn_marker(self, Color.BLUE)
+		_markers[str(side) + "_actual"] = FootIkDebugMarkers.spawn_marker(self, Color.RED)
+		_markers[str(side) + "_ray"] = FootIkDebugMarkers.spawn_ray(self, Color.WHITE)
 		# Separate probe/marker for the toe/ball bone specifically - the
 		# ankle marker above can sit right at the target while the toe still
 		# visibly pokes up, since it's a distinct bone with its own pose.
@@ -145,7 +150,7 @@ func _ready() -> void:
 			var toe_probe := Node3D.new()
 			toe_attach.add_child(toe_probe)
 			_toe_probes[side] = toe_probe
-			_markers[str(side) + "_toe"] = _spawn_marker(Color.YELLOW)
+			_markers[str(side) + "_toe"] = FootIkDebugMarkers.spawn_marker(self, Color.YELLOW)
 
 		_angle_probes[side] = {
 			"hip": _make_probe(indices["hip"]),
@@ -155,7 +160,7 @@ func _ready() -> void:
 
 		_angle_labels[side] = {}
 		for segment: String in ["thigh", "shin", "foot", "leaf"]:
-			(_angle_labels[side] as Dictionary)[segment] = _spawn_angle_label()
+			(_angle_labels[side] as Dictionary)[segment] = FootIkDebugMarkers.spawn_angle_label(self)
 
 	_build_panel()
 
@@ -386,39 +391,6 @@ func _log_leg_angles() -> void:
 				line += " %s=%.1f" % [segment, angles[segment]]
 		print(line)
 
-func _spawn_marker(color: Color) -> MeshInstance3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	var mesh := SphereMesh.new()
-	mesh.radius = MARKER_RADIUS
-	mesh.height = MARKER_RADIUS * 2.0
-	mesh.material = mat
-	var inst := MeshInstance3D.new()
-	inst.mesh = mesh
-	add_child(inst)
-	return inst
-
-## Floating world-space text for one segment's angle - billboarded (always
-## faces the camera) and depth-test disabled like the skeleton ribbons
-## themselves, so the number stays readable through the mesh instead of
-## disappearing behind it whenever the camera orbits to the far side.
-func _spawn_angle_label() -> Label3D:
-	var label := Label3D.new()
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.no_depth_test = true
-	label.font_size = 28
-	label.outline_size = 10
-	# Label3D's default pixel_size (0.01) sizes text for room-scale scenes -
-	# at this character's ~2m scale, font_size 28 would render nearly 0.3m
-	# tall (bigger than the whole foot). Scaled down to a legible few
-	# centimeters instead.
-	label.pixel_size = 0.0007
-	label.modulate = Color.WHITE
-	label.text = "-"
-	add_child(label)
-	return label
-
 func _build_panel() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -494,6 +466,11 @@ func _build_panel() -> void:
 	_pause_button.text = "Pause All"
 	_pause_button.pressed.connect(_toggle_scene_pause)
 	vbox.add_child(_pause_button)
+
+	_keep_playing_check = CheckButton.new()
+	_keep_playing_check.text = "Keep Playing (ignore Esc/P menu pause)"
+	_keep_playing_check.button_pressed = true ## On by default - this scene is for live testing.
+	vbox.add_child(_keep_playing_check)
 
 	_build_animation_timeline(vbox)
 
@@ -674,6 +651,7 @@ func _build_readout_grid(parent: VBoxContainer) -> void:
 func _copy_ik_panel_data() -> void:
 	var lines: Array[String] = ["Foot IK Debug"]
 	lines.append("paused=%s ik_active=%s" % [get_tree().paused, _ik.active])
+	lines.append("player_pos=%s" % (_player_body.get_parent() as Node3D).global_position)
 	var animation_player := _player_body.anim_player
 	if animation_player != null and not animation_player.current_animation.is_empty():
 		var position := animation_player.current_animation_position
@@ -689,6 +667,8 @@ func _copy_ik_panel_data() -> void:
 				position.x, position.y, position.z])
 		lines.append("camera_rotation_degrees=(%.2f, %.2f, %.2f)" % [
 				rotation.x, rotation.y, rotation.z])
+	lines.append("retracted: left=%s right=%s" % [
+			_ik.debug_retracted.get("left", false), _ik.debug_retracted.get("right", false)])
 	if _stair_follow_probe != null:
 		var target := _stair_follow_probe.global_position
 		lines.append("follow_target=(%.5f, %.5f, %.5f)" % [target.x, target.y, target.z])
@@ -812,7 +792,6 @@ func _focus_stair_follow_camera(player: Player) -> void:
 		return
 	player.detached_cam.look_at(_stair_follow_probe.global_position + Vector3.UP * 0.04)
 
-
 func _move_paused_stair_follow_camera(player: Player, delta: float) -> void:
 	var input_dir := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
 	var direction := player.detached_cam.global_basis * Vector3(input_dir.x, 0.0, input_dir.y)
@@ -827,7 +806,6 @@ func _move_paused_stair_follow_camera(player: Player, delta: float) -> void:
 		speed *= player.detached_cam_sprint_multiplier
 	player.detached_cam.global_position += direction.normalized() * speed * delta
 
-
 func _zoom_stair_follow(factor: float) -> void:
 	if _stair_follow_probe == null:
 		return
@@ -837,7 +815,6 @@ func _zoom_stair_follow(factor: float) -> void:
 	var distance := clampf(
 			offset.length() * factor, STAIR_FOLLOW_MIN_DISTANCE, STAIR_FOLLOW_MAX_DISTANCE)
 	player.detached_cam.global_position = target + offset.normalized() * distance
-
 
 func _orbit_stair_follow(relative: Vector2) -> void:
 	if _stair_follow_probe == null:
@@ -858,7 +835,6 @@ func _orbit_stair_follow(relative: Vector2) -> void:
 			offset = proposed
 	camera.global_position = target + offset
 	_focus_stair_follow_camera(player)
-
 
 func _add_slider(
 		parent: VBoxContainer, prop: String, label_text: String,
@@ -892,10 +868,20 @@ func _add_slider(
 	_sliders[prop] = slider
 	_slider_labels[prop] = value_label
 
-
 func _physics_process(_delta: float) -> void:
 	if _ik == null:
 		return
+	if get_tree().paused and _keep_playing_check.button_pressed:
+		get_tree().paused = false ## Lets player.gd keep ticking while Esc/P's menu is still open.
+	elif get_tree().paused:
+		_refresh_paused_ik_pose() ## ui/hud.gd's P menu bypasses _set_scene_paused().
+	# The checkbox only used to reflect the click that set it, not
+	# set_character_grounded()'s own automatic on/off (airborne, landing) -
+	# read as permanently "IK DISABLED" from a one-frame spawn-height dip
+	# even after it self-corrected. Keep it honest every frame instead.
+	if _active_check.button_pressed != _ik.active:
+		_active_check.set_pressed_no_signal(_ik.active)
+		_style_active_check(_ik.active)
 	# Surface-to-surface ray distance (sole vs ground), read from the
 	# controlled character's own modifier (debug_contact_*), not the 0.35m
 	# walker's preview rays.
@@ -906,9 +892,13 @@ func _physics_process(_delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
 		var rot_deg := cam.global_rotation_degrees
-		_camera_readout.text = "camera pos=(%.2f, %.2f, %.2f) rot(deg)=(%.1f, %.1f, %.1f) [%s]" % [
-			cam.global_position.x, cam.global_position.y, cam.global_position.z,
-			rot_deg.x, rot_deg.y, rot_deg.z, cam.name]
+		_camera_readout.text = (
+				("camera pos=(%.2f, %.2f, %.2f) rot(deg)=(%.1f, %.1f, %.1f) [%s]"
+				+ "\nplayer_pos=%s ik_active=%s retracted: left=%s right=%s")
+				% [cam.global_position.x, cam.global_position.y, cam.global_position.z,
+					rot_deg.x, rot_deg.y, rot_deg.z, cam.name,
+					(_player_body.get_parent() as Node3D).global_position, _ik.active,
+					_ik.debug_retracted.get("left", false), _ik.debug_retracted.get("right", false)])
 
 	for side: String in ["left", "right"]:
 		var values: Dictionary = _readout_values[side]
@@ -938,10 +928,17 @@ func _physics_process(_delta: float) -> void:
 		var lower_distance: float = contact_distance if contact_hit else -1.0
 		(values["lower_distance"] as Label).text = (
 				"%.3f" % lower_distance if lower_distance >= 0.0 else "-")
+		var ray_length := contact_distance if contact_hit else _ik.idle_settle_search_down
+		FootIkDebugMarkers.update_ray_visual(_markers[side + "_ray"] as MeshInstance3D,
+				actual_pos, actual_pos + Vector3.DOWN * ray_length, contact_hit)
 		(values["pitch"] as Label).text = "%.1f" % pitch_deg
-		(values["ground_weight"] as Label).text = "%.3f" % float(
-				_ik._smoothed_ground_weight.get(side, 0.0))
+		var w: float = float(_ik._smoothed_ground_weight.get(side, 0.0))
+		(values["ground_weight"] as Label).text = "%.3f" % w
+		(values["is_floating"] as Label).text = str(w < 0.5)
 		(values["step_down"] as Label).text = str(bool(_ik.debug_step_down.get(side, false)))
+		(values["raw_weight"] as Label).text = "%.3f" % float(_ik.debug_raw_weight.get(side, 0.0))
+		(values["contact_lost"] as Label).text = str(bool(_ik.debug_contact_lost.get(side, false)))
+		(values["stuck_time"] as Label).text = "%.2f" % float(_ik._weight_stuck_time.get(side, 0.0))
 		(values["vertical_velocity"] as Label).text = "%.3f" % float(
 				_ik.debug_vertical_velocity.get(side, 0.0))
 
@@ -962,7 +959,6 @@ func _physics_process(_delta: float) -> void:
 				(values[segment + "_angle"] as Label).text = "%.1f" % angles[segment]
 		_update_angle_labels(side, angles)
 	_capture_controlled_foot_frame()
-
 
 func _capture_controlled_foot_frame() -> void:
 	if _ik == null or _player_body == null:
