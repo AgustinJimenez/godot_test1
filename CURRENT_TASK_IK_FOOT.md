@@ -964,3 +964,55 @@ controllable player.
 - Jump and land on/near stairs; knees must not invert and airborne IK must release.
 - Compare idle and walk poses with IK on/off for unrelated deformation.
 - After any automated scene run, leave the Godot scene stopped; the user starts manual tests.
+
+## 2026-08-07 session, new open item: right foot's toe/ball sits ~1.2cm below the Ramp 45 surface (confirmed, not yet fixed)
+
+Reported by the user as "leg clipping" while idle-standing on the Ramp 45 platform. Confirmed and
+pinpointed via a new live diagnostic (`tests/manual/foot_ik/foot_ik_live_penetration_check.gd`,
+marker-file toggle `user://foot_ik_penetration_check_marker`, folded into the existing
+`user://foot_ik_controlled.jsonl` trace as a per-frame `"penetration"` field): once past the ordinary
+spawn-settle transient (~frame 40), a **stable, unchanging** set of 23 mesh vertices reads ~1.24cm
+below the ramp's actual collision surface every single frame while standing still - not noise, not a
+one-off spike. Bone attribution (`penetrating_bones`) confirms it's the right foot specifically:
+`ball_r` (16 vertices) and `foot_r` (7 vertices). 1.24cm is well above the check's 5mm tolerance
+(matches `FOOT_IK_BODY_PENETRATION_CHECK`'s own tolerance).
+
+**Update, same session, investigated further:**
+
+- `target_max_speed` ruled out first (per the plan above): disabled it entirely (raised to 1000) and
+  the clip persisted unchanged (smaller, on the other foot that particular run, but still present) -
+  not the cause.
+- **The "tilt under-measures clearance" hypothesis was wrong, and disproven with a concrete reason,
+  not just more testing.** `_compute_new_foot_basis_world()` rotates the *whole foot* so its local
+  down-axis always exactly matches the current ground normal - by construction, re-projecting any
+  local-frame point onto that same (now-aligned) direction is mathematically identical to just
+  reading the point's local Y-component, regardless of tilt. Built a "direction-aware" version
+  (stored the full sole-mesh point cloud in local space, re-projected onto the live ground direction
+  every frame) specifically to test this, and confirmed via live debug prints across normals of
+  1.0, 0.97, 0.87, 0.71 (flat through 45°) that it returned the *exact same number* as the original
+  flat-pose scalar every time - proof the two are equivalent, not just similar. Reverted the
+  direction-aware version back to the plain scalar (`_sole_depth_below_foot`) to keep the code
+  simple, since it added real complexity for zero behavioral difference.
+- **Two genuine bugs found and fixed in the process, unrelated to tilt:** two of the *three*
+  `effective_offset` consumers were silently using a lesser value instead of the real one -
+  `_retract_to_reachable()` used bare `ankle_offset` alone (no toe/sole clearance at all), and
+  `foot_ik_stair_predictor.gd`'s `_apply_support_contact()` cached the offset once at
+  `_latch_support_target()` time and never refreshed it during ordinary retention (so a support foot
+  latched before the character fully settled could keep an offset computed from transient state for
+  its entire retention). Both now correctly use `_sole_depth_below_foot`/`leg["effective_offset"]`
+  live. Real fixes, verified via `check_foot_ik.sh` (no regression) - but confirmed via live capture
+  that neither fully explains the observed clip either (numbers barely moved).
+- **What's actually left**: a small (~0.8-1.2cm), *tilt-independent* clip that persists regardless of
+  which of the above is active - meaning the flat-pose `_measure_leg_sole_depth()` scalar itself is
+  probably just measuring a few mm-1cm too shallow, a plain magnitude issue, not a
+  direction/orientation one. Worth checking next: whether the "chain-dominant, non-chain-influences
+  keep rest pose" split in that function (see its own comment about biasing "only the top edge")
+  is actually excluding some blend-region vertices that are the true deepest point in the rendered
+  mesh, or whether a flat small safety margin (a few mm) on `_sole_depth_below_foot` is the
+  pragmatic fix given the magnitude involved.
+
+To reproduce/re-verify: play `foot_ik_preview.tscn` with the marker file present (`touch
+user://foot_ik_penetration_check_marker` before `play_scene_in_editor()`, matching the auto-spin
+marker pattern already used for the turn-snap investigation), stand idle on Ramp 45 for a few seconds,
+stop, and read `"penetration"` from the JSONL trace past frame ~40 - the `bones` breakdown will show
+which bone/foot and roughly how deep.

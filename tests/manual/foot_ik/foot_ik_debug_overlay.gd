@@ -1,26 +1,14 @@
 extends Node3D
-## Live contact/target/bone markers, solver controls, and numeric pose data.
-## BoneAttachment3D probes expose the final post-modifier skeleton pose.
+## Live contact/target/bone markers + controls; probes expose the post-modifier pose.
+const TOE_TIP_EXTRA_LENGTH := 0.035 # toe bone origin is at the base, not the mesh tip
 
-## The toe/ball bone's origin sits at the base of the toes, not the mesh's
-## visual tip - extending further along the foot-to-toe direction approximates
-## the actual toe tip, so the yellow marker reflects what you'd see poking up.
-const TOE_TIP_EXTRA_LENGTH := 0.035
-
-## Gap between the screen edge and the panel's own border.
-const PANEL_OUTER_MARGIN := 20
-## Gap between the panel's border and its contents - without this, wide rows
-## could render flush against the panel edge and get clipped by the viewport.
+const PANEL_OUTER_MARGIN := 20 # gap between screen edge and panel border
+# Wide rows would render flush against the panel edge without this.
 const PANEL_INNER_PADDING := 14
-## The content area's own width, independent of padding, so growing the
-## padding doesn't silently shrink the sliders/grid.
-const PANEL_CONTENT_WIDTH := 460
+const PANEL_CONTENT_WIDTH := 460 # independent of padding, so it doesn't shrink the sliders/grid
 const STAIR_FOLLOW_HEIGHT := 0.35
 const ANIMATION_DISPLAY_FPS := 60.0
-## User-calibrated camera position relative to the 0.35m walker's stable
-## root at the bottom spawn (15.0, 0.05, -0.8) - the root carries the camera
-## through stair movement; the animated foot only controls where it looks.
-const STAIR_FOLLOW_ROOT_OFFSET := Vector3(-0.7034, 0.0967, -0.2845)
+const STAIR_FOLLOW_ROOT_OFFSET := Vector3(-0.7034, 0.0967, -0.2845) # rel. to 0.35m walker's root
 const STAIR_FOLLOW_ORBIT_SENSITIVITY := 0.006
 const STAIR_FOLLOW_MIN_DISTANCE := 0.08
 const STAIR_FOLLOW_MAX_DISTANCE := 4.0
@@ -33,18 +21,11 @@ var _skel: Skeleton3D
 var _probes: Dictionary = {} # side -> Node3D (BoneAttachment3D child), foot bone
 var _toe_probes: Dictionary = {} # side -> Node3D (BoneAttachment3D child), toe bone, or null
 var _markers: Dictionary = {} # "side_kind" -> MeshInstance3D, kind in hit/target/actual/toe
-## side -> {hip, knee, leaf: Node3D or null} - only used by _log_leg_angles(),
-## kept separate from _probes/_toe_probes above since those two are read
-## every physics frame for the on-screen readout and this one isn't.
-var _angle_probes: Dictionary = {}
-## side -> {segment: Label3D}, one floating label per segment (thigh/shin/
-## foot/leaf), positioned at that segment's midpoint - puts the readout
-## grid's numbers directly on the bone they describe, not just the panel.
-var _angle_labels: Dictionary = {}
+var _angle_probes: Dictionary = {} # side -> {hip, knee, leaf: Node3D or null}
+var _angle_labels: Dictionary = {} # side -> {segment: Label3D}, positioned at segment midpoint
 
-## Ordered [key, column_header] pairs for the per-foot readout grid (see
-## _build_panel()/_physics_process()) - an Array, not a Dictionary, since the
-## display order matters and needs to stay fixed.
+# Ordered [key, column_header] pairs for the per-foot readout grid (Array,
+# not Dictionary, since display order matters and needs to stay fixed).
 const READOUT_FIELDS := [
 	["hit", "Hit"],
 	["target_y", "Target Y"],
@@ -70,6 +51,11 @@ const READOUT_FIELDS := [
 var _loop_reset_flash: Label
 var _controlled_trace_buffer: Array[String] = []
 var _contact_lost_flash: Label
+## Marker-file toggle (same pattern as auto-spin) - a per-vertex raycast
+## every frame is the right cost for a diagnostic session, not ordinary play.
+var _live_penetration_check: RefCounted = (
+		preload("res://tests/manual/foot_ik/foot_ik_live_penetration_check.gd").new()
+		if FileAccess.file_exists("user://foot_ik_penetration_check_marker") else null)
 const LOOP_RESET_FLASH_DURATION := 0.5
 var _active_check: CheckButton
 var _backend_option: OptionButton
@@ -178,10 +164,7 @@ func _ready() -> void:
 	# Tab: Player is real and fully-wired, and Tab is already project-wide
 	# "inventory" (see project.godot) - fighting this toggle otherwise.
 
-## DetachedCam is a child of Player - positioning it before the player
-## finishes falling/settling from spawn height drags the camera down by the
-## same amount (Y was off by the fall distance). Poll is_on_floor() since
-## exactly how long the fall takes isn't fixed.
+## Positioning before settling drags the camera down by the fall distance.
 func _wait_for_player_to_settle() -> void:
 	var player := get_node("../Player") as Player
 	if player == null:
@@ -191,18 +174,12 @@ func _wait_for_player_to_settle() -> void:
 			return
 		await get_tree().physics_frame
 
-## A specific close-up-on-the-right-foot framing, read off the camera readout
-## after flying to a good spot - stored as an offset from the player's own
-## authored spawn transform (_player_spawn_position, captured in _ready()),
-## not an absolute world position, so moving Player's start position doesn't
-## silently leave this pointed at empty space (it did, once).
+## Close-up-on-right-foot framing, offset from the player's spawn transform (not absolute).
 const DEFAULT_CAMERA_OFFSET := Vector3(0.57, -0.85, 0.45)
 const DEFAULT_CAMERA_ROTATION_DEG := Vector3(-27.8, 37.9, 0.0)
 var _player_spawn_position: Vector3
 
-## Not default-on anymore - now that foot placement is solved, this framing
-## isn't the most useful starting view. Kept on demand (K keybind) since
-## it's still the fastest way to get a tight framing for close inspection.
+## Not default-on now that foot placement is solved; kept on K keybind.
 func _start_detached_camera_on_foot() -> void:
 	var player := get_node("../Player") as Player
 	if player == null:
@@ -266,16 +243,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			and (event as InputEventKey).keycode == KEY_K:
 		_activate_closeup_camera()
 
-## Settles first in case this is pressed soon after load (see
-## _wait_for_player_to_settle) - awaited internally since _unhandled_input
-## can't await inline; fire-and-forget is fine, nothing runs after it.
+## Settles first, awaited internally since _unhandled_input can't await inline.
 func _activate_closeup_camera() -> void:
 	await _wait_for_player_to_settle()
 	_start_detached_camera_on_foot()
 
-## BoneAttachment3D + a plain Node3D child, same probe pattern _ready() uses
-## for the foot/toe bones above - the only reliable way to read a bone's
-## actual post-modifier pose from outside the modifier stack (see top-of-file).
+## Same pattern as foot/toe - only reliable way to read a bone's post-modifier pose externally.
 func _make_probe(bone_idx: int) -> Node3D:
 	var attach := BoneAttachment3D.new()
 	_skel.add_child(attach)
@@ -284,10 +257,30 @@ func _make_probe(bone_idx: int) -> Node3D:
 	attach.add_child(probe)
 	return probe
 
-## Each segment's OWN absolute angle from world Vector3.DOWN - not the bend
-## relative to the previous segment, which stays constant across different
-## poses whenever a segment is rebuilt from a fixed rest-pose offset. Shared
-## by the readout (every frame) and the console dump below (on demand).
+## Per-joint world position + rotation (Euler degrees), keyed by joint name -
+## diagnostic output only, never fed back into a computation.
+func _capture_joint_transforms(side: StringName) -> Dictionary:
+	var angle_probes: Dictionary = _angle_probes.get(side, {})
+	var probes := {
+		"hip": angle_probes.get("hip"), "knee": angle_probes.get("knee"),
+		"foot": _probes.get(side), "toe": _toe_probes.get(side),
+		"leaf": angle_probes.get("leaf"),
+	}
+	var result := {}
+	for joint: String in probes:
+		var probe: Node3D = probes[joint]
+		if probe == null:
+			continue
+		var xform := probe.global_transform
+		result[joint] = {
+			"position": xform.origin,
+			"rotation_deg": xform.basis.get_euler() * (180.0 / PI),
+		}
+	return result
+
+
+## Each segment's OWN absolute angle from world Vector3.DOWN, not the bend
+## relative to the previous segment. Shared by readout + console dump.
 func _compute_leg_angles(side: StringName) -> Dictionary:
 	var angle_probes: Dictionary = _angle_probes.get(side, {})
 	var hip_probe: Node3D = angle_probes.get("hip")
@@ -312,8 +305,7 @@ func _compute_leg_angles(side: StringName) -> Dictionary:
 			result["leaf"] = rad_to_deg(toe_to_leaf.angle_to(Vector3.DOWN))
 	return result
 
-## Moves each segment's floating Label3D to its own midpoint and refreshes
-## its text - puts the readout grid's numbers directly on the bone in 3D.
+## Moves each segment's Label3D to its own midpoint and refreshes its text.
 func _update_angle_labels(side: String, angles: Dictionary) -> void:
 	var labels: Dictionary = _angle_labels.get(side, {})
 	var angle_probes: Dictionary = _angle_probes.get(side, {})
@@ -344,9 +336,7 @@ func _update_angle_labels(side: String, angles: Dictionary) -> void:
 		else:
 			label.visible = false
 
-## Prints each leg's segment angles (world-space, from Vector3.DOWN) to the
-## console, for a full-precision snapshot on demand - _physics_process shows
-## the same numbers live, but at a size/precision tuned for the panel.
+## Full-precision console snapshot; _physics_process shows the same numbers live, panel-sized.
 func _log_leg_angles() -> void:
 	for side: StringName in [&"left", &"right"]:
 		var angles := _compute_leg_angles(side)
@@ -600,9 +590,10 @@ func _exit_tree() -> void:
 	if get_tree() != null:
 		get_tree().paused = false
 	_restore_animation_process_modes()
+	if _live_penetration_check != null:
+		print(_live_penetration_check.format_result())
 
-## A field/left/right grid instead of "key=value ..." per foot - once
-## leg-angle fields were added, the single-line version ran off-screen.
+## A field/left/right grid, not "key=value ..." per foot - the single-line version ran off-screen.
 func _build_readout_grid(parent: VBoxContainer) -> void:
 	var grid := GridContainer.new()
 	grid.columns = 3
@@ -674,8 +665,7 @@ func _copy_ik_panel_data() -> void:
 	if is_instance_valid(_copy_data_button):
 		_copy_data_button.text = "Copy IK Data"
 
-## Text and color make "IK Active" readable at a glance - the built-in
-## toggle glyph is easy to miss (and doesn't render in movie-maker mode).
+## Text/color make "IK Active" readable at a glance - the built-in toggle glyph is easy to miss.
 func _style_active_check(active: bool) -> void:
 	_active_check.text = "IK ENABLED" if active else "IK DISABLED"
 	var color := Color(0.3, 1.0, 0.4) if active else Color(1.0, 0.35, 0.3)
@@ -963,6 +953,9 @@ func _capture_controlled_foot_frame() -> void:
 		"on_floor": _player_body.get_parent().is_on_floor(),
 		"feet": {},
 	}
+	if _live_penetration_check != null:
+		trace["penetration"] = _live_penetration_check.sample(
+				get_node("../Player") as Player, _ik)
 	for side: String in ["left", "right"]:
 		var probe: Node3D = _probes[side]
 		var actual_pos := probe.global_position
@@ -972,6 +965,7 @@ func _capture_controlled_foot_frame() -> void:
 		var sole: Vector3 = actual_pos + sole_down * sole_depth
 		var toe_probe: Node3D = _toe_probes.get(side)
 		var hip_probe: Node3D = (_angle_probes.get(side, {}) as Dictionary).get("hip")
+		var normal: Vector3 = _ik._smoothed_normal.get(side, Vector3.UP)
 		trace["feet"][side] = {
 			"gap": actual_pos.y - target.y - sole_depth,
 			"sole_clearance": sole.y - target.y,
@@ -988,6 +982,11 @@ func _capture_controlled_foot_frame() -> void:
 			"foot_pos": actual_pos,
 			"hip_pos": hip_probe.global_position if hip_probe != null else Vector3.ZERO,
 			"smoothed_target": target,
+			# Absolute angle of the ground normal from world up - 0 on flat
+			# floor, ~45 on the Ramp 45 platform - not a per-joint bend.
+			"floor_angle_deg": rad_to_deg(normal.angle_to(Vector3.UP)),
+			"leg_angles_deg": _compute_leg_angles(side),
+			"joints": _capture_joint_transforms(side),
 		}
 	# Rolling window, not an ever-growing append: always holds the moment a
 	# live shake just happened without a whole play session in the file.

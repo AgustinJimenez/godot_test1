@@ -314,11 +314,14 @@ func _apply_support_contact(side: StringName, leg: Dictionary, delta: float) -> 
 				_owner._smoothed_target[side] as Vector3, _support_surface_target, delta)
 	_owner._smoothed_target[side] = surface_target
 	_owner._smoothed_normal[side] = _support_normal
-	# _support_ground_target = _support_surface_target + normal*effective_offset
-	# (see _latch_support_target); reapply that same offset to the (possibly
-	# clamped) surface_target instead of using the unclamped ground target
-	# directly, or the actual rendered leg["target"] bypasses the clamp above
-	# entirely - which is what silently defeated it the first time.
-	var offset := _support_ground_target - _support_surface_target
+	# leg["effective_offset"] is recomputed fresh every frame regardless of
+	# support state (see _sample_ground_contact) - use it directly instead
+	# of _support_ground_target's cached offset, which is only set once at
+	# _latch_support_target() and never refreshed during ordinary retention.
+	# A retained support foot could keep a wrong offset for its entire
+	# retention if the one latching frame measured it before the character
+	# had settled onto the surface's true tilt (confirmed live: a support
+	# foot toe-clipped by ~1cm for an entire idle session on a 45deg ramp).
+	var offset := _support_normal * float(leg.get("effective_offset", 0.0))
 	leg["target"] = surface_target + offset
 	leg["ground_target"] = surface_target + offset

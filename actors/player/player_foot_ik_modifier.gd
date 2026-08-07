@@ -8,19 +8,14 @@ extends SkeletonModifier3D
 ## wherever the flat-ground-authored locomotion clips leave it - raycasts
 ## straight down from the animated foot, bends hip/knee to reach that point
 ## (closed-form two-bone IK), tilts the foot to match the surface normal.
-## Mirrors player_hand_grip_modifier.gd/player_look_pose_modifier.gd: a plain
-## SkeletonModifier3D subclass reading/writing poses, added by PlayerBody.
+## Mirrors player_hand_grip_modifier.gd/player_look_pose_modifier.gd.
 
 signal foot_landed(side: StringName, ground_position: Vector3)
 
-## Logs the rest-pose-derived sole axis for each leg at startup - a future
-## catalog character with a different bone-axis convention then shows up as
-## a readable log line instead of a silent wrong-looking foot.
+## Logs the rest-pose-derived sole axis for each leg - a future catalog
+## character with a different convention shows as a log line, not a silent bug.
 const LOG_SOLE_AXIS := true
-## Logs the measured planted sole depth for each leg at rig setup (see
-## _measure_leg_sole_depth) - a rig whose bind geometry hangs unusually low
-## under the ball/toe then shows up as a readable line, not a silent sink.
-const LOG_SOLE_DEPTH := true
+const LOG_SOLE_DEPTH := true # logs measured planted sole point count per leg at rig setup
 const LEG_SOLVER := preload("res://actors/player/foot_ik/foot_ik_leg_solver.gd")
 const GAIT_TRACKER := preload("res://actors/player/foot_ik/foot_ik_gait_tracker.gd")
 const STAIR_PREDICTOR := preload("res://actors/player/foot_ik/foot_ik_stair_predictor.gd")
@@ -28,61 +23,44 @@ const NATIVE_BACKEND := preload("res://actors/player/foot_ik/foot_ik_native_back
 
 enum SolverBackend { CUSTOM, NATIVE_TWO_BONE }
 
-## Search range above/below the animated foot for ground. ray_down covers
-## the tallest riser in foot_ik_preview.tscn (0.35m) plus stride margin.
-## @export (not const) so the debug panel can tune against real gameplay.
+## Search range above/below the animated foot; ray_down covers the tallest riser plus stride margin.
 @export var ray_up: float = 0.5
 @export var ray_down: float = 0.6
-## Idle-only fallback depth when ray_down finds nothing: ray_down stays short
-## so a mid-swing foot doesn't "see" a distant floor and distort gait timing,
-## but a stationary foot has no such concern - see _sample_ground_contact.
-@export var idle_settle_search_down: float = 4.0
+@export var idle_settle_search_down: float = 4.0 # idle fallback depth when ray_down finds nothing
 ## Matches the level geometry collision layer used throughout the project.
 const GROUND_COLLISION_MASK := 1
 const GROUND_CONTACT_DISTANCE := 0.03
 const TARGET_NOISE_DEADBAND := 0.01 # sub-this raycast noise is rejected, not lerped toward
 ## Approximate sole thickness/ankle clearance so the ankle doesn't sink
-## exactly to the raycast hit point. The foot/toe are no longer forced flat
-## (see _compute_new_foot_basis_world) - they preserve the idle clip's
-## natural toe-down stance, so the effective ground offset per-leg is
-## whichever is larger of this and the predicted toe-tip drop (see
-## _process_modification_with_delta/toe_tip_margin) - this is just the floor
-## under that, the minimum clearance for a leg whose toe doesn't droop at all.
+## exactly to the raycast hit point - the floor under effective_offset's
+## other terms (toe-tip drop, sole point cloud), for a leg whose toe
+## doesn't droop at all.
 @export var ankle_offset: float = 0.0475
-## How far past the toe bone's own origin the visible mesh tip actually
-## extends, along the foot-to-toe direction - bone origins sit at joints,
-## not at fingertip/toetip mesh extremes, so predicting ground clearance
-## from the toe bone's position alone still let the visual mesh clip through
-## the floor by a few cm. Matches the debug overlay's own TOE_TIP_EXTRA_LENGTH
-## (tests/manual/foot_ik/foot_ik_debug_overlay.gd), which independently
-## approximates the same thing for its toe-tip marker.
+## How far past the toe bone's own origin the visible mesh tip extends,
+## along the foot-to-toe direction - bone origins sit at joints, not mesh
+## extremes. Matches the debug overlay's own TOE_TIP_EXTRA_LENGTH.
 @export var toe_tip_margin: float = 0.035
 ## Exponential-smoothing rate for the raycast-derived target/normal, so the
-## foot doesn't pop between tread heights - also what a foot catches up with
-## after unfreezing (update_idle_freeze), where too fast reads as an inhuman
-## snap rather than a natural re-plant. Live-tunable via the debug panel.
+## foot doesn't pop between tread heights - also what a foot catches up
+## with after unfreezing. Live-tunable via the debug panel.
 @export var smooth_rate: float = 7.0
 ## Hard cap (m/s) on how fast smooth_rate's lerp may move the target in one
-## frame - smooth_rate alone is a *fraction* of the remaining distance, so a
-## raw target that jumps far in one frame (a fast flick-turn) still snaps
-## proportionally far. Bounds it to a walkable catch-up speed regardless.
+## frame - smooth_rate alone is a fraction of the remaining distance, so a
+## far raw-target jump (a fast flick-turn) still snaps proportionally far.
 @export var target_max_speed: float = 1.5
 ## How fast the *animated*, uncorrected foot is currently rising/falling
 ## (meters/second) counts as "mid-swing" - blends from full strength at 0
 ## speed down to none here, instead of applying unconditionally. Without
 ## this, the raycast finds the same ground point every frame of a walk
 ## cycle, bending the leg to plant even while the animation lifts the foot.
-##
 ## Deliberately velocity-based, not height-based: height alone broke static
-## standing on the taller of two adjacent stair treads (a large but
-## legitimate static correction misread as "mid-swing" from size alone).
+## standing on a tall stair tread (a large static correction misread as
+## "mid-swing" from size alone).
 @export var swing_speed_threshold: float = 0.35
 ## How much more harshly RISING vertical velocity counts against
-## swing_speed_threshold than the same-magnitude FALLING velocity does - see
-## the rising-velocity scaling comment in _process_modification_with_delta()
-## for why this is a continuous scale-up rather than an outright sign cutoff
-## at 0 (a hard cutoff there caused a real, visible twitch on completely
-## static idle poses, from ordinary floating-point/animation noise).
+## swing_speed_threshold than the same-magnitude FALLING velocity does - a
+## continuous scale-up rather than a sign cutoff at 0, which caused a
+## visible twitch on static idle poses from ordinary animation noise.
 @export var rising_penalty: float = 4.0
 ## How many consecutive frames the animated foot must be clearly falling
 ## (faster than velocity_noise_floor, downward) before it's trusted as a
@@ -169,7 +147,12 @@ var _sole_down_local: Dictionary = {} # side -> Vector3, one of the 6 principal 
 ## Max extent of this leg's planted bind geometry below the foot bone's
 ## origin (meters), measured once at rig setup - see _measure_leg_sole_depth.
 ## Fed into effective_offset so a planted sole clears the ground even when
-## the ball/toe geometry hangs below the bone origins.
+## the ball/toe geometry hangs below the bone origins. Orientation-invariant
+## by construction: _compute_new_foot_basis_world() rotates the whole foot
+## so its local down-axis always matches the current ground normal, so a
+## point's depth along that axis never changes with tilt (confirmed by
+## instrumenting a re-projected version and finding it numerically
+## identical to this flat scalar at every tilt angle tested).
 var _sole_depth_below_foot: Dictionary = {} # side -> float
 ## Toe's rest-pose position/orientation relative to the foot, in the foot's
 ## own rest-pose local space - see _solve_leg's toe section for why this
@@ -656,7 +639,7 @@ func _process_modification_with_delta(delta: float) -> void:
 			# every frame otherwise. Lerp into its result at smooth_rate
 			# like ordinary raycast tracking instead of a hard snap.
 			if not frozen:
-				var retracted := _retract_to_reachable(space, hip_pos, ground_target,
+				var retracted := _retract_to_reachable(space, side, hip_pos, ground_target,
 						upper_length, lower_length)
 				debug_retracted[side] = retracted["found"]
 				if retracted["found"]:
@@ -841,11 +824,15 @@ const RETRACT_STEPS := 8
 ## near a drop-off. Directly under the hip is reachable for any plausible
 ## standing rig, so this usually finds something. Nothing reachable at any
 ## step means a genuine ledge/void; the caller leaves that foot floating.
-func _retract_to_reachable(space: PhysicsDirectSpaceState3D, hip_pos: Vector3,
+func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, hip_pos: Vector3,
 		ground_target: Vector3, upper_length: float, lower_length: float) -> Dictionary:
 	var max_reach := upper_length + lower_length - 0.001
 	var from_xz := Vector2(ground_target.x, ground_target.z)
 	var to_xz := Vector2(hip_pos.x, hip_pos.z)
+	# Bare ankle_offset alone under-cleared the toe here (a retracted leg
+	# still has a toe extending forward) - same fix as
+	# _sample_ground_contact's effective_offset.
+	var offset := maxf(ankle_offset, _sole_depth_below_foot.get(side, 0.0))
 	for i in RETRACT_STEPS + 1:
 		var xz := from_xz.lerp(to_xz, float(i) / RETRACT_STEPS)
 		var hit := _raycast_ground(
@@ -854,7 +841,7 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, hip_pos: Vector3,
 			continue
 		var normal: Vector3 = hit["normal"]
 		var surface: Vector3 = hit["position"]
-		var target := surface + normal * ankle_offset
+		var target := surface + normal * offset
 		var horizontal_dist_sq := Vector2(
 				hip_pos.x - target.x, hip_pos.z - target.z).length_squared()
 		var max_vertical_diff := sqrt(maxf(0.0, max_reach * max_reach - horizontal_dist_sq))
