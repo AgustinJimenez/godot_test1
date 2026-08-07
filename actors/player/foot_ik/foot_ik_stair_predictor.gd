@@ -106,7 +106,7 @@ func update_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName,
 	return state.smoothed_lift
 
 
-func ensure_support(per_leg: Dictionary, shared_drop: float) -> float:
+func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> float:
 	if not per_leg.has(&"left") or not per_leg.has(&"right"):
 		return shared_drop
 	var left: Dictionary = per_leg[&"left"]
@@ -138,7 +138,7 @@ func ensure_support(per_leg: Dictionary, shared_drop: float) -> float:
 				return shared_drop
 		_try_transfer_support(per_leg, left_clearance, right_clearance)
 	var leg: Dictionary = per_leg[_support_side]
-	_apply_support_contact(_support_side, leg)
+	_apply_support_contact(_support_side, leg, delta)
 	var hip_pos: Vector3 = leg["hip_pos"]
 	var target: Vector3 = leg["target"]
 	var max_reach: float = float(leg["upper"]) + float(leg["lower"]) - 0.001
@@ -291,11 +291,34 @@ func _latch_support_target(leg: Dictionary) -> void:
 		_support_normal = leg["raw_normal"]
 
 
-func _apply_support_contact(side: StringName, leg: Dictionary) -> void:
-	leg["target"] = _support_ground_target
-	leg["ground_target"] = _support_ground_target
+## A flat stair tread's contact normal is near Vector3.UP; a sloped ramp's
+## isn't (a 45deg ramp reads ~0.71). Distinguishes "real stair descent, must
+## plant instantly or the pelvis sinks through the riser gap" from "sloped
+## ramp re-latch mid-turn, safe to smooth" - two earlier attempts at this
+## (an unconditional clamp, and one gated on debug_step_down) both hit the
+## identical FOOT_IK_BODY_PENETRATION_CHECK failure (15 samples, max_depth
+## 0.308m); debug_step_down isn't true for every frame of a real descent, so
+## it didn't distinguish the two cases. Surface tilt does, since it doesn't
+## depend on gait timing at all.
+const FLAT_SURFACE_UP_DOT := 0.95
+
+
+func _apply_support_contact(side: StringName, leg: Dictionary, delta: float) -> void:
 	leg["ground_weight"] = 1.0
 	leg["preserve_idle_pose"] = false
 	_owner._smoothed_ground_weight[side] = 1.0
-	_owner._smoothed_target[side] = _support_surface_target
+	var on_flat_tread := _support_normal.dot(Vector3.UP) >= FLAT_SURFACE_UP_DOT
+	var surface_target := _support_surface_target
+	if not on_flat_tread and _owner._smoothed_target.has(side):
+		surface_target = _owner._move_target_smoothed(
+				_owner._smoothed_target[side] as Vector3, _support_surface_target, delta)
+	_owner._smoothed_target[side] = surface_target
 	_owner._smoothed_normal[side] = _support_normal
+	# _support_ground_target = _support_surface_target + normal*effective_offset
+	# (see _latch_support_target); reapply that same offset to the (possibly
+	# clamped) surface_target instead of using the unclamped ground target
+	# directly, or the actual rendered leg["target"] bypasses the clamp above
+	# entirely - which is what silently defeated it the first time.
+	var offset := _support_ground_target - _support_surface_target
+	leg["target"] = surface_target + offset
+	leg["ground_target"] = surface_target + offset

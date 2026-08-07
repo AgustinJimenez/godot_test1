@@ -284,12 +284,10 @@ func _make_probe(bone_idx: int) -> Node3D:
 	attach.add_child(probe)
 	return probe
 
-## Each segment's OWN absolute angle from world Vector3.DOWN (0 = straight
-## down, 90 = horizontal, 180 = straight up) - not the bend relative to the
-## previous segment, which stays constant across different poses whenever a
-## segment (e.g. toe->leaf) is rebuilt from a fixed rest-pose offset. An
-## absolute angle reflects the live, corrected pose. Shared by the readout
-## (every frame) and the console dump below (on demand).
+## Each segment's OWN absolute angle from world Vector3.DOWN - not the bend
+## relative to the previous segment, which stays constant across different
+## poses whenever a segment is rebuilt from a fixed rest-pose offset. Shared
+## by the readout (every frame) and the console dump below (on demand).
 func _compute_leg_angles(side: StringName) -> Dictionary:
 	var angle_probes: Dictionary = _angle_probes.get(side, {})
 	var hip_probe: Node3D = angle_probes.get("hip")
@@ -961,6 +959,8 @@ func _capture_controlled_foot_frame() -> void:
 		"animation": animation_player.current_animation if animation_player != null else "",
 		"time": animation_player.current_animation_position if animation_player != null else 0.0,
 		"disc": _ik._animation_discontinuous,
+		"active": _ik.active,
+		"on_floor": _player_body.get_parent().is_on_floor(),
 		"feet": {},
 	}
 	for side: String in ["left", "right"]:
@@ -987,6 +987,7 @@ func _capture_controlled_foot_frame() -> void:
 			"toe_tip_y": toe_probe.global_position.y if toe_probe != null else 0.0,
 			"foot_pos": actual_pos,
 			"hip_pos": hip_probe.global_position if hip_probe != null else Vector3.ZERO,
+			"smoothed_target": target,
 		}
 	# Rolling window, not an ever-growing append: always holds the moment a
 	# live shake just happened without a whole play session in the file.

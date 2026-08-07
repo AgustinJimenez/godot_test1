@@ -194,16 +194,23 @@ func _raw_weight(side: StringName, velocity: float) -> float:
 	return clampf(1.0 - absf(velocity) / _owner.swing_speed_threshold, 0.0, 1.0)
 
 
+## contact_lost forces raw_weight toward 0 same as any other fall, not as a
+## post-hoc override - an override bypassed ground_weight_fall_time entirely,
+## snapping instantly from the corrected pose to the raw animated pose in
+## one frame whenever contact_lost coincided with unfreezing (the frozen
+## target and the fresh animated pose routinely differ by tens of cm right
+## after unfreezing) - confirmed via a live capture pinpointing the exact
+## frame weight went 1.0 -> 0.0 with no intermediate step.
 func _smooth_weight(side: StringName, raw_weight: float,
 		contact_lost: bool, delta: float) -> float:
+	if contact_lost:
+		raw_weight = 0.0
 	var previous: float = _owner._smoothed_ground_weight.get(side, raw_weight)
 	var weight := raw_weight
 	if raw_weight > previous and _owner.ground_weight_rise_time > 0.0:
 		weight = minf(raw_weight, previous + delta / _owner.ground_weight_rise_time)
 	elif raw_weight < previous and _owner.ground_weight_fall_time > 0.0:
 		weight = maxf(raw_weight, previous - delta / _owner.ground_weight_fall_time)
-	if contact_lost:
-		weight = 0.0
 	# Watchdog: a normal ramp finishes within a handful of
 	# ground_weight_rise_time windows. If raw_weight/contact_lost say weight
 	# should clearly be rising and it has stayed far below raw_weight much
@@ -266,10 +273,32 @@ const IDLE_UNFREEZE_STREAK := 3
 ## streak tolerates, but only for an instant) yank a foot out of freeze every
 ## few seconds, visible as a recurring twitch right on the animation's cycle
 ## period - confirmed live via a debug-panel capture at the exact moment.
-func update_idle_freeze(side: StringName, anim_speed: float, delta: float) -> bool:
+##
+## anim_speed alone (vertical-only, and measured in the ANIMATED foot's own
+## skeleton-local space) never rises while the player turns in place: pure
+## rotation barely changes the animated pose relative to the skeleton, but
+## the frozen *target* is a fixed world-space raycast hit that doesn't turn
+## with the body at all, so the corrected foot stayed pinned to that stale
+## point while the animated reference swept away from it turn after turn -
+## confirmed live as "the legs aren't following" while spinning in place.
+## Track the yaw at the moment of freezing and also unfreeze once it's
+## rotated past IDLE_UNFREEZE_ROTATION_DEG - unlike the velocity trigger,
+## this releases immediately with no debounce streak: a real cumulative
+## rotation isn't ambiguous the way idle-sway noise is (it's a
+## low-frequency, deliberate signal, not a per-frame velocity blip), and
+## waiting several frames before resuming the raycast search would itself
+## read as the leg lagging behind the turn rather than following it.
+const IDLE_UNFREEZE_ROTATION_DEG := 6.0
+
+func update_idle_freeze(side: StringName, anim_speed: float, delta: float, yaw: float) -> bool:
 	var frozen: bool = _owner._idle_frozen.get(side, false)
 	if frozen and delta > 0.0:
-		if absf(anim_speed) > _owner.idle_step_down_speed * IDLE_UNFREEZE_SPEED_MULT:
+		var freeze_yaw: float = _owner._idle_freeze_yaw.get(side, yaw)
+		if absf(angle_difference(freeze_yaw, yaw)) > deg_to_rad(IDLE_UNFREEZE_ROTATION_DEG):
+			frozen = false
+			_owner._idle_freeze_streak[side] = 0
+			_owner._idle_unfreeze_streak[side] = 0
+		elif absf(anim_speed) > _owner.idle_step_down_speed * IDLE_UNFREEZE_SPEED_MULT:
 			_owner._idle_unfreeze_streak[side] = int(_owner._idle_unfreeze_streak.get(side, 0)) + 1
 		else:
 			_owner._idle_unfreeze_streak[side] = 0
@@ -284,5 +313,7 @@ func update_idle_freeze(side: StringName, anim_speed: float, delta: float) -> bo
 		else:
 			_owner._idle_freeze_streak[side] = 0
 		frozen = int(_owner._idle_freeze_streak.get(side, 0)) >= IDLE_FREEZE_STREAK
+		if frozen:
+			_owner._idle_freeze_yaw[side] = yaw
 	_owner._idle_frozen[side] = frozen
 	return frozen

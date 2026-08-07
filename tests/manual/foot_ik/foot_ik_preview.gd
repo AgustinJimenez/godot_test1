@@ -1,6 +1,5 @@
 extends Node3D
-## Static scene with idle characters on different platform shapes (flat, ramps,
-## stairs) laid out at once so foot penetration/floating is visible side by side.
+## Static scene, idle characters on flat/ramp/stair platforms side by side.
 const PLATFORM_WIDTH := 3.0
 const PLATFORM_LENGTH := 4.0
 const PLATFORM_THICKNESS := 0.3
@@ -11,8 +10,8 @@ const STAIR_IDLE_SECONDS := 5.0
 const STAIR_START_BACKOFF := 0.8
 const STAIR_LEAD_FOOT_REACH := 0.2
 const STAIR_LANDING_Y_TOLERANCE := 0.08
-## Interactive stair walkers run at 60% slow motion for readable ball-sole
-## contact; the automated check forces 100% - slow motion hid real failures.
+## Interactive walkers run at 60% slow motion for readable contact; the
+## automated check forces 100% - slow motion hid real failures.
 const STAIR_SLOW_MOTION_SCALE := 0.6
 const STAIR_WALK_ANIMATION_SPEED := 3.2
 const STAIR_WALK_SPEED := STAIR_WALK_ANIMATION_SPEED * STAIR_SLOW_MOTION_SCALE
@@ -95,8 +94,7 @@ func _ready() -> void:
 		var case: Dictionary = CASES[i]
 		var origin := Vector3(i * PLATFORM_SPACING, 0.0, 0.0)
 		var contact := _build_platform(case, origin)
-		# Stair treads run perpendicular to walking direction; facing down them
-		# hides tread-to-tread placement behind the body - face across instead.
+		# Facing down the stairs hides tread placement behind the body - cross.
 		if case["kind"] == &"stairs":
 			_place_stair_walker(origin, contact, case["step_height"])
 		else:
@@ -109,8 +107,7 @@ func _ready() -> void:
 			if walker["trace_enabled"]:
 				_start_stair_walker(walker)
 				break
-	## Confirmed live repro spot: near the bottom edge of the Ramp 45° platform
-	## (CASES[3], origin x=7.5) - live twitch/overreach reports all landed here.
+	## Confirmed live repro spot: bottom edge of Ramp 45 (CASES[3], x=7.5).
 	$Player.global_position = Vector3(7.7, 0.95, 0.9)
 	$Player.rotation = Vector3.ZERO
 	$Player.camera.current = true
@@ -119,7 +116,23 @@ func _ready() -> void:
 			child.foot_landed.connect(_on_foot_landed.bind($Player))
 			break
 
+## Marker-file toggle, not a CLI flag: play_scene_in_editor() (MCP) can't be
+## given fresh cmdline args. Spins $Player in place to reproduce turn snaps.
+var _auto_spin := FileAccess.file_exists("user://foot_ik_spin_marker")
+## A fast swipe is a burst - most rotation lands in one or two frames, then
+## holds. Pause between bursts lets freeze/idle settle before the next one.
+const BURST_DEGREES := 70.0
+const BURST_TIME := 0.1 # seconds to cover BURST_DEGREES
+const BURST_PAUSE := 2.0
+var _burst_elapsed := 0.0
+
 func _physics_process(delta: float) -> void:
+	if _auto_spin:
+		$Player.movement_input_override = Vector2.ZERO
+		_burst_elapsed += delta
+		var cycle := fmod(_burst_elapsed, BURST_TIME + BURST_PAUSE)
+		if cycle < BURST_TIME:
+			$Player.rotation.y += deg_to_rad(BURST_DEGREES / BURST_TIME) * delta
 	if _automated_stretch_check:
 		_automated_check_frame += 1
 		if (not _automated_jump_launched and _automated_check_frame >= 10
@@ -141,9 +154,8 @@ func _physics_process(delta: float) -> void:
 				_update_physical_walker_tread(walker)
 			else:
 				_advance_stair_walker(walker, delta)
-			# _automated_stretch_check-only: unguarded, an interactive session's
-			# repeated climb reprints a full per-frame JSON trace forever,
-			# overflowing Godot's console buffer and killing the debug process.
+			# _automated_stretch_check-only: unguarded, this overflows Godot's
+			# console buffer and kills the debug process over a long session.
 			if _automated_stretch_check and walker["trace_enabled"] and not walker["trace_complete"]:
 				call_deferred(&"_log_stair_foot_frame", walker)
 			if player.global_position.z >= walker["top_z"]:
@@ -210,7 +222,7 @@ func _sample_airborne_ik_release() -> void:
 	if ik.active:
 		_airborne_check_failed = true
 
-## Bone origins alone can't prove skin is clear - weighted regions can cross a stair face.
+## Bone origins alone can't prove skin is clear - weighted regions can cross.
 func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 	_body_penetration_attempts += 1
 	if not walker["walking"]:
@@ -274,8 +286,7 @@ func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 	return {"available": true, "vertices": sample_vertices,
 			"max_depth": sample_max_depth, "bones": penetrating_bones}
 
-## Per-bind global transforms for CPU skinning. Pose reads prefer the Foot IK
-## modifier's own post-solve snapshot, else a stale pre-IK pose gets skinned.
+## Per-bind transforms; prefers the modifier's post-solve snapshot, else a stale pre-IK pose skins.
 func _mesh_bind_transforms(mesh_part: MeshInstance3D, skeleton: Skeleton3D,
 		ik: PlayerFootIKModifier) -> Array[Transform3D]:
 	var result: Array[Transform3D] = []
@@ -365,8 +376,7 @@ func _stair_penetration_depth(point: Vector3, walker: Dictionary) -> float:
 func _place_stair_walker(origin: Vector3, contact: Vector3, stair_height: float) -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
 	var trace_enabled := is_equal_approx(stair_height, FOOT_TRACE_STAIR_HEIGHT)
-	# During the automated check every stair walker runs at gameplay speed;
-	# interactive inspection runs them at STAIR_SLOW_MOTION_SCALE instead.
+	# Automated check runs at gameplay speed; interactive inspection is slower.
 	var playback_scale := 1.0 if _automated_stretch_check else STAIR_SLOW_MOTION_SCALE
 	var physical_speed := STAIR_WALK_ANIMATION_SPEED * playback_scale
 	player.movement_input_override = Vector2.ZERO
@@ -446,8 +456,7 @@ func _reset_stair_walker(walker: Dictionary) -> void:
 	var player: Player = walker["player"]
 	if int(walker["trace_frame"]) > 0:
 		walker["trace_complete"] = true
-	# Freeze physics during idle so capsule depenetration doesn't shift hips
-	# while foot IK keeps feet planted. PlayerBody and modifiers still update.
+	# Freeze physics during idle so depenetration doesn't shift hips while IK plants feet.
 	player.set_physics_process(false)
 	player.movement_input_override = Vector2.ZERO
 	player.global_position = walker["idle_position"]
@@ -545,8 +554,6 @@ func _log_stair_foot_frame(walker: Dictionary) -> void:
 	trace_file.store_line(trace_json)
 	trace_file.close()
 
-## A leg may rotate freely, but its thigh root must stay the authored distance from
-## the shared pelvis, or IK has separated a joint and the weighted seam will stretch.
 func _sample_hip_skin_stretch(player: Player, ik: PlayerFootIKModifier) -> Dictionary:
 	var sides := {}
 	var sample_max_error := 0.0
@@ -878,9 +885,7 @@ func _spawn_footstep_marker(side: StringName, ground_position: Vector3) -> void:
 	get_tree().create_timer(FOOTSTEP_MARKER_LIFETIME).timeout.connect(marker.queue_free)
 
 
-## Two more flat platforms with a character looping the walk animation *in
-## place* (no movement input) so the walk cycle's up/down foot lift is
-## visible with/without the modifier (docs/task_history/foot_ik_debugging.md, Bug 4).
+## Two flat platforms, walk anim looped in place - foot lift visible either way.
 func _build_walking_dummies() -> void:
 	var cases: Array[Dictionary] = [
 		{"label": "Walk (IK ON)", "ik_active": true},
@@ -934,9 +939,8 @@ func _build_ramp(origin: Vector3, angle_deg: float) -> Vector3:
 	box.material = _platform_material
 	box.use_collision = true
 	box.rotation = Vector3(-angle_rad, 0.0, 0.0)
-	# Anchor the ramp's near-bottom edge at origin: offset the (rotated)
-	# center by half-length forward and half-thickness down along the
-	# ramp's own tilted axes.
+	# Anchor the ramp's near-bottom edge at origin: offset the rotated center
+	# by half-length forward and half-thickness down along the tilted axes.
 	var half_length_offset := box.basis * Vector3(0.0, 0.0, PLATFORM_LENGTH * 0.5)
 	var half_thickness_offset := box.basis * Vector3(0.0, -PLATFORM_THICKNESS * 0.5, 0.0)
 	box.position = origin + half_length_offset + half_thickness_offset
@@ -945,9 +949,7 @@ func _build_ramp(origin: Vector3, angle_deg: float) -> Vector3:
 	return origin + Vector3(0.0, mid_rise, PLATFORM_LENGTH * 0.5)
 
 
-## A simple stacked staircase (fixed tread depth, variable riser height) -
-## no ceiling/walls/openings needed here, so plain stacked boxes are enough,
-## unlike the procedural generator's ribbon-profile stairs.
+## Simple stacked staircase (fixed tread depth, variable riser height).
 func _build_stairs(origin: Vector3, step_height: float) -> Vector3:
 	for step in STAIR_STEP_COUNT:
 		var step_rise := step_height * (step + 1)
@@ -959,8 +961,7 @@ func _build_stairs(origin: Vector3, step_height: float) -> Vector3:
 		box.position = origin + Vector3(
 				0.0, step_rise * 0.5, tread_start_z + STAIR_TREAD_DEPTH * 0.5)
 		add_child(box)
-		# CSGBox3D only supports one material for all faces: collision box blue,
-		# then a non-colliding paper-thin red cap over the tread.
+		# CSGBox3D allows one material only: collision box blue, then a thin red cap.
 		var tread := CSGBox3D.new()
 		tread.size = Vector3(
 				PLATFORM_WIDTH, STAIR_TREAD_DEBUG_THICKNESS, STAIR_TREAD_DEPTH)
@@ -971,9 +972,8 @@ func _build_stairs(origin: Vector3, step_height: float) -> Vector3:
 				step_rise + STAIR_TREAD_DEBUG_THICKNESS * 0.5,
 				tread_start_z + STAIR_TREAD_DEPTH * 0.5)
 		add_child(tread)
-	# Stand on the riser boundary between two middle steps, not a tread center.
-	# Combined with the 90-degree yaw in _ready(), this puts one foot on the
-	# lower tread and the other on the higher one.
+	# Stand on the riser boundary between two middle steps, not a tread center
+	# - combined with the 90-degree yaw in _ready(), one foot lands on each.
 	var mid_step := STAIR_STEP_COUNT / 2
 	var lower_rise := step_height * mid_step
 	var upper_rise := step_height * (mid_step + 1)

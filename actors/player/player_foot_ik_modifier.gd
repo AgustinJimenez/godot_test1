@@ -6,12 +6,10 @@ extends SkeletonModifier3D
 ## numeric checks only avoids the known hierarchy-stretch/airborne-IK regressions.
 ## Plants each foot on the actual ground/step surface beneath it instead of
 ## wherever the flat-ground-authored locomotion clips leave it - raycasts
-## straight down from each foot's animated position, then bends hip/knee to
-## reach that point (closed-form two-bone IK) and tilts the foot to match
-## the surface normal. Mirrors player_hand_grip_modifier.gd/player_look_pose_modifier.gd:
-## a plain SkeletonModifier3D subclass reading/writing poses in
-## _process_modification(), added as a skeleton child by PlayerBody, which
-## switches the skeleton's modifier callback mode for physics-fresh raycasts.
+## straight down from the animated foot, bends hip/knee to reach that point
+## (closed-form two-bone IK), tilts the foot to match the surface normal.
+## Mirrors player_hand_grip_modifier.gd/player_look_pose_modifier.gd: a plain
+## SkeletonModifier3D subclass reading/writing poses, added by PlayerBody.
 
 signal foot_landed(side: StringName, ground_position: Vector3)
 
@@ -60,27 +58,24 @@ const TARGET_NOISE_DEADBAND := 0.01 # sub-this raycast noise is rejected, not le
 ## approximates the same thing for its toe-tip marker.
 @export var toe_tip_margin: float = 0.035
 ## Exponential-smoothing rate for the raycast-derived target/normal, so the
-## foot doesn't pop when a hit jumps between tread heights frame to frame.
-@export var smooth_rate: float = 14.0
+## foot doesn't pop between tread heights - also what a foot catches up with
+## after unfreezing (update_idle_freeze), where too fast reads as an inhuman
+## snap rather than a natural re-plant. Live-tunable via the debug panel.
+@export var smooth_rate: float = 7.0
+## Hard cap (m/s) on how fast smooth_rate's lerp may move the target in one
+## frame - smooth_rate alone is a *fraction* of the remaining distance, so a
+## raw target that jumps far in one frame (a fast flick-turn) still snaps
+## proportionally far. Bounds it to a walkable catch-up speed regardless.
+@export var target_max_speed: float = 1.5
 ## How fast the *animated*, uncorrected foot is currently rising/falling
-## (meters/second) counts as "mid-swing" - the correction blends from full
-## strength at 0 speed down to none at this speed, instead of applying
-## unconditionally every frame regardless of gait phase. Without this, the
-## raycast finds essentially the same ground point under the foot on every
-## frame of a walk cycle, and the leg gets bent to plant there even while
-## the animation is trying to lift the foot through the air for a step -
-## measured killing a natural ~0.27m walk-cycle foot-height swing down to a
-## completely flat, unmoving foot.
+## (meters/second) counts as "mid-swing" - blends from full strength at 0
+## speed down to none here, instead of applying unconditionally. Without
+## this, the raycast finds the same ground point every frame of a walk
+## cycle, bending the leg to plant even while the animation lifts the foot.
 ##
-## Deliberately velocity-based, not height-based: an earlier version blended
-## on how far the animated foot sits above its ground target, which broke
-## static standing on the taller of two adjacent stair treads (a large but
-## legitimate *static* correction, wrongly read as "mid-swing" just because
-## the required correction was large) - a foot that isn't currently moving
-## vertically is either standing still or momentarily planted between steps,
-## and either way should get full correction regardless of how tall that
-## correction needs to be. A foot actively swinging through the air, by
-## contrast, has real vertical speed - that's the distinguishing signal.
+## Deliberately velocity-based, not height-based: height alone broke static
+## standing on the taller of two adjacent stair treads (a large but
+## legitimate static correction misread as "mid-swing" from size alone).
 @export var swing_speed_threshold: float = 0.35
 ## How much more harshly RISING vertical velocity counts against
 ## swing_speed_threshold than the same-magnitude FALLING velocity does - see
@@ -91,49 +86,36 @@ const TARGET_NOISE_DEADBAND := 0.01 # sub-this raycast noise is rejected, not le
 @export var rising_penalty: float = 4.0
 ## How many consecutive frames the animated foot must be clearly falling
 ## (faster than velocity_noise_floor, downward) before it's trusted as a
-## real landing approach - see the falling-streak comment in
-## _process_modification_with_delta() for the swing-apex artifact this
-## fixes: a parabolic arc's low-speed stretch near its peak includes a
-## couple of technically-falling frames right after the top, fast enough to
-## slip past rising_penalty's rising-only gate and briefly nudge
-## ground_weight up before the leg's real (much faster, sustained) descent
-## begins. A real footfall falls for many frames in a row, not two, so
-## requiring a short streak filters the peak blip out without meaningfully
-## delaying genuine landings.
+## real landing approach - fixes a swing-apex artifact: a parabolic arc's
+## low-speed stretch near its peak includes a couple of technically-falling
+## frames right after the top, fast enough to slip past rising_penalty's
+## rising-only gate and briefly nudge ground_weight up before the leg's
+## real, sustained descent begins. A short streak filters that peak blip
+## out without meaningfully delaying genuine landings.
 @export var min_falling_streak: int = 3
 ## Velocity magnitude (m/s) below which vertical motion is ignored entirely
 ## - treated as exactly stationary regardless of sign, before rising_penalty
 ## even applies. rising_penalty alone reduces sensitivity to idle noise but
-## doesn't remove it: noise around this size, scaled by rising_penalty, can
-## still be a meaningful fraction of swing_speed_threshold and cause a
-## smaller but still visible partial dip. Genuine swing motion is far
-## faster than ordinary idle sway/animation jitter, so a small dead zone
-## below it costs nothing during a real step.
+## doesn't remove it: noise this size, scaled by rising_penalty, can still
+## be a meaningful fraction of swing_speed_threshold and cause a smaller
+## but still visible partial dip.
 @export var velocity_noise_floor: float = 0.03
 ## Minimum time (seconds) for ground_weight to rise from 0 to 1 - caps how
 ## fast the correction can snap back ON, without limiting how fast it can
 ## snap OFF. A walk cycle's vertical velocity crosses exactly zero for a
-## single frame at the very top of the swing arc (same as a thrown ball's
-## velocity at its apex) - read literally, that one frame looks identical to
-## "foot has stopped, must be planted," briefly pulling the foot back down
-## toward the ground mid-air before the very next frame's real (non-zero)
-## velocity releases it again. Measured as a real, visible dip - not just a
-## theoretical edge case - comparing a walking dummy with IK against the raw
-## animation frame by frame (e.g. 0.282 vs the animation's own 0.353 at the
-## exact peak of one stride).
+## single frame at the very top of the swing arc, which read literally
+## looks identical to "foot has stopped, must be planted," briefly pulling
+## the foot back down mid-air before the very next frame's real velocity
+## releases it again (measured: 0.282 vs animation's own 0.353 at a stride's
+## peak).
 @export var ground_weight_rise_time: float = 0.12
 ## Same idea as ground_weight_rise_time, but for the opposite direction -
 ## much shorter, not zero. An earlier version let the fall happen in a
-## single frame (uncapped), reasoning that a genuine swing needs to release
-## the correction immediately. That's true for a real swing start, but the
-## SAME instant-fall path also fires when recovering from the small residual
-## rise near a swing peak (see ground_weight_rise_time above) - snapping
-## from "leg bent extra to plant" back to "matches the animation" in exactly
-## one physics frame is a visible pop regardless of which case caused it
-## (confirmed by logging the knee's bend angle: 75.0 -> 89.4 degrees in one
-## frame, right after the capped-rise dip). A short but nonzero fall time
-## smooths that snap-back into a couple of frames instead of one, while
-## staying fast enough that a genuine swing start still reads as immediate.
+## single frame, reasoning a genuine swing needs to release immediately -
+## true for a real swing start, but the same instant-fall path also fired
+## when recovering from the small residual rise near a swing peak, snapping
+## "leg bent extra to plant" back to "matches the animation" in one frame
+## (confirmed by logging the knee's bend angle: 75.0 -> 89.4 in one frame).
 @export var ground_weight_fall_time: float = 0.05
 ## Optional stair predictor lifts a swinging foot over the next higher tread.
 ## Enabled for normal PlayerBody instances; the manual harness tunes its values.
@@ -153,27 +135,20 @@ var force_plant_mode: bool = false
 ## GROUND_CONTACT_DISTANCE above a lower surface (e.g. straddling a stair
 ## riser) never stays floating. Requires motionless for
 ## STEP_DOWN_STATIC_STREAK consecutive real-delta frames. If reachable within
-## step_down_pelvis_drop of shared-pelvis sink, plants directly. Beyond that,
-## rather than stretch the leg or move the whole capsule (an earlier
-## whole-body walk-down approach marched the character down a whole
-## staircase from one idle foot, unprompted), _retract_to_reachable() pulls
-## the target horizontally back toward the hip until it finds a point
-## genuinely within reach - like a person shortening their stride near a
-## drop-off. If nothing is found, the foot floats at its animated pose.
-## Never engages while airborne or with force_plant_mode on.
+## step_down_pelvis_drop, plants directly. Beyond that, rather than stretch
+## the leg or move the whole capsule (an earlier whole-body walk-down
+## approach marched the character down a whole staircase from one idle foot,
+## unprompted), _retract_to_reachable() pulls the target horizontally back
+## toward the hip until it finds a point genuinely within reach. If nothing
+## is found, the foot floats at its animated pose. Never engages airborne.
 @export_range(0.0, 1.0, 0.01) var idle_step_down_speed: float = 0.06
 @export_range(0.0, 0.75, 0.005) var step_down_pelvis_drop: float = 0.35
 ## Hard ceiling on shared pelvis sink for a foot _retract_to_reachable()
-## couldn't rescue (the drop is genuinely deeper than the leg can reach from
-## the body's current height, e.g. standing on a step above a much lower
-## floor) - deliberately looser than step_down_pelvis_drop's "still looks
-## like ordinary standing" budget, this is "as deep a crouch as a person
-## could still plausibly be doing," past which sinking further would just
-## look broken rather than merely deep. The leg still cannot fully reach in
-## this case; capping shared_drop here (rather than leaving it uncapped)
-## means the leg solver's own reach envelope naturally leaves the foot
-## hanging just short of the true target instead of pulling the whole pose
-## into an unbounded, unrealistic squat.
+## couldn't rescue (the drop is deeper than the leg can reach) - looser than
+## step_down_pelvis_drop's "still looks like ordinary standing" budget, this
+## is "as deep a crouch as a person could plausibly do." The leg still can't
+## fully reach; capping here leaves it hanging just short of the true target
+## instead of pulling the whole pose into an unbounded, unrealistic squat.
 @export_range(0.0, 1.0, 0.005) var step_down_max_crouch: float = 0.6
 const STEP_DOWN_STATIC_STREAK := 4
 @export var solver_backend := SolverBackend.CUSTOM
@@ -206,10 +181,8 @@ var _toe_rest_relative_basis: Dictionary = {} # side -> Basis
 ## toe-forward) - see _solve_leg's foot-orientation section for why this
 ## replaces a plain single-vector "align sole-down to the ground normal"
 ## quaternion: that approach leaves the twist around the down axis to fall
-## out of an implicit, unstable perpendicular-axis choice, which can spin the
-## whole foot ~90+ degrees when the animated sole direction ends up close to
-## opposite the target. Building the corrected basis from two explicit
-## reference vectors (down and toe-forward) keeps the twist well-defined.
+## out of an unstable perpendicular-axis choice, spinning the foot ~90+
+## degrees when the animated sole ends up close to opposite the target.
 var _foot_frame_local: Dictionary = {} # side -> Basis
 ## Last toe-leaf transforms tracked too; stale weighted leaf poses kinked the
 ## visible toe even when every corrected parent measured flat.
@@ -232,13 +205,10 @@ var _has_prev_pelvis_pose: bool = false
 var _smoothed_ground_weight: Dictionary = {} # side -> float
 var _falling_streak: Dictionary = {} # side -> int, see min_falling_streak's doc comment
 var _rising_streak: Dictionary = {} # side -> int, see _raw_weight()'s doc comment
-## Watchdog for foot_ik_gait_tracker.gd's _smooth_weight - see its own doc
-## comment for why this exists.
-var _weight_stuck_time: Dictionary = {} # side -> float (seconds)
+var _weight_stuck_time: Dictionary = {} # side -> float, watchdog for gait_tracker's _smooth_weight
 var _landing_fell: Dictionary = {} # side -> bool
 var _step_down_static_streak: Dictionary = {} # side -> int
-## Counts down after set_character_grounded()'s airborne->grounded
-## transition - see _sample_ground_contact's own deadlock comment.
+# Counts down after set_character_grounded()'s airborne->grounded transition.
 var _landing_grace_time := 0.0
 var _prev_animation_position := -1.0 # see update_animation_discontinuity()'s doc comment
 var _animation_discontinuous := false # ditto - pose-hold/contact_lost window
@@ -247,8 +217,9 @@ var _velocity_suppressed := false # ditto - wider, velocity-only window
 var _velocity_suppress_hold := 0 # ditto
 const LANDING_GRACE_DURATION := 0.35
 var _idle_frozen: Dictionary = {} # side -> bool, see gait_tracker's update_idle_freeze() doc
-var _idle_freeze_streak: Dictionary = {} # side -> int
+var _idle_freeze_streak: Dictionary = {} # side -> int, ditto
 var _idle_unfreeze_streak: Dictionary = {} # side -> int, ditto
+var _idle_freeze_yaw: Dictionary = {} # side -> float (rad), ditto
 var _smoothed_step_lift: Dictionary:
 	get:
 		return _stair_predictor.get_step_lifts() if _stair_predictor != null else {}
@@ -258,8 +229,8 @@ var predicted_step_targets: Dictionary:
 var debug_vertical_velocity: Dictionary = {} # side -> pre-IK animation velocity
 ## Surface-to-surface measurement used by the gait tracker: vertical distance
 ## from the animated sole/toe lowest point to the secondary ground ray hit.
-## INF when no secondary contact exists; exposes the controlled character's
-## own value so harness readouts don't borrow the 0.35m walker's rays.
+## INF when no secondary contact; exposes the controlled character's own
+## value so harness readouts don't borrow the 0.35m walker's rays.
 var debug_contact_distance: Dictionary = {} # side -> float
 var debug_contact_hit: Dictionary = {} # side -> bool
 var debug_step_down: Dictionary = {} # side -> bool
@@ -295,6 +266,7 @@ func reset_runtime_state() -> void:
 	_idle_frozen.clear()
 	_idle_freeze_streak.clear()
 	_idle_unfreeze_streak.clear()
+	_idle_freeze_yaw.clear()
 	_landing_grace_time = 0.0
 	_prev_animation_position = -1.0
 	_animation_discontinuity_hold = 0
@@ -424,20 +396,16 @@ func _ready() -> void:
 
 
 ## The rig's rest/bind pose is the one reference guaranteed to show the
-## character standing flat-footed on level ground (no animation-specific
-## ankle relaxation to bias the reading), so it's a more reliable source for
-## "which direction is the sole normal" than sampling any one animated frame.
-## Returns the EXACT rest-pose local-space direction of world down - not
-## snapped to the nearest cardinal axis (±X/±Y/±Z). An earlier version did
-## snap to the nearest axis, assuming the rig's local axes align with world
-## down/forward/right and any mismatch was just animation noise; measured
-## against this rig's actual rest pose, the nearest axis was still ~26.6
-## degrees off. Since _toe_rest_offset/_leaf_rest_offset (_ready() below) are
-## expressed in this SAME local frame and get carried through the corrected
-## foot basis every frame (see _solve_leg), that quantization error was
-## reproduced exactly on the toe and leaf too - a visible kink with nothing
-## to do with the rig geometry, only rounding. The exact direction keeps the
-## whole chain's original geometric relationships intact.
+## character standing flat-footed on level ground, so it's more reliable for
+## "which direction is the sole normal" than any one animated frame. Returns
+## the EXACT rest-pose local-space direction of world down - not snapped to
+## the nearest cardinal axis. An earlier version did snap, assuming the
+## rig's local axes align with world down/forward/right; measured against
+## this rig, the nearest axis was still ~26.6 degrees off, and since
+## _toe_rest_offset/_leaf_rest_offset are expressed in this same local frame
+## and carried through the corrected foot basis every frame, that
+## quantization error reproduced exactly on the toe/leaf too - a visible
+## kink with nothing to do with rig geometry, only rounding.
 func _derive_sole_down_local(skel: Skeleton3D, foot_idx: int, side: StringName) -> Vector3:
 	var rest_basis := skel.get_bone_global_rest(foot_idx).basis
 	var exact_local_down := (rest_basis.inverse() * Vector3.DOWN).normalized()
@@ -476,15 +444,13 @@ func _derive_forward_local(sole_down_local: Vector3, toe_offset_local: Vector3) 
 
 
 ## Built from two explicit reference vectors (ground-down, toe-forward)
-## rather than a single shortest-arc quaternion aligning just sole_down_local
-## to -smoothed_normal - that approach leaves the twist around the down axis
-## to fall out of an implicit, unstable perpendicular-axis choice, which can
-## spin the whole foot 90+ degrees whenever the animated sole direction ends
-## up close to opposite the target (e.g. a mid-stride pose). Rebuilding the
-## basis from two vectors keeps the twist always well-defined. Depends only
-## on orientation (the animated foot pose and desired_down), not on the
-## target position, so it's safe to call ahead of the actual IK position
-## solve too - see _process_modification_with_delta's toe-drop prediction.
+## rather than a single shortest-arc quaternion aligning sole_down_local to
+## -smoothed_normal - that leaves the twist around the down axis to an
+## implicit, unstable perpendicular-axis choice, which can spin the whole
+## foot 90+ degrees whenever the animated sole direction ends up close to
+## opposite the target. Rebuilding from two vectors keeps the twist always
+## well-defined. Depends only on orientation, not target position, so it's
+## safe to call ahead of the IK position solve too (toe-drop prediction).
 ## foot_pose is passed in, not re-read, so a caller can hand in a held pose.
 func _compute_new_foot_basis_world(
 		skel: Skeleton3D, side: StringName, desired_down: Vector3,
@@ -504,16 +470,11 @@ func _compute_new_foot_basis_world(
 
 
 ## Measures how far this leg's own planted bind geometry extends below the
-## foot bone's origin, once at rig setup. Bone origins sit at joints, not the
-## lowest skinned sole point - ball/toe bind geometry can hang several cm
-## below the toe bone origin (measured ~9mm into the tread before this
-## existed), so origins + a toe-tip margin alone still look sunk into the floor.
-## Data-driven (no per-asset constants): CPU-skins every skinned vertex that
-## influences this leg's foot/toe/leaf bones through their flat planted pose -
-## foot on the level-ground corrected basis at ZERO, toe/leaf at their
-## full-weight rest offsets, exactly what the solver produces at full
-## ground_weight - reports the deepest point below the foot origin, matching
-## foot_ik_leg_solver.gd's own output 1:1 with the rendered planted sole.
+## foot bone's origin, once at rig setup - bone origins sit at joints, not
+## the lowest skinned sole point, so origins + a toe-tip margin alone still
+## look sunk into the floor. Data-driven (no per-asset constants): CPU-skins
+## every skinned vertex through the flat planted pose (foot at ZERO, toe/leaf
+## at full-weight rest offsets) and reports the deepest point below the foot.
 func _measure_leg_sole_depth(skel: Skeleton3D, side: StringName) -> float:
 	var indices: Dictionary = _bone_indices[side]
 	var chain := {int(indices["foot"]): true}
@@ -653,7 +614,11 @@ func _process_modification_with_delta(delta: float) -> void:
 				side, animated_foot_pos, to_world, delta)
 		var likely_idle := absf(anim_speed) <= idle_step_down_speed \
 				or _landing_grace_time > 0.0 # see _landing_grace_time's doc comment
-		var frozen: bool = _gait_tracker.update_idle_freeze(side, anim_speed, delta)
+		# Player's own authored yaw, not a Basis Euler decomposition - Euler
+		# extraction can flip between equivalent representations even when
+		# the true orientation hasn't changed, reading as spurious rotation.
+		var body_yaw := (player_body.get_parent() as Node3D).rotation.y
+		var frozen: bool = _gait_tracker.update_idle_freeze(side, anim_speed, delta, body_yaw)
 		var contact := _sample_ground_contact(skel, space, side, animated_foot_pose,
 				foot_pos, to_world, delta, likely_idle, frozen)
 		per_leg[side] = {"hip_pos": hip_pos, "hit": contact["hit"], "upper": upper_length,
@@ -662,6 +627,14 @@ func _process_modification_with_delta(delta: float) -> void:
 			debug_contact_hit[side] = false
 			debug_contact_distance[side] = -1.0
 			debug_step_down[side] = false
+			# IK disengages this frame (leg with hit=false is skipped below).
+			# ground_weight must still decay, or it sits stale (often 1.0)
+			# across the gap and reasserts full correction in one frame the
+			# instant contact resumes - confirmed via a live capture of a
+			# mid-turn swing losing ankle contact briefly.
+			if delta > 0.0 and ground_weight_fall_time > 0.0:
+				var prev_weight: float = _smoothed_ground_weight.get(side, 0.0)
+				_smoothed_ground_weight[side] = maxf(0.0, prev_weight - delta / ground_weight_fall_time)
 			continue
 		var raw_target: Vector3 = contact["raw_target"]
 		var raw_normal: Vector3 = contact["raw_normal"]
@@ -679,16 +652,24 @@ func _process_modification_with_delta(delta: float) -> void:
 				animated_contact_distance, anim_speed, upper_length, lower_length)
 		var step_down: bool = classification["plant"]
 		if classification["settle"]:
-			# Frozen: keep the settled target fixed - this search otherwise
-			# reruns and direct-overwrites the target with no smoothing.
+			# Frozen: keep the settled target fixed - this search reruns
+			# every frame otherwise. Lerp into its result at smooth_rate
+			# like ordinary raycast tracking instead of a hard snap.
 			if not frozen:
 				var retracted := _retract_to_reachable(space, hip_pos, ground_target,
 						upper_length, lower_length)
 				debug_retracted[side] = retracted["found"]
 				if retracted["found"]:
 					ground_target = retracted["target"]
-					_smoothed_target[side] = retracted["surface"]
-					_smoothed_normal[side] = retracted["normal"]
+					if _smoothed_target.has(side):
+						_smoothed_target[side] = _move_target_smoothed(
+								_smoothed_target[side] as Vector3, retracted["surface"], delta)
+						var amount := clampf(delta * smooth_rate, 0.0, 1.0)
+						_smoothed_normal[side] = (_smoothed_normal[side] as Vector3).lerp(
+								retracted["normal"], amount).normalized()
+					else:
+						_smoothed_target[side] = retracted["surface"]
+						_smoothed_normal[side] = retracted["normal"]
 			# Either way, reach as far as a deep-but-human crouch allows (see
 			# step_down_max_crouch below) rather than snap back to animated.
 			step_down = true
@@ -741,8 +722,13 @@ func _process_modification_with_delta(delta: float) -> void:
 		var needed_drop: float = (hip_pos.y - target.y) - max_vertical_diff
 		shared_drop = maxf(shared_drop, needed_drop)
 	shared_drop = minf(shared_drop, step_down_max_crouch)
+	# Deliberately NOT smoothed: shared_drop exists specifically so the leg
+	# doesn't have to stretch while the pelvis catches up - delaying it via a
+	# lerp (tried once) reintroduces exactly that stretch during the delay,
+	# plus a body-penetration regression once the pelvis finally does catch
+	# up abruptly (caught by FOOT_IK_BODY_PENETRATION_CHECK). Reverted.
 
-	_apply_support_pelvis_and_legs(skel, to_world, per_leg, shared_drop)
+	_apply_support_pelvis_and_legs(skel, to_world, per_leg, shared_drop, delta)
 	for i in skel.get_bone_count():
 		_final_bone_poses[i] = skel.get_bone_global_pose(i)
 
@@ -776,16 +762,30 @@ func _animated_vertical_speed(side: StringName, animated_foot_pos: Vector3,
 
 ## Classifies this stationary foot's relationship to a lower surface it
 ## hovers over (stair-riser straddle). Requires a sustained streak of static
-## frames so a swing's single near-zero-velocity apex frame can never fake
+## frames so a swing's single near-zero-velocity apex frame can't fake
 ## "stationary", and the sole to be meaningfully above the lower surface
 ## (more than GROUND_CONTACT_DISTANCE, else ordinary planting handles it).
-## Within step_down_pelvis_drop of shared-pelvis sink it plants via the
-## ordinary skeleton-only sink ("plant"). Beyond that, the standing leg
-## can't reach it with a sink alone - reported as "settle" so the caller
-## retracts the target toward the hip instead (see _retract_to_reachable).
-## contact_hit/contact_distance may come from _sample_ground_contact's much
-## longer idle-only fallback probe, so a "settle" target here can be
-## arbitrarily far below - fine, retraction searches independently of that.
+## Within step_down_pelvis_drop it plants via the ordinary skeleton-only
+## sink ("plant"). Beyond that the leg can't reach with a sink alone -
+## reported as "settle" so the caller retracts toward the hip instead (see
+## _retract_to_reachable). A "settle" target can be arbitrarily far below
+## (from _sample_ground_contact's idle-only fallback) - fine, retraction
+## searches independently of how far the original target was.
+## Lerp toward raw_target at smooth_rate, then clamp the resulting move to
+## target_max_speed - see that export's doc comment for why the clamp
+## exists on top of the plain fractional lerp.
+func _move_target_smoothed(current: Vector3, raw_target: Vector3, delta: float) -> Vector3:
+	var amount := clampf(delta * smooth_rate, 0.0, 1.0)
+	var lerped := current.lerp(raw_target, amount)
+	var max_dist := target_max_speed * delta
+	if max_dist <= 0.0:
+		return lerped
+	var move := lerped - current
+	if move.length() > max_dist:
+		lerped = current + move.normalized() * max_dist
+	return lerped
+
+
 func _step_down_classification(side: StringName, hip_pos: Vector3, ground_target: Vector3,
 		contact_hit: bool, contact_distance: float, anim_speed: float,
 		upper_length: float, lower_length: float) -> Dictionary:
@@ -837,11 +837,10 @@ const RETRACT_STEPS := 8
 ## marching the character down an entire staircase from a single idle foot,
 ## unprompted, once one drop triggered it). Instead pull the target
 ## horizontally back toward the hip, re-probing the ground at each step,
-## until a point within ordinary reach is found - like a person shortening
-## their stride near a drop-off. Directly under the hip is reachable for any
-## physically plausible standing rig, so this usually finds something well
-## before running out of steps. A probe that finds nothing reachable at any
-## step is a genuine ledge/void; the caller leaves that foot floating.
+## until a point within ordinary reach is found - like shortening a stride
+## near a drop-off. Directly under the hip is reachable for any plausible
+## standing rig, so this usually finds something. Nothing reachable at any
+## step means a genuine ledge/void; the caller leaves that foot floating.
 func _retract_to_reachable(space: PhysicsDirectSpaceState3D, hip_pos: Vector3,
 		ground_target: Vector3, upper_length: float, lower_length: float) -> Dictionary:
 	var max_reach := upper_length + lower_length - 0.001
@@ -888,7 +887,8 @@ func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 	if not frozen and raw_target.distance_to(
 			_smoothed_target[side] as Vector3) > TARGET_NOISE_DEADBAND:
 		var amount := clampf(delta * smooth_rate, 0.0, 1.0)
-		_smoothed_target[side] = (_smoothed_target[side] as Vector3).lerp(raw_target, amount)
+		_smoothed_target[side] = _move_target_smoothed(
+				_smoothed_target[side] as Vector3, raw_target, delta)
 		_smoothed_normal[side] = (_smoothed_normal[side] as Vector3).lerp(
 				raw_normal, amount).normalized()
 	if not hit["hit"] and not frozen:
@@ -934,9 +934,9 @@ func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 
 
 func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
-		per_leg: Dictionary, shared_drop: float) -> void:
+		per_leg: Dictionary, shared_drop: float, delta: float) -> void:
 	if step_prediction_enabled and _stair_predictor.is_active():
-		shared_drop = _stair_predictor.ensure_support(per_leg, shared_drop)
+		shared_drop = _stair_predictor.ensure_support(per_leg, shared_drop, delta)
 	# Pelvis and thigh roots move together so skinning across the seam cannot tear.
 	if shared_drop > 0.0 and not _bone_indices.is_empty():
 		var first_leg: Dictionary = _bone_indices.values()[0]
