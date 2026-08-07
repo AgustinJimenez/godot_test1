@@ -2,33 +2,30 @@ extends Node3D
 ## Live contact/target/bone markers, solver controls, and numeric pose data.
 ## BoneAttachment3D probes expose the final post-modifier skeleton pose.
 
-## The toe/ball bone's own origin sits at the base of the toes, not the
-## visual tip of the foot mesh - extending a bit further past it along the
-## same foot-to-toe direction approximates where the actual toe tip is, so
-## the yellow marker reflects what you'd see poking up, not just the joint.
+## The toe/ball bone's origin sits at the base of the toes, not the mesh's
+## visual tip - extending further along the foot-to-toe direction approximates
+## the actual toe tip, so the yellow marker reflects what you'd see poking up.
 const TOE_TIP_EXTRA_LENGTH := 0.035
 
 ## Gap between the screen edge and the panel's own border.
 const PANEL_OUTER_MARGIN := 20
-## Gap between the panel's border and its contents (title/sliders/grid) -
-## without this, wide rows (like the "IK Active" checkbox, whose toggle
-## glyph sits at the row's far right) could render flush against the panel
-## edge and get clipped by the viewport border beyond it.
+## Gap between the panel's border and its contents - without this, wide rows
+## could render flush against the panel edge and get clipped by the viewport.
 const PANEL_INNER_PADDING := 14
-## The content area's own width, independent of padding - the panel's own
-## custom_minimum_size adds PANEL_INNER_PADDING on both sides on top of this
-## so growing the padding doesn't silently shrink the sliders/grid.
+## The content area's own width, independent of padding, so growing the
+## padding doesn't silently shrink the sliders/grid.
 const PANEL_CONTENT_WIDTH := 460
 const STAIR_FOLLOW_HEIGHT := 0.35
 const ANIMATION_DISPLAY_FPS := 60.0
-## User-calibrated camera position relative to the 0.35m walker's stable root
-## at the bottom spawn (15.0, 0.05, -0.8). The root carries the camera through
-## stair movement; the animated foot controls only where the camera looks.
+## User-calibrated camera position relative to the 0.35m walker's stable
+## root at the bottom spawn (15.0, 0.05, -0.8) - the root carries the camera
+## through stair movement; the animated foot only controls where it looks.
 const STAIR_FOLLOW_ROOT_OFFSET := Vector3(-0.7034, 0.0967, -0.2845)
 const STAIR_FOLLOW_ORBIT_SENSITIVITY := 0.006
 const STAIR_FOLLOW_MIN_DISTANCE := 0.08
 const STAIR_FOLLOW_MAX_DISTANCE := 4.0
 const CONTROLLED_TRACE_FILE := "user://foot_ik_controlled.jsonl"
+const CONTROLLED_TRACE_MAX_FRAMES := 1200 # 20s at 60fps - room to turn, wait, then grab it
 
 var _player_body: PlayerBody
 var _ik: PlayerFootIKModifier
@@ -41,9 +38,8 @@ var _markers: Dictionary = {} # "side_kind" -> MeshInstance3D, kind in hit/targe
 ## every physics frame for the on-screen readout and this one isn't.
 var _angle_probes: Dictionary = {}
 ## side -> {segment: Label3D}, one floating label per segment (thigh/shin/
-## foot/leaf), positioned at that segment's midpoint each physics frame -
-## puts the same numbers the readout grid shows directly on the bone they
-## describe, instead of only off in the corner panel.
+## foot/leaf), positioned at that segment's midpoint - puts the readout
+## grid's numbers directly on the bone they describe, not just the panel.
 var _angle_labels: Dictionary = {}
 
 ## Ordered [key, column_header] pairs for the per-foot readout grid (see
@@ -71,6 +67,10 @@ const READOUT_FIELDS := [
 	["leaf_angle", "Leaf°"],
 ]
 
+var _loop_reset_flash: Label
+var _controlled_trace_buffer: Array[String] = []
+var _contact_lost_flash: Label
+const LOOP_RESET_FLASH_DURATION := 0.5
 var _active_check: CheckButton
 var _backend_option: OptionButton
 var _pause_button: Button
@@ -171,30 +171,17 @@ func _ready() -> void:
 	# without an extra menu trip every time the scene reloads.
 	_player_body.set_skeleton_visible(true)
 
-	# player.gd only rotates the camera from mouse motion while the mouse is
-	# captured (see actors/player/player.gd's _unhandled_input). Left
-	# captured (player.gd's own default) on load, matching every other scene
-	# in the project, so the camera actually responds to the mouse the
-	# moment you spawn instead of the pointer just sitting there doing
-	# nothing - an earlier version freed the mouse by default specifically
-	# so slider drags wouldn't double as camera-look drags, but that traded
-	# "sliders need one keypress first" for "camera looks broken on spawn,"
-	# a worse default for a scene most people open just to look around.
-	# Backtick still frees the mouse on demand for the sliders.
-	# Deliberately NOT Tab: this scene's Player is a real, fully-wired player
-	# instance, and Tab is already bound project-wide to the "inventory"
-	# action (see project.godot) - player.gd's own _unhandled_input handles
-	# that action too and would open/pause the inventory overlay on the same
-	# keypress, fighting this toggle instead of complementing it.
+	# player.gd only rotates the camera from mouse motion while captured, and
+	# stays captured by default on load (matching every other scene) so the
+	# camera responds immediately instead of the pointer sitting idle.
+	# Backtick frees the mouse on demand for the sliders. Deliberately NOT
+	# Tab: Player is real and fully-wired, and Tab is already project-wide
+	# "inventory" (see project.godot) - fighting this toggle otherwise.
 
-## DetachedCam is a child of Player (see player.tscn) - positioning it
-## before the player has finished falling/settling onto the floor from its
-## spawn height means the settle-fall that happens over the next several
-## physics frames drags the camera down by the same amount afterward (found
-## by comparing the readout label against the intended camera offset - Y was
-## off by almost exactly the player's own fall distance). Poll is_on_floor()
-## instead of a fixed wait, since exactly how long the fall takes isn't
-## fixed - only settle-then-position gives a Y that actually matches.
+## DetachedCam is a child of Player - positioning it before the player
+## finishes falling/settling from spawn height drags the camera down by the
+## same amount (Y was off by the fall distance). Poll is_on_floor() since
+## exactly how long the fall takes isn't fixed.
 func _wait_for_player_to_settle() -> void:
 	var player := get_node("../Player") as Player
 	if player == null:
@@ -204,25 +191,18 @@ func _wait_for_player_to_settle() -> void:
 			return
 		await get_tree().physics_frame
 
-## A specific close-up-on-the-right-foot framing, read off the camera
-## readout label after manually flying to a good spot - stored as an offset
-## from the player's own authored spawn transform (captured once in _ready()
-## as _player_spawn_position), not an absolute world position, so moving
-## Player's start position in foot_ik_preview.tscn (e.g. to stand near the
-## walking dummies) doesn't silently leave this framing pointed at empty
-## space - it was an absolute world position originally, and that's exactly
-## what happened the first time the spawn point moved.
+## A specific close-up-on-the-right-foot framing, read off the camera readout
+## after flying to a good spot - stored as an offset from the player's own
+## authored spawn transform (_player_spawn_position, captured in _ready()),
+## not an absolute world position, so moving Player's start position doesn't
+## silently leave this pointed at empty space (it did, once).
 const DEFAULT_CAMERA_OFFSET := Vector3(0.57, -0.85, 0.45)
 const DEFAULT_CAMERA_ROTATION_DEG := Vector3(-27.8, 37.9, 0.0)
 var _player_spawn_position: Vector3
 
-## Not default-on anymore - now that foot placement itself is solved, the
-## close-up-on-the-foot framing this scene forced on load stopped being the
-## most useful starting view (e.g. it's cropped wrong for the walking
-## dummies added later). Kept available on demand instead (see the K
-## keybind in _unhandled_input()) rather than deleted outright, since it's
-## still the fastest way to get a tight, reproducible framing on the real
-## player's own foot for close numeric/visual inspection.
+## Not default-on anymore - now that foot placement is solved, this framing
+## isn't the most useful starting view. Kept on demand (K keybind) since
+## it's still the fastest way to get a tight framing for close inspection.
 func _start_detached_camera_on_foot() -> void:
 	var player := get_node("../Player") as Player
 	if player == null:
@@ -233,10 +213,9 @@ func _start_detached_camera_on_foot() -> void:
 	cam.rotation = Vector3(
 			deg_to_rad(DEFAULT_CAMERA_ROTATION_DEG.x), deg_to_rad(DEFAULT_CAMERA_ROTATION_DEG.y),
 			deg_to_rad(DEFAULT_CAMERA_ROTATION_DEG.z))
-	# set_detached_camera_active() already synced these from the camera it
-	# copied from (the player's own first-person view) - re-sync from our
-	# override instead, or the first mouse-look frame would snap the camera
-	# straight back to that original orientation.
+	# set_detached_camera_active() already synced these from the first-person
+	# camera - re-sync from our override or the first mouse-look frame snaps
+	# the camera back to that original orientation.
 	player._detached_yaw = cam.rotation.y
 	player._detached_pitch = cam.rotation.x
 
@@ -287,20 +266,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			and (event as InputEventKey).keycode == KEY_K:
 		_activate_closeup_camera()
 
-## Settles first in case this is pressed very soon after the scene loads
-## (see _wait_for_player_to_settle's own doc comment for why positioning the
-## camera before the player has finished its spawn-height fall would throw
-## the framing off) - awaited internally here since _unhandled_input can't
-## await inline; a fire-and-forget call is fine since nothing needs to run
-## after it completes.
+## Settles first in case this is pressed soon after load (see
+## _wait_for_player_to_settle) - awaited internally since _unhandled_input
+## can't await inline; fire-and-forget is fine, nothing runs after it.
 func _activate_closeup_camera() -> void:
 	await _wait_for_player_to_settle()
 	_start_detached_camera_on_foot()
 
 ## BoneAttachment3D + a plain Node3D child, same probe pattern _ready() uses
 ## for the foot/toe bones above - the only reliable way to read a bone's
-## actual post-modifier pose from outside the modifier stack (see this
-## script's own top-of-file doc comment).
+## actual post-modifier pose from outside the modifier stack (see top-of-file).
 func _make_probe(bone_idx: int) -> Node3D:
 	var attach := BoneAttachment3D.new()
 	_skel.add_child(attach)
@@ -309,18 +284,12 @@ func _make_probe(bone_idx: int) -> Node3D:
 	attach.add_child(probe)
 	return probe
 
-## Each segment's OWN absolute angle from world Vector3.DOWN (0 = pointing
-## straight down, 90 = horizontal, 180 = pointing straight up) - not the bend
-## relative to the previous segment. A relative/bend angle stays constant
-## across totally different poses whenever a chain segment (e.g. toe->leaf)
-## is rigidly rebuilt from a fixed rest-pose offset relative to its parent's
-## corrected basis - it only measures the rig's own fixed rest geometry, not
-## anything the current correction is doing (confirmed by comparing two very
-## different IK states: knee/ankle bend swung widely, but the bend-relative
-## toe angle stayed pinned at exactly the same value both times). An absolute
-## world angle actually reflects the live, corrected pose instead. Shared by
-## the on-screen readout (every physics frame) and the console dump below
-## (on demand).
+## Each segment's OWN absolute angle from world Vector3.DOWN (0 = straight
+## down, 90 = horizontal, 180 = straight up) - not the bend relative to the
+## previous segment, which stays constant across different poses whenever a
+## segment (e.g. toe->leaf) is rebuilt from a fixed rest-pose offset. An
+## absolute angle reflects the live, corrected pose. Shared by the readout
+## (every frame) and the console dump below (on demand).
 func _compute_leg_angles(side: StringName) -> Dictionary:
 	var angle_probes: Dictionary = _angle_probes.get(side, {})
 	var hip_probe: Node3D = angle_probes.get("hip")
@@ -345,10 +314,8 @@ func _compute_leg_angles(side: StringName) -> Dictionary:
 			result["leaf"] = rad_to_deg(toe_to_leaf.angle_to(Vector3.DOWN))
 	return result
 
-## Moves each segment's floating Label3D (see _angle_labels/_spawn_angle_label)
-## to that segment's own midpoint and refreshes its text - puts the exact
-## same numbers the readout grid shows directly on the bone in the 3D view,
-## so a kink is readable at a glance instead of requiring a panel lookup.
+## Moves each segment's floating Label3D to its own midpoint and refreshes
+## its text - puts the readout grid's numbers directly on the bone in 3D.
 func _update_angle_labels(side: String, angles: Dictionary) -> void:
 	var labels: Dictionary = _angle_labels.get(side, {})
 	var angle_probes: Dictionary = _angle_probes.get(side, {})
@@ -380,9 +347,8 @@ func _update_angle_labels(side: String, angles: Dictionary) -> void:
 			label.visible = false
 
 ## Prints each leg's segment angles (world-space, from Vector3.DOWN) to the
-## console, for a full-precision snapshot on demand - the on-screen readout
-## (see _physics_process) shows the same numbers live, but at a size/
-## precision tuned for the panel.
+## console, for a full-precision snapshot on demand - _physics_process shows
+## the same numbers live, but at a size/precision tuned for the panel.
 func _log_leg_angles() -> void:
 	for side: StringName in [&"left", &"right"]:
 		var angles := _compute_leg_angles(side)
@@ -395,6 +361,27 @@ func _log_leg_angles() -> void:
 func _build_panel() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
+
+	# Flashes each loop-reset frame (see foot_ik_leg_solver.gd's solve() doc).
+	_loop_reset_flash = Label.new()
+	_loop_reset_flash.text = "LOOP RESET"
+	_loop_reset_flash.add_theme_font_size_override("font_size", 40)
+	_loop_reset_flash.add_theme_color_override("font_color", Color(1.0, 0.9, 0.2))
+	_loop_reset_flash.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_loop_reset_flash.position = Vector2(-70, 40)
+	_loop_reset_flash.modulate.a = 0.0
+	layer.add_child(_loop_reset_flash)
+
+	# Flashes on contact_lost - ground_weight snapping toward 0, the moment
+	# the blended target jumps from the held ground point to raw animation.
+	_contact_lost_flash = Label.new()
+	_contact_lost_flash.text = "CONTACT LOST"
+	_contact_lost_flash.add_theme_font_size_override("font_size", 40)
+	_contact_lost_flash.add_theme_color_override("font_color", Color(1.0, 0.3, 0.25))
+	_contact_lost_flash.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_contact_lost_flash.position = Vector2(-100, 90)
+	_contact_lost_flash.modulate.a = 0.0
+	layer.add_child(_contact_lost_flash)
 
 	var panel_width := PANEL_CONTENT_WIDTH + PANEL_INNER_PADDING * 2
 	var panel := PanelContainer.new()
@@ -568,10 +555,9 @@ func _on_animation_timeline_changed(position: float) -> void:
 
 func _refresh_paused_ik_pose() -> void:
 	if get_tree().paused and _skel != null:
-		# A paused AnimationPlayer does not request another skeleton update when
-		# only modifier tuning data changes. Evaluate with zero elapsed time so
-		# the selected animation frame stays fixed while the new IK values are
-		# rendered immediately.
+		# A paused AnimationPlayer doesn't request another skeleton update when
+		# only modifier tuning changes - advance(0.0) keeps the frame fixed
+		# while rendering the new IK values immediately.
 		_skel.advance(0.0)
 
 func _update_animation_timeline() -> void:
@@ -617,12 +603,8 @@ func _exit_tree() -> void:
 		get_tree().paused = false
 	_restore_animation_process_modes()
 
-## A field/left/right grid instead of one long "key=value key=value ..."
-## line per foot - once the leg-angle fields were added the single-line
-## version ran well past the panel width and off the edge of the screen.
-## Padding (h/v separation) keeps columns from crowding together now that
-## values sit in their own cells instead of being visually separated by
-## the "key=" text.
+## A field/left/right grid instead of "key=value ..." per foot - once
+## leg-angle fields were added, the single-line version ran off-screen.
 func _build_readout_grid(parent: VBoxContainer) -> void:
 	var grid := GridContainer.new()
 	grid.columns = 3
@@ -694,10 +676,8 @@ func _copy_ik_panel_data() -> void:
 	if is_instance_valid(_copy_data_button):
 		_copy_data_button.text = "Copy IK Data"
 
-## Text and font color make the "IK Active" state readable at a glance
-## instead of relying on the small built-in toggle glyph, which is easy to
-## miss (and, per one headless-capture investigation this session, doesn't
-## even render in movie-maker mode at all).
+## Text and color make "IK Active" readable at a glance - the built-in
+## toggle glyph is easy to miss (and doesn't render in movie-maker mode).
 func _style_active_check(active: bool) -> void:
 	_active_check.text = "IK ENABLED" if active else "IK DISABLED"
 	var color := Color(0.3, 1.0, 0.4) if active else Color(1.0, 0.35, 0.3)
@@ -871,7 +851,7 @@ func _add_slider(
 	_sliders[prop] = slider
 	_slider_labels[prop] = value_label
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if _ik == null:
 		return
 	if get_tree().paused and _keep_playing_check.button_pressed:
@@ -885,13 +865,20 @@ func _physics_process(_delta: float) -> void:
 	if _active_check.button_pressed != _ik.active:
 		_active_check.set_pressed_no_signal(_ik.active)
 		_style_active_check(_ik.active)
-	# Surface-to-surface ray distance (sole vs ground), read from the
-	# controlled character's own modifier (debug_contact_*), not the 0.35m
-	# walker's preview rays.
-	# Whichever camera the viewport is actually rendering through right now -
-	# detached, first-person, or third-person - rather than assuming it's
-	# still the detached one this scene starts you in, since the debug menu
-	# or `/V can switch it at any time.
+	if _ik._animation_discontinuous:
+		_loop_reset_flash.modulate.a = 1.0
+	elif _loop_reset_flash.modulate.a > 0.0:
+		var fade := delta / LOOP_RESET_FLASH_DURATION
+		_loop_reset_flash.modulate.a = maxf(0.0, _loop_reset_flash.modulate.a - fade)
+	if _ik.debug_contact_lost.get(&"left", false) or _ik.debug_contact_lost.get(&"right", false):
+		_contact_lost_flash.modulate.a = 1.0
+	elif _contact_lost_flash.modulate.a > 0.0:
+		var lost_fade := delta / LOOP_RESET_FLASH_DURATION
+		_contact_lost_flash.modulate.a = maxf(0.0, _contact_lost_flash.modulate.a - lost_fade)
+	# Surface-to-surface ray distance (sole vs ground), from the controlled
+	# character's own modifier, not the 0.35m walker's preview rays.
+	# Whichever camera is actually rendering right now, not assuming it's
+	# still the detached one this scene starts you in.
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
 		var rot_deg := cam.global_rotation_degrees
@@ -970,8 +957,10 @@ func _capture_controlled_foot_frame() -> void:
 	var trace := {
 		"frame": Engine.get_physics_frames(),
 		"root": _player_body.global_position,
+		"root_yaw_deg": rad_to_deg((_player_body.get_parent() as Node3D).rotation.y),
 		"animation": animation_player.current_animation if animation_player != null else "",
 		"time": animation_player.current_animation_position if animation_player != null else 0.0,
+		"disc": _ik._animation_discontinuous,
 		"feet": {},
 	}
 	for side: String in ["left", "right"]:
@@ -982,6 +971,7 @@ func _capture_controlled_foot_frame() -> void:
 		var sole_depth := float(_ik._sole_depth_below_foot.get(side, _ik.ankle_offset))
 		var sole: Vector3 = actual_pos + sole_down * sole_depth
 		var toe_probe: Node3D = _toe_probes.get(side)
+		var hip_probe: Node3D = (_angle_probes.get(side, {}) as Dictionary).get("hip")
 		trace["feet"][side] = {
 			"gap": actual_pos.y - target.y - sole_depth,
 			"sole_clearance": sole.y - target.y,
@@ -990,10 +980,20 @@ func _capture_controlled_foot_frame() -> void:
 			"vertical_velocity": float(_ik.debug_vertical_velocity.get(side, 0.0)),
 			"contact_hit": bool(_ik.debug_contact_hit.get(side, false)),
 			"contact_distance": float(_ik.debug_contact_distance.get(side, -1.0)),
+			"contact_lost": bool(_ik.debug_contact_lost.get(side, false)),
+			"frozen": bool(_ik._idle_frozen.get(side, false)),
+			"freeze_streak": int(_ik._idle_freeze_streak.get(side, 0)),
 			"step_down": bool(_ik.debug_step_down.get(side, false)),
 			"toe_tip_y": toe_probe.global_position.y if toe_probe != null else 0.0,
+			"foot_pos": actual_pos,
+			"hip_pos": hip_probe.global_position if hip_probe != null else Vector3.ZERO,
 		}
-	var file := FileAccess.open(CONTROLLED_TRACE_FILE, FileAccess.READ_WRITE)
-	file.seek_end()
-	file.store_line(JSON.stringify(trace))
+	# Rolling window, not an ever-growing append: always holds the moment a
+	# live shake just happened without a whole play session in the file.
+	_controlled_trace_buffer.append(JSON.stringify(trace))
+	if _controlled_trace_buffer.size() > CONTROLLED_TRACE_MAX_FRAMES:
+		_controlled_trace_buffer.pop_front()
+	var file := FileAccess.open(CONTROLLED_TRACE_FILE, FileAccess.WRITE)
+	for line: String in _controlled_trace_buffer:
+		file.store_line(line)
 	file.close()

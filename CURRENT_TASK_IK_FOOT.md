@@ -30,11 +30,20 @@ below). Two open problems remain, both harder than a threshold tweak:
    suite, and was reverted immediately. Lesson captured in `AGENTS.md`. The two remaining kept fixes
    (jump-landing, support-plant guard removal) pass the full automated suite but are **still not yet
    manually confirmed live in-game**.
-3. **Idle-freeze experiment added (untested live).** Based on a Reddit r/gamedev thread the user
-   shared, a new opt-in mechanism stops re-raycasting a foot's ground target entirely once it's been
-   confirmed fully planted and motionless for ~0.5s, only releasing on clearly real motion - see
-   "2026-08-05 session, continued once more: idle-freeze from community advice" below. Passes the full
-   automated suite. Given tonight's track record, treat this as unverified until tested live.
+3. **Idle-freeze + raycast-noise deadband: confirmed live and committed.** Based on a Reddit r/gamedev
+   thread the user shared, a foot's ground target now freezes entirely (stops re-raycasting) once
+   confirmed fully planted and motionless for ~0.5s, and a small deadband rejects sub-noise raycast
+   diffs outright even before that freeze kicks in - see "2026-08-05 session, continued once more:
+   idle-freeze from community advice" below. **User confirmed live: "this is so much better."**
+   Committed as `f52370a` on `experiment/native-foot-ik` together with the jump-landing and
+   support-plant fixes from earlier in the session.
+4. **Hip swing limit added (untested live).** Implemented right after the research above: a cone
+   clamp on the thigh direction around straight-down (`max_hip_swing_degrees`, default 100°),
+   preventing the previously-unconstrained hip from rotating the leg to an anatomically impossible
+   angle when a target ends up somewhere it shouldn't (a stale support target, a bad retraction).
+   Confirmed the clamp actually engages (an artificially tight 15° test caused real, measurable
+   penetration since legs could no longer reach the treads); passes the full automated suite at the
+   sane default. See "2026-08-05 session, joint limits: hip swing cone" below. **Not yet tested live.**
 
 **Status (2026-08-03, historical):** Three threads. (1) The swing foot still bumps stair risers instead
 of clearing each step cleanly — still open, next debugging target below. (2) Idle step-down Option A/B
@@ -314,11 +323,263 @@ Passes the full automated suite (stretch/airborne/penetration all clean). Files 
 `actors/player/player_foot_ik_modifier.gd` (`_idle_frozen`/`_idle_freeze_streak` state, wiring into
 the per-leg loop and `_sample_ground_contact()`).
 
-**Not yet manually confirmed in-game.** Given the double-call-skip fix broke IK completely despite
-passing every automated check just one iteration earlier in this same session, do not assume this is
-safe without a live look - specifically check: (1) does idle straddle-pose IK still work correctly on
-all previously-working stair heights, (2) does it look *smoother* while standing still than before
-(the actual goal), (3) does the 65cm idle-float bug's pop-back-to-floating symptom still occur.
+**Follow-up in the same session**: user reported the freeze helped but they could still see a "split
+second re-raycast" - a brief visible readjustment before a foot fully settles/freezes. Added a
+complementary fix: `TARGET_NOISE_DEADBAND` (1cm) in `player_foot_ik_modifier.gd` - any new raycast hit
+within 1cm of the current smoothed target is now rejected outright instead of lerped toward, since
+ordinary noise can shift the *normal* enough to visibly rock the foot even when position barely
+changes. Applies continuously (not just pre-freeze), independent of the freeze mechanism. Caught a
+real `Cannot infer the type` compile error during this work (untyped `_gait_tracker` reference used
+with `:=`) via the full `scripts/check.sh` run, not `gdlint` alone.
+
+**Confirmed live by the user**: "this is so much better" - both the freeze and the deadband fix are
+working as intended. **Committed** as `f52370a` on `experiment/native-foot-ik`, together with the
+jump-landing and support-plant-guard-removal fixes from earlier in the session.
+
+## 2026-08-05 session, research: joint limits and more foot IK resources
+
+User asked how to find more resources like the Reddit thread. Search strategy notes and results below
+for future reference, plus the next target identified from it (joint limits).
+
+**How to find more:** search `[engine] foot IK [specific symptom]` (e.g. "Unity foot IK stairs
+floating") rather than generic tutorials - devs posting bug reports surface real lessons-learned, not
+polished-tutorial marketing copy. `site:gamedev.net` / `site:forum.unity.com` narrows to dev forums
+where people post failure cases. Following specific researcher/dev blogs (e.g. `theorangeduck.com` -
+Daniel Holden, ex-Ubisoft La Forge) beats cold search for genuinely practical, battle-tested writeups.
+
+**On stairs specifically** (still our main unsolved problem):
+[Foot IK on Stairs for Rigidbody-Driven Movement](https://discussions.unity.com/t/foot-ik-on-stairs-for-rigidbody-driven-movement/1640419)
+(Unity Discussions) describes our *exact* symptom - legs floating/snapping when the animation clip is
+out of sync with stair step length, i.e. the same flat-clip-vs-real-geometry mismatch this project's
+own investigation kept running into all night. Worth a close read before the next attempt at the
+walking-acquisition-frequency gap (see the "actual fix" section above).
+Also: [Foot IK for stairs climbing](https://discussions.unity.com/t/foot-ik-for-stairs-climbing/831938),
+[Using IK for walking on stairs (Unreal)](https://answers.unrealengine.com/questions/938195/using-ik-for-walking-on-stairs.html).
+
+**On joint limits** (the next target flagged this session, not yet started): current state is a single
+knee flexion clamp (`max_knee_flexion_degrees` in `foot_ik_leg_solver.gd`) but no hip swing-angle
+constraint at all - the hip is solved as an unconstrained ball-and-socket in the closed-form two-bone
+solve, so an extreme/unreachable target could rotate the whole leg to an anatomically impossible
+angle. Best reference found: [Joint Limits - theorangeduck.com](https://theorangeduck.com/page/joint-limits)
+(swing-twist decomposition - separates a ball-and-socket joint's rotation into a twist around one axis
+plus a swing across a plane, letting each be limited independently and intuitively). Also:
+[Inverse Kinematics with Joint Limits - GameDev.net](https://www.gamedev.net/forums/topic/677093-inverse-kinematics-with-joint-limits/).
+
+## 2026-08-05 session, joint limits: hip swing cone (added, untested live)
+
+Implemented a simpler version of the full swing-twist decomposition from the research above, scoped to
+what this project's leg IK actually needs: a single cone-angle clamp on the thigh direction
+(`new_hip_to_knee_dir` in `foot_ik_leg_solver.gd`'s `solve()`), measured from straight down
+(`Vector3.DOWN`), limited by a new `max_hip_swing_degrees` export (default 100°) on
+`player_foot_ik_modifier.gd`. Full twist (roll around the thigh's own long axis) isn't modeled or
+limited - for a leg-only closed-form two-bone solve there's no independent twist degree of freedom to
+begin with (the knee's bend plane already fully determines hip orientation along with position), so a
+swing-only cone covers the actual failure mode: the leg splaying sideways or backward past a human
+hip's real range of motion.
+
+When the swing angle exceeds the limit, the thigh direction is rotated back onto the cone boundary
+(same rotation-axis-and-clamped-angle technique as swing-twist limiting) rather than clamped naively,
+so the knee's swing *plane* (left/right bend direction, already chosen via the existing knee pole
+vector) is preserved - only how far down that plane it's allowed to swing changes. The calf is then
+re-aimed from the (possibly moved) knee toward the original target and kept rigid at `lower_length`,
+exactly mirroring how the existing knee flexion clamp above it already accepts an imperfect reach
+rather than break bone length - the foot may land short of target instead of forcing an inhuman pose.
+
+**Verified the clamp actually does something**, not just parses: temporarily set
+`max_hip_swing_degrees` to an unreasonably tight `15.0` and re-ran `check_foot_ik.sh` -
+`FOOT_IK_BODY_PENETRATION_CHECK` failed with real, measurable penetration (17 samples, 0.10m max
+depth), since legs could no longer swing far enough to reach the stair treads at all. Restored the
+sane `100.0` default and re-ran clean (0 penetrating samples, stretch/airborne also clean) - confirms
+100° doesn't meaningfully constrain any pose exercised by the existing preview scene, only the genuine
+extreme cases this is meant to catch.
+
+Not currently exposed in the debug panel UI - `max_knee_flexion_degrees` isn't either, so left
+consistent for now.
+
+Files touched: `actors/player/foot_ik/foot_ik_leg_solver.gd` (the clamp + calf re-aim in `solve()`),
+`actors/player/player_foot_ik_modifier.gd` (`max_hip_swing_degrees` export).
+
+**Not yet manually confirmed in-game.** No automated check can tell "looks anatomically correct" from
+"passes numerically" - specifically watch for: (1) any pose where a leg now visibly stops short of a
+target it used to reach (would mean 100° is too tight for some legitimate case, e.g. a wide stair
+stance), (2) confirm ordinary idle/walk/jump poses across all stair heights still look identical to
+before this change (they should, since nothing in the existing scene reads as needing more than 100°).
+
+## 2026-08-05 session, idle-freeze follow-up: single-frame unfreeze caused a periodic twitch (fixed)
+
+User caught this live, right after the hip-swing-cone work above, via a debug-panel capture: left leg
+twitching "every few split seconds" while standing idle. The capture itself showed a stable, correctly
+planted foot at that exact instant (`ground_weight=1.0`, `contact_lost=false`, `vertical_velocity=
+0.005`) - the bug wasn't in the plant, it was periodic, meaning it had to be in the freeze/unfreeze
+transition added earlier this session, not the underlying IK math.
+
+Root cause: `update_idle_freeze()`'s un-freeze check released the freeze on a **single frame**
+exceeding `IDLE_UNFREEZE_SPEED_MULT * idle_step_down_speed`, with no debounce - every other streak in
+this codebase requires sustained confirmation before acting (that's the whole reason the freeze
+mechanism itself needs 30 consecutive calm ticks), but the release side of the same mechanism didn't
+follow that same principle. The idle animation's own periodic breathing/sway motion apparently spikes
+just over that threshold for an instant once per cycle, which was enough to yank the foot out of
+freeze, force a resample against a slightly different raw target, and only re-freeze ~0.5s later -
+visible as a recurring twitch locked to the animation's own cycle period.
+
+**Fixed**: added `IDLE_UNFREEZE_STREAK` (3) - un-freezing now also needs 3 consecutive real ticks
+above the speed threshold, not one. Full automated suite still passes clean after the change. Files
+touched: `actors/player/foot_ik/foot_ik_gait_tracker.gd` (`update_idle_freeze()`),
+`actors/player/player_foot_ik_modifier.gd` (`_idle_unfreeze_streak` state).
+
+**Also noticed but not investigated** in that same debug capture (not what was reported, logged here
+so it isn't lost): the right foot showed `raw_weight=0.0, contact_lost=true, ground_weight=1.0` -
+this looks alarming in isolation but is very likely the *intended* behavior of the support-plant guard
+removal from earlier in the session (the stair predictor force-plants its chosen support leg
+regardless of gait_tracker's own stricter contact_lost opinion) rather than a new bug - right was
+probably the stair predictor's currently-latched support leg at that moment. Also: `toe_tip_gap=
+-0.116` on the left foot (toe reading below the ground surface) at a fairly steep `pitch=45.0` - worth
+a look if it turns out visually wrong, but not chased since it wasn't what was reported.
+
+**Not yet manually confirmed in-game** - needs the user to stand idle at the same repro spot again and
+confirm the twitch is actually gone, not just theoretically fixed.
+
+## 2026-08-05 session, idle-freeze follow-up part 2: the real cause was ground_weight, not the freeze
+
+The unfreeze-streak fix above didn't fix it - user confirmed live at a *different* spot with the
+**same** symptom, ruling out anything specific to that one location, and confirmed via a follow-up
+question that the twitch is specifically **a vertical dip-then-recover**, not a rocking/orientation
+pop. That pins it away from the freeze mechanism entirely (it only touches `_smoothed_target`/
+`_smoothed_normal` - position/orientation smoothing - never `ground_weight`) and onto
+`ground_weight`'s own, completely separate computation in `foot_ik_gait_tracker.gd`.
+
+**Root cause found in `_raw_weight()`**: the falling branch has always required `min_falling_streak`
+(3) sustained frames before it's trusted (that's the whole reason `_falling_streak` hysteresis exists
+- see the comment right above it), but the **rising branch had no equivalent protection at all** - a
+single frame of rising velocity, even a tiny ~0.05 m/s blip from ordinary idle sway/breathing, gets
+amplified by `rising_penalty` (4.0×) into a large, instant `raw_weight` drop with zero debounce. Because
+`ground_weight_fall_time` (0.05s) is faster than `ground_weight_rise_time` (0.12s), the resulting
+`ground_weight` dips quickly and recovers more slowly - a visible, recurring sag-and-recover, timed to
+whatever produces that periodic rising blip in the idle clip.
+
+**Fixed**: added a `_rising_streak` counter mirroring `_falling_streak` (same decay-not-hard-reset
+hysteresis band), and gated the rising branch on `min_falling_streak` (reused, not a new export) the
+same way the falling branch already is. Full automated suite still passes clean, including
+`FOOT_IK_BODY_PENETRATION_CHECK` - a genuine swing-start's rising velocity sustains far longer than 3
+frames, so this doesn't meaningfully delay real swing detection.
+
+Files touched: `actors/player/foot_ik/foot_ik_gait_tracker.gd` (`_measure_velocity()`, `_raw_weight()`),
+`actors/player/player_foot_ik_modifier.gd` (`_rising_streak` state).
+
+**Not yet manually confirmed in-game** - this is the second attempted fix for the same reported
+symptom; don't assume it's the last word until the user confirms it live.
+
+## 2026-08-05 session, idle-freeze follow-up part 3: pinned to the actual trigger - animation loop reset
+
+The rising-streak fix (part 2) didn't fully resolve it either - user narrowed the trigger precisely
+this time: **it happens specifically when the idle animation loop resets**. That's a genuinely
+different, far more mundane mechanism than parts 1/2 chased: `AnimationPlayer` with
+`Animation.LOOP_LINEAR` doesn't blend across the loop point, it hard-resets
+`current_animation_position` from the clip's end straight back to its start - a real, instantaneous
+position discontinuity, not motion. `_measure_velocity()` was diffing straight across that jump every
+single loop (`(pose_at_time_0 - pose_at_time_2.5) / delta`) as if it were one ordinary frame's worth of
+real movement, producing a large spurious velocity spike exactly once per loop - which explains why
+parts 1 and 2's streak-based fixes only ever partially helped: a big enough single-frame spike can
+still push a 3-frame streak/threshold in one or two ticks even with debouncing, especially right as the
+new loop's own opening motion (often a settle/breath-intake with genuinely higher velocity) continues
+in the same direction for a frame or two after.
+
+**Fixed at the actual source this time**: added `update_animation_discontinuity()` in
+`foot_ik_gait_tracker.gd`, called once per frame (not per-leg, to avoid yet another double-detection
+pitfall) from `_process_modification_with_delta()`. Compares `AnimationPlayer.current_animation_position`
+against last frame's value; if it dropped by more than 0.05s (real playback only moves forward, so any
+backward jump this large is a loop reset or an animation switch, never normal progress), the frame is
+flagged discontinuous. `_measure_velocity()` then suppresses just that one frame's velocity reading
+(reads as motionless) while still refreshing `_prev_animated_foot_pos` to the fresh post-loop pose, so
+the *next* frame's diff is correct again - same "don't diff across a teleport" principle already
+applied elsewhere this session (physical stair snaps, jump landings).
+
+**Verified the mechanism actually fires** (not just parses) via a temporary trace: confirmed 27 firings
+across the scene's idle characters over a ~7s headless run, with `prev=2.5 new=0.0167` matching the
+idle clip's exact 2.5s length wrapping to its start - and it also caught animation *transitions* (e.g.
+`prev=1.33 new=0.0167`, mid-clip position reset when switching to a different animation), not just
+same-clip loops, which is a useful bonus this same mechanism gets for free. Full automated suite still
+passes clean. Also fixed a repeat of the same `Cannot infer the type` compile error from earlier in the
+session (untyped `_owner.player_body.anim_player.current_animation_position` used with `:=`) - same
+lesson, same fix (explicit `: float` type), caught again by the full `scripts/check.sh` run.
+
+Files touched: `actors/player/foot_ik/foot_ik_gait_tracker.gd` (`update_animation_discontinuity()`,
+`_measure_velocity()`), `actors/player/player_foot_ik_modifier.gd` (`_prev_animation_position`,
+`_animation_discontinuous` state, call site in `_process_modification_with_delta()`).
+
+**Not yet manually confirmed in-game** - third attempt at the same reported symptom. This one has the
+most direct causal chain and the most precise user-reported trigger of the three, but the previous two
+also looked solid on paper before falling short live - confirm before trusting it.
+
+## 2026-08-05 session, new open item: leg overreaches into empty space on a ramp (not investigated)
+
+User screenshot (controllable `$Player`, turning in place on/near a 30-45° ramp): one leg fully
+extends, nearly straight, reaching down and away past the ramp's edge into open space below - visibly
+the kind of pose that would make a real person slip and fall, not just "weird." Explicitly **not** the
+same bug as the freeze/weight/loop-reset chain above - different root system.
+
+**Working hypothesis (not verified live or headlessly)**: this is the existing idle step-down "deep
+crouch fallback" (`_retract_to_reachable()` / `step_down_max_crouch` in `player_foot_ik_modifier.gd`,
+from a much earlier session) - when a foot's target isn't reachable even after retracting the search
+toward the hip, the leg is deliberately left extended toward the original (unreachable) target rather
+than snap back, per an explicit earlier user request: *"let's make the leg foot to lower what's human
+possible, and leave it hang... let's leave it looks weird but not wrong"* - accepted specifically for
+the **stairs** case, where a hanging leg reads as "reaching for a real step below." On a **ramp**, the
+same fallback reads as clearly wrong instead, most likely because the retraction search - which walks
+the target back toward the hip's own XZ, re-raycasting at each step - is failing to find the ramp's own
+nearby surface even directly under the hip. Suspect a raycast/collision-geometry quirk specific to how
+ramps are modeled near their edges (e.g. collision not matching the visual mesh's extent, or a straight
+vertical raycast missing a steeply-angled thin slab past its physical boundary) rather than a genuine
+"nothing is reachable" case like a real stair drop.
+
+**Not investigated further this session** - user explicitly chose to log this for a fresh session
+rather than open a fourth concurrent investigation thread. Next time: reproduce headlessly by placing
+`$Player` (or a ramp reference character) near a ramp edge and rotating yaw in place across several
+angles, capturing `_step_down_classification`'s plant/settle verdict and `_retract_to_reachable()`'s
+per-step raycast results for the affected leg, to confirm or refute the retraction-search-fails
+hypothesis before touching any code. The hip-swing cone added earlier this session (`max_hip_swing_degrees`)
+constrains *angle* but not *distance*, so it alone does not prevent this - a max horizontal reach
+relative to the hip/pelvis, or tightening what counts as a trustworthy retraction result on non-stair
+surfaces, are both worth considering once the actual cause is confirmed.
+
+## 2026-08-05 session, idle-freeze follow-up part 4: the actual root cause - retraction bypasses freeze entirely
+
+Fourth report of the same reported twitch, at yet another spot, and after three separate real fixes
+(unfreeze debounce, rising-velocity streak, animation-loop-discontinuity suppression) that all passed
+their own verification but didn't stop it. The debug captures kept showing the twitching leg
+(consistently `left`, across every report) with `step_down=true` and a large `lower_distance`
+(0.319-0.444m across captures) - i.e. always classified as **settle**, going through
+`_retract_to_reachable()`, not the ordinary plant path any of the first three fixes touched.
+
+**Root cause**: `_retract_to_reachable()` runs its full 8-step raycast search **every single frame**
+while classification stays "settle" - completely unconditionally, with no gate at all - and on success
+it **directly overwrites** `_smoothed_target[side]`/`_smoothed_normal[side]`, bypassing the
+`smooth_rate`-based lerp the ordinary path uses entirely. The idle-freeze mechanism from earlier this
+session only guards `_sample_ground_contact()`'s own internal lerp (the ordinary plant path) - it was
+never wired into this separate, always-rerunning, zero-smoothing settle/retraction code path at all.
+Any frame-to-frame raycast noise here (from the same idle-sway motion implicated in parts 1-3) was
+fully visible with no damping whatsoever, on every single frame, regardless of any of the previous
+three fixes - they were all correct fixes for real, different bugs, just not *this* one.
+
+**Fixed**: gated the retraction search itself on `not frozen` - once frozen, the settle path now
+reuses the already-settled `_smoothed_target`/`_smoothed_normal` exactly like the ordinary path already
+does, instead of re-running the search from scratch every frame. `step_down` itself (which drives the
+weight/contact-lost bypass, unrelated to target smoothing) is set unconditionally either way, so
+freezing only stops the *search*, not the plant.
+
+**Verified the search actually stops running**, not just that the target happens to look stable: a
+temporary per-call trace confirmed `_retract_to_reachable()` fires every frame through frame 38, then
+stops entirely the moment freeze engages at frame 40 - direct proof the gate works, not an inference
+from a coincidentally-static number. Full automated suite still passes clean.
+
+Files touched: `actors/player/player_foot_ik_modifier.gd` only (the settle block in
+`_process_modification_with_delta()`).
+
+**Not yet manually confirmed in-game** - fourth attempt at the same symptom. Given the previous three
+also had verified mechanisms and still didn't fully resolve it live, this is a *stronger* candidate
+(it's the only one of the four that actually touches the exact code path the twitching leg was
+consistently going through in every single capture) but still needs live confirmation, not just a
+headless trace, before treating it as done.
 
 ## Session bugs found and fixed (live-testing marathon)
 

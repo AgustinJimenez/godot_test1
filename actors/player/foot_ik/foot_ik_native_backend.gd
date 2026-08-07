@@ -63,7 +63,7 @@ func update_targets(skeleton: Skeleton3D, per_leg: Dictionary) -> void:
 		var target_basis := animated_basis
 		if leg.get("hit", false):
 			var ground_basis: Basis = _owner._compute_new_foot_basis_world(
-					skeleton, side, -(leg.get("raw_normal", Vector3.UP) as Vector3))
+					skeleton, side, -(leg.get("raw_normal", Vector3.UP) as Vector3), foot_pose)
 			target_basis = Basis(animated_basis.get_rotation_quaternion().slerp(
 					ground_basis.get_rotation_quaternion(), weight))
 		(_targets[side] as Node3D).global_transform = Transform3D(

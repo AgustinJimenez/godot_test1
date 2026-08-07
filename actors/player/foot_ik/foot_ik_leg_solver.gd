@@ -20,11 +20,25 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	var leaf_idx: int = indices["leaf"]
 	var to_world := skel.global_transform
 	var to_local := to_world.affine_inverse()
-	var hip_pose := skel.get_bone_global_pose(hip_idx)
-	var knee_pose := skel.get_bone_global_pose(knee_idx)
-	var foot_pose := skel.get_bone_global_pose(foot_idx)
-	var toe_pose := skel.get_bone_global_pose(toe_idx) if toe_idx >= 0 else Transform3D()
-	var leaf_pose := skel.get_bone_global_pose(leaf_idx) if leaf_idx >= 0 else Transform3D()
+	# A loop reset can leave a tiny, otherwise-invisible seam in the raw
+	# animated pose; near full leg extension the law-of-cosines solve below
+	# amplifies that seam into a visible whole-leg snap. On that one frame,
+	# reuse last frame's held pose instead of this frame's fresh (seamed) one.
+	var fresh_poses := {
+		"hip": skel.get_bone_global_pose(hip_idx), "knee": skel.get_bone_global_pose(knee_idx),
+		"foot": skel.get_bone_global_pose(foot_idx),
+		"toe": skel.get_bone_global_pose(toe_idx) if toe_idx >= 0 else Transform3D(),
+		"leaf": skel.get_bone_global_pose(leaf_idx) if leaf_idx >= 0 else Transform3D(),
+	}
+	var poses: Dictionary = fresh_poses
+	if _owner._animation_discontinuous and _owner._prev_leg_bone_poses.has(side):
+		poses = _owner._prev_leg_bone_poses[side]
+	_owner._prev_leg_bone_poses[side] = fresh_poses
+	var hip_pose: Transform3D = poses["hip"]
+	var knee_pose: Transform3D = poses["knee"]
+	var foot_pose: Transform3D = poses["foot"]
+	var toe_pose: Transform3D = poses["toe"]
+	var leaf_pose: Transform3D = poses["leaf"]
 	var knee_pos: Vector3 = to_world * knee_pose.origin
 	var foot_pos: Vector3 = to_world * foot_pose.origin
 	var animated_hip_pos: Vector3 = to_world * hip_pose.origin
@@ -50,16 +64,34 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 			/ (2.0 * upper_length * dist), -1.0, 1.0)
 	var new_hip_to_knee_dir := (target_dir * cos(acos(cos_hip_angle))
 			+ bend_direction * sin(acos(cos_hip_angle))).normalized()
+	# Anatomical hip swing limit: the thigh has never been constrained here,
+	# so a target that ends up somewhere it shouldn't (a stale or wrong-tread
+	# support target, a bad retraction) could rotate the whole leg sideways
+	# or backward well past any real hip's range of motion. Clamp to a cone
+	# around straight down - same trade-off the knee flexion clamp above
+	# already accepts: the foot may fall short of target rather than force
+	# an inhuman pose.
+	var max_swing := deg_to_rad(_owner.max_hip_swing_degrees)
+	var swing_from_down := Vector3.DOWN.angle_to(new_hip_to_knee_dir)
+	if swing_from_down > max_swing:
+		var swing_axis := Vector3.DOWN.cross(new_hip_to_knee_dir)
+		if swing_axis.length_squared() > 0.0001:
+			new_hip_to_knee_dir = Vector3.DOWN.rotated(swing_axis.normalized(), max_swing)
 	var new_knee_pos := hip_pos + new_hip_to_knee_dir * upper_length
-	var new_foot_pos := hip_pos + target_dir * dist
-	var new_knee_to_foot_dir := (new_foot_pos - new_knee_pos).normalized()
+	# Keep the calf rigid at lower_length, aimed from the (possibly clamped)
+	# knee toward the original target - this is what lets the foot land
+	# short of target instead of breaking bone length.
+	var knee_to_target := target - new_knee_pos
+	var new_knee_to_foot_dir := knee_to_target.normalized() if not knee_to_target.is_zero_approx() \
+			else new_hip_to_knee_dir
+	var new_foot_pos := new_knee_pos + new_knee_to_foot_dir * lower_length
 	var hip_delta := Quaternion((knee_pos - animated_hip_pos).normalized(), new_hip_to_knee_dir)
 	var knee_delta := Quaternion((foot_pos - knee_pos).normalized(), new_knee_to_foot_dir)
 	var new_hip_basis_world := Basis(hip_delta) * (to_world.basis * hip_pose.basis)
 	var new_knee_basis_world := Basis(knee_delta) * (to_world.basis * knee_pose.basis)
 	var animated_foot_basis_world := to_world.basis * foot_pose.basis
 	var ground_foot_basis_world: Basis = _owner._compute_new_foot_basis_world(
-			skel, side, -(_owner._smoothed_normal[side] as Vector3))
+			skel, side, -(_owner._smoothed_normal[side] as Vector3), foot_pose)
 	var new_foot_basis_world := Basis(animated_foot_basis_world.get_rotation_quaternion().slerp(
 			ground_foot_basis_world.get_rotation_quaternion(), ground_weight))
 	skel.set_bone_global_pose(hip_idx,

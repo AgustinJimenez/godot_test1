@@ -9,18 +9,72 @@ func _init(owner) -> void:
 	_owner = owner
 
 
+const DISCONTINUITY_HOLD_FRAMES := 1
+## Wider than DISCONTINUITY_HOLD_FRAMES on purpose - see this function's doc.
+const VELOCITY_SUPPRESS_FRAMES := 2
+
+## An animation loop reset jumps current_animation_position backward
+## instantly - a real discontinuity, not motion. Diffing across it in
+## _measure_velocity as if it were a normal frame produced a spurious
+## velocity spike large enough to trigger a visible sag/pop, confirmed live
+## locked to the loop point. Called once per frame (not per-leg) from
+## player_foot_ik_modifier.gd, before either leg's velocity is measured.
+##
+## Two separate windows, not one: holding rendered pose/state across several
+## frames while the real animation keeps advancing underneath just delays
+## and enlarges the same snap once it expires (confirmed via the automated
+## FOOT_IK_POSE_CONTINUITY_CHECK harness catching a widened 3-frame pose hold
+## reproducing a bigger version of the bug), so DISCONTINUITY_HOLD_FRAMES
+## (pose holds, contact_lost bypass) stays exactly 1. But velocity itself
+## isn't held pose - it's just suppressed to 0 - and the clip's own post-seam
+## motion still read as a real ~8 m/s spike a full frame after the 1-frame
+## hold had already expired (also caught live via the same harness's capture
+## file), so VELOCITY_SUPPRESS_FRAMES covers one frame more.
+func update_animation_discontinuity(delta: float) -> void:
+	# Called twice per physics tick (see player_foot_ik_modifier.gd's own note
+	# on that pattern) - the phantom delta<=0 call must leave state alone
+	# rather than touch it, or it always clobbers back right after the real
+	# call sets it, before anything downstream can see it.
+	if delta <= 0.0 or _owner.player_body == null or _owner.player_body.anim_player == null:
+		return
+	var anim_pos: float = _owner.player_body.anim_player.current_animation_position
+	if _owner._prev_animation_position >= 0.0 and anim_pos < _owner._prev_animation_position - 0.05:
+		_owner._animation_discontinuity_hold = DISCONTINUITY_HOLD_FRAMES
+		_owner._velocity_suppress_hold = VELOCITY_SUPPRESS_FRAMES
+	else:
+		_owner._animation_discontinuity_hold = maxi(0, _owner._animation_discontinuity_hold - 1)
+		_owner._velocity_suppress_hold = maxi(0, _owner._velocity_suppress_hold - 1)
+	_owner._animation_discontinuous = _owner._animation_discontinuity_hold > 0
+	_owner._velocity_suppressed = _owner._velocity_suppress_hold > 0
+	_owner._prev_animation_position = anim_pos
+
+
+## flags: "step_down"/"skip_velocity_gate"/"frozen" bools (all default false) -
+## bundled to stay under the linter's max-argument count.
 func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
 		ground_target: Vector3, contact_hit: bool, contact_distance: float,
-		to_world: Transform3D, delta: float, step_down: bool = false,
-		skip_velocity_gate: bool = false) -> Dictionary:
+		to_world: Transform3D, delta: float, flags: Dictionary = {}) -> Dictionary:
+	var step_down: bool = flags.get("step_down", false)
+	var skip_velocity_gate: bool = flags.get("skip_velocity_gate", false)
+	var frozen: bool = flags.get("frozen", false)
 	var velocity := _measure_velocity(side, animated_foot_pos, to_world, delta)
 	var force_plant: bool = _owner.force_plant_mode
 	# A stationary stance foot easing down onto a reachable lower surface must
 	# not be treated as contact-lost just because the sole is further than
 	# GROUND_CONTACT_DISTANCE above it - step-down bypasses the distance gate
-	# so the weight can rise and plant the foot on the lower target.
+	# so the weight can rise and plant the foot on the lower target. Once
+	# idle-frozen (see update_idle_freeze), the target is deliberately locked
+	# even though the clip's own natural sway keeps drifting the animated
+	# foot a little - bypass the distance gate then too, or that ordinary
+	# sway eventually exceeds GROUND_CONTACT_DISTANCE and un-plants a foot
+	# freezing was supposed to hold still, fighting the very noise freezing
+	# exists to ignore (only the unfreeze streak should ever release it) -
+	# confirmed via the automated FOOT_IK_POSE_CONTINUITY_CHECK harness. A
+	# non-frozen foot needs its own, narrower bypass on the exact reset frame:
+	# the held/fresh foot_pos and the raycast-derived contact briefly disagree
+	# there too, tripping this same distance check.
 	var contact_lost: bool = not step_down and _owner.step_prediction_enabled \
-			and not force_plant and (
+			and not force_plant and not frozen and not _owner._animation_discontinuous and (
 			not contact_hit
 			or contact_distance > _owner.GROUND_CONTACT_DISTANCE
 			or foot_pos.distance_to(ground_target) > _owner.GROUND_CONTACT_DISTANCE)
@@ -28,6 +82,15 @@ func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
 	if contact_lost:
 		raw_weight = 0.0
 	elif force_plant:
+		raw_weight = 1.0
+	elif frozen:
+		# Freezing already bypasses the raycast search and contact_lost
+		# above, on the reasoning that this foot is genuinely planted and
+		# should stop reacting to noise - but _raw_weight()'s own velocity
+		# formula never checked frozen, so ordinary idle sway crossing
+		# velocity_noise_floor still nudged weight down every cycle even
+		# on an already-frozen foot (confirmed live: freeze_streak pinned
+		# at its cap - genuinely frozen - while weight kept dipping anyway).
 		raw_weight = 1.0
 	elif skip_velocity_gate:
 		# Landing-grace window (see player_foot_ik_modifier.gd's
@@ -50,7 +113,10 @@ func _measure_velocity(side: StringName, foot_pos: Vector3,
 	var velocity := 0.0
 	if delta <= 0.0:
 		return velocity
-	if _owner._prev_animated_foot_pos.has(side):
+	# See update_animation_discontinuity's doc comment - _velocity_suppressed
+	# covers a wider window than the pose hold - but still refresh the
+	# reference below so later frames diff against the fresh, post-loop pose.
+	if not _owner._velocity_suppressed and _owner._prev_animated_foot_pos.has(side):
 		var previous: Vector3 = _owner._prev_animated_foot_pos[side]
 		var world_delta := to_world.basis * (foot_pos - previous)
 		velocity = world_delta.dot(_owner._smoothed_normal[side] as Vector3) / (
@@ -74,17 +140,56 @@ func _measure_velocity(side: StringName, foot_pos: Vector3,
 	else:
 		falling = 0
 	_owner._falling_streak[side] = falling
+	# Same hysteresis, mirrored for the rising side - see _raw_weight's own
+	# comment for why this pairs with min_falling_streak below. Without it,
+	# a single-frame idle-sway blip (breathing, etc.) that barely exceeds
+	# velocity_noise_floor gets amplified by rising_penalty into a large,
+	# instant raw_weight drop with zero debounce, then recovers slower than
+	# it fell (ground_weight_fall_time < rise_time) - a periodic sag/recover
+	# twitch confirmed live, locked to the idle animation's own cycle.
+	var rising: int = _owner._rising_streak.get(side, 0)
+	if velocity > _owner.velocity_noise_floor:
+		rising += 1
+	elif velocity > -_owner.velocity_noise_floor:
+		rising = maxi(0, rising - 1)
+	else:
+		rising = 0
+	_owner._rising_streak[side] = rising
 	_owner.debug_vertical_velocity[side] = velocity
 	return velocity
 
+
+## A genuine swing-start's rising velocity sustains for many frames, not one -
+## same principle as min_falling_streak's own doc comment, just applied to
+## the previously-unguarded rising branch (see _measure_velocity above). Kept
+## as a flat, magnitude-independent 1.0 while the streak is low (unlike the
+## falling branch's own margin below) - the rising formula's rising_penalty
+## multiplier (4x) turns even a noise-floor-adjacent velocity into a real
+## drop, so gating this branch by magnitude the same way the falling branch
+## is gated made small idle sway swing-release far more often, not less
+## (confirmed live: "now is more frequent" after that attempt).
+##
+## The falling branch's streak gate only kicks in once velocity is clearly
+## past mere noise, not merely past velocity_noise_floor itself: idle sway
+## barely crossing the floor (e.g. 0.032 vs a 0.03 floor) was getting the
+## same hard snap to 0 as a genuine fast swing start, before any streak
+## could build up - a periodic full-weight-drop-and-recover confirmed live
+## and via the automated FOOT_IK_POSE_CONTINUITY_CHECK harness's trace file.
+## A real swing quickly clears this margin anyway, so the streak protection
+## (needed to stop a single-frame noise blip from sinking a foot into a
+## tread before it's actually lifted) is unaffected for genuine swings.
+const STREAK_GATE_MARGIN := 3.0 # multiple of velocity_noise_floor
 
 func _raw_weight(side: StringName, velocity: float) -> float:
 	if absf(velocity) < _owner.velocity_noise_floor:
 		return 1.0
 	if velocity > 0.0:
+		if int(_owner._rising_streak.get(side, 0)) < _owner.min_falling_streak:
+			return 1.0
 		return clampf(1.0 - velocity * _owner.rising_penalty
 				/ _owner.swing_speed_threshold, 0.0, 1.0)
-	if int(_owner._falling_streak.get(side, 0)) < _owner.min_falling_streak:
+	var past_margin: bool = absf(velocity) >= _owner.velocity_noise_floor * STREAK_GATE_MARGIN
+	if past_margin and int(_owner._falling_streak.get(side, 0)) < _owner.min_falling_streak:
 		return 0.0
 	return clampf(1.0 - absf(velocity) / _owner.swing_speed_threshold, 0.0, 1.0)
 
@@ -140,6 +245,7 @@ func _update_landing(side: StringName, velocity: float, delta: float) -> bool:
 
 const IDLE_FREEZE_STREAK := 30
 const IDLE_UNFREEZE_SPEED_MULT := 3.0
+const IDLE_UNFREEZE_STREAK := 3
 
 ## Reddit r/gamedev thread on foot IK (2020, "for anyone working on foot/leg
 ## IK please read this"): the classic "twitchy IK while standing still" bug
@@ -154,13 +260,24 @@ const IDLE_UNFREEZE_SPEED_MULT := 3.0
 ## just noise) releases it, so a genuine step still un-freezes promptly. The
 ## streak only advances on real (delta > 0) ticks - see
 ## player_foot_ik_modifier.gd's own note on the twice-per-tick call pattern.
+## Un-freezing itself also needs IDLE_UNFREEZE_STREAK consecutive real ticks
+## above that speed, not just one - a single-frame trigger let one idle
+## animation's own periodic breathing/sway peak (higher than freeze's own
+## streak tolerates, but only for an instant) yank a foot out of freeze every
+## few seconds, visible as a recurring twitch right on the animation's cycle
+## period - confirmed live via a debug-panel capture at the exact moment.
 func update_idle_freeze(side: StringName, anim_speed: float, delta: float) -> bool:
 	var frozen: bool = _owner._idle_frozen.get(side, false)
-	if frozen:
+	if frozen and delta > 0.0:
 		if absf(anim_speed) > _owner.idle_step_down_speed * IDLE_UNFREEZE_SPEED_MULT:
+			_owner._idle_unfreeze_streak[side] = int(_owner._idle_unfreeze_streak.get(side, 0)) + 1
+		else:
+			_owner._idle_unfreeze_streak[side] = 0
+		if int(_owner._idle_unfreeze_streak.get(side, 0)) >= IDLE_UNFREEZE_STREAK:
 			frozen = false
 			_owner._idle_freeze_streak[side] = 0
-	elif delta > 0.0:
+			_owner._idle_unfreeze_streak[side] = 0
+	elif not frozen and delta > 0.0:
 		if (_owner._smoothed_ground_weight.get(side, 0.0) >= 0.999
 				and absf(anim_speed) <= _owner.idle_step_down_speed):
 			_owner._idle_freeze_streak[side] = int(_owner._idle_freeze_streak.get(side, 0)) + 1

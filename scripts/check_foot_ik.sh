@@ -32,5 +32,12 @@ if ! rg -q "FOOT_IK_BODY_PENETRATION_CHECK PASS samples=[1-9]" "$log_file"; then
 	exit 1
 fi
 
+if ! rg -q "FOOT_IK_POSE_CONTINUITY_CHECK PASS samples=[1-9]" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK idle pose-continuity check did not pass."
+	exit 1
+fi
+
 rg "FOOT_IK_(STRETCH|AIRBORNE)_CHECK PASS|FOOT_IK_BODY_PENETRATION_CHECK PASS" \
 	"$log_file"
+rg "FOOT_IK_POSE_CONTINUITY_CHECK PASS" "$log_file"
