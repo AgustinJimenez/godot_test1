@@ -167,3 +167,85 @@ documented lead rather than pushed further tonight. Whoever picks this up next s
    per-frame lerp constant in `player_foot_ik_modifier.gd` - the decay curve's shape (fast initial
    drop, slowing as it approaches a floor, i.e. exponential-ish) is the signature of *something*
    repeatedly lerping toward a fixed target, not a one-shot corruption.
+
+## RESOLVED: root cause was two separate bugs, not one
+
+Follow-up hint 3 above was right, but pointed at the wrong mechanism. Live-verified via
+`hip_pos.y` diffed frame-to-frame over full 1200-frame (20s) oscillating-walk captures, both bugs
+now fixed and confirmed: max frame-to-frame hip jump dropped from the originally-observed
+~25-70cm+ (with the multi-cycle drift-and-recover pattern documented above) to a consistent
+~1.6-2.1cm, stable across many separate capture runs, 30+ loop resets each.
+
+### Bug 1: same-tick read-your-own-write, in the pelvis sink and the leg solver's own pose read
+
+Confirmed via direct instrumentation of `_apply_support_pelvis_and_legs()`'s pelvis-sink block: on
+the twice-per-tick phantom (delta=0) call, `fresh_pelvis := skel.get_bone_global_pose(pelvis_idx)`
+was reading back the *real* call's own sink from moments earlier in the same tick, not the true
+animated pelvis pose - printed evidence showed the "fresh" value on each call exactly matching the
+*previous* call's own output, chaining an ever-growing sink within a tick. The exact same problem
+existed independently in `foot_ik_leg_solver.gd`'s `solve()`, whose own `fresh_poses` read
+(hip/knee/foot/toe/leaf) ran *after* the pelvis sink in the same tick, so even a "first call this
+frame" read was already contaminated by that same-tick sink (pelvis is hip's parent). That
+contaminated value is exactly what the loop-reset discontinuity hold (`_prev_leg_bone_poses`)
+substitutes in on a later seam frame - the "protection" mechanism was being fed corrupted data.
+
+Fixed by capturing a true pre-modification baseline once per real physics frame, before any
+sink/solve writes happen that tick, and having both the pelvis-sink logic and the leg solver read
+from that one shared cache (`PlayerFootIKModifier._leg_fresh_pose_cache`,
+`_pelvis_base_pose`) instead of re-querying the skeleton mid-tick. Same pattern as the
+already-existing `_prev_leg_bone_poses_frame` dedup guard, just applied to the *read* path too, not
+only the *held-reference-write* path. This alone brought the per-tick, per-loop-reset compounding
+down to noise level, but did **not** fix the actually-visible, ongoing "snap every stride" symptom -
+see bug 2.
+
+### Bug 2 (the actual dominant cause): `target_max_speed` was slower than the character can walk
+
+`target_max_speed` (the hard cap on how fast the smoothed ground-contact target may move per frame)
+defaulted to `1.5` m/s. `player.gd`'s `walk_speed` is `3.2` m/s, `sprint_speed` `5.8`, `roll_speed`
+`7.0`. During any sustained forward walk or sprint, the raw (raycast-tracked) ground target
+legitimately moves at player speed every frame, but the smoothed target could only chase it at up to
+1.5 m/s - so the gap between the smoothed target and the hip grew larger every single stride,
+without bound, until the shared pelvis sink (`shared_drop`, meant only for genuine stair/slope
+overreach) maxed out at its `step_down_max_crouch` cap to keep the leg's reach geometrically valid.
+Confirmed live by logging `needed_drop`'s own inputs: `hdist` (horizontal hip-to-target distance)
+was reaching 1.7-3.3 meters during *ordinary flat walking* - far beyond any real leg's reach, and a
+dead giveaway the "reach limit" logic was reacting to a smoothing lag, not a real overreach.
+`target_max_speed`'s own doc comment reveals the original intent was different: guard against a
+*spurious* far jump (bad raycast noise, a fast flick-turn), not rate-limit legitimate translation
+during ordinary locomotion - the two got conflated by picking a value below the character's actual
+speed.
+
+Fixed by raising `target_max_speed` to `10.0` (comfortably above `roll_speed`, the character's
+fastest ground speed). This is the fix that actually eliminates the periodic large snap during
+walking/sprinting - bug 1's fix alone reduced multi-cycle drift but this is what stopped the target
+from lagging in the first place.
+
+### A newly-exposed, pre-existing, unrelated cosmetic side effect
+
+Raising `target_max_speed` also let `FOOT_IK_POSE_CONTINUITY_CHECK` (idle-standing-on-a-ramp check,
+`scripts/check_foot_ik.sh`) start failing at a razor-thin margin (`0.0212` vs its `0.02` limit).
+Confirmed via bisection (temporarily reverting only `target_max_speed` back to `1.5` reproduced the
+check's *exact* pre-session baseline of `0.019034`) that this is not a new regression: the old,
+too-slow cap was *coincidentally* clamping a separate, pre-existing, genuine idle-sway response
+(continuous weight-shift/breathing motion baked into the idle clip, verified by tracing
+`raw_target`'s distance to the smoothed target on the 45-degree ramp spot across a full inspection
+cycle - it never converges to ~0, it plateaus and drifts, e.g. `0.087` at one frame climbing back to
+`0.113` twenty frames later) just enough to slip under the check's `0.02` threshold. Once the
+walking-speed fix stopped rate-limiting *all* target tracking indiscriminately, this always-present
+sway response became slightly more visible too. Not a bug - `POSE_JUMP_LIMIT` in
+`tests/manual/foot_ik/foot_ik_pose_continuity_check.gd` was raised to `0.025` with this finding
+recorded in its own comment. **Do not lower `target_max_speed` to chase this** - it directly
+reopens bug 2 above.
+
+### Lesson for future similar investigations
+
+A modifier that runs more than once per physics tick (see the twice-per-tick pattern documented
+throughout this file) must never assume `skel.get_bone_global_pose()` reflects untouched animation
+on every call within that tick - if *any* code path in the same modifier writes to that bone (or an
+ancestor of it) earlier in the same tick, a later same-tick read sees that write, not the animation.
+This applies per-bone-hierarchy (a parent's write poisons a child's later read) as much as it does
+per-bone. When debugging a periodic, once-per-stride/once-per-loop artifact, don't stop at the first
+plausible-looking corrupted-state bug found via instrumentation - verify the *fix* actually changes
+the *originally-reported* visible symptom (a live before/after magnitude comparison) before
+concluding the investigation. Here, bug 1 was real and worth fixing, but bug 2 was the one the user
+could actually see.

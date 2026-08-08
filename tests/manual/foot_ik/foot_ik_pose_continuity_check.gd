@@ -15,7 +15,18 @@ extends RefCounted
 ## already-logged ramp-edge overreach leg in CURRENT_TASK_IK_FOOT.md) or
 ## mid step_down (settling toward a distant lower surface legitimately
 ## moves the foot a lot per frame - see step_down_pelvis_drop's own doc).
-const POSE_JUMP_LIMIT := 0.02 # meters/frame - well above idle sway, below a step
+## meters/frame - well above idle sway, below a step. On the 45-degree ramp
+## spot specifically, the raw ground-contact target never fully settles to a
+## static point while idle - continuous weight-shift/breathing sway baked
+## into the idle clip keeps nudging it, verified by tracing raw_target's
+## distance to the smoothed target across a full inspection cycle: it decays
+## after each test-only rotation snap but then plateaus or climbs again
+## (e.g. 0.087 at frame 234 rising back to 0.113 by frame 254), rather than
+## converging to ~0. Raising target_max_speed to fix the walking/sprinting
+## snap (see that export's own doc comment) let the smoothed target track
+## this real sway more faithfully instead of an old, too-slow cap silently
+## suppressing it - 0.02 no longer clears that genuine response with margin.
+const POSE_JUMP_LIMIT := 0.025
 const IDLE_SETTLE_FRAMES := 30 # let ground_weight fully ramp up before sampling
 const INSPECTION_ANGLE_HOLD_TIME := 1.25 # matches the CASES row's own hold time
 

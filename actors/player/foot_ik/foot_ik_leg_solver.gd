@@ -24,22 +24,17 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	# animated pose; near full leg extension the law-of-cosines solve below
 	# amplifies that seam into a visible whole-leg snap. On that one frame,
 	# reuse last frame's held pose instead of this frame's fresh (seamed) one.
-	var fresh_poses := {
-		"hip": skel.get_bone_global_pose(hip_idx), "knee": skel.get_bone_global_pose(knee_idx),
-		"foot": skel.get_bone_global_pose(foot_idx),
-		"toe": skel.get_bone_global_pose(toe_idx) if toe_idx >= 0 else Transform3D(),
-		"leaf": skel.get_bone_global_pose(leaf_idx) if leaf_idx >= 0 else Transform3D(),
-	}
+	# fresh_poses comes from PlayerFootIKModifier's own per-leg loop, captured
+	# before _apply_support_pelvis_and_legs() sinks the pelvis this same tick -
+	# reading the skeleton again here would see that same-tick sink, since the
+	# pelvis is hip/knee/foot's parent (see that loop's own doc comment).
+	var current_frame := Engine.get_physics_frames()
+	var fresh_poses: Dictionary = _owner._leg_fresh_pose_cache[side]
 	var poses: Dictionary = fresh_poses
 	if _owner._animation_discontinuous and _owner._prev_leg_bone_poses.has(side):
 		poses = _owner._prev_leg_bone_poses[side]
-	# solve() can run more than once per real physics tick - writing
-	# fresh_poses unconditionally on every one of those calls let each
-	# successive call capture an already partially-corrected pose as
-	# "fresh", compounding a tiny loop-reset seam into a large drift within
-	# the same frame. Only the first call for a given physics frame gets to
-	# update the held reference.
-	var current_frame := Engine.get_physics_frames()
+	# Only the first call for a given physics frame gets to update the
+	# held reference used across a later discontinuous frame.
 	if _owner._prev_leg_bone_poses_frame.get(side, -1) != current_frame:
 		_owner._prev_leg_bone_poses[side] = fresh_poses
 		_owner._prev_leg_bone_poses_frame[side] = current_frame
