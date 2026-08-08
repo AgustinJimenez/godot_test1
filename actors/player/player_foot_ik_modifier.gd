@@ -181,6 +181,9 @@ var _prev_animated_foot_pos: Dictionary = {} # side -> Vector3 (skeleton)
 ## Held bone poses reused by the leg solver in place of a fresh (possibly
 ## seam-jumped) skeleton read on a loop-reset frame - see solve()'s doc.
 var _prev_leg_bone_poses: Dictionary = {} # side -> Dictionary
+## Guards _prev_leg_bone_poses against being overwritten more than once per
+## real physics frame - see solve()'s own doc comment for why.
+var _prev_leg_bone_poses_frame: Dictionary = {} # side -> int (Engine.get_physics_frames())
 var _prev_pelvis_pose: Transform3D
 var _has_prev_pelvis_pose: bool = false
 ## Rate-limited (fast fall, slow rise) version of the raw velocity-derived
@@ -239,6 +242,7 @@ func reset_runtime_state() -> void:
 	_smoothed_normal.clear()
 	_prev_animated_foot_pos.clear()
 	_prev_leg_bone_poses.clear()
+	_prev_leg_bone_poses_frame.clear()
 	_has_prev_pelvis_pose = false
 	_smoothed_ground_weight.clear()
 	_falling_streak.clear()
@@ -595,7 +599,14 @@ func _process_modification_with_delta(delta: float) -> void:
 		# foot apart from one mid-swing without waiting a frame.
 		var anim_speed := _animated_vertical_speed(
 				side, animated_foot_pos, to_world, delta)
-		var likely_idle := absf(anim_speed) <= idle_step_down_speed \
+		# _animated_vertical_speed deliberately reads exactly 0.0 during
+		# _velocity_suppressed (an animation loop-reset seam) - a safe value
+		# there, not evidence of a genuinely idle foot. Trusting it here let
+		# a mid-sprint loop reset misread as "idle" and fire the idle-only
+		# 4m-deep fallback raycast, snapping the foot to whatever distant
+		# geometry it found - confirmed live via a periodic ~1m-per-stride
+		# snap locked exactly to the sprint animation's own loop point.
+		var likely_idle := (absf(anim_speed) <= idle_step_down_speed and not _velocity_suppressed) \
 				or _landing_grace_time > 0.0 # see _landing_grace_time's doc comment
 		# Player's own authored yaw, not a Basis Euler decomposition - Euler
 		# extraction can flip between equivalent representations even when

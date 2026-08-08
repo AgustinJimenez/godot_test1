@@ -1,5 +1,4 @@
-extends Node3D
-## Static scene, idle characters on flat/ramp/stair platforms side by side.
+extends Node3D # static scene, idle characters on flat/ramp/stair platforms side by side
 const PLATFORM_WIDTH := 3.0
 const PLATFORM_LENGTH := 4.0
 const PLATFORM_THICKNESS := 0.3
@@ -10,8 +9,7 @@ const STAIR_IDLE_SECONDS := 5.0
 const STAIR_START_BACKOFF := 0.8
 const STAIR_LEAD_FOOT_REACH := 0.2
 const STAIR_LANDING_Y_TOLERANCE := 0.08
-## Interactive walkers run at 60% slow motion for readable contact; the
-## automated check forces 100% - slow motion hid real failures.
+## Interactive walkers run at 60% slow motion for readable contact - automated check forces 100%.
 const STAIR_SLOW_MOTION_SCALE := 0.6
 const STAIR_WALK_ANIMATION_SPEED := 3.2
 const STAIR_WALK_SPEED := STAIR_WALK_ANIMATION_SPEED * STAIR_SLOW_MOTION_SCALE
@@ -107,20 +105,23 @@ func _ready() -> void:
 			if walker["trace_enabled"]:
 				_start_stair_walker(walker)
 				break
-	## Confirmed live repro spot: bottom edge of Ramp 45 (CASES[3], x=7.5).
-	$Player.global_position = Vector3(7.7, 0.95, 0.9)
+	$Player.global_position = Vector3(7.7, 0.95, 0.9) # bottom edge of Ramp 45, confirmed repro spot
 	$Player.rotation = Vector3.ZERO
-	$Player.camera.current = true
+	if FileAccess.file_exists("user://foot_ik_walk_marker"):
+		# Flat-ground spot from a real capture that hit the sprint loop-reset snap.
+		$Player.global_position = Vector3(16.85, 0.0009, -1.69)
+		$Player.rotation = Vector3(0.0, deg_to_rad(92.3), 0.0)
+	$Player.debug_cam.current = true # ThirdPersonArm, not the free-fly noclip detached_cam
+	$Player._debug_cam_active = true
 	for child in $Player.skeleton.get_children():
 		if child is PlayerFootIKModifier:
 			child.foot_landed.connect(_on_foot_landed.bind($Player))
 			break
 
-## Marker-file toggle, not a CLI flag: play_scene_in_editor() (MCP) can't be
-## given fresh cmdline args. Spins $Player in place to reproduce turn snaps.
+## Marker-file toggle - play_scene_in_editor() (MCP) can't be given fresh cmdline args.
 var _auto_spin := FileAccess.file_exists("user://foot_ik_spin_marker")
-## A fast swipe is a burst - most rotation lands in one or two frames, then
-## holds. Pause between bursts lets freeze/idle settle before the next one.
+var _auto_walk := FileAccess.file_exists("user://foot_ik_walk_marker") # holds forward movement
+## A fast swipe is a burst - most rotation lands in one or two frames, then holds.
 const BURST_DEGREES := 70.0
 const BURST_TIME := 0.1 # seconds to cover BURST_DEGREES
 const BURST_PAUSE := 2.0
@@ -133,6 +134,8 @@ func _physics_process(delta: float) -> void:
 		var cycle := fmod(_burst_elapsed, BURST_TIME + BURST_PAUSE)
 		if cycle < BURST_TIME:
 			$Player.rotation.y += deg_to_rad(BURST_DEGREES / BURST_TIME) * delta
+	if _auto_walk:
+		$Player.movement_input_override = Vector2(0.0, -1.0)
 	if _automated_stretch_check:
 		_automated_check_frame += 1
 		if (not _automated_jump_launched and _automated_check_frame >= 10
@@ -222,7 +225,7 @@ func _sample_airborne_ik_release() -> void:
 	if ik.active:
 		_airborne_check_failed = true
 
-## Bone origins alone can't prove skin is clear - weighted regions can cross.
+# Bone origins alone can't prove skin is clear - weighted regions can cross.
 func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 	_body_penetration_attempts += 1
 	if not walker["walking"]:
@@ -286,7 +289,7 @@ func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 	return {"available": true, "vertices": sample_vertices,
 			"max_depth": sample_max_depth, "bones": penetrating_bones}
 
-## Per-bind transforms; prefers the modifier's post-solve snapshot, else a stale pre-IK pose skins.
+# Per-bind transforms; prefers the modifier's post-solve snapshot, else a stale pre-IK pose skins.
 func _mesh_bind_transforms(mesh_part: MeshInstance3D, skeleton: Skeleton3D,
 		ik: PlayerFootIKModifier) -> Array[Transform3D]:
 	var result: Array[Transform3D] = []
@@ -505,8 +508,7 @@ func _update_physical_walker_tread(walker: Dictionary) -> void:
 			-1, STAIR_STEP_COUNT - 1)
 	walker["waiting_for_step"] = false
 
-## 0.50/0.65m cases are pose limits, not traversable steps - drive the root profile directly.
-func _advance_stair_walker(walker: Dictionary, delta: float) -> void:
+func _advance_stair_walker(walker: Dictionary, delta: float) -> void: # 0.50/0.65m = pose limits
 	var player: Player = walker["player"]
 	var next_position := player.global_position
 	var next_tread := int(walker["current_tread"]) + 1
@@ -885,7 +887,7 @@ func _spawn_footstep_marker(side: StringName, ground_position: Vector3) -> void:
 	get_tree().create_timer(FOOTSTEP_MARKER_LIFETIME).timeout.connect(marker.queue_free)
 
 
-## Two flat platforms, walk anim looped in place - foot lift visible either way.
+# Two flat platforms, walk anim looped in place - foot lift visible either way.
 func _build_walking_dummies() -> void:
 	var cases: Array[Dictionary] = [
 		{"label": "Walk (IK ON)", "ik_active": true},
@@ -910,8 +912,7 @@ func _place_walking_character(contact: Vector3, ik_active: bool) -> void:
 			break
 
 
-## Builds the platform for `case` at `origin`; returns the world-space footing.
-func _build_platform(case: Dictionary, origin: Vector3) -> Vector3:
+func _build_platform(case: Dictionary, origin: Vector3) -> Vector3: # returns world-space footing
 	match case["kind"]:
 		&"ramp":
 			return _build_ramp(origin, case["angle_deg"])
@@ -931,7 +932,7 @@ func _build_flat(origin: Vector3) -> Vector3:
 	return origin + Vector3(0.0, 0.0, PLATFORM_LENGTH * 0.5)
 
 
-## A single inclined slab rotated about local X — no per-point profile needed.
+# A single inclined slab rotated about local X — no per-point profile needed.
 func _build_ramp(origin: Vector3, angle_deg: float) -> Vector3:
 	var angle_rad := deg_to_rad(angle_deg)
 	var box := CSGBox3D.new()
@@ -949,8 +950,7 @@ func _build_ramp(origin: Vector3, angle_deg: float) -> Vector3:
 	return origin + Vector3(0.0, mid_rise, PLATFORM_LENGTH * 0.5)
 
 
-## Simple stacked staircase (fixed tread depth, variable riser height).
-func _build_stairs(origin: Vector3, step_height: float) -> Vector3:
+func _build_stairs(origin: Vector3, step_height: float) -> Vector3: # fixed tread, variable riser
 	for step in STAIR_STEP_COUNT:
 		var step_rise := step_height * (step + 1)
 		var tread_start_z := step * STAIR_TREAD_DEPTH

@@ -33,7 +33,16 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	var poses: Dictionary = fresh_poses
 	if _owner._animation_discontinuous and _owner._prev_leg_bone_poses.has(side):
 		poses = _owner._prev_leg_bone_poses[side]
-	_owner._prev_leg_bone_poses[side] = fresh_poses
+	# solve() can run more than once per real physics tick - writing
+	# fresh_poses unconditionally on every one of those calls let each
+	# successive call capture an already partially-corrected pose as
+	# "fresh", compounding a tiny loop-reset seam into a large drift within
+	# the same frame. Only the first call for a given physics frame gets to
+	# update the held reference.
+	var current_frame := Engine.get_physics_frames()
+	if _owner._prev_leg_bone_poses_frame.get(side, -1) != current_frame:
+		_owner._prev_leg_bone_poses[side] = fresh_poses
+		_owner._prev_leg_bone_poses_frame[side] = current_frame
 	var hip_pose: Transform3D = poses["hip"]
 	var knee_pose: Transform3D = poses["knee"]
 	var foot_pose: Transform3D = poses["foot"]
