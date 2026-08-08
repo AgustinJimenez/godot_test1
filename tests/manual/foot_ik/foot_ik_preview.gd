@@ -9,8 +9,7 @@ const STAIR_IDLE_SECONDS := 5.0
 const STAIR_START_BACKOFF := 0.8
 const STAIR_LEAD_FOOT_REACH := 0.2
 const STAIR_LANDING_Y_TOLERANCE := 0.08
-## Interactive walkers run at 60% slow motion for readable contact - automated check forces 100%.
-const STAIR_SLOW_MOTION_SCALE := 0.6
+const STAIR_SLOW_MOTION_SCALE := 0.6 # interactive walkers; automated check forces 100%
 const STAIR_WALK_ANIMATION_SPEED := 3.2
 const STAIR_WALK_SPEED := STAIR_WALK_ANIMATION_SPEED * STAIR_SLOW_MOTION_SCALE
 const FOOT_TRACE_STAIR_HEIGHT := 0.35
@@ -120,12 +119,14 @@ func _ready() -> void:
 
 ## Marker-file toggle - play_scene_in_editor() (MCP) can't be given fresh cmdline args.
 var _auto_spin := FileAccess.file_exists("user://foot_ik_spin_marker")
-var _auto_walk := FileAccess.file_exists("user://foot_ik_walk_marker") # holds forward movement
+var _auto_walk := FileAccess.file_exists("user://foot_ik_walk_marker") # oscillates forward/back
 ## A fast swipe is a burst - most rotation lands in one or two frames, then holds.
 const BURST_DEGREES := 70.0
 const BURST_TIME := 0.1 # seconds to cover BURST_DEGREES
 const BURST_PAUSE := 2.0
 var _burst_elapsed := 0.0
+const WALK_LEG_TIME := 3.0 # seconds per forward/back leg, stays on the platform
+var _walk_elapsed := 0.0
 
 func _physics_process(delta: float) -> void:
 	if _auto_spin:
@@ -135,7 +136,9 @@ func _physics_process(delta: float) -> void:
 		if cycle < BURST_TIME:
 			$Player.rotation.y += deg_to_rad(BURST_DEGREES / BURST_TIME) * delta
 	if _auto_walk:
-		$Player.movement_input_override = Vector2(0.0, -1.0)
+		_walk_elapsed += delta
+		var leg := fmod(_walk_elapsed, WALK_LEG_TIME * 2.0)
+		$Player.movement_input_override = Vector2(0.0, -1.0 if leg < WALK_LEG_TIME else 1.0)
 	if _automated_stretch_check:
 		_automated_check_frame += 1
 		if (not _automated_jump_launched and _automated_check_frame >= 10
@@ -289,7 +292,7 @@ func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 	return {"available": true, "vertices": sample_vertices,
 			"max_depth": sample_max_depth, "bones": penetrating_bones}
 
-# Per-bind transforms; prefers the modifier's post-solve snapshot, else a stale pre-IK pose skins.
+# Per-bind transforms; prefers the modifier's post-solve snapshot over a stale pre-IK pose.
 func _mesh_bind_transforms(mesh_part: MeshInstance3D, skeleton: Skeleton3D,
 		ik: PlayerFootIKModifier) -> Array[Transform3D]:
 	var result: Array[Transform3D] = []
@@ -459,8 +462,7 @@ func _reset_stair_walker(walker: Dictionary) -> void:
 	var player: Player = walker["player"]
 	if int(walker["trace_frame"]) > 0:
 		walker["trace_complete"] = true
-	# Freeze physics during idle so depenetration doesn't shift hips while IK plants feet.
-	player.set_physics_process(false)
+	player.set_physics_process(false) # freeze so depenetration doesn't shift hips while IK plants
 	player.movement_input_override = Vector2.ZERO
 	player.global_position = walker["idle_position"]
 	walker["inspection_angle"] = 0
@@ -940,8 +942,7 @@ func _build_ramp(origin: Vector3, angle_deg: float) -> Vector3:
 	box.material = _platform_material
 	box.use_collision = true
 	box.rotation = Vector3(-angle_rad, 0.0, 0.0)
-	# Anchor the ramp's near-bottom edge at origin: offset the rotated center
-	# by half-length forward and half-thickness down along the tilted axes.
+	# Anchor the near-bottom edge at origin: offset by half-length/half-thickness along tilted axes.
 	var half_length_offset := box.basis * Vector3(0.0, 0.0, PLATFORM_LENGTH * 0.5)
 	var half_thickness_offset := box.basis * Vector3(0.0, -PLATFORM_THICKNESS * 0.5, 0.0)
 	box.position = origin + half_length_offset + half_thickness_offset
@@ -972,8 +973,7 @@ func _build_stairs(origin: Vector3, step_height: float) -> Vector3: # fixed trea
 				step_rise + STAIR_TREAD_DEBUG_THICKNESS * 0.5,
 				tread_start_z + STAIR_TREAD_DEPTH * 0.5)
 		add_child(tread)
-	# Stand on the riser boundary between two middle steps, not a tread center
-	# - combined with the 90-degree yaw in _ready(), one foot lands on each.
+	# Riser boundary between two middle steps - with the 90deg yaw, one foot lands per step.
 	var mid_step := STAIR_STEP_COUNT / 2
 	var lower_rise := step_height * mid_step
 	var upper_rise := step_height * (mid_step + 1)

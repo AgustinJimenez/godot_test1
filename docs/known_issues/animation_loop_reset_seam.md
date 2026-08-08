@@ -133,8 +133,37 @@ live-verification attempts produced nothing and cost real time to diagnose.
 
 `tests/manual/foot_ik/foot_ik_preview.gd` has a marker-file-triggered auto-walk mode
 (`user://foot_ik_walk_marker`, same pattern as the existing `foot_ik_spin_marker`) that spawns
-`$Player` at a known flat-ground spot and holds forward movement. Play the scene via the
-`character-editor` MCP tools for ~8-10 seconds (longer runs walk the character off the platform edge),
-stop, and read `user://foot_ik_controlled.jsonl` - look for `foot_pos`/`hip_pos` outliers relative to a
-short rolling average (a fixed distance threshold is too low to use during real walking/running, which
-legitimately covers several cm per frame).
+`$Player` at a known flat-ground spot and, as of this update, oscillates forward/back every
+`WALK_LEG_TIME` (3s) instead of walking in one direction forever - the character used to walk off the
+platform edge on longer runs, capping useful test length to ~8s. Play the scene via the
+`character-editor` MCP tools (now safe for 20s+ runs), stop, and read `user://foot_ik_controlled.jsonl`
+- look for `foot_pos`/`hip_pos` outliers relative to a short rolling average (a fixed distance
+threshold is too low to use during real walking/running, which legitimately covers several cm per
+frame).
+
+## Update, same investigation: the corrupted value fluctuates and partially recovers, tied to walk direction
+
+A longer (20s, oscillating) capture with `hip_pose`/`held_hip_y` instrumented at both the pre- and
+post-substitution point (filtered correctly to `$Player`, see the cross-character pitfall above)
+showed the held reference's Y value is not simply monotonically decaying forever - across ~15 loop
+resets in one run it went `0.92 -> 0.82 -> 0.67 -> 0.36 -> 0.32 -> 0.31 -> ... -> 0.86 -> 0.75 -> 0.59
+-> 0.76 -> 0.92`, i.e. it drifted down over several consecutive loop cycles, then partially recovered.
+The recovery points line up with `WALK_LEG_TIME` boundaries (the character reversing direction), which
+strongly suggests the held reference's degradation is tied to a stable phase relationship between
+physics ticks and the animation's own loop timing while walking one direction, and reversing direction
+disrupts/resets that relationship rather than the corruption being a permanent one-way accumulation.
+
+**Not yet root-caused.** This session ran out of a clean way to keep instrumenting live without an
+editor restart (see the "test harness itself degraded" note above), so this is being left as a
+documented lead rather than pushed further tonight. Whoever picks this up next should:
+
+1. Reproduce with the now-oscillating walk marker for a long (30s+) capture.
+2. Instrument `hip_pose` pre/post substitution (as above) *and* whatever writes to the skeleton's hip
+   bone between one `solve()` call and the next, to find where the "held" value's Y actually gets
+   pulled down each loop cycle - the raw/fresh skeletal read stays stable each cycle, so the
+   corruption is specifically being introduced into (or persisted via) `_prev_leg_bone_poses`, not
+   the animation itself.
+3. Check whether the drift rate/target correlates with `smooth_rate`/`target_max_speed` or any other
+   per-frame lerp constant in `player_foot_ik_modifier.gd` - the decay curve's shape (fast initial
+   drop, slowing as it approaches a floor, i.e. exponential-ish) is the signature of *something*
+   repeatedly lerping toward a fixed target, not a one-shot corruption.
