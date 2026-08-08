@@ -186,7 +186,6 @@ func set_detached_camera_active(enabled: bool) -> void:
 		(debug_cam if _debug_cam_active else camera).make_current()
 		hud.set_center_dot_visible(not _debug_cam_active)
 
-
 func _process(delta: float) -> void:
 	if not detached_cam_active:
 		return
@@ -243,7 +242,6 @@ var equipped_item: Item
 @onready var debug_cam: Camera3D = $ThirdPersonArm/DebugCam
 @onready var detached_cam: Camera3D = $DetachedCam
 
-
 func _ready() -> void:
 	add_to_group(&"player")
 	_resolve_body_bone_indices()
@@ -274,7 +272,6 @@ func _ready() -> void:
 	# is exactly what was triggering the falling animation on every step.
 	floor_snap_length = step_height
 
-
 ## TORSO_CLEARANCE's keys (and "Head") are canonical role names, not
 ## necessarily this skeleton's own real bone names - resolve each through
 ## body.resolve_bone_name() before find_bone() so this still works after
@@ -294,7 +291,6 @@ func _resolve_body_bone_indices() -> void:
 		if idx >= 0:
 			_torso_bone_indices.append(idx)
 			_torso_bone_clearances.append(TORSO_CLEARANCE[bone_name])
-
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _dead:
@@ -374,7 +370,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	# not here - it needs to check which overlay (if any) is already open
 	# to decide whether to close that or open the debug/pause menu, and
 	# handling it in both places would double-toggle on a single press.
-
 
 ## SpringArm3D repositions its children itself every frame (to spring_length,
 ## pulled closer via its own collision raycast when something's in the way)
@@ -561,6 +556,13 @@ func _physics_process(delta: float) -> void:
 		var safe_look := _solve_safe_look(_look_pitch, _look_yaw, head_pos)
 		var pitch_rot := Basis(Vector3.UP, safe_look.y) * Basis(Vector3.RIGHT, safe_look.x)
 		head.position = head_pos + pitch_rot * eye_offset
+		# body.position.y (baked into head_pos) only eases upward - the mesh
+		# must never sink below a step it just climbed. The first-person
+		# camera has no such clipping concern, so give it the full, unclamped
+		# hover offset too (third_person_arm already gets this) - without it
+		# a step-up teleports the camera by the full step height in one
+		# frame, reading as the whole view jerking on every step.
+		head.position.y += minf(_stair_hover_offset_y, 0.0)
 
 
 ## A ray finds the tread because a downward capsule sweep hits the riser corner first.

@@ -1,8 +1,9 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://tests/manual/foot_ik/foot_ik_preview.gd" id="1_preview"]
 [ext_resource type="PackedScene" path="res://actors/player/player.tscn" id="2_player"]
 [ext_resource type="Script" path="res://tests/manual/foot_ik/foot_ik_debug_overlay.gd" id="3_debug"]
+[ext_resource type="Script" path="res://tests/manual/foot_ik/foot_ik_animation_comparison.gd" id="4_comparison"]
 
 [sub_resource type="Environment" id="Environment_preview"]
 background_mode = 1
@@ -12,10 +13,10 @@ ambient_light_color = Color(0.6, 0.62, 0.68, 1)
 ambient_light_energy = 0.6
 
 [sub_resource type="BoxMesh" id="BoxMesh_floor"]
-size = Vector3(60, 0.4, 10)
+size = Vector3(200, 0.4, 200)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
-size = Vector3(60, 0.4, 10)
+size = Vector3(200, 0.4, 200)
 
 [node name="FootIkPreview" type="Node3D"]
 script = ExtResource("1_preview")
@@ -29,7 +30,7 @@ light_energy = 1.1
 shadow_enabled = true
 
 [node name="Floor" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, -0.2, 2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2, 0)
 mesh = SubResource("BoxMesh_floor")
 
 [node name="FloorCollision" type="StaticBody3D" parent="Floor"]
@@ -42,3 +43,6 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 23.75, 1, -2)
 
 [node name="FootIkDebugOverlay" type="Node3D" parent="."]
 script = ExtResource("3_debug")
+
+[node name="AnimationComparisonDummies" type="Node3D" parent="."]
+script = ExtResource("4_comparison")

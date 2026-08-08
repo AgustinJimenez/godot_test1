@@ -10,9 +10,7 @@ extends SkeletonModifier3D
 
 signal foot_landed(side: StringName, ground_position: Vector3)
 
-## Logs the rest-pose-derived sole axis for each leg - a future catalog
-## character with a different convention shows as a log line, not a silent bug.
-const LOG_SOLE_AXIS := true
+const LOG_SOLE_AXIS := true # rest-pose sole axis mismatch logs, not silently breaks
 const LOG_SOLE_DEPTH := true # logs measured planted sole point count per leg at rig setup
 const LEG_SOLVER := preload("res://actors/player/foot_ik/foot_ik_leg_solver.gd")
 const GAIT_TRACKER := preload("res://actors/player/foot_ik/foot_ik_gait_tracker.gd")
@@ -29,18 +27,16 @@ enum SolverBackend { CUSTOM, NATIVE_TWO_BONE }
 const GROUND_COLLISION_MASK := 1
 const GROUND_CONTACT_DISTANCE := 0.03
 const TARGET_NOISE_DEADBAND := 0.01 # sub-this raycast noise is rejected, not lerped toward
-## Approximate sole thickness/ankle clearance so the ankle doesn't sink
-## exactly to the raycast hit point - the floor under effective_offset's
-## other terms (toe-tip drop, sole point cloud), for a leg whose toe
-## doesn't droop at all.
+const PLANT_LOCK_WEIGHT := 0.95 # target latches once planted - see _sample_ground_contact
+## Approximate sole thickness/ankle clearance - the floor under
+## effective_offset's other terms, for a leg whose toe doesn't droop at all.
 @export var ankle_offset: float = 0.0475
-## How far past the toe bone's own origin the visible mesh tip extends,
-## along the foot-to-toe direction - bone origins sit at joints, not mesh
-## extremes. Matches the debug overlay's own TOE_TIP_EXTRA_LENGTH.
+## How far past the toe bone's own origin the visible mesh tip extends -
+## bone origins sit at joints, not mesh extremes (matches the debug
+## overlay's own TOE_TIP_EXTRA_LENGTH).
 @export var toe_tip_margin: float = 0.035
 ## Exponential-smoothing rate for the raycast-derived target/normal, so the
-## foot doesn't pop between tread heights - also what a foot catches up
-## with after unfreezing. Live-tunable via the debug panel.
+## foot doesn't pop between tread heights. Live-tunable via the debug panel.
 @export var smooth_rate: float = 7.0
 ## Hard cap (m/s) on how fast smooth_rate's lerp may move the target in one
 ## frame - smooth_rate alone is a fraction of the remaining distance, so a
@@ -89,22 +85,31 @@ const TARGET_NOISE_DEADBAND := 0.01 # sub-this raycast noise is rejected, not le
 ## the foot back down mid-air before the very next frame's real velocity
 ## releases it again (measured: 0.282 vs animation's own 0.353 at a stride's
 ## peak).
-@export var ground_weight_rise_time: float = 0.12
-## Same idea as ground_weight_rise_time, but for the opposite direction -
-## much shorter, not zero. An earlier version let the fall happen in a
+@export var ground_weight_rise_time: float = 0.24
+## Same idea as ground_weight_rise_time, but for the opposite direction.
+## An earlier version let the fall happen in a
 ## single frame, reasoning a genuine swing needs to release immediately -
 ## true for a real swing start, but the same instant-fall path also fired
 ## when recovering from the small residual rise near a swing peak, snapping
 ## "leg bent extra to plant" back to "matches the animation" in one frame
 ## (confirmed by logging the knee's bend angle: 75.0 -> 89.4 in one frame).
-@export var ground_weight_fall_time: float = 0.05
+## A 0.05s release still removed one third of the correction per physics
+## frame; the flat-walk trace measured a 26.6-degree thigh jump at toe-off.
+## Use the same longer ramp in both directions on ordinary ground; the gait
+## tracker retains the established faster timing during a stair hover.
+@export var ground_weight_fall_time: float = 0.24
 ## Optional stair predictor lifts a swinging foot over the next higher tread.
 ## Enabled for normal PlayerBody instances; the manual harness tunes its values.
 @export var step_prediction_enabled: bool = true
 @export var step_prediction_distance: float = 0.6
 @export var step_min_rise: float = 0.05
 @export var step_clearance_margin: float = 0.11
-@export var step_lift_rate: float = 36.0
+## Rate (m/s) update_swing_lift()'s move_toward() eases smoothed_lift toward
+## the predicted target height. 36.0 allowed up to 0.6m of correction in one
+## 1/60s frame - effectively unclamped, so the target-latch moment snapped
+## smoothed_lift straight to full height instead of easing in (confirmed via
+## STAIR_FOOT_TRACE: step_lift jumping up to 0.47m between frames).
+@export var step_lift_rate: float = 4.0
 @export var flat_idle_noop_distance: float = 0.01 # Preserve authored idle inside 1 cm.
 @export_range(0.0, 170.0, 1.0) var max_knee_flexion_degrees: float = 150.0
 @export_range(10.0, 170.0, 1.0) var max_hip_swing_degrees: float = 100.0 # cone from straight down
@@ -446,7 +451,6 @@ func _compute_new_foot_basis_world(
 	var target_basis := Basis(world_right, desired_down, world_forward)
 	return target_basis * local_frame.inverse()
 
-
 ## Measures how far this leg's own planted bind geometry extends below the
 ## foot bone's origin, once at rig setup - bone origins sit at joints, not
 ## the lowest skinned sole point, so origins + a toe-tip margin alone still
@@ -546,7 +550,6 @@ func _measure_leg_sole_depth(skel: Skeleton3D, side: StringName) -> float:
 				if total_weight > 0.0:
 					max_depth = maxf(max_depth, -(planted / total_weight).y)
 	return max_depth
-
 
 func _process_modification_with_delta(delta: float) -> void:
 	var skel := get_skeleton()
@@ -762,7 +765,6 @@ func _animated_vertical_speed(side: StringName, animated_foot_pos: Vector3,
 		_prev_animated_foot_pos[side] = animated_foot_pos
 	return velocity
 
-
 ## Lerp toward raw_target at smooth_rate, then clamp the resulting move to
 ## target_max_speed - see that export's doc comment for why the clamp
 ## exists on top of the plain fractional lerp.
@@ -776,7 +778,6 @@ func _move_target_smoothed(current: Vector3, raw_target: Vector3, delta: float) 
 	if move.length() > max_dist:
 		lerped = current + move.normalized() * max_dist
 	return lerped
-
 
 ## Classifies this stationary foot's relationship to a lower surface it
 ## hovers over (stair-riser straddle). Requires a sustained streak of static
@@ -822,7 +823,6 @@ func _step_down_classification(side: StringName, hip_pos: Vector3, ground_target
 		return {"plant": true, "settle": false}
 	return {"plant": false, "settle": true}
 
-
 const RETRACT_STEPS := 8
 
 ## When a stationary foot's own ground target needs more pelvis sink than
@@ -857,7 +857,6 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, h
 			return {"found": true, "target": target, "surface": surface, "normal": normal}
 	return {"found": false}
 
-
 func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		side: StringName, foot_pose: Transform3D, foot_pos: Vector3, to_world: Transform3D,
 		delta: float, likely_idle: bool = false, frozen: bool = false) -> Dictionary:
@@ -877,8 +876,9 @@ func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 	if not _smoothed_target.has(side):
 		_smoothed_target[side] = raw_target
 		_smoothed_normal[side] = raw_normal
-	# Frozen: keep target fixed. Else reject sub-deadband noise outright.
-	if not frozen and raw_target.distance_to(
+	# Latch once genuinely planted - see PLANT_LOCK_WEIGHT's own doc comment.
+	var likely_planted := float(_smoothed_ground_weight.get(side, 0.0)) >= PLANT_LOCK_WEIGHT
+	if not frozen and not likely_planted and raw_target.distance_to(
 			_smoothed_target[side] as Vector3) > TARGET_NOISE_DEADBAND:
 		var amount := clampf(delta * smooth_rate, 0.0, 1.0)
 		_smoothed_target[side] = _move_target_smoothed(
@@ -925,7 +925,6 @@ func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		"animated_contact_position": contact_position,
 		"animated_contact_normal": surface_hit["normal"] if contact_hit else Vector3.UP,
 	}
-
 
 func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		per_leg: Dictionary, shared_drop: float, delta: float) -> void:
@@ -983,7 +982,6 @@ func _animated_lowest_surface_point_world(
 	if not foot_to_toe.is_zero_approx():
 		toe_tip += foot_to_toe.normalized() * toe_tip_margin
 	return toe_tip if toe_tip.y < sole_point.y else sole_point
-
 
 func _raycast_ground(
 		space: PhysicsDirectSpaceState3D, foot_pos: Vector3, down: float = -1.0) -> Dictionary:

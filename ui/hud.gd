@@ -92,6 +92,8 @@ var _character_rows: Array[Dictionary] = []
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/DetachedCameraToggle")
 @onready var foot_ik_follow_toggle: CheckButton = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootIkFollowToggle")
+@onready var foot_ik_joint_graph_toggle: CheckButton = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootIkJointGraphToggle")
 @onready var skeleton_visible_toggle: CheckButton = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SkeletonVisibleToggle")
 @onready var slow_mo_slider: HSlider = get_node(
@@ -140,6 +142,7 @@ func _ready() -> void:
 	free_mode_toggle.toggled.connect(_on_free_mode_toggled)
 	detached_camera_toggle.toggled.connect(_on_detached_camera_toggled)
 	foot_ik_follow_toggle.toggled.connect(_on_foot_ik_follow_toggled)
+	foot_ik_joint_graph_toggle.toggled.connect(_on_foot_ik_joint_graph_toggled)
 	skeleton_visible_toggle.toggled.connect(_on_skeleton_visible_toggled)
 	slow_mo_slider.value_changed.connect(_on_slow_mo_value_changed)
 	main_debug_button.pressed.connect(_show_debug_page)
@@ -353,6 +356,11 @@ func _open_debug() -> void:
 	if foot_follow != null:
 		foot_ik_follow_toggle.set_pressed_no_signal(
 				bool(foot_follow.call(&"is_stair_foot_follow_enabled")))
+	var joint_graph := get_tree().get_first_node_in_group(&"foot_ik_joint_history_graph")
+	foot_ik_joint_graph_toggle.visible = joint_graph != null
+	if joint_graph != null:
+		foot_ik_joint_graph_toggle.set_pressed_no_signal(
+				bool(joint_graph.call(&"is_graph_visible")))
 	_show_debug_main()
 	debug_overlay.show()
 	set_prompt("")
@@ -726,6 +734,14 @@ func _on_foot_ik_follow_toggled(enabled: bool) -> void:
 	controller.call(&"set_stair_foot_follow_enabled", enabled)
 	foot_ik_follow_toggle.set_pressed_no_signal(
 			bool(controller.call(&"is_stair_foot_follow_enabled")))
+
+
+func _on_foot_ik_joint_graph_toggled(enabled: bool) -> void:
+	var graph := get_tree().get_first_node_in_group(&"foot_ik_joint_history_graph")
+	if graph == null:
+		foot_ik_joint_graph_toggle.set_pressed_no_signal(false)
+		return
+	graph.call(&"set_graph_visible", enabled)
 
 
 func _on_skeleton_visible_toggled(enabled: bool) -> void:

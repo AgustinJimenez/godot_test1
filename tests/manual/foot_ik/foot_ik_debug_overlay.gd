@@ -1,7 +1,8 @@
 extends Node3D
 ## Live contact/target/bone markers + controls; probes expose the post-modifier pose.
 const TOE_TIP_EXTRA_LENGTH := 0.035 # toe bone origin is at the base, not the mesh tip
-
+const JOINT_HISTORY_GRAPH := preload(
+		"res://tests/manual/foot_ik/foot_ik_joint_history_graph.gd")
 const PANEL_OUTER_MARGIN := 20 # gap between screen edge and panel border
 # Wide rows would render flush against the panel edge without this.
 const PANEL_INNER_PADDING := 14
@@ -14,7 +15,6 @@ const STAIR_FOLLOW_MIN_DISTANCE := 0.08
 const STAIR_FOLLOW_MAX_DISTANCE := 4.0
 const CONTROLLED_TRACE_FILE := "user://foot_ik_controlled.jsonl"
 const CONTROLLED_TRACE_MAX_FRAMES := 1200 # 20s at 60fps - room to turn, wait, then grab it
-
 var _player_body: PlayerBody
 var _ik: PlayerFootIKModifier
 var _skel: Skeleton3D
@@ -23,7 +23,6 @@ var _toe_probes: Dictionary = {} # side -> Node3D (BoneAttachment3D child), toe 
 var _markers: Dictionary = {} # "side_kind" -> MeshInstance3D, kind in hit/target/actual/toe
 var _angle_probes: Dictionary = {} # side -> {hip, knee, leaf: Node3D or null}
 var _angle_labels: Dictionary = {} # side -> {segment: Label3D}, positioned at segment midpoint
-
 # Ordered [key, column_header] pairs for the per-foot readout grid (Array,
 # not Dictionary, since display order matters and needs to stay fixed).
 const READOUT_FIELDS := [
@@ -47,7 +46,6 @@ const READOUT_FIELDS := [
 	["foot_angle", "Foot°"],
 	["leaf_angle", "Leaf°"],
 ]
-
 var _loop_reset_flash: Label
 var _controlled_trace_buffer: Array[String] = []
 var _contact_lost_flash: Label
@@ -68,6 +66,7 @@ var _animation_time_readout: Label
 var _copy_data_button: Button
 var _timeline_syncing := false
 var _camera_readout: Label
+var _joint_history_graph: FootIkJointHistoryGraph
 var _readout_values: Dictionary = {} # side -> {field_key: Label}
 var _sliders: Dictionary = {} # property name -> HSlider
 var _slider_labels: Dictionary = {} # property name -> Label
@@ -81,7 +80,6 @@ var _follow_last_anchor := Vector3.ZERO
 var _follow_has_anchor := false
 var _follow_orbit_dragging := false
 var _follow_orbit_last_mouse_position := Vector2.ZERO
-
 func _ready() -> void:
 	# This overlay must remain interactive while SceneTree.paused is true;
 	# everything else in the harness inherits the ordinary pausable mode.
@@ -93,10 +91,10 @@ func _ready() -> void:
 	# foot_ik_preview.tscn's own authored Player transform regardless of
 	# when in the scene's lifetime the close-up camera actually gets used.
 	_player_spawn_position = (get_node("../Player") as Node3D).global_position
-
 	await get_tree().process_frame
 	await get_tree().process_frame
-	var followed_player := _find_stair_follow_player()
+	var followed_player: Player = null if FileAccess.file_exists(
+			"user://foot_ik_flat_forward_marker") else _find_stair_follow_player()
 	_player_body = followed_player.body if followed_player != null \
 			else get_node("../Player/Body") as PlayerBody
 	if _player_body == null:
@@ -345,7 +343,6 @@ func _log_leg_angles() -> void:
 			if angles.has(segment):
 				line += " %s=%.1f" % [segment, angles[segment]]
 		print(line)
-
 func _build_panel() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -469,6 +466,8 @@ func _build_panel() -> void:
 
 	vbox.add_child(HSeparator.new())
 	_build_readout_grid(vbox)
+	_joint_history_graph = JOINT_HISTORY_GRAPH.new() as FootIkJointHistoryGraph
+	_joint_history_graph.attach(layer, panel_width, PANEL_OUTER_MARGIN)
 
 	_copy_data_button = Button.new()
 	_copy_data_button.text = "Copy IK Data"
@@ -932,12 +931,13 @@ func _physics_process(delta: float) -> void:
 			(values["toe_tip_gap"] as Label).text = "%.3f" % toe_gap
 
 		var angles := _compute_leg_angles(side)
+		_joint_history_graph.sample_side(side, angles, _angle_probes[side], probe,
+				_player_body.get_parent() as Node3D)
 		for segment: String in ["thigh", "shin", "foot", "leaf"]:
 			if angles.has(segment):
-				(values[segment + "_angle"] as Label).text = "%.1f" % angles[segment]
+					(values[segment + "_angle"] as Label).text = "%.1f" % angles[segment]
 		_update_angle_labels(side, angles)
 	_capture_controlled_foot_frame()
-
 func _capture_controlled_foot_frame() -> void:
 	if _ik == null or _player_body == null:
 		return
@@ -945,6 +945,7 @@ func _capture_controlled_foot_frame() -> void:
 	var trace := {
 		"frame": Engine.get_physics_frames(),
 		"root": _player_body.global_position,
+		"head_world_y": (_player_body.get_parent() as Player).head.global_position.y,
 		"root_yaw_deg": rad_to_deg((_player_body.get_parent() as Node3D).rotation.y),
 		"animation": animation_player.current_animation if animation_player != null else "",
 		"time": animation_player.current_animation_position if animation_player != null else 0.0,

@@ -41,3 +41,5 @@ fi
 rg "FOOT_IK_(STRETCH|AIRBORNE)_CHECK PASS|FOOT_IK_BODY_PENETRATION_CHECK PASS" \
 	"$log_file"
 rg "FOOT_IK_POSE_CONTINUITY_CHECK PASS" "$log_file"
+
+"$project_dir/scripts/check_foot_ik_locomotion.sh"

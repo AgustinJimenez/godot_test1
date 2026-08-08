@@ -395,6 +395,10 @@ text = "Detached Camera"
 visible = false
 text = "Follow 0.35m Right Foot"
 
+[node name="FootIkJointGraphToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+visible = false
+text = "Foot IK Joint History Graph"
+
 [node name="SkeletonVisibleToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Show Skeleton"
 

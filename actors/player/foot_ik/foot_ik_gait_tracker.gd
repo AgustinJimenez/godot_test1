@@ -12,6 +12,8 @@ func _init(owner) -> void:
 const DISCONTINUITY_HOLD_FRAMES := 1
 ## Wider than DISCONTINUITY_HOLD_FRAMES on purpose - see this function's doc.
 const VELOCITY_SUPPRESS_FRAMES := 2
+const STAIR_WEIGHT_RISE_TIME := 0.12
+const STAIR_WEIGHT_FALL_TIME := 0.05
 
 ## An animation loop reset jumps current_animation_position backward
 ## instantly - a real discontinuity, not motion. Diffing across it in
@@ -73,13 +75,31 @@ func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
 	# non-frozen foot needs its own, narrower bypass on the exact reset frame:
 	# the held/fresh foot_pos and the raycast-derived contact briefly disagree
 	# there too, tripping this same distance check.
+	# Vertical only, not foot_pos.distance_to(ground_target)'s full 3D
+	# distance: with no directional/strafe blend, a diagonally-moving
+	# character's animated foot never actually stays world-stationary
+	# during its own "stance" phase (the clip's local stance assumes
+	# straight-forward root motion), so the smoothed ground_target's
+	# horizontal component permanently lags foot_pos by an amount
+	# proportional to strafe speed - that horizontal lag alone was
+	# starving ground_weight of ever reaching a real plant during
+	# diagonal movement, confirmed live (GAP debug: vert stayed ~1.5cm,
+	# well under the limit, while horiz grew unbounded past 25cm).
+	# Vertical clearance is what this check is actually meant to gate.
+	var vertical_gap := absf(foot_pos.y - ground_target.y)
 	var contact_lost: bool = not step_down and _owner.step_prediction_enabled \
 			and not force_plant and not frozen and not _owner._animation_discontinuous and (
 			not contact_hit
 			or contact_distance > _owner.GROUND_CONTACT_DISTANCE
-			or foot_pos.distance_to(ground_target) > _owner.GROUND_CONTACT_DISTANCE)
+			or vertical_gap > _owner.GROUND_CONTACT_DISTANCE)
 	var raw_weight := _raw_weight(side, velocity)
-	if contact_lost:
+	# Velocity is deliberately zeroed across an animation loop seam. Zero is
+	# otherwise interpreted as a planted foot, which created a one-frame IK
+	# pulse on a released swing leg. Hold the existing state across the seam.
+	if _owner._velocity_suppressed and not force_plant and not frozen:
+		raw_weight = float(_owner._smoothed_ground_weight.get(side, raw_weight))
+		contact_lost = false
+	elif contact_lost:
 		raw_weight = 0.0
 	elif force_plant:
 		raw_weight = 1.0
@@ -207,10 +227,17 @@ func _smooth_weight(side: StringName, raw_weight: float,
 		raw_weight = 0.0
 	var previous: float = _owner._smoothed_ground_weight.get(side, raw_weight)
 	var weight := raw_weight
-	if raw_weight > previous and _owner.ground_weight_rise_time > 0.0:
-		weight = minf(raw_weight, previous + delta / _owner.ground_weight_rise_time)
-	elif raw_weight < previous and _owner.ground_weight_fall_time > 0.0:
-		weight = maxf(raw_weight, previous - delta / _owner.ground_weight_fall_time)
+	var rise_time: float = _owner.ground_weight_rise_time
+	var fall_time: float = _owner.ground_weight_fall_time
+	var character: Node = _owner.player_body.get_parent()
+	var stair_hover: Variant = character.get("_stair_hover_offset_y")
+	if stair_hover != null and absf(float(stair_hover)) > 0.001:
+		rise_time = STAIR_WEIGHT_RISE_TIME
+		fall_time = STAIR_WEIGHT_FALL_TIME
+	if raw_weight > previous and rise_time > 0.0:
+		weight = minf(raw_weight, previous + delta / rise_time)
+	elif raw_weight < previous and fall_time > 0.0:
+		weight = maxf(raw_weight, previous - delta / fall_time)
 	# Watchdog: a normal ramp finishes within a handful of
 	# ground_weight_rise_time windows. If raw_weight/contact_lost say weight
 	# should clearly be rising and it has stayed far below raw_weight much

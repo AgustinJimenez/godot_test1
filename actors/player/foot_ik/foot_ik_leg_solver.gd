@@ -43,9 +43,15 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	var foot_pose: Transform3D = poses["foot"]
 	var toe_pose: Transform3D = poses["toe"]
 	var leaf_pose: Transform3D = poses["leaf"]
+	var solve_weight := clampf(ground_weight, 0.0, 1.0)
 	var knee_pos: Vector3 = to_world * knee_pose.origin
 	var foot_pos: Vector3 = to_world * foot_pose.origin
 	var animated_hip_pos: Vector3 = to_world * hip_pose.origin
+	# Weight zero is a pass-through only when no stair swing-lift changed the
+	# target. The predictor deliberately raises a released foot before its
+	# next tread, and that positional correction still needs the chain solve.
+	if solve_weight <= 0.0001 and target.distance_squared_to(foot_pos) < 0.000001:
+		return
 	var to_target := target - hip_pos
 	if to_target.is_zero_approx():
 		return
@@ -97,7 +103,7 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	var ground_foot_basis_world: Basis = _owner._compute_new_foot_basis_world(
 			skel, side, -(_owner._smoothed_normal[side] as Vector3), foot_pose)
 	var new_foot_basis_world := Basis(animated_foot_basis_world.get_rotation_quaternion().slerp(
-			ground_foot_basis_world.get_rotation_quaternion(), ground_weight))
+			ground_foot_basis_world.get_rotation_quaternion(), solve_weight))
 	skel.set_bone_global_pose(hip_idx,
 			Transform3D(to_local.basis * new_hip_basis_world, to_local * hip_pos))
 	skel.set_bone_global_pose(knee_idx,
@@ -109,7 +115,7 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 			"to_world": to_world, "to_local": to_local, "foot_pos": foot_pos,
 			"new_foot_pos": new_foot_pos, "animated_basis": animated_foot_basis_world,
 			"new_basis": new_foot_basis_world, "toe_pose": toe_pose,
-			"leaf_pose": leaf_pose, "weight": ground_weight,
+			"leaf_pose": leaf_pose, "weight": solve_weight,
 		})
 
 

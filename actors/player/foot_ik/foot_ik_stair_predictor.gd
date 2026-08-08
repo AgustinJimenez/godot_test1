@@ -109,16 +109,30 @@ func update_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName,
 func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> float:
 	if not per_leg.has(&"left") or not per_leg.has(&"right"):
 		return shared_drop
+	# Once acquired, support never released on its own - a foot stays "close
+	# enough" to the ground almost always during ordinary flat walking, so
+	# is_active()'s own contact check never fails. That let this system,
+	# triggered once by spawning near a ramp/step, keep fighting the
+	# ordinary ground-target latch with its own independently-timed target
+	# for the rest of the session (confirmed live: SUPPORT prints firing
+	# continuously, far from any real stairs). Release once neither signal
+	# that stairs are actually relevant holds: no real reach problem
+	# (shared_drop already 0) and no genuine predicted step ahead.
+	if not _support_side.is_empty() and shared_drop <= 0.0 and not has_latched_target():
+		_support_side = &""
+		return shared_drop
 	var left: Dictionary = per_leg[&"left"]
 	var right: Dictionary = per_leg[&"right"]
 	var left_clearance: float = left.get("animated_contact_distance", INF)
 	var right_clearance: float = right.get("animated_contact_distance", INF)
 	if _support_side.is_empty():
-		if _is_contacting(left, left_clearance) or _is_contacting(right, right_clearance):
-			_support_side = &"left" if left_clearance <= right_clearance else &"right"
-			_latch_support_target(per_leg[_support_side])
-		else:
+		var chosen := _choose_support_side(
+				_is_contacting(left, left_clearance), _is_contacting(right, right_clearance),
+				left_clearance, right_clearance)
+		if chosen.is_empty():
 			return shared_drop
+		_support_side = chosen
+		_latch_support_target(per_leg[_support_side])
 	else:
 		# Collision can advance the root to a new tread faster than the
 		# animation supplies the opposite landing. Never preserve an old
@@ -131,11 +145,13 @@ func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> fl
 		if (not _support_target_is_reachable(support_leg)
 				or not _is_contacting(support_leg, support_clearance)):
 			_support_side = &""
-			if _is_contacting(left, left_clearance) or _is_contacting(right, right_clearance):
-				_support_side = &"left" if left_clearance <= right_clearance else &"right"
-				_latch_support_target(per_leg[_support_side])
-			else:
+			var chosen := _choose_support_side(
+					_is_contacting(left, left_clearance), _is_contacting(right, right_clearance),
+					left_clearance, right_clearance)
+			if chosen.is_empty():
 				return shared_drop
+			_support_side = chosen
+			_latch_support_target(per_leg[_support_side])
 		_try_transfer_support(per_leg, left_clearance, right_clearance)
 	var leg: Dictionary = per_leg[_support_side]
 	_apply_support_contact(_support_side, leg, delta)
@@ -165,6 +181,32 @@ const SUPPORT_CONTACT_DISTANCE := 0.15
 func _is_contacting(leg: Dictionary, clearance: float) -> bool:
 	return (leg.get("animated_contact_hit", false)
 			and clearance <= SUPPORT_CONTACT_DISTANCE)
+
+
+## Picks which contacting leg becomes/keeps _support_side. A leg mid-swing
+## (still climbing toward a latched tread) can transiently satisfy the plain
+## contact/clearance check too - its predicted landing point can read close
+## by - which wrongly made it "support" for one frame, hard-resetting its
+## own in-progress step_lift to 0 via update_swing_lift()'s early-out
+## (confirmed live via STAIR_FOOT_TRACE: a smoothly climbing lift reset to
+## 0.0 mid-climb, then had to climb all over again - a visible stutter/bump
+## right as the foot approached the next tread). Excluding a swinging leg
+## only when the other candidate remains viable preserves the original
+## fallback behavior for the rare case both legs are mid-air at once.
+func _choose_support_side(left_contact: bool, right_contact: bool,
+		left_clearance: float, right_clearance: float) -> StringName:
+	var left_ok := left_contact and not (_state(&"left") as LegState).swing_active
+	var right_ok := right_contact and not (_state(&"right") as LegState).swing_active
+	if not left_ok and not right_ok:
+		left_ok = left_contact
+		right_ok = right_contact
+	if left_ok and right_ok:
+		return &"left" if left_clearance <= right_clearance else &"right"
+	if left_ok:
+		return &"left"
+	if right_ok:
+		return &"right"
+	return &""
 
 
 func clear_swing(side: StringName) -> void:
