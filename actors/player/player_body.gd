@@ -750,10 +750,10 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		return
 	if _airborne:
 		_airborne = false
-		var land_animation := _lib.get_animation(&"unarmed_jump_land")
-		_landing_time_left = land_animation.length / JUMP_PHASE_SPEED
-		_play_motion(&"unarmed_jump_land", 0.1, JUMP_PHASE_SPEED)
-		return
+		if ground_speed <= 0.6:
+			_landing_time_left = _lib.get_animation(&"unarmed_jump_land").length / JUMP_PHASE_SPEED
+			_play_motion(&"unarmed_jump_land", 0.1, JUMP_PHASE_SPEED)
+			return
 	if _landing_time_left > 0.0:
 		_landing_time_left = maxf(_landing_time_left - delta, 0.0)
 		if _landing_time_left > 0.0:

@@ -23,6 +23,16 @@ godot --path . res://levels/<scene>.tscn   # run a specific scene
 godot --doctool <path> --headless  # dump the FULL engine API reference (all ~900 classes) as XML into <path>/doc/classes
 ```
 
+RTK (`rtk`, installed with Homebrew) is available as a token-saving shell-output proxy. Use it for
+routine, potentially noisy inspection such as `rtk git status`, `rtk git diff`, `rtk git log`, and
+`rtk grep <pattern> <path>`. It is an output filter, not a replacement for the underlying tools or
+their exit codes. Always rerun a failing check with raw output before diagnosing it, and never filter
+frame-by-frame Foot IK JSONL traces, exact numeric diagnostics, complete instruction-file reads, or
+the final diff being reviewed before commit; compression or deduplication can hide the one sample or
+line that matters. Codex integration is instruction-based rather than an automatic shell hook here,
+so invoke `rtk` explicitly when compact output is appropriate and use ordinary `rg`, `git`, Godot,
+or project scripts whenever exact output is required.
+
 `scripts/check.sh` is the single project-wide static validation entrypoint. It
 runs the pinned `gdlint` configuration, imports resources, and parses every
 GDScript file with Godot 4.6.2. The local pre-commit hook and GitHub Actions
@@ -223,6 +233,20 @@ Foot IK idle step-down planting (`step_down_*` exports on `player_foot_ik_modifi
 
 **A "trust this state, stop reacting to noise" flag (Foot IK's idle-freeze, `update_idle_freeze()`) must bypass every downstream computation that state is supposed to protect, not just the obvious ones.** Freezing correctly bypassed the raycast re-search and the distance-based `contact_lost` check, but `_raw_weight()`'s own velocity-based formula in `foot_ik_gait_tracker.gd` never checked the `frozen` flag at all — so a genuinely frozen foot (confirmed via the debug JSONL's `freeze_streak` field pinned at its cap, meaning actually frozen, not still accumulating) still had its `ground_weight` nudged down every idle-animation loop by ordinary sway crossing `velocity_noise_floor`, producing a small but real, perfectly periodic pop each cycle — this outlasted two earlier, correct-but-incomplete fixes (widening the animation-discontinuity suppression window, then narrowing it back down) that reduced the severity without eliminating it, because neither touched this actual code path. Fix: once `frozen`, force `raw_weight = 1.0` unconditionally, the same as the existing `force_plant`/`skip_velocity_gate` overrides. When adding a "stop reacting, trust this" flag, grep every function that independently derives the value it's meant to protect and check each one explicitly — a partial bypass measurably reduces a bug's severity, which can look like progress, but leaves it defeated by whichever path wasn't updated.
 
+Foot IK target locks must treat body yaw as motion even when the animated foot's skeleton-local
+vertical speed is zero. Releasing `idle_frozen` after six degrees is insufficient if the independent
+`PLANT_LOCK_WEIGHT` latch still holds the same world-space target; both locks must agree that the body
+remains near the yaw where the foot settled. Also prevent the idle-freeze timer from re-arming while
+yaw changes. During measured turning, let the target catch up at `target_max_speed`; use the ordinary
+`smooth_rate` path whenever a lock is unavailable for some other reason, because applying fast tracking
+to initial/stair contact caused rendered-body penetration. Flat-floor turning must also remain in the
+authored idle pose regardless of transient gait weight/vertical-velocity changes: switching between
+authored pass-through and a full IK solve made one thigh jump 12.141 degrees even after its target
+followed correctly. A partial fix passed at 60 FPS but live play and a 30 FPS replay still added a
+10.530-degree thigh jump, so `scripts/check_foot_ik_locomotion.sh` deliberately runs the full-turn A/B
+at both rates. It bounds target-to-animated-foot separation and compares every final leg joint against
+the authored pose; run it together with stair penetration and pose-continuity checks.
+
 **Before rate-limiting a shared per-frame value, `grep` every write site — not just the one the bug report points at — and confirm the fix by checking the value a *consumer* actually reads, not the bookkeeping variable you edited.** Fixing Foot IK's turn-snap bug (`_smoothed_target`, tens of cm popping in one frame during a fast rotation/flick-turn) took three rounds because each fix touched only one of three independent writers: `player_foot_ik_modifier.gd`'s ordinary raycast-tracking path, its reach-limit retraction path, and `foot_ik_stair_predictor.gd`'s stair-support latch (`_apply_support_contact()`) — clamping the first two measurably helped but left the third, largest snap completely unchanged. Worse, the clamped bookkeeping variable (`_smoothed_target`) wasn't even what got rendered there: `_apply_support_contact()` set `leg["target"]`/`leg["ground_target"]` (the value `_leg_solver.solve()` actually reads) directly from an unclamped `_support_ground_target`, so the clamp silently did nothing even though it "looked" applied — caught only by adding a temporary debug print at the write site and confirming the clamp's own math executed correctly, then noticing the *rendered* trace still jumped instantly. If a fix compiles, passes checks, and the bug still reproduces byte-for-byte identically (same frame, same magnitude, down to the decimal), suspect the fix touched the wrong variable, not that the fix is subtly wrong. Also: two of the fix attempts here (a blanket clamp, then one gated on the `step_down` gait flag) both regressed `FOOT_IK_BODY_PENETRATION_CHECK` with the *exact same* failure signature (15 samples, 0.308m max depth) — identical regressions across differently-gated attempts meant the gate wasn't distinguishing the two cases at all (`step_down` isn't true for every frame of a real stair descent). The signal that actually worked was independent of gait timing entirely: the support surface's contact-normal tilt (`dot(Vector3.UP)`) — near 1.0 for a flat stair tread (which needs an instant plant, or the pelvis sinks into the riser gap while a rate-limited target lags behind), well below it for a sloped ramp (safe to smooth). When gating a fix between two behaviors, prefer a signal that's a structural property of the situation (surface shape, geometry) over one that's a transient phase flag (gait/animation state) which may not hold on every frame you need it to.
 
 **Animation loop-reset seams are a recurring, cross-cutting gotcha, not a one-off Foot IK bug** — `AnimationPlayer.current_animation_position` resets backward instantly on loop, a real discontinuity that any code diffing across it (velocity) or reading a raw bone pose on that exact frame (a two-bone solve amplifying a tiny seam) can turn into a visible snap or spike. It has already hit four independent Foot IK consumers, each found live and fixed separately. Before debugging a periodic, once-per-animation-loop snap in *any* system (not just feet), read `docs/known_issues/animation_loop_reset_seam.md` first — it documents the detection mechanism already built (`update_animation_discontinuity()`, `_animation_discontinuous`, `_velocity_suppressed`), which consumers already had to respect it and why, a live cross-character instrumentation pitfall that cost real debugging time, and (now resolved, with the full trail kept as a worked example) the periodic walking/sprinting snap that turned out to be two separate bugs stacked on top of each other.
@@ -241,6 +265,17 @@ explicitly requested swing clearance; loop-reset suppression cannot manufacture 
 transition; weights change continuously; leg lengths and knee bend remain anatomical; and flat-ground
 IK should remain close to the corresponding IK-off trace. Run this A/B gate together with the stair
 penetration/airborne/stretch checks, not instead of them, and still require live manual confirmation.
+
+Moving jump-landings have a separate reach invariant in that same locomotion gate. Landing grace may
+force full vertical plant weight, but it must not freeze `_smoothed_target` at the touchdown world
+position while the `CharacterBody3D` keeps moving. Keep refreshing the ground target throughout
+`moves/unarmed_jump_land`; only allow the ordinary planted latch after landing recovery finishes.
+Otherwise the body walks away from the target and stretches the solved leg. The regression continues
+forward input through jump and landing and fails if either fully weighted target moves farther from its
+hip horizontally than the measured upper-leg plus lower-leg reach (plus 1 cm tolerance). The animation
+state must follow the same distinction: `unarmed_jump_land` is a stationary recovery with both feet
+authored as planted, so play it only when landing at idle speed. A moving landing must transition
+directly into the matching walk, sprint, or crouch locomotion instead of translating that static pose.
 
 **A "more general" reformulation of a formula can be a mathematical no-op if it doesn't account for what the inputs are already guaranteed to satisfy — verify with live-varying inputs, not just "it compiles and the shape looks right."** Investigating a small (~1cm) toe clip on a tilted ramp, the working theory was that `_measure_leg_sole_depth()`'s single flat-pose scalar couldn't bound clearance correctly at other tilt angles, so it was rebuilt into a "direction-aware" version: store the full sole-mesh point cloud in the foot's local frame, then each frame re-project every point onto the *current* ground direction and take the max (`(foot_basis * point).dot(desired_down)`). This looked like a strict generalization of the flat scalar and compiled/ran fine. It was actually mathematically identical to the original at every tilt, not just similar — because `_compute_new_foot_basis_world()` builds `foot_basis` so its own local down-axis *is* `desired_down` by construction (the whole foot rotates to match the ground normal), so `(foot_basis * point).dot(desired_down)` algebraically collapses to `point.y` (the point's plain local-Y value) regardless of tilt — the exact same number the flat scalar already computed. Caught only by adding a debug print of both the input tilt (varying: 1.0, 0.97, 0.87, 0.71 across normals) and the output offset side-by-side, and noticing the output never changed despite the input clearly varying — a fix that's *supposed* to be direction-sensitive but produces a constant should be treated as a red flag on the formula itself, not "must be a separate remaining bug." Before generalizing a computation to depend on more inputs, check whether the object it operates on (here, `foot_basis`) was already built to make that dependency vanish algebraically.
 

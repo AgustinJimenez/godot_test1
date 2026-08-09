@@ -316,9 +316,17 @@ const IDLE_UNFREEZE_STREAK := 3
 ## waiting several frames before resuming the raycast search would itself
 ## read as the leg lagging behind the turn rather than following it.
 const IDLE_UNFREEZE_ROTATION_DEG := 6.0
+const IDLE_TURNING_EPSILON_DEG := 0.1
 
 func update_idle_freeze(side: StringName, anim_speed: float, delta: float, yaw: float) -> bool:
 	var frozen: bool = _owner._idle_frozen.get(side, false)
+	var last_yaw_key := StringName("%s:last" % side)
+	var last_yaw: float = _owner._idle_freeze_yaw.get(last_yaw_key, yaw)
+	var yaw_stable := absf(angle_difference(last_yaw, yaw)) <= deg_to_rad(
+			IDLE_TURNING_EPSILON_DEG)
+	if delta > 0.0:
+		_owner._idle_freeze_yaw[last_yaw_key] = yaw
+		_owner._idle_freeze_yaw[StringName("%s:turning" % side)] = not yaw_stable
 	if frozen and delta > 0.0:
 		var freeze_yaw: float = _owner._idle_freeze_yaw.get(side, yaw)
 		if absf(angle_difference(freeze_yaw, yaw)) > deg_to_rad(IDLE_UNFREEZE_ROTATION_DEG):
@@ -335,7 +343,7 @@ func update_idle_freeze(side: StringName, anim_speed: float, delta: float, yaw: 
 			_owner._idle_unfreeze_streak[side] = 0
 	elif not frozen and delta > 0.0:
 		if (_owner._smoothed_ground_weight.get(side, 0.0) >= 0.999
-				and absf(anim_speed) <= _owner.idle_step_down_speed):
+				and absf(anim_speed) <= _owner.idle_step_down_speed and yaw_stable):
 			_owner._idle_freeze_streak[side] = int(_owner._idle_freeze_streak.get(side, 0)) + 1
 		else:
 			_owner._idle_freeze_streak[side] = 0
@@ -344,3 +352,20 @@ func update_idle_freeze(side: StringName, anim_speed: float, delta: float, yaw: 
 			_owner._idle_freeze_yaw[side] = yaw
 	_owner._idle_frozen[side] = frozen
 	return frozen
+
+
+## The planted-target latch is only valid while the body remains near the
+## yaw where this foot last became stably frozen. update_idle_freeze() may
+## release correctly during a turn, but an independent weight-only latch
+## would otherwise keep the same stale world target anyway.
+func target_lock_allows_latch(side: StringName) -> bool:
+	if not _owner._idle_freeze_yaw.has(side):
+		return false
+	var current_yaw := (_owner.player_body.get_parent() as Node3D).rotation.y
+	var freeze_yaw: float = _owner._idle_freeze_yaw[side]
+	return absf(angle_difference(freeze_yaw, current_yaw)) <= deg_to_rad(
+			IDLE_UNFREEZE_ROTATION_DEG)
+
+
+func is_body_turning(side: StringName) -> bool:
+	return bool(_owner._idle_freeze_yaw.get(StringName("%s:turning" % side), false))

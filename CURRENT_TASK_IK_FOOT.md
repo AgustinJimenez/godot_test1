@@ -1,8 +1,78 @@
 # Active Task: Stair Foot IK
 
-**Date:** 2026-08-05 (latest session below); previous session 2026-08-03
+**Date:** 2026-08-08 (latest session below); previous sessions 2026-08-05 and 2026-08-03
 
 **Checkpoint branch:** `experiment/native-foot-ik`
+
+## 2026-08-08: moving jump-landing target latch (fixed, pending live confirmation)
+
+The controllable character could jump while moving, land, and continue forward while one planted foot
+remained attached to the exact world-space touchdown point. The body then moved away and visibly
+stretched the leg. Landing grace forces full contact weight, so `_sample_ground_contact()` classified
+the foot as planted and stopped refreshing `_smoothed_target`; its contact-loss test only measured the
+vertical gap and therefore could not release this horizontally stale target.
+
+The target now continues following current raycast contacts whenever the complete
+`moves/unarmed_jump_land` recovery animation is active. Landing grace still provides the intended
+vertical plant, and the ordinary target latch becomes available again after landing recovery ends. A deterministic
+moving-landing case was added to `scripts/check_foot_ik_locomotion.sh`: it walks forward, jumps without
+releasing forward input, lands, then checks every fully weighted foot target against the measured
+hip-to-ankle reach. Before the fix the target reached **1.207008 m** from its hip against a
+**0.897589 m** limit; after the fix it remains within **0.839399 m**. The full focused Foot IK suite
+and `scripts/check.sh` pass. This gameplay-facing fix still requires the user's live confirmation
+before commit.
+
+Live review then exposed a second half of the same state error: `PlayerBody.update_motion()` always
+played the stationary `unarmed_jump_land` recovery before considering horizontal speed. That clip
+authors both feet as planted, so a moving controller visibly translated a frozen landing pose. Moving
+landings now fall through immediately to the ordinary locomotion selector; only landings at idle speed
+play the full recovery clip. The moving-landing regression records whether the static landing clip ever
+owns a post-contact frame. It failed before the change (`static_landing_clip_seen=true`) and now passes
+with `false`; worst target reach also improved from **0.839399 m** to **0.383070 m**.
+
+### Rotating idle target latch
+
+Live testing found that repeatedly rotating on flat ground left both feet attached to their old
+world-space positions. The existing yaw-aware idle unfreeze was working, but `_sample_ground_contact()`
+had a second, independent ≥95%-weight planted latch that still rejected every refreshed target.
+Additionally, the idle-freeze timer could re-arm during continuous rotation because it considered only
+skeleton-local vertical foot speed, which remains near zero during pure body yaw.
+
+The gait tracker now records actual per-frame yaw motion, prevents freeze acquisition while turning,
+and allows the weight-based latch only near the yaw where that foot last became stably frozen. Measured
+turning targets catch up at `target_max_speed`; non-turning unlocked targets retain ordinary smoothing
+so initial and stair contact do not snap. A new full-turn flat-floor regression reduced maximum
+target-to-animated-foot separation from **0.810406 m** before the fix to **0.009398 m**. An intermediate
+over-broad fast-tracking attempt reached 0.009 m on flat ground but failed stair penetration (159
+vertices, 0.251 m depth) and pose continuity (0.040 m jump); narrowing it to measured yaw restores all
+focused checks. Pending live confirmation before commit.
+
+The first version of that regression checked only target separation and therefore missed a second
+live symptom: one knee/thigh snapped rapidly during continuous turning. The target stayed correct, but
+its roughly 9.4 mm gap sat on the 10 mm `flat_idle_noop_distance` boundary, so tiny fluctuations toggled
+the leg between the untouched authored idle pose and a full IK solve. The full-turn check now also
+compares final rendered hip/knee/foot/toe rotations against an identically rotated IK-off player. It
+reproduced a **12.141 degree** IK-added `RightUpLeg` jump. Level-ground turning now keeps the authored
+pose while its contact target continues following; the added jump is **0.0 degrees**, target separation
+remains **0.009542 m**, and slope/stair behavior still enters the solver. Pending live confirmation.
+
+Live confirmation then found another version of the same state-switch snap that the 60 FPS check hid.
+`foot_ik_controlled.jsonl` captured the left shin changing **38.434 degrees** at frame 814 and a later
+thigh/shin switch while one foot remained frozen and the two legs' gait weights diverged. Replaying the
+A/B harness at 30 FPS reproduced a **10.530-degree** IK-added `RightUpLeg` jump while the identical
+60 FPS run remained clean. Flat-floor turning now bypasses the solver regardless of transient
+`ground_weight` and idle-animation vertical velocity; only the flat contact and absence of a stair
+target gate that bypass. The permanent script runs the turn check at both 30 and 60 FPS. Both now show
+IK-added jump **0.0 degrees** (30 FPS maxima authored/IK 0.413/0.413 degrees; 60 FPS 0.209/0.209), while
+slopes and stairs still solve normally. Pending another live confirmation.
+
+**Live result (2026-08-09): still unresolved.** The user still sees one knee flick rapidly back and
+forth during continuous manual turning even though the recorded 30/60 FPS A/B checks now report no
+IK-added jump. Keep the current work as a diagnostic/checkpoint improvement, not a claimed visual fix.
+The next attempt should treat turning as gait rather than stationary idle: add authored/procedural
+turn-in-place stepping with explicit support-foot transfer, then let IK place the stepping foot. Do not
+continue stacking flat-idle thresholds without first capturing a trace that distinguishes the exact
+live twitch from the clean automated turn.
 
 **Status (2026-08-05):** Idle foot IK now works well on 6 of 7 stair heights in
 `foot_ik_preview.tscn`. The jump-landing float/pop bugs are fixed and kept (see "2026-08-05 session"

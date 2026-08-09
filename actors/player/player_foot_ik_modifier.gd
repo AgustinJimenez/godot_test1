@@ -692,12 +692,13 @@ func _process_modification_with_delta(delta: float) -> void:
 		var landed: bool = gait["landed"]
 
 		# Preserve authored level-ground idle; real gaps/slopes still run IK.
-		var preserve_idle_pose: bool = (
-				ground_weight >= 0.999
-				and absf(vertical_velocity) <= velocity_noise_floor
-				and raw_normal.dot(Vector3.UP) >= 0.999
-				and not _stair_predictor.has_latched_target()
-				and foot_pos.distance_to(ground_target) <= flat_idle_noop_distance)
+		var flat_contact: bool = (raw_normal.dot(Vector3.UP) >= 0.999
+				and not _stair_predictor.has_latched_target())
+		var preserve_idle_pose: bool = flat_contact and (
+				_gait_tracker.is_body_turning(side)
+				or (ground_weight >= 0.999
+						and absf(vertical_velocity) <= velocity_noise_floor
+						and foot_pos.distance_to(ground_target) <= flat_idle_noop_distance))
 		var target := foot_pos if preserve_idle_pose else foot_pos.lerp(ground_target, ground_weight)
 		if step_prediction_enabled:
 			target += Vector3.UP * _stair_predictor.update_swing_lift(
@@ -862,27 +863,27 @@ func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		delta: float, likely_idle: bool = false, frozen: bool = false) -> Dictionary:
 	var hit := _raycast_ground(space, foot_pos)
 	if not hit["hit"] and likely_idle and step_prediction_enabled:
-		# Nothing within the ordinary ray_down at the raw ankle position
-		# either - not just the toe-tip-predicted point below. The short
-		# range exists to protect mid-swing gait timing (see
-		# idle_settle_search_down's doc comment); a stationary foot has no
-		# such concern, so try once more here before falling back to the
-		# animated pose - otherwise a foot resting further than ray_down
-		# above real ground floats even though _sample_ground_contact's own
-		# secondary-probe fallback below would have caught a shallower miss.
+		# The short ordinary probe protects swing timing; an idle foot can
+		# safely use the deep fallback before returning to its animated pose.
 		hit = _raycast_ground(space, foot_pos, idle_settle_search_down)
 	var raw_target: Vector3 = hit["position"] if hit["hit"] else foot_pos
 	var raw_normal: Vector3 = hit["normal"] if hit["hit"] else Vector3.UP
 	if not _smoothed_target.has(side):
 		_smoothed_target[side] = raw_target
 		_smoothed_normal[side] = raw_normal
-	# Latch once genuinely planted - see PLANT_LOCK_WEIGHT's own doc comment.
-	var likely_planted := float(_smoothed_ground_weight.get(side, 0.0)) >= PLANT_LOCK_WEIGHT
+	var target_lock_allowed: bool = _gait_tracker.target_lock_allows_latch(side)
+	var body_turning: bool = _gait_tracker.is_body_turning(side)
+	var likely_planted: bool = (float(_smoothed_ground_weight.get(side, 0.0)) >= PLANT_LOCK_WEIGHT
+			and _landing_grace_time <= 0.0
+			and player_body.anim_player.current_animation != "moves/unarmed_jump_land"
+			and target_lock_allowed)
 	if not frozen and not likely_planted and raw_target.distance_to(
 			_smoothed_target[side] as Vector3) > TARGET_NOISE_DEADBAND:
 		var amount := clampf(delta * smooth_rate, 0.0, 1.0)
-		_smoothed_target[side] = _move_target_smoothed(
-				_smoothed_target[side] as Vector3, raw_target, delta)
+		var current_target := _smoothed_target[side] as Vector3
+		_smoothed_target[side] = (_move_target_smoothed(current_target, raw_target, delta)
+				if not body_turning else current_target.move_toward(
+				raw_target, target_max_speed * delta))
 		_smoothed_normal[side] = (_smoothed_normal[side] as Vector3).lerp(
 				raw_normal, amount).normalized()
 	if not hit["hit"] and not frozen:
