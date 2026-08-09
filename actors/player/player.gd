@@ -66,7 +66,7 @@ func set_eye_offset(v: Vector3) -> void:
 @export_range(0.0, 3.0, 0.05) var punch_delay_max: float = 0.75
 
 @export_group("Stamina")
-@export var sprint_duration: float = 6.0
+@export var sprint_duration: float = 18.0
 @export var stamina_refill_time: float = 9.0
 ## After draining fully, sprint stays locked until stamina recovers this fraction.
 @export var sprint_recover_fraction: float = 0.3

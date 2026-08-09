@@ -224,17 +224,16 @@ enum LegRetarget {
 ## so the throwaway comparison scene can show the broken implementations
 ## beside this one; gameplay and normal debug previews use this path.
 @export var use_humanoid_retarget := true
-
 ## Rough forward speeds (m/s) the clips were authored at, for foot matching.
 const WALK_REF_SPEED := 1.6
 const SPRINT_REF_SPEED := 5.8
 const CROUCH_REF_SPEED := 1.1
 const LOCOMOTION_BLEND_TIME := 0.5
+const MOVING_LANDING_BLEND_TIME := 0.05
 const JUMP_PHASE_SPEED := 2.5
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
 var head_yaw := 0.0
-
 ## The "moves" library and the pose UAL_EXTRA_CLIPS hold their spine/arms
 ## to (see _retarget_clip) - kept around so play_debug_anim can retarget
 ## and cache extra clips lazily, on first request, instead of upfront.
@@ -748,6 +747,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		elif vertical_velocity <= 0.0:
 			_play_motion(&"unarmed_jump", 0.2)
 		return
+	var moving_landing := _airborne and ground_speed > 0.6
 	if _airborne:
 		_airborne = false
 		if ground_speed <= 0.6:
@@ -777,9 +777,9 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 	else:
 		target = &"unarmed_torch_idle" if torch_enabled else &"unarmed_idle"
 	_hand_grip_modifier.active = target == &"unarmed_torch_idle"
-	_play_motion(target, LOCOMOTION_BLEND_TIME, clampf(rate,
+	_play_motion(target,
+			MOVING_LANDING_BLEND_TIME if moving_landing else LOCOMOTION_BLEND_TIME, clampf(rate,
 			0.8 * locomotion_playback_scale, 2.2 * locomotion_playback_scale))
-
 
 func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> void:
 	var full := "moves/" + target

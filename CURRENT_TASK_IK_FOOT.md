@@ -4,6 +4,14 @@
 
 **Checkpoint branch:** `experiment/native-foot-ik`
 
+## 2026-08-09: moving landing locomotion blend (pending live confirmation)
+
+The moving landing already selected walk/sprint on the first grounded frame, but `_play_motion()` used
+the ordinary 0.5-second locomotion crossfade. The trace therefore showed the animation name change
+immediately while the rendered legs retained much of the airborne pose. Moving landings now use a
+0.05-second crossfade; ordinary locomotion transitions retain 0.5 seconds. The focused moving-landing
+and complete project checks pass. Pending live confirmation before commit.
+
 ## 2026-08-08: moving jump-landing target latch (fixed, pending live confirmation)
 
 The controllable character could jump while moving, land, and continue forward while one planted foot
