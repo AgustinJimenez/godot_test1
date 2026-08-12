@@ -8,9 +8,168 @@
 
 The moving landing already selected walk/sprint on the first grounded frame, but `_play_motion()` used
 the ordinary 0.5-second locomotion crossfade. The trace therefore showed the animation name change
-immediately while the rendered legs retained much of the airborne pose. Moving landings now use a
-0.05-second crossfade; ordinary locomotion transitions retain 0.5 seconds. The focused moving-landing
-and complete project checks pass. Pending live confirmation before commit.
+immediately while the rendered legs retained much of the airborne pose. The first moving-landing
+crossfade was 0.05 seconds; ordinary locomotion transitions retained 0.5 seconds. Live testing
+confirmed this was substantially better, and the change was checkpointed in `7235e34`.
+
+One smaller touchdown bump remained. The live trace isolated it one frame after contact: the left
+`ground_weight` jumped 0.0 → 1.0 while thigh/shin angles changed 50.5° → 10.9° and 56.8° → 23.7°.
+Grounding resets gait state, and `_smooth_weight()` used `raw_weight` as the default missing previous
+sample; landing grace forces raw weight to 1.0, so that default bypassed the existing rise-time ramp.
+During landing grace only, a missing previous weight now starts at zero. The first deferred regression
+sample is 0.417 instead of 1.0 and the test rejects any initial sample above 0.95. Pending live
+confirmation before another commit.
+
+Slow-motion frame inspection then confirmed a brief left-foot twist at the start. At 60 FPS the
+0.05-second crossfade concentrated **55.167° left / 39.865° right** foot rotation into the first
+grounded transition sample; the right foot still had zero IK weight there, proving animation blending
+was the dominant source rather than IK alone. A 0.15-second moving-landing blend, close to the
+0.12-second IK rise time, reduces that first sample to **26.339° left / 25.438° right** at 60 FPS and
+**15.961° / 18.943°** at 30 FPS. The regression now retains the final airborne foot quaternion and
+rejects either initial grounded foot jump above 30°. Pending live confirmation.
+
+### Slow-motion sprint foot heading (2026-08-09, pending live confirmation)
+
+At 5% global time scale the user reported a split-second left-foot twist during continuous sprint.
+The rolling trace appeared to show two 86–89° changes, but those values came from
+`Basis.get_euler()` on a `BoneAttachment3D` transform; the deterministic harness's direct final-bone
+quaternions stayed continuous. Euler output is therefore retained only as a readable diagnostic, and
+the live trace now also records the orthonormalized `rotation_quaternion` for authoritative deltas.
+
+The ground-aligned foot basis nevertheless had a real singularity risk: it projected the animated
+toe-forward direction onto the contact plane, which becomes poorly defined while sprint toe-off
+points that direction nearly vertical. Ground alignment now uses the rig's rest toe-forward rotated
+with the character as its stable heading. Authored swing remains present through the existing
+ground-weight quaternion blend. The locomotion regression adds a 720-frame sprint at `time_scale =
+0.05` and checks foot/toe quaternions against IK-off. It passes with an authored/IK maximum of
+**1.123° / 1.123°** per frame and only **0.050°** worst IK-added motion. Await live visual review.
+
+### Moving-landing body-chain snap (2026-08-09, pending live confirmation)
+
+A fresh live trace repeated the same discontinuity on two moving sprint landings: the first frame
+after contact rotated the left hip **23.42°**. The animation had selected sprint, but its timestamp was
+still 0 and contact weight was only 0.035. Extending the landing regression so both the IK-off and
+IK-on players perform the same jump isolated the amplification: authored motion contributed
+**18.498°**, while IK produced **29.820°**, an extra **11.322°**.
+
+The closed-form leg solve eased target position and foot orientation by `ground_weight`, but applied
+its hip and knee rotation deltas at full strength. Cubic landing confidence (`weight³`) initially
+appeared to fix the first frame, but a fresh post-change live trace proved the correction had merely
+moved later: the right hip still reached about 50° once confidence approached full. That invalidated
+the initial-frame-only regression and the earlier 0.360°/1.358° conclusion.
+
+The final correction has three parts. Landing grace keeps its contact-confidence ramp monotonic across
+brief probe loss. Hip/knee deltas always honor confidence (cubic during grace, linear afterward). The
+solver then caps only its procedural correction change at **120°/second**, once per physics frame;
+no-contact and true pass-through frames keep easing any residual toward the authored pose while
+pinning the foot itself to its authored global transform.
+
+A second read of the fresh live trace caught why a hard cache release was not valid: at sprint frame
+**1912**, left contact weight reached zero (0.014 → 0) and the left hip changed **19.08°**, while the
+same animation phase earlier changed only about **1.88°**. The rate limiter had retained correction
+that the pass-through then discarded in one frame. Continuing the release eliminates that state jump;
+preserving the foot global pose during release avoids turning the smooth parent correction into a foot
+twist. The general walk/sprint regression now also compares IK and authored motion per corresponding
+frame (with the same one-sample seam allowance), so independent clip maxima cannot hide this again.
+
+The permanent A/B gate now checks corresponding hip/knee joints over the **entire** landing window,
+not just touchdown and not independent window maxima. It accepts the authored current/previous sample
+to account for the intentional one-frame animation-seam hold at low fixed FPS. Worst solver-added
+motion is **1.999° at 60 FPS** and **1.997° at 30 FPS**. Walk, sprint, 5%-speed sprint, moving landing,
+and turn checks pass; the visual result still awaits the user's live confirmation before commit.
+
+A later normal-speed live sprint exposed one more displacement that the walking landing harness had
+missed. Across frames 613–614 both hips dropped about **31 cm** while the head barely moved: the
+exponentially smoothed world contact lagged the moving body until it was **0.952562 m** from a hip,
+beyond the measured **0.897589 m** leg reach. The slower landing did not reproduce the same severity.
+The permanent landing case now holds sprint, directly refreshes the target and normal during landing
+grace (the confidence ramp already supplies the easing), and rejects more than **5 cm** of IK-added
+skeleton-space hip displacement per corresponding frame. It passes with **0.654170 m** maximum target
+distance and **0.041687 m** maximum added hip displacement. Live visual confirmation remains pending.
+
+### Crouch locomotion transition snap (2026-08-10, pending live confirmation)
+
+The next live trace showed repeatable leg snaps on crouch entry. At both sprint→crouch-walk switches,
+the largest changes occurred one or two frames after the animation changed while IK weight was exactly
+zero: up to **42.68°** at the hip and **39.94°** at the foot/toe. The controller selected crouch
+immediately but physical velocity still needed time to decelerate from sprint, so it drove the crouch
+clip at the shared **2.2×** playback cap. It also restarted the new looping gait at phase zero.
+
+Crouch now plays at its authored 1.0× rate, while `player_locomotion_transition.gd` transfers normalized
+cycle phase among walk, sprint, and crouch-walk before crossfading. The locomotion A/B harness samples
+both sprint→crouch-walk and crouch-walk→sprint starting on their first target-animation frame. Crouch
+entry falls from **33.393°** in the deterministic authored baseline to **18.482°**, near ordinary
+walk's **18.127°**; the reverse transition remains at sprint's authored **27.098°** peak. Both pass
+with and without IK, but the result still needs live visual confirmation before commit.
+
+### Steady crouch-walk IK snap (2026-08-10, pending live confirmation)
+
+The post-transition live trace still showed periodic leg snaps during an otherwise steady crouch walk,
+repeating near animation phase **0.45** with stable root yaw and speed. This was a separate symptom from
+the crouch-entry bug above. A new steady-state authored-vs-IK case measured **8.204°** maximum authored
+joint motion and **10.144°** with IK, confirming that the remaining displacement was solver-added.
+
+Hip, knee, and foot procedural corrections now share the residual-release path and use a
+**45°/second** budget while a crouch animation owns the body. The corrected steady crouch case measures
+**8.593°** with IK, only **0.974°** above the authored independent maximum. The corresponding-frame toe
+comparison peaks at **4.096°**, so the permanent check retains a 4.5° frame allowance for this compact,
+deeply-flexed gait.
+
+This limit must not be applied uniformly. Trials at 45°/second on stairs produced up to **2.27 cm** of
+rendered-body penetration because the foot orientation lagged its tread. The final split retains
+**120°/second** for ordinary/stair hip and knee correction, and lets non-crouch feet follow the current
+tread orientation immediately. The complete focused suite passes with zero stair penetration, plus
+steady crouch, both crouch transitions, walk, sprint, slow sprint, moving landing, and turn A/B cases.
+The user still needs to confirm the visual crouch result before commit.
+
+A subsequent live trace still appeared much worse than that deterministic result: the right knee
+changed **53.760°** at frame 13427, with other steady-crouch hip/knee changes in the **39–53°** range.
+The animation name did not change at those frames. Instead, `AnimationPlayer` time stayed identical
+for roughly eight physics captures and then advanced by about **0.133 seconds** in one update. The live
+debug recorder itself caused this mismatch: it rewrote its complete 1,200-frame, roughly 3.7 MB JSONL
+window every physics frame, while the headless A/B does not instantiate that expensive overlay.
+
+`foot_ik_trace_writer.gd` now appends only the current frame and periodically compacts the rolling
+window. This keeps the same recent-history behavior without making the measured scene render and
+animate at roughly 7.5 FPS. The focused numeric suite remains clean after the recorder change, but a
+fresh live trace and visual test are required to confirm that animation time now advances continuously.
+
+### Direction-consistent locomotion contact locks (2026-08-11, pending live confirmation)
+
+The original live trace showed that sideways crouch movement could leave a fully weighted foot target
+fixed in world space while the body translated away. Hip-to-target distance reached **1.35–1.36 m**, far
+beyond the measured **0.897589 m** leg reach. The temporary fix disabled planted target locks during all
+translation. That prevented the impossible chain but also made each planted foot slide with the body.
+
+Idle freeze still releases during translation. Locomotion now uses a separate finite stance lock driven by
+the animated foot phase: sustained descent followed by leveling begins stance at landing, and sustained
+rising ends it at toe-off. The target stays fixed in world space only inside that window. A reach guard
+releases it at 98% of the measured chain length and prevents relatching until another landing. The guard
+uses the ankle-space target actually sent to the solver (surface contact plus the sole/ankle offset along
+the ground normal), rather than comparing the hip to the raw surface ray hit.
+
+The first live sideways trace exposed a second state error: crouch foot bob emitted another landing while
+the same stance was still active. That false event cleared release hysteresis and moved the target
+**0.56–0.96 m** in one fully planted frame. Landing is now ignored until toe-off ends the current stance.
+The harness separately rejects target jumps above **0.20 m** across consecutive ≥95%-weight frames, and
+live traces now include explicit `locomotion_stance` and `locomotion_locked` values.
+
+The permanent 60 Hz A/B suite deliberately performs crouch idle before strafing, and now covers
+forward/back/left/right walk and crouch plus forward and forward-diagonal sprint. Every case must acquire
+at least one real stance lock, so simply disabling IK cannot pass. Worst recorded ankle-target distance is
+**0.869064 m** against the **0.897589 m** reach. Stair, airborne, landing, turn, and locomotion gates plus
+`scripts/check.sh` pass. The 30 Hz secondary run still validates only the settled-idle turn case; its full
+locomotion phase acquisition is not accepted yet. Manual normal-speed confirmation of sliding and toe-off
+release remains required before commit.
+
+The next live crouch-sideways trace confirmed that apparent leg stretching is not bone growth. Rendered
+hip→knee stays at **0.428800 m** within **0.015 mm**, and knee→ankle stays at **0.458789 m** within
+**0.016 mm**, including locked frames. The harness now fails above **1 mm** segment-length error (current
+worst: **0.004 mm**), while JSONL frames record current/reference lengths, ratios, and joint basis scales.
+The authored forward crouch clip itself reaches about **104–106°** thigh swing; IK reaches about
+**89–101°** during sideways cases. Remaining visual deformation is therefore a direction/contact-pose
+mismatch, not scaling. Do not loosen or repeatedly patch bone lengths; investigate directional gait
+selection/motion warping or release contacts that are anatomically infeasible under sideways movement.
 
 ## 2026-08-08: moving jump-landing target latch (fixed, pending live confirmation)
 
@@ -462,6 +621,33 @@ vector) is preserved - only how far down that plane it's allowed to swing change
 re-aimed from the (possibly moved) knee toward the original target and kept rigid at `lower_length`,
 exactly mirroring how the existing knee flexion clamp above it already accepts an imperfect reach
 rather than break bone length - the foot may land short of target instead of forcing an inhuman pose.
+
+The UAL gameplay set has only `Crouch_Fwd`; using it while translating sideways was itself an authored
+pose mismatch (about 105 degrees of thigh swing before IK). Gameplay now retargets the Action Adventure
+Pack's real crouched-left/right clips and selects them from lateral input. Foot IK is deliberately
+suppressed for those two clips for now: their different contact phases made the existing UAL-tuned gait
+classifier add 6-9 degree foot/toe discontinuities. Calibrate per-clip contact phases before enabling
+lateral-crouch IK; do not merely loosen the regression tolerances.
+The Action Pack clips also contain accumulated horizontal Hips/root motion. Because `Player` already
+moves its `CharacterBody3D`, retaining that motion made the mesh drift inside the controller while the
+camera followed the controller, then snap back at each 1-2 second animation loop. Run
+`HumanoidRetargeter.make_clip_in_place()` after retargeting: it subtracts linear X/Z travel while
+preserving vertical bob and cyclic stride offsets. The locomotion harness rejects a directional clip
+whose first/last Hips XZ positions differ by more than 1 mm.
+The same imported clips also arrived with a constant near-180-degree Hips facing offset. That made the
+rendered body turn while crouch-strafing and made the bone-following camera turn with it even after root
+translation was fixed. `HumanoidRetargeter.align_clip_facing()` now compares the directional clip to
+the forward crouch reference and removes only its constant horizontal yaw in the Hips parent's rest
+frame. It deliberately keeps pelvis lean and animated twist. The directional regression now rejects a
+horizontal facing delta above one degree as well as accumulated XZ travel.
+The generic retargeter's arm-position FABRIK pass has no elbow pole and became unstable in these clips:
+the live A/B trace found isolated 12-14 degree shoulder/forearm/hand steps mid-cycle. Directional crouch
+retargeting now skips that optional positional pass and retains the normal model-space arm rotations;
+the recorded runtime peak dropped from 14.4 to 3.36 degrees. The harness rejects any baked directional
+arm step above 5 degrees. Only the Action Pack left/right clips share gait phase. UAL's forward crouch
+uses a different authored contact/arm phase, so lateral-to-forward changes use a normal crossfade instead
+of seeking the forward clip to the lateral clip's normalized time. Held crouch movement intent prevents
+a direction reversal from briefly nesting an idle crossfade between the lateral clips.
 
 **Verified the clamp actually does something**, not just parses: temporarily set
 `max_hip_swing_degrees` to an unreasonably tight `15.0` and re-ran `check_foot_ik.sh` -
@@ -1094,3 +1280,60 @@ user://foot_ik_penetration_check_marker` before `play_scene_in_editor()`, matchi
 marker pattern already used for the turn-snap investigation), stand idle on Ramp 45 for a few seconds,
 stop, and read `"penetration"` from the JSONL trace past frame ~40 - the `bones` breakdown will show
 which bone/foot and roughly how deep.
+
+## 2026-08-11: crouch-idle IK-on/off parity
+
+The locomotion regression previously used crouch idle only to settle before another case; it did not
+compare that pose directly. A dedicated `crouch_idle` A/B now samples every final leg joint with IK off
+and on and requires <=0.1 degrees rotation and <=1mm position difference.
+
+The first run exposed a persistent 59.883-degree right-foot difference. The clip's soles are authored
+2.46cm and 3.13cm above the floor. The latter barely exceeded the generic 3cm contact threshold, so
+the stationary gait path treated it as a lower tread and solved the leg despite being on a flat floor.
+Flat crouch idle now preserves the authored pose when the detected clearance is below
+`step_min_rise` (5cm). This remains narrower than disabling idle IK: a real larger drop, slope, or
+latched stair target still runs the solver. The corrected regression measures 0mm position difference
+and 0.079 degrees worst rotation difference at `LeftFoot`.
+
+## 2026-08-12: full rendered-pose/skin regression matrix
+
+The previous locomotion A/B sampled only eight leg joints. It could prove bone lengths remained
+anatomical and rotations were continuous, but it could not prove that the weighted mesh between those
+joints remained visually healthy. That gap explains why a check could pass while forward crouch still
+showed obvious skin deformation.
+
+`foot_ik_regression_audit.gd` now runs beside the 17 flat-locomotion A/B cases. Every sampled frame
+records every final skeleton bone for matching IK-off/on players, plus deterministic CPU-skinned
+samples from every skinned mesh surface. It measures sampled triangle edge strain, IK-added vertex
+motion, bone scale, and IK-added per-frame bone position/rotation. Moving landing and turning still use
+their existing focused paired checks. Cases live separately in
+`foot_ik_locomotion_cases.gd` so the 1000-line runner does not absorb another large catalog.
+
+Artifacts are written under `user://`:
+
+- `foot_ik_regression_summary.jsonl`: one small result per case.
+- `foot_ik_regression_matrix.jsonl`: every frame/bone/sample for diagnosis; roughly 70 MB and not
+  committed.
+
+The first honest baseline is intentionally red. Normal idle, walk, sprint, lateral crouch pass, while
+forward crouch, lateral-to-forward crouch, and sprint-to-crouch expose remaining deformation. Forward
+crouch currently reaches a 9.52x sampled-edge ratio, a 0.17098m edge delta, and 0.08623m of IK-added
+bone motion around frames 64-76 despite the older joint check looking acceptable. Do not loosen the
+new limits to make this baseline green; fix the contact/lock transition and retain these cases as the
+regression contract.
+
+## 2026-08-12: weighted chain positions fixed without disabling IK
+
+The visible left-leg deformation in the static crouch-walk IK-on dummy was not evidence that crouch
+needed IK disabled. `foot_ik_leg_solver.gd` blended and rate-limited the hip/knee rotations, but still
+assigned the knee and foot the positions from the unweighted 100% solve. At partial weight the rendered
+bases and joint positions therefore described two different chains, deforming the skin despite valid
+bone scales. The same mismatch existed while releasing residual corrections back to animation.
+
+Both solve and release now reconstruct knee/foot positions by rotating the authored rigid segment
+vectors with the actual weighted/rate-limited corrections. Zero weight is the exact authored chain;
+partial weight is a consistent partial solve; full weight remains full IK. Forward crouch and its
+crouch-to-sprint transition now pass both the joint continuity check and full CPU-skinned matrix. In
+forward crouch the matrix's IK-added vertex motion fell from 0.41427m during the first attempted fix to
+0.01426m, with 0.01491m maximum added bone position and 4.16 degrees maximum added rotation. Keep the
+IK enabled; preserve this rotation/position consistency whenever solver weighting changes.

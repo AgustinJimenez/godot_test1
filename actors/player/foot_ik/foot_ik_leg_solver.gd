@@ -4,14 +4,70 @@ extends RefCounted
 ## into hierarchy-preserving hip, knee, foot, toe, and leaf bone poses.
 
 var _owner
+var _previous_corrections: Dictionary = {}
+var _previous_correction_frames: Dictionary = {}
+
+const MAX_CORRECTION_ANGULAR_SPEED := 120.0
+const CROUCH_CORRECTION_ANGULAR_SPEED := 45.0
 
 
 func _init(owner) -> void:
 	_owner = owner
 
 
+func reset_runtime_state() -> void:
+	_previous_corrections.clear()
+	_previous_correction_frames.clear()
+
+
+func release(side: StringName) -> void:
+	for joint: StringName in [&"hip", &"knee", &"foot"]:
+		_previous_corrections.erase("%s:%s" % [side, joint])
+		_previous_correction_frames.erase("%s:%s" % [side, joint])
+
+
+func release_to_animation(skel: Skeleton3D, side: StringName, delta: float) -> void:
+	if not _previous_corrections.has("%s:hip" % side):
+		return
+	var poses: Dictionary = _owner._leg_fresh_pose_cache[side]
+	if _owner._animation_discontinuous and _owner._prev_leg_bone_poses.has(side):
+		poses = _owner._prev_leg_bone_poses[side]
+	var hip_delta := _limit_correction(side, &"hip", Quaternion.IDENTITY, delta)
+	var knee_delta := _limit_correction(side, &"knee", Quaternion.IDENTITY, delta)
+	var foot_delta := _limit_correction(side, &"foot", Quaternion.IDENTITY, delta)
+	if (hip_delta.angle_to(Quaternion.IDENTITY) < 0.0001
+			and knee_delta.angle_to(Quaternion.IDENTITY) < 0.0001
+			and foot_delta.angle_to(Quaternion.IDENTITY) < 0.0001):
+		release(side)
+		return
+	var indices: Dictionary = _owner._bone_indices[side]
+	var to_world := skel.global_transform
+	var to_local := to_world.affine_inverse()
+	var animated_hip: Vector3 = to_world * (poses["hip"] as Transform3D).origin
+	var animated_knee: Vector3 = to_world * (poses["knee"] as Transform3D).origin
+	var animated_foot: Vector3 = to_world * (poses["foot"] as Transform3D).origin
+	var corrected_positions := {
+		&"hip": animated_hip,
+		&"knee": animated_hip + hip_delta * (animated_knee - animated_hip),
+	}
+	corrected_positions[&"foot"] = (corrected_positions[&"knee"] as Vector3) \
+			+ knee_delta * (animated_foot - animated_knee)
+	for joint: StringName in [&"hip", &"knee", &"foot"]:
+		var pose: Transform3D = poses[joint]
+		var correction := Quaternion.IDENTITY
+		if joint == &"hip":
+			correction = hip_delta
+		elif joint == &"knee":
+			correction = knee_delta
+		elif joint == &"foot":
+			correction = foot_delta
+		var basis := Basis(correction) * (to_world.basis * pose.basis)
+		skel.set_bone_global_pose(indices[joint], Transform3D(
+				to_local.basis * basis, to_local * (corrected_positions[joint] as Vector3)))
+
+
 func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3,
-		upper_length: float, lower_length: float, ground_weight: float) -> void:
+		upper_length: float, lower_length: float, ground_weight: float, delta: float) -> void:
 	var indices: Dictionary = _owner._bone_indices[side]
 	var hip_idx: int = indices["hip"]
 	var knee_idx: int = indices["knee"]
@@ -51,9 +107,11 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	# target. The predictor deliberately raises a released foot before its
 	# next tread, and that positional correction still needs the chain solve.
 	if solve_weight <= 0.0001 and target.distance_squared_to(foot_pos) < 0.000001:
+		release_to_animation(skel, side, delta)
 		return
 	var to_target := target - hip_pos
 	if to_target.is_zero_approx():
+		release_to_animation(skel, side, delta)
 		return
 	var minimum_knee_angle := deg_to_rad(180.0 - _owner.max_knee_flexion_degrees)
 	var flexion_limited_reach := sqrt(maxf(0.0,
@@ -97,13 +155,37 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	var new_foot_pos := new_knee_pos + new_knee_to_foot_dir * lower_length
 	var hip_delta := Quaternion((knee_pos - animated_hip_pos).normalized(), new_hip_to_knee_dir)
 	var knee_delta := Quaternion((foot_pos - knee_pos).normalized(), new_knee_to_foot_dir)
+	# Weight the chain correction itself, not only its target position. Near
+	# extension a small target change can imply a much larger hip/knee angle.
+	# Landing grace uses a gentler cubic engagement, then ordinary gait keeps
+	# the direct confidence weight while the rate limiter below prevents a
+	# contact change from injecting a one-frame procedural joint snap.
+	var rotation_weight := solve_weight
+	if _owner._landing_grace_time > 0.0:
+		rotation_weight = solve_weight * solve_weight * solve_weight
+	hip_delta = Quaternion.IDENTITY.slerp(hip_delta, rotation_weight)
+	knee_delta = Quaternion.IDENTITY.slerp(knee_delta, rotation_weight)
+	hip_delta = _limit_correction(side, &"hip", hip_delta, delta)
+	knee_delta = _limit_correction(side, &"knee", knee_delta, delta)
+	# Positions must come from the same weighted/rate-limited rotations that
+	# will be rendered below. Previously they stayed at the full solve while
+	# the bases were only partially corrected, so even a small IK weight could
+	# put a crouch joint at 100% of the procedural target and visibly stretch
+	# the skinned leg. Rotating the authored rigid segments preserves both bone
+	# lengths and exact animation pass-through at zero weight.
+	new_knee_pos = hip_pos + hip_delta * (knee_pos - animated_hip_pos)
+	new_foot_pos = new_knee_pos + knee_delta * (foot_pos - knee_pos)
 	var new_hip_basis_world := Basis(hip_delta) * (to_world.basis * hip_pose.basis)
 	var new_knee_basis_world := Basis(knee_delta) * (to_world.basis * knee_pose.basis)
 	var animated_foot_basis_world := to_world.basis * foot_pose.basis
 	var ground_foot_basis_world: Basis = _owner._compute_new_foot_basis_world(
 			skel, side, -(_owner._smoothed_normal[side] as Vector3), foot_pose)
-	var new_foot_basis_world := Basis(animated_foot_basis_world.get_rotation_quaternion().slerp(
-			ground_foot_basis_world.get_rotation_quaternion(), solve_weight))
+	var animated_foot_rotation := animated_foot_basis_world.get_rotation_quaternion()
+	var desired_foot_rotation := animated_foot_rotation.slerp(
+			ground_foot_basis_world.get_rotation_quaternion(), solve_weight)
+	var foot_delta := _limit_correction(side, &"foot",
+			desired_foot_rotation * animated_foot_rotation.inverse(), delta)
+	var new_foot_basis_world := Basis(foot_delta) * animated_foot_basis_world
 	skel.set_bone_global_pose(hip_idx,
 			Transform3D(to_local.basis * new_hip_basis_world, to_local * hip_pos))
 	skel.set_bone_global_pose(knee_idx,
@@ -117,6 +199,41 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 			"new_basis": new_foot_basis_world, "toe_pose": toe_pose,
 			"leaf_pose": leaf_pose, "weight": solve_weight,
 		})
+
+
+func _limit_correction(side: StringName, joint: StringName,
+		desired: Quaternion, delta: float) -> Quaternion:
+	var key := "%s:%s" % [side, joint]
+	var previous: Quaternion = _previous_corrections.get(key, Quaternion.IDENTITY)
+	var current_frame := Engine.get_physics_frames()
+	if int(_previous_correction_frames.get(key, -1)) == current_frame:
+		return previous
+	var is_crouch_animation := false
+	if _owner.player_body != null and _owner.player_body.anim_player != null:
+		var animation_name := String(_owner.player_body.anim_player.current_animation)
+		is_crouch_animation = animation_name.begins_with("moves/unarmed_crouch")
+	# Stair clearance needs the foot orientation to follow its tread target in
+	# the current solve. Delaying that rotation causes the rendered toes/sole to
+	# pass through the riser even when the leg target itself is valid.
+	if joint == &"foot" and not is_crouch_animation:
+		_previous_corrections[key] = desired
+		_previous_correction_frames[key] = current_frame
+		return desired
+	var angle := previous.angle_to(desired)
+	var angular_speed := MAX_CORRECTION_ANGULAR_SPEED
+	# The compact crouch gait brings the leg chain close to its flexion limit,
+	# where a small contact change can otherwise become a visible joint snap.
+	# Keep the ordinary/stair solve responsive and use the tighter budget only
+	# for crouch locomotion and its release into crouch idle.
+	if is_crouch_animation:
+		angular_speed = CROUCH_CORRECTION_ANGULAR_SPEED
+	var maximum_step := deg_to_rad(angular_speed) * maxf(delta, 0.0)
+	var result := desired
+	if angle > maximum_step and angle > 0.000001:
+		result = previous.slerp(desired, maximum_step / angle)
+	_previous_corrections[key] = result
+	_previous_correction_frames[key] = current_frame
+	return result
 
 
 func _solve_toes(skel: Skeleton3D, side: StringName, toe_idx: int, leaf_idx: int,

@@ -3,6 +3,7 @@ extends Node3D
 const TOE_TIP_EXTRA_LENGTH := 0.035 # toe bone origin is at the base, not the mesh tip
 const JOINT_HISTORY_GRAPH := preload(
 		"res://tests/manual/foot_ik/foot_ik_joint_history_graph.gd")
+const TRACE_WRITER := preload("res://tests/manual/foot_ik/foot_ik_trace_writer.gd")
 const PANEL_OUTER_MARGIN := 20 # gap between screen edge and panel border
 # Wide rows would render flush against the panel edge without this.
 const PANEL_INNER_PADDING := 14
@@ -47,7 +48,7 @@ const READOUT_FIELDS := [
 	["leaf_angle", "Leaf°"],
 ]
 var _loop_reset_flash: Label
-var _controlled_trace_buffer: Array[String] = []
+var _controlled_trace_writer := TRACE_WRITER.new(CONTROLLED_TRACE_FILE, CONTROLLED_TRACE_MAX_FRAMES)
 var _contact_lost_flash: Label
 ## Marker-file toggle (same pattern as auto-spin) - a per-vertex raycast
 ## every frame is the right cost for a diagnostic session, not ordinary play.
@@ -254,28 +255,6 @@ func _make_probe(bone_idx: int) -> Node3D:
 	var probe := Node3D.new()
 	attach.add_child(probe)
 	return probe
-
-## Per-joint world position + rotation (Euler degrees), keyed by joint name -
-## diagnostic output only, never fed back into a computation.
-func _capture_joint_transforms(side: StringName) -> Dictionary:
-	var angle_probes: Dictionary = _angle_probes.get(side, {})
-	var probes := {
-		"hip": angle_probes.get("hip"), "knee": angle_probes.get("knee"),
-		"foot": _probes.get(side), "toe": _toe_probes.get(side),
-		"leaf": angle_probes.get("leaf"),
-	}
-	var result := {}
-	for joint: String in probes:
-		var probe: Node3D = probes[joint]
-		if probe == null:
-			continue
-		var xform := probe.global_transform
-		result[joint] = {
-			"position": xform.origin,
-			"rotation_deg": xform.basis.get_euler() * (180.0 / PI),
-		}
-	return result
-
 
 ## Each segment's OWN absolute angle from world Vector3.DOWN, not the bend
 ## relative to the previous segment. Shared by readout + console dump.
@@ -967,6 +946,11 @@ func _capture_controlled_foot_frame() -> void:
 		var toe_probe: Node3D = _toe_probes.get(side)
 		var hip_probe: Node3D = (_angle_probes.get(side, {}) as Dictionary).get("hip")
 		var normal: Vector3 = _ik._smoothed_normal.get(side, Vector3.UP)
+		var angle_probes: Dictionary = _angle_probes.get(side, {})
+		var joints := TRACE_WRITER.capture_joint_transforms({
+			"hip": angle_probes.get("hip"), "knee": angle_probes.get("knee"),
+			"foot": probe, "toe": toe_probe, "leaf": angle_probes.get("leaf"),
+		})
 		trace["feet"][side] = {
 			"gap": actual_pos.y - target.y - sole_depth,
 			"sole_clearance": sole.y - target.y,
@@ -977,24 +961,22 @@ func _capture_controlled_foot_frame() -> void:
 			"contact_distance": float(_ik.debug_contact_distance.get(side, -1.0)),
 			"contact_lost": bool(_ik.debug_contact_lost.get(side, false)),
 			"frozen": bool(_ik._idle_frozen.get(side, false)),
+			"locomotion_stance": _ik._gait_tracker.is_locomotion_stance_active(side),
+			"locomotion_locked": _ik._gait_tracker.is_locomotion_target_locked(side),
 			"freeze_streak": int(_ik._idle_freeze_streak.get(side, 0)),
 			"step_down": bool(_ik.debug_step_down.get(side, false)),
 			"toe_tip_y": toe_probe.global_position.y if toe_probe != null else 0.0,
 			"foot_pos": actual_pos,
 			"hip_pos": hip_probe.global_position if hip_probe != null else Vector3.ZERO,
 			"smoothed_target": target,
+			"bone_lengths": TRACE_WRITER.measure_bone_lengths(
+					joints, _ik._leg_lengths.get(side, {})),
 			# Absolute angle of the ground normal from world up - 0 on flat
 			# floor, ~45 on the Ramp 45 platform - not a per-joint bend.
 			"floor_angle_deg": rad_to_deg(normal.angle_to(Vector3.UP)),
 			"leg_angles_deg": _compute_leg_angles(side),
-			"joints": _capture_joint_transforms(side),
+			"joints": joints,
 		}
 	# Rolling window, not an ever-growing append: always holds the moment a
 	# live shake just happened without a whole play session in the file.
-	_controlled_trace_buffer.append(JSON.stringify(trace))
-	if _controlled_trace_buffer.size() > CONTROLLED_TRACE_MAX_FRAMES:
-		_controlled_trace_buffer.pop_front()
-	var file := FileAccess.open(CONTROLLED_TRACE_FILE, FileAccess.WRITE)
-	for line: String in _controlled_trace_buffer:
-		file.store_line(line)
-	file.close()
+	_controlled_trace_writer.capture(JSON.stringify(trace))

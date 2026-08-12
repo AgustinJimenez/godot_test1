@@ -9,11 +9,19 @@ func _init(owner) -> void:
 	_owner = owner
 
 
+func reset_runtime_state() -> void:
+	_locomotion_lock_released.clear()
+	_locomotion_lock_active.clear()
+	_locomotion_stance_active.clear()
+	_locomotion_landing_imminent.clear()
+
+
 const DISCONTINUITY_HOLD_FRAMES := 1
 ## Wider than DISCONTINUITY_HOLD_FRAMES on purpose - see this function's doc.
 const VELOCITY_SUPPRESS_FRAMES := 2
 const STAIR_WEIGHT_RISE_TIME := 0.12
 const STAIR_WEIGHT_FALL_TIME := 0.05
+
 
 ## An animation loop reset jumps current_animation_position backward
 ## instantly - a real discontinuity, not motion. Diffing across it in
@@ -53,13 +61,33 @@ func update_animation_discontinuity(delta: float) -> void:
 
 ## flags: "step_down"/"skip_velocity_gate"/"frozen" bools (all default false) -
 ## bundled to stay under the linter's max-argument count.
-func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
-		ground_target: Vector3, contact_hit: bool, contact_distance: float,
-		to_world: Transform3D, delta: float, flags: Dictionary = {}) -> Dictionary:
+func update(
+	side: StringName,
+	animated_foot_pos: Vector3,
+	foot_pos: Vector3,
+	ground_target: Vector3,
+	contact_hit: bool,
+	contact_distance: float,
+	to_world: Transform3D,
+	delta: float,
+	flags: Dictionary = {}
+) -> Dictionary:
 	var step_down: bool = flags.get("step_down", false)
 	var skip_velocity_gate: bool = flags.get("skip_velocity_gate", false)
 	var frozen: bool = flags.get("frozen", false)
 	var velocity := _measure_velocity(side, animated_foot_pos, to_world, delta)
+	var landed := _update_landing(side, velocity, delta)
+	var locomotion_stance := false
+	if skip_velocity_gate:
+		_locomotion_stance_active[side] = false
+	else:
+		locomotion_stance = _update_locomotion_stance(side, velocity, landed)
+	# A vertical-velocity valley can look like a landing while a crouch foot
+	# is still high in its swing. Phase alone must not bypass contact loss or
+	# apply full plant weight until the sole is near a real surface.
+	var stance_contact: bool = (
+		locomotion_stance and contact_hit and contact_distance <= _owner.step_min_rise
+	)
 	var force_plant: bool = _owner.force_plant_mode
 	# A stationary stance foot easing down onto a reachable lower surface must
 	# not be treated as contact-lost just because the sole is further than
@@ -87,11 +115,19 @@ func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
 	# well under the limit, while horiz grew unbounded past 25cm).
 	# Vertical clearance is what this check is actually meant to gate.
 	var vertical_gap := absf(foot_pos.y - ground_target.y)
-	var contact_lost: bool = not step_down and _owner.step_prediction_enabled \
-			and not force_plant and not frozen and not _owner._animation_discontinuous and (
+	var contact_lost: bool = (
+		not step_down
+		and _owner.step_prediction_enabled
+		and not force_plant
+		and not frozen
+		and not stance_contact
+		and not _owner._animation_discontinuous
+		and (
 			not contact_hit
 			or contact_distance > _owner.GROUND_CONTACT_DISTANCE
-			or vertical_gap > _owner.GROUND_CONTACT_DISTANCE)
+			or vertical_gap > _owner.GROUND_CONTACT_DISTANCE
+		)
+	)
 	var raw_weight := _raw_weight(side, velocity)
 	# Velocity is deliberately zeroed across an animation loop seam. Zero is
 	# otherwise interpreted as a planted foot, which created a one-frame IK
@@ -102,6 +138,8 @@ func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
 	elif contact_lost:
 		raw_weight = 0.0
 	elif force_plant:
+		raw_weight = 1.0
+	elif stance_contact and not _locomotion_target_overextended(side):
 		raw_weight = 1.0
 	elif frozen:
 		# Freezing already bypasses the raycast search and contact_lost
@@ -124,12 +162,12 @@ func update(side: StringName, animated_foot_pos: Vector3, foot_pos: Vector3,
 	_owner.debug_raw_weight[side] = raw_weight
 	_owner.debug_contact_lost[side] = contact_lost
 	var weight := _smooth_weight(side, raw_weight, contact_lost, delta)
-	var landed := _update_landing(side, velocity, delta)
 	return {"vertical_velocity": velocity, "ground_weight": weight, "landed": landed}
 
 
-func _measure_velocity(side: StringName, foot_pos: Vector3,
-		to_world: Transform3D, delta: float) -> float:
+func _measure_velocity(
+	side: StringName, foot_pos: Vector3, to_world: Transform3D, delta: float
+) -> float:
 	var velocity := 0.0
 	if delta <= 0.0:
 		return velocity
@@ -139,8 +177,10 @@ func _measure_velocity(side: StringName, foot_pos: Vector3,
 	if not _owner._velocity_suppressed and _owner._prev_animated_foot_pos.has(side):
 		var previous: Vector3 = _owner._prev_animated_foot_pos[side]
 		var world_delta := to_world.basis * (foot_pos - previous)
-		velocity = world_delta.dot(_owner._smoothed_normal[side] as Vector3) / (
-				delta * maxf(_owner.player_body.locomotion_playback_scale, 0.001))
+		velocity = (
+			world_delta.dot(_owner._smoothed_normal[side] as Vector3)
+			/ (delta * maxf(_owner.player_body.locomotion_playback_scale, 0.001))
+		)
 	_owner._prev_animated_foot_pos[side] = foot_pos
 	# Same fix as _step_down_classification's static streak (see that comment
 	# for the full story): idle-animation noise can tick velocity back above
@@ -198,7 +238,8 @@ func _measure_velocity(side: StringName, foot_pos: Vector3,
 ## A real swing quickly clears this margin anyway, so the streak protection
 ## (needed to stop a single-frame noise blip from sinking a foot into a
 ## tread before it's actually lifted) is unaffected for genuine swings.
-const STREAK_GATE_MARGIN := 3.0 # multiple of velocity_noise_floor
+const STREAK_GATE_MARGIN := 3.0  # multiple of velocity_noise_floor
+
 
 func _raw_weight(side: StringName, velocity: float) -> float:
 	if absf(velocity) < _owner.velocity_noise_floor:
@@ -206,8 +247,9 @@ func _raw_weight(side: StringName, velocity: float) -> float:
 	if velocity > 0.0:
 		if int(_owner._rising_streak.get(side, 0)) < _owner.min_falling_streak:
 			return 1.0
-		return clampf(1.0 - velocity * _owner.rising_penalty
-				/ _owner.swing_speed_threshold, 0.0, 1.0)
+		return clampf(
+			1.0 - velocity * _owner.rising_penalty / _owner.swing_speed_threshold, 0.0, 1.0
+		)
 	var past_margin: bool = absf(velocity) >= _owner.velocity_noise_floor * STREAK_GATE_MARGIN
 	if past_margin and int(_owner._falling_streak.get(side, 0)) < _owner.min_falling_streak:
 		return 0.0
@@ -221,11 +263,15 @@ func _raw_weight(side: StringName, velocity: float) -> float:
 ## target and the fresh animated pose routinely differ by tens of cm right
 ## after unfreezing) - confirmed via a live capture pinpointing the exact
 ## frame weight went 1.0 -> 0.0 with no intermediate step.
-func _smooth_weight(side: StringName, raw_weight: float,
-		contact_lost: bool, delta: float) -> float:
-	if contact_lost:
+func _smooth_weight(side: StringName, raw_weight: float, contact_lost: bool, delta: float) -> float:
+	# Once the body has landed, brief probe loss must not undo the deliberate
+	# grace ramp. Dropping and reacquiring weight here made the solved leg
+	# oscillate during the same touchdown instead of converging monotonically.
+	if contact_lost and _owner._landing_grace_time <= 0.0:
 		raw_weight = 0.0
-	var previous: float = _owner._smoothed_ground_weight.get(side, raw_weight)
+	var previous: float = _owner._smoothed_ground_weight.get(
+		side, 0.0 if _owner._landing_grace_time > 0.0 else raw_weight
+	)
 	var weight := raw_weight
 	var rise_time: float = _owner.ground_weight_rise_time
 	var fall_time: float = _owner.ground_weight_fall_time
@@ -267,14 +313,46 @@ func _smooth_weight(side: StringName, raw_weight: float,
 
 
 func _update_landing(side: StringName, velocity: float, delta: float) -> bool:
-	if velocity < -_owner.swing_speed_threshold:
+	# Landing is a phase edge, not every descent-to-leveling wobble inside an
+	# already planted stance. Crouch-strafe's authored foot keeps bobbing after
+	# contact; re-arming here emitted a second landing, reset lock-release
+	# hysteresis, and teleported the target to the moving ray hit by ~0.9 m.
+	# Toe-off clears stance below, after which the next real descent may arm.
+	if bool(_locomotion_stance_active.get(side, false)):
+		_owner._landing_fell[side] = false
+		return false
+	if (
+		velocity < -_owner.velocity_noise_floor * STREAK_GATE_MARGIN
+		and int(_owner._falling_streak.get(side, 0)) >= _owner.min_falling_streak
+	):
 		_owner._landing_fell[side] = true
-	elif (delta > 0.0 and velocity >= -_owner.velocity_noise_floor
-			and bool(_owner._landing_fell.get(side, false))):
+	elif (
+		delta > 0.0
+		and velocity >= -_owner.velocity_noise_floor
+		and bool(_owner._landing_fell.get(side, false))
+	):
 		_owner._landing_fell[side] = false
 		_owner.foot_landed.emit(side, _owner._smoothed_target[side] as Vector3)
 		return true
 	return false
+
+
+func _update_locomotion_stance(side: StringName, velocity: float, landed: bool) -> bool:
+	if _body_horizontal_speed() <= IDLE_TRANSLATION_EPSILON:
+		_locomotion_stance_active[side] = false
+		return false
+	var stance: bool = _locomotion_stance_active.get(side, false)
+	if landed:
+		stance = true
+		_locomotion_lock_released[side] = false
+	elif (
+		stance
+		and velocity > _owner.swing_speed_threshold
+		and int(_owner._rising_streak.get(side, 0)) >= _owner.min_falling_streak
+	):
+		stance = false
+	_locomotion_stance_active[side] = stance
+	return stance
 
 
 const IDLE_FREEZE_STREAK := 30
@@ -317,19 +395,45 @@ const IDLE_UNFREEZE_STREAK := 3
 ## read as the leg lagging behind the turn rather than following it.
 const IDLE_UNFREEZE_ROTATION_DEG := 6.0
 const IDLE_TURNING_EPSILON_DEG := 0.1
+const IDLE_TRANSLATION_EPSILON := 0.05
+const LOCOMOTION_LOCK_RELEASE_REACH_RATIO := 0.98
+const LOCOMOTION_AUTHORED_REACH_MARGIN := 0.0
+const LOCOMOTION_LOCK_REARM_WEIGHT := 0.5
+
+var _locomotion_lock_released: Dictionary = {}
+var _locomotion_lock_active: Dictionary = {}
+var _locomotion_stance_active: Dictionary = {}
+var _locomotion_landing_imminent: Dictionary = {}
+
+
+func prepare_contact_phase(side: StringName, velocity: float, delta: float) -> void:
+	_locomotion_landing_imminent[side] = (
+		delta > 0.0
+		and bool(_owner._landing_fell.get(side, false))
+		and velocity >= -_owner.velocity_noise_floor
+	)
+
+
+func is_locomotion_landing_imminent(side: StringName) -> bool:
+	return bool(_locomotion_landing_imminent.get(side, false))
+
 
 func update_idle_freeze(side: StringName, anim_speed: float, delta: float, yaw: float) -> bool:
 	var frozen: bool = _owner._idle_frozen.get(side, false)
+	var body_translating := _body_horizontal_speed() > IDLE_TRANSLATION_EPSILON
 	var last_yaw_key := StringName("%s:last" % side)
 	var last_yaw: float = _owner._idle_freeze_yaw.get(last_yaw_key, yaw)
-	var yaw_stable := absf(angle_difference(last_yaw, yaw)) <= deg_to_rad(
-			IDLE_TURNING_EPSILON_DEG)
+	var yaw_stable := absf(angle_difference(last_yaw, yaw)) <= deg_to_rad(IDLE_TURNING_EPSILON_DEG)
 	if delta > 0.0:
 		_owner._idle_freeze_yaw[last_yaw_key] = yaw
 		_owner._idle_freeze_yaw[StringName("%s:turning" % side)] = not yaw_stable
 	if frozen and delta > 0.0:
 		var freeze_yaw: float = _owner._idle_freeze_yaw.get(side, yaw)
-		if absf(angle_difference(freeze_yaw, yaw)) > deg_to_rad(IDLE_UNFREEZE_ROTATION_DEG):
+		if body_translating:
+			frozen = false
+			_owner._idle_freeze_streak[side] = 0
+			_owner._idle_unfreeze_streak[side] = 0
+		elif absf(angle_difference(freeze_yaw, yaw)) > deg_to_rad(IDLE_UNFREEZE_ROTATION_DEG):
 			frozen = false
 			_owner._idle_freeze_streak[side] = 0
 			_owner._idle_unfreeze_streak[side] = 0
@@ -342,8 +446,12 @@ func update_idle_freeze(side: StringName, anim_speed: float, delta: float, yaw: 
 			_owner._idle_freeze_streak[side] = 0
 			_owner._idle_unfreeze_streak[side] = 0
 	elif not frozen and delta > 0.0:
-		if (_owner._smoothed_ground_weight.get(side, 0.0) >= 0.999
-				and absf(anim_speed) <= _owner.idle_step_down_speed and yaw_stable):
+		if (
+			not body_translating
+			and _owner._smoothed_ground_weight.get(side, 0.0) >= 0.999
+			and absf(anim_speed) <= _owner.idle_step_down_speed
+			and yaw_stable
+		):
 			_owner._idle_freeze_streak[side] = int(_owner._idle_freeze_streak.get(side, 0)) + 1
 		else:
 			_owner._idle_freeze_streak[side] = 0
@@ -354,18 +462,84 @@ func update_idle_freeze(side: StringName, anim_speed: float, delta: float, yaw: 
 	return frozen
 
 
-## The planted-target latch is only valid while the body remains near the
-## yaw where this foot last became stably frozen. update_idle_freeze() may
-## release correctly during a turn, but an independent weight-only latch
-## would otherwise keep the same stale world target anyway.
+## A translating stance foot stays at its world contact instead of skating
+## with the body. The lock is finite: release before the target consumes the
+## leg's anatomical reach, then keep it released until the animation enters
+## swing. That hysteresis prevents release/re-latch chatter and works for any
+## movement direction; playback speed remains responsible for gait cadence.
+## At idle the existing freeze-yaw rule still owns target stability.
 func target_lock_allows_latch(side: StringName) -> bool:
+	if _body_horizontal_speed() > IDLE_TRANSLATION_EPSILON:
+		if not bool(_locomotion_stance_active.get(side, false)):
+			_locomotion_lock_active[side] = false
+			return false
+		var weight: float = _owner._smoothed_ground_weight.get(side, 0.0)
+		if weight <= LOCOMOTION_LOCK_REARM_WEIGHT:
+			_locomotion_lock_released[side] = false
+		var released: bool = _locomotion_lock_released.get(side, false)
+		if not released and _locomotion_target_overextended(side):
+			released = true
+			_locomotion_lock_released[side] = true
+		_locomotion_lock_active[side] = not released
+		return not released
+	_locomotion_lock_active[side] = false
 	if not _owner._idle_freeze_yaw.has(side):
 		return false
 	var current_yaw := (_owner.player_body.get_parent() as Node3D).rotation.y
 	var freeze_yaw: float = _owner._idle_freeze_yaw[side]
-	return absf(angle_difference(freeze_yaw, current_yaw)) <= deg_to_rad(
-			IDLE_UNFREEZE_ROTATION_DEG)
+	return absf(angle_difference(freeze_yaw, current_yaw)) <= deg_to_rad(IDLE_UNFREEZE_ROTATION_DEG)
+
+
+func is_locomotion_target_locked(side: StringName) -> bool:
+	return bool(_locomotion_lock_active.get(side, false))
+
+
+func is_locomotion_stance_active(side: StringName) -> bool:
+	return bool(_locomotion_stance_active.get(side, false))
+
+
+func _locomotion_target_overextended(side: StringName) -> bool:
+	if (
+		not _owner._smoothed_target.has(side)
+		or not _owner._leg_fresh_pose_cache.has(side)
+		or not _owner._leg_lengths.has(side)
+	):
+		return false
+	var hip_pose: Transform3D = (_owner._leg_fresh_pose_cache[side] as Dictionary)["hip"]
+	var hip_world: Vector3 = _owner.player_body.skeleton.global_transform * hip_pose.origin
+	var offset: float = maxf(
+		_owner.ankle_offset, float(_owner._sole_depth_below_foot.get(side, 0.0))
+	)
+	var target: Vector3 = (
+		(_owner._smoothed_target[side] as Vector3)
+		+ (_owner._smoothed_normal[side] as Vector3) * offset
+	)
+	var lengths := _owner._leg_lengths[side] as Dictionary
+	var reach: float = float(lengths["upper"]) + float(lengths["lower"])
+	var fresh := _owner._leg_fresh_pose_cache[side] as Dictionary
+	var animated_hip: Vector3 = (
+		_owner.player_body.skeleton.global_transform * (fresh["hip"] as Transform3D).origin
+	)
+	var animated_foot: Vector3 = (
+		_owner.player_body.skeleton.global_transform * (fresh["foot"] as Transform3D).origin
+	)
+	var authored_reach := animated_hip.distance_to(animated_foot)
+	var release_reach := minf(
+		reach * LOCOMOTION_LOCK_RELEASE_REACH_RATIO,
+		authored_reach + LOCOMOTION_AUTHORED_REACH_MARGIN
+	)
+	return hip_world.distance_to(target) >= release_reach
 
 
 func is_body_turning(side: StringName) -> bool:
 	return bool(_owner._idle_freeze_yaw.get(StringName("%s:turning" % side), false))
+
+
+func _body_horizontal_speed() -> float:
+	var node: Node = _owner.player_body.get_parent()
+	while node != null and not node is CharacterBody3D:
+		node = node.get_parent()
+	if node == null:
+		return 0.0
+	var velocity := (node as CharacterBody3D).velocity
+	return Vector2(velocity.x, velocity.z).length()

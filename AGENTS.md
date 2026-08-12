@@ -247,6 +247,13 @@ followed correctly. A partial fix passed at 60 FPS but live play and a 30 FPS re
 at both rates. It bounds target-to-animated-foot separation and compares every final leg joint against
 the authored pose; run it together with stair penetration and pose-continuity checks.
 
+Flat-floor crouch idle is also an authored-pose pass-through case. Its soles intentionally hover
+roughly 2.5-3.1cm above the raycast surface, so the generic 3cm contact threshold can misclassify one
+foot as a step-down and make IK-on differ from IK-off by about 60 degrees. Treat crouch-idle clearance
+below `step_min_rise` as authored clearance, not a lower tread; real larger drops, slopes, and latched
+stair targets still solve normally. `scripts/check_foot_ik_locomotion.sh` compares all final leg-joint
+rotations and positions for the crouch-idle A/B and must retain the near-identical pose.
+
 **Before rate-limiting a shared per-frame value, `grep` every write site — not just the one the bug report points at — and confirm the fix by checking the value a *consumer* actually reads, not the bookkeeping variable you edited.** Fixing Foot IK's turn-snap bug (`_smoothed_target`, tens of cm popping in one frame during a fast rotation/flick-turn) took three rounds because each fix touched only one of three independent writers: `player_foot_ik_modifier.gd`'s ordinary raycast-tracking path, its reach-limit retraction path, and `foot_ik_stair_predictor.gd`'s stair-support latch (`_apply_support_contact()`) — clamping the first two measurably helped but left the third, largest snap completely unchanged. Worse, the clamped bookkeeping variable (`_smoothed_target`) wasn't even what got rendered there: `_apply_support_contact()` set `leg["target"]`/`leg["ground_target"]` (the value `_leg_solver.solve()` actually reads) directly from an unclamped `_support_ground_target`, so the clamp silently did nothing even though it "looked" applied — caught only by adding a temporary debug print at the write site and confirming the clamp's own math executed correctly, then noticing the *rendered* trace still jumped instantly. If a fix compiles, passes checks, and the bug still reproduces byte-for-byte identically (same frame, same magnitude, down to the decimal), suspect the fix touched the wrong variable, not that the fix is subtly wrong. Also: two of the fix attempts here (a blanket clamp, then one gated on the `step_down` gait flag) both regressed `FOOT_IK_BODY_PENETRATION_CHECK` with the *exact same* failure signature (15 samples, 0.308m max depth) — identical regressions across differently-gated attempts meant the gate wasn't distinguishing the two cases at all (`step_down` isn't true for every frame of a real stair descent). The signal that actually worked was independent of gait timing entirely: the support surface's contact-normal tilt (`dot(Vector3.UP)`) — near 1.0 for a flat stair tread (which needs an instant plant, or the pelvis sinks into the riser gap while a rate-limited target lags behind), well below it for a sloped ramp (safe to smooth). When gating a fix between two behaviors, prefer a signal that's a structural property of the situation (surface shape, geometry) over one that's a transient phase flag (gait/animation state) which may not hold on every frame you need it to.
 
 **Animation loop-reset seams are a recurring, cross-cutting gotcha, not a one-off Foot IK bug** — `AnimationPlayer.current_animation_position` resets backward instantly on loop, a real discontinuity that any code diffing across it (velocity) or reading a raw bone pose on that exact frame (a two-bone solve amplifying a tiny seam) can turn into a visible snap or spike. It has already hit four independent Foot IK consumers, each found live and fixed separately. Before debugging a periodic, once-per-animation-loop snap in *any* system (not just feet), read `docs/known_issues/animation_loop_reset_seam.md` first — it documents the detection mechanism already built (`update_animation_discontinuity()`, `_animation_discontinuous`, `_velocity_suppressed`), which consumers already had to respect it and why, a live cross-character instrumentation pitfall that cost real debugging time, and (now resolved, with the full trail kept as a worked example) the periodic walking/sprinting snap that turned out to be two separate bugs stacked on top of each other.
@@ -255,27 +262,160 @@ the authored pose; run it together with stair penetration and pose-continuity ch
 
 Foot IK locomotion continuity has a deterministic authored-vs-IK regression gate at
 `scripts/check_foot_ik_locomotion.sh`, also run by `scripts/check_foot_ik.sh`. It drives matching
-players forward on a large flat floor at 60 FPS for walk and sprint, records the final rendered
-hip/knee/foot/toe rotations, and fails only when IK adds a per-frame joint jump more than 2 degrees
-above that animation's own maximum. This relative baseline is intentional: a fixed absolute limit
-would reject a legitimately fast authored pose, while checking IK alone cannot distinguish source
-motion from a solver snap. Preserve these invariants when extending it to crouch, strafe, backward,
-or new locomotion packs: zero IK weight passes through the authored pose unless stair prediction has
+players on a large flat floor at 60 FPS across 17 idle, walk, sprint, crouch-direction, transition,
+and slow-motion cases. Moving landing and turning retain their separate focused A/B checks.
+`foot_ik_regression_audit.gd` captures every final skeleton bone on every sampled flat-locomotion frame
+and CPU-skins a deterministic triangle sample from every skinned surface. This second layer is
+mandatory: the earlier eight-joint rotation/segment-length check passed
+forward crouch while the rendered mesh still reached a 9.52x sampled-edge ratio and a 17.1cm edge-
+length difference. It writes compact case summaries to
+`user://foot_ik_regression_summary.jsonl` and the full diagnostic matrix to
+`user://foot_ik_regression_matrix.jsonl`; the latter is intentionally large and remains outside Git.
+Keep cases declarative in `foot_ik_locomotion_cases.gd`, not in the already-large runner. A fixed
+absolute joint-speed limit would reject a legitimately fast authored pose, while checking IK alone
+cannot distinguish source motion from a solver snap. Preserve these invariants when extending it to
+new locomotion packs: zero IK weight passes through the authored pose unless stair prediction has
 explicitly requested swing clearance; loop-reset suppression cannot manufacture a contact-state
 transition; weights change continuously; leg lengths and knee bend remain anatomical; and flat-ground
-IK should remain close to the corresponding IK-off trace. Run this A/B gate together with the stair
-penetration/airborne/stretch checks, not instead of them, and still require live manual confirmation.
+IK should remain close to the corresponding IK-off trace. A case must pass both
+`FOOT_IK_LOCOMOTION_CHECK` and `FOOT_IK_MATRIX_CHECK`; run this gate together with stair penetration,
+airborne, and stretch checks, not instead of them, and still require live manual confirmation.
+The same harness includes a 720-frame sprint at 5% `Engine.time_scale` because normal-speed sampling
+can skip a narrow toe-off orientation problem. That case compares foot/toe quaternions only. For live
+trace analysis, do not calculate pose deltas from `rotation_deg`: Euler decomposition of an inherited
+attachment basis produced apparent 86–89° jumps while direct final-bone quaternions were continuous.
+Use each joint's orthonormalized `rotation_quaternion` field. Preserve a live JSONL elsewhere before
+launching this headless scene because the shared debug overlay rewrites `user://foot_ik_controlled.jsonl`.
+
+Do not implement that rolling live trace by rewriting its complete in-memory window every physics
+frame. At 1,200 detailed frames the debug overlay was rewriting about 3.7 MB per tick, reducing the
+live render/animation update rate to roughly one update per eight physics ticks while movement kept
+advancing. The resulting stale-pose plateaus followed by 0.133-second animation jumps produced
+39–54° rendered joint changes that the lightweight headless A/B could not reproduce. Use
+`foot_ik_trace_writer.gd`: append one JSONL record per capture and compact the recent window only
+periodically. A diagnostic recorder must not materially change the timing of the system it measures.
+
+Looping gait transitions must preserve normalized animation phase, and playback rate must describe the
+selected gait rather than the controller's stale physical speed. Entering crouch while decelerating
+from sprint previously started `unarmed_crouch_walk` at the shared 2.2× cap; the live trace showed
+42.68° hip and 39.94° foot/toe frame changes even with IK weight zero. Cap crouch playback at its native
+1.0× rate and use `player_locomotion_transition.gd` to seek the new walk/sprint/crouch-walk loop to the
+outgoing loop's normalized phase before blending. The permanent A/B harness exercises both
+sprint→crouch-walk and crouch-walk→sprint from the transition's first frame; do not settle past a gait
+transition before sampling it. The corrected crouch entry peaks at 18.482°, comparable to ordinary
+walk's 18.127°, and the reverse transition retains sprint's authored 27.098° peak.
+
+Do not treat a clean gait transition as proof that the steady looping gait is clean. A live crouch-walk
+trace still had a periodic IK-added snap near phase 0.45 after crouch phase/rate transfer was fixed; a
+dedicated steady crouch IK-off/IK-on case isolated an 8.204° authored maximum versus 10.144° with IK.
+The compact crouch chain is close enough to its flexion limit that small contact changes need a tighter
+45°/second procedural hip/knee/foot correction budget, including residual release. Ordinary and stair
+hip/knee solves retain 120°/second, and non-crouch foot orientation follows its current tread immediately:
+rate-limiting stair foot orientation reintroduced 1.8–2.3 cm rendered-body penetration. Keep the steady
+crouch A/B, transition A/B, and stair body-penetration checks together; none substitutes for the others.
+
+Idle freeze must release while the owning `CharacterBody3D` translates, but ordinary locomotion still
+needs a finite world-space stance lock or the planted foot slides with the body. `FootIKGaitTracker`
+starts that lock only after sustained descent reaches a contact and releases it when sustained rising
+begins (landing through toe-off), for walk, sprint, and crouch in every supported direction. It also
+releases early when the lock reaches 98% of anatomical leg reach and cannot reacquire until the next
+landing cycle. Landing itself is a one-shot phase edge: while stance remains active, authored foot bob
+must not re-emit landing or clear the released-lock hysteresis. Measure the reach guard against the
+solver's ankle target (ray surface plus measured sole depth
+or ankle offset along the contact normal), not the raw ray surface; mixing those coordinate spaces makes
+a reachable contact look overextended. Reset all phase/lock state whenever the modifier resets.
+
+The earlier blanket translation gate fixed a stale crouch-strafe target but caused visible foot sliding.
+The permanent locomotion harness therefore settles into crouch idle first, then covers forward/back/left/
+right walk and crouch plus the gameplay-supported forward and forward-diagonal sprint directions. Each
+direction must acquire at least one locomotion lock and every lock must stay inside measured reach. Keep
+the idle-history setup: starting strafe from freshly reset state misses the original stale-marker bug.
+Do not diagnose visible leg skin stretch as bone-length growth without measuring it. The solver constructs
+hip→knee and knee→ankle positions from cached rest lengths, and the harness rejects more than 1 mm of
+segment-length error; the live crouch-sideways trace varied by only 0.016 mm. Trace current/reference
+lengths, ratios, and each joint basis scale separately. The current forward-only crouch clip already
+reaches roughly 104–106° thigh swing before IK, so sideways deformation needs directional gait/motion
+warping or a contact-feasibility policy, not another bone-length patch.
+The Action Adventure Pack has genuine crouched-left/right clips; gameplay retargets them through
+`PlayerDirectionalLocomotionLibrary` and selects them from lateral input. Their contact timing differs
+from UAL `Crouch_Fwd`: the UAL-tuned IK classifier added 6–9° foot/toe discontinuities when enabled.
+Keep lateral-crouch IK suppressed until its phases are calibrated, and keep those A/B cases strict
+instead of disguising the discontinuity with wider regression allowances.
+Those Action Pack clips contain accumulated horizontal Hips motion. Always pass controller-driven
+locomotion through `HumanoidRetargeter.make_clip_in_place()` after retargeting; otherwise the mesh
+drifts within the `CharacterBody3D`/camera and snaps back at the loop boundary. The helper removes
+linear X/Z travel only, preserving vertical bob and cyclic offsets, and the locomotion harness enforces
+a maximum 1 mm first-to-last Hips XZ delta for both directional crouch clips.
+They also carry a nearly opposite constant Hips facing offset (about 147-166 degrees relative to the
+forward crouch clip). Run `HumanoidRetargeter.align_clip_facing()` after the in-place conversion so
+strafing preserves controller/camera facing. Correct only the constant yaw in the Hips parent's rest
+frame; replacing the full Hips quaternion would erase legitimate crouch lean and gait twist. The same
+regression requires the resulting horizontal facing delta to stay within one degree.
+Do not run the retargeter's pole-less arm-position FABRIK pass on these lateral crouch clips. Near an
+extended arm it changed bend solutions and produced isolated 12-14 degree arm-track steps; the ordinary
+model-space arm rotations stay below the directional regression's 5-degree baked-step ceiling. Treat
+the Action Pack's left/right clips as one phase-matched family, but do not phase-match them to UAL's
+forward crouch clip: normalized time does not describe the same foot/arm phase across unrelated packs.
+Use the ordinary crossfade between those families. Keep crouch locomotion selected from held movement
+intent while physical speed crosses zero during a reversal; briefly routing through crouch idle creates
+nested crossfades and a visible arm snap.
+Identify the pelvis structurally as the retargeter's sole position track, not by requiring a path ending
+in `Hips`; swappable catalog characters may map the same role to `pelvis` or another bone name.
 
 Moving jump-landings have a separate reach invariant in that same locomotion gate. Landing grace may
 force full vertical plant weight, but it must not freeze `_smoothed_target` at the touchdown world
 position while the `CharacterBody3D` keeps moving. Keep refreshing the ground target throughout
 `moves/unarmed_jump_land`; only allow the ordinary planted latch after landing recovery finishes.
 Otherwise the body walks away from the target and stretches the solved leg. The regression continues
-forward input through jump and landing and fails if either fully weighted target moves farther from its
+forward sprint input through jump and landing and fails if either fully weighted target moves farther from its
 hip horizontally than the measured upper-leg plus lower-leg reach (plus 1 cm tolerance). The animation
 state must follow the same distinction: `unarmed_jump_land` is a stationary recovery with both feet
 authored as planted, so play it only when landing at idle speed. A moving landing must transition
 directly into the matching walk, sprint, or crouch locomotion instead of translating that static pose.
+Use a 0.15-second moving-landing animation blend: the first 0.05-second attempt removed the old
+half-second leg lag but concentrated 55.167 degrees of left-foot rotation into the first transition
+frame. Matching the blend more closely to Foot IK's 0.12-second rise spreads that orientation change;
+the locomotion regression rejects an initial rendered-foot jump above 30 degrees.
+Landing grace must also ramp IK weight from zero after the airborne-to-grounded reset. `_smooth_weight()`
+normally defaults a missing previous sample to `raw_weight`; because grace deliberately requests
+`raw_weight = 1.0`, that default bypasses the configured rise time and snaps a leg fully into IK one
+frame after contact. Default the missing previous weight to zero only while landing grace is active,
+and keep the locomotion regression's initial-weight check below full plant.
+The closed-form solver's hip/knee correction must honor that ramp too: easing only the target and
+foot basis still let a nearly extended leg amplify the first small target displacement into an
+11.322-degree IK-added body snap. During landing grace, blend hip and knee delta rotations by
+`ground_weight³`; outside grace, still blend by ordinary `ground_weight`. Brief probe loss during
+grace must not reverse its deliberate ramp. Weighting alone is insufficient once confidence nears
+one: contact/target changes can still change the desired correction by tens of degrees, so
+`foot_ik_leg_solver.gd` rate-limits ordinary procedural hip/knee correction to 120 degrees/second, at
+most once per physics frame (the modifier can evaluate more than once per tick); crouch uses the tighter
+45-degree/second chain budget described above. Do not hard-clear a
+rate-limited residual when weight reaches zero: a live trace showed the left hip snapping 19.08° on
+the exact 0.014→0 transition because the solver dropped the correction it had not yet finished
+releasing. On no-contact/pass-through frames, continue easing hip/knee correction toward identity
+while explicitly preserving the authored foot global pose; otherwise parent-chain release rotates the
+foot even when its own correction is zero. The locomotion A/B gate therefore checks corresponding
+per-frame joint motion in addition to independent maxima. The moving-landing A/B case drives both IK-off and IK-on players
+through the same jump and rejects more than 2 degrees of IK-added hip/knee rotation across the full
+landing window at both 60 and 30 FPS. Its comparison permits the authored current or previous frame
+because the existing animation-discontinuity hold deliberately shifts a seam motion by one sample at
+low fixed FPS; subtracting unrelated whole-window maxima hides real delayed snaps and must not be used.
+Do not also exponentially smooth the contact position during landing grace. Confidence already eases
+the solve from zero; at sprint speed, a second positional lag left the target 0.953 m from a hip whose
+leg reaches only 0.898 m, then the nonlinear reach calculation displaced both hips by roughly 31 cm in
+one frame. Refresh `_smoothed_target` and its normal directly from the current landing contact during
+grace. The sprint-landing A/B gate compares skeleton-space hip displacement per corresponding frame and
+rejects more than 5 cm of IK-added motion; the corrected peaks are 0.041687 m of added displacement and
+0.65417 m hip-to-target distance.
+
+IK weighting must keep joint positions and joint rotations on the same chain. Do not blend/rate-limit
+hip and knee rotations while assigning knee/foot positions from the unweighted full solve: partial IK
+then renders incompatible bases and origins and visibly stretches crouch skin even though bone scales
+and segment-length checks pass. After the final correction quaternions are known, reconstruct the knee
+and foot positions by rotating the authored hip→knee and knee→foot vectors with those exact corrections;
+do the same while releasing toward animation. This preserves rigid segment lengths, makes zero weight
+an exact animation pass-through, and keeps partial/full IK geometrically coherent. The full CPU-skinned
+matrix, not only selected joint metrics, is the regression contract for this class of failure.
 
 **A "more general" reformulation of a formula can be a mathematical no-op if it doesn't account for what the inputs are already guaranteed to satisfy — verify with live-varying inputs, not just "it compiles and the shape looks right."** Investigating a small (~1cm) toe clip on a tilted ramp, the working theory was that `_measure_leg_sole_depth()`'s single flat-pose scalar couldn't bound clearance correctly at other tilt angles, so it was rebuilt into a "direction-aware" version: store the full sole-mesh point cloud in the foot's local frame, then each frame re-project every point onto the *current* ground direction and take the max (`(foot_basis * point).dot(desired_down)`). This looked like a strict generalization of the flat scalar and compiled/ran fine. It was actually mathematically identical to the original at every tilt, not just similar — because `_compute_new_foot_basis_world()` builds `foot_basis` so its own local down-axis *is* `desired_down` by construction (the whole foot rotates to match the ground normal), so `(foot_basis * point).dot(desired_down)` algebraically collapses to `point.y` (the point's plain local-Y value) regardless of tilt — the exact same number the flat scalar already computed. Caught only by adding a debug print of both the input tilt (varying: 1.0, 0.97, 0.87, 0.71 across normals) and the output offset side-by-side, and noticing the output never changed despite the input clearly varying — a fix that's *supposed* to be direction-sensitive but produces a constant should be treated as a red flag on the formula itself, not "must be a separate remaining bug." Before generalizing a computation to depend on more inputs, check whether the object it operates on (here, `foot_basis`) was already built to make that dependency vanish algebraically.
 

@@ -139,7 +139,7 @@ static func _role_source_name(source_role_map: Dictionary, role: String) -> Stri
 ## no reason to exist twice).
 static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 		target_skeleton: Skeleton3D, config: BoneMapConfig,
-		force_loop: bool = false) -> Animation:
+		force_loop: bool = false, match_arm_positions: bool = true) -> Animation:
 	var bone_tracks: Dictionary = {}
 	for t in src_animation.get_track_count():
 		var path := src_animation.track_get_path(t)
@@ -229,9 +229,121 @@ static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 				anim.track_insert_key(out_rot_track[target_name], time, local.basis.get_rotation_quaternion())
 			if target_name == config.hips_target and out_pos_track >= 0:
 				anim.track_insert_key(out_pos_track, time, local.origin)
-		_match_arm_skeleton_positions(anim, src_skeleton, target_skeleton, target_global,
-				out_rot_track, source_to_target_facing, arm_position_scale, config)
+		if match_arm_positions:
+			_match_arm_skeleton_positions(anim, src_skeleton, target_skeleton, target_global,
+					out_rot_track, source_to_target_facing, arm_position_scale, config)
 	return anim
+
+
+## A CharacterBody already owns world translation. Imported locomotion often
+## also translates Hips across one cycle, making the mesh drift away from its
+## controller/camera and snap back at the loop. Remove only accumulated X/Z
+## travel; retain vertical bob and cyclic stride offsets.
+static func make_clip_in_place(animation: Animation) -> void:
+	for track_index in animation.get_track_count():
+		if animation.track_get_type(track_index) != Animation.TYPE_POSITION_3D:
+			continue
+		var key_count := animation.track_get_key_count(track_index)
+		if key_count < 2 or animation.length <= 0.0:
+			return
+		var first := animation.track_get_key_value(track_index, 0) as Vector3
+		var last := animation.track_get_key_value(track_index, key_count - 1) as Vector3
+		var travel := Vector3(last.x - first.x, 0.0, last.z - first.z)
+		for key_index in key_count:
+			var progress := animation.track_get_key_time(track_index, key_index) / animation.length
+			var value := animation.track_get_key_value(track_index, key_index) as Vector3
+			animation.track_set_key_value(track_index, key_index, value - travel * progress)
+		return
+
+
+## Imported directional clips may be authored with the whole actor facing the
+## travel direction. Controller-driven strafing must keep the character facing
+## the camera, so remove that constant horizontal offset while retaining the
+## clip's pelvis lean and animated twist.
+static func align_clip_facing(animation: Animation, reference: Animation,
+		target_skeleton: Skeleton3D) -> void:
+	var hips_path := _position_track_path(animation)
+	var track := _rotation_track_for_path(animation, hips_path)
+	var reference_track := _rotation_track_for_path(reference, _position_track_path(reference))
+	if track < 0 or reference_track < 0:
+		return
+	var hips_idx := target_skeleton.find_bone(StringName(hips_path.get_subname(0)))
+	if hips_idx < 0:
+		return
+	var parent_basis := Basis.IDENTITY
+	var parent_idx := target_skeleton.get_bone_parent(hips_idx)
+	if parent_idx >= 0:
+		parent_basis = target_skeleton.get_bone_global_rest(parent_idx).basis
+	var first := animation.track_get_key_value(track, 0) as Quaternion
+	var reference_first := reference.track_get_key_value(reference_track, 0) as Quaternion
+	var facing_axis := _best_horizontal_axis(parent_basis * Basis(reference_first))
+	var from := (parent_basis * Basis(first))[facing_axis]
+	var to := (parent_basis * Basis(reference_first))[facing_axis]
+	from.y = 0.0
+	to.y = 0.0
+	if from.length_squared() < 0.000001 or to.length_squared() < 0.000001:
+		return
+	var correction_world := Basis(Vector3.UP,
+			from.normalized().signed_angle_to(to.normalized(), Vector3.UP))
+	var correction_local := parent_basis.inverse() * correction_world * parent_basis
+	for key in animation.track_get_key_count(track):
+		var rotation := animation.track_get_key_value(track, key) as Quaternion
+		animation.track_set_key_value(track, key,
+				(correction_local * Basis(rotation)).get_rotation_quaternion())
+
+
+static func horizontal_facing_delta(animation: Animation, reference: Animation,
+		target_skeleton: Skeleton3D) -> float:
+	var hips_path := _position_track_path(animation)
+	var track := _rotation_track_for_path(animation, hips_path)
+	var reference_track := _rotation_track_for_path(reference, _position_track_path(reference))
+	if track < 0 or reference_track < 0:
+		return INF
+	var hips_idx := target_skeleton.find_bone(StringName(hips_path.get_subname(0)))
+	if hips_idx < 0:
+		return INF
+	var parent_basis := Basis.IDENTITY
+	var parent_idx := target_skeleton.get_bone_parent(hips_idx)
+	if parent_idx >= 0:
+		parent_basis = target_skeleton.get_bone_global_rest(parent_idx).basis
+	var basis := parent_basis * Basis(animation.track_get_key_value(track, 0) as Quaternion)
+	var reference_basis := parent_basis * Basis(
+			reference.track_get_key_value(reference_track, 0) as Quaternion)
+	var axis := _best_horizontal_axis(reference_basis)
+	var from := basis[axis]
+	var to := reference_basis[axis]
+	from.y = 0.0
+	to.y = 0.0
+	if from.length_squared() < 0.000001 or to.length_squared() < 0.000001:
+		return INF
+	return absf(from.normalized().signed_angle_to(to.normalized(), Vector3.UP))
+
+
+static func _position_track_path(animation: Animation) -> NodePath:
+	for track in animation.get_track_count():
+		if animation.track_get_type(track) == Animation.TYPE_POSITION_3D:
+			return animation.track_get_path(track)
+	return NodePath()
+
+
+static func _rotation_track_for_path(animation: Animation, path: NodePath) -> int:
+	for track in animation.get_track_count():
+		if (animation.track_get_type(track) == Animation.TYPE_ROTATION_3D
+				and animation.track_get_path(track) == path):
+			return track
+	return -1
+
+
+static func _best_horizontal_axis(basis: Basis) -> int:
+	var result := 0
+	var best_length := 0.0
+	for axis in 3:
+		var candidate := basis[axis]
+		candidate.y = 0.0
+		if candidate.length_squared() > best_length:
+			best_length = candidate.length_squared()
+			result = axis
+	return result
 
 
 static func _humanoid_retarget_local_pose(src_skel: Skeleton3D, src_idx: int,

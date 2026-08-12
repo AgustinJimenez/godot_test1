@@ -12,6 +12,9 @@ signal action_contact(animation_name: StringName)
 signal character_changed
 
 const CLIP_DIR := "res://assets/models/pistol_starter/Animation/In-Place/"
+const LocomotionTransition := preload("res://actors/player/player_locomotion_transition.gd")
+const DirectionalLocomotionLibrary := preload(
+		"res://actors/player/player_directional_locomotion_library.gd")
 const CLIPS := {
 	&"relaxed_idle": "W1_Stand_Relaxed_Idle_IPC",
 	&"aim_idle": "W1_Stand_Aim_Idle_IPC",
@@ -227,9 +230,9 @@ enum LegRetarget {
 ## Rough forward speeds (m/s) the clips were authored at, for foot matching.
 const WALK_REF_SPEED := 1.6
 const SPRINT_REF_SPEED := 5.8
-const CROUCH_REF_SPEED := 1.1
+const CROUCH_REF_SPEED := 1.7
 const LOCOMOTION_BLEND_TIME := 0.5
-const MOVING_LANDING_BLEND_TIME := 0.05
+const MOVING_LANDING_BLEND_TIME := 0.15
 const JUMP_PHASE_SPEED := 2.5
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
@@ -299,8 +302,6 @@ var _target_humanoid_map: Dictionary
 ## Tool instances can disable gameplay idle to expose the imported pose.
 var autoplay_default_animation := true
 var locomotion_playback_scale := 1.0 # Per-instance tool slow motion; gameplay stays 1.0.
-
-
 ## Instantiates character_scene and finds its Skeleton3D/AnimationPlayer/mesh generically - mesh
 ## is "the first MeshInstance3D found", matching MotusMan's own single-mesh shape today.
 func _setup_character_scene() -> void:
@@ -396,14 +397,13 @@ func _build_character_visuals() -> void:
 		lib.add_animation(gameplay_name,
 				_retarget_clip(UAL2_PATH, source_name, _held_pose,
 						String(gameplay_name) in UAL_LOOPING_GAMEPLAY_CLIPS))
+	DirectionalLocomotionLibrary.add_directional_crouch_clips(lib, skeleton, _target_humanoid_map)
 	_lib = lib
 	anim_player.add_animation_library(&"moves", lib)
 	anim_player.animation_finished.connect(_on_animation_finished)
 	if autoplay_default_animation:
 		anim_player.play("moves/unarmed_idle")
 	_apply_stored_profile_cosmetics()
-
-
 ## Swaps the live player's visible skin at runtime - the debug menu's character list
 ## (ui/hud.gd) calls this so a player can become any catalog character mid-session
 ## without a scene reload, the concrete proof this project's player-swappable-skin
@@ -720,15 +720,15 @@ func get_visual_bone_global_pose(bone_idx: int) -> Transform3D:
 	if _look_pose_modifier != null:
 		return _look_pose_modifier.get_adjusted_global_pose(bone_idx)
 	return skeleton.get_bone_global_pose(bone_idx)
-
-
 ## Called by the player every physics tick (calls down, signals up).
 func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		sprinting: bool, on_floor: bool, vertical_velocity: float, delta: float,
-		torch_enabled: bool) -> void:
+		torch_enabled: bool, movement_input: Vector2 = Vector2.ZERO) -> void:
 	set_held_flashlight_visible(torch_enabled)
 	_hand_grip_modifier.active = false
 	_foot_ik_modifier.set_character_grounded(on_floor)
+	_foot_ik_modifier.set_pose_suppressed(
+			crouched and on_floor and absf(movement_input.x) > 0.5)
 	if _debug_preview_active:
 		if ground_speed <= 0.6 and not crouched and not armed and on_floor:
 			return
@@ -762,10 +762,12 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		return
 	var target: StringName
 	var rate := 1.0
-	if ground_speed > 0.6:
+	if ground_speed > 0.6 or (crouched and movement_input.length() > 0.1):
 		if crouched:
-			target = &"unarmed_crouch_walk"
-			rate = ground_speed / CROUCH_REF_SPEED
+			target = DirectionalLocomotionLibrary.crouch_animation(movement_input)
+			# Physical velocity needs a few frames to decelerate from sprint.
+			# Do not play the crouch cycle at the inherited sprint rate meanwhile.
+			rate = minf(ground_speed / CROUCH_REF_SPEED, 1.0)
 		elif sprinting:
 			target = &"unarmed_sprint"
 			rate = ground_speed / SPRINT_REF_SPEED
@@ -781,12 +783,10 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 			MOVING_LANDING_BLEND_TIME if moving_landing else LOCOMOTION_BLEND_TIME, clampf(rate,
 			0.8 * locomotion_playback_scale, 2.2 * locomotion_playback_scale))
 
-func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> void:
-	var full := "moves/" + target
-	if anim_player.current_animation != full:
-		anim_player.play(full, blend_time)
-	anim_player.speed_scale = speed
 
+func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> void:
+	LocomotionTransition.play(anim_player, target, blend_time)
+	anim_player.speed_scale = speed
 
 ## See SKIN_TEXTURE's doc comment for why this only reapplies MotusMan's own
 ## diffuse, and only when the mesh's own imported material genuinely has no

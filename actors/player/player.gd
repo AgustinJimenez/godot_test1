@@ -537,7 +537,7 @@ func _physics_process(delta: float) -> void:
 			is_on_floor() or (not jumped and _airborne_time < AIRBORNE_ANIMATION_GRACE))
 	body.update_motion(_crouched, weapon.equipped,
 			Vector2(velocity.x, velocity.z).length(), sprinting,
-			report_on_floor, velocity.y, delta, flashlight.visible)
+			report_on_floor, velocity.y, delta, flashlight.visible, input_dir)
 	# Yaw: _look_yaw is already clamped to head_yaw_limit_deg in _apply_yaw
 	# (same head-leads-then-body-catches-up system in both modes now), so
 	# feeding it straight through is safe in third person too.

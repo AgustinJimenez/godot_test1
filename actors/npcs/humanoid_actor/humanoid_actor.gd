@@ -151,7 +151,7 @@ static func build_clip_library(anim_player: AnimationPlayer, target_skeleton: Sk
 	for clip: StringName in CLIPS:
 		var anim := _retarget_action_clip(CLIPS[clip], target_skeleton, target_humanoid_map)
 		if clip == &"walking" or clip == &"running":
-			_make_clip_in_place(anim)
+			HumanoidRetargeter.make_clip_in_place(anim)
 		anim.loop_mode = Animation.LOOP_LINEAR
 		lib.add_animation(clip, anim)
 	var death_anim := _retarget_action_clip(DEATH_CLIP, target_skeleton, target_humanoid_map)
@@ -182,29 +182,6 @@ static func _retarget_action_clip(clip_path: String, target_skeleton: Skeleton3D
 			src_skeleton, src_animation, target_skeleton, config, false)
 	inst.queue_free()
 	return anim
-
-
-## Mixamo's walk/run files translate the hips several meters per cycle. The
-## CharacterBody3D already owns movement, so retaining that displacement makes
-## the mesh run ahead and snap back at every loop. Remove only the accumulated
-## horizontal travel; vertical bob and cyclic stride offsets remain intact.
-static func _make_clip_in_place(animation: Animation) -> void:
-	for track_index in animation.get_track_count():
-		if animation.track_get_type(track_index) != Animation.TYPE_POSITION_3D:
-			continue
-		if not String(animation.track_get_path(track_index)).ends_with("Hips"):
-			continue
-		var key_count := animation.track_get_key_count(track_index)
-		if key_count < 2 or animation.length <= 0.0:
-			return
-		var first := animation.track_get_key_value(track_index, 0) as Vector3
-		var last := animation.track_get_key_value(track_index, key_count - 1) as Vector3
-		var travel := Vector3(last.x - first.x, 0.0, last.z - first.z)
-		for key_index in key_count:
-			var progress := animation.track_get_key_time(track_index, key_index) / animation.length
-			var value := animation.track_get_key_value(track_index, key_index) as Vector3
-			animation.track_set_key_value(track_index, key_index, value - travel * progress)
-		return
 
 
 func _physics_process(delta: float) -> void:
