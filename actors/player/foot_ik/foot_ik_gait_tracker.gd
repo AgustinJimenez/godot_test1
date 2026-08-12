@@ -113,8 +113,13 @@ func update(
 	# starving ground_weight of ever reaching a real plant during
 	# diagonal movement, confirmed live (GAP debug: vert stayed ~1.5cm,
 	# well under the limit, while horiz grew unbounded past 25cm).
-	# Vertical clearance is what this check is actually meant to gate.
-	var vertical_gap := absf(foot_pos.y - ground_target.y)
+	# Vertical clearance is what this check is actually meant to gate, and it
+	# is directional. A positive value means the animated ankle is floating
+	# above its target and may legitimately be in swing. A negative value means
+	# the detected surface is above the ankle: that is penetration and must
+	# engage IK, not masquerade as lost contact. Using absf() here made an idle
+	# foot 16.7cm inside a taller tread report contact_lost=true/weight=0.
+	var clearance_above_target := foot_pos.y - ground_target.y
 	var contact_lost: bool = (
 		not step_down
 		and _owner.step_prediction_enabled
@@ -125,7 +130,7 @@ func update(
 		and (
 			not contact_hit
 			or contact_distance > _owner.GROUND_CONTACT_DISTANCE
-			or vertical_gap > _owner.GROUND_CONTACT_DISTANCE
+			or clearance_above_target > _owner.GROUND_CONTACT_DISTANCE
 		)
 	)
 	var raw_weight := _raw_weight(side, velocity)

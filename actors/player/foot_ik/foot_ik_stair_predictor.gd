@@ -29,6 +29,14 @@ var _has_previous_root_position := false
 var _travel_direction := Vector3.ZERO
 
 
+## Stair support ownership is only needed to bridge discontinuous, flat
+## treads. On a continuous slope, retaining a world-space support point while
+## the authored idle pose settles can drag that foot across the pelvis even
+## though the target remains barely inside the leg's total reach.
+const FLAT_SURFACE_UP_DOT := 0.95
+const STATIONARY_HORIZONTAL_SPEED := 0.05
+
+
 func _init(owner) -> void:
 	_owner = owner
 
@@ -109,6 +117,16 @@ func update_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName,
 func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> float:
 	if not per_leg.has(&"left") or not per_leg.has(&"right"):
 		return shared_drop
+	var left: Dictionary = per_leg[&"left"]
+	var right: Dictionary = per_leg[&"right"]
+	if _is_stationary_on_continuous_slope(left, right):
+		# The ordinary per-foot ray solution already follows a ramp. Releasing
+		# stair ownership here keeps each target below its own animated leg
+		# instead of preserving a stale target that can cross the body centre.
+		_support_side = &""
+		clear_swing(&"left")
+		clear_swing(&"right")
+		return shared_drop
 	# Once acquired, support never released on its own - a foot stays "close
 	# enough" to the ground almost always during ordinary flat walking, so
 	# is_active()'s own contact check never fails. That let this system,
@@ -121,8 +139,6 @@ func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> fl
 	if not _support_side.is_empty() and shared_drop <= 0.0 and not has_latched_target():
 		_support_side = &""
 		return shared_drop
-	var left: Dictionary = per_leg[&"left"]
-	var right: Dictionary = per_leg[&"right"]
 	var left_clearance: float = left.get("animated_contact_distance", INF)
 	var right_clearance: float = right.get("animated_contact_distance", INF)
 	if _support_side.is_empty():
@@ -163,6 +179,22 @@ func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> fl
 	var max_vertical_diff := sqrt(maxf(
 			0.0, max_reach * max_reach - horizontal_dist_sq))
 	return maxf(shared_drop, (hip_pos.y - target.y) - max_vertical_diff)
+
+
+func _is_stationary_on_continuous_slope(
+		left: Dictionary, right: Dictionary) -> bool:
+	var motion_root := _owner.player_body.get_parent() as CharacterBody3D
+	if motion_root == null:
+		return false
+	var horizontal_velocity := Vector2(
+			motion_root.velocity.x, motion_root.velocity.z).length()
+	if horizontal_velocity > STATIONARY_HORIZONTAL_SPEED:
+		return false
+	var left_normal: Vector3 = left.get("raw_normal", Vector3.UP)
+	var right_normal: Vector3 = right.get("raw_normal", Vector3.UP)
+	return (left.get("hit", false) and right.get("hit", false)
+			and left_normal.dot(Vector3.UP) < FLAT_SURFACE_UP_DOT
+			and right_normal.dot(Vector3.UP) < FLAT_SURFACE_UP_DOT)
 
 
 func _support_target_is_reachable(leg: Dictionary) -> bool:
@@ -342,9 +374,6 @@ func _latch_support_target(leg: Dictionary) -> void:
 ## 0.308m); debug_step_down isn't true for every frame of a real descent, so
 ## it didn't distinguish the two cases. Surface tilt does, since it doesn't
 ## depend on gait timing at all.
-const FLAT_SURFACE_UP_DOT := 0.95
-
-
 func _apply_support_contact(side: StringName, leg: Dictionary, delta: float) -> void:
 	leg["ground_weight"] = 1.0
 	leg["preserve_idle_pose"] = false

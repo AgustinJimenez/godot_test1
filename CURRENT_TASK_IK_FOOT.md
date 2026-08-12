@@ -1337,3 +1337,60 @@ crouch-to-sprint transition now pass both the joint continuity check and full CP
 forward crouch the matrix's IK-added vertex motion fell from 0.41427m during the first attempted fix to
 0.01426m, with 0.01491m maximum added bone position and 4.16 degrees maximum added rotation. Keep the
 IK enabled; preserve this rotation/position consistency whenever solver weighting changes.
+
+An idle right foot later reproduced 0.167m below its stair target while reporting
+`contact_lost=true`, `raw_weight=0`, and `ground_weight=0`. The contact-loss test used the absolute
+ankle-to-target vertical gap, incorrectly treating deep penetration exactly like floating above the
+surface. The gate is now directional: only positive clearance above the target releases IK; a target
+above the foot is penetration and must retain/recover IK weight.
+
+## 2026-08-12: ramp-top rendered-foot matrix (new red regression)
+
+`scripts/check_foot_ik_ramps.sh` drives a dedicated deterministic scene through 244 idle cases: 15,
+30, and 45-degree ramps; low/middle/high/top rows; lateral offsets; eight 45-degree yaw increments;
+and the exact `-122.294` yaw from the user's live capture. It samples one complete idle cycle after
+the real `CharacterBody3D` has settled. CPU skinning uses the modifier's final bone poses and checks
+every vertex influenced by foot/toe/leaf bones against the complete oriented ramp-box volume. This is
+deliberately stricter than the old downward-ray diagnostic: a toe entering through the ramp's vertical
+end face is invisible to a ray cast only toward the top surface. Ramp tolerance is 1mm; the general
+live diagnostic keeps its noise-tolerant 5mm threshold.
+
+The first honest baseline is red: 62/243 original edge cases intersect, concentrated near the upper
+terminal face and reported mainly on `ball_l`/`ball_r`. Do not weaken or delete the top-row/yaw cases to make
+the script green. A tested uniform 15mm sole-clearance pad was reverted: it cleared one capture but
+changed reach/pelvis behavior and worsened shallow contacts on 15-degree ramps. The next fix should
+use multipoint/shape contact for the rendered sole/toe against terminal faces, while keeping the
+existing central-ramp and locomotion regressions unchanged. The unrelated directional
+`contact_lost` fix remains valid and is separate from this open edge-contact problem.
+
+The 244th case is the exact effective root/yaw from a second live 45-degree-ramp capture. It exposed a
+different failure that an ankle/toe-only diagnostic obscured: the right foot had crossed to the left
+of the pelvis by roughly 0.52m while hip-to-foot distance remained barely within total leg reach.
+Both segment lengths were rigid; this was a bad support target, not bone stretching. The stair
+predictor retained and continued smoothing a world-space support point on a continuous ramp after the
+idle feet froze. Total-reach validation therefore accepted an anatomically crossed solve. Stationary
+continuous slopes now release stair support ownership and use the normal per-foot ramp rays; forced
+support remains available on flat, discontinuous stair treads. The matrix also measures final
+left/right foot ordering in the body's local lateral axis, so a future crossed-leg solve fails even
+when no rendered vertex penetrates the collider. The focused captured case passes with zero crossed
+samples and zero penetrating vertices. The full matrix remains intentionally red for its separate,
+pre-existing terminal-face contacts.
+
+The next live capture (`root=(8.186355, 2.516155, 2.321015)`, yaw `172.940608°`, idle time
+`1.27979s`) exposed a much broader ramp failure: the left foot was roughly 0.385m below its detected
+target while `contact_lost=true` had reduced IK weight to zero. The exact persistent case now fails
+15/15 samples, with 3,476 affected foot/calf/toe vertices and 0.14967m maximum penetration.
+
+`scripts/check_foot_ik_ramp_sweep.sh [spacing_cm] [yaw_step_degrees]` adds a separate fast spatial
+coverage mode. It defaults to a 20cm grid across the complete 45-degree ramp, 15-degree yaw steps,
+and eight distributed idle-animation phases. Each placement settles the real player for 45 physics
+frames, then samples the final CPU-skinned mesh, local left/right foot ordering, and the invalid state
+where a rendered contact is at/inside the surface while IK weight is zero. Failures are written as
+JSONL to `user://foot_ik_ramp_sweep_failures.jsonl`, while console output is capped.
+
+The first dense baseline is intentionally and substantially red: 2,899/6,240 placements fail;
+1,084 exceed 10cm penetration and 957 exhibit the contact-present/weight-zero state. Failures cover
+all animation phases and are concentrated in downhill/diagonal-downhill yaw ranges. This establishes
+that the few earlier hand-picked ramp placements dramatically under-sampled the problem. Do not tune
+a global padding against a single screenshot; use this artifact to separate terminal-edge cases from
+the interior downhill case where a vertical ankle ray hits the inclined slab above an animated leg.

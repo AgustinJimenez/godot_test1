@@ -417,7 +417,36 @@ do the same while releasing toward animation. This preserves rigid segment lengt
 an exact animation pass-through, and keeps partial/full IK geometrically coherent. The full CPU-skinned
 matrix, not only selected joint metrics, is the regression contract for this class of failure.
 
+Foot-contact clearance is directional. `foot_y - target_y > tolerance` means the animated foot may be
+floating/swinging and can release IK; a negative value means the detected surface is above the foot,
+which is penetration and must engage IK. Never use an absolute vertical gap for `contact_lost`: it made
+a foot 16.7cm inside a taller tread report `contact_lost=true` and force its IK weight to zero.
+
 **A "more general" reformulation of a formula can be a mathematical no-op if it doesn't account for what the inputs are already guaranteed to satisfy — verify with live-varying inputs, not just "it compiles and the shape looks right."** Investigating a small (~1cm) toe clip on a tilted ramp, the working theory was that `_measure_leg_sole_depth()`'s single flat-pose scalar couldn't bound clearance correctly at other tilt angles, so it was rebuilt into a "direction-aware" version: store the full sole-mesh point cloud in the foot's local frame, then each frame re-project every point onto the *current* ground direction and take the max (`(foot_basis * point).dot(desired_down)`). This looked like a strict generalization of the flat scalar and compiled/ran fine. It was actually mathematically identical to the original at every tilt, not just similar — because `_compute_new_foot_basis_world()` builds `foot_basis` so its own local down-axis *is* `desired_down` by construction (the whole foot rotates to match the ground normal), so `(foot_basis * point).dot(desired_down)` algebraically collapses to `point.y` (the point's plain local-Y value) regardless of tilt — the exact same number the flat scalar already computed. Caught only by adding a debug print of both the input tilt (varying: 1.0, 0.97, 0.87, 0.71 across normals) and the output offset side-by-side, and noticing the output never changed despite the input clearly varying — a fix that's *supposed* to be direction-sensitive but produces a constant should be treated as a red flag on the formula itself, not "must be a separate remaining bug." Before generalizing a computation to depend on more inputs, check whether the object it operates on (here, `foot_basis`) was already built to make that dependency vanish algebraically.
+
+Ramp-edge Foot IK needs a closed-volume rendered-mesh check, not only downward rays. A toe can enter
+through the inclined slab's terminal face while every ray toward the top surface reports positive
+clearance. `scripts/check_foot_ik_ramps.sh` runs the persistent 244-case matrix and is intentionally
+red while this edge problem remains; it samples final CPU-skinned foot/toe/leaf vertices at multiple
+heights, lateral offsets, and yaws, including the captured yaw. Do not replace this with a larger
+global sole offset: a tested 15mm pad changed reach/pelvis behavior and worsened other ramps. Preserve
+the red cases and solve terminal-face contact with multipoint/shape-aware targeting.
+
+Foot IK reach alone is not an anatomical validity check. A target can remain inside the summed
+thigh/shin radius while crossing to the opposite side of the pelvis, yielding rigid bone lengths but
+an obviously invalid leg pose. Keep final left/right foot ordering in the body's local lateral axis
+in ramp regressions. Stair support ownership is for discontinuous flat treads; while stationary on a
+continuous slope, release any retained world-space stair-support target and let each foot's ordinary
+ramp ray remain beneath its own animated leg. Otherwise an old support target can drift a planted
+foot across the pelvis even after idle-freeze has engaged.
+
+The small temporal ramp matrix is not enough to characterize Foot IK on inclined geometry. Use
+`scripts/check_foot_ik_ramp_sweep.sh` for dense spatial coverage: by default it places the real player
+every 20cm across the 45-degree ramp, rotates it every 15 degrees, distributes samples over eight idle
+phases, and writes every CPU-skinned failure to `user://foot_ik_ramp_sweep_failures.jsonl`. It checks
+closed-volume mesh penetration, local left/right leg ordering, and contact-present/IK-weight-zero
+states. Keep this as an intentionally red diagnostic until the broad downhill-facing ramp problem is
+fixed; do not infer ramp correctness from one central pose or only ankle/toe gap values.
 
 **Same verification-loop pattern, extended for stairs specifically — `foot_ik_stair_walk_marker` and `foot_ik_stair_trace_marker`.** `STAIR_FOOT_TRACE` (the per-frame JSON with `ankle`, `sole.clearance`, `step_lift`, etc.) only ever printed under the headless `--foot-ik-check` flag, so a bug reproduced only by the user's own interactive play in `foot_ik_preview.tscn` had no readable trace at all. Fixed by adding two marker files (same `FileAccess.file_exists("user://...")` pattern as `foot_ik_walk_marker`/`foot_ik_spin_marker`): `foot_ik_stair_trace_marker` makes the existing 0.35m real-physics stair walker also write `STAIR_FOOT_TRACE` during ordinary play, but to a *bounded rolling buffer* (`user://foot_ik_stair_trace_live.jsonl`, capped at `STAIR_TRACE_MAX_FRAMES`) rather than `print()` or an ever-growing file append — the "unbounded logging during live play kills the debug process" lesson from `foot_ik_preview.gd`'s past incident applies here too. `foot_ik_stair_walk_marker` goes further: it repositions `$Player` itself (not just the harness's synthetic walker dummy) to the bottom of the real 0.35m stairs and feeds it constant forward `movement_input_override`, looping back to the start once it reaches the top — so the *actual controllable character*, not a proxy, can be driven and inspected without needing the user to hold a key down. `$Player`'s own data already flows into the general-purpose `foot_ik_controlled.jsonl` trace unconditionally (no extra marker needed for that one). **Gotcha:** these marker files live in `user://` and are read by *any* Godot process pointed at that project data dir, including a subsequent headless `--foot-ik-check` run — leaving one enabled silently changed where `$Player` spawns for the automated pose-continuity check and made its sample count drop to 0. Always delete stair markers (and check for stray ones) before trusting an automated check result.
 

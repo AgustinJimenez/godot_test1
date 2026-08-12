@@ -30,7 +30,8 @@ var penetrating_bones: Dictionary = {} # bone name -> count
 ## exit_tree() isn't reliably called by the MCP stop_scene_in_editor() path,
 ## so foot_ik_debug_overlay.gd folds this per-frame result straight into the
 ## JSONL trace instead of relying on format_result() ever printing.
-func sample(player: Player, ik: PlayerFootIKModifier) -> Dictionary:
+func sample(player: Player, ik: PlayerFootIKModifier,
+		bone_filter: Dictionary = {}) -> Dictionary:
 	attempts += 1
 	var mesh_nodes := player.body.character.find_children("*", "MeshInstance3D", true, false)
 	if mesh_nodes.is_empty():
@@ -73,6 +74,11 @@ func sample(player: Player, ik: PlayerFootIKModifier) -> Dictionary:
 			var influences_per_vertex := (
 					bones.size() / vertices.size() if not vertices.is_empty() else 0)
 			for vertex_index in vertices.size():
+				var dominant_bone := _dominant_skin_bone(
+						vertex_index, vertices, bones, weights, bind_bone_names)
+				if not _vertex_matches_bone_filter(
+						vertex_index, vertices, bones, weights, bind_bone_names, bone_filter):
+					continue
 				var world_vertex := mesh_part.global_transform * vertices[vertex_index]
 				if influences_per_vertex > 0 and not weights.is_empty():
 					world_vertex = _skin_vertex(
@@ -82,8 +88,6 @@ func sample(player: Player, ik: PlayerFootIKModifier) -> Dictionary:
 					continue
 				sample_vertices += 1
 				sample_max_depth = maxf(sample_max_depth, depth)
-				var dominant_bone := _dominant_skin_bone(
-						vertex_index, vertices, bones, weights, bind_bone_names)
 				penetrating_bones[dominant_bone] = int(
 						penetrating_bones.get(dominant_bone, 0)) + 1
 				sample_bones[dominant_bone] = int(sample_bones.get(dominant_bone, 0)) + 1
@@ -91,6 +95,65 @@ func sample(player: Player, ik: PlayerFootIKModifier) -> Dictionary:
 		penetrating_samples += 1
 		penetrating_vertices += sample_vertices
 		max_depth = maxf(max_depth, sample_max_depth)
+	return {"available": true, "vertices": sample_vertices, "max_depth": sample_max_depth,
+			"bones": sample_bones}
+
+
+## Deterministic counterpart to sample() for a known CSGBox3D test surface.
+## Downward rays cannot see a toe entering through a ramp's vertical end face;
+## transforming each final skinned vertex into the ramp's local box space can.
+func sample_box_volume(player: Player, ik: PlayerFootIKModifier,
+		bone_filter: Dictionary, box: CSGBox3D, tolerance: float = TOLERANCE) -> Dictionary:
+	var mesh_nodes := player.body.character.find_children("*", "MeshInstance3D", true, false)
+	if mesh_nodes.is_empty() or player.skeleton == null or ik == null or box == null:
+		return {"available": false}
+	var sample_vertices := 0
+	var sample_max_depth := 0.0
+	var sample_bones: Dictionary = {}
+	var box_inverse := box.global_transform.affine_inverse()
+	var half_size := box.size * 0.5
+	for mesh_node: Node in mesh_nodes:
+		var mesh_part := mesh_node as MeshInstance3D
+		if mesh_part.mesh == null:
+			continue
+		var bind_transforms := _mesh_bind_transforms(mesh_part, player.skeleton, ik)
+		var bind_bone_names := _mesh_bind_bone_names(mesh_part, player.skeleton)
+		for surface in mesh_part.mesh.get_surface_count():
+			var arrays := mesh_part.mesh.surface_get_arrays(surface)
+			var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+			var bones := (arrays[Mesh.ARRAY_BONES] as PackedInt32Array
+					if arrays[Mesh.ARRAY_BONES] is PackedInt32Array else PackedInt32Array())
+			var weights := (arrays[Mesh.ARRAY_WEIGHTS] as PackedFloat32Array
+					if arrays[Mesh.ARRAY_WEIGHTS] is PackedFloat32Array else PackedFloat32Array())
+			var influences_per_vertex := (
+					bones.size() / vertices.size() if not vertices.is_empty() else 0)
+			for vertex_index in vertices.size():
+				var dominant_bone := _dominant_skin_bone(
+						vertex_index, vertices, bones, weights, bind_bone_names)
+				if not _vertex_matches_bone_filter(
+						vertex_index, vertices, bones, weights, bind_bone_names, bone_filter):
+					continue
+				var world_vertex := mesh_part.global_transform * vertices[vertex_index]
+				if influences_per_vertex > 0 and not weights.is_empty():
+					world_vertex = _skin_vertex(
+							vertex_index, vertices, bones, weights, bind_transforms, world_vertex)
+				var local_vertex := box_inverse * world_vertex
+				if absf(local_vertex.x) > half_size.x or absf(local_vertex.z) > half_size.z:
+					continue
+				if local_vertex.y <= -half_size.y or local_vertex.y >= half_size.y - tolerance:
+					continue
+				# Minimal distance to leave the closed box, not only distance to
+				# its top plane. Near a ramp end the correct resolution may be a
+				# few mm through the terminal face; reporting 20-30cm up through
+				# the slab obscures the actual edge-contact magnitude.
+				var depth := minf(
+						half_size.y - local_vertex.y,
+						minf(local_vertex.y + half_size.y, minf(
+							half_size.x - absf(local_vertex.x),
+							half_size.z - absf(local_vertex.z))))
+				sample_vertices += 1
+				sample_max_depth = maxf(sample_max_depth, depth)
+				sample_bones[dominant_bone] = int(sample_bones.get(dominant_bone, 0)) + 1
 	return {"available": true, "vertices": sample_vertices, "max_depth": sample_max_depth,
 			"bones": sample_bones}
 
@@ -182,6 +245,24 @@ func _dominant_skin_bone(vertex_index: int, vertices: PackedVector3Array,
 			best_bind = bones[array_index]
 	return (bind_bone_names[best_bind]
 			if best_bind >= 0 and best_bind < bind_bone_names.size() else &"unknown")
+
+
+func _vertex_matches_bone_filter(vertex_index: int, vertices: PackedVector3Array,
+		bones: PackedInt32Array, weights: PackedFloat32Array,
+		bind_bone_names: Array[StringName], bone_filter: Dictionary) -> bool:
+	if bone_filter.is_empty():
+		return true
+	if vertices.is_empty() or bones.is_empty() or weights.is_empty():
+		return false
+	var influences_per_vertex := bones.size() / vertices.size()
+	for influence in influences_per_vertex:
+		var array_index := vertex_index * influences_per_vertex + influence
+		var bind_index := bones[array_index]
+		if (weights[array_index] > 0.0 and bind_index >= 0
+				and bind_index < bind_bone_names.size()
+				and bone_filter.has(bind_bone_names[bind_index])):
+			return true
+	return false
 
 
 func _skin_vertex(vertex_index: int, vertices: PackedVector3Array,
