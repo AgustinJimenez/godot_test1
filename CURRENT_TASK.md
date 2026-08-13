@@ -1,8 +1,10 @@
 # Active temporary work: stair Foot IK
 
 The detailed implementation status, diagnostics, rejected approaches, and next debugging steps now
-live in [`CURRENT_TASK_IK_FOOT.md`](CURRENT_TASK_IK_FOOT.md). Latest manual result: visible clipping
-is resolved, but swing feet still bump the vertical stair edges instead of clearing them cleanly.
+live in [`CURRENT_TASK_IK_FOOT.md`](CURRENT_TASK_IK_FOOT.md). Latest status (2026-08-13): stair
+step-up teleport and stair-support target drift are fixed; swing-phase penetration during active
+climbs and a stale step-detection regression heuristic remain open, parked as a future stair-climb
+blending feature rather than a quick fix.
 
 ---
 
