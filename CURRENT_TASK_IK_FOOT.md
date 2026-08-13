@@ -300,6 +300,19 @@ correction. The next traversal-level experiment should use continuous/ramp colli
 for authored stairs or a dedicated contact-timed stair gait, while keeping the real
 stair mesh for foot contact and visual placement.
 
+Godot 4.6.2 API and official-documentation review confirms that the next prototype
+should be a separate continuous collision surface, not another capsule offset.
+`SeparationRayShape3D` explicitly supports instant stair separation, so it is suitable
+for conventional step snapping but not for the smooth root trajectory required here.
+`CharacterBody3D` supplies slope handling and floor snap, but no native smooth traversal
+of vertical risers. Build an invisible, simplified ramp collision for the player's
+capsule while retaining the authored stair mesh/collision on a separate layer queried by
+Foot IK. This gives locomotion a continuous physical root path and preserves discrete
+tread heights for foot targets. Validate ascent/descent, stair-edge departure, jumping,
+and the complete known-red penetration suites before replacing the current controller.
+An authored/contact-timed stair gait remains a later presentation layer; it must not own
+collision correctness.
+
 ## Manual acceptance checklist
 
 - Walk the controllable player up and down the 0.35m stairs at normal speed.
