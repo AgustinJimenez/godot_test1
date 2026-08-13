@@ -133,10 +133,18 @@ func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> fl
 	# triggered once by spawning near a ramp/step, keep fighting the
 	# ordinary ground-target latch with its own independently-timed target
 	# for the rest of the session (confirmed live: SUPPORT prints firing
-	# continuously, far from any real stairs). Release once neither signal
-	# that stairs are actually relevant holds: no real reach problem
-	# (shared_drop already 0) and no genuine predicted step ahead.
-	if not _support_side.is_empty() and shared_drop <= 0.0 and not has_latched_target():
+	# continuously, far from any real stairs). An earlier version released
+	# once has_latched_target() (the OTHER leg's swing prediction) went
+	# false - but that toggles many times a second during genuine, ongoing
+	# stair climbing (confirmed live: released and instantly re-acquired
+	# support mid-climb, each re-acquisition re-latching to that frame's own
+	# noisy animated-pose raycast, producing a steadily drifting target
+	# height via STAIR_FOOT_TRACE's ik_ground_target.y - even a 20-frame
+	# debounce still hit this mid-climb, since a real climb's own "no swing
+	# latched" window outlasted it). Both feet actually standing on the same
+	# flat level is the direct, unambiguous "left the stairs" signal instead.
+	if (not _support_side.is_empty() and shared_drop <= 0.0
+			and _both_feet_on_matching_flat_ground(left, right)):
 		_support_side = &""
 		return shared_drop
 	var left_clearance: float = left.get("animated_contact_distance", INF)
@@ -154,12 +162,23 @@ func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> fl
 		# animation supplies the opposite landing. Never preserve an old
 		# support target once it is outside that leg's anatomical reach: the
 		# previous behavior compensated by lowering the shared pelvis, dragging
-		# the entire rendered body through the stair stack.
+		# the entire rendered body through the stair stack. That protection is
+		# for a hip ABOVE an unreachable target (descending); a hip BELOW an
+		# already-latched target (e.g. mid step-up climb, hip still catching
+		# up to the tread) self-resolves as the hip keeps rising, and the leg
+		# solver's own reach clamp (FOOT_IK_STRETCH_CHECK) keeps that stretch
+		# safe meanwhile - re-latching here instead produced a ~20cm
+		# target-height drift every climb frame (confirmed live via
+		# STAIR_FOOT_TRACE's ik_ground_target.y), since each frame's noisy
+		# animated-pose raycast landed somewhere slightly different.
 		var support_leg: Dictionary = per_leg[_support_side]
 		var support_clearance := (
 				left_clearance if _support_side == &"left" else right_clearance)
-		if (not _support_target_is_reachable(support_leg)
-				or not _is_contacting(support_leg, support_clearance)):
+		var reachable := _support_target_is_reachable(support_leg)
+		var hip_below_target: bool = (
+				(support_leg["hip_pos"] as Vector3).y < _support_ground_target.y)
+		if (not _is_contacting(support_leg, support_clearance)
+				or (not reachable and not hip_below_target)):
 			_support_side = &""
 			var chosen := _choose_support_side(
 					_is_contacting(left, left_clearance), _is_contacting(right, right_clearance),
@@ -195,6 +214,23 @@ func _is_stationary_on_continuous_slope(
 	return (left.get("hit", false) and right.get("hit", false)
 			and left_normal.dot(Vector3.UP) < FLAT_SURFACE_UP_DOT
 			and right_normal.dot(Vector3.UP) < FLAT_SURFACE_UP_DOT)
+
+
+## Direct "left the stairs" signal for ensure_support()'s release condition:
+## during active climbing the two feet sit on different tread heights by
+## construction (one step_height apart), so this only reads true once both
+## are genuinely on one continuous, flat run.
+func _both_feet_on_matching_flat_ground(left: Dictionary, right: Dictionary) -> bool:
+	if not (left.get("hit", false) and right.get("hit", false)):
+		return false
+	var left_normal: Vector3 = left.get("raw_normal", Vector3.UP)
+	var right_normal: Vector3 = right.get("raw_normal", Vector3.UP)
+	if (left_normal.dot(Vector3.UP) < FLAT_SURFACE_UP_DOT
+			or right_normal.dot(Vector3.UP) < FLAT_SURFACE_UP_DOT):
+		return false
+	var left_target: Vector3 = left.get("raw_target", Vector3.ZERO)
+	var right_target: Vector3 = right.get("raw_target", Vector3.ZERO)
+	return absf(left_target.y - right_target.y) <= _owner.step_min_rise
 
 
 func _support_target_is_reachable(leg: Dictionary) -> bool:

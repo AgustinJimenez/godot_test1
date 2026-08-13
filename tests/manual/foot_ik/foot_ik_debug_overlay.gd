@@ -16,6 +16,10 @@ const STAIR_FOLLOW_MIN_DISTANCE := 0.08
 const STAIR_FOLLOW_MAX_DISTANCE := 4.0
 const CONTROLLED_TRACE_FILE := "user://foot_ik_controlled.jsonl"
 const CONTROLLED_TRACE_MAX_FRAMES := 1200 # 20s at 60fps - room to turn, wait, then grab it
+const HEAD_TRACE_MAX_POINTS := 1800 # 30s at 60fps - long enough to cover a full staircase
+var _head_probe: Node3D
+var _head_trace_mesh: MultiMeshInstance3D
+var _head_trace_points: Array[Vector3] = []
 var _player_body: PlayerBody
 var _ik: PlayerFootIKModifier
 var _skel: Skeleton3D
@@ -50,8 +54,7 @@ const READOUT_FIELDS := [
 var _loop_reset_flash: Label
 var _controlled_trace_writer := TRACE_WRITER.new(CONTROLLED_TRACE_FILE, CONTROLLED_TRACE_MAX_FRAMES)
 var _contact_lost_flash: Label
-## Marker-file toggle (same pattern as auto-spin) - a per-vertex raycast
-## every frame is the right cost for a diagnostic session, not ordinary play.
+## Marker-file toggle: a per-vertex raycast/frame suits a diagnostic session, not ordinary play.
 var _live_penetration_check: RefCounted = (
 		preload("res://tests/manual/foot_ik/foot_ik_live_penetration_check.gd").new()
 		if FileAccess.file_exists("user://foot_ik_penetration_check_marker") else null)
@@ -88,9 +91,8 @@ func _ready() -> void:
 	add_to_group(&"foot_ik_camera_preset")
 	FileAccess.open(CONTROLLED_TRACE_FILE, FileAccess.WRITE).close()
 	call_deferred(&"set_stair_foot_follow_enabled", false)
-	# Captured before any physics settling/movement, so it always reflects
-	# foot_ik_preview.tscn's own authored Player transform regardless of
-	# when in the scene's lifetime the close-up camera actually gets used.
+	# Captured before physics settling, so it always reflects the scene's own
+	# authored Player transform regardless of when the close-up camera is used.
 	_player_spawn_position = (get_node("../Player") as Node3D).global_position
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -125,9 +127,8 @@ func _ready() -> void:
 		_markers[str(side) + "_target"] = FootIkDebugMarkers.spawn_marker(self, Color.BLUE)
 		_markers[str(side) + "_actual"] = FootIkDebugMarkers.spawn_marker(self, Color.RED)
 		_markers[str(side) + "_ray"] = FootIkDebugMarkers.spawn_ray(self, Color.WHITE)
-		# Separate probe/marker for the toe/ball bone specifically - the
-		# ankle marker above can sit right at the target while the toe still
-		# visibly pokes up, since it's a distinct bone with its own pose.
+		# Separate probe/marker for the toe/ball bone - the ankle marker can
+		# sit right at the target while the toe still visibly pokes up.
 		var toe_idx: int = indices.get("toe", -1)
 		if toe_idx >= 0:
 			var toe_attach := BoneAttachment3D.new()
@@ -148,20 +149,27 @@ func _ready() -> void:
 		for segment: String in ["thigh", "shin", "foot", "leaf"]:
 			(_angle_labels[side] as Dictionary)[segment] = FootIkDebugMarkers.spawn_angle_label(self)
 
+	# Parented to a BoneAttachment3D (unlike the foot/toe markers, not
+	# repositioned manually) so it tracks the bone directly, and the trail
+	# below shows its recent path - lets you SEE a shake, not just read it.
+	var head_idx := _skel.find_bone(_player_body.resolve_bone_name(&"Head"))
+	if head_idx >= 0:
+		var head_attach := BoneAttachment3D.new()
+		_skel.add_child(head_attach)
+		head_attach.bone_idx = head_idx
+		var head_marker := FootIkDebugMarkers.spawn_marker(head_attach, Color.MAGENTA)
+		head_marker.scale = Vector3.ONE * 4.0
+		_head_probe = head_attach
+		_head_trace_mesh = FootIkDebugMarkers.spawn_trace(self)
+
 	_build_panel()
 
-	# Default-on for this scene only, same reasoning as the detached camera
-	# default below - the whole point of foot_ik_preview.tscn is inspecting
-	# joint placement, so the skeleton overlay should already be visible
-	# without an extra menu trip every time the scene reloads.
+	# Default-on for this scene only: foot_ik_preview.tscn's whole point is
+	# inspecting joint placement, so the overlay should be visible on load.
 	_player_body.set_skeleton_visible(true)
 
-	# player.gd only rotates the camera from mouse motion while captured, and
-	# stays captured by default on load (matching every other scene) so the
-	# camera responds immediately instead of the pointer sitting idle.
-	# Backtick frees the mouse on demand for the sliders. Deliberately NOT
-	# Tab: Player is real and fully-wired, and Tab is already project-wide
-	# "inventory" (see project.godot) - fighting this toggle otherwise.
+	# Mouse stays captured by default. Backtick frees it for the sliders -
+	# deliberately NOT Tab, already project-wide "inventory" (project.godot).
 
 ## Positioning before settling drags the camera down by the fall distance.
 func _wait_for_player_to_settle() -> void:
@@ -189,9 +197,7 @@ func _start_detached_camera_on_foot() -> void:
 	cam.rotation = Vector3(
 			deg_to_rad(DEFAULT_CAMERA_ROTATION_DEG.x), deg_to_rad(DEFAULT_CAMERA_ROTATION_DEG.y),
 			deg_to_rad(DEFAULT_CAMERA_ROTATION_DEG.z))
-	# set_detached_camera_active() already synced these from the first-person
-	# camera - re-sync from our override or the first mouse-look frame snaps
-	# the camera back to that original orientation.
+	# Re-sync from our override, or the first mouse-look frame snaps back.
 	player._detached_yaw = cam.rotation.y
 	player._detached_pitch = cam.rotation.x
 
@@ -214,9 +220,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if (_stair_follow_enabled and _follow_orbit_dragging
 			and event is InputEventMouseMotion):
 		var mouse_motion := event as InputEventMouseMotion
-		# MouseMotion.relative can contain a stale capture/window-focus jump on
-		# the first click. Screen-position deltas start from the press itself, so
-		# a click without a real drag leaves the calibrated camera untouched.
+		# .relative can hold a stale capture/focus jump on the first click -
+		# screen-position deltas start from the press itself instead.
 		var drag_delta := mouse_motion.position - _follow_orbit_last_mouse_position
 		_follow_orbit_last_mouse_position = mouse_motion.position
 		_orbit_stair_follow(drag_delta)
@@ -256,8 +261,7 @@ func _make_probe(bone_idx: int) -> Node3D:
 	attach.add_child(probe)
 	return probe
 
-## Each segment's OWN absolute angle from world Vector3.DOWN, not the bend
-## relative to the previous segment. Shared by readout + console dump.
+## Each segment's OWN absolute angle from world Vector3.DOWN, not the bend relative to the previous.
 func _compute_leg_angles(side: StringName) -> Dictionary:
 	var angle_probes: Dictionary = _angle_probes.get(side, {})
 	var hip_probe: Node3D = angle_probes.get("hip")
@@ -351,9 +355,8 @@ func _build_panel() -> void:
 	var panel := PanelContainer.new()
 	panel.add_theme_font_size_override("font_size", 21)
 	panel.custom_minimum_size = Vector2(panel_width, 0)
-	# Anchored to the top-right corner (not a fixed left-side position) so it
-	# stays clear of the close-up foot view this scene starts you in, which
-	# sits left-of-center in the default camera framing.
+	# Top-right corner: stays clear of the close-up foot view this scene
+	# starts you in, which sits left-of-center in the default framing.
 	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	panel.position = Vector2(-(panel_width + PANEL_OUTER_MARGIN), PANEL_OUTER_MARGIN)
 	layer.add_child(panel)
@@ -461,9 +464,8 @@ func _set_scene_paused(paused: bool) -> void:
 	if paused == get_tree().paused:
 		return
 	if paused:
-		# PlayerBody intentionally runs its AnimationPlayer in ALWAYS mode for
-		# ordinary gameplay overlays. Temporarily make every animation player
-		# pausable before freezing the tree so the exact skeleton frame stops.
+		# PlayerBody runs AnimationPlayer in ALWAYS mode - make it pausable
+		# first so freezing the tree stops the exact skeleton frame.
 		_paused_animation_process_modes.clear()
 		for node: Node in get_tree().root.find_children("*", "AnimationPlayer", true, false):
 			_paused_animation_process_modes[node] = node.process_mode
@@ -514,16 +516,15 @@ func _on_animation_timeline_changed(position: float) -> void:
 	_set_scene_paused(true)
 	animation_player.seek(position, true)
 	# Seeking a paused AnimationPlayer changes its stored time, but the
-	# SkeletonModifier3D stack needs an explicit zero-time evaluation to make
-	# that exact pose visible immediately.
+	# SkeletonModifier3D stack needs an explicit zero-time evaluation to
+	# make that exact pose visible immediately.
 	_skel.advance(0.0)
 	_update_animation_timeline()
 
 func _refresh_paused_ik_pose() -> void:
+	# A paused AnimationPlayer doesn't request another skeleton update when
+	# only modifier tuning changes - advance(0.0) renders new IK values now.
 	if get_tree().paused and _skel != null:
-		# A paused AnimationPlayer doesn't request another skeleton update when
-		# only modifier tuning changes - advance(0.0) keeps the frame fixed
-		# while rendering the new IK values immediately.
 		_skel.advance(0.0)
 
 func _update_animation_timeline() -> void:
@@ -716,17 +717,15 @@ func _process(_delta: float) -> void:
 	_update_animation_timeline()
 	if not _stair_follow_enabled or _stair_follow_probe == null:
 		return
-	# Player/debug camera input can recapture the pointer after this overlay's
-	# deferred initialization. Foot-follow is an interactive panel/orbit mode,
-	# so keep the pointer available for its controls for the whole time it is on.
+	# Other input can recapture the pointer after deferred init - foot-follow
+	# is interactive, so keep the pointer visible for its controls.
 	if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var player := get_node("../Player") as Player
 	var anchor := _stair_follow_character.global_position
 	if _follow_has_anchor:
-		# Follow stable character-root translation, not the animated foot itself.
-		# The foot remains the look target below, so gait motion changes framing
-		# naturally without dragging the camera through every swing arc.
+		# Follow stable character-root translation, not the animated foot -
+		# gait motion changes framing naturally without camera dragging.
 		player.detached_cam.global_position += anchor - _follow_last_anchor
 	else:
 		player.detached_cam.global_position = anchor + STAIR_FOLLOW_ROOT_OFFSET
@@ -824,10 +823,8 @@ func _physics_process(delta: float) -> void:
 		get_tree().paused = false ## Lets player.gd keep ticking while Esc/P's menu is still open.
 	elif get_tree().paused:
 		_refresh_paused_ik_pose() ## ui/hud.gd's P menu bypasses _set_scene_paused().
-	# The checkbox only used to reflect the click that set it, not
-	# set_character_grounded()'s own automatic on/off (airborne, landing) -
-	# read as permanently "IK DISABLED" from a one-frame spawn-height dip
-	# even after it self-corrected. Keep it honest every frame instead.
+	# Keep the checkbox honest every frame - grounded/airborne auto-toggling
+	# otherwise reads as stuck "IK DISABLED" after a one-frame spawn dip.
 	if _active_check.button_pressed != _ik.active:
 		_active_check.set_pressed_no_signal(_ik.active)
 		_style_active_check(_ik.active)
@@ -841,10 +838,7 @@ func _physics_process(delta: float) -> void:
 	elif _contact_lost_flash.modulate.a > 0.0:
 		var lost_fade := delta / LOOP_RESET_FLASH_DURATION
 		_contact_lost_flash.modulate.a = maxf(0.0, _contact_lost_flash.modulate.a - lost_fade)
-	# Surface-to-surface ray distance (sole vs ground), from the controlled
-	# character's own modifier, not the 0.35m walker's preview rays.
-	# Whichever camera is actually rendering right now, not assuming it's
-	# still the detached one this scene starts you in.
+	# Whichever camera is rendering now, not assuming the detached one this scene starts you in.
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
 		var rot_deg := cam.global_rotation_degrees
@@ -920,11 +914,17 @@ func _physics_process(delta: float) -> void:
 func _capture_controlled_foot_frame() -> void:
 	if _ik == null or _player_body == null:
 		return
+	if _head_probe != null:
+		_head_trace_points.append(_head_probe.global_position)
+		_head_trace_points = _head_trace_points.slice(-HEAD_TRACE_MAX_POINTS)
+		FootIkDebugMarkers.update_trace(_head_trace_mesh, _head_trace_points)
 	var animation_player := _player_body.anim_player
+	var player_node := _player_body.get_parent() as Player
 	var trace := {
 		"frame": Engine.get_physics_frames(),
 		"root": _player_body.global_position,
-		"head_world_y": (_player_body.get_parent() as Player).head.global_position.y,
+		"head_world_y": player_node.head.global_position.y,
+		"bones": _capture_upper_body_bones(),
 		"root_yaw_deg": rad_to_deg((_player_body.get_parent() as Node3D).rotation.y),
 		"animation": animation_player.current_animation if animation_player != null else "",
 		"time": animation_player.current_animation_position if animation_player != null else 0.0,
@@ -980,3 +980,21 @@ func _capture_controlled_foot_frame() -> void:
 	# Rolling window, not an ever-growing append: always holds the moment a
 	# live shake just happened without a whole play session in the file.
 	_controlled_trace_writer.capture(JSON.stringify(trace))
+
+## Skeletal Head/shoulder bones - what third-person shows, unlike head_world_y (a camera node).
+func _capture_upper_body_bones() -> Dictionary:
+	var skeleton := _player_body.skeleton
+	if skeleton == null:
+		return {}
+	var result := {}
+	for role: StringName in [&"Head", &"LeftShoulder", &"RightShoulder"]:
+		var bone_idx := skeleton.find_bone(_player_body.resolve_bone_name(role))
+		if bone_idx < 0:
+			continue
+		var xform := _player_body.global_transform * _player_body.get_visual_bone_global_pose(bone_idx)
+		result[String(role)] = {
+			"position": xform.origin, "scale": xform.basis.get_scale(),
+			"rotation_deg": xform.basis.get_euler() * (180.0 / PI),
+			"rotation_quaternion": xform.basis.orthonormalized().get_rotation_quaternion(),
+		}
+	return result

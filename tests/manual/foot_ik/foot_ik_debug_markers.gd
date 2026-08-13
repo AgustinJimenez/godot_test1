@@ -63,6 +63,81 @@ static func spawn_angle_label(parent: Node) -> Label3D:
 	return label
 
 
+## A trailing world-space tube (GPU-instanced cylinder segments, not a plain
+## ImmediateMesh line strip - line width isn't controllable in Godot's
+## renderer) showing the recent PATH a bone took, so a real shake reads as a
+## visible zigzag instead of needing frame-by-frame log comparison.
+## no_depth_test so it stays visible through the mesh.
+const TRACE_RADIUS := 0.012
+
+static func spawn_trace(parent: Node) -> MultiMeshInstance3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.no_depth_test = true
+	mat.vertex_color_use_as_albedo = true
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var cylinder := CylinderMesh.new()
+	cylinder.top_radius = 1.0
+	cylinder.bottom_radius = 1.0
+	cylinder.height = 1.0
+	cylinder.material = mat
+	var multimesh := MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.use_colors = true
+	multimesh.mesh = cylinder
+	var inst := MultiMeshInstance3D.new()
+	inst.multimesh = multimesh
+	parent.add_child(inst)
+	return inst
+
+
+## Per-frame turn angle sharp enough to read as fully red (a real snap, not
+## ordinary gait sway).
+const TRACE_ANGLE_MAX_DEG := 15.0
+
+
+## points must be world-space (inst itself stays at identity transform). One
+## cylinder segment per point pair, scaled from a unit cylinder via its own
+## Basis (a shared MultiMesh mesh can't vary per-instance height/radius any
+## other way). Color encodes how sharply the path bent AT each point
+## (yellow = smooth, red = a sharp direction change), so a shake reads as a
+## red spike right where it happened - not just a uniform-tint trail. Alpha
+## still fades older points toward transparent so it reads as motion.
+static func update_trace(inst: MultiMeshInstance3D, points: Array) -> void:
+	var multimesh := inst.multimesh
+	var segment_count := maxi(0, points.size() - 1)
+	multimesh.instance_count = segment_count
+	for i in segment_count:
+		var from: Vector3 = points[i]
+		var to: Vector3 = points[i + 1]
+		var diff := to - from
+		var length := diff.length()
+		if length < 0.0001:
+			multimesh.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), from))
+			multimesh.set_instance_color(i, Color(0.0, 0.0, 0.0, 0.0))
+			continue
+		var up := diff.normalized()
+		var arbitrary := Vector3.RIGHT if absf(up.dot(Vector3.RIGHT)) < 0.9 else Vector3.FORWARD
+		var basis_x := up.cross(arbitrary).normalized()
+		var basis_z := basis_x.cross(up).normalized()
+		var basis := Basis(basis_x * TRACE_RADIUS, up * length, basis_z * TRACE_RADIUS)
+		multimesh.set_instance_transform(i, Transform3D(basis, (from + to) * 0.5))
+		var age := float(i) / float(segment_count - 1) if segment_count > 1 else 1.0
+		var rgb := _turn_color(points, i + 1)
+		multimesh.set_instance_color(i, Color(rgb.r, rgb.g, rgb.b, age))
+
+
+static func _turn_color(points: Array, i: int) -> Color:
+	if i <= 0 or i >= points.size() - 1:
+		return Color.YELLOW
+	var incoming: Vector3 = points[i] - points[i - 1]
+	var outgoing: Vector3 = points[i + 1] - points[i]
+	if incoming.length_squared() < 0.000001 or outgoing.length_squared() < 0.000001:
+		return Color.YELLOW
+	var t := clampf(rad_to_deg(incoming.angle_to(outgoing)) / TRACE_ANGLE_MAX_DEG, 0.0, 1.0)
+	return Color.YELLOW.lerp(Color.RED, t)
+
+
 static func update_ray_visual(inst: MeshInstance3D, from: Vector3, to: Vector3, hit: bool) -> void:
 	var diff := to - from
 	var length := diff.length()
