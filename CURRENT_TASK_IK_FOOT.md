@@ -39,6 +39,33 @@ Both failures are intentionally still open (see below), not a regression from
 tonight's work — `FOOT_IK_STAIR_LOCOMOTION_CHECK` didn't exist before the previous
 commit, and `FOOT_IK_BODY_PENETRATION_CHECK` predates tonight's session.
 
+## Active refactor (2026-08-13)
+
+The next work is deliberately split into behavior-preserving phases before adding
+another stair-climb feature. Both `player.gd` and `player_foot_ik_modifier.gd` have
+reached the configured 1000-line lint ceiling, and their responsibilities should not
+be expanded further.
+
+1. **Complete and live-confirmed: extract gameplay stair traversal from `player.gd` into
+   `actors/player/player_stair_controller.gd`.** The helper owns step-up/down probes,
+   pending climb/tread state, and stair presentation offsets. `Player` remains the
+   authoritative `CharacterBody3D`: the helper operates on that real body and does not
+   become a second physics node or test-only movement path. The extraction preserved
+   the exact known-red regression baseline and was accepted in live play on 2026-08-13.
+2. **Complete and live-confirmed: extract ground-contact
+   sampling from `player_foot_ik_modifier.gd` into
+   `foot_ik/foot_ik_ground_sampler.gd`.** That helper will own rays, smoothed contact
+   target/normal, and rendered sole/toe clearance only; gait policy, stair support,
+   pelvis movement, and bone writes remain in their current focused owners. The five
+   independent validation entrypoints reproduce the exact pre-extraction baseline,
+   and the result was accepted in live play on 2026-08-13.
+
+After phase one is confirmed behavior-equivalent, update the stale stair-locomotion
+step detector to use cumulative ascent over a short window. Only then continue with
+proper predicted swing-foot clearance above a riser. Run all five validation
+entrypoints independently after every phase; intentionally red ramp/stair cases must
+remain visible rather than being weakened or silently skipped.
+
 ## Open, parked items
 
 - **Swing-phase penetration during active stair climbs** (`FOOT_IK_BODY_PENETRATION_CHECK`,
@@ -73,16 +100,19 @@ commit, and `FOOT_IK_BODY_PENETRATION_CHECK` predates tonight's session.
 
 ## Architecture to preserve
 
-- `actors/player/player_foot_ik_modifier.gd`: orchestration, ground-contact sampling,
-  shared pelvis application, public/debug state.
+- `actors/player/player_foot_ik_modifier.gd`: orchestration, shared pelvis application,
+  public/debug state.
+- `actors/player/foot_ik/foot_ik_ground_sampler.gd`: downward contact rays, smoothed
+  surface targets/normals, and rendered sole/toe clearance sampling.
 - `actors/player/foot_ik/foot_ik_gait_tracker.gd`: animated vertical velocity, contact
   weight, falling streak, landing events.
 - `actors/player/foot_ik/foot_ik_stair_predictor.gd`: travel direction, predicted
   tread, swing lift, single-support-foot ownership/transfer.
 - `actors/player/foot_ik/foot_ik_leg_solver.gd`: closed-form anatomical leg solve and
   bone angle limits only — no raycasts, no gait-state decisions.
-- `actors/player/player.gd`: authoritative `CharacterBody3D` stair ascent/descent and
-  collision-root movement (shared gameplay code, not test-only).
+- `actors/player/player.gd`: authoritative `CharacterBody3D` and ordinary collision-root
+  movement; `player_stair_controller.gd` probes and applies ascent/descent on that same
+  body (shared gameplay code, not test-only).
 
 Godot evaluates `SkeletonModifier3D` after animation and restores the base pose
 afterward — keep recurring IK there, not a direct persistent bone write from an

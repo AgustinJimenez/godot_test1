@@ -87,7 +87,8 @@ func update_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName,
 	_discard_current_support_tread(state)
 	var forward := _prediction_direction(side, foot_basis_local)
 	var predicted_probe: Vector3 = foot_pos + forward * _owner.step_prediction_distance
-	var predicted_hit: Dictionary = _owner._raycast_ground(space, predicted_probe)
+	var predicted_hit: Dictionary = _owner._ground_sampler.raycast_ground(
+			space, predicted_probe)
 
 	if not state.swing_active and ground_weight < 0.8:
 		state.swing_active = true
@@ -417,12 +418,12 @@ func _apply_support_contact(side: StringName, leg: Dictionary, delta: float) -> 
 	var on_flat_tread := _support_normal.dot(Vector3.UP) >= FLAT_SURFACE_UP_DOT
 	var surface_target := _support_surface_target
 	if not on_flat_tread and _owner._smoothed_target.has(side):
-		surface_target = _owner._move_target_smoothed(
+		surface_target = _owner._ground_sampler.move_target_smoothed(
 				_owner._smoothed_target[side] as Vector3, _support_surface_target, delta)
 	_owner._smoothed_target[side] = surface_target
 	_owner._smoothed_normal[side] = _support_normal
 	# leg["effective_offset"] is recomputed fresh every frame regardless of
-	# support state (see _sample_ground_contact) - use it directly instead
+	# support state (see FootIKGroundSampler.sample()) - use it directly instead
 	# of _support_ground_target's cached offset, which is only set once at
 	# _latch_support_target() and never refreshed during ordinary retention.
 	# A retained support foot could keep a wrong offset for its entire

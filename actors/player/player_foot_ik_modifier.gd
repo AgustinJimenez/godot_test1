@@ -15,6 +15,7 @@ const LEG_SOLVER := preload("res://actors/player/foot_ik/foot_ik_leg_solver.gd")
 const GAIT_TRACKER := preload("res://actors/player/foot_ik/foot_ik_gait_tracker.gd")
 const STAIR_PREDICTOR := preload("res://actors/player/foot_ik/foot_ik_stair_predictor.gd")
 const NATIVE_BACKEND := preload("res://actors/player/foot_ik/foot_ik_native_backend.gd")
+const GROUND_SAMPLER := preload("res://actors/player/foot_ik/foot_ik_ground_sampler.gd")
 
 enum SolverBackend { CUSTOM, NATIVE_TWO_BONE }
 
@@ -22,11 +23,7 @@ enum SolverBackend { CUSTOM, NATIVE_TWO_BONE }
 @export var ray_up: float = 0.5
 @export var ray_down: float = 0.6
 @export var idle_settle_search_down: float = 4.0 # idle fallback depth when ray_down finds nothing
-## Matches the level geometry collision layer used throughout the project.
-const GROUND_COLLISION_MASK := 1
 const GROUND_CONTACT_DISTANCE := 0.03
-const TARGET_NOISE_DEADBAND := 0.01 # sub-this raycast noise is rejected, not lerped toward
-const PLANT_LOCK_WEIGHT := 0.95 # target latches once planted - see _sample_ground_contact
 ## Approximate sole thickness/ankle clearance - the floor under
 ## effective_offset's other terms, for a leg whose toe doesn't droop at all.
 @export var ankle_offset: float = 0.0475
@@ -137,6 +134,7 @@ var _leg_solver: RefCounted
 var _gait_tracker: RefCounted
 var _stair_predictor: RefCounted
 var _native_backend: RefCounted
+var _ground_sampler: RefCounted
 
 var _bone_indices: Dictionary = {} # side -> {hip, knee, foot, toe, leaf: int}
 var _leg_lengths: Dictionary = {} # side -> {upper, lower: float}
@@ -165,8 +163,14 @@ var _foot_frame_local: Dictionary = {} # side -> Basis
 ## visible toe even when every corrected parent measured flat.
 var _leaf_rest_offset: Dictionary = {} # side -> Vector3 (relative to toe)
 var _leaf_rest_relative_basis: Dictionary = {} # side -> Basis (relative to toe)
-var _smoothed_target: Dictionary = {} # side -> Vector3 (world)
-var _smoothed_normal: Dictionary = {} # side -> Vector3 (world)
+## Compatibility views used by the focused gait/predictor/solver helpers and
+## persistent diagnostics. FootIKGroundSampler owns the actual dictionaries.
+var _smoothed_target: Dictionary:
+	get:
+		return _ground_sampler.smoothed_target if _ground_sampler != null else {}
+var _smoothed_normal: Dictionary:
+	get:
+		return _ground_sampler.smoothed_normal if _ground_sampler != null else {}
 ## Previous frame's animated foot position in skeleton space. Measuring
 ## relative to the skeleton excludes player/root stair-hover translation;
 ## otherwise both feet falsely become "swinging" whenever the visible body
@@ -242,8 +246,8 @@ func reset_runtime_state() -> void:
 	if _leg_solver != null:
 		_leg_solver.reset_runtime_state()
 	if _gait_tracker != null: _gait_tracker.reset_runtime_state()
-	_smoothed_target.clear()
-	_smoothed_normal.clear()
+	if _ground_sampler != null:
+		_ground_sampler.reset()
 	_prev_animated_foot_pos.clear()
 	_prev_leg_bone_poses.clear()
 	_prev_leg_bone_poses_frame.clear()
@@ -312,6 +316,7 @@ func set_pose_suppressed(value: bool) -> void:
 	reset_runtime_state()
 
 func _ready() -> void:
+	_ground_sampler = GROUND_SAMPLER.new(self)
 	_leg_solver = LEG_SOLVER.new(self)
 	_gait_tracker = GAIT_TRACKER.new(self)
 	_stair_predictor = STAIR_PREDICTOR.new(self)
@@ -619,7 +624,8 @@ func _process_modification_with_delta(delta: float) -> void:
 		# the true orientation hasn't changed, reading as spurious rotation.
 		var body_yaw := (player_body.get_parent() as Node3D).rotation.y
 		var frozen: bool = _gait_tracker.update_idle_freeze(side, anim_speed, delta, body_yaw)
-		var contact := _sample_ground_contact(skel, space, side, animated_foot_pose,
+		var contact: Dictionary = _ground_sampler.sample(
+				skel, space, side, animated_foot_pose,
 				foot_pos, to_world, delta, likely_idle, frozen)
 		per_leg[side] = {"hip_pos": hip_pos, "hit": contact["hit"], "upper": upper_length,
 				"lower": lower_length, "vertical_velocity": 0.0}
@@ -662,7 +668,7 @@ func _process_modification_with_delta(delta: float) -> void:
 				if retracted["found"]:
 					ground_target = retracted["target"]
 					if _smoothed_target.has(side):
-						_smoothed_target[side] = _move_target_smoothed(
+						_smoothed_target[side] = _ground_sampler.move_target_smoothed(
 								_smoothed_target[side] as Vector3, retracted["surface"], delta)
 						var amount := clampf(delta * smooth_rate, 0.0, 1.0)
 						_smoothed_normal[side] = (_smoothed_normal[side] as Vector3).lerp(
@@ -764,19 +770,6 @@ func _animated_vertical_speed(side: StringName, animated_foot_pos: Vector3,
 		_prev_animated_foot_pos[side] = animated_foot_pos
 	return velocity
 
-## Lerp toward raw_target at smooth_rate, then clamp the resulting move to
-## target_max_speed - see that export's doc comment for why the clamp
-## exists on top of the plain fractional lerp.
-func _move_target_smoothed(current: Vector3, raw_target: Vector3, delta: float) -> Vector3:
-	var amount := clampf(delta * smooth_rate, 0.0, 1.0)
-	var lerped := current.lerp(raw_target, amount)
-	var max_dist := target_max_speed * delta
-	if max_dist <= 0.0:
-		return lerped
-	var move := lerped - current
-	if move.length() > max_dist:
-		lerped = current + move.normalized() * max_dist
-	return lerped
 ## Classifies this stationary foot's relationship to a lower surface it
 ## hovers over (stair-riser straddle). Requires a sustained streak of static
 ## frames so a swing's single near-zero-velocity apex frame can't fake
@@ -836,11 +829,11 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, h
 	var to_xz := Vector2(hip_pos.x, hip_pos.z)
 	# Bare ankle_offset alone under-cleared the toe here (a retracted leg
 	# still has a toe extending forward) - same fix as
-	# _sample_ground_contact's effective_offset.
+	# FootIKGroundSampler's effective_offset.
 	var offset := maxf(ankle_offset, _sole_depth_below_foot.get(side, 0.0))
 	for i in RETRACT_STEPS + 1:
 		var xz := from_xz.lerp(to_xz, float(i) / RETRACT_STEPS)
-		var hit := _raycast_ground(
+		var hit: Dictionary = _ground_sampler.raycast_ground(
 				space, Vector3(xz.x, hip_pos.y, xz.y), idle_settle_search_down)
 		if not hit["hit"]:
 			continue
@@ -854,79 +847,6 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, h
 		if needed_sink <= step_down_pelvis_drop:
 			return {"found": true, "target": target, "surface": surface, "normal": normal}
 	return {"found": false}
-func _sample_ground_contact(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
-		side: StringName, foot_pose: Transform3D, foot_pos: Vector3, to_world: Transform3D,
-		delta: float, likely_idle: bool = false, frozen: bool = false) -> Dictionary:
-	var hit := _raycast_ground(space, foot_pos)
-	if not hit["hit"] and likely_idle and step_prediction_enabled:
-		# The short ordinary probe protects swing timing; an idle foot can
-		# safely use the deep fallback before returning to its animated pose.
-		hit = _raycast_ground(space, foot_pos, idle_settle_search_down)
-	var raw_target: Vector3 = hit["position"] if hit["hit"] else foot_pos
-	var raw_normal: Vector3 = hit["normal"] if hit["hit"] else Vector3.UP
-	if not _smoothed_target.has(side):
-		_smoothed_target[side] = raw_target
-		_smoothed_normal[side] = raw_normal
-	var target_lock_allowed: bool = _gait_tracker.target_lock_allows_latch(side)
-	var body_turning: bool = _gait_tracker.is_body_turning(side)
-	var likely_planted: bool = ((float(_smoothed_ground_weight.get(side, 0.0)) >= PLANT_LOCK_WEIGHT
-			or _gait_tracker.is_locomotion_stance_active(side))
-			and _landing_grace_time <= 0.0
-			and player_body.anim_player.current_animation != "moves/unarmed_jump_land"
-			and target_lock_allowed)
-	if _landing_grace_time > 0.0:
-		# Weight already eases touchdown; target lag can trigger a reach/pelvis sink.
-		_smoothed_target[side] = raw_target
-		_smoothed_normal[side] = raw_normal
-	elif not frozen and not likely_planted and raw_target.distance_to(
-			_smoothed_target[side] as Vector3) > TARGET_NOISE_DEADBAND:
-		var amount := clampf(delta * smooth_rate, 0.0, 1.0)
-		var current_target := _smoothed_target[side] as Vector3
-		_smoothed_target[side] = (_move_target_smoothed(current_target, raw_target, delta)
-				if not body_turning else current_target.move_toward(
-				raw_target, target_max_speed * delta))
-		_smoothed_normal[side] = (_smoothed_normal[side] as Vector3).lerp(
-				raw_normal, amount).normalized()
-	if not hit["hit"] and not frozen:
-		return {"hit": false}
-	var desired_down := -(_smoothed_normal[side] as Vector3)
-	var foot_basis := _compute_new_foot_basis_world(skel, side, desired_down, foot_pose)
-	var toe_offset: Vector3 = foot_basis * (_toe_rest_offset.get(side, Vector3.ZERO) as Vector3)
-	var tip_offset := toe_offset
-	if not toe_offset.is_zero_approx():
-		tip_offset += toe_offset.normalized() * toe_tip_margin
-	var effective_offset := maxf(ankle_offset, maxf(
-			tip_offset.dot(desired_down), _sole_depth_below_foot.get(side, 0.0)))
-	var animated_lowest_point := foot_pos
-	var surface_hit := {"hit": false}
-	if step_prediction_enabled:
-		animated_lowest_point = _animated_lowest_surface_point_world(
-				skel, side, foot_pose, foot_pos, to_world)
-		surface_hit = _raycast_ground(space, animated_lowest_point)
-		if not surface_hit["hit"]:
-			# The ordinary probe stays short so a mid-swing foot never "sees" a
-			# distant floor and distorts gait timing - but that means a foot
-			# hanging further than ray_down over open air reports no contact at
-			# all. A stationary foot has no swing-timing concern, so try once
-			# more at idle_settle_search_down before accepting there is truly
-			# nothing to stand on; _step_down_classification treats a hit found
-			# only here the same as any other settle target.
-			surface_hit = _raycast_ground(space, animated_lowest_point, idle_settle_search_down)
-	var contact_hit := bool(surface_hit["hit"])
-	var contact_position: Vector3 = surface_hit["position"] if contact_hit else foot_pos
-	return {
-		"hit": true, "raw_target": raw_target, "raw_normal": raw_normal,
-		"effective_offset": effective_offset,
-		"ground_target": (_smoothed_target[side] as Vector3)
-				+ (_smoothed_normal[side] as Vector3) * effective_offset,
-		"raw_ground_target": raw_target + raw_normal * effective_offset,
-		"animated_lowest_point": animated_lowest_point,
-		"animated_contact_distance": maxf(0.0, animated_lowest_point.y - contact_position.y)
-				if contact_hit else INF,
-		"animated_contact_hit": contact_hit,
-		"animated_contact_position": contact_position,
-		"animated_contact_normal": surface_hit["normal"] if contact_hit else Vector3.UP,
-	}
 func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		per_leg: Dictionary, shared_drop: float, delta: float) -> void:
 	if step_prediction_enabled and _stair_predictor.is_active():
@@ -964,37 +884,3 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		_leg_solver.solve(skel, side, leg["hip_pos"] - Vector3.UP * shared_drop, leg["target"],
 				leg["upper"], leg["lower"], leg["ground_weight"],
 				leg.get("chain_weight", leg["ground_weight"]), delta)
-func _animated_lowest_surface_point_world(
-		skel: Skeleton3D, side: StringName, animated_foot_pose: Transform3D,
-		foot_position: Vector3, to_world: Transform3D) -> Vector3:
-	# Match the manual harness's rendered-contact estimate: compare the sole
-	# point below the ankle with the extrapolated toe tip and use whichever
-	# is lower. Measuring only the ankle is why support previously transferred
-	# while the visible foot was still tens of centimeters from the tread.
-	var sole_down_world := (
-			to_world.basis * animated_foot_pose.basis * (_sole_down_local[side] as Vector3)
-	).normalized()
-	var sole_point := foot_position + sole_down_world * ankle_offset
-	var toe_idx: int = (_bone_indices[side] as Dictionary).get("toe", -1)
-	if toe_idx < 0:
-		return sole_point
-	var toe_position: Vector3 = to_world * skel.get_bone_global_pose(toe_idx).origin
-	var foot_to_toe := toe_position - foot_position
-	var toe_tip := toe_position
-	if not foot_to_toe.is_zero_approx():
-		toe_tip += foot_to_toe.normalized() * toe_tip_margin
-	return toe_tip if toe_tip.y < sole_point.y else sole_point
-
-func _raycast_ground(
-		space: PhysicsDirectSpaceState3D, foot_pos: Vector3, down: float = -1.0) -> Dictionary:
-	var from := foot_pos + Vector3.UP * ray_up
-	var to := foot_pos + Vector3.DOWN * (down if down > 0.0 else ray_down)
-	var query := PhysicsRayQueryParameters3D.create(from, to)
-	query.collision_mask = GROUND_COLLISION_MASK
-	query.collide_with_areas = false
-	if is_instance_valid(player_body) and player_body.get_parent() is CollisionObject3D:
-		query.exclude = [(player_body.get_parent() as CollisionObject3D).get_rid()]
-	var result := space.intersect_ray(query)
-	if result.is_empty():
-		return {"hit": false, "position": foot_pos, "normal": Vector3.UP}
-	return {"hit": true, "position": result["position"], "normal": result["normal"]}

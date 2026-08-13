@@ -5,6 +5,7 @@ extends CharacterBody3D
 
 const STAND_CAPSULE_HEIGHT := 1.8
 const CROUCH_CAPSULE_HEIGHT := 1.2
+const STAIR_CONTROLLER := preload("res://actors/player/player_stair_controller.gd")
 ## How far out to draw the FOV wireframe in the debug view - purely visual,
 ## does not affect the camera's actual near/far planes.
 const FOV_GIZMO_DISTANCE := 2.5
@@ -50,7 +51,7 @@ func set_eye_offset(v: Vector3) -> void:
 @export var roll_cooldown: float = 0.4
 ## Clears the ~0.33m worst generated riser; taller walls still block.
 @export var step_height: float = 0.4
-## Spreads a step-up's rise over several frames (_apply_step_up()).
+## Spreads a step-up's rise over several frames in PlayerStairController.
 @export_range(0.5, 3.0, 0.1) var step_rise_rate: float = 2.8
 ## Collision steps immediately; this eases only the camera presentation.
 @export_range(1.0, 30.0, 0.5) var stair_hover_speed: float = 12.0
@@ -84,10 +85,6 @@ const AIRBORNE_ANIMATION_GRACE := 0.15
 ## past this - used to tell "just jumped, animate instantly" apart from
 ## "briefly airborne between stair treads, don't pop the fall pose yet".
 const JUMP_VELOCITY_THRESHOLD := 0.5
-## Push past the blocking face; its shared edge may report a riser normal.
-const STEP_TREAD_PROBE_FORWARD := 0.04
-const STEP_TREAD_NORMAL_MIN_DOT := 0.9
-const STEP_REPEAT_CONTACT_DISTANCE := 1.0
 var _airborne_time := 0.0
 var _roll_direction := Vector3.ZERO
 var _next_punch_is_jab := true
@@ -119,15 +116,15 @@ var _free_mode_default_collision_layer := 0
 var _free_mode_default_collision_mask := 0
 var movement_input_override: Variant = null
 var gameplay_action_input_enabled := true
-var _stair_hover_offset_y := 0.0
-var _step_climb_target_y := -INF
-var _step_climb_active := false
-var _last_step_tread_y := -INF
-var _last_step_contact := Vector3(INF, INF, INF)
-var _pending_step_down_y := -INF
-var _stair_consumed_horizontal_motion := false
-var _body_rest_y := 0.0
-var _third_person_arm_rest_y := 0.0
+var _stair_controller := STAIR_CONTROLLER.new()
+var _stair_hover_offset_y: float:
+	get:
+		return _stair_controller.hover_offset_y
+	set(value):
+		_stair_controller.hover_offset_y = value
+var _body_rest_y: float:
+	get:
+		return _stair_controller.get_body_rest_y()
 
 func set_free_mode(enabled: bool) -> void:
 	if free_mode_enabled == enabled:
@@ -254,10 +251,9 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_free_mode_default_collision_layer = collision_layer
 	_free_mode_default_collision_mask = collision_mask
-	_body_rest_y = body.position.y
-	_third_person_arm_rest_y = third_person_arm.position.y
+	_stair_controller.setup(self, body, third_person_arm)
 	# Must reach at least as far as step_height, or apply_floor_snap() in
-	# _apply_step_up() can fail to find the tread it just lifted onto (the
+	# The stair controller can fail to find the tread it just lifted onto (the
 	# gap between the lift and the actual step surface varies with each
 	# step's real riser height, up to step_height) - a snap that occasionally
 	# comes up short reads as is_on_floor() flicking false for a frame, which
@@ -492,27 +488,29 @@ func _physics_process(delta: float) -> void:
 	var horizontal_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
 	var frame_start_y := global_position.y
 	var preserved_horizontal_velocity := Vector2(velocity.x, velocity.z)
-	_stair_consumed_horizontal_motion = false
-	var stepped_up := _apply_step_up(horizontal_motion, delta)
-	var stepped_down := _apply_step_down(horizontal_motion) if stepped_up <= 0.0 else 0.0
-	if _stair_consumed_horizontal_motion:
+	_stair_controller.begin_frame()
+	var stepped_up := _stair_controller.apply_step_up(
+			horizontal_motion, delta, step_height, step_rise_rate)
+	var stepped_down := _stair_controller.apply_step_down(
+			horizontal_motion, step_height, JUMP_VELOCITY_THRESHOLD) if stepped_up <= 0.0 else 0.0
+	if _stair_controller.consumed_horizontal_motion:
 		velocity.x = 0.0
 		velocity.z = 0.0
-	# Skip mid-climb: _continue_step_climb() already validated/applied its
+	# Skip mid-climb: the stair controller already validated/applied its
 	# own motion this frame; depenetration here would add an extra push.
-	if not _step_climb_active:
+	if not _stair_controller.is_climbing():
 		move_and_slide()
-	if _stair_consumed_horizontal_motion:
+	if _stair_controller.consumed_horizontal_motion:
 		velocity.x = preserved_horizontal_velocity.x
 		velocity.z = preserved_horizontal_velocity.y
 	if stepped_up > 0.0:
-		_stair_hover_offset_y -= stepped_up
+		_stair_controller.record_presentation_delta(-stepped_up, step_height)
 	elif stepped_down > 0.0:
-		_stair_hover_offset_y += stepped_down
-	elif _is_short_step_down(frame_start_y, horizontal_motion):
-		_stair_hover_offset_y += frame_start_y - global_position.y
-	_stair_hover_offset_y = clampf(
-			_stair_hover_offset_y, -step_height, step_height)
+		_stair_controller.record_presentation_delta(stepped_down, step_height)
+	elif _stair_controller.is_short_step_down(
+			frame_start_y, horizontal_motion, step_height, JUMP_VELOCITY_THRESHOLD):
+		_stair_controller.record_presentation_delta(
+				frame_start_y - global_position.y, step_height)
 	_update_stair_hover(delta)
 
 	# update_motion() treats any not-on-floor frame as a launch into the
@@ -550,7 +548,7 @@ func _physics_process(delta: float) -> void:
 		var head_pos := body.transform * head_pose.origin
 		var safe_look := _solve_safe_look(_look_pitch, _look_yaw, head_pos)
 		var pitch_rot := Basis(Vector3.UP, safe_look.y) * Basis(Vector3.RIGHT, safe_look.x)
-		# _apply_step_up() already spreads the root's rise across several
+		# The stair controller already spreads the root's rise across several
 		# frames (step_rise_rate), so head_pos is already smooth here. An
 		# older per-camera compensation used to pull this down further during
 		# a climb, to mask what WAS an instant one-frame teleport - now that
@@ -559,180 +557,10 @@ func _physics_process(delta: float) -> void:
 		head.position = head_pos + pitch_rot * eye_offset
 
 
-func _apply_step_up(motion: Vector3, delta: float) -> float:
-	if _step_climb_active:
-		return _continue_step_climb(motion, delta)
-	# Do not gate on is_on_floor(): touching the riser can unset it briefly.
-	if not motion.is_zero_approx():
-		var wall_collision := KinematicCollision3D.new()
-		if test_move(global_transform, motion, wall_collision):
-			var lifted := global_transform.translated(Vector3(0.0, step_height, 0.0))
-			if not test_move(lifted, motion):
-				var tread := _find_step_up_tread(motion, wall_collision)
-				if not tread.is_empty():
-					lifted.origin.y = global_position.y + tread["rise"]
-					if not test_move(lifted, motion):
-						_last_step_tread_y = tread["y"]
-						_last_step_contact = tread["contact"]
-						_step_climb_target_y = global_position.y + tread["rise"]
-						_step_climb_active = true
-						return _continue_step_climb(motion, delta)
-	return 0.0
-
-
-## Rises toward _step_climb_target_y over several frames. Only advance
-## horizontally once test_move confirms the capsule clears the tread at the
-## CURRENT partial height, or it gets pushed into the riser volume first.
-func _continue_step_climb(motion: Vector3, delta: float) -> float:
-	var previous_y := global_position.y
-	var rise := move_toward(previous_y, _step_climb_target_y, step_rise_rate * delta) - previous_y
-	if test_move(global_transform, Vector3(0.0, rise, 0.0)):
-		_step_climb_active = false
-		_step_climb_target_y = -INF
-		return 0.0
-	global_position.y += rise
-	_stair_consumed_horizontal_motion = true
-	velocity = Vector3.ZERO
-	# Always applied, not gated on test_move() at the partial height: that
-	# gate froze root_xz for 1-2 frames per step before jumping to catch up,
-	# a stutter propagating into every bone (confirmed live: head/shoulder
-	# shake). The embedding risk it guarded against barely helped anyway.
-	global_position += motion
-	if is_equal_approx(global_position.y, _step_climb_target_y):
-		_step_climb_active = false
-		_step_climb_target_y = -INF
-		apply_floor_snap()
-	return maxf(global_position.y - previous_y, 0.0)
-func _find_step_up_tread(
-		motion: Vector3, wall_collision: KinematicCollision3D) -> Dictionary:
-	var direction := motion.normalized()
-	var contact := wall_collision.get_position()
-	var probe_xz := contact + direction * STEP_TREAD_PROBE_FORWARD
-	var probe_from := Vector3(
-			probe_xz.x, global_position.y + step_height + safe_margin, probe_xz.z)
-	var probe_to := Vector3(
-			probe_xz.x, global_position.y + safe_margin, probe_xz.z)
-	var query := PhysicsRayQueryParameters3D.create(probe_from, probe_to, collision_mask)
-	query.exclude = [get_rid()]
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if hit.is_empty():
-		return {}
-	# CharacterBody3D's origin is not necessarily at the collider sole (this
-	# player's capsule extends slightly below it). Compare surface heights,
-	# then add that difference to the origin; assigning tread_y directly
-	# would lose the authored collider offset and rediscover the same tread
-	# as a new "step" every frame.
-	var floor_from := global_position + Vector3.UP * (step_height + safe_margin)
-	var floor_to := global_position - Vector3.UP * (step_height + safe_margin)
-	var floor_query := PhysicsRayQueryParameters3D.create(
-			floor_from, floor_to, collision_mask)
-	floor_query.exclude = [get_rid()]
-	var current_floor := get_world_3d().direct_space_state.intersect_ray(floor_query)
-	if current_floor.is_empty():
-		return {}
-	var tread_normal: Vector3 = hit["normal"]
-	var tread_y: float = hit["position"].y
-	var current_floor_y: float = current_floor["position"].y
-	var rise := tread_y - current_floor_y
-	if tread_normal.dot(Vector3.UP) < STEP_TREAD_NORMAL_MIN_DOT:
-		return {}
-	var repeated_contact := Vector2(probe_xz.x, probe_xz.z).distance_to(
-			Vector2(_last_step_contact.x, _last_step_contact.z))
-	if (is_equal_approx(tread_y, _last_step_tread_y)
-			and repeated_contact < STEP_REPEAT_CONTACT_DISTANCE):
-		return {}
-	if rise <= safe_margin or rise > step_height + safe_margin:
-		return {}
-	return {"y": tread_y, "rise": rise, "contact": probe_xz}
-## Keeps a narrow lower tread pending until the rounded heel clears the old
-## edge; floor snap alone can otherwise fall past it at walking speed.
-func _apply_step_down(motion: Vector3) -> float:
-	if motion.is_zero_approx() or velocity.y > JUMP_VELOCITY_THRESHOLD:
-		_pending_step_down_y = -INF
-		return 0.0
-	if not is_finite(_pending_step_down_y):
-		var tread := _find_step_down_tread(motion)
-		if tread.is_empty():
-			return 0.0
-		_pending_step_down_y = tread["y"]
-	var remaining_drop := global_position.y - _pending_step_down_y
-	if remaining_drop <= safe_margin:
-		_pending_step_down_y = -INF
-		return 0.0
-	# Resolve the horizontal move first, then sweep the whole capsule down.
-	# Unlike an upward tread lookup, descent must keep the old tread behind
-	# the rounded heel from overlapping the lowered capsule. The shape sweep
-	# naturally releases that corner over the next few frames while still
-	# preventing a free-fall past the lower tread.
-	var moved := global_transform
-	moved.origin += motion
-	var collision := KinematicCollision3D.new()
-	if not test_move(moved, Vector3.DOWN * (remaining_drop + safe_margin), collision):
-		return 0.0
-	moved.origin += collision.get_travel()
-	var previous_y := global_position.y
-	global_transform = moved
-	velocity.y = 0.0
-	_stair_consumed_horizontal_motion = true
-	apply_floor_snap()
-	if global_position.y <= _pending_step_down_y + 0.06:
-		_pending_step_down_y = -INF
-	return maxf(previous_y - global_position.y, 0.0)
-func _find_step_down_tread(motion: Vector3) -> Dictionary:
-	var probe_height := step_height + safe_margin + 0.05
-	var current_query := PhysicsRayQueryParameters3D.create(
-			global_position + Vector3.UP * probe_height,
-			global_position - Vector3.UP * probe_height, collision_mask)
-	current_query.exclude = [get_rid()]
-	var next_position := global_position + motion
-	var next_query := PhysicsRayQueryParameters3D.create(
-			next_position + Vector3.UP * probe_height,
-			next_position - Vector3.UP * probe_height, collision_mask)
-	next_query.exclude = [get_rid()]
-	var space := get_world_3d().direct_space_state
-	var current_floor := space.intersect_ray(current_query)
-	var next_floor := space.intersect_ray(next_query)
-	if current_floor.is_empty() or next_floor.is_empty():
-		return {}
-	var current_normal: Vector3 = current_floor["normal"]
-	var next_normal: Vector3 = next_floor["normal"]
-	if (current_normal.dot(Vector3.UP) < STEP_TREAD_NORMAL_MIN_DOT
-			or next_normal.dot(Vector3.UP) < STEP_TREAD_NORMAL_MIN_DOT):
-		return {}
-	var drop: float = current_floor["position"].y - next_floor["position"].y
-	if drop <= safe_margin or drop > step_height + safe_margin:
-		return {}
-	return {"y": next_floor["position"].y}
-## Downward floor snapping is also a discrete root movement. Smooth only a
-## short drop onto a horizontal tread while the player is moving; slopes,
-## deliberate jumps, and real falls retain their physical vertical motion.
-func _is_short_step_down(frame_start_y: float, horizontal_motion: Vector3) -> bool:
-	var drop := frame_start_y - global_position.y
-	return (
-			not horizontal_motion.is_zero_approx()
-			and is_on_floor()
-			and get_floor_normal().dot(Vector3.UP) > 0.99
-			and drop > 0.001
-			and drop <= step_height + 0.01
-			and velocity.y <= JUMP_VELOCITY_THRESHOLD)
 func _update_stair_hover(delta: float) -> void:
-	var blend := 1.0 - exp(-stair_hover_speed * delta)
-	_stair_hover_offset_y = lerpf(_stair_hover_offset_y, 0.0, blend)
-	body.position.y = _body_rest_y
-	third_person_arm.position.y = (
-			_third_person_arm_rest_y + _stair_hover_offset_y)
+	_stair_controller.update_presentation(delta, stair_hover_speed)
 func _reset_stair_hover() -> void:
-	_stair_hover_offset_y = 0.0
-	_step_climb_target_y = -INF
-	_step_climb_active = false
-	_last_step_tread_y = -INF
-	_last_step_contact = Vector3(INF, INF, INF)
-	_pending_step_down_y = -INF
-	_stair_consumed_horizontal_motion = false
-	if is_instance_valid(body):
-		body.position.y = _body_rest_y
-	if is_instance_valid(third_person_arm):
-		third_person_arm.position.y = _third_person_arm_rest_y
+	_stair_controller.reset()
 
 
 ## Movement follows the camera's exact look direction (forward/back tilt up
