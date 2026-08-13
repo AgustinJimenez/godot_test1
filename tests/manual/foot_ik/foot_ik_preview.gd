@@ -76,6 +76,8 @@ var _body_penetrating_vertices := 0
 var _body_penetration_max_depth := 0.0
 var _pose_continuity_check := preload(
 		"res://tests/manual/foot_ik/foot_ik_pose_continuity_check.gd").new()
+var _stair_locomotion_check := preload(
+		"res://tests/manual/foot_ik/foot_ik_stair_locomotion_check.gd").new()
 var _walk_continuity_check := preload(
 		"res://tests/manual/foot_ik/foot_ik_walk_continuity_check.gd").new()
 var _automated_walk_check := "--foot-ik-walk-check" in OS.get_cmdline_user_args()
@@ -234,6 +236,7 @@ func _exit_tree() -> void:
 			" max_depth_m=", snappedf(_body_penetration_max_depth, 0.000001),
 			" tolerance_m=", BODY_STAIR_PENETRATION_TOLERANCE)
 	print(_pose_continuity_check.format_result())
+	print(_stair_locomotion_check.format_result())
 
 func _sample_controlled_continuity(player: Player, check: RefCounted) -> void:
 	var ik := _find_foot_ik(player)
@@ -518,6 +521,9 @@ func _start_stair_walker(walker: Dictionary) -> void:
 	player.movement_input_override = Vector2(0.0, -1.0)
 	player.body.update_motion(false, false, float(walker["physical_speed"]),
 			false, true, 0.0, 0.0, false)
+	if _automated_stretch_check and walker["trace_enabled"]:
+		_stair_locomotion_check.reset(
+				player, float(walker["physical_speed"]), STAIR_STEP_COUNT)
 	player.set_physics_process(bool(walker["trace_enabled"])) # only 0.35m uses live physics
 	walker["walking"] = true
 	walker["trace_frame"] = 0
@@ -557,14 +563,19 @@ func _log_stair_foot_frame(walker: Dictionary) -> void:
 	var ik := _find_foot_ik(player)
 	if ik == null:
 		return
+	if _automated_stretch_check:
+		_stair_locomotion_check.sample(player)
 	walker["trace_frame"] = int(walker["trace_frame"]) + 1
 	var trace := {
 		"frame": walker["trace_frame"],
 		"solver_backend": PlayerFootIKModifier.SolverBackend.keys()[ik.solver_backend],
 		"physics_frame": Engine.get_physics_frames(),
+		"animation": player.body.anim_player.current_animation,
 		"animation_time": player.body.anim_player.current_animation_position,
+		"horizontal_speed": Vector2(player.velocity.x, player.velocity.z).length(),
 		"root": _vector_to_array(player.global_position),
 		"body_y": player.body.position.y,
+		"body_world_y": player.body.global_position.y,
 		"head_world_y": player.head.global_position.y,
 		"stair_hover_offset_y": player._stair_hover_offset_y,
 		"current_tread": walker["current_tread"],

@@ -194,7 +194,28 @@ A follow-up fix for that swing-vs-stance blend (gating on the *sign* of vertical
 
 Player stair motion keeps collision and presentation separate. The capsule root must reach the exact tread immediately. The third-person camera may ease through the inverse local-Y offset, and the rendered body may ease a short descent above the next tread, but **never leave the complete body below an upward collision step**: that places the skinned mesh inside the riser even though the capsule is safe. Foot IK supplies local leg absorption on ascent. For ascent, probe the horizontal tread with a ray just beyond the blocking riser; a downward capsule sweep hits its rounded corner first and produces many tiny false steps. Remember the last tread/contact until the capsule center clears it, or the same corner repeatedly clears velocity. For descent, retain the lower tread as pending while sweeping the capsule forward/down until its rounded heel clears the old edge; otherwise narrow treads are skipped at walking speed. Preserve horizontal velocity while suppressing the already-consumed motion from the same `move_and_slide()` call. The 0.50m/0.65m Foot IK preview cases are limit/pose references; gameplay `step_height` remains 0.40m. In a static split-tread IK reference pose, do not leave a full `CharacterBody3D` controller processing against the stair edge: capsule depenetration shifts the hips while IK keeps the feet planted, visibly stretching the skinned legs. Freeze only the controller node's physics callback at the calibrated transform so its `PlayerBody` animation and `SkeletonModifier3D` children continue updating, then re-enable controller physics when the walking phase begins.
 
-After changing stair traversal or foot IK, run `scripts/check_foot_ik.sh` in addition to `scripts/check.sh`. The focused check samples the final processed skeleton while the 0.35m stair walker runs and fails if either thigh root separates from its shared pelvis by more than 5mm relative to the authored rest hierarchy; it also performs a real player jump and requires the Foot IK `SkeletonModifier3D` to remain inactive for every airborne sample. This catches both hip texture stretching and airborne stair attraction numerically before visual review.
+After changing stair traversal or Foot IK, run the complete regression battery independently:
+`scripts/check.sh`, `scripts/check_foot_ik.sh`, `scripts/check_foot_ik_locomotion.sh`,
+`scripts/check_foot_ik_ramps.sh`, and `scripts/check_foot_ik_ramp_sweep.sh`. Do not assume the
+focused wrapper ran everything: `check_foot_ik.sh` exits as soon as its stair checks fail, before its
+final locomotion invocation, and the fixed and dense ramp suites are separate entrypoints. Run every
+entrypoint even when an earlier one is red, then report the complete pass/fail map. The focused check
+samples the final processed skeleton while the 0.35m stair walker runs and fails if either thigh root
+separates from its shared pelvis by more than 5mm relative to the authored rest hierarchy; it also
+performs a real player jump and requires the Foot IK `SkeletonModifier3D` to remain inactive for every
+airborne sample. This catches both hip texture stretching and airborne stair attraction numerically
+before visual review.
+
+Stair locomotion validation must measure actual horizontal root displacement, not only the requested
+or preserved `velocity`: step-up code can consume the frame's motion, leave velocity at the expected
+3.2m/s, and still produce a visually stationary character. Track consecutive low-travel frames while
+the walk animation and expected velocity are active. Validate vertical presentation separately: one
+test must reject upward rendered-body jumps at each discrete capsule step, and another must reject the
+rendered body being lifted above its authored local rest position. An attempted anticipatory whole-body
+lift reduced the snap but floated both planted feet 20-46cm above their contacts; reverting it restored
+zero visual offset but left the known 0.35m vertical snap explicit. Never hide one failure by weakening
+the other assertion. Horizontal continuity, vertical continuity, and body/stair penetration are three
+independent acceptance conditions.
 
 The Foot IK harness runs its stair walkers at normal gameplay speed. It also CPU-skins every current
 `MeshInstance3D` under the character and tests the final rendered vertices against the solid stair

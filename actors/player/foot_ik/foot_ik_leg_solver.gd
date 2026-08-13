@@ -67,7 +67,8 @@ func release_to_animation(skel: Skeleton3D, side: StringName, delta: float) -> v
 
 
 func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3,
-		upper_length: float, lower_length: float, ground_weight: float, delta: float) -> void:
+		upper_length: float, lower_length: float, ground_weight: float,
+		chain_weight: float, delta: float) -> void:
 	var indices: Dictionary = _owner._bone_indices[side]
 	var hip_idx: int = indices["hip"]
 	var knee_idx: int = indices["knee"]
@@ -100,13 +101,14 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	var toe_pose: Transform3D = poses["toe"]
 	var leaf_pose: Transform3D = poses["leaf"]
 	var solve_weight := clampf(ground_weight, 0.0, 1.0)
+	var positional_weight := clampf(chain_weight, 0.0, 1.0)
 	var knee_pos: Vector3 = to_world * knee_pose.origin
 	var foot_pos: Vector3 = to_world * foot_pose.origin
 	var animated_hip_pos: Vector3 = to_world * hip_pose.origin
 	# Weight zero is a pass-through only when no stair swing-lift changed the
 	# target. The predictor deliberately raises a released foot before its
 	# next tread, and that positional correction still needs the chain solve.
-	if solve_weight <= 0.0001 and target.distance_squared_to(foot_pos) < 0.000001:
+	if positional_weight <= 0.0001 and target.distance_squared_to(foot_pos) < 0.000001:
 		release_to_animation(skel, side, delta)
 		return
 	var to_target := target - hip_pos
@@ -160,9 +162,9 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	# Landing grace uses a gentler cubic engagement, then ordinary gait keeps
 	# the direct confidence weight while the rate limiter below prevents a
 	# contact change from injecting a one-frame procedural joint snap.
-	var rotation_weight := solve_weight
+	var rotation_weight := positional_weight
 	if _owner._landing_grace_time > 0.0:
-		rotation_weight = solve_weight * solve_weight * solve_weight
+		rotation_weight = positional_weight * positional_weight * positional_weight
 	hip_delta = Quaternion.IDENTITY.slerp(hip_delta, rotation_weight)
 	knee_delta = Quaternion.IDENTITY.slerp(knee_delta, rotation_weight)
 	hip_delta = _limit_correction(side, &"hip", hip_delta, delta)

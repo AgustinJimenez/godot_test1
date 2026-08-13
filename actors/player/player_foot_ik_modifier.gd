@@ -698,11 +698,12 @@ func _process_modification_with_delta(delta: float) -> void:
 		var preserve_idle_pose: bool = flat_contact and (crouch_idle_clearance
 				or (not step_down and stationary_noop))
 		var target := foot_pos if preserve_idle_pose else foot_pos.lerp(ground_target, ground_weight)
+		var swing_lift := 0.0
 		if step_prediction_enabled:
-			target += Vector3.UP * _stair_predictor.update_swing_lift(
+			swing_lift = _stair_predictor.update_swing_lift(
 					space, side, foot_pos, animated_foot_pose.basis, raw_target,
 					animated_lowest_point, ground_weight, landed, delta, step_down)
-
+			target += Vector3.UP * swing_lift
 		per_leg[side]["target"] = target
 		per_leg[side]["ground_target"] = ground_target
 		per_leg[side]["raw_ground_target"] = raw_ground_target
@@ -716,6 +717,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		per_leg[side]["effective_offset"] = effective_offset
 		per_leg[side]["vertical_velocity"] = vertical_velocity
 		per_leg[side]["ground_weight"] = ground_weight
+		per_leg[side]["chain_weight"] = 1.0 if swing_lift > 0.0001 else ground_weight
 		per_leg[side]["preserve_idle_pose"] = preserve_idle_pose
 		debug_contact_hit[side] = animated_contact_hit
 		debug_contact_distance[side] = (
@@ -960,7 +962,8 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			_leg_solver.release_to_animation(skel, side, delta)
 			continue
 		_leg_solver.solve(skel, side, leg["hip_pos"] - Vector3.UP * shared_drop, leg["target"],
-				leg["upper"], leg["lower"], leg["ground_weight"], delta)
+				leg["upper"], leg["lower"], leg["ground_weight"],
+				leg.get("chain_weight", leg["ground_weight"]), delta)
 func _animated_lowest_surface_point_world(
 		skel: Skeleton3D, side: StringName, animated_foot_pose: Transform3D,
 		foot_position: Vector3, to_world: Transform3D) -> Vector3:

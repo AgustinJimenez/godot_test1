@@ -48,19 +48,9 @@ func set_eye_offset(v: Vector3) -> void:
 @export var roll_speed: float = 7.0
 @export var roll_duration: float = 0.75
 @export var roll_cooldown: float = 0.4
-## CharacterBody3D has no built-in stair-stepping - floor_snap_length only
-## pulls the body down onto ground within reach when leaving a ledge, not up
-## onto a raised one, so a bare move_and_slide() just catches on a riser's
-## vertical face like a wall. STEP_RISE (room_generation_preview.gd) targets
-## ~0.2m per riser, but with a small total rise forced into
-## STAIRS_MIN_STEPS=3 steps, the worst case is rise_min/3 (~0.33m) - this
-## needs to clear that worst case, not the ~0.2m typical one, or the
-## steepest generated stairs both fail to climb and free-fall a real gap on
-## the way down (not just a one-frame is_on_floor() flicker) - so real walls
-## (much taller) still block normally - see _apply_step_up().
+## Clears the ~0.33m worst generated riser; taller walls still block.
 @export var step_height: float = 0.4
-## Collision/body step immediately; this eases the third-person camera.
-## Only safe above-tread body easing is retained for short descents.
+## Collision steps immediately; this eases only the camera presentation.
 @export_range(1.0, 30.0, 0.5) var stair_hover_speed: float = 12.0
 @export_range(0.0, 3.0, 0.05) var punch_delay_min: float = 0.25
 @export_range(0.0, 3.0, 0.05) var punch_delay_max: float = 0.75
@@ -499,10 +489,10 @@ func _physics_process(delta: float) -> void:
 		velocity += get_gravity() * delta
 	var horizontal_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
 	var frame_start_y := global_position.y
+	var preserved_horizontal_velocity := Vector2(velocity.x, velocity.z)
 	_stair_consumed_horizontal_motion = false
 	var stepped_up := _apply_step_up(horizontal_motion)
 	var stepped_down := _apply_step_down(horizontal_motion) if stepped_up <= 0.0 else 0.0
-	var preserved_horizontal_velocity := Vector2(velocity.x, velocity.z)
 	if _stair_consumed_horizontal_motion:
 		velocity.x = 0.0
 		velocity.z = 0.0
@@ -565,7 +555,6 @@ func _physics_process(delta: float) -> void:
 		head.position.y += minf(_stair_hover_offset_y, 0.0)
 
 
-## A ray finds the tread because a downward capsule sweep hits the riser corner first.
 func _apply_step_up(motion: Vector3) -> float:
 	# Do not gate on is_on_floor(): touching the riser can unset it briefly.
 	if motion.is_zero_approx():
@@ -586,13 +575,12 @@ func _apply_step_up(motion: Vector3) -> float:
 	var previous_y := global_position.y
 	global_position = lifted.origin
 	# Horizontal motion was applied above; do not apply it twice below.
+	_stair_consumed_horizontal_motion = true
 	velocity = Vector3.ZERO
 	_last_step_tread_y = tread["y"]
 	_last_step_contact = tread["contact"]
 	apply_floor_snap()
 	return maxf(global_position.y - previous_y, 0.0)
-
-
 func _find_step_up_tread(
 		motion: Vector3, wall_collision: KinematicCollision3D) -> Dictionary:
 	var direction := motion.normalized()
@@ -634,8 +622,6 @@ func _find_step_up_tread(
 	if rise <= safe_margin or rise > step_height + safe_margin:
 		return {}
 	return {"y": tread_y, "rise": rise, "contact": probe_xz}
-
-
 ## Keeps a narrow lower tread pending until the rounded heel clears the old
 ## edge; floor snap alone can otherwise fall past it at walking speed.
 func _apply_step_down(motion: Vector3) -> float:
@@ -670,8 +656,6 @@ func _apply_step_down(motion: Vector3) -> float:
 	if global_position.y <= _pending_step_down_y + 0.06:
 		_pending_step_down_y = -INF
 	return maxf(previous_y - global_position.y, 0.0)
-
-
 func _find_step_down_tread(motion: Vector3) -> Dictionary:
 	var probe_height := step_height + safe_margin + 0.05
 	var current_query := PhysicsRayQueryParameters3D.create(
@@ -697,8 +681,6 @@ func _find_step_down_tread(motion: Vector3) -> Dictionary:
 	if drop <= safe_margin or drop > step_height + safe_margin:
 		return {}
 	return {"y": next_floor["position"].y}
-
-
 ## Downward floor snapping is also a discrete root movement. Smooth only a
 ## short drop onto a horizontal tread while the player is moving; slopes,
 ## deliberate jumps, and real falls retain their physical vertical motion.
@@ -711,18 +693,12 @@ func _is_short_step_down(frame_start_y: float, horizontal_motion: Vector3) -> bo
 			and drop > 0.001
 			and drop <= step_height + 0.01
 			and velocity.y <= JUMP_VELOCITY_THRESHOLD)
-
-
 func _update_stair_hover(delta: float) -> void:
 	var blend := 1.0 - exp(-stair_hover_speed * delta)
 	_stair_hover_offset_y = lerpf(_stair_hover_offset_y, 0.0, blend)
-	# Never ease the mesh below an upward collision step; foot IK absorbs it.
-	# Positive short-descent easing remains safely above the next tread.
-	body.position.y = _body_rest_y + maxf(_stair_hover_offset_y, 0.0)
+	body.position.y = _body_rest_y
 	third_person_arm.position.y = (
 			_third_person_arm_rest_y + _stair_hover_offset_y)
-
-
 func _reset_stair_hover() -> void:
 	_stair_hover_offset_y = 0.0
 	_last_step_tread_y = -INF
