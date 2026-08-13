@@ -66,6 +66,62 @@ proper predicted swing-foot clearance above a riser. Run all five validation
 entrypoints independently after every phase; intentionally red ramp/stair cases must
 remain visible rather than being weakened or silently skipped.
 
+### Active stair-balance experiment
+
+Live head-trace review after the refactor still shows whole-body shake on ascent. A
+captured walk measured only 2 red head-path turns on flat ground (angle p95 6.6°), but
+47 on stairs (p95 38.2°, peak 72.4°); the root path reports essentially the same
+spikes, so this is not primarily a Head-bone defect. `PlayerStairController` now uses
+a short trapezoidal acceleration/deceleration profile around the existing physical
+ascent instead of starting and stopping a constant vertical velocity abruptly. A full
+smoothstep was tested and rejected because its 50% longer ascent worsened penetration
+from 21 to 33 samples. The shorter profile preserves `step_rise_rate` as the maximum
+rather than hiding the issue with a head-only visual offset. Await live confirmation
+before committing.
+
+A synchronized stair-only slowdown was also tested: horizontal root travel and walk
+playback eased from 1.0 to 0.65 and back during each rise. It was rejected and reverted.
+Although it gave the foot more time, it also kept the swing leg beside the riser for
+more frames: penetrating samples increased from 20 to 25 and penetrating vertices from
+4,112 to 4,443. Do not retry slowdown by itself. Predict/lift the swing foot before the
+riser first; speed modulation can only be reconsidered after that clearance exists.
+
+The subsequent live trace exposed two independent discontinuities and both now have
+targeted fixes awaiting live confirmation. `apply_step_down()` used to sweep the entire
+remaining drop in one physics frame (captured root/head drop: 25.8/25.5cm); descent now
+uses the same `step_rise_rate` per-frame ceiling as ascent and delays floor snap until it
+reaches the lower tread. Separately, a top-tread idle held the left foot 33.8cm inside the
+floor even though its sampled target was already correct: the unconditional frozen-idle
+no-op preserved the authored penetrated pose. Deep ankle penetration (more than 5cm
+below the effective IK target) now releases idle freeze and forces planting; using
+rendered-sole clearance was explicitly rejected because normal authored foot volume can
+extend slightly below its reference plane. Automated checks retain the known-red
+baseline (`max_rendered_dy=0.047`, penetration 20 samples / 4,112 vertices; dense ramp
+sweep 2,836/6,240); confirm the captured descent and top-tread idle cases live.
+
+The head trace also measured the remaining ascent corner: 37 of 78 upward samples were
+red, with a worst turn near 37 degrees, concentrated where the last ~3.5cm root rise
+became zero on tread arrival. Extending ascent acceleration/deceleration from one to two
+60Hz frames was tested and rejected: body-penetration samples regressed from 20 to 24
+and affected vertices from 4,112 to 4,198. Keep the one-frame physical profile. Further
+head/body balancing must be presentation-only and must not delay the collision capsule
+or the IK contact frame; validate it against real skeleton Head/shoulder transforms and
+the complete penetration suite.
+
+A bounded presentation-only balance trial now applies 50% of each frame's stair
+displacement (maximum 2.5cm) to `Spine` in `PlayerLookPoseModifier`. Because Spine is
+outside the leg chains, hips/legs, collision, and Foot IK targets keep their physical
+poses while torso/arms/head inherit a small counter-motion. The head-trace harness
+measured 12 red upward turns out of 60 (20%, max 29.6 degrees, mean 8.3 degrees), versus
+the preceding live capture's 37/78 (47%, max about 37 degrees). All five regression
+entrypoints retained their exact known baselines. Await live visual confirmation; tune
+`stair_balance_strength`/`stair_balance_limit` only within the exported bounds and do
+not commit this presentation change before that confirmation. Applying a percentage of
+the accumulated hover was rejected after the 15% and 25% trials measured about 26% and
+25% red: it saturated during a climb and left no margin for the next tread-arrival
+corner. Per-frame counter-motion targets the actual impulse and releases when the root
+stops. The remaining corners are collision-root timing.
+
 ## Open, parked items
 
 - **Swing-phase penetration during active stair climbs** (`FOOT_IK_BODY_PENETRATION_CHECK`,
@@ -148,6 +204,101 @@ trace to `user://foot_ik_controlled.jsonl` (capped at `CONTROLLED_TRACE_MAX_FRAM
 marker sphere on the Head bone plus a turn-angle-colored trailing tube
 (`foot_ik_debug_markers.gd`'s `spawn_trace()`/`update_trace()`) make shake visible
 directly in third person, not just in log diffs.
+
+The headless stair traversal now reproduces the full manual sequence on a real
+`Player`: walk from below the 0.35m stairs, release movement at the top, and retain
+30 post-release frames in `user://foot_ik_trace.jsonl`. Its independent
+`FOOT_IK_STAIR_SETTLE_CHECK` rejects a collision-root drop greater than 5mm in one
+settling frame. The first run caught the live-reported terminal rebound automatically
+(6 failing frames, 7mm maximum versus roughly 13.7mm in the preceding manual trace),
+so future stair-controller changes can exercise this case without a human recording it.
+
+The 2026-08-13 live trace established a concrete balance target. During ordinary
+forward walking on flat ground, root-path turn p95 was 5.5 degrees and Head-path p95
+was 9.7 degrees; during ascent they rose to 32.7 and 26.0 degrees respectively. A
+bounded parameter sweep over that captured trace selected 75% per-frame Spine
+counter-motion with a 3cm cap (previously 50% / 2.5cm): the estimated ascent Head p95
+drops to 18.7 degrees, maximum to 21.8 degrees, and red segments from 14 to 12 out of
+38. This is a presentation improvement, not a claim that stairs now match flat ground;
+the remaining difference follows physical root-path corners and needs live acceptance.
+
+Temporary live trial: normal stair walking now uses a synchronized 0.5 physical and
+locomotion playback scale while a climb/descent or its presentation tail is active.
+This deliberately revisits the previously rejected slowdown only for visual comparison
+after the newer swing-clearance work; keep it temporary because the earlier 0.65 trial
+increased stair penetration. `PlayerBody.locomotion_playback_scale` also feeds the gait
+tracker and predictor, so the experiment does not compare half-speed root motion against
+a full-speed animation/IK clock.
+
+A repeated-traversal live trace later stopped exactly against the first riser at
+`(11.617, 0.0, -0.367)`: normal 3.2m/s travel became zero and locomotion switched to
+idle. The stair repeat guard retained `_last_tread_y`/`_last_contact` indefinitely, so
+returning after a descent could reject a legitimate new crossing as the old riser.
+`begin_frame()` now expires that guard once the capsule moves at least its 1m locality
+radius away. Controlled JSONL frames now include movement input, velocity, and the
+controller's climb/pending/last-contact state so future wall stalls distinguish released
+input from rejected physical motion directly.
+
+`scripts/check_foot_ik_stair_repeat.sh` now exercises the missing stateful case on a
+real Player: ascend, pause, turn and descend, pause, then ascend the same staircase a
+second time without calling the stair-controller reset. It fails when held movement
+produces more than eight consecutive frames below 2mm horizontal travel. The first
+post-fix run passes with two ascents and one maximum stalled frame. Keep this separate
+from the one-way settle capture: resetting between trips would erase the exact history
+this regression is intended to retain.
+
+The latest 1,200-frame controlled trace still confirms visible stair shake. While
+moving off stairs, root/Head path-turn p95 is 5.5°/6.0°; during active/recent stair
+transitions it rises to 84.4°/103.7°, with 18/22 turns above the 20° red threshold.
+Root vertical displacement also rises from 5.6mm mean absolute per frame off stairs to
+12.7mm on stairs. Because root and Head worsen together, treat the remaining shake as
+a collision/body-trajectory problem rather than masking it with Head-bone correction.
+
+That trace also found an actual descent-ceiling violation: a root frame dropped nearly
+10cm even though `step_rise_rate` limits 60Hz descent to about 4.7cm. The downward
+`test_move()` intentionally probes `frame_drop + safe_margin`, but its full returned
+travel was mistakenly applied to the root and terminal descent could then floor-snap
+again. The controller now caps applied collision travel to `frame_drop`; the terminal
+snap remains necessary to keep the capsule grounded on the final tread. The temporary
+0.5 stair-speed trial is restored
+to normal speed: halving horizontal movement while retaining the same necessary
+vertical correction steepens every path corner and did not remove the live shake.
+
+Two further shake experiments were rejected after the repeated traversal made them
+quantitative. A 25cm/2cm presentation-only riser anticipation envelope was active, but
+changed Head-path p95 from 31.03° to 31.26°; the dominant corner remains the physical
+root climb, so its exported defaults are disabled (`0.0`) rather than paying for an
+extra probe with no visible metric gain. Halving only `step_rise_rate` was much worse:
+collision correction accumulated and released as a 22.35cm frame, raising Head p95 to
+88.06°. Keep the authoritative rate at 2.8m/s. The safe improvement in this pass is the
+descent probe-travel cap; meaningful further reduction likely requires authored stair
+locomotion/root motion or a pelvis trajectory coordinated with actual gait contacts,
+not another generic offset or slower capsule solve.
+
+A follow-up verified modifier order before rejecting pelvis-level smoothing too.
+`PlayerLookPoseModifier` runs before Foot IK, so shifting `Hips` and allowing the later
+leg solver to recover tread contact was structurally valid, but neither the pelvis
+low-pass alone nor its 2cm positive anticipation envelope changed the repeated-traverse
+Head p95 (`31.03°` baseline; `31.26°` anticipated). The envelope also worsened rendered
+penetration from 36 to 45 samples. Revert balance ownership to `Spine` and keep
+anticipation disabled. This exhausts the safe generic offset/rate variants tried here;
+the next serious path is an authored stair gait (or contact-timed pelvis/root curve),
+not a larger procedural correction.
+
+The next live-trace investigation found that the 0.35m reference walker can still record
+an exact 35cm root step when the capsule is already touching the riser. In that state the
+partial vertical `test_move()` rejects the interpolated climb and ordinary
+`move_and_slide()` resolves the whole tread height. Two apparently direct fixes were
+tested and rejected: trusting the previously validated full-height pose allowed severe
+body/riser penetration (36 samples / 8,300 vertices), while withholding horizontal
+travel until the partial pose cleared the riser produced a 10.87cm terminal correction
+and raised Head-path p95 to 52.18 degrees. Backing off by one Jolt safe margin produced
+the same correction. The stable implementation is restored. This confirms a geometric
+limit of the current rigid capsule against a vertical face: further generic incremental
+root smoothing alternates between a full-height solve, riser penetration, or a catch-up
+correction. The next traversal-level experiment should use continuous/ramp collision
+for authored stairs or a dedicated contact-timed stair gait, while keeping the real
+stair mesh for foot contact and visual placement.
 
 ## Manual acceptance checklist
 

@@ -43,6 +43,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		_bend_torso(skel, pitch)
 	_bend_head(skel, pitch, yaw)
 	_stabilize_bones(skel, delta)
+	_apply_stair_balance(skel)
 	_cache_adjusted_poses(skel)
 
 
@@ -70,6 +71,17 @@ func _stabilize_bones(skel: Skeleton3D, delta: float) -> void:
 		_smoothed_bone_y[bone_name] = smoothed
 		pose.origin.y = smoothed
 		skel.set_bone_global_pose(idx, pose)
+
+
+func _apply_stair_balance(skel: Skeleton3D) -> void:
+	if is_zero_approx(player_body.stair_balance_offset):
+		return
+	var spine_idx := skel.find_bone(player_body.resolve_bone_name(&"Spine"))
+	if spine_idx < 0:
+		return
+	var pose := skel.get_bone_global_pose(spine_idx)
+	pose.origin.y += player_body.stair_balance_offset
+	skel.set_bone_global_pose(spine_idx, pose)
 
 
 func _bend_torso(skel: Skeleton3D, pitch: float) -> void:

@@ -237,7 +237,8 @@ const JUMP_PHASE_SPEED := 2.5
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
 var head_yaw := 0.0
-## The "moves" library and the pose UAL_EXTRA_CLIPS hold their spine/arms
+var stair_balance_offset := 0.0
+## The "moves" library and UAL_EXTRA_CLIPS hold their spine/arms
 ## to (see _retarget_clip) - kept around so play_debug_anim can retarget
 ## and cache extra clips lazily, on first request, instead of upfront.
 var _lib: AnimationLibrary
@@ -259,7 +260,6 @@ var _landing_time_left := 0.0
 var _action_animation := &""
 var _action_contact_ratio := -1.0
 var _action_contact_emitted := false
-
 ## True while a debug-menu clip is being previewed, so update_motion() doesn't immediately stomp
 ## it back to relaxed_idle on the next physics tick (e.g. right when the tree unpauses after
 ## closing the menu overlay). Cleared the moment the player actually does something that should

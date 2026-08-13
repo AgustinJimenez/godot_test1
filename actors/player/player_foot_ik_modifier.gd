@@ -24,6 +24,7 @@ enum SolverBackend { CUSTOM, NATIVE_TWO_BONE }
 @export var ray_down: float = 0.6
 @export var idle_settle_search_down: float = 4.0 # idle fallback depth when ray_down finds nothing
 const GROUND_CONTACT_DISTANCE := 0.03
+const DEEP_PLANT_PENETRATION := 0.05
 ## Approximate sole thickness/ankle clearance - the floor under
 ## effective_offset's other terms, for a leg whose toe doesn't droop at all.
 @export var ankle_offset: float = 0.0475
@@ -652,6 +653,10 @@ func _process_modification_with_delta(delta: float) -> void:
 		var animated_contact_hit: bool = contact["animated_contact_hit"]
 		var animated_contact_position: Vector3 = contact["animated_contact_position"]
 		var animated_contact_normal: Vector3 = contact["animated_contact_normal"]
+		var deeply_penetrated := foot_pos.y - ground_target.y < -DEEP_PLANT_PENETRATION
+		if frozen and deeply_penetrated:
+			frozen = false
+			_gait_tracker.invalidate_idle_freeze(side)
 
 		var classification := _step_down_classification(
 				side, hip_pos, ground_target, animated_contact_hit,
@@ -683,6 +688,7 @@ func _process_modification_with_delta(delta: float) -> void:
 			debug_retracted[side] = false
 		debug_step_down[side] = step_down
 		var gait_flags := {"step_down": step_down, "frozen": frozen,
+				"penetrating_contact": deeply_penetrated,
 				"skip_velocity_gate": _landing_grace_time > 0.0}
 		var gait: Dictionary = _gait_tracker.update(side, animated_foot_pos, foot_pos, ground_target,
 				animated_contact_hit, animated_contact_distance, to_world, delta, gait_flags)

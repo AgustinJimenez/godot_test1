@@ -26,12 +26,10 @@ const FLAT_FORWARD_TEST_SPAWN := Vector3(-40.0, 0.05, -40.0)
 const PLAYER_SCENE := preload("res://actors/player/player.tscn")
 const FOOT_BONE_DEBUG_SHADER := preload(
 		"res://tests/manual/foot_ik/foot_bone_debug.gdshader")
-
 const PLATFORM_MATERIAL_COLOR := Color(0.32, 0.34, 0.38)
 const STAIR_TREAD_DEBUG_COLOR := Color(0.85, 0.08, 0.06)
 const STAIR_RISER_DEBUG_COLOR := Color(0.05, 0.18, 0.9)
 const STAIR_TREAD_DEBUG_THICKNESS := 0.006
-
 const CASES: Array[Dictionary] = [
 	{"label": "Flat", "kind": &"flat"},
 	{"label": "Ramp 15°", "kind": &"ramp", "angle_deg": 15.0},
@@ -81,12 +79,11 @@ var _stair_locomotion_check := preload(
 var _walk_continuity_check := preload(
 		"res://tests/manual/foot_ik/foot_ik_walk_continuity_check.gd").new()
 var _automated_walk_check := "--foot-ik-walk-check" in OS.get_cmdline_user_args()
-## Lets interactive play write STAIR_FOOT_TRACE - bounded, not print/append.
 var _stair_trace_marker := FileAccess.file_exists("user://foot_ik_stair_trace_marker")
 var _stair_trace_buffer: Array[String] = []
 const STAIR_TRACE_LIVE_FILE := "user://foot_ik_stair_trace_live.jsonl"
 const STAIR_TRACE_MAX_FRAMES := 1200 # 20s at 60fps
-
+const STAIR_SETTLE_FRAMES := 30
 func _ready() -> void:
 	FileAccess.open(FOOT_TRACE_FILE, FileAccess.WRITE).close()
 	_platform_material = StandardMaterial3D.new()
@@ -127,7 +124,7 @@ func _ready() -> void:
 	if _flat_forward_marker:
 		$Player.global_position = FLAT_FORWARD_TEST_SPAWN
 		$Player.rotation = Vector3.ZERO
-	$Player.debug_cam.current = true # ThirdPersonArm, not the free-fly noclip detached_cam
+	$Player.debug_cam.current = true # ThirdPersonArm, not detached_cam
 	$Player._debug_cam_active = true
 	for child in $Player.skeleton.get_children():
 		if child is PlayerFootIKModifier:
@@ -137,7 +134,6 @@ func _ready() -> void:
 			if FileAccess.file_exists("user://foot_ik_disabled_marker"):
 				child.set_debug_enabled(false) # A/B baseline: keep grounded updates from re-enabling IK
 			break
-
 ## Marker-file toggle - play_scene_in_editor() (MCP) can't be given fresh cmdline args.
 var _auto_spin := FileAccess.file_exists("user://foot_ik_spin_marker")
 var _auto_walk := FileAccess.file_exists("user://foot_ik_walk_marker") # oscillates forward/back
@@ -152,7 +148,6 @@ const BURST_PAUSE := 2.0
 var _burst_elapsed := 0.0
 const WALK_LEG_TIME := 3.0 # seconds per forward/back leg, stays on the platform
 var _walk_elapsed := 0.0
-
 func _physics_process(delta: float) -> void:
 	if _auto_spin:
 		$Player.movement_input_override = Vector2.ZERO
@@ -198,7 +193,12 @@ func _physics_process(delta: float) -> void:
 					and not walker["trace_complete"]) or _stair_trace_marker):
 				call_deferred(&"_log_stair_foot_frame", walker)
 			if player.global_position.z >= walker["top_z"]:
-				_reset_stair_walker(walker)
+				if int(walker["settle_frame"]) == 0:
+					player.movement_input_override = Vector2.ZERO
+					_stair_locomotion_check.begin_settle(player)
+				walker["settle_frame"] = int(walker["settle_frame"]) + 1
+				if int(walker["settle_frame"]) > STAIR_SETTLE_FRAMES:
+					_reset_stair_walker(walker)
 			continue
 		walker["timer"] = float(walker["timer"]) - delta
 		if walker["timer"] <= 0.0:
@@ -210,7 +210,6 @@ func _physics_process(delta: float) -> void:
 			else:
 				_start_stair_walker(walker)
 	call_deferred(&"_update_step_prediction_markers")
-
 func _exit_tree() -> void:
 	if _automated_walk_check:
 		print(_walk_continuity_check.format_result())
@@ -237,6 +236,7 @@ func _exit_tree() -> void:
 			" tolerance_m=", BODY_STAIR_PENETRATION_TOLERANCE)
 	print(_pose_continuity_check.format_result())
 	print(_stair_locomotion_check.format_result())
+	print(_stair_locomotion_check.format_settle_result())
 
 func _sample_controlled_continuity(player: Player, check: RefCounted) -> void:
 	var ik := _find_foot_ik(player)
@@ -455,6 +455,7 @@ func _place_stair_walker(origin: Vector3, contact: Vector3, stair_height: float)
 		"trace_enabled": trace_enabled,
 		"trace_complete": false,
 		"trace_frame": 0,
+		"settle_frame": 0,
 		"current_tread": -1,
 		"waiting_for_step": false,
 		"top_z": origin.z + STAIR_STEP_COUNT * STAIR_TREAD_DEPTH - 0.25,
@@ -506,6 +507,7 @@ func _reset_stair_walker(walker: Dictionary) -> void:
 	walker["waiting_for_step"] = false
 	walker["timer"] = INSPECTION_ANGLE_HOLD_TIME
 	walker["walking"] = false
+	walker["settle_frame"] = 0
 
 func _start_stair_walker(walker: Dictionary) -> void:
 	var player: Player = walker["player"]
@@ -530,6 +532,7 @@ func _start_stair_walker(walker: Dictionary) -> void:
 	walker["trace_complete"] = false
 	walker["current_tread"] = -1
 	walker["waiting_for_step"] = false
+	walker["settle_frame"] = 0
 
 func _update_physical_walker_tread(walker: Dictionary) -> void:
 	var player := walker["player"] as Player
@@ -580,6 +583,7 @@ func _log_stair_foot_frame(walker: Dictionary) -> void:
 		"stair_hover_offset_y": player._stair_hover_offset_y,
 		"current_tread": walker["current_tread"],
 		"waiting_for_step": walker["waiting_for_step"],
+		"settle_frame": walker["settle_frame"],
 		"forced_support": str(ik._forced_support_side),
 		"feet": {},
 		"hip_skin_stretch": _sample_hip_skin_stretch(player, ik),

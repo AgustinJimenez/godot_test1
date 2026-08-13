@@ -8,6 +8,7 @@ const MIN_FRAME_TRAVEL_RATIO := 0.5
 const MAX_CONSECUTIVE_STALL_FRAMES := 1
 const MAX_RENDERED_VERTICAL_DELTA := 0.05
 const MAX_ASCENT_VISUAL_OFFSET := 0.05
+const MAX_SETTLE_DROP := 0.005
 
 var _expected_speed := 0.0
 var _expected_steps := 0
@@ -28,6 +29,10 @@ var _vertical_failures := 0
 var _max_rendered_vertical_delta := 0.0
 var _floating_frames := 0
 var _max_ascent_visual_offset := 0.0
+var _settling := false
+var _settle_samples := 0
+var _settle_failures := 0
+var _max_settle_drop := 0.0
 
 
 func reset(player: Player, expected_speed: float, expected_steps: int) -> void:
@@ -50,10 +55,26 @@ func reset(player: Player, expected_speed: float, expected_steps: int) -> void:
 	_max_rendered_vertical_delta = 0.0
 	_floating_frames = 0
 	_max_ascent_visual_offset = 0.0
+	_settling = false
+	_settle_samples = 0
+	_settle_failures = 0
+	_max_settle_drop = 0.0
+
+
+func begin_settle(player: Player) -> void:
+	_settling = true
+	_previous_root_y = player.global_position.y
+	_previous_rendered_y = player.body.global_position.y
 
 
 func sample(player: Player) -> void:
 	var root_y := player.global_position.y
+	if _settling:
+		var settle_drop := maxf(_previous_root_y - root_y, 0.0)
+		_settle_samples += 1
+		_max_settle_drop = maxf(_max_settle_drop, settle_drop)
+		if settle_drop > MAX_SETTLE_DROP:
+			_settle_failures += 1
 	var root_xz := Vector2(player.global_position.x, player.global_position.z)
 	var frame_travel := root_xz.distance_to(_previous_root_xz)
 	_previous_root_xz = root_xz
@@ -131,3 +152,11 @@ func format_result() -> String:
 			_travel_sample_count, _stalled_frames, _max_consecutive_stalls,
 			_vertical_failures, _max_rendered_vertical_delta,
 			_floating_frames, _max_ascent_visual_offset]
+
+
+func format_settle_result() -> String:
+	var passed := _settle_samples > 0 and _settle_failures == 0
+	var template := ("FOOT_IK_STAIR_SETTLE_CHECK %s samples=%d failures=%d "
+			+ "max_drop_m=%.4f limit_m=%.4f")
+	return template % ["PASS" if passed else "FAIL", _settle_samples,
+			_settle_failures, _max_settle_drop, MAX_SETTLE_DROP]

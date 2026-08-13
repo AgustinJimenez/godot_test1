@@ -55,6 +55,13 @@ func set_eye_offset(v: Vector3) -> void:
 @export_range(0.5, 3.0, 0.1) var step_rise_rate: float = 2.8
 ## Collision steps immediately; this eases only the camera presentation.
 @export_range(1.0, 30.0, 0.5) var stair_hover_speed: float = 12.0
+## Maximum presentation-only counter-motion applied to the upper body after
+## foot IK. Hips, legs, collision, and contact timing remain authoritative.
+@export_range(0.0, 0.05, 0.005) var stair_balance_limit: float = 0.03
+@export_range(0.0, 0.75, 0.05) var stair_balance_strength: float = 0.75
+## TEMP evaluation: synchronized physical/animation slowdown around a stair
+## transition. Keep at 1.0 for normal gameplay; 0.5 is the requested visual trial.
+@export_range(0.25, 1.0, 0.05) var stair_walk_speed_scale: float = 1.0
 @export_range(0.0, 3.0, 0.05) var punch_delay_min: float = 0.25
 @export_range(0.0, 3.0, 0.05) var punch_delay_max: float = 0.75
 
@@ -115,6 +122,7 @@ var free_mode_enabled := false
 var _free_mode_default_collision_layer := 0
 var _free_mode_default_collision_mask := 0
 var movement_input_override: Variant = null
+var debug_movement_input := Vector2.ZERO
 var gameplay_action_input_enabled := true
 var _stair_controller := STAIR_CONTROLLER.new()
 var _stair_hover_offset_y: float:
@@ -426,6 +434,7 @@ func _physics_process(delta: float) -> void:
 				Input.get_vector(
 					&"move_left", &"move_right", &"move_forward", &"move_back")
 			)
+	debug_movement_input = input_dir
 	_catch_up_body_yaw(input_dir, delta)
 	var sprinting := _update_stamina(delta, input_dir)
 	_update_capsule(delta)
@@ -465,6 +474,11 @@ func _physics_process(delta: float) -> void:
 		velocity.y = jump_velocity
 
 	var speed := crouch_speed if _crouched else (sprint_speed if sprinting else walk_speed)
+	var stair_walk_slowed := (not _crouched and not sprinting
+			and _stair_controller.has_recent_transition())
+	if stair_walk_slowed:
+		speed *= stair_walk_speed_scale
+	body.locomotion_playback_scale = stair_walk_speed_scale if stair_walk_slowed else 1.0
 	# Movement follows where you're actually looking (body yaw + the head's
 	# offset from it), not just the body's facing - otherwise glancing to the
 	# side while walking forward would strafe instead of walking that way.
@@ -492,7 +506,8 @@ func _physics_process(delta: float) -> void:
 	var stepped_up := _stair_controller.apply_step_up(
 			horizontal_motion, delta, step_height, step_rise_rate)
 	var stepped_down := _stair_controller.apply_step_down(
-			horizontal_motion, step_height, JUMP_VELOCITY_THRESHOLD) if stepped_up <= 0.0 else 0.0
+			horizontal_motion, delta, step_height, step_rise_rate,
+			JUMP_VELOCITY_THRESHOLD) if stepped_up <= 0.0 else 0.0
 	if _stair_controller.consumed_horizontal_motion:
 		velocity.x = 0.0
 		velocity.z = 0.0
@@ -504,13 +519,16 @@ func _physics_process(delta: float) -> void:
 		velocity.x = preserved_horizontal_velocity.x
 		velocity.z = preserved_horizontal_velocity.y
 	if stepped_up > 0.0:
-		_stair_controller.record_presentation_delta(-stepped_up, step_height)
+		_stair_controller.record_presentation_delta(
+				-stepped_up, step_height, stair_balance_strength, stair_balance_limit)
 	elif stepped_down > 0.0:
-		_stair_controller.record_presentation_delta(stepped_down, step_height)
+		_stair_controller.record_presentation_delta(
+				stepped_down, step_height, stair_balance_strength, stair_balance_limit)
 	elif _stair_controller.is_short_step_down(
 			frame_start_y, horizontal_motion, step_height, JUMP_VELOCITY_THRESHOLD):
 		_stair_controller.record_presentation_delta(
-				frame_start_y - global_position.y, step_height)
+				frame_start_y - global_position.y, step_height,
+				stair_balance_strength, stair_balance_limit)
 	_update_stair_hover(delta)
 
 	# update_motion() treats any not-on-floor frame as a launch into the
@@ -559,8 +577,15 @@ func _physics_process(delta: float) -> void:
 
 func _update_stair_hover(delta: float) -> void:
 	_stair_controller.update_presentation(delta, stair_hover_speed)
+	body.stair_balance_offset = _stair_controller.balance_offset_y
 func _reset_stair_hover() -> void:
 	_stair_controller.reset()
+	if is_instance_valid(body):
+		body.stair_balance_offset = 0.0
+
+
+func get_stair_debug_state() -> Dictionary:
+	return _stair_controller.get_debug_state()
 
 
 ## Movement follows the camera's exact look direction (forward/back tilt up

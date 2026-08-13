@@ -923,14 +923,15 @@ func _capture_controlled_foot_frame() -> void:
 	var trace := {
 		"frame": Engine.get_physics_frames(),
 		"root": _player_body.global_position,
-		"head_world_y": player_node.head.global_position.y,
 		"bones": _capture_upper_body_bones(),
 		"root_yaw_deg": rad_to_deg((_player_body.get_parent() as Node3D).rotation.y),
+		"movement_input": player_node.debug_movement_input,
+		"velocity": player_node.velocity,
+		"stair": player_node.get_stair_debug_state(),
 		"animation": animation_player.current_animation if animation_player != null else "",
 		"time": animation_player.current_animation_position if animation_player != null else 0.0,
 		"disc": _ik._animation_discontinuous,
-		"active": _ik.active,
-		"on_floor": _player_body.get_parent().is_on_floor(),
+		"active": _ik.active, "on_floor": player_node.is_on_floor(),
 		"feet": {},
 	}
 	if _live_penetration_check != null:
@@ -980,8 +981,7 @@ func _capture_controlled_foot_frame() -> void:
 	# Rolling window, not an ever-growing append: always holds the moment a
 	# live shake just happened without a whole play session in the file.
 	_controlled_trace_writer.capture(JSON.stringify(trace))
-
-## Skeletal Head/shoulder bones - what third-person shows, unlike head_world_y (a camera node).
+## Skeletal Head/shoulder bones, which reflect the third-person visual pose.
 func _capture_upper_body_bones() -> Dictionary:
 	var skeleton := _player_body.skeleton
 	if skeleton == null:

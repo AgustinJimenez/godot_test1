@@ -73,6 +73,7 @@ func update(
 	flags: Dictionary = {}
 ) -> Dictionary:
 	var step_down: bool = flags.get("step_down", false)
+	var penetrating_contact: bool = flags.get("penetrating_contact", false)
 	var skip_velocity_gate: bool = flags.get("skip_velocity_gate", false)
 	var frozen: bool = flags.get("frozen", false)
 	var velocity := _measure_velocity(side, animated_foot_pos, to_world, delta)
@@ -145,6 +146,12 @@ func update(
 	elif force_plant:
 		raw_weight = 1.0
 	elif stance_contact and not _locomotion_target_overextended(side):
+		raw_weight = 1.0
+	elif penetrating_contact:
+		# A deeply penetrated ankle must recover regardless of the velocity gate.
+		# This is deliberately ankle-to-target, not rendered-sole clearance:
+		# authored foot volume can sit slightly below its reference plane in a
+		# visually correct flat idle pose.
 		raw_weight = 1.0
 	elif frozen:
 		# Freezing already bypasses the raycast search and contact_lost
@@ -465,6 +472,13 @@ func update_idle_freeze(side: StringName, anim_speed: float, delta: float, yaw: 
 			_owner._idle_freeze_yaw[side] = yaw
 	_owner._idle_frozen[side] = frozen
 	return frozen
+
+
+func invalidate_idle_freeze(side: StringName) -> void:
+	_owner._idle_frozen[side] = false
+	_owner._idle_freeze_streak[side] = 0
+	_owner._idle_unfreeze_streak[side] = 0
+	_owner._idle_freeze_yaw.erase(side)
 
 
 ## A translating stance foot stays at its world contact instead of skating

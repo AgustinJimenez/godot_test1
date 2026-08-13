@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://tests/manual/foot_ik/foot_ik_preview.tscn" id="1_preview"]
+[ext_resource type="Script" path="res://tests/manual/foot_ik/foot_ik_stair_repeat_runner.gd" id="2_runner"]
+
+[node name="FootIKStairRepeat" instance=ExtResource("1_preview")]
+script = ExtResource("2_runner")
