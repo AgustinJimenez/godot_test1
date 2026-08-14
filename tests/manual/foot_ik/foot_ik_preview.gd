@@ -26,6 +26,8 @@ const FLAT_FORWARD_TEST_SPAWN := Vector3(-40.0, 0.05, -40.0)
 const PLAYER_SCENE := preload("res://actors/player/player.tscn")
 const FOOT_BONE_DEBUG_SHADER := preload(
 		"res://tests/manual/foot_ik/foot_bone_debug.gdshader")
+const STAIR_SURFACES := preload(
+		"res://tests/manual/foot_ik/foot_ik_stair_surfaces.gd")
 const PLATFORM_MATERIAL_COLOR := Color(0.32, 0.34, 0.38)
 const STAIR_TREAD_DEBUG_COLOR := Color(0.85, 0.08, 0.06)
 const STAIR_RISER_DEBUG_COLOR := Color(0.05, 0.18, 0.9)
@@ -41,7 +43,6 @@ const CASES: Array[Dictionary] = [
 	{"label": "Stairs 0.50m", "kind": &"stairs", "step_height": 0.5},
 	{"label": "Stairs 0.65m", "kind": &"stairs", "step_height": 0.65},
 ]
-
 var _platform_material: StandardMaterial3D
 var _stair_tread_debug_material: StandardMaterial3D
 var _stair_riser_debug_material: StandardMaterial3D
@@ -92,7 +93,6 @@ func _ready() -> void:
 	_stair_tread_debug_material.albedo_color = STAIR_TREAD_DEBUG_COLOR
 	_stair_riser_debug_material = StandardMaterial3D.new()
 	_stair_riser_debug_material.albedo_color = STAIR_RISER_DEBUG_COLOR
-
 	for i in CASES.size():
 		var case: Dictionary = CASES[i]
 		var origin := Vector3(i * PLATFORM_SPACING, 0.0, 0.0)
@@ -102,7 +102,7 @@ func _ready() -> void:
 		else:
 			_place_character(contact, 0.0)
 		_build_label(case["label"], origin)
-
+	STAIR_SURFACES.configure_player($Player)
 	if _automated_stretch_check:
 		for walker: Dictionary in _stair_walkers:
 			if walker["trace_enabled"]:
@@ -121,6 +121,7 @@ func _ready() -> void:
 	if _stair_walk_marker:
 		$Player.global_position = STAIR_WALK_TEST_SPAWN
 		$Player.rotation = STAIR_WALK_TEST_ROTATION
+		STAIR_SURFACES.configure_player($Player)
 	if _flat_forward_marker:
 		$Player.global_position = FLAT_FORWARD_TEST_SPAWN
 		$Player.rotation = Vector3.ZERO
@@ -134,7 +135,7 @@ func _ready() -> void:
 			if FileAccess.file_exists("user://foot_ik_disabled_marker"):
 				child.set_debug_enabled(false) # A/B baseline: keep grounded updates from re-enabling IK
 			break
-## Marker-file toggle - play_scene_in_editor() (MCP) can't be given fresh cmdline args.
+	## Marker-file toggles support editor/MCP launches without fresh CLI arguments.
 var _auto_spin := FileAccess.file_exists("user://foot_ik_spin_marker")
 var _auto_walk := FileAccess.file_exists("user://foot_ik_walk_marker") # oscillates forward/back
 var _stair_walk_marker := FileAccess.file_exists("user://foot_ik_stair_walk_marker")
@@ -237,12 +238,10 @@ func _exit_tree() -> void:
 	print(_pose_continuity_check.format_result())
 	print(_stair_locomotion_check.format_result())
 	print(_stair_locomotion_check.format_settle_result())
-
 func _sample_controlled_continuity(player: Player, check: RefCounted) -> void:
 	var ik := _find_foot_ik(player)
 	if ik != null:
 		check.sample(player, ik)
-
 func _sample_airborne_ik_release() -> void:
 	var player := $Player as Player
 	if _airborne_check_complete:
@@ -261,7 +260,6 @@ func _sample_airborne_ik_release() -> void:
 	_airborne_check_samples += 1
 	if ik.active:
 		_airborne_check_failed = true
-
 # Bone origins alone can't prove skin is clear - weighted regions can cross.
 func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 	_body_penetration_attempts += 1
@@ -409,7 +407,6 @@ func _stair_penetration_depth(point: Vector3, walker: Dictionary) -> float:
 	if point.y <= bottom_y or point.y >= top_y:
 		return 0.0
 	return top_y - point.y
-
 func _place_stair_walker(origin: Vector3, contact: Vector3, stair_height: float) -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
 	var trace_enabled := is_equal_approx(stair_height, FOOT_TRACE_STAIR_HEIGHT)
@@ -419,6 +416,7 @@ func _place_stair_walker(origin: Vector3, contact: Vector3, stair_height: float)
 	player.gameplay_action_input_enabled = false
 	player.walk_speed = physical_speed
 	player.step_height = maxf(player.step_height, stair_height + 0.05)
+	STAIR_SURFACES.configure_player(player)
 	player.add_to_group(&"foot_ik_stair_walkers")
 	player.set_meta(&"stair_height", stair_height)
 	add_child(player)
@@ -465,7 +463,6 @@ func _place_stair_walker(origin: Vector3, contact: Vector3, stair_height: float)
 	}
 	_stair_walkers.append(walker)
 	_reset_stair_walker(walker)
-
 func _apply_stair_foot_debug_material(player: Player) -> void:
 	var material := ShaderMaterial.new()
 	material.shader = FOOT_BONE_DEBUG_SHADER
@@ -485,7 +482,6 @@ func _foot_debug_uniform(role: StringName) -> StringName:
 			return &"right_foot_bone"
 		_:
 			return &"right_toe_bone"
-
 func _reset_stair_walker(walker: Dictionary) -> void:
 	var player: Player = walker["player"]
 	if int(walker["trace_frame"]) > 0:
@@ -794,7 +790,7 @@ func _update_foot_contact_rays() -> void:
 		var ray_to := ray_from + Vector3.DOWN * (
 				_prediction_ik.ray_down + _prediction_ik.ray_up)
 		var query := PhysicsRayQueryParameters3D.create(ray_from + Vector3.UP * 0.002, ray_to)
-		query.collision_mask = 1
+		query.collision_mask = FootIKGroundSampler.GROUND_COLLISION_MASK
 		query.collide_with_areas = false
 		query.hit_from_inside = true
 		query.exclude = [_prediction_player.get_rid()]
@@ -920,7 +916,6 @@ func _spawn_footstep_marker(side: StringName, ground_position: Vector3) -> void:
 	add_child(marker)
 	marker.global_position = ground_position + Vector3.UP * sphere.radius
 	get_tree().create_timer(FOOTSTEP_MARKER_LIFETIME).timeout.connect(marker.queue_free)
-
 func _build_platform(case: Dictionary, origin: Vector3) -> Vector3: # returns world-space footing
 	match case["kind"]:
 		&"ramp":
@@ -929,7 +924,6 @@ func _build_platform(case: Dictionary, origin: Vector3) -> Vector3: # returns wo
 			return _build_stairs(origin, case["step_height"])
 		_:
 			return _build_flat(origin)
-
 func _build_flat(origin: Vector3) -> Vector3:
 	var box := CSGBox3D.new()
 	box.size = Vector3(PLATFORM_WIDTH, PLATFORM_THICKNESS, PLATFORM_LENGTH)
@@ -938,23 +932,21 @@ func _build_flat(origin: Vector3) -> Vector3:
 	box.position = origin + Vector3(0.0, -PLATFORM_THICKNESS * 0.5, PLATFORM_LENGTH * 0.5)
 	add_child(box)
 	return origin + Vector3(0.0, 0.0, PLATFORM_LENGTH * 0.5)
-
-# A single inclined slab rotated about local X — no per-point profile needed.
 func _build_ramp(origin: Vector3, angle_deg: float) -> Vector3:
 	var angle_rad := deg_to_rad(angle_deg)
+	var rise := tan(angle_rad) * PLATFORM_LENGTH
 	var box := CSGBox3D.new()
 	box.size = Vector3(PLATFORM_WIDTH, PLATFORM_THICKNESS, PLATFORM_LENGTH)
 	box.material = _platform_material
 	box.use_collision = true
+	STAIR_SURFACES.configure_authored_stair(box)
 	box.rotation = Vector3(-angle_rad, 0.0, 0.0)
-	# Anchor the near-bottom edge at origin: offset by half-length/half-thickness along tilted axes.
 	var half_length_offset := box.basis * Vector3(0.0, 0.0, PLATFORM_LENGTH * 0.5)
 	var half_thickness_offset := box.basis * Vector3(0.0, -PLATFORM_THICKNESS * 0.5, 0.0)
 	box.position = origin + half_length_offset + half_thickness_offset
 	add_child(box)
-	var mid_rise := tan(angle_rad) * PLATFORM_LENGTH * 0.5
-	return origin + Vector3(0.0, mid_rise, PLATFORM_LENGTH * 0.5)
-
+	STAIR_SURFACES.build_traversal_slope(self, origin, PLATFORM_WIDTH, PLATFORM_LENGTH, rise)
+	return origin + Vector3(0.0, rise * 0.5, PLATFORM_LENGTH * 0.5)
 func _build_stairs(origin: Vector3, step_height: float) -> Vector3: # fixed tread, variable riser
 	for step in STAIR_STEP_COUNT:
 		var step_rise := step_height * (step + 1)
@@ -963,6 +955,7 @@ func _build_stairs(origin: Vector3, step_height: float) -> Vector3: # fixed trea
 		box.size = Vector3(PLATFORM_WIDTH, step_rise, STAIR_TREAD_DEPTH)
 		box.material = _stair_riser_debug_material
 		box.use_collision = true
+		STAIR_SURFACES.configure_authored_stair(box)
 		box.position = origin + Vector3(
 				0.0, step_rise * 0.5, tread_start_z + STAIR_TREAD_DEPTH * 0.5)
 		add_child(box)
@@ -976,18 +969,19 @@ func _build_stairs(origin: Vector3, step_height: float) -> Vector3: # fixed trea
 				step_rise + STAIR_TREAD_DEBUG_THICKNESS * 0.5,
 				tread_start_z + STAIR_TREAD_DEPTH * 0.5)
 		add_child(tread)
+	STAIR_SURFACES.build_traversal_ramp(
+			self, origin, PLATFORM_WIDTH, PLATFORM_THICKNESS,
+			STAIR_TREAD_DEPTH, STAIR_STEP_COUNT, step_height)
 	var mid_step := STAIR_STEP_COUNT / 2 # riser between two middle steps
 	var lower_rise := step_height * mid_step
 	var upper_rise := step_height * (mid_step + 1)
 	var boundary_z := mid_step * STAIR_TREAD_DEPTH
 	return origin + Vector3(0.0, (lower_rise + upper_rise) * 0.5, boundary_z)
-
 func _place_character(contact: Vector3, yaw: float) -> void:
 	var body := PlayerBody.new()
 	add_child(body)
 	body.global_position = contact
 	body.rotation.y = yaw
-
 func _build_label(text: String, origin: Vector3) -> void:
 	var label := Label3D.new()
 	label.text = text

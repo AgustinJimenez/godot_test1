@@ -12,4 +12,9 @@ if ! rg -q "FOOT_IK_STAIR_REPEAT_CHECK PASS" "$log_file"; then
 	cat "$log_file"
 	exit 1
 fi
+if ! rg -q "FOOT_IK_IDLE_FREEZE_CLEARANCE_CHECK PASS samples=[1-9]" "$log_file"; then
+	cat "$log_file"
+	exit 1
+fi
 rg "FOOT_IK_STAIR_REPEAT_CHECK PASS" "$log_file"
+rg "FOOT_IK_IDLE_FREEZE_CLEARANCE_CHECK PASS" "$log_file"

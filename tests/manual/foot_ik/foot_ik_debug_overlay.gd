@@ -923,7 +923,7 @@ func _capture_controlled_foot_frame() -> void:
 	var trace := {
 		"frame": Engine.get_physics_frames(),
 		"root": _player_body.global_position,
-		"bones": _capture_upper_body_bones(),
+		"bones": TRACE_WRITER.capture_body_chain(_player_body),
 		"root_yaw_deg": rad_to_deg((_player_body.get_parent() as Node3D).rotation.y),
 		"movement_input": player_node.debug_movement_input,
 		"velocity": player_node.velocity,
@@ -981,20 +981,3 @@ func _capture_controlled_foot_frame() -> void:
 	# Rolling window, not an ever-growing append: always holds the moment a
 	# live shake just happened without a whole play session in the file.
 	_controlled_trace_writer.capture(JSON.stringify(trace))
-## Skeletal Head/shoulder bones, which reflect the third-person visual pose.
-func _capture_upper_body_bones() -> Dictionary:
-	var skeleton := _player_body.skeleton
-	if skeleton == null:
-		return {}
-	var result := {}
-	for role: StringName in [&"Head", &"LeftShoulder", &"RightShoulder"]:
-		var bone_idx := skeleton.find_bone(_player_body.resolve_bone_name(role))
-		if bone_idx < 0:
-			continue
-		var xform := _player_body.global_transform * _player_body.get_visual_bone_global_pose(bone_idx)
-		result[String(role)] = {
-			"position": xform.origin, "scale": xform.basis.get_scale(),
-			"rotation_deg": xform.basis.get_euler() * (180.0 / PI),
-			"rotation_quaternion": xform.basis.orthonormalized().get_rotation_quaternion(),
-		}
-	return result

@@ -4,7 +4,12 @@ extends RefCounted
 ## Gait ownership, pelvis policy, and skeleton writes remain with their
 ## dedicated collaborators; this helper only reports contact geometry.
 
-const GROUND_COLLISION_MASK := 1
+# Ordinary world collision plus authored contact-only surfaces. A character
+# capsule can travel on a simplified ramp while the feet still sample the
+# visible stair treads instead of that locomotion proxy.
+const WORLD_COLLISION_MASK := 1
+const CONTACT_SURFACE_COLLISION_MASK := 1 << 5
+const GROUND_COLLISION_MASK := WORLD_COLLISION_MASK | CONTACT_SURFACE_COLLISION_MASK
 const TARGET_NOISE_DEADBAND := 0.01
 const PLANT_LOCK_WEIGHT := 0.95
 

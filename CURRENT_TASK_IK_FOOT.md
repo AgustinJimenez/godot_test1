@@ -9,7 +9,28 @@ summary only — update it, don't let it grow back into a full narrative log; pu
 blow-by-blow investigation detail in `AGENTS.md` (durable lessons) or a fresh
 `docs/task_history/` entry (full trail) instead.
 
-## Current status (2026-08-13)
+## Current status (2026-08-14 — parked)
+
+Further work on the remaining stair-path snaps is paused. The current uncommitted
+continuous-collision prototype measurably improves the automated root path, but the live
+visual improvement is small after many procedural smoothing/rate experiments. Do not resume
+by adding another generic root, pelvis, Head, or speed offset. The evidence now points toward
+an authored/contact-timed stair gait (or a gait-aware pelvis/root trajectory) as the next
+meaningful experiment. Preserve the current branch and known-red regression baselines as the
+comparison checkpoint; the continuous surface split is still awaiting manual acceptance and
+must not be promoted silently.
+
+The separate top-step idle failure from the final live capture is now fixed, pending manual
+acceptance. At frame 791 the shared pelvis sank to settle one foot while the opposite
+`preserve_idle_pose` leg was released to animation; because the pelvis is a common ancestor, that
+nominally untouched foot followed it about `0.534m` through its higher tread. A preserved leg now
+remains a no-op only when the shared pelvis does not move; otherwise it is solved back to its
+pre-sink authored world target with full weight. The persistent stair-repeat harness now holds the
+real player past the 30-frame freeze boundary on split-height support and asserts each rendered sole
+that actually enters freeze. Its separate bilateral shared-pelvis invariant measured `0.285060m`
+preserved-foot displacement before the fix and `0.000000m` after it (1cm limit); the live-position
+replay reports 11 post-freeze samples, no failures, and at most `0.012478m` sole penetration (2cm
+guard).
 
 Committed on this branch (`f79179f`): stair step-up now spreads its vertical rise over
 several physics frames (`step_rise_rate` in `player.gd`) instead of an instant
@@ -312,6 +333,119 @@ tread heights for foot targets. Validate ascent/descent, stair-edge departure, j
 and the complete known-red penetration suites before replacing the current controller.
 An authored/contact-timed stair gait remains a later presentation layer; it must not own
 collision correctness.
+
+### Continuous stair-collision prototype (awaiting manual acceptance)
+
+The Foot IK preview now prototypes that split directly. Authored stair boxes moved to a
+contact-only collision layer queried by Foot IK and the rendered-mesh penetration tools,
+while player capsules query a separate traversal-only layer. The traversal proxy is one
+invisible, two-sided `ConcavePolygonShape3D` surface spanning a flat bottom apron, a smooth
+incline, and a flat top apron. Keeping this as one surface matters: separate ramp/landing
+boxes exposed hidden vertical end faces that stalled descent. The incline begins one tread
+before the visible staircase so its height reaches every tread's leading edge at or above
+that tread top rather than carrying the capsule through the visible stair volume. Short
+10cm quadratic transition zones remove the flat/slope corner impulse without materially
+changing that alignment.
+
+The repeated real-player traversal now passes twice in both directions with no stall:
+
+```text
+FOOT_IK_STAIR_REPEAT_CHECK PASS ascents=2 max_stall_frames=1
+max_vertical_frame_m=0.0467 vertical_limit_m=0.0500
+root_turn_p95_deg=14.93 head_turn_p95_deg=15.62
+head_relative_frame_m=0.0182 balance_max_m=0.0300
+```
+
+The first manual review rejected the original head-only interpretation: independent
+Y damping of Head/LeftShoulder/RightShoulder made the head look disconnected from the
+moving body, so a lower Head-path number did not establish a better full-body result.
+That damping is now removed. The repeat harness reports physical-root and skeleton-Head
+turn separately plus consecutive head-relative-to-root displacement; root and Head p95
+now agree instead of one masking the other. Static parsing/lint passes. The other complete gates
+retain their pre-existing known-red categories and were not weakened: the focused suite
+still reports stair body penetration and its stale one-frame step counter, the fixed ramp
+matrix still ends red despite `failed_cases=0`, locomotion still has known transition
+failures, and the dense ramp sweep remains 2,836/6,240 failed cases. On this candidate the
+focused tread-volume diagnostic reports 28 penetrating samples / 3,909 vertices with
+0.222273m maximum depth, so the proxy improves root continuity but does not by itself solve
+swing-foot/riser intersections. Do not commit or promote the layer split to gameplay until
+the controllable character is manually walked, turned, jumped, and landed on the 0.35m
+stairs in both directions.
+
+The rolling controlled trace now captures the connected center chain (`Hips`, all three
+spine roles, `Neck`, `Head`) and both complete shoulder-to-hand chains. Each sample includes
+world and root-relative position/rotation plus the live/rest parent-segment length ratio.
+The legs remain covered by the existing hip/knee/foot/toe joint records and their explicit
+upper/lower length ratios, so duplicating them in `bones` would only enlarge the trace. Use
+the connected chain to find the first ancestor that diverges: root-relative motion separates
+skeletal animation from physical-root travel, while parent-length ratios distinguish actual
+stretch from ordinary authored swing. Ignore `Hips -> root` as an anatomical length check;
+`root` is the rig's technical ground control, as recorded in `parent_bone`.
+`PlayerLookPoseModifier` must cache this complete chain: sampling a cached final `Head` beside
+an uncached, Skeleton3D-restored `Neck` initially produced a false 1.32 length ratio despite
+the rendered segment remaining rigid. Cache lookup must also pass every canonical role through
+`PlayerBody.resolve_bone_name()`; this rig's actual parent is `neck_01`, not literal `Neck`.
+
+The first live manual trace after adding the connected chain showed the remaining visible
+corners were physical, not Head-only: frames 209–218 had 35–58 degree Head turns alongside
+36–60 degree root turns. Root Y alternated up and down (`0.252 -> 0.246 -> 0.269 -> 0.296
+-> 0.278m`) because the discrete stair controller interpreted the seamless proxy's shallow
+transition facets as repeated tiny risers, toggling `climbing` every frame. Continuous stair
+proxies now use a dedicated controller layer that bypasses discrete `apply_step_up()`; normal
+`move_and_slide()` slope motion exclusively owns their root trajectory. This remains part of
+the temporary split-surface prototype and still requires live manual acceptance.
+
+The first automated repeat after that separation reduced root-turn p95 from 14.93 to 4.69
+degrees and Head-turn p95 from 15.62 to 8.28 degrees. It also exposed a second ownership leak:
+a small pre-ramp landing compensation left stair balance active, then the smoothed reference
+lagged behind the continuously rising root and saturated at -3cm for the whole ascent. That
+compressed `Hips -> Spine` to 0.773x rest length. Continuous-traversal frames now explicitly
+clear step-only hover/balance presentation state; those offsets are only for discrete risers.
+
+A walkable slope is not guaranteed to appear in `CharacterBody3D.get_slide_collision()`
+every frame, so the first version of that reset still flickered off. A short direct ray against
+the traversal-only layer now authoritatively identifies the continuous floor. The repeated
+traversal result is:
+
+```text
+FOOT_IK_STAIR_REPEAT_CHECK PASS ascents=2 max_stall_frames=1
+max_vertical_frame_m=0.0320 root_turn_p95_deg=4.69 head_turn_p95_deg=7.77
+head_relative_frame_m=0.0079 balance_max_m=0.0000
+```
+
+The connected-chain diagnostic now holds `Hips -> Spine` within
+`0.9999994..1.0000006x` rest length. The complete validation map retains the known-red
+categories: fixed ramps report no failed matrix cases but retain their wrapper failure,
+locomotion retains its existing transition failures, and the dense ramp sweep remains
+2,836/6,240. Removing the deforming balance offset changes the focused stair-penetration
+distribution from 28 samples / 3,909 vertices / 0.222273m maximum depth to 28 samples /
+6,480 vertices / 0.18336m maximum depth. This lowers the worst depth but affects more
+vertices, so it is not automatic visual acceptance; manually review the controllable 0.35m
+stair traversal before committing.
+
+The next live trace still showed a red corner, but it was a different surface than the
+automated case: the player began at `x≈7.7` on the authored 45-degree ramp, while the repeat
+harness began directly on the `x=15` staircase. At the sharp ramp-to-flat edge, the live
+root path turned 23.5 degrees in one frame. The persistent repeat test now first settles at
+the same ramp position, walks downhill across that edge, releases input, and only then runs
+the two stair round trips. It initially reproduced an even clearer 35.19-degree corner.
+Ordinary ramps now use the same split ownership as stairs: authored geometry remains on the
+contact-only Foot IK layer, while the capsule follows a traversal-only slope with a 40cm
+quadratic transition at each end. The 45-degree reference also gets five degrees of floor-angle
+headroom so numerical equality does not alternate between floor and free-fall. Final result:
+
+```text
+FOOT_IK_STAIR_REPEAT_CHECK PASS ascents=2 max_stall_frames=0
+root_turn_p95_deg=4.74 head_turn_p95_deg=7.80
+surface_turn_max_deg=6.70 surface_turn_limit_deg=12.00
+surface_vertical_m=0.0555 surface_vertical_limit_m=0.0600
+max_vertical_frame_m=0.0320 balance_max_m=0.0000
+```
+
+The surface-specific vertical limit is intentionally 6cm: at 3.2m/s a perfectly smooth
+45-degree slope naturally changes Y by about 5.3cm per 60Hz frame, whereas the 5cm staircase
+limit remains separate. All five required suites were rerun; their known-red categories and
+exact fixed/dense matrix totals remain unchanged.
 
 ## Manual acceptance checklist
 

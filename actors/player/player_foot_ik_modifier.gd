@@ -884,9 +884,18 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		return
 	for side: StringName in _bone_indices:
 		var leg: Dictionary = per_leg[side]
-		if not leg["hit"] or leg.get("preserve_idle_pose", false):
+		var preserve_idle_pose: bool = leg.get("preserve_idle_pose", false)
+		if not leg["hit"] or (preserve_idle_pose and shared_drop <= 0.0001):
 			_leg_solver.release_to_animation(skel, side, delta)
 			continue
+		# A shared pelvis sink moves the common ancestor of both legs. Releasing
+		# a nominally preserved leg here lets that foot follow the pelvis through
+		# its own higher tread while the opposite leg settles downward. Solve the
+		# preserved side back to its pre-sink animated world position with full
+		# positional weight; this compensates only the shared ancestor motion and
+		# leaves the authored foot target/orientation intact.
+		var ground_weight: float = 1.0 if preserve_idle_pose else leg["ground_weight"]
+		var chain_weight: float = 1.0 if preserve_idle_pose else leg.get(
+				"chain_weight", ground_weight)
 		_leg_solver.solve(skel, side, leg["hip_pos"] - Vector3.UP * shared_drop, leg["target"],
-				leg["upper"], leg["lower"], leg["ground_weight"],
-				leg.get("chain_weight", leg["ground_weight"]), delta)
+				leg["upper"], leg["lower"], ground_weight, chain_weight, delta)

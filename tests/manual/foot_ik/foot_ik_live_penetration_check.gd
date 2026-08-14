@@ -12,7 +12,7 @@ extends RefCounted
 ## a raycast per mesh vertex every physics frame is the right cost for a
 ## focused diagnostic session, not for ordinary interactive play/testing.
 const TOLERANCE := 0.005 # matches FOOT_IK_BODY_PENETRATION_CHECK's tolerance
-const GROUND_COLLISION_MASK := 1
+const GROUND_COLLISION_MASK := 1 | (1 << 5)
 const RAY_UP := 0.3
 const RAY_DOWN := 0.1
 

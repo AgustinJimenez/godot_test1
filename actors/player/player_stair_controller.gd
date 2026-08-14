@@ -7,10 +7,16 @@ extends RefCounted
 const TREAD_PROBE_FORWARD := 0.04
 const TREAD_NORMAL_MIN_DOT := 0.9
 const REPEAT_CONTACT_DISTANCE := 1.0
+## Seamless authored stair proxies use this dedicated layer so ordinary
+## slope motion, not discrete riser stepping, owns the physical root.
+const CONTINUOUS_TRAVERSAL_LAYER := 1 << 4
+const CONTINUOUS_FLOOR_PROBE_UP := 0.1
+const CONTINUOUS_FLOOR_PROBE_DOWN := 0.75
 
 var hover_offset_y := 0.0
 var balance_offset_y := 0.0
 var consumed_horizontal_motion := false
+var continuous_traversal_active := false
 
 var _host: CharacterBody3D
 var _body: Node3D
@@ -44,6 +50,7 @@ func setup(host: CharacterBody3D, body: Node3D, third_person_arm: Node3D) -> voi
 
 func begin_frame() -> void:
 	consumed_horizontal_motion = false
+	continuous_traversal_active = false
 	# The repeat guard is local to one riser crossing, not permanent level
 	# history. After walking away (commonly down the staircase), returning to
 	# the same first riser must be allowed to start a fresh climb.
@@ -72,6 +79,7 @@ func get_debug_state() -> Dictionary:
 		"last_tread_y": _last_tread_y,
 		"last_contact": _last_contact,
 		"consumed_horizontal_motion": consumed_horizontal_motion,
+		"continuous_traversal": continuous_traversal_active,
 		"recent_transition": has_recent_transition(),
 		"balance_offset_y": balance_offset_y,
 	}
@@ -90,6 +98,12 @@ func apply_step_up(motion: Vector3, delta: float, step_height: float,
 	if not motion.is_zero_approx():
 		var wall_collision := KinematicCollision3D.new()
 		if _host.test_move(_host.global_transform, motion, wall_collision):
+			# A seamless proxy can have shallow transition facets that satisfy
+			# the tread-normal threshold. Treating each one as a tiny riser made
+			# _climb_active alternate every frame and created a root-Y sawtooth.
+			if _uses_continuous_traversal(wall_collision):
+				continuous_traversal_active = true
+				return 0.0
 			var lifted := _host.global_transform.translated(
 					Vector3(0.0, step_height, 0.0))
 			if not _host.test_move(lifted, motion):
@@ -118,6 +132,12 @@ func apply_step_up(motion: Vector3, delta: float, step_height: float,
 		_climb_active = true
 		return _continue_step_climb(motion, delta, step_rise_rate)
 	return 0.0
+
+
+func _uses_continuous_traversal(collision: KinematicCollision3D) -> bool:
+	var collider := collision.get_collider() as CollisionObject3D
+	return (collider != null
+			and collider.collision_layer & CONTINUOUS_TRAVERSAL_LAYER != 0)
 
 
 func _continue_step_climb(motion: Vector3, delta: float, _step_rise_rate: float) -> float:
@@ -304,6 +324,18 @@ func record_presentation_delta(delta_y: float, step_height: float,
 
 
 func update_presentation(delta: float, hover_speed: float) -> void:
+	continuous_traversal_active = (
+			continuous_traversal_active or _has_continuous_floor_contact())
+	# Hover/balance offsets hide discrete riser transitions. On a seamless
+	# traversal surface they instead lag behind the already-smooth slope and
+	# translate Spine away from Hips, visibly compressing/stretching the mesh.
+	if continuous_traversal_active:
+		hover_offset_y = 0.0
+		balance_offset_y = 0.0
+		_balance_active = false
+		_balance_smoothed_root_y = _host.global_position.y
+		_apply_presentation_offsets()
+		return
 	var blend := 1.0 - exp(-hover_speed * delta)
 	hover_offset_y = lerpf(hover_offset_y, 0.0, blend)
 	if _balance_active:
@@ -316,6 +348,33 @@ func update_presentation(delta: float, hover_speed: float) -> void:
 			_balance_active = false
 			_balance_smoothed_root_y = _host.global_position.y
 			balance_offset_y = 0.0
+	_apply_presentation_offsets()
+
+
+func _has_continuous_floor_contact() -> bool:
+	# A walkable floor does not necessarily appear in CharacterBody3D's slide
+	# collision list every frame (especially while floor snapping or standing
+	# still). Query the dedicated proxy layer directly so presentation state
+	# cannot flicker merely because no slide was reported this tick.
+	var query := PhysicsRayQueryParameters3D.create(
+			_host.global_position + Vector3.UP * CONTINUOUS_FLOOR_PROBE_UP,
+			_host.global_position - Vector3.UP * CONTINUOUS_FLOOR_PROBE_DOWN,
+			CONTINUOUS_TRAVERSAL_LAYER)
+	query.exclude = [_host.get_rid()]
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	if not _host.get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+		return true
+	for index in _host.get_slide_collision_count():
+		var collision := _host.get_slide_collision(index)
+		if collision.get_normal().dot(Vector3.UP) <= 0.0:
+			continue
+		if _uses_continuous_traversal(collision):
+			return true
+	return false
+
+
+func _apply_presentation_offsets() -> void:
 	if is_instance_valid(_body):
 		_body.position.y = _body_rest_y
 	if is_instance_valid(_third_person_arm):
@@ -334,6 +393,7 @@ func reset() -> void:
 	_balance_strength = 0.0
 	_balance_limit = 0.0
 	consumed_horizontal_motion = false
+	continuous_traversal_active = false
 	if is_instance_valid(_body):
 		_body.position.y = _body_rest_y
 	if is_instance_valid(_third_person_arm):
