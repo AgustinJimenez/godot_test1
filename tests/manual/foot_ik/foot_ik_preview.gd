@@ -972,6 +972,9 @@ func _build_stairs(origin: Vector3, step_height: float) -> Vector3: # fixed trea
 	STAIR_SURFACES.build_traversal_ramp(
 			self, origin, PLATFORM_WIDTH, PLATFORM_THICKNESS,
 			STAIR_TREAD_DEPTH, STAIR_STEP_COUNT, step_height)
+	STAIR_SURFACES.build_top_landing(
+			self, origin, PLATFORM_WIDTH, STAIR_TREAD_DEPTH, STAIR_STEP_COUNT,
+			step_height, _stair_riser_debug_material, _stair_tread_debug_material)
 	var mid_step := STAIR_STEP_COUNT / 2 # riser between two middle steps
 	var lower_rise := step_height * mid_step
 	var upper_rise := step_height * (mid_step + 1)

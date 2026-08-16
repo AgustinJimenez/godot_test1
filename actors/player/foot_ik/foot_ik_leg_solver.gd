@@ -214,20 +214,17 @@ func _limit_correction(side: StringName, joint: StringName,
 	if _owner.player_body != null and _owner.player_body.anim_player != null:
 		var animation_name := String(_owner.player_body.anim_player.current_animation)
 		is_crouch_animation = animation_name.begins_with("moves/unarmed_crouch")
-	# Stair clearance needs the foot orientation to follow its tread target in
-	# the current solve. Delaying that rotation causes the rendered toes/sole to
-	# pass through the riser even when the leg target itself is valid.
 	if joint == &"foot" and not is_crouch_animation:
 		_previous_corrections[key] = desired
 		_previous_correction_frames[key] = current_frame
 		return desired
 	var angle := previous.angle_to(desired)
 	var angular_speed := MAX_CORRECTION_ANGULAR_SPEED
-	# The compact crouch gait brings the leg chain close to its flexion limit,
-	# where a small contact change can otherwise become a visible joint snap.
-	# Keep the ordinary/stair solve responsive and use the tighter budget only
-	# for crouch locomotion and its release into crouch idle.
-	if is_crouch_animation:
+	# When shared pelvis sink engages on stairs, allow knees to bend quickly to
+	# match the pelvis drop without lagging into the stair step.
+	if _owner._smoothed_shared_drop > 0.001:
+		angular_speed = 720.0
+	elif is_crouch_animation:
 		angular_speed = CROUCH_CORRECTION_ANGULAR_SPEED
 	var maximum_step := deg_to_rad(angular_speed) * maxf(delta, 0.0)
 	var result := desired

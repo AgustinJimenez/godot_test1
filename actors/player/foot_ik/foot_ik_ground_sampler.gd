@@ -12,6 +12,10 @@ const CONTACT_SURFACE_COLLISION_MASK := 1 << 5
 const GROUND_COLLISION_MASK := WORLD_COLLISION_MASK | CONTACT_SURFACE_COLLISION_MASK
 const TARGET_NOISE_DEADBAND := 0.01
 const PLANT_LOCK_WEIGHT := 0.95
+## A genuine stair tread is horizontal (matches the modifier's flat_contact
+## and the stair predictor's STAIR_TREAD_UP_DOT). A sloped ramp fails this, so
+## the pure-rotation climb guard below never fires on a ramp.
+const STAIR_TREAD_UP_DOT := 0.999
 
 var smoothed_target: Dictionary = {} # side -> Vector3 (world)
 var smoothed_normal: Dictionary = {} # side -> Vector3 (world)
@@ -39,6 +43,12 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		hit = raycast_ground(space, foot_pos, _owner.idle_settle_search_down)
 	var raw_target: Vector3 = hit["position"] if hit["hit"] else foot_pos
 	var raw_normal: Vector3 = hit["normal"] if hit["hit"] else Vector3.UP
+	if _owner.step_prediction_enabled:
+		var toe_probe := animated_lowest_surface_point_world(skel, side, foot_pose, foot_pos, to_world)
+		var toe_hit := raycast_ground(space, toe_probe)
+		if toe_hit["hit"] and (toe_hit["position"] as Vector3).y > raw_target.y + _owner.step_min_rise:
+			raw_target = toe_hit["position"]
+			raw_normal = toe_hit["normal"]
 	if not smoothed_target.has(side):
 		smoothed_target[side] = raw_target
 		smoothed_normal[side] = raw_normal
@@ -58,9 +68,23 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 			smoothed_target[side] as Vector3) > TARGET_NOISE_DEADBAND:
 		var amount := clampf(delta * _owner.smooth_rate, 0.0, 1.0)
 		var current_target := smoothed_target[side] as Vector3
-		smoothed_target[side] = (move_target_smoothed(current_target, raw_target, delta)
+		# A planted foot rotating in place must never climb: the re-probe ray
+		# fires from the animated foot, which swings over the stair edge while
+		# the body turns, so it reads the NEXT tread up and drags the foot
+		# through the stair (confirmed live: idle turn near the step edge
+		# jumped the smoothed target a full 0.2m up and pulled the foot into
+		# the tread). Climbing requires real body translation - a pure turn
+		# only moves sideways/down. Flat-floor turning is unaffected (there
+		# the re-probe returns the same height), and a sloped ramp fails the
+		# flat-tread check so it still tracks normally. The weight gate keeps
+		# the guard from firing during an initial settle, where a foot's
+		# target is still legitimately chasing the surface it will land on
+		# (weight ramps up only once contact is established); only a foot
+		# already planted may be held against a stair climb.
+		var follow_target := raw_target
+		smoothed_target[side] = (move_target_smoothed(current_target, follow_target, delta)
 				if not body_turning else current_target.move_toward(
-				raw_target, _owner.target_max_speed * delta))
+				follow_target, _owner.target_max_speed * delta))
 		smoothed_normal[side] = (smoothed_normal[side] as Vector3).lerp(
 				raw_normal, amount).normalized()
 	if not hit["hit"] and not frozen:

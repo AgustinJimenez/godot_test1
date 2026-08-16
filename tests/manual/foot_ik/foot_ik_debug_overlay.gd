@@ -28,8 +28,7 @@ var _toe_probes: Dictionary = {} # side -> Node3D (BoneAttachment3D child), toe 
 var _markers: Dictionary = {} # "side_kind" -> MeshInstance3D, kind in hit/target/actual/toe
 var _angle_probes: Dictionary = {} # side -> {hip, knee, leaf: Node3D or null}
 var _angle_labels: Dictionary = {} # side -> {segment: Label3D}, positioned at segment midpoint
-# Ordered [key, column_header] pairs for the per-foot readout grid (Array,
-# not Dictionary, since display order matters and needs to stay fixed).
+# Ordered [key, column_header] pairs (order matters, so Array not Dictionary).
 const READOUT_FIELDS := [
 	["hit", "Hit"],
 	["target_y", "Target Y"],
@@ -85,14 +84,12 @@ var _follow_has_anchor := false
 var _follow_orbit_dragging := false
 var _follow_orbit_last_mouse_position := Vector2.ZERO
 func _ready() -> void:
-	# This overlay must remain interactive while SceneTree.paused is true;
-	# everything else in the harness inherits the ordinary pausable mode.
+	# Must remain interactive while SceneTree.paused - the rest inherits the ordinary pausable mode.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	add_to_group(&"foot_ik_camera_preset")
 	FileAccess.open(CONTROLLED_TRACE_FILE, FileAccess.WRITE).close()
 	call_deferred(&"set_stair_foot_follow_enabled", false)
-	# Captured before physics settling, so it always reflects the scene's own
-	# authored Player transform regardless of when the close-up camera is used.
+	# Captured before physics settling, so it reflects the scene's authored Player transform.
 	_player_spawn_position = (get_node("../Player") as Node3D).global_position
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -127,8 +124,7 @@ func _ready() -> void:
 		_markers[str(side) + "_target"] = FootIkDebugMarkers.spawn_marker(self, Color.BLUE)
 		_markers[str(side) + "_actual"] = FootIkDebugMarkers.spawn_marker(self, Color.RED)
 		_markers[str(side) + "_ray"] = FootIkDebugMarkers.spawn_ray(self, Color.WHITE)
-		# Separate probe/marker for the toe/ball bone - the ankle marker can
-		# sit right at the target while the toe still visibly pokes up.
+		# Separate probe for the toe/ball bone - the ankle marker can be on target while the toe pokes up.
 		var toe_idx: int = indices.get("toe", -1)
 		if toe_idx >= 0:
 			var toe_attach := BoneAttachment3D.new()
@@ -149,9 +145,7 @@ func _ready() -> void:
 		for segment: String in ["thigh", "shin", "foot", "leaf"]:
 			(_angle_labels[side] as Dictionary)[segment] = FootIkDebugMarkers.spawn_angle_label(self)
 
-	# Parented to a BoneAttachment3D (unlike the foot/toe markers, not
-	# repositioned manually) so it tracks the bone directly, and the trail
-	# below shows its recent path - lets you SEE a shake, not just read it.
+	# Parented to a BoneAttachment3D so it tracks the bone directly; the trail below shows its path.
 	var head_idx := _skel.find_bone(_player_body.resolve_bone_name(&"Head"))
 	if head_idx >= 0:
 		var head_attach := BoneAttachment3D.new()
@@ -164,12 +158,9 @@ func _ready() -> void:
 
 	_build_panel()
 
-	# Default-on for this scene only: foot_ik_preview.tscn's whole point is
-	# inspecting joint placement, so the overlay should be visible on load.
+	# Default-on: foot_ik_preview.tscn's whole point is inspecting joint placement.
 	_player_body.set_skeleton_visible(true)
-
-	# Mouse stays captured by default. Backtick frees it for the sliders -
-	# deliberately NOT Tab, already project-wide "inventory" (project.godot).
+	# Mouse stays captured by default; backtick frees it for the debug panel's sliders/buttons.
 
 ## Positioning before settling drags the camera down by the fall distance.
 func _wait_for_player_to_settle() -> void:
@@ -220,8 +211,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if (_stair_follow_enabled and _follow_orbit_dragging
 			and event is InputEventMouseMotion):
 		var mouse_motion := event as InputEventMouseMotion
-		# .relative can hold a stale capture/focus jump on the first click -
-		# screen-position deltas start from the press itself instead.
+		# .relative can be stale on the first click; use screen-position deltas instead.
 		var drag_delta := mouse_motion.position - _follow_orbit_last_mouse_position
 		_follow_orbit_last_mouse_position = mouse_motion.position
 		_orbit_stair_follow(drag_delta)
@@ -340,8 +330,7 @@ func _build_panel() -> void:
 	_loop_reset_flash.modulate.a = 0.0
 	layer.add_child(_loop_reset_flash)
 
-	# Flashes on contact_lost - ground_weight snapping toward 0, the moment
-	# the blended target jumps from the held ground point to raw animation.
+	# Flashes on contact_lost - weight snapping to 0 as target jumps to raw animation.
 	_contact_lost_flash = Label.new()
 	_contact_lost_flash.text = "CONTACT LOST"
 	_contact_lost_flash.add_theme_font_size_override("font_size", 40)
@@ -355,8 +344,7 @@ func _build_panel() -> void:
 	var panel := PanelContainer.new()
 	panel.add_theme_font_size_override("font_size", 21)
 	panel.custom_minimum_size = Vector2(panel_width, 0)
-	# Top-right corner: stays clear of the close-up foot view this scene
-	# starts you in, which sits left-of-center in the default framing.
+	# Top-right corner: clear of the close-up foot view this scene starts in (left-of-center).
 	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	panel.position = Vector2(-(panel_width + PANEL_OUTER_MARGIN), PANEL_OUTER_MARGIN)
 	layer.add_child(panel)
@@ -515,9 +503,7 @@ func _on_animation_timeline_changed(position: float) -> void:
 		return
 	_set_scene_paused(true)
 	animation_player.seek(position, true)
-	# Seeking a paused AnimationPlayer changes its stored time, but the
-	# SkeletonModifier3D stack needs an explicit zero-time evaluation to
-	# make that exact pose visible immediately.
+	# Seeking a paused player needs an explicit zero-time modifier evaluation to show immediately.
 	_skel.advance(0.0)
 	_update_animation_timeline()
 
@@ -694,6 +680,26 @@ func set_stair_foot_follow_enabled(enabled: bool) -> void:
 
 func is_stair_foot_follow_enabled() -> bool:
 	return _stair_follow_enabled
+
+func is_residual_stair_mode() -> bool:
+	const M := PlayerFootIKModifier.LocomotionMode
+	return _ik != null and _ik.locomotion_mode == M.RESIDUAL_STAIR
+
+func set_residual_stair_mode(enabled: bool) -> void:
+	if _ik == null:
+		return
+	const M := PlayerFootIKModifier.LocomotionMode
+	_ik.locomotion_mode = M.RESIDUAL_STAIR if enabled else M.LEGACY
+
+func is_phase_locked_mode() -> bool:
+	const M := PlayerFootIKModifier.LocomotionMode
+	return _ik != null and _ik.locomotion_mode == M.PHASE_LOCKED
+
+func set_phase_locked_mode(enabled: bool) -> void:
+	if _ik == null:
+		return
+	const M := PlayerFootIKModifier.LocomotionMode
+	_ik.locomotion_mode = M.PHASE_LOCKED if enabled else M.LEGACY
 
 func _build_stair_follow_probe() -> Node3D:
 	var candidate := _find_stair_follow_player()
@@ -931,6 +937,7 @@ func _capture_controlled_foot_frame() -> void:
 		"animation": animation_player.current_animation if animation_player != null else "",
 		"time": animation_player.current_animation_position if animation_player != null else 0.0,
 		"disc": _ik._animation_discontinuous,
+		"locomotion_mode": PlayerFootIKModifier.LocomotionMode.keys()[_ik.locomotion_mode],
 		"active": _ik.active, "on_floor": player_node.is_on_floor(),
 		"feet": {},
 	}
@@ -952,10 +959,21 @@ func _capture_controlled_foot_frame() -> void:
 			"hip": angle_probes.get("hip"), "knee": angle_probes.get("knee"),
 			"foot": probe, "toe": toe_probe, "leaf": angle_probes.get("leaf"),
 		})
+		var solved_foot_angle := -1.0
+		var solved_foot_pos := Vector3.ZERO
+		var foot_idx: int = _ik._bone_indices[side]["foot"]
+		if _ik._final_bone_poses.has(foot_idx):
+			var solved_pose: Transform3D = _ik._final_bone_poses[foot_idx]
+			var solved_world := _skel.global_transform * solved_pose
+			solved_foot_pos = solved_world.origin
+			var solved_sole_down: Vector3 = solved_world.basis * _ik._sole_down_local[side]
+			solved_foot_angle = rad_to_deg(solved_sole_down.angle_to(Vector3.DOWN))
 		trace["feet"][side] = {
 			"gap": actual_pos.y - target.y - sole_depth,
 			"sole_clearance": sole.y - target.y,
 			"pitch_deg": rad_to_deg(sole.normalized().angle_to(Vector3.DOWN)),
+			"solved_foot_angle_deg": solved_foot_angle,
+			"solved_foot_pos": solved_foot_pos,
 			"ground_weight": float(_ik._smoothed_ground_weight.get(side, 0.0)),
 			"vertical_velocity": float(_ik.debug_vertical_velocity.get(side, 0.0)),
 			"contact_hit": bool(_ik.debug_contact_hit.get(side, false)),
@@ -972,8 +990,7 @@ func _capture_controlled_foot_frame() -> void:
 			"smoothed_target": target,
 			"bone_lengths": TRACE_WRITER.measure_bone_lengths(
 					joints, _ik._leg_lengths.get(side, {})),
-			# Absolute angle of the ground normal from world up - 0 on flat
-			# floor, ~45 on the Ramp 45 platform - not a per-joint bend.
+			# Absolute angle of the ground normal from world up, not a per-joint bend.
 			"floor_angle_deg": rad_to_deg(normal.angle_to(Vector3.UP)),
 			"leg_angles_deg": _compute_leg_angles(side),
 			"joints": joints,

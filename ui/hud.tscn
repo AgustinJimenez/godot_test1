@@ -399,6 +399,14 @@ text = "Follow 0.35m Right Foot"
 visible = false
 text = "Foot IK Joint History Graph"
 
+[node name="FootIkResidualModeToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+visible = false
+text = "Foot IK: Residual Stair Mode"
+
+[node name="FootIkPhaseLockedModeToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+visible = false
+text = "Foot IK: Phase Locked Mode"
+
 [node name="SkeletonVisibleToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Show Skeleton"
 

@@ -123,6 +123,7 @@ func update(
 	var clearance_above_target := foot_pos.y - ground_target.y
 	var contact_lost: bool = (
 		not step_down
+		and not penetrating_contact
 		and _owner.step_prediction_enabled
 		and not force_plant
 		and not frozen
@@ -130,7 +131,6 @@ func update(
 		and not _owner._animation_discontinuous
 		and (
 			not contact_hit
-			or contact_distance > _owner.GROUND_CONTACT_DISTANCE
 			or clearance_above_target > _owner.GROUND_CONTACT_DISTANCE
 		)
 	)
@@ -141,17 +141,14 @@ func update(
 	if _owner._velocity_suppressed and not force_plant and not frozen:
 		raw_weight = float(_owner._smoothed_ground_weight.get(side, raw_weight))
 		contact_lost = false
+	elif penetrating_contact:
+		raw_weight = 1.0
+		contact_lost = false
 	elif contact_lost:
 		raw_weight = 0.0
 	elif force_plant:
 		raw_weight = 1.0
 	elif stance_contact and not _locomotion_target_overextended(side):
-		raw_weight = 1.0
-	elif penetrating_contact:
-		# A deeply penetrated ankle must recover regardless of the velocity gate.
-		# This is deliberately ankle-to-target, not rendered-sole clearance:
-		# authored foot volume can sit slightly below its reference plane in a
-		# visually correct flat idle pose.
 		raw_weight = 1.0
 	elif frozen:
 		# Freezing already bypasses the raycast search and contact_lost
@@ -174,6 +171,9 @@ func update(
 	_owner.debug_raw_weight[side] = raw_weight
 	_owner.debug_contact_lost[side] = contact_lost
 	var weight := _smooth_weight(side, raw_weight, contact_lost, delta)
+	if penetrating_contact or force_plant:
+		weight = 1.0
+		_owner._smoothed_ground_weight[side] = 1.0
 	return {"vertical_velocity": velocity, "ground_weight": weight, "landed": landed}
 
 
@@ -552,6 +552,14 @@ func _locomotion_target_overextended(side: StringName) -> bool:
 
 func is_body_turning(side: StringName) -> bool:
 	return bool(_owner._idle_freeze_yaw.get(StringName("%s:turning" % side), false))
+
+
+## True while the owning CharacterBody3D actually translates. Distinguishes
+## "turning in place" (pure rotation) from walking while turning - a planted
+## foot may follow a turn sideways, but only real translation may move it UP
+## onto a higher stair tread (see FootIKGroundSampler.sample()).
+func is_body_translating() -> bool:
+	return _body_horizontal_speed() > IDLE_TRANSLATION_EPSILON
 
 
 func _body_horizontal_speed() -> float:

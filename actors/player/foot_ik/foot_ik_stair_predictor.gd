@@ -12,6 +12,7 @@ class LegState extends RefCounted:
 	var smoothed_lift := 0.0
 	var has_latched_target := false
 	var latched_target := Vector3.ZERO
+	var latched_normal := Vector3.UP
 	var over_surface_streak := 0
 	var descending_to_landing := false
 	var has_predicted_target := false
@@ -24,6 +25,11 @@ var _support_side: StringName = &""
 var _support_ground_target := Vector3.ZERO
 var _support_surface_target := Vector3.ZERO
 var _support_normal := Vector3.UP
+## Time since support last acquired/transferred to a leg, and that leg's own
+## pre-support target at that moment - see _apply_support_contact()'s doc
+## comment on why the handoff itself needs blending, not just engage/release.
+var _support_transfer_elapsed := 0.0
+var _support_transfer_from_pos := Vector3.ZERO
 var _previous_root_position := Vector3.ZERO
 var _has_previous_root_position := false
 var _travel_direction := Vector3.ZERO
@@ -34,6 +40,11 @@ var _travel_direction := Vector3.ZERO
 ## the authored idle pose settles can drag that foot across the pelvis even
 ## though the target remains barely inside the leg's total reach.
 const FLAT_SURFACE_UP_DOT := 0.95
+## A genuine stair tread is horizontal, so its contact normal must be
+## essentially Vector3.UP. Tighter than FLAT_SURFACE_UP_DOT: a shallow 15deg
+## ramp reads 0.966 and must NOT be treated as a step-up tread. Matches the
+## modifier's flat_contact threshold.
+const STAIR_TREAD_UP_DOT := 0.999
 const STATIONARY_HORIZONTAL_SPEED := 0.05
 
 
@@ -50,6 +61,8 @@ func reset() -> void:
 	_previous_root_position = Vector3.ZERO
 	_has_previous_root_position = false
 	_travel_direction = Vector3.ZERO
+	_support_transfer_elapsed = 0.0
+	_support_transfer_from_pos = Vector3.ZERO
 
 
 func update_travel_direction(delta: float) -> void:
@@ -68,10 +81,14 @@ func update_travel_direction(delta: float) -> void:
 	_has_previous_root_position = true
 
 
+## flags: "step_down" (bool, default false) and "pelvis_sink" (float, default
+## 0.0) - bundled to stay under the linter's max-argument count.
 func update_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName,
 		foot_pos: Vector3, foot_basis_local: Basis, raw_target: Vector3,
 		animated_lowest_point: Vector3, ground_weight: float, landed: bool,
-		delta: float, step_down: bool = false) -> float:
+		delta: float, flags: Dictionary = {}) -> float:
+	var step_down: bool = flags.get("step_down", false)
+	var pelvis_sink: float = flags.get("pelvis_sink", 0.0)
 	var state := _state(side)
 	if side == _support_side:
 		clear_swing(side)
@@ -107,7 +124,7 @@ func update_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName,
 		state.descending_to_landing = false
 
 	var desired_lift := _desired_swing_lift(
-			state, predicted_hit, raw_target, animated_lowest_point, delta)
+			space, state, predicted_hit, raw_target, animated_lowest_point, delta, pelvis_sink)
 	if delta > 0.0:
 		var playback_scale := maxf(_owner.player_body.locomotion_playback_scale, 0.001)
 		state.smoothed_lift = move_toward(state.smoothed_lift, desired_lift,
@@ -247,9 +264,41 @@ func _support_target_is_reachable(leg: Dictionary) -> bool:
 const SUPPORT_CONTACT_DISTANCE := 0.15
 
 
+## True when the secondary toe-tip probe reads a surface at least step_min_rise
+## above the ankle's own primary ray. The toe probe is extrapolated forward
+## (toe_tip_margin) before casting down, so during a step-up it can reach OVER
+## a riser onto the NEXT tread's top while the ankle still sits above the
+## current, lower tread. A support latch then anchors the foot a full step
+## above the visible step beneath its ankle, rendering a mid-air hover
+## (confirmed live on Stairs 0.50m: right foot held a 2.5m target for ~120
+## frames while its ankle was over the 2.0m step). Such a foot is mid-swing,
+## not planted - only trust the toe probe when its surface is at or below the
+## ankle's own ray. Ramps/downhill are unaffected: there the toe is the lower
+## point, so the probe reads below the ankle ray and the guard never fires.
+##
+## The height condition alone is not enough: a foot planted at the bottom edge
+## of a ramp, facing uphill, has its toe probe legitimately read the rising
+## slope above the ankle while the foot is genuinely planted on the flat floor
+## below it. The ramp sweep flagged +138 such cases. A stair step-up's higher
+## surface is a FLAT tread (normal near Vector3.UP), while a ramp's is sloped
+## (45deg reads ~0.71), so require the probe's own surface to be flat before
+## treating the foot as mid-step-up. Matches the modifier's flat_contact
+## threshold so a shallow 15deg ramp (0.966) is not misread as a tread.
+func _toe_probe_reaches_higher_surface(leg: Dictionary) -> bool:
+	if not (leg.get("hit", false) and leg.get("animated_contact_hit", false)):
+		return false
+	var probe_y: float = (leg["animated_contact_position"] as Vector3).y
+	var ankle_y: float = (leg["raw_target"] as Vector3).y
+	if probe_y <= ankle_y + _owner.step_min_rise:
+		return false
+	var probe_normal: Vector3 = leg.get("animated_contact_normal", Vector3.UP)
+	return probe_normal.dot(Vector3.UP) >= STAIR_TREAD_UP_DOT
+
+
 func _is_contacting(leg: Dictionary, clearance: float) -> bool:
 	return (leg.get("animated_contact_hit", false)
-			and clearance <= SUPPORT_CONTACT_DISTANCE)
+			and clearance <= SUPPORT_CONTACT_DISTANCE
+			and not _toe_probe_reaches_higher_surface(leg))
 
 
 ## Picks which contacting leg becomes/keeps _support_side. A leg mid-swing
@@ -350,14 +399,55 @@ func _prediction_direction(side: StringName, foot_basis_local: Basis) -> Vector3
 	return forward.normalized()
 
 
-func _desired_swing_lift(state: LegState, predicted_hit: Dictionary,
-		raw_target: Vector3, animated_lowest_point: Vector3, delta: float) -> float:
+## A predicted landing spot right at a tread's front/back edge leaves too
+## little sole area to plant on convincingly - the foot lands half over the
+## drop. Nudge it toward whichever side (forward/back along travel) still
+## reads as the same tread, so it settles nearer the tread's middle instead
+## of its lip. Leaves the target alone on a tread narrower than 2x the
+## margin (both sides read as an edge) or with room on both sides already;
+## moving it to a different tread height entirely is a bigger follow-up.
+const EDGE_SAFETY_MARGIN := 0.06
+
+
+func _clear_landing_point(space: PhysicsDirectSpaceState3D, landing: Vector3) -> Vector3:
+	var forward := _travel_direction
+	if forward.length_squared() < 0.0001:
+		return landing
+	forward = forward.normalized()
+	var ahead := _sample_same_tread(space, landing, forward)
+	var behind := _sample_same_tread(space, landing, -forward)
+	if ahead.is_empty() and not behind.is_empty():
+		return behind["position"]
+	if behind.is_empty() and not ahead.is_empty():
+		return ahead["position"]
+	return landing
+
+
+## A ray cast down from EDGE_SAFETY_MARGIN in the given direction, kept only
+## if it lands on (approximately) the same tread height as landing - i.e. the
+## tread surface actually continues that way rather than ending in a riser or
+## a drop. Returns the real surface hit, not just a same-height assumption -
+## reusing landing.y at the nudged spot left the target floating above/below
+## the true tread there, looking like a foot planting on an invisible step.
+func _sample_same_tread(
+		space: PhysicsDirectSpaceState3D, landing: Vector3, dir: Vector3) -> Dictionary:
+	var probe := landing + dir * EDGE_SAFETY_MARGIN
+	var hit: Dictionary = _owner._ground_sampler.raycast_ground(space, probe)
+	if hit["hit"] and absf((hit["position"] as Vector3).y - landing.y) <= _owner.step_min_rise:
+		return hit
+	return {}
+
+
+func _desired_swing_lift(space: PhysicsDirectSpaceState3D, state: LegState,
+		predicted_hit: Dictionary, raw_target: Vector3,
+		animated_lowest_point: Vector3, delta: float, pelvis_sink: float) -> float:
 	if state.swing_active and predicted_hit["hit"]:
 		var predicted_position: Vector3 = predicted_hit["position"]
 		if (not state.has_latched_target
 				and predicted_position.y > state.swing_base_y + _owner.step_min_rise):
 			state.has_latched_target = true
-			state.latched_target = predicted_position
+			state.latched_target = _clear_landing_point(space, predicted_position)
+			state.latched_normal = predicted_hit.get("normal", Vector3.UP)
 	if not state.swing_active or not state.has_latched_target:
 		state.has_predicted_target = false
 		return 0.0
@@ -370,7 +460,20 @@ func _desired_swing_lift(state: LegState, predicted_hit: Dictionary,
 			state.descending_to_landing = true
 	if state.descending_to_landing:
 		return 0.0
-	var clearance_y: float = state.latched_target.y + _owner.step_clearance_margin
+	# The shared pelvis sink (see _apply_support_pelvis_and_legs) lowers BOTH
+	# legs' hip together, including this swinging one - so it also eats into
+	# how high this leg can actually reach for its own elevated target, even
+	# though the sink exists for the OTHER (support) leg's needs. Add back
+	# last frame's sink so the swing target still clears the tread by the
+	# full margin once the pelvis sinks (confirmed via STAIR_FOOT_TRACE: a
+	# support-leg-driven sink was silently eating the swing leg's clearance,
+	# producing exactly the toe/ball penetration this margin exists to avoid).
+	# Flat treads only - on a ramp this pushed the sweep's failure count up
+	# (2579->2809/6240), so restrict it to the same "real stair tread" signal
+	# _toe_probe_reaches_higher_surface() already uses.
+	var flat_tread := state.latched_normal.dot(Vector3.UP) >= STAIR_TREAD_UP_DOT
+	var sink_compensation := pelvis_sink if flat_tread else 0.0
+	var clearance_y: float = state.latched_target.y + _owner.step_clearance_margin + sink_compensation
 	return maxf(0.0, clearance_y - animated_lowest_point.y)
 
 
@@ -384,6 +487,7 @@ func _try_transfer_support(per_leg: Dictionary,
 	if (candidate_leg.get("animated_contact_hit", false)
 			and candidate_clearance <= _owner.GROUND_CONTACT_DISTANCE
 			and candidate_state.smoothed_lift <= _owner.GROUND_CONTACT_DISTANCE
+			and not _toe_probe_reaches_higher_surface(candidate_leg)
 			and (candidate_velocity <= _owner.velocity_noise_floor
 					or candidate_state.landing_seen)):
 		_support_side = candidate
@@ -391,7 +495,10 @@ func _try_transfer_support(per_leg: Dictionary,
 
 
 func _latch_support_target(leg: Dictionary) -> void:
-	if leg.get("animated_contact_hit", false):
+	_support_transfer_elapsed = 0.0
+	_support_transfer_from_pos = leg.get("target", leg.get("hip_pos", Vector3.ZERO)) as Vector3
+	if (leg.get("animated_contact_hit", false)
+			and not _toe_probe_reaches_higher_surface(leg)):
 		_support_surface_target = leg["animated_contact_position"]
 		_support_normal = leg["animated_contact_normal"]
 		_support_ground_target = (
@@ -411,10 +518,31 @@ func _latch_support_target(leg: Dictionary) -> void:
 ## 0.308m); debug_step_down isn't true for every frame of a real descent, so
 ## it didn't distinguish the two cases. Surface tilt does, since it doesn't
 ## depend on gait timing at all.
+##
+## The weight/target snap to their full support value here used to be
+## unconditional (1.0 the instant support transfers), which is a DIFFERENT
+## case from the general shared_drop engage/release smoothing documented on
+## player_foot_ik_modifier.gd's _shape_shared_drop(): that smoothing is about
+## a single leg's reach growing continuously (e.g. mid-descent), where a
+## delay leaves the leg stretched. This is a discrete handoff between two
+## already-latched targets - blending target/weight over a short fixed
+## support_transfer_blend_time (not the general shared_drop lerp already
+## reverted once) removes the once-per-step pelvis/foot pop at exactly the
+## support-side swap without reopening that stretch/penetration regression.
+## Gated on STAIR_TREAD_UP_DOT, not the looser FLAT_SURFACE_UP_DOT: a shallow
+## ramp (15deg reads 0.966, above FLAT_SURFACE_UP_DOT but below this) still
+## keeps stair-support ownership, and blending its settle-transfer measurably
+## regressed FOOT_IK_RAMP_CASE (0 -> 4 penetrating samples, one static settle
+## case) - a real stair tread is the only case this fix is meant to cover.
 func _apply_support_contact(side: StringName, leg: Dictionary, delta: float) -> void:
-	leg["ground_weight"] = 1.0
+	if delta > 0.0:
+		_support_transfer_elapsed += delta
+	var transfer_time: float = (
+			_owner.support_transfer_blend_time
+			if _support_normal.dot(Vector3.UP) >= STAIR_TREAD_UP_DOT else 0.0)
+	var blend := 1.0 if transfer_time <= 0.0 else clampf(
+			_support_transfer_elapsed / transfer_time, 0.0, 1.0)
 	leg["preserve_idle_pose"] = false
-	_owner._smoothed_ground_weight[side] = 1.0
 	var on_flat_tread := _support_normal.dot(Vector3.UP) >= FLAT_SURFACE_UP_DOT
 	var surface_target := _support_surface_target
 	if not on_flat_tread and _owner._smoothed_target.has(side):
@@ -431,5 +559,19 @@ func _apply_support_contact(side: StringName, leg: Dictionary, delta: float) -> 
 	# had settled onto the surface's true tilt (confirmed live: a support
 	# foot toe-clipped by ~1cm for an entire idle session on a 45deg ramp).
 	var offset := _support_normal * float(leg.get("effective_offset", 0.0))
-	leg["target"] = surface_target + offset
-	leg["ground_target"] = surface_target + offset
+	var full_target := surface_target + offset
+	var blended_target: Vector3 = _support_transfer_from_pos.lerp(full_target, blend)
+	leg["ground_weight"] = blend
+	# leg["chain_weight"] must move with ground_weight, not just default to it -
+	# _apply_support_pelvis_and_legs() reads chain_weight straight from this
+	# dict (leg.get("chain_weight", ground_weight)), and the per-leg loop
+	# already wrote its own (pre-support, often 0.0) chain_weight earlier this
+	# frame. Leaving it unset here meant a support leg could read ground_weight
+	# 1.0 while its solve() rotation weight (chain_weight) was still 0.0 - full
+	# target/weight, zero actual correction applied (confirmed live: an idle
+	# stair-edge stance clipping 15-18cm, foot bit-for-bit equal to its raw
+	# animated pose despite ground_weight=1.0).
+	leg["chain_weight"] = blend
+	leg["target"] = blended_target
+	leg["ground_target"] = blended_target
+	_owner._smoothed_ground_weight[side] = blend

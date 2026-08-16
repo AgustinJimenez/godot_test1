@@ -94,6 +94,10 @@ var _character_rows: Array[Dictionary] = []
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootIkFollowToggle")
 @onready var foot_ik_joint_graph_toggle: CheckButton = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootIkJointGraphToggle")
+@onready var foot_ik_residual_mode_toggle: CheckButton = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootIkResidualModeToggle")
+@onready var foot_ik_phase_locked_mode_toggle: CheckButton = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FootIkPhaseLockedModeToggle")
 @onready var skeleton_visible_toggle: CheckButton = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SkeletonVisibleToggle")
 @onready var slow_mo_slider: HSlider = get_node(
@@ -143,6 +147,8 @@ func _ready() -> void:
 	detached_camera_toggle.toggled.connect(_on_detached_camera_toggled)
 	foot_ik_follow_toggle.toggled.connect(_on_foot_ik_follow_toggled)
 	foot_ik_joint_graph_toggle.toggled.connect(_on_foot_ik_joint_graph_toggled)
+	foot_ik_residual_mode_toggle.toggled.connect(_on_foot_ik_residual_mode_toggled)
+	foot_ik_phase_locked_mode_toggle.toggled.connect(_on_foot_ik_phase_locked_mode_toggled)
 	skeleton_visible_toggle.toggled.connect(_on_skeleton_visible_toggled)
 	slow_mo_slider.value_changed.connect(_on_slow_mo_value_changed)
 	main_debug_button.pressed.connect(_show_debug_page)
@@ -353,9 +359,15 @@ func _open_debug() -> void:
 	_build_anim_list(p)
 	var foot_follow := get_tree().get_first_node_in_group(&"foot_ik_camera_preset")
 	foot_ik_follow_toggle.visible = foot_follow != null
+	foot_ik_residual_mode_toggle.visible = foot_follow != null
+	foot_ik_phase_locked_mode_toggle.visible = foot_follow != null
 	if foot_follow != null:
 		foot_ik_follow_toggle.set_pressed_no_signal(
 				bool(foot_follow.call(&"is_stair_foot_follow_enabled")))
+		foot_ik_residual_mode_toggle.set_pressed_no_signal(
+				bool(foot_follow.call(&"is_residual_stair_mode")))
+		foot_ik_phase_locked_mode_toggle.set_pressed_no_signal(
+				bool(foot_follow.call(&"is_phase_locked_mode")))
 	var joint_graph := get_tree().get_first_node_in_group(&"foot_ik_joint_history_graph")
 	foot_ik_joint_graph_toggle.visible = joint_graph != null
 	if joint_graph != null:
@@ -742,6 +754,22 @@ func _on_foot_ik_joint_graph_toggled(enabled: bool) -> void:
 		foot_ik_joint_graph_toggle.set_pressed_no_signal(false)
 		return
 	graph.call(&"set_graph_visible", enabled)
+
+
+func _on_foot_ik_residual_mode_toggled(enabled: bool) -> void:
+	var controller := get_tree().get_first_node_in_group(&"foot_ik_camera_preset")
+	if controller == null:
+		foot_ik_residual_mode_toggle.set_pressed_no_signal(false)
+		return
+	controller.call(&"set_residual_stair_mode", enabled)
+
+
+func _on_foot_ik_phase_locked_mode_toggled(enabled: bool) -> void:
+	var controller := get_tree().get_first_node_in_group(&"foot_ik_camera_preset")
+	if controller == null:
+		foot_ik_phase_locked_mode_toggle.set_pressed_no_signal(false)
+		return
+	controller.call(&"set_phase_locked_mode", enabled)
 
 
 func _on_skeleton_visible_toggled(enabled: bool) -> void:

@@ -74,6 +74,36 @@ static func build_traversal_ramp(parent: Node3D, origin: Vector3,
 	_build_profile_surface(parent, origin, width, profile)
 
 
+static func build_top_landing(parent: Node3D, origin: Vector3,
+		width: float, tread_depth: float, step_count: int, step_height: float,
+		riser_material: Material = null, tread_material: Material = null) -> void:
+	# The traversal ramp's flat top landing extends past the last authored
+	# tread, but foot probes only raycast the contact layer. Without a
+	# contact-layer landing there, a foot over the top-back edge misses all
+	# geometry and the 4m idle fallback ray reads the floor 2.1m below,
+	# producing the documented top-edge dangle. Author the landing on the
+	# contact layer to match the capsule's walkable surface.
+	var top_rise := step_height * step_count
+	var ramp_end_z := (step_count - 1) * tread_depth
+	var landing_end_z := ramp_end_z + TRANSITION_LENGTH + LANDING_LENGTH
+	var landing_start_z := step_count * tread_depth
+	var box := CSGBox3D.new()
+	box.size = Vector3(width, top_rise, landing_end_z - landing_start_z)
+	box.material = riser_material
+	box.use_collision = true
+	configure_authored_stair(box)
+	box.position = origin + Vector3(
+			0.0, top_rise * 0.5, (landing_start_z + landing_end_z) * 0.5)
+	parent.add_child(box)
+	var cap := CSGBox3D.new()
+	cap.size = Vector3(width, 0.006, landing_end_z - landing_start_z)
+	cap.material = tread_material
+	cap.use_collision = false
+	cap.position = origin + Vector3(
+			0.0, top_rise + 0.003, (landing_start_z + landing_end_z) * 0.5)
+	parent.add_child(cap)
+
+
 static func _build_profile_surface(parent: Node3D, origin: Vector3,
 		width: float, profile: PackedVector2Array) -> void:
 	var faces := PackedVector3Array()
