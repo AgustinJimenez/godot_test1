@@ -1536,3 +1536,30 @@ gameplay on automated verification alone" rule).
 - `scripts/check.sh`: PASS (0 lint/parse errors, file strictly under 1000 lines).
 - `check_foot_ik.sh`: PASS for STRETCH, AIRBORNE, POSE_CONTINUITY, STAIR_SETTLE; matching known baseline.
 - `check_foot_ik_locomotion.sh`: `FOOT_IK_TURN_TARGET_CHECK` PASS (0.0094m max gap, `worst_added_deg=1.926`).
+
+## 2026-08-16: Precision Foot Placement on Stairs during Diagonal / Side Locomotion (Industry Architecture & Plan)
+
+### 1. The Problem: Floating / Detached Feet on Side/Diagonal Stair Walking
+* **Symptom:** When walking across or diagonally on stairs, the player capsule rides smoothly on the invisible continuous traversal ramp (`CONTINUOUS_TRAVERSAL_LAYER`). Between step edges, the ramp surface floats 5–15cm above the recessed step tread underneath. If Foot IK uses forward-only stair prediction or lacks deep downward contact search during non-forward motion, the feet plant onto the invisible ramp plane rather than reaching down to the physical step treads, appearing to walk on thin air above the steps.
+
+### 2. How Modern Engines (Unreal Engine 5 Foot Placement Node / Final IK) Solve This
+1. **Separation of Layers:**
+   * **Physics Capsule:** Moves on the continuous smooth traversal proxy (`CONTINUOUS_TRAVERSAL_LAYER`) for jitter-free movement and camera control.
+   * **IK Raycasts:** Always query the complex/authored visual geometry (`CONTACT_COLLISION_LAYER`), ignoring the traversal proxy.
+2. **Plant Detection & World-Space Target Latching:**
+   * When a foot begins its contact phase (gait phase or velocity dip below threshold), raycast downward from the predicted touchdown point.
+   * As soon as the foot touches down on a step tread, its target position is latched in **world space** for the duration of the stance phase.
+   * This anchors the foot firmly to the specific stair step while the body moves forward over it, preventing floating and foot sliding.
+3. **Pelvis Drop (Hip Offset):**
+   * Pelvis is offset downward relative to the capsule root by `max(0, floor_diff)` so the lower foot can reach the lower step tread without stretching.
+   * Smoothed via a critically-damped spring or velocity-damped lerp to avoid vertical popping.
+4. **Trajectory Warping (Swing Lift):**
+   * If the swing foot's trajectory intersects a step riser (in the actual travel direction, whether forward, diagonal, or lateral), procedural swing lift elevates the foot over the obstacle before descending onto the latched contact point.
+
+### 3. Implementation Roadmap
+1. **Omnidirectional Tread Search in `foot_ik_ground_sampler.gd`:**
+   * Ensure downward ground sampling during locomotion explicitly reaches below the traversal ramp plane to find the authored step tread underneath, regardless of walking direction.
+2. **World-Space Stance Latching during Locomotion in `foot_ik_gait_tracker.gd`:**
+   * When a foot enters stance on a step tread during walking/sprinting, lock its target in world space until liftoff.
+3. **Automated Diagonal Stair Harness Verification:**
+   * Add a test walking diagonally across the 0.20m and 0.35m test stairs to verify zero hovering and zero riser clipping across all approach angles.

@@ -803,7 +803,8 @@ func _process_modification_with_delta(delta: float) -> void:
 		if preserve_idle_pose:
 			continue
 		var max_reach := upper_length + lower_length - 0.001
-		var horizontal_dist_sq := Vector2(hip_pos.x - target.x, hip_pos.z - target.z).length_squared()
+		var horizontal_dist_sq := Vector2(
+				hip_pos.x - target.x, hip_pos.z - target.z).length_squared()
 		var max_vertical_diff := sqrt(maxf(0.0, max_reach * max_reach - horizontal_dist_sq))
 		var needed_drop: float = (hip_pos.y - target.y) - max_vertical_diff
 		shared_drop = maxf(shared_drop, needed_drop)

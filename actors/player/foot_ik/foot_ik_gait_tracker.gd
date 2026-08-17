@@ -121,8 +121,15 @@ func update(
 	# engage IK, not masquerade as lost contact. Using absf() here made an idle
 	# foot 16.7cm inside a taller tread report contact_lost=true/weight=0.
 	var clearance_above_target := foot_pos.y - ground_target.y
+	var idle_settling: bool = (
+		_body_horizontal_speed() <= IDLE_TRANSLATION_EPSILON
+		and _owner._grounded
+		and contact_hit
+		and clearance_above_target <= _owner.step_down_pelvis_drop + _owner.step_min_rise
+	)
 	var contact_lost: bool = (
 		not step_down
+		and not idle_settling
 		and not penetrating_contact
 		and _owner.step_prediction_enabled
 		and not force_plant

@@ -231,7 +231,7 @@ enum LegRetarget {
 const WALK_REF_SPEED := 1.6
 const SPRINT_REF_SPEED := 5.8
 const CROUCH_REF_SPEED := 1.7
-const LOCOMOTION_BLEND_TIME := 0.5
+const LOCOMOTION_BLEND_TIME := 0.18
 const MOVING_LANDING_BLEND_TIME := 0.15
 const JUMP_PHASE_SPEED := 2.5
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
@@ -266,13 +266,10 @@ var _action_contact_emitted := false
 ## visibly change the animation anyway (move, crouch, arm the weapon) - only suppressed while
 ## they're just standing still watching the preview.
 var _debug_preview_active := false
+var _locomotion_active := false
+var _locomotion_stop_timer := 0.0
 
-## The visual skin - defaults to MotusMan so a plain player.tscn instance needs zero config, same
-## as before this became configurable. Instantiated as a child in _setup_character_scene() rather
-## than being the node this script itself sits on (which is what a direct FBX-instance node/scene
-## like player.tscn's old "Body" node used to be) - mirrors HumanoidActor._setup_character()'s
-## existing pattern for NPCs, the already-proven way to keep body execution independent of the
-## visual skin.
+## Visual character scene, instantiated in _setup_character_scene().
 @export var character_scene: PackedScene = preload(
 		"res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx")
 
@@ -725,10 +722,12 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		sprinting: bool, on_floor: bool, vertical_velocity: float, delta: float,
 		torch_enabled: bool, movement_input: Vector2 = Vector2.ZERO) -> void:
 	set_held_flashlight_visible(torch_enabled)
-	_hand_grip_modifier.active = false
-	_foot_ik_modifier.set_character_grounded(on_floor)
-	_foot_ik_modifier.set_pose_suppressed(
-			crouched and on_floor and absf(movement_input.x) > 0.5)
+	if _hand_grip_modifier != null:
+		_hand_grip_modifier.active = false
+	if _foot_ik_modifier != null:
+		_foot_ik_modifier.set_character_grounded(on_floor)
+		_foot_ik_modifier.set_pose_suppressed(
+				crouched and on_floor and absf(movement_input.x) > 0.5)
 	if _debug_preview_active:
 		if ground_speed <= 0.6 and not crouched and not armed and on_floor:
 			return
@@ -762,11 +761,20 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		return
 	var target: StringName
 	var rate := 1.0
-	if ground_speed > 0.6 or (crouched and movement_input.length() > 0.1):
+	var moving_input := (ground_speed > 0.6
+			or (crouched and movement_input.length() > 0.1))
+	if moving_input:
+		_locomotion_active = true
+		_locomotion_stop_timer = 0.08 # ~80ms debounce
+	elif _locomotion_stop_timer > 0.0:
+		_locomotion_stop_timer = maxf(_locomotion_stop_timer - delta, 0.0)
+		if _locomotion_stop_timer <= 0.0 and ground_speed <= 0.25:
+			_locomotion_active = false
+	else:
+		_locomotion_active = false
+	if _locomotion_active:
 		if crouched:
 			target = DirectionalLocomotionLibrary.crouch_animation(movement_input)
-			# Physical velocity needs a few frames to decelerate from sprint.
-			# Do not play the crouch cycle at the inherited sprint rate meanwhile.
 			rate = minf(ground_speed / CROUCH_REF_SPEED, 1.0)
 		elif sprinting:
 			target = &"unarmed_sprint"
@@ -778,7 +786,8 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		target = &"unarmed_crouch_idle"
 	else:
 		target = &"unarmed_torch_idle" if torch_enabled else &"unarmed_idle"
-	_hand_grip_modifier.active = target == &"unarmed_torch_idle"
+	if _hand_grip_modifier != null:
+		_hand_grip_modifier.active = target == &"unarmed_torch_idle"
 	_play_motion(target,
 			MOVING_LANDING_BLEND_TIME if moving_landing else LOCOMOTION_BLEND_TIME, clampf(rate,
 			0.8 * locomotion_playback_scale, 2.2 * locomotion_playback_scale))
@@ -864,7 +873,8 @@ func _load_flashlight_grip_pose() -> Dictionary:
 
 
 func set_held_flashlight_visible(enabled: bool) -> void:
-	_flashlight_model.visible = enabled and _equipped_model == null
+	if _flashlight_model != null:
+		_flashlight_model.visible = enabled and _equipped_model == null
 
 
 func set_equipped_item(item: Item) -> void:
@@ -975,20 +985,8 @@ func get_animation_source_pack(anim_name: StringName) -> StringName:
 	return &""
 
 
-## Debug menu only: play a clip once, directly, bypassing update_motion's
-## normal state machine. Sets _debug_preview_active so update_motion() leaves
-## it alone while the player just stands there watching it loop (closing the
-## menu unpauses the tree, and update_motion() runs every physics tick - it
-## would otherwise stomp the preview back to relaxed_idle on the very next
-## tick). The moment the player actually moves/crouches/arms up,
-## update_motion() reclaims control immediately, same as normal.
-## UAL_EXTRA_CLIPS entries retarget on this first request. Each gets its own
-## AnimationLibrary added on demand, rather than being merged into the
-## already-playing "moves" library - mutating a library the AnimationPlayer
-## is actively mid-crossfade on corrupts its internal blend state and
-## crashes the engine after a handful of distinct clips (reproduced: adding
-## a 5th distinct clip to a live-blending library segfaults every time,
-## regardless of which clips; a fresh per-clip library sidesteps it).
+## Debug menu only: play a clip once directly, bypassing update_motion.
+## UAL_EXTRA_CLIPS retarget on demand into their own library to avoid crossfade mutation segfaults.
 func play_debug_anim(anim_name: StringName, blend_time: float = 0.2) -> void:
 	if not _lib.has_animation(anim_name) and (String(anim_name) in UAL_EXTRA_CLIPS
 			or String(anim_name) in UAL2_EXTRA_CLIPS):

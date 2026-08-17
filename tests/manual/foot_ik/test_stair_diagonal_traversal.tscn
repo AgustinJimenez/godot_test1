@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://da87654321def"]
+
+[ext_resource type="Script" path="res://tests/manual/foot_ik/test_stair_diagonal_traversal.gd" id="1_test"]
+
+[node name="TestStairDiagonalTraversal" type="Node3D"]
+script = ExtResource("1_test")
