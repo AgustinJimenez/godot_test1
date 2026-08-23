@@ -123,6 +123,7 @@ var _free_mode_default_collision_layer := 0
 var _free_mode_default_collision_mask := 0
 var movement_input_override: Variant = null
 var debug_movement_input := Vector2.ZERO
+var _smoothed_input_dir := Vector2.ZERO
 var gameplay_action_input_enabled := true
 var _stair_controller := STAIR_CONTROLLER.new()
 var _stair_hover_offset_y: float:
@@ -429,14 +430,18 @@ func _physics_process(delta: float) -> void:
 	# only the *input-driven* reactions (movement, jump, crouch - crouch's
 	# own toggle is guarded separately in _unhandled_input) get suppressed.
 	var input_dir := Vector2.ZERO
-	if not detached_cam_active:
-		input_dir = movement_input_override if movement_input_override is Vector2 else (
-				Input.get_vector(
-					&"move_left", &"move_right", &"move_forward", &"move_back")
-			)
-	debug_movement_input = input_dir
-	_catch_up_body_yaw(input_dir, delta)
-	var sprinting := _update_stamina(delta, input_dir)
+	if movement_input_override is Vector2:
+		input_dir = movement_input_override
+		_smoothed_input_dir = input_dir
+	elif not detached_cam_active:
+		input_dir = Input.get_vector(
+				&"move_left", &"move_right", &"move_forward", &"move_back")
+		_smoothed_input_dir = _smoothed_input_dir.move_toward(input_dir, delta * 8.0)
+	else:
+		_smoothed_input_dir = Vector2.ZERO
+	debug_movement_input = _smoothed_input_dir
+	_catch_up_body_yaw(_smoothed_input_dir, delta)
+	var sprinting := _update_stamina(delta, _smoothed_input_dir)
 	_update_capsule(delta)
 	_roll_cooldown_left = maxf(_roll_cooldown_left - delta, 0.0)
 	_punch_cooldown_left = maxf(_punch_cooldown_left - delta, 0.0)
@@ -482,7 +487,8 @@ func _physics_process(delta: float) -> void:
 	# Movement follows where you're actually looking (body yaw + the head's
 	# offset from it), not just the body's facing - otherwise glancing to the
 	# side while walking forward would strafe instead of walking that way.
-	var direction := (look_basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	var direction := (look_basis * Vector3(
+			_smoothed_input_dir.x, 0.0, _smoothed_input_dir.y)).normalized()
 	if _roll_time_left > 0.0:
 		_roll_time_left = maxf(_roll_time_left - delta, 0.0)
 		if _roll_time_left > 0.0:
@@ -548,7 +554,7 @@ func _physics_process(delta: float) -> void:
 			is_on_floor() or (not jumped and _airborne_time < AIRBORNE_ANIMATION_GRACE))
 	body.update_motion(_crouched, weapon.equipped,
 			Vector2(velocity.x, velocity.z).length(), sprinting,
-			report_on_floor, velocity.y, delta, flashlight.visible, input_dir)
+			report_on_floor, velocity.y, delta, flashlight.visible, _smoothed_input_dir)
 	# Yaw: _look_yaw is already clamped to head_yaw_limit_deg in _apply_yaw
 	# (same head-leads-then-body-catches-up system in both modes now), so
 	# feeding it straight through is safe in third person too.

@@ -153,3 +153,49 @@ static func update_ray_visual(inst: MeshInstance3D, from: Vector3, to: Vector3, 
 	mesh.height = length
 	(mesh.material as StandardMaterial3D).albedo_color = Color.GREEN if hit else Color.RED
 	inst.global_transform = Transform3D(Basis(basis_x, up, basis_z), (from + to) * 0.5)
+
+
+static func spawn_direction_arrow(parent: Node, color: Color) -> Node3D:
+	var root := Node3D.new()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.no_depth_test = true
+
+	var shaft := MeshInstance3D.new()
+	var shaft_mesh := CylinderMesh.new()
+	shaft_mesh.top_radius = 0.012
+	shaft_mesh.bottom_radius = 0.012
+	shaft_mesh.height = 0.28
+	shaft_mesh.material = mat
+	shaft.mesh = shaft_mesh
+	shaft.rotation.x = deg_to_rad(-90.0)
+	shaft.position.z = -0.14
+	root.add_child(shaft)
+
+	var tip := MeshInstance3D.new()
+	var tip_mesh := CylinderMesh.new()
+	tip_mesh.top_radius = 0.0
+	tip_mesh.bottom_radius = 0.04
+	tip_mesh.height = 0.12
+	tip_mesh.material = mat
+	tip.mesh = tip_mesh
+	tip.rotation.x = deg_to_rad(-90.0)
+	tip.position.z = -0.34
+	root.add_child(tip)
+
+	parent.add_child(root)
+	return root
+
+
+static func update_direction_arrow(arrow: Node3D, base_pos: Vector3,
+		velocity: Vector3, player_facing: Vector3, is_chest: bool = false) -> void:
+	if arrow == null:
+		return
+	var h_vel := Vector3(velocity.x, 0.0, velocity.z)
+	var dir := (h_vel.normalized() if (h_vel.length() > 0.1 and not is_chest)
+			else player_facing)
+	arrow.global_position = (base_pos + dir * 0.15) if is_chest else (base_pos + Vector3.UP * 0.28)
+	if dir.length_squared() > 0.001:
+		var target := arrow.global_position + dir
+		arrow.look_at(target, Vector3.UP)

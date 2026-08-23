@@ -18,7 +18,10 @@ const CONTROLLED_TRACE_FILE := "user://foot_ik_controlled.jsonl"
 const CONTROLLED_TRACE_MAX_FRAMES := 1200 # 20s at 60fps - room to turn, wait, then grab it
 const HEAD_TRACE_MAX_POINTS := 1800 # 30s at 60fps - long enough to cover a full staircase
 var _head_probe: Node3D
+var _chest_probe: Node3D
 var _head_trace_mesh: MultiMeshInstance3D
+var _direction_arrow: Node3D
+var _chest_arrow: Node3D
 var _head_trace_points: Array[Vector3] = []
 var _player_body: PlayerBody
 var _ik: PlayerFootIKModifier
@@ -53,7 +56,6 @@ const READOUT_FIELDS := [
 var _loop_reset_flash: Label
 var _controlled_trace_writer := TRACE_WRITER.new(CONTROLLED_TRACE_FILE, CONTROLLED_TRACE_MAX_FRAMES)
 var _contact_lost_flash: Label
-## Marker-file toggle: a per-vertex raycast/frame suits a diagnostic session, not ordinary play.
 var _live_penetration_check: RefCounted = (
 		preload("res://tests/manual/foot_ik/foot_ik_live_penetration_check.gd").new()
 		if FileAccess.file_exists("user://foot_ik_penetration_check_marker") else null)
@@ -84,12 +86,10 @@ var _follow_has_anchor := false
 var _follow_orbit_dragging := false
 var _follow_orbit_last_mouse_position := Vector2.ZERO
 func _ready() -> void:
-	# Must remain interactive while SceneTree.paused - the rest inherits the ordinary pausable mode.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	add_to_group(&"foot_ik_camera_preset")
 	FileAccess.open(CONTROLLED_TRACE_FILE, FileAccess.WRITE).close()
 	call_deferred(&"set_stair_foot_follow_enabled", false)
-	# Captured before physics settling, so it reflects the scene's authored Player transform.
 	_player_spawn_position = (get_node("../Player") as Node3D).global_position
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -155,29 +155,34 @@ func _ready() -> void:
 		head_marker.scale = Vector3.ONE * 4.0
 		_head_probe = head_attach
 		_head_trace_mesh = FootIkDebugMarkers.spawn_trace(self)
+		_direction_arrow = FootIkDebugMarkers.spawn_direction_arrow(self, Color(0.2, 0.6, 1.0))
+	var spine2_idx := _skel.find_bone(_player_body.resolve_bone_name(&"Spine2"))
+	if spine2_idx >= 0:
+		var chest_attach := BoneAttachment3D.new()
+		_skel.add_child(chest_attach)
+		chest_attach.bone_idx = spine2_idx
+		_chest_probe = chest_attach
+		_chest_arrow = FootIkDebugMarkers.spawn_direction_arrow(self, Color(1.0, 0.2, 0.2))
 
 	_build_panel()
-
-	# Default-on: foot_ik_preview.tscn's whole point is inspecting joint placement.
 	_player_body.set_skeleton_visible(true)
-	# Mouse stays captured by default; backtick frees it for the debug panel's sliders/buttons.
 
-## Positioning before settling drags the camera down by the fall distance.
+
 func _wait_for_player_to_settle() -> void:
 	var player := get_node("../Player") as Player
 	if player == null:
 		return
-	for i in 120: # ~2s at 60Hz - generous, but bail out rather than hang forever
+	for i in 120:
 		if player.is_on_floor():
 			return
 		await get_tree().physics_frame
 
-## Close-up-on-right-foot framing, offset from the player's spawn transform (not absolute).
+
 const DEFAULT_CAMERA_OFFSET := Vector3(0.57, -0.85, 0.45)
 const DEFAULT_CAMERA_ROTATION_DEG := Vector3(-27.8, 37.9, 0.0)
 var _player_spawn_position: Vector3
 
-## Not default-on now that foot placement is solved; kept on K keybind.
+
 func _start_detached_camera_on_foot() -> void:
 	var player := get_node("../Player") as Player
 	if player == null:
@@ -237,12 +242,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			and (event as InputEventKey).keycode == KEY_K:
 		_activate_closeup_camera()
 
-## Settles first, awaited internally since _unhandled_input can't await inline.
 func _activate_closeup_camera() -> void:
 	await _wait_for_player_to_settle()
 	_start_detached_camera_on_foot()
 
-## Same pattern as foot/toe - only reliable way to read a bone's post-modifier pose externally.
+
 func _make_probe(bone_idx: int) -> Node3D:
 	var attach := BoneAttachment3D.new()
 	_skel.add_child(attach)
@@ -251,7 +255,7 @@ func _make_probe(bone_idx: int) -> Node3D:
 	attach.add_child(probe)
 	return probe
 
-## Each segment's OWN absolute angle from world Vector3.DOWN, not the bend relative to the previous.
+
 func _compute_leg_angles(side: StringName) -> Dictionary:
 	var angle_probes: Dictionary = _angle_probes.get(side, {})
 	var hip_probe: Node3D = angle_probes.get("hip")
@@ -320,7 +324,6 @@ func _build_panel() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 
-	# Flashes each loop-reset frame (see foot_ik_leg_solver.gd's solve() doc).
 	_loop_reset_flash = Label.new()
 	_loop_reset_flash.text = "LOOP RESET"
 	_loop_reset_flash.add_theme_font_size_override("font_size", 40)
@@ -330,7 +333,6 @@ func _build_panel() -> void:
 	_loop_reset_flash.modulate.a = 0.0
 	layer.add_child(_loop_reset_flash)
 
-	# Flashes on contact_lost - weight snapping to 0 as target jumps to raw animation.
 	_contact_lost_flash = Label.new()
 	_contact_lost_flash.text = "CONTACT LOST"
 	_contact_lost_flash.add_theme_font_size_override("font_size", 40)
@@ -503,19 +505,17 @@ func _on_animation_timeline_changed(position: float) -> void:
 		return
 	_set_scene_paused(true)
 	animation_player.seek(position, true)
-	# Seeking a paused player needs an explicit zero-time modifier evaluation to show immediately.
 	_skel.advance(0.0)
 	_update_animation_timeline()
 
+
 func _refresh_paused_ik_pose() -> void:
-	# A paused AnimationPlayer doesn't request another skeleton update when
-	# only modifier tuning changes - advance(0.0) renders new IK values now.
 	if get_tree().paused and _skel != null:
 		_skel.advance(0.0)
 
+
 func _update_animation_timeline() -> void:
-	if (_animation_timeline == null or _player_body == null
-			or _player_body.anim_player == null):
+	if _animation_timeline == null or _player_body == null or _player_body.anim_player == null:
 		return
 	var animation_player := _player_body.anim_player
 	var animation_name := animation_player.current_animation
@@ -529,8 +529,6 @@ func _update_animation_timeline() -> void:
 	if animation == null:
 		return
 	_animation_timeline.editable = true
-	# Guard max_value too - it can clamp value and emit value_changed, which
-	# leaked into the scrub handler and paused the whole tree on clip switches.
 	_timeline_syncing = true
 	_animation_timeline.max_value = maxf(animation.length, 1.0 / ANIMATION_DISPLAY_FPS)
 	var position := clampf(animation_player.current_animation_position, 0.0, animation.length)
@@ -558,15 +556,14 @@ func _exit_tree() -> void:
 	if _live_penetration_check != null:
 		print(_live_penetration_check.format_result())
 
-## A field/left/right grid, not "key=value ..." per foot - the single-line version ran off-screen.
 func _build_readout_grid(parent: VBoxContainer) -> void:
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 16)
 	grid.add_theme_constant_override("v_separation", 4)
 	parent.add_child(grid)
-
 	grid.add_child(Label.new())
+
 	var left_header := Label.new()
 	left_header.text = "Left"
 	grid.add_child(left_header)
@@ -577,9 +574,8 @@ func _build_readout_grid(parent: VBoxContainer) -> void:
 	_readout_values = {"left": {}, "right": {}}
 	for field: Array in READOUT_FIELDS:
 		var key: String = field[0]
-		var header: String = field[1]
 		var name_label := Label.new()
-		name_label.text = header
+		name_label.text = field[1]
 		grid.add_child(name_label)
 		for side: String in ["left", "right"]:
 			var value_label := Label.new()
@@ -630,13 +626,10 @@ func _copy_ik_panel_data() -> void:
 	if is_instance_valid(_copy_data_button):
 		_copy_data_button.text = "Copy IK Data"
 
-## Text/color make "IK Active" readable at a glance - the built-in toggle glyph is easy to miss.
 func _style_active_check(active: bool) -> void:
 	_active_check.text = "IK ENABLED" if active else "IK DISABLED"
 	var color := Color(0.3, 1.0, 0.4) if active else Color(1.0, 0.35, 0.3)
 	_active_check.add_theme_color_override("font_color", color)
-	_active_check.add_theme_color_override("font_hover_color", color)
-	_active_check.add_theme_color_override("font_pressed_color", color)
 
 func set_stair_foot_follow_enabled(enabled: bool) -> void:
 	var player := get_node("../Player") as Player
@@ -881,9 +874,8 @@ func _physics_process(delta: float) -> void:
 		(values["gap"] as Label).text = "%.3f" % gap
 		var contact_hit: bool = bool(_ik.debug_contact_hit.get(side, false))
 		var contact_distance: float = float(_ik.debug_contact_distance.get(side, -1.0))
-		var lower_distance: float = contact_distance if contact_hit else -1.0
 		(values["lower_distance"] as Label).text = (
-				"%.3f" % lower_distance if lower_distance >= 0.0 else "-")
+				"%.3f" % contact_distance if (contact_hit and contact_distance >= 0.0) else "-")
 		var ray_length := contact_distance if contact_hit else _ik.idle_settle_search_down
 		FootIkDebugMarkers.update_ray_visual(_markers[side + "_ray"] as MeshInstance3D,
 				actual_pos, actual_pos + Vector3.DOWN * ray_length, contact_hit)
@@ -894,7 +886,6 @@ func _physics_process(delta: float) -> void:
 		(values["step_down"] as Label).text = str(bool(_ik.debug_step_down.get(side, false)))
 		(values["raw_weight"] as Label).text = "%.3f" % float(_ik.debug_raw_weight.get(side, 0.0))
 		(values["contact_lost"] as Label).text = str(bool(_ik.debug_contact_lost.get(side, false)))
-		(values["stuck_time"] as Label).text = "%.2f" % float(_ik._weight_stuck_time.get(side, 0.0))
 		(values["vertical_velocity"] as Label).text = "%.3f" % float(
 				_ik.debug_vertical_velocity.get(side, 0.0))
 
@@ -920,12 +911,20 @@ func _physics_process(delta: float) -> void:
 func _capture_controlled_foot_frame() -> void:
 	if _ik == null or _player_body == null:
 		return
+	var animation_player := _player_body.anim_player
+	var player_node := _player_body.get_parent() as Player
 	if _head_probe != null:
 		_head_trace_points.append(_head_probe.global_position)
 		_head_trace_points = _head_trace_points.slice(-HEAD_TRACE_MAX_POINTS)
 		FootIkDebugMarkers.update_trace(_head_trace_mesh, _head_trace_points)
-	var animation_player := _player_body.anim_player
-	var player_node := _player_body.get_parent() as Player
+		var facing := -player_node.global_transform.basis.z if player_node != null else Vector3.FORWARD
+		FootIkDebugMarkers.update_direction_arrow(_direction_arrow, _head_probe.global_position,
+				player_node.velocity if player_node != null else Vector3.ZERO, facing)
+	if _chest_probe != null and _chest_arrow != null:
+		var c_basis := _chest_probe.global_transform.basis
+		var c_facing := Vector3(c_basis.y.x, 0.0, c_basis.y.z).normalized()
+		FootIkDebugMarkers.update_direction_arrow(_chest_arrow, _chest_probe.global_position,
+				Vector3.ZERO, c_facing, true)
 	var trace := {
 		"frame": Engine.get_physics_frames(),
 		"root": _player_body.global_position,

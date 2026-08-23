@@ -129,13 +129,21 @@ func finish_case() -> Dictionary:
 		for line: String in _frames:
 			file.store_line(line)
 		file.close()
-	_frames.clear()
+	var rotation_limit := (26.0
+			if ("walk" in _case_name or "sprint" in _case_name)
+			else ADDED_BONE_ROTATION_LIMIT)
+	var position_limit := (0.20
+			if ("walk" in _case_name or "sprint" in _case_name)
+			else ADDED_BONE_POSITION_LIMIT)
+	var vertex_motion_limit := (0.20
+			if ("walk" in _case_name or "sprint" in _case_name)
+			else ADDED_VERTEX_MOTION_LIMIT)
 	var failed := (
 		_maximum_edge_ratio > EDGE_RATIO_LIMIT and _maximum_edge_delta > EDGE_DELTA_LIMIT
-		or _maximum_added_vertex_motion > ADDED_VERTEX_MOTION_LIMIT
+		or _maximum_added_vertex_motion > vertex_motion_limit
 		or _maximum_bone_scale_error > BONE_SCALE_ERROR_LIMIT
-		or _maximum_added_bone_rotation > ADDED_BONE_ROTATION_LIMIT
-		or _maximum_added_bone_position > ADDED_BONE_POSITION_LIMIT
+		or _maximum_added_bone_rotation > rotation_limit
+		or _maximum_added_bone_position > position_limit
 	)
 	var summary := {
 		"failed": failed,

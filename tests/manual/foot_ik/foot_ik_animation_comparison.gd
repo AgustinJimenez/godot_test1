@@ -18,6 +18,14 @@ const CASES: Array[Dictionary] = [
 	{"label": "WALK IN PLACE\nIK ON", "animation": &"unarmed_walk", "ik": true},
 	{"label": "RUN IN PLACE\nIK OFF", "animation": &"unarmed_sprint", "ik": false},
 	{"label": "RUN IN PLACE\nIK ON", "animation": &"unarmed_sprint", "ik": true},
+	{"label": "STRAFE LEFT\nIK OFF", "animation": &"unarmed_walk_left", "ik": false},
+	{"label": "STRAFE LEFT\nIK ON", "animation": &"unarmed_walk_left", "ik": true},
+	{"label": "STRAFE RIGHT\nIK OFF", "animation": &"unarmed_walk_right", "ik": false},
+	{"label": "STRAFE RIGHT\nIK ON", "animation": &"unarmed_walk_right", "ik": true},
+	{"label": "DIAG FWD-LEFT\nIK OFF", "animation": &"unarmed_walk_fwd_left", "ik": false},
+	{"label": "DIAG FWD-LEFT\nIK ON", "animation": &"unarmed_walk_fwd_left", "ik": true},
+	{"label": "DIAG FWD-RIGHT\nIK OFF", "animation": &"unarmed_walk_fwd_right", "ik": false},
+	{"label": "DIAG FWD-RIGHT\nIK ON", "animation": &"unarmed_walk_fwd_right", "ik": true},
 	{
 		"label": "CROUCH WALK FORWARD\nIK OFF",
 		"animation": &"unarmed_crouch_walk",
@@ -61,7 +69,8 @@ func _physics_process(_delta: float) -> void:
 func _build_comparison_pad() -> void:
 	var pad := CSGBox3D.new()
 	pad.name = &"ComparisonPad"
-	pad.size = PAD_SIZE
+	var total_w := maxf(PAD_SIZE.x, CASES.size() * DUMMY_SPACING + 4.0)
+	pad.size = Vector3(total_w, PAD_SIZE.y, PAD_SIZE.z)
 	pad.position = GROUP_CENTER + Vector3(0.0, -PAD_SIZE.y * 0.5, 0.0)
 	pad.use_collision = true
 	var material := StandardMaterial3D.new()

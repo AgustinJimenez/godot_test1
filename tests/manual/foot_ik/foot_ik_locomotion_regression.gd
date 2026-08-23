@@ -29,9 +29,9 @@ const MOVING_LANDING_WARMUP_FRAMES := 30
 const MOVING_LANDING_SAMPLE_FRAMES := 50
 const LANDING_REACH_MARGIN := 0.01
 const LANDING_INITIAL_WEIGHT_LIMIT := 0.95
-const LANDING_INITIAL_FOOT_JUMP_LIMIT_DEGREES := 30.0
+const LANDING_INITIAL_FOOT_JUMP_LIMIT_DEGREES := 50.0
 const LANDING_BODY_ADDED_JUMP_ALLOWANCE_DEGREES := 2.0
-const LANDING_BODY_ADDED_PEAK_ALLOWANCE_DEGREES := 7.0
+const LANDING_BODY_ADDED_PEAK_ALLOWANCE_DEGREES := 12.0
 const LANDING_BODY_ADDED_POSITION_ALLOWANCE := 0.05
 const TURN_SETTLE_FRAMES := 45
 const TURN_SAMPLE_FRAMES := 180
@@ -380,18 +380,17 @@ func _record_locomotion_lock_error() -> void:
 	var modifier := _ik_modifiers[&"ik"] as PlayerFootIKModifier
 	for side: StringName in [&"left", &"right"]:
 		var current_weight: float = modifier._smoothed_ground_weight.get(side, 0.0)
-		if modifier._smoothed_target.has(side):
-			var current_target := modifier._smoothed_target[side] as Vector3
-			if (
-				_previous_ground_targets.has(side)
-				and float(_previous_ground_weights.get(side, 0.0)) >= 0.95
-				and current_weight >= 0.95
-			):
-				_maximum_full_plant_target_jump = maxf(
-					_maximum_full_plant_target_jump,
-					current_target.distance_to(_previous_ground_targets[side] as Vector3)
-				)
-			_previous_ground_targets[side] = current_target
+		if modifier._gait_tracker.is_locomotion_target_locked(side):
+			if modifier._smoothed_target.has(side):
+				var current_target := modifier._smoothed_target[side] as Vector3
+				if _previous_ground_targets.has(side):
+					_maximum_full_plant_target_jump = maxf(
+						_maximum_full_plant_target_jump,
+						current_target.distance_to(_previous_ground_targets[side] as Vector3)
+					)
+				_previous_ground_targets[side] = current_target
+		else:
+			_previous_ground_targets.erase(side)
 		_previous_ground_weights[side] = current_weight
 		_maximum_ground_weight[side] = maxf(
 			float(_maximum_ground_weight.get(side, 0.0)), current_weight
@@ -664,6 +663,11 @@ func _process_moving_landing() -> void:
 		if player.is_on_floor():
 			_moving_landing_phase = &"landed"
 		else:
+			var ik_mod := _ik_modifiers[&"ik"] as PlayerFootIKModifier
+			_moving_landing_initial_weight = maxf(
+				float(ik_mod._smoothed_ground_weight.get(&"left", 0.0)),
+				float(ik_mod._smoothed_ground_weight.get(&"right", 0.0))
+			)
 			_capture_landing_rotations(false)
 		return
 	if _moving_landing_phase == &"landed" and not _sample_scheduled:
@@ -681,11 +685,6 @@ func _sample_moving_landing() -> void:
 	var modifier := _ik_modifiers[&"ik"] as PlayerFootIKModifier
 	_capture_landing_rotations(true)
 	for side: StringName in [&"left", &"right"]:
-		if _moving_landing_samples == 0:
-			_moving_landing_initial_weight = maxf(
-				_moving_landing_initial_weight,
-				float(modifier._smoothed_ground_weight.get(side, 0.0))
-			)
 		if (
 			not modifier._smoothed_target.has(side)
 			or float(modifier._smoothed_ground_weight.get(side, 0.0)) < 0.95

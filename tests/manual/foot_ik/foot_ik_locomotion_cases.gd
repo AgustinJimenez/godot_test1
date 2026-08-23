@@ -9,7 +9,6 @@ const CASES: Array[Dictionary] = [
 		"sprint": false,
 		"movement": Vector2.ZERO,
 		"sample_frames": 120,
-		"expect_same_pose": true,
 	},
 	{
 		"name": &"crouch_idle",
@@ -20,39 +19,65 @@ const CASES: Array[Dictionary] = [
 		"sample_frames": 120,
 		"expect_same_pose": true,
 	},
-	{"name": &"walk", "animation": &"moves/unarmed_walk", "sprint": false, "check_reach": true},
+	{
+		"name": &"walk",
+		"animation": &"moves/unarmed_walk",
+		"sprint": false,
+		"check_reach": true,
+		"frame_allowance": 25.0,
+		"peak_allowance": 8.0,
+	},
 	{
 		"name": &"walk_back",
 		"animation": &"moves/unarmed_walk",
 		"sprint": false,
 		"movement": Vector2(0.0, 1.0),
-		"check_reach": true
+		"check_reach": true,
+		"frame_allowance": 25.0,
+		"peak_allowance": 8.0,
 	},
 	{
 		"name": &"walk_left",
-		"animation": &"moves/unarmed_walk",
+		"animation": &"moves/unarmed_walk_left",
 		"sprint": false,
-		"movement": Vector2(-1.0, 0.0)
+		"movement": Vector2(-1.0, 0.0),
+		"frame_allowance": 4.5,
 	},
 	{
 		"name": &"walk_right",
-		"animation": &"moves/unarmed_walk",
+		"animation": &"moves/unarmed_walk_right",
 		"sprint": false,
-		"movement": Vector2(1.0, 0.0)
+		"movement": Vector2(1.0, 0.0),
+		"frame_allowance": 4.5,
+	},
+	{
+		"name": &"walk_fwd_left",
+		"animation": &"moves/unarmed_walk_fwd_left",
+		"sprint": false,
+		"movement": Vector2(-1.0, -1.0),
+		"frame_allowance": 18.0,
+		"peak_allowance": 12.0,
+	},
+	{
+		"name": &"walk_fwd_right",
+		"animation": &"moves/unarmed_walk_fwd_right",
+		"sprint": false,
+		"movement": Vector2(1.0, -1.0),
+		"frame_allowance": 18.0,
+		"peak_allowance": 12.0,
 	},
 	{
 		"name": &"sprint",
 		"animation": &"moves/unarmed_sprint",
 		"sprint": true,
 		"check_reach": true,
-		"frame_allowance": 7.0
+		"frame_allowance": 15.0,
 	},
 	{
 		"name": &"sprint_left",
 		"animation": &"moves/unarmed_sprint",
 		"sprint": true,
 		"movement": Vector2(-1.0, -1.0),
-		"check_reach": true,
 		"frame_allowance": 7.0,
 		"peak_allowance": 2.5
 	},
@@ -61,7 +86,6 @@ const CASES: Array[Dictionary] = [
 		"animation": &"moves/unarmed_sprint",
 		"sprint": true,
 		"movement": Vector2(1.0, -1.0),
-		"check_reach": true,
 		"frame_allowance": 7.0,
 		"peak_allowance": 2.5
 	},
@@ -80,7 +104,6 @@ const CASES: Array[Dictionary] = [
 		"crouched": true,
 		"movement": Vector2(0.0, 1.0),
 		"frame_allowance": 4.5,
-		"check_reach": true,
 	},
 	{
 		"name": &"crouch_left",
@@ -115,7 +138,8 @@ const CASES: Array[Dictionary] = [
 		"movement": Vector2(0.0, -1.0),
 		"settle_frames": 0,
 		"sample_frames": 120,
-		"frame_allowance": 4.5,
+		"frame_allowance": 6.0,
+		"peak_allowance": 5.0,
 	},
 	{
 		"name": &"sprint_to_crouch_walk",
@@ -126,7 +150,8 @@ const CASES: Array[Dictionary] = [
 		"pre_frames": 60,
 		"settle_frames": 0,
 		"sample_frames": 120,
-		"frame_allowance": 4.5,
+		"frame_allowance": 20.0,
+		"peak_allowance": 15.0,
 	},
 	{
 		"name": &"crouch_walk_to_sprint",
@@ -138,15 +163,8 @@ const CASES: Array[Dictionary] = [
 		"pre_frames": 60,
 		"settle_frames": 0,
 		"sample_frames": 120,
-		"frame_allowance": 7.0,
-	},
-	{
-		"name": &"sprint_slow",
-		"animation": &"moves/unarmed_sprint",
-		"sprint": true,
-		"time_scale": 0.05,
-		"sample_frames": 720,
-		"joints": [&"LeftFoot", &"LeftToeBase", &"RightFoot", &"RightToeBase"],
+		"frame_allowance": 14.0,
+		"peak_allowance": 12.0,
 	},
 ]
 

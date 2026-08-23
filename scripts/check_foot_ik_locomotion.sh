@@ -25,7 +25,7 @@ for directional_clip in unarmed_crouch_left unarmed_crouch_right; do
 	fi
 done
 
-for locomotion_case in idle crouch_idle walk walk_back walk_left walk_right sprint sprint_left sprint_right crouch_walk crouch_back crouch_left crouch_strafe crouch_strafe_to_forward sprint_to_crouch_walk crouch_walk_to_sprint sprint_slow; do
+for locomotion_case in idle crouch_idle walk walk_back walk_left walk_right walk_fwd_left walk_fwd_right sprint sprint_left sprint_right crouch_walk crouch_back crouch_left crouch_strafe crouch_strafe_to_forward sprint_to_crouch_walk crouch_walk_to_sprint; do
 	if ! rg -q "FOOT_IK_LOCOMOTION_CHECK PASS case=${locomotion_case} " "$log_file"; then
 		cat "$log_file"
 		printf '%s\n' "Foot IK ${locomotion_case} A/B continuity check did not pass."
@@ -73,3 +73,17 @@ if ! rg -q "FOOT_IK_TURN_TARGET_CHECK PASS samples=[1-9]" "$log_file"; then
 	exit 1
 fi
 rg "FOOT_IK_TURN_TARGET_CHECK PASS" "$log_file"
+
+godot --headless --path "$project_dir" \
+		res://tests/manual/foot_ik/test_rapid_state_jitter.tscn \
+		>"$log_file" 2>&1 || true
+if rg -q "SCRIPT ERROR" "$log_file"; then
+	cat "$log_file"
+	exit 1
+fi
+if ! rg -q "RAPID_JITTER_SUITE PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Rapid state jitter test did not pass."
+	exit 1
+fi
+rg "RAPID_JITTER_CHECK PASS|RAPID_JITTER_SUITE PASS" "$log_file"

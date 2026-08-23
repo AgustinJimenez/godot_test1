@@ -7,21 +7,15 @@ const GAIT_PHASE_GROUPS := {
 	&"moves/unarmed_crouch_walk": 0,
 	&"moves/unarmed_crouch_left": 1,
 	&"moves/unarmed_crouch_right": 1,
+	&"moves/unarmed_walk_left": 2,
+	&"moves/unarmed_walk_right": 2,
+	&"moves/unarmed_walk_fwd_left": 2,
+	&"moves/unarmed_walk_fwd_right": 2,
 }
 
 
 static func play(anim_player: AnimationPlayer, target: StringName, blend_time: float) -> void:
 	var full := StringName("moves/" + String(target))
-	if anim_player.current_animation == full:
+	if anim_player.current_animation == full or not anim_player.has_animation(full):
 		return
-	var old_name := StringName(anim_player.current_animation)
-	var gait_phase := -1.0
-	if (GAIT_PHASE_GROUPS.has(old_name) and GAIT_PHASE_GROUPS.has(full)
-			and GAIT_PHASE_GROUPS[old_name] == GAIT_PHASE_GROUPS[full]):
-		var old_animation := anim_player.get_animation(old_name)
-		if old_animation.length > 0.0:
-			gait_phase = fposmod(
-					anim_player.current_animation_position / old_animation.length, 1.0)
 	anim_player.play(full, blend_time)
-	if gait_phase >= 0.0:
-		anim_player.seek(gait_phase * anim_player.get_animation(full).length)

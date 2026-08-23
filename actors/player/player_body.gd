@@ -13,8 +13,6 @@ signal character_changed
 
 const CLIP_DIR := "res://assets/models/pistol_starter/Animation/In-Place/"
 const LocomotionTransition := preload("res://actors/player/player_locomotion_transition.gd")
-const DirectionalLocomotionLibrary := preload(
-		"res://actors/player/player_directional_locomotion_library.gd")
 const CLIPS := {
 	&"relaxed_idle": "W1_Stand_Relaxed_Idle_IPC",
 	&"aim_idle": "W1_Stand_Aim_Idle_IPC",
@@ -23,17 +21,7 @@ const CLIPS := {
 	&"crouch_idle": "W1_Crouch_Aim_Idle_IPC",
 	&"crouch_walk": "W1_CrouchWalk_Aim_F_Loop_IPC",
 }
-## Some MotusMan FBX exports (the animation-bundled clip files under MotusMan_MODEL_DIR
-## specifically - confirmed live via a mesh-material inspection: W1_Stand_Aim_Idle_IPC.fbx's
-## own material has a null albedo_texture, while MotusMan_v55.fbx's own material already has
-## a correct one) bake a broken absolute texture path, leaving Godot's FBX importer with no
-## usable albedo. _apply_skin_texture_fallback() reapplies this diffuse - but only for
-## MotusMan specifically, and only when the imported mesh doesn't already have its own
-## working texture. Applying it unconditionally to every character_scene (the pre-swap-
-## character behavior, when only MotusMan could ever be loaded) paints MotusMan's own
-## diffuse across whatever UV layout a *different* skin's mesh actually has, looking like
-## scrambled/mixed textures - a real bug a user found by testing X Bot through the debug
-## menu's character swap.
+## Reapplies diffuse for MotusMan FBX models with broken baked texture paths.
 const SKIN_TEXTURE := "res://assets/models/pistol_starter/MotusMan/sourceimages/MCG_diff.jpg"
 const MOTUSMAN_MODEL_DIR := "res://assets/models/pistol_starter/"
 const FLASHLIGHT_MODEL := preload("res://assets/models/flashlight/flashlight.glb")
@@ -229,6 +217,7 @@ enum LegRetarget {
 @export var use_humanoid_retarget := true
 ## Rough forward speeds (m/s) the clips were authored at, for foot matching.
 const WALK_REF_SPEED := 1.6
+const STRAFE_REF_SPEED := 2.05
 const SPRINT_REF_SPEED := 5.8
 const CROUCH_REF_SPEED := 1.7
 const LOCOMOTION_BLEND_TIME := 0.18
@@ -237,10 +226,9 @@ const JUMP_PHASE_SPEED := 2.5
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
 var head_yaw := 0.0
+var locomotion_torso_yaw := 0.0
 var stair_balance_offset := 0.0
-## The "moves" library and UAL_EXTRA_CLIPS hold their spine/arms
-## to (see _retarget_clip) - kept around so play_debug_anim can retarget
-## and cache extra clips lazily, on first request, instead of upfront.
+## The "moves" library for gameplay animations and debug clip retargeting.
 var _lib: AnimationLibrary
 var _held_pose: Animation
 var _look_pose_modifier: PlayerLookPoseModifier
@@ -268,6 +256,7 @@ var _action_contact_emitted := false
 var _debug_preview_active := false
 var _locomotion_active := false
 var _locomotion_stop_timer := 0.0
+var _last_movement_input := Vector2.ZERO
 
 ## Visual character scene, instantiated in _setup_character_scene().
 @export var character_scene: PackedScene = preload(
@@ -364,6 +353,7 @@ func _build_character_visuals() -> void:
 	# menu has the rest of the game (including this node's own parent,
 	# Player, which is PAUSABLE by design) frozen.
 	anim_player.process_mode = Node.PROCESS_MODE_ALWAYS
+	anim_player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_PHYSICS
 	_apply_skin_texture_fallback()
 	_look_pose_modifier = PlayerLookPoseModifier.new()
 	_look_pose_modifier.name = &"LookPoseModifier"
@@ -394,24 +384,16 @@ func _build_character_visuals() -> void:
 		lib.add_animation(gameplay_name,
 				_retarget_clip(UAL2_PATH, source_name, _held_pose,
 						String(gameplay_name) in UAL_LOOPING_GAMEPLAY_CLIPS))
-	DirectionalLocomotionLibrary.add_directional_crouch_clips(lib, skeleton, _target_humanoid_map)
+	PlayerDirectionalLocomotionLibrary.add_directional_crouch_clips(
+			lib, skeleton, _target_humanoid_map)
 	_lib = lib
 	anim_player.add_animation_library(&"moves", lib)
 	anim_player.animation_finished.connect(_on_animation_finished)
 	if autoplay_default_animation:
 		anim_player.play("moves/unarmed_idle")
 	_apply_stored_profile_cosmetics()
-## Swaps the live player's visible skin at runtime - the debug menu's character list
-## (ui/hud.gd) calls this so a player can become any catalog character mid-session
-## without a scene reload, the concrete proof this project's player-swappable-skin
-## plan set out for (see CURRENT_TASK.md Phase 5). Frees the whole old character
-## subtree (skeleton and everything attached to it - look/hand-grip/foot-IK
-## modifiers, flashlight/held-item attachments) and rebuilds fresh around the new
-## one, then restores whatever was equipped/visible so the swap is invisible to
-## inventory state. Not free: rebaking ~15 retargeted clips is the same synchronous
-## cost _ready() already pays once at scene start - callers on a paused debug menu
-## should let a frame render a loading message first (see ui/hud.gd's character
-## panel) rather than call this directly off a button's pressed signal.
+## Swaps the live player's visible skin at runtime. Rebuilds the character
+## subtree, restores equipped/held attachments, and updates modifiers.
 func swap_character(new_character_scene: PackedScene) -> void:
 	var previous_torch_visible := is_instance_valid(_flashlight_model) and _flashlight_model.visible
 	var previous_item := _equipped_item
@@ -766,22 +748,38 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 	if moving_input:
 		_locomotion_active = true
 		_locomotion_stop_timer = 0.08 # ~80ms debounce
+		if movement_input.length_squared() > 0.01:
+			_last_movement_input = movement_input
 	elif _locomotion_stop_timer > 0.0:
 		_locomotion_stop_timer = maxf(_locomotion_stop_timer - delta, 0.0)
 		if _locomotion_stop_timer <= 0.0 and ground_speed <= 0.25:
 			_locomotion_active = false
 	else:
 		_locomotion_active = false
+	var target_torso_yaw := 0.0
+	if _locomotion_active and not crouched:
+		var dir_input := (movement_input
+				if movement_input.length_squared() > 0.01
+				else _last_movement_input)
+		var norm := dir_input.normalized()
+		if norm.y < -0.2 and absf(norm.x) > 0.2:
+			target_torso_yaw = deg_to_rad(45.0) if norm.x < 0.0 else deg_to_rad(-45.0)
+	locomotion_torso_yaw = move_toward(locomotion_torso_yaw, target_torso_yaw, delta * 8.0)
 	if _locomotion_active:
+		var dir_input := (movement_input
+				if movement_input.length_squared() > 0.01
+				else _last_movement_input)
 		if crouched:
-			target = DirectionalLocomotionLibrary.crouch_animation(movement_input)
+			target = PlayerDirectionalLocomotionLibrary.crouch_animation(dir_input)
 			rate = minf(ground_speed / CROUCH_REF_SPEED, 1.0)
 		elif sprinting:
 			target = &"unarmed_sprint"
 			rate = ground_speed / SPRINT_REF_SPEED
 		else:
-			target = &"unarmed_walk"
-			rate = ground_speed / WALK_REF_SPEED
+			target = PlayerDirectionalLocomotionLibrary.walk_animation(dir_input)
+			var is_strafe: bool = (target != &"unarmed_walk")
+			var ref: float = STRAFE_REF_SPEED if is_strafe else WALK_REF_SPEED
+			rate = ground_speed / ref
 	elif crouched:
 		target = &"unarmed_crouch_idle"
 	else:
