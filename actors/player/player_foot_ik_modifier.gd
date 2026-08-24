@@ -758,10 +758,10 @@ func _process_modification_with_delta(delta: float) -> void:
 			ground_target = raw_ground_target
 		var flat_contact: bool = (raw_normal.dot(Vector3.UP) >= 0.999
 				and not _stair_predictor.has_latched_target())
-		var anim_name: String = player_body.anim_player.current_animation
+		var anim_name: String = player_body.anim_player.current_animation.get_file()
 		var flat_idle_clearance: bool = (animated_contact_hit
-				and animated_contact_distance < step_min_rise and (anim_name == "moves/unarmed_idle"
-				or anim_name == "moves/unarmed_torch_idle" or anim_name == "moves/unarmed_crouch_idle"))
+				and animated_contact_distance < step_min_rise and (anim_name == "unarmed_idle"
+				or anim_name == "unarmed_torch_idle" or anim_name == "unarmed_crouch_idle"))
 		var stationary_noop: bool = (ground_weight >= 0.999
 				and absf(vertical_velocity) <= velocity_noise_floor
 				and foot_pos.distance_to(ground_target) <= flat_idle_noop_distance)
@@ -951,9 +951,13 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		per_leg: Dictionary, shared_drop: float, delta: float) -> void:
 	if step_prediction_enabled and _stair_predictor.is_active():
 		shared_drop = _stair_predictor.ensure_support(per_leg, shared_drop, delta)
-	var stationary: bool = player_body != null and player_body.anim_player != null and (
-			player_body.anim_player.current_animation == "moves/unarmed_idle"
-			or player_body.anim_player.current_animation == "moves/unarmed_crouch_idle")
+	var cur_anim := (
+			player_body.anim_player.current_animation.get_file()
+			if (player_body != null and player_body.anim_player != null)
+			else ""
+	)
+	var stationary: bool = (cur_anim == "unarmed_idle" or cur_anim == "unarmed_torch_idle"
+			or cur_anim == "unarmed_crouch_idle")
 	shared_drop = _shape_shared_drop(shared_drop, delta, stationary)
 	# Pelvis and thigh roots move together so skinning across the seam cannot tear.
 	if shared_drop > 0.0 and not _bone_indices.is_empty():

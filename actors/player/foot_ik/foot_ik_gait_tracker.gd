@@ -261,6 +261,8 @@ const STREAK_GATE_MARGIN := 3.0  # multiple of velocity_noise_floor
 
 
 func _raw_weight(side: StringName, velocity: float) -> float:
+	if _body_horizontal_speed() <= IDLE_TRANSLATION_EPSILON and _owner._grounded:
+		return 1.0
 	if absf(velocity) < _owner.velocity_noise_floor:
 		return 1.0
 	if velocity > 0.0:

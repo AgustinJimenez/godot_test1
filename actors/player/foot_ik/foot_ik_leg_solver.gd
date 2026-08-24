@@ -212,8 +212,8 @@ func _limit_correction(side: StringName, joint: StringName,
 		return previous
 	var is_crouch_animation := false
 	if _owner.player_body != null and _owner.player_body.anim_player != null:
-		var animation_name := String(_owner.player_body.anim_player.current_animation)
-		is_crouch_animation = animation_name.begins_with("moves/unarmed_crouch")
+		var animation_name := String(_owner.player_body.anim_player.current_animation.get_file())
+		is_crouch_animation = animation_name.begins_with("unarmed_crouch")
 	if joint == &"foot" and not is_crouch_animation:
 		_previous_corrections[key] = desired
 		_previous_correction_frames[key] = current_frame

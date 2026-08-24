@@ -58,7 +58,7 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 			float(_owner._smoothed_ground_weight.get(side, 0.0)) >= PLANT_LOCK_WEIGHT
 			or _owner._gait_tracker.is_locomotion_stance_active(side))
 			and _owner._landing_grace_time <= 0.0
-			and _owner.player_body.anim_player.current_animation != "moves/unarmed_jump_land"
+			and _owner.player_body.anim_player.current_animation.get_file() != "unarmed_jump_land"
 			and target_lock_allowed)
 	if _owner._landing_grace_time > 0.0:
 		# Weight already eases touchdown; target lag can trigger a reach/pelvis sink.
