@@ -253,6 +253,9 @@ var _debug_preview_active := false
 var _locomotion_active := false
 var _locomotion_stop_timer := 0.0
 var _last_movement_input := Vector2.ZERO
+## Smoothed version of movement_input used only for animation clip selection.
+## Lerps at ~8/s so rapid A-D tapping does not flicker between walk_left/walk_right.
+var _anim_input_smoothed := Vector2.ZERO
 
 ## Visual character scene, instantiated in _setup_character_scene().
 @export var character_scene: PackedScene = preload(
@@ -757,6 +760,10 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		var dir_input := (movement_input
 				if movement_input.length_squared() > 0.01
 				else _last_movement_input)
+		# Smooth the direction used for clip selection only — actual movement stays raw.
+		# 8/s is fast enough to follow deliberate direction changes but too slow to
+		# flicker when A and D are tapped rapidly (which shows up as shaking).
+		_anim_input_smoothed = _anim_input_smoothed.lerp(dir_input, minf(delta * 8.0, 1.0))
 		if crouched:
 			target = PlayerDirectionalLocomotionLibrary.crouch_animation(dir_input)
 			rate = minf(ground_speed / CROUCH_REF_SPEED, 1.0)
@@ -764,10 +771,15 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 			target = &"unarmed_sprint"
 			rate = ground_speed / SPRINT_REF_SPEED
 		else:
-			target = PlayerDirectionalLocomotionLibrary.walk_animation(dir_input)
+			target = PlayerDirectionalLocomotionLibrary.walk_animation(_anim_input_smoothed)
 			var is_strafe: bool = (target != &"unarmed_walk")
 			var ref: float = STRAFE_REF_SPEED if is_strafe else WALK_REF_SPEED
 			rate = ground_speed / ref
+			# Backward movement: play the forward walk in reverse so feet step
+			# backward naturally without needing a separate authored clip.
+			var smooth_norm := _anim_input_smoothed.normalized()
+			if not is_strafe and smooth_norm.y > 0.2:
+				rate = -rate
 	elif crouched:
 		target = &"unarmed_crouch_idle"
 	else:
@@ -775,8 +787,9 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 	if _hand_grip_modifier != null:
 		_hand_grip_modifier.active = target == &"unarmed_torch_idle"
 	_play_motion(target,
-			MOVING_LANDING_BLEND_TIME if moving_landing else LOCOMOTION_BLEND_TIME, clampf(rate,
-			0.8 * locomotion_playback_scale, 2.2 * locomotion_playback_scale))
+			MOVING_LANDING_BLEND_TIME if moving_landing else LOCOMOTION_BLEND_TIME,
+			sign(rate) * clampf(absf(rate),
+					0.8 * locomotion_playback_scale, 2.2 * locomotion_playback_scale))
 
 
 func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> void:
