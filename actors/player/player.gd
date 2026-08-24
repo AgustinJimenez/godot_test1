@@ -27,7 +27,7 @@ const TORSO_CLEARANCE: Dictionary = {
 	&"LeftArm": 0.17,
 	&"RightArm": 0.17,
 }
-var eye_offset := Vector3(0, 0.07, -0.17)
+var eye_offset := Vector3(0, 0.12, -0.24)
 
 func set_eye_offset(v: Vector3) -> void:
 	eye_offset = v
@@ -104,7 +104,7 @@ var _pending_melee_range := 0.0
 ## person view is active (no point drawing the first-person camera's FOV
 ## from inside its own view) - this is a second, manual gate on top of
 ## that, for when it's just cluttering the third-person view too.
-var show_fov_gizmo := false
+var show_fov_gizmo := true
 
 func toggle_fov_gizmo() -> void:
 	show_fov_gizmo = not show_fov_gizmo
@@ -203,7 +203,6 @@ func _process(delta: float) -> void:
 var _head_bone_idx := -1
 var _torso_bone_indices: PackedInt32Array = []
 var _torso_bone_clearances: PackedFloat32Array = []
-var _crouch_offset := 0.0
 var _eye_marker: MeshInstance3D
 var _fov_gizmo: MeshInstance3D
 var _fov_mesh := ImmediateMesh.new()
@@ -625,10 +624,8 @@ func _process_free_mode(delta: float) -> void:
 	velocity = move_direction * current_speed
 	global_position += velocity * delta
 
-	var target_crouch := -0.58 if _crouched else 0.0
-	_crouch_offset = lerpf(_crouch_offset, target_crouch, 10.0 * delta)
-	head.position.y += _crouch_offset
 	_eye_marker.position = head.position
+	_eye_marker.visible = _debug_cam_active
 	_update_fov_gizmo()
 
 	var target := _current_interactable()
