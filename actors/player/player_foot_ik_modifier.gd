@@ -758,13 +758,14 @@ func _process_modification_with_delta(delta: float) -> void:
 			ground_target = raw_ground_target
 		var flat_contact: bool = (raw_normal.dot(Vector3.UP) >= 0.999
 				and not _stair_predictor.has_latched_target())
-		var crouch_idle_clearance := (player_body.anim_player.current_animation
-				== "moves/unarmed_crouch_idle" and animated_contact_hit
-				and animated_contact_distance < step_min_rise)
+		var anim_name: String = player_body.anim_player.current_animation
+		var flat_idle_clearance: bool = (animated_contact_hit
+				and animated_contact_distance < step_min_rise and (anim_name == "moves/unarmed_idle"
+				or anim_name == "moves/unarmed_torch_idle" or anim_name == "moves/unarmed_crouch_idle"))
 		var stationary_noop: bool = (ground_weight >= 0.999
 				and absf(vertical_velocity) <= velocity_noise_floor
 				and foot_pos.distance_to(ground_target) <= flat_idle_noop_distance)
-		var preserve_idle_pose: bool = flat_contact and (crouch_idle_clearance
+		var preserve_idle_pose: bool = flat_contact and (flat_idle_clearance
 				or (not step_down and stationary_noop))
 		var target := foot_pos if preserve_idle_pose else foot_pos.lerp(ground_target, ground_weight)
 		var swing_lift := 0.0

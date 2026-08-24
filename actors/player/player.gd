@@ -402,11 +402,18 @@ func _apply_yaw(delta_yaw: float) -> void:
 ## forever with the body never turning to face it.
 const BODY_CATCHUP_DEG_PER_SEC := 220.0
 
-func _catch_up_body_yaw(input_dir: Vector2, delta: float) -> void:
-	if input_dir.length() < 0.1 or _look_yaw == 0.0:
+func _catch_up_body_yaw(input_dir: Vector2, sprinting: bool, delta: float) -> void:
+	if input_dir.length() < 0.1:
 		return
 	var max_step := deg_to_rad(BODY_CATCHUP_DEG_PER_SEC) * delta
-	var step := clampf(_look_yaw, -max_step, max_step)
+	var target_offset := _look_yaw
+	if sprinting:
+		target_offset = _look_yaw + atan2(-input_dir.x, -input_dir.y)
+	if is_zero_approx(target_offset):
+		return
+	var step := clampf(target_offset, -max_step, max_step)
+	if is_zero_approx(step):
+		return
 	_look_yaw -= step
 	head.rotation.y = _look_yaw
 	third_person_arm.rotation.y = _look_yaw
@@ -440,8 +447,8 @@ func _physics_process(delta: float) -> void:
 	else:
 		_smoothed_input_dir = Vector2.ZERO
 	debug_movement_input = _smoothed_input_dir
-	_catch_up_body_yaw(_smoothed_input_dir, delta)
 	var sprinting := _update_stamina(delta, _smoothed_input_dir)
+	_catch_up_body_yaw(_smoothed_input_dir, sprinting, delta)
 	_update_capsule(delta)
 	_roll_cooldown_left = maxf(_roll_cooldown_left - delta, 0.0)
 	_punch_cooldown_left = maxf(_punch_cooldown_left - delta, 0.0)
