@@ -1,11 +1,15 @@
 ## Compact foot_ik trace analyzer — runs headless via:
 ##   godot --headless --path . --script res://scripts/analyze_trace.gd -- [flags]
+##   or: scripts/trace.sh [flags]
 ##
 ## Flags:
 ##   --trace <path>     JSONL file (default: user://foot_ik_controlled.jsonl)
 ##   --last-n <N>       Only last N frames, 0 = all (default 40)
+##   --step <N>         Downsample: keep every Nth frame (default 1)
+##   --changes-only     Only emit frames where animation, floor state, or foot weight changes
 ##   --anim <substr>    Filter frames by animation substring
 ##   --summary          One row per animation: frames + avg/max speed
+##   --anomalies        Find and display only anomalous frames (weight dips, IK divergence, snaps)
 ##   --arrows           Blue (travel) vs Red (chest) angle table
 ##   --feet             Foot IK weight / target-Y / actual-Y table
 ##   --bones B1 B2 ...  rotation_deg XYZ for named bones (reads until next flag)
@@ -34,8 +38,10 @@ static func _h_angle_deg(v: Vector3) -> float:
 	return rad_to_deg(atan2(v.x, -v.z))
 
 
-# ── frame loading ──────────────────────────────────────────────────────────────
-func _load_frames(path: String, last_n: int, anim_filter: String) -> Array:
+# ── frame loading & filtering ──────────────────────────────────────────────────
+func _load_frames(
+		path: String, last_n: int, anim_filter: String, step: int, changes_only: bool
+) -> Array:
 	var resolved: String = path
 	if not path.begins_with("/") and not path.begins_with("res://"):
 		resolved = path  # absolute
@@ -60,6 +66,35 @@ func _load_frames(path: String, last_n: int, anim_filter: String) -> Array:
 		frames = frames.filter(func(fr): return anim_filter in str(fr.get("animation", "")))
 	if last_n > 0 and frames.size() > last_n:
 		frames = frames.slice(frames.size() - last_n)
+
+	if changes_only and not frames.is_empty():
+		var filtered: Array = []
+		var last_anim := ""
+		var last_on_floor := ""
+		var last_lw := -1.0
+		var last_rw := -1.0
+		for fr: Dictionary in frames:
+			var anim: String = str(fr.get("animation", ""))
+			var on_flr: String = str(fr.get("on_floor", ""))
+			var feet: Dictionary = fr.get("feet", {})
+			var lw: float = float(feet.get("left", {}).get("ground_weight", 0.0))
+			var rw: float = float(feet.get("right", {}).get("ground_weight", 0.0))
+			var is_changed: bool = (anim != last_anim or on_flr != last_on_floor
+					or absf(lw - last_lw) > 0.15 or absf(rw - last_rw) > 0.15)
+			if is_changed or filtered.is_empty():
+				filtered.append(fr)
+				last_anim = anim
+				last_on_floor = on_flr
+				last_lw = lw
+				last_rw = rw
+		frames = filtered
+
+	if step > 1 and not frames.is_empty():
+		var stepped: Array = []
+		for idx in range(0, frames.size(), step):
+			stepped.append(frames[idx])
+		frames = stepped
+
 	return frames
 
 
@@ -146,6 +181,77 @@ func _cmd_bones(frames: Array, bone_names: Array) -> void:
 			row += "  %8.2f  %8.2f  %8.2f" % [rot.x, rot.y, rot.z]
 		_println(row)
 
+func _cmd_anomalies(frames: Array) -> void:
+	_println("%12s  %-20s  %-18s  %s" % ["Frames", "Animation", "Anomaly Type", "Details"])
+	_println("-".repeat(78))
+	var events: Array = []
+	var cur_event: Dictionary = {}
+
+	for fr: Dictionary in frames:
+		var frame_num: int = int(fr.get("frame", 0))
+		var anim: String = str(fr.get("animation", "?")).get_file()
+		var on_flr: bool = str(fr.get("on_floor", "false")) == "true"
+		var feet: Dictionary = fr.get("feet", {})
+		var lf: Dictionary = feet.get("left", {})
+		var rf: Dictionary = feet.get("right", {})
+		var lw: float = float(lf.get("ground_weight", 0.0))
+		var rw: float = float(rf.get("ground_weight", 0.0))
+		var vel: Vector3 = _parse_vec3(str(fr.get("velocity", "(0,0,0)")))
+		var speed: float = Vector2(vel.x, vel.z).length()
+
+		var type := ""
+		var detail := ""
+		if on_flr and speed < 0.1 and (lw < 0.5 or rw < 0.5):
+			type = "IDLE_WEIGHT_DIP"
+			detail = "Lw=%.2f Rw=%.2f" % [lw, rw]
+		else:
+			var l_tgt: Vector3 = _parse_vec3(str(lf.get("smoothed_target", "(0,0,0)")))
+			var l_sol: Vector3 = _parse_vec3(str(lf.get("solved_foot_pos", "(0,0,0)")))
+			var r_tgt: Vector3 = _parse_vec3(str(rf.get("smoothed_target", "(0,0,0)")))
+			var r_sol: Vector3 = _parse_vec3(str(rf.get("solved_foot_pos", "(0,0,0)")))
+			var l_gap := l_tgt.distance_to(l_sol)
+			var r_gap := r_tgt.distance_to(r_sol)
+			if (lw > 0.8 and l_gap > 0.12) or (rw > 0.8 and r_gap > 0.12):
+				type = "IK_DIVERGENCE"
+				detail = "L_gap=%.3fm R_gap=%.3fm" % [l_gap, r_gap]
+
+		if type.is_empty():
+			if not cur_event.is_empty():
+				events.append(cur_event)
+				cur_event = {}
+		else:
+			if cur_event.is_empty() or cur_event["type"] != type or cur_event["anim"] != anim:
+				if not cur_event.is_empty():
+					events.append(cur_event)
+				cur_event = {
+					"start": frame_num,
+					"end": frame_num,
+					"count": 1,
+					"anim": anim,
+					"type": type,
+					"detail": detail,
+				}
+			else:
+				cur_event["end"] = frame_num
+				cur_event["count"] += 1
+				cur_event["detail"] = detail
+
+	if not cur_event.is_empty():
+		events.append(cur_event)
+
+	if events.is_empty():
+		_println("No anomalies detected across %d frames." % frames.size())
+		return
+
+	for ev: Dictionary in events:
+		var fr_str: String = (
+				"%d" % ev["start"] if ev["count"] == 1
+				else "%d..%d" % [ev["start"], ev["end"]]
+		)
+		_println("%12s  %-20s  %-18s  %s (%d frames)" % [
+			fr_str, ev["anim"], ev["type"], ev["detail"], ev["count"]
+		])
+
 
 # ── arg parsing ────────────────────────────────────────────────────────────────
 func _parse_args() -> Dictionary:
@@ -153,8 +259,11 @@ func _parse_args() -> Dictionary:
 	var opts: Dictionary = {
 		"trace": DEFAULT_TRACE,
 		"last_n": 40,
+		"step": 1,
+		"changes_only": false,
 		"anim": "",
 		"summary": false,
+		"anomalies": false,
 		"arrows": false,
 		"feet": false,
 		"bones": [],
@@ -171,12 +280,20 @@ func _parse_args() -> Dictionary:
 				i += 1
 				if i < raw.size():
 					opts["last_n"] = raw[i].to_int()
+			"--step":
+				i += 1
+				if i < raw.size():
+					opts["step"] = max(1, raw[i].to_int())
+			"--changes-only":
+				opts["changes_only"] = true
 			"--anim":
 				i += 1
 				if i < raw.size():
 					opts["anim"] = raw[i]
 			"--summary":
 				opts["summary"] = true
+			"--anomalies":
+				opts["anomalies"] = true
 			"--arrows":
 				opts["arrows"] = true
 			"--feet":
@@ -200,7 +317,9 @@ func _init() -> void:
 	if trace_path.begins_with("user://"):
 		trace_path = ProjectSettings.globalize_path(trace_path)
 
-	var frames := _load_frames(trace_path, opts["last_n"], opts["anim"])
+	var frames := _load_frames(
+			trace_path, opts["last_n"], opts["anim"], opts["step"], opts["changes_only"]
+	)
 	if frames.is_empty():
 		_println("No matching frames found in: " + trace_path)
 		_token_footer()
@@ -210,6 +329,9 @@ func _init() -> void:
 	var ran_any := false
 	if opts["summary"]:
 		_cmd_summary(frames)
+		ran_any = true
+	if opts["anomalies"]:
+		_cmd_anomalies(frames)
 		ran_any = true
 	if opts["arrows"]:
 		_cmd_arrows(frames)
@@ -222,7 +344,7 @@ func _init() -> void:
 		ran_any = true
 
 	if not ran_any:
-		_println("No mode selected. Use --summary, --arrows, --feet, or --bones BONE…")
+		_println("No mode selected. Use --summary, --anomalies, --arrows, --feet, or --bones BONE…")
 
 	_token_footer()
 	quit(0)

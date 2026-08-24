@@ -38,11 +38,11 @@ or project scripts whenever exact output is required.
 Large logs and JSONL traces (`foot_ik_controlled.jsonl`, `check_foot_ik*.sh` output, etc.) can be many
 MB - redirect to a file first (`>`), then `grep`/a short Python script to pull out only the specific
 lines or fields needed, rather than letting the full output print into the conversation and filtering
-after the fact. This applies to regression-check output too: redirect `check_foot_ik.sh`/
-`check_foot_ik_locomotion.sh` to a file and grep the `PASS`/`FAIL` summary lines instead of dumping
-the whole run. This is about where large output lands, not about skipping exact numbers - still read
-full frame-by-frame JSONL/diagnostic data when it's the thing being analyzed (see the `rtk` guidance
-above), just do it via a filtered read of a saved file rather than an unfiltered live command.
+after the fact. Use `scripts/trace.sh` for token-efficient trace analysis (`--summary` for high-level
+totals, `--anomalies` for grouped state defects, `--step <N>` for frame sub-sampling, `--changes-only`
+to filter out motionless frames, and `--feet` / `--arrows` / `--bones` for compact tables). This applies
+to regression-check output too: redirect `check_foot_ik.sh`/`check_foot_ik_locomotion.sh` to a file and
+grep the `PASS`/`FAIL` summary lines instead of dumping the whole run.
 
 `scripts/check.sh` is the single project-wide static validation entrypoint. It
 runs the pinned `gdlint` configuration, imports resources, and parses every
