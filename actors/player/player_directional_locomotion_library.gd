@@ -51,10 +51,12 @@ static func add_directional_crouch_clips(lib: AnimationLibrary, target_skeleton:
 
 	for gameplay_name: StringName in ACTION_PACK_CROUCH_CLIPS:
 		_retarget_action_clip(lib, gameplay_name, ACTION_PACK_CROUCH_CLIPS[gameplay_name],
-				source_skeleton, target_skeleton, config, forward_crouch, true, target_humanoid_map)
+				source_skeleton, target_skeleton, config, forward_crouch, true,
+				target_humanoid_map, true)
 	for gameplay_name: StringName in ACTION_PACK_STAND_CLIPS:
 		_retarget_action_clip(lib, gameplay_name, ACTION_PACK_STAND_CLIPS[gameplay_name],
-				source_skeleton, target_skeleton, config, forward_walk, false, target_humanoid_map)
+				source_skeleton, target_skeleton, config, forward_walk, false,
+				target_humanoid_map, true)
 	if lib.has_animation(&"unarmed_walk") and lib.has_animation(&"unarmed_walk_left"):
 		var fwd := lib.get_animation(&"unarmed_walk")
 		var left := lib.get_animation(&"unarmed_walk_left")
@@ -88,10 +90,9 @@ static func _blend_animations(anim_a: Animation, anim_b: Animation, weight_b: fl
 
 		for f in range(frame_count + 1):
 			var norm_time := float(f) / float(frame_count)
-			var t_out := norm_time * duration
 			var time_a := norm_time * anim_a.length
 			var time_b := norm_time * anim_b.length
-
+			var t_out := norm_time * duration
 			if type == Animation.TYPE_ROTATION_3D:
 				var qa := _sample_rotation_track(anim_a, ta, time_a)
 				var qb := _sample_rotation_track(anim_b, tb, time_b) if tb >= 0 else qa
@@ -142,7 +143,7 @@ static func _sample_position_track(anim: Animation, track: int, time: float) -> 
 static func _retarget_action_clip(lib: AnimationLibrary, gameplay_name: StringName,
 		source_path: String, source_skeleton: Skeleton3D, target_skeleton: Skeleton3D,
 		default_config: HumanoidRetargeter.BoneMapConfig, forward_reference: Animation,
-		align_facing: bool, target_humanoid_map: Dictionary) -> void:
+		align_facing: bool, target_humanoid_map: Dictionary, is_looping: bool = true) -> void:
 	var clip_root := (load(source_path) as PackedScene).instantiate()
 	var clip_player := clip_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	var clip_skel := clip_root.find_child("Skeleton3D", true, false) as Skeleton3D
@@ -153,10 +154,14 @@ static func _retarget_action_clip(lib: AnimationLibrary, gameplay_name: StringNa
 	if prefix != null and prefix != "mixamorig_":
 		config = UniversalAnimationPools.mixamo_to_target_map_config(
 				prefix, target_humanoid_map)
-	if clip_player != null and clip_player.has_animation(ACTION_PACK_ANIMATION):
-		var source := clip_player.get_animation(ACTION_PACK_ANIMATION)
+	if clip_player != null and not clip_player.get_animation_list().is_empty():
+		var anim_name: StringName = (ACTION_PACK_ANIMATION
+				if clip_player.has_animation(ACTION_PACK_ANIMATION)
+				else clip_player.get_animation_list()[0])
+		var source := clip_player.get_animation(anim_name)
 		var animation := HumanoidRetargeter.retarget_clip(
-				clip_skel, source, target_skeleton, config, true, false)
+				clip_skel, source, target_skeleton, config, is_looping, false)
+		animation.loop_mode = Animation.LOOP_LINEAR if is_looping else Animation.LOOP_NONE
 		HumanoidRetargeter.make_clip_in_place(animation)
 		if align_facing:
 			HumanoidRetargeter.align_clip_facing(

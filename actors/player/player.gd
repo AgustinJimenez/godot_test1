@@ -27,7 +27,7 @@ const TORSO_CLEARANCE: Dictionary = {
 	&"LeftArm": 0.17,
 	&"RightArm": 0.17,
 }
-var eye_offset := Vector3(0, 0.05, -0.15)
+var eye_offset := Vector3(0, 0.07, -0.17)
 
 func set_eye_offset(v: Vector3) -> void:
 	eye_offset = v

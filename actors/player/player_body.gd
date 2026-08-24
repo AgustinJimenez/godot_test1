@@ -63,9 +63,7 @@ const UAL_LOOPING_GAMEPLAY_CLIPS: PackedStringArray = [
 	"unarmed_crouch_idle", "unarmed_crouch_walk", "unarmed_jump",
 	"unarmed_torch_idle",
 ]
-## UAL1_Standard.glb's raw clip names for the debug menu. Gameplay aliases
-## above are baked eagerly; raw-name previews are still retargeted lazily so
-## a normal play session does not pay for every unused clip.
+## UAL1_Standard.glb raw clips for debug menu (retargeted on demand).
 const UAL_EXTRA_CLIPS: PackedStringArray = [
 	"A_TPose", "Idle", "Idle_Talking", "Idle_Torch", "Walk_Formal", "Jog_Fwd", "Sprint",
 	"Crouch_Idle", "Crouch_Fwd", "Jump", "Jump_Start", "Jump_Land", "Roll",
@@ -76,9 +74,7 @@ const UAL_EXTRA_CLIPS: PackedStringArray = [
 	"Fixing_Kneeling", "Sitting_Enter", "Sitting_Idle", "Sitting_Talking", "Sitting_Exit",
 	"Driving", "Swim_Idle", "Swim_Fwd", "Dance", "Death01",
 ]
-## UAL2 uses the same Unreal mannequin skeleton as UAL1, so the existing
-## humanoid retarget map applies unchanged. A_TPose is omitted because that
-## debug name already belongs to UAL1 in the shared target animation library.
+## UAL2 debug clips (retargeted on demand).
 const UAL2_EXTRA_CLIPS: PackedStringArray = [
 	"Chest_Open", "ClimbUp_1m", "Consume", "Farm_Harvest", "Farm_PlantSeed",
 	"Farm_Watering", "Hit_Knockback", "Idle_FoldArms", "Idle_Lantern", "Idle_No",
@@ -756,15 +752,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 			_locomotion_active = false
 	else:
 		_locomotion_active = false
-	var target_torso_yaw := 0.0
-	if _locomotion_active and not crouched:
-		var dir_input := (movement_input
-				if movement_input.length_squared() > 0.01
-				else _last_movement_input)
-		var norm := dir_input.normalized()
-		if norm.y < -0.2 and absf(norm.x) > 0.2:
-			target_torso_yaw = deg_to_rad(45.0) if norm.x < 0.0 else deg_to_rad(-45.0)
-	locomotion_torso_yaw = move_toward(locomotion_torso_yaw, target_torso_yaw, delta * 8.0)
+	locomotion_torso_yaw = 0.0
 	if _locomotion_active:
 		var dir_input := (movement_input
 				if movement_input.length_squared() > 0.01
