@@ -406,9 +406,12 @@ func _catch_up_body_yaw(input_dir: Vector2, sprinting: bool, delta: float) -> vo
 	if input_dir.length() < 0.1:
 		return
 	var max_step := deg_to_rad(BODY_CATCHUP_DEG_PER_SEC) * delta
+	var travel_angle := atan2(-input_dir.x, -input_dir.y)
 	var target_offset := _look_yaw
 	if sprinting:
-		target_offset = _look_yaw + atan2(-input_dir.x, -input_dir.y)
+		target_offset = _look_yaw + travel_angle
+	elif not _crouched and input_dir.y < -0.2:
+		target_offset = _look_yaw + travel_angle
 	if is_zero_approx(target_offset):
 		return
 	var step := clampf(target_offset, -max_step, max_step)

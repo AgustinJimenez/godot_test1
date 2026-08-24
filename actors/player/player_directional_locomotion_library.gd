@@ -18,15 +18,11 @@ static func walk_animation(movement_input: Vector2) -> StringName:
 	if movement_input.is_zero_approx():
 		return &"unarmed_walk"
 	var norm := movement_input.normalized()
-	var abs_x := absf(norm.x)
-	var abs_y := absf(norm.y)
-	if abs_x < 0.25:
+	if norm.y < -0.2:
 		return &"unarmed_walk"
-	if abs_y < 0.25:
+	if absf(norm.x) > 0.2:
 		return &"unarmed_walk_left" if norm.x < 0.0 else &"unarmed_walk_right"
-	if norm.y < 0.0:
-		return &"unarmed_walk_fwd_left" if norm.x < 0.0 else &"unarmed_walk_fwd_right"
-	return &"unarmed_walk_left" if norm.x < 0.0 else &"unarmed_walk_right"
+	return &"unarmed_walk"
 
 
 static func crouch_animation(movement_input: Vector2) -> StringName:
