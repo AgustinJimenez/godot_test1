@@ -520,6 +520,10 @@ func _locomotion_target_overextended(side: StringName) -> bool:
 		(_owner._smoothed_target[side] as Vector3)
 		+ (_owner._smoothed_normal[side] as Vector3) * offset
 	)
+	var to_world: Transform3D = _owner.player_body.skeleton.global_transform
+	var local_tgt := to_world.affine_inverse() * target
+	if (side == &"left" and local_tgt.x > -0.05) or (side == &"right" and local_tgt.x < 0.05):
+		return true
 	var lengths := _owner._leg_lengths[side] as Dictionary
 	var reach: float = float(lengths["upper"]) + float(lengths["lower"])
 	var fresh := _owner._leg_fresh_pose_cache[side] as Dictionary
