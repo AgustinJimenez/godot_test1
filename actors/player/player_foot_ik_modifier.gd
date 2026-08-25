@@ -941,22 +941,22 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 				and r_leg.get("preserve_idle_pose", false))
 		var is_edge_asymmetry: bool = ((l_hit and not r_hit) or (r_hit and not l_hit))
 		if is_edge_asymmetry:
-			if l_hit and not r_hit:
-				var d := Vector3(l_hip.x - pelvis_pos.x, 0.0, l_hip.z - pelvis_pos.z)
-				target_shift = d.limit_length(0.35)
-			elif r_hit and not l_hit:
-				var d := Vector3(r_hip.x - pelvis_pos.x, 0.0, r_hip.z - pelvis_pos.z)
-				target_shift = d.limit_length(0.35)
+			var active_hip: Vector3 = l_hip if l_hit else r_hip
+			target_shift = Vector3(active_hip.x - pelvis_pos.x, 0.0,
+					active_hip.z - pelvis_pos.z).limit_length(0.35)
 		elif not is_flat_idle and l_hit and r_hit:
 			var l_tgt: Vector3 = l_leg.get("target", l_leg.get("ground_target", l_hip))
 			var r_tgt: Vector3 = r_leg.get("target", r_leg.get("ground_target", r_hip))
 			var r_dir: Vector3 = to_world.basis.x.normalized()
 			var l_rel: float = (l_tgt - pelvis_pos).dot(r_dir)
 			var r_rel: float = (r_tgt - pelvis_pos).dot(r_dir)
-			if l_rel > -0.02:
-				l_leg["target"] = l_tgt + r_dir * (-0.02 - l_rel)
-			if r_rel < 0.02:
-				r_leg["target"] = r_tgt + r_dir * (0.02 - r_rel)
+			if l_rel > -0.10:
+				l_leg["target"] = l_tgt + r_dir * (-0.10 - l_rel)
+			if r_rel < 0.10:
+				r_leg["target"] = r_tgt + r_dir * (0.10 - r_rel)
+			var feet_mid: Vector3 = (l_leg.get("target", l_tgt) + r_leg.get("target", r_tgt)) * 0.5
+			target_shift = Vector3(feet_mid.x - pelvis_pos.x, 0.0,
+					feet_mid.z - pelvis_pos.z).limit_length(0.12)
 	if delta > 0.0:
 		_pelvis_lateral_shift = _pelvis_lateral_shift.lerp(
 				target_shift, clampf(delta * 10.0, 0.0, 1.0))
