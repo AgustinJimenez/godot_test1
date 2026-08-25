@@ -76,10 +76,11 @@ func update(
 	var penetrating_contact: bool = flags.get("penetrating_contact", false)
 	var skip_velocity_gate: bool = flags.get("skip_velocity_gate", false)
 	var frozen: bool = flags.get("frozen", false)
+	var void_dangle: bool = flags.get("void_dangle", false)
 	var velocity := _measure_velocity(side, animated_foot_pos, to_world, delta)
 	var landed := _update_landing(side, velocity, delta)
 	var locomotion_stance := false
-	if skip_velocity_gate:
+	if skip_velocity_gate or void_dangle:
 		_locomotion_stance_active[side] = false
 	else:
 		locomotion_stance = _update_locomotion_stance(side, velocity, landed)
@@ -90,55 +91,29 @@ func update(
 		locomotion_stance and contact_hit and contact_distance <= _owner.step_min_rise
 	)
 	var force_plant: bool = _owner.force_plant_mode
-	# A stationary stance foot easing down onto a reachable lower surface must
-	# not be treated as contact-lost just because the sole is further than
-	# GROUND_CONTACT_DISTANCE above it - step-down bypasses the distance gate
-	# so the weight can rise and plant the foot on the lower target. Once
-	# idle-frozen (see update_idle_freeze), the target is deliberately locked
-	# even though the clip's own natural sway keeps drifting the animated
-	# foot a little - bypass the distance gate then too, or that ordinary
-	# sway eventually exceeds GROUND_CONTACT_DISTANCE and un-plants a foot
-	# freezing was supposed to hold still, fighting the very noise freezing
-	# exists to ignore (only the unfreeze streak should ever release it) -
-	# confirmed via the automated FOOT_IK_POSE_CONTINUITY_CHECK harness. A
-	# non-frozen foot needs its own, narrower bypass on the exact reset frame:
-	# the held/fresh foot_pos and the raycast-derived contact briefly disagree
-	# there too, tripping this same distance check.
-	# Vertical only, not foot_pos.distance_to(ground_target)'s full 3D
-	# distance: with no directional/strafe blend, a diagonally-moving
-	# character's animated foot never actually stays world-stationary
-	# during its own "stance" phase (the clip's local stance assumes
-	# straight-forward root motion), so the smoothed ground_target's
-	# horizontal component permanently lags foot_pos by an amount
-	# proportional to strafe speed - that horizontal lag alone was
-	# starving ground_weight of ever reaching a real plant during
-	# diagonal movement, confirmed live (GAP debug: vert stayed ~1.5cm,
-	# well under the limit, while horiz grew unbounded past 25cm).
-	# Vertical clearance is what this check is actually meant to gate, and it
-	# is directional. A positive value means the animated ankle is floating
-	# above its target and may legitimately be in swing. A negative value means
-	# the detected surface is above the ankle: that is penetration and must
-	# engage IK, not masquerade as lost contact. Using absf() here made an idle
-	# foot 16.7cm inside a taller tread report contact_lost=true/weight=0.
 	var clearance_above_target := foot_pos.y - ground_target.y
 	var idle_settling: bool = (
-		_body_horizontal_speed() <= IDLE_TRANSLATION_EPSILON
+		not void_dangle
+		and _body_horizontal_speed() <= IDLE_TRANSLATION_EPSILON
 		and _owner._grounded
 		and contact_hit
 		and clearance_above_target <= _owner.step_down_pelvis_drop + _owner.step_min_rise
 	)
 	var contact_lost: bool = (
-		not step_down
-		and not idle_settling
-		and not penetrating_contact
-		and _owner.step_prediction_enabled
-		and not force_plant
-		and not frozen
-		and not stance_contact
-		and not _owner._animation_discontinuous
-		and (
-			not contact_hit
-			or clearance_above_target > _owner.GROUND_CONTACT_DISTANCE
+		void_dangle
+		or (
+			not step_down
+			and not idle_settling
+			and not penetrating_contact
+			and _owner.step_prediction_enabled
+			and not force_plant
+			and not frozen
+			and not stance_contact
+			and not _owner._animation_discontinuous
+			and (
+				not contact_hit
+				or clearance_above_target > _owner.GROUND_CONTACT_DISTANCE
+			)
 		)
 	)
 	var raw_weight := _raw_weight(side, velocity)
@@ -261,7 +236,10 @@ const STREAK_GATE_MARGIN := 3.0  # multiple of velocity_noise_floor
 
 
 func _raw_weight(side: StringName, velocity: float) -> float:
-	if _body_horizontal_speed() <= IDLE_TRANSLATION_EPSILON and _owner._grounded:
+	var anim_name: String = (_owner.player_body.anim_player.current_animation.get_file()
+			if _owner.player_body != null and _owner.player_body.anim_player != null else "")
+	var is_idle_anim: bool = anim_name.is_empty() or anim_name.contains("idle")
+	if is_idle_anim and _body_horizontal_speed() <= IDLE_TRANSLATION_EPSILON and _owner._grounded:
 		return 1.0
 	if absf(velocity) < _owner.velocity_noise_floor:
 		return 1.0

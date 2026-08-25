@@ -48,6 +48,9 @@ func set_enabled(enabled: bool) -> void:
 		_modifier.active = enabled
 
 
+var _smoothed_bases: Dictionary = {}
+
+
 func update_targets(skeleton: Skeleton3D, per_leg: Dictionary) -> void:
 	if not is_instance_valid(_modifier):
 		return
@@ -58,21 +61,45 @@ func update_targets(skeleton: Skeleton3D, per_leg: Dictionary) -> void:
 		var animated_position: Vector3 = to_world * foot_pose.origin
 		var animated_basis := to_world.basis * foot_pose.basis
 		var leg: Dictionary = per_leg.get(side, {})
+		var preserve_idle: bool = leg.get("preserve_idle_pose", false)
+		if preserve_idle:
+			(_targets[side] as Node3D).global_transform = Transform3D(
+					animated_basis.orthonormalized(), animated_position)
+			_smoothed_bases[side] = animated_basis
+			var hip_position: Vector3 = to_world * skeleton.get_bone_global_pose(
+					int(indices["hip"])).origin
+			var pole_direction: Vector3 = (
+					to_world.basis * (_owner._knee_pole_local[side] as Vector3)).normalized()
+			(_poles[side] as Node3D).global_position = hip_position + pole_direction
+			continue
 		var target_position: Vector3 = leg.get("target", animated_position)
 		var weight: float = leg.get("ground_weight", 0.0)
 		var target_basis := animated_basis
 		if leg.get("hit", false):
-			var ground_basis: Basis = _owner._compute_new_foot_basis_world(
-					skeleton, side, -(leg.get("raw_normal", Vector3.UP) as Vector3), foot_pose)
-			target_basis = Basis(animated_basis.get_rotation_quaternion().slerp(
-					ground_basis.get_rotation_quaternion(), weight))
+			var raw_norm: Vector3 = leg.get("raw_normal", Vector3.UP)
+			if raw_norm.dot(Vector3.UP) < 0.999:
+				var ground_basis: Basis = _owner._compute_new_foot_basis_world(
+						skeleton, side, -raw_norm, foot_pose)
+				target_basis = Basis(animated_basis.get_rotation_quaternion().slerp(
+						ground_basis.get_rotation_quaternion(), weight))
+		if _smoothed_bases.has(side):
+			var prev_b: Basis = _smoothed_bases[side]
+			target_basis = Basis(prev_b.get_rotation_quaternion().slerp(
+					target_basis.get_rotation_quaternion(), 0.35))
 		(_targets[side] as Node3D).global_transform = Transform3D(
 				target_basis.orthonormalized(), target_position)
-		var hip_position: Vector3 = to_world * skeleton.get_bone_global_pose(
-				int(indices["hip"])).origin
-		var pole_direction: Vector3 = (
-				to_world.basis * (_owner._knee_pole_local[side] as Vector3)).normalized()
-		(_poles[side] as Node3D).global_position = hip_position + pole_direction
+		var hip_pose := skeleton.get_bone_global_pose(int(indices["hip"]))
+		var knee_pose := skeleton.get_bone_global_pose(int(indices["knee"]))
+		var hip_pos: Vector3 = to_world * hip_pose.origin
+		var knee_pos: Vector3 = to_world * knee_pose.origin
+		var hip_to_tgt := (target_position - hip_pos).normalized()
+		var hip_to_knee := knee_pos - hip_pos
+		var bend_vec := hip_to_knee - hip_to_tgt * hip_to_knee.dot(hip_to_tgt)
+		var pole_dir: Vector3 = (to_world.basis * (_owner._knee_pole_local[side] as Vector3)).normalized()
+		var pole_pos := hip_pos + pole_dir
+		if bend_vec.length_squared() > 0.0001:
+			pole_pos = knee_pos + bend_vec.normalized() * 0.5
+		(_poles[side] as Node3D).global_position = pole_pos
 
 
 func _make_target_node(node_name: String) -> Node3D:

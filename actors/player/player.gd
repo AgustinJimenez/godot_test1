@@ -64,6 +64,8 @@ func set_eye_offset(v: Vector3) -> void:
 @export_range(0.25, 1.0, 0.05) var stair_walk_speed_scale: float = 1.0
 @export_range(0.0, 3.0, 0.05) var punch_delay_min: float = 0.25
 @export_range(0.0, 3.0, 0.05) var punch_delay_max: float = 0.75
+## Prevents walking or sliding off elevated platforms/stairs into the void.
+@export var ledge_safety_enabled: bool = true
 
 @export_group("Stamina")
 @export var sprint_duration: float = 18.0
@@ -515,6 +517,8 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity += get_gravity() * delta
 	var horizontal_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
+	if ledge_safety_enabled:
+		horizontal_motion = _clamp_motion_to_ledge(horizontal_motion)
 	var frame_start_y := global_position.y
 	var preserved_horizontal_velocity := Vector2(velocity.x, velocity.z)
 	_stair_controller.begin_frame()
@@ -864,3 +868,56 @@ func _current_interactable() -> Interactable:
 		if found and found.enabled:
 			return found
 	return null
+
+
+## Prevents walking or sliding off elevated platforms/stairs into the void.
+## When grounded, probes slightly ahead; if the ground drops > step_height + 0.2,
+## blocks movement in that direction while allowing sliding parallel to the edge.
+func _clamp_motion_to_ledge(motion: Vector3) -> Vector3:
+	if (not is_on_floor() or motion.is_zero_approx() or _stair_controller.is_climbing()
+			or velocity.y > JUMP_VELOCITY_THRESHOLD):
+		return motion
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return motion
+	var motion_dir := motion.normalized()
+	var probe_dist := maxf(0.42, motion.length() + 0.38)
+	var probe_xz := Vector3(motion_dir.x * probe_dist, 0.0, motion_dir.z * probe_dist)
+	var from_pos := global_position + probe_xz + Vector3.UP * 0.2
+	var ray_params := PhysicsRayQueryParameters3D.create(
+			from_pos, from_pos + Vector3.DOWN * (step_height + 0.35), collision_mask)
+	ray_params.exclude = [get_rid()]
+	var hit := space.intersect_ray(ray_params)
+	if hit.is_empty():
+		var center_ray := PhysicsRayQueryParameters3D.create(
+				global_position + Vector3.UP * 0.2,
+				global_position + Vector3.DOWN * (step_height + 0.35), collision_mask)
+		center_ray.exclude = [get_rid()]
+		var center_hit := space.intersect_ray(center_ray)
+		var x_safe := false
+		var z_safe := false
+		if not center_hit.is_empty():
+			if absf(motion.x) > 0.001:
+				var x_probe := global_position + Vector3(signf(motion.x) * probe_dist, 0.2, 0.0)
+				var x_ray := PhysicsRayQueryParameters3D.create(
+						x_probe, x_probe + Vector3.DOWN * (step_height + 0.35), collision_mask)
+				x_ray.exclude = [get_rid()]
+				x_safe = not space.intersect_ray(x_ray).is_empty()
+			if absf(motion.z) > 0.001:
+				var z_probe := global_position + Vector3(0.0, 0.2, signf(motion.z) * probe_dist)
+				var z_ray := PhysicsRayQueryParameters3D.create(
+						z_probe, z_probe + Vector3.DOWN * (step_height + 0.35), collision_mask)
+				z_ray.exclude = [get_rid()]
+				z_safe = not space.intersect_ray(z_ray).is_empty()
+		var out_motion := Vector3(0.0, motion.y, 0.0)
+		if x_safe and not z_safe:
+			out_motion.x = motion.x
+			velocity.z = 0.0
+		elif z_safe and not x_safe:
+			out_motion.z = motion.z
+			velocity.x = 0.0
+		else:
+			velocity.x = 0.0
+			velocity.z = 0.0
+		return out_motion
+	return motion

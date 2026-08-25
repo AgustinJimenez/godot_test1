@@ -9,6 +9,7 @@
 ##   --changes-only     Only emit frames where animation, floor state, or foot weight changes
 ##   --anim <substr>    Filter frames by animation substring
 ##   --summary          One row per animation: frames + avg/max speed
+##   --diff             Authored vs IK solved rotation and position differences table
 ##   --anomalies        Find and display only anomalous frames (weight dips, IK divergence, snaps)
 ##   --arrows           Blue (travel) vs Red (chest) angle table
 ##   --feet             Foot IK weight / target-Y / actual-Y table
@@ -166,6 +167,25 @@ func _cmd_feet(frames: Array) -> void:
 			str(fr.get("on_floor", "?"))])
 
 
+func _cmd_diff(frames: Array) -> void:
+	_println("%5s  %-22s  %10s  %10s  %10s  %10s  %10s" % [
+		"Fr", "Animation", "L_rot_diff", "L_pos_diff", "R_rot_diff", "R_pos_diff", "Status"])
+	_println("-".repeat(86))
+	for fr: Dictionary in frames:
+		var feet: Dictionary = fr.get("feet", {})
+		var lf: Dictionary = feet.get("left", {})
+		var rf: Dictionary = feet.get("right", {})
+		var anim: String = str(fr.get("animation", "?")).get_file()
+		var l_rot: float = float(lf.get("diff_rot_deg", 0.0))
+		var l_pos: float = float(lf.get("diff_pos_m", 0.0)) * 1000.0
+		var r_rot: float = float(rf.get("diff_rot_deg", 0.0))
+		var r_pos: float = float(rf.get("diff_pos_m", 0.0)) * 1000.0
+		var max_rot := maxf(l_rot, r_rot)
+		var status := "✓ SYNCED" if max_rot < 0.5 else ("ADAPTED" if max_rot < 20.0 else "⚠ DIFF")
+		_println("%5d  %-22s  %9.1f°  %8.1fmm  %9.1f°  %8.1fmm  %10s" % [
+			int(fr.get("frame", 0)), anim, l_rot, l_pos, r_rot, r_pos, status])
+
+
 func _cmd_bones(frames: Array, bone_names: Array) -> void:
 	var header: String = "%5s  %-22s" % ["Fr", "Anim"]
 	for b: String in bone_names:
@@ -266,6 +286,7 @@ func _parse_args() -> Dictionary:
 		"anomalies": false,
 		"arrows": false,
 		"feet": false,
+		"diff": false,
 		"bones": [],
 	}
 	var i := 0
@@ -292,10 +313,18 @@ func _parse_args() -> Dictionary:
 					opts["anim"] = raw[i]
 			"--summary":
 				opts["summary"] = true
+			"--diff":
+				opts["diff"] = true
 			"--anomalies":
 				opts["anomalies"] = true
 			"--arrows":
 				opts["arrows"] = true
+			"--inspect":
+				opts["inspect"] = true
+			"--frame":
+				i += 1
+				if i < raw.size():
+					opts["frame_num"] = raw[i].to_int()
 			"--feet":
 				opts["feet"] = true
 			"--bones":
@@ -306,6 +335,18 @@ func _parse_args() -> Dictionary:
 				continue
 		i += 1
 	return opts
+
+
+func _cmd_inspect(frames: Array, target_frame: int = -1) -> void:
+	if frames.is_empty():
+		return
+	var fr: Dictionary = frames[frames.size() - 1]
+	if target_frame >= 0:
+		for f: Dictionary in frames:
+			if int(f.get("frame", -1)) == target_frame:
+				fr = f
+				break
+	_println(JSON.stringify(fr, "  "))
 
 
 # ── entry point ────────────────────────────────────────────────────────────────
@@ -327,8 +368,14 @@ func _init() -> void:
 		return
 
 	var ran_any := false
+	if opts.get("inspect", false) or opts.has("frame_num"):
+		_cmd_inspect(frames, int(opts.get("frame_num", -1)))
+		ran_any = true
 	if opts["summary"]:
 		_cmd_summary(frames)
+		ran_any = true
+	if opts["diff"]:
+		_cmd_diff(frames)
 		ran_any = true
 	if opts["anomalies"]:
 		_cmd_anomalies(frames)
@@ -344,7 +391,8 @@ func _init() -> void:
 		ran_any = true
 
 	if not ran_any:
-		_println("No mode selected. Use --summary, --anomalies, --arrows, --feet, or --bones BONE…")
+		_println("No mode selected. "
+				+ "Use --inspect, --summary, --diff, --anomalies, --arrows, --feet, or --bones BONE…")
 
 	_token_footer()
 	quit(0)

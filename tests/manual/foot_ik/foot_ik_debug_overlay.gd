@@ -863,22 +863,21 @@ func _physics_process(delta: float) -> void:
 		var normal: Vector3 = _ik._smoothed_normal.get(side, Vector3.UP)
 		var ankle_target: Vector3 = target + normal * _ik.ankle_offset
 		var gap := actual_pos.y - ankle_target.y
-
 		(_markers[side + "_hit"] as MeshInstance3D).global_position = target
 		(_markers[side + "_target"] as MeshInstance3D).global_position = ankle_target
 		(_markers[side + "_actual"] as MeshInstance3D).global_position = actual_pos
-
 		(values["hit"] as Label).text = str(has_target)
 		(values["target_y"] as Label).text = "%.3f" % ankle_target.y
 		(values["actual_y"] as Label).text = "%.3f" % actual_pos.y
 		(values["gap"] as Label).text = "%.3f" % gap
 		var contact_hit: bool = bool(_ik.debug_contact_hit.get(side, false))
-		var contact_distance: float = float(_ik.debug_contact_distance.get(side, -1.0))
+		var contact_lost: bool = bool(_ik.debug_contact_lost.get(side, false))
+		var contact_dist: float = float(_ik.debug_contact_distance.get(side, -1.0))
 		(values["lower_distance"] as Label).text = (
-				"%.3f" % contact_distance if (contact_hit and contact_distance >= 0.0) else "-")
-		var ray_length := contact_distance if contact_hit else _ik.idle_settle_search_down
+				"%.3f" % contact_dist if (contact_hit and contact_dist >= 0.0) else "-")
+		var ray_len := contact_dist if contact_hit else _ik.idle_settle_search_down
 		FootIkDebugMarkers.update_ray_visual(_markers[side + "_ray"] as MeshInstance3D,
-				actual_pos, actual_pos + Vector3.DOWN * ray_length, contact_hit)
+				actual_pos, actual_pos + Vector3.DOWN * ray_len, contact_hit and not contact_lost)
 		(values["pitch"] as Label).text = "%.1f" % pitch_deg
 		var w: float = float(_ik._smoothed_ground_weight.get(side, 0.0))
 		(values["ground_weight"] as Label).text = "%.3f" % w
@@ -893,21 +892,22 @@ func _physics_process(delta: float) -> void:
 			var toe_probe: Node3D = _toe_probes[side]
 			var toe_joint_pos := toe_probe.global_position
 			var foot_to_toe := toe_joint_pos - actual_pos
-			var tip_pos := toe_joint_pos + foot_to_toe.normalized() * TOE_TIP_EXTRA_LENGTH \
-					if not foot_to_toe.is_zero_approx() else toe_joint_pos
+			var tip_pos := (toe_joint_pos + foot_to_toe.normalized() * TOE_TIP_EXTRA_LENGTH
+					if not foot_to_toe.is_zero_approx() else toe_joint_pos)
 			(_markers[side + "_toe"] as MeshInstance3D).global_position = tip_pos
-			var toe_gap := tip_pos.y - target.y
 			(values["toe_tip_y"] as Label).text = "%.3f" % tip_pos.y
-			(values["toe_tip_gap"] as Label).text = "%.3f" % toe_gap
+			(values["toe_tip_gap"] as Label).text = "%.3f" % (tip_pos.y - target.y)
 
 		var angles := _compute_leg_angles(side)
 		_joint_history_graph.sample_side(side, angles, _angle_probes[side], probe,
 				_player_body.get_parent() as Node3D)
 		for segment: String in ["thigh", "shin", "foot", "leaf"]:
 			if angles.has(segment):
-					(values[segment + "_angle"] as Label).text = "%.1f" % angles[segment]
+				(values[segment + "_angle"] as Label).text = "%.1f" % angles[segment]
 		_update_angle_labels(side, angles)
 	_capture_controlled_foot_frame()
+
+
 func _capture_controlled_foot_frame() -> void:
 	if _ik == null or _player_body == null:
 		return
@@ -926,19 +926,16 @@ func _capture_controlled_foot_frame() -> void:
 		FootIkDebugMarkers.update_direction_arrow(_chest_arrow, _chest_probe.global_position,
 				Vector3.ZERO, c_facing, true)
 	var trace := {
-		"frame": Engine.get_physics_frames(),
-		"root": _player_body.global_position,
+		"frame": Engine.get_physics_frames(), "root": _player_body.global_position,
 		"bones": TRACE_WRITER.capture_body_chain(_player_body),
 		"root_yaw_deg": rad_to_deg((_player_body.get_parent() as Node3D).rotation.y),
-		"movement_input": player_node.debug_movement_input,
-		"velocity": player_node.velocity,
+		"movement_input": player_node.debug_movement_input, "velocity": player_node.velocity,
 		"stair": player_node.get_stair_debug_state(),
 		"animation": animation_player.current_animation if animation_player != null else "",
 		"time": animation_player.current_animation_position if animation_player != null else 0.0,
 		"disc": _ik._animation_discontinuous,
 		"locomotion_mode": PlayerFootIKModifier.LocomotionMode.keys()[_ik.locomotion_mode],
-		"active": _ik.active, "on_floor": player_node.is_on_floor(),
-		"feet": {},
+		"active": _ik.active, "on_floor": player_node.is_on_floor(), "feet": {},
 	}
 	if _live_penetration_check != null:
 		trace["penetration"] = _live_penetration_check.sample(
@@ -947,9 +944,9 @@ func _capture_controlled_foot_frame() -> void:
 		var probe: Node3D = _probes[side]
 		var actual_pos := probe.global_position
 		var target: Vector3 = _ik._smoothed_target.get(side, actual_pos)
-		var sole_down: Vector3 = probe.global_transform.basis * _ik._sole_down_local[side]
 		var sole_depth := float(_ik._sole_depth_below_foot.get(side, _ik.ankle_offset))
-		var sole: Vector3 = actual_pos + sole_down * sole_depth
+		var sole_dir: Vector3 = probe.global_transform.basis * _ik._sole_down_local[side]
+		var sole: Vector3 = actual_pos + sole_dir * sole_depth
 		var toe_probe: Node3D = _toe_probes.get(side)
 		var hip_probe: Node3D = (_angle_probes.get(side, {}) as Dictionary).get("hip")
 		var normal: Vector3 = _ik._smoothed_normal.get(side, Vector3.UP)
@@ -959,20 +956,24 @@ func _capture_controlled_foot_frame() -> void:
 			"foot": probe, "toe": toe_probe, "leaf": angle_probes.get("leaf"),
 		})
 		var solved_foot_angle := -1.0
-		var solved_foot_pos := Vector3.ZERO
+		var solved_foot_pos := actual_pos
+		var diff_rot := 0.0
 		var foot_idx: int = _ik._bone_indices[side]["foot"]
 		if _ik._final_bone_poses.has(foot_idx):
-			var solved_pose: Transform3D = _ik._final_bone_poses[foot_idx]
-			var solved_world := _skel.global_transform * solved_pose
+			var solved_world := _skel.global_transform * (_ik._final_bone_poses[foot_idx] as Transform3D)
 			solved_foot_pos = solved_world.origin
-			var solved_sole_down: Vector3 = solved_world.basis * _ik._sole_down_local[side]
-			solved_foot_angle = rad_to_deg(solved_sole_down.angle_to(Vector3.DOWN))
+			var s_down: Vector3 = solved_world.basis * _ik._sole_down_local[side]
+			solved_foot_angle = rad_to_deg(s_down.angle_to(Vector3.DOWN))
+			var q_auth := probe.global_transform.basis.get_rotation_quaternion().normalized()
+			var q_ik := solved_world.basis.get_rotation_quaternion().normalized()
+			diff_rot = rad_to_deg(q_auth.angle_to(q_ik))
+		var diff_pos := actual_pos.distance_to(solved_foot_pos)
 		trace["feet"][side] = {
 			"gap": actual_pos.y - target.y - sole_depth,
 			"sole_clearance": sole.y - target.y,
 			"pitch_deg": rad_to_deg(sole.normalized().angle_to(Vector3.DOWN)),
-			"solved_foot_angle_deg": solved_foot_angle,
-			"solved_foot_pos": solved_foot_pos,
+			"solved_foot_angle_deg": solved_foot_angle, "solved_foot_pos": solved_foot_pos,
+			"diff_rot_deg": diff_rot, "diff_pos_m": diff_pos,
 			"ground_weight": float(_ik._smoothed_ground_weight.get(side, 0.0)),
 			"vertical_velocity": float(_ik.debug_vertical_velocity.get(side, 0.0)),
 			"contact_hit": bool(_ik.debug_contact_hit.get(side, false)),
@@ -989,7 +990,6 @@ func _capture_controlled_foot_frame() -> void:
 			"smoothed_target": target,
 			"bone_lengths": TRACE_WRITER.measure_bone_lengths(
 					joints, _ik._leg_lengths.get(side, {})),
-			# Absolute angle of the ground normal from world up, not a per-joint bend.
 			"floor_angle_deg": rad_to_deg(normal.angle_to(Vector3.UP)),
 			"leg_angles_deg": _compute_leg_angles(side),
 			"joints": joints,

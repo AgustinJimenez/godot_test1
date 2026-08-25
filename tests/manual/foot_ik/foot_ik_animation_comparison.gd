@@ -14,6 +14,8 @@ const CROUCH_ROW_Z := -10.5
 const CROUCH_TRAVEL := 1.5
 const CROUCH_TRACE_FILE := "user://foot_ik_crouch_strafe_comparison.jsonl"
 const CASES: Array[Dictionary] = [
+	{"label": "IDLE\nIK OFF", "animation": &"unarmed_idle", "ik": false},
+	{"label": "IDLE\nIK ON", "animation": &"unarmed_idle", "ik": true},
 	{"label": "WALK IN PLACE\nIK OFF", "animation": &"unarmed_walk", "ik": false},
 	{"label": "WALK IN PLACE\nIK ON", "animation": &"unarmed_walk", "ik": true},
 	{"label": "RUN IN PLACE\nIK OFF", "animation": &"unarmed_sprint", "ik": false},
@@ -38,6 +40,7 @@ const CASES: Array[Dictionary] = [
 	},
 ]
 
+var _dummies: Array[Dictionary] = []
 var _crouch_dummies: Array[Dictionary] = []
 var _crouch_direction := 1.0
 var _sample_scheduled := false
@@ -53,6 +56,7 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	_update_dummy_comparisons()
 	if _crouch_dummies.is_empty():
 		return
 	var leader := _crouch_dummies[0]["player"] as Player
@@ -64,6 +68,60 @@ func _physics_process(_delta: float) -> void:
 	if not _sample_scheduled:
 		_sample_scheduled = true
 		call_deferred(&"_capture_crouch_comparison")
+
+
+func _update_dummy_comparisons() -> void:
+	var pair_count := _dummies.size() / 2
+	for p in pair_count:
+		var auth_dummy := _dummies[p * 2]
+		var ik_dummy := _dummies[p * 2 + 1]
+		var auth_body := auth_dummy["body"] as PlayerBody
+		var ik_body := ik_dummy["body"] as PlayerBody
+		var ik_modifier := _find_ik(ik_body)
+		var ik_label := ik_dummy["label"] as Label3D
+		var markers := ik_dummy["markers"] as Dictionary
+		if ik_modifier == null or auth_body.skeleton == null or ik_body.skeleton == null:
+			continue
+		var errors: Array[String] = []
+		for side: StringName in [&"left", &"right"]:
+			var indices: Dictionary = ik_modifier._bone_indices[side]
+			for joint: StringName in [&"hip", &"knee", &"foot", &"toe"]:
+				var bone_idx: int = indices.get(joint, -1)
+				if bone_idx < 0:
+					continue
+				var marker_key := "%s_%s" % [side, joint]
+				var marker: MeshInstance3D = markers.get(marker_key)
+				var auth_pose := auth_body.skeleton.get_bone_global_pose(bone_idx)
+				var ik_pose := (ik_modifier._final_bone_poses[bone_idx] as Transform3D
+						if ik_modifier._final_bone_poses.has(bone_idx)
+						else ik_body.skeleton.get_bone_global_pose(bone_idx))
+				var auth_rot := auth_pose.basis.get_rotation_quaternion().normalized()
+				var ik_rot := ik_pose.basis.get_rotation_quaternion().normalized()
+				var rot_diff := rad_to_deg(auth_rot.angle_to(ik_rot))
+				var pos_diff := auth_pose.origin.distance_to(ik_pose.origin)
+				var has_error := rot_diff > 12.0 or (rot_diff > 8.0 and pos_diff > 0.05)
+				if marker != null:
+					marker.visible = has_error
+					if has_error:
+						marker.global_position = ik_body.skeleton.global_transform * ik_pose.origin
+				if has_error:
+					var side_str := String(side).capitalize()
+					var joint_str := String(joint).capitalize()
+					errors.append("%s %s (%.1f°)" % [side_str, joint_str, rot_diff])
+		if errors.is_empty():
+			ik_label.text = "%s\n[✓ SYNCED]" % [ik_dummy["base_label"]]
+			ik_label.modulate = Color(0.4, 1.0, 0.4)
+		else:
+			ik_label.text = "%s\n⚠ DIFF: %s" % [ik_dummy["base_label"], ", ".join(errors.slice(0, 2))]
+			ik_label.modulate = Color(1.0, 0.35, 0.35)
+		if not errors.is_empty():
+			var case_name: String = ik_dummy["base_label"].replace("\n", " ")
+			print("[ANIM_DIFF_INSTANT] Frame %d: %s => %s" % [
+					Engine.get_physics_frames(), case_name, ", ".join(errors)])
+		if Engine.get_physics_frames() % 60 == 0:
+			var status := "✓ SYNCED" if errors.is_empty() else "⚠ DIFF: " + ", ".join(errors)
+			var case_name: String = ik_dummy["base_label"].replace("\n", " ")
+			print("[ANIM_COMPARE] %s => %s" % [case_name, status])
 
 
 func _build_comparison_pad() -> void:
@@ -92,7 +150,38 @@ func _build_dummy(index: int, data: Dictionary) -> void:
 	motion_root.add_child(body)
 	body.play_debug_anim(data["animation"] as StringName, 0.0)
 	_set_ik_active(body, data["ik"])
-	_build_label(str(data["label"]), Vector3(lane_x, LABEL_HEIGHT, GROUP_CENTER.z))
+	var label := _build_label(str(data["label"]), Vector3(lane_x, LABEL_HEIGHT, GROUP_CENTER.z))
+	var markers := {}
+	if data["ik"]:
+		for side in ["left", "right"]:
+			for joint in ["hip", "knee", "foot", "toe"]:
+				var key := "%s_%s" % [side, joint]
+				markers[key] = _spawn_error_marker(motion_root)
+	_dummies.append({
+		"index": index,
+		"body": body,
+		"label": label,
+		"ik": data["ik"],
+		"base_label": str(data["label"]),
+		"markers": markers
+	})
+
+
+func _spawn_error_marker(parent: Node) -> MeshInstance3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.08, 0.08, 0.9)
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.no_depth_test = true
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.035
+	mesh.height = 0.07
+	mesh.material = mat
+	var inst := MeshInstance3D.new()
+	inst.mesh = mesh
+	inst.visible = false
+	inst.top_level = true
+	parent.add_child(inst)
+	return inst
 
 
 func _build_crouch_dummy(index: int, ik_enabled: bool) -> void:
@@ -253,7 +342,7 @@ func _twist_degrees(rotation: Quaternion, axis: Vector3) -> float:
 	return rad_to_deg(2.0 * acos(clampf(absf(twist.w), 0.0, 1.0)))
 
 
-func _build_label(text: String, world_position: Vector3) -> void:
+func _build_label(text: String, world_position: Vector3) -> Label3D:
 	var label := Label3D.new()
 	label.text = text
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -263,3 +352,4 @@ func _build_label(text: String, world_position: Vector3) -> void:
 	label.outline_modulate = Color.BLACK
 	label.position = world_position
 	add_child(label)
+	return label

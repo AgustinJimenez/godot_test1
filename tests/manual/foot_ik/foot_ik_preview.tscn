@@ -39,7 +39,7 @@ mesh = SubResource("BoxMesh_floor")
 shape = SubResource("BoxShape3D_floor")
 
 [node name="Player" parent="." instance=ExtResource("2_player")]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 23.75, 1, -2)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 12.119, 1.168, 4.244)
 collision_mask = 17
 
 [node name="FootIkDebugOverlay" type="Node3D" parent="."]
