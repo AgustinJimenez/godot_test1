@@ -872,11 +872,10 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, h
 		candidate_dirs.append(to_hip.normalized())
 	if body_node != null:
 		var fwd := -body_node.global_transform.basis.z
-		var right := body_node.global_transform.basis.x
-		candidate_dirs.append(Vector2(fwd.x, fwd.z).normalized())
-		candidate_dirs.append(Vector2(-fwd.x, -fwd.z).normalized())
-		candidate_dirs.append(Vector2(right.x, right.z).normalized())
-		candidate_dirs.append(Vector2(-right.x, -right.z).normalized())
+		var r_dir: Vector3 = (body_node.global_transform.basis.x if side != &"left"
+				else -body_node.global_transform.basis.x)
+		candidate_dirs.append_array([Vector2(fwd.x, fwd.z).normalized(),
+				Vector2(-fwd.x, -fwd.z).normalized(), Vector2(r_dir.x, r_dir.z).normalized()])
 	var search_dist := max_reach + 0.3
 	for dir: Vector2 in candidate_dirs:
 		for i in range(1, RETRACT_STEPS + 1):
@@ -888,6 +887,10 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, h
 			var normal: Vector3 = hit["normal"]
 			var surface: Vector3 = hit["position"]
 			var target := surface + normal * offset
+			var to_world: Transform3D = player_body.skeleton.global_transform
+			var local_tgt: Vector3 = to_world.affine_inverse() * target
+			if (side == &"left" and local_tgt.x > -0.04) or (side == &"right" and local_tgt.x < 0.04):
+				continue
 			var horizontal_dist_sq := Vector2(
 					hip_pos.x - target.x, hip_pos.z - target.z).length_squared()
 			var max_vertical_diff := sqrt(maxf(0.0, max_reach * max_reach - horizontal_dist_sq))
