@@ -948,15 +948,13 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			var l_tgt: Vector3 = l_leg.get("target", l_leg.get("ground_target", l_hip))
 			var r_tgt: Vector3 = r_leg.get("target", r_leg.get("ground_target", r_hip))
 			var r_dir: Vector3 = to_world.basis.x.normalized()
-			var l_rel: float = (l_tgt - pelvis_pos).dot(r_dir)
-			var r_rel: float = (r_tgt - pelvis_pos).dot(r_dir)
-			if l_rel > -0.10:
-				l_leg["target"] = l_tgt + r_dir * (-0.10 - l_rel)
-			if r_rel < 0.10:
-				r_leg["target"] = r_tgt + r_dir * (0.10 - r_rel)
-			var feet_mid: Vector3 = (l_leg.get("target", l_tgt) + r_leg.get("target", r_tgt)) * 0.5
+			var feet_mid: Vector3 = (l_tgt + r_tgt) * 0.5
+			var cur_sep: float = (r_tgt - l_tgt).dot(r_dir)
+			if cur_sep < 0.22:
+				l_leg["target"] = feet_mid - r_dir * 0.11
+				r_leg["target"] = feet_mid + r_dir * 0.11
 			target_shift = Vector3(feet_mid.x - pelvis_pos.x, 0.0,
-					feet_mid.z - pelvis_pos.z).limit_length(0.12)
+					feet_mid.z - pelvis_pos.z).limit_length(0.35)
 	if delta > 0.0:
 		_pelvis_lateral_shift = _pelvis_lateral_shift.lerp(
 				target_shift, clampf(delta * 10.0, 0.0, 1.0))
