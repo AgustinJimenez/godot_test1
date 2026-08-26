@@ -19,6 +19,8 @@ const STAIR_TREAD_UP_DOT := 0.999
 
 var smoothed_target: Dictionary = {} # side -> Vector3 (world)
 var smoothed_normal: Dictionary = {} # side -> Vector3 (world)
+var debug_raw_target: Dictionary = {} # side -> Vector3 (world)
+var debug_effective_offset: Dictionary = {} # side -> float
 
 var _owner
 
@@ -30,6 +32,8 @@ func _init(owner) -> void:
 func reset() -> void:
 	smoothed_target.clear()
 	smoothed_normal.clear()
+	debug_raw_target.clear()
+	debug_effective_offset.clear()
 
 
 func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
@@ -38,9 +42,13 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		frozen: bool = false) -> Dictionary:
 	var hit := raycast_ground(space, foot_pos)
 	if not hit["hit"] and likely_idle and _owner.step_prediction_enabled:
-		# The short ordinary probe protects swing timing; an idle foot can
-		# safely use the deep fallback before returning to its animated pose.
-		hit = raycast_ground(space, foot_pos, _owner.idle_settle_search_down)
+		# A steep ramp can pass above a downhill-facing animated foot. Lift the
+		# idle recovery probe by the allowed pelvis range as well as searching
+		# deeper; the ordinary short probe still protects moving swing timing.
+		var recovery_origin: Vector3 = foot_pos + Vector3.UP * float(
+				_owner.step_down_max_crouch)
+		hit = raycast_ground(space, recovery_origin,
+				_owner.idle_settle_search_down + _owner.step_down_max_crouch)
 	var raw_target: Vector3 = hit["position"] if hit["hit"] else foot_pos
 	var raw_normal: Vector3 = hit["normal"] if hit["hit"] else Vector3.UP
 	if _owner.step_prediction_enabled:
@@ -49,11 +57,26 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		if toe_hit["hit"] and (toe_hit["position"] as Vector3).y > raw_target.y + _owner.step_min_rise:
 			raw_target = toe_hit["position"]
 			raw_normal = toe_hit["normal"]
+	debug_raw_target[side] = raw_target
 	if not smoothed_target.has(side):
 		smoothed_target[side] = raw_target
 		smoothed_normal[side] = raw_normal
+	elif hit["hit"] and raw_normal.dot(Vector3.UP) < 0.999:
+		# A void-dangle temporarily stores the animated foot as the target. On
+		# contact recovery, lerping that off-surface point toward a ramp moves
+		# the requested plant through empty space or through the slope. Project
+		# it back onto the current slope plane before any tangent smoothing.
+		var current: Vector3 = smoothed_target[side]
+		current -= raw_normal * (current - raw_target).dot(raw_normal)
+		smoothed_target[side] = current
 	var target_lock_allowed: bool = _owner._gait_tracker.target_lock_allows_latch(side)
 	var body_turning: bool = _owner._gait_tracker.is_body_turning(side)
+	if hit["hit"] and likely_idle and raw_normal.dot(Vector3.UP) < 0.999:
+		smoothed_normal[side] = raw_normal
+		if body_turning:
+			# A gradual turn supplies the visual smoothing; an old world target
+			# trails around a steep ramp until the leg cannot reach it.
+			smoothed_target[side] = raw_target
 	var likely_planted: bool = ((
 			float(_owner._smoothed_ground_weight.get(side, 0.0)) >= PLANT_LOCK_WEIGHT
 			or _owner._gait_tracker.is_locomotion_stance_active(side))
@@ -100,12 +123,18 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 	var effective_offset := maxf(_owner.ankle_offset, maxf(
 			tip_offset.dot(desired_down),
 			_owner._sole_depth_below_foot.get(side, 0.0)))
+	debug_effective_offset[side] = effective_offset
 	var animated_lowest_point := foot_pos
 	var surface_hit := {"hit": false}
 	if _owner.step_prediction_enabled:
 		animated_lowest_point = animated_lowest_surface_point_world(
 				skel, side, foot_pose, foot_pos, to_world)
 		surface_hit = raycast_ground(space, animated_lowest_point)
+		if likely_idle and raw_normal.dot(Vector3.UP) < 0.999 and not surface_hit["hit"]:
+			# A downhill-facing idle sole can begin below a steep ramp plane;
+			# reuse the valid ankle probe so the leg settles instead of releasing.
+			surface_hit = hit
+			animated_lowest_point = foot_pos
 		if not surface_hit["hit"]:
 			# A stationary foot may use the deep fallback without confusing
 			# ordinary mid-swing timing.
@@ -177,3 +206,13 @@ func raycast_ground(space: PhysicsDirectSpaceState3D, foot_pos: Vector3,
 	if result.is_empty():
 		return {"hit": false, "position": foot_pos, "normal": Vector3.UP}
 	return {"hit": true, "position": result["position"], "normal": result["normal"]}
+
+
+func has_support_patch(space: PhysicsDirectSpaceState3D, surface: Vector3, radius: float) -> bool:
+	for offset: Vector3 in [Vector3(radius, 0.0, 0.0), Vector3(-radius, 0.0, 0.0),
+			Vector3(0.0, 0.0, radius), Vector3(0.0, 0.0, -radius)]:
+		var hit := raycast_ground(space, surface + offset + Vector3.UP * 0.2, 0.4)
+		if (not hit["hit"] or (hit["normal"] as Vector3).dot(Vector3.UP) < STAIR_TREAD_UP_DOT
+				or absf((hit["position"] as Vector3).y - surface.y) > 0.03):
+			return false
+	return true

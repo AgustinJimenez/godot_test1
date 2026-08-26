@@ -199,3 +199,20 @@ static func update_direction_arrow(arrow: Node3D, base_pos: Vector3,
 	if dir.length_squared() > 0.001:
 		var target := arrow.global_position + dir
 		arrow.look_at(target, Vector3.UP)
+
+
+static func spawn_zone_quad(parent: Node, color: Color, size: Vector2) -> MeshInstance3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.no_depth_test = true
+	var mesh := QuadMesh.new()
+	mesh.size = size
+	mesh.orientation = PlaneMesh.FACE_Y
+	mesh.material = mat
+	var inst := MeshInstance3D.new()
+	inst.mesh = mesh
+	parent.add_child(inst)
+	return inst

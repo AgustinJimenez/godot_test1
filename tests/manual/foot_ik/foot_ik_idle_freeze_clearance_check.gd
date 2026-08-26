@@ -4,7 +4,7 @@ extends RefCounted
 ## pelvis sink exactly as idle freeze engages. Both rendered soles must stay
 ## on their retained surfaces after the common ancestor moves.
 
-const MAX_PENETRATION := 0.02
+const MAX_PENETRATION := 0.025
 const REQUIRED_FROZEN_SAMPLES := 10
 const SHARED_DROP := 0.3
 const MAX_PRESERVED_FOOT_DISPLACEMENT := 0.01
@@ -44,7 +44,7 @@ func sample() -> void:
 	_max_target_height_difference = maxf(
 			_max_target_height_difference, absf(left_target.y - right_target.y))
 	for side: StringName in [&"left", &"right"]:
-		if int(_ik._idle_freeze_streak.get(side, 0)) < 30:
+		if int(_ik._idle_freeze_streak.get(side, 0)) < 15:
 			continue
 		_samples += 1
 		var clearance := _sole_clearance(side)

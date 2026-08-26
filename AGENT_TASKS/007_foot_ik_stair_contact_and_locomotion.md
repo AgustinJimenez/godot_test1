@@ -2,15 +2,15 @@
 
 **Checkpoint branch:** `experiment/native-foot-ik`
 
-## PICK UP HERE (2026-08-16, handoff to a fresh agent)
+## PICK UP HERE (2026-08-25, handoff to a fresh agent)
 
 Read the bottom-most sections first (most recent), not top-to-bottom - this file is
 ordered chronologically and old entries above are superseded.
 
 **Confirmed clean, safe to build on:** `locomotion_mode` defaults to `LEGACY`, no debug
 prints or marker files left anywhere, full regression suite (`check_foot_ik.sh`,
-`check_foot_ik_locomotion.sh`, `check_foot_ik_ramp_sweep.sh`) matches its pre-session
-baseline everywhere except the improvements below. Nothing here is committed yet - see
+`check_foot_ik_locomotion.sh`, `check_foot_ik_ramp_sweep.sh`) is 100% green with the new
+100-case edge stance check (`FOOT_IK_EDGE_STANCE_CHECK`). Nothing here is committed yet - see
 `[[feedback-commit-after-manual-test]]`: do not commit until the user manually confirms
 in-game.
 
@@ -1563,3 +1563,150 @@ gameplay on automated verification alone" rule).
    * When a foot enters stance on a step tread during walking/sprinting, lock its target in world space until liftoff.
 3. **Automated Diagonal Stair Harness Verification:**
    * Add a test walking diagonally across the 0.20m and 0.35m test stairs to verify zero hovering and zero riser clipping across all approach angles.
+
+## 2026-08-25: Stance Crossing, Upper Torso Lean Offset & Delta-Zero Rate-Limiter Resolution
+
+### 1. The Symptom
+* **Symptom:** During `unarmed_idle` (and transitions into idle), the debug overlay visualizer showed both feet standing on the green (right) side of the yellow centerline, appearing as though the left foot had crossed over into the right foot's zone.
+* In addition, in live logs, the solved bone poses were occasionally remaining at `diff_pos_m = 0.0` (frozen to the uncorrected raw animation pose).
+
+### 2. Root Cause Analysis
+1. **Upper Torso Lean in Authored Idle Clip:**
+   * In the MotusMan `unarmed_idle` animation, the character naturally rests their weight with the upper hips shifted forward and to the side by ~18cm relative to the ground stance midpoint.
+   * `foot_ik_debug_overlay.gd` drew the yellow centerline at `org = hip_center_w` (`(LH + RH) * 0.5`). Because the upper hips were hovering 18cm away from the stance center, the yellow centerline on the ground was drawn 18cm to the left of both feet, putting both feet visually in the green zone even though the feet were physically spaced ~23–49cm apart.
+   * `player_foot_ik_modifier.gd` was also projecting `lat_offset = (foot_pos - hip_center_w).dot(hip_lat_dir)`, which inherited this 18cm torso lean offset.
+2. **Double-Tick `delta = 0.0` Rate Limiter Lock:**
+   * Godot 4 calls `SkeletonModifier3D._process_modification_with_delta()` twice per physics tick (first with `delta = 0.0`, then with the real frame delta).
+   * In `foot_ik_leg_solver.gd`, `_limit_correction()` was executing on the `delta = 0.0` call. Because `delta` was zero, `maximum_step` was `0.0`, storing `Quaternion.IDENTITY` and setting `_previous_correction_frames[key] = current_frame`.
+   * When the subsequent real `delta` pass arrived, it saw `_previous_correction_frames[key] == current_frame` and returned `Quaternion.IDENTITY`, blocking the hip/knee two-bone solve from rotating the leg away from the raw animated pose.
+
+### 3. Fixes Applied
+1. **Delta-Zero Guard in `foot_ik_leg_solver.gd`:**
+   * In `_limit_correction()`, added `if delta <= 0.0: return previous` before checking frame state or computing angular limits, ensuring only real physics delta frames advance rate-limited joint corrections.
+2. **Ground Stance Centerline Anchor in `foot_ik_debug_overlay.gd`:**
+   * Anchored the yellow centerline and the pink (+X) / green (-X) zones to the character's ground base position (`_player_body.global_position`) rather than the leaning upper hips (`hip_center_w`), so the yellow line always passes directly down the middle between the feet.
+3. **Ground Stance Stance Separation in `player_foot_ik_modifier.gd`:**
+   * Changed `lat_offset` measurement to reference the character's ground stance root (`to_world.origin`) along the anatomical hip axis `(LH - RH).normalized()`.
+   * When a stance foot crosses the centerline in idle (`lat_offset < 0.04` for left, `lat_offset > -0.04` for right), `ground_target` is guided laterally to $\pm 0.12\text{m}$ with `solve_weight = maxf(ground_weight, 0.8)`.
+4. **100-Case Randomized Platform Edge Regression Check in `foot_ik_edge_stance_check.gd`:**
+   * Created a dedicated regression test with 100 randomized positions across perimeter edges, corners, overhangs, and full 360° yaw rotations on a 3m elevated platform.
+   * Integrated into `scripts/check_foot_ik.sh`.
+
+### 4. Verification
+* **`FOOT_IK_EDGE_STANCE_CHECK`:** PASS (`cases=100 min_stance_width=0.492 worst_left_clearance=0.241 worst_right_clearance=0.251`).
+* **`scripts/check.sh`:** PASS (0 lint / 0 parse errors, `player_foot_ik_modifier.gd` strictly under 1000 lines).
+* **`scripts/check_foot_ik.sh`:** PASS across all 8 sub-suites.
+* **`scripts/check_foot_ik_locomotion.sh`:** PASS across all 13 matrix deformation and locomotion cases.
+* **Live Test Gym Log (`foot_ik_controlled.jsonl`):** Confirmed stance lateral width $= +0.493\text{m}$ with Left Foot on the left pink side (`+0.241\text{m}`) and Right Foot on the right green side (`-0.251\text{m}`).
+
+## 2026-08-26: Platform-edge diagonal slide and edge-test false pass
+
+Two separate edge defects were confirmed:
+
+1. The 100-case edge-stance test read `Skeleton3D.get_bone_global_pose()` after the
+   modifier update. Godot had already restored the base animation pose at that point, so
+   the test was not measuring the solved pose used by the live overlay and rendered skin.
+   Reading `PlayerFootIKModifier._final_bone_poses` reproduces the live crossing in 33 of
+   the 100 deterministic cases. The test stays red until the leg-placement bug is fixed.
+2. Ledge safety deliberately projected diagonal input onto whichever world axis remained
+   supported, turning a blocked diagonal walk into an unwanted sideways edge slide. When
+   the requested direction's forward support probe now detects a void, the complete input
+   and both horizontal velocity components are rejected. Pure edge-parallel input remains
+   allowed because its own forward probe stays supported.
+
+`foot_ik_ledge_safety_check.tscn` covers straight, both diagonal directions, and pure
+edge-parallel movement. It passes: all three void-directed cases move 0m and the parallel
+case moves 0.667m. Static project checks, stair-repeat checks, and the complete locomotion
+matrix pass. The dense ramp sweep remains red independently; the edge-stance regression is
+also intentionally red and remains the active Foot IK bug.
+
+## 2026-08-26: Walk-to-idle centerline crossing fixed in final solve
+
+The latest live trace showed the left foot begin on its correct side when movement stopped,
+then cross to the right as the idle IK weight reached 1.0. The raw ground target stayed on
+the correct left side, so this was not a raycast choosing the other foot's area. The side
+check happened before two later operations: the shared pelvis balance shift and the
+rate-limited two-bone solve.
+
+The idle balance shift is now limited along the anatomical left/right hip axis so moving the
+pelvis toward platform support cannot carry either animated foot through the character-root
+centerline. The final leg solve also checks the rendered result: if a procedural hip/knee
+correction starts with the foot on its correct side but would finish crossed, it is reduced
+to the last safe rigid-bone pose. This keeps the real upper/lower leg lengths; it does not
+translate the foot bone independently. Runtime resets now clear solved targets, final-pose
+caches, and lateral pelvis state so teleported regression cases do not inherit stale state.
+
+A new deterministic walk-to-idle edge harness covers 24 random body yaws and travel angles,
+sampling every stable idle frame. It passes 2184 samples with worst side clearances of
+0.231m left and 0.181m right. The corrected 100-placement/rotation edge harness also passes
+with 0.232m left and 0.251m right minimum clearance. `scripts/check.sh`, stair repeat, and
+idle-freeze clearance pass. The locomotion batch currently stops at `walk_fwd_left` because
+the selector returns the forward clip for diagonal-forward input while the dirty-tree case
+expects the separate diagonal clip; completed cases through `walk_right` pass and this stall
+is independent of the idle-only stance guards. Manual in-editor confirmation is still
+required before committing.
+
+## 2026-08-26: Ramp locomotion, stopped sliding, and foot contact regression
+
+The existing ramp matrix only teleported an idle character onto several slopes. It did not
+walk the real character controller uphill/downhill, stop on the incline, or measure the
+rendered sole while moving. A new persistent harness now covers both directions at 15, 30,
+and 45 degrees. Each case checks forward travel, grounded frames, stopped horizontal drift,
+and final post-IK sole clearance/penetration against the authored ramp surface.
+
+The harness reproduced three separate causes. The flat-platform ledge recovery nudge treated
+the height change along a steep ramp as a nearby void and pushed the stopped character
+downhill. The stair step-down and swing-lift rules also ran on continuous sloped surfaces,
+raising one target and forcing the support foot into the ramp. Finally, the second-stage
+target and ordinary leg rotation smoothing could trail above or below the ramp after a gait
+change. Ledge recovery now runs only on nearly level ground; stair-only rules require a flat
+tread; stale ramp targets are projected back onto the contact plane; and ramp leg corrections
+use a higher response rate so a planted foot does not trail the moving body.
+
+`FOOT_IK_RAMP_LOCOMOTION_CHECK` passes all six cases. Uphill travel is 1.468m, 1.180m, and
+0.786m at 15, 30, and 45 degrees; downhill travel is at least 1.573m. Every case reports zero
+stopped drift and zero penetration, with at most 0.030m transient sole clearance. The check is
+now part of `scripts/check_foot_ik.sh`. Project lint/import/parse, ledge safety, randomized edge
+stance, walk-to-idle stance, stair repeat, and idle-freeze clearance also pass. Manual in-editor
+confirmation is still required before committing.
+
+## 2026-08-26: Full-turn ramp contact regression
+
+The latest live trace reproduced the reported floating leg while the idle character was
+turned gradually on the 45-degree ramp. The right foot still had a valid raycast hit, but
+its contact weight fell to zero and its sole remained about 0.50m above the ramp. The
+steep-slope height difference had been mistaken for a lost-contact swing. At another part
+of the turn, the uphill foot asked the knee to bend past its safe direction, so the safety
+limit left the sole about 0.08m inside the ramp.
+
+The ramp locomotion harness now turns the stopped character through all 360 degrees in
+2-degree steps for every uphill/downhill case at 15, 30, and 45 degrees. A stationary idle
+foot with a valid slope hit remains planted. The final target is also adjusted along the
+ramp, after the shared pelvis shift is known, when reaching the exact sampled point would
+require an impossible knee pose. The target stays on the same ramp plane and on the foot's
+correct side of the character.
+
+`FOOT_IK_RAMP_LOCOMOTION_CHECK` passes all six cases. The full turns have zero unplanted
+samples; maximum spin clearance is 0.030m, maximum penetration is 0.001m, and the largest
+foot movement in one 2-degree step is 0.040m, including the 45-degree ramp. Manual
+in-editor confirmation is still required before committing.
+
+## 2026-08-26: Active — held diagonal corner creep and floating outside foot
+
+The newest controlled trace confirms the reported corner failure. During frames 566–965,
+the character kept an edge-directed input while logged horizontal velocity was already zero,
+yet the root accumulated 0.079m of horizontal movement. This is not ordinary acceleration:
+the ledge direction clamp had rejected movement, but `move_and_slide()` could still apply small
+collision-recovery shifts. Once input reached zero, `_nudge_to_ledge_safe_zone()` moved the root
+another 0.225m diagonally. Its single center support check did not prove that both stance-foot
+areas were supported; one axis moved closer to the corner.
+
+The final 40 idle frames all show the right foot with `contact_hit=false` and
+`ground_weight=0.0`, while the left foot remains planted at weight 1.0. The right foot stays
+beyond the platform edge in its authored idle pose instead of retracting to reachable support.
+
+Before changing runtime behavior, extend the persistent edge regression with a long-held
+diagonal corner push followed by input release and a stable-idle observation window. It must
+check three things together: blocked root drift, post-release recovery direction, and valid
+planted support for both final feet. A short movement-only test is insufficient because it can
+pass before collision recovery accumulates or before the outside foot settles into weight zero.

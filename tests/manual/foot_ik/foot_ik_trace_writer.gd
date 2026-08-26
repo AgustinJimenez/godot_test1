@@ -115,3 +115,38 @@ static func capture_body_chain(player_body: PlayerBody) -> Dictionary:
 					parent_length / parent_rest_length if parent_rest_length > 0.0 else 0.0),
 		}
 	return result
+
+
+static func build_foot_trace(ik: Node, side: String,
+		actual_pos: Vector3, target: Vector3, normal: Vector3, sole_depth: float,
+		sole_dir: Vector3, toe_pos_y: float, hip_pos: Vector3,
+		solved_foot_angle: float, solved_foot_pos: Vector3, diff_rot: float,
+		joints: Dictionary, leg_angles: Dictionary) -> Dictionary:
+	var sole: Vector3 = actual_pos + sole_dir * sole_depth
+	return {
+		"gap": actual_pos.y - target.y - sole_depth,
+		"sole_clearance": sole.y - target.y,
+		"pitch_deg": rad_to_deg(sole.normalized().angle_to(Vector3.DOWN)),
+		"solved_foot_angle_deg": solved_foot_angle,
+		"solved_foot_pos": solved_foot_pos,
+		"diff_rot_deg": diff_rot,
+		"diff_pos_m": actual_pos.distance_to(solved_foot_pos),
+		"ground_weight": float(ik._smoothed_ground_weight.get(side, 0.0)),
+		"vertical_velocity": float(ik.debug_vertical_velocity.get(side, 0.0)),
+		"contact_hit": bool(ik.debug_contact_hit.get(side, false)),
+		"contact_dist": float(ik.debug_contact_distance.get(side, -1.0)),
+		"contact_lost": bool(ik.debug_contact_lost.get(side, false)),
+		"frozen": bool(ik._idle_frozen.get(side, false)),
+		"locomotion_stance": ik._gait_tracker.is_locomotion_stance_active(side),
+		"locomotion_locked": ik._gait_tracker.is_locomotion_target_locked(side),
+		"freeze_streak": int(ik._idle_freeze_streak.get(side, 0)),
+		"step_down": bool(ik.debug_step_down.get(side, false)),
+		"toe_tip_y": toe_pos_y,
+		"foot_pos": actual_pos,
+		"smoothed_target": target,
+		"hip_pos": hip_pos,
+		"bone_lengths": measure_bone_lengths(joints, ik._leg_lengths.get(side, {})),
+		"floor_angle_deg": rad_to_deg(normal.angle_to(Vector3.UP)),
+		"leg_angles_deg": leg_angles,
+		"joints": joints,
+	}

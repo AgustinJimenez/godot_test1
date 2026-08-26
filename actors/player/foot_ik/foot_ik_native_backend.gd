@@ -73,6 +73,18 @@ func update_targets(skeleton: Skeleton3D, per_leg: Dictionary) -> void:
 			(_poles[side] as Node3D).global_position = hip_position + pole_direction
 			continue
 		var target_position: Vector3 = leg.get("target", animated_position)
+		var first_leg: Dictionary = _owner._bone_indices.values()[0]
+		var pelvis_idx := skeleton.get_bone_parent(int(first_leg["hip"]))
+		var pelvis_world: Vector3 = (to_world * skeleton.get_bone_global_pose(pelvis_idx).origin
+				if pelvis_idx >= 0 else to_world.origin)
+		var rel_to_pelvis := to_world.basis.inverse() * (target_position - pelvis_world)
+		if target_position.distance_squared_to(animated_position) > 0.0001:
+			if side == &"left" and rel_to_pelvis.x < 0.01:
+				rel_to_pelvis.x = 0.01
+				target_position = pelvis_world + to_world.basis * rel_to_pelvis
+			elif side == &"right" and rel_to_pelvis.x > -0.01:
+				rel_to_pelvis.x = -0.01
+				target_position = pelvis_world + to_world.basis * rel_to_pelvis
 		var weight: float = leg.get("ground_weight", 0.0)
 		var target_basis := animated_basis
 		if leg.get("hit", false):
@@ -99,6 +111,13 @@ func update_targets(skeleton: Skeleton3D, per_leg: Dictionary) -> void:
 		var pole_pos := hip_pos + pole_dir
 		if bend_vec.length_squared() > 0.0001:
 			pole_pos = knee_pos + bend_vec.normalized() * 0.5
+		var rel_pole := to_world.basis.inverse() * (pole_pos - pelvis_world)
+		if side == &"left" and rel_pole.x > -0.05:
+			rel_pole.x = -0.05
+			pole_pos = pelvis_world + to_world.basis * rel_pole
+		elif side == &"right" and rel_pole.x < 0.05:
+			rel_pole.x = 0.05
+			pole_pos = pelvis_world + to_world.basis * rel_pole
 		(_poles[side] as Node3D).global_position = pole_pos
 
 

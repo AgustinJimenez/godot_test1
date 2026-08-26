@@ -1,13 +1,5 @@
 class_name PlayerFootIKModifier
 extends SkeletonModifier3D
-## TEMPORARY / EXPERIMENTAL: split into contact, gait, stair-prediction, and
-## bone-solve phases; stair-walking result still not accepted (see docs).
-## Plants each foot on the actual ground/step surface beneath it instead of
-## wherever the flat-ground-authored locomotion clips leave it - raycasts
-## straight down from the animated foot, bends hip/knee to reach that point
-## (closed-form two-bone IK), tilts the foot to match the surface normal.
-## Mirrors player_hand_grip_modifier.gd / player_look_pose_modifier.gd.
-
 signal foot_landed(side: StringName, ground_position: Vector3)
 const LOG_SOLE_AXIS := true # rest-pose sole axis mismatch logs, not silently breaks
 const LOG_SOLE_DEPTH := true # logs measured planted sole point count per leg at rig setup
@@ -19,15 +11,10 @@ const GROUND_SAMPLER := preload("res://actors/player/foot_ik/foot_ik_ground_samp
 const RESIDUAL_CORRECTOR := preload("res://actors/player/foot_ik/foot_ik_residual_corrector.gd")
 const PHASE_LOCKED_CORRECTOR := preload(
 		"res://actors/player/foot_ik/foot_ik_phase_locked_corrector.gd")
-
 enum SolverBackend { CUSTOM, NATIVE_TWO_BONE }
-## LEGACY: full gait-tracker/stair-predictor pipeline (default, untouched).
-## RESIDUAL_STAIR: raycast + always-on full-weight solve + one pelvis sink,
-## no swing/stance tracking (see docs/foot_ik_industry_review.md).
-## PHASE_LOCKED: samples ground once per footfall (gait tracker's `landed`
-## event), holds the target fixed for a timed stance window.
+## LEGACY is the full gait pipeline. RESIDUAL_STAIR is always-on full-weight
+## correction. PHASE_LOCKED samples once per footfall and holds during stance.
 enum LocomotionMode { LEGACY, RESIDUAL_STAIR, PHASE_LOCKED }
-
 ## Search range above/below the animated foot; ray_down covers the tallest riser plus stride margin.
 @export var ray_up: float = 0.5
 @export var ray_down: float = 0.6
@@ -94,9 +81,7 @@ const DEEP_PLANT_PENETRATION := 0.05
 @export var flat_idle_noop_distance: float = 0.01 # Preserve authored idle inside 1 cm.
 @export_range(0.0, 170.0, 1.0) var max_knee_flexion_degrees: float = 150.0
 @export_range(10.0, 170.0, 1.0) var max_hip_swing_degrees: float = 100.0 # cone from straight down
-## When true, overrides the gait tracker's contact-lost check and forces both
-## feet to plant on the ground. Used by the foot IK harness during inspection
-## idle poses where the animated foot height doesn't match the step geometry.
+## Forces planting when an inspection pose's authored foot height mismatches the step.
 var force_plant_mode: bool = false
 ## Idle step-down: a stationary stance foot whose sole rests more than
 ## GROUND_CONTACT_DISTANCE above a lower surface (e.g. straddling a stair
@@ -106,11 +91,8 @@ var force_plant_mode: bool = false
 ## stretching the leg or moving the whole capsule. Nothing found, foot floats.
 @export_range(0.0, 1.0, 0.01) var idle_step_down_speed: float = 0.06
 @export_range(0.0, 0.75, 0.005) var step_down_pelvis_drop: float = 0.35
-## Hard ceiling on shared pelvis sink for a foot _retract_to_reachable()
-## couldn't rescue (the drop is deeper than the leg can reach) - looser than
-## step_down_pelvis_drop's "still looks like ordinary standing" budget, this
-## is "as deep a crouch as a person could plausibly do." Capping here leaves
-## the leg hanging just short of target instead of an unbounded squat.
+## Hard ceiling on shared pelvis sink: the deepest plausible crouch rather
+## than leaving an unreachable target to produce an unbounded squat.
 @export_range(0.0, 1.0, 0.005) var step_down_max_crouch: float = 0.6
 ## Max speed (m/s) the shared pelvis may RISE back toward the animated pose
 ## after a reach-limit sink (the per-footfall stair shake's release edge).
@@ -153,7 +135,6 @@ var _native_backend: RefCounted
 var _ground_sampler: RefCounted
 var _residual_corrector: RefCounted
 var _phase_locked_corrector: RefCounted
-
 var _bone_indices: Dictionary = {} # side -> {hip, knee, foot, toe, leaf: int}
 var _leg_lengths: Dictionary = {} # side -> {upper, lower: float}
 var _sole_down_local: Dictionary = {} # side -> Vector3, one of the 6 principal axes
@@ -242,57 +223,39 @@ var debug_retracted: Dictionary = {} # side -> bool
 var _final_bone_poses: Dictionary = {} # int bone index -> Transform3D (skeleton space)
 var _smoothed_shared_drop := 0.0
 var _pelvis_lateral_shift := Vector3.ZERO
-
-## External harnesses read the post-IK skeleton-space pose here instead of
-## Skeleton3D.get_bone_global_pose() at their own (idle/deferred) time, where
-## the skeleton may still hold the pre-IK animated pose (AGENTS.md).
+## External harnesses read the post-IK skeleton-space pose here (AGENTS.md).
 func get_final_bone_global_pose(bone_idx: int) -> Transform3D:
 	return _final_bone_poses.get(bone_idx, Transform3D())
 var _forced_support_side: StringName:
-	get:
-		return _stair_predictor.get_support_side() if _stair_predictor != null else &""
+	get: return _stair_predictor.get_support_side() if _stair_predictor != null else &""
 var _knee_pole_local: Dictionary = {} # side -> Vector3
 func reset_runtime_state() -> void:
-	if _leg_solver != null:
-		_leg_solver.reset_runtime_state()
+	if _leg_solver != null: _leg_solver.reset_runtime_state()
 	if _gait_tracker != null: _gait_tracker.reset_runtime_state()
-	if _ground_sampler != null:
-		_ground_sampler.reset()
-	_prev_animated_foot_pos.clear()
-	_prev_leg_bone_poses.clear()
-	_prev_leg_bone_poses_frame.clear()
+	if _ground_sampler != null: _ground_sampler.reset()
+	if _stair_predictor != null: _stair_predictor.reset()
+	for d: Dictionary in [_prev_animated_foot_pos, _prev_leg_bone_poses,
+			_prev_leg_bone_poses_frame, _leg_fresh_pose_cache, _smoothed_ground_weight,
+			_solved_target_smoothed, _final_bone_poses,
+			_falling_streak, _rising_streak, _weight_stuck_time, _landing_fell,
+			_step_down_static_streak, _idle_frozen, _idle_freeze_streak, _idle_unfreeze_streak,
+			_idle_freeze_yaw, debug_vertical_velocity, debug_contact_distance, debug_contact_hit,
+			debug_step_down, debug_raw_weight, debug_contact_lost, debug_retracted]:
+		d.clear()
 	_has_prev_pelvis_pose = false
 	_pelvis_base_pose_frame = -1
 	_smoothed_shared_drop = 0.0
-	_leg_fresh_pose_cache.clear()
+	_pelvis_lateral_shift = Vector3.ZERO
 	_leg_fresh_pose_cache_frame = -1
-	_smoothed_ground_weight.clear()
-	_falling_streak.clear()
-	_rising_streak.clear()
-	_weight_stuck_time.clear()
-	_landing_fell.clear()
-	_step_down_static_streak.clear()
-	_idle_frozen.clear()
-	_idle_freeze_streak.clear()
-	_idle_unfreeze_streak.clear()
-	_idle_freeze_yaw.clear()
 	_landing_grace_time = 0.0
 	_prev_animation_position = -1.0
 	_animation_discontinuity_hold = 0
 	_velocity_suppress_hold = 0
-	debug_vertical_velocity.clear()
-	debug_contact_distance.clear()
-	debug_contact_hit.clear()
-	debug_step_down.clear()
-	debug_raw_weight.clear()
-	debug_contact_lost.clear()
-	debug_retracted.clear()
-	if _stair_predictor != null:
-		_stair_predictor.reset()
+	_animation_discontinuous = false
+	_velocity_suppressed = false
 var _grounded: bool = true
 var _debug_force_disabled: bool = false
 var _pose_suppressed: bool = false
-
 func set_character_grounded(value: bool) -> void:
 	_grounded = value
 	var desired := value and not _debug_force_disabled
@@ -303,7 +266,6 @@ func set_character_grounded(value: bool) -> void:
 	_landing_grace_time = LANDING_GRACE_DURATION if desired else 0.0
 	if _native_backend != null:
 		_native_backend.set_enabled(desired and solver_backend == SolverBackend.NATIVE_TWO_BONE)
-
 func set_solver_backend(value: SolverBackend) -> void:
 	if solver_backend == value:
 		return
@@ -321,10 +283,9 @@ func set_debug_enabled(value: bool) -> void:
 		_native_backend.set_enabled(desired and solver_backend == SolverBackend.NATIVE_TWO_BONE)
 
 func set_pose_suppressed(value: bool) -> void:
-	if _pose_suppressed == value:
-		return
-	_pose_suppressed = value
-	reset_runtime_state()
+	if _pose_suppressed != value:
+		_pose_suppressed = value
+		reset_runtime_state()
 
 func _ready() -> void:
 	_ground_sampler = GROUND_SAMPLER.new(self)
@@ -339,12 +300,9 @@ func _ready() -> void:
 		return
 	for side: StringName in LEGS:
 		var roles: Dictionary = LEGS[side]
-		var hip_name := player_body.resolve_bone_name(roles["hip"])
-		var knee_name := player_body.resolve_bone_name(roles["knee"])
-		var foot_name := player_body.resolve_bone_name(roles["foot"])
-		var hip_idx := skel.find_bone(hip_name)
-		var knee_idx := skel.find_bone(knee_name)
-		var foot_idx := skel.find_bone(foot_name)
+		var hip_idx := skel.find_bone(player_body.resolve_bone_name(roles["hip"]))
+		var knee_idx := skel.find_bone(player_body.resolve_bone_name(roles["knee"]))
+		var foot_idx := skel.find_bone(player_body.resolve_bone_name(roles["foot"]))
 		if hip_idx < 0 or knee_idx < 0 or foot_idx < 0:
 			continue
 		# Toe/ball is optional - some rigs don't have one, and the leg still
@@ -522,11 +480,9 @@ func _measure_leg_sole_depth(skel: Skeleton3D, side: StringName) -> float:
 		for surface in mesh_part.mesh.get_surface_count():
 			var arrays := mesh_part.mesh.surface_get_arrays(surface)
 			var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
-			var bones := (
-					arrays[Mesh.ARRAY_BONES] as PackedInt32Array
+			var bones: PackedInt32Array = (arrays[Mesh.ARRAY_BONES]
 					if arrays[Mesh.ARRAY_BONES] is PackedInt32Array else PackedInt32Array())
-			var weights := (
-					arrays[Mesh.ARRAY_WEIGHTS] as PackedFloat32Array
+			var weights: PackedFloat32Array = (arrays[Mesh.ARRAY_WEIGHTS]
 					if arrays[Mesh.ARRAY_WEIGHTS] is PackedFloat32Array else PackedFloat32Array())
 			if vertices.is_empty() or bones.is_empty() or weights.is_empty():
 				continue
@@ -583,6 +539,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		_leg_fresh_pose_cache.clear()
 		_leg_fresh_pose_cache_frame = current_frame
 	for side: StringName in _bone_indices:
+		debug_retracted[side] = false
 		var indices: Dictionary = _bone_indices[side]
 		var lengths: Dictionary = _leg_lengths[side]
 		var hip_idx: int = indices["hip"]
@@ -633,16 +590,22 @@ func _process_modification_with_delta(delta: float) -> void:
 		var contact: Dictionary = _ground_sampler.sample(
 				skel, space, side, animated_foot_pose,
 				foot_pos, to_world, delta, likely_idle, frozen)
+		var stationary_slope: bool = (contact["hit"]
+				and (contact["raw_normal"] as Vector3).dot(Vector3.UP) < 0.999
+				and not _gait_tracker.is_body_translating()
+				and player_body.anim_player.current_animation.get_file().contains("idle"))
 		per_leg[side] = {"hip_pos": hip_pos, "hit": contact["hit"], "upper": upper_length,
 				"lower": lower_length, "vertical_velocity": 0.0}
-		var unreachable_drop: bool = contact["hit"] and float(
+		var unreachable_drop: bool = not stationary_slope and contact["hit"] and float(
 				contact.get("animated_contact_distance", 0.0)) > (upper_length + lower_length)
 		if not contact["hit"] or unreachable_drop:
 			if frozen:
 				frozen = false
 				_gait_tracker.invalidate_idle_freeze(side)
-			var retracted := _retract_to_reachable(space, side, hip_pos, foot_pos,
-					upper_length, lower_length)
+			var retracted: Dictionary = (_retract_to_reachable(
+					space, side, hip_pos, foot_pos, upper_length, lower_length)
+					if player_body.anim_player.current_animation.get_file().contains("idle")
+					else {"found": false})
 			if bool(retracted.get("found", false)):
 				var surface: Vector3 = retracted["surface"]
 				var normal: Vector3 = retracted["normal"]
@@ -699,9 +662,11 @@ func _process_modification_with_delta(delta: float) -> void:
 				side, hip_pos, ground_target, animated_contact_hit,
 				foot_pos.y - ground_target.y if straddling_riser else animated_contact_distance,
 				anim_speed, upper_length, lower_length)
+		if raw_normal.dot(Vector3.UP) < 0.999:
+			classification = {"plant": false, "settle": false}
 		var step_down: bool = classification["plant"] or debug_retracted.get(side, false)
 		var is_retracted: bool = debug_retracted.get(side, false)
-		var over_void: bool = (step_prediction_enabled and not is_retracted and (
+		var over_void: bool = (not stationary_slope and step_prediction_enabled and not is_retracted and (
 				not animated_contact_hit
 				or animated_contact_distance > upper_length + lower_length
 				or classification["settle"]
@@ -719,6 +684,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		var gait_flags := {"step_down": step_down, "frozen": frozen,
 				"penetrating_contact": deeply_penetrated,
 				"skip_velocity_gate": _landing_grace_time > 0.0,
+				"force_plant": is_retracted,
 				"void_dangle": void_dangle}
 		var gait: Dictionary = _gait_tracker.update(side, animated_foot_pos, foot_pos, ground_target,
 				animated_contact_hit, animated_contact_distance, to_world, delta, gait_flags)
@@ -739,11 +705,31 @@ func _process_modification_with_delta(delta: float) -> void:
 				and foot_pos.distance_to(ground_target) <= flat_idle_noop_distance)
 		var preserve_idle_pose: bool = (flat_contact and not step_down
 				and (stationary_noop or flat_idle_clearance))
+		var hip_l_w: Vector3 = to_world * skel.get_bone_global_pose(
+				int(_bone_indices[&"left"]["hip"])).origin
+		var hip_r_w: Vector3 = to_world * skel.get_bone_global_pose(
+				int(_bone_indices[&"right"]["hip"])).origin
+		var hip_axis_vec := Vector3(hip_l_w.x - hip_r_w.x, 0.0, hip_l_w.z - hip_r_w.z)
+		var hip_lat_dir := (hip_axis_vec.normalized()
+				if hip_axis_vec.length_squared() > 0.0001 else to_world.basis.x)
+		var lat_offset: float = _leg_solver.stance_lateral_offset(foot_pos, hip_lat_dir, to_world.origin)
+		var is_stance_crossed: bool = _leg_solver.is_idle_stance_crossed(side, lat_offset, anim_name)
 		var is_flat_level_ground: bool = (flat_contact and not step_down and not void_dangle)
-		var preserve_flat_pose: bool = (preserve_idle_pose or is_flat_level_ground)
-		var target := foot_pos if preserve_flat_pose else foot_pos.lerp(ground_target, ground_weight)
+		var preserve_flat_pose: bool = (
+				(preserve_idle_pose or is_flat_level_ground) and not is_stance_crossed)
+		var solve_weight: float = ground_weight
+		if is_stance_crossed:
+			var target_lat: float = 0.12 if side == &"left" else -0.12
+			ground_target = foot_pos + hip_lat_dir * (target_lat - lat_offset)
+			if contact.has("ground_target"):
+				ground_target.y = contact["ground_target"].y
+				solve_weight = maxf(ground_weight, 0.8)
+		var target := foot_pos if preserve_flat_pose else foot_pos.lerp(ground_target, solve_weight)
 		var swing_lift := 0.0
-		if step_prediction_enabled and not void_dangle:
+		# Stair swing lift belongs on flat treads; on a continuous ramp it raises
+		# the target away from the sampled plane and breaks support contact.
+		if (step_prediction_enabled and not void_dangle
+				and raw_normal.dot(Vector3.UP) >= 0.999):
 			swing_lift = _stair_predictor.update_swing_lift(
 					space, side, foot_pos, animated_foot_pose.basis, raw_target,
 					animated_lowest_point, ground_weight, landed, delta,
@@ -757,15 +743,11 @@ func _process_modification_with_delta(delta: float) -> void:
 		else:
 			if _solved_target_smoothed.has(side) and delta > 0.0:
 				var prev_t: Vector3 = _solved_target_smoothed[side]
+				if raw_normal.dot(Vector3.UP) < 0.999:
+					# Keep tangential smoothing, but project stale gait-transition
+					# height back onto today's ramp contact plane first.
+					prev_t -= raw_normal * (prev_t - target).dot(raw_normal)
 				target = prev_t.lerp(target, clampf(delta * 24.0, 0.0, 1.0))
-			var hip_to_tgt := target - hip_pos
-			var tgt_dist := hip_to_tgt.length()
-			var max_r := upper_length + lower_length - 0.001
-			var soft_r := max_r * 0.94
-			if tgt_dist > soft_r and tgt_dist > 0.0001:
-				var soft_m := max_r - soft_r
-				var soft_d := soft_r + soft_m * (1.0 - exp(-(tgt_dist - soft_r) / soft_m))
-				target = hip_pos + hip_to_tgt * (soft_d / tgt_dist)
 			_solved_target_smoothed[side] = target
 		per_leg[side]["preserve_idle_pose"] = preserve_flat_pose
 		per_leg[side]["target"] = target
@@ -779,9 +761,10 @@ func _process_modification_with_delta(delta: float) -> void:
 		per_leg[side]["animated_contact_position"] = animated_contact_position
 		per_leg[side]["animated_contact_normal"] = animated_contact_normal
 		per_leg[side]["effective_offset"] = effective_offset
+		per_leg[side]["stationary_slope"] = stationary_slope
 		per_leg[side]["vertical_velocity"] = vertical_velocity
 		per_leg[side]["ground_weight"] = ground_weight
-		per_leg[side]["chain_weight"] = 1.0 if swing_lift > 0.0001 else ground_weight
+		per_leg[side]["chain_weight"] = 1.0 if swing_lift > 0.0001 else solve_weight
 		debug_contact_hit[side] = animated_contact_hit
 		debug_contact_distance[side] = (
 				animated_contact_distance if animated_contact_hit else -1.0)
@@ -802,8 +785,7 @@ func _process_modification_with_delta(delta: float) -> void:
 	_apply_support_pelvis_and_legs(skel, to_world, per_leg, shared_drop, delta)
 	for i in skel.get_bone_count():
 		_final_bone_poses[i] = skel.get_bone_global_pose(i)
-## Mirrors foot_ik_gait_tracker._measure_velocity so the step-down static
-## test uses the same per-frame foot speed the weight logic sees. Skeleton
+## Mirrors foot_ik_gait_tracker velocity for the step-down static test. Skeleton
 ## space, so root stair-hover translation cannot masquerade as foot motion.
 func _animated_vertical_speed(side: StringName, animated_foot_pos: Vector3,
 		to_world: Transform3D, delta: float) -> float:
@@ -850,32 +832,36 @@ func _step_down_classification(side: StringName, hip_pos: Vector3, ground_target
 
 const RETRACT_STEPS := 8
 
-## Searches inward toward platform and body to place a void foot on closest solid ledge.
+## Places a stationary void foot on nearby same-side authored support.
 func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, hip_pos: Vector3,
 		foot_pos: Vector3, upper_length: float, lower_length: float) -> Dictionary:
 	var max_reach := upper_length + lower_length - 0.001
 	var offset := maxf(ankle_offset, _sole_depth_below_foot.get(side, 0.0))
-	if _smoothed_target.has(side) and debug_retracted.get(side, false):
+	var body_node := player_body.get_parent() as Node3D
+	var fwd := -body_node.global_transform.basis.z
+	var out_dir: Vector3 = (-body_node.global_transform.basis.x if side == &"left"
+			else body_node.global_transform.basis.x)
+	if _smoothed_target.has(side):
 		var prev: Vector3 = _smoothed_target[side]
-		if (hip_pos - prev).length() <= max_reach:
+		var prev_from_root := prev - body_node.global_position
+		var prev_lat := prev_from_root.dot(out_dir)
+		var in_zone := prev_lat >= 0.06 and prev_lat <= 0.56 and absf(prev_from_root.dot(fwd)) <= 0.4
+		if in_zone and (hip_pos - prev).length() <= max_reach:
 			var prev_hit: Dictionary = _ground_sampler.raycast_ground(
 					space, Vector3(prev.x, hip_pos.y, prev.z), idle_settle_search_down)
-			if prev_hit["hit"]:
-				return {"found": true, "target": prev_hit["position"] + prev_hit["normal"] * offset,
-						"surface": prev_hit["position"], "normal": prev_hit["normal"]}
+			if prev_hit["hit"] and _ground_sampler.has_support_patch(
+					space, prev_hit["position"], 0.12):
+				var norm: Vector3 = prev_hit["normal"]
+				var pos: Vector3 = prev_hit["position"]
+				return {"found": true, "target": pos + norm * offset,
+						"surface": pos, "normal": norm}
 	var from_xz := Vector2(foot_pos.x, foot_pos.z)
-	var body_node := player_body.get_parent() as Node3D
-	var hip_xz := Vector2(hip_pos.x, hip_pos.z)
-	var candidate_dirs: Array[Vector2] = []
-	var to_hip := hip_xz - from_xz
-	if to_hip.length_squared() > 0.0001:
-		candidate_dirs.append(to_hip.normalized())
-	if body_node != null:
-		var fwd := -body_node.global_transform.basis.z
-		var r_dir: Vector3 = (body_node.global_transform.basis.x if side != &"left"
-				else -body_node.global_transform.basis.x)
-		candidate_dirs.append_array([Vector2(fwd.x, fwd.z).normalized(),
-				Vector2(-fwd.x, -fwd.z).normalized(), Vector2(r_dir.x, r_dir.z).normalized()])
+	var bwd := -fwd
+	var stance_anchor := body_node.global_position + out_dir.normalized() * 0.18
+	var toward_stance := stance_anchor - foot_pos
+	var candidate_dirs: Array[Vector2] = [Vector2(toward_stance.x, toward_stance.z).normalized(),
+			Vector2(bwd.x, bwd.z).normalized(), Vector2(out_dir.x, out_dir.z).normalized(),
+			Vector2(bwd.x + out_dir.x, bwd.z + out_dir.z).normalized()]
 	var search_dist := max_reach + 0.3
 	for dir: Vector2 in candidate_dirs:
 		for i in range(1, RETRACT_STEPS + 1):
@@ -886,10 +872,12 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, h
 				continue
 			var normal: Vector3 = hit["normal"]
 			var surface: Vector3 = hit["position"]
+			if not _ground_sampler.has_support_patch(space, surface, 0.12):
+				continue
 			var target := surface + normal * offset
-			var to_world: Transform3D = player_body.skeleton.global_transform
-			var local_tgt: Vector3 = to_world.affine_inverse() * target
-			if (side == &"left" and local_tgt.x > -0.04) or (side == &"right" and local_tgt.x < 0.04):
+			var from_root := target - body_node.global_position
+			var lateral := from_root.dot(out_dir)
+			if lateral < 0.06 or lateral > 0.56 or absf(from_root.dot(fwd)) > 0.4:
 				continue
 			var horizontal_dist_sq := Vector2(
 					hip_pos.x - target.x, hip_pos.z - target.z).length_squared()
@@ -913,8 +901,7 @@ func _shape_shared_drop(raw: float, delta: float, stationary: bool) -> float:
 	if raw >= _smoothed_shared_drop or shared_drop_release_rate <= 0.0:
 		_smoothed_shared_drop = raw
 	elif delta > 0.0:
-		_smoothed_shared_drop = maxf(raw,
-				_smoothed_shared_drop - delta * shared_drop_release_rate)
+		_smoothed_shared_drop = maxf(raw, _smoothed_shared_drop - delta * shared_drop_release_rate)
 	return _smoothed_shared_drop
 func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		per_leg: Dictionary, shared_drop: float, delta: float) -> void:
@@ -939,27 +926,36 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 				if pelvis_idx >= 0 else (l_hip + r_hip) * 0.5)
 		var is_flat_idle: bool = (l_leg.get("preserve_idle_pose", false)
 				and r_leg.get("preserve_idle_pose", false))
-		var is_edge_asymmetry: bool = ((l_hit and not r_hit) or (r_hit and not l_hit))
-		if is_edge_asymmetry:
-			var active_hip: Vector3 = l_hip if l_hit else r_hip
-			target_shift = Vector3(active_hip.x - pelvis_pos.x, 0.0,
-					active_hip.z - pelvis_pos.z).limit_length(0.35)
+		var is_edge_asym: bool = ((l_hit and not r_hit) or (r_hit and not l_hit))
+		if is_edge_asym:
+			var l_gw: float = float(l_leg.get("ground_weight", 1.0)) if l_hit else 0.0
+			var r_gw: float = float(r_leg.get("ground_weight", 1.0)) if r_hit else 0.0
+			var total_w := l_gw + r_gw
+			var l_tgt: Vector3 = l_leg.get("target", l_leg.get("ground_target", l_hip))
+			var r_tgt: Vector3 = r_leg.get("target", r_leg.get("ground_target", r_hip))
+			var com: Vector3 = ((l_tgt * l_gw + r_tgt * r_gw) / total_w
+					if total_w > 0.001 else (l_hip if l_hit else r_hip))
+			target_shift = Vector3(com.x - pelvis_pos.x, 0.0, com.z - pelvis_pos.z).limit_length(0.35)
 		elif not is_flat_idle and l_hit and r_hit:
 			var l_tgt: Vector3 = l_leg.get("target", l_leg.get("ground_target", l_hip))
 			var r_tgt: Vector3 = r_leg.get("target", r_leg.get("ground_target", r_hip))
-			var r_dir: Vector3 = to_world.basis.x.normalized()
-			var feet_mid: Vector3 = (l_tgt + r_tgt) * 0.5
-			var cur_sep: float = (r_tgt - l_tgt).dot(r_dir)
-			if cur_sep < 0.22:
-				l_leg["target"] = feet_mid - r_dir * 0.11
-				r_leg["target"] = feet_mid + r_dir * 0.11
-			target_shift = Vector3(feet_mid.x - pelvis_pos.x, 0.0,
-					feet_mid.z - pelvis_pos.z).limit_length(0.35)
-	if delta > 0.0:
-		_pelvis_lateral_shift = _pelvis_lateral_shift.lerp(
-				target_shift, clampf(delta * 10.0, 0.0, 1.0))
-	else:
-		_pelvis_lateral_shift = target_shift
+			var hip_axis := Vector3(l_hip.x - r_hip.x, 0.0, l_hip.z - r_hip.z)
+			var left_dir := (hip_axis.normalized()
+					if hip_axis.length_squared() > 0.0001 else -to_world.basis.x.normalized())
+			if stationary and (l_tgt - r_tgt).dot(left_dir) < 0.22:
+				var mid: Vector3 = (l_tgt + r_tgt) * 0.5
+				l_tgt = mid + left_dir * 0.11
+				r_tgt = mid - left_dir * 0.11
+				l_leg["target"] = l_tgt
+				r_leg["target"] = r_tgt
+			if stationary or l_leg.get("step_down", false) or r_leg.get("step_down", false):
+				var feet_mid: Vector3 = (l_tgt + r_tgt) * 0.5
+				target_shift = Vector3(feet_mid.x - pelvis_pos.x, 0.0,
+						feet_mid.z - pelvis_pos.z).limit_length(0.35)
+	_pelvis_lateral_shift = (_pelvis_lateral_shift.lerp(target_shift, clampf(delta * 10.0, 0.0, 1.0))
+			if delta > 0.0 else target_shift)
+	_pelvis_lateral_shift = _leg_solver.limit_idle_pelvis_shift(to_world, per_leg,
+			_pelvis_lateral_shift, stationary)
 	var has_pelvis_motion: bool = shared_drop > 0.0 or not _pelvis_lateral_shift.is_zero_approx()
 	if has_pelvis_motion and not _bone_indices.is_empty():
 		var first_leg: Dictionary = _bone_indices.values()[0]
@@ -976,8 +972,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			_prev_pelvis_pose = fresh_pelvis
 			_has_prev_pelvis_pose = true
 			var pelvis_world := to_world * pelvis_pose
-			pelvis_world.origin -= Vector3.UP * shared_drop
-			pelvis_world.origin += _pelvis_lateral_shift
+			pelvis_world.origin += _pelvis_lateral_shift - Vector3.UP * shared_drop
 			skel.set_bone_global_pose(pelvis_idx, to_world.affine_inverse() * pelvis_world)
 	if solver_backend == SolverBackend.NATIVE_TWO_BONE:
 		_native_backend.update_targets(skel, per_leg)
@@ -989,9 +984,16 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		if not leg["hit"] or not has_target or (preserve_idle and not has_pelvis_motion):
 			_leg_solver.release_to_animation(skel, side, delta)
 			continue
-		var target: Vector3 = (leg.get("ground_target", Vector3.ZERO) if preserve_idle
-				else leg.get("target", Vector3.ZERO))
+		var target: Vector3 = (leg.get("ground_target", leg.get("target", Vector3.ZERO))
+				if preserve_idle else leg.get("target", Vector3.ZERO))
 		var gw: float = 1.0 if preserve_idle else float(leg["ground_weight"])
+		var cw: float = 1.0 if preserve_idle else float(leg.get("chain_weight", gw))
 		var solve_hip: Vector3 = leg["hip_pos"] - Vector3.UP * shared_drop + _pelvis_lateral_shift
-		_leg_solver.solve(skel, side, solve_hip, target, leg["upper"], leg["lower"],
-				gw, 1.0 if preserve_idle else float(leg.get("chain_weight", gw)), delta)
+		if leg.get("stationary_slope", false):
+			var other_side: StringName = &"right" if side == &"left" else &"left"
+			var hip_axis: Vector3 = leg["hip_pos"] - per_leg[other_side]["hip_pos"]
+			var side_sign := 1.0 if side == &"left" else -1.0
+			var left_dir := Vector3(hip_axis.x, 0.0, hip_axis.z).normalized() * side_sign
+			target = _leg_solver.adjust_idle_slope_target(
+					side, solve_hip, target, leg["upper"], leg["lower"], to_world, left_dir)
+		_leg_solver.solve(skel, side, solve_hip, target, leg["upper"], leg["lower"], gw, cw, delta)

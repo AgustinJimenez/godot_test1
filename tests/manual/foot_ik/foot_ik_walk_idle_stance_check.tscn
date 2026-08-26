@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tests/manual/foot_ik/foot_ik_walk_idle_stance_check.gd" id="1_script"]
+
+[node name="FootIkWalkIdleStanceCheck" type="Node3D"]
+script = ExtResource("1_script")

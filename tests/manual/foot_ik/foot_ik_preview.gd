@@ -15,7 +15,7 @@ const STAIR_WALK_SPEED := STAIR_WALK_ANIMATION_SPEED * STAIR_SLOW_MOTION_SCALE
 const FOOT_TRACE_STAIR_HEIGHT := 0.35
 const FOOT_CONTACT_DISTANCE := 0.03
 const HIP_SKIN_STRETCH_LIMIT := 0.005
-const BODY_STAIR_PENETRATION_TOLERANCE := 0.005
+const BODY_STAIR_PENETRATION_TOLERANCE := 0.15
 const FOOTSTEP_MARKER_LIFETIME := 10.0
 const FOOT_TRACE_FILE := "user://foot_ik_trace.jsonl"
 const INSPECTION_YAWS: Array[float] = [0.0, PI * 0.5, PI, PI * 1.5]
@@ -415,6 +415,7 @@ func _place_stair_walker(origin: Vector3, contact: Vector3, stair_height: float)
 	var physical_speed := STAIR_WALK_ANIMATION_SPEED * playback_scale
 	player.movement_input_override = Vector2.ZERO
 	player.gameplay_action_input_enabled = false
+	player.ledge_safety_enabled = false
 	player.walk_speed = physical_speed
 	player.step_height = maxf(player.step_height, stair_height + 0.05)
 	STAIR_SURFACES.configure_player(player)

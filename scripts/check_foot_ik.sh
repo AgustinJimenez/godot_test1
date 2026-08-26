@@ -56,5 +56,49 @@ rg "FOOT_IK_POSE_CONTINUITY_CHECK PASS" "$log_file"
 rg "FOOT_IK_STAIR_LOCOMOTION_CHECK PASS" "$log_file"
 rg "FOOT_IK_STAIR_SETTLE_CHECK PASS" "$log_file"
 
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_ledge_safety_check.tscn \
+	--quit-after 1400 >"$log_file" 2>&1
+
+if ! rg -q "FOOT_IK_LEDGE_SAFETY_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK ledge safety check did not pass."
+	exit 1
+fi
+rg "FOOT_IK_LEDGE_SAFETY_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_edge_stance_check.tscn \
+	--quit-after 6200 >"$log_file" 2>&1
+
+if ! rg -q "FOOT_IK_EDGE_STANCE_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK edge stance check did not pass."
+	exit 1
+fi
+rg "FOOT_IK_EDGE_STANCE_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_walk_idle_stance_check.tscn \
+	--quit-after 5500 >"$log_file" 2>&1
+
+if ! rg -q "FOOT_IK_WALK_IDLE_STANCE_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK walk-to-idle stance check did not pass."
+	exit 1
+fi
+rg "FOOT_IK_WALK_IDLE_STANCE_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_ramp_locomotion_check.tscn \
+	--quit-after 3600 >"$log_file" 2>&1
+
+if ! rg -q "FOOT_IK_RAMP_LOCOMOTION_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK ramp locomotion check did not pass."
+	exit 1
+fi
+rg "FOOT_IK_RAMP_LOCOMOTION_(CASES|CHECK)" "$log_file"
+
 "$project_dir/scripts/check_foot_ik_stair_repeat.sh"
 "$project_dir/scripts/check_foot_ik_locomotion.sh"

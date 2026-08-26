@@ -17,6 +17,9 @@
 extends SceneTree
 
 const DEFAULT_TRACE: String = "user://foot_ik_controlled.jsonl"
+const FOOT_ZONE_MIN_LATERAL := 0.06
+const FOOT_ZONE_MAX_LATERAL := 0.56
+const FOOT_ZONE_MAX_LONGITUDINAL := 0.40
 
 # ── output buffer (for token estimate) ────────────────────────────────────────
 var _out: PackedStringArray = []
@@ -221,10 +224,29 @@ func _cmd_anomalies(frames: Array) -> void:
 
 		var type := ""
 		var detail := ""
-		if on_flr and speed < 0.1 and (lw < 0.5 or rw < 0.5):
+		var root := _parse_vec3(str(fr.get("root", "(0,0,0)")))
+		var left_hip := _parse_vec3(str(lf.get("hip_pos", "(0,0,0)")))
+		var right_hip := _parse_vec3(str(rf.get("hip_pos", "(0,0,0)")))
+		var left_dir := left_hip - right_hip
+		left_dir.y = 0.0
+		if left_dir.length_squared() > 0.0001:
+			left_dir = left_dir.normalized()
+			var forward_dir := Vector3.UP.cross(left_dir).normalized()
+			for side: String in ["left", "right"]:
+				var foot: Dictionary = feet.get(side, {})
+				var solved := _parse_vec3(str(foot.get("solved_foot_pos", "(0,0,0)")))
+				var from_root := solved - root
+				var lateral := from_root.dot(left_dir) * (1.0 if side == "left" else -1.0)
+				var longitudinal := from_root.dot(forward_dir)
+				if (lateral < FOOT_ZONE_MIN_LATERAL or lateral > FOOT_ZONE_MAX_LATERAL
+						or absf(longitudinal) > FOOT_ZONE_MAX_LONGITUDINAL):
+					type = "FOOT_SAFE_ZONE"
+					detail = "%s lat=%.3f long=%.3f" % [side, lateral, longitudinal]
+					break
+		if type.is_empty() and on_flr and speed < 0.1 and (lw < 0.5 or rw < 0.5):
 			type = "IDLE_WEIGHT_DIP"
 			detail = "Lw=%.2f Rw=%.2f" % [lw, rw]
-		else:
+		elif type.is_empty():
 			var l_tgt: Vector3 = _parse_vec3(str(lf.get("smoothed_target", "(0,0,0)")))
 			var l_sol: Vector3 = _parse_vec3(str(lf.get("solved_foot_pos", "(0,0,0)")))
 			var r_tgt: Vector3 = _parse_vec3(str(rf.get("smoothed_target", "(0,0,0)")))

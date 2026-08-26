@@ -59,7 +59,7 @@ func update_animation_discontinuity(delta: float) -> void:
 	_owner._prev_animation_position = anim_pos
 
 
-## flags: "step_down"/"skip_velocity_gate"/"frozen" bools (all default false) -
+## flags: "step_down"/"skip_velocity_gate"/"frozen"/"force_plant" bools (default false) -
 ## bundled to stay under the linter's max-argument count.
 func update(
 	side: StringName,
@@ -90,19 +90,35 @@ func update(
 	var stance_contact: bool = (
 		locomotion_stance and contact_hit and contact_distance <= _owner.step_min_rise
 	)
-	var force_plant: bool = _owner.force_plant_mode
+	var force_plant: bool = _owner.force_plant_mode or flags.get("force_plant", false)
 	var clearance_above_target := foot_pos.y - ground_target.y
+	var idle_settle_budget: float = _owner.step_down_pelvis_drop
+	var on_slope := ((_owner._smoothed_normal.get(side, Vector3.UP) as Vector3)
+			.dot(Vector3.UP) < 0.999)
+	if on_slope:
+		# Turning in place can put one animated foot far downhill on a steep
+		# ramp. It is still valid support within the shared pelvis crouch range;
+		# treating it as a lost swing contact drops IK and leaves it floating.
+		idle_settle_budget = _owner.step_down_max_crouch
 	var idle_settling: bool = (
 		not void_dangle
 		and _body_horizontal_speed() <= IDLE_TRANSLATION_EPSILON
 		and _owner._grounded
 		and contact_hit
-		and clearance_above_target <= _owner.step_down_pelvis_drop + _owner.step_min_rise
+		and clearance_above_target <= idle_settle_budget + _owner.step_min_rise
+	)
+	var idle_sloped_contact: bool = (
+		not void_dangle
+		and _body_horizontal_speed() <= IDLE_TRANSLATION_EPSILON
+		and _owner._grounded
+		and contact_hit
+		and on_slope
 	)
 	var contact_lost: bool = (
 		void_dangle
 		or (
-			not step_down
+			not idle_sloped_contact
+			and not step_down
 			and not idle_settling
 			and not penetrating_contact
 			and _owner.step_prediction_enabled
@@ -153,7 +169,7 @@ func update(
 	_owner.debug_raw_weight[side] = raw_weight
 	_owner.debug_contact_lost[side] = contact_lost
 	var weight := _smooth_weight(side, raw_weight, contact_lost, delta)
-	if penetrating_contact or force_plant:
+	if penetrating_contact or force_plant or idle_sloped_contact:
 		weight = 1.0
 		_owner._smoothed_ground_weight[side] = 1.0
 	return {"vertical_velocity": velocity, "ground_weight": weight, "landed": landed}

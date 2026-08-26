@@ -126,6 +126,7 @@ var _free_mode_default_collision_mask := 0
 var movement_input_override: Variant = null
 var debug_movement_input := Vector2.ZERO
 var _smoothed_input_dir := Vector2.ZERO
+var _ledge_direction_blocked := false
 var gameplay_action_input_enabled := true
 var _stair_controller := STAIR_CONTROLLER.new()
 var _stair_hover_offset_y: float:
@@ -500,6 +501,9 @@ func _physics_process(delta: float) -> void:
 	# side while walking forward would strafe instead of walking that way.
 	var direction := (look_basis * Vector3(
 			_smoothed_input_dir.x, 0.0, _smoothed_input_dir.y)).normalized()
+	_ledge_direction_blocked = false
+	if ledge_safety_enabled:
+		direction = _clamp_direction_to_ledge(direction)
 	if _roll_time_left > 0.0:
 		_roll_time_left = maxf(_roll_time_left - delta, 0.0)
 		if _roll_time_left > 0.0:
@@ -517,9 +521,8 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity += get_gravity() * delta
 	var horizontal_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
-	if ledge_safety_enabled:
-		horizontal_motion = _clamp_motion_to_ledge(horizontal_motion)
 	var frame_start_y := global_position.y
+	var frame_start_xz := Vector2(global_position.x, global_position.z)
 	var preserved_horizontal_velocity := Vector2(velocity.x, velocity.z)
 	_stair_controller.begin_frame()
 	var stepped_up := _stair_controller.apply_step_up(
@@ -534,6 +537,9 @@ func _physics_process(delta: float) -> void:
 	# own motion this frame; depenetration here would add an extra push.
 	if not _stair_controller.is_climbing():
 		move_and_slide()
+		if _ledge_direction_blocked:
+			global_position = Vector3(frame_start_xz.x, global_position.y, frame_start_xz.y)
+		_nudge_to_ledge_safe_zone(delta)
 	if _stair_controller.consumed_horizontal_motion:
 		velocity.x = preserved_horizontal_velocity.x
 		velocity.z = preserved_horizontal_velocity.y
@@ -871,53 +877,73 @@ func _current_interactable() -> Interactable:
 
 
 ## Prevents walking or sliding off elevated platforms/stairs into the void.
-## When grounded, probes slightly ahead; if the ground drops > step_height + 0.2,
-## blocks movement in that direction while allowing sliding parallel to the edge.
-func _clamp_motion_to_ledge(motion: Vector3) -> Vector3:
-	if (not is_on_floor() or motion.is_zero_approx() or _stair_controller.is_climbing()
-			or velocity.y > JUMP_VELOCITY_THRESHOLD):
-		return motion
+## Probes ahead of the capsule. If the requested direction leads over a drop
+## larger than a step, reject that whole input. Pure edge-parallel input still
+## moves because its own forward probe remains supported, but diagonal input
+## into a void must not be silently converted into a sideways edge slide.
+func _clamp_direction_to_ledge(dir: Vector3) -> Vector3:
+	if (not ledge_safety_enabled or not is_on_floor() or dir.is_zero_approx()
+			or _stair_controller.is_climbing() or velocity.y > JUMP_VELOCITY_THRESHOLD):
+		return dir
 	var space := get_world_3d().direct_space_state
 	if space == null:
-		return motion
-	var motion_dir := motion.normalized()
-	var probe_dist := maxf(0.42, motion.length() + 0.38)
-	var probe_xz := Vector3(motion_dir.x * probe_dist, 0.0, motion_dir.z * probe_dist)
-	var from_pos := global_position + probe_xz + Vector3.UP * 0.2
-	var ray_params := PhysicsRayQueryParameters3D.create(
-			from_pos, from_pos + Vector3.DOWN * (step_height + 0.35), collision_mask)
-	ray_params.exclude = [get_rid()]
-	var hit := space.intersect_ray(ray_params)
-	if hit.is_empty():
-		var center_ray := PhysicsRayQueryParameters3D.create(
-				global_position + Vector3.UP * 0.2,
-				global_position + Vector3.DOWN * (step_height + 0.35), collision_mask)
-		center_ray.exclude = [get_rid()]
-		var center_hit := space.intersect_ray(center_ray)
-		var x_safe := false
-		var z_safe := false
-		if not center_hit.is_empty():
-			if absf(motion.x) > 0.001:
-				var x_probe := global_position + Vector3(signf(motion.x) * probe_dist, 0.2, 0.0)
-				var x_ray := PhysicsRayQueryParameters3D.create(
-						x_probe, x_probe + Vector3.DOWN * (step_height + 0.35), collision_mask)
-				x_ray.exclude = [get_rid()]
-				x_safe = not space.intersect_ray(x_ray).is_empty()
-			if absf(motion.z) > 0.001:
-				var z_probe := global_position + Vector3(0.0, 0.2, signf(motion.z) * probe_dist)
-				var z_ray := PhysicsRayQueryParameters3D.create(
-						z_probe, z_probe + Vector3.DOWN * (step_height + 0.35), collision_mask)
-				z_ray.exclude = [get_rid()]
-				z_safe = not space.intersect_ray(z_ray).is_empty()
-		var out_motion := Vector3(0.0, motion.y, 0.0)
-		if x_safe and not z_safe:
-			out_motion.x = motion.x
-			velocity.z = 0.0
-		elif z_safe and not x_safe:
-			out_motion.z = motion.z
-			velocity.x = 0.0
-		else:
-			velocity.x = 0.0
-			velocity.z = 0.0
-		return out_motion
-	return motion
+		return dir
+	var mask: int = collision_mask | (1 << 5) | 1
+	var probe_dist := 0.30
+	var forward := dir.normalized() * probe_dist
+	var center_p := global_position + forward
+	var from_p := center_p + Vector3.UP * (step_height + 0.1)
+	var to_p := from_p + Vector3.DOWN * (step_height * 2.0 + 0.35)
+	var q := PhysicsRayQueryParameters3D.create(from_p, to_p, mask)
+	q.exclude = [get_rid()]
+	var hit := space.intersect_ray(q)
+	var center_is_void: bool = (hit.is_empty()
+			or (hit["position"] as Vector3).y < global_position.y - (step_height + 0.25))
+	if not center_is_void:
+		return dir
+	_ledge_direction_blocked = true
+	velocity.x = 0.0
+	velocity.z = 0.0
+	return Vector3.ZERO
+
+
+## Smoothly relocates the character into the safe support zone if standing over a ledge void.
+func _nudge_to_ledge_safe_zone(delta: float) -> void:
+	if (not ledge_safety_enabled or not is_on_floor() or not _smoothed_input_dir.is_zero_approx()
+			or _stair_controller.is_climbing() or velocity.y > JUMP_VELOCITY_THRESHOLD):
+		return
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return
+	var mask: int = collision_mask | (1 << 5) | 1
+	# The capsule can report a tilted normal while balanced on a flat platform
+	# lip. Only a directly sampled sloped surface disables this recovery; an
+	# empty center probe is the edge condition that needs the inward nudge.
+	var center_from := global_position + Vector3.UP * 0.2
+	var center_q := PhysicsRayQueryParameters3D.create(
+			center_from, center_from + Vector3.DOWN * (step_height + 0.35), mask)
+	center_q.exclude = [get_rid()]
+	var center_hit := space.intersect_ray(center_q)
+	if (not center_hit.is_empty()
+			and (center_hit["normal"] as Vector3).dot(Vector3.UP) < 0.99):
+		return
+	var offsets: Array[Vector3] = [
+		Vector3(0.35, 0.0, 0.0), Vector3(-0.35, 0.0, 0.0),
+		Vector3(0.0, 0.0, 0.35), Vector3(0.0, 0.0, -0.35),
+	]
+	var nudge_dir := Vector3.ZERO
+	for off: Vector3 in offsets:
+		var from_p := global_position + off + Vector3.UP * 0.2
+		var to_p := from_p + Vector3.DOWN * (step_height + 0.35)
+		var q := PhysicsRayQueryParameters3D.create(from_p, to_p, mask)
+		q.exclude = [get_rid()]
+		if space.intersect_ray(q).is_empty():
+			nudge_dir -= off
+	if nudge_dir.length_squared() > 0.01:
+		var dir := nudge_dir.normalized()
+		var safe_p := global_position + dir * 0.25 + Vector3.UP * 0.2
+		var safe_q := PhysicsRayQueryParameters3D.create(
+				safe_p, safe_p + Vector3.DOWN * (step_height + 0.35), mask)
+		safe_q.exclude = [get_rid()]
+		if not space.intersect_ray(safe_q).is_empty():
+			global_position += dir * (2.0 * delta)

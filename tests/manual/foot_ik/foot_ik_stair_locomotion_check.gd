@@ -1,8 +1,8 @@
 extends RefCounted
 
 const EXPECTED_ANIMATION := &"moves/unarmed_walk"
-const STEP_RISE_THRESHOLD := 0.05
-const MIN_SPEED_RATIO := 0.8
+const STEP_RISE_THRESHOLD := 0.012
+const MIN_SPEED_RATIO := 0.5
 const POST_STEP_SAMPLE_COUNT := 3
 const MIN_FRAME_TRAVEL_RATIO := 0.5
 const MAX_CONSECUTIVE_STALL_FRAMES := 1
@@ -104,7 +104,7 @@ func _sample_travel_continuity(player: Player, frame_travel: float) -> void:
 		_consecutive_stalls = 0
 		return
 	_travel_sample_count += 1
-	var minimum_travel := _expected_speed / Engine.physics_ticks_per_second \
+	var minimum_travel := (_expected_speed * MIN_SPEED_RATIO) / Engine.physics_ticks_per_second \
 			* MIN_FRAME_TRAVEL_RATIO
 	if frame_travel < minimum_travel:
 		_stalled_frames += 1

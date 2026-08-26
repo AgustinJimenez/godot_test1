@@ -26,11 +26,11 @@ var _head_trace_points: Array[Vector3] = []
 var _player_body: PlayerBody
 var _ik: PlayerFootIKModifier
 var _skel: Skeleton3D
-var _probes: Dictionary = {} # side -> Node3D (BoneAttachment3D child), foot bone
-var _toe_probes: Dictionary = {} # side -> Node3D (BoneAttachment3D child), toe bone, or null
-var _markers: Dictionary = {} # "side_kind" -> MeshInstance3D, kind in hit/target/actual/toe
-var _angle_probes: Dictionary = {} # side -> {hip, knee, leaf: Node3D or null}
-var _angle_labels: Dictionary = {} # side -> {segment: Label3D}, positioned at segment midpoint
+var _probes: Dictionary = {}
+var _toe_probes: Dictionary = {}
+var _markers: Dictionary = {}
+var _angle_probes: Dictionary = {}
+var _angle_labels: Dictionary = {}
 # Ordered [key, column_header] pairs (order matters, so Array not Dictionary).
 const READOUT_FIELDS := [
 	["hit", "Hit"],
@@ -117,33 +117,32 @@ func _ready() -> void:
 		var attach := BoneAttachment3D.new()
 		_skel.add_child(attach)
 		attach.bone_idx = foot_idx
-		var probe := Node3D.new()
-		attach.add_child(probe)
-		_probes[side] = probe
-		_markers[str(side) + "_hit"] = FootIkDebugMarkers.spawn_marker(self, Color.GREEN)
-		_markers[str(side) + "_target"] = FootIkDebugMarkers.spawn_marker(self, Color.BLUE)
+		_probes[side] = attach
+		var tgt_col := Color(1.0, 0.2, 0.7) if side == "left" else Color(0.2, 1.0, 0.4)
+		_markers[str(side) + "_hit"] = FootIkDebugMarkers.spawn_marker(self, Color.YELLOW)
+		_markers[str(side) + "_target"] = FootIkDebugMarkers.spawn_marker(self, tgt_col)
 		_markers[str(side) + "_actual"] = FootIkDebugMarkers.spawn_marker(self, Color.RED)
 		_markers[str(side) + "_ray"] = FootIkDebugMarkers.spawn_ray(self, Color.WHITE)
-		# Separate probe for the toe/ball bone - the ankle marker can be on target while the toe pokes up.
 		var toe_idx: int = indices.get("toe", -1)
 		if toe_idx >= 0:
 			var toe_attach := BoneAttachment3D.new()
 			_skel.add_child(toe_attach)
 			toe_attach.bone_idx = toe_idx
-			var toe_probe := Node3D.new()
-			toe_attach.add_child(toe_probe)
-			_toe_probes[side] = toe_probe
+			_toe_probes[side] = toe_attach
 			_markers[str(side) + "_toe"] = FootIkDebugMarkers.spawn_marker(self, Color.YELLOW)
-
 		_angle_probes[side] = {
-			"hip": _make_probe(indices["hip"]),
-			"knee": _make_probe(indices["knee"]),
+			"hip": _make_probe(indices["hip"]), "knee": _make_probe(indices["knee"]),
 			"leaf": _make_probe(indices.get("leaf", -1)) if indices.get("leaf", -1) >= 0 else null,
 		}
-
 		_angle_labels[side] = {}
 		for segment: String in ["thigh", "shin", "foot", "leaf"]:
 			(_angle_labels[side] as Dictionary)[segment] = FootIkDebugMarkers.spawn_angle_label(self)
+	_markers["l_zone"] = FootIkDebugMarkers.spawn_zone_quad(
+			self, Color(1.0, 0.2, 0.7, 0.35), Vector2(0.50, 0.80))
+	_markers["r_zone"] = FootIkDebugMarkers.spawn_zone_quad(
+			self, Color(0.2, 1.0, 0.4, 0.35), Vector2(0.50, 0.80))
+	_markers["c_line"] = FootIkDebugMarkers.spawn_zone_quad(
+			self, Color(1.0, 0.9, 0.1, 0.8), Vector2(0.02, 0.90))
 
 	# Parented to a BoneAttachment3D so it tracks the bone directly; the trail below shows its path.
 	var head_idx := _skel.find_bone(_player_body.resolve_bone_name(&"Head"))
@@ -840,14 +839,37 @@ func _physics_process(delta: float) -> void:
 	# Whichever camera is rendering now, not assuming the detached one this scene starts you in.
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
-		var rot_deg := cam.global_rotation_degrees
-		_camera_readout.text = (
-				("camera pos=(%.2f, %.2f, %.2f) rot(deg)=(%.1f, %.1f, %.1f) [%s]"
-				+ "\nplayer_pos=%s ik_active=%s retracted: left=%s right=%s")
-				% [cam.global_position.x, cam.global_position.y, cam.global_position.z,
-					rot_deg.x, rot_deg.y, rot_deg.z, cam.name,
-					(_player_body.get_parent() as Node3D).global_position, _ik.active,
-					_ik.debug_retracted.get("left", false), _ik.debug_retracted.get("right", false)])
+		var pos_fmt := "cam pos=(%.2f, %.2f, %.2f) rot=(%.1f, %.1f, %.1f) [%s]\npos=%s ik=%s"
+		_camera_readout.text = (pos_fmt + " retract: L=%s R=%s") % [
+				cam.global_position.x, cam.global_position.y, cam.global_position.z,
+				cam.global_rotation_degrees.x, cam.global_rotation_degrees.y,
+				cam.global_rotation_degrees.z, cam.name,
+				(_player_body.get_parent() as Node3D).global_position, _ik.active,
+				_ik.debug_retracted.get("left", false), _ik.debug_retracted.get("right", false)]
+	if _player_body != null and _markers.has("l_zone"):
+		var p_node := _player_body.get_parent() as Node3D
+		var p_tf: Transform3D = (p_node.global_transform if p_node != null
+				else _player_body.global_transform)
+		var left_hip_idx: int = _ik._bone_indices[&"left"]["hip"]
+		var right_hip_idx: int = _ik._bone_indices[&"right"]["hip"]
+		var hip_l_w: Vector3 = (_skel.global_transform
+				* _skel.get_bone_global_pose(left_hip_idx).origin)
+		var hip_r_w: Vector3 = (_skel.global_transform
+				* _skel.get_bone_global_pose(right_hip_idx).origin)
+		var hip_center_w := (hip_l_w + hip_r_w) * 0.5
+		var hip_axis_vec := hip_l_w - hip_r_w
+		hip_axis_vec.y = 0.0
+		var hip_lat_dir := (hip_axis_vec.normalized()
+				if hip_axis_vec.length_squared() > 0.0001 else p_tf.basis.x)
+		var hip_fwd_dir := Vector3.UP.cross(hip_lat_dir).normalized()
+		var hip_basis := Basis(hip_lat_dir, Vector3.UP, -hip_fwd_dir).orthonormalized()
+		var org := _player_body.global_position
+		(_markers["l_zone"] as Node3D).global_transform = Transform3D(
+				hip_basis, org + hip_lat_dir * 0.31 + Vector3.UP * 0.015)
+		(_markers["r_zone"] as Node3D).global_transform = Transform3D(
+				hip_basis, org - hip_lat_dir * 0.31 + Vector3.UP * 0.015)
+		(_markers["c_line"] as Node3D).global_transform = Transform3D(
+				hip_basis, org + Vector3.UP * 0.02)
 
 	for side: String in ["left", "right"]:
 		var values: Dictionary = _readout_values[side]
@@ -857,7 +879,6 @@ func _physics_process(delta: float) -> void:
 		var sole_down_local: Vector3 = _ik._sole_down_local[side]
 		var actual_sole_down := actual_basis * sole_down_local
 		var pitch_deg := rad_to_deg(actual_sole_down.angle_to(Vector3.DOWN))
-
 		var has_target: bool = _ik._smoothed_target.has(side)
 		var target: Vector3 = _ik._smoothed_target.get(side, actual_pos)
 		var normal: Vector3 = _ik._smoothed_normal.get(side, Vector3.UP)
@@ -884,9 +905,8 @@ func _physics_process(delta: float) -> void:
 		(values["is_floating"] as Label).text = str(w < 0.5)
 		(values["step_down"] as Label).text = str(bool(_ik.debug_step_down.get(side, false)))
 		(values["raw_weight"] as Label).text = "%.3f" % float(_ik.debug_raw_weight.get(side, 0.0))
-		(values["contact_lost"] as Label).text = str(bool(_ik.debug_contact_lost.get(side, false)))
-		(values["vertical_velocity"] as Label).text = "%.3f" % float(
-				_ik.debug_vertical_velocity.get(side, 0.0))
+		var vy: float = float(_ik.debug_vertical_velocity.get(side, 0.0))
+		(values["vertical_velocity"] as Label).text = "%.3f" % vy
 
 		if _toe_probes.has(side):
 			var toe_probe: Node3D = _toe_probes[side]
@@ -967,33 +987,12 @@ func _capture_controlled_foot_frame() -> void:
 			var q_auth := probe.global_transform.basis.get_rotation_quaternion().normalized()
 			var q_ik := solved_world.basis.get_rotation_quaternion().normalized()
 			diff_rot = rad_to_deg(q_auth.angle_to(q_ik))
-		var diff_pos := actual_pos.distance_to(solved_foot_pos)
-		trace["feet"][side] = {
-			"gap": actual_pos.y - target.y - sole_depth,
-			"sole_clearance": sole.y - target.y,
-			"pitch_deg": rad_to_deg(sole.normalized().angle_to(Vector3.DOWN)),
-			"solved_foot_angle_deg": solved_foot_angle, "solved_foot_pos": solved_foot_pos,
-			"diff_rot_deg": diff_rot, "diff_pos_m": diff_pos,
-			"ground_weight": float(_ik._smoothed_ground_weight.get(side, 0.0)),
-			"vertical_velocity": float(_ik.debug_vertical_velocity.get(side, 0.0)),
-			"contact_hit": bool(_ik.debug_contact_hit.get(side, false)),
-			"contact_distance": float(_ik.debug_contact_distance.get(side, -1.0)),
-			"contact_lost": bool(_ik.debug_contact_lost.get(side, false)),
-			"frozen": bool(_ik._idle_frozen.get(side, false)),
-			"locomotion_stance": _ik._gait_tracker.is_locomotion_stance_active(side),
-			"locomotion_locked": _ik._gait_tracker.is_locomotion_target_locked(side),
-			"freeze_streak": int(_ik._idle_freeze_streak.get(side, 0)),
-			"step_down": bool(_ik.debug_step_down.get(side, false)),
-			"toe_tip_y": toe_probe.global_position.y if toe_probe != null else 0.0,
-			"foot_pos": actual_pos,
-			"hip_pos": hip_probe.global_position if hip_probe != null else Vector3.ZERO,
-			"smoothed_target": target,
-			"bone_lengths": TRACE_WRITER.measure_bone_lengths(
-					joints, _ik._leg_lengths.get(side, {})),
-			"floor_angle_deg": rad_to_deg(normal.angle_to(Vector3.UP)),
-			"leg_angles_deg": _compute_leg_angles(side),
-			"joints": joints,
-		}
+		var toe_y := toe_probe.global_position.y if toe_probe != null else 0.0
+		var hip_p := hip_probe.global_position if hip_probe != null else Vector3.ZERO
+		trace["feet"][side] = TRACE_WRITER.build_foot_trace(
+				_ik, side, actual_pos, target, normal, sole_depth, sole_dir,
+				toe_y, hip_p, solved_foot_angle, solved_foot_pos, diff_rot,
+				joints, _compute_leg_angles(side))
 	# Rolling window, not an ever-growing append: always holds the moment a
 	# live shake just happened without a whole play session in the file.
 	_controlled_trace_writer.capture(JSON.stringify(trace))
