@@ -1,5 +1,6 @@
 class_name FootIkEdgeStanceCheck
 extends Node3D
+const JOINT_LIMIT_CHECK := preload("res://tests/manual/foot_ik/foot_ik_joint_limit_check.gd")
 ## Regression check that tests 100 randomized positions and rotations along
 ## the perimeter edges and corners of a tall platform to verify that the feet
 ## never cross the body centerline under any placement or orientation.
@@ -119,6 +120,7 @@ func _physics_process(_delta: float) -> void:
 func _evaluate_case(case_idx: int) -> void:
 	var c: Dictionary = _cases[case_idx]
 	var case_name: String = c["name"]
+	_failures.append_array(JOINT_LIMIT_CHECK.failures(_ik, _skel, case_name))
 	var left_hip_idx: int = _ik._bone_indices[&"left"]["hip"]
 	var right_hip_idx: int = _ik._bone_indices[&"right"]["hip"]
 	var left_foot_idx: int = _ik._bone_indices[&"left"]["foot"]

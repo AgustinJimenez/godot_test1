@@ -6,6 +6,7 @@ extends Node3D
 const PLAYER_SCENE := preload("res://actors/player/player.tscn")
 const PENETRATION_CHECK := preload(
 		"res://tests/manual/foot_ik/foot_ik_live_penetration_check.gd")
+const JOINT_LIMIT_CHECK := preload("res://tests/manual/foot_ik/foot_ik_joint_limit_check.gd")
 const RAMP_ANGLES: Array[float] = [15.0, 30.0, 45.0]
 const RAMP_POSITIONS: Array[Dictionary] = [
 	{"name": &"low_center", "fraction": 0.18, "lateral": 0.0, "root_offset": 0.05},
@@ -68,6 +69,7 @@ var _sweep_mode := false
 var _sweep_spacing := SWEEP_DEFAULT_SPACING_M
 var _sweep_yaw_step := SWEEP_DEFAULT_YAW_STEP_DEGREES
 var _case_invalid_contact_samples := 0
+var _case_joint_limit_failures: Array[String] = []
 var _sweep_sample_complete := false
 var _sweep_failure_file: FileAccess
 var _sweep_failed_cases := 0
@@ -304,6 +306,7 @@ func _start_next_case() -> void:
 	_case_crossed_leg_samples = 0
 	_case_max_leg_crossover = 0.0
 	_case_invalid_contact_samples = 0
+	_case_joint_limit_failures.clear()
 	_sweep_sample_complete = false
 
 
@@ -326,6 +329,9 @@ func _sample_current_case() -> void:
 					+ int((sample["bones"] as Dictionary)[bone])
 	_sample_leg_order()
 	_sample_invalid_contact()
+	for failure in JOINT_LIMIT_CHECK.failures(_ik, _player.skeleton, "ramp_matrix"):
+		if not _case_joint_limit_failures.has(failure):
+			_case_joint_limit_failures.append(failure)
 	_sweep_sample_complete = _sweep_mode
 
 
@@ -357,7 +363,8 @@ func _sample_leg_order() -> void:
 func _finish_current_case() -> void:
 	var data := _cases[_case_index]
 	var case_failed := (_case_penetrating_samples > 0 or _case_samples == 0
-			or _case_crossed_leg_samples > 0 or _case_invalid_contact_samples > 0)
+			or _case_crossed_leg_samples > 0 or _case_invalid_contact_samples > 0
+			or not _case_joint_limit_failures.is_empty())
 	_failed = _failed or case_failed
 	if _sweep_mode and case_failed:
 		_sweep_failed_cases += 1
@@ -375,6 +382,7 @@ func _finish_current_case() -> void:
 			" crossed_leg_samples=", _case_crossed_leg_samples,
 			" max_leg_crossover_m=", snappedf(_case_max_leg_crossover, 0.000001),
 			" invalid_contact_samples=", _case_invalid_contact_samples,
+			" joint_limit_failures=", _case_joint_limit_failures,
 			" spawn=", _spawn_position,
 			" settled=", _player.global_position,
 			" bones=", _case_bones)
@@ -396,6 +404,7 @@ func _record_sweep_failure(data: Dictionary) -> void:
 		"crossed_leg_samples": _case_crossed_leg_samples,
 		"max_leg_crossover_m": _case_max_leg_crossover,
 		"invalid_contact_samples": _case_invalid_contact_samples,
+		"joint_limit_failures": _case_joint_limit_failures,
 		"bones": _case_bones,
 	}))
 	_sweep_failure_file.flush()

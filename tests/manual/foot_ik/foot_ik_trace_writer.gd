@@ -123,6 +123,9 @@ static func build_foot_trace(ik: Node, side: String,
 		solved_foot_angle: float, solved_foot_pos: Vector3, diff_rot: float,
 		joints: Dictionary, leg_angles: Dictionary) -> Dictionary:
 	var sole: Vector3 = actual_pos + sole_dir * sole_depth
+	var contact_hit := bool(ik.debug_contact_hit.get(side, false))
+	var owner := _target_owner(ik, side)
+	var action := _solver_action(ik, side, contact_hit, owner)
 	return {
 		"gap": actual_pos.y - target.y - sole_depth,
 		"sole_clearance": sole.y - target.y,
@@ -132,8 +135,10 @@ static func build_foot_trace(ik: Node, side: String,
 		"diff_rot_deg": diff_rot,
 		"diff_pos_m": actual_pos.distance_to(solved_foot_pos),
 		"ground_weight": float(ik._smoothed_ground_weight.get(side, 0.0)),
+		"raw_weight": float(ik.debug_raw_weight.get(side, 0.0)),
+		"weight_stuck_time": float(ik._weight_stuck_time.get(side, 0.0)),
 		"vertical_velocity": float(ik.debug_vertical_velocity.get(side, 0.0)),
-		"contact_hit": bool(ik.debug_contact_hit.get(side, false)),
+		"contact_hit": contact_hit,
 		"contact_dist": float(ik.debug_contact_distance.get(side, -1.0)),
 		"contact_lost": bool(ik.debug_contact_lost.get(side, false)),
 		"frozen": bool(ik._idle_frozen.get(side, false)),
@@ -144,9 +149,50 @@ static func build_foot_trace(ik: Node, side: String,
 		"toe_tip_y": toe_pos_y,
 		"foot_pos": actual_pos,
 		"smoothed_target": target,
+		"raw_target": ik._ground_sampler.debug_raw_target.get(side, target),
 		"hip_pos": hip_pos,
 		"bone_lengths": measure_bone_lengths(joints, ik._leg_lengths.get(side, {})),
 		"floor_angle_deg": rad_to_deg(normal.angle_to(Vector3.UP)),
 		"leg_angles_deg": leg_angles,
+		"target_owner": owner,
+		"solver_action": action,
+		"decision": "%s foot: support=%s target_y=%.3f owner=%s action=%s" % [
+				side, "hit" if contact_hit else "miss", target.y, owner, action],
+		"signed_knee_flexion_deg": float(
+				ik._leg_solver.debug_signed_knee_flexion.get(side, 0.0)),
+		"negative_knee_clamped": bool(
+				ik._leg_solver.debug_negative_knee_clamped.get(side, false)),
 		"joints": joints,
 	}
+
+
+static func _target_owner(ik: Node, side: String) -> String:
+	if ik._ground_sampler.idle_lower_acquiring.has(side):
+		return "idle_lower_acquiring"
+	if ik._ground_sampler.idle_lower_latched_target.has(side):
+		return "idle_lower_latched"
+	if ik._idle_frozen.get(side, false):
+		return "idle_freeze"
+	if ik._gait_tracker.is_locomotion_target_locked(side):
+		return "locomotion_lock"
+	if ik._gait_tracker.is_locomotion_stance_active(side):
+		return "locomotion_stance"
+	return "live_contact"
+
+
+static func _solver_action(ik: Node, side: String, contact_hit: bool, owner: String) -> String:
+	if not ik.active:
+		return "animation_only"
+	if bool(ik._leg_solver.debug_negative_knee_clamped.get(side, false)):
+		return "clamp_negative_knee"
+	if not contact_hit and float(ik._smoothed_ground_weight.get(side, 0.0)) <= 0.001:
+		return "release_unsupported"
+	if owner == "idle_lower_acquiring":
+		return "move_to_lower_support"
+	if bool(ik._leg_solver.debug_stance_limited.get(side, false)):
+		return "limit_stance_crossing"
+	return "solve_to_support"
+
+
+static func build_decision_summary(feet: Dictionary) -> String:
+	return "%s; %s" % [feet["left"]["decision"], feet["right"]["decision"]]

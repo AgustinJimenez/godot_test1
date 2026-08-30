@@ -80,6 +80,8 @@ var _stair_locomotion_check := preload(
 var _walk_continuity_check := preload(
 		"res://tests/manual/foot_ik/foot_ik_walk_continuity_check.gd").new()
 var _automated_walk_check := "--foot-ik-walk-check" in OS.get_cmdline_user_args()
+var _idle_ik_seam_check := preload(
+		"res://tests/manual/foot_ik/foot_ik_idle_seam_check.gd").new()
 var _stair_trace_marker := FileAccess.file_exists("user://foot_ik_stair_trace_marker")
 var _stair_trace_buffer: Array[String] = []
 const STAIR_TRACE_LIVE_FILE := "user://foot_ik_stair_trace_live.jsonl"
@@ -151,6 +153,7 @@ var _burst_elapsed := 0.0
 const WALK_LEG_TIME := 3.0 # seconds per forward/back leg, stays on the platform
 var _walk_elapsed := 0.0
 func _physics_process(delta: float) -> void:
+	_idle_ik_seam_check.advance($Player)
 	if _auto_spin:
 		$Player.movement_input_override = Vector2.ZERO
 		_burst_elapsed += delta
@@ -324,7 +327,6 @@ func _sample_body_stair_penetration(walker: Dictionary) -> Dictionary:
 	_body_penetration_max_depth = maxf(_body_penetration_max_depth, sample_max_depth)
 	return {"available": true, "vertices": sample_vertices,
 			"max_depth": sample_max_depth, "bones": penetrating_bones}
-
 func _mesh_bind_transforms(mesh_part: MeshInstance3D, skeleton: Skeleton3D,
 		ik: PlayerFootIKModifier) -> Array[Transform3D]:
 	var result: Array[Transform3D] = []
@@ -347,7 +349,6 @@ func _mesh_bind_transforms(mesh_part: MeshInstance3D, skeleton: Skeleton3D,
 			pose = ik._final_bone_poses[bone_index]
 		result[bind_index] = skeleton.global_transform * pose * skin.get_bind_pose(bind_index)
 	return result
-
 func _mesh_bind_bone_names(
 		mesh_part: MeshInstance3D, skeleton: Skeleton3D) -> Array[StringName]:
 	var result: Array[StringName] = []

@@ -107,6 +107,8 @@ func update(
 		and contact_hit
 		and clearance_above_target <= idle_settle_budget + _owner.step_min_rise
 	)
+	var idle_supported_contact: bool = (idle_settling
+			and _owner.player_body.anim_player.current_animation.get_file().contains("idle"))
 	var idle_sloped_contact: bool = (
 		not void_dangle
 		and _body_horizontal_speed() <= IDLE_TRANSLATION_EPSILON
@@ -169,7 +171,12 @@ func update(
 	_owner.debug_raw_weight[side] = raw_weight
 	_owner.debug_contact_lost[side] = contact_lost
 	var weight := _smooth_weight(side, raw_weight, contact_lost, delta)
-	if penetrating_contact or force_plant or idle_sloped_contact:
+	# Godot can evaluate a SkeletonModifier3D with delta=0. A supported foot
+	# arriving from locomotion must still finish its idle handoff on that pass;
+	# otherwise smoothing cannot advance and the last walking weight can remain
+	# pinned indefinitely (live split-height trace: left stayed at 0.2083).
+	if ((penetrating_contact and _owner._landing_grace_time <= 0.0)
+			or force_plant or idle_sloped_contact or idle_supported_contact):
 		weight = 1.0
 		_owner._smoothed_ground_weight[side] = 1.0
 	return {"vertical_velocity": velocity, "ground_weight": weight, "landed": landed}
@@ -435,6 +442,7 @@ func is_locomotion_landing_imminent(side: StringName) -> bool:
 
 func update_idle_freeze(side: StringName, anim_speed: float, delta: float, yaw: float) -> bool:
 	var frozen: bool = _owner._idle_frozen.get(side, false)
+	var was_frozen := frozen
 	var body_translating := _body_horizontal_speed() > IDLE_TRANSLATION_EPSILON
 	var last_yaw_key := StringName("%s:last" % side)
 	var last_yaw: float = _owner._idle_freeze_yaw.get(last_yaw_key, yaw)
@@ -473,6 +481,11 @@ func update_idle_freeze(side: StringName, anim_speed: float, delta: float, yaw: 
 		frozen = int(_owner._idle_freeze_streak.get(side, 0)) >= IDLE_FREEZE_STREAK
 		if frozen:
 			_owner._idle_freeze_yaw[side] = yaw
+	# The side-key is also the target-lock latch. Leaving it behind after the
+	# animation releases idle freeze makes target_lock_allows_latch() keep the
+	# old world contact indefinitely, even though this function reports false.
+	if was_frozen and not frozen:
+		_owner._idle_freeze_yaw.erase(side)
 	_owner._idle_frozen[side] = frozen
 	return frozen
 

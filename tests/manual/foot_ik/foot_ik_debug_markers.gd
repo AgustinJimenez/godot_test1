@@ -7,6 +7,17 @@ extends RefCounted
 const MARKER_RADIUS := 0.015
 
 
+static func signed_knee_flexion(hip: Vector3, knee: Vector3, foot: Vector3,
+		forward: Vector3) -> float:
+	var upper := knee - hip
+	var lower := foot - knee
+	var flexion := rad_to_deg(upper.angle_to(lower))
+	var line := foot - hip
+	var along := clampf((knee - hip).dot(line) / line.length_squared(), 0.0, 1.0)
+	var pole := knee - (hip + line * along)
+	return flexion if pole.dot(forward) >= 0.0 else -flexion
+
+
 static func spawn_marker(parent: Node, color: Color) -> MeshInstance3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color

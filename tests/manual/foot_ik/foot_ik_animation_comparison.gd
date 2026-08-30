@@ -45,9 +45,13 @@ var _crouch_dummies: Array[Dictionary] = []
 var _crouch_direction := 1.0
 var _sample_scheduled := false
 var _trace_writer := TRACE_WRITER.new(CROUCH_TRACE_FILE, 1200)
+var _automated_check := false
+var _comparison_frame := 0
+var _comparison_failures: Dictionary = {}
 
 
 func _ready() -> void:
+	_automated_check = "--animation-comparison-check" in OS.get_cmdline_user_args()
 	_build_comparison_pad()
 	for index in CASES.size():
 		_build_dummy(index, CASES[index])
@@ -56,7 +60,11 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	_comparison_frame += 1
 	_update_dummy_comparisons()
+	if _automated_check and _comparison_frame >= 360:
+		_finish_automated_check()
+		return
 	if _crouch_dummies.is_empty():
 		return
 	var leader := _crouch_dummies[0]["player"] as Player
@@ -116,12 +124,24 @@ func _update_dummy_comparisons() -> void:
 			ik_label.modulate = Color(1.0, 0.35, 0.35)
 		if not errors.is_empty():
 			var case_name: String = ik_dummy["base_label"].replace("\n", " ")
+			if _automated_check and _comparison_frame > 120:
+				_comparison_failures[case_name] = errors.duplicate()
 			print("[ANIM_DIFF_INSTANT] Frame %d: %s => %s" % [
 					Engine.get_physics_frames(), case_name, ", ".join(errors)])
 		if Engine.get_physics_frames() % 60 == 0:
 			var status := "✓ SYNCED" if errors.is_empty() else "⚠ DIFF: " + ", ".join(errors)
 			var case_name: String = ik_dummy["base_label"].replace("\n", " ")
 			print("[ANIM_COMPARE] %s => %s" % [case_name, status])
+
+
+func _finish_automated_check() -> void:
+	if _comparison_failures.is_empty():
+		print("FOOT_IK_ANIMATION_COMPARISON_CHECK PASS cases=%d frames=%d" % [
+				CASES.size() / 2, _comparison_frame])
+		get_tree().quit(0)
+		return
+	print("FOOT_IK_ANIMATION_COMPARISON_CHECK FAIL cases=%s" % str(_comparison_failures))
+	get_tree().quit(1)
 
 
 func _build_comparison_pad() -> void:

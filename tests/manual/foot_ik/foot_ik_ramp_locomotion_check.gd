@@ -1,5 +1,6 @@
 class_name FootIkRampLocomotionCheck
 extends Node3D
+const JOINT_LIMIT_CHECK := preload("res://tests/manual/foot_ik/foot_ik_joint_limit_check.gd")
 ## Physical ramp regression: verifies travel, floor contact, stopped-body
 ## drift, and planted-foot clearance instead of only teleporting idle poses.
 
@@ -276,6 +277,7 @@ func _finish_case() -> void:
 	var drift := Vector2(_player.global_position.x - _hold_start.x,
 			_player.global_position.z - _hold_start.z).length()
 	var case_errors: Array[String] = []
+	case_errors.append_array(JOINT_LIMIT_CHECK.failures(_ik, _player.skeleton, String(data["name"])))
 	if travel < MIN_TRAVEL:
 		case_errors.append("travel=%.3f<%.3f" % [travel, MIN_TRAVEL])
 	if _airborne_move_frames > MAX_AIRBORNE_MOVE_FRAMES:

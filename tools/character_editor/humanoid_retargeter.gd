@@ -235,6 +235,36 @@ static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 	return anim
 
 
+## Removes a one-shot settling intro from selected tracks when that motion is
+## reused as a loop. The clip end becomes the start and eases back into the
+## authored motion, without changing unrelated upper-body tracks.
+static func smooth_idle_leg_loop(animation: Animation,
+		target_humanoid_map: Dictionary, blend_time: float = 0.35) -> void:
+	var selected := {}
+	for role: StringName in [
+			&"LeftUpLeg", &"LeftLeg", &"LeftFoot",
+			&"RightUpLeg", &"RightLeg", &"RightFoot"]:
+		selected[StringName(target_humanoid_map.get(role, role))] = true
+	for track in animation.get_track_count():
+		if animation.track_get_type(track) != Animation.TYPE_ROTATION_3D:
+			continue
+		var path := animation.track_get_path(track)
+		if path.get_subname_count() == 0 or not selected.has(StringName(path.get_subname(0))):
+			continue
+		var key_count := animation.track_get_key_count(track)
+		if key_count < 2:
+			continue
+		var end_rotation: Quaternion = animation.track_get_key_value(track, key_count - 1)
+		for key in key_count:
+			var key_time := animation.track_get_key_time(track, key)
+			if key_time > blend_time:
+				break
+			var authored: Quaternion = animation.track_get_key_value(track, key)
+			var linear_weight := clampf(key_time / blend_time, 0.0, 1.0)
+			var weight := smoothstep(0.0, 1.0, linear_weight)
+			animation.track_set_key_value(track, key, end_rotation.slerp(authored, weight))
+
+
 ## A CharacterBody already owns world translation. Imported locomotion often
 ## also translates Hips across one cycle, making the mesh drift away from its
 ## controller/camera and snap back at the loop. Remove only accumulated X/Z

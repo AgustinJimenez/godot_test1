@@ -1,4 +1,5 @@
 extends Node3D
+const JOINT_LIMIT_CHECK := preload("res://tests/manual/foot_ik/foot_ik_joint_limit_check.gd")
 ## Deterministic IK-off/IK-on comparison for flat-ground locomotion.
 ##
 ## Both players receive the same input on the same physics frames. The check
@@ -470,6 +471,12 @@ func _finish_case() -> void:
 	var case_failed := false
 	var audit: Dictionary = _regression_audit.finish_case()
 	case_failed = bool(audit["failed"])
+	var joint_failures := JOINT_LIMIT_CHECK.failures(
+			_ik_modifiers[&"ik"], (_players[&"ik"] as Player).skeleton,
+			String(CASES[_case_index]["name"]))
+	if not joint_failures.is_empty():
+		case_failed = true
+		print("FOOT_IK_JOINT_LIMIT_CHECK FAIL ", "; ".join(joint_failures))
 	var worst_added := -INF
 	var worst_joint := StringName()
 	var authored_max := 0.0

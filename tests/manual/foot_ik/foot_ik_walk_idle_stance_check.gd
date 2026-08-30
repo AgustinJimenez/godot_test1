@@ -11,6 +11,7 @@ const WALK_FRAMES := 90
 const IDLE_GRACE_FRAMES := 40
 const IDLE_SAMPLE_FRAMES := 90
 const MIN_SIDE_CLEARANCE := 0.04
+const MAX_FROZEN_TARGET_DRIFT := 0.08
 
 var _player: Player
 var _skeleton: Skeleton3D
@@ -100,6 +101,8 @@ func _physics_process(_delta: float) -> void:
 
 
 func _sample_stance(idle_frame: int) -> void:
+	_check_released_target_latches(idle_frame)
+	_check_frozen_target_drift(idle_frame)
 	var left_hip_idx: int = _ik._bone_indices[&"left"]["hip"]
 	var right_hip_idx: int = _ik._bone_indices[&"right"]["hip"]
 	var left_foot_idx: int = _ik._bone_indices[&"left"]["foot"]
@@ -136,6 +139,36 @@ func _sample_stance(idle_frame: int) -> void:
 				float(_ik._smoothed_ground_weight.get(&"left", 0.0)),
 				float(_ik._smoothed_ground_weight.get(&"right", 0.0)),
 			])
+
+
+func _check_released_target_latches(idle_frame: int) -> void:
+	for side: StringName in [&"left", &"right"]:
+		if bool(_ik._idle_frozen.get(side, false)) or not _ik._idle_freeze_yaw.has(side):
+			continue
+		var key := "%s:stale_latch" % side
+		var current: Dictionary = _cases[_case_index]
+		if _failed_cases.has(key):
+			continue
+		_failed_cases[key] = true
+		_failures.append(
+				"%s idle_frame=%d %s foot released with stale target latch" % [
+					current["name"], idle_frame, side])
+
+
+func _check_frozen_target_drift(idle_frame: int) -> void:
+	for side: StringName in [&"left", &"right"]:
+		if not bool(_ik._idle_frozen.get(side, false)):
+			continue
+		var held: Vector3 = _ik._smoothed_target.get(side, Vector3.ZERO)
+		var sampled: Vector3 = _ik._ground_sampler.debug_raw_target.get(side, held)
+		if held.distance_to(sampled) <= MAX_FROZEN_TARGET_DRIFT + 0.001:
+			continue
+		var key := "%s:frozen_drift" % side
+		if _failed_cases.has(key):
+			continue
+		_failed_cases[key] = true
+		_failures.append("%s idle_frame=%d %s frozen target drift=%.3f" % [
+				_cases[_case_index]["name"], idle_frame, side, held.distance_to(sampled)])
 
 
 func _final_pose(bone_idx: int) -> Transform3D:

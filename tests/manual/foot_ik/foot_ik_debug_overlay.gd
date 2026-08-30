@@ -135,7 +135,7 @@ func _ready() -> void:
 			"leaf": _make_probe(indices.get("leaf", -1)) if indices.get("leaf", -1) >= 0 else null,
 		}
 		_angle_labels[side] = {}
-		for segment: String in ["thigh", "shin", "foot", "leaf"]:
+		for segment: String in ["knee", "shin", "foot", "leaf"]:
 			(_angle_labels[side] as Dictionary)[segment] = FootIkDebugMarkers.spawn_angle_label(self)
 	_markers["l_zone"] = FootIkDebugMarkers.spawn_zone_quad(
 			self, Color(1.0, 0.2, 0.7, 0.35), Vector2(0.50, 0.80))
@@ -265,12 +265,13 @@ func _compute_leg_angles(side: StringName) -> Dictionary:
 	var result := {}
 	if hip_probe == null or knee_probe == null or foot_probe == null:
 		return result
-
 	var hip_to_knee := knee_probe.global_position - hip_probe.global_position
 	var knee_to_foot := foot_probe.global_position - knee_probe.global_position
 	result["thigh"] = rad_to_deg(hip_to_knee.angle_to(Vector3.DOWN))
 	result["shin"] = rad_to_deg(knee_to_foot.angle_to(Vector3.DOWN))
-
+	result["knee"] = FootIkDebugMarkers.signed_knee_flexion(
+			hip_probe.global_position, knee_probe.global_position, foot_probe.global_position,
+			_player_body.global_transform.basis.z)
 	if toe_probe != null:
 		var foot_to_toe := toe_probe.global_position - foot_probe.global_position
 		result["foot"] = rad_to_deg(foot_to_toe.angle_to(Vector3.DOWN))
@@ -291,7 +292,7 @@ func _update_angle_labels(side: String, angles: Dictionary) -> void:
 
 	var midpoints := {}
 	if hip_probe != null and knee_probe != null:
-		midpoints["thigh"] = (hip_probe.global_position + knee_probe.global_position) * 0.5
+		midpoints["knee"] = knee_probe.global_position + Vector3.UP * 0.08
 	if knee_probe != null and foot_probe != null:
 		midpoints["shin"] = (knee_probe.global_position + foot_probe.global_position) * 0.5
 	if foot_probe != null and toe_probe != null:
@@ -299,17 +300,17 @@ func _update_angle_labels(side: String, angles: Dictionary) -> void:
 	if toe_probe != null and leaf_probe != null:
 		midpoints["leaf"] = (toe_probe.global_position + leaf_probe.global_position) * 0.5
 
-	for segment: String in ["thigh", "shin", "foot", "leaf"]:
+	for segment: String in ["knee", "shin", "foot", "leaf"]:
 		var label: Label3D = labels.get(segment)
 		if label == null:
 			continue
+		label.pixel_size = 0.0021 if segment == "knee" else 0.0007
 		if angles.has(segment) and midpoints.has(segment):
 			label.text = "%.1f°" % angles[segment]
 			label.global_position = midpoints[segment]
 			label.visible = true
 		else:
 			label.visible = false
-
 ## Full-precision console snapshot; _physics_process shows the same numbers live, panel-sized.
 func _log_leg_angles() -> void:
 	for side: StringName in [&"left", &"right"]:
@@ -927,7 +928,6 @@ func _physics_process(delta: float) -> void:
 		_update_angle_labels(side, angles)
 	_capture_controlled_foot_frame()
 
-
 func _capture_controlled_foot_frame() -> void:
 	if _ik == null or _player_body == null:
 		return
@@ -947,6 +947,7 @@ func _capture_controlled_foot_frame() -> void:
 				Vector3.ZERO, c_facing, true)
 	var trace := {
 		"frame": Engine.get_physics_frames(), "root": _player_body.global_position,
+		"render_fps": Engine.get_frames_per_second(),
 		"bones": TRACE_WRITER.capture_body_chain(_player_body),
 		"root_yaw_deg": rad_to_deg((_player_body.get_parent() as Node3D).rotation.y),
 		"movement_input": player_node.debug_movement_input, "velocity": player_node.velocity,
@@ -993,6 +994,7 @@ func _capture_controlled_foot_frame() -> void:
 				_ik, side, actual_pos, target, normal, sole_depth, sole_dir,
 				toe_y, hip_p, solved_foot_angle, solved_foot_pos, diff_rot,
 				joints, _compute_leg_angles(side))
+	trace["ik_decision"] = TRACE_WRITER.build_decision_summary(trace["feet"])
 	# Rolling window, not an ever-growing append: always holds the moment a
 	# live shake just happened without a whole play session in the file.
 	_controlled_trace_writer.capture(JSON.stringify(trace))

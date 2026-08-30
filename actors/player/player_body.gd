@@ -219,6 +219,7 @@ const CROUCH_REF_SPEED := 1.7
 const LOCOMOTION_BLEND_TIME := 0.18
 const MOVING_LANDING_BLEND_TIME := 0.15
 const JUMP_PHASE_SPEED := 2.5
+const JUMP_LAND_BLEND_TIME := 0.25
 ## Camera pitch/yaw in radians, pushed by the player each physics tick.
 var head_pitch := 0.0
 var head_yaw := 0.0
@@ -306,7 +307,6 @@ func _setup_character_scene() -> void:
 	_target_humanoid_map = _detect_target_humanoid_map(skeleton, character_scene.resource_path)
 	_retarget_config = HumanoidRetargeter.build_bone_map_config(BONE_MAP, _target_humanoid_map)
 
-
 func _ready() -> void:
 	_apply_stored_profile_character()
 	_setup_character_scene()
@@ -375,9 +375,11 @@ func _build_character_visuals() -> void:
 	_held_pose = lib.get_animation(&"relaxed_idle")
 	for gameplay_name: StringName in UAL_GAMEPLAY_CLIPS:
 		var source_name: StringName = UAL_GAMEPLAY_CLIPS[gameplay_name]
-		lib.add_animation(gameplay_name,
-				_retarget_clip(UAL_PATH, source_name, _held_pose,
-						String(gameplay_name) in UAL_LOOPING_GAMEPLAY_CLIPS))
+		var retargeted := _retarget_clip(UAL_PATH, source_name, _held_pose,
+				String(gameplay_name) in UAL_LOOPING_GAMEPLAY_CLIPS)
+		if gameplay_name == &"unarmed_idle":
+			HumanoidRetargeter.smooth_idle_leg_loop(retargeted, _target_humanoid_map)
+		lib.add_animation(gameplay_name, retargeted)
 	for gameplay_name: StringName in UAL2_GAMEPLAY_CLIPS:
 		var source_name: StringName = UAL2_GAMEPLAY_CLIPS[gameplay_name]
 		lib.add_animation(gameplay_name,
@@ -418,7 +420,6 @@ func swap_character(new_character_scene: PackedScene) -> void:
 	set_equipped_item(previous_item)
 	set_held_flashlight_visible(previous_torch_visible)
 	character_changed.emit()
-
 
 ## Resolves a canonical role name (BONE_MAP's values, and the same names
 ## player.gd's TORSO_CLEARANCE keys use - "Head", "Spine2", "LeftShoulder",
@@ -701,12 +702,13 @@ func get_visual_bone_global_pose(bone_idx: int) -> Transform3D:
 ## Called by the player every physics tick (calls down, signals up).
 func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		sprinting: bool, on_floor: bool, vertical_velocity: float, delta: float,
-		torch_enabled: bool, movement_input: Vector2 = Vector2.ZERO) -> void:
+		torch_enabled: bool, movement_input: Vector2 = Vector2.ZERO,
+		preserve_ground_pose_in_fall: bool = false) -> void:
 	set_held_flashlight_visible(torch_enabled)
 	if _hand_grip_modifier != null:
 		_hand_grip_modifier.active = false
 	if _foot_ik_modifier != null:
-		_foot_ik_modifier.set_character_grounded(on_floor)
+		_foot_ik_modifier.set_character_grounded(on_floor or preserve_ground_pose_in_fall)
 		_foot_ik_modifier.set_pose_suppressed(
 				crouched and on_floor and absf(movement_input.x) > 0.5)
 	if _debug_preview_active:
@@ -718,6 +720,9 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		_action_contact_ratio = -1.0
 		_action_contact_emitted = false
 		_landing_time_left = 0.0
+		if preserve_ground_pose_in_fall:
+			_airborne = true
+			return
 		if not _airborne:
 			_airborne = true
 			if vertical_velocity > 0.0:
@@ -732,7 +737,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		_airborne = false
 		if ground_speed <= 0.6:
 			_landing_time_left = _lib.get_animation(&"unarmed_jump_land").length / JUMP_PHASE_SPEED
-			_play_motion(&"unarmed_jump_land", 0.1, JUMP_PHASE_SPEED)
+			_play_motion(&"unarmed_jump_land", JUMP_LAND_BLEND_TIME, JUMP_PHASE_SPEED)
 			return
 	if _landing_time_left > 0.0:
 		_landing_time_left = maxf(_landing_time_left - delta, 0.0)
@@ -760,8 +765,6 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		var dir_input := (movement_input
 				if movement_input.length_squared() > 0.01
 				else _last_movement_input)
-		# Smooth the direction used for clip selection only — actual movement stays raw.
-		# 8/s is fast enough to follow deliberate direction changes but too slow to
 		# flicker when A and D are tapped rapidly (which shows up as shaking).
 		_anim_input_smoothed = _anim_input_smoothed.lerp(dir_input, minf(delta * 8.0, 1.0))
 		if crouched:
