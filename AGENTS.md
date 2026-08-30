@@ -18,6 +18,9 @@ Before editing, inspect the working tree. Existing changes belong to the user; p
 work. Do not commit gameplay, animation, or visual changes until the user has tested them live and
 explicitly confirmed the result.
 
+Authenticate GitHub pushes for this repository as `AgustinJimenez`. Keep that selection
+repository-local; do not change the globally active GitHub CLI account to make a push.
+
 ## Commands and validation
 
 The `godot` command is the installed Godot 4.6 mono build.
