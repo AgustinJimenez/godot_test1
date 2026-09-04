@@ -236,20 +236,16 @@ var _flashlight_attachment: BoneAttachment3D
 var _flashlight_model: Node3D
 var _equipped_attachment: BoneAttachment3D
 var _equipped_model: Node3D
-## Remembered purely so swap_character() can restore it after rebuilding
-## around a new skeleton - the attachment/model themselves don't survive
-## the swap (they're children of the old skeleton, freed with it).
+## Remembered so swap_character() can restore it after rebuilding the skeleton.
 var _equipped_item: Item
 var _airborne := false
+var _preserved_ground_pose_fall := false
 var _landing_time_left := 0.0
 var _action_animation := &""
 var _action_contact_ratio := -1.0
 var _action_contact_emitted := false
-## True while a debug-menu clip is being previewed, so update_motion() doesn't immediately stomp
-## it back to relaxed_idle on the next physics tick (e.g. right when the tree unpauses after
-## closing the menu overlay). Cleared the moment the player actually does something that should
-## visibly change the animation anyway (move, crouch, arm the weapon) - only suppressed while
-## they're just standing still watching the preview.
+## Prevents update_motion() from replacing a debug-preview clip until gameplay resumes.
+## Only applies while the player stands still.
 var _debug_preview_active := false
 var _locomotion_active := false
 var _locomotion_stop_timer := 0.0
@@ -722,7 +718,9 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		_landing_time_left = 0.0
 		if preserve_ground_pose_in_fall:
 			_airborne = true
+			_preserved_ground_pose_fall = true
 			return
+		_preserved_ground_pose_fall = false
 		if not _airborne:
 			_airborne = true
 			if vertical_velocity > 0.0:
@@ -732,10 +730,12 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		elif vertical_velocity <= 0.0:
 			_play_motion(&"unarmed_jump", 0.2)
 		return
-	var moving_landing := _airborne and ground_speed > 0.6
+	var preserved_descent_landing := _airborne and _preserved_ground_pose_fall
+	var moving_landing := _airborne and not preserved_descent_landing and ground_speed > 0.6
 	if _airborne:
 		_airborne = false
-		if ground_speed <= 0.6:
+		_preserved_ground_pose_fall = false
+		if not preserved_descent_landing and ground_speed <= 0.6:
 			_landing_time_left = _lib.get_animation(&"unarmed_jump_land").length / JUMP_PHASE_SPEED
 			_play_motion(&"unarmed_jump_land", JUMP_LAND_BLEND_TIME, JUMP_PHASE_SPEED)
 			return

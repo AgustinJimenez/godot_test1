@@ -559,7 +559,6 @@ func _advance_stair_walker(walker: Dictionary, delta: float) -> void: # 0.50/0.6
 func _log_stair_foot_frame(walker: Dictionary) -> void:
 	if not walker["walking"]:
 		return
-	# Deferred so the ray and trace sample the same final rendered foot pose.
 	_update_foot_contact_rays()
 	var player: Player = walker["player"]
 	var ik := _find_foot_ik(player)
@@ -583,7 +582,8 @@ func _log_stair_foot_frame(walker: Dictionary) -> void:
 		"current_tread": walker["current_tread"],
 		"waiting_for_step": walker["waiting_for_step"],
 		"settle_frame": walker["settle_frame"],
-		"forced_support": str(ik._forced_support_side),
+		"forced_support": str(ik._forced_support_side), "stair_ik":
+				FootIkTraceWriter.build_stair_ik_state(ik),
 		"feet": {},
 		"hip_skin_stretch": _sample_hip_skin_stretch(player, ik),
 	}

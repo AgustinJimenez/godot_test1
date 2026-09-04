@@ -1,8 +1,6 @@
 class_name FootIkLedgeSafetyCheck
 extends Node3D
-## Verifies that ledge safety rejects a complete movement request when it
-## points into a void, including diagonals, without blocking movement that is
-## genuinely parallel to the supported platform edge.
+## Verifies ledge rejection, safe parallel travel, and supported edge recovery.
 
 const PLATFORM_HEIGHT := 3.0
 const PLATFORM_SIZE := Vector3(4.0, PLATFORM_HEIGHT, 4.0)
@@ -25,6 +23,8 @@ const STAIR_SURFACES := preload("res://tests/manual/foot_ik/foot_ik_stair_surfac
 const PENETRATION_CHECK := preload(
 		"res://tests/manual/foot_ik/foot_ik_live_penetration_check.gd")
 const JOINT_LIMIT_CHECK := preload("res://tests/manual/foot_ik/foot_ik_joint_limit_check.gd")
+const SHORT_FALL_ANIMATION_CHECK := preload(
+		"res://tests/manual/foot_ik/foot_ik_short_fall_animation_check.gd")
 const STAIR_ORIGIN := Vector3(8.0, 0.0, 0.0)
 const STAIR_WIDTH := 3.0
 const STAIR_TREAD_DEPTH := 0.6
@@ -141,7 +141,7 @@ var _cases: Array[Dictionary] = [
 		"stability_warmup": 30,
 	},
 	{
-		"name": "jump_land_split_height_no_invisible_floor",
+		"name": "jump_land_split_height_commits_safe_support",
 		"input": Vector2.ZERO,
 		"blocked": false,
 		"skip_movement_check": true,
@@ -151,8 +151,8 @@ var _cases: Array[Dictionary] = [
 		"move_frames": 70,
 		"recovery_frames": 70,
 		"check_feet": true,
+		"check_safe_level": true,
 		"allow_recovery_motion": true,
-		"landing_lower_side": &"right",
 	},
 	{
 		"name": "jump_land_split_height_upper_foot_penetration_live_repro",
@@ -603,8 +603,6 @@ func _sample_landing_upper_penetration(data: Dictionary) -> void:
 	_landing_upper_min_clearance = minf(_landing_upper_min_clearance, clearance)
 	if clearance < -LANDING_UPPER_PENETRATION_SAMPLE_THRESHOLD:
 		_landing_upper_penetration_frames += 1
-
-
 func _sample_split_turn_continuity(data: Dictionary) -> void:
 	if not data.get("check_split_turn_continuity", false):
 		return
@@ -618,15 +616,15 @@ func _sample_split_turn_continuity(data: Dictionary) -> void:
 		&"right": _final_bone_world(&"right", &"foot") - root,
 	}
 	if not _split_turn_previous_feet.is_empty():
-		var step := maxf(
-				(feet[&"left"] as Vector3).distance_to(_split_turn_previous_feet[&"left"]),
-				(feet[&"right"] as Vector3).distance_to(_split_turn_previous_feet[&"right"]))
+		var left_step: float = (feet[&"left"] as Vector3).distance_to(
+				_split_turn_previous_feet[&"left"])
+		var right_step: float = (feet[&"right"] as Vector3).distance_to(
+				_split_turn_previous_feet[&"right"])
+		var step := maxf(left_step, right_step)
 		if step > _split_turn_max_foot_step:
 			_split_turn_max_foot_step = step
 			_split_turn_max_foot_step_frame = _frame_in_case
 	_split_turn_previous_feet = feet
-
-
 func _sample_leg_edge_clearance(data: Dictionary) -> void:
 	if not data.has("leg_edge_lower_side"):
 		return
@@ -945,6 +943,7 @@ func _finish_check() -> void:
 	_player.movement_input_override = Vector2.ZERO
 	_check_zero_delta_idle_support_recovery()
 	_check_live_out_of_zone_lower_targets()
+	_failures.append_array(SHORT_FALL_ANIMATION_CHECK.failures(_player.body))
 	print("FOOT_IK_LEDGE_SAFETY_CASES %s" % "; ".join(_results))
 	if not _failures.is_empty():
 		print("FOOT_IK_LEDGE_SAFETY_CHECK FAIL failures=%d details=%s" % [

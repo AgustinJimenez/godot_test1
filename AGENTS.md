@@ -212,8 +212,17 @@ sequence and assert the visible symptom across time; final contact/weight checks
 When the user's live repro and headless harness disagree, preserve the trace, investigate the call
 pattern, and require manual confirmation.
 
-After Foot IK/stair changes, run every entrypoint independently and report the complete map even if
-one fails early:
+During Foot IK iteration, run the fast high-signal suite. It includes project checks, core pose and
+stair checks, edge landing/safety, landing stability, split stance, idle seams, and planted-idle
+stability while excluding the expensive known-red ramp matrices:
+
+```sh
+scripts/check_foot_ik_fast.sh
+```
+
+Before committing confirmed Foot IK/stair changes, and whenever shared solver or ramp behavior
+changes materially, run every exhaustive entrypoint independently and report the complete map even
+if one fails early:
 
 ```sh
 scripts/check.sh

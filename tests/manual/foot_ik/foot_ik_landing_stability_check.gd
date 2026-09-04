@@ -1,9 +1,8 @@
 class_name FootIkLandingStabilityCheck
 extends Node3D
 const JOINT_LIMIT_CHECK := preload("res://tests/manual/foot_ik/foot_ik_joint_limit_check.gd")
-## Reproduces a live jump onto the top-landing corner where a two-frame lower
-## floor sample survived behind a later proven upper-foot plant. The stale
-## support used to pull the right leg down after landing, then back up in idle.
+## Reproduces a live jump onto the top-landing corner. Landing planning must
+## choose one safe level before contact; neither leg may hand off afterward.
 
 const STAIR_SURFACES := preload("res://tests/manual/foot_ik/foot_ik_stair_surfaces.gd")
 const STAIR_ORIGIN := Vector3(8.0, 0.0, 0.0)
@@ -14,8 +13,6 @@ const STAIR_HEIGHT := 0.1
 const START := Vector3(8.371093, 0.495433, 4.28113)
 const YAW := 82.8251073474332
 const JUMP_FRAME := 37
-const UPPER_SURFACE_Y := 0.6
-const UPPER_CONFIRM_FRAMES := 4
 const TARGET_HEIGHT_TOLERANCE := 0.05
 const FOOT_STEP_LIMIT := 0.15
 const RUN_FRAMES := 180
@@ -24,14 +21,16 @@ var _player: Player
 var _ik: PlayerFootIKModifier
 var _frame := 0
 var _airborne_seen := false
-var _upper_streak := 0
-var _upper_confirm_frame := -1
-var _lowest_target_after_upper := INF
-var _lowest_foot_after_upper := INF
+var _commit_seen := false
+var _landing_frame := -1
+var _landing_count := 0
+var _post_landing_airborne := false
+var _landing_root_y := INF
+var _max_root_height_change := 0.0
 var _max_foot_step := 0.0
 var _max_foot_step_frame := -1
-var _previous_foot := Vector3.ZERO
-var _has_previous_foot := false
+var _previous_feet: Dictionary = {}
+var _previous_on_floor := true
 
 
 func _ready() -> void:
@@ -64,31 +63,36 @@ func _physics_process(_delta: float) -> void:
 		Input.action_release(&"jump")
 	if _frame >= JUMP_FRAME and not _player.is_on_floor():
 		_airborne_seen = true
-	var target: Vector3 = _ik._smoothed_target.get(&"right", Vector3.ZERO)
-	var foot := _final_foot_world()
-	var upper_now := (_airborne_seen and _player.is_on_floor()
-			and absf(target.y - UPPER_SURFACE_Y) <= TARGET_HEIGHT_TOLERANCE)
-	_upper_streak = _upper_streak + 1 if upper_now else 0
-	if _upper_confirm_frame < 0 and _upper_streak >= UPPER_CONFIRM_FRAMES:
-		_upper_confirm_frame = _frame
-		_previous_foot = foot
-		_has_previous_foot = true
-	if _upper_confirm_frame >= 0:
-		_lowest_target_after_upper = minf(_lowest_target_after_upper, target.y)
-		_lowest_foot_after_upper = minf(_lowest_foot_after_upper, foot.y)
-		if _has_previous_foot:
-			var step := foot.distance_to(_previous_foot)
-			if step > _max_foot_step:
-				_max_foot_step = step
-				_max_foot_step_frame = _frame
-		_previous_foot = foot
-		_has_previous_foot = true
+	if (_airborne_seen and _ik._ground_sampler.airborne_safe_root_target.is_finite()
+			and _ik._ground_sampler.airborne_landing_decision != "already_safe"):
+		_commit_seen = true
+	var on_floor := _player.is_on_floor()
+	if _airborne_seen and on_floor and not _previous_on_floor:
+		_landing_count += 1
+		if _landing_frame < 0:
+			_landing_frame = _frame
+			_landing_root_y = _player.global_position.y
+	if _landing_frame >= 0:
+		if not on_floor:
+			_post_landing_airborne = true
+		_max_root_height_change = maxf(_max_root_height_change,
+				absf(_player.global_position.y - _landing_root_y))
+		var feet := {&"left": _final_foot_world(&"left"),
+				&"right": _final_foot_world(&"right")}
+		if not _previous_feet.is_empty():
+			for side: StringName in [&"left", &"right"]:
+				var step: float = (feet[side] as Vector3).distance_to(_previous_feet[side])
+				if step > _max_foot_step:
+					_max_foot_step = step
+					_max_foot_step_frame = _frame
+		_previous_feet = feet
+	_previous_on_floor = on_floor
 	if _frame >= RUN_FRAMES:
 		_finish_check()
 
 
-func _final_foot_world() -> Vector3:
-	var foot_idx: int = _ik._bone_indices[&"right"][&"foot"]
+func _final_foot_world(side: StringName) -> Vector3:
+	var foot_idx: int = _ik._bone_indices[side][&"foot"]
 	var pose: Transform3D = _ik._final_bone_poses.get(
 			foot_idx, _player.skeleton.get_bone_global_pose(foot_idx))
 	return _player.skeleton.global_transform * pose.origin
@@ -98,19 +102,28 @@ func _finish_check() -> void:
 	Input.action_release(&"jump")
 	var failures: Array[String] = []
 	failures.append_array(JOINT_LIMIT_CHECK.failures(_ik, _player.skeleton, "landing_stability"))
-	if _upper_confirm_frame < 0:
-		failures.append("right foot never confirmed upper landing support")
+	if not _airborne_seen:
+		failures.append("jump never became airborne")
+	if not _commit_seen:
+		failures.append("no single-surface landing commitment before contact")
+	if _landing_count != 1:
+		failures.append("expected one landing, observed %d" % _landing_count)
+	if _post_landing_airborne:
+		failures.append("character became airborne again after landing")
+	if _max_root_height_change > 0.08:
+		failures.append("root changed height %.3fm after landing" % _max_root_height_change)
 	var left_target: Vector3 = _ik._smoothed_target.get(&"left", Vector3.ZERO)
 	var right_target: Vector3 = _ik._smoothed_target.get(&"right", Vector3.ZERO)
 	if absf(left_target.y - right_target.y) > TARGET_HEIGHT_TOLERANCE:
 		failures.append("landing retained split targets %.3f/%.3f" % [
 				left_target.y, right_target.y])
 	if _max_foot_step > FOOT_STEP_LIMIT:
-		failures.append("right foot moved %.3fm at frame %d (limit %.3fm)" % [
+		failures.append("foot moved %.3fm at frame %d (limit %.3fm)" % [
 				_max_foot_step, _max_foot_step_frame, FOOT_STEP_LIMIT])
-	var details := ("root=%s upper_frame=%d lowest_target=%.3f lowest_foot=%.3f "
-			+ "max_foot_step=%.3f step_frame=%d") % [str(_player.global_position),
-			_upper_confirm_frame, _lowest_target_after_upper, _lowest_foot_after_upper,
+	var details := ("root=%s commit=%s landing_frame=%d landings=%d relanded=%s "
+			+ "root_dy=%.3f targets=%.3f/%.3f max_foot_step=%.3f step_frame=%d") % [
+			str(_player.global_position), _commit_seen, _landing_frame, _landing_count,
+			_post_landing_airborne, _max_root_height_change, left_target.y, right_target.y,
 			_max_foot_step, _max_foot_step_frame]
 	if not failures.is_empty():
 		print("FOOT_IK_LANDING_STABILITY_CHECK FAIL %s details=%s" % [

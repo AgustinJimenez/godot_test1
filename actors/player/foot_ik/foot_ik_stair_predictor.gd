@@ -30,9 +30,11 @@ var _support_normal := Vector3.UP
 ## comment on why the handoff itself needs blending, not just engage/release.
 var _support_transfer_elapsed := 0.0
 var _support_transfer_from_pos := Vector3.ZERO
+var _support_transfer_from_weight := 0.0
 var _previous_root_position := Vector3.ZERO
 var _has_previous_root_position := false
 var _travel_direction := Vector3.ZERO
+var _root_vertical_speed := 0.0
 
 
 ## Stair support ownership is only needed to bridge discontinuous, flat
@@ -46,6 +48,10 @@ const FLAT_SURFACE_UP_DOT := 0.95
 ## modifier's flat_contact threshold.
 const STAIR_TREAD_UP_DOT := 0.999
 const STATIONARY_HORIZONTAL_SPEED := 0.05
+## Sharing one tread is common for a few frames in the middle of a climb. It
+## only means "stairs finished" once the collision root has stopped changing
+## height; releasing sooner drops and reacquires the support weight per tread.
+const STATIONARY_VERTICAL_SPEED := 0.05
 
 
 func _init(owner) -> void:
@@ -61,8 +67,10 @@ func reset() -> void:
 	_previous_root_position = Vector3.ZERO
 	_has_previous_root_position = false
 	_travel_direction = Vector3.ZERO
+	_root_vertical_speed = 0.0
 	_support_transfer_elapsed = 0.0
 	_support_transfer_from_pos = Vector3.ZERO
+	_support_transfer_from_weight = 0.0
 
 
 func update_travel_direction(delta: float) -> void:
@@ -74,6 +82,7 @@ func update_travel_direction(delta: float) -> void:
 	var root_position := motion_root.global_position
 	if _has_previous_root_position:
 		var travel: Vector3 = root_position - _previous_root_position
+		_root_vertical_speed = travel.y / delta
 		travel.y = 0.0
 		if travel.length_squared() > 0.0000001:
 			_travel_direction = travel.normalized()
@@ -124,7 +133,8 @@ func update_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName,
 		state.descending_to_landing = false
 
 	var desired_lift := _desired_swing_lift(
-			space, state, predicted_hit, raw_target, animated_lowest_point, delta, pelvis_sink)
+			space, side, state, predicted_hit, raw_target,
+			animated_lowest_point, delta, pelvis_sink)
 	if delta > 0.0:
 		var playback_scale := maxf(_owner.player_body.locomotion_playback_scale, 0.001)
 		state.smoothed_lift = move_toward(state.smoothed_lift, desired_lift,
@@ -195,7 +205,10 @@ func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> fl
 		var reachable := _support_target_is_reachable(support_leg)
 		var hip_below_target: bool = (
 				(support_leg["hip_pos"] as Vector3).y < _support_ground_target.y)
-		if (not _is_contacting(support_leg, support_clearance)
+		var bridging_vertical_travel := (
+				absf(_root_vertical_speed) > STATIONARY_VERTICAL_SPEED and reachable)
+		if ((not _is_contacting(support_leg, support_clearance)
+				and not bridging_vertical_travel)
 				or (not reachable and not hip_below_target)):
 			_support_side = &""
 			var chosen := _choose_support_side(
@@ -239,6 +252,8 @@ func _is_stationary_on_continuous_slope(
 ## construction (one step_height apart), so this only reads true once both
 ## are genuinely on one continuous, flat run.
 func _both_feet_on_matching_flat_ground(left: Dictionary, right: Dictionary) -> bool:
+	if absf(_root_vertical_speed) > STATIONARY_VERTICAL_SPEED:
+		return false
 	if not (left.get("hit", false) and right.get("hit", false)):
 		return false
 	var left_normal: Vector3 = left.get("raw_normal", Vector3.UP)
@@ -352,6 +367,10 @@ func get_support_side() -> StringName:
 	return _support_side
 
 
+func get_root_vertical_speed() -> float:
+	return _root_vertical_speed
+
+
 func get_step_lifts() -> Dictionary:
 	var result: Dictionary = {}
 	for side: StringName in _legs:
@@ -438,12 +457,13 @@ func _sample_same_tread(
 	return {}
 
 
-func _desired_swing_lift(space: PhysicsDirectSpaceState3D, state: LegState,
+func _desired_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName, state: LegState,
 		predicted_hit: Dictionary, raw_target: Vector3,
 		animated_lowest_point: Vector3, delta: float, pelvis_sink: float) -> float:
 	if state.swing_active and predicted_hit["hit"]:
 		var predicted_position: Vector3 = predicted_hit["position"]
 		if (not state.has_latched_target
+				and (not _support_side.is_empty() or not _other_leg_has_latched_target(side))
 				and predicted_position.y > state.swing_base_y + _owner.step_min_rise):
 			state.has_latched_target = true
 			state.latched_target = _clear_landing_point(space, predicted_position)
@@ -477,6 +497,15 @@ func _desired_swing_lift(space: PhysicsDirectSpaceState3D, state: LegState,
 	return maxf(0.0, clearance_y - animated_lowest_point.y)
 
 
+## With no planted stair-support owner, a previously predicted swing must not
+## coexist with a newly predicted opposite swing. The live seamless-stair
+## traversal otherwise raised both released legs at once for several frames.
+func _other_leg_has_latched_target(side: StringName) -> bool:
+	var other_side: StringName = &"right" if side == &"left" else &"left"
+	var other := _legs.get(other_side) as LegState
+	return other != null and other.has_latched_target
+
+
 func _try_transfer_support(per_leg: Dictionary,
 		left_clearance: float, right_clearance: float) -> void:
 	var candidate: StringName = &"right" if _support_side == &"left" else &"left"
@@ -497,6 +526,8 @@ func _try_transfer_support(per_leg: Dictionary,
 func _latch_support_target(leg: Dictionary) -> void:
 	_support_transfer_elapsed = 0.0
 	_support_transfer_from_pos = leg.get("target", leg.get("hip_pos", Vector3.ZERO)) as Vector3
+	var side: StringName = _support_side
+	_support_transfer_from_weight = float(_owner._smoothed_ground_weight.get(side, 0.0))
 	if (leg.get("animated_contact_hit", false)
 			and not _toe_probe_reaches_higher_surface(leg)):
 		_support_surface_target = leg["animated_contact_position"]
@@ -561,7 +592,8 @@ func _apply_support_contact(side: StringName, leg: Dictionary, delta: float) -> 
 	var offset := _support_normal * float(leg.get("effective_offset", 0.0))
 	var full_target := surface_target + offset
 	var blended_target: Vector3 = _support_transfer_from_pos.lerp(full_target, blend)
-	leg["ground_weight"] = blend
+	var weight := lerpf(_support_transfer_from_weight, 1.0, blend)
+	leg["ground_weight"] = weight
 	# leg["chain_weight"] must move with ground_weight, not just default to it -
 	# _apply_support_pelvis_and_legs() reads chain_weight straight from this
 	# dict (leg.get("chain_weight", ground_weight)), and the per-leg loop
@@ -571,7 +603,7 @@ func _apply_support_contact(side: StringName, leg: Dictionary, delta: float) -> 
 	# target/weight, zero actual correction applied (confirmed live: an idle
 	# stair-edge stance clipping 15-18cm, foot bit-for-bit equal to its raw
 	# animated pose despite ground_weight=1.0).
-	leg["chain_weight"] = blend
+	leg["chain_weight"] = weight
 	leg["target"] = blended_target
 	leg["ground_target"] = blended_target
-	_owner._smoothed_ground_weight[side] = blend
+	_owner._smoothed_ground_weight[side] = weight

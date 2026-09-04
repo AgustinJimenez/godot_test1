@@ -166,7 +166,6 @@ func _ready() -> void:
 	_build_panel()
 	_player_body.set_skeleton_visible(true)
 
-
 func _wait_for_player_to_settle() -> void:
 	var player := get_node("../Player") as Player
 	if player == null:
@@ -253,8 +252,6 @@ func _make_probe(bone_idx: int) -> Node3D:
 	var probe := Node3D.new()
 	attach.add_child(probe)
 	return probe
-
-
 func _compute_leg_angles(side: StringName) -> Dictionary:
 	var angle_probes: Dictionary = _angle_probes.get(side, {})
 	var hip_probe: Node3D = angle_probes.get("hip")
@@ -269,9 +266,11 @@ func _compute_leg_angles(side: StringName) -> Dictionary:
 	var knee_to_foot := foot_probe.global_position - knee_probe.global_position
 	result["thigh"] = rad_to_deg(hip_to_knee.angle_to(Vector3.DOWN))
 	result["shin"] = rad_to_deg(knee_to_foot.angle_to(Vector3.DOWN))
-	result["knee"] = FootIkDebugMarkers.signed_knee_flexion(
+	var geometric_knee := FootIkDebugMarkers.signed_knee_flexion(
 			hip_probe.global_position, knee_probe.global_position, foot_probe.global_position,
-			_player_body.global_transform.basis.z)
+			-_player_body.global_transform.basis.z)
+	result["knee"] = float(_ik._leg_solver.debug_signed_knee_flexion.get(
+			side, geometric_knee)) if _ik != null else geometric_knee
 	if toe_probe != null:
 		var foot_to_toe := toe_probe.global_position - foot_probe.global_position
 		result["foot"] = rad_to_deg(foot_to_toe.angle_to(Vector3.DOWN))
@@ -279,7 +278,6 @@ func _compute_leg_angles(side: StringName) -> Dictionary:
 			var toe_to_leaf := leaf_probe.global_position - toe_probe.global_position
 			result["leaf"] = rad_to_deg(toe_to_leaf.angle_to(Vector3.DOWN))
 	return result
-
 ## Moves each segment's Label3D to its own midpoint and refreshes its text.
 func _update_angle_labels(side: String, angles: Dictionary) -> void:
 	var labels: Dictionary = _angle_labels.get(side, {})
@@ -956,6 +954,8 @@ func _capture_controlled_foot_frame() -> void:
 		"time": animation_player.current_animation_position if animation_player != null else 0.0,
 		"disc": _ik._animation_discontinuous,
 		"locomotion_mode": PlayerFootIKModifier.LocomotionMode.keys()[_ik.locomotion_mode],
+		"stair_ik": TRACE_WRITER.build_stair_ik_state(_ik),
+		"safe_zone_decision": TRACE_WRITER.build_safe_zone_decision(_ik, player_node),
 		"active": _ik.active, "on_floor": player_node.is_on_floor(), "feet": {},
 	}
 	if _live_penetration_check != null:

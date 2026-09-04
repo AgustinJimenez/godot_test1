@@ -9,6 +9,7 @@ const MAX_CONSECUTIVE_STALL_FRAMES := 1
 const MAX_RENDERED_VERTICAL_DELTA := 0.05
 const MAX_ASCENT_VISUAL_OFFSET := 0.05
 const MAX_SETTLE_DROP := 0.005
+const MAX_PLANTED_WEIGHT_DROP := 0.3
 
 var _expected_speed := 0.0
 var _expected_steps := 0
@@ -33,6 +34,12 @@ var _settling := false
 var _settle_samples := 0
 var _settle_failures := 0
 var _max_settle_drop := 0.0
+var _previous_ground_weights: Dictionary = {}
+var _planted_weight_samples := 0
+var _planted_weight_drop_failures := 0
+var _max_planted_weight_drop := 0.0
+var _dual_swing_lift_failures := 0
+var _max_dual_swing_lift := 0.0
 
 
 func reset(player: Player, expected_speed: float, expected_steps: int) -> void:
@@ -59,6 +66,12 @@ func reset(player: Player, expected_speed: float, expected_steps: int) -> void:
 	_settle_samples = 0
 	_settle_failures = 0
 	_max_settle_drop = 0.0
+	_previous_ground_weights.clear()
+	_planted_weight_samples = 0
+	_planted_weight_drop_failures = 0
+	_max_planted_weight_drop = 0.0
+	_dual_swing_lift_failures = 0
+	_max_dual_swing_lift = 0.0
 
 
 func begin_settle(player: Player) -> void:
@@ -69,6 +82,8 @@ func begin_settle(player: Player) -> void:
 
 func sample(player: Player) -> void:
 	var root_y := player.global_position.y
+	_sample_stair_weight_continuity(player, root_y - _previous_root_y)
+	_sample_stair_swing_ownership(player)
 	if _settling:
 		var settle_drop := maxf(_previous_root_y - root_y, 0.0)
 		_settle_samples += 1
@@ -95,6 +110,39 @@ func sample(player: Player) -> void:
 		_speed_failures += 1
 	if player.body.anim_player.current_animation != EXPECTED_ANIMATION:
 		_animation_failures += 1
+
+
+## The live stair repro dropped a planted foot from full support to ~0.21 in a
+## single rendered frame. A support handoff may release, but it must follow the
+## ordinary weight rate instead of visibly folding/popping the leg.
+func _sample_stair_weight_continuity(player: Player, root_delta_y: float) -> void:
+	var ik: PlayerFootIKModifier = player.body._foot_ik_modifier
+	if ik == null:
+		return
+	for side: StringName in [&"left", &"right"]:
+		var weight: float = ik._smoothed_ground_weight.get(side, 0.0)
+		if absf(root_delta_y) > STEP_RISE_THRESHOLD and _previous_ground_weights.has(side):
+			var drop := maxf(float(_previous_ground_weights[side]) - weight, 0.0)
+			_planted_weight_samples += 1
+			_max_planted_weight_drop = maxf(_max_planted_weight_drop, drop)
+			if drop > MAX_PLANTED_WEIGHT_DROP:
+				_planted_weight_drop_failures += 1
+		_previous_ground_weights[side] = weight
+
+
+## At least one leg must remain animation/stance-owned while stair prediction
+## lifts the other. Two simultaneous procedural swing lifts visibly fold both
+## legs upward and leave no rendered support foot.
+func _sample_stair_swing_ownership(player: Player) -> void:
+	var ik: PlayerFootIKModifier = player.body._foot_ik_modifier
+	if ik == null:
+		return
+	var left_lift: float = ik._smoothed_step_lift.get(&"left", 0.0)
+	var right_lift: float = ik._smoothed_step_lift.get(&"right", 0.0)
+	if left_lift <= 0.001 or right_lift <= 0.001:
+		return
+	_max_dual_swing_lift = maxf(_max_dual_swing_lift, minf(left_lift, right_lift))
+	_dual_swing_lift_failures += 1
 
 
 func _sample_travel_continuity(player: Player, frame_travel: float) -> void:
@@ -138,20 +186,27 @@ func format_result() -> String:
 	var passed := (_step_count >= _expected_steps and _sample_count > 0
 			and _animation_failures == 0 and _speed_failures == 0
 			and _max_consecutive_stalls <= MAX_CONSECUTIVE_STALL_FRAMES
-			and _vertical_failures == 0 and _floating_frames == 0)
+			and _vertical_failures == 0 and _floating_frames == 0
+			and _planted_weight_drop_failures == 0
+			and _dual_swing_lift_failures == 0)
 	var min_speed := 0.0 if is_inf(_min_step_speed) else _min_step_speed
 	var template := ("FOOT_IK_STAIR_LOCOMOTION_CHECK %s steps=%d samples=%d "
 			+ "animation_failures=%d speed_failures=%d "
 			+ "min_horizontal_speed=%.3f expected_speed=%.3f "
 			+ "travel_samples=%d stalled_frames=%d max_stall_frames=%d "
 			+ "vertical_failures=%d max_rendered_dy=%.3f "
-			+ "floating_frames=%d max_visual_offset=%.3f")
+			+ "floating_frames=%d max_visual_offset=%.3f "
+			+ "weight_rise_samples=%d weight_drop_failures=%d max_weight_drop=%.3f "
+			+ "dual_swing_failures=%d max_dual_lift=%.3f")
 	return template % [
 			"PASS" if passed else "FAIL", _step_count, _sample_count,
 			_animation_failures, _speed_failures, min_speed, _expected_speed,
 			_travel_sample_count, _stalled_frames, _max_consecutive_stalls,
 			_vertical_failures, _max_rendered_vertical_delta,
-			_floating_frames, _max_ascent_visual_offset]
+			_floating_frames, _max_ascent_visual_offset,
+			_planted_weight_samples, _planted_weight_drop_failures,
+			_max_planted_weight_drop, _dual_swing_lift_failures,
+			_max_dual_swing_lift]
 
 
 func format_settle_result() -> String:

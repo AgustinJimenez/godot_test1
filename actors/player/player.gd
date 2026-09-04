@@ -486,7 +486,6 @@ func _physics_process(delta: float) -> void:
 			and _roll_time_left <= 0.0 and not detached_cam_active):
 		_crouched = false
 		velocity.y = jump_velocity
-
 	var speed := crouch_speed if _crouched else (sprint_speed if sprinting else walk_speed)
 	var stair_walk_slowed := (not _crouched and not sprinting
 			and _stair_controller.has_recent_transition())
@@ -524,7 +523,8 @@ func _physics_process(delta: float) -> void:
 		if predicted_safe_root.is_finite():
 			var prediction_motion := (predicted_safe_root - global_position)
 			prediction_motion.y = 0.0
-			prediction_motion = prediction_motion.limit_length(3.0 * delta)
+			prediction_motion = prediction_motion.limit_length(body._foot_ik_modifier \
+					._ground_sampler._settings.landing_correction_speed * delta)
 			if not test_move(global_transform, prediction_motion):
 				global_position += prediction_motion
 	var horizontal_motion := Vector3(velocity.x, 0.0, velocity.z) * delta

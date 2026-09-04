@@ -132,6 +132,7 @@ static func build_foot_trace(ik: Node, side: String,
 		"pitch_deg": rad_to_deg(sole.normalized().angle_to(Vector3.DOWN)),
 		"solved_foot_angle_deg": solved_foot_angle,
 		"solved_foot_pos": solved_foot_pos,
+		"solve_target": ik._leg_solver.debug_solve_target.get(side, target),
 		"diff_rot_deg": diff_rot,
 		"diff_pos_m": actual_pos.distance_to(solved_foot_pos),
 		"ground_weight": float(ik._smoothed_ground_weight.get(side, 0.0)),
@@ -162,17 +163,29 @@ static func build_foot_trace(ik: Node, side: String,
 				ik._leg_solver.debug_signed_knee_flexion.get(side, 0.0)),
 		"negative_knee_clamped": bool(
 				ik._leg_solver.debug_negative_knee_clamped.get(side, false)),
+		"knee_direction_constrained": bool(
+				ik._leg_solver.debug_knee_direction_constrained.get(side, false)),
+		"knee_pole_alignment": float(
+				ik._leg_solver.debug_knee_pole_alignment.get(side, 1.0)),
 		"joints": joints,
 	}
 
 
 static func _target_owner(ik: Node, side: String) -> String:
+	if ik._ground_sampler.landing_committed_target.has(side):
+		return "landing_commitment"
 	if ik._ground_sampler.idle_lower_acquiring.has(side):
 		return "idle_lower_acquiring"
 	if ik._ground_sampler.idle_lower_latched_target.has(side):
 		return "idle_lower_latched"
+	if ik._ground_sampler.idle_stance_rehoming.has(side):
+		return "idle_stance_rehome"
 	if ik._idle_frozen.get(side, false):
 		return "idle_freeze"
+	if ik._forced_support_side == StringName(side):
+		return "stair_support"
+	if ik.predicted_step_targets.has(StringName(side)):
+		return "stair_swing_prediction"
 	if ik._gait_tracker.is_locomotion_target_locked(side):
 		return "locomotion_lock"
 	if ik._gait_tracker.is_locomotion_stance_active(side):
@@ -180,15 +193,35 @@ static func _target_owner(ik: Node, side: String) -> String:
 	return "live_contact"
 
 
+static func build_stair_ik_state(ik: Node) -> Dictionary:
+	return {
+		"step_prediction_enabled": ik.step_prediction_enabled,
+		"support_side": String(ik._forced_support_side),
+		"root_vertical_speed": (
+				ik._stair_predictor.get_root_vertical_speed()
+				if ik._stair_predictor != null else 0.0),
+		"step_lifts": ik._smoothed_step_lift,
+		"predicted_targets": ik.predicted_step_targets,
+		"landing_commitment_sides": ik._ground_sampler.landing_committed_target.keys(),
+		"idle_lower_acquiring_sides": ik._ground_sampler.idle_lower_acquiring.keys(),
+	}
+
+
 static func _solver_action(ik: Node, side: String, contact_hit: bool, owner: String) -> String:
 	if not ik.active:
 		return "animation_only"
 	if bool(ik._leg_solver.debug_negative_knee_clamped.get(side, false)):
 		return "clamp_negative_knee"
+	if bool(ik._leg_solver.debug_knee_direction_constrained.get(side, false)):
+		return "constrain_knee_direction"
 	if not contact_hit and float(ik._smoothed_ground_weight.get(side, 0.0)) <= 0.001:
 		return "release_unsupported"
 	if owner == "idle_lower_acquiring":
 		return "move_to_lower_support"
+	if owner == "idle_stance_rehome":
+		return "move_to_stance_zone"
+	if owner == "landing_commitment":
+		return "hold_committed_landing_support"
 	if bool(ik._leg_solver.debug_stance_limited.get(side, false)):
 		return "limit_stance_crossing"
 	return "solve_to_support"
@@ -196,3 +229,32 @@ static func _solver_action(ik: Node, side: String, contact_hit: bool, owner: Str
 
 static func build_decision_summary(feet: Dictionary) -> String:
 	return "%s; %s" % [feet["left"]["decision"], feet["right"]["decision"]]
+
+
+static func build_safe_zone_decision(ik: PlayerFootIKModifier, player: Player) -> String:
+	var sampler := ik._ground_sampler
+	var action := "none"
+	var surface_y: float = sampler.split_safe_surface_y
+	var root_distance := -1.0
+	if sampler.airborne_safe_root_target.is_finite():
+		surface_y = sampler.airborne_committed_surface_y
+		var delta: Vector3 = sampler.airborne_safe_root_target - player.global_position
+		delta.y = 0.0
+		root_distance = delta.length()
+		action = "%s_%s" % ["landing" if player.is_on_floor() else "airborne",
+				sampler.airborne_landing_decision]
+	elif sampler.airborne_landing_decision.begins_with("reject_grounded_height"):
+		action = sampler.airborne_landing_decision
+	elif sampler.split_safe_root_target.is_finite():
+		var delta: Vector3 = sampler.split_safe_root_target - player.global_position
+		delta.y = 0.0
+		root_distance = delta.length()
+		action = "descend_to_lower" if surface_y < player.global_position.y - player.safe_margin \
+				else "move_to_upper"
+	elif sampler.feet_have_common_current_support():
+		action = "keep_common_support"
+	var left_distance := float(ik.debug_contact_distance.get(&"left", -1.0))
+	var right_distance := float(ik.debug_contact_distance.get(&"right", -1.0))
+	return ("safe_zone action=%s surface_y=%.3f root_distance=%.3f "
+			+ "contact_distance=%.3f/%.3f") % [
+			action, surface_y, root_distance, left_distance, right_distance]

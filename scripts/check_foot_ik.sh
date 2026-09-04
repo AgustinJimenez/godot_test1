@@ -68,6 +68,18 @@ rg "FOOT_IK_STAIR_LOCOMOTION_CHECK PASS" "$log_file"
 rg "FOOT_IK_STAIR_SETTLE_CHECK PASS" "$log_file"
 
 godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_edge_landing_sweep_check.tscn \
+	--quit-after 10000 >"$log_file" 2>&1
+
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_EDGE_LANDING_SWEEP_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK randomized edge-landing sweep did not pass."
+	exit 1
+fi
+rg "FOOT_IK_EDGE_LANDING_SWEEP_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
 	res://tests/manual/foot_ik/foot_ik_ledge_safety_check.tscn \
 	--quit-after 3300 >"$log_file" 2>&1
 
@@ -135,6 +147,66 @@ if rg -q "SCRIPT ERROR" "$log_file" \
 		|| ! rg -q "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"; then
 	cat "$log_file"
 	printf '%s\n' "Foot IK over-height weight-oscillation check did not pass."
+	exit 1
+fi
+rg "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_knee_flex_check.tscn \
+	--quit-after 400 -- replay_grounded_commit_mismatch=true >"$log_file" 2>&1
+
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK mismatched grounded landing commitment check did not pass."
+	exit 1
+fi
+rg "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_knee_flex_check.tscn \
+	--quit-after 400 -- replay_stale_grounded_commit=true >"$log_file" 2>&1
+
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK stale grounded landing commitment check did not pass."
+	exit 1
+fi
+rg "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_knee_flex_check.tscn \
+	--quit-after 400 -- replay_shallow_split_pose=true >"$log_file" 2>&1
+
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK shallow split-height pose check did not pass."
+	exit 1
+fi
+rg "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_knee_flex_check.tscn \
+	--quit-after 400 -- replay_committed_edge_landing=true >"$log_file" 2>&1
+
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK committed edge-landing check did not pass."
+	exit 1
+fi
+rg "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_knee_flex_check.tscn \
+	--quit-after 400 -- replay_delayed_support_restore=true >"$log_file" 2>&1
+
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK delayed landing support restore check did not pass."
 	exit 1
 fi
 rg "FOOT_IK_KNEE_FLEX_CHECK PASS" "$log_file"
@@ -330,6 +402,18 @@ if ! rg -q "FOOT_IK_WALK_IDLE_STANCE_CHECK PASS" "$log_file"; then
 	exit 1
 fi
 rg "FOOT_IK_WALK_IDLE_STANCE_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_idle_plant_stability_check.tscn \
+	--quit-after 2100 >"$log_file" 2>&1
+
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_IDLE_PLANT_STABILITY_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	printf '%s\n' "Foot IK stationary planted-foot stability check did not pass."
+	exit 1
+fi
+rg "FOOT_IK_IDLE_PLANT_STABILITY_CHECK PASS" "$log_file"
 
 godot --headless --fixed-fps 60 --path "$project_dir" \
 	res://tests/manual/foot_ik/foot_ik_ramp_locomotion_check.tscn \

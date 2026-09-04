@@ -4,6 +4,7 @@ extends RefCounted
 ## into hierarchy-preserving hip, knee, foot, toe, and leaf bone poses.
 
 var _owner
+var _settings: FootIKRuntimeSettings
 var _previous_corrections: Dictionary = {}
 var _previous_correction_frames: Dictionary = {}
 var _idle_slope_targets: Dictionary = {}
@@ -11,22 +12,21 @@ var debug_stance_limited: Dictionary = {}
 var debug_swing_clamped: Dictionary = {}
 var debug_swing_degrees: Dictionary = {}
 var debug_target_error: Dictionary = {}
+var debug_solve_target: Dictionary = {}
 var debug_final_foot_position: Dictionary = {}
 var debug_shin_swing_degrees: Dictionary = {}
 var debug_shin_clamped: Dictionary = {}
 var debug_signed_knee_flexion: Dictionary = {}
 var debug_negative_knee_clamped: Dictionary = {}
+var debug_knee_pole_alignment: Dictionary = {}
+var debug_knee_direction_constrained: Dictionary = {}
 
-const MAX_CORRECTION_ANGULAR_SPEED := 120.0
-const CROUCH_CORRECTION_ANGULAR_SPEED := 45.0
-const STANDING_CORRECTION_ANGULAR_SPEED := 45.0
 const IDLE_STANCE_MIN_SIDE_CLEARANCE := 0.04
-const MAX_UPRIGHT_SHIN_SWING_DEGREES := 45.0
-const UPRIGHT_SHIN_STEER_START_DEGREES := 30.0
 
 
 func _init(owner) -> void:
 	_owner = owner
+	_settings = owner._ground_sampler._settings
 
 
 func reset_runtime_state() -> void:
@@ -37,11 +37,14 @@ func reset_runtime_state() -> void:
 	debug_swing_clamped.clear()
 	debug_swing_degrees.clear()
 	debug_target_error.clear()
+	debug_solve_target.clear()
 	debug_final_foot_position.clear()
 	debug_shin_swing_degrees.clear()
 	debug_shin_clamped.clear()
 	debug_signed_knee_flexion.clear()
 	debug_negative_knee_clamped.clear()
+	debug_knee_pole_alignment.clear()
+	debug_knee_direction_constrained.clear()
 
 
 func is_idle_stance_crossed(side: StringName, lateral_offset: float,
@@ -62,6 +65,23 @@ func release(side: StringName) -> void:
 	for joint: StringName in [&"hip", &"knee", &"foot"]:
 		_previous_corrections.erase("%s:%s" % [side, joint])
 		_previous_correction_frames.erase("%s:%s" % [side, joint])
+
+
+func has_active_correction(side: StringName) -> bool:
+	return _previous_corrections.has("%s:hip" % side)
+
+
+func capture_stable_animation_pose(side: StringName, poses: Dictionary,
+		current_frame: int) -> void:
+	var animation_name := String(_owner.player_body.anim_player.current_animation.get_file())
+	var hold_idle_loop: bool = (animation_name.contains("idle")
+			and not _owner._gait_tracker.is_body_translating()
+			and (_owner._velocity_suppressed
+			or _owner.player_body.anim_player.current_animation_position <= 0.10))
+	if hold_idle_loop or _owner._prev_leg_bone_poses_frame.get(side, -1) == current_frame:
+		return
+	_owner._prev_leg_bone_poses[side] = poses
+	_owner._prev_leg_bone_poses_frame[side] = current_frame
 
 
 func adjust_idle_slope_target(side: StringName, hip: Vector3, target: Vector3,
@@ -86,7 +106,6 @@ func adjust_idle_slope_target(side: StringName, hip: Vector3, target: Vector3,
 	_idle_slope_targets[side] = adjusted
 	return adjusted
 
-
 func _target_thigh_swing(side: StringName, hip: Vector3, target: Vector3,
 		upper: float, lower: float, to_world: Transform3D) -> float:
 	var to_target := target - hip
@@ -110,8 +129,10 @@ func max_hip_swing_degrees(_side: StringName) -> float:
 
 func _solve_bend_direction(side: StringName, target_dir: Vector3,
 		hip_angle: float, to_world: Transform3D,
-		distance: float = 0.0, upper_length: float = 0.0) -> Vector3:
-	var bend: Vector3 = to_world.basis * (_owner._knee_pole_local[side] as Vector3)
+		distance: float = 0.0, upper_length: float = 0.0,
+		preferred_bend_world: Vector3 = Vector3.ZERO) -> Vector3:
+	var bend: Vector3 = (preferred_bend_world if not preferred_bend_world.is_zero_approx()
+			else to_world.basis * (_owner._knee_pole_local[side] as Vector3))
 	bend -= target_dir * bend.dot(target_dir)
 	var animation_name := String(_owner.player_body.anim_player.current_animation.get_file())
 	var own_surface: Vector3 = _owner._smoothed_target.get(side, Vector3.ZERO)
@@ -158,8 +179,10 @@ func _limit_upright_shin(side: StringName, target_dir: Vector3, bend: Vector3,
 			or not (animation_name.contains("idle") or animation_name.contains("walk"))
 			or normal.dot(Vector3.UP) < 0.999):
 		return bend
-	var limit := deg_to_rad(MAX_UPRIGHT_SHIN_SWING_DEGREES)
-	var steer_start := deg_to_rad(UPRIGHT_SHIN_STEER_START_DEGREES)
+	var limit := deg_to_rad(_settings.max_upright_shin_swing_degrees)
+	var steer_start := deg_to_rad(minf(
+			_settings.upright_shin_steer_start_degrees,
+			_settings.max_upright_shin_swing_degrees))
 	var thigh := _thigh_direction(target_dir, bend, hip_angle)
 	var shin := target_dir * distance - thigh * upper_length
 	var swing := Vector3.DOWN.angle_to(shin.normalized())
@@ -201,17 +224,23 @@ func _thigh_direction(target_dir: Vector3, bend: Vector3, hip_angle: float) -> V
 
 
 func release_to_animation(skel: Skeleton3D, side: StringName, delta: float) -> void:
-	if not _previous_corrections.has("%s:hip" % side):
+	var animation_name := String(_owner.player_body.anim_player.current_animation.get_file())
+	var hold_idle_loop: bool = (animation_name.contains("idle")
+			and not _owner._gait_tracker.is_body_translating()
+			and (_owner._velocity_suppressed
+			or _owner.player_body.anim_player.current_animation_position <= 0.10)
+			and _owner._prev_leg_bone_poses.has(side))
+	if not _previous_corrections.has("%s:hip" % side) and not hold_idle_loop:
 		return
 	var poses: Dictionary = _owner._leg_fresh_pose_cache[side]
-	if _owner._animation_discontinuous and _owner._prev_leg_bone_poses.has(side):
+	if hold_idle_loop:
 		poses = _owner._prev_leg_bone_poses[side]
 	var hip_delta := _limit_correction(side, &"hip", Quaternion.IDENTITY, delta)
 	var knee_delta := _limit_correction(side, &"knee", Quaternion.IDENTITY, delta)
 	var foot_delta := _limit_correction(side, &"foot", Quaternion.IDENTITY, delta)
 	if (hip_delta.angle_to(Quaternion.IDENTITY) < 0.0001
 			and knee_delta.angle_to(Quaternion.IDENTITY) < 0.0001
-			and foot_delta.angle_to(Quaternion.IDENTITY) < 0.0001):
+			and foot_delta.angle_to(Quaternion.IDENTITY) < 0.0001 and not hold_idle_loop):
 		release(side)
 		return
 	var indices: Dictionary = _owner._bone_indices[side]
@@ -270,6 +299,7 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 		upper_length: float, lower_length: float, ground_weight: float,
 		chain_weight: float, delta: float, instant_correction: bool = false) -> void:
 	var indices: Dictionary = _owner._bone_indices[side]
+	debug_solve_target[side] = target
 	var hip_idx: int = indices["hip"]
 	var knee_idx: int = indices["knee"]
 	var foot_idx: int = indices["foot"]
@@ -285,16 +315,10 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	# before _apply_support_pelvis_and_legs() sinks the pelvis this same tick -
 	# reading the skeleton again here would see that same-tick sink, since the
 	# pelvis is hip/knee/foot's parent (see that loop's own doc comment).
-	var current_frame := Engine.get_physics_frames()
 	var fresh_poses: Dictionary = _owner._leg_fresh_pose_cache[side]
 	var poses: Dictionary = fresh_poses
 	if _owner._animation_discontinuous and _owner._prev_leg_bone_poses.has(side):
 		poses = _owner._prev_leg_bone_poses[side]
-	# Only the first call for a given physics frame gets to update the
-	# held reference used across a later discontinuous frame.
-	if _owner._prev_leg_bone_poses_frame.get(side, -1) != current_frame:
-		_owner._prev_leg_bone_poses[side] = fresh_poses
-		_owner._prev_leg_bone_poses_frame[side] = current_frame
 	var hip_pose: Transform3D = poses["hip"]
 	var knee_pose: Transform3D = poses["knee"]
 	var foot_pose: Transform3D = poses["foot"]
@@ -329,8 +353,10 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 			/ (2.0 * upper_length * dist), -1.0, 1.0)
 	var hip_angle := acos(cos_hip_angle)
 	# Target validation and the final solve share this constrained pole.
+	var animated_bend := _animated_knee_pole(
+			animated_hip_pos, knee_pos, foot_pos, to_target)
 	var bend_direction := _solve_bend_direction(
-			side, target_dir, hip_angle, to_world, dist, upper_length)
+			side, target_dir, hip_angle, to_world, dist, upper_length, animated_bend)
 	var new_hip_to_knee_dir := _thigh_direction(target_dir, bend_direction, hip_angle)
 	# Anatomical hip swing limit: the thigh has never been constrained here,
 	# so a target that ends up somewhere it shouldn't (a stale or wrong-tread
@@ -430,12 +456,16 @@ func _limit_negative_rendered_knee(side: StringName, hip_pos: Vector3,
 		animated_foot_pos: Vector3, rendered_knee_pos: Vector3,
 		rendered_foot_pos: Vector3) -> Dictionary:
 	debug_negative_knee_clamped[side] = false
+	debug_knee_direction_constrained[side] = false
+	var positive_axis := _animated_knee_pole(
+			animated_hip_pos, animated_knee_pos, animated_foot_pos,
+			rendered_foot_pos - hip_pos)
 	var signed_flexion := _signed_knee_flexion(
-			hip_pos, rendered_knee_pos, rendered_foot_pos)
+			hip_pos, rendered_knee_pos, rendered_foot_pos, positive_axis)
 	debug_signed_knee_flexion[side] = signed_flexion
 	var animation_name := String(_owner.player_body.anim_player.current_animation.get_file())
 	var normal: Vector3 = _owner._smoothed_normal.get(side, Vector3.UP)
-	if (signed_flexion >= 0.0 or animation_name.contains("crouch")
+	if (animation_name.contains("crouch")
 			or not (animation_name.contains("idle") or animation_name.contains("walk"))
 			or normal.dot(Vector3.UP) < 0.999):
 		return {}
@@ -446,17 +476,25 @@ func _limit_negative_rendered_knee(side: StringName, hip_pos: Vector3,
 	if distance <= 0.0001 or upper_length <= 0.0001 or lower_length <= 0.0001:
 		return {}
 	var direction := leg_line / distance
-	var forward: Vector3 = _owner.player_body.global_transform.basis.z.normalized()
-	var positive_axis := forward - direction * forward.dot(direction)
 	if positive_axis.length_squared() < 0.000001:
 		return {}
-	positive_axis = positive_axis.normalized()
 	var current_pole := rendered_knee_pos - hip_pos
 	current_pole -= direction * current_pole.dot(direction)
+	var required_alignment := clampf(_settings.minimum_knee_pole_alignment, 0.0, 1.0)
+	var current_alignment := (current_pole.normalized().dot(positive_axis)
+			if current_pole.length_squared() >= 0.000001 else 1.0)
+	debug_knee_pole_alignment[side] = current_alignment
+	if signed_flexion >= 0.0 and current_alignment >= required_alignment:
+		return {}
 	var boundary_pole := current_pole - positive_axis * current_pole.dot(positive_axis)
 	if boundary_pole.length_squared() < 0.000001:
 		boundary_pole = direction.cross(positive_axis)
-	var positive_pole := (boundary_pole.normalized() + positive_axis * 0.001).normalized()
+	# Merely crossing the sign boundary leaves a deeply bent knee almost
+	# sideways. Keep a modest authored-direction component without mirroring
+	# the complete pole, which previously pushed calves into platform corners.
+	var boundary_weight := sqrt(1.0 - required_alignment * required_alignment)
+	var positive_pole := (boundary_pole.normalized() * boundary_weight
+			+ positive_axis * required_alignment).normalized()
 	var clamped_distance := minf(distance, upper_length + lower_length - 0.0001)
 	var along := (upper_length * upper_length - lower_length * lower_length
 			+ clamped_distance * clamped_distance) / (2.0 * clamped_distance)
@@ -471,9 +509,11 @@ func _limit_negative_rendered_knee(side: StringName, hip_pos: Vector3,
 			(corrected_foot - corrected_knee).normalized())
 	_previous_corrections["%s:hip" % side] = corrected_hip_delta
 	_previous_corrections["%s:knee" % side] = corrected_knee_delta
-	debug_negative_knee_clamped[side] = true
+	debug_negative_knee_clamped[side] = signed_flexion < 0.0
+	debug_knee_direction_constrained[side] = true
+	debug_knee_pole_alignment[side] = required_alignment
 	debug_signed_knee_flexion[side] = _signed_knee_flexion(
-			hip_pos, corrected_knee, corrected_foot)
+			hip_pos, corrected_knee, corrected_foot, positive_axis)
 	return {
 		"hip_delta": corrected_hip_delta,
 		"knee_delta": corrected_knee_delta,
@@ -482,7 +522,24 @@ func _limit_negative_rendered_knee(side: StringName, hip_pos: Vector3,
 	}
 
 
-func _signed_knee_flexion(hip: Vector3, knee: Vector3, foot: Vector3) -> float:
+func _animated_knee_pole(animated_hip: Vector3, animated_knee: Vector3,
+		animated_foot: Vector3, rendered_line: Vector3) -> Vector3:
+	var animated_line := animated_foot - animated_hip
+	if animated_line.length_squared() < 0.000001 or rendered_line.length_squared() < 0.000001:
+		return Vector3.ZERO
+	var along := clampf((animated_knee - animated_hip).dot(animated_line)
+			/ animated_line.length_squared(), 0.0, 1.0)
+	var pole := animated_knee - (animated_hip + animated_line * along)
+	var rendered_direction := rendered_line.normalized()
+	pole -= rendered_direction * pole.dot(rendered_direction)
+	if pole.length_squared() < 0.000001:
+		var actor_forward: Vector3 = -_owner.player_body.global_transform.basis.z.normalized()
+		pole = actor_forward - rendered_direction * actor_forward.dot(rendered_direction)
+	return pole.normalized() if pole.length_squared() >= 0.000001 else Vector3.ZERO
+
+
+func _signed_knee_flexion(hip: Vector3, knee: Vector3, foot: Vector3,
+		positive_axis: Vector3) -> float:
 	var upper := knee - hip
 	var lower := foot - knee
 	if upper.length_squared() < 0.000001 or lower.length_squared() < 0.000001:
@@ -493,8 +550,7 @@ func _signed_knee_flexion(hip: Vector3, knee: Vector3, foot: Vector3) -> float:
 		return flexion
 	var along := clampf((knee - hip).dot(line) / line.length_squared(), 0.0, 1.0)
 	var pole := knee - (hip + line * along)
-	var forward: Vector3 = _owner.player_body.global_transform.basis.z.normalized()
-	return flexion if pole.dot(forward) >= 0.0 else -flexion
+	return flexion if pole.dot(positive_axis) >= 0.0 else -flexion
 
 
 func _limit_rendered_upright_shin(side: StringName, knee_delta: Quaternion,
@@ -506,7 +562,7 @@ func _limit_rendered_upright_shin(side: StringName, knee_delta: Quaternion,
 			or normal.dot(Vector3.UP) < 0.999 or animated_shin.length_squared() < 0.000001):
 		return knee_delta
 	var rendered_direction := (knee_delta * animated_shin).normalized()
-	var limit := deg_to_rad(MAX_UPRIGHT_SHIN_SWING_DEGREES)
+	var limit := deg_to_rad(_settings.max_upright_shin_swing_degrees)
 	var swing := Vector3.DOWN.angle_to(rendered_direction)
 	if swing <= limit:
 		return knee_delta
@@ -519,7 +575,7 @@ func _limit_rendered_upright_shin(side: StringName, knee_delta: Quaternion,
 	var key := "%s:knee" % side
 	_previous_corrections[key] = result
 	debug_shin_clamped[side] = true
-	debug_shin_swing_degrees[side] = MAX_UPRIGHT_SHIN_SWING_DEGREES
+	debug_shin_swing_degrees[side] = _settings.max_upright_shin_swing_degrees
 	return result
 
 
@@ -575,9 +631,17 @@ func _limit_idle_stance_crossing(side: StringName, to_world: Transform3D,
 			safe_foot = candidate_foot
 		else:
 			unsafe_weight = weight
+	var limited_hip_delta := Quaternion.IDENTITY.slerp(hip_delta, safe_weight)
+	var limited_knee_delta := Quaternion.IDENTITY.slerp(knee_delta, safe_weight)
+	# The rate limiter has already cached the unrestricted corrections for this
+	# frame. Keep its history aligned with the stance-safe pose that is actually
+	# rendered; otherwise the next frame starts from the rejected solution and
+	# can alternate between crossed and safe legs during a turn.
+	_previous_corrections["%s:hip" % side] = limited_hip_delta
+	_previous_corrections["%s:knee" % side] = limited_knee_delta
 	return {
-		"hip_delta": Quaternion.IDENTITY.slerp(hip_delta, safe_weight),
-		"knee_delta": Quaternion.IDENTITY.slerp(knee_delta, safe_weight),
+		"hip_delta": limited_hip_delta,
+		"knee_delta": limited_knee_delta,
 		"knee_pos": safe_knee,
 		"foot_pos": safe_foot,
 	}
@@ -607,10 +671,11 @@ func _limit_correction(side: StringName, joint: StringName,
 		_previous_correction_frames[key] = current_frame
 		return desired
 	var angle := previous.angle_to(desired)
-	var angular_speed := MAX_CORRECTION_ANGULAR_SPEED
+	var angular_speed := _settings.joint_correction_speed_degrees
 	# When shared pelvis sink engages on stairs, allow knees to bend quickly to
 	# match the pelvis drop without lagging into the stair step.
-	if _owner._smoothed_shared_drop > 0.001:
+	if (_owner._smoothed_shared_drop > 0.001
+			and (not is_idle_animation or _owner._stair_predictor.is_active())):
 		angular_speed = 720.0
 	# A planted target stays fixed in world space while the body travels along
 	# a ramp. The ordinary 120-degree budget lets the leg trail far behind that
@@ -618,9 +683,9 @@ func _limit_correction(side: StringName, joint: StringName,
 	elif (_owner._smoothed_normal.get(side, Vector3.UP) as Vector3).dot(Vector3.UP) < 0.999:
 		angular_speed = 3600.0
 	elif is_crouch_animation:
-		angular_speed = CROUCH_CORRECTION_ANGULAR_SPEED
+		angular_speed = _settings.crouch_joint_speed_degrees
 	elif is_idle_animation:
-		angular_speed = STANDING_CORRECTION_ANGULAR_SPEED
+		angular_speed = _settings.standing_joint_speed_degrees
 	var maximum_step := deg_to_rad(angular_speed) * delta
 	var result := desired
 	if angle > maximum_step and angle > 0.000001:

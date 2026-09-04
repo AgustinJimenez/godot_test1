@@ -42,10 +42,11 @@ static func failures(ik: PlayerFootIKModifier, skeleton: Skeleton3D,
 				and (animation_name.contains("idle") or animation_name.contains("walk"))
 				and normal.dot(Vector3.UP) >= 0.999):
 			var shin_swing := rad_to_deg(Vector3.DOWN.angle_to(shin.normalized()))
-			if (shin_swing > ik._leg_solver.MAX_UPRIGHT_SHIN_SWING_DEGREES
+			if (shin_swing > ik._ground_sampler._settings.max_upright_shin_swing_degrees
 					+ ANGLE_TOLERANCE_DEGREES):
 				result.append("%s %s shin swing %.2f exceeds %.2f degrees" % [label, side,
-						shin_swing, ik._leg_solver.MAX_UPRIGHT_SHIN_SWING_DEGREES])
+						shin_swing,
+						ik._ground_sampler._settings.max_upright_shin_swing_degrees])
 	return result
 
 

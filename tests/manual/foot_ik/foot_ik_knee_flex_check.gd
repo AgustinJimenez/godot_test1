@@ -16,6 +16,7 @@ const FRAME_LIMIT := 360
 const MAX_KNEE_FLEXION_DEGREES := 120.0
 const SOLE_CLEARANCE_LIMIT := 0.08
 const MAX_JOINT_STEP := 0.25
+const SHALLOW_SPLIT_MAX_UPPER_FLEXION := 80.0
 
 var _player: Player
 var _ik: PlayerFootIKModifier
@@ -41,6 +42,15 @@ var _negative_knee_clamped := false
 var _replay_idle_loop := false
 var _replay_weight_oscillation := false
 var _replay_delayed_lower_snap := false
+var _replay_delayed_support_restore := false
+var _replay_committed_edge_landing := false
+var _replay_grounded_commit_mismatch := false
+var _replay_stale_grounded_commit := false
+var _replay_shallow_split_pose := false
+var _capsule_corner_rejected := false
+var _grounded_commit_mismatch_rejected := false
+var _grounded_commit_reject_frame := -1
+var _stale_grounded_commit_rejected := false
 var _upper_y := UPPER_Y
 var _lower_y := LOWER_Y
 var _minimum_planted_weight := 1.0
@@ -70,6 +80,13 @@ var _previous_signed_knee: Dictionary = {}
 var _max_signed_knee_step := 0.0
 var _max_signed_knee_step_frame := -1
 var _max_signed_knee_step_side := ""
+var _stable_landing_support_streak := 0
+var _stable_landing_support_y := INF
+var _max_stable_landing_target_drift := 0.0
+var _post_landing_airborne_seen := false
+var _max_post_landing_root_vertical_change := 0.0
+var _max_committed_solve_surface_error := 0.0
+var _last_airborne_decision := "none"
 
 
 func _ready() -> void:
@@ -90,7 +107,9 @@ func _ready() -> void:
 	_player.third_person_arm.rotation.y = 0.0
 	_player.velocity = _initial_velocity
 	_player.movement_input_override = Vector2.ZERO
-	_player.ledge_safety_enabled = true
+	# This synthetic case starts nearly grounded beside the riser and exists to
+	# isolate the later idle support handoff, not airborne landing prediction.
+	_player.ledge_safety_enabled = not _replay_delayed_lower_snap
 	_ik.reset_runtime_state()
 	if _animation_time >= 0.0:
 		_player.body.anim_player.seek(_animation_time, true)
@@ -138,12 +157,65 @@ func _parse_arguments() -> void:
 			_replay_delayed_lower_snap = true
 			_start = Vector3(8.340155, 0.560004, 3.917477)
 			_yaw_degrees = 3.80492464367709
+		elif argument == "replay_delayed_support_restore=true":
+			_replay_delayed_support_restore = true
+			_start = Vector3(9.263655, 0.600457, 3.928770)
+			_yaw_degrees = -91.9482661539001
+		elif argument == "replay_committed_edge_landing=true":
+			_replay_committed_edge_landing = true
+			_start = Vector3(9.576618, 0.00008, 4.512457)
+			_yaw_degrees = 90.6640198352085
+		elif argument == "replay_grounded_commit_mismatch=true":
+			_replay_grounded_commit_mismatch = true
+			_start = Vector3(10.0, 0.6001, 3.85)
+		elif argument == "replay_stale_grounded_commit=true":
+			_replay_stale_grounded_commit = true
+			_start = Vector3(10.0, 0.6001, 3.85)
+		elif argument == "replay_shallow_split_pose=true":
+			_replay_shallow_split_pose = true
+			_start = Vector3(11.59604, 1.173873, 2.897751)
+			_yaw_degrees = 67.2873354008138
+			_upper_y = 1.20
+			_lower_y = 1.00
 		elif argument == "require_lowest_support=true":
 			_require_lowest_support = true
 
 
 func _physics_process(_delta: float) -> void:
 	_frame += 1
+	if _replay_committed_edge_landing and _frame == 1:
+		_capsule_corner_rejected = not _ik._ground_sampler._landing_planner \
+				._capsule_clears_landing(_player.get_world_3d().direct_space_state,
+						Vector3(8.394927, 0.0, 4.340211), 0.0)
+	if _replay_grounded_commit_mismatch and _frame == 10:
+		# Exact escaped state: prediction retained the lower floor even though
+		# collision settled the body on the platform one full riser higher.
+		var planner: FootIKLandingPlanner = _ik._ground_sampler._landing_planner
+		planner.safe_root_target = _player.global_position
+		planner.committed_surface_y = _lower_y
+		planner.decision = "landing_hold_regression"
+		_ik._ground_sampler.landing_committed_target[&"left"] = Vector3(
+				_player.global_position.x, _lower_y, _player.global_position.z)
+	if _replay_stale_grounded_commit and _frame == 10:
+		var planner: FootIKLandingPlanner = _ik._ground_sampler._landing_planner
+		planner.safe_root_target = _player.global_position + Vector3(0.52, 0.0, 0.0)
+		planner.committed_surface_y = _player.global_position.y
+		planner.decision = "stale_idle_regression"
+		for side: StringName in [&"left", &"right"]:
+			_ik._ground_sampler.airborne_landing_probe_local[side] = Vector3.ZERO
+			_ik._ground_sampler.landing_committed_target[side] = Vector3(
+					_player.global_position.x + 0.52, _player.global_position.y,
+					_player.global_position.z)
+	if (_replay_stale_grounded_commit and _frame > 10
+			and not _ik._ground_sampler.airborne_safe_root_target.is_finite()
+			and _ik._ground_sampler.landing_committed_target.is_empty()):
+		_stale_grounded_commit_rejected = true
+	if (_replay_grounded_commit_mismatch and _frame > 10
+			and _ik._ground_sampler.airborne_landing_decision.begins_with(
+					"reject_grounded_height")):
+		_grounded_commit_mismatch_rejected = true
+		if _grounded_commit_reject_frame < 0:
+			_grounded_commit_reject_frame = _frame
 	if _replay_unreachable_acquisition and _frame == 10:
 		var side := &"right"
 		var target := _player.global_position + Vector3(0.2, -2.1, 0.0)
@@ -153,12 +225,16 @@ func _physics_process(_delta: float) -> void:
 		_unreachable_acquisition_cleared = not _ik._ground_sampler.idle_lower_acquiring.has(side)
 	if _replay_negative_knee and _frame == 10:
 		_negative_knee_clamped = _inject_negative_knee_pose()
-	if _replay_landing_clearance_jump:
+	if (_replay_landing_clearance_jump or _replay_delayed_support_restore
+			or _replay_committed_edge_landing):
 		if _frame == 20:
 			Input.action_press(&"jump")
 		elif _frame == 21:
 			Input.action_release(&"jump")
-		_player.movement_input_override = Vector2.ZERO
+		var committed_input := 0.0
+		if _replay_committed_edge_landing and _frame >= 40 and _frame <= 50:
+			committed_input = 1.0
+		_player.movement_input_override = Vector2(committed_input, 0.0)
 	elif _replay_late_landing_input:
 		if _frame == 20:
 			Input.action_press(&"jump")
@@ -187,9 +263,11 @@ func _physics_process(_delta: float) -> void:
 		_minimum_planted_weight = minf(_minimum_planted_weight, frame_min_weight)
 	_measure_target_reversal()
 	var replaying_jump := (_replay_prelanding_jump or _replay_late_landing_input
-			or _replay_landing_clearance_jump)
+			or _replay_landing_clearance_jump or _replay_delayed_support_restore
+			or _replay_committed_edge_landing)
 	if not _player.is_on_floor() and (not replaying_jump or _frame >= 20):
 		_airborne_seen = true
+		_last_airborne_decision = _ik._ground_sampler.airborne_landing_decision
 	if (not _player.is_on_floor()
 			and _ik._ground_sampler.airborne_safe_root_target.is_finite()):
 		_prelanding_move_seen = true
@@ -198,6 +276,24 @@ func _physics_process(_delta: float) -> void:
 	if _airborne_seen and _player.is_on_floor() and not _landing_root.is_finite():
 		_landing_root = _player.global_position
 		_landing_frame = _frame
+	if _replay_committed_edge_landing and _landing_root.is_finite():
+		if not _player.is_on_floor():
+			_post_landing_airborne_seen = true
+		else:
+			_max_post_landing_root_vertical_change = maxf(
+					_max_post_landing_root_vertical_change,
+					absf(_player.global_position.y - _landing_root.y))
+		if (_frame > _landing_frame + 30
+				and _player.body.anim_player.current_animation.get_file().contains("idle")):
+			for side: StringName in [&"left", &"right"]:
+				if not _ik._leg_solver.debug_solve_target.has(side):
+					continue
+				var solve_target: Vector3 = _ik._leg_solver.debug_solve_target[side]
+				var surface: Vector3 = _ik._smoothed_target.get(side, solve_target)
+				var offset: float = _ik._ground_sampler.debug_effective_offset.get(side, 0.0)
+				_max_committed_solve_surface_error = maxf(
+						_max_committed_solve_surface_error,
+						absf(solve_target.y - (surface.y + offset)))
 	if _landing_root.is_finite() and _player.is_on_floor():
 		var live_left: Vector3 = _ik._smoothed_target.get(
 				&"left", Vector3(INF, INF, INF))
@@ -218,6 +314,17 @@ func _physics_process(_delta: float) -> void:
 			and absf(right_target.y - _upper_y) <= TARGET_TOLERANCE)
 	var both_lower := (absf(left_target.y - _lower_y) <= TARGET_TOLERANCE
 			and absf(right_target.y - _lower_y) <= TARGET_TOLERANCE)
+	if _replay_delayed_support_restore and _landing_root.is_finite():
+		if is_finite(_stable_landing_support_y):
+			_max_stable_landing_target_drift = maxf(_max_stable_landing_target_drift,
+					maxf(absf(left_target.y - _stable_landing_support_y),
+					absf(right_target.y - _stable_landing_support_y)))
+		elif both_upper:
+			_stable_landing_support_streak += 1
+			if _stable_landing_support_streak >= 8:
+				_stable_landing_support_y = (left_target.y + right_target.y) * 0.5
+		else:
+			_stable_landing_support_streak = 0
 	if (_replay_delayed_lower_snap
 			and _ik._ground_sampler.idle_lower_latched_target.size() == 2):
 		if not is_finite(_lower_stable_root_y):
@@ -226,23 +333,37 @@ func _physics_process(_delta: float) -> void:
 				_max_post_latch_root_rise, _player.global_position.y - _lower_stable_root_y)
 		_post_latch_upper_target_seen = (_post_latch_upper_target_seen
 				or left_target.y > _lower_y + 0.1 or right_target.y > _lower_y + 0.1)
-	var safely_settled := (_player.is_on_floor() and (both_upper or both_lower)
+	var shallow_split := (_replay_shallow_split_pose
+			and ((absf(left_target.y - _upper_y) <= TARGET_TOLERANCE
+			and absf(right_target.y - _lower_y) <= TARGET_TOLERANCE)
+			or (absf(right_target.y - _upper_y) <= TARGET_TOLERANCE
+			and absf(left_target.y - _lower_y) <= TARGET_TOLERANCE)))
+	var safely_settled := (_player.is_on_floor() and (both_upper or both_lower or shallow_split)
 			and float(_ik._smoothed_ground_weight.get(&"left", 0.0)) >= 0.99
 			and float(_ik._smoothed_ground_weight.get(&"right", 0.0)) >= 0.99
 			and _compressed_targets_settled())
 	_settle_streak = _settle_streak + 1 if safely_settled else 0
 	if ((_settle_streak >= SETTLE_STREAK_REQUIRED
 			and not (_replay_idle_loop or _replay_weight_oscillation
-					or _replay_delayed_lower_snap))
+					or _replay_delayed_lower_snap or _replay_delayed_support_restore
+					or _replay_committed_edge_landing))
 			or ((_replay_idle_loop or _replay_weight_oscillation
-					or _replay_delayed_lower_snap) and _frame >= 330)
+					or _replay_delayed_lower_snap or _replay_delayed_support_restore
+					or _replay_committed_edge_landing)
+					and _frame >= 330)
 			or _frame >= FRAME_LIMIT):
 		_finish_check()
 
 
 func _finish_check() -> void:
 	var failures: Array[String] = []
-	failures.append_array(JOINT_LIMIT_CHECK.failures(_ik, _player.skeleton, "knee_flex"))
+	var joint_failures := JOINT_LIMIT_CHECK.failures(_ik, _player.skeleton, "knee_flex")
+	for failure: String in joint_failures:
+		# The generic helper assumes both soles share one final surface. This
+		# regression deliberately retains a valid 0.20m split and checks each
+		# sole against its own target below.
+		if not (_replay_shallow_split_pose and failure.contains("sole clearance")):
+			failures.append(failure)
 	if _settle_streak < SETTLE_STREAK_REQUIRED:
 		failures.append("never moved both feet onto one safe support level")
 	if _require_prelanding_move and not _prelanding_move_seen:
@@ -259,6 +380,16 @@ func _finish_check() -> void:
 		failures.append("unreachable lower-support acquisition retained ownership")
 	if _replay_negative_knee and not _negative_knee_clamped:
 		failures.append("final-pose limiter retained an injected negative knee bend")
+	if _replay_stale_grounded_commit and not _stale_grounded_commit_rejected:
+		failures.append("idle retained a stale distant landing commitment")
+	if _replay_shallow_split_pose:
+		var left_target: Vector3 = _ik._smoothed_target.get(&"left", Vector3.ZERO)
+		var right_target: Vector3 = _ik._smoothed_target.get(&"right", Vector3.ZERO)
+		var upper_side := &"left" if left_target.y >= right_target.y else &"right"
+		var upper_flexion := _rendered_knee_flexion(upper_side)
+		if upper_flexion > SHALLOW_SPLIT_MAX_UPPER_FLEXION:
+			failures.append("shallow-split upper knee flexed %.2f degrees (limit %.2f)" % [
+					upper_flexion, SHALLOW_SPLIT_MAX_UPPER_FLEXION])
 	if _replay_weight_oscillation and _minimum_planted_weight < 0.99:
 		failures.append("settled planted weight oscillated down to %.2f" % _minimum_planted_weight)
 	if _replay_delayed_lower_snap and not is_finite(_lower_stable_root_y):
@@ -267,6 +398,35 @@ func _finish_check() -> void:
 		failures.append("idle probe replaced established common lower support")
 	if _replay_delayed_lower_snap and _max_post_latch_root_rise > 0.02:
 		failures.append("root rose %.3fm after lower support latched" % _max_post_latch_root_rise)
+	if _replay_delayed_support_restore and not is_finite(_stable_landing_support_y):
+		failures.append("landing never established common upper support")
+	if _replay_delayed_support_restore and _max_stable_landing_target_drift > 0.08:
+		failures.append("stable landing target departed %.3fm then restored" %
+				_max_stable_landing_target_drift)
+	if _replay_committed_edge_landing and not _prelanding_move_seen:
+		failures.append("edge landing never committed to a safe support while airborne")
+	if _replay_committed_edge_landing and _post_landing_split_seen:
+		failures.append("committed edge landing exposed a split stance after contact")
+	if _replay_committed_edge_landing and _post_landing_airborne_seen:
+		failures.append("committed edge landing left the floor and landed a second time")
+	if _replay_committed_edge_landing and _max_post_landing_root_vertical_change > 0.08:
+		failures.append("root changed height %.3fm after committed landing" %
+				_max_post_landing_root_vertical_change)
+	if _replay_committed_edge_landing and _max_committed_solve_surface_error > 0.08:
+		failures.append("solver departed committed support by %.3fm" %
+				_max_committed_solve_surface_error)
+	if _replay_committed_edge_landing and not _capsule_corner_rejected:
+		failures.append("landing planner accepted a capsule-overlapping platform corner")
+	if (_replay_grounded_commit_mismatch
+			and not _grounded_commit_mismatch_rejected):
+		failures.append("stale lower landing commitment survived an upper landing")
+	if (_replay_grounded_commit_mismatch
+			and _grounded_commit_reject_frame > 12):
+		failures.append("stale landing commitment cleared late at frame %d" %
+				_grounded_commit_reject_frame)
+	if (_replay_grounded_commit_mismatch
+			and not _ik._ground_sampler.landing_committed_target.is_empty()):
+		failures.append("rejected landing commitment retained per-foot ownership")
 	if _minimum_signed_knee_flexion < -0.5:
 		failures.append("%s knee bent backward %.2f degrees at frame %d" % [
 				_minimum_signed_knee_side, _minimum_signed_knee_flexion,
@@ -285,8 +445,10 @@ func _finish_check() -> void:
 	var right_target: Vector3 = _ik._smoothed_target.get(&"right", Vector3.ZERO)
 	var safe_y := (_upper_y if (left_target.y + right_target.y) * 0.5
 			> (_upper_y + _lower_y) * 0.5 else _lower_y)
-	var left_clearance := _rendered_sole_y(&"left") - safe_y
-	var right_clearance := _rendered_sole_y(&"right") - safe_y
+	var left_clearance := _rendered_sole_y(&"left") \
+			- (left_target.y if _replay_shallow_split_pose else safe_y)
+	var right_clearance := _rendered_sole_y(&"right") \
+			- (right_target.y if _replay_shallow_split_pose else safe_y)
 	for side: StringName in [&"left", &"right"]:
 		var flexion := left_flexion if side == &"left" else right_flexion
 		var knee_above := left_knee_above_ankle if side == &"left" else right_knee_above_ankle
@@ -298,7 +460,7 @@ func _finish_check() -> void:
 		if (_require_lowest_support and not _ik._ground_sampler.has_support_patch(
 				_player.get_world_3d().direct_space_state,
 				_ik._smoothed_target.get(side, Vector3.ZERO),
-				_ik._ground_sampler.COMPRESSED_UPPER_SUPPORT_RADIUS)):
+				_ik._ground_sampler._settings.upper_support_radius)):
 			failures.append("%s target has no complete upper support patch" % side)
 	if absf(left_clearance) > SOLE_CLEARANCE_LIMIT:
 		failures.append("left sole clearance %.3fm (limit %.3fm)" % [
@@ -306,13 +468,18 @@ func _finish_check() -> void:
 	if absf(right_clearance) > SOLE_CLEARANCE_LIMIT:
 		failures.append("right sole clearance %.3fm (limit %.3fm)" % [
 				right_clearance, SOLE_CLEARANCE_LIMIT])
-	if not _require_prelanding_move and _max_joint_step > MAX_JOINT_STEP:
+	# A jump clip can exceed the standing continuity bound; its landing replay
+	# has dedicated target-reversal and post-contact split assertions below.
+	if not (_require_prelanding_move or _replay_landing_clearance_jump \
+			or _replay_delayed_support_restore or _replay_committed_edge_landing) \
+			and _max_joint_step > MAX_JOINT_STEP:
 		failures.append("one-frame joint movement %.3fm (limit %.3fm)" % [
 				_max_joint_step, MAX_JOINT_STEP])
-	if _max_shin_swing > _ik._leg_solver.MAX_UPRIGHT_SHIN_SWING_DEGREES + 1.0:
+	if (_max_shin_swing
+			> _ik._ground_sampler._settings.max_upright_shin_swing_degrees + 1.0):
 		failures.append("standing shin reached %.2f degrees at frame %d (limit %.2f)" % [
 				_max_shin_swing, _max_shin_swing_frame,
-				_ik._leg_solver.MAX_UPRIGHT_SHIN_SWING_DEGREES])
+				_ik._ground_sampler._settings.max_upright_shin_swing_degrees])
 	if _replay_edge_push and _max_target_reversal > 0.2:
 		failures.append("a foot target lowered then rose %.3fm during one recovery" %
 				_max_target_reversal)
@@ -352,6 +519,21 @@ func _finish_check() -> void:
 	details += " min_planted_weight=%.2f" % _minimum_planted_weight
 	details += " post_latch_root_rise=%.3f upper_reopened=%s" % [
 			_max_post_latch_root_rise, str(_post_latch_upper_target_seen)]
+	details += " stable_landing_y=%.3f drift=%.3f" % [
+			_stable_landing_support_y, _max_stable_landing_target_drift]
+	details += " relanded=%s post_landing_root_dy=%.3f" % [
+			str(_post_landing_airborne_seen), _max_post_landing_root_vertical_change]
+	details += " committed_solve_error=%.3f" % _max_committed_solve_surface_error
+	details += " animation=%s weights=%.2f/%.2f" % [
+			String(_player.body.anim_player.current_animation),
+			float(_ik._smoothed_ground_weight.get(&"left", 0.0)),
+			float(_ik._smoothed_ground_weight.get(&"right", 0.0))]
+	details += " right_joints=%s/%s/%s" % [
+			str(_final_joint_world(&"right", &"hip")),
+			str(_final_joint_world(&"right", &"knee")),
+			str(_final_joint_world(&"right", &"foot"))]
+	details += " solve_targets=%s" % str(_ik._leg_solver.debug_solve_target)
+	details += " landing_decision=%s" % _last_airborne_decision
 	if not failures.is_empty():
 		Input.action_release(&"jump")
 		print("FOOT_IK_KNEE_FLEX_CHECK FAIL %s details=%s" % [
@@ -409,17 +591,25 @@ func _measure_signed_knee_flexion() -> void:
 
 func _inject_negative_knee_pose() -> bool:
 	var side := &"right"
-	var forward := _player.body.global_transform.basis.z.normalized()
+	# Deliberately use a side-biased authored pole so an actor-forward-only
+	# limiter cannot accidentally satisfy this regression.
+	var authored_pole := _player.body.global_transform.basis.x.normalized()
 	var hip := _player.global_position + Vector3.UP
 	var foot := hip + Vector3.DOWN * 0.8
-	var animated_knee := hip + Vector3.DOWN * 0.4 + forward * 0.1
-	var negative_knee := hip + Vector3.DOWN * 0.4 - forward * 0.1
+	var animated_knee := hip + Vector3.DOWN * 0.4 + authored_pole * 0.1
+	var negative_knee := hip + Vector3.DOWN * 0.4 - authored_pole * 0.1
 	var result: Dictionary = _ik._leg_solver._limit_negative_rendered_knee(
 			side, hip, hip, animated_knee, foot, negative_knee, foot)
 	if result.is_empty():
 		return false
+	var corrected_knee: Vector3 = result["knee_pos"]
+	var leg_line := (foot - hip).normalized()
+	var corrected_pole := corrected_knee - hip
+	corrected_pole -= leg_line * corrected_pole.dot(leg_line)
+	var authored_alignment := corrected_pole.normalized().dot(authored_pole)
 	return float(_ik._leg_solver.debug_signed_knee_flexion.get(side, -INF)) >= 0.0 \
-			and bool(_ik._leg_solver.debug_negative_knee_clamped.get(side, false))
+			and bool(_ik._leg_solver.debug_negative_knee_clamped.get(side, false)) \
+			and authored_alignment >= 0.5
 
 
 func _measure_joint_step() -> void:
@@ -497,9 +687,17 @@ func _final_joint_world(side: StringName, joint: StringName) -> Vector3:
 
 
 func _build_surfaces() -> void:
+	if _replay_grounded_commit_mismatch:
+		_add_box(Vector3(10.0, 0.3, 3.85), Vector3(5.0, 0.6, 5.0))
+		_add_box(Vector3(10.0, -0.5, 3.85), Vector3(8.0, 1.0, 8.0))
+		return
 	if _replay_weight_oscillation:
 		_add_box(Vector3(14.67, _upper_y * 0.5, 1.25), Vector3(2.0, _upper_y, 3.0))
 		_add_box(Vector3(12.67, _lower_y * 0.5, 1.25), Vector3(2.0, _lower_y, 3.0))
+		return
+	if _replay_shallow_split_pose:
+		_add_box(Vector3(10.70, 1.10, 2.90), Vector3(2.0, 0.20, 3.0))
+		_add_box(Vector3(11.70, 0.50, 2.90), Vector3(5.0, 1.00, 5.0))
 		return
 	_add_box(Vector3(10.0, 0.3, 3.85), Vector3(3.0, 0.6, 0.5))
 	_add_box(Vector3(10.0, -0.5, 3.85), Vector3(7.0, 1.0, 5.0))

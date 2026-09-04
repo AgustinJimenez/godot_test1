@@ -257,6 +257,82 @@ pass through their authored pose. This does not apply once the body translates o
 support. `foot_ik_animation_comparison.gd` now has a 360-frame automated check covering all eight
 IK-off/on pairs, wired into `scripts/check_foot_ik.sh`; all eight pass.
 
+The 2026-09-03 live trace at root `(14.30828, 2.101, 3.989683)`, yaw `67.7457°`, showed
+stationary `unarmed_idle` with fixed ground targets but 0.176m of repeated left-foot drift. The left
+freeze streak reached 30 and was cancelled twice: first because the uncorrected animated ankle was
+below support even though the final IK foot was valid, then at the 2.5s loop seam because a missed
+ankle ray represented the animated foot itself as a distant raw target. Freeze no longer releases
+from pre-IK penetration, and target-drift release ignores a missed ray only during the bounded
+animation-seam suppression window; validated previous support, void, movement, and turning rules
+retain their releases. The exact stair-top pose is covered
+by `foot_ik_idle_plant_stability_check`: it failed red with zero left frozen samples and 0.175630m
+drift, then passed with both feet frozen for all 120 samples and 0.004147m/0.003706m drift.
+
+Post-fix validation: `scripts/check.sh` passes. The main suite reaches its known 45° ramp spin limits
+only after the new idle stability check, 24 walk-to-idle cases, 100 edge stances, 16 ledge cases,
+and its earlier focused checks pass. Locomotion retains the known `walk_left`/`walk_right` failures.
+The static ramp matrix retains its documented top-edge failures, and the exhaustive sweep is unchanged
+at 257 failures out of 6240 with worst depth `0.1488m`.
+
+The next live trace, preserved at `/tmp/foot_ik_live_20260904_002011.jsonl`, rotated in idle across
+the overlapping preview stairs near root `(11.69, 0.84, 1.88)`. The selected right-foot support
+changed from the 0.60m tread to the 0.80m tread immediately, but the rendered ankle continued toward
+it under the standing solver's 45°/s joint correction limit. The standing-only rate is now doubled
+to 90°/s; crouch, locomotion, target acquisition, and safe-zone rates are unchanged.
+
+Routine iteration no longer needs the roughly 20-25 minute dense ramp sweep. The new
+`scripts/check_foot_ik_fast.sh` runs project parsing plus high-signal core, stair, edge, landing,
+split-stance, idle-seam, and planted-idle regressions serially. The existing ramp matrix/sweep and
+full entrypoints remain the explicit exhaustive tier for confirmed changes and solver/ramp work.
+
+The next live stair-turn trace is preserved at `/tmp/foot_ik_live_20260904_003830.jsonl`. At a
+stationary root near `(11.60, 0.97, 2.20)`, the right leg alternated between `solve_to_support` and
+`limit_stance_crossing` while yaw crossed roughly -147 through +162 degrees. The rendered right foot
+jumped by 0.22-0.32m on several individual frames even though its support and full weight remained
+valid. The stance guard rendered its reduced safe correction but left the rate-limit history holding
+the unrestricted rejected correction, so later evaluations repeatedly started from the wrong pose.
+The guard now commits its final hip and knee corrections back to that history. The planted-idle
+regression includes the captured turn sequence plus a direct cache/render ownership invariant; the
+invariant fails before the fix and passes afterward.
+
+The same capture also contains a separate walk-to-idle snap at frame 471: supported idle forced the
+left/right weights from `0.347/0.069` directly to `1.0`, moving both rendered feet and knees about
+0.14-0.16m in one frame. The immediate supported-idle repair was intended only for Godot's extra
+`delta == 0` modifier refresh, where time-based smoothing cannot advance, but it also ran on normal
+60 Hz frames. Normal timed evaluations now retain `ground_weight_rise_time`; the zero-delta stale
+weight repair remains intact. The planted-idle regression asserts both paths independently.
+
+The next live idle pose is preserved at `/tmp/foot_ik_live_20260904_075825.jsonl`. For all 1,356
+retained frames the root stayed still on a 0.20m split support, while the left leg held a roughly
+73-degree bend with its knee displaced about 0.28m laterally from its hip. Both legs reported
+`clamp_negative_knee` continuously. The negative-knee guard had moved an invalid pole only a 0.001
+fraction beyond the sign boundary; on a deeply flexed leg that legal-but-nearly-sideways pole still
+looked broken. The clamp now requires a modest 0.5 normalized alignment with the authored bend pole.
+This is deliberately short of the previously rejected full pole mirror, which caused platform-corner
+calf collisions. The injected-negative regression now fails a boundary-only result and requires the
+same authored-direction margin.
+
+The following right-leg pose is preserved at `/tmp/foot_ik_live_20260904_090239.jsonl`. The final
+right knee itself was not inverted: it had only about 4.9 degrees of flexion, with the entire nearly
+straight leg reaching roughly 0.63m diagonally from hip to foot. Its owner remained
+`landing_commitment` throughout hundreds of idle frames. The predicted root was still 0.517m away,
+but horizontal airborne correction had necessarily stopped at touchdown, making that commitment
+impossible to complete and leaving its distant foot target in permanent control. On the idle
+handoff, a commitment whose root remains over 0.05m away is now retired so current physical support
+can reacquire both feet. A deterministic regression injects a same-height commitment 0.52m from a
+grounded idle root and requires both the planner and per-foot ownership to clear; it is included in
+the fast and full Foot IK entrypoints.
+
+The immediate retest is preserved at `/tmp/foot_ik_live_20260904_093352.jsonl`. The stale landing
+owner was gone and the right leg had a valid 37-degree forward bend. The visibly extreme leg was now
+the left upper-support leg: a valid but strongly lateral 87-degree bend on a mere 0.20m height split.
+Higher-foot reposition was enabled but its 112-degree preferred-flexion default classified this pose
+as acceptable. The preferred/retained thresholds are now 70/80 degrees, preserving 10 degrees of
+hysteresis while repositioning before the knee reaches the escaped pose. A replay of the exact
+1.20/1.00m support layout requires the upper knee to remain at or below 80 degrees and validates each
+sole against its own split surface. It settles near 70 degrees with both sole errors under 1mm and is
+included in both regression tiers.
+
 Final map after the comparison fix: `scripts/check.sh` PASS; animation comparison 8/8 PASS; main
 Foot IK runner reaches the same five known ledge failures; locomotion retains the known moving
 `walk_left`/`walk_right` failures; ramp matrix retains known steep/top-edge failures; dense sweep is
@@ -1141,6 +1217,483 @@ Validation map:
   0.1488m.
 
 This candidate remains uncommitted pending live confirmation.
+
+### Follow-up: randomized full-stance edge landings
+
+The next live capture is preserved at `/tmp/foot_ik_live_20260830_205944.jsonl`. On the final jump,
+the left probe selected the floor at y=0.00m while the right selected the 1.20m top landing. At
+frame 3594 both procedural targets briefly moved to the floor; the following frame restored the
+split. From frame 3596 onward the stationary capsule alternated every frame between about y=1.095m
+and y=1.200m, while the left leg faded to zero weight and remained floating.
+
+Two related ownership errors caused the reversal. First, `feet_have_common_current_support()`
+treated matching deep fallback rays as current support even when both contacts were more than a
+metre below the legs. It now requires a real hit on each side within the 0.35m direct-support depth.
+Second, making both procedural targets equal cleared the active safe-zone plan before the capsule
+reached its selected root. A validated plan with both held targets now remains active until the
+horizontal root target is reached; genuine close common contact can still cancel it.
+
+The controlled trace now adds a bounded `safe_zone_decision` string with the selected action,
+surface height, remaining root distance, and both contact distances. This distinguishes a real
+common plant from a distant fallback or an in-progress upper/lower relocation without expanding
+per-foot state ownership.
+
+The new deterministic randomized regression performs 25 independent straight-up jumps over the
+exact 1.20m top-edge geometry. It stratifies where the edge crosses the full stance from -0.24m to
++0.24m, randomizes yaw and position with a fixed seed, and includes the exact live yaw. Every case
+must settle on either the platform or floor with both targets at one height, both foot weights at
+least 0.90, and no root step above 0.05m during its final second. With the production guards
+disabled, the finalized sweep fails seven landings with a zero-weight foot. With the guards enabled,
+all 25 pass. It runs before the known-failing ledge block in `scripts/check_foot_ik.sh`.
+
+Focused validation map:
+
+- `scripts/check.sh`: PASS.
+- Randomized edge-landing sweep: PASS, 25/25 cases across -0.24m..+0.24m.
+- Ledge safety: improved from five failures to one existing 0.159m turn-pause foot step against the
+  0.150m limit; both unsupported-contact failures and both large landing snaps now pass.
+- Landing stability, split-stance walk, lower weight-oscillation, delayed lower-support snap,
+  predictive pre-landing, late landing input, and idle-loop seam regressions: PASS.
+- Locomotion remains at the existing `walk_left`/`walk_right` failures; static ramps remain at 42
+  existing top-transition failures.
+- The unrelated 6,240-case ramp penetration sweep was stopped at the user's request in favor of
+  bug-related regressions.
+
+This candidate remains uncommitted pending live confirmation.
+
+### Follow-up: delayed upper-landing support restore
+
+The latest live capture is preserved at `/tmp/foot_ik_live_20260830_213506.jsonl`. On the final
+jump, both feet initially land on the y=0.60m platform. The right probe briefly records the floor
+at y=0.00m early in `jump_land`, then returns to the platform. That stale lower-support latch is
+hidden by landing grace until animation time 0.92s, when it becomes the smoothed target and sends
+the right foot down. Subsequent platform probes restore it over the following frames.
+
+Upper-support confirmation previously required the animated sole to be within 0.06m of the tread.
+At this landing pose the sole remains about 0.64m above it even though the capsule is grounded on
+the tread and the raw foot probe repeatedly reads the same surface. Capsule support at the raw
+surface height now counts as corroborating upper contact. Four consecutive probes retire the stale
+lower latch before landing grace can expose it.
+
+The exact regression starts at the position that predicts the captured landing root and replays the
+same yaw and jump. After both targets have remained on the platform for eight frames, it watches the
+rest of landing and idle for any departure. With the previous condition it fails with a 0.600m
+drop-and-restore; with the fix it passes with zero post-confirmation drift. The randomized edge
+landing sweep now applies the same across-time invariant instead of checking only the final second.
+
+Focused validation intentionally omits the unrelated ramp matrix and dense ramp sweep. Those remain
+separate terrain-wide entrypoints; this iteration runs only project parsing and landing, edge, and
+pose-continuity regressions.
+
+### Follow-up: inverted knee-forward sign
+
+The controlled trace is preserved at `/tmp/foot_ik_live_20260831_002234.jsonl`. In its final idle
+frames the right leg reports `negative_knee_clamped=true` and `action=clamp_negative_knee` every
+frame, yet both the overlay angle and post-clamp signed trace remain positive near 23 degrees. The
+rendered knee pole is on the actor's local +Z side: anatomically backward for a Godot character,
+whose actual forward direction is local -Z.
+
+Both the overlay and solver used local +Z as their forward reference. This inverted the diagnostic
+sign and made the limiter correct an ordinary forward candidate toward the forbidden backward side.
+They now share transformed local -Z as anatomical forward. The injected negative-knee regression
+was updated to construct its valid and invalid poles from that same direction, so the old convention
+does not satisfy it.
+
+Focused validation passes: `scripts/check.sh`, the injected negative-knee clamp, idle-loop signed
+knee continuity, the exact delayed landing restore, the 25-case randomized edge landing sweep,
+landing clearance, delayed lower-support retention, and the preview idle-seam check. Ramp matrices
+remain intentionally omitted from this bug-specific pass.
+
+### Follow-up: actor-forward knee correction inverted the pose
+
+The immediate live retest is preserved at `/tmp/foot_ik_live_20260831_004027.jsonl`. The attempted
+local -Z correction made the leg visibly invert; in the final pose the left solver was now clamping
+every frame near 16 degrees. Actor forward is not a sufficient anatomical pole for this rig across
+its authored asymmetric animation poses.
+
+The limiter now derives the valid knee half-plane from each frame's untouched animated hip, knee,
+and foot chain, then projects that authored pole onto the final hip-to-foot plane. Only a procedural
+result crossing to the opposite side is negative and clamped. Actor -Z is retained solely as a
+near-straight fallback. The overlay reads the solver's exact signed result, so its label cannot
+disagree through an independent world-axis guess.
+
+The injected regression uses a deliberately side-biased authored pole and an invalid candidate on
+its opposite side. This requires the animation-relative rule rather than allowing an actor-forward
+shortcut to pass. Project checks, the injection, idle-loop continuity, exact delayed landing,
+25-case edge landing sweep, and preview seam regression pass; the ramp suites remain omitted.
+
+### Follow-up: commit the final stance before edge contact
+
+The slow two-stage recovery is preserved at `/tmp/foot_ik_live_20260831_005240.jsonl`. The player
+first landed in a split stance near the 0.60m platform edge, began the grounded safe-zone descent,
+became airborne again, then performed a second landing on the floor. The visible leg adjustment was
+therefore a late support decision rather than ordinary landing animation.
+
+`FootIKLandingPlanner` now samples an 18-point footprint spanning the complete area between and just
+outside the last stable grounded feet while the character descends. It groups flat support by
+height, ranks levels by covered body area and correction distance, rejects a lower candidate whose
+capsule ring intersects the upper obstacle, and commits to one reachable root/surface before first
+contact. The player moves toward that root at a bounded 3m/s while airborne. The ground sampler
+retains the same support through `jump_land`/idle, and the stair predictor is cleared while this
+landing commitment owns the solve targets.
+
+Actual solver-target logging exposed a hidden handoff: public ground targets were already on the
+floor while the stair predictor still fed the right leg its stale upper target. Trace records now
+include `solve_target` plus bounded ownership/action strings such as `landing_commitment` and
+`hold_committed_landing_support`, so this inconsistency is directly visible.
+
+The exact replay uses the captured position/yaw and input sequence. It asserts a pre-contact
+commitment, no split stance after contact, no second airborne/landing transition, no delayed root
+height change, and final solver targets on the committed level. It passes on the floor with
+`post_landing_root_dy=0.000`, `committed_solve_error=0.028`, and sole clearances -0.012/-0.010m. A
+fixed-seed 25-case sweep covers edge offsets -0.24m..+0.24m and passes every case.
+
+The final remaining ledge failure was a 0.159m opposite-foot jump during idle lower-support
+acquisition. Its ground and solve target did not move; the first shared-pelvis sink frame switched
+both joints to the 720-degree stair correction rate. Idle edge settling now retains the standing
+joint-rate limit unless the stair predictor actually owns the transition. The 16-case ledge suite
+then passes, including this 0.150m continuity bound.
+
+Focused validation intentionally omits both ramp entrypoints:
+
+- `scripts/check.sh`: PASS.
+- Exact committed landing, landing stability, delayed support restore, delayed lower support,
+  negative-knee, idle-loop seam, predictive landing, and late-input landing regressions: PASS.
+- Randomized edge landing: PASS, 25/25; ledge safety: PASS, 16/16; edge stance: PASS, 100/100;
+  walk/idle stance: PASS, 24 cases; stair repeat and idle-freeze clearance: PASS.
+- `scripts/check_foot_ik_locomotion.sh`: retains the documented pre-existing `walk_left` and
+  `walk_right` flat-locomotion comparison failures; idle, crouch, forward, and backward pass before
+  the script exits.
+
+This candidate remains uncommitted pending live confirmation.
+
+### Follow-up: footprint-safe but capsule-blocked floor commitment
+
+The live retest is preserved at `/tmp/foot_ik_live_20260831_064025.jsonl`. The final landing chose
+the floor with `coverage=18/18`, but the root stopped at y=0.494m against the nearby platform corner
+instead of reaching the committed y=0.00m support. Both foot targets remained on the floor while
+animated contact stayed roughly 0.49m above it. Landing grace initially raised both weights to one;
+idle contact loss then faded both to zero for the remaining 262 captured frames, leaving both soles
+floating around 0.48m.
+
+Footprint rays cannot prove that the player body fits: the 0.35m capsule can overlap a platform
+corner between radial samples even when every stance point sees floor. Each landing root candidate
+now performs a real physics shape-overlap query using the player's collision shape at the proposed
+surface. The older radial guard is also widened to 0.36m and sampled at 16 directions. A candidate
+is accepted only when both the complete stance footprint and the landing capsule clear higher
+geometry. An `already_safe` result now commits its surface as well, ensuring the stair predictor
+cannot retain a stale target during the landing handoff.
+
+The committed-edge replay now directly asserts that the captured floor/root candidate is rejected
+by capsule clearance in addition to its existing across-time checks. It passes with both final sole
+clearances near -0.01m, weights 1.00/1.00, no second landing, zero post-landing root-height drift,
+and maximum committed solver/surface error 0.028m. The 25-case edge sweep, 16-case ledge suite, and
+landing-stability replay also pass with the capsule query enabled.
+
+This candidate remains uncommitted pending another live confirmation.
+
+### Follow-up: live feature controls
+
+The preview now has a separate top-left `Foot IK Features` panel so landing policy can be isolated
+without expanding the already full pose-debug overlay. It independently toggles airborne safe-zone
+landing, grounded split-height recovery, and stair prediction. The panel also exposes landing
+correction speed/distance, stance footprint depth, capsule clearance radius, allowed IK height
+split, and the main stair/support-settle values. F6 hides the panel; restoring defaults or changing
+any control clears transient IK ownership before refreshing the skeleton, so disabled features
+cannot leave a stale landing or split-safe target active.
+
+The elevated-foot anti-crouch path is independently exposed as `Higher-foot reposition`. This is
+the compressed-upper-target search that slides a foot along its existing upper support to preserve
+a straighter knee and adequate riser-edge support. Its acquisition speed, preferred/retained knee
+flexion, and support radius are live controls. The exact split-height knee regression passes with
+the extracted defaults.
+
+A full pipeline audit added the other independently owned policies: lower-foot support acquisition,
+lower-riser escape, idle freeze, locomotion stance-target locks, force-plant mode, and the movement
+controller's outer ledge-safety gate. All existing exported Foot IK values are now represented across
+the original pose overlay and the feature panel, including stair lift/clearance, lower-foot search
+and pelvis limits, target speed, anatomical knee/hip limits, and residual/phase-locked locomotion
+mode tuning. Movement `step_height` and short-fall allowance are included because they bound when
+the safe-zone/IK system may bridge a height difference.
+
+Runtime policy values now live in `FootIKRuntimeSettings` rather than being attached to the landing
+planner. Collision masks, surface tolerances, search sample counts, animation-discontinuity holds,
+and hard support/ownership invariants deliberately remain internal. Project checks, 25 edge
+landings, 16 ledge cases, the split-height knee replay, and 24 walk-to-idle stance cases pass with
+the unchanged defaults.
+
+All runtime defaults remain the same. `scripts/check.sh` passes. The focused Foot IK run passes the
+25-case edge landing sweep, 16 ledge cases, landing stability, split stance, 100 edge-stance cases,
+stair repeat, and idle-freeze clearance. Its broader flat locomotion tail retains the existing
+`walk_left` and `walk_right` comparison failures; the separate ramp entrypoints remain omitted.
+
+This debug tooling and the current IK candidate remain uncommitted pending live confirmation.
+
+### Follow-up: stair support acquisition weight collapse
+
+The stair-walk repro is preserved at `/tmp/foot_ik_live_20260831_142014.jsonl`. During continuous
+ascent, rendered knees moved 8-14cm on several frames and a planted stair foot could fall from full
+IK weight to about 0.21 in one frame. Stair ownership always began its transfer blend at zero even
+when ordinary contact IK already held that same foot near full weight. Repeated acquisition thus
+made an otherwise planted leg fold and recover once per tread.
+
+The stair predictor now captures the incoming ground weight and blends from it to full ownership.
+It also distinguishes an in-progress vertical traversal from truly leaving the stairs, so the brief
+period where both probes share a tread does not by itself release support. Controlled traces now
+name `stair_support` and `stair_swing_prediction` ownership and include support side, root vertical
+speed, step lifts, predicted targets, and conflicting landing/lower-foot owners.
+
+The stair locomotion regression now asserts the visible temporal invariant: while the body climbs,
+a planted foot may release only at the configured weight rate. The focused stair run passes with
+186 ascent weight samples, zero excessive drops, maximum drop 0.069, no rendered-body penetration,
+and no stretch or pose-continuity failures. `scripts/check.sh` passes. The related locomotion
+entrypoint retains only its documented pre-existing `walk_left` and `walk_right` failures; forward
+and backward walking pass. Ramp entrypoints remain intentionally omitted.
+
+This candidate remains uncommitted pending live confirmation.
+
+### Follow-up: simultaneous stair swing ownership
+
+The next live stair capture is preserved at `/tmp/foot_ik_live_20260831_145752.jsonl`. The preceding
+support-weight collapse is fixed: support now engages 0.21, 0.42, 0.62, 0.83, 1.00 and releases at
+the configured gradual rate. A separate defect remained later in the ascent. Frames 430-438 had no
+stair support side, both ground weights were zero, and both legs simultaneously reported
+`stair_swing_prediction`. The left retained a missed 1.40m landing while the right predicted 1.75m;
+both step lifts stayed active and produced 20-33cm rendered knee/foot steps.
+
+When no stair support foot exists, the predictor now permits only one latched swing target. A new
+opposite swing remains animation-owned until the older predicted landing clears or a real support
+foot is acquired. The stair locomotion regression now rejects any frame with simultaneous left and
+right procedural step lift. Archived pre-fix automated traces contain 18-29 such frames; the fixed
+run contains zero. It also passes all prior stair assertions: 186 ascent weight samples, maximum
+weight drop 0.069, no penetration, no stretch, and no pose-continuity failure. `scripts/check.sh`
+passes. Ramp entrypoints remain intentionally omitted.
+
+This candidate remains uncommitted pending live confirmation.
+
+### Follow-up: idle-loop left-leg wakeup
+
+The idle repro is preserved at `/tmp/foot_ik_live_20260901_011218.jsonl`. The player root was
+stationary for all 626 captured frames, but the left leg visibly folded once every 150-frame
+`unarmed_idle` loop. The raw solve target also jumped about 10cm at the reset in the original live
+capture. A solve-target hold removed that input jump, but final-bone inspection showed the deeper
+ownership defect: the leg had been animation-owned for roughly 86 frames, then the loop reset
+briefly acquired IK and amplified the imported clip seam. Smoothing every idle frame was rejected
+because it lagged legitimate authored motion and introduced an 8.5cm foot error.
+
+Stable pre-modifier animation poses are now captured continuously, including while the leg is
+released. During the bounded idle-loop reset window, an animation-owned leg reapplies that last
+stable pose and cannot acquire a new procedural correction; a correction that was already active
+may continue using its held target. This preserves normal idle motion outside the seam and works
+across the modifier's real-delta and zero-delta evaluation passes.
+
+`FOOT_IK_IDLE_SEAM_CHECK` now measures the actual final hip/knee/foot geometry instead of the
+solver's signed diagnostic. Across two loops it passes with maximum left-foot motion 0.0142m,
+maximum seam-window knee motion 0.0073m, and maximum one-frame knee-flex change 0.69 degrees
+(limits 0.025m, 0.012m, and 3 degrees). The main Foot IK entrypoint passes all cases. Its stale
+upper-support regression reference was updated to read the extracted runtime setting.
+
+Validation map:
+
+- `scripts/check.sh`: pass.
+- `scripts/check_foot_ik.sh`: pass, including idle seam, stair locomotion, 25 edge landings, and 16
+  ledge cases.
+- `scripts/check_foot_ik_locomotion.sh`: idle, crouch idle, forward, and backward pass; the existing
+  `walk_left` and `walk_right` comparison failures remain.
+- `scripts/check_foot_ik_ramps.sh`: existing top-edge/toe penetration cases remain.
+- `scripts/check_foot_ik_ramp_sweep.sh`: 257/6240 existing ramp penetration cases fail; the sweep
+  took about 24.5 minutes and produced `user://foot_ik_ramp_sweep_failures.jsonl`.
+
+This candidate remains uncommitted pending live confirmation.
+
+### Follow-up: stale lower commitment after an upper landing
+
+The floating-foot repro is preserved at `/tmp/foot_ik_live_20260901_182653.jsonl`. The airborne
+planner committed the stance to the 1.20m lower surface, but collision actually settled the player
+root near 2.10m on the upper platform. The lower commitment survived for more than 450 grounded
+idle frames. Its deep committed probe kept the left side owned at 1.20m while the unsupported right
+side repeatedly acquired and lost a transient target near 2.18m, producing the visible float. The
+feature was enabled; stale ownership, not a disabled setting, prevented normal adjustment.
+
+A grounded landing now rejects an airborne commitment when the actual root height differs from the
+committed surface by more than `max_split_ik_height`. Rejection clears every per-foot landing target
+before ordinary contact sampling continues. Controlled traces expose this transition as
+`reject_grounded_height error=<meters>`.
+
+The new `replay_grounded_commit_mismatch` regression injects the escaped sequence on a stable upper
+platform: a lower-surface commitment is retained after an upper landing, then the test asserts that
+the planner rejects it within two frames, per-foot ownership clears, and both rendered soles remain
+on the upper support. It passes along with the neighboring committed-edge and delayed-support
+landing replays. `scripts/check.sh` and `scripts/check_foot_ik.sh` pass, including 25 randomized edge
+landings, 16 ledge cases, landing stability, and the idle-loop seam regression. The locomotion
+entrypoint retains only its documented `walk_left`/`walk_right` failures. The normal ramp matrix
+retains its existing top-edge/toe penetrations, and the 1,492-second exhaustive ramp sweep exactly
+matches the previous 257/6240 failure baseline. The scene was not launched; this candidate remains
+uncommitted pending live confirmation.
+
+### Follow-up: full landing animation after a short safe-zone descent
+
+The animation repro is preserved at `/tmp/foot_ik_live_20260901_203839.jsonl`. Frames 1868-1887
+show a controlled, stationary safe-zone descent from root y=1.086m to y=0.612m before touching the
+0.60m platform. The descent correctly retained `unarmed_idle`, but the preserved-pose branch still
+set the generic airborne flag. Touchdown at frame 1888 therefore started `unarmed_jump_land` and
+held it through frame 1918 even though no jump/fall pose preceded it.
+
+`PlayerBody` now remembers whether its airborne state came from a preserved-ground-pose descent.
+That state returns directly to idle/locomotion at contact instead of starting the full landing clip.
+Any frame that stops requesting preservation clears the marker, so ordinary falls and deliberate
+jumps retain their existing fall and landing animations.
+
+`FootIkShortFallAnimationCheck` replays 20 preserved descent updates and asserts that neither the
+fall nor landing clip appears, then performs an ordinary fall and asserts that `jump_land` still
+does appear. It runs inside the persistent 16-case ledge safety harness. The focused harness and
+`scripts/check.sh` pass. The broader Foot IK run passes all edge/landing cases before retaining the
+existing steep-ramp spin-step failures (0.060m/0.041m versus 0.040m); the locomotion entrypoint
+retains only its documented `walk_left`/`walk_right` failures. No interactive scene was launched.
+
+### Follow-up: retained idle target fighting the stance limiter
+
+The live repro is preserved at `/tmp/foot_ik_live_20260904_094601.jsonl`. At the final stationary
+pose, the right foot retained the same `live_contact` surface target while the solver alternated
+between `solve_to_support` and `limit_stance_crossing` every few frames. Those transitions moved the
+rendered foot roughly 5–7cm even though the root and input were stationary. The retained target was
+physically supported but had rotated outside the right foot's body-relative stance rectangle;
+planted-target smoothing therefore held it while the solver independently corrected the pose.
+
+Stationary idle targets outside the stance rectangle now move toward a same-height, collision-proven
+point inside the rectangle at a bounded 2m/s. This policy does not invent support, change tread
+height, or supersede landing/lower-support/higher-foot ownership. The trace exposes active correction
+as target owner `idle_stance_rehome` and solver action `move_to_stance_zone`; zero-delta modifier
+refreshes retain that diagnostic state instead of erasing it after the actual physics update. The
+feature and its speed are available in the F6 tuning panel.
+
+The planted-idle regression injects the captured root, yaw, animation phase, and stale right target.
+It asserts that the supported target is rehomed inside the stance zone, the action is observed, the
+right foot stays under a 4.5cm one-frame limit, and the stance limiter does not resume cycling. The
+focused replay passes with no stance-limited frames and effectively zero visible one-frame movement.
+The final reduced Foot IK suite passes all cases in 91 seconds, including the strengthened captured
+animation-phase replay. No interactive scene was launched.
+
+### Follow-up: live joint-angle controls
+
+The F6 preview panel now exposes the solver's hard joint constraints and response rates alongside
+the existing higher-foot knee preferences. Controls include maximum knee flexion, maximum hip swing,
+the upright shin cone, shin-steering threshold, positive knee-pole bias, and general/standing/crouch
+joint angular speeds. It also reports current signed knee flexion, hip swing, and shin swing for both
+legs so a reproduced pose can be correlated with the chosen values. Defaults preserve the previous
+behavior. Joint-limit regressions now read the runtime shin setting rather than a removed solver
+constant. The final reduced Foot IK suite passes all cases in 88 seconds. No interactive scene was
+launched.
+
+### Follow-up: recurring left-knee correction while planted
+
+The live repro is preserved at `/tmp/foot_ik_live_20260904_102015.jsonl`. In the final stationary
+idle pose, both surface targets and the character root were fixed, but the left knee moved roughly
+4.5–5.2cm every five or six frames. The trace action changed to `clamp_negative_knee` at each jump.
+The post-solve knee guard repaired a wrong-direction intermediate pose only after it crossed zero;
+the independent hip/knee angular limiters then moved back toward that unsafe pose and repeated the
+same emergency correction indefinitely.
+
+The final-pose guard now retains the configured positive knee-pole alignment continuously instead
+of waiting for a sign inversion. The trace distinguishes this stable constraint as
+`constrain_knee_direction` and records both `knee_direction_constrained` and
+`knee_pole_alignment`. The planted-idle regression injects the captured root, yaw, target, lower
+support ownership, and a complete idle-cycle sequence. Across 180 constrained frames its maximum
+left-knee movement is 0.004989m against a 0.02m limit; the previous recurring jump exceeded 0.05m.
+The reduced Foot IK suite passes all cases in 92 seconds. No interactive scene was launched.
+
+### Follow-up: constrained upper-leg pose at the 0.35m stair split
+
+The live pose is preserved at `/tmp/foot_ik_live_20260904_103701.jsonl`. The stationary character
+had its left foot on y=2.10m and right foot on y=1.75m, which is an allowed 0.35m stair-height split.
+The left target remained supported, but the late knee-direction guard owned every frame at its exact
+0.5 alignment boundary. Because that guard ran after the upright-shin limiter, it also invalidated
+the earlier result: the final shin reached 45.65 degrees against a 45-degree cone, the target error
+was about 0.058m, and the sole penetrated roughly 0.037m.
+
+The primary two-bone solve now derives its bend direction from the current authored animation pose.
+The post-solve direction guard remains as a safety net, but no longer needs to manufacture a
+different knee after the other joint constraints have completed. The planted-idle regression now
+injects the exact root, yaw, upper/lower targets, and support ownership from this pose. After bounded
+settling, it records zero late knee-direction constraints, 0.000001m maximum target error, and a
+24.83-degree maximum shin swing. The reduced Foot IK suite passes all cases in 110 seconds. No
+interactive scene was launched.
+
+### Follow-up: stationary rotation over stair treads
+
+The exact split-height pose above is now followed by a deterministic 360-degree stationary rotation
+sweep. Before the fix, a lower-foot ownership change moved both legs about 0.12m in one frame. The
+shared pelvis had applied a reach sink without retaining it in `_smoothed_shared_drop`; when lower
+support acquisition began on the next frame, release shaping restarted from zero and snapped the
+pelvis upward. The target path also stopped smoothing on the frame acquisition became a latch, and
+an out-of-zone lower support copied the replacement target's horizontal coordinates before its
+bounded descent.
+
+Shared pelvis shaping now retains every applied sink, including its no-predictor path, and all
+stationary idle sink changes pass through the configured engage/release rates. Lower-foot target
+smoothing continues across the acquiring-to-latched boundary, and stair-target rehoming moves the
+complete 3D target instead of teleporting X/Z. The sweep validates final post-modifier hip, knee, and
+foot geometry at every heading as well as the captured settled pose. It passes with zero hard joint
+constraint failures, zero late constraint at the settled pose, zero target error there, a
+28.18-degree settled shin angle, and a maximum one-frame joint movement of 0.04036m against a
+0.045m limit (down from 0.122m).
+
+The reduced related suite passes all cases in 110 seconds, including core stair locomotion, stair
+settle, randomized edge landings, ledge safety, landing stability, split stance, idle seams, and the
+new rotation sweep. No interactive scene was launched; live confirmation remains required.
+
+### Follow-up: stationary right-foot stance-limit loop
+
+The live capture is preserved at `/tmp/foot_ik_live_20260904_120650.jsonl`. Frames 1156-1502 show a
+stationary root and a right target retained on the 0.8m tread even though the current raw contact was
+the supported 0.6m tread. No valid same-height point existed inside the right stance zone, so target
+rehoming declined the move but left the stale target active. The solver then alternated between
+`solve_to_support` and `limit_stance_crossing`: the foot drifted forward for several frames and
+snapped roughly 0.20m backward whenever the stance limiter engaged.
+
+If same-height rehoming is impossible, an out-of-zone idle target now retires to the current flat,
+supported, in-zone raw contact when the height difference is within `max_split_ik_height`. The
+existing solved-target and joint-rate limits provide the visible transition. The exact root, yaw,
+target, and missing lower-owner state are replayed after the 360-degree stair sweep. It passes with
+the stale target resolved, only two stance-limit transition frames, a final in-zone target, and a
+maximum right-foot step of 0.051278m instead of the repeating 0.20m reset.
+
+`scripts/check.sh` passes. The reduced related Foot IK suite passes every case in 94 seconds. No
+interactive scene was launched; live confirmation remains required.
+
+### Follow-up: stationary left-foot stance-limit loop
+
+The mirrored live capture is preserved at `/tmp/foot_ik_live_20260904_121911.jsonl`. Frames
+968-1443 retained the left target at `(12.70302, 1.0, 2.477624)` while the supported raw contact was
+near `(12.1557, 1.0, 2.458)`. The root and yaw were stationary, but the final foot repeatedly moved
+4-6cm toward the stale target and reset through `limit_stance_crossing`. The idle clip's small foot
+motion prevented `likely_idle`, so stance rehoming never ran even though the stronger facts already
+held: idle animation, stationary body, full plant weight, flat support, and an out-of-zone target.
+
+Idle stance rehoming now uses those explicit plant conditions rather than the animation-speed
+heuristic. The idle target-lock side key is also erased on every unfrozen frame, enforcing the
+ownership invariant even if cache state becomes inconsistent. The exact left root, yaw, and stale
+target now replay after the right-side case. It passes with rehoming observed, zero stance-limit
+frames during the sampled recovery, a final in-zone target, and a maximum left-foot step of
+0.041485m instead of a repeating cycle.
+
+The reduced related suite passes every case in 96 seconds. No interactive scene was launched; live
+confirmation remains required.
+
+### Follow-up: rejected late minimum-knee-bend correction
+
+The locked-straight right-knee capture is preserved at
+`/tmp/foot_ik_live_20260904_124609.jsonl`. Its final supported pose had only 5.37 degrees of right-knee
+flexion. A first experiment imposed a 12-degree minimum after the existing rate-limited solve and
+moved the ankle horizontally just enough to make that geometry possible. Its isolated pose replay
+looked safe, requiring only 0.005868m of ankle adjustment, and the reduced suite passed.
+
+Live testing exposed the ownership error that the isolated replay missed. The resulting trace is
+preserved at `/tmp/foot_ik_live_20260904_134022.jsonl`: the late correction owned 583 of 1,036 frames,
+while the earlier solve continued pursuing the unchanged retained target. During the final idle
+window it produced repeated 2-3.8cm right-foot steps and roughly 2.6cm of sole penetration. The
+experiment was removed before checkpointing. A future solution must express preferred knee flexion
+while choosing the reachable target/pelvis pose, not as another independent post-solve owner.
 
 ## Related history
 
