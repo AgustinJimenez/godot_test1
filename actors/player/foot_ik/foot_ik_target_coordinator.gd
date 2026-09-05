@@ -72,12 +72,21 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 			and _owner._ground_sampler.landing_committed_target.is_empty()
 			and float(leg.get(&"ground_weight", 0.0)) >= PLANT_WEIGHT
 			and plan.surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT)
+	# LANDING_COMMITMENT structurally fails coordinate_idle above (its own existence means
+	# landing_committed_target is non-empty, and its animation may be jump_land, not idle) -
+	# it needs its own gate. _committed_landing_hit() already reconfirms real ground support
+	# under the committed point every frame before this owner is ever reported, so this only
+	# adds stance-zone/reach/toe checks on top of an already-reconfirmed surface.
+	var coordinate_landing: bool = (plan.owner == FootIKTargetPlan.Owner.LANDING_COMMITMENT
+			and _owner._landing_grace_time <= 0.0
+			and plan.surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT)
 	var migrated_owner := plan.owner in [FootIKTargetPlan.Owner.LIVE_CONTACT,
 			FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
+			FootIKTargetPlan.Owner.LANDING_COMMITMENT,
 			FootIKTargetPlan.Owner.IDLE_FREEZE]
 	if legacy_transition_active and plan.owner != FootIKTargetPlan.Owner.IDLE_LOWER_LATCH:
 		migrated_owner = false
-	if not coordinate_idle or not migrated_owner:
+	if not (coordinate_idle or coordinate_landing) or not migrated_owner:
 		plan.stance_valid = true
 		plan.support_valid = plan.valid
 		plan.reach_valid = true

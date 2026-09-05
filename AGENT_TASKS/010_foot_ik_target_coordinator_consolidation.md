@@ -212,18 +212,21 @@ never reaches or never fully exercises. This was already the intent of "Migrate 
 at a time" above; the miss was skipping the *exhaustive* verification step for one commit, not
 the one-at-a-time discipline itself.
 
-`LANDING_COMMITMENT` was also attempted in the same investigation, with a purpose-built
-parallel gate (`coordinate_landing`, since it structurally fails `coordinate_idle`'s
-`landing_committed_target.is_empty()` check by definition) reusing `_committed_landing_hit`'s
-already-reconfirmed support. It was reverted as part of isolating the bisection above and not
-independently re-tested after `IDLE_STANCE_REHOME` was identified as the true cause - it may in
-fact be safe. Re-attempt it fresh, verified against the full exhaustive suite this time, rather
-than assuming either outcome from this session's tangled investigation.
+## LANDING_COMMITMENT re-attempted fresh, verified, and safe
 
-Current committed/pushed state after this correction: 3 owners (`LIVE_CONTACT`,
-`IDLE_LOWER_LATCH`, `IDLE_FREEZE`) plus the toe-envelope and 011 fixes - the same scope as
-`ed8061b`, with `IDLE_STANCE_REHOME`'s migration reverted for good pending its own careful
-re-attempt.
+Re-added `LANDING_COMMITMENT` with its purpose-built parallel gate (`coordinate_landing`,
+since it structurally fails `coordinate_idle`'s `landing_committed_target.is_empty()` check by
+definition) reusing `_committed_landing_hit`'s already-reconfirmed support - this time verified
+against the full exhaustive suite *before* committing, per the lesson above. Result: every
+check matches the confirmed clean baseline exactly (fast suite, both directly-run scenes, and a
+full `check_foot_ik.sh`-equivalent pass all show the same pre-existing failure set with nothing
+new). `FOOT_IK_POSE_CONTINUITY_CHECK` in particular - the exact check `IDLE_STANCE_REHOME`
+regressed - stays at `max_jump_m=0.012522`, confirming the earlier failure really was
+`IDLE_STANCE_REHOME` alone, not an interaction with `LANDING_COMMITMENT`.
+
+Current scope: 4 owners migrated (`LIVE_CONTACT`, `IDLE_LOWER_LATCH`, `LANDING_COMMITMENT`,
+`IDLE_FREEZE`). `IDLE_STANCE_REHOME` and `IDLE_LOWER_ACQUIRE` remain deferred, each with a
+recorded root-cause lead for their next attempt.
 
 ## Proposed order (safest/highest-value first)
 
