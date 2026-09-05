@@ -224,9 +224,23 @@ new). `FOOT_IK_POSE_CONTINUITY_CHECK` in particular - the exact check `IDLE_STAN
 regressed - stays at `max_jump_m=0.012522`, confirming the earlier failure really was
 `IDLE_STANCE_REHOME` alone, not an interaction with `LANDING_COMMITMENT`.
 
-Current scope: 4 owners migrated (`LIVE_CONTACT`, `IDLE_LOWER_LATCH`, `LANDING_COMMITMENT`,
-`IDLE_FREEZE`). `IDLE_STANCE_REHOME` and `IDLE_LOWER_ACQUIRE` remain deferred, each with a
-recorded root-cause lead for their next attempt.
+## LANDING_UPPER migrated - no special gate needed
+
+Unlike `LANDING_COMMITMENT`, `coordinate_idle` does not structurally exclude `LANDING_UPPER`
+(nothing in it checks `landing_upper_confirmed`), and its surface is likewise a freshly
+reconfirmed real ground contact (`LANDING_UPPER_CONFIRM_FRAMES=4` consecutive agreeing frames
+in `foot_ik_ground_sampler.gd`, not an in-flight interpolation like `IDLE_LOWER_ACQUIRE`). Added
+directly to `migrated_owner` with no new gate. Verified against the full exhaustive suite
+before committing (per the process lesson above): exact match to the confirmed clean baseline,
+including `FOOT_IK_POSE_CONTINUITY_CHECK` at `max_jump_m=0.012522`.
+
+Current scope: 6 owners migrated (`LIVE_CONTACT`, `IDLE_LOWER_LATCH`, `LANDING_COMMITMENT`,
+`LANDING_UPPER`, `IDLE_FREEZE`, plus toe-envelope validation on all of them).
+`IDLE_STANCE_REHOME` and `IDLE_LOWER_ACQUIRE` remain deferred, each with a recorded root-cause
+lead for their next attempt. Remaining unattempted: `STAIR_SUPPORT`, `STAIR_SWING`,
+`LOCOMOTION_LOCK`, `LOCOMOTION_STANCE` - per the original plan these are riskier still, since
+they write `smoothed_target` directly from `foot_ik_stair_predictor.gd`/`foot_ik_gait_tracker.gd`
+rather than producing a plan at all yet.
 
 ## Proposed order (safest/highest-value first)
 

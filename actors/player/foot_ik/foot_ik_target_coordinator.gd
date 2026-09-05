@@ -83,6 +83,7 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 	var migrated_owner := plan.owner in [FootIKTargetPlan.Owner.LIVE_CONTACT,
 			FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
 			FootIKTargetPlan.Owner.LANDING_COMMITMENT,
+			FootIKTargetPlan.Owner.LANDING_UPPER,
 			FootIKTargetPlan.Owner.IDLE_FREEZE]
 	if legacy_transition_active and plan.owner != FootIKTargetPlan.Owner.IDLE_LOWER_LATCH:
 		migrated_owner = false
