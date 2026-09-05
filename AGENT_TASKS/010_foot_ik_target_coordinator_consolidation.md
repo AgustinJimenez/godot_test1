@@ -234,13 +234,25 @@ directly to `migrated_owner` with no new gate. Verified against the full exhaust
 before committing (per the process lesson above): exact match to the confirmed clean baseline,
 including `FOOT_IK_POSE_CONTINUITY_CHECK` at `max_jump_m=0.012522`.
 
-Current scope: 6 owners migrated (`LIVE_CONTACT`, `IDLE_LOWER_LATCH`, `LANDING_COMMITMENT`,
-`LANDING_UPPER`, `IDLE_FREEZE`, plus toe-envelope validation on all of them).
-`IDLE_STANCE_REHOME` and `IDLE_LOWER_ACQUIRE` remain deferred, each with a recorded root-cause
-lead for their next attempt. Remaining unattempted: `STAIR_SUPPORT`, `STAIR_SWING`,
-`LOCOMOTION_LOCK`, `LOCOMOTION_STANCE` - per the original plan these are riskier still, since
-they write `smoothed_target` directly from `foot_ik_stair_predictor.gd`/`foot_ik_gait_tracker.gd`
-rather than producing a plan at all yet.
+## IDLE_LOWER_ACQUIRE re-attempted fresh, verified, and safe - the earlier regression was IDLE_STANCE_REHOME, not this owner
+
+Re-added `IDLE_LOWER_ACQUIRE` with its destination-based support fix (already in
+`_finish_validation` since the earlier attempt, just unreachable while the owner was reverted)
+and verified against the full exhaustive suite *before* committing. Result: exact match to the
+confirmed clean baseline, including `FOOT_IK_POSE_CONTINUITY_CHECK` at `max_jump_m=0.012522` -
+the same check this owner was earlier blamed for regressing.
+
+This confirms what the "Process failure" section above worked out after the fact: that
+regression was `IDLE_STANCE_REHOME` (migrated at the same time in the original attempt), not
+`IDLE_LOWER_ACQUIRE`. The destination-based support fix was correct all along; it just never
+got a clean, isolated re-verification until now.
+
+Current scope: 7 owners migrated (`LIVE_CONTACT`, `IDLE_LOWER_LATCH`, `IDLE_LOWER_ACQUIRE`,
+`LANDING_COMMITMENT`, `LANDING_UPPER`, `IDLE_FREEZE`, plus toe-envelope validation on all of
+them). `IDLE_STANCE_REHOME` remains deferred - its actual root cause was never isolated (only
+detected and reverted); worth a fresh, properly-instrumented attempt rather than assuming it's
+unsafe forever. Remaining unattempted: `STAIR_SUPPORT`, `STAIR_SWING`, `LOCOMOTION_LOCK`,
+`LOCOMOTION_STANCE` - scoped as their own dedicated pass in the section below.
 
 ## Step 5 scoping: STAIR_SUPPORT/STAIR_SWING/LOCOMOTION_LOCK/LOCOMOTION_STANCE - not started
 

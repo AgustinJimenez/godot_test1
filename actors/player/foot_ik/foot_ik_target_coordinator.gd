@@ -82,10 +82,13 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 			and plan.surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT)
 	var migrated_owner := plan.owner in [FootIKTargetPlan.Owner.LIVE_CONTACT,
 			FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
+			FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE,
 			FootIKTargetPlan.Owner.LANDING_COMMITMENT,
 			FootIKTargetPlan.Owner.LANDING_UPPER,
 			FootIKTargetPlan.Owner.IDLE_FREEZE]
-	if legacy_transition_active and plan.owner != FootIKTargetPlan.Owner.IDLE_LOWER_LATCH:
+	var owner_is_lower_transition := plan.owner in [FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
+			FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE]
+	if legacy_transition_active and not owner_is_lower_transition:
 		migrated_owner = false
 	if not (coordinate_idle or coordinate_landing) or not migrated_owner:
 		plan.stance_valid = true
