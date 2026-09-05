@@ -317,6 +317,31 @@ in `migrated_owner` - actually validating it (deciding what "valid" means for a 
 by a 4-corner-raycast safe-zone search rather than a single-point raycast) is follow-up work,
 not attempted here to keep this change reviewable and low-risk on its own.
 
+## SPLIT_RECOVERY migrated for real - added to migrated_owner
+
+Added `SPLIT_RECOVERY` to `migrated_owner` and to the `require_stance` exclusion (alongside
+`IDLE_STANCE_REHOME`): `prepare_overheight_split_safe_zone` holds a foot at a fixed world point
+while nudging the root toward `split_safe_root_target` (`preferred_root_nudge`), so the held
+foot can legitimately drift outside the per-side stance zone mid-nudge - same shape of conflict
+`IDLE_STANCE_REHOME` has with its own stance-zone check. Support/reach/toe checks still apply.
+
+Two things made this safer than a typical new owner: (1) `prepare_overheight_split_safe_zone`
+already writes into the exact same `smoothed_target`/`leg["target"]` fields the coordinator
+reads for every other owner (unlike the stair predictor's continuous-transfer state), so
+`_build_plan` picks up the real held surface/ankle target with no extra plumbing; (2) it
+re-asserts its cached held target unconditionally every frame it runs, before the coordinator
+even runs - so a single frame where the coordinator's own reconfirmation disagreed and
+substituted raw recovery would just get overwritten back the next frame, bounding the
+blast radius of any disagreement to a one-frame flicker rather than a stuck bad state.
+
+Verified against the full exhaustive suite before committing: byte-for-byte identical to the
+labeling-only baseline above, including `FOOT_IK_LEDGE_SAFETY_CHECK PASS cases=16` and
+`FOOT_IK_SPLIT_STANCE_WALK_CHECK PASS` (the two checks exercising this path) and
+`FOOT_IK_POSE_CONTINUITY_CHECK` unchanged at `max_jump_m=0.012522` - no flicker observed in
+either check across their full run. Brings the coordinator migration to 9 owners (all except
+`STAIR_SUPPORT`/`STAIR_SWING`/`LOCOMOTION_LOCK`/`LOCOMOTION_STANCE`, still scoped separately
+below as the project's riskiest remaining piece).
+
 ## Step 5 scoping: STAIR_SUPPORT/STAIR_SWING/LOCOMOTION_LOCK/LOCOMOTION_STANCE - not started
 
 Investigated before attempting, given every owner migrated so far needed its own individual

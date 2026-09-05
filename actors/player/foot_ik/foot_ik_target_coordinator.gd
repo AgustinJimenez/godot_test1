@@ -86,7 +86,8 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 			FootIKTargetPlan.Owner.IDLE_STANCE_REHOME,
 			FootIKTargetPlan.Owner.LANDING_COMMITMENT,
 			FootIKTargetPlan.Owner.LANDING_UPPER,
-			FootIKTargetPlan.Owner.IDLE_FREEZE]
+			FootIKTargetPlan.Owner.IDLE_FREEZE,
+			FootIKTargetPlan.Owner.SPLIT_RECOVERY]
 	var owner_is_lower_transition := plan.owner in [FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
 			FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE,
 			FootIKTargetPlan.Owner.IDLE_STANCE_REHOME]
@@ -102,7 +103,11 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 	# IDLE_STANCE_REHOME only activates when its target is already outside the stance zone
 	# (see _rehome_idle_stance_target's own early-out) - requiring it be inside would reject
 	# every single rehome candidate by definition, since correcting exactly that is its job.
-	var require_stance := plan.owner != FootIKTargetPlan.Owner.IDLE_STANCE_REHOME
+	# SPLIT_RECOVERY holds a foot at a fixed world point while the root is nudged toward
+	# split_safe_root_target (see prepare_overheight_split_safe_zone) - the held foot can
+	# legitimately sit outside the per-side stance zone mid-nudge, same shape of conflict.
+	var require_stance := not plan.owner in [FootIKTargetPlan.Owner.IDLE_STANCE_REHOME,
+			FootIKTargetPlan.Owner.SPLIT_RECOVERY]
 	plan = _finish_validation(space, plan, leg, require_stance)
 	if plan.valid:
 		leg[&"target_plan_validated"] = true
