@@ -148,11 +148,41 @@ scope (`LIVE_CONTACT`, `IDLE_LOWER_LATCH`, `IDLE_FREEZE`); confirmed via the fas
 this returns to the exact same baseline as after step 1 (only the pre-existing
 `foot_ik_idle_plant_stability_check` failure remains, unchanged).
 
-Not yet determined which of the two newly-added owners caused the regression, or whether
-`legacy_transition_active`'s exemption logic needs to be more surgical than "any lower
-transition owner bypasses the mutual-exclusion guard." Next attempt should add ONE owner at a
-time (not both together) and instrument the specific frame-82 pop before retrying, rather than
-guess a variation blind - same lesson as 008's escape-search fix this session.
+## Step 2, isolated: IDLE_STANCE_REHOME migrated, IDLE_LOWER_ACQUIRE deferred
+
+Bisected by migrating each owner alone: `IDLE_LOWER_ACQUIRE` alone reproduces the exact same
+leg-snap regression (0.518m); `IDLE_STANCE_REHOME` alone is clean (matches the safe baseline
+exactly, confirmed against the fast suite plus `foot_ik_idle_support_owner_check.tscn` and
+`foot_ik_toe_riser_check.tscn` directly). `IDLE_STANCE_REHOME` is now migrated
+(`migrated_owner` + `owner_is_lower_transition` in `_build_plan`).
+
+Root cause for `IDLE_LOWER_ACQUIRE` (confirmed via direct instrumentation, not guessed):
+`_has_support_at` checks whether real ground exists exactly at `plan.surface_target` - correct
+for `IDLE_LOWER_LATCH`/`LIVE_CONTACT`, whose surface is a settled, raycast-confirmed point. For
+`IDLE_LOWER_ACQUIRE`, `surface_target` is a `move_toward`-interpolated waypoint between the
+previous and the acquire destination (see `_update_idle_lower_transition` in
+`foot_ik_ground_sampler.gd`) - mid-transition, that interpolated 3D point does not necessarily
+correspond to any real ground height at its XZ, so `_has_support_at` can legitimately report
+`unsupported` even while the transition is correctly heading toward a valid destination
+(confirmed live: `reason=unsupported support=false` while `stance=true reach=true toe=true`,
+9 occurrences in `foot_ik_ledge_safety_check.tscn`'s repro).
+
+Applied that fix (`_finish_validation` now checks `idle_lower_acquiring[side]` for
+`IDLE_LOWER_ACQUIRE`'s support test) and re-added the owner. It closed the leg-snap regression
+(`FOOT_IK_LEDGE_SAFETY_CHECK` back to `cases=16 PASS`) - but a full exhaustive run then found a
+**second, different** regression from the same owner: `FOOT_IK_POSE_CONTINUITY_CHECK` jumped
+from `max_jump_m=0.0125` to `0.0402` (limit `0.025`), confirmed via direct reproduction
+(`foot_ik_preview.tscn -- --foot-ik-check`) and isolated to this owner alone.
+
+Two distinct regressions in a row from the same owner is the signal to stop patching symptoms
+one at a time (per this session's own debugging discipline) rather than attempt a third fix
+blind. Reverted `IDLE_LOWER_ACQUIRE` from `migrated_owner` again; kept the support-target fix
+in `_finish_validation` (still correct, just unreachable until this owner is re-added) and
+`IDLE_STANCE_REHOME`'s migration (unaffected, still clean). `IDLE_LOWER_ACQUIRE` needs a more
+fundamental look before the next attempt: it is fundamentally a *moving* target validated
+every frame with a binary accept/reject model built for settled surfaces - this may need
+validating once at acquisition start and trusting the interpolation through completion, rather
+than re-validating the in-flight waypoint every frame.
 
 ## Proposed order (safest/highest-value first)
 

@@ -74,8 +74,11 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 			and plan.surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT)
 	var migrated_owner := plan.owner in [FootIKTargetPlan.Owner.LIVE_CONTACT,
 			FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
+			FootIKTargetPlan.Owner.IDLE_STANCE_REHOME,
 			FootIKTargetPlan.Owner.IDLE_FREEZE]
-	if legacy_transition_active and plan.owner != FootIKTargetPlan.Owner.IDLE_LOWER_LATCH:
+	var owner_is_lower_transition := plan.owner in [FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
+			FootIKTargetPlan.Owner.IDLE_STANCE_REHOME]
+	if legacy_transition_active and not owner_is_lower_transition:
 		migrated_owner = false
 	if not coordinate_idle or not migrated_owner:
 		plan.stance_valid = true
@@ -102,7 +105,15 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 					plan.side, plan.surface_target)
 			and _owner._ground_sampler.is_target_inside_stance_zone(
 						plan.side, plan.ankle_target)))
-	plan.support_valid = _has_support_at(space, plan.surface_target)
+	# IDLE_LOWER_ACQUIRE's surface_target is a move_toward-interpolated waypoint, not a
+	# settled raycast-confirmed surface - mid-transition it can sit at an XZ/Y combination
+	# with no real ground directly beneath it even while correctly heading toward one, so
+	# validate the actual acquire destination instead of the in-flight waypoint.
+	var support_target := plan.surface_target
+	if plan.owner == FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE:
+		support_target = _owner._ground_sampler.idle_lower_acquiring.get(
+				plan.side, support_target)
+	plan.support_valid = _has_support_at(space, support_target)
 	var hip: Vector3 = leg.get(&"hip_pos", Vector3.ZERO)
 	var reach: float = float(leg.get(&"upper", 0.0)) + float(leg.get(&"lower", 0.0))
 	plan.reach_valid = hip.distance_to(plan.ankle_target) \
