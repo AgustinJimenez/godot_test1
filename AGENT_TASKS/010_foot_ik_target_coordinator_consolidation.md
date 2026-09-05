@@ -282,6 +282,41 @@ detected and reverted); worth a fresh, properly-instrumented attempt rather than
 unsafe forever. Remaining unattempted: `STAIR_SUPPORT`, `STAIR_SWING`, `LOCOMOTION_LOCK`,
 `LOCOMOTION_STANCE` - scoped as their own dedicated pass in the section below.
 
+## SPLIT_RECOVERY given a real owner label (proposed order step 3, partial)
+
+`FootIKTargetPlan.Owner.SPLIT_RECOVERY` already existed in the enum but `_legacy_owner()` never
+assigned it, so whenever `prepare_overheight_split_safe_zone` (in `foot_ik_ground_sampler.gd`)
+placed a leg's target directly - bypassing the plan system entirely, writing `leg["target"]`,
+`smoothed_target`, etc. straight from the split-safe-zone recovery logic - the coordinator
+mislabeled that leg as plain `LIVE_CONTACT` in `_legacy_owner()`. Confirmed this was
+label-only, not a live bug: `SPLIT_RECOVERY` is not in `migrated_owner`, so the mislabeled plan
+already took the pass-through branch (`stance_valid = true`, `support_valid = plan.valid`,
+`reach_valid = true`, no rejection/override logic runs) - identical to what a correctly-labeled
+but still-unmigrated `SPLIT_RECOVERY` plan would do. The only consumers of `plan.owner` are
+`foot_ik_trace_writer.gd` (diagnostics) and one exact-owner check in
+`foot_ik_idle_plant_stability_check.gd` gated on `IDLE_LOWER_LATCH` for the right leg, which was
+already false whenever split-recovery holds a side (that path erases
+`idle_lower_latched_target` for held sides) - so this is a pure visibility fix with no
+behavior change.
+
+Fix: added `elif sampler.split_safe_held_upper_target.has(side): result =
+FootIKTargetPlan.Owner.SPLIT_RECOVERY` to `_legacy_owner()`, placed after the landing checks
+(preserving existing precedence - split-safe-zone can theoretically run alongside landing
+state and previously-checked owners must keep winning) and before the idle-lower checks.
+
+Verified against the full exhaustive suite before committing: output is byte-for-byte
+identical to the confirmed clean baseline (empty diff on the per-check PASS/FAIL/count
+summary), including `FOOT_IK_LEDGE_SAFETY_CHECK PASS cases=16` and
+`FOOT_IK_SPLIT_STANCE_WALK_CHECK PASS` - the two checks that actually exercise this code path -
+and `FOOT_IK_POSE_CONTINUITY_CHECK PASS max_jump_m=0.012522` unchanged.
+
+This is only the labeling half of proposed-order step 3 ("define a real plan for
+SPLIT_RECOVERY"). `prepare_overheight_split_safe_zone` still mutates `smoothed_target`/`leg`
+directly rather than producing a `FootIKTargetPlan` the coordinator validates, and is not yet
+in `migrated_owner` - actually validating it (deciding what "valid" means for a target chosen
+by a 4-corner-raycast safe-zone search rather than a single-point raycast) is follow-up work,
+not attempted here to keep this change reviewable and low-risk on its own.
+
 ## Step 5 scoping: STAIR_SUPPORT/STAIR_SWING/LOCOMOTION_LOCK/LOCOMOTION_STANCE - not started
 
 Investigated before attempting, given every owner migrated so far needed its own individual

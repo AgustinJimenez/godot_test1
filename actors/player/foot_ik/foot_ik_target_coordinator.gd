@@ -267,6 +267,8 @@ func _legacy_owner(side: StringName) -> FootIKTargetPlan.Owner:
 		result = FootIKTargetPlan.Owner.LANDING_COMMITMENT
 	elif sampler.landing_upper_confirmed.has(side):
 		result = FootIKTargetPlan.Owner.LANDING_UPPER
+	elif sampler.split_safe_held_upper_target.has(side):
+		result = FootIKTargetPlan.Owner.SPLIT_RECOVERY
 	elif sampler.idle_lower_acquiring.has(side):
 		result = FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE
 	elif sampler.idle_lower_latched_target.has(side):
