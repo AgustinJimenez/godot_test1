@@ -8,6 +8,7 @@ const GAIT_TRACKER := preload("res://actors/player/foot_ik/foot_ik_gait_tracker.
 const STAIR_PREDICTOR := preload("res://actors/player/foot_ik/foot_ik_stair_predictor.gd")
 const NATIVE_BACKEND := preload("res://actors/player/foot_ik/foot_ik_native_backend.gd")
 const GROUND_SAMPLER := preload("res://actors/player/foot_ik/foot_ik_ground_sampler.gd")
+const TARGET_COORDINATOR := preload("res://actors/player/foot_ik/foot_ik_target_coordinator.gd")
 const RESIDUAL_CORRECTOR := preload("res://actors/player/foot_ik/foot_ik_residual_corrector.gd")
 const PHASE_LOCKED_CORRECTOR := preload(
 		"res://actors/player/foot_ik/foot_ik_phase_locked_corrector.gd")
@@ -15,7 +16,6 @@ enum SolverBackend { CUSTOM, NATIVE_TWO_BONE }
 ## LEGACY is the full gait pipeline. RESIDUAL_STAIR is always-on full-weight
 ## correction. PHASE_LOCKED samples once per footfall and holds during stance.
 enum LocomotionMode { LEGACY, RESIDUAL_STAIR, PHASE_LOCKED }
-## Search range above/below the animated foot; ray_down covers the tallest riser plus stride margin.
 @export var ray_up: float = 0.5
 @export var ray_down: float = 0.6
 @export var idle_settle_search_down: float = 4.0 # idle fallback depth when ray_down finds nothing
@@ -24,9 +24,7 @@ const DEEP_PLANT_PENETRATION := 0.05
 @export var ankle_offset: float = 0.0475
 @export var toe_tip_margin: float = 0.035
 @export var smooth_rate: float = 7.0
-## Keep target speed above roll speed; lag otherwise grows until pelvis sink maxes out.
 @export var target_max_speed: float = 10.0
-## Animated vertical speed that counts as mid-swing; full strength at zero.
 @export var swing_speed_threshold: float = 0.35
 ## How much more harshly RISING vertical velocity counts against
 ## swing_speed_threshold than same-magnitude FALLING velocity - a continuous
@@ -117,6 +115,7 @@ var _gait_tracker: RefCounted
 var _stair_predictor: RefCounted
 var _native_backend: RefCounted
 var _ground_sampler: RefCounted
+var _target_coordinator: FootIKTargetCoordinator
 var _residual_corrector: RefCounted
 var _phase_locked_corrector: RefCounted
 var _bone_indices: Dictionary = {} # side -> {hip, knee, foot, toe, leaf: int}
@@ -159,8 +158,6 @@ var _smoothed_normal: Dictionary:
 ## otherwise both feet falsely become "swinging" whenever the visible body
 ## eases upward, releasing and re-engaging IK once per tread.
 var _prev_animated_foot_pos: Dictionary = {} # side -> Vector3 (skeleton)
-## Held bone poses reused by the leg solver in place of a fresh (possibly
-## seam-jumped) skeleton read on a loop-reset frame - see solve()'s doc.
 var _prev_leg_bone_poses: Dictionary = {} # side -> Dictionary
 ## Guards _prev_leg_bone_poses against being overwritten more than once per
 ## real physics frame - see solve()'s own doc comment for why.
@@ -207,7 +204,6 @@ var debug_retracted: Dictionary = {} # side -> bool
 var _final_bone_poses: Dictionary = {} # int bone index -> Transform3D (skeleton space)
 var _smoothed_shared_drop := 0.0
 var _pelvis_lateral_shift := Vector3.ZERO
-## External harnesses read the post-IK skeleton-space pose here (AGENTS.md).
 func get_final_bone_global_pose(bone_idx: int) -> Transform3D:
 	return _final_bone_poses.get(bone_idx, Transform3D())
 var _forced_support_side: StringName:
@@ -217,6 +213,7 @@ func reset_runtime_state() -> void:
 	if _leg_solver != null: _leg_solver.reset_runtime_state()
 	if _gait_tracker != null: _gait_tracker.reset_runtime_state()
 	if _ground_sampler != null: _ground_sampler.reset()
+	if _target_coordinator != null: _target_coordinator.reset()
 	if _stair_predictor != null: _stair_predictor.reset()
 	for d: Dictionary in [_prev_animated_foot_pos, _prev_leg_bone_poses,
 			_prev_leg_bone_poses_frame, _leg_fresh_pose_cache, _smoothed_ground_weight,
@@ -278,6 +275,7 @@ func _ready() -> void:
 	_leg_solver = LEG_SOLVER.new(self)
 	_gait_tracker = GAIT_TRACKER.new(self)
 	_stair_predictor = STAIR_PREDICTOR.new(self)
+	_target_coordinator = TARGET_COORDINATOR.new(self)
 	_native_backend = NATIVE_BACKEND.new(self)
 	var skel := get_skeleton()
 	if skel == null:
@@ -891,6 +889,8 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			if (player_body != null and player_body.anim_player != null) else "")
 	var stationary: bool = (cur_anim == "unarmed_idle" or cur_anim == "unarmed_torch_idle"
 			or cur_anim == "unarmed_crouch_idle")
+	_target_coordinator.resolve_stationary(
+			player_body.get_world_3d().direct_space_state, per_leg, stationary)
 	shared_drop = _shape_shared_drop(shared_drop, delta, stationary)
 	var target_shift := Vector3.ZERO
 	if per_leg.has(&"left") and per_leg.has(&"right") and not _bone_indices.is_empty():
@@ -996,4 +996,5 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 				and _leg_solver.debug_solve_target.has(side)):
 			target = _leg_solver.debug_solve_target[side]
 		_leg_solver.solve(skel, side, solve_hip, target, leg["upper"], leg["lower"],
-				gw, cw, delta, leg.get("instant", false) or brace_upper)
+				gw, cw, delta, {&"instant": leg.get("instant", false) or brace_upper,
+						&"target_plan_validated": leg.get("target_plan_validated", false)})

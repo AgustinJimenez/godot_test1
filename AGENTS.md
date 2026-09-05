@@ -13,6 +13,8 @@ Active work lives in one independent `AGENT_TASKS/NNN_name.md` file selected by 
 Completed or parked work remains in its own numbered file. Update `AGENTS.md` only for rules likely
 to prevent rediscovery across several future tasks. There is no centralized planning document;
 numbered tasks and the code/tests describe the current state.
+Keep the active task a concise current handoff: replace superseded status instead of appending
+session history, and move long investigation narratives to `AGENT_TASKS/archive/`.
 
 Before editing, inspect the working tree. Existing changes belong to the user; preserve unrelated
 work. Do not commit gameplay, animation, or visual changes until the user has tested them live and

@@ -113,11 +113,10 @@ func feet_have_common_current_support() -> bool:
 				or not bool(_owner.debug_contact_hit.get(side, false))):
 			return false
 		var contact_distance := float(_owner.debug_contact_distance.get(side, -1.0))
-		if contact_distance < 0.0 or contact_distance > _settings.max_split_ik_height:
+		if contact_distance < 0.0 or not _settings.allows_support_height_difference(contact_distance):
 			return false
-	return absf((debug_raw_target[&"left"] as Vector3).y
-			- (debug_raw_target[&"right"] as Vector3).y) \
-			<= _settings.max_split_ik_height
+	return _settings.allows_support_height_difference((debug_raw_target[&"left"] as Vector3).y
+			- (debug_raw_target[&"right"] as Vector3).y)
 func _clear_lower_riser_away(side: StringName) -> void:
 	lower_riser_away.erase(side)
 	lower_riser_away_surface_y.erase(side)
@@ -293,8 +292,8 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 	var safe_zone_pending := (character != null and split_safe_root_target.is_finite()
 			and Vector2(character.global_position.x - split_safe_root_target.x,
 					character.global_position.z - split_safe_root_target.z).length() > 0.05)
-	if (safe_zone_pending and previous_support.y
-			> split_safe_surface_y + _settings.max_split_ik_height
+	if (safe_zone_pending and previous_support.y > split_safe_surface_y
+			and not _settings.allows_support_height_difference(previous_support.y - split_safe_surface_y)
 			and _has_surface_at_height(
 					space, previous_support, previous_support.y, previous_support.y + 0.2)):
 		raw_target = previous_support
@@ -648,9 +647,8 @@ func _has_lower_riser_clearance(
 		var offset := Vector3(cos(angle), 0.0, sin(angle)) \
 				* _settings.lower_riser_clearance_radius
 		var hit := raycast_ground(space, surface + offset + Vector3.UP * 0.2, 0.4)
-		if (not hit["hit"] or (hit["normal"] as Vector3).dot(Vector3.UP)
-				< STAIR_TREAD_UP_DOT
-				or absf((hit["position"] as Vector3).y - surface.y) > 0.03):
+		# Ankle support is checked separately; a lower/empty neighbor is not a riser.
+		if hit["hit"] and (hit["position"] as Vector3).y > surface.y + 0.03:
 			return false
 	return true
 func _rehome_idle_stance_target(space: PhysicsDirectSpaceState3D,
@@ -685,7 +683,7 @@ func _rehome_idle_stance_target(space: PhysicsDirectSpaceState3D,
 		next = current.move_toward(destination, _settings.idle_stance_rehome_speed * delta)
 	elif not (is_target_inside_stance_zone(side, raw_target)
 			and raw_normal.dot(Vector3.UP) >= STAIR_TREAD_UP_DOT
-			and absf(raw_target.y - current.y) <= _settings.max_split_ik_height):
+			and _settings.allows_support_height_difference(raw_target.y - current.y)):
 		# Retire a stale tread instead of fighting the final stance limiter.
 		return false
 	var next_hit := raycast_ground(space, Vector3(next.x, probe_y, next.z), probe_y - current.y + 0.2)
@@ -938,7 +936,7 @@ func _request_overheight_split_safe_zone(space: PhysicsDirectSpaceState3D,
 			return true
 	if (character == null
 			or (not animation_name.contains("idle") and not landing_recovery)
-			or upper_surface.y - lower_surface.y <= _settings.max_split_ik_height):
+			or _settings.allows_support_height_difference(upper_surface.y - lower_surface.y)):
 		split_safe_root_target = Vector3(INF, INF, INF)
 		split_safe_surface_y = -INF
 		split_rejected_surface_y = -INF

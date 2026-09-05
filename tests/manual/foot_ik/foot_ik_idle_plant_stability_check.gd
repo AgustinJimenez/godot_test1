@@ -51,6 +51,23 @@ const MAX_RIGHT_STALE_FOOT_STEP := 0.055
 const LEFT_STALE_POSITION := Vector3(12.40712, 1.037015, 2.500223)
 const LEFT_STALE_YAW_DEG := 11.9615386849404
 const LEFT_STALE_TARGET := Vector3(12.70302, 1.0, 2.477624)
+const COORDINATOR_POSITION := Vector3(12.13534, 0.777293, 1.701067)
+const COORDINATOR_START_YAW_DEG := 57.3398342332289
+const COORDINATOR_END_YAW_DEG := -33.1875066864984
+const COORDINATOR_STALE_LEFT_TARGET := Vector3(12.30323, 0.8, 1.899687)
+const COORDINATOR_WARMUP_FRAMES := 120
+const COORDINATOR_SAMPLE_FRAMES := 240
+const MAX_COORDINATOR_FOOT_STEP := 0.055
+const MIN_COORDINATOR_SOLE_CLEARANCE := -0.015
+const STRAIGHT_KNEE_POSITION := Vector3(9.254115, 0.595856, 4.193318)
+const STRAIGHT_KNEE_YAW_DEG := 40.5153775903842
+const STRAIGHT_KNEE_LEFT_TARGET := Vector3(8.87081, 0.0, 4.431192)
+const STRAIGHT_KNEE_RIGHT_TARGET := Vector3(9.522064, 0.0, 4.333933)
+const STRAIGHT_KNEE_WARMUP_FRAMES := 60
+const STRAIGHT_KNEE_SAMPLE_FRAMES := 180
+const MIN_SETTLED_KNEE_FLEXION_DEG := 8.0
+const MAX_STRAIGHT_KNEE_FOOT_STEP := 0.035
+const MAX_STRAIGHT_KNEE_LATE_CONSTRAINT_FRAMES := 20
 
 var _player: Player
 var _ik: PlayerFootIKModifier
@@ -99,6 +116,23 @@ var _left_stale_rehome_observed := false
 var _left_stale_stance_limit_frames := 0
 var _left_stale_previous_foot := Vector3.ZERO
 var _left_stale_max_foot_step := 0.0
+var _checking_coordinator := false
+var _coordinator_frame := 0
+var _coordinator_recovery_observed := false
+var _coordinator_invalid_frames := 0
+var _coordinator_stance_limit_frames := 0
+var _coordinator_previous_foot := Vector3.ZERO
+var _coordinator_max_foot_step := 0.0
+var _coordinator_min_sole_clearance := INF
+var _coordinator_generations: Dictionary = {}
+var _checking_straight_knee := false
+var _straight_knee_frame := 0
+var _straight_knee_previous_foot := Vector3.ZERO
+var _straight_knee_max_foot_step := 0.0
+var _straight_knee_final_flexion := 0.0
+var _straight_knee_final_target_error := INF
+var _straight_knee_late_constraints := 0
+var _straight_knee_plan_valid := true
 
 
 func _ready() -> void:
@@ -115,7 +149,11 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if _checking_left_stale:
+	if _checking_straight_knee:
+		_process_straight_knee_check()
+	elif _checking_coordinator:
+		_process_coordinator_check()
+	elif _checking_left_stale:
 		_process_left_stale_check()
 	elif _checking_right_stale:
 		_process_right_stale_check()
@@ -386,6 +424,100 @@ func _process_left_stale_check() -> void:
 	if bool(_ik._leg_solver.debug_stance_limited.get(&"left", false)):
 		_left_stale_stance_limit_frames += 1
 	if _left_stale_frame >= RIGHT_STALE_WARMUP_FRAMES + RIGHT_STALE_SAMPLE_FRAMES:
+		_begin_coordinator_check()
+
+
+func _begin_coordinator_check() -> void:
+	_checking_left_stale = false
+	_checking_coordinator = true
+	_coordinator_frame = 0
+	_player.global_position = COORDINATOR_POSITION
+	_player.rotation = Vector3(0.0, deg_to_rad(COORDINATOR_START_YAW_DEG), 0.0)
+	_player.velocity = Vector3.ZERO
+	_player.movement_input_override = Vector2.ZERO
+	_player.body.anim_player.play(&"moves/unarmed_idle", 0.0)
+	_ik.reset_runtime_state()
+
+
+func _process_coordinator_check() -> void:
+	_coordinator_frame += 1
+	if _coordinator_frame < COORDINATOR_WARMUP_FRAMES:
+		return
+	if _coordinator_frame == COORDINATOR_WARMUP_FRAMES:
+		_ik._ground_sampler.smoothed_target[&"left"] = COORDINATOR_STALE_LEFT_TARGET
+		_ik._ground_sampler.smoothed_normal[&"left"] = Vector3.UP
+		_ik._ground_sampler.idle_lower_latched_target.erase(&"left")
+		_ik._ground_sampler.idle_lower_acquiring.erase(&"left")
+		_ik._gait_tracker.invalidate_idle_freeze(&"left")
+		_coordinator_previous_foot = _final_foot_position(&"left")
+		return
+	var sample := _coordinator_frame - COORDINATOR_WARMUP_FRAMES - 1
+	_player.rotation.y = lerpf(deg_to_rad(COORDINATOR_START_YAW_DEG),
+			deg_to_rad(COORDINATOR_END_YAW_DEG),
+			clampf(float(sample) / float(COORDINATOR_SAMPLE_FRAMES - 1), 0.0, 1.0))
+	var plan: FootIKTargetPlan = _ik._target_coordinator.get_plan(&"left")
+	if plan == null or not plan.valid:
+		_coordinator_invalid_frames += 1
+	else:
+		_coordinator_generations[plan.generation] = true
+		_coordinator_recovery_observed = (_coordinator_recovery_observed
+				or plan.reason == "replace_invalid_with_raw_support")
+	var foot := _final_foot_position(&"left")
+	_coordinator_max_foot_step = maxf(_coordinator_max_foot_step,
+			foot.distance_to(_coordinator_previous_foot))
+	_coordinator_previous_foot = foot
+	var surface: Vector3 = _ik._ground_sampler.smoothed_target.get(&"left", foot)
+	var offset: float = float(_ik._ground_sampler.debug_effective_offset.get(&"left", 0.0))
+	_coordinator_min_sole_clearance = minf(
+			_coordinator_min_sole_clearance, foot.y - surface.y - offset)
+	if bool(_ik._leg_solver.debug_stance_limited.get(&"left", false)):
+		_coordinator_stance_limit_frames += 1
+	if sample >= COORDINATOR_SAMPLE_FRAMES:
+		_begin_straight_knee_check()
+
+
+func _begin_straight_knee_check() -> void:
+	_checking_coordinator = false
+	_checking_straight_knee = true
+	_straight_knee_frame = 0
+	_player.global_position = STRAIGHT_KNEE_POSITION
+	_player.rotation = Vector3(0.0, deg_to_rad(STRAIGHT_KNEE_YAW_DEG), 0.0)
+	_player.velocity = Vector3.ZERO
+	_player.movement_input_override = Vector2.ZERO
+	_player.body.anim_player.play(&"moves/unarmed_idle", 0.0)
+	_ik.reset_runtime_state()
+
+
+func _process_straight_knee_check() -> void:
+	_straight_knee_frame += 1
+	if _straight_knee_frame < STRAIGHT_KNEE_WARMUP_FRAMES:
+		return
+	if _straight_knee_frame == STRAIGHT_KNEE_WARMUP_FRAMES:
+		for side: StringName in [&"left", &"right"]:
+			var target := (STRAIGHT_KNEE_LEFT_TARGET
+					if side == &"left" else STRAIGHT_KNEE_RIGHT_TARGET)
+			_ik._ground_sampler.smoothed_target[side] = target
+			_ik._ground_sampler.smoothed_normal[side] = Vector3.UP
+			_ik._ground_sampler.idle_lower_latched_target[side] = target
+		_straight_knee_previous_foot = _final_foot_position(&"right")
+		return
+	var sample := _straight_knee_frame - STRAIGHT_KNEE_WARMUP_FRAMES
+	var foot := _final_foot_position(&"right")
+	_straight_knee_max_foot_step = maxf(_straight_knee_max_foot_step,
+			foot.distance_to(_straight_knee_previous_foot))
+	_straight_knee_previous_foot = foot
+	var plan: FootIKTargetPlan = _ik._target_coordinator.get_plan(&"right")
+	_straight_knee_plan_valid = (_straight_knee_plan_valid and plan != null
+			and plan.valid and plan.owner == FootIKTargetPlan.Owner.IDLE_LOWER_LATCH
+			and plan.reason == "validated_lower_support")
+	if sample > STRAIGHT_KNEE_SAMPLE_FRAMES - 60:
+		_straight_knee_final_flexion = float(
+				_ik._leg_solver.debug_signed_knee_flexion.get(&"right", 0.0))
+		_straight_knee_final_target_error = float(
+				_ik._leg_solver.debug_target_error.get(&"right", INF))
+		if bool(_ik._leg_solver.debug_knee_direction_constrained.get(&"right", false)):
+			_straight_knee_late_constraints += 1
+	if sample >= STRAIGHT_KNEE_SAMPLE_FRAMES:
 		_finish_check()
 
 
@@ -435,6 +567,21 @@ func _finish_check() -> void:
 	passed = passed and _ik._ground_sampler.is_target_inside_stance_zone(
 			&"left", _ik._ground_sampler.smoothed_target.get(
 					&"left", Vector3(INF, INF, INF)))
+	passed = passed and _straight_knee_plan_valid
+	passed = passed and _straight_knee_final_flexion >= MIN_SETTLED_KNEE_FLEXION_DEG
+	passed = passed and _straight_knee_final_target_error <= MAX_LIVE_POSE_TARGET_ERROR
+	passed = passed and _straight_knee_late_constraints \
+			<= MAX_STRAIGHT_KNEE_LATE_CONSTRAINT_FRAMES
+	passed = passed and _straight_knee_max_foot_step <= MAX_STRAIGHT_KNEE_FOOT_STEP
+	passed = passed and _coordinator_recovery_observed
+	passed = passed and _coordinator_invalid_frames == 0
+	passed = passed and _coordinator_stance_limit_frames == 0
+	passed = passed and _coordinator_max_foot_step <= MAX_COORDINATOR_FOOT_STEP
+	passed = passed and _coordinator_min_sole_clearance >= MIN_COORDINATOR_SOLE_CLEARANCE
+	passed = passed and _coordinator_generations.size() <= 3
+	passed = passed and _ik._ground_sampler.is_target_inside_stance_zone(
+			&"left", _ik._ground_sampler.smoothed_target.get(
+					&"left", Vector3(INF, INF, INF)))
 	var template := ("FOOT_IK_IDLE_PLANT_STABILITY_CHECK %s samples=%d "
 			+ "frozen_left=%d frozen_right=%d drift_left_m=%.6f drift_right_m=%.6f "
 			+ "limit_m=%.3f turn_step_m=%.6f turn_side=%s turn_frame=%d turn_limit_m=%.3f "
@@ -446,7 +593,11 @@ func _finish_check() -> void:
 			+ "live_pose_shin_deg=%.2f live_pose_joint_step_m=%.6f "
 			+ "live_pose_joint_step_at=%s live_pose_joint_failure=%s "
 			+ "right_stale_rehome=%s right_stale_limit_frames=%d right_stale_step_m=%.6f "
-			+ "left_stale_rehome=%s left_stale_limit_frames=%d left_stale_step_m=%.6f")
+			+ "left_stale_rehome=%s left_stale_limit_frames=%d left_stale_step_m=%.6f "
+			+ "coordinator_recovery=%s invalid_frames=%d stance_limit_frames=%d "
+			+ "coordinator_step_m=%.6f min_sole_clearance_m=%.6f generations=%d "
+			+ "straight_plan_valid=%s straight_flex_deg=%.2f straight_target_error_m=%.6f "
+			+ "straight_late_constraints=%d straight_foot_step_m=%.6f")
 	print(template % ["PASS" if passed else "FAIL", _sample_count,
 			_frozen_samples[&"left"], _frozen_samples[&"right"],
 			_max_drift[&"left"], _max_drift[&"right"], MAX_PLANTED_DRIFT,
@@ -461,7 +612,13 @@ func _finish_check() -> void:
 			_live_pose_joint_failure if not _live_pose_joint_failure.is_empty() else "none",
 			str(_right_stale_rehome_observed), _right_stale_stance_limit_frames,
 			_right_stale_max_foot_step, str(_left_stale_rehome_observed),
-			_left_stale_stance_limit_frames, _left_stale_max_foot_step])
+			_left_stale_stance_limit_frames, _left_stale_max_foot_step,
+			str(_coordinator_recovery_observed), _coordinator_invalid_frames,
+			_coordinator_stance_limit_frames, _coordinator_max_foot_step,
+			_coordinator_min_sole_clearance, _coordinator_generations.size(),
+			str(_straight_knee_plan_valid), _straight_knee_final_flexion,
+			_straight_knee_final_target_error, _straight_knee_late_constraints,
+			_straight_knee_max_foot_step])
 	get_tree().quit(0 if passed else 1)
 
 

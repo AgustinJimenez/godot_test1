@@ -31,3 +31,9 @@ var minimum_knee_pole_alignment := 0.5
 var joint_correction_speed_degrees := 120.0
 var standing_joint_speed_degrees := 90.0
 var crouch_joint_speed_degrees := 45.0
+
+
+func allows_support_height_difference(difference: float) -> bool:
+	# Collision hits on a nominal boundary vary slightly between frames.
+	# All support owners must agree before deciding to transfer a planted foot.
+	return is_finite(difference) and absf(difference) <= max_split_ik_height + 0.001

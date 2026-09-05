@@ -134,6 +134,10 @@ func _solve_bend_direction(side: StringName, target_dir: Vector3,
 	var bend: Vector3 = (preferred_bend_world if not preferred_bend_world.is_zero_approx()
 			else to_world.basis * (_owner._knee_pole_local[side] as Vector3))
 	bend -= target_dir * bend.dot(target_dir)
+	if bend.length_squared() < 0.0001:
+		bend = Vector3.FORWARD - target_dir * target_dir.z
+	bend = bend.normalized()
+	var positive_bend := bend
 	var animation_name := String(_owner.player_body.anim_player.current_animation.get_file())
 	var own_surface: Vector3 = _owner._smoothed_target.get(side, Vector3.ZERO)
 	var riser_surface_y: float = _owner._ground_sampler.lower_riser_away_surface_y.get(
@@ -144,8 +148,6 @@ func _solve_bend_direction(side: StringName, target_dir: Vector3,
 		var safe_bend := riser_away - target_dir * riser_away.dot(target_dir)
 		if safe_bend.length_squared() >= 0.0001:
 			bend = safe_bend
-	if bend.length_squared() < 0.0001:
-		bend = Vector3.FORWARD - target_dir * target_dir.z
 	bend = bend.normalized()
 	var max_swing := deg_to_rad(max_hip_swing_degrees(side))
 	if Vector3.DOWN.angle_to(_thigh_direction(target_dir, bend, hip_angle)) > max_swing:
@@ -163,8 +165,41 @@ func _solve_bend_direction(side: StringName, target_dir: Vector3,
 				else:
 					high = middle
 			bend = bend.slerp(down_bend, high).normalized()
-	return _limit_upright_shin(
+	bend = _limit_upright_shin(
 			side, target_dir, bend, hip_angle, distance, upper_length, max_swing)
+	return _select_feasible_bend(target_dir, bend, positive_bend,
+			hip_angle, distance, upper_length, max_swing)
+
+
+func _select_feasible_bend(target_dir: Vector3,
+		preferred: Vector3, positive: Vector3, hip_angle: float,
+		distance: float, upper_length: float, max_thigh_swing: float) -> Vector3:
+	if distance <= 0.0 or upper_length <= 0.0:
+		return preferred
+	var required_alignment := clampf(_settings.minimum_knee_pole_alignment, 0.0, 1.0)
+	var shin_limit := deg_to_rad(_settings.max_upright_shin_swing_degrees)
+	var best := Vector3.ZERO
+	var best_score := INF
+	# Both hard limits constrain the same knee plane. Select one plane that
+	# satisfies them together instead of letting independent late guards undo
+	# one another and become competing pose owners.
+	for step in range(145):
+		var angle := -PI + TAU * float(step) / 144.0
+		var candidate := positive.rotated(target_dir, angle).normalized()
+		if candidate.dot(positive) < required_alignment:
+			continue
+		var thigh := _thigh_direction(target_dir, candidate, hip_angle)
+		if Vector3.DOWN.angle_to(thigh) > max_thigh_swing:
+			continue
+		var shin := target_dir * distance - thigh * upper_length
+		if shin.length_squared() <= 0.000001 \
+				or Vector3.DOWN.angle_to(shin.normalized()) > shin_limit:
+			continue
+		var score := preferred.angle_to(candidate)
+		if score < best_score:
+			best = candidate
+			best_score = score
+	return preferred if best.is_zero_approx() else best
 
 
 func _limit_upright_shin(side: StringName, target_dir: Vector3, bend: Vector3,
@@ -297,7 +332,9 @@ func limit_idle_pelvis_shift(to_world: Transform3D, per_leg: Dictionary,
 
 func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3,
 		upper_length: float, lower_length: float, ground_weight: float,
-		chain_weight: float, delta: float, instant_correction: bool = false) -> void:
+		chain_weight: float, delta: float, options: Dictionary = {}) -> void:
+	var instant_correction: bool = options.get(&"instant", false)
+	var target_plan_validated: bool = options.get(&"target_plan_validated", false)
 	var indices: Dictionary = _owner._bone_indices[side]
 	debug_solve_target[side] = target
 	var hip_idx: int = indices["hip"]
@@ -404,14 +441,16 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	# lengths and exact animation pass-through at zero weight.
 	new_knee_pos = hip_pos + hip_delta * (knee_pos - animated_hip_pos)
 	new_foot_pos = new_knee_pos + knee_delta * (foot_pos - knee_pos)
-	var stance_limit := _limit_idle_stance_crossing(
-			side, to_world, hip_pos, animated_hip_pos, knee_pos, foot_pos,
-			hip_delta, knee_delta, new_foot_pos)
-	if not stance_limit.is_empty():
-		hip_delta = stance_limit["hip_delta"]
-		knee_delta = stance_limit["knee_delta"]
-		new_knee_pos = stance_limit["knee_pos"]
-		new_foot_pos = stance_limit["foot_pos"]
+	debug_stance_limited[side] = false
+	if not target_plan_validated:
+		var stance_limit := _limit_idle_stance_crossing(
+				side, to_world, hip_pos, animated_hip_pos, knee_pos, foot_pos,
+				hip_delta, knee_delta, new_foot_pos)
+		if not stance_limit.is_empty():
+			hip_delta = stance_limit["hip_delta"]
+			knee_delta = stance_limit["knee_delta"]
+			new_knee_pos = stance_limit["knee_pos"]
+			new_foot_pos = stance_limit["foot_pos"]
 	var knee_limit := _limit_negative_rendered_knee(
 			side, hip_pos, animated_hip_pos, knee_pos, foot_pos,
 			new_knee_pos, new_foot_pos)
@@ -496,6 +535,12 @@ func _limit_negative_rendered_knee(side: StringName, hip_pos: Vector3,
 	var positive_pole := (boundary_pole.normalized() * boundary_weight
 			+ positive_axis * required_alignment).normalized()
 	var clamped_distance := minf(distance, upper_length + lower_length - 0.0001)
+	var cos_hip_angle := clampf((upper_length * upper_length
+			+ clamped_distance * clamped_distance - lower_length * lower_length)
+			/ (2.0 * upper_length * clamped_distance), -1.0, 1.0)
+	positive_pole = _select_feasible_bend(direction, positive_pole,
+			positive_axis, acos(cos_hip_angle), clamped_distance, upper_length,
+			deg_to_rad(max_hip_swing_degrees(side)))
 	var along := (upper_length * upper_length - lower_length * lower_length
 			+ clamped_distance * clamped_distance) / (2.0 * clamped_distance)
 	var pole_distance := sqrt(maxf(0.0, upper_length * upper_length - along * along))
@@ -507,8 +552,13 @@ func _limit_negative_rendered_knee(side: StringName, hip_pos: Vector3,
 	var corrected_knee_delta := Quaternion(
 			(animated_foot_pos - animated_knee_pos).normalized(),
 			(corrected_foot - corrected_knee).normalized())
-	_previous_corrections["%s:hip" % side] = corrected_hip_delta
-	_previous_corrections["%s:knee" % side] = corrected_knee_delta
+	# A wrong-side knee must not overwrite the rate limiter's valid destination:
+	# doing so traps a nearly straight leg at this boundary forever. An already
+	# positive knee that only needs the alignment cone may retain the constrained
+	# pose, keeping ordinary stair rotation continuous.
+	if signed_flexion >= 0.0:
+		_previous_corrections["%s:hip" % side] = corrected_hip_delta
+		_previous_corrections["%s:knee" % side] = corrected_knee_delta
 	debug_negative_knee_clamped[side] = signed_flexion < 0.0
 	debug_knee_direction_constrained[side] = true
 	debug_knee_pole_alignment[side] = required_alignment

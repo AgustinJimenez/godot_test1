@@ -6,6 +6,26 @@ log_file=$(mktemp "${TMPDIR:-/tmp}/foot-ik-check.XXXXXX")
 trap 'rm -f "$log_file"' EXIT
 
 godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_toe_riser_check.tscn \
+	--quit-after 560 >"$log_file" 2>&1
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_TOE_RISER_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	exit 1
+fi
+rg "FOOT_IK_TOE_RISER_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_idle_support_owner_check.tscn \
+	--quit-after 500 >"$log_file" 2>&1
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_IDLE_SUPPORT_OWNER_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	exit 1
+fi
+rg "FOOT_IK_IDLE_SUPPORT_OWNER_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
 	res://tests/manual/foot_ik/foot_ik_preview.tscn --quit-after 400 \
 	-- --animation-comparison-check >"$log_file" 2>&1
 if rg -q "SCRIPT ERROR" "$log_file" \
@@ -405,7 +425,7 @@ rg "FOOT_IK_WALK_IDLE_STANCE_CHECK PASS" "$log_file"
 
 godot --headless --fixed-fps 60 --path "$project_dir" \
 	res://tests/manual/foot_ik/foot_ik_idle_plant_stability_check.tscn \
-	--quit-after 2100 >"$log_file" 2>&1
+	--quit-after 2750 >"$log_file" 2>&1
 
 if rg -q "SCRIPT ERROR" "$log_file" \
 		|| ! rg -q "FOOT_IK_IDLE_PLANT_STABILITY_CHECK PASS" "$log_file"; then

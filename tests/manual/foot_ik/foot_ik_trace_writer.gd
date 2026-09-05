@@ -126,6 +126,7 @@ static func build_foot_trace(ik: Node, side: String,
 	var contact_hit := bool(ik.debug_contact_hit.get(side, false))
 	var owner := _target_owner(ik, side)
 	var action := _solver_action(ik, side, contact_hit, owner)
+	var plan: FootIKTargetPlan = ik._target_coordinator.get_plan(StringName(side))
 	return {
 		"gap": actual_pos.y - target.y - sole_depth,
 		"sole_clearance": sole.y - target.y,
@@ -156,6 +157,9 @@ static func build_foot_trace(ik: Node, side: String,
 		"floor_angle_deg": rad_to_deg(normal.angle_to(Vector3.UP)),
 		"leg_angles_deg": leg_angles,
 		"target_owner": owner,
+		"target_generation": plan.generation if plan != null else -1,
+		"target_plan_valid": plan.valid if plan != null else false,
+		"target_plan_reason": plan.reason if plan != null else "legacy_unplanned",
 		"solver_action": action,
 		"decision": "%s foot: support=%s target_y=%.3f owner=%s action=%s" % [
 				side, "hit" if contact_hit else "miss", target.y, owner, action],
@@ -172,6 +176,9 @@ static func build_foot_trace(ik: Node, side: String,
 
 
 static func _target_owner(ik: Node, side: String) -> String:
+	var plan: FootIKTargetPlan = ik._target_coordinator.get_plan(StringName(side))
+	if plan != null:
+		return plan.owner_name()
 	if ik._ground_sampler.landing_committed_target.has(side):
 		return "landing_commitment"
 	if ik._ground_sampler.idle_lower_acquiring.has(side):
@@ -210,6 +217,11 @@ static func build_stair_ik_state(ik: Node) -> Dictionary:
 static func _solver_action(ik: Node, side: String, contact_hit: bool, owner: String) -> String:
 	if not ik.active:
 		return "animation_only"
+	var plan: FootIKTargetPlan = ik._target_coordinator.get_plan(StringName(side))
+	if plan != null and plan.reason == "replace_invalid_with_raw_support":
+		return "select_supported_stance_target"
+	if plan != null and not plan.valid:
+		return "reject_invalid_target"
 	if bool(ik._leg_solver.debug_negative_knee_clamped.get(side, false)):
 		return "clamp_negative_knee"
 	if bool(ik._leg_solver.debug_knee_direction_constrained.get(side, false)):

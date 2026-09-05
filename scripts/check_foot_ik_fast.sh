@@ -50,7 +50,11 @@ run_scene "Foot IK split stance" "FOOT_IK_SPLIT_STANCE_WALK_CHECK PASS" \
 run_scene "Foot IK idle loop seam" "FOOT_IK_IDLE_SEAM_CHECK PASS" \
 	400 res://tests/manual/foot_ik/foot_ik_preview.tscn -- --idle-ik-seam-check
 run_scene "Foot IK planted idle" "FOOT_IK_IDLE_PLANT_STABILITY_CHECK PASS" \
-	2350 res://tests/manual/foot_ik/foot_ik_idle_plant_stability_check.tscn
+	2750 res://tests/manual/foot_ik/foot_ik_idle_plant_stability_check.tscn
 
+run_scene "Foot IK idle support ownership" "FOOT_IK_IDLE_SUPPORT_OWNER_CHECK PASS" \
+	500 res://tests/manual/foot_ik/foot_ik_idle_support_owner_check.tscn
+run_scene "Foot IK toe riser clearance" "FOOT_IK_TOE_RISER_CHECK PASS" \
+	560 res://tests/manual/foot_ik/foot_ik_toe_riser_check.tscn
 elapsed=$(($(date +%s) - start_time))
 printf 'FOOT_IK_FAST_CHECK PASS elapsed_seconds=%d\n' "$elapsed"
