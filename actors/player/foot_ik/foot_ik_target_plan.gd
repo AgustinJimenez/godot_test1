@@ -25,6 +25,7 @@ var valid := false
 var stance_valid := false
 var support_valid := false
 var reach_valid := false
+var toe_valid := false
 var surface_target := Vector3.ZERO
 var surface_normal := Vector3.UP
 var ankle_target := Vector3.ZERO

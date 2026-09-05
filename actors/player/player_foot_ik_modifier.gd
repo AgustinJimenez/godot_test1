@@ -969,7 +969,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 				and not _gait_tracker.is_body_translating() and (_velocity_suppressed
 				or player_body.anim_player.current_animation_position <= 0.10)
 				and not _leg_solver.has_active_correction(side))
-		if not leg["hit"] or not has_target or (preserve_idle and not has_pelvis_motion) or seam_acquire:
+		if not leg["hit"] or not has_target or (preserve_idle and shared_drop <= 0.0) or seam_acquire:
 			_leg_solver.release_to_animation(skel, side, delta)
 			continue
 		var target: Vector3 = (leg.get("ground_target", leg.get("target", Vector3.ZERO))

@@ -1,0 +1,198 @@
+# 010: Foot IK target coordinator consolidation
+
+## Status and scope
+
+New. Decided direction from [009](009_foot_ik_architecture_review.md)'s review: route every
+Foot IK target owner through `FootIKTargetCoordinator`/`FootIKTargetPlan` with real validation,
+so the same safety checks apply regardless of circumstance (idle, landing, stairs, locomotion)
+instead of each owner running its own ad-hoc logic. Goal is one enforced boundary, not ten.
+Do not commit/push until the user has live-tested each migrated owner, per `AGENTS.md`.
+
+## Current state (from 009's ownership matrix)
+
+`foot_ik_target_coordinator.gd::_build_plan` only sends a plan through real validation
+(`_finish_validation`: stance-zone + `_has_support_at` + reach) when **both**:
+- `plan.owner` is one of `LIVE_CONTACT`, `IDLE_LOWER_LATCH`, `IDLE_FREEZE` (`migrated_owner`), and
+- `coordinate_idle` is true: idle animation, `ground_weight >= 0.95`, flat surface
+  (`dot(UP) >= 0.999`), no landing grace/commitment.
+
+Every other owner - `LANDING_COMMITMENT`, `LANDING_UPPER`, `IDLE_LOWER_ACQUIRE`,
+`IDLE_STANCE_REHOME`, `STAIR_SUPPORT`, `STAIR_SWING`, `LOCOMOTION_LOCK`,
+`LOCOMOTION_STANCE` - takes the pass-through branch: `stance_valid = true`,
+`support_valid = plan.valid`, `reach_valid = true`. No independent check at all. There is also
+a de facto 11th owner (the "split-safe-zone" block in `foot_ik_ground_sampler.gd`, ~L850-915)
+that mutates `smoothed_target`/`idle_lower_latched_target` without ever constructing a plan,
+despite `FootIKTargetPlan.Owner.SPLIT_RECOVERY` existing in the enum for it.
+
+`_finish_validation` itself is ankle-only right now: `_has_support_at` is a single raycast at
+the ankle's surface point, and nothing checks the toe/leaf's forward reach. That gap is what
+left the right-foot clip in 008 unfixed - `_has_lower_riser_clearance`'s finer check lives in
+the ground sampler, not the coordinator, and failing it doesn't reliably stop a latch reaching
+the solver as `valid=true` (confirmed live in 008's session).
+
+## Why not big-bang this
+
+008's own history: an earlier attempt to extend this exact validation path caused a 0.46m
+landing jump. This session's narrower attempt (fixing one ground-sampler function's silent
+fallback) fixed the target clip but broke a different, already-passing corner-safety case
+(`idle_both_lower_legs_clear_platform_corner_live_repro`, margin 0.036m vs 0.040m minimum).
+The lesson from both: this system has ~9 separately-tuned live-repro acceptance cases sharing
+implicit assumptions about exactly how "unsafe" targets get handled. Migrate and validate one
+owner at a time, full exhaustive suite after each, not one change trying to cover all 8
+remaining owners plus the toe/leaf gap at once.
+
+## Step 1 progress: toe/leaf-envelope validation (uncommitted)
+
+Added `FootIKTargetPlan.toe_valid` and `FootIKTargetCoordinator._toe_envelope_valid()`
+(checks the farther of the toe+margin or leaf-bone reach against a raycast, rejecting when
+it lands on a surface more than `SUPPORT_HEIGHT_TOLERANCE` above the ankle's own surface -
+i.e. poking into the next riser), wired into `_finish_validation` for the 3 already-migrated
+owners.
+
+Result:
+- Fixes the exact right-foot clip from 008 (verified against the live settle-then-rotate
+  repro: 0 clip events, was clipping every settled frame).
+- `FOOT_IK_LEDGE_SAFETY_CHECK` now **passes** (was the case this session's earlier
+  ground-sampler-only fix broke).
+- Full fast suite otherwise clean except one pre-existing failure:
+  `foot_ik_idle_plant_stability_check.tscn`'s `live_pose` sub-case was already failing before
+  this change (`live_pose_joint_step_m=0.048942` vs limit `0.045`, baseline confirmed via
+  `git stash`). With this change active, the same sub-case fails harder:
+  `live_pose_joint_step_m=0.358452` at `right:hip`, traced to `_toe_envelope_valid` rejecting
+  the injected `LIVE_POSE_RIGHT_TARGET` for ~7 consecutive physics frames mid-rotation
+  (frames 1404-1410 of that scene), because the toe genuinely sweeps near real nearby
+  geometry at that yaw. The check's classification is correct; the problem is what happens
+  next - the coordinator's raw-recovery fallback snaps to a different candidate the instant a
+  plan flips invalid, so a brief few-frame toe-envelope flicker becomes a visible pop instead
+  of a held pose. No hysteresis/grace period exists for this rejection path (other owners in
+  this codebase use streak counters or a grace window for exactly this reason - see
+  `min_falling_streak`, `_landing_grace_time`).
+- Fixed by adding `TOE_INVALID_HOLD_FRAMES` (10) debounce: the toe check must fail for 10
+  consecutive frames before actually invalidating a plan, absorbing the brief mid-turn sweep
+  without weakening the original fix (that clip was sustained for hundreds of frames, not a
+  brief one). Applied only to the primary per-owner check (`_finish_validation`'s default
+  `debounce_toe=true`); `_raw_recovery_plan`'s own call passes `debounce_toe=false` since it's
+  already a fallback attempt on a different (raw) candidate and must not share/mutate the
+  primary streak. After tuning: `foot_ik_idle_plant_stability_check` is back to its exact
+  pre-existing baseline (`live_pose_joint_step_m=0.048942` at `340:right:foot`,
+  `turn_step_m=0.056851`) - not fixed (it was already failing before this session), but not
+  made worse either.
+- Full fast-suite status after this fix: every check passes except the pre-existing
+  `foot_ik_idle_plant_stability_check` failure (unchanged from before this task started).
+  `foot_ik_idle_support_owner_check.tscn` and `foot_ik_toe_riser_check.tscn` (which
+  `check_foot_ik_fast.sh` never reaches once an earlier scene fails) were run directly and
+  both pass unchanged.
+
+## Step 1, round 2: point-based check + raw-recovery exemption (verified against the full suite)
+
+Once `check_foot_ik.sh`'s silent-exit bug was fixed (see "Exhaustive suite health" below), a
+full run found a second regression the fast suite missed: `foot_ik_knee_flex_check.tscn`'s
+"mirrored upper-leg deformation" case (`start=8.758182,0.600149,4.085211 yaw=73.7044620505809
+time=1.86666666666666`) went from PASS to FAIL (0.512m sole clearance, 0.519m one-frame joint
+pop). Isolated via `git stash` bisection: caused by the toe-envelope check, not 011's pelvis fix.
+
+Root cause: `_toe_envelope_valid`'s raycast-down-from-above approach treated any surface higher
+than the ankle's own surface as an obstruction - correct for 008's riser clip (solid ground
+extending down), wrong for a split-height stance where a foot's toe legitimately reaches back
+under the body toward a *different*, real, higher platform with open space beneath it. The
+check never verified the toe's own actual position against real geometry, only inferred
+clipping from a blind column raycast. Replaced with a direct
+`PhysicsDirectSpaceState3D.intersect_point` test at the toe's candidate 3D position
+(`ankle_target + tip_offset`) - the same precise technique already used to confirm the original
+clip.
+
+That alone didn't fix the case: instrumentation showed the toe genuinely is inside solid
+geometry there for *both* the primary `IDLE_LOWER_LATCH` candidate and the `LIVE_CONTACT`
+raw-recovery fallback - rejecting both left the leg with no target at all (full release to raw
+animation, which floats badly on the split-height surface). Fixed by exempting the raw-recovery
+plan from the toe check entirely (`_finish_validation`'s `check_toe` parameter) - a fallback
+vetoed by the same check that rejected the primary defeats its own purpose.
+
+Verified: the mirrored-upper-leg case now passes, the original 008 clip stays fixed, the fast
+suite is unchanged, and a full `check_foot_ik.sh` run now matches the pre-existing baseline
+exactly except `FOOT_IK_ANIMATION_COMPARISON_CHECK` (011's fix, PASS instead of FAIL) - no other
+regressions found across ~40 checks. Not yet run: `check_foot_ik_ramps.sh` (separate from
+`check_foot_ik.sh`) or a live playtest - required before this is committable per `AGENTS.md`.
+
+## Exhaustive suite health (found while investigating "is the suite slow")
+
+`scripts/check_foot_ik.sh` and `scripts/check_foot_ik_stair_repeat.sh` had a systemic bug:
+every bare `godot ... >"$log_file" 2>&1` line (33 in the former) was not guarded against a
+nonzero process exit, so `set -e` killed the whole script silently the instant any one check
+failed - before its own `cat "$log_file"; exit 1` diagnostic block ever ran. Fixed by
+appending `|| true` to all of them (both files) so the intended log-content-based pass/fail
+logic actually executes. This is why nobody has seen this suite's real status recently -
+008's Sept 5 "38 seconds... FAIL" note was this exact silent-exit, not a real 38-second
+result.
+
+With the fix, the suite is not fundamentally slow (12 checks including full project
+import completed in 56s) - it was hiding a backlog of **pre-existing failures**, at least two
+found so far, both confirmed via `git stash` to predate this session:
+- `FOOT_IK_ANIMATION_COMPARISON_CHECK` (flat-ground idle pose divergence) - parked as
+  [011](011_foot_ik_flat_idle_pose_divergence.md).
+- `FOOT_IK_KNEE_FLEX_CHECK`'s default case: "left sole clearance 0.123m (limit 0.080m)" on a
+  split-height idle/landing pose - not yet investigated.
+
+Full suite completion (past both of these) has not been measured yet. Neither failure is
+caused by this task's toe-envelope coordinator change (confirmed via baseline comparison).
+
+## Step 2 attempted and reverted: migrating IDLE_LOWER_ACQUIRE and IDLE_STANCE_REHOME
+
+Tried expanding `migrated_owner` to include these two (closest siblings of the already-safe
+`IDLE_LOWER_LATCH`). Result: fixed a pre-existing failure
+(`FOOT_IK_KNEE_FLEX_CHECK`'s default case, sole clearance 0.123m -> 0.029m, under the
+0.080m limit) but caused a new regression - `FOOT_IK_LEDGE_SAFETY_CHECK`'s
+`idle_split_height_turn_pause_no_leg_snap_live_repro` (a case named specifically to catch leg
+pops) now snaps the rendered foot 0.528m at frame 82 (limit 0.150m). Reverted to the 3-owner
+scope (`LIVE_CONTACT`, `IDLE_LOWER_LATCH`, `IDLE_FREEZE`); confirmed via the fast suite that
+this returns to the exact same baseline as after step 1 (only the pre-existing
+`foot_ik_idle_plant_stability_check` failure remains, unchanged).
+
+Not yet determined which of the two newly-added owners caused the regression, or whether
+`legacy_transition_active`'s exemption logic needs to be more surgical than "any lower
+transition owner bypasses the mutual-exclusion guard." Next attempt should add ONE owner at a
+time (not both together) and instrument the specific frame-82 pop before retrying, rather than
+guess a variation blind - same lesson as 008's escape-search fix this session.
+
+## Proposed order (safest/highest-value first)
+
+1. **Add toe/leaf-envelope validation to `_finish_validation`**, scoped only to the 3
+   already-migrated owners first (no new owners yet). This directly targets the still-open
+   right-foot clip, but now as a coordinator-level check that every future owner will
+   automatically inherit, instead of one more ad-hoc function in the ground sampler. Run the
+   full exhaustive suite (`check.sh`, `check_foot_ik.sh`, `check_foot_ik_locomotion.sh`,
+   `check_foot_ik_ramps.sh`, `check_foot_ik_ramp_sweep.sh`) plus a live-tested repro at the
+   exact clip location from 008 before calling this step done.
+2. **Migrate `IDLE_LOWER_ACQUIRE` and `IDLE_STANCE_REHOME`** into `migrated_owner` next -
+   they're the closest siblings of the already-migrated `IDLE_LOWER_LATCH`, sharing most of
+   its validation shape. Re-run the full suite after.
+3. **Define a real plan for `SPLIT_RECOVERY`** (the split-safe-zone block) so it stops
+   mutating shared state outside the plan system entirely.
+4. **Migrate `LANDING_COMMITMENT` and `LANDING_UPPER`** - higher risk, since landing already
+   has its own two-tier commitment (`FootIKLandingPlanner` + `landing_committed_target`) that
+   must keep working across the grounded/ungrounded snapshot/restore path. This is the pairing
+   most likely to resemble the 0.46m landing-jump regression's original conditions - extra
+   care and explicit live confirmation before merging.
+5. **Migrate `STAIR_SUPPORT`/`STAIR_SWING`**, then `LOCOMOTION_LOCK`/`LOCOMOTION_STANCE` last -
+   these currently write `smoothed_target` directly from `foot_ik_stair_predictor.gd`/
+   `foot_ik_gait_tracker.gd` rather than through a plan at all, so this is more than adding a
+   validation gate; it's the first time these owners produce a `FootIKTargetPlan` in the first
+   place.
+6. Once every owner is migrated and validated, retire the now-redundant ad-hoc checks it
+   replaces (`_has_lower_riser_clearance`'s role folds into the coordinator's toe/leaf check,
+   etc.) so there is exactly one enforcement point left, per 009's stated goal.
+
+## Regression contract
+
+Every step must keep passing (or knowingly update, with the user's live confirmation) the
+full acceptance surface 009 catalogued for this area: `foot_ik_idle_plant_stability_check.gd`'s
+9 hardcoded live-position scenarios, `foot_ik_ledge_safety_check.gd`'s corner cases,
+`foot_ik_toe_riser_check.gd`, `foot_ik_idle_support_owner_check.gd`, plus the fast/exhaustive
+suites in `AGENTS.md`. A step that requires loosening one of these numeric limits needs the
+user's explicit sign-off, not a quiet widening.
+
+## References
+
+- [009](009_foot_ik_architecture_review.md) - ownership matrix and decision record.
+- [008](008_foot_ik_platform_edge_safety.md) - the still-open right-foot clip this task's
+  step 1 targets, and the four dead-end fix attempts already tried on it.

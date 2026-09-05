@@ -15,5 +15,5 @@ status=$?
 set -e
 
 rg "FOOT_IK_RAMP_CASE FAIL|FOOT_IK_RAMP_MATRIX_CHECK" "$log_file" || true
-printf '%s\n' "Dense ramp sweep: spacing=${spacing_cm}cm yaw_step=${yaw_step}deg"
+printf '%s\n' "Ramp sweep: curated bottom/middle/top x left/center/right positions, edge_inset=${spacing_cm}cm, yaw_step=${yaw_step}deg"
 exit "$status"

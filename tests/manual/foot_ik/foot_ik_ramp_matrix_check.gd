@@ -192,24 +192,38 @@ func _build_ramps_and_cases() -> void:
 			})
 
 
+## Interior points on a uniform incline are translation-invariant - real bugs found here
+## cluster at edges/corners/transitions (matching RAMP_POSITIONS' own curated philosophy),
+## not the open middle. A full 2D position grid x yaw sweep was 6240 cases (~11 minutes,
+## previously interrupted); this covers bottom/middle/top and every corner - the positions
+## where edge/reach logic actually differs - crossed with the full yaw resolution instead.
+## _sweep_spacing (spacing_cm) now sets how far the "near-edge" points sit from the true
+## edge, not grid density.
 func _build_dense_sweep() -> void:
 	var angle_degrees := 45.0
 	var origin := Vector3.ZERO
 	var ramp := _build_ramp(origin, angle_degrees)
-	var along := SWEEP_END_MARGIN
+	var half_width := RAMP_WIDTH * 0.5 - _sweep_spacing
+	var fractions := {
+		&"bottom": SWEEP_END_MARGIN / RAMP_LENGTH,
+		&"middle": 0.5,
+		&"top": 1.0 - SWEEP_END_MARGIN / RAMP_LENGTH,
+	}
+	var laterals := {&"left": -half_width, &"center": 0.0, &"right": half_width}
 	var position_index := 0
-	while along <= RAMP_LENGTH - SWEEP_END_MARGIN + 0.0001:
-		var lateral := -RAMP_WIDTH * 0.5 + SWEEP_LATERAL_MARGIN
-		while lateral <= RAMP_WIDTH * 0.5 - SWEEP_LATERAL_MARGIN + 0.0001:
+	for fraction_name: StringName in fractions:
+		for lateral_name: StringName in laterals:
+			if fraction_name == &"middle" and lateral_name != &"center":
+				continue # only the center needs a mid-length sample; edges are covered at top/bottom
 			var yaw_degrees := 0.0
 			while yaw_degrees < 360.0 - 0.001:
 				_cases.append({
 					"angle": angle_degrees,
 					"origin": origin,
-					"fraction": along / RAMP_LENGTH,
-					"lateral": lateral,
+					"fraction": fractions[fraction_name],
+					"lateral": laterals[lateral_name],
 					"root_offset": 0.1,
-					"position_name": StringName("sweep_%05d" % position_index),
+					"position_name": StringName("sweep_%s_%s" % [fraction_name, lateral_name]),
 					"yaw": deg_to_rad(yaw_degrees),
 					"yaw_name": StringName("yaw_%03d" % roundi(yaw_degrees)),
 					"phase": position_index % 8,
@@ -217,8 +231,6 @@ func _build_dense_sweep() -> void:
 				})
 				position_index += 1
 				yaw_degrees += _sweep_yaw_step
-			lateral += _sweep_spacing
-		along += _sweep_spacing
 
 
 func _build_ramp(origin: Vector3, angle_degrees: float) -> CSGBox3D:

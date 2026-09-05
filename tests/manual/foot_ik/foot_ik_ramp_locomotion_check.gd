@@ -61,6 +61,14 @@ func _ready() -> void:
 	_start_case()
 
 
+## Diagonal/cross-slope directions all walk from ramp center: an interior spawn is
+## translation-invariant (see foot_ik_ramp_matrix_check.gd's sweep for the same reasoning),
+## so covering travel angle from one safe position finds more than adding spawn positions
+## would. Straight uphill/downhill keep their near-bottom/near-top spawns since those two
+## specifically exercise full-length travel, not just angle.
+const DIAGONAL_YAWS_DEG: Array[float] = [45.0, 90.0, 135.0, 225.0, 270.0, 315.0]
+
+
 func _build_ramps_and_cases() -> void:
 	for angle_index in RAMP_ANGLES.size():
 		var angle := RAMP_ANGLES[angle_index]
@@ -68,6 +76,9 @@ func _build_ramps_and_cases() -> void:
 		_build_ramp(origin, angle)
 		_cases.append(_make_case("ramp_%02d_uphill" % roundi(angle), origin, angle, 0.15, PI))
 		_cases.append(_make_case("ramp_%02d_downhill" % roundi(angle), origin, angle, 0.78, 0.0))
+		for yaw_degrees: float in DIAGONAL_YAWS_DEG:
+			var case_name := "ramp_%02d_yaw_%03d" % [roundi(angle), roundi(yaw_degrees)]
+			_cases.append(_make_case(case_name, origin, angle, 0.5, deg_to_rad(yaw_degrees)))
 
 
 func _build_ramp(origin: Vector3, angle_degrees: float) -> void:

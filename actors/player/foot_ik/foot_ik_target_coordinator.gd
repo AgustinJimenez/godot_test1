@@ -11,10 +11,16 @@ const TARGET_PLAN := preload("res://actors/player/foot_ik/foot_ik_target_plan.gd
 const PLANT_WEIGHT := 0.95
 const FLAT_SUPPORT_DOT := 0.999
 const SUPPORT_HEIGHT_TOLERANCE := 0.03
+## Consecutive failing frames the toe/leaf envelope check must accumulate before it actually
+## rejects a plan - a brief mid-turn sweep near real geometry must not pop the pose to the
+## raw-recovery fallback and back; only a sustained block should. Same idea as
+## min_falling_streak/STEP_DOWN_STATIC_STREAK elsewhere in this system.
+const TOE_INVALID_HOLD_FRAMES := 10
 
 var _owner
 var _plans: Dictionary = {}
 var _generations: Dictionary = {}
+var _toe_invalid_streak: Dictionary = {} # side -> int
 
 
 func _init(owner) -> void:
@@ -24,6 +30,7 @@ func _init(owner) -> void:
 func reset() -> void:
 	_plans.clear()
 	_generations.clear()
+	_toe_invalid_streak.clear()
 
 
 func get_plan(side: StringName) -> FootIKTargetPlan:
@@ -89,7 +96,7 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 
 
 func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan,
-		leg: Dictionary, require_stance: bool) -> FootIKTargetPlan:
+		leg: Dictionary, require_stance: bool, check_toe: bool = true) -> FootIKTargetPlan:
 	plan.stance_valid = (not require_stance
 			or (_owner._ground_sampler.is_target_inside_stance_zone(
 					plan.side, plan.surface_target)
@@ -100,14 +107,76 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 	var reach: float = float(leg.get(&"upper", 0.0)) + float(leg.get(&"lower", 0.0))
 	plan.reach_valid = hip.distance_to(plan.ankle_target) \
 			<= reach + _owner.step_down_max_crouch
-	plan.valid = plan.valid and plan.stance_valid and plan.support_valid and plan.reach_valid
+	# Raw recovery (check_toe=false) is already the fallback for a rejected primary
+	# candidate; vetoing it with the same check that rejected the primary would leave
+	# the leg with no target at all (full release to raw animation, which floats badly
+	# on uneven ground) instead of a small, better-than-nothing toe overlap.
+	plan.toe_valid = true if not check_toe else _toe_envelope_valid(space, plan)
+	if check_toe:
+		var streak: int = (0 if plan.toe_valid
+				else int(_toe_invalid_streak.get(plan.side, 0)) + 1)
+		_toe_invalid_streak[plan.side] = streak
+		plan.toe_valid = plan.toe_valid or streak < TOE_INVALID_HOLD_FRAMES
+	plan.valid = (plan.valid and plan.stance_valid and plan.support_valid
+			and plan.reach_valid and plan.toe_valid)
 	if not plan.stance_valid:
 		plan.reason = "outside_stance"
 	elif not plan.support_valid:
 		plan.reason = "unsupported"
 	elif not plan.reach_valid:
 		plan.reason = "unreachable"
+	elif not plan.toe_valid:
+		plan.reason = "toe_envelope_blocked"
 	return plan
+
+
+## Rejects a plan whose ankle target is valid but whose toe/leaf reach - at this frame's
+## animated foot orientation - lands on a surface higher than the ankle's own tread (the
+## right-foot clip from AGENT_TASKS/008: a valid ankle latch with the toe poking into the
+## next riser). A miss (nothing beneath the toe reach) is a reach/void concern handled
+## elsewhere, not this check's job, so it passes here.
+func _toe_envelope_valid(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan) -> bool:
+	var toe_local: Vector3 = _owner._toe_rest_offset.get(plan.side, Vector3.ZERO)
+	var leaf_local: Vector3 = _owner._leaf_rest_offset.get(plan.side, Vector3.ZERO)
+	if toe_local.is_zero_approx() and leaf_local.is_zero_approx():
+		return true
+	var fresh: Dictionary = _owner._leg_fresh_pose_cache.get(plan.side, {})
+	if not fresh.has(&"foot"):
+		return true
+	var skel: Skeleton3D = _owner.get_skeleton()
+	if skel == null:
+		return true
+	var foot_pose: Transform3D = fresh[&"foot"]
+	var foot_basis: Basis = _owner._compute_new_foot_basis_world(
+			skel, plan.side, -plan.surface_normal, foot_pose)
+	# The leaf bone (a child of the toe) usually reaches farther than the toe
+	# itself plus its tip margin - check whichever extremity actually reaches
+	# farthest, not just the toe (the right-foot clip in 008 was a leaf clip).
+	var candidates: Array[Vector3] = []
+	if not toe_local.is_zero_approx():
+		var toe_offset: Vector3 = foot_basis * toe_local
+		candidates.append(toe_offset + toe_offset.normalized() * float(_owner.toe_tip_margin))
+	if not leaf_local.is_zero_approx():
+		candidates.append(foot_basis * leaf_local)
+	if candidates.is_empty():
+		return true
+	var tip_offset: Vector3 = candidates[0]
+	for candidate: Vector3 in candidates:
+		if Vector2(candidate.x, candidate.z).length_squared() \
+				> Vector2(tip_offset.x, tip_offset.z).length_squared():
+			tip_offset = candidate
+	# A downward raycast from above the toe's XZ column would flag any nearby
+	# taller surface as an obstruction, even a separate platform with open air
+	# beneath it (e.g. a split-height stance where this foot's toe legitimately
+	# reaches back under the body toward the other foot's higher surface).
+	# Test the toe's own candidate point directly instead - only a point that is
+	# actually embedded in solid geometry is a real clip.
+	var toe_point: Vector3 = plan.ankle_target + tip_offset
+	var query := PhysicsPointQueryParameters3D.new()
+	query.position = toe_point
+	query.collision_mask = FootIKGroundSampler.GROUND_COLLISION_MASK
+	query.collide_with_areas = false
+	return space.intersect_point(query, 4).is_empty()
 
 
 func _raw_recovery_plan(space: PhysicsDirectSpaceState3D, side: StringName,
@@ -125,7 +194,7 @@ func _raw_recovery_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 	plan.valid = bool(leg.get(&"hit", false)) and height_continuous \
 			and plan.surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT
 	plan.reason = "replace_invalid_with_raw_support"
-	return _finish_validation(space, plan, leg, true)
+	return _finish_validation(space, plan, leg, true, false)
 
 
 func _has_support_at(space: PhysicsDirectSpaceState3D, surface: Vector3) -> bool:
