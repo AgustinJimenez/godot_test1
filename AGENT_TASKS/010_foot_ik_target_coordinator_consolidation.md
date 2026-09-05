@@ -242,6 +242,45 @@ lead for their next attempt. Remaining unattempted: `STAIR_SUPPORT`, `STAIR_SWIN
 they write `smoothed_target` directly from `foot_ik_stair_predictor.gd`/`foot_ik_gait_tracker.gd`
 rather than producing a plan at all yet.
 
+## Step 5 scoping: STAIR_SUPPORT/STAIR_SWING/LOCOMOTION_LOCK/LOCOMOTION_STANCE - not started
+
+Investigated before attempting, given every owner migrated so far needed its own individual
+understanding and this group is architecturally the most different yet. Findings:
+
+- `resolve_stationary` (`player_foot_ik_modifier.gd`, ~L890-893) runs unconditionally every
+  frame regardless of animation, so `_legacy_owner()` already labels these owners today (009's
+  "labels the winner but doesn't validate" finding, confirmed in code) - but `stationary` is
+  only true for `unarmed_idle`/`unarmed_torch_idle`/`unarmed_crouch_idle`, and `coordinate_idle`
+  requires `stationary` as its first condition. During stair walking or general locomotion,
+  `coordinate_idle` is unconditionally false, and no other gate currently covers these four
+  owners - simply adding them to `migrated_owner` under the existing gates would be a silent
+  no-op, never actually validated, exactly like `LANDING_COMMITMENT` needed its own
+  `coordinate_landing` gate rather than reusing `coordinate_idle`.
+- Unlike `LANDING_COMMITMENT`/`LANDING_UPPER` (both settled, independently reconfirmed
+  surfaces - `_committed_landing_hit` and the 4-frame upper-confirm loop each do their own
+  raycast agreement check before the owner is ever reported), `STAIR_SUPPORT`'s target comes
+  from `foot_ik_stair_predictor.gd`'s `_choose_support_side`/`_latch_support_target` - part of
+  an actively continuous support-transfer state machine that runs every frame during dynamic
+  stair locomotion, tightly coupled to shared pelvis drop (`ensure_support`) and swing
+  prediction (`LegState.swing_active`, `_try_transfer_support`). There is no single settled
+  moment to validate against; the "target" is continuously re-chosen and re-latched as the
+  character climbs, by design.
+- This is also the area with the most documented fragility already: 009's ownership review
+  flagged `foot_ik_stair_predictor.gd` as explicitly self-documented "TEMPORARY /
+  EXPERIMENTAL... not an assertion that its visible stair gait is production-ready", and 008's
+  own history includes fixes to support-latch drift and swing-lift/pelvis-sink interaction in
+  this exact code.
+
+Given the pattern this session established - even structurally similar-looking owners
+(`IDLE_LOWER_ACQUIRE` vs. the safe `IDLE_LOWER_LATCH`/`IDLE_STANCE_REHOME`) produced two
+distinct regressions each - migrating four owners that don't even produce a plan yet, in code
+already flagged as the project's most fragile, is a materially bigger and riskier step than
+anything attempted so far. Recommend treating it as its own dedicated pass: first define what
+"valid" should mean for a continuously-transferring support target (likely: confirm the
+*current* chosen support foot's contact is real, not that some fixed point remains valid
+across the whole climb), before writing any gate, rather than reusing the landing-owner
+pattern by analogy.
+
 ## Proposed order (safest/highest-value first)
 
 1. **Add toe/leaf-envelope validation to `_finish_validation`**, scoped only to the 3
