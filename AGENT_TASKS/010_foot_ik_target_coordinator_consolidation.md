@@ -172,17 +172,58 @@ Applied that fix (`_finish_validation` now checks `idle_lower_acquiring[side]` f
 (`FOOT_IK_LEDGE_SAFETY_CHECK` back to `cases=16 PASS`) - but a full exhaustive run then found a
 **second, different** regression from the same owner: `FOOT_IK_POSE_CONTINUITY_CHECK` jumped
 from `max_jump_m=0.0125` to `0.0402` (limit `0.025`), confirmed via direct reproduction
-(`foot_ik_preview.tscn -- --foot-ik-check`) and isolated to this owner alone.
+(`foot_ik_preview.tscn -- --foot-ik-check`).
 
 Two distinct regressions in a row from the same owner is the signal to stop patching symptoms
 one at a time (per this session's own debugging discipline) rather than attempt a third fix
 blind. Reverted `IDLE_LOWER_ACQUIRE` from `migrated_owner` again; kept the support-target fix
-in `_finish_validation` (still correct, just unreachable until this owner is re-added) and
-`IDLE_STANCE_REHOME`'s migration (unaffected, still clean). `IDLE_LOWER_ACQUIRE` needs a more
-fundamental look before the next attempt: it is fundamentally a *moving* target validated
-every frame with a binary accept/reject model built for settled surfaces - this may need
-validating once at acquisition start and trusting the interpolation through completion, rather
-than re-validating the in-flight waypoint every frame.
+in `_finish_validation` (still correct, just unreachable until this owner is re-added).
+`IDLE_LOWER_ACQUIRE` needs a more fundamental look before the next attempt: it is fundamentally
+a *moving* target validated every frame with a binary accept/reject model built for settled
+surfaces - this may need validating once at acquisition start and trusting the interpolation
+through completion, rather than re-validating the in-flight waypoint every frame.
+
+## Process failure: IDLE_STANCE_REHOME's migration was itself the POSE_CONTINUITY cause
+
+What I initially attributed to `IDLE_LOWER_ACQUIRE` above was wrong. After reverting
+`IDLE_LOWER_ACQUIRE` and separately attempting `LANDING_COMMITMENT` (see below), the same
+`FOOT_IK_POSE_CONTINUITY_CHECK` failure (`max_jump_m=0.040223`, identical value both times)
+persisted even with *both* of those reverted - proving it was neither. Bisected with `git
+checkout <commit> -- <files>` against the actual git history: PASS at `ed8061b` (toe-envelope +
+011 fix only), FAIL at `498d818` (adds only `IDLE_STANCE_REHOME`). **`IDLE_STANCE_REHOME`'s
+migration - already committed and pushed in `498d818` - was the real cause all along.**
+
+Root process failure: `498d818` was verified with the fast suite plus two directly-run scenes,
+matching this session's earlier pattern for safe changes - but was never checked against the
+full exhaustive suite before committing, unlike every other change in this task. The fast suite
+does not run `--foot-ik-check`'s pose-continuity sub-check as part of its early exit path the
+same way the full suite's sequencing does; whatever specific animation transition
+`FOOT_IK_POSE_CONTINUITY_CHECK` exercises was never touched by any of the individually-verified
+fast-suite scenes. Reverted `IDLE_STANCE_REHOME` from `migrated_owner` (back to the exact
+`ed8061b` scope: `LIVE_CONTACT`, `IDLE_LOWER_LATCH`, `IDLE_FREEZE`) and confirmed via a full
+`bash /tmp/...run_all` pass: every result now shows exactly once (no duplicate-print
+artifacts from an early exit) and matches the known pre-existing failure set exactly - this is
+the actual clean baseline.
+
+**Lesson for every future owner migration in this task**: verify a new migration against the
+full exhaustive suite (`check_foot_ik.sh` at minimum) before committing, not just the fast
+suite - a change that looks clean on the fast suite can still regress a check the fast suite
+never reaches or never fully exercises. This was already the intent of "Migrate ... one owner
+at a time" above; the miss was skipping the *exhaustive* verification step for one commit, not
+the one-at-a-time discipline itself.
+
+`LANDING_COMMITMENT` was also attempted in the same investigation, with a purpose-built
+parallel gate (`coordinate_landing`, since it structurally fails `coordinate_idle`'s
+`landing_committed_target.is_empty()` check by definition) reusing `_committed_landing_hit`'s
+already-reconfirmed support. It was reverted as part of isolating the bisection above and not
+independently re-tested after `IDLE_STANCE_REHOME` was identified as the true cause - it may in
+fact be safe. Re-attempt it fresh, verified against the full exhaustive suite this time, rather
+than assuming either outcome from this session's tangled investigation.
+
+Current committed/pushed state after this correction: 3 owners (`LIVE_CONTACT`,
+`IDLE_LOWER_LATCH`, `IDLE_FREEZE`) plus the toe-envelope and 011 fixes - the same scope as
+`ed8061b`, with `IDLE_STANCE_REHOME`'s migration reverted for good pending its own careful
+re-attempt.
 
 ## Proposed order (safest/highest-value first)
 

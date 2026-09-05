@@ -53,6 +53,13 @@ when explanatory prose is needed.
 Use `rtk` for routine noisy Git/search output, but use raw output for instruction files, exact
 numeric traces, failing checks, and final pre-commit diffs. Rerun any filtered failure raw.
 
+Every `godot ... >"$log_file" 2>&1` line in a `check_foot_ik*.sh` script must end with `|| true`
+before its own `if rg -q ...` diagnostic block. Without it, a failing scene's nonzero exit trips
+`set -e` and kills the whole script silently, before that check's own failure ever prints -
+hiding the real suite status instead of reporting it. This bit an entire exhaustive run for
+some time before being noticed and fixed; keep the pattern on any new check added to these
+scripts.
+
 ## Logs and live debugging
 
 Large traces must be redirected to files and summarized afterward; never print multi-megabyte JSONL
@@ -101,6 +108,14 @@ the tree; do not start gameplay idle and then stop/seek/deactivate it from the e
 Do not skip the whole zero-delta pass: gate only time/history advancement, then reapply cached output
 so whichever pass runs last still exposes the final pose. Headless and live call patterns can differ,
 so changes in this area require live confirmation.
+
+CSGBox3D collision (and other CSG shapes) is not registered on the very first physics frame after
+scene load; a `PhysicsDirectSpaceState3D` raycast or `intersect_point` run at frame 1 silently
+finds nothing even where solid geometry exists. A one-off diagnostic script that spawns a
+character and immediately probes the physics space will get false "no collision" results -
+settle at least ~30 frames first, or reproduce the same settle/hold history the real bug needs
+anyway (see the Foot IK ownership rules below on why a cold spawn often doesn't match a live
+repro's state either).
 
 Procedural bone corrections belong in `SkeletonModifier3D`, not an ordinary node's `_process()`.
 Snapshot all base animation poses before changing an ancestor chain. When a paused tuning UI changes
@@ -164,9 +179,11 @@ coverage model.
 
 ## Foot IK and movement
 
-The active edge investigation is `AGENT_TASKS/008_foot_ik_platform_edge_safety.md`; earlier stair and
-locomotion architecture is summarized in `AGENT_TASKS/007_foot_ik_stair_contact_and_locomotion.md`.
-Put exact live frames, coordinates, rejected attempts, and current pass/fail evidence there—not here.
+The active consolidation is `AGENT_TASKS/010_foot_ik_target_coordinator_consolidation.md`
+(migrating every target owner through one validated boundary); `009` holds the ownership-matrix
+review behind that decision, `008` the still-open platform-edge bugs, `011`/`012` newer findings,
+and `007` the earlier stair/locomotion architecture. Put exact live frames, coordinates, rejected
+attempts, and current pass/fail evidence in the relevant numbered task—not here.
 
 Ownership boundaries:
 
@@ -174,6 +191,9 @@ Ownership boundaries:
 - `foot_ik_ground_sampler.gd`: collision sampling and target/normal smoothing;
 - `foot_ik_gait_tracker.gd`: vertical motion, weights, phase, landing, and target locks;
 - `foot_ik_stair_predictor.gd`: tread prediction and support transfer;
+- `foot_ik_target_coordinator.gd` / `foot_ik_target_plan.gd`: the final arbitration boundary that
+  validates a candidate target (stance zone, ground support, reach, toe/leaf envelope) before it
+  reaches the solver—not every owner is routed through it yet, see `010`;
 - `foot_ik_leg_solver.gd`: closed-form bone output only—no raycasts or support policy.
 
 Foot targets retained across frames must be supported, reachable, on the correct surface, and inside
@@ -189,6 +209,34 @@ Idle freeze, support latches, landing ownership, stair ownership, and locomotion
 separate state owners. Every release must clear the key used by downstream target locking. When adding
 an override, inspect every cache/freeze/lock that can supersede it. A released foot retaining
 `_idle_freeze_yaw[side]` is invalid even if the generic trace anomaly summary is clean.
+
+A validated ankle target does not prove a clean pose. Check the toe/leaf's own forward reach (at
+the current animated foot orientation) against real geometry too—an ankle plant can be perfectly
+supported while the toe pokes into a neighboring riser/platform the ankle-only check never sees.
+Verify with a direct `intersect_point` at the toe/leaf's own candidate position, not a raycast
+height comparison from above the ankle's column: a downward scan flags any nearby taller surface
+as an obstruction even when it is a separate platform with open air beneath it (a legitimate
+split-height stance), and never confirms the toe's own point is actually embedded in solid ground.
+
+A fallback plan must never be vetoed by the same check that rejected its primary candidate—that
+defeats the fallback's purpose and can drop a leg to full unconstrained animation release instead
+of a small, better-than-nothing correction. When migrating a target owner into coordinator
+validation, a moving/interpolating target (e.g. an in-flight acquire transition) cannot be
+validated the same way as a settled one: checking "is there real ground under this exact
+in-flight waypoint" can fail correctly-converging transitions that never touch bad ground;
+validate against the real destination instead, or validate once at acquisition start and trust
+the interpolation. Migrate and full-suite-verify one owner at a time—two owners together can hide
+which one caused a regression, and a single owner can still produce more than one distinct
+regression across separate fix attempts.
+
+A correction meant only for a specific recovery case (e.g. pulling a retracted/edge foot back
+across the midline) must be scoped to that case, not evaluated unconditionally on every idle
+frame—applied too broadly, it fights the authored animation's own ordinary stance/sway on
+completely flat ground with no edge or retraction involved. Likewise, a "preserve the authored
+pose" fast path must actually take effect whenever its own conditions say so; a separate
+mechanism (e.g. pelvis recentering) that forces a full re-solve for unrelated reasons (a pure
+lateral shift, not an actual vertical crouch) can silently override it and reintroduce
+correction where none was wanted.
 
 Use directional contact clearance: positive means a foot may be above support; negative means the
 surface penetrates the foot and must engage IK. Noisy streak counters should decay on marginal noise,
@@ -212,7 +260,19 @@ matching locomotion state rather than translating a static landing pose.
 Every newly escaped live Foot IK bug implies a missing regression. Reproduce the exact state or input
 sequence and assert the visible symptom across time; final contact/weight checks are insufficient.
 When the user's live repro and headless harness disagree, preserve the trace, investigate the call
-pattern, and require manual confirmation.
+pattern, and require manual confirmation. A fresh cold spawn at a suspect position/yaw often will
+not reproduce a live bug that depends on accumulated state (latches, freezes, transition history);
+replay the actual settle-then-move history that led there instead of jumping straight to the
+end pose.
+
+An idle-pose position/rotation matrix does not need a dense spatial grid: an interior point on a
+uniform surface (ramp, flat tread) is translation-invariant, so real bugs cluster at edges,
+corners, and heading, not at extra interior samples. Prefer a handful of curated positions
+(center plus each edge/corner) crossed with a fine rotation sweep over a full 2D position grid—
+`foot_ik_ramp_matrix_check.gd`'s sweep mode cut from 6240 to 168 cases this way with no loss of
+found failures (all failures were at edges; none were at center). The same applies to locomotion
+coverage: walking only straight along/against a slope's grain and never at a diagonal or
+cross-slope heading is a real, easy-to-miss gap—see `AGENT_TASKS/012`.
 
 During Foot IK iteration, run the fast high-signal suite. It includes project checks, core pose and
 stair checks, edge landing/safety, landing stability, split stance, idle seams, and planted-idle
