@@ -83,11 +83,13 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 	var migrated_owner := plan.owner in [FootIKTargetPlan.Owner.LIVE_CONTACT,
 			FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
 			FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE,
+			FootIKTargetPlan.Owner.IDLE_STANCE_REHOME,
 			FootIKTargetPlan.Owner.LANDING_COMMITMENT,
 			FootIKTargetPlan.Owner.LANDING_UPPER,
 			FootIKTargetPlan.Owner.IDLE_FREEZE]
 	var owner_is_lower_transition := plan.owner in [FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
-			FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE]
+			FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE,
+			FootIKTargetPlan.Owner.IDLE_STANCE_REHOME]
 	if legacy_transition_active and not owner_is_lower_transition:
 		migrated_owner = false
 	if not (coordinate_idle or coordinate_landing) or not migrated_owner:
@@ -97,7 +99,11 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 		return plan
 	if plan.owner == FootIKTargetPlan.Owner.IDLE_LOWER_LATCH:
 		plan.reason = "validated_lower_support"
-	plan = _finish_validation(space, plan, leg, true)
+	# IDLE_STANCE_REHOME only activates when its target is already outside the stance zone
+	# (see _rehome_idle_stance_target's own early-out) - requiring it be inside would reject
+	# every single rehome candidate by definition, since correcting exactly that is its job.
+	var require_stance := plan.owner != FootIKTargetPlan.Owner.IDLE_STANCE_REHOME
+	plan = _finish_validation(space, plan, leg, require_stance)
 	if plan.valid:
 		leg[&"target_plan_validated"] = true
 		return plan

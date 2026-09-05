@@ -247,6 +247,34 @@ regression was `IDLE_STANCE_REHOME` (migrated at the same time in the original a
 `IDLE_LOWER_ACQUIRE`. The destination-based support fix was correct all along; it just never
 got a clean, isolated re-verification until now.
 
+## IDLE_STANCE_REHOME re-attempted with its actual root cause fixed - verified and safe
+
+Root-caused (rather than leaving deferred) why `IDLE_STANCE_REHOME` failed
+`FOOT_IK_POSE_CONTINUITY_CHECK` the first time: `_rehome_idle_stance_target` in
+`foot_ik_ground_sampler.gd` only ever activates when the existing smoothed target is *already*
+outside the stance zone (its own early-out: `if delta <= 0.0 or not current.is_finite() or
+is_target_inside_stance_zone(side, current): return false`). That means this owner's
+`surface_target` is outside the stance zone by definition, every single time it is active -
+structurally incompatible with `_finish_validation`'s `require_stance=true`, which was
+rejecting every rehome candidate on its first frame and forcing a fallback jump. Confirmed via
+a temporary debug print showing `reason=outside_stance stance=false` on every sample before the
+fix.
+
+Fix: `_build_plan` now passes `require_stance := plan.owner !=
+FootIKTargetPlan.Owner.IDLE_STANCE_REHOME` into `_finish_validation` instead of a hardcoded
+`true` - support/reach/toe checks still apply, only the stance-zone check is skipped for this
+owner, since correcting an out-of-zone target is exactly its job.
+
+Verified against the full exhaustive suite before committing (per the process lesson above):
+`FOOT_IK_POSE_CONTINUITY_CHECK PASS samples=448 max_jump_m=0.012522` (was `FAIL` at `0.040223`
+under the old hardcoded-`true` migration), and every other check matches the confirmed
+pre-existing baseline failure set exactly (`FOOT_IK_IDLE_PLANT_STABILITY_CHECK`, 5x
+`FOOT_IK_KNEE_FLEX_CHECK`, `FOOT_IK_LOCOMOTION_CHECK` `walk_left`/`walk_right`,
+`FOOT_IK_WALK_IDLE_STANCE_CHECK`) with nothing new. `IDLE_STANCE_REHOME` is migrated for real
+this time, bringing the coordinator migration to 8 of 10 target owners (`STAIR_SUPPORT`,
+`STAIR_SWING`, `LOCOMOTION_LOCK`, `LOCOMOTION_STANCE` remain, scoped separately above as a
+riskier follow-up pass; `SPLIT_RECOVERY` still has no `FootIKTargetPlan` at all).
+
 Current scope: 7 owners migrated (`LIVE_CONTACT`, `IDLE_LOWER_LATCH`, `IDLE_LOWER_ACQUIRE`,
 `LANDING_COMMITMENT`, `LANDING_UPPER`, `IDLE_FREEZE`, plus toe-envelope validation on all of
 them). `IDLE_STANCE_REHOME` remains deferred - its actual root cause was never isolated (only
