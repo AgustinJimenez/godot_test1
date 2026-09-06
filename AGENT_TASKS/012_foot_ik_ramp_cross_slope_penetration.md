@@ -148,11 +148,62 @@ or altered values. `foot_ik_ramp_locomotion_check.tscn`/`.gd` are not wired into
 committed check scripts yet (still standalone, per the "What changed and why" section above),
 so this fix's improvement isn't visible in the committed suite's pass/fail counts.
 
-**Still open**: `spin_foot_step` (likely a rate-of-rotation or pole-vector issue, unrelated to
-the stance-crossing mechanism just fixed - needs its own root-cause pass), the `phase=move`
-diagonal-walk failures (separate, smaller-magnitude, not yet investigated), and wiring
-`foot_ik_ramp_locomotion_check.tscn` into a committed check script so this coverage isn't only
-run manually.
+**Still open**: `spin_foot_step` (root cause now found, see below - needs a more careful fix
+than the one attempted), the `phase=move` diagonal-walk failures (separate, smaller-magnitude,
+not yet investigated), and wiring `foot_ik_ramp_locomotion_check.tscn` into a committed check
+script so this coverage isn't only run manually.
+
+## spin_foot_step root cause found - naive fix regressed a different case, reverted
+
+Instrumented the check further (temporary fields added directly to
+`foot_ik_ramp_locomotion_check.gd`'s existing per-frame `detail` string, kept committed since
+they're generically useful: `pole_align`, `shin_clamped`, `neg_knee_clamped`, and new
+`spin_target_step`/`spin_ankle_step` fields tracking frame-to-frame deltas of the *input*
+target vs. the *solved* ankle position separately). Result at every worst-`spin_foot_step`
+sample checked: `spin_target_step` stays a smooth ~0.014-0.018m/frame (the requested target
+barely moves) while `spin_ankle_step` matches `spin_foot_step` almost exactly (0.3-0.55m) -
+the solved *ankle* jumps even though the requested surface target does not. None of the
+existing clamp-tracking debug fields (`stance_limited`, `swing_clamped`, `shin_clamped`,
+`neg_knee_clamped`) are active at these frames, and `solve_error` is ~0.000, ruling out every
+previously-instrumented clamp path.
+
+**Root cause**: `adjust_idle_slope_target` (`foot_ik_leg_solver.gd` L87, the same
+`stationary_slope`-only function from the earlier fix above) pushes its `candidate` downhill in
+fixed 0.05m steps, up to 13 times, stopping once `_target_thigh_swing(candidate)` is within
+`max_hip_swing_degrees`. As the body rotates during an idle spin, that swing angle for a given
+candidate changes with facing, so the number of 0.05m steps needed to satisfy the threshold can
+change discretely from one frame to the next - and near certain yaws this was observed to jump
+by several steps at once (not just one), producing a `candidate` that moves by several tenths
+of a meter in a single frame. The result is smoothed via `previous.move_toward(candidate,
+0.015)` (L105) - a slow, gradual filter - *except* for an escape hatch: `if
+previous.distance_to(candidate) > 0.25: previous = candidate` (L103), which throws away the
+smoothing and jumps straight to the new candidate whenever the raw discontinuity exceeds
+0.25m. That escape hatch is exactly what turns the discrete iteration-count jump into a visible
+one-frame foot pop.
+
+**Fix attempted and reverted**: removed the `>0.25` escape hatch entirely, relying on
+`move_toward` alone regardless of how large the mismatch is. This fully addressed the traced
+mechanism (spin-phase pops disappeared) but broke a different, previously-passing case:
+`ramp_15_uphill` newly failed with `foot_float=0.452m` during the `hold` phase
+(`solve_error=1.336` at that sample) - a large, genuine mismatch (e.g. right after an
+animation/phase transition) that used to snap correctly via the escape hatch now converges at
+only 0.015m/frame, leaving the foot floating far from the real target for many frames. Total
+failures went from 22 to 24 - a net regression, not a fix. Reverted immediately (one hypothesis,
+one test, revert on the first new regression - per this session's established discipline)
+rather than attempting a second patch on top.
+
+**What a real fix needs**: the escape hatch's fast-snap behavior is genuinely necessary for a
+true large state change (phase transitions, animation switches) but actively harmful for the
+gradual, purely-rotational drift a spin produces. Two directions worth trying in a future pass,
+neither attempted here: (a) make the downhill search itself continuous instead of discrete
+fixed-0.05m steps (e.g. binary-search or analytically solve for the exact downhill distance
+that makes the swing angle equal the limit), removing the discontinuity at its source rather
+than smoothing over it; or (b) keep the escape hatch's fast path but bound its per-frame
+movement to something closer to the test's own tolerance (e.g. clamp the snap itself to the
+current frame's actual need rather than a full teleport) so a real large-mismatch case still
+converges quickly without a single-frame pop bigger than a few centimeters. Either needs the
+same two-case verification this attempt lacked: confirm it fixes the spin case *and* re-check
+`ramp_15_uphill`-style large-mismatch cases before considering it done.
 
 ## Same bug found again via a different harness
 

@@ -45,6 +45,8 @@ var _spin_maximum_penetration := 0.0
 var _spin_unplanted_samples := 0
 var _spin_foot_samples := 0
 var _spin_previous_sole: Dictionary = {}
+var _spin_previous_target: Dictionary = {}
+var _spin_previous_ankle: Dictionary = {}
 var _spin_maximum_foot_step := 0.0
 var _worst_spin_step_detail := ""
 var _first_unplanted_detail := ""
@@ -218,15 +220,18 @@ func _sample_feet(phase: StringName) -> void:
 		var sole_direction := (foot_world.basis * (_ik._sole_down_local[side] as Vector3)).normalized()
 		var sole_depth: float = _ik._sole_depth_below_foot.get(side, 0.0)
 		var sole_point := foot_world.origin + sole_direction * sole_depth
+		var target: Vector3 = _ik._smoothed_target[side]
+		var spin_foot_step := -1.0
+		var spin_target_step := -1.0
+		var spin_ankle_step := -1.0
 		if phase == &"spin":
 			if _spin_previous_sole.has(side):
-				var foot_step: float = sole_point.distance_to(_spin_previous_sole[side])
-				if foot_step > _spin_maximum_foot_step:
-					_spin_maximum_foot_step = foot_step
-					_worst_spin_step_detail = "frame=%d side=%s yaw=%.1f step=%.3f" % [
-							_frame, side, rad_to_deg(_player.rotation.y), foot_step]
+				spin_foot_step = sole_point.distance_to(_spin_previous_sole[side])
+				spin_target_step = target.distance_to(_spin_previous_target[side])
+				spin_ankle_step = foot_world.origin.distance_to(_spin_previous_ankle[side])
 			_spin_previous_sole[side] = sole_point
-		var target: Vector3 = _ik._smoothed_target[side]
+			_spin_previous_target[side] = target
+			_spin_previous_ankle[side] = foot_world.origin
 		var normal: Vector3 = _ik._smoothed_normal.get(side, Vector3.UP)
 		var clearance := (sole_point - target).dot(normal)
 		var hip_idx: int = _ik._bone_indices[side]["hip"]
@@ -239,10 +244,12 @@ func _sample_feet(phase: StringName) -> void:
 		var sole_alignment := sole_direction.dot(-normal)
 		var detail := ("frame=%d side=%s phase=%s anim=%s yaw=%.1f weight=%.3f contact_dist=%.3f " + \
 				"contact_lost=%s body_speed=%.3f step_down=%s " + \
-				"stance_limited=%s swing_clamped=%s swing_deg=%.1f solve_error=%.3f pelvis_shift=%s " + \
+				"stance_limited=%s swing_clamped=%s shin_clamped=%s neg_knee_clamped=%s " + \
+				"pole_align=%.3f swing_deg=%.1f solve_error=%.3f pelvis_shift=%s " + \
 				"shared_drop=%.3f offset=%.3f sole_depth=%.3f sole_align=%.3f hip_target=%.3f " + \
 				"hip_raw=%.3f reach=%.3f clearance=%.3f normal=%s surface=%s " + \
-				"solve_target=%s solver_foot=%s raw=%s sole=%s") % [
+				"solve_target=%s solver_foot=%s raw=%s sole=%s spin_foot_step=%.3f " + \
+				"spin_target_step=%.3f spin_ankle_step=%.3f") % [
 				_frame, side, phase, _ik.player_body.anim_player.current_animation.get_file(),
 				rad_to_deg(_player.rotation.y), weight,
 				float(_ik.debug_contact_distance.get(side, -1.0)),
@@ -251,6 +258,9 @@ func _sample_feet(phase: StringName) -> void:
 				str(_ik.debug_step_down.get(side, false)),
 				str(_ik._leg_solver.debug_stance_limited.get(side, false)),
 				str(_ik._leg_solver.debug_swing_clamped.get(side, false)),
+				str(_ik._leg_solver.debug_shin_clamped.get(side, false)),
+				str(_ik._leg_solver.debug_negative_knee_clamped.get(side, false)),
+				float(_ik._leg_solver.debug_knee_pole_alignment.get(side, -2.0)),
 				float(_ik._leg_solver.debug_swing_degrees.get(side, -1.0)),
 				float(_ik._leg_solver.debug_target_error.get(side, -1.0)),
 				str(_ik._pelvis_lateral_shift), _ik._smoothed_shared_drop,
@@ -259,7 +269,10 @@ func _sample_feet(phase: StringName) -> void:
 				float(_ik._leg_lengths[side]["upper"]) + float(_ik._leg_lengths[side]["lower"]),
 				clearance, normal, target, solved_target,
 				_ik._leg_solver.debug_final_foot_position.get(side, Vector3.ZERO),
-				raw_target, sole_point]
+				raw_target, sole_point, spin_foot_step, spin_target_step, spin_ankle_step]
+		if phase == &"spin" and spin_foot_step > _spin_maximum_foot_step:
+			_spin_maximum_foot_step = spin_foot_step
+			_worst_spin_step_detail = detail
 		if clearance > _maximum_float:
 			_maximum_float = clearance
 			_worst_float_detail = detail
