@@ -549,20 +549,29 @@ ready-to-fix item, not attempted here given the length of this session.
 almost exactly this situation, a few lines above the `likely_planted` gate -
 `if hit["hit"] and likely_idle and raw_normal.dot(Vector3.UP) < 0.999: ... if body_turning:
 smoothed_target[side] = raw_target` (~L339-343, comment: "A gradual turn supplies smoothing; a
-stale ramp target becomes unreachable"). This is gated on a non-flat surface and `body_turning`
-(`foot_ik_gait_tracker.gd`'s `is_body_turning`, a pure single-frame yaw-delta comparison against
-a tight `IDLE_TURNING_EPSILON_DEG = 0.1` threshold - far smaller than the ~2-degree per-step
-rotation used in the ramp-locomotion spin test, so it should trigger almost every frame during
-any real spin). This escape clearly exists to solve exactly this class of bug, yet it evidently
-does not fire during the frozen window found above (`smoothed_target` stayed frozen across it
-regardless). Whoever picks this up next should check first, before writing any new fix, why
-this *existing* escape does not already cover the observed case - candidates worth checking are
-`likely_idle` evaluating false during part of the window (it depends on `_velocity_suppressed`,
-which this session's `013` work found flickers true for 2 frames on every idle-animation-loop
-reset - a real, if different, timing coincidence already documented there) or a same-frame
-call-order issue between `foot_ik_gait_tracker.gd`'s `update_idle_freeze` (which sets
-`body_turning`) and `sample()` reading it. Confirming or ruling this out first is likely faster
-than redesigning the lock from scratch.
+stale ramp target becomes unreachable"). This escape clearly exists to solve exactly this class
+of bug, yet it evidently does not fire during the frozen window found above.
+
+Checked both candidate explanations directly (test-script-side instrumentation of
+`_gait_tracker.is_body_turning(side)` and `_ik._velocity_suppressed` across the same frozen
+window) and **both are ruled out**: `turning=true` and `velocity_suppressed=false` on every
+single sample across the entire frozen window, frames 326 through 346. `body_turning` is
+correctly detected throughout, and `likely_idle`'s other dependency is inactive - so line 339's
+condition should be satisfied on every frame, yet `smoothed_target` still does not move. No
+overwrite after L343 was found by reading the rest of the function either (the idle-stance-rehome
+block a few lines below reads `smoothed_target` but does not appear to write it back when the
+target is already valid, and the `likely_planted`-gated branch is an `elif` off a
+`landing_grace_time` check that shouldn't apply here).
+
+This means either one of `hit["hit"]` / `raw_normal.dot(Vector3.UP) < 0.999` is unexpectedly
+false at this exact point in the function (not yet checked directly), or there is a second
+overwrite path not yet identified by reading the code. Both test-script-side instrumentation
+options are now exhausted - the next step needs a temporary print placed directly inside
+`foot_ik_ground_sampler.gd`'s `sample()` (not the test script) immediately after L343, showing
+whether the assignment actually executes and what `smoothed_target[side]` holds one line later,
+before anything else in the function can touch it. That was not attempted this session, since
+it means directly modifying the ground sampler's most central function rather than a test
+harness, and this session had already made three other changes to code this fragile today.
 
 ## References
 
