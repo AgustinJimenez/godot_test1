@@ -387,6 +387,23 @@ the same treatment that fixed the main path, a future attempt should look at
 for a genuine sign-boundary crossing, or hysteresis only on the *magnitude* of the correction
 rather than the bend-plane search inside it) rather than reusing the main path's fix verbatim.
 
+## Remaining `spin_foot_step` near-misses (0.041-0.046m) - angle-dependent, not edge-related
+
+After [012](012_foot_ik_ramp_cross_slope_penetration.md)'s edge-proximity and rate-limit
+fixes, `spin_foot_step` fully passes on the 15-degree ramp (~0.015-0.016m, well under the
+0.040m limit) but stays just over threshold on 30 and 45 degrees (0.041-0.046m), consistently
+across both ramp widths tested in 012 (confirming this is not the edge-proximity mechanism -
+those values barely moved between a 3.0m and 6.0m wide ramp, unlike the genuinely
+edge-sensitive failures). This matches the same signature already found for the two
+steep-ramp outliers earlier in this task ("The two remaining outliers" section above): a
+near-max-swing geometry where a small angular change produces a larger-than-usual positional
+change, scaling with ramp steepness rather than facing extremity this time. Also consistent
+with the earlier direct test that `BEND_HYSTERESIS_SPEED_DEGREES` has no measurable effect on
+this exact residual across a 2.4x range (100 to 240 deg/sec, see the rate-tuning section
+above) - this is not a smoothing-rate problem, the same conclusion reached for the other two
+outliers. Not a new mechanism; folding this into the same "next step" recommendation already
+written above rather than treating it as a fresh item.
+
 ## Directions worth trying (attempt 1 and 3 tried and did not work as hoped; not fully ruled out)
 
 1. ~~Seed the search from the previous frame's chosen bend direction, only jump when it becomes
