@@ -335,6 +335,14 @@ each time it happened - the difference here is that after fixing the two upstrea
 separately and *then* re-testing the earlier reverted attempt with fresh evidence, it turned
 out to be correct all along.
 
+**`ramp_45_yaw_045`'s last 0.001m is not rate-sensitive**: tried `BEND_HYSTERESIS_SPEED_DEGREES`
+at 200 and 100 (down from 240) to see if simply slowing the ease-in further would close this
+case's final `spin_foot_step=0.041` (limit 0.040). Both produced the exact same value as 240 -
+zero sensitivity across a 2.4x range. This case's residual is not being limited by this rate at
+all; whatever produces its worst frame must be dominated by something else (its `foot_float`/
+`foot_penetration` failures on the same case suggest a related but distinct contributor, per
+012's still-open item). Reverted to 240 (confirmed via `git diff`, no change).
+
 ## turn_step_m's stalled fields explained - and a second call site found, fix attempt reverted
 
 Followed up on `FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s overall `FAIL` directly, since `turn_step_m`
