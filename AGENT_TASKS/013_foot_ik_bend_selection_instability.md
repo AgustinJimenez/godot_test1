@@ -11,11 +11,15 @@ real discontinuity to `adjust_idle_slope_target`'s own reacquisition logic inste
 there (see "Verified partial fix" below) substantially improved `spin_foot_step`. A second fix
 (see "Second verified fix" below) found and fixed the exact further-upstream discontinuity the
 first fix's own follow-up flagged - an animation-loop-seam pose freeze that assumed a stationary
-idle leg never needs to keep tracking a rotating body. Together the two fixes clear
-`spin_foot_step` on most of the 24 ramp-locomotion cases; two steep-diagonal outliers remain
-unexplained, and `turn_step_m` (flat ground, where neither fix's `stationary_slope` gate can
-reach) is still an open, separate instance of the same underlying bug class. This is scoped as
-its own task because the affected functions are shared by every leg solve on every surface.
+idle leg never needs to keep tracking a rotating body. A third fix (see "Third verified fix"
+below) re-applied one of the three originally-abandoned `_select_feasible_bend` hysteresis
+attempts - it had shown zero effect in isolation, but turned out to be correct all along, just
+masked by the first two discontinuities; re-tested after fixing those, it closed both remaining
+steep-diagonal outliers (one fully, one to within 0.001m of the limit) and even nudged
+`turn_step_m` (flat ground) for the first time all session. `spin_foot_step` now fails on only
+one of 24 ramp-locomotion cases, by a hair. `turn_step_m`'s own check still fails overall on a
+different, not-yet-identified field. This is scoped as its own task because the affected
+functions are shared by every leg solve on every surface.
 
 ## The bug
 
@@ -253,34 +257,79 @@ diff) - in particular `FOOT_IK_POSE_CONTINUITY_CHECK` (the check this seam-freez
 exists to protect) is unchanged at `max_jump_m=0.012522`, confirming the exemption is scoped
 tightly enough to leave the original flat-ground behavior untouched.
 
-## The two remaining outliers: right at the anatomical hip-swing limit, not the same bug class
+## The two remaining outliers: swing-clamp hypothesis ruled out, back to the bend-plane search
 
-Checked directly: both outliers' worst `spin_foot_step` samples show `swing_deg` of 99.6 and
-99.8 degrees - within a fraction of a degree of `max_hip_swing_degrees` (100.0, the exported
-default in `player_foot_ik_modifier.gd`), with `swing_clamped=false` at the captured sample
-(the raw compute stayed just under the clamp threshold that frame). This is a third instance of
-the same general "hard boundary with no continuity" architecture pattern already fixed twice in
-this task (the bend-plane search's own instability, and the seam-freeze override) - but a
-distinct mechanism from either: the anatomical swing clamp in `solve()`
-(`Vector3.DOWN.rotated(swing_axis, max_swing)`) has no hysteresis either, so a leg whose
-required swing angle sits within a degree of the limit could plausibly flip in and out of
-clamping between adjacent frames, each transition producing a discontinuity the same way the
-other two mechanisms did.
+Checked directly whether the swing clamp toggles frame-to-frame at these two cases
+(`ramp_45_yaw_045` around its worst sample, frame 300 in the test's own per-case counter).
+It does not: `swing_deg` moves smoothly (99.34 -> 99.12 -> 99.42 -> 99.58 -> 99.63 across
+frames 294-302) and `swing_clamped` stays `false` throughout - no toggle, no discontinuity in
+the swing angle itself. The "right at `max_hip_swing_degrees`" observation was a real but
+coincidental proximity, not the cause. **Ruled out.**
 
-However, unlike the two fixed mechanisms, there is a real possibility this combination
-(45-degree ramp, extreme diagonal facing, `shared_drop=0.576` - a large pelvis sink observed at
-the same sample) is a genuinely hard anatomical pose rather than a bug: `hip_target=0.504` in
-the first outlier is well within reach (`reach=0.888`), yet still demands ~100 degrees of hip
-swing - meaning the target sits nearly level with or above the hip, off to the side, which is
-plausible geometry for a steep ramp with a large pelvis drop rather than a symptom of drift.
-**Not confirmed either way and no fix attempted** - the next step, before touching the swing
-clamp itself, is to check whether `swing_clamped` genuinely toggles frame-to-frame at these two
-cases specifically (the same "instrument the exact boundary, don't guess" discipline applied to
-both fixes above), and separately, whether a real human pose would actually need to plant that
-foot at all at this facing/pelvis-drop combination, or whether the fix belongs in the
-pelvis-drop/lean logic rather than in IK correction. Given this task already required two
-levels of re-diagnosis to find its first two fixes, this third mechanism should get the same
-direct-instrumentation treatment rather than another guess.
+Added `debug_final_foot_position` to the same per-frame trace and found the actual signature:
+at frame 298 specifically, `solver_foot` jumps to a clear one-sample outlier -
+`(12.78705, 0.752629, 0.903028)` - visibly off the smooth trajectory both its neighbors sit on
+(frame 296: `(12.867, 0.905, 0.770)`; frame 300: `(12.877, 0.886, 0.750)`) - then snaps back
+next sample. This happens *while* `swing_deg` stays smooth, meaning the discontinuity is not in
+how far the leg swings from vertical but in *which direction around the swing cone* it points -
+i.e., the bend-plane azimuthal choice, not the swing magnitude. This is the original
+`_select_feasible_bend` instability from this task's first three (reverted) fix attempts,
+reappearing here specifically because near a ~100-degree swing the foot sweeps a much larger
+physical radius per degree of azimuthal change than it does hanging mostly straight down - the
+same small flip that was invisible or negligible elsewhere becomes large exactly at this
+sustained near-max-swing geometry.
+
+This explains why the two verified fixes in this task (the slope-target reacquisition fix and
+the seam-freeze exemption) did not touch these two cases: neither addresses the bend-plane
+search itself, and this is apparently the one geometric regime extreme enough to make that
+search's flip visible again after both real upstream-target discontinuities were removed.
+**Not fixed** - this task's three earlier attempts at fixing `_select_feasible_bend` directly
+were abandoned after failing to move any externally-measured metric (see "Fix attempts"
+above), and it is unclear from this finding alone whether a hysteresis fix there would now
+actually reach the render pipeline (the same "verify the fix's effect survives to the
+externally measured metric" caution from that section applies again). Given the narrow scope
+(2 of 24 cases, both at an extreme, arguably rare geometry), and this task's own repeated
+experience that this specific function resists incremental fixes, this is left open rather than
+attempting a fourth `_select_feasible_bend` change without first re-confirming attempt 2's rate
+limiter now has a measurable effect in isolation (it may, now that the two masking
+discontinuities upstream of it are gone).
+
+## Third verified fix: attempt 2's rate limiter, re-applied after the masking fixes above
+
+Re-confirmed the "it may" above directly rather than leaving it as a guess. Re-applied attempt
+2 exactly (`_previous_bend: Dictionary`, always ease `_select_feasible_bend`'s result toward
+the fresh search result at a bounded 240 deg/sec rate instead of snapping, with the same
+zero-delta-reuse and `side`/`delta`-gated opt-in as before). This is the identical code that
+previously moved *nothing* when tried in isolation (see "Fix attempts" above) - the only
+difference this time is that both upstream discontinuities found afterward (the
+`adjust_idle_slope_target` reacquisition bug and the seam-freeze override) are already fixed.
+
+**Result: it now works.** `ramp_45_yaw_315` fully passes `spin_foot_step` (was 0.312m,
+previously untouched by either other fix). `ramp_45_yaw_045` dropped from 0.222m to 0.041m -
+right at the 0.040m limit, from a case that was similarly untouched before. Ramp locomotion
+failures: 22 (session start) -> 21 (after the two earlier fixes) -> still 21, but `spin_foot_step`
+no longer appears in the failure list for *any* of the 24 cases except the single
+`ramp_45_yaw_045` line, and there only by 0.001m. The remaining 21 failures are entirely
+`foot_float`/`foot_penetration`/`spin_unplanted` now - a materially different, smaller-scoped
+problem than the one this task started with.
+
+**Unexpected bonus**: `foot_ik_idle_plant_stability_check.tscn`'s `turn_step_m` moved for the
+first time all session - 0.056851 -> 0.054227. Small, and the check's overall `FAIL` is driven
+by a different field (not yet identified which), but this is the first fix in this task's
+entire history to reach the flat-ground case at all, since `_select_feasible_bend` runs on
+every surface unlike the two `stationary_slope`-gated fixes above. Not investigated further
+this pass - worth returning to given this now-confirmed real effect.
+
+Verified no regressions via the full exhaustive suite: matches the previous fix's run
+byte-for-byte in its diff, `FOOT_IK_POSE_CONTINUITY_CHECK` unchanged at `max_jump_m=0.012522`.
+
+**Lesson for next time this pattern comes up**: a fix that shows zero effect when first tried
+is not necessarily wrong - it can be correct but masked by a *different*, larger discontinuity
+elsewhere in the same pipeline that dominates the measurement. This session's own established
+discipline (revert on a null result, don't stack more changes blind) was still the right call
+each time it happened - the difference here is that after fixing the two upstream issues
+separately and *then* re-testing the earlier reverted attempt with fresh evidence, it turned
+out to be correct all along.
 
 ## Directions worth trying (attempt 1 and 3 tried and did not work as hoped; not fully ruled out)
 

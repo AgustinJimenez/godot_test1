@@ -9,6 +9,7 @@ var _previous_corrections: Dictionary = {}
 var _previous_correction_frames: Dictionary = {}
 var _idle_slope_targets: Dictionary = {}
 var _idle_slope_target_frames: Dictionary = {}
+var _previous_bend: Dictionary = {} # side -> Vector3 (world-space, unit, tangent to target_dir)
 var debug_stance_limited: Dictionary = {}
 var debug_swing_clamped: Dictionary = {}
 var debug_swing_degrees: Dictionary = {}
@@ -35,6 +36,7 @@ func reset_runtime_state() -> void:
 	_previous_correction_frames.clear()
 	_idle_slope_targets.clear()
 	_idle_slope_target_frames.clear()
+	_previous_bend.clear()
 	debug_stance_limited.clear()
 	debug_swing_clamped.clear()
 	debug_swing_degrees.clear()
@@ -143,7 +145,7 @@ func max_hip_swing_degrees(_side: StringName) -> float:
 func _solve_bend_direction(side: StringName, target_dir: Vector3,
 		hip_angle: float, to_world: Transform3D,
 		distance: float = 0.0, upper_length: float = 0.0,
-		preferred_bend_world: Vector3 = Vector3.ZERO) -> Vector3:
+		preferred_bend_world: Vector3 = Vector3.ZERO, delta: float = 0.0) -> Vector3:
 	var bend: Vector3 = (preferred_bend_world if not preferred_bend_world.is_zero_approx()
 			else to_world.basis * (_owner._knee_pole_local[side] as Vector3))
 	bend -= target_dir * bend.dot(target_dir)
@@ -181,12 +183,13 @@ func _solve_bend_direction(side: StringName, target_dir: Vector3,
 	bend = _limit_upright_shin(
 			side, target_dir, bend, hip_angle, distance, upper_length, max_swing)
 	return _select_feasible_bend(target_dir, bend, positive_bend,
-			hip_angle, distance, upper_length, max_swing)
+			hip_angle, distance, upper_length, max_swing, side, delta)
 
 
 func _select_feasible_bend(target_dir: Vector3,
 		preferred: Vector3, positive: Vector3, hip_angle: float,
-		distance: float, upper_length: float, max_thigh_swing: float) -> Vector3:
+		distance: float, upper_length: float, max_thigh_swing: float,
+		side: StringName = &"", delta: float = 0.0) -> Vector3:
 	if distance <= 0.0 or upper_length <= 0.0:
 		return preferred
 	var required_alignment := clampf(_settings.minimum_knee_pole_alignment, 0.0, 1.0)
@@ -212,7 +215,31 @@ func _select_feasible_bend(target_dir: Vector3,
 		if score < best_score:
 			best = candidate
 			best_score = score
-	return preferred if best.is_zero_approx() else best
+	var result := preferred if best.is_zero_approx() else best
+	if side == &"":
+		return result
+	if delta <= 0.0:
+		# A zero-delta re-evaluation (SkeletonModifier3D can run one per tick) has no time
+		# budget to ease across, so reuse the last real update's choice instead of a fresh,
+		# unsmoothed one.
+		return _previous_bend.get(side, result)
+	var previous: Vector3 = _previous_bend.get(side, Vector3.ZERO)
+	if not previous.is_zero_approx():
+		var previous_tangent := previous - target_dir * previous.dot(target_dir)
+		if previous_tangent.length_squared() >= 0.0001:
+			previous_tangent = previous_tangent.normalized()
+			# Always ease toward the fresh result at a bounded angular rate instead of
+			# snapping - see 013. Gating this on the previous choice still being feasible
+			# does not help (it becomes infeasible too often to matter); a genuine large
+			# state change still catches up within a handful of frames at this rate.
+			const BEND_HYSTERESIS_SPEED_DEGREES := 240.0
+			var max_step := deg_to_rad(BEND_HYSTERESIS_SPEED_DEGREES) * delta
+			var angle_to_target := previous_tangent.angle_to(result)
+			result = (previous_tangent.slerp(result, max_step / angle_to_target)
+					if angle_to_target > max_step and angle_to_target > 0.000001
+					else result)
+	_previous_bend[side] = result
+	return result
 
 
 func _limit_upright_shin(side: StringName, target_dir: Vector3, bend: Vector3,
@@ -407,7 +434,7 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	var animated_bend := _animated_knee_pole(
 			animated_hip_pos, knee_pos, foot_pos, to_target)
 	var bend_direction := _solve_bend_direction(
-			side, target_dir, hip_angle, to_world, dist, upper_length, animated_bend)
+			side, target_dir, hip_angle, to_world, dist, upper_length, animated_bend, delta)
 	var new_hip_to_knee_dir := _thigh_direction(target_dir, bend_direction, hip_angle)
 	# Anatomical hip swing limit: the thigh has never been constrained here,
 	# so a target that ends up somewhere it shouldn't (a stale or wrong-tread
