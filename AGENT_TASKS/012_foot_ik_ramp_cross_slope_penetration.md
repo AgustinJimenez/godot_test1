@@ -14,12 +14,12 @@ failures are now believed to be the **same** root cause manifesting during walk 
 spin, not a separate bug (see "phase=move failures also trace to the same root cause" below).
 Test coverage is now runnable independently via `scripts/check_foot_ik_ramp_locomotion.sh` (see
 "Wired into a runnable script" section below). After 013's three fixes closed nearly all of
-`spin_foot_step`, this task's original `foot_float`/`foot_penetration` symptom was root-caused
-precisely (see "Real root cause found" near the end): `adjust_idle_slope_target`'s downhill push
-extrapolates along the ramp's assumed-infinite plane with no re-verification against real
-collision, and on the steepest/most extreme cases that extrapolation drifts a few centimeters
-off the true surface. Not fixed this session, given how much this exact function has already
-changed today - a precisely diagnosed, ready-to-fix item for a fresh pass.
+`spin_foot_step`, this task's original `foot_float`/`foot_penetration` symptom got a first
+root-cause attempt that turned out **wrong** - `adjust_idle_slope_target`'s downhill-push loop
+was suspected, a fix was built for it, and direct instrumentation then proved the loop barely
+ever runs for these cases at all (see "Real root cause found" / its correction below). The
+actual source is still open; the wrong attribution and the disproof are both documented so the
+next attempt does not retread the same path.
 
 ## What changed and why
 
@@ -437,7 +437,7 @@ scaling and the asymmetric-nudge correlation, the next step should instrument
 `sole_align`/`debug_final_foot_position` vs. `sole_point` directly at a flagged frame, the same
 "instrument the exact boundary, don't guess" approach that worked for 013's three fixes.
 
-## Real root cause found: adjust_idle_slope_target extrapolates without re-verifying ground
+## First root-cause attempt (wrong, corrected below): adjust_idle_slope_target extrapolation
 
 Followed the recommended next step and read every field already captured in the existing detail
 string (`solve_target`, `raw`, `actual_solve_target`, `solver_foot`) for the same
@@ -452,31 +452,50 @@ chain, for the affected (right) leg:
   `actual_solve_target` to 5 decimal places - `solve()` reached its given target essentially
   exactly. `solve_error=0.000` is correct; it is not measuring against the raycast hit.
 
-The ~0.4m gap is `adjust_idle_slope_target`'s own downhill push, and it is large here because
-this extreme case (45-degree ramp, diagonal facing) needs a big correction to keep the leg
-within `max_hip_swing_degrees`. The push (`foot_ik_leg_solver.gd`, the `for _step in 13: ...
-candidate += downhill * 0.05` loop) computes each candidate by walking along the *ramp's
-already-known normal*, entirely geometrically - it never re-raycasts to confirm the new
-candidate position is still actually on the real collision surface. Over a 0.4m walk (8 of the
-13 available 0.05m steps), any small mismatch between the assumed-infinite-plane extrapolation
-and the ramp's real, finite collision geometry (surface curvature at the edge, the ramp's own
-finite length, floating-point drift accumulated over 8 additive steps) is enough to land the
-final candidate a few centimeters off the true surface - which is exactly the same order of
-magnitude as the observed `foot_float`/`foot_penetration` values (0.04-0.10m). This is the
-"validate a moving/interpolating target against its real destination, not as if already
-settled" pattern from `AGENTS.md`, but one level more specific: the destination itself here is
-computed by pure extrapolation with no reverification step at all, not merely validated too
-early.
+Originally attributed the ~0.4m gap to `adjust_idle_slope_target`'s own downhill push (the `for
+_step in 13: ... candidate += downhill * 0.05` loop), reasoning that its purely geometric
+extrapolation along the ramp's known normal, never re-raycast against real collision, could
+drift off the ramp's real finite surface over a large push. **This attribution was wrong -
+confirmed and corrected below.**
 
-**Not fixed this session** - a fix (re-raycasting periodically during the downhill walk, or
-at minimum once at the final candidate, and correcting the height/position to match real
-ground if it drifted) touches the same function three separate fixes in
-[013](013_foot_ik_bend_selection_instability.md) already worked on this session, with a
-demonstrated history of "looks safe, isn't" surprises there (the `>0.25m` escape hatch, the
-frame-gap reacquisition fix). Given the remaining magnitude is modest (0.04-0.10m, and only on
-the most extreme ramp-angle/diagonal-facing combinations) and this session has already made
-substantial changes to this exact function, this is left as a precisely diagnosed, ready-to-fix
-item for a fresh pass rather than attempted here.
+### Fix attempt based on that attribution - reverted, and the attribution itself disproven
+
+Implemented the natural fix: after the 13-step loop, if `candidate` had actually moved from
+`target`, cast one ray straight down at the candidate's XZ and snap it back onto whatever real
+surface that ray hit, within a small tolerance (to avoid overcorrecting onto a genuinely
+different, unrelated surface). Threading a `PhysicsDirectSpaceState3D` parameter through
+required updating `adjust_idle_slope_target`'s single call site.
+
+First attempt broke the whole script's compilation (`var probe := ...raycast_ground(...)`
+couldn't infer a type through the untyped `_owner._ground_sampler` reference, a GDScript static
+typing gap, not a logic error) - every one of the 24 ramp cases failed with
+`no_planted_foot_samples`, an unrelated-looking catastrophic symptom that was actually just the
+compile error breaking the entire player script. Fixed the type annotation
+(`var probe: Dictionary = ...`) and re-ran: **zero change**, byte-identical to the pre-fix
+output on every case.
+
+Instrumented directly rather than accepting a second null result blind (per this task's own
+established lesson about null results needing verification, not assumption): logged every time
+the reverification branch actually ran. Result: **only 6 times in a full 13,000-frame run**,
+and all 6 were raycast misses. The downhill-push loop essentially never triggers for these
+residual cases at all - meaning the original ~0.4m gap between `debug_raw_target` and
+`debug_solve_target` was never coming from this loop in the first place. The attribution was
+wrong; the loop was the wrong target for this fix. Reverted both files completely (confirmed
+via `git diff`).
+
+**Corrected open question**: the real source of the ~0.4m gap (and the smaller 0.04-0.10m
+`foot_float`/`foot_penetration` residual) is still unidentified. Given the downhill-push loop
+is ruled out, the next candidates are the ground sampler's own `smoothed_target[side]`
+convergence (a separate, continuous rate-limited approach toward the raw raycast target -
+during continuous body rotation, the raycast's own hit point shifts every frame as the ankle's
+projected column moves, and this smoothing could legitimately lag behind that shifting raw
+target by a similar margin) or `straighten_compressed_upper_target` (the other adjustment
+applied to `target` earlier in the same per-leg loop, before `adjust_idle_slope_target` ever
+runs). Whoever picks this up next should instrument `_smoothed_target[side]` and
+`debug_raw_target[side]` together across consecutive frames at a flagged sample, the same
+per-frame delta comparison that worked for both of 013's confirmed root causes, rather than
+re-deriving the chain from single-frame snapshots as this attempt did (which is what produced
+the wrong attribution in the first place).
 
 ## References
 
