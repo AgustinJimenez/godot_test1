@@ -13,7 +13,13 @@ fixing it is scoped as its own future task, not finished here. The `phase=move` 
 failures are now believed to be the **same** root cause manifesting during walk gait instead of
 spin, not a separate bug (see "phase=move failures also trace to the same root cause" below).
 Test coverage is now runnable independently via `scripts/check_foot_ik_ramp_locomotion.sh` (see
-"Wired into a runnable script" section below).
+"Wired into a runnable script" section below). After 013's three fixes closed nearly all of
+`spin_foot_step`, this task's original `foot_float`/`foot_penetration` symptom was root-caused
+precisely (see "Real root cause found" near the end): `adjust_idle_slope_target`'s downhill push
+extrapolates along the ramp's assumed-infinite plane with no re-verification against real
+collision, and on the steepest/most extreme cases that extrapolation drifts a few centimeters
+off the true surface. Not fixed this session, given how much this exact function has already
+changed today - a precisely diagnosed, ready-to-fix item for a fresh pass.
 
 ## What changed and why
 
@@ -430,6 +436,47 @@ between `solve()`'s procedural output and the final rendered bone pose. Given th
 scaling and the asymmetric-nudge correlation, the next step should instrument
 `sole_align`/`debug_final_foot_position` vs. `sole_point` directly at a flagged frame, the same
 "instrument the exact boundary, don't guess" approach that worked for 013's three fixes.
+
+## Real root cause found: adjust_idle_slope_target extrapolates without re-verifying ground
+
+Followed the recommended next step and read every field already captured in the existing detail
+string (`solve_target`, `raw`, `actual_solve_target`, `solver_foot`) for the same
+`ramp_45_yaw_270` sample pair used above, rather than adding new instrumentation. `sole_align`
+confirmed 1.000 on both legs (foot-orientation misalignment ruled out, as suspected). The real
+chain, for the affected (right) leg:
+
+- `raw` (`debug_raw_target[side]`, the fresh raycast hit) = `(15.527, 2.320, 1.833)`.
+- `actual_solve_target` (`debug_solve_target[side]`, what `solve()` actually received this
+  frame) = `(15.352, 2.420, 2.175)` - **~0.4m away from the raycast hit**.
+- `solver_foot` (`debug_final_foot_position[side]`, the solved ankle) matches
+  `actual_solve_target` to 5 decimal places - `solve()` reached its given target essentially
+  exactly. `solve_error=0.000` is correct; it is not measuring against the raycast hit.
+
+The ~0.4m gap is `adjust_idle_slope_target`'s own downhill push, and it is large here because
+this extreme case (45-degree ramp, diagonal facing) needs a big correction to keep the leg
+within `max_hip_swing_degrees`. The push (`foot_ik_leg_solver.gd`, the `for _step in 13: ...
+candidate += downhill * 0.05` loop) computes each candidate by walking along the *ramp's
+already-known normal*, entirely geometrically - it never re-raycasts to confirm the new
+candidate position is still actually on the real collision surface. Over a 0.4m walk (8 of the
+13 available 0.05m steps), any small mismatch between the assumed-infinite-plane extrapolation
+and the ramp's real, finite collision geometry (surface curvature at the edge, the ramp's own
+finite length, floating-point drift accumulated over 8 additive steps) is enough to land the
+final candidate a few centimeters off the true surface - which is exactly the same order of
+magnitude as the observed `foot_float`/`foot_penetration` values (0.04-0.10m). This is the
+"validate a moving/interpolating target against its real destination, not as if already
+settled" pattern from `AGENTS.md`, but one level more specific: the destination itself here is
+computed by pure extrapolation with no reverification step at all, not merely validated too
+early.
+
+**Not fixed this session** - a fix (re-raycasting periodically during the downhill walk, or
+at minimum once at the final candidate, and correcting the height/position to match real
+ground if it drifted) touches the same function three separate fixes in
+[013](013_foot_ik_bend_selection_instability.md) already worked on this session, with a
+demonstrated history of "looks safe, isn't" surprises there (the `>0.25m` escape hatch, the
+frame-gap reacquisition fix). Given the remaining magnitude is modest (0.04-0.10m, and only on
+the most extreme ramp-angle/diagonal-facing combinations) and this session has already made
+substantial changes to this exact function, this is left as a precisely diagnosed, ready-to-fix
+item for a fresh pass rather than attempted here.
 
 ## References
 
