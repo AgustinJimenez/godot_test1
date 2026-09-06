@@ -182,8 +182,11 @@ coverage model.
 The active consolidation is `AGENT_TASKS/010_foot_ik_target_coordinator_consolidation.md`
 (migrating every target owner through one validated boundary); `009` holds the ownership-matrix
 review behind that decision, `008` the still-open platform-edge bugs, `011`/`012` newer findings,
-and `007` the earlier stair/locomotion architecture. Put exact live frames, coordinates, rejected
-attempts, and current pass/fail evidence in the relevant numbered task—not here.
+`013` the knee-bend-plane search instability (`_select_feasible_bend`, shared by every leg solve
+on every surface—three of its own fix attempts and two other pipeline discontinuities before one
+finally stuck), and `007` the earlier stair/locomotion architecture. Put exact live frames,
+coordinates, rejected attempts, and current pass/fail evidence in the relevant numbered task—not
+here.
 
 Ownership boundaries:
 
@@ -264,6 +267,35 @@ pattern, and require manual confirmation. A fresh cold spawn at a suspect positi
 not reproduce a live bug that depends on accumulated state (latches, freezes, transition history);
 replay the actual settle-then-move history that led there instead of jumping straight to the
 end pose.
+
+A fix that shows zero measurable effect on its target metric is not proof it is wrong. It can be
+correct but masked by a separate, larger discontinuity elsewhere in the same pipeline that
+dominates the exact measurement being checked—reverting on a null result is still the right
+default (see `AGENT_TASKS/013`'s own three-attempt history), but if the null result is
+surprising, look for another mechanism hitting the same metric before concluding the approach
+itself was wrong. The same fix, unchanged, was confirmed correct once the two other
+discontinuities masking it were found and fixed separately.
+
+A shared search/selection function can have more than one independent call site. A fix threaded
+through one call site's new parameters (e.g. an added `side`/`delta`) does not reach a different
+caller still passing the old, shorter argument list—that caller silently takes whichever
+default/early-return branch the new parameters fall back to. Grep every call site of a function
+before concluding a fix "does nothing" against a metric; it may simply never execute on the path
+that metric exercises.
+
+Hysteresis/rate-limiting is not a universally safe correction to add to a per-frame
+recomputation. It helps a value that should track a continuously drifting target (a rotating
+body, an ordinary gait swing) but can actively hurt a correction whose entire purpose is to snap
+quickly across a hard boundary (e.g. flipping a wrong-side knee back across its sign boundary)—
+added lag there can render a visibly wrong intermediate pose for several frames, producing a
+worse or differently-located discontinuity than the instant snap it replaced. Do not assume a
+smoothing pattern that fixed one call site will help a structurally similar-looking but
+functionally different one; verify each on its own terms.
+
+When a check's pass/fail is one long chain of `and`-ed conditions, read the exact boolean chain
+before assuming which printed field is the blocker. A field that looks like the obvious
+candidate (closest in spirit to what changed, or the largest-looking number) can be well under
+its own limit while a completely different, unrelated field is the one actually failing.
 
 An idle-pose position/rotation matrix does not need a dense spatial grid: an interior point on a
 uniform surface (ramp, flat tread) is translation-invariant, so real bugs cluster at edges,
