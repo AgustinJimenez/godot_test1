@@ -10,9 +10,8 @@ ramp-specific**: the same flip, at larger magnitude, reproduces on flat ground a
 explains a separate, previously-unexplained pre-existing baseline failure
 (`FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s `turn_step_m`). See the dedicated section below;
 fixing it is scoped as its own future task, not finished here. The `phase=move` diagonal-walk
-failures remain unrelated and uninvestigated. Test coverage change
-(`tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd`) is still not wired into any committed
-check script.
+failures remain unrelated and uninvestigated. Test coverage is now runnable independently via
+`scripts/check_foot_ik_ramp_locomotion.sh` (see "Wired into a runnable script" section below).
 
 ## What changed and why
 
@@ -154,9 +153,8 @@ committed check scripts yet (still standalone, per the "What changed and why" se
 so this fix's improvement isn't visible in the committed suite's pass/fail counts.
 
 **Still open**: `spin_foot_step` (root cause now found, see below - needs a more careful fix
-than the one attempted), the `phase=move` diagonal-walk failures (separate, smaller-magnitude,
-not yet investigated), and wiring `foot_ik_ramp_locomotion_check.tscn` into a committed check
-script so this coverage isn't only run manually.
+than the one attempted, split out into [013](013_foot_ik_bend_selection_instability.md)) and
+the `phase=move` diagonal-walk failures (separate, smaller-magnitude, not yet investigated).
 
 ## spin_foot_step root cause found - naive fix regressed a different case, reverted
 
@@ -327,6 +325,43 @@ that this is a real, structural gap rather than a harness artifact.
 `failed_cases=0 worst_depth_m=0.0` even when individual `FOOT_IK_RAMP_CASE FAIL` lines show
 real failures and depths - a pre-existing cosmetic bug in the check's own aggregation, not
 investigated.)
+
+## Wired into a runnable script
+
+Checked the claim that this coverage was "not wired into a committed check script" before
+acting on it, and found it was only half true: `foot_ik_ramp_locomotion_check.tscn` was already
+invoked from inside `scripts/check_foot_ik.sh` (added alongside this task's test changes) - but
+that script exits immediately on its first failing check (`set -eu` plus an explicit `exit 1`
+per check), and a pre-existing failure earlier in the sequence (`FOOT_IK_KNEE_FLEX_CHECK`, not
+even the previously-assumed `FOOT_IK_IDLE_PLANT_STABILITY_CHECK`) already stops the script
+before it ever reaches the ramp locomotion block. The same problem already affected the two
+scripts chained after it (`check_foot_ik_stair_repeat.sh`, `check_foot_ik_locomotion.sh`) - none
+of the three run in a normal `check_foot_ik.sh` invocation today. `check_foot_ik.sh` is also not
+part of any active CI workflow (`.github/workflows/project-checks.yml` is manual-trigger-only
+and runs `scripts/check.sh` - lint only), so this is purely a local/agent developer-workflow gap,
+not a CI regression.
+
+Rather than change `check_foot_ik.sh`'s fail-fast behavior (a bigger, cross-cutting redesign -
+39 `exit 1` sites - that also affects the two pre-existing sibling checks and is out of this
+task's scope), extracted the ramp locomotion check into its own standalone script,
+`scripts/check_foot_ik_ramp_locomotion.sh`, matching the exact pattern already used by
+`check_foot_ik_stair_repeat.sh`/`check_foot_ik_locomotion.sh` (independently invocable,
+`mktemp` log file, `|| true` on the Godot call, `rg`-based pass/fail). `check_foot_ik.sh` now
+calls it the same way it calls those two siblings, instead of inlining the same Godot
+invocation as dead code after an unreachable point. Verified: the new script alone correctly
+reports the current known failure (exit 1, matching 012/013's open bugs - not something this
+change fixes); `check_foot_ik.sh` still fails at the exact same pre-existing point it did
+before this change (`FOOT_IK_KNEE_FLEX_CHECK`), confirming no behavior change to the rest of
+the script.
+
+**Still open, not attempted**: `check_foot_ik.sh`'s (and its now-three unreachable-in-practice
+sibling scripts') fail-fast design means none of them run to completion locally while any
+earlier pre-existing failure exists - this session's own `/tmp/check_foot_ik_run_all.sh`
+workaround (a modified copy with all `exit 1`s suppressed) exists precisely because of this,
+and had to be hand-rolled for every full-suite verification this session. Turning that
+workaround into a permanent, committed mode (e.g. a `FOOT_IK_CONTINUE=1` env var that changes
+whether each check's failure stops the script) would be a meaningfully larger, separate change
+and was not attempted here.
 
 ## References
 

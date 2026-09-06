@@ -289,6 +289,8 @@ if one fails early:
 ```sh
 scripts/check.sh
 scripts/check_foot_ik.sh
+scripts/check_foot_ik_ramp_locomotion.sh
+scripts/check_foot_ik_stair_repeat.sh
 scripts/check_foot_ik_locomotion.sh
 scripts/check_foot_ik_ramps.sh
 scripts/check_foot_ik_ramp_sweep.sh
@@ -298,3 +300,15 @@ Do not parallelize Godot scenes merely to make this suite faster: concurrent imp
 `user://` traces, and marker state can contaminate results. Redirect each run to a file and extract
 only PASS/FAIL summaries. The multi-character preview is a stress case, not representative one-player
 FPS; preserve performance regressions for support searches as well as pose regressions.
+
+`check_foot_ik.sh` is `set -eu` with a hard `exit 1` per failing check (~39 sites), and it is not
+run by any active CI workflow (`.github/workflows/project-checks.yml` is manual-trigger-only and
+runs `scripts/check.sh` - lint only). This means a pre-existing failure anywhere in its sequence
+silently prevents everything after it from ever running locally, including the sibling scripts it
+chains at its tail (`check_foot_ik_ramp_locomotion.sh`, `check_foot_ik_stair_repeat.sh`,
+`check_foot_ik_locomotion.sh`) - always run those three directly too, not just via
+`check_foot_ik.sh`, or you will believe coverage ran when it did not (see
+[012](AGENT_TASKS/012_foot_ik_ramp_cross_slope_penetration.md)'s "Wired into a runnable
+script" section). There is no committed way to run the whole suite past a known failure and see
+every result - only an ad-hoc local workaround (strip `set -e`, replace each `exit 1` with a
+no-op) has been used for this so far.

@@ -435,16 +435,6 @@ if rg -q "SCRIPT ERROR" "$log_file" \
 fi
 rg "FOOT_IK_IDLE_PLANT_STABILITY_CHECK PASS" "$log_file"
 
-godot --headless --fixed-fps 60 --path "$project_dir" \
-	res://tests/manual/foot_ik/foot_ik_ramp_locomotion_check.tscn \
-	--quit-after 13000 >"$log_file" 2>&1 || true
-
-if ! rg -q "FOOT_IK_RAMP_LOCOMOTION_CHECK PASS" "$log_file"; then
-	cat "$log_file"
-	printf '%s\n' "Foot IK ramp locomotion check did not pass."
-	exit 1
-fi
-rg "FOOT_IK_RAMP_LOCOMOTION_(CASES|CHECK)" "$log_file"
-
+"$project_dir/scripts/check_foot_ik_ramp_locomotion.sh"
 "$project_dir/scripts/check_foot_ik_stair_repeat.sh"
 "$project_dir/scripts/check_foot_ik_locomotion.sh"
