@@ -14,20 +14,18 @@ failures are now believed to be the **same** root cause manifesting during walk 
 spin, not a separate bug (see "phase=move failures also trace to the same root cause" below).
 Test coverage is now runnable independently via `scripts/check_foot_ik_ramp_locomotion.sh` (see
 "Wired into a runnable script" section below). After 013's three fixes closed nearly all of
-`spin_foot_step`, this task's original `foot_float`/`foot_penetration` symptom got a first
-root-cause attempt that turned out **wrong** (`adjust_idle_slope_target`'s downhill-push loop -
-disproven by direct instrumentation, see the corrected section for that history), then a second
-attempt found `smoothed_target` frozen for many consecutive frames during a spin, initially
-attributed to the `likely_planted` lock (see "Real root cause found" near the end) - a **third**
-and final instrumentation pass (inside `foot_ik_ground_sampler.gd`'s `sample()` itself)
-corrected even that: the freeze is defensible, intentional behavior (holding the last known
-target while the raw ground raycast is genuinely missing, rather than snapping to a fallback).
-The real open question, still unresolved, is *why* the raycast misses for 15 consecutive ticks
-during a stationary spin on a 3m-wide ramp - see "Resolved: the print inside `sample()` found
-the real answer" for the leading hypothesis (the same downhill-push drift already found
-elsewhere in this task pushing the raycast probe off the ramp's finite width). Not fixed this
-session, given its length - a precisely diagnosed, ready-to-fix item for a fresh pass, and a
-clean example of three successive corrections each getting closer to the truth.
+`spin_foot_step`, this task's original `foot_float`/`foot_penetration` symptom went through
+four successive corrections: three disproven attribution attempts
+(`adjust_idle_slope_target`'s downhill loop; the `likely_planted` lock; the turn-escape not
+firing - each kept in full since each ruled out a real, plausible candidate with hard evidence)
+before finding that the test's `RAMP_WIDTH=3.0` puts the ramp's physical edge exactly where an
+idle stance's natural sway swings the foot at certain diagonal facings, causing a genuine
+raycast miss right at that boundary. Tested directly by doubling the width: **partially
+confirmed** - failures dropped from 21 to 18 with real, measurable improvement, but roughly
+18 cases still fail at similar magnitude, meaning edge proximity is a real contributor but not
+the sole cause. See "Final answer" near the end for the full nuance and the recommended next
+step (re-investigate `ramp_45_yaw_225`, whose failure value was completely unchanged by the
+width change). Not fixed this session, given its length.
 
 ## What changed and why
 
@@ -602,20 +600,49 @@ than snapping to a fallback on a single missed ray). The earlier "false" `body_t
 seen in the un-filtered aggregate check were from other phases/cases mixed into that count, not
 a real contradiction - filtering by the exact physics-tick window resolved it.
 
-**The real remaining question, not yet answered**: why does the raw ground raycast miss for 15
-consecutive ticks during a stationary spin, when the character is not translating and should be
-standing solidly on a 3m-wide ramp? The most likely explanation, tying back to everything else
-found in this task: the same downhill-push/nudge mechanisms already shown to move a target by
-up to ~0.4-0.5m (the `adjust_idle_slope_target` walk, and whatever produces the raw-vs-solve gap
-investigated earlier) could be pushing the raycast's own probe origin (derived from the current,
-possibly-already-drifted foot/ankle position) laterally far enough, at certain headings, to miss
-the ramp's finite width entirely - a downstream consequence of the same class of drift, not an
-independent bug. Not confirmed - would need the raycast's actual origin/direction logged during
-the miss window and compared against the ramp's known finite bounds, the next concrete step for
-whoever picks this up. Once that raycast-miss cause is fixed (or the escape/hold behavior is
-changed to converge faster after a miss resolves), both this task's `foot_float`/
-`foot_penetration` residual and very possibly 013's own two remaining `spin_foot_step` outliers
-should be re-checked, since both symptoms cluster on the exact same steep/diagonal cases.
+### Final answer: the animated foot naturally sits at the ramp's physical edge, not a drift bug
+
+Checked directly rather than leaving the "downhill-push drifted the raycast origin" theory
+above as a guess: `sample()`'s raycast uses `foot_pos`, the **animated** foot bone position
+transformed to world - not the nudged/pushed target at all, so that theory was wrong too.
+Logged `foot_pos` itself during the exact miss window (physics ticks 11416-11430, same
+alignment technique as before): X ranged `15.50873` to `15.56489`.
+
+`ramp_45_yaw_270`'s ramp origin is at `X = 14.0` (`RAMP_SPACING=7.0 * angle_index=2`), and
+`RAMP_WIDTH=3.0` means the ramp's physical edge sits at `X = 15.5`. The animated foot position
+during the miss sits essentially **exactly on that edge line** (`15.51` to `15.56`, i.e. at or
+a few centimeters past it) - not a symptom of any drift/nudge bug at all. At this diagonal
+facing, the idle animation's natural stance width swings this foot laterally right up against
+the ramp's finite boundary; a few millimeters of pose jitter frame to frame (visible in the
+tiny X fluctuations above) is enough to flip the raycast between landing just inside the ramp
+and just past its edge, into empty space.
+
+**This reframes the whole remaining item**: it is arguably not a Foot IK bug at all, but a test
+configuration limit - `RAMP_WIDTH=3.0` (1.5m half-width) does not leave enough lateral
+clearance for a normal idle stance's natural sway once the character is centered and facing
+diagonally, at least for the leg geometry this character uses.
+
+**Tested directly** (temporary local edit, reverted after - `git diff` confirmed clean):
+doubled `RAMP_WIDTH` to `6.0` and re-ran the full 24-case check. Result: **partial
+confirmation, not total**. Failures dropped from 21 to 18, and several cases that were failing
+disappeared from the list entirely (e.g. `ramp_15_yaw_270`) - real, measurable improvement,
+consistent with edge proximity being a genuine contributing factor. But 18 cases still fail at
+a similar magnitude (`foot_float`/`foot_penetration` still 0.04-0.10m, `spin_foot_step` still
+clustered around 0.042-0.045m on most cases), and a few cases that were clean at 3.0m width now
+show small new `foot_float`/`foot_penetration` readings at 6.0m width (e.g. `ramp_45_yaw_090`,
+`ramp_45_yaw_270`) - likely because widening the ramp moved *where* the edge is, not eliminated
+edge effects altogether, or because a second, independent, smaller-magnitude source (not yet
+identified) persists regardless of ramp width. `ramp_45_yaw_225`'s `foot_penetration=0.103` in
+particular did not move at all between the two widths, suggesting that specific case's cause is
+unrelated to the edge theory entirely.
+
+**Conclusion**: edge proximity is a real, confirmed, but partial contributor - not the sole
+explanation. A permanent fix should not simply widen the test ramp and declare victory; roughly
+half the remaining magnitude comes from something else, not yet identified. Whoever picks this
+up next should re-run the same "log `foot_pos` vs. known geometry" technique used above,
+this time on one of the cases that *stayed* essentially unchanged between 3.0m and 6.0m width
+(`ramp_45_yaw_225` is the cleanest candidate, given its penetration value was identical at both
+widths), rather than re-investigating a case already explained by edge proximity.
 
 ## References
 
