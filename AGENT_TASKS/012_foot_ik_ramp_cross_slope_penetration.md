@@ -10,8 +10,10 @@ ramp-specific**: the same flip, at larger magnitude, reproduces on flat ground a
 explains a separate, previously-unexplained pre-existing baseline failure
 (`FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s `turn_step_m`). See the dedicated section below;
 fixing it is scoped as its own future task, not finished here. The `phase=move` diagonal-walk
-failures remain unrelated and uninvestigated. Test coverage is now runnable independently via
-`scripts/check_foot_ik_ramp_locomotion.sh` (see "Wired into a runnable script" section below).
+failures are now believed to be the **same** root cause manifesting during walk gait instead of
+spin, not a separate bug (see "phase=move failures also trace to the same root cause" below).
+Test coverage is now runnable independently via `scripts/check_foot_ik_ramp_locomotion.sh` (see
+"Wired into a runnable script" section below).
 
 ## What changed and why
 
@@ -148,13 +150,14 @@ to the pre-fix baseline (`FOOT_IK_POSE_CONTINUITY_CHECK`, `FOOT_IK_LEDGE_SAFETY_
 `FOOT_IK_SPLIT_STANCE_WALK_CHECK` and the full pre-existing failure set all unchanged) - this
 change only affects legs where `stationary_slope` was already true, and the exhaustive suite's
 own idle-on-slope coverage (`FOOT_IK_KNEE_FLEX_CHECK`'s ramp cases, etc.) shows no new failures
-or altered values. `foot_ik_ramp_locomotion_check.tscn`/`.gd` are not wired into any of the
-committed check scripts yet (still standalone, per the "What changed and why" section above),
-so this fix's improvement isn't visible in the committed suite's pass/fail counts.
+or altered values. This coverage was not runnable from a committed script at the time of this
+fix (see "Wired into a runnable script" below, done later), so this fix's improvement wasn't
+visible in the committed suite's pass/fail counts until that was addressed.
 
 **Still open**: `spin_foot_step` (root cause now found, see below - needs a more careful fix
 than the one attempted, split out into [013](013_foot_ik_bend_selection_instability.md)) and
-the `phase=move` diagonal-walk failures (separate, smaller-magnitude, not yet investigated).
+the `phase=move` diagonal-walk failures (now believed to be the same root cause as
+`spin_foot_step`, see below - not separately fixed).
 
 ## spin_foot_step root cause found - naive fix regressed a different case, reverted
 
@@ -309,6 +312,32 @@ cross-linking both this file and the `IDLE_PLANT_STABILITY_CHECK` connection abo
 Reverted the instrumentation (`foot_ik_leg_solver.gd` confirmed back to its last-committed
 state via `git diff` and a clean lint run) - nothing committed from this investigation beyond
 this write-up.
+
+## phase=move failures also trace to the same root cause
+
+Followed up on the still-open `phase=move` (diagonal walking) failures to check whether they
+are a genuinely separate bug or another manifestation of `_select_feasible_bend`'s
+instability. Picked the simplest available repro - `ramp_30_uphill`, a plain straight walk, not
+even diagonal - whose worst move-phase sample (`frame=53 solve_error=0.054`) showed no active
+clamp flags, matching the same "nothing tracked explains it" signature `spin_foot_step` had
+before `_select_feasible_bend` was found.
+
+Re-added the same call-site-scoped `dbg` instrumentation used above (temporary, reverted after)
+and re-ran the full ramp locomotion check. Found the same flip during the settle-to-move
+transition of the very first case, well before any spin phase: `used_best`/angle-from-preferred
+jumps 0 -> 10 -> 0 -> 30 -> 0 degrees across frames 37-44, then holds steady afterward. Smaller
+in magnitude than the spin-phase flips (10-30 degrees here vs. 22-118 degrees during
+spin/turning), consistent with a gait swing changing `preferred` more gradually than a body
+rotation does, but the same mechanism.
+
+**Conclusion**: `phase=move`'s failures are not a separate bug - they are
+`_select_feasible_bend`'s instability (013) triggered by ordinary gait-driven changes to the
+preferred bend direction instead of body rotation. No separate fix is needed here; whatever
+fix 013 settles on for the rotation case should be verified against a walking case (e.g.
+`ramp_30_uphill`) too, since it is a cheap, already-identified additional regression check.
+Reverted the instrumentation (confirmed via `git diff` and a clean lint run) - nothing committed
+from this investigation beyond this write-up and the addition of `ramp_30_uphill` to 013's
+verification plan.
 
 ## Same bug found again via a different harness
 

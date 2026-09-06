@@ -45,6 +45,13 @@ comparison. The result is a discontinuous jump in the chosen bend direction, whi
   [012](012_foot_ik_ramp_cross_slope_penetration.md)). Not proven to be the exact same numeric
   cause yet - the mechanism, animation, and rotation trigger all line up closely enough that
   this should be checked before assuming otherwise.
+- **During ordinary walk gait too, not just rotation**: `ramp_30_uphill` (a plain straight
+  walk, no turning) shows the same flip during its settle-to-move transition - 0 -> 10 -> 0 ->
+  30 -> 0 degrees across a handful of frames - smaller in magnitude than the rotation-driven
+  cases but the same signature (no other clamp flag active, `used_best` toggling). This is what
+  was causing 012's separately-tracked `phase=move` diagonal-walk failures; they are not a
+  distinct bug, just this one triggered by a gait-driven change in `preferred` instead of a
+  body-rotation-driven one.
 
 ## Why not fixed yet
 
@@ -82,8 +89,9 @@ Both of these must be checked together, not just the one the fix targets - the e
 attempt failed by only checking the first:
 
 - **Fixes the bug**: re-run `foot_ik_ramp_locomotion_check.tscn`'s `spin_foot_step` metric
-  (currently failing up to 0.548m, limit 0.040m) and `foot_ik_idle_plant_stability_check.tscn`'s
-  `turn_step_m` (currently 0.056851, check its specific limit) - both should improve/pass.
+  (currently failing up to 0.548m, limit 0.040m), its `phase=move` cases (e.g. `ramp_30_uphill`,
+  the same mechanism at smaller magnitude), and `foot_ik_idle_plant_stability_check.tscn`'s
+  `turn_step_m` (currently 0.056851, check its specific limit) - all should improve/pass.
 - **Does not regress genuine large state changes**: re-run `ramp_15_uphill`'s `hold` phase
   (the case that broke when the *different*, related escape-hatch fix was tried) and the full
   exhaustive suite (`bash /tmp/check_foot_ik_run_all.sh`-equivalent) to confirm the established
