@@ -652,7 +652,19 @@ show small new `foot_float`/`foot_penetration` readings at 6.0m width (e.g. `ram
 edge effects altogether, or because a second, independent, smaller-magnitude source (not yet
 identified) persists regardless of ramp width. `ramp_45_yaw_225`'s `foot_penetration=0.103` in
 particular did not move at all between the two widths, suggesting that specific case's cause is
-unrelated to the edge theory entirely.
+unrelated to the edge theory entirely - **confirmed correct**: that case's `foot_penetration`
+turned out to be the `_limit_correction` rate-limit branch-order bug fixed further below, a
+completely different, non-edge-related mechanism, exactly as this observation predicted.
+
+**Also confirms `ramp_15_yaw_225`'s separate `spin_unplanted=9` symptom is the same edge
+phenomenon**: that case's `spin_unplanted` count was `0` in this same wide-ramp test run
+(recorded in the raw log, not called out at the time) versus `9` at the normal 3.0m width - the
+foot fully losing ground contact and weight during the spin, not just floating/penetrating, is
+the same underlying raycast-miss-at-the-edge cause manifesting through a different downstream
+consequence (`_gait_tracker.update`'s `contact_lost` derivation drops weight to zero when
+`contact_hit` is false and no exemption applies, rather than the target-clearance path holding a
+stale value). No separate investigation needed for this one - same cause, confirmed by the same
+experiment.
 
 **Conclusion**: edge proximity is a real, confirmed, but partial contributor - not the sole
 explanation. A permanent fix should not simply widen the test ramp and declare victory; roughly
