@@ -15,11 +15,14 @@ spin, not a separate bug (see "phase=move failures also trace to the same root c
 Test coverage is now runnable independently via `scripts/check_foot_ik_ramp_locomotion.sh` (see
 "Wired into a runnable script" section below). After 013's three fixes closed nearly all of
 `spin_foot_step`, this task's original `foot_float`/`foot_penetration` symptom got a first
-root-cause attempt that turned out **wrong** - `adjust_idle_slope_target`'s downhill-push loop
-was suspected, a fix was built for it, and direct instrumentation then proved the loop barely
-ever runs for these cases at all (see "Real root cause found" / its correction below). The
-actual source is still open; the wrong attribution and the disproof are both documented so the
-next attempt does not retread the same path.
+root-cause attempt that turned out **wrong** (`adjust_idle_slope_target`'s downhill-push loop -
+disproven by direct instrumentation, see the corrected section for that history), then a second
+attempt that found the real cause and confirmed it with consecutive-frame evidence: see "Real
+root cause found: `likely_planted` freezes `smoothed_target` through rotation" near the end.
+`foot_ik_ground_sampler.gd`'s planted-foot lock has no allowance for legitimate body rotation,
+so a planted idle leg's ground target freezes solid the instant it plants and only resyncs in
+one large, delayed snap. Not fixed this session, given its length - a precisely diagnosed,
+ready-to-fix item for a fresh pass.
 
 ## What changed and why
 
@@ -483,19 +486,64 @@ residual cases at all - meaning the original ~0.4m gap between `debug_raw_target
 wrong; the loop was the wrong target for this fix. Reverted both files completely (confirmed
 via `git diff`).
 
-**Corrected open question**: the real source of the ~0.4m gap (and the smaller 0.04-0.10m
-`foot_float`/`foot_penetration` residual) is still unidentified. Given the downhill-push loop
-is ruled out, the next candidates are the ground sampler's own `smoothed_target[side]`
-convergence (a separate, continuous rate-limited approach toward the raw raycast target -
-during continuous body rotation, the raycast's own hit point shifts every frame as the ankle's
-projected column moves, and this smoothing could legitimately lag behind that shifting raw
-target by a similar margin) or `straighten_compressed_upper_target` (the other adjustment
-applied to `target` earlier in the same per-leg loop, before `adjust_idle_slope_target` ever
-runs). Whoever picks this up next should instrument `_smoothed_target[side]` and
-`debug_raw_target[side]` together across consecutive frames at a flagged sample, the same
-per-frame delta comparison that worked for both of 013's confirmed root causes, rather than
-re-deriving the chain from single-frame snapshots as this attempt did (which is what produced
-the wrong attribution in the first place).
+## Real root cause found: `likely_planted` freezes `smoothed_target` through rotation
+
+Followed the corrected task's own advice: instrumented `_smoothed_target[side]` and
+`debug_raw_target[side]` together across consecutive frames (not single-frame snapshots) for
+`ramp_45_yaw_270`'s right leg. Result, frames 326 through 342 (spin phase, body continuously
+rotating, `plan_owner=live_contact plan_valid=true` unchanged throughout, no owner/latch
+transition of any kind):
+
+```
+frame=326 smoothed=(15.49867, 2.375652, 2.375652) raw=(15.57283, 2.321099, 1.906896) gap=0.478
+frame=328 smoothed=(15.49867, 2.375652, 2.375652) raw=(15.56544, 2.320827, 1.893552) gap=0.490
+...
+frame=342 smoothed=(15.49867, 2.375652, 2.375652) raw=(15.50873, 2.320106, 1.810453) gap=0.568
+frame=344 smoothed=(15.49888, 1.799846, 1.799846) raw=(15.49888, 1.799846, 1.799846) gap=0.000
+```
+
+`smoothed_target[side]` is **bit-for-bit frozen** for at least 8 consecutive samples (16
+physics ticks) while `raw` drifts continuously and smoothly (tracking the body's rotation, as
+expected - the raycast's hit point shifts as the ankle's world position orbits during a spin) -
+then snaps to exactly match `raw` in a single frame, a 0.5m instant jump. None of the known
+latch/freeze dictionaries were active (`_idle_frozen`, `idle_lower_latched_target`,
+`idle_lower_acquiring`, `idle_stance_rehoming` all `false`/empty throughout), and the
+coordinator's own plan was valid and unchanged the whole time - ruling out every mechanism this
+session had already touched.
+
+The actual cause is `foot_ik_ground_sampler.gd`'s own target-smoothing gate
+(`sample()`, ~L344-368): `smoothed_target[side]` is only ever eased toward `raw_target` inside
+one `elif` branch, guarded by `not likely_planted` (`likely_planted` = ground weight at or
+above `PLANT_LOCK_WEIGHT`, i.e. a normal fully-planted idle foot, which is exactly the state
+every leg is in throughout an idle spin). Once a leg is "likely planted," **this is the only
+code path in the entire function that updates `smoothed_target` toward the raw ground point at
+all** - so the target is frozen solid the instant the leg plants, for as long as it stays
+planted, no matter how far the real ground contact point (correctly) moves underneath it due to
+body rotation. This is correct and desirable on flat ground (a planted foot should not
+re-chase a jittering raycast) but wrong here: rotation is a legitimate reason for a planted
+idle foot's ground-relative target to change, and the lock does not distinguish "the raycast is
+just noisy" from "the body is turning and the true contact point has genuinely moved." The
+eventual multi-decimeter snap happens whenever some other event (case boundary, a landing-grace
+tick, a brief weight dip) breaks `likely_planted` for one frame and lets the frozen value
+resync all at once.
+
+This is now confirmed as the real source of the residual `foot_float`/`foot_penetration` (the
+render follows the frozen `smoothed_target`, which drifts arbitrarily far from where the ramp
+actually is as rotation continues) and very plausibly of `spin_foot_step`'s own remaining
+outlier too, once the "unfreeze" snap happens to land inside the sampled window - the two
+sections above chased *how the leg reacts* to a stale target; this is *why the target goes
+stale* in the first place.
+
+**Not fixed this session.** A fix needs to teach `likely_planted`'s lock about rotation - e.g.
+re-project `smoothed_target[side]` to track the body's yaw delta each frame while still
+suppressing pure raycast noise, or extend the `not likely_planted` condition with an
+allowance keyed to accumulated yaw change since the last update, similar in spirit to
+`adjust_idle_slope_target`'s own frame-gap-based reacquisition logic from 013. Given this
+touches the ground sampler's core planted-foot smoothing (a function this session has not
+otherwise modified, so lower risk of compounding with 013's changes, but the mechanism itself -
+"a lock with no allowance for legitimate change" - is exactly the pattern that produced
+surprises in every other fix attempted today), this is left as a precisely diagnosed,
+ready-to-fix item, not attempted here given the length of this session.
 
 ## References
 
