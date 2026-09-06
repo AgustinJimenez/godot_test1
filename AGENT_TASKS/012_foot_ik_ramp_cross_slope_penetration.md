@@ -17,12 +17,17 @@ Test coverage is now runnable independently via `scripts/check_foot_ik_ramp_loco
 `spin_foot_step`, this task's original `foot_float`/`foot_penetration` symptom got a first
 root-cause attempt that turned out **wrong** (`adjust_idle_slope_target`'s downhill-push loop -
 disproven by direct instrumentation, see the corrected section for that history), then a second
-attempt that found the real cause and confirmed it with consecutive-frame evidence: see "Real
-root cause found: `likely_planted` freezes `smoothed_target` through rotation" near the end.
-`foot_ik_ground_sampler.gd`'s planted-foot lock has no allowance for legitimate body rotation,
-so a planted idle leg's ground target freezes solid the instant it plants and only resyncs in
-one large, delayed snap. Not fixed this session, given its length - a precisely diagnosed,
-ready-to-fix item for a fresh pass.
+attempt found `smoothed_target` frozen for many consecutive frames during a spin, initially
+attributed to the `likely_planted` lock (see "Real root cause found" near the end) - a **third**
+and final instrumentation pass (inside `foot_ik_ground_sampler.gd`'s `sample()` itself)
+corrected even that: the freeze is defensible, intentional behavior (holding the last known
+target while the raw ground raycast is genuinely missing, rather than snapping to a fallback).
+The real open question, still unresolved, is *why* the raycast misses for 15 consecutive ticks
+during a stationary spin on a 3m-wide ramp - see "Resolved: the print inside `sample()` found
+the real answer" for the leading hypothesis (the same downhill-push drift already found
+elsewhere in this task pushing the raycast probe off the ramp's finite width). Not fixed this
+session, given its length - a precisely diagnosed, ready-to-fix item for a fresh pass, and a
+clean example of three successive corrections each getting closer to the truth.
 
 ## What changed and why
 
@@ -572,6 +577,45 @@ whether the assignment actually executes and what `smoothed_target[side]` holds 
 before anything else in the function can touch it. That was not attempted this session, since
 it means directly modifying the ground sampler's most central function rather than a test
 harness, and this session had already made three other changes to code this fragile today.
+
+### Resolved: the print inside `sample()` found the real answer
+
+Went ahead with that exact next step (temporary prints in `sample()` itself, reverted after -
+`git diff` confirmed clean). Aligned physics-frame numbers directly between a test-script
+marker and the in-`sample()` print rather than guessing at case boundaries again. Result for
+`ramp_45_yaw_270`'s right leg, physics ticks 11416-11436:
+
+```
+tick 11416-11430 (8 samples): hit=false likely_idle=true normal_dot=1.0000 body_turning=(true/false alternating)
+tick 11431:                   hit=true  normal_dot=0.7071 body_turning=true  -> ESCAPE FIRED
+tick 11433, 11435:            hit=true  normal_dot=0.7071 body_turning=true  -> ESCAPE FIRED
+```
+
+`hit["hit"]` is **false** for the entire "frozen" window - the raw ground raycast for this leg
+genuinely misses for 8 consecutive samples (15 physics ticks). `normal_dot=1.0000` during the
+miss is the raycast function's own no-hit fallback (`Vector3.UP`), not a real reading. The
+moment the raycast starts hitting again (tick 11431), the turn-escape fires exactly as designed
+and `smoothed_target` immediately resyncs. **The freeze is not a bug in the escape or the
+lock - `smoothed_target` is correctly holding the last known-good value while there is no valid
+fresh ground sample to replace it with**, which is defensible, intentional behavior (better
+than snapping to a fallback on a single missed ray). The earlier "false" `body_turning` counts
+seen in the un-filtered aggregate check were from other phases/cases mixed into that count, not
+a real contradiction - filtering by the exact physics-tick window resolved it.
+
+**The real remaining question, not yet answered**: why does the raw ground raycast miss for 15
+consecutive ticks during a stationary spin, when the character is not translating and should be
+standing solidly on a 3m-wide ramp? The most likely explanation, tying back to everything else
+found in this task: the same downhill-push/nudge mechanisms already shown to move a target by
+up to ~0.4-0.5m (the `adjust_idle_slope_target` walk, and whatever produces the raw-vs-solve gap
+investigated earlier) could be pushing the raycast's own probe origin (derived from the current,
+possibly-already-drifted foot/ankle position) laterally far enough, at certain headings, to miss
+the ramp's finite width entirely - a downstream consequence of the same class of drift, not an
+independent bug. Not confirmed - would need the raycast's actual origin/direction logged during
+the miss window and compared against the ramp's known finite bounds, the next concrete step for
+whoever picks this up. Once that raycast-miss cause is fixed (or the escape/hold behavior is
+changed to converge faster after a miss resolves), both this task's `foot_float`/
+`foot_penetration` residual and very possibly 013's own two remaining `spin_foot_step` outliers
+should be re-checked, since both symptoms cluster on the exact same steep/diagonal cases.
 
 ## References
 
