@@ -3,10 +3,13 @@
 ## Status and scope
 
 New, split out of [012](012_foot_ik_ramp_cross_slope_penetration.md) once investigation there
-showed the bug is not ramp-specific. Root cause confirmed with direct evidence (see below); no
-fix attempted yet. This is scoped as its own task because the affected function
-(`_select_feasible_bend` in `actors/player/foot_ik/foot_ik_leg_solver.gd`) is shared by every
-leg solve on every surface, and a known pre-existing test already fails against it.
+showed the bug is not ramp-specific. Root cause confirmed with direct evidence (see below).
+Three fix attempts made, none successful (see "Fix attempts" below) - this is scoped as its
+own task because the affected function (`_select_feasible_bend` in
+`actors/player/foot_ik/foot_ik_leg_solver.gd`) is shared by every leg solve on every surface, a
+known pre-existing test already fails against it, and the fix turned out to need more
+foundational tracing (through an unidentified additional layer between bend selection and the
+rendered pose) than the first three attempts assumed.
 
 ## The bug
 
@@ -65,37 +68,91 @@ or an animation switch) - it needs to distinguish "the target barely moved but t
 result flipped anyway" (the bug) from "the target genuinely needs a very different bend now"
 (correct, must stay fast).
 
-## Directions worth trying (none implemented)
+## Fix attempts (three tried, all reverted)
 
-1. **Seed the search from the previous frame's chosen bend direction** (add a
-   `_previous_bend: Dictionary` keyed by side) instead of always starting fresh from
-   `preferred`. If the previous bend is still feasible, keep it (or blend toward `preferred`
-   slowly); only jump immediately to a new region when the previous bend has become truly
-   infeasible under the current constraints.
+All three were instrumented and tested directly against `foot_ik_ramp_locomotion_check.tscn`'s
+`spin_foot_step` metric and `foot_ik_idle_plant_stability_check.tscn`'s `turn_step_m`, following
+this task's own verification plan below. Each change was confirmed lint-clean and reverted
+cleanly (`git diff`/`git checkout --`) before the next attempt - nothing from this round was
+left in the tree.
+
+1. **Seed from the previous frame's chosen bend, only jump when it becomes infeasible.** Added
+   `_previous_bend: Dictionary` (side -> Vector3) and a shared `_is_bend_feasible` helper reused
+   both inside the 145-step search and to re-check the previous frame's choice. **Result:
+   ineffective.** Direct instrumentation showed the previous bend genuinely becomes infeasible
+   under the current frame's constraints very often during a spin (787 times in one 13,000-frame
+   run, with "legitimate" jumps up to 93 degrees measured at the moment of transition) - so the
+   "stay put if still feasible" gate barely reduced how often the unrestricted fast-jump path
+   fired. The bug is not really about the previous choice losing feasibility; it is about how
+   easily it does.
+2. **Always ease toward the fresh result at a bounded angular rate (240 deg/sec), dropping the
+   feasibility gate entirely** - closest to direction 3 below. Confirmed via debug print that
+   the rate limit was computing and applying correctly frame to frame (e.g. capping a 30 degree
+   raw jump down to a ~4 degree per-frame step, converging over several frames). **Result: no
+   measurable change** in `spin_foot_step` or `turn_step_m` - values were bit-for-bit identical
+   to the unfixed baseline across every case checked, despite the smoothing demonstrably running
+   and computing different (smaller) per-frame values internally.
+3. **Ruled out a stale-state explanation and a multi-call-per-tick explanation for attempt 2's
+   null result**, rather than guessing a fourth fix blind:
+   - Suspected `release(side)` (which the first attempt had added `_previous_bend.erase(side)`
+     to) might be wiping the hysteresis memory right before the critical frame. Checked: `
+     release(side)` has **zero callers anywhere in the codebase** - dead code, not the cause.
+   - Suspected `solve()` runs more than once per physics tick (a documented `SkeletonModifier3D`
+     behavior, see `AGENTS.md`) and a later zero-delta call might be overwriting the smoothed
+     result with a freshly unsmoothed one. Checked directly: `solve()` runs **exactly once per
+     frame** with a consistent nonzero `delta` and `instant=false` throughout the failing
+     window (1493/1493 calls checked, 0 with `instant=true`) - not the cause either.
+   - Instrumented `new_foot_pos` (the position computed at the very end of `solve()`, right
+     before `debug_final_foot_position[side]` is set) directly and found single-frame steps as
+     large as **2.68m** internally - far larger than the externally-measured `spin_foot_step`
+     ceiling of ~0.55m. This means something *between* `solve()`'s own output and the
+     externally-measured rendered sole position is already substantially damping the raw signal
+     - the bend-selection fix's effect (or lack of one) is getting mixed in with whatever that
+     other layer does, and was not isolated before this pass ran out of budget.
+
+**Not yet identified**: what specifically sits between `solve()`'s `new_foot_pos` and the
+test's measured sole position that reduces a 2.68m internal step down to ≤0.55m externally.
+Likely candidates worth checking first in a future pass, in `player_foot_ik_modifier.gd`'s
+per-frame pipeline: the pelvis lateral-shift/recenter logic (the exact mechanism 011 already
+found to matter for a different rotation-driven pose issue), any blending between
+`_final_bone_poses` and the raw per-leg solve, or a second solve pass this session never
+accounted for. Finding that layer is the prerequisite for any of the three directions below to
+be verifiable at all - a fix inside `_select_feasible_bend` cannot be confirmed working or
+not working without first knowing what happens to its output afterward.
+
+## Directions worth trying (attempt 1 and 3 tried and did not work as hoped; not fully ruled out)
+
+1. ~~Seed the search from the previous frame's chosen bend direction, only jump when it becomes
+   infeasible.~~ Tried - see "Fix attempts" above. Does not meaningfully reduce how often the
+   fast path fires, since infeasibility transitions are frequent and often legitimate.
 2. **Add epsilon margins to the constraint comparisons** (`candidate.dot(positive) <
    required_alignment`, thigh-swing/shin-limit checks) so a candidate does not enter or leave
-   feasibility from floating-point noise alone - this would address the same-tick,
-   same-frame-different-result symptom specifically, though probably not the larger
-   frame-to-frame drift-driven flips.
-3. **Rate-limit the output bend direction** the same way `_limit_correction` already
-   rate-limits hip/knee rotation deltas downstream in `solve()` - simplest to implement, but
-   risks double-damping (the downstream rate limiter already exists) and needs care not to
-   introduce lag during legitimate fast bend changes (a real large state change, or normal
-   gait's natural bend swing during a stride).
+   feasibility from floating-point noise alone - not tried. Would address the same-tick,
+   same-frame-different-result symptom specifically (the 118-degree-then-0-degree case), though
+   probably not the larger frame-to-frame drift-driven flips attempt 1 measured.
+3. ~~Rate-limit the output bend direction unconditionally.~~ Tried - see "Fix attempts" above.
+   The rate limit itself worked as designed at the point it was applied, but produced no
+   measurable change in the externally observed metrics - strongly suggesting the real fix (or
+   at least the real verification) needs to happen after identifying the untraced layer noted
+   above, not purely inside `_select_feasible_bend`.
 
 ## Verification plan for whichever direction is chosen
 
 Both of these must be checked together, not just the one the fix targets - the escape-hatch
-attempt failed by only checking the first:
+attempt in 012 failed by only checking the first:
 
 - **Fixes the bug**: re-run `foot_ik_ramp_locomotion_check.tscn`'s `spin_foot_step` metric
   (currently failing up to 0.548m, limit 0.040m), its `phase=move` cases (e.g. `ramp_30_uphill`,
   the same mechanism at smaller magnitude), and `foot_ik_idle_plant_stability_check.tscn`'s
   `turn_step_m` (currently 0.056851, check its specific limit) - all should improve/pass.
 - **Does not regress genuine large state changes**: re-run `ramp_15_uphill`'s `hold` phase
-  (the case that broke when the *different*, related escape-hatch fix was tried) and the full
-  exhaustive suite (`bash /tmp/check_foot_ik_run_all.sh`-equivalent) to confirm the established
-  pre-existing baseline failure set doesn't grow or change in kind.
+  (the case that broke when the *different*, related escape-hatch fix was tried in 012) and the
+  full exhaustive suite (`bash /tmp/check_foot_ik_run_all.sh`-equivalent) to confirm the
+  established pre-existing baseline failure set doesn't grow or change in kind.
+- **New, given this pass's finding**: before trusting either check above, confirm the fix's
+  effect is actually visible at the point it's applied *and* survives to the externally measured
+  metric - attempt 2 passed the first half of this silently and it took extra, unplanned
+  instrumentation to notice the second half never happened.
 
 ## References
 
