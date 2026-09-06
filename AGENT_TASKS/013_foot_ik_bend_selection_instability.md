@@ -253,13 +253,34 @@ diff) - in particular `FOOT_IK_POSE_CONTINUITY_CHECK` (the check this seam-freez
 exists to protect) is unchanged at `max_jump_m=0.012522`, confirming the exemption is scoped
 tightly enough to leave the original flat-ground behavior untouched.
 
-**Next step**: investigate the two remaining outliers specifically (check `swing_clamped`/
-`swing_deg` at their exact worst frames - both are now cheap to find directly in
-`foot_ik_ramp_locomotion_check.tscn`'s own detail output). If they are genuinely at the
-anatomical swing limit, this may not be a bug at all but a real reach constraint on a 45-degree
-ramp at that exact diagonal facing, in which case the fix might be a different animation
-lean/pose for that combination rather than an IK correction - worth confirming before assuming
-it's fixable the same way as the rest of this task.
+## The two remaining outliers: right at the anatomical hip-swing limit, not the same bug class
+
+Checked directly: both outliers' worst `spin_foot_step` samples show `swing_deg` of 99.6 and
+99.8 degrees - within a fraction of a degree of `max_hip_swing_degrees` (100.0, the exported
+default in `player_foot_ik_modifier.gd`), with `swing_clamped=false` at the captured sample
+(the raw compute stayed just under the clamp threshold that frame). This is a third instance of
+the same general "hard boundary with no continuity" architecture pattern already fixed twice in
+this task (the bend-plane search's own instability, and the seam-freeze override) - but a
+distinct mechanism from either: the anatomical swing clamp in `solve()`
+(`Vector3.DOWN.rotated(swing_axis, max_swing)`) has no hysteresis either, so a leg whose
+required swing angle sits within a degree of the limit could plausibly flip in and out of
+clamping between adjacent frames, each transition producing a discontinuity the same way the
+other two mechanisms did.
+
+However, unlike the two fixed mechanisms, there is a real possibility this combination
+(45-degree ramp, extreme diagonal facing, `shared_drop=0.576` - a large pelvis sink observed at
+the same sample) is a genuinely hard anatomical pose rather than a bug: `hip_target=0.504` in
+the first outlier is well within reach (`reach=0.888`), yet still demands ~100 degrees of hip
+swing - meaning the target sits nearly level with or above the hip, off to the side, which is
+plausible geometry for a steep ramp with a large pelvis drop rather than a symptom of drift.
+**Not confirmed either way and no fix attempted** - the next step, before touching the swing
+clamp itself, is to check whether `swing_clamped` genuinely toggles frame-to-frame at these two
+cases specifically (the same "instrument the exact boundary, don't guess" discipline applied to
+both fixes above), and separately, whether a real human pose would actually need to plant that
+foot at all at this facing/pelvis-drop combination, or whether the fix belongs in the
+pelvis-drop/lean logic rather than in IK correction. Given this task already required two
+levels of re-diagnosis to find its first two fixes, this third mechanism should get the same
+direct-instrumentation treatment rather than another guess.
 
 ## Directions worth trying (attempt 1 and 3 tried and did not work as hoped; not fully ruled out)
 
