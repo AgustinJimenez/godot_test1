@@ -17,9 +17,13 @@ attempts - it had shown zero effect in isolation, but turned out to be correct a
 masked by the first two discontinuities; re-tested after fixing those, it closed both remaining
 steep-diagonal outliers (one fully, one to within 0.001m of the limit) and even nudged
 `turn_step_m` (flat ground) for the first time all session. `spin_foot_step` now fails on only
-one of 24 ramp-locomotion cases, by a hair. `turn_step_m`'s own check still fails overall on a
-different, not-yet-identified field. This is scoped as its own task because the affected
-functions are shared by every leg solve on every surface.
+one of 24 ramp-locomotion cases, by a hair. `foot_ik_idle_plant_stability_check`'s overall
+`FAIL` is driven by two other fields (`live_pose_joint_step_m`, `min_sole_clearance_m`), not
+`turn_step_m` - traced `live_pose_joint_step_m` to a *second*, independent call site into
+`_select_feasible_bend` (inside `_limit_negative_rendered_knee`, gated to flat ground) that none
+of the three fixes above ever reached; a fix attempt there made the metric worse and was
+reverted (see "turn_step_m's stalled fields explained" below). This is scoped as its own task
+because the affected functions are shared by every leg solve on every surface.
 
 ## The bug
 
@@ -330,6 +334,50 @@ discipline (revert on a null result, don't stack more changes blind) was still t
 each time it happened - the difference here is that after fixing the two upstream issues
 separately and *then* re-testing the earlier reverted attempt with fresh evidence, it turned
 out to be correct all along.
+
+## turn_step_m's stalled fields explained - and a second call site found, fix attempt reverted
+
+Followed up on `FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s overall `FAIL` directly, since `turn_step_m`
+itself (0.054227) is well under its own limit (`turn_limit_m=0.120`) and was never the actual
+blocker. Found the real failing fields in `_finish_check()`'s pass/fail list:
+`live_pose_joint_step_m=0.049733` exceeds `MAX_LIVE_POSE_JOINT_STEP=0.045`, and
+`min_sole_clearance_m=-0.015562` exceeds `MIN_COORDINATOR_SOLE_CLEARANCE=-0.015` - both
+present, and both at *exactly* the same value, across every fix applied in this task so far.
+
+`live_pose_joint_step_m`'s invariance had a concrete cause: `foot_ik_idle_plant_stability_check`'s
+"live pose" phase forces a split-height stance on flat ground and spins the body - a scenario
+that engages `_limit_negative_rendered_knee` (`foot_ik_leg_solver.gd`), a wrong-side/negative-knee
+correction gated to flat ground (`normal.dot(Vector3.UP) >= 0.999`) that has its own, second,
+independent call into `_select_feasible_bend` - one none of this task's three fixes ever
+touched, since it doesn't pass `side`/`delta` and so always took the early-return branch,
+bypassing the hysteresis entirely. This is why the metric never moved: it was never reached.
+
+**Fix attempted and reverted**: threaded `delta` through `_limit_negative_rendered_knee` and
+gave its `_select_feasible_bend` call a namespaced hysteresis key (`"<side>:negknee"`, distinct
+from the main path's `_previous_bend[side]`, since the two calls serve different purposes
+within the same frame and sharing a key would let one silently overwrite the other's memory).
+**Result: made it worse**, not better - `live_pose_joint_step_m` rose from 0.049733 to
+0.083064, and the worst sample moved to a different joint entirely (`320:left:foot` ->
+`129:right:knee`). Reverted immediately (confirmed via `git diff` and re-measuring back to the
+exact original 0.049733) rather than trying a different rate or gating blind.
+
+**Why this one made it worse where the main-path fix helped**: not confirmed, but the likely
+difference is what this correction is *for* - `_limit_negative_rendered_knee` exists
+specifically to snap a wrong-side knee back across a hard sign boundary
+(`signed_flexion < 0.0`) quickly, before it renders as a visibly inverted joint. Adding
+hysteresis there means the correction itself now lags, potentially rendering a partially-wrong
+knee pose for several frames while easing toward the corrected one, which could read as a
+larger positional discontinuity once it completes than an instant snap would have produced.
+This is a real hypothesis, not verified - the general lesson from this task's "Third verified
+fix" above (masking discontinuities can make a fix look like it does nothing) does not
+generalize to "hysteresis is always safe to add here too."
+
+**Still open**: `live_pose_joint_step_m` and `min_sole_clearance_m`, and by extension
+`FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s overall `FAIL`. Given this specific correction resists
+the same treatment that fixed the main path, a future attempt should look at
+`_limit_negative_rendered_knee` on its own terms (e.g. a much faster hysteresis rate reserved
+for a genuine sign-boundary crossing, or hysteresis only on the *magnitude* of the correction
+rather than the bend-plane search inside it) rather than reusing the main path's fix verbatim.
 
 ## Directions worth trying (attempt 1 and 3 tried and did not work as hoped; not fully ruled out)
 
