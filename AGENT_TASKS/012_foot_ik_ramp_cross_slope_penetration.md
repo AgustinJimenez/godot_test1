@@ -10,12 +10,16 @@ ramp-specific**: the same flip, at larger magnitude, reproduces on flat ground a
 explains a separate, previously-unexplained pre-existing baseline failure
 (`FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s `turn_step_m`). See the dedicated section below;
 fixing it is scoped as its own future task, not finished here. The `phase=move` diagonal-walk
-failures are now believed to be the **same** root cause manifesting during walk gait instead of
-spin, not a separate bug (see "phase=move failures also trace to the same root cause" below).
+failures were *suspected* to be the same root cause manifesting during walk gait instead of
+spin (see "phase=move failures also trace to the same root cause" below) - **this did not hold
+up**: with all three of 013's fixes now applied and verified, `ramp_30_uphill`'s move-phase
+`foot_penetration` is exactly, bit-for-bit unchanged from its very first measurement. `phase=move`
+is confirmed a real, distinct, still-unfixed bug (see "phase=move is a real, distinct solve
+error" near the end).
 Test coverage is now runnable independently via `scripts/check_foot_ik_ramp_locomotion.sh` (see
 "Wired into a runnable script" section below). After 013's three fixes closed nearly all of
-`spin_foot_step`, this task's original `foot_float`/`foot_penetration` symptom went through
-four successive corrections: three disproven attribution attempts
+`spin_foot_step`, this task's original spin-phase `foot_float`/`foot_penetration` symptom went
+through four successive corrections: three disproven attribution attempts
 (`adjust_idle_slope_target`'s downhill loop; the `likely_planted` lock; the turn-escape not
 firing - each kept in full since each ruled out a real, plausible candidate with hard evidence)
 before finding that the test's `RAMP_WIDTH=3.0` puts the ramp's physical edge exactly where an
@@ -23,9 +27,8 @@ idle stance's natural sway swings the foot at certain diagonal facings, causing 
 raycast miss right at that boundary. Tested directly by doubling the width: **partially
 confirmed** - failures dropped from 21 to 18 with real, measurable improvement, but roughly
 18 cases still fail at similar magnitude, meaning edge proximity is a real contributor but not
-the sole cause. See "Final answer" near the end for the full nuance and the recommended next
-step (re-investigate `ramp_45_yaw_225`, whose failure value was completely unchanged by the
-width change). Not fixed this session, given its length.
+the sole cause, and a separate, still-unidentified mechanism (the `phase=move` bug above, and
+possibly more) accounts for the rest. Not fixed this session, given its length.
 
 ## What changed and why
 
@@ -342,7 +345,7 @@ in magnitude than the spin-phase flips (10-30 degrees here vs. 22-118 degrees du
 spin/turning), consistent with a gait swing changing `preferred` more gradually than a body
 rotation does, but the same mechanism.
 
-**Conclusion**: `phase=move`'s failures are not a separate bug - they are
+**Conclusion at the time**: `phase=move`'s failures are not a separate bug - they are
 `_select_feasible_bend`'s instability (013) triggered by ordinary gait-driven changes to the
 preferred bend direction instead of body rotation. No separate fix is needed here; whatever
 fix 013 settles on for the rotation case should be verified against a walking case (e.g.
@@ -350,6 +353,16 @@ fix 013 settles on for the rotation case should be verified against a walking ca
 Reverted the instrumentation (confirmed via `git diff` and a clean lint run) - nothing committed
 from this investigation beyond this write-up and the addition of `ramp_30_uphill` to 013's
 verification plan.
+
+**This prediction did not hold up.** All three of 013's fixes are now applied and verified
+(the slope-target reacquisition fix, the seam-freeze exemption, and the bend-plane hysteresis
+that specifically targeted this exact instability). `ramp_30_uphill`'s `foot_penetration` is
+still `0.042m` - **exactly, bit-for-bit the same value** as the very first measurement taken at
+the start of this task, before any fix in either 012 or 013 was applied. `phase=move`'s
+failures were not fixed as a side effect after all; whatever causes them is a genuinely
+different mechanism than the bend-plane flip, not merely a smaller-magnitude instance of it.
+See "phase=move is a real, distinct solve error - not explained by anything fixed today" below
+for the follow-up that found this and re-scoped it correctly.
 
 ## Same bug found again via a different harness
 
@@ -643,6 +656,40 @@ up next should re-run the same "log `foot_pos` vs. known geometry" technique use
 this time on one of the cases that *stayed* essentially unchanged between 3.0m and 6.0m width
 (`ramp_45_yaw_225` is the cleanest candidate, given its penetration value was identical at both
 widths), rather than re-investigating a case already explained by edge proximity.
+
+## phase=move is a real, distinct solve error - not explained by anything fixed today
+
+Followed the recommendation above and checked `ramp_45_yaw_225`'s worst `foot_penetration`
+sample directly. It is `phase=move` (`anim=unarmed_walk`, `body_speed=3.200`), not `phase=spin`
+at all - a genuinely different symptom class from everything fixed in 013 today, which only
+ever touched idle/rotation-driven cases. `solve_error=0.117` at that sample - a real, sizable
+gap between what `solve()` was asked to reach and what it actually rendered - while
+comfortably inside both the anatomical reach (`hip_target=0.790` vs. `reach=0.888`) and swing
+(`swing_deg=44.4`, nowhere near `max_hip_swing_degrees=100`) limits, and with every tracked
+clamp flag (`swing_clamped`, `shin_clamped`, `neg_knee_clamped`, `stance_limited`) false.
+
+Cross-checked against the simplest available case, `ramp_30_uphill` (a plain straight walk, not
+even diagonal), whose own move-phase `foot_penetration=0.042` was flagged as early as this
+task's very first measurements. **That value is exactly, bit-for-bit unchanged today** despite
+all three of 013's fixes now being applied and verified - directly contradicting the earlier
+"no separate fix is needed, 013 will cover it" prediction two sections above.
+`actual_solve_target` matches `solve_target`/`_solved_target_smoothed` exactly for this case
+(unlike the spin-phase cases, where those two diverged sharply) - ruling out the
+smoothing-cache mismatch found for the spin failures. `_limit_correction`'s ramp-specific rate
+override (3600 deg/sec, specifically documented in that function as existing to prevent a
+planted target from outrunning a traveling body on a ramp) should be generous enough to avoid a
+lag of this magnitude during ordinary gait, but the persistent, unchanged 0.042-0.117m gap
+suggests either that override isn't reaching this case, or the real cause is upstream of the
+joint-rotation rate limiter entirely (e.g. in the reach/shin-flexion clamp math, or a
+bend-plane effect distinct from the discontinuous flip 013 fixed).
+
+**Not investigated further this session**, given its length - this is confirmed to be its own,
+previously-mis-scoped item (not a smaller instance of 013's bug, and not resolved by any fix
+applied today), worth a fresh, dedicated instrumentation pass rather than another guess appended
+to an already very long investigation. The clean starting point for that pass is
+`ramp_30_uphill`'s move phase specifically - it is the simplest reproduction (straight walk, no
+diagonal facing, no body rotation) of a bug that has now been independently confirmed present in
+at least three different cases across two ramp angles.
 
 ## References
 
