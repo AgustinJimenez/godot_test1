@@ -334,3 +334,7 @@ investigated.)
 - [011](011_foot_ik_flat_idle_pose_divergence.md) - a related pole-vector-adjacent finding
   from the same session, possibly connected (both are rotation/heading-dependent divergences
   in the same closed-form IK solve).
+- [013](013_foot_ik_bend_selection_instability.md) - `spin_foot_step`'s root cause
+  (`_select_feasible_bend`'s discontinuous bend-plane search), split out into its own task once
+  investigation showed it is not ramp-specific and is likely also the cause of a separate,
+  pre-existing `FOOT_IK_IDLE_PLANT_STABILITY_CHECK` baseline failure.
