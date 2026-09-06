@@ -545,6 +545,25 @@ otherwise modified, so lower risk of compounding with 013's changes, but the mec
 surprises in every other fix attempted today), this is left as a precisely diagnosed,
 ready-to-fix item, not attempted here given the length of this session.
 
+**A likely-relevant clue for that fix**: `sample()` already has a purpose-built escape for
+almost exactly this situation, a few lines above the `likely_planted` gate -
+`if hit["hit"] and likely_idle and raw_normal.dot(Vector3.UP) < 0.999: ... if body_turning:
+smoothed_target[side] = raw_target` (~L339-343, comment: "A gradual turn supplies smoothing; a
+stale ramp target becomes unreachable"). This is gated on a non-flat surface and `body_turning`
+(`foot_ik_gait_tracker.gd`'s `is_body_turning`, a pure single-frame yaw-delta comparison against
+a tight `IDLE_TURNING_EPSILON_DEG = 0.1` threshold - far smaller than the ~2-degree per-step
+rotation used in the ramp-locomotion spin test, so it should trigger almost every frame during
+any real spin). This escape clearly exists to solve exactly this class of bug, yet it evidently
+does not fire during the frozen window found above (`smoothed_target` stayed frozen across it
+regardless). Whoever picks this up next should check first, before writing any new fix, why
+this *existing* escape does not already cover the observed case - candidates worth checking are
+`likely_idle` evaluating false during part of the window (it depends on `_velocity_suppressed`,
+which this session's `013` work found flickers true for 2 frames on every idle-animation-loop
+reset - a real, if different, timing coincidence already documented there) or a same-frame
+call-order issue between `foot_ik_gait_tracker.gd`'s `update_idle_freeze` (which sets
+`body_turning`) and `sample()` reading it. Confirming or ruling this out first is likely faster
+than redesigning the lock from scratch.
+
 ## References
 
 - `tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd` - the extended check.
