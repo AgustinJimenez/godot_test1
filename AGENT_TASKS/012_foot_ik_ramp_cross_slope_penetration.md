@@ -392,6 +392,45 @@ workaround into a permanent, committed mode (e.g. a `FOOT_IK_CONTINUE=1` env var
 whether each check's failure stops the script) would be a meaningfully larger, separate change
 and was not attempted here.
 
+## The remaining foot_float/foot_penetration failures - stale-target measurement hypothesis ruled out
+
+After [013](013_foot_ik_bend_selection_instability.md)'s three fixes closed nearly all of
+`spin_foot_step`, this task's original `foot_float`/`foot_penetration` failures are the last
+open item, still present on most ramp cases. They have a distinctive signature: the magnitude
+tracks ramp steepness almost exactly by `sin(angle)` (15 degrees stays under the 0.04m
+threshold, 30 degrees clusters around 0.055m, 45 degrees around 0.078m), and the same value
+frequently appears as `+float` on one leg and `-penetration` on the other at the *exact same
+frame*, with `hip_target` differing sharply from `hip_raw` on only the affected leg -
+suggesting one leg's target was nudged (likely `adjust_idle_slope_target`'s downhill push) while
+the other wasn't, at that instant.
+
+That pattern raised a hypothesis worth checking before assuming a real pose bug: the test's own
+`clearance := (sole_point - target).dot(normal)` measures against `_ik._smoothed_target[side]`
+(the ground sampler's raw smoothed target) - but `adjust_idle_slope_target`'s nudge is applied
+to a local copy in `player_foot_ik_modifier.gd` and never written back into
+`_smoothed_target`. If the rendered sole is correctly following the *nudged* target, comparing
+it against the *stale, pre-nudge* one would produce exactly this kind of `float`/`penetration`
+reading on an otherwise correctly-grounded foot - a harness measurement gap, not a real bug.
+
+**Ruled out**: added a temporary diagnostic (not committed) comparing `clearance` against
+`_leg_solver.debug_solve_target[side]` (the real value passed to `solve()`) instead of the
+stale `_smoothed_target[side]`. The discrepancy did not go away - it stayed a similar magnitude
+and in some samples flipped sign, meaning the sole is not simply displaced relative to a stale
+reference; it does not land where `solve()` was actually told to put it either. This is a
+genuine small pose discrepancy, not a test-harness measurement artifact. Reverted the
+diagnostic (confirmed via `git diff`).
+
+**Not yet investigated further**: whether the gap between `sole_point` and
+`debug_solve_target` is explained by foot-orientation-vs-surface-normal misalignment (the
+`sole_depth` offset is applied along the foot's own local `sole_direction`, not necessarily
+exactly along the surface normal - `sole_align` was 1.000 in one manually-checked sample, but
+not re-verified for the flagged frames specifically), by `_limit_correction`'s own rate-limiting
+lagging behind a target that legitimately moved, or by something else in the per-leg pipeline
+between `solve()`'s procedural output and the final rendered bone pose. Given the `sin(angle)`
+scaling and the asymmetric-nudge correlation, the next step should instrument
+`sole_align`/`debug_final_foot_position` vs. `sole_point` directly at a flagged frame, the same
+"instrument the exact boundary, don't guess" approach that worked for 013's three fixes.
+
 ## References
 
 - `tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd` - the extended check.
