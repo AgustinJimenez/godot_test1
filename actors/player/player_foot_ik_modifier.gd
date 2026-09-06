@@ -990,7 +990,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			target = _leg_solver.adjust_idle_slope_target(
 					side, solve_hip, target, leg["upper"], leg["lower"], to_world, left_dir)
 		if (_velocity_suppressed and cur_anim.contains("idle")
-				and not _gait_tracker.is_body_translating()
+				and not _gait_tracker.is_body_translating() and not leg.get("stationary_slope", false)
 				and _leg_solver.debug_solve_target.has(side)):
 			target = _leg_solver.debug_solve_target[side]
 		var solve_options := {&"instant": leg.get("instant", false) or brace_upper,

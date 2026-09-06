@@ -8,10 +8,14 @@ as the cause of the measured foot jump is not established; the pipeline audit be
 the earlier assumption that the actual solver input stayed smooth. Three fix attempts inside
 `_select_feasible_bend` failed (see "Fix attempts" below); a pipeline audit then traced the
 real discontinuity to `adjust_idle_slope_target`'s own reacquisition logic instead, and a fix
-there (see "Verified partial fix" below) substantially improved - but did not fully close -
-`spin_foot_step`. This is scoped as its own task because the affected functions are shared by
-every leg solve on every surface, and a known pre-existing test (`turn_step_m`) still fails
-against the still-unidentified flat-ground counterpart of this mechanism.
+there (see "Verified partial fix" below) substantially improved `spin_foot_step`. A second fix
+(see "Second verified fix" below) found and fixed the exact further-upstream discontinuity the
+first fix's own follow-up flagged - an animation-loop-seam pose freeze that assumed a stationary
+idle leg never needs to keep tracking a rotating body. Together the two fixes clear
+`spin_foot_step` on most of the 24 ramp-locomotion cases; two steep-diagonal outliers remain
+unexplained, and `turn_step_m` (flat ground, where neither fix's `stationary_slope` gate can
+reach) is still an open, separate instance of the same underlying bug class. This is scoped as
+its own task because the affected functions are shared by every leg solve on every surface.
 
 ## The bug
 
@@ -195,6 +199,67 @@ wiring fix; `FOOT_IK_SLOPE_TARGET_LIFECYCLE_CHECK PASS` - the new unit test).
 discontinuity noted in the pipeline audit (not yet required for this fix's improvement, but
 likely the source of the remaining ~0.04-0.07m residual and the two outliers); and
 `turn_step_m`'s flat-ground counterpart mechanism, wherever it lives.
+
+## Second verified fix: the animation-loop-seam freeze was the 0.327683m discontinuity
+
+Traced the pipeline audit's own "next action" (find the 0.327683m jump upstream of
+`adjust_idle_slope_target`) directly. `player_foot_ik_modifier.gd`'s per-leg loop has a second,
+unrelated mechanism right after the slope adjustment call:
+
+```gdscript
+if (_velocity_suppressed and cur_anim.contains("idle")
+        and not _gait_tracker.is_body_translating()
+        and _leg_solver.debug_solve_target.has(side)):
+    target = _leg_solver.debug_solve_target[side]
+```
+
+`_velocity_suppressed` goes true for exactly `VELOCITY_SUPPRESS_FRAMES` (2) frames every time
+the current animation's loop position resets (`foot_ik_gait_tracker.gd`'s
+`update_animation_discontinuity`) - a **recurring, periodic event throughout an idle loop**,
+unrelated to body rotation. When it fires, this block throws away the freshly computed `target`
+(already past `adjust_idle_slope_target`'s slope adjustment) and substitutes
+`debug_solve_target[side]`, whatever was actually passed to `solve()` on some earlier frame -
+built to hold a genuinely static idle pose steady across the animation seam rather than read a
+spurious velocity spike from it (see the mechanism's own doc comment, and
+`FOOT_IK_POSE_CONTINUITY_CHECK`, the regression test that shape of fix was built against).
+
+For a `stationary_slope` leg on a rotating body, that assumption doesn't hold: the correct
+target keeps changing every frame as the body turns, so substituting a several-frame-old value
+reintroduces exactly the kind of jump this task has been chasing. Instrumented directly and
+confirmed: this override alone was producing 0.33-0.38m discontinuities (matching the pipeline
+audit's 0.327683m almost exactly) at multiple points throughout a run, on both legs.
+
+**Fix**: added `and not leg.get("stationary_slope", false)` to the override's guard - the same
+exemption pattern used earlier in this task's history for `_limit_idle_stance_crossing` (see
+012's "Partial fix" section) and consistent with the general rule this session keeps
+re-confirming: a flat-ground-assuming correction must not run on a leg that has already been
+placed by its own slope-aware logic.
+
+**Result**: `spin_foot_step` now fully passes on several previously-failing cases
+(`ramp_15_yaw_045/090/315`, `ramp_30_yaw_045/315`, `ramp_45_yaw_270`, and more); overall ramp
+locomotion failures dropped from 22 to 21 (remaining failures are now almost entirely
+`foot_float`/`foot_penetration`, not `spin_foot_step`). Two outliers remain **completely
+unaffected** by this fix - `ramp_45_yaw_045` (still 0.222m) and `ramp_45_yaw_315` (still
+0.312m) - meaning they have a distinct, not-yet-found cause; both are 45-degree-ramp, extreme
+diagonal-yaw cases, and one sample point showed `swing_deg=99.6`, suggesting they may be
+right at or beyond `max_hip_swing_degrees` and hitting the anatomical swing clamp
+(`solve()`'s `Vector3.DOWN.rotated(swing_axis, max_swing)` branch) rather than this mechanism.
+`turn_step_m` is unaffected as expected (flat ground never sets `stationary_slope`, so this
+exemption cannot reach it - it needs its own investigation, per the still-open item above).
+
+Verified no regressions via the full exhaustive suite (regenerated version of the session's
+continue-past-failures wrapper, matching the previous fix's run byte-for-byte in its
+diff) - in particular `FOOT_IK_POSE_CONTINUITY_CHECK` (the check this seam-freeze mechanism
+exists to protect) is unchanged at `max_jump_m=0.012522`, confirming the exemption is scoped
+tightly enough to leave the original flat-ground behavior untouched.
+
+**Next step**: investigate the two remaining outliers specifically (check `swing_clamped`/
+`swing_deg` at their exact worst frames - both are now cheap to find directly in
+`foot_ik_ramp_locomotion_check.tscn`'s own detail output). If they are genuinely at the
+anatomical swing limit, this may not be a bug at all but a real reach constraint on a 45-degree
+ramp at that exact diagonal facing, in which case the fix might be a different animation
+lean/pose for that combination rather than an IK correction - worth confirming before assuming
+it's fixable the same way as the rest of this task.
 
 ## Directions worth trying (attempt 1 and 3 tried and did not work as hoped; not fully ruled out)
 
