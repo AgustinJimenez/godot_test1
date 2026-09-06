@@ -4,8 +4,13 @@
 
 Found while extending test coverage. Root-caused and partially fixed: the dominant
 `foot_penetration` symptom during idle-spin-on-ramp is fixed (see "Partial fix" section below).
-Two smaller, distinct symptoms remain open: `spin_foot_step` (large frame-to-frame foot jump
-during spin) and the `phase=move` diagonal-walk failures. Test coverage change
+`spin_foot_step`'s root cause is now confirmed - `_select_feasible_bend`'s knee-bend-plane
+search flips discontinuously under small input changes - but **this turns out not to be
+ramp-specific**: the same flip, at larger magnitude, reproduces on flat ground and likely
+explains a separate, previously-unexplained pre-existing baseline failure
+(`FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s `turn_step_m`). See the dedicated section below;
+fixing it is scoped as its own future task, not finished here. The `phase=move` diagonal-walk
+failures remain unrelated and uninvestigated. Test coverage change
 (`tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd`) is still not wired into any committed
 check script.
 
@@ -254,6 +259,58 @@ feasible bend plane on demand, including for legitimate large state changes). An
 verified against the same two categories that caught the previous attempt's regression: does it
 fix `spin_foot_step`, and does it leave large-genuine-state-change cases
 (`ramp_15_uphill`-style) working.
+
+## _select_feasible_bend confirmed as the root cause - and it is not ramp-specific
+
+Followed up on the leading suspect above with the same call-site-scoped instrumentation
+(temporary, reverted after this investigation - added a `dbg` parameter threaded only through
+`solve()`'s own call to `_solve_bend_direction`/`_select_feasible_bend`, gated to the right leg
+and an env var, so `adjust_idle_slope_target`'s internal search calls are excluded and only the
+actual per-frame solve is logged).
+
+**Confirmed on the ramp**: re-ran the full `foot_ik_ramp_locomotion_check.tscn` and found
+frequent, large discontinuities throughout the run (not just at the previously-tracked worst
+cases) - `used_best` (whether the 145-step search found a rotated candidate at all) toggles
+between `true`/`false` from one frame to the next, with the resulting angle-from-preferred
+jumping directly between 0 degrees and 22-60 degrees. At the leg's ~0.4-0.5m length, a 30-60
+degree knee-bend-plane flip alone accounts for the observed 0.3-0.55m sole displacement -
+this is not a coincidental correlation, it is large enough to be the whole effect.
+
+**Confirmed on flat ground too, and worse**: ran the same instrumentation against
+`foot_ik_idle_plant_stability_check.tscn` (unrelated to ramps - the project's existing idle/turn
+regression test) and found the same flip, larger (0 to ~118 degrees) and at higher frequency,
+concentrated exactly around the frames of that check's turn-in-place segment. Most tellingly,
+two consecutive log lines showed the *same* physics frame number with wildly different results
+(118 degrees, then 0 degrees) - meaning two evaluations within a single tick, on presumably
+near-identical inputs (likely a `SkeletonModifier3D` zero-delta re-evaluation, a mechanism
+already documented in `AGENTS.md`), produced very different answers. That is a floating-point
+boundary-sensitivity symptom, not a smoothly-varying function crossing a rotation threshold -
+`_select_feasible_bend`'s valid region is apparently narrow, possibly disconnected, and small
+input perturbations decide which of two very different candidates numerically wins the
+`score < best_score` comparison.
+
+**This likely explains a previously-unexplained, pre-existing baseline failure**:
+`FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s `turn_step_m=0.056851` value (present in every baseline
+run this whole session, never root-caused, treated throughout as an unrelated known-red case)
+occurs in the same turn-in-place scenario where this instrumentation just found the flip firing
+directly. Not confirmed as the same numeric cause (would need to correlate the exact frame and
+side and re-derive the metric), but the mechanism, the animation, and the body-rotation trigger
+all match closely enough that a future investigation should check this connection before
+assuming they are unrelated - fixing `_select_feasible_bend` may turn out to fix two
+independently-tracked issues, not one.
+
+**Scope correction**: this is not a ramp-specific bug. The ramp is what made it visible (the
+new diagonal-walk/spin test coverage this session), but the underlying instability is in the
+core bend-direction search used by every leg solve, on any surface, whenever a rotating body
+puts `preferred` near the edge of the search's feasible region. Given that scope, a fix here
+should be scoped and verified as its own task (touching a shared, heavily-used function, with a
+known-pre-existing dependent test) rather than folded into this ramp-specific one - not
+attempted further in this task; recommend a fresh `AGENT_TASKS` entry when picked up next,
+cross-linking both this file and the `IDLE_PLANT_STABILITY_CHECK` connection above.
+
+Reverted the instrumentation (`foot_ik_leg_solver.gd` confirmed back to its last-committed
+state via `git diff` and a clean lint run) - nothing committed from this investigation beyond
+this write-up.
 
 ## Same bug found again via a different harness
 
