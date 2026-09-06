@@ -3,13 +3,15 @@
 ## Status and scope
 
 New, split out of [012](012_foot_ik_ramp_cross_slope_penetration.md) once investigation there
-showed the bug is not ramp-specific. Root cause confirmed with direct evidence (see below).
-Three fix attempts made, none successful (see "Fix attempts" below) - this is scoped as its
-own task because the affected function (`_select_feasible_bend` in
-`actors/player/foot_ik/foot_ik_leg_solver.gd`) is shared by every leg solve on every surface, a
-known pre-existing test already fails against it, and the fix turned out to need more
-foundational tracing (through an unidentified additional layer between bend selection and the
-rendered pose) than the first three attempts assumed.
+showed the bug is not ramp-specific. Bend discontinuities were observed, but their attribution
+as the cause of the measured foot jump is not established; the pipeline audit below contradicts
+the earlier assumption that the actual solver input stayed smooth. Three fix attempts inside
+`_select_feasible_bend` failed (see "Fix attempts" below); a pipeline audit then traced the
+real discontinuity to `adjust_idle_slope_target`'s own reacquisition logic instead, and a fix
+there (see "Verified partial fix" below) substantially improved - but did not fully close -
+`spin_foot_step`. This is scoped as its own task because the affected functions are shared by
+every leg solve on every surface, and a known pre-existing test (`turn_step_m`) still fails
+against the still-unidentified flat-ground counterpart of this mechanism.
 
 ## The bug
 
@@ -110,15 +112,89 @@ left in the tree.
      - the bend-selection fix's effect (or lack of one) is getting mixed in with whatever that
      other layer does, and was not isolated before this pass ran out of budget.
 
-**Not yet identified**: what specifically sits between `solve()`'s `new_foot_pos` and the
-test's measured sole position that reduces a 2.68m internal step down to ≤0.55m externally.
-Likely candidates worth checking first in a future pass, in `player_foot_ik_modifier.gd`'s
-per-frame pipeline: the pelvis lateral-shift/recenter logic (the exact mechanism 011 already
-found to matter for a different rotation-driven pose issue), any blending between
-`_final_bone_poses` and the raw per-leg solve, or a second solve pass this session never
-accounted for. Finding that layer is the prerequisite for any of the three directions below to
-be verifiable at all - a fix inside `_select_feasible_bend` cannot be confirmed working or
-not working without first knowing what happens to its output afterward.
+### Pipeline audit (2026-09-06): no hidden post-solve damping at the worst spin event
+
+Two diagnostic-only runs of the existing 24-case ramp-locomotion harness compared the
+right leg's solver diagnostic, immediate skeleton write, post-modifier cache, and the
+test's own sampling callback. Logs: `/tmp/foot_ik_013_pipeline_audit.log` and
+`/tmp/foot_ik_013_target_audit.log`. Temporary inherited harness/solver probes were removed;
+no gameplay behavior changed. Both runs retain the failing ramp test, not a claimed fix.
+
+The pelvis is shifted **before** `solve()`. The solver writes `new_foot_pos` directly into
+the foot bone; toe writes affect descendants only. The modifier then copies skeleton poses
+directly into `_final_bone_poses`. At the worst spin event (case 18, `ramp_45_yaw_045`,
+sample frames 422→424, physics ticks 9494→9496), solver output and cached ankle both move
+0.548498m, and the actual solver target moves 0.548499m. There is no attenuation here.
+Of 12,062 right-leg solve calls, 12,061 match their immediate bone within 0.00002m;
+those also match the post-modifier cache within 0.000011m. Release paths can leave stale
+solver diagnostics; they are not evidence of post-solve smoothing.
+
+Crucial measurement mismatch: the harness's `spin_target_step` uses `_smoothed_target`
+(surface sampling), and its `solve_target` string uses `_solved_target_smoothed`
+(another upstream stage), **not** `debug_solve_target`, the actual `solve()` argument.
+At ticks 9493→9494, `adjust_idle_slope_target`'s input already jumps 0.327683m; its output
+jumps 0.533783m and the solved/cached ankle follows. Its >0.25m reset is therefore still
+involved, but removing it alone remains the rejected attempt documented above.
+
+The harness samples spin every second tick and resets per-case history, whereas a global
+consecutive-output scan also includes explicit root teleports between cases (observed
+5.66m jumps). The original 2.68m claim cannot be assigned a cause without its matching
+case/frame pair; comparing that global maximum with a phase-filtered maximum proves no
+damping layer. Also, `release(side)` is not dead code: `release_to_animation()` calls it.
+
+**Next action:** trace the 0.327683m discontinuity upstream of slope adjustment at ticks
+9493→9494: per-leg target construction/stance-crossing, coordinator selection, pelvis target
+separation, and compressed-upper adjustment. Identify the first changing owner/value before
+trying another bend-plane smoothing fix. A pole flip alone does not prove ankle displacement:
+an unconstrained two-bone solve can change knee plane while reaching the same ankle target.
+
+## Verified partial fix: `adjust_idle_slope_target`'s reacquisition logic (2026-09-06)
+
+Fixed the mechanism identified in the pipeline audit above without yet tracing the further
+upstream 0.327683m discontinuity. `adjust_idle_slope_target`'s old reset condition -
+`if previous.distance_to(candidate) > 0.25: previous = candidate` - conflated two different
+situations using the wrong signal (distance moved): a leg reacquiring this owner after a
+different owner held it (genuinely needs to snap, no valid history to ease from) and this same
+owner running every single frame while a rotating body legitimately moves the raw candidate
+a lot in one frame (must stay smooth, since there *is* valid history). Distance alone cannot
+tell these apart - the fix instead tracks whether this function was called on the immediately
+preceding physics frame (`_idle_slope_target_frames: Dictionary`, side -> last-called frame):
+only reset when there's an actual gap (reacquisition), never merely because the candidate moved
+far in one frame. A same-tick repeat call (a `SkeletonModifier3D` zero-delta re-evaluation, or
+any other same-frame re-entry) now returns the already-computed value instead of double-stepping
+the smoothing.
+
+Verified in isolation first with a new dedicated unit test,
+`tests/manual/foot_ik/foot_ik_slope_target_lifecycle_check.gd/.tscn` (wired into both
+`check_foot_ik.sh` and `check_foot_ik_fast.sh`) - it drives `adjust_idle_slope_target` directly
+against a stub owner/solver with every candidate forced feasible, covering: fresh acquisition,
+continuous-owner smoothing under a large per-frame candidate move, a same-tick repeat call,
+reacquisition after a different owner held the leg for one tick, and `reset_runtime_state()`.
+All five pass.
+
+Verified against the real symptom: re-ran `foot_ik_ramp_locomotion_check.tscn`'s `spin_foot_step`
+across all 24 cases. Most cases dropped from the 0.31-0.55m range down to 0.04-0.07m - close to
+the 0.040m limit, a roughly 5-10x reduction, though not yet passing. Two outliers remain
+significantly worse than the rest: `ramp_45_yaw_045` (0.548m -> 0.222m) and `ramp_45_yaw_315`
+(0.443m -> 0.312m) - both steep-ramp, diagonal-facing cases, suggesting a secondary contributor
+specific to that combination not yet identified. `foot_ik_idle_plant_stability_check.tscn`'s
+`turn_step_m` is unchanged (0.056851) as expected - that check exercises flat ground, where
+`stationary_slope` (and therefore `adjust_idle_slope_target`) never activates, so this fix
+cannot reach it; whatever causes `turn_step_m`'s failure is a related but distinct instance of
+the same underlying "no reacquisition-vs-continuity signal" class of bug, not yet found.
+
+Verified no regressions: full exhaustive suite re-run (regenerated the session's ad-hoc
+continue-past-failures wrapper from the current `check_foot_ik.sh`, since it had gone stale
+after the ramp-locomotion-script extraction and this task's new lifecycle check) matches the
+established baseline exactly, plus the two expected new entries
+(`FOOT_IK_RAMP_LOCOMOTION_CHECK FAIL` - the still-open remainder of this bug, now included in
+the suite for the first time since [012](012_foot_ik_ramp_cross_slope_penetration.md)'s own
+wiring fix; `FOOT_IK_SLOPE_TARGET_LIFECYCLE_CHECK PASS` - the new unit test).
+
+**Still open**: the two steep-diagonal outlier cases above; the further-upstream 0.327683m
+discontinuity noted in the pipeline audit (not yet required for this fix's improvement, but
+likely the source of the remaining ~0.04-0.07m residual and the two outliers); and
+`turn_step_m`'s flat-ground counterpart mechanism, wherever it lives.
 
 ## Directions worth trying (attempt 1 and 3 tried and did not work as hoped; not fully ruled out)
 

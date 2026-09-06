@@ -47,6 +47,7 @@ var _spin_foot_samples := 0
 var _spin_previous_sole: Dictionary = {}
 var _spin_previous_target: Dictionary = {}
 var _spin_previous_ankle: Dictionary = {}
+var _spin_previous_solve_target: Dictionary = {}
 var _spin_maximum_foot_step := 0.0
 var _worst_spin_step_detail := ""
 var _first_unplanted_detail := ""
@@ -146,6 +147,7 @@ func _start_case() -> void:
 	_spin_unplanted_samples = 0
 	_spin_foot_samples = 0
 	_spin_previous_sole.clear()
+	_spin_previous_solve_target.clear()
 	_spin_maximum_foot_step = 0.0
 	_worst_spin_step_detail = ""
 	_first_unplanted_detail = ""
@@ -224,14 +226,18 @@ func _sample_feet(phase: StringName) -> void:
 		var spin_foot_step := -1.0
 		var spin_target_step := -1.0
 		var spin_ankle_step := -1.0
+		var actual_solve_target: Vector3 = _ik._leg_solver.debug_solve_target.get(side, target)
+		var spin_solve_target_step := -1.0
 		if phase == &"spin":
 			if _spin_previous_sole.has(side):
 				spin_foot_step = sole_point.distance_to(_spin_previous_sole[side])
 				spin_target_step = target.distance_to(_spin_previous_target[side])
 				spin_ankle_step = foot_world.origin.distance_to(_spin_previous_ankle[side])
+				spin_solve_target_step = actual_solve_target.distance_to(_spin_previous_solve_target[side])
 			_spin_previous_sole[side] = sole_point
 			_spin_previous_target[side] = target
 			_spin_previous_ankle[side] = foot_world.origin
+			_spin_previous_solve_target[side] = actual_solve_target
 		var normal: Vector3 = _ik._smoothed_normal.get(side, Vector3.UP)
 		var clearance := (sole_point - target).dot(normal)
 		var hip_idx: int = _ik._bone_indices[side]["hip"]
@@ -249,7 +255,8 @@ func _sample_feet(phase: StringName) -> void:
 				"shared_drop=%.3f offset=%.3f sole_depth=%.3f sole_align=%.3f hip_target=%.3f " + \
 				"hip_raw=%.3f reach=%.3f clearance=%.3f normal=%s surface=%s " + \
 				"solve_target=%s solver_foot=%s raw=%s sole=%s spin_foot_step=%.3f " + \
-				"spin_target_step=%.3f spin_ankle_step=%.3f") % [
+				"spin_target_step=%.3f spin_ankle_step=%.3f " + \
+				"actual_solve_target=%s spin_solve_target_step=%.3f") % [
 				_frame, side, phase, _ik.player_body.anim_player.current_animation.get_file(),
 				rad_to_deg(_player.rotation.y), weight,
 				float(_ik.debug_contact_distance.get(side, -1.0)),
@@ -269,7 +276,8 @@ func _sample_feet(phase: StringName) -> void:
 				float(_ik._leg_lengths[side]["upper"]) + float(_ik._leg_lengths[side]["lower"]),
 				clearance, normal, target, solved_target,
 				_ik._leg_solver.debug_final_foot_position.get(side, Vector3.ZERO),
-				raw_target, sole_point, spin_foot_step, spin_target_step, spin_ankle_step]
+				raw_target, sole_point, spin_foot_step, spin_target_step, spin_ankle_step,
+				actual_solve_target, spin_solve_target_step]
 		if phase == &"spin" and spin_foot_step > _spin_maximum_foot_step:
 			_spin_maximum_foot_step = spin_foot_step
 			_worst_spin_step_detail = detail

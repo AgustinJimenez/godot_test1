@@ -32,6 +32,9 @@ if ! "$project_dir/scripts/check.sh" >"$log_file" 2>&1; then
 fi
 printf '%s\n' "PROJECT_CHECK PASS"
 
+run_scene "Foot IK slope target lifecycle" "FOOT_IK_SLOPE_TARGET_LIFECYCLE_CHECK PASS" \
+	10 res://tests/manual/foot_ik/foot_ik_slope_target_lifecycle_check.tscn
+
 run_scene "Foot IK core preview" \
 	"FOOT_IK_(STRETCH|AIRBORNE|BODY_PENETRATION|POSE_CONTINUITY|STAIR_LOCOMOTION|STAIR_SETTLE)_CHECK PASS" \
 	360 res://tests/manual/foot_ik/foot_ik_preview.tscn -- --foot-ik-check

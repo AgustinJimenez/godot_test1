@@ -8,6 +8,7 @@ var _settings: FootIKRuntimeSettings
 var _previous_corrections: Dictionary = {}
 var _previous_correction_frames: Dictionary = {}
 var _idle_slope_targets: Dictionary = {}
+var _idle_slope_target_frames: Dictionary = {}
 var debug_stance_limited: Dictionary = {}
 var debug_swing_clamped: Dictionary = {}
 var debug_swing_degrees: Dictionary = {}
@@ -33,6 +34,7 @@ func reset_runtime_state() -> void:
 	_previous_corrections.clear()
 	_previous_correction_frames.clear()
 	_idle_slope_targets.clear()
+	_idle_slope_target_frames.clear()
 	debug_stance_limited.clear()
 	debug_swing_clamped.clear()
 	debug_swing_degrees.clear()
@@ -99,11 +101,22 @@ func adjust_idle_slope_target(side: StringName, hip: Vector3, target: Vector3,
 		if clearance < IDLE_STANCE_MIN_SIDE_CLEARANCE:
 			candidate += left_direction * side_sign * (IDLE_STANCE_MIN_SIDE_CLEARANCE - clearance)
 			candidate -= normal * (candidate - target).dot(normal)
+	var frame := Engine.get_physics_frames()
+	var last_frame: int = _idle_slope_target_frames.get(side, -2)
 	var previous: Vector3 = _idle_slope_targets.get(side, candidate)
-	if previous.distance_to(candidate) > 0.25:
+	if last_frame == frame:
+		return previous
+	# The old >0.25m distance-based reset conflated two different situations: a leg
+	# reacquiring after a different owner held it (genuinely needs to snap) and this
+	# same owner running every frame while a rotating body legitimately moves the raw
+	# candidate a lot in one frame (must stay smooth). Reset only on an actual gap in
+	# consecutive calls - the real signal for reacquisition - not on how far the
+	# candidate moved. See 013.
+	if last_frame != frame - 1:
 		previous = candidate
 	var adjusted := previous.move_toward(candidate, 0.015)
 	_idle_slope_targets[side] = adjusted
+	_idle_slope_target_frames[side] = frame
 	return adjusted
 
 func _target_thigh_swing(side: StringName, hip: Vector3, target: Vector3,
