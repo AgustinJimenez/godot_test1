@@ -770,20 +770,23 @@ func _limit_correction(side: StringName, joint: StringName,
 		return desired
 	var angle := previous.angle_to(desired)
 	var angular_speed := _settings.joint_correction_speed_degrees
+	if is_crouch_animation:
+		angular_speed = _settings.crouch_joint_speed_degrees
+	elif is_idle_animation:
+		angular_speed = _settings.standing_joint_speed_degrees
 	# When shared pelvis sink engages on stairs, allow knees to bend quickly to
 	# match the pelvis drop without lagging into the stair step.
 	if (_owner._smoothed_shared_drop > 0.001
 			and (not is_idle_animation or _owner._stair_predictor.is_active())):
-		angular_speed = 720.0
+		angular_speed = maxf(angular_speed, 720.0)
 	# A planted target stays fixed in world space while the body travels along
 	# a ramp. The ordinary 120-degree budget lets the leg trail far behind that
 	# target on steeper slopes, visibly floating or cutting through the ramp.
-	elif (_owner._smoothed_normal.get(side, Vector3.UP) as Vector3).dot(Vector3.UP) < 0.999:
-		angular_speed = 3600.0
-	elif is_crouch_animation:
-		angular_speed = _settings.crouch_joint_speed_degrees
-	elif is_idle_animation:
-		angular_speed = _settings.standing_joint_speed_degrees
+	# Combined with the shared-drop case above via the larger rate, not "first
+	# match wins" - the two conditions can co-occur (e.g. a ramp with pelvis
+	# sink) and neither concern should shadow the other. See 012 (phase=move).
+	if (_owner._smoothed_normal.get(side, Vector3.UP) as Vector3).dot(Vector3.UP) < 0.999:
+		angular_speed = maxf(angular_speed, 3600.0)
 	var maximum_step := deg_to_rad(angular_speed) * delta
 	var result := desired
 	if angle > maximum_step and angle > 0.000001:

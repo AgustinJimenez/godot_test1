@@ -12,10 +12,15 @@ explains a separate, previously-unexplained pre-existing baseline failure
 fixing it is scoped as its own future task, not finished here. The `phase=move` diagonal-walk
 failures were *suspected* to be the same root cause manifesting during walk gait instead of
 spin (see "phase=move failures also trace to the same root cause" below) - **this did not hold
-up**: with all three of 013's fixes now applied and verified, `ramp_30_uphill`'s move-phase
-`foot_penetration` is exactly, bit-for-bit unchanged from its very first measurement. `phase=move`
-is confirmed a real, distinct, still-unfixed bug (see "phase=move is a real, distinct solve
-error" near the end).
+up**: with all three of 013's fixes applied, `ramp_30_uphill`'s move-phase `foot_penetration`
+was still exactly, bit-for-bit unchanged from its very first measurement, proving `phase=move`
+a real, distinct bug. It is now **fixed**: `_limit_correction`'s joint-rotation rate limit used
+an `if/elif` chain where ordinary walking's `shared_drop > 0.001` branch (720 deg/sec) always
+matched before the ramp-specific branch (3600 deg/sec, whose own comment describes this exact
+"leg trails behind on steep slopes" symptom) could ever be reached - see "Fixed: `_limit_correction`'s
+rate-limit branch order" near the end. `ramp_30_uphill`'s and `ramp_45_yaw_225`'s move-phase
+`foot_penetration` are both completely gone after the fix, verified with no regressions via the
+full exhaustive suite.
 Test coverage is now runnable independently via `scripts/check_foot_ik_ramp_locomotion.sh` (see
 "Wired into a runnable script" section below). After 013's three fixes closed nearly all of
 `spin_foot_step`, this task's original spin-phase `foot_float`/`foot_penetration` symptom went
@@ -690,6 +695,38 @@ to an already very long investigation. The clean starting point for that pass is
 `ramp_30_uphill`'s move phase specifically - it is the simplest reproduction (straight walk, no
 diagonal facing, no body rotation) of a bug that has now been independently confirmed present in
 at least three different cases across two ramp angles.
+
+## Fixed: `_limit_correction`'s rate-limit branch order was shadowing the ramp override
+
+The "not investigated further" note above undersold how close the diagnosis already was -
+followed it through directly. `_limit_correction`'s angular-speed selection was an `if/elif`
+chain: `shared_drop > 0.001 and not idle` (720 deg/sec, meant for stairs) was checked *before*
+`normal.dot(UP) < 0.999` (3600 deg/sec, meant for ramps - that branch's own comment: "the
+ordinary 120-degree budget lets the leg trail far behind that target on steeper slopes,
+visibly floating or cutting through the ramp", describing this exact symptom). During ordinary
+walking on a ramp, `shared_drop` is essentially always slightly positive (`0.088` in
+`ramp_30_uphill`'s flagged sample) and the animation is not idle, so the first branch always
+won - the ramp's own 3600 deg/sec allowance, specifically built to prevent this failure, was
+never reached at all whenever a leg was also walking with any pelvis sink.
+
+**Fix**: changed from `if/elif` (first match wins) to two independent `if`s combined via
+`angular_speed = maxf(angular_speed, ...)` - each condition's own rate is still applied when it
+holds, but the two are no longer mutually exclusive, since a ramp with pelvis sink is a real
+combination that should get the more generous of the two allowances, not whichever check
+happened to come first in the source.
+
+**Result**: `ramp_30_uphill`'s `foot_penetration` (present since this task's very first
+measurement) and `ramp_45_yaw_225`'s `foot_penetration=0.103` (the case that motivated this
+whole investigation) are both **completely gone** - not reduced, eliminated. Verified via the
+full exhaustive suite: no regressions, byte-for-byte identical to the previous baseline, with
+every stair/pelvis-drop-sensitive check (`FOOT_IK_STAIR_LOCOMOTION_CHECK`,
+`FOOT_IK_STAIR_SETTLE_CHECK`, `FOOT_IK_LANDING_STABILITY_CHECK`) unchanged at identical values -
+confirming the stairs branch's own original behavior is preserved everywhere it used to apply
+alone.
+
+**Still open**: overall ramp-locomotion failures remain at 21 (unchanged in count, since the
+edge-proximity-driven spin failures and other `spin_foot_step` cases are untouched by this fix)
+- but this specific symptom class, present since the very start of this task, is resolved.
 
 ## References
 
