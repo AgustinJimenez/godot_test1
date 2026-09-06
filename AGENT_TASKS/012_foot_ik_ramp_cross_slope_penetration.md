@@ -205,6 +205,56 @@ converges quickly without a single-frame pop bigger than a few centimeters. Eith
 same two-case verification this attempt lacked: confirm it fixes the spin case *and* re-check
 `ramp_15_uphill`-style large-mismatch cases before considering it done.
 
+## adjust_idle_slope_target's own candidate ruled out; _select_feasible_bend is the new suspect
+
+Followed up on direction (a) above by first checking whether the downhill-search's discrete
+0.05m steps were really the source of the discontinuity, rather than assuming it and jumping
+straight to a fix. Added temporary debug instrumentation (not committed - reverted after this
+investigation) printing, on every `adjust_idle_slope_target` call for the right leg, the
+physics-frame number, iteration count consumed, and resulting candidate distance. Ran the full
+13,000-frame `foot_ik_ramp_locomotion_check.tscn` and checked every consecutive pair of calls
+during a spin for a jump: **none found** - iteration count never changed by more than a few
+steps between adjacent frames, and candidate distance never jumped more than 0.1m. This
+disproves the "coarse discrete step size in the downhill search" mechanism entirely; the
+function's own output is smooth throughout. (This also confirms the earlier revert - restoring
+the `>0.25` escape hatch - was the right call for the right reason: the mismatch it needs to
+handle really is about genuine large state changes, not the pattern hypothesized here.)
+
+Since `adjust_idle_slope_target`'s returned target is smooth, the pop must originate later, in
+`solve()`'s own bend-direction selection for that (smooth) target. Traced the call chain:
+`_solve_bend_direction` -> `_select_feasible_bend` (`foot_ik_leg_solver.gd`, the 145-step,
+2.5-degree-resolution angular search that picks the closest-to-preferred knee-bend direction
+satisfying alignment/thigh-swing/shin-limit constraints). This function is the new leading
+suspect because, unlike every other mechanism in this file, **it has no continuity or
+hysteresis at all** - no previous-frame reference, no rate limit, no smoothing. If the
+previously-valid bend direction crosses out of the constrained region as the body rotates, the
+nearest-candidate search can jump to a different valid region of the circle in a single frame:
+the classic
+"IK pole vector flip" discontinuity. (`_limit_upright_shin`, checked as a second candidate in
+the same call chain, was ruled out by inspection: it early-returns unmodified whenever
+`normal.dot(Vector3.UP) < 0.999`, i.e. on any of these ramps, so it cannot be involved.)
+
+Added one more temporary debug probe inside `_select_feasible_bend` (also reverted, not
+committed) to print whether the search used a rotated `best` candidate or fell through to
+`preferred`, and the angle between them - but did not get to correlate it against the known
+failing frames before stopping this pass. **Not confirmed yet**, only the leading hypothesis.
+
+Reverted both temporary debug additions (`foot_ik_leg_solver.gd` is back to its last-committed
+state, confirmed via `git diff` and a clean lint run) rather than leaving throwaway
+instrumentation in a committed file, or attempting a third speculative fix without first
+confirming this hypothesis the same way the second one was confirmed and ruled out.
+
+**Next step for a future pass**: confirm `_select_feasible_bend` is really the source (repeat
+the same "instrument and check for a discontinuity" approach used above, this time on its
+output angle rather than the target). If confirmed, the fix needs to add some form of
+continuity to that search - e.g. seed it from the previous frame's chosen bend direction rather
+than always restarting from `preferred`, or blend across a boundary crossing instead of jumping
+- without breaking the property that makes it valuable in the first place (finding a genuinely
+feasible bend plane on demand, including for legitimate large state changes). Any fix must be
+verified against the same two categories that caught the previous attempt's regression: does it
+fix `spin_foot_step`, and does it leave large-genuine-state-change cases
+(`ramp_15_uphill`-style) working.
+
 ## Same bug found again via a different harness
 
 `scripts/check_foot_ik_ramps.sh` (245 fixed idle-pose cases, unrelated to this task's
