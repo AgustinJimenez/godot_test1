@@ -304,10 +304,8 @@ func _ready() -> void:
 		var hip_rest: Vector3 = skel.get_bone_global_rest(hip_idx).origin
 		var knee_rest: Vector3 = skel.get_bone_global_rest(knee_idx).origin
 		var foot_rest := skel.get_bone_global_rest(foot_idx)
-		_leg_lengths[side] = {
-			"upper": hip_rest.distance_to(knee_rest),
-			"lower": knee_rest.distance_to(foot_rest.origin),
-		}
+		_leg_lengths[side] = {"upper": hip_rest.distance_to(knee_rest),
+			"lower": knee_rest.distance_to(foot_rest.origin)}
 		var rest_leg_direction := (foot_rest.origin - hip_rest).normalized()
 		var rest_pole := knee_rest - hip_rest
 		rest_pole -= rest_leg_direction * rest_pole.dot(rest_leg_direction)
@@ -995,6 +993,8 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 				and not _gait_tracker.is_body_translating()
 				and _leg_solver.debug_solve_target.has(side)):
 			target = _leg_solver.debug_solve_target[side]
-		_leg_solver.solve(skel, side, solve_hip, target, leg["upper"], leg["lower"],
-				gw, cw, delta, {&"instant": leg.get("instant", false) or brace_upper,
-						&"target_plan_validated": leg.get("target_plan_validated", false)})
+		var solve_options := {&"instant": leg.get("instant", false) or brace_upper,
+				&"target_plan_validated": leg.get("target_plan_validated", false),
+				&"stationary_slope": leg.get("stationary_slope", false)}
+		_leg_solver.solve(skel, side, solve_hip, target, leg["upper"], leg["lower"], gw, cw, delta,
+				solve_options)

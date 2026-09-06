@@ -335,6 +335,7 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 		chain_weight: float, delta: float, options: Dictionary = {}) -> void:
 	var instant_correction: bool = options.get(&"instant", false)
 	var target_plan_validated: bool = options.get(&"target_plan_validated", false)
+	var stationary_slope: bool = options.get(&"stationary_slope", false)
 	var indices: Dictionary = _owner._bone_indices[side]
 	debug_solve_target[side] = target
 	var hip_idx: int = indices["hip"]
@@ -442,7 +443,14 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	new_knee_pos = hip_pos + hip_delta * (knee_pos - animated_hip_pos)
 	new_foot_pos = new_knee_pos + knee_delta * (foot_pos - knee_pos)
 	debug_stance_limited[side] = false
-	if not target_plan_validated:
+	# stationary_slope legs already had their target pushed for stance clearance by
+	# adjust_idle_slope_target (a slope-aware nudge on the target itself, in
+	# player_foot_ik_modifier.gd). This check's own fallback is the raw *animated* pose,
+	# which assumes flat ground - on a steep ramp that pose sits well below/above the real
+	# surface, so re-triggering here on a mismatch this check can't explain (the swing clamp
+	# above can shift the solved foot off the already-negotiated target) blends toward a
+	# fallback that penetrates the ramp instead of preventing a crossed-leg pose. See 012.
+	if not target_plan_validated and not stationary_slope:
 		var stance_limit := _limit_idle_stance_crossing(
 				side, to_world, hip_pos, animated_hip_pos, knee_pos, foot_pos,
 				hip_delta, knee_delta, new_foot_pos)
