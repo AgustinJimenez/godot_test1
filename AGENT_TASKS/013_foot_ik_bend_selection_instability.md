@@ -45,6 +45,64 @@ check types, same counts, nothing new). User then walked/tested the character li
 editor and confirmed it "seems ok in the scene" - no reported foot-skating, snapping, or
 visible regression.
 
+**`340:right:foot` traced (later session): not a bug, legitimate near-limit motion during a
+real step-down.** Dumped the complete per-leg state (`per_leg[&"right"]` contents, target
+coordinator plan owner/reason, `shared_drop`, `_pelvis_lateral_shift`) at physics frames
+1615-1625 (sample 340 maps to physics frame 1620, the same offset-by-20 relationship as
+sample 320 -> frame 1600 established earlier in this task) in one shot, per the technique
+recommended above. Confirmed the right leg transitions from `IDLE_LOWER_ACQUIRE`
+(`selected_legacy_candidate`) to `IDLE_LOWER_LATCH` (`validated_lower_support`) at exactly
+frame 1620 - a real, in-progress ownership handoff, not a stale-flag artifact. Suspected this
+transition itself was discontinuous (the same class of bug as the `release_to_animation()` fix
+above), so traced the complete target-construction chain (`ground_target`, the
+`foot_pos.lerp(ground_target, solve_weight)` pre-smooth value, and `_solved_target_smoothed`'s
+own before/after) frame-by-frame across the same window.
+
+Found the per-leg `target` field itself moves smoothly and monotonically the entire time (z:
+2.930537 -> 2.90387 -> 2.861203 -> 2.808937 -> 2.756243 -> 2.724627 -> 2.705658 -> 2.694276 ->
+2.687447 -> 2.683349 -> 2.680891) - no snap, no discontinuity, no artifact at the exact frame
+ownership changes. `ground_weight` stays a flat `1.0` and `step_down=true` throughout: this is
+the animated leg genuinely, continuously descending onto a new lower support surface - real,
+intended motion, not a bug. The single largest frame-to-frame step (~0.0527m, at frame
+1618->1619, one frame before the reported peak) sits close to `lower_foot_acquire_speed`'s
+(`FootIKRuntimeSettings`, currently `4.0` m/s) theoretical per-frame cap at 60fps
+(`4.0 * (1/60) ≈ 0.0667m`), confirming the acquire-smoothing rate itself is what's producing a
+step of this exact magnitude - not any downstream solve/coordinator/pelvis logic.
+
+**Conclusion: this residual is check-calibration, not a solver defect.** The check's
+`MAX_LIVE_POSE_JOINT_STEP` limit (`0.045`) and `lower_foot_acquire_speed`'s per-frame cap
+(`~0.0667m`) are similar enough in magnitude that a real, legitimate step-down transition can
+exceed the check's limit purely from intended motion, with no bug anywhere in the chain. This
+is a materially different finding than the original `320:left:foot` issue (a genuine
+discontinuity from a missing pelvis offset) - do not attempt a "fix" here by adding smoothing
+or a rate limit to this specific transition, since the motion is already smooth; that would
+only mask a real, intended acquire speed. If this specific check result needs to pass, the
+actual decision is whether `lower_foot_acquire_speed` should be tuned slower (changes the felt
+speed of every idle lower-support acquisition, a live-feel decision) or whether
+`MAX_LIVE_POSE_JOINT_STEP` should be loosened for this specific phase of the check (a test
+calibration decision) - neither should be done without the user's explicit input, per this
+project's standing rule on gameplay-affecting tuning.
+
+**Resolved (user's decision): synced the speed, not the check.** User asked to "sync the speed
+limits in all places" rather than pick one setting in isolation. `FootIKRuntimeSettings` had
+three similar acquire/rehome speeds - `upper_foot_acquire_speed := 2.0`,
+`lower_foot_acquire_speed := 4.0` (the outlier, 2x the others), `idle_stance_rehome_speed :=
+2.0` - with no test scene overriding `lower_foot_acquire_speed` explicitly (confirmed via
+grep), so it was safe to change the shared default. Changed `lower_foot_acquire_speed` from
+`4.0` to `2.0`, matching the other two. Verified: `live_pose_joint_step_m` dropped from
+`0.048908` to `0.043023` (now under the `0.045` limit) with the residual moving slightly
+(`344:right:foot`, same mechanism, smaller magnitude). Full comprehensive suite
+(`scripts/check_foot_ik_all.sh`) re-run clean: exit 0, identical known-baseline failure set,
+no new/unexpected failures.
+
+`FOOT_IK_IDLE_PLANT_STABILITY_CHECK` as a whole still reports `FAIL` - but now for an unrelated,
+already-present field (`_coordinator_generations.size() <= 3`, currently `5`) that was
+identical before and after this change, confirmed via direct comparison of both runs' full
+output lines. That field is not part of this task and not investigated here.
+
+**Live confirmation: done.** User tested idle lower-support acquisition in-editor and confirmed
+"is ok" - no reported slowdown or feel regression at the new `2.0`.
+
 Independent validation (logs `/tmp/foot_ik_013_final_<script>.log`):
 
 | Entrypoint | Result |

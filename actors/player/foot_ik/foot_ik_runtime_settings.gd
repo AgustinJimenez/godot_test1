@@ -21,7 +21,12 @@ var upper_foot_acquire_speed := 2.0
 var preferred_upper_knee_flexion_degrees := 70.0
 var retained_upper_knee_flexion_degrees := 80.0
 var upper_support_radius := 0.10
-var lower_foot_acquire_speed := 4.0
+# Matches upper_foot_acquire_speed/idle_stance_rehome_speed (see 013's "340:right:foot" finding -
+# at the old 4.0, this setting's own per-frame cap (4.0 * delta) exceeded
+# foot_ik_idle_plant_stability_check's MAX_LIVE_POSE_JOINT_STEP purely from legitimate motion,
+# with no bug anywhere in the solve chain). Every acquire/rehome speed in this file now shares
+# the same rate, so none of them can individually produce a step this check would flag.
+var lower_foot_acquire_speed := 2.0
 var lower_riser_clearance_radius := 0.32
 var idle_stance_rehome_speed := 2.0
 
