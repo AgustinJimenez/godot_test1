@@ -27,70 +27,90 @@ func _initialize() -> void:
 		quit(1)
 		return
 
-	var source_path: String = options["source"]
-	var manifest_path: String = options["target_manifest"]
-	var output_path: String = options["output"]
-	var force_loop: bool = String(options.get("force_loop", "false")) == "true"
-
-	var manifest := _load_manifest(manifest_path)
-	if manifest.is_empty():
+	var target: Dictionary = _load_target(String(options["target_manifest"]))
+	if target.is_empty():
 		quit(1)
 		return
+	var source: Dictionary = _load_source(
+			String(options["source"]), String(options.get("source_anim", "")))
+	if source.is_empty():
+		(target["root"] as Node).free()
+		quit(1)
+		return
+
+	var force_loop: bool = String(options.get("force_loop", "false")) == "true"
+	var config := HumanoidRetargeter.build_bone_map_config(
+			ALS_SOURCE_ROLE_MAP, target["humanoid_map"] as Dictionary)
+	var retargeted := HumanoidRetargeter.retarget_clip(source["skeleton"] as Skeleton3D,
+			source["animation"] as Animation, target["skeleton"] as Skeleton3D,
+			config, force_loop)
+
+	(source["root"] as Node).free()
+	(target["root"] as Node).free()
+
+	var output_path: String = options["output"]
+	if not _save_retargeted(retargeted, output_path):
+		quit(1)
+		return
+	print("RETARGET_OK: %s -> %s (length=%.3f tracks=%d)" % [
+		options["source"], output_path, retargeted.length, retargeted.get_track_count(),
+	])
+	quit()
+
+
+## Loads and validates the target character's manifest/model/skeleton. Returns an empty
+## Dictionary (having already push_error'd the specific reason) on any failure, or
+## {"root": Node, "skeleton": Skeleton3D, "humanoid_map": Dictionary} on success.
+func _load_target(manifest_path: String) -> Dictionary:
+	var manifest := _load_manifest(manifest_path)
+	if manifest.is_empty():
+		return {}
 	var humanoid_map: Dictionary = manifest.get("humanoid_map", {})
 	var target_model_path: String = manifest.get("model_path", "")
 	if humanoid_map.is_empty() or target_model_path.is_empty():
 		push_error("Target manifest has no humanoid_map/model_path: %s" % manifest_path)
-		quit(1)
-		return
-
+		return {}
 	var target_root: Node = _instantiate(target_model_path)
 	if target_root == null:
-		quit(1)
-		return
+		return {}
 	var target_skeleton: Skeleton3D = target_root.find_child("Skeleton3D", true, false)
 	if target_skeleton == null:
 		push_error("Target model has no Skeleton3D: %s" % target_model_path)
-		quit(1)
-		return
+		target_root.free()
+		return {}
+	return {"root": target_root, "skeleton": target_skeleton, "humanoid_map": humanoid_map}
 
+
+## Loads and validates the source clip's skeleton/animation. Returns an empty Dictionary
+## (having already push_error'd the specific reason) on any failure, or
+## {"root": Node, "skeleton": Skeleton3D, "animation": Animation} on success.
+func _load_source(source_path: String, source_anim_name: String) -> Dictionary:
 	var source_root: Node = _instantiate(source_path)
 	if source_root == null:
-		quit(1)
-		return
+		return {}
 	var source_skeleton: Skeleton3D = source_root.find_child("Skeleton3D", true, false)
 	var source_ap: AnimationPlayer = source_root.find_child("AnimationPlayer", true, false)
 	if source_skeleton == null or source_ap == null:
 		push_error("Source has no Skeleton3D/AnimationPlayer: %s" % source_path)
-		quit(1)
-		return
-
-	var source_anim_name: String = options.get("source_anim", "")
+		source_root.free()
+		return {}
 	var source_animation := _find_animation(source_ap, source_anim_name)
 	if source_animation == null:
 		push_error("Could not find source animation '%s' in %s" % [source_anim_name, source_path])
-		quit(1)
-		return
+		source_root.free()
+		return {}
+	return {"root": source_root, "skeleton": source_skeleton, "animation": source_animation}
 
-	var config := HumanoidRetargeter.build_bone_map_config(ALS_SOURCE_ROLE_MAP, humanoid_map)
-	var retargeted := HumanoidRetargeter.retarget_clip(
-			source_skeleton, source_animation, target_skeleton, config, force_loop)
 
-	source_root.free()
-	target_root.free()
-
+func _save_retargeted(retargeted: Animation, output_path: String) -> bool:
 	var directory := output_path.get_base_dir()
 	if not DirAccess.dir_exists_absolute(directory):
 		DirAccess.make_dir_recursive_absolute(directory)
 	var save_result := ResourceSaver.save(retargeted, output_path)
 	if save_result != OK:
 		push_error("Could not save retargeted animation: %s" % error_string(save_result))
-		quit(1)
-		return
-
-	print("RETARGET_OK: %s -> %s (length=%.3f tracks=%d)" % [
-		source_path, output_path, retargeted.length, retargeted.get_track_count(),
-	])
-	quit()
+		return false
+	return true
 
 
 func _parse_args() -> Dictionary:

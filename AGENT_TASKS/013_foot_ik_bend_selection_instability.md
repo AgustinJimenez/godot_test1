@@ -598,6 +598,23 @@ own fix, look at `_limit_negative_rendered_knee` on its own terms (e.g. a deboun
 activation condition, or hysteresis only on the *magnitude* of the correction rather than the
 bend-plane search inside it) - but that is not the fix for `live_pose_joint_step_m`.
 
+**Resolved (later session): confirmed check-calibration, loosened the limit.** Re-checked
+current values before touching anything: 15-degree cases stay at 0.016-0.038m (under the
+0.040m limit); every single 30/45-degree case - including plain `uphill`/`downhill` with zero
+yaw change at all - lands at 0.041-0.046m, confirming this is inherent ramp-angle geometry
+during the check's synthetic full-360-degree in-place spin (`SPIN_STEPS := 180`, an
+artificial ~120deg/sec test-only rotation rate, not tied to any real gameplay turn-speed
+setting), not a discontinuity. Per the user's decision, loosened the check rather than
+gameplay: added `angle_degrees` to each case's dict and a second limit,
+`MAX_SPIN_FOOT_STEP_STEEP := 0.05` (vs. the original `MAX_SPIN_FOOT_STEP := 0.04`), applied
+only above `STEEP_RAMP_ANGLE_DEGREES := 20.0`, calibrated with margin above the observed
+0.041-0.046m range. Verified: every `spin_foot_step` failure is gone (`grep`-counted zero
+across the full ramp-locomotion run, down from ~12 failing cases); the check's other 16
+already-known failures (edge-proximity `foot_float`/`foot_penetration`/`spin_unplanted`,
+documented in 012) are unchanged. Full comprehensive suite re-run clean, identical baseline,
+no new regressions. No live confirmation needed - this only changes a test threshold, not any
+runtime code path.
+
 ## Remaining `spin_foot_step` near-misses (0.041-0.046m) - angle-dependent, not edge-related
 
 After [012](012_foot_ik_ramp_cross_slope_penetration.md)'s edge-proximity and rate-limit
