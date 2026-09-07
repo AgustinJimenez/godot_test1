@@ -6,6 +6,16 @@ log_file=$(mktemp "${TMPDIR:-/tmp}/foot-ik-check.XXXXXX")
 trap 'rm -f "$log_file"' EXIT
 
 godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_release_pose_check.tscn \
+	--quit-after 5 >"$log_file" 2>&1 || true
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_RELEASE_POSE_CHECK PASS" "$log_file"; then
+	cat "$log_file"
+	exit 1
+fi
+rg "FOOT_IK_RELEASE_POSE_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
 	res://tests/manual/foot_ik/foot_ik_slope_target_lifecycle_check.tscn \
 	--quit-after 10 >"$log_file" 2>&1 || true
 if rg -q "SCRIPT ERROR" "$log_file" \

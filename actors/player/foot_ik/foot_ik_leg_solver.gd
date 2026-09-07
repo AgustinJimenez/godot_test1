@@ -324,6 +324,13 @@ func release_to_animation(skel: Skeleton3D, side: StringName, delta: float) -> v
 	var animated_hip: Vector3 = to_world * (poses["hip"] as Transform3D).origin
 	var animated_knee: Vector3 = to_world * (poses["knee"] as Transform3D).origin
 	var animated_foot: Vector3 = to_world * (poses["foot"] as Transform3D).origin
+	# Release and solve share the displaced pelvis frame. Cancelling its shift
+	# only while correction history exists makes the whole leg jump at identity.
+	var pelvis_offset: Vector3 = (_owner._pelvis_lateral_shift
+			- Vector3.UP * _owner._smoothed_shared_drop)
+	animated_hip += pelvis_offset
+	animated_knee += pelvis_offset
+	animated_foot += pelvis_offset
 	var corrected_positions := {
 		&"hip": animated_hip,
 		&"knee": animated_hip + hip_delta * (animated_knee - animated_hip),

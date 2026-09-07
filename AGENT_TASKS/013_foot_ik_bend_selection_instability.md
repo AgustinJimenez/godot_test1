@@ -2,6 +2,69 @@
 
 ## Status and scope
 
+### Latest continuation: release-to-animation reference frame (2026-09-07)
+
+The remaining left-leg jump is **not a call to `solve()`**. Instrumenting the actual
+coordinator, release/solve dispatch, post-modifier bones, and harness samples located it
+at modifier tick 1599 (reported as sample 320 at tick 1600). Left takes
+`release_to_animation()` throughout this interval. At tick 1598 its rendered hip equals
+the unshifted authored hip; at 1599 it instead equals authored hip plus pelvis shift
+`(-0.004427, 0, 0.043065)`. `shared_drop` stays zero. Correction history reaches identity,
+and the early return stops writing the absolute unshifted chain, exposing the inherited
+pelvis displacement. Solver debug fields on a released side were stale, not evidence of
+a current bend solve. Audit: `/tmp/foot_ik_013_residual_audit_20260907.log`.
+
+Rejected fix: explicitly restoring the unshifted authored chain on both early returns.
+It removes that boundary but creates a 0.061945 m hip jump when solving resumes at sample
+335. The retained fix instead adds the coordinated pelvis displacement to the authored
+chain **during correction decay**, matching both the ordinary inherited animation pose
+after release and the existing `solve_hip` frame. No extra smoothing or changed limits.
+
+New acceptance scene: `foot_ik_release_pose_check.tscn`, registered in fast/main scripts,
+checks the complete hip-to-leaf chain across active decay, identity release, no-history,
+and zero-delta output, under a rotated/translated skeleton. The original release method
+fails with 0.050000 m offsets on active decay and active zero-delta refresh; the retained
+fix passes all cases. An instrumented full replay confirms sample 320's left-foot step
+falls from 0.049733 m to **0.011184 m** (hip 0.005176, knee 0.009916).
+Full idle replay's maximum moves from
+`0.049733 @320:left:foot` to `0.048908 @340:right:foot`; the latter still exceeds 0.045.
+Minimum sole clearance remains -0.015562 (limit -0.015). **Task remains open**. Do not
+attribute the new right-foot maximum to this release mechanism without tracing it. Logs:
+`/tmp/foot_ik_013_idle_final.log` and `/tmp/foot_ik_013_release_after.log`. Earlier
+hypotheses below are historical, superseded where they attribute this specific left-leg
+jump to bend selection.
+
+**Live confirmation: done.** Independently re-verified this fix in a later session (same
+day): re-ran `foot_ik_idle_plant_stability_check` directly and got the exact same
+`live_pose_joint_step_m=0.048908 at 340:right:foot` reported above; ran
+`foot_ik_release_pose_check` with the fix applied (passes) and with
+`foot_ik_leg_solver.gd` stashed out (fails cleanly with `0.050000m` shifts matching the
+test's injected pelvis-shift magnitude) to confirm it actually catches the regression; ran
+the full exhaustive suite and got the identical pre-existing baseline failure set (same 5
+check types, same counts, nothing new). User then walked/tested the character live in the
+editor and confirmed it "seems ok in the scene" - no reported foot-skating, snapping, or
+visible regression.
+
+Independent validation (logs `/tmp/foot_ik_013_final_<script>.log`):
+
+| Entrypoint | Result |
+| --- | --- |
+| `check.sh` | PASS on final re-run (lint, import, parse). |
+| `check_foot_ik.sh` | FAIL, 59 s; stops at known knee-flex clearance 0.111 m. New release, animation comparison, core, toe-riser, ownership, edge/landing checks before it pass. |
+| `check_foot_ik_ramp_locomotion.sh` | FAIL, 41 s; 21 failing cases, complete case summary identical to `/tmp/ramp_post_all_fixes.log`. |
+| `check_foot_ik_stair_repeat.sh` | PASS, 17 s, including idle-freeze clearance. |
+| `check_foot_ik_locomotion.sh` | FAIL, 15 s; walk-left/right, all locomotion summaries identical to `/tmp/locomotion_fix_full.log`. |
+| `check_foot_ik_ramps.sh` | FAIL, 197 s; 43 failing case records out of 245. Final `failed_cases=0` is a sweep-only counter and misleading outside sweep mode. |
+| `check_foot_ik_ramp_sweep.sh` | FAIL, 31 s; 22/168 cases, worst depth 0.149775 m. |
+| `check_foot_ik_fast.sh` | FAIL at the remaining planted-idle errors; project checks, new release check, both selected knee-flex replays, core, edge/landing, split-stance and idle-seam checks before it pass. |
+
+The main entrypoint is fail-fast: its later scenes were not exercised through that script.
+The full idle scene was therefore run directly. No preview was opened for the user, and
+temporary audit/baseline scenes were removed. Ramp matrices remain red; this is not a
+claim of an all-green suite or completion of 013.
+
+### Earlier investigation
+
 New, split out of [012](012_foot_ik_ramp_cross_slope_penetration.md) once investigation there
 showed the bug is not ramp-specific. Bend discontinuities were observed, but their attribution
 as the cause of the measured foot jump is not established; the pipeline audit below contradicts
@@ -409,19 +472,73 @@ not yet traced further. The previous fix attempt's regression (0.049733 -> 0.083
 the cause of the original failure at `320:left:foot`, since it shifted the worst sample to a
 different location entirely rather than moving the original one.
 
-**Still open**: `live_pose_joint_step_m` and `min_sole_clearance_m`, and by extension
-`FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s overall `FAIL`. The real mechanism is now believed to be
-pelvis/root-transform-level (affecting the whole leg chain uniformly), not
-`_select_feasible_bend`/`_limit_negative_rendered_knee` - the next session should instrument
-`player_foot_ik_modifier.gd`'s pelvis application (`_apply_support_pelvis_and_legs` and
-whatever sets `_owner._smoothed_shared_drop`) around physics frame 1600 of
-`foot_ik_idle_plant_stability_check.tscn`'s live-pose phase, and separately confirm why
-`solve()`'s own computed `new_foot_pos` doesn't already show the full 0.0497m jump that the
-check observes when reading the bone pose back - that gap needs explaining before any fix
-attempt. Separately, if the frame-501-style isolated flicker (see correction above) is ever
-worth its own fix, look at `_limit_negative_rendered_knee` on its own terms (e.g. a debounce on
-the raw activation condition, or hysteresis only on the *magnitude* of the correction rather
-than the bend-plane search inside it) - but that is not the fix for `live_pose_joint_step_m`.
+**Pelvis lateral-shift branch also ruled out (later session).** Instrumented
+`_apply_support_pelvis_and_legs`'s `elif not is_flat_idle and l_hit and r_hit:` branch
+directly - the leading hypothesis, since it rigidly shifts the whole pelvis (and therefore
+every leg's hip/knee/foot uniformly, matching the observed whole-chain jump) and contains a
+discrete threshold (`(l_tgt - r_tgt).dot(left_dir) < 0.22` re-centers the two targets
+symmetrically once crossed). Printed the raw dot product and whether the snap fired, across
+physics frames 1595-1605, for every character in the scene that reaches this branch. The snap
+never fires (`snapped=false` throughout) and every tracked `target_shift` value changes
+smoothly frame-to-frame with no discontinuity anywhere in the window. This branch is not the
+cause either.
+
+**`shared_drop`/`_animation_discontinuous` also ruled out for the actual target character
+(later session).** Instrumented `_shape_shared_drop`'s raw/smoothed output and
+`_animation_discontinuous` directly in `_apply_support_pelvis_and_legs`, filtered by world
+position (`14.39513, 2.093347, 2.998612`, the live-pose check's exact spawn point) to isolate
+the target character from the ~25 other simultaneous idle dummies also running in this scene
+(a real risk in this scene specifically - an unfiltered print showed `discontinuous=true` for
+*other* characters right around frame 1602, which would have been a very tempting but wrong
+lead). For the actual target character across physics frames 1595-1605: `shared_drop` is a flat
+`0.0` throughout (this is flat-ground idle, no stair/riser drop applies) and
+`_animation_discontinuous` is `false` the entire window. Neither mechanism is active here at
+all, let alone discontinuous.
+
+**Important structural clue this pass established: `solve()` cannot be the source of a hip
+*position* jump at all.** `hip_pos` is a parameter passed into `solve()`/`_solve_impl` and
+written back to the bone completely unchanged (`skel.set_bone_global_pose(hip_idx, ...,
+to_local * hip_pos)`) - the function never moves it. Since the check measures a real hip
+position jump (0.042950m) at frame 1600, and every mechanism inside
+`_apply_support_pelvis_and_legs` that could move the pelvis (lateral shift, shared drop) is
+now confirmed inactive for this character, the jump must originate further upstream than any
+Foot IK code examined so far - most likely in the *animated* pelvis pose itself (the
+`AnimationPlayer`'s own output for `unarmed_idle`, read into `leg[&"hip_pos"]` before Foot IK
+ever runs), which would make this an animation-loop-seam issue rather than a Foot IK logic bug
+at all (see the "Animation loop resets are real discontinuities" gotcha in `AGENTS.md`).
+
+**Raw animated hip pose and multi-eval-per-tick also ruled out (same session, continued).**
+Instrumented `skel.get_bone_global_pose(hip_idx)` read in world space at the very top of
+`_process_modification_with_delta`, before any Foot IK logic runs at all, across physics frames
+1595-1605 for the exact target character (position-filtered as above): perfectly smooth,
+~0.0025-0.0026m per-frame movement the entire window, no jump. Separately counted how many
+times `_process_modification_with_delta` actually evaluates per physics tick for this character
+in the same window (`SkeletonModifier3D` can run more than once per tick - a real, previously-
+documented source of exactly this class of bug, see `AGENTS.md`'s own gotcha on it): exactly
+one evaluation per frame throughout, with a constant `delta=0.016667` and smoothly incrementing
+`rotation_y` - no double-evaluation, no stale-rotation read, nothing anomalous.
+
+**Status after four ruled-out mechanisms**: `_select_feasible_bend`/`_limit_negative_rendered_
+knee`, the pelvis lateral-shift snap, `shared_drop`/animation-discontinuity handling, and now
+the raw animated pose plus per-tick evaluation count are all confirmed clean and smooth for the
+exact character, side, and physics frame the check flags. Every mechanism this task can
+currently think to check, checked - all negative. This is now four falsified hypotheses in a
+row on the same specific residual; per this project's own systematic-debugging discipline, that
+is a signal to change *technique*, not to keep guessing at more individual mechanisms one at a
+time. Recommend for whoever picks this up next: dump the *complete* per-leg state (`per_leg`
+dictionary contents, every debug_* field on the leg solver, `_final_bone_poses` for all three
+joints) at physics frames 1599, 1600, and 1601 side by side in one shot, rather than
+hypothesis-by-hypothesis instrumentation - the answer likely lies in a field nobody has printed
+yet, not in re-checking a field already confirmed smooth. Given the size of the residual itself
+(0.049733m against a 0.045m limit - about 10% over) and the effort already spent across
+multiple sessions without success, it is also reasonable to accept this as a known, tracked,
+low-severity residual rather than continue chasing it indefinitely - that is the user's call to
+make, not this task's to decide unilaterally.
+
+Separately, if the frame-501-style isolated flicker (see correction above) is ever worth its
+own fix, look at `_limit_negative_rendered_knee` on its own terms (e.g. a debounce on the raw
+activation condition, or hysteresis only on the *magnitude* of the correction rather than the
+bend-plane search inside it) - but that is not the fix for `live_pose_joint_step_m`.
 
 ## Remaining `spin_foot_step` near-misses (0.041-0.046m) - angle-dependent, not edge-related
 
