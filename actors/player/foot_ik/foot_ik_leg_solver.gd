@@ -370,7 +370,36 @@ func limit_idle_pelvis_shift(to_world: Transform3D, per_leg: Dictionary,
 	return proposed + left_dir * (clampf(lateral, minimum_shift, maximum_shift) - lateral)
 
 
+var _perf_log_enabled := OS.get_environment("FOOT_IK_PERF_LOG") != "0"
+var _perf_accum_usec := 0
+var _perf_call_count := 0
+var _perf_window_start_frame := 0
+
+
 func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3,
+		upper_length: float, lower_length: float, ground_weight: float,
+		chain_weight: float, delta: float, options: Dictionary = {}) -> void:
+	if not _perf_log_enabled:
+		_solve_impl(skel, side, hip_pos, target, upper_length, lower_length,
+				ground_weight, chain_weight, delta, options)
+		return
+	var start_usec := Time.get_ticks_usec()
+	_solve_impl(skel, side, hip_pos, target, upper_length, lower_length,
+			ground_weight, chain_weight, delta, options)
+	_perf_accum_usec += Time.get_ticks_usec() - start_usec
+	_perf_call_count += 1
+	var frame := Engine.get_physics_frames()
+	if frame - _perf_window_start_frame < 60:
+		return
+	print("[FOOT_IK_PERF] frame=%d fps=%.1f solve_calls=%d avg_solve_usec=%.1f total_solve_ms=%.2f" % [
+			frame, Engine.get_frames_per_second(), _perf_call_count,
+			float(_perf_accum_usec) / maxi(_perf_call_count, 1), _perf_accum_usec / 1000.0])
+	_perf_accum_usec = 0
+	_perf_call_count = 0
+	_perf_window_start_frame = frame
+
+
+func _solve_impl(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3,
 		upper_length: float, lower_length: float, ground_weight: float,
 		chain_weight: float, delta: float, options: Dictionary = {}) -> void:
 	var instant_correction: bool = options.get(&"instant", false)

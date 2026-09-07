@@ -380,12 +380,48 @@ This is a real hypothesis, not verified - the general lesson from this task's "T
 fix" above (masking discontinuities can make a fix look like it does nothing) does not
 generalize to "hysteresis is always safe to add here too."
 
+**Correction (later session): the causal claim above was wrong.** Direct instrumentation
+(printing `signed_flexion`/`current_alignment`/the raw activation condition inside
+`_limit_negative_rendered_knee`, gated to physics frame and side) across physics frames
+1590-1610 - the exact window containing the recorded failure at physics frame 1600
+(`sample=320`, confirmed via a second temporary print correlating `sample_index` to
+`Engine.get_physics_frames()`, since the two are not 1:1 - several earlier phases in this same
+check scene run before `_live_pose_frame` starts counting) - shows the correction's raw
+activation condition (`signed_flexion < 0.0 or current_alignment < required_alignment`) is
+**`false` on every single evaluation** in that entire window. `_limit_negative_rendered_knee`
+never engages anywhere near this failure; it cannot be the cause of this specific
+`live_pose_joint_step_m=0.049733` value. (A brief, isolated one-frame activation *was* found
+nearby, around physics frame 501 in one exploratory run, with a genuine - not boundary-noise -
+dip in `current_alignment`; a debounce fix for that was prototyped and verified to compile/run
+cleanly, but was reverted since it does not touch frame 1600 and this task should not carry an
+unverified fix for a symptom nobody is tracking.)
+
+Separately re-traced the actual mechanism at frame 1600: `hip`, `knee`, *and* `foot` all record
+their largest step at the same frame with similar magnitude (0.042950 / 0.049001 / 0.049733) -
+a whole-leg rigid shift, not a knee-bend-plane-specific artifact (which would show mostly in
+`knee`/`foot`, sparing `hip`). Comparing `solve()`'s own final foot position frame-to-frame
+around 1600 shows a much smaller change (~0.019m) than the check's reported 0.049733m,
+meaning the discrepancy likely comes from something between `solve()`'s output and where the
+check reads the bone pose back (parent/pelvis transform timing, not the leg solve itself) -
+not yet traced further. The previous fix attempt's regression (0.049733 -> 0.083064 at a
+*different* sample, `129:right:knee`) is a real, separate data point - touching
+`_limit_negative_rendered_knee` does affect the scene somewhere - but does not establish it as
+the cause of the original failure at `320:left:foot`, since it shifted the worst sample to a
+different location entirely rather than moving the original one.
+
 **Still open**: `live_pose_joint_step_m` and `min_sole_clearance_m`, and by extension
-`FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s overall `FAIL`. Given this specific correction resists
-the same treatment that fixed the main path, a future attempt should look at
-`_limit_negative_rendered_knee` on its own terms (e.g. a much faster hysteresis rate reserved
-for a genuine sign-boundary crossing, or hysteresis only on the *magnitude* of the correction
-rather than the bend-plane search inside it) rather than reusing the main path's fix verbatim.
+`FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s overall `FAIL`. The real mechanism is now believed to be
+pelvis/root-transform-level (affecting the whole leg chain uniformly), not
+`_select_feasible_bend`/`_limit_negative_rendered_knee` - the next session should instrument
+`player_foot_ik_modifier.gd`'s pelvis application (`_apply_support_pelvis_and_legs` and
+whatever sets `_owner._smoothed_shared_drop`) around physics frame 1600 of
+`foot_ik_idle_plant_stability_check.tscn`'s live-pose phase, and separately confirm why
+`solve()`'s own computed `new_foot_pos` doesn't already show the full 0.0497m jump that the
+check observes when reading the bone pose back - that gap needs explaining before any fix
+attempt. Separately, if the frame-501-style isolated flicker (see correction above) is ever
+worth its own fix, look at `_limit_negative_rendered_knee` on its own terms (e.g. a debounce on
+the raw activation condition, or hysteresis only on the *magnitude* of the correction rather
+than the bend-plane search inside it) - but that is not the fix for `live_pose_joint_step_m`.
 
 ## Remaining `spin_foot_step` near-misses (0.041-0.046m) - angle-dependent, not edge-related
 

@@ -117,6 +117,20 @@ settle at least ~30 frames first, or reproduce the same settle/hold history the 
 anyway (see the Foot IK ownership rules below on why a cold spawn often doesn't match a live
 repro's state either).
 
+`CSGShape3D.use_collision = true` always bakes a concave `ConcavePolygonShape3D` trimesh for
+its collider, even for a plain box - never a cheap convex primitive. This is invisible in
+script-side timers (Foot IK's own `solve()` cost, `Performance.TIME_PROCESS`) because the extra
+cost is inside the physics engine's own collision query; it shows up only as an elevated
+`Performance.TIME_PHYSICS_PROCESS` (`physics_ms`), especially when many raycasts/character
+controllers repeatedly query the same CSG box (e.g. every foot of every nearby Foot IK
+character, every physics frame). If a CSG box exists purely to be a physical platform/ground
+contact, give it a sibling `StaticBody3D` + `CollisionShape3D(BoxShape3D)` instead and set
+`use_collision = false` on the CSG node - see `FootIKStairSurfaces.finalize_authored_box()` and
+[012](AGENT_TASKS/012_foot_ik_ramp_cross_slope_penetration.md)'s "Preview-scene FPS drop" section
+for a full writeup of the symptoms this produces (fps collapsing to single digits specifically
+near the affected geometry, fully recovering elsewhere, with CPU-side process/solve timers
+staying flat and misleadingly innocent throughout).
+
 Procedural bone corrections belong in `SkeletonModifier3D`, not an ordinary node's `_process()`.
 Snapshot all base animation poses before changing an ancestor chain. When a paused tuning UI changes
 modifier data, call `Skeleton3D.advance(0.0)` to refresh the rendered result.
@@ -184,7 +198,9 @@ The active consolidation is `AGENT_TASKS/010_foot_ik_target_coordinator_consolid
 review behind that decision, `008` the still-open platform-edge bugs, `011`/`012` newer findings,
 `013` the knee-bend-plane search instability (`_select_feasible_bend`, shared by every leg solve
 on every surface—three of its own fix attempts and two other pipeline discontinuities before one
-finally stuck), and `007` the earlier stair/locomotion architecture. Put exact live frames,
+finally stuck), `014` an open, unsolved FPS-collapse investigation in `foot_ik_preview.tscn`
+(performance, not correctness—a CSG concave-collision fix helped but did not solve it), and
+`007` the earlier stair/locomotion architecture. Put exact live frames,
 coordinates, rejected attempts, and current pass/fail evidence in the relevant numbered task—not
 here.
 

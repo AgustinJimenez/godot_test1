@@ -1,10 +1,11 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://tests/manual/foot_ik/foot_ik_preview.gd" id="1_preview"]
 [ext_resource type="PackedScene" path="res://actors/player/player.tscn" id="2_player"]
 [ext_resource type="Script" path="res://tests/manual/foot_ik/foot_ik_debug_overlay.gd" id="3_debug"]
 [ext_resource type="Script" path="res://tests/manual/foot_ik/foot_ik_animation_comparison.gd" id="4_comparison"]
 [ext_resource type="Script" path="res://tests/manual/foot_ik/foot_ik_feature_controls.gd" id="5_features"]
+[ext_resource type="Script" path="res://tests/manual/foot_ik/foot_ik_perf_probe.gd" id="6_perf"]
 
 [sub_resource type="Environment" id="Environment_preview"]
 background_mode = 1
@@ -51,3 +52,6 @@ script = ExtResource("4_comparison")
 
 [node name="FootIkFeatureControls" type="Node" parent="."]
 script = ExtResource("5_features")
+
+[node name="FootIkPerfProbe" type="Node" parent="."]
+script = ExtResource("6_perf")
