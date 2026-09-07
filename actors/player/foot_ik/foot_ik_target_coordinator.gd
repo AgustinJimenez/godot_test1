@@ -80,6 +80,21 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 	var coordinate_landing: bool = (plan.owner == FootIKTargetPlan.Owner.LANDING_COMMITMENT
 			and _owner._landing_grace_time <= 0.0
 			and plan.surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT)
+	# LOCOMOTION_LOCK/LOCOMOTION_STANCE only ever occur while the body is translating
+	# (foot_ik_gait_tracker.gd gates both behind _body_horizontal_speed() >
+	# IDLE_TRANSLATION_EPSILON before ever reporting them), so coordinate_idle's own
+	# `stationary` requirement can never hold for them - they need their own gate, and
+	# their own stance-zone exemption below (see require_stance): a real walking stride
+	# plants the stance foot meaningfully ahead of/behind the root, well outside the
+	# idle-sized stance zone. _has_support_at's own raycast reconfirmation - already run
+	# for every migrated owner - covers the "is this actually real ground" question
+	# without needing a zone at all. See 010's "Locomotion-owner design finding".
+	var coordinate_locomotion: bool = (plan.owner in [FootIKTargetPlan.Owner.LOCOMOTION_LOCK,
+				FootIKTargetPlan.Owner.LOCOMOTION_STANCE]
+			and _owner._landing_grace_time <= 0.0
+			and _owner._ground_sampler.landing_committed_target.is_empty()
+			and float(leg.get(&"ground_weight", 0.0)) >= PLANT_WEIGHT
+			and plan.surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT)
 	var migrated_owner := plan.owner in [FootIKTargetPlan.Owner.LIVE_CONTACT,
 			FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
 			FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE,
@@ -87,13 +102,15 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 			FootIKTargetPlan.Owner.LANDING_COMMITMENT,
 			FootIKTargetPlan.Owner.LANDING_UPPER,
 			FootIKTargetPlan.Owner.IDLE_FREEZE,
-			FootIKTargetPlan.Owner.SPLIT_RECOVERY]
+			FootIKTargetPlan.Owner.SPLIT_RECOVERY,
+			FootIKTargetPlan.Owner.LOCOMOTION_LOCK,
+			FootIKTargetPlan.Owner.LOCOMOTION_STANCE]
 	var owner_is_lower_transition := plan.owner in [FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
 			FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE,
 			FootIKTargetPlan.Owner.IDLE_STANCE_REHOME]
 	if legacy_transition_active and not owner_is_lower_transition:
 		migrated_owner = false
-	if not (coordinate_idle or coordinate_landing) or not migrated_owner:
+	if not (coordinate_idle or coordinate_landing or coordinate_locomotion) or not migrated_owner:
 		plan.stance_valid = true
 		plan.support_valid = plan.valid
 		plan.reach_valid = true
@@ -106,8 +123,15 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 	# SPLIT_RECOVERY holds a foot at a fixed world point while the root is nudged toward
 	# split_safe_root_target (see prepare_overheight_split_safe_zone) - the held foot can
 	# legitimately sit outside the per-side stance zone mid-nudge, same shape of conflict.
+	# LOCOMOTION_LOCK/LOCOMOTION_STANCE hold a real walking stride's stance foot, which sits
+	# meaningfully ahead of/behind the root at different points in the gait cycle - the
+	# idle-sized stance zone would reject legitimate mid-stride targets outright. Rely on
+	# support/reach/toe validation instead of a zone check for these two, same as the other
+	# exemptions here.
 	var require_stance := not plan.owner in [FootIKTargetPlan.Owner.IDLE_STANCE_REHOME,
-			FootIKTargetPlan.Owner.SPLIT_RECOVERY]
+			FootIKTargetPlan.Owner.SPLIT_RECOVERY,
+			FootIKTargetPlan.Owner.LOCOMOTION_LOCK,
+			FootIKTargetPlan.Owner.LOCOMOTION_STANCE]
 	plan = _finish_validation(space, plan, leg, require_stance)
 	if plan.valid:
 		leg[&"target_plan_validated"] = true

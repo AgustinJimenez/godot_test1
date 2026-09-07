@@ -381,6 +381,83 @@ anything attempted so far. Recommend treating it as its own dedicated pass: firs
 across the whole climb), before writing any gate, rather than reusing the landing-owner
 pattern by analogy.
 
+## LOCOMOTION_LOCK/LOCOMOTION_STANCE migrated (option 2 implemented)
+
+Implemented direction (2) from the design finding below. Turned out simpler than expected:
+`_finish_validation`'s existing `support_valid` check (`_has_support_at` - a fresh raycast
+confirming real, flat ground within height tolerance at the target) is already exactly the
+stance-agnostic "is this actually real ground" reconfirmation direction (2) called for; it
+makes no idle-specific assumption at all. The only piece actually missing was a gate, since
+`coordinate_idle` structurally can never be true for these owners (requires `stationary`).
+
+Added a parallel `coordinate_locomotion` gate (mirrors `coordinate_idle`'s landing-grace/
+plant-weight/flat-normal conditions, without the `stationary`/animation-name requirement, since
+`_legacy_owner()` only ever reports these two owners while
+`foot_ik_gait_tracker.gd` has already confirmed the body is translating). Added both owners to
+`migrated_owner` and to the `require_stance := false` exemption list alongside
+`IDLE_STANCE_REHOME`/`SPLIT_RECOVERY`, for the same reason given in the design finding: the
+idle-sized stance zone would reject legitimate mid-stride targets outright. No new check
+function was needed - `support_valid`/`reach_valid`/`toe_valid` from the existing
+`_finish_validation` path cover it once `stance_valid` is exempted.
+
+**Verified**: full exhaustive suite (`/tmp/check_foot_ik_run_all2.sh`-equivalent continue-past-
+failures run) produces byte-for-byte the same failure set as the pre-change baseline
+(`FOOT_IK_KNEE_FLEX_CHECK` x5, `FOOT_IK_LOCOMOTION_CHECK` x2, `FOOT_IK_IDLE_PLANT_STABILITY_CHECK`,
+`FOOT_IK_RAMP_LOCOMOTION_CHECK`, `FOOT_IK_WALK_IDLE_STANCE_CHECK` - all pre-existing, all
+unchanged). No regression detected by automated coverage, including
+`FOOT_IK_STAIR_LOCOMOTION_CHECK` and `FOOT_IK_LOCOMOTION_CHECK`'s walk/run cases, which
+exercise the exact `LOCOMOTION_LOCK`/`LOCOMOTION_STANCE` code paths this change touches.
+
+**Live manual confirmation: done.** User walked/ran the character in-editor after this change
+and confirmed it "seems to be working fine" - no reported foot-skating, snapping, or floating.
+Coordinator migration is now 11 of 12 owners; `STAIR_SUPPORT`/`STAIR_SWING` remain, per the
+caution above - this only covers ordinary flat-ground walk/run stance, not stair climbing.
+
+## Locomotion-owner design finding (later session, no code changed)
+
+Followed the "dedicated pass" recommendation above by looking closer at all four remaining
+owners before writing any gate, per its own advice. Two concrete findings:
+
+**`LOCOMOTION_LOCK`/`LOCOMOTION_STANCE` are structurally simpler than `STAIR_SUPPORT`/
+`STAIR_SWING` and should likely migrate *first*, not last as currently ordered.**
+`foot_ik_gait_tracker.gd`'s `_update_locomotion_stance`/`target_lock_allows_latch` implement
+almost exactly the same shape as the already-migrated `IDLE_LOWER_LATCH`: "this foot is
+currently planted and should hold its real ground contact instead of skating with the moving
+body," just gated on `_body_horizontal_speed() > IDLE_TRANSLATION_EPSILON` instead of idle
+stillness. There is no continuous-transfer state machine here, unlike `STAIR_SUPPORT`'s
+`_choose_support_side`/`_latch_support_target` (part of `foot_ik_stair_predictor.gd`'s
+actively-transferring support state, which 009/010 already flagged as the project's most
+fragile Foot IK code and which this task correctly recommends *not* rushing).
+
+**The blocker for `LOCOMOTION_LOCK`/`LOCOMOTION_STANCE` even so: neither `coordinate_idle` nor
+its stance-zone check (`is_target_inside_stance_zone`) can be reused as-is.** `coordinate_idle`
+requires `stationary` (only true for idle animations), which by construction excludes every
+locomotion owner - adding them to `migrated_owner` under the existing gate is the exact silent
+no-op already identified for the other two owners. A parallel `coordinate_locomotion` gate is
+needed. More importantly, `is_target_inside_stance_zone`'s tolerances
+(`STANCE_ZONE_MAX_LONGITUDINAL` etc.) are sized for an idle foot sitting nearly directly
+under/beside the root - a real walking stride plants the stance foot meaningfully ahead of or
+behind the root at different points in the gait cycle, well outside that zone. Reusing the
+existing check unmodified would very likely reject legitimate mid-stride stance targets outright
+(rejecting exactly what it's supposed to validate), not merely be a no-op like the wrong-gate
+mistake would be. This needs one of:
+
+1. A separate, locomotion-sized stance-zone tolerance (wider longitudinal bound, tuned against
+   live walk/run/sprint footage - not a number to guess from code alone), or
+2. A stance-agnostic validation for these two owners instead of a zone check: reconfirm the
+   *current* foot position's ground contact is real (a fresh raycast agreement check, same
+   spirit as `LANDING_COMMITMENT`'s `_committed_landing_hit()`), without requiring the target be
+   within any fixed zone relative to the root at all.
+
+Direction (2) also generalizes better to `STAIR_SUPPORT` later (matching this doc's own
+suggestion above: "confirm the *current* chosen support foot's contact is real, not that some
+fixed point remains valid across the whole climb") - the same validation *shape* could end up
+serving three of the four remaining owners, differing mainly in which raycast layer/tolerance
+applies. Not implemented or tuned this session - it needs live walk/run footage to calibrate,
+and per this project's standing rule, gameplay/animation changes are committed only after the
+user's own manual confirmation, not automated checks alone. Recommend this becomes the actual
+first step of the "dedicated pass," ahead of writing any gate.
+
 ## Proposed order (safest/highest-value first)
 
 1. **Add toe/leaf-envelope validation to `_finish_validation`**, scoped only to the 3
