@@ -1,0 +1,36 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://tests/manual/animation/als_retarget_preview.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://levels/test_room.tscn" id="2_room"]
+[ext_resource type="PackedScene" path="res://assets/models/als_mannequin_standalone/AnimMan.fbx" id="3_als"]
+[ext_resource type="PackedScene" path="res://assets/models/pistol_starter/MotusMan/MotusMan_v55.fbx" id="4_motusman"]
+
+[node name="AlsRetargetPreview" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="TestRoom" parent="." instance=ExtResource("2_room")]
+
+[node name="AlsStandalone" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.2, 0, -3.5)
+
+[node name="AnimMan" parent="AlsStandalone" instance=ExtResource("3_als")]
+
+[node name="MotusManRetargeted" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.2, 0, -3.5)
+
+[node name="MotusMan" parent="MotusManRetargeted" instance=ExtResource("4_motusman")]
+
+[node name="PreviewCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.996195, 0.0871557, 0, -0.0871557, 0.996195, 0, 1.75, 3.5)
+current = true
+fov = 70.0
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="CurrentClipLabel" type="Label" parent="UI"]
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 900.0
+offset_bottom = 60.0
+theme_override_font_sizes/font_size = 24
+text = "Clip: -"

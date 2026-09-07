@@ -191,6 +191,32 @@ need bone-aware alignment rather than arbitrary per-vertex projection. Keep the 
 copy outside mutable editor mesh state. Do not revive rejected proximity body masks without a new
 coverage model.
 
+`tools/retarget_cli.gd` is a standalone, headless CLI for retargeting one animation clip from an
+arbitrary source skeleton onto any catalog character via `HumanoidRetargeter` - no live editor/
+`mcp_bridge` round trip needed, unlike `character_editor.gd`'s own "Import Character..." flow (that one
+copies through the live MCP bridge specifically to trigger a real editor reimport). Useful whenever a
+source FBX/GLB is already a plain imported `res://` resource. `HumanoidRetargeter`, `CharacterCatalog`,
+and `CharacterEditorRigHandler.auto_map()`/`full_map_from_prefix()` are all plain `static`/UI-free
+functions, safely callable from a bare `extends SceneTree` script - only the asset-copy-and-reimport
+step actually needs the live editor.
+
+A source rig sharing player_body.gd's `BONE_MAP` naming convention (`pelvis`, `clavicle_l`, ...) is not
+guaranteed to match it bone-for-bone: one real UE-Mannequin export had a lowercase `head` bone where
+`BONE_MAP` expects capitalized `Head`. A source bone simply missing from the map is skipped harmlessly
+by `retarget_clip`'s per-bone loop, but `head`/`hips`/shoulder entries feed its *required* facing/height
+computation and hard-crash with a `-1` bone index if they don't resolve - diff every `BONE_MAP` key
+against the actual imported skeleton before trusting a new source works, rather than assuming the
+existing map is complete for it.
+
+Copying an `Animation`'s own track paths onto a *different* `AnimationPlayer` is not automatically safe
+even when both share the same skeleton's bone names: paths are relative to the player's own `root_node`
+(commonly `..`, its parent - not the player itself), and two different Unreal FBX exports of the "same"
+character (a mesh-bearing export vs. an animation-only one) can nest `Skeleton3D` at different depths.
+A path that resolves on the source silently fails to resolve on the target (a per-track console
+warning, not an error, and the target simply doesn't animate) unless every track's path is rewritten
+against `player.get_node(player.root_node).get_path_to(target_skeleton)` first - not
+`player.get_path_to(target_skeleton)`, which is a subtly different and silently wrong path here.
+
 ## Foot IK and movement
 
 The active consolidation is `AGENT_TASKS/010_foot_ik_target_coordinator_consolidation.md`
