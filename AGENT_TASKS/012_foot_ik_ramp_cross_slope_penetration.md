@@ -740,6 +740,82 @@ alone.
 edge-proximity-driven spin failures and other `spin_foot_step` cases are untouched by this fix)
 - but this specific symptom class, present since the very start of this task, is resolved.
 
+## Preview-scene FPS drop near ramps/stairs (not a Foot IK regression)
+
+**Superseded by [014](014_foot_ik_preview_scene_fps_collapse.md)**: the fix below turned out to
+be real but insufficient - the crash still reproduces after it. Task 014 has the full,
+up-to-date investigation trail; this section is kept as the historical record of the first
+(partial) fix found here.
+
+User manually played `foot_ik_preview.tscn` and observed severe FPS drops (60 -> single
+digits) specifically near the ramp/stair platforms, reproducible on repeat visits and fully
+recovering when standing elsewhere. Added two throwaway-but-kept-for-reuse diagnostics to
+chase it: `[FOOT_IK_PERF]` (per-leg-solver `solve()` cost, in
+`actors/player/foot_ik/foot_ik_leg_solver.gd`, gated behind `FOOT_IK_PERF_LOG=1` so it's a
+no-op otherwise) and `tests/manual/foot_ik/foot_ik_perf_probe.gd` (engine-wide
+`Performance.get_monitor()` counters plus a node-tree diff, same env-var gate, attached as a
+child node in `foot_ik_preview.tscn`).
+
+**Ruled out**: Foot IK's own `solve()` cost (2-9ms total per second, across every active
+leg-solver instance combined - negligible). Node/object count growth (bounded; the one real
+node-count spike found, `ui/hud.gd`'s debug Animation panel building ~105 buttons in one frame,
+is old (2026-07-16) unrelated code and cost ~3fps, not the crash). Static memory growth
+(plateaus after initial load). Rendered-primitive growth alone (climbed identically whether
+standing still or not, and standing still never dropped below 60fps despite primitives
+climbing the same amount - proves it's not by itself the cause).
+
+**Root cause**: every authored tread/riser/platform box on ramps and stairs is a `CSGBox3D`
+with `use_collision = true`. `CSGShape3D` always bakes its own collision as a concave
+`ConcavePolygonShape3D` trimesh - even for a plain box - which is markedly more expensive to
+query than a convex primitive shape. Foot IK's ground sampler raycasts the ground every
+physics frame for every foot of every nearby idle/walking character in the scene (this preview
+scene runs ~25 of them simultaneously), so every box near a ramp/stairs is repeatedly
+raycast-queried against a concave shape instead of a cheap convex one. `physics_ms` spiked to
+3-5x baseline (up to 53ms vs ~10ms normal) exactly during the crash windows while `process_ms`
+(script/logic cost, including Foot IK's own solve time) stayed flat and tiny - the cost is
+inside the physics engine's own collision query, invisible to any Foot IK-side timer. This is
+distinct from (and does not affect) the ramp/stair *traversal* surface the character capsule
+actually walks on, which was already correctly built as its own `ConcavePolygonShape3D` on a
+separate `StaticBody3D` in `foot_ik_stair_surfaces.gd`'s `_build_profile_surface` - that one is
+inherently non-box-shaped and can't be simplified. The fix only touches the authored
+tread/riser/platform *contact* boxes Foot IK raycasts against for foot placement.
+
+**Fix**: added `FootIKStairSurfaces.finalize_authored_box(parent, box)` - adds the `CSGBox3D`
+under `parent`, gives it a sibling `StaticBody3D` + `CollisionShape3D(BoxShape3D)` matching its
+transform/size, and sets `box.use_collision = false` so the CSG node no longer bakes its own
+concave collision. Wired into all four authored-box call sites: `_build_flat`, `_build_ramp`,
+the per-step riser box in `_build_stairs` (all in `foot_ik_preview.gd`), and
+`build_top_landing` (in `foot_ik_stair_surfaces.gd`). Verified against the full exhaustive
+suite with the fix stashed vs. applied: byte-for-byte identical failure set both ways (the
+same pre-existing `FOOT_IK_KNEE_FLEX_CHECK` / `FOOT_IK_LOCOMOTION_CHECK` /
+`FOOT_IK_IDLE_PLANT_STABILITY_CHECK` / `FOOT_IK_RAMP_LOCOMOTION_CHECK` /
+`FOOT_IK_WALK_IDLE_STANCE_CHECK` failures, unchanged) - confirms the collider swap is
+behavior-neutral for every Foot IK correctness check, as expected since foot placement only
+reads the box's raycast hit point/normal, not its collision shape's internal representation.
+
+**Scope**: test-scene-only. No file under `actors/player/foot_ik/` was touched by the fix
+itself (only the perf-log timing wrapper, gated off by default, was added to
+`foot_ik_leg_solver.gd`). The actual game levels (`levels/*.tscn`) have no ramps or stairs yet
+and their existing CSG geometry is flat, unsegmented boxes (floor/walls/ceiling) - cheap
+either way. This does not change Foot IK behavior anywhere, in this scene or the real game.
+
+**Regression test**: `tests/manual/foot_ik/foot_ik_authored_collider_shape_check.gd`/`.tscn`
+calls `finalize_authored_box()` and `build_top_landing()` directly against synthetic CSG boxes
+and asserts the resulting collider is a convex `BoxShape3D` on a sibling `StaticBody3D` (never
+a `ConcavePolygonShape3D`), with matching size/transform, and that the CSG node's own
+`use_collision` ends up `false`. Verified it actually catches the regression: reverting
+`foot_ik_stair_surfaces.gd` alone makes it fail to even parse (the method no longer exists).
+Wired into both `scripts/check_foot_ik.sh` and `scripts/check_foot_ik_fast.sh`.
+
+**Still open**: two secondary findings surfaced during this investigation, neither fixed:
+`ui/hud.gd`'s debug Animation panel (~105 buttons built in one synchronous burst on first
+open) is old, unrelated code that could be paginated/lazily-populated for a smoother one-time
+cost, but only costs ~3fps and isn't a Foot IK concern. Rendered-primitive count climbing
+continuously and unboundedly for the life of the scene (proven harmless up to the levels
+observed here, but not explained) - likely just more of the ~25 simultaneous IK-solving
+dummies entering view as the camera moves, never confirmed further since it didn't correlate
+with the actual crash.
+
 ## References
 
 - `tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd` - the extended check.

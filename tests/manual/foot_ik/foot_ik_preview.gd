@@ -933,7 +933,7 @@ func _build_flat(origin: Vector3) -> Vector3:
 	box.material = _platform_material
 	box.use_collision = true
 	box.position = origin + Vector3(0.0, -PLATFORM_THICKNESS * 0.5, PLATFORM_LENGTH * 0.5)
-	add_child(box)
+	STAIR_SURFACES.finalize_authored_box(self, box)
 	return origin + Vector3(0.0, 0.0, PLATFORM_LENGTH * 0.5)
 func _build_ramp(origin: Vector3, angle_deg: float) -> Vector3:
 	var angle_rad := deg_to_rad(angle_deg)
@@ -947,7 +947,7 @@ func _build_ramp(origin: Vector3, angle_deg: float) -> Vector3:
 	var half_length_offset := box.basis * Vector3(0.0, 0.0, PLATFORM_LENGTH * 0.5)
 	var half_thickness_offset := box.basis * Vector3(0.0, -PLATFORM_THICKNESS * 0.5, 0.0)
 	box.position = origin + half_length_offset + half_thickness_offset
-	add_child(box)
+	STAIR_SURFACES.finalize_authored_box(self, box)
 	STAIR_SURFACES.build_traversal_slope(self, origin, PLATFORM_WIDTH, PLATFORM_LENGTH, rise)
 	return origin + Vector3(0.0, rise * 0.5, PLATFORM_LENGTH * 0.5)
 func _build_stairs(origin: Vector3, step_height: float) -> Vector3: # fixed tread, variable riser
@@ -961,7 +961,7 @@ func _build_stairs(origin: Vector3, step_height: float) -> Vector3: # fixed trea
 		STAIR_SURFACES.configure_authored_stair(box)
 		box.position = origin + Vector3(
 				0.0, step_rise * 0.5, tread_start_z + STAIR_TREAD_DEPTH * 0.5)
-		add_child(box)
+		STAIR_SURFACES.finalize_authored_box(self, box)
 		var tread := CSGBox3D.new() # CSGBox3D allows one material - thin red cap over the blue box
 		tread.size = Vector3(
 				PLATFORM_WIDTH, STAIR_TREAD_DEBUG_THICKNESS, STAIR_TREAD_DEPTH)

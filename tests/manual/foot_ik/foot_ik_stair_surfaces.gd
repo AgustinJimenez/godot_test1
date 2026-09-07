@@ -25,6 +25,28 @@ static func configure_authored_stair(stair: CSGBox3D) -> void:
 	stair.collision_layer = CONTACT_COLLISION_LAYER
 
 
+## CSGShape3D always bakes its own collision as a concave ConcavePolygonShape3D
+## trimesh, even for a plain box - markedly more expensive to raycast/query
+## than a convex primitive shape, and Foot IK's ground sampler raycasts every
+## authored tread/riser box every physics frame for every nearby character.
+## Adds the box under parent, then gives it a plain StaticBody3D + BoxShape3D
+## collider instead and turns off the CSG node's own (concave) baked one.
+static func finalize_authored_box(parent: Node3D, box: CSGBox3D) -> void:
+	parent.add_child(box)
+	var body := StaticBody3D.new()
+	body.name = "%sCollision" % box.name
+	body.collision_layer = box.collision_layer
+	body.collision_mask = box.collision_mask
+	body.transform = box.transform
+	var shape := CollisionShape3D.new()
+	var box_shape := BoxShape3D.new()
+	box_shape.size = box.size
+	shape.shape = box_shape
+	body.add_child(shape)
+	parent.add_child(body)
+	box.use_collision = false
+
+
 static func build_traversal_slope(parent: Node3D, origin: Vector3,
 		width: float, length: float, rise: float) -> void:
 	var transition := SLOPE_TRANSITION_LENGTH * 2.0
@@ -94,7 +116,7 @@ static func build_top_landing(parent: Node3D, origin: Vector3,
 	configure_authored_stair(box)
 	box.position = origin + Vector3(
 			0.0, top_rise * 0.5, (landing_start_z + landing_end_z) * 0.5)
-	parent.add_child(box)
+	finalize_authored_box(parent, box)
 	var cap := CSGBox3D.new()
 	cap.size = Vector3(width, 0.006, landing_end_z - landing_start_z)
 	cap.material = tread_material
