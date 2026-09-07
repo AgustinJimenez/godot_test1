@@ -496,6 +496,53 @@ first step of the "dedicated pass," ahead of writing any gate.
    replaces (`_has_lower_riser_clearance`'s role folds into the coordinator's toe/leaf check,
    etc.) so there is exactly one enforcement point left, per 009's stated goal.
 
+## `foot_ik_idle_plant_stability_check`'s coordinator-generations failure, traced (not fixed)
+
+`_coordinator_generations.size() <= 3` has been failing (currently `5`) throughout this
+session, blocking `FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s overall pass even after 013's
+`live_pose_joint_step_m`/acquire-speed fixes landed. Traced it by dumping every new
+`plan.generation`'s owner/reason (via `_store_plan`'s own bump rule: a new generation each time
+`owner` or `reason` changes) across the check's 240-frame, ~90-degree body-turn phase (left leg
+holding a forced-stale target, expected to recover once and then stay stable through the whole
+turn): `live_contact/selected_legacy_candidate` (initial) -> `live_contact/
+replace_invalid_with_raw_support` (the expected recovery) -> `idle_lower_latched/
+validated_lower_support` (settles) -> `idle_lower_acquiring/selected_legacy_candidate` (a
+transient extra flip, ~23 degrees into the turn) -> `idle_lower_latched/
+validated_lower_support` again (re-settles, permanently, for the remaining ~95% of the turn).
+
+**First hypothesis (stance-zone geometry), disproven.** Suspected the latched target - fixed in
+world space - might briefly exit the root-relative stance zone as the body kept rotating.
+Instrumented `is_target_inside_stance_zone`'s own lateral/longitudinal values and the `inside`
+result at the exact flip: it stays `true` throughout, on both sides of the flip. This is not a
+stance-zone rejection.
+
+**Actual cause, confirmed**: the latched target's world position itself changes by a full
+`0.32m` in Z (`(11.91627, 0.6, 1.799071)` -> `(11.91627, 0.6, 1.479071)`) at the exact frame of
+the flip. That size and direction of change matches `_rehome_lower_surface_from_riser()`'s own
+documented purpose ("move a lower plant away when its shin would still cross the riser") in
+`foot_ik_ground_sampler.gd`'s `_validate_idle_lower_support`: when the rehomed (`cleared`)
+surface differs from the raw raycast surface by more than `TARGET_NOISE_DEADBAND` (`0.01m`),
+the function deliberately erases the latch and re-enters `idle_lower_acquiring` targeting the
+surface, rather than smoothly nudging the existing latched target toward the cleared one. Since
+the character keeps rotating throughout this phase, the geometry relative to nearby risers
+continuously changes, and at some point crosses the threshold where the riser-clearance check's
+answer changes - triggering exactly one such re-acquire-then-relatch cycle. This is a real,
+working safety mechanism (preventing a shin from visibly crossing into riser geometry) doing
+its job correctly, just producing more `plan.generation` bumps than this specific check's
+`<= 3` assumption expected for a real, continuous 90-degree turn.
+
+**Not fixed - genuinely unclear whether it should be.** Two directions, both real work, neither
+attempted:
+1. Loosen the check's generations threshold (this is check calibration, the same shape as
+   013's acquire-speed finding - a real, working mechanism whose natural frequency the check's
+   assumption didn't originally account for).
+2. Change `_rehome_lower_surface_from_riser`'s erase-and-reacquire response to a continuous
+   nudge instead, so a shin-clearance correction doesn't need a full ownership-generation flip
+   at all - directly relevant to 015's point 1/2 concerns (the coordinator's plan getting
+   silently superseded by a downstream module's own state changes), but real behavioral surgery
+   on a documented, currently-working safety mechanism, not something to attempt speculatively
+   without the user's steer on direction and without a live in-editor confirmation afterward.
+
 ## Regression contract
 
 Every step must keep passing (or knowingly update, with the user's live confirmation) the
