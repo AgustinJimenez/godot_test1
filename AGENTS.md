@@ -199,8 +199,11 @@ review behind that decision, `008` the still-open platform-edge bugs, `011`/`012
 `013` the knee-bend-plane search instability (`_select_feasible_bend`, shared by every leg solve
 on every surface—three of its own fix attempts and two other pipeline discontinuities before one
 finally stuck), `014` an open, unsolved FPS-collapse investigation in `foot_ik_preview.tscn`
-(performance, not correctness—a CSG concave-collision fix helped but did not solve it), and
-`007` the earlier stair/locomotion architecture. Put exact live frames,
+(performance, not correctness—a CSG concave-collision fix helped but did not solve it), `015`
+an outside architectural assessment (coordinator isn't the actual final authority, implicit
+time/coordinate-space contracts, "valid" conflating several distinct states) scoped into
+incremental next steps rather than a rewrite, and `007` the earlier stair/locomotion
+architecture. Put exact live frames,
 coordinates, rejected attempts, and current pass/fail evidence in the relevant numbered task—not
 here.
 

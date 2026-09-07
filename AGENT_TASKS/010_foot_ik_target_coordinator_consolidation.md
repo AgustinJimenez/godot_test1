@@ -413,6 +413,16 @@ and confirmed it "seems to be working fine" - no reported foot-skating, snapping
 Coordinator migration is now 11 of 12 owners; `STAIR_SUPPORT`/`STAIR_SWING` remain, per the
 caution above - this only covers ordinary flat-ground walk/run stance, not stair climbing.
 
+## See also: architecture direction (015)
+
+[015](015_foot_ik_architecture_direction.md) records an outside architectural assessment of
+the whole Foot IK system, largely corroborating this task's own findings from an outside
+angle: the coordinator is not actually the final authority (the modifier can still change a
+target after validation - lateral-shift re-centering, slope-target adjustment, seam-freeze
+substitution), and the remaining `STAIR_SUPPORT`/`STAIR_SWING` migration below is exactly where
+that concern lives (a continuously-transferring target mutated outside the plan system
+entirely). Read 015 before designing that migration's gate.
+
 ## Locomotion-owner design finding (later session, no code changed)
 
 Followed the "dedicated pass" recommendation above by looking closer at all four remaining
