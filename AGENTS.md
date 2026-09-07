@@ -357,9 +357,13 @@ run by any active CI workflow (`.github/workflows/project-checks.yml` is manual-
 runs `scripts/check.sh` - lint only). This means a pre-existing failure anywhere in its sequence
 silently prevents everything after it from ever running locally, including the sibling scripts it
 chains at its tail (`check_foot_ik_ramp_locomotion.sh`, `check_foot_ik_stair_repeat.sh`,
-`check_foot_ik_locomotion.sh`) - always run those three directly too, not just via
-`check_foot_ik.sh`, or you will believe coverage ran when it did not (see
+`check_foot_ik_locomotion.sh`) and two more it never calls at all
+(`check_foot_ik_ramps.sh`, `check_foot_ik_ramp_sweep.sh`) - always run
+`scripts/check_foot_ik_all.sh` instead when you need the complete picture (see
 [012](AGENT_TASKS/012_foot_ik_ramp_cross_slope_penetration.md)'s "Wired into a runnable
-script" section). There is no committed way to run the whole suite past a known failure and see
-every result - only an ad-hoc local workaround (strip `set -e`, replace each `exit 1` with a
-no-op) has been used for this so far.
+script" section and [015](AGENT_TASKS/015_foot_ik_architecture_direction.md), point 6): it runs
+every entrypoint and sibling script in one pass, continuing past failures, and separates
+`KNOWN_BASELINE_FAILURES` (edit that list by hand, with a reason, when a baseline genuinely
+changes) from new/unexpected ones, which make it exit non-zero. `check_foot_ik.sh` itself stays
+fail-fast on purpose for a quick single-issue check; use the `_all` script for anything you plan
+to trust before committing.

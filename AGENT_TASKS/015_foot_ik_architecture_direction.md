@@ -100,11 +100,16 @@ incrementally, not a project to start outright:
    plan system entirely. Any gate designed for it should produce a real plan the modifier
    cannot then silently override, not just another validation check bolted onto the existing
    pattern.
-2. **Point 6 is cheap, low-risk, and valuable on its own regardless of the larger question.**
-   Formalize a proper sequential runner that reports every check's result and distinguishes
-   baseline-known failures from newly-introduced ones - replacing the repeated ad hoc `/tmp`
-   continue-past-failures scripts this session kept regenerating. This does not require
-   resolving points 1-5 first and can happen immediately.
+2. **Point 6: done.** `scripts/check_foot_ik_all.sh` runs every entrypoint `check_foot_ik.sh`
+   covers plus every sibling script (including `check_foot_ik_ramps.sh`/
+   `check_foot_ik_ramp_sweep.sh`, which `check_foot_ik.sh` never calls at all), continuing past
+   failures, and separates a hand-maintained `KNOWN_BASELINE_FAILURES` list from new/unexpected
+   ones (only the latter make it exit non-zero) - replacing the repeated ad hoc `/tmp`
+   continue-past-failures scripts this session kept regenerating. Running it for the first time
+   immediately paid for itself: it surfaced that `check_foot_ik_ramps.sh`/
+   `check_foot_ik_ramp_sweep.sh` were failing (43/245 and 22/168 cases - the already-known
+   012 ramp-edge residual) despite never having been run standalone earlier this session,
+   exactly the blind spot `AGENTS.md` already warned about.
 3. **Point 3's validity taxonomy** (checked-and-satisfied / not-checked-or-applicable /
    temporarily-tolerated / degraded-fallback) is a good target shape for `FootIKTargetPlan`'s
    `valid`/`stance_valid`/`support_valid`/`reach_valid`/`toe_valid` fields, which currently
