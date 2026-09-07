@@ -543,6 +543,36 @@ attempted:
    on a documented, currently-working safety mechanism, not something to attempt speculatively
    without the user's steer on direction and without a live in-editor confirmation afterward.
 
+**Fixed (user chose direction 2, "now that we are fresh with this").**
+`_validate_idle_lower_support` (`foot_ik_ground_sampler.gd`): when the riser-clearance check
+finds the cleared surface differs from the raw one, an already-latched foot
+(`had_latch == true`) now stays in `IDLE_LOWER_LATCH` - updating `idle_lower_latched_target`
+directly and nudging `smoothed_target` toward it via the existing `move_toward` call - instead
+of erasing the latch and re-entering `IDLE_LOWER_ACQUIRE`. A foot with no existing latch still
+goes through the ordinary acquire flow unchanged, since there's no existing plant to preserve
+continuity with.
+
+Checked before changing: the only place that reads the acquire-vs-latch distinction downstream
+(`player_foot_ik_modifier.gd`'s classification gate) already treats both states identically
+(`if (contact.get("idle_lower_latched", false)) or _ground_sampler.idle_lower_acquiring.has(side))
+-> classification = {"plant": true, "settle": false}`), and the acquire-path's
+`invalidate_idle_freeze()` side effect only matters for a different resampling path this
+riser-nudge case already bypasses regardless of freeze state - so skipping it changes nothing
+observable elsewhere.
+
+**Verified**: `foot_ik_idle_plant_stability_check` (whose `_coordinator_generations.size() <= 3`
+failure this fix directly targets) now fully **passes** - `generations=3` (was `5`) - the first
+time this specific check has passed all session. Full comprehensive suite
+(`scripts/check_foot_ik_all.sh`) re-run clean: exit 0, one *fewer* known-baseline failure than
+before (`Foot IK stationary planted-foot stability check` moved from known-failing to passing),
+no new/unexpected failures anywhere else. `KNOWN_BASELINE_FAILURES` updated to remove it.
+
+**Live confirmation: done.** User tested in-editor; reported the difference was too subtle to
+see clearly either way ("hard to see too much diff") - no regression or visible problem
+reported. Consistent with the fix's own nature (smoothing an already-narrow, one-time riser
+nudge into an even less noticeable continuous motion) rather than a change expected to be
+visually obvious.
+
 ## Regression contract
 
 Every step must keep passing (or knowingly update, with the user's live confirmation) the

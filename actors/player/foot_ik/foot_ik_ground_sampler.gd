@@ -570,12 +570,14 @@ func _validate_idle_lower_support(space: PhysicsDirectSpaceState3D, side: String
 	var cleared_surface := (_rehome_lower_surface_from_riser(
 			space, side, surface, character) if animation_name.contains("idle") else surface)
 	if cleared_surface.distance_to(surface) > TARGET_NOISE_DEADBAND:
-		# Move a lower plant away when its shin would still cross the riser.
+		# Move a plant from a riser; keep an already-latched foot latched and nudged toward it.
 		surface = cleared_surface
-		idle_lower_latched_target.erase(side)
-		smoothed_target[side] = previous.move_toward(
-				surface, _settings.lower_foot_acquire_speed * delta)
+		smoothed_target[side] = previous.move_toward(surface, _settings.lower_foot_acquire_speed * delta)
 		smoothed_normal[side] = support["normal"]
+		if had_latch:
+			idle_lower_latched_target[side] = surface
+			return true
+		idle_lower_latched_target.erase(side)
 		idle_lower_acquiring[side] = surface
 		return false
 	# Fresh idle support descends at a bounded rate before it may latch.

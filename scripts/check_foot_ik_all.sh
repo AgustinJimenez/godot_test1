@@ -31,7 +31,6 @@ Foot IK negative rendered-knee check
 Foot IK unreachable acquisition check
 Foot IK shallow-corner knee flexion check
 Foot IK walk-to-idle stance check
-Foot IK stationary planted-foot stability check
 check_foot_ik_ramp_locomotion.sh
 check_foot_ik_locomotion.sh
 check_foot_ik_ramps.sh
