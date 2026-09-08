@@ -582,6 +582,94 @@ full acceptance surface 009 catalogued for this area: `foot_ik_idle_plant_stabil
 suites in `AGENTS.md`. A step that requires loosening one of these numeric limits needs the
 user's explicit sign-off, not a quiet widening.
 
+## STAIR_SUPPORT/STAIR_SWING validation design proposal (later session, no code changed)
+
+Read `ensure_support`/`_try_transfer_support`/`_latch_support_target`/`_apply_support_contact`
+(`foot_ik_stair_predictor.gd`) in full before writing anything, per this task's own standing
+caution. Every one of these functions carries an inline comment documenting a specific,
+previously-shipped-then-reverted regression from an earlier "reasonable-looking" fix attempt
+(a stale-target pelvis-sink drag, a ~20cm-per-climb-frame target-height drift, a support-swap
+pelvis/foot pop, an idle stair-edge toe clip, a solve-weight/chain-weight desync) - this
+confirms the fragility already flagged is real and specific, not a vague caution.
+
+**Structural finding**: `_apply_support_pelvis_and_legs` calls `_stair_predictor.ensure_support`
+*before* `_target_coordinator.resolve_stationary` each frame, and `ensure_support` (via
+`_apply_support_contact`) already writes `per_leg[side]["target"]`/`["ground_target"]` directly.
+So the coordinator technically already observes whatever the stair predictor decided this frame
+- it is currently excluded from `migrated_owner`, so `_build_plan` short-circuits to trivially
+`plan.valid = leg["hit"]` with no reconfirmation of any kind, exactly as the "labels the winner
+but doesn't validate" gap 009 originally identified.
+
+**The one real design problem found, not yet resolved**: the `LOCOMOTION_LOCK`/`SPLIT_RECOVERY`/
+`IDLE_STANCE_REHOME` precedent for validation (`_has_support_at`'s stance-agnostic raycast
+reconfirmation, without a stance-zone check) does not translate cleanly here, because
+`_apply_support_contact` deliberately **blends** the target between two real support surfaces
+across `_support_transfer_elapsed`/`support_transfer_blend_time` whenever the support foot
+switches (this is what `_latch_support_target`'s doc comment calls "a discrete handoff between
+two already-latched targets," specifically added to remove a once-per-step pelvis/foot pop). At
+an intermediate blend fraction, the resulting `blended_target` is a lerp between two real
+points and may not itself sit on solid ground at every frame - a straight `_has_support_at`-style
+raycast at the *current* target would very plausibly reject the plan during every single support
+transfer, not just genuine failures. This needs an explicit answer before any gate is written,
+not an assumption: either (a) skip validation entirely while `blend < 1.0` (only reconfirm once
+a support target is fully settled, mirroring how `IDLE_STANCE_REHOME`/`SPLIT_RECOVERY` are
+already exempted from the stance-zone check for their own "legitimately mid-transition" reason),
+or (b) validate against the two blend endpoints (`_support_transfer_from_pos` and the fresh
+`full_target`) rather than the interpolated point itself. Neither has been tried or tested.
+
+Toe/leaf envelope validation (`_toe_envelope_valid`) is a second, smaller open question:
+`_toe_probe_reaches_higher_surface` already does stair-specific toe/riser reasoning inside
+`_latch_support_target`'s own surface-choice logic, so applying the coordinator's generic toe
+check unqualified on top could duplicate or conflict with it - unverified either way, would need
+live testing before deciding whether to gate it, exempt it (`check_toe=false`, matching the
+raw-recovery precedent), or leave it for a later pass.
+
+**Not implemented.** Given the density of prior live-only regressions in this exact code and
+that this design question needs an explicit answer (not a guess) before any gate is safe to
+write, this is presented as a design proposal for direction, not a finished plan - the two
+options above (skip validation during blend vs. validate against blend endpoints) are a real
+fork the user should weigh in on before implementation begins.
+
+## STAIR_SUPPORT migrated (user chose "skip validation during blend")
+
+Implemented the recommended direction from the design proposal above. Reused the exact pattern
+already established for `IDLE_LOWER_ACQUIRE`'s in-flight waypoint rather than inventing a new
+"settled" concept: added `FootIKStairPredictor.get_current_support_surface_target()`, returning
+`_support_surface_target` directly (the real surface the predictor is actually converging
+toward, independent of `_apply_support_contact`'s own transfer-blend/smoothing state). `_finish_
+validation` now validates against that value for `STAIR_SUPPORT` instead of the possibly-
+smoothed `plan.surface_target` - the same "validate the destination, not the smoothing" fix
+already used for `IDLE_LOWER_ACQUIRE`.
+
+Added a `coordinate_stair` gate (`plan.owner == STAIR_SUPPORT`, no animation/stationary/ground-
+weight requirement - it can occur while idle or while actively climbing, and its own weight/
+normal are managed entirely by `_apply_support_contact`, not the general per-leg path those
+fields elsewhere reflect). Added `STAIR_SUPPORT` to `migrated_owner` and to the `require_stance`
+exemption list (same reasoning as `LOCOMOTION_LOCK`: a support foot sits on whichever tread the
+climb is currently on, arbitrarily far from the root). Per the design proposal's still-open toe
+question, exempted `STAIR_SUPPORT` from the generic toe/leaf envelope check too
+(`check_toe := plan.owner != STAIR_SUPPORT`), since `_toe_probe_reaches_higher_surface` already
+does its own stair-specific toe/riser reasoning and stacking an unverified second check on top
+was exactly the kind of guess this task's own caution says not to make.
+
+`STAIR_SWING` (the swinging, non-support leg during a climb - a separate mechanism entirely,
+driven by `update_swing_lift`/predicted targets) was explicitly **not** touched this pass; the
+design proposal's analysis was scoped to `STAIR_SUPPORT` only.
+
+**Verified**: `check_foot_ik_stair_repeat.sh` (the dedicated live stair-climb regression, not
+just a synthetic case) passes unchanged. Full comprehensive suite
+(`scripts/check_foot_ik_all.sh`) re-run clean: exit 0, identical known-baseline failure set, no
+new/unexpected failures anywhere - the migration is behavior-neutral against every automated
+check. Coordinator migration is now 12 of 12 owners *labeled and gated* for `STAIR_SUPPORT`
+specifically (`STAIR_SWING`/`LOCOMOTION_LOCK`/`LOCOMOTION_STANCE` already done earlier this
+session; `STAIR_SWING` remains the one genuinely unmigrated owner).
+
+**Live confirmation: done.** User walked a real staircase in-editor; no foot pop/snap reported.
+The session's Godot log stayed clean throughout (steady 60fps, no `SCRIPT ERROR`, no anomaly in
+the always-on `[FOOT_IK_PERF]`/`[FOOT_IK_ENGINE_PERF]` diagnostics, `[ANIM_COMPARE]` cases still
+synced) - though note the log itself only distinguishes a crash/script-error class of problem,
+not a subtle visual pop, so the user's own observation is still the primary signal here.
+
 ## References
 
 - [009](009_foot_ik_architecture_review.md) - ownership matrix and decision record.

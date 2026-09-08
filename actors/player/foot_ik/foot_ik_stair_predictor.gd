@@ -367,6 +367,17 @@ func get_support_side() -> StringName:
 	return _support_side
 
 
+## The real surface point the current support leg is converging toward - independent of
+## _apply_support_contact's own smoothing/transfer-blend state, which can otherwise leave the
+## *rendered* target (_smoothed_target/leg["target"]) sitting in between two real points for
+## several frames (a discrete support-transfer blend on a near-flat tread, or ordinary
+## move_target_smoothed() lag on a steeply-tilted one). Coordinator validation (010) checks
+## this instead of the smoothed value, the same pattern already used for
+## IDLE_LOWER_ACQUIRE's in-flight waypoint - validate the destination, not the smoothing.
+func get_current_support_surface_target() -> Vector3:
+	return _support_surface_target
+
+
 func get_root_vertical_speed() -> float:
 	return _root_vertical_speed
 

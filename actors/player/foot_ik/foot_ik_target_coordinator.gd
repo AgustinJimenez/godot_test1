@@ -95,6 +95,13 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 			and _owner._ground_sampler.landing_committed_target.is_empty()
 			and float(leg.get(&"ground_weight", 0.0)) >= PLANT_WEIGHT
 			and plan.surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT)
+	# STAIR_SUPPORT can occur while idle or while actively translating up/down stairs, so
+	# neither coordinate_idle's `stationary` nor a translating-only gate fits - it needs its
+	# own, unconditional-on-animation gate. No ground_weight/flat-normal requirement either:
+	# a stair tread's own weight/normal are managed entirely by _apply_support_contact's
+	# transfer-blend, not the general per-leg ground_weight path this dict field reflects.
+	# See 010's validation design proposal.
+	var coordinate_stair := plan.owner == FootIKTargetPlan.Owner.STAIR_SUPPORT
 	var migrated_owner := plan.owner in [FootIKTargetPlan.Owner.LIVE_CONTACT,
 			FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
 			FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE,
@@ -104,13 +111,16 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 			FootIKTargetPlan.Owner.IDLE_FREEZE,
 			FootIKTargetPlan.Owner.SPLIT_RECOVERY,
 			FootIKTargetPlan.Owner.LOCOMOTION_LOCK,
-			FootIKTargetPlan.Owner.LOCOMOTION_STANCE]
+			FootIKTargetPlan.Owner.LOCOMOTION_STANCE,
+			FootIKTargetPlan.Owner.STAIR_SUPPORT]
 	var owner_is_lower_transition := plan.owner in [FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
 			FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE,
 			FootIKTargetPlan.Owner.IDLE_STANCE_REHOME]
 	if legacy_transition_active and not owner_is_lower_transition:
 		migrated_owner = false
-	if not (coordinate_idle or coordinate_landing or coordinate_locomotion) or not migrated_owner:
+	if (not (coordinate_idle or coordinate_landing or coordinate_locomotion
+				or coordinate_stair)
+			or not migrated_owner):
 		plan.stance_valid = true
 		plan.support_valid = plan.valid
 		plan.reach_valid = true
@@ -127,12 +137,21 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 	# meaningfully ahead of/behind the root at different points in the gait cycle - the
 	# idle-sized stance zone would reject legitimate mid-stride targets outright. Rely on
 	# support/reach/toe validation instead of a zone check for these two, same as the other
-	# exemptions here.
+	# exemptions here. STAIR_SUPPORT's support foot sits on whichever tread the climb is
+	# currently on, arbitrarily far from the root along the stair's own axis - same shape
+	# of conflict again.
 	var require_stance := not plan.owner in [FootIKTargetPlan.Owner.IDLE_STANCE_REHOME,
 			FootIKTargetPlan.Owner.SPLIT_RECOVERY,
 			FootIKTargetPlan.Owner.LOCOMOTION_LOCK,
-			FootIKTargetPlan.Owner.LOCOMOTION_STANCE]
-	plan = _finish_validation(space, plan, leg, require_stance)
+			FootIKTargetPlan.Owner.LOCOMOTION_STANCE,
+			FootIKTargetPlan.Owner.STAIR_SUPPORT]
+	# _toe_probe_reaches_higher_surface (foot_ik_stair_predictor.gd) already does
+	# stair-specific toe/riser reasoning as part of choosing this owner's own surface - the
+	# coordinator's generic toe/leaf envelope check is unverified against that existing logic
+	# and could duplicate or conflict with it (see 010's validation design proposal); exempt
+	# it here rather than guess.
+	var check_toe := plan.owner != FootIKTargetPlan.Owner.STAIR_SUPPORT
+	plan = _finish_validation(space, plan, leg, require_stance, check_toe)
 	if plan.valid:
 		leg[&"target_plan_validated"] = true
 		return plan
@@ -158,6 +177,12 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 	if plan.owner == FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE:
 		support_target = _owner._ground_sampler.idle_lower_acquiring.get(
 				plan.side, support_target)
+	# STAIR_SUPPORT's smoothed_target can likewise sit in between two real surfaces for
+	# several frames (a discrete support-transfer blend, or ordinary smoothing on a steeply-
+	# tilted tread) - same shape of conflict, same fix: validate the real surface the
+	# predictor is actually converging toward, not its currently-smoothed value.
+	elif plan.owner == FootIKTargetPlan.Owner.STAIR_SUPPORT:
+		support_target = _owner._stair_predictor.get_current_support_surface_target()
 	plan.support_valid = _has_support_at(space, support_target)
 	var hip: Vector3 = leg.get(&"hip_pos", Vector3.ZERO)
 	var reach: float = float(leg.get(&"upper", 0.0)) + float(leg.get(&"lower", 0.0))
