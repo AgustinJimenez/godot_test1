@@ -110,6 +110,65 @@ command backlog invisible to any `Performance` monitor - most plausibly outlasts
 compilation work itself. Still needs a real GPU frame capture to see directly, but the fast
 repro means that capture is now a 5-second exercise instead of an open-ended wait.
 
+## Four more hypotheses tested and disproven; angle-dependence confirmed, unexplained
+
+Used the fast Ramp 45 repro to bisect four more candidates, each isolated with a
+temporary marker-file toggle in `foot_ik_preview.gd` (added, tested, then fully reverted -
+`git checkout --` after every result was captured, nothing kept in the shipped file):
+
+- **`AnimationComparisonDummies` hidden** (a second full set of ~16-18 `Player.tscn`
+  instances this scene spawns for A/B animation comparison, previously never examined as a
+  perf contributor): `draw_calls` dropped (632->531) confirming the hide worked, but
+  `frame=60`/`frame=120` fps (5.0/9.0) were statistically the same as baseline (5.0/8.0).
+  **Disproven.**
+- **`FootIkDebugOverlay` hidden** (all the world-space gizmos/labels/rays this preview scene
+  draws): `primitives` went flat at ~389-390k across the crash window (confirming the hide
+  worked - normally primitives climb every window), but the fps crash signature was
+  identical (6.0/8.0/43/60). **Disproven.**
+- **`DirectionalLight3D.shadow_enabled = false`**: `draw_calls` dropped sharply (591-650 ->
+  449, confirming shadows were really off), fps crash signature unchanged (5.0/8.0/39/60).
+  **Disproven.**
+- **Camera clipping into the ramp's own collision via `SpringArm3D` collapse** (the
+  third-person arm shortens its own length when a raycast hits geometry - plausible if
+  standing on/near the ramp surface pushes the camera into the mesh): measured
+  `third_person_arm.spring_length` every 60 physics frames across a full angle sweep -
+  **always exactly 4.0, the unmodified default, at every angle and every frame measured**.
+  The camera never gets close to colliding with anything here. **Disproven.**
+
+**New, confirmed, unexplained signal - camera facing angle changes crash severity, inversely
+correlated with visible geometry.** Swept `_apply_yaw` turn angle at the identical Ramp 45
+position (0/30/60/90/150/180 degrees from spawn heading):
+
+| angle | frame 60 fps | frame 120 | frame 180 | frame 240 | draw_calls @60 | primitives @60 |
+|---|---|---|---|---|---|---|
+| 0   | 23 | 60 | 60 | 60 | 494 | 870953 |
+| 30  | 24 | 60 | 60 | 60 | 441 | 609483 |
+| 60  | 5  | 56 | 60 | 60 | 346 | 306466 |
+| 90  | 4  | 6  | 6  | 6  | 387 | 494488 |
+| 150 | 4  | 5  | 6  | 7  | 570 | 481415 |
+| 180 | 3  | 6  | 7  | 6  | 704 | 706687 |
+
+0/30 degrees recover almost immediately (mild, matches the plain default-spawn baseline
+which only dips to fps=27 for one window); 90/150/180 stay crashed for the entire
+measured window. **This does not track `draw_calls` or `primitives` at all** - angle 90 has
+the *fewest* draw calls of the whole sweep (387) yet is among the worst, while angle 180 has
+far more draw calls (704, close to the mild angle-0 case's 494) and is still bad. Whatever is
+expensive at the bad angles is not "more visible stuff," which rules out simple
+frustum-culling-driven geometry cost as the explanation.
+
+**This narrows the remaining candidates to something render-thread/GPU-internal that CPU-side
+`Performance` monitors and simple node/light/shadow toggles cannot see or control from
+GDScript** - most plausibly Forward+'s internal clustering/light-binning cost, shadow-atlas
+cascade fitting against the *scene's full shadow-caster bounds* (not just what's on-screen,
+so independent of visible draw calls - though this was tested indirectly by disabling shadows
+entirely above, which didn't help, so if cascade fitting is involved it isn't the whole
+story), or genuinely GPU-driver-side state (pipeline barrier stalls, descriptor/root-signature
+rebinding cost) tied to which specific camera transform gets submitted. Five real,
+independently-verified hypotheses are now exhausted from the GDScript/`Performance`-monitor
+side. The next step is unambiguously a GPU frame capture (Xcode Metal capture or RenderDoc)
+at one of the reliably-bad angles (90, 150, or 180 degrees, Ramp 45 platform) - there is
+nothing further to learn by adding more prints.
+
 ## Open: the real cause is still unknown
 
 The most consistent, unexplained signal across every real (non-headless) run: `primitives`
