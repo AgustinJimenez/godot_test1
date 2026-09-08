@@ -865,6 +865,64 @@ the entire time, no `SCRIPT ERROR`, no `[ANIM_DIFF_INSTANT]` sync failures, no a
 during real play near the ramps, with no observable regression on ordinary flat-floor
 characters either.
 
+## Real root cause of the remaining ~40/18/13 failures found - first fix attempt disproven
+
+Continued past the raycast-miss fix into the remaining `check_foot_ik_ramps.sh`/
+`check_foot_ik_ramp_sweep.sh`/`check_foot_ik_ramp_locomotion.sh` failures. These are not
+intermittent misses: `FOOT_IK_RAMP_MATRIX_CHECK`'s worst cases fail on every single one of
+their 15 samples, with hundreds of penetrating toe/ball-bone vertices - a persistent, not
+occasional, mesh clip. Checked first whether this duplicates 008's already-documented,
+four-times-failed right-foot toe clip - it doesn't: that one is stair-riser geometry, a
+different mechanism from this ramp-surface one.
+
+**Root cause, confirmed live (not assumed from reading code alone).** Added a temporary print
+of `plan.owner_name()`/`plan.surface_normal.dot(Vector3.UP)` inside `_build_plan` and ran the
+exact failing case (`foot_ik_ramp_matrix_check.tscn -- case=top_left`): every single sample -
+`idle_freeze` and `live_contact` owners alike, across all three ramp angles - showed
+`normal_dot` between `0.2588` and `0.9659`, never once reaching `FLAT_SUPPORT_DOT`'s `0.999`
+threshold (even the shallowest 15-degree ramp only reaches `0.966`). Every coordinator gate
+(`coordinate_idle`/`coordinate_landing`/`coordinate_locomotion`) requires that near-perfectly-
+flat threshold before `_finish_validation` ever runs - meaning **the toe/leaf envelope check
+that exists specifically to prevent this exact class of clip has never once been reachable
+for an idle character standing on any ramp**, regardless of anything else in this task. Not a
+regression from today's session; this is how `FLAT_SUPPORT_DOT` has always gated things -
+ramps were simply never in the coordinator's scope until this investigation.
+
+Read `_toe_envelope_valid` and `is_target_inside_stance_zone` in full before assuming a fix
+was safe: both are already normal-agnostic (`_toe_envelope_valid` orients its check basis
+using `plan.surface_normal` directly; the stance-zone check projects onto the character's own
+horizontal forward/outward axes, never touching the ground normal at all) - so in principle
+only the *gate* condition and `_has_support_at`'s own hardcoded `dot(Vector3.UP)` needed to
+loosen for ramps, a small, bounded-looking change.
+
+**First fix attempt, tested, disproven - reverted.** Added `WALKABLE_RAMP_DOT := 0.7071`
+(`cos(45deg)`, this project's steepest tested ramp) and used it in `coordinate_idle`'s gate
+instead of `FLAT_SUPPORT_DOT`; gave `_has_support_at` an `expected_normal` parameter
+(defaulting to `Vector3.UP`, preserving every existing flat-ground caller's behavior
+unchanged) and passed `plan.surface_normal` from `_finish_validation`. Verified with a direct
+before/after on the exact same filtered case (`case=top_left`, all three ramp angles/all
+yaws) rather than assuming from the broader suite: baseline (unpatched) **13** failing
+sub-cases; with the fix, **15** - two new failures (`downhill` at one angle, one additional
+`uphill_cross` instance) that were not failing before. **This makes things worse, not
+better** - reverted immediately (confirmed via `git status`/`git diff`, no residual changes).
+
+**Why, not yet determined.** The gate/normal changes themselves matched the read-first
+verification (both downstream checks are genuinely normal-agnostic), so the regression likely
+comes from somewhere not yet identified: possibly the raw-recovery fallback
+(`_raw_recovery_plan`, which deliberately skips toe validation) now activating on ramps for
+the first time and producing a worse pose than the previously-unvalidated original when the
+primary plan gets rejected, or a joint-limit/reach interaction specific to a tilted stance
+this task hasn't traced yet. Not investigated further this session - this is a confirmed
+root cause with a confirmed-bad first fix, not yet a safe path forward.
+
+**Still open**: the actual fix needs to trace *why* enabling validation makes two specific
+cases worse before trying a second attempt - likely by comparing the rejected plan's `reason`
+field and the resulting rendered pose for exactly the `downhill`/`uphill_cross` cases that
+newly failed, the same technique that found every other root cause this session. This is
+real, scoped follow-on work, not a dead end - the actual mechanism (`FLAT_SUPPORT_DOT` gating
+out all ramp validation) is now understood precisely, which the next attempt can build on
+directly instead of re-deriving.
+
 ## References
 
 - `tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd` - the extended check.
