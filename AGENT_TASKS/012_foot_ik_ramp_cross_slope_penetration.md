@@ -967,6 +967,51 @@ coordinator-level target validation fix - a materially different, unexplored dir
 attempted this session; needs its own investigation into which specific joint-limit constant
 is binding for the `top_left`/steep-facing cases before any further fix attempt.
 
+## Leg-solver-slack hypothesis: disproven - no joint limit is engaged at all
+
+Instrumented `foot_ik_leg_solver.gd`'s three candidate joint-limit corrections
+(`debug_shin_clamped`, `debug_swing_clamped`, `debug_negative_knee_clamped`/
+`debug_knee_pole_alignment`) with a temporary debug print read from
+`foot_ik_ramp_matrix_check.gd` whenever a penetrating sample is recorded, filtered to
+`case=top_left` (the clearest failing case: `angle=15, uphill`, all 15 samples fail, 495
+penetrating vertices on `ball_r`). Every single sample showed `shin_clamped=false`,
+`swing_clamped=false`, `pole_align=-1.000` (a sentinel meaning the field was never written
+this frame), `neg_knee=false` - i.e. **no joint limit is being hit in any of these failures**.
+Reverted the instrumentation (`git checkout --`) once the result was captured.
+
+Reading the two zero-signal functions directly explains why: `_limit_upright_shin` and
+`_limit_negative_rendered_knee` both open with the identical guard
+`normal.dot(Vector3.UP) < 0.999: return` (or `return {}`) - **both are unconditionally skipped
+on any non-flat surface by explicit design**, the exact same `FLAT_SUPPORT_DOT`-shaped
+flat-ground-only gate already found in the coordinator's `coordinate_idle` and
+`_has_support_at`. `_limit_negative_rendered_knee` returns before its own
+`debug_knee_pole_alignment[side] = current_alignment` line ever runs, which is exactly why the
+sentinel `-1.000` showed up - not a missing/unpopulated field, a function that never reaches
+that line on a ramp. The third candidate, the hip swing clamp (`debug_swing_clamped`), is
+*not* normal-gated and does run on ramps, but genuinely isn't the binding constraint here
+(`swing_deg` reached 35+ degrees across samples with `swing_clamped` never true) - so there is
+nothing to loosen there either.
+
+**Conclusion: the "solver needs more slack" hypothesis is disproven.** There is no joint limit
+holding the foot away from a better pose in these failures. Combined with the earlier finding
+that the coordinator's toe/leaf/stance validation is flat-ground-only for the same reason, the
+real picture is: **every corrective/safety layer in the foot IK pipeline - the coordinator's
+target validation and two of the leg solver's three joint-limit corrections - was written
+assuming flat ground and was never extended to slopes.** This is not a bug in any one of these
+functions (each is individually correct for what it was built for); it's a consistent
+architectural gap repeated across three independent layers. The remaining ~40/18/13 ramp
+failures are the visible result of that gap: on a ramp, none of these layers even attempt to
+prevent the clip, so whatever the raw animated-pose blend produces (which can and does
+penetrate on steep/facing-sensitive combinations) reaches the render unmodified.
+
+This is a materially different, larger scope than a coordinator-only or solver-only patch -
+matches this session's "3+ disproven fixes -> question the architecture" checkpoint rather
+than a fourth attempt. Recommend closing further work on this task with this finding
+documented and opening a follow-up architecture task (or folding into
+[015](015_foot_ik_architecture_direction.md)) to decide whether to extend each flat-only gate
+to slopes individually, or design a single slope-aware correction pass that replaces all
+three. Not attempted this session.
+
 ## References
 
 - `tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd` - the extended check.
