@@ -377,7 +377,7 @@ func limit_idle_pelvis_shift(to_world: Transform3D, per_leg: Dictionary,
 	return proposed + left_dir * (clampf(lateral, minimum_shift, maximum_shift) - lateral)
 
 
-var _perf_log_enabled := OS.get_environment("FOOT_IK_PERF_LOG") != "0"
+var _perf_log_enabled := OS.get_environment("FOOT_IK_PERF_LOG") == "1"
 var _perf_accum_usec := 0
 var _perf_call_count := 0
 var _perf_window_start_frame := 0

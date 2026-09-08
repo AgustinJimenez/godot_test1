@@ -1,11 +1,11 @@
 extends Node
-## Standalone perf probe for the foot_ik_preview scene. On by default while
-## the ramp FPS drop is being actively debugged (see 012's "Preview-scene FPS
-## drop" section) - set FOOT_IK_PERF_LOG=0 to silence it. Prints engine-wide
-## counters once per second so a real FPS drop can be attributed to
-## render/physics/object growth instead of guessed at.
+## Standalone perf probe for the foot_ik_preview scene. Opt-in - set
+## FOOT_IK_PERF_LOG=1 to enable. Prints engine-wide counters once per second
+## so a real FPS drop can be attributed to render/physics/object growth
+## instead of guessed at. Was on by default while 014's FPS collapse was
+## being actively debugged; that task is now closed and fixed.
 
-var _enabled := OS.get_environment("FOOT_IK_PERF_LOG") != "0"
+var _enabled := OS.get_environment("FOOT_IK_PERF_LOG") == "1"
 var _window_start_frame := 0
 var _known_node_paths: Dictionary = {} # NodePath (as string) -> true, snapshot from last window
 # Pipeline-compilation counters are cumulative since engine start, not
