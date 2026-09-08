@@ -131,6 +131,22 @@ for a full writeup of the symptoms this produces (fps collapsing to single digit
 near the affected geometry, fully recovering elsewhere, with CPU-side process/solve timers
 staying flat and misleadingly innocent throughout).
 
+Any retry/search loop that runs from `_process`/`_physics_process` needs a cooldown on failure,
+not just a success-path exit. `FootIKGroundSampler._request_overheight_split_safe_zone` re-ran
+a ~6500-raycast ring search every single physics tick whenever the search failed to find a
+valid point, because the only gate was "do we already have a valid cached target" - a
+perpetually-failing search never caches anything, so it re-triggers forever with zero backoff.
+Symptom was identical in shape to the CSG-collision gotcha above (fps collapsing to single
+digits near specific geometry, `process_ms` staying flat and innocent, only `physics_ms`
+elevated) but persisted indefinitely instead of a few frames, and only during idle animation
+near a support-height difference - see
+[014](AGENT_TASKS/014_foot_ik_preview_scene_fps_collapse.md) for the full trace (a live A/B
+- "disabling this system fixes it" / "changing animation state fixes it" - is what actually
+found it; a GPU trace had earlier pointed at a real but much smaller, unrelated startup cost
+and was wrongly treated as the whole answer). Any future search-with-fallback loop in this
+codebase should cache an explicit "don't retry until frame N" cooldown on the failure path,
+the same shape as `_landing_grace_time` or this fix's `split_safe_retry_after_frame`.
+
 Procedural bone corrections belong in `SkeletonModifier3D`, not an ordinary node's `_process()`.
 Snapshot all base animation poses before changing an ancestor chain. When a paused tuning UI changes
 modifier data, call `Skeleton3D.advance(0.0)` to refresh the rendered result.
