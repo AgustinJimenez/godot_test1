@@ -81,8 +81,7 @@ func reset() -> void:
 	idle_stance_rehoming.clear()
 	_landing_planner.reset()
 func landing_commitment_snapshot() -> Dictionary:
-	if not airborne_safe_root_target.is_finite():
-		return {}
+	if not airborne_safe_root_target.is_finite(): return {}
 	return {
 		"root": airborne_safe_root_target,
 		"surface_y": airborne_committed_surface_y,
@@ -268,6 +267,12 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 				_owner.step_down_max_crouch)
 		hit = raycast_ground(space, recovery_origin,
 				_owner.idle_settle_search_down + _owner.step_down_max_crouch)
+	if not hit["hit"] and likely_idle: # idle sway can miss a platform edge by a few cm - 012
+		var root_pos: Vector3 = (_owner.player_body.get_parent() as Node3D).global_position
+		var edge_dir := Vector3(root_pos.x - foot_pos.x, 0.0, root_pos.z - foot_pos.z).normalized()
+		for step in [0.03, 0.06, 0.10, 0.15]:
+			hit = raycast_ground(space, foot_pos + edge_dir * step)
+			if hit["hit"]: break
 	var raw_target: Vector3 = hit["position"] if hit["hit"] else foot_pos
 	var raw_normal: Vector3 = hit["normal"] if hit["hit"] else Vector3.UP
 	if _owner.step_prediction_enabled:
@@ -378,8 +383,7 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 			and not idle_lower_acquiring.has(side)):
 		var release_contact: Dictionary = contact_from_previous_support(
 				space, side, previous_support, foot_pos)
-		if release_contact["hit"]:
-			return release_contact
+		if release_contact["hit"]: return release_contact
 		return {"hit": false}
 	var desired_down := -(smoothed_normal[side] as Vector3)
 	var foot_basis: Basis = _owner._compute_new_foot_basis_world(
@@ -479,11 +483,9 @@ func _latch_idle_lower_support(space: PhysicsDirectSpaceState3D, side: StringNam
 		idle_lower_acquiring.erase(side)
 		_clear_lower_riser_away(side)
 		lower_riser_cleared_target.erase(side)
-		if animation_name.contains("jump_land") or not frozen:
-			return false
+		if animation_name.contains("jump_land") or not frozen: return false
 		landing_upper_confirmed.erase(side)
-	if not smoothed_target.has(side):
-		return false
+	if not smoothed_target.has(side): return false
 	# Deep split searches start only from a flat lower tread in the stance zone.
 	var has_lower_state := (idle_lower_latched_target.has(side)
 			or idle_lower_acquiring.has(side))
@@ -496,8 +498,7 @@ func _latch_idle_lower_support(space: PhysicsDirectSpaceState3D, side: StringNam
 		return false
 	var transition := _update_idle_lower_transition(
 			side, raw_target, raw_normal, delta, character)
-	if transition["handled"]:
-		return transition["latched"]
+	if transition["handled"]: return transition["latched"]
 	return _validate_idle_lower_support(
 			space, side, transition["previous"], transition["had_latch"], delta, character)
 
@@ -660,8 +661,7 @@ func _rehome_idle_stance_target(space: PhysicsDirectSpaceState3D,
 	if delta <= 0.0 or not current.is_finite() or is_target_inside_stance_zone(side, current):
 		return false
 	var character := _owner.player_body.get_parent() as Node3D
-	if character == null:
-		return false
+	if character == null: return false
 	var forward := -character.global_basis.z
 	var outward := -character.global_basis.x if side == &"left" else character.global_basis.x
 	forward.y = 0.0

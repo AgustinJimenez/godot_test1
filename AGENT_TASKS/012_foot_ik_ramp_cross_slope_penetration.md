@@ -816,6 +816,55 @@ observed here, but not explained) - likely just more of the ~25 simultaneous IK-
 dummies entering view as the camera moves, never confirmed further since it didn't correlate
 with the actual crash.
 
+## Ramp-edge raycast-miss: recovery implemented (option 2, user's choice), partial improvement
+
+Per the user's explicit choice between the two options this task's "raycast-miss" finding left
+open (widen the test ramp vs. make the raycast itself more robust near an edge) - chose the
+"more complete/smart" option: teach `foot_ik_ground_sampler.gd`'s primary raycast to recover
+from a near-miss instead of only widening the test geometry.
+
+**Fix**: in `sample()`, when the primary `raycast_ground(space, foot_pos)` misses and
+`likely_idle` is true, try a small number of steps (`0.03/0.06/0.10/0.15m`) back toward the
+character's own root before giving up. This is deliberately a *small*, inward-biased search -
+not an arbitrary-direction one - so a genuine void/ledge drop is never masked as still-standing
+ground; it only recovers the specific case this task already confirmed (idle sway putting a
+foot a few cm past a platform's physical edge, where the true surface is a few cm back toward
+the body the character is actually standing on).
+
+**Verified, precise before/after** (re-measured directly, not assumed):
+
+| Script | Failures before | Failures after |
+| --- | --- | --- |
+| `check_foot_ik_ramp_locomotion.sh` | 16 | 13 |
+| `check_foot_ik_ramps.sh` | 43 | 40 |
+| `check_foot_ik_ramp_sweep.sh` | 22 | 18 |
+
+(`check_foot_ik_ramps.sh`'s count above is its named-case `FOOT_IK_RAMP_CASE FAIL` total - its
+own `failed_cases` summary field is sweep-mode-only and misleading outside sweep mode, already
+documented in `check_foot_ik.sh`'s status table.)
+
+A real, consistent improvement (3-4 fewer failures per script) - **not a full fix**. Most
+remaining failures show deeper, sustained penetration (up to `0.088m`, some with dozens of
+penetrating vertices) rather than a brief raycast miss - consistent with this task's own
+earlier finding that not every ramp failure is edge-proximity-driven; some are a separate,
+larger-magnitude mechanism this fix was never meant to address. Full comprehensive suite
+(`scripts/check_foot_ik_all.sh`) re-run clean: exit 0, identical known-baseline failure set
+(the three ramp scripts are all still known-failing overall, correctly - only their internal
+failure *counts* improved), no new/unexpected regressions.
+
+**Still open**: the remaining ~40/13/18 failures in each script are a different, larger-scale
+problem than the near-miss this fix targets - not investigated further this pass. A future
+session should check whether these correspond to genuinely steep/complex ramp geometry
+(cross-slope stances at 30-45 degrees, several `_cross_`/`_yaw_` case names) where the leg
+solver itself needs more slack, rather than another ground-sampling fix.
+
+**Live confirmation: done.** User played the preview scene (ramp cases included) for a long
+session (~47 seconds of physics frames). Session log stayed clean throughout: steady 59-60fps
+the entire time, no `SCRIPT ERROR`, no `[ANIM_DIFF_INSTANT]` sync failures, no anomalous
+`[FOOT_IK_PERF]`/`[FOOT_IK_ENGINE_PERF]` readings - consistent with the fix behaving correctly
+during real play near the ramps, with no observable regression on ordinary flat-floor
+characters either.
+
 ## References
 
 - `tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd` - the extended check.
