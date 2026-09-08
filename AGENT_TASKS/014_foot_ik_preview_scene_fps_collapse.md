@@ -78,6 +78,38 @@ a while). The crash still happens, at similar or only slightly reduced magnitude
 is still worth keeping (it's strictly cheaper and now has regression coverage), but the
 dominant cause of the crash is something else.
 
+## New: a fast, reliable 2-5s repro, and a precise pipeline-compile measurement
+
+Found a much tighter repro than "walk around and wait": stand still on the **Ramp 45°**
+platform, facing roughly 120 degrees off the default spawn heading (`_apply_yaw`'d there, the
+same head-then-body turn a real mouse-look produces, camera unchanged - the normal
+`ThirdPersonArm/DebugCam`). The crash reproduces in 2-5 seconds from a fresh scene load, every
+time - far faster and more reliable than the original "walk to the ramp/stair cluster and wait"
+repro this task was opened with.
+
+Also added `Performance.PIPELINE_COMPILATIONS_CANVAS/MESH/SURFACE/DRAW/SPECIALIZATION` to
+`foot_ik_perf_probe.gd` (these are cumulative-since-engine-start counters, so the probe now
+tracks the previous window's totals and logs the per-window delta) - Godot 4.3's own
+hitch-reduction counters for exactly the "lazy shader/pipeline compilation" hypothesis this
+task's "Open" section already listed as the strongest untested lead.
+
+**Result, from the fast repro's first 5 seconds**: the very first window (`frame=60`, the
+first second) shows `pipeline_compiles_mesh=1279` alongside `fps=4.0` and `process_ms=45.94`
+(the only window where `process_ms` is elevated too - `_ready()`/first-draw setup cost
+overlapping). Every window after that (`frame=120` through `frame=300`, the next four seconds)
+shows **all five pipeline-compile counters at zero**, while `physics_ms` sits at 21-27ms and
+`process_ms` is back to a normal ~1.9ms - yet `fps` stays crashed at 5-7 the entire time.
+
+**This confirms real pipeline-compile activity for the first time this session (previously
+only theorized), but disproves it as the sustained cause.** A one-time compile burst
+right at the start plausibly explains the very first stuttered frame, but it cannot explain
+why the crash persists for 4+ more seconds after compile activity has already dropped to zero
+and every other `Performance` counter has returned to baseline. Something the compile burst
+triggers - GPU driver stall recovery, thermal/clock-frequency throttling, or a render-thread
+command backlog invisible to any `Performance` monitor - most plausibly outlasts the
+compilation work itself. Still needs a real GPU frame capture to see directly, but the fast
+repro means that capture is now a 5-second exercise instead of an open-ended wait.
+
 ## Open: the real cause is still unknown
 
 The most consistent, unexplained signal across every real (non-headless) run: `primitives`

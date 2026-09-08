@@ -8,6 +8,13 @@ extends Node
 var _enabled := OS.get_environment("FOOT_IK_PERF_LOG") != "0"
 var _window_start_frame := 0
 var _known_node_paths: Dictionary = {} # NodePath (as string) -> true, snapshot from last window
+# Pipeline-compilation counters are cumulative since engine start, not
+# per-frame - track the last window's totals so the printed number is a
+# per-window delta (a stutter source, per Godot 4.3's own hitch-reduction
+# notes) instead of an ever-growing total that looks the same every window.
+var _last_pipeline_totals := {
+	"canvas": 0, "mesh": 0, "surface": 0, "draw": 0, "specialization": 0,
+}
 
 
 func _physics_process(_delta: float) -> void:
@@ -18,9 +25,18 @@ func _physics_process(_delta: float) -> void:
 	if frame - _window_start_frame < 60:
 		return
 	_window_start_frame = frame
+	var pipeline_totals := {
+		"canvas": Performance.get_monitor(Performance.PIPELINE_COMPILATIONS_CANVAS),
+		"mesh": Performance.get_monitor(Performance.PIPELINE_COMPILATIONS_MESH),
+		"surface": Performance.get_monitor(Performance.PIPELINE_COMPILATIONS_SURFACE),
+		"draw": Performance.get_monitor(Performance.PIPELINE_COMPILATIONS_DRAW),
+		"specialization": Performance.get_monitor(Performance.PIPELINE_COMPILATIONS_SPECIALIZATION),
+	}
 	print(("[FOOT_IK_ENGINE_PERF] frame=%d fps=%.1f process_ms=%.2f physics_ms=%.2f " +
 			"objects=%d nodes=%d orphan_nodes=%d static_mem_mb=%.2f draw_calls=%d " +
-			"primitives=%d video_mem_mb=%.2f") % [
+			"primitives=%d video_mem_mb=%.2f pipeline_compiles_canvas=%d " +
+			"pipeline_compiles_mesh=%d pipeline_compiles_surface=%d " +
+			"pipeline_compiles_draw=%d pipeline_compiles_specialization=%d") % [
 			frame,
 			Engine.get_frames_per_second(),
 			Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
@@ -31,7 +47,13 @@ func _physics_process(_delta: float) -> void:
 			Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
 			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
 			Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
-			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
+			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
+			int(pipeline_totals["canvas"]) - int(_last_pipeline_totals["canvas"]),
+			int(pipeline_totals["mesh"]) - int(_last_pipeline_totals["mesh"]),
+			int(pipeline_totals["surface"]) - int(_last_pipeline_totals["surface"]),
+			int(pipeline_totals["draw"]) - int(_last_pipeline_totals["draw"]),
+			int(pipeline_totals["specialization"]) - int(_last_pipeline_totals["specialization"])])
+	_last_pipeline_totals = pipeline_totals
 	_diff_node_tree()
 
 
