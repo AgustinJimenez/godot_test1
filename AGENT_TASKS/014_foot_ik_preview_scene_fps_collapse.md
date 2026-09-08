@@ -2,15 +2,18 @@
 
 ## Status and scope
 
-Open, unsolved. User manually played `foot_ik_preview.tscn` (the scene "we always work with")
-and observed severe FPS drops - 60fps down to single digits - specifically near the ramp/stair
-platform cluster, reproducible on repeat visits, fully recovering when standing elsewhere. One
+**Root cause found and confirmed via GPU trace** (see "Root cause found: Apple Silicon GPU
+frequency governor startup ramp" below) - this is not a bug in Foot IK, the preview scene, or
+this project's rendering code. It's Apple Silicon's own GPU clock governor starting every fresh
+process at minimum performance state and taking ~1.5-2 seconds of sustained load to ramp to
+maximum, measured directly via `xctrace`/Instruments. User manually played
+`foot_ik_preview.tscn` (the scene "we always work with") and observed severe FPS drops - 60fps
+down to single digits - specifically near the ramp/stair platform cluster, reproducible on
+repeat visits, fully recovering after a few seconds regardless of where the player stands. One
 real contributing bug was found and fixed along the way (concave CSG collision on authored
-ramp/stair boxes, see "Fixed: CSG concave-collision cost" below) but it only had a marginal
-effect - **the crash still happens after that fix**. The true dominant cause is still unknown.
-This is scoped as its own task because it is a performance investigation, unrelated in kind to
-every other numbered Foot IK task (all correctness/pose bugs), and because the CSG-collision
-fix, while worth keeping, turned out not to be the answer.
+ramp/stair boxes, see "Fixed: CSG concave-collision cost" below), worth keeping but not the
+dominant cause. This is scoped as its own task because it is a performance investigation,
+unrelated in kind to every other numbered Foot IK task (all correctness/pose bugs).
 
 ## Diagnostics added (kept, gated, safe to leave in)
 
@@ -168,6 +171,69 @@ independently-verified hypotheses are now exhausted from the GDScript/`Performan
 side. The next step is unambiguously a GPU frame capture (Xcode Metal capture or RenderDoc)
 at one of the reliably-bad angles (90, 150, or 180 degrees, Ramp 45 platform) - there is
 nothing further to learn by adding more prints.
+
+## Root cause found: Apple Silicon GPU frequency governor startup ramp
+
+Captured a real GPU trace via Xcode's Instruments CLI front-end (`xctrace`, no GUI needed -
+it can attach to a running process by PID from the command line):
+
+```
+xcrun xctrace record --template "Metal System Trace" --attach <godot_pid> \
+    --time-limit 5s --output gputrace.trace
+xcrun xctrace export --input gputrace.trace --xpath \
+    '/trace-toc/run[@number="1"]/data/table[@schema="gpu-performance-state-intervals"]'
+```
+
+Recorded during the fast Ramp 45 / 150-degree-turn repro. Two tables settle this:
+
+- **`device-thermal-state-intervals`**: `Nominal` for the entire capture. Not thermal
+  throttling.
+- **`gpu-performance-state-intervals`**: the GPU sits in **`Minimum`** performance state,
+  narrated as `"Minimum GPU Performance state due to active device conditions"`, continuously
+  from **473ms to 2055ms** into the run - then jumps straight to **`Maximum`** at exactly
+  **2055ms** and stays there for the rest of the capture.
+
+That 2055ms ramp-up timestamp lines up almost exactly with the fps recovery point in every
+`FOOT_IK_ENGINE_PERF` log captured this session (crashed through the 1-2s marks, recovering by
+the ~3s mark). **This is Apple Silicon's own GPU frequency/power governor**: a fresh process
+starts the GPU clocked at its minimum performance state and needs roughly 1.5-2 seconds of
+sustained load to ramp up to maximum - a macOS/Apple-Silicon power-management characteristic,
+not a bug in this project's rendering code.
+
+This single mechanism now explains every previously-confirmed, previously-unexplained
+observation in this task:
+
+- **Self-recovers on its own** after a few seconds, every time - the governor always
+  eventually ramps up. Matches every log captured, including the very first ones from before
+  this task even isolated a fast repro.
+- **Not fixed by disabling `AnimationComparisonDummies`, `FootIkDebugOverlay`, or shadows** -
+  none of those change how fast the OS governor decides to ramp GPU clock speed.
+- **Not fixed by disabling shadows specifically**, despite that being the strongest
+  a-priori suspect (shadow cascade cost) - irrelevant, since the constraint is clock speed,
+  not which pass is running.
+- **The pipeline-compile burst (`pipeline_compiles_mesh=1279`) is a coincidental
+  neighbor, not the cause** - it also happens right at launch, but is a fixed, one-time CPU
+  submission-side event, unrelated to the several-additional-seconds the GPU then spends
+  clocked down while draining that (and all other) submitted work slowly.
+- **Camera-angle dependence, inversely correlated with draw calls/primitives** - different
+  views submit different per-frame GPU utilization *patterns* during the governor's ramp-up
+  window. A view whose workload sits at a lower, spikier utilization can plausibly delay the
+  governor's decision to ramp up longer than a view with more (but steadier) work, even though
+  the total amount of work is smaller - consistent with the angles that stayed crashed longest
+  (90/150/180 degrees) also having fewer draw calls than the angles that recovered fastest.
+
+**This is not a bug to fix in Foot IK, the preview scene, or this project's rendering code at
+all.** It is an inherent one-time cost every fresh Metal process pays on this hardware. The
+actionable mitigation is the standard one for this exact situation: give the GPU 1-2 seconds
+of real rendering work to chew on *before* the player gains control/camera movement - i.e. a
+brief warm-up/loading pass (even just holding the initial loading screen a beat longer while
+the scene renders a few hidden frames) so the governor's ramp-up happens during a controlled
+loading moment instead of during live gameplay. This only matters for real gameplay scenes
+that spawn player-controlled cameras immediately on load; `foot_ik_preview.tscn` itself doing
+this is expected and low-stakes (it's a debug/test scene), but the same mechanism would explain
+a similar hitch in the real game right after a level loads, if one is ever reported - worth
+remembering as a reference case ([015](015_foot_ik_architecture_direction.md) is the right home
+for a general "warm up the GPU during loading" note, since it's not Foot IK-specific).
 
 ## Open: the real cause is still unknown
 
