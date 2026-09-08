@@ -2,14 +2,21 @@
 
 ## Status and scope
 
-**Root cause found and confirmed via GPU trace** (see "Root cause found: Apple Silicon GPU
-frequency governor startup ramp" below) - this is not a bug in Foot IK, the preview scene, or
-this project's rendering code. It's Apple Silicon's own GPU clock governor starting every fresh
-process at minimum performance state and taking ~1.5-2 seconds of sustained load to ramp to
-maximum, measured directly via `xctrace`/Instruments. User manually played
-`foot_ik_preview.tscn` (the scene "we always work with") and observed severe FPS drops - 60fps
-down to single digits - specifically near the ramp/stair platform cluster, reproducible on
-repeat visits, fully recovering after a few seconds regardless of where the player stands. One
+**Correction: the GPU-governor finding below is real but was wrongly declared "the" root
+cause - it explains a real, separate, ~2-second one-time startup cost, but not the actual bug.**
+The real, dominant, *sustained* (does not self-recover, ever, while conditions hold) cause is
+`_request_overheight_split_safe_zone`'s uncapped retry - see "Real root cause: uncapped
+split-safe-root retry, no cooldown on failure" below. That section supersedes the GPU-governor
+one as the primary finding; the GPU-governor section is kept because it's still real and
+worth knowing about as a separate, secondary contributor to the first ~2 seconds specifically.
+This was found by testing the user's own live discovery ("disable IK -> fps recovers", "jump ->
+fps recovers") in a controlled, automated A/B, which the earlier GPU-only investigation had not
+actually attempted - always re-verify a "solved" conclusion against new counter-evidence rather
+than defending it.
+
+User manually played `foot_ik_preview.tscn` (the scene "we always work with") and observed
+severe FPS drops - 60fps down to single digits - specifically near the ramp/stair platform
+cluster, reproducible on repeat visits. One
 real contributing bug was found and fixed along the way (concave CSG collision on authored
 ramp/stair boxes, see "Fixed: CSG concave-collision cost" below), worth keeping but not the
 dominant cause. This is scoped as its own task because it is a performance investigation,
@@ -171,6 +178,101 @@ independently-verified hypotheses are now exhausted from the GDScript/`Performan
 side. The next step is unambiguously a GPU frame capture (Xcode Metal capture or RenderDoc)
 at one of the reliably-bad angles (90, 150, or 180 degrees, Ramp 45 platform) - there is
 nothing further to learn by adding more prints.
+
+## Real root cause: uncapped split-safe-root retry, no cooldown on failure
+
+User's own live A/B testing (while standing in the crash, not from a log) found the actual
+mechanism directly: **jumping recovers fps**, and **disabling Foot IK recovers fps**. Both
+were reproduced under a controlled, automated A/B at the same fast Ramp 45/turned-camera repro
+this task already established, before investigating further:
+
+- IK enabled, same position/camera: fps stayed at 3-7 for the **entire measured 17-second
+  window** (frame 60 through frame 1020) - never recovering on its own. This directly
+  contradicts the earlier GPU-governor conclusion, which predicted recovery within ~2 seconds
+  regardless of game code. The earlier tests that "confirmed" GPU-governor-only recovery had
+  simply not been run long enough.
+- `user://foot_ik_disabled_marker` (disables only the *interactive player's* own Foot IK,
+  the other ~24 idle characters' IK stays untouched in both conditions) - fps recovered to 60
+  within ~2 seconds, every time.
+
+Instrumented the player's own `FootIKGroundSampler` with a per-call-site tally (temporary,
+fully reverted after capturing evidence) and confirmed:
+
+- `modification_call_count` (how many times the engine invokes
+  `_process_modification_with_delta` per physics tick): exactly 60 per 60-physics-frame
+  window - completely normal, once per tick as expected. This isn't a re-entrancy bug.
+- `raycast_debug_count`: **~360,000-390,000 raycasts in that same 60-tick window** - roughly
+  6500 raycasts *per single tick*, versus ~6/tick once the crash clears. All of it attributed
+  to `_find_split_safe_root` (called ~330-360 times/window, i.e. ~6/tick - `_request_..._zone`
+  calls `_find_nearest_split_safe_root`, which calls `_find_split_safe_root` twice, twice per
+  leg) and `straighten_compressed_upper_target` (~120/window, normal - 1/leg/tick, not
+  implicated).
+
+Read `_find_split_safe_root` (`foot_ik_ground_sampler.gd`): it does a ring search out from a
+root point - `for ring in range(1, SPLIT_SAFE_SEARCH_RINGS + 1): samples := ring * 8; for
+sample_index in samples: ...` (`SPLIT_SAFE_SEARCH_RINGS := 16`). If it never finds a point
+satisfying all three `_has_surface_at_height` checks, it exhausts **every** ring:
+`sum(ring*8 for ring in 1..16) = 1088` samples, up to 3 raycasts each (each
+`_has_surface_at_height` call is one `raycast_ground`) = up to **3264 raycasts for one
+call**, and it's called twice per real invocation (upper_y and lower_y via
+`_find_nearest_split_safe_root`) = up to **6528** - matches the measured ~6500-6535/tick
+almost exactly. This is the actual, complete answer.
+
+**The real bug** is in the caller, `_request_overheight_split_safe_zone`: 
+
+```gdscript
+if not split_safe_root_target.is_finite() or root.distance_to(split_safe_root_target) <= 0.03:
+    var safe := _find_nearest_split_safe_root(...)
+    split_safe_root_target = safe["root"]
+    ...
+```
+
+When the search finds nothing, `safe["root"]` stays `Vector3(INF, INF, INF)` -
+`split_safe_root_target` stays non-finite - the *very next physics tick's* `if not
+split_safe_root_target.is_finite()` is true again, and the full expensive search re-runs.
+**There is no cooldown, backoff, or "this position is hopeless, stop asking" cache** - if the
+search keeps failing (as it does at this specific ramp/turned-camera repro spot, and evidently
+at whatever real spot the user stood near in the real level), it re-runs this ~6500-raycast
+search on literally every single physics tick, forever, for as long as the character stays put.
+
+This single mechanism explains every piece of evidence gathered, cleanly, with no loose ends:
+
+- **Only triggers during idle animation** (`_request_overheight_split_safe_zone`'s own early
+  gate: `not animation_name.contains("idle") and not landing_recovery` bails out otherwise) -
+  matches both the user's real manual playtest (almost certainly standing still) and the
+  automated repro (which stands still by construction).
+- **Jump fixes it** - jumping leaves the idle animation immediately, which is exactly this
+  function's own bail-out condition. Nothing mysterious about airborne state specifically; it's
+  this one gate.
+- **Disabling Foot IK fixes it** - the whole call chain is skipped.
+- **Sustained indefinitely, not a one-time startup cost** - matches the just-corrected 17-second
+  test far better than the GPU-governor theory ever did.
+- **Not fixed by hiding `AnimationComparisonDummies`/`FootIkDebugOverlay`/shadows** - none of
+  those change the ground geometry the split-safe search is querying against.
+- **Angle-dependent severity from the earlier sweep** is now also explained differently than
+  originally guessed: different camera *turn* angles don't change the *character's* position at
+  all (only camera yaw was varied, player position was fixed) in that sweep - so the real
+  variable across those angle tests was probably incidental frame-timing/scheduling, not a
+  genuine render-angle effect. That sweep's "inverse correlation with draw calls" conclusion
+  should be treated as a red herring now that the true mechanism is known to be CPU/physics-side
+  (physics_ms), not GPU-side.
+
+**Not fixed in this session** - this is real production Foot IK code (the platform-edge-safety
+system from task 008), not test/debug scaffolding, and this codebase has repeatedly punished
+seemingly-safe changes with regressions (see 008/010/012's own histories). Proposed minimal fix,
+for discussion before implementing:
+
+- Cache a failure cooldown alongside `split_safe_root_target` - e.g. a
+  `split_safe_retry_after_frame: int` set to `Engine.get_physics_frames() + N` (some tens of
+  frames) whenever `_find_nearest_split_safe_root` returns non-finite for both upper and lower,
+  and skip re-searching until that frame passes. Same shape as other cooldown/backoff state
+  already used elsewhere in this file (e.g. `_landing_grace_time`).
+- Needs a decision on what should happen visually while on cooldown and search has never
+  succeeded (keep whatever the pre-existing fallback pose is, presumably - `preferred_root_nudge`
+  simply doesn't get applied, same as today's `return false` path already handles).
+- Whatever the fix, it must be verified against `check_foot_ik.sh`'s full suite (this path is
+  specifically exercised by task 008's own tests) and ideally a live manual test at the real
+  in-game spot the user originally saw this, not just the synthetic Ramp 45 repro.
 
 ## Root cause found: Apple Silicon GPU frequency governor startup ramp
 
