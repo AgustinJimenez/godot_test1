@@ -2,6 +2,15 @@
 
 ## Status and scope
 
+**Fixed and verified.** `foot_ik_ground_sampler.gd`'s `_request_overheight_split_safe_zone`
+now caches a failure cooldown (`split_safe_retry_after_frame`, `SPLIT_SAFE_RETRY_COOLDOWN_FRAMES
+:= 30`) instead of re-running the ~6500-raycast split-safe-root search on every single physics
+tick when the search keeps failing. Verified at the exact repro that previously stayed crashed
+for the full 17+ second measured window (Ramp 45 platform, camera turned ~150 degrees off
+spawn): fps now dips only to 10 for the first second (the separate, minor GPU-governor cost,
+see below) then holds a solid 60 for the rest of a 20-second run. Full `check_foot_ik_fast.sh`
+suite passes with no regressions.
+
 **Correction: the GPU-governor finding below is real but was wrongly declared "the" root
 cause - it explains a real, separate, ~2-second one-time startup cost, but not the actual bug.**
 The real, dominant, *sustained* (does not self-recover, ever, while conditions hold) cause is
@@ -257,22 +266,26 @@ This single mechanism explains every piece of evidence gathered, cleanly, with n
   should be treated as a red herring now that the true mechanism is known to be CPU/physics-side
   (physics_ms), not GPU-side.
 
-**Not fixed in this session** - this is real production Foot IK code (the platform-edge-safety
-system from task 008), not test/debug scaffolding, and this codebase has repeatedly punished
-seemingly-safe changes with regressions (see 008/010/012's own histories). Proposed minimal fix,
-for discussion before implementing:
+**Fixed** - this is real production Foot IK code (the platform-edge-safety system from task
+008), not test/debug scaffolding, and this codebase has repeatedly punished seemingly-safe
+changes with regressions (see 008/010/012's own histories), so this was proposed and confirmed
+with the user before implementing. Applied fix, in `foot_ik_ground_sampler.gd`:
 
-- Cache a failure cooldown alongside `split_safe_root_target` - e.g. a
-  `split_safe_retry_after_frame: int` set to `Engine.get_physics_frames() + N` (some tens of
-  frames) whenever `_find_nearest_split_safe_root` returns non-finite for both upper and lower,
-  and skip re-searching until that frame passes. Same shape as other cooldown/backoff state
+- A failure cooldown alongside `split_safe_root_target`: `split_safe_retry_after_frame: int`,
+  reset to 0 in `reset()` and `reject_split_safe_root()` (an explicit reject should retry
+  immediately), set to `Engine.get_physics_frames() + SPLIT_SAFE_RETRY_COOLDOWN_FRAMES` (30
+  frames, 0.5s at 60fps) in `_request_overheight_split_safe_zone` whenever
+  `_find_nearest_split_safe_root` returns non-finite. Same shape as other cooldown/backoff state
   already used elsewhere in this file (e.g. `_landing_grace_time`).
-- Needs a decision on what should happen visually while on cooldown and search has never
-  succeeded (keep whatever the pre-existing fallback pose is, presumably - `preferred_root_nudge`
-  simply doesn't get applied, same as today's `return false` path already handles).
-- Whatever the fix, it must be verified against `check_foot_ik.sh`'s full suite (this path is
-  specifically exercised by task 008's own tests) and ideally a live manual test at the real
-  in-game spot the user originally saw this, not just the synthetic Ramp 45 repro.
+- While on cooldown and no valid target has ever been found, behavior is unchanged from
+  today's existing `if not split_safe_root_target.is_finite(): return false` path - no new
+  visual fallback needed, since that path already handles "no split-safe target available."
+- Verified against `check_foot_ik_fast.sh`'s full suite (all checks pass, including
+  `FOOT_IK_LEDGE_SAFETY_CHECK`/`FOOT_IK_EDGE_LANDING_SWEEP_CHECK`, which specifically exercise
+  this platform-edge-safety path) and against the synthetic Ramp 45/150-degree-turn repro
+  (previously crashed for the full 17+ second measured window, now recovers to 60fps by ~2
+  seconds and holds). Not yet verified at the real in-game spot the user originally saw this -
+  worth a live manual check there too when convenient.
 
 ## Root cause found: Apple Silicon GPU frequency governor startup ramp
 

@@ -20,6 +20,7 @@ const LANDING_UPPER_CONTACT_DISTANCE := 0.06
 const COMPRESSED_UPPER_SEARCH_SAMPLES := 36
 const SPLIT_SAFE_SEARCH_STEP := 0.05
 const SPLIT_SAFE_SEARCH_RINGS := 16
+const SPLIT_SAFE_RETRY_COOLDOWN_FRAMES := 30 # 0.5s at 60fps - see 014
 const LANDING_CONTACT_CLEARANCE_RADIUS := 0.02
 const IDLE_FREEZE_MAX_TARGET_DRIFT := 0.08
 const STAIR_TREAD_UP_DOT := 0.999
@@ -41,6 +42,10 @@ var preferred_root_nudge_surface_y := -INF
 var split_safe_root_target := Vector3(INF, INF, INF)
 var split_safe_surface_y := -INF
 var split_rejected_surface_y := -INF
+# A failed ring search must not retry every single tick - see 014's "uncapped
+# split-safe-root retry" finding: an unrecoverable idle stance near a support
+# height difference was burning ~6500 raycasts/tick, forever, with no cooldown.
+var split_safe_retry_after_frame := 0
 var split_safe_held_upper_target: Dictionary = {} # side -> last proven upper support
 var sample_previous_support: Dictionary = {} # side -> target before this frame's probe
 var idle_stance_rehoming: Dictionary = {} # side -> corrected supported target
@@ -76,6 +81,7 @@ func reset() -> void:
 	split_safe_root_target = Vector3(INF, INF, INF)
 	split_safe_surface_y = -INF
 	split_rejected_surface_y = -INF
+	split_safe_retry_after_frame = 0
 	split_safe_held_upper_target.clear()
 	sample_previous_support.clear()
 	idle_stance_rehoming.clear()
@@ -88,8 +94,7 @@ func landing_commitment_snapshot() -> Dictionary:
 		"decision": airborne_landing_decision,
 	}
 func restore_landing_commitment(snapshot: Dictionary) -> void:
-	if snapshot.is_empty():
-		return
+	if snapshot.is_empty(): return
 	_landing_planner.safe_root_target = snapshot["root"]
 	_landing_planner.committed_surface_y = snapshot["surface_y"]
 	_landing_planner.decision = "landing_hold %s" % snapshot["decision"]
@@ -97,6 +102,7 @@ func reject_split_safe_root() -> void:
 	split_rejected_surface_y = split_safe_surface_y
 	split_safe_root_target = Vector3(INF, INF, INF)
 	split_safe_surface_y = -INF
+	split_safe_retry_after_frame = 0 # an explicit reject should retry immediately
 	split_safe_held_upper_target.clear()
 	landing_upper_confirmed.clear()
 	landing_upper_confirmation_frames.clear()
@@ -187,8 +193,7 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 			smoothed_target[side] = next_surface
 			return next_surface + Vector3.UP * offset
 		compressed_upper_target.erase(side)
-	if hip.distance_to(target) >= minimum_reach - 0.005:
-		return target
+	if hip.distance_to(target) >= minimum_reach - 0.005: return target
 	var horizontal := target - hip
 	horizontal.y = 0.0
 	var vertical_distance := absf(hip.y - target.y)
@@ -258,8 +263,7 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		preferred_root_nudge = Vector3.ZERO
 		preferred_root_nudge_surface_y = -INF
 	var previous_support: Vector3 = smoothed_target.get(side, foot_pos)
-	if delta > 0.0:
-		idle_stance_rehoming.erase(side)
+	if delta > 0.0: idle_stance_rehoming.erase(side)
 	sample_previous_support[side] = previous_support
 	var hit := raycast_ground(space, foot_pos)
 	if not hit["hit"] and likely_idle and _owner.step_prediction_enabled:
@@ -338,8 +342,7 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		smoothed_target[side] = upper_surface
 		smoothed_normal[side] = Vector3.UP
 	var idle_lower_acquiring_now := idle_lower_acquiring.has(side)
-	if idle_lower_acquiring_now:
-		_owner._gait_tracker.invalidate_idle_freeze(side)
+	if idle_lower_acquiring_now: _owner._gait_tracker.invalidate_idle_freeze(side)
 	var target_lock_allowed: bool = _owner._gait_tracker.target_lock_allows_latch(side)
 	if hit["hit"] and likely_idle and raw_normal.dot(Vector3.UP) < 0.999:
 		smoothed_normal[side] = raw_normal
@@ -666,8 +669,7 @@ func _rehome_idle_stance_target(space: PhysicsDirectSpaceState3D,
 	var outward := -character.global_basis.x if side == &"left" else character.global_basis.x
 	forward.y = 0.0
 	outward.y = 0.0
-	if forward.length_squared() <= 0.0001 or outward.length_squared() <= 0.0001:
-		return false
+	if forward.length_squared() <= 0.0001 or outward.length_squared() <= 0.0001: return false
 	forward = forward.normalized()
 	outward = outward.normalized()
 	var from_root := current - character.global_position
@@ -697,15 +699,13 @@ func _rehome_idle_stance_target(space: PhysicsDirectSpaceState3D,
 	return true
 func is_target_inside_stance_zone(side: StringName, target: Vector3) -> bool:
 	var character := _owner.player_body.get_parent() as Node3D
-	if character == null:
-		return false
+	if character == null: return false
 	var forward := -character.global_transform.basis.z
 	var outward := (-character.global_transform.basis.x
 			if side == &"left" else character.global_transform.basis.x)
 	forward.y = 0.0
 	outward.y = 0.0
-	if forward.length_squared() <= 0.0001 or outward.length_squared() <= 0.0001:
-		return false
+	if forward.length_squared() <= 0.0001 or outward.length_squared() <= 0.0001: return false
 	var from_root := target - character.global_position
 	var lateral := from_root.dot(outward.normalized())
 	var longitudinal := from_root.dot(forward.normalized())
@@ -788,11 +788,9 @@ func move_target_smoothed(current: Vector3, raw_target: Vector3, delta: float) -
 	var amount := clampf(delta * _owner.smooth_rate, 0.0, 1.0)
 	var lerped := current.lerp(raw_target, amount)
 	var max_dist: float = _owner.target_max_speed * delta
-	if max_dist <= 0.0:
-		return lerped
+	if max_dist <= 0.0: return lerped
 	var move := lerped - current
-	if move.length() > max_dist:
-		lerped = current + move.normalized() * max_dist
+	if move.length() > max_dist: lerped = current + move.normalized() * max_dist
 	return lerped
 func animated_lowest_surface_point_world(
 		skel: Skeleton3D, side: StringName, animated_foot_pose: Transform3D,
@@ -825,8 +823,7 @@ func raycast_ground(space: PhysicsDirectSpaceState3D, foot_pos: Vector3,
 		query.exclude = [
 			(_owner.player_body.get_parent() as CollisionObject3D).get_rid()]
 	var result := space.intersect_ray(query)
-	if result.is_empty():
-		return {"hit": false, "position": foot_pos, "normal": Vector3.UP}
+	if result.is_empty(): return {"hit": false, "position": foot_pos, "normal": Vector3.UP}
 	return {"hit": true, "position": result["position"], "normal": result["normal"]}
 func has_support_patch(space: PhysicsDirectSpaceState3D, surface: Vector3, radius: float) -> bool:
 	for offset: Vector3 in [Vector3(radius, 0.0, 0.0), Vector3(-radius, 0.0, 0.0),
@@ -898,8 +895,7 @@ func prepare_overheight_split_safe_zone(space: PhysicsDirectSpaceState3D,
 				if _has_surface_at_height(
 						space, shifted, split_safe_surface_y, upper_surface.y + 0.2):
 					split_safe_held_upper_target[side] = shifted
-	if split_safe_held_upper_target.size() < 2:
-		return false
+	if split_safe_held_upper_target.size() < 2: return false
 	for side: StringName in [&"left", &"right"]:
 		var held_surface: Vector3 = split_safe_held_upper_target[side]
 		var leg: Dictionary = per_leg[side]
@@ -945,12 +941,17 @@ func _request_overheight_split_safe_zone(space: PhysicsDirectSpaceState3D,
 		split_safe_held_upper_target.clear()
 		return false
 	var root := character.global_position
-	if not split_safe_root_target.is_finite() or root.distance_to(split_safe_root_target) <= 0.03:
+	var current_frame := Engine.get_physics_frames()
+	var stale := (not split_safe_root_target.is_finite()
+			or root.distance_to(split_safe_root_target) <= 0.03)
+	if stale and current_frame >= split_safe_retry_after_frame:
 		var safe := _find_nearest_split_safe_root(
 				space, root, upper_surface.y, lower_surface.y,
 				upper_surface.y + 0.2, left, right)
 		split_safe_root_target = safe["root"]
 		split_safe_surface_y = safe["surface_y"]
+		if not split_safe_root_target.is_finite():
+			split_safe_retry_after_frame = current_frame + SPLIT_SAFE_RETRY_COOLDOWN_FRAMES
 	if not split_safe_root_target.is_finite():
 		return false
 	preferred_root_nudge += split_safe_root_target - root
@@ -980,12 +981,9 @@ func _find_nearest_split_safe_root(space: PhysicsDirectSpaceState3D, root: Vecto
 		left: Vector3, right: Vector3) -> Dictionary:
 	var upper := _find_split_safe_root(space, root, upper_y, probe_y, left, right)
 	var lower := _find_split_safe_root(space, root, lower_y, probe_y, left, right)
-	if is_equal_approx(split_rejected_surface_y, upper_y):
-		upper = Vector3(INF, INF, INF)
-	if is_equal_approx(split_rejected_surface_y, lower_y):
-		lower = Vector3(INF, INF, INF)
-	if not upper.is_finite():
-		return {"root": lower, "surface_y": lower_y}
+	if is_equal_approx(split_rejected_surface_y, upper_y): upper = Vector3(INF, INF, INF)
+	if is_equal_approx(split_rejected_surface_y, lower_y): lower = Vector3(INF, INF, INF)
+	if not upper.is_finite(): return {"root": lower, "surface_y": lower_y}
 	if not lower.is_finite() or root.distance_to(upper) <= root.distance_to(lower):
 		return {"root": upper, "surface_y": upper_y}
 	return {"root": lower, "surface_y": lower_y}
