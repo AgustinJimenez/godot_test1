@@ -152,9 +152,7 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 			and (surface.y > other_surface.y + _owner.step_min_rise
 					or partial_upper_support)
 			and not recovering_split)
-	if not enabled:
-		compressed_upper_target.erase(side)
-		return target
+	if not enabled: compressed_upper_target.erase(side); return target
 	var hip: Vector3 = context["hip"]
 	var offset: float = context["offset"]
 	var upper: float = context["upper"]
@@ -247,17 +245,14 @@ func _find_partial_upper_target(space: PhysicsDirectSpaceState3D,
 					else Vector3(INF, INF, INF)
 		candidate += inward.normalized() * 0.02
 		var hit := raycast_ground(space, candidate + Vector3.UP * 0.2, 0.4)
-		if (not hit["hit"] or absf((hit["position"] as Vector3).y - surface.y) > 0.03):
-			continue
+		if not hit["hit"] or absf((hit["position"] as Vector3).y - surface.y) > 0.03: continue
 		candidate = hit["position"]
 	return Vector3(INF, INF, INF)
 func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		side: StringName, foot_pose: Transform3D, foot_pos: Vector3,
 		to_world: Transform3D, delta: float, likely_idle: bool = false,
 		frozen: bool = false) -> Dictionary:
-	if side == &"left":
-		preferred_root_nudge = Vector3.ZERO
-		preferred_root_nudge_surface_y = -INF
+	if side == &"left": preferred_root_nudge = Vector3.ZERO; preferred_root_nudge_surface_y = -INF
 	var previous_support: Vector3 = smoothed_target.get(side, foot_pos)
 	if delta > 0.0: idle_stance_rehoming.erase(side)
 	sample_previous_support[side] = previous_support
@@ -828,12 +823,18 @@ func raycast_ground(space: PhysicsDirectSpaceState3D, foot_pos: Vector3,
 			result["normal"], _owner.player_body.get_parent() as CharacterBody3D):
 		return {"hit": false, "position": foot_pos, "normal": Vector3.UP}
 	return {"hit": true, "position": result["position"], "normal": result["normal"]}
-func has_support_patch(space: PhysicsDirectSpaceState3D, surface: Vector3, radius: float) -> bool:
+## expected_normal defaults to UP for flat-platform callers (008's namesake case). A
+## caller that already sampled a real surface normal (_retract_to_reachable on a
+## ramp) passes it instead, checking flatness/height relative to that surface, not
+## world-up - this hardcoded UP-only check was why retraction never found anywhere
+## reachable on any ramp. See 012.
+func has_support_patch(space: PhysicsDirectSpaceState3D, surface: Vector3, radius: float,
+		expected_normal: Vector3 = Vector3.UP) -> bool:
 	for offset: Vector3 in [Vector3(radius, 0.0, 0.0), Vector3(-radius, 0.0, 0.0),
 			Vector3(0.0, 0.0, radius), Vector3(0.0, 0.0, -radius)]:
 		var hit := raycast_ground(space, surface + offset + Vector3.UP * 0.2, 0.4)
-		if (not hit["hit"] or (hit["normal"] as Vector3).dot(Vector3.UP) < STAIR_TREAD_UP_DOT
-				or absf((hit["position"] as Vector3).y - surface.y) > 0.03):
+		if (not hit["hit"] or (hit["normal"] as Vector3).dot(expected_normal) < STAIR_TREAD_UP_DOT
+				or absf(((hit["position"] as Vector3) - surface).dot(expected_normal)) > 0.03):
 			return false
 	return true
 func _support_patch_inward(space: PhysicsDirectSpaceState3D,
@@ -873,9 +874,7 @@ func prepare_overheight_split_safe_zone(space: PhysicsDirectSpaceState3D,
 		return false
 	var recovering := _request_overheight_split_safe_zone(
 			space, upper_surface, lower_surface, animation_name)
-	if not recovering:
-		split_safe_held_upper_target.clear()
-		return false
+	if not recovering: split_safe_held_upper_target.clear(); return false
 	var root_to_safe := split_safe_root_target - character.global_position
 	root_to_safe.y = 0.0
 	if (split_safe_surface_y < upper_surface.y - 0.03

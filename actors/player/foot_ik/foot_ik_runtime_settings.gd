@@ -53,4 +53,10 @@ func allows_support_height_difference(difference: float) -> bool:
 ## still see vertical faces, so this is opt-in per query, not applied to every raycast.
 func is_walkable_normal(normal: Vector3, character: CharacterBody3D) -> bool:
 	var limit: float = character.floor_max_angle if character != null else deg_to_rad(50.0)
-	return normal.dot(Vector3.UP) >= cos(limit) - 0.01
+	# An authored ramp built at exactly the character's own floor_max_angle (a
+	# common, deliberate choice - it's the steepest angle still walkable) sits
+	# right on this boundary, and raycast normal sampling has real per-hit noise
+	# there. A dot-product epsilon shrinks in angular terms as the limit gets
+	# steeper, which is backwards; a fixed angular tolerance stays meaningful
+	# regardless of the limit. See 012.
+	return normal.dot(Vector3.UP) >= cos(limit + deg_to_rad(2.0))

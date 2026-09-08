@@ -240,8 +240,7 @@ var _pose_suppressed: bool = false
 func set_character_grounded(value: bool) -> void:
 	_grounded = value
 	var desired := value and not _debug_force_disabled
-	if active == desired:
-		return
+	if active == desired: return
 	var landing_commitment: Dictionary = _ground_sampler.landing_commitment_snapshot() \
 			if desired else {}
 	reset_runtime_state()
@@ -251,8 +250,7 @@ func set_character_grounded(value: bool) -> void:
 	if _native_backend != null:
 		_native_backend.set_enabled(desired and solver_backend == SolverBackend.NATIVE_TWO_BONE)
 func set_solver_backend(value: SolverBackend) -> void:
-	if solver_backend == value:
-		return
+	if solver_backend == value: return
 	reset_runtime_state()
 	solver_backend = value
 	if _native_backend != null:
@@ -278,8 +276,7 @@ func _ready() -> void:
 	_target_coordinator = TARGET_COORDINATOR.new(self)
 	_native_backend = NATIVE_BACKEND.new(self)
 	var skel := get_skeleton()
-	if skel == null:
-		return
+	if skel == null: return
 	for side: StringName in LEGS:
 		var roles: Dictionary = LEGS[side]
 		var hip_idx := skel.find_bone(player_body.resolve_bone_name(roles["hip"]))
@@ -399,8 +396,7 @@ func _compute_new_foot_basis_world(
 func _measure_leg_sole_depth(skel: Skeleton3D, side: StringName) -> float:
 	var indices: Dictionary = _bone_indices[side]
 	var chain := {int(indices["foot"]): true}
-	if indices["toe"] >= 0:
-		chain[int(indices["toe"])] = true
+	if indices["toe"] >= 0: chain[int(indices["toe"])] = true
 	if indices["leaf"] >= 0:
 		chain[int(indices["leaf"])] = true
 	var foot_bone_pose := skel.get_bone_global_pose(int(indices["foot"]))
@@ -415,8 +411,7 @@ func _measure_leg_sole_depth(skel: Skeleton3D, side: StringName) -> float:
 				planted_basis * (_leaf_rest_relative_basis[side] as Basis),
 				planted_basis * (_leaf_rest_offset[side] as Vector3))
 	var max_depth := 0.0
-	if player_body == null or not is_instance_valid(player_body.character):
-		return max_depth
+	if player_body == null or not is_instance_valid(player_body.character): return max_depth
 	var meshes := player_body.character.find_children("*", "MeshInstance3D", true, false)
 	for mesh_node: Node in meshes:
 		var mesh_part := mesh_node as MeshInstance3D
@@ -817,7 +812,7 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, h
 			var prev_hit: Dictionary = _ground_sampler.raycast_ground(
 					space, Vector3(prev.x, hip_pos.y, prev.z), idle_settle_search_down)
 			if prev_hit["hit"] and _ground_sampler.has_support_patch(
-					space, prev_hit["position"], 0.12):
+					space, prev_hit["position"], 0.12, prev_hit["normal"]):
 				var norm: Vector3 = prev_hit["normal"]
 				var pos: Vector3 = prev_hit["position"]
 				return {"found": true, "target": pos + norm * offset,
@@ -839,7 +834,7 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, h
 				continue
 			var normal: Vector3 = hit["normal"]
 			var surface: Vector3 = hit["position"]
-			if not _ground_sampler.has_support_patch(space, surface, 0.12):
+			if not _ground_sampler.has_support_patch(space, surface, 0.12, normal):
 				continue
 			var target := surface + normal * offset
 			var from_root := target - body_node.global_position

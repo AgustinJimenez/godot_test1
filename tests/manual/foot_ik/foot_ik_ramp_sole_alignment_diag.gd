@@ -6,14 +6,14 @@ extends "res://tests/manual/foot_ik/foot_ik_ramp_matrix_check.gd"
 ## Every other reported ramp "failure" is a <=1um tolerance graze; see 012.
 
 const DEEP_POSITIONS: Array[String] = ["top_left", "top_center", "top_right"]
-const DEEP_FACINGS: Array[String] = ["uphill", "uphill_cross", "cross_left"]
+const DEEP_FACINGS: Array[String] = ["uphill", "uphill_cross"]
 
 
 func _filter_requested_case() -> void:
 	super._filter_requested_case()
 	var selected: Array[Dictionary] = []
 	for data: Dictionary in _cases:
-		if (float(data["angle"]) in [15.0, 30.0]
+		if (is_equal_approx(float(data["angle"]), 15.0)
 				and String(data["position_name"]) in DEEP_POSITIONS
 				and String(data["yaw_name"]) in DEEP_FACINGS):
 			selected.append(data)
@@ -53,10 +53,11 @@ func _sample_current_case() -> void:
 		report += " footprint_z=%+.3f/%.3f x=%+.3f/%.3f over_slab=%s" % [
 				foot_local.z, ramp.size.z * 0.5, foot_local.x, ramp.size.x * 0.5,
 				absf(foot_local.z) <= ramp.size.z * 0.5 and absf(foot_local.x) <= ramp.size.x * 0.5]
-		report += " weight=%.2f hit=%s dist=%+.3f %s" % [
+		report += " weight=%.2f hit=%s dist=%+.3f retracted=%s %s" % [
 				float(_ik.debug_raw_weight.get(side, -1.0)),
 				bool(_ik.debug_contact_hit.get(side, false)),
 				float(_ik.debug_contact_distance.get(side, -1.0)),
+				bool(_ik.debug_retracted.get(side, false)),
 				" ".join(heights)]
 	print(report)
 
