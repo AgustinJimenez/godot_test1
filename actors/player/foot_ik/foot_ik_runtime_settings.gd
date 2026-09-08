@@ -42,3 +42,15 @@ func allows_support_height_difference(difference: float) -> bool:
 	# Collision hits on a nominal boundary vary slightly between frames.
 	# All support owners must agree before deciding to transfer a planted foot.
 	return is_finite(difference) and absf(difference) <= max_split_ik_height + 0.001
+
+
+## A near-vertical face is not ground. The primary contact sample used to accept
+## whatever normal it hit, so a ramp slab's own ~75-degree end cap was conformed to
+## like a floor and buried the foot ~7cm inside it (012's deep 15-degree uphill_cross
+## clips). Mirroring the character's own floor_max_angle keeps IK and movement agreed
+## on what is standable; the tolerance absorbs a normal sitting exactly on the limit,
+## so a 45-degree ramp stays walkable under a 45-degree limit. Riser/stair probes must
+## still see vertical faces, so this is opt-in per query, not applied to every raycast.
+func is_walkable_normal(normal: Vector3, character: CharacterBody3D) -> bool:
+	var limit: float = character.floor_max_angle if character != null else deg_to_rad(50.0)
+	return normal.dot(Vector3.UP) >= cos(limit) - 0.01

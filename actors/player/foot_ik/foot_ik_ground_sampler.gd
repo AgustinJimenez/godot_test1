@@ -110,12 +110,10 @@ func reject_split_safe_root() -> void:
 		idle_lower_latched_target.erase(side)
 		idle_lower_acquiring.erase(side)
 		_owner._gait_tracker.invalidate_idle_freeze(side)
-		if debug_raw_target.has(side):
-			smoothed_target[side] = debug_raw_target[side]
+		if debug_raw_target.has(side): smoothed_target[side] = debug_raw_target[side]
 func feet_have_common_current_support() -> bool:
 	for side: StringName in [&"left", &"right"]:
-		if (not debug_raw_target.has(side)
-				or not bool(_owner.debug_contact_hit.get(side, false))):
+		if not debug_raw_target.has(side) or not bool(_owner.debug_contact_hit.get(side, false)):
 			return false
 		var contact_distance := float(_owner.debug_contact_distance.get(side, -1.0))
 		if contact_distance < 0.0 or not _settings.allows_support_height_difference(contact_distance):
@@ -173,8 +171,7 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 			- 2.0 * upper * lower * cos(retained_knee_angle)))
 	if partial_upper_support and not compressed_upper_target.has(side):
 		var supported_target := _find_partial_upper_target(space, side, surface)
-		if supported_target.is_finite():
-			compressed_upper_target[side] = supported_target
+		if supported_target.is_finite(): compressed_upper_target[side] = supported_target
 	if compressed_upper_target.has(side):
 		var cached_surface: Vector3 = compressed_upper_target[side]
 		var cached_target := cached_surface + Vector3.UP * offset
@@ -234,8 +231,7 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 			best_distance = distance
 			best_surface = candidate_surface
 	if not is_finite(best_distance):
-		if not blocked_nudge.is_zero_approx():
-			preferred_root_nudge += blocked_nudge.normalized()
+		if not blocked_nudge.is_zero_approx(): preferred_root_nudge += blocked_nudge.normalized()
 		return target
 	compressed_upper_target[side] = best_surface
 	smoothed_normal[side] = Vector3.UP
@@ -265,23 +261,27 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 	var previous_support: Vector3 = smoothed_target.get(side, foot_pos)
 	if delta > 0.0: idle_stance_rehoming.erase(side)
 	sample_previous_support[side] = previous_support
-	var hit := raycast_ground(space, foot_pos)
+	var hit := raycast_ground(space, foot_pos, -1.0, true)
 	if not hit["hit"] and likely_idle and _owner.step_prediction_enabled:
 		var recovery_origin: Vector3 = foot_pos + Vector3.UP * float(
 				_owner.step_down_max_crouch)
 		hit = raycast_ground(space, recovery_origin,
-				_owner.idle_settle_search_down + _owner.step_down_max_crouch)
+				_owner.idle_settle_search_down + _owner.step_down_max_crouch, true)
 	if not hit["hit"] and likely_idle: # idle sway can miss a platform edge by a few cm - 012
 		var root_pos: Vector3 = (_owner.player_body.get_parent() as Node3D).global_position
 		var edge_dir := Vector3(root_pos.x - foot_pos.x, 0.0, root_pos.z - foot_pos.z).normalized()
 		for step in [0.03, 0.06, 0.10, 0.15]:
-			hit = raycast_ground(space, foot_pos + edge_dir * step)
+			hit = raycast_ground(space, foot_pos + edge_dir * step, -1.0, true)
 			if hit["hit"]: break
 	var raw_target: Vector3 = hit["position"] if hit["hit"] else foot_pos
-	var raw_normal: Vector3 = hit["normal"] if hit["hit"] else Vector3.UP
+	# Flat is the wrong guess with no walkable hit: it buries the front edge. This side's
+	# own stored normal is the stale flat one that caused that, so prefer the other foot's
+	# live slope, which is the best available prior for the surface underfoot. See 012.
+	var raw_normal: Vector3 = hit["normal"] if hit["hit"] else smoothed_normal.get(
+			&"right" if side == &"left" else &"left", Vector3.UP)
 	if _owner.step_prediction_enabled:
 		var toe_probe := animated_lowest_surface_point_world(skel, side, foot_pose, foot_pos, to_world)
-		var toe_hit := raycast_ground(space, toe_probe)
+		var toe_hit := raycast_ground(space, toe_probe, -1.0, true)
 		if toe_hit["hit"] and (toe_hit["position"] as Vector3).y > raw_target.y + _owner.step_min_rise:
 			raw_target = toe_hit["position"]
 			raw_normal = toe_hit["normal"]
@@ -654,8 +654,7 @@ func _has_lower_riser_clearance(
 				* _settings.lower_riser_clearance_radius
 		var hit := raycast_ground(space, surface + offset + Vector3.UP * 0.2, 0.4)
 		# Ankle support is checked separately; a lower/empty neighbor is not a riser.
-		if hit["hit"] and (hit["position"] as Vector3).y > surface.y + 0.03:
-			return false
+		if hit["hit"] and (hit["position"] as Vector3).y > surface.y + 0.03: return false
 	return true
 func _rehome_idle_stance_target(space: PhysicsDirectSpaceState3D,
 		side: StringName, foot_pos: Vector3, raw_target: Vector3,
@@ -802,16 +801,17 @@ func animated_lowest_surface_point_world(
 	).normalized()
 	var sole_point: Vector3 = foot_position + sole_down_world * _owner.ankle_offset
 	var toe_idx: int = (_owner._bone_indices[side] as Dictionary).get("toe", -1)
-	if toe_idx < 0:
-		return sole_point
+	if toe_idx < 0: return sole_point
 	var toe_position: Vector3 = to_world * skel.get_bone_global_pose(toe_idx).origin
 	var foot_to_toe := toe_position - foot_position
 	var toe_tip := toe_position
 	if not foot_to_toe.is_zero_approx():
 		toe_tip += foot_to_toe.normalized() * _owner.toe_tip_margin
 	return toe_tip if toe_tip.y < sole_point.y else sole_point
+## require_walkable reports a near-vertical hit as a miss so the caller's own recovery
+## probes run instead of conforming the foot to a wall. See is_walkable_normal, 012.
 func raycast_ground(space: PhysicsDirectSpaceState3D, foot_pos: Vector3,
-		down: float = -1.0) -> Dictionary:
+		down: float = -1.0, require_walkable: bool = false) -> Dictionary:
 	var from: Vector3 = foot_pos + Vector3.UP * float(_owner.ray_up)
 	var to: Vector3 = foot_pos + Vector3.DOWN * (
 			down if down > 0.0 else _owner.ray_down)
@@ -824,6 +824,9 @@ func raycast_ground(space: PhysicsDirectSpaceState3D, foot_pos: Vector3,
 			(_owner.player_body.get_parent() as CollisionObject3D).get_rid()]
 	var result := space.intersect_ray(query)
 	if result.is_empty(): return {"hit": false, "position": foot_pos, "normal": Vector3.UP}
+	if require_walkable and not _settings.is_walkable_normal(
+			result["normal"], _owner.player_body.get_parent() as CharacterBody3D):
+		return {"hit": false, "position": foot_pos, "normal": Vector3.UP}
 	return {"hit": true, "position": result["position"], "normal": result["normal"]}
 func has_support_patch(space: PhysicsDirectSpaceState3D, surface: Vector3, radius: float) -> bool:
 	for offset: Vector3 in [Vector3(radius, 0.0, 0.0), Vector3(-radius, 0.0, 0.0),
@@ -952,8 +955,7 @@ func _request_overheight_split_safe_zone(space: PhysicsDirectSpaceState3D,
 		split_safe_surface_y = safe["surface_y"]
 		if not split_safe_root_target.is_finite():
 			split_safe_retry_after_frame = current_frame + SPLIT_SAFE_RETRY_COOLDOWN_FRAMES
-	if not split_safe_root_target.is_finite():
-		return false
+	if not split_safe_root_target.is_finite(): return false
 	preferred_root_nudge += split_safe_root_target - root
 	preferred_root_nudge_surface_y = split_safe_surface_y
 	return true
