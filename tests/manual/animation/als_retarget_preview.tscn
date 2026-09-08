@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://tests/manual/animation/als_retarget_preview.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://levels/test_room.tscn" id="2_room"]
 [ext_resource type="PackedScene" path="res://assets/models/als_mannequin_standalone/AnimMan.fbx" id="3_als"]
-[ext_resource type="PackedScene" path="res://assets/models/pistol_starter/MotusMan/MotusMan_v55.fbx" id="4_motusman"]
+[ext_resource type="PackedScene" path="res://assets/models/mixamo_characters/Y Bot.fbx" id="4_motusman"]
 
 [node name="AlsRetargetPreview" type="Node3D"]
 script = ExtResource("1_script")
@@ -18,7 +18,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.2, 0, -3.5)
 [node name="MotusManRetargeted" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.2, 0, -3.5)
 
-[node name="MotusMan" parent="MotusManRetargeted" instance=ExtResource("4_motusman")]
+[node name="YBot" parent="MotusManRetargeted" instance=ExtResource("4_motusman")]
 
 [node name="PreviewCamera" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.996195, 0.0871557, 0, -0.0871557, 0.996195, 0, 1.75, 3.5)

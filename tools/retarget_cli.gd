@@ -12,22 +12,37 @@ extends SceneTree
 ## different convention would need its own role map built via
 ## HumanoidRetargeter.detect_bone_prefix()/prefix_role_map() instead.
 ##
-## Usage:
+## Usage (catalog character, via manifest):
 ##   godot --headless --script res://tools/retarget_cli.gd -- \
 ##       source=res://path/to/clip.fbx [source_anim=<name, default: first found>] \
 ##       target_manifest=res://path/to/Character.character.json \
+##       output=res://path/to/output.res [force_loop=true]
+##
+## Usage (any model, no catalog entry needed - bone map auto-detected the same
+## way PlayerBody._detect_target_humanoid_map() does for a character with no
+## catalog entry):
+##   godot --headless --script res://tools/retarget_cli.gd -- \
+##       source=res://path/to/clip.fbx target_model=res://path/to/model.fbx \
 ##       output=res://path/to/output.res [force_loop=true]
 
 
 func _initialize() -> void:
 	var options := _parse_args()
-	var missing := _missing_required(options, ["source", "target_manifest", "output"])
+	var has_manifest := options.has("target_manifest")
+	var has_target_model := options.has("target_model")
+	if has_manifest == has_target_model:
+		push_error("Pass exactly one of target_manifest= or target_model=")
+		quit(1)
+		return
+	var missing := _missing_required(options, ["source", "output"])
 	if not missing.is_empty():
 		push_error("Missing required argument(s): %s" % ", ".join(missing))
 		quit(1)
 		return
 
-	var target: Dictionary = _load_target(String(options["target_manifest"]))
+	var target: Dictionary = (
+			_load_target_from_manifest(String(options["target_manifest"])) if has_manifest
+			else _load_target_from_model(String(options["target_model"])))
 	if target.is_empty():
 		quit(1)
 		return
@@ -58,10 +73,11 @@ func _initialize() -> void:
 	quit()
 
 
-## Loads and validates the target character's manifest/model/skeleton. Returns an empty
-## Dictionary (having already push_error'd the specific reason) on any failure, or
-## {"root": Node, "skeleton": Skeleton3D, "humanoid_map": Dictionary} on success.
-func _load_target(manifest_path: String) -> Dictionary:
+## Loads and validates the target character's manifest, then its model/skeleton via
+## _load_target_skeleton(). Returns an empty Dictionary (having already push_error'd the
+## specific reason) on any failure, or {"root": Node, "skeleton": Skeleton3D,
+## "humanoid_map": Dictionary} on success.
+func _load_target_from_manifest(manifest_path: String) -> Dictionary:
 	var manifest := _load_manifest(manifest_path)
 	if manifest.is_empty():
 		return {}
@@ -70,6 +86,39 @@ func _load_target(manifest_path: String) -> Dictionary:
 	if humanoid_map.is_empty() or target_model_path.is_empty():
 		push_error("Target manifest has no humanoid_map/model_path: %s" % manifest_path)
 		return {}
+	var loaded := _load_target_skeleton(target_model_path)
+	if loaded.is_empty():
+		return {}
+	loaded["humanoid_map"] = humanoid_map
+	return loaded
+
+
+## Loads a target model directly (no catalog manifest) and auto-detects its bone map the
+## same way PlayerBody._detect_target_humanoid_map() falls back to for a character with no
+## characters/*.json catalog entry. Returns an empty Dictionary (having already
+## push_error'd the specific reason) on any failure, or {"root": Node, "skeleton":
+## Skeleton3D, "humanoid_map": Dictionary} on success.
+func _load_target_from_model(target_model_path: String) -> Dictionary:
+	var loaded := _load_target_skeleton(target_model_path)
+	if loaded.is_empty():
+		return {}
+	var target_skeleton: Skeleton3D = loaded["skeleton"]
+	var prefix = HumanoidRetargeter.detect_bone_prefix(target_skeleton)
+	var humanoid_map: Dictionary = (
+			CharacterEditorRigHandler.auto_map(target_skeleton) if prefix == null or prefix == "B-"
+			else CharacterEditorRigHandler.full_map_from_prefix(target_skeleton, prefix))
+	if humanoid_map.is_empty():
+		push_error("Could not auto-detect a bone map for: %s" % target_model_path)
+		(loaded["root"] as Node).free()
+		return {}
+	loaded["humanoid_map"] = humanoid_map
+	return loaded
+
+
+## Shared by both target-loading paths: instantiates target_model_path and finds its
+## Skeleton3D. Returns an empty Dictionary (having already push_error'd the specific
+## reason) on any failure, or {"root": Node, "skeleton": Skeleton3D} on success.
+func _load_target_skeleton(target_model_path: String) -> Dictionary:
 	var target_root: Node = _instantiate(target_model_path)
 	if target_root == null:
 		return {}
@@ -78,7 +127,7 @@ func _load_target(manifest_path: String) -> Dictionary:
 		push_error("Target model has no Skeleton3D: %s" % target_model_path)
 		target_root.free()
 		return {}
-	return {"root": target_root, "skeleton": target_skeleton, "humanoid_map": humanoid_map}
+	return {"root": target_root, "skeleton": target_skeleton}
 
 
 ## Loads and validates the source clip's skeleton/animation. Returns an empty Dictionary

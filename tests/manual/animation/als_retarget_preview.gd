@@ -1,12 +1,19 @@
 extends Node3D
 ## Side-by-side comparison: the ALS mannequin's own animations played on its
 ## own standalone skeleton (left) versus the same source clips retargeted
-## onto MotusMan (the player's own body mesh, used by the Foot IK preview
-## scene) via tools/retarget_cli.gd (right). Each source FBX under
+## onto Y Bot (a candidate character for AGENT_TASKS/016's locomotion
+## prototype, being evaluated here before swapping the prototype scene over -
+## X Bot was tried first but looks visibly feminine/androgynous, not a good
+## match for the muscular ALS reference mesh shown on the left) via
+## tools/retarget_cli.gd (right). Each source FBX under
 ## assets/models/als_mannequin_standalone/ carries exactly one animation of
 ## its own, named "Unreal Take" by Unreal's FBX exporter - collected here
 ## into one AnimationLibrary per character, same pattern as
 ## tests/manual/animation/animation_preview.gd.
+## Previously compared against MotusMan (see git history for that variant) -
+## repointed to X Bot rather than kept as a third column, since this scene's
+## purpose is spot-checking whatever retarget target is currently in
+## question, not maintaining a permanent gallery.
 
 const STANDALONE_CLIPS: Dictionary = {
 	&"walk": "res://assets/models/als_mannequin_standalone/ALS_N_Walk_F.fbx",
@@ -16,16 +23,11 @@ const STANDALONE_CLIPS: Dictionary = {
 }
 
 const RETARGETED_CLIPS: Dictionary = {
-	&"walk": "res://assets/models/als_retarget_test/ALS_N_Walk_F_on_motusman.res",
-	&"sword_a": "res://assets/models/als_retarget_test/AS_Sword_A_on_motusman.res",
-	&"sword_b": "res://assets/models/als_retarget_test/AS_Sword_B_on_motusman.res",
-	&"sword_c": "res://assets/models/als_retarget_test/AS_Sword_C_on_motusman.res",
+	&"walk": "res://assets/models/als_retarget_test/ALS_N_Walk_F_on_ybot.res",
+	&"sword_a": "res://assets/models/als_retarget_test/AS_Sword_A_on_ybot.res",
+	&"sword_b": "res://assets/models/als_retarget_test/AS_Sword_B_on_ybot.res",
+	&"sword_c": "res://assets/models/als_retarget_test/AS_Sword_C_on_ybot.res",
 }
-
-## The FBX references texture paths from the author's own machine - reapply
-## the diffuse map that actually ships with the pack (same fix
-## animation_preview.gd's _setup_motusman() already uses).
-const MOTUSMAN_DIFFUSE := "res://assets/models/pistol_starter/MotusMan/sourceimages/MCG_diff.jpg"
 
 const CLIP_ORDER: PackedStringArray = ["walk", "sword_a", "sword_b", "sword_c"]
 const SECONDS_PER_CLIP := 2.5
@@ -93,13 +95,10 @@ func _retarget_track_paths(anim: Animation, new_skeleton_path: NodePath) -> void
 		anim.track_set_path(t, NodePath(String(new_skeleton_path) + ":" + String(bone_name)))
 
 
+## Y Bot's own embedded material loads correctly out of the box (no stale
+## author-machine texture path to fix, unlike MotusMan's FBX - see git
+## history for the material-reapply workaround this used to need).
 func _setup_motusman_retarget() -> AnimationPlayer:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_texture = load(MOTUSMAN_DIFFUSE)
-	mat.roughness = 0.8
-	for mesh_inst: Node in $MotusManRetargeted.find_children("*", "MeshInstance3D", true, false):
-		(mesh_inst as MeshInstance3D).material_override = mat
-
 	var ap: AnimationPlayer = $MotusManRetargeted.find_child("AnimationPlayer", true, false)
 	var lib := AnimationLibrary.new()
 	for clip_name: StringName in RETARGETED_CLIPS:

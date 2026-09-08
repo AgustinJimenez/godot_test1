@@ -114,10 +114,12 @@ static func build_bone_map_config(
 	config.shoulder_r_target = StringName(humanoid_map.get("RightShoulder", ""))
 	for side in ["Left", "Right"]:
 		var hand_source := _role_source_name(source_role_map, side + "Hand")
-		if hand_source == &"" or not humanoid_map.has(side + "Shoulder"):
+		var forearm_source := _role_source_name(source_role_map, side + "ForeArm")
+		if hand_source == &"" or forearm_source == &"" or not humanoid_map.has(side + "Shoulder"):
 			continue
 		config.arm_chains.append({
 			"source_hand": String(hand_source),
+			"source_forearm": String(forearm_source),
 			"target_shoulder": humanoid_map.get(side + "Shoulder", ""),
 			"target_arm": humanoid_map.get(side + "Arm", ""),
 			"target_forearm": humanoid_map.get(side + "ForeArm", ""),
@@ -397,6 +399,27 @@ static func _humanoid_retarget_local_pose(src_skel: Skeleton3D, src_idx: int,
 	return Transform3D(pre_basis * src_pose.basis * post_basis, origin)
 
 
+## Solves only the true 2-bone shoulder-elbow-wrist chain (target_arm ->
+## target_forearm -> target_hand); the clavicle/target_shoulder bone keeps
+## whatever rotation the earlier per-bone rotation-transfer pass gave it
+## (its own motion is subtle enough that this is a non-issue) rather than
+## being pulled into the reach solve, since an un-anchored 3-segment chain
+## has no fixed root to solve a 2-bone IK against.
+##
+## The desired elbow position (derived from the SOURCE skeleton's own actual
+## elbow, transformed the same way as the wrist target) is used as the
+## pole/bend-plane reference for an analytic 2-bone IK - this is the fix for
+## "weird bent arm" poses: the previous implementation solved the chain with
+## plain FABRIK and no bend-direction constraint at all, so a 3-joint FABRIK
+## solve has an inherent free rotational DOF (the elbow can swing to any
+## angle around the shoulder-to-wrist axis while still satisfying both bone
+## lengths) that FABRIK resolves arbitrarily based on the chain's current
+## (previous frame's rotation-transfer) pose - this is fine when source and
+## target skeletons share a similar rest pose (e.g. the Mixamo-to-Mixamo
+## retarget humanoid_actor.gd uses, where the ambiguity happens not to be
+## visually obvious) but breaks down visibly retargeting from the ALS/UE
+## Mannequin's T-pose onto a Mixamo A-pose rig - confirmed by user report of
+## bent-elbow artifacts specific to that source/target pairing.
 static func _match_arm_skeleton_positions(anim: Animation, src_skel: Skeleton3D,
 		target_skel: Skeleton3D, target_global: Dictionary, out_rot_track: Dictionary,
 		direction_map: Basis, position_scale: float, config: BoneMapConfig) -> void:
@@ -405,52 +428,60 @@ static func _match_arm_skeleton_positions(anim: Animation, src_skel: Skeleton3D,
 			target_skel, target_skel.find_bone(config.hips_target)).origin
 	for chain: Dictionary in config.arm_chains:
 		var source_hand := src_skel.find_bone(StringName(chain["source_hand"]))
-		var shoulder_idx := target_skel.find_bone(StringName(chain["target_shoulder"]))
+		var source_forearm := src_skel.find_bone(StringName(chain.get("source_forearm", "")))
 		var arm_idx := target_skel.find_bone(StringName(chain["target_arm"]))
 		var forearm_idx := target_skel.find_bone(StringName(chain["target_forearm"]))
 		var hand_idx := target_skel.find_bone(StringName(chain["target_hand"]))
-		if (source_hand < 0
-				or shoulder_idx < 0 or arm_idx < 0 or forearm_idx < 0 or hand_idx < 0
-				or not target_global.has(shoulder_idx) or not target_global.has(arm_idx)
-				or not target_global.has(forearm_idx) or not target_global.has(hand_idx)):
+		if (source_hand < 0 or source_forearm < 0
+				or arm_idx < 0 or forearm_idx < 0 or hand_idx < 0
+				or not target_global.has(arm_idx) or not target_global.has(forearm_idx)
+				or not target_global.has(hand_idx)):
 			continue
-		var joints: Array[Vector3] = [
-			_manual_global_pose(target_skel, shoulder_idx).origin,
-			_manual_global_pose(target_skel, arm_idx).origin,
-			_manual_global_pose(target_skel, forearm_idx).origin,
-			_manual_global_pose(target_skel, hand_idx).origin,
-		]
-		var lengths: Array[float] = [
-			joints[0].distance_to(joints[1]),
-			joints[1].distance_to(joints[2]),
-			joints[2].distance_to(joints[3]),
-		]
+		var shoulder_pos := _manual_global_pose(target_skel, arm_idx).origin
+		var elbow_pos := _manual_global_pose(target_skel, forearm_idx).origin
+		var wrist_pos := _manual_global_pose(target_skel, hand_idx).origin
+		var upper_len := shoulder_pos.distance_to(elbow_pos)
+		var lower_len := elbow_pos.distance_to(wrist_pos)
 		var desired_wrist := target_hips + direction_map * (
 				(_manual_global_pose(src_skel, source_hand).origin - source_hips) * position_scale)
-		_solve_fabrik(joints, lengths, desired_wrist)
-		var chain_indices := [shoulder_idx, arm_idx, forearm_idx]
-		for joint in chain_indices.size():
-			_aim_bone_at_direction(anim, target_skel, target_global, out_rot_track,
-					chain_indices[joint], (joints[joint + 1] - joints[joint]).normalized())
+		var desired_elbow := target_hips + direction_map * (
+				(_manual_global_pose(src_skel, source_forearm).origin - source_hips) * position_scale)
+		var solved := _solve_two_bone_ik(shoulder_pos, upper_len, lower_len, desired_wrist, desired_elbow)
+		_aim_bone_at_direction(anim, target_skel, target_global, out_rot_track,
+				arm_idx, (solved["elbow"] - shoulder_pos).normalized())
+		_aim_bone_at_direction(anim, target_skel, target_global, out_rot_track,
+				forearm_idx, (solved["wrist"] - solved["elbow"]).normalized())
 
 
-static func _solve_fabrik(joints: Array[Vector3], lengths: Array[float], target: Vector3) -> void:
-	var root := joints[0]
-	var total_length := lengths[0] + lengths[1] + lengths[2]
-	if root.distance_to(target) >= total_length:
-		var direction := (target - root).normalized()
-		for i in lengths.size():
-			joints[i + 1] = joints[i] + direction * lengths[i]
-		return
-	for iteration in 12:
-		joints[3] = target
-		for i in range(2, -1, -1):
-			joints[i] = joints[i + 1] + (joints[i] - joints[i + 1]).normalized() * lengths[i]
-		joints[0] = root
-		for i in lengths.size():
-			joints[i + 1] = joints[i] + (joints[i + 1] - joints[i]).normalized() * lengths[i]
-		if joints[3].distance_to(target) < 0.00001:
-			break
+## Standard analytic two-bone IK (law of cosines for the shoulder angle, a
+## pole vector for the bend-plane direction) - unlike FABRIK, this has no
+## free rotational DOF left unconstrained: the pole fixes exactly which way
+## the elbow bends. Returns {"elbow": Vector3, "wrist": Vector3}.
+static func _solve_two_bone_ik(shoulder: Vector3, upper_len: float, lower_len: float,
+		target: Vector3, pole: Vector3) -> Dictionary:
+	var to_target := target - shoulder
+	var reach := to_target.length()
+	var target_dir := to_target / reach if reach > 0.0001 else Vector3.FORWARD
+	var clamped_reach := clampf(
+			reach, absf(upper_len - lower_len) + 0.0001, upper_len + lower_len - 0.0001)
+	var cos_shoulder := clampf(
+			(upper_len * upper_len + clamped_reach * clamped_reach - lower_len * lower_len)
+			/ (2.0 * upper_len * clamped_reach), -1.0, 1.0)
+	var shoulder_angle := acos(cos_shoulder)
+	var pole_offset := pole - shoulder
+	pole_offset -= target_dir * target_dir.dot(pole_offset)
+	if pole_offset.length_squared() < 0.000001:
+		pole_offset = target_dir.cross(Vector3.UP)
+		if pole_offset.length_squared() < 0.000001:
+			pole_offset = target_dir.cross(Vector3.RIGHT)
+	var bend_axis := target_dir.cross(pole_offset.normalized())
+	if bend_axis.length_squared() < 0.000001:
+		bend_axis = Vector3.UP
+	var elbow_dir := target_dir.rotated(bend_axis.normalized(), shoulder_angle)
+	return {
+		"elbow": shoulder + elbow_dir * upper_len,
+		"wrist": shoulder + target_dir * clamped_reach,
+	}
 
 
 static func _aim_bone_at_direction(anim: Animation, target_skel: Skeleton3D,

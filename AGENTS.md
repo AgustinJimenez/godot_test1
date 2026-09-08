@@ -149,6 +149,17 @@ Godot actor forward is local `-Z`; horizontal yaw toward a direction uses
 `atan2(-direction.x, -direction.z)`. Configure asset-facing offsets on visual children, not on AI,
 collision, or navigation parents.
 
+`AnimationNodeStateMachine` has no working `start_node` property in Godot 4.6.2 (assigning it errors
+"Invalid assignment" for both `String` and `StringName` - only `states/Start/...` sub-properties
+exist, found via property-list introspection). Node-add order does not determine the initial state
+either; observed starting on the same state regardless of insertion order. A `Start`→state transition
+with `ADVANCE_MODE_AUTO` also had no effect. What actually works: call
+`(anim_tree.get("parameters/playback") as AnimationNodeStateMachinePlayback).start(&"StateName")`
+explicitly - but only after `AnimationTree` has processed at least one real frame (a physics frame if
+using `_physics_process`); calling it synchronously right after building the tree (same call, before
+any frame ran) silently does nothing since `parameters/playback` isn't live yet. Defer the forced
+start to the first `_physics_process`/`_process` tick instead of doing it at tree-construction time.
+
 ## Gameplay architecture
 
 `playground.tscn` composes `test_room.tscn` plus `player.tscn`; the nature sandbox follows the same
