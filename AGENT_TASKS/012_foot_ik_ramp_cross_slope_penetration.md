@@ -1012,6 +1012,60 @@ documented and opening a follow-up architecture task (or folding into
 to slopes individually, or design a single slope-aware correction pass that replaces all
 three. Not attempted this session.
 
+## "Extend each flat-only gate individually" tried directly - disproven, real design work needed
+
+Followed up on the "extend each flat-only gate to slopes individually" option from the
+previous section, since the user asked for it directly: a normal-agnostic version of each of
+the three gaps found above, tested against the exact `check_foot_ik_ramps.sh` (40
+failures)/`check_foot_ik_ramp_sweep.sh` (18/168)/`check_foot_ik_ramp_locomotion.sh` (13
+failures) baseline.
+
+**Attempt A - coordinator's toe/leaf envelope, sample more points instead of one.**
+`_toe_envelope_valid` picked whichever of the toe-tip/leaf-tip candidates reached farthest and
+tested only that single point via `space.intersect_point` - structurally blind to the actual
+failure shape (hundreds of clipping vertices near the toe bone's *base*, i.e. the mesh's "ball
+of the foot" region, well short of the tip). Rewrote it to sample multiple points along both
+the toe (35%/70%/100% of its reach) and leaf (60%/100%) local offsets, failing if *any* is
+embedded. **Zero measured change** (40/18/13, byte-identical to baseline) - because this whole
+function is dead code on ramps: it only runs inside `_finish_validation`, which is itself
+gated behind `coordinate_idle`'s `plan.surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT`
+(already documented above as blocking ramps entirely). A better toe/leaf check doesn't matter
+if it never executes. Reverted.
+
+**Attempt B - leg solver's `_limit_upright_shin`/`_limit_negative_rendered_knee`, drop their
+own flat-only gates.** Read both functions in full: neither's actual math is flat-ground-
+specific. The shin check is built entirely from `Vector3.DOWN` (anatomically correct even on a
+ramp - a real shin stays close to vertical regardless of slope; only the ankle bends to follow
+it), and the knee-direction check is built entirely from the leg's own animated pose
+(`_animated_knee_pole`/`_signed_knee_flexion`), never a world or surface axis. Both were
+flat-only purely by their own `normal.dot(Vector3.UP) < 0.999` gate, not because the geometry
+needed protecting from slopes. Dropped both gates (kept every other condition -
+animation/crouch/jump checks unchanged) and re-tested: `debug_shin_clamped` now genuinely
+engages on ramps (21 `true` samples across the locomotion suite, was always `false` before) -
+confirming the fix works as intended and isn't dead code like Attempt A - but **the failure
+counts still did not move at all** (40/18/13, unchanged). This shin/knee-direction correction
+solves an anatomical-realism constraint (keep the shin/knee pointing a sane direction); it was
+never designed to guarantee ground clearance, so activating it correctly doesn't touch the
+actual clipping bug. `neg_knee_clamped` never engaged at all in these cases either, meaning
+that particular correction's own trigger condition (`signed_flexion < 0` or low pole alignment)
+genuinely never fires for this failure shape - a different, unrelated leg configuration.
+Reverted.
+
+**Conclusion, now backed by three independent disproven attempts at every layer that looked
+promising (coordinator target validation, coordinator toe/leaf coverage, leg-solver joint
+corrections):** there is no existing safety layer in this pipeline whose job is "stop the
+ball/toe mesh from clipping into a sloped surface" that can simply be turned on for ramps. The
+one function shaped like that check (`_toe_envelope_valid`) is unreachable on ramps by
+construction, and reaching it (via the already-disproven coordinator-gate attempts) doesn't fix
+anything either even when reached, because `is_target_inside_stance_zone`'s flat-ground-
+calibrated bounds reject the correct ramp-following pose before the toe check even gets a
+chance to run. This isn't a threading-together-existing-parts problem anymore; it needs a
+genuinely new, purpose-built, slope-aware clearance check (sample several points across the
+toe/ball mesh footprint against the *actual* surface the foot is resting on, independent of
+`FLAT_SUPPORT_DOT`/stance-zone gating entirely), designed and tested as its own thing rather
+than by re-enabling pieces that were built for a different purpose. That's real design work,
+not a config flip - a good candidate for [015](015_foot_ik_architecture_direction.md).
+
 ## References
 
 - `tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd` - the extended check.
