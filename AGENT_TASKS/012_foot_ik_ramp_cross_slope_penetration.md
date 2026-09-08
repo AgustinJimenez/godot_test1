@@ -923,6 +923,50 @@ real, scoped follow-on work, not a dead end - the actual mechanism (`FLAT_SUPPOR
 out all ramp validation) is now understood precisely, which the next attempt can build on
 directly instead of re-deriving.
 
+## Second fix attempt: regression traced and fixed, but the toe/leaf gate still doesn't help
+
+Traced the exact cause of the first attempt's two-case regression by printing every plan's
+`owner`/`reason`/`stance_valid`/`support_valid`/`toe_valid` for the two failing normal-dot
+values live: the newly-rejected plans showed `reason=reject_invalid_stationary_outside_stance`,
+`stance=false` - **`is_target_inside_stance_zone`**, not the toe/leaf check, was the actual
+culprit. Earlier reasoning that this check was "already normal-agnostic, therefore safe" was
+correct about the geometry but incomplete about the *magnitude*: a ramp's own slope genuinely
+rests an idle foot further out (in whichever direction the ground drops away) than the
+flat-ground-calibrated `STANCE_ZONE_MAX_LONGITUDINAL`/`STANCE_ZONE_MAX_LATERAL` bounds allow -
+the same shape of problem `LOCOMOTION_LOCK`/`STAIR_SUPPORT` already needed their own exemption
+for, just not yet extended to ramps.
+
+**Fix**: exempted `LIVE_CONTACT`/`IDLE_FREEZE` from `require_stance` specifically when
+`plan.surface_normal.dot(Vector3.UP) < FLAT_SUPPORT_DOT` (a genuinely tilted surface) - flat
+ground for these two owners keeps the exact same zone check as before. Verified: the two
+previously-regressed cases (`downhill` at 15 degrees, one `uphill_cross` instance at 45
+degrees) are gone - back to the original baseline's exact 13 failures for the `top_left` case
+filter, confirmed via a byte-for-byte diff against the pre-change baseline list, not just a
+count match.
+
+**But this now-safe fix doesn't help either.** Full re-measurement: `check_foot_ik_ramps.sh`
+unchanged at 43 named-case failures (zero improvement), `check_foot_ik_ramp_locomotion.sh`
+unchanged at 13 (zero improvement, same as after the earlier raycast-miss fix alone), and
+`check_foot_ik_ramp_sweep.sh` **regressed slightly, 18 -> 19** (one new failing sweep sample) -
+confirmed via a direct, isolated before/after with the fix stashed out and reapplied, not
+inferred from `check_foot_ik_all.sh`'s pass/fail-only tracking (which cannot see a same-status,
+different-count change). Reverted this attempt too - real complexity added to a widely-shared
+validation function, for zero measured benefit and one small measured regression.
+
+**The real, valuable conclusion from both attempts**: enabling the toe/leaf/support/stance
+validation gate on ramps - correctly, without regressing anything - changes essentially
+nothing about the actual failing cases. `_toe_envelope_valid`'s single-tip-point
+`space.intersect_point` check evidently isn't what's catching whatever is producing hundreds
+of penetrating vertices across the whole foot mesh in these cases (recall: `bones={&"ball_r":
+495}` and similar - a bulk mesh clip, not a toe-tip poke). **The `FLAT_SUPPORT_DOT` gate was a
+real, confirmed architectural gap, but it is not the cause of these specific test failures.**
+This directly confirms the "Still open" note from this task's own earlier section: these
+remaining failures likely need the *leg solver itself* to have more slack at extreme
+ramp-angle/facing combinations (max hip swing, knee flexion, or shin-swing limits), not a
+coordinator-level target validation fix - a materially different, unexplored direction. Not
+attempted this session; needs its own investigation into which specific joint-limit constant
+is binding for the `top_left`/steep-facing cases before any further fix attempt.
+
 ## References
 
 - `tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd` - the extended check.
