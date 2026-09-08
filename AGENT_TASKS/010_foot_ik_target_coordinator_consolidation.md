@@ -2,11 +2,19 @@
 
 ## Status and scope
 
-New. Decided direction from [009](009_foot_ik_architecture_review.md)'s review: route every
-Foot IK target owner through `FootIKTargetCoordinator`/`FootIKTargetPlan` with real validation,
-so the same safety checks apply regardless of circumstance (idle, landing, stairs, locomotion)
-instead of each owner running its own ad-hoc logic. Goal is one enforced boundary, not ten.
-Do not commit/push until the user has live-tested each migrated owner, per `AGENTS.md`.
+**Owner migration: concluded.** Decided direction from [009](009_foot_ik_architecture_review.md)'s
+review: route every Foot IK target owner through `FootIKTargetCoordinator`/`FootIKTargetPlan`
+with real validation, so the same safety checks apply regardless of circumstance (idle, landing,
+stairs, locomotion) instead of each owner running its own ad-hoc logic. Goal is one enforced
+boundary, not ten. Of `FootIKTargetPlan.Owner`'s 12 non-`ANIMATION` values, 11 are now validated
+by the coordinator; `STAIR_SWING` is deliberately excluded (see its own section below - ground-
+support validation doesn't apply to a target that's supposed to be airborne mid-swing, not a
+deferred/risky case like the others were). Each migrated owner was live-tested by the user
+before being committed, per `AGENTS.md`. Remaining follow-on work (toe/leaf validation
+generalization, retiring now-redundant ad-hoc checks) is tracked in "Proposed order" below and
+in [015](015_foot_ik_architecture_direction.md)'s broader architecture direction - this task's
+own core objective (route every real, ground-anchored owner through one validated boundary) is
+done.
 
 ## Current state (from 009's ownership matrix)
 
@@ -669,6 +677,41 @@ The session's Godot log stayed clean throughout (steady 60fps, no `SCRIPT ERROR`
 the always-on `[FOOT_IK_PERF]`/`[FOOT_IK_ENGINE_PERF]` diagnostics, `[ANIM_COMPARE]` cases still
 synced) - though note the log itself only distinguishes a crash/script-error class of problem,
 not a subtle visual pop, so the user's own observation is still the primary signal here.
+
+## STAIR_SWING: no coordinator gate needed - owner migration effort concludes here
+
+Investigated `STAIR_SWING` the same way as `STAIR_SUPPORT` before writing anything, expecting
+it to need a similarly careful design pass. It doesn't, for a different reason than expected.
+
+**What `STAIR_SWING` actually is**: `predicted_step_targets` (the field `_legacy_owner()` reads
+to report this owner) is populated by `_desired_swing_lift`/`get_predicted_targets`, but tracing
+every consumer (`grep`-confirmed exhaustively) shows it is used *only* for the coordinator's own
+labeling and for debug visualization/tracing (`foot_ik_preview.gd`'s marker,
+`foot_ik_trace_writer.gd`) - it never drives the actual rendered target. The real ankle target
+for a `STAIR_SWING`-labeled leg is the ordinary ground-contact pipeline (the same one
+`LIVE_CONTACT` uses), with `update_swing_lift`'s returned float added as a vertical offset on
+top (`target += Vector3.UP * swing_lift` in `player_foot_ik_modifier.gd`'s main per-leg loop)
+while the foot is actively mid-swing toward the next tread.
+
+**Why no gate fits, structurally, not just as a risk judgment**: while swinging, the foot is
+*correctly* airborne - there is deliberately no ground directly beneath it, that's the entire
+point of a swing phase. Every validation gate built for every other owner in this task
+(`_has_support_at`'s raycast reconfirmation) asks "does this target rest on real ground" - for
+an in-flight swing target, the true answer is "no, and it shouldn't." Applying that check here
+wouldn't be cautious, it would be a category error: it would reject correct behavior as if it
+were a bug. Reach safety - the one property that *would* make sense to check regardless of
+ground contact - is already enforced unconditionally inside `foot_ik_leg_solver.gd`'s `solve()`
+(`dist := clampf(to_target.length(), min_reach, upper_length + lower_length - 0.001)`),
+independent of any coordinator gate, for every owner including this one. There is no actual
+safety gap being left open by leaving `STAIR_SWING` unmigrated.
+
+**Conclusion**: `STAIR_SWING` is deliberately left out of `migrated_owner` - not deferred, not
+still needing its own design pass, but concluded to not need one. This closes out the
+owner-migration effort this task was originally scoped around: of `FootIKTargetPlan.Owner`'s
+12 non-`ANIMATION` values, 11 are validated by the coordinator and 1 (`STAIR_SWING`) is
+correctly excluded because ground-support validation does not apply to a target that is
+supposed to be airborne. No code changed for this finding - it is a scoping conclusion, not an
+implementation.
 
 ## References
 
