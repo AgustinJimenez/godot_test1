@@ -237,6 +237,134 @@ static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 	return anim
 
 
+## Retargets a clip meant to be layered as an ADDITIVE (delta-from-rest-pose)
+## animation - e.g. ALS's own idle secondary-motion sway, ALS_N_SecondaryMotion,
+## which is authored as small deviations from rest, not absolute poses. Using
+## retarget_clip() (full rotation transfer) on such a clip produces nonsense:
+## confirmed on ALS_N_SecondaryMotion, where the arm bones retargeted via
+## retarget_clip() reached 78 degrees - clearly wrong for what's meant to be a
+## subtle sway, because retarget_clip() treats every sampled rotation as an
+## absolute character pose, exactly as intended for a normal (non-additive)
+## clip, but wrong for a clip whose values are only meaningful as deltas.
+##
+## Per bone per frame: computes the source's rotation delta from ITS OWN rest
+## pose in source-bone-local space, converts that delta into target-bone-local
+## space using the same parent/rest basis change _humanoid_retarget_local_pose()
+## applies to full poses (just without the position/rest-origin component,
+## since an additive track only ever carries rotation), and writes the
+## resulting small delta as the output key. No position track, no arm IK
+## correction (both are meaningless for a pure rotation delta) - the result is
+## meant to be combined with a base/absolute clip via an AnimationNodeAdd2 at
+## runtime, not played on its own.
+##
+## KNOWN BROKEN for a real chunk of bones, do not wire this into a running
+## character yet. The pre_basis/post_basis conjugation copied from the
+## absolute-pose formula is only guaranteed to preserve "zero delta in ->
+## zero delta out" when src_rest_basis == target_rest_basis for a bone -
+## false in general (two rigs' rest-pose local axis conventions commonly
+## differ per bone, which is exactly what retargeting has to correct for).
+## Confirmed both ways on ALS_N_SecondaryMotion retargeted onto Y Bot: Hips
+## (zero authored motion) produced a flat, constant 90-degree output at
+## every frame - the "unanimated bone with a static conversion-mismatch
+## offset" bug this function's caller now filters out entirely (see
+## ROTATION_STATIC_THRESHOLD_DEG below). But bones WITH real authored motion
+## are equally exposed and NOT filtered: RightShoulder reached 183 degrees,
+## RightUpLeg 183 degrees, LeftUpLeg 174 degrees, several finger bones 60-94
+## degrees - the filter only catches the zero-motion case, not "real motion
+## processed through the same flawed conjugation." A correct fix needs the
+## delta re-expressed via each bone's own rest-orientation SIMILARITY
+## transform (target_rest_basis * src_rest_basis.inverse(), or equivalent -
+## not this function's borrowed pre/post-basis pair, which is valid for
+## absolute poses but not proven delta-preserving), then re-verified the
+## same way (does a genuinely near-zero source delta stay near-zero after
+## conversion, for every bone, not just the one checked). Not attempted here
+## given the risk of shipping something subtly wrong again.
+static func retarget_additive_clip(src_skeleton: Skeleton3D, src_animation: Animation,
+		target_skeleton: Skeleton3D, config: BoneMapConfig, force_loop: bool = false) -> Animation:
+	var bone_tracks: Dictionary = {}
+	for t in src_animation.get_track_count():
+		if src_animation.track_get_type(t) != Animation.TYPE_ROTATION_3D:
+			continue
+		var path := src_animation.track_get_path(t)
+		if path.get_subname_count() == 0:
+			continue
+		bone_tracks[StringName(path.get_subname(0))] = t
+
+	var anim := Animation.new()
+	anim.length = src_animation.length
+	anim.loop_mode = Animation.LOOP_LINEAR if force_loop else src_animation.loop_mode
+
+	# A bone with NO real authored motion in the source clip (delta ~= identity
+	# at every frame) still produces a nonzero, CONSTANT output delta if the
+	# two skeletons' rest-pose local axis conventions differ for that bone -
+	# confirmed on Hips: a flat, unmoving 90-degree delta across the entire
+	# clip, purely from pre_basis/post_basis not composing back to identity
+	# when delta_basis IS identity (a real bug in the pre/post-basis
+	# conversion below for that case, not authored motion). Rather than
+	# rederive the conversion to be provably delta-preserving in general
+	# (unverified risk), skip any bone whose source track never actually
+	# deviates from rest beyond ROTATION_STATIC_THRESHOLD_DEG - sidesteps the
+	# bug outright for unanimated bones without needing to trust the
+	# conversion math for a case it demonstrably gets wrong.
+	const ROTATION_STATIC_THRESHOLD_DEG := 1.0
+	var out_rot_track: Dictionary = {}
+	for src_name: StringName in config.bone_map:
+		var target_name: StringName = config.bone_map[src_name]
+		if (not bone_tracks.has(src_name) or target_skeleton.find_bone(target_name) < 0
+				or src_skeleton.find_bone(src_name) < 0):
+			continue
+		var src_idx := src_skeleton.find_bone(src_name)
+		var src_rest_rot := src_skeleton.get_bone_rest(src_idx).basis.get_rotation_quaternion()
+		var has_real_motion := false
+		var probe_count := int(ceil(src_animation.length * RETARGET_SAMPLE_HZ)) + 1
+		for p in probe_count:
+			var probe_time: float = minf(p / RETARGET_SAMPLE_HZ, src_animation.length)
+			var probe_rot: Quaternion = src_animation.rotation_track_interpolate(
+					bone_tracks[src_name], probe_time)
+			if rad_to_deg((src_rest_rot.inverse() * probe_rot).get_angle()) > ROTATION_STATIC_THRESHOLD_DEG:
+				has_real_motion = true
+				break
+		if not has_real_motion:
+			continue
+		var track := anim.add_track(Animation.TYPE_ROTATION_3D)
+		anim.track_set_path(track, NodePath(String(target_skeleton.name) + ":" + String(target_name)))
+		out_rot_track[target_name] = track
+
+	var sample_count := int(ceil(src_animation.length * RETARGET_SAMPLE_HZ)) + 1
+	for i in sample_count:
+		var time: float = minf(i / RETARGET_SAMPLE_HZ, src_animation.length)
+		for src_name: StringName in config.bone_map:
+			if not out_rot_track.has(config.bone_map[src_name]):
+				continue
+			var target_name: StringName = config.bone_map[src_name]
+			var src_idx := src_skeleton.find_bone(src_name)
+			var target_idx := target_skeleton.find_bone(target_name)
+			var src_rest_rot := src_skeleton.get_bone_rest(src_idx).basis.get_rotation_quaternion()
+			var src_pose_rot: Quaternion = src_animation.rotation_track_interpolate(
+					bone_tracks[src_name], time)
+			var delta_basis := Basis(src_rest_rot.inverse() * src_pose_rot)
+
+			var src_parent := src_skeleton.get_bone_parent(src_idx)
+			var target_parent := target_skeleton.get_bone_parent(target_idx)
+			var src_parent_rest_basis := (
+					Basis.IDENTITY if src_parent < 0
+					else src_skeleton.get_bone_global_rest(src_parent).basis)
+			var target_parent_rest_basis := (
+					Basis.IDENTITY if target_parent < 0
+					else target_skeleton.get_bone_global_rest(target_parent).basis)
+			var src_rest_basis := src_skeleton.get_bone_rest(src_idx).basis
+			var target_rest_basis := target_skeleton.get_bone_rest(target_idx).basis
+			# Same pre/post basis-change shape as _humanoid_retarget_local_pose(),
+			# applied to a pure rotation delta instead of a full pose - no
+			# position/rest-origin term, additive tracks carry rotation only.
+			var pre_basis := target_parent_rest_basis.inverse() * src_parent_rest_basis
+			var post_basis := (src_rest_basis.inverse() * src_parent_rest_basis.inverse()
+					* target_parent_rest_basis * target_rest_basis)
+			var target_delta := (pre_basis * delta_basis * post_basis).get_rotation_quaternion()
+			anim.track_insert_key(out_rot_track[target_name], time, target_delta)
+	return anim
+
+
 ## Removes a one-shot settling intro from selected tracks when that motion is
 ## reused as a loop. The clip end becomes the start and eases back into the
 ## authored motion, without changing unrelated upper-body tracks.

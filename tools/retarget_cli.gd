@@ -24,6 +24,11 @@ extends SceneTree
 ##   godot --headless --script res://tools/retarget_cli.gd -- \
 ##       source=res://path/to/clip.fbx target_model=res://path/to/model.fbx \
 ##       output=res://path/to/output.res [force_loop=true]
+##
+## Pass additive=true for a clip authored as a delta-from-rest-pose (e.g.
+## ALS_N_SecondaryMotion) rather than an absolute pose - see
+## HumanoidRetargeter.retarget_additive_clip()'s own doc comment for why this
+## needs a different retarget path, not just a different runtime blend.
 
 
 func _initialize() -> void:
@@ -54,11 +59,16 @@ func _initialize() -> void:
 		return
 
 	var force_loop: bool = String(options.get("force_loop", "false")) == "true"
+	var additive: bool = String(options.get("additive", "false")) == "true"
 	var config := HumanoidRetargeter.build_bone_map_config(
 			ALS_SOURCE_ROLE_MAP, target["humanoid_map"] as Dictionary)
-	var retargeted := HumanoidRetargeter.retarget_clip(source["skeleton"] as Skeleton3D,
-			source["animation"] as Animation, target["skeleton"] as Skeleton3D,
-			config, force_loop)
+	var retargeted := (
+			HumanoidRetargeter.retarget_additive_clip(source["skeleton"] as Skeleton3D,
+					source["animation"] as Animation, target["skeleton"] as Skeleton3D,
+					config, force_loop) if additive
+			else HumanoidRetargeter.retarget_clip(source["skeleton"] as Skeleton3D,
+					source["animation"] as Animation, target["skeleton"] as Skeleton3D,
+					config, force_loop))
 
 	(source["root"] as Node).free()
 	(target["root"] as Node).free()

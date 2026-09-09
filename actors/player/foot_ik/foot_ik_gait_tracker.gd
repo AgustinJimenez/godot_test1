@@ -47,6 +47,17 @@ func update_animation_discontinuity(delta: float) -> void:
 	# call sets it, before anything downstream can see it.
 	if delta <= 0.0 or _owner.player_body == null or _owner.player_body.anim_player == null:
 		return
+	# AnimationPlayer.get_current_animation_position() errors (engine-level,
+	# not a script exception) when current_animation is unset - true for any
+	# player_body whose locomotion is driven entirely through an
+	# AnimationTree instead of direct anim_player.play() calls (confirmed via
+	# a headless run attaching this modifier to an AnimationTree-driven
+	# rig - real PlayerBody always calls anim_player.play() per state, so
+	# current_animation is never empty there; this guard only ever triggers
+	# for that different playback style). Treat "no current animation" as
+	# "no discontinuity information available" rather than erroring every frame.
+	if _owner.player_body.anim_player.current_animation.is_empty():
+		return
 	var anim_pos: float = _owner.player_body.anim_player.current_animation_position
 	if _owner._prev_animation_position >= 0.0 and anim_pos < _owner._prev_animation_position - 0.05:
 		_owner._animation_discontinuity_hold = DISCONTINUITY_HOLD_FRAMES
