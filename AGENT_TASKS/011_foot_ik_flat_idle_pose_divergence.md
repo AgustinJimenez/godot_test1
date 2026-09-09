@@ -2,9 +2,11 @@
 
 ## Status and scope
 
-Fixed (uncommitted, awaiting live confirmation per `AGENTS.md`). Two hypotheses were
-disproven before finding the real mechanism below - kept for the record so they aren't
-re-tried blind.
+**Fixed, committed (`ed8061b`), and confirmed** - `FOOT_IK_ANIMATION_COMPARISON_CHECK` passes
+in the full exhaustive suite (`check_foot_ik_all.sh`: "No new/unexpected failures"), and the
+live user-confirmed `SYNCED` result mentioned below has held across many later sessions' runs
+of `foot_ik_preview.tscn`. Two hypotheses were disproven before finding the real mechanism
+below - kept for the record so they aren't re-tried blind.
 
 ## The bug
 
