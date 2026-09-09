@@ -2,17 +2,18 @@
 
 Repository guidance for coding agents. Keep this file short and durable: do not append session
 history, live coordinates, rejected experiments, or long feature specifications here. Put active
-evidence in the numbered task named by `CURRENT_TASK.md`; Git preserves old revisions.
+evidence in the relevant `AGENT_TASKS/NNN_name.md` file; Git preserves old revisions.
 
 ## Project and task workflow
 
 This is a first-person survival-horror learning sandbox built with Godot 4.6 (Forward+, Jolt) and
 statically typed GDScript. Explain Godot ideas briefly in plain language when building systems.
 
-Active work lives in one independent `AGENT_TASKS/NNN_name.md` file selected by `CURRENT_TASK.md`.
-Completed or parked work remains in its own numbered file. Update `AGENTS.md` only for rules likely
-to prevent rediscovery across several future tasks. There is no centralized planning document;
-numbered tasks and the code/tests describe the current state.
+Active work lives directly in the `AGENT_TASKS/` folder, one independent `NNN_name.md` file per
+task - there is no separate pointer file selecting a "current" one. Completed or parked work
+remains in its own numbered file. Update `AGENTS.md` only for rules likely to prevent
+rediscovery across several future tasks. There is no centralized planning document; numbered
+tasks and the code/tests describe the current state.
 Keep the active task a concise current handoff: replace superseded status instead of appending
 session history, and move long investigation narratives to `AGENT_TASKS/archive/`.
 
