@@ -5,8 +5,8 @@
 **Branch:** `feature/gpu-cloth-outfit-fit`
 
 **Status:** This branch includes layer-aware component fitting, seam preservation, render-only
-component isolation, and generic solid-shell thickness/silhouette preservation. Reusable fitting
-guidance is recorded in `AGENTS.md` and the Decisions Log.
+component isolation, and generic solid-shell thickness/silhouette preservation. Detailed fitting
+history stays in this task; only reusable cross-task rules belong in `AGENTS.md`.
 
 ## What was added
 

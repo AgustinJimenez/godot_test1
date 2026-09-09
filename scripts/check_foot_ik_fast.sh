@@ -32,6 +32,9 @@ if ! "$project_dir/scripts/check.sh" >"$log_file" 2>&1; then
 fi
 printf '%s\n' "PROJECT_CHECK PASS"
 
+run_scene "Foot IK clearance geometry" "FOOT_IK_CLEARANCE_GEOMETRY_CHECK PASS" \
+	5 res://tests/manual/foot_ik/foot_ik_clearance_geometry_check.tscn
+
 run_scene "Foot IK release pose" "FOOT_IK_RELEASE_POSE_CHECK PASS" \
 	5 res://tests/manual/foot_ik/foot_ik_release_pose_check.tscn
 

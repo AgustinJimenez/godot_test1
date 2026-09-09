@@ -655,10 +655,10 @@ func _test_airborne_blend_eases() -> void:
 	_section("airborne jump/fall blend eases (not a hard step)")
 	await _new_scene()
 
-	var range_: float = _scene.get("AIR_BLEND_VELOCITY_RANGE")
+	var blend_range: float = _scene.get("AIR_BLEND_VELOCITY_RANGE")
 	var jump_v: float = _scene.get("JUMP_VELOCITY")
-	_check("blend range is smaller than a real jump's peak speed", range_ < jump_v,
-			"range=%.2f jump_velocity=%.2f" % [range_, jump_v])
+	_check("blend range is smaller than a real jump's peak speed", blend_range < jump_v,
+			"range=%.2f jump_velocity=%.2f" % [blend_range, jump_v])
 
 	# The old signf(velocity.y) bug produced ONLY -1, 0, or 1 - three
 	# discrete values no matter how many distinct velocities were sampled.

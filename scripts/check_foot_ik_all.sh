@@ -112,6 +112,8 @@ run_subscript() {
 	fi
 }
 
+run_subscript "Foot IK clearance measurement check" "check_foot_ik_clearance.sh"
+
 run_check "Foot IK release pose check" "FOOT_IK_RELEASE_POSE_CHECK PASS" \
 	5 res://tests/manual/foot_ik/foot_ik_release_pose_check.tscn
 run_check "Foot IK slope target lifecycle check" \
