@@ -2,9 +2,19 @@
 
 ## Current status
 
-Open. Implementing the user-approved **measurement-only prototype**, not a pose correction.
-The new evaluator is test-only and does not change bones, targets, ownership, or movement.
-The remaining ramp clipping is not fixed by this work.
+**Real fixes closed for this round** - see "Severity triage and a fixed wall-conform bug" and
+its follow-up sections below. Two real bugs found and fixed: the primary contact sample
+conforming a foot to a ramp's own near-vertical end cap as if it were ground, and
+`_retract_to_reachable`'s recovery search being itself hardcoded flat-ground-only. Matrix
+failures 40 -> 20, worst real depth 87.9 -> 13.2mm, full behavioral suite green. All remaining
+residual cases (top and bottom ramp edges alike) are the same accepted fixture limit - a foot
+standing past the end of a floating slab with no landing under it - not open bugs.
+
+**Still open**: the **measurement-only prototype** below (a general slope-aware clearance
+evaluator, validated against 810 replayed samples but not yet wired into an actual pose
+correction) and the architecture decision of whether/how to extend it into production. The new
+evaluator is test-only and does not change bones, targets, ownership, or movement - it does not
+fix the ramp clipping itself; the two fixes above do that part.
 
 Historical experiments and exact prior traces are preserved in
 [the archived investigation](archive/012_ramp_cross_slope_investigation_20260908.md).
