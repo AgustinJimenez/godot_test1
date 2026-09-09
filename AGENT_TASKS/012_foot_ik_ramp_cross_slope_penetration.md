@@ -116,13 +116,21 @@ terms as the limit gets steeper, which is backwards.
 30-degree `cross_left`) are the same `over_slab=false` past-the-void limit as above, just
 smaller. Separately, `check_foot_ik_ramp_sweep.sh` (a denser, different case grid) surfaced one
 case *deeper* than its own original baseline (105 mm at `sweep_bottom_left`, vs 84 mm before) -
-traced this directly with a temporary diagnostic replicating its exact spawn parameters
-(reverted after use): the failing foot is genuinely `over_slab=true` (unlike the top-edge
-cases) yet its primary raycast still misses even with `require_walkable` fully disabled,
-proving this specific miss is pre-existing and unrelated to any fix here - a different,
-not-yet-investigated raycast-miss-near-a-ramp's-own-bottom-edge category that this session's
-fixes changed the pose-feedback dynamics around (which exact case surfaces as "worst") without
-being its cause. Left open, not a regression to chase further right now.
+traced with a temporary diagnostic replicating its exact spawn parameters (reverted after use).
+
+**Correction to an earlier read of this trace**: this session first read that diagnostic's
+`over_slab=true` field as proof this was a genuinely different, not-yet-understood raycast miss
+- that was wrong, and the field itself was the bug, not the game code. It compared the
+*local-frame* X/Z of the un-corrected, pre-solve animated foot position against the box's own
+half-extents - valid only for a point near the box's actual surface height, not for a point
+that floats far below it (here, world Y 0.28 vs a ramp body spanning roughly -0.1 to 2.7).
+Working out the real world-space geometry from the traced `ramp_pos`/`ramp_rot`: this ramp's
+own bottom edge sits at world Z ~= +0.11, and the foot's actual world Z is -0.088 - **~20cm
+already past the ramp's bottom edge, standing on nothing** - the exact same
+floating-slab-with-no-landing limit as the top-edge cases, just at the opposite end. Every
+raycast (primary, the 4.6m recovery search, and all four edge-nudge steps) correctly reports a
+miss, because there genuinely is no ground there. Nothing further to fix; this is the same
+accepted fixture limit as above, not a new or different bug.
 
 ## Prototype contract
 
