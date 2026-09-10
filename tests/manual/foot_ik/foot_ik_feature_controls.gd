@@ -8,6 +8,7 @@ var _ik: PlayerFootIKModifier
 var _player: Player
 var _planner: FootIKLandingPlanner
 var _runtime: FootIKRuntimeSettings
+var _balance: PlayerBalanceCounterLeanModifier
 var _panel: PanelContainer
 var _status: Label
 var _registered_controls: Array[Dictionary] = []
@@ -27,6 +28,7 @@ func _ready() -> void:
 	_player = body.get_parent() as Player
 	_planner = _ik._ground_sampler._landing_planner
 	_runtime = _ik._ground_sampler._settings
+	_balance = body._balance_counter_lean_modifier
 	_build_panel()
 
 
@@ -103,6 +105,10 @@ func _build_panel() -> void:
 	_add_toggle(vbox, "Stair prediction", _ik, &"step_prediction_enabled")
 	_add_toggle(vbox, "Force both feet planted", _ik, &"force_plant_mode")
 	_add_toggle(vbox, "Movement ledge safety", _player, &"ledge_safety_enabled")
+	_add_toggle(vbox, "Balance counter-lean (017/018)", _balance, &"enabled")
+	_add_slider(vbox, "Counter-lean degrees/m", _balance, &"lean_degrees_per_meter",
+			-60.0, 60.0, 1.0)
+	_add_slider(vbox, "Counter-lean max degrees", _balance, &"max_lean_degrees", 0.0, 30.0, 1.0)
 	_add_option(vbox, "Locomotion mode", _ik, &"locomotion_mode", [
 			{"label": "Legacy gait", "value": PlayerFootIKModifier.LocomotionMode.LEGACY},
 			{"label": "Residual stair", "value": PlayerFootIKModifier.LocomotionMode.RESIDUAL_STAIR},

@@ -231,6 +231,7 @@ var _held_pose: Animation
 var _look_pose_modifier: PlayerLookPoseModifier
 var _hand_grip_modifier: PlayerHandGripModifier
 var _foot_ik_modifier: PlayerFootIKModifier
+var _balance_counter_lean_modifier: PlayerBalanceCounterLeanModifier
 var _skeleton_visualizer: PlayerSkeletonDebugVisualizer
 var _flashlight_attachment: BoneAttachment3D
 var _flashlight_model: Node3D
@@ -336,13 +337,11 @@ func _apply_stored_profile_cosmetics() -> void:
 			PlayerProfile.hairstyle_id, PlayerProfile.facial_hair_id, PlayerProfile.eyebrows_id,
 			PlayerProfile.hair_color_id, _cosmetic_attachments)
 
-## Rebuilds everything _ready() built around the skeleton - material, the
-## look/hand-grip/foot-IK modifiers, the held flashlight attachment, and
-## the full retargeted "moves" library - all of which reference the specific
-## Skeleton3D/AnimationPlayer _setup_character_scene() just found and can't outlive it.
-## Shared by _ready() (first setup) and swap_character() (a later runtime re-skin,
-## e.g. from the debug menu's character list) so there is exactly one place this
-## construction happens, not two versions that can drift.
+## Rebuilds everything _ready() built around the skeleton - material, the look/hand-grip/
+## foot-IK/balance modifiers, the held flashlight attachment, and the full retargeted "moves"
+## library - all of which reference the specific Skeleton3D/AnimationPlayer
+## _setup_character_scene() just found and can't outlive it. Shared by _ready() and
+## swap_character() (a later runtime re-skin) so there is exactly one place this happens.
 func _build_character_visuals() -> void:
 	# Lets the debug menu's animation preview keep looping while the pause
 	# menu has the rest of the game (including this node's own parent,
@@ -358,6 +357,12 @@ func _build_character_visuals() -> void:
 	_foot_ik_modifier = FOOT_IK_MODIFIER.new() as PlayerFootIKModifier
 	_foot_ik_modifier.player_body = self
 	skeleton.add_child(_foot_ik_modifier)
+	# After Foot IK in child order so it reads this tick's final pelvis shift (018 finding E's
+	# same reasoning) - disabled by default, see the modifier's own doc comment.
+	_balance_counter_lean_modifier = PlayerBalanceCounterLeanModifier.new()
+	_balance_counter_lean_modifier.name = &"BalanceCounterLeanModifier"
+	_balance_counter_lean_modifier.player_body = self
+	skeleton.add_child(_balance_counter_lean_modifier)
 	_setup_held_flashlight()
 
 	var lib := AnimationLibrary.new()
@@ -404,6 +409,7 @@ func swap_character(new_character_scene: PackedScene) -> void:
 	_look_pose_modifier = null
 	_hand_grip_modifier = null
 	_foot_ik_modifier = null
+	_balance_counter_lean_modifier = null
 	_skeleton_visualizer = null
 	_flashlight_attachment = null
 	_flashlight_model = null
@@ -466,13 +472,9 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 			break
 
 	# The real gameplay path (use_humanoid_retarget defaults true) delegates entirely to
-	# HumanoidRetargeter - proven bit-for-bit equivalent to this function's own former inline copy
-	# of the same algorithm (see CURRENT_TASK.md's Phase 1: verified live via test_retarget_parity
-	# against this exact "moves" library, across two different clips, with the only divergence
-	# being the arm FABRIK step's inherent redundant-DOF sensitivity - present even when this
-	# function's old code retargeted the same clip twice in a row against itself). Everything
-	# below this early return is debug-only scaffolding for the throwaway hand/leg retarget-mode
-	# comparison scene and is never reached in real gameplay.
+	# HumanoidRetargeter - proven bit-for-bit equivalent to this function's own former inline
+	# copy of the same algorithm. Everything below this early return is debug-only scaffolding
+	# for the throwaway hand/leg retarget-mode comparison scene, never reached in real gameplay.
 	if use_humanoid_retarget:
 		var anim := HumanoidRetargeter.retarget_clip(
 				src_skeleton, src, skeleton, _retarget_config, force_loop)
@@ -680,14 +682,11 @@ func clamp_head_pitch(p: float) -> float:
 	return clampf(p, -deg_to_rad(MAX_BEND_DOWN_DEG), deg_to_rad(MAX_BEND_UP_DEG))
 
 
-## The modifier's cached pose is the one rendered this frame. Skeleton3D
-## restores the base animation pose after modifiers finish, so camera and
-## clearance consumers use this accessor instead of reading the reset pose.
-## Foot IK runs after the look modifier (018 finding E) and can move bones the look modifier's
-## own cache already captured (the pelvis in particular) - prefer its final, all-bone snapshot
-## whenever it actually ran this frame; the look modifier's own cache (which Foot IK's snapshot
-## already includes for bones only the look modifier ever touches) is the fallback for when
-## Foot IK is inactive/suppressed/airborne and its snapshot is a stale earlier frame instead.
+## The modifier's cached pose is the one rendered this frame - Skeleton3D restores the base
+## animation pose after modifiers finish, so camera/clearance/trace consumers use this instead.
+## Foot IK runs after the look modifier and can move bones the look cache already captured (the
+## pelvis) - prefer Foot IK's final all-bone snapshot when fresh (018 finding E); the look
+## modifier's own cache is the fallback for when Foot IK is inactive/suppressed/airborne.
 func get_visual_bone_global_pose(bone_idx: int) -> Transform3D:
 	if _foot_ik_modifier != null and _foot_ik_modifier.has_fresh_final_bone_poses():
 		return _foot_ik_modifier.get_final_bone_global_pose(bone_idx)
