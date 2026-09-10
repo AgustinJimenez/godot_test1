@@ -594,22 +594,14 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 	return anim
 
 
-## Detects target_skeleton's own bone-naming convention (MotusMan by default, but not assumed -
-## see CURRENT_TASK.md's Phase 4) and returns its role-name -> real-bone-name table (role names
-## being BONE_MAP's target-side convention, e.g. "Hips"/"Head"/"LeftShoulder"). Used both to
-## build this skeleton's BoneMapConfig (see _setup_character_scene()) and, via
-## resolve_bone_name(), by anything outside the retargeter that needs to look up one specific
-## bone by its canonical role (held-item/flashlight attachment points, player.gd's head/torso-
-## clearance tracking). Mirrors the same null/"B-" special case
-## character_editor_import_handler.gd's _import_character already uses (those skeletons don't
-## follow the simple "prefix + role" pattern reliably enough for full_map_from_prefix). Prefers
-## a catalog manifest's own humanoid_map (curated, already verified complete by the character
-## editor's Rig tab when it was set up) over re-detecting one from the skeleton -
-## detect_bone_prefix() only recognizes "<prefix>Hips"/"B-hips" conventions, not every bone
-## naming a catalog character might use (e.g. Universal Base Characters' UE-Mannequin
-## "pelvis"/"clavicle_l" names, which have no prefix to detect at all). Falls back to the
-## original re-detection for anything not in the catalog (raw test scenes, characters added
-## before this existed).
+## Detects target_skeleton's own bone-naming convention (MotusMan by default, but not assumed)
+## and returns its role-name -> real-bone-name table (role names being BONE_MAP's target-side
+## convention, e.g. "Hips"/"Head"/"LeftShoulder"). Used both to build this skeleton's
+## BoneMapConfig and, via resolve_bone_name(), by anything outside the retargeter that needs one
+## specific bone by its canonical role. Prefers a catalog manifest's own curated humanoid_map
+## over re-detecting one from the skeleton - detect_bone_prefix() only recognizes
+## "<prefix>Hips"/"B-hips" conventions, not every bone naming a catalog character might use.
+## Falls back to the original re-detection for anything not in the catalog.
 static func _detect_target_humanoid_map(
 		target_skeleton: Skeleton3D, model_path: String) -> Dictionary:
 	for info: Dictionary in CharacterCatalog.list_all().values():
@@ -691,7 +683,14 @@ func clamp_head_pitch(p: float) -> float:
 ## The modifier's cached pose is the one rendered this frame. Skeleton3D
 ## restores the base animation pose after modifiers finish, so camera and
 ## clearance consumers use this accessor instead of reading the reset pose.
+## Foot IK runs after the look modifier (018 finding E) and can move bones the look modifier's
+## own cache already captured (the pelvis in particular) - prefer its final, all-bone snapshot
+## whenever it actually ran this frame; the look modifier's own cache (which Foot IK's snapshot
+## already includes for bones only the look modifier ever touches) is the fallback for when
+## Foot IK is inactive/suppressed/airborne and its snapshot is a stale earlier frame instead.
 func get_visual_bone_global_pose(bone_idx: int) -> Transform3D:
+	if _foot_ik_modifier != null and _foot_ik_modifier.has_fresh_final_bone_poses():
+		return _foot_ik_modifier.get_final_bone_global_pose(bone_idx)
 	if _look_pose_modifier != null:
 		return _look_pose_modifier.get_adjusted_global_pose(bone_idx)
 	return skeleton.get_bone_global_pose(bone_idx)

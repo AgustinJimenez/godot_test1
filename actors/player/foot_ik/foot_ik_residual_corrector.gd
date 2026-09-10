@@ -54,6 +54,7 @@ func process(skel: Skeleton3D, space: PhysicsDirectSpaceState3D, delta: float) -
 				leg["target"], leg["upper"], leg["lower"], weight, weight, delta)
 	for i in skel.get_bone_count():
 		_owner._final_bone_poses[i] = skel.get_bone_global_pose(i)
+	_owner._final_bone_poses_frame = current_frame
 
 
 func _sample_leg(skel: Skeleton3D, to_world: Transform3D, space: PhysicsDirectSpaceState3D,

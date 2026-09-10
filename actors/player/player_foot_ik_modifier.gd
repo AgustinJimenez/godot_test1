@@ -38,8 +38,7 @@ const DEEP_PLANT_PENETRATION := 0.05
 @export var velocity_noise_floor: float = 0.03
 ## Minimum time (seconds) for ground_weight to rise from 0 to 1 - caps how fast the correction
 ## can snap back ON. A walk cycle's vertical velocity crosses exactly zero for one frame at the
-## swing arc's top, which reads as "foot stopped, must be planted," briefly pulling the foot
-## down mid-air before the next frame's real velocity releases it.
+## swing arc's top, briefly reading as "foot stopped, must be planted" mid-air.
 @export var ground_weight_rise_time: float = 0.24
 ## Same idea, opposite direction. An earlier version let the fall happen in a single frame, but
 ## that also fired when recovering from a small residual rise near a swing peak, snapping "leg
@@ -67,9 +66,8 @@ var force_plant_mode: bool = false
 ## than leaving an unreachable target to produce an unbounded squat.
 @export_range(0.0, 1.0, 0.005) var step_down_max_crouch: float = 0.6
 ## Max speed (m/s) the shared pelvis may RISE back toward the animated pose after a reach-limit
-## sink (the per-footfall stair shake's release edge). The sink itself still ENGAGES instantly to
-## avoid stretching the leg, but the single-frame upward pop at each foot re-plant becomes a
-## controlled rise instead. 0.0 disables shaping.
+## sink. The sink itself still ENGAGES instantly to avoid stretching the leg, but the single-
+## frame upward pop at each foot re-plant becomes a controlled rise instead. 0.0 disables it.
 @export_range(0.0, 4.0, 0.1) var shared_drop_release_rate: float = 1.5
 ## Max speed (m/s) the shared pelvis may SINK during an idle settle. Walking engages stay
 ## instant (see _shape_shared_drop's doc comment); stationary, a gradual engage reads as a
@@ -104,18 +102,16 @@ var _leg_lengths: Dictionary = {} # side -> {upper, lower: float}
 var _sole_down_local: Dictionary = {} # side -> Vector3, one of the 6 principal axes
 ## Max extent of this leg's planted bind geometry below the foot bone's origin (meters), measured
 ## once at rig setup - fed into effective_offset so a planted sole clears the ground even when
-## the ball/toe geometry hangs below the bone origins. Orientation-invariant: the foot's local
-## down-axis always matches the ground normal, so this scalar never varies with tilt.
+## the ball/toe geometry hangs below the bone origins. Orientation-invariant by construction.
 var _sole_depth_below_foot: Dictionary = {} # side -> float
 ## Toe's rest-pose position/orientation relative to the foot, in the foot's own rest-pose local
 ## space - see _solve_leg's toe section for why this (not the toe's *animated* pose) is what the
 ## toe gets rigidly rebuilt from each frame.
 var _toe_rest_offset: Dictionary = {} # side -> Vector3
 var _toe_rest_relative_basis: Dictionary = {} # side -> Basis
-## Orthonormal local-space frame per foot bone (columns: right, sole-down, toe-forward) - see
-## _solve_leg's foot-orientation section: replaces a plain "align sole-down to ground normal"
-## quaternion, whose twist around the down axis could fall out of an unstable perpendicular-axis
-## choice and spin the foot ~90+ degrees when the animated sole was near-opposite the target.
+## Orthonormal local-space frame per foot bone (right, sole-down, toe-forward) - replaces a
+## plain "align sole-down to ground normal" quaternion, whose twist around the down axis could
+## spin the foot ~90+ degrees when the animated sole was near-opposite the target.
 var _foot_frame_local: Dictionary = {} # side -> Basis
 ## Last toe-leaf transforms tracked too; stale weighted leaf poses kinked the
 ## visible toe even when every corrected parent measured flat.
@@ -176,10 +172,15 @@ var debug_raw_weight: Dictionary = {} # side -> float, pre-smoothing gait_tracke
 var debug_contact_lost: Dictionary = {} # side -> bool, forces raw_weight to 0 when true
 var debug_retracted: Dictionary = {} # side -> bool
 var _final_bone_poses: Dictionary = {} # int bone index -> Transform3D (skeleton space)
+var _final_bone_poses_frame := -1
 var _smoothed_shared_drop := 0.0
 var _pelvis_lateral_shift := Vector3.ZERO
 func get_final_bone_global_pose(bone_idx: int) -> Transform3D:
 	return _final_bone_poses.get(bone_idx, Transform3D())
+## True only if _final_bone_poses was populated this exact physics frame (018 finding E) -
+## false while suppressed/inactive/airborne, when it holds a stale earlier frame instead.
+func has_fresh_final_bone_poses() -> bool:
+	return _final_bone_poses_frame == Engine.get_physics_frames()
 var _forced_support_side: StringName:
 	get: return _stair_predictor.get_support_side() if _stair_predictor != null else &""
 var _knee_pole_local: Dictionary = {} # side -> Vector3
@@ -203,6 +204,7 @@ func reset_runtime_state() -> void:
 		d.clear()
 	_has_prev_pelvis_pose = false
 	_pelvis_base_pose_frame = -1
+	_final_bone_poses_frame = -1
 	_smoothed_shared_drop = 0.0
 	_pelvis_lateral_shift = Vector3.ZERO
 	_leg_fresh_pose_cache_frame = -1
@@ -362,10 +364,9 @@ func _compute_new_foot_basis_world(
 	world_forward = world_forward.normalized()
 	var world_right := desired_down.cross(world_forward).normalized()
 	return Basis(world_right, desired_down, world_forward) * local_frame.inverse()
-## Measures how far this leg's own planted bind geometry extends below the foot bone's origin,
-## once at rig setup - origins sit at joints, not the lowest skinned sole point, so origins plus
-## a toe-tip margin alone still look sunk into the floor. Data-driven: CPU-skins every skinned
-## vertex through the flat planted pose and reports the deepest point below the foot.
+## Measures how far this leg's own planted bind geometry extends below the foot bone's origin.
+## Data-driven: CPU-skins every skinned vertex through the flat planted pose and reports the
+## deepest point below the foot, since origins alone still look sunk into the floor.
 func _measure_leg_sole_depth(skel: Skeleton3D, side: StringName) -> float:
 	var indices: Dictionary = _bone_indices[side]
 	var chain := {int(indices["foot"]): true}
@@ -407,10 +408,9 @@ func _measure_leg_sole_depth(skel: Skeleton3D, side: StringName) -> float:
 			var in_chain: bool = bone_index >= 0 and chain.has(bone_index)
 			is_chain_bind[bind_index] = in_chain
 			if in_chain:
-				# Same composition as the runtime skin (bone pose then the
-				# skin's per-bone bind pose), with the chain bone taking its
-				# flat planted pose - omitting the bind pose here made the
-				# measured sole depth ~1.5cm shallow vs the rendered mesh.
+				# Same composition as the runtime skin (bone pose then the skin's per-bone
+				# bind pose) - omitting the bind pose here made the measured sole depth
+				# ~1.5cm shallow vs the rendered mesh.
 				planted_bind_transforms[bind_index] = (
 						chain_poses[bone_index] * skin.get_bind_pose(bind_index))
 			elif bone_index >= 0:
@@ -586,9 +586,8 @@ func _process_modification_with_delta(delta: float) -> void:
 		var animated_contact_position: Vector3 = contact["animated_contact_position"]
 		var animated_contact_normal: Vector3 = contact["animated_contact_normal"]
 		var deeply_penetrated := foot_pos.y - ground_target.y < -0.01
-		# This is pre-IK animation penetration, not evidence against a valid
-		# frozen support. The solve corrects it; contact loss, void reach, body
-		# movement, and turning retain their own freeze-release paths.
+		# Pre-IK animation penetration, not evidence against a valid frozen support - the solve
+		# corrects it; contact loss/void reach/body movement/turning have their own release paths.
 		# A toe on the upper tread can hide the lower support beneath the ankle.
 		var straddling_riser: bool = animated_contact_hit and (
 				animated_contact_position.y - ground_target.y > GROUND_CONTACT_DISTANCE)
@@ -724,6 +723,7 @@ func _process_modification_with_delta(delta: float) -> void:
 	_apply_support_pelvis_and_legs(skel, to_world, per_leg, shared_drop, delta)
 	for i in skel.get_bone_count():
 		_final_bone_poses[i] = skel.get_bone_global_pose(i)
+	_final_bone_poses_frame = Engine.get_physics_frames()
 ## Mirrors foot_ik_gait_tracker velocity for the step-down static test. Skeleton
 ## space, so root stair-hover translation cannot masquerade as foot motion.
 func _animated_vertical_speed(side: StringName, animated_foot_pos: Vector3,
