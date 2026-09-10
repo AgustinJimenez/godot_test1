@@ -146,8 +146,7 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 			180.0 - _settings.retained_upper_knee_flexion_degrees)
 	var retained_minimum_reach := sqrt(maxf(0.0, upper * upper + lower * lower
 			- 2.0 * upper * lower * cos(retained_knee_angle)))
-	# Also qualify on excess knee flexion alone, gated on this foot being the higher of the two -
-	# else it fights a foot already settling onto the lower tread (idle_lower_acquiring hunting).
+	# Also qualify on excess knee flexion alone (gated on being the higher foot).
 	var flexion_too_tight := (surface.y > other_surface.y
 			and hip.distance_to(target) < retained_minimum_reach - 0.005)
 	var partial_upper_support := (lowest_hit and character != null
@@ -159,6 +158,8 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 	var enabled: bool = (_settings.upper_foot_reposition_enabled
 			and animation_name.contains("idle")
 			and not landing_committed_target.has(side)
+			and not idle_lower_acquiring.has(side)
+			and not idle_lower_latched_target.has(side)
 			and surface.is_finite()
 			and normal.dot(Vector3.UP) >= STAIR_TREAD_UP_DOT
 			and (surface.y > other_surface.y + _owner.step_min_rise
@@ -272,8 +273,7 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 			hit = raycast_ground(space, foot_pos + edge_dir * step, -1.0, true)
 			if hit["hit"]: break
 	var raw_target: Vector3 = hit["position"] if hit["hit"] else foot_pos
-	# Flat buries the front edge with no walkable hit; prefer the other foot's live
-	# slope over this side's stale flat normal, the best available prior here. See 012.
+	# Flat buries the edge; prefer the other foot's live slope over a stale normal. See 012.
 	var raw_normal: Vector3 = hit["normal"] if hit["hit"] else smoothed_normal.get(
 			&"right" if side == &"left" else &"left", Vector3.UP)
 	if _owner.step_prediction_enabled:
