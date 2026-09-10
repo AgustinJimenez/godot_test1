@@ -383,6 +383,13 @@ var _perf_log_enabled := OS.get_environment("FOOT_IK_PERF_LOG") == "1"
 var _perf_accum_usec := 0
 var _perf_call_count := 0
 var _perf_window_start_frame := 0
+# Worst single solve() call this window (018 finding H: an average hides a rare expensive
+# frame - a 145-candidate bend search or a compressed-upper reach search can spike one call
+# far above the mean without moving the average enough to notice).
+var _perf_worst_call_usec := 0
+var _perf_current_frame := -1
+var _perf_current_frame_usec := 0
+var _perf_worst_window_frame_usec := 0
 
 
 func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3,
@@ -395,16 +402,31 @@ func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3
 	var start_usec := Time.get_ticks_usec()
 	_solve_impl(skel, side, hip_pos, target, upper_length, lower_length,
 			ground_weight, chain_weight, delta, options)
-	_perf_accum_usec += Time.get_ticks_usec() - start_usec
+	var call_usec := Time.get_ticks_usec() - start_usec
+	_perf_accum_usec += call_usec
 	_perf_call_count += 1
+	_perf_worst_call_usec = maxi(_perf_worst_call_usec, call_usec)
 	var frame := Engine.get_physics_frames()
+	if frame != _perf_current_frame:
+		_perf_worst_window_frame_usec = maxi(
+				_perf_worst_window_frame_usec, _perf_current_frame_usec)
+		_perf_current_frame = frame
+		_perf_current_frame_usec = 0
+	_perf_current_frame_usec += call_usec
 	if frame - _perf_window_start_frame < 60:
 		return
-	print("[FOOT_IK_PERF] frame=%d fps=%.1f solve_calls=%d avg_solve_usec=%.1f total_solve_ms=%.2f" % [
+	# Flush the in-progress frame's total too - otherwise the very last frame of the window
+	# never gets compared, since no "next frame started" event happens before this print.
+	_perf_worst_window_frame_usec = maxi(_perf_worst_window_frame_usec, _perf_current_frame_usec)
+	print(("[FOOT_IK_PERF] frame=%d fps=%.1f solve_calls=%d avg_solve_usec=%.1f " +
+			"worst_call_usec=%d worst_frame_total_usec=%d total_solve_ms=%.2f") % [
 			frame, Engine.get_frames_per_second(), _perf_call_count,
-			float(_perf_accum_usec) / maxi(_perf_call_count, 1), _perf_accum_usec / 1000.0])
+			float(_perf_accum_usec) / maxi(_perf_call_count, 1),
+			_perf_worst_call_usec, _perf_worst_window_frame_usec, _perf_accum_usec / 1000.0])
 	_perf_accum_usec = 0
 	_perf_call_count = 0
+	_perf_worst_call_usec = 0
+	_perf_worst_window_frame_usec = 0
 	_perf_window_start_frame = frame
 
 
