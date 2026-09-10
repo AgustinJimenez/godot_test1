@@ -21,9 +21,8 @@ trap 'rm -f "$log_file"' EXIT
 # Exact labels currently known to fail, kept in sync by hand after each verified session.
 # A label not on this list that fails is treated as a new regression (see exit code above).
 # Established 2026-09-07: see AGENT_TASKS/013 (knee-flex/idle-plant residuals) and
-# AGENT_TASKS/012 (ramp-edge residuals in the two ramp-matrix/sweep scripts below, which
-# AGENTS.md already flags as needing independent runs - this was the first time this session
-# actually ran them standalone rather than only through check_foot_ik.sh's narrower coverage).
+# AGENT_TASKS/012 (ramp-edge residuals, now graded quantitatively via run_ramp_subscript below
+# instead of by this label list - see AGENT_TASKS/018's finding I).
 KNOWN_BASELINE_FAILURES='
 Foot IK split-height knee flexion check
 Foot IK idle-loop knee continuity check
@@ -33,9 +32,14 @@ Foot IK shallow-corner knee flexion check
 Foot IK walk-to-idle stance check
 check_foot_ik_ramp_locomotion.sh
 check_foot_ik_locomotion.sh
-check_foot_ik_ramps.sh
-check_foot_ik_ramp_sweep.sh
 '
+
+# Quantitative baselines for the two ramp-matrix scripts (018's finding I) - established
+# 2026-09-10 from a verified clean rerun of each script standalone.
+RAMPS_MAX_FAILED_CASES=20
+RAMPS_MAX_DEPTH_M=0.02
+RAMP_SWEEP_MAX_FAILED_CASES=16
+RAMP_SWEEP_MAX_DEPTH_M=0.11
 
 _pass_count=0
 _baseline_fail_count=0
@@ -90,10 +94,10 @@ run_check() {
 run_check_in_log() {
 	label=$1
 	pattern=$2
-	if grep -Eq "$pattern" "$log_file"; then
-		_record "$label" 1
-	else
+	if grep -q "SCRIPT ERROR" "$log_file" || ! grep -Eq "$pattern" "$log_file"; then
 		_record "$label" 0
+	else
+		_record "$label" 1
 	fi
 }
 
@@ -107,6 +111,41 @@ run_subscript() {
 		_record "$label" 1
 	else
 		_record "$label" 0
+		echo "  --- $log_file ($script) ---"
+		cat "$log_file"
+	fi
+}
+
+# run_ramp_subscript LABEL SCRIPT MAX_FAILED_CASES MAX_DEPTH_M - like run_subscript, but for the
+# two ramp-matrix scripts already known to fail today: instead of trusting the whole-script
+# label alone (018's finding I: a worse run inside an already-red script could hide behind the
+# same "FAIL known" line forever), count the actual "FOOT_IK_RAMP_CASE FAIL" lines and their
+# worst max_depth_m directly - the scene's own printed "failed_cases="/"worst_depth_m=" summary
+# field was checked and found unreliable for check_foot_ik_ramps.sh specifically (it reported
+# failed_cases=0 worst_depth_m=0.0 in a run that actually had 20 real per-case FAIL lines up to
+# max_depth_m=0.0132), so this counts the ground truth instead of trusting that summary line.
+# Only within-bound failures count as known; anything worse is a new/unexpected failure.
+run_ramp_subscript() {
+	label=$1
+	script=$2
+	max_failed_cases=$3
+	max_depth_m=$4
+	if "$project_dir/scripts/$script" >"$log_file" 2>&1; then
+		_record "$label" 1
+		return
+	fi
+	failed_cases=$(grep -c "FOOT_IK_RAMP_CASE FAIL" "$log_file")
+	worst_depth_m=$(grep -o "max_depth_m=[0-9.]*" "$log_file" | cut -d= -f2 \
+		| awk 'BEGIN{m=0} {if ($1+0>m) m=$1+0} END{print m}')
+	detail="failed_cases=${failed_cases}/${max_failed_cases} worst_depth_m=${worst_depth_m}/${max_depth_m}"
+	if [ "$failed_cases" -le "$max_failed_cases" ] \
+			&& awk -v a="$worst_depth_m" -v b="$max_depth_m" 'BEGIN{exit !(a<=b)}'; then
+		_baseline_fail_count=$((_baseline_fail_count + 1))
+		printf 'FAIL known %s (%s)\n' "$label" "$detail"
+	else
+		_new_fail_labels="${_new_fail_labels}${label} (${detail})
+"
+		printf 'FAIL NEW  %s (%s)\n' "$label" "$detail"
 		echo "  --- $log_file ($script) ---"
 		cat "$log_file"
 	fi
@@ -224,8 +263,10 @@ run_check "Foot IK stationary planted-foot stability check" \
 run_subscript "check_foot_ik_ramp_locomotion.sh" check_foot_ik_ramp_locomotion.sh
 run_subscript "check_foot_ik_stair_repeat.sh" check_foot_ik_stair_repeat.sh
 run_subscript "check_foot_ik_locomotion.sh" check_foot_ik_locomotion.sh
-run_subscript "check_foot_ik_ramps.sh" check_foot_ik_ramps.sh
-run_subscript "check_foot_ik_ramp_sweep.sh" check_foot_ik_ramp_sweep.sh
+run_ramp_subscript "check_foot_ik_ramps.sh" check_foot_ik_ramps.sh \
+	"$RAMPS_MAX_FAILED_CASES" "$RAMPS_MAX_DEPTH_M"
+run_ramp_subscript "check_foot_ik_ramp_sweep.sh" check_foot_ik_ramp_sweep.sh \
+	"$RAMP_SWEEP_MAX_FAILED_CASES" "$RAMP_SWEEP_MAX_DEPTH_M"
 
 echo ""
 echo "=== Foot IK full suite summary ==="

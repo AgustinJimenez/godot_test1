@@ -26,6 +26,37 @@ run_scene() {
 	rg "$expected" "$log_file"
 }
 
+# run_scene_all LABEL QUIT_AFTER SCENE GODOT_ARGS EXPECTED... - like run_scene, but requires
+# every EXPECTED pattern to be present (not just one), for a scene that reports several
+# independent sub-results in one shared run. GODOT_ARGS is a single word-split string (may be
+# empty) passed through to the scene after "--".
+run_scene_all() {
+	label=$1
+	quit_after=$2
+	scene=$3
+	godot_args=$4
+	shift 4
+	if ! godot --headless --fixed-fps 60 --path "$project_dir" "$scene" \
+			--quit-after "$quit_after" $godot_args >"$log_file" 2>&1; then
+		cat "$log_file"
+		printf '%s\n' "$label failed."
+		exit 1
+	fi
+	if rg -q "SCRIPT ERROR" "$log_file"; then
+		cat "$log_file"
+		printf '%s\n' "$label did not pass (SCRIPT ERROR)."
+		exit 1
+	fi
+	for expected in "$@"; do
+		if ! rg -q "$expected" "$log_file"; then
+			cat "$log_file"
+			printf '%s\n' "$label did not pass: missing '$expected'."
+			exit 1
+		fi
+	done
+	rg "FOOT_IK_.*_CHECK PASS" "$log_file"
+}
+
 if ! "$project_dir/scripts/check.sh" >"$log_file" 2>&1; then
 	cat "$log_file"
 	exit 1
@@ -44,9 +75,13 @@ run_scene "Foot IK slope target lifecycle" "FOOT_IK_SLOPE_TARGET_LIFECYCLE_CHECK
 run_scene "Foot IK authored collider shape" "FOOT_IK_AUTHORED_COLLIDER_SHAPE_CHECK PASS" \
 	5 res://tests/manual/foot_ik/foot_ik_authored_collider_shape_check.tscn
 
-run_scene "Foot IK core preview" \
-	"FOOT_IK_(STRETCH|AIRBORNE|BODY_PENETRATION|POSE_CONTINUITY|STAIR_LOCOMOTION|STAIR_SETTLE)_CHECK PASS" \
-	360 res://tests/manual/foot_ik/foot_ik_preview.tscn -- --foot-ik-check
+run_scene_all "Foot IK core preview" 360 res://tests/manual/foot_ik/foot_ik_preview.tscn \
+	"-- --foot-ik-check" \
+	"FOOT_IK_STRETCH_CHECK PASS" "FOOT_IK_AIRBORNE_CHECK PASS samples=[1-9]" \
+	"FOOT_IK_BODY_PENETRATION_CHECK PASS samples=[1-9]" \
+	"FOOT_IK_POSE_CONTINUITY_CHECK PASS samples=[1-9]" \
+	"FOOT_IK_STAIR_LOCOMOTION_CHECK PASS steps=[1-9]" \
+	"FOOT_IK_STAIR_SETTLE_CHECK PASS samples=[1-9]"
 run_scene "Foot IK stale grounded landing commitment" "FOOT_IK_KNEE_FLEX_CHECK PASS" \
 	400 res://tests/manual/foot_ik/foot_ik_knee_flex_check.tscn -- replay_stale_grounded_commit=true
 run_scene "Foot IK shallow split-height pose" "FOOT_IK_KNEE_FLEX_CHECK PASS" \
