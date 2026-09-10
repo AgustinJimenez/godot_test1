@@ -241,6 +241,11 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 ## next riser). A miss (nothing beneath the toe reach) is a reach/void concern handled
 ## elsewhere, not this check's job, so it passes here.
 func _toe_envelope_valid(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan) -> bool:
+	return _toe_envelope_valid_at(space, plan, plan.ankle_target)
+## Same check against a candidate ankle_target other than the plan's own - lets a retreat
+## search (below) probe positions without mutating the plan being evaluated.
+func _toe_envelope_valid_at(space: PhysicsDirectSpaceState3D,
+		plan: FootIKTargetPlan, ankle_target: Vector3) -> bool:
 	var toe_local: Vector3 = _owner._toe_rest_offset.get(plan.side, Vector3.ZERO)
 	var leaf_local: Vector3 = _owner._leaf_rest_offset.get(plan.side, Vector3.ZERO)
 	if toe_local.is_zero_approx() and leaf_local.is_zero_approx():
@@ -276,7 +281,7 @@ func _toe_envelope_valid(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPla
 	# reaches back under the body toward the other foot's higher surface).
 	# Test the toe's own candidate point directly instead - only a point that is
 	# actually embedded in solid geometry is a real clip.
-	var toe_point: Vector3 = plan.ankle_target + tip_offset
+	var toe_point: Vector3 = ankle_target + tip_offset
 	var query := PhysicsPointQueryParameters3D.new()
 	query.position = toe_point
 	query.collision_mask = FootIKGroundSampler.GROUND_COLLISION_MASK

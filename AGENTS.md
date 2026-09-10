@@ -431,3 +431,85 @@ every entrypoint and sibling script in one pass, continuing past failures, and s
 changes) from new/unexpected ones, which make it exit non-zero. `check_foot_ik.sh` itself stays
 fail-fast on purpose for a quick single-issue check; use the `_all` script for anything you plan
 to trust before committing.
+
+`check_foot_ik_all.sh` itself used to grade the two ramp-matrix scripts by whole-script label, so
+a worse run inside an already-red script could hide forever behind the same `FAIL known` line -
+fixed by counting the actual `FOOT_IK_RAMP_CASE FAIL` lines and worst `max_depth_m` directly
+instead of trusting `check_foot_ik_ramps.sh`'s own printed `failed_cases=`/`worst_depth_m=`
+summary field, which was itself found to be unreliable (reported `0`/`0.0` in a run that actually
+had 20 real per-case failures). Verify the harness's own bookkeeping the same way you'd verify
+any other code - do not assume a passing/known-failing suite result is trustworthy just because
+it has always been treated as the ground truth.
+
+A `SkeletonModifier3D`'s "final pose" accessor is only truly final if it is captured after every
+modifier in the chain has run, not just the one that built the cache. `PlayerFootIKModifier`
+already computed a complete post-solve snapshot every frame, but `get_visual_bone_global_pose()`
+still preferred `PlayerLookPoseModifier`'s own earlier cache unconditionally - correct for bones
+only the look modifier ever touches, silently stale for the pelvis, which Foot IK moves
+afterward. A new modifier added later in the chain (e.g. a balance/counter-lean layer) makes the
+same class of snapshot stale again unless whichever modifier runs last publishes the canonical
+one. Frame-stamp any such cache (`Engine.get_physics_frames()`) so a consumer can tell fresh from
+stale rather than assuming "was populated at all" is enough.
+
+When snapshotting "what value was already validated/accepted" to compare against later, capture
+it inline at the exact site where the real value is selected - do not restate the same
+field-priority logic in a second place. A live-tested fix compared a coordinator-validated
+target against a re-derived snapshot that read `target` before `ground_target`, while the real
+solve-time selection reads `ground_target` first whenever `preserve_idle`/`brace_upper` is true
+(a very common idle-stance case) - the mismatch silently invalidated the flag almost always,
+making an expensive guard run far more than intended (visible pose change plus a measurable FPS
+cost). The fix was to snapshot the actual local variable at its real assignment site, not to
+"fix" the restated condition to match; a supposedly-equivalent restatement of selection logic is
+exactly where this kind of bug hides.
+
+A brand-new script file's first appearance in a headless test run can produce multiple transient
+false failures across unrelated scenes (Godot's script-class import cache still catching up,
+observed the moment a `.gd.uid` file first appeared mid-run) - before treating a fresh run's
+failures as a real regression from a newly-added file, rerun the full suite once more and rerun
+the specific failing scenes individually; if they pass clean the second time, it was the cache,
+not the code.
+
+A pelvis/gait quantity gated behind a specific condition (e.g. `is_flat_idle`, `is_edge_asym`)
+can read as exactly zero in a case that still looks visually asymmetric to a person watching -
+an ordinary split stair stance, both feet individually flat on their own tread but at very
+different heights, satisfies `is_flat_idle` and never triggers `_pelvis_lateral_shift`'s
+non-zero branch at all. Do not reuse an existing gated signal for a new, differently-scoped
+purpose (a cosmetic balance/counter-lean layer, say) without confirming its own gating actually
+covers the case the new feature is meant to address; compute an independent signal instead if it
+doesn't.
+
+A straight-line `move_toward` between two world-space surface points at different heights (the
+idiom this file uses throughout for idle repositioning) only ever checks its two endpoints
+against geometry, never the path between them - it can visibly clip through a step's edge/riser
+mid-transition even though both endpoints are individually valid, because interpolating X/Y/Z
+together takes a shortcut that dips below the higher tread while still short of it horizontally.
+A guessed fixed-height lift/arc over the path is not the fix (tried first, still clipped, and
+separately needed shrinking once already after it silently ate into an unrelated per-frame joint-
+step budget); check the actual swept path against real geometry each frame and hold at the
+blocking point instead of pushing through - the character's own continued rotation re-aims next
+frame's raw probe, so holding is not a stuck state. This is a different, smaller fix than the
+general "deliberate recovery step" feature this project has also discussed; do not conflate them.
+
+`FootClearanceEvaluator.evaluate_box()` (pure box-vs-points geometry, no physics query) is cheap
+enough to run every frame for a handful of sample points and is the right tool for asserting "did
+this point ever penetrate real geometry during a live replay," not just "is the settled pose
+clean" - a repeated-rotation-on-stairs regression check found a real toe/leaf clip this way
+(10cm deep, building up over many consecutive frames) that no existing check caught, because
+every existing check only measured vertical clearance to whatever's directly below the *settled*
+foot. Find the actually-relevant collider(s) generically at runtime (a small-sphere
+`intersect_shape` query, then read each hit's `CollisionShape3D`/`BoxShape3D`) rather than
+hardcoding tread coordinates, since the point may be near either the surface it's leaving or the
+one it's approaching, not the one directly beneath it.
+
+Foot IK's target-coordinator toe/leaf envelope check (`_toe_envelope_valid`, `AGENT_TASKS/008`)
+only runs for an owner that reaches `_finish_validation` at all - `legacy_transition_active`
+(true whenever *either* foot is mid lower-tread transition) silently disables coordinator
+validation for every owner except the three lower-transition ones themselves, even for a
+completely different, already-settled foot on a totally different owner (e.g. `LANDING_UPPER`)
+that isn't transitioning at all. A real live toe-clip investigation initially "fixed" the toe-
+envelope check itself (adding a retreat-toward-hip search) and saw zero effect, because the
+clipping foot's owner never reached that check in the first place - always confirm which owner
+governs the leg's target at the exact failing frame (`get_plan(side).owner`/`.reason`) before
+assuming which validation path is responsible; a target can be governed by an entirely different
+subsystem than the one being debugged, and two structurally-plausible fixes can both miss for
+this reason before the actual gate is found.

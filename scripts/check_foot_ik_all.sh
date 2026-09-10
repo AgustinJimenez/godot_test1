@@ -32,7 +32,11 @@ Foot IK shallow-corner knee flexion check
 Foot IK walk-to-idle stance check
 check_foot_ik_ramp_locomotion.sh
 check_foot_ik_locomotion.sh
+Foot IK stationary planted-foot stability check
 '
+# "Foot IK stationary planted-foot stability check" added 2026-09-10: its turn-penetration
+# gate correctly fails on a real, unfixed toe/leaf-through-riser clip during idle rotation on
+# stairs - see AGENT_TASKS/019_foot_ik_toe_riser_clip_during_rotation.md.
 
 # Quantitative baselines for the two ramp-matrix scripts (018's finding I) - established
 # 2026-09-10 from a verified clean rerun of each script standalone.

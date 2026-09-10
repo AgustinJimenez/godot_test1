@@ -4,6 +4,11 @@ extends Node3D
 ## cancelling its plant latch and visibly swept the corrected foot every loop.
 
 const JOINT_LIMIT_CHECK := preload("res://tests/manual/foot_ik/foot_ik_joint_limit_check.gd")
+const CLEARANCE_EVALUATOR := preload("res://tools/foot_ik/foot_clearance_evaluator.gd")
+## A straight-line reposition slide was found to visibly clip through a stair riser mid-
+## transition (only endpoints were ever checked) - sampled every frame during the existing turn
+## sweep below, against whatever tread/riser box collider(s) are actually near the foot.
+const MAX_TURN_PENETRATION_M := 0.001
 
 const LIVE_POSITION := Vector3(14.30828, 2.101, 3.989683)
 const LIVE_YAW_DEG := 67.7457025658242
@@ -82,6 +87,9 @@ var _turn_previous_feet: Dictionary = {}
 var _turn_max_foot_step := 0.0
 var _turn_max_foot_step_side := &""
 var _turn_max_foot_step_frame := -1
+var _turn_max_penetration_m := 0.0
+var _turn_penetration_side := &""
+var _turn_penetration_frame := -1
 var _stance_cache_aligned := false
 var _timed_idle_handoff_smooth := false
 var _checking_rehome := false
@@ -206,6 +214,7 @@ func _process_turn_check() -> void:
 	var turn_index := _turn_frame - TURN_WARMUP_FRAMES - 1
 	if turn_index < LIVE_TURN_YAWS_DEG.size():
 		_player.rotation.y = deg_to_rad(LIVE_TURN_YAWS_DEG[turn_index])
+	var space := _player.get_world_3d().direct_space_state
 	for side: StringName in [&"left", &"right"]:
 		var foot_position := _final_foot_position(side)
 		if _turn_previous_feet.has(side):
@@ -215,8 +224,41 @@ func _process_turn_check() -> void:
 				_turn_max_foot_step_side = side
 				_turn_max_foot_step_frame = turn_index
 		_turn_previous_feet[side] = foot_position
+		_sample_turn_penetration(space, side, foot_position, turn_index)
+		_sample_turn_penetration(
+				space, side, _final_joint_position(side, &"toe"), turn_index)
 	if turn_index >= LIVE_TURN_YAWS_DEG.size() + TURN_HOLD_FRAMES:
 		_begin_rehome_check()
+
+
+## Checks one world-space point against whatever tread/riser box collider(s) are actually near
+## it right now - not a single presumed tread, since a mid-slide foot can be near either the
+## surface it's leaving or the one it's approaching.
+func _sample_turn_penetration(space: PhysicsDirectSpaceState3D, side: StringName,
+		point: Vector3, turn_index: int) -> void:
+	var query := PhysicsShapeQueryParameters3D.new()
+	var probe := SphereShape3D.new()
+	probe.radius = 0.05
+	query.shape = probe
+	query.transform = Transform3D(Basis.IDENTITY, point)
+	query.collision_mask = _ik._ground_sampler.GROUND_COLLISION_MASK
+	query.collide_with_areas = false
+	for hit: Dictionary in space.intersect_shape(query, 4):
+		var body: Object = hit.get("collider")
+		if not (body is StaticBody3D):
+			continue
+		for child in (body as StaticBody3D).get_children():
+			if not (child is CollisionShape3D):
+				continue
+			var shape: Shape3D = (child as CollisionShape3D).shape
+			if not (shape is BoxShape3D):
+				continue
+			var result := CLEARANCE_EVALUATOR.evaluate_box(PackedVector3Array([point]),
+					(child as CollisionShape3D).global_transform, (shape as BoxShape3D).size)
+			if result.available and result.max_penetration_m > _turn_max_penetration_m:
+				_turn_max_penetration_m = result.max_penetration_m
+				_turn_penetration_side = side
+				_turn_penetration_frame = turn_index
 
 
 func _begin_rehome_check() -> void:
@@ -538,6 +580,7 @@ func _finish_check() -> void:
 		passed = passed and int(_frozen_samples[side]) == SAMPLE_FRAMES
 		passed = passed and float(_max_drift[side]) <= MAX_PLANTED_DRIFT
 	passed = passed and _turn_max_foot_step <= MAX_TURN_FOOT_STEP
+	passed = passed and _turn_max_penetration_m <= MAX_TURN_PENETRATION_M
 	passed = passed and _stance_cache_aligned
 	passed = passed and _timed_idle_handoff_smooth
 	var rehome_target: Vector3 = _ik._ground_sampler.smoothed_target.get(
@@ -589,6 +632,8 @@ func _finish_check() -> void:
 	var template := ("FOOT_IK_IDLE_PLANT_STABILITY_CHECK %s samples=%d "
 			+ "frozen_left=%d frozen_right=%d drift_left_m=%.6f drift_right_m=%.6f "
 			+ "limit_m=%.3f turn_step_m=%.6f turn_side=%s turn_frame=%d turn_limit_m=%.3f "
+			+ "turn_penetration_m=%.6f turn_penetration_side=%s turn_penetration_frame=%d "
+			+ "turn_penetration_limit_m=%.3f "
 			+ "stance_cache_aligned=%s timed_idle_handoff_smooth=%s "
 			+ "rehome_observed=%s rehome_inside=%s rehome_step_m=%.6f rehome_limit_m=%.3f "
 			+ "rehome_stance_limit_frames=%d knee_guard_frames=%d "
@@ -606,7 +651,9 @@ func _finish_check() -> void:
 			_frozen_samples[&"left"], _frozen_samples[&"right"],
 			_max_drift[&"left"], _max_drift[&"right"], MAX_PLANTED_DRIFT,
 			_turn_max_foot_step, String(_turn_max_foot_step_side),
-			_turn_max_foot_step_frame, MAX_TURN_FOOT_STEP, str(_stance_cache_aligned),
+			_turn_max_foot_step_frame, MAX_TURN_FOOT_STEP,
+			_turn_max_penetration_m, String(_turn_penetration_side),
+			_turn_penetration_frame, MAX_TURN_PENETRATION_M, str(_stance_cache_aligned),
 			str(_timed_idle_handoff_smooth), str(_rehome_observed), str(rehome_inside),
 			_rehome_max_foot_step, MAX_REHOME_FOOT_STEP, _rehome_stance_limit_frames,
 			_knee_guard_constrained_frames, _knee_guard_max_step, MAX_GUARDED_KNEE_STEP,
