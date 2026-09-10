@@ -123,9 +123,10 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName, leg: Dictio
 	if (not (coordinate_idle or coordinate_landing or coordinate_locomotion
 				or coordinate_stair)
 			or not migrated_owner):
-		plan.stance_valid = true
-		plan.support_valid = plan.valid
-		plan.reach_valid = true
+		plan.stance_status = FootIKTargetPlan.ConstraintStatus.NOT_APPLICABLE
+		plan.support_status = (FootIKTargetPlan.ConstraintStatus.SATISFIED if plan.valid
+				else FootIKTargetPlan.ConstraintStatus.VIOLATED)
+		plan.reach_status = FootIKTargetPlan.ConstraintStatus.NOT_APPLICABLE
 		return plan
 	if plan.owner == FootIKTargetPlan.Owner.IDLE_LOWER_LATCH:
 		plan.reason = "validated_lower_support"
@@ -167,11 +168,16 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName, leg: Dictio
 func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan,
 		leg: Dictionary, require_stance: bool, delta: float,
 		check_toe: bool = true) -> FootIKTargetPlan:
-	plan.stance_valid = (not require_stance
-			or (_owner._ground_sampler.is_target_inside_stance_zone(
-					plan.side, plan.surface_target)
-			and _owner._ground_sampler.is_target_inside_stance_zone(
-						plan.side, plan.ankle_target)))
+	const STATUS := FootIKTargetPlan.ConstraintStatus
+	if not require_stance:
+		plan.stance_status = STATUS.NOT_APPLICABLE
+	else:
+		plan.stance_status = (STATUS.SATISFIED
+				if (_owner._ground_sampler.is_target_inside_stance_zone(
+						plan.side, plan.surface_target)
+				and _owner._ground_sampler.is_target_inside_stance_zone(
+						plan.side, plan.ankle_target))
+				else STATUS.VIOLATED)
 	# IDLE_LOWER_ACQUIRE's surface_target is a move_toward-interpolated waypoint, not a
 	# settled raycast-confirmed surface - mid-transition it can sit at an XZ/Y combination
 	# with no real ground directly beneath it even while correctly heading toward one, so
@@ -186,17 +192,22 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 	# predictor is actually converging toward, not its currently-smoothed value.
 	elif plan.owner == FootIKTargetPlan.Owner.STAIR_SUPPORT:
 		support_target = _owner._stair_predictor.get_current_support_surface_target()
-	plan.support_valid = _has_support_at(space, support_target)
+	plan.support_status = (STATUS.SATISFIED if _has_support_at(space, support_target)
+			else STATUS.VIOLATED)
 	var hip: Vector3 = leg.get(&"hip_pos", Vector3.ZERO)
 	var reach: float = float(leg.get(&"upper", 0.0)) + float(leg.get(&"lower", 0.0))
-	plan.reach_valid = hip.distance_to(plan.ankle_target) \
-			<= reach + _owner.step_down_max_crouch
+	plan.reach_status = (STATUS.SATISFIED
+			if hip.distance_to(plan.ankle_target) <= reach + _owner.step_down_max_crouch
+			else STATUS.VIOLATED)
 	# Raw recovery (check_toe=false) is already the fallback for a rejected primary
 	# candidate; vetoing it with the same check that rejected the primary would leave
 	# the leg with no target at all (full release to raw animation, which floats badly
 	# on uneven ground) instead of a small, better-than-nothing toe overlap.
-	plan.toe_valid = true if not check_toe else _toe_envelope_valid(space, plan)
-	if check_toe:
+	if not check_toe:
+		plan.toe_status = STATUS.NOT_APPLICABLE
+	else:
+		var envelope_ok := _toe_envelope_valid(space, plan)
+		plan.toe_status = STATUS.SATISFIED if envelope_ok else STATUS.VIOLATED
 		var current_frame := Engine.get_physics_frames()
 		var prev_streak: int = int(_toe_invalid_streak.get(plan.side, 0))
 		# A zero-delta or already-advanced-this-frame call must not consume the streak budget -
@@ -204,19 +215,22 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 		var streak: int = prev_streak
 		if (delta > 0.0
 				and int(_toe_invalid_streak_frames.get(plan.side, -1)) != current_frame):
-			streak = 0 if plan.toe_valid else prev_streak + 1
+			streak = 0 if envelope_ok else prev_streak + 1
 			_toe_invalid_streak[plan.side] = streak
 			_toe_invalid_streak_frames[plan.side] = current_frame
-		plan.toe_valid = plan.toe_valid or streak < TOE_INVALID_HOLD_FRAMES
-	plan.valid = (plan.valid and plan.stance_valid and plan.support_valid
-			and plan.reach_valid and plan.toe_valid)
-	if not plan.stance_valid:
+		if not envelope_ok and streak < TOE_INVALID_HOLD_FRAMES:
+			plan.toe_status = STATUS.TEMPORARILY_TOLERATED
+	plan.valid = (plan.valid and FootIKTargetPlan.constraint_ok(plan.stance_status)
+			and FootIKTargetPlan.constraint_ok(plan.support_status)
+			and FootIKTargetPlan.constraint_ok(plan.reach_status)
+			and FootIKTargetPlan.constraint_ok(plan.toe_status))
+	if plan.stance_status == STATUS.VIOLATED:
 		plan.reason = "outside_stance"
-	elif not plan.support_valid:
+	elif plan.support_status == STATUS.VIOLATED:
 		plan.reason = "unsupported"
-	elif not plan.reach_valid:
+	elif plan.reach_status == STATUS.VIOLATED:
 		plan.reason = "unreachable"
-	elif not plan.toe_valid:
+	elif plan.toe_status == STATUS.VIOLATED:
 		plan.reason = "toe_envelope_blocked"
 	return plan
 
