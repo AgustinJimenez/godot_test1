@@ -58,10 +58,9 @@ const DEEP_PLANT_PENETRATION := 0.05
 @export_range(0.0, 170.0, 1.0) var max_knee_flexion_degrees: float = 150.0
 @export_range(10.0, 170.0, 1.0) var max_hip_swing_degrees: float = 100.0 # cone from straight down
 var force_plant_mode: bool = false
-## Idle step-down: a stationary stance foot whose sole rests more than GROUND_CONTACT_DISTANCE
-## above a lower surface (e.g. straddling a stair riser) never stays floating - requires
-## motionless for STEP_DOWN_STATIC_STREAK frames, then plants directly if reachable within
-## step_down_pelvis_drop, else _retract_to_reachable() pulls toward the hip. Else, foot floats.
+## Idle step-down: a stationary stance foot resting more than GROUND_CONTACT_DISTANCE above a
+## lower surface never stays floating - requires motionless for STEP_DOWN_STATIC_STREAK frames,
+## then plants directly if reachable within step_down_pelvis_drop, else retracts toward the hip.
 @export_range(0.0, 1.0, 0.01) var idle_step_down_speed: float = 0.06
 @export_range(0.0, 0.75, 0.005) var step_down_pelvis_drop: float = 0.35
 ## Hard ceiling on shared pelvis sink: the deepest plausible crouch rather
@@ -190,6 +189,9 @@ func reset_runtime_state() -> void:
 	if _ground_sampler != null: _ground_sampler.reset()
 	if _target_coordinator != null: _target_coordinator.reset()
 	if _stair_predictor != null: _stair_predictor.reset()
+	if _residual_corrector != null: _residual_corrector.reset()
+	if _phase_locked_corrector != null: _phase_locked_corrector.reset()
+	if _native_backend != null: _native_backend.reset()
 	for d: Dictionary in [_prev_animated_foot_pos, _prev_leg_bone_poses,
 			_prev_leg_bone_poses_frame, _leg_fresh_pose_cache, _smoothed_ground_weight,
 			_solved_target_smoothed, _final_bone_poses,
@@ -310,10 +312,9 @@ func _ready() -> void:
 		if LOG_SOLE_DEPTH:
 			print("[FootIK] ", side, " measured planted sole depth below foot origin=",
 					_sole_depth_below_foot[side])
-## The rig's rest/bind pose is the one guaranteed flat-footed reference for
-## "which direction is the sole normal". Returns the EXACT rest local-space
-## direction of world down - not snapped to a cardinal axis (an earlier snap
-## was ~26.6 degrees off, kinking the toe/leaf via _toe_rest_offset).
+## The rig's rest/bind pose is the one guaranteed flat-footed reference for "which direction is
+## the sole normal". Returns the EXACT rest local-space direction of world down - not snapped to
+## a cardinal axis (an earlier snap was ~26.6 degrees off, kinking the toe/leaf).
 func _derive_sole_down_local(skel: Skeleton3D, foot_idx: int, side: StringName) -> Vector3:
 	var rest_basis := skel.get_bone_global_rest(foot_idx).basis
 	var exact_local_down := (rest_basis.inverse() * Vector3.DOWN).normalized()
@@ -331,10 +332,9 @@ func _derive_sole_down_local(skel: Skeleton3D, foot_idx: int, side: StringName) 
 		print("[FootIK] ", side, " derived sole_down_local=", exact_local_down,
 				" (nearest cardinal axis=", nearest_axis, ", dot=", best_dot, ")")
 	return exact_local_down
-## Picks a local "forward" reference orthogonal to sole_down_local to keep the
-## foot's rebuilt twist/roll well-defined instead of an unstable single-vector
-## rotation. The rest-pose toe offset is the natural choice; a cardinal axis
-## fallback works for a toe-less rig (RIGHT/UP/FORWARD stay mutually orthogonal).
+## Picks a local "forward" reference orthogonal to sole_down_local to keep the foot's rebuilt
+## twist/roll well-defined instead of an unstable single-vector rotation. The rest-pose toe
+## offset is the natural choice; a cardinal axis fallback works for a toe-less rig.
 func _derive_forward_local(sole_down_local: Vector3, toe_offset_local: Vector3) -> Vector3:
 	var raw := toe_offset_local
 	if raw.is_zero_approx():

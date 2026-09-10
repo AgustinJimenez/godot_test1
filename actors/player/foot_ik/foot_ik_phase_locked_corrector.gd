@@ -28,6 +28,16 @@ func _init(owner) -> void:
 	_owner = owner
 
 
+func reset() -> void:
+	_smoothed_pelvis_offset = 0.0
+	_pelvis_base_pose = Transform3D()
+	_pelvis_base_pose_frame = -1
+	_locked_target.clear()
+	_locked_normal.clear()
+	_stance_time_left.clear()
+	_weight.clear()
+
+
 func process(skel: Skeleton3D, space: PhysicsDirectSpaceState3D, delta: float) -> void:
 	var to_world := skel.global_transform
 	var current_frame := Engine.get_physics_frames()

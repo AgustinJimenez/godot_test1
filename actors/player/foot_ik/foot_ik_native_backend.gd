@@ -48,6 +48,10 @@ func set_enabled(enabled: bool) -> void:
 		_modifier.active = enabled
 
 
+func reset() -> void:
+	_smoothed_bases.clear()
+
+
 var _smoothed_bases: Dictionary = {}
 
 
@@ -98,6 +102,9 @@ func update_targets(skeleton: Skeleton3D, per_leg: Dictionary) -> void:
 			var prev_b: Basis = _smoothed_bases[side]
 			target_basis = Basis(prev_b.get_rotation_quaternion().slerp(
 					target_basis.get_rotation_quaternion(), 0.35))
+		# Without this, the interpolation above keeps blending toward whatever preserve_idle
+		# last wrote (or never blends at all) instead of this frame's own real output.
+		_smoothed_bases[side] = target_basis
 		(_targets[side] as Node3D).global_transform = Transform3D(
 				target_basis.orthonormalized(), target_position)
 		var hip_pose := skeleton.get_bone_global_pose(int(indices["hip"]))
