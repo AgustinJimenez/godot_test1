@@ -33,12 +33,10 @@ const DEEP_PLANT_PENETRATION := 0.05
 ## low-speed blip near a swing apex without delay.
 @export var min_falling_streak: int = 3
 ## Velocity magnitude (m/s) below which vertical motion is ignored entirely, treated as
-## stationary before rising_penalty applies - rising_penalty alone doesn't fully remove idle
-## noise sensitivity.
+## stationary before rising_penalty applies.
 @export var velocity_noise_floor: float = 0.03
 ## Minimum time (seconds) for ground_weight to rise from 0 to 1 - caps how fast the correction
-## can snap back ON. A walk cycle's vertical velocity crosses exactly zero for one frame at the
-## swing arc's top, briefly reading as "foot stopped, must be planted" mid-air.
+## can snap back ON (a walk cycle's vertical velocity briefly reads as "planted" mid-swing).
 @export var ground_weight_rise_time: float = 0.24
 ## Same idea, opposite direction. An earlier version let the fall happen in a single frame, but
 ## that also fired when recovering from a small residual rise near a swing peak, snapping "leg
@@ -57,21 +55,18 @@ const DEEP_PLANT_PENETRATION := 0.05
 @export_range(0.0, 170.0, 1.0) var max_knee_flexion_degrees: float = 150.0
 @export_range(10.0, 170.0, 1.0) var max_hip_swing_degrees: float = 100.0 # cone from straight down
 var force_plant_mode: bool = false
-## Idle step-down: a stationary stance foot resting more than GROUND_CONTACT_DISTANCE above a
-## lower surface never stays floating - requires motionless for STEP_DOWN_STATIC_STREAK frames,
-## then plants directly if reachable within step_down_pelvis_drop, else retracts toward the hip.
+## Idle step-down: a stationary foot resting above a lower surface plants directly once
+## reachable within step_down_pelvis_drop, else retracts toward the hip instead of floating.
 @export_range(0.0, 1.0, 0.01) var idle_step_down_speed: float = 0.06
 @export_range(0.0, 0.75, 0.005) var step_down_pelvis_drop: float = 0.35
 ## Hard ceiling on shared pelvis sink: the deepest plausible crouch rather
 ## than leaving an unreachable target to produce an unbounded squat.
 @export_range(0.0, 1.0, 0.005) var step_down_max_crouch: float = 0.6
 ## Max speed (m/s) the shared pelvis may RISE back toward the animated pose after a reach-limit
-## sink. The sink itself still ENGAGES instantly to avoid stretching the leg, but the single-
-## frame upward pop at each foot re-plant becomes a controlled rise instead. 0.0 disables it.
+## sink - the sink itself still engages instantly. 0.0 disables shaping.
 @export_range(0.0, 4.0, 0.1) var shared_drop_release_rate: float = 1.5
-## Max speed (m/s) the shared pelvis may SINK during an idle settle. Walking engages stay
-## instant (see _shape_shared_drop's doc comment); stationary, a gradual engage reads as a
-## controlled crouch instead of the foot sag an instant settle engage caused. 0.0 disables it.
+## Max speed (m/s) the shared pelvis may SINK during an idle settle (walking stays instant).
+## 0.0 disables shaping.
 @export_range(0.0, 4.0, 0.1) var shared_drop_idle_engage_rate: float = 1.5
 const STEP_DOWN_STATIC_STREAK := 4
 @export var solver_backend := SolverBackend.CUSTOM
@@ -100,25 +95,20 @@ var _phase_locked_corrector: RefCounted
 var _bone_indices: Dictionary = {} # side -> {hip, knee, foot, toe, leaf: int}
 var _leg_lengths: Dictionary = {} # side -> {upper, lower: float}
 var _sole_down_local: Dictionary = {} # side -> Vector3, one of the 6 principal axes
-## Max extent of this leg's planted bind geometry below the foot bone's origin (meters), measured
-## once at rig setup - fed into effective_offset so a planted sole clears the ground even when
-## the ball/toe geometry hangs below the bone origins. Orientation-invariant by construction.
+## Max extent of this leg's planted bind geometry below the foot bone's origin (meters) - fed
+## into effective_offset so a planted sole clears the ground even with hanging ball/toe geometry.
 var _sole_depth_below_foot: Dictionary = {} # side -> float
-## Toe's rest-pose position/orientation relative to the foot, in the foot's own rest-pose local
-## space - see _solve_leg's toe section for why this (not the toe's *animated* pose) is what the
-## toe gets rigidly rebuilt from each frame.
+## Toe's rest-pose position/orientation relative to the foot (not the *animated* pose) - what
+## the toe gets rigidly rebuilt from each frame.
 var _toe_rest_offset: Dictionary = {} # side -> Vector3
 var _toe_rest_relative_basis: Dictionary = {} # side -> Basis
-## Orthonormal local-space frame per foot bone (right, sole-down, toe-forward) - replaces a
-## plain "align sole-down to ground normal" quaternion, whose twist around the down axis could
-## spin the foot ~90+ degrees when the animated sole was near-opposite the target.
+## Orthonormal local-space frame per foot bone - replaces a plain "align sole-down to ground
+## normal" quaternion, whose twist could spin the foot ~90+ degrees near-opposite the target.
 var _foot_frame_local: Dictionary = {} # side -> Basis
-## Last toe-leaf transforms tracked too; stale weighted leaf poses kinked the
-## visible toe even when every corrected parent measured flat.
+## Leaf tracked too - stale weighted leaf poses kinked the visible toe even when flat.
 var _leaf_rest_offset: Dictionary = {} # side -> Vector3 (relative to toe)
 var _leaf_rest_relative_basis: Dictionary = {} # side -> Basis (relative to toe)
-## Compatibility views used by the focused gait/predictor/solver helpers and
-## persistent diagnostics. FootIKGroundSampler owns the actual dictionaries.
+## Compatibility views for focused gait/predictor/solver helpers - FootIKGroundSampler owns these.
 var _smoothed_target: Dictionary:
 	get:
 		return _ground_sampler.smoothed_target if _ground_sampler != null else {}
@@ -972,6 +962,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			continue
 		var target: Vector3 = (leg.get("ground_target", leg.get("target", Vector3.ZERO))
 				if preserve_idle or brace_upper else leg.get("target", Vector3.ZERO))
+		var validated_target := target # before any late reassignment below (018 finding A)
 		var gw: float = 1.0 if preserve_idle or brace_upper else float(leg["ground_weight"])
 		var cw: float = 1.0 if preserve_idle or brace_upper else float(leg.get("chain_weight", gw))
 		var solve_hip: Vector3 = leg["hip_pos"] - Vector3.UP * shared_drop + _pelvis_lateral_shift
@@ -993,8 +984,11 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 				and not _gait_tracker.is_body_translating() and not leg.get("stationary_slope", false)
 				and _leg_solver.debug_solve_target.has(side)):
 			target = _leg_solver.debug_solve_target[side]
+		# A target reassigned since validation was never checked against it - report that.
+		var still_validated: bool = (leg.get("target_plan_validated", false)
+				and validated_target.distance_to(target) <= 0.001)
 		var solve_options := {&"instant": leg.get("instant", false) or brace_upper,
-				&"target_plan_validated": leg.get("target_plan_validated", false),
+				&"target_plan_validated": still_validated,
 				&"stationary_slope": leg.get("stationary_slope", false)}
 		_leg_solver.solve(skel, side, solve_hip, target, leg["upper"], leg["lower"], gw, cw, delta,
 				solve_options)
