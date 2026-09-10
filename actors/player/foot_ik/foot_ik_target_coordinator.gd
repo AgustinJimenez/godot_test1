@@ -21,6 +21,7 @@ var _owner
 var _plans: Dictionary = {}
 var _generations: Dictionary = {}
 var _toe_invalid_streak: Dictionary = {} # side -> int
+var _toe_invalid_streak_frames: Dictionary = {} # side -> int, see _limit_correction's guard
 
 
 func _init(owner) -> void:
@@ -31,6 +32,7 @@ func reset() -> void:
 	_plans.clear()
 	_generations.clear()
 	_toe_invalid_streak.clear()
+	_toe_invalid_streak_frames.clear()
 
 
 func get_plan(side: StringName) -> FootIKTargetPlan:
@@ -38,12 +40,12 @@ func get_plan(side: StringName) -> FootIKTargetPlan:
 
 
 func resolve_stationary(space: PhysicsDirectSpaceState3D,
-		per_leg: Dictionary, stationary: bool) -> void:
+		per_leg: Dictionary, stationary: bool, delta: float) -> void:
 	var legacy_transition_active: bool = (not _owner._ground_sampler.idle_lower_acquiring.is_empty()
 			or not _owner._ground_sampler.idle_lower_latched_target.is_empty())
 	for side: StringName in per_leg:
 		var leg: Dictionary = per_leg[side]
-		var plan := _build_plan(space, side, leg, stationary, legacy_transition_active)
+		var plan := _build_plan(space, side, leg, stationary, legacy_transition_active, delta)
 		_store_plan(side, plan)
 		if plan.valid and plan.reason == "replace_invalid_with_raw_support":
 			_apply_raw_recovery(side, leg, plan)
@@ -52,8 +54,8 @@ func resolve_stationary(space: PhysicsDirectSpaceState3D,
 			leg[&"target_plan_validated"] = true
 
 
-func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
-		leg: Dictionary, stationary: bool, legacy_transition_active: bool) -> FootIKTargetPlan:
+func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName, leg: Dictionary,
+		stationary: bool, legacy_transition_active: bool, delta: float) -> FootIKTargetPlan:
 	var plan := TARGET_PLAN.new() as FootIKTargetPlan
 	plan.side = side
 	plan.owner = _legacy_owner(side)
@@ -151,11 +153,11 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 	# and could duplicate or conflict with it (see 010's validation design proposal); exempt
 	# it here rather than guess.
 	var check_toe := plan.owner != FootIKTargetPlan.Owner.STAIR_SUPPORT
-	plan = _finish_validation(space, plan, leg, require_stance, check_toe)
+	plan = _finish_validation(space, plan, leg, require_stance, delta, check_toe)
 	if plan.valid:
 		leg[&"target_plan_validated"] = true
 		return plan
-	var raw_plan := _raw_recovery_plan(space, side, leg, plan)
+	var raw_plan := _raw_recovery_plan(space, side, leg, plan, delta)
 	if raw_plan.valid:
 		return raw_plan
 	plan.reason = "reject_invalid_stationary_%s" % plan.reason
@@ -163,7 +165,8 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 
 
 func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan,
-		leg: Dictionary, require_stance: bool, check_toe: bool = true) -> FootIKTargetPlan:
+		leg: Dictionary, require_stance: bool, delta: float,
+		check_toe: bool = true) -> FootIKTargetPlan:
 	plan.stance_valid = (not require_stance
 			or (_owner._ground_sampler.is_target_inside_stance_zone(
 					plan.side, plan.surface_target)
@@ -194,9 +197,16 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 	# on uneven ground) instead of a small, better-than-nothing toe overlap.
 	plan.toe_valid = true if not check_toe else _toe_envelope_valid(space, plan)
 	if check_toe:
-		var streak: int = (0 if plan.toe_valid
-				else int(_toe_invalid_streak.get(plan.side, 0)) + 1)
-		_toe_invalid_streak[plan.side] = streak
+		var current_frame := Engine.get_physics_frames()
+		var prev_streak: int = int(_toe_invalid_streak.get(plan.side, 0))
+		# A zero-delta or already-advanced-this-frame call must not consume the streak budget -
+		# see _limit_correction's identical guard in foot_ik_leg_solver.gd.
+		var streak: int = prev_streak
+		if (delta > 0.0
+				and int(_toe_invalid_streak_frames.get(plan.side, -1)) != current_frame):
+			streak = 0 if plan.toe_valid else prev_streak + 1
+			_toe_invalid_streak[plan.side] = streak
+			_toe_invalid_streak_frames[plan.side] = current_frame
 		plan.toe_valid = plan.toe_valid or streak < TOE_INVALID_HOLD_FRAMES
 	plan.valid = (plan.valid and plan.stance_valid and plan.support_valid
 			and plan.reach_valid and plan.toe_valid)
@@ -261,7 +271,7 @@ func _toe_envelope_valid(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPla
 
 
 func _raw_recovery_plan(space: PhysicsDirectSpaceState3D, side: StringName,
-		leg: Dictionary, rejected: FootIKTargetPlan) -> FootIKTargetPlan:
+		leg: Dictionary, rejected: FootIKTargetPlan, delta: float) -> FootIKTargetPlan:
 	var plan := TARGET_PLAN.new() as FootIKTargetPlan
 	plan.side = side
 	plan.owner = FootIKTargetPlan.Owner.LIVE_CONTACT
@@ -275,7 +285,7 @@ func _raw_recovery_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 	plan.valid = bool(leg.get(&"hit", false)) and height_continuous \
 			and plan.surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT
 	plan.reason = "replace_invalid_with_raw_support"
-	return _finish_validation(space, plan, leg, true, false)
+	return _finish_validation(space, plan, leg, true, delta, false)
 
 
 func _has_support_at(space: PhysicsDirectSpaceState3D, surface: Vector3) -> bool:
