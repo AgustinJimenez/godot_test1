@@ -3,6 +3,8 @@ extends RefCounted
 ## by PlayerFootIKModifier; this class only converts a chosen target/weight
 ## into hierarchy-preserving hip, knee, foot, toe, and leaf bone poses.
 
+const LEG_POSE_RESULT := preload("res://actors/player/foot_ik/foot_ik_leg_pose_result.gd")
+
 var _owner
 var _settings: FootIKRuntimeSettings
 var _previous_corrections: Dictionary = {}
@@ -559,19 +561,44 @@ func _solve_impl(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: V
 	var foot_delta := _limit_correction(side, &"foot",
 			desired_foot_rotation * animated_foot_rotation.inverse(), delta)
 	var new_foot_basis_world := Basis(foot_delta) * animated_foot_basis_world
-	skel.set_bone_global_pose(hip_idx,
-			Transform3D(to_local.basis * new_hip_basis_world, to_local * hip_pos))
-	skel.set_bone_global_pose(knee_idx,
-			Transform3D(to_local.basis * new_knee_basis_world, to_local * new_knee_pos))
-	skel.set_bone_global_pose(foot_idx,
-			Transform3D(to_local.basis * new_foot_basis_world, to_local * new_foot_pos))
+	var result := LEG_POSE_RESULT.new() as FootIKLegPoseResult
+	result.side = side
+	result.hip_idx = hip_idx
+	result.knee_idx = knee_idx
+	result.foot_idx = foot_idx
+	result.toe_idx = toe_idx
+	result.leaf_idx = leaf_idx
+	result.hip_basis = new_hip_basis_world
+	result.hip_pos = hip_pos
+	result.knee_basis = new_knee_basis_world
+	result.knee_pos = new_knee_pos
+	result.foot_basis = new_foot_basis_world
+	result.foot_pos = new_foot_pos
 	if toe_idx >= 0:
-		_solve_toes(skel, side, toe_idx, leaf_idx, {
-			"to_world": to_world, "to_local": to_local, "foot_pos": foot_pos,
+		_solve_toes(result, toe_idx, leaf_idx, {
+			"to_world": to_world, "foot_pos": foot_pos,
 			"new_foot_pos": new_foot_pos, "animated_basis": animated_foot_basis_world,
 			"new_basis": new_foot_basis_world, "toe_pose": toe_pose,
 			"leaf_pose": leaf_pose, "weight": solve_weight,
 		})
+	_apply_leg_pose(skel, to_local, result)
+
+
+## Applies a fully-computed leg pose to the skeleton in one step (018 finding D) - the sole
+## place this class writes bone poses, so a candidate can be built and inspected before commit.
+func _apply_leg_pose(skel: Skeleton3D, to_local: Transform3D, result: FootIKLegPoseResult) -> void:
+	skel.set_bone_global_pose(result.hip_idx,
+			Transform3D(to_local.basis * result.hip_basis, to_local * result.hip_pos))
+	skel.set_bone_global_pose(result.knee_idx,
+			Transform3D(to_local.basis * result.knee_basis, to_local * result.knee_pos))
+	skel.set_bone_global_pose(result.foot_idx,
+			Transform3D(to_local.basis * result.foot_basis, to_local * result.foot_pos))
+	if result.has_toe:
+		skel.set_bone_global_pose(result.toe_idx,
+				Transform3D(to_local.basis * result.toe_basis, to_local * result.toe_pos))
+	if result.has_leaf:
+		skel.set_bone_global_pose(result.leaf_idx,
+				Transform3D(to_local.basis * result.leaf_basis, to_local * result.leaf_pos))
 
 
 func _limit_negative_rendered_knee(side: StringName, hip_pos: Vector3,
@@ -832,10 +859,12 @@ func _limit_correction(side: StringName, joint: StringName,
 	return result
 
 
-func _solve_toes(skel: Skeleton3D, side: StringName, toe_idx: int, leaf_idx: int,
+## Fills result's toe/leaf fields (world space) - does not write bones itself; see
+## _apply_leg_pose, the sole place this class writes to the skeleton (018 finding D).
+func _solve_toes(result: FootIKLegPoseResult, toe_idx: int, leaf_idx: int,
 		context: Dictionary) -> void:
+	var side: StringName = result.side
 	var to_world: Transform3D = context["to_world"]
-	var to_local: Transform3D = context["to_local"]
 	var foot_pos: Vector3 = context["foot_pos"]
 	var new_foot_pos: Vector3 = context["new_foot_pos"]
 	var animated_foot_basis: Basis = context["animated_basis"]
@@ -850,10 +879,11 @@ func _solve_toes(skel: Skeleton3D, side: StringName, toe_idx: int, leaf_idx: int
 	var swing_basis := new_foot_basis * toe_relative
 	var rest_pos := new_foot_pos + new_foot_basis * (_owner._toe_rest_offset[side] as Vector3)
 	var rest_basis := new_foot_basis * (_owner._toe_rest_relative_basis[side] as Basis)
-	var toe_basis := Basis(swing_basis.get_rotation_quaternion().slerp(
+	result.has_toe = true
+	result.toe_idx = toe_idx
+	result.toe_basis = Basis(swing_basis.get_rotation_quaternion().slerp(
 			rest_basis.get_rotation_quaternion(), weight))
-	skel.set_bone_global_pose(toe_idx, Transform3D(to_local.basis * toe_basis,
-			to_local * swing_pos.lerp(rest_pos, weight)))
+	result.toe_pos = swing_pos.lerp(rest_pos, weight)
 	if leaf_idx < 0:
 		return
 	var leaf_world := to_world * leaf_pose
@@ -863,7 +893,8 @@ func _solve_toes(skel: Skeleton3D, side: StringName, toe_idx: int, leaf_idx: int
 	var leaf_swing_basis := new_foot_basis * leaf_relative
 	var leaf_rest_pos := new_foot_pos + new_foot_basis * (_owner._leaf_rest_offset[side] as Vector3)
 	var leaf_rest_basis := new_foot_basis * (_owner._leaf_rest_relative_basis[side] as Basis)
-	var leaf_basis := Basis(leaf_swing_basis.get_rotation_quaternion().slerp(
+	result.has_leaf = true
+	result.leaf_idx = leaf_idx
+	result.leaf_basis = Basis(leaf_swing_basis.get_rotation_quaternion().slerp(
 			leaf_rest_basis.get_rotation_quaternion(), weight))
-	skel.set_bone_global_pose(leaf_idx, Transform3D(to_local.basis * leaf_basis,
-			to_local * leaf_swing_pos.lerp(leaf_rest_pos, weight)))
+	result.leaf_pos = leaf_swing_pos.lerp(leaf_rest_pos, weight)
