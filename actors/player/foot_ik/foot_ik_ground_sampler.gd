@@ -21,6 +21,7 @@ const COMPRESSED_UPPER_SEARCH_SAMPLES := 36
 const SPLIT_SAFE_SEARCH_STEP := 0.05
 const SPLIT_SAFE_SEARCH_RINGS := 16
 const SPLIT_SAFE_RETRY_COOLDOWN_FRAMES := 30 # 0.5s at 60fps - see 014
+const SPLIT_SAFE_SETTLED_COOLDOWN_FRAMES := 6 # shorter: an already-arrived success
 const LANDING_CONTACT_CLEARANCE_RADIUS := 0.02
 const IDLE_FREEZE_MAX_TARGET_DRIFT := 0.08
 const STAIR_TREAD_UP_DOT := 0.999
@@ -42,9 +43,7 @@ var preferred_root_nudge_surface_y := -INF
 var split_safe_root_target := Vector3(INF, INF, INF)
 var split_safe_surface_y := -INF
 var split_rejected_surface_y := -INF
-# A failed ring search must not retry every single tick - see 014's "uncapped
-# split-safe-root retry" finding: an unrecoverable idle stance near a support
-# height difference was burning ~6500 raycasts/tick, forever, with no cooldown.
+# A failed/settled ring search must not retry every tick - see 014's uncapped retry bug.
 var split_safe_retry_after_frame := 0
 var split_safe_held_upper_target: Dictionary = {} # side -> last proven upper support
 var sample_previous_support: Dictionary = {} # side -> target before this frame's probe
@@ -138,8 +137,21 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 	var lowest_hit: bool = context.get("lowest_hit", false)
 	var lowest_surface: Vector3 = context.get("lowest_surface", surface)
 	var character := _owner.player_body.get_parent() as Player
+	var hip: Vector3 = context["hip"]
+	var offset: float = context["offset"]
+	var upper: float = context["upper"]
+	var lower: float = context["lower"]
+	var to_world: Transform3D = context["to_world"]
+	var retained_knee_angle := deg_to_rad(
+			180.0 - _settings.retained_upper_knee_flexion_degrees)
+	var retained_minimum_reach := sqrt(maxf(0.0, upper * upper + lower * lower
+			- 2.0 * upper * lower * cos(retained_knee_angle)))
+	# Also qualify on excess knee flexion alone, gated on this foot being the higher of the two -
+	# else it fights a foot already settling onto the lower tread (idle_lower_acquiring hunting).
+	var flexion_too_tight := (surface.y > other_surface.y
+			and hip.distance_to(target) < retained_minimum_reach - 0.005)
 	var partial_upper_support := (lowest_hit and character != null
-			and surface.y - lowest_surface.y > character.step_height)
+			and (surface.y - lowest_surface.y > character.step_height or flexion_too_tight))
 	var recovering_split := split_safe_root_target.is_finite()
 	if split_safe_held_upper_target.size() < 2:
 		recovering_split = _request_overheight_split_safe_zone(
@@ -153,20 +165,11 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 					or partial_upper_support)
 			and not recovering_split)
 	if not enabled: compressed_upper_target.erase(side); return target
-	var hip: Vector3 = context["hip"]
-	var offset: float = context["offset"]
-	var upper: float = context["upper"]
-	var lower: float = context["lower"]
-	var to_world: Transform3D = context["to_world"]
 	var minimum_knee_angle := deg_to_rad(
 			180.0 - _settings.preferred_upper_knee_flexion_degrees)
 	var minimum_reach := sqrt(maxf(0.0, upper * upper + lower * lower
 			- 2.0 * upper * lower * cos(minimum_knee_angle)))
 	minimum_reach += 0.01 # small margin for the shared hip's later sub-frame movement
-	var retained_knee_angle := deg_to_rad(
-			180.0 - _settings.retained_upper_knee_flexion_degrees)
-	var retained_minimum_reach := sqrt(maxf(0.0, upper * upper + lower * lower
-			- 2.0 * upper * lower * cos(retained_knee_angle)))
 	if partial_upper_support and not compressed_upper_target.has(side):
 		var supported_target := _find_partial_upper_target(space, side, surface)
 		if supported_target.is_finite(): compressed_upper_target[side] = supported_target
@@ -269,9 +272,8 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 			hit = raycast_ground(space, foot_pos + edge_dir * step, -1.0, true)
 			if hit["hit"]: break
 	var raw_target: Vector3 = hit["position"] if hit["hit"] else foot_pos
-	# Flat is the wrong guess with no walkable hit: it buries the front edge. This side's
-	# own stored normal is the stale flat one that caused that, so prefer the other foot's
-	# live slope, which is the best available prior for the surface underfoot. See 012.
+	# Flat buries the front edge with no walkable hit; prefer the other foot's live
+	# slope over this side's stale flat normal, the best available prior here. See 012.
 	var raw_normal: Vector3 = hit["normal"] if hit["hit"] else smoothed_normal.get(
 			&"right" if side == &"left" else &"left", Vector3.UP)
 	if _owner.step_prediction_enabled:
@@ -369,8 +371,7 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 			smoothed_target[side] as Vector3) > TARGET_NOISE_DEADBAND:
 		var amount := clampf(delta * _owner.smooth_rate, 0.0, 1.0)
 		var current_target := smoothed_target[side] as Vector3
-		# A planted foot turning on a tread must not follow the animated probe
-		# onto the next tread; translation is required for a height change.
+		# A planted foot turning on a tread must not follow the animated probe onto the next.
 		var follow_target := raw_target
 		smoothed_target[side] = (move_target_smoothed(current_target, follow_target, delta)
 				if not body_turning else current_target.move_toward(
@@ -537,8 +538,7 @@ func _update_idle_lower_transition(side: StringName, raw_target: Vector3,
 			smoothed_target[side] = raw_target
 			smoothed_normal[side] = raw_normal
 			return {"handled": true, "latched": false}
-		# Rehome the complete target continuously. Copying the new X/Z first
-		# teleported a planted foot across a tread during stationary rotation.
+		# Rehome the complete target continuously (copying X/Z first caused teleports).
 		smoothed_target[side] = previous.move_toward(
 				raw_target, _settings.lower_foot_acquire_speed * delta)
 		smoothed_normal[side] = raw_normal
@@ -952,8 +952,9 @@ func _request_overheight_split_safe_zone(space: PhysicsDirectSpaceState3D,
 				upper_surface.y + 0.2, left, right)
 		split_safe_root_target = safe["root"]
 		split_safe_surface_y = safe["surface_y"]
-		if not split_safe_root_target.is_finite():
-			split_safe_retry_after_frame = current_frame + SPLIT_SAFE_RETRY_COOLDOWN_FRAMES
+		var cooldown := (SPLIT_SAFE_RETRY_COOLDOWN_FRAMES
+				if not split_safe_root_target.is_finite() else SPLIT_SAFE_SETTLED_COOLDOWN_FRAMES)
+		split_safe_retry_after_frame = current_frame + cooldown # success also cools down now
 	if not split_safe_root_target.is_finite(): return false
 	preferred_root_nudge += split_safe_root_target - root
 	preferred_root_nudge_surface_y = split_safe_surface_y

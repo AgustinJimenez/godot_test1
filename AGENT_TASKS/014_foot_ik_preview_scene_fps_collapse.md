@@ -350,6 +350,43 @@ a similar hitch in the real game right after a level loads, if one is ever repor
 remembering as a reference case ([015](015_foot_ik_architecture_direction.md) is the right home
 for a general "warm up the GPU during loading" note, since it's not Foot IK-specific).
 
+## Follow-up: the failure-only cooldown had a success-path gap
+
+Found later (separate session, live user report of the same symptom - "standing on the stairs,
+rotating, fps drops"): the fix above only arms `split_safe_retry_after_frame` when
+`_find_nearest_split_safe_root` returns non-finite (failure). Once it *succeeds* and the
+character is already standing at the found root (`root.distance_to(split_safe_root_target) <=
+0.03`), that same distance check is exactly what defines `stale = true` - so with no cooldown
+covering the success case, the full ~6500-raycast search re-ran on literally every physics frame
+for as long as the character stood still in a split stance (e.g. at an angle on stairs),
+measured directly at 2-4ms/call. Fixed by adding a second, shorter cooldown
+(`SPLIT_SAFE_SETTLED_COOLDOWN_FRAMES := 6`) applied on success too - short enough that
+`replay_stale_grounded_commit` (which depends on fast re-recovery) still passes, long enough to
+stop the every-frame hammering. Verified: call count 4 -> 1 in the same 400-frame repro; full
+suite passed cleanly after (`Passed: 40`, no new failures). See `AGENTS.md`'s Foot IK section for
+the generalized lesson (retry cooldowns must guard success, not only failure).
+
+## Follow-up 2: the same unguarded-failure-loop shape in the airborne landing planner
+
+Audited the rest of Foot IK for the same failure-mode shape (an expensive ring/angular search
+with no or asymmetric retry guarding) after the above. Found one more, real, previously
+unguarded instance: `foot_ik_landing_planner.gd`'s `predict()` (called every physics frame while
+falling, from `player.gd`), specifically its `no_full_stance` outcome - a landable surface exists
+somewhere in reach, but `_nearest_full_stance_root`'s 12-ring x 8-direction sweep (up to 96
+candidate points, each checking an 18-point footprint plus 16 root-clearance rays plus a capsule
+query) fails to find one that fits. This had *zero* cooldown at all (worse than split-safe-root's
+pre-fix state), and re-ran on every single frame while falling over broken/narrow terrain (e.g.
+stairs, ledges) with a landable surface nearby but no full-stance fit - measured at 4.8-7.9ms/call
+live, with a run of 10 consecutive such calls with nothing between them. `no_flat_support` (no
+surface at all in reach) was already cheap and unaffected - it short-circuits before the ring
+search ever runs.
+
+Fixed the same way: `STANCE_RETRY_COOLDOWN_FRAMES := 6`, armed only on the `no_full_stance`
+outcome (the success path here already short-circuits earlier via `safe_root_target.is_finite()`,
+so it needed no separate success-side cooldown). Verified: expensive calls dropped from ~10
+consecutive to 2 in the same repro; full suite passed cleanly after (`Passed: 41`, no new
+failures - one previously-marginal timing-sensitive baseline case also stabilized).
+
 ## Open: the real cause is still unknown
 
 The most consistent, unexplained signal across every real (non-headless) run: `primitives`

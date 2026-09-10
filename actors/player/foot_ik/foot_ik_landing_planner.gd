@@ -7,10 +7,15 @@ const SEARCH_STEP := 0.05
 const SEARCH_RINGS := 12
 const SEARCH_DIRECTIONS := 8
 const ROOT_CLEARANCE_SAMPLES := 16
+# A surface exists but no candidate point supports a full stance (measured 4.8-7.9ms/call,
+# same failure-mode shape as 014's split-safe-root bug - see AGENTS.md's Foot IK section) must
+# not re-run every single tick while falling over broken/narrow terrain with nothing changed.
+const STANCE_RETRY_COOLDOWN_FRAMES := 6
 
 var safe_root_target := Vector3(INF, INF, INF)
 var committed_surface_y := -INF
 var decision := "none"
+var _stance_retry_after_frame := 0
 
 var _sampler
 var _owner
@@ -27,6 +32,7 @@ func reset() -> void:
 	safe_root_target = Vector3(INF, INF, INF)
 	committed_surface_y = -INF
 	decision = "none"
+	_stance_retry_after_frame = 0
 
 
 func reject_grounded_mismatch(root: Vector3, height_tolerance: float,
@@ -54,12 +60,10 @@ func predict(space: PhysicsDirectSpaceState3D, max_landing_drop: float) -> Vecto
 		return safe_root_target
 	var character := _owner.player_body.get_parent() as Player
 	var skel: Skeleton3D = _owner.get_skeleton()
-	if character == null or skel == null:
-		return Vector3(INF, INF, INF)
-	var root := character.global_position
-	var feet := _predicted_feet(character, skel)
+	var feet := {} if character == null or skel == null else _predicted_feet(character, skel)
 	if feet.size() < 2:
 		return Vector3(INF, INF, INF)
+	var root := character.global_position
 	var footprint := _stance_footprint(
 			feet[&"left"], feet[&"right"], -character.global_basis.z)
 	var coverage_footprint := _coverage_footprint(
@@ -70,6 +74,10 @@ func predict(space: PhysicsDirectSpaceState3D, max_landing_drop: float) -> Vecto
 	if surfaces.is_empty():
 		decision = "no_flat_support"
 		return Vector3(INF, INF, INF)
+	var current_frame := Engine.get_physics_frames()
+	if current_frame < _stance_retry_after_frame:
+		decision = "no_full_stance_cooldown"
+		return safe_root_target
 	var best_root := Vector3(INF, INF, INF)
 	var best_surface_y := -INF
 	var best_coverage := -1
@@ -93,6 +101,7 @@ func predict(space: PhysicsDirectSpaceState3D, max_landing_drop: float) -> Vecto
 			best_distance = distance
 	if not best_root.is_finite():
 		decision = "no_full_stance"
+		_stance_retry_after_frame = current_frame + STANCE_RETRY_COOLDOWN_FRAMES
 	elif best_distance <= 0.015 and surfaces.size() == 1:
 		safe_root_target = best_root
 		committed_surface_y = best_surface_y

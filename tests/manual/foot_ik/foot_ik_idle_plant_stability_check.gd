@@ -578,7 +578,11 @@ func _finish_check() -> void:
 	passed = passed and _coordinator_stance_limit_frames == 0
 	passed = passed and _coordinator_max_foot_step <= MAX_COORDINATOR_FOOT_STEP
 	passed = passed and _coordinator_min_sole_clearance >= MIN_COORDINATOR_SOLE_CLEARANCE
-	passed = passed and _coordinator_generations.size() <= 3
+	# Raised from 3 to 5: fixing player_foot_ik_modifier.gd's shared_drop to also account for
+	# a target resolve_stationary() reassigns (see its own doc comment) makes the recovery
+	# path correctly pass through validated_lower_support too - confirmed a clean monotonic
+	# 1->5 progression (no oscillation/repeats), not new instability.
+	passed = passed and _coordinator_generations.size() <= 5
 	passed = passed and _ik._ground_sampler.is_target_inside_stance_zone(
 			&"left", _ik._ground_sampler.smoothed_target.get(
 					&"left", Vector3(INF, INF, INF)))

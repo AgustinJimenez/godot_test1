@@ -32,7 +32,7 @@ var idle_stance_rehome_speed := 2.0
 
 var max_upright_shin_swing_degrees := 45.0
 var upright_shin_steer_start_degrees := 30.0
-var minimum_knee_pole_alignment := 0.5
+var minimum_knee_pole_alignment := 0.7
 var joint_correction_speed_degrees := 120.0
 var standing_joint_speed_degrees := 90.0
 var crouch_joint_speed_degrees := 45.0

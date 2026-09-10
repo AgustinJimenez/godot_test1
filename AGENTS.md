@@ -252,8 +252,9 @@ The active consolidation is `AGENT_TASKS/010_foot_ik_target_coordinator_consolid
 review behind that decision, `008` the still-open platform-edge bugs, `011`/`012` newer findings,
 `013` the knee-bend-plane search instability (`_select_feasible_bend`, shared by every leg solve
 on every surface—three of its own fix attempts and two other pipeline discontinuities before one
-finally stuck), `014` an open, unsolved FPS-collapse investigation in `foot_ik_preview.tscn`
-(performance, not correctness—a CSG concave-collision fix helped but did not solve it), `015`
+finally stuck), `014` an FPS-collapse investigation in `foot_ik_preview.tscn` (performance, not
+correctness—closed for the split-safe-root retry cost and a CSG concave-collision fix, but see
+its own "Open" section for a separate still-unresolved GPU-side mystery), `015`
 an outside architectural assessment (coordinator isn't the actual final authority, implicit
 time/coordinate-space contracts, "valid" conflating several distinct states) scoped into
 incremental next steps rather than a rewrite, and `007` the earlier stair/locomotion
@@ -364,6 +365,15 @@ added lag there can render a visibly wrong intermediate pose for several frames,
 worse or differently-located discontinuity than the instant snap it replaced. Do not assume a
 smoothing pattern that fixed one call site will help a structurally similar-looking but
 functionally different one; verify each on its own terms.
+
+A retry cooldown guarding an expensive per-frame recomputation (e.g. `014`'s ~6500-raycast
+split-safe-root ring search) must cover the success path, not only failure. "The cached result is
+stale" is often defined as "the caller is already at/satisfied by the last result"—which is
+exactly as perpetually true on success as "still hasn't found anything" is on failure. A cooldown
+armed only in the failure branch still lets a settled, arrived-at, no-longer-changing state
+re-trigger the full expensive search every single frame forever. Confirmed live: this specific gap
+was the actual cause of a real 60→35fps drop while idling on angled stairs, after `014`'s own
+already-shipped failure-only cooldown had been believed to fully close this class of bug.
 
 When a check's pass/fail is one long chain of `and`-ed conditions, read the exact boolean chain
 before assuming which printed field is the blocker. A field that looks like the obvious
