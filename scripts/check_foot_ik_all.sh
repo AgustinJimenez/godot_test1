@@ -155,6 +155,10 @@ run_ramp_subscript() {
 	fi
 }
 
+# 018 finding I: this script never ran project lint/import/parse itself, so a clean run here
+# did not guarantee a clean scripts/check.sh - only check_foot_ik_fast.sh caught that gap.
+run_subscript "Foot IK project checks" "check.sh"
+
 run_subscript "Foot IK clearance measurement check" "check_foot_ik_clearance.sh"
 
 run_check "Foot IK release pose check" "FOOT_IK_RELEASE_POSE_CHECK PASS" \

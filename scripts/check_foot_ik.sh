@@ -5,6 +5,14 @@ project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 log_file=$(mktemp "${TMPDIR:-/tmp}/foot-ik-check.XXXXXX")
 trap 'rm -f "$log_file"' EXIT
 
+# 018 finding I: this script never ran project lint/import/parse itself, so a clean run here
+# did not guarantee a clean scripts/check.sh - only check_foot_ik_fast.sh caught that gap.
+if ! "$project_dir/scripts/check.sh" >"$log_file" 2>&1; then
+	cat "$log_file"
+	exit 1
+fi
+printf '%s\n' "PROJECT_CHECK PASS"
+
 godot --headless --path "$project_dir" \
 	res://tests/manual/foot_ik/foot_ik_clearance_geometry_check.tscn \
 	--quit-after 5 >"$log_file" 2>&1 || true

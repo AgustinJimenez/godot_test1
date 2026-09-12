@@ -522,7 +522,12 @@ Do not assume a native rewrite is necessary before profiling these boundaries.
 
 - `check_foot_ik_all.sh` recognizes known failures by whole check/script label. A new or much
   deeper failure inside an already-red ramp script is still “known”; exit 0 means no new
-  labels, not all poses clean. It also does not invoke `scripts/check.sh` itself.
+  labels, not all poses clean. **Fixed 2026-09-12:** it and `check_foot_ik.sh` now both run
+  `scripts/check.sh` as their first step (`run_subscript`/a direct call respectively), so a
+  clean run of either now does guarantee a clean lint/import/parse too - previously only
+  `check_foot_ik_fast.sh` caught that gap. Full suite: 43 passed (up from 42) / 7 known
+  failures / no unexpected failures; `check_foot_ik.sh` run standalone now completes with
+  exit 0 (a side effect of this session's other fixes, not independently investigated).
 - `check_foot_ik_fast.sh` matches the core preview's six result names with an OR expression.
   One PASS satisfies that pattern; it does not require all six. The preview prints independent
   results in `_exit_tree()` and does not aggregate those failures into a failing exit itself.
