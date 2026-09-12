@@ -25,7 +25,7 @@ design goals and acceptance requirements still apply.
 
 | Finding | Implemented evidence | Remaining work |
 | --- | --- | --- |
-| I — runner reliability | `ec3cf35`: require all six preview results, check grouped script errors, and compare ramp failure counts/depths; `dc1871c`: `check_foot_ik.sh`/`check_foot_ik_all.sh` now also run `scripts/check.sh` itself. | Exact-case baselines, behavioral CI, deduplicating fast/main/all lists; broad known-failure labels still hide deterioration in an already-red case. |
+| I — runner reliability | `ec3cf35`: require all six preview results, check grouped script errors, and compare ramp failure counts/depths; `dc1871c`: `check_foot_ik.sh`/`check_foot_ik_all.sh` now also run `scripts/check.sh` itself; 2026-09-12 follow-up: `check_foot_ik_ramp_locomotion.sh` and "Foot IK stationary planted-foot stability check" moved out of the plain label list into quantitative grading (see below) - a 13->14 ramp-locomotion regression hid behind the bare label during this same session. | Exact-case baselines, behavioral CI, deduplicating fast/main/all lists. |
 | B — time/refresh | `7f8f602`: guard specific streaks against zero-delta/duplicate ticks; preserve pelvis smoothing on refresh. | Pipeline-wide frame context and once-per-tick history contract, with refresh/rate coverage. |
 | F — lifecycle | `d1104ca`: reset residual/phase-locked/native state and update native orientation history; a dedicated white-box reset-clearing test now guards it (below). | Explicit `reset`/`enter`/`exit`/capability contracts per mode; a full scene-level pose-continuity test (mode A -> B -> A with a real skeleton) remains open. |
 | C — constraint status | `a0392d5`: replace validity booleans with satisfied/violated/unchecked/inapplicable/tolerated statuses; general per-constraint `constraint_reasons`/`constraint_expiry_frames` mechanism added and wired for toe (below). | Owner/terrain contract coverage; the enum plus reason/expiry still does not strengthen validation by itself - only toe uses tolerance today. |
@@ -167,6 +167,24 @@ budget as `_accept_final_target` (`upper + lower + step_down_max_crouch`), so a 
 stance is not flagged either. New `MIN_REACH_MARGIN := -0.005` gate plus
 `reach_margin_left/right` and `_at` fields in the printed report. Full suite unaffected:
 45 passed / 7 known baseline failures, no new failures.
+
+### Runner known-failure blind spot closed — 2026-09-12, committed (018 finding I)
+
+`check_foot_ik_ramp_locomotion.sh` and "Foot IK stationary planted-foot stability check" sat
+in `check_foot_ik_all.sh`'s plain `KNOWN_BASELINE_FAILURES` label list - a worse run inside
+either already-red check could hide behind the same "FAIL known" line forever. This is exactly
+what happened during this session: the ramp-locomotion regression above went from the
+documented baseline of 13 failing cases to 14 while the bare label stayed "FAIL known"
+throughout, only caught because the ramp script was checked by hand.
+
+Both now grade quantitatively instead, same idea as the two ramp-matrix scripts already did:
+`run_ramp_locomotion_check()` compares the scene's own `failures=N` count against
+`RAMP_LOCOMOTION_MAX_FAILED_CASES=13`; `run_idle_plant_stability_check()` compares
+`drift_left_m`/`turn_penetration_m`/`live_pose_joint_step_m` against their own ceilings
+(0.13/0.11/0.11 m respectively). Verified the gate actually catches a regression by
+temporarily lowering `RAMP_LOCOMOTION_MAX_FAILED_CASES` to 5 and confirming the run flips to
+`FAIL NEW` and exit 1, then restored it. Full suite unaffected: 45 passed / 7 known baseline
+failures, no new failures, both new checks reporting their quantitative detail.
 
 ### Target-selection slice — 2026-09-12, committed `b0f804b`
 

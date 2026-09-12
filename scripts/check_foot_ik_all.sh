@@ -30,20 +30,26 @@ Foot IK negative rendered-knee check
 Foot IK unreachable acquisition check
 Foot IK shallow-corner knee flexion check
 Foot IK walk-to-idle stance check
-check_foot_ik_ramp_locomotion.sh
 check_foot_ik_locomotion.sh
-Foot IK stationary planted-foot stability check
 '
-# "Foot IK stationary planted-foot stability check" added 2026-09-10: its turn-penetration
-# gate correctly fails on a real, unfixed toe/leaf-through-riser clip during idle rotation on
-# stairs - see AGENT_TASKS/019_foot_ik_toe_riser_clip_during_rotation.md.
+# check_foot_ik_ramp_locomotion.sh and "Foot IK stationary planted-foot stability check" used
+# to sit in this plain label list too - a worse run inside either already-red check could hide
+# behind the same "FAIL known" line forever (018 finding I; this bit a real ramp-spin
+# regression on 2026-09-12 that this list alone did not catch). Both are now graded
+# quantitatively below instead, same idea as the two ramp-matrix scripts already were.
 
-# Quantitative baselines for the two ramp-matrix scripts (018's finding I) - established
-# 2026-09-10 from a verified clean rerun of each script standalone.
+# Quantitative baselines (018 finding I) - established 2026-09-10/12 from verified clean reruns.
 RAMPS_MAX_FAILED_CASES=20
 RAMPS_MAX_DEPTH_M=0.02
 RAMP_SWEEP_MAX_FAILED_CASES=16
 RAMP_SWEEP_MAX_DEPTH_M=0.11
+RAMP_LOCOMOTION_MAX_FAILED_CASES=13
+# "Foot IK stationary planted-foot stability check" ceilings: its turn-penetration gate
+# correctly fails on a real, unfixed toe/leaf-through-riser clip during idle rotation on
+# stairs - see AGENT_TASKS/019_foot_ik_toe_riser_clip_during_rotation.md.
+IDLE_PLANT_MAX_DRIFT_LEFT_M=0.13
+IDLE_PLANT_MAX_TURN_PENETRATION_M=0.11
+IDLE_PLANT_MAX_LIVE_POSE_JOINT_STEP_M=0.11
 
 _pass_count=0
 _baseline_fail_count=0
@@ -151,6 +157,68 @@ run_ramp_subscript() {
 "
 		printf 'FAIL NEW  %s (%s)\n' "$label" "$detail"
 		echo "  --- $log_file ($script) ---"
+		cat "$log_file"
+	fi
+}
+
+# run_ramp_locomotion_check - like run_ramp_subscript, but for check_foot_ik_ramp_locomotion.sh's
+# own aggregate "failures=N" count instead of per-case FAIL lines (018 finding I).
+run_ramp_locomotion_check() {
+	label="check_foot_ik_ramp_locomotion.sh"
+	if "$project_dir/scripts/$label" >"$log_file" 2>&1; then
+		_record "$label" 1
+		return
+	fi
+	failed_cases=$(grep -o "failures=[0-9]*" "$log_file" | head -1 | cut -d= -f2)
+	detail="failed_cases=${failed_cases:-?}/${RAMP_LOCOMOTION_MAX_FAILED_CASES}"
+	if [ -n "$failed_cases" ] && [ "$failed_cases" -le "$RAMP_LOCOMOTION_MAX_FAILED_CASES" ]; then
+		_baseline_fail_count=$((_baseline_fail_count + 1))
+		printf 'FAIL known %s (%s)\n' "$label" "$detail"
+	else
+		_new_fail_labels="${_new_fail_labels}${label} (${detail})
+"
+		printf 'FAIL NEW  %s (%s)\n' "$label" "$detail"
+		echo "  --- $log_file ($label) ---"
+		cat "$log_file"
+	fi
+}
+
+# run_idle_plant_stability_check - grades the scene's own known-bad metrics quantitatively
+# instead of trusting its bare PASS/FAIL label (018 finding I; same idea as run_ramp_subscript).
+run_idle_plant_stability_check() {
+	label="Foot IK stationary planted-foot stability check"
+	godot --headless --fixed-fps 60 --path "$project_dir" \
+		res://tests/manual/foot_ik/foot_ik_idle_plant_stability_check.tscn \
+		--quit-after 2750 >"$log_file" 2>&1
+	if grep -q "SCRIPT ERROR" "$log_file" \
+			|| ! grep -Eq "FOOT_IK_IDLE_PLANT_STABILITY_CHECK (PASS|FAIL)" "$log_file"; then
+		_record "$label" 0
+		echo "  --- $log_file ---"
+		cat "$log_file"
+		return
+	fi
+	if grep -q "FOOT_IK_IDLE_PLANT_STABILITY_CHECK PASS" "$log_file"; then
+		_record "$label" 1
+		return
+	fi
+	drift_left=$(grep -o "drift_left_m=[0-9.]*" "$log_file" | cut -d= -f2)
+	turn_pen=$(grep -o "turn_penetration_m=[0-9.]*" "$log_file" | cut -d= -f2)
+	joint_step=$(grep -o "live_pose_joint_step_m=[0-9.]*" "$log_file" | cut -d= -f2)
+	detail="drift_left_m=${drift_left}/${IDLE_PLANT_MAX_DRIFT_LEFT_M} "
+	detail="${detail}turn_penetration_m=${turn_pen}/${IDLE_PLANT_MAX_TURN_PENETRATION_M} "
+	detail="${detail}live_pose_joint_step_m=${joint_step}/${IDLE_PLANT_MAX_LIVE_POSE_JOINT_STEP_M}"
+	if awk -v a="$drift_left" -v b="$IDLE_PLANT_MAX_DRIFT_LEFT_M" 'BEGIN{exit !(a<=b)}' \
+			&& awk -v a="$turn_pen" -v b="$IDLE_PLANT_MAX_TURN_PENETRATION_M" \
+				'BEGIN{exit !(a<=b)}' \
+			&& awk -v a="$joint_step" -v b="$IDLE_PLANT_MAX_LIVE_POSE_JOINT_STEP_M" \
+				'BEGIN{exit !(a<=b)}'; then
+		_baseline_fail_count=$((_baseline_fail_count + 1))
+		printf 'FAIL known %s (%s)\n' "$label" "$detail"
+	else
+		_new_fail_labels="${_new_fail_labels}${label} (${detail})
+"
+		printf 'FAIL NEW  %s (%s)\n' "$label" "$detail"
+		echo "  --- $log_file ---"
 		cat "$log_file"
 	fi
 }
@@ -276,11 +344,9 @@ run_check "Foot IK edge stance check" "FOOT_IK_EDGE_STANCE_CHECK PASS" \
 	6200 res://tests/manual/foot_ik/foot_ik_edge_stance_check.tscn
 run_check "Foot IK walk-to-idle stance check" "FOOT_IK_WALK_IDLE_STANCE_CHECK PASS" \
 	5500 res://tests/manual/foot_ik/foot_ik_walk_idle_stance_check.tscn
-run_check "Foot IK stationary planted-foot stability check" \
-	"FOOT_IK_IDLE_PLANT_STABILITY_CHECK PASS" \
-	2750 res://tests/manual/foot_ik/foot_ik_idle_plant_stability_check.tscn
+run_idle_plant_stability_check
 
-run_subscript "check_foot_ik_ramp_locomotion.sh" check_foot_ik_ramp_locomotion.sh
+run_ramp_locomotion_check
 run_subscript "check_foot_ik_stair_repeat.sh" check_foot_ik_stair_repeat.sh
 run_subscript "check_foot_ik_locomotion.sh" check_foot_ik_locomotion.sh
 run_ramp_subscript "check_foot_ik_ramps.sh" check_foot_ik_ramps.sh \
