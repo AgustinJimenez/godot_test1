@@ -28,7 +28,7 @@ design goals and acceptance requirements still apply.
 | --- | --- | --- |
 | I — runner reliability | `ec3cf35`: require all six preview results, check grouped script errors, and compare ramp failure counts/depths. | Exact-case baselines, consistent crash/completion handling, shared case manifest and behavioral CI; broad known-failure labels still hide deterioration. |
 | B — time/refresh | `7f8f602`: guard specific streaks against zero-delta/duplicate ticks; preserve pelvis smoothing on refresh. | Pipeline-wide frame context and once-per-tick history contract, with refresh/rate coverage. |
-| F — lifecycle | `d1104ca`: reset residual/phase-locked/native state and update native orientation history. | Supported-mode lifecycle/capability contracts and dedicated mode-switch validation. |
+| F — lifecycle | `d1104ca`: reset residual/phase-locked/native state and update native orientation history; a dedicated white-box reset-clearing test now guards it (below). | Explicit `reset`/`enter`/`exit`/capability contracts per mode; a full scene-level pose-continuity test (mode A -> B -> A with a real skeleton) remains open. |
 | C — constraint status | `a0392d5`: replace validity booleans with satisfied/violated/unchecked/inapplicable/tolerated statuses. | Complete degraded-result reporting, reasons/expiry and owner/terrain contract coverage; the enum alone does not strengthen validation. |
 | D — pose result/apply | `b60173f` introduced the result type; the live-confirmed extraction adds fixed inputs, candidate-local history/diagnostics and guarded acceptance (details below). | Final-output clearance/feasibility reporting and clearance-driven candidate selection. |
 | E — final snapshot | `70bea29`: prefer fresh Foot IK poses for visual consumers and frame-stamp the cache. | Publish after every enabled modifier/backend, including native IK and any later balance layer. |
@@ -455,8 +455,19 @@ under pelvis shift, native IK, look/grip and mantle transitions.
 Evidence: common `reset_runtime_state()` resets solver/gait/sampler/coordinator/stairs, but not
 the residual or phase-locked correctors. Those objects retain pelvis offset, weights, and
 (phase-locked) world targets/timers. The feature panel changes modes and calls that common
-reset, so “reset” does not clear every mode's state. This omission is confirmed statically;
-the resulting reentry pose needs a dedicated test.
+reset, so “reset” does not clear every mode's state.
+
+**Dedicated test added 2026-09-12** (`d1104ca`'s residual/phase-locked/native reset wiring
+already fixed the code; this closes the "needs a dedicated test" gap):
+[foot_ik_mode_switch_check.gd](../tests/manual/foot_ik/foot_ik_mode_switch_check.gd), wired into
+fast/all runners. Directly pokes both correctors' full declared state, calls
+`reset_runtime_state()`, and asserts every field is back to its default - verified to actually
+fail (all four residual fields flagged) when one reset call was temporarily disabled, then
+restored. This is a white-box state-clearing check, not the full pose-continuity acceptance bar
+below (mode A -> B -> A with a real skeleton/animation, teleport, rig replacement) - that
+broader scene-level test remains open. `feature panel changes modes and calls that common
+reset` is confirmed to be the only reachable runtime mode-switch path (no gameplay code sets
+`locomotion_mode` directly), so this check covers the actually-exercised route.
 
 The native adapter also has no common reset. `_smoothed_bases` is assigned in the preserve-idle
 branch but not updated after ordinary target calculation, so its interpolation can repeatedly

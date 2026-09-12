@@ -109,5 +109,7 @@ run_scene "Foot IK idle support ownership" "FOOT_IK_IDLE_SUPPORT_OWNER_CHECK PAS
 	500 res://tests/manual/foot_ik/foot_ik_idle_support_owner_check.tscn
 run_scene "Foot IK toe riser clearance" "FOOT_IK_TOE_RISER_CHECK PASS" \
 	560 res://tests/manual/foot_ik/foot_ik_toe_riser_check.tscn
+run_scene "Foot IK mode switch reset" "FOOT_IK_MODE_SWITCH_CHECK PASS" \
+	10 res://tests/manual/foot_ik/foot_ik_mode_switch_check.tscn
 elapsed=$(($(date +%s) - start_time))
 printf 'FOOT_IK_FAST_CHECK PASS elapsed_seconds=%d\n' "$elapsed"
