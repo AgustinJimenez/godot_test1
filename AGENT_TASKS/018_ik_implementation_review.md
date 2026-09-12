@@ -485,10 +485,13 @@ correction requests consumed by movement with accept/reject feedback. Keep body 
 under the movement controller. Moving/disappearing supports are future coverage requirements,
 not claimed regressions in today's static fixtures.
 
-Collision contract debt: layer 5 is named `projectiles` and layer 6 `ai_perception` in
-`project.godot`, but stair traversal/contact helpers repurpose those bits, and runtime probes
-include them. Reserve and name actual terrain-proxy/contact layers before broader gameplay use;
-area exclusion does not resolve a naming/solid-body mask collision.
+Collision contract debt, naming - **fixed 2026-09-12**: layer 5 and 6 were named `projectiles`/
+`ai_perception` in `project.godot` while actually holding `CONTINUOUS_TRAVERSAL_LAYER` (stair
+traversal) and `CONTACT_SURFACE_COLLISION_MASK` (foot IK ground contact) respectively - a pure
+label change (no bitmask/behavior touched, confirmed no code references the old name strings),
+renamed to `stair_traversal`/`foot_contact_surface`. `scripts/check.sh` clean. The underlying
+typed-abstraction/root-request-feedback work below remains open; area exclusion still does not
+resolve a naming/solid-body mask collision on its own.
 
 ### H. Medium: cooldowns help averages, but do not establish a per-frame budget
 

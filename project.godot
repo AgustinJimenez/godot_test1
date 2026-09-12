@@ -152,8 +152,8 @@ zoom_out={
 3d_physics/layer_2="player"
 3d_physics/layer_3="damageables"
 3d_physics/layer_4="interactables"
-3d_physics/layer_5="projectiles"
-3d_physics/layer_6="ai_perception"
+3d_physics/layer_5="stair_traversal"
+3d_physics/layer_6="foot_contact_surface"
 
 [physics]
 
