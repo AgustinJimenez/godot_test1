@@ -45,6 +45,15 @@ var solve_target_observed := false
 var actual_solve_target := Vector3.ZERO
 var solve_target_reason := "not_solved"
 var solve_validation_retained := false
+## Per-constraint degraded-result detail (018 finding C, general mechanism): keyed by
+## constraint name ("stance"/"support"/"reach"/"toe"), populated only while that constraint is
+## actually degraded - absence means "not currently degrading," not "fine forever." Only "toe"
+## is ever populated today (the toe/leaf envelope's streak tolerance); any constraint could
+## adopt the same reporting later without a schema change.
+var constraint_reasons: Dictionary = {} # name -> String
+## Frames remaining before a TEMPORARILY_TOLERATED status in constraint_reasons would flip to
+## VIOLATED - a live "how close to actually failing" signal the enum alone cannot express.
+var constraint_expiry_frames: Dictionary = {} # name -> int
 
 
 func matches_solve_target(target: Vector3) -> bool:

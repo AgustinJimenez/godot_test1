@@ -368,6 +368,9 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 		if _streak_tolerated(_toe_invalid_streak, _toe_invalid_streak_frames,
 				plan.side, not envelope_ok, TOE_INVALID_HOLD_FRAMES, delta):
 			plan.toe_status = STATUS.TEMPORARILY_TOLERATED
+			plan.constraint_reasons["toe"] = "toe_envelope_blocked"
+			plan.constraint_expiry_frames["toe"] = (TOE_INVALID_HOLD_FRAMES
+					- int(_toe_invalid_streak.get(plan.side, 0)))
 	plan.valid = (plan.valid and FootIKTargetPlan.constraint_ok(plan.stance_status)
 			and FootIKTargetPlan.constraint_ok(plan.support_status)
 			and FootIKTargetPlan.constraint_ok(plan.reach_status)

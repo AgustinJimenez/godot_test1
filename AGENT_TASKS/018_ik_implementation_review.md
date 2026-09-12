@@ -29,7 +29,7 @@ design goals and acceptance requirements still apply.
 | I — runner reliability | `ec3cf35`: require all six preview results, check grouped script errors, and compare ramp failure counts/depths; `dc1871c`: `check_foot_ik.sh`/`check_foot_ik_all.sh` now also run `scripts/check.sh` itself. | Exact-case baselines, behavioral CI, deduplicating fast/main/all lists; broad known-failure labels still hide deterioration in an already-red case. |
 | B — time/refresh | `7f8f602`: guard specific streaks against zero-delta/duplicate ticks; preserve pelvis smoothing on refresh. | Pipeline-wide frame context and once-per-tick history contract, with refresh/rate coverage. |
 | F — lifecycle | `d1104ca`: reset residual/phase-locked/native state and update native orientation history; a dedicated white-box reset-clearing test now guards it (below). | Explicit `reset`/`enter`/`exit`/capability contracts per mode; a full scene-level pose-continuity test (mode A -> B -> A with a real skeleton) remains open. |
-| C — constraint status | `a0392d5`: replace validity booleans with satisfied/violated/unchecked/inapplicable/tolerated statuses. | Complete degraded-result reporting, reasons/expiry and owner/terrain contract coverage; the enum alone does not strengthen validation. |
+| C — constraint status | `a0392d5`: replace validity booleans with satisfied/violated/unchecked/inapplicable/tolerated statuses; general per-constraint `constraint_reasons`/`constraint_expiry_frames` mechanism added and wired for toe (below). | Owner/terrain contract coverage; the enum plus reason/expiry still does not strengthen validation by itself - only toe uses tolerance today. |
 | D — pose result/apply | `b60173f` introduced the result type; the live-confirmed extraction adds fixed inputs, candidate-local history/diagnostics and guarded acceptance (details below). | Final-output clearance/feasibility reporting and clearance-driven candidate selection. |
 | E — final snapshot | `70bea29`: prefer fresh Foot IK poses for visual consumers and frame-stamp the cache. | Publish after every enabled modifier/backend, including native IK and any later balance layer. |
 | H — performance | `dfee62e`: log worst-call/worst-frame solver timing. | Query accounting, explicit work budgets and broader tail-latency measurements. |
@@ -150,7 +150,7 @@ seam-held leg instead of computing output that would previously have been discar
   suppression window, not something readily reproducible by manual play; automated coverage
   is the practical acceptance bar here, same as the target-selection slice before it.
 
-### Shared-pelvis/reach design — proposed 2026-09-12, not yet implemented
+### Shared-pelvis/reach design — proposed and implemented 2026-09-12, live-confirmed, committed `88884a2`
 
 Upper-foot correction and slope adjustment (finding A's two remaining late overrides) both
 consume `solve_hip`, which depends on `shared_drop` and `_pelvis_lateral_shift`. Those pelvis
@@ -246,8 +246,35 @@ Three approaches were discussed with the user:
   as new - this pre-existing walk-locomotion gap was not fully closed, only measurably improved
   as an incidental side effect of chasing the two regressions above. Idle-loop seam check:
   `max_knee_step_m=0.0111`, matching the very first (unrefined) C draft exactly.
-  **Not yet live-tested** - awaiting the user's live confirmation before commit, given this is
-  the third distinct attempt in an area with two prior confirmed regressions.
+  **Live-confirmed by the user** (idle, walk, stair/split-stance) - no visible issues found;
+  committed as `88884a2`.
+
+### Constraint reason/expiry mechanism — implemented 2026-09-12, committed
+
+Finding C's remaining completion-criteria gap ("reasons/expiry ... the enum alone does not
+strengthen validation"). Brainstormed as a bounded change; user chose a general per-constraint
+mechanism over scoping to just the one existing user (the toe/leaf envelope's streak tolerance).
+
+- `FootIKTargetPlan` gained `constraint_reasons`/`constraint_expiry_frames` (`Dictionary`, keyed
+  by constraint name - `"stance"`/`"support"`/`"reach"`/`"toe"`), populated only while that
+  constraint is actually degraded; absence means "not currently degrading," not "fine forever."
+  No change to the four existing `_status` enum fields or their call sites - purely additive.
+- Wired for `"toe"` in `_finish_validation`: while `TEMPORARILY_TOLERATED`, records
+  `"toe_envelope_blocked"` and a live countdown (`TOE_INVALID_HOLD_FRAMES` minus the current
+  streak) toward the frame the tolerance actually expires. No other constraint has a tolerance
+  mechanism yet, so their dictionaries stay empty - a future one can adopt this by name with no
+  schema change.
+- Exposed in `foot_ik_trace_writer.gd` (`plan_constraint_reasons`/`plan_constraint_expiry_frames`)
+  so this is observable in a live trace, not just internal state.
+- New [constraint-expiry regression check](../tests/manual/foot_ik/foot_ik_constraint_expiry_check.gd),
+  wired into fast/all runners: drives the toe streak through a full tolerance window with a
+  lightweight coordinator stub, asserting the countdown decreases monotonically to the exact
+  expected value each frame, then that both the reason and expiry entries disappear once the
+  tolerance genuinely expires (`_raw_recovery_plan`'s own `NOT_APPLICABLE` toe status takes
+  over - discovered live while writing this test, not a pre-existing assumption) and again once
+  the toe becomes valid again. Verified to actually fail when the expiry computation was
+  deliberately broken, then restored to confirm a clean pass.
+- Full suite: 44 passed (up from 43) / 7 known failures / no unexpected failures.
 
 ### Candidate-evaluation extraction — implemented 2026-09-11, live-confirmed 2026-09-12
 

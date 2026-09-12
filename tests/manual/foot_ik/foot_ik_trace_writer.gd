@@ -167,6 +167,8 @@ static func build_foot_trace(ik: Node, side: String,
 		"plan_solve_observed": plan.solve_target_observed if plan != null else false,
 		"plan_solve_reason": plan.solve_target_reason if plan != null else "unplanned",
 		"plan_solve_validated": plan.solve_validation_retained if plan != null else false,
+		"plan_constraint_reasons": plan.constraint_reasons if plan != null else {},
+		"plan_constraint_expiry_frames": plan.constraint_expiry_frames if plan != null else {},
 		"solver_action": action,
 		"decision": "%s foot: support=%s target_y=%.3f owner=%s action=%s" % [
 				side, "hit" if contact_hit else "miss", target.y, owner, action],

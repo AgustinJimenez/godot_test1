@@ -111,5 +111,7 @@ run_scene "Foot IK toe riser clearance" "FOOT_IK_TOE_RISER_CHECK PASS" \
 	560 res://tests/manual/foot_ik/foot_ik_toe_riser_check.tscn
 run_scene "Foot IK mode switch reset" "FOOT_IK_MODE_SWITCH_CHECK PASS" \
 	10 res://tests/manual/foot_ik/foot_ik_mode_switch_check.tscn
+run_scene "Foot IK constraint expiry" "FOOT_IK_CONSTRAINT_EXPIRY_CHECK PASS" \
+	15 res://tests/manual/foot_ik/foot_ik_constraint_expiry_check.tscn
 elapsed=$(($(date +%s) - start_time))
 printf 'FOOT_IK_FAST_CHECK PASS elapsed_seconds=%d\n' "$elapsed"

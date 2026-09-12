@@ -178,6 +178,8 @@ run_check "Foot IK toe riser check" "FOOT_IK_TOE_RISER_CHECK PASS" \
 	560 res://tests/manual/foot_ik/foot_ik_toe_riser_check.tscn
 run_check "Foot IK mode switch reset check" "FOOT_IK_MODE_SWITCH_CHECK PASS" \
 	10 res://tests/manual/foot_ik/foot_ik_mode_switch_check.tscn
+run_check "Foot IK constraint expiry check" "FOOT_IK_CONSTRAINT_EXPIRY_CHECK PASS" \
+	15 res://tests/manual/foot_ik/foot_ik_constraint_expiry_check.tscn
 run_check "Foot IK idle support owner check" "FOOT_IK_IDLE_SUPPORT_OWNER_CHECK PASS" \
 	500 res://tests/manual/foot_ik/foot_ik_idle_support_owner_check.tscn
 run_check "Foot IK animation comparison check" "FOOT_IK_ANIMATION_COMPARISON_CHECK PASS" \
