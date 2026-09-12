@@ -864,6 +864,11 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		per_leg[side]["brace_upper"] = brace_upper
 		per_leg[side]["prefer_ground_target"] = (solver_backend != SolverBackend.NATIVE_TWO_BONE
 				and (per_leg[side].get("preserve_idle_pose", false) or brace_upper))
+		if (_velocity_suppressed and cur_anim.contains("idle")
+				and not _gait_tracker.is_body_translating()
+				and not per_leg[side].get("stationary_slope", false)
+				and _leg_solver.debug_solve_target.has(side)):
+			per_leg[side]["seam_hold_target"] = _leg_solver.debug_solve_target[side]
 	_target_coordinator.resolve_stationary(
 			player_body.get_world_3d().direct_space_state, per_leg, stationary, delta, to_world)
 	# A reassigned target (replace_invalid_with_raw_support) missed shared_drop above, which
@@ -962,24 +967,24 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		var gw: float = 1.0 if preserve_idle or brace_upper else float(leg["ground_weight"])
 		var cw: float = 1.0 if preserve_idle or brace_upper else float(leg.get("chain_weight", gw))
 		var solve_hip: Vector3 = leg["hip_pos"] - Vector3.UP * shared_drop + _pelvis_lateral_shift
-		target = _ground_sampler.straighten_compressed_upper_target(
-				player_body.get_world_3d().direct_space_state, side, {
-			"hip": solve_hip, "target": target,
-			"surface": leg.get("raw_target", Vector3(INF, INF, INF)),
-			"normal": leg.get("raw_normal", Vector3.UP), "upper": leg["upper"], "lower": leg["lower"],
-			"offset": leg.get("effective_offset", ankle_offset), "to_world": to_world, "delta": delta,
-			"lowest_hit": leg.get("animated_contact_hit", false),
-			"lowest_surface": leg.get("animated_contact_position", Vector3.ZERO)})
-		if leg.get("stationary_slope", false):
-			var hip_axis: Vector3 = leg["hip_pos"] - per_leg[other_side]["hip_pos"]
-			var side_sign := 1.0 if side == &"left" else -1.0
-			var left_dir := Vector3(hip_axis.x, 0.0, hip_axis.z).normalized() * side_sign
-			target = _leg_solver.adjust_idle_slope_target(
-					side, solve_hip, target, leg["upper"], leg["lower"], to_world, left_dir)
-		if (_velocity_suppressed and cur_anim.contains("idle")
-				and not _gait_tracker.is_body_translating() and not leg.get("stationary_slope", false)
-				and _leg_solver.debug_solve_target.has(side)):
-			target = _leg_solver.debug_solve_target[side]
+		# A seam hold already has final say (018 finding A) - it used to override upper-foot/
+		# slope adjustment unconditionally after the fact; skip them rather than let their
+		# output silently replace the now-validated frozen target.
+		if not leg.has(&"seam_hold_target"):
+			target = _ground_sampler.straighten_compressed_upper_target(
+					player_body.get_world_3d().direct_space_state, side, {
+				"hip": solve_hip, "target": target,
+				"surface": leg.get("raw_target", Vector3(INF, INF, INF)),
+				"normal": leg.get("raw_normal", Vector3.UP), "upper": leg["upper"], "lower": leg["lower"],
+				"offset": leg.get("effective_offset", ankle_offset), "to_world": to_world, "delta": delta,
+				"lowest_hit": leg.get("animated_contact_hit", false),
+				"lowest_surface": leg.get("animated_contact_position", Vector3.ZERO)})
+			if leg.get("stationary_slope", false):
+				var hip_axis: Vector3 = leg["hip_pos"] - per_leg[other_side]["hip_pos"]
+				var side_sign := 1.0 if side == &"left" else -1.0
+				var left_dir := Vector3(hip_axis.x, 0.0, hip_axis.z).normalized() * side_sign
+				target = _leg_solver.adjust_idle_slope_target(
+						side, solve_hip, target, leg["upper"], leg["lower"], to_world, left_dir)
 		# A target reassigned since validation was never checked against it - report that.
 		var still_validated: bool = (leg.get("target_plan_validated", false)
 				and validated_target.distance_to(target) <= 0.001)

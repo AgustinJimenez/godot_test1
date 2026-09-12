@@ -44,6 +44,7 @@ func resolve_stationary(space: PhysicsDirectSpaceState3D,
 		to_world: Transform3D = Transform3D.IDENTITY) -> void:
 	_propose_spacing(per_leg, stationary, to_world)
 	_select_solve_targets(per_leg)
+	_apply_seam_hold(per_leg)
 	var legacy_transition_active: bool = (not _owner._ground_sampler.idle_lower_acquiring.is_empty()
 			or not _owner._ground_sampler.idle_lower_latched_target.is_empty())
 	for side: StringName in per_leg:
@@ -102,6 +103,20 @@ static func _select_solve_targets(per_leg: Dictionary) -> void:
 		leg.erase(&"spacing_delta")
 
 
+## Idle-loop-reset velocity suppression must freeze the ankle at last frame's actual solve,
+## overriding spacing/ground-target selection same as it always overrode upper-foot/slope
+## adjustment - highest priority among the late overrides, now validated instead of applied
+## after the fact. The modifier computes the hold value itself (last frame's solver history).
+static func _apply_seam_hold(per_leg: Dictionary) -> void:
+	for side: StringName in per_leg:
+		var leg: Dictionary = per_leg[side]
+		if not leg.has(&"seam_hold_target"):
+			continue
+		leg[&"solve_candidate"] = leg[&"seam_hold_target"]
+		leg[&"target_source"] = "seam_hold"
+		leg.erase(&"spacing_delta")
+
+
 ## Observe actual inputs without rewriting the accepted plan. Other late overrides are
 ## still being migrated; a spaced candidate must never lend them its validation flag.
 func record_solve_target(side: StringName, target: Vector3, validation_claim: bool) -> bool:
@@ -132,7 +147,10 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName, leg: Dictio
 	plan.target_source = leg.get(&"target_source", "target")
 	# Support and ankle must describe the same proposal, not the pre-spacing surface.
 	plan.surface_target += leg.get(&"spacing_delta", Vector3.ZERO) as Vector3
-	if plan.target_source == "ground_target":
+	if plan.target_source == "ground_target" or plan.target_source == "seam_hold":
+		# A frozen ankle validated against this frame's fresh raw surface would fail on a
+		# stale/current mismatch that never existed before (seam used to bypass validation
+		# entirely) - derive the paired surface from the frozen ankle itself instead.
 		plan.surface_target = plan.ankle_target - plan.surface_normal * float(
 				leg.get(&"effective_offset", _owner.ankle_offset))
 	plan.valid = bool(leg.get(&"hit", false))

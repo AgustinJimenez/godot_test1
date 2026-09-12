@@ -33,7 +33,7 @@ design goals and acceptance requirements still apply.
 | D — pose result/apply | `b60173f` introduced the result type; the live-confirmed extraction adds fixed inputs, candidate-local history/diagnostics and guarded acceptance (details below). | Final-output clearance/feasibility reporting and clearance-driven candidate selection. |
 | E — final snapshot | `70bea29`: prefer fresh Foot IK poses for visual consumers and frame-stamp the cache. | Publish after every enabled modifier/backend, including native IK and any later balance layer. |
 | H — performance | `dfee62e`: log worst-call/worst-frame solver timing. | Query accounting, explicit work budgets and broader tail-latency measurements. |
-| A — authoritative plan | `c182d17` invalidates covered late edits; the current spacing slice moves the 22 cm proposal before coordinator validation and records actual-target agreement (below). | Migrate ground-target priority, upper-foot/slope adjustments, seam selection and shared pelvis behind the accepted-plan boundary. |
+| A — authoritative plan | `c182d17` invalidates covered late edits; `b0f804b` moves the 22 cm spacing proposal and ground-target priority before coordinator validation (below); the seam-hold slice (below, uncommitted) moves idle-loop-reset velocity suppression there too. | Migrate upper-foot/slope adjustments and shared pelvis behind the accepted-plan boundary. |
 | G — typed integration | No implementation of the proposed abstractions identified in this audit. | Support identity/local anchors, typed motion/animation context, root-request feedback and collision-layer cleanup. |
 
 Feature status: torso counter-lean (`56d0222`) is implemented but **parked, disabled by
@@ -119,6 +119,36 @@ Spacing-slice validation map (2026-09-12, sequential headless runs):
 | `scripts/check_foot_ik_locomotion.sh` (independent child of all) | Existing failure; metrics unchanged. |
 | `scripts/check_foot_ik_ramps.sh` (independent child of all) | 20 failing cases; worst depth 0.013232 m, unchanged. |
 | `scripts/check_foot_ik_ramp_sweep.sh` (independent child of all) | 16 failing cases; worst depth 0.105375 m, unchanged. |
+
+Spacing and target-selection slices committed as `b0f804b`.
+
+### Seam-hold slice — 2026-09-12, automated validation only, not yet committed
+
+The idle-loop-reset seam hold (`_velocity_suppressed` freezing the ankle at last frame's actual
+solve to avoid a pop) used to run after validation, silently overriding upper-foot/slope
+adjustment with no check that the frozen position still made sense. It now resolves into
+`solve_candidate` inside `resolve_stationary()`, after spacing and ground-target selection,
+taking the same final priority it always had - upper-foot/slope adjustment are skipped for a
+seam-held leg instead of computing output that would previously have been discarded anyway.
+
+- The modifier computes the hold value itself (`_leg_solver.debug_solve_target[side]`, last
+  frame's actual solve) before calling `resolve_stationary()`, using the exact original
+  condition (`_velocity_suppressed`, idle animation, not translating, not `stationary_slope`,
+  history present). The coordinator's new `_apply_seam_hold()` applies it as `target_source =
+  "seam_hold"`, overriding any spacing/ground-target selection for that leg.
+- A frozen ankle validated against this frame's *fresh* raw surface could fail on a stale/
+  current mismatch that never existed before (seam used to bypass validation entirely) -
+  `surface_target` is derived from the frozen ankle itself for `seam_hold`, same fix already
+  applied for `ground_target`.
+- No new fixture: the existing dedicated
+  [idle-loop seam acceptance test](../tests/manual/foot_ik/foot_ik_idle_seam_check.gd) (already
+  wired into fast/main/all runners) is the acceptance test for this exact mechanism and passed
+  with byte-identical metrics (`max_left_step_m=0.0020`, `max_knee_step_m=0.0015`,
+  `max_knee_flex_step_deg=0.18`, same frames). The spacing-plan fixture (39 cases) and full
+  suite (41 pass / 7 known failures / no unexpected failures) also confirmed unchanged.
+- **Not live-tested.** This path only triggers during a rare idle-loop-reset velocity-
+  suppression window, not something readily reproducible by manual play; automated coverage
+  is the practical acceptance bar here, same as the target-selection slice before it.
 
 ### Candidate-evaluation extraction — implemented 2026-09-11, live-confirmed 2026-09-12
 
