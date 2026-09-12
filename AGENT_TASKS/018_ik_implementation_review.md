@@ -33,7 +33,7 @@ design goals and acceptance requirements still apply.
 | D — pose result/apply | `b60173f` introduced the result type; the live-confirmed extraction adds fixed inputs, candidate-local history/diagnostics and guarded acceptance (details below). | Final-output clearance/feasibility reporting and clearance-driven candidate selection. |
 | E — final snapshot | `70bea29`: prefer fresh Foot IK poses for visual consumers and frame-stamp the cache. | Publish after every enabled modifier/backend, including native IK and any later balance layer. |
 | H — performance | `dfee62e`: log worst-call/worst-frame solver timing. | Query accounting, explicit work budgets and broader tail-latency measurements. |
-| A — authoritative plan | `c182d17` invalidates covered late edits; `b0f804b` moves the 22 cm spacing proposal and ground-target priority before coordinator validation (below); the seam-hold slice (below, uncommitted) moves idle-loop-reset velocity suppression there too. | Migrate upper-foot/slope adjustments and shared pelvis behind the accepted-plan boundary. |
+| A — authoritative plan | `c182d17` invalidates covered late edits; `b0f804b` moves the 22 cm spacing proposal and ground-target priority before coordinator validation; `60b0fa5` moves the idle-loop-reset seam hold there too. | Migrate upper-foot/slope adjustments and shared pelvis behind the accepted-plan boundary; shared-pelvis attempt A regressed and was reverted (below) - approach still open. |
 | G — typed integration | No implementation of the proposed abstractions identified in this audit. | Support identity/local anchors, typed motion/animation context, root-request feedback and collision-layer cleanup. |
 
 Feature status: torso counter-lean (`56d0222`) is implemented but **parked, disabled by
@@ -149,6 +149,61 @@ seam-held leg instead of computing output that would previously have been discar
 - **Not live-tested.** This path only triggers during a rare idle-loop-reset velocity-
   suppression window, not something readily reproducible by manual play; automated coverage
   is the practical acceptance bar here, same as the target-selection slice before it.
+
+### Shared-pelvis/reach design — proposed 2026-09-12, not yet implemented
+
+Upper-foot correction and slope adjustment (finding A's two remaining late overrides) both
+consume `solve_hip`, which depends on `shared_drop` and `_pelvis_lateral_shift`. Those pelvis
+values are computed from each leg's *raw* `target`/`ground_target` dict fields, deliberately
+still pre-spacing/pre-selection - a prior attempt to feed them the coordinator's accepted
+(spacing-shifted) target caused body penetration (8 samples, 0.335562 m); `foot_ik_spacing_plan_
+check.gd`'s `_check_target_priority` now asserts `leg["target"]` is left untouched by selection.
+
+Root-caused two separate things, not one:
+
+1. **Why full substitution regressed:** spacing adds a *symmetric* +/-11 cm offset around the
+   two feet's midpoint. An unweighted midpoint of the post-spacing targets equals the
+   pre-spacing midpoint exactly, but pelvis centering is `ground_weight`-*weighted* when the
+   two feet's weights differ - a weighted average of asymmetrically-weighted, symmetrically-
+   offset points does not equal the original weighted average. That mismatch is the likely
+   source of the regression, not "using the accepted target" in general.
+2. **A separate, real, pre-existing gap, predating every slice above:** pelvis centering and
+   the post-`resolve_stationary()` reach-recompute both read
+   `leg.get("target", leg.get("ground_target", ...))` - but `target` and `ground_target` are
+   *both always set* on every leg every frame
+   ([player_foot_ik_modifier.gd:686-687](../actors/player/player_foot_ik_modifier.gd)), so that
+   fallback chain always resolves to `target` and silently ignores `prefer_ground_target`,
+   which the actual leg solve has honored (via the coordinator) since the target-selection
+   slice. Pelvis has quietly never respected that preference, in old code or new.
+
+Three approaches were discussed with the user:
+
+- **A - tried 2026-09-12, reverted, regressed.** Added `plan.pelvis_reference_target` = the
+  fully-selected target (respects `ground_target`/`seam_hold`) minus its `spacing_delta`; pelvis
+  centering and the reach-recompute read this instead of the raw dict fields. Sidestepped
+  finding 1 by excluding the spacing offset as designed, but missed a second inheritance path:
+  when the coordinator's plan fails its own validation (support/reach), `_raw_recovery_plan`
+  supplies a fallback target meant for the *leg solve* to have something reasonable that frame -
+  not a stable reference. `pelvis_reference_target` inherited that per-frame recovery churn,
+  which the old code never saw (it read the stable `leg["target"]` field directly, untouched by
+  coordinator validation state). Full suite: **2 new unexpected failures** (`Foot IK animation
+  comparison check`, `Foot IK rendered-body stair penetration check`); `walk_right` showed
+  `worst_added_deg=8.296` against a 4.5 deg allowance and `edge_ratio=1.499` against a 1.25
+  limit - a real, visible pose distortion during ordinary walk locomotion (not just the
+  idle/stationary paths this slice was scoped around). Reverted cleanly; suite back to 41
+  passed / 7 known failures / no unexpected failures.
+- **B (candidate for next attempt):** skip the coordinator entirely for pelvis; mirror
+  `prefer_ground_target` directly in the pelvis code (as the old inline solve code used to),
+  fixing finding 2 without introducing any new plan field, without touching spacing, and
+  critically without ever reading anything that can reflect a validation-failure fallback.
+- **C (deferred):** a true joint solve deciding pelvis and both leg targets together in one
+  pass, replacing the sequential pipeline. Most architecturally complete, but now the second
+  attempt in this specific area to regress (8 samples/0.335562 m body penetration previously;
+  8.296 deg pose distortion in walk locomotion this time) - two independent findings suggesting
+  this pipeline's implicit assumptions run deeper than either attempted fix anticipated. No
+  concrete visible bug drives this work (user confirmed purely architectural). **Decision
+  pending: user asked to try A, then reconsider C "given the results" - results are in;
+  next actual step not yet decided.**
 
 ### Candidate-evaluation extraction — implemented 2026-09-11, live-confirmed 2026-09-12
 

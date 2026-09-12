@@ -65,8 +65,7 @@ var force_plant_mode: bool = false
 ## Max speed (m/s) the shared pelvis may RISE back toward the animated pose after a reach-limit
 ## sink - the sink itself still engages instantly. 0.0 disables shaping.
 @export_range(0.0, 4.0, 0.1) var shared_drop_release_rate: float = 1.5
-## Max speed (m/s) the shared pelvis may SINK during an idle settle (walking stays instant).
-## 0.0 disables shaping.
+## Max speed (m/s) the shared pelvis may SINK during idle settle (walking stays instant; 0=off).
 @export_range(0.0, 4.0, 0.1) var shared_drop_idle_engage_rate: float = 1.5
 const STEP_DOWN_STATIC_STREAK := 4
 @export var solver_backend := SolverBackend.CUSTOM
@@ -95,8 +94,7 @@ var _phase_locked_corrector: RefCounted
 var _bone_indices: Dictionary = {} # side -> {hip, knee, foot, toe, leaf: int}
 var _leg_lengths: Dictionary = {} # side -> {upper, lower: float}
 var _sole_down_local: Dictionary = {} # side -> Vector3, one of the 6 principal axes
-## Max extent of this leg's planted bind geometry below the foot bone's origin (meters) - fed
-## into effective_offset so a planted sole clears the ground even with hanging ball/toe geometry.
+## Max extent of planted bind geometry below the foot bone (m) - feeds effective_offset.
 var _sole_depth_below_foot: Dictionary = {} # side -> float
 ## Toe's rest-pose position/orientation relative to the foot (not the *animated* pose) - what
 ## the toe gets rigidly rebuilt from each frame.
@@ -714,8 +712,7 @@ func _process_modification_with_delta(delta: float) -> void:
 	for i in skel.get_bone_count():
 		_final_bone_poses[i] = skel.get_bone_global_pose(i)
 	_final_bone_poses_frame = Engine.get_physics_frames()
-## Mirrors foot_ik_gait_tracker velocity for the step-down static test. Skeleton
-## space, so root stair-hover translation cannot masquerade as foot motion.
+## Mirrors gait_tracker velocity for step-down (skeleton space; root hover isn't foot motion).
 func _animated_vertical_speed(side: StringName, animated_foot_pos: Vector3,
 		to_world: Transform3D, delta: float) -> float:
 	var velocity := 0.0
