@@ -66,23 +66,44 @@ printf '%s\n' "PROJECT_CHECK PASS"
 run_scene "Foot IK clearance geometry" "FOOT_IK_CLEARANCE_GEOMETRY_CHECK PASS" \
 	5 res://tests/manual/foot_ik/foot_ik_clearance_geometry_check.tscn
 
-run_scene "Foot IK release pose" "FOOT_IK_RELEASE_POSE_CHECK PASS" \
-	5 res://tests/manual/foot_ik/foot_ik_release_pose_check.tscn
-
-run_scene "Foot IK candidate evaluation" "FOOT_IK_CANDIDATE_EVALUATION_CHECK PASS samples=720" \
-	150 res://tests/manual/foot_ik/foot_ik_candidate_evaluation_check.tscn
-
-run_scene "Foot IK spacing plan" "FOOT_IK_SPACING_PLAN_CHECK PASS cases=39" \
-	5 res://tests/manual/foot_ik/foot_ik_spacing_plan_check.tscn
-
-run_scene "Foot IK final target contract" "FOOT_IK_FINAL_TARGET_CONTRACT_CHECK PASS cases=20" \
-	80 res://tests/manual/foot_ik/foot_ik_final_target_contract_check.tscn
-
-run_scene "Foot IK slope target lifecycle" "FOOT_IK_SLOPE_TARGET_LIFECYCLE_CHECK PASS" \
-	10 res://tests/manual/foot_ik/foot_ik_slope_target_lifecycle_check.tscn
-
-run_scene "Foot IK authored collider shape" "FOOT_IK_AUTHORED_COLLIDER_SHAPE_CHECK PASS" \
-	5 res://tests/manual/foot_ik/foot_ik_authored_collider_shape_check.tscn
+# Only this curated high-signal subset of the shared list actually runs here - everything
+# else is a silent no-op (018 finding I: keeps this subset in sync with the canonical labels
+# in foot_ik_checks.inc.sh instead of hand-copying scene/pattern/quit-after values here too).
+FAST_LABELS='
+Foot IK release pose check
+Foot IK candidate evaluation check
+Foot IK spacing plan check
+Foot IK final target contract check
+Foot IK slope target lifecycle check
+Foot IK authored collider shape check
+Foot IK stale grounded landing commitment check
+Foot IK shallow split-height pose check
+Foot IK randomized edge-landing sweep
+Foot IK ledge safety check
+Foot IK landing stability check
+Foot IK split-stance walk support check
+Foot IK idle loop left-leg seam check
+Foot IK idle support owner check
+Foot IK toe riser check
+Foot IK mode switch reset check
+Foot IK constraint expiry check
+'
+check() {
+	label=$1
+	if ! printf '%s\n' "$FAST_LABELS" | grep -qxF "$label"; then
+		return 0
+	fi
+	pattern=$2
+	quit_after=$3
+	scene=$4
+	shift 4
+	if [ "$#" -gt 0 ]; then
+		run_scene "$label" "$pattern" "$quit_after" "$scene" -- "$@"
+	else
+		run_scene "$label" "$pattern" "$quit_after" "$scene"
+	fi
+}
+. "$project_dir/scripts/foot_ik_checks.inc.sh"
 
 run_scene_all "Foot IK core preview" 360 res://tests/manual/foot_ik/foot_ik_preview.tscn \
 	"-- --foot-ik-check" \
@@ -91,30 +112,8 @@ run_scene_all "Foot IK core preview" 360 res://tests/manual/foot_ik/foot_ik_prev
 	"FOOT_IK_POSE_CONTINUITY_CHECK PASS samples=[1-9]" \
 	"FOOT_IK_STAIR_LOCOMOTION_CHECK PASS steps=[1-9]" \
 	"FOOT_IK_STAIR_SETTLE_CHECK PASS samples=[1-9]"
-run_scene "Foot IK stale grounded landing commitment" "FOOT_IK_KNEE_FLEX_CHECK PASS" \
-	400 res://tests/manual/foot_ik/foot_ik_knee_flex_check.tscn -- replay_stale_grounded_commit=true
-run_scene "Foot IK shallow split-height pose" "FOOT_IK_KNEE_FLEX_CHECK PASS" \
-	400 res://tests/manual/foot_ik/foot_ik_knee_flex_check.tscn -- replay_shallow_split_pose=true
-run_scene "Foot IK randomized edge landing" "FOOT_IK_EDGE_LANDING_SWEEP_CHECK PASS" \
-	10000 res://tests/manual/foot_ik/foot_ik_edge_landing_sweep_check.tscn
-run_scene "Foot IK ledge safety" "FOOT_IK_LEDGE_SAFETY_CHECK PASS" \
-	3300 res://tests/manual/foot_ik/foot_ik_ledge_safety_check.tscn
-run_scene "Foot IK landing stability" "FOOT_IK_LANDING_STABILITY_CHECK PASS" \
-	240 res://tests/manual/foot_ik/foot_ik_landing_stability_check.tscn
-run_scene "Foot IK split stance" "FOOT_IK_SPLIT_STANCE_WALK_CHECK PASS" \
-	320 res://tests/manual/foot_ik/foot_ik_split_stance_walk_check.tscn
-run_scene "Foot IK idle loop seam" "FOOT_IK_IDLE_SEAM_CHECK PASS" \
-	400 res://tests/manual/foot_ik/foot_ik_preview.tscn -- --idle-ik-seam-check
 run_scene "Foot IK planted idle" "FOOT_IK_IDLE_PLANT_STABILITY_CHECK PASS" \
 	2750 res://tests/manual/foot_ik/foot_ik_idle_plant_stability_check.tscn
 
-run_scene "Foot IK idle support ownership" "FOOT_IK_IDLE_SUPPORT_OWNER_CHECK PASS" \
-	500 res://tests/manual/foot_ik/foot_ik_idle_support_owner_check.tscn
-run_scene "Foot IK toe riser clearance" "FOOT_IK_TOE_RISER_CHECK PASS" \
-	560 res://tests/manual/foot_ik/foot_ik_toe_riser_check.tscn
-run_scene "Foot IK mode switch reset" "FOOT_IK_MODE_SWITCH_CHECK PASS" \
-	10 res://tests/manual/foot_ik/foot_ik_mode_switch_check.tscn
-run_scene "Foot IK constraint expiry" "FOOT_IK_CONSTRAINT_EXPIRY_CHECK PASS" \
-	15 res://tests/manual/foot_ik/foot_ik_constraint_expiry_check.tscn
 elapsed=$(($(date +%s) - start_time))
 printf 'FOOT_IK_FAST_CHECK PASS elapsed_seconds=%d\n' "$elapsed"

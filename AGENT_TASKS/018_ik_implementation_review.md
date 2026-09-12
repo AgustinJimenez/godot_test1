@@ -25,7 +25,7 @@ design goals and acceptance requirements still apply.
 
 | Finding | Implemented evidence | Remaining work |
 | --- | --- | --- |
-| I — runner reliability | `ec3cf35`: require all six preview results, check grouped script errors, and compare ramp failure counts/depths; `dc1871c`: `check_foot_ik.sh`/`check_foot_ik_all.sh` now also run `scripts/check.sh` itself; 2026-09-12 follow-up: `check_foot_ik_ramp_locomotion.sh`, `check_foot_ik_locomotion.sh` and "Foot IK stationary planted-foot stability check" moved out of the plain label list into quantitative grading (see below) - a 13->14 ramp-locomotion regression hid behind the bare label during this same session. | Behavioral CI, deduplicating fast/main/all lists (each maintains its own separate scene/pattern list by hand). |
+| I — runner reliability | `ec3cf35`: require all six preview results, check grouped script errors, and compare ramp failure counts/depths; `dc1871c`: `check_foot_ik.sh`/`check_foot_ik_all.sh` now also run `scripts/check.sh` itself; 2026-09-12 follow-up: `check_foot_ik_ramp_locomotion.sh`, `check_foot_ik_locomotion.sh` and "Foot IK stationary planted-foot stability check" moved out of the plain label list into quantitative grading (see below) - a 13->14 ramp-locomotion regression hid behind the bare label during this same session. 2026-09-12 follow-up: `scripts/foot_ik_checks.inc.sh` now holds the 38 "simple" checks shared by `check_foot_ik.sh` and `check_foot_ik_all.sh`, and `check_foot_ik_fast.sh` sources the same file behind its own curated label allowlist - see below. | Behavioral CI. |
 | B — time/refresh | `7f8f602`: guard specific streaks against zero-delta/duplicate ticks; preserve pelvis smoothing on refresh. | Pipeline-wide frame context and once-per-tick history contract, with refresh/rate coverage. |
 | F — lifecycle | `d1104ca`: reset residual/phase-locked/native state and update native orientation history; a dedicated white-box reset-clearing test now guards it (below). | Explicit `reset`/`enter`/`exit`/capability contracts per mode; a full scene-level pose-continuity test (mode A -> B -> A with a real skeleton) remains open. |
 | C — constraint status | `a0392d5`: replace validity booleans with satisfied/violated/unchecked/inapplicable/tolerated statuses; general per-constraint `constraint_reasons`/`constraint_expiry_frames` mechanism added and wired for toe (below). | Owner/terrain contract coverage; the enum plus reason/expiry still does not strengthen validation by itself - only toe uses tolerance today. |
@@ -187,6 +187,43 @@ each), falling back to plain pass/fail if any other case fails instead;
 each gate actually catches a regression by temporarily lowering its ceiling and confirming the
 run flips to `FAIL NEW` and exit 1, then restored it. Full suite unaffected: 45 passed / 7 known baseline
 failures, no new failures, both new checks reporting their quantitative detail.
+
+### Runner list deduplication — 2026-09-12, committed (018 finding I)
+
+`check_foot_ik.sh` (518 lines) and `check_foot_ik_all.sh` independently hand-maintained the
+same 38 "simple" single-scene, single-pattern checks - confirmed by diffing their scene lists:
+`check_foot_ik.sh` was missing `foot_ik_constraint_expiry_check.tscn` and
+`foot_ik_mode_switch_check.tscn` entirely (both added earlier this session and only
+back-ported to `check_foot_ik_all.sh`/`check_foot_ik_fast.sh`) - a concrete, already-happened
+instance of exactly the drift this finding warns about.
+
+New `scripts/foot_ik_checks.inc.sh` holds those 38 checks as plain `check LABEL PATTERN
+QUIT_AFTER SCENE [ARGS...]` calls (pure data - each caller defines `check()` before sourcing
+the file). `check_foot_ik.sh` defines a fail-fast `check()` (exit 1 immediately, same as its
+old inline blocks); `check_foot_ik_all.sh` defines `check() { run_check "$@"; }` to keep its
+continue-past-failures/known-baseline behavior; `check_foot_ik_fast.sh` defines a `check()`
+that no-ops any label not in its own `FAST_LABELS` curated allowlist, otherwise delegates to
+its existing `run_scene`. `check_foot_ik.sh` shrank from 518 to 115 lines, `check_foot_ik_all.sh`
+from 367 to 311.
+
+**Deliberately NOT shared:** the multi-pattern `foot_ik_preview.tscn --foot-ik-check` block
+(`check_foot_ik_all.sh` records its 6 patterns as 6 separate known/new results, not one
+combined pass/fail - unifying it would have silently changed that script's passed-count
+semantics) and every quantitative-grading/sibling-script check (ramps, ramp sweep, ramp
+locomotion, stair repeat, locomotion, project/clearance subscripts, idle-plant-stability) -
+each caller still lists those itself.
+
+**Known, accepted behavior changes from reordering:** each script's checks now run in
+whatever order the shared file plus each caller's remaining inline blocks fall in, not the
+exact original order. For a continue-past-failures script (`check_foot_ik_all.sh`) this only
+reorders printed lines. For the two fail-fast scripts this can change *which* check is reached
+and reported first when multiple would fail - verified this does not change *whether* they
+fail: `check_foot_ik.sh` still fails at the same known "Foot IK unreachable acquisition check"
+(confirmed identical against the pre-refactor script via `git stash`); `check_foot_ik_fast.sh`
+still fails at the same known "Foot IK planted idle failed." stopping point, but now correctly
+exercises "Foot IK mode switch reset check"/"Foot IK constraint expiry check"/"Foot IK toe
+riser check"/"Foot IK idle support owner check" beforehand (previously unreachable in one run
+whenever idle-plant-stability failed first) - a coverage improvement, not a regression.
 
 ### Target-selection slice — 2026-09-12, committed `b0f804b`
 
