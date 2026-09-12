@@ -16,13 +16,28 @@ const SUPPORT_HEIGHT_TOLERANCE := 0.03
 ## raw-recovery fallback and back; only a sustained block should. Same idea as
 ## min_falling_streak/STEP_DOWN_STATIC_STREAK elsewhere in this system.
 const TOE_INVALID_HOLD_FRAMES := 10
+## A rejected final adjustment holds the last accepted output for this many frames rather than
+## snapping to this frame's un-adjusted base solve - a brief, sustained loss (e.g. a downhill
+## nudge overshooting a finite ramp's edge for a few consecutive frames) must not pop the pose.
+const FINAL_HOLD_FRAMES := 2
+## Recovery may borrow a supported reference for at most 12 physics ticks (0.2 s at 60 Hz).
+const PELVIS_HOLD_TICKS := 12
+
+class PelvisReference extends RefCounted:
+	var target: Vector3
+	var surface: Vector3
+	var normal: Vector3
+	var frame: int
+	var require_stance: bool
 
 var _owner
 var _plans: Dictionary = {}
 var _generations: Dictionary = {}
 var _toe_invalid_streak: Dictionary = {} # side -> int
 var _toe_invalid_streak_frames: Dictionary = {} # side -> int, see _limit_correction's guard
-var _last_good_final_target: Dictionary = {} # side -> Vector3, see pelvis_reference_target
+var _pelvis_references: Dictionary = {} # side -> PelvisReference
+var _last_final_targets: Dictionary = {} # side -> Vector3, see _accept_final_target's hold
+var _last_final_frames: Dictionary = {} # side -> int
 
 
 func _init(owner) -> void:
@@ -34,7 +49,9 @@ func reset() -> void:
 	_generations.clear()
 	_toe_invalid_streak.clear()
 	_toe_invalid_streak_frames.clear()
-	_last_good_final_target.clear()
+	_pelvis_references.clear()
+	_last_final_targets.clear()
+	_last_final_frames.clear()
 
 
 func get_plan(side: StringName) -> FootIKTargetPlan:
@@ -47,6 +64,8 @@ func resolve_stationary(space: PhysicsDirectSpaceState3D,
 	_propose_spacing(per_leg, stationary, to_world)
 	_select_solve_targets(per_leg)
 	_apply_seam_hold(per_leg)
+	for side: StringName in _pelvis_references.keys():
+		if not per_leg.has(side): release_leg(side)
 	var legacy_transition_active: bool = (not _owner._ground_sampler.idle_lower_acquiring.is_empty()
 			or not _owner._ground_sampler.idle_lower_latched_target.is_empty())
 	for side: StringName in per_leg:
@@ -63,7 +82,7 @@ func resolve_stationary(space: PhysicsDirectSpaceState3D,
 ## Finishes each leg's target decision (upper-foot/slope adjustment) here, before the modifier
 ## derives pelvis from it - these used to run after pelvis was already fixed for the frame, so
 ## pelvis never reflected their output (018 finding A, joint pass). A seam hold already has
-## final say and skips them. Writes leg[&"final_target"] and tracks _last_good_final_target
+## final say and skips them. Writes leg[&"final_target"] and tracks a bounded pelvis reference
 ## for pelvis_reference_target below. `prev_shared_drop`/`prev_lateral_shift` are last frame's
 ## stable pelvis values, used only to seed this frame's estimate hip for this math.
 func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
@@ -72,10 +91,15 @@ func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 	for side: StringName in per_leg:
 		var leg: Dictionary = per_leg[side]
 		if not leg.get("hit", false) or not (leg.has("target") or leg.has("ground_target")):
+			release_leg(side)
 			continue
 		var plan := get_plan(side)
 		var final_target: Vector3 = (plan.ankle_target if plan != null
 				else leg.get("target", leg.get("ground_target", leg["hip_pos"])))
+		var selected_target := final_target
+		var sampler = _owner._ground_sampler
+		var previous_surface: Variant = sampler.smoothed_target.get(side)
+		var previous_normal: Variant = sampler.smoothed_normal.get(side)
 		if not native and not leg.has(&"seam_hold_target"):
 			var other_side: StringName = &"right" if side == &"left" else &"left"
 			var est_hip: Vector3 = (leg["hip_pos"] - Vector3.UP * prev_shared_drop
@@ -94,6 +118,17 @@ func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 				var left_dir := Vector3(hip_axis.x, 0.0, hip_axis.z).normalized() * side_sign
 				final_target = _owner._leg_solver.adjust_idle_slope_target(
 						side, est_hip, final_target, leg["upper"], leg["lower"], to_world, left_dir)
+		if not native and plan != null:
+			var accepted := _accept_final_target(_contact_space(), plan, leg, final_target)
+			if accepted != final_target:
+				# Rejected interpolation must not leak into the producer's next frame.
+				if previous_surface != null: sampler.smoothed_target[side] = previous_surface
+				else: sampler.smoothed_target.erase(side)
+				if previous_normal != null: sampler.smoothed_normal[side] = previous_normal
+				else: sampler.smoothed_normal.erase(side)
+				if leg.get("stationary_slope", false):
+					_owner._leg_solver.retain_idle_slope_target(side, accepted)
+			final_target = accepted
 		leg[&"final_target"] = final_target
 		# ground_target selection during active locomotion is a real terrain-follow divergence
 		# from the animated foot - pelvis following it there measurably distorts walk pose (018
@@ -103,21 +138,159 @@ func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 		# upper-foot/slope adjustment's own contribution either way, just gate the avoidance.
 		var pelvis_basis := final_target
 		if not stationary and plan != null and plan.target_source == "ground_target":
-			var pre_selection: Vector3 = leg.get(&"target", plan.ankle_target)
-			pelvis_basis = pre_selection + (final_target - plan.ankle_target)
+			var pre_selection: Vector3 = leg.get(&"target", selected_target)
+			pelvis_basis = pre_selection + (final_target - selected_target)
 		leg[&"pelvis_basis_target"] = pelvis_basis
-		if plan == null or plan.target_source != "raw_recovery":
-			_last_good_final_target[side] = pelvis_basis
+		if plan != null and plan.target_source != "raw_recovery":
+			_remember_pelvis_reference(side, plan, pelvis_basis)
 
 
-## Pelvis centering must reflect each leg's true final target, not a raw-recovery frame's
-## unstable fallback (meant for the leg solve, not a stable reference) - hold the last
-## known-good final target while a leg is in recovery (018 finding A, joint pass).
+## Recovery is a short lease, not a world-space lock of unlimited age. Reconfirm geometry
+## and the original stance/reach contract when consuming it; refreshes cannot renew the lease.
 func pelvis_reference_target(side: StringName, leg: Dictionary, fallback: Vector3) -> Vector3:
 	var plan := get_plan(side)
-	if plan != null and plan.target_source == "raw_recovery":
-		return _last_good_final_target.get(side, leg.get(&"pelvis_basis_target", fallback))
+	if plan != null and plan.target_source == "raw_recovery" and _pelvis_references.has(side):
+		var cached: PelvisReference = _pelvis_references[side]
+		var age := Engine.get_physics_frames() - cached.frame
+		var reach: float = float(leg["upper"]) + float(leg["lower"]) + _owner.step_down_max_crouch
+		var hip: Vector3 = leg["hip_pos"]
+		var reason := "held"
+		if not leg.get("hit", false): reason = "contact_lost"
+		elif age < 0 or age >= PELVIS_HOLD_TICKS: reason = "expired"
+		elif hip.distance_to(cached.target) > reach: reason = "unreachable"
+		elif cached.require_stance and not _owner._ground_sampler.is_target_inside_stance_zone(
+				side, cached.surface): reason = "outside_stance"
+		elif not _has_contact_support(_contact_space(), cached.surface, cached.normal):
+			reason = "unsupported"
+		plan.pelvis_reference_reason = reason
+		if reason == "held": return cached.target
+		release_leg(side)
 	return leg.get(&"pelvis_basis_target", fallback)
+
+
+func release_leg(side: StringName) -> void:
+	_pelvis_references.erase(side)
+	_last_final_targets.erase(side)
+	_last_final_frames.erase(side)
+
+
+func _remember_pelvis_reference(side: StringName, plan: FootIKTargetPlan,
+		target: Vector3) -> void:
+	if not plan.valid or not target.is_finite() or not plan.surface_target.is_finite():
+		release_leg(side)
+		return
+	var cached := PelvisReference.new()
+	cached.target = target
+	cached.surface = plan.surface_target
+	cached.normal = plan.surface_normal
+	cached.frame = Engine.get_physics_frames()
+	cached.require_stance = plan.stance_status == FootIKTargetPlan.ConstraintStatus.SATISFIED
+	_pelvis_references[side] = cached
+
+
+## Accept a changed upper/slope proposal, or keep the already accepted input. Never veto
+## the fallback with the same test that rejected the optional adjustment. This does not
+## certify final skinned clearance or reach after this frame's pelvis has been shaped.
+func _accept_final_target(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan,
+		leg: Dictionary, candidate: Vector3) -> Vector3:
+	const STATUS := FootIKTargetPlan.ConstraintStatus
+	plan.adjusted_ankle_target = candidate
+	plan.final_adjustment_reason = "unchanged"
+	if candidate == plan.ankle_target:
+		_last_final_targets[plan.side] = candidate
+		_last_final_frames[plan.side] = Engine.get_physics_frames()
+		return candidate
+	# ground_sampler.compressed_upper_target[side], when populated (mid stair-height
+	# compression), names the sampler's own intended waypoint directly. Otherwise, project
+	# the candidate back along the surface normal by this leg's known ankle-to-surface
+	# offset as a first estimate; _sample_contact_support then self-corrects it against a
+	# real raycast rather than requiring an exact match. A generic vector translation of the
+	# OLD surface point by candidate-ankle drifts laterally on a continuous slope (a slope
+	# nudge's own downhill/sideways component is not aligned with the normal), landing the
+	# check far enough off the real surface to miss it for several consecutive frames (018
+	# finding D; a real ramp-spin regression).
+	var offset_len: float = plan.ankle_target.distance_to(plan.surface_target)
+	var estimate: Vector3 = _owner._ground_sampler.compressed_upper_target.get(
+			plan.side, candidate - plan.surface_normal * offset_len)
+	var sample := _sample_contact_support(space, estimate, plan.surface_normal)
+	var support_point: Vector3 = sample.get("position", estimate) as Vector3
+	plan.final_support_target = support_point
+	var check_stance := plan.stance_status not in [STATUS.NOT_APPLICABLE, STATUS.NOT_CHECKED]
+	var check_toe := plan.toe_status not in [STATUS.NOT_APPLICABLE, STATUS.NOT_CHECKED]
+	var hip: Vector3 = leg["hip_pos"]
+	var reach: float = float(leg["upper"]) + float(leg["lower"]) + _owner.step_down_max_crouch
+	var rejection := ""
+	if not candidate.is_finite(): rejection = "nonfinite"
+	elif hip.distance_to(candidate) > reach: rejection = "unreachable"
+	elif check_stance and not _owner._ground_sampler.is_target_inside_stance_zone(
+			plan.side, candidate): rejection = "outside_stance"
+	elif not (sample.get("ok", false) as bool): rejection = "unsupported"
+	elif check_toe and not _toe_envelope_valid_at(space, plan, candidate):
+		rejection = "toe_envelope_blocked"
+	if not rejection.is_empty():
+		plan.final_adjustment_reason = "rejected_" + rejection
+		# A rejected candidate here is a genuine one-frame outlier from the adjustment's own
+		# constraint-satisfaction search (e.g. a downhill nudge briefly overshooting a ramp's
+		# physical edge), not a sustained loss of ground - snapping straight to this frame's
+		# un-adjusted base solve pops visibly against neighboring frames that WERE adjusted.
+		# Hold the last known-good final output for a couple of frames instead, same idea as
+		# this file's other short holds (seam hold, pelvis reference lease).
+		var held: Variant = _last_final_targets.get(plan.side)
+		var held_frame: int = _last_final_frames.get(plan.side, -999)
+		if held != null and Engine.get_physics_frames() - held_frame <= FINAL_HOLD_FRAMES:
+			return held as Vector3
+		return plan.ankle_target
+	# Preserve the solver's existing guard policy: accepting an adjustment is not proof
+	# that its final pelvis/pose will satisfy all of that guard's anatomical constraints.
+	leg[&"target_plan_validated"] = (leg.get(&"target_plan_validated", false)
+			and plan.ankle_target.distance_to(candidate) <= 0.001)
+	plan.ankle_target = candidate
+	plan.surface_target = support_point
+	_last_final_targets[plan.side] = candidate
+	_last_final_frames[plan.side] = Engine.get_physics_frames()
+	plan.reach_status = STATUS.SATISFIED
+	plan.support_status = STATUS.SATISFIED
+	if check_toe:
+		plan.toe_status = STATUS.SATISFIED
+		plan.constraint_reasons.erase("toe")
+		plan.constraint_expiry_frames.erase("toe")
+	plan.final_adjustment_reason = "accepted_adjustment"
+	return candidate
+
+
+func _contact_space() -> PhysicsDirectSpaceState3D:
+	return _owner.player_body.get_world_3d().direct_space_state
+
+
+## A slope-aware point support check. Discrete transition callers supply their destination,
+## not their airborne waypoint; this is not a swept-volume or toe clearance check.
+func _has_contact_support(space: PhysicsDirectSpaceState3D,
+		surface: Vector3, normal: Vector3) -> bool:
+	if not surface.is_finite() or not normal.is_finite(): return false
+	var hit: Dictionary = _owner._ground_sampler.raycast_ground(
+			space, surface + Vector3.UP * 0.2, 0.4)
+	return (hit.get("hit", false)
+			and (hit.get("normal", Vector3.ZERO) as Vector3).dot(normal) >= 0.98
+			and (hit.get("position", Vector3.INF) as Vector3).distance_to(surface)
+			<= SUPPORT_HEIGHT_TOLERANCE)
+
+
+## Same real-ground query as _has_contact_support, but for a freshly-computed candidate
+## estimate rather than a cached, already-trusted surface: hit existence and normal alignment
+## are what a candidate's own support actually depends on, so accept the raycast's own hit
+## position as ground truth instead of also requiring it to land within a few cm of an
+## estimate that a move_toward-smoothed adjustment cannot guarantee that precisely (018
+## finding D). _has_contact_support's tighter match stays as-is for pelvis_reference_target's
+## staleness check on an already-accepted point, a genuinely different use case.
+func _sample_contact_support(space: PhysicsDirectSpaceState3D,
+		estimate: Vector3, normal: Vector3) -> Dictionary:
+	if not estimate.is_finite() or not normal.is_finite():
+		return {"ok": false, "position": estimate}
+	var hit: Dictionary = _owner._ground_sampler.raycast_ground(
+			space, estimate + Vector3.UP * 0.2, 0.4)
+	var ok: bool = (hit.get("hit", false)
+			and (hit.get("normal", Vector3.ZERO) as Vector3).dot(normal) >= 0.98)
+	return {"ok": ok, "position": (hit["position"] as Vector3) if ok else estimate}
 
 
 ## Joint proposal only: never move targets again after validation/recovery. Preserve the
@@ -179,8 +352,8 @@ static func _apply_seam_hold(per_leg: Dictionary) -> void:
 		leg.erase(&"spacing_delta")
 
 
-## Observe actual inputs without rewriting the accepted plan. Other late overrides are
-## still being migrated; a spaced candidate must never lend them its validation flag.
+## Observe actual inputs without rewriting the accepted plan. A finalized target must
+## never lend a later override its validation flag, even below the old 1 mm tolerance.
 func record_solve_target(side: StringName, target: Vector3, validation_claim: bool) -> bool:
 	var plan := get_plan(side)
 	if plan == null:
@@ -189,7 +362,8 @@ func record_solve_target(side: StringName, target: Vector3, validation_claim: bo
 	plan.actual_solve_target = target
 	var matches := plan.matches_solve_target(target)
 	plan.solve_target_reason = "accepted_plan" if matches else "late_target_override"
-	plan.solve_validation_retained = validation_claim and (not plan.spacing_requested or matches)
+	var must_match := plan.spacing_requested or plan.final_adjustment_reason != "not_finalized"
+	plan.solve_validation_retained = validation_claim and (not must_match or matches)
 	return plan.solve_validation_retained
 
 

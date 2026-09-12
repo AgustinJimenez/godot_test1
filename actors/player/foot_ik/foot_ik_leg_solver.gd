@@ -126,6 +126,10 @@ func adjust_idle_slope_target(side: StringName, hip: Vector3, target: Vector3,
 	_idle_slope_target_frames[side] = frame
 	return adjusted
 
+## Coordinator rejected a slope proposal: retain accepted output without advancing time again.
+func retain_idle_slope_target(side: StringName, target: Vector3) -> void:
+	_idle_slope_targets[side] = target
+
 func _target_thigh_swing(side: StringName, hip: Vector3, target: Vector3,
 		upper: float, lower: float, to_world: Transform3D) -> float:
 	var to_target := target - hip

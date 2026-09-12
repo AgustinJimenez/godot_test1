@@ -45,6 +45,10 @@ var solve_target_observed := false
 var actual_solve_target := Vector3.ZERO
 var solve_target_reason := "not_solved"
 var solve_validation_retained := false
+var adjusted_ankle_target := Vector3.ZERO
+var final_support_target := Vector3.ZERO
+var final_adjustment_reason := "not_finalized"
+var pelvis_reference_reason := "current"
 ## Per-constraint degraded-result detail (018 finding C, general mechanism): keyed by
 ## constraint name ("stance"/"support"/"reach"/"toe"), populated only while that constraint is
 ## actually degraded - absence means "not currently degrading," not "fine forever." Only "toe"

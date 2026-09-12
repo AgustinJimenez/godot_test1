@@ -54,6 +54,16 @@ fi
 rg "FOOT_IK_SPACING_PLAN_CHECK PASS" "$log_file"
 
 godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_final_target_contract_check.tscn \
+	--quit-after 80 >"$log_file" 2>&1 || true
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_FINAL_TARGET_CONTRACT_CHECK PASS cases=20" "$log_file"; then
+	cat "$log_file"
+	exit 1
+fi
+rg "FOOT_IK_FINAL_TARGET_CONTRACT_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
 	res://tests/manual/foot_ik/foot_ik_slope_target_lifecycle_check.tscn \
 	--quit-after 10 >"$log_file" 2>&1 || true
 if rg -q "SCRIPT ERROR" "$log_file" \

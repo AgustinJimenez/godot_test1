@@ -75,6 +75,9 @@ run_scene "Foot IK candidate evaluation" "FOOT_IK_CANDIDATE_EVALUATION_CHECK PAS
 run_scene "Foot IK spacing plan" "FOOT_IK_SPACING_PLAN_CHECK PASS cases=39" \
 	5 res://tests/manual/foot_ik/foot_ik_spacing_plan_check.tscn
 
+run_scene "Foot IK final target contract" "FOOT_IK_FINAL_TARGET_CONTRACT_CHECK PASS cases=20" \
+	80 res://tests/manual/foot_ik/foot_ik_final_target_contract_check.tscn
+
 run_scene "Foot IK slope target lifecycle" "FOOT_IK_SLOPE_TARGET_LIFECYCLE_CHECK PASS" \
 	10 res://tests/manual/foot_ik/foot_ik_slope_target_lifecycle_check.tscn
 

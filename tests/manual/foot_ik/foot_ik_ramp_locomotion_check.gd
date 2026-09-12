@@ -67,6 +67,15 @@ var _results: Array[String] = []
 
 func _ready() -> void:
 	_build_ramps_and_cases()
+	for argument in OS.get_cmdline_user_args():
+		if not argument.begins_with("--ramp-case="): continue
+		var selected := argument.trim_prefix("--ramp-case=")
+		for index in range(_cases.size() - 1, -1, -1):
+			if _cases[index]["name"] != selected: _cases.remove_at(index)
+		if _cases.is_empty():
+			push_error("Unknown ramp case: " + selected)
+			get_tree().quit(1)
+			return
 	_build_player()
 	_start_case()
 
@@ -286,6 +295,11 @@ func _sample_feet(phase: StringName) -> void:
 				_ik._leg_solver.debug_final_foot_position.get(side, Vector3.ZERO),
 				raw_target, sole_point, spin_foot_step, spin_target_step, spin_ankle_step,
 				actual_solve_target, spin_solve_target_step]
+		var plan := _ik._target_coordinator.get_plan(side)
+		if plan != null:
+			detail += " final_adjustment=%s pelvis_reference=%s adjusted=%s accepted=%s support=%s" % [
+					plan.final_adjustment_reason, plan.pelvis_reference_reason,
+					plan.adjusted_ankle_target, plan.ankle_target, plan.final_support_target]
 		if phase == &"spin" and spin_foot_step > _spin_maximum_foot_step:
 			_spin_maximum_foot_step = spin_foot_step
 			_worst_spin_step_detail = detail
