@@ -26,7 +26,7 @@ design goals and acceptance requirements still apply.
 
 | Finding | Implemented evidence | Remaining work |
 | --- | --- | --- |
-| I — runner reliability | `ec3cf35`: require all six preview results, check grouped script errors, and compare ramp failure counts/depths. | Exact-case baselines, consistent crash/completion handling, shared case manifest and behavioral CI; broad known-failure labels still hide deterioration. |
+| I — runner reliability | `ec3cf35`: require all six preview results, check grouped script errors, and compare ramp failure counts/depths; `dc1871c`: `check_foot_ik.sh`/`check_foot_ik_all.sh` now also run `scripts/check.sh` itself. | Exact-case baselines, behavioral CI, deduplicating fast/main/all lists; broad known-failure labels still hide deterioration in an already-red case. |
 | B — time/refresh | `7f8f602`: guard specific streaks against zero-delta/duplicate ticks; preserve pelvis smoothing on refresh. | Pipeline-wide frame context and once-per-tick history contract, with refresh/rate coverage. |
 | F — lifecycle | `d1104ca`: reset residual/phase-locked/native state and update native orientation history; a dedicated white-box reset-clearing test now guards it (below). | Explicit `reset`/`enter`/`exit`/capability contracts per mode; a full scene-level pose-continuity test (mode A -> B -> A with a real skeleton) remains open. |
 | C — constraint status | `a0392d5`: replace validity booleans with satisfied/violated/unchecked/inapplicable/tolerated statuses. | Complete degraded-result reporting, reasons/expiry and owner/terrain contract coverage; the enum alone does not strengthen validation. |
@@ -528,11 +528,14 @@ Do not assume a native rewrite is necessary before profiling these boundaries.
   `check_foot_ik_fast.sh` caught that gap. Full suite: 43 passed (up from 42) / 7 known
   failures / no unexpected failures; `check_foot_ik.sh` run standalone now completes with
   exit 0 (a side effect of this session's other fixes, not independently investigated).
-- `check_foot_ik_fast.sh` matches the core preview's six result names with an OR expression.
-  One PASS satisfies that pattern; it does not require all six. The preview prints independent
-  results in `_exit_tree()` and does not aggregate those failures into a failing exit itself.
-- The `_all` grouped-log helper checks PASS markers without the SCRIPT ERROR test used by its
-  ordinary helper. Engine exit status/completion/error handling is inconsistent between runners.
+- ~~`check_foot_ik_fast.sh` matches the core preview's six result names with an OR expression~~
+  - **already fixed by `ec3cf35`** (see progress table): `run_scene_all` loops every expected
+  pattern and fails on the first missing one, real AND semantics; the fast runner's call site
+  passes all six. This bullet was stale, not a remaining gap - verified 2026-09-12.
+- ~~The `_all` grouped-log helper checks PASS markers without the SCRIPT ERROR test~~ - **also
+  already fixed by `ec3cf35`**: `run_check_in_log` checks `SCRIPT ERROR` identically to
+  `run_check`. Also stale, verified 2026-09-12. Engine exit status/completion handling across
+  the three runners was not otherwise re-audited.
 - `.github/workflows/project-checks.yml` is manual-only and runs project lint/import/parse,
   not the behavioral IK suites. Lists are duplicated across fast/main/all scripts.
 
