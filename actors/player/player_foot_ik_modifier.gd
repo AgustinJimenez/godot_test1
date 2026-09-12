@@ -853,6 +853,11 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			if (player_body != null and player_body.anim_player != null) else "")
 	var stationary: bool = (cur_anim == "unarmed_idle" or cur_anim == "unarmed_torch_idle"
 			or cur_anim == "unarmed_crouch_idle")
+	# Last frame's stable pelvis, used only to seed this frame's upper-foot/slope hip position
+	# before this frame's own pelvis is known (018 finding A, joint pass) - those pelvis values
+	# move smoothly/rate-limited, so a one-frame-stale estimate is a bounded approximation.
+	var prev_shared_drop := _smoothed_shared_drop
+	var prev_lateral_shift := _pelvis_lateral_shift
 	for side: StringName in per_leg:
 		var other_side: StringName = &"right" if side == &"left" else &"left"
 		var brace_upper: bool = (_landing_grace_time > 0.0
@@ -868,14 +873,18 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			per_leg[side]["seam_hold_target"] = _leg_solver.debug_solve_target[side]
 	_target_coordinator.resolve_stationary(
 			player_body.get_world_3d().direct_space_state, per_leg, stationary, delta, to_world)
+	# Finish each leg's target decision now (upper-foot/slope), before pelvis is derived from
+	# it - see FootIKTargetCoordinator.finalize_leg_targets (018 finding A, joint pass).
+	_target_coordinator.finalize_leg_targets(per_leg, prev_shared_drop, prev_lateral_shift,
+			to_world, delta, solver_backend == SolverBackend.NATIVE_TWO_BONE, stationary)
 	# A reassigned target (replace_invalid_with_raw_support) missed shared_drop above, which
 	# ran before this reassignment - redo the same reach check against the final target.
 	for side: StringName in per_leg:
 		var leg: Dictionary = per_leg[side]
-		if not leg.get("hit", false) or not (leg.has("target") or leg.has("ground_target")):
+		if not leg.has(&"final_target"):
 			continue
 		var hip_pos: Vector3 = leg["hip_pos"]
-		var target: Vector3 = leg.get("target", leg.get("ground_target", hip_pos))
+		var target: Vector3 = leg.get(&"pelvis_basis_target", leg[&"final_target"])
 		var max_reach: float = float(leg["upper"]) + float(leg["lower"]) - 0.001
 		var h_sq := minf(0.09, Vector2(hip_pos.x - target.x, hip_pos.z - target.z).length_squared())
 		shared_drop = maxf(shared_drop,
@@ -897,26 +906,34 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		var is_flat_idle: bool = (l_leg.get("preserve_idle_pose", false)
 				and r_leg.get("preserve_idle_pose", false))
 		var is_edge_asym: bool = ((l_hit and not r_hit) or (r_hit and not l_hit))
+		var l_plan := _target_coordinator.get_plan(&"left")
+		# Spacing places feet symmetrically around the plain midpoint on purpose - a weighted
+		# average of that symmetric pair does not equal the original weighted center when the
+		# two feet's weights differ (018 finding A). Use spacing's own plain-midpoint basis
+		# for this pair instead of fighting it with a weighted formula.
+		var spaced := l_plan != null and l_plan.spacing_requested
 		if is_edge_asym:
 			var l_gw: float = float(l_leg.get("ground_weight", 1.0)) if l_hit else 0.0
 			var r_gw: float = float(r_leg.get("ground_weight", 1.0)) if r_hit else 0.0
 			var total_w := l_gw + r_gw
-			var l_tgt: Vector3 = l_leg.get("target", l_leg.get("ground_target", l_hip))
-			var r_tgt: Vector3 = r_leg.get("target", r_leg.get("ground_target", r_hip))
+			var l_tgt: Vector3 = _target_coordinator.pelvis_reference_target(&"left", l_leg, l_hip)
+			var r_tgt: Vector3 = _target_coordinator.pelvis_reference_target(&"right", r_leg, r_hip)
+			# Spacing needs both feet hit (see below), so it never applies to this asymmetric
+			# (only one foot hit) case - always the weighted/hip-fallback formula here.
 			var com: Vector3 = ((l_tgt * l_gw + r_tgt * r_gw) / total_w
 					if total_w > 0.001 else (l_hip if l_hit else r_hip))
 			target_shift = Vector3(com.x - pelvis_pos.x, 0.0, com.z - pelvis_pos.z).limit_length(0.35)
 		elif not is_flat_idle and l_hit and r_hit:
-			var l_tgt: Vector3 = l_leg.get("target", l_leg.get("ground_target", l_hip))
-			var r_tgt: Vector3 = r_leg.get("target", r_leg.get("ground_target", r_hip))
+			var l_tgt: Vector3 = _target_coordinator.pelvis_reference_target(&"left", l_leg, l_hip)
+			var r_tgt: Vector3 = _target_coordinator.pelvis_reference_target(&"right", r_leg, r_hip)
 			if stationary or l_leg.get("step_down", false) or r_leg.get("step_down", false):
 				# ground_weight-weighted, same formula as is_edge_asym above - was a plain
 				# unweighted midpoint (017: bias toward the more-loaded foot, not a fixed split).
 				var l_gw: float = float(l_leg.get("ground_weight", 1.0))
 				var r_gw: float = float(r_leg.get("ground_weight", 1.0))
 				var total_w := l_gw + r_gw
-				var feet_mid: Vector3 = ((l_tgt * l_gw + r_tgt * r_gw) / total_w
-						if total_w > 0.001 else (l_tgt + r_tgt) * 0.5)
+				var feet_mid: Vector3 = ((l_tgt + r_tgt) * 0.5 if spaced or total_w <= 0.001
+						else (l_tgt * l_gw + r_tgt * r_gw) / total_w)
 				target_shift = Vector3(feet_mid.x - pelvis_pos.x, 0.0,
 						feet_mid.z - pelvis_pos.z).limit_length(0.35)
 	# A zero-delta refresh must not advance the smoothed shift - see 018 finding B.
@@ -948,7 +965,6 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		return
 	for side: StringName in _bone_indices:
 		var leg: Dictionary = per_leg[side]
-		var other_side: StringName = &"right" if side == &"left" else &"left"
 		var brace_upper: bool = leg["brace_upper"]
 		var has_target: bool = leg.has("target") or leg.has("ground_target")
 		var preserve_idle: bool = leg.get("preserve_idle_pose", false)
@@ -959,29 +975,15 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		if not leg["hit"] or not has_target or (preserve_idle and shared_drop <= 0.0) or seam_acquire:
 			_leg_solver.release_to_animation(skel, side, delta)
 			continue
-		var target: Vector3 = _target_coordinator.get_plan(side).ankle_target
-		var validated_target := target # before any late reassignment below (018 finding A)
+		# upper-foot/slope adjustment already ran above, before pelvis was derived from its
+		# output (018 finding A, joint pass) - target is that final decision, not recomputed.
+		var plan := _target_coordinator.get_plan(side)
+		var validated_target: Vector3 = (plan.ankle_target if plan != null
+				else leg.get(&"final_target", Vector3.ZERO))
+		var target: Vector3 = leg.get(&"final_target", validated_target)
 		var gw: float = 1.0 if preserve_idle or brace_upper else float(leg["ground_weight"])
 		var cw: float = 1.0 if preserve_idle or brace_upper else float(leg.get("chain_weight", gw))
 		var solve_hip: Vector3 = leg["hip_pos"] - Vector3.UP * shared_drop + _pelvis_lateral_shift
-		# A seam hold already has final say (018 finding A) - it used to override upper-foot/
-		# slope adjustment unconditionally after the fact; skip them rather than let their
-		# output silently replace the now-validated frozen target.
-		if not leg.has(&"seam_hold_target"):
-			target = _ground_sampler.straighten_compressed_upper_target(
-					player_body.get_world_3d().direct_space_state, side, {
-				"hip": solve_hip, "target": target,
-				"surface": leg.get("raw_target", Vector3(INF, INF, INF)),
-				"normal": leg.get("raw_normal", Vector3.UP), "upper": leg["upper"], "lower": leg["lower"],
-				"offset": leg.get("effective_offset", ankle_offset), "to_world": to_world, "delta": delta,
-				"lowest_hit": leg.get("animated_contact_hit", false),
-				"lowest_surface": leg.get("animated_contact_position", Vector3.ZERO)})
-			if leg.get("stationary_slope", false):
-				var hip_axis: Vector3 = leg["hip_pos"] - per_leg[other_side]["hip_pos"]
-				var side_sign := 1.0 if side == &"left" else -1.0
-				var left_dir := Vector3(hip_axis.x, 0.0, hip_axis.z).normalized() * side_sign
-				target = _leg_solver.adjust_idle_slope_target(
-						side, solve_hip, target, leg["upper"], leg["lower"], to_world, left_dir)
 		# A target reassigned since validation was never checked against it - report that.
 		var still_validated: bool = (leg.get("target_plan_validated", false)
 				and validated_target.distance_to(target) <= 0.001)

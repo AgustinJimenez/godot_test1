@@ -33,7 +33,7 @@ design goals and acceptance requirements still apply.
 | D — pose result/apply | `b60173f` introduced the result type; the live-confirmed extraction adds fixed inputs, candidate-local history/diagnostics and guarded acceptance (details below). | Final-output clearance/feasibility reporting and clearance-driven candidate selection. |
 | E — final snapshot | `70bea29`: prefer fresh Foot IK poses for visual consumers and frame-stamp the cache. | Publish after every enabled modifier/backend, including native IK and any later balance layer. |
 | H — performance | `dfee62e`: log worst-call/worst-frame solver timing. | Query accounting, explicit work budgets and broader tail-latency measurements. |
-| A — authoritative plan | `c182d17` invalidates covered late edits; `b0f804b` moves the 22 cm spacing proposal and ground-target priority before coordinator validation; `60b0fa5` moves the idle-loop-reset seam hold there too. | Migrate upper-foot/slope adjustments and shared pelvis behind the accepted-plan boundary; shared-pelvis attempt A regressed and was reverted (below) - approach still open. |
+| A — authoritative plan | `c182d17` invalidates covered late edits; `b0f804b` moves the 22 cm spacing proposal and ground-target priority before coordinator validation; `60b0fa5` moves the idle-loop-reset seam hold there too; approach C (below, uncommitted, awaiting live test) migrates upper-foot/slope adjustment and derives pelvis from the true final targets. | Live-test and commit approach C; the pre-existing `walk_right`/`walk_left` locomotion-check gap (measurably improved as a side effect, not closed) remains open. |
 | G — typed integration | No implementation of the proposed abstractions identified in this audit. | Support identity/local anchors, typed motion/animation context, root-request feedback and collision-layer cleanup. |
 
 Feature status: torso counter-lean (`56d0222`) is implemented but **parked, disabled by
@@ -192,18 +192,62 @@ Three approaches were discussed with the user:
   limit - a real, visible pose distortion during ordinary walk locomotion (not just the
   idle/stationary paths this slice was scoped around). Reverted cleanly; suite back to 41
   passed / 7 known failures / no unexpected failures.
-- **B (candidate for next attempt):** skip the coordinator entirely for pelvis; mirror
-  `prefer_ground_target` directly in the pelvis code (as the old inline solve code used to),
-  fixing finding 2 without introducing any new plan field, without touching spacing, and
-  critically without ever reading anything that can reflect a validation-failure fallback.
-- **C (deferred):** a true joint solve deciding pelvis and both leg targets together in one
-  pass, replacing the sequential pipeline. Most architecturally complete, but now the second
-  attempt in this specific area to regress (8 samples/0.335562 m body penetration previously;
-  8.296 deg pose distortion in walk locomotion this time) - two independent findings suggesting
-  this pipeline's implicit assumptions run deeper than either attempted fix anticipated. No
-  concrete visible bug drives this work (user confirmed purely architectural). **Decision
-  pending: user asked to try A, then reconsider C "given the results" - results are in;
-  next actual step not yet decided.**
+- **B:** skipped - user chose to go straight to C.
+- **C - tried 2026-09-12, implemented via three sub-sections, automated suite clean.** User
+  approved all three sections in chat before implementation (brainstorming skill's
+  architectural path); user also explicitly asked to see automated-regression findings and test
+  live before any revert, changing the iterate-then-revert workflow used for A.
+
+  1. *Joint restructuring:* `FootIKTargetCoordinator.finalize_leg_targets()` now runs upper-
+     foot/slope adjustment right after `resolve_stationary()`, before the modifier derives
+     pelvis - previously these ran after pelvis was already fixed for the frame, so pelvis
+     never reflected their output. Uses last frame's stable `_smoothed_shared_drop`/
+     `_pelvis_lateral_shift` as an estimate hip for this math (bounded one-frame lag, since
+     those values are already rate-limited/smoothed). The modifier's final per-leg solve loop
+     now just reads `leg[&"final_target"]` instead of recomputing upper-foot/slope a second time.
+  2. *Spacing/weighted-midpoint reconciliation:* pelvis centering uses spacing's own plain-
+     midpoint basis (not a `ground_weight`-weighted one) for a pair with `spacing_requested`,
+     avoiding the original approach-A regression mechanism. Never actually implicated in any
+     regression this round - included from the start, unchanged throughout.
+  3. *Raw-recovery staleness:* `pelvis_reference_target()` holds each leg's last known-good
+     final target (`_last_good_final_target`) while that leg's plan is in `"raw_recovery"`,
+     instead of reading the fresh per-frame fallback. Also unchanged throughout, not the actual
+     cause of either regression found this round (see below) - `_apply_raw_recovery` already
+     mutated the legacy `leg["target"]` field directly in the pre-existing code, so pelvis was
+     never actually protected from raw-recovery churn in the old code either; this section's
+     value is real but was not the source of new instability.
+
+  Two regressions found and fixed during implementation, both around a third mechanism outside
+  the original three-section design:
+
+  - **First finding (identical to approach A's regression, now root-caused precisely):** not
+    spacing, not raw-recovery - `preserve_flat_pose`/`prefer_ground_target` can be true during
+    ordinary flat-ground walking, not just idle (`is_flat_level_ground`, no animation-state
+    gate). When true, `target` and `ground_target` are genuinely different values (animated
+    foot position vs. a terrain-follow candidate). Both approach A and this first C draft made
+    pelvis honor that preference unconditionally, distorting ordinary walk pose - two
+    independently-built fixes hit the exact same 8.296-degree `walk_right` failure because they
+    shared this one unexamined assumption ("respecting `ground_target` preference is a strict
+    bugfix"), not because of anything either fix actually changed on purpose. Fix: pelvis reads
+    a `pelvis_basis_target` that excludes the `ground_target` substitution.
+  - **Second finding (introduced by the first fix):** applying that exclusion unconditionally
+    made a *different*, narrower metric worse - the idle-loop seam check's `max_knee_step_m`
+    rose from `0.0111` (passing) to `0.0124` (failing a `0.0120` limit), because the same
+    exclusion was now also touching the non-seam-held leg during ordinary idle standing, where
+    `target`/`ground_target` rarely diverge and pelvis had actually been fine using
+    `ground_target` there. Fix: gate the exclusion on `not stationary` - only avoid
+    `ground_target` for pelvis during actual locomotion, not idle.
+
+  Final full suite: **41 passed / 7 known failures / no unexpected failures** - matches the
+  pre-work baseline exactly. `walk_right`/`walk_left`'s raw `FOOT_IK_LOCOMOTION_CHECK` lines
+  still show `FAIL` with `worst_added_deg` around 4.57/1.585 (down from 8.296/uninvestigated
+  pre-existing), but both are inside the already-known-failing `check_foot_ik_locomotion.sh`
+  script, so the harness does not (and did not, at any point in this investigation) flag them
+  as new - this pre-existing walk-locomotion gap was not fully closed, only measurably improved
+  as an incidental side effect of chasing the two regressions above. Idle-loop seam check:
+  `max_knee_step_m=0.0111`, matching the very first (unrefined) C draft exactly.
+  **Not yet live-tested** - awaiting the user's live confirmation before commit, given this is
+  the third distinct attempt in an area with two prior confirmed regressions.
 
 ### Candidate-evaluation extraction — implemented 2026-09-11, live-confirmed 2026-09-12
 

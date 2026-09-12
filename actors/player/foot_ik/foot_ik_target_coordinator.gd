@@ -22,6 +22,7 @@ var _plans: Dictionary = {}
 var _generations: Dictionary = {}
 var _toe_invalid_streak: Dictionary = {} # side -> int
 var _toe_invalid_streak_frames: Dictionary = {} # side -> int, see _limit_correction's guard
+var _last_good_final_target: Dictionary = {} # side -> Vector3, see pelvis_reference_target
 
 
 func _init(owner) -> void:
@@ -33,6 +34,7 @@ func reset() -> void:
 	_generations.clear()
 	_toe_invalid_streak.clear()
 	_toe_invalid_streak_frames.clear()
+	_last_good_final_target.clear()
 
 
 func get_plan(side: StringName) -> FootIKTargetPlan:
@@ -56,6 +58,66 @@ func resolve_stationary(space: PhysicsDirectSpaceState3D,
 		elif not plan.valid and plan.reason.begins_with("reject_invalid_stationary"):
 			leg[&"hit"] = false
 			leg[&"target_plan_validated"] = true
+
+
+## Finishes each leg's target decision (upper-foot/slope adjustment) here, before the modifier
+## derives pelvis from it - these used to run after pelvis was already fixed for the frame, so
+## pelvis never reflected their output (018 finding A, joint pass). A seam hold already has
+## final say and skips them. Writes leg[&"final_target"] and tracks _last_good_final_target
+## for pelvis_reference_target below. `prev_shared_drop`/`prev_lateral_shift` are last frame's
+## stable pelvis values, used only to seed this frame's estimate hip for this math.
+func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
+		prev_lateral_shift: Vector3, to_world: Transform3D, delta: float, native: bool,
+		stationary: bool) -> void:
+	for side: StringName in per_leg:
+		var leg: Dictionary = per_leg[side]
+		if not leg.get("hit", false) or not (leg.has("target") or leg.has("ground_target")):
+			continue
+		var plan := get_plan(side)
+		var final_target: Vector3 = (plan.ankle_target if plan != null
+				else leg.get("target", leg.get("ground_target", leg["hip_pos"])))
+		if not native and not leg.has(&"seam_hold_target"):
+			var other_side: StringName = &"right" if side == &"left" else &"left"
+			var est_hip: Vector3 = (leg["hip_pos"] - Vector3.UP * prev_shared_drop
+					+ prev_lateral_shift)
+			final_target = _owner._ground_sampler.straighten_compressed_upper_target(
+					_owner.player_body.get_world_3d().direct_space_state, side, {
+				"hip": est_hip, "target": final_target,
+				"surface": leg.get("raw_target", Vector3(INF, INF, INF)),
+				"normal": leg.get("raw_normal", Vector3.UP), "upper": leg["upper"], "lower": leg["lower"],
+				"offset": leg.get("effective_offset", _owner.ankle_offset), "to_world": to_world,
+				"delta": delta, "lowest_hit": leg.get("animated_contact_hit", false),
+				"lowest_surface": leg.get("animated_contact_position", Vector3.ZERO)})
+			if leg.get("stationary_slope", false):
+				var hip_axis: Vector3 = leg["hip_pos"] - per_leg[other_side]["hip_pos"]
+				var side_sign := 1.0 if side == &"left" else -1.0
+				var left_dir := Vector3(hip_axis.x, 0.0, hip_axis.z).normalized() * side_sign
+				final_target = _owner._leg_solver.adjust_idle_slope_target(
+						side, est_hip, final_target, leg["upper"], leg["lower"], to_world, left_dir)
+		leg[&"final_target"] = final_target
+		# ground_target selection during active locomotion is a real terrain-follow divergence
+		# from the animated foot - pelvis following it there measurably distorts walk pose (018
+		# finding A, joint pass; both this and the reverted approach A regressed identically on
+		# it). During idle/stationary the two rarely diverge meaningfully and avoiding
+		# ground_target there instead cost a different, narrower idle-seam margin - keep the
+		# upper-foot/slope adjustment's own contribution either way, just gate the avoidance.
+		var pelvis_basis := final_target
+		if not stationary and plan != null and plan.target_source == "ground_target":
+			var pre_selection: Vector3 = leg.get(&"target", plan.ankle_target)
+			pelvis_basis = pre_selection + (final_target - plan.ankle_target)
+		leg[&"pelvis_basis_target"] = pelvis_basis
+		if plan == null or plan.target_source != "raw_recovery":
+			_last_good_final_target[side] = pelvis_basis
+
+
+## Pelvis centering must reflect each leg's true final target, not a raw-recovery frame's
+## unstable fallback (meant for the leg solve, not a stable reference) - hold the last
+## known-good final target while a leg is in recovery (018 finding A, joint pass).
+func pelvis_reference_target(side: StringName, leg: Dictionary, fallback: Vector3) -> Vector3:
+	var plan := get_plan(side)
+	if plan != null and plan.target_source == "raw_recovery":
+		return _last_good_final_target.get(side, leg.get(&"pelvis_basis_target", fallback))
+	return leg.get(&"pelvis_basis_target", fallback)
 
 
 ## Joint proposal only: never move targets again after validation/recovery. Preserve the
