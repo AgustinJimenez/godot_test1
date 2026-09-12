@@ -3,10 +3,11 @@
 ## Status and scope
 
 **Open, unfixed.** A real, reproducible bug with working regression coverage that now correctly
-fails, documenting the gap rather than hiding it. Two fix attempts tried, both did not resolve
-it; the second was reverted after it introduced a separate regression. Live-reported by the user
-while testing unrelated 017/018 follow-up work (the balance counter-lean modifier): rotating in
-place on a split stair stance visibly slides a foot with a clip through the step's edge.
+fails, documenting the gap rather than hiding it. Three fix attempts tried, none resolved it;
+the second was reverted after it introduced a separate regression, the third was reverted
+clean (no regression, but no fix either). Live-reported by the user while testing unrelated
+017/018 follow-up work (the balance counter-lean modifier): rotating in place on a split stair
+stance visibly slides a foot with a clip through the step's edge.
 
 ## The concrete symptom
 
@@ -69,6 +70,45 @@ failing reach/stance, especially since retreat only pulls the ankle *toward the 
 from the specific wall direction - the toe offset is a rotated rigid vector from the ankle, not
 something a same-side retreat necessarily un-rotates away from the obstruction.
 
+### Attempt 3: hold the foot's world orientation during legacy_transition_active (reverted clean)
+
+Hypothesis going in: the toe sweeps because `FootIKLegSolveInput.capture()`'s `ground_foot_basis`
+on flat ground is computed fresh every frame as `to_world.basis * foot_pose.basis` - i.e. the
+foot's orientation is 100% re-derived from the body's *current* world yaw, with no independent
+limiting, unlike hip/knee which go through `_limit_correction`'s per-frame degree budget.
+
+Implementation (2026-09-12, session continuing 018): added `foot_yaw_hold_basis(side,
+fresh_basis)` to `foot_ik_leg_solver.gd` - a per-side cached `Basis`, gated on exactly
+`plan.owner == LANDING_UPPER and legacy_transition_active` (recomputed from
+`idle_lower_acquiring`/`idle_lower_latched_target`, same formula as the coordinator's own
+`legacy_transition_active`), with the same "reset only on an actual gap in consecutive calls"
+pattern as `_idle_slope_targets`. Wired into `FootIKLegSolveInput.capture()`'s `ground_foot_basis`
+assignment. Deliberately did NOT touch `_compute_new_foot_basis_world` itself (5 call sites,
+too wide a blast radius after attempt 2's lesson) or `_limit_correction`'s unconditional
+foot-joint bypass (line ~615, `if joint == &"foot" and not is_crouch_animation: ... return
+desired` - deliberately unthrottled elsewhere, real risk to touch broadly).
+
+**Result: no regression, but no fix either** (`turn_penetration_m` 0.102786 -> 0.102649,
+noise-level). Confirmed via targeted debug instrumentation (frame/skeleton-id-matched, since
+the shared preview scene runs several unrelated characters whose diagnostic prints interleave
+with the real test player's) that the hold mechanism correctly engaged every frame, for the
+right leg, exactly matching `owner=landing_upper` at the measured `turn_penetration_frame`.
+
+**Why it didn't work - the actual finding:** `LIVE_TURN_YAWS_DEG` has only 20 entries;
+`_process_turn_check()` stops updating `_player.rotation.y` once `turn_index` exceeds that
+(`if turn_index < LIVE_TURN_YAWS_DEG.size(): ...`). `turn_penetration_frame=34` is well past
+that boundary - **the body is not actively rotating anymore at the moment deepest penetration
+is measured.** A fix that only stops the foot's orientation from tracking *live* body yaw has
+nothing to counteract there, which is why it had zero effect. This invalidates the working
+assumption behind all three attempts so far (continuous yaw-coupling during rotation) and
+points at a genuinely different mechanism instead: `_limit_correction` explicitly and
+unconditionally exempts the foot joint from all rate-limiting (returns `desired` immediately,
+non-crouch animations), while hip and knee go through a real per-frame degree budget
+(`joint_correction_speed_degrees` et al.) and visibly lag behind after a big discrete yaw step.
+The toe's swept position during that hip/knee catch-up window - while the foot's own rotation
+has already snapped ahead - is the new, unconfirmed suspect. Reverted cleanly (no other files
+touched, no regression).
+
 ## Regression coverage added (kept, working)
 
 Extended `foot_ik_idle_plant_stability_check.gd`'s existing repeated-rotation sweep
@@ -83,11 +123,18 @@ transition rather than only the settled end state, and it is currently, correctl
 
 ## What to try next (not attempted, needs a fresh investigation)
 
+- **Most promising, from attempt 3's finding:** trace the hip/knee-vs-foot rate-limiting
+  asymmetry directly. Confirm (not assume) that the toe's penetration actually correlates with
+  the hip/knee still converging via `_limit_correction`'s degree budget after the last big yaw
+  step, by sampling `state.debug_swing_degrees`/the hip-knee correction angle alongside
+  `turn_penetration_m` per frame. If confirmed, the fix is likely either (a) applying the same
+  per-frame degree budget to the foot joint during this specific gap instead of its blanket
+  exemption, or (b) holding the toe/leaf's *position relative to the ankle* (not the foot's
+  world orientation) until hip/knee finish converging - attempt 3's orientation-hold was too
+  indirect a lever for a lag that isn't about live body-yaw tracking at all.
 - A retreat direction informed by the actual penetration exit vector (`FootClearanceEvaluator`'s
   `Result.deepest_point_exit`), not a fixed hip-ward direction - retreat *away from the wall*,
   not just *toward the hip*.
-- Constraining the foot's yaw/orientation directly (limit how far the toe is allowed to swing
-  relative to the ankle when a nearby riser is detected) rather than moving the ankle at all.
 - Investigating what *other* owner's target computation shares the gate widened in attempt 2, to
   understand the live-pose-joint-step side effect before trying a similar widening again.
 - Confirming whether this reproduces for owners other than `LANDING_UPPER` too (the two other
