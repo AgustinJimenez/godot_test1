@@ -30,13 +30,13 @@ Foot IK negative rendered-knee check
 Foot IK unreachable acquisition check
 Foot IK shallow-corner knee flexion check
 Foot IK walk-to-idle stance check
-check_foot_ik_locomotion.sh
 '
-# check_foot_ik_ramp_locomotion.sh and "Foot IK stationary planted-foot stability check" used
-# to sit in this plain label list too - a worse run inside either already-red check could hide
-# behind the same "FAIL known" line forever (018 finding I; this bit a real ramp-spin
-# regression on 2026-09-12 that this list alone did not catch). Both are now graded
-# quantitatively below instead, same idea as the two ramp-matrix scripts already were.
+# check_foot_ik_ramp_locomotion.sh, check_foot_ik_locomotion.sh and "Foot IK stationary
+# planted-foot stability check" used to sit in this plain label list too - a worse run inside
+# any already-red check could hide behind the same "FAIL known" line forever (018 finding I;
+# this bit a real ramp-spin regression on 2026-09-12 that this list alone did not catch). All
+# three are now graded quantitatively below instead, same idea as the two ramp-matrix scripts
+# already were.
 
 # Quantitative baselines (018 finding I) - established 2026-09-10/12 from verified clean reruns.
 RAMPS_MAX_FAILED_CASES=20
@@ -44,6 +44,10 @@ RAMPS_MAX_DEPTH_M=0.02
 RAMP_SWEEP_MAX_FAILED_CASES=16
 RAMP_SWEEP_MAX_DEPTH_M=0.11
 RAMP_LOCOMOTION_MAX_FAILED_CASES=13
+# check_foot_ik_locomotion.sh's known walk_left/walk_right failures, graded by their own worst
+# single-frame added-rotation ("worst_frame_added_deg=") rather than the script's bare exit code.
+LOCOMOTION_WALK_LEFT_MAX_FRAME_DEG=9.0
+LOCOMOTION_WALK_RIGHT_MAX_FRAME_DEG=9.0
 # "Foot IK stationary planted-foot stability check" ceilings: its turn-penetration gate
 # correctly fails on a real, unfixed toe/leaf-through-riser clip during idle rotation on
 # stairs - see AGENT_TASKS/019_foot_ik_toe_riser_clip_during_rotation.md.
@@ -223,6 +227,44 @@ run_idle_plant_stability_check() {
 	fi
 }
 
+# run_locomotion_check - grades check_foot_ik_locomotion.sh's known walk_left/walk_right
+# failures by their own worst_frame_added_deg instead of the script's bare exit code (018
+# finding I). Falls back to plain pass/fail if some other case fails instead.
+run_locomotion_check() {
+	label="check_foot_ik_locomotion.sh"
+	if "$project_dir/scripts/$label" >"$log_file" 2>&1; then
+		_record "$label" 1
+		return
+	fi
+	left_deg=$(grep "FOOT_IK_LOCOMOTION_CHECK FAIL case=walk_left " "$log_file" \
+		| grep -o "worst_frame_added_deg=[0-9.]*" | cut -d= -f2)
+	right_deg=$(grep "FOOT_IK_LOCOMOTION_CHECK FAIL case=walk_right " "$log_file" \
+		| grep -o "worst_frame_added_deg=[0-9.]*" | cut -d= -f2)
+	other_case_failed=$(grep "FOOT_IK_LOCOMOTION_CHECK FAIL case=" "$log_file" \
+		| grep -vE "case=(walk_left|walk_right) " | grep -c .)
+	if [ -z "$left_deg" ] || [ -z "$right_deg" ] || [ "$other_case_failed" -gt 0 ] \
+			|| grep -q "FOOT_IK_LOCOMOTION_SUITE FAIL" "$log_file"; then
+		_record "$label" 0
+		echo "  --- $log_file ($label) ---"
+		cat "$log_file"
+		return
+	fi
+	detail="walk_left_frame_deg=${left_deg}/${LOCOMOTION_WALK_LEFT_MAX_FRAME_DEG} "
+	detail="${detail}walk_right_frame_deg=${right_deg}/${LOCOMOTION_WALK_RIGHT_MAX_FRAME_DEG}"
+	if awk -v a="$left_deg" -v b="$LOCOMOTION_WALK_LEFT_MAX_FRAME_DEG" 'BEGIN{exit !(a<=b)}' \
+			&& awk -v a="$right_deg" -v b="$LOCOMOTION_WALK_RIGHT_MAX_FRAME_DEG" \
+				'BEGIN{exit !(a<=b)}'; then
+		_baseline_fail_count=$((_baseline_fail_count + 1))
+		printf 'FAIL known %s (%s)\n' "$label" "$detail"
+	else
+		_new_fail_labels="${_new_fail_labels}${label} (${detail})
+"
+		printf 'FAIL NEW  %s (%s)\n' "$label" "$detail"
+		echo "  --- $log_file ($label) ---"
+		cat "$log_file"
+	fi
+}
+
 # 018 finding I: this script never ran project lint/import/parse itself, so a clean run here
 # did not guarantee a clean scripts/check.sh - only check_foot_ik_fast.sh caught that gap.
 run_subscript "Foot IK project checks" "check.sh"
@@ -348,7 +390,7 @@ run_idle_plant_stability_check
 
 run_ramp_locomotion_check
 run_subscript "check_foot_ik_stair_repeat.sh" check_foot_ik_stair_repeat.sh
-run_subscript "check_foot_ik_locomotion.sh" check_foot_ik_locomotion.sh
+run_locomotion_check
 run_ramp_subscript "check_foot_ik_ramps.sh" check_foot_ik_ramps.sh \
 	"$RAMPS_MAX_FAILED_CASES" "$RAMPS_MAX_DEPTH_M"
 run_ramp_subscript "check_foot_ik_ramp_sweep.sh" check_foot_ik_ramp_sweep.sh \
