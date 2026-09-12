@@ -9,6 +9,9 @@ const CLEARANCE_EVALUATOR := preload("res://tools/foot_ik/foot_clearance_evaluat
 ## transition (only endpoints were ever checked) - sampled every frame during the existing turn
 ## sweep below, against whatever tread/riser box collider(s) are actually near the foot.
 const MAX_TURN_PENETRATION_M := 0.001
+## A target beyond a small float-noise tolerance past the leg's own max reach forces the
+## solver to full extension - see _track_reach_margin.
+const MIN_REACH_MARGIN := -0.005
 
 const LIVE_POSITION := Vector3(14.30828, 2.101, 3.989683)
 const LIVE_YAW_DEG := 67.7457025658242
@@ -81,6 +84,11 @@ var _sample_count := 0
 var _frozen_samples := {&"left": 0, &"right": 0}
 var _anchors: Dictionary = {}
 var _max_drift := {&"left": 0.0, &"right": 0.0}
+## Worst (smallest) hip-to-target reach margin seen across every idle pose this file samples -
+## a target beyond the leg's own reach forces the solver to full extension, where ordinary
+## animation sway gets amplified into a visible per-cycle foot wobble (found live, 018 follow-up).
+var _min_reach_margin := {&"left": INF, &"right": INF}
+var _min_reach_margin_at := {&"left": "", &"right": ""}
 var _checking_turn := false
 var _turn_frame := 0
 var _turn_previous_feet: Dictionary = {}
@@ -161,6 +169,7 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	_track_reach_margin()
 	if _checking_straight_knee:
 		_process_straight_knee_check()
 	elif _checking_coordinator:
@@ -598,6 +607,32 @@ func _final_joint_position(side: StringName, joint: StringName) -> Vector3:
 	return _player.body.skeleton.global_transform * pose.origin
 
 
+func _track_reach_margin() -> void:
+	var phase := ("straight_knee" if _checking_straight_knee else "coordinator" if
+			_checking_coordinator else "left_stale" if _checking_left_stale else "right_stale"
+			if _checking_right_stale else "live_pose" if _checking_live_pose else "knee_guard"
+			if _checking_knee_guard else "rehome" if _checking_rehome else "turn" if
+			_checking_turn else "initial")
+	for side: StringName in [&"left", &"right"]:
+		var plan := _ik._target_coordinator.get_plan(side)
+		# Settled standing only - LANDING/IDLE_LOWER_*/STAIR_SWING/etc. legitimately predict or
+		# transition toward a target the current static geometry does not yet satisfy.
+		if (plan == null or not plan.valid or not plan.ankle_target.is_finite()
+				or plan.owner not in [FootIKTargetPlan.Owner.LIVE_CONTACT,
+				FootIKTargetPlan.Owner.IDLE_FREEZE]):
+			continue
+		var hip: Vector3 = _final_joint_position(side, &"hip")
+		# Match _accept_final_target's own reach budget (step_down_max_crouch covers a real
+		# stair-top stance's extra slack) - a narrower check here would flag stances the
+		# production code itself already treats as within reach.
+		var reach: float = (float(_ik._leg_lengths[side]["upper"])
+				+ float(_ik._leg_lengths[side]["lower"]) + _ik.step_down_max_crouch)
+		var margin := reach - hip.distance_to(plan.ankle_target)
+		if margin < float(_min_reach_margin[side]):
+			_min_reach_margin[side] = margin
+			_min_reach_margin_at[side] = phase
+
+
 func _finish_check() -> void:
 	var passed := true
 	for side: StringName in [&"left", &"right"]:
@@ -646,6 +681,8 @@ func _finish_check() -> void:
 	passed = passed and _coordinator_stance_limit_frames == 0
 	passed = passed and _coordinator_max_foot_step <= MAX_COORDINATOR_FOOT_STEP
 	passed = passed and _coordinator_min_sole_clearance >= MIN_COORDINATOR_SOLE_CLEARANCE
+	passed = passed and float(_min_reach_margin[&"left"]) >= MIN_REACH_MARGIN
+	passed = passed and float(_min_reach_margin[&"right"]) >= MIN_REACH_MARGIN
 	# Raised from 3 to 5: fixing player_foot_ik_modifier.gd's shared_drop to also account for
 	# a target resolve_stationary() reassigns (see its own doc comment) makes the recovery
 	# path correctly pass through validated_lower_support too - confirmed a clean monotonic
@@ -672,7 +709,9 @@ func _finish_check() -> void:
 			+ "coordinator_recovery=%s invalid_frames=%d stance_limit_frames=%d "
 			+ "coordinator_step_m=%.6f min_sole_clearance_m=%.6f generations=%d "
 			+ "straight_plan_valid=%s straight_flex_deg=%.2f straight_target_error_m=%.6f "
-			+ "straight_late_constraints=%d straight_foot_step_m=%.6f")
+			+ "straight_late_constraints=%d straight_foot_step_m=%.6f "
+			+ "reach_margin_left=%.5f reach_margin_left_at=%s "
+			+ "reach_margin_right=%.5f reach_margin_right_at=%s")
 	print(template % ["PASS" if passed else "FAIL", _sample_count,
 			_frozen_samples[&"left"], _frozen_samples[&"right"],
 			_max_drift[&"left"], _max_drift[&"right"], MAX_PLANTED_DRIFT,
@@ -697,7 +736,9 @@ func _finish_check() -> void:
 			_coordinator_min_sole_clearance, _coordinator_generations.size(),
 			str(_straight_knee_plan_valid), _straight_knee_final_flexion,
 			_straight_knee_final_target_error, _straight_knee_late_constraints,
-			_straight_knee_max_foot_step])
+			_straight_knee_max_foot_step,
+			float(_min_reach_margin[&"left"]), String(_min_reach_margin_at[&"left"]),
+			float(_min_reach_margin[&"right"]), String(_min_reach_margin_at[&"right"])])
 	get_tree().quit(0 if passed else 1)
 
 

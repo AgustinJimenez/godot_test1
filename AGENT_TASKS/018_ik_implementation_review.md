@@ -2,11 +2,10 @@
 
 ## Status and scope
 
-**In progress.** Original review completed 2026-09-09; progress audited 2026-09-11 at
-HEAD `ff05f2f`, including the existing dirty working tree. Eight commits on 2026-09-10
-implement targeted fixes and initial architecture extractions; the end-to-end contracts
-below are not yet complete. This status update is a code/history audit, not a runtime fix
-or fresh test certification.
+**In progress.** Current implementation audited at `926874e` on 2026-09-12. Spacing,
+selection, seam holding and the shared-pelvis restructuring are committed; the full accepted
+feet/pelvis contract remains open. Current work closes post-validation adjustment and cached
+pelvis-reference lifetime gaps. Historical validation below is not certification of this slice.
 
 The original review inspected the working tree, including uncommitted changes to the modifier, sampler,
 landing planner, runtime settings, and idle acceptance scene. HEAD at review: `c0e74ba`.
@@ -33,8 +32,8 @@ design goals and acceptance requirements still apply.
 | D — pose result/apply | `b60173f` introduced the result type; the live-confirmed extraction adds fixed inputs, candidate-local history/diagnostics and guarded acceptance (details below). | Final-output clearance/feasibility reporting and clearance-driven candidate selection. |
 | E — final snapshot | `70bea29`: prefer fresh Foot IK poses for visual consumers and frame-stamp the cache. | Publish after every enabled modifier/backend, including native IK and any later balance layer. |
 | H — performance | `dfee62e`: log worst-call/worst-frame solver timing. | Query accounting, explicit work budgets and broader tail-latency measurements. |
-| A — authoritative plan | `c182d17` invalidates covered late edits; `b0f804b` moves the 22 cm spacing proposal and ground-target priority before coordinator validation; `60b0fa5` moves the idle-loop-reset seam hold there too; approach C (below, uncommitted, awaiting live test) migrates upper-foot/slope adjustment and derives pelvis from the true final targets. | Live-test and commit approach C; the pre-existing `walk_right`/`walk_left` locomotion-check gap (measurably improved as a side effect, not closed) remains open. |
-| G — typed integration | No implementation of the proposed abstractions identified in this audit. | Support identity/local anchors, typed motion/animation context, root-request feedback and collision-layer cleanup. |
+| A — authoritative plan | `b0f804b` moves spacing/ground priority before validation; `60b0fa5` moves seam holding; live-confirmed `88884a2` moves upper/slope generation before pelvis. | Upper/slope output still needs final acceptance after initial validation; shared-pelvis reach, native parity and the existing locomotion failures remain open. |
+| G — typed integration | `1653a61` corrects physics-layer names to stair traversal/contact surfaces. | Support identity/local anchors, typed motion/animation context and root-request feedback. |
 
 Feature status: torso counter-lean (`56d0222`) is implemented but **parked, disabled by
 default**, and not accepted as natural-looking. The checkpoint includes a recovery-arc helper
@@ -54,7 +53,122 @@ Next architecture priorities are migrating the remaining late adjustments and ma
 planning authoritative, with trustworthy per-case regression evidence. Do not treat the targeted
 fixes above as completion of the broader contracts or start all proposed features as a batch.
 
-### Target-selection slice — 2026-09-12, validation in progress
+### Final adjustment / pelvis-reference lifetime — fix applied, awaiting live confirmation, uncommitted
+
+A second agent picked this up after the handoff above and found the actual root cause of
+the ramp-spin regression, still uncommitted pending the user's live test.
+
+**Root cause:** `_accept_final_target()`'s support check computed its check point via a
+generic vector translation of the OLD surface by `candidate - plan.ankle_target`. On a
+continuous slope, a slope-adjustment nudge's own downhill/sideways component is not aligned
+with the surface normal, so that translated estimate drifts laterally off the real ramp
+surface as the candidate keeps moving frame to frame - `_has_contact_support`'s existing
+0.03 m distance-to-estimate tolerance then correctly (by its own contract) rejects an
+estimate that has drifted meters away from any real ground, for several consecutive frames
+in a row, each rejection snapping the foot back to that frame's un-adjusted base solve and
+producing the visible spin-step pop.
+
+**Fix (two parts):**
+1. New `_sample_contact_support(space, estimate, normal) -> Dictionary` re-derives the
+   check point by projecting the candidate back along the surface normal by this leg's own
+   known ankle-to-surface offset (`candidate - surface_normal * offset_len`) instead of the
+   drifting linear translation, then self-corrects: accept whenever a real raycast under
+   that estimate exists with a matching normal, using the raycast's own hit position as the
+   accepted surface point rather than requiring it to land within 3 cm of the estimate.
+   `_has_contact_support`'s original strict distance-to-estimate check is untouched and
+   still used as-is by `pelvis_reference_target()`'s lease-staleness check - a genuinely
+   different use case (verifying an already-accepted, should-be-static cached point, not a
+   fresh per-frame candidate).
+2. A short `FINAL_HOLD_FRAMES` (2-frame) hold: when a candidate genuinely has no support at
+   all (e.g. a downhill search briefly walking a candidate past the ramp's own finite edge -
+   a real, correctly-rejected case, confirmed via raycasts up to 3 m finding no geometry at
+   all), the coordinator holds the last accepted output rather than snapping straight to
+   this frame's un-adjusted base solve, so a single genuine one-frame outlier does not pop
+   visibly against neighboring adjusted frames.
+
+The 20-case final-target contract scene encodes the previous design's exact internals
+(mock `Coordinator` overrides `_has_contact_support`); it now also overrides the new
+`_sample_contact_support` the same way and still passes all 20 cases unmodified in intent.
+
+- Upper/slope candidates now pass a final acceptance boundary before use: finite coordinates,
+  existing crouch-budget reach, applicable stance/toe checks and slope-aware point support.
+  Upper acquisition checks its destination instead of requiring ground at its interpolated waypoint.
+  A rejected optional adjustment retains the previously accepted plan; it cannot veto that fallback.
+  Accepted target/support are written back to the plan. A later override cannot inherit validation.
+- Rejected upper interpolation restores sampler surface/normal, and rejected slope output restores
+  the accepted smoothing target. Producer search policy is otherwise unchanged; this is not a pure
+  candidate-generation extraction. Existing solver-guard behavior is preserved for changed targets.
+- Pelvis recovery references expire after 12 physics ticks (0.2 s at 60 Hz), do not renew during
+  recovery/refresh, and are cleared on contact loss, animation release and reset. Reuse checks
+  current stance/reach and actual support; a removed collider cannot retain its reference.
+- New bounded trace fields: `plan_adjusted_target`, `plan_final_adjustment`,
+  `plan_pelvis_reference`. No additional search loops: changed-target and recovery-reference
+  checks each add at most one support ray per leg/pass, plus an applicable toe point query.
+- New final-target contract scene: 20 cases, including real finite-ramp and disappearing-support
+  geometry, wired into fast/main/all runners. Fresh `926874e` baseline: 44 pass / 7 known failures;
+  ramp matrices: 19 and 16 failing cases, worst depths 0.013232 / 0.105375 m.
+- Evidence: `/tmp/foot-ik-018-final.DXvpJ1/`: `live-before.jsonl`, `baseline-all.log`,
+  `contract.log`, `fast.log`, `after-all.log`, `ramp-rejection.log`, `ramp-support.log`.
+
+Validation after the fix:
+
+| Check | Result |
+| --- | --- |
+| Project lint/import/parse | PASS (fast/full runners' first step). |
+| New final-target contract scene | PASS, 20 cases, unmodified expectations. |
+| Fast suite | Stops at the pre-existing "Foot IK stationary planted-foot stability check" known baseline failure (documented 2026-09-10, real unfixed toe/riser clip, task 019); all preceding checks pass. |
+| Full runner (`scripts/check_foot_ik_all.sh`) | Passed: 45, Known baseline failures: 7, "No new/unexpected failures", exit 0. |
+| Ramp locomotion, independent child of full | Failure count back to the pre-existing baseline of **13**; neither `ramp_15_yaw_135` nor `ramp_15_yaw_225` appear. `ramp_45_yaw_135` still fails (it was already a known baseline failure), now via `foot_float=0.042` instead of `foot_penetration=0.045` - same case, different measured metric, not a new one. |
+| Stair repeat, independent child of full | PASS. |
+| Locomotion, independent child of full | Existing `walk_left`/`walk_right` FAIL lines unchanged. |
+| Ramp matrices, independent children of full | 19/20 and 16/16 failing cases, worst depths 0.013232 / 0.105375 m - within the existing `RAMPS_MAX_*`/`RAMP_SWEEP_MAX_*` quantitative baselines. |
+
+Live-confirmed by the user; committed.
+
+Limits: this validates adjusted **targets**, not final skinned clearance or exact reach after the
+current frame's pelvis smoothing. Existing owner exemptions, native-backend differences and the
+broader joint feet/pelvis contract remain open. A supported replacement collider is not distinguished
+from the previous collider yet; support identity/local anchors remain finding G work.
+
+### Idle-preview spawn edge / leg over-reach — root-caused and fixed 2026-09-12, committed
+
+While live-testing the ramp fix above, the user reported the left leg visibly moving alone
+once per idle animation cycle, at `foot_ik_preview.tscn`'s default manual-inspection spawn
+point (not the ramp fix's own code path - confirmed via `plan_final_adjustment=unchanged`
+and `plan_pelvis_reference=current` on every frame of the live trace).
+
+Root cause, confirmed by direct headless reproduction and git bisection: that default spawn
+(`z=4.068937`) sat 0.07 m past the far edge (`z=4.0`) of its 4 m test platform. A raycast grid
+around the animated left foot bone found no ground at all under it (mask 33, the sampler's own
+`GROUND_COLLISION_MASK`), while the right foot's raycast hit directly below itself - the idle
+stance's natural sway put the left foot ~0.16 m past the platform edge with nothing under it,
+so the ground sampler's fallback search grabbed real ground ~17 cm away on an adjacent surface,
+stretching that leg to (and slightly past) its max reach. Bisected against clean `926874e` and
+`60b0fa5` (before the shared-pelvis redesign) with byte-identical reach-margin numbers, proving
+this predates all of today's work and is not a foot IK regression - it is the debug/preview
+tool's own default spawn coordinate.
+
+Fix: moved that default spawn to `z=2.0` (centered on the platform). Verified over a full
+900-frame idle window: minimum reach margin stays positive throughout (+0.008 m left,
++0.006 m right; previously dipped to about -0.01 m on the left). Full suite unaffected:
+45 passed / 7 known baseline failures, no new failures.
+
+### Idle reach-margin regression coverage — added 2026-09-12, committed
+
+No existing test asserted hip-to-target reach margin during ordinary idle standing, which is
+why the bug above only ever surfaced live. Added `_track_reach_margin()` to
+`foot_ik_idle_plant_stability_check.gd`, called every physics frame across all of that file's
+idle-pose phases (initial settle, turn sweep, rehome, knee guard, live pose, left/right stale,
+coordinator recovery, straight-knee). Scoped to genuine settled-standing owners
+(`LIVE_CONTACT`/`IDLE_FREEZE`) only - transitional/predictive owners (stair-swing prediction,
+idle-lower-latch, etc.) legitimately target a point the current static geometry does not yet
+satisfy, so including them produced false positives during development. Uses the same reach
+budget as `_accept_final_target` (`upper + lower + step_down_max_crouch`), so a real stair-top
+stance is not flagged either. New `MIN_REACH_MARGIN := -0.005` gate plus
+`reach_margin_left/right` and `_at` fields in the printed report. Full suite unaffected:
+45 passed / 7 known baseline failures, no new failures.
+
+### Target-selection slice — 2026-09-12, committed `b0f804b`
 
 Spacing was live-tested: user reports "not much diff", the expected result. The next
 slice moves custom idle/landing-brace `ground_target` priority before plan validation:
@@ -73,7 +187,7 @@ slice moves custom idle/landing-brace `ground_target` priority before plan valid
 - Spacing/selection fixture expanded from 34 to **39 cases**, adding priority/fallback combinations,
   rejected ground-target provenance, and the pelvis-proposal isolation invariant.
 - Evidence: `/tmp/foot-ik-018-selection.6lwKMn/`, including preserved live trace and rejected
-  integration attempt. Final regression map pending. No preview launched or commit made.
+  integration attempt. Superseded by the later seam/shared-pelvis validation below.
 
 ### Spacing authority slice — 2026-09-12, live-confirmed
 
@@ -122,7 +236,7 @@ Spacing-slice validation map (2026-09-12, sequential headless runs):
 
 Spacing and target-selection slices committed as `b0f804b`.
 
-### Seam-hold slice — 2026-09-12, automated validation only, not yet committed
+### Seam-hold slice — 2026-09-12, automated validation, committed `60b0fa5`
 
 The idle-loop-reset seam hold (`_velocity_suppressed` freezing the ankle at last frame's actual
 solve to avoid a pop) used to run after validation, silently overriding upper-foot/slope
