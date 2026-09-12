@@ -38,6 +38,18 @@ var surface_normal := Vector3.UP
 var ankle_target := Vector3.ZERO
 var raw_surface := Vector3.ZERO
 var reason := "animation"
+var spacing_requested := false
+var target_source := "target"
+var proposed_ankle_target := Vector3.ZERO
+var solve_target_observed := false
+var actual_solve_target := Vector3.ZERO
+var solve_target_reason := "not_solved"
+var solve_validation_retained := false
+
+
+func matches_solve_target(target: Vector3) -> bool:
+	return valid and target.is_finite() and ankle_target.is_finite() \
+			and ankle_target.distance_squared_to(target) <= 0.000000000001
 
 
 static func constraint_ok(status: ConstraintStatus) -> bool:

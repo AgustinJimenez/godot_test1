@@ -33,7 +33,7 @@ design goals and acceptance requirements still apply.
 | D — pose result/apply | `b60173f` introduced the result type; the live-confirmed extraction adds fixed inputs, candidate-local history/diagnostics and guarded acceptance (details below). | Final-output clearance/feasibility reporting and clearance-driven candidate selection. |
 | E — final snapshot | `70bea29`: prefer fresh Foot IK poses for visual consumers and frame-stamp the cache. | Publish after every enabled modifier/backend, including native IK and any later balance layer. |
 | H — performance | `dfee62e`: log worst-call/worst-frame solver timing. | Query accounting, explicit work budgets and broader tail-latency measurements. |
-| A — authoritative plan | `c182d17`: invalidate the validation flag when covered late target edits change the selected input. | Move all late adjustments and shared pelvis selection behind the accepted-plan boundary. |
+| A — authoritative plan | `c182d17` invalidates covered late edits; the current spacing slice moves the 22 cm proposal before coordinator validation and records actual-target agreement (below). | Migrate ground-target priority, upper-foot/slope adjustments, seam selection and shared pelvis behind the accepted-plan boundary. |
 | G — typed integration | No implementation of the proposed abstractions identified in this audit. | Support identity/local anchors, typed motion/animation context, root-request feedback and collision-layer cleanup. |
 
 Feature status: torso counter-lean (`56d0222`) is implemented but **parked, disabled by
@@ -50,9 +50,75 @@ for the status audit. The subsequent extraction's validation is recorded separat
 Other agents' runtime/test edits are preserved, including the task 019 acquisition-speed override
 now carried through the evaluator's input snapshot.
 
-Next architecture priorities are validating the candidate boundary and making feet/pelvis
+Next architecture priorities are migrating the remaining late adjustments and making feet/pelvis
 planning authoritative, with trustworthy per-case regression evidence. Do not treat the targeted
 fixes above as completion of the broader contracts or start all proposed features as a batch.
+
+### Target-selection slice — 2026-09-12, validation in progress
+
+Spacing was live-tested: user reports "not much diff", the expected result. The next
+slice moves custom idle/landing-brace `ground_target` priority before plan validation:
+
+- The modifier snapshots bracing/preference before arbitration. Coordinator selects the actual
+  initial solve candidate once; custom solve reads `plan.ankle_target`, not a second field-priority
+  expression. Ground selection cancels spacing for that solve candidate and derives its support
+  point from the selected ankle, normal and effective offset. Invalid selections use the existing
+  raw-support fallback/release. `plan_target_source` logs `target`, `ground_target` or `raw_recovery`.
+- **Pelvis inputs remain separate legacy proposals.** The first attempt replaced those too and
+  introduced body penetration (8 samples, 0.335562 m). Keeping the accepted solve candidate separate
+  restores the core preview to zero penetrating samples. A fixture now asserts this separation;
+  migrating shared pelvis still needs a joint reach/contact design, not target substitution.
+- Native selection, upper-foot correction, slope adjustment and seam override remain unchanged.
+  This removes the initial selection bypass, not every late override or the full-plan authority gap.
+- Spacing/selection fixture expanded from 34 to **39 cases**, adding priority/fallback combinations,
+  rejected ground-target provenance, and the pelvis-proposal isolation invariant.
+- Evidence: `/tmp/foot-ik-018-selection.6lwKMn/`, including preserved live trace and rejected
+  integration attempt. Final regression map pending. No preview launched or commit made.
+
+### Spacing authority slice — 2026-09-12, live-confirmed
+
+- The 22 cm stationary-spacing proposal now runs in `FootIKTargetCoordinator` before
+  `_build_plan()` validates either leg. Its formula, rotated hip axis, flat-idle exemption,
+  missing-contact gate and moving-animation exemption are preserved. The modifier no longer
+  widens the pair after validation; the subsequent shared-drop reach check sees the accepted targets.
+- A shifted ankle proposal carries the same displacement into its candidate support point.
+  Existing owner-specific acquisition/support-transfer destination rules remain intact. An
+  unsupported proposal uses existing raw-support recovery or release; spacing is not reapplied
+  to undo that decision. Sampler caches remain producer-owned, not rewritten by proposal generation.
+- `record_solve_target()` observes the actual custom-solver input without changing the accepted
+  target. For a spacing proposal, a mismatch beyond 1 µm removes its inherited validation flag.
+  Ground-target priority and later upper/slope/seam overrides can still change the input; this
+  slice diagnoses/downgrades them rather than pretending the complete pipeline is authoritative.
+  Non-spacing paths retain their previous validation behavior; native output is not newly certified.
+- Trace fields: `plan_spacing_requested`, `plan_ankle_target`, `plan_proposed_target`,
+  `plan_solve_observed`, `plan_solve_reason` (`accepted_plan` / `late_target_override` /
+  `not_solved`) and `plan_solve_validated`. Target agreement alone is not a final-pose
+  clearance guarantee; existing per-constraint statuses still describe skipped/tolerated checks.
+- New [spacing-plan acceptance scene](../tests/manual/foot_ik/foot_ik_spacing_plan_check.gd),
+  wired into fast/main/all runners: **34 deterministic cases pass**, including supported
+  widening, unsupported/rejected proposals, raw fallback, split-height surfaces, 24 yaw angles,
+  flat/moving/missing-contact pass-through, and the ground-target priority bypass. Geometry
+  callbacks are controlled to isolate the coordinator contract; terrain replays remain necessary.
+- Full comparison against committed `e243fc0`: **40 passed / 7 known failures before ->
+  41 passed / the same 7 known failures after**. All six raw `FOOT_IK_* FAIL` metric lines
+  match exactly; both ramp matrices retain their counts/depths. No fixture or baseline was widened.
+  Evidence and preserved live trace: `/tmp/foot-ik-018-spacing.Txfj0X/`.
+  No live preview opened and no commit made for this slice; subsequently live-confirmed by user.
+
+Spacing-slice validation map (2026-09-12, sequential headless runs):
+
+| Entrypoint | Result |
+| --- | --- |
+| `scripts/check.sh` | PASS: lint/import/parse. Final expanded spacing fixture also passes lint and scene execution. |
+| Spacing-plan scene | PASS: 34 cases, also reached through the all/main runners. |
+| `scripts/check_foot_ik_fast.sh` | Stops at existing planted-idle failure; other checks before it pass. |
+| `scripts/check_foot_ik.sh` | Independent run stopped at the existing unreachable lower-support acquisition failure, including the baseline `_update_idle_lower_transition` argument-count error; spacing regression passed all 34 cases. |
+| `scripts/check_foot_ik_all.sh` | 41 pass / 7 known failures / no unexpected failures. Core failures remain unreachable acquisition, walk-to-idle stance and planted-idle stability. |
+| `scripts/check_foot_ik_ramp_locomotion.sh` (independent child of all) | Existing failure; metrics unchanged. |
+| `scripts/check_foot_ik_stair_repeat.sh` (independent child of all) | PASS. |
+| `scripts/check_foot_ik_locomotion.sh` (independent child of all) | Existing failure; metrics unchanged. |
+| `scripts/check_foot_ik_ramps.sh` (independent child of all) | 20 failing cases; worst depth 0.013232 m, unchanged. |
+| `scripts/check_foot_ik_ramp_sweep.sh` (independent child of all) | 16 failing cases; worst depth 0.105375 m, unchanged. |
 
 ### Candidate-evaluation extraction — implemented 2026-09-11, live-confirmed 2026-09-12
 
@@ -96,7 +162,7 @@ changes it depends on. This confirms visual equivalence, not resolution of the k
   as performance-neutral. This is not a one-player or stress-preview frame budget. Profile
   snapshot reuse/allocation costs as the plan boundary is consolidated; finding H remains open.
 
-Validation map (headless, sequential; live preview not opened):
+Candidate-extraction validation map (2026-09-11, headless, sequential; live preview not opened):
 
 | Entrypoint | Result |
 | --- | --- |

@@ -162,6 +162,8 @@ run_check "Foot IK release pose check" "FOOT_IK_RELEASE_POSE_CHECK PASS" \
 run_check "Foot IK candidate evaluation check" \
 	"FOOT_IK_CANDIDATE_EVALUATION_CHECK PASS samples=720" \
 	150 res://tests/manual/foot_ik/foot_ik_candidate_evaluation_check.tscn
+run_check "Foot IK spacing plan check" "FOOT_IK_SPACING_PLAN_CHECK PASS cases=39" \
+	5 res://tests/manual/foot_ik/foot_ik_spacing_plan_check.tscn
 run_check "Foot IK slope target lifecycle check" \
 	"FOOT_IK_SLOPE_TARGET_LIFECYCLE_CHECK PASS" \
 	10 res://tests/manual/foot_ik/foot_ik_slope_target_lifecycle_check.tscn

@@ -856,8 +856,16 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			if (player_body != null and player_body.anim_player != null) else "")
 	var stationary: bool = (cur_anim == "unarmed_idle" or cur_anim == "unarmed_torch_idle"
 			or cur_anim == "unarmed_crouch_idle")
+	for side: StringName in per_leg:
+		var other_side: StringName = &"right" if side == &"left" else &"left"
+		var brace_upper: bool = (_landing_grace_time > 0.0
+				and (_smoothed_target.get(side, Vector3.ZERO) as Vector3).y
+				> (_smoothed_target.get(other_side, Vector3.ZERO) as Vector3).y + step_min_rise)
+		per_leg[side]["brace_upper"] = brace_upper
+		per_leg[side]["prefer_ground_target"] = (solver_backend != SolverBackend.NATIVE_TWO_BONE
+				and (per_leg[side].get("preserve_idle_pose", false) or brace_upper))
 	_target_coordinator.resolve_stationary(
-			player_body.get_world_3d().direct_space_state, per_leg, stationary, delta)
+			player_body.get_world_3d().direct_space_state, per_leg, stationary, delta, to_world)
 	# A reassigned target (replace_invalid_with_raw_support) missed shared_drop above, which
 	# ran before this reassignment - redo the same reach check against the final target.
 	for side: StringName in per_leg:
@@ -899,15 +907,6 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		elif not is_flat_idle and l_hit and r_hit:
 			var l_tgt: Vector3 = l_leg.get("target", l_leg.get("ground_target", l_hip))
 			var r_tgt: Vector3 = r_leg.get("target", r_leg.get("ground_target", r_hip))
-			var hip_axis := Vector3(l_hip.x - r_hip.x, 0.0, l_hip.z - r_hip.z)
-			var left_dir := (hip_axis.normalized()
-					if hip_axis.length_squared() > 0.0001 else -to_world.basis.x.normalized())
-			if stationary and (l_tgt - r_tgt).dot(left_dir) < 0.22:
-				var mid: Vector3 = (l_tgt + r_tgt) * 0.5
-				l_tgt = mid + left_dir * 0.11
-				r_tgt = mid - left_dir * 0.11
-				l_leg["target"] = l_tgt
-				r_leg["target"] = r_tgt
 			if stationary or l_leg.get("step_down", false) or r_leg.get("step_down", false):
 				# ground_weight-weighted, same formula as is_edge_asym above - was a plain
 				# unweighted midpoint (017: bias toward the more-loaded foot, not a fixed split).
@@ -948,9 +947,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 	for side: StringName in _bone_indices:
 		var leg: Dictionary = per_leg[side]
 		var other_side: StringName = &"right" if side == &"left" else &"left"
-		var brace_upper: bool = (_landing_grace_time > 0.0
-				and (_smoothed_target.get(side, Vector3.ZERO) as Vector3).y
-				> (_smoothed_target.get(other_side, Vector3.ZERO) as Vector3).y + step_min_rise)
+		var brace_upper: bool = leg["brace_upper"]
 		var has_target: bool = leg.has("target") or leg.has("ground_target")
 		var preserve_idle: bool = leg.get("preserve_idle_pose", false)
 		var seam_acquire: bool = (cur_anim.contains("idle")
@@ -960,8 +957,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		if not leg["hit"] or not has_target or (preserve_idle and shared_drop <= 0.0) or seam_acquire:
 			_leg_solver.release_to_animation(skel, side, delta)
 			continue
-		var target: Vector3 = (leg.get("ground_target", leg.get("target", Vector3.ZERO))
-				if preserve_idle or brace_upper else leg.get("target", Vector3.ZERO))
+		var target: Vector3 = _target_coordinator.get_plan(side).ankle_target
 		var validated_target := target # before any late reassignment below (018 finding A)
 		var gw: float = 1.0 if preserve_idle or brace_upper else float(leg["ground_weight"])
 		var cw: float = 1.0 if preserve_idle or brace_upper else float(leg.get("chain_weight", gw))
@@ -987,6 +983,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		# A target reassigned since validation was never checked against it - report that.
 		var still_validated: bool = (leg.get("target_plan_validated", false)
 				and validated_target.distance_to(target) <= 0.001)
+		still_validated = _target_coordinator.record_solve_target(side, target, still_validated)
 		var solve_options := {&"instant": leg.get("instant", false) or brace_upper,
 				&"target_plan_validated": still_validated,
 				&"stationary_slope": leg.get("stationary_slope", false)}

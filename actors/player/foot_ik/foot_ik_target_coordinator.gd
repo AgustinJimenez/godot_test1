@@ -40,7 +40,10 @@ func get_plan(side: StringName) -> FootIKTargetPlan:
 
 
 func resolve_stationary(space: PhysicsDirectSpaceState3D,
-		per_leg: Dictionary, stationary: bool, delta: float) -> void:
+		per_leg: Dictionary, stationary: bool, delta: float,
+		to_world: Transform3D = Transform3D.IDENTITY) -> void:
+	_propose_spacing(per_leg, stationary, to_world)
+	_select_solve_targets(per_leg)
 	var legacy_transition_active: bool = (not _owner._ground_sampler.idle_lower_acquiring.is_empty()
 			or not _owner._ground_sampler.idle_lower_latched_target.is_empty())
 	for side: StringName in per_leg:
@@ -54,6 +57,65 @@ func resolve_stationary(space: PhysicsDirectSpaceState3D,
 			leg[&"target_plan_validated"] = true
 
 
+## Joint proposal only: never move targets again after validation/recovery. Preserve the
+## original flat-idle/missing-contact gates and 22 cm spacing; caches remain producer-owned.
+static func _propose_spacing(per_leg: Dictionary, stationary: bool,
+		to_world: Transform3D) -> void:
+	for side: StringName in per_leg:
+		(per_leg[side] as Dictionary).erase(&"spacing_delta")
+	if not stationary or not per_leg.has(&"left") or not per_leg.has(&"right"):
+		return
+	var left: Dictionary = per_leg[&"left"]
+	var right: Dictionary = per_leg[&"right"]
+	if (not left.get("hit", false) or not right.get("hit", false)
+			or (left.get("preserve_idle_pose", false) and right.get("preserve_idle_pose", false))):
+		return
+	var l_hip: Vector3 = left["hip_pos"]
+	var r_hip: Vector3 = right["hip_pos"]
+	var l_target: Vector3 = left.get("target", left.get("ground_target", l_hip))
+	var r_target: Vector3 = right.get("target", right.get("ground_target", r_hip))
+	var axis := Vector3(l_hip.x - r_hip.x, 0.0, l_hip.z - r_hip.z)
+	var left_dir := axis.normalized() if axis.length_squared() > 0.0001 \
+			else -to_world.basis.x.normalized()
+	if (l_target - r_target).dot(left_dir) >= 0.22:
+		return
+	var midpoint := (l_target + r_target) * 0.5
+	left[&"target"] = midpoint + left_dir * 0.11
+	right[&"target"] = midpoint - left_dir * 0.11
+	left[&"spacing_delta"] = (left[&"target"] as Vector3) - l_target
+	right[&"spacing_delta"] = (right[&"target"] as Vector3) - r_target
+
+
+## Preserve the custom solver's ground-target priority, but select it before validation.
+## Ground targets replace the spacing proposal; derive their support from that actual ankle.
+## Native callers do not request this custom-only policy during their migration.
+static func _select_solve_targets(per_leg: Dictionary) -> void:
+	for side: StringName in per_leg:
+		var leg: Dictionary = per_leg[side]
+		leg[&"target_source"] = "target"
+		leg[&"solve_candidate"] = leg.get(&"target", leg.get(&"ground_target", Vector3.ZERO))
+		if not leg.get(&"prefer_ground_target", false) or not leg.has(&"ground_target"):
+			continue
+		# Pelvis planning still consumes the legacy target; migrating it jointly is separate.
+		leg[&"solve_candidate"] = leg[&"ground_target"]
+		leg[&"target_source"] = "ground_target"
+		leg.erase(&"spacing_delta")
+
+
+## Observe actual inputs without rewriting the accepted plan. Other late overrides are
+## still being migrated; a spaced candidate must never lend them its validation flag.
+func record_solve_target(side: StringName, target: Vector3, validation_claim: bool) -> bool:
+	var plan := get_plan(side)
+	if plan == null:
+		return false
+	plan.solve_target_observed = true
+	plan.actual_solve_target = target
+	var matches := plan.matches_solve_target(target)
+	plan.solve_target_reason = "accepted_plan" if matches else "late_target_override"
+	plan.solve_validation_retained = validation_claim and (not plan.spacing_requested or matches)
+	return plan.solve_validation_retained
+
+
 func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName, leg: Dictionary,
 		stationary: bool, legacy_transition_active: bool, delta: float) -> FootIKTargetPlan:
 	var plan := TARGET_PLAN.new() as FootIKTargetPlan
@@ -64,7 +126,15 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName, leg: Dictio
 			side, plan.raw_surface)
 	plan.surface_normal = _owner._ground_sampler.smoothed_normal.get(
 			side, leg.get(&"raw_normal", Vector3.UP))
-	plan.ankle_target = leg.get(&"target", leg.get(&"ground_target", Vector3.ZERO))
+	plan.ankle_target = leg[&"solve_candidate"]
+	plan.proposed_ankle_target = plan.ankle_target
+	plan.spacing_requested = leg.has(&"spacing_delta")
+	plan.target_source = leg.get(&"target_source", "target")
+	# Support and ankle must describe the same proposal, not the pre-spacing surface.
+	plan.surface_target += leg.get(&"spacing_delta", Vector3.ZERO) as Vector3
+	if plan.target_source == "ground_target":
+		plan.surface_target = plan.ankle_target - plan.surface_normal * float(
+				leg.get(&"effective_offset", _owner.ankle_offset))
 	plan.valid = bool(leg.get(&"hit", false))
 	plan.reason = "selected_legacy_candidate"
 	var animation_name := String(_owner.player_body.anim_player.current_animation.get_file())
@@ -308,6 +378,9 @@ func _raw_recovery_plan(space: PhysicsDirectSpaceState3D, side: StringName,
 	var plan := TARGET_PLAN.new() as FootIKTargetPlan
 	plan.side = side
 	plan.owner = FootIKTargetPlan.Owner.LIVE_CONTACT
+	plan.spacing_requested = rejected.spacing_requested
+	plan.proposed_ankle_target = rejected.proposed_ankle_target
+	plan.target_source = "raw_recovery"
 	plan.raw_surface = leg.get(&"raw_target", Vector3.ZERO)
 	plan.surface_target = plan.raw_surface
 	plan.surface_normal = leg.get(&"raw_normal", Vector3.UP)
