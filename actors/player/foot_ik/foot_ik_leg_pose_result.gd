@@ -1,8 +1,16 @@
 class_name FootIKLegPoseResult
 extends RefCounted
-## Immutable-by-convention output of one leg's solve pass (018 finding D): every bone
-## transform _solve_impl computes for hip through leaf, applied to the skeleton in a single
-## step by FootIKLegSolver._apply_leg_pose() instead of scattered set_bone_global_pose calls.
+## Candidate output, immutable by convention: world-space bones plus tentative history and
+## diagnostics. Evaluating it has no external effects; commit_candidate accepts it once.
+## Diagnostics are existing measurements/guards, not a complete clearance/feasibility report.
+
+var next_state: FootIKLegSolveState
+var source_revision := -1
+var source_solver_id := 0
+var physics_frame := -1
+var skeleton_id := 0
+var to_world := Transform3D.IDENTITY
+var has_pose := false
 
 var side: StringName
 var hip_idx := -1

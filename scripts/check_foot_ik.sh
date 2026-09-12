@@ -26,6 +26,16 @@ fi
 rg "FOOT_IK_RELEASE_POSE_CHECK PASS" "$log_file"
 
 godot --headless --fixed-fps 60 --path "$project_dir" \
+	res://tests/manual/foot_ik/foot_ik_candidate_evaluation_check.tscn \
+	--quit-after 150 >"$log_file" 2>&1 || true
+if rg -q "SCRIPT ERROR" "$log_file" \
+		|| ! rg -q "FOOT_IK_CANDIDATE_EVALUATION_CHECK PASS samples=720" "$log_file"; then
+	cat "$log_file"
+	exit 1
+fi
+rg "FOOT_IK_CANDIDATE_EVALUATION_CHECK PASS" "$log_file"
+
+godot --headless --fixed-fps 60 --path "$project_dir" \
 	res://tests/manual/foot_ik/foot_ik_slope_target_lifecycle_check.tscn \
 	--quit-after 10 >"$log_file" 2>&1 || true
 if rg -q "SCRIPT ERROR" "$log_file" \

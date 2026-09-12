@@ -17,18 +17,21 @@ var landing_footprint_depth := 0.10
 var landing_root_clearance_radius := 0.36
 var max_split_ik_height := 0.35
 
-var upper_foot_acquire_speed := 2.0
+var upper_foot_acquire_speed := 4.0
 var preferred_upper_knee_flexion_degrees := 70.0
 var retained_upper_knee_flexion_degrees := 80.0
 var upper_support_radius := 0.10
-# Matches upper_foot_acquire_speed/idle_stance_rehome_speed (see 013's "340:right:foot" finding -
-# at the old 4.0, this setting's own per-frame cap (4.0 * delta) exceeded
-# foot_ik_idle_plant_stability_check's MAX_LIVE_POSE_JOINT_STEP purely from legitimate motion,
-# with no bug anywhere in the solve chain). Every acquire/rehome speed in this file now shares
-# the same rate, so none of them can individually produce a step this check would flag.
-var lower_foot_acquire_speed := 2.0
+# Matches upper_foot_acquire_speed/idle_stance_rehome_speed. 013's "340:right:foot" finding
+# showed 4.0's own per-frame cap (4.0 * delta) can exceed foot_ik_idle_plant_stability_check's
+# MAX_LIVE_POSE_JOINT_STEP from legitimate motion alone (no bug in the solve chain) - re-run
+# that check after touching this value. Every acquire/rehome speed in this file shares one
+# rate, so none of them can individually produce a step this check would flag.
+var lower_foot_acquire_speed := 4.0
 var lower_riser_clearance_radius := 0.32
-var idle_stance_rehome_speed := 2.0
+var idle_stance_rehome_speed := 4.0
+## Peak extra height a foot arcs above the straight acquire path mid-reposition, sine-shaped -
+## see AGENT_TASKS/019 and foot_step_arc.gd. 0 disables the arc (straight collision-held line).
+var idle_lower_arc_lift_m := 0.035
 
 var max_upright_shin_swing_degrees := 45.0
 var upright_shin_steer_start_degrees := 30.0
@@ -36,6 +39,9 @@ var minimum_knee_pole_alignment := 0.7
 var joint_correction_speed_degrees := 120.0
 var standing_joint_speed_degrees := 90.0
 var crouch_joint_speed_degrees := 45.0
+## Floor on joint speed while idle_lower_acquiring actively moves a leg - see AGENT_TASKS/019;
+## standing_joint_speed_degrees alone can't track lower_foot_acquire_speed's faster target.
+var idle_lower_acquire_joint_speed_degrees := 720.0
 
 
 func allows_support_height_difference(difference: float) -> bool:

@@ -90,6 +90,10 @@ var _turn_max_foot_step_frame := -1
 var _turn_max_penetration_m := 0.0
 var _turn_penetration_side := &""
 var _turn_penetration_frame := -1
+var _turn_previous_owner: Dictionary = {} # side -> FootIKTargetPlan.Owner
+var _turn_latch_kickouts := 0
+var _turn_latch_kickout_side := &""
+var _turn_latch_kickout_frame := -1
 var _stance_cache_aligned := false
 var _timed_idle_handoff_smooth := false
 var _checking_rehome := false
@@ -227,8 +231,28 @@ func _process_turn_check() -> void:
 		_sample_turn_penetration(space, side, foot_position, turn_index)
 		_sample_turn_penetration(
 				space, side, _final_joint_position(side, &"toe"), turn_index)
+		_sample_turn_latch_kickout(side, turn_index)
 	if turn_index >= LIVE_TURN_YAWS_DEG.size() + TURN_HOLD_FRAMES:
 		_begin_rehome_check()
+
+
+## A settled plant should stay owned by IDLE_LOWER_LATCH (or hand off gracefully to
+## IDLE_STANCE_REHOME) through an ordinary in-place rotation - is_target_inside_stance_zone
+## measures against the body's rotating forward/outward basis, and a world-fixed plant that
+## gets kicked to raw recovery mid-turn instead of tolerated is the "clipped out of nowhere"
+## bug from AGENT_TASKS/019.
+func _sample_turn_latch_kickout(side: StringName, turn_index: int) -> void:
+	var plan: FootIKTargetPlan = _ik._target_coordinator.get_plan(side)
+	if plan == null:
+		return
+	var previous: int = int(_turn_previous_owner.get(side, plan.owner))
+	if (previous == FootIKTargetPlan.Owner.IDLE_LOWER_LATCH
+			and plan.owner != FootIKTargetPlan.Owner.IDLE_LOWER_LATCH
+			and plan.owner != FootIKTargetPlan.Owner.IDLE_STANCE_REHOME):
+		_turn_latch_kickouts += 1
+		_turn_latch_kickout_side = side
+		_turn_latch_kickout_frame = turn_index
+	_turn_previous_owner[side] = plan.owner
 
 
 ## Checks one world-space point against whatever tread/riser box collider(s) are actually near
@@ -581,6 +605,7 @@ func _finish_check() -> void:
 		passed = passed and float(_max_drift[side]) <= MAX_PLANTED_DRIFT
 	passed = passed and _turn_max_foot_step <= MAX_TURN_FOOT_STEP
 	passed = passed and _turn_max_penetration_m <= MAX_TURN_PENETRATION_M
+	passed = passed and _turn_latch_kickouts == 0
 	passed = passed and _stance_cache_aligned
 	passed = passed and _timed_idle_handoff_smooth
 	var rehome_target: Vector3 = _ik._ground_sampler.smoothed_target.get(
@@ -634,6 +659,7 @@ func _finish_check() -> void:
 			+ "limit_m=%.3f turn_step_m=%.6f turn_side=%s turn_frame=%d turn_limit_m=%.3f "
 			+ "turn_penetration_m=%.6f turn_penetration_side=%s turn_penetration_frame=%d "
 			+ "turn_penetration_limit_m=%.3f "
+			+ "turn_latch_kickouts=%d turn_latch_kickout_side=%s turn_latch_kickout_frame=%d "
 			+ "stance_cache_aligned=%s timed_idle_handoff_smooth=%s "
 			+ "rehome_observed=%s rehome_inside=%s rehome_step_m=%.6f rehome_limit_m=%.3f "
 			+ "rehome_stance_limit_frames=%d knee_guard_frames=%d "
@@ -653,7 +679,9 @@ func _finish_check() -> void:
 			_turn_max_foot_step, String(_turn_max_foot_step_side),
 			_turn_max_foot_step_frame, MAX_TURN_FOOT_STEP,
 			_turn_max_penetration_m, String(_turn_penetration_side),
-			_turn_penetration_frame, MAX_TURN_PENETRATION_M, str(_stance_cache_aligned),
+			_turn_penetration_frame, MAX_TURN_PENETRATION_M,
+			_turn_latch_kickouts, String(_turn_latch_kickout_side),
+			_turn_latch_kickout_frame, str(_stance_cache_aligned),
 			str(_timed_idle_handoff_smooth), str(_rehome_observed), str(rehome_inside),
 			_rehome_max_foot_step, MAX_REHOME_FOOT_STEP, _rehome_stance_limit_frames,
 			_knee_guard_constrained_frames, _knee_guard_max_step, MAX_GUARDED_KNEE_STEP,

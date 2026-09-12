@@ -133,6 +133,10 @@ func _build_panel() -> void:
 	_add_slider(vbox, "Support radius", _runtime, &"upper_support_radius", 0.02, 0.2, 0.005)
 	_add_heading(vbox, "Lower-foot support")
 	_add_slider(vbox, "Foot move speed", _runtime, &"lower_foot_acquire_speed", 0.0, 8.0, 0.1)
+	_add_slider(vbox, "Reposition arc lift", _runtime,
+			&"idle_lower_arc_lift_m", 0.0, 0.12, 0.005)
+	_add_slider(vbox, "Reposition joint speed", _runtime,
+			&"idle_lower_acquire_joint_speed_degrees", 90.0, 1800.0, 10.0)
 	_add_slider(vbox, "Riser clearance", _runtime,
 			&"lower_riser_clearance_radius", 0.05, 0.5, 0.01)
 	_add_slider(vbox, "Stance rehome speed", _runtime,

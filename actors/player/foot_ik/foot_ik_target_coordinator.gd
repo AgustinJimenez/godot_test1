@@ -143,7 +143,14 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName, leg: Dictio
 	# exemptions here. STAIR_SUPPORT's support foot sits on whichever tread the climb is
 	# currently on, arbitrarily far from the root along the stair's own axis - same shape
 	# of conflict again.
+	# IDLE_LOWER_LATCH holds a foot at a fixed WORLD point once settled - is_target_inside_
+	# stance_zone measures laterally/longitudinally against the body's CURRENT forward/outward
+	# basis, which rotates with the body's yaw. A world-fixed latch that never moved can still
+	# fail this check purely because the body kept turning; no frame budget can bound that for
+	# a sustained turn, so it's exempted like the others below rather than tolerated for a
+	# streak (AGENT_TASKS/019's "clipped out of nowhere" case). support/reach still gate it.
 	var require_stance := not plan.owner in [FootIKTargetPlan.Owner.IDLE_STANCE_REHOME,
+			FootIKTargetPlan.Owner.IDLE_LOWER_LATCH,
 			FootIKTargetPlan.Owner.SPLIT_RECOVERY,
 			FootIKTargetPlan.Owner.LOCOMOTION_LOCK,
 			FootIKTargetPlan.Owner.LOCOMOTION_STANCE,
@@ -208,17 +215,8 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 	else:
 		var envelope_ok := _toe_envelope_valid(space, plan)
 		plan.toe_status = STATUS.SATISFIED if envelope_ok else STATUS.VIOLATED
-		var current_frame := Engine.get_physics_frames()
-		var prev_streak: int = int(_toe_invalid_streak.get(plan.side, 0))
-		# A zero-delta or already-advanced-this-frame call must not consume the streak budget -
-		# see _limit_correction's identical guard in foot_ik_leg_solver.gd.
-		var streak: int = prev_streak
-		if (delta > 0.0
-				and int(_toe_invalid_streak_frames.get(plan.side, -1)) != current_frame):
-			streak = 0 if envelope_ok else prev_streak + 1
-			_toe_invalid_streak[plan.side] = streak
-			_toe_invalid_streak_frames[plan.side] = current_frame
-		if not envelope_ok and streak < TOE_INVALID_HOLD_FRAMES:
+		if _streak_tolerated(_toe_invalid_streak, _toe_invalid_streak_frames,
+				plan.side, not envelope_ok, TOE_INVALID_HOLD_FRAMES, delta):
 			plan.toe_status = STATUS.TEMPORARILY_TOLERATED
 	plan.valid = (plan.valid and FootIKTargetPlan.constraint_ok(plan.stance_status)
 			and FootIKTargetPlan.constraint_ok(plan.support_status)
@@ -233,6 +231,22 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 	elif plan.toe_status == STATUS.VIOLATED:
 		plan.reason = "toe_envelope_blocked"
 	return plan
+
+
+## True while `violated` should still be tolerated rather than rejected outright: false once
+## a fresh violation streak (tracked per side in `streak_dict`/`frame_dict`) reaches
+## `hold_frames`. A zero-delta or already-advanced-this-frame call must not consume the
+## streak budget - see _limit_correction's identical guard in foot_ik_leg_solver.gd.
+func _streak_tolerated(streak_dict: Dictionary, frame_dict: Dictionary, side: StringName,
+		violated: bool, hold_frames: int, delta: float) -> bool:
+	var current_frame := Engine.get_physics_frames()
+	var prev_streak: int = int(streak_dict.get(side, 0))
+	var streak: int = prev_streak
+	if delta > 0.0 and int(frame_dict.get(side, -1)) != current_frame:
+		streak = 0 if not violated else prev_streak + 1
+		streak_dict[side] = streak
+		frame_dict[side] = current_frame
+	return violated and streak < hold_frames
 
 
 ## Rejects a plan whose ankle target is valid but whose toe/leaf reach - at this frame's
@@ -348,14 +362,18 @@ func _legacy_owner(side: StringName) -> FootIKTargetPlan.Owner:
 	var result := FootIKTargetPlan.Owner.LIVE_CONTACT
 	if sampler.landing_committed_target.has(side):
 		result = FootIKTargetPlan.Owner.LANDING_COMMITMENT
-	elif sampler.landing_upper_confirmed.has(side):
-		result = FootIKTargetPlan.Owner.LANDING_UPPER
-	elif sampler.split_safe_held_upper_target.has(side):
-		result = FootIKTargetPlan.Owner.SPLIT_RECOVERY
+	# A leg mid idle-lower reposition (or freshly latched) commits like a real step: once
+	# claimed, it must finish and plant before LANDING_UPPER's knee-straightening - an
+	# unrelated mechanism - can seize the same leg and substitute a discontinuous target
+	# mid-flight (see AGENT_TASKS/019's "clipped out of nowhere" case).
 	elif sampler.idle_lower_acquiring.has(side):
 		result = FootIKTargetPlan.Owner.IDLE_LOWER_ACQUIRE
 	elif sampler.idle_lower_latched_target.has(side):
 		result = FootIKTargetPlan.Owner.IDLE_LOWER_LATCH
+	elif sampler.landing_upper_confirmed.has(side):
+		result = FootIKTargetPlan.Owner.LANDING_UPPER
+	elif sampler.split_safe_held_upper_target.has(side):
+		result = FootIKTargetPlan.Owner.SPLIT_RECOVERY
 	elif sampler.idle_stance_rehoming.has(side):
 		result = FootIKTargetPlan.Owner.IDLE_STANCE_REHOME
 	elif bool(_owner._idle_frozen.get(side, false)):

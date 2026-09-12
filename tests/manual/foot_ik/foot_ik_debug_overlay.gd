@@ -143,6 +143,10 @@ func _ready() -> void:
 			self, Color(0.2, 1.0, 0.4, 0.35), Vector2(0.50, 0.80))
 	_markers["c_line"] = FootIkDebugMarkers.spawn_zone_quad(
 			self, Color(1.0, 0.9, 0.1, 0.8), Vector2(0.02, 0.90))
+	# Stance-zone quads/line hidden by default - toggle back on for stance-zone debugging.
+	(_markers["l_zone"] as Node3D).visible = false
+	(_markers["r_zone"] as Node3D).visible = false
+	(_markers["c_line"] as Node3D).visible = false
 
 	# Parented to a BoneAttachment3D so it tracks the bone directly; the trail below shows its path.
 	var head_idx := _skel.find_bone(_player_body.resolve_bone_name(&"Head"))
@@ -452,8 +456,7 @@ func _set_scene_paused(paused: bool) -> void:
 	if paused == get_tree().paused:
 		return
 	if paused:
-		# PlayerBody runs AnimationPlayer in ALWAYS mode - make it pausable
-		# first so freezing the tree stops the exact skeleton frame.
+		# PlayerBody runs AnimationPlayer in ALWAYS mode - make it pausable first.
 		_paused_animation_process_modes.clear()
 		for node: Node in get_tree().root.find_children("*", "AnimationPlayer", true, false):
 			_paused_animation_process_modes[node] = node.process_mode
@@ -491,8 +494,7 @@ func _on_animation_scrub_started() -> void:
 	_set_scene_paused(true)
 
 func _on_animation_scrub_ended(_value_changed: bool) -> void:
-	# Deliberately remain paused on the selected frame. Resume All continues
-	# the full stair sequence from that inspected pose.
+	# Deliberately remain paused on the selected frame; Resume All continues from here.
 	pass
 
 func _on_animation_timeline_changed(position: float) -> void:
@@ -714,8 +716,7 @@ func _process(_delta: float) -> void:
 	_update_animation_timeline()
 	if not _stair_follow_enabled or _stair_follow_probe == null:
 		return
-	# Other input can recapture the pointer after deferred init - foot-follow
-	# is interactive, so keep the pointer visible for its controls.
+	# Other input can recapture the pointer; foot-follow needs it visible.
 	if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var player := get_node("../Player") as Player
@@ -820,8 +821,7 @@ func _physics_process(delta: float) -> void:
 		get_tree().paused = false ## Lets player.gd keep ticking while Esc/P's menu is still open.
 	elif get_tree().paused:
 		_refresh_paused_ik_pose() ## ui/hud.gd's P menu bypasses _set_scene_paused().
-	# Keep the checkbox honest every frame - grounded/airborne auto-toggling
-	# otherwise reads as stuck "IK DISABLED" after a one-frame spawn dip.
+	# Keep the checkbox honest - grounded/airborne auto-toggling can flip _ik.active.
 	if _active_check.button_pressed != _ik.active:
 		_active_check.set_pressed_no_signal(_ik.active)
 		_style_active_check(_ik.active)

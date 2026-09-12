@@ -69,6 +69,9 @@ run_scene "Foot IK clearance geometry" "FOOT_IK_CLEARANCE_GEOMETRY_CHECK PASS" \
 run_scene "Foot IK release pose" "FOOT_IK_RELEASE_POSE_CHECK PASS" \
 	5 res://tests/manual/foot_ik/foot_ik_release_pose_check.tscn
 
+run_scene "Foot IK candidate evaluation" "FOOT_IK_CANDIDATE_EVALUATION_CHECK PASS samples=720" \
+	150 res://tests/manual/foot_ik/foot_ik_candidate_evaluation_check.tscn
+
 run_scene "Foot IK slope target lifecycle" "FOOT_IK_SLOPE_TARGET_LIFECYCLE_CHECK PASS" \
 	10 res://tests/manual/foot_ik/foot_ik_slope_target_lifecycle_check.tscn
 

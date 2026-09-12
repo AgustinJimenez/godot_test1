@@ -2,11 +2,13 @@
 
 ## Status and scope
 
-Review completed 2026-09-09; implementation of the recommendations is **not started**.
-Requested by the user as a fresh general assessment after subsequent agents' changes.
-This is a code/architecture review, not a new live-bug diagnosis or a runtime fix.
+**In progress.** Original review completed 2026-09-09; progress audited 2026-09-11 at
+HEAD `ff05f2f`, including the existing dirty working tree. Eight commits on 2026-09-10
+implement targeted fixes and initial architecture extractions; the end-to-end contracts
+below are not yet complete. This status update is a code/history audit, not a runtime fix
+or fresh test certification.
 
-Reviewed the current working tree, including uncommitted changes to the modifier, sampler,
+The original review inspected the working tree, including uncommitted changes to the modifier, sampler,
 landing planner, runtime settings, and idle acceptance scene. HEAD at review: `c0e74ba`.
 Those existing changes were preserved. No scene, regression suite, or fresh performance
 benchmark was run; historical test results below are attributed to their task, not re-certified.
@@ -17,7 +19,101 @@ acceptance scenes. Also inspected look/grip modifiers and the ALS prototype's ma
 and body facade at their integration boundaries. This is not a full audit of retargeting,
 the character editor, or all ALS gameplay code.
 
+### Current implementation progress
+
+This table supersedes the original findings' descriptions of missing code; their remaining
+design goals and acceptance requirements still apply.
+
+| Finding | Implemented evidence | Remaining work |
+| --- | --- | --- |
+| I — runner reliability | `ec3cf35`: require all six preview results, check grouped script errors, and compare ramp failure counts/depths. | Exact-case baselines, consistent crash/completion handling, shared case manifest and behavioral CI; broad known-failure labels still hide deterioration. |
+| B — time/refresh | `7f8f602`: guard specific streaks against zero-delta/duplicate ticks; preserve pelvis smoothing on refresh. | Pipeline-wide frame context and once-per-tick history contract, with refresh/rate coverage. |
+| F — lifecycle | `d1104ca`: reset residual/phase-locked/native state and update native orientation history. | Supported-mode lifecycle/capability contracts and dedicated mode-switch validation. |
+| C — constraint status | `a0392d5`: replace validity booleans with satisfied/violated/unchecked/inapplicable/tolerated statuses. | Complete degraded-result reporting, reasons/expiry and owner/terrain contract coverage; the enum alone does not strengthen validation. |
+| D — pose result/apply | `b60173f` introduced the result type; the live-confirmed extraction adds fixed inputs, candidate-local history/diagnostics and guarded acceptance (details below). | Final-output clearance/feasibility reporting and clearance-driven candidate selection. |
+| E — final snapshot | `70bea29`: prefer fresh Foot IK poses for visual consumers and frame-stamp the cache. | Publish after every enabled modifier/backend, including native IK and any later balance layer. |
+| H — performance | `dfee62e`: log worst-call/worst-frame solver timing. | Query accounting, explicit work budgets and broader tail-latency measurements. |
+| A — authoritative plan | `c182d17`: invalidate the validation flag when covered late target edits change the selected input. | Move all late adjustments and shared pelvis selection behind the accepted-plan boundary. |
+| G — typed integration | No implementation of the proposed abstractions identified in this audit. | Support identity/local anchors, typed motion/animation context, root-request feedback and collision-layer cleanup. |
+
+Feature status: torso counter-lean (`56d0222`) is implemented but **parked, disabled by
+default**, and not accepted as natural-looking. The checkpoint includes a recovery-arc helper
+(`tools/foot_ik/foot_step_arc.gd`) and landing confirmation changes; these remain experimental
+task 019 work, not a complete deliberate lift-move-plant system. Contact curves, heel/toe
+support modes, stride warping, moving-support anchors and portable replay bundles remain proposals.
+
+Validation caveat: several September 10 commits report 41 passing checks and 5 known failures;
+these are historical results, not the current tree's baseline. The later
+[019 toe/riser investigation](019_foot_ik_toe_riser_clip_during_rotation.md) remains open with
+failing rotation coverage; `ff05f2f` documents a backed-out fix. No tests or scenes were run
+for the status audit. The subsequent extraction's validation is recorded separately below.
+Other agents' runtime/test edits are preserved, including the task 019 acquisition-speed override
+now carried through the evaluator's input snapshot.
+
+Next architecture priorities are validating the candidate boundary and making feet/pelvis
+planning authoritative, with trustworthy per-case regression evidence. Do not treat the targeted
+fixes above as completion of the broader contracts or start all proposed features as a batch.
+
+### Candidate-evaluation extraction — implemented 2026-09-11, live-confirmed 2026-09-12
+
+User live confirmation: "i see no diff", the expected outcome for this extraction. The
+requested commit/push checkpoints the tested Foot IK tree, including the earlier task 019
+changes it depends on. This confirms visual equivalence, not resolution of the known failures.
+
+- `FootIKLegSolveInput` captures values, animation poses, settings, contact context and history;
+  evaluation does not read live nodes, physics time, settings resources or owner callbacks.
+- `FootIKLegPoseEvaluator` computes hip-through-leaf output and release-to-animation output
+  using its own history/diagnostics copy. Existing intra-evaluation read-after-write order is
+  preserved; this is an output-preserving extraction, not new knee/contact policy.
+- `FootIKLegSolver.capture_input()` / `evaluate_candidate()` allow several target candidates
+  against the same snapshot. `commit_candidate()` alone publishes the selected history/debug
+  state and writes bones; wrong-solver/skeleton, stale-frame/revision and duplicate commits
+  are rejected. Existing `solve()` and release callers evaluate and accept immediately.
+- This is **once per accepted candidate**, not a new once-per-physics-tick policy. Existing
+  repeated accepted-call timing remains unchanged. The revision is currently solver-wide;
+  independently evaluated left/right results cannot both commit from one old revision.
+  Joint feet/pelvis acceptance, full constraint reports and final skin clearance remain future work.
+- Existing target-policy queries and direct guard probes retain explicit publishing adapters;
+  they are outside candidate evaluation. Do not route candidate searches through those adapters.
+- Durable coverage:
+  [candidate evaluation scene](../tests/manual/foot_ik/foot_ik_candidate_evaluation_check.gd),
+  wired into fast/main/all runners. It checks snapshot isolation, rejected-candidate isolation,
+  repeatability, wrong-skeleton/stale/duplicate/reset invalidation, and solve-path equivalence.
+  Its 720 samples cover both legs, idle/walk/crouch/landing, slopes, loop holds, acquisition,
+  release/degenerate targets, 30/60/120-Hz-sized deltas, zero-delta and repeated same-tick calls.
+  Different delta sizes are not a full live physics-rate validation.
+- Local A/B against the saved pre-extraction dirty-tree solver passed all 720 samples:
+  bone transforms agree within Godot's approximate transform comparison; history and diagnostics
+  agree exactly. The optional `FOOT_IK_REFERENCE_SOLVER` environment variable selects that
+  historical script; ordinary regression runs need no external reference file.
+- Full comparison: **39 passed / 7 known failures before -> 40 passed / the same 7 known
+  failures after**. The extra pass is the new regression. All six emitted raw
+  `FOOT_IK_* FAIL` metric lines match the baseline exactly; the two ramp matrices also
+  retain their failure counts and worst depths. No baseline limits or fixtures were widened.
+  Logs and saved reference: `/tmp/foot-ik-018-evaluation.GZg8ik/`.
+- Local scene-based A/B microbenchmark (240 solves): **79.5 µs new vs 43.6 µs old per solve**.
+  Snapshot isolation adds about 0.036 ms/solve in this fixture; do not describe the extraction
+  as performance-neutral. This is not a one-player or stress-preview frame budget. Profile
+  snapshot reuse/allocation costs as the plan boundary is consolidated; finding H remains open.
+
+Validation map (headless, sequential; live preview not opened):
+
+| Entrypoint | Result |
+| --- | --- |
+| `scripts/check.sh` (through fast) | PASS: project lint/import/parse. |
+| New candidate scene, normal and saved-old-solver A/B | PASS: 720 samples each; no script errors. |
+| `scripts/check_foot_ik_fast.sh` | Stops at existing planted-idle failure; `turn_penetration_m=0.109297`, unchanged. |
+| `scripts/check_foot_ik.sh` | Independently stops at the existing unreachable lower-support acquisition failure; all-runner map covers the later checks. |
+| `scripts/check_foot_ik_all.sh` | 40 pass / 7 known failures / no unexpected failures; core failures: unreachable acquisition, walk-to-idle stance, planted-idle stability. |
+| `scripts/check_foot_ik_ramp_locomotion.sh` (independent child of all) | Existing failure, raw failure metrics unchanged. |
+| `scripts/check_foot_ik_stair_repeat.sh` (independent child of all) | PASS. |
+| `scripts/check_foot_ik_locomotion.sh` (independent child of all) | Existing failure, raw failure metrics unchanged. |
+| `scripts/check_foot_ik_ramps.sh` (independent child of all) | 20 failing cases; worst depth 0.013232 m, unchanged. |
+| `scripts/check_foot_ik_ramp_sweep.sh` (independent child of all) | 16 failing cases; worst depth 0.105375 m, unchanged. |
+
 ## Overall assessment
+
+Original 2026-09-09 assessment and evidence follow; use the progress table above for current status.
 
 **A capable, well-instrumented prototype with valuable production building blocks, but not yet
 a consistently enforced IK architecture. Improve its boundaries incrementally; do not rewrite
@@ -40,7 +136,7 @@ Important changes since the earlier review:
   fixes, and classifies remaining floating-slab edge cases as accepted fixture limitations.
   Its older “no ramp fix yet” measurement notes are not the latest runtime status. The general
   clearance evaluator remains diagnostic, not a production pose guarantee.
-- Current uncommitted work includes successful-search cooldowns, landing-search failure
+- At the original review, uncommitted work included successful-search cooldowns, landing-search failure
   cooldown, compressed-upper-foot handling, and weighted pelvis centering from
   [014](014_foot_ik_preview_scene_fps_collapse.md)/[017](017_foot_ik_balanced_weight_bearing_pose.md).
   Account for these improvements; do not propose their already-present fixes again.
@@ -286,7 +382,8 @@ user's live confirmation before committing. Do not auto-play the preview.
 
 ## Feature candidates and focused online research
 
-Proposals, not implemented or approved as a batch. The architectural contracts above come
+Proposals, not approved as a batch; see current progress above for parked/prototype work.
+The architectural contracts above come
 first. A focused primary-documentation check was performed on 2026-09-09; this was not an
 exhaustive investigation or a source-code port. Research each selected feature's blending,
 coordinate spaces, failure behavior and runtime cost before implementing it here.
@@ -326,10 +423,14 @@ torso compensation and more smoothing controls until ownership/time contracts ar
 
 ## Completion criteria for the follow-on work
 
+These are end-to-end acceptance gates, not a count of commits. They remain open where only
+a targeted fix or extraction is implemented; see the extraction's current validation above.
+
 - [ ] All required checks are reported; a worsening known case cannot be hidden by its label.
 - [ ] Every supported mode resets fully; refreshes do not advance temporal state twice.
 - [ ] Accepted plan and actual solve inputs agree, including shared pelvis and support identity.
-- [ ] Candidate evaluation is non-mutating; only the chosen output commits history/bones.
+- [x] Custom leg candidate evaluation is non-mutating; only the accepted output commits
+  history/bones (headless comparison passed; user confirmed no visible difference on 2026-09-12).
 - [ ] Constraint reports distinguish satisfied, skipped, tolerated and degraded results.
 - [ ] Final published poses match rendered output across enabled modifier/backend combinations.
 - [ ] Worst-frame query/correction work has an explicit measured budget.

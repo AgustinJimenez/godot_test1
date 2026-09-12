@@ -1,10 +1,12 @@
 class_name FootIKGroundSampler
 extends RefCounted
 ## Samples and smooths the world-space surface beneath each animated foot.
-## Gait ownership, pelvis policy, and skeleton writes remain with collaborators.
 const WORLD_COLLISION_MASK := 1
 const LANDING_PLANNER := preload("res://actors/player/foot_ik/foot_ik_landing_planner.gd")
 const RUNTIME_SETTINGS := preload("res://actors/player/foot_ik/foot_ik_runtime_settings.gd")
+const STEP_ARC := preload("res://tools/foot_ik/foot_step_arc.gd")
+const LANDING_UPPER_CONFIRM_TRACKER := preload(
+		"res://tools/foot_ik/landing_upper_confirm_tracker.gd")
 const CONTACT_SURFACE_COLLISION_MASK := 1 << 5
 const GROUND_COLLISION_MASK := WORLD_COLLISION_MASK | CONTACT_SURFACE_COLLISION_MASK
 const TARGET_NOISE_DEADBAND := 0.01
@@ -32,10 +34,11 @@ var debug_effective_offset: Dictionary = {} # side -> float
 var idle_lower_latched_target: Dictionary = {} # side -> Vector3 (world surface)
 var landing_committed_target: Dictionary = {} # side -> Vector3 (world surface)
 var idle_lower_acquiring: Dictionary = {} # side -> Vector3 (world surface)
+var _idle_lower_arc := STEP_ARC.new()
 var lower_riser_away: Dictionary = {} # side -> horizontal Vector3 (world)
 var lower_riser_away_surface_y: Dictionary = {} # side -> lower surface height
 var lower_riser_cleared_target: Dictionary = {} # side -> validated world surface
-var landing_upper_confirmation_frames: Dictionary = {} # side -> int
+var _landing_upper_confirm := LANDING_UPPER_CONFIRM_TRACKER.new()
 var landing_upper_confirmed: Dictionary = {} # side -> Vector3 (world surface)
 var compressed_upper_target: Dictionary = {} # side -> supported surface for straighter knee
 var preferred_root_nudge := Vector3.ZERO # lets the capsule make room for a supported upper stance
@@ -70,10 +73,11 @@ func reset() -> void:
 	idle_lower_latched_target.clear()
 	landing_committed_target.clear()
 	idle_lower_acquiring.clear()
+	_idle_lower_arc.reset()
 	lower_riser_away.clear()
 	lower_riser_away_surface_y.clear()
 	lower_riser_cleared_target.clear()
-	landing_upper_confirmation_frames.clear()
+	_landing_upper_confirm.reset()
 	landing_upper_confirmed.clear()
 	compressed_upper_target.clear()
 	preferred_root_nudge_surface_y = -INF
@@ -104,7 +108,7 @@ func reject_split_safe_root() -> void:
 	split_safe_retry_after_frame = 0 # an explicit reject should retry immediately
 	split_safe_held_upper_target.clear()
 	landing_upper_confirmed.clear()
-	landing_upper_confirmation_frames.clear()
+	_landing_upper_confirm.reset()
 	for side: StringName in [&"left", &"right"]:
 		idle_lower_latched_target.erase(side)
 		idle_lower_acquiring.erase(side)
@@ -122,6 +126,7 @@ func feet_have_common_current_support() -> bool:
 func _clear_lower_riser_away(side: StringName) -> void:
 	lower_riser_away.erase(side)
 	lower_riser_away_surface_y.erase(side)
+	lower_riser_cleared_target.erase(side)
 func is_compressed_target_settled(side: StringName) -> bool:
 	return (compressed_upper_target.has(side) and smoothed_target.has(side)
 			and (smoothed_target[side] as Vector3).distance_to(
@@ -146,7 +151,6 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 			180.0 - _settings.retained_upper_knee_flexion_degrees)
 	var retained_minimum_reach := sqrt(maxf(0.0, upper * upper + lower * lower
 			- 2.0 * upper * lower * cos(retained_knee_angle)))
-	# Also qualify on excess knee flexion alone (gated on being the higher foot).
 	var flexion_too_tight := (surface.y > other_surface.y
 			and hip.distance_to(target) < retained_minimum_reach - 0.005)
 	var partial_upper_support := (lowest_hit and character != null
@@ -344,7 +348,6 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 	if hit["hit"] and likely_idle and raw_normal.dot(Vector3.UP) < 0.999:
 		smoothed_normal[side] = raw_normal
 		if body_turning:
-			# A gradual turn supplies smoothing; a stale ramp target becomes unreachable.
 			smoothed_target[side] = raw_target
 	var likely_planted: bool = ((
 			float(_owner._smoothed_ground_weight.get(side, 0.0)) >= PLANT_LOCK_WEIGHT
@@ -371,7 +374,6 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 			smoothed_target[side] as Vector3) > TARGET_NOISE_DEADBAND:
 		var amount := clampf(delta * _owner.smooth_rate, 0.0, 1.0)
 		var current_target := smoothed_target[side] as Vector3
-		# A planted foot turning on a tread must not follow the animated probe onto the next.
 		var follow_target := raw_target
 		smoothed_target[side] = (move_target_smoothed(current_target, follow_target, delta)
 				if not body_turning else current_target.move_toward(
@@ -459,7 +461,6 @@ func _latch_idle_lower_support(space: PhysicsDirectSpaceState3D, side: StringNam
 	var animation_name: String = _owner.player_body.anim_player.current_animation.get_file()
 	var support_animation: bool = (
 			animation_name.contains("idle") or animation_name.contains("jump_land"))
-	# Keep validated support through rotation; the stance-zone check retires it.
 	var safe_zone_pending := (character != null and landing_upper_confirmed.has(side)
 			and split_safe_root_target.is_finite()
 			and Vector2(character.global_position.x - split_safe_root_target.x,
@@ -474,18 +475,15 @@ func _latch_idle_lower_support(space: PhysicsDirectSpaceState3D, side: StringNam
 		idle_lower_latched_target.erase(side)
 		idle_lower_acquiring.erase(side)
 		_clear_lower_riser_away(side)
-		lower_riser_cleared_target.erase(side)
 		landing_upper_confirmed.erase(side)
 		return false
 	if landing_upper_confirmed.has(side):
 		idle_lower_latched_target.erase(side)
 		idle_lower_acquiring.erase(side)
 		_clear_lower_riser_away(side)
-		lower_riser_cleared_target.erase(side)
 		if animation_name.contains("jump_land") or not frozen: return false
 		landing_upper_confirmed.erase(side)
 	if not smoothed_target.has(side): return false
-	# Deep split searches start only from a flat lower tread in the stance zone.
 	var has_lower_state := (idle_lower_latched_target.has(side)
 			or idle_lower_acquiring.has(side))
 	var raw_drop := character.global_position.y - raw_target.y
@@ -496,13 +494,35 @@ func _latch_idle_lower_support(space: PhysicsDirectSpaceState3D, side: StringNam
 			or not is_target_inside_stance_zone(side, raw_target))):
 		return false
 	var transition := _update_idle_lower_transition(
-			side, raw_target, raw_normal, delta, character)
+			space, side, raw_target, raw_normal, delta, character)
 	if transition["handled"]: return transition["latched"]
 	return _validate_idle_lower_support(
 			space, side, transition["previous"], transition["had_latch"], delta, character)
 
-func _update_idle_lower_transition(side: StringName, raw_target: Vector3,
-		raw_normal: Vector3, delta: float, character: CharacterBody3D) -> Dictionary:
+## Horizontal move_toward, held at blocking geometry instead of clipping through it.
+func _move_toward_held(space: PhysicsDirectSpaceState3D, previous: Vector3,
+		target: Vector3, speed: float, delta: float) -> Vector3:
+	var intended := previous.move_toward(target, speed * delta)
+	var horizontal_dist := Vector2(previous.x, previous.z).distance_to(Vector2(intended.x, intended.z))
+	if horizontal_dist < 0.001: return intended
+	const HOLD_PROBE_UP := 0.05
+	const HOLD_MARGIN := 0.03
+	var probe_y := maxf(previous.y, intended.y) + HOLD_PROBE_UP
+	var from := Vector3(previous.x, probe_y, previous.z)
+	var to := Vector3(intended.x, probe_y, intended.z)
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.collision_mask = GROUND_COLLISION_MASK
+	query.collide_with_areas = false
+	query.exclude = _player_exclude()
+	var hit := space.intersect_ray(query)
+	if hit.is_empty(): return intended
+	var hit_dist: float = from.distance_to(hit["position"])
+	if hit_dist >= horizontal_dist - HOLD_MARGIN: return intended
+	var safe_fraction := maxf(0.0, hit_dist - HOLD_MARGIN) / horizontal_dist
+	return previous.lerp(intended, safe_fraction)
+func _update_idle_lower_transition(space: PhysicsDirectSpaceState3D, side: StringName,
+		raw_target: Vector3, raw_normal: Vector3, delta: float,
+		character: CharacterBody3D) -> Dictionary:
 	if idle_lower_acquiring.has(side):
 		var acquire_target: Vector3 = idle_lower_acquiring[side]
 		var acquire_drop := character.global_position.y - acquire_target.y
@@ -510,14 +530,17 @@ func _update_idle_lower_transition(side: StringName, raw_target: Vector3,
 				or acquire_drop > _owner.step_down_max_crouch + _owner.step_min_rise):
 			idle_lower_acquiring.erase(side)
 			_clear_lower_riser_away(side)
-			lower_riser_cleared_target.erase(side)
 		else:
 			var current: Vector3 = smoothed_target[side]
-			current = current.move_toward(acquire_target, _settings.lower_foot_acquire_speed * delta)
+			current = _move_toward_held(space, current, acquire_target,
+					_settings.lower_foot_acquire_speed, delta)
+			current.y += _idle_lower_arc.lift(space, side, current, acquire_target,
+					_settings.idle_lower_arc_lift_m, GROUND_COLLISION_MASK, _player_exclude())
 			smoothed_target[side] = current
 			smoothed_normal[side] = raw_normal
 			if current.distance_to(acquire_target) > TARGET_NOISE_DEADBAND:
 				return {"handled": true, "latched": false}
+			_idle_lower_arc.reset_side(side)
 			idle_lower_acquiring.erase(side)
 			var acquired_drop := character.global_position.y - acquire_target.y
 			var acquired: bool = (acquired_drop > _owner.step_min_rise
@@ -528,19 +551,16 @@ func _update_idle_lower_transition(side: StringName, raw_target: Vector3,
 	var had_latch := idle_lower_latched_target.has(side)
 	var previous: Vector3 = idle_lower_latched_target.get(side, smoothed_target[side])
 	if not is_target_inside_stance_zone(side, previous):
-		# Physical support outside the stance rectangle remains invalid.
 		idle_lower_latched_target.erase(side)
 		_clear_lower_riser_away(side)
-		lower_riser_cleared_target.erase(side)
 		if not is_target_inside_stance_zone(side, raw_target):
 			return {"handled": true, "latched": false}
 		if raw_normal.dot(Vector3.UP) < STAIR_TREAD_UP_DOT:
 			smoothed_target[side] = raw_target
 			smoothed_normal[side] = raw_normal
 			return {"handled": true, "latched": false}
-		# Rehome the complete target continuously (copying X/Z first caused teleports).
-		smoothed_target[side] = previous.move_toward(
-				raw_target, _settings.lower_foot_acquire_speed * delta)
+		smoothed_target[side] = _move_toward_held(space, previous, raw_target,
+				_settings.lower_foot_acquire_speed, delta)
 		smoothed_normal[side] = raw_normal
 		idle_lower_acquiring[side] = raw_target
 		return {"handled": true, "latched": false}
@@ -556,20 +576,17 @@ func _validate_idle_lower_support(space: PhysicsDirectSpaceState3D, side: String
 	if not support["hit"] or (support["normal"] as Vector3).dot(Vector3.UP) < 0.999:
 		idle_lower_latched_target.erase(side)
 		_clear_lower_riser_away(side)
-		lower_riser_cleared_target.erase(side)
 		return false
 	var surface: Vector3 = support["position"]
 	var drop := character.global_position.y - surface.y
 	if drop <= _owner.step_min_rise or drop > _owner.step_down_max_crouch + _owner.step_min_rise:
 		idle_lower_latched_target.erase(side)
 		_clear_lower_riser_away(side)
-		lower_riser_cleared_target.erase(side)
 		return false
 	var animation_name: String = _owner.player_body.anim_player.current_animation.get_file()
 	var cleared_surface := (_rehome_lower_surface_from_riser(
 			space, side, surface, character) if animation_name.contains("idle") else surface)
 	if cleared_surface.distance_to(surface) > TARGET_NOISE_DEADBAND:
-		# Move a plant from a riser; keep an already-latched foot latched and nudged toward it.
 		surface = cleared_surface
 		smoothed_target[side] = previous.move_toward(surface, _settings.lower_foot_acquire_speed * delta)
 		smoothed_normal[side] = support["normal"]
@@ -579,14 +596,12 @@ func _validate_idle_lower_support(space: PhysicsDirectSpaceState3D, side: String
 		idle_lower_latched_target.erase(side)
 		idle_lower_acquiring[side] = surface
 		return false
-	# Fresh idle support descends at a bounded rate before it may latch.
 	if not had_latch and absf(previous.y - surface.y) > TARGET_NOISE_DEADBAND:
 		smoothed_target[side] = previous.move_toward(
 				surface, _settings.lower_foot_acquire_speed * delta)
 		smoothed_normal[side] = support["normal"]
 		idle_lower_acquiring[side] = surface
 		return false
-	# Retain the lower surface when idle animation sways across the upper edge.
 	smoothed_target[side] = surface
 	smoothed_normal[side] = support["normal"]
 	idle_lower_latched_target[side] = surface
@@ -595,11 +610,9 @@ func _rehome_lower_surface_from_riser(space: PhysicsDirectSpaceState3D,
 		side: StringName, surface: Vector3, character: CharacterBody3D) -> Vector3:
 	if not _settings.lower_riser_rehome_enabled:
 		_clear_lower_riser_away(side)
-		lower_riser_cleared_target.erase(side)
 		return surface
-	if (lower_riser_cleared_target.has(side)
-			and (lower_riser_cleared_target[side] as Vector3).distance_to(surface)
-			<= TARGET_NOISE_DEADBAND):
+	var cleared: Vector3 = lower_riser_cleared_target.get(side, Vector3.INF)
+	if cleared.distance_to(surface) <= TARGET_NOISE_DEADBAND:
 		return surface
 	if _has_lower_riser_clearance(space, surface):
 		_clear_lower_riser_away(side)
@@ -617,12 +630,10 @@ func _rehome_lower_surface_from_riser(space: PhysicsDirectSpaceState3D,
 			away -= direction
 	if away.length_squared() <= 0.0001:
 		_clear_lower_riser_away(side)
-		lower_riser_cleared_target.erase(side)
 		return surface
 	away = away.normalized()
 	lower_riser_away[side] = away
 	lower_riser_away_surface_y[side] = surface.y
-	# Cardinal probes combine at corners; search their escape direction nearest-first.
 	for step in range(1, LOWER_RISER_REHOME_STEPS + 1):
 		var candidate_xz := surface + away * LOWER_RISER_REHOME_STEP * float(step)
 		var candidate_hit := raycast_ground(space,
@@ -648,7 +659,6 @@ func _has_lower_riser_clearance(
 		var offset := Vector3(cos(angle), 0.0, sin(angle)) \
 				* _settings.lower_riser_clearance_radius
 		var hit := raycast_ground(space, surface + offset + Vector3.UP * 0.2, 0.4)
-		# Ankle support is checked separately; a lower/empty neighbor is not a riser.
 		if hit["hit"] and (hit["position"] as Vector3).y > surface.y + 0.03: return false
 	return true
 func _rehome_idle_stance_target(space: PhysicsDirectSpaceState3D,
@@ -682,7 +692,6 @@ func _rehome_idle_stance_target(space: PhysicsDirectSpaceState3D,
 	elif not (is_target_inside_stance_zone(side, raw_target)
 			and raw_normal.dot(Vector3.UP) >= STAIR_TREAD_UP_DOT
 			and _settings.allows_support_height_difference(raw_target.y - current.y)):
-		# Retire a stale tread instead of fighting the final stance limiter.
 		return false
 	var next_hit := raycast_ground(space, Vector3(next.x, probe_y, next.z), probe_y - current.y + 0.2)
 	if (not next_hit["hit"] or (next_hit["normal"] as Vector3).dot(Vector3.UP) < STAIR_TREAD_UP_DOT
@@ -711,7 +720,6 @@ func validate_and_latch_landing_lower_support(side: StringName, contact: Diction
 	var character := _owner.player_body.get_parent() as Node3D
 	var previous_lower: Vector3 = idle_lower_latched_target.get(side, Vector3.ZERO)
 	var raw_surface: Vector3 = contact.get("raw_target", Vector3.ZERO)
-	# Capsule support at raw height proves the tread despite a raised landing sole.
 	var root_on_raw_surface: bool = (character != null and
 			absf(character.global_position.y - raw_surface.y) <= _owner.step_min_rise)
 	var confirms_upper: bool = (idle_lower_latched_target.has(side)
@@ -722,17 +730,13 @@ func validate_and_latch_landing_lower_support(side: StringName, contact: Diction
 			>= STAIR_TREAD_UP_DOT
 			and raw_surface.y > previous_lower.y + _owner.step_min_rise)
 	if confirms_upper:
-		var upper_frames := int(landing_upper_confirmation_frames.get(side, 0)) + 1
-		landing_upper_confirmation_frames[side] = upper_frames
-		if upper_frames >= LANDING_UPPER_CONFIRM_FRAMES:
+		if _landing_upper_confirm.confirm(side, raw_surface, LANDING_UPPER_CONFIRM_FRAMES):
 			idle_lower_latched_target.erase(side)
 			idle_lower_acquiring.erase(side)
 			_clear_lower_riser_away(side)
-			lower_riser_cleared_target.erase(side)
-			landing_upper_confirmation_frames.erase(side)
 			landing_upper_confirmed[side] = raw_surface
 	else:
-		landing_upper_confirmation_frames.erase(side)
+		_landing_upper_confirm.reset_side(side)
 	var reachable: bool = (not landing_upper_confirmed.has(side)
 			and contact.has("ground_target") and contact["hit"] and _owner._grounded
 			and _owner.player_body.anim_player.current_animation.get_file().contains("jump_land")
@@ -742,13 +746,11 @@ func validate_and_latch_landing_lower_support(side: StringName, contact: Diction
 			<= leg_reach + _owner.step_down_max_crouch
 			and is_target_inside_stance_zone(side, contact["ground_target"]))
 	if reachable:
-		# Carry proven support through jump_land -> idle.
 		idle_lower_latched_target[side] = contact["raw_target"]
-		landing_upper_confirmation_frames.erase(side)
+		_landing_upper_confirm.reset_side(side)
 	return reachable
 func contact_from_previous_support(space: PhysicsDirectSpaceState3D, side: StringName,
 		previous_surface: Vector3, animated_foot: Vector3) -> Dictionary:
-	# Retain prior physical support while a newly walking foot fades its IK weight.
 	if (not _owner._grounded
 			or float(_owner._smoothed_ground_weight.get(side, 0.0)) <= 0.0):
 		return {"hit": false}
@@ -789,7 +791,6 @@ func move_target_smoothed(current: Vector3, raw_target: Vector3, delta: float) -
 func animated_lowest_surface_point_world(
 		skel: Skeleton3D, side: StringName, animated_foot_pose: Transform3D,
 		foot_position: Vector3, to_world: Transform3D) -> Vector3:
-	# Match the harness by comparing the sole with the extrapolated toe tip.
 	var sole_down_world := (
 			to_world.basis * animated_foot_pose.basis
 			* (_owner._sole_down_local[side] as Vector3)
@@ -803,8 +804,10 @@ func animated_lowest_surface_point_world(
 	if not foot_to_toe.is_zero_approx():
 		toe_tip += foot_to_toe.normalized() * _owner.toe_tip_margin
 	return toe_tip if toe_tip.y < sole_point.y else sole_point
-## require_walkable reports a near-vertical hit as a miss so the caller's own recovery
-## probes run instead of conforming the foot to a wall. See is_walkable_normal, 012.
+func _player_exclude() -> Array:
+	if is_instance_valid(_owner.player_body) and _owner.player_body.get_parent() is CollisionObject3D:
+		return [(_owner.player_body.get_parent() as CollisionObject3D).get_rid()]
+	return []
 func raycast_ground(space: PhysicsDirectSpaceState3D, foot_pos: Vector3,
 		down: float = -1.0, require_walkable: bool = false) -> Dictionary:
 	var from: Vector3 = foot_pos + Vector3.UP * float(_owner.ray_up)
@@ -813,21 +816,14 @@ func raycast_ground(space: PhysicsDirectSpaceState3D, foot_pos: Vector3,
 	var query := PhysicsRayQueryParameters3D.create(from, to)
 	query.collision_mask = GROUND_COLLISION_MASK
 	query.collide_with_areas = false
-	if (is_instance_valid(_owner.player_body)
-			and _owner.player_body.get_parent() is CollisionObject3D):
-		query.exclude = [
-			(_owner.player_body.get_parent() as CollisionObject3D).get_rid()]
+	query.exclude = _player_exclude()
 	var result := space.intersect_ray(query)
 	if result.is_empty(): return {"hit": false, "position": foot_pos, "normal": Vector3.UP}
 	if require_walkable and not _settings.is_walkable_normal(
 			result["normal"], _owner.player_body.get_parent() as CharacterBody3D):
 		return {"hit": false, "position": foot_pos, "normal": Vector3.UP}
 	return {"hit": true, "position": result["position"], "normal": result["normal"]}
-## expected_normal defaults to UP for flat-platform callers (008's namesake case). A
-## caller that already sampled a real surface normal (_retract_to_reachable on a
-## ramp) passes it instead, checking flatness/height relative to that surface, not
-## world-up - this hardcoded UP-only check was why retraction never found anywhere
-## reachable on any ramp. See 012.
+## expected_normal defaults to UP; a ramp caller passes its own sampled normal instead. See 012.
 func has_support_patch(space: PhysicsDirectSpaceState3D, surface: Vector3, radius: float,
 		expected_normal: Vector3 = Vector3.UP) -> bool:
 	for offset: Vector3 in [Vector3(radius, 0.0, 0.0), Vector3(-radius, 0.0, 0.0),
