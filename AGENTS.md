@@ -513,3 +513,29 @@ governs the leg's target at the exact failing frame (`get_plan(side).owner`/`.re
 assuming which validation path is responsible; a target can be governed by an entirely different
 subsystem than the one being debugged, and two structurally-plausible fixes can both miss for
 this reason before the actual gate is found.
+
+Feeding the coordinator's fully-accepted/validated leg target into shared-pelvis centering
+(`_apply_support_pelvis_and_legs`'s lateral-shift/reach-drop math) has independently regressed
+twice, from two different substitution attempts, for two different reasons - treat this as a
+load-bearing boundary, not an oversight to "finish migrating." (1) Pelvis centering can be
+`ground_weight`-*weighted* when the two feet's weights differ; the 22cm stance-spacing proposal
+adds a *symmetric* +/-11cm offset around the feet's midpoint, and a weighted average of
+asymmetrically-weighted, symmetrically-offset points does not equal the original weighted
+average - feeding pelvis the post-spacing target caused real body penetration. (2) When the
+coordinator's own validation fails, `_raw_recovery_plan` supplies a fallback meant to give the
+*leg solve* something reasonable that frame, not to serve as a stable reference; feeding pelvis
+that same accepted-plan value inherited its per-frame validation-failure churn and produced a
+real pose distortion during ordinary walk locomotion (`AGENT_TASKS/018`, "Shared-pelvis/reach
+design"). Both attempts were individually reasoned, individually tested clean against the
+existing fixtures, and both still broke something the fixtures didn't cover - use the *stable,
+pre-selection* per-leg target for pelvis math, or a value that has deliberately never touched
+spacing or the validation-recovery path, not "whatever the leg ultimately solves to."
+
+`leg.get("target", leg.get("ground_target", fallback))` is not a real fallback chain when both
+keys are *always* set on every leg every frame - it always resolves to `target`, silently
+ignoring any later "prefer `ground_target`" decision made elsewhere (e.g. via a
+`prefer_ground_target` flag the coordinator consumes). A `.get(key, fallback)` chain only means
+what it looks like when the earlier key's *absence*, not merely a separate boolean elsewhere,
+is what should trigger the fallback. This specific gap predates all of today's target-selection
+work and was never touched by any of it - grep for the actual precedence flag before assuming
+a `.get()` chain already encodes it.
