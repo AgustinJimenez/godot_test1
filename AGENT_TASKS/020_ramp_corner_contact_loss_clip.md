@@ -103,19 +103,56 @@ fix attempts / new symptoms in a different place -> stop and reconsider the arch
 than keep tweaking), stopping here rather than trying a fourth variant blind. All experimental code
 was reverted; nothing was committed.
 
+## Update 2026-09-12 (cont.): a quorum-based relaxation fixes the target case but confirms a deeper flaw
+
+Tried a more surgical version of fix attempt 2: instead of shrinking `has_support_patch`'s radius
+globally, gave it an opt-in `min_valid_sides` parameter (default 4, unchanged for every other
+caller including stair-tread checks) and passed `min_valid_sides=2` only from the two
+`_retract_to_reachable` call sites - a corner is bounded by exactly two edges by definition, so
+requiring only 2-of-4 sides tolerates a real corner without weakening the stricter stair-latching
+checks elsewhere. Re-added the harmless `toward_root` search direction alongside it.
+
+Result: the original target case (yaw 225) is now **fully fixed** - zero penetration, no FAIL line
+at all, not just a smaller one. But re-sweeping the same corner across all yaws reproduced the
+**exact same yaw-270 regression** as the radius-shrink attempt (`max_depth_m=0.075688`, bit-for-bit
+identical to before), plus a **new** failure at yaw 255 that neither prior attempt had
+(`max_depth_m=0.06847`).
+
+Two structurally different ways of loosening the same gate (radius vs. quorum) produced the same
+right-foot regression. That rules out "the radius/quorum number is just miscalibrated" - the real
+problem is elsewhere. Working theory: at yaw 255-285, the *right* foot's raw animated pose was
+already fine on its own (no correction needed, `_retract_to_reachable` either wasn't called or its
+strict form correctly found nothing and left the untouched pose alone). Loosening the gate lets
+`_retract_to_reachable` now "succeed" at finding *some* nearby ground point and forces the foot onto
+it - but `_retract_to_reachable`'s acceptance criteria (a raycast hit, a partial ground patch, and a
+reachable-by-leg-length check) never validates the actual foot/toe **mesh** at the candidate spot,
+unlike the sweep check itself (which does full mesh-vs-box penetration sampling). A candidate can
+pass every check `_retract_to_reachable` runs and still leave the toe or heel buried, because those
+checks only ever sample a single raycast point plus 2-4 neighboring points, not the swept foot
+volume.
+
+**Reverted both the quorum parameter and the `toward_root` direction change.** Per this project's
+debugging discipline, two different fixes producing the same new symptom in a different place means
+the issue is architectural, not a tuning problem - stopping here rather than trying a third
+variant of the same lever (loosening `has_support_patch` further).
+
 ## What to try next
 
-- A properly slope-aware version of `has_support_patch`: instead of 4 fixed-radius world-axis
-  offsets, sample offsets tangent to the candidate surface's own plane (perpendicular to its
-  normal), and/or shrink the radius adaptively as remaining verified-flat area shrinks, rather than
-  a single global radius constant used both for generous stair-tread checks and this tighter
-  edge-of-a-ramp case. This is a shared helper (also used for stair tread validation) - any change
-  needs the full `check_foot_ik_ramp_sweep.sh`/`check_foot_ik_stairs*.sh` suites re-run, not just
-  this one case.
+- **Do not relax `has_support_patch` further** (radius or quorum) without also validating the
+  candidate against the actual foot/toe mesh - two independent relaxations both traded the target
+  clip for a same-shaped clip on the other foot at nearby yaws, which means the gate itself isn't
+  the bug; `_retract_to_reachable`'s accept criteria never checks the mesh it's about to place.
+- A real fix likely needs `_retract_to_reachable` to validate its candidate the same way the sweep
+  check does - e.g. reuse `FootClearanceEvaluator`/`PENETRATION_CHECK`-style box-vs-points sampling
+  (already proven cheap enough for diagnostics, per the idle-plant-stability turn-check work) against
+  the nearby ramp geometry before accepting a candidate, not just a single raycast hit plus a
+  handful of neighboring points.
 - Alternatively, accept that some ramp corners are genuinely too small for a full stance and design
   a graceful "no reachable foothold" fallback distinct from silently freezing the raw animated pose
   (e.g., a small controlled retreat toward the body's own footprint, using the confirmed-solid
-  `settled` root position as the target rather than searching outward from the lost foot).
+  `settled` root position as the target rather than searching outward from the lost foot) - this
+  sidesteps the mesh-validation gap entirely by not searching for a new foothold near the corner at
+  all.
 - Given the resemblance to 019's "coordinator never validates this owner" signature, still worth a
   final check on whether the same `legacy_transition_active`-style gap applies to this fallback
   path too, though the fallback tracing done this session did not surface one directly.
