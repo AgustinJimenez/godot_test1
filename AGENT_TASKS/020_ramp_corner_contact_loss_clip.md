@@ -47,17 +47,78 @@ earlier this session (018 follow-up) and 019's toe/riser clip - all three are va
 geometry-safe" - but this one is a full contact loss (not an over-reach or an un-validated
 owner), so it likely needs its own fix, not a reuse of either of those two.
 
-## What to try next (not attempted)
+## Update 2026-09-12: hypothesis confirmed, no-ground fallback traced, two fix attempts, both rejected
 
-- Confirm the hypothesis directly: sample the raycast at the exact foot XZ this frame across a
-  wide radius (same technique used for the preview-spawn-edge investigation) to prove there is
-  really no ground within reach, not a raycast range/tolerance gap.
-- Find what code path actually renders the foot when `contact_hit == false` for an
-  otherwise-idle leg, and why it lands 10cm deep in the ramp instead of at the last known
-  good position or a raw animated (off-ground) pose.
-- Given the resemblance to 019's "coordinator never validates this owner" signature, check
-  whether the same `legacy_transition_active`-style gap or a similar "not migrated for this
-  owner" gap applies here too, before assuming a new, unrelated mechanism.
+Confirmed the "genuinely no ground nearby" hypothesis directly: a temporary wide (3m), unfiltered
+(`require_walkable=false`) raycast from 1m above the failing foot found nothing, consistently,
+across every sampled frame of this case. The idle sway really does swing the foot past the ramp's
+physical edge into open air at this corner - not a raycast-tolerance gap.
+
+Traced the fallback path (`player_foot_ik_modifier.gd`'s per-leg loop, around line 526): when
+`_ground_sampler.sample()` returns `hit: false`, the idle-only `_retract_to_reachable()` helper
+tries to find a nearby reachable spot to stand on instead. If it also fails, the leg's IK is
+skipped entirely for that frame (`per_leg[side]["hit"] = false; continue`) and the character's raw,
+un-corrected animated pose is left standing - which was authored for flat ground, so on a 45-degree
+ramp corner it clips deep into the incline. This confirms the "what renders it" question from the
+prior update: nothing renders it; it's the *absence* of any IK correction that leaves the raw
+animation pose in place.
+
+Root-caused *why* `_retract_to_reachable()` itself fails here, with two real defects found:
+
+1. **Its "quick path" (reuse the previous frame's smoothed target) always fails at this corner**,
+   because the previous smoothed target is itself already past the ramp's edge (same "no ground
+   nearby" fact as above) - expected, not a bug on its own.
+2. **Its fallback candidate-direction search also fails**, but for two compounding reasons:
+   - The 4 candidate directions it tries (`toward_stance`, `backward`, `lateral`,
+     `backward+lateral`, all body-relative) do not include a plain "straight back toward the
+     body/hip" direction. Adding one (tested in isolation) changed nothing at radius 0.12 - it
+     found the ramp surface a couple of raycast steps in, but got rejected anyway (see next point) -
+     confirming this addition alone is a no-op, not a fix, but not harmful either.
+   - The real gate is `has_support_patch()` (used generically across ground_sampler for stairs and
+     here): it requires a full 0.12m-radius patch of matching, coplanar ground on all 4 world-axis
+     sides of a candidate point. Near a ramp corner, at least one of those 4 offset points falls
+     past the ramp's physical boundary into open air, so the check correctly reports "not a full
+     patch" and rejects an otherwise-reasonable, if edge-adjacent, foothold. This is a real
+     architectural mismatch: `has_support_patch`'s uniform radius assumes there's always room for a
+     symmetric patch, which is untrue by definition within centimeters of any corner.
+
+**Fix attempt 1** (kept, harmless): add a `toward_root` candidate direction to
+`_retract_to_reachable`'s search list. Verified in isolation to be a no-op at the existing 0.12m
+patch radius - it finds ground but `has_support_patch` still rejects it. Reverted along with attempt
+2 for cleanliness, but safe to re-add if a real patch-radius fix lands.
+
+**Fix attempt 2** (reverted, causes a regression): shrink `has_support_patch`'s radius from 0.12m to
+0.04m for this one call site only. This did fix the target case dramatically (yaw 225,
+`max_depth_m` 0.105375 -> 0.017988, `penetrating_vertices` 236 -> 27, whole-foot burial -> a small
+toe graze). However, re-running the same position across all yaws exposed a **new regression**: two
+previously-clean yaws at the same corner (270, 285) started failing on the *other* foot
+(`max_depth_m` 0.076-0.078, ~350 penetrating vertices each) - the looser check now accepts a
+foothold there that used to be correctly rejected, and that foothold turns out to be a worse fit.
+Isolated cleanly: the `toward_root` direction change alone (radius left at 0.12) reproduces the
+*original* baseline exactly (only yaw 225 fails, same 0.105375 depth) - the regression is caused
+specifically by the radius shrink, not the added search direction.
+
+**Conclusion: no safe fix found this session.** Per this project's own debugging discipline (3+
+fix attempts / new symptoms in a different place -> stop and reconsider the architecture rather
+than keep tweaking), stopping here rather than trying a fourth variant blind. All experimental code
+was reverted; nothing was committed.
+
+## What to try next
+
+- A properly slope-aware version of `has_support_patch`: instead of 4 fixed-radius world-axis
+  offsets, sample offsets tangent to the candidate surface's own plane (perpendicular to its
+  normal), and/or shrink the radius adaptively as remaining verified-flat area shrinks, rather than
+  a single global radius constant used both for generous stair-tread checks and this tighter
+  edge-of-a-ramp case. This is a shared helper (also used for stair tread validation) - any change
+  needs the full `check_foot_ik_ramp_sweep.sh`/`check_foot_ik_stairs*.sh` suites re-run, not just
+  this one case.
+- Alternatively, accept that some ramp corners are genuinely too small for a full stance and design
+  a graceful "no reachable foothold" fallback distinct from silently freezing the raw animated pose
+  (e.g., a small controlled retreat toward the body's own footprint, using the confirmed-solid
+  `settled` root position as the target rather than searching outward from the lost foot).
+- Given the resemblance to 019's "coordinator never validates this owner" signature, still worth a
+  final check on whether the same `legacy_transition_active`-style gap applies to this fallback
+  path too, though the fallback tracing done this session did not surface one directly.
 
 ## References
 
