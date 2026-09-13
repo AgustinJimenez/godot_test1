@@ -2,10 +2,12 @@
 
 ## Status and scope
 
-**Root-caused. First fix attempt rejected by automated testing before any live test - a real
-regression, not a tuning nitpick.** Found live by the user standing still on a split-height stance
-(stairs/overheight platform), reported as "right foot moves constantly on idle." Confirmed via
-`foot_ik_controlled.jsonl` telemetry, not just visual impression.
+**Root-caused. Fixed (second attempt, first was rejected by automated testing), passing the full
+`check_foot_ik_fast.sh` suite including the ledge-safety check the first attempt broke. Awaiting
+live test before commit**, per this project's standing rule for gameplay-behavior changes. Found
+live by the user standing still on a split-height stance (stairs/overheight platform), reported as
+"right foot moves constantly on idle." Confirmed via `foot_ik_controlled.jsonl` telemetry, not just
+visual impression.
 
 ## The concrete symptom
 
@@ -99,24 +101,42 @@ than having converged onto one shared level). The reconfirm check only verifies 
 ground here," never "did this candidate actually resolve the original unsafe height split" - so it
 happily keeps re-confirming a candidate that was never good enough in the first place.
 
-**The fix (the `reconfirm`-based version) was reverted in full** - `foot_ik_ground_sampler.gd` is
-back to unmodified HEAD, and the extracted `foot_ik_split_safe_search.gd` file was deleted (it was
-never committed, only scaffolding for this fix). Nothing was asked of the user to live-test, since
-automated testing already disqualified this specific version.
+**The first fix (ground-only `reconfirm`) was reverted in full.**
 
-## What to try next
+## Second fix attempt: gate the reconfirm on the actually-observed height delta too
 
-A safe fix needs to combine *both* properties this attempt failed to hold together: stop
-re-searching once a genuinely good (height-converged) candidate is found and held (fixing the
-oscillation), but keep searching if the current candidate has not actually resolved the unsafe
-height split (avoiding this regression). Concretely: the "arrived" reconfirm path should check not
-just `_split_safe_search.reconfirm(...)` (ground still exists) but also re-derive the resulting raw
-per-foot height delta the way `check_safe_level` does, and only skip the full search when that
-delta is actually within tolerance - falling back to the full spiral search otherwise, same as a
-failed reconfirm. This still needs its own live test once implemented, and should be checked
-against the full `check_foot_ik_ledge_safety_check` + fast suite before ever asking for one, given
-this is the second time this exact function has produced a subtle correctness surprise in one
-session (see the "Note" above and 018 finding H for the first).
+Added an `observed_height_delta` parameter to `reconfirm()`, computed by the caller as
+`absf(upper_surface.y - lower_surface.y)` - both already fresh per-frame raw per-foot ground
+samples passed in by `prepare_overheight_split_safe_zone`'s caller, i.e. exactly the same quantity
+`check_safe_level` asserts on. `reconfirm()` now fails immediately if this delta exceeds 0.05m,
+forcing a fresh full search instead of re-confirming a candidate that never actually resolved the
+split.
+
+This alone reproduced the *exact same* two failures, bit-for-bit identical numbers, which was the
+first sign something else was wrong: a second, independent bug in the same new code path. Root
+cause: the "arrived" branch reset `split_safe_retry_after_frame` to `current_frame +
+SPLIT_SAFE_SETTLED_COOLDOWN_FRAMES` *even when reconfirm failed*, so the very check that was
+supposed to trigger a fallback full search (`if needs_full_search and current_frame >=
+split_safe_retry_after_frame`) always evaluated false in the same tick - the deadline had just been
+pushed 6 frames into the future by the branch that decided a search was needed. Six frames later,
+`arrived` was still true, reconfirm still failed, and the deadline got pushed forward *again* -
+perpetually rescheduling the fallback search so it never actually ran, while `split_safe_root_target`
+stayed pinned to the original bad candidate throughout the entire test.
+
+Fix: only advance the cooldown when reconfirm *succeeds* (extending how long the good candidate can
+be trusted without re-checking); on failure, leave `split_safe_retry_after_frame` untouched so the
+fallback search's own already-satisfied deadline check fires in the same frame.
+
+**Verified clean:**
+- `FOOT_IK_LEDGE_SAFETY_CHECK PASS cases=16` (matches unmodified baseline exactly).
+- Full `scripts/check_foot_ik_fast.sh`: every check passes except `FOOT_IK_IDLE_PLANT_STABILITY_CHECK`,
+  confirmed via the same git-stash isolation technique to be bit-for-bit identical against
+  unmodified HEAD (task 019's already-open toe/riser-clip bug, unrelated to this fix).
+
+**Not yet live-tested.** This is the third time this exact function has needed correction in one
+session (finding H's cost measurement, the first rejected correctness fix, this corrected one) -
+treat any further change here with the same isolate-with-git-stash discipline used throughout
+before trusting a result.
 
 ## References
 
