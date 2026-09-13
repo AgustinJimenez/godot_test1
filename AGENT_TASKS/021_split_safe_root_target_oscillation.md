@@ -2,12 +2,13 @@
 
 ## Status and scope
 
-**Root-caused. Fixed (second attempt, first was rejected by automated testing), passing the full
-`check_foot_ik_fast.sh` suite including the ledge-safety check the first attempt broke. Awaiting
-live test before commit**, per this project's standing rule for gameplay-behavior changes. Found
-live by the user standing still on a split-height stance (stairs/overheight platform), reported as
-"right foot moves constantly on idle." Confirmed via `foot_ik_controlled.jsonl` telemetry, not just
-visual impression.
+**Root-caused. Third fix attempt (see history below), passing the full `check_foot_ik_fast.sh`
+suite. Awaiting live test before commit**, per this project's standing rule for gameplay-behavior
+changes. Found live by the user standing still on a split-height stance (stairs/overheight
+platform), reported first as "right foot moves constantly on idle," then reproduced on the left
+foot in a later session after the second attempt was already applied - confirming the bug's
+mechanism, not just its symptom, needed the third attempt below. Confirmed via
+`foot_ik_controlled.jsonl` telemetry both times, not just visual impression.
 
 ## The concrete symptom
 
@@ -138,9 +139,59 @@ session (finding H's cost measurement, the first rejected correctness fix, this 
 treat any further change here with the same isolate-with-git-stash discipline used throughout
 before trusting a result.
 
+## Third attempt: the second fix still didn't hold in live play - give up instead of searching forever
+
+A later live test with the second attempt already applied reproduced the identical bug shape on
+the *left* foot instead of the right - same `owner=live_contact`, root perfectly stationary, target
+creeping continuously (Z drifting 2.72 -> 2.84 -> 2.79 -> 2.61 -> 2.57m across consecutive frames).
+The second attempt only stops the code from *locking onto* an unconverged candidate; it doesn't
+guarantee a fully-converged (<=0.05m) candidate exists to find at all. When one doesn't exist within
+the search radius, the "keep re-searching, never lock in" behavior just relocates the churn from
+"stuck on a bad spot" to "perpetually searching for a good one," which still reads as continuous
+foot movement.
+
+This is the third distinct bug found in this one function this session (cost, then a correctness
+bug from locking onto a bad candidate, then a cooldown bug hiding the fallback search, and now
+confirmation the corrected search still can't guarantee convergence) - discussed with the user
+directly as a possible architecture-level signal rather than attempting a fourth blind patch. Chose
+to add two complementary, narrowly-scoped mechanisms rather than a full redesign of the shared-root
+search (that redesign - whether independent per-foot latching should replace this shared mechanism
+entirely - is recorded as a future direction, not attempted):
+
+- **Give up after non-improving cycles** (`SPLIT_SAFE_MAX_STALL_CYCLES = 5`): each full-search
+  cycle checks whether `observed_height_delta` (the two feet's actual current raw-contact height
+  gap, the same quantity `check_safe_level` asserts on) has meaningfully improved
+  (converged to <=0.05m, or dropped by >0.02m from the best seen since the last give-up). If 5
+  consecutive cycles show no improvement, clear all split-safe state and return `false` for a full
+  `SPLIT_SAFE_GIVEUP_COOLDOWN_FRAMES` (120 frames, 2s) - long enough that the per-foot latches
+  elsewhere in this file (`idle_lower_latched`, `landing_upper_confirmed`) get real time to settle
+  the stance on their own instead of constant root-nudge churn fighting them.
+- The improvement check doubles as hysteresis: a cycle that finds a *worse* or merely
+  *side-grade* candidate than the best one already seen doesn't reset the stall counter, so genuine
+  progress is still recognized while noise-level differences between similar candidates don't
+  reset the clock indefinitely.
+
+New state: `split_safe_best_delta` (best `observed_height_delta` seen since the last give-up) and
+`split_safe_stall_count` (consecutive non-improving cycles), both reset alongside
+`split_safe_root_target` at every existing clear site (`reset()`, `reject_split_safe_root()`, and
+the two other early-return clears in this file).
+
+**Verified clean:**
+- `FOOT_IK_LEDGE_SAFETY_CHECK PASS cases=16` - unchanged from the second attempt, confirming the
+  give-up path doesn't interfere with cases that *do* converge.
+- Full `scripts/check_foot_ik_fast.sh`: identical results to the second attempt, including the one
+  pre-existing, unrelated `FOOT_IK_IDLE_PLANT_STABILITY_CHECK` failure (task 019, confirmed
+  bit-for-bit identical via `git stash` isolation both times).
+
+**Not yet live-tested against the specific case that exposed the second attempt's gap.** The give-up
+path is designed to make a genuinely-unconvergeable spot degrade to "hold still, let per-foot
+latches handle it" instead of endless searching, but this has not been confirmed live yet - that
+is the next concrete thing to check, at the same location the left-foot sweep was seen.
+
 ## References
 
 - `AGENT_TASKS/018_ik_implementation_review.md`, finding H - the original performance framing and
   measurement of this exact code path.
-- `foot_ik_controlled.jsonl` (preserved at `/tmp/foot_ik_controlled_20260912_231040.jsonl` per
-  AGENTS.md's "preserve before running another harness" rule) - the live telemetry that found this.
+- `foot_ik_controlled.jsonl` (preserved at `/tmp/foot_ik_controlled_20260912_231040.jsonl` and
+  `/tmp/foot_ik_controlled_20260913_010112.jsonl` per AGENTS.md's "preserve before running another
+  harness" rule) - the live telemetry that found this, twice.
