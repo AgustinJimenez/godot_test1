@@ -229,6 +229,11 @@ func _cmd_anomalies(frames: Array) -> void:
 		var right_hip := _parse_vec3(str(rf.get("hip_pos", "(0,0,0)")))
 		var left_dir := left_hip - right_hip
 		left_dir.y = 0.0
+		# The runtime stance rectangle follows body yaw, not animated hip sway (024).
+		# Older captures without yaw retain the historical hip-axis approximation.
+		if fr.has("root_yaw_deg"):
+			var yaw := deg_to_rad(float(fr["root_yaw_deg"]))
+			left_dir = Vector3(-cos(yaw), 0.0, sin(yaw))
 		if left_dir.length_squared() > 0.0001:
 			left_dir = left_dir.normalized()
 			var forward_dir := Vector3.UP.cross(left_dir).normalized()

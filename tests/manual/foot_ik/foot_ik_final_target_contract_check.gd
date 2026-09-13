@@ -3,8 +3,11 @@ extends Node3D
 
 class Sampler extends RefCounted:
 	var compressed_upper_target: Dictionary = {}
+	var idle_stance_rehoming: Dictionary = {}
+	const IDLE_STANCE_REHOME_MARGIN := 0.05
 	var stance_ok := true
-	func is_target_inside_stance_zone(_side: StringName, _point: Vector3) -> bool:
+	func is_target_inside_stance_zone(_side: StringName, _point: Vector3,
+			_margin: float = 0.0) -> bool:
 		return stance_ok
 	func raycast_ground(space: PhysicsDirectSpaceState3D, origin: Vector3,
 			length: float) -> Dictionary:

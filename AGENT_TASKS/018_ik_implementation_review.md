@@ -716,6 +716,39 @@ immediate essential contact queries separate from deferred recovery work. Measur
 worst-frame physics/solver time, not only average FPS; preserve supported targets during deferral.
 Do not assume a native rewrite is necessary before profiling these boundaries.
 
+**2026-09-12 spike + fix, awaiting live test.** Added a temporary, diagnostic-only per-mechanism
+time/call breakdown to `foot_ik_leg_solver.gd` (removed again once the finding below was in hand -
+not something worth carrying as permanent instrumentation), wired into the three physics-query-
+heavy candidate searches (`compressed_upper`, `split_safe_ring`, `landing_predict`). This
+revealed a real, previously entirely invisible gap: all three run inside
+`ground_sampler.sample()`, which executes *before* `leg_solver.solve()` - so the existing solve()-
+only timing never included them at all.
+
+Measured on a real idle/turn session: `compressed_upper` fires often (dozens/window) but is cheap
+(~10-50us/call); `split_safe_ring` and `landing_predict` are rare but genuinely expensive
+(3-11ms per call, matching the existing code comment's own prior estimate of "4.8-7.9ms/call").
+Worse, `split_safe_ring` isn't a rare one-off: `_request_overheight_split_safe_zone`'s "arrived"
+case re-runs the full ~1000-candidate spiral search (both upper and lower surfaces, so up to
+~6500 raycasts) every `SPLIT_SAFE_SETTLED_COOLDOWN_FRAMES` (6 frames, ~10/sec) for as long as the
+character stays in an overheight split stance - a sustained several-ms/tick cost during any
+split-recovery episode, not a rare edge blip.
+
+Fix: when "arrived" (root within 3cm of the already-found `split_safe_root_target`), reconfirm
+that existing spot with the search's own 3-point check at zero motion offset instead of
+re-running the full spiral; only fall back to the full search if that reconfirmation actually
+fails. Measured effect: post-arrival `split_safe_ring` calls dropped from ~4000-11000us to
+~600-670us (roughly 6-15x cheaper) in the same test session; the initial (pre-arrival) full
+search is untouched and still runs at full cost, correctly, since there's no existing spot yet
+to reconfirm. Extracted the search itself (`_find_split_safe_root`/`_find_nearest_split_safe_root`,
+now `find_root`/`find_nearest_root`) into new `foot_ik_split_safe_search.gd` to keep
+`foot_ik_ground_sampler.gd` under its 1000-line cap after the perf instrumentation landed.
+
+Full suite unaffected: 45 passed / 7 known baseline failures, no new failures. **Not yet live-
+tested** - this touches the overheight split-stance recovery mechanism directly, which the
+existing code already flags as historically fragile (references "014's uncapped retry bug"); the
+automated suite exercises it but a real split-stance recovery scenario in actual play is the real
+acceptance bar here, consistent with this session's standing rule for gameplay-behavior changes.
+
 ### I. High for confidence: extensive tests, but the runner can hide deterioration
 
 - `check_foot_ik_all.sh` recognizes known failures by whole check/script label. A new or much

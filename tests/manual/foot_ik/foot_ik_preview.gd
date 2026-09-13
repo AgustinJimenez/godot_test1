@@ -110,9 +110,9 @@ func _ready() -> void:
 			if walker["trace_enabled"]:
 				_start_stair_walker(walker)
 				break
-	if not _automated_stretch_check:
-		$Player.global_position = Vector3(14.26247, 2.101, 2.0)
-		$Player.rotation = Vector3(0.0, deg_to_rad(67.7457), 0.0)
+	if not _automated_stretch_check: # idle-foot-drift repro spot (021-024)
+		$Player.global_position = Vector3(15.52282, 1.422718, 1.734463)
+		$Player.rotation = Vector3(0.0, deg_to_rad(100.977250312091), 0.0)
 	if FileAccess.file_exists("user://foot_ik_walk_marker"): # sprint loop-reset snap repro spot
 		$Player.global_position = Vector3(16.85, 0.0009, -1.69)
 		$Player.rotation = Vector3(0.0, deg_to_rad(92.3), 0.0)

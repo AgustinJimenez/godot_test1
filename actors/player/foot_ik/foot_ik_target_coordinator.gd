@@ -38,6 +38,7 @@ var _toe_invalid_streak_frames: Dictionary = {} # side -> int, see _limit_correc
 var _pelvis_references: Dictionary = {} # side -> PelvisReference
 var _last_final_targets: Dictionary = {} # side -> Vector3, see _accept_final_target's hold
 var _last_final_frames: Dictionary = {} # side -> int
+var _idle_pelvis_hold: Dictionary = {} # side -> Vector3, last pre-rehome pelvis basis (021-023)
 
 
 func _init(owner) -> void:
@@ -52,6 +53,7 @@ func reset() -> void:
 	_pelvis_references.clear()
 	_last_final_targets.clear()
 	_last_final_frames.clear()
+	_idle_pelvis_hold.clear()
 
 
 func get_plan(side: StringName) -> FootIKTargetPlan:
@@ -100,18 +102,21 @@ func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 		var sampler = _owner._ground_sampler
 		var previous_surface: Variant = sampler.smoothed_target.get(side)
 		var previous_normal: Variant = sampler.smoothed_normal.get(side)
+		var upper_reposition_active := false
 		if not native and not leg.has(&"seam_hold_target"):
 			var other_side: StringName = &"right" if side == &"left" else &"left"
 			var est_hip: Vector3 = (leg["hip_pos"] - Vector3.UP * prev_shared_drop
 					+ prev_lateral_shift)
-			final_target = _owner._ground_sampler.straighten_compressed_upper_target(
-					_owner.player_body.get_world_3d().direct_space_state, side, {
+			var upper_context := {
 				"hip": est_hip, "target": final_target,
 				"surface": leg.get("raw_target", Vector3(INF, INF, INF)),
 				"normal": leg.get("raw_normal", Vector3.UP), "upper": leg["upper"], "lower": leg["lower"],
 				"offset": leg.get("effective_offset", _owner.ankle_offset), "to_world": to_world,
 				"delta": delta, "lowest_hit": leg.get("animated_contact_hit", false),
-				"lowest_surface": leg.get("animated_contact_position", Vector3.ZERO)})
+				"lowest_surface": leg.get("animated_contact_position", Vector3.ZERO)}
+			final_target = sampler.straighten_compressed_upper_target(
+					_contact_space(), side, upper_context)
+			upper_reposition_active = upper_context.get("upper_reposition_active", false)
 			if leg.get("stationary_slope", false):
 				var hip_axis: Vector3 = leg["hip_pos"] - per_leg[other_side]["hip_pos"]
 				var side_sign := 1.0 if side == &"left" else -1.0
@@ -137,9 +142,30 @@ func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 		# ground_target there instead cost a different, narrower idle-seam margin - keep the
 		# upper-foot/slope adjustment's own contribution either way, just gate the avoidance.
 		var pelvis_basis := final_target
-		if not stationary and plan != null and plan.target_source == "ground_target":
+		if (stationary and leg.has(&"seam_hold_target")
+				and sampler.compressed_upper_target.has(side) and _idle_pelvis_hold.has(side)):
+			pelvis_basis = _idle_pelvis_hold[side]
+			leg[&"pelvis_reach_target"] = final_target
+		elif (stationary and upper_reposition_active
+				and plan != null and plan.target_source != "raw_recovery"):
+			# Upper-foot extension is relative to the hip. Centering pelvis on its output
+			# moves that hip toward the foot, cancels the extension, and restarts acquisition
+			# forever (024). Balance against the independent live support, not this correction.
+			# Use the producer's active flag even while it cannot find a feasible destination.
+			pelvis_basis = leg.get("raw_ground_target", selected_target)
+			leg[&"pelvis_reach_target"] = final_target
+		elif not stationary and plan != null and plan.target_source == "ground_target":
 			var pre_selection: Vector3 = leg.get(&"target", selected_target)
 			pelvis_basis = pre_selection + (final_target - selected_target)
+		# A foot idle-rehome is actively correcting this frame is genuinely in flux; feeding
+		# pelvis that live, still-moving value couples balance math to the correction and can
+		# fight it (021-023's boundary-retrigger investigation). Hold pelvis at the last value
+		# from before this correction episode started instead, same principle as the locomotion
+		# case above, resuming normal tracking the moment rehome stops firing.
+		elif stationary and sampler.idle_stance_rehoming.has(side) and _idle_pelvis_hold.has(side):
+			pelvis_basis = _idle_pelvis_hold[side]
+		if not (stationary and sampler.idle_stance_rehoming.has(side)):
+			_idle_pelvis_hold[side] = pelvis_basis
 		leg[&"pelvis_basis_target"] = pelvis_basis
 		if plan != null and plan.target_source != "raw_recovery":
 			_remember_pelvis_reference(side, plan, pelvis_basis)
@@ -220,10 +246,16 @@ func _accept_final_target(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPl
 	var hip: Vector3 = leg["hip_pos"]
 	var reach: float = float(leg["upper"]) + float(leg["lower"]) + _owner.step_down_max_crouch
 	var rejection := ""
+	# A candidate rehome is actively adjusting this frame gets the same small boundary
+	# tolerance rehome itself already uses - otherwise this stricter check rejects it,
+	# reverting toward the base solve, which rehome then nudges out again next cycle (023).
+	var sampler = _owner._ground_sampler
+	var rehoming: bool = sampler.idle_stance_rehoming.has(plan.side)
+	var stance_margin: float = sampler.IDLE_STANCE_REHOME_MARGIN if rehoming else 0.0
 	if not candidate.is_finite(): rejection = "nonfinite"
 	elif hip.distance_to(candidate) > reach: rejection = "unreachable"
-	elif check_stance and not _owner._ground_sampler.is_target_inside_stance_zone(
-			plan.side, candidate): rejection = "outside_stance"
+	elif check_stance and not sampler.is_target_inside_stance_zone(
+			plan.side, candidate, stance_margin): rejection = "outside_stance"
 	elif not (sample.get("ok", false) as bool): rejection = "unsupported"
 	elif check_toe and not _toe_envelope_valid_at(space, plan, candidate):
 		rejection = "toe_envelope_blocked"

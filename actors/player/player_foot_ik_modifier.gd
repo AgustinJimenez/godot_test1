@@ -884,7 +884,9 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		if not leg.has(&"final_target"):
 			continue
 		var hip_pos: Vector3 = leg["hip_pos"]
-		var target: Vector3 = leg.get(&"pelvis_basis_target", leg[&"final_target"])
+		# Balance may intentionally ignore upper-foot extension, but vertical reach must not.
+		var target: Vector3 = leg.get(&"pelvis_reach_target",
+				leg.get(&"pelvis_basis_target", leg[&"final_target"]))
 		var max_reach: float = float(leg["upper"]) + float(leg["lower"]) - 0.001
 		var h_sq := minf(0.09, Vector2(hip_pos.x - target.x, hip_pos.z - target.z).length_squared())
 		shared_drop = maxf(shared_drop,

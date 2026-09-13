@@ -15,7 +15,7 @@ const STANCE_ZONE_MIN_LATERAL := 0.06
 const STANCE_ZONE_MAX_LATERAL := 0.56
 const STANCE_ZONE_MAX_LONGITUDINAL := 0.40
 const IDLE_STANCE_REHOME_LATERAL := 0.12
-const IDLE_STANCE_REHOME_MARGIN := 0.05 # tolerate idle sway past the edge (023)
+const IDLE_STANCE_REHOME_MARGIN := 0.05 # idle sway past the edge - 023/024
 const LOWER_RISER_REHOME_STEP := 0.02
 const LOWER_RISER_REHOME_STEPS := 24
 const LANDING_UPPER_CONFIRM_FRAMES := 4
@@ -90,8 +90,7 @@ func reset() -> void:
 	split_safe_surface_y = -INF
 	split_rejected_surface_y = -INF
 	split_safe_retry_after_frame = 0
-	split_safe_best_delta = INF
-	split_safe_stall_count = 0
+	split_safe_best_delta = INF; split_safe_stall_count = 0
 	split_safe_held_upper_target.clear()
 	sample_previous_support.clear()
 	idle_stance_rehoming.clear()
@@ -109,6 +108,11 @@ func restore_landing_commitment(snapshot: Dictionary) -> void:
 	_landing_planner.committed_surface_y = snapshot["surface_y"]
 	_landing_planner.decision = "landing_hold %s" % snapshot["decision"]
 func reject_split_safe_root() -> void:
+	preferred_root_nudge = Vector3.ZERO
+	preferred_root_nudge_surface_y = -INF
+	# Upper-foot clearance also requests body nudges. Rejecting that optional motion must
+	# not release unrelated plants when no split-recovery transaction exists (024).
+	if not split_safe_root_target.is_finite() and split_safe_held_upper_target.is_empty(): return
 	split_rejected_surface_y = split_safe_surface_y
 	split_safe_root_target = Vector3(INF, INF, INF)
 	split_safe_surface_y = -INF
@@ -178,6 +182,7 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 			and (surface.y > other_surface.y + _owner.step_min_rise
 					or partial_upper_support)
 			and not recovering_split)
+	context["upper_reposition_active"] = enabled
 	if not enabled: compressed_upper_target.erase(side); return target
 	var minimum_knee_angle := deg_to_rad(
 			180.0 - _settings.preferred_upper_knee_flexion_degrees)
@@ -378,7 +383,8 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 	if _owner._landing_grace_time > 0.0 and not landing_upper_owned:
 		smoothed_target[side] = raw_target
 		smoothed_normal[side] = raw_normal
-	elif not frozen and not idle_lower_latched and not idle_lower_acquiring.has(
+	elif not frozen and not (idle_animation and compressed_upper_target.has(side)) \
+			and not idle_lower_latched and not idle_lower_acquiring.has(
 			side) and not likely_planted and raw_target.distance_to(
 			smoothed_target[side] as Vector3) > TARGET_NOISE_DEADBAND:
 		var amount := clampf(delta * _owner.smooth_rate, 0.0, 1.0)
@@ -481,14 +487,11 @@ func _latch_idle_lower_support(space: PhysicsDirectSpaceState3D, side: StringNam
 			and Vector2(character.velocity.x, character.velocity.z).length() > 0.05
 			and not safe_zone_pending))
 	if should_release:
-		idle_lower_latched_target.erase(side)
-		idle_lower_acquiring.erase(side)
-		_clear_lower_riser_away(side)
-		landing_upper_confirmed.erase(side)
+		idle_lower_latched_target.erase(side); idle_lower_acquiring.erase(side)
+		_clear_lower_riser_away(side); landing_upper_confirmed.erase(side)
 		return false
 	if landing_upper_confirmed.has(side):
-		idle_lower_latched_target.erase(side)
-		idle_lower_acquiring.erase(side)
+		idle_lower_latched_target.erase(side); idle_lower_acquiring.erase(side)
 		_clear_lower_riser_away(side)
 		if animation_name.contains("jump_land") or not frozen: return false
 		landing_upper_confirmed.erase(side)
@@ -560,8 +563,7 @@ func _update_idle_lower_transition(space: PhysicsDirectSpaceState3D, side: Strin
 	var had_latch := idle_lower_latched_target.has(side)
 	var previous: Vector3 = idle_lower_latched_target.get(side, smoothed_target[side])
 	if not is_target_inside_stance_zone(side, previous):
-		idle_lower_latched_target.erase(side)
-		_clear_lower_riser_away(side)
+		idle_lower_latched_target.erase(side); _clear_lower_riser_away(side)
 		if not is_target_inside_stance_zone(side, raw_target):
 			return {"handled": true, "latched": false}
 		if raw_normal.dot(Vector3.UP) < STAIR_TREAD_UP_DOT:
@@ -583,14 +585,12 @@ func _validate_idle_lower_support(space: PhysicsDirectSpaceState3D, side: String
 			space, Vector3(previous.x, character.global_position.y + probe_up, previous.z),
 			probe_up + _owner.step_down_max_crouch + _owner.step_min_rise)
 	if not support["hit"] or (support["normal"] as Vector3).dot(Vector3.UP) < 0.999:
-		idle_lower_latched_target.erase(side)
-		_clear_lower_riser_away(side)
+		idle_lower_latched_target.erase(side); _clear_lower_riser_away(side)
 		return false
 	var surface: Vector3 = support["position"]
 	var drop := character.global_position.y - surface.y
 	if drop <= _owner.step_min_rise or drop > _owner.step_down_max_crouch + _owner.step_min_rise:
-		idle_lower_latched_target.erase(side)
-		_clear_lower_riser_away(side)
+		idle_lower_latched_target.erase(side); _clear_lower_riser_away(side)
 		return false
 	var animation_name: String = _owner.player_body.anim_player.current_animation.get_file()
 	var cleared_surface := (_rehome_lower_surface_from_riser(
@@ -624,8 +624,7 @@ func _rehome_lower_surface_from_riser(space: PhysicsDirectSpaceState3D,
 	if cleared.distance_to(surface) <= TARGET_NOISE_DEADBAND:
 		return surface
 	if _has_lower_riser_clearance(space, surface):
-		_clear_lower_riser_away(side)
-		lower_riser_cleared_target[side] = surface
+		_clear_lower_riser_away(side); lower_riser_cleared_target[side] = surface
 		return surface
 	var away := Vector3.ZERO
 	for direction: Vector3 in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
