@@ -2,9 +2,9 @@
 
 ## Status
 
-**Fix implemented; exact headless replay passes; broader validation in progress. Awaiting user
-live confirmation.** No scene autoplay and no commit until that confirmation. Original five rejected
-experiments are preserved in [the archive](archive/024_rejected_latch_investigation.md).
+**Fixed, live-confirmed by the user, and committed** (`4ad3478` on `experiment/native-foot-ik`).
+Original five rejected experiments are preserved in
+[the archive](archive/024_rejected_latch_investigation.md).
 
 ## Confirmed causes (2026-09-13)
 
@@ -59,10 +59,11 @@ root drift `0`, invalid frames `0`, rejection isolation `true`.
 Evidence directory: `/tmp/foot-ik-024.3JFLad/` (original live capture and inherited diff preserved
 before tests, baseline, isolated fixes, targeted diagnostic logs and final trace).
 
-## Remaining work / acceptance
+## Acceptance
 
-- Finish fast/full regression map and mutation-check that this new test fails without the fixes.
-- User: play the preview when convenient; watch 2-3 idle loops at this spawn. Neither foot should
-  repeatedly slide out/back or twitch at the loop seam.
+- User live-tested at the repro spawn: no per-cycle foot sliding while standing still. Confirmed.
+- The "slightly worse foot clearance in another stair pose" side effect mentioned mid-investigation
+  was not independently re-checked before commit - worth a look if a different stair stance ever
+  shows new clearance complaints.
 - Tasks 019 (toe/riser penetration) and 020 (ramp-corner burial) remain separate, unresolved cases;
   do not mark them fixed from this one stable stance.
