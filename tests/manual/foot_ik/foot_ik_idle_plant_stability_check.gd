@@ -110,6 +110,8 @@ var _rehome_observed := false
 var _rehome_previous_foot := Vector3.ZERO
 var _rehome_max_foot_step := 0.0
 var _rehome_stance_limit_frames := 0
+var _rehome_anchor_ok := true
+var _rehome_anchor_detail := ""
 var _checking_knee_guard := false
 var _knee_guard_frame := 0
 var _knee_guard_previous := Vector3.ZERO
@@ -166,6 +168,48 @@ func _ready() -> void:
 			_ik = child
 			break
 	_ik.reset_runtime_state()
+	_check_rehome_zone_anchor()
+
+
+## Pure-geometry regression check for _rehome_zone_anchor (022): its whole contract is "clamp
+## raw_target onto the stance zone" with no dependency on any other state, so this needs no
+## physics/raycasts - a throwaway transform and known clamp math are enough to catch a
+## regression (e.g. someone reintroducing a "current position" parameter) without needing a
+## real level or a multi-frame convergence simulation, unlike an earlier attempt at this (022).
+func _check_rehome_zone_anchor() -> void:
+	var probe := Node3D.new()
+	add_child(probe)
+	probe.global_position = Vector3(5.0, 1.0, -3.0)
+	probe.rotation = Vector3.ZERO # forward=(0,0,-1), right's outward=(1,0,0)
+	var cases := [
+		# [raw_target, expected_anchor, label]
+		[probe.global_position + Vector3(0.3, 0.0, 0.0), Vector3(0.3, 0.0, 0.0), "already in zone"],
+		[probe.global_position + Vector3(0.05, 0.0, 0.0), Vector3(0.12, 0.0, 0.0), "lateral floor"],
+		[probe.global_position + Vector3(0.9, 0.0, 0.0), Vector3(0.52, 0.0, 0.0), "lateral ceiling"],
+		[probe.global_position + Vector3(0.3, 0.0, -0.9), Vector3(0.3, 0.0, -0.36), "longitudinal"],
+	]
+	_rehome_anchor_ok = true
+	_rehome_anchor_detail = ""
+	for case: Array in cases:
+		var raw_target: Vector3 = case[0]
+		var expected: Vector3 = probe.global_position + case[1]
+		var actual: Vector3 = _ik._ground_sampler._rehome_zone_anchor(probe, &"right", raw_target)
+		if actual.distance_to(expected) > 0.001:
+			_rehome_anchor_ok = false
+			_rehome_anchor_detail += "%s expected=%s actual=%s; " % [case[2], expected, actual]
+	# The regression itself: the anchor must not depend on smoothed_target at all - vary it
+	# wildly between two calls with the same raw_target and confirm the result never changes.
+	var raw_target: Vector3 = probe.global_position + Vector3(0.3, 0.0, 0.0)
+	_ik._ground_sampler.smoothed_target[&"right"] = probe.global_position + Vector3(5.0, 0.0, 5.0)
+	var anchor_a: Vector3 = _ik._ground_sampler._rehome_zone_anchor(probe, &"right", raw_target)
+	_ik._ground_sampler.smoothed_target[&"right"] = probe.global_position + Vector3(-5.0, 0.0, -5.0)
+	var anchor_b: Vector3 = _ik._ground_sampler._rehome_zone_anchor(probe, &"right", raw_target)
+	_ik._ground_sampler.smoothed_target.erase(&"right")
+	if anchor_a.distance_to(anchor_b) > 0.001:
+		_rehome_anchor_ok = false
+		_rehome_anchor_detail += "anchor depends on smoothed_target: %s vs %s; " % [
+			anchor_a, anchor_b]
+	probe.queue_free()
 
 
 func _physics_process(_delta: float) -> void:
@@ -650,6 +694,7 @@ func _finish_check() -> void:
 	passed = passed and _rehome_observed and rehome_inside
 	passed = passed and _rehome_max_foot_step <= MAX_REHOME_FOOT_STEP
 	passed = passed and _rehome_stance_limit_frames <= 2
+	passed = passed and _rehome_anchor_ok
 	passed = passed and _knee_guard_constrained_frames > 0
 	passed = passed and _knee_guard_max_step <= MAX_GUARDED_KNEE_STEP
 	passed = passed and _live_pose_constrained_frames == 0
@@ -699,7 +744,8 @@ func _finish_check() -> void:
 			+ "turn_latch_kickouts=%d turn_latch_kickout_side=%s turn_latch_kickout_frame=%d "
 			+ "stance_cache_aligned=%s timed_idle_handoff_smooth=%s "
 			+ "rehome_observed=%s rehome_inside=%s rehome_step_m=%.6f rehome_limit_m=%.3f "
-			+ "rehome_stance_limit_frames=%d knee_guard_frames=%d "
+			+ "rehome_stance_limit_frames=%d rehome_anchor_ok=%s rehome_anchor_detail=%s "
+			+ "knee_guard_frames=%d "
 			+ "knee_guard_step_m=%.6f knee_guard_limit_m=%.3f "
 			+ "live_pose_constrained=%d live_pose_target_error_m=%.6f "
 			+ "live_pose_shin_deg=%.2f live_pose_joint_step_m=%.6f "
@@ -723,6 +769,8 @@ func _finish_check() -> void:
 			_turn_latch_kickout_frame, str(_stance_cache_aligned),
 			str(_timed_idle_handoff_smooth), str(_rehome_observed), str(rehome_inside),
 			_rehome_max_foot_step, MAX_REHOME_FOOT_STEP, _rehome_stance_limit_frames,
+			str(_rehome_anchor_ok),
+			_rehome_anchor_detail if not _rehome_anchor_detail.is_empty() else "none",
 			_knee_guard_constrained_frames, _knee_guard_max_step, MAX_GUARDED_KNEE_STEP,
 			_live_pose_constrained_frames, _live_pose_max_target_error,
 			_live_pose_max_shin_swing, _live_pose_max_joint_step,

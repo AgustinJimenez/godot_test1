@@ -139,10 +139,39 @@ clean HEAD rather than ship a test that looks like coverage but doesn't actually
 the live user report plus the code-level root-cause analysis remain the only verification for this
 fix, same as before.
 
+## Second attempt: extract the destination into a pure, directly-testable function - this worked
+
+Extracted the clamp-onto-stance-zone computation out of `_rehome_idle_stance_target` into
+`_rehome_zone_anchor(character, side, raw_target)` - a pure function that deliberately does not
+accept a "current" position at all. The bug was clamping the target's own drifting value instead of
+`raw_target`'s; this signature makes that mistake structurally impossible to reintroduce silently,
+since there is no current position in scope to reach for.
+
+Added a real regression test (`_check_rehome_zone_anchor` in
+`foot_ik_idle_plant_stability_check.gd`, run once from `_ready()`) using a throwaway `Node3D` and
+pure vector math - no physics or raycasts needed, since the extracted function has no other
+dependencies. It checks known clamp cases (in-zone passthrough, lateral floor/ceiling, longitudinal
+clamp) and the actual regression property: calling the function twice with the same `raw_target`
+but wildly different `smoothed_target` values must return the identical result.
+
+Verified this test actually discriminates (unlike the first attempt above): temporarily
+reintroduced the old self-referential read (`smoothed_target.get(side, raw_target)` instead of
+`raw_target` directly) and confirmed the test failed with a clear diagnostic ("anchor depends on
+smoothed_target: ... vs ..."), then reverted. `FOOT_IK_LEDGE_SAFETY_CHECK` stayed a clean 16/16 and
+the full fast suite was unchanged except the new `rehome_anchor_ok=true` field and the pre-existing,
+unrelated task 019 failure.
+
+**Note:** this and the 021 fix ended up committed together as `2af14e2` when they should have been
+committed separately - both files were staged together without checking that `foot_ik_ground_sampler.gd`
+also carried the still-untested 021 changes. Left as-is per the user's direction rather than
+rewriting history; see `023` for what live-testing this combined commit surfaced next.
+
 ## References
 
-- `foot_ik_ground_sampler.gd::_rehome_idle_stance_target`/`sample()` (the `idle_rehome_planted`
-  gate) - the mechanism itself.
+- `foot_ik_ground_sampler.gd::_rehome_idle_stance_target`/`_rehome_zone_anchor`/`sample()` (the
+  `idle_rehome_planted` gate) - the mechanism itself.
+- `AGENT_TASKS/023_stance_zone_boundary_retrigger.md` - a third, independent mechanism found live
+  after this fix, on the same-looking symptom.
 - `AGENT_TASKS/021_split_safe_root_target_oscillation.md` - the investigation that surfaced this
   while confirming 021's own fix was working correctly.
 - `foot_ik_controlled.jsonl` (preserved at `/tmp/foot_ik_controlled_20260913_124717.jsonl` per
