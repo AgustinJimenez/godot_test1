@@ -108,6 +108,37 @@ any other path that can leave a planted foot's target off-zone).
   (a collision-aware hold instead of the current lift-arc/rehome approach) should be addressed
   together rather than patched independently again.
 
+## Attempted a regression test for this fix - abandoned, did not discriminate
+
+Tried adding a synthetic test (`_run_rehome_convergence_regression` in
+`foot_ik_idle_plant_stability_check.gd`) that started `smoothed_target` well outside the stance
+zone with a fixed, stable `raw_target`, then asserted the settled position ended up meaningfully
+closer to `raw_target` than it started. After several corrections (the body-relative offset math,
+raycasting real ground height instead of assuming a flat Y, avoiding offsets large enough to step
+onto a different platform level), the test finally ran cleanly - but produced nearly identical
+"got closer" ratios with and without the fix applied (0.8114 with, 0.8331 without, both well under
+the 0.9 pass threshold). It didn't discriminate.
+
+Root cause of the non-discrimination: both the buggy and fixed code correctly pull an out-of-zone
+point back into *some* valid zone position on the very first correction (clamping is clamping,
+whether it clamps `current`'s own drift or `raw_target`'s position) - a single "did it re-enter the
+zone" or "did it get closer" check can't distinguish "converged toward real ground truth" from
+"converged toward an arbitrary self-referential point that happens to also be in-zone." The bug's
+real signature is *sustained* drift over many cycles in a live setting with continuous animation
+sway perturbing the input every frame, not a single static correction - a property this kind of
+short, static, single-shot function test doesn't exercise.
+
+A test that would actually discriminate would need to compare the destination *computed* from two
+different starting `current` values against the same `raw_target` (the property that changed), not
+the eventual settled position after "stop once inside the zone" masks the difference - `destination`
+is a local variable, not returned or otherwise observable without either extracting it into a
+separately-testable pure function or inferring it from partial movement vectors. Both are real,
+reasonable options but are a bigger change than a quick regression-test addition, and this was
+already the third distinct attempt at making the test meaningful. Reverted the test file back to
+clean HEAD rather than ship a test that looks like coverage but doesn't actually catch the bug -
+the live user report plus the code-level root-cause analysis remain the only verification for this
+fix, same as before.
+
 ## References
 
 - `foot_ik_ground_sampler.gd::_rehome_idle_stance_target`/`sample()` (the `idle_rehome_planted`
