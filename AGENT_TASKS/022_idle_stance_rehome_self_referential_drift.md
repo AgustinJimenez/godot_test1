@@ -2,11 +2,12 @@
 
 ## Status and scope
 
-**Root-caused via live telemetry, no fix attempted yet.** Found while confirming the 021 fix live:
-that test confirmed the split-safe-root give-up mechanism worked correctly (fully disengaged,
-`action=none`), but the reported symptom - a foot's target sweeping continuously while the
-character stands perfectly still - persisted anyway, through an entirely different, previously
-undiscovered mechanism.
+**Root-caused via live telemetry. Fixed, passing the full `check_foot_ik_fast.sh` suite. Awaiting
+live test before commit**, per this project's standing rule for gameplay-behavior changes. Found
+while confirming the 021 fix live: that test confirmed the split-safe-root give-up mechanism worked
+correctly (fully disengaged, `action=none`), but the reported symptom - a foot's target sweeping
+continuously while the character stands perfectly still - persisted anyway, through an entirely
+different, previously undiscovered mechanism.
 
 ## The concrete symptom
 
@@ -63,24 +64,46 @@ specific live session, was the still-being-fixed split-safe-root churn (021) lea
 independent of that root cause and can be triggered by anything that leaves a planted foot's target
 outside the stance zone, not just a split-stance recovery.
 
-## What to try next (not attempted)
+## Fix
 
-- Do not patch this the same way 021 was patched (three attempts, each revealing a new failure
-  mode in the same function) without first deciding on a design, given this is now the *second*
-  self-referential/flip-flopping idle-stabilization bug found in one session.
-- Most direct fix: stop deriving `destination` from `current`'s own position. Derive it from
-  `raw_target` (or the body's actual stance-zone anchor) instead, so the destination is a stable,
-  externally-grounded point rather than dependent on wherever the target already drifted to -
-  removing the feedback loop at its source.
-- Separately, decide whether the "jump straight to `raw_target`" fallback branch and the "creep
-  toward `destination`" branch should really be able to alternate frame-to-frame at all - if
-  `destination` intermittently lacks support, retrying next frame with the *last* stable choice
-  (hysteresis) rather than switching behavior every frame would remove the second half of the
-  instability even if the first isn't fixed.
-- Confirm with a live A/B (matching this project's own established debugging pattern - see
-  AGENTS.md's `013`/`014` references) rather than trusting a single headless run, since this bug's
-  precondition (a planted foot whose target has already drifted outside the stance zone) is
-  state-dependent and may not trivially reproduce from a cold spawn.
+Changed `_rehome_idle_stance_target`'s destination computation to clamp the real, stable ground
+contact's position (`raw_target - character.global_position`) instead of the possibly-already-
+drifted `current` (`smoothed_target`) value - removing the feedback loop at its source. When
+`raw_target` is already inside the stance zone (the common case), `destination` now resolves to
+essentially `raw_target` itself, and the function simply creeps `current` toward real, externally-
+grounded ground truth instead of a point derived from wherever it had already wandered to. When
+`raw_target` is itself outside the zone (e.g. reaching toward a genuinely distant tread), the clamp
+still produces the nearest valid in-zone point in that real direction, same as before - only the
+*source* of the projection changed, not the clamping logic itself.
+
+One line changed: `actors/player/foot_ik/foot_ik_ground_sampler.gd`,
+`_rehome_idle_stance_target`'s `from_root` assignment.
+
+Deliberately did not also address the second half of the original hypothesis (the
+same-height-supported branch potentially flip-flopping frame to frame) - with the feedback loop
+removed, `destination` is now derived from a point (`raw_target`) that by definition already has
+confirmed support this frame, so the flip-flop condition this was meant to guard against should be
+far less likely to occur in practice; adding hysteresis on top without first observing whether it's
+still needed would be an unverified, unmotivated extra change.
+
+**Verified clean:**
+- `FOOT_IK_LEDGE_SAFETY_CHECK PASS cases=16` - unchanged.
+- Full `scripts/check_foot_ik_fast.sh`: identical to the pre-fix baseline, including the one
+  pre-existing, unrelated `FOOT_IK_IDLE_PLANT_STABILITY_CHECK` failure (task 019) - every field
+  matches to 5+ decimal places except one unrelated float that differs in the 5th decimal (noise,
+  not a regression).
+
+**Not yet live-tested.** The precondition (a planted foot whose target has already drifted outside
+the stance zone) is state-dependent and may not trivially reproduce from a cold spawn - the
+concrete next step is a live test on the same kind of stance that originally exposed this, ideally
+one where the target starts outside the zone (e.g. right after a 021-style split-safe give-up, or
+any other path that can leave a planted foot's target off-zone).
+
+## What to try next if the fix above doesn't fully hold
+
+- Reconsider whether the "jump straight to `raw_target`" fallback branch and the "creep toward
+  `destination`" branch should be able to alternate frame-to-frame at all, if flip-flopping is still
+  observed live despite the above.
 - Consider whether this function and the still-open `wobbly-painting-flask.md` idle-reposition plan
   (a collision-aware hold instead of the current lift-arc/rehome approach) should be addressed
   together rather than patched independently again.
