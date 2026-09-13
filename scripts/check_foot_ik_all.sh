@@ -43,6 +43,8 @@ RAMPS_MAX_FAILED_CASES=20
 RAMPS_MAX_DEPTH_M=0.02
 RAMP_SWEEP_MAX_FAILED_CASES=16
 RAMP_SWEEP_MAX_DEPTH_M=0.11
+# The worst of these (0.105375m) is root-caused: a ramp-corner contact loss that clips the
+# whole foot into the ramp - see AGENT_TASKS/020_ramp_corner_contact_loss_clip.md.
 RAMP_LOCOMOTION_MAX_FAILED_CASES=13
 # check_foot_ik_locomotion.sh's known walk_left/walk_right failures, graded by their own worst
 # single-frame added-rotation ("worst_frame_added_deg=") rather than the script's bare exit code.
