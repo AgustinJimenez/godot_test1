@@ -9,6 +9,12 @@ evidence in the relevant `AGENT_TASKS/NNN_name.md` file; Git preserves old revis
 This is a first-person survival-horror learning sandbox built with Godot 4.6 (Forward+, Jolt) and
 statically typed GDScript. Explain Godot ideas briefly in plain language when building systems.
 
+The user is not a game or IK developer and judges Foot IK work only by whether the animation looks
+smooth. For Foot IK discussion, lead with outcomes (smooth or not, fast or not, buggy or not) and
+keep architecture/terminology out unless explicitly asked; save the technical detail for
+`AGENT_TASKS/` files. A live-test verdict on a Foot IK fix only needs about 2-3 idle animation
+loops, not an extended soak.
+
 Active work lives directly in the `AGENT_TASKS/` folder, one independent `NNN_name.md` file per
 task - there is no separate pointer file selecting a "current" one. Completed or parked work
 remains in its own numbered file. Update `AGENTS.md` only for rules likely to prevent
