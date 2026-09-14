@@ -915,8 +915,8 @@ func _physics_process(delta: float) -> void:
 			(values["toe_tip_gap"] as Label).text = "%.3f" % (tip_pos.y - target.y)
 			clip_points.append(tip_pos)
 		_clip_indicator.update(get_world_3d().direct_space_state,
-				_ik._ground_sampler.GROUND_COLLISION_MASK, side, clip_points)
-
+				_ik._ground_sampler.GROUND_COLLISION_MASK, side, clip_points,
+				_player_body.get_parent() as Player)
 		var angles := _compute_leg_angles(side)
 		_joint_history_graph.sample_side(side, angles, _angle_probes[side], probe,
 				_player_body.get_parent() as Node3D)

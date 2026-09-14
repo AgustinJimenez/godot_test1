@@ -1,138 +1,95 @@
-# 025: Foot clips into a stair riser while walking - two fixes tried, still open
+# 025: Recurring toe clip — startup idle identified, walking scope still open
 
-## Status and scope
+## Status
 
-**Open, unfixed.** Confirmed real via two independent tools (a quick box-check and the
-project's precise per-vertex mesh check), not a false positive. Two targeted fixes made today
-did not resolve the specific recurring case the user hit live. Distinct from `019` (clipping
-while turning in place, not walking) and `020` (ramp-corner contact loss).
+**The startup clip is fixed and live-confirmed by the user (2026-09-13): the fixed 16cm clip that
+always fired around frame 17-20 at scene load no longer appears in a fresh live session.** Not
+yet committed. Task 024 remains live-confirmed and committed separately.
 
-## How this was found
+Still open: real clipping during ordinary walking persists, separate from the startup bug this
+fix addressed. Same live session that confirmed the startup fix also logged 39 clip events during
+genuine walking, most small (5-10mm) but one real: **11.3cm**, right foot toe, mid-walk
+(`moves/unarmed_walk`, frame 469). This is a different, still-uninvestigated case - not the
+startup bug, not confirmed to be 019 (stationary rotation) or 020 (ramp corner) either. Task 019
+and task 020 remain separately open and not declared fixed by this work.
 
-Built a new always-on live diagnostic for the manual preview scene, requested by the user after
-019/020 review: `tools/foot_ik/foot_ik_live_penetration_monitor.gd` (generic "which nearby box
-collider(s) does this point overlap, and by how much" check, reusing
-`FootClearanceEvaluator.evaluate_box` - same math `foot_ik_idle_plant_stability_check.gd`'s own
-turn-sweep already used) plus `tests/manual/foot_ik/foot_ik_clip_indicator.gd` (spawns a large red
-marker at the clip point and prints one throttled `[FOOT_IK_CLIP] side=... depth_m=... point=...`
-log line per clipping episode - not spammed every frame). Wired into `foot_ik_debug_overlay.gd`,
-checking each foot's ankle and toe-tip position every physics frame.
+Earlier investigation is preserved in
+[the archive](archive/025_walking_hypothesis_investigation.md). Its identification of the recurring
+event as walking/turning was incorrect; do not resume target-path patches from that assumption.
 
-Also discovered, while investigating this, an existing but unused precise checker already in the
-codebase: `tests/manual/foot_ik/foot_ik_live_penetration_check.gd` - raycasts every skinned mesh
-vertex against the real floor collider (not a box approximation), opt-in via a
-`user://foot_ik_penetration_check_marker` file since it's expensive (a raycast per vertex per
-physics frame - **caused a severe FPS drop when enabled during ordinary play; do not leave this
-marker file in place outside a short, isolated headless test**). Used it once, briefly, in a
-headless run to cross-check the new indicator's finding - see "Confirmed real" below.
+## Exact event match (2026-09-13 continuation)
 
-## The concrete symptom
+Matched **ankle/toe positions**, not the nearest root, in all three preserved live captures:
 
-Live-captured via the new indicator during the user's own play: dozens of clip events per
-session, most small (5-10mm, likely negligible noise), but several genuinely large - up to
-**15.9cm** on one foot, recurring at the *exact same world point* (`(15.37852, 1.117114,
-1.958677)`, depth `0.1587` to four decimal places) across at least three separate live sessions,
-unchanged by either fix attempt below.
+- `/tmp/foot_ik_controlled_third.jsonl`
+- `/tmp/foot_ik_controlled_livewalk_20260913.jsonl`
+- `/tmp/foot_ik_controlled_liveafter.jsonl`
 
-Correlating that exact point against the live `foot_ik_controlled.jsonl` trace: animation
-`moves/unarmed_walk`, target owner `live_contact`, and `root_yaw_deg` changing by ~3.7 degrees
-every frame for several consecutive frames right at that point - **the character is walking and
-turning at the same time**, going down/across the stairs.
+The repeated `(15.37852, 1.117114, 1.958677)` point matches the **left toe tip at frame 17**
+within 0.000005 m in all three. Animation is `moves/unarmed_idle`, root yaw is constant
+`100.977250312091` degrees; this is startup, before the user walks. The ankle's actual position
+is far below its valid 1.496 m solve target. This is not an ankle target crossing a wall.
 
-## Confirmed real, not a diagnostic false positive
+## Confirmed initialization failures
 
-Enabled `foot_ik_live_penetration_check.gd` (the precise per-vertex mesh checker) for one short
-headless run of the same automated stair-walk scenario (`foot_ik_preview.tscn -- --foot-ik-check`,
-360 frames): `FOOT_IK_LIVE_PENETRATION_CHECK FAIL samples=358 attempts=358 penetrating_samples=286
-penetrating_vertices=13884 max_depth_m=0.134882` with the penetrating vertices concentrated almost
-entirely in `foot_l`/`foot_r`/`ball_l`/`ball_r` bones - real mesh-into-geometry penetration on the
-feet, not a box-shape approximation artifact.
+1. `AnimationPlayer.play()` selected idle but had not applied it before the first zero-delta
+   modifier evaluation. At physics frame 1, the imported pose's left foot was
+   `(15.17172, 1.618629, 0.211004)`, sampling the wrong tread at y=0.35. The true idle foot is
+   around `(15.52421, 1.505602, 1.975434)`, supported at y=1.4. The first real pass reused the
+   zero-pass pose cache; later frames smoothed from that unrelated support.
+2. `_shape_shared_drop()` could advance pelvis-drop history on a zero-delta refresh.
+3. Startup borrowed the animation-loop seam-acquisition bypass: it released the upper leg while
+   the shared pelvis lowered to reach the lower tread. The upper leg then rate-limited its way
+   back out of the stair. Initial placement is not an already-visible movement to interpolate.
+4. Upper-foot extension also needs its destination established in that initial placement;
+   initializing only the bones left a brief ~2.4 cm toe clip during delayed upper acquisition.
 
-## Two fix attempts today, neither resolved the recurring case
+## Changes
 
-The general (non-idle) foot-target smoothing in `foot_ik_ground_sampler.gd` had no collision
-awareness at all, unlike the idle-only paths (`_move_toward_held`, already existing from an
-earlier session). Extracted a shared `_hold_short_of_collision(space, previous, intended)` helper
-(clamps an already-computed move short of any blocking geometry between the two points) and:
+- Gameplay autoplay applies its chosen idle pose with `advance(0.0)` before the first skeleton
+  refresh. Character Editor's `autoplay_default_animation=false` path remains untouched.
+- Zero-delta pelvis refreshes reapply current drop without advancing history.
+- The modifier's spawn-frame-only initialization establishes shared drop and leg corrections
+  together and does not take the loop-seam acquisition bypass. Normal later turns, landings,
+  runtime resets and idle loops retain their existing interpolation/rate limits.
+- Coordinator passes an explicit `initialize_pose` flag to upper-foot placement. Its existing
+  support/stance/reach search chooses the initial destination without an acquisition animation;
+  normal calls retain their speed-limited motion.
+- Clip messages retain episode throttling and now include frame, ankle/toe-tip identity, actor
+  path, animation/time, root and yaw. Future reports can match the trace directly.
+- Moved the unchanged horizontal target-path hold into `tools/foot_ik/foot_target_motion.gd`
+  to keep the sampler below 1000 lines. It is explicitly **not** a swept-foot-volume check.
 
-1. Applied it inside `move_target_smoothed()` (the main `live_contact`/`locomotion_stance` lerp
-   path, and `foot_ik_stair_predictor.gd`'s support-foot transfer-blend path - both needed `space`
-   threaded through their call chains, see `ensure_support`/`_apply_support_contact`). Verified via
-   the fast suite: no regressions, `FOOT_IK_STAIR_LOCOMOTION_CHECK` (92 steps) still passes clean.
-2. The recurring 15.9cm clip persisted identically after (1). Traced it to `body_turning == true`
-   at that exact moment (walking *and* turning together) routing through a **different**,
-   sibling branch in `sample()` that used a plain `move_toward` with no collision awareness at
-   all. Applied the same `_hold_short_of_collision` helper there too.
+## Regression and evidence
 
-**Result: the exact same 15.9cm clip at the exact same point recurred a third time, completely
-unchanged**, after both fixes were live and verified present in the working tree. This means the
-actual trigger is neither of the two branches fixed today - something else is producing this
-specific target, or the collision-hold's own geometry probe isn't detecting whatever it's
-clipping into at this spot (possibly a thin riser edge/nosing the horizontal-ray-at-fixed-height
-probe in `_hold_short_of_collision` steps over, since it only checks a single height slightly
-above both endpoints, not the whole vertical span the foot sweeps through).
+```sh
+godot --headless --fixed-fps 60 --path . \
+  res://tests/manual/foot_ik/foot_ik_spawn_contact_check.tscn --quit-after 140
+```
 
-## What to try next (not attempted)
+Unlike task 024's settled-idle test, this checks the **startup frames**, at fixed spawn/yaw.
+Ankle and toe-tip points are sampled every frame 3–120. Final skinned foot/toe/leaf vertices are
+also checked against all eight nearby real box colliders during frames 3–40 (304 mesh samples).
+Both depth limits are 0.005 m. Registered in shared and fast runners. No expensive live marker
+is created or left enabled.
 
-- Get the *character root* position/rotation near the recurring point (not just the clip point
-  itself) and reproduce headlessly, the same way `024` did for its own repro - then add temporary
-  print instrumentation at each `smoothed_target[side]` write site active during
-  `owner=live_contact` walking-while-turning, to find which one actually produces the clipped
-  value (mirroring `024`'s successful "stop guessing, instrument every write site" approach after
-  its own first few fix attempts failed).
-- Check whether `_hold_short_of_collision`'s single fixed-height horizontal probe
-  (`HOLD_PROBE_UP := 0.05` above the higher of the two endpoints) can miss a riser edge that both
-  endpoints already sit above/below - a foot sweeping diagonally down-and-across a step during a
-  turn could pass through a corner the flat probe height never crosses.
-- Check `foot_ik_stair_predictor.gd`'s gait-coupled `update_swing_lift`/`_desired_swing_lift`
-  (untouched today) - the swinging (non-support) leg's vertical lift arc has never been given a
-  horizontal collision check either, unlike the two paths fixed today.
-- Re-verify with the precise mesh checker (marker file, **headless/short session only, never
-  during ordinary play** - it visibly tanks FPS) after any future fix attempt, not only the
-  quick box-based indicator, since it caught real penetration the box check would also have
-  caught here but is the more authoritative source for a final confirmation.
+- Fixed: **PASS**, 118 point frames, point depth `0`, mesh depth `0`, 304 mesh samples;
+  stationary and moving zero-delta pelvis invariants both pass.
+- Mutation, initial-placement path disabled: **FAIL**, point depth `0.239558 m`, mesh depth
+  `0.274809 m`. Mutation restored before broader tests.
+- A subtle oracle gap: the older precise `sample()` checks only the collider under the root.
+  It returned zero while the toe entered a *neighboring higher tread*. The new fixture uses
+  `sample_box_transform()` against nearby box colliders; the existing CSG-box method delegates
+  to the same mesh oracle. Do not use root-only ray results to certify adjacent-riser clearance.
 
-## Third investigation pass: the horizontal-probe hypothesis above was ruled out
+Evidence: `/tmp/foot-ik-025.bCAdqv/`, including preserved current trace, targeted diagnostics,
+intermediate/final startup runs, mutation and fast/full-suite logs. No preview autoplay.
 
-Built a temporary exact-trajectory replay (hardcoded array of the real session's recorded
-position/yaw per frame, played back directly into `$Player.global_position`/`.rotation`,
-bypassing normal input - reverted after use, never committed) to reproduce the specific
-recurring clip deterministically, plus a temporary print inside `_hold_short_of_collision`
-logging every probe ray it casts near the known clip point.
+## Pending
 
-**Every single probe during the replay returned an empty hit** - the horizontal ray genuinely
-finds no geometry at any of the sampled positions/heights. This rules out "the flat probe height
-misses a raised riser corner" as the cause: the collision-hold logic isn't failing to see a wall
-it should - the wall (if the clip is even in this leg's ankle-target path at all) isn't where
-this raycast looks. Also found that correlating the logged clip point against the trace by
-*nearest root position* (used throughout this investigation) is too imprecise for foot-level
-diagnosis - at the specific frame that root-distance search picked, neither the recorded ankle
-(`foot_pos`) nor toe joint position was within 0.3m of the actual clip point, meaning the
-matched frame was several strides off from the real event. Any future attempt needs a tighter
-match (nearest by ankle/toe position, not root) or the exact-trajectory-replay technique above
-(kept out of the repo, but the technique - hardcode the trace's per-frame root/yaw into a
-temporary `$Player` override - is reusable) run long enough to capture the clip within the
-replay itself, not just the surrounding area.
-
-This also raises a real, undecided question for whoever picks this up next: the clip may not be
-an *ankle-target path* problem at all (what both of today's fixes and this whole investigation
-assumed) - it could be a toe/mesh-orientation issue structurally like `019`'s already-confirmed
-`LANDING_UPPER`/toe-envelope gap, just triggered by walking instead of stationary rotation.
-Confirming which joint (ankle vs. toe) is actually penetrating at the real clip moment, precisely
-matched, is the necessary next step before attempting another fix.
-
-## References
-
-- `tools/foot_ik/foot_ik_live_penetration_monitor.gd`,
-  `tests/manual/foot_ik/foot_ik_clip_indicator.gd` - the new always-on live indicator.
-- `tests/manual/foot_ik/foot_ik_live_penetration_check.gd` - the pre-existing, precise, opt-in
-  per-vertex checker (marker file `user://foot_ik_penetration_check_marker`) - already existed,
-  just never wired to any of this session's investigations before now.
-- `actors/player/foot_ik/foot_ik_ground_sampler.gd::_hold_short_of_collision` - the new shared
-  collision-hold helper, extracted from the idle-only `_move_toward_held`, now also used by
-  `move_target_smoothed()` and the `body_turning` branch in `sample()`.
-- `AGENT_TASKS/019_foot_ik_toe_riser_clip_during_rotation.md` - the sibling turning-in-place
-  clip bug (three earlier fix attempts, also still open) - same visible symptom family, confirmed
-  structurally different mechanism (that one is stationary rotation with no walking).
-- `AGENTS.md`'s Foot IK section - notes on the new live indicator and the precise checker's
-  performance cost, so neither gets rebuilt or left on by accident again.
+1. Finish fast/full verification and compare quantitative failures, not only known labels.
+2. ~~User live confirmation~~ - done: startup clip no longer appears in a fresh live session.
+   Commit the startup fix once the fast/full verification above is finished.
+3. Investigate the still-open real walking clip found in that same confirmation session (11.3cm,
+   right toe, `unarmed_walk`, see Status) - a fresh case, not yet traced. Tasks 019/020 and task
+   024's previously noted other-stance clearance side effect remain separate work.

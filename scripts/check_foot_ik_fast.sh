@@ -85,6 +85,7 @@ Foot IK split-stance walk support check
 Foot IK idle loop left-leg seam check
 Foot IK idle support owner check
 Foot IK split idle feedback check
+Foot IK spawn contact check
 Foot IK toe riser check
 Foot IK mode switch reset check
 Foot IK constraint expiry check

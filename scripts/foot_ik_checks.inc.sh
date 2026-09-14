@@ -37,6 +37,8 @@ check "Foot IK idle support owner check" "FOOT_IK_IDLE_SUPPORT_OWNER_CHECK PASS"
 	500 res://tests/manual/foot_ik/foot_ik_idle_support_owner_check.tscn
 check "Foot IK split idle feedback check" "FOOT_IK_SPLIT_IDLE_FEEDBACK_CHECK PASS" \
 	620 res://tests/manual/foot_ik/foot_ik_split_idle_feedback_check.tscn
+check "Foot IK spawn contact check" "FOOT_IK_SPAWN_CONTACT_CHECK PASS" \
+	140 res://tests/manual/foot_ik/foot_ik_spawn_contact_check.tscn
 check "Foot IK animation comparison check" "FOOT_IK_ANIMATION_COMPARISON_CHECK PASS" \
 	400 res://tests/manual/foot_ik/foot_ik_preview.tscn --animation-comparison-check
 

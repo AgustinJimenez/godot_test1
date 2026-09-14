@@ -393,6 +393,8 @@ func _build_character_visuals() -> void:
 	anim_player.animation_finished.connect(_on_animation_finished)
 	if autoplay_default_animation:
 		anim_player.play("moves/unarmed_idle")
+		# Publish idle before a zero-delta refresh can cache the imported pose as IK history (025).
+		anim_player.advance(0.0)
 	_apply_stored_profile_cosmetics()
 ## Swaps the live player's visible skin at runtime. Rebuilds the character
 ## subtree, restores equipped/held attachments, and updates modifiers.

@@ -104,14 +104,22 @@ func sample(player: Player, ik: PlayerFootIKModifier,
 ## transforming each final skinned vertex into the ramp's local box space can.
 func sample_box_volume(player: Player, ik: PlayerFootIKModifier,
 		bone_filter: Dictionary, box: CSGBox3D, tolerance: float = TOLERANCE) -> Dictionary:
+	if box == null:
+		return {"available": false}
+	return sample_box_transform(player, ik, bone_filter, box.global_transform, box.size, tolerance)
+
+
+## Same mesh oracle for real StaticBody3D/BoxShape3D stair colliders (025).
+func sample_box_transform(player: Player, ik: PlayerFootIKModifier, bone_filter: Dictionary,
+		box_transform: Transform3D, box_size: Vector3, tolerance: float = TOLERANCE) -> Dictionary:
 	var mesh_nodes := player.body.character.find_children("*", "MeshInstance3D", true, false)
-	if mesh_nodes.is_empty() or player.skeleton == null or ik == null or box == null:
+	if mesh_nodes.is_empty() or player.skeleton == null or ik == null:
 		return {"available": false}
 	var sample_vertices := 0
 	var sample_max_depth := 0.0
 	var sample_bones: Dictionary = {}
-	var box_inverse := box.global_transform.affine_inverse()
-	var half_size := box.size * 0.5
+	var box_inverse := box_transform.affine_inverse()
+	var half_size := box_size * 0.5
 	for mesh_node: Node in mesh_nodes:
 		var mesh_part := mesh_node as MeshInstance3D
 		if mesh_part.mesh == null:

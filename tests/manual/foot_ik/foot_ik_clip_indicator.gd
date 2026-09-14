@@ -20,7 +20,7 @@ func spawn(parent: Node3D, side: String) -> void:
 
 
 func update(space: PhysicsDirectSpaceState3D, mask: int, side: String,
-		points: PackedVector3Array) -> void:
+		points: PackedVector3Array, player: Player = null) -> void:
 	var result := MONITOR.check(space, points, mask)
 	var marker := _markers[side] as MeshInstance3D
 	var penetrating: bool = result["penetrating"] and float(result["depth_m"]) > LOG_THRESHOLD_M
@@ -30,6 +30,14 @@ func update(space: PhysicsDirectSpaceState3D, mask: int, side: String,
 		return
 	marker.global_position = result["point"]
 	if not bool(_active.get(side, false)):
-		print("[FOOT_IK_CLIP] side=%s depth_m=%.4f point=%s" % [
-				side, result["depth_m"], result["point"]])
+		var point_index := points.find(result["point"])
+		var joint := "ankle" if point_index == 0 else "toe_tip"
+		var context := ""
+		if player != null:
+			context = " actor=%s animation=%s time=%.4f root=%s yaw_deg=%.4f" % [
+					player.get_path(), player.body.anim_player.current_animation,
+					player.body.anim_player.current_animation_position, player.global_position,
+					rad_to_deg(player.rotation.y)]
+		print("[FOOT_IK_CLIP] frame=%d side=%s joint=%s depth_m=%.4f point=%s%s" % [
+				Engine.get_physics_frames(), side, joint, result["depth_m"], result["point"], context])
 	_active[side] = true

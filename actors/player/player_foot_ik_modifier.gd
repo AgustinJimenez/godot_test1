@@ -163,6 +163,7 @@ var _final_bone_poses: Dictionary = {} # int bone index -> Transform3D (skeleton
 var _final_bone_poses_frame := -1
 var _smoothed_shared_drop := 0.0
 var _pelvis_lateral_shift := Vector3.ZERO
+var _spawn_pose_frame := Engine.get_physics_frames() + 1 # initial placement only (025)
 func get_final_bone_global_pose(bone_idx: int) -> Transform3D:
 	return _final_bone_poses.get(bone_idx, Transform3D())
 ## True only if _final_bone_poses was populated this exact physics frame (018 finding E) -
@@ -821,6 +822,8 @@ func _retract_to_reachable(space: PhysicsDirectSpaceState3D, side: StringName, h
 				return {"found": true, "target": target, "surface": surface, "normal": normal}
 	return {"found": false}
 func _shape_shared_drop(raw: float, delta: float, stationary: bool) -> float:
+	if delta <= 0.0:
+		return _smoothed_shared_drop
 	var lower_acquiring: bool = not _ground_sampler.idle_lower_acquiring.is_empty()
 	if stationary and delta > 0.0:
 		var engage_rate := shared_drop_idle_engage_rate
@@ -841,6 +844,7 @@ func _shape_shared_drop(raw: float, delta: float, stationary: bool) -> float:
 	return _smoothed_shared_drop
 func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		per_leg: Dictionary, shared_drop: float, delta: float) -> void:
+	var initialize_pose := delta > 0.0 and Engine.get_physics_frames() <= _spawn_pose_frame
 	if _ground_sampler.prepare_overheight_split_safe_zone(
 			player_body.get_world_3d().direct_space_state, per_leg):
 		shared_drop = 0.0
@@ -854,10 +858,8 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			if (player_body != null and player_body.anim_player != null) else "")
 	var stationary: bool = (cur_anim == "unarmed_idle" or cur_anim == "unarmed_torch_idle"
 			or cur_anim == "unarmed_crouch_idle")
-	# Last frame's stable pelvis, used only to seed this frame's upper-foot/slope hip position
-	# before this frame's own pelvis is known (018 finding A, joint pass) - those pelvis values
-	# move smoothly/rate-limited, so a one-frame-stale estimate is a bounded approximation.
-	var prev_shared_drop := _smoothed_shared_drop
+	# Previous stable pelvis seeds this frame's upper-foot/slope estimate (018).
+	var prev_shared_drop := shared_drop if initialize_pose else _smoothed_shared_drop
 	var prev_lateral_shift := _pelvis_lateral_shift
 	for side: StringName in per_leg:
 		var other_side: StringName = &"right" if side == &"left" else &"left"
@@ -874,12 +876,10 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			per_leg[side]["seam_hold_target"] = _leg_solver.debug_solve_target[side]
 	_target_coordinator.resolve_stationary(
 			player_body.get_world_3d().direct_space_state, per_leg, stationary, delta, to_world)
-	# Finish each leg's target decision now (upper-foot/slope), before pelvis is derived from
-	# it - see FootIKTargetCoordinator.finalize_leg_targets (018 finding A, joint pass).
+	# Finalize upper-foot/slope targets before pelvis planning (018).
 	_target_coordinator.finalize_leg_targets(per_leg, prev_shared_drop, prev_lateral_shift,
-			to_world, delta, solver_backend == SolverBackend.NATIVE_TWO_BONE, stationary)
-	# A reassigned target (replace_invalid_with_raw_support) missed shared_drop above, which
-	# ran before this reassignment - redo the same reach check against the final target.
+			to_world, delta, solver_backend == SolverBackend.NATIVE_TWO_BONE, stationary, initialize_pose)
+	# Recheck reach after any reassignment.
 	for side: StringName in per_leg:
 		var leg: Dictionary = per_leg[side]
 		if not leg.has(&"final_target"):
@@ -893,6 +893,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		shared_drop = maxf(shared_drop,
 				(hip_pos.y - target.y) - sqrt(maxf(0.0, max_reach * max_reach - h_sq)))
 	shared_drop = minf(shared_drop, step_down_max_crouch)
+	if initialize_pose: _smoothed_shared_drop = shared_drop
 	shared_drop = _shape_shared_drop(shared_drop, delta, stationary)
 	var target_shift := Vector3.ZERO
 	if per_leg.has(&"left") and per_leg.has(&"right") and not _bone_indices.is_empty():
@@ -975,12 +976,12 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 				and not _gait_tracker.is_body_translating() and (_velocity_suppressed
 				or player_body.anim_player.current_animation_position <= 0.10)
 				and not _leg_solver.has_active_correction(side))
-		if not leg["hit"] or not has_target or (preserve_idle and shared_drop <= 0.0) or seam_acquire:
+		if (not leg["hit"] or not has_target or (preserve_idle and shared_drop <= 0.0)
+				or (seam_acquire and not initialize_pose)):
 			_target_coordinator.release_leg(side)
 			_leg_solver.release_to_animation(skel, side, delta)
 			continue
-		# upper-foot/slope adjustment already ran above, before pelvis was derived from its
-		# output (018 finding A, joint pass) - target is that final decision, not recomputed.
+		# Use the finalized upper-foot/slope decision (018), not a recomputed target.
 		var plan := _target_coordinator.get_plan(side)
 		var validated_target: Vector3 = (plan.ankle_target if plan != null
 				else leg.get(&"final_target", Vector3.ZERO))
@@ -992,7 +993,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 		var still_validated: bool = (leg.get("target_plan_validated", false)
 				and validated_target.distance_to(target) <= 0.001)
 		still_validated = _target_coordinator.record_solve_target(side, target, still_validated)
-		var solve_options := {&"instant": leg.get("instant", false) or brace_upper,
+		var solve_options := {&"instant": leg.get("instant", false) or brace_upper or initialize_pose,
 				&"target_plan_validated": still_validated,
 				&"stationary_slope": leg.get("stationary_slope", false)}
 		_leg_solver.solve(skel, side, solve_hip, target, leg["upper"], leg["lower"], gw, cw, delta,

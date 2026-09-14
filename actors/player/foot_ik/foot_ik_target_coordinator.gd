@@ -89,7 +89,7 @@ func resolve_stationary(space: PhysicsDirectSpaceState3D,
 ## stable pelvis values, used only to seed this frame's estimate hip for this math.
 func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 		prev_lateral_shift: Vector3, to_world: Transform3D, delta: float, native: bool,
-		stationary: bool) -> void:
+		stationary: bool, initialize_pose: bool = false) -> void:
 	for side: StringName in per_leg:
 		var leg: Dictionary = per_leg[side]
 		if not leg.get("hit", false) or not (leg.has("target") or leg.has("ground_target")):
@@ -108,6 +108,7 @@ func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 			var est_hip: Vector3 = (leg["hip_pos"] - Vector3.UP * prev_shared_drop
 					+ prev_lateral_shift)
 			var upper_context := {
+				"initialize_pose": initialize_pose,
 				"hip": est_hip, "target": final_target,
 				"surface": leg.get("raw_target", Vector3(INF, INF, INF)),
 				"normal": leg.get("raw_normal", Vector3.UP), "upper": leg["upper"], "lower": leg["lower"],

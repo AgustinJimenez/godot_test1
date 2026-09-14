@@ -98,6 +98,9 @@ clipping bug. A separate, much more precise per-vertex-mesh-vs-floor checker alr
 box-approximation artifact, but it raycasts every skinned mesh vertex every physics frame and
 **causes a severe FPS drop if left on during ordinary interactive play**. Only enable it for a
 short, isolated (ideally headless) test, then remove the marker file immediately after.
+Its ray-based `sample()` checks only the collider under the root; zero there does not clear a toe
+inside a neighboring higher tread. Use `sample_box_transform()` against nearby real box colliders
+for adjacent-riser evidence. Match clip events by their logged frame/joint, never nearest root.
 
 The manual-test scene scripts under `tests/manual/foot_ik/` (`foot_ik_debug_overlay.gd` especially)
 sit at the project's max-file-lines cap essentially permanently. When adding any non-trivial new
@@ -181,6 +184,11 @@ the same shape as `_landing_grace_time` or this fix's `split_safe_retry_after_fr
 Procedural bone corrections belong in `SkeletonModifier3D`, not an ordinary node's `_process()`.
 Snapshot all base animation poses before changing an ancestor chain. When a paused tuning UI changes
 modifier data, call `Skeleton3D.advance(0.0)` to refresh the rendered result.
+
+`AnimationPlayer.play()` can select a clip before its pose is applied. Gameplay autoplay must publish
+that first pose before a zero-delta modifier refresh can cache the imported pose as animation history.
+Initial grounded placement must initialize pelvis, targets and legs together; borrowing a loop-seam
+release or interpolating from an unrelated imported pose can drag feet through the starting terrain.
 
 Animation loop resets are real discontinuities. Before fixing a periodic seam snap, read
 `docs/known_issues/animation_loop_reset_seam.md` and use the existing discontinuity suppression.

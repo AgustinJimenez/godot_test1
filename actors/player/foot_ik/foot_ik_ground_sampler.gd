@@ -5,6 +5,7 @@ const WORLD_COLLISION_MASK := 1
 const LANDING_PLANNER := preload("res://actors/player/foot_ik/foot_ik_landing_planner.gd")
 const RUNTIME_SETTINGS := preload("res://actors/player/foot_ik/foot_ik_runtime_settings.gd")
 const STEP_ARC := preload("res://tools/foot_ik/foot_step_arc.gd")
+const TARGET_MOTION := preload("res://tools/foot_ik/foot_target_motion.gd")
 const LANDING_UPPER_CONFIRM_TRACKER := preload(
 		"res://tools/foot_ik/landing_upper_confirm_tracker.gd")
 const CONTACT_SURFACE_COLLISION_MASK := 1 << 5
@@ -201,8 +202,9 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 					side, hip, cached_target, upper, lower, to_world)
 				<= deg_to_rad(_owner._leg_solver.max_hip_swing_degrees(side))):
 			var current_surface: Vector3 = smoothed_target[side]
-			var next_surface := current_surface.move_toward(cached_surface,
-					_settings.upper_foot_acquire_speed * float(context["delta"]))
+			var next_surface := (cached_surface if context.get("initialize_pose", false)
+					else current_surface.move_toward(cached_surface,
+							_settings.upper_foot_acquire_speed * float(context["delta"])))
 			smoothed_target[side] = next_surface
 			return next_surface + Vector3.UP * offset
 		compressed_upper_target.erase(side)
@@ -251,7 +253,9 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 		return target
 	compressed_upper_target[side] = best_surface
 	smoothed_normal[side] = Vector3.UP
-	return target
+	if context.get("initialize_pose", false):
+		smoothed_target[side] = best_surface
+	return best_surface + Vector3.UP * offset if context.get("initialize_pose", false) else target
 func _find_partial_upper_target(space: PhysicsDirectSpaceState3D,
 		side: StringName, surface: Vector3) -> Vector3:
 	var candidate := surface
@@ -511,23 +515,8 @@ func _latch_idle_lower_support(space: PhysicsDirectSpaceState3D, side: StringNam
 ## every target-smoothing path below so none needs its own collision awareness (024).
 func _hold_short_of_collision(space: PhysicsDirectSpaceState3D,
 		previous: Vector3, intended: Vector3) -> Vector3:
-	var horizontal_dist := Vector2(previous.x, previous.z).distance_to(Vector2(intended.x, intended.z))
-	if horizontal_dist < 0.001: return intended
-	const HOLD_PROBE_UP := 0.05
-	const HOLD_MARGIN := 0.03
-	var probe_y := maxf(previous.y, intended.y) + HOLD_PROBE_UP
-	var from := Vector3(previous.x, probe_y, previous.z)
-	var to := Vector3(intended.x, probe_y, intended.z)
-	var query := PhysicsRayQueryParameters3D.create(from, to)
-	query.collision_mask = GROUND_COLLISION_MASK
-	query.collide_with_areas = false
-	query.exclude = _player_exclude()
-	var hit := space.intersect_ray(query)
-	if hit.is_empty(): return intended
-	var hit_dist: float = from.distance_to(hit["position"])
-	if hit_dist >= horizontal_dist - HOLD_MARGIN: return intended
-	var safe_fraction := maxf(0.0, hit_dist - HOLD_MARGIN) / horizontal_dist
-	return previous.lerp(intended, safe_fraction)
+	return TARGET_MOTION.hold_short_of_collision(
+			space, previous, intended, GROUND_COLLISION_MASK, _player_exclude())
 ## Horizontal move_toward, held at blocking geometry instead of clipping through it.
 func _move_toward_held(space: PhysicsDirectSpaceState3D, previous: Vector3,
 		target: Vector3, speed: float, delta: float) -> Vector3:
