@@ -520,7 +520,7 @@ contracts would not solve that problem.
 
 Important changes since the earlier review:
 
-- [010](010_foot_ik_target_coordinator_consolidation.md) now concludes migration of the 11
+- [010](archive/010_foot_ik_target_coordinator_consolidation.md) concludes migration of the 11
   ground-anchored owner categories. `STAIR_SWING` is intentionally exempt from planted-ground
   validation. Do not describe these owners as still waiting to be migrated.
 - That is routing coverage, not universal validation coverage: gates, exemptions and later

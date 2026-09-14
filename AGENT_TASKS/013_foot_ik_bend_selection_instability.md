@@ -179,7 +179,7 @@ comparison. The result is a discontinuous jump in the chosen bend direction, whi
   itself, not merely "crossing a rotation threshold between frames."
 - This likely explains `FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s `turn_step_m=0.056851` value -
   present, unexplained, and treated as an unrelated known-red baseline case in every full-suite
-  run this whole session (see [010](010_foot_ik_target_coordinator_consolidation.md) and
+  run this whole session (see [010](archive/010_foot_ik_target_coordinator_consolidation.md) and
   [012](012_foot_ik_ramp_cross_slope_penetration.md)). Not proven to be the exact same numeric
   cause yet - the mechanism, animation, and rotation trigger all line up closely enough that
   this should be checked before assuming otherwise.
@@ -671,7 +671,7 @@ attempt in 012 failed by only checking the first:
 - [012](012_foot_ik_ramp_cross_slope_penetration.md) - where this was first found, via ramp
   diagonal-walk/spin test coverage; contains the fuller investigation trail and the related
   (reverted) `adjust_idle_slope_target` escape-hatch fix attempt.
-- [010](010_foot_ik_target_coordinator_consolidation.md) - documents
+- [010](archive/010_foot_ik_target_coordinator_consolidation.md) - documents
   `FOOT_IK_IDLE_PLANT_STABILITY_CHECK`'s `turn_step_m` as a known pre-existing baseline failure,
   never previously root-caused.
 - `actors/player/foot_ik/foot_ik_leg_solver.gd` - `_select_feasible_bend`,

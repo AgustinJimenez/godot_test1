@@ -23,7 +23,8 @@ that prompted this investigation (see "What was actually fixed" below).
    system this session initially suspected - it is owned by `LANDING_UPPER`
    (`straighten_compressed_upper_target` in `foot_ik_ground_sampler.gd`), a separate mechanism.
 2. `foot_ik_target_coordinator.gd` already has a toe/leaf envelope safety check
-   (`_toe_envelope_valid`, from `AGENT_TASKS/008`) that exists specifically for "a valid ankle
+   (`_toe_envelope_valid`, from [archived task 008](archive/008_foot_ik_platform_edge_safety.md))
+   that exists specifically for "a valid ankle
    latch with the toe poking into the next riser" - exactly this symptom. But it never runs for
    this owner during this scenario: `legacy_transition_active` (true whenever *either* foot is
    mid lower-tread transition) disables coordinator validation for every owner except the three
@@ -121,6 +122,107 @@ Reports `turn_penetration_m`/`turn_penetration_side`/`turn_penetration_frame` an
 `MAX_TURN_PENETRATION_M := 0.001`. This is the first check in the suite that samples *during* a
 transition rather than only the settled end state, and it is currently, correctly, red.
 
+## 2026-09-14 continuation: live idle STEP-DOWN clip (no rotation), same family
+
+User live report after the 025 walking fix: "left foot is clipping". Preserved trace
+`/tmp/foot_ik_controlled_live_20260914_112634.jsonl` (776 frames, mostly `moves/unarmed_idle`).
+Checked against the **real** preview box colliders (same oracle as the live `[FOOT_IK_CLIP]`
+monitor, not the simplified `trace_query.py toe-riser` preset): **left foot 0.2948 m at frame 607**,
+428 frames > 5 mm; right 0.2009 m.
+
+- **Pre-existing, not from the 025 walking fix.** A trace preserved *before* that fix
+  (`/tmp/foot_ik_controlled_session_20260914_000613.jsonl`) shows the same class on real colliders:
+  left 0.2087 m, right 0.1826 m.
+- **Not rotation** (unlike this task's original case): frame 607 is idle, `movement_input=0`,
+  constant `root_yaw`. Owner `idle_lower_latched`, `step_down=true`, `solver_action=
+  constrain_knee_direction`.
+- The target is **reachable and was validated**: hip (14.61,1.63,1.34) -> solve_target
+  (14.87,1.146,1.62), distance 0.62 < leg reach 0.887, `plan_solve_validated=true`, `ground_weight`
+  and `raw_weight` both 1.0. Yet the rendered ankle (`foot_pos` == `solved_foot_pos` ==
+  `joints.foot.position`) sits at 0.842 - **0.30 m below its own target**.
+
+### Deterministic headless repro (throwaway, recipe)
+
+Instance `foot_ik_preview.tscn`, walk the real Player up the 0.35m stairs to `root.z >= 1.35`, then
+idle, sampling `FootIKLivePenetrationMonitor.check` on both feet every physics frame:
+
+```
+godot --headless --fixed-fps 60 --path . res://tests/manual/foot_ik/_idle_step_repro.tscn --quit-after 800
+# -> IDLE_STEP_REPRO max=0.183097 frame=119 side=left (deterministic; 0.182462 at frame 120 with
+#    the 025 fix stashed, i.e. unchanged by it)
+```
+
+At repro f119 the player's left foot has `plan_final_adjustment=accepted_adjustment`,
+`plan_solve_validated=false`, target (15.276,1.496,1.937), rendered ankle ~(15.276,1.302,1.81) -
+~0.19 m low with `ground_weight=1.0`, `diff_pos_m=0`.
+
+### Causes ruled out by direct experiment (do not re-try blind)
+
+- The 025 toe-clearance retry: A/B unchanged.
+- `_limit_idle_stance_crossing`: forcing `target_plan_validated=true` in `evaluate_pose` (limiter
+  disabled) left the penetration identical (0.183097).
+- Gating that limiter by `absf(target.y - foot_pos.y)`: no effect (animated foot height is near the
+  target here).
+- Reach (0.62 vs 0.887 m) and hip-swing clamp (`max_hip_swing_degrees=100`, measured thigh 42).
+- Teleport / scene contamination (single idle, fresh run).
+
+### Remaining suspect (confirmed by runtime instrumentation of the repro)
+
+Temporary `DBG_EVAL` print in `evaluate_pose` (after the limiters, with `to_world.origin` to
+separate the repro player from the preview's other characters) at the failing frames:
+
+```
+f=45 x=15.00 z=0.62 err=0.134 tgt=(15.114,0.856,0.557) anim_foot_y=0.936 new_foot_y=0.732
+  hip_y=1.617 dist=0.764 reach=0.764 max=0.888 swing_clamped=false
+f=58 x=15.00 z=1.14 err=0.153 tgt=(15.113,1.157,1.006) anim_foot_y=1.196 new_foot_y=1.026
+  hip_y=1.898 dist=0.755 reach=0.755 max=0.888 swing_clamped=false
+f=75 x=15.05 z=1.80 err=0.203 tgt=(14.949,1.265,1.935) anim_foot_y=1.307 new_foot_y=1.125
+  hip_y=1.994 dist=0.743 reach=0.743 max=0.888 swing_clamped=false
+```
+
+Key readings: `dist == reach` (the target distance is used as-is, **not clamped by reach**
+`max=0.888`), `ground_weight = chain_weight = rotation_weight = 1`, `swing_clamped=false`, yet
+`new_foot_pos.y` lands 0.12-0.20 m **below** `target.y` (and even below `anim_foot_y` at f45). So
+the shortfall is **not reach, weight, or the hip-swing clamp** - it is inside the solver's
+orientation/limit chain that turns the two-bone result into the rendered pose:
+`_limit_rendered_upright_shin` (`knee_delta = _limit_rendered_upright_shin(...)`, evaluator
+~line 119), `_limit_negative_rendered_knee`, or the `rotation_weight` slerp. At f=38 the target is
+genuinely over-reach (`reach=1.006 > max=0.888`, `dist` clamped to 0.887), which is a separate,
+correct fall-short case.
+
+### Root cause NOT the rate limiter speed (hypothesis refuted; earlier instrumentation suspect)
+
+An instrumentation pass staged `new_foot_pos.y` (`ideal` = two-bone result, `rl` = after
+`_limit_correction`, `recompute` = line-128 value, then stance/knee limiters) and separately logged
+`_limit_correction`'s angle/budget. It appeared to show the whole drop in `_limit_correction`
+(`ideal == target`, budget 1.5 deg/frame at `standing_joint_speed_degrees=90`, correction
+perpetually 6-9 deg behind).
+
+**That conclusion did not survive its own test.** Raising the idle flat-surface joint speed:
+
+| idle flat-surface speed | repro max depth | `FOOT_IK_TOE_RISER_CHECK` step |
+| --- | --- | --- |
+| 90 (current) | 0.183 | PASS (0.0265) |
+| 260 | 0.179 | PASS (0.0318) |
+| 480 | **0.196 (worse)** | **FAIL (0.0357 > 0.035)** |
+
+A higher speed did **not** reduce the repro clip and regressed the toe-riser step. So the clip is
+not a simple rate-limiter speed limit.
+
+**Instrumentation caveat:** the preview scene runs several stair walkers that spawn at essentially
+the same `x` as the repro player (both `x ~15.0`), and the `to_world.origin.x in (14.8, 15.3)`
+filter did not separate them - the frames analyzed may have been a walker, not the repro player.
+Any future instrumentation here must key on skeleton/instance identity (AGENTS.md's warning about
+the multi-character preview), not root position.
+
+Blanket `instant_correction` for grounded flat feet also reduced the repro to 0.082 but regressed
+`FOOT_IK_TOE_RISER_CHECK` step to 0.039 - same blocker, so both the speed bump and the blanket
+instant variants are refuted. Do not re-try either.
+
+Next concrete step: redo the staged instrumentation keyed on the repro player's actual skeleton/
+instance id, at the exact frame where the harness reports its max depth (not a hand-picked frame),
+to find which stage drops the foot for *that* character.
+
 ## What to try next (not attempted, needs a fresh investigation)
 
 - **Most promising, from attempt 3's finding:** trace the hip/knee-vs-foot rate-limiting
@@ -150,7 +252,8 @@ transition rather than only the settled end state, and it is currently, correctl
   target during this exact scenario.
 - `tests/manual/foot_ik/foot_ik_idle_plant_stability_check.gd::_sample_turn_penetration` - the new
   regression coverage.
-- `AGENT_TASKS/008` - the original toe-envelope check this gap was found in.
+- [Archived task 008](archive/008_foot_ik_platform_edge_safety.md) - the original toe-envelope
+  check this gap was found in.
 - `AGENTS.md`'s Foot IK section - durable lessons from this investigation are recorded there
   (the `legacy_transition_active` gap, the `FootClearanceEvaluator` per-frame pattern, and the
   "confirm which owner governs the target before assuming which validation path is responsible"

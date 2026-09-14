@@ -1,6 +1,6 @@
 # 024 archive: rejected latch investigation before the 2026-09-13 feedback-loop fix
 
-Historical handoff below; current status is in `../024_idle_lower_latch_multi_evaluation_flicker.md`.
+Historical handoff below; final status is in `024_idle_lower_latch_multi_evaluation_flicker.md`.
 
 ## Status and scope
 

@@ -2,17 +2,18 @@
 
 ## Status and scope
 
-Active, awaiting live confirmation. Stabilize stair/edge foot placement without repeated
-idle adjustments, clipping, unnatural knees, or body slides. Current work is uncommitted;
-do not commit visual/gameplay changes until the user confirms them. Do not auto-play the
-preview; the user starts and stops it.
+Completed and archived. The core platform-edge safety behavior, coordinator boundary,
+safe-zone recovery, joint constraints, and edge regressions were implemented and committed.
+Later work completed the owner migration that this file still described as pending.
 
-Keep this document a current handoff, not an append-only journal. Replace superseded
-status/evidence; code and acceptance scenes hold detailed behavior. Earlier captures,
-rejected experiments, and results are preserved in the
-[investigation archive](archive/008_foot_ik_platform_edge_safety_history.md).
+Remaining independent defects are tracked by [019](../019_foot_ik_toe_riser_clip_during_rotation.md)
+(idle/rotation toe clipping) and [025](../025_stair_walk_toe_riser_clip.md) (walking fix awaiting
+live confirmation); broader architecture work remains in
+[018](../018_ik_implementation_review.md). They do not keep this umbrella task active. Earlier
+captures, rejected experiments, and results are preserved in the
+[investigation archive](008_foot_ik_platform_edge_safety_history.md).
 
-## Architecture and remaining work
+## Historical architecture and remaining work
 
 The core problem is competing target owners, not simply insufficient smoothing.
 `FootIKTargetPlan` and `FootIKTargetCoordinator` now arbitrate stationary live contact,
@@ -25,7 +26,7 @@ Landing, active lower acquisition, stair swing, and locomotion still use legacy 
 Do not migrate them by just enabling the stationary validator: an earlier attempt caused
 a 0.46m landing jump. A valid plan currently does **not** prove full rendered-leg clearance.
 
-Next work:
+Work proposed at that historical handoff:
 
 1. Get live confirmation of stationary coordinator, knee, and toe-clearance changes.
 2. Extend plan validity to the rendered footprint/leg envelope; keep collision policy in
@@ -35,7 +36,7 @@ Next work:
 4. Check intermediate final poses and zero-delta modifier refreshes, not only final
    contact/weight summaries. Preserve authored flat-ground animations.
 
-## Current fixes awaiting live confirmation
+## Historical fixes awaiting live confirmation
 
 - Stationary coordination and stale-lock release: `foot_ik_idle_plant_stability_check.tscn`.
 - Joint-feasible primary bend selection. The negative-knee fallback no longer overwrites

@@ -92,7 +92,7 @@ same frame. This is the concrete shape of "competing owners."
 
 ## Ownership matrix: the idle-lower-support family (first slice, from 008's dead-end fixes)
 
-Scoped to the state cluster behind the still-open right-foot clip in 008: whether a foot may
+Scoped to the state cluster behind the then-open right-foot clip in 008 (now task 019): whether a foot may
 plant on a *lower* tread while idle (e.g. straddling a stair riser). All in
 `foot_ik_ground_sampler.gd` unless noted.
 
@@ -224,10 +224,10 @@ stays the review/decision record.
 
 ## References
 
-- [`docs/foot_ik_industry_review.md`](../docs/foot_ik_industry_review.md) — real-system
+- [`docs/foot_ik_industry_review.md`](../../docs/foot_ik_industry_review.md) — real-system
   comparison (Unity Final IK, a shipped Godot addon, Unreal Motion Warping, Perlin's
   phase-shift technique) and the "concretely scoped alternative" this task's option (b) cites.
 - [`007_foot_ik_stair_contact_and_locomotion.md`](007_foot_ik_stair_contact_and_locomotion.md) —
   durable architecture and stateful-ownership rules.
-- [`008_foot_ik_platform_edge_safety.md`](008_foot_ik_platform_edge_safety.md) — active bug
-  fixing and the target-coordinator migration this review's option (a) would complete.
+- [`008_foot_ik_platform_edge_safety.md`](008_foot_ik_platform_edge_safety.md) — historical bug
+  fixing and the target-coordinator migration this review's option (a) later completed.

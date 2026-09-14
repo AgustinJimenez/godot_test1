@@ -77,6 +77,11 @@ or full regression output into the conversation. Use `scripts/trace.sh`:
 - `--changes-only`, `--feet`, `--bones`, and `--arrows` for compact inspection;
 - `--last-n 0` for the complete capture (the default final 40 frames can hide a recovered defect).
 
+For schema-aware questions over a JSONL capture (worst frames, clip episodes, toe-in-tread,
+a swing-state window), use `scripts/trace_query.py` instead of printing frames - it emits a
+few compact lines and never the raw trace. See
+`AGENT_TASKS/archive/026_token_efficiency_workflow.md`.
+
 Before running any Foot IK harness after the user asks to inspect the latest live log, preserve
 `user://foot_ik_controlled.jsonl` under a timestamped `/tmp` name. Harnesses share and overwrite this
 rolling trace. Marker files under `user://` can also alter later headless runs; remove temporary Foot
@@ -285,7 +290,8 @@ against `player.get_node(player.root_node).get_path_to(target_skeleton)` first -
 
 ## Foot IK and movement
 
-The active consolidation is `AGENT_TASKS/010_foot_ik_target_coordinator_consolidation.md`
+The completed consolidation is archived at
+`AGENT_TASKS/archive/010_foot_ik_target_coordinator_consolidation.md`
 (migrating every target owner through one validated boundary); `009` holds the ownership-matrix
 review behind that decision, `008` the still-open platform-edge bugs, `011`/`012` newer findings,
 `013` the knee-bend-plane search instability (`_select_feasible_bend`, shared by every leg solve
@@ -539,7 +545,8 @@ foot. Find the actually-relevant collider(s) generically at runtime (a small-sph
 hardcoding tread coordinates, since the point may be near either the surface it's leaving or the
 one it's approaching, not the one directly beneath it.
 
-Foot IK's target-coordinator toe/leaf envelope check (`_toe_envelope_valid`, `AGENT_TASKS/008`)
+Foot IK's target-coordinator toe/leaf envelope check (`_toe_envelope_valid`,
+[archived task 008](AGENT_TASKS/archive/008_foot_ik_platform_edge_safety.md))
 only runs for an owner that reaches `_finish_validation` at all - `legacy_transition_active`
 (true whenever *either* foot is mid lower-tread transition) silently disables coordinator
 validation for every owner except the three lower-transition ones themselves, even for a

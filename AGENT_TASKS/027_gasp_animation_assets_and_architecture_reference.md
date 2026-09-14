@@ -1,4 +1,4 @@
-# 016: GASP animation assets and architecture reference
+# 027: GASP animation assets and architecture reference
 
 ## Status and scope
 
@@ -37,7 +37,7 @@ port Unreal code, or build a complete Motion Matching system.
 Inspect one pinned GASP version and distinguish documentation claims from behavior verified
 in the actual project. Produce a small responsibility/data-flow map and compare it with
 [015](015_foot_ik_architecture_direction.md) and the coordinator migration in
-[010](010_foot_ik_target_coordinator_consolidation.md).
+[010](archive/010_foot_ik_target_coordinator_consolidation.md).
 
 Focus on:
 

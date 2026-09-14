@@ -5,7 +5,8 @@
 Open, not started. This is a direction-setting task, not a bug fix: it records an outside
 architectural assessment of the whole Foot IK system (solicited by the user, reviewed and
 largely agreed with), and scopes how to act on it incrementally rather than as a rewrite.
-Read this before starting [010](010_foot_ik_target_coordinator_consolidation.md)'s remaining
+Read this before extending [010](archive/010_foot_ik_target_coordinator_consolidation.md)'s
+completed consolidation with the remaining
 `STAIR_SUPPORT`/`STAIR_SWING` migration - that task is exactly where this one's central concern
 (continuous target mutation with no single authoritative writer) already lives.
 
@@ -93,7 +94,8 @@ post-coordinator mutation point at once, in code this project's own history show
 trust even a single-line, narrowly-scoped fix in this area. Treat this as a lens to apply
 incrementally, not a project to start outright:
 
-1. **Use it to shape [010](010_foot_ik_target_coordinator_consolidation.md)'s remaining
+1. **Use it to shape follow-on work from
+   [010](archive/010_foot_ik_target_coordinator_consolidation.md), including the remaining
    `STAIR_SUPPORT`/`STAIR_SWING` migration**, rather than opening a separate rewrite effort.
    That task is already exactly where points 1 and 2 live: a continuously-transferring target
    with no single authoritative writer, mutated by `foot_ik_stair_predictor.gd` outside the
@@ -122,9 +124,9 @@ incrementally, not a project to start outright:
 
 ## References
 
-- [009](009_foot_ik_architecture_review.md) - the existing ownership-matrix review this
+- [009](archive/009_foot_ik_architecture_review.md) - the ownership-matrix review this
   assessment largely corroborates from an outside angle.
-- [010](010_foot_ik_target_coordinator_consolidation.md) - the coordinator consolidation this
+- [010](archive/010_foot_ik_target_coordinator_consolidation.md) - the coordinator consolidation this
   assessment's point 1/2 concerns should shape, especially its still-open
   `STAIR_SUPPORT`/`STAIR_SWING` piece.
 - [013](013_foot_ik_bend_selection_instability.md) - the `release_to_animation()` fix

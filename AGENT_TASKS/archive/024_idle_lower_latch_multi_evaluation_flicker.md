@@ -4,7 +4,7 @@
 
 **Fixed, live-confirmed by the user, and committed** (`4ad3478` on `experiment/native-foot-ik`).
 Original five rejected experiments are preserved in
-[the archive](archive/024_rejected_latch_investigation.md).
+[the archive](024_rejected_latch_investigation.md).
 
 ## Confirmed causes (2026-09-13)
 

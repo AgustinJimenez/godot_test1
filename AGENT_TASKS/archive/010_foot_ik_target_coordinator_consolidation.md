@@ -12,7 +12,7 @@ support validation doesn't apply to a target that's supposed to be airborne mid-
 deferred/risky case like the others were). Each migrated owner was live-tested by the user
 before being committed, per `AGENTS.md`. Remaining follow-on work (toe/leaf validation
 generalization, retiring now-redundant ad-hoc checks) is tracked in "Proposed order" below and
-in [015](015_foot_ik_architecture_direction.md)'s broader architecture direction - this task's
+in [015](../015_foot_ik_architecture_direction.md)'s broader architecture direction - this task's
 own core objective (route every real, ground-anchored owner through one validated boundary) is
 done.
 
@@ -423,7 +423,7 @@ caution above - this only covers ordinary flat-ground walk/run stance, not stair
 
 ## See also: architecture direction (015)
 
-[015](015_foot_ik_architecture_direction.md) records an outside architectural assessment of
+[015](../015_foot_ik_architecture_direction.md) records an outside architectural assessment of
 the whole Foot IK system, largely corroborating this task's own findings from an outside
 angle: the coordinator is not actually the final authority (the modifier can still change a
 target after validation - lateral-shift re-centering, slope-target adjustment, seam-freeze
@@ -716,5 +716,5 @@ implementation.
 ## References
 
 - [009](009_foot_ik_architecture_review.md) - ownership matrix and decision record.
-- [008](008_foot_ik_platform_edge_safety.md) - the still-open right-foot clip this task's
-  step 1 targets, and the four dead-end fix attempts already tried on it.
+- [008](008_foot_ik_platform_edge_safety.md) - historical platform-edge work and the four
+  dead-end fix attempts that preceded the separately tracked task 019 defect.

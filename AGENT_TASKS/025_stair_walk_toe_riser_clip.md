@@ -1,4 +1,4 @@
-# 025: Recurring toe clip — startup idle identified, walking scope still open
+# 025: Recurring toe clip — startup fixed, walking fix awaiting live confirmation
 
 ## Status
 
@@ -6,12 +6,234 @@
 fast suite (no regressions beyond the pre-existing task-019 baseline), and committed**
 (`cd2a398` on `experiment/native-foot-ik`). Task 024 is fixed and committed separately.
 
-Still open: real clipping during ordinary walking persists, separate from the startup bug this
-fix addressed. Same live session that confirmed the startup fix also logged 39 clip events during
+### 2026-09-14 continuation checkpoint — walking fix implemented, awaiting live confirmation
+
+The walking regression now passes headlessly. Do not commit yet: repository policy requires the
+user to test gameplay/animation changes live first. No scene was opened or autoplayed.
+
+The earlier 3-ascent claim below was invalid. The harness teleported a live Player back to the
+bottom while retaining world-space IK locks; resetting IK after teleport created a different but
+equally artificial discontinuity. The durable regression now performs **one uninterrupted ascent**,
+waits for 10 consecutive grounded/active-IK frames before moving, and samples only after the player
+reaches the staircase (`root.z >= -0.25`). The excluded 8.7 mm event was on the flat approach at
+`root.z=-0.706`, not a stair/riser event. Baseline current-HEAD gameplay without this fix still
+failed the real stair traversal at 7.33 cm.
+
+Minimal implementation retained after isolating each experimental layer:
+
+1. A discrete flat stair support owns chain weight at `1.0` during support handoff because its
+   target position is already blended. Blending both target and weight let the low authored flat
+   pose win twice and pull the toe into the higher tread. Slopes retain the existing weight blend.
+2. A predicted swing latch is not discarded merely because it reaches the current support tread
+   while contact weight is below `0.8`; releasing clearance before credible contact caused another
+   late toe drop.
+3. The target coordinator evaluates one immutable candidate, measures the **actual final** ankle,
+   extrapolated toe tip, and leaf against nearby authored box colliders, and only on active stairs
+   retries the same candidate when penetration exceeds 2 mm. The retry applies a bounded ankle-
+   pivot toe clearance correction (maximum 35 degrees), full chain strength, and at most three
+   vertical residual corrections, then commits exactly once. Ordinary flat gait and ramps do not
+   enter this path. Performance timing now brackets the full candidate/check/retry sequence rather
+   than being silently bypassed by the new evaluation route.
+
+Removed after isolation because they were unnecessary and broadened the visible pose change:
+
+- proactive toe pitching from predicted/support surfaces;
+- disabling the standing shin-direction constraint for all discrete-stair frames;
+- retaining stair ownership until every latch cleared (no measurable effect);
+- candidate checks below ordinary flat support (did not fix the separate approach-floor event);
+- instant-up swing lift and unreachable-support retention (earlier attempts; the latter produced
+  catastrophic roughly 0.6 m clips).
+
+Current targeted result:
+
+```text
+FOOT_IK_WALK_CONTACT_CHECK PASS samples=88 ascents=1 depth_m=0.001449
+frame=91 side=right joint=toe_tip ascended_z=3.356
+```
+
+The check is now registered in `scripts/foot_ik_checks.inc.sh`, so main/all runners cannot omit it.
+The candidate snapshot fixture was updated with the newly captured `toe_tip_margin`; its initial
+omission caused explicit script errors and is fixed (`PASS samples=720`). The modifier remains below
+the lint ceiling at 999 lines. `FOOT_IK_025_DIAG` temporary logging is absent.
+
+### 2026-09-14 follow-up: all-suite "4 NEW failures" are false positives (user:// contamination + stale list)
+
+`scripts/check_foot_ik_all.sh` on the checkpoint code reported four NEW (unexpected) failures, all
+`foot_ik_knee_flex_check.tscn` scenarios. They are **not** caused by this fix:
+
+- "Foot IK turning corner knee flexion check" fails on a **fresh clone of committed `HEAD`** too
+  (`one-frame joint movement 0.553m`, limit 0.250m) - the all-suite's `KNOWN_BASELINE_FAILURES` list
+  is stale for this scenario.
+- "Foot IK landing contact-clearance check", "Foot IK late-input predictive landing check" and
+  "Foot IK predictive landing safe-zone check" fail **only because of accumulated `user://`
+  state**, not code. Method that proved it: clone the tree to a scratch dir, rename
+  `application/config/name` in `project.godot` so Godot uses a fresh `user://`, `--import`, then run
+  each scenario. On a fresh `user://`, both committed `HEAD` and the fix PASS all three (4/4 runs
+  each); in the shared, long-lived `user://` they fail deterministically. This is AGENTS.md's
+  "marker files under `user://` can alter later headless runs" warning, generalized: the trace
+  files the suite writes (`foot_ik_controlled.jsonl`, the regression matrices, etc.) contaminate
+  later scenes run against the same shared user dir.
+- Reconfirming attribution with `git stash` inside the shared user dir gives **misleading** results
+  (the stashed baseline passed once, then failed 4/4) - do not trust A/B knee_flex runs in the
+  shared user dir; use the renamed-project clean-room above.
+
+No code change was needed. An intermediate attempt (reverting the flat-tread weight, gating the
+toe-clearance retry to walk/sprint clips) was reverted after the clean-room test showed the
+original fix already passes the three landing scenarios (`PASS` x3) and the walking regression
+(`depth_m=0.000765` on a fresh `user://`). The task file's checkpoint implementation stands as the
+other agent wrote it.
+
+Validation completed at this checkpoint:
+
+- `scripts/check.sh`: PASS (lint/import/GDScript parse).
+- targeted stair-walk check: PASS repeatedly; 1.449 mm worst depth versus 5 mm limit.
+- candidate-evaluation check: PASS, 720 samples.
+- `scripts/check_foot_ik.sh`: new stair check PASS; runner later stops at the pre-existing
+  unreachable lower-support acquisition failure recorded by task 018.
+- `scripts/check_foot_ik_locomotion.sh`: reaches the pre-existing `walk_left`/`walk_right`
+  failures; preceding cases pass. No stair-specific new failure observed.
+- `scripts/check_foot_ik_ramps.sh`: existing ramp-oracle failure remains; summary reports
+  `FAIL cases=245 failed_cases=0 worst_depth_m=0.0` while several zero-depth toe contacts are
+  still labeled per-case FAIL. The stair-only correction does not run on ramps.
+- `scripts/check_foot_ik_ramp_sweep.sh`: existing task-018 baseline reproduced exactly:
+  16 failing cases, worst depth 0.105375 m.
+
+Performance smoke test (`FOOT_IK_PERF_LOG=1`) on the multi-character preview: after warm-up the
+headless stress scene reported about 68 FPS, with complete per-leg sequences around 78–116 us
+average. The user still needs to judge stair pose smoothness live, especially the bounded retry's
+same-frame correction. Latest focused logs are `/tmp/foot_ik_025_minimal_candidate_predictor_v2.log`,
+`/tmp/foot_ik_025_targeted_perf.log`, `/tmp/foot_ik_025_check_foot_ik_v2.log`, and
+`/tmp/foot_ik_025_locomotion.log`.
+
+Bookkeeping note: `CURRENT_TASK.md` is absent from this working tree even though `AGENTS.md` says it
+selects the active task. This continuation followed task 025 directly and did not invent a pointer.
+
+Historical walking symptom, separate from the startup bug: the same live session also logged 39
+clip events during
 genuine walking, most small (5-10mm) but one real: **11.3cm**, right foot toe, mid-walk
-(`moves/unarmed_walk`, frame 469). This is a different, still-uninvestigated case - not the
-startup bug, not confirmed to be 019 (stationary rotation) or 020 (ramp corner) either. Task 019
-and task 020 remain separately open and not declared fixed by this work.
+(`moves/unarmed_walk`, frame 469). **This is now reproduced headlessly on current `HEAD` - see
+"Walking clip reproduced" below—and the continuation fix now passes that regression.** It is not
+the startup bug, 019 (stationary rotation), or 020 (ramp corner). Tasks 019/020 remain separately
+open and are not declared fixed by this work.
+
+## Walking clip reproduced headlessly (2026-09-14)
+
+No live play needed: `foot_ik_preview.tscn`'s overlay logs `[FOOT_IK_CLIP]` itself, and the
+existing stair-walk marker already drives the real Player straight up the 0.35m stairs and loops.
+
+```sh
+U="$HOME/Library/Application Support/Godot/app_userdata/SurvivalHorrorFps"
+touch "$U/foot_ik_stair_walk_marker"
+godot --headless --path . res://tests/manual/foot_ik/foot_ik_preview.tscn --quit-after 1400 \
+  > /tmp/walk_repro.log 2>&1
+rm "$U/foot_ik_stair_walk_marker"   # remove before trusting any later run
+```
+
+Result on `46f196a`: **90 clip events**, all `moves/unarmed_walk`, both feet, every ascent
+(frames ~72-1150). Largest logged `depth_m=0.1961` (right toe, frame 804, point
+`(14.799, 0.499, 0.796)` - inside the 0.35m step-1 box, top 0.7). One event is
+`depth_m=0.1135` (left toe, frame 344) - the same magnitude as the live 11.3cm report. The
+signature is a **step-up toe/riser penetration**: the swing foot's toe enters the next tread
+box. The authored treads run through `finalize_authored_box`, so each has a real
+`StaticBody3D` + `BoxShape3D(BoxShape3D)` collider and the live monitor's convex-box math is
+exact, not a CSG-trimesh miss.
+
+Two measurement caveats found while reproducing:
+
+- The live indicator only prints the **first** frame of each penetration episode
+  (`_active[side]` throttle), so a logged depth is that episode's shallowest, not its worst.
+  The saved trace (`feet.*.joints.toe`, final post-modifier pose) shows the same episodes
+  deepening past the logged value (e.g. left toe ~0.42m below the tread top at frame 685), so
+  0.1135m is a floor, not a ceiling.
+- No existing check catches this: the spawn regression covers startup only, and no walking
+  check asserts toe clearance against the authored treads. The walking-clip regression is
+  missing and must be added with the fix.
+
+## Walking-clip regression (added 2026-09-14)
+
+`tests/manual/foot_ik/foot_ik_walk_contact_check.tscn` (+ `.gd`) walks the real Player up the
+0.35m stairs in **one uninterrupted ascent** and asserts neither foot's ankle or toe tip enters an
+authored tread box (the boxes are real `StaticBody3D + BoxShape3D` via `finalize_authored_box`, so
+the math is exact). It is registered in `scripts/foot_ik_checks.inc.sh`:
+
+```sh
+godot --headless --path . res://tests/manual/foot_ik/foot_ik_walk_contact_check.tscn --quit-after 1500
+```
+
+The former multi-ascent loop was invalid because teleporting retained or abruptly reset live IK
+history. The valid single-ascent baseline on `46f196a` was **FAIL, depth 0.073334 m**, matching the
+same toe/riser mechanism without a teleport artifact. The harness samples every stair frame (unlike
+the live `[FOOT_IK_CLIP]` throttle), so it is the authoritative geometry measure.
+
+## Fix investigation (2026-09-14) — historical, superseded by continuation checkpoint
+
+Three distinct mechanisms produce "rendered foot below the tread", all during the step-up:
+
+1. **Support-transfer weight ramp (frame 72, 7.3cm).** At the handoff the foot drops from
+   y=1.635 (swing) to 1.420 while the correct target is 1.496. `_apply_support_contact` ramps
+   `ground_weight` from the swing's ~0 over `support_transfer_blend_time`, so for the first
+   frames the low flat-ground animated pose dominates the solve. The swing foot is transferred
+   onto a higher tread, so that animated pose is *below* the tread.
+2. **Swing-lift lag / toe pitch (frames ~79-83, ~5cm).** A swinging foot's toe tip sits ~0.16m
+   below its ankle (toe-down walk-clip pitch). The lift raises the ankle, but `smoothed_lift` is
+   rate-limited at `step_lift_rate=4.0` (0.067m/frame) and is still ramping while the foot moves
+   over the next tread, so the toe dips in first. Raising `step_lift_rate` to 16 measured *worse*
+   (6.09cm), so this is not simply "lift faster".
+3. **`STAIR_SUPPORT` toe-envelope exemption.** `foot_ik_target_coordinator.gd:520` sets
+   `check_toe = owner != STAIR_SUPPORT`, and `legacy_transition_active` early-returns STAIR_SUPPORT
+   validation entirely (`:478`). A landing support toe is therefore never checked against the
+   tread during a climb. This validates *targets*, not the rendered weighted pose, so it alone
+   would not close mechanism 1.
+
+Candidates tested (each reverted; none shipped):
+
+| Change | Harness result |
+| --- | --- |
+| baseline | FAIL 0.0733 (f72 right toe) |
+| force support-transfer `weight_from = 1.0` (all flat treads) | FAIL 0.0498 (f81 left) |
+| force full weight only for non-straddling flat-tread transfers (`not _toe_probe_reaches_higher_surface`) | FAIL 0.0498 (same) |
+| harness-only `step_lift_rate = 16.0` | FAIL 0.0609 (worse) |
+| **swing lift applied instantly upward** (rate-limit release only) | combined below |
+| **step-up-scoped transfer weight** (`_support_surface_target.y > previous + step_min_rise`) + instant-up lift | FAIL 0.0357 (f92 left) |
+| + force `gw=cw=1` for a flat-tread stair support foot (`is_flat_support`) | FAIL 0.0290 (f68 left) |
+
+Interpretation: at least three independent mechanisms stack, all "a rendered foot point below a
+tread during the step-up":
+
+1. **Support/contact weight < 1** lets the low flat-ground animated pose pull the foot through the
+   tread at handoff and during release. This is the dominant one and recurs across owners
+   (`stair_support`, `live_contact`). Forcing/keeping weight at 1 for a grounded flat-tread foot
+   closes it (7.3 → 5.0 → 3.6 → 2.9 cm as each variant is added).
+2. **Swing-lift lag**: `smoothed_lift` ramps at `step_lift_rate` and is still climbing while the
+   foot moves over the next tread. Applying the up-lift instantly removes it (safe: the release
+   stays rate-limited).
+3. **Toe-down foot pitch** (the final 2.9 cm at f68): with the ankle *above* its target, the
+   extended toe tip still dips into the next tread because the flat-ground walk clip keeps the
+   foot pitched toe-down through the step-up. This is an orientation problem - raising the ankle
+   or the weight does not fix it, and forcing weight on this frame would push the toe down
+   further. It needs the foot oriented toward the landing tread during a step-up (the solver's
+   foot-basis path), which is the real remaining work.
+4. **INVALID TELEPORT-HARNESS ARTIFACT — target sampled under the animated foot while the rendered
+   foot is far ahead** (formerly thought dominant in
+   the 3-ascent harness, ~0.12-0.24m at frames 131/173/192/239/256/281/316 - steady state, not a
+   cold-start artifact). At f133 the rendered/animated `foot_pos` is z=0.569 but `raw_target` is
+   `(15.113, -0.0, -0.034)`: the ground sampler's ray was cast under the *animated* foot pose at
+   z=-0.034 (the floor), 0.6m behind the rendered foot, so it targets the wrong surface and the
+   far-forward toe digs into the next tread. This is an animation-vs-solve coordinate/time
+   mismatch in `FootIKGroundSampler.sample()` (its `foot_pos` argument is the raw animated pose,
+   not the rendered one), not any of the weight/lift mechanisms above. Mechanisms 1+2 were
+   re-applied and re-measured against this 3-ascent harness: **no improvement** (0.117 -> 0.122),
+   confirming #4 dominates and is independent.
+
+`scripts/trace_query.py toe-riser` (geometry-based) lists the recurring episodes; `clips` uses
+the `sole_clearance` proxy and is noisy during swing (ignore its multi-metre `sole_min` values).
+
+Historical decision before the continuation checkpoint: no partial gameplay change shipped. The
+four mechanisms were recorded with the
+exact numbers and frame/point evidence so the next session can implement 1+2 (small, scoped,
+already measured) together with a targeted fix for 3 (swing/landing foot pitch) and 4 (sample
+under the rendered foot) and then verify on the full suite. All experimental edits were reverted
+(`git checkout`); the only kept changes are the regression, `scripts/trace_query.py`, and docs.
 
 Earlier investigation is preserved in
 [the archive](archive/025_walking_hypothesis_investigation.md). Its identification of the recurring
@@ -90,6 +312,6 @@ intermediate/final startup runs, mutation and fast/full-suite logs. No preview a
 1. ~~Finish fast/full verification~~ - done, no regressions beyond the known task-019 baseline.
 2. ~~User live confirmation~~ - done: startup clip no longer appears in a fresh live session.
    ~~Commit~~ - done, `cd2a398`.
-3. Investigate the still-open real walking clip found in that same confirmation session (11.3cm,
-   right toe, `unarmed_walk`, see Status) - a fresh case, not yet traced. Tasks 019/020 and task
+3. Walking toe/riser fix: implemented and headless regression PASS. **Pending user live test** of
+   stair traversal and visual smoothness; do not commit until confirmed. Tasks 019/020 and task
    024's previously noted other-stance clearance side effect remain separate work.

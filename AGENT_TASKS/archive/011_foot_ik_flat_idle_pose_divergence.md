@@ -130,4 +130,4 @@ worth confirming with a live playtest before assuming it's cosmetic-only.
 
 - `tests/manual/foot_ik/foot_ik_animation_comparison.gd` - the failing check.
 - `actors/player/foot_ik/foot_ik_leg_solver.gd` - `_solve_bend_direction`, `_knee_pole_local` usage.
-- [010](010_foot_ik_target_coordinator_consolidation.md) - current active task, unaffected by this.
+- [010](010_foot_ik_target_coordinator_consolidation.md) - completed coordinator consolidation.

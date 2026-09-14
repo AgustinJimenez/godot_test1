@@ -1,7 +1,8 @@
 # 008: Foot IK platform-edge safety
 
 Historical investigation archive, frozen on 2026-09-05. Entries include superseded experiments
-and old results, not current instructions. See the [active task](../008_foot_ik_platform_edge_safety.md).
+and old results, not current instructions. See the
+[completed task summary](008_foot_ik_platform_edge_safety.md).
 
 ## Status
 
@@ -1845,4 +1846,4 @@ not the complete skinned mesh; live confirmation is still required.
 ## Related history
 
 Earlier Foot IK work is preserved in
-[`007_foot_ik_stair_contact_and_locomotion.md`](../007_foot_ik_stair_contact_and_locomotion.md).
+[`007_foot_ik_stair_contact_and_locomotion.md`](007_foot_ik_stair_contact_and_locomotion.md).

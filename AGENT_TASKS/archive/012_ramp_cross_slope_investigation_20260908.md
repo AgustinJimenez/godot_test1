@@ -1071,7 +1071,7 @@ not a config flip - a good candidate for [015](../015_foot_ik_architecture_direc
 ## References
 
 - `tests/manual/foot_ik/foot_ik_ramp_locomotion_check.gd` - the extended check.
-- [011](../011_foot_ik_flat_idle_pose_divergence.md) - a related pole-vector-adjacent finding
+- [011](011_foot_ik_flat_idle_pose_divergence.md) - a related pole-vector-adjacent finding
   from the same session, possibly connected (both are rotation/heading-dependent divergences
   in the same closed-form IK solve).
 - [013](../013_foot_ik_bend_selection_instability.md) - `spin_foot_step`'s root cause

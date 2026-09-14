@@ -26,6 +26,15 @@ fi
 echo "==> Linting GDScript"
 "${GDLINT}" .
 
+echo "==> Parsing Python"
+while IFS= read -r script_path; do
+	python3 -c 'import ast, pathlib, sys; path = pathlib.Path(sys.argv[1]); ast.parse(path.read_text(encoding="utf-8"), filename=str(path))' \
+		"${script_path}"
+done < <(find . -type f -name '*.py' \
+	-not -path './.godot/*' \
+	-not -path '*/.venv/*' \
+	| LC_ALL=C sort)
+
 echo "==> Importing Godot resources"
 godot --headless --path . --import
 
