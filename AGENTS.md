@@ -87,6 +87,30 @@ the raw/smoothed/final values behind the visible symptom. Add state-invariant re
 summary can look clean despite inconsistent ownership—for example, a released idle foot must not
 retain the side-key target latch.
 
+`foot_ik_preview.tscn`'s debug overlay runs a live foot/geometry penetration check every physics
+frame during ordinary manual play (`foot_ik_clip_indicator.gd` +
+`tools/foot_ik/foot_ik_live_penetration_monitor.gd`): a real clip (not automated-test-only) shows a
+big red marker at the exact point and prints one throttled `[FOOT_IK_CLIP]` log line per episode.
+Check this before building new clip-detection instrumentation from scratch for a live-reported
+clipping bug. A separate, much more precise per-vertex-mesh-vs-floor checker already exists too
+(`tests/manual/foot_ik/foot_ik_live_penetration_check.gd`, opt-in via the
+`user://foot_ik_penetration_check_marker` file) - useful to cross-confirm a real finding is not a
+box-approximation artifact, but it raycasts every skinned mesh vertex every physics frame and
+**causes a severe FPS drop if left on during ordinary interactive play**. Only enable it for a
+short, isolated (ideally headless) test, then remove the marker file immediately after.
+
+The manual-test scene scripts under `tests/manual/foot_ik/` (`foot_ik_debug_overlay.gd` especially)
+sit at the project's max-file-lines cap essentially permanently. When adding any non-trivial new
+tool/gizmo to one, split it into its own small owned-object file from the start (see
+`foot_ik_debug_markers.gd`/`foot_ik_clip_indicator.gd`) rather than inlining it and then discovering
+the cap is blown.
+
+`foot_ik_preview.tscn` runs several unrelated test characters/scenarios (automated stretch checks,
+animation comparisons) in the same scene tree as the one manually-controlled player. Any live
+`print()`-based instrumentation keyed only by `side` will interleave with all of them - filter by
+frame/skeleton identity, or expect noisy, hard-to-read output, especially in the first ~100-150
+frames before automated setup finishes.
+
 Logging must be bounded and cheap. `foot_ik_trace_writer.gd` appends records and compacts
 periodically; do not rewrite a multi-megabyte window every frame or emit unbounded editor output.
 `foot_ik_controlled.jsonl.time` is animation time, while `render_fps` is the performance field.

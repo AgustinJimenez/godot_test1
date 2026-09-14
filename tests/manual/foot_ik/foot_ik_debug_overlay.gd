@@ -4,6 +4,7 @@ const TOE_TIP_EXTRA_LENGTH := 0.035 # toe bone origin is at the base, not the me
 const JOINT_HISTORY_GRAPH := preload(
 		"res://tests/manual/foot_ik/foot_ik_joint_history_graph.gd")
 const TRACE_WRITER := preload("res://tests/manual/foot_ik/foot_ik_trace_writer.gd")
+const CLIP_INDICATOR := preload("res://tests/manual/foot_ik/foot_ik_clip_indicator.gd")
 const PANEL_OUTER_MARGIN := 20 # gap between screen edge and panel border
 # Wide rows would render flush against the panel edge without this.
 const PANEL_INNER_PADDING := 14
@@ -17,19 +18,13 @@ const STAIR_FOLLOW_MAX_DISTANCE := 4.0
 const CONTROLLED_TRACE_FILE := "user://foot_ik_controlled.jsonl"
 const CONTROLLED_TRACE_MAX_FRAMES := 1200 # 20s at 60fps - room to turn, wait, then grab it
 const HEAD_TRACE_MAX_POINTS := 1800 # 30s at 60fps - long enough to cover a full staircase
-var _head_probe: Node3D
-var _chest_probe: Node3D
-var _head_trace_mesh: MultiMeshInstance3D
-var _direction_arrow: Node3D
-var _chest_arrow: Node3D
-var _head_trace_points: Array[Vector3] = []
-var _player_body: PlayerBody
-var _ik: PlayerFootIKModifier
-var _skel: Skeleton3D
-var _probes: Dictionary = {}
-var _toe_probes: Dictionary = {}
-var _markers: Dictionary = {}
-var _angle_probes: Dictionary = {}
+var _head_probe: Node3D; var _chest_probe: Node3D
+var _head_trace_mesh: MultiMeshInstance3D; var _direction_arrow: Node3D
+var _chest_arrow: Node3D; var _head_trace_points: Array[Vector3] = []
+var _player_body: PlayerBody; var _ik: PlayerFootIKModifier
+var _skel: Skeleton3D; var _probes: Dictionary = {}
+var _toe_probes: Dictionary = {}; var _markers: Dictionary = {}
+var _angle_probes: Dictionary = {}; var _clip_indicator := CLIP_INDICATOR.new()
 var _angle_labels: Dictionary = {}
 # Ordered [key, column_header] pairs (order matters, so Array not Dictionary).
 const READOUT_FIELDS := [
@@ -122,6 +117,7 @@ func _ready() -> void:
 		_markers[str(side) + "_hit"] = FootIkDebugMarkers.spawn_marker(self, Color.YELLOW)
 		_markers[str(side) + "_target"] = FootIkDebugMarkers.spawn_marker(self, tgt_col)
 		_markers[str(side) + "_actual"] = FootIkDebugMarkers.spawn_marker(self, Color.RED)
+		_clip_indicator.spawn(self, str(side))
 		_markers[str(side) + "_ray"] = FootIkDebugMarkers.spawn_ray(self, Color.WHITE)
 		var toe_idx: int = indices.get("toe", -1)
 		if toe_idx >= 0:
@@ -907,6 +903,7 @@ func _physics_process(delta: float) -> void:
 		var vy: float = float(_ik.debug_vertical_velocity.get(side, 0.0))
 		(values["vertical_velocity"] as Label).text = "%.3f" % vy
 
+		var clip_points := PackedVector3Array([actual_pos])
 		if _toe_probes.has(side):
 			var toe_probe: Node3D = _toe_probes[side]
 			var toe_joint_pos := toe_probe.global_position
@@ -916,6 +913,9 @@ func _physics_process(delta: float) -> void:
 			(_markers[side + "_toe"] as MeshInstance3D).global_position = tip_pos
 			(values["toe_tip_y"] as Label).text = "%.3f" % tip_pos.y
 			(values["toe_tip_gap"] as Label).text = "%.3f" % (tip_pos.y - target.y)
+			clip_points.append(tip_pos)
+		_clip_indicator.update(get_world_3d().direct_space_state,
+				_ik._ground_sampler.GROUND_COLLISION_MASK, side, clip_points)
 
 		var angles := _compute_leg_angles(side)
 		_joint_history_graph.sample_side(side, angles, _angle_probes[side], probe,

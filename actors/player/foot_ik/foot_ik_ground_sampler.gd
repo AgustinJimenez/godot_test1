@@ -46,8 +46,7 @@ var compressed_upper_target: Dictionary = {} # side -> supported surface for str
 var preferred_root_nudge := Vector3.ZERO # lets the capsule make room for a supported upper stance
 var preferred_root_nudge_surface_y := -INF
 var split_safe_root_target := Vector3(INF, INF, INF)
-var split_safe_surface_y := -INF
-var split_rejected_surface_y := -INF
+var split_safe_surface_y := -INF; var split_rejected_surface_y := -INF
 var split_safe_retry_after_frame := 0 # capped - see 014's uncapped retry bug
 var split_safe_best_delta := INF # smallest observed left/right height gap since the last give-up
 var split_safe_stall_count := 0 # consecutive search cycles with no improvement - see 021
@@ -85,12 +84,9 @@ func reset() -> void:
 	_landing_upper_confirm.reset()
 	landing_upper_confirmed.clear()
 	compressed_upper_target.clear()
-	preferred_root_nudge_surface_y = -INF
-	split_safe_root_target = Vector3(INF, INF, INF)
-	split_safe_surface_y = -INF
-	split_rejected_surface_y = -INF
-	split_safe_retry_after_frame = 0
-	split_safe_best_delta = INF; split_safe_stall_count = 0
+	preferred_root_nudge_surface_y = -INF; split_safe_root_target = Vector3(INF, INF, INF)
+	split_safe_surface_y = -INF; split_rejected_surface_y = -INF
+	split_safe_retry_after_frame = 0; split_safe_best_delta = INF; split_safe_stall_count = 0
 	split_safe_held_upper_target.clear()
 	sample_previous_support.clear()
 	idle_stance_rehoming.clear()
@@ -390,9 +386,9 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		var amount := clampf(delta * _owner.smooth_rate, 0.0, 1.0)
 		var current_target := smoothed_target[side] as Vector3
 		var follow_target := raw_target
-		smoothed_target[side] = (move_target_smoothed(current_target, follow_target, delta)
-				if not body_turning else current_target.move_toward(
-				follow_target, _owner.target_max_speed * delta))
+		smoothed_target[side] = (move_target_smoothed(space, current_target, follow_target, delta)
+				if not body_turning else _hold_short_of_collision(space, current_target,
+				current_target.move_toward(follow_target, _owner.target_max_speed * delta)))
 		smoothed_normal[side] = (smoothed_normal[side] as Vector3).lerp(
 				raw_normal, amount).normalized()
 	if (not hit["hit"] and not frozen and not idle_lower_latched and not landing_upper_owned
@@ -511,10 +507,10 @@ func _latch_idle_lower_support(space: PhysicsDirectSpaceState3D, side: StringNam
 	return _validate_idle_lower_support(
 			space, side, transition["previous"], transition["had_latch"], delta, character)
 
-## Horizontal move_toward, held at blocking geometry instead of clipping through it.
-func _move_toward_held(space: PhysicsDirectSpaceState3D, previous: Vector3,
-		target: Vector3, speed: float, delta: float) -> Vector3:
-	var intended := previous.move_toward(target, speed * delta)
+## Clamps an already-planned horizontal move short of blocking geometry (a riser) - shared by
+## every target-smoothing path below so none needs its own collision awareness (024).
+func _hold_short_of_collision(space: PhysicsDirectSpaceState3D,
+		previous: Vector3, intended: Vector3) -> Vector3:
 	var horizontal_dist := Vector2(previous.x, previous.z).distance_to(Vector2(intended.x, intended.z))
 	if horizontal_dist < 0.001: return intended
 	const HOLD_PROBE_UP := 0.05
@@ -532,6 +528,10 @@ func _move_toward_held(space: PhysicsDirectSpaceState3D, previous: Vector3,
 	if hit_dist >= horizontal_dist - HOLD_MARGIN: return intended
 	var safe_fraction := maxf(0.0, hit_dist - HOLD_MARGIN) / horizontal_dist
 	return previous.lerp(intended, safe_fraction)
+## Horizontal move_toward, held at blocking geometry instead of clipping through it.
+func _move_toward_held(space: PhysicsDirectSpaceState3D, previous: Vector3,
+		target: Vector3, speed: float, delta: float) -> Vector3:
+	return _hold_short_of_collision(space, previous, previous.move_toward(target, speed * delta))
 func _update_idle_lower_transition(space: PhysicsDirectSpaceState3D, side: StringName,
 		raw_target: Vector3, raw_normal: Vector3, delta: float,
 		character: CharacterBody3D) -> Dictionary:
@@ -793,14 +793,15 @@ func contact_from_previous_support(space: PhysicsDirectSpaceState3D, side: Strin
 		"animated_contact_normal": normal,
 		"previous_support_release": true,
 	}
-func move_target_smoothed(current: Vector3, raw_target: Vector3, delta: float) -> Vector3:
+func move_target_smoothed(space: PhysicsDirectSpaceState3D, current: Vector3,
+		raw_target: Vector3, delta: float) -> Vector3:
 	var amount := clampf(delta * _owner.smooth_rate, 0.0, 1.0)
 	var lerped := current.lerp(raw_target, amount)
 	var max_dist: float = _owner.target_max_speed * delta
-	if max_dist <= 0.0: return lerped
-	var move := lerped - current
-	if move.length() > max_dist: lerped = current + move.normalized() * max_dist
-	return lerped
+	if max_dist > 0.0:
+		var move := lerped - current
+		if move.length() > max_dist: lerped = current + move.normalized() * max_dist
+	return _hold_short_of_collision(space, current, lerped)
 func animated_lowest_surface_point_world(
 		skel: Skeleton3D, side: StringName, animated_foot_pose: Transform3D,
 		foot_position: Vector3, to_world: Transform3D) -> Vector3:

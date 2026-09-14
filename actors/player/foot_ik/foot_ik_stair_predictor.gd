@@ -142,7 +142,8 @@ func update_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName,
 	return state.smoothed_lift
 
 
-func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> float:
+func ensure_support(space: PhysicsDirectSpaceState3D, per_leg: Dictionary,
+		shared_drop: float, delta: float) -> float:
 	if not per_leg.has(&"left") or not per_leg.has(&"right"):
 		return shared_drop
 	var left: Dictionary = per_leg[&"left"]
@@ -220,7 +221,7 @@ func ensure_support(per_leg: Dictionary, shared_drop: float, delta: float) -> fl
 			_latch_support_target(per_leg[_support_side])
 		_try_transfer_support(per_leg, left_clearance, right_clearance)
 	var leg: Dictionary = per_leg[_support_side]
-	_apply_support_contact(_support_side, leg, delta)
+	_apply_support_contact(space, _support_side, leg, delta)
 	var hip_pos: Vector3 = leg["hip_pos"]
 	var target: Vector3 = leg["target"]
 	var max_reach: float = float(leg["upper"]) + float(leg["lower"]) - 0.001
@@ -576,7 +577,8 @@ func _latch_support_target(leg: Dictionary) -> void:
 ## keeps stair-support ownership, and blending its settle-transfer measurably
 ## regressed FOOT_IK_RAMP_CASE (0 -> 4 penetrating samples, one static settle
 ## case) - a real stair tread is the only case this fix is meant to cover.
-func _apply_support_contact(side: StringName, leg: Dictionary, delta: float) -> void:
+func _apply_support_contact(space: PhysicsDirectSpaceState3D, side: StringName,
+		leg: Dictionary, delta: float) -> void:
 	if delta > 0.0:
 		_support_transfer_elapsed += delta
 	var transfer_time: float = (
@@ -588,7 +590,7 @@ func _apply_support_contact(side: StringName, leg: Dictionary, delta: float) -> 
 	var on_flat_tread := _support_normal.dot(Vector3.UP) >= FLAT_SURFACE_UP_DOT
 	var surface_target := _support_surface_target
 	if not on_flat_tread and _owner._smoothed_target.has(side):
-		surface_target = _owner._ground_sampler.move_target_smoothed(
+		surface_target = _owner._ground_sampler.move_target_smoothed(space,
 				_owner._smoothed_target[side] as Vector3, _support_surface_target, delta)
 	_owner._smoothed_target[side] = surface_target
 	_owner._smoothed_normal[side] = _support_normal

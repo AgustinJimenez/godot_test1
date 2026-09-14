@@ -848,7 +848,8 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			or not _ground_sampler.landing_committed_target.is_empty():
 		_stair_predictor.reset()
 	elif step_prediction_enabled and _stair_predictor.is_active():
-		shared_drop = _stair_predictor.ensure_support(per_leg, shared_drop, delta)
+		shared_drop = _stair_predictor.ensure_support(
+				player_body.get_world_3d().direct_space_state, per_leg, shared_drop, delta)
 	var cur_anim: String = (player_body.anim_player.current_animation.get_file()
 			if (player_body != null and player_body.anim_player != null) else "")
 	var stationary: bool = (cur_anim == "unarmed_idle" or cur_anim == "unarmed_torch_idle"
