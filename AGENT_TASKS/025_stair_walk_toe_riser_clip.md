@@ -2,9 +2,9 @@
 
 ## Status
 
-**The startup clip is fixed and live-confirmed by the user (2026-09-13): the fixed 16cm clip that
-always fired around frame 17-20 at scene load no longer appears in a fresh live session.** Not
-yet committed. Task 024 remains live-confirmed and committed separately.
+**The startup clip is fixed, live-confirmed by the user (2026-09-13), verified against the full
+fast suite (no regressions beyond the pre-existing task-019 baseline), and committed**
+(`cd2a398` on `experiment/native-foot-ik`). Task 024 is fixed and committed separately.
 
 Still open: real clipping during ordinary walking persists, separate from the startup bug this
 fix addressed. Same live session that confirmed the startup fix also logged 39 clip events during
@@ -87,9 +87,9 @@ intermediate/final startup runs, mutation and fast/full-suite logs. No preview a
 
 ## Pending
 
-1. Finish fast/full verification and compare quantitative failures, not only known labels.
+1. ~~Finish fast/full verification~~ - done, no regressions beyond the known task-019 baseline.
 2. ~~User live confirmation~~ - done: startup clip no longer appears in a fresh live session.
-   Commit the startup fix once the fast/full verification above is finished.
+   ~~Commit~~ - done, `cd2a398`.
 3. Investigate the still-open real walking clip found in that same confirmation session (11.3cm,
    right toe, `unarmed_walk`, see Status) - a fresh case, not yet traced. Tasks 019/020 and task
    024's previously noted other-stance clearance side effect remain separate work.
