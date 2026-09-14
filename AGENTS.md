@@ -545,6 +545,24 @@ foot. Find the actually-relevant collider(s) generically at runtime (a small-sph
 hardcoding tread coordinates, since the point may be near either the surface it's leaving or the
 one it's approaching, not the one directly beneath it.
 
+A validated candidate-pose safety check cannot protect a leg that exits earlier through an authored-
+pose preservation/release fast path. Treat every pre-solve `continue`/release as a validation bypass:
+if the preserved final toe/leaf is measurably inside real geometry, that fast path must yield to the
+clearance solve while remaining unchanged for unobstructed flat gait. Confirm the failing frame
+actually reaches the intended check before tuning the check itself.
+
+An iterative toe/leaf clearance correction must resample the collider under the new deepest point
+after every pitch/target adjustment. On discrete stairs, one correction can move the offender from a
+lower tread into its neighboring higher tread; reusing the first hit's surface height makes later
+retries identical or lifts against the wrong box. Also structure the loop so the final permitted
+correction is evaluated, rather than updating the target once more and then exiting.
+
+Foot IK regressions must pair root transforms and final bone poses from the same physics frame.
+`SkeletonModifier3D` may publish after a test node's `_physics_process()`, so a current root plus the
+previous frame's `_final_bone_poses` creates false clips at starts, stops, and direction changes. Use
+`has_fresh_final_bone_poses()`, sample after modifier publication (often `_process()`), and deduplicate
+by `Engine.get_physics_frames()`.
+
 Foot IK's target-coordinator toe/leaf envelope check (`_toe_envelope_valid`,
 [archived task 008](AGENT_TASKS/archive/008_foot_ik_platform_edge_safety.md))
 only runs for an owner that reaches `_finish_validation` at all - `legacy_transition_active`

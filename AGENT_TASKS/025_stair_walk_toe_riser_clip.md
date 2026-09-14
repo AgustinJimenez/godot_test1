@@ -1,10 +1,62 @@
-# 025: Recurring toe clip — startup fixed, walking fix awaiting live confirmation
+# 025: Recurring toe clip — startup fixed, walking fix revised after failed live test
 
 ## Status
 
 **The startup clip is fixed, live-confirmed by the user (2026-09-13), verified against the full
 fast suite (no regressions beyond the pre-existing task-019 baseline), and committed**
 (`cd2a398` on `experiment/native-foot-ik`). Task 024 is fixed and committed separately.
+
+### 2026-09-14 live-test failure and current continuation handoff
+
+The user walked and turned on the stairs. The live instrumentation confirmed real clipping, so the
+earlier ascent-only walking result below is superseded and must not be treated as accepted:
+
+- preserved live trace: `/tmp/foot_ik_live_20260914_180604.jsonl` (860 frames, 17..876);
+- 38 `[FOOT_IK_CLIP]` episodes in `godot.log`; representative direct events include right toe
+  6.81 cm (frame 357), left ankle 3.43 cm (503), left toe 4.02 cm (554), and right toe 5.50 cm
+  (559);
+- schema-aware `toe-riser` analysis found deeper sustained episodes, up to about 25.35 cm left and
+  27.46 cm right. The worst history was descent/turning, which the former one-way ascent regression
+  never exercised.
+
+The untracked walking regression now performs one uninterrupted **ascent -> natural 60-frame turn +
+20-frame settle -> descent**, without teleporting or resetting IK. Its original round-trip result
+was `FAIL depth_m=0.239155`. The test was also moved to `_process()` and requires
+`has_fresh_final_bone_poses()` so it cannot combine the current root with stale prior-frame bones.
+
+Implemented, still uncommitted and awaiting validation/live confirmation:
+
+1. Descending locomotion is treated as discrete-tread traversal even when no higher-tread swing latch
+   exists; its real destination surface is validated instead of an unsupported interpolation point.
+2. The approximate pre-solve toe envelope no longer releases a descending locomotion leg before the
+   actual evaluated-pose correction can run.
+3. A toe-clearance retry may bypass the upright-shin limiter only for that measured retry; the limiter
+   was otherwise forcing the corrected ankle back below the tread.
+4. Residual clearance retries now resample the collider under the new deepest point. Pitch can move
+   the deepest point from a lower box into the neighboring higher tread; reusing the first tread's
+   height made all retries identical. Three vertical corrections are now actually evaluated.
+5. Candidate clearance remains active during translation because the predictor can release before the
+   trailing toe clears the final top tread.
+
+These layers reduced the round-trip failure from 23.92 cm to 2.27 cm, then 1.25 cm. The remaining
+top-transition case was traced to `preserve_flat_pose`: it released the walking leg to authored
+animation before candidate safety ran, even while that preserved toe was already inside the riser.
+The current attempt adds `preserved_pose_needs_clearance()`, a narrow
+measured escape from preservation only when the current toe/foot/leaf is more than 2 mm inside a
+horizontal box collider. Ordinary unobstructed flat walking should retain the authored-pose fast path.
+
+Latest rerun after fixing the type annotation: the former 1.25 cm top-transition failure is gone,
+but the expanded test now reaches a later bottom-transition case:
+`FAIL depth_m=0.028407 frame=285 side=left joint=toe_tip`, point
+`(14.87917, 0.321593, 0.339009)`, root `(15.0, 0.319111, -0.150733)`. Continue from that compact
+case; do not undo the preserved-pose escape merely because the next uncovered episode is now worst.
+
+Immediate next action: inspect the frame-285 bottom-transition episode above, then rerun
+`foot_ik_walk_contact_check.tscn`. If it passes, confirm absence of every `FOOT_IK_025_*` temporary
+print, run the candidate check,
+`scripts/check.sh`, and `scripts/check_foot_ik_fast.sh`, then ask the user for a live stair retest.
+Do not commit gameplay/animation changes until that live result is confirmed. No scene should be
+autoplayed for the user.
 
 ### 2026-09-14 continuation checkpoint — walking fix implemented, awaiting live confirmation
 
