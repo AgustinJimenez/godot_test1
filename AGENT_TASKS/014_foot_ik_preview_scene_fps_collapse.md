@@ -2,6 +2,27 @@
 
 ## Status and scope
 
+**Windows follow-up (2026-09-15): optimization implemented, awaiting live confirmation.** The
+current preview slowdown is aggregate CPU cost from running the complete legacy IK pipeline on
+roughly 18 persistent test modifiers every physics tick, including flat-ground comparison dummies
+whose authored pose already needs no correction. Temporary per-stage profiling (removed after the
+capture) measured about **11 ms of IK callback work per physics tick** across the scene: ~3.9 ms in
+initial per-leg sampling/gait work, ~0.9 ms in stationary target resolution, ~2.2 ms finalizing
+targets, and ~3.4 ms in final pelvis/leg solve work. This is enough to push the whole physics tick
+past 16.7 ms on this Windows CPU and start a catch-up spiral. It is not a renewed runaway search:
+the same 600-frame capture recorded ~179 ground rays/tick taking ~0.24 ms/tick total, only four
+full split-safe searches, and 5.9 ms total split-search time across the entire capture.
+
+`PlayerFootIKModifier` now keeps contact sampling active but skips coordinator/finalization/solve
+when both feet have proven common flat support, both legs selected `preserve_idle_pose`, and the
+solver has no correction left to release. The multi-character live preview improved from roughly
+12-30 fps to 38-48 fps after startup; it still runs full IK for stairs, ramps, moving contacts, and
+any active correction. Focused checks pass for release pose, idle support ownership, idle-loop seam,
+stretch, airborne release, body penetration, pose continuity, stair locomotion, and stair settle.
+The existing Task 029 planted-idle 46.21-degree shin-limit failure remains identical, and Task 030's
+new stair-sole-contact check remains red (missing treads 2/3 and floating frames). The user requested
+a checkpoint commit before further optimization; live visual confirmation remains pending.
+
 **Fixed and verified.** `foot_ik_ground_sampler.gd`'s `_request_overheight_split_safe_zone`
 now caches a failure cooldown (`split_safe_retry_after_frame`, `SPLIT_SAFE_RETRY_COOLDOWN_FRAMES
 := 30`) instead of re-running the ~6500-raycast split-safe-root search on every single physics

@@ -709,10 +709,28 @@ func _process_modification_with_delta(delta: float) -> void:
 		var needed_drop: float = (hip_pos.y - target.y) - max_vertical_diff
 		shared_drop = maxf(shared_drop, needed_drop)
 	shared_drop = minf(shared_drop, step_down_max_crouch)
+	# Once both feet prove that the authored animation already matches one flat support,
+	# avoid the coordinator and solver. They cannot improve this pose, but their full
+	# per-leg allocation/validation pipeline is expensive when many characters are visible.
+	if _can_skip_flat_ik(per_leg):
+		for side: StringName in per_leg:
+			_target_coordinator.release_leg(side)
+		for i in skel.get_bone_count():
+			_final_bone_poses[i] = skel.get_bone_global_pose(i)
+		_final_bone_poses_frame = Engine.get_physics_frames()
+		return
 	_apply_support_pelvis_and_legs(skel, to_world, per_leg, shared_drop, delta)
 	for i in skel.get_bone_count():
 		_final_bone_poses[i] = skel.get_bone_global_pose(i)
 	_final_bone_poses_frame = Engine.get_physics_frames()
+
+func _can_skip_flat_ik(per_leg: Dictionary) -> bool:
+	if per_leg.size() != 2 or not _ground_sampler.feet_have_common_current_support(): return false
+	for side: StringName in per_leg:
+		if (not per_leg[side].get("preserve_idle_pose", false)
+				or _leg_solver.has_active_correction(side)):
+			return false
+	return true
 ## Mirrors gait_tracker velocity for step-down (skeleton space; root hover isn't foot motion).
 func _animated_vertical_speed(side: StringName, animated_foot_pos: Vector3,
 		to_world: Transform3D, delta: float) -> float:
