@@ -518,4 +518,20 @@ of the solved pose (pitch the foot up / lift the target when the tip would enter
 a gentle per-frame correction rather than the instant retry. Do not confuse with the ankle/sole
 checks, which are already clean here.
 
+### 2026-09-16 Option-2 attempt (reverted): continuous toe-tip surface feed
+
+Tried the root fix: compute the surface under the animated toe tip during the walk solve and feed
+the evaluator's existing `_apply_toe_clearance_pitch` via a new `toe_tip_surface_y` option
+(separate from the retry's `toe_clearance_surface_y`, so `_limit_rendered_upright_shin`'s gating is
+untouched). It compiled; the surface was computed at some frames (e.g. f119-123, f251-255) but the
+worst frame 214 was **unchanged** (`0.012458`). The diagnosis was inconclusive because the
+temporary coordinator prints fire for **every character's modifier in the scene** (the preview's
+own stair walkers included - the multi-character trap), so `-inf`/finite readings could not be
+attributed to the controlled player; `_walking_animation()` looked false at f213 for *some*
+character, not necessarily the controlled one. Reverted (no measurable effect). Any next attempt
+must key every print on the skeleton instance id / actor path and confirm which character is which
+before trusting a reading, then re-check whether the controlled player's toe-tip surface is finite
+at f214 and whether `_apply_toe_clearance_pitch`'s animated-toe offset matches the rendered toe.
+
+
 
