@@ -85,9 +85,18 @@ or full regression output into the conversation. Use `scripts/trace.sh`:
 - `--last-n 0` for the complete capture (the default final 40 frames can hide a recovered defect).
 
 For schema-aware questions over a JSONL capture (worst frames, clip episodes, toe-in-tread,
-a swing-state window), use `scripts/trace_query.py` instead of printing frames - it emits a
-few compact lines and never the raw trace. See
+a swing-state window, flat-vs-stair joint smoothness), use `scripts/trace_query.py` instead of
+printing frames - it emits a few compact lines and never the raw trace. See
 `AGENT_TASKS/archive/026_token_efficiency_workflow.md`.
+
+`trace_query.py angular --compare B.jsonl` reports per-joint per-frame rotation change
+(mean/p95/max/jerk in deg/frame) so flat vs stair can be A/B'd in one command. Capture the two
+sides with the marker recipes: `user://foot_ik_flat_forward_marker` (flat 3.2 m/s walk) and
+`user://foot_ik_stair_walk_marker` (0.35 m staircase), copying `user://foot_ik_controlled.jsonl`
+to `/tmp` after each run. Do not rebuild a one-off joint-angle analyzer. Baseline: flat walk
+tops out near 18 deg/frame; on stairs the *planted* leg's constraint-regime handoff
+(`clamp_negative_knee` -> `constrain_knee_direction` -> `solve_to_support`) produces 40-180 deg
+single-frame leg spikes - that handoff, not swing speed, is the stair jank to fix.
 
 Before running any Foot IK harness after the user asks to inspect the latest live log, preserve
 `user://foot_ik_controlled.jsonl` under a timestamped `/tmp` name. Harnesses share and overwrite this
@@ -160,6 +169,16 @@ Godot 4.6.2 can segfault if an `AnimationLibrary` attached to a currently crossf
 `AnimationPlayer` is mutated. Stop the player immediately before adding lazy-baked animations.
 Character Editor adapters must disable `PlayerBody.autoplay_default_animation` before the body enters
 the tree; do not start gameplay idle and then stop/seek/deactivate it from the editor's `_ready()`.
+
+`SkeletonIK3D` is a dead end in Godot 4: it is deprecated ("may be changed or removed") and can
+silently do nothing - `is_running()` returns true and `influence` is 1.0 while it applies no
+`bones_global_pose_override` at all, so an IK-driven pose never moves and the failure looks like a
+frozen limb rather than an error. Do not start new leg/hand IK on it; solve the bones directly
+(`Skeleton3D.set_bone_global_pose` + an analytic two-bone solve) or reuse the project's own solver.
+When porting a Godot 3 project with `--convert-3to4`, the converter still leaves `intersect_ray(from,
+to, [node])`, `get/set_bone_custom_pose`, and a user `var velocity` on a `CharacterBody3D` broken;
+`CapsuleShape3D.height` also changes meaning (total height in 4.x vs cylinder-only in 3.x), which
+silently sinks a character into the floor.
 
 `SkeletonModifier3D` can evaluate more than once per physics tick, including `delta == 0` refreshes.
 Do not skip the whole zero-delta pass: gate only time/history advancement, then reapply cached output

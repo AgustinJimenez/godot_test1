@@ -19,6 +19,10 @@ Queries:
   clips --n N             penetration episodes grouped into runs (sole/gap proxies)
   toe-riser [--n N]       toe-tip enters the authored preview staircase boxes
   swing --from F --to F   compact per-frame swing/support state for a window
+  angular [--compare P]   per-joint per-frame rotation change (deg/frame): mean,
+                          p95, max, jerk p95, and frames over --threshold. With
+                          --compare P prints two traces side by side (e.g. flat
+                          vs stair) - the smoothness/jank comparison.
   field --path a.b.c      extract an arbitrary nested field over a window
   keys                    emit the trace schema (top-level + feet keys)
 
@@ -30,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from collections import deque
@@ -282,19 +287,103 @@ def _cmd_keys(frames):
     print("joints:", " ".join(sorted(foot.get("joints", {}).keys())))
 
 
+# --- per-joint angular motion: the flat-vs-stair smoothness yardstick ----------
+_LEG_JOINTS = ("hip", "knee", "foot", "toe", "leaf")
+_BODY_BONES = ("Hips", "Spine", "Spine1", "Spine2", "Neck", "Head",
+               "LeftArm", "RightArm", "LeftForeArm", "RightForeArm")
+
+
+def _quat(value):
+    if isinstance(value, str):
+        numbers = tuple(float(x) for x in _NUM.findall(value)[:4])
+    elif isinstance(value, (list, tuple)):
+        numbers = tuple(float(x) for x in value[:4])
+    else:
+        return None
+    return numbers if len(numbers) == 4 else None
+
+
+def _angle_deg(first, second):
+    dot = abs(sum(a * b for a, b in zip(first, second)))
+    return math.degrees(2.0 * math.acos(max(-1.0, min(1.0, dot))))
+
+
+def _angular(frames, getter):
+    previous = None
+    deltas = []
+    for frame in frames:
+        value = getter(frame)
+        if value is not None and previous is not None:
+            deltas.append(_angle_deg(previous, value))
+        previous = value
+    return deltas
+
+
+def _percentile(ordered, fraction):
+    if not ordered:
+        return 0.0
+    return ordered[int(fraction * (len(ordered) - 1))]
+
+
+def _angular_stats(deltas, threshold):
+    if not deltas:
+        return (0.0, 0.0, 0.0, 0.0, 0)
+    ordered = sorted(deltas)
+    jerk = sorted(abs(deltas[i] - deltas[i - 1]) for i in range(1, len(deltas)))
+    over = sum(1 for value in deltas if value > threshold)
+    return (sum(deltas) / len(deltas), _percentile(ordered, 0.95), ordered[-1],
+            _percentile(jerk, 0.95) if jerk else 0.0, over)
+
+
+def _angular_rows(frames, threshold):
+    rows = {}
+    for joint in _LEG_JOINTS:
+        for side in ("right", "left"):
+            rows[f"{side[0].upper()}.{joint}"] = _angular_stats(_angular(
+                frames, lambda f, s=side, j=joint: _quat(
+                    f.get("feet", {}).get(s, {}).get("joints", {}).get(j, {})
+                    .get("rotation_quaternion"))), threshold)
+    for bone in _BODY_BONES:
+        rows[f"B.{bone}"] = _angular_stats(_angular(
+            frames, lambda f, b=bone: _quat(
+                f.get("bones", {}).get(b, {}).get("rotation_quaternion"))), threshold)
+    return rows
+
+
+def _cmd_angular(frames, compare, threshold):
+    rows = _angular_rows(frames, threshold)
+    if compare is None:
+        print(f"joint            mean    p95    max  jerk95  >{threshold:g}")
+        for key, stats in rows.items():
+            print(f"{key:<14} {stats[0]:7.2f} {stats[1]:6.2f} {stats[2]:6.2f} "
+                  f"{stats[3]:7.2f} {stats[4]:6d}")
+        return
+    other = _angular_rows(compare, threshold)
+    print(f"A={len(frames)} frames  B={len(compare)} frames  (deg/frame, >{threshold:g} count)")
+    print(f"{'joint':<14} {'A.mean':>7} {'A.p95':>6} {'A.max':>7} {'A.jrk':>6} | "
+          f"{'B.mean':>7} {'B.p95':>6} {'B.max':>7} {'B.jrk':>6} |  A>   B>")
+    for key, a in rows.items():
+        b = other.get(key, (0.0, 0.0, 0.0, 0.0, 0))
+        print(f"{key:<14} {a[0]:7.2f} {a[1]:6.2f} {a[2]:7.2f} {a[3]:6.2f} | "
+              f"{b[0]:7.2f} {b[1]:6.2f} {b[2]:7.2f} {b[3]:6.2f} | {a[4]:4d} {b[4]:4d}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--trace", required=True)
     parser.add_argument("--last-n", type=int, default=0, help="only the last N frames (0=all)")
     parser.add_argument("query", choices=["summary", "worst", "clips", "toe-riser",
-                                          "swing", "field", "keys"])
+                                          "swing", "angular", "field", "keys"])
     parser.add_argument("--metric", choices=["sole", "gap", "toe", "ankle"], default="sole")
     parser.add_argument("--n", type=int, default=10)
     parser.add_argument("--from", dest="first", type=int, default=0)
     parser.add_argument("--to", dest="last", type=int, default=1 << 30)
     parser.add_argument("--side", choices=["left", "right"])
     parser.add_argument("--path", default="")
+    parser.add_argument("--compare", default="", help="angular: second trace to compare against")
+    parser.add_argument("--threshold", type=float, default=15.0,
+                        help="angular: deg/frame counted as a jank frame")
     args = parser.parse_args()
 
     if args.trace.startswith("user://"):
@@ -320,6 +409,9 @@ def main():
         _cmd_toe_riser(frames, args.n)
     elif args.query == "swing":
         _cmd_swing(frames, args.first, args.last, args.side)
+    elif args.query == "angular":
+        compare = load(args.compare) if args.compare else None
+        _cmd_angular(frames, compare, args.threshold)
     elif args.query == "field":
         _cmd_field(frames, args.path, args.first, args.last)
     elif args.query == "keys":
