@@ -555,6 +555,21 @@ puts the toe lower than the authored pose), not in the skip or the clearance gat
 for the controlled skeleton at f214, the pipeline's `target`/solve foot pose vs the authored pose
 (same skeleton id), and find why the pipeline pitches the toe down further.
 
+### 2026-09-16 pipeline vs authored pose on the landing (diagnostic)
+
+Forced the pipeline on the landing and captured the controlled trace (`/tmp/wc_pipe.jsonl`). The
+pipeline's right-foot **target is correct** (ankle target y = 2.196 = surface 2.1 + ankle offset),
+but the solved **toe joint ends ~1.2 cm below** the surface (y = 2.088 at f216) while the
+authored/skip pose keeps the toe joint ~1 cm **above** it (y = 2.1105 at f214) - even though the
+pipeline's sole reads clear (`sole_clearance` +0.028). So the landing clip is a **foot-orientation
+difference** (the pipeline's solved foot ends up more toe-down than the authored clip), not a
+target-height error, and the skip (authored pose) is the better of the two. Practical fix
+direction: keep the skip (authored pose) and add a **narrow, gentle toe-tip pitch** correction on
+top of it in the skip path, rather than forcing the full pipeline (which clips ~4.2 cm). That new
+correction needs live validation; it is a small new stage, so weigh against AGENTS.md's caution on
+adding correction stages.
+
+
 
 
 
