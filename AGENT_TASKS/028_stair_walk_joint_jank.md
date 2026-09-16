@@ -91,7 +91,42 @@ finding but adds that the *unplanted* handoff (pattern 1) and the reject/accept 
 are the dominant live offenders, not only the planted constraint-regime flip (which the synthetic
 stair marker captured).
 
+## Root cause (identified)
+
+Every violent pop frame is exactly a frame with `plan_final_adjustment = pose_toe_clearance` - the
+**instant toe-clearance retry** in `FootIKTargetCoordinator.solve_leg_candidate()`
+(`foot_ik_target_coordinator.gd:101`, `retry_options[&"instant"] = true`). That flag makes
+`FootIKLegPoseEvaluator._limit_correction()` return the desired joint pose un-limited
+(`foot_ik_leg_pose_evaluator.gd:661`), so the whole leg can change 40-180 deg in a single frame.
+Confirmed on both the synthetic stair trace (f508/f722/...) and the live trace (f1771/f1789/f2598):
+the offending frames all carry `adj=pose_toe_clearance`.
+
+The "foot/toe/leaf" pops are not independent ankle snaps - those joints are children of the leg,
+so they move with the thigh/shin (that is why foot/toe/leaf all changed by the same ~52 deg). The
+foot's own correction is *already* unlimited for non-crouch animations by design
+(`foot_ik_leg_pose_evaluator.gd:667`), so `instant` only actually bypasses the hip/knee limiter.
+
+## Measured tradeoff (the retry is load-bearing)
+
+Removing `retry_options[&"instant"] = true` (temporary experiment, reverted):
+
+| metric | with instant | without |
+|---|---|---|
+| R/L hip max deg/frame | 95 / 107 | 20 / 75 |
+| R/L knee max deg/frame | 168 / 179 | 20 / 74 |
+| leg-joint frames >15 deg | 101-140 | 41-160 |
+| 025 walk-contact clip depth | 0.0125 m | **0.0955 m** |
+
+So `instant` clears the toe by snapping the whole leg; removing it trades the pop for a much worse
+toe clip. Neither direction alone is acceptable - the retry's rate must be *bounded*, not unlimited.
+
 ## Next steps (not done)
+
+0. Preferred fix: give the retry a **bounded** joint-rate override (e.g. cap the retry's hip/knee
+   speed at a few hundred deg/s instead of unlimited) so the toe clears within 1-3 frames without a
+   180 deg pop, or remove the need for the retry by fixing the 025 toe clip at its source. Measure
+   both `trace_query.py angular` and the 025 `foot_ik_walk_contact_check` clip depth together -
+   they trade off directly.
 
 1. Give the constrained bend plane temporal continuity: keep the previous plane while it is still
    feasible (stick-if-feasible), or give it its own hysteresis state distinct from the general
