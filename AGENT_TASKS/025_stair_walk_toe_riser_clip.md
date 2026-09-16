@@ -569,6 +569,21 @@ top of it in the skip path, rather than forcing the full pipeline (which clips ~
 correction needs live validation; it is a small new stage, so weigh against AGENTS.md's caution on
 adding correction stages.
 
+### 2026-09-16 implemented (uncommitted): narrow toe-tip pitch in the flat-IK skip path
+
+Added `actors/player/foot_ik/foot_ik_toe_tip_clearance.gd` (`FootIKToeTipClearance`), called from
+`player_foot_ik_modifier.gd`'s `_can_skip_flat_ik` branch before it snapshots the authored pose.
+It rotates the authored foot bone around its own ankle by the angle needed to bring the toe tip to
+`surface + 0.012 m`, capped at 35 deg, only when a roughly-flat surface is found under the tip and
+the tip is actually below it. One continuous pitch - no target/solve, so it cannot snap.
+
+Result: walk-contact `depth_m` **0.012458 -> 0.008026** (frame 214 fixed; the new worst is f218,
+which this correction does not reach - its prints showed only the preview's other characters, so
+the controlled player is likely not on the skip path at f218). Fast suite unchanged (26 pass, only
+the known task-019 failure); no other regression seen. Still above the 0.005 pass bar. UNCOMMITTED
+- new correction stage, needs the user's live verdict before commit.
+
+
 
 
 
