@@ -69,6 +69,28 @@ negative-knee constraint path.
   walkers and the 025 walk-contact fixture pinned to 1.0): did **not** reduce the jank - confirms
   it is not cadence/speed. Kept only as a feel option; needs a live verdict.
 
+## Live trace (2026-09-16, user walking floor-then-stairs)
+
+`/tmp/live_20260916_082858.jsonl` (1203 frames, span 1517..2719; walk 743, idle 214, torch_idle
+213). `trace_query.py angular`: 68 leg-joint jumps >35 deg/frame; peak 74 deg hip, 54 deg knee,
+53 deg foot/ankle, ~20 deg body hips. Two one-frame handoff patterns, both during walking
+(owners `stair_swing_prediction` / `stair_support` / `live_contact`):
+
+1. Swing->planted snap (left, f1770->1771): weight 0.00->1.00, owner
+   `stair_swing_prediction`->`stair_support`; `foot 27.4->80.2`, `leaf 54.0->106.8` (foot pitches
+   ~53 deg in one frame), `thigh 48.0->11.5`, `sole_clearance 0.110->-0.098` (9.8 cm through the
+   ground that frame).
+2. Rejected->accepted target flip (right, f1788->1789): solver action
+   `reject_invalid...`->`solve_to_support`; `knee 29.8->4.9` (snaps straight), hip twists 74 deg,
+   `sole 0.226->0.029`.
+
+So the visible jank is hard one-frame handoffs (weight/target/owner swaps), not a smooth rate -
+the fix target is to blend the swing->support weight+target handoff and give the stair predictor's
+accept/reject decision continuity, plus rate-limit the foot pitch across it. Confirms the earlier
+finding but adds that the *unplanted* handoff (pattern 1) and the reject/accept flip (pattern 2)
+are the dominant live offenders, not only the planted constraint-regime flip (which the synthetic
+stair marker captured).
+
 ## Next steps (not done)
 
 1. Give the constrained bend plane temporal continuity: keep the previous plane while it is still
