@@ -28,6 +28,7 @@ const SPLIT_SAFE_SETTLED_COOLDOWN_FRAMES := 6 # shorter: an already-arrived succ
 const SPLIT_SAFE_MAX_STALL_CYCLES := 5 # non-improving search cycles before giving up - see 021
 const SPLIT_SAFE_GIVEUP_COOLDOWN_FRAMES := 120 # 2s - longer than a normal retry once given up
 const LANDING_CONTACT_CLEARANCE_RADIUS := 0.02
+const COMPRESSED_UPPER_COOLDOWN_FRAMES := 30 # cap the failed straighten fan - see 027
 const IDLE_FREEZE_MAX_TARGET_DRIFT := 0.08
 const STAIR_TREAD_UP_DOT := 0.999
 var smoothed_target: Dictionary = {} # side -> Vector3 (world)
@@ -46,7 +47,7 @@ var landing_upper_confirmed: Dictionary = {} # side -> Vector3 (world surface)
 var compressed_upper_target: Dictionary = {} # side -> supported surface for straighter knee
 var preferred_root_nudge := Vector3.ZERO # lets the capsule make room for a supported upper stance
 var preferred_root_nudge_surface_y := -INF
-var split_safe_root_target := Vector3(INF, INF, INF)
+var split_safe_root_target := Vector3(INF, INF, INF); var compressed_upper_retry_after_frame := 0
 var split_safe_surface_y := -INF; var split_rejected_surface_y := -INF
 var split_safe_retry_after_frame := 0 # capped - see 014's uncapped retry bug
 var split_safe_best_delta := INF # smallest observed left/right height gap since the last give-up
@@ -107,8 +108,7 @@ func restore_landing_commitment(snapshot: Dictionary) -> void:
 func reject_split_safe_root() -> void:
 	preferred_root_nudge = Vector3.ZERO
 	preferred_root_nudge_surface_y = -INF
-	# Upper-foot clearance also requests body nudges. Rejecting that optional motion must
-	# not release unrelated plants when no split-recovery transaction exists (024).
+# Upper-foot clearance nudges the body; rejecting that must not release unrelated plants (024).
 	if not split_safe_root_target.is_finite() and split_safe_held_upper_target.is_empty(): return
 	split_rejected_surface_y = split_safe_surface_y
 	split_safe_root_target = Vector3(INF, INF, INF)
@@ -216,7 +216,8 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 	var vertical_distance := absf(hip.y - target.y)
 	var required_horizontal := sqrt(maxf(0.0,
 			minimum_reach * minimum_reach - vertical_distance * vertical_distance))
-	if horizontal.length_squared() <= 0.0001 or required_horizontal <= horizontal.length():
+	if (horizontal.length_squared() <= 0.0001 or required_horizontal <= horizontal.length()
+			or Engine.get_physics_frames() < compressed_upper_retry_after_frame):
 		return target
 	var best_surface := Vector3.ZERO
 	var best_distance := INF
@@ -257,6 +258,7 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 		if distance < best_distance:
 			best_distance = distance
 			best_surface = candidate_surface
+	compressed_upper_retry_after_frame = Engine.get_physics_frames() + COMPRESSED_UPPER_COOLDOWN_FRAMES
 	if not is_finite(best_distance):
 		if not blocked_nudge.is_zero_approx(): preferred_root_nudge += blocked_nudge.normalized()
 		return target
@@ -521,8 +523,7 @@ func _latch_idle_lower_support(space: PhysicsDirectSpaceState3D, side: StringNam
 	return _validate_idle_lower_support(
 			space, side, transition["previous"], transition["had_latch"], delta, character)
 
-## Clamps an already-planned horizontal move short of blocking geometry (a riser) - shared by
-## every target-smoothing path below so none needs its own collision awareness (024).
+## Clamps a planned horizontal move short of blocking geometry (a riser) for target paths (024).
 func _hold_short_of_collision(space: PhysicsDirectSpaceState3D,
 		previous: Vector3, intended: Vector3) -> Vector3:
 	return TARGET_MOTION.hold_short_of_collision(
