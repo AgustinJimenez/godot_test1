@@ -497,3 +497,25 @@ a different mechanism from the earlier transition clips. Gate widening is explic
 here, and the instant retry that fixes the transition clips is the task-028 jank source - do not
 widen the gate without a geometry-scoped signal plus a full ledge/stair suite A/B.
 
+### Root cause of the landing clip (from the check's own trace, `/tmp/wc_trace.jsonl` f214)
+
+The clip is the **toe tip during toe-off**, not the ankle:
+
+| quantity | value | note |
+|---|---|---|
+| landing surface | y = 2.1008 | root y = 2.1008 |
+| ankle (`foot_pos`) | y = 2.2106 | 11 cm above surface |
+| toe joint | y = 2.1105 | 1 cm **above** surface |
+| toe **tip** (mesh front, `toe + dir*TOE_TIP_EXTRA_LENGTH`) | y = 2.0875 | 1.25 cm **below** surface |
+| solver `sole_clearance` / `gap` | +0.017 / +0.015 | both report clearance |
+| `ground_weight` | 1.00 -> 0.65 over f212-217 | foot is in **toe-off** |
+| stair `continuous_traversal` | true | landing is seamless; no discrete step/retry |
+
+So the solver's clearance model checks the sole/ankle and reports clean, while the extrapolated toe
+tip (which the acceptance check and the user's eye both see) reaches 1.25 cm into the landing as the
+foot rolls into toe-off. Fix belongs at this level: make the toe tip's own forward/down reach part
+of the solved pose (pitch the foot up / lift the target when the tip would enter the surface),
+a gentle per-frame correction rather than the instant retry. Do not confuse with the ankle/sole
+checks, which are already clean here.
+
+
