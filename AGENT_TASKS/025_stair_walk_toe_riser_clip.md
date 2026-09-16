@@ -533,5 +533,28 @@ must key every print on the skeleton instance id / actor path and confirm which 
 before trusting a reading, then re-check whether the controlled player's toe-tip surface is finite
 at f214 and whether `_apply_toe_clearance_pitch`'s animated-toe offset matches the rendered toe.
 
+### 2026-09-16 character-keyed tracing: the flat-IK skip is NOT the cause
+
+Added a `[025CHK]` skeleton-instance-id print in the check (controlled skeleton
+`/root/FootIkWalkContactCheck/FootIkPreview/Player/Body/Character/Armature/Skeleton3D`) and keyed
+the coordinator prints on `skel.get_instance_id()`. Findings:
+
+- The controlled skeleton **never reaches `solve_leg_candidate`** at f213-215 (all solve/surface
+  prints are the preview's other walkers), so its leg takes the early-out path.
+- That early-out is `_can_skip_flat_ik` (`player_foot_ik_modifier.gd:684`, main's flat-ground IK
+  optimization): on a flat landing it releases the legs, snapshots the current (authored) pose and
+  returns, so no clearance or solve happens.
+- **But forcing the pipeline is worse.** Making the skip conditional on
+  `preserved_pose_needs_clearance` (so the landing runs the normal solve) changed the result from
+  `0.012458 @f214` to `0.042124 @f216` - the IK pipeline's landing pose clips **more** than the
+  authored pose it replaces. Reverted.
+
+So the skip is a symptom, not the cause: on this flat landing the pipeline's own leg target/pitch
+is worse than the author's pose. The real root is in the landing targeting (why the solved pose
+puts the toe lower than the authored pose), not in the skip or the clearance gate. Next: compare,
+for the controlled skeleton at f214, the pipeline's `target`/solve foot pose vs the authored pose
+(same skeleton id), and find why the pipeline pitches the toe down further.
+
+
 
 
