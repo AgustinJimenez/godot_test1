@@ -70,11 +70,15 @@ func solve_leg_candidate(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 		side: StringName, context: Dictionary) -> void:
 	var solver = _owner._leg_solver
 	var perf_start_usec: int = solver._begin_perf_sample()
+	var dbg_cap := FootIKDebug.begin()
 	var input: FootIKLegSolveInput = solver.capture_input(skel, side)
+	FootIKDebug.end(&"capture", dbg_cap)
 	var options: Dictionary = context[&"options"]
+	var dbg_eval := FootIKDebug.begin()
 	var result: FootIKLegPoseResult = solver.evaluate_candidate(
 			input, context[&"hip"], context[&"target"], context[&"upper"], context[&"lower"],
 			context[&"ground_weight"], context[&"chain_weight"], context[&"delta"], options)
+	FootIKDebug.end(&"solve", dbg_eval)
 	# The stair predictor can release at the top transition before the trailing walking toe
 	# clears the final tread. Keep the same measured-pose safety active while translating;
 	# it remains inert unless a candidate point is actually inside horizontal geometry.
@@ -191,6 +195,7 @@ func _candidate_points(result: FootIKLegPoseResult) -> PackedVector3Array:
 func resolve_stationary(space: PhysicsDirectSpaceState3D,
 		per_leg: Dictionary, stationary: bool, delta: float,
 		to_world: Transform3D = Transform3D.IDENTITY) -> void:
+	var dbg := FootIKDebug.begin()
 	_propose_spacing(per_leg, stationary, to_world)
 	_select_solve_targets(per_leg)
 	_apply_seam_hold(per_leg)
@@ -207,6 +212,7 @@ func resolve_stationary(space: PhysicsDirectSpaceState3D,
 		elif not plan.valid and plan.reason.begins_with("reject_invalid_stationary"):
 			leg[&"hit"] = false
 			leg[&"target_plan_validated"] = true
+	FootIKDebug.end(&"coord_resolve", dbg)
 
 
 ## Finishes each leg's target decision (upper-foot/slope adjustment) here, before the modifier
@@ -218,6 +224,7 @@ func resolve_stationary(space: PhysicsDirectSpaceState3D,
 func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 		prev_lateral_shift: Vector3, to_world: Transform3D, delta: float, native: bool,
 		stationary: bool, initialize_pose: bool = false) -> void:
+	var dbg := FootIKDebug.begin()
 	for side: StringName in per_leg:
 		var leg: Dictionary = per_leg[side]
 		if not leg.get("hit", false) or not (leg.has("target") or leg.has("ground_target")):
@@ -243,8 +250,10 @@ func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 				"offset": leg.get("effective_offset", _owner.ankle_offset), "to_world": to_world,
 				"delta": delta, "lowest_hit": leg.get("animated_contact_hit", false),
 				"lowest_surface": leg.get("animated_contact_position", Vector3.ZERO)}
+			var dbg_up := FootIKDebug.begin()
 			final_target = sampler.straighten_compressed_upper_target(
 					_contact_space(), side, upper_context)
+			FootIKDebug.end(&"upper_straighten", dbg_up)
 			upper_reposition_active = upper_context.get("upper_reposition_active", false)
 			if leg.get("stationary_slope", false):
 				var hip_axis: Vector3 = leg["hip_pos"] - per_leg[other_side]["hip_pos"]
@@ -253,7 +262,9 @@ func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 				final_target = _owner._leg_solver.adjust_idle_slope_target(
 						side, est_hip, final_target, leg["upper"], leg["lower"], to_world, left_dir)
 		if not native and plan != null:
+			var dbg_acc := FootIKDebug.begin()
 			var accepted := _accept_final_target(_contact_space(), plan, leg, final_target)
+			FootIKDebug.end(&"accept_target", dbg_acc)
 			if accepted != final_target:
 				# Rejected interpolation must not leak into the producer's next frame.
 				if previous_surface != null: sampler.smoothed_target[side] = previous_surface
@@ -298,6 +309,7 @@ func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 		leg[&"pelvis_basis_target"] = pelvis_basis
 		if plan != null and plan.target_source != "raw_recovery":
 			_remember_pelvis_reference(side, plan, pelvis_basis)
+	FootIKDebug.end(&"coord_finalize", dbg)
 
 
 ## Recovery is a short lease, not a world-space lock of unlimited age. Reconfirm geometry

@@ -167,8 +167,10 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 			and (surface.y - lowest_surface.y > character.step_height or flexion_too_tight))
 	var recovering_split := split_safe_root_target.is_finite()
 	if split_safe_held_upper_target.size() < 2:
+		var dbg_ss := FootIKDebug.begin()
 		recovering_split = _request_overheight_split_safe_zone(
 				space, surface, other_surface, animation_name)
+		FootIKDebug.end(&"split_safe", dbg_ss)
 	var enabled: bool = (_settings.upper_foot_reposition_enabled
 			and animation_name.contains("idle")
 			and not landing_committed_target.has(side)
@@ -220,10 +222,18 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 	var best_distance := INF
 	var blocked_distance := INF
 	var blocked_nudge := Vector3.ZERO
+	var horizontal_dir := horizontal.normalized()
+	var base_angle := atan2(horizontal_dir.z, horizontal_dir.x)
+	var angle_step := TAU / float(COMPRESSED_UPPER_SEARCH_SAMPLES)
 	for sample_index in COMPRESSED_UPPER_SEARCH_SAMPLES:
-		var angle := TAU * float(sample_index) / float(COMPRESSED_UPPER_SEARCH_SAMPLES)
+		var offset_index := (sample_index + 1) >> 1
+		var offset_sign := 1.0 if sample_index % 2 == 1 else -1.0
+		var angle := base_angle + offset_sign * angle_step * float(offset_index)
 		var candidate_target := hip + Vector3(cos(angle), 0.0, sin(angle)) * required_horizontal
 		candidate_target.y = target.y
+		var distance := candidate_target.distance_to(target)
+		if distance >= best_distance:
+			continue
 		if (_owner._leg_solver._target_thigh_swing(
 				side, hip, candidate_target, upper, lower, to_world)
 				> deg_to_rad(_owner._leg_solver.max_hip_swing_degrees(side))):
@@ -237,7 +247,6 @@ func straighten_compressed_upper_target(space: PhysicsDirectSpaceState3D,
 		if (absf(candidate_surface.y - (context["surface"] as Vector3).y) > 0.03
 				or not is_target_inside_stance_zone(side, candidate_surface)):
 			continue
-		var distance := candidate_target.distance_to(target)
 		var support_nudge := _support_patch_inward(
 				space, candidate_surface, _settings.upper_support_radius)
 		if not support_nudge.is_zero_approx():
