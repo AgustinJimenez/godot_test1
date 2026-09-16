@@ -271,8 +271,11 @@ func _solve_bend_direction(side: StringName, target_dir: Vector3,
 			bend = bend.slerp(down_bend, high).normalized()
 	bend = _limit_upright_shin(
 			side, target_dir, bend, hip_angle, distance, upper_length, max_swing)
-	return _select_feasible_bend(target_dir, bend, positive_bend,
+	var dbg_bend := FootIKDebug.begin()
+	var selected := _select_feasible_bend(target_dir, bend, positive_bend,
 			hip_angle, distance, upper_length, max_swing, side, delta)
+	FootIKDebug.end(&"bend_select", dbg_bend)
+	return selected
 
 
 func _select_feasible_bend(target_dir: Vector3,
@@ -282,7 +285,10 @@ func _select_feasible_bend(target_dir: Vector3,
 	if distance <= 0.0 or upper_length <= 0.0:
 		return preferred
 	var required_alignment := clampf(_input.minimum_knee_pole_alignment, 0.0, 1.0)
-	var shin_limit := deg_to_rad(_input.max_upright_shin_swing_degrees)
+	var shin_limit_cos := cos(deg_to_rad(_input.max_upright_shin_swing_degrees))
+	var thigh_swing_cos := cos(max_thigh_swing)
+	var hip_cos := cos(hip_angle)
+	var hip_sin := sin(hip_angle)
 	var best := Vector3.ZERO
 	var best_score := INF
 	# Both hard limits constrain the same knee plane. Select one plane that
@@ -293,14 +299,14 @@ func _select_feasible_bend(target_dir: Vector3,
 		var candidate := positive.rotated(target_dir, angle).normalized()
 		if candidate.dot(positive) < required_alignment:
 			continue
-		var thigh := _thigh_direction(target_dir, candidate, hip_angle)
-		if Vector3.DOWN.angle_to(thigh) > max_thigh_swing:
+		var thigh := (target_dir * hip_cos + candidate * hip_sin).normalized()
+		if thigh.dot(Vector3.DOWN) < thigh_swing_cos:
 			continue
 		var shin := target_dir * distance - thigh * upper_length
 		if shin.length_squared() <= 0.000001 \
-				or Vector3.DOWN.angle_to(shin.normalized()) > shin_limit:
+				or shin.normalized().dot(Vector3.DOWN) < shin_limit_cos:
 			continue
-		var score := preferred.angle_to(candidate)
+		var score := -preferred.dot(candidate)
 		if score < best_score:
 			best = candidate
 			best_score = score
