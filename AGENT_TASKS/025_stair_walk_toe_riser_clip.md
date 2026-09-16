@@ -482,3 +482,18 @@ intermediate/final startup runs, mutation and fast/full-suite logs. No preview a
 3. Walking toe/riser fix: implemented and headless regression PASS. **Pending user live test** of
    stair traversal and visual smoothness; do not commit until confirmed. Tasks 019/020 and task
    024's previously noted other-stance clearance side effect remain separate work.
+
+## 2026-09-16 finding: the current harness worst frame is on the landing, not a stair transition
+
+Current harness worst (frame 214, right toe tip, `depth_m=0.012458`, root
+`(15.0, 2.100761, 3.572408)`) is **not** a transition clip: at that frame the plan shows
+`adj=unchanged` (the toe-clearance retry never fired) and the stair predictor reports
+`is_active()=false`, `is_descending_treads()=false`, and the stair controller reports
+`recent_transition=false`. Root y is 2.10 = the top landing height, so the player is already
+standing/walking on the landing and the stair clearance gate cannot apply. Adding
+`recent_transition` to `stair_clearance_active` had **zero effect** (it is false at that frame) -
+reverted, no change to `depth_m`. So this residual is a "walking onto/along the top landing" clip,
+a different mechanism from the earlier transition clips. Gate widening is explicitly discouraged
+here, and the instant retry that fixes the transition clips is the task-028 jank source - do not
+widen the gate without a geometry-scoped signal plus a full ledge/stair suite A/B.
+
