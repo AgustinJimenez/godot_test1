@@ -120,13 +120,28 @@ Removing `retry_options[&"instant"] = true` (temporary experiment, reverted):
 So `instant` clears the toe by snapping the whole leg; removing it trades the pop for a much worse
 toe clip. Neither direction alone is acceptable - the retry's rate must be *bounded*, not unlimited.
 
+## Bounded-rate attempt (reverted)
+
+Replaced `instant=true` with a bounded joint-speed override (`correction_speed_override = 1440`
+deg/s ~ 24 deg/frame) via a new evaluator option. Result is a monotonic tradeoff - any finite cap
+costs toe-clearance clip:
+
+| retry rate | R/L knee max deg | R/L hip max deg | 025 clip depth |
+|---|---|---|---|
+| instant (unlimited) | 168 / 179 | 95 / 107 | 0.0125 m |
+| 1440 deg/s (bounded) | 37 / 70 | 45 / 71 | 0.0522 m |
+| default rate (no override) | 20 / 74 | 20 / 75 | 0.0955 m |
+
+The bounded version also made the foot/toe pitch jank *worse* (max 53->87 deg, jerk 12->22):
+with the leg lagging, the unlimited foot correction has to cover more. No acceptable point on this
+curve, and the leg-snap is apparently required for the 025 clip - so the retry is not the place to
+fix it. Reverted.
+
 ## Next steps (not done)
 
-0. Preferred fix: give the retry a **bounded** joint-rate override (e.g. cap the retry's hip/knee
-   speed at a few hundred deg/s instead of unlimited) so the toe clears within 1-3 frames without a
-   180 deg pop, or remove the need for the retry by fixing the 025 toe clip at its source. Measure
-   both `trace_query.py angular` and the 025 `foot_ik_walk_contact_check` clip depth together -
-   they trade off directly.
+0. Preferred: fix the 025 toe clip at its **source** (why the swing foot's toe enters the tread at
+   all) so the retry can be gentler or removed entirely. Trying to smooth the retry trades directly
+   against the clip (table above) because the leg snap is what clears the toe.
 
 1. Give the constrained bend plane temporal continuity: keep the previous plane while it is still
    feasible (stick-if-feasible), or give it its own hysteresis state distinct from the general
