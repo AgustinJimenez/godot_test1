@@ -23,9 +23,17 @@ class Gait extends RefCounted:
 		pass
 
 
+class StairStub extends RefCounted:
+	func is_descending_treads() -> bool:
+		return false
+	func is_active() -> bool:
+		return false
+
+
 class Owner extends RefCounted:
 	var _ground_sampler := Sampler.new()
 	var _gait_tracker := Gait.new()
+	var _stair_predictor := StairStub.new()
 	var _solved_target_smoothed: Dictionary = {}
 	var player_body: Dictionary = {"anim_player": {"current_animation": &"moves/unarmed_idle"}}
 	var _landing_grace_time := 0.0

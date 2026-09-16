@@ -7,11 +7,19 @@ class Gait extends RefCounted:
 		return false
 
 
+class StairStub extends RefCounted:
+	func is_descending_treads() -> bool:
+		return false
+	func is_active() -> bool:
+		return false
+
+
 class Owner extends RefCounted:
 	var _ground_sampler: Dictionary = {"_settings": FootIKRuntimeSettings.new()}
 	var player_body: Dictionary = {"anim_player": {
 		"current_animation": &"moves/unarmed_idle", "current_animation_position": 0.5}}
 	var _gait_tracker := Gait.new()
+	var _stair_predictor := StairStub.new()
 	var _velocity_suppressed := false
 	var _prev_leg_bone_poses: Dictionary = {}
 	var _leg_fresh_pose_cache: Dictionary = {}

@@ -115,6 +115,17 @@ func _build_panel() -> void:
 			{"label": "Phase locked", "value": PlayerFootIKModifier.LocomotionMode.PHASE_LOCKED},
 	])
 	vbox.add_child(HSeparator.new())
+	_add_heading(vbox, "Debug: subsystem switches + profiler")
+	_add_toggle(vbox, "Master (arms switches below)", FootIKDebug.settings, &"master")
+	_add_toggle(vbox, "Toe clearance retry", FootIKDebug.settings, &"toe_clearance")
+	_add_toggle(vbox, "Stair support", FootIKDebug.settings, &"stair_support")
+	_add_toggle(vbox, "Swing lift", FootIKDebug.settings, &"swing_lift")
+	_add_toggle(vbox, "Balance / counter-lean", FootIKDebug.settings, &"balance")
+	_add_toggle(vbox, "Idle stance rehome", FootIKDebug.settings, &"idle_stance")
+	_add_toggle(vbox, "Per-part profiler", FootIKDebug.settings, &"profiling")
+	_add_button(vbox, "Print profiler report", func() -> void: print(FootIKDebug.report()))
+	_add_button(vbox, "Reset profiler counters", func() -> void: FootIKDebug.reset())
+	vbox.add_child(HSeparator.new())
 	_add_heading(vbox, "Safe-zone landing")
 	_add_slider(vbox, "Correction speed", _runtime, &"landing_correction_speed", 0.0, 8.0, 0.1)
 	_add_slider(vbox, "Max correction", _runtime, &"max_airborne_correction", 0.0, 0.6, 0.01)
@@ -208,6 +219,13 @@ func _add_toggle(parent: VBoxContainer, label_text: String,
 	parent.add_child(button)
 	_registered_controls.append({"target": target, "property": property,
 			"default": target.get(property), "control": button, "kind": &"toggle"})
+
+
+func _add_button(parent: VBoxContainer, label_text: String, action: Callable) -> void:
+	var button := Button.new()
+	button.text = label_text
+	button.pressed.connect(action)
+	parent.add_child(button)
 
 
 func _add_slider(parent: VBoxContainer, label_text: String, target: Object,

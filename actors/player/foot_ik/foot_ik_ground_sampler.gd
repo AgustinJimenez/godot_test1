@@ -375,7 +375,8 @@ func sample(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 			and not landing_committed and not idle_lower_latched
 			and not idle_lower_acquiring_now and not landing_upper_owned
 			and not _owner._gait_tracker.is_body_translating()
-			and idle_animation and _rehome_idle_stance_target(
+			and idle_animation and FootIKDebug.subsystem_on(&"idle_stance")
+			and _rehome_idle_stance_target(
 					space, side, foot_pos, raw_target, raw_normal, delta)):
 		idle_stance_rehoming[side] = smoothed_target[side]
 		_owner._gait_tracker.invalidate_idle_freeze(side)

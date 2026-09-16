@@ -110,7 +110,7 @@ func update_swing_lift(space: PhysicsDirectSpaceState3D, side: StringName,
 		clear_swing(side)
 		state.smoothed_lift = 0.0
 		return 0.0
-	_discard_current_support_tread(state)
+	_discard_current_support_tread(state, ground_weight)
 	var forward := _prediction_direction(side, foot_basis_local)
 	var predicted_probe: Vector3 = foot_pos + forward * _owner.step_prediction_distance
 	var predicted_hit: Dictionary = _owner._ground_sampler.raycast_ground(
@@ -383,6 +383,13 @@ func get_root_vertical_speed() -> float:
 	return _root_vertical_speed
 
 
+## Descending a discrete staircase does not create a higher-tread swing latch, so is_active()
+## stays false even while the collision root is dropping rapidly across horizontal treads.
+## The final-pose clearance boundary uses this signal to cover that otherwise ownerless path.
+func is_descending_treads() -> bool:
+	return _root_vertical_speed < -STATIONARY_VERTICAL_SPEED
+
+
 func get_step_lifts() -> Dictionary:
 	var result: Dictionary = {}
 	for side: StringName in _legs:
@@ -407,10 +414,14 @@ func _state(side: StringName) -> LegState:
 	return state
 
 
-func _discard_current_support_tread(state: LegState) -> void:
+func _discard_current_support_tread(state: LegState, ground_weight: float) -> void:
 	if not state.has_latched_target:
 		return
 	if state.latched_target.y > _support_surface_target.y + _owner.step_min_rise:
+		return
+	# Reaching the current support tread does not mean the swing has landed. Dropping its
+	# clearance while contact weight is still low lets the toe fall through the shared tread.
+	if ground_weight < 0.8:
 		return
 	state.has_latched_target = false
 	state.has_predicted_target = false
@@ -605,7 +616,10 @@ func _apply_support_contact(space: PhysicsDirectSpaceState3D, side: StringName,
 	var offset := _support_normal * float(leg.get("effective_offset", 0.0))
 	var full_target := surface_target + offset
 	var blended_target: Vector3 = _support_transfer_from_pos.lerp(full_target, blend)
-	var weight := lerpf(_support_transfer_from_weight, 1.0, blend)
+	# The target already blends from the pre-handoff pose. Fading chain strength too lets the
+	# low flat animation win a second time and drops the foot through a higher discrete tread.
+	var weight := (1.0 if _support_normal.dot(Vector3.UP) >= STAIR_TREAD_UP_DOT
+			else lerpf(_support_transfer_from_weight, 1.0, blend))
 	leg["ground_weight"] = weight
 	# leg["chain_weight"] must move with ground_weight, not just default to it -
 	# _apply_support_pelvis_and_legs() reads chain_weight straight from this

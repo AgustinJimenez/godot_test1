@@ -8,6 +8,7 @@ extends RefCounted
 ## can never rely on a later pose correction to make it safe.
 
 const TARGET_PLAN := preload("res://actors/player/foot_ik/foot_ik_target_plan.gd")
+const PENETRATION_MONITOR := preload("res://tools/foot_ik/foot_ik_live_penetration_monitor.gd")
 const PLANT_WEIGHT := 0.95
 const FLAT_SUPPORT_DOT := 0.999
 const SUPPORT_HEIGHT_TOLERANCE := 0.03
@@ -22,6 +23,9 @@ const TOE_INVALID_HOLD_FRAMES := 10
 const FINAL_HOLD_FRAMES := 2
 ## Recovery may borrow a supported reference for at most 12 physics ticks (0.2 s at 60 Hz).
 const PELVIS_HOLD_TICKS := 12
+const POSE_PENETRATION_TRIGGER_M := 0.002
+const POSE_CLEARANCE_MARGIN_M := 0.012
+const POSE_CLEARANCE_CORRECTIONS := 3
 
 class PelvisReference extends RefCounted:
 	var target: Vector3
@@ -58,6 +62,130 @@ func reset() -> void:
 
 func get_plan(side: StringName) -> FootIKTargetPlan:
 	return _plans.get(side) as FootIKTargetPlan
+
+
+## Candidate-local stair clearance: measure the actual constrained toe, then reevaluate the same
+## target with only a foot-pitch correction. No rejected history or target displacement escapes.
+func solve_leg_candidate(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
+		side: StringName, context: Dictionary) -> void:
+	var solver = _owner._leg_solver
+	var perf_start_usec: int = solver._begin_perf_sample()
+	var input: FootIKLegSolveInput = solver.capture_input(skel, side)
+	var options: Dictionary = context[&"options"]
+	var result: FootIKLegPoseResult = solver.evaluate_candidate(
+			input, context[&"hip"], context[&"target"], context[&"upper"], context[&"lower"],
+			context[&"ground_weight"], context[&"chain_weight"], context[&"delta"], options)
+	# The stair predictor can release at the top transition before the trailing walking toe
+	# clears the final tread. Keep the same measured-pose safety active while translating;
+	# it remains inert unless a candidate point is actually inside horizontal geometry.
+	var stair_clearance_active: bool = (_owner._stair_predictor.is_active()
+			or _owner._stair_predictor.is_descending_treads()) and _walking_animation()
+	if result.has_pose and stair_clearance_active and FootIKDebug.subsystem_on(&"toe_clearance"):
+		var dbg_clr := FootIKDebug.begin()
+		var points := _candidate_points(result)
+		var clearance := PENETRATION_MONITOR.check(space, points,
+				FootIKGroundSampler.GROUND_COLLISION_MASK)
+		if (clearance["penetrating"]
+				and float(clearance["depth_m"]) > POSE_PENETRATION_TRIGGER_M):
+			var point: Vector3 = clearance["point"]
+			var surface: Dictionary = _owner._ground_sampler.raycast_ground(
+					space, point + Vector3.UP * 0.5, 1.0)
+			var surface_normal: Vector3 = surface.get("normal", Vector3.UP)
+			if (surface["hit"] and surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT
+					and (surface["position"] as Vector3).y > point.y):
+				var retry_options := options.duplicate()
+				retry_options[&"instant"] = true
+				var retry_target: Vector3 = context[&"target"]
+				var retry_surface_y: float = (surface["position"] as Vector3).y
+				# The deepest point can move from one tread into the next as pitch changes.
+				# Resample that point before every residual lift instead of reusing the first
+				# tread's height. The final iteration evaluates the third correction.
+				for attempt in POSE_CLEARANCE_CORRECTIONS + 1:
+					retry_options[&"toe_clearance_surface_y"] = retry_surface_y
+					result = solver.evaluate_candidate(input, context[&"hip"], retry_target,
+							context[&"upper"], context[&"lower"], context[&"ground_weight"],
+							1.0, context[&"delta"], retry_options)
+					var retry_clearance := PENETRATION_MONITOR.check(space,
+							_candidate_points(result), FootIKGroundSampler.GROUND_COLLISION_MASK)
+					if (not retry_clearance["penetrating"] or float(
+							retry_clearance["depth_m"]) <= POSE_PENETRATION_TRIGGER_M):
+						break
+					if attempt >= POSE_CLEARANCE_CORRECTIONS:
+						break
+					var retry_point: Vector3 = retry_clearance["point"]
+					var retry_surface: Dictionary = _owner._ground_sampler.raycast_ground(
+							space, retry_point + Vector3.UP * 0.5, 1.0)
+					var retry_normal: Vector3 = retry_surface.get("normal", Vector3.UP)
+					if (not retry_surface["hit"]
+							or retry_normal.dot(Vector3.UP) < FLAT_SUPPORT_DOT):
+						break
+					retry_surface_y = (retry_surface["position"] as Vector3).y
+					if retry_surface_y <= retry_point.y:
+						break
+					retry_target.y += retry_surface_y + POSE_CLEARANCE_MARGIN_M - retry_point.y
+				var plan := get_plan(side)
+				if plan != null:
+					plan.final_adjustment_reason = "pose_toe_clearance"
+		FootIKDebug.end(&"clearance", dbg_clr)
+	solver.commit_candidate(skel, result)
+	solver._end_perf_sample(perf_start_usec)
+
+
+## The same-frame, full-strength clearance retry is a locomotion step-up correction. It must not
+## fire during idle: measured at full strength it snaps an idle leg (ledge check:
+## idle_split_height_turn_pause foot snap 0.581m) and its toe pitch over-swings the shin
+## (parallel_to_edge 51deg > 45). Gating it to walk/sprint clips keeps the walking fix while
+## leaving idle ledge/split-height ownership untouched.
+func _walking_animation() -> bool:
+	if _owner.player_body == null or _owner.player_body.anim_player == null:
+		return false
+	var anim: String = _owner.player_body.anim_player.current_animation.get_file()
+	return anim.contains("walk") or anim.contains("sprint")
+
+
+## The ordinary flat-pose fast path must yield when the pose it would preserve is already
+## inside a horizontal stair/platform collider. This is measured after pelvis placement, just
+## before release; ordinary unobstructed flat walking still takes the zero-correction path.
+func preserved_pose_needs_clearance(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
+		side: StringName) -> bool:
+	var indices: Dictionary = _owner._bone_indices[side]
+	var to_world := skel.global_transform
+	var foot: Vector3 = to_world * skel.get_bone_global_pose(indices["foot"]).origin
+	var points := PackedVector3Array([foot])
+	var toe_index: int = indices["toe"]
+	if toe_index >= 0:
+		var toe: Vector3 = to_world * skel.get_bone_global_pose(toe_index).origin
+		var toe_reach := toe - foot
+		if toe_reach.length_squared() > 0.000001:
+			toe += toe_reach.normalized() * float(_owner.toe_tip_margin)
+		points.append(toe)
+	var leaf_index: int = indices["leaf"]
+	if leaf_index >= 0:
+		points.append(to_world * skel.get_bone_global_pose(leaf_index).origin)
+	var clearance := PENETRATION_MONITOR.check(space, points,
+			FootIKGroundSampler.GROUND_COLLISION_MASK)
+	if (not clearance["penetrating"]
+			or float(clearance["depth_m"]) <= POSE_PENETRATION_TRIGGER_M):
+		return false
+	var point: Vector3 = clearance["point"]
+	var surface: Dictionary = _owner._ground_sampler.raycast_ground(
+			space, point + Vector3.UP * 0.5, 1.0)
+	var normal: Vector3 = surface.get("normal", Vector3.UP)
+	return (surface["hit"] and normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT
+			and (surface["position"] as Vector3).y > point.y)
+
+
+func _candidate_points(result: FootIKLegPoseResult) -> PackedVector3Array:
+	var points := PackedVector3Array([result.foot_pos])
+	if result.has_toe:
+		var toe_reach: Vector3 = result.toe_pos - result.foot_pos
+		var toe_tip: Vector3 = result.toe_pos
+		if toe_reach.length_squared() > 0.000001:
+			toe_tip += toe_reach.normalized() * float(_owner.toe_tip_margin)
+		points.append(toe_tip)
+	if result.has_leaf:
+		points.append(result.leaf_pos)
+	return points
 
 
 func resolve_stationary(space: PhysicsDirectSpaceState3D,
@@ -517,7 +645,16 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName, leg: Dictio
 	# coordinator's generic toe/leaf envelope check is unverified against that existing logic
 	# and could duplicate or conflict with it (see 010's validation design proposal); exempt
 	# it here rather than guess.
-	var check_toe := plan.owner != FootIKTargetPlan.Owner.STAIR_SUPPORT
+	# Descending locomotion is corrected against the actual evaluated toe/ankle pose in
+	# solve_leg_candidate(). Rejecting its approximate pre-solve toe envelope here releases the
+	# whole leg to the very animation pose that penetrated the tread, before correction can run.
+	# Guard the predictor access: pure-function contract fixtures use a mock owner that omits it.
+	var descending_locomotion: bool = (_owner.get("_stair_predictor") != null
+			and _owner._stair_predictor.is_descending_treads()
+			and plan.owner in [FootIKTargetPlan.Owner.LOCOMOTION_LOCK,
+					FootIKTargetPlan.Owner.LOCOMOTION_STANCE])
+	var check_toe: bool = (plan.owner != FootIKTargetPlan.Owner.STAIR_SUPPORT
+			and not descending_locomotion)
 	plan = _finish_validation(space, plan, leg, require_stance, delta, check_toe)
 	if plan.valid:
 		leg[&"target_plan_validated"] = true
@@ -556,6 +693,13 @@ func _finish_validation(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan
 	# predictor is actually converging toward, not its currently-smoothed value.
 	elif plan.owner == FootIKTargetPlan.Owner.STAIR_SUPPORT:
 		support_target = _owner._stair_predictor.get_current_support_surface_target()
+	# A descending locomotion lock/stance target is likewise an interpolated waypoint between
+	# discrete treads. Validate the real sampled destination, then let the final-pose clearance
+	# retry guard the in-flight rendering instead of demanding ground in midair.
+	elif (_owner._stair_predictor.is_descending_treads()
+			and plan.owner in [FootIKTargetPlan.Owner.LOCOMOTION_LOCK,
+					FootIKTargetPlan.Owner.LOCOMOTION_STANCE]):
+		support_target = plan.raw_surface
 	plan.support_status = (STATUS.SATISFIED if _has_support_at(space, support_target)
 			else STATUS.VIOLATED)
 	var hip: Vector3 = leg.get(&"hip_pos", Vector3.ZERO)
@@ -611,7 +755,7 @@ func _streak_tolerated(streak_dict: Dictionary, frame_dict: Dictionary, side: St
 
 ## Rejects a plan whose ankle target is valid but whose toe/leaf reach - at this frame's
 ## animated foot orientation - lands on a surface higher than the ankle's own tread (the
-## right-foot clip from AGENT_TASKS/008: a valid ankle latch with the toe poking into the
+## right-foot clip from archived task 008: a valid ankle latch with the toe poking into the
 ## next riser). A miss (nothing beneath the toe reach) is a reach/void concern handled
 ## elsewhere, not this check's job, so it passes here.
 func _toe_envelope_valid(space: PhysicsDirectSpaceState3D, plan: FootIKTargetPlan) -> bool:

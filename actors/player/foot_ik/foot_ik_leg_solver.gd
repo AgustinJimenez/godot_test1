@@ -197,13 +197,19 @@ var _perf_worst_window_frame_usec := 0
 func solve(skel: Skeleton3D, side: StringName, hip_pos: Vector3, target: Vector3,
 		upper_length: float, lower_length: float, ground_weight: float,
 		chain_weight: float, delta: float, options: Dictionary = {}) -> void:
-	if not _perf_log_enabled:
-		_solve_impl(skel, side, hip_pos, target, upper_length, lower_length,
-				ground_weight, chain_weight, delta, options)
-		return
-	var start_usec := Time.get_ticks_usec()
+	var start_usec := _begin_perf_sample()
 	_solve_impl(skel, side, hip_pos, target, upper_length, lower_length,
 			ground_weight, chain_weight, delta, options)
+	_end_perf_sample(start_usec)
+
+
+func _begin_perf_sample() -> int:
+	return Time.get_ticks_usec() if _perf_log_enabled else -1
+
+
+func _end_perf_sample(start_usec: int) -> void:
+	if start_usec < 0:
+		return
 	var call_usec := Time.get_ticks_usec() - start_usec
 	_perf_accum_usec += call_usec
 	_perf_call_count += 1

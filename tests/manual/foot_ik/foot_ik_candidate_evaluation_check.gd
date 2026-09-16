@@ -42,6 +42,7 @@ class Owner extends Node3D:
 	var _landing_grace_time := 0.0
 	var max_hip_swing_degrees := 100.0
 	var max_knee_flexion_degrees := 150.0
+	var toe_tip_margin := 0.035
 
 	func _ready() -> void:
 		add_child(player_body)

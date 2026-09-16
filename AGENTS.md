@@ -57,8 +57,15 @@ Use `godot --doctool` before web search for exact Godot APIs. This binary's XML 
 method, property, and inheritance data but empty prose descriptions; use primary web sources only
 when explanatory prose is needed.
 
-Use `rtk` for routine noisy Git/search output, but use raw output for instruction files, exact
-numeric traces, failing checks, and final pre-commit diffs. Rerun any filtered failure raw.
+Use `rtk` (<https://github.com/rtk-ai/rtk>) for routine noisy Git/search output, but use raw output
+for instruction files, exact numeric traces, failing checks, and final pre-commit diffs. Rerun any
+filtered failure raw.
+
+`codegraph` (<https://github.com/colbymchenry/codegraph>) is a local, pre-indexed code-graph MCP
+that supports OpenCode and cuts discovery tool calls/tokens - candidate for token efficiency (see
+`AGENT_TASKS/archive/026_token_efficiency_workflow.md`). Caveat before adopting: its supported
+language list excludes GDScript, so it will not index this repo's gameplay code; re-check that list
+before relying on it.
 
 Every `godot ... >"$log_file" 2>&1` line in a `check_foot_ik*.sh` script must end with `|| true`
 before its own `if rg -q ...` diagnostic block. Without it, a failing scene's nonzero exit trips
@@ -117,7 +124,18 @@ the cap is blown.
 animation comparisons) in the same scene tree as the one manually-controlled player. Any live
 `print()`-based instrumentation keyed only by `side` will interleave with all of them - filter by
 frame/skeleton identity, or expect noisy, hard-to-read output, especially in the first ~100-150
-frames before automated setup finishes.
+frames before automated setup finishes. **Filtering by root x/z is not enough**: the 0.35m stair
+walkers spawn at the same `x` as the controlled player (~15.0) and run the same code, so a
+"two passes per frame" or "the monitor sees a clean pose" reading can silently be a *different
+character*. Key every debug print on the skeleton instance id and/or the actor node path. On this
+scene there are ~10 characters, one `_process_modification_with_delta` call each per physics frame -
+it is not multi-pass.
+
+Before trusting an A/B on the shared Godot user dir, know that it is **per project name** and shared
+across every run: accumulated `user://` trace files contaminate later scenes (a fixture that fails
+deterministically there can pass cleanly at committed HEAD). Reliable method: copy the tree to a
+scratch dir, rename `application/config/name` in `project.godot` so Godot uses a fresh `user://`,
+`--import`, then run. `git stash` A/B inside the shared dir gave misleading results (see 025).
 
 Logging must be bounded and cheap. `foot_ik_trace_writer.gd` appends records and compacts
 periodically; do not rewrite a multi-megabyte window every frame or emit unbounded editor output.
@@ -602,3 +620,24 @@ what it looks like when the earlier key's *absence*, not merely a separate boole
 is what should trigger the fallback. This specific gap predates all of today's target-selection
 work and was never touched by any of it - grep for the actual precedence flag before assuming
 a `.get()` chain already encodes it.
+
+`_gait_tracker.is_body_translating()` is **velocity-based** and reads 0 while the stair controller
+moves the root by writing `global_position` (not `velocity`), so it is false during genuine stair
+travel. Gating stair logic on it (a preserve-pose escape, a clearance retry) silently never fires
+mid-climb. Use the predictor's `is_active()`/`is_descending_treads()`, a position-derived travel
+signal, or the animation clip - and verify the gate actually turns on at the failing frame before
+concluding the logic is wrong.
+
+A clearance/safety check placed *inside* a `SkeletonModifier3D` pass reads the skeleton **before
+that same pass writes its bones**, i.e. the previous pose, not the one it is about to publish
+(`_final_bone_poses`). A check there can read "clean" while the harness reads a 1-3cm clip on the
+published pose. Measure the pose that will actually be rendered (evaluate the candidate first, or
+check after the write) - and remember the published pose is what the regression tests read.
+
+Debug toggles + per-part timing live in `actors/player/foot_ik/foot_ik_debug.gd` (`FootIKDebug`)
+and the preview's F6 feature panel ("Debug: subsystem switches + profiler"): one on/off switch per
+subsystem (toe clearance, stair support, swing lift, balance, idle stance) plus a profiler that
+prints a `[FOOT_IK_PERF]` per-part table. Off by default = zero cost. First measured result: the
+`support` (pelvis/support/leg-solve) pipeline is ~78% of the IK frame cost, the clearance retry
+~0 - see `AGENT_TASKS/027`. Engine-wide counters remain in `foot_ik_perf_probe.gd` (`FOOT_IK_PERF_LOG=1`).
+

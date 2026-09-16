@@ -5,6 +5,7 @@ extends RefCounted
 ## Intra-evaluation read-after-write ordering intentionally preserves the legacy solver.
 
 const IDLE_STANCE_MIN_SIDE_CLEARANCE := 0.04
+const TOE_CLEARANCE_MARGIN_M := 0.012
 var _input: FootIKLegSolveInput
 var state: FootIKLegSolveState
 
@@ -116,7 +117,11 @@ func evaluate_pose(side: StringName, hip_pos: Vector3, target: Vector3,
 	knee_delta = Quaternion.IDENTITY.slerp(knee_delta, rotation_weight)
 	hip_delta = _limit_correction(side, &"hip", hip_delta, delta, instant_correction)
 	knee_delta = _limit_correction(side, &"knee", knee_delta, delta, instant_correction)
-	knee_delta = _limit_rendered_upright_shin(side, knee_delta, foot_pos - knee_pos)
+	# A retry reaches this point only after the candidate's actual toe/ankle was measured inside a
+	# horizontal stair box. Reapplying the standing shin cone can force that corrected ankle back
+	# below the tread; retain the cone for every ordinary solve and waive it only for this retry.
+	if not is_finite(float(options.get(&"toe_clearance_surface_y", -INF))):
+		knee_delta = _limit_rendered_upright_shin(side, knee_delta, foot_pos - knee_pos)
 	# Positions must come from the same weighted/rate-limited rotations that
 	# will be rendered below. Previously they stayed at the full solve while
 	# the bases were only partially corrected, so even a small IK weight could
@@ -162,6 +167,11 @@ func evaluate_pose(side: StringName, hip_pos: Vector3, target: Vector3,
 	var foot_delta := _limit_correction(side, &"foot",
 			desired_foot_rotation * animated_foot_rotation.inverse(), delta)
 	var new_foot_basis_world := Basis(foot_delta) * animated_foot_basis_world
+	new_foot_basis_world = _apply_toe_clearance_pitch(new_foot_basis_world, {
+		"surface_y": options.get(&"toe_clearance_surface_y", -INF),
+		"foot_pos": new_foot_pos, "animated_foot_pos": foot_pos,
+		"animated_foot_basis": animated_foot_basis_world,
+		"animated_toe_pose": to_world * toe_pose, "weight": solve_weight})
 	var result := _new_result()
 	result.has_pose = true
 	result.hip_idx = hip_idx
@@ -183,6 +193,42 @@ func evaluate_pose(side: StringName, hip_pos: Vector3, target: Vector3,
 			"leaf_pose": leaf_pose, "weight": solve_weight,
 		})
 	return result
+
+
+## Pitches around the ankle only when a real stair surface is known to occupy the toe column.
+## The ankle/knee target stays untouched; ordinary flat gait never enters this path.
+func _apply_toe_clearance_pitch(foot_basis: Basis, context: Dictionary) -> Basis:
+	var surface_y: float = context["surface_y"]
+	if not is_finite(surface_y):
+		return foot_basis
+	var animated_foot_pos: Vector3 = context["animated_foot_pos"]
+	var animated_foot_basis: Basis = context["animated_foot_basis"]
+	var animated_toe_pose: Transform3D = context["animated_toe_pose"]
+	var animated_offset := animated_foot_basis.inverse() * (
+			animated_toe_pose.origin - animated_foot_pos)
+	var local_offset: Vector3 = animated_offset.lerp(
+			_input.toe_rest_offset, context["weight"])
+	if local_offset.length_squared() <= 0.000001:
+		return foot_basis
+	var reach: Vector3 = foot_basis * local_offset
+	var length := reach.length() + _input.toe_tip_margin
+	var current_tip := reach.normalized() * length
+	var needed_y := surface_y + TOE_CLEARANCE_MARGIN_M - (context["foot_pos"] as Vector3).y
+	if current_tip.y >= needed_y:
+		return foot_basis
+	var horizontal := Vector3(current_tip.x, 0.0, current_tip.z)
+	if horizontal.length_squared() <= 0.000001:
+		horizontal = _input.actor_forward
+	horizontal = horizontal.normalized()
+	var desired_y := clampf(needed_y, -length * 0.98, length * 0.98)
+	var desired_horizontal := sqrt(maxf(0.0, length * length - desired_y * desired_y))
+	var desired_tip := horizontal * desired_horizontal + Vector3.UP * desired_y
+	var correction := Quaternion(current_tip.normalized(), desired_tip.normalized())
+	var max_pitch := deg_to_rad(35.0)
+	var correction_angle := Quaternion.IDENTITY.angle_to(correction)
+	if correction_angle > max_pitch:
+		correction = Quaternion.IDENTITY.slerp(correction, max_pitch / correction_angle)
+	return Basis(correction) * foot_basis
 
 
 

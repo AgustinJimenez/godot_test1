@@ -58,6 +58,121 @@ print, run the candidate check,
 Do not commit gameplay/animation changes until that live result is confirmed. No scene should be
 autoplayed for the user.
 
+### 2026-09-15 state after pulling main (987c885) — top-transition fixed, bottom remains
+
+- Merged `origin/main` (`987c885 "Optimize flat-ground foot IK"`, which adds `_can_skip_flat_ik`).
+  That pushed `player_foot_ik_modifier.gd` over the 1000-line cap; trimmed back under it by
+  condensing comments only (no behavior change). `scripts/check.sh` is green.
+- **Top-transition clip (1.25 cm at frame 214) fixed.** Root cause: `preserved_pose_blocked` in
+  `player_foot_ik_modifier.gd` required `_gait_tracker.is_body_translating()`, which is
+  **velocity-based** and reads 0 while the stair controller moves the root by writing position. So
+  the "preserved authored pose is already inside a box" escape never fired during stair travel, the
+  leg was released to the authored pose, and the trailing toe clipped the top landing. Removing that
+  velocity gate (keeping `preserved_pose_needs_clearance`'s own measured check) fixes it. Confirmed
+  with a staged print: candidate and committed bone positions match exactly, and the controlled
+  player simply never reached `solve_leg_candidate` (no `pos=(15.0,...)` entry) until the gate was
+  removed.
+- **Remaining failure is the documented bottom transition:** `FAIL depth_m=0.028407 frame=285
+  side=left joint=toe_tip`, point `(14.87917, 0.321593, 0.339009)` — a 2.84 cm left-toe clip into
+  step 0 while the body walks off the stairs onto the floor. Instrumenting the leg loop at f285
+  shows the deciding pass has `leg["hit"]=false` -> the `not leg["hit"]` release branch fires, and
+  that branch has **no** clearance escape (unlike `preserved_pose_blocked`'s `preserve_idle` path).
+- **Tried "release with clearance" and reverted (does not work yet).** Added a coordinator
+  `release_or_correct()` that, when the sampler finds no support, runs a clearance-only candidate
+  with the current foot as target, instead of releasing to the authored pose. At f285 it returned
+  `needs=false`: `preserved_pose_needs_clearance()` read the pose as **clean** at that call while
+  the harness reads 2.84 cm at the same engine frame. Instrumenting both pose sources at f285 for
+  the controlled player (`pos=(15.0, 0.319, -0.10)`):
+  - `preserved_pose_needs_clearance` (reads `skel.get_bone_global_pose` at gate time): toe/leaf y
+    `~0.41`, `pen=false`;
+  - the captured animated pose (`capture_input(..., release_only=true).poses["toe"]`): toe y
+    `~0.48`, also clean;
+  - the harness (`get_final_bone_global_pose`, i.e. the modifier's `_final_bone_poses` snapshot):
+    toe tip y `0.322`, 2.84 cm inside step 0.
+
+  So there are **three different poses** and the published one (`_final_bone_poses`) matches
+  neither the skeleton at gate time nor the captured animation.
+- **Pass-count observation - NEEDS character-keyed confirmation (likely not two passes).** A
+  per-instance pass counter printed two entries at f285 with left toe y `1.0747` and `0.3566`.
+  Both filtered on `x ~ 15.0`, but the preview's own 0.35m stair walker also spawns at `x = 15.0`,
+  and each printed counter value tracks its own frame number (~one call per frame per character).
+  So these are probably **two different characters**, not two passes of the controlled player's
+  modifier - a third instance of the multi-character trap. Do not conclude multi-pass from this;
+  re-run with the actor path/skeleton instance id printed (as `foot_ik_clip_indicator` does) and a
+  counter keyed per skeleton before trusting it.
+- **What is solid regardless:** the clearance gate runs *before* its leg writes that frame, so it
+  reads the pre-write skeleton pose, while the harness reads the post-write `_final_bone_poses`;
+  those differ (monitor toe `~0.41` / captured animation `~0.48` vs published toe joint `0.3566`,
+  tip `~0.322`). Any clearance decision keyed on the pre-write pose cannot see the pose that gets
+  published. Preferred fix (chosen, not yet implemented): evaluate the pose the release itself
+  would produce (solver release candidate) and, if its toe/leaf is inside a box, run the existing
+  toe-clearance solve instead of releasing - option (1) from the two options considered, over a new
+  global post-pass modifier (option (2)), because it reuses the proven `solve_leg_candidate` path
+  and does not add a new correction stage to the chain.
+- Tried and reverted as unnecessary: a position-derived `is_root_traveling()` added to the
+  clearance gate and predictor (the gate was never the blocker once the velocity gate was removed);
+  plus the earlier `is_descending_treads`/`is_body_translating` gate-widening attempts. Do not
+  re-try gate widening - the real gate is the release path, not `stair_clearance_active`.
+
+### 2026-09-15 blockers found while attempting the release-path fix
+
+- **Started from a false premise (corrected):** removing the velocity gate on `preserved_pose_blocked`
+  does **not** fix the top-transition 1.25cm; it only un-masks the larger bottom 2.84cm as the new
+  max. Reverted - it also changed ledge behaviour. The top 1.25cm was present before and after.
+- **`correct_released_pose` (release-path clearance) fixed the bottom transition but regressed
+  `FOOT_IK_LEDGE_SAFETY_CHECK`**: the harness dropped the bottom 2.84cm, but ledge safety then failed
+  (`idle_split_height_turn_pause_no_leg_snap_live_repro rendered foot snapped 0.581m`). Reverted.
+  The chosen approach (measure the released pose, then clearance-solve with the released foot as
+  target) works for its target case but needs a much gentler correction - a full-weight
+  `solve_leg_candidate` to the released foot snaps the leg. Do not re-add it as-is.
+- **Mock contract checks were broken by the uncommitted `descending_locomotion` guard**
+  (`_build_plan` reads `_owner._stair_predictor.is_descending_treads()` unconditionally; the
+  pure-function fixtures' mock `Owner` has no `_stair_predictor`). Fixed here: added a
+  `_stair_predictor` stub to `foot_ik_spacing_plan_check.gd`, `foot_ik_constraint_expiry_check.gd`
+  and `foot_ik_release_pose_check.gd`, and null-guarded the `_build_plan` access
+  (`_owner.get("_stair_predictor") != null`). Fast suite now runs with **0 script errors**.
+- **BLOCKER: the uncommitted fix currently regresses `FOOT_IK_LEDGE_SAFETY_CHECK`.** A/B: with
+  every uncommitted change stashed (committed `HEAD`), `FOOT_IK_LEDGE_SAFETY_CHECK PASS cases=16`;
+  with them restored it FAILs `parallel_to_edge right shin swing 51.07 exceeds 45.00 degrees` and
+  `idle_split_height_turn_pause_no_leg_snap_live_repro rendered foot snapped 0.581m at frame 123`.
+- **Isolated by reverting file groups against that check:**
+  - predictor alone -> 20 ledge failures (files are interdependent; not a valid isolation).
+  - `foot_ik_leg_pose_evaluator.gd` + `foot_ik_leg_solve_input.gd` -> shin-swing failure gone,
+    0.581m snap remains. So the **toe-pitch** (`_apply_toe_clearance_pitch`) causes the shin swing.
+  - coordinator + solver + modifier -> ledge PASS. In the modifier, the exact hunk is the
+    `_target_coordinator.solve_leg_candidate(...)` call (reverting just it -> PASS).
+  - In the coordinator's retry, `retry_options[&"instant"] = true` causes the 0.581m snap:
+    setting it to `false` removed the snap (leaving only the pitch's shin swing) but **broke the
+    walking harness** (`depth_m` 0.012 -> 0.0956 at frame 244). So `instant` is load-bearing for
+    the 025 fix and also the ledge-snap cause - a direct conflict, not a one-line bug.
+- **Resolution applied (partial): option (b) - scope the retry to walking.** `solve_leg_candidate`'s
+  `stair_clearance_active` is now `(is_active() or is_descending_treads() or is_body_translating())
+  and _walking_animation()` (walk/sprint `current_animation`). Effect: `FOOT_IK_LEDGE_SAFETY_CHECK`
+  drops from 2 failures to 1 (the 0.581m foot snap is gone), the walking harness is unchanged
+  (`FAIL 0.012458`), and the fast suite has 0 script errors. So the `instant=true` snap is fixed by
+  gating to walking.
+- **RESOLVED (option b, extended): the ledge regression is gone.** The retry gate no longer uses
+  the loose `_owner._gait_tracker.is_body_translating()` trigger - it is now
+  `(is_active() or is_descending_treads()) and _walking_animation()`, i.e. only on real stair
+  contact during a walk/sprint clip. `parallel_to_edge` is a *flat-ground* strafe near an edge, so
+  it no longer triggers the retry and its shin over-swing is gone:
+  `FOOT_IK_LEDGE_SAFETY_CHECK PASS cases=16`. The walking harness is unchanged
+  (`FAIL 0.012458`, top-transition), and `scripts/check_foot_ik_fast.sh` is back to its
+  pre-existing baseline (only the known task-019 `FOOT_IK_IDLE_PLANT_STABILITY_CHECK` failure;
+  0 script errors).
+- **Rejected along the way (do not re-try):** lowering the toe-pitch cap (no effect); original
+  `chain_weight` in the retry (worse); applying the upright-shin limiter during the retry (ledge
+  passes, walking harness breaks to 0.092m); a surface-height heuristic (does not separate the
+  cases); and disabling the foot-angle correction entirely - the walk fix was unaffected but the
+  ledge over-swing *stayed*, proving it comes from the retry re-solving the leg at all, not from the
+  foot angle. That last result also means the foot-angle pitch is not needed for the stairs and can
+  be dropped as a simplification.
+- Resolution options (context): (a) limit the retry pitch and/or route it through
+  `_limit_correction`; (b) scope the whole retry away from idle ledge scenarios (done); (c) rate-limit
+  only the pitch component.
+- Current harness status unchanged: `FAIL depth_m=0.012458 frame=214` (top-transition 1.25cm); the
+  bottom 2.84cm is only masked, not fixed.
+
 ### 2026-09-14 continuation checkpoint — walking fix implemented, awaiting live confirmation
 
 The walking regression now passes headlessly. Do not commit yet: repository policy requires the

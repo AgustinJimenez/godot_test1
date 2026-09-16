@@ -81,6 +81,13 @@ Notes:
   investigation does not sprawl into chat.
 
 ### 5. Tooling / integrations
+- `codegraph` (<https://github.com/colbymchenry/codegraph>): local, pre-indexed code-graph MCP for
+  OpenCode (and others); one `codegraph_explore` call returns verbatim source + call paths + blast
+  radius, reporting large token/tool-call reductions. **Caveat: its supported-language list excludes
+  GDScript**, so it won't index this repo's gameplay code - only non-GDScript assets/scripts if any;
+  re-check the language list before adopting. `codegraph init` builds `.codegraph/`, auto-syncs.
+- `rtk` (<https://github.com/rtk-ai/rtk>): already used here for noisy Git/search output (see
+  `AGENTS.md`); keep filtering only routine output and rerunning failures raw.
 - MCP server exposing trace-query + scene-run + graph metrics as structured tools
   (opencode supports MCP natively; this repo already has an MCP bridge). Lets the model
   call functions instead of shell + parse + paste.

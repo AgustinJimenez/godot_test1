@@ -39,6 +39,8 @@ check "Foot IK split idle feedback check" "FOOT_IK_SPLIT_IDLE_FEEDBACK_CHECK PAS
 	620 res://tests/manual/foot_ik/foot_ik_split_idle_feedback_check.tscn
 check "Foot IK spawn contact check" "FOOT_IK_SPAWN_CONTACT_CHECK PASS" \
 	140 res://tests/manual/foot_ik/foot_ik_spawn_contact_check.tscn
+check "Foot IK stair-walk contact check" "FOOT_IK_WALK_CONTACT_CHECK PASS" \
+	1500 res://tests/manual/foot_ik/foot_ik_walk_contact_check.tscn
 check "Foot IK animation comparison check" "FOOT_IK_ANIMATION_COMPARISON_CHECK PASS" \
 	400 res://tests/manual/foot_ik/foot_ik_preview.tscn --animation-comparison-check
 
