@@ -48,6 +48,7 @@ var _frame_slider: HSlider
 var _speed_label: Label
 var _height_box: SpinBox
 var _clip_marker: MeshInstance3D
+var _panel: VBoxContainer
 
 
 func _ready() -> void:
@@ -60,13 +61,15 @@ func _ready() -> void:
 func _build_clip_marker() -> void:
 	_clip_marker = MeshInstance3D.new()
 	var sphere := SphereMesh.new()
-	sphere.radius = 0.03
-	sphere.height = 0.06
+	sphere.radius = 0.05
+	sphere.height = 0.1
 	_clip_marker.mesh = sphere
 	var material := StandardMaterial3D.new()
 	material.albedo_color = Color(1.0, 0.05, 0.05)
 	material.emission_enabled = true
 	material.emission = Color(1.0, 0.0, 0.0)
+	# The clip point is inside the step geometry, so draw through it.
+	material.no_depth_test = true
 	_clip_marker.material_override = material
 	_clip_marker.visible = false
 	add_child(_clip_marker)
@@ -90,6 +93,8 @@ func _rebuild() -> void:
 	_setup_camera()
 	if _frame_slider != null:
 		_frame_slider.max_value = 1
+	if _panel != null:
+		_panel.visible = false
 
 
 func _build_floor() -> void:
@@ -213,13 +218,19 @@ func _finish_recording() -> void:
 	var deep_z := 0.0
 	if deepest_frame >= 0:
 		deep_z = (_frames[deepest_frame]["root"] as Transform3D).origin.z
+	var clip_frames := 0
+	for frame: Dictionary in _frames:
+		if float(frame.get("clip", 0.0)) > 0.005:
+			clip_frames += 1
 	print("[STAIR_LAB] recorded %d frames step_height=%.3f" % [_frames.size(), step_height])
-	print("[STAIR_LAB] worstJoint=%.1f deg/f @f%d | clip=%.4f m @f%d root_z=%.2f" % [
-			worst, worst_frame, deepest, deepest_frame, deep_z])
+	print("[STAIR_LAB] worstJoint=%.1f deg/f @f%d | clip=%.4f m @f%d root_z=%.2f | clip_frames=%d" % [
+			worst, worst_frame, deepest, deepest_frame, deep_z, clip_frames])
 	_recording = false
 	_rec_done = true
 	_playing = true
 	_playhead = 0.0
+	if _panel != null:
+		_panel.visible = true
 	_player.set_physics_process(false)
 	_player.movement_input_override = Vector2.ZERO
 	if _player.body.anim_player != null:
@@ -343,71 +354,89 @@ func _update_metrics() -> void:
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
-	var panel := VBoxContainer.new()
-	panel.position = Vector2(12, 12)
-	layer.add_child(panel)
+	_panel = VBoxContainer.new()
+	_panel.position = Vector2(16, 16)
+	_panel.add_theme_constant_override("separation", 10)
+	_panel.visible = false # hidden while recording; shown when the replay starts
+	layer.add_child(_panel)
 	_metrics = Label.new()
-	panel.add_child(_metrics)
+	_metrics.add_theme_font_size_override("font_size", 22)
+	_panel.add_child(_metrics)
 	var row := HBoxContainer.new()
-	panel.add_child(row)
+	row.add_theme_constant_override("separation", 12)
+	_panel.add_child(row)
 	var play := Button.new()
 	play.text = "Play/Pause"
+	play.add_theme_font_size_override("font_size", 22)
+	play.custom_minimum_size = Vector2(150, 44)
 	play.pressed.connect(func() -> void: _playing = not _playing)
 	row.add_child(play)
 	var back := Button.new()
 	back.text = "Step -"
+	back.add_theme_font_size_override("font_size", 22)
+	back.custom_minimum_size = Vector2(110, 44)
 	back.pressed.connect(func() -> void: _step(-1))
 	row.add_child(back)
 	var fwd := Button.new()
 	fwd.text = "Step +"
+	fwd.add_theme_font_size_override("font_size", 22)
+	fwd.custom_minimum_size = Vector2(110, 44)
 	fwd.pressed.connect(func() -> void: _step(1))
 	row.add_child(fwd)
 	var rev := Button.new()
 	rev.text = "Reverse"
 	rev.toggle_mode = true
+	rev.add_theme_font_size_override("font_size", 22)
+	rev.custom_minimum_size = Vector2(140, 44)
 	rev.toggled.connect(func(on: bool) -> void: _reverse = on)
 	row.add_child(rev)
 	_frame_slider = HSlider.new()
 	_frame_slider.min_value = 0
 	_frame_slider.max_value = 1
-	_frame_slider.custom_minimum_size = Vector2(360, 0)
+	_frame_slider.custom_minimum_size = Vector2(560, 34)
 	_frame_slider.value_changed.connect(func(value: float) -> void: _playhead = value)
-	panel.add_child(_frame_slider)
+	_panel.add_child(_frame_slider)
 	var speed_row := HBoxContainer.new()
-	panel.add_child(speed_row)
+	speed_row.add_theme_constant_override("separation", 12)
+	_panel.add_child(speed_row)
 	speed_row.add_child(_label("Speed"))
 	var speed := HSlider.new()
 	speed.min_value = 0.05
 	speed.max_value = 2.0
 	speed.step = 0.05
 	speed.value = _speed
-	speed.custom_minimum_size = Vector2(300, 0)
+	speed.custom_minimum_size = Vector2(460, 34)
 	speed.value_changed.connect(func(value: float) -> void: _set_speed(value))
 	speed_row.add_child(speed)
 	_speed_label = _label("%.2fx" % _speed)
 	speed_row.add_child(_speed_label)
 	var height_row := HBoxContainer.new()
-	panel.add_child(height_row)
+	height_row.add_theme_constant_override("separation", 12)
+	_panel.add_child(height_row)
 	height_row.add_child(_label("Step height (m)"))
 	_height_box = SpinBox.new()
 	_height_box.min_value = 0.1
 	_height_box.max_value = 0.9
 	_height_box.step = 0.01
 	_height_box.value = step_height
+	_height_box.custom_minimum_size = Vector2(150, 44)
+	_height_box.get_line_edit().add_theme_font_size_override("font_size", 22)
 	height_row.add_child(_height_box)
 	var rebuild := Button.new()
 	rebuild.text = "Rebuild + Record"
+	rebuild.add_theme_font_size_override("font_size", 22)
+	rebuild.custom_minimum_size = Vector2(230, 44)
 	rebuild.pressed.connect(func() -> void:
 		step_height = float(_height_box.value)
 		_rebuild())
 	height_row.add_child(rebuild)
-	var hint := _label("Left-drag orbit | wheel zoom | feet-locked camera")
-	panel.add_child(hint)
+	_panel.add_child(_label("Left-drag orbit | wheel zoom | feet-locked camera"))
 
 
 func _label(text: String) -> Label:
 	var label := Label.new()
 	label.text = text
+	label.add_theme_font_size_override("font_size", 22)
 	return label
 
 
