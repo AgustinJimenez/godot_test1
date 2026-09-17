@@ -625,6 +625,12 @@ func _apply_support_contact(space: PhysicsDirectSpaceState3D, side: StringName,
 	var offset := _support_normal * float(leg.get("effective_offset", 0.0))
 	var full_target := surface_target + offset
 	var blended_target: Vector3 = _support_transfer_from_pos.lerp(full_target, blend)
+	# The transfer lerps the support foot to the next tread; a straight lerp cuts through the
+	# riser and its pose clips until the 025 retry hides it (028). Lift over the step instead.
+	if transfer_time > 0.0 and _support_normal.dot(Vector3.UP) >= STAIR_TREAD_UP_DOT:
+		var rise := maxf(0.0, full_target.y - _support_transfer_from_pos.y)
+		if rise > 0.02:
+			blended_target.y += sin(PI * blend) * rise
 	# The target already blends from the pre-handoff pose. Fading chain strength too lets the
 	# low flat animation win a second time and drops the foot through a higher discrete tread.
 	var weight := (1.0 if _support_normal.dot(Vector3.UP) >= STAIR_TREAD_UP_DOT

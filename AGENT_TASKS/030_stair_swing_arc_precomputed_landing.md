@@ -201,3 +201,20 @@ To iterate the design: this is where the step transaction goes (lift-and-plant t
 onto the next tread as one motion so its toe never enters the riser, then the 025 retry stops firing
 and the 028 jank goes with it). All the dead ends found so far are listed above - do not re-try them.
 Uncommitted (part of the WIP batch); commit after live confirmation.
+
+## 2026-09-17 Path A + support-transfer lift: near-solution
+
+- Path A: driving the walk with the retargeted Mixamo stair clip (`--stair-clip`, see 031) improves
+  both lab metrics vs the flat clip - stair joint max 50.12 -> 36.14 deg, overall clip 0.0327 ->
+  0.0100 m.
+- With the 025 retry OFF (`--no-toe-retry`) the joints become flat-walk smooth (**12.00 deg/frame**)
+  but the clip is 9.2 cm, on the **support foot once per step** during the support transfer's
+  straight lerp onto the next tread.
+- Fix (in `_apply_support_contact`): lift the transfer over the step with a sine arc (gated to flat
+  treads, only when the target rises > 2 cm). No-retry clip **9.2 -> 1.8 cm**, joints unchanged at
+  12.00; with the retry on it is neutral (clip 0.0100, jank ~37.5). Fast suite unchanged (26 pass,
+  only task-019).
+- So stair clip + no retry + transfer lift = **1.8 cm clip / 12 deg joints** vs the flat-clip
+  baseline's 0 stair clip / 50 deg. The residual 1.8 cm is mostly the stair clip running on the
+  FLAT approach (the lab uses it everywhere) plus small first-step residuals; in game the flat
+  region would use the flat clip.
