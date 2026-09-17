@@ -327,6 +327,14 @@ against `player.get_node(player.root_node).get_path_to(target_skeleton)` first -
 
 ## Foot IK and movement
 
+For stair-specific Foot IK iteration, use `tests/manual/foot_ik/foot_ik_stair_lab.tscn` - the
+focused harness for the current stair work (see `AGENT_TASKS/030`). It records the real Player
+walking floor -> stairs -> top landing, then lets you scrub/step/reverse/slow it, with per-foot toe
+trails and toe spheres (blue right / purple left), a red clip sphere at any penetration, an editable
+step height (Rebuild + Record), and a per-frame log at `user://foot_ik_stair_lab.jsonl` (frame,
+root, yaw, worst joint delta local+world, clip, per-foot ankle/toe/owner/adj/swing). `foot_ik_preview.tscn`
+remains the broad multi-character stress harness; the lab is the single-stair case - do not confuse them.
+
 The completed consolidation is archived at
 `AGENT_TASKS/archive/010_foot_ik_target_coordinator_consolidation.md`
 (migrating every target owner through one validated boundary); `009` holds the ownership-matrix

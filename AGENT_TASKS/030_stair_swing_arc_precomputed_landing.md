@@ -11,10 +11,12 @@ in one smooth arc (lift + forward together), instead of today's reactive "lift, 
 
 ## How we can see it (new lab tooling)
 
-`tests/manual/foot_ik/foot_ik_stair_lab.tscn` (see 028 notes): records the real Player walking
-floor -> stairs -> top, with per-foot ankle trails (right blue / left purple), toe spheres rigged
-via `BoneAttachment3D`, a red clip sphere, scrub/speed/reverse, and a per-frame JSONL log at
-`user://foot_ik_stair_lab.jsonl`. This is what made the step motion visible at all.
+`tests/manual/foot_ik/foot_ik_stair_lab.tscn` is the focused scene for this stair work (also noted
+in AGENTS.md's Foot IK section), alongside the broad multi-character preview. It records the real
+Player walking floor -> stairs -> top, with per-foot ankle trails (right blue / left purple), toe
+spheres rigged via `BoneAttachment3D`, a red clip sphere, scrub/step/reverse/speed, editable step
+height, and a per-frame JSONL log at `user://foot_ik_stair_lab.jsonl`. This is what made the step
+motion visible at all.
 
 Observed over the steps (right toe, log): the path is "up then forward" in near-right-angle
 segments - e.g. f108-116 rises vertically at z~0.76, then f117-140 travels forward with the lift
