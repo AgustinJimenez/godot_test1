@@ -13,7 +13,7 @@ const STEP_COUNT := 6
 const TREAD_DEPTH := 0.6
 const WIDTH := 3.0
 const THICKNESS := 0.3
-const START := Vector3(0.0, 0.05, -1.2)
+const START := Vector3(0.0, 0.05, -4.5)
 const FORWARD := Vector2(0.0, -1.0)
 const TOP_Z := STEP_COUNT * TREAD_DEPTH - 0.25
 const MAX_RECORD_FRAMES := 1200
@@ -106,10 +106,12 @@ func _build_floor() -> void:
 	var floor_box := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(WIDTH * 3.0, THICKNESS, 3.6)
+	var floor_back := START.z - 1.0
+	var floor_front := -0.4 # reaches under the traversal ramp's own start
+	box.size = Vector3(WIDTH * 3.0, THICKNESS, floor_front - floor_back)
 	shape.shape = box
 	floor_box.add_child(shape)
-	floor_box.position = Vector3(0.0, -THICKNESS * 0.5, -2.2)
+	floor_box.position = Vector3(0.0, -THICKNESS * 0.5, (floor_back + floor_front) * 0.5)
 	floor_box.collision_layer = 1
 	_world.add_child(floor_box)
 
