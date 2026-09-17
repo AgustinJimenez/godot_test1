@@ -8,6 +8,7 @@ const IDLE_STANCE_MIN_SIDE_CLEARANCE := 0.04
 const TOE_CLEARANCE_MARGIN_M := 0.012
 var _input: FootIKLegSolveInput
 var state: FootIKLegSolveState
+var _speed_override: float = 0.0
 
 
 func _init(input: FootIKLegSolveInput) -> void:
@@ -31,6 +32,7 @@ func evaluate_pose(side: StringName, hip_pos: Vector3, target: Vector3,
 		upper_length: float, lower_length: float, ground_weight: float,
 		chain_weight: float, delta: float, options: Dictionary = {}) -> FootIKLegPoseResult:
 	var instant_correction: bool = options.get(&"instant", false)
+	_speed_override = float(options.get(&"correction_speed_override", 0.0))
 	var target_plan_validated: bool = options.get(&"target_plan_validated", false)
 	var stationary_slope: bool = options.get(&"stationary_slope", false)
 	var indices: Dictionary = _input.indices
@@ -690,6 +692,11 @@ func _limit_correction(side: StringName, joint: StringName,
 	# Preserve the existing task 019 acquisition-speed override, captured with the input.
 	if _input.lower_acquiring:
 		angular_speed = maxf(angular_speed, _input.idle_lower_acquire_joint_speed_degrees)
+	# A bounded override from the toe-clearance retry: faster than the normal rate but finite, so
+	# the correction still clears the clip within ~1-2 frames without the un-limited 40-180 deg
+	# single-frame leg snap (028). Unlike `instant`, it does not bypass the limiter.
+	if _speed_override > 0.0:
+		angular_speed = _speed_override
 	var maximum_step := deg_to_rad(angular_speed) * delta
 	var result := desired
 	if angle > maximum_step and angle > 0.000001:

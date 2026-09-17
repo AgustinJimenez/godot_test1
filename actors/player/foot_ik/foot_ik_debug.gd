@@ -24,6 +24,7 @@ class Settings extends RefCounted:
 	var idle_stance := true # idle stance rehome
 	var profiling := false # per-part CPU timing
 	var report_every := 300 # frames between automatic profiler reports
+	var stair_swing_arc := false # opt-in 030 experiment, independent of master
 
 
 static var settings := Settings.new()

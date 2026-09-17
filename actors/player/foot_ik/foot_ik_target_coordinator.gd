@@ -98,7 +98,8 @@ func solve_leg_candidate(skel: Skeleton3D, space: PhysicsDirectSpaceState3D,
 			if (surface["hit"] and surface_normal.dot(Vector3.UP) >= FLAT_SUPPORT_DOT
 					and (surface["position"] as Vector3).y > point.y):
 				var retry_options := options.duplicate()
-				retry_options[&"instant"] = true
+				# Bounded retry rate (028): finite per-frame cap instead of the un-limited instant snap.
+				retry_options[&"correction_speed_override"] = 3600.0
 				var retry_target: Vector3 = context[&"target"]
 				var retry_surface_y: float = (surface["position"] as Vector3).y
 				# The deepest point can move from one tread into the next as pitch changes.
@@ -227,6 +228,12 @@ func finalize_leg_targets(per_leg: Dictionary, prev_shared_drop: float,
 	var dbg := FootIKDebug.begin()
 	for side: StringName in per_leg:
 		var leg: Dictionary = per_leg[side]
+		if leg.get("air_swing", false):
+			var swing_plan := get_plan(side)
+			leg[&"final_target"] = swing_plan.ankle_target
+			leg[&"pelvis_basis_target"] = leg["hip_pos"]
+			swing_plan.final_adjustment_reason = "planned_air_swing"
+			continue
 		if not leg.get("hit", false) or not (leg.has("target") or leg.has("ground_target")):
 			release_leg(side)
 			continue
@@ -545,6 +552,17 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName, leg: Dictio
 	var plan := TARGET_PLAN.new() as FootIKTargetPlan
 	plan.side = side
 	plan.owner = _legacy_owner(side)
+	if leg.get("air_swing", false):
+		plan.owner = FootIKTargetPlan.Owner.STAIR_SWING
+		plan.raw_surface = leg["swing_destination"]
+		plan.surface_target = plan.raw_surface
+		plan.ankle_target = leg["target"]
+		plan.proposed_ankle_target = plan.ankle_target
+		plan.valid = true # Planner reconfirms destination support/reach every frame.
+		plan.reason = "supported_destination_airborne_waypoint"
+		plan.target_source = "air_swing"
+		plan.support_status = FootIKTargetPlan.ConstraintStatus.SATISFIED
+		return plan
 	plan.raw_surface = leg.get(&"raw_target", Vector3.ZERO)
 	plan.surface_target = _owner._ground_sampler.smoothed_target.get(
 			side, plan.raw_surface)

@@ -6,6 +6,8 @@ const LOG_SOLE_DEPTH := true # logs measured planted sole point count per leg at
 const LEG_SOLVER := preload("res://actors/player/foot_ik/foot_ik_leg_solver.gd")
 const GAIT_TRACKER := preload("res://actors/player/foot_ik/foot_ik_gait_tracker.gd")
 const STAIR_PREDICTOR := preload("res://actors/player/foot_ik/foot_ik_stair_predictor.gd")
+const SWING_ARC := preload("res://actors/player/foot_ik/foot_ik_stair_swing_arc.gd")
+var _swing_arc: RefCounted
 const NATIVE_BACKEND := preload("res://actors/player/foot_ik/foot_ik_native_backend.gd")
 const GROUND_SAMPLER := preload("res://actors/player/foot_ik/foot_ik_ground_sampler.gd")
 const TARGET_COORDINATOR := preload("res://actors/player/foot_ik/foot_ik_target_coordinator.gd")
@@ -158,6 +160,7 @@ var _forced_support_side: StringName:
 	get: return _stair_predictor.get_support_side() if _stair_predictor != null else &""
 var _knee_pole_local: Dictionary = {} # side -> Vector3
 func reset_runtime_state() -> void:
+	if _swing_arc != null: _swing_arc.reset()
 	if _leg_solver != null: _leg_solver.reset_runtime_state()
 	if _gait_tracker != null: _gait_tracker.reset_runtime_state()
 	if _ground_sampler != null: _ground_sampler.reset()
@@ -226,6 +229,7 @@ func _ready() -> void:
 	_leg_solver = LEG_SOLVER.new(self)
 	_gait_tracker = GAIT_TRACKER.new(self)
 	_stair_predictor = STAIR_PREDICTOR.new(self)
+	_swing_arc = SWING_ARC.new(self)
 	_target_coordinator = TARGET_COORDINATOR.new(self)
 	_native_backend = NATIVE_BACKEND.new(self)
 	var skel := get_skeleton()
@@ -239,9 +243,7 @@ func _ready() -> void:
 			continue
 		# Toe/ball optional - leg works without it, no correction for baked curl.
 		var toe_idx := skel.find_bone(player_body.resolve_bone_name(roles["toe"]))
-		# The leaf (if any) is found by walking the skeleton, not a role
-		# name - take the first child, which is all this rig has; a rig
-		# with several would need real per-child handling, not assumed here.
+		# The leaf is the first child (all this rig has); a multi-child rig would need more.
 		var leaf_idx := -1
 		if toe_idx >= 0:
 			var toe_children := skel.get_bone_children(toe_idx)
@@ -373,9 +375,7 @@ func _measure_leg_sole_depth(skel: Skeleton3D, side: StringName) -> float:
 				planted_bind_transforms[bind_index] = (
 						chain_poses[bone_index] * skin.get_bind_pose(bind_index))
 			elif bone_index >= 0:
-				# Non-chain influences (e.g. the shin pulling on ankle-top
-				# vertices) keep their rest pose; the deepest sole vertices
-				# are foot-chain-dominant, so this only biases the top edge.
+				# Non-chain influences keep rest pose; only foot-chain-dominant sole edges move.
 				planted_bind_transforms[bind_index] = (
 						skel.get_bone_global_pose(bone_index) * skin.get_bind_pose(bind_index))
 			else:
@@ -680,8 +680,11 @@ func _process_modification_with_delta(delta: float) -> void:
 		var needed_drop: float = (hip_pos.y - target.y) - max_vertical_diff
 		shared_drop = maxf(shared_drop, needed_drop)
 	shared_drop = minf(shared_drop, step_down_max_crouch)
-	# Both feet on one flat support already: skip the expensive coordinator/solver pipeline.
+	# Flat support: skip the pipeline, but lift the published toe tip out of the surface (025).
+	_swing_arc.prepare(space, per_leg, delta)
 	if _can_skip_flat_ik(per_leg):
+		FootIKToeTipClearance.apply_all(skel, player_body.get_world_3d().direct_space_state,
+				_bone_indices, toe_tip_margin, _ground_sampler)
 		for side: StringName in per_leg:
 			_target_coordinator.release_leg(side)
 		for i in skel.get_bone_count():
@@ -714,9 +717,7 @@ func _animated_vertical_speed(side: StringName, animated_foot_pos: Vector3,
 		var world_delta := to_world.basis * (animated_foot_pos - previous)
 		velocity = world_delta.dot(_smoothed_normal[side] as Vector3) / (
 				delta * maxf(player_body.locomotion_playback_scale, 0.001))
-	# Deliberately frozen during a genuine swing otherwise (see
-	# _prev_animated_foot_pos's doc). Within landing grace we already
-	# distrust anim_speed, so refresh here or the leg exits grace still stale.
+	# Frozen during a genuine swing; within landing grace refresh or the leg exits grace stale.
 	if _landing_grace_time > 0.0 or _gait_tracker.is_locomotion_landing_imminent(side):
 		_prev_animated_foot_pos[side] = animated_foot_pos
 	return velocity
@@ -901,10 +902,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 				and r_leg.get("preserve_idle_pose", false))
 		var is_edge_asym: bool = ((l_hit and not r_hit) or (r_hit and not l_hit))
 		var l_plan := _target_coordinator.get_plan(&"left")
-		# Spacing places feet symmetrically around the plain midpoint on purpose - a weighted
-		# average of that symmetric pair does not equal the original weighted center when the
-		# two feet's weights differ (018 finding A). Use spacing's own plain-midpoint basis
-		# for this pair instead of fighting it with a weighted formula.
+		# Spacing places feet symmetrically; use its plain-midpoint basis, not a weighted one (018).
 		var spaced := l_plan != null and l_plan.spacing_requested
 		if is_edge_asym:
 			var l_gw: float = float(l_leg.get("ground_weight", 1.0)) if l_hit else 0.0
@@ -912,8 +910,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			var total_w := l_gw + r_gw
 			var l_tgt: Vector3 = _target_coordinator.pelvis_reference_target(&"left", l_leg, l_hip)
 			var r_tgt: Vector3 = _target_coordinator.pelvis_reference_target(&"right", r_leg, r_hip)
-			# Spacing needs both feet hit (see below), so it never applies to this asymmetric
-			# (only one foot hit) case - always the weighted/hip-fallback formula here.
+			# Asymmetric one-foot case: spacing needs both feet, so use the formula below.
 			var com: Vector3 = ((l_tgt * l_gw + r_tgt * r_gw) / total_w
 					if total_w > 0.001 else (l_hip if l_hit else r_hip))
 			target_shift = Vector3(com.x - pelvis_pos.x, 0.0, com.z - pelvis_pos.z).limit_length(0.35)
@@ -921,8 +918,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 			var l_tgt: Vector3 = _target_coordinator.pelvis_reference_target(&"left", l_leg, l_hip)
 			var r_tgt: Vector3 = _target_coordinator.pelvis_reference_target(&"right", r_leg, r_hip)
 			if stationary or l_leg.get("step_down", false) or r_leg.get("step_down", false):
-				# ground_weight-weighted, same formula as is_edge_asym above - was a plain
-				# unweighted midpoint (017: bias toward the more-loaded foot, not a fixed split).
+				# ground_weight-weighted, same formula as is_edge_asym above (017).
 				var l_gw: float = float(l_leg.get("ground_weight", 1.0))
 				var r_gw: float = float(r_leg.get("ground_weight", 1.0))
 				var total_w := l_gw + r_gw
@@ -972,7 +968,7 @@ func _apply_support_pelvis_and_legs(skel: Skeleton3D, to_world: Transform3D,
 				and _gait_tracker.is_body_translating()
 				and _target_coordinator.preserved_pose_needs_clearance(
 						skel, player_body.get_world_3d().direct_space_state, side))
-		if (not leg["hit"] or not has_target
+		if ((not leg["hit"] and not leg.get("air_swing", false)) or not has_target
 				or (preserve_idle and shared_drop <= 0.0 and not preserved_pose_blocked)
 				or (seam_acquire and not initialize_pose)):
 			_target_coordinator.release_leg(side)

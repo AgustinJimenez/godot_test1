@@ -54,6 +54,8 @@ const LOG_PATH := "user://foot_ik_stair_lab.jsonl"
 var _trail := {} # side -> PackedVector3Array of foot world positions
 var _trail_mesh := {} # side -> ImmediateMesh
 var _toe_sphere := {} # side -> MeshInstance3D on the toe
+var _last_recorded_tick := -1
+var _capture_gaps := 0
 
 
 func _ready() -> void:
@@ -114,7 +116,8 @@ func _append_trail() -> void:
 		if idx < 0:
 			continue
 		var points: PackedVector3Array = _trail[side]
-		points.append((_toe_sphere[side] as MeshInstance3D).global_position)
+		points.append(_player.skeleton.global_transform
+				* _modifier.get_final_bone_global_pose(idx).origin)
 		_trail[side] = points
 	_rebuild_trail_mesh()
 
@@ -157,6 +160,8 @@ func _build_clip_marker() -> void:
 
 
 func _rebuild() -> void:
+	_last_recorded_tick = -1
+	_capture_gaps = 0
 	if _log != null:
 		_log.close()
 	_log = FileAccess.open(LOG_PATH, FileAccess.WRITE)
@@ -257,7 +262,7 @@ func _setup_camera() -> void:
 
 func _physics_process(delta: float) -> void:
 	if _recording:
-		_record_frame()
+		_apply_playing_input()
 		return
 	if _frames.is_empty():
 		return
@@ -269,6 +274,14 @@ func _physics_process(delta: float) -> void:
 
 
 func _record_frame() -> void:
+	# SkeletonModifier3D restores the skeleton after its pass. Reading raw bones from an
+	# ordinary node can see animation, not IK output; record the published cache after the pass.
+	if (not _modifier.has_fresh_final_bone_poses()
+			or _last_recorded_tick == Engine.get_physics_frames()):
+		return
+	if _last_recorded_tick >= 0:
+		_capture_gaps += maxi(0, Engine.get_physics_frames() - _last_recorded_tick - 1)
+	_last_recorded_tick = Engine.get_physics_frames()
 	_apply_playing_input()
 	var bones := _capture_bones()
 	var clip := _clip_result()
@@ -327,6 +340,13 @@ func _finish_recording() -> void:
 		_log.close()
 		_log = null
 	print("[STAIR_LAB] log: %s" % ProjectSettings.globalize_path(LOG_PATH))
+	if "--lab-check" in OS.get_cmdline_user_args():
+		# Capture integrity only; the printed clip/joint metrics grade the gait separately.
+		var passed := (_frames.size() > 100 and _player.global_position.z >= TOP_Z
+				and _capture_gaps == 0)
+		print("STAIR_LAB_CAPTURE_CHECK %s samples=%d gaps=%d" % [
+				"PASS" if passed else "FAIL", _frames.size(), _capture_gaps])
+		get_tree().quit(0 if passed else 1)
 	_recording = false
 	_rec_done = true
 	_playing = true
@@ -345,7 +365,7 @@ func _capture_bones() -> Array[Transform3D]:
 	var bones: Array[Transform3D] = []
 	var count := _player.skeleton.get_bone_count()
 	for i in count:
-		bones.append(_player.skeleton.get_bone_global_pose(i))
+		bones.append(_modifier.get_final_bone_global_pose(i))
 	return bones
 
 
@@ -395,8 +415,8 @@ func _clip_result() -> Dictionary:
 		var toe_idx: int = int(indices.get("toe", -1))
 		if foot_idx < 0 or toe_idx < 0:
 			continue
-		var ankle: Vector3 = to_world * _player.skeleton.get_bone_global_pose(foot_idx).origin
-		var toe: Vector3 = to_world * _player.skeleton.get_bone_global_pose(toe_idx).origin
+		var ankle: Vector3 = to_world * _modifier.get_final_bone_global_pose(foot_idx).origin
+		var toe: Vector3 = to_world * _modifier.get_final_bone_global_pose(toe_idx).origin
 		var tip := toe + (toe - ankle).normalized() * TOE_TIP_EXTRA
 		var result := MONITOR.check(space, PackedVector3Array([ankle, tip]),
 				FootIKGroundSampler.GROUND_COLLISION_MASK)
@@ -425,6 +445,7 @@ func _log_line(index: int) -> void:
 	var root: Transform3D = frame["root"]
 	var entry := {
 		"frame": index,
+		"physics_frame": _last_recorded_tick,
 		"root": _vec(root.origin),
 		"yaw": rad_to_deg(root.basis.get_euler().y),
 		"worst_deg": frame["worst"],
@@ -440,13 +461,17 @@ func _log_line(index: int) -> void:
 		var foot_idx: int = int(indices.get("foot", -1))
 		var toe_idx: int = int(indices.get("toe", -1))
 		if foot_idx >= 0:
-			foot["ankle"] = _vec(to_world * _player.skeleton.get_bone_global_pose(foot_idx).origin)
+			foot["ankle"] = _vec(to_world * _modifier.get_final_bone_global_pose(foot_idx).origin)
 		if toe_idx >= 0:
-			foot["toe"] = _vec(to_world * _player.skeleton.get_bone_global_pose(toe_idx).origin)
+			foot["toe"] = _vec(to_world * _modifier.get_final_bone_global_pose(toe_idx).origin)
 		var plan = _modifier._target_coordinator.get_plan(side)
 		if plan != null:
 			foot["owner"] = plan.owner
+			foot["owner_name"] = plan.owner_name()
 			foot["adj"] = plan.final_adjustment_reason
+			foot["solve_observed"] = plan.solve_target_observed
+			foot["solve_target"] = _vec(plan.actual_solve_target)
+			foot["plan_reason"] = plan.reason
 		foot["swing"] = _modifier._stair_predictor.get_swing_state(side)
 		entry["feet"][str(side)] = foot
 	_log.store_line(JSON.stringify(entry))
@@ -471,6 +496,8 @@ func _foot_center() -> Vector3:
 
 
 func _process(_delta: float) -> void:
+	if _recording:
+		_record_frame()
 	_update_camera()
 	_update_clip_marker()
 	if not _recording:
@@ -581,6 +608,12 @@ func _build_ui() -> void:
 		step_height = float(_height_box.value)
 		_rebuild())
 	height_row.add_child(rebuild)
+	var arc_toggle := CheckBox.new()
+	arc_toggle.text = "030 stair step-transaction (experimental)"
+	arc_toggle.add_theme_font_size_override("font_size", 22)
+	arc_toggle.button_pressed = FootIKDebug.settings.stair_swing_arc
+	arc_toggle.toggled.connect(func(on: bool) -> void: FootIKDebug.settings.stair_swing_arc = on)
+	_panel.add_child(arc_toggle)
 	_panel.add_child(_label("Left-drag orbit | wheel zoom | feet-locked camera"))
 
 

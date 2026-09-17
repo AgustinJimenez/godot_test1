@@ -417,7 +417,7 @@ func _place_stair_walker(origin: Vector3, contact: Vector3, stair_height: float)
 	player.movement_input_override = Vector2.ZERO
 	player.gameplay_action_input_enabled = false
 	player.ledge_safety_enabled = false
-	player.walk_speed = physical_speed
+	player.walk_speed = physical_speed; player.stair_walk_speed_scale = 1.0 # fixtures keep fixed speed
 	player.step_height = maxf(player.step_height, stair_height + 0.05)
 	STAIR_SURFACES.configure_player(player)
 	player.add_to_group(&"foot_ik_stair_walkers")

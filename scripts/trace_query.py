@@ -25,6 +25,7 @@ Queries:
                           vs stair) - the smoothness/jank comparison.
   field --path a.b.c      extract an arbitrary nested field over a window
   keys                    emit the trace schema (top-level + feet keys)
+  lab [--compare P]       final-pose stair-lab clip/joint/solve coverage and A/B toe differences
 
 Metrics for `worst`: sole (sole_clearance), gap, toe (toe_tip_y - target.y),
                      ankle (foot_pos.y - target.y).
@@ -368,20 +369,61 @@ def _cmd_angular(frames, compare, threshold):
               f"{b[0]:7.2f} {b[1]:6.2f} {b[2]:7.2f} {b[3]:6.2f} | {a[4]:4d} {b[4]:4d}")
 
 
+def _cmd_lab(frames, compare):
+    """Lab schema is different from the multi-character preview trace."""
+    for label, rows in (("A", frames), ("B", compare)):
+        if rows is None:
+            continue
+        if any("clip" not in row or "worst_deg" not in row for row in rows):
+            raise SystemExit("lab requires a foot_ik_stair_lab.jsonl capture")
+        for region, selected in (("all", rows), ("stairs", [row for row in rows
+                if (root := _vec3(row.get("root"))) and root[2] >= -0.8])):
+            if not selected:
+                continue
+            angles = sorted(row["worst_deg"] for row in selected)
+            print(f"{label} {region}: samples={len(selected)} "
+                  f"clip_max={max(row['clip'] for row in selected):.6f}m "
+                  f"clip_frames={sum(row['clip'] > .005 for row in selected)} "
+                  f"joint_p95={_percentile(angles, .95):.2f} "
+                  f"joint_max={angles[-1]:.2f}deg/frame")
+        for side in ("left", "right"):
+            swing = [row["feet"][side] for row in rows
+                     if row.get("feet", {}).get(side, {}).get("owner") == 9]
+            solved = sum(foot.get("solve_observed") is True for foot in swing)
+            unknown = sum("solve_observed" not in foot for foot in swing)
+            print(f"  {side} stair_swing: solved={solved} "
+                  f"released={len(swing) - solved - unknown} unknown={unknown}")
+    if compare is None:
+        return
+    other = {row["frame"]: row for row in compare}
+    for side in ("left", "right"):
+        distances = []
+        for row in frames:
+            peer = other.get(row["frame"])
+            a = _vec3(_f(row, side, "toe"))
+            b = _vec3(_f(peer, side, "toe")) if peer else None
+            if a is not None and b is not None:
+                distances.append(math.dist(a, b))
+        if distances:
+            print(f"A/B {side} toe: matched_frames={len(distances)} "
+                  f"max_difference={max(distances):.6f}m "
+                  f"changed_over_1cm={sum(value > .01 for value in distances)}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--trace", required=True)
     parser.add_argument("--last-n", type=int, default=0, help="only the last N frames (0=all)")
     parser.add_argument("query", choices=["summary", "worst", "clips", "toe-riser",
-                                          "swing", "angular", "field", "keys"])
+                                          "swing", "angular", "lab", "field", "keys"])
     parser.add_argument("--metric", choices=["sole", "gap", "toe", "ankle"], default="sole")
     parser.add_argument("--n", type=int, default=10)
     parser.add_argument("--from", dest="first", type=int, default=0)
     parser.add_argument("--to", dest="last", type=int, default=1 << 30)
     parser.add_argument("--side", choices=["left", "right"])
     parser.add_argument("--path", default="")
-    parser.add_argument("--compare", default="", help="angular: second trace to compare against")
+    parser.add_argument("--compare", default="", help="angular/lab: second trace to compare against")
     parser.add_argument("--threshold", type=float, default=15.0,
                         help="angular: deg/frame counted as a jank frame")
     args = parser.parse_args()
@@ -412,6 +454,9 @@ def main():
     elif args.query == "angular":
         compare = load(args.compare) if args.compare else None
         _cmd_angular(frames, compare, args.threshold)
+    elif args.query == "lab":
+        compare = load(args.compare) if args.compare else None
+        _cmd_lab(frames, compare)
     elif args.query == "field":
         _cmd_field(frames, args.path, args.first, args.last)
     elif args.query == "keys":

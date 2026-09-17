@@ -59,9 +59,9 @@ func set_eye_offset(v: Vector3) -> void:
 ## foot IK. Hips, legs, collision, and contact timing remain authoritative.
 @export_range(0.0, 0.05, 0.005) var stair_balance_limit: float = 0.03
 @export_range(0.0, 0.75, 0.05) var stair_balance_strength: float = 0.75
-## TEMP evaluation: synchronized physical/animation slowdown around a stair
-## transition. Keep at 1.0 for normal gameplay; 0.5 is the requested visual trial.
-@export_range(0.25, 1.0, 0.05) var stair_walk_speed_scale: float = 1.0
+## Synchronized physical/animation slowdown around a stair transition; body and walk clip slow
+## together so foot placement stays matched and the planted leg gets time to settle (0.5-0.7).
+@export_range(0.25, 1.0, 0.05) var stair_walk_speed_scale: float = 0.6
 @export_range(0.0, 3.0, 0.05) var punch_delay_min: float = 0.25
 @export_range(0.0, 3.0, 0.05) var punch_delay_max: float = 0.75
 ## Prevents walking or sliding off elevated platforms/stairs into the void.

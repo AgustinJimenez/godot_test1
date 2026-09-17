@@ -50,6 +50,7 @@ func _ready() -> void:
 	_player.rotation = Vector3(0.0, PI, 0.0)
 	_player.velocity = Vector3.ZERO
 	_player.movement_input_override = Vector2.ZERO
+	_player.stair_walk_speed_scale = 1.0 # fixture is tuned at the authored walk speed
 	_ik = _player.body._foot_ik_modifier
 	_ik.reset_runtime_state()
 
