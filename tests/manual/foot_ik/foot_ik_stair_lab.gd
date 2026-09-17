@@ -53,6 +53,7 @@ var _log: FileAccess
 const LOG_PATH := "user://foot_ik_stair_lab.jsonl"
 var _trail := {} # side -> PackedVector3Array of foot world positions
 var _trail_mesh := {} # side -> ImmediateMesh
+var _toe_sphere := {} # side -> MeshInstance3D on the toe
 
 
 func _ready() -> void:
@@ -67,27 +68,49 @@ func _ready() -> void:
 ## clip; cleared when a new recording starts.
 func _build_trails() -> void:
 	for side: StringName in [&"right", &"left"]:
+		var color := (Color(0.2, 0.45, 1.0) if side == &"right" else Color(0.62, 0.2, 1.0))
 		var mesh := ImmediateMesh.new()
 		var inst := MeshInstance3D.new()
 		inst.mesh = mesh
 		var material := StandardMaterial3D.new()
 		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		material.albedo_color = (Color(0.2, 0.45, 1.0) if side == &"right"
-				else Color(0.62, 0.2, 1.0))
+		material.albedo_color = color
 		inst.material_override = material
 		add_child(inst)
 		_trail[side] = PackedVector3Array()
 		_trail_mesh[side] = mesh
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.022
+		sphere.height = 0.044
+		var marker := MeshInstance3D.new()
+		marker.mesh = sphere
+		var smat := StandardMaterial3D.new()
+		smat.albedo_color = color
+		smat.no_depth_test = true
+		marker.material_override = smat
+		add_child(marker)
+		_toe_sphere[side] = marker
+
+
+func _update_foot_markers() -> void:
+	if _player == null or _modifier == null:
+		return
+	var to_world := _player.skeleton.global_transform
+	for side: StringName in _toe_sphere:
+		var idx: int = int((_modifier._bone_indices.get(side, {}) as Dictionary).get("toe", -1))
+		if idx < 0:
+			continue
+		(_toe_sphere[side] as MeshInstance3D).global_position = (
+				to_world * _player.skeleton.get_bone_global_pose(idx).origin)
 
 
 func _append_trail() -> void:
-	var to_world := _player.skeleton.global_transform
 	for side: StringName in _trail_mesh:
-		var idx: int = int(_modifier._bone_indices[side].get("foot", -1))
+		var idx: int = int((_modifier._bone_indices.get(side, {}) as Dictionary).get("toe", -1))
 		if idx < 0:
 			continue
 		var points: PackedVector3Array = _trail[side]
-		points.append(to_world * _player.skeleton.get_bone_global_pose(idx).origin)
+		points.append((_toe_sphere[side] as MeshInstance3D).global_position)
 		_trail[side] = points
 	_rebuild_trail_mesh()
 
@@ -256,6 +279,7 @@ func _record_frame() -> void:
 	}
 	_frames.append(frame)
 	_log_line(_frames.size() - 1)
+	_update_foot_markers()
 	_append_trail()
 	if _frame_slider != null:
 		_frame_slider.max_value = maxf(1.0, float(_frames.size()))
@@ -443,6 +467,7 @@ func _foot_center() -> Vector3:
 
 func _process(_delta: float) -> void:
 	_update_camera()
+	_update_foot_markers()
 	_update_clip_marker()
 	if not _recording:
 		_update_metrics()
