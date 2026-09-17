@@ -60,8 +60,19 @@ func _initialize() -> void:
 
 	var force_loop: bool = String(options.get("force_loop", "false")) == "true"
 	var additive: bool = String(options.get("additive", "false")) == "true"
+	# Source convention: PlayerBody.BONE_MAP is the UE/ALS (pelvis, clavicle_l, ...) source map.
+	# A Mixamo-style source ("<prefix>Hips", e.g. mixamorig10_Hips) uses prefix+canonical-role names
+	# instead, so derive its role map from the detected prefix (HumanoidRetargeter's own Mixamo path).
+	var source_role_map: Dictionary = ALS_SOURCE_ROLE_MAP
+	var source_prefix = HumanoidRetargeter.detect_bone_prefix(source["skeleton"] as Skeleton3D)
+	if source_prefix is String and not (source_prefix as String).is_empty():
+		var prefix_map := HumanoidRetargeter.prefix_role_map(
+				source["skeleton"] as Skeleton3D, source_prefix as String)
+		if not prefix_map.is_empty():
+			source_role_map = prefix_map
+			print("[retarget_cli] source prefix '%s' -> %d bones" % [source_prefix, prefix_map.size()])
 	var config := HumanoidRetargeter.build_bone_map_config(
-			ALS_SOURCE_ROLE_MAP, target["humanoid_map"] as Dictionary)
+			source_role_map, target["humanoid_map"] as Dictionary)
 	var retargeted := (
 			HumanoidRetargeter.retarget_additive_clip(source["skeleton"] as Skeleton3D,
 					source["animation"] as Animation, target["skeleton"] as Skeleton3D,

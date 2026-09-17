@@ -21,8 +21,11 @@ const TOE_TIP_EXTRA := 0.035
 const LEG_JOINTS := ["hip", "knee", "foot", "toe", "leaf"]
 const ORBIT_MIN := 0.4
 const ORBIT_MAX := 5.0
+## Path A (031): retargeted Mixamo stair-walk clips, as a lab-only walk-clip swap.
+const STAIR_UP_CLIP := "res://assets/models/stair_clips/stair_walk_up.res"
 
 var step_height := 0.35
+var _use_stair_clip := false
 
 var _world: Node3D
 var _player: Player
@@ -60,6 +63,7 @@ var _capture_gaps := 0
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
+	_use_stair_clip = "--stair-clip" in OS.get_cmdline_user_args()
 	_build_clip_marker()
 	_build_trails()
 	_build_ui()
@@ -244,6 +248,25 @@ func _spawn_player() -> void:
 	SURFACES.configure_player(_player)
 	_modifier = _find_modifier()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if _use_stair_clip:
+		_swap_walk_clip()
+
+
+## Path A experiment (031): drive the forward walk with the retargeted Mixamo stair-walk clip
+## instead of the flat walk, so the lab can measure whether a stair-correct base pose removes the
+## clip/jank corrections' need. Stop the player before mutating its AnimationLibrary (Godot 4.6.2
+## can segfault on an AnimationLibrary attached to a currently-playing AnimationPlayer).
+func _swap_walk_clip() -> void:
+	var clip: Animation = load(STAIR_UP_CLIP)
+	if clip == null:
+		push_warning("stair clip not found: %s" % STAIR_UP_CLIP)
+		return
+	var anim_player := _player.body.anim_player
+	anim_player.stop()
+	var library := anim_player.get_animation_library(&"moves")
+	if library != null:
+		library.add_animation(&"unarmed_walk", clip)
+	anim_player.play(&"moves/unarmed_idle")
 
 
 func _find_modifier() -> PlayerFootIKModifier:
