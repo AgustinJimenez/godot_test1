@@ -123,6 +123,26 @@ Details for whoever picks it up:
 - Live validation is mandatory: solving the swing replaces the authored `unarmed_walk` swing
   motion, so the visible gait changes.
 
+## Attempt 6 (reverted): the air swing is now solvable, but needs a real target + weight ramp
+
+Implemented `FootIKAirSwingEntry` (new file) + a gated release exception + no-support-branch
+population, so the airborne `STAIR_SWING` leg reaches the solve **without crashing**. Result: the
+toe trail was **still byte-identical**, for two reasons:
+
+1. I populated the target from `plan.ankle_target` - but the plan is built from the same per-leg
+   target, so it is **circular** and the solve just reproduces the current pose.
+2. The swing weight is a constant placeholder; a solved swing needs a **ramp** (weight 0 at takeoff
+   -> 1 at landing), like an ordinary gait swing.
+
+So what's left is design + tuning, not plumbing:
+1. Target the solved air swing at the **predicted landing** (the next tread's ankle point from the
+   predictor's latched landing), not the plan's current target.
+2. Ramp the swing/chain weight across the swing.
+3. Validate reach/anatomy for an airborne target, with live eyes (it replaces the authored swing).
+
+The plumbing is proven (the leg can be solved instead of released); only the target/weight design
++ live tuning remain.
+
 ## Next step (ready to implement)
 
 Re-add the experiment gated behind `FootIKDebug.settings.stair_swing_arc` (off by default) and:
