@@ -109,6 +109,20 @@ swing carrying its own target/weight/reach/validation), not a target tweak. It d
 focused task with live validation, and a decision on whether losing the authored swing upper-leg
 motion is acceptable.
 
+Details for whoever picks it up:
+- The release happens in the solve loop's `if (not leg["hit"] or not has_target ...)`. Gating it on
+  `plan.owner == STAIR_SWING` (feature on) lets the loop continue - and it then crashes at
+  `_apply_support_pelvis_and_legs` reading `leg["ground_weight"]`.
+- Root: `player_foot_ik_modifier.gd`'s per-leg loop has a no-support `else` (around line 528, the
+  `if not contact["hit"] or unreachable_drop:` branch) that sets `per_leg[side]["hit"] = false` and
+  **`continue`s before populating** target/ground_target/ground_weight/chain_weight/hip/reach. The
+  solve assumes those exist.
+- So the change must populate a full per-leg entry for a gated airborne swing there (or restructure
+  the loop), then let it solve to the plan target. The modifier is at the 1000-line cap
+  (`.gdlintrc`), so this likely requires splitting that population into its own file first.
+- Live validation is mandatory: solving the swing replaces the authored `unarmed_walk` swing
+  motion, so the visible gait changes.
+
 ## Next step (ready to implement)
 
 Re-add the experiment gated behind `FootIKDebug.settings.stair_swing_arc` (off by default) and:
