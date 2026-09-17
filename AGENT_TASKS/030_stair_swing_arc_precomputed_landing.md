@@ -143,6 +143,23 @@ So what's left is design + tuning, not plumbing:
 The plumbing is proven (the leg can be solved instead of released); only the target/weight design
 + live tuning remain.
 
+## Attempt 7 (reverted): the swing leg never reaches the predictor either
+
+Added the early latch (forward scan) back + the solved-air-swing plumbing + a distance ramp
+(`FootIKAirSwingEntry.ramp_weight`). Still byte-identical. New dependency found: the per-leg loop's
+no-support `else` `continue`s **before** `_stair_predictor.update_swing_lift(...)`, so a no-contact
+swing leg never runs the predictor - its latch/`predicted_target` is never set, so
+`get_predicted_targets()` is empty for exactly the leg we are trying to solve, and the population is
+skipped.
+
+So the solved-air-swing redesign has (at least) three coupled dependencies, all in the same
+per-leg/solve-loop area:
+1. release gate: don't release a `STAIR_SWING` leg (done, works);
+2. run the predictor (`update_swing_lift`) for a no-contact swing leg so a landing is predicted;
+3. populate the per-leg entry with a real target (predicted landing) + a weight ramp.
+Each is small, but they interact and the file is at the line cap, so this needs a focused session
+with the lab as the loop and live eyes on the result.
+
 ## Next step (ready to implement)
 
 Re-add the experiment gated behind `FootIKDebug.settings.stair_swing_arc` (off by default) and:
