@@ -100,3 +100,19 @@ phase is not the right alignment. Auto-wiring `PlayerStairClips.select_walk()` i
 panel now has manual checkboxes ("use retargeted stair clip", "disable 025 toe retry") to A/B by eye.
 Next: a terrain-matched enter/exit for the stair clip (e.g. switch on the first riser at a
 planted-foot moment, or a dedicated blend), not a per-frame clip swap.
+
+### Game wiring attempted - no clean switch signal exists
+
+Wired `PlayerStairClips.select_walk_gated()` into `update_motion`, gated to the current clip's loop
+seam (both clips restart there). Every signal tried is unusable and/or the switch regresses the lab:
+
+- Predictor `is_active()` (Foot IK ownership): active only ~14 of 163 walk frames on the climb.
+- Stair controller `recent_transition`: true for ~2 frames.
+- A seam-gated switch with either: the stair clip plays a partial cycle (1.18s clip vs the short
+  window), the terrain placement mismatches, and the lab regressed (jank 50 -> 59 deg, or clip
+  14.6cm with the retry off).
+
+So the stair clip cannot be wired as a per-frame swap. It needs (a) a continuous "on the staircase"
+signal (e.g. a trigger volume or the stair surfaces themselves, not the transition flags) and (b) a
+dedicated stair-locomotion mode whose enter/exit is designed as one motion, not a clip swap
+mid-stride. Reverted the wiring; the lab keeps its manual checkboxes to show the improvement.
