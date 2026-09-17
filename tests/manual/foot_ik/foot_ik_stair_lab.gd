@@ -49,6 +49,8 @@ var _speed_label: Label
 var _height_box: SpinBox
 var _clip_marker: MeshInstance3D
 var _panel: VBoxContainer
+var _log: FileAccess
+const LOG_PATH := "user://foot_ik_stair_lab.jsonl"
 
 
 func _ready() -> void:
@@ -76,6 +78,9 @@ func _build_clip_marker() -> void:
 
 
 func _rebuild() -> void:
+	if _log != null:
+		_log.close()
+	_log = FileAccess.open(LOG_PATH, FileAccess.WRITE)
 	if _world != null:
 		_world.queue_free()
 		_world = null
@@ -192,6 +197,7 @@ func _record_frame() -> void:
 		"clip_point": clip["point"],
 	}
 	_frames.append(frame)
+	_log_line(_frames.size() - 1)
 	if _frame_slider != null:
 		_frame_slider.max_value = maxf(1.0, float(_frames.size()))
 	if _player.global_position.z >= TOP_Z or _frames.size() >= MAX_RECORD_FRAMES:
@@ -225,6 +231,11 @@ func _finish_recording() -> void:
 	print("[STAIR_LAB] recorded %d frames step_height=%.3f" % [_frames.size(), step_height])
 	print("[STAIR_LAB] worstJoint=%.1f deg/f @f%d | clip=%.4f m @f%d root_z=%.2f | clip_frames=%d" % [
 			worst, worst_frame, deepest, deepest_frame, deep_z, clip_frames])
+	if _log != null:
+		_log.flush()
+		_log.close()
+		_log = null
+	print("[STAIR_LAB] log: %s" % ProjectSettings.globalize_path(LOG_PATH))
 	_recording = false
 	_rec_done = true
 	_playing = true
@@ -304,6 +315,42 @@ func _update_clip_marker() -> void:
 		_clip_marker.global_position = frame["clip_point"]
 	else:
 		_clip_marker.visible = false
+
+
+func _log_line(index: int) -> void:
+	if _log == null:
+		return
+	var frame: Dictionary = _frames[index]
+	var root: Transform3D = frame["root"]
+	var entry := {
+		"frame": index,
+		"root": _vec(root.origin),
+		"yaw": rad_to_deg(root.basis.get_euler().y),
+		"worst_deg": frame["worst"],
+		"clip": frame["clip"],
+		"clip_point": _vec(frame["clip_point"]),
+		"feet": {},
+	}
+	var to_world := _player.skeleton.global_transform
+	for side: StringName in _modifier._bone_indices:
+		var indices: Dictionary = _modifier._bone_indices[side]
+		var foot := {}
+		var foot_idx: int = int(indices.get("foot", -1))
+		var toe_idx: int = int(indices.get("toe", -1))
+		if foot_idx >= 0:
+			foot["ankle"] = _vec(to_world * _player.skeleton.get_bone_global_pose(foot_idx).origin)
+		if toe_idx >= 0:
+			foot["toe"] = _vec(to_world * _player.skeleton.get_bone_global_pose(toe_idx).origin)
+		var plan = _modifier._target_coordinator.get_plan(side)
+		if plan != null:
+			foot["owner"] = plan.owner
+			foot["adj"] = plan.final_adjustment_reason
+		entry["feet"][str(side)] = foot
+	_log.store_line(JSON.stringify(entry))
+
+
+func _vec(value: Vector3) -> Array:
+	return [snappedf(value.x, 0.0001), snappedf(value.y, 0.0001), snappedf(value.z, 0.0001)]
 
 
 func _foot_center() -> Vector3:
