@@ -191,10 +191,13 @@ func _record_frame() -> void:
 	_apply_playing_input()
 	var bones := _capture_bones()
 	var clip := _clip_result()
+	var deltas := _joint_deltas(bones)
 	var frame := {
 		"root": _player.global_transform,
+		"skel": _player.skeleton.global_transform,
 		"bones": bones,
-		"worst": _worst_joint_delta(bones),
+		"worst": deltas["local"],
+		"worst_world": deltas["world"],
 		"clip": clip["depth"],
 		"clip_point": clip["point"],
 	}
@@ -212,6 +215,7 @@ func _apply_playing_input() -> void:
 
 func _finish_recording() -> void:
 	var worst := 0.0
+	var worst_world := 0.0
 	var deepest := 0.0
 	var worst_frame := -1
 	var deepest_frame := -1
@@ -220,6 +224,7 @@ func _finish_recording() -> void:
 		if float(frame.get("worst", 0.0)) > worst:
 			worst = float(frame.get("worst", 0.0))
 			worst_frame = i
+		worst_world = maxf(worst_world, float(frame.get("worst_world", 0.0)))
 		if float(frame.get("clip", 0.0)) > deepest:
 			deepest = float(frame.get("clip", 0.0))
 			deepest_frame = i
@@ -231,8 +236,10 @@ func _finish_recording() -> void:
 		if float(frame.get("clip", 0.0)) > 0.005:
 			clip_frames += 1
 	print("[STAIR_LAB] recorded %d frames step_height=%.3f" % [_frames.size(), step_height])
-	print("[STAIR_LAB] worstJoint=%.1f deg/f @f%d | clip=%.4f m @f%d root_z=%.2f | clip_frames=%d" % [
-			worst, worst_frame, deepest, deepest_frame, deep_z, clip_frames])
+	print("[STAIR_LAB] worstJoint local=%.1f (body-rel) world=%.1f (incl turn) @f%d" % [
+			worst, worst_world, worst_frame])
+	print("[STAIR_LAB] clip=%.4f m @f%d root_z=%.2f | clip_frames=%d" % [
+			deepest, deepest_frame, deep_z, clip_frames])
 	if _log != null:
 		_log.flush()
 		_log.close()
@@ -268,21 +275,31 @@ func _apply_frame(index: int) -> void:
 		_player.skeleton.set_bone_global_pose(i, bones[i])
 
 
-func _worst_joint_delta(bones: Array[Transform3D]) -> float:
+## Two per-frame joint-angle measures. `local` is skeleton space (the leg relative to the body, so
+## a character turn does not count); `world` is the bone's world rotation (includes the root yaw,
+## which is what the debug overlay trace probes measure). Comparing them separates "the leg snapped"
+## from "the character turned".
+func _joint_deltas(bones: Array[Transform3D]) -> Dictionary:
 	if _frames.is_empty():
-		return 0.0
+		return {"local": 0.0, "world": 0.0}
 	var previous: Array[Transform3D] = _frames[-1]["bones"]
-	var worst := 0.0
+	var skel: Transform3D = _player.skeleton.global_transform
+	var prev_skel: Transform3D = _frames[-1]["skel"]
+	var local_worst := 0.0
+	var world_worst := 0.0
 	for side: StringName in _modifier._bone_indices:
 		var indices: Dictionary = _modifier._bone_indices[side]
 		for joint: String in LEG_JOINTS:
 			var idx: int = int(indices.get(joint, -1))
 			if idx < 0 or idx >= bones.size() or idx >= previous.size():
 				continue
-			var a := bones[idx].basis.get_rotation_quaternion()
-			var b := previous[idx].basis.get_rotation_quaternion()
-			worst = maxf(worst, rad_to_deg(a.angle_to(b)))
-	return worst
+			var now := bones[idx].basis.get_rotation_quaternion()
+			var before := previous[idx].basis.get_rotation_quaternion()
+			local_worst = maxf(local_worst, rad_to_deg(now.angle_to(before)))
+			var now_world := (skel * bones[idx]).basis.get_rotation_quaternion()
+			var before_world := (prev_skel * previous[idx]).basis.get_rotation_quaternion()
+			world_worst = maxf(world_worst, rad_to_deg(now_world.angle_to(before_world)))
+	return {"local": local_worst, "world": world_worst}
 
 
 func _clip_result() -> Dictionary:
@@ -329,6 +346,7 @@ func _log_line(index: int) -> void:
 		"root": _vec(root.origin),
 		"yaw": rad_to_deg(root.basis.get_euler().y),
 		"worst_deg": frame["worst"],
+		"worst_world_deg": frame["worst_world"],
 		"clip": frame["clip"],
 		"clip_point": _vec(frame["clip_point"]),
 		"feet": {},
@@ -393,9 +411,10 @@ func _update_metrics() -> void:
 		return
 	var index := int(_playhead) % _frames.size()
 	var frame: Dictionary = _frames[index]
-	_metrics.text = "frame %d/%d  %s  speed %.2fx  worstJoint %.1f deg/f  clip %.4f m" % [
-			index + 1, _frames.size(), "REV" if _reverse else "FWD",
-			_speed, float(frame.get("worst", 0.0)), float(frame.get("clip", 0.0))]
+	_metrics.text = ("frame %d/%d  %s  speed %.2fx | joint local %.1f / world %.1f deg/f | clip %.4f m"
+			% [index + 1, _frames.size(), "REV" if _reverse else "FWD", _speed,
+			float(frame.get("worst", 0.0)), float(frame.get("worst_world", 0.0)),
+			float(frame.get("clip", 0.0))])
 	if _frame_slider != null:
 		_frame_slider.set_value_no_signal(index)
 
