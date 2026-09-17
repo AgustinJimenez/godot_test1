@@ -183,3 +183,21 @@ under a moving, airborne target. Fixing 028's regime handoff (make it continuous
 for the planned swing; the two tasks are coupled. Reverted the blend; prototype restored, gated off.
 
 I've reached the point where further work is the 028 regime-continuity fix, not 030-specific code.
+
+## 2026-09-17 scaffold: the step-transaction prototype is live-iterable
+
+The prototype is restored in the working tree - `actors/player/foot_ik/foot_ik_stair_swing_arc.gd`
+plus its modifier/coordinator hooks and `FootIKDebug.settings.stair_swing_arc` - and is gated **OFF**
+by default (no behavior change when off). The stair lab's panel now has a
+"030 stair step-transaction (experimental)" checkbox bound to that flag, so it can be A/B'd live:
+
+- flag OFF (shipping): lab baseline stair clip 0.0000 m, joint p95 26.81 / max 50.12 deg.
+- flag ON (prototype): stair clip 0.0653 m, joint p95 25.91 / max 56.17 deg, both legs solved.
+
+`STAIR_LAB_CAPTURE_CHECK` passes in both states. Usage: launch the lab, tick the box, press
+"Rebuild + Record", then scrub/compare; `trace_query.py lab` prints the A/B metrics.
+
+To iterate the design: this is where the step transaction goes (lift-and-plant the support/swing foot
+onto the next tread as one motion so its toe never enters the riser, then the 025 retry stops firing
+and the 028 jank goes with it). All the dead ends found so far are listed above - do not re-try them.
+Uncommitted (part of the WIP batch); commit after live confirmation.
