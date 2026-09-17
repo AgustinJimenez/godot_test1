@@ -149,3 +149,31 @@ fix it. Reverted.
    rate-limiting - AGENTS.md warns lag on a wrong-side knee flip can be worse than the snap.
 2. Re-measure with `trace_query.py angular` and run `scripts/check_foot_ik_fast.sh` plus
    `scripts/check_foot_ik_all.sh`; this is load-bearing 013 territory - live confirmation required.
+
+## 2026-09-17 continuation: constrained-plane continuity (right diagnosis, unacceptable trade)
+
+Implemented the fix from "Next steps": gave `_limit_negative_rendered_knee`'s constrained bend plane
+its own per-side continuity (`state._previous_constrained_bend`, added to `FIELDS`), easing the
+plane at a bounded rate instead of letting its internal `_select_feasible_bend` (called without a
+side, so it skips the `_previous_bend` branch) pick a plane with no temporal continuity.
+
+Measured:
+
+| metric | before | with continuity |
+| --- | --- | --- |
+| preview stair trace knee max | 168 / 178 deg | 8.0 / 8.0 |
+| preview stair trace hip max | 95 / 107 deg | 8.3 / 8.3 |
+| preview stair frames >15 deg | 69 / 93 | 0 / 0 |
+| lab stair joint p95 / max | 26.81 / 50.12 | 17.18 / 22.03 |
+| lab stair clip | 0.0000 m | **0.2956 m** (49 frames) |
+
+So the mechanism is right for the jank - the spikes are essentially eliminated - but retaining the
+wrong-side/constrained plane lets the foot poke up to 29.6 cm into the geometry. Ease rate
+(720/1440/2880 deg/s) gave **byte-identical** output, so the rate is not the lever; merely retaining
+the plane is.
+
+**Conclusion - the jank and the clip are the same mechanism.** The constraint flip that prevents the
+clip is exactly what spikes the joints. Suppress the flip -> smooth but clips; allow it -> clips-free
+but jerks. To get both, the FREE solve must stop producing the clip-worthy pose so the flip is not
+needed - a targeting/solver-quality fix, not a rate/continuity knob. Reverted (evaluator/state back
+to the pre-experiment state); no gameplay change remains.

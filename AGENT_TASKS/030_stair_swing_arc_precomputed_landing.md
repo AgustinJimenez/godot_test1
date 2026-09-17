@@ -1,177 +1,185 @@
-# 030 - Stair swing arc: precompute each step's landing for one smooth swing
+# 030 — Planned stair swings
 
-Status: progressing. The "predict the landing early" half is proven; the "drive the swing to it"
-half is not yet effective because the target injection point was wrong. Gated experiment reverted;
-plan below is ready to resume. Companion to 025 (the stair toe clip) and 028 (the joint jank).
+## Status (2026-09-17)
 
-## Goal
+**Open. The airborne solve path is now proven to change the rendered gait, but the prototype
+regressed clipping/smoothness and was removed.** Retained changes improve the stair lab's final-pose
+recording and diagnostics. No gameplay change from this attempt remains, and no live acceptance is
+claimed. Existing uncommitted 025/028 changes were preserved byte-for-byte.
 
-Plan each stair step: choose the landing point on the next tread up-front and swing the foot to it
-in one smooth arc (lift + forward together), instead of today's reactive "lift, then shift".
+Goal: choose a real destination tread at takeoff, then move the foot upward and forward in one
+smooth swing. This remains paired with 025 (clipping) and 028 (joint discontinuities).
 
-## How we can see it (new lab tooling)
+Earlier attempts and their superseded hypotheses are in
+[archive/030_stair_swing_arc_attempts_1_to_7.md](archive/030_stair_swing_arc_attempts_1_to_7.md).
+In particular, the old closing instruction to override only X/Z is obsolete.
 
-`tests/manual/foot_ik/foot_ik_stair_lab.tscn` is the focused scene for this stair work (also noted
-in AGENTS.md's Foot IK section), alongside the broad multi-character preview. It records the real
-Player walking floor -> stairs -> top, with per-foot ankle trails (right blue / left purple), toe
-spheres rigged via `BoneAttachment3D`, a red clip sphere, scrub/step/reverse/speed, editable step
-height, and a per-frame JSONL log at `user://foot_ik_stair_lab.jsonl`. This is what made the step
-motion visible at all.
+## Reliable measurement now retained
 
-Observed over the steps (right toe, log): the path is "up then forward" in near-right-angle
-segments - e.g. f108-116 rises vertically at z~0.76, then f117-140 travels forward with the lift
-already done. No sideways wiggle, no backward slip (checked). So the foot lifts, then shifts.
+`tests/manual/foot_ik/foot_ik_stair_lab.gd` previously sampled raw skeleton poses from its ordinary
+physics callback. Those are not guaranteed to be the modifier's final output. It now records in
+`_process()`, requires `has_fresh_final_bone_poses()`, deduplicates physics ticks, and uses the final
+cache consistently for recorded bones, ankle/toe positions, trails, clip checks, and joint deltas.
+Each JSONL row includes `physics_frame`; per-foot diagnostics include `solve_observed`,
+`solve_target`, `owner_name`, and `plan_reason`.
 
-## Diagnosis
+`--lab-check` exits after recording and reports `STAIR_LAB_CAPTURE_CHECK`: sufficient samples,
+reaching the top, and no missing physics ticks. This checks capture integrity, **not** whether
+the gait is acceptable. Registered in the shared check list and fast suite.
 
-- The vertical lift is **reactive**: `_desired_swing_lift()` (`foot_ik_stair_predictor.gd`)
-  computes clearance against the *animated* foot's lowest point and drops to 0 once the foot is over
-  the surface. The horizontal target just follows the ground sampler. Two uncoordinated motions.
-- The landing latch (`LegState.has_latched_target`, `latched_target`) is set only once the animated
-  foot's forward probe (`foot_pos + forward * step_prediction_distance`) sees a surface above the
-  swing base. Measured with the lab log's `swing` field: the latch happens **0-11 frames into the
-  swing, sometimes never**.
-- **Proven half:** predicting the landing at swing *start* with a forward scan (walking the probe
-  further ahead until it finds a surface above the base) makes the latch fire at **frame 0 of every
-  swing**. This is achievable and was verified via the log.
+```sh
+godot --headless --fixed-fps 60 --path . \
+  res://tests/manual/foot_ik/foot_ik_stair_lab.tscn --quit-after 1200 -- --lab-check \
+  > /tmp/task030_lab.log 2>&1 || true
+python3 scripts/trace_query.py --trace /tmp/task030_lab_baseline.jsonl lab \
+  --compare /tmp/task030_arc7.jsonl
+```
 
-## Where the swing target actually comes from (the missing hook)
+The new `trace_query.py lab` command reports all-capture versus stair-region metrics, solved versus
+released swing counts, and matched-frame toe-path differences. Comparison assumes the same replay
+inputs; the stair-region split is specific to this lab (`root.z >= -0.8`).
 
-Overriding the per-leg `leg["target"]` and `leg["ground_target"]` had **zero effect** on the
-rendered foot. The real path is:
+## What the complete prototype established
 
-`_propose_spacing()` sets `leg["solve_candidate"]` from `target`/`ground_target`
-(`foot_ik_target_coordinator.gd:506/510/524`) -> `_build_plan()` sets
-`plan.ankle_target = leg["solve_candidate"]` (`:554`) -> `finalize_leg_targets()` writes
-`leg["final_target"]` -> the modifier's solve reads `leg["final_target"]`.
+A separate optional planner ran after **both** per-leg sampling branches, so missing-contact legs
+could no longer skip planning. It populated complete airborne entries, kept destination support
+distinct from the in-air waypoint, bypassed the contact-only finalization/release gates, and sent
+the planned point through candidate evaluation/commit. The experiment was off by default.
 
-**Hypothesis for the null:** an arc target whose **y** is interpolated between two tread heights is
-in the air mid-swing, so the coordinator's support/reach validation rejects it and falls back to the
-sampled ground target. Conclusion: the arc should drive **x/z only**; keep **y** from the sampled
-surface (the existing lift already supplies the vertical clearance and the arc look).
+Unlike earlier null attempts, final toe positions changed substantially, and active arc frames
+reported actual solves. **Further work does not need to rediscover the target injection point.**
 
-## What was tried and reverted (do not re-try as-is)
+But four coupled requirements remain:
 
-1. Arc with time-based progress, late latch -> inert (no landing until 0-11 frames in).
-2. Early latch at swing start, no arc -> changed latch timing only; rendered pose unchanged.
-3. Early latch + arc + override `target` (then also `ground_target`) -> still inert (this is what
-   exposed the `solve_candidate` path above).
+1. **Single swing ownership / stance transfer.** Allowing both low-weight legs to start together
+   created two simultaneous swings. Serializing them helped ownership but exposed transfer timing.
+2. **Reach at arrival, not only at takeoff.** With a 0.32 s swing and measured root travel about
+   2.39 m/s horizontal + 1.39 m/s upward, the body moves about 0.76 m forward and 0.45 m up during
+   one swing. The rig's leg length is only about 0.888 m. A supported destination can be unreachable
+   by the time the foot is supposed to plant.
+3. **Planner coverage.** Extrapolating the hip and rejecting unreachable destinations removed the
+   large new clips, but only the first right-foot swing remained active (20 frames). A nearly clean
+   capture with one planned swing is not success for the full staircase. Increasing the scan range
+   engaged one landing per leg but brought back clips.
+4. **Real landing confirmation.** The prototype's `progress == 1` branch fabricated contact to
+   request support transfer. That is not a valid final architecture: a constrained/rate-limited foot
+   may not actually reach the destination. Transfer must observe the final foot near the supported
+   destination, while root travel and the opposite stance remain feasible.
 
-All three are null results and were reverted per the repo's rule. The gated flag
-(`FootIKDebug.settings.stair_swing_arc`) and the lab checkbox were reverted too; re-add them when
-resuming.
+A shorter 0.22 s swing introduced an 11.56 cm clip near the first riser. Merely adjusting duration,
+a sine lift, or chain-weight ramp does not resolve the ownership/reach timing problem.
 
-## Attempt 4 (reverted): horizontal-only override - still inert
+## Measured results
 
-Re-added gated: early latch (forward scan) + override of **only x/z** of `target` and
-`ground_target` from the arc, leaving y on the sampled surface. Result:
+Same live Player, same 0.35 m staircase and input sequence, 179 captured frames. Stair-only metrics
+exclude the existing approach-floor startup episode (3.27 cm over nine frames).
 
-- The arc **was active**: the lab log's `swing.latched` shows the latch at **frame 0 of every**
-  swing, so the prediction half is solid.
-- The rendered toe trail was **byte-identical** again. So the x/z override still does not reach the
-  solve.
+| Variant | Stair clip max | Joint max | Coverage |
+| --- | ---: | ---: | --- |
+| Starting working tree / corrected recorder | 0 mm | 50.12°/frame | Legacy; 54 swing-owner frames released |
+| Independent simultaneous arcs | 25.14 mm | 79.08°/frame | Both legs driven; rejected |
+| One-at-a-time arcs, current-reach destination | 207.30 mm | 62.00°/frame | Stale destination behind body; rejected |
+| Future-reach filter, narrow scan | 0.56 mm | 48.55°/frame | Only first right swing; insufficient |
+| Future-reach filter, wider scan | 65.33 mm | 56.17°/frame | One landing each; rejected |
 
-Refined conclusion: `ground_target` -> `solve_candidate` -> `plan.ankle_target` is *a* path, but the
-coordinator's accept/validate step almost certainly **rejects** the resulting point - a forward x/z
-with the *sampled* y is not a consistent surface point (the forward x/z is over a different tread
-than that y), so it reverts to a validated target. Driving the foot from here needs either:
-(a) an arc point that is a **consistent surface point** (x/z *and* the surface height at that x/z,
-re-sampled each frame), placed where the coordinator accepts it; or
-(b) moving the landing/takeoff the predictor hands to the plan, rather than the per-leg target.
+Last experiment's stair joint p95 was 25.91° versus baseline 26.81°; the worse maximum and new
+penetration still reject it. Final toe-path differences reached 0.75 m left / 0.62 m right:
+the route was effective, not inert.
 
-Next step: try (a) - raycast the arc's own x/z for its y so the candidate is a real ground point -
-and re-measure the toe trail.
+Artifacts: `/tmp/task030_lab_baseline.jsonl`, `/tmp/task030_arc1.jsonl` through
+`arc7.jsonl` (selected variants), and `/tmp/task030_experiment_20260917/` (last experimental
+source snapshot; temporary evidence, not installed code). Previous user lab log preserved at
+`/tmp/task030_prior_lab_20260917.jsonl`.
 
-## Attempt 5 + DECISIVE finding (reverted): the stair swing leg is RELEASED to the animation
+## Next implementation boundary
 
-Instrumented the modifier's solve loop: during stair climbs its release branch fires for
-`plan.owner == Owner.STAIR_SWING` with `leg["hit"] == false` and `has_target == false` - **56
-releases in one lab run**. So the stair swing foot is published straight from the authored
-`unarmed_walk` animation (the leg is released), and:
+Design takeoff, destination, arrival time, opposite stance retention, and touchdown confirmation as
+one step transaction. Validate future reach for **both** legs over the entire swing, and distinguish
+an unsupported moving foot from a supported planted foot throughout coordinator and pelvis policy.
+If the requested root speed cannot fit a feasible step, explicitly handle that condition rather than
+declaring the airborne target a contact or silently dropping later steps.
 
-- every per-leg `target`/`ground_target` override is ignored - the leg never reaches the solve;
-- the plan/log show `adj=unchanged`/`not_finalized` with **no** `rejected_*`, i.e. the plan is built
-  and accepted but the leg is then released anyway.
+Use the corrected lab to require repeated left/right step coverage, no missed solves while the
+planned owner is active, actual supported touchdown before transfer, no new stair clips, and bounded
+final joint changes. Keep experiments gated until these pass, then request the user's visual test.
 
-This is the answer to "why was every target-side attempt inert even though the wiring was correct":
-the swing is an **animated, released** leg, not a solved one. The "up then forward" toe trail is the
-animation's own swing shape plus the stair system's release/lift timing - the per-leg target does
-nothing while airborne.
+## Verification of retained changes
 
-### Consequence (the real fix, scoped)
+Pending final capture and fast-suite results for this continuation. No interactive scene autoplayed;
+all verification runs are headless and terminate.
 
-To shape the stair swing, the swing leg must be a **solved** owner while airborne rather than
-released. A first attempt - gate the `not leg["hit"]`/`not has_target` release on
-`plan.owner == STAIR_SWING` while the feature is on - hit a runtime error: the solve path assumes a
-populated per-leg entry for an unsupported leg (`ground_weight` read from a dict that lacked it).
-So this is an **ownership/pipeline change** (replace the released animation swing with a solved
-swing carrying its own target/weight/reach/validation), not a target tweak. It deserves its own
-focused task with live validation, and a decision on whether losing the authored swing upper-leg
-motion is acceptable.
+## 2026-09-17 continuation: retained changes verified, prototype restored, 2 targeted fixes null
 
-Details for whoever picks it up:
-- The release happens in the solve loop's `if (not leg["hit"] or not has_target ...)`. Gating it on
-  `plan.owner == STAIR_SWING` (feature on) lets the loop continue - and it then crashes at
-  `_apply_support_pelvis_and_legs` reading `leg["ground_weight"]`.
-- Root: `player_foot_ik_modifier.gd`'s per-leg loop has a no-support `else` (around line 528, the
-  `if not contact["hit"] or unreachable_drop:` branch) that sets `per_leg[side]["hit"] = false` and
-  **`continue`s before populating** target/ground_target/ground_weight/chain_weight/hip/reach. The
-  solve assumes those exist.
-- So the change must populate a full per-leg entry for a gated airborne swing there (or restructure
-  the loop), then let it solve to the plan target. The modifier is at the 1000-line cap
-  (`.gdlintrc`), so this likely requires splitting that population into its own file first.
-- Live validation is mandatory: solving the swing replaces the authored `unarmed_walk` swing
-  motion, so the visible gait changes.
+Verified the retained batch (the "pending" part): `scripts/check.sh` green, `STAIR_LAB_CAPTURE_CHECK
+PASS samples=179 gaps=0`, `scripts/check_foot_ik_fast.sh` 26 pass (only the known task-019
+failure), and `trace_query.py lab` works.
 
-## Attempt 6 (reverted): the air swing is now solvable, but needs a real target + weight ramp
+Restored the experimental prototype from `/tmp/task030_experiment_20260917/` (the new
+`foot_ik_stair_swing_arc.gd` planner + the modifier/coordinator hooks + the `stair_swing_arc` flag),
+gated OFF by default - it is the proven starting point for the redesign, not shipped behaviour.
+Reproduced the recorded numbers (flag on): stair clip 65.3 mm / 2 frames, joint p95 25.91 / max
+56.17 deg/frame, coverage left 40 solved : 6 released, right 52 : 0.
 
-Implemented `FootIKAirSwingEntry` (new file) + a gated release exception + no-support-branch
-population, so the airborne `STAIR_SWING` leg reaches the solve **without crashing**. Result: the
-toe trail was **still byte-identical**, for two reasons:
+Then tried two of the four requirements in isolation - both null or worse:
 
-1. I populated the target from `plan.ankle_target` - but the plan is built from the same per-leg
-   target, so it is **circular** and the solve just reproduces the current pose.
-2. The swing weight is a constant placeholder; a solved swing needs a **ramp** (weight 0 at takeoff
-   -> 1 at landing), like an ordinary gait swing.
+- Requirement 4 (real touchdown: only declare contact once the FINAL solved foot is within 5 cm of
+  the destination): clip 65.3 -> 68.4 mm, joint 56 -> 62. Worse, because the foot often never
+  arrives (requirement 2), so the transfer never fires at all.
+- Requirement 2 (fit the swing duration to the root speed so the stride stays within leg reach):
+  identical output - no effect in this capture.
 
-So what's left is design + tuning, not plumbing:
-1. Target the solved air swing at the **predicted landing** (the next tread's ankle point from the
-   predictor's latched landing), not the plan's current target.
-2. Ramp the swing/chain weight across the swing.
-3. Validate reach/anatomy for an airborne target, with live eyes (it replaces the authored swing).
+The residual clip sits on the PLANTED foot (`owner = live_contact`) at f154-155 right AFTER a
+planned swing contacts - i.e. the planned step's own contact/plant is the regression source. So
+requirements 1 (single-swing ownership/stance transfer), 2 (reach at arrival) and 4 (real
+touchdown) are genuinely coupled; single-requirement patches do not work. This confirms the doc's
+"design it as one step transaction" boundary - no further single-lever attempt was made.
 
-The plumbing is proven (the leg can be solved instead of released); only the target/weight design
-+ live tuning remain.
+The prototype remains in the tree (gated off); the whole batch is uncommitted.
 
-## Attempt 7 (reverted): the swing leg never reaches the predictor either
+Also tried narrowing the destination scan (`SCAN_COUNT` 20 -> 6) hoping to reproduce the doc's
+0.56 mm "narrow scan" case: instead the planner found **no destination at all** and the run collapsed
+to the flag-off baseline (stair clip 0 mm, joint p95 26.81 / max 50.12). So the scan range is a real
+tension (too narrow = no coverage, wide = clips), not a free win - another sign the fix must be the
+coupled step-transaction design, not a constant. Restored the prototype's original constants.
 
-Added the early latch (forward scan) back + the solved-air-swing plumbing + a distance ramp
-(`FootIKAirSwingEntry.ramp_weight`). Still byte-identical. New dependency found: the per-leg loop's
-no-support `else` `continue`s **before** `_stair_predictor.update_swing_lift(...)`, so a no-contact
-swing leg never runs the predictor - its latch/`predicted_target` is never set, so
-`get_predicted_targets()` is empty for exactly the leg we are trying to solve, and the population is
-skipped.
+## 2026-09-17 continuation 2: riser-based landing helps the clip, handoff spikes remain
 
-So the solved-air-swing redesign has (at least) three coupled dependencies, all in the same
-per-leg/solve-loop area:
-1. release gate: don't release a `STAIR_SWING` leg (done, works);
-2. run the predictor (`update_swing_lift`) for a no-contact swing leg so a landing is predicted;
-3. populate the per-leg entry with a real target (predicted landing) + a weight ramp.
-Each is small, but they interact and the file is at the line cap, so this needs a focused session
-with the lab as the loop and live eyes on the result.
+Took over the redesign. Replaced the prototype's "scan for any higher surface" destination with a
+geometry-based one: walk forward until the surface steps up (the riser), then land a fixed 0.18 m
+inset onto the new tread (deterministic, well-placed), with reach validated at arrival.
 
-## Next step (ready to implement)
+- Result: stair clip **65.3 -> 23.8 mm** (a real improvement), both legs still covered - but joint
+  p95 **26.8 -> 43.5** and max **56 -> 80** deg/frame (worse). Net not shippable.
+- Slowing the swing weight ramp (`smoothstep(0.0, 0.25, progress)` -> `0.6`) did **not** change the
+  joint spikes, so the ramp/duration is not the cause.
+- The worst joint frames are all solved `stair_swing_prediction` legs (f120 80 deg, f134 79 deg):
+  the discontinuity is at the **animation <-> solved-arc handoff** (takeoff and touchdown), not
+  inside the arc. Replacing the authored swing with a solve changes the knee/hip solution even when
+  the foot position matches, so the pose jumps at both ends.
 
-Re-add the experiment gated behind `FootIKDebug.settings.stair_swing_arc` (off by default) and:
-1. Latch the landing at swing start via the forward scan (proven).
-2. In the modifier's per-leg loop, when the arc is active, override **only x/z** of the target (and
-   `ground_target`/`solve_candidate`) from `takeoff.lerp(landing, eased_progress)`, leaving y as the
-   sampled surface.
-3. Measure in the lab: the toe trail should become a diagonal arc and `clip`/`worst_deg` should not
-   regress; then run `scripts/check_foot_ik_fast.sh` and hand to the user for a live test.
+**Next concrete piece:** blend the solved swing with the animation across its boundaries (takeoff
+and touchdown) - ramp over the *pose*, not just the target/weight. That is the missing
+requirement-1/4 coupling. Reverted to the gated prototype original (clean baseline).
 
-## Keep (already committed)
+## 2026-09-17 continuation 3: the spike is not the boundary - it is the solve under a moving target
 
-- `FootIKStairPredictor.get_swing_state(side)` (active/latched/descending) and the lab log's
-  per-foot `swing` field (`312d028`) - the diagnostic that found the late latch.
-- The lab's toe spheres/trails and clip sphere.
+Implemented the target-boundary blend (follow the authored animation early, diverge later) - a
+**no-op** on the prototype's numbers (65.33 mm / 56.17 deg; the prototype already starts at the
+foot). Then logged the per-frame ankle vs solve target around the worst frame (riser variant):
+
+```
+f119 worst=8.1  ankle y=0.837  tgt y=0.835
+f120 worst=80.1 ankle y=0.873  tgt y=0.827   <- ankle 4.6cm ABOVE its own target
+f121 worst=12.7 ankle y=0.860  tgt y=0.815
+```
+
+So mid-arc the **solved leg is above its own target and the solve corrects downward hard in one
+frame** - a knee/regime reaction (the same family as 028's planted constraint flip: 028 found the
+40-180 deg spikes are the `clamp_negative_knee`/`constrain_knee_direction`/`solve_to_support`
+handoff). It is not a takeoff/touchdown boundary artifact and not the weight ramp.
+
+**Conclusion:** the redesigned swing inherits 028's core discontinuity - the solve is not stable
+under a moving, airborne target. Fixing 028's regime handoff (make it continuous) is a prerequisite
+for the planned swing; the two tasks are coupled. Reverted the blend; prototype restored, gated off.
+
+I've reached the point where further work is the 028 regime-continuity fix, not 030-specific code.
