@@ -640,7 +640,29 @@ func _build_ui() -> void:
 	arc_toggle.button_pressed = FootIKDebug.settings.stair_swing_arc
 	arc_toggle.toggled.connect(func(on: bool) -> void: FootIKDebug.settings.stair_swing_arc = on)
 	_panel.add_child(arc_toggle)
+	var clip_toggle := CheckBox.new()
+	clip_toggle.text = "Path A: use retargeted stair clip for the walk"
+	clip_toggle.add_theme_font_size_override("font_size", 22)
+	clip_toggle.button_pressed = _use_stair_clip
+	clip_toggle.toggled.connect(_on_clip_toggle)
+	_panel.add_child(clip_toggle)
+	var retry_toggle := CheckBox.new()
+	retry_toggle.text = "Disable 025 toe retry (smoother, may clip)"
+	retry_toggle.add_theme_font_size_override("font_size", 22)
+	retry_toggle.button_pressed = not FootIKDebug.settings.toe_clearance
+	retry_toggle.toggled.connect(_on_retry_toggle)
+	_panel.add_child(retry_toggle)
 	_panel.add_child(_label("Left-drag orbit | wheel zoom | feet-locked camera"))
+
+
+func _on_clip_toggle(on: bool) -> void:
+	_use_stair_clip = on
+	_rebuild()
+
+
+func _on_retry_toggle(on: bool) -> void:
+	FootIKDebug.settings.master = on
+	FootIKDebug.settings.toe_clearance = not on
 
 
 func _label(text: String) -> Label:

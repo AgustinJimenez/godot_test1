@@ -89,3 +89,14 @@ proper phase-matched crossfade (cf. `player_locomotion_transition.gd`'s `GAIT_PH
 flat<->stair boundary is required. Do not hard-swap.
 
 Lab A/B: `-- --lab-check --stair-clip [--no-toe-retry]` (see 030's scaffold section).
+
+### Phase-aligned switch attempted - still not enough
+
+`player_locomotion_transition.gd`'s `GAIT_PHASE_GROUPS` was defined but unused; implemented it and
+grouped the stair clips with the walk (start the new clip at the same normalized phase). A
+phase-aligned flat<->stair swap still regressed the lab clip to 12.1 cm - the two clips' stride/cycle
+do not line the planted foot up with the terrain the way the phase fraction implies, so normalized
+phase is not the right alignment. Auto-wiring `PlayerStairClips.select_walk()` is reverted; the lab
+panel now has manual checkboxes ("use retargeted stair clip", "disable 025 toe retry") to A/B by eye.
+Next: a terrain-matched enter/exit for the stair clip (e.g. switch on the first riser at a
+planted-foot moment, or a dedicated blend), not a per-frame clip swap.
