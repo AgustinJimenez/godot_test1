@@ -62,3 +62,30 @@ this was the user's original direction.
 
 - Do not re-try the single-lever stair corrections (028/030 lists) - they are proven trades.
 - Do not import UE/GASP assets (UE-Only; 027).
+
+## 2026-09-17 result: Path A works (with the transfer lift + no retry), selection needs a transition
+
+Measured in the lab (`trace_query.py lab`, stair region), same walk, only the base clip changed:
+
+| setup | joint p95 / max | clip |
+| --- | ---: | ---: |
+| flat clip + retry (baseline) | 26.81 / 50.12 deg | 0.0000 m |
+| stair clip + retry | 25.27 / 36.14 | 0.0100 m |
+| stair clip + no retry | 12.00 / 12.00 | 0.0922 m |
+| stair clip + no retry + **support-transfer lift** | **12.00 / 12.00** | **0.0180 m** |
+
+So the stair clip + the transfer lift + the 025 retry OFF gives flat-walk-smooth joints and a 1.8 cm
+clip (mostly the stair clip running on the flat approach). The retry is confirmed as the jank; the
+authored base pose plus the lift is what lets it be turned off.
+
+Retargeted clips: `assets/models/stair_clips/stair_walk_{up,up_2,down,down_2}.res`, produced by
+`tools/retarget_cli.gd` (now Mixamo-aware). Added to the player's `moves` library via
+`PlayerStairClips.add_to()`.
+
+**Selection needs a transition.** A naive per-frame swap of the walk clip to the stair clip when the
+predictor becomes active regressed the lab clip to 12.4 cm - the two clips have different gait
+phases, so the switch snaps the feet. `PlayerStairClips.select_walk()` exists but is not wired; a
+proper phase-matched crossfade (cf. `player_locomotion_transition.gd`'s `GAIT_PHASE_GROUPS`) at the
+flat<->stair boundary is required. Do not hard-swap.
+
+Lab A/B: `-- --lab-check --stair-clip [--no-toe-retry]` (see 030's scaffold section).

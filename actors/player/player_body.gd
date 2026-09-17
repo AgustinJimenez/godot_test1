@@ -386,6 +386,7 @@ func _build_character_visuals() -> void:
 		lib.add_animation(gameplay_name,
 				_retarget_clip(UAL2_PATH, source_name, _held_pose,
 						String(gameplay_name) in UAL_LOOPING_GAMEPLAY_CLIPS))
+	PlayerStairClips.add_to(lib)
 	PlayerDirectionalLocomotionLibrary.add_directional_crouch_clips(
 			lib, skeleton, _target_humanoid_map)
 	_lib = lib
@@ -542,8 +543,7 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 						src_idx, src.position_track_interpolate(tracks["pos"], time))
 
 		# Pass 2: compute each target bone's retargeted GLOBAL pose, parent
-		# first (BONE_MAP lists each chain root-to-leaf), then convert down
-		# to target-local for storage.
+		# first (BONE_MAP lists each chain root-to-leaf), then convert down to target-local for storage.
 		var target_global: Dictionary = {}
 		for src_name in BONE_MAP:
 			var target_name: StringName = BONE_MAP[src_name]
@@ -826,8 +826,7 @@ func _setup_held_flashlight() -> void:
 	# canonical role names (matching BONE_MAP's target-side convention) -
 	# resolve_bone_name() translates that to whatever the *current* skeleton
 	# actually calls that bone (identity for MotusMan, "mixamorig_"-prefixed
-	# for x_bot/y_bot) so the grip pose still lands on the right joint after
-	# a runtime skin swap.
+	# for x_bot/y_bot) so the grip pose still lands on the right joint after a runtime skin swap.
 	var bone_rotations: Dictionary = pose_data.get("bone_rotations_degrees", {})
 	for bone_name: String in bone_rotations:
 		var values: Array = bone_rotations[bone_name]
@@ -937,10 +936,8 @@ func is_action_active() -> bool:
 	return _action_animation != &""
 
 
-## Every clip the debug menu's animation preview can play, grouped for
-## display. Gameplay aliases come first, followed by the native MotusMan
-## references and then all raw UAL clips. Dictionary preserves insertion
-## order, so the active gameplay set is always the first group.
+## Every clip the debug menu's animation preview can play, grouped for display: gameplay aliases
+## first, then native MotusMan refs, then raw UAL clips (dictionary order keeps the first group).
 func get_animation_groups() -> Dictionary:
 	var gameplay_group: Array[StringName] = []
 	for key: StringName in UAL_GAMEPLAY_CLIPS:
