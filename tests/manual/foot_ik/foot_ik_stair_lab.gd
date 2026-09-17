@@ -1,0 +1,441 @@
+extends Node3D
+## Stair walk lab. Auto-walks the real Player from the floor up a staircase onto the top landing,
+## RECORDS every frame (root transform + all bone poses + metrics), then lets you scrub that clip:
+## play/pause, step, reverse, speed, with a feet-locked orbit camera and live metrics on screen.
+## The step height is editable and rebuilds + re-records. Test-only; no gameplay.
+## Launch: godot --path . res://tests/manual/foot_ik/foot_ik_stair_lab.tscn
+
+const PLAYER_SCENE := preload("res://actors/player/player.tscn")
+const MONITOR := preload("res://tools/foot_ik/foot_ik_live_penetration_monitor.gd")
+const SURFACES := preload("res://tests/manual/foot_ik/foot_ik_stair_surfaces.gd")
+
+const STEP_COUNT := 6
+const TREAD_DEPTH := 0.6
+const WIDTH := 3.0
+const THICKNESS := 0.3
+const START := Vector3(0.0, 0.05, -1.2)
+const FORWARD := Vector2(0.0, -1.0)
+const TOP_Z := STEP_COUNT * TREAD_DEPTH - 0.25
+const MAX_RECORD_FRAMES := 1200
+const TOE_TIP_EXTRA := 0.035
+const LEG_JOINTS := ["hip", "knee", "foot", "toe", "leaf"]
+const ORBIT_MIN := 0.4
+const ORBIT_MAX := 5.0
+
+var step_height := 0.35
+
+var _world: Node3D
+var _player: Player
+var _modifier: PlayerFootIKModifier
+var _camera: Camera3D
+
+var _frames: Array = [] # {root: Transform3D, bones: Array[Transform3D], worst: float, clip: float}
+var _recording := true
+var _rec_done := false
+
+var _playing := false
+var _speed := 0.5
+var _playhead := 0.0
+var _reverse := false
+
+var _orbit_yaw := 0.6
+var _orbit_pitch := 0.25
+var _orbit_distance := 1.8
+var _dragging := false
+
+var _metrics: Label
+var _frame_slider: HSlider
+var _speed_label: Label
+var _height_box: SpinBox
+var _clip_marker: MeshInstance3D
+
+
+func _ready() -> void:
+	Engine.time_scale = 1.0
+	_build_clip_marker()
+	_build_ui()
+	_rebuild()
+
+
+func _build_clip_marker() -> void:
+	_clip_marker = MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.03
+	sphere.height = 0.06
+	_clip_marker.mesh = sphere
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(1.0, 0.05, 0.05)
+	material.emission_enabled = true
+	material.emission = Color(1.0, 0.0, 0.0)
+	_clip_marker.material_override = material
+	_clip_marker.visible = false
+	add_child(_clip_marker)
+
+
+func _rebuild() -> void:
+	if _world != null:
+		_world.queue_free()
+		_world = null
+		_frames.clear()
+		_recording = true
+		_rec_done = false
+		_playing = false
+		_playhead = 0.0
+	_world = Node3D.new()
+	_world.name = "World"
+	add_child(_world)
+	_build_floor()
+	_build_stairs()
+	_spawn_player()
+	_setup_camera()
+	if _frame_slider != null:
+		_frame_slider.max_value = 1
+
+
+func _build_floor() -> void:
+	var floor_box := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(WIDTH * 3.0, THICKNESS, 3.6)
+	shape.shape = box
+	floor_box.add_child(shape)
+	floor_box.position = Vector3(0.0, -THICKNESS * 0.5, -2.2)
+	floor_box.collision_layer = 1
+	_world.add_child(floor_box)
+
+
+func _build_stairs() -> void:
+	var riser_mat := StandardMaterial3D.new()
+	riser_mat.albedo_color = Color(0.25, 0.4, 0.75)
+	var tread_mat := StandardMaterial3D.new()
+	tread_mat.albedo_color = Color(0.85, 0.25, 0.2)
+	var origin := Vector3.ZERO
+	for step in STEP_COUNT:
+		var rise := step_height * (step + 1)
+		var tread_start := step * TREAD_DEPTH
+		var stair := CSGBox3D.new()
+		stair.size = Vector3(WIDTH, rise, TREAD_DEPTH)
+		stair.material = riser_mat
+		stair.use_collision = true
+		SURFACES.configure_authored_stair(stair)
+		stair.position = origin + Vector3(0.0, rise * 0.5, tread_start + TREAD_DEPTH * 0.5)
+		SURFACES.finalize_authored_box(_world, stair)
+		var cap := CSGBox3D.new()
+		cap.size = Vector3(WIDTH, 0.02, TREAD_DEPTH)
+		cap.material = tread_mat
+		cap.use_collision = false
+		cap.position = origin + Vector3(0.0, rise + 0.01, tread_start + TREAD_DEPTH * 0.5)
+		_world.add_child(cap)
+	SURFACES.build_traversal_ramp(
+			_world, origin, WIDTH, THICKNESS, TREAD_DEPTH, STEP_COUNT, step_height)
+	SURFACES.build_top_landing(
+			_world, origin, WIDTH, TREAD_DEPTH, STEP_COUNT, step_height, riser_mat, tread_mat)
+
+
+func _spawn_player() -> void:
+	_player = PLAYER_SCENE.instantiate() as Player
+	_player.global_position = START
+	_player.rotation = Vector3(0.0, PI, 0.0)
+	_player.velocity = Vector3.ZERO
+	_player.movement_input_override = FORWARD
+	_player.gameplay_action_input_enabled = false
+	_world.add_child(_player)
+	_player.camera.current = false
+	_player.debug_cam.current = false
+	_player.hud.visible = false
+	SURFACES.configure_player(_player)
+	_modifier = _find_modifier()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _find_modifier() -> PlayerFootIKModifier:
+	for child in _player.skeleton.get_children():
+		if child is PlayerFootIKModifier:
+			return child
+	return null
+
+
+func _setup_camera() -> void:
+	if _camera == null:
+		_camera = Camera3D.new()
+		add_child(_camera)
+	_camera.current = true
+
+
+func _physics_process(delta: float) -> void:
+	if _recording:
+		_record_frame()
+		return
+	if _frames.is_empty():
+		return
+	if _playing:
+		var step := _speed * delta * Engine.physics_ticks_per_second * (1.0 if not _reverse else -1.0)
+		_playhead = fposmod(_playhead + step, float(_frames.size()))
+	_apply_frame(int(_playhead) % _frames.size())
+	_update_metrics()
+
+
+func _record_frame() -> void:
+	_apply_playing_input()
+	var bones := _capture_bones()
+	var clip := _clip_result()
+	var frame := {
+		"root": _player.global_transform,
+		"bones": bones,
+		"worst": _worst_joint_delta(bones),
+		"clip": clip["depth"],
+		"clip_point": clip["point"],
+	}
+	_frames.append(frame)
+	if _frame_slider != null:
+		_frame_slider.max_value = maxf(1.0, float(_frames.size()))
+	if _player.global_position.z >= TOP_Z or _frames.size() >= MAX_RECORD_FRAMES:
+		_finish_recording()
+
+
+func _apply_playing_input() -> void:
+	_player.movement_input_override = FORWARD
+
+
+func _finish_recording() -> void:
+	var worst := 0.0
+	var deepest := 0.0
+	var worst_frame := -1
+	var deepest_frame := -1
+	for i in _frames.size():
+		var frame: Dictionary = _frames[i]
+		if float(frame.get("worst", 0.0)) > worst:
+			worst = float(frame.get("worst", 0.0))
+			worst_frame = i
+		if float(frame.get("clip", 0.0)) > deepest:
+			deepest = float(frame.get("clip", 0.0))
+			deepest_frame = i
+	var deep_z := 0.0
+	if deepest_frame >= 0:
+		deep_z = (_frames[deepest_frame]["root"] as Transform3D).origin.z
+	print("[STAIR_LAB] recorded %d frames step_height=%.3f" % [_frames.size(), step_height])
+	print("[STAIR_LAB] worstJoint=%.1f deg/f @f%d | clip=%.4f m @f%d root_z=%.2f" % [
+			worst, worst_frame, deepest, deepest_frame, deep_z])
+	_recording = false
+	_rec_done = true
+	_playing = true
+	_playhead = 0.0
+	_player.set_physics_process(false)
+	_player.movement_input_override = Vector2.ZERO
+	if _player.body.anim_player != null:
+		_player.body.anim_player.process_mode = Node.PROCESS_MODE_DISABLED
+	if _modifier != null:
+		_modifier.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func _capture_bones() -> Array[Transform3D]:
+	var bones: Array[Transform3D] = []
+	var count := _player.skeleton.get_bone_count()
+	for i in count:
+		bones.append(_player.skeleton.get_bone_global_pose(i))
+	return bones
+
+
+func _apply_frame(index: int) -> void:
+	var frame: Dictionary = _frames[index]
+	_player.global_transform = frame["root"]
+	var bones: Array[Transform3D] = frame["bones"]
+	for i in bones.size():
+		_player.skeleton.set_bone_global_pose(i, bones[i])
+
+
+func _worst_joint_delta(bones: Array[Transform3D]) -> float:
+	if _frames.is_empty():
+		return 0.0
+	var previous: Array[Transform3D] = _frames[-1]["bones"]
+	var worst := 0.0
+	for side: StringName in _modifier._bone_indices:
+		var indices: Dictionary = _modifier._bone_indices[side]
+		for joint: String in LEG_JOINTS:
+			var idx: int = int(indices.get(joint, -1))
+			if idx < 0 or idx >= bones.size() or idx >= previous.size():
+				continue
+			var a := bones[idx].basis.get_rotation_quaternion()
+			var b := previous[idx].basis.get_rotation_quaternion()
+			worst = maxf(worst, rad_to_deg(a.angle_to(b)))
+	return worst
+
+
+func _clip_result() -> Dictionary:
+	var space := get_world_3d().direct_space_state
+	var to_world := _player.skeleton.global_transform
+	var worst := 0.0
+	var worst_point := Vector3.ZERO
+	for side: StringName in _modifier._bone_indices:
+		var indices: Dictionary = _modifier._bone_indices[side]
+		var foot_idx: int = int(indices.get("foot", -1))
+		var toe_idx: int = int(indices.get("toe", -1))
+		if foot_idx < 0 or toe_idx < 0:
+			continue
+		var ankle: Vector3 = to_world * _player.skeleton.get_bone_global_pose(foot_idx).origin
+		var toe: Vector3 = to_world * _player.skeleton.get_bone_global_pose(toe_idx).origin
+		var tip := toe + (toe - ankle).normalized() * TOE_TIP_EXTRA
+		var result := MONITOR.check(space, PackedVector3Array([ankle, tip]),
+				FootIKGroundSampler.GROUND_COLLISION_MASK)
+		if float(result["depth_m"]) > worst:
+			worst = float(result["depth_m"])
+			worst_point = result["point"]
+	return {"depth": worst, "point": worst_point}
+
+
+func _update_clip_marker() -> void:
+	if _clip_marker == null or _frames.is_empty():
+		return
+	var index := _frames.size() - 1 if _recording else int(_playhead) % _frames.size()
+	var frame: Dictionary = _frames[index]
+	if float(frame.get("clip", 0.0)) > 0.005:
+		_clip_marker.visible = true
+		_clip_marker.global_position = frame["clip_point"]
+	else:
+		_clip_marker.visible = false
+
+
+func _foot_center() -> Vector3:
+	if _player == null or _modifier == null:
+		return Vector3.ZERO
+	var to_world := _player.skeleton.global_transform
+	var total := Vector3.ZERO
+	var count := 0
+	for side: StringName in _modifier._bone_indices:
+		var idx: int = int(_modifier._bone_indices[side].get("foot", -1))
+		if idx >= 0:
+			total += to_world * _player.skeleton.get_bone_global_pose(idx).origin
+			count += 1
+	return total / maxf(1.0, float(count))
+
+
+func _process(_delta: float) -> void:
+	_update_camera()
+	_update_clip_marker()
+	if not _recording:
+		_update_metrics()
+
+
+func _update_camera() -> void:
+	if _camera == null:
+		return
+	var target := _foot_center()
+	var offset := Vector3(
+			cos(_orbit_yaw) * cos(_orbit_pitch),
+			sin(_orbit_pitch),
+			sin(_orbit_yaw) * cos(_orbit_pitch)) * _orbit_distance
+	_camera.global_position = target + offset
+	_camera.look_at(target, Vector3.UP)
+
+
+func _update_metrics() -> void:
+	if _metrics == null or _frames.is_empty():
+		return
+	var index := int(_playhead) % _frames.size()
+	var frame: Dictionary = _frames[index]
+	_metrics.text = "frame %d/%d  %s  speed %.2fx  worstJoint %.1f deg/f  clip %.4f m" % [
+			index + 1, _frames.size(), "REV" if _reverse else "FWD",
+			_speed, float(frame.get("worst", 0.0)), float(frame.get("clip", 0.0))]
+	if _frame_slider != null:
+		_frame_slider.set_value_no_signal(index)
+
+
+func _build_ui() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	var panel := VBoxContainer.new()
+	panel.position = Vector2(12, 12)
+	layer.add_child(panel)
+	_metrics = Label.new()
+	panel.add_child(_metrics)
+	var row := HBoxContainer.new()
+	panel.add_child(row)
+	var play := Button.new()
+	play.text = "Play/Pause"
+	play.pressed.connect(func() -> void: _playing = not _playing)
+	row.add_child(play)
+	var back := Button.new()
+	back.text = "Step -"
+	back.pressed.connect(func() -> void: _step(-1))
+	row.add_child(back)
+	var fwd := Button.new()
+	fwd.text = "Step +"
+	fwd.pressed.connect(func() -> void: _step(1))
+	row.add_child(fwd)
+	var rev := Button.new()
+	rev.text = "Reverse"
+	rev.toggle_mode = true
+	rev.toggled.connect(func(on: bool) -> void: _reverse = on)
+	row.add_child(rev)
+	_frame_slider = HSlider.new()
+	_frame_slider.min_value = 0
+	_frame_slider.max_value = 1
+	_frame_slider.custom_minimum_size = Vector2(360, 0)
+	_frame_slider.value_changed.connect(func(value: float) -> void: _playhead = value)
+	panel.add_child(_frame_slider)
+	var speed_row := HBoxContainer.new()
+	panel.add_child(speed_row)
+	speed_row.add_child(_label("Speed"))
+	var speed := HSlider.new()
+	speed.min_value = 0.05
+	speed.max_value = 2.0
+	speed.step = 0.05
+	speed.value = _speed
+	speed.custom_minimum_size = Vector2(300, 0)
+	speed.value_changed.connect(func(value: float) -> void: _set_speed(value))
+	speed_row.add_child(speed)
+	_speed_label = _label("%.2fx" % _speed)
+	speed_row.add_child(_speed_label)
+	var height_row := HBoxContainer.new()
+	panel.add_child(height_row)
+	height_row.add_child(_label("Step height (m)"))
+	_height_box = SpinBox.new()
+	_height_box.min_value = 0.1
+	_height_box.max_value = 0.9
+	_height_box.step = 0.01
+	_height_box.value = step_height
+	height_row.add_child(_height_box)
+	var rebuild := Button.new()
+	rebuild.text = "Rebuild + Record"
+	rebuild.pressed.connect(func() -> void:
+		step_height = float(_height_box.value)
+		_rebuild())
+	height_row.add_child(rebuild)
+	var hint := _label("Left-drag orbit | wheel zoom | feet-locked camera")
+	panel.add_child(hint)
+
+
+func _label(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	return label
+
+
+func _step(direction: int) -> void:
+	if _frames.is_empty():
+		return
+	_playing = false
+	_playhead = fposmod(_playhead + float(direction), float(_frames.size()))
+	_apply_frame(int(_playhead) % _frames.size())
+	_update_metrics()
+
+
+func _set_speed(value: float) -> void:
+	_speed = value
+	if _speed_label != null:
+		_speed_label.text = "%.2fx" % value
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_orbit_distance = clampf(_orbit_distance - 0.15, ORBIT_MIN, ORBIT_MAX)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_orbit_distance = clampf(_orbit_distance + 0.15, ORBIT_MIN, ORBIT_MAX)
+		elif event.button_index == MOUSE_BUTTON_LEFT:
+			_dragging = event.pressed
+	elif event is InputEventMouseMotion and _dragging:
+		_orbit_yaw -= event.relative.x * 0.006
+		_orbit_pitch = clampf(_orbit_pitch + event.relative.y * 0.006, -1.4, 1.4)
+	elif event is InputEventKey and event.pressed and event.keycode == KEY_SPACE:
+		_playing = not _playing
