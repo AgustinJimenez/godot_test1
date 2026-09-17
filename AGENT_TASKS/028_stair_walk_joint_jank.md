@@ -199,3 +199,22 @@ frame, which produces a wrong-side/poorly-aligned rendered knee that the constra
 The lever is making the step-up plant gradual - but that trades against tracking the tread (the same
 clip coupling), so it is a design choice, not a rate knob. The modifier already smooths the target at
 `delta * 24.0` (~0.4/frame); the raw jump is ~0.26 m.
+
+## 2026-09-17 continuation 3: the spike IS the 025 retry, firing on the step-up plant
+
+The f102 spike frame's right leg carries `adj = pose_toe_clearance` - the **025 toe-clearance retry
+fired** (the left leg is a released `stair_swing_prediction`). So the 028 joint spike is the 025
+retry itself, firing because the support foot's target jumps a full step (0.488 -> 0.594) as the
+predictor re-targets it onto the next tread while it is still the support.
+
+This closes the loop precisely: **the retry is the jank (028) and the clip-fix (025) at once**, and
+it fires on the stair step-up plant, not the swing (the swing leg is released throughout). The
+whole chain:
+1. the support foot re-targets a full step up in one frame,
+2. its planted toe/leaf then sits inside the riser, so the 025 retry fires,
+3. the retry re-solves the whole leg (bounded/instant) -> the 40-180 deg joint spike.
+
+So the fix is the same single place as 030: stop the free solve/target from producing the clip-worthy
+pose on the step-up plant (the support foot re-targeting a full step in one frame). Nothing else in
+the pipeline is at fault, and every downstream symptom (clip, jank, planned-swing instability)
+follows from it.
