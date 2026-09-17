@@ -68,40 +68,44 @@ func _ready() -> void:
 ## clip; cleared when a new recording starts.
 func _build_trails() -> void:
 	for side: StringName in [&"right", &"left"]:
-		var color := (Color(0.2, 0.45, 1.0) if side == &"right" else Color(0.62, 0.2, 1.0))
 		var mesh := ImmediateMesh.new()
 		var inst := MeshInstance3D.new()
 		inst.mesh = mesh
 		var material := StandardMaterial3D.new()
 		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		material.albedo_color = color
+		material.albedo_color = _side_color(side)
 		inst.material_override = material
 		add_child(inst)
 		_trail[side] = PackedVector3Array()
 		_trail_mesh[side] = mesh
+
+
+func _side_color(side: StringName) -> Color:
+	return Color(0.2, 0.45, 1.0) if side == &"right" else Color(0.62, 0.2, 1.0)
+
+
+## Toe spheres are rigidly attached to the toe bone via BoneAttachment3D, so they cannot lag or
+## float off the mesh the way a per-frame position copy can.
+func _build_toe_spheres() -> void:
+	_toe_sphere.clear()
+	for side: StringName in [&"right", &"left"]:
+		var idx: int = int((_modifier._bone_indices.get(side, {}) as Dictionary).get("toe", -1))
+		if idx < 0:
+			continue
+		var attach := BoneAttachment3D.new()
+		_player.skeleton.add_child(attach)
+		attach.bone_idx = idx
 		var sphere := SphereMesh.new()
 		sphere.radius = 0.022
 		sphere.height = 0.044
 		var marker := MeshInstance3D.new()
 		marker.mesh = sphere
-		var smat := StandardMaterial3D.new()
-		smat.albedo_color = color
-		smat.no_depth_test = true
-		marker.material_override = smat
-		add_child(marker)
+		var material := StandardMaterial3D.new()
+		material.albedo_color = _side_color(side)
+		material.no_depth_test = true
+		marker.material_override = material
+		attach.add_child(marker)
 		_toe_sphere[side] = marker
-
-
-func _update_foot_markers() -> void:
-	if _player == null or _modifier == null:
-		return
-	var to_world := _player.skeleton.global_transform
-	for side: StringName in _toe_sphere:
-		var idx: int = int((_modifier._bone_indices.get(side, {}) as Dictionary).get("toe", -1))
-		if idx < 0:
-			continue
-		(_toe_sphere[side] as MeshInstance3D).global_position = (
-				to_world * _player.skeleton.get_bone_global_pose(idx).origin)
 
 
 func _append_trail() -> void:
@@ -171,6 +175,7 @@ func _rebuild() -> void:
 	_build_floor()
 	_build_stairs()
 	_spawn_player()
+	_build_toe_spheres()
 	_setup_camera()
 	if _frame_slider != null:
 		_frame_slider.max_value = 1
@@ -279,7 +284,6 @@ func _record_frame() -> void:
 	}
 	_frames.append(frame)
 	_log_line(_frames.size() - 1)
-	_update_foot_markers()
 	_append_trail()
 	if _frame_slider != null:
 		_frame_slider.max_value = maxf(1.0, float(_frames.size()))
@@ -467,7 +471,6 @@ func _foot_center() -> Vector3:
 
 func _process(_delta: float) -> void:
 	_update_camera()
-	_update_foot_markers()
 	_update_clip_marker()
 	if not _recording:
 		_update_metrics()
