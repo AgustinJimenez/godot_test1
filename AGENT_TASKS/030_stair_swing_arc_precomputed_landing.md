@@ -61,6 +61,27 @@ All three are null results and were reverted per the repo's rule. The gated flag
 (`FootIKDebug.settings.stair_swing_arc`) and the lab checkbox were reverted too; re-add them when
 resuming.
 
+## Attempt 4 (reverted): horizontal-only override - still inert
+
+Re-added gated: early latch (forward scan) + override of **only x/z** of `target` and
+`ground_target` from the arc, leaving y on the sampled surface. Result:
+
+- The arc **was active**: the lab log's `swing.latched` shows the latch at **frame 0 of every**
+  swing, so the prediction half is solid.
+- The rendered toe trail was **byte-identical** again. So the x/z override still does not reach the
+  solve.
+
+Refined conclusion: `ground_target` -> `solve_candidate` -> `plan.ankle_target` is *a* path, but the
+coordinator's accept/validate step almost certainly **rejects** the resulting point - a forward x/z
+with the *sampled* y is not a consistent surface point (the forward x/z is over a different tread
+than that y), so it reverts to a validated target. Driving the foot from here needs either:
+(a) an arc point that is a **consistent surface point** (x/z *and* the surface height at that x/z,
+re-sampled each frame), placed where the coordinator accepts it; or
+(b) moving the landing/takeoff the predictor hands to the plan, rather than the per-leg target.
+
+Next step: try (a) - raycast the arc's own x/z for its y so the candidate is a real ground point -
+and re-measure the toe trail.
+
 ## Next step (ready to implement)
 
 Re-add the experiment gated behind `FootIKDebug.settings.stair_swing_arc` (off by default) and:
