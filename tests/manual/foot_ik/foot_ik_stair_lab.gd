@@ -51,13 +51,65 @@ var _clip_marker: MeshInstance3D
 var _panel: VBoxContainer
 var _log: FileAccess
 const LOG_PATH := "user://foot_ik_stair_lab.jsonl"
+var _trail := {} # side -> PackedVector3Array of foot world positions
+var _trail_mesh := {} # side -> ImmediateMesh
 
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
 	_build_clip_marker()
+	_build_trails()
 	_build_ui()
 	_rebuild()
+
+
+## Persistent per-foot path lines (right = blue, left = purple) drawn over the whole recorded
+## clip; cleared when a new recording starts.
+func _build_trails() -> void:
+	for side: StringName in [&"right", &"left"]:
+		var mesh := ImmediateMesh.new()
+		var inst := MeshInstance3D.new()
+		inst.mesh = mesh
+		var material := StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.albedo_color = (Color(0.2, 0.45, 1.0) if side == &"right"
+				else Color(0.62, 0.2, 1.0))
+		inst.material_override = material
+		add_child(inst)
+		_trail[side] = PackedVector3Array()
+		_trail_mesh[side] = mesh
+
+
+func _append_trail() -> void:
+	var to_world := _player.skeleton.global_transform
+	for side: StringName in _trail_mesh:
+		var idx: int = int(_modifier._bone_indices[side].get("foot", -1))
+		if idx < 0:
+			continue
+		var points: PackedVector3Array = _trail[side]
+		points.append(to_world * _player.skeleton.get_bone_global_pose(idx).origin)
+		_trail[side] = points
+	_rebuild_trail_mesh()
+
+
+func _rebuild_trail_mesh() -> void:
+	for side: StringName in _trail_mesh:
+		var points: PackedVector3Array = _trail[side]
+		var mesh: ImmediateMesh = _trail_mesh[side]
+		mesh.clear_surfaces()
+		if points.size() < 2:
+			continue
+		mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+		for i in range(1, points.size()):
+			mesh.surface_add_vertex(points[i - 1])
+			mesh.surface_add_vertex(points[i])
+		mesh.surface_end()
+
+
+func _clear_trails() -> void:
+	for side: StringName in _trail_mesh:
+		_trail[side] = PackedVector3Array()
+		(_trail_mesh[side] as ImmediateMesh).clear_surfaces()
 
 
 func _build_clip_marker() -> void:
@@ -85,6 +137,7 @@ func _rebuild() -> void:
 		_world.queue_free()
 		_world = null
 		_frames.clear()
+		_clear_trails()
 		_recording = true
 		_rec_done = false
 		_playing = false
@@ -203,6 +256,7 @@ func _record_frame() -> void:
 	}
 	_frames.append(frame)
 	_log_line(_frames.size() - 1)
+	_append_trail()
 	if _frame_slider != null:
 		_frame_slider.max_value = maxf(1.0, float(_frames.size()))
 	if _player.global_position.z >= TOP_Z or _frames.size() >= MAX_RECORD_FRAMES:
