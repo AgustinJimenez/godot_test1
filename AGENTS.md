@@ -335,6 +335,22 @@ step height (Rebuild + Record), and a per-frame log at `user://foot_ik_stair_lab
 root, yaw, worst joint delta local+world, clip, per-foot ankle/toe/owner/adj/swing). `foot_ik_preview.tscn`
 remains the broad multi-character stress harness; the lab is the single-stair case - do not confuse them.
 
+**The stair clip (025) and the stair joint jank (028) are one mechanism, not two** - proven this
+session. On a stair step-up the support/swing foot's solve target steps up a full tread in one frame;
+its planted toe/leaf then sits inside the riser, so the 025 toe-clearance retry fires, and the retry's
+re-solve spikes the joints 40-180 deg. So *every* single-knob attempt trades the clip against the
+jank: the retry rate, the constrained-bend-plane continuity, the solve-rate boost, a riser-based
+landing, the support-transfer arc, the swing weight ramp and the boundary blend were all tried and
+are all null/worse (details and numbers in `AGENT_TASKS/028` and `030`). **Do not re-try them
+individually** - a fix must stop the *base pose/target* from producing the clip-worthy step, not
+patch the correction. Two more load-bearing facts: the stair swing leg is **released** to the
+authored animation (`owner == STAIR_SWING`, `leg["hit"] == false`), so no per-leg target shapes it,
+and the predictor's `update_swing_lift` never runs for a no-contact leg. The deeper cause is
+architectural: a *flat-ground* walk clip corrected by reactive IK is the wrong base for stairs
+(the corrections fight the clip). The two ways out - an authored stair-walk clip, or a procedural
+leg gait - are scoped in `AGENT_TASKS/031`; the 030 prototype (a solved swing arc) exists, gated off,
+only as a live A/B in the lab.
+
 The completed consolidation is archived at
 `AGENT_TASKS/archive/010_foot_ik_target_coordinator_consolidation.md`
 (migrating every target owner through one validated boundary); `009` holds the ownership-matrix

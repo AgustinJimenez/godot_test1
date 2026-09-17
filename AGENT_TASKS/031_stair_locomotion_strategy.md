@@ -1,0 +1,64 @@
+# 031 - Stair locomotion strategy: authored stair clip vs procedural gait
+
+Status: decision pending. 025/028/030 have shown the current hybrid - a flat walk clip corrected by
+reactive IK - cannot be tuned into a clean stair walk.
+
+## Why the hybrid is the wrong base (retrospective)
+
+- 025 (the toe clip) and 028 (the joint jank) are **one mechanism** (see AGENTS.md): the step-up
+  target moves a full tread in one frame, the planted toe enters the riser, the 025 retry fires, and
+  its re-solve spikes the joints 40-180 deg.
+- So every single lever trades clip against jank or is null/worse (full list in 028/030). The
+  clip-worthy pose comes from the *base pose/target*, not from the correction.
+- Deeper cause: a flat-ground walk clip plus bolt-on stair corrections means the corrections fight
+  the clip. Two ways out.
+
+## Path A - authored stair-walk animation(s)
+
+The standard fix. The base pose becomes stair-correct, so the IK returns to being *refinement*
+(slopes, exact contact) and the retry/jank corrections likely stop being needed.
+
+- Need: an in-place, looping stair-walk cycle (up; down optional), retargeted to the character.
+- Candidate sources (must have explicit Godot-compatible terms - Epic's GASP/UE assets are UE-Only
+  per [027](027_gasp_animation_assets_and_architecture_reference.md), do not import them):
+  - **Mixamo** (mixamo.com, Adobe, free) - has "Climbing Stairs" / "Walk Up Stairs" style clips;
+    FBX download; ubiquitous in Godot; re-check Adobe's terms.
+  - The project's existing source library (UAL / MotusMan) - `player_body.gd`'s `BONE_MAP` already
+    retargets UAL clips; check whether that library has stair clips.
+  - CC0 packs (Quaternius, Kenney, KayKit) - may or may not include stairs.
+  - Blender / the user's own tooling - a 4-step cycle is small.
+- Import path exists: `tools/retarget_cli.gd` + `HumanoidRetargeter` retarget an arbitrary source
+  clip onto a catalog character headlessly.
+- Acceptance: the clip swapped in, measured in `foot_ik_stair_lab.tscn`; clip/joint metrics better
+  than baseline with the 025 retry disabled (proving the base pose no longer needs it).
+
+## Path B - procedural leg gait
+
+No authored base; the terrain drives the feet, so the retry/regime-flip class of bugs disappears -
+this was the user's original direction.
+
+- Existing material: `docs/PROCEDURAL_ANIMATION_RESEARCH.md` (modules, math, Godot built-ins) and the
+  reference repo reviewed this session (jegor377/ProceduralWalk) - a legs-only stepper (step-when-
+  drift). Caveat: `SkeletonIK3D` is a dead end in Godot 4 (AGENTS.md); solve bones directly, and the
+  repo leaves the upper body static (looks robotic).
+- Research/design needed before building:
+  1. A gait/phase model (step timing, stride, speed) and foot placement (where to plant per step).
+  2. Whole-body: pelvis/COM and upper-body counter-motion (not just legs).
+  3. Integration: the project already has a strong two-bone leg solver + ground sampler - drive its
+     *targets* from the procedural gait and let it place the feet (reuse, not replace).
+  4. Composition with idle/landing/turning, and with the released-swing finding (`STAIR_SWING`).
+- Acceptance: a plausible walk cycle at several speeds, flat and stairs, measured in the lab.
+
+## Recommendation
+
+- Cheapest unblock: **Path A** (one stair-walk clip) - likely hours of asset work vs the months of
+  correction tuning the hybrid has cost.
+- The user's stated preference and the original goal: **Path B** (procedural) - bigger, but removes
+  the whole bug class. If a licensed stair clip can't be sourced, Path B is the fallback.
+- Next step: (1) try to source a stair clip (Mixamo/UAL) and test it in the lab; or (2) a focused
+  procedural research spike covering the four items above, then a gated prototype A/B'd in the lab.
+
+## Do not
+
+- Do not re-try the single-lever stair corrections (028/030 lists) - they are proven trades.
+- Do not import UE/GASP assets (UE-Only; 027).
