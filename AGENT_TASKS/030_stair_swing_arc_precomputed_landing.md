@@ -82,6 +82,33 @@ re-sampled each frame), placed where the coordinator accepts it; or
 Next step: try (a) - raycast the arc's own x/z for its y so the candidate is a real ground point -
 and re-measure the toe trail.
 
+## Attempt 5 + DECISIVE finding (reverted): the stair swing leg is RELEASED to the animation
+
+Instrumented the modifier's solve loop: during stair climbs its release branch fires for
+`plan.owner == Owner.STAIR_SWING` with `leg["hit"] == false` and `has_target == false` - **56
+releases in one lab run**. So the stair swing foot is published straight from the authored
+`unarmed_walk` animation (the leg is released), and:
+
+- every per-leg `target`/`ground_target` override is ignored - the leg never reaches the solve;
+- the plan/log show `adj=unchanged`/`not_finalized` with **no** `rejected_*`, i.e. the plan is built
+  and accepted but the leg is then released anyway.
+
+This is the answer to "why was every target-side attempt inert even though the wiring was correct":
+the swing is an **animated, released** leg, not a solved one. The "up then forward" toe trail is the
+animation's own swing shape plus the stair system's release/lift timing - the per-leg target does
+nothing while airborne.
+
+### Consequence (the real fix, scoped)
+
+To shape the stair swing, the swing leg must be a **solved** owner while airborne rather than
+released. A first attempt - gate the `not leg["hit"]`/`not has_target` release on
+`plan.owner == STAIR_SWING` while the feature is on - hit a runtime error: the solve path assumes a
+populated per-leg entry for an unsupported leg (`ground_weight` read from a dict that lacked it).
+So this is an **ownership/pipeline change** (replace the released animation swing with a solved
+swing carrying its own target/weight/reach/validation), not a target tweak. It deserves its own
+focused task with live validation, and a decision on whether losing the authored swing upper-leg
+motion is acceptable.
+
 ## Next step (ready to implement)
 
 Re-add the experiment gated behind `FootIKDebug.settings.stair_swing_arc` (off by default) and:
