@@ -177,3 +177,25 @@ clip is exactly what spikes the joints. Suppress the flip -> smooth but clips; a
 but jerks. To get both, the FREE solve must stop producing the clip-worthy pose so the flip is not
 needed - a targeting/solver-quality fix, not a rate/continuity knob. Reverted (evaluator/state back
 to the pre-experiment state); no gameplay change remains.
+
+## 2026-09-17 continuation 2: the spike is an abrupt step-up plant, not the swing
+
+Traced the baseline spike frame (lab f102, 50.1 deg) per foot from the corrected recorder:
+
+```
+f100 right (live_contact) ankle y=0.233   target y=0.332
+f101 right (live_contact) ankle y=0.264   target y=0.488
+f102 right (live_contact) ankle y=0.594   target y=0.594   <- ankle +0.33 m in one frame
+f103 right (live_contact) ankle y=0.491   target y=0.658
+```
+
+The planted right foot's ankle rises ~0.33 m in a single frame - a full step height - as its solve
+target jumps 0.488 -> 0.594 (onto the next tread). That is the stair **step-up plant transition**,
+not the swing (the left leg is a released `stair_swing_prediction` at the same frames), and the
+constrained-plane flip is the solver reacting to that abrupt pose change.
+
+So the free solve is not "wrong" in isolation: it is chasing a target that steps up by 0.33 m in one
+frame, which produces a wrong-side/poorly-aligned rendered knee that the constraint then has to snap.
+The lever is making the step-up plant gradual - but that trades against tracking the tread (the same
+clip coupling), so it is a design choice, not a rate knob. The modifier already smooths the target at
+`delta * 24.0` (~0.4/frame); the raw jump is ~0.26 m.
