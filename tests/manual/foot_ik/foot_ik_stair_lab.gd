@@ -476,6 +476,7 @@ func _log_line(index: int) -> void:
 		"yaw": rad_to_deg(root.basis.get_euler().y),
 		"worst_deg": frame["worst"],
 		"worst_world_deg": frame["worst_world"],
+		"animation": _player.body.anim_player.current_animation.get_file(),
 		"clip": frame["clip"],
 		"clip_point": _vec(frame["clip_point"]),
 		"feet": {},
