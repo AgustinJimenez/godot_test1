@@ -64,6 +64,9 @@ var _capture_gaps := 0
 func _ready() -> void:
 	Engine.time_scale = 1.0
 	_use_stair_clip = "--stair-clip" in OS.get_cmdline_user_args()
+	if "--no-toe-retry" in OS.get_cmdline_user_args():
+		FootIKDebug.settings.master = true
+		FootIKDebug.settings.toe_clearance = false
 	_build_clip_marker()
 	_build_trails()
 	_build_ui()
