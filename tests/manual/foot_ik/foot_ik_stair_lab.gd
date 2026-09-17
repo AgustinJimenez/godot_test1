@@ -447,6 +447,7 @@ func _log_line(index: int) -> void:
 		if plan != null:
 			foot["owner"] = plan.owner
 			foot["adj"] = plan.final_adjustment_reason
+		foot["swing"] = _modifier._stair_predictor.get_swing_state(side)
 		entry["feet"][str(side)] = foot
 	_log.store_line(JSON.stringify(entry))
 

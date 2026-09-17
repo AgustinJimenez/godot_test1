@@ -406,6 +406,15 @@ func get_predicted_targets() -> Dictionary:
 	return result
 
 
+## Public read-only view of one leg's swing state, for diagnostics/tracing (lab log). See 028.
+func get_swing_state(side: StringName) -> Dictionary:
+	var state := _state(side)
+	return {
+		"active": state.swing_active, "latched": state.has_latched_target,
+		"descending": state.descending_to_landing,
+	}
+
+
 func _state(side: StringName) -> LegState:
 	var state := _legs.get(side) as LegState
 	if state == null:
