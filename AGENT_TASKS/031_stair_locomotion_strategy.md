@@ -116,3 +116,23 @@ So the stair clip cannot be wired as a per-frame swap. It needs (a) a continuous
 signal (e.g. a trigger volume or the stair surfaces themselves, not the transition flags) and (b) a
 dedicated stair-locomotion mode whose enter/exit is designed as one motion, not a clip swap
 mid-stride. Reverted the wiring; the lab keeps its manual checkboxes to show the improvement.
+
+## 2026-09-18 handoff: foot-derived travel in the procedural lab
+
+The independent Path B experiment is in `tests/manual/procedural_walk/` (full scope in task 032).
+Its four flat reference modes previously reused Original's fixed 0.667 m/cycle, so Sprint barely
+translated; selecting a flat gait while moving also switched moving mode off. Current uncommitted
+code estimates each flat clip's forward travel from backward ankle motion during near-floor contact,
+normalized by contact duration so Sprint's short airborne gait is not undercounted. Selecting a
+different flat gait now keeps moving mode on and restarts the path. Original's world-space foot lock
+and the stair modes' terrain-matched path are unchanged.
+
+At native clip cadence, `--infinite-check` measured UAL Walk **0.81 m/s** and UAL Sprint
+**5.38 m/s**; all five flat modes passed >15-cycle travel, mode-switch, floor-follow, side-camera,
+and stable-panel checks. `--moving-check`, `--stair-check`, `--pose-match-check`, and
+`--flat-mesh-check` also passed. `scripts/check.sh` passed lint/import and reached GDScript parsing,
+but its run was interrupted before a final result; rerun it. Then let the user test the visual
+result live before committing. This is an estimate extracted from in-place leg motion, **not**
+authored root motion or proof of zero shoe slide; if Sprint still looks wrong, inspect planted-foot
+world movement across frames before adjusting its speed again. Do not auto-open the scene for the
+user; they will play it themselves.

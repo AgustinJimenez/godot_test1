@@ -227,6 +227,14 @@ Procedural bone corrections belong in `SkeletonModifier3D`, not an ordinary node
 Snapshot all base animation poses before changing an ancestor chain. When a paused tuning UI changes
 modifier data, call `Skeleton3D.advance(0.0)` to refresh the rendered result.
 
+For animation-derived gaits, compare the **whole** final skeleton against the source across every
+frame before replacing a leg chain: matching shoe rotation alone can still put the toe through the
+floor or leave both feet floating. Test final skinned shoe vertices, not just foot/toe bone origins.
+Build/retarget references on a private skeleton (the retargeter may pose its target). A flat-ground
+pelvis clearance offset cannot rescue a stair clip whose phase, root travel, and tread geometry do
+not align; measure the unmodified source against the intended terrain first. See
+`docs/procedural_walk_experiment.md` for the lab evidence and checks.
+
 `AnimationPlayer.play()` can select a clip before its pose is applied. Gameplay autoplay must publish
 that first pose before a zero-delta modifier refresh can cache the imported pose as animation history.
 Initial grounded placement must initialize pelvis, targets and legs together; borrowing a loop-seam
@@ -683,4 +691,3 @@ subsystem (toe clearance, stair support, swing lift, balance, idle stance) plus 
 prints a `[FOOT_IK_PERF]` per-part table. Off by default = zero cost. First measured result: the
 `support` (pelvis/support/leg-solve) pipeline is ~78% of the IK frame cost, the clearance retry
 ~0 - see `AGENT_TASKS/027`. Engine-wide counters remain in `foot_ik_perf_probe.gd` (`FOOT_IK_PERF_LOG=1`).
-

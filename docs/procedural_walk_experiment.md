@@ -9,20 +9,47 @@ decision and gameplay integration context, see
 
 ## What exists now
 
-The scene runs the MotusMan model with its imported relaxed-idle pose frozen as a base. A separate
-`SkeletonModifier3D` generates the leg gait and small pelvis, spine, and arm motions. It does **not**
-spawn `Player`, use gameplay Foot IK, or alter the other agent's stair work. It has two modes on
-a visual flat plane: the original in-place pose study and a short forward walk with world-space
-ankle planting. Neither is a gameplay locomotion controller.
+The scene runs MotusMan with a separate `SkeletonModifier3D`. Its **Original** mode generates a
+leg gait plus small pelvis, spine, and arm motions from a frozen relaxed-idle pose. Six new
+reference-derived modes—UAL walk, MotusMan aim-walk, UAL sprint, UAL crouch-walk, Mixamo stair-up,
+and Mixamo stair-down—sample the repository's existing clips on the MotusMan rig. All four flat
+reference modes copy all 73 source bone poses and apply only a small whole-body vertical
+floor-clearance shift. The two stair modes still apply an independent leg/plant solve because their
+clips do not align with this scene's stairs. This is a **hybrid animation prototype**, not
+fully generated whole-body motion or a new editable gait profile. A separate optional character
+plays the raw source clip beside it for comparison. The UAL clips are retargeted onto a private
+sampler rig; retargeting against the live lab skeleton had silently changed its frozen base pose.
 
-The controls are: mouse drag to orbit, wheel to zoom, Space to pause, Left/Right to step frames,
-and a 120-frame timeline to scrub two in-place cycles. The **Move forward + lock planted feet**
-checkbox starts an eight-cycle forward walk; Reset walk replays it. The camera follows the moving
-character over fixed floor grid lines. Moving mode can pause and step forward, but cannot scrub
+The lab does **not** spawn `Player`, use gameplay Foot IK, or alter the other agent's stair work.
+Its scripted moving path and visible staircase are visual test geometry, not a physics controller.
+Flat moving modes continue indefinitely; stair traversals still stop where their finite stair
+geometry ends. Flat reference gaits now derive forward speed from how fast a near-floor foot moves
+backward through its planted phase, scaled by each clip's cadence. Sprint therefore moves much
+faster than walk; the Original gait keeps its explicit world-space foot lock, while stair modes
+keep their terrain-matched scripted path. These are measured in-place-clip estimates, not authored
+root-motion data or a guarantee of zero shoe slide.
+
+The camera starts beside the character and can still orbit freely. The controls are: mouse drag to
+orbit, wheel to zoom, Space to pause, Left/Right to step frames,
+and a 120-frame timeline to scrub two in-place cycles. Interactive launch now starts with the
+**Original** gait moving forward; uncheck **Move forward + lock planted feet** for in-place playback.
+Switching flat gaits keeps moving mode on and restarts the path. Reset walk also restarts it. The
+control panel reserves space for changing joint/readout
+numbers so its size does not jump during playback. In flat reference
+modes it
+explicitly says "no foot lock" because preserving the source leg pose takes priority over a
+separate plant solve. The camera follows the moving character while an 80 m floor and one-meter grid
+recenter in whole-meter increments; the world-space grid pattern remains visually continuous.
+Moving mode can pause and step forward, but cannot scrub
 backward because foot-plant history is stateful; switch back to in-place mode for arbitrary frame
-scrubbing. Colored hip/knee/ankle/toe markers and a knee-angle readout make individual poses
-inspectable. Step rate, foot travel, lift, blend, and arm swing have temporary sliders. Their
-settings are not saved.
+scrubbing. The gait selector activates one source at a time; selecting stair-up/down automatically
+starts a real-height stair traversal (four 0.18 m risers, 0.35 m tread depth). A checkbox reveals
+the source actor for an A/B view. Colored hip/knee/ankle/toe markers, knee angles, the worst
+per-frame joint rotation and the largest current source-pose difference are shown in the panel.
+Step rate, foot travel, lift, blend, and arm swing have temporary sliders. Their settings are not
+saved. The first 240 physics frames after each mode selection are also written to bounded
+`user://procedural_walk_metrics_<mode>.jsonl` logs. Every record includes per-joint pose error,
+procedural/source rotation step, knee flex, ankle target error, root position, and gait phase.
 
 Current default parameters are approximately:
 
@@ -38,7 +65,9 @@ Current default parameters are approximately:
 If we create many procedural gaits, these parameters and curves should become separate, editable
 Godot `Resource` profiles (for example walk, sprint, crouch-walk), read by one shared gait system.
 That profile system does **not** exist yet. Exact replay of a real animation remains an `Animation`
-resource; extracting its foot/pelvis/arm trajectories into a gait profile would be a separate tool.
+resource; extracting its foot/pelvis/arm trajectories into reusable gait curves would be a separate
+tool. The six new modes currently depend directly on the sampled reference poses, especially for
+upper-body motion.
 
 ## What the iterations taught us
 
@@ -74,15 +103,62 @@ Run the bounded headless check with:
 ```sh
 godot --headless --path . res://tests/manual/procedural_walk/procedural_walk_lab.tscn -- --lab-check
 godot --headless --path . res://tests/manual/procedural_walk/procedural_walk_lab.tscn -- --moving-check
+godot --headless --path . res://tests/manual/procedural_walk/procedural_walk_lab.tscn -- --reference-check
+godot --headless --path . res://tests/manual/procedural_walk/procedural_walk_lab.tscn -- --profile-check
+godot --headless --path . res://tests/manual/procedural_walk/procedural_walk_lab.tscn -- --stair-check
+godot --headless --path . res://tests/manual/procedural_walk/procedural_walk_lab.tscn -- --toe-check
+godot --headless --path . res://tests/manual/procedural_walk/procedural_walk_lab.tscn -- --pose-match-check
+godot --headless --path . res://tests/manual/procedural_walk/procedural_walk_lab.tscn -- --flat-mesh-check
+godot --headless --path . res://tests/manual/procedural_walk/procedural_walk_lab.tscn -- --infinite-check
 ```
 
 The in-place check covers direction, joint movement, the complete cycle including its seam, knee
 bend at contact, contact target error, and toe height before/after contact. The moving check covers
-forward root travel, planted-ankle world error, and joint continuity. `--contact-report` prints a
-short per-frame toe/ankle/knee trace for diagnosis. `scripts/check.sh` also passes. These are
+forward root travel, planted-ankle world error, and joint continuity. The new checks verify all six
+references have distinct arm motion, all six hybrid modes stay below 20 degrees of rotation per
+frame across a full loop, and both stair paths traverse 0.72 m with planted ankles remaining on
+target. The imported stair-down clip itself has a ~63-degree single-frame leg jump at mid-cycle;
+smoothing the derived leg/shoe reference over nearby samples reduces the hybrid output's worst
+frame from 43.4 to 14.4 degrees without altering the raw comparison actor. Upper-body pose
+difference against the reference is under 1.1 degrees across the sampled cycles. `--contact-report`
+prints a short per-frame toe/ankle/knee trace for diagnosis. `scripts/check.sh` also passes. These are
 **headless measurements, not a confirmed visual verdict**. In particular, the reported `ToeBase`
 position is a bone origin, not the lowest skinned shoe vertex; it cannot by itself prove that the
-rendered sole touches or does not penetrate the plane. The plane is visual-only in this lab.
+rendered sole touches or does not penetrate a tread. The surfaces are visual-only in this lab.
+`--infinite-check` advances Original plus all four flat reference gaits beyond 15 cycles, verifies
+their travel matches the extracted stride, Sprint is over twice Walk's speed at native cadence,
+moving mode survives gait selection, the floor/reference follow, and the panel remains the same size.
+
+For UAL walk, the initial independent leg gait left both shoes >0.09 m above the plane in some
+frames, even after its toe penetration was fixed. It was a phase mismatch, not a clearance issue.
+All four flat modes now preserve their complete source poses. `--pose-match-check` compares **all
+73 joints on every frame** of the loop, both in-place and moving: UAL walk's worst rotation
+difference is below 0.07°; aim-walk, sprint, and crouch remain under 1.8° with relative joint
+positions within 0.007 m. Only Hips moves vertically for shoe clearance; the technical Root bone
+remains at ground control. `--flat-mesh-check` skins 1209 actual shoe vertices per frame: neither
+shoe penetrates the flat plane, walk/aim-walk/crouch have a near-floor sole throughout the loop,
+and sprint retains its airborne phases (64–66 contact frames of 120). The raw UAL walk comparison
+mesh itself reaches about 0.047 m below the plane. These flat-mode results still need a live
+visual verdict; exact pose matching on a moving root may cause horizontal foot slide.
+
+Stairs require more than this whole-body height correction. `--stair-source-report` finds the raw
+stair-up shoe up to 0.313 m inside the current higher tread and the raw stair-down shoe up to
+0.418 m above its support. The clip phase, root travel, and step geometry are not aligned. Simply
+copying those poses would worsen the stair demo; they need a terrain-matched trajectory/contact
+profile before exact-source matching is appropriate.
+
+## Could clips be converted into procedural gaits?
+
+Yes, **semi-automatically**. An offline importer can sample the entire source pose (already done
+here), detect and label contact intervals, extract root travel/stride/foot arcs and pelvis/arm
+curves, then fit those into editable gait-profile resources. Runtime code can combine a profile's
+timing and style with target speed, terrain support, and IK constraints. A single clip is not enough
+to determine how to climb a different staircase or turn at an arbitrary speed; contact semantics,
+terrain scale, and transitions still need validation and sometimes hand tuning. This distinction
+also appears in [Epic's motion-matching documentation](https://dev.epicgames.com/documentation/unreal-engine/motion-matching-in-unreal-engine): it indexes source poses and trajectories, then uses
+procedural warping for gaps in coverage, rather than treating a source clip as a complete general
+controller. The [phase-functioned locomotion research](https://www.research.ed.ac.uk/en/publications/phase-functioned-neural-networks-for-character-control/) likewise learns phase-conditioned
+control from motion data and environmental information, not from one clip alone.
 
 ## Outside research and what it implies here
 
@@ -104,13 +180,13 @@ rendered sole touches or does not penetrate the plane. The plane is visual-only 
 
 ## Recommended next experiment
 
-First get a live visual verdict on the new moving mode. Then add a real support-foot-driven pelvis
-weight shift and heel-to-toe foot rotation, comparing the results against one of this project's
-legally usable walk clips. Add a floor collider and measure the skinned shoe's lowest points,
-not only ankle/toe bone origins; also measure planted toe and sole world displacement and knee
-motion at contact. Only after flat movement looks convincing should this lab gain turning, stairs,
-or any connection to the gameplay Foot IK coordinator.
+First get a live visual verdict on the four flat modes, especially horizontal foot slide and any
+pelvis bob introduced by clearance. Their mesh checks establish shoe-to-flat-plane clearance but
+not convincing weight transfer. For stairs, align clip phase and root travel to real tread geometry
+before copying a full source pose; then add a mesh-versus-tread check and a controlled correction.
+Extracting compact editable curves and contact intervals from the sampled data, so the modes can
+work without their source clips, remains future work. No gameplay integration is justified yet.
 
-The scene still cannot validate terrain adaptation, turning, or actual rendered-shoe/floor contact.
-The moving root is a scripted constant-speed path, not `Player` movement. Do not mistake a clean
-headless ankle/joint result for a finished walk animation.
+The scene still cannot validate general terrain adaptation, turning, or reliable stair-shoe
+contact. The moving root is a scripted path, not `Player` movement. Do not mistake a clean headless
+joint/mesh result for a finished walk animation.
