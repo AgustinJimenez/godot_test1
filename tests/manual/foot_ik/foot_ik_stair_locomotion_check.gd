@@ -1,6 +1,10 @@
 extends RefCounted
 
 const EXPECTED_ANIMATION := &"moves/unarmed_walk"
+## The authored stair clip replaces the flat walk while on the staircase (031), so both count as
+## "walking" for this check's animation/speed/travel assertions.
+const STAIR_WALK_ANIMATIONS: Array[StringName] = [
+	&"moves/unarmed_stair_up", &"moves/unarmed_stair_down"]
 const STEP_RISE_THRESHOLD := 0.012
 const MIN_SPEED_RATIO := 0.5
 const POST_STEP_SAMPLE_COUNT := 3
@@ -108,7 +112,7 @@ func sample(player: Player) -> void:
 	_min_step_speed = minf(_min_step_speed, horizontal_speed)
 	if horizontal_speed < _expected_speed * MIN_SPEED_RATIO:
 		_speed_failures += 1
-	if player.body.anim_player.current_animation != EXPECTED_ANIMATION:
+	if not _is_walk_animation(player.body.anim_player.current_animation):
 		_animation_failures += 1
 
 
@@ -145,9 +149,13 @@ func _sample_stair_swing_ownership(player: Player) -> void:
 	_dual_swing_lift_failures += 1
 
 
+func _is_walk_animation(name: StringName) -> bool:
+	return name == EXPECTED_ANIMATION or name in STAIR_WALK_ANIMATIONS
+
+
 func _sample_travel_continuity(player: Player, frame_travel: float) -> void:
 	var horizontal_speed := Vector2(player.velocity.x, player.velocity.z).length()
-	var walking := player.body.anim_player.current_animation == EXPECTED_ANIMATION
+	var walking := _is_walk_animation(player.body.anim_player.current_animation)
 	if not walking or horizontal_speed < _expected_speed * MIN_SPEED_RATIO:
 		_consecutive_stalls = 0
 		return
@@ -166,7 +174,7 @@ func _sample_vertical_continuity(player: Player) -> void:
 	var rendered_y := player.body.global_position.y
 	var vertical_delta := rendered_y - _previous_rendered_y
 	_previous_rendered_y = rendered_y
-	if player.body.anim_player.current_animation != EXPECTED_ANIMATION:
+	if not _is_walk_animation(player.body.anim_player.current_animation):
 		return
 	_max_rendered_vertical_delta = maxf(_max_rendered_vertical_delta, vertical_delta)
 	if vertical_delta > MAX_RENDERED_VERTICAL_DELTA:
@@ -174,7 +182,7 @@ func _sample_vertical_continuity(player: Player) -> void:
 
 
 func _sample_ascent_float(player: Player) -> void:
-	if player.body.anim_player.current_animation != EXPECTED_ANIMATION:
+	if not _is_walk_animation(player.body.anim_player.current_animation):
 		return
 	var visual_offset := player.body.position.y - player._body_rest_y
 	_max_ascent_visual_offset = maxf(_max_ascent_visual_offset, visual_offset)

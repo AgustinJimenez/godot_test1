@@ -1,46 +1,20 @@
 class_name PlayerStairClips
 extends RefCounted
 ## Authored stair-walk clips (031), retargeted from Mixamo (tools/retarget_cli.gd). Used in place
-## of the flat walk clip while the stair predictor owns a foot. Kept out of player_body.gd (at cap).
+## of the flat walk clip while the character is on the staircase, so the base pose matches the
+## terrain. Kept out of player_body.gd (at the linter's line cap).
 
 const DIR := "res://assets/models/stair_clips/"
 const CLIPS: Dictionary = {
 	&"unarmed_stair_up": "stair_walk_up",
 	&"unarmed_stair_down": "stair_walk_down",
 }
-
-
-## Pick the walk clip for the current terrain: the authored stair clip while the stair predictor
-## owns a foot, otherwise the base clip unchanged.
-static func select_walk(base: StringName, predictor) -> StringName:
-	if base != &"unarmed_walk" or predictor == null or not predictor.is_active():
-		return base
-	return &"unarmed_stair_down" if predictor.is_descending_treads() else &"unarmed_stair_up"
-
-
-## Same, but only allow the flat<->stair swap near the current clip's loop seam, where both clips
-## restart: the two cycles differ, so swapping mid-stride snaps the feet and a mid-stride swap
-## clipped 12cm in the lab (031). Waiting for the seam gives the clips a shared phase to meet at.
-static func select_walk_gated(base: StringName, modifier,
-		anim_player: AnimationPlayer) -> StringName:
-	if modifier == null or modifier.player_body == null:
-		return base
-	var root: Node = modifier.player_body.get_parent()
-	var on_stairs := false
-	if root != null and root.has_method("get_stair_debug_state"):
-		on_stairs = bool((root.get_stair_debug_state() as Dictionary).get(
-				"recent_transition", false))
-	if base != &"unarmed_walk" or not on_stairs:
-		return base
-	var descending: bool = (modifier._stair_predictor != null
-			and modifier._stair_predictor.is_descending_treads())
-	var stair: StringName = &"unarmed_stair_down" if descending else &"unarmed_stair_up"
-	var length := anim_player.current_animation_length
-	if length <= 0.0:
-		return base
-	if anim_player.current_animation_position > 0.10 * length:
-		return base
-	return stair
+## FootIKStairSurfaces authors every stair tread/riser/traversal/landing collider on this layer.
+const STAIR_CONTACT_LAYER := 1 << 5
+## Ground distance the authored clip itself covers per second at 1x playback (0.467 m per 1.183 s
+## cycle - 2 steps of ~0.23 m). The flat walk reference (1.6 m/s) is ~4x this, so playing the stair
+## clip at the walk rate makes its steps cover only a quarter of the travel and the feet skate.
+const REF_SPEED := 0.395
 
 
 static func add_to(library: AnimationLibrary) -> void:
@@ -48,3 +22,41 @@ static func add_to(library: AnimationLibrary) -> void:
 		var clip := load(DIR + CLIPS[gameplay_name] + ".res") as Animation
 		if clip != null:
 			library.add_animation(gameplay_name, clip)
+
+
+## Continuous "is this character on the staircase" signal: a raycast straight down from the body
+## onto the authored stair surfaces (their own collision layer). Unlike the stair predictor's
+## ownership or the controller's transition flags - both intermittent - this is true for the whole
+## climb, including the traversal ramp and the top landing.
+static func on_staircase(body: Node3D) -> bool:
+	if body == null or not body.is_inside_tree():
+		return false
+	var space := body.get_world_3d().direct_space_state
+	if space == null:
+		return false
+	var query := PhysicsRayQueryParameters3D.create(
+			body.global_position + Vector3.UP * 0.3, body.global_position - Vector3.UP * 1.2)
+	query.collision_mask = STAIR_CONTACT_LAYER
+	if body is CollisionObject3D:
+		query.exclude = [(body as CollisionObject3D).get_rid()]
+	return not space.intersect_ray(query).is_empty()
+
+
+## Pick the walk clip for the current terrain: the authored stair clip while on the staircase.
+## Gating the swap to the clip's loop seam was tested and gave a worse result (the stair clip then
+## started late, leaving the lower stairs on the flat clip and keeping the 50deg retry spike) than
+## switching as soon as the region is entered.
+static func select_walk(body: Node3D, base: StringName, descending: bool) -> StringName:
+	if base != &"unarmed_walk" or not on_staircase(body):
+		return base
+	return &"unarmed_stair_down" if descending else &"unarmed_stair_up"
+
+
+static func is_stair_target(target: StringName) -> bool:
+	return target in CLIPS
+
+
+## Playback rate for a walk target: stair clips use their own authored ground speed so their stride
+## matches the distance actually travelled; everything else keeps the caller's flat-walk rate.
+static func walk_rate(target: StringName, ground_speed: float, fallback: float) -> float:
+	return ground_speed / REF_SPEED if is_stair_target(target) else fallback

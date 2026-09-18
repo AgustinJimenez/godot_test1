@@ -5,6 +5,7 @@ const JOINT_HISTORY_GRAPH := preload(
 		"res://tests/manual/foot_ik/foot_ik_joint_history_graph.gd")
 const TRACE_WRITER := preload("res://tests/manual/foot_ik/foot_ik_trace_writer.gd")
 const CLIP_INDICATOR := preload("res://tests/manual/foot_ik/foot_ik_clip_indicator.gd")
+const TOE_TRACER := preload("res://tests/manual/foot_ik/foot_ik_toe_tracer.gd")
 const PANEL_OUTER_MARGIN := 20 # gap between screen edge and panel border
 # Wide rows would render flush against the panel edge without this.
 const PANEL_INNER_PADDING := 14
@@ -17,14 +18,14 @@ const STAIR_FOLLOW_MIN_DISTANCE := 0.08
 const STAIR_FOLLOW_MAX_DISTANCE := 4.0
 const CONTROLLED_TRACE_FILE := "user://foot_ik_controlled.jsonl"
 const CONTROLLED_TRACE_MAX_FRAMES := 1200 # 20s at 60fps - room to turn, wait, then grab it
-const HEAD_TRACE_MAX_POINTS := 1800 # 30s at 60fps - long enough to cover a full staircase
 var _head_probe: Node3D; var _chest_probe: Node3D
-var _head_trace_mesh: MultiMeshInstance3D; var _direction_arrow: Node3D
-var _chest_arrow: Node3D; var _head_trace_points: Array[Vector3] = []
+var _direction_arrow: Node3D
+var _chest_arrow: Node3D
 var _player_body: PlayerBody; var _ik: PlayerFootIKModifier
 var _skel: Skeleton3D; var _probes: Dictionary = {}
 var _toe_probes: Dictionary = {}; var _markers: Dictionary = {}
 var _angle_probes: Dictionary = {}; var _clip_indicator := CLIP_INDICATOR.new()
+var _toe_tracer := TOE_TRACER.new()
 var _angle_labels: Dictionary = {}
 # Ordered [key, column_header] pairs (order matters, so Array not Dictionary).
 const READOUT_FIELDS := [
@@ -153,7 +154,6 @@ func _ready() -> void:
 		var head_marker := FootIkDebugMarkers.spawn_marker(head_attach, Color.MAGENTA)
 		head_marker.scale = Vector3.ONE * 4.0
 		_head_probe = head_attach
-		_head_trace_mesh = FootIkDebugMarkers.spawn_trace(self)
 		_direction_arrow = FootIkDebugMarkers.spawn_direction_arrow(self, Color(0.2, 0.6, 1.0))
 	var spine2_idx := _skel.find_bone(_player_body.resolve_bone_name(&"Spine2"))
 	if spine2_idx >= 0:
@@ -164,6 +164,7 @@ func _ready() -> void:
 		_chest_arrow = FootIkDebugMarkers.spawn_direction_arrow(self, Color(1.0, 0.2, 0.2))
 
 	_build_panel()
+	_toe_tracer.spawn(self, _skel, _ik)
 	_player_body.set_skeleton_visible(true)
 
 func _wait_for_player_to_settle() -> void:
@@ -931,10 +932,8 @@ func _capture_controlled_foot_frame() -> void:
 		return
 	var animation_player := _player_body.anim_player
 	var player_node := _player_body.get_parent() as Player
+	_toe_tracer.append(_skel, _ik)
 	if _head_probe != null:
-		_head_trace_points.append(_head_probe.global_position)
-		_head_trace_points = _head_trace_points.slice(-HEAD_TRACE_MAX_POINTS)
-		FootIkDebugMarkers.update_trace(_head_trace_mesh, _head_trace_points)
 		var facing := -player_node.global_transform.basis.z if player_node != null else Vector3.FORWARD
 		FootIkDebugMarkers.update_direction_arrow(_direction_arrow, _head_probe.global_position,
 				player_node.velocity if player_node != null else Vector3.ZERO, facing)

@@ -775,6 +775,9 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 			rate = ground_speed / SPRINT_REF_SPEED
 		else:
 			target = PlayerDirectionalLocomotionLibrary.walk_animation(_anim_input_smoothed)
+			target = PlayerStairClips.select_walk(self, target,
+					_foot_ik_modifier != null and _foot_ik_modifier.stairs_descending())
+			rate = PlayerStairClips.walk_rate(target, ground_speed, rate)
 			var is_strafe: bool = (target != &"unarmed_walk")
 			var ref: float = STRAFE_REF_SPEED if is_strafe else WALK_REF_SPEED
 			rate = ground_speed / ref

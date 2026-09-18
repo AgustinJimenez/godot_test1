@@ -139,6 +139,8 @@ var _smoothed_step_lift: Dictionary:
 var predicted_step_targets: Dictionary:
 	get:
 		return _stair_predictor.get_predicted_targets() if _stair_predictor != null else {}
+func stairs_descending() -> bool:
+	return _stair_predictor != null and bool(_stair_predictor.call(&"is_descending_treads"))
 var debug_vertical_velocity: Dictionary = {} # side -> pre-IK animation velocity
 var debug_contact_distance: Dictionary = {} # side -> float
 var debug_contact_hit: Dictionary = {} # side -> bool

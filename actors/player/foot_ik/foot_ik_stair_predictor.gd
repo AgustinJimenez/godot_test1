@@ -48,6 +48,9 @@ const FLAT_SURFACE_UP_DOT := 0.95
 ## modifier's flat_contact threshold.
 const STAIR_TREAD_UP_DOT := 0.999
 const STATIONARY_HORIZONTAL_SPEED := 0.05
+## A support re-latch whose ground target moved less than this is the same tread (the release/
+## acquire check re-firing on stairs), not a real support transfer to a new step.
+const SAME_TREAD_RELATCH_DISTANCE := 0.03
 ## Sharing one tread is common for a few frames in the middle of a climb. It
 ## only means "stairs finished" once the collision root has stopped changing
 ## height; releasing sooner drops and reacquires the support weight per tread.
@@ -545,31 +548,76 @@ func _try_transfer_support(per_leg: Dictionary,
 	var candidate_clearance := right_clearance if candidate == &"right" else left_clearance
 	var candidate_velocity: float = candidate_leg.get("vertical_velocity", 0.0)
 	var candidate_state := _state(candidate)
-	if (candidate_leg.get("animated_contact_hit", false)
-			and candidate_clearance <= _owner.GROUND_CONTACT_DISTANCE
-			and candidate_state.smoothed_lift <= _owner.GROUND_CONTACT_DISTANCE
-			and not _toe_probe_reaches_higher_surface(candidate_leg)
-			and (candidate_velocity <= _owner.velocity_noise_floor
-					or candidate_state.landing_seen)):
+	# The candidate's handoff is judged on where its RENDERED foot is, not its raw animation pose:
+	# a swing foot is held by its own step lift at its predicted tread, so its animation pose sits
+	# below/inside the step and its contact raycast misses (measured: clearance=inf, contact=false,
+	# lift=0.20 for the whole climb). Reading that raw pose made contact/clearance/lift_ok all fail
+	# forever, so support never handed off and the leg stayed a permanent swing - the "foot hits the
+	# step and never comes down" report. A latched predicted landing the lifted foot has reached
+	# counts as contact.
+	var has_latched: bool = candidate_state.has_latched_target
+	var lifted_lowest_y: float = (candidate_leg.get("animated_lowest_point", Vector3.ZERO)
+			as Vector3).y + candidate_state.smoothed_lift
+	# Only once the animation's own foot has stopped rising (settling onto the tread): the lifted
+	# pose alone is also true early in the swing, when transferring would move the pelvis to a
+	# tread the foot has not reached yet (measured: 0.27m rendered-body penetration).
+	var settling: bool = float(
+			_owner.debug_vertical_velocity.get(candidate, 0.0)) <= _owner.velocity_noise_floor
+	var at_landing: bool = (has_latched and settling
+			and lifted_lowest_y <= candidate_state.latched_target.y
+					+ _owner.step_clearance_margin + _owner.GROUND_CONTACT_DISTANCE)
+	var contact := bool(candidate_leg.get("animated_contact_hit", false))
+	var close: bool = candidate_clearance <= _owner.GROUND_CONTACT_DISTANCE
+	var lift_ok: bool = candidate_state.smoothed_lift <= _owner.GROUND_CONTACT_DISTANCE
+	var toe_ok := not _toe_probe_reaches_higher_surface(candidate_leg)
+	var velocity_ok: bool = (candidate_velocity <= _owner.velocity_noise_floor
+			or candidate_state.landing_seen)
+	# Diagnostic (see the A/B harness): which condition refuses the support handoff.
+	debug_transfer_blocked = {
+		"candidate": candidate, "contact": contact, "close": close,
+		"lift_ok": lift_ok, "toe_ok": toe_ok, "velocity_ok": velocity_ok,
+		"clearance": snappedf(candidate_clearance, 0.0001),
+		"lift": snappedf(candidate_state.smoothed_lift, 0.0001),
+		"at_landing": at_landing, "settling": settling,
+		"velocity": snappedf(candidate_velocity, 0.0001),
+	}
+	if contact and close and lift_ok and toe_ok and velocity_ok:
 		_support_side = candidate
 		_latch_support_target(candidate_leg)
 
 
 func _latch_support_target(leg: Dictionary) -> void:
-	_support_transfer_elapsed = 0.0
-	_support_transfer_from_pos = leg.get("target", leg.get("hip_pos", Vector3.ZERO)) as Vector3
+	var previous_ground: Vector3 = _support_ground_target
 	var side: StringName = _support_side
 	_support_transfer_from_weight = float(_owner._smoothed_ground_weight.get(side, 0.0))
+	var fallback_ground: Vector3 = leg.get("ground_target", leg.get("target", Vector3.ZERO))
 	if (leg.get("animated_contact_hit", false)
 			and not _toe_probe_reaches_higher_surface(leg)):
-		_support_surface_target = leg["animated_contact_position"]
-		_support_normal = leg["animated_contact_normal"]
-		_support_ground_target = (
-				_support_surface_target + _support_normal * float(leg["effective_offset"]))
+		_support_surface_target = leg.get("animated_contact_position", fallback_ground)
+		_support_normal = leg.get("animated_contact_normal", Vector3.UP)
+		_support_ground_target = _support_surface_target + _support_normal * float(
+				leg.get("effective_offset", 0.0))
 	else:
-		_support_ground_target = leg["raw_ground_target"]
-		_support_surface_target = leg["raw_target"]
-		_support_normal = leg["raw_normal"]
+		_support_ground_target = leg.get("raw_ground_target", fallback_ground)
+		_support_surface_target = leg.get("raw_target", fallback_ground)
+		_support_normal = leg.get("raw_normal", Vector3.UP)
+	if previous_ground.distance_to(_support_ground_target) < SAME_TREAD_RELATCH_DISTANCE:
+		# Re-latching the SAME tread: the support release/acquire check re-runs in bursts on
+		# stairs (the animated foot reads "not contacting" for a few frames), and each restart
+		# reset _support_transfer_from_pos to that frame's moving animated target - so the
+		# already-planted foot was dragged along the tread instead of staying put ("foot slides
+		# on the stair"). Keep the settled target: no transfer, blend already complete.
+		_support_transfer_elapsed = maxf(_support_transfer_elapsed,
+				_owner.support_transfer_blend_time)
+		_support_transfer_from_pos = _support_ground_target
+	else:
+		_support_transfer_elapsed = 0.0
+		_support_transfer_from_pos = leg.get("target", leg.get("hip_pos", Vector3.ZERO)) as Vector3
+
+
+
+## Last _try_transfer_support() decision, for the manual harnesses (which condition blocked it).
+var debug_transfer_blocked: Dictionary = {}
 
 
 ## A flat stair tread's contact normal is near Vector3.UP; a sloped ramp's
