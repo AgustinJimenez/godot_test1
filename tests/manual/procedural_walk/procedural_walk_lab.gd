@@ -297,8 +297,7 @@ func _advance_moving(delta: float) -> void:
 	_set_frame(_travel_cycles * 60.0)
 	_update_camera()
 	if _modifier.stair_direction != 0 and _travel_cycles >= MAX_STAIR_CYCLES:
-		_playing = false
-		_update_info()
+		_set_moving_mode(true) # finite stair lanes: loop by restarting the traversal
 
 func _sync_floor_stage() -> void:
 	if _floor_stage != null and _character != null:
