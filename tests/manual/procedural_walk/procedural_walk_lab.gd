@@ -6,6 +6,7 @@ const MODEL := preload(
 const MODIFIER := preload("res://tests/manual/procedural_walk/procedural_walk_modifier.gd")
 const REFERENCE_BANK := preload(
 		"res://tests/manual/procedural_walk/procedural_walk_reference_bank.gd")
+const RAW_ACTOR := preload("res://tests/manual/procedural_walk/procedural_walk_raw_actor.gd")
 const METRICS := preload("res://tests/manual/procedural_walk/procedural_walk_metrics.gd")
 const MESH_CLEARANCE := preload(
 		"res://tests/manual/procedural_walk/procedural_walk_mesh_clearance.gd")
@@ -34,6 +35,8 @@ var _reference_character: Node3D
 var _reference_skeleton: Skeleton3D
 var _reference_player: AnimationPlayer
 var _reference_bank: ProceduralWalkReferenceBank
+var _raw_actor := RAW_ACTOR.new()
+var _reference_lift := 0.0
 var _metrics: ProceduralWalkMetrics
 var _reference_mode := &""
 var _show_reference := false
@@ -169,8 +172,7 @@ func _build_character() -> void:
 	]
 	skel.add_child(_modifier)
 	skel.set_modifier_callback_mode_process(Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_PHYSICS)
-	# Force the initial frame so the model is not shown in bind pose on load.
-	skel.advance(0.0)
+	skel.advance(0.0) # force the initial frame, so the model does not show its bind pose
 
 
 func _build_reference() -> void:
@@ -179,9 +181,8 @@ func _build_reference() -> void:
 		push_error("Procedural walk lab: could not build reference pose bank")
 		return
 	_reference_character = MODEL.instantiate() as Node3D
-	_reference_character.name = &"ReferenceMotusMan"
 	_reference_character.rotation.y = PI
-	_reference_character.position.x = 1.4
+	_reference_character.position = Vector3(1.4, 0.0, 0.0) # raw actor sits at -1.4
 	add_child(_reference_character)
 	_reference_skeleton = _reference_character.find_child(
 			"Skeleton3D", true, false) as Skeleton3D
@@ -196,11 +197,6 @@ func _build_reference() -> void:
 	_reference_player.add_animation_library(&"references", library)
 	_reference_character.visible = false
 	_modifier.reference_bank = _reference_bank
-	var label := Label3D.new()
-	label.text = "REFERENCE"
-	label.position = Vector3(0.0, 2.15, 0.0)
-	label.font_size = 48
-	_reference_character.add_child(label)
 
 
 func _set_frame(value: float) -> void:
@@ -223,6 +219,7 @@ func _sync_reference() -> void:
 		_reference_player.play(animation_name)
 		_reference_player.pause()
 	var clip := _reference_bank.clip(_reference_mode)
+	_raw_actor.update(self, _reference_mode, _character.global_position, _modifier, 1.0 / 60.0)
 	_reference_player.seek(clip.length * fposmod(_modifier.phase / TAU, 1.0), true)
 	_reference_player.advance(0.0)
 	_reference_skeleton.advance(0.0)
@@ -237,8 +234,7 @@ func _select_reference_mode(index: int) -> void:
 				if _reference_mode != &"" and _reference_mode not in [&"stair_up", &"stair_down"]
 				else
 				"Move forward + lock planted feet")
-	_modifier.stair_direction = (1 if _reference_mode == &"stair_up" else
-			-1 if _reference_mode == &"stair_down" else 0)
+	_modifier.stair_direction = 1 if _reference_mode == &"stair_up" else 0
 	_stair_stage.visible = _modifier.stair_direction != 0
 	_rebuild_stair_stage()
 	if _metrics != null:
@@ -292,12 +288,16 @@ func _advance_moving(delta: float) -> void:
 	_character.global_position.y = move_toward(
 			_character.global_position.y, desired_height, delta * 1.5)
 	if _reference_character != null:
-		_reference_character.global_position = (
-				_character.global_position + Vector3(1.4, 0.0, 0.0))
+		_reference_lift = move_toward(_reference_lift,
+				ProceduralWalkRawActor.foot_lift(_reference_skeleton, _modifier), 1.2 * delta)
+		_reference_character.global_position = _character.global_position + Vector3(
+				1.4, _reference_lift, 0.0)
 	_set_frame(_travel_cycles * 60.0)
 	_update_camera()
-	if _modifier.stair_direction != 0 and _travel_cycles >= MAX_STAIR_CYCLES:
-		_set_moving_mode(true) # finite stair lanes: loop by restarting the traversal
+	if _modifier.stair_direction != 0 and (_travel_cycles >= MAX_STAIR_CYCLES
+			or _character.global_position.z <= _modifier.stair_top_z()):
+		# Finite stair lanes with no top landing: restart before walking off the last step.
+		_set_moving_mode(true)
 
 func _sync_floor_stage() -> void:
 	if _floor_stage != null and _character != null:
@@ -312,8 +312,8 @@ func _set_moving_mode(enabled: bool) -> void:
 			1.4 if _modifier.stair_direction != 0 else 0.0)
 	_sync_floor_stage()
 	if _reference_character != null:
-		_reference_character.global_position = (
-				_character.global_position + Vector3(1.4, 0.0, 0.0))
+		_reference_lift = 0.0 # restart clean; _advance_moving ramps it back up
+		_reference_character.global_position = _character.global_position + Vector3(1.4, 0.0, 0.0)
 	_modifier.moving_mode = enabled
 	_modifier.reset_moving_state()
 	_playing = true
@@ -370,7 +370,7 @@ func _build_stage() -> void:
 	add_child(_stair_stage)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50.0, -30.0, 0.0)
-	sun.light_energy = 1.5
+	sun.light_energy = 0.9 # the untextured light-grey model washed out at 1.5
 	add_child(sun)
 	_camera = Camera3D.new()
 	_camera.current = true
@@ -384,7 +384,7 @@ func _rebuild_stair_stage() -> void:
 		child.free()
 	if _modifier.stair_direction == 0:
 		return
-	for x in [0.0, 1.4]:
+	for x in [0.0, 1.4, 2.8]: # third lane under the raw source actor
 		_build_stair_lane(x, _modifier.stair_direction > 0)
 
 
@@ -393,15 +393,14 @@ func _build_stair_lane(x: float, up: bool) -> void:
 	var high := float(ProceduralWalkLabModifier.STAIR_STEPS) * (
 			ProceduralWalkLabModifier.STAIR_HEIGHT)
 	if not up:
-		_add_stair_box(x, 2.75, 3.5, high, up)
+		_add_stair_box(x, 2.75, 3.5, high, up) # bottom landing, descent only
 	for step in ProceduralWalkLabModifier.STAIR_STEPS:
 		var z := ProceduralWalkLabModifier.STAIR_START_Z - (
 				float(step) + 0.5) * ProceduralWalkLabModifier.STAIR_DEPTH
 		_add_stair_box(x, z, ProceduralWalkLabModifier.STAIR_DEPTH,
 				(float(step) if up else float(ProceduralWalkLabModifier.STAIR_STEPS - step))
 				* ProceduralWalkLabModifier.STAIR_HEIGHT, up)
-	if up:
-		_add_stair_box(x, -2.15, 3.5, high, up)
+
 
 
 func _add_stair_box(x: float, z: float, depth: float,
@@ -423,8 +422,8 @@ func _update_camera() -> void:
 	var target := (
 			_character.global_position if _character != null else Vector3.ZERO)
 	target.y += 1.0
-	if _reference_character != null and _reference_character.visible:
-		target.x += 0.7
+	target.x += 0.7 if _reference_character != null and _reference_character.visible else 0.0
+	target.x += 0.7 if _raw_actor.is_visible() else 0.0
 	_camera.position = target + Vector3(
 			sin(_yaw) * cos(_pitch) * _distance,
 			sin(_pitch) * _distance,
@@ -911,6 +910,7 @@ func _build_ui() -> void:
 		_show_reference = value
 		_update_reference_visibility())
 	controls.add_child(show_reference)
+	_raw_actor.build_ui(controls)
 	var timeline := HBoxContainer.new()
 	controls.add_child(timeline)
 	_back_button = Button.new()
@@ -980,6 +980,7 @@ func _update_info() -> void:
 			if _moving_mode and _character != null else "in place",
 			int(_frame_position) + 1, CYCLE_FRAMES,
 			"Playing" if _playing else "Paused"]
+	_raw_actor.append_summary(_info, _reference_skeleton, _skeleton, _modifier)
 
 
 func _add_slider(parent: VBoxContainer, title: String, minimum: float,

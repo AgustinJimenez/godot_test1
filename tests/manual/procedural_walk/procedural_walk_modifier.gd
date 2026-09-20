@@ -15,7 +15,7 @@ const SWING_FRACTION := 0.4
 const STAIR_START_Z := 1.0
 const STAIR_DEPTH := 0.35
 const STAIR_HEIGHT := 0.18
-const STAIR_STEPS := 4
+const STAIR_STEPS := 12 # long enough that the looping walk never reaches a flat top
 
 var phase := 0.0
 var amount := 1.0
@@ -68,6 +68,11 @@ func stair_support_height(world_z: float) -> float:
 	var step := clampi(int(floorf((STAIR_START_Z - world_z) / STAIR_DEPTH)),
 			0, STAIR_STEPS)
 	return float(step if stair_direction > 0 else STAIR_STEPS - step) * STAIR_HEIGHT
+
+
+## The far end of the authored staircase (climb direction), where the looping walk must restart.
+func stair_top_z() -> float:
+	return STAIR_START_Z - float(STAIR_STEPS) * STAIR_DEPTH
 
 
 func stair_root_height(world_z: float) -> float:

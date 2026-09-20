@@ -13,7 +13,7 @@ const UAL := "res://assets/models/universal_animation_library/UAL1_Standard.glb"
 const STAIRS := "res://assets/models/stair_clips/"
 const SAMPLE_COUNT := 120
 const MODE_ORDER := [
-	&"walk", &"walk_aim", &"sprint", &"crouch", &"stair_up", &"stair_down",
+	&"walk", &"walk_aim", &"sprint", &"crouch", &"stair_up",
 ]
 const MODE_LABELS := {
 	&"walk": "Walk (UAL)",
@@ -21,7 +21,6 @@ const MODE_LABELS := {
 	&"sprint": "Sprint (UAL)",
 	&"crouch": "Crouch walk (UAL)",
 	&"stair_up": "Stair up (Mixamo)",
-	&"stair_down": "Stair down (Mixamo)",
 }
 
 var clips: Dictionary = {} # mode -> Animation on the MotusMan rig
@@ -58,7 +57,6 @@ func build(parent: Node3D, target_skeleton: Skeleton3D) -> bool:
 	ual_root.free()
 	target_root.queue_free()
 	clips[&"stair_up"] = (load(STAIRS + "stair_walk_up.res") as Animation).duplicate()
-	clips[&"stair_down"] = (load(STAIRS + "stair_walk_down.res") as Animation).duplicate()
 	for mode: StringName in MODE_ORDER:
 		if clips.get(mode) == null:
 			push_error("Procedural walk lab: missing reference clip %s" % mode)
@@ -123,18 +121,12 @@ func _sample_clips(parent: Node3D, expected_bones: int) -> bool:
 			for bone in bone_count:
 				globals.append(skel.get_bone_global_pose(bone))
 			mesh_mins.append(mesh_check.sample(skel, globals))
-		# The imported stair-down clip has a roughly 40-degree one-frame shoe
-		# rotation at mid-cycle. Smooth the global shoe orientation, not just
-		# its local bone rotation: the leg parent chain also contributes to it.
-		if mode == &"stair_down":
-			_smooth_foot_rotations(feet)
-			_smooth_stair_leg_rotations(poses, skel)
 		frames[mode] = poses
 		foot_frames[mode] = feet
 		mesh_min_frames[mode] = mesh_mins
 		var clearance := _clearance_envelope(mesh_mins)
 		clearance_frames[mode] = clearance
-		if mode not in [&"stair_up", &"stair_down"]:
+		if mode != &"stair_up":
 			flat_travel_per_cycle[mode] = _flat_stance_travel(ankle_z, mesh_mins, clearance)
 	root.queue_free()
 	return true
