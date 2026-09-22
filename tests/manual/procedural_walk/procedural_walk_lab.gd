@@ -116,6 +116,7 @@ func _physics_process(delta: float) -> void:
 func _process(_delta: float) -> void:
 	_update_joint_overlay()
 	_update_metrics()
+	_raw_actor.update(self, _reference_mode, _character.global_position, _modifier, _delta)
 
 
 func _exit_tree() -> void:
@@ -219,7 +220,6 @@ func _sync_reference() -> void:
 		_reference_player.play(animation_name)
 		_reference_player.pause()
 	var clip := _reference_bank.clip(_reference_mode)
-	_raw_actor.update(self, _reference_mode, _character.global_position, _modifier, 1.0 / 60.0)
 	_reference_player.seek(clip.length * fposmod(_modifier.phase / TAU, 1.0), true)
 	_reference_player.advance(0.0)
 	_reference_skeleton.advance(0.0)
@@ -298,7 +298,6 @@ func _advance_moving(delta: float) -> void:
 			or _character.global_position.z <= _modifier.stair_top_z()):
 		# Finite stair lanes with no top landing: restart before walking off the last step.
 		_set_moving_mode(true)
-
 func _sync_floor_stage() -> void:
 	if _floor_stage != null and _character != null:
 		_floor_stage.position.z = roundf(_character.global_position.z)
@@ -760,8 +759,8 @@ func _run_infinite_check() -> void:
 func _run_stair_check() -> void:
 	await get_tree().physics_frame
 	var all_passed := true
-	for mode in [4, 5]:
-		_select_reference_mode(mode + 1)
+	for mode: StringName in [&"stair_up"]:
+		_select_reference_mode(ProceduralWalkReferenceBank.MODE_ORDER.find(mode) + 1)
 		var start_y := _character.global_position.y
 		var worst_plant_error := 0.0
 		var worst_plant_frame := -1
@@ -790,7 +789,8 @@ func _run_stair_check() -> void:
 			previous = rotations.duplicate()
 		var climbed := absf(_character.global_position.y - start_y)
 		var passed := climbed > 0.6 and planted_samples > 100 \
-				and worst_plant_error < 0.03 and worst_step < 30.0
+				and worst_plant_error < 0.03 and worst_step < 30.0 \
+				and _raw_actor.step_plan_is_stable()
 		all_passed = all_passed and passed
 		print(("PROCEDURAL_STAIR %s %s elevation=%.2fm planted=%d "
 				+ "plant_error=%.3fm@f%d/side%d max_joint_step=%.1fdeg") % [
@@ -954,6 +954,8 @@ func _build_ui() -> void:
 			func(value: float) -> void: _modifier.amount = value)
 	_add_slider(controls, "Arm swing", 0.0, 0.6, _modifier.arm_swing,
 			func(value: float) -> void: _modifier.arm_swing = value)
+	_add_slider(controls, "Contact IK (0=off)", 0.0, 1.0, _modifier.contact_ik,
+			func(value: float) -> void: _modifier.contact_ik = value)
 	var show := CheckBox.new()
 	show.text = "Show leg joints (purple left / blue right)"
 	show.button_pressed = true

@@ -22,8 +22,8 @@ sampler rig; retargeting against the live lab skeleton had silently changed its 
 
 The lab does **not** spawn `Player`, use gameplay Foot IK, or alter the other agent's stair work.
 Its scripted moving path and visible staircase are visual test geometry, not a physics controller.
-Flat moving modes continue indefinitely; stair traversals still stop where their finite stair
-geometry ends. Flat reference gaits now derive forward speed from how fast a near-floor foot moves
+Flat moving modes continue indefinitely; stair traversal restarts when it reaches the end of its
+finite geometry. Flat reference gaits now derive forward speed from how fast a near-floor foot moves
 backward through its planted phase, scaled by each clip's cadence. Sprint therefore moves much
 faster than walk; the Original gait keeps its explicit world-space foot lock, while stair modes
 keep their terrain-matched scripted path. These are measured in-place-clip estimates, not authored
@@ -46,6 +46,10 @@ scrubbing. The gait selector activates one source at a time; selecting stair-up/
 starts a real-height stair traversal (four 0.18 m risers, 0.35 m tread depth). A checkbox reveals
 the source actor for an A/B view. Colored hip/knee/ankle/toe markers, knee angles, the worst
 per-frame joint rotation and the largest current source-pose difference are shown in the panel.
+The step-plan overlay shows six persistent placements (the next three for each foot). These are the
+same targets consumed by the moving procedural gait: landing removes one entry and appends one new
+entry, while the other five remain fixed. It is therefore usable as planning data rather than a
+rolling visualization that subtly revises already accepted placements.
 Step rate, foot travel, lift, blend, and arm swing have temporary sliders. Their settings are not
 saved. The first 240 physics frames after each mode selection are also written to bounded
 `user://procedural_walk_metrics_<mode>.jsonl` logs. Every record includes per-joint pose error,

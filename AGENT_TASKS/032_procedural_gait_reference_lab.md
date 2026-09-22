@@ -1,7 +1,7 @@
 # 032 - Procedural gait reference lab
 
-Status: in progress; four flat modes now use full-pose matching, awaiting live review. Stair modes
-remain geometry/phase-mismatched and need a separate solution.
+Status: in progress; flat full-pose modes and the looping stair-up comparison work headlessly.
+Persistent six-footfall planning and contact correction are uncommitted and awaiting live review.
 No gameplay integration or commit of the new visual/animation changes until the user confirms them.
 
 ## Objective
@@ -31,7 +31,7 @@ observed that the arms are poor and wants the whole body compared to real clips.
 
 ## Current result
 
-- One-at-a-time selector: Original, UAL walk/sprint/crouch, MotusMan aim-walk, Mixamo stair up/down.
+- One-at-a-time selector: Original, UAL walk/sprint/crouch, MotusMan aim-walk, and Mixamo stair-up.
   Interactive launch defaults to moving Original walk from a side-on camera; the in-place checkbox
   remains available, and mouse orbit is unchanged.
   The bank retargets UAL onto a private MotusMan rig, samples all 73 bones, and applies the sampled
@@ -39,17 +39,24 @@ observed that the arms are poor and wants the whole body compared to real clips.
   vertically for floor clearance. Stair modes still apply an independent leg/plant solve. The
   reference actor optionally shows the *raw* source beside it. These are source-dependent hybrids,
   **not** purely generated full-body gaits.
-- Stair modes automatically traverse two side-by-side visible stair lanes, each four 0.18 m steps
+- Stair-up automatically traverses three side-by-side visible comparison lanes, each four 0.18 m steps
   with 0.35 m treads. Foot targets use the real tread height; uphill pelvis elevation waits for the
   trailing planted foot to release rather than pulling it beyond leg reach. Geometry has no physics
-  collider, so this does not prove shoe-mesh clearance. Stair traversal remains finite; flat moving
-  modes no longer stop after eight cycles. Their floor/grid recenter by whole meters around the
+  collider, so this does not prove shoe-mesh clearance. The finite stair traversal restarts at its
+  end; flat moving modes no longer stop after eight cycles. Their floor/grid recenter by whole meters around the
   character, keeping the one-meter pattern visually continuous without growing scene geometry.
 - Flat reference modes now estimate forward travel from their own near-floor backward foot speed,
   rather than sharing Original's 0.667 m/cycle. At native clip cadence the lab measures roughly
   0.81 m/s for UAL Walk and 5.38 m/s for UAL Sprint; switching modes while moving no longer turns
   travel off. Original retains its planted-foot lock, and stairs retain their geometry-matched path.
   This does not guarantee zero horizontal shoe slide because source clips lack authored root motion.
+- The moving procedural gait now owns a persistent alternating six-entry footstep queue: three
+  future placements per foot. The actual swing target and the markers read the same entries. A
+  touchdown consumes only the front entry and appends one new far-future entry, so accepted marks
+  never drift when another foot lands. `--stair-check` asserts this queue-shift invariant alongside
+  plant error and joint continuity. The old overlay recomputed all three estimates from each new
+  lead, defaulted to a stale right-foot target during double stance, and assigned the next marker's
+  position before toggling its side; all three were sources of apparent nondeterminism.
 - Bounded `user://procedural_walk_metrics_<mode>.jsonl` capture records all 73 joints' per-frame pose
   difference and rotation speed versus source, plus knee flex, ankle errors, root travel, and phase;
   the panel shows current worst values. The imported stair-down reference has a ~63° one-frame leg

@@ -12,6 +12,8 @@ extends RefCounted
 ## clip's bone prefix differs.
 const CHARACTER := "res://assets/models/mixamo_characters/Y Bot.fbx"
 const SOURCE_PREFIX := "mixamorig10_"
+const STEP_PREDICTOR := preload(
+		"res://tests/manual/procedural_walk/procedural_walk_step_predictor.gd")
 const SOURCES: Dictionary = {
 	&"stair_up": "res://assets/models/stair_clips/Walking Up The Stairs.fbx",
 }
@@ -37,6 +39,9 @@ var _parent: Node3D
 var _built_mode := &""
 var _shown := false
 var _lift := 0.0
+var _predictor := STEP_PREDICTOR.new()
+var _predictor_built := false
+var _predictor_shown := true
 var _check: CheckBox
 
 
@@ -48,6 +53,13 @@ func build_ui(parent: VBoxContainer) -> void:
 		_shown = value
 		_apply_visibility())
 	parent.add_child(_check)
+	var predict := CheckBox.new()
+	predict.text = "Show step plan (next 3 per foot)"
+	predict.button_pressed = _predictor_shown
+	predict.toggled.connect(func(value: bool) -> void:
+		_predictor_shown = value
+		_predictor.set_shown(value))
+	parent.add_child(predict)
 
 
 ## Each mode is a different FBX, so rebuild when the mode changes, put the clip at the same point of
@@ -57,6 +69,7 @@ func update(parent: Node3D, mode: StringName, anchor := Vector3.ZERO, modifier =
 	_parent = parent
 	if mode != _built_mode:
 		_built_mode = mode
+		_predictor.reset_validation()
 		_clear()
 		if SOURCES.has(mode):
 			_build(mode)
@@ -65,12 +78,21 @@ func update(parent: Node3D, mode: StringName, anchor := Vector3.ZERO, modifier =
 			_check.text = ("Show raw source (un-retargeted)" if root != null
 					else "Show raw source (no raw clip for this mode)")
 		print("[RAW_ACTOR] mode=%s built=%s" % [mode, root != null])
+	if not _predictor_built:
+		_predictor_built = true
+		_predictor.build(parent)
+		_predictor.set_shown(_predictor_shown)
+	_predictor.update(anchor, modifier)
 	if root != null:
 		_lift = move_toward(_lift, foot_lift(skeleton, modifier), LIFT_RATE * delta)
 		root.global_position = anchor + Vector3(LANE_X, _lift, 0.0)
 	var phase_radians := float(modifier.phase) if modifier != null else 0.0
 	_sync(fposmod(phase_radians / TAU, 1.0))
 	_apply_visibility()
+
+
+func step_plan_is_stable() -> bool:
+	return _predictor.plan_is_stable()
 
 
 ## How far a rig that only plays a clip (no IK) must be raised so its toe sits on the tread under
