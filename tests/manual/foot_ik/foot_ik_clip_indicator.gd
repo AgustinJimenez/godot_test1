@@ -19,6 +19,19 @@ func spawn(parent: Node3D, side: String) -> void:
 	_markers[side] = marker
 
 
+## Bring a clipping character to a dead stop so a live toe/foot clip can be inspected in place
+## instead of walking on. The overlay only ever passes the manually controlled player here, so this
+## stops that character (never the automated fixture walkers, which the overlay doesn't route here).
+func _stop_clipping_player(player: Player) -> void:
+	if player == null:
+		return
+	player.velocity = Vector3.ZERO
+	player.movement_input_override = Vector2.ZERO
+	player.set_physics_process(false)
+	print("[FOOT_IK_CLIP_STOP] stopped %s at frame %d" % [
+			player.get_path(), Engine.get_physics_frames()])
+
+
 func update(space: PhysicsDirectSpaceState3D, mask: int, side: String,
 		points: PackedVector3Array, player: Player = null) -> void:
 	var result := MONITOR.check(space, points, mask)
@@ -40,4 +53,5 @@ func update(space: PhysicsDirectSpaceState3D, mask: int, side: String,
 					rad_to_deg(player.rotation.y)]
 		print("[FOOT_IK_CLIP] frame=%d side=%s joint=%s depth_m=%.4f point=%s%s" % [
 				Engine.get_physics_frames(), side, joint, result["depth_m"], result["point"], context])
+		_stop_clipping_player(player)
 	_active[side] = true

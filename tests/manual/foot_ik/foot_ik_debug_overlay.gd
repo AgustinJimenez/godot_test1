@@ -915,6 +915,9 @@ func _physics_process(delta: float) -> void:
 			(values["toe_tip_y"] as Label).text = "%.3f" % tip_pos.y
 			(values["toe_tip_gap"] as Label).text = "%.3f" % (tip_pos.y - target.y)
 			clip_points.append(tip_pos)
+		# Sample the sole/ball too - a live clip shows there (balls ball_l/foot_l), between ankle/tip.
+		clip_points.append(actual_pos + actual_sole_down * float(
+				_ik._sole_depth_below_foot.get(side, _ik.ankle_offset)))
 		_clip_indicator.update(get_world_3d().direct_space_state,
 				_ik._ground_sampler.GROUND_COLLISION_MASK, side, clip_points,
 				_player_body.get_parent() as Player)
@@ -933,10 +936,6 @@ func _capture_controlled_foot_frame() -> void:
 	var animation_player := _player_body.anim_player
 	var player_node := _player_body.get_parent() as Player
 	_toe_tracer.append(_skel, _ik)
-	if _head_probe != null:
-		var facing := -player_node.global_transform.basis.z if player_node != null else Vector3.FORWARD
-		FootIkDebugMarkers.update_direction_arrow(_direction_arrow, _head_probe.global_position,
-				player_node.velocity if player_node != null else Vector3.ZERO, facing)
 	if _chest_probe != null and _chest_arrow != null:
 		var c_basis := _chest_probe.global_transform.basis
 		var c_facing := Vector3(c_basis.y.x, 0.0, c_basis.y.z).normalized()

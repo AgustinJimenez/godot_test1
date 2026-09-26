@@ -608,6 +608,7 @@ func _log_line(index: int) -> void:
 		"worst_deg": frame["worst"],
 		"worst_world_deg": frame["worst_world"],
 		"animation": _player.body.anim_player.current_animation.get_file(),
+		"time": _player.body.anim_player.current_animation_position,
 		"clip": frame["clip"],
 		"clip_point": _vec(frame["clip_point"]),
 		"feet": {},
