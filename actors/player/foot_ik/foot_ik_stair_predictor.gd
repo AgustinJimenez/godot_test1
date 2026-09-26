@@ -400,6 +400,23 @@ func get_step_lifts() -> Dictionary:
 	return result
 
 
+## Point a stair swing's target at its latched predicted landing and mark it an air_swing, so the
+## solve drives the foot onto the next tread. Released to the clip it never crosses (measured: one
+## leg loaded 1 step vs the other 4) and stays a permanent swing.
+func air_swing_target(per_leg: Dictionary, side: StringName, target: Vector3) -> Vector3:
+	var landing: Variant = get_predicted_targets().get(side)
+	if landing == null:
+		return target
+	per_leg[side]["air_swing"] = true
+	per_leg[side]["swing_destination"] = landing
+	# Height comes from the landing itself (its surface + the ankle offset), not the raw animation's
+	# ground: the lift then raised a foot that was already being driven down onto the tread, holding
+	# it ~0.37m above it forever.
+	var offset: float = float(per_leg[side].get("effective_offset", _owner.ankle_offset))
+	var surface := landing as Vector3
+	return Vector3(surface.x, surface.y + offset, surface.z)
+
+
 func get_predicted_targets() -> Dictionary:
 	var result: Dictionary = {}
 	for side: StringName in _legs:
@@ -566,9 +583,13 @@ func _try_transfer_support(per_leg: Dictionary,
 	var at_landing: bool = (has_latched and settling
 			and lifted_lowest_y <= candidate_state.latched_target.y
 					+ _owner.step_clearance_margin + _owner.GROUND_CONTACT_DISTANCE)
-	var contact := bool(candidate_leg.get("animated_contact_hit", false))
-	var close: bool = candidate_clearance <= _owner.GROUND_CONTACT_DISTANCE
-	var lift_ok: bool = candidate_state.smoothed_lift <= _owner.GROUND_CONTACT_DISTANCE
+	# An air_swing leg is already solved onto its validated predicted landing, so the raw-animation
+	# contact/clearance (which reads the clip's buried foot) must not veto it.
+	var on_landing: bool = bool(candidate_leg.get("air_swing", false))
+	var contact := bool(candidate_leg.get("animated_contact_hit", false)) or on_landing
+	var close: bool = candidate_clearance <= _owner.GROUND_CONTACT_DISTANCE or on_landing
+	# A real contact (sampler's rendered-foot re-probe) means the foot IS down, so the lift is moot.
+	var lift_ok: bool = candidate_state.smoothed_lift <= _owner.GROUND_CONTACT_DISTANCE or contact
 	var toe_ok := not _toe_probe_reaches_higher_surface(candidate_leg)
 	var velocity_ok: bool = (candidate_velocity <= _owner.velocity_noise_floor
 			or candidate_state.landing_seen)
@@ -582,6 +603,12 @@ func _try_transfer_support(per_leg: Dictionary,
 		"velocity": snappedf(candidate_velocity, 0.0001),
 	}
 	if contact and close and lift_ok and toe_ok and velocity_ok:
+		# Minimum dwell: without it support handoff flips side every 1-2 frames on stairs, so the
+		# target policy alternates each frame and the foot is yanked back and forth (the visible
+		# stair "snappy", measured as ~1.6x the flat walk's foot speed and ~1.8x its reversals).
+		if Engine.get_physics_frames() - _support_changed_frame < SUPPORT_MIN_DWELL:
+			return
+		_support_changed_frame = Engine.get_physics_frames()
 		_support_side = candidate
 		_latch_support_target(candidate_leg)
 
@@ -618,6 +645,9 @@ func _latch_support_target(leg: Dictionary) -> void:
 
 ## Last _try_transfer_support() decision, for the manual harnesses (which condition blocked it).
 var debug_transfer_blocked: Dictionary = {}
+## Physics frames a support side must hold before it may transfer again.
+const SUPPORT_MIN_DWELL := 10
+var _support_changed_frame := 0
 
 
 ## A flat stair tread's contact normal is near Vector3.UP; a sloped ramp's

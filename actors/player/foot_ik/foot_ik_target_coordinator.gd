@@ -558,8 +558,19 @@ func _build_plan(space: PhysicsDirectSpaceState3D, side: StringName, leg: Dictio
 		plan.surface_target = plan.raw_surface
 		plan.ankle_target = leg["target"]
 		plan.proposed_ankle_target = plan.ankle_target
-		plan.valid = true # Planner reconfirms destination support/reach every frame.
-		plan.reason = "supported_destination_airborne_waypoint"
+		# Reach-validate the destination. Committing it unconditionally let the swing leg strand
+		# past its own length, folding knee/leg mesh into the stairs (body-penetration check
+		# 0 -> 0.28m with the air swing on). Clamp to the anatomical reach instead of rejecting:
+		# the leg still travels toward its landing, just no further than it can hold.
+		var reach: float = (float(leg.get("upper", 0.0)) + float(leg.get("lower", 0.0))
+				+ _owner.step_down_max_crouch - 0.001)
+		var hip: Vector3 = leg.get("hip_pos", plan.ankle_target)
+		var to_target := plan.ankle_target - hip
+		if to_target.length() > reach:
+			plan.ankle_target = hip + to_target.normalized() * reach
+			plan.proposed_ankle_target = plan.ankle_target
+			plan.reason = "air_swing_reach_clamped"
+		plan.valid = true
 		plan.target_source = "air_swing"
 		plan.support_status = FootIKTargetPlan.ConstraintStatus.SATISFIED
 		return plan

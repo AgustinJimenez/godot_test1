@@ -642,6 +642,7 @@ func _process_modification_with_delta(delta: float) -> void:
 					animated_lowest_point, ground_weight, landed, delta,
 					{"step_down": step_down, "pelvis_sink": _smoothed_shared_drop})
 			target += Vector3.UP * swing_lift
+		target = _stair_predictor.air_swing_target(per_leg, side, target)
 		if step_down and step_down_transition_lift > 0.0 and _landing_grace_time <= 0.0:
 			target.y += sin(PI * clampf(ground_weight, 0.0, 1.0)) * step_down_transition_lift
 		if preserve_flat_pose:

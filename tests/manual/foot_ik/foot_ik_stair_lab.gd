@@ -30,6 +30,15 @@ var _use_stair_clip := false
 var _world: Node3D
 var _player: Player
 var _modifier: PlayerFootIKModifier
+var _contact_marks: Node3D
+var _planted: Dictionary = {}
+## side -> set of distinct stair steps that foot actually planted on. A climb where one foot never
+## loads a step otherwise passes every smoothness/clip/elevation check silently.
+var _tread_steps: Dictionary = {}
+## Per-region foot translation stats: the flat walk must stay as smooth as the stair or vice versa;
+## the joint-angle metric cannot see this (the stair's joints are actually smoother) yet the foot
+## bounces far more - the visible "snappy".
+var _foot_motion: Dictionary = {}
 var _camera: Camera3D
 
 var _frames: Array = [] # {root: Transform3D, bones: Array[Transform3D], worst: float, clip: float}
@@ -184,6 +193,7 @@ func _rebuild() -> void:
 	_world = Node3D.new()
 	_world.name = "World"
 	add_child(_world)
+	_build_contact_marks()
 	_build_floor()
 	_build_stairs()
 	_spawn_player()
@@ -193,6 +203,111 @@ func _rebuild() -> void:
 		_frame_slider.max_value = 1
 	if _panel != null:
 		_panel.visible = false
+
+
+## One green disc per footfall, dropped where the foot actually met the ground, so every step's
+## plant position stays visible for the whole recorded run.
+func _build_contact_marks() -> void:
+	_contact_marks = Node3D.new()
+	_contact_marks.name = &"ContactMarks"
+	_world.add_child(_contact_marks)
+	_tread_steps = {&"left": {}, &"right": {}}
+
+
+## This lab's own stair geometry: the floor before the steps, then each tread's top height.
+func _lab_ground_height(world_z: float) -> float:
+	var step := int(floorf(world_z / TREAD_DEPTH))
+	if step < 0:
+		return 0.0
+	return step_height * float(mini(step + 1, STEP_COUNT))
+
+
+## A foot is "planted" once its ground weight is high; the rising edge is the footfall. The
+## foot_landed signal cannot be used here - the gait tracker early-returns while a locomotion stance
+## is active, so an ordinary stair walk emits almost none.
+func _update_contact_marks() -> void:
+	if _contact_marks == null or _modifier == null:
+		return
+	for side: StringName in [&"left", &"right"]:
+		# 0.5, not 0.8: the trailing leg's weight does not always reach 0.8 on a stair step, which
+		# silently dropped about half its footfalls.
+		var planted: bool = float(_modifier._smoothed_ground_weight.get(side, 0.0)) >= 0.5
+		if planted and not bool(_planted.get(side, false)):
+			_spawn_contact_mark(side)
+		_planted[side] = planted
+
+
+## Feeds the check's flat-vs-stair foot comparison: how fast each ankle moves and how often the toe
+## reverses its vertical direction (a bouncing plant).
+func _track_foot_motion() -> void:
+	var z := _player.global_position.z
+	var region: StringName = (&"flat" if z < -0.4 else &"stair" if z >= 0.0 else &"")
+	if region == &"":
+		return
+	var stats: Dictionary = _foot_motion.get(region,
+			{"speeds": [], "reversals": 0, "prev_y": {}, "prev_d": {}})
+	var to_world := _player.skeleton.global_transform
+	for side: StringName in [&"left", &"right"]:
+		var indices: Dictionary = _modifier._bone_indices.get(side, {})
+		var foot_idx: int = int(indices.get("foot", -1))
+		var toe_idx: int = int(indices.get("toe", -1))
+		if foot_idx < 0 or toe_idx < 0:
+			continue
+		var ankle: Vector3 = to_world * _modifier.get_final_bone_global_pose(foot_idx).origin
+		var toe_y: float = (to_world * _modifier.get_final_bone_global_pose(toe_idx).origin).y
+		if (stats["prev_y"] as Dictionary).has(side):
+			(stats["speeds"] as Array).append(
+					ankle.distance_to(stats["prev_y"][side] as Vector3) * 60.0)
+			var d: float = toe_y - float((stats["prev_y"] as Dictionary)[side + "_ty"])
+			var prev_d: float = float((stats["prev_d"] as Dictionary).get(side, 0.0))
+			if absf(d) > 0.001 and d * prev_d < 0.0:
+				stats["reversals"] = int(stats["reversals"]) + 1
+			(stats["prev_d"] as Dictionary)[side] = d
+		(stats["prev_y"] as Dictionary)[side] = ankle
+		(stats["prev_y"] as Dictionary)[side + "_ty"] = toe_y
+	_foot_motion[region] = stats
+
+
+func _foot_p95(region: StringName) -> float:
+	var v: Array = (_foot_motion.get(region, {}) as Dictionary).get("speeds", [])
+	if v.size() < 10:
+		return 0.0
+	var vs := v.duplicate()
+	vs.sort()
+	return float(vs[int(vs.size() * 0.95)])
+
+
+func _foot_reversals(region: StringName) -> int:
+	return int((_foot_motion.get(region, {}) as Dictionary).get("reversals", 0))
+
+
+func _spawn_contact_mark(side: StringName) -> void:
+	var index: int = int((_modifier._bone_indices.get(side, {}) as Dictionary).get("foot", -1))
+	if index < 0:
+		return
+	var ankle: Vector3 = _player.skeleton.global_transform * (
+			_modifier.get_final_bone_global_pose(index).origin)
+	var ground_y := _lab_ground_height(ankle.z)
+	var step := int(floorf(ankle.z / TREAD_DEPTH))
+	if step >= 0 and step < STEP_COUNT:
+		(_tread_steps.get(side, {}) as Dictionary)[step] = true
+	var marker := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = 0.07
+	disc.bottom_radius = 0.07
+	disc.height = 0.012
+	marker.mesh = disc
+	var color := Color(1.0, 0.55, 0.1) if side == &"left" else Color(0.15, 1.0, 0.25)
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = color
+	material.emission_enabled = true
+	material.emission = color
+	# Draw through the step: a marker flush on the tread is otherwise hidden by depth testing.
+	material.no_depth_test = true
+	marker.material_override = material
+	marker.global_position = Vector3(ankle.x, ground_y + 0.02, ankle.z)
+	_contact_marks.add_child(marker)
 
 
 func _build_floor() -> void:
@@ -322,6 +437,8 @@ func _record_frame() -> void:
 		"clip_point": clip["point"],
 	}
 	_frames.append(frame)
+	_update_contact_marks()
+	_track_foot_motion()
 	_log_line(_frames.size() - 1)
 	_append_trail()
 	if _frame_slider != null:
@@ -367,11 +484,25 @@ func _finish_recording() -> void:
 		_log = null
 	print("[STAIR_LAB] log: %s" % ProjectSettings.globalize_path(LOG_PATH))
 	if "--lab-check" in OS.get_cmdline_user_args():
-		# Capture integrity only; the printed clip/joint metrics grade the gait separately.
+		# Capture integrity, plus: BOTH feet must actually load several distinct steps. A climb
+		# where one leg is a permanent swing passes every smoothness/clip/elevation metric.
+		var left_treads: int = (_tread_steps.get(&"left", {}) as Dictionary).size()
+		var right_treads: int = (_tread_steps.get(&"right", {}) as Dictionary).size()
+		var flat_p95 := _foot_p95(&"flat")
+		var stair_p95 := _foot_p95(&"stair")
+		# Reversals (the bouncing) lead: the stair foot must not jitter more than the flat walk.
+		# Speed is bounded only loosely - a stair step-up must rise a whole 0.35m tread.
+		var flat_rev := _foot_reversals(&"flat")
+		var stair_rev := _foot_reversals(&"stair")
+		var foot_ok := ((flat_p95 <= 0.0 or stair_p95 <= flat_p95 * 1.6)
+				and (flat_rev == 0 or stair_rev <= int(flat_rev * 1.2)))
 		var passed := (_frames.size() > 100 and _player.global_position.z >= TOP_Z
-				and _capture_gaps == 0)
-		print("STAIR_LAB_CAPTURE_CHECK %s samples=%d gaps=%d" % [
-				"PASS" if passed else "FAIL", _frames.size(), _capture_gaps])
+				and _capture_gaps == 0 and left_treads >= 3 and right_treads >= 3 and foot_ok)
+		print(("STAIR_LAB_CAPTURE_CHECK %s samples=%d gaps=%d left_treads=%d right_treads=%d "
+				+ "flat_foot_p95=%.2f stair_foot_p95=%.2f rev=%d/%d") % [
+				"PASS" if passed else "FAIL", _frames.size(), _capture_gaps, left_treads,
+				right_treads, flat_p95, stair_p95,
+				_foot_reversals(&"flat"), _foot_reversals(&"stair")])
 		get_tree().quit(0 if passed else 1)
 	_recording = false
 	_rec_done = true
@@ -500,6 +631,8 @@ func _log_line(index: int) -> void:
 			foot["solve_target"] = _vec(plan.actual_solve_target)
 			foot["plan_reason"] = plan.reason
 		foot["swing"] = _modifier._stair_predictor.get_swing_state(side)
+		foot["gw"] = float(_modifier._smoothed_ground_weight.get(side, 0.0))
+		foot["transfer"] = _modifier._stair_predictor.debug_transfer_blocked
 		entry["feet"][str(side)] = foot
 	_log.store_line(JSON.stringify(entry))
 
