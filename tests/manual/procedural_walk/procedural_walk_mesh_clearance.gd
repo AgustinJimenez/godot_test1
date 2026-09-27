@@ -5,6 +5,9 @@ extends RefCounted
 var _parts: Array[Dictionary] = []
 var vertex_count := 0
 var last_low_positions: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
+## Native +Z is forward. Per-millimetre highest shoe depth below the ankle, used to
+## distinguish a low heel from a raised toe when checking neighboring stair treads.
+var last_profiles: Array[Dictionary] = [{}, {}]
 
 
 func prepare(character: Node3D, skeleton: Skeleton3D) -> void:
@@ -59,9 +62,11 @@ func prepare(character: Node3D, skeleton: Skeleton3D) -> void:
 
 
 func sample(skeleton: Skeleton3D,
-		final_poses: Array[Transform3D], support_height: Callable = Callable()) -> Array[float]:
+		final_poses: Array[Transform3D], support_height: Callable = Callable(),
+		ankle_worlds: Array[Vector3] = []) -> Array[float]:
 	var minimum: Array[float] = [INF, INF]
 	last_low_positions = [Vector3.ZERO, Vector3.ZERO]
+	last_profiles = [{}, {}]
 	for part: Dictionary in _parts:
 		var transforms: Array[Transform3D] = []
 		for bind: Dictionary in part["binds"]:
@@ -80,10 +85,18 @@ func sample(skeleton: Skeleton3D,
 				position += (transforms[bind] * point["position"]) * weight
 				total += weight
 			if total > 0.0:
-				var foot_height := position.y / total
+				var world_pos := position / total
+				var side: int = point["side"]
+				if ankle_worlds.size() == 2:
+					var ahead := world_pos.z - ankle_worlds[side].z
+					var bin := roundi(ahead * 1000.0)
+					var drop := ankle_worlds[side].y - world_pos.y
+					last_profiles[side][bin] = maxf(
+							float(last_profiles[side].get(bin, -INF)), drop)
+				var foot_height := world_pos.y
 				if support_height.is_valid():
-					foot_height -= support_height.call(position.z / total)
-				if foot_height < minimum[point["side"]]:
-					minimum[point["side"]] = foot_height
-					last_low_positions[point["side"]] = position / total
+					foot_height -= support_height.call(world_pos.z)
+				if foot_height < minimum[side]:
+					minimum[side] = foot_height
+					last_low_positions[side] = world_pos
 	return minimum

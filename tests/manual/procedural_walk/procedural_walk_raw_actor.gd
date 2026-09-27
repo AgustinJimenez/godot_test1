@@ -39,8 +39,7 @@ var _parent: Node3D
 var _built_mode := &""
 var _shown := false
 var _lift := 0.0
-var _predictor := STEP_PREDICTOR.new()
-var _predictor_built := false
+var _predictor = null
 var _predictor_shown := true
 var _check: CheckBox
 
@@ -62,6 +61,14 @@ func build_ui(parent: VBoxContainer) -> void:
 	parent.add_child(predict)
 
 
+func attach_step_debug(character: Node3D, modifier: ProceduralWalkLabModifier) -> void:
+	_predictor = STEP_PREDICTOR.new()
+	_predictor.name = &"FootstepPlanDebug"
+	character.add_child(_predictor)
+	_predictor.bind(modifier.footstep_plan(), modifier.ground_height)
+	_predictor.set_shown(_predictor_shown)
+
+
 ## Each mode is a different FBX, so rebuild when the mode changes, put the clip at the same point of
 ## its cycle as the lab, then apply the show switch.
 func update(parent: Node3D, mode: StringName, anchor := Vector3.ZERO, modifier = null,
@@ -69,7 +76,8 @@ func update(parent: Node3D, mode: StringName, anchor := Vector3.ZERO, modifier =
 	_parent = parent
 	if mode != _built_mode:
 		_built_mode = mode
-		_predictor.reset_validation()
+		if _predictor != null:
+			_predictor.reset_validation()
 		_clear()
 		if SOURCES.has(mode):
 			_build(mode)
@@ -78,11 +86,6 @@ func update(parent: Node3D, mode: StringName, anchor := Vector3.ZERO, modifier =
 			_check.text = ("Show raw source (un-retargeted)" if root != null
 					else "Show raw source (no raw clip for this mode)")
 		print("[RAW_ACTOR] mode=%s built=%s" % [mode, root != null])
-	if not _predictor_built:
-		_predictor_built = true
-		_predictor.build(parent)
-		_predictor.set_shown(_predictor_shown)
-	_predictor.update(anchor, modifier)
 	if root != null:
 		_lift = move_toward(_lift, foot_lift(skeleton, modifier), LIFT_RATE * delta)
 		root.global_position = anchor + Vector3(LANE_X, _lift, 0.0)
@@ -92,7 +95,7 @@ func update(parent: Node3D, mode: StringName, anchor := Vector3.ZERO, modifier =
 
 
 func step_plan_is_stable() -> bool:
-	return _predictor.plan_is_stable()
+	return _predictor != null and _predictor.plan_is_stable()
 
 
 ## How far a rig that only plays a clip (no IK) must be raised so its toe sits on the tread under

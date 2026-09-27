@@ -21,12 +21,20 @@ func run(lab: Node3D, character: Node3D, skeleton: Skeleton3D,
 			var lowest := INF
 			var highest_lowest := -INF
 			var contact_frames := 0
+			var worst_frame := -1
+			var worst_side := -1
+			var worst_weight := 0.0
 			for frame in FRAMES:
 				if not moving:
 					lab.call("_set_frame", float(frame))
 				await lab.get_tree().physics_frame
 				var foot_min := mesh_check.sample(skeleton, modifier.debug_bone_poses)
 				var low := minf(foot_min[0], foot_min[1])
+				if low < lowest:
+					worst_frame = frame
+					worst_side = 0 if foot_min[0] <= foot_min[1] else 1
+					worst_weight = float(modifier.debug_contact_weight.get(
+							"Left" if worst_side == 0 else "Right", 0.0))
 				lowest = minf(lowest, low)
 				highest_lowest = maxf(highest_lowest, low)
 				if low <= 0.03:
@@ -34,7 +42,8 @@ func run(lab: Node3D, character: Node3D, skeleton: Skeleton3D,
 			var passed := lowest >= 0.003 and contact_frames >= 60
 			all_passed = all_passed and passed
 			print(("FLAT_MESH %s %s %s vertices=%d min=%.3fm max_low=%.3fm "
-					+ "contact_frames=%d/%d") % [
+					+ "contact_frames=%d/%d worst=f%d/side%d/weight%.2f") % [
 					mode, "moving" if moving else "in_place", "PASS" if passed else "FAIL",
-					mesh_check.vertex_count, lowest, highest_lowest, contact_frames, FRAMES])
+					mesh_check.vertex_count, lowest, highest_lowest, contact_frames, FRAMES,
+					worst_frame, worst_side, worst_weight])
 	return all_passed

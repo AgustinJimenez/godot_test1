@@ -1,5 +1,4 @@
 extends Node3D
-## Standalone MotusMan procedural walk experiment. Does not spawn Player.
 
 const MODEL := preload(
 		"res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Relaxed_Idle_IPC.fbx")
@@ -16,8 +15,16 @@ const FLAT_MESH_CHECK := preload(
 		"res://tests/manual/procedural_walk/procedural_walk_flat_mesh_check.gd")
 const STAIR_SOURCE_REPORT := preload(
 		"res://tests/manual/procedural_walk/procedural_walk_stair_source_report.gd")
+const STAIR_CHECK := preload("res://tests/manual/procedural_walk/procedural_walk_stair_check.gd")
+const STAIR_COURSE := preload("res://tests/manual/procedural_walk/procedural_walk_stair_course.gd")
+const STAIR_COURSE_CHECK := preload(
+		"res://tests/manual/procedural_walk/procedural_walk_stair_course_check.gd")
+const TRACE_CAPTURE := preload(
+		"res://tests/manual/procedural_walk/procedural_walk_trace_capture.gd")
 const INFINITE_CHECK := preload(
 		"res://tests/manual/procedural_walk/procedural_walk_infinite_check.gd")
+const PARAMETERS := preload(
+		"res://tests/manual/procedural_walk/procedural_walk_parameter_controls.gd")
 const CYCLE_FRAMES := 120 # Two complete steps at a 60 fps reference rate.
 const MAX_STAIR_CYCLES := 8.0
 const METRIC_BONES := [
@@ -36,6 +43,7 @@ var _reference_skeleton: Skeleton3D
 var _reference_player: AnimationPlayer
 var _reference_bank: ProceduralWalkReferenceBank
 var _raw_actor := RAW_ACTOR.new()
+var _parameter_controls := PARAMETERS.new()
 var _reference_lift := 0.0
 var _metrics: ProceduralWalkMetrics
 var _reference_mode := &""
@@ -60,9 +68,11 @@ var _show_joints := true
 var _moving_mode := false
 var _moving_checkbox: CheckBox
 var _stair_stage: Node3D
+var _stair_course: ProceduralWalkStairCourse
 var _floor_stage: Node3D
 var _travel_cycles := 0.0
 var _back_button: Button
+var _trace_capture := TRACE_CAPTURE.new()
 
 
 func _ready() -> void:
@@ -91,6 +101,8 @@ func _ready() -> void:
 		_run_infinite_check()
 	elif "--stair-check" in OS.get_cmdline_user_args():
 		_run_stair_check()
+	elif "--course-check" in OS.get_cmdline_user_args():
+		_run_course_check()
 	elif "--toe-check" in OS.get_cmdline_user_args() \
 			or "--toe-report" in OS.get_cmdline_user_args():
 		_run_toe_report()
@@ -99,7 +111,6 @@ func _ready() -> void:
 	else:
 		_moving_checkbox.set_pressed_no_signal(true)
 		_set_moving_mode(true)
-
 
 func _physics_process(delta: float) -> void:
 	if _modifier == null:
@@ -112,18 +123,15 @@ func _physics_process(delta: float) -> void:
 					float(CYCLE_FRAMES))
 			_set_frame(_frame_position)
 
-
 func _process(_delta: float) -> void:
 	_update_joint_overlay()
 	_update_metrics()
 	_raw_actor.update(self, _reference_mode, _character.global_position, _modifier, _delta)
 
-
 func _exit_tree() -> void:
+	_trace_capture.flush()
 	if _metrics != null:
 		_metrics.close()
-
-
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
@@ -167,11 +175,14 @@ func _build_character() -> void:
 	_skeleton = skel
 	_modifier = MODIFIER.new() as ProceduralWalkLabModifier
 	_modifier.name = &"ProceduralWalk"
+	_modifier.trace_capture = _trace_capture
+	_modifier.trace_character = _character
 	_modifier.neutral_ankle_targets = [
 		skel.get_bone_global_pose(skel.find_bone(&"LeftFoot")).origin,
 		skel.get_bone_global_pose(skel.find_bone(&"RightFoot")).origin,
 	]
 	skel.add_child(_modifier)
+	_raw_actor.attach_step_debug(_character, _modifier)
 	skel.set_modifier_callback_mode_process(Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_PHYSICS)
 	skel.advance(0.0) # force the initial frame, so the model does not show its bind pose
 
@@ -217,6 +228,7 @@ func _sync_reference() -> void:
 	var animation_name := "references/" + String(_reference_mode)
 	if _reference_player.current_animation != animation_name:
 		_reference_player.stop()
+		_reference_skeleton.reset_bone_poses()
 		_reference_player.play(animation_name)
 		_reference_player.pause()
 	var clip := _reference_bank.clip(_reference_mode)
@@ -226,14 +238,17 @@ func _sync_reference() -> void:
 
 
 func _select_reference_mode(index: int) -> void:
+	_stair_course = null
+	_modifier.stair_course = null
 	_reference_mode = (
 			&"" if index == 0 else ProceduralWalkReferenceBank.MODE_ORDER[index - 1])
 	_modifier.reference_mode = _reference_mode
 	if _moving_checkbox != null:
-		_moving_checkbox.text = ("Move forward (source pose; no foot lock)"
+		_moving_checkbox.text = ("Move forward + plan/contact lock"
+				if _reference_mode in [&"walk", &"walk_aim", &"crouch", &"sprint"] else
+				"Move forward (source pose + step plan)"
 				if _reference_mode != &"" and _reference_mode not in [&"stair_up", &"stair_down"]
-				else
-				"Move forward + lock planted feet")
+				else "Move forward + lock planted feet")
 	_modifier.stair_direction = 1 if _reference_mode == &"stair_up" else 0
 	_stair_stage.visible = _modifier.stair_direction != 0
 	_rebuild_stair_stage()
@@ -242,11 +257,12 @@ func _select_reference_mode(index: int) -> void:
 	if _reference_mode == &"":
 		_modifier.bob = 0.025
 		_reference_player.stop()
+		_speed = 1.0
 	else:
 		_modifier.bob = 0.0 # Source pose already carries its own body motion.
 		_speed = 1.0 / _reference_bank.clip(_reference_mode).length
-		if _speed_slider != null:
-			_speed_slider.set_value_no_signal(_speed)
+	if _speed_slider != null:
+		_parameter_controls.set_default(_speed_slider, _speed)
 	_sync_reference()
 	if _modifier.stair_direction != 0:
 		if _moving_checkbox != null:
@@ -267,7 +283,7 @@ func _update_reference_visibility() -> void:
 
 func _advance_moving(delta: float) -> void:
 	var next_cycles := _travel_cycles + delta * _speed
-	if _modifier.stair_direction != 0:
+	if _modifier.stair_direction != 0 and _stair_course == null:
 		next_cycles = minf(MAX_STAIR_CYCLES, next_cycles)
 	var advanced_cycles := next_cycles - _travel_cycles
 	_travel_cycles = next_cycles
@@ -278,15 +294,16 @@ func _advance_moving(delta: float) -> void:
 	_character.global_position.z -= advanced_cycles * travel_per_cycle
 	_sync_floor_stage()
 	var desired_height := _modifier.stair_root_height(_character.global_position.z)
-	if _modifier.stair_direction > 0:
+	if _modifier.stair_direction > 0 or (_stair_course != null
+			and _stair_course.is_climbing(_character.global_position.z)):
 		# Keep the trailing planted ankle reachable while climbing.
 		for side in 2:
 			if _modifier.has_plant(side):
 				desired_height = minf(desired_height,
 						_modifier.plant_world(side).y
 						- _modifier.neutral_ankle_targets[side].y + 0.02)
-	_character.global_position.y = move_toward(
-			_character.global_position.y, desired_height, delta * 1.5)
+	_character.global_position.y = (desired_height if _stair_course != null else
+			move_toward(_character.global_position.y, desired_height, delta * 1.5))
 	if _reference_character != null:
 		_reference_lift = move_toward(_reference_lift,
 				ProceduralWalkRawActor.foot_lift(_reference_skeleton, _modifier), 1.2 * delta)
@@ -294,7 +311,11 @@ func _advance_moving(delta: float) -> void:
 				1.4, _reference_lift, 0.0)
 	_set_frame(_travel_cycles * 60.0)
 	_update_camera()
-	if _modifier.stair_direction != 0 and (_travel_cycles >= MAX_STAIR_CYCLES
+	if _stair_course != null and _stair_course.is_finished(_character.global_position.z):
+		_playing = false
+		_update_info()
+	elif _stair_course == null and _modifier.stair_direction != 0 \
+			and (_travel_cycles >= MAX_STAIR_CYCLES
 			or _character.global_position.z <= _modifier.stair_top_z()):
 		# Finite stair lanes with no top landing: restart before walking off the last step.
 		_set_moving_mode(true)
@@ -306,9 +327,9 @@ func _sync_floor_stage() -> void:
 func _set_moving_mode(enabled: bool) -> void:
 	_moving_mode = enabled
 	_travel_cycles = 0.0
-	_character.global_position = Vector3(
-			0.0, _modifier.stair_root_height(1.4),
-			1.4 if _modifier.stair_direction != 0 else 0.0)
+	var reset_z := (_stair_course.start_z + ProceduralWalkStairCourse.APPROACH
+			if _stair_course != null else 1.4 if _modifier.stair_direction != 0 else 0.0)
+	_character.global_position = Vector3(0.0, _modifier.stair_root_height(reset_z), reset_z)
 	_sync_floor_stage()
 	if _reference_character != null:
 		_reference_lift = 0.0 # restart clean; _advance_moving ramps it back up
@@ -326,6 +347,18 @@ func _set_moving_mode(enabled: bool) -> void:
 
 func _reset_walk() -> void:
 	_set_moving_mode(_moving_mode)
+
+
+func _spawn_stair_course() -> void:
+	if not _moving_mode:
+		_set_moving_mode(true)
+	_stair_course = STAIR_COURSE.new() as ProceduralWalkStairCourse
+	_stair_course.configure(_character.global_position.z)
+	_modifier.stair_course = _stair_course
+	_stair_course.build(_stair_stage)
+	_stair_stage.visible = true
+	_playing = true
+	_update_info()
 
 
 func _step_frame(direction: int) -> void:
@@ -379,6 +412,9 @@ func _build_stage() -> void:
 
 
 func _rebuild_stair_stage() -> void:
+	if _stair_course != null:
+		_stair_course.build(_stair_stage)
+		return
 	for child: Node in _stair_stage.get_children():
 		child.free()
 	if _modifier.stair_direction == 0:
@@ -399,8 +435,6 @@ func _build_stair_lane(x: float, up: bool) -> void:
 		_add_stair_box(x, z, ProceduralWalkLabModifier.STAIR_DEPTH,
 				(float(step) if up else float(ProceduralWalkLabModifier.STAIR_STEPS - step))
 				* ProceduralWalkLabModifier.STAIR_HEIGHT, up)
-
-
 
 func _add_stair_box(x: float, z: float, depth: float,
 		height: float, up: bool) -> MeshInstance3D:
@@ -757,47 +791,14 @@ func _run_infinite_check() -> void:
 
 
 func _run_stair_check() -> void:
-	await get_tree().physics_frame
-	var all_passed := true
-	for mode: StringName in [&"stair_up"]:
-		_select_reference_mode(ProceduralWalkReferenceBank.MODE_ORDER.find(mode) + 1)
-		var start_y := _character.global_position.y
-		var worst_plant_error := 0.0
-		var worst_plant_frame := -1
-		var worst_plant_side := -1
-		var planted_samples := 0
-		var worst_step := 0.0
-		var previous: Dictionary = {}
-		for frame in 240:
-			await get_tree().physics_frame
-			var rotations: Dictionary = _modifier.debug_joint_rotations
-			for side in 2:
-				if not _modifier.has_plant(side):
-					continue
-				var name := &"LeftFoot" if side == 0 else &"RightFoot"
-				var error := (_modifier.debug_joint_positions[name] as Vector3).distance_to(
-						_modifier.plant_world(side))
-				if error > worst_plant_error:
-					worst_plant_error = error
-					worst_plant_frame = frame
-					worst_plant_side = side
-				planted_samples += 1
-			if not previous.is_empty():
-				for name: StringName in rotations:
-					worst_step = maxf(worst_step, rad_to_deg(
-							(rotations[name] as Quaternion).angle_to(previous[name])))
-			previous = rotations.duplicate()
-		var climbed := absf(_character.global_position.y - start_y)
-		var passed := climbed > 0.6 and planted_samples > 100 \
-				and worst_plant_error < 0.03 and worst_step < 30.0 \
-				and _raw_actor.step_plan_is_stable()
-		all_passed = all_passed and passed
-		print(("PROCEDURAL_STAIR %s %s elevation=%.2fm planted=%d "
-				+ "plant_error=%.3fm@f%d/side%d max_joint_step=%.1fdeg") % [
-				_reference_mode, "PASS" if passed else "FAIL", climbed,
-				planted_samples, worst_plant_error, worst_plant_frame,
-				worst_plant_side, worst_step])
-	get_tree().quit(0 if all_passed else 1)
+	var passed: bool = await STAIR_CHECK.new().run(
+			self, _character, _skeleton, _modifier, _raw_actor)
+	get_tree().quit(0 if passed else 1)
+
+
+func _run_course_check() -> void:
+	var passed: bool = await STAIR_COURSE_CHECK.new().run(self, _character, _skeleton, _modifier)
+	get_tree().quit(0 if passed else 1)
 
 
 func _run_toe_report() -> void:
@@ -940,22 +941,36 @@ func _build_ui() -> void:
 	_moving_checkbox.text = "Move forward + lock planted feet"
 	_moving_checkbox.toggled.connect(_set_moving_mode)
 	controls.add_child(_moving_checkbox)
+	var route_buttons := HBoxContainer.new()
+	controls.add_child(route_buttons)
 	var reset := Button.new()
 	reset.text = "Reset walk"
 	reset.pressed.connect(_reset_walk)
-	controls.add_child(reset)
-	_speed_slider = _add_slider(controls, "Steps / second", 0.2, 2.0, _speed,
+	route_buttons.add_child(reset)
+	var course_button := Button.new()
+	course_button.text = "Spawn up + down stairs (3 m ahead)"
+	course_button.pressed.connect(_spawn_stair_course)
+	route_buttons.add_child(course_button)
+	_speed_slider = _parameter_controls.add_slider(controls, "Steps / second", 0.2, 2.0, _speed,
 			func(value: float) -> void: _speed = value)
-	_add_slider(controls, "Stride (m)", 0.0, 0.45, _modifier.stride,
+	_parameter_controls.add_slider(controls, "Stride (m)", 0.0, 0.45, _modifier.stride,
 			func(value: float) -> void: _modifier.stride = value)
-	_add_slider(controls, "Foot lift (m)", 0.0, 0.30, _modifier.lift,
+	_parameter_controls.add_slider(controls, "Foot lift (m)", 0.0, 0.30, _modifier.lift,
 			func(value: float) -> void: _modifier.lift = value)
-	_add_slider(controls, "Walk blend", 0.0, 1.0, _modifier.amount,
+	_parameter_controls.add_slider(controls, "Walk blend", 0.0, 1.0, _modifier.amount,
 			func(value: float) -> void: _modifier.amount = value)
-	_add_slider(controls, "Arm swing", 0.0, 0.6, _modifier.arm_swing,
+	_parameter_controls.add_slider(controls, "Arm swing", 0.0, 0.6, _modifier.arm_swing,
 			func(value: float) -> void: _modifier.arm_swing = value)
-	_add_slider(controls, "Contact IK (0=off)", 0.0, 1.0, _modifier.contact_ik,
+	_parameter_controls.add_slider(controls, "Contact IK (0=off)", 0.0, 1.0,
+			_modifier.contact_ik,
 			func(value: float) -> void: _modifier.contact_ik = value)
+	var reset_parameters := Button.new()
+	reset_parameters.text = "Reset parameters"
+	reset_parameters.pressed.connect(func() -> void:
+		_parameter_controls.reset()
+		if not _playing:
+			_skeleton.advance(0.0))
+	controls.add_child(reset_parameters)
 	var show := CheckBox.new()
 	show.text = "Show leg joints (purple left / blue right)"
 	show.button_pressed = true
@@ -983,18 +998,3 @@ func _update_info() -> void:
 			int(_frame_position) + 1, CYCLE_FRAMES,
 			"Playing" if _playing else "Paused"]
 	_raw_actor.append_summary(_info, _reference_skeleton, _skeleton, _modifier)
-
-
-func _add_slider(parent: VBoxContainer, title: String, minimum: float,
-		maximum: float, initial: float, callback: Callable) -> HSlider:
-	var label := Label.new()
-	label.text = title
-	parent.add_child(label)
-	var slider := HSlider.new()
-	slider.min_value = minimum
-	slider.max_value = maximum
-	slider.step = 0.01
-	slider.value = initial
-	slider.value_changed.connect(callback)
-	parent.add_child(slider)
-	return slider

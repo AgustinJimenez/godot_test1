@@ -13,8 +13,10 @@ The scene runs MotusMan with a separate `SkeletonModifier3D`. Its **Original** m
 leg gait plus small pelvis, spine, and arm motions from a frozen relaxed-idle pose. Six new
 reference-derived modes—UAL walk, MotusMan aim-walk, UAL sprint, UAL crouch-walk, Mixamo stair-up,
 and Mixamo stair-down—sample the repository's existing clips on the MotusMan rig. All four flat
-reference modes copy all 73 source bone poses and apply only a small whole-body vertical
-floor-clearance shift. The two stair modes still apply an independent leg/plant solve because their
+reference modes copy all 73 source bone poses and apply a small whole-body vertical floor-clearance
+shift. In moving mode, an analytic two-bone solve keeps their planted feet on accepted world-space
+targets while retaining the source upper body and shoe roll. The two stair modes still apply an
+independent leg/plant solve because their
 clips do not align with this scene's stairs. This is a **hybrid animation prototype**, not
 fully generated whole-body motion or a new editable gait profile. A separate optional character
 plays the raw source clip beside it for comparison. The UAL clips are retargeted onto a private
@@ -23,9 +25,10 @@ sampler rig; retargeting against the live lab skeleton had silently changed its 
 The lab does **not** spawn `Player`, use gameplay Foot IK, or alter the other agent's stair work.
 Its scripted moving path and visible staircase are visual test geometry, not a physics controller.
 Flat moving modes continue indefinitely; stair traversal restarts when it reaches the end of its
-finite geometry. Flat reference gaits now derive forward speed from how fast a near-floor foot moves
-backward through its planted phase, scaled by each clip's cadence. Sprint therefore moves much
-faster than walk; the Original gait keeps its explicit world-space foot lock, while stair modes
+finite geometry. Flat reference gaits derive forward speed from source foot travel and clip cadence;
+Sprint uses touchdown-to-toe-off ankle displacement so the root stays within leg reach. Sprint
+therefore moves much faster than walk; the Original gait keeps its explicit world-space foot lock,
+while stair modes
 keep their terrain-matched scripted path. These are measured in-place-clip estimates, not authored
 root-motion data or a guarantee of zero shoe slide.
 
@@ -34,11 +37,9 @@ orbit, wheel to zoom, Space to pause, Left/Right to step frames,
 and a 120-frame timeline to scrub two in-place cycles. Interactive launch now starts with the
 **Original** gait moving forward; uncheck **Move forward + lock planted feet** for in-place playback.
 Switching flat gaits keeps moving mode on and restarts the path. Reset walk also restarts it. The
-control panel reserves space for changing joint/readout
-numbers so its size does not jump during playback. In flat reference
-modes it
-explicitly says "no foot lock" because preserving the source leg pose takes priority over a
-separate plant solve. The camera follows the moving character while an 80 m floor and one-meter grid
+control panel reserves space for changing joint/readout numbers so its size does not jump during
+playback. Flat reference modes show their plan/contact lock in the moving control. The camera
+follows the moving character while an 80 m floor and one-meter grid
 recenter in whole-meter increments; the world-space grid pattern remains visually continuous.
 Moving mode can pause and step forward, but cannot scrub
 backward because foot-plant history is stateful; switch back to in-place mode for arbitrary frame
@@ -50,8 +51,15 @@ The step-plan overlay shows six persistent placements (the next three for each f
 same targets consumed by the moving procedural gait: landing removes one entry and appends one new
 entry, while the other five remain fixed. It is therefore usable as planning data rather than a
 rolling visualization that subtly revises already accepted placements.
+Moving Walk, Aim Walk, Sprint, and Crouch also fill the plan from their sampled source animation:
+each foot's forward-most ankle phase defines touchdown, and the clip's measured travel predicts the
+world-space contact. Those modes consume entries when their source foot reaches that phase and blend
+their legs toward the accepted world target during stance. Sprint releases its feet for the clip's
+airborne interval. Live review must still check whether contact transitions look natural.
 Step rate, foot travel, lift, blend, and arm swing have temporary sliders. Their settings are not
-saved. The first 240 physics frames after each mode selection are also written to bounded
+saved. **Reset parameters** restores all six slider values, including Contact IK, without restarting
+the walk; Steps / second returns to the selected clip's native cadence (1.0 for Original). The first
+240 physics frames after each mode selection are also written to bounded
 `user://procedural_walk_metrics_<mode>.jsonl` logs. Every record includes per-joint pose error,
 procedural/source rotation step, knee flex, ankle target error, root position, and gait phase.
 
@@ -135,15 +143,15 @@ moving mode survives gait selection, the floor/reference follow, and the panel r
 
 For UAL walk, the initial independent leg gait left both shoes >0.09 m above the plane in some
 frames, even after its toe penetration was fixed. It was a phase mismatch, not a clearance issue.
-All four flat modes now preserve their complete source poses. `--pose-match-check` compares **all
-73 joints on every frame** of the loop, both in-place and moving: UAL walk's worst rotation
-difference is below 0.07°; aim-walk, sprint, and crouch remain under 1.8° with relative joint
-positions within 0.007 m. Only Hips moves vertically for shoe clearance; the technical Root bone
-remains at ground control. `--flat-mesh-check` skins 1209 actual shoe vertices per frame: neither
+All four flat modes preserve their complete source poses in-place; their moving variants alter the
+leg chains for world-space contact. `--pose-match-check` compares **all 73 joints on every frame**
+of the loop and separately bounds planted-target error, per-frame leg motion, and unchanged non-leg
+joints. Only Hips moves vertically for source shoe clearance; the technical Root bone remains at
+ground control. `--flat-mesh-check` skins 1209 actual shoe vertices per frame: neither
 shoe penetrates the flat plane, walk/aim-walk/crouch have a near-floor sole throughout the loop,
 and sprint retains its airborne phases (64–66 contact frames of 120). The raw UAL walk comparison
 mesh itself reaches about 0.047 m below the plane. These flat-mode results still need a live
-visual verdict; exact pose matching on a moving root may cause horizontal foot slide.
+visual verdict, especially at contact acquisition and release.
 
 Stairs require more than this whole-body height correction. `--stair-source-report` finds the raw
 stair-up shoe up to 0.313 m inside the current higher tread and the raw stair-down shoe up to
@@ -184,7 +192,7 @@ control from motion data and environmental information, not from one clip alone.
 
 ## Recommended next experiment
 
-First get a live visual verdict on the four flat modes, especially horizontal foot slide and any
+First get a live visual verdict on the four flat modes, especially contact transitions and any
 pelvis bob introduced by clearance. Their mesh checks establish shoe-to-flat-plane clearance but
 not convincing weight transfer. For stairs, align clip phase and root travel to real tread geometry
 before copying a full source pose; then add a mesh-versus-tread check and a controlled correction.
@@ -194,3 +202,15 @@ work without their source clips, remains future work. No gameplay integration is
 The scene still cannot validate general terrain adaptation, turning, or reliable stair-shoe
 contact. The moving root is a scripted path, not `Player` movement. Do not mistake a clean headless
 joint/mesh result for a finished walk animation.
+
+## Reading the up/down stair-course trace
+
+Press **Spawn up + down stairs (3 m ahead)**. The lab automatically saves the selected gait's
+final pose once per physics frame to `user://procedural_walk_course.jsonl` (the absolute path is
+printed once in the Godot output). Captures are bounded and a new button press starts a new one.
+For a compact report, run `python3 scripts/procedural_walk_trace.py PATH summary`; use `worst
+--metric ankle --n 8` to locate abrupt foot motion, then `window --frame N --radius 4` to inspect
+contacts, targets, pelvis correction, and joint deltas around it. `events` lists section/contact
+transitions. Do not paste the raw JSONL into a chat; it can be large. The current Walk course is
+shoe-clear but still fails its one-frame ankle-motion regression, so a clearance-only PASS does
+not mean the stair gait is smooth (see task 034).

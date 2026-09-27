@@ -47,6 +47,7 @@ func run(lab: Node3D, character: Node3D, reference: Node3D,
 		var passed: bool = (bool(lab.get("_playing")) and stayed_moving and distance > 8.0
 				and floor_gap <= 0.5 and follows and floor_stage.get_child_count() == 2
 				and largest_panel.distance_to(smallest_panel) < 0.1 and side_view
+				and bool(lab.get("_raw_actor").step_plan_is_stable())
 				and cycle_distance_error < 0.01
 				and (mode_index != 3 or meters_per_second > walk_mps * 2.0))
 		all_passed = all_passed and passed
