@@ -46,6 +46,12 @@ const CONTACT_CLEARANCE := 0.02
 const CONTACT_RATE := 1.5
 const PLANNED_STEPS_PER_SIDE := 3
 const PLANNED_STEP_COUNT := PLANNED_STEPS_PER_SIDE * 2
+## How fast the stair-course pelvis reach drop may track its requirement (m/s).
+const STAIR_PELVIS_DROP_RATE := 0.6
+## Deepest the reach drop may go. One descent step plus the support knee's own bend needs about
+## 0.35 m (a 0.18 m tread plus the ~0.17 m the support leg shortens); a 0.25 cap left a measured
+## 0.13 m of residual reach error on the lab's down section.
+const STAIR_PELVIS_DROP_MAX := 0.40
 
 var _indices: Array[Array] = []
 var _hips := -1
@@ -65,6 +71,7 @@ var debug_pose_frame := -1
 var debug_reference_hips_y := 0.0
 var debug_floor_clearance := 0.0
 var debug_pelvis_drop := 0.0
+var _stair_pelvis_drop := 0.0
 var trace_capture: RefCounted
 var trace_character: Node3D
 var _gait_anchor_x: Array[float] = [0.0, 0.0]
@@ -87,6 +94,7 @@ var _source_contact_valid: Array[bool] = [false, false]
 func reset_moving_state() -> void:
 	_step_plan.reset()
 	_source_plan_ready = false
+	_stair_pelvis_drop = 0.0
 	for side in 2:
 		_source_contact_valid[side] = false
 		_has_plant[side] = false
@@ -220,6 +228,11 @@ func _process_modification_with_delta(delta: float) -> void:
 	hip_pose.origin.y += amount * (-STANDING_FLEX_DROP
 			+ bob * (1.0 - cos(phase * 2.0)) * 0.5)
 	skel.set_bone_global_pose(_hips, hip_pose)
+	# Only the authored stair reference gaits: applied to the bare procedural mode too, this drop
+	# traded its hover for new shoe penetration (+0.005 -> -0.067 m on the lab course), so that
+	# mode needs its own reach handling rather than borrowing this one.
+	if stair_course != null and reference_mode in [&"stair_up", &"stair_down"]:
+		_lower_pelvis_for_stair_reach(skel)
 	for side in 2:
 		_solve_side(skel, _indices[side], bases[side], side,
 				phase + SIDES[side][4])
@@ -370,6 +383,7 @@ func _moving_ankle_target(skel: Skeleton3D, side: int,
 				proposed = stair_safe_ankle(proposed)
 				proposed.y = (stair_support_height(proposed.z)
 						+ base_ankle.y)
+				proposed = _clamp_stair_target_to_reach(skel, side, proposed)
 			_ensure_step_plan(side, proposed, world_from_local)
 			_swing_to_world[side] = _step_plan.target(0)
 			_has_plant[side] = false
@@ -410,8 +424,11 @@ func _clear_stair_shoe(side: int, world_ankle: Vector3) -> Vector3:
 		var course_y := reference_bank.shoe_clearance_ankle_y(
 				reference_mode, phase, side, world_ankle.z,
 				stair_course.support_height) + 0.006
-		world_ankle.y = (course_y if _has_plant[side]
-				else maxf(world_ankle.y, course_y))
+		# Only ever LIFT. Forcing a planted foot *down* to the scheduled clearance drove its target
+		# below the floor (-0.037 m on the lab course); when that happens the gait's own placement
+		# is already the better answer, and the clearance only needs to raise a foot that would
+		# otherwise clip. Never let a clearance term lower a planted foot below where the gait puts it.
+		world_ankle.y = maxf(world_ankle.y, course_y)
 		return world_ankle
 	# A level ankle is not a level shoe: the sampled stair pose bends the toe down
 	# by up to 12 cm. Look under its forward envelope, including the next riser.
@@ -424,6 +441,27 @@ func _clear_stair_shoe(side: int, world_ankle: Vector3) -> Vector3:
 	world_ankle.y = maxf(world_ankle.y,
 			support + shoe_drop + 0.006)
 	return world_ankle
+
+
+## Never plan a landing the leg cannot reach. On a descent the predicted touchdown is a whole tread
+## ahead AND below the hip, which puts it past the leg's own reach: the solve then clamps short, the
+## knee locks straight and the shoe hovers (measured 0.53 m short, knee flex 5.6 deg, on the lab's
+## down section). Pull the target back along the hip->target line to the reach the leg actually has.
+##
+## Judging reach against the predicted touchdown hip (the swing's remaining travel, and the terrain
+## height there) was tried and measured no better: same residual error, worse joint step, so this
+## stays on the current hip.
+func _clamp_stair_target_to_reach(skel: Skeleton3D, side: int, target: Vector3) -> Vector3:
+	var chain: Array = _indices[side]
+	var hip := skel.global_transform * skel.get_bone_global_pose(chain[0]).origin
+	var knee := skel.global_transform * skel.get_bone_global_pose(chain[1]).origin
+	var ankle := skel.global_transform * skel.get_bone_global_pose(chain[2]).origin
+	var reach := hip.distance_to(knee) + knee.distance_to(ankle) - 0.017
+	var offset := target - hip
+	var distance := offset.length()
+	if distance <= reach or distance <= 0.0001:
+		return target
+	return hip + offset / distance * reach
 
 
 func _ensure_step_plan(side: int, proposed: Vector3, world_from_local: Transform3D) -> void:
@@ -614,6 +652,42 @@ func _lower_pelvis_for_course_reach(skel: Skeleton3D) -> void:
 	var hips_pose := skel.get_bone_pose_position(_hips)
 	hips_pose.y -= minf(drop, 0.25)
 	debug_pelvis_drop = minf(drop, 0.25)
+	skel.set_bone_pose_position(_hips, hips_pose)
+
+
+## Same reach math as _lower_pelvis_for_course_reach, but driven by the stair plant targets. On a
+## stair course a planted foot can sit a whole tread below the hip (descending): the solve then
+## clamps the target short, the shoe lands low and its heel sinks into the upper tread (measured
+## -4.4 cm on the lab's up+down course). The flat `walk` gait already lowers the pelvis for this;
+## the stair reference gaits never did.
+##
+## Rate-limited (unlike the flat version): each new plant can step the requirement by a whole tread
+## at once, and applying that instantly re-aimed the upper leg ~30deg in one frame. Tracking the
+## requirement over a short time removes the pop; the drop is a slow, continuous quantity, so a
+## lag here is a settle, not a delayed snap.
+func _lower_pelvis_for_stair_reach(skel: Skeleton3D) -> void:
+	var drop := 0.0
+	for side in 2:
+		if not _has_plant[side]:
+			continue
+		var chain: Array = _indices[side]
+		var hip := skel.global_transform * skel.get_bone_global_pose(chain[0]).origin
+		var knee := skel.global_transform * skel.get_bone_global_pose(chain[1]).origin
+		var ankle := skel.global_transform * skel.get_bone_global_pose(chain[2]).origin
+		var target: Vector3 = _plant_world[side]
+		var reach := hip.distance_to(knee) + knee.distance_to(ankle) - 0.017
+		var horizontal := Vector2(hip.x - target.x, hip.z - target.z).length()
+		if horizontal >= reach:
+			continue # A vertical change cannot rescue this horizontal miss.
+		var high_limit := target.y + sqrt(reach * reach - horizontal * horizontal)
+		drop = maxf(drop, maxf(0.0, hip.y - high_limit))
+	_stair_pelvis_drop = move_toward(_stair_pelvis_drop, minf(drop, STAIR_PELVIS_DROP_MAX),
+			STAIR_PELVIS_DROP_RATE * _delta)
+	if _stair_pelvis_drop <= 0.0001:
+		return
+	var hips_pose := skel.get_bone_pose_position(_hips)
+	hips_pose.y -= _stair_pelvis_drop
+	debug_pelvis_drop = _stair_pelvis_drop
 	skel.set_bone_pose_position(_hips, hips_pose)
 
 

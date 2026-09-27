@@ -7,9 +7,14 @@ extends RefCounted
 
 const MONITOR := preload("res://tools/foot_ik/foot_ik_live_penetration_monitor.gd")
 const LOG_THRESHOLD_M := 0.005 # ignore boundary-epsilon noise, flag real clipping only
+## Auto-freeze is opt-in: freezing the character on any contact makes the preview
+## unwalkable during ordinary manual play (a tiny foot/floor contact is normal and
+## the stop never resumes). The red marker + log line always stay on.
+const STOP_ON_CLIP_MARKER := "user://foot_ik_stop_on_clip_marker"
 
 var _markers: Dictionary = {} # side -> MeshInstance3D
 var _active: Dictionary = {} # side -> bool, last frame's state, for log throttling
+var _stop_on_clip := FileAccess.file_exists(STOP_ON_CLIP_MARKER)
 
 
 func spawn(parent: Node3D, side: String) -> void:
@@ -53,5 +58,6 @@ func update(space: PhysicsDirectSpaceState3D, mask: int, side: String,
 					rad_to_deg(player.rotation.y)]
 		print("[FOOT_IK_CLIP] frame=%d side=%s joint=%s depth_m=%.4f point=%s%s" % [
 				Engine.get_physics_frames(), side, joint, result["depth_m"], result["point"], context])
-		_stop_clipping_player(player)
+		if _stop_on_clip:
+			_stop_clipping_player(player)
 	_active[side] = true

@@ -13,7 +13,7 @@ const UAL := "res://assets/models/universal_animation_library/UAL1_Standard.glb"
 const STAIRS := "res://assets/models/stair_clips/"
 const SAMPLE_COUNT := 120
 const MODE_ORDER := [
-	&"walk", &"walk_aim", &"sprint", &"crouch", &"stair_up",
+	&"walk", &"walk_aim", &"sprint", &"crouch", &"stair_up", &"stair_down",
 ]
 const MODE_LABELS := {
 	&"walk": "Walk (UAL)",
@@ -21,6 +21,7 @@ const MODE_LABELS := {
 	&"sprint": "Sprint (UAL)",
 	&"crouch": "Crouch walk (UAL)",
 	&"stair_up": "Stair up (Mixamo)",
+	&"stair_down": "Stair down (Mixamo)",
 }
 
 var clips: Dictionary = {} # mode -> Animation on the MotusMan rig
@@ -63,6 +64,7 @@ func build(parent: Node3D, target_skeleton: Skeleton3D) -> bool:
 	ual_root.free()
 	target_root.queue_free()
 	clips[&"stair_up"] = (load(STAIRS + "stair_walk_up.res") as Animation).duplicate()
+	clips[&"stair_down"] = (load(STAIRS + "stair_walk_down.res") as Animation).duplicate()
 	for mode: StringName in MODE_ORDER:
 		if clips.get(mode) == null:
 			push_error("Procedural walk lab: missing reference clip %s" % mode)
