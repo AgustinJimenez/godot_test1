@@ -89,6 +89,13 @@ a swing-state window, flat-vs-stair joint smoothness), use `scripts/trace_query.
 printing frames - it emits a few compact lines and never the raw trace. See
 `AGENT_TASKS/archive/026_token_efficiency_workflow.md`.
 
+Foot IK v2 traces (`user://foot_ik_v2.jsonl` live, `user://foot_ik_v2_check.jsonl` headless
+checks - they never overwrite each other) are read with `scripts/trace_v2.sh` (GDScript, no
+Python): `--segments`, `--tips`, `--released`, `--body`, `--frame N`, `--check`, `--from/--to`.
+Do not write inline Python to analyze traces or edit files; if a field is missing, add a flag
+to `scripts/analyze_v2_trace.gd`. A v2 trace line carries its `run_id`, wall-clock `time` and
+`mode`, so copy a live trace out before running any headless check anyway.
+
 `trace_query.py angular --compare B.jsonl` reports per-joint per-frame rotation change
 (mean/p95/max/jerk in deg/frame) so flat vs stair can be A/B'd in one command. Capture the two
 sides with the marker recipes: `user://foot_ik_flat_forward_marker` (flat 3.2 m/s walk) and
