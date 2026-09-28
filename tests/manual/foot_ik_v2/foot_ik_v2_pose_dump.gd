@@ -1,4 +1,3 @@
-class_name FootIKV2PoseDump
 extends RefCounted
 ## Everything readable about one leg's pose for the trace: per-joint local rotation (Euler, and the
 ## delta from rest), knee / hip / ankle angles, segment lengths vs rest, knee bend-plane offset,

@@ -1,4 +1,3 @@
-class_name FootIKV2Stepper
 extends RefCounted
 ## A resting foot is never re-seated further than SPEED per physics frame. When a turn crosses a
 ## riser the flat-fit jumps to the other tread (0.28 m in ONE frame); the foot now walks there as a

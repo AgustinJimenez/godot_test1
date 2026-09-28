@@ -1,12 +1,12 @@
 extends Node3D
 ## Acceptance scene for v2 foot IK: flat, ramps 15/30/45 deg, three staircases. F6 toggles it.
 ## Headless `-- --foot-ik-v2-check` (and other flags below) walk / replay it and grade the result.
-
+const DEBUG_TIMER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_debug.gd")
+const POSE_DUMP := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_pose_dump.gd")
+const TURN_CHECK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_turn_check.gd")
 const V2_MODIFIER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_modifier.gd")
 const PERF_PROBE := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_perf_probe.gd")
-## v1's trace writer, unchanged - a bounded rotating JSONL window.
 const TRACE_WRITER := preload("res://tests/manual/foot_ik/foot_ik_trace_writer.gd")
-## Same schema trace_query.py reads, so v2 is inspected with the exact same tooling as v1.
 const TRACE_PATH := "user://foot_ik_v2.jsonl"
 ## Headless checks write here so they can never overwrite a live session's trace.
 const CHECK_TRACE_PATH := "user://foot_ik_v2_check.jsonl"
@@ -210,8 +210,8 @@ func _ready() -> void:
 			if arg.begins_with("--stairs-turn="): # yaw sweep in place, `=dz` m along the treads
 				_stairs_start = true
 				_stairs_z += arg.trim_prefix("--stairs-turn=").to_float()
-				_foot_step_limit = FootIKV2TurnCheck.FOOT_STEP_LIMIT
-				_replay = FootIKV2TurnCheck.replay()
+				_foot_step_limit = TURN_CHECK.FOOT_STEP_LIMIT
+				_replay = TURN_CHECK.replay()
 		if "--stairs-edge" in OS.get_cmdline_user_args():
 			# stairs' right edge, one foot on step 3, the other off the side over the floor 0.38 m down
 			_stairs_start = true
@@ -258,7 +258,7 @@ func _ready() -> void:
 	if "--foot-ik-v2-no-reach-when-moving" in OS.get_cmdline_user_args():
 		_v2.reach_when_moving = false
 	if "--foot-ik-v2-perf" in OS.get_cmdline_user_args():
-		FootIKV2Debug.enabled = true
+		DEBUG_TIMER.enabled = true
 	add_child(PERF_PROBE.new()) # no-op unless FOOT_IK_V2_PERF_LOG=1 or --foot-ik-v2-perf
 	_mode = "ramp_check" if _ramp_checking else ("forward_check" if _checking else "live")
 	_run_id = "%s_%d" % [Time.get_datetime_string_from_system(false, true).replace(" ", "T"),
@@ -646,7 +646,7 @@ func _capture() -> void:
 			"state": _v2.debug_state.get(side, ""),
 			"align": _v2.debug_align.get(side, {}),
 			"joints": joints,
-			"pose": FootIKV2PoseDump.describe(_v2, player.skeleton, side, -player.global_basis.z),
+			"pose": POSE_DUMP.describe(_v2, player.skeleton, side, -player.global_basis.z),
 		}
 	_trace.capture(JSON.stringify(frame))
 
@@ -958,7 +958,7 @@ func _measure_ramp() -> void:
 		var leg: Dictionary = _v2._legs.get(side, {})
 		if leg.is_empty():
 			continue
-		_foot_step_max = maxf(_foot_step_max, FootIKV2TurnCheck.step(
+		_foot_step_max = maxf(_foot_step_max, TURN_CHECK.step(
 				_turn_prev, side, _pub(int(leg["foot"])).origin, _grade_now))
 		if _grade_now and not _v2.debug_stepping.get(side, false): # a step floats by design
 			_grade_tip(side, _segment)

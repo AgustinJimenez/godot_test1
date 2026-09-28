@@ -2,7 +2,7 @@ extends Node
 ## Standalone engine-wide perf probe for the v2 lab - same design as v1's foot_ik_perf_probe.gd.
 ## Opt-in: set FOOT_IK_V2_PERF_LOG=1. Prints engine-wide counters once per second so a real FPS
 ## drop can be attributed to render/physics/object growth instead of guessed at.
-
+const DEBUG_TIMER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_debug.gd")
 var _enabled := OS.get_environment("FOOT_IK_V2_PERF_LOG") == "1"
 var _window_start_frame := 0
 var _known_node_paths: Dictionary = {} # NodePath (as string) -> true, snapshot from last window
@@ -31,8 +31,8 @@ func _physics_process(_delta: float) -> void:
 			Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
 			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
 	_diff_node_tree()
-	if FootIKV2Debug.enabled:
-		print(FootIKV2Debug.report())
+	if DEBUG_TIMER.enabled:
+		print(DEBUG_TIMER.report())
 
 
 func _diff_node_tree() -> void:

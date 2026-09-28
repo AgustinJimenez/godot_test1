@@ -1,4 +1,3 @@
-class_name FootIKV2TurnCheck
 extends RefCounted
 ## Turn-in-place regression (v1's "rotation snap" idea): stand still on the stairs and step the
 ## body's yaw 2 degrees at a time through a full circle. Every step swings the animated feet to new

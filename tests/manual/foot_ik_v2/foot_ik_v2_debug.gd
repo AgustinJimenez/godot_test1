@@ -1,4 +1,3 @@
-class_name FootIKV2Debug
 extends RefCounted
 ## Opt-in per-part CPU timing for the v2 modifier - same technique as v1's foot_ik_debug.gd
 ## (begin()/end() around a part, a periodic report), scoped down since v2 has far fewer switches.

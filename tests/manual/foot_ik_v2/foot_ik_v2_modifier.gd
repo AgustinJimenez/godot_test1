@@ -1,9 +1,9 @@
 class_name FootIKV2Modifier
 extends SkeletonModifier3D
 ## v2 foot IK: per leg, sample the ground under the animated foot, solve hip -> knee -> ankle.
-
-## Role names are the character's humanoid roles, resolved through PlayerBody for any character.
-const LEGS := {
+const DEBUG_TIMER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_debug.gd")
+const STEPPER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_stepper.gd")
+const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot",
 		"toe": &"LeftToeBase"},
 	&"right": {"hip": &"RightUpLeg", "knee": &"RightLeg", "foot": &"RightFoot",
@@ -124,7 +124,7 @@ var debug_reach_check: Dictionary = {}
 ## side -> "released", "at_target", or "stretched" (out of reach): grades only feet meant down.
 var debug_state: Dictionary = {}
 var debug_stepping: Dictionary = {} # side -> walking a step (a graded float is expected)
-var _stepper := FootIKV2Stepper.new()
+var _stepper := STEPPER.new()
 ## side -> {"before_deg", "after_deg", "applied"}: sole vs surface normal before/after the align.
 var debug_align: Dictionary = {}
 
@@ -218,7 +218,7 @@ func _process_modification_with_delta(_delta: float) -> void:
 	var skel := get_skeleton()
 	if skel == null or _legs.is_empty():
 		return
-	var t0 := FootIKV2Debug.begin()
+	var t0 := DEBUG_TIMER.begin()
 	if enabled:
 		debug_last_frame = Engine.get_physics_frames()
 		debug_passes += 1
@@ -228,8 +228,8 @@ func _process_modification_with_delta(_delta: float) -> void:
 		for side: StringName in _legs:
 			_place_foot(skel, side, _legs[side])
 	_publish_final_poses(skel)
-	FootIKV2Debug.end(&"total", t0)
-	FootIKV2Debug.frame_tick()
+	DEBUG_TIMER.end(&"total", t0)
+	DEBUG_TIMER.frame_tick()
 
 
 ## World transforms captured at the END of this pass (other reads were stale), even when disabled.
@@ -546,7 +546,7 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	debug_ground_normal[side] = normal
 
 
-## A resting foot moves at most a step a frame (`FootIKV2Stepper`); a riser turn popped 0.28 m.
+## A resting foot moves at most a step a frame (foot_ik_v2_stepper.gd); a riser turn popped 0.28 m.
 func _limit_step(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: Transform3D,
 		side: StringName) -> void:
 	var here := (to_world * skel.get_bone_global_pose(int(leg["foot"]))).origin
@@ -900,9 +900,9 @@ func _measure_heel_local(skel: Skeleton3D, side: StringName, foot: int, toe: int
 ## `SOLE_GAP_TOLERANCE` off the floor - the rigid rest-offset clear/heel points miss a GPU blend.
 func _sink_to_true_sole(skel: Skeleton3D, side: StringName, leg: Dictionary, base: Dictionary,
 		to_world: Transform3D, hip_world: Vector3) -> void:
-	var t0 := FootIKV2Debug.begin()
+	var t0 := DEBUG_TIMER.begin()
 	_sink_to_true_sole_impl(skel, side, leg, base, to_world, hip_world)
-	FootIKV2Debug.end(&"sink", t0)
+	DEBUG_TIMER.end(&"sink", t0)
 
 
 func _sink_to_true_sole_impl(skel: Skeleton3D, side: StringName, leg: Dictionary, base: Dictionary,
