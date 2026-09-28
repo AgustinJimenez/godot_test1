@@ -11,6 +11,8 @@ const STEP_DEG := 2.0
 const HOLD_FRAMES := 10
 const SETTLE_FRAMES := 2 # the snap frame(s) themselves are not graded
 const START_YAW_DEG := 13.2
+const SNAP_DEG := 40.0 # the fast turns after the fine sweep
+const SNAP_HOLD_FRAMES := 14
 # m in one frame after the settle (a step is 2.5 cm/frame plus its lift arc; was 0.28 m unstepped).
 const STEPPING_SHARE_LIMIT := 0.15 # of graded foot-frames a foot may spend walking a step
 const FOOT_STEP_LIMIT := 0.07
@@ -22,6 +24,12 @@ static func replay() -> Array:
 		steps.append({"name": "idle_turn_%03d" % index, "input": Vector2.ZERO,
 				"frames": HOLD_FRAMES, "grade": true, "settle": SETTLE_FRAMES,
 				"yaw": START_YAW_DEG + float(index) * STEP_DEG})
+	# then big fast snaps (a quick turn on the spot): the body carries the feet with it - that is
+	# NOT a step, and a stepper that treats it as one drags the foot behind the turn (the loop)
+	for index in int(360.0 / SNAP_DEG):
+		steps.append({"name": "idle_snap_%03d" % index, "input": Vector2.ZERO,
+				"frames": SNAP_HOLD_FRAMES, "grade": true, "settle": SETTLE_FRAMES,
+				"yaw": START_YAW_DEG + float(index) * SNAP_DEG})
 	return steps
 
 

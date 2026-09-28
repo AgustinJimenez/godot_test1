@@ -540,7 +540,7 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	_flatten_support(skel, leg, base, to_world, hip_world, side)
 	debug_toe_lift[side] = 0.0
 	_clear_toe(skel, leg, base, to_world, hip_world, side)
-	_limit_step(skel, leg, base, to_world, side)
+	_limit_step(skel, leg, base, side)
 	var landed: Vector3 = skel.get_bone_global_pose(int(leg["foot"])).origin
 	# How far the foot ended from the FINAL target (after resample, retreat, lift): stale misread.
 	var final_target: Vector3 = to_world.affine_inverse() * (debug_target[side] as Vector3)
@@ -551,16 +551,15 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	debug_ground_normal[side] = normal
 
 
-func _limit_step(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: Transform3D,
+func _limit_step(skel: Skeleton3D, leg: Dictionary, base: Dictionary,
 		side: StringName) -> void:
-	var here := (to_world * skel.get_bone_global_pose(int(leg["foot"]))).origin
+	# in SKELETON space: the body turning or travelling carries the foot with it and is never a step
+	var here := skel.get_bone_global_pose(int(leg["foot"])).origin
 	var planted := not _is_moving and float(_plant_weight.get(side, 1.0)) >= SUPPORT_MIN_PLANT
-	# relative to the character root, so a teleport or the body's own travel is never a step
-	var origin := to_world.origin
-	var moved := _stepper.limit(side, Engine.get_physics_frames(), here - origin, planted) + origin
+	var moved := _stepper.limit(side, Engine.get_physics_frames(), here, planted)
 	debug_stepping[side] = _stepper.stepping.get(side, false)
 	if not moved.is_equal_approx(here):
-		_solve(skel, leg, base, to_world.affine_inverse() * moved, side)
+		_solve(skel, leg, base, moved, side)
 		_align_foot(skel, leg, debug_ground_normal.get(side, Vector3.UP), side)
 
 

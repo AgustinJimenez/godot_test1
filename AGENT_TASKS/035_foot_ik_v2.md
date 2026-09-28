@@ -203,6 +203,16 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
     backward-knee guard removed the forward walk reports faults=2 and FAILS. Still not done: an
     ankle/foot angle limit.
 
+13. **Foot "loop-rotates" on a fast turn (user) - FIXED.** The log: yaw -177 -> 123 deg in ~6 frames,
+    right foot walked 41 cm in the world at 2.5 cm/frame then stopped, repeating each turn.
+    `FootIKV2Stepper` was fed WORLD-relative positions, so a body turn (the animated foot swings
+    with it) read as a big re-seat and the foot was dragged behind the body as a "step". The stepper
+    now works in SKELETON space (`_limit_step`), so the body turning/travelling carries the foot
+    with it and only a genuine re-seat of the foot against the body is a step. Regression: the turn
+    sweep continues with 9 big 40 deg snaps (`idle_snap_*`, 14 frames each); verified it FAILS with
+    the old world-space stepper (foot_step_max 0.148 > 0.07) and passes now. Also removed the
+    `to_world` parameter from `_limit_step`.
+
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 
 - `foot_ik_v2_modifier.gd`: a trailing foot that cannot reach its surface is RELEASED to step instead
