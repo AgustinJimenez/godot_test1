@@ -115,9 +115,8 @@ var debug_passes := 0
 ## bone index -> world Transform3D as published at the end of the last pass, and its physics frame.
 var final_pose: Dictionary = {}
 var final_frame := -1
-## The pelvis drop applied this frame (m), for the trace.
 var _stretch_hold := 0.0 # extra pelvis drop a resting, unreachable foot asked for
-var debug_pelvis_drop := 0.0
+var debug_pelvis_drop := 0.0 # the pelvis drop applied this frame (m), for the trace
 var debug_solve: Dictionary = {}
 ## side -> {hip_to_target, reach}: the reach decision every frame, released or not (trace).
 var debug_reach_check: Dictionary = {}
@@ -287,9 +286,10 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 	# A resting foot still out of reach (the plan samples the ANIMATED ankle) asks for more drop.
 	_stretch_hold = 0.0 if moving else _stretch_hold
 	for side: StringName in _legs:
-		if not moving and debug_state.get(side, "") == "stretched":
-			_stretch_hold = maxf(_stretch_hold, _pelvis_drop + float(
-					(debug_solve.get(side, {}) as Dictionary).get("residual", 0.0)))
+		var solved: Dictionary = debug_solve.get(side, {})
+		# only a REACH-clamped foot (a stepping foot lags too: that ratcheted the drop to 0.4 m)
+		if not moving and solved.get("clamped", false) and not debug_stepping.get(side, false):
+			_stretch_hold = maxf(_stretch_hold, _pelvis_drop + float(solved.get("residual", 0.0)))
 	needed = minf(maxf(needed, _stretch_hold), max_pelvis_drop)
 	if moving:
 		needed = minf(needed, moving_pelvis_drop)
