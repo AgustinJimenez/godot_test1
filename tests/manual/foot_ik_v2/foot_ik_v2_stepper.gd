@@ -7,6 +7,7 @@ extends RefCounted
 
 const SPEED := 0.025 # m/frame (1.5 m/s)
 const LIFT := 0.05 # m the foot rises at mid-step
+const TRIGGER := 0.10 # m: a smaller re-seat passes straight through (slow walks clipped ramps)
 
 var stepping: Dictionary = {} # side -> walking a step this frame (a graded float is expected)
 var _frame: Dictionary = {}
@@ -25,18 +26,17 @@ func limit(side: StringName, frame: int, here: Vector3, planted: bool) -> Vector
 		_start[side] = _last.get(side, here) if continuing else here
 		_was_planted[side] = planted
 		var jump := (_start[side] as Vector3).distance_to(here)
-		if not _length.has(side) and jump > SPEED:
+		if not _length.has(side) and jump > TRIGGER:
 			_length[side] = jump
 	var start: Vector3 = _start[side]
 	var left := start.distance_to(here)
-	if not planted or left <= SPEED:
+	if not planted or left <= SPEED or not _length.has(side):
 		_length.erase(side)
 		_last[side] = here
 		stepping[side] = false
 		return here
 	var moved := start.move_toward(here, SPEED)
 	var progress := 1.0 - (left - SPEED) / maxf(float(_length.get(side, left)), 0.001)
-	moved.y += LIFT * sin(PI * clampf(progress, 0.0, 1.0))
-	_last[side] = moved
+	_last[side] = moved # the path WITHOUT the lift: kept in it the foot never got within SPEED
 	stepping[side] = true
-	return moved
+	return moved + Vector3.UP * LIFT * sin(PI * clampf(progress, 0.0, 1.0))

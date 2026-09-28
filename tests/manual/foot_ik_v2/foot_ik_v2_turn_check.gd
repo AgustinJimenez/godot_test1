@@ -11,8 +11,8 @@ const STEP_DEG := 2.0
 const HOLD_FRAMES := 10
 const SETTLE_FRAMES := 2 # the snap frame(s) themselves are not graded
 const START_YAW_DEG := 13.2
-# m in one frame after the settle. KNOWN OPEN: a turn that crosses a riser re-seats the foot 0.28 m
-# in one frame (no step arc yet) - tighten to 0.03 when it has one.
+# m in one frame after the settle (a step is 2.5 cm/frame plus its lift arc; was 0.28 m unstepped).
+const STEPPING_SHARE_LIMIT := 0.15 # of graded foot-frames a foot may spend walking a step
 const FOOT_STEP_LIMIT := 0.07
 
 
@@ -25,10 +25,20 @@ static func replay() -> Array:
 	return steps
 
 
-## Largest one-frame move of `pos` for `side` since the last call (0 when not graded).
-static func step(previous: Dictionary, side: StringName, pos: Vector3, graded: bool) -> float:
+## Largest one-frame move of `pos` for `side` since the last call (0 when not graded). A foot that
+## is walking a step is skipped by the tip / heel grading, so it must not be allowed to step for
+## most of the sweep (the step limiter once never finished and vibrated the foot): past
+## STEPPING_SHARE_LIMIT of the graded frames this returns a failing 9.9.
+static func step(previous: Dictionary, side: StringName, pos: Vector3, graded: bool,
+		stepping: bool) -> float:
 	var moved := 0.0
-	if graded and previous.has(side):
-		moved = pos.distance_to(previous[side] as Vector3)
+	if graded:
+		previous["frames"] = int(previous.get("frames", 0)) + 1
+		previous["stepping"] = int(previous.get("stepping", 0)) + (1 if stepping else 0)
+		if previous.has(side):
+			moved = pos.distance_to(previous[side] as Vector3)
+		if int(previous["frames"]) > 200 and float(previous["stepping"]) > (
+				STEPPING_SHARE_LIMIT * float(previous["frames"])):
+			moved = 9.9
 	previous[side] = pos
 	return moved

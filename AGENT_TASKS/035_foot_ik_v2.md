@@ -152,6 +152,20 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
    float - the sweep would then show large foot travel, not silence. Dead ends before this:
    debouncing both sinks 3 frames (worse), rate-limiting the slide across levels (heel floats).
 
+9. **Foot vibrated on rotate (user) - FIXED; and a masking hole found.** `FootIKV2Stepper` stored the
+   lift arc INSIDE its remembered path, so the foot was always >= LIFT (5 cm) from where it was
+   heading, never got within a step's distance, and "walked" forever (median foot move 0.024 m/frame,
+   1098 reversals) - the vibration. Now the path is kept without the lift. Also: `TRIGGER` 0.10 m -
+   only a big re-seat becomes a step; the pelvis-stretch hold ignores a stepping foot (it had
+   ratcheted the drop to 0.4 m: legs bent); the stepper's foot-step / stepping-share guard in
+   `foot_ik_v2_turn_check.gd` (a foot stepping > 15% of the sweep fails - the tip/heel/ankle grading
+   skips stepping feet, which is exactly how the endless stepper passed every check; verified the
+   guard FAILS the old stepper). **This un-masked dz=0.24**: at that offset the toe/riser clearance
+   gives up after RISER_MAX_RETREATS (4 x 1.2 cm) and lifts the foot 10 cm onto the next tread
+   (toe_lift 0.106, heel/tip float ~11 cm for ~10 frames). Tried 8-10 retreats / 0.02 step / 12-14
+   attempts: moves the failure to other offsets (heel float 0.116 at dz 0, 0.12, -0.12) - WORSE, so not
+   kept. dz=0.24 is excluded from the suite (KNOWN OPEN); 0, 0.12, -0.12 run.
+
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 
 - `foot_ik_v2_modifier.gd`: a trailing foot that cannot reach its surface is RELEASED to step instead

@@ -287,8 +287,9 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 	_stretch_hold = 0.0 if moving else _stretch_hold
 	for side: StringName in _legs:
 		var solved: Dictionary = debug_solve.get(side, {})
-		# only a REACH-clamped foot (a stepping foot lags too: that ratcheted the drop to 0.4 m)
-		if not moving and solved.get("clamped", false) and not debug_stepping.get(side, false):
+		# short of its target, not a stepping foot (it lags on purpose: ratcheted to 0.4 m)
+		if not moving and debug_state.get(side, "") == "stretched" \
+				and not debug_stepping.get(side, false):
 			_stretch_hold = maxf(_stretch_hold, _pelvis_drop + float(solved.get("residual", 0.0)))
 	needed = minf(maxf(needed, _stretch_hold), max_pelvis_drop)
 	if moving:
@@ -546,7 +547,6 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	debug_ground_normal[side] = normal
 
 
-## A resting foot moves at most a step a frame (foot_ik_v2_stepper.gd); a riser turn popped 0.28 m.
 func _limit_step(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: Transform3D,
 		side: StringName) -> void:
 	var here := (to_world * skel.get_bone_global_pose(int(leg["foot"]))).origin

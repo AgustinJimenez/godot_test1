@@ -959,14 +959,14 @@ func _measure_ramp() -> void:
 		if leg.is_empty():
 			continue
 		_foot_step_max = maxf(_foot_step_max, TURN_CHECK.step(
-				_turn_prev, side, _pub(int(leg["foot"])).origin, _grade_now))
+				_turn_prev, side, _pub(int(leg["foot"])).origin, _grade_now,
+				_v2.debug_stepping.get(side, false)))
 		if _grade_now and not _v2.debug_stepping.get(side, false): # a step floats by design
 			_grade_tip(side, _segment)
 			_grade_heel(side, _segment)
 
 
-## Real surface height above a point: cast from well above the body so a ramp/step is found even
-## when the point itself sits below it.
+## Real surface height above a point, cast from well above the body (a ramp/step above it is found).
 func _surface_above(point: Vector3) -> float:
 	var space := get_world_3d().direct_space_state
 	if space == null:
