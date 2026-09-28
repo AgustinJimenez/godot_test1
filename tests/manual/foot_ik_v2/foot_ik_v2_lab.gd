@@ -25,13 +25,11 @@ const ANKLE_TOLERANCE := 0.06
 const TILT_TOLERANCE_DEG := 12.0
 ## The user's scenario: stand on the closest ramp and strafe left/right along the cross-slope.
 const LATERAL_LANE := 1        # ramp15
-## The user's live session, replayed: standing on ramp15 turned across the slope (yaw ~99 deg),
-## strafing DOWNhill (left) and UPhill (right) in alternating passes with a brief pause between.
+## Live session replayed: on ramp15 across the slope (yaw ~99 deg), strafing DOWN/UPhill in passes.
 const REPLAY_START_X_OFFSET := 1.7
 const REPLAY_START_Z := -0.6
 const REPLAY_YAW_DEG := 99.0
-## Regression: idle at mid-ramp, body across the slope; the downhill foot's floor was out of reach
-## and it hung ~7 cm up. Replays that session from the floor: run, JUMP onto the ramp, walk/stop.
+## Regression: idle across a ramp, downhill foot out of reach (hung ~7 cm); run, JUMP, walk/stop.
 const IDLE_START_X_OFFSET := 4.9 # root x -3.1 (on the floor) relative to the ramp lane's x
 const IDLE_START_Z := 0.19
 const IDLE_YAW_DEG := 89.0
@@ -46,8 +44,7 @@ const IDLE_REPLAY := [
 	{"name": "walk_b", "input": Vector2(0.0, -1.0), "frames": 34, "yaw": 95.1, "grade": false},
 	{"name": "idle_end", "input": Vector2.ZERO, "frames": 450, "grade": true},
 ]
-## Jumping on the 45 deg ramp: the standing squat used to fire in the air and on landing. Graded:
-## the pelvis drop stays within `pelvis_limit` after PELVIS_GRACE_FRAMES, drift within `max_drift`.
+## Jumping on the 45 deg ramp: pelvis drop within `pelvis_limit` after PELVIS_GRACE_FRAMES.
 const PELVIS_GRACE_FRAMES := 30
 const JUMP_REPLAY := [
 	{"name": "idle_settle", "input": Vector2.ZERO, "frames": 30, "grade": false},
@@ -123,6 +120,10 @@ var _grade_now := true
 var _from_floor := false
 var _stairs_start := false
 var _stairs_x := 0.5
+var _stairs_z := 1.36
+var _foot_step_limit := INF # `--stairs-turn`: max one-frame foot move once a turn settles
+var _foot_step_max := 0.0
+var _turn_prev := {}
 var _stairs_walk_lane := -1
 var _pelvis_limit := INF
 var _frames_in_segment := 0
@@ -183,8 +184,7 @@ func _ready() -> void:
 			_from_floor = false
 			_start = Vector3(2.4, IDLE_START_Z, IDLE_YAW_DEG)
 		if "--uphill" in OS.get_cmdline_user_args():
-			# Facing UP the slope (live log, last frame): one foot ahead and higher, one behind and
-			# lower, so the rear foot's floor is far below the animation's flat-ground stance.
+			# Facing UP the slope: the rear foot's floor is far below the flat-ground stance.
 			_from_floor = false
 			_start = Vector3(2.4, IDLE_START_Z, -7.9)
 			_replay = [{"name": "idle_uphill", "input": Vector2.ZERO, "frames": 450, "grade": true}]
@@ -195,8 +195,7 @@ func _ready() -> void:
 			_start = Vector3(2.4, IDLE_START_Z, 95.1)
 			_replay = JUMP_REPLAY
 		if "--stairs" in OS.get_cmdline_user_args():
-			# live log: idle on the 0.10 m stairs, shoe tip against the next riser (the clearance
-			# pass used to lift the whole foot 10 cm onto it, leaving the heel floating)
+			# idle on the 0.10 m stairs, shoe tip against the next riser (heel used to float)
 			_stairs_start = true
 			_replay = [{"name": "idle_stairs", "input": Vector2.ZERO, "frames": 300, "grade": true}]
 		for arg: String in OS.get_cmdline_user_args():
@@ -208,6 +207,11 @@ func _ready() -> void:
 			if arg.begins_with("--walk-speed="): # walk at X m/s, clip at normal playback
 				player.stair_walk_speed_scale = 1.0
 				player.walk_speed = arg.trim_prefix("--walk-speed=").to_float()
+			if arg.begins_with("--stairs-turn="): # yaw sweep in place, `=dz` m along the treads
+				_stairs_start = true
+				_stairs_z += arg.trim_prefix("--stairs-turn=").to_float()
+				_foot_step_limit = FootIKV2TurnCheck.FOOT_STEP_LIMIT
+				_replay = FootIKV2TurnCheck.replay()
 		if "--stairs-edge" in OS.get_cmdline_user_args():
 			# stairs' right edge, one foot on step 3, the other off the side over the floor 0.38 m down
 			_stairs_start = true
@@ -219,8 +223,7 @@ func _ready() -> void:
 		_start = Vector3(REPLAY_START_X_OFFSET, REPLAY_START_Z, REPLAY_YAW_DEG)
 	for child: Node in player.skeleton.get_children():
 		if child is PlayerFootIKModifier:
-			# v1 off: `active = false` is not enough - it turns itself back on every landing
-			# (set_character_grounded), so v1 and v2 fought. The debug switch is the one that sticks.
+			# v1 off: `active = false` re-enables on every landing; the debug switch sticks.
 			(child as PlayerFootIKModifier).set_debug_enabled(false)
 	# Bisect switch: `--disable-modifier=<NodeName>` turns one existing skeleton modifier off.
 	for child: Node in player.skeleton.get_children():
@@ -236,8 +239,7 @@ func _ready() -> void:
 	_v2.enabled = not ("--foot-ik-v2-off" in OS.get_cmdline_user_args())
 	if "--foot-ik-v2-no-pelvis-drop" in OS.get_cmdline_user_args():
 		_v2.max_pelvis_drop = 0.0
-	# Ledge safety pushes the root toward a "safe" landing at 3 m/s while falling (slid ~1.6 m on a
-	# ramp jump); zeroed here (`--foot-ik-v2-ledge-safety` keeps it), the edge clamp stays on.
+	# Ledge safety's 3 m/s airborne push slid ~1.6 m on a ramp jump: zeroed (`--...-ledge-safety`).
 	var v1: PlayerFootIKModifier = player.body._foot_ik_modifier
 	if v1 != null and "--foot-ik-v2-ledge-safety" not in OS.get_cmdline_user_args():
 		v1._ground_sampler._settings.landing_correction_speed = 0.0
@@ -289,8 +291,7 @@ func _process(_delta: float) -> void:
 	_update_toe_spheres()
 
 
-## Orange sphere on each toe tip, v1's definition (foot_ik_toe_tip_clearance.gd): the toe bone
-## pushed TOE_TIP_MARGIN further along the ankle-to-toe direction. Interactive runs only.
+## Sphere on each toe tip (v1's definition: toe bone + TOE_TIP_MARGIN forward). Interactive only.
 func _build_toe_spheres() -> void:
 	var mesh := SphereMesh.new()
 	mesh.radius = 0.015
@@ -341,8 +342,7 @@ func _update_toe_spheres() -> void:
 		var sphere: MeshInstance3D = _toe_spheres[side]
 		var tip := _tip_point(side)
 		sphere.global_position = tip
-		# Green = the tip touches the real surface under it, red = it does not (floating above it,
-		# or sunk below it). Every frame, swing or not - what you see is what is graded.
+		# Green = the tip touches the real surface under it, red = floating above or sunk below it.
 		var surface := _surface_above(tip)
 		var touching := (not is_nan(surface) and (_overhangs(side, surface)
 				or (tip.y - surface >= -TOUCH_BELOW and tip.y - surface <= TOUCH_ABOVE)))
@@ -359,8 +359,7 @@ func _update_toe_spheres() -> void:
 	_update_sole_lines()
 
 
-## One straight line per foot from the heel sphere to the tip sphere: a bend between them is a
-## measurement mismatch, not a real foot shape.
+## One straight line per foot, heel sphere to tip sphere (a bend between them is a mismatch).
 func _update_sole_lines() -> void:
 	if _sole_lines == null:
 		return
@@ -372,8 +371,7 @@ func _update_sole_lines() -> void:
 	_sole_lines.surface_end()
 
 
-## The mesh-measured rearmost sole-level point on the published foot pose, raised so a flat resting
-## foot has the heel and tip spheres level (the tip rests 15 mm up).
+## The mesh-measured rearmost sole point, raised so a flat foot has heel and tip spheres level.
 func _heel_point(side: StringName) -> Vector3:
 	var leg: Dictionary = _v2._legs[side]
 	return _pub(int(leg["foot"])) * (leg["heel_local"] as Vector3) + Vector3.UP * 0.015
@@ -399,8 +397,7 @@ func _tip_point(side: StringName) -> Vector3:
 	return toe.origin + (toe.origin - foot.origin).normalized() * TOE_TIP_MARGIN
 
 
-## A foot meant to be down: the animation or the correction puts the ankle near the surface.
-## A swing foot is legitimately in the air, so its tip is never graded.
+## A foot meant to be down (ankle near the surface); a swing foot's tip is never graded.
 func _foot_is_grounded(side: StringName, surface_under_tip: float) -> bool:
 	var leg: Dictionary = _v2._legs[side]
 	var foot: Transform3D = _pub(int(leg["foot"]))
@@ -649,6 +646,7 @@ func _capture() -> void:
 			"state": _v2.debug_state.get(side, ""),
 			"align": _v2.debug_align.get(side, {}),
 			"joints": joints,
+			"pose": FootIKV2PoseDump.describe(_v2, player.skeleton, side, -player.global_basis.z),
 		}
 	_trace.capture(JSON.stringify(frame))
 
@@ -877,7 +875,7 @@ func _place_on_ramp() -> void:
 		return
 	if _stairs_start:
 		# Step 3 of the 0.10 m staircase (top 0.30, z 1.225..1.575), 1.36 m in, facing 13 degrees.
-		player.global_position = Vector3(_lane_x(4) + _stairs_x, 0.6, 1.36)
+		player.global_position = Vector3(_lane_x(4) + _stairs_x, 0.6, _stairs_z)
 		player.rotation = Vector3(0.0, deg_to_rad(13.2), 0.0)
 		player.velocity = Vector3.ZERO
 		_settle = 0
@@ -924,7 +922,7 @@ func _run_ramp_check() -> void:
 	if frames_left == 0:
 		_segment_start_xz = Vector2(player.global_position.x, player.global_position.z)
 	_grade_now = bool(step.get("grade", true)) and (
-			not _idle_checking or frames_left >= IDLE_SETTLE_FRAMES)
+			not _idle_checking or frames_left >= int(step.get("settle", IDLE_SETTLE_FRAMES)))
 	player.movement_input_override = step["input"]
 	_walk += 1
 	_measure_ramp()
@@ -933,15 +931,15 @@ func _run_ramp_check() -> void:
 func _finish_ramp_check() -> void:
 	player.movement_input_override = Vector2.ZERO
 	var passed := (_tip_clip_max <= TIP_CLIP_LIMIT and _tip_float_max <= _float_limit
-			and _pelvis_excess <= 0.0 and _drift_excess <= 0.0)
+			and _pelvis_excess <= 0.0 and _drift_excess <= 0.0 and _foot_step_max <= _foot_step_limit)
 	for segment: Dictionary in _replay:
 		var stats: Array = _tip_by_spot.get(str(segment["name"]), [0.0, 0.0, 0, 0])
 		print(("  segment %-10s frames=%3d tip_clip_max=%.3f tip_float_max=%.3f "
 				+ "clip_frames=%d float_frames=%d") % [segment["name"], segment["frames"],
 				stats[0], stats[1], stats[2], stats[3]])
-	print("FOOT_IK_V2_%s %s frames=%d %s limits=clip<=%.3f,float<=%.3f" % [
+	print("FOOT_IK_V2_%s %s frames=%d %s foot_step_max=%.3f limits=clip<=%.3f,float<=%.3f" % [
 			"IDLE_CHECK" if _idle_checking else "RAMP_CHECK", "PASS" if passed else "FAIL",
-			_walk, _tip_summary(), TIP_CLIP_LIMIT, _float_limit])
+			_walk, _tip_summary(), _foot_step_max, TIP_CLIP_LIMIT, _float_limit])
 	get_tree().quit(0 if passed else 1)
 
 
@@ -960,6 +958,8 @@ func _measure_ramp() -> void:
 		var leg: Dictionary = _v2._legs.get(side, {})
 		if leg.is_empty():
 			continue
+		_foot_step_max = maxf(_foot_step_max, FootIKV2TurnCheck.step(
+				_turn_prev, side, _pub(int(leg["foot"])).origin, _grade_now))
 		if _grade_now:
 			_grade_tip(side, _segment)
 			_grade_heel(side, _segment)

@@ -38,6 +38,10 @@ Lab flags (all after `--`): `--foot-ik-v2-check`, `--foot-ik-v2-ramp-check`, `--
 with `--ramp-index=0|1|2`, `--start-on-ramp`, `--uphill`, `--stairs`, `--stairs-edge`, `--jump45`,
 `--stairs-walk=0|1|2`, `--walk-speed=X`, `--foot-ik-v2-off`. In the live lab: V = camera, F6 = v2 on/off
 (the label turns red when off). Orange->green/red spheres on toe tip and heel = touching the real floor.
+**Joint angles:** every trace foot has a `pose` block (`foot_ik_v2_pose_dump.gd`): per-joint local Euler
++ delta from rest, knee/hip/shank flexion + abduction, ankle interior, foot pitch/yaw, knee bend-plane
+offset, segment lengths vs rest, for the FINAL pose and the pre-IK ANIMATED pose, plus `ik_delta`
+(final - animated). Flexion + = knee/ankle FORWARD of the joint above; abduction + = toward the right.
 **Perf:** `--foot-ik-v2-perf` (or `FootIKV2Debug.enabled = true`) prints a `[FOOT_IK_V2_PERF]` per-part
 usec report every 300 frames (`foot_ik_v2_debug.gd`, v1's begin/end technique). `FOOT_IK_V2_PERF_LOG=1`
 adds `[FOOT_IK_V2_ENGINE_PERF]` (fps/process/physics ms, draw calls, node-spawn diff every 60 frames -
@@ -121,6 +125,25 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
    foot/toe-weighted vertex's per-bone contributions (bone id, weight, bind-local point);
    `_eval_sole_points` replays them cheaply (`_measure_sole_depth`/`_measure_heel_local` now also use
    it, at rest). Verified: 8500us -> 255us/call (33x). Suite re-run identical to before the perf fix.
+
+8. **Turn-in-place regression + fixes (user: right foot popped while standing; "fix it permanently, v1
+   had rotate-a-few-cm tests").** `--foot-ik-v2-idle-check --stairs-turn=<dz>` (`foot_ik_v2_turn_check.gd`)
+   stands on the stairs and steps the yaw 2 deg / 10 frames through 360 deg at `dz` m along the treads,
+   grading tip/heel clip + float against the real surface and the max ONE-FRAME foot move
+   (`foot_step_max`). It reproduced the live log exactly (heel_clr -0.084, toe_lift 0.10, float 0.116).
+   Root causes found and fixed: (a) `_clear_toe`'s riser retreat always backed the foot up along
+   -forward, even when the HEEL was the point in the riser behind it (made it worse) - it now moves
+   AWAY from the deepest point; (b) `_sink_to_true_sole` sank to the single lowest vertex against ITS
+   floor, but the lowest vertex can be the toe overhanging a lower tread - it now takes the smallest
+   gap over the sole-level vertices (each against the floor under it); (c) the 2 cm flatten-slide
+   glide (item on idle loop) only glides while the applied slide is still flat AND on the same
+   tread level as the wanted one - otherwise it snaps (gliding across a riser hung the heel 11 cm).
+   Suite runs dz=0 and 0.12 (PASS). **OPEN:** dz=0.24 floats 11 cm for 2 frames, dz=-0.12 clips 6 cm
+   for 1 (state `stretched`); and `foot_step_max` is 0.28 m (limit set to 0.30 = KNOWN OPEN): when the
+   turn crosses a riser the flatten fit jumps to the other tread (25 cm slide) in ONE frame. A real fix
+   needs a step arc (lift + glide) - tried instead: debouncing both sinks 3 frames (worse: clip/float
+   frames appear), rate-limiting the slide across levels (heel floats while it glides). The one-frame
+   pop at f1561 in the sweep is the sink re-aiming to the lower tread when the sole points flip.
 
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 

@@ -39,6 +39,7 @@ const LEGS := {
 @export var support_snap := true
 @export var support_search := 0.16
 const SUPPORT_STEP := 0.02
+const SUPPORT_RATE := 0.3 # m/s the applied flatten slide may change
 const SUPPORT_TOLERANCE := 0.03
 const SUPPORT_MIN_PLANT := 0.9
 const SINK_MIN := 0.04 # a flat sole this far below the aimed-at height re-aims the resting foot
@@ -68,6 +69,7 @@ const TOE_TIP_FORWARD := 0.035
 ## A clearance "penetration" bigger than this is a riser, not a slope: retreat instead of lifting.
 const RISER_PENETRATION := 0.04
 const SOLE_GAP_TOLERANCE := 0.001 # leave this much float once the true lowest sole vertex clears
+const SOLE_SINK_SAMPLES := 40 # sole-level vertices ray-cast per scan (a stride past this many)
 const SOLE_SINK_ATTEMPTS := 2 # lowering can shift which vertex is lowest; re-scan once more
 const RISER_RETREAT_STEP := 0.012
 ## Retreats are tried first; a foot still in the riser after this many is lifted onto the tread.
@@ -75,8 +77,7 @@ const RISER_MAX_RETREATS := 4
 const CLEAR_ATTEMPTS := 8
 ## Vertical speed (m/s) above which the character counts as airborne / jumping.
 const JUMP_SPEED_EPSILON := 0.5
-## A foot the animation has lifted less than PLANT_FADE_START above the character's floor level is
-## fully planted; by PLANT_FADE_END it is fully swinging. Smoothly blended in between.
+## Lifted less than PLANT_FADE_START above the floor level = planted; by PLANT_FADE_END swinging.
 const PLANT_FADE_START := 0.03
 const PLANT_FADE_END := 0.14
 ## The plant weight moves at most this fast (per second): 1 -> 0 takes 1/PLANT_RATE s.
@@ -85,32 +86,26 @@ const PLANT_RATE := 8.0
 const PLANT_RELEASE_BELOW := 0.02
 ## The floor height a foot chases changes at most this fast (m/s): a 0.35 m riser takes ~7 frames.
 const GROUND_RATE := 3.0
-## A different floor level must be the answer this many frames in a row (within GROUND_SAME_LEVEL)
-## before the foot follows it.
+## A different floor level must be the answer this many frames in a row before the foot follows.
 const GROUND_HOLD_FRAMES := 3
 const GROUND_SAME_LEVEL := 0.04
-## Changes up to this per frame (a slope is ~0.04 at 45 deg / 3.2 m/s) are followed exactly; a
-## bigger step is rate-limited; one past GROUND_SNAP (a landing, a respawn) is taken at once.
+## Changes up to this per frame (a slope) are followed exactly; bigger steps rate-limited.
 const GROUND_FOLLOW := 0.06
 const GROUND_SNAP := 0.45
 const PELVIS_REACH_MARGIN := 0.012
 ## The heel is the rearmost point within this height of the shoe's lowest vertex.
 const HEEL_SOLE_BAND := 0.04
-## Only a foot the ANIMATION plants (ankle within this of the character's floor level) can ask
-## for a pelvis drop.
+## Only a foot the ANIMATION plants (ankle within this of the floor level) can ask for a drop.
 const PELVIS_PLANTED_TOLERANCE := 0.05
-## A foot lifted more than this above the sampled ground is mid-swing and left to the animation;
-## one at or below it is corrected, even onto a surface above it (stepping up a ramp).
+## Lifted more than this above the sampled ground = mid-swing, left to the animation.
 @export var max_lift := 0.25
 
 var player_body: PlayerBody
-## side -> the target this leg was last corrected toward, and why it was skipped, so the trace
-## logs the REAL decision instead of re-deriving it.
+## side -> the target last corrected toward, and why skipped (the trace logs the REAL decision).
 var debug_target: Dictionary = {}
 var debug_skip_reason: Dictionary = {}
 var debug_ground_normal: Dictionary = {}
-## side -> the animated ankle, the sampled ground, and the reach check, so a trace can tell a
-## skipped swing foot from a target the leg simply could not reach.
+## side -> animated ankle, sampled ground and reach check (swing skip vs out of reach, in traces).
 var debug_animated_ankle: Dictionary = {}
 var debug_ground: Dictionary = {}
 ## side -> name of the collider the ground ray hit (which surface owns the contact).
@@ -129,15 +124,13 @@ var debug_solve: Dictionary = {}
 var debug_reach_check: Dictionary = {}
 ## side -> "released", "at_target", or "stretched" (out of reach): grades only feet meant down.
 var debug_state: Dictionary = {}
-## side -> {"before_deg", "after_deg", "applied"}: how far the sole was from the sampled surface
-## normal before the align pass and after it, in the skeleton's own space.
+## side -> {"before_deg", "after_deg", "applied"}: sole vs surface normal before/after the align.
 var debug_align: Dictionary = {}
 
 ## side -> {"hip", "knee", "foot", "upper", "lower", "rest_pole"}
 var _legs: Dictionary = {}
 var _sole_cache: Dictionary = {} # side -> _cache_sole_vertices() result
-## Base animation poses, captured once per frame before anything is modified (the modifier can run
-## more than once per tick; re-deriving later would read our own output back as the animation).
+## Base animation poses, captured once per frame before anything is modified.
 var _frame := -1
 var _base: Dictionary = {}
 var _hips_bone := -1
@@ -157,7 +150,8 @@ var _ground_state: Dictionary = {}
 var _plant_weight: Dictionary = {}
 var _plant_state: Dictionary = {}
 var _plant_frame: Dictionary = {}
-var _support_last: Dictionary = {} # side -> last flatten slide (kept while valid)
+var _support_last: Dictionary = {} # side -> applied flatten slide (glides to the wanted one)
+var _support_frame: Dictionary = {}
 var _spread_level := 0.0 # sole surface height from the last `_support_spread`
 ## side -> how planted the animation has this foot, 1 down .. 0 swinging (trace).
 var debug_plant_weight: Dictionary = {}
@@ -199,8 +193,7 @@ func _build_legs() -> void:
 		print("[FootIKv2] %s sole_depth=%.4f bone_rest_y=%.4f" % [
 				side, sole_depth, foot_rest.y])
 		if ankle_height < 0.0:
-			# How high the ankle sits for the SOLE to touch: not the bone's own rest height (0.111
-			# vs a real sole depth of ~0.096), so it is measured from the skinned mesh at rest.
+			# How high the ankle sits for the SOLE to touch (0.096, measured from the mesh at rest).
 			ankle_height = sole_depth
 		var rest_direction := (foot_rest - hip_rest).normalized()
 		var rest_pole := knee_rest - hip_rest
@@ -208,14 +201,12 @@ func _build_legs() -> void:
 		_legs[side] = {
 			"hip": hip, "knee": knee, "foot": foot,
 			"toe": toe_bone,
-			# The toe bone sits only this far above the sole; NOT ankle_height (that put its "sole
-			# point" ~8 cm underground and the clearance pass lifted every foot).
+			# The toe bone sits this far above the sole; NOT ankle_height (8 cm underground).
 			"toe_depth": maxf(0.0, skel.get_bone_global_rest(toe_bone).origin.y),
 			"upper": hip_rest.distance_to(knee_rest),
 			"lower": knee_rest.distance_to(foot_rest),
 			"rest_pole": rest_pole.normalized(),
-			# The sole's downward direction in the foot bone's own space: the rest pose stands on
-			# the floor, so world-down at rest IS the sole direction for this rig.
+			# The sole's downward direction in the foot bone's space (world-down at rest).
 			"sole_local": (skel.get_bone_global_rest(foot).basis.inverse() * Vector3.DOWN).normalized(),
 			# The visible heel (rearmost sole-level mesh point) in the foot bone's own space.
 			"heel_local": _measure_heel_local(skel, side, foot, toe_bone),
@@ -240,8 +231,7 @@ func _process_modification_with_delta(_delta: float) -> void:
 	FootIKV2Debug.frame_tick()
 
 
-## The published result: world transforms captured at the END of this pass (reading bones from
-## _process() or skeleton_updated returned stale poses). Refreshed even when v2 is disabled.
+## World transforms captured at the END of this pass (other reads were stale), even when disabled.
 func _publish_final_poses(skel: Skeleton3D) -> void:
 	final_frame = Engine.get_physics_frames()
 	var to_world := skel.global_transform
@@ -272,14 +262,12 @@ func _take_snapshot(skel: Skeleton3D) -> void:
 	_update_pelvis_drop(skel)
 
 
-## How far the pelvis must sink for every planted foot to reach its ground; shifts the cached
-## animation poses (pelvis and the legs riding on it) so the solve below sees the lowered body.
+## How far the pelvis must sink for every planted foot to reach; shifts the cached poses to match.
 func _update_pelvis_drop(skel: Skeleton3D) -> void:
 	var host := player_body.get_parent() as CharacterBody3D if player_body != null else null
 	var moving := (host != null
 			and Vector2(host.velocity.x, host.velocity.z).length() > still_speed)
-	# A jump is motion too (airborne or in a jump clip): the deep standing squat must never fire
-	# there - it pushed the pelvis 0.2-0.4 m down and back up frame to frame.
+	# A jump is motion too: the deep standing squat must never fire there.
 	var jumpish := false
 	if jump_counts_as_moving:
 		if host != null and (not host.is_on_floor() or absf(host.velocity.y) > JUMP_SPEED_EPSILON):
@@ -295,8 +283,7 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 	var needed := _plan_stance(skel, moving, delta)
 	# The body is already `_body_lag` below the capsule, which is that much of the drop done.
 	needed = maxf(needed - _body_lag, 0.0)
-	# A resting foot the leg still could not reach (the plan samples under the ANIMATED ankle, the
-	# foot then slides onto a lower tread) asks for that much more drop, held until the next move.
+	# A resting foot still out of reach (the plan samples the ANIMATED ankle) asks for more drop.
 	_stretch_hold = 0.0 if moving else _stretch_hold
 	for side: StringName in _legs:
 		if not moving and debug_state.get(side, "") == "stretched":
@@ -329,8 +316,7 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 			(_base[side] as Dictionary)[key] = pose
 
 
-## How far the VISIBLE body trails below the capsule (which pops a whole tread in 2-3 frames): a
-## first-order lag, never above it, capped, snapping when airborne or jumping.
+## How far the VISIBLE body trails below the capsule: a capped first-order lag, snaps when airborne.
 func _update_body_lag(host: CharacterBody3D, jumpish: bool, delta: float) -> void:
 	if not body_smooth or host == null:
 		_body_lag = 0.0
@@ -347,8 +333,7 @@ func _update_body_lag(host: CharacterBody3D, jumpish: bool, delta: float) -> voi
 	debug_body_lag = _body_lag
 
 
-## How each foot and the pelvis cope with a floor the flat-ground animation cannot reach: at rest
-## a foot may be brought IN first (`_stance_shift`), the pelvis drops by whatever is left.
+## Floor out of reach: a resting foot comes IN first (`_stance_shift`), then the pelvis drops.
 func _plan_stance(skel: Skeleton3D, moving: bool, delta: float) -> float:
 	var to_world := skel.global_transform
 	var worst := 0.0
@@ -386,8 +371,7 @@ func _plan_stance(skel: Skeleton3D, moving: bool, delta: float) -> float:
 	return minf(worst, max_pelvis_drop)
 
 
-## The vertical drop THIS foot needs to be within the leg's reach, ankle brought `shift` m toward
-## the hip. 0 for a foot mid-swing, with no floor, too steep to stand on, or already reaching.
+## The vertical drop THIS foot needs to reach (ankle brought `shift` m toward the hip); 0 if none.
 func _foot_drop(to_world: Transform3D, side: StringName, shift: float) -> float:
 	if max_pelvis_drop <= 0.0:
 		return 0.0
@@ -399,8 +383,7 @@ func _foot_drop(to_world: Transform3D, side: StringName, shift: float) -> float:
 		return 0.0
 	var hip_world: Vector3 = (to_world * (base["hip"] as Transform3D)).origin
 	var sample := animated_ankle + _inward(animated_ankle, hip_world) * shift
-	# Sample from the ankle ALREADY lowered by the held drop, as _place_foot does: plausibility
-	# (`max_surface_drop`) depends on that height and the un-lowered sample flipped it.
+	# Sample from the ankle ALREADY lowered by the held drop, as _place_foot does.
 	sample.y -= _pelvis_drop + _body_lag
 	var hit := _ground_hit(sample, hip_world)
 	if hit.is_empty() or not _is_walkable(hit["normal"] as Vector3):
@@ -414,8 +397,7 @@ func _foot_drop(to_world: Transform3D, side: StringName, shift: float) -> float:
 		if absf(moved) >= 0.005:
 			target = (again["position"] as Vector3) + (again["normal"] as Vector3) * ankle_height
 	var to_hip := hip_world - animated_ankle.lerp(target, weight)
-	# Aim for just inside the reach: landing exactly on it made the reach check in _place_foot flip
-	# to `out_of_reach` on rounding, dropping the pelvis but still releasing the foot.
+	# Aim just inside the reach (exactly on it flipped `out_of_reach` on rounding).
 	var reach := float(leg["upper"]) + float(leg["lower"]) - PELVIS_REACH_MARGIN
 	var excess := to_hip.length_squared() - reach * reach
 	if excess <= 0.0:
@@ -626,13 +608,12 @@ func _clear_toe(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: T
 		var points: Array[Vector3] = [toe_point, toe_point + forward * TOE_TIP_FORWARD,
 				(to_world * foot_pose) * (leg["heel_local"] as Vector3)]
 		var penetration := 0.0
-		var min_gap := INF # smallest FLOATING distance across the three points (>=0 = touching)
+		var worst := points[0] # the point deepest under a surface
 		for point: Vector3 in points:
 			var hit := _ray(point, hip_world)
-			if not hit.is_empty():
-				var delta: float = (hit["position"] as Vector3).y - point.y
-				penetration = maxf(penetration, delta)
-				min_gap = minf(min_gap, -delta)
+			if not hit.is_empty() and (hit["position"] as Vector3).y - point.y > penetration:
+				penetration = (hit["position"] as Vector3).y - point.y
+				worst = point
 		if penetration <= 0.002:
 			# The three checked (rigid, rest-offset) points are clear, but the real GPU-skinned
 			# sole can still sit a few mm above the floor between them. At rest only.
@@ -643,10 +624,12 @@ func _clear_toe(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: T
 		if penetration > RISER_PENETRATION and retreats < RISER_MAX_RETREATS:
 			retreats += 1
 			# A point "under" a tread more than a few cm higher is poking into a RISER, not a slope;
-			# lifting onto that tread left the heel floating a step up - retreat instead.
-			var flat := Vector3(forward.x, 0.0, forward.z)
+			# lifting onto that tread left the heel floating a step up - back AWAY from it instead
+			# (the toe backs the foot up, a HEEL in the riser behind it moves the foot forward).
+			var ankle := (to_world * foot_pose).origin
+			var flat := Vector3(ankle.x - worst.x, 0.0, ankle.z - worst.z)
 			if flat.length_squared() > 0.000001:
-				target -= flat.normalized() * RISER_RETREAT_STEP
+				target += flat.normalized() * RISER_RETREAT_STEP
 				debug_target[side] = target
 				_solve(skel, leg, base, to_world.affine_inverse() * target, side)
 				_align_foot(skel, leg, debug_ground_normal.get(side, Vector3.UP), side)
@@ -677,10 +660,24 @@ func _flatten_support(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_wo
 	var normal: Vector3 = debug_ground_normal.get(side, Vector3.UP)
 	# height change per metre along the foot, so a ramp's own slope is not read as a step
 	var slope := -(normal.x * forward.x + normal.z * forward.z) / maxf(normal.y, 0.2)
-	var shift := _wanted_support_shift(points, foot_world.origin, forward, slope, hip_world,
-			float(_support_last.get(side, 0.0)), (debug_ground.get(side, Vector3.ZERO) as Vector3).y)
-	_support_last[side] = shift
-	if shift != 0.0:
+	var shift: float = _support_last.get(side, 0.0)
+	var wanted := _wanted_support_shift(points, foot_world.origin, forward, slope, hip_world,
+			shift, (debug_ground.get(side, Vector3.ZERO) as Vector3).y)
+	# The wanted slide steps 2 cm as the idle animation loops (a visible jump every ~75 frames):
+	# glide to it, once per physics frame (a pass can repeat within a tick) - but only while the
+	# applied slide is itself still flat and on the same tread level; otherwise (a turn crossed a
+	# riser) gliding leaves the heel hanging over it for as long as the glide takes.
+	if int(_support_frame.get(side, -1)) != Engine.get_physics_frames():
+		var glide := not _is_moving and wanted != shift
+		if glide:
+			_support_spread(points, foot_world.origin, forward, slope, wanted, hip_world)
+			var wanted_level := _spread_level
+			var flat := _support_spread(points, foot_world.origin, forward, slope, shift, hip_world)
+			glide = flat <= SUPPORT_TOLERANCE and absf(wanted_level - _spread_level) <= SINK_MIN
+		shift = move_toward(shift, wanted, SUPPORT_RATE / 60.0) if glide else wanted
+		_support_last[side] = shift
+		_support_frame[side] = Engine.get_physics_frames()
+	if absf(shift) > 0.0005:
 		var target: Vector3 = debug_target.get(side, foot_world.origin) as Vector3
 		target += forward * shift
 		debug_target[side] = target
@@ -911,22 +908,25 @@ func _sink_to_true_sole(skel: Skeleton3D, side: StringName, leg: Dictionary, bas
 func _sink_to_true_sole_impl(skel: Skeleton3D, side: StringName, leg: Dictionary, base: Dictionary,
 		to_world: Transform3D, hip_world: Vector3) -> void:
 	for attempt in SOLE_SINK_ATTEMPTS:
+		var world: Array[Vector3] = []
 		var lowest := INF
-		var lowest_point := Vector3.ZERO
 		for point: Vector3 in _eval_sole_points(skel, side, true):
-			var world := to_world * point
-			if world.y < lowest:
-				lowest = world.y
-				lowest_point = world
+			world.append(to_world * point)
+			lowest = minf(lowest, world[-1].y)
 		if not is_finite(lowest):
 			return
-		var hit := _ray(lowest_point, hip_world)
-		if hit.is_empty():
+		# Each sole-level vertex against the floor UNDER IT (a subsample): the lowest vertex alone
+		# can be the toe hanging over a lower tread, and sinking to that pushed the heel 8 cm into
+		# the higher tread behind it. The smallest gap is how far the foot may go without clipping.
+		var level: Array[Vector3] = world.filter(func(p: Vector3) -> bool: return p.y <= lowest + 0.005)
+		var gap := INF
+		for index in range(0, level.size(), maxi(1, level.size() / SOLE_SINK_SAMPLES)):
+			var hit := _ray(level[index], hip_world)
+			if not hit.is_empty():
+				gap = minf(gap, level[index].y - (hit["position"] as Vector3).y)
+		if not is_finite(gap) or gap <= SOLE_GAP_TOLERANCE:
 			return
-		var gap: float = lowest - (hit["position"] as Vector3).y
-		if gap <= SOLE_GAP_TOLERANCE:
-			return
-		var target: Vector3 = debug_target.get(side, lowest_point) as Vector3
+		var target: Vector3 = debug_target.get(side, level[0]) as Vector3
 		target.y -= gap - SOLE_GAP_TOLERANCE
 		debug_target[side] = target
 		_solve(skel, leg, base, to_world.affine_inverse() * target, side)
