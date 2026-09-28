@@ -40,4 +40,10 @@ run "Foot IK v2 lab (all surfaces)" "FOOT_IK_V2_CHECK PASS" \
 	godot --headless --fixed-fps 60 --quit-after 1600 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-check
 
+# The user's report as a test: stand on the closest ramp and strafe left/right while a ray cast
+# from above compares the sole/toe against the REAL ramp surface (independent of the modifier).
+run "Foot IK v2 ramp strafe (user scenario)" "FOOT_IK_V2_RAMP_CHECK PASS" \
+	godot --headless --fixed-fps 60 --quit-after 1200 --path "$project_dir" \
+	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-ramp-check
+
 exit "$status"

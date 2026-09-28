@@ -16,6 +16,13 @@ const SETTLE_FRAMES := 20
 const WALK_FRAMES := 150
 const ANKLE_TOLERANCE := 0.03
 const TILT_TOLERANCE_DEG := 12.0
+## The user's scenario: stand on the closest ramp and strafe left/right along the cross-slope.
+const LATERAL_LANE := 1        # ramp15
+const LATERAL_SWITCH_FRAMES := 50
+const FLOAT_TOLERANCE := 0.03  # sole may sit this far above the real ramp surface
+## Ignore the drop-onto-the-ramp settle; grade the steady strafe only.
+const MEASURE_AFTER := 60
+const TOE_CLIP_TOLERANCE := 0.01
 const CLIP_TOLERANCE := 0.01
 
 const RAMP_ANGLES := [15.0, 30.0, 45.0]
@@ -42,6 +49,7 @@ var _v2: FootIKV2Modifier
 var _trace: FootIkTraceWriter
 var _label: Label
 var _checking := false
+var _ramp_checking := false
 var _spot := 0
 var _settle := 0
 var _walk := 0
@@ -51,11 +59,15 @@ var _worst_tilt := 0.0
 var _worst_tilt_spot := ""
 var _worst_clip := 0.0
 var _worst_clip_spot := ""
+var _worst_float := 0.0
+var _worst_float_spot := ""
+var _worst_float_frame := -1
 
 
 func _ready() -> void:
 	_build_terrain()
 	_checking = "--foot-ik-v2-check" in OS.get_cmdline_user_args()
+	_ramp_checking = "--foot-ik-v2-ramp-check" in OS.get_cmdline_user_args()
 	for child: Node in player.skeleton.get_children():
 		if child is PlayerFootIKModifier:
 			child.active = false # v1 off: one writer per bone.
@@ -66,6 +78,9 @@ func _ready() -> void:
 	_trace = TRACE_WRITER.new(TRACE_PATH, TRACE_MAX_LINES)
 	# Default CharacterBody3D limit is 45 deg, which sits exactly on the steepest test ramp.
 	player.floor_max_angle = deg_to_rad(60.0)
+	if _ramp_checking:
+		_place_on_ramp()
+		return
 	if _checking:
 		_move_to_spot(0)
 		return
@@ -85,6 +100,9 @@ func _process(_delta: float) -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if _ramp_checking:
+		_run_ramp_check()
+		return
 	if _checking:
 		_run_check()
 		return
@@ -185,7 +203,8 @@ func _lane_x(lane: int) -> float:
 func _build_terrain() -> void:
 	for index in RAMP_ANGLES.size():
 		var angle: float = RAMP_ANGLES[index]
-		var body := _add_box(Vector3.ZERO, Vector3(3.0, 0.4, RAMP_RUN))
+		# Wide enough that the cross-slope strafe test stays on the ramp.
+		var body := _add_box(Vector3.ZERO, Vector3(6.0, 0.4, RAMP_RUN))
 		body.rotation = Vector3(deg_to_rad(angle), 0.0, 0.0)
 		body.position = Vector3(_lane_x(1 + index),
 				RAMP_RUN * 0.5 * sin(deg_to_rad(angle)), 0.0)
@@ -298,6 +317,108 @@ func _measure(name: String) -> void:
 			if clip > _worst_clip:
 				_worst_clip = clip
 				_worst_clip_spot = name
+
+
+## --- user scenario: strafe left/right while standing on the closest ramp ----------------
+func _place_on_ramp() -> void:
+	var angle: float = RAMP_ANGLES[0]
+	# On the ramp's face, facing up-slope so strafing is the cross-slope.
+	player.global_position = Vector3(_lane_x(LATERAL_LANE), RAMP_RUN * 0.5 * sin(
+			deg_to_rad(angle)) + 0.3, 0.0)
+	player.rotation = Vector3.ZERO
+	player.velocity = Vector3.ZERO
+	_settle = 0
+	_walk = 0
+
+
+func _run_ramp_check() -> void:
+	if _settle < SETTLE_FRAMES:
+		_settle += 1
+		return
+	_walk += 1
+	if _walk >= WALK_FRAMES * 2:
+		var passed := (_worst_float <= FLOAT_TOLERANCE and _worst_clip <= TOE_CLIP_TOLERANCE)
+		print(("FOOT_IK_V2_RAMP_CHECK %s frames=%d float_max=%.4f@%s@f%d toe_clip_max=%.4f@%s "
+				+ "limits=%.3f/%.3f") % ["PASS" if passed else "FAIL", _walk, _worst_float,
+				_worst_float_spot, _worst_float_frame, _worst_clip, _worst_clip_spot,
+				FLOAT_TOLERANCE, TOE_CLIP_TOLERANCE])
+		get_tree().quit(0 if passed else 1)
+		return
+	# Strafe left, then right, along the cross-slope.
+	var direction := 1.0 if (_walk / LATERAL_SWITCH_FRAMES) % 2 == 0 else -1.0
+	player.movement_input_override = Vector2(direction, 0.0)
+	_measure_ramp()
+
+
+## Independent of the modifier: this harness casts its own ray from high above so it finds the RAMP
+## (not the floor beneath it), then compares the foot's sole points against that real surface.
+func _measure_ramp() -> void:
+	if _walk < MEASURE_AFTER:
+		return
+	if _walk % 40 == 0:
+		var raw_foot: Transform3D = player.skeleton.get_bone_global_pose(
+				int(_v2._legs[&"left"]["foot"]))
+		var sf := player.skeleton.global_transform
+		print("[SPACE] player_t=%s" % player.global_transform)
+		print("[SPACE] body_t=%s" % player.body.global_transform)
+		print("[SPACE] skeleton_t=%s  scale=%s" % [sf, sf.basis.get_scale()])
+		print("[SPACE] raw foot pose (skeleton space)=%s  rest=%s" % [
+				raw_foot, player.skeleton.get_bone_global_rest(
+				int(_v2._legs[&"left"]["foot"]))])
+		print("[SPACE] world foot via skeleton_t=%s   player_global_pos=%s" % [
+				(sf * raw_foot).origin, player.global_position])
+		print("[SPACE] surface under foot=%s" % _surface_above((sf * raw_foot).origin))
+	for side: StringName in FootIKV2Modifier.LEGS:
+		var leg: Dictionary = _v2._legs.get(side, {})
+		if leg.is_empty():
+			continue
+		var to_world := player.skeleton.global_transform
+		var foot: Transform3D = to_world * player.skeleton.get_bone_global_pose(int(leg["foot"]))
+		var toe: Transform3D = to_world * player.skeleton.get_bone_global_pose(int(leg["toe"]))
+		var sole := (foot.basis * (leg["sole_local"] as Vector3)).normalized()
+		# The sole is BELOW the bone: the sole direction points down, so the contact point is
+		# + (sole * height), not - it. (Subtracting put the "sole" above the ankle and inflated every
+		# float by 2 x ankle_height - the ~0.19 m that had been reported as the bug.)
+		var ankle_point := foot.origin + sole * _v2.ankle_height
+		var toe_point := toe.origin + sole * _v2.ankle_height
+		# Grade only a foot that is meant to be down: either the animation or the correction puts it
+		# near the surface. A swing foot is in the air, where "float" says nothing - but a wrongly
+		# corrected grounded foot still gets measured, so it cannot hide.
+		var surface_here := _surface_above(foot.origin)
+		if is_nan(surface_here):
+			continue
+		var expected_y := surface_here + _v2.ankle_height
+		var animated_y: float = _v2.debug_animated_ankle.get(side, Vector2.ZERO).y
+		if absf(foot.origin.y - expected_y) > 0.05 and absf(animated_y - expected_y) > 0.05:
+			continue
+		for pair: Array in [["ankle", ankle_point], ["toe", toe_point]]:
+			var label: String = pair[0]
+			var point: Vector3 = pair[1]
+			var surface := _surface_above(point)
+			if is_nan(surface):
+				continue
+			var clearance := point.y - surface
+			if label == "ankle" and clearance > _worst_float:
+				_worst_float = clearance
+				_worst_float_spot = "%s_%s" % [side, label]
+				_worst_float_frame = _walk
+			if clearance < -_worst_clip:
+				_worst_clip = -clearance
+				_worst_clip_spot = "%s_%s" % [side, label]
+
+
+## Real surface height above a point: cast from well above the body so a ramp/step is found even
+## when the point itself sits below it.
+func _surface_above(point: Vector3) -> float:
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return NAN
+	var top := Vector3(point.x, player.global_position.y + 1.0, point.z)
+	var query := PhysicsRayQueryParameters3D.create(top, point - Vector3.UP * 1.0,
+			_v2.ground_mask)
+	query.exclude = [(player as CollisionObject3D).get_rid()]
+	var hit := space.intersect_ray(query)
+	return NAN if hit.is_empty() else (hit["position"] as Vector3).y
 
 
 func _ground_hit(ankle: Vector3) -> Dictionary:

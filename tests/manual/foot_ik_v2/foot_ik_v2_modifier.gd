@@ -17,8 +17,17 @@ const LEGS := {
 }
 
 @export var enabled := true
-## Physics layer the ground is on (1 = world).
-@export_flags_3d_physics var ground_mask := 1
+## Physics layers the ground is on: 1 = world, 6 = the project's authored contact surfaces
+## (1 << 5), matching v1's GROUND_COLLISION_MASK. Looking only at layer 1 misses authored
+## stairs/ramps entirely.
+@export_flags_3d_physics var ground_mask := 1 | (1 << 5)
+## Fallback floor limit when the character is not a CharacterBody3D. A hit steeper than this is not
+## a floor (a wall or a riser) and is left to the animation, like v1's require_walkable check.
+@export var fallback_floor_max_angle_deg := 46.0
+## A sampled surface this far BELOW the foot is not the foot's floor (the ground under a ledge, the
+## floor past a ramp edge): re-probe inward toward the body before believing it. One stair riser is
+## ~0.35, so this sits just above that.
+@export var max_surface_drop := 0.45
 @export var ray_up := 0.5
 @export var ray_down := 1.2
 ## How far the ankle sits above the sampled ground when the foot is planted. Negative means
@@ -153,6 +162,11 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 		return
 	var ground: Vector3 = hit["position"]
 	var normal: Vector3 = hit["normal"]
+	if not _is_walkable(normal):
+		debug_skip_reason[side] = "not_walkable"
+		debug_target.erase(side)
+		debug_state[side] = "released"
+		return
 	var target := ground + normal * ankle_height
 	# A foot well above the sampled ground is mid-swing; dragging it down to the floor would read
 	# as an invisible floor. A foot at or below the expected height is corrected, even when the
@@ -179,6 +193,12 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	debug_ground[side] = ground
 	_solve(skel, leg, base, blended, side)
 	_align_foot(skel, leg, normal, side)
+	# The surface was sampled under the ANIMATED foot, but the foot lands somewhere else - and on a
+	# ramp the height changes with position, so that target can be wrong by the slope's rise over the
+	# shift. Re-sample under the foot that actually resulted and correct once (v1: "resample the
+	# collider under the new deepest point after every adjustment").
+	_resample_and_correct(skel, leg, base, hip_world, side)
+	_clear_toe(skel, leg, base, to_world, hip_world, side)
 	var landed: Vector3 = skel.get_bone_global_pose(int(leg["foot"])).origin
 	debug_solve[side]["residual"] = landed.distance_to(blended)
 	debug_state[side] = ("at_target" if landed.distance_to(blended) <= 0.02 else "stretched")
@@ -221,17 +241,103 @@ func _align_foot(skel: Skeleton3D, leg: Dictionary, normal: Vector3,
 ## the animated foot. On a ramp that foot can sit below the slope, and a ray starting at its own
 ## height never reaches the ramp above it: it hits the floor instead, and the foot is aimed at the
 ## wrong surface (measured: both feet targeting y=0.086 while the body stood at y=0.95 on a ramp).
+## A surface steeper than the character can stand on is a wall or a riser, not this foot's floor.
+## v1 gates on require_walkable for the same reason; without it a foot can be aimed at a vertical
+## face and driven through it.
+## Toe clearance (v1's 025 class): a flat-aligned foot can still leave the shoe's TOE under the
+## surface. Raise the ankle target by the toe's penetration and re-place, resampling the surface
+## under the toe's new position each pass - one correction can move the offender onto a different
+## surface, so reusing the first hit is not enough.
+func _clear_toe(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: Transform3D,
+		hip_world: Vector3, side: StringName) -> void:
+	for attempt in 3:
+		var foot_pose := skel.get_bone_global_pose(int(leg["foot"]))
+		var sole := (foot_pose.basis * (leg["sole_local"] as Vector3)).normalized()
+		var toe_world: Vector3 = (to_world * skel.get_bone_global_pose(int(leg["toe"]))).origin
+		var toe_point := toe_world + sole * ankle_height
+		var hit := _ray(toe_point, hip_world)
+		if hit.is_empty():
+			return
+		var penetration := (hit["position"] as Vector3).y - toe_point.y
+		if penetration <= 0.002:
+			return
+		var target: Vector3 = debug_target.get(side, toe_point) as Vector3
+		target.y += penetration
+		debug_target[side] = target
+		_solve(skel, leg, base, to_world.affine_inverse() * target, side)
+		_align_foot(skel, leg, debug_ground_normal.get(side, Vector3.UP), side)
+
+
+## One correction pass from the surface under the RESULTING foot position (see the caller).
+func _resample_and_correct(skel: Skeleton3D, leg: Dictionary, base: Dictionary,
+		hip_world: Vector3, side: StringName) -> void:
+	var to_world := skel.global_transform
+	var landed_world: Vector3 = (to_world * skel.get_bone_global_pose(int(leg["foot"]))).origin
+	var again := _ground_hit(landed_world, hip_world)
+	if again.is_empty():
+		return
+	var normal: Vector3 = again["normal"]
+	if not _is_walkable(normal):
+		return
+	var moved := (again["position"] as Vector3).y - (debug_ground.get(side, landed_world) as Vector3).y
+	if absf(moved) < 0.005:
+		return
+	debug_ground[side] = again["position"]
+	debug_ground_normal[side] = normal
+	var target := (again["position"] as Vector3) + normal * ankle_height
+	debug_target[side] = target
+	var blended := to_world.affine_inverse() * (landed_world.lerp(target, weight))
+	_solve(skel, leg, base, blended, side)
+	_align_foot(skel, leg, normal, side)
+
+
+
+func _is_walkable(normal: Vector3) -> bool:
+	var limit := fallback_floor_max_angle_deg
+	var body := player_body.get_parent() as CharacterBody3D if player_body != null else null
+	if body != null:
+		limit = rad_to_deg(body.floor_max_angle)
+	return normal.dot(Vector3.UP) >= cos(deg_to_rad(limit))
+
+
 func _ground_hit(ankle: Vector3, hip: Vector3) -> Dictionary:
+	var hit := _ray(ankle, hip)
+	if _plausible(hit, ankle):
+		return hit
+	# Near an edge (a ramp/step the foot is partly past) the straight-down ray finds the ground far
+	# BELOW instead of the surface under the stance. v1 recovers by probing inward toward the body;
+	# take the first inward probe that lands on a plausible surface.
+	var root := hip
+	if player_body != null and player_body.get_parent() is Node3D:
+		root = (player_body.get_parent() as Node3D).global_position
+	var inward := Vector3(root.x - ankle.x, 0.0, root.z - ankle.z)
+	if inward.length_squared() < 0.0001:
+		return hit
+	inward = inward.normalized()
+	for step: float in [0.04, 0.08, 0.12, 0.18, 0.26]:
+		var candidate := _ray(ankle + inward * step, hip)
+		if _plausible(candidate, ankle):
+			return candidate
+	return hit
+
+
+func _ray(point: Vector3, hip: Vector3) -> Dictionary:
 	var space := get_skeleton().get_world_3d().direct_space_state
 	if space == null:
 		return {}
-	var top := Vector3(ankle.x, maxf(hip.y, ankle.y + ray_up), ankle.z)
+	var top := Vector3(point.x, maxf(hip.y, point.y + ray_up), point.z)
 	var query := PhysicsRayQueryParameters3D.create(
-			top, ankle - Vector3.UP * ray_down, ground_mask)
+			top, point - Vector3.UP * ray_down, ground_mask)
 	var body := player_body.get_parent() as CollisionObject3D
 	if body != null:
 		query.exclude = [body.get_rid()]
 	return space.intersect_ray(query)
+
+
+func _plausible(hit: Dictionary, anchor: Vector3) -> bool:
+	if hit.is_empty():
+		return false
+	return anchor.y - (hit["position"] as Vector3).y <= max_surface_drop
 
 
 ## Analytic two-bone solve: aim the upper bone at the knee position and the lower bone at the ankle
