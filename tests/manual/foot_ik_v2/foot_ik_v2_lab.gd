@@ -52,8 +52,7 @@ const JUMP_REPLAY := [
 			"pelvis_limit": 0.10, "max_drift": 0.10},
 	{"name": "idle_after", "input": Vector2.ZERO, "frames": 60, "grade": false},
 ]
-## Stricter than the walking replay: at rest both tips must be on the floor.
-## The tip sphere sits on the toe bone, ~1 cm above the sole, so a planted foot reads ~+1 cm.
+## Stricter than the walking replay: at rest both tips on the floor (the tip reads ~+1 cm planted).
 const IDLE_FLOAT_LIMIT := 0.04
 const IDLE_SETTLE_FRAMES := 40 # idle is graded only after the walk-to-idle transition settles
 const STAIRS_EDGE_FLOAT_LIMIT := 0.04 # edge of the stairs, one foot on the floor 0.38 m below
@@ -121,7 +120,8 @@ var _from_floor := false
 var _stairs_start := false
 var _stairs_x := 0.5
 var _stairs_z := 1.36
-var _foot_step_limit := INF # `--stairs-turn`: max one-frame foot move once a turn settles
+var _foot_step_limit := 9.0 # a pose fault reads 9.9; `--stairs-turn` tightens it to a step size
+var _pose_faults := 0 # graded frames with an impossible leg pose (knee behind, past a cap)
 var _foot_step_max := 0.0
 var _turn_prev := {}
 var _stairs_walk_lane := -1
@@ -410,8 +410,7 @@ func _foot_is_grounded(side: StringName, surface_under_tip: float) -> bool:
 			or absf(animated_y - expected_y) <= 0.05)
 
 
-## The tip sphere against the real surface under it: point, surface height, clearance, whether the
-## foot is meant to be down (a swing foot is never graded) and the resulting event.
+## The tip sphere against the real surface under it: point, clearance, whether meant to be down.
 func _tip_state(side: StringName) -> Dictionary:
 	var out := {"point": Vector3.ZERO, "surface": null, "clearance": null,
 			"grounded": false, "event": ""}
@@ -528,8 +527,7 @@ func _tip_summary() -> String:
 			_tip_clip_events, _tip_float_events, _pelvis_excess, _drift_excess]
 
 
-## World transform of a bone as published by the v2 modifier at the end of its last pass (falls
-## back to a live read only before the first pass).
+## World transform of a bone as published by the modifier at the end of its last pass.
 func _pub(bone: int) -> Transform3D:
 	if _v2.final_pose.has(bone):
 		return _v2.final_pose[bone]
@@ -669,8 +667,7 @@ func _motion_fields() -> Dictionary:
 	}
 
 
-## Pelvis and spine as published: position (world) and rotation, plus the pelvis's height above
-## the character root, which is how far the body drops or rises against the animation.
+## Pelvis and spine as published: position, rotation, and the pelvis's height above the root.
 func _body_fields() -> Dictionary:
 	var out := {}
 	for role: StringName in [&"Hips", &"Spine", &"Spine1", &"Spine2"]:
@@ -697,8 +694,7 @@ func _body_fields() -> Dictionary:
 	return out
 
 
-## JSON has no Vector3; v1's traces carry explicit [x, y, z] arrays and trace_query.py parses those.
-## The solver/reach debug dict, with any Vector3 turned into a JSON array.
+## JSON has no Vector3: [x, y, z] arrays, as v1's traces (the solver/reach dict, converted).
 func _solve_fields(side: StringName) -> Dictionary:
 	var out := {}
 	for key: String in _v2.debug_solve.get(side, {}):
@@ -788,19 +784,20 @@ func _run_check() -> void:
 		return
 	var passed := (_worst_ankle <= ANKLE_TOLERANCE and _worst_tilt <= TILT_TOLERANCE_DEG
 			and _worst_clip <= CLIP_TOLERANCE and _tip_clip_max <= TIP_CLIP_LIMIT
-			and _tip_float_events <= FORWARD_FLOAT_FRAMES and _tip_float_max <= FORWARD_FLOAT_LIMIT)
+			and _tip_float_events <= FORWARD_FLOAT_FRAMES and _tip_float_max <= FORWARD_FLOAT_LIMIT
+			and _pose_faults == 0)
 	print(("FOOT_IK_V2_CHECK %s surfaces=%d frames=%d ankle_err=%.4f@%s tilt=%.1f@%s "
-			+ "clip=%.4f@%s limits=%.3f/%.1f/%.3f foot_step=%.3f@%s %s") % [
+			+ "clip=%.4f@%s limits=%.3f/%.1f/%.3f foot_step=%.3f@%s faults=%d %s") % [
 			"PASS" if passed else "FAIL", SPOTS.size(), WALK_FRAMES, _worst_ankle,
 			_worst_ankle_spot, _worst_tilt, _worst_tilt_spot, _worst_clip, _worst_clip_spot,
 			ANKLE_TOLERANCE, TILT_TOLERANCE_DEG, CLIP_TOLERANCE, _worst_step,
-			_worst_step_spot, _tip_summary()])
+			_worst_step_spot, _pose_faults, _tip_summary()])
 	get_tree().quit(0 if passed else 1)
 
 
-## Largest single-frame foot movement, per surface: a snap (a foot jumping tens of cm between two
-## frames) shows up here even when every pose is clean. Skips the frame after a teleport.
+## Largest single-frame foot movement per surface (a snap shows even when every pose is clean).
 func _track_foot_step(side: StringName, spot: String, foot_world: Vector3) -> void:
+	_pose_faults += 1 if POSE_DUMP.pose_fault(_v2, side, -player.global_basis.z) > 0.0 else 0
 	var previous: Variant = _prev_foot.get(side)
 	_prev_foot[side] = foot_world
 	if previous == null or _walk <= 2:
@@ -819,16 +816,14 @@ func _measure(name: String) -> void:
 			continue
 		_grade_tip(side, name)
 		_track_foot_step(side, name, _pub(int(leg["foot"])).origin)
-		# Grade against the surface the modifier ACTUALLY sampled (its own decision), not a second
-		# ray cast here - a restated probe can disagree with the code it is meant to check.
+		# Grade against the surface the modifier ACTUALLY sampled, not a second restated ray cast.
 		if not _v2.debug_target.has(side) or _v2.debug_stepping.get(side, false):
 			continue # skipped by design (mid-swing / out of reach) or walking a step
 		var to_world := player.skeleton.global_transform
 		var foot: Transform3D = _pub(int(leg["foot"]))
 		var ground: Vector3 = _v2.debug_ground.get(side, foot.origin)
 		var normal: Vector3 = _v2.debug_ground_normal.get(side, Vector3.UP)
-		# Grade only a foot that is actually down: accept it if EITHER the animation or the result
-		# has it down, so a bad correction is still measured.
+		# Grade a foot that is down (animation OR result), so a bad correction is still measured.
 		var expected_y := ground.y + _v2.ankle_height
 		var animated_y: float = _v2.debug_animated_ankle.get(side, Vector2.ZERO).y
 		if absf(foot.origin.y - expected_y) > 0.05 and absf(animated_y - expected_y) > 0.05:

@@ -3,6 +3,7 @@ extends SkeletonModifier3D
 ## v2 foot IK: per leg, sample the ground under the animated foot, solve hip -> knee -> ankle.
 const DEBUG_TIMER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_debug.gd")
 const STEPPER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_stepper.gd")
+const LIMITER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_joint_limiter.gd")
 const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot",
 		"toe": &"LeftToeBase"},
@@ -13,6 +14,7 @@ const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 @export var enabled := true
 @export_range(0.0, 170.0, 1.0) var max_knee_flexion_deg := 150.0 # v1 defaults; 0 = off
 @export_range(0.0, 170.0, 1.0) var max_hip_swing_deg := 100.0 # cone from straight down
+@export var joint_speed_deg := 60.0 # joint correction change cap per frame at rest: a flip guard
 ## Physics layers the ground is on: 1 = world, 6 = authored surfaces (layer 1 alone misses stairs).
 @export_flags_3d_physics var ground_mask := 1 | (1 << 5)
 ## Fallback floor limit when not a CharacterBody3D; steeper is a wall/riser, left to the animation.
@@ -126,6 +128,7 @@ var debug_reach_check: Dictionary = {}
 var debug_state: Dictionary = {}
 var debug_stepping: Dictionary = {} # side -> walking a step (a graded float is expected)
 var _stepper := STEPPER.new()
+var _limiter := LIMITER.new()
 ## side -> {"before_deg", "after_deg", "applied"}: sole vs surface normal before/after the align.
 var debug_align: Dictionary = {}
 
@@ -592,8 +595,7 @@ func _align_foot(skel: Skeleton3D, leg: Dictionary, normal: Vector3,
 	debug_align[side] = record
 
 
-## Toe clearance: a flat-aligned foot can still leave the TOE under the surface. Raise by the
-## penetration and re-place, resampling each pass (one fix can move it onto a different surface).
+## Toe clearance: raise by the penetration and re-place, resampling each pass.
 func _clear_toe(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: Transform3D,
 		hip_world: Vector3, side: StringName) -> void:
 	var retreats := 0
@@ -602,8 +604,7 @@ func _clear_toe(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: T
 		var sole := (foot_pose.basis * (leg["sole_local"] as Vector3)).normalized()
 		var toe_world: Vector3 = (to_world * skel.get_bone_global_pose(int(leg["toe"]))).origin
 		var toe_point := toe_world + sole * float(leg["toe_depth"])
-		# Three contact points can go under a slope: toe sole point, tip further forward, heel - the
-		# toe alone missed the tip downhill and the heel uphill.
+		# Three contact points can go under a slope: toe sole point, tip, heel.
 		var forward := (toe_world - (to_world * foot_pose).origin).normalized()
 		var points: Array[Vector3] = [toe_point, toe_point + forward * TOE_TIP_FORWARD,
 				(to_world * foot_pose) * (leg["heel_local"] as Vector3)]
@@ -615,17 +616,14 @@ func _clear_toe(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: T
 				penetration = (hit["position"] as Vector3).y - point.y
 				worst = point
 		if penetration <= 0.002:
-			# The three checked (rigid, rest-offset) points are clear, but the real GPU-skinned
-			# sole can still sit a few mm above the floor between them. At rest only.
+			# The rigid checked points are clear but the real skinned sole may float a few mm (rest).
 			if not _is_moving:
 				_sink_to_true_sole(skel, side, leg, base, to_world, hip_world)
 			return
 		var target: Vector3 = debug_target.get(side, toe_point) as Vector3
 		if penetration > RISER_PENETRATION and retreats < RISER_MAX_RETREATS:
 			retreats += 1
-			# A point "under" a tread more than a few cm higher is poking into a RISER, not a slope;
-			# lifting onto that tread left the heel floating a step up - back AWAY from it instead
-			# (the toe backs the foot up, a HEEL in the riser behind it moves the foot forward).
+			# A point far under a tread is in a RISER, not a slope: back AWAY from it, not up onto it.
 			var ankle := (to_world * foot_pose).origin
 			var flat := Vector3(ankle.x - worst.x, 0.0, ankle.z - worst.z)
 			if flat.length_squared() > 0.000001:
@@ -688,8 +686,7 @@ func _flatten_support(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_wo
 		_sink_to_sole_level(skel, leg, base, to_world, points, side)
 
 
-## At rest, a sole flat on ONE surface well below the aimed-at height is a foot hanging over a lower
-## tread (the ground filter ignores such a resample; three agreeing sole points are not a flip).
+## At rest, a sole flat on ONE surface well below the aimed-at height hangs over a lower tread.
 func _sink_to_sole_level(skel: Skeleton3D, leg: Dictionary, base: Dictionary,
 		to_world: Transform3D, points: Array[Vector3], side: StringName) -> void:
 	var ground: Vector3 = debug_ground.get(side, Vector3.ZERO)
@@ -717,8 +714,7 @@ func _sink_to_sole_level(skel: Skeleton3D, leg: Dictionary, base: Dictionary,
 	_align_foot(skel, leg, normal, side)
 
 
-## The smallest slide (0 when flat) that puts the whole sole on one surface; kept while it still
-## works (re-searching flipped 2 cm candidates); prefers the surface AIMED at (`aim_y`).
+## Smallest slide (0 when flat) putting the whole sole on one surface; kept while it works.
 func _wanted_support_shift(points: Array[Vector3], ankle: Vector3, forward: Vector3, slope: float,
 		hip_world: Vector3, previous: float, aim_y: float) -> float:
 	if previous != 0.0 and _support_spread(points, ankle, forward, slope, previous,
@@ -767,8 +763,7 @@ func _resample_and_correct(skel: Skeleton3D, leg: Dictionary, base: Dictionary,
 	var normal: Vector3 = again["normal"]
 	if not _is_walkable(normal):
 		return
-	# The same filter as the first sample: the re-sample under the landed foot flipped between treads
-	# too, and re-aiming at each flip undid the filtering (the foot still jumped 0.15-0.2 m).
+	# The same filter as the first sample: re-aiming at each tread flip undid the filtering.
 	var again_position: Vector3 = again["position"]
 	again_position.y = _filtered_resample(side, again_position.y)
 	var moved := again_position.y - (debug_ground.get(side, landed_world) as Vector3).y
@@ -831,8 +826,7 @@ func _plausible(hit: Dictionary, anchor: Vector3) -> bool:
 	return anchor.y - (hit["position"] as Vector3).y <= max_surface_drop
 
 
-## Analytic two-bone solve: aim the upper bone at the knee and the lower at the ankle target. The
-## maths lives in FootIKV2Solver (testable without a scene); this only applies bone poses.
+## Analytic two-bone solve: aim the upper bone at the knee, the lower at the ankle target.
 func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3,
 		side: StringName) -> void:
 	var hip_pos: Vector3 = (base["hip"] as Transform3D).origin
@@ -846,10 +840,11 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 			hip_pos, (base["knee"] as Transform3D).origin, target,
 			float(leg["upper"]), float(leg["lower"]), leg["rest_pole"] as Vector3,
 			max_knee_flexion_deg, max_hip_swing_deg, skel_down)
-	_aim(skel, int(leg["hip"]), int(leg["knee"]), solved["knee"] as Vector3)
-	_aim(skel, int(leg["knee"]), int(leg["foot"]), solved["ankle"] as Vector3)
-	# What the solver asked for vs where the chain actually put the foot: a mismatch here is the
-	# aim step, not the maths.
+	_aim(skel, int(leg["hip"]), int(leg["knee"]), solved["knee"] as Vector3,
+			(base["hip"] as Transform3D).basis)
+	_aim(skel, int(leg["knee"]), int(leg["foot"]), solved["ankle"] as Vector3,
+			(base["knee"] as Transform3D).basis)
+	# What the solver asked for vs where the chain put the foot (a mismatch is the aim step).
 	debug_solve[side]["solved_ankle"] = solved["ankle"] as Vector3
 	debug_solve[side]["knee_target"] = solved["knee"] as Vector3
 	debug_solve[side]["landed"] = skel.get_bone_global_pose(int(leg["foot"])).origin
@@ -986,8 +981,9 @@ func _eval_sole_points(skel: Skeleton3D, side: StringName, live: bool) -> Packed
 	return points
 
 
-## Rotate `bone` about its own origin so the segment to `child` points at `target`.
-func _aim(skel: Skeleton3D, bone: int, child: int, target: Vector3) -> void:
+## Rotate `bone` about its own origin so the segment to `child` points at `target`. At rest the
+## joint's correction (vs its `animated` basis) may change only `joint_speed_deg` a physics frame.
+func _aim(skel: Skeleton3D, bone: int, child: int, target: Vector3, animated: Basis) -> void:
 	var pose := skel.get_bone_global_pose(bone)
 	var child_pos: Vector3 = skel.get_bone_global_pose(child).origin
 	var from := child_pos - pose.origin
@@ -995,4 +991,9 @@ func _aim(skel: Skeleton3D, bone: int, child: int, target: Vector3) -> void:
 	if from.length_squared() < 0.0000001 or to.length_squared() < 0.0000001:
 		return
 	pose.basis = Basis(Quaternion(from.normalized(), to.normalized())) * pose.basis
+	var base_q := animated.get_rotation_quaternion()
+	var correction := _limiter.limit(bone, Engine.get_physics_frames(),
+			pose.basis.get_rotation_quaternion() * base_q.inverse(),
+			0.0 if _is_moving else joint_speed_deg)
+	pose.basis = Basis(correction * base_q)
 	skel.set_bone_global_pose(bone, pose)

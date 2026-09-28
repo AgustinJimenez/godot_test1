@@ -190,6 +190,19 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
     ankle/foot angle limit, and enforcing `pose_fault` in the forward-walk / ramp checks (only the
     turn sweep grades it). The stepper is the only rate limit v2 has, and on the foot position only.
 
+12. **Joint speed limit + pose_fault everywhere (follow-up to item 11).** `foot_ik_v2_joint_limiter.gd`:
+    v1's `_limit_correction` idea - a joint's correction (rotation away from the animated pose, per
+    bone, global space) may change at most `joint_speed_deg` per physics frame, AT REST only (`_aim`
+    in the modifier; a bone not corrected last frame restarts unlimited, so a released swing foot or
+    a teleport is never dragged). Measured: the sweep legitimately changes a joint up to ~70 deg in
+    one frame (riser events), so 12 and 30 deg/frame broke it (clip 0.10 m / float 0.12 m) and 60
+    passes: it is a FLIP guard (3600 deg/s), not smoothing - v1's 90-120 deg/s is far tighter and
+    would need the stepper/riser handling to slow down first. `pose_fault` is now graded by EVERY
+    lab check: the forward walk (`faults=` in its line, must be 0) and all idle/ramp replays (the
+    `foot_step_max` limit defaults to 9.0, a fault reads 9.9). Verified it fires: with the solver's
+    backward-knee guard removed the forward walk reports faults=2 and FAILS. Still not done: an
+    ankle/foot angle limit.
+
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 
 - `foot_ik_v2_modifier.gd`: a trailing foot that cannot reach its surface is RELEASED to step instead
