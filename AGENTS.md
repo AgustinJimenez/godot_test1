@@ -342,6 +342,15 @@ against `player.get_node(player.root_node).get_path_to(target_skeleton)` first -
 
 ## Foot IK and movement
 
+**Foot IK v2 lessons (`tests/manual/foot_ik_v2/`, handoff in `AGENT_TASKS/035`).** Read bone poses
+from the modifier's published `final_pose`, never from a node's `_process()` (stale by 12 cm+). v1
+re-enables itself on every landing - use `set_debug_enabled(false)`. The player's ledge safety pushes
+the root at 3 m/s while airborne (`landing_correction_speed`); the lab zeroes only that. The game pins
+the body to the capsule, so the stair "hover" only moves the camera; smooth the body in the modifier.
+Foot skating on stairs is a speed vs clip-step-rate mismatch (gameplay speed), not an IK bug. Stairs
+sit at x = +5/+10/+15 in the lab; the 0.35 m stairs cannot be climbed at stair speed. `player.gd` and
+the lab are both at the 1000-line lint cap.
+
 For stair-specific Foot IK iteration, use `tests/manual/foot_ik/foot_ik_stair_lab.tscn` - the
 focused harness for the current stair work (see `AGENT_TASKS/030`). It records the real Player
 walking floor -> stairs -> top landing, then lets you scrub/step/reverse/slow it, with per-foot toe

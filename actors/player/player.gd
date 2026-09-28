@@ -59,9 +59,10 @@ func set_eye_offset(v: Vector3) -> void:
 ## foot IK. Hips, legs, collision, and contact timing remain authoritative.
 @export_range(0.0, 0.05, 0.005) var stair_balance_limit: float = 0.03
 @export_range(0.0, 0.75, 0.05) var stair_balance_strength: float = 0.75
-## Synchronized physical/animation slowdown around a stair transition; body and walk clip slow
-## together so foot placement stays matched and the planted leg gets time to settle (0.5-0.7).
-@export_range(0.25, 1.0, 0.05) var stair_walk_speed_scale: float = 0.6
+## Walk-speed multiplier around stairs; the clip plays at speed / STAIR_STEP_SPEED so each foot
+## stays on its step (slowing body and clip alike left them sliding ~0.7 m a step). 1.0 = off.
+@export_range(0.25, 1.0, 0.05) var stair_walk_speed_scale: float = 0.375
+const STAIR_STEP_SPEED := 0.7 # m/s of ground the clip's steps cover at normal playback (--slide)
 @export_range(0.0, 3.0, 0.05) var punch_delay_min: float = 0.25
 @export_range(0.0, 3.0, 0.05) var punch_delay_max: float = 0.75
 ## Prevents walking or sliding off elevated platforms/stairs into the void.
@@ -383,7 +384,6 @@ func _unhandled_input(event: InputEvent) -> void:
 func _set_third_person_zoom(length: float) -> void:
 	third_person_arm.spring_length = clampf(length, THIRD_PERSON_ZOOM_MIN, THIRD_PERSON_ZOOM_MAX)
 
-
 ## Head and body rotate about the same (world Y) axis, so their yaws are
 ## simply additive - turn the head first, and once it hits the limit, any
 ## further input carries over 1:1 into rotating the body instead. This way
@@ -402,7 +402,6 @@ func _apply_yaw(delta_yaw: float) -> void:
 	var overflow := new_head_yaw - _look_yaw
 	if overflow != 0.0:
 		rotate_y(overflow)
-
 
 ## While actually walking, gradually turn the body to face wherever the head
 ## is looking - this transfers the offset from head to body (total yaw, and
@@ -491,7 +490,8 @@ func _physics_process(delta: float) -> void:
 			and _stair_controller.has_recent_transition())
 	if stair_walk_slowed:
 		speed *= stair_walk_speed_scale
-	body.locomotion_playback_scale = stair_walk_speed_scale if stair_walk_slowed else 1.0
+	var stair_cadence := stair_walk_slowed and not is_equal_approx(stair_walk_speed_scale, 1.0)
+	body.locomotion_playback_scale = speed / STAIR_STEP_SPEED if stair_cadence else 1.0
 	# Movement follows where you're actually looking (body yaw + the head's
 	# offset from it), not just the body's facing - otherwise glancing to the
 	# side while walking forward would strafe instead of walking that way.
