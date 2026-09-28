@@ -7,6 +7,7 @@ extends RefCounted
 ## toward the character's right. All angles are degrees, lengths metres.
 
 const ROLES := ["hip", "knee", "foot", "toe"]
+const BEHIND_LIMIT := 0.03 # m the knee may sit behind the hip-to-foot line
 
 
 static func describe(v2: FootIKV2Modifier, skel: Skeleton3D, side: StringName,
@@ -65,16 +66,25 @@ static func _joints(v2: FootIKV2Modifier, skel: Skeleton3D, leg: Dictionary,
 	return out
 
 
-## How far the knee sits BEHIND the hip-to-foot line (m; <= 0 = bending the right way).
-static func knee_behind(v2: FootIKV2Modifier, side: StringName, forward: Vector3) -> float:
+## An anatomically impossible leg pose, as a failing 9.9 (0.0 = fine): the knee BEHIND the
+## hip-to-foot line, past the flexion cap, or the thigh past the swing cone (v1's hard limits,
+## `foot_ik_joint_limit_check.gd`). Limits are the modifier's own, with a 1 degree tolerance.
+static func pose_fault(v2: FootIKV2Modifier, side: StringName, forward: Vector3) -> float:
 	var leg: Dictionary = v2._legs[side]
-	if not (v2.final_pose.has(int(leg["hip"])) and v2.final_pose.has(int(leg["foot"]))):
+	var pose: Dictionary = v2.final_pose
+	if not (pose.has(int(leg["hip"])) and pose.has(int(leg["knee"])) and pose.has(int(leg["foot"]))):
 		return 0.0
-	var hip: Vector3 = (v2.final_pose[int(leg["hip"])] as Transform3D).origin
-	var knee: Vector3 = (v2.final_pose[int(leg["knee"])] as Transform3D).origin
-	var line: Vector3 = (v2.final_pose[int(leg["foot"])] as Transform3D).origin - hip
-	var off := (knee - hip) - line.normalized() * (knee - hip).dot(line.normalized())
-	return -off.dot(forward)
+	var hip: Vector3 = (pose[int(leg["hip"])] as Transform3D).origin
+	var thigh: Vector3 = (pose[int(leg["knee"])] as Transform3D).origin - hip
+	var shank: Vector3 = (pose[int(leg["foot"])] as Transform3D).origin - hip - thigh
+	var line: Vector3 = thigh + shank
+	var off := thigh - line.normalized() * thigh.dot(line.normalized())
+	var flexion := 180.0 - rad_to_deg((-thigh).angle_to(shank))
+	var swing := rad_to_deg(Vector3.DOWN.angle_to(thigh.normalized()))
+	var bad := -off.dot(forward) > BEHIND_LIMIT
+	bad = bad or (v2.max_knee_flexion_deg > 0.0 and flexion > v2.max_knee_flexion_deg + 1.0)
+	bad = bad or (v2.max_hip_swing_deg > 0.0 and swing > v2.max_hip_swing_deg + 1.0)
+	return 9.9 if bad else 0.0
 
 
 static func _angles(pose: Dictionary, forward: Vector3, right: Vector3) -> Dictionary:

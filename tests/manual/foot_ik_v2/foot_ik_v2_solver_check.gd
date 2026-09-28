@@ -27,6 +27,8 @@ func _initialize() -> void:
 	_knee_stays_on_the_animated_side()
 	_straight_leg_falls_back_to_the_rest_pole()
 	_knee_never_bends_backward()
+	_knee_flexion_is_capped()
+	_hip_swing_is_capped()
 	print("FOOT_IK_V2_SOLVER_CHECK %s" % (
 			"PASS" if _failures == 0 else "FAIL failures=%d" % _failures))
 	quit(0 if _failures == 0 else 1)
@@ -105,6 +107,24 @@ func _knee_never_bends_backward() -> void:
 	solved_pole -= direction * solved_pole.dot(direction)
 	_check("knee_never_bends_backward", solved_pole.normalized().dot(REST_POLE) > 0.0,
 			"dot=%.3f" % solved_pole.normalized().dot(REST_POLE))
+
+
+## A target close under the hip would fold the knee past the flexion cap: the foot stops short.
+func _knee_flexion_is_capped() -> void:
+	var solved := SOLVER.solve(HIP, ANIMATED_KNEE, HIP + Vector3(0.0, -0.10, 0.05), UPPER, LOWER,
+			REST_POLE, 100.0)
+	var knee := solved["knee"] as Vector3
+	var ankle := solved["ankle"] as Vector3
+	var flexion := 180.0 - rad_to_deg((HIP - knee).angle_to(ankle - knee))
+	_check("knee_flexion_is_capped", flexion <= 100.5, "flexion=%.1f (cap 100)" % flexion)
+
+
+## A target far out to the side would swing the thigh past the cone: the knee is pulled back in.
+func _hip_swing_is_capped() -> void:
+	var solved := SOLVER.solve(HIP, ANIMATED_KNEE, HIP + Vector3(0.0, -0.05, 0.85), UPPER, LOWER,
+			REST_POLE, 0.0, 70.0)
+	var swing := rad_to_deg(Vector3.DOWN.angle_to(((solved["knee"] as Vector3) - HIP).normalized()))
+	_check("hip_swing_is_capped", swing <= 70.5, "swing=%.1f (cap 70)" % swing)
 
 
 func _check(name: String, condition: bool, detail: String) -> void:

@@ -13,7 +13,6 @@ const SETTLE_FRAMES := 2 # the snap frame(s) themselves are not graded
 const START_YAW_DEG := 13.2
 # m in one frame after the settle (a step is 2.5 cm/frame plus its lift arc; was 0.28 m unstepped).
 const STEPPING_SHARE_LIMIT := 0.15 # of graded foot-frames a foot may spend walking a step
-const KNEE_BACK_LIMIT := 0.03 # m the knee may sit behind the hip-to-foot line
 const FOOT_STEP_LIMIT := 0.07
 
 
@@ -30,9 +29,9 @@ static func replay() -> Array:
 ## fold into it as a failing 9.9: (1) a foot walking a step is skipped by the tip / heel grading,
 ## so it must not step for most of the sweep (the limiter once never finished and vibrated the
 ## foot): past STEPPING_SHARE_LIMIT of the graded frames; (2) the knee bending BACKWARD
-## (`knee_back` > KNEE_BACK_LIMIT m behind the hip-to-foot line).
+## (`pose_fault`: knee behind the leg line, past the flexion cap or the swing cone).
 static func step(previous: Dictionary, side: StringName, pos: Vector3, graded: bool,
-		stepping: bool, knee_back: float) -> float:
+		stepping: bool, pose_fault: float) -> float:
 	var moved := 0.0
 	if graded:
 		previous["frames"] = int(previous.get("frames", 0)) + 1
@@ -40,7 +39,7 @@ static func step(previous: Dictionary, side: StringName, pos: Vector3, graded: b
 		if previous.has(side):
 			moved = pos.distance_to(previous[side] as Vector3)
 		if int(previous["frames"]) > 200 and float(previous["stepping"]) > (
-				STEPPING_SHARE_LIMIT * float(previous["frames"])) or knee_back > KNEE_BACK_LIMIT:
+				STEPPING_SHARE_LIMIT * float(previous["frames"])) or pose_fault > 0.0:
 			moved = 9.9
 	previous[side] = pos
 	return moved

@@ -177,6 +177,19 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
     guards it too (`KNEE_BACK_LIMIT` 3 cm, `FootIKV2PoseDump.knee_behind`); verified the sweep FAILS
     with the old solver at dz=0 and PASSES with the fix.
 
+11. **Joint limits (user asked how v2 stops unnatural joint motion) - added, v1's approach.** v2 had
+    only exact bone lengths + reach clamp + the rest-pole knee; no flexion / swing / speed limits
+    (v1: `max_knee_flexion_degrees` 150, `max_hip_swing_degrees` 100 cone, per-joint degrees/sec in
+    `_limit_correction`, a negative-knee guard, and `foot_ik_joint_limit_check.gd`). Now
+    `FootIKV2Solver.solve` takes optional `max_flexion_deg` (min reach from the interior angle: the
+    foot falls short rather than fold) and `max_swing_deg` + `down` (the knee swung back into the
+    cone); modifier exports `max_knee_flexion_deg` 150 / `max_hip_swing_deg` 100 (0 = off), `down`
+    taken in skeleton space. Solver check has cap cases for both. `FootIKV2PoseDump.pose_fault`
+    (knee behind the leg line > 3 cm, flexion or swing over the modifier's own caps + 1 deg) feeds
+    the turn sweep as a failing 9.9. **NOT done:** joint angular SPEED limits (v1 has them), an
+    ankle/foot angle limit, and enforcing `pose_fault` in the forward-walk / ramp checks (only the
+    turn sweep grades it). The stepper is the only rate limit v2 has, and on the foot position only.
+
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 
 - `foot_ik_v2_modifier.gd`: a trailing foot that cannot reach its surface is RELEASED to step instead

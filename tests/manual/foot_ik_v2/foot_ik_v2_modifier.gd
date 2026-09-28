@@ -11,6 +11,8 @@ const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 }
 
 @export var enabled := true
+@export_range(0.0, 170.0, 1.0) var max_knee_flexion_deg := 150.0 # v1 defaults; 0 = off
+@export_range(0.0, 170.0, 1.0) var max_hip_swing_deg := 100.0 # cone from straight down
 ## Physics layers the ground is on: 1 = world, 6 = authored surfaces (layer 1 alone misses stairs).
 @export_flags_3d_physics var ground_mask := 1 | (1 << 5)
 ## Fallback floor limit when not a CharacterBody3D; steeper is a wall/riser, left to the animation.
@@ -537,8 +539,7 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	_clear_toe(skel, leg, base, to_world, hip_world, side)
 	_limit_step(skel, leg, base, to_world, side)
 	var landed: Vector3 = skel.get_bone_global_pose(int(leg["foot"])).origin
-	# How far the foot ended from the FINAL target (after the resample, retreat, lift), not the
-	# first blended one - grading against the stale target read every corrected foot as a miss.
+	# How far the foot ended from the FINAL target (after resample, retreat, lift): stale misread.
 	var final_target: Vector3 = to_world.affine_inverse() * (debug_target[side] as Vector3)
 	var miss := landed.distance_to(final_target)
 	debug_solve[side]["residual"] = miss
@@ -560,8 +561,7 @@ func _limit_step(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: 
 		_align_foot(skel, leg, debug_ground_normal.get(side, Vector3.UP), side)
 
 
-## Lay the sole on the sampled surface (rotate so it points along the surface normal); without it
-## a ramp keeps the shoe level while the ground tilts, cutting the toe or heel into the slope.
+## Lay the sole on the sampled surface (rotate so it points along the surface normal).
 func _align_foot(skel: Skeleton3D, leg: Dictionary, normal: Vector3,
 		side: StringName) -> void:
 	var foot := int(leg["foot"])
@@ -641,8 +641,7 @@ func _clear_toe(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: T
 		_align_foot(skel, leg, debug_ground_normal.get(side, Vector3.UP), side)
 
 
-## Land the WHOLE sole on one flat surface (stairs often straddle a riser). Three sole points are
-## sampled; if not one plane, the foot slides along its length, smallest shift first. Planted only.
+## Land the WHOLE sole on one flat surface: if 3 sole points are not one plane, slide it. Planted.
 func _flatten_support(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: Transform3D,
 		hip_world: Vector3, side: StringName) -> void:
 	debug_support_shift[side] = 0.0
@@ -663,10 +662,8 @@ func _flatten_support(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_wo
 	var shift: float = _support_last.get(side, 0.0)
 	var wanted := _wanted_support_shift(points, foot_world.origin, forward, slope, hip_world,
 			shift, (debug_ground.get(side, Vector3.ZERO) as Vector3).y)
-	# The wanted slide steps 2 cm as the idle animation loops (a visible jump every ~75 frames):
-	# glide to it, once per physics frame (a pass can repeat within a tick) - but only while the
-	# applied slide is itself still flat and on the same tread level; otherwise (a turn crossed a
-	# riser) gliding leaves the heel hanging over it for as long as the glide takes.
+	# The wanted slide steps 2 cm as idle loops: glide to it once per physics frame - but only while
+	# the applied slide is still flat on the same tread level (across a riser it hangs the heel).
 	if int(_support_frame.get(side, -1)) != Engine.get_physics_frames():
 		var glide := not _is_moving and wanted != shift
 		if glide:
@@ -741,8 +738,7 @@ func _wanted_support_shift(points: Array[Vector3], ankle: Vector3, forward: Vect
 	return fallback
 
 
-## How far the surface under the sole's points departs from one plane when slid `shift` m along
-## its length: spread of each point's height minus what the slope alone gives. No ground = a step.
+## How far the surface under the sole's points departs from one plane when slid `shift` m.
 func _support_spread(points: Array[Vector3], ankle: Vector3, forward: Vector3, slope: float,
 		shift: float, hip_world: Vector3) -> float:
 	var lowest := INF
@@ -845,9 +841,11 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 		"needed": hip_pos.distance_to(target),
 		"target_local": target,
 	}
+	var skel_down := skel.global_transform.basis.orthonormalized().inverse() * Vector3.DOWN
 	var solved := FootIKV2Solver.solve(
 			hip_pos, (base["knee"] as Transform3D).origin, target,
-			float(leg["upper"]), float(leg["lower"]), leg["rest_pole"] as Vector3)
+			float(leg["upper"]), float(leg["lower"]), leg["rest_pole"] as Vector3,
+			max_knee_flexion_deg, max_hip_swing_deg, skel_down)
 	_aim(skel, int(leg["hip"]), int(leg["knee"]), solved["knee"] as Vector3)
 	_aim(skel, int(leg["knee"]), int(leg["foot"]), solved["ankle"] as Vector3)
 	# What the solver asked for vs where the chain actually put the foot: a mismatch here is the
