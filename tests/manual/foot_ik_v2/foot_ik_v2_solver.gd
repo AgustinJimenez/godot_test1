@@ -17,7 +17,10 @@ static func solve(hip: Vector3, animated_knee: Vector3, target: Vector3,
 	var direction := to_target.normalized()
 	var pole := animated_knee - hip
 	pole -= direction * pole.dot(direction)
-	pole = rest_pole if pole.length_squared() < 0.000001 else pole.normalized()
+	# a knee never bends BACKWARD: when the animated bend has swung against the rest pole (the foot
+	# moved a long way in, or the hips dropped) that direction is meaningless - take the rest pole
+	var rest := (rest_pole - direction * rest_pole.dot(direction)).normalized()
+	pole = rest if pole.length_squared() < 0.000001 or pole.dot(rest) < 0.0 else pole.normalized()
 	var along := (upper * upper - lower * lower + distance * distance) / (2.0 * distance)
 	var outward := sqrt(maxf(0.0, upper * upper - along * along))
 	return {

@@ -960,7 +960,7 @@ func _measure_ramp() -> void:
 			continue
 		_foot_step_max = maxf(_foot_step_max, TURN_CHECK.step(
 				_turn_prev, side, _pub(int(leg["foot"])).origin, _grade_now,
-				_v2.debug_stepping.get(side, false)))
+				_v2.debug_stepping.get(side, false), POSE_DUMP.knee_behind(_v2, side, -player.global_basis.z)))
 		if _grade_now and not _v2.debug_stepping.get(side, false): # a step floats by design
 			_grade_tip(side, _segment)
 			_grade_heel(side, _segment)

@@ -166,6 +166,17 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
    attempts: moves the failure to other offsets (heel float 0.116 at dz 0, 0.12, -0.12) - WORSE, so not
    kept. dz=0.24 is excluded from the suite (KNOWN OPEN); 0, 0.12, -0.12 run.
 
+10. **Right knee bent BACKWARD (user: "see the right leg pose?") - FIXED, guarded.** The trace `pose`
+    block showed knee_offset_forward -0.17 m (knee behind the hip-foot line), hip flexion -27 deg,
+    shank +23: the solver takes the bend direction from the ANIMATED knee projected off the new
+    hip->target line, and when the foot moves a long way in (stance shift 0.2 + pelvis drop) that
+    projection swings behind the leg. `FootIKV2Solver.solve` now falls back to the rest pole
+    whenever the animated bend points against it (a knee never bends backward). The old solver
+    fixture (`knee_stays_on_animated_side`) actually asserted the backward fold, so it was changed
+    to a consistent knee and a new `knee_never_bends_backward` case was added. Turn sweep now
+    guards it too (`KNEE_BACK_LIMIT` 3 cm, `FootIKV2PoseDump.knee_behind`); verified the sweep FAILS
+    with the old solver at dz=0 and PASSES with the fix.
+
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 
 - `foot_ik_v2_modifier.gd`: a trailing foot that cannot reach its surface is RELEASED to step instead

@@ -11,7 +11,9 @@ const EPS := 0.0005
 const UPPER := 0.45
 const LOWER := 0.45
 const HIP := Vector3(0.0, 1.0, 0.0)
-const ANIMATED_KNEE := Vector3(0.0, 0.55, 0.12)
+const ANIMATED_KNEE := Vector3(0.0, 0.55, 0.20)
+## Slightly forward of the hip in absolute terms but BEHIND the line to a target that leans forward.
+const BACKWARD_KNEE := Vector3(0.0, 0.55, 0.12)
 const REST_POLE := Vector3(0.0, 0.0, 1.0)
 
 var _failures := 0
@@ -24,6 +26,7 @@ func _initialize() -> void:
 	_knee_keeps_bone_lengths()
 	_knee_stays_on_the_animated_side()
 	_straight_leg_falls_back_to_the_rest_pole()
+	_knee_never_bends_backward()
 	print("FOOT_IK_V2_SOLVER_CHECK %s" % (
 			"PASS" if _failures == 0 else "FAIL failures=%d" % _failures))
 	quit(0 if _failures == 0 else 1)
@@ -90,6 +93,17 @@ func _straight_leg_falls_back_to_the_rest_pole() -> void:
 	var solved_pole := (solved["knee"] as Vector3) - HIP
 	solved_pole -= direction * solved_pole.dot(direction)
 	_check("straight_leg_uses_rest_pole", solved_pole.normalized().dot(REST_POLE) > 0.99,
+			"dot=%.3f" % solved_pole.normalized().dot(REST_POLE))
+
+
+## An animated knee that projects BEHIND the hip-to-target line (the foot moved a long way in, or
+## the hips dropped) must not fold the leg backward: the rest pole takes over.
+func _knee_never_bends_backward() -> void:
+	var solved := SOLVER.solve(HIP, BACKWARD_KNEE, Vector3(0.0, 0.35, 0.22), UPPER, LOWER, REST_POLE)
+	var direction := solved["direction"] as Vector3
+	var solved_pole := (solved["knee"] as Vector3) - HIP
+	solved_pole -= direction * solved_pole.dot(direction)
+	_check("knee_never_bends_backward", solved_pole.normalized().dot(REST_POLE) > 0.0,
 			"dot=%.3f" % solved_pole.normalized().dot(REST_POLE))
 
 

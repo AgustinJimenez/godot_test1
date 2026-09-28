@@ -65,6 +65,18 @@ static func _joints(v2: FootIKV2Modifier, skel: Skeleton3D, leg: Dictionary,
 	return out
 
 
+## How far the knee sits BEHIND the hip-to-foot line (m; <= 0 = bending the right way).
+static func knee_behind(v2: FootIKV2Modifier, side: StringName, forward: Vector3) -> float:
+	var leg: Dictionary = v2._legs[side]
+	if not (v2.final_pose.has(int(leg["hip"])) and v2.final_pose.has(int(leg["foot"]))):
+		return 0.0
+	var hip: Vector3 = (v2.final_pose[int(leg["hip"])] as Transform3D).origin
+	var knee: Vector3 = (v2.final_pose[int(leg["knee"])] as Transform3D).origin
+	var line: Vector3 = (v2.final_pose[int(leg["foot"])] as Transform3D).origin - hip
+	var off := (knee - hip) - line.normalized() * (knee - hip).dot(line.normalized())
+	return -off.dot(forward)
+
+
 static func _angles(pose: Dictionary, forward: Vector3, right: Vector3) -> Dictionary:
 	var out := {}
 	if not (pose.has("hip") and pose.has("knee") and pose.has("foot")):
