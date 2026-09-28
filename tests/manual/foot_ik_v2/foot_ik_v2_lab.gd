@@ -821,8 +821,8 @@ func _measure(name: String) -> void:
 		_track_foot_step(side, name, _pub(int(leg["foot"])).origin)
 		# Grade against the surface the modifier ACTUALLY sampled (its own decision), not a second
 		# ray cast here - a restated probe can disagree with the code it is meant to check.
-		if not _v2.debug_target.has(side):
-			continue # skipped this frame by design (mid-swing / out of reach): animation keeps it
+		if not _v2.debug_target.has(side) or _v2.debug_stepping.get(side, false):
+			continue # skipped by design (mid-swing / out of reach) or walking a step
 		var to_world := player.skeleton.global_transform
 		var foot: Transform3D = _pub(int(leg["foot"]))
 		var ground: Vector3 = _v2.debug_ground.get(side, foot.origin)
@@ -960,7 +960,7 @@ func _measure_ramp() -> void:
 			continue
 		_foot_step_max = maxf(_foot_step_max, FootIKV2TurnCheck.step(
 				_turn_prev, side, _pub(int(leg["foot"])).origin, _grade_now))
-		if _grade_now:
+		if _grade_now and not _v2.debug_stepping.get(side, false): # a step floats by design
 			_grade_tip(side, _segment)
 			_grade_heel(side, _segment)
 

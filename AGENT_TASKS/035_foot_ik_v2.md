@@ -138,12 +138,19 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
    gap over the sole-level vertices (each against the floor under it); (c) the 2 cm flatten-slide
    glide (item on idle loop) only glides while the applied slide is still flat AND on the same
    tread level as the wanted one - otherwise it snaps (gliding across a riser hung the heel 11 cm).
-   Suite runs dz=0 and 0.12 (PASS). **OPEN:** dz=0.24 floats 11 cm for 2 frames, dz=-0.12 clips 6 cm
-   for 1 (state `stretched`); and `foot_step_max` is 0.28 m (limit set to 0.30 = KNOWN OPEN): when the
-   turn crosses a riser the flatten fit jumps to the other tread (25 cm slide) in ONE frame. A real fix
-   needs a step arc (lift + glide) - tried instead: debouncing both sinks 3 frames (worse: clip/float
-   frames appear), rate-limiting the slide across levels (heel floats while it glides). The one-frame
-   pop at f1561 in the sweep is the sink re-aiming to the lower tread when the sole points flip.
+   **STEP ARC (done, item 8 follow-up):** the remaining pop (a turn across a riser re-seats the flat fit
+   on the other tread: foot 0.28 m in ONE frame, plus dz=0.24 floating 11 cm and dz=-0.12 clipping
+   6 cm) is fixed by `FootIKV2Stepper` (`foot_ik_v2_stepper.gd`): a RESTING foot (planted, not moving,
+   was planted last frame - a landing is not a step) is re-seated at most 2.5 cm/frame with a 5 cm
+   lift arc. Tracked in ROOT-RELATIVE space so a teleport or the body's own travel is never a step.
+   `debug_stepping` tells the lab to skip tip/heel grading and the ankle-error check for that foot
+   (a stepping foot floats by design). All four `--stairs-turn` offsets (0, 0.12, 0.24, -0.12) now
+   PASS with clip 0.000 / float 0.021, and `foot_step_max` fell 0.28 -> 0.059 (limit 0.07 in
+   `foot_ik_v2_turn_check.gd`; tighten toward 0.04 if the arc is made smoother). Forward-walk check
+   PASS (ankle_err 0.046); the ramp-strafe replay is still red on float, unrelated. Caveat: while a
+   step is in progress the foot is graded as skipped, so a step that never finishes would hide a
+   float - the sweep would then show large foot travel, not silence. Dead ends before this:
+   debouncing both sinks 3 frames (worse), rate-limiting the slide across levels (heel floats).
 
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 

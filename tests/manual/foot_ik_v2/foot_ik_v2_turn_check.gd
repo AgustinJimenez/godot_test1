@@ -14,7 +14,7 @@ const SETTLE_FRAMES := 2 # the snap frame(s) themselves are not graded
 const START_YAW_DEG := 13.2
 # m in one frame after the settle. KNOWN OPEN: a turn that crosses a riser re-seats the foot 0.28 m
 # in one frame (no step arc yet) - tighten to 0.03 when it has one.
-const FOOT_STEP_LIMIT := 0.30
+const FOOT_STEP_LIMIT := 0.07
 
 
 static func replay() -> Array:

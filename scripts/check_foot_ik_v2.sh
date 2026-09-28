@@ -96,9 +96,9 @@ run "Foot IK v2 jump on the 45 deg ramp keeps the pelvis up (live regression)" \
 
 # Turn in place on the stairs, 2 degrees at a time through a full circle (v1's rotation-snap idea).
 # A resting foot turned toward the next riser used to be lifted 10 cm onto it (heel 8 cm under the
-# tread). Each offset along the treads puts the riser under the foot at a different spot. KNOWN OPEN
-# (not run here): --stairs-turn=0.24 floats 11 cm for 2 frames, --stairs-turn=-0.12 clips 6 cm for 1.
-for dz in 0 0.12; do
+# tread) and popped 0.28 m when a turn crossed a riser (now a step). Each offset along the treads
+# puts the riser under the foot at a different spot.
+for dz in 0 0.12 0.24 -0.12; do
 	run "Foot IK v2 turn in place on the stairs, dz=$dz (regression)" "FOOT_IK_V2_IDLE_CHECK PASS" \
 		godot --headless --fixed-fps 60 --quit-after 2800 --path "$project_dir" \
 		res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check \
