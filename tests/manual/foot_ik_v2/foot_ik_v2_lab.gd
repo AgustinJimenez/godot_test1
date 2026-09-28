@@ -1,43 +1,37 @@
 extends Node3D
-## Acceptance scene for the v2 foot IK: flat, ramps at 15/30/45 degrees and three staircases. Turns
-## v1's modifier off (one writer per bone) and adds FootIKV2Modifier; F6 toggles it. Headless
-## `-- --foot-ik-v2-check` (and the other flags below) walk / replay it and grade the result.
+## Acceptance scene for v2 foot IK: flat, ramps 15/30/45 deg, three staircases. F6 toggles it.
+## Headless `-- --foot-ik-v2-check` (and other flags below) walk / replay it and grade the result.
 
 const V2_MODIFIER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_modifier.gd")
+const PERF_PROBE := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_perf_probe.gd")
 ## v1's trace writer, unchanged - a bounded rotating JSONL window.
 const TRACE_WRITER := preload("res://tests/manual/foot_ik/foot_ik_trace_writer.gd")
-## Same schema trace_query.py reads (frame + feet.<side>.{sole_clearance,gap,smoothed_target,...}),
-## so v2 is inspected with the exact same tooling as v1.
+## Same schema trace_query.py reads, so v2 is inspected with the exact same tooling as v1.
 const TRACE_PATH := "user://foot_ik_v2.jsonl"
 ## Headless checks write here so they can never overwrite a live session's trace.
 const CHECK_TRACE_PATH := "user://foot_ik_v2_check.jsonl"
 const TRACE_MAX_LINES := 2000
 const SETTLE_FRAMES := 20
-## Long enough to climb every surface (4.2 m at 3.2 m/s plus the 0.9 m run-in is ~96 frames) and no
-## longer: past that the character walks off the top and falls, which is not what is being graded.
+## Long enough to climb every surface (~96 frames), no longer - past that it walks off and falls.
 const WALK_FRAMES := 90
 ## Toe tip / heel must not float more than this above the real surface on a foot meant to be down.
 const FORWARD_FLOAT_LIMIT := 0.20
-## ...and only a handful of frames may exceed TIP_FLOAT_TOLERANCE (a lone frame after a teleport
-## can read high; a foot that stays up - the raw animation: 29 frames - must fail).
+## ...only a handful of frames may exceed TIP_FLOAT_TOLERANCE (a foot that stays up must fail).
 const FORWARD_FLOAT_FRAMES := 12
 ## Ankle error is only graded for feet at least this planted (see the modifier's plant weight).
 const PLANT_GRADED_MIN := 0.95
-## How far a corrected foot may end from the target it finally chased (a 45 degree uphill walk
-## lands ~6 cm short with the leg fully extended); a clamped foot is not graded (see _measure).
+## How far a corrected foot may end from its final target; a clamped foot is not graded.
 const ANKLE_TOLERANCE := 0.06
 const TILT_TOLERANCE_DEG := 12.0
 ## The user's scenario: stand on the closest ramp and strafe left/right along the cross-slope.
 const LATERAL_LANE := 1        # ramp15
-## The user's live session, replayed: standing on ramp15 with the body turned across the slope
-## (yaw ~99 deg, the camera looking sideways), strafing DOWNhill (left) and UPhill (right) in
-## alternating passes with a brief pause between. Frame counts come from the recorded trace.
+## The user's live session, replayed: standing on ramp15 turned across the slope (yaw ~99 deg),
+## strafing DOWNhill (left) and UPhill (right) in alternating passes with a brief pause between.
 const REPLAY_START_X_OFFSET := 1.7
 const REPLAY_START_Z := -0.6
 const REPLAY_YAW_DEG := 99.0
-## Regression for a live last frame: idle at mid-ramp, body across the slope (x -7.158, z -0.095,
-## yaw 97.6); the downhill foot's floor was out of reach and it hung ~7 cm up. Replays that session
-## from the floor: a run, a JUMP onto the ramp, walk / stop / walk / stop. Only idle is graded.
+## Regression: idle at mid-ramp, body across the slope; the downhill foot's floor was out of reach
+## and it hung ~7 cm up. Replays that session from the floor: run, JUMP onto the ramp, walk/stop.
 const IDLE_START_X_OFFSET := 4.9 # root x -3.1 (on the floor) relative to the ramp lane's x
 const IDLE_START_Z := 0.19
 const IDLE_YAW_DEG := 89.0
@@ -52,10 +46,8 @@ const IDLE_REPLAY := [
 	{"name": "walk_b", "input": Vector2(0.0, -1.0), "frames": 34, "yaw": 95.1, "grade": false},
 	{"name": "idle_end", "input": Vector2.ZERO, "frames": 450, "grade": true},
 ]
-## Jumping on the 45 degree ramp (live log): the standing squat used to fire in the air and on
-## landing (pelvis 0.2-0.4 m down and back up). Graded: the pelvis drop stays within `pelvis_limit`
-## for the jump after PELVIS_GRACE_FRAMES (the held squat releases at 0.6 m/s), and with no input
-## the character stays put (`max_drift` m of travel from where the jump began).
+## Jumping on the 45 deg ramp: the standing squat used to fire in the air and on landing. Graded:
+## the pelvis drop stays within `pelvis_limit` after PELVIS_GRACE_FRAMES, drift within `max_drift`.
 const PELVIS_GRACE_FRAMES := 30
 const JUMP_REPLAY := [
 	{"name": "idle_settle", "input": Vector2.ZERO, "frames": 30, "grade": false},
@@ -93,7 +85,7 @@ const HEEL_CLIP_TOLERANCE := 0.02
 const HEEL_OVERHANG_DROP := 0.07
 ## The tip touches the floor within this band around the surface (a resting toe sits ~1 cm up).
 const TOUCH_BELOW := 0.015
-const TOUCH_ABOVE := 0.04
+const TOUCH_ABOVE := 0.022
 const TIP_EVENT_LIMIT := 3 # printed per surface; the counts in the summary are complete
 
 const RAMP_ANGLES := [15.0, 30.0, 45.0]
@@ -150,6 +142,8 @@ var _tip_float_events := 0
 var _tip_events_printed := {}
 var _tip_material_touch: StandardMaterial3D
 var _tip_material_air: StandardMaterial3D
+var _sole_lines: ImmediateMesh
+var _sole_line_material: StandardMaterial3D
 var _checking := false
 var _ramp_checking := false
 var _idle_checking := false
@@ -215,9 +209,7 @@ func _ready() -> void:
 				player.stair_walk_speed_scale = 1.0
 				player.walk_speed = arg.trim_prefix("--walk-speed=").to_float()
 		if "--stairs-edge" in OS.get_cmdline_user_args():
-			# Same spot as the live log: standing on the stairs' right edge, one foot on step 3 and
-			# the other off the side over the floor 0.38 m below. It used to hang 30 cm up (the plan
-			# flip-flopped onto the tread's height); it now squats to put that foot on the floor.
+			# stairs' right edge, one foot on step 3, the other off the side over the floor 0.38 m down
 			_stairs_start = true
 			_stairs_x = 1.42
 			_float_limit = STAIRS_EDGE_FLOAT_LIMIT
@@ -227,10 +219,8 @@ func _ready() -> void:
 		_start = Vector3(REPLAY_START_X_OFFSET, REPLAY_START_Z, REPLAY_YAW_DEG)
 	for child: Node in player.skeleton.get_children():
 		if child is PlayerFootIKModifier:
-			# v1 off: one writer per bone. `active = false` is not enough - v1 turns itself back on
-			# every time the player lands (set_character_grounded), so v1 and v2 were both running
-			# and v1's pelvis drop pulled the hips down on ramps. The debug switch is the one that
-			# sticks.
+			# v1 off: `active = false` is not enough - it turns itself back on every landing
+			# (set_character_grounded), so v1 and v2 fought. The debug switch is the one that sticks.
 			(child as PlayerFootIKModifier).set_debug_enabled(false)
 	# Bisect switch: `--disable-modifier=<NodeName>` turns one existing skeleton modifier off.
 	for child: Node in player.skeleton.get_children():
@@ -246,9 +236,8 @@ func _ready() -> void:
 	_v2.enabled = not ("--foot-ik-v2-off" in OS.get_cmdline_user_args())
 	if "--foot-ik-v2-no-pelvis-drop" in OS.get_cmdline_user_args():
 		_v2.max_pelvis_drop = 0.0
-	# The player's ledge safety (built on v1's sampler) pushes the root toward a predicted "safe"
-	# landing at 3 m/s while falling: on a steep ramp the character slid ~1.6 m in a plain jump. That
-	# airborne push is zeroed here (`--foot-ik-v2-ledge-safety` keeps it); the edge clamp stays on.
+	# Ledge safety pushes the root toward a "safe" landing at 3 m/s while falling (slid ~1.6 m on a
+	# ramp jump); zeroed here (`--foot-ik-v2-ledge-safety` keeps it), the edge clamp stays on.
 	var v1: PlayerFootIKModifier = player.body._foot_ik_modifier
 	if v1 != null and "--foot-ik-v2-ledge-safety" not in OS.get_cmdline_user_args():
 		v1._ground_sampler._settings.landing_correction_speed = 0.0
@@ -266,19 +255,24 @@ func _ready() -> void:
 		_v2.plant_fade = false
 	if "--foot-ik-v2-no-reach-when-moving" in OS.get_cmdline_user_args():
 		_v2.reach_when_moving = false
+	if "--foot-ik-v2-perf" in OS.get_cmdline_user_args():
+		FootIKV2Debug.enabled = true
+	add_child(PERF_PROBE.new()) # no-op unless FOOT_IK_V2_PERF_LOG=1 or --foot-ik-v2-perf
 	_mode = "ramp_check" if _ramp_checking else ("forward_check" if _checking else "live")
 	_run_id = "%s_%d" % [Time.get_datetime_string_from_system(false, true).replace(" ", "T"),
 			Time.get_ticks_msec()]
 	_trace = TRACE_WRITER.new(
 			TRACE_PATH if _mode == "live" else CHECK_TRACE_PATH, TRACE_MAX_LINES)
-	# Default CharacterBody3D limit is 45 deg, which sits exactly on the steepest test ramp.
-	player.floor_max_angle = deg_to_rad(60.0)
+	player.floor_max_angle = deg_to_rad(60.0) # 45 deg sits on the steepest test ramp
 	if _ramp_checking:
 		_place_on_ramp()
 		return
 	if _checking:
 		_move_to_spot(0)
 		return
+	# Interactive spawn: the pose of the reported idle right-foot float (Stair010, live).
+	player.global_position = Vector3(4.61, 0.80, -0.05)
+	player.rotation = Vector3(0.0, deg_to_rad(-84.2), 0.0)
 	_build_toe_spheres()
 	_start_third_person.call_deferred()
 	var layer := CanvasLayer.new()
@@ -289,9 +283,7 @@ func _ready() -> void:
 	_update_label()
 
 
-## Sampling happens in _process, NOT _physics_process: a SkeletonModifier3D publishes in the
-## skeleton's deferred update, which runs after the node's _physics_process, so reading the pose
-## there measures the UNcorrected one (it looked like a 22 cm float that the solver never made).
+## In _process: a SkeletonModifier3D publishes in the deferred update, after _physics_process.
 func _process(_delta: float) -> void:
 	_capture()
 	_update_toe_spheres()
@@ -301,8 +293,8 @@ func _process(_delta: float) -> void:
 ## pushed TOE_TIP_MARGIN further along the ankle-to-toe direction. Interactive runs only.
 func _build_toe_spheres() -> void:
 	var mesh := SphereMesh.new()
-	mesh.radius = 0.03
-	mesh.height = 0.06
+	mesh.radius = 0.015
+	mesh.height = 0.03
 	_tip_material_touch = _tip_material(Color(0.0, 0.9, 0.2))
 	_tip_material_air = _tip_material(Color(1.0, 0.0, 0.0))
 	for side: StringName in FootIKV2Modifier.LEGS:
@@ -316,10 +308,14 @@ func _build_toe_spheres() -> void:
 		heel.top_level = true
 		add_child(heel)
 		_heel_spheres[side] = heel
+	_sole_lines = ImmediateMesh.new() # heel-to-tip line per foot (procedural_walk_lab's technique)
+	_sole_line_material = _tip_material(Color(1.0, 1.0, 1.0))
+	var lines := MeshInstance3D.new()
+	lines.mesh = _sole_lines
+	add_child(lines)
 
 
-## The player starts in first person; this scene is about watching the feet, so start in the
-## player's own third-person camera by sending it the same action its V key sends.
+## Start in third person (this scene is about watching the feet) via the V-key action.
 func _start_third_person() -> void:
 	for pressed: bool in [true, false]:
 		var press := InputEventAction.new()
@@ -360,13 +356,27 @@ func _update_toe_spheres() -> void:
 		var heel_touching: bool = (heel_clearance == null
 				or (float(heel_clearance) >= -TOUCH_BELOW and float(heel_clearance) <= TOUCH_ABOVE))
 		heel.material_override = _tip_material_touch if heel_touching else _tip_material_air
+	_update_sole_lines()
 
 
-## The visible heel in world space: the mesh-measured rearmost sole-level point, riding the
-## published foot bone pose.
+## One straight line per foot from the heel sphere to the tip sphere: a bend between them is a
+## measurement mismatch, not a real foot shape.
+func _update_sole_lines() -> void:
+	if _sole_lines == null:
+		return
+	_sole_lines.clear_surfaces()
+	_sole_lines.surface_begin(Mesh.PRIMITIVE_LINES, _sole_line_material)
+	for side: StringName in _toe_spheres:
+		_sole_lines.surface_add_vertex(_heel_spheres[side].global_position)
+		_sole_lines.surface_add_vertex(_toe_spheres[side].global_position)
+	_sole_lines.surface_end()
+
+
+## The mesh-measured rearmost sole-level point on the published foot pose, raised so a flat resting
+## foot has the heel and tip spheres level (the tip rests 15 mm up).
 func _heel_point(side: StringName) -> Vector3:
 	var leg: Dictionary = _v2._legs[side]
-	return _pub(int(leg["foot"])) * (leg["heel_local"] as Vector3)
+	return _pub(int(leg["foot"])) * (leg["heel_local"] as Vector3) + Vector3.UP * 0.015
 
 
 ## Heel height above the real surface under it (null when there is none).
@@ -428,9 +438,8 @@ func _tip_state(side: StringName) -> Dictionary:
 	return out
 
 
-## True when the surface under a shoe point is much lower than the one the foot stands on: the
-## point overhangs an edge (the toe past a ramp's lower end, a heel past a tread). A slope never
-## differs that much over a few centimetres.
+## True when the surface under a shoe point is much lower than the one the foot stands on (past a
+## ramp's lower end or a tread): a slope never differs that much over a few centimetres.
 func _overhangs(side: StringName, point_surface: float) -> bool:
 	var leg: Dictionary = _v2._legs[side]
 	var foot_surface := _surface_above(_pub(int(leg["foot"])).origin)
@@ -554,8 +563,7 @@ func _update_label() -> void:
 			"ON" if _v2.enabled else "OFF", _v2.weight, _v2.ankle_height, _v2.max_lift]
 
 
-## One trace frame per physics tick, in trace_query.py's schema: the real correction target the
-## modifier chose (not a re-derivation), where the foot ended up, and how the sole sits.
+## One trace frame per physics tick: the modifier's real correction target, landed pose, sole fit.
 func _capture() -> void:
 	if _trace == null or _v2 == null or _v2._legs.is_empty():
 		return
@@ -593,13 +601,10 @@ func _capture() -> void:
 		var has_target: bool = _v2.debug_target.has(side)
 		var target: Vector3 = (_v2.debug_target.get(side, foot.origin) as Vector3)
 		var normal: Vector3 = _v2.debug_ground_normal.get(side, Vector3.UP)
-		# The target is the ANKLE position (ground + normal * ankle_height), so the sole's own
-		# contact point is that far along the sole direction from the bone, and the gap is simply how
-		# far the bone sits above its target - not v1's "ground target minus sole depth" shape.
+		# The target is the ANKLE position (ground + normal * ankle_height); the sole contact point
+		# is that far along the sole direction from the bone.
 		var sole_point := foot.origin + sole * _v2.ankle_height
-		# v1 reports sole clearance against the GROUND; v2's stored target is the ankle position, so
-		# the ground is the target pulled back along the normal. Without this the number is just
-		# -ankle_height and every frame looks like a penetration.
+		# v2's stored target is the ankle position; pull it back along the normal for the ground.
 		var ground_y := (target - normal * _v2.ankle_height).y
 		var joints := {}
 		for role: String in ["hip", "knee", "foot", "toe"]:
@@ -648,9 +653,8 @@ func _capture() -> void:
 	_trace.capture(JSON.stringify(frame))
 
 
-## Animation and heading. The body keeps facing where the camera looks while it strafes, so travel
-## direction is reported RELATIVE to the facing: local_velocity is (right, up, forward) in m/s and
-## move_angle_deg is 0 walking forward, +90 strafing right, -90 left, 180 backwards.
+## Animation and heading, travel direction RELATIVE to facing: local_velocity is (right, up,
+## forward) m/s and move_angle_deg is 0 forward, +90 strafe right, -90 left, 180 backwards.
 func _motion_fields() -> Dictionary:
 	var anim := player.body.anim_player
 	var facing := -player.global_basis.z
@@ -825,20 +829,16 @@ func _measure(name: String) -> void:
 		var foot: Transform3D = _pub(int(leg["foot"]))
 		var ground: Vector3 = _v2.debug_ground.get(side, foot.origin)
 		var normal: Vector3 = _v2.debug_ground_normal.get(side, Vector3.UP)
-		# Grade only a foot that is actually down. A swing foot's gap and tilt mean nothing, but a
-		# wrongly-corrected grounded foot must NOT slip through: accept it if EITHER the animation or
-		# the result has it down, so a bad correction is still measured.
+		# Grade only a foot that is actually down: accept it if EITHER the animation or the result
+		# has it down, so a bad correction is still measured.
 		var expected_y := ground.y + _v2.ankle_height
 		var animated_y: float = _v2.debug_animated_ankle.get(side, Vector2.ZERO).y
 		if absf(foot.origin.y - expected_y) > 0.05 and absf(animated_y - expected_y) > 0.05:
 			continue
-		# Authoritative values from the modifier itself: how far the landing ended from the target it
-		# was given, and how far the sole ended from the surface normal it was aligned to. Recomputing
-		# these here in world space disagreed with the modifier's own (skeleton-space) result and made
-		# a correctly-aligned foot read as 60-127 deg off.
+		# Authoritative values from the modifier itself: recomputing these in world space disagreed
+		# with its own skeleton-space result and made a correctly-aligned foot read 60-127 deg off.
 		var solved: Dictionary = _v2.debug_solve.get(side, {})
-		# A foot clamped at the leg's reach is short of its floor by design (graded by the tip / heel
-		# clearance instead), so its residual is not an error.
+		# A clamped foot is short of its floor by design (graded by tip/heel clearance instead).
 		# A foot the animation is lifting (plant weight < 1) is only partly pulled to its floor.
 		var faded := float(_v2.debug_plant_weight.get(side, 1.0)) < PLANT_GRADED_MIN
 		var ankle_error := (0.0 if bool(solved.get("clamped", false)) or faded

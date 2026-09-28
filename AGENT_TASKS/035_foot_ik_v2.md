@@ -38,6 +38,10 @@ Lab flags (all after `--`): `--foot-ik-v2-check`, `--foot-ik-v2-ramp-check`, `--
 with `--ramp-index=0|1|2`, `--start-on-ramp`, `--uphill`, `--stairs`, `--stairs-edge`, `--jump45`,
 `--stairs-walk=0|1|2`, `--walk-speed=X`, `--foot-ik-v2-off`. In the live lab: V = camera, F6 = v2 on/off
 (the label turns red when off). Orange->green/red spheres on toe tip and heel = touching the real floor.
+**Perf:** `--foot-ik-v2-perf` (or `FootIKV2Debug.enabled = true`) prints a `[FOOT_IK_V2_PERF]` per-part
+usec report every 300 frames (`foot_ik_v2_debug.gd`, v1's begin/end technique). `FOOT_IK_V2_PERF_LOG=1`
+adds `[FOOT_IK_V2_ENGINE_PERF]` (fps/process/physics ms, draw calls, node-spawn diff every 60 frames -
+`foot_ik_v2_perf_probe.gd`, always attached in the lab, a no-op unless that env var is set).
 
 ## Suite state (last run)
 
@@ -62,11 +66,75 @@ now runs at 1.2 m/s with a 1.7x clip; 10 cm / 12 frames even with the ground fil
    lift and latch the retreat.
 4. **0.35 m stairs are not climbable at stair speed** (the player stops at the first riser below ~2.4
    m/s; `stair035` was dropped from the forward check, terrain kept). Decide whether that matters.
+5. **Idle planted foot snap on stairs - FIXED headless, needs the user's live check.** The right foot
+   jumped 0.24 m once per idle loop (~150 frames) while reading `at_target`. Cause: `_plan_stance`'s
+   stance shift is searched in 5 cm candidates and followed instantly, so it flipped 0.10 <-> 0.15 as
+   the idle animation nudged the foot (a 4.5 cm snap; the older 0.24 m one was the same flip at a
+   deeper shift). Fix: a shift that still brings the foot within reach is KEPT (hysteresis) instead of
+   re-searched. The same hysteresis is in `_flatten_support` (`_support_last`): its 2 cm slide
+   candidates flipped every ~150 frames (the "still moves a few cm, many times" report). Idle after
+   the spawn settles: worst per-frame foot move 0.24 -> 0.002 m; only the spawn landing (f2, f62)
+   still moves (`trace_v2.sh --snaps` after a plain `godot --headless --fixed-fps 60 --quit-after
+   1000 ... foot_ik_v2_lab.tscn`). Dead ends: a 2-frame loop-seam hold (removed), rate-limiting the
+   final target (broke the walk), rate-limiting the stance shift growth (10 cm floats in the
+   uphill/stairs-riser regressions). The trace's `shift` column is the STANCE shift.
 Also: ramp-walk reversals rose (9-20 -> ~40) after the body/pelvis changes, unexplained; flat walking
 still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - not addressed.
 
+6. **Right foot floats 8-10 cm at rest on stairs (both spheres red) - FIXED headless (reproduced at
+   the lab's interactive spawn `(4.61, 0.80, -0.05)` yaw -84.2, plain idle, no sidestep needed).**
+   The foot straddles the step-8/9 edge (heel over 0.90, tip over 0.80). `_flatten_support` slid it
+   12 cm onto the LOWER tread (nearest fit), but the target stayed at the aimed 0.90 height and the
+   ground filter ignores tread-sized re-sample differences, so the foot hung 10 cm up and the leg was
+   already at full reach. Fix: (a) the slide search now prefers a fit on the surface the foot was aimed
+   at (`aim_y`), falling back to the nearest; (b) `_sink_to_sole_level` (at rest): a sole flat on one
+   surface >= `SINK_MIN` 4 cm below the aimed height re-aims straight down from where the foot IS.
+   Result: clearance 0.109/0.100 -> 0.027/0.018 (`trace_v2.sh --frame N`).
+   (c) FOLLOW-UP at the new spawn `(4.61, 0.80, -0.05)` yaw -84.2 (the user's next log): the slid foot
+   was 2.5 cm out of reach (`stretched`, tip 3.2 / heel 2.3 cm up; the pelvis plan samples under the
+   ANIMATED ankle, not where the flatten puts the foot). Fix: a resting `stretched` foot adds its
+   residual to the pelvis drop, held until the next move (`_stretch_hold`); now 1.5 / 0.6 cm. A
+   reach-limited slide search was tried and was WORSE (8.7 cm up: no flat fit left). Sphere
+   changes: radius 3 -> 1.5 cm, `TOUCH_ABOVE` 0.04 -> 0.022 (a 3 cm float used to read green).
+   Ramp-strafe replay float frames 12 -> 16 (still red), not caused by these.
+7. **Whole sole floats a uniform ~6-9mm at rest (user: "small gap between the feet and the floor
+   below") - FIXED headless, needs the user's live check.** A live-skin mesh scan (temp probe, same
+   technique as below) found EVERY vertex on the sole floating 6-9mm at rest, even though
+   `_clear_toe`'s own toe/tip/heel points already read <=2mm clear - those points are RIGID rest-pose
+   offsets applied to the current bone pose, and a GPU-blended mesh (foot+toe weights mixed) does not
+   exactly follow them. Shaving `ankle_height` by the measured 6mm was tried and made it WORSE
+   (heel_clr 0.006 -> 0.021 m at one frame) because `_clear_toe` reacted to the resulting toe
+   penetration and over-corrected; reverted. Real fix: `_sink_to_true_sole` in `_clear_toe` - once the
+   three rigid points are clear, do a full live-skin scan (`_foot_mesh_points(..., live=true)`, the
+   same walk `_measure_sole_depth`/`_measure_heel_local` do at REST, now with `get_bone_global_pose`)
+   for the TRUE lowest vertex and sink to `SOLE_GAP_TOLERANCE` (1mm) of it. Gated to AT REST ONLY
+   (`not _is_moving`) - ungated it clipped the forward-walk and idle regressions (tip clip 0.10 m on
+   ramp45). At rest: idle tip_float_max improved across the board (e.g. 0.020->0.013, 0.015->0.004,
+   0.021->0.016 m). No regressions: full `check_foot_ik_v2.sh` suite unchanged (same PASS/FAIL as
+   before, ramp-strafe replay's pre-existing float failure only, its clip stayed within limits).
+   **PERF (user report) - FIXED, verify live.** `_sink_to_true_sole` cost ~8.5ms/call (measured with
+   `Time.get_ticks_usec()`, v1's technique - v1 also has `foot_ik_debug.gd`'s begin/end profiling and
+   `tests/manual/foot_ik/foot_ik_perf_probe.gd`'s engine-wide counters, opt-in via `FOOT_IK_PERF_LOG`;
+   v2 has neither yet). Cause: it called `find_children` over the whole character + `surface_get_arrays`
+   (a full mesh copy) every physics frame at rest, for both feet - ~17ms/frame, over the entire 60fps
+   budget alone. Fix: `_cache_sole_vertices` does that walk ONCE per leg in `_build_legs`, storing each
+   foot/toe-weighted vertex's per-bone contributions (bone id, weight, bind-local point);
+   `_eval_sole_points` replays them cheaply (`_measure_sole_depth`/`_measure_heel_local` now also use
+   it, at rest). Verified: 8500us -> 255us/call (33x). Suite re-run identical to before the perf fix.
+
+## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
+
+- `foot_ik_v2_modifier.gd`: a trailing foot that cannot reach its surface is RELEASED to step instead
+  of clamped (`reach_clamp_plant_min` 0.85; 1.0 = old), plus the two idle hysteresis fixes above.
+- `foot_ik_v2_lab.gd`: interactive spawn moved to the reported idle pose `(4.47, 0.99, -0.73)` on
+  Stair010. The yaw `-57.3` does not stick (the third-person start resets it); position only.
+
 ## Findings worth keeping (root causes, each verified with numbers - details in the archive)
 
+- **A one-frame target reposition is invisible to float/clip/slide**: a planted foot that jumps 0.24 m
+  in one frame reads `at_target` with zero float and zero planted-slide (it is on its - moving -
+  target the whole time). For "the foot moves while idle" reports, grade per-frame MOTION
+  (`trace_v2.sh --snaps`: foot m/frame and knee-rot deg), not just contact.
 - **Measurement**: bones read from a node's `_process()` / `skeleton_updated` are stale (12 cm+ off);
   read the modifier's published `final_pose` (end of its last pass). Every early number was wrong.
 - **v1 turns itself back on** every landing (`set_character_grounded`); use `set_debug_enabled(false)`,
