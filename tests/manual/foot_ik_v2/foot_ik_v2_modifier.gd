@@ -3,6 +3,7 @@ extends SkeletonModifier3D
 ## v2 foot IK: per leg, sample the ground under the animated foot, solve hip -> knee -> ankle.
 const DEBUG_TIMER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_debug.gd")
 const STEPPER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_stepper.gd")
+const LOCK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_lock.gd")
 const LIMITER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_joint_limiter.gd")
 const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot",
@@ -12,6 +13,7 @@ const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 }
 
 @export var enabled := true
+@export var foot_lock := false # EXPERIMENT: a resting foot stays planted while the body turns
 @export_range(0.0, 170.0, 1.0) var max_knee_flexion_deg := 150.0 # v1 defaults; 0 = off
 @export_range(0.0, 170.0, 1.0) var max_hip_swing_deg := 100.0 # cone from straight down
 @export var joint_speed_deg := 60.0 # joint correction change cap per frame at rest: a flip guard
@@ -129,6 +131,7 @@ var debug_reach_check: Dictionary = {}
 var debug_state: Dictionary = {}
 var debug_stepping: Dictionary = {} # side -> walking a step (a graded float is expected)
 var _stepper := STEPPER.new()
+var _lock := LOCK.new()
 var _limiter := LIMITER.new()
 ## side -> {"before_deg", "after_deg", "applied"}: sole vs surface normal before/after the align.
 var debug_align: Dictionary = {}
@@ -472,6 +475,10 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	var to_world := skel.global_transform
 	var animated_ankle: Vector3 = (to_world * (base["foot"] as Transform3D)).origin
 	var hip_world: Vector3 = (to_world * (base["hip"] as Transform3D)).origin
+	# a resting foot may be held where it was planted while the body turns (foot_ik_v2_lock.gd)
+	var rests := foot_lock and not _is_moving and (
+			animated_ankle.y - to_world.origin.y - ankle_height < PLANT_FADE_START)
+	animated_ankle = _lock.held(side, animated_ankle, hip_world, rests)
 	debug_animated_ankle[side] = animated_ankle
 	# A foot brought in at rest (see _plan_stance) is aimed at the floor under its NEW position.
 	var shift := float(_stance_shift.get(side, 0.0))
@@ -661,8 +668,7 @@ func _flatten_support(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_wo
 	var shift: float = _support_last.get(side, 0.0)
 	var wanted := _wanted_support_shift(points, foot_world.origin, forward, slope, hip_world,
 			shift, (debug_ground.get(side, Vector3.ZERO) as Vector3).y)
-	# The wanted slide steps 2 cm as idle loops: glide to it once per physics frame - but only while
-	# the applied slide is still flat on the same tread level (across a riser it hangs the heel).
+	# Glide to the wanted slide (2 cm steps as idle loops) only while flat on the same tread.
 	if int(_support_frame.get(side, -1)) != Engine.get_physics_frames():
 		var glide := not _is_moving and wanted != shift
 		if glide:
@@ -792,8 +798,7 @@ func _ground_hit(ankle: Vector3, hip: Vector3) -> Dictionary:
 	var hit := _ray(ankle, hip)
 	if _plausible(hit, ankle):
 		return hit
-	# Near an edge the straight-down ray finds the ground far BELOW instead of the stance surface;
-	# take the first inward probe (toward the body) that lands on a plausible one.
+	# Near an edge the down ray finds far-below ground: take the first inward probe that fits.
 	var root := hip
 	if player_body != null and player_body.get_parent() is Node3D:
 		root = (player_body.get_parent() as Node3D).global_position
@@ -852,8 +857,7 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 	debug_solve[side]["landed_knee"] = skel.get_bone_global_pose(int(leg["knee"])).origin
 
 
-## How far the lowest foot-mesh vertex sits below the foot bone at rest (falls back to the bone's
-## own rest height if the mesh cannot be read).
+## How far the lowest foot-mesh vertex sits below the foot bone at rest.
 func _measure_sole_depth(skel: Skeleton3D, side: StringName, foot: int) -> float:
 	var foot_rest := skel.get_bone_global_rest(foot)
 	var lowest := INF
@@ -864,8 +868,7 @@ func _measure_sole_depth(skel: Skeleton3D, side: StringName, foot: int) -> float
 	return foot_rest.origin.y - lowest
 
 
-## The rearmost sole-level point of the foot mesh, in the FOOT BONE's rest space (rides the bone
-## at any pose). "Sole level" is the lowest 4 cm; rearmost along the foot's forward axis.
+## The rearmost sole-level (lowest 4 cm) point of the foot mesh, in the foot bone's rest space.
 func _measure_heel_local(skel: Skeleton3D, side: StringName, foot: int, toe: int) -> Vector3:
 	var points := _eval_sole_points(skel, side, false)
 	var foot_rest := skel.get_bone_global_rest(foot)
@@ -890,8 +893,7 @@ func _measure_heel_local(skel: Skeleton3D, side: StringName, foot: int, toe: int
 	return foot_rest.affine_inverse() * heel
 
 
-## At rest, lower until the true lowest point of the skinned sole (`live` mesh walk) is
-## `SOLE_GAP_TOLERANCE` off the floor - the rigid rest-offset clear/heel points miss a GPU blend.
+## At rest, lower until the true lowest point of the skinned sole is `SOLE_GAP_TOLERANCE` up.
 func _sink_to_true_sole(skel: Skeleton3D, side: StringName, leg: Dictionary, base: Dictionary,
 		to_world: Transform3D, hip_world: Vector3) -> void:
 	var t0 := DEBUG_TIMER.begin()
@@ -909,9 +911,7 @@ func _sink_to_true_sole_impl(skel: Skeleton3D, side: StringName, leg: Dictionary
 			lowest = minf(lowest, world[-1].y)
 		if not is_finite(lowest):
 			return
-		# Each sole-level vertex against the floor UNDER IT (a subsample): the lowest vertex alone
-		# can be the toe hanging over a lower tread, and sinking to that pushed the heel 8 cm into
-		# the higher tread behind it. The smallest gap is how far the foot may go without clipping.
+		# Each sole-level vertex against the floor UNDER IT; the smallest gap is how far it may go.
 		var level: Array[Vector3] = world.filter(func(p: Vector3) -> bool: return p.y <= lowest + 0.005)
 		var gap := INF
 		for index in range(0, level.size(), maxi(1, level.size() / SOLE_SINK_SAMPLES)):
@@ -927,8 +927,7 @@ func _sink_to_true_sole_impl(skel: Skeleton3D, side: StringName, leg: Dictionary
 		_align_foot(skel, leg, debug_ground_normal.get(side, Vector3.UP), side)
 
 
-## Per-bone contributions of every foot-mesh vertex on the foot/toe bone, cached ONCE per leg (the
-## walk below cost ~8ms/call). Replayed cheaply at rest or the current pose by `_eval_sole_points`.
+## Per-bone contributions of every foot-mesh vertex, cached ONCE per leg (~8ms/call to walk).
 func _cache_sole_vertices(skel: Skeleton3D, foot: int, toe: int) -> Array:
 	var cached: Array = []
 	if player_body == null or not is_instance_valid(player_body.character):

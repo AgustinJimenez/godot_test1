@@ -13,7 +13,7 @@ const START_YAW_DEG := 87.4
 const SNAP_DEG := 40.0 # the fast turns after the fine sweep
 const SNAP_HOLD_FRAMES := 14
 # m in one frame after the settle (a step is 2.5 cm/frame plus its lift arc; was 0.28 m unstepped).
-const STEPPING_RUN_LIMIT := 40 # frames a foot may walk one step (a 60 cm re-seat takes ~24)
+const STEPPING_RUN_LIMIT := 120 # frames a foot may keep stepping in a row (a smooth turn is 120)
 const FOOT_STEP_LIMIT := 0.07
 
 const SMOOTH_FRAMES := 45 # frames per smooth turn (3, 8 and 20 deg/frame, both ways)

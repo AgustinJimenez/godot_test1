@@ -957,11 +957,10 @@ func _measure_ramp() -> void:
 		var leg: Dictionary = _v2._legs.get(side, {})
 		if leg.is_empty():
 			continue
-		# the foot against the body (hip), in the published skeleton frame: a turning body carries it
-		var rel: Vector3 = _v2.final_basis.inverse() * (
-				_pub(int(leg["foot"])).origin - _pub(int(leg["hip"])).origin)
-		_foot_step_max = maxf(_foot_step_max, TURN_CHECK.step(_turn_prev, side, rel, _grade_now,
-				_v2.debug_stepping.get(side, false), POSE_DUMP.pose_fault(_v2, side)))
+		# the WORLD foot: with the foot lock a resting foot holds still however the body turns
+		_foot_step_max = maxf(_foot_step_max, TURN_CHECK.step(_turn_prev, side,
+				_pub(int(leg["foot"])).origin, _grade_now, _v2.debug_stepping.get(side, false),
+				POSE_DUMP.pose_fault(_v2, side)))
 		if _grade_now and not _v2.debug_stepping.get(side, false): # a step floats by design
 			_grade_tip(side, _segment)
 			_grade_heel(side, _segment)

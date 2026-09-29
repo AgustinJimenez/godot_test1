@@ -247,6 +247,22 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
     still runs only the fixed sweeps (no smooth phase), so it stays green; the fuzz is the tool.
     Next: a real FOOT LOCK / step-when-needed model for turns, or accept the animated foot follows.
 
+16. **Foot lock experiment (user: "let's try") - built, MEASURED WORSE, left OFF.**
+    `foot_ik_v2_lock.gd` + export `foot_lock` (default false): a resting foot is held at the world
+    position where it was planted (the animated ankle's XZ is replaced by the anchor's), and re-plants
+    - which the stepper walks as a step - once the animated ankle drifts 0.25 m from it or the anchor
+    is > 0.32 m from the hip (out of reach). It did remove the endless re-stepping in smooth turns
+    (`stepping N frames in a row` gone), but on the same fuzz (seed 7, 12 poses, quick sweep) the
+    totals were OFF: 3 clip frames / 6 float frames vs ON: 25 / 60, and it breaks two suite
+    regressions (turn sweep dz=0 clip 0.008, and the live pose -1.41:-0.39 float 0.116). Why: the
+    held foot is often out of reach as the body turns (`reach_clamped` floats/clips of 11-37 cm),
+    and a stepping foot crosses risers along a straight line and then gets a 10 cm `toe_lift` from
+    `_clear_toe` (which runs BEFORE the stepper). Ideas not tried: run the clearance pass after the
+    stepper, plan the re-plant target on the floor under the NEW spot with a reach check, a larger
+    stance (hold both feet, step the farther one). The turn check now measures the WORLD foot again
+    (with a lock a resting foot must hold still) and the stepping-run limit is 120 frames. `--stairs`
+    smooth turns remain open (item 15); every fuzz seed still fails 12/12 on the one-frame foot pop.
+
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 
 - `foot_ik_v2_modifier.gd`: a trailing foot that cannot reach its surface is RELEASED to step instead
