@@ -10,7 +10,7 @@ extends RefCounted
 const STEP_DEG := 2.0
 const HOLD_FRAMES := 10
 const SETTLE_FRAMES := 2 # the snap frame(s) themselves are not graded
-const START_YAW_DEG := 13.2
+const START_YAW_DEG := 87.4
 const SNAP_DEG := 40.0 # the fast turns after the fine sweep
 const SNAP_HOLD_FRAMES := 14
 # m in one frame after the settle (a step is 2.5 cm/frame plus its lift arc; was 0.28 m unstepped).

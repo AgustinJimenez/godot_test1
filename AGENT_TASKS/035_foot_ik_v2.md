@@ -213,6 +213,19 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
     the old world-space stepper (foot_step_max 0.148 > 0.07) and passes now. Also removed the
     `to_world` parameter from `_limit_step`.
 
+14. **Left foot pops 8-11 cm at the START of a turn (user, live log) - FIXED, reproduced at that pose.**
+    Log: yaw 87 -> 83 deg, left foot `support_shift` -0.10 -> 0.00 in ONE frame, foot 0.113 m. It is
+    the flatten slide re-seating when the body turns (the applied slide stops being flat), and the
+    step arc's `TRIGGER` (0.10 m) let an 8-11 cm re-seat straight through. `TRIGGER` -> 0.06 (0.04
+    also passes; the ramp-strafe clip did not change). Tried first: a faster glide for the unflat
+    slide (1.5 m/s) - it hung the heel 11 cm over the riser at several offsets, reverted. Repro:
+    `--foot-ik-v2-idle-check --stairs-turn=-1.41:-0.39` (dz : x along the stairs, = the live pose
+    root (4.61, -0.05)); with the old TRIGGER it FAILS (foot_step_max 0.080 > 0.07), now passes and is
+    in the suite. The turn sweep now starts at the live yaw (`START_YAW_DEG` 87.4) and the
+    interactive default spawn rotation is 87.4 too (position was already the live one).
+    The earlier "could not reproduce a smooth turn" caveat still holds for a MOUSE-continuous turn;
+    the sweep uses 2 deg steps every 10 frames and 40 deg snaps.
+
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 
 - `foot_ik_v2_modifier.gd`: a trailing foot that cannot reach its surface is RELEASED to step instead

@@ -207,9 +207,11 @@ func _ready() -> void:
 			if arg.begins_with("--walk-speed="): # walk at X m/s, clip at normal playback
 				player.stair_walk_speed_scale = 1.0
 				player.walk_speed = arg.trim_prefix("--walk-speed=").to_float()
-			if arg.begins_with("--stairs-turn="): # yaw sweep in place, `=dz` m along the treads
+			if arg.begins_with("--stairs-turn="): # yaw sweep in place: `=dz` m along the treads, `:x`
 				_stairs_start = true
-				_stairs_z += arg.trim_prefix("--stairs-turn=").to_float()
+				var at := arg.trim_prefix("--stairs-turn=").split(":")
+				_stairs_z += at[0].to_float()
+				_stairs_x = at[1].to_float() if at.size() > 1 else _stairs_x
 				_foot_step_limit = TURN_CHECK.FOOT_STEP_LIMIT
 				_replay = TURN_CHECK.replay()
 		if "--stairs-edge" in OS.get_cmdline_user_args():
@@ -272,9 +274,9 @@ func _ready() -> void:
 	if _checking:
 		_move_to_spot(0)
 		return
-	# Interactive spawn: the pose of the reported idle right-foot float (Stair010, live).
+	# Interactive spawn: the last reported live turn (Stair010, yaw 87.4 when the left foot popped).
 	player.global_position = Vector3(4.61, 0.80, -0.05)
-	player.rotation = Vector3(0.0, deg_to_rad(-84.2), 0.0)
+	player.rotation = Vector3(0.0, deg_to_rad(87.4), 0.0)
 	_build_toe_spheres()
 	_start_third_person.call_deferred()
 	var layer := CanvasLayer.new()

@@ -7,7 +7,7 @@ extends RefCounted
 
 const SPEED := 0.025 # m/frame (1.5 m/s)
 const LIFT := 0.05 # m the foot rises at mid-step
-const TRIGGER := 0.10 # m: a smaller re-seat passes straight through (slow walks clipped ramps)
+const TRIGGER := 0.06 # m: a smaller re-seat passes straight through (0.10 let a 8-11 cm pop by)
 
 var stepping: Dictionary = {} # side -> walking a step this frame (a graded float is expected)
 var _frame: Dictionary = {}
