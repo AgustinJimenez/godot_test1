@@ -342,7 +342,7 @@ against `player.get_node(player.root_node).get_path_to(target_skeleton)` first -
 
 ## Foot IK and movement
 
-**Foot IK v2 lessons (`tests/manual/foot_ik_v2/`, handoff in `AGENT_TASKS/035`).** Read bone poses
+**Foot IK v2 lessons (`tests/manual/foot_ik_v2/`, handoff `AGENT_TASKS/035`, open hard bug `036`).** Read bone poses
 from the modifier's published `final_pose`, never from a node's `_process()` (stale by 12 cm+). v1
 re-enables itself on every landing - use `set_debug_enabled(false)`. The player's ledge safety pushes
 the root at 3 m/s while airborne (`landing_correction_speed`); the lab zeroes only that. The game pins
