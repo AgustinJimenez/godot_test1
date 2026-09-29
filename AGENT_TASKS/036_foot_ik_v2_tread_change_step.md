@@ -39,6 +39,36 @@ or keeps re-stepping through a continuous turn ("the foot loop-rotates").
 | shave `ankle_height` 6 mm | the clearance pass just re-adds it |
 | stepper trigger 0.10 -> 0.06 m | kept: fixed the live 8-11 cm turn-start pop |
 
+## Round 2 (2026-09-29) - four more attempts, none kept; the failure is broader than the riser
+
+Baseline (sweep settings FIXED, seed 7 x 12, `/tmp`-style awk in item 16): `clip_frames=3
+float_frames=6 popped_poses=9-10/12` (the pop metric is now the IK CORRECTION, final foot minus animated
+ankle, in the published frame - the body turning/lagging is not counted; it only moved 10 -> 9).
+
+| Idea | Result |
+|---|---|
+| cap the clearance lift (`MAX_CLIMB` 0.25 per point / total) | per-point cap: clip 3 -> 2, no other change; total cap: clip 16, float 13 (foot left inside the block); reverted |
+| riser retreat in the best of 8 directions (a stair edge is SIDEWAYS of the foot) | fixed the 37 cm float at `-0.25:-1.21:26` and clip 3 -> 1, but float 6 -> 32 and the suite turn sweep dz=-0.12 fails; with "old direction unless another clears by 3 cm" the fuzz returns to the baseline and dz=-0.12 STILL fails (19 float frames); reverted |
+| hold the clearance lift and release it slowly (1.5 cm/frame) | float 6 -> 109 (the foot hangs on the tread), pops unchanged: the vertical pops are NOT lift flicker; reverted |
+| (earlier) clearance after the stepper, foot lock | see the table above |
+
+What the remaining failures actually are (traced frame by frame, seed 7):
+1. Mostly the SMOOTH phase: a foot in state `stretched` (the target is out of reach: stance shift 0.15,
+   pelvis drop, floor 0.2 m below) whose position jumps 5-14 cm between frames as the stance shift,
+   pelvis drop and reach clamp change together while the body yaws. This is the reach / pelvis /
+   stance planner (item "stretched foot"), not the tread-change step. A step planner alone will not fix it.
+2. A foot straddling the very edge of the stairs (x = +-1.2 of a 3 m wide flight): the rays at the tip,
+   heel and ankle land on different blocks by <1 cm, and the clearance pass lifted the foot 36 cm
+   (`toe_lift` summed over 8 attempts). Only the multi-direction retreat fixed it and it broke a sweep.
+3. The 11 cm class (heel/tip float at a tread): the riser retreat gives up after 4 tries and lifts 10 cm.
+Metric caveat: after every yaw snap the body's turn lags for several frames and the sole points, the
+ground sample and the animated pose all move; any IK metric on those frames is contaminated.
+
+Decision needed from the user: v2 is a lab experiment next to a working v1. Either (a) accept v2's
+stance/reach planner as it is and treat the smooth-turn + straddled-edge cases as out of scope, keeping
+the fixed sweeps as acceptance, or (b) invest in redesigning the reach / pelvis / stance planning as one
+coherent model (one decision per foot per frame instead of five passes that each re-decide).
+
 ## Why (current understanding)
 
 1. The straight glide of the stepper ignores geometry; the riser logic runs BEFORE it, so a stepping

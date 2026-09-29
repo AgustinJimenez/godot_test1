@@ -439,7 +439,6 @@ func _tip_state(side: StringName) -> Dictionary:
 	return out
 
 
-## True when the surface under a shoe point is much lower than the one the foot stands on.
 func _overhangs(side: StringName, point_surface: float) -> bool:
 	var leg: Dictionary = _v2._legs[side]
 	var foot_surface := _surface_above(_pub(int(leg["foot"])).origin)
@@ -957,10 +956,12 @@ func _measure_ramp() -> void:
 		var leg: Dictionary = _v2._legs.get(side, {})
 		if leg.is_empty():
 			continue
-		# the WORLD foot: with the foot lock a resting foot holds still however the body turns
-		_foot_step_max = maxf(_foot_step_max, TURN_CHECK.step(_turn_prev, side,
-				_pub(int(leg["foot"])).origin, _grade_now, _v2.debug_stepping.get(side, false),
-				POSE_DUMP.pose_fault(_v2, side)))
+		# the IK's CORRECTION (final foot minus the animated ankle) in the published frame: the body
+		# turning, swaying or lagging moves both alike and is not a pop; a re-seat is
+		var rel: Vector3 = _v2.final_basis.inverse() * (_pub(int(leg["foot"])).origin
+				- (_v2.debug_animated_ankle.get(side, Vector3.ZERO) as Vector3))
+		_foot_step_max = maxf(_foot_step_max, TURN_CHECK.step(_turn_prev, side, rel, _grade_now,
+				_v2.debug_stepping.get(side, false), POSE_DUMP.pose_fault(_v2, side)))
 		if _grade_now and not _v2.debug_stepping.get(side, false): # a step floats by design
 			_grade_tip(side, _segment)
 			_grade_heel(side, _segment)
