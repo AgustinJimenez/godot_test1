@@ -119,6 +119,7 @@ var debug_passes := 0
 ## bone index -> world Transform3D as published at the end of the last pass, and its physics frame.
 var final_pose: Dictionary = {}
 var final_frame := -1
+var final_basis := Basis.IDENTITY
 var _stretch_hold := 0.0 # extra pelvis drop a resting, unreachable foot asked for
 var debug_pelvis_drop := 0.0 # the pelvis drop applied this frame (m), for the trace
 var debug_solve: Dictionary = {}
@@ -240,6 +241,7 @@ func _process_modification_with_delta(_delta: float) -> void:
 func _publish_final_poses(skel: Skeleton3D) -> void:
 	final_frame = Engine.get_physics_frames()
 	var to_world := skel.global_transform
+	final_basis = to_world.basis # the transform these poses were published with (yaw may change)
 	for side: StringName in _legs:
 		for role: String in ["hip", "knee", "foot", "toe"]:
 			var bone := int((_legs[side] as Dictionary)[role])

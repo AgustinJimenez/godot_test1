@@ -66,10 +66,11 @@ static func _joints(v2: FootIKV2Modifier, skel: Skeleton3D, leg: Dictionary,
 	return out
 
 
-## An anatomically impossible leg pose, as a failing 9.9 (0.0 = fine): the knee BEHIND the
-## hip-to-foot line, past the flexion cap, or the thigh past the swing cone (v1's hard limits,
-## `foot_ik_joint_limit_check.gd`). Limits are the modifier's own, with a 1 degree tolerance.
-static func pose_fault(v2: FootIKV2Modifier, side: StringName, forward: Vector3) -> float:
+## An anatomically impossible leg pose, as a failing 9.9 (0.0 = fine): the knee bent the WRONG WAY
+## (behind the hip-to-foot line along the leg's own rest bend direction - not the body facing, which
+## a foot turned to the side legitimately differs from), past the flexion cap, or the thigh past the
+## swing cone (v1's hard limits, `foot_ik_joint_limit_check.gd`). 1 degree tolerance on the caps.
+static func pose_fault(v2: FootIKV2Modifier, side: StringName) -> float:
 	var leg: Dictionary = v2._legs[side]
 	var pose: Dictionary = v2.final_pose
 	if not (pose.has(int(leg["hip"])) and pose.has(int(leg["knee"])) and pose.has(int(leg["foot"]))):
@@ -81,7 +82,10 @@ static func pose_fault(v2: FootIKV2Modifier, side: StringName, forward: Vector3)
 	var off := thigh - line.normalized() * thigh.dot(line.normalized())
 	var flexion := 180.0 - rad_to_deg((-thigh).angle_to(shank))
 	var swing := rad_to_deg(Vector3.DOWN.angle_to(thigh.normalized()))
-	var bad := -off.dot(forward) > BEHIND_LIMIT
+	var bend: Vector3 = v2.final_basis * (leg["rest_pole"] as Vector3)
+	# the bend direction the solver promises: the rest pole projected off the hip-to-foot line
+	var promised := bend - line.normalized() * bend.dot(line.normalized())
+	var bad := promised.length() > 0.001 and -off.dot(promised.normalized()) > BEHIND_LIMIT
 	bad = bad or (v2.max_knee_flexion_deg > 0.0 and flexion > v2.max_knee_flexion_deg + 1.0)
 	bad = bad or (v2.max_hip_swing_deg > 0.0 and swing > v2.max_hip_swing_deg + 1.0)
 	return 9.9 if bad else 0.0

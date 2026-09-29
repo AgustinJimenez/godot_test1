@@ -1,6 +1,6 @@
 extends Node3D
 ## Acceptance scene for v2 foot IK: flat, ramps 15/30/45 deg, three staircases. F6 toggles it.
-## Headless `-- --foot-ik-v2-check` (and other flags below) walk / replay it and grade the result.
+## Headless `-- --foot-ik-v2-check` (and other flags below) walk / replay it and grade it.
 const DEBUG_TIMER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_debug.gd")
 const POSE_DUMP := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_pose_dump.gd")
 const TURN_CHECK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_turn_check.gd")
@@ -122,6 +122,7 @@ var _stairs_x := 0.5
 var _stairs_z := 1.36
 var _foot_step_limit := 9.0 # a pose fault reads 9.9; `--stairs-turn` tightens it to a step size
 var _pose_faults := 0 # graded frames with an impossible leg pose (knee behind, past a cap)
+var _fuzz := false
 var _foot_step_max := 0.0
 var _turn_prev := {}
 var _stairs_walk_lane := -1
@@ -212,8 +213,10 @@ func _ready() -> void:
 				var at := arg.trim_prefix("--stairs-turn=").split(":")
 				_stairs_z += at[0].to_float()
 				_stairs_x = at[1].to_float() if at.size() > 1 else _stairs_x
+				var yaw: float = at[2].to_float() if at.size() > 2 else TURN_CHECK.START_YAW_DEG
 				_foot_step_limit = TURN_CHECK.FOOT_STEP_LIMIT
-				_replay = TURN_CHECK.replay()
+				_fuzz = at.size() > 3 # dz:x:yaw:quick = the random-pose fuzz
+				_replay = TURN_CHECK.replay(yaw, _fuzz)
 		if "--stairs-edge" in OS.get_cmdline_user_args():
 			# stairs' right edge, one foot on step 3, the other off the side over the floor 0.38 m down
 			_stairs_start = true
@@ -436,8 +439,7 @@ func _tip_state(side: StringName) -> Dictionary:
 	return out
 
 
-## True when the surface under a shoe point is much lower than the one the foot stands on (past a
-## ramp's lower end or a tread): a slope never differs that much over a few centimetres.
+## True when the surface under a shoe point is much lower than the one the foot stands on.
 func _overhangs(side: StringName, point_surface: float) -> bool:
 	var leg: Dictionary = _v2._legs[side]
 	var foot_surface := _surface_above(_pub(int(leg["foot"])).origin)
@@ -460,8 +462,7 @@ func _report_live_tip_event(side: StringName, tip: Dictionary) -> void:
 ## Headless checks: grade every walked frame and print the first few events per surface.
 func _grade_tip(side: StringName, spot: String) -> void:
 	var tip := _tip_state(side)
-	# At rest BOTH feet are on the floor by definition, so an idle segment grades every foot: a foot
-	# that hangs well above the ramp must not be excused as "mid-swing" (that hid this very bug).
+	# At rest BOTH feet are on the floor: an idle segment grades every foot ("mid-swing" hid a bug).
 	var at_rest := _idle_checking and spot.begins_with("idle")
 	if tip["clearance"] == null or not (tip["grounded"] or at_rest):
 		return
@@ -490,8 +491,7 @@ func _grade_tip(side: StringName, spot: String) -> void:
 				_v2.debug_skip_reason.get(side, "")])
 
 
-## The heel is graded like the toe tip, into the same counters. A planted heel reads about -1 cm
-## (the sole plane is not perfectly flat), so it clips only past HEEL_CLIP_TOLERANCE.
+## The heel is graded like the toe tip; a planted heel reads ~-1 cm (HEEL_CLIP_TOLERANCE).
 func _grade_heel(side: StringName, spot: String) -> void:
 	var measured: Variant = _heel_clearance(side)
 	if measured == null:
@@ -545,8 +545,7 @@ func _physics_process(_delta: float) -> void:
 		return
 
 
-## F6 toggles v2. It must not use the `debug_camera` action: that is the player's own V key for the
-## third-person camera, so looking at the character silently switched the correction off.
+## F6 toggles v2. Not the `debug_camera` action: that is the player's own V camera key.
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_F6 and _label != null:
@@ -598,8 +597,7 @@ func _capture() -> void:
 		var has_target: bool = _v2.debug_target.has(side)
 		var target: Vector3 = (_v2.debug_target.get(side, foot.origin) as Vector3)
 		var normal: Vector3 = _v2.debug_ground_normal.get(side, Vector3.UP)
-		# The target is the ANKLE position (ground + normal * ankle_height); the sole contact point
-		# is that far along the sole direction from the bone.
+		# The target is the ANKLE (ground + normal * ankle_height); the sole point is that far down.
 		var sole_point := foot.origin + sole * _v2.ankle_height
 		# v2's stored target is the ankle position; pull it back along the normal for the ground.
 		var ground_y := (target - normal * _v2.ankle_height).y
@@ -652,7 +650,7 @@ func _capture() -> void:
 
 
 ## Animation and heading, travel direction RELATIVE to facing: local_velocity is (right, up,
-## forward) m/s and move_angle_deg is 0 forward, +90 strafe right, -90 left, 180 backwards.
+## Animation and heading; travel direction RELATIVE to facing (move_angle_deg 0 fwd, +90 right).
 func _motion_fields() -> Dictionary:
 	var anim := player.body.anim_player
 	var facing := -player.global_basis.z
@@ -799,7 +797,7 @@ func _run_check() -> void:
 
 ## Largest single-frame foot movement per surface (a snap shows even when every pose is clean).
 func _track_foot_step(side: StringName, spot: String, foot_world: Vector3) -> void:
-	_pose_faults += 1 if POSE_DUMP.pose_fault(_v2, side, -player.global_basis.z) > 0.0 else 0
+	_pose_faults += 1 if POSE_DUMP.pose_fault(_v2, side) > 0.0 else 0
 	var previous: Variant = _prev_foot.get(side)
 	_prev_foot[side] = foot_world
 	if previous == null or _walk <= 2:
@@ -871,8 +869,11 @@ func _place_on_ramp() -> void:
 		_walk = 0
 		return
 	if _stairs_start:
-		# Step 3 of the 0.10 m staircase (top 0.30, z 1.225..1.575), 1.36 m in, facing 13 degrees.
-		player.global_position = Vector3(_lane_x(4) + _stairs_x, 0.6, _stairs_z)
+		# Fixed tests: 0.6 m drop onto step 3 of the 0.10 m stairs. The fuzz drops it 0.3 m above the
+		# tread under (x, z) (0.35 m deep, the first at z 2.1).
+		var tread := clampi(roundi((RAMP_RUN * 0.5 - _stairs_z) / TREAD), 0, STAIR_STEPS - 1)
+		var drop := STAIR_HEIGHTS[0] * float(tread + 1) + 0.3 if _fuzz else 0.6
+		player.global_position = Vector3(_lane_x(4) + _stairs_x, drop, _stairs_z)
 		player.rotation = Vector3(0.0, deg_to_rad(13.2), 0.0)
 		player.velocity = Vector3.ZERO
 		_settle = 0
@@ -907,6 +908,7 @@ func _run_ramp_check() -> void:
 		return
 	if str(step["name"]) != _segment and step.has("yaw"):
 		player.rotation.y = deg_to_rad(float(step["yaw"]))
+	player.rotation.y += deg_to_rad(float(step.get("yaw_rate", 0.0))) # a smooth turn, per frame
 	if str(step["name"]) != _segment and bool(step.get("jump", false)):
 		Input.action_press(&"jump")
 		_jump_pressed_at = _walk
@@ -941,7 +943,7 @@ func _finish_ramp_check() -> void:
 
 
 ## Independent of the modifier: this harness casts its own ray from high above so it finds the RAMP
-## (not the floor beneath it), then compares the foot's sole points against that real surface.
+## Independent of the modifier: casts its own ray from high above and compares the sole to that.
 func _measure_ramp() -> void:
 	if _drift_limit < INF:
 		var drift := Vector2(player.global_position.x, player.global_position.z).distance_to(
@@ -955,15 +957,16 @@ func _measure_ramp() -> void:
 		var leg: Dictionary = _v2._legs.get(side, {})
 		if leg.is_empty():
 			continue
-		_foot_step_max = maxf(_foot_step_max, TURN_CHECK.step(
-				_turn_prev, side, _pub(int(leg["foot"])).origin, _grade_now,
-				_v2.debug_stepping.get(side, false), POSE_DUMP.pose_fault(_v2, side, -player.global_basis.z)))
+		# the foot against the body (hip), in the published skeleton frame: a turning body carries it
+		var rel: Vector3 = _v2.final_basis.inverse() * (
+				_pub(int(leg["foot"])).origin - _pub(int(leg["hip"])).origin)
+		_foot_step_max = maxf(_foot_step_max, TURN_CHECK.step(_turn_prev, side, rel, _grade_now,
+				_v2.debug_stepping.get(side, false), POSE_DUMP.pose_fault(_v2, side)))
 		if _grade_now and not _v2.debug_stepping.get(side, false): # a step floats by design
 			_grade_tip(side, _segment)
 			_grade_heel(side, _segment)
 
 
-## Real surface height above a point, cast from well above the body (a ramp/step above it is found).
 func _surface_above(point: Vector3) -> float:
 	var space := get_world_3d().direct_space_state
 	if space == null:

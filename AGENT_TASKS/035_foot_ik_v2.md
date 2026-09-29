@@ -226,6 +226,27 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
     The earlier "could not reproduce a smooth turn" caveat still holds for a MOUSE-continuous turn;
     the sweep uses 2 deg steps every 10 frames and 40 deg snaps.
 
+15. **Random-pose fuzz (user: "drop the character at random spots / rotations headless") - built, it
+    FAILS a lot (that is the finding).** `scripts/fuzz_foot_ik_v2.sh [trials] [seed]` drops the
+    character at random (x in +-1.3, z along the 0.10 m stairs) with a random yaw and runs the QUICK
+    sweep (`--stairs-turn=dz:x:yaw:quick`): fine yaw steps, 40 deg snaps, and SMOOTH turns (3/8/20
+    deg per frame, both ways = the mouse-turn case). Deterministic per seed, prints the pose to
+    repro. Seed 7, 12 poses: 10 fail. Classes seen: (a) `stepping 41 frames in a row` - during a
+    continuous smooth turn the foot re-steps forever (the user's "loop rotates": v2 has no foot lock,
+    the animated foot swings with the body across treads, so the floor under it and the flatten fit
+    keep changing); (b) `foot moved 7-15 cm against the body in one frame` at smooth-turn start /
+    tread crossings (support-shift / sink re-seat under the 6 cm stepper trigger or repeated); (c)
+    heel/tip CLIP of 6-9 cm in smooth turns; (d) heel/tip FLOAT 11 cm (riser, same as dz=0.24) and
+    once 37 cm at x=-1.21 z=0.63 - a foot hanging over a riser. **Not fixed.** Two measurement bugs
+    found on the way: the pose-fault check mixed a NEW skeleton yaw with OLD published poses (fixed:
+    `FootIKV2Modifier.final_basis`, the transform the poses were published with) and the one-frame
+    foot check used world position (a turning body legitimately carries the foot 14 cm/frame at 20
+    deg/frame: now foot-vs-hip in the published frame). Also `pose_fault` now judges the knee
+    against the rest bend direction projected off the leg (what the solver promises), not the body
+    facing. The stepping guard is now "> 40 frames in a ROW" (was a share of the sweep). The suite
+    still runs only the fixed sweeps (no smooth phase), so it stays green; the fuzz is the tool.
+    Next: a real FOOT LOCK / step-when-needed model for turns, or accept the animated foot follows.
+
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 
 - `foot_ik_v2_modifier.gd`: a trailing foot that cannot reach its surface is RELEASED to step instead
