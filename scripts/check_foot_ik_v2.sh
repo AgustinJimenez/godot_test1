@@ -122,4 +122,18 @@ else
 	status=1
 fi
 
+
+# The knee's sideways offset over the same idle run (frames 100+) must stay steady: it used to swing
+# 0.00 .. 0.115 m side to side because the animated knee swayed with the hips (limit 4 cm spread).
+trace=$(ls "$HOME/Library/Application Support/Godot/app_userdata/"*/foot_ik_v2_check.jsonl \
+	"$HOME/.local/share/godot/app_userdata/"*/foot_ik_v2_check.jsonl 2>/dev/null | head -1)
+spread=$(jq -r '.feet.right.pose.final.knee_offset_right_m // empty' "$trace" | tail -n +100 |
+	awk 'NR == 1 { lo = hi = $1 } { if ($1 < lo) lo = $1; if ($1 > hi) hi = $1 } END { print hi - lo }')
+if [ -n "$spread" ] && awk -v s="$spread" 'BEGIN { exit !(s <= 0.04) }'; then
+	printf 'PASS Foot IK v2 idle knee sway: side offset spread %s m\n' "$spread"
+else
+	printf 'FAIL Foot IK v2 idle knee sway: side offset spread %s m (limit 0.04)\n' "${spread:-?}"
+	status=1
+fi
+
 exit "$status"

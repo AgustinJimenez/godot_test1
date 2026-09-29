@@ -73,6 +73,7 @@ const STANCE_RELEASE_SPEED := 0.6
 const TOE_TIP_FORWARD := 0.035
 ## A clearance "penetration" bigger than this is a riser, not a slope: retreat instead of lifting.
 const RISER_PENETRATION := 0.04
+const KNEE_FOLLOWS_FOOT := 0.1
 const SOLE_GAP_TOLERANCE := 0.001 # leave this much float once the true lowest sole vertex clears
 const SOLE_SINK_SAMPLES := 40 # sole-level vertices ray-cast per scan (a stride past this many)
 const SOLE_SINK_ATTEMPTS := 2 # lowering can shift which vertex is lowest; re-scan once more
@@ -115,7 +116,6 @@ var debug_animated_ankle: Dictionary = {}
 var debug_ground: Dictionary = {}
 ## side -> name of the collider the ground ray hit (which surface owns the contact).
 var debug_surface: Dictionary = {}
-## Physics frame of the last real pass and the pass count: a frozen modifier shows a stale frame.
 var debug_last_frame := -1
 var debug_passes := 0
 ## bone index -> world Transform3D as published at the end of the last pass, and its physics frame.
@@ -149,7 +149,6 @@ var _pelvis_drop := 0.0
 var debug_support_shift: Dictionary = {}
 var _smoothed_y := NAN
 var _body_lag := 0.0
-## How far the visible body trails below the capsule this frame (m), for the trace.
 var debug_body_lag := 0.0
 var _stance_shift: Dictionary = {}
 var _ground_pending: Dictionary = {}
@@ -197,10 +196,7 @@ func _build_legs() -> void:
 		var foot_rest := skel.get_bone_global_rest(foot).origin
 		var toe_bone := skel.find_bone(player_body.resolve_bone_name(roles["toe"]))
 		_sole_cache[side] = _cache_sole_vertices(skel, foot, toe_bone)
-		# Knee bend plane at rest, so a leg whose bend direction is ambiguous still folds forward.
 		var sole_depth := _measure_sole_depth(skel, side, foot)
-		print("[FootIKv2] %s sole_depth=%.4f bone_rest_y=%.4f" % [
-				side, sole_depth, foot_rest.y])
 		if ankle_height < 0.0:
 			# How high the ankle sits for the SOLE to touch (0.096, measured from the mesh at rest).
 			ankle_height = sole_depth
@@ -561,7 +557,6 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 
 
 func _limit_step(skel: Skeleton3D, leg: Dictionary, base: Dictionary, side: StringName) -> void:
-	# in SKELETON space: the body turning or travelling carries the foot with it and is never a step
 	var here := skel.get_bone_global_pose(int(leg["foot"])).origin
 	var planted := not _is_moving and float(_plant_weight.get(side, 1.0)) >= SUPPORT_MIN_PLANT
 	var moved := _stepper.limit(side, Engine.get_physics_frames(), here, planted)
@@ -844,8 +839,13 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 		"target_local": target,
 	}
 	var skel_down := skel.global_transform.basis.orthonormalized().inverse() * Vector3.DOWN
+	# The knee follows the FOOT (the rest bend turned by the animated foot): a planted foot is steady,
+	# the animated knee swayed with the hips and swung the knee 11 cm side to side over it.
+	var foot_turn := (base["foot"] as Transform3D).basis.orthonormalized() \
+			* skel.get_bone_global_rest(int(leg["foot"])).basis.orthonormalized().inverse()
 	var solved := FootIKV2Solver.solve(
-			hip_pos, (base["knee"] as Transform3D).origin, target,
+			hip_pos, hip_pos + (leg["rest_pole"] as Vector3).lerp(
+					foot_turn * (leg["rest_pole"] as Vector3), KNEE_FOLLOWS_FOOT), target,
 			float(leg["upper"]), float(leg["lower"]), leg["rest_pole"] as Vector3,
 			max_knee_flexion_deg, max_hip_swing_deg, skel_down)
 	_aim(skel, int(leg["hip"]), int(leg["knee"]), solved["knee"] as Vector3,
