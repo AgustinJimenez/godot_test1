@@ -263,6 +263,18 @@ still skates 0.44 m per step (the clip vs 3.2 m/s mismatch that stairs had) - no
     (with a lock a resting foot must hold still) and the stepping-run limit is 120 frames. `--stairs`
     smooth turns remain open (item 15); every fuzz seed still fails 12/12 on the one-frame foot pop.
 
+17. **Clearance pass AFTER the stepper (item 16 idea) - tried, WORSE, reverted.** `_clear_toe` re-run
+    on the stepped foot (target set to the stepped spot): fuzz seed 7 clip frames 3 -> 2, float
+    frames 6 -> 6 (no change), but ALL FOUR suite turn sweeps fail (`foot_step_max` 0.132 > 0.07: the
+    clearance lifts/retreats the stepping foot 10 cm on the frames it crosses a riser, i.e. it
+    swaps the float for a pop). Not committed. Also learned: the fuzz's quick sweep undersamples -
+    holding each yaw 12 frames with 8 settle frames (instead of 6 / 2) makes the same code read 56
+    float frames instead of 6, and the first graded frames after a yaw snap are contaminated by the
+    body's own turn lag (feet move up to 8 cm for a few frames after a snap: a measurement effect,
+    not IK). Any A/B on the fuzz must keep the sweep settings fixed. What is left is the riser
+    problem itself (items 8-9, 15-17): a foot that has to change tread level needs a real step
+    (lift, then land on the other tread), which v2's clamp-and-glide pieces do not model.
+
 ## Uncommitted in the working tree (2026-09-28, needs the user's live verdict)
 
 - `foot_ik_v2_modifier.gd`: a trailing foot that cannot reach its surface is RELEASED to step instead
