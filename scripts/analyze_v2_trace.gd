@@ -390,6 +390,12 @@ func _cmd_snaps(frames: Array[Dictionary]) -> void:
 	for row: Array in spikes.slice(0, 10):
 		print("f%d %-5s %-30s foot=%.3f knee_rot=%.1f foot_rot=%.1f %s/%s toe_lift=%s" % [row[1],
 				row[2], row[3], row[0], row[4], row[5], row[6], row[7], row[8]])
+	# a leg can flip its joints with the foot hardly moving (twist / knee pops): rank those too
+	spikes.sort_custom(func(a: Array, b: Array) -> bool: return maxf(a[4], a[5]) > maxf(b[4], b[5]))
+	print("\nBiggest joint rotations in one frame (deg), foot barely moved or not:")
+	for row: Array in spikes.slice(0, 6):
+		print("f%d %-5s %-30s knee_rot=%.1f foot_rot=%.1f foot=%.3f %s/%s" % [row[1],
+				row[2], row[3], row[4], row[5], row[0], row[6], row[7]])
 
 
 static func _kind(surface: String) -> String:

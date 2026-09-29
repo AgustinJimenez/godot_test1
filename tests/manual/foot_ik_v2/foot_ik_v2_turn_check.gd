@@ -4,7 +4,7 @@ extends RefCounted
 ## spots against the treads and risers, which exposed a foot lifted 10 cm onto the next riser (heel
 ## 8 cm under the tread). Graded like the other idle replays (tip / heel clip and float against the
 ## real surface) plus a limit on how far a foot may move in ONE frame once a turn has settled.
-## Offsets: `--stairs-turn=dz:x:yaw[:quick]` puts the riser under the foot anywhere.
+## Offsets: `--stairs-turn=dz:x:yaw[:quick|:hold]` puts the riser under the foot anywhere.
 
 const STEP_DEG := 2.0
 const HOLD_FRAMES := 10
@@ -21,7 +21,11 @@ const SMOOTH_FRAMES := 45 # frames per smooth turn (3, 8 and 20 deg/frame, both 
 
 ## Phases: fine steps around the circle, big 40 degree snaps, then SMOOTH turns (a constant yaw rate
 ## every frame, like the mouse) in both directions at three speeds.
-static func replay(start_yaw := START_YAW_DEG, quick := false) -> Array:
+static func replay(start_yaw := START_YAW_DEG, mode := "") -> Array:
+	var quick := mode == "quick"
+	if mode == "hold": # just stand there: the idle loop seams show, nothing else moves the legs
+		return [{"name": "idle_hold", "input": Vector2.ZERO, "frames": 900, "grade": true,
+				"settle": SETTLE_FRAMES, "yaw": start_yaw}]
 	var steps: Array = [{"name": "idle_start", "input": Vector2.ZERO, "frames": 60, "grade": false}]
 	var fine := 6.0 if quick else STEP_DEG
 	var hold := 6 if quick else HOLD_FRAMES

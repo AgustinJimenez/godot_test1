@@ -215,8 +215,9 @@ func _ready() -> void:
 				_stairs_x = at[1].to_float() if at.size() > 1 else _stairs_x
 				var yaw: float = at[2].to_float() if at.size() > 2 else TURN_CHECK.START_YAW_DEG
 				_foot_step_limit = TURN_CHECK.FOOT_STEP_LIMIT
-				_fuzz = at.size() > 3 # dz:x:yaw:quick = the random-pose fuzz
-				_replay = TURN_CHECK.replay(yaw, _fuzz)
+				var mode: String = at[3] if at.size() > 3 else "" # :quick = fuzz, :hold = stand
+				_fuzz = mode == "quick"
+				_replay = TURN_CHECK.replay(yaw, mode)
 		if "--stairs-edge" in OS.get_cmdline_user_args():
 			# stairs' right edge, one foot on step 3, the other off the side over the floor 0.38 m down
 			_stairs_start = true
@@ -268,8 +269,9 @@ func _ready() -> void:
 	_mode = "ramp_check" if _ramp_checking else ("forward_check" if _checking else "live")
 	_run_id = "%s_%d" % [Time.get_datetime_string_from_system(false, true).replace(" ", "T"),
 			Time.get_ticks_msec()]
-	_trace = TRACE_WRITER.new(
-			TRACE_PATH if _mode == "live" else CHECK_TRACE_PATH, TRACE_MAX_LINES)
+	# a headless run must never overwrite a real live session's trace
+	var live := _mode == "live" and DisplayServer.get_name() != "headless"
+	_trace = TRACE_WRITER.new(TRACE_PATH if live else CHECK_TRACE_PATH, TRACE_MAX_LINES)
 	player.floor_max_angle = deg_to_rad(60.0) # 45 deg sits on the steepest test ramp
 	if _ramp_checking:
 		_place_on_ramp()
@@ -277,9 +279,9 @@ func _ready() -> void:
 	if _checking:
 		_move_to_spot(0)
 		return
-	# Interactive spawn: the last reported live turn (Stair010, yaw 87.4 when the left foot popped).
+	# Interactive spawn: the last frame of the last live log (Stair010, yaw 24.8).
 	player.global_position = Vector3(4.61, 0.80, -0.05)
-	player.rotation = Vector3(0.0, deg_to_rad(87.4), 0.0)
+	player.rotation = Vector3(0.0, deg_to_rad(24.8), 0.0)
 	_build_toe_spheres()
 	_start_third_person.call_deferred()
 	var layer := CanvasLayer.new()
@@ -648,7 +650,6 @@ func _capture() -> void:
 	_trace.capture(JSON.stringify(frame))
 
 
-## Animation and heading, travel direction RELATIVE to facing: local_velocity is (right, up,
 ## Animation and heading; travel direction RELATIVE to facing (move_angle_deg 0 fwd, +90 right).
 func _motion_fields() -> Dictionary:
 	var anim := player.body.anim_player
@@ -941,7 +942,6 @@ func _finish_ramp_check() -> void:
 	get_tree().quit(0 if passed else 1)
 
 
-## Independent of the modifier: this harness casts its own ray from high above so it finds the RAMP
 ## Independent of the modifier: casts its own ray from high above and compares the sole to that.
 func _measure_ramp() -> void:
 	if _drift_limit < INF:

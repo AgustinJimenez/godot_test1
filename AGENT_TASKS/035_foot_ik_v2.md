@@ -35,7 +35,7 @@ Lab flags (after `--`): `--foot-ik-v2-check`, `-ramp-check`, `-idle-check` with 
 `--walk-speed=X`, `--stairs-turn=dz[:x[:yaw[:quick]]]`, `--foot-ik-v2-off`, `--foot-ik-v2-perf`
 (per-part usec, `foot_ik_v2_debug.gd`), env `FOOT_IK_V2_PERF_LOG=1` (engine counters).
 Live lab: V = camera, F6 = v2 on/off, spheres on toe tip / heel green = touching the real floor, a line
-joins them. Default spawn = the last reported live pose `(4.61, 0.80, -0.05)` yaw 87.4.
+joins them. Default spawn = the last live log frame `(4.61, 0.80, -0.05)` yaw 24.8.
 
 ## Suite state
 

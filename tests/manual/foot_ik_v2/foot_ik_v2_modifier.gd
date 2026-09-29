@@ -560,8 +560,7 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	debug_ground_normal[side] = normal
 
 
-func _limit_step(skel: Skeleton3D, leg: Dictionary, base: Dictionary,
-		side: StringName) -> void:
+func _limit_step(skel: Skeleton3D, leg: Dictionary, base: Dictionary, side: StringName) -> void:
 	# in SKELETON space: the body turning or travelling carries the foot with it and is never a step
 	var here := skel.get_bone_global_pose(int(leg["foot"])).origin
 	var planted := not _is_moving and float(_plant_weight.get(side, 1.0)) >= SUPPORT_MIN_PLANT
@@ -603,7 +602,7 @@ func _align_foot(skel: Skeleton3D, leg: Dictionary, normal: Vector3,
 	debug_align[side] = record
 
 
-## Toe clearance: raise by the penetration and re-place, resampling each pass.
+## Toe clearance: raise by the penetration and re-place.
 func _clear_toe(skel: Skeleton3D, leg: Dictionary, base: Dictionary, to_world: Transform3D,
 		hip_world: Vector3, side: StringName) -> void:
 	var retreats := 0
@@ -835,6 +834,9 @@ func _plausible(hit: Dictionary, anchor: Vector3) -> bool:
 ## Analytic two-bone solve: aim the upper bone at the knee, the lower at the ankle target.
 func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3,
 		side: StringName) -> void:
+	# every solve starts from the ANIMATED leg: repeated shortest-arc aims drifted the twist (38 deg)
+	for role: String in ["hip", "knee", "foot"]:
+		skel.set_bone_global_pose(int(leg[role]), base[role] as Transform3D)
 	var hip_pos: Vector3 = (base["hip"] as Transform3D).origin
 	debug_solve[side] = {
 		"reach": float(leg["upper"]) + float(leg["lower"]) - 0.001,
@@ -981,8 +983,7 @@ func _eval_sole_points(skel: Skeleton3D, side: StringName, live: bool) -> Packed
 	return points
 
 
-## Rotate `bone` about its own origin so the segment to `child` points at `target`. At rest the
-## joint's correction (vs its `animated` basis) may change only `joint_speed_deg` a physics frame.
+## Rotate `bone` so its segment to `child` points at `target`; at rest the correction is limited.
 func _aim(skel: Skeleton3D, bone: int, child: int, target: Vector3, animated: Basis) -> void:
 	var pose := skel.get_bone_global_pose(bone)
 	var child_pos: Vector3 = skel.get_bone_global_pose(child).origin

@@ -69,6 +69,28 @@ stance/reach planner as it is and treat the smooth-turn + straddled-edge cases a
 the fixed sweeps as acceptance, or (b) invest in redesigning the reach / pelvis / stance planning as one
 coherent model (one decision per foot per frame instead of five passes that each re-decide).
 
+## Round 3 (2026-09-29, user: "check last log, I did not touch anything") - a joint pop nothing could see
+
+An IDLE log (no input, no clips/floats) still showed a right-foot yaw flicker of ~38 deg for 3 frames
+every 150 frames (the idle loop). The old checks missed it: tip/heel/float checks only see the floor,
+and the pop list ranked by FOOT movement (the foot barely moved). New: the analyzer lists the biggest
+JOINT rotations too (`trace_v2.sh --snaps`, "Biggest joint rotations in one frame").
+Two root causes, both fixed and verified against the old code:
+1. **Twist drift** (`_solve`): every `_aim` is a shortest-arc rotation from the CURRENT pose, so a
+   repeated solve within a frame (flatten, sink, step) drifted the leg's twist; the foot yawed 38 deg
+   for a few frames. Every `_solve` now starts from the ANIMATED hip/knee/foot poses. Also why
+   `--foot-ik-v2-no-support-snap` made the pop vanish.
+2. **Knee pole flip** (`FootIKV2Solver`): the animated bend direction hovers around 90 deg from the
+   rest pole in this idle loop (dot -0.014 ... +0.03) and a hard switch at dot = 0 to the rest pole
+   flipped the knee 90 deg in one frame (47 deg knee / 28 deg foot). The pole is now BLENDED toward
+   the rest pole with `smoothstep(-0.3, 0.5, dot)`. Max joint rotation in one frame: 47 -> 0.9 deg.
+Regression: `check_foot_ik_v2.sh` runs the default live spawn 700 frames headless and fails if any
+joint rotates > 15 deg in a frame (old solver 47.0 = FAIL, new 0.9 = PASS). Headless lab runs now write
+the CHECK trace, never the live one. Also new: `--stairs-turn=dz:x:yaw:hold` (stand for 900 frames);
+the turn-sweep pop metric is the IK correction (final foot minus animated ankle). Fuzz seed 7 x 12:
+clip 3 / float 5 (was 6) / popped_poses 7 (was 9-10). The default spawn is the last live frame,
+`(4.61, 0.80, -0.05)` yaw 24.8.
+
 ## Why (current understanding)
 
 1. The straight glide of the stepper ignores geometry; the riser logic runs BEFORE it, so a stepping

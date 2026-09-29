@@ -107,4 +107,19 @@ for dz in 0 0.12 -0.12 -1.41:-0.39; do
 		--stairs-turn=$dz
 done
 
+# The default live spawn standing still for 700 frames (headless, so it writes the CHECK trace and
+# never a live session's): no joint may rotate more than 15 degrees in one frame. The idle loop made
+# the knee's bend direction hover around the rest pole and a hard switch flipped it 47 degrees with
+# the foot not moving (a leg pop the foot / floor checks cannot see).
+godot --headless --fixed-fps 60 --quit-after 700 --path "$project_dir" \
+	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn >"$log" 2>&1
+knee=$("$project_dir/scripts/trace_v2.sh" --check --snaps --from 40 2>&1 |
+	awk '$1 == "stairs" && $2 == "unarmed_idle" { print $13; exit }')
+if [ -n "$knee" ] && awk -v k="$knee" 'BEGIN { exit !(k <= 15.0) }'; then
+	printf 'PASS Foot IK v2 idle leg pop: max joint rotation in one frame %s deg\n' "$knee"
+else
+	printf 'FAIL Foot IK v2 idle leg pop: max joint rotation in one frame %s deg (limit 15)\n' "${knee:-?}"
+	status=1
+fi
+
 exit "$status"
