@@ -6,6 +6,7 @@ const STEPPER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_stepper.gd")
 const LOCK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_lock.gd")
 const LIMITER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_joint_limiter.gd")
 const REACH_BLEND := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_reach_blend.gd")
+const SOLE := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_sole.gd")
 const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot",
 		"toe": &"LeftToeBase"},
@@ -97,7 +98,6 @@ const GROUND_FOLLOW := 0.06
 const GROUND_SNAP := 0.45
 const PELVIS_REACH_MARGIN := 0.012
 ## The heel is the rearmost point within this height of the shoe's lowest vertex.
-const HEEL_SOLE_BAND := 0.04
 ## Only a foot the ANIMATION plants (ankle within this of the floor level) can ask for a drop.
 const PELVIS_PLANTED_TOLERANCE := 0.05
 ## Lifted more than this above the sampled ground = mid-swing, left to the animation.
@@ -135,7 +135,8 @@ var debug_align: Dictionary = {}
 
 ## side -> {"hip", "knee", "foot", "upper", "lower", "rest_pole"}
 var _legs: Dictionary = {}
-var _sole_cache: Dictionary = {} # side -> _cache_sole_vertices() result
+var _sole: Dictionary = {} # side -> the cached skinned sole (foot_ik_v2_sole.gd)
+var _ray_query: PhysicsRayQueryParameters3D
 ## Base animation poses, captured once per frame before anything is modified.
 var _frame := -1
 var _base: Dictionary = {}
@@ -193,8 +194,9 @@ func _build_legs() -> void:
 		var knee_rest := skel.get_bone_global_rest(knee).origin
 		var foot_rest := skel.get_bone_global_rest(foot).origin
 		var toe_bone := skel.find_bone(player_body.resolve_bone_name(roles["toe"]))
-		_sole_cache[side] = _cache_sole_vertices(skel, foot, toe_bone)
-		var sole_depth := _measure_sole_depth(skel, side, foot)
+		var sole: SOLE = SOLE.new(skel, player_body.character, foot, toe_bone)
+		_sole[side] = sole
+		var sole_depth := sole.depth(skel)
 		if ankle_height < 0.0:
 			ankle_height = sole_depth
 		var rest_direction := (foot_rest - hip_rest).normalized()
@@ -208,7 +210,7 @@ func _build_legs() -> void:
 			"lower": knee_rest.distance_to(foot_rest),
 			"rest_pole": rest_pole.normalized(),
 			"sole_local": (skel.get_bone_global_rest(foot).basis.inverse() * Vector3.DOWN).normalized(),
-			"heel_local": _measure_heel_local(skel, side, foot, toe_bone),
+			"heel_local": sole.heel_local(skel),
 		}
 
 
@@ -811,13 +813,15 @@ func _ray(point: Vector3, hip: Vector3) -> Dictionary:
 	var space := get_skeleton().get_world_3d().direct_space_state
 	if space == null:
 		return {}
-	var top := Vector3(point.x, maxf(hip.y, point.y + ray_up), point.z)
-	var query := PhysicsRayQueryParameters3D.create(
-			top, point - Vector3.UP * ray_down, ground_mask)
-	var body := player_body.get_parent() as CollisionObject3D
-	if body != null:
-		query.exclude = [body.get_rid()]
-	return space.intersect_ray(query)
+	if _ray_query == null: # one query object reused: a fresh one per ray was most of the cost
+		_ray_query = PhysicsRayQueryParameters3D.new()
+		_ray_query.collision_mask = ground_mask
+		var body := player_body.get_parent() as CollisionObject3D
+		if body != null:
+			_ray_query.exclude = [body.get_rid()]
+	_ray_query.from = Vector3(point.x, maxf(hip.y, point.y + ray_up), point.z)
+	_ray_query.to = point - Vector3.UP * ray_down
+	return space.intersect_ray(_ray_query)
 
 
 func _plausible(hit: Dictionary, anchor: Vector3) -> bool:
@@ -859,42 +863,6 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 	debug_solve[side]["landed_knee"] = skel.get_bone_global_pose(int(leg["knee"])).origin
 
 
-## How far the lowest foot-mesh vertex sits below the foot bone at rest.
-func _measure_sole_depth(skel: Skeleton3D, side: StringName, foot: int) -> float:
-	var foot_rest := skel.get_bone_global_rest(foot)
-	var lowest := INF
-	for point: Vector3 in _eval_sole_points(skel, side, false):
-		lowest = minf(lowest, point.y)
-	if not is_finite(lowest):
-		return foot_rest.origin.y
-	return foot_rest.origin.y - lowest
-
-
-## The rearmost sole-level (lowest 4 cm) point of the foot mesh, in the foot bone's rest space.
-func _measure_heel_local(skel: Skeleton3D, side: StringName, foot: int, toe: int) -> Vector3:
-	var points := _eval_sole_points(skel, side, false)
-	var foot_rest := skel.get_bone_global_rest(foot)
-	if points.is_empty() or toe < 0:
-		return Vector3.ZERO
-	var forward := skel.get_bone_global_rest(toe).origin - foot_rest.origin
-	forward.y = 0.0
-	forward = forward.normalized()
-	var lowest := INF
-	for point: Vector3 in points:
-		lowest = minf(lowest, point.y)
-	var heel := foot_rest.origin
-	var rearmost := INF
-	for point: Vector3 in points:
-		if point.y > lowest + HEEL_SOLE_BAND:
-			continue
-		var along := point.dot(forward)
-		if along < rearmost:
-			rearmost = along
-			heel = point
-	heel.y = lowest # the contact point straight below the back of the heel, on the sole
-	return foot_rest.affine_inverse() * heel
-
-
 ## At rest, lower until the true lowest point of the skinned sole is `SOLE_GAP_TOLERANCE` up.
 func _sink_to_true_sole(skel: Skeleton3D, side: StringName, leg: Dictionary, base: Dictionary,
 		to_world: Transform3D, hip_world: Vector3) -> void:
@@ -906,15 +874,10 @@ func _sink_to_true_sole(skel: Skeleton3D, side: StringName, leg: Dictionary, bas
 func _sink_to_true_sole_impl(skel: Skeleton3D, side: StringName, leg: Dictionary, base: Dictionary,
 		to_world: Transform3D, hip_world: Vector3) -> void:
 	for attempt in SOLE_SINK_ATTEMPTS:
-		var world: Array[Vector3] = []
-		var lowest := INF
-		for point: Vector3 in _eval_sole_points(skel, side, true):
-			world.append(to_world * point)
-			lowest = minf(lowest, world[-1].y)
-		if not is_finite(lowest):
-			return
 		# Each sole-level vertex against the floor UNDER IT; the smallest gap is how far it may go.
-		var level: Array[Vector3] = world.filter(func(p: Vector3) -> bool: return p.y <= lowest + 0.005)
+		var level := (_sole[side] as SOLE).level_points(skel, to_world, 0.005)
+		if level.is_empty():
+			return
 		var gap := INF
 		for index in range(0, level.size(), maxi(1, level.size() / SOLE_SINK_SAMPLES)):
 			var hit := _ray(level[index], hip_world)
@@ -927,60 +890,6 @@ func _sink_to_true_sole_impl(skel: Skeleton3D, side: StringName, leg: Dictionary
 		debug_target[side] = target
 		_solve(skel, leg, base, to_world.affine_inverse() * target, side)
 		_align_foot(skel, leg, debug_ground_normal.get(side, Vector3.UP), side)
-
-
-## Per-bone contributions of every foot-mesh vertex, cached ONCE per leg (~8ms/call to walk).
-func _cache_sole_vertices(skel: Skeleton3D, foot: int, toe: int) -> Array:
-	var cached: Array = []
-	if player_body == null or not is_instance_valid(player_body.character):
-		return cached
-	for node: Node in player_body.character.find_children("*", "MeshInstance3D", true, false):
-		var part := node as MeshInstance3D
-		if part == null or part.mesh == null or part.get_skin_reference() == null:
-			continue
-		var skin := part.get_skin_reference().get_skin()
-		if skin == null:
-			continue
-		for surface in part.mesh.get_surface_count():
-			var arrays := part.mesh.surface_get_arrays(surface)
-			var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
-			var bones := arrays[Mesh.ARRAY_BONES] as PackedInt32Array
-			var weights := arrays[Mesh.ARRAY_WEIGHTS] as PackedFloat32Array
-			if vertices.is_empty() or bones.is_empty() or weights.is_empty():
-				continue
-			var influences := bones.size() / vertices.size()
-			for vertex in vertices.size():
-				var contribs: Array = []
-				var total := 0.0
-				for influence in influences:
-					var slot := vertex * influences + influence
-					var bind := bones[slot]
-					var weight := weights[slot]
-					if weight <= 0.0 or bind < 0 or bind >= skin.get_bind_count():
-						continue
-					var bone := skin.get_bind_bone(bind)
-					if bone < 0:
-						bone = skel.find_bone(skin.get_bind_name(bind))
-					if bone < 0 or (bone != foot and bone != toe):
-						continue
-					contribs.append([bone, weight, skin.get_bind_pose(bind) * vertices[vertex]])
-					total += weight
-				if total > 0.5:
-					cached.append({"total": total, "contribs": contribs})
-	return cached
-
-
-## Replay `_cache_sole_vertices`' contributions at rest, or (`live`) the CURRENT bone pose.
-func _eval_sole_points(skel: Skeleton3D, side: StringName, live: bool) -> PackedVector3Array:
-	var points := PackedVector3Array()
-	for entry: Dictionary in _sole_cache.get(side, []) as Array:
-		var summed := Vector3.ZERO
-		for contrib: Array in entry["contribs"] as Array:
-			var bone_pose := skel.get_bone_global_pose(contrib[0]) if live \
-					else skel.get_bone_global_rest(contrib[0])
-			summed += (bone_pose * (contrib[2] as Vector3)) * float(contrib[1])
-		points.append(summed / float(entry["total"]))
-	return points
 
 
 ## Rotate `bone` so its segment to `child` points at `target`; at rest the correction is limited.
