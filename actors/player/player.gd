@@ -553,6 +553,9 @@ func _physics_process(delta: float) -> void:
 	if stepped_up > 0.0:
 		_stair_controller.record_presentation_delta(
 				-stepped_up, step_height, stair_balance_strength, stair_balance_limit)
+		var snap := stepped_up + frame_start_y - global_position.y # floor snap after the climb
+		if snap > 0.0 and snap < 0.1:
+			_stair_controller.camera_snap_y += snap # camera only: the body IK is sensitive
 	elif stepped_down > 0.0:
 		_stair_controller.record_presentation_delta(
 				stepped_down, step_height, stair_balance_strength, stair_balance_limit)
@@ -604,12 +607,9 @@ func _physics_process(delta: float) -> void:
 		var head_pos := body.transform * head_pose.origin
 		var safe_look := _solve_safe_look(_look_pitch, _look_yaw, head_pos)
 		var pitch_rot := Basis(Vector3.UP, safe_look.y) * Basis(Vector3.RIGHT, safe_look.x)
-		# The stair controller already spreads the root's rise across several
-		# frames (step_rise_rate), so head_pos is already smooth here. An
-		# older per-camera compensation used to pull this down further during
-		# a climb, to mask what WAS an instant one-frame teleport - now that
-		# the root itself never teleports, that extra pull only fought the
-		# already-smooth motion (confirmed live: reported shake on stairs).
+		# The stair controller already spreads the root's rise across several frames
+		# (step_rise_rate), so head_pos is already smooth: a per-camera pull-down on top of
+		# that fought it (confirmed live: reported shake on stairs).
 		head.position = head_pos + pitch_rot * eye_offset
 
 

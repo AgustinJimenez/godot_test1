@@ -351,6 +351,28 @@ Foot skating on stairs is a speed vs clip-step-rate mismatch (gameplay speed), n
 sit at x = +5/+10/+15 in the lab; the 0.35 m stairs cannot be climbed at stair speed. `player.gd` and
 the lab are both at the 1000-line lint cap.
 
+**Foot IK v2, stair shake (walking UP was shaky, DOWN smooth) - what was actually wrong.** Compare
+up vs down in the live trace before touching the IK: (1) the capsule snaps DOWN ~5 cm right after
+each step-up climb (`apply_floor_snap` / `move_and_slide`) and the camera hover never absorbed it, so
+the camera stepped back 3-6 cm per step: `player.gd` now feeds that snap into
+`PlayerStairController.camera_snap_y` (camera arm only). Do NOT put it in `hover_offset_y`: that also
+feeds `has_recent_transition()` / the body balance offset and re-timed the IK into a foot toe-lift
+flicker at stair020 step 1 (suite fail). (2) the capsule velocity stalls to 0 for ~3 frames at every
+step, so the modifier read "standing still" and dropped the pelvis at 2.5 cm/frame: `_moving_hold`
+keeps "moving" for 0.3 s. (3) the moving pelvis drop grew slowly but was released fast (a 6 cm
+sawtooth per step): while walking (not jumping) it now releases at `moving_pelvis_rate`; a slow
+release on JUMPS breaks the "jump on the 45 deg ramp keeps the pelvis up" regression.
+Other v2 lessons this session: the knee bend follows the FOOT (`KNEE_FOLLOWS_FOOT` 0.1), not the
+animated knee (it swayed 11 cm side to side over a planted foot); 0.5+ breaks the `dz=-0.12` sweep.
+A trailing foot out of reach now blends toward the reachable point (`foot_ik_v2_reach_blend.gd`)
+instead of releasing in one frame (a 50-120 deg foot snap on a flat walk). A joint speed cap or an
+eased release of the IK correction is NOT an option: it makes the foot lag its target and clips or
+floats (tried at 6 and 12 deg/frame). Debug tools: `foot_ik_v2_joint_flash.gd` (red sphere on any
+leg joint that turns more than the walk animation's own per-frame max x1.5, and on spine/shoulders/
+arms over 6 deg; headless prints `[JointFlash]`), the trace has shoulders/arms and `camera_snap_y`.
+The lab's `--foot-ik-v2-check` teleports the body: ignore turns across a > 0.5 m jump. macOS has no
+`timeout`; `sed` cannot insert `\n`/`\t` in `c\`/`s` replacements - use the Edit tool.
+
 For stair-specific Foot IK iteration, use `tests/manual/foot_ik/foot_ik_stair_lab.tscn` - the
 focused harness for the current stair work (see `AGENT_TASKS/030`). It records the real Player
 walking floor -> stairs -> top landing, then lets you scrub/step/reverse/slow it, with per-foot toe

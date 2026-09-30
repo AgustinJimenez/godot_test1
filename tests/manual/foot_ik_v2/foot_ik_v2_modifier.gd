@@ -18,11 +18,8 @@ const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 @export_range(0.0, 170.0, 1.0) var max_knee_flexion_deg := 150.0 # v1 defaults; 0 = off
 @export_range(0.0, 170.0, 1.0) var max_hip_swing_deg := 100.0 # cone from straight down
 @export var joint_speed_deg := 60.0 # joint correction change cap per frame at rest: a flip guard
-## Physics layers the ground is on: 1 = world, 6 = authored surfaces (layer 1 alone misses stairs).
 @export_flags_3d_physics var ground_mask := 1 | (1 << 5)
-## Fallback floor limit when not a CharacterBody3D; steeper is a wall/riser, left to the animation.
 @export var fallback_floor_max_angle_deg := 46.0
-## A surface this far BELOW the foot is not its floor (a ledge/ramp edge): re-probe inward first.
 @export var max_surface_drop := 0.45
 @export var ray_up := 0.5
 @export var ray_down := 1.2
@@ -32,16 +29,13 @@ const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 @export_range(0.0, 1.0) var weight := 1.0
 ## When a foot's target is past the leg's reach, lower the pelvis by the shortfall, up to this.
 @export var max_pelvis_drop := 0.40
-## Faster than `still_speed`, the drop is capped much lower (a deep squat looks wrong mid-stride).
 @export var moving_pelvis_drop := 0.06
 @export var still_speed := 0.5
-## Jumping (airborne or in a jump clip) counts as moving for the pelvis drop and stance shift.
 @export var jump_counts_as_moving := true
 ## Let the body follow the capsule's height smoothly instead of popping a whole tread per step.
 @export var body_smooth := true
 @export var body_follow_rate := 8.0
 @export var body_max_lag := 0.18
-## Slide a planted foot along its length until its whole sole is on one surface, up to this far.
 @export var support_snap := true
 @export var support_search := 0.16
 const SUPPORT_STEP := 0.02
@@ -50,7 +44,9 @@ const SUPPORT_TOLERANCE := 0.03
 const SUPPORT_MIN_PLANT := 0.9
 const SINK_MIN := 0.04 # a flat sole this far below the aimed-at height re-aims the resting foot
 const BODY_LAG_SNAP := 0.4
-## The drop grows at this rate (m/s) and is released at the next one (no pop down or back up).
+const MOVING_HOLD_SECONDS := 0.3
+const BODY_ROLES: Array[StringName] = [&"Hips", &"Spine", &"Spine1", &"Spine2", &"LeftShoulder",
+		&"RightShoulder", &"LeftArm", &"RightArm"]
 @export var pelvis_attack_speed := 1.5
 ## How fast the pelvis drop may GROW (m/s) while moving or jumping (release stays normal).
 @export var moving_pelvis_rate := 0.25
@@ -165,6 +161,7 @@ var _spread_level := 0.0 # sole surface height from the last `_support_spread`
 ## side -> how planted the animation has this foot, 1 down .. 0 swinging (trace).
 var debug_plant_weight: Dictionary = {}
 var _is_moving := false
+var _moving_hold := 0.0
 ## side -> metres the foot is currently brought in toward the body (trace).
 var debug_stance_shift: Dictionary = {}
 ## side -> [[shift, drop needed], ...] tried by the last stance plan (trace).
@@ -243,7 +240,7 @@ func _publish_final_poses(skel: Skeleton3D) -> void:
 			var bone := int((_legs[side] as Dictionary)[role])
 			if bone >= 0:
 				final_pose[bone] = to_world * skel.get_bone_global_pose(bone)
-	for role: StringName in [&"Hips", &"Spine", &"Spine1", &"Spine2"]:
+	for role: StringName in BODY_ROLES:
 		var bone := skel.find_bone(player_body.resolve_bone_name(role))
 		if bone >= 0:
 			final_pose[bone] = to_world * skel.get_bone_global_pose(bone)
@@ -270,6 +267,9 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 	var host := player_body.get_parent() as CharacterBody3D if player_body != null else null
 	var moving := (host != null
 			and Vector2(host.velocity.x, host.velocity.z).length() > still_speed)
+	_moving_hold = MOVING_HOLD_SECONDS if moving \
+			else maxf(_moving_hold - get_physics_process_delta_time(), 0.0)
+	moving = moving or _moving_hold > 0.0 # a stair step stalls the capsule a few frames
 	var jumpish := false
 	if jump_counts_as_moving:
 		if host != null and (not host.is_on_floor() or absf(host.velocity.y) > JUMP_SPEED_EPSILON):
@@ -298,7 +298,7 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 		needed = minf(needed, moving_pelvis_drop)
 	# Moving, the drop's ATTACK is a slow low-pass (a fast one bobbed the body per stair step).
 	var attack := moving_pelvis_rate if moving else pelvis_attack_speed
-	var release := pelvis_release_speed
+	var release := moving_pelvis_rate if moving and not jumpish else pelvis_release_speed
 	if needed > _pelvis_drop:
 		_pelvis_drop = minf(needed, _pelvis_drop + attack * delta)
 	else:

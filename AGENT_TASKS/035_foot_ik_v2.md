@@ -69,3 +69,13 @@ Modifier and lab are at the 1000-line / 100-col lint cap: new code goes in helpe
 `preload` (not `class_name`: the editor needs a rescan). Do not edit by line number after earlier edits
 shifted them. macOS `sed -i` needs a suffix; zsh needs `${p}:quick`. Commit gameplay/visual changes only
 after the user's live confirmation (AGENTS.md).
+
+## Round 4 (2026-09-30) - stair shake, joint flash, reach blend
+
+Full lessons are in AGENTS.md ("Foot IK v2, stair shake"). Short version: walking UP shook because the
+capsule snaps down ~5 cm after each climb and the camera hover ignored it (`camera_snap_y`, camera
+only); the pelvis also lurched at each 3-frame velocity stall (`_moving_hold`) and swung 6 cm per step
+(slow release while walking). Also new: knee follows the foot (`KNEE_FOLLOWS_FOOT` 0.1) + a sway
+regression, reach blend instead of a hard release, `foot_ik_v2_joint_flash.gd` (red spheres), shoulders
+in the trace. Open: about 55 joint-flash frames remain on the forward-walk check (toe-off /
+surface change), the ramp-strafe replay is still red, and ramp `dz=-0.12` is green only at 0.1.

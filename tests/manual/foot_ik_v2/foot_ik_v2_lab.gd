@@ -586,6 +586,7 @@ func _capture() -> void:
 	frame["body"]["skeleton_origin"] = _v3(player.skeleton.global_transform.origin)
 	frame["body"]["skeleton_scale"] = _v3(player.skeleton.global_transform.basis.get_scale())
 	frame["body"]["stair_hover_y"] = float(player.get("_stair_hover_offset_y"))
+	frame["body"]["camera_snap_y"] = player._stair_controller.camera_snap_y
 	for side: StringName in FootIKV2Modifier.LEGS:
 		var leg: Dictionary = _v2._legs.get(side, {})
 		if leg.is_empty():
@@ -669,7 +670,7 @@ func _motion_fields() -> Dictionary:
 ## Pelvis and spine as published: position, rotation, and the pelvis's height above the root.
 func _body_fields() -> Dictionary:
 	var out := {}
-	for role: StringName in [&"Hips", &"Spine", &"Spine1", &"Spine2"]:
+	for role: StringName in FootIKV2Modifier.BODY_ROLES:
 		var bone := player.skeleton.find_bone(player.body.resolve_bone_name(role))
 		if bone < 0:
 			continue

@@ -15,6 +15,8 @@ const CONTINUOUS_FLOOR_PROBE_DOWN := 0.75
 
 var hover_offset_y := 0.0
 var balance_offset_y := 0.0
+## Camera-only offset absorbing the floor snap after a climb (not part of `has_recent_transition`).
+var camera_snap_y := 0.0
 var consumed_horizontal_motion := false
 var continuous_traversal_active := false
 
@@ -82,6 +84,7 @@ func get_debug_state() -> Dictionary:
 		"continuous_traversal": continuous_traversal_active,
 		"recent_transition": has_recent_transition(),
 		"balance_offset_y": balance_offset_y,
+		"camera_snap_y": camera_snap_y,
 	}
 
 
@@ -338,6 +341,7 @@ func update_presentation(delta: float, hover_speed: float) -> void:
 		return
 	var blend := 1.0 - exp(-hover_speed * delta)
 	hover_offset_y = lerpf(hover_offset_y, 0.0, blend)
+	camera_snap_y = lerpf(camera_snap_y, 0.0, blend)
 	if _balance_active:
 		_balance_smoothed_root_y = lerpf(
 				_balance_smoothed_root_y, _host.global_position.y, blend)
@@ -378,11 +382,12 @@ func _apply_presentation_offsets() -> void:
 	if is_instance_valid(_body):
 		_body.position.y = _body_rest_y
 	if is_instance_valid(_third_person_arm):
-		_third_person_arm.position.y = _third_person_arm_rest_y + hover_offset_y
+		_third_person_arm.position.y = _third_person_arm_rest_y + hover_offset_y + camera_snap_y
 
 
 func reset() -> void:
 	hover_offset_y = 0.0
+	camera_snap_y = 0.0
 	balance_offset_y = 0.0
 	_clear_climb()
 	_last_tread_y = -INF

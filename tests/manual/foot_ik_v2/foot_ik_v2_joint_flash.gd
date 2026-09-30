@@ -9,6 +9,7 @@ const MARGIN := 1.5
 const FLOOR_DEG := 4.0
 const WARMUP_FRAMES := 30
 const TELEPORT_METERS := 0.5
+const BODY_TURN_DEG := 6.0 # spine / shoulder / arm: no animated reference, an absolute limit
 const FLASH_SECONDS := 1.0
 const SPHERE_RADIUS := 0.05
 const ROLES := [&"hip", &"knee", &"foot"]
@@ -40,6 +41,8 @@ func _process(delta: float) -> void:
 	for side: StringName in _modifier._base:
 		for role: StringName in ROLES:
 			_check(side, role)
+	for role: StringName in FootIKV2Modifier.BODY_ROLES.slice(1):
+		_check_body(role)
 	for flash: Dictionary in _flashes.duplicate():
 		flash["age"] = float(flash["age"]) + delta
 		var sphere := flash["node"] as MeshInstance3D
@@ -99,3 +102,23 @@ func _spawn(position_world: Vector3) -> void:
 	add_child(sphere)
 	sphere.global_position = position_world
 	_flashes.append({"node": sphere, "age": 0.0})
+
+
+## Spine, shoulders, upper arms: turned against their parent bone by more than BODY_TURN_DEG.
+func _check_body(role: StringName) -> void:
+	var bone := _skeleton.find_bone(_modifier.player_body.resolve_bone_name(role))
+	var parent := _skeleton.get_bone_parent(bone)
+	if bone < 0 or not _modifier.final_pose.has(bone) or not _modifier.final_pose.has(parent):
+		return
+	var pose := _modifier.final_pose[bone] as Transform3D
+	var local := ((_modifier.final_pose[parent] as Transform3D).affine_inverse() * pose).basis
+	var key := ["body", role]
+	if _animated_previous.has(key):
+		var turned := _turn(_animated_previous[key], local)
+		if turned > BODY_TURN_DEG:
+			flash_count += 1
+			if DisplayServer.get_name() == "headless":
+				print("[JointFlash] f%d body %s turned %.1f deg" % [Engine.get_process_frames(), role, turned])
+			else:
+				_spawn(pose.origin)
+	_animated_previous[key] = local
