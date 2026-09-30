@@ -6,6 +6,7 @@ const POSE_DUMP := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_pose_dump.g
 const TURN_CHECK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_turn_check.gd")
 const V2_MODIFIER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_modifier.gd")
 const PERF_PROBE := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_perf_probe.gd")
+const JOINT_FLASH := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_joint_flash.gd")
 const TRACE_WRITER := preload("res://tests/manual/foot_ik/foot_ik_trace_writer.gd")
 const TRACE_PATH := "user://foot_ik_v2.jsonl"
 ## Headless checks write here so they can never overwrite a live session's trace.
@@ -241,7 +242,7 @@ func _ready() -> void:
 	_v2.name = &"FootIKV2"
 	_v2.player_body = player.body
 	player.skeleton.add_child(_v2)
-	# A/B switch for the headless checks: same scenario with the correction off.
+	add_child(JOINT_FLASH.new().setup(_v2, player.skeleton)) # red flash on a joint snap
 	_v2.enabled = not ("--foot-ik-v2-off" in OS.get_cmdline_user_args())
 	if "--foot-ik-v2-no-pelvis-drop" in OS.get_cmdline_user_args():
 		_v2.max_pelvis_drop = 0.0
@@ -279,7 +280,6 @@ func _ready() -> void:
 	if _checking:
 		_move_to_spot(0)
 		return
-	# Interactive spawn: the last frame of the last live log (Stair010, yaw 24.8).
 	player.global_position = Vector3(4.61, 0.80, -0.05)
 	player.rotation = Vector3(0.0, deg_to_rad(24.8), 0.0)
 	_build_toe_spheres()
@@ -292,7 +292,6 @@ func _ready() -> void:
 	_update_label()
 
 
-## In _process: a SkeletonModifier3D publishes in the deferred update, after _physics_process.
 func _process(_delta: float) -> void:
 	_capture()
 	_update_toe_spheres()

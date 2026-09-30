@@ -5,6 +5,7 @@ const DEBUG_TIMER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_debug.gd"
 const STEPPER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_stepper.gd")
 const LOCK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_lock.gd")
 const LIMITER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_joint_limiter.gd")
+const REACH_BLEND := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_reach_blend.gd")
 const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot",
 		"toe": &"LeftToeBase"},
@@ -198,7 +199,6 @@ func _build_legs() -> void:
 		_sole_cache[side] = _cache_sole_vertices(skel, foot, toe_bone)
 		var sole_depth := _measure_sole_depth(skel, side, foot)
 		if ankle_height < 0.0:
-			# How high the ankle sits for the SOLE to touch (0.096, measured from the mesh at rest).
 			ankle_height = sole_depth
 		var rest_direction := (foot_rest - hip_rest).normalized()
 		var rest_pole := knee_rest - hip_rest
@@ -206,14 +206,11 @@ func _build_legs() -> void:
 		_legs[side] = {
 			"hip": hip, "knee": knee, "foot": foot,
 			"toe": toe_bone,
-			# The toe bone sits this far above the sole; NOT ankle_height (8 cm underground).
 			"toe_depth": maxf(0.0, skel.get_bone_global_rest(toe_bone).origin.y),
 			"upper": hip_rest.distance_to(knee_rest),
 			"lower": knee_rest.distance_to(foot_rest),
 			"rest_pole": rest_pole.normalized(),
-			# The sole's downward direction in the foot bone's space (world-down at rest).
 			"sole_local": (skel.get_bone_global_rest(foot).basis.inverse() * Vector3.DOWN).normalized(),
-			# The visible heel (rearmost sole-level mesh point) in the foot bone's own space.
 			"heel_local": _measure_heel_local(skel, side, foot, toe_bone),
 		}
 
@@ -273,7 +270,6 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 	var host := player_body.get_parent() as CharacterBody3D if player_body != null else null
 	var moving := (host != null
 			and Vector2(host.velocity.x, host.velocity.z).length() > still_speed)
-	# A jump is motion too: the deep standing squat must never fire there.
 	var jumpish := false
 	if jump_counts_as_moving:
 		if host != null and (not host.is_on_floor() or absf(host.velocity.y) > JUMP_SPEED_EPSILON):
@@ -525,15 +521,19 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	debug_reach_check[side] = {"hip_to_target": hip_local.distance_to(blended), "reach": reach}
 	var clamped := false
 	if hip_local.distance_to(blended) > reach:
-			# A TRAILING foot (plant faded below full) that cannot reach should STEP, not stretch.
+		# A TRAILING foot (plant faded below full) that cannot reach gives back only what it must:
+		# a hard release turned the foot 50-120 degrees in one frame on a flat walk.
 		var trailing := plant < reach_clamp_plant_min
 		if trailing or (_is_moving and not reach_when_moving) or not reach_when_still:
-			debug_skip_reason[side] = "out_of_reach"
-			debug_target.erase(side)
-			debug_state[side] = "released"
-			return
-		# Floor beyond reach even after the maximum pelvis drop: reach as far as the leg goes.
-		clamped = true
+			var animated_local := to_world.affine_inverse() * animated_ankle
+			if hip_local.distance_to(animated_local) > reach:
+				debug_skip_reason[side] = "out_of_reach"
+				debug_target.erase(side)
+				debug_state[side] = "released"
+				return
+			blended = REACH_BLEND.reachable(hip_local, animated_local, blended, reach)
+		else:
+			clamped = true # beyond reach even after the maximum pelvis drop: reach as far as it goes
 	debug_target[side] = target
 	debug_skip_reason[side] = "reach_clamped" if clamped else ""
 	debug_animated_ankle[side] = animated_ankle
