@@ -99,3 +99,6 @@ working in the real game and in `foot_ik_preview` (looked like broken v1; cause 
 reverted. `foot_ik_v2_install.gd` is opt-in and only the v2 lab calls it. To retry later: install it from
 `PlayerBody._build_character_visuals` after the other modifiers and find out why the game differs from
 the lab (player.gd's ledge safety, stair controller, other modifiers). Not done: delete v1.
+
+A/B row: `tests/manual/foot_ik_v2/foot_ik_v2_comparison.tscn` - per animation (idle, walk, run, strafes, diagonals,
+crouch walk) one character with IK OFF next to one with v2 ON on a flat pad (keys A/D/W/S/Q/E, Shift).
