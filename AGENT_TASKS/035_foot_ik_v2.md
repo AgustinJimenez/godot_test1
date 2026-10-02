@@ -89,3 +89,13 @@ to `foot_ik_v2_sole.gd` (cached once, replayed from the foot + toe bone poses, p
 is 909 lines. Left: the sole-sink pass is still ~220 us (about 130 us rebuilding points, the rest rays;
 skipping it for an unmoved foot risks float/clip frames). Next refactor candidates: pelvis/stance planning,
 reach/step passes, trace fields, each into a helper with the suite + fuzz run after every move.
+
+## Round 6 (2026-10-02) - runtime moved, game still on v1
+
+v2's runtime moved to `actors/player/foot_ik_v2/` (modifier, solver, stepper, sole, lock, joint limiter,
+reach blend, debug timers; labs/checks/trace tools stay in `tests/manual/foot_ik_v2/`). The game itself
+still runs v1: making v2 the default (`PlayerBody` installing it) was tried and the user saw it not
+working in the real game and in `foot_ik_preview` (looked like broken v1; cause never found), so it was
+reverted. `foot_ik_v2_install.gd` is opt-in and only the v2 lab calls it. To retry later: install it from
+`PlayerBody._build_character_visuals` after the other modifiers and find out why the game differs from
+the lab (player.gd's ledge safety, stair controller, other modifiers). Not done: delete v1.

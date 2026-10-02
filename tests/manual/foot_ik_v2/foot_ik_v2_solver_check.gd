@@ -6,7 +6,7 @@ extends SceneTree
 ## Run: godot --headless --path . --script \
 ##      res://tests/manual/foot_ik_v2/foot_ik_v2_solver_check.gd
 
-const SOLVER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_solver.gd")
+const SOLVER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_solver.gd")
 const EPS := 0.0005
 const UPPER := 0.45
 const LOWER := 0.45

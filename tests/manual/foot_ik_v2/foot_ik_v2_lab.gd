@@ -1,12 +1,12 @@
 extends Node3D
 ## Acceptance scene for v2 foot IK: flat, ramps 15/30/45 deg, three staircases. F6 toggles it.
 ## Headless `-- --foot-ik-v2-check` (and other flags below) walk / replay it and grade it.
-const DEBUG_TIMER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_debug.gd")
+const DEBUG_TIMER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_debug.gd")
 const POSE_DUMP := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_pose_dump.gd")
 const TURN_CHECK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_turn_check.gd")
-const V2_MODIFIER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_modifier.gd")
 const PERF_PROBE := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_perf_probe.gd")
 const JOINT_FLASH := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_joint_flash.gd")
+const INSTALL := preload("res://actors/player/foot_ik_v2/foot_ik_v2_install.gd")
 const TRACE_WRITER := preload("res://tests/manual/foot_ik/foot_ik_trace_writer.gd")
 const TRACE_PATH := "user://foot_ik_v2.jsonl"
 ## Headless checks write here so they can never overwrite a live session's trace.
@@ -238,18 +238,11 @@ func _ready() -> void:
 			print("[modifier] %s %s active=%s" % [child.name, child.get_class(), child.active])
 			if ("--disable-modifier=%s" % child.name) in OS.get_cmdline_user_args():
 				child.active = false
-	_v2 = V2_MODIFIER.new() as FootIKV2Modifier
-	_v2.name = &"FootIKV2"
-	_v2.player_body = player.body
-	player.skeleton.add_child(_v2)
+	_v2 = INSTALL.install(player.body, player.skeleton, player.body._foot_ik_modifier)
 	add_child(JOINT_FLASH.new().setup(_v2, player.skeleton)) # red flash on a joint snap
 	_v2.enabled = not ("--foot-ik-v2-off" in OS.get_cmdline_user_args())
 	if "--foot-ik-v2-no-pelvis-drop" in OS.get_cmdline_user_args():
 		_v2.max_pelvis_drop = 0.0
-	# Ledge safety's 3 m/s airborne push slid ~1.6 m on a ramp jump: zeroed (`--...-ledge-safety`).
-	var v1: PlayerFootIKModifier = player.body._foot_ik_modifier
-	if v1 != null and "--foot-ik-v2-ledge-safety" not in OS.get_cmdline_user_args():
-		v1._ground_sampler._settings.landing_correction_speed = 0.0
 	if "--foot-ik-v2-jump-not-moving" in OS.get_cmdline_user_args():
 		_v2.jump_counts_as_moving = false
 	if "--foot-ik-v2-no-reach-when-still" in OS.get_cmdline_user_args():

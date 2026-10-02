@@ -1,12 +1,12 @@
 class_name FootIKV2Modifier
 extends SkeletonModifier3D
 ## v2 foot IK: per leg, sample the ground under the animated foot, solve hip -> knee -> ankle.
-const DEBUG_TIMER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_debug.gd")
-const STEPPER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_stepper.gd")
-const LOCK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_lock.gd")
-const LIMITER := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_joint_limiter.gd")
-const REACH_BLEND := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_reach_blend.gd")
-const SOLE := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_sole.gd")
+const DEBUG_TIMER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_debug.gd")
+const STEPPER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_stepper.gd")
+const LOCK := preload("res://actors/player/foot_ik_v2/foot_ik_v2_lock.gd")
+const LIMITER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_joint_limiter.gd")
+const REACH_BLEND := preload("res://actors/player/foot_ik_v2/foot_ik_v2_reach_blend.gd")
+const SOLE := preload("res://actors/player/foot_ik_v2/foot_ik_v2_sole.gd")
 const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot",
 		"toe": &"LeftToeBase"},
