@@ -79,3 +79,13 @@ only); the pelvis also lurched at each 3-frame velocity stall (`_moving_hold`) a
 regression, reach blend instead of a hard release, `foot_ik_v2_joint_flash.gd` (red spheres), shoulders
 in the trace. Open: about 55 joint-flash frames remain on the forward-walk check (toe-off /
 surface change), the ramp-strafe replay is still red, and ramp `dz=-0.12` is green only at 0.1.
+
+## Round 5 (2026-10-02) - perf and first refactor
+
+Modifier cost 762 -> 372 us/frame (`--foot-ik-v2-perf`, 900 frames headless). The skinned-sole code moved
+to `foot_ik_v2_sole.gd` (cached once, replayed from the foot + toe bone poses, pruned to vertices within
+10 cm of the sole, `level_points` transforms only the sole-level ones); `_ray` reuses one
+`PhysicsRayQueryParameters3D`. Suite, fuzz (seed 7: clip 1 / float 2 / popped 10) unchanged. The modifier
+is 909 lines. Left: the sole-sink pass is still ~220 us (about 130 us rebuilding points, the rest rays;
+skipping it for an unmoved foot risks float/clip frames). Next refactor candidates: pelvis/stance planning,
+reach/step passes, trace fields, each into a helper with the suite + fuzz run after every move.

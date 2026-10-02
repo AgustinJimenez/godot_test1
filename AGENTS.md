@@ -372,6 +372,8 @@ leg joint that turns more than the walk animation's own per-frame max x1.5, and 
 arms over 6 deg; headless prints `[JointFlash]`), the trace has shoulders/arms and `camera_snap_y`.
 The lab's `--foot-ik-v2-check` teleports the body: ignore turns across a > 0.5 m jump. macOS has no
 `timeout`; `sed` cannot insert `\n`/`\t` in `c\`/`s` replacements - use the Edit tool.
+v2 perf: measure with `--foot-ik-v2-perf` (per-part usec). The big costs were per-frame vertex work
+and a fresh `PhysicsRayQueryParameters3D` per ray; the skinned sole lives in `foot_ik_v2_sole.gd`.
 
 For stair-specific Foot IK iteration, use `tests/manual/foot_ik/foot_ik_stair_lab.tscn` - the
 focused harness for the current stair work (see `AGENT_TASKS/030`). It records the real Player
