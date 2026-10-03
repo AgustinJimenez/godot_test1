@@ -108,6 +108,8 @@ func _build_dummy(index: int, data: Array, ik_on: bool, count: int) -> void:
 	root.position = Vector3(lane_x, 0.0, 0.0)
 	var capsule := CollisionShape3D.new()
 	capsule.shape = CapsuleShape3D.new()
+	(capsule.shape as CapsuleShape3D).radius = 0.35 # the player scene's capsule
+	(capsule.shape as CapsuleShape3D).height = 1.8
 	capsule.position.y = 0.9
 	root.add_child(capsule)
 	add_child(root)
