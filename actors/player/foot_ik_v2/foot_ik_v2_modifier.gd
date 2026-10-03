@@ -847,11 +847,14 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 	# the animated knee swayed with the hips and swung the knee 11 cm side to side over it.
 	var foot_turn := (base["foot"] as Transform3D).basis.orthonormalized() \
 			* skel.get_bone_global_rest(int(leg["foot"])).basis.orthonormalized().inverse()
+	# Walking, the animated knee is the animation; only a standing leg needs the steady one.
+	var knee_hint := (base["knee"] as Transform3D).origin if _is_moving else hip_pos \
+			+ (leg["rest_pole"] as Vector3).lerp(
+			foot_turn * (leg["rest_pole"] as Vector3), KNEE_FOLLOWS_FOOT)
 	var solved := FootIKV2Solver.solve(
-			hip_pos, hip_pos + (leg["rest_pole"] as Vector3).lerp(
-					foot_turn * (leg["rest_pole"] as Vector3), KNEE_FOLLOWS_FOOT), target,
+			hip_pos, knee_hint, target,
 			float(leg["upper"]), float(leg["lower"]), leg["rest_pole"] as Vector3,
-			max_knee_flexion_deg, max_hip_swing_deg, skel_down)
+			max_knee_flexion_deg, max_hip_swing_deg, skel_down, _is_moving)
 	_aim(skel, int(leg["hip"]), int(leg["knee"]), solved["knee"] as Vector3,
 			(base["hip"] as Transform3D).basis)
 	_aim(skel, int(leg["knee"]), int(leg["foot"]), solved["ankle"] as Vector3,

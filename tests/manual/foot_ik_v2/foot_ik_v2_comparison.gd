@@ -2,12 +2,16 @@ extends Node3D
 ## A/B row for Foot IK v2 (the v1 `foot_ik_animation_comparison` idea): per animation one character
 ## with IK OFF (raw animation) next to one with v2 ON on a flat pad, so any
 ## difference between the pair is the IK's. Keys: A/D pan, W/S closer/farther, Q/E height, Shift
-## faster. Headless: 240 frames, then per animation the IK passes and the worst ON-vs-OFF pose
+## faster. A label over each ON character shows the live diff (green < 3 cm, red >= 10 cm).
+## Headless: 240 frames, then per animation the IK passes and the worst ON-vs-OFF pose
 ## difference per bone (frames 120+, the OFF twin is a disabled v2 that publishes the raw pose).
 
 const INSTALL := preload("res://actors/player/foot_ik_v2/foot_ik_v2_install.gd")
 const SPACING := 2.2
 const LABEL_HEIGHT := 2.25
+const SETTLE_FRAMES := 120 # the worst-case run ignores the start-up
+const DIFF_OK := 0.03 # m: green up to here, fading to red at DIFF_BAD
+const DIFF_BAD := 0.10
 ## [label, animation, fake walking speed m/s]: v2 treats a still character as idle (it squats to
 ## put a swinging foot on the floor), so each host reports the speed its animation is meant for.
 const ANIMATIONS: Array[Array] = [
@@ -26,6 +30,7 @@ var _worst: Array[float] = []
 var _worst_bone: Array[String] = []
 var _by_bone: Array[Dictionary] = [] # per animation: bone name -> worst diff
 var _pending_off: FootIKV2Modifier
+var _diff_labels: Array[Label3D] = []
 var _hosts: Array[CharacterBody3D] = []
 var _speeds: Array[float] = []
 
@@ -67,7 +72,7 @@ func _physics_process(_delta: float) -> void:
 		_hosts[index].velocity = Vector3.DOWN
 		_hosts[index].move_and_slide()
 		_hosts[index].velocity = Vector3(0.0, 0.0, -_speeds[index])
-	if _frames > 120:
+	if _frames > 10:
 		_measure()
 	if _frames == 240 and DisplayServer.get_name() == "headless":
 		for index in _modifiers.size():
@@ -78,8 +83,8 @@ func _physics_process(_delta: float) -> void:
 		get_tree().quit()
 
 
-## Largest distance between the IK-off and IK-on published pose (leg and body bones, relative to
-## each character's own origin), per animation.
+## The IK-off vs IK-on published pose distance (leg and body bones, relative to each character's own
+## origin): shown live over each ON character; the worst per animation is kept for headless runs.
 func _measure() -> void:
 	for index in _modifiers.size():
 		var on := _modifiers[index]
@@ -88,14 +93,23 @@ func _measure() -> void:
 			continue
 		var on_root := on.get_skeleton().global_position
 		var off_root := off.get_skeleton().global_position
+		var now := 0.0
+		var now_bone := ""
 		for bone: int in on.final_pose:
 			var diff := ((on.final_pose[bone] as Transform3D).origin - on_root
 					- ((off.final_pose[bone] as Transform3D).origin - off_root)).length()
-			if diff > _worst[index]:
-				_worst[index] = diff
-				_worst_bone[index] = on.get_skeleton().get_bone_name(bone)
 			var bone_name := on.get_skeleton().get_bone_name(bone)
-			_by_bone[index][bone_name] = maxf(float(_by_bone[index].get(bone_name, 0.0)), diff)
+			if diff > now:
+				now = diff
+				now_bone = bone_name
+			if _frames > SETTLE_FRAMES:
+				_by_bone[index][bone_name] = maxf(float(_by_bone[index].get(bone_name, 0.0)), diff)
+		if _frames > SETTLE_FRAMES and now > _worst[index]:
+			_worst[index] = now
+			_worst_bone[index] = now_bone
+		var label := _diff_labels[index]
+		label.text = "diff %.1f cm (%s)" % [now * 100.0, now_bone]
+		label.modulate = Color.GREEN.lerp(Color.RED, smoothstep(DIFF_OK, DIFF_BAD, now))
 
 
 func _key(code: Key) -> float:
@@ -138,3 +152,11 @@ func _build_dummy(index: int, data: Array, ik_on: bool, count: int) -> void:
 	label.modulate = Color(0.4, 1.0, 0.5) if ik_on else Color(1.0, 0.6, 0.4)
 	label.position = Vector3(lane_x, LABEL_HEIGHT, 0.0)
 	add_child(label)
+	if ik_on:
+		var diff := Label3D.new()
+		diff.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		diff.font_size = 30
+		diff.outline_size = 8
+		diff.position = Vector3(lane_x, LABEL_HEIGHT - 0.4, 0.0)
+		add_child(diff)
+		_diff_labels.append(diff)

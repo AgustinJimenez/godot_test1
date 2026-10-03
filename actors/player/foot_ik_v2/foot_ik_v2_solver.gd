@@ -14,7 +14,7 @@ extends RefCounted
 ## cone around `down` (the knee is swung back into it; the foot may then land short).
 static func solve(hip: Vector3, animated_knee: Vector3, target: Vector3,
 		upper: float, lower: float, rest_pole: Vector3, max_flexion_deg := 0.0,
-		max_swing_deg := 0.0, down := Vector3.DOWN) -> Dictionary:
+		max_swing_deg := 0.0, down := Vector3.DOWN, bend_free := false) -> Dictionary:
 	var to_target := target - hip
 	var min_distance := absf(upper - lower) + 0.001
 	if max_flexion_deg > 0.0:
@@ -33,7 +33,9 @@ static func solve(hip: Vector3, animated_knee: Vector3, target: Vector3,
 		pole = rest
 	else:
 		pole = pole.normalized()
-		pole = rest.lerp(pole, smoothstep(-0.3, 0.5, pole.dot(rest))).normalized()
+		# bend_free (walking): only a knee bending BACKWARD is pulled back to the rest pole
+		var edge := Vector2(-0.9, -0.5) if bend_free else Vector2(-0.3, 0.5)
+		pole = rest.lerp(pole, smoothstep(edge.x, edge.y, pole.dot(rest))).normalized()
 	var along := (upper * upper - lower * lower + distance * distance) / (2.0 * distance)
 	var outward := sqrt(maxf(0.0, upper * upper - along * along))
 	var knee := hip + direction * along + pole * outward
