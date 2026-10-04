@@ -90,7 +90,7 @@ for mode in sidel:unarmed_walk_left:0.32:16.0:36.0:6.5:0.065:0.25 \
 	sider:unarmed_walk_right:0.26:15.0:33.0:6.5:0.04:0.14 \
 	diagl:unarmed_walk:0.14:10.0:22.0:6.5:0.045:0.15 \
 	diagr:unarmed_walk:0.14:11.0:23.0:6.5:0.045:0.09 \
-	sideup:unarmed_walk_left:0.28:13.0:24.0:15.0:0.11:0.27 \
+	sideup:unarmed_walk_left:0.30:13.0:32.0:15.0:0.10:0.29 \
 	sidedown:unarmed_walk_right:0.24:14.5:31.0:9.5:0.05:0.20; do
 	IFS=: read -r name anim foot knee knee_max rev jerk jerk_max <<EOT
 $mode

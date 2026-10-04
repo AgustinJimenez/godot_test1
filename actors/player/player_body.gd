@@ -285,6 +285,7 @@ var _target_humanoid_map: Dictionary
 ## Tool instances can disable gameplay idle to expose the imported pose.
 var autoplay_default_animation := true
 var locomotion_playback_scale := 1.0 # Per-instance tool slow motion; gameplay stays 1.0.
+@export_range(0.0, 1.0, 0.05) var stair_cadence_match := 0.5 # stairs: 1 = clips step alike, 0 = old
 ## Instantiates character_scene and finds its Skeleton3D/AnimationPlayer/mesh generically - mesh
 ## is "the first MeshInstance3D found", matching MotusMan's own single-mesh shape today.
 func _setup_character_scene() -> void:
@@ -794,8 +795,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		_hand_grip_modifier.active = target == &"unarmed_torch_idle"
 	_play_motion(target,
 			MOVING_LANDING_BLEND_TIME if moving_landing else LOCOMOTION_BLEND_TIME,
-			sign(rate) * clampf(absf(rate),
-					0.8 * locomotion_playback_scale, 2.2 * locomotion_playback_scale))
+			PlayerStairClips.clamp_rate(self, target, rate))
 
 
 func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> void:

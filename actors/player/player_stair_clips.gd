@@ -15,6 +15,9 @@ const STAIR_CONTACT_LAYER := 1 << 5
 ## cycle - 2 steps of ~0.23 m). The flat walk reference (1.6 m/s) is ~4x this, so playing the stair
 ## clip at the walk rate makes its steps cover only a quarter of the travel and the feet skate.
 const REF_SPEED := 0.395
+## The flat walk clips whose stair cadence is normalised by loop length (see `clamp_rate`).
+const WALK_CLIPS: Array[StringName] = [
+	&"unarmed_walk", &"unarmed_walk_left", &"unarmed_walk_right"]
 
 
 static func add_to(library: AnimationLibrary) -> void:
@@ -60,3 +63,21 @@ static func is_stair_target(target: StringName) -> bool:
 ## matches the distance actually travelled; everything else keeps the caller's flat-walk rate.
 static func walk_rate(target: StringName, ground_speed: float, fallback: float) -> float:
 	return ground_speed / REF_SPEED if is_stair_target(target) else fallback
+
+
+## Final playback rate of a locomotion clip. On the stairs the rate is clamped into a band that is
+## scaled by `scale` (the stair cadence), and the same band for every clip made a sideways strafe
+## step ~29% faster than the forward walk (their loops are 1.03 s and 1.33 s long, so the same rate
+## is a different step rate). The band is scaled by the clip's loop length relative to the forward
+## walk's, so every walk clip steps at the same rate; flat ground (scale 1) is unchanged.
+## `PlayerBody.stair_cadence_match` blends between the old shared band (0) and the full match (1).
+static func clamp_rate(body: PlayerBody, target: StringName, rate: float) -> float:
+	var player := body.anim_player
+	var scale := body.locomotion_playback_scale
+	var factor := 1.0
+	if not is_equal_approx(scale, 1.0) and target in WALK_CLIPS \
+			and player.has_animation("moves/" + target) and player.has_animation(&"moves/unarmed_walk"):
+		factor = player.get_animation("moves/" + target).length \
+				/ player.get_animation(&"moves/unarmed_walk").length
+		factor = lerpf(1.0, factor, body.stair_cadence_match)
+	return sign(rate) * clampf(absf(rate), 0.8 * scale * factor, 2.2 * scale * factor)
