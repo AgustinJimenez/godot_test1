@@ -91,14 +91,6 @@ const PLANT_FADE_END := 0.14
 const PLANT_RATE := 8.0
 ## A swinging foot is released to the animation once its weight has faded below this.
 const PLANT_RELEASE_BELOW := 0.02
-## The floor height a foot chases changes at most this fast (m/s): a 0.35 m riser takes ~7 frames.
-const GROUND_RATE := 3.0
-## A different floor level must be the answer this many frames in a row before the foot follows.
-const GROUND_HOLD_FRAMES := 3
-const GROUND_SAME_LEVEL := 0.04
-## Changes up to this per frame (a slope) are followed exactly; bigger steps rate-limited.
-const GROUND_FOLLOW := 0.06
-const GROUND_SNAP := 0.45
 const PELVIS_REACH_MARGIN := 0.012
 ## The heel is the rearmost point within this height of the shoe's lowest vertex.
 ## Only a foot the ANIMATION plants (ankle within this of the floor level) can ask for a drop.
@@ -153,10 +145,7 @@ var _smoothed_y := NAN
 var _body_lag := 0.0
 var debug_body_lag := 0.0
 var _stance_shift: Dictionary = {}
-var _ground_pending: Dictionary = {}
-var _ground_raw: Dictionary = {}
-var _ground_frame: Dictionary = {}
-var _ground_state: Dictionary = {}
+var _ground := FootIKV2GroundFilter.new()
 var _plant_weight: Dictionary = {}
 var _plant_state: Dictionary = {}
 var _plant_frame: Dictionary = {}
@@ -430,47 +419,6 @@ static func _inward(ankle: Vector3, hip: Vector3) -> Vector3:
 	return flat.normalized() if flat.length_squared() > 0.000001 else Vector3.ZERO
 
 
-## Floor height under the animated foot, filtered (a tread edge flips every frame): HIGHER at once.
-func _filtered_ground_height(side: StringName, raw: float) -> float:
-	if not ground_filter:
-		return raw
-	var frame_now := Engine.get_physics_frames()
-	if int(_ground_frame.get(side, -1)) == frame_now:
-		return float(_ground_state.get(side, raw))
-	_ground_frame[side] = frame_now
-	_ground_raw[side] = raw
-	if not _ground_state.has(side):
-		_ground_state[side] = raw
-		return raw
-	var state: float = _ground_state[side]
-	var gap := absf(raw - state)
-	if gap <= GROUND_FOLLOW or gap > GROUND_SNAP or raw > state:
-		# a slope, a landing/teleport, or a HIGHER tread (late clips the toe); a flicker DOWN waits.
-		_ground_state[side] = raw
-		_ground_pending.erase(side)
-		return raw
-	# A different tread level must be the answer GROUND_HOLD_FRAMES in a row before it is believed.
-	var pending: Dictionary = _ground_pending.get(side, {})
-	if not pending.is_empty() and absf(raw - float(pending["level"])) <= GROUND_SAME_LEVEL:
-		pending["count"] = int(pending["count"]) + 1
-	else:
-		pending = {"level": raw, "count": 1}
-	_ground_pending[side] = pending
-	if int(pending["count"]) >= GROUND_HOLD_FRAMES:
-		_ground_state[side] = move_toward(state, raw, GROUND_RATE / 60.0)
-	return float(_ground_state[side])
-
-
-## The re-sample under the LANDED foot: filtered first sample plus the slope-sized rise or fall.
-func _filtered_resample(side: StringName, again_y: float) -> float:
-	if not ground_filter or not _ground_state.has(side):
-		return again_y
-	var difference := again_y - float(_ground_raw.get(side, again_y))
-	if absf(difference) > GROUND_FOLLOW:
-		difference = 0.0
-	return float(_ground_state[side]) + difference
-
-
 ## Mid-swing only when high above the sampled ground AND above the character's floor level.
 func _is_swinging(animated_ankle: Vector3, ground_y: float, floor_y: float) -> bool:
 	return (animated_ankle.y - ground_y > max_lift
@@ -499,7 +447,7 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 		return
 	var ground: Vector3 = hit["position"]
 	var normal: Vector3 = hit["normal"]
-	ground.y = _filtered_ground_height(side, ground.y)
+	ground.y = _ground.height(side, ground.y) if ground_filter else ground.y
 	debug_ground[side] = ground
 	var collider := hit.get("collider") as Node
 	debug_surface[side] = String(collider.name) if collider != null else ""
@@ -733,7 +681,7 @@ func _sink_to_sole_level(skel: Skeleton3D, leg: Dictionary, base: Dictionary,
 		return
 	ground.y = highest
 	debug_ground[side] = ground
-	_ground_state[side] = highest
+	_ground.state[side] = highest
 	# straight down from where the foot IS (not the animated spot the ground was first sampled at)
 	var landed: Vector3 = (to_world * skel.get_bone_global_pose(int(leg["foot"]))).origin
 	var target := Vector3(landed.x, highest + ankle_height, landed.z)
@@ -794,7 +742,7 @@ func _resample_and_correct(skel: Skeleton3D, leg: Dictionary, base: Dictionary,
 		return
 	# The same filter as the first sample: re-aiming at each tread flip undid the filtering.
 	var again_position: Vector3 = again["position"]
-	again_position.y = _filtered_resample(side, again_position.y)
+	again_position.y = _ground.resample(side, again_position.y) if ground_filter else again_position.y
 	var moved := again_position.y - (debug_ground.get(side, landed_world) as Vector3).y
 	if absf(moved) < 0.005:
 		return
