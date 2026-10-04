@@ -292,6 +292,7 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 					debug_ground_normal)): # landed still, a foot short of the floor: reach it now
 				moving = false; jumpish = false
 	_is_moving = moving
+	_hold_release.blend_walk(moving, get_physics_process_delta_time())
 	var delta := get_physics_process_delta_time()
 	_update_body_lag(host, jumpish, delta)
 	var needed := _plan_stance(skel, moving, delta)
@@ -870,10 +871,8 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 	# the animated knee swayed with the hips and swung the knee 11 cm side to side over it.
 	var foot_turn := (base["foot"] as Transform3D).basis.orthonormalized() \
 			* skel.get_bone_global_rest(int(leg["foot"])).basis.orthonormalized().inverse()
-	# Walking, the animated knee is the animation; only a standing leg needs the steady one.
-	var knee_hint := (base["knee"] as Transform3D).origin if _is_moving else hip_pos \
-			+ (leg["rest_pole"] as Vector3).lerp(
-			foot_turn * (leg["rest_pole"] as Vector3), KNEE_FOLLOWS_FOOT)
+	var knee_hint := (hip_pos + (leg["rest_pole"] as Vector3).lerp(foot_turn * (leg["rest_pole"]
+			as Vector3), KNEE_FOLLOWS_FOOT)).lerp((base["knee"] as Transform3D).origin, _hold_release.walk)
 	var solved := FootIKV2Solver.solve(
 			hip_pos, knee_hint, target,
 			float(leg["upper"]), float(leg["lower"]), leg["rest_pole"] as Vector3,

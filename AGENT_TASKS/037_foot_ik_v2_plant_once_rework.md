@@ -47,3 +47,14 @@ delete code), then 3, then 4. Gate every stage on the suite, the fuzz run and th
 
 Holden, "Inverse Kinematics and Foot Locking" (theorangeduck.com/page/inverse-kinematics-foot-locking);
 "Feet on the world" (aether-lang-dev/ae3d #577). No Uncharted 4 foot-IK talk found; the code cannot be read.
+
+## Evidence 2026-10-04 (stairs-walk checks): hard mode switches are the same bug class
+
+`--stairs-walk=0:back:0.05` (idle on the top tread, then walk backward) turned BOTH knees 38-45 deg in one
+frame at the first walking frame with the feet nearly still: `_is_moving` flips the knee hint (rest pole vs
+animated knee) in one frame. Fixed locally by easing a walk blend (`FootIKV2StretchHold.blend_walk`, 0.15 s):
+knee max 45 -> 22 deg. Other places that still switch on `_is_moving` in one frame: solver `bend_free`
+(pole blend edge), joint limiter (0 vs `joint_speed_deg`), pelvis drop cap + attack/release rate, correction
+easing, plant/lock, stretch hold reset, landing-rest. Each is a place a pop can hide; the plan above should
+replace the boolean with one eased walk value used by all of them (stage 4), and the vibration checks in
+`scripts/check_foot_ik_v2.sh` (floor, stairs up/down/backward) are the gate.

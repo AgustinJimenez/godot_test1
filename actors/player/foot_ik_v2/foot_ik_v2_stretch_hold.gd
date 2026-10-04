@@ -53,3 +53,14 @@ func rests(host: CharacterBody3D, still_speed: float, solves: Dictionary,
 	_last_frame = frame
 	landed = still and (landed or shortfall(solves, states, normals) > 0.03)
 	return landed
+
+
+## 0 resting .. 1 walking, eased over ~0.15 s: the resting and the walking leg are solved a little
+## differently (knee direction), and switching between them in one frame turned both knees 40 deg
+## with the feet standing still (the first step after an idle, found with the stairs-walk checks).
+var walk := 0.0
+
+
+func blend_walk(moving: bool, delta: float) -> float:
+	walk = move_toward(walk, 1.0 if moving else 0.0, delta * 6.0)
+	return walk
