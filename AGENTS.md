@@ -279,6 +279,20 @@ using `_physics_process`); calling it synchronously right after building the tre
 any frame ran) silently does nothing since `parameters/playback` isn't live yet. Defer the forced
 start to the first `_physics_process`/`_process` tick instead of doing it at tree-construction time.
 
+**Retargeting a new source skeleton (ALS, other packs): check the bone names the map assumes, then check
+a hand.** `HumanoidRetargeter` finds each rig's rest facing from the hips, head and clavicles by name;
+`PlayerBody.BONE_MAP` says `Head`, ALS says `head`. A name that is not found gives a facing 180 degrees
+wrong, and the arm IK then mirrors the arms (left hand on the right side) while the legs look fine.
+After retargeting any clip, print the hands/feet relative to the hips at 4 phases and compare with the
+source clip (left hand must keep the sign of its source side, opposite the same-side foot's swing);
+`PlayerTempWalk` shows the fix (use `head` for ALS). `match_arm_positions=false` leaves the arms in a
+T-pose, so it is not a workaround. Walk playback on the stairs is clamped into one band for every clip, so
+clips with different loop lengths stepped at different rates; `stair_cadence_match` (Body node, 0..1)
+scales the band by loop length. `scripts/check_foot_ik_v2.sh` has per-direction vibration checks (floor,
+stairs up/down/backward/45/sideways) built on `trace_v2.sh --snaps`, whose "IK jerk" column is the
+per-frame change of what the IK adds to the animated foot (judge the IK by that, not by raw foot speed:
+strafe clips already swing the foot ~14 cm per frame).
+
 ## Gameplay architecture
 
 `playground.tscn` composes `test_room.tscn` plus `player.tscn`; the nature sandbox follows the same

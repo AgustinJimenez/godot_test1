@@ -387,7 +387,7 @@ func _build_character_visuals() -> void:
 		lib.add_animation(gameplay_name,
 				_retarget_clip(UAL2_PATH, source_name, _held_pose,
 						String(gameplay_name) in UAL_LOOPING_GAMEPLAY_CLIPS))
-	PlayerStairClips.add_to(lib)
+	PlayerStairClips.add_to(lib, self)
 	PlayerDirectionalLocomotionLibrary.add_directional_crouch_clips(
 			lib, skeleton, _target_humanoid_map)
 	_lib = lib

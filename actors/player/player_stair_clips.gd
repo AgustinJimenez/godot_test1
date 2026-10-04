@@ -20,7 +20,9 @@ const WALK_CLIPS: Array[StringName] = [
 	&"unarmed_walk", &"unarmed_walk_left", &"unarmed_walk_right"]
 
 
-static func add_to(library: AnimationLibrary) -> void:
+static func add_to(library: AnimationLibrary, body: PlayerBody = null) -> void:
+	if body != null:
+		PlayerTempWalk.apply(library, body) # temporary ALS walk experiment (player_temp_walk.gd)
 	for gameplay_name: StringName in CLIPS:
 		var clip := load(DIR + CLIPS[gameplay_name] + ".res") as Animation
 		if clip != null:
