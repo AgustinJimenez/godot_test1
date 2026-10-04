@@ -342,7 +342,7 @@ func _cmd_snaps(frames: Array[Dictionary]) -> void:
 			if not groups.has(group):
 				groups[group] = {"foot": [] as Array[float], "knee": [] as Array[float],
 						"knee_rot": [] as Array[float], "foot_rot": [] as Array[float],
-						"hips": [] as Array[float], "drop": [] as Array[float]}
+						"hips": [] as Array[float], "drop": [] as Array[float], "jerk": [] as Array[float]}
 			var data: Dictionary = groups[group]
 			var foot_move := _dist(a.get("foot_pos"), b.get("foot_pos"))
 			var knee_move := _dist(_joint(a, "knee", "position"), _joint(b, "knee", "position"))
@@ -354,6 +354,10 @@ func _cmd_snaps(frames: Array[Dictionary]) -> void:
 			(data["knee"] as Array[float]).append(knee_move)
 			(data["knee_rot"] as Array[float]).append(knee_rot)
 			(data["foot_rot"] as Array[float]).append(foot_rot)
+			# what the IK ADDED this frame: the change of (landed foot - animated ankle)
+			var corr_a := _delta(a.get("animated_ankle"), a.get("foot_pos"))
+			var corr_b := _delta(b.get("animated_ankle"), b.get("foot_pos"))
+			(data["jerk"] as Array[float]).append((corr_b - corr_a).length())
 			var body_a: Dictionary = prev.get("body", {})
 			var body_b: Dictionary = cur.get("body", {})
 			if side == "left": # body values are per frame, not per foot
@@ -373,18 +377,20 @@ func _cmd_snaps(frames: Array[Dictionary]) -> void:
 	var keys := groups.keys()
 	keys.sort()
 	print("%-34s %6s  foot m/frame med/p95/max   knee rot deg med/p95/max   reversals  "
-			% ["surface animation", "n"] + "hips m/frame p95 | pelvis-drop m/frame p95")
+			% ["surface animation", "n"] + "hips m/frame p95 | pelvis-drop m/frame p95 | IK jerk p95 / max")
 	for key: String in keys:
 		var data: Dictionary = groups[key]
 		var foot: Array[float] = data["foot"]
 		var knee_rot: Array[float] = data["knee_rot"]
 		if foot.size() < 5:
 			continue
-		print("%-34s %6d  %.3f / %.3f / %.3f       %5.1f / %5.1f / %5.1f      %d          %.4f | %.4f" % [
+		var layout := "%-34s %6d  %.3f / %.3f / %.3f       %5.1f / %5.1f / %5.1f      %d"
+		print((layout + "          %.4f | %.4f | %.3f / %.3f") % [
 				key, foot.size(), _median(foot), _percentile(foot, 0.95), _percentile(foot, 1.0),
 				_median(knee_rot), _percentile(knee_rot, 0.95), _percentile(knee_rot, 1.0),
 				int(reversals.get(key, 0)), _percentile(data["hips"], 0.95),
-				_percentile(data["drop"], 0.95)])
+				_percentile(data["drop"], 0.95), _percentile(data["jerk"], 0.95),
+				_percentile(data["jerk"], 1.0)])
 	spikes.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
 	print("\nBiggest foot jumps (m in one frame):")
 	for row: Array in spikes.slice(0, 10):
