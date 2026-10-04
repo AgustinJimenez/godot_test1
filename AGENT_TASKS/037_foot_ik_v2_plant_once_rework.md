@@ -71,3 +71,12 @@ new 85 deg knee spike. Both reverted. Conclusion: per-frame patches around the s
 foot needs a contact decision (plant once, keep the surface until lift-off, step to the next tread as a
 planned move) - stages 1-2 above. Gate: the sideup/sidedown/sidel/sider/diag* checks in
 `scripts/check_foot_ik_v2.sh` (limits are today's numbers; tighten when the rework lands).
+
+Third try (spatial look-ahead ramp, same day): lift = rise ahead - 0.5 * distance over 5..20 cm along the
+foot's heading, rise-limited to 5 cm/frame. It fired (168 lift events in `sideup`, 2.5-8.5 cm each) but the
+IK jerk stayed at 8.7/25.6 cm (base 9.3/22.8) and knee max went 20 -> 27 deg; the rise-limit alone was worse
+(knee 39 deg). The hops are not a missing look-ahead: the animated swing foot itself passes through the
+riser, so any lift is decided against a trajectory the IK does not know. Real options: (a) sample the
+animation's FUTURE foot path (AnimationPlayer at t + dt) and plan the clearance on it; (b) allow a short,
+small toe clip while the lift ramps (user dislikes clips); (c) plant-once so only a few feet per second
+change surface. Not started.
