@@ -29,6 +29,28 @@ run() {
 	grep "$pattern" "$log"
 }
 
+# Leg vibration as numbers (the live "the stairs shake" reports): per surface+animation of the LAST
+# headless run's trace, per-frame motion from `trace_v2.sh --check --snaps`. Limits sit just above
+# today's values, so a change that makes a walk shakier turns this red. Args: label surface animation
+# max-foot-jump(m) max-knee-turn-p95(deg) max-knee-turn(deg) max-reversals(% of frames).
+snap_check() {
+	row=$("$project_dir/scripts/trace_v2.sh" --check --snaps 2>&1 | awk -v s="$2" -v a="$3" \
+		'$1 == s && $2 == a { print $3, $8, $11, $13, $14; exit }')
+	if [ -z "$row" ]; then
+		printf 'FAIL %s (no %s %s frames in the trace)\n' "$1" "$2" "$3"
+		status=1
+		return 0
+	fi
+	if echo "$row" | awk -v f="$4" -v p="$5" -v k="$6" -v r="$7" \
+		'{ exit !($2 <= f && $3 <= p && $4 <= k && 100 * $5 / $1 <= r) }'; then
+		printf 'PASS %s: n=%s foot_max=%s knee_p95=%s knee_max=%s reversals=%s\n' "$1" $row
+	else
+		printf 'FAIL %s: n=%s foot_max=%s knee_p95=%s knee_max=%s reversals=%s (limits %s m, %s, %s deg, %s%%)\n' \
+			"$1" $row "$4" "$5" "$6" "$7"
+		status=1
+	fi
+}
+
 run "Project checks" "Project checks passed" \
 	"$project_dir/scripts/check.sh"
 
@@ -39,6 +61,20 @@ run "Foot IK v2 solver regression" "FOOT_IK_V2_SOLVER_CHECK PASS" \
 run "Foot IK v2 lab (all surfaces)" "FOOT_IK_V2_CHECK PASS" \
 	godot --headless --fixed-fps 60 --quit-after 1600 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-check
+
+snap_check "Foot IK v2 floor walk vibration" floor unarmed_walk 0.20 11.0 30.0 3.0
+
+# A continuous walk up the 0.10 m stairs (the live stairs): see snap_check.
+run "Foot IK v2 stairs walk (run)" "FOOT_IK_V2_IDLE_CHECK" \
+	godot --headless --fixed-fps 60 --quit-after 600 --path "$project_dir" \
+	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs-walk=0
+snap_check "Foot IK v2 stairs walk vibration" stairs unarmed_walk 0.25 8.5 25.0 5.5
+
+# The same stairs walked DOWN from the top tread (a stuck foot used to snap forward on release).
+run "Foot IK v2 stairs walk down (run)" "FOOT_IK_V2_IDLE_CHECK" \
+	godot --headless --fixed-fps 60 --quit-after 600 --path "$project_dir" \
+	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs-walk=0:down
+snap_check "Foot IK v2 stairs walk down vibration" stairs unarmed_walk 0.12 10.0 26.0 5.5
 
 # The user's report as a test: stand on the closest ramp and strafe left/right while a ray cast
 # from above compares the sole/toe against the REAL ramp surface (independent of the modifier).

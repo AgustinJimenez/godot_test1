@@ -4,6 +4,7 @@ extends Node3D
 const DEBUG_TIMER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_debug.gd")
 const POSE_DUMP := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_pose_dump.gd")
 const TURN_CHECK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_turn_check.gd")
+const STAIRS_WALK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_stairs_walk.gd")
 const PERF_PROBE := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_perf_probe.gd")
 const JOINT_FLASH := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_joint_flash.gd")
 const INSTALL := preload("res://actors/player/foot_ik_v2/foot_ik_v2_install.gd")
@@ -205,7 +206,7 @@ func _ready() -> void:
 				# one continuous walk up a staircase (0 = 0.10 m, 1 = 0.20 m, 2 = 0.35 m)
 				_stairs_walk_lane = 4 + arg.trim_prefix("--stairs-walk=").to_int()
 				_replay = [{"name": "stairs_walk", "input": Vector2(0.0, -1.0), "frames": 200,
-						"grade": false}]
+						"grade": false, "down": arg.ends_with(":down")}]
 			if arg.begins_with("--walk-speed="): # walk at X m/s, clip at normal playback
 				player.stair_walk_speed_scale = 1.0
 				player.walk_speed = arg.trim_prefix("--walk-speed=").to_float()
@@ -856,9 +857,8 @@ func _measure(name: String) -> void:
 ## --- user scenario: replay of the live session on the closest ramp ------------------------
 func _place_on_ramp() -> void:
 	if _stairs_walk_lane >= 0:
-		player.global_position = Vector3(_lane_x(_stairs_walk_lane), 0.3, RAMP_RUN * 0.5 + 1.5)
-		player.rotation = Vector3.ZERO
-		player.velocity = Vector3.ZERO
+		STAIRS_WALK.place(player, _lane_x(_stairs_walk_lane), _replay[0], STAIR_HEIGHTS[0] * STAIR_STEPS,
+				RAMP_RUN * 0.5, TREAD, STAIR_STEPS)
 		_settle = 0
 		_walk = 0
 		return
