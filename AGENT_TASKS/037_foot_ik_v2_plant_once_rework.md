@@ -58,3 +58,16 @@ knee max 45 -> 22 deg. Other places that still switch on `_is_moving` in one fra
 easing, plant/lock, stretch hold reset, landing-rest. Each is a place a pop can hide; the plan above should
 replace the boolean with one eased walk value used by all of them (stage 4), and the vibration checks in
 `scripts/check_foot_ik_v2.sh` (floor, stairs up/down/backward) are the gate.
+
+## Evidence 2026-10-04 (stairs strafes): look-ahead lifts were tried twice and did NOT help
+
+Replays `--stairs-walk=0:sideup|sidedown` (body 76 deg to the stairs, from the live log) reproduce the live
+shake (IK jerk p95/max 9.3/22.8 cm vs live 10.7/24.5; reversals 12.7% vs 11%). The jerk events are the foot
+hopping 8-23 cm at each tread change (toe clearance lifts of 11-13 cm while the plant weight fades 40-70%,
+or a sample height change of 10+ cm at full plant). Tried: (1) lift the target early from the toe points
+6 frames ahead along the animated foot's step, rise-limited to 5 cm/frame: IK jerk p95 got WORSE (5 -> 10 cm
+in the sidel replay); (2) same with two horizons (2 and 5 frames) that must agree: jerk p95 9.3 -> 8.0 but a
+new 85 deg knee spike. Both reverted. Conclusion: per-frame patches around the sample cannot fix this; the
+foot needs a contact decision (plant once, keep the surface until lift-off, step to the next tread as a
+planned move) - stages 1-2 above. Gate: the sideup/sidedown/sidel/sider/diag* checks in
+`scripts/check_foot_ik_v2.sh` (limits are today's numbers; tighten when the rework lands).
