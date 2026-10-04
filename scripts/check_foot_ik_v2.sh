@@ -80,7 +80,8 @@ run "Foot IK v2 idle on stairs, tip against a riser (live regression)" "FOOT_IK_
 	godot --headless --fixed-fps 60 --quit-after 900 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs
 
-# Standing on the stairs' edge with one foot on step 3 and the other off the side over the floor
+# 0.38 m below (live log). The body stays standing and that foot keeps the animation (it used to squat
+# 0.33 m to reach the floor; standing like the idle clip has priority). Float limit 0.35 m.
 # 0.38 m below (live log). That foot used to hang 30 cm up; it now squats to put it on the floor.
 run "Foot IK v2 idle on the stairs' edge, one foot on the floor (live regression)" \
 	"FOOT_IK_V2_IDLE_CHECK PASS" \

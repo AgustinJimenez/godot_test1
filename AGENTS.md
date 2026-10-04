@@ -27,6 +27,13 @@ Before editing, inspect the working tree. Existing changes belong to the user; p
 work. Do not commit gameplay, animation, or visual changes until the user has tested them live and
 explicitly confirmed the result.
 
+**Same bug class three times = rethink, do not patch again.** When live logs show the same kind of
+failure (foot flips, pelvis ratchet, snap on a mode switch) after two or more targeted fixes, or a fix
+turns an unrelated regression check red, stop adding rules. Name the shared cause (usually one decision
+made from one sample, redone every frame), write a short design note in `AGENT_TASKS/` (see `037`),
+agree it with the user, then change the decision itself in small stages, each gated on the suite. Delete
+the guards the new design makes redundant instead of keeping them.
+
 Authenticate GitHub pushes for this repository as `AgustinJimenez`. Keep that selection
 repository-local; do not change the globally active GitHub CLI account to make a push.
 

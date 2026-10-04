@@ -102,3 +102,18 @@ the lab (player.gd's ledge safety, stair controller, other modifiers). Not done:
 
 A/B row: `tests/manual/foot_ik_v2/foot_ik_v2_comparison.tscn` - per animation (idle, walk, run, strafes, diagonals,
 crouch walk) one character with IK OFF next to one with v2 ON on a flat pad (keys A/D/W/S/Q/E, Shift).
+
+## Round 7 (2026-10-04) - live stair-edge logs, standing pose first
+
+Live logs on the stairs showed a deep squat (pelvis drop at the 0.40 cap) and legs inside the steps. Fixes, all
+in the runtime, each live-checked at the lab spawn (stair edge `3.65, 0.45, 1.22`, yaw -174.3):
+- Foot pitch on flat floor stays the animated one (v1 rule); correction easing while moving (`CORRECTION_STEP`).
+- `foot_ik_v2_stretch_hold.gd`: the squat hold now releases (calm 0.5 s, not turning, never below what both
+  legs can still reach); a land clip on still ground with a short flat-floor foot counts as resting.
+- `_ground_hit`: plausibility is judged from the capsule floor, not the squatted ankle; a far-below floor is no
+  surface (the foot keeps the animation); the inward probe goes 0.10 m further in so the whole sole fits.
+- `SINK_MAX` 0.25: the sole-sink passes ignore a floor further down than that (it pushed the foot 23 cm into a step).
+- Priority agreed with the user: the pose closest to the original idle wins (standing over reaching a far floor).
+- Edge test now expects standing (float limit 0.35), not the old squat. The ramp-strafe check is still red.
+Design rework (plant once from the footprint, pelvis from final targets) is in `037`; the stretch hold is
+still there because deleting it broke the turn-in-place checks.

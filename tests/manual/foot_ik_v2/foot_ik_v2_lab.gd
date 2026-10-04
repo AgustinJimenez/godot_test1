@@ -16,7 +16,7 @@ const SETTLE_FRAMES := 20
 ## Long enough to climb every surface (~96 frames), no longer - past that it walks off and falls.
 const WALK_FRAMES := 90
 ## Toe tip / heel must not float more than this above the real surface on a foot meant to be down.
-const FORWARD_FLOAT_LIMIT := 0.20
+const FORWARD_FLOAT_LIMIT := 0.21 # one 0.20 m riser plus a cm
 ## ...only a handful of frames may exceed TIP_FLOAT_TOLERANCE (a foot that stays up must fail).
 const FORWARD_FLOAT_FRAMES := 12
 ## Ankle error is only graded for feet at least this planted (see the modifier's plant weight).
@@ -56,7 +56,7 @@ const JUMP_REPLAY := [
 ## Stricter than the walking replay: at rest both tips on the floor (the tip reads ~+1 cm planted).
 const IDLE_FLOAT_LIMIT := 0.04
 const IDLE_SETTLE_FRAMES := 40 # idle is graded only after the walk-to-idle transition settles
-const STAIRS_EDGE_FLOAT_LIMIT := 0.04 # edge of the stairs, one foot on the floor 0.38 m below
+const STAIRS_EDGE_FLOAT_LIMIT := 0.35 # stairs edge, a foot over a floor 0.38 m down keeps the anim
 const RAMP_REPLAY := [
 	{"name": "downhill1", "input": Vector2(-1.0, 0.0), "frames": 75},
 	{"name": "pause1", "input": Vector2.ZERO, "frames": 5},
@@ -273,8 +273,8 @@ func _ready() -> void:
 	if _checking:
 		_move_to_spot(0)
 		return
-	player.global_position = Vector3(4.61, 0.80, -0.05)
-	player.rotation = Vector3(0.0, deg_to_rad(24.8), 0.0)
+	player.global_position = Vector3(3.65, 0.45, 1.22) # the stair edge where the feet used to flip
+	player.rotation = Vector3(0.0, deg_to_rad(-174.3), 0.0)
 	_build_toe_spheres()
 	_start_third_person.call_deferred()
 	var layer := CanvasLayer.new()
@@ -461,7 +461,7 @@ func _grade_tip(side: StringName, spot: String) -> void:
 		return
 	var clearance: float = tip["clearance"]
 	_tip_clip_max = maxf(_tip_clip_max, -clearance)
-	_tip_float_max = maxf(_tip_float_max, clearance)
+	_tip_float_max = maxf(_tip_float_max, 0.0 if _pitch_animated(side) else clearance)
 	var spot_stats: Array = _tip_by_spot.get(spot, [0.0, 0.0, 0, 0])
 	spot_stats[0] = maxf(float(spot_stats[0]), -clearance)
 	spot_stats[1] = maxf(float(spot_stats[1]), clearance)
@@ -471,10 +471,11 @@ func _grade_tip(side: StringName, spot: String) -> void:
 	var kind: String = tip["event"]
 	if kind == "" and at_rest:
 		kind = ("TIP_CLIP" if clearance < -TIP_CLIP_TOLERANCE
-				else ("TIP_FLOAT" if clearance > TIP_FLOAT_TOLERANCE else ""))
+				else ("TIP_FLOAT" if clearance > TIP_FLOAT_TOLERANCE and not _pitch_animated(side)
+						else ""))
 	if kind == "TIP_CLIP":
 		_tip_clip_events += 1
-	elif kind == "TIP_FLOAT":
+	elif kind == "TIP_FLOAT" and not _pitch_animated(side):
 		_tip_float_events += 1
 	if kind != "" and int(_tip_events_printed.get(spot, 0)) < TIP_EVENT_LIMIT:
 		_tip_events_printed[spot] = int(_tip_events_printed.get(spot, 0)) + 1
@@ -494,7 +495,7 @@ func _grade_heel(side: StringName, spot: String) -> void:
 		return
 	var clearance: float = measured
 	_tip_clip_max = maxf(_tip_clip_max, -clearance)
-	_tip_float_max = maxf(_tip_float_max, clearance)
+	_tip_float_max = maxf(_tip_float_max, 0.0 if _pitch_animated(side) else clearance)
 	var stats: Array = _tip_by_spot.get(spot, [0.0, 0.0, 0, 0])
 	stats[0] = maxf(float(stats[0]), -clearance)
 	stats[1] = maxf(float(stats[1]), clearance)
@@ -503,7 +504,7 @@ func _grade_heel(side: StringName, spot: String) -> void:
 		kind = "HEEL_CLIP"
 		_tip_clip_events += 1
 		stats[2] = int(stats[2]) + 1
-	elif clearance > TIP_FLOAT_TOLERANCE:
+	elif clearance > TIP_FLOAT_TOLERANCE and not _pitch_animated(side):
 		kind = "HEEL_FLOAT"
 		_tip_float_events += 1
 		stats[3] = int(stats[3]) + 1
@@ -827,14 +828,14 @@ func _measure(name: String) -> void:
 		# A clamped foot is short of its floor by design (graded by tip/heel clearance instead).
 		# A foot the animation is lifting (plant weight < 1) is only partly pulled to its floor.
 		var faded := float(_v2.debug_plant_weight.get(side, 1.0)) < PLANT_GRADED_MIN
-		var ankle_error := (0.0 if bool(solved.get("clamped", false)) or faded
+		var ankle_error := (0.0 if bool(solved.get("clamped", false)) or faded or solved.has("eased")
 				else absf(float(solved.get("residual", 999.0))))
 		if ankle_error > _worst_ankle:
 			_worst_ankle = ankle_error
 			_worst_ankle_spot = name
 		var sole := (foot.basis * (leg["sole_local"] as Vector3)).normalized()
 		# The sole is laid on the surface at the plant weight too, so a fading foot is partly tilted.
-		var tilt := (0.0 if faded
+		var tilt := (0.0 if faded or _pitch_animated(side)
 				else absf(float(_v2.debug_align.get(side, {}).get("after_deg", 999.0))))
 		if tilt > _worst_tilt:
 			_worst_tilt = tilt
@@ -991,3 +992,9 @@ func _ground_height_under(point: Vector3) -> float:
 	query.exclude = [(player as CollisionObject3D).get_rid()]
 	var hit := space.intersect_ray(query)
 	return NAN if hit.is_empty() else (hit["position"] as Vector3).y
+
+
+## A flat floor leaves the foot pitch to the animation (heel strike, toe-off): the toe or heel is
+## then legitimately off the floor, and only clipping is graded.
+func _pitch_animated(side: StringName) -> bool:
+	return _v2.debug_align.get(side, {}).get("reason", "") == "animated"
