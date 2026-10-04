@@ -205,8 +205,7 @@ func _ready() -> void:
 			if arg.begins_with("--stairs-walk="):
 				# one continuous walk up a staircase (0 = 0.10 m, 1 = 0.20 m, 2 = 0.35 m)
 				_stairs_walk_lane = 4 + arg.trim_prefix("--stairs-walk=").to_int()
-				_replay = [{"name": "stairs_walk", "input": Vector2(0.0, -1.0), "frames": 200,
-						"grade": false, "down": arg.ends_with(":down")}]
+				_replay = STAIRS_WALK.replay(arg.get_slice(":", 1), arg.get_slice(":", 2).to_float())
 			if arg.begins_with("--walk-speed="): # walk at X m/s, clip at normal playback
 				player.stair_walk_speed_scale = 1.0
 				player.walk_speed = arg.trim_prefix("--walk-speed=").to_float()

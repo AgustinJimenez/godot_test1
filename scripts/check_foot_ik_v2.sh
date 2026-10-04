@@ -76,6 +76,13 @@ run "Foot IK v2 stairs walk down (run)" "FOOT_IK_V2_IDLE_CHECK" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs-walk=0:down
 snap_check "Foot IK v2 stairs walk down vibration" stairs unarmed_walk 0.12 10.0 26.0 5.5
 
+# The live log of a leg shake: idle on the top tread, then walk BACKWARD down while the speed builds
+# (0.05 m further along the treads: a 45 deg knee snap and a 0.26 m foot jump; the live log had 93 deg).
+run "Foot IK v2 stairs walk backward (run)" "FOOT_IK_V2_IDLE_CHECK" \
+	godot --headless --fixed-fps 60 --quit-after 700 --path "$project_dir" \
+	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs-walk=0:back:0.05
+snap_check "Foot IK v2 stairs walk backward vibration" stairs unarmed_walk 0.30 11.0 50.0 5.5
+
 # The user's report as a test: stand on the closest ramp and strafe left/right while a ray cast
 # from above compares the sole/toe against the REAL ramp surface (independent of the modifier).
 run "Foot IK v2 ramp strafe (user scenario)" "FOOT_IK_V2_RAMP_CHECK PASS" \
