@@ -13,7 +13,7 @@ const MODES := {
 	"sidel": [Vector2(-1.0, 0.0), 80, 1.0, 3, 0.0], "sider": [Vector2(1.0, 0.0), 80, -1.0, 3, 0.0],
 	# the live log: body turned 76 degrees to the stairs, strafe left climbs, strafe right descends
 	"sideup": [Vector2(-1.0, 0.0), 230, 0.0, -1, -76.0],
-	"sidedown": [Vector2(1.0, 0.0), 130, 0.0, 11, -76.0],
+	"sidedown": [Vector2(1.0, 0.0), 120, 0.0, 10, -76.0],
 }
 
 
