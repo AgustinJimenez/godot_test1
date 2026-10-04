@@ -288,7 +288,7 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 			moving = true
 			jumpish = true
 			if (String(player_body.anim_player.current_animation).contains("land") and host != null
-					and FootIKV2StretchHold.rests(host, still_speed, debug_solve, debug_state,
+					and _hold_release.rests(host, still_speed, debug_solve, debug_state,
 					debug_ground_normal)): # landed still, a foot short of the floor: reach it now
 				moving = false; jumpish = false
 	_is_moving = moving

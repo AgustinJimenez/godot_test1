@@ -10,7 +10,9 @@ const MARGIN := 0.15 # m of reach kept in hand
 const RELEASE_SPEED := 0.1 # m/s
 
 var calm := 0.0
+var landed := false
 var _yaw := 0.0
+var _last_frame := 0
 
 
 ## `legs` are the solve records (`reach`, `needed`); returns the new hold.
@@ -40,9 +42,14 @@ static func shortfall(solves: Dictionary, states: Dictionary, normals: Dictionar
 
 
 ## True once the capsule is down and still while a flat-floor foot is still short of its floor: the
-## land clip is then a resting pose, so the resting reach (pelvis drop) takes over at once.
-static func rests(host: CharacterBody3D, still_speed: float, solves: Dictionary,
+## land clip is then a resting pose, so the resting reach (pelvis drop) takes over at once. It stays
+## true for the rest of that landing (re-deciding every frame flipped the body up and down).
+func rests(host: CharacterBody3D, still_speed: float, solves: Dictionary,
 		states: Dictionary, normals: Dictionary) -> bool:
-	return (host.is_on_floor() and absf(host.velocity.y) < 0.5
-			and Vector2(host.velocity.x, host.velocity.z).length() <= still_speed
-			and shortfall(solves, states, normals) > 0.03)
+	var still := (host.is_on_floor() and absf(host.velocity.y) < 0.5
+			and Vector2(host.velocity.x, host.velocity.z).length() <= still_speed)
+	var frame := Engine.get_physics_frames()
+	landed = landed and frame - _last_frame <= 2 # a new landing starts over
+	_last_frame = frame
+	landed = still and (landed or shortfall(solves, states, normals) > 0.03)
+	return landed
