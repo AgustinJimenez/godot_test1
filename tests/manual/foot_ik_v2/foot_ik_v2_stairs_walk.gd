@@ -2,13 +2,18 @@ extends RefCounted
 ## The continuous stairs walks of the lab (`--stairs-walk=N[:mode[:dz]]`, N = staircase 0/1/2).
 ## "" walks up from the bottom; "down" walks down from the top tread facing down; "back" is a live
 ## log of a leg shake (stand on the top tread, then walk BACKWARD down while the speed builds);
-## "diagl"/"diagr" climb at 45 degrees (forward + left/right) and "sidel"/"sider" strafe along a
-## tread, the keys the live play used on the stairs. `dz` shifts the start along the treads.
+## "diagl"/"diagr" climb at 45 degrees (forward + left/right), "sidel"/"sider" strafe along a tread,
+## "sideup"/"sidedown" turn the body 76 degrees to the stairs and strafe up / down them (the worst
+## live log). `dz` shifts the start along the treads.
 
-## mode -> [input, frames, start x offset, start tread (-1 = in front of the stairs)]
+## mode -> [input, frames, start x offset, start tread (-1 = in front of the stairs), yaw degrees]
 const MODES := {
-	"diagl": [Vector2(-0.707, -0.707), 100, 1.0, -1], "diagr": [Vector2(0.707, -0.707), 100, -1.0, -1],
-	"sidel": [Vector2(-1.0, 0.0), 80, 1.0, 3], "sider": [Vector2(1.0, 0.0), 80, -1.0, 3],
+	"diagl": [Vector2(-0.707, -0.707), 100, 1.0, -1, 0.0],
+	"diagr": [Vector2(0.707, -0.707), 100, -1.0, -1, 0.0],
+	"sidel": [Vector2(-1.0, 0.0), 80, 1.0, 3, 0.0], "sider": [Vector2(1.0, 0.0), 80, -1.0, 3, 0.0],
+	# the live log: body turned 76 degrees to the stairs, strafe left climbs, strafe right descends
+	"sideup": [Vector2(-1.0, 0.0), 230, 0.0, -1, -76.0],
+	"sidedown": [Vector2(1.0, 0.0), 130, 0.0, 11, -76.0],
 }
 
 
@@ -36,6 +41,8 @@ static func place(player: CharacterBody3D, lane_x: float, replay: Dictionary, to
 	var mode: String = replay.get("mode", "")
 	var dz := float(replay.get("dz", 0.0))
 	player.rotation = Vector3.ZERO
+	if MODES.has(mode):
+		player.rotation.y = deg_to_rad(float((MODES[mode] as Array)[4]))
 	if MODES.has(mode):
 		var data: Array = MODES[mode]
 		var on_tread: int = data[3]

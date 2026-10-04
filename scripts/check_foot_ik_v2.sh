@@ -89,12 +89,14 @@ snap_check "Foot IK v2 stairs walk backward vibration" stairs unarmed_walk 0.30 
 for mode in sidel:unarmed_walk_left:0.32:16.0:36.0:6.5:0.065:0.25 \
 	sider:unarmed_walk_right:0.26:15.0:33.0:6.5:0.04:0.14 \
 	diagl:unarmed_walk:0.14:10.0:22.0:6.5:0.045:0.15 \
-	diagr:unarmed_walk:0.14:11.0:23.0:6.5:0.045:0.09; do
+	diagr:unarmed_walk:0.14:11.0:23.0:6.5:0.045:0.09 \
+	sideup:unarmed_walk_left:0.28:13.0:24.0:15.0:0.11:0.27 \
+	sidedown:unarmed_walk_right:0.40:15.0:40.0:7.0:0.045:0.42; do
 	IFS=: read -r name anim foot knee knee_max rev jerk jerk_max <<EOT
 $mode
 EOT
 	run "Foot IK v2 stairs walk $name (run)" "FOOT_IK_V2_IDLE_CHECK" \
-		godot --headless --fixed-fps 60 --quit-after 700 --path "$project_dir" \
+		godot --headless --fixed-fps 60 --quit-after 900 --path "$project_dir" \
 		res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check \
 		--stairs-walk=0:$name
 	snap_check "Foot IK v2 stairs walk $name vibration" stairs "$anim" "$foot" "$knee" "$knee_max" \
