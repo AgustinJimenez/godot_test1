@@ -15,6 +15,9 @@ const ACTION_PACK_STAND_CLIPS := {
 
 
 static func walk_animation(movement_input: Vector2) -> StringName:
+	var experiment := PlayerTempWalk.directional(movement_input) # temporary ALS directional walks
+	if experiment != &"":
+		return experiment
 	if movement_input.is_zero_approx():
 		return &"unarmed_walk"
 	var norm := movement_input.normalized()
