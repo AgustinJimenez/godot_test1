@@ -192,6 +192,34 @@ static func _add_directional(library: AnimationLibrary, body: PlayerBody) -> voi
 			_lengths[pair[0]] = side.length
 
 
+## Experiment: A / D alone turn the whole body 90 degrees toward the move side (the head keeps the
+## camera aim, like W+A / W+D at 45) and play the forward walk instead of the strafe clips.
+const SIDE_BODY_TURN := true
+
+
+## True when the body should turn: forward (W, W+A, W+D), or with the experiment on A / D alone and
+## the back diagonals (S+A, S+D). Plain S keeps the old behaviour.
+static func turns_body(input_dir: Vector2) -> bool:
+	return input_dir.y < -0.2 or side_is_forward_walk(input_dir) or back_diagonal(input_dir)
+
+
+## S+A / S+D with the experiment on: the body faces away from the move direction (45 degrees) and
+## the walk plays in reverse, the same way W+A turns the body 45 degrees.
+static func back_diagonal(input_dir: Vector2) -> bool:
+	return SIDE_BODY_TURN and input_dir.y > 0.2 and absf(input_dir.x) > 0.2
+
+
+## The body yaw offset for a travel angle: toward the travel direction, or for the back diagonals
+## the opposite way round (travel angle 135 degrees left gives 45 degrees right).
+static func body_turn(input_dir: Vector2, travel_angle: float) -> float:
+	return travel_angle - signf(travel_angle) * PI if input_dir.y > 0.2 else travel_angle
+
+
+## A / D alone (not backward) while the side-turn experiment is on.
+static func side_is_forward_walk(input_dir: Vector2) -> bool:
+	return SIDE_BODY_TURN and absf(input_dir.x) > 0.2 and input_dir.y <= 0.2
+
+
 ## The clip for a movement input while the directional experiment is on, else &"" (the game's own
 ## choice). Forward is the forward walk, a wide angle off forward is a diagonal, sideways keeps the
 ## strafe clips, backward is the ALS backward walk.

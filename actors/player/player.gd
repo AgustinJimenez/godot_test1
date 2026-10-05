@@ -418,8 +418,8 @@ func _catch_up_body_yaw(input_dir: Vector2, sprinting: bool, delta: float) -> vo
 	var target_offset := _look_yaw
 	if sprinting:
 		target_offset = _look_yaw + travel_angle
-	elif not _crouched and input_dir.y < -0.2:
-		target_offset = _look_yaw + travel_angle
+	elif not _crouched and PlayerTempWalk.turns_body(input_dir):
+		target_offset = _look_yaw + PlayerTempWalk.body_turn(input_dir, travel_angle)
 	if is_zero_approx(target_offset):
 		return
 	var step := clampf(target_offset, -max_step, max_step)

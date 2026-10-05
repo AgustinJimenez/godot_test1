@@ -21,7 +21,8 @@ static func walk_animation(movement_input: Vector2) -> StringName:
 	if movement_input.is_zero_approx():
 		return &"unarmed_walk"
 	var norm := movement_input.normalized()
-	if norm.y < -0.2:
+	if norm.y < -0.2 or PlayerTempWalk.side_is_forward_walk(norm) \
+			or PlayerTempWalk.back_diagonal(norm):
 		return &"unarmed_walk"
 	if absf(norm.x) > 0.2:
 		return &"unarmed_walk_left" if norm.x < 0.0 else &"unarmed_walk_right"
