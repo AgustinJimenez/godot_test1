@@ -48,6 +48,8 @@ const SINK_MAX := 0.25 # a floor further below than this is not a lower tread: i
 const BODY_LAG_SNAP := 0.4
 const MOVING_HOLD_SECONDS := 0.3
 const CORRECTION_STEP := 0.03 # m/frame the ankle correction may move sideways or DOWN while walking
+const KNEE_FOLLOWS_FOOT := 0.1
+const LEVEL_TOLERANCE := 0.03 # m: a foot this close to the root height is on level floor
 const BODY_ROLES: Array[StringName] = [&"Hips", &"Spine", &"Spine1", &"Spine2", &"LeftShoulder",
 		&"RightShoulder", &"LeftArm", &"RightArm"]
 @export var pelvis_attack_speed := 1.5
@@ -73,7 +75,6 @@ const STANCE_RELEASE_SPEED := 0.6
 const TOE_TIP_FORWARD := 0.035
 ## A clearance "penetration" bigger than this is a riser, not a slope: retreat instead of lifting.
 const RISER_PENETRATION := 0.04
-const KNEE_FOLLOWS_FOOT := 0.1
 const SOLE_GAP_TOLERANCE := 0.001 # leave this much float once the true lowest sole vertex clears
 const SOLE_SINK_SAMPLES := 40 # sole-level vertices ray-cast per scan (a stride past this many)
 const SOLE_SINK_ATTEMPTS := 2 # lowering can shift which vertex is lowest; re-scan once more
@@ -146,6 +147,7 @@ var _body_lag := 0.0
 var debug_body_lag := 0.0
 var _stance_shift: Dictionary = {}
 var _ground := FootIKV2GroundFilter.new()
+var _knee_hint := FootIKV2KneeHint.new()
 var _plant_weight: Dictionary = {}
 var _plant_state: Dictionary = {}
 var _plant_frame: Dictionary = {}
@@ -815,16 +817,26 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 		"target_local": target,
 	}
 	var skel_down := skel.global_transform.basis.orthonormalized().inverse() * Vector3.DOWN
-	# The knee follows the FOOT (the rest bend turned by the animated foot): a planted foot is steady,
-	# the animated knee swayed with the hips and swung the knee 11 cm side to side over it.
+	# A resting knee bends the way the animation bends it (low-passed: foot_ik_v2_knee_hint.gd), a
+	# walking one is the animated knee itself; the blend between them is eased.
+	var animated_knee := (base["knee"] as Transform3D).origin
+	var steady := _knee_hint.steady(side, hip_pos, animated_knee, get_physics_process_delta_time(),
+			_hold_release.walk)
+	# On a level floor (the animation's own ground) the knee keeps the animation's bend; elsewhere, the
+	# old steady rest-pole bend (it keeps a foot clear of risers; stairs turns were sensitive to it).
 	var foot_turn := (base["foot"] as Transform3D).basis.orthonormalized() \
 			* skel.get_bone_global_rest(int(leg["foot"])).basis.orthonormalized().inverse()
-	var knee_hint := (hip_pos + (leg["rest_pole"] as Vector3).lerp(foot_turn * (leg["rest_pole"]
-			as Vector3), KNEE_FOLLOWS_FOOT)).lerp((base["knee"] as Transform3D).origin, _hold_release.walk)
+	var rest_hint := hip_pos + (leg["rest_pole"] as Vector3).lerp(
+			foot_turn * (leg["rest_pole"] as Vector3), KNEE_FOLLOWS_FOOT)
+	var level := true # BOTH feet on the root's level (a flat floor, not stairs or a slope)
+	for foot_side: StringName in _legs:
+		level = level and absf((debug_ground.get(foot_side, Vector3.ZERO) as Vector3).y
+				- skel.global_transform.origin.y) < LEVEL_TOLERANCE
+	var knee_hint := (steady if level else rest_hint).lerp(animated_knee, _hold_release.walk)
 	var solved := FootIKV2Solver.solve(
 			hip_pos, knee_hint, target,
 			float(leg["upper"]), float(leg["lower"]), leg["rest_pole"] as Vector3,
-			max_knee_flexion_deg, max_hip_swing_deg, skel_down, _is_moving)
+			max_knee_flexion_deg, max_hip_swing_deg, skel_down, _hold_release.walk)
 	_aim(skel, int(leg["hip"]), int(leg["knee"]), solved["knee"] as Vector3,
 			(base["hip"] as Transform3D).basis)
 	_aim(skel, int(leg["knee"]), int(leg["foot"]), solved["ankle"] as Vector3,

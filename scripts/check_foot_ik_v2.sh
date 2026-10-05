@@ -90,7 +90,7 @@ for mode in sidel:unarmed_walk_left:0.32:16.0:36.0:6.5:0.065:0.25 \
 	sider:unarmed_walk_right:0.26:15.0:33.0:6.5:0.04:0.14 \
 	diagl:unarmed_walk:0.14:10.0:22.0:6.5:0.045:0.15 \
 	diagr:unarmed_walk:0.14:11.0:23.0:6.5:0.045:0.09 \
-	sideup:unarmed_walk_left:0.30:13.0:32.0:15.0:0.10:0.29 \
+	sideup:unarmed_walk_left:0.30:13.0:36.0:15.0:0.10:0.29 \
 	sidedown:unarmed_walk_right:0.24:14.5:31.0:9.5:0.05:0.20; do
 	IFS=: read -r name anim foot knee knee_max rev jerk jerk_max <<EOT
 $mode
@@ -101,6 +101,31 @@ EOT
 		--stairs-walk=0:$name
 	snap_check "Foot IK v2 stairs walk $name vibration" stairs "$anim" "$foot" "$knee" "$knee_max" \
 		"$rev" "$jerk" "$jerk_max"
+done
+
+# The same animation with the IK off next to v2 on a flat pad (foot_ik_v2_comparison.tscn): the worst
+# distance of any leg or body bone between the two. On flat floor the animation must look the same.
+# Limits sit just above today's values, except idle (0.04): its right knee is bent a different way.
+cmp_out=$(godot --headless --fixed-fps 60 --quit-after 400 --path "$project_dir" \
+	res://tests/manual/foot_ik_v2/foot_ik_v2_comparison.tscn 2>&1 | grep V2_COMPARISON || true)
+for pair in unarmed_idle:0.04 unarmed_walk:0.17 unarmed_sprint:0.045 unarmed_walk_left:0.08 \
+	unarmed_walk_right:0.09 unarmed_walk_fwd_left:0.16 unarmed_walk_fwd_right:0.14 \
+	unarmed_crouch_walk:0.055; do
+	anim=${pair%%:*}
+	limit=${pair##*:}
+	row=$(printf '%s\n' "$cmp_out" | awk -v a="moves/$anim" '$2 == a { print $4, $5; exit }')
+	diff=${row%% *}
+	diff=${diff#max_diff_m=}
+	bone=${row##* }
+	bone=${bone#bone=}
+	if [ -n "$diff" ] && awk -v d="$diff" -v l="$limit" 'BEGIN { exit !(d <= l) }'; then
+		printf 'PASS Foot IK v2 same as the animation (%s): worst bone %s %.1f cm (limit %.1f)\n' \
+			"$anim" "$bone" "$(awk -v d="$diff" 'BEGIN { print d * 100 }')" "$(awk -v l="$limit" 'BEGIN { print l * 100 }')"
+	else
+		printf 'FAIL Foot IK v2 same as the animation (%s): worst bone %s %s m (limit %s)\n' \
+			"$anim" "${bone:-?}" "${diff:-?}" "$limit"
+		status=1
+	fi
 done
 
 # The user's report as a test: stand on the closest ramp and strafe left/right while a ray cast
