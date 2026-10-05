@@ -12,6 +12,8 @@ const ALS_PATH := "res://assets/models/als_mannequin_standalone/full_set/ALS_N_W
 const UAL1_PATH := "res://assets/models/universal_animation_library/UAL1_Standard.glb"
 const UAL2_PATH := "res://assets/models/universal_animation_library_2/UAL2_Standard.glb"
 const MIXAMO_PATH := "res://assets/models/action_adventure_pack/walking.fbx"
+const HBM_MODEL := "res://assets/models/human_basic_motions/HumanM_Model.fbx"
+const HBM_WALK := "res://assets/models/human_basic_motions/HumanM@Walk01_Forward.fbx"
 const PLAYBACK_SCALE := 0.575 # the Mixamo walk plays at this fraction of the matching speed
 ## [source file, clip name in it ("" = the file's only clip)]
 ## Walking speed (m/s at 1x playback) of the experiment clip when it has to override the walk speed
@@ -23,6 +25,7 @@ const CHOICES: Array = [
 	[UAL2_PATH, &"Walk_Carry"],
 	[UAL2_PATH, &"Zombie_Walk_Fwd"],
 	[MIXAMO_PATH, ""],
+	[HBM_WALK, ""],
 ]
 
 
@@ -32,7 +35,8 @@ static func apply(library: AnimationLibrary, body: PlayerBody) -> void:
 		return
 	var path: String = CHOICES[CHOICE][0]
 	var clip_name: StringName = CHOICES[CHOICE][1]
-	var clip: Animation = _als(body) if path == ALS_PATH else _mixamo(library, body) \
+	var clip: Animation = _als(body) if path == ALS_PATH else _hbm(body) if path == HBM_WALK \
+			else _mixamo(library, body) \
 			if path == MIXAMO_PATH else body._retarget_clip(
 			path, clip_name, body._held_pose, true)
 	if clip == null:
@@ -121,3 +125,28 @@ static func _unit(axis: int) -> Vector3:
 ## The speed the forward walk clip covers at 1x playback: the experiment clip's, else `fallback`.
 static func ref_speed(fallback: float) -> float:
 	return clip_speed / PLAYBACK_SCALE if ENABLED and clip_speed > 0.1 else fallback
+
+
+## The Human Basic Motions walk ("B-" bones): the project's own HBM bone map, arm IK on, like its
+## library builder (UniversalAnimationPools), then the same in-place fix as the Mixamo walk.
+static func _hbm(body: PlayerBody) -> Animation:
+	var source_root := (load(HBM_MODEL) as PackedScene).instantiate()
+	var source_skeleton := source_root.get_node(^"Skeleton3D") as Skeleton3D
+	var clip_root := (load(HBM_WALK) as PackedScene).instantiate()
+	var clip_player := clip_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var source: Animation = null
+	for lib_name in clip_player.get_animation_library_list():
+		var library := clip_player.get_animation_library(lib_name)
+		if library.has_animation(&"HumanM_Walk01_Forward"):
+			source = library.get_animation(&"HumanM_Walk01_Forward")
+	var result: Animation = null
+	if source != null:
+		var config := UniversalAnimationPools._hbm_to_target_map_config(body._target_humanoid_map)
+		result = HumanoidRetargeter.retarget_clip(
+				source_skeleton, source, body.skeleton, config, true)
+		_in_place(result, body)
+		# in place already: pick the speed that gives the UAL walk's step rate (1.6 m/s for 1.33 s)
+		clip_speed = 1.6 * (1.3333 / result.length) * PLAYBACK_SCALE
+	clip_root.free()
+	source_root.free()
+	return result
