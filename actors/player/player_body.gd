@@ -780,7 +780,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 					_foot_ik_modifier != null and _foot_ik_modifier.stairs_descending())
 			rate = PlayerStairClips.walk_rate(target, ground_speed, rate)
 			var is_strafe: bool = (target != &"unarmed_walk")
-			var ref: float = STRAFE_REF_SPEED if is_strafe else WALK_REF_SPEED
+			var ref: float = STRAFE_REF_SPEED if is_strafe else PlayerTempWalk.ref_speed(WALK_REF_SPEED)
 			rate = ground_speed / ref
 			# Backward movement: play the forward walk in reverse so feet step
 			# backward naturally without needing a separate authored clip.

@@ -293,6 +293,19 @@ stairs up/down/backward/45/sideways) built on `trace_v2.sh --snaps`, whose "IK j
 per-frame change of what the IK adds to the animated foot (judge the IK by that, not by raw foot speed:
 strafe clips already swing the foot ~14 cm per frame).
 
+**Mixamo (and other root-motion) clips: check the hips travel axis.** `HumanoidRetargeter.make_clip_in_place`
+removes the hips' X/Z travel assuming local Y is up, but this rig's hips have Z up and Y forward, so a Mixamo
+forward walk kept its travel: the body walked ahead then snapped back at the loop. `PlayerTempWalk._in_place`
+finds the up axis from the parent's rest basis and removes the other two (and returns the clip's walking
+speed in m/s). A forward walk is played at `ground_speed / WALK_REF_SPEED` (1.6), so a clip with shorter steps
+looks fast at the game's 3.2 m/s: `PlayerTempWalk.PLAYBACK_SCALE` slows it (the user picked 0.575 for the
+Mixamo walk, feet slide a little). **The player currently walks with the Action Pack Mixamo `walking.fbx`
+(`player_temp_walk.gd`, CHOICE 4, not UAL1 `Walk`); headless checks still use the UAL walk on purpose
+(`DisplayServer` is headless), so when this becomes permanent, move it into `UAL_GAMEPLAY_CLIPS`/the library
+build properly and re-baseline the vibration and comparison limits in `scripts/check_foot_ik_v2.sh`.**
+Tried and rated by the user: ALS `Walk_F` (arms need the `head` fix), UAL1 `Walk_Formal`, UAL2
+`Walk_Carry` and zombie walk (all fine); the Mixamo walk was the pick.
+
 ## Gameplay architecture
 
 `playground.tscn` composes `test_room.tscn` plus `player.tscn`; the nature sandbox follows the same
