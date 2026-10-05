@@ -20,6 +20,19 @@ stair cadence, IK jerk, Mixamo hips axis), `037` (plant-once design), `035`/`036
   the move side, legs step sideways without crossing, arms OK, steps in sync with forward.
   The user said W+A / W+D with ALS LF/RF "rotate the body well".
 
+## Update 2026-10-05 (later)
+- Side walks (`player_temp_walk.gd`): `BACK_BODY_TURN` (S+A/S+D turn the body 45 deg, reverse forward walk)
+  is the confirmed look. A/D alone: `SIDE_BODY_TURN` (90 deg turn + forward walk) is off; `SIDE_SET` 3 = ALS
+  `N_Walk_LF/RF` with the hips turned 45 deg (not yet judged live). 1 = ALS `CLF_Walk_L/R` are CROUCH walks,
+  2 = `walk_strafe_left/right` deform the limbs, 0 = old strafes. `apply_side` runs AFTER
+  `add_directional_crouch_clips` (it used to be overwritten, so earlier side tests all showed the old strafe).
+- Foot IK v2 on level floor now keeps the animation's foot rotation (walk and rest) and skips the redundant
+  `_clear_toe` while `_keep_pitch`: foot turn 6 deg -> 0.01 deg, ankle/bone diff down. Ankle still up to
+  2-3 cm raised on walks; idle keeps a 1.4 cm sink onto the floor and a ~3 cm calf (knee hint) difference.
+- Tests: comparison scene reports foot turn and ankle/ball height; `scripts/check_foot_ik_v2.sh` has foot-turn
+  checks (0.2 deg) for the UAL walks and for the player's walks (`--temp-walk`). The comparison row is also
+  inside the lab (`foot_ik_v2_lab_row.gd`, F7 toggles, windowed only).
+
 ## Done this session (all pushed)
 Knee follows the animation at idle on flat floor (comparison idle 9.3 -> 3.4 cm), eased walk blend for knee hint
 and solver `bend_free`, landing reaches the floor + no bobbing, no foot into stair edges, far floors not surfaces,

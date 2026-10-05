@@ -128,6 +128,38 @@ for pair in unarmed_idle:0.04 unarmed_walk:0.17 unarmed_sprint:0.045 unarmed_wal
 	fi
 done
 
+# Foot turn: how far the IK turns each foot away from the animation on flat floor (mean over the
+# run, degrees). A turned sole lifts the heel or toe off the floor even when every bone is within a
+# few cm (the user's "foot does not touch the floor with F6 on" report). Limits sit just above
+# today's values (the foot keeps the animation's pitch on a level floor). Run twice: with
+# the original UAL walks (the headless default) and with the walks the player really uses
+# (--temp-walk: the Mixamo walk and the ALS side walks).
+foot_turn_check() {
+	local label=$1 out=$2
+	shift 2
+	local pair anim limit row deg
+	for pair in "$@"; do
+		anim=${pair%%:*}
+		limit=${pair##*:}
+		row=$(printf '%s\n' "$out" | awk -v a="moves/$anim" '$2 == a { print $6; exit }')
+		deg=${row#foot_deg_mean=}
+		if [ -n "$deg" ] && awk -v d="$deg" -v l="$limit" 'BEGIN { exit !(d <= l) }'; then
+			printf 'PASS Foot IK v2 foot turn %s (%s): mean %s deg (limit %s)\n' "$label" "$anim" "$deg" "$limit"
+		else
+			printf 'FAIL Foot IK v2 foot turn %s (%s): mean %s deg (limit %s)\n' "$label" "$anim" "${deg:-?}" "$limit"
+			status=1
+		fi
+	done
+}
+foot_turn_check "UAL walks" "$cmp_out" unarmed_idle:0.2 unarmed_walk:0.2 unarmed_sprint:0.2 \
+	unarmed_walk_left:0.2 unarmed_walk_right:0.2 unarmed_walk_fwd_left:0.2 \
+	unarmed_walk_fwd_right:0.2 unarmed_crouch_walk:0.2
+temp_out=$(godot --headless --fixed-fps 60 --quit-after 400 --path "$project_dir" \
+	res://tests/manual/foot_ik_v2/foot_ik_v2_comparison.tscn -- --temp-walk 2>&1 | grep V2_COMPARISON || true)
+foot_turn_check "player walks" "$temp_out" unarmed_idle:0.2 unarmed_walk:0.2 unarmed_sprint:0.2 \
+	unarmed_walk_left:0.2 unarmed_walk_right:0.2 unarmed_walk_fwd_left:0.2 \
+	unarmed_walk_fwd_right:0.2 unarmed_crouch_walk:0.2
+
 # The user's report as a test: stand on the closest ramp and strafe left/right while a ray cast
 # from above compares the sole/toe against the REAL ramp surface (independent of the modifier).
 run "Foot IK v2 ramp strafe (user scenario)" "FOOT_IK_V2_RAMP_CHECK PASS" \

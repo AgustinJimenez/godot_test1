@@ -43,8 +43,16 @@ const CHOICES: Array = [
 ]
 
 
+## A headless check can ask for the experiment walks (the comparison scene's --temp-walk).
+static var use_in_headless := false
+
+
+static func _skip_headless() -> bool:
+	return DisplayServer.get_name() == "headless" and not use_in_headless
+
+
 static func apply(library: AnimationLibrary, body: PlayerBody) -> void:
-	if (not ENABLED or CHOICE < 0 or CHOICE >= CHOICES.size() or DisplayServer.get_name() == "headless"
+	if (not ENABLED or CHOICE < 0 or CHOICE >= CHOICES.size() or _skip_headless()
 			or not library.has_animation(&"unarmed_walk")): # headless checks keep the real walk
 		return
 	var path: String = CHOICES[CHOICE][0]
@@ -194,7 +202,72 @@ static func _add_directional(library: AnimationLibrary, body: PlayerBody) -> voi
 
 ## Experiment: A / D alone turn the whole body 90 degrees toward the move side (the head keeps the
 ## camera aim, like W+A / W+D at 45) and play the forward walk instead of the strafe clips.
-const SIDE_BODY_TURN := true
+const SIDE_BODY_TURN := false
+## S+A / S+D turn the body 45 degrees and play the reverse walk (confirmed look).
+const BACK_BODY_TURN := true
+## A / D alone (body not turned, only while SIDE_BODY_TURN is off): 0 = the old Action Pack strafe
+## clips, 1 = ALS CLF_Walk_L/R (CROUCH walks), 2 = walk_strafe_left/right (deformed limbs),
+## 3 = ALS N_Walk_LF / RF with the hips turned SIDE_YAW_DEG (diagonal steps become sideways).
+const SIDE_SET := 3
+const ALS_TURNED_CLIPS := {
+	&"unarmed_walk_left": ["ALS_N_Walk_LF", 1.0], &"unarmed_walk_right": ["ALS_N_Walk_RF", -1.0],
+}
+const ALS_SIDE_CLIPS := {
+	&"unarmed_walk_left": "ALS_CLF_Walk_L", &"unarmed_walk_right": "ALS_CLF_Walk_R",
+}
+const STRAFE2_CLIPS := {
+	&"unarmed_walk_left": "res://assets/models/imported_animations/walk_strafe_left.fbx",
+	&"unarmed_walk_right": "res://assets/models/imported_animations/walk_strafe_right.dae",
+}
+
+
+## Called after the Action Pack strafe clips are built (they would overwrite these). Headless
+## checks keep the old strafes, like the forward walk.
+static func apply_side(library: AnimationLibrary, body: PlayerBody) -> void:
+	if (ENABLED and SIDE_SET > 0 and not SIDE_BODY_TURN and _forward_length > 0.0
+			and not _skip_headless()):
+		_add_side_clips(library, body)
+
+
+## Replaces the strafe clips with SIDE_SET's sideways walks, retargeted like the forward one. They
+## play at the forward walk's step rate (`ref_speed`), so the legs stay in step with W.
+static func _add_side_clips(library: AnimationLibrary, body: PlayerBody) -> void:
+	var sources: Dictionary = ALS_SIDE_CLIPS if SIDE_SET == 1 else STRAFE2_CLIPS
+	if SIDE_SET == 3:
+		sources = ALS_TURNED_CLIPS
+	for clip_name: StringName in sources:
+		var clip: Animation = null
+		if SIDE_SET == 3:
+			clip = _als(body, ALS_DIR + String(sources[clip_name][0]) + ".fbx")
+			if clip != null:
+				clip = _yawed(clip, deg_to_rad(SIDE_YAW_DEG) * float(sources[clip_name][1]), body)
+		elif SIDE_SET == 1:
+			clip = _als(body, ALS_DIR + String(sources[clip_name]) + ".fbx")
+		else:
+			clip = _strafe2(library, body, sources[clip_name])
+		if clip == null:
+			push_warning("PlayerTempWalk: side clip %s did not load" % clip_name)
+			continue
+		if library.has_animation(clip_name):
+			library.remove_animation(clip_name)
+		library.add_animation(clip_name, clip)
+		_lengths[clip_name] = clip.length
+
+
+## A Mixamo-rig sideways clip, retargeted by the Action Pack helper under a throwaway name, then
+## made in place on the right axis (a no-op for a clip that already stays put).
+static func _strafe2(library: AnimationLibrary, body: PlayerBody, path: String) -> Animation:
+	var config := UniversalAnimationPools.mixamo_to_target_map_config(
+			"mixamorig_", body._target_humanoid_map)
+	PlayerDirectionalLocomotionLibrary._retarget_action_clip(library, &"temp_side_clip", path,
+			body.skeleton, body.skeleton, config, library.get_animation(&"unarmed_walk"), false,
+			body._target_humanoid_map, true)
+	if not library.has_animation(&"temp_side_clip"):
+		return null
+	var clip := library.get_animation(&"temp_side_clip")
+	_in_place(clip, body)
+	library.remove_animation(&"temp_side_clip")
+	return clip
 
 
 ## True when the body should turn: forward (W, W+A, W+D), or with the experiment on A / D alone and
@@ -206,7 +279,7 @@ static func turns_body(input_dir: Vector2) -> bool:
 ## S+A / S+D with the experiment on: the body faces away from the move direction (45 degrees) and
 ## the walk plays in reverse, the same way W+A turns the body 45 degrees.
 static func back_diagonal(input_dir: Vector2) -> bool:
-	return SIDE_BODY_TURN and input_dir.y > 0.2 and absf(input_dir.x) > 0.2
+	return BACK_BODY_TURN and input_dir.y > 0.2 and absf(input_dir.x) > 0.2
 
 
 ## The body yaw offset for a travel angle: toward the travel direction, or for the back diagonals

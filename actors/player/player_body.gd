@@ -10,7 +10,6 @@ signal action_contact(animation_name: StringName)
 ## Emitted after swap_character() rebuilds around a new skeleton - anything that cached a bone
 ## index or the skeleton reference itself needs this to recompute rather than keep pointing stale.
 signal character_changed
-
 const CLIP_DIR := "res://assets/models/pistol_starter/Animation/In-Place/"
 const LocomotionTransition := preload("res://actors/player/player_locomotion_transition.gd")
 const CLIPS := {
@@ -390,6 +389,7 @@ func _build_character_visuals() -> void:
 	PlayerStairClips.add_to(lib, self)
 	PlayerDirectionalLocomotionLibrary.add_directional_crouch_clips(
 			lib, skeleton, _target_humanoid_map)
+	PlayerTempWalk.apply_side(lib, self) # after the strafe clips, which would overwrite it
 	_lib = lib
 	anim_player.add_animation_library(&"moves", lib)
 	anim_player.animation_finished.connect(_on_animation_finished)

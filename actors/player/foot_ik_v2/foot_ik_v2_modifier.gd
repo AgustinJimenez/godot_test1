@@ -160,6 +160,7 @@ var _is_moving := false
 var _moving_hold := 0.0
 var _corr_last: Dictionary = {} # side -> {"frame", "start", "end": the ankle correction (local)}
 var _keep_pitch: Dictionary = {} # side -> the animation owns this foot pitch (flat level floor)
+var _keep_rotation: Dictionary = {} # side -> foot keeps the animation's rotation (level floor)
 ## side -> metres the foot is currently brought in toward the body (trace).
 var debug_stance_shift: Dictionary = {}
 ## side -> [[shift, drop needed], ...] tried by the last stance plan (trace).
@@ -462,6 +463,8 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	var keeps := _is_moving and normal.y >= 0.999 and absf(ground.y - to_world.origin.y) < 0.03 \
 			and _toe_on_flat(skel, leg)
 	_keep_pitch[side] = keeps
+	_keep_rotation[side] = keeps or (not _is_moving and normal.y >= 0.999
+			and absf(ground.y - to_world.origin.y) < 0.03 and _toe_on_flat(skel, leg))
 	if keeps: # only keep the animated sole out of the floor, at its own pitch
 		target = animated_ankle + Vector3.UP * maxf(0.0, -_lowest_sole_offset(skel, side, to_world,
 				leg) - (animated_ankle.y - ground.y))
@@ -516,7 +519,8 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	_resample_and_correct(skel, leg, base, hip_world, side)
 	_flatten_support(skel, leg, base, to_world, hip_world, side)
 	debug_toe_lift[side] = 0.0
-	_clear_toe(skel, leg, base, to_world, hip_world, side)
+	if not _keep_pitch.get(side, false): # level floor: the true skinned sole is already cleared
+		_clear_toe(skel, leg, base, to_world, hip_world, side)
 	_limit_step(skel, leg, base, side)
 	_ease_correction(skel, leg, base, side)
 	var landed: Vector3 = skel.get_bone_global_pose(int(leg["foot"])).origin
@@ -560,7 +564,7 @@ func _align_foot(skel: Skeleton3D, leg: Dictionary, normal: Vector3,
 		debug_align[side] = record
 		return
 	# v1's rule: on a flat floor the animation owns the foot pitch (heel strike, toe-off)
-	var keep_pose: bool = _keep_pitch.get(side, false)
+	var keep_pose: bool = _keep_rotation.get(side, false)
 	if keep_pose:
 		record["reason"] = "animated"
 	var blended := Quaternion.IDENTITY.slerp(Quaternion(sole, want),
@@ -841,6 +845,11 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 			(base["hip"] as Transform3D).basis)
 	_aim(skel, int(leg["knee"]), int(leg["foot"]), solved["ankle"] as Vector3,
 			(base["knee"] as Transform3D).basis)
+	if _keep_rotation.get(side, false):
+		# The foot turned with the knee it hangs from; on level floor the animation owns its pitch.
+		var foot_pose := skel.get_bone_global_pose(int(leg["foot"]))
+		foot_pose.basis = (base["foot"] as Transform3D).basis
+		skel.set_bone_global_pose(int(leg["foot"]), foot_pose)
 	# What the solver asked for vs where the chain put the foot (a mismatch is the aim step).
 	debug_solve[side]["solved_ankle"] = solved["ankle"] as Vector3
 	debug_solve[side]["knee_target"] = solved["knee"] as Vector3
