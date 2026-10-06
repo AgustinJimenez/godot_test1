@@ -20,7 +20,7 @@ const DIRECTIONAL := false # off until the user confirms the ALS diagonals/backw
 ## Pure sideways: 0 = the old strafe clips, 1 = ALS LF blended with LB (RF with RB), 2 = the ALS
 ## diagonal turned SIDE_YAW_DEG at the hips, so its diagonal steps become sideways steps.
 const SIDEWAYS := 2
-const SIDE_YAW_DEG := 45.0
+const SIDE_YAW_DEG := 0.0 # ALS LF/RF already swing the feet sideways; 45 made a diagonal
 const ALS_DIR := "res://assets/models/als_mannequin_standalone/full_set/"
 const DIRECTIONAL_CLIPS := {
 	&"unarmed_walk_fwd_left": "ALS_N_Walk_LF", &"unarmed_walk_fwd_right": "ALS_N_Walk_RF",
@@ -207,7 +207,7 @@ const SIDE_BODY_TURN := false
 const BACK_BODY_TURN := true
 ## A / D alone (body not turned, only while SIDE_BODY_TURN is off): 0 = the old Action Pack strafe
 ## clips, 1 = ALS CLF_Walk_L/R (CROUCH walks), 2 = walk_strafe_left/right (deformed limbs),
-## 3 = ALS N_Walk_LF / RF with the hips turned SIDE_YAW_DEG (diagonal steps become sideways).
+## 3 = ALS N_Walk_LF / RF turned SIDE_YAW_DEG (0: they already swing sideways).
 const SIDE_SET := 3
 const ALS_TURNED_CLIPS := {
 	&"unarmed_walk_left": ["ALS_N_Walk_LF", 1.0], &"unarmed_walk_right": ["ALS_N_Walk_RF", -1.0],
