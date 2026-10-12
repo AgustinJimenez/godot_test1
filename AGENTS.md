@@ -306,6 +306,14 @@ build properly and re-baseline the vibration and comparison limits in `scripts/c
 Tried and rated by the user: ALS `Walk_F` (arms need the `head` fix), UAL1 `Walk_Formal`, UAL2
 `Walk_Carry` and zombie walk (all fine); the Mixamo walk was the pick.
 
+**A foot must never hover (user rule, after playing Uncharted 4, 2026-10-11).** Uncharted 4's IK only
+covers small steps; past that the character slides to a safe zone where both feet have ground (or falls if
+pushed). v2 does the same: a resting foot with no ground within reach reports `FootIKV2Modifier.ledge_push()`
+(horizontal, away from the void) and `PlayerLedgeNudge.nudge` (called from `player.gd` before the v1-driven
+`_nudge_to_ledge_safe_zone`, which it replaces whenever v2 is installed) slides the capsule 1.2 m/s that way
+until both feet are planted. Do not "fix" a hovering foot by squatting (the 0.40 m pelvis drop was the older
+bug) or by letting the foot keep the animation height. The stairs-edge check now requires float <= 4 cm.
+
 ## Gameplay architecture
 
 `playground.tscn` composes `test_room.tscn` plus `player.tscn`; the nature sandbox follows the same

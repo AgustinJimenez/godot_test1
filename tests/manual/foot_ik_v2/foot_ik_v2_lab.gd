@@ -4,6 +4,7 @@ extends Node3D
 const DEBUG_TIMER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_debug.gd")
 const POSE_DUMP := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_pose_dump.gd")
 const TURN_CHECK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_turn_check.gd")
+const SPAWN := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_spawn.gd")
 const STAIRS_WALK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_stairs_walk.gd")
 const PERF_PROBE := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_perf_probe.gd")
 const JOINT_FLASH := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_joint_flash.gd")
@@ -57,7 +58,7 @@ const JUMP_REPLAY := [
 ## Stricter than the walking replay: at rest both tips on the floor (the tip reads ~+1 cm planted).
 const IDLE_FLOAT_LIMIT := 0.04
 const IDLE_SETTLE_FRAMES := 40 # idle is graded only after the walk-to-idle transition settles
-const STAIRS_EDGE_FLOAT_LIMIT := 0.35 # stairs edge, a foot over a floor 0.38 m down keeps the anim
+const STAIRS_EDGE_FLOAT_LIMIT := 0.04 # stairs edge, foot over a drop: slides to a safe zone
 const RAMP_REPLAY := [
 	{"name": "downhill1", "input": Vector2(-1.0, 0.0), "frames": 75},
 	{"name": "pause1", "input": Vector2.ZERO, "frames": 5},
@@ -273,8 +274,7 @@ func _ready() -> void:
 	if _checking:
 		_move_to_spot(0)
 		return
-	player.global_position = Vector3(3.65, 0.45, 1.22) # the stair edge where the feet used to flip
-	player.rotation = Vector3(0.0, deg_to_rad(-174.3), 0.0)
+	SPAWN.place(player)
 	_build_toe_spheres()
 	_start_third_person.call_deferred()
 	var layer := CanvasLayer.new()

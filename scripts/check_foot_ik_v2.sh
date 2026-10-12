@@ -69,13 +69,13 @@ snap_check "Foot IK v2 floor walk vibration" floor unarmed_walk 0.20 11.0 30.0 3
 run "Foot IK v2 stairs walk (run)" "FOOT_IK_V2_IDLE_CHECK" \
 	godot --headless --fixed-fps 60 --quit-after 600 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs-walk=0
-snap_check "Foot IK v2 stairs walk vibration" stairs unarmed_walk 0.25 8.5 25.0 5.5 0.06 0.23
+snap_check "Foot IK v2 stairs walk vibration" stairs unarmed_walk 0.25 8.5 25.0 5.5 0.055 0.15
 
 # The same stairs walked DOWN from the top tread (a stuck foot used to snap forward on release).
 run "Foot IK v2 stairs walk down (run)" "FOOT_IK_V2_IDLE_CHECK" \
 	godot --headless --fixed-fps 60 --quit-after 600 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs-walk=0:down
-snap_check "Foot IK v2 stairs walk down vibration" stairs unarmed_walk 0.12 10.0 26.0 5.5 0.04 0.09
+snap_check "Foot IK v2 stairs walk down vibration" stairs unarmed_walk 0.18 10.0 26.0 5.5 0.04 0.17
 
 # The live log of a leg shake: idle on the top tread, then walk BACKWARD down while the speed builds
 # (0.05 m further along the treads gave a 45 deg knee snap at the idle -> walk switch; now 22 deg).
@@ -86,7 +86,7 @@ snap_check "Foot IK v2 stairs walk backward vibration" stairs unarmed_walk 0.30 
 
 # Strafing sideways along a tread and climbing at 45 degrees (the keys the live play used on the
 # stairs): the IK jerk is the number that was 3x the flat floor's in the live log.
-for mode in sidel:unarmed_walk_left:0.32:16.0:36.0:6.5:0.065:0.25 \
+for mode in sidel:unarmed_walk_left:0.32:16.0:36.0:6.5:0.08:0.25 \
 	sider:unarmed_walk_right:0.26:15.0:33.0:6.5:0.04:0.14 \
 	diagl:unarmed_walk:0.14:10.0:22.0:6.5:0.045:0.15 \
 	diagr:unarmed_walk:0.14:11.0:23.0:6.5:0.045:0.09 \
@@ -110,7 +110,7 @@ cmp_out=$(godot --headless --fixed-fps 60 --quit-after 400 --path "$project_dir"
 	res://tests/manual/foot_ik_v2/foot_ik_v2_comparison.tscn 2>&1 | grep V2_COMPARISON || true)
 for pair in unarmed_idle:0.04 unarmed_walk:0.17 unarmed_sprint:0.045 unarmed_walk_left:0.08 \
 	unarmed_walk_right:0.09 unarmed_walk_fwd_left:0.16 unarmed_walk_fwd_right:0.14 \
-	unarmed_crouch_walk:0.055; do
+	unarmed_crouch_walk:0.055 unarmed_crouch_idle:0.18; do
 	anim=${pair%%:*}
 	limit=${pair##*:}
 	row=$(printf '%s\n' "$cmp_out" | awk -v a="moves/$anim" '$2 == a { print $4, $5; exit }')
@@ -151,14 +151,47 @@ foot_turn_check() {
 		fi
 	done
 }
-foot_turn_check "UAL walks" "$cmp_out" unarmed_idle:0.2 unarmed_walk:0.2 unarmed_sprint:0.2 \
+foot_turn_check "UAL walks" "$cmp_out" unarmed_crouch_idle:0.2 unarmed_idle:0.2 unarmed_walk:0.2 unarmed_sprint:0.2 \
 	unarmed_walk_left:0.2 unarmed_walk_right:0.2 unarmed_walk_fwd_left:0.2 \
 	unarmed_walk_fwd_right:0.2 unarmed_crouch_walk:0.2
 temp_out=$(godot --headless --fixed-fps 60 --quit-after 400 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_comparison.tscn -- --temp-walk 2>&1 | grep V2_COMPARISON || true)
-foot_turn_check "player walks" "$temp_out" unarmed_idle:0.2 unarmed_walk:0.2 unarmed_sprint:0.2 \
+foot_turn_check "player walks" "$temp_out" unarmed_crouch_idle:0.2 unarmed_idle:0.2 unarmed_walk:0.2 unarmed_sprint:0.2 \
 	unarmed_walk_left:0.2 unarmed_walk_right:0.2 unarmed_walk_fwd_left:0.2 \
 	unarmed_walk_fwd_right:0.2 unarmed_crouch_walk:0.2
+
+# Pelvis drop: on flat floor the animation's own height must stand (the crouch idle used to sink
+# 0.40 m: its thigh is swung past the old 100 deg hip limit, the foot looked unreachable). Worst drop
+# after the start-up, per animation, in metres.
+pelvis_drop_check() {
+	local label=$1 out=$2 limit=$3 anim row drop
+	for anim in unarmed_idle unarmed_walk unarmed_sprint unarmed_walk_left unarmed_walk_right \
+		unarmed_walk_fwd_left unarmed_walk_fwd_right unarmed_crouch_idle unarmed_crouch_walk; do
+		row=$(printf '%s\n' "$out" | awk -v a="moves/$anim" '$2 == a { print $10; exit }')
+		drop=${row#pelvis_drop_m=}
+		if [ -n "$drop" ] && awk -v d="$drop" -v l="$limit" 'BEGIN { exit !(d <= l) }'; then
+			printf 'PASS Foot IK v2 pelvis drop %s (%s): %s m (limit %s)\n' "$label" "$anim" "$drop" "$limit"
+		else
+			printf 'FAIL Foot IK v2 pelvis drop %s (%s): %s m (limit %s)\n' "$label" "$anim" "${drop:-?}" "$limit"
+			status=1
+		fi
+	done
+}
+pelvis_drop_check "UAL walks" "$cmp_out" 0.05
+pelvis_drop_check "player walks" "$temp_out" 0.05
+
+# Standing at the side of the 15 degree ramp with the right foot over a 65 cm drop (live log): no foot
+# may hover. The player slides in (PlayerLedgeNudge) until both feet are planted; the idle after the
+# landing must have both feet at_target and none released.
+godot --headless --fixed-fps 60 --quit-after 400 --path "$project_dir" \
+	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --spawn=ramp-edge >"$log" 2>&1 || true
+edge_idle=$("$project_dir/scripts/trace_v2.sh" --check --segments 2>&1 | grep -E "^f[0-9]+-[0-9]+ unarmed_idle" | tail -1)
+if [ -n "$edge_idle" ] && ! printf '%s' "$edge_idle" | grep -q "released"; then
+	printf 'PASS Foot IK v2 standing at the ramp side: both feet planted after the slide\n'
+else
+	printf 'FAIL Foot IK v2 standing at the ramp side: a foot hovers (%s)\n' "${edge_idle:-no idle segment}"
+	status=1
+fi
 
 # The user's report as a test: stand on the closest ramp and strafe left/right while a ray cast
 # from above compares the sole/toe against the REAL ramp surface (independent of the modifier).
@@ -200,8 +233,8 @@ run "Foot IK v2 idle on stairs, tip against a riser (live regression)" "FOOT_IK_
 	godot --headless --fixed-fps 60 --quit-after 900 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs
 
-# 0.38 m below (live log). The body stays standing and that foot keeps the animation (it used to squat
-# 0.33 m to reach the floor; standing like the idle clip has priority). Float limit 0.35 m.
+# 0.38 m below (live log). No foot may hover: the body slides to a safe zone where both feet have
+# ground (PlayerLedgeNudge, like Uncharted 4), it does not squat. Float limit 0.04 m.
 # 0.38 m below (live log). That foot used to hang 30 cm up; it now squats to put it on the floor.
 run "Foot IK v2 idle on the stairs' edge, one foot on the floor (live regression)" \
 	"FOOT_IK_V2_IDLE_CHECK PASS" \

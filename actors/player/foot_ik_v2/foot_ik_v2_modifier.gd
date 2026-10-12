@@ -17,7 +17,7 @@ const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 @export var enabled := true
 @export var foot_lock := false # EXPERIMENT: a resting foot stays planted while the body turns
 @export_range(0.0, 170.0, 1.0) var max_knee_flexion_deg := 150.0 # v1 defaults; 0 = off
-@export_range(0.0, 170.0, 1.0) var max_hip_swing_deg := 100.0 # cone from straight down
+@export_range(0.0, 170.0, 1.0) var max_hip_swing_deg := 140.0 # cone from down; a crouch needs >100
 @export var joint_speed_deg := 60.0 # joint correction change cap per frame at rest: a flip guard
 @export_flags_3d_physics var ground_mask := 1 | (1 << 5)
 @export var fallback_floor_max_angle_deg := 46.0
@@ -45,6 +45,7 @@ const SUPPORT_TOLERANCE := 0.03
 const SUPPORT_MIN_PLANT := 0.9
 const SINK_MIN := 0.04 # a flat sole this far below the aimed-at height re-aims the resting foot
 const SINK_MAX := 0.25 # a floor further below than this is not a lower tread: it is a drop-off
+const LEDGE_DROP := 0.25 # a resting foot over ground lower than this below the body slides back
 const BODY_LAG_SNAP := 0.4
 const MOVING_HOLD_SECONDS := 0.3
 const CORRECTION_STEP := 0.03 # m/frame the ankle correction may move sideways or DOWN while walking
@@ -148,6 +149,7 @@ var debug_body_lag := 0.0
 var _stance_shift: Dictionary = {}
 var _ground := FootIKV2GroundFilter.new()
 var _knee_hint := FootIKV2KneeHint.new()
+var _ledge_push: Dictionary = {} # side -> world direction away from the void under that foot
 var _plant_weight: Dictionary = {}
 var _plant_state: Dictionary = {}
 var _plant_frame: Dictionary = {}
@@ -447,8 +449,16 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 		debug_skip_reason[side] = "no_ground"
 		debug_target.erase(side)
 		debug_state[side] = "released"
+		_note_released(side)
+		_ledge_push[side] = Vector3(to_world.origin.x - animated_ankle.x, 0.0,
+				to_world.origin.z - animated_ankle.z).normalized() # away from the void
 		return
 	var ground: Vector3 = hit["position"]
+	if to_world.origin.y - ground.y > LEDGE_DROP: # a lower tread than a step: slide back
+		_ledge_push[side] = Vector3(to_world.origin.x - animated_ankle.x, 0.0,
+				to_world.origin.z - animated_ankle.z).normalized()
+	else:
+		_ledge_push.erase(side)
 	var normal: Vector3 = hit["normal"]
 	ground.y = _ground.height(side, ground.y) if ground_filter else ground.y
 	debug_ground[side] = ground
@@ -458,6 +468,7 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 		debug_skip_reason[side] = "not_walkable"
 		debug_target.erase(side)
 		debug_state[side] = "released"
+		_note_released(side)
 		return
 	var target := ground + normal * ankle_height
 	var keeps := _is_moving and normal.y >= 0.999 and absf(ground.y - to_world.origin.y) < 0.03 \
@@ -489,6 +500,7 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 		debug_skip_reason[side] = "mid_swing"
 		debug_target.erase(side)
 		debug_state[side] = "released"
+		_note_released(side)
 		return
 	var blended := to_world.affine_inverse() * animated_ankle.lerp(target, weight * plant)
 	var hip_local: Vector3 = (base["hip"] as Transform3D).origin
@@ -505,6 +517,7 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 				debug_skip_reason[side] = "out_of_reach"
 				debug_target.erase(side)
 				debug_state[side] = "released"
+				_note_released(side)
 				return
 			blended = REACH_BLEND.reachable(hip_local, animated_local, blended, reach)
 		else:
@@ -966,3 +979,22 @@ func _ease_correction(skel: Skeleton3D, leg: Dictionary, base: Dictionary,
 		_clear_toe(skel, leg, base, to_world, (to_world * (base["hip"] as Transform3D)).origin,
 				side)
 		debug_solve[side]["eased"] = true # short of its target on purpose (the lab skips the grade)
+
+
+## Standing with a foot over a drop it cannot reach (nothing within reach under it): the direction,
+## horizontal, in which the body should move so both feet are on ground (like Uncharted 4: the IK
+## covers small steps; past that the character moves to a safe zone). ZERO when both feet have
+## ground or the character is moving. The player nudges its capsule along it (PlayerLedgeNudge).
+func ledge_push() -> Vector3:
+	if not enabled or _is_moving or _ledge_push.is_empty():
+		return Vector3.ZERO
+	var total := Vector3.ZERO
+	for push: Vector3 in _ledge_push.values():
+		total += push
+	return total.normalized()
+
+## A released foot has no correction: noted, the next landing eases in from it (no 0.4 m snap).
+func _note_released(side: StringName) -> void:
+	var none := Vector3.ZERO
+	if _is_moving:
+		_corr_last[side] = {"frame": Engine.get_physics_frames(), "start": none, "end": none}

@@ -546,7 +546,7 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		if _ledge_direction_blocked:
 			global_position = Vector3(frame_start_xz.x, global_position.y, frame_start_xz.y)
-		_nudge_to_ledge_safe_zone(delta)
+		if not PlayerLedgeNudge.nudge(self, delta): _nudge_to_ledge_safe_zone(delta)
 	if _stair_controller.consumed_horizontal_motion:
 		velocity.x = preserved_horizontal_velocity.x
 		velocity.z = preserved_horizontal_velocity.y

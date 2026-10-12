@@ -52,10 +52,26 @@ scene in the suite with per-animation limits, ground filter + knee hint helpers 
 4. `037` plant-once rework (contact decided once, pelvis from final targets, delete the stretch-hold ratchet).
 5. Ramp-strafe check still red; v2 not the game default (game runs v1, cause of the earlier in-game failure
    unknown); delete v1 deferred.
-6. Idle on STAIRS still uses the old rest-pole knee bend (the animation-faithful bend is only for flat floor,
+6. (2026-10-11) Ledge nudge just added (never hover, see AGENTS.md): needs a live check on a ramp/stair side edge; replay
+   starts that begin at an edge now slide first, so the vibration limits for `down`/`sidel` were re-baselined.
+7. Idle on STAIRS still uses the old rest-pole knee bend (the animation-faithful bend is only for flat floor,
    because stairs-turn checks are very sensitive to knee/foot yaw); a robust riser-retreat would let it go.
 
 ## Gotchas hit this session
 BSD sed: no `\n`/`&` in replacements, `c\` needs a newline; never run `python3 -` (hangs on stdin; no inline
 Python anyway). `get_slice` echoes the whole string when the delimiter is absent. AnimationPlayer names live in
 the `moves/` library. Lint: 1000 lines / 100 cols (modifier now ~960, `player_body.gd` and `player.gd` AT the cap).
+
+## 2026-10-11 hover while WALKING along a step edge (user report: "left foot hits the step, right foot floats")
+Live log: walking sideways along the front of the first 0.20 m step (root y 0.2, z 2.2-2.4, x 8.7-11.6):
+the right foot is planted per the animation (plant weight 1) but 5-23 cm over the floor, state
+`stretched/reach_clamped`, 281 of ~420 hover frames in that log. Cause: the walking pelvis cap
+(`moving_pelvis_drop` 0.06) vs a floor 0.2 below the capsule's tread; the leg needs ~0.11 m more. Measure with
+this jq count (planted, both toe+heel clearance > 4 cm) over `foot_ik_v2_check.jsonl` after
+`--stairs-walk=1[:sideup|sidedown|sidel]`: baseline 97-125 frames for lane 1 forward, 66-104 for sideup.
+Tried: letting a persistent shortfall drop the pelvis while moving (`FootIKV2StretchHold.shortfall`, hold 0.5 s
+so the foot-short / pelvis-drop / foot-reaches / pelvis-rises flicker does not restart): hover frames halve
+(97 -> 50, 66 -> 34) but the knees flip (knee_max 94-175 deg), so it was reverted. Loosening the walking
+easing (`CORRECTION_STEP` up to 10 cm) did not help. Next: derive the walking pelvis drop from the final foot
+targets (the `037` stage 3), and check the knee hint / solver at deep flexion (the flips); then add the hover
+count to the suite with limit 0.

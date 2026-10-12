@@ -25,7 +25,7 @@ const ANIMATIONS: Array[Array] = [
 	["STRAFE LEFT", &"unarmed_walk_left", 1.4], ["STRAFE RIGHT", &"unarmed_walk_right", 1.4],
 	["DIAG FWD-LEFT", &"unarmed_walk_fwd_left", 1.6],
 	["DIAG FWD-RIGHT", &"unarmed_walk_fwd_right", 1.6],
-	["CROUCH WALK", &"unarmed_crouch_walk", 1.0],
+	["CROUCH IDLE", &"unarmed_crouch_idle", 0.0], ["CROUCH WALK", &"unarmed_crouch_walk", 1.0],
 ]
 
 ## Set before the node enters the tree: part of the lab, so no stage, camera or keys of its own.
@@ -107,9 +107,9 @@ func _physics_process(_delta: float) -> void:
 
 func _foot_summary(index: int) -> String:
 	var stats := _foot[index]
-	return "foot_deg_mean=%.2f foot_deg_max=%.2f ankle_dy_m=%.4f ball_dy_m=%.4f" % [
+	return "foot_deg_mean=%.2f foot_deg_max=%.2f ankle_dy_m=%.4f ball_dy_m=%.4f pelvis_drop_m=%.3f" % [
 			float(stats["deg_sum"]) / maxf(float(stats["n"]), 1.0), stats["deg_max"],
-			stats["ankle_dy"], stats["ball_dy"]]
+			stats["ankle_dy"], stats["ball_dy"], stats["drop_max"]]
 
 
 ## The IK-off vs IK-on published pose distance (leg and body bones, relative to each character's own
@@ -177,6 +177,8 @@ func _measure_feet(index: int, on: FootIKV2Modifier, off: FootIKV2Modifier, root
 			stats["ankle_dy"] = maxf(float(stats["ankle_dy"]), absf(ankle_dy))
 			stats["ball_dy"] = maxf(float(stats["ball_dy"]), absf(ball_dy))
 	stats["deg_now"] = worst_deg
+	if settled:
+		stats["drop_max"] = maxf(float(stats["drop_max"]), on.debug_pelvis_drop)
 	stats["ankle_now"] = ankle_now
 	if settled:
 		stats["deg_sum"] = float(stats["deg_sum"]) + worst_deg
@@ -245,7 +247,7 @@ func _build_dummy(index: int, data: Array, ik_on: bool, count: int) -> void:
 		_by_bone.append({})
 		_markers.append(_build_markers())
 		_foot.append({"deg_sum": 0.0, "deg_max": 0.0, "n": 0, "ankle_dy": 0.0, "ball_dy": 0.0,
-			"deg_now": 0.0, "ankle_now": 0.0})
+			"deg_now": 0.0, "ankle_now": 0.0, "drop_max": 0.0})
 	else:
 		v1.set_debug_enabled(false)
 		_pending_off = INSTALL.install(body, body.skeleton, v1)
