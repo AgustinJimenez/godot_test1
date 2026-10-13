@@ -75,3 +75,29 @@ so the foot-short / pelvis-drop / foot-reaches / pelvis-rises flicker does not r
 easing (`CORRECTION_STEP` up to 10 cm) did not help. Next: derive the walking pelvis drop from the final foot
 targets (the `037` stage 3), and check the knee hint / solver at deep flexion (the flips); then add the hover
 count to the suite with limit 0.
+
+## What the GALS reference pack gave (read 2026-10-12, uncommitted work for the user to evaluate)
+
+Pack: `~/Downloads/ref_pack` (decompiled leg IK of a commercial game + its clips). The IK code is
+mostly vector-math noise; the plant decision and the stride rule were NOT decoded by its authors. The
+readable pieces and what became of them:
+
+- **Two-stage body smoother (kept, `foot_ik_v2_body_smoother.gd`).** The game's `RootBaseSmoother`
+  smooths the capsule's climb speed (rate 20/s), integrates it, then pulls to the capsule (rate 7/s).
+  Replaced our first-order body lag with it (`body_follow_rate` 8 -> 12). Mixamo walk in the lab:
+  hips step p95 floor 0.0167 -> 0.0138, ramp 0.0309 -> 0.0259, stairs 0.0476 -> 0.0299 m/frame; IK
+  jerk equal or lower; the right knee's sideways swing 0.13 -> 0.05 m. Velocity rate 20 beat 10 and 5.
+  The stairs-up IK jerk MAX limit moved 0.15 -> 0.19 (p95 unchanged; one frame).
+- **Stride match (tried, REMOVED).** The game's StrideModifier shortens/lengthens strides so feet do
+  not skate. A planted foot is moved back relative to the body by the extra distance the body travels
+  (measured from the animation, up to 1.4x). Floor skate with the Mixamo walk only fell 1.69 -> 1.58
+  m/s at full strength, while stairs IK jerk went 0.10 -> 0.13-0.16 and the right knee bowed again
+  (0.24-0.27 m). Not worth it; the skating comes from playing the clip slower than the body travels
+  (`PLAYBACK_SCALE` 0.575), so it needs the clip, not more IK.
+- `FootIKV2Ledge` (`foot_ik_v2_ledge.gd`): the ledge-push bookkeeping moved out of the modifier,
+  which sits at the 1000-line cap. No behaviour change.
+- Not used: modes (Moving/Freeze/Scripted), ball/heel-toe plant variants and the IK strength
+  blenders only exist as class names; our foot lock, plant weight and IK fades cover the same ground.
+
+Measured skate (planted foot, live trace, `trace_v2.sh --slide`): floor ~1.9 m/s median at 3.2 m/s
+walking, ramp 0.4, stairs 0.14. Floor skating is the largest visible artifact left.

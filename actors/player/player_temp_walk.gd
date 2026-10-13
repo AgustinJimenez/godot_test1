@@ -7,11 +7,14 @@ extends RefCounted
 ## file and its call in PlayerStairClips.add_to to remove the experiment.
 
 const ENABLED := true
-const CHOICE := 4 # the user's pick (Mixamo walking at PLAYBACK_SCALE)
+const CHOICE := 4 # the user's pick (Mixamo walking at PLAYBACK_SCALE); 6 = GALS relaxed walk
 const ALS_PATH := "res://assets/models/als_mannequin_standalone/full_set/ALS_N_Walk_F.fbx"
 const UAL1_PATH := "res://assets/models/universal_animation_library/UAL1_Standard.glb"
 const UAL2_PATH := "res://assets/models/universal_animation_library_2/UAL2_Standard.glb"
 const MIXAMO_PATH := "res://assets/models/action_adventure_pack/walking.fbx"
+const GALS_PATH := "res://assets/models/gals_ref/relaxed_walk.glb"
+const GALS_SPRINT := false # also play the GALS sprint-run as the sprint
+const GALS_SPRINT_PATH := "res://assets/models/gals_ref/sprint_run.glb"
 const HBM_MODEL := "res://assets/models/human_basic_motions/HumanM_Model.fbx"
 const HBM_WALK := "res://assets/models/human_basic_motions/HumanM@Walk01_Forward.fbx"
 const PLAYBACK_SCALE := 0.575 # the Mixamo walk plays at this fraction of the matching speed
@@ -31,6 +34,9 @@ const DIRECTIONAL_CLIPS := {
 ## Walking speed (m/s at 1x playback) of the experiment clip when it has to override the walk speed
 ## reference (0 = use the game's): its feet must cover the ground it is played at.
 static var clip_speed := 0.0
+## Speed (m/s) of the last GALS clip built, and of the GALS sprint when it is in use (0 = default).
+static var gals_speed := 0.0
+static var sprint_speed := 0.0
 static var _lengths: Dictionary = {} # directional clip name -> loop length (s)
 static var _forward_length := 1.3333 # loop length of the forward experiment clip (s)
 const CHOICES: Array = [
@@ -40,6 +46,7 @@ const CHOICES: Array = [
 	[UAL2_PATH, &"Zombie_Walk_Fwd"],
 	[MIXAMO_PATH, ""],
 	[HBM_WALK, ""],
+	[GALS_PATH, ""],
 ]
 
 
@@ -58,7 +65,7 @@ static func apply(library: AnimationLibrary, body: PlayerBody) -> void:
 	var path: String = CHOICES[CHOICE][0]
 	var clip_name: StringName = CHOICES[CHOICE][1]
 	var clip: Animation = _als(body) if path == ALS_PATH else _hbm(body) if path == HBM_WALK \
-			else _mixamo(library, body) \
+			else _gals(body) if path == GALS_PATH else _mixamo(library, body) \
 			if path == MIXAMO_PATH else body._retarget_clip(
 			path, clip_name, body._held_pose, true)
 	if clip == null:
@@ -67,6 +74,14 @@ static func apply(library: AnimationLibrary, body: PlayerBody) -> void:
 	library.remove_animation(&"unarmed_walk")
 	_forward_length = clip.length
 	library.add_animation(&"unarmed_walk", clip)
+	if path == GALS_PATH:
+		clip_speed = gals_speed
+	if GALS_SPRINT and library.has_animation(&"unarmed_sprint"):
+		var sprint := _gals(body, GALS_SPRINT_PATH, &"sprint-run")
+		if sprint != null:
+			library.remove_animation(&"unarmed_sprint")
+			library.add_animation(&"unarmed_sprint", sprint)
+			sprint_speed = gals_speed
 	if DIRECTIONAL:
 		_add_directional(library, body)
 
@@ -348,3 +363,165 @@ static func _yawed(clip: Animation, yaw: float, body: PlayerBody) -> Animation:
 			var rotation := turned.track_get_key_value(track, key) as Quaternion
 			turned.track_set_key_value(track, key, turn * rotation)
 	return turned
+
+
+## GALS (reverse-engineered game) walk, converted from BVH to glTF in Blender: its own bone names.
+const GALS_ROLES := {
+	&"pelvis": "Hips", &"spinea": "Spine", &"spineb": "Spine1", &"spinec": "Spine2",
+	&"neck": "Neck", &"heada": "Head",
+	&"l_clavicle": "LeftShoulder", &"l_shoulder": "LeftArm", &"l_elbow": "LeftForeArm",
+	&"l_wrist": "LeftHand", &"l_upper_leg": "LeftUpLeg", &"l_knee": "LeftLeg",
+	&"l_ankle": "LeftFoot", &"l_ball": "LeftToeBase",
+	&"r_clavicle": "RightShoulder", &"r_shoulder": "RightArm", &"r_elbow": "RightForeArm",
+	&"r_wrist": "RightHand", &"r_upper_leg": "RightUpLeg", &"r_knee": "RightLeg",
+	&"r_ankle": "RightFoot", &"r_ball": "RightToeBase",
+}
+
+
+const GALS_BIND_PATH := "res://assets/models/gals_ref/gals_bind.glb"
+## [target role, source bone, source child]: the bone swings to point at its child the way the
+## source does (an absolute direction). Roles not listed (hand, head, toes) keep their parent turn.
+const GALS_AIM: Array = [
+	["Spine", &"spinea", &"spineb"], ["Spine1", &"spineb", &"spinec"],
+	["Spine2", &"spinec", &"neck"], ["Neck", &"neck", &"heada"],
+	["LeftShoulder", &"l_clavicle", &"l_shoulder"], ["LeftArm", &"l_shoulder", &"l_elbow"],
+	["LeftForeArm", &"l_elbow", &"l_wrist"], ["LeftUpLeg", &"l_upper_leg", &"l_knee"],
+	["LeftLeg", &"l_knee", &"l_ankle"], ["LeftFoot", &"l_ankle", &"l_ball"],
+	["RightShoulder", &"r_clavicle", &"r_shoulder"], ["RightArm", &"r_shoulder", &"r_elbow"],
+	["RightForeArm", &"r_elbow", &"r_wrist"], ["RightUpLeg", &"r_upper_leg", &"r_knee"],
+	["RightLeg", &"r_knee", &"r_ankle"], ["RightFoot", &"r_ankle", &"r_ball"],
+]
+
+
+## The GALS clip's bone frames do not match its bind pose (the Blender conversion), so the retarget
+## uses what is frame-free: where the joints are. Each limb bone swings to point from its joint to
+## the next one like the source does, the hips follow the hip line and the spine direction.
+static func _gals(body: PlayerBody, path := GALS_PATH, clip_name := &"relaxed-walk") -> Animation:
+	var source := (load(path) as PackedScene).instantiate()
+	var bind := (load(GALS_BIND_PATH) as PackedScene).instantiate()
+	var posed := source.find_child("Skeleton3D", true, false) as Skeleton3D
+	var bound := bind.find_child("Skeleton3D", true, false) as Skeleton3D
+	var bind_clip := (bind.find_child("AnimationPlayer", true, false) as AnimationPlayer) \
+			.get_animation(&"bind_pose")
+	_gals_pose(bound, bind_clip, 0.0) # the bind pose is an animation: the rest is the BVH offsets
+	var clip := (source.find_child("AnimationPlayer", true, false) as AnimationPlayer) \
+			.get_animation(clip_name)
+	var target := body.skeleton
+	var map := body._target_humanoid_map
+	var hips_target := target.find_bone(StringName(map["Hips"]))
+	var hips_rest := target.get_bone_global_rest(hips_target)
+	var bind_facing := _gals_facing(bound)
+	var facing := Basis(Vector3.UP, bind_facing.signed_angle_to(
+			HumanoidRetargeter._skeleton_rest_facing(target, StringName(map["Hips"]),
+			StringName(map["Head"]), StringName(map["LeftShoulder"]),
+			StringName(map["RightShoulder"])), Vector3.UP))
+	var bind_pelvis := _gals_at(bound, &"pelvis")
+	var scale := hips_rest.origin.y / bind_pelvis.y
+	var bind_frame := _gals_hip_frame(bound)
+	var result := Animation.new()
+	result.length = clip.length
+	result.loop_mode = Animation.LOOP_LINEAR
+	var tracks: Dictionary = {} # target bone -> rotation track
+	var aims: Array[Dictionary] = []
+	for target_index in target.get_bone_count():
+		var role := ""
+		for key: String in map:
+			if map[key] == target.get_bone_name(target_index):
+				role = key
+		if role != "Hips" and not GALS_ROLES.values().has(role):
+			continue
+		var track := result.add_track(Animation.TYPE_ROTATION_3D)
+		var bone_name := target.get_bone_name(target_index)
+		result.track_set_path(track, NodePath("%s:%s" % [target.name, bone_name]))
+		tracks[target_index] = track
+		for aim: Array in GALS_AIM:
+			if aim[0] == role:
+				aims.append({"index": target_index, "now_from": posed.find_bone(aim[1]),
+						"now_to": posed.find_bone(aim[2]), "foot": role.ends_with("Foot"),
+						"bound_from": bound.find_bone(aim[1]), "bound_to": bound.find_bone(aim[2]),
+						"child": target.find_bone(StringName(map[GALS_ROLES[aim[2]]]))})
+	var hips_track := result.add_track(Animation.TYPE_POSITION_3D)
+	var hips_name := target.get_bone_name(hips_target)
+	result.track_set_path(hips_track, NodePath("%s:%s" % [target.name, hips_name]))
+	for frame in int(ceil(clip.length * 30.0)) + 1:
+		var time := minf(frame / 30.0, clip.length)
+		_gals_pose(posed, clip, time)
+		var worlds: Dictionary = {} # target bone -> world rotation this frame
+		for target_index: int in tracks:
+			var rest := target.get_bone_global_rest(target_index).basis.orthonormalized()
+			var world := rest
+			var parent := target.get_bone_parent(target_index)
+			var parent_world: Basis = worlds.get(parent,
+					target.get_bone_global_rest(parent).basis.orthonormalized()) \
+					if parent >= 0 else Basis.IDENTITY
+			if target_index == hips_target:
+				world = facing * (_gals_hip_frame(posed) * bind_frame.inverse()) \
+						* facing.inverse() * rest
+			else:
+				world = parent_world * target.get_bone_rest(target_index).basis.orthonormalized()
+				for aim: Dictionary in aims:
+					if aim["index"] != target_index:
+						continue
+					var was := (target.get_bone_global_rest(aim["child"]).origin
+							- target.get_bone_global_rest(target_index).origin)
+					var now := (HumanoidRetargeter._manual_global_pose(posed, aim["now_to"]).origin
+							- HumanoidRetargeter._manual_global_pose(posed, aim["now_from"]).origin)
+					if aim["foot"]: # the bind foot points straight down: only the turn from it counts
+						was = facing * (_gals_at_index(bound, aim["bound_to"])
+								- _gals_at_index(bound, aim["bound_from"]))
+					world = Basis(HumanoidRetargeter._swing_between(
+							was.normalized(), (facing * now).normalized())) * rest
+			worlds[target_index] = world
+			result.rotation_track_insert_key(tracks[target_index], time,
+					(parent_world.inverse() * world).get_rotation_quaternion())
+		var offset := facing * (HumanoidRetargeter._manual_global_pose(
+				posed, posed.find_bone(&"pelvis")).origin - bind_pelvis) * scale
+		var hips_parent := target.get_bone_parent(hips_target)
+		var parent_rest := target.get_bone_global_rest(hips_parent) if hips_parent >= 0 \
+				else Transform3D()
+		result.position_track_insert_key(hips_track, time,
+				parent_rest.affine_inverse() * (hips_rest.origin + offset))
+	gals_speed = _in_place(result, body)
+	source.free()
+	bind.free()
+	return result
+
+
+static func _gals_pose(posed: Skeleton3D, clip: Animation, time: float) -> void:
+	for track in clip.get_track_count():
+		var bone := posed.find_bone(String(clip.track_get_path(track).get_subname(0)))
+		if bone < 0:
+			continue
+		if clip.track_get_type(track) == Animation.TYPE_POSITION_3D:
+			posed.set_bone_pose_position(bone, clip.position_track_interpolate(track, time))
+		elif clip.track_get_type(track) == Animation.TYPE_ROTATION_3D:
+			posed.set_bone_pose_rotation(bone, clip.rotation_track_interpolate(track, time))
+
+
+static func _gals_at(skeleton: Skeleton3D, bone_name: StringName) -> Vector3:
+	return HumanoidRetargeter._manual_global_pose(skeleton, skeleton.find_bone(bone_name)).origin
+
+
+static func _gals_facing(skeleton: Skeleton3D) -> Vector3:
+	var across := (_gals_at(skeleton, &"r_clavicle") - _gals_at(skeleton, &"l_clavicle"))
+	var up := _gals_at(skeleton, &"heada") - _gals_at(skeleton, &"pelvis")
+	var facing := across.normalized().cross(up.normalized())
+	facing.y = 0.0
+	return facing.normalized()
+
+
+## The hips' own frame from joint positions: across the hip line, up the spine.
+static func _gals_hip_frame(skeleton: Skeleton3D) -> Basis:
+	var across := (_gals_at(skeleton, &"l_upper_leg") - _gals_at(skeleton, &"r_upper_leg")) \
+			.normalized()
+	var up := (_gals_at(skeleton, &"spinea") - _gals_at(skeleton, &"pelvis")).normalized()
+	var forward := across.cross(up).normalized()
+	return Basis(across, forward.cross(across), forward)
+
+
+static func _gals_at_index(skeleton: Skeleton3D, index: int) -> Vector3:
+	return HumanoidRetargeter._manual_global_pose(skeleton, index).origin
+
+
+static func sprint_ref(default: float) -> float:
+	return sprint_speed if sprint_speed > 0.0 else default

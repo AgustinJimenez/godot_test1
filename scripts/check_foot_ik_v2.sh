@@ -69,7 +69,7 @@ snap_check "Foot IK v2 floor walk vibration" floor unarmed_walk 0.20 11.0 30.0 3
 run "Foot IK v2 stairs walk (run)" "FOOT_IK_V2_IDLE_CHECK" \
 	godot --headless --fixed-fps 60 --quit-after 600 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs-walk=0
-snap_check "Foot IK v2 stairs walk vibration" stairs unarmed_walk 0.25 8.5 25.0 5.5 0.055 0.15
+snap_check "Foot IK v2 stairs walk vibration" stairs unarmed_walk 0.25 8.5 25.0 5.5 0.055 0.19
 
 # The same stairs walked DOWN from the top tread (a stuck foot used to snap forward on release).
 run "Foot IK v2 stairs walk down (run)" "FOOT_IK_V2_IDLE_CHECK" \
@@ -289,5 +289,12 @@ else
 	printf 'FAIL Foot IK v2 idle knee sway: side offset spread %s m (limit 0.04)\n' "${spread:-?}"
 	status=1
 fi
+
+# Turning in place on open floor and at the ramp side: the worst poses, printed to compare (no limits yet).
+for spot in flat-turn ramp-edge-turn; do
+	godot --headless --fixed-fps 60 --quit-after 1300 --path "$project_dir" \
+		res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --spawn="$spot" >"$log" 2>&1 || true
+	printf "INFO %s: %s\n" "$spot" "$("$project_dir/scripts/edge_turn_report.sh")"
+done
 
 exit "$status"

@@ -511,7 +511,7 @@ func _physics_process(delta: float) -> void:
 			# makes the idle pose visibly slide for another half-second.
 			velocity.x = direction.x * speed
 			velocity.z = direction.z * speed
-	else:
+	elif is_on_floor() or (velocity.y <= 0.0 and _airborne_time < AIRBORNE_ANIMATION_GRACE):
 		velocity.x = move_toward(velocity.x, direction.x * speed, acceleration * delta)
 		velocity.z = move_toward(velocity.z, direction.z * speed, acceleration * delta)
 	if not is_on_floor():
@@ -574,16 +574,14 @@ func _physics_process(delta: float) -> void:
 	# reports instantly (clear upward velocity.y), but anything else has to
 	# stay airborne past the grace window before the fall pose kicks in, so
 	# neither direction pops it on every step.
-	if is_on_floor():
-		_airborne_time = 0.0
-	else:
-		_airborne_time += delta
+	_airborne_time = 0.0 if is_on_floor() else _airborne_time + delta
 	var jumped := velocity.y > JUMP_VELOCITY_THRESHOLD
 	var report_on_floor := (
 			is_on_floor() or (not jumped and _airborne_time < AIRBORNE_ANIMATION_GRACE))
 	body.update_motion(_crouched, weapon.equipped,
-			Vector2(velocity.x, velocity.z).length(), sprinting,
-			report_on_floor, velocity.y, delta, flashlight.visible, _smoothed_input_dir,
+			PlayerLedgeNudge.speed(self, Vector2(velocity.x, velocity.z).length()), sprinting,
+			report_on_floor, velocity.y, delta, flashlight.visible,
+			PlayerLedgeNudge.input(self, _smoothed_input_dir),
 			_safe_zone_descent_active and not is_on_floor())
 	if _safe_zone_descent_active and not is_on_floor():
 		_safe_zone_descent_was_airborne = true

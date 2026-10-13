@@ -6,7 +6,7 @@ extends RefCounted
 ## still reach with MARGIN to spare.
 
 const CALM_SECONDS := 0.5
-const MARGIN := 0.15 # m of reach kept in hand
+const MARGIN := 0.04 # m of reach kept in hand
 const RELEASE_SPEED := 0.1 # m/s
 
 var calm := 0.0

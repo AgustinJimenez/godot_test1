@@ -35,7 +35,7 @@ const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 @export var jump_counts_as_moving := true
 ## Let the body follow the capsule's height smoothly instead of popping a whole tread per step.
 @export var body_smooth := true
-@export var body_follow_rate := 8.0
+@export var body_follow_rate := 12.0
 @export var body_max_lag := 0.18
 @export var support_snap := true
 @export var support_search := 0.16
@@ -45,7 +45,8 @@ const SUPPORT_TOLERANCE := 0.03
 const SUPPORT_MIN_PLANT := 0.9
 const SINK_MIN := 0.04 # a flat sole this far below the aimed-at height re-aims the resting foot
 const SINK_MAX := 0.25 # a floor further below than this is not a lower tread: it is a drop-off
-const LEDGE_DROP := 0.25 # a resting foot over ground lower than this below the body slides back
+const LEDGE_DROP := 0.25 # a resting foot over ground this far below the body slides back
+const LEDGE_PROBED := 0.16 # ... or with its ground found this far IN from the ankle (m)
 const BODY_LAG_SNAP := 0.4
 const MOVING_HOLD_SECONDS := 0.3
 const CORRECTION_STEP := 0.03 # m/frame the ankle correction may move sideways or DOWN while walking
@@ -144,12 +145,13 @@ var _pelvis_drop := 0.0
 ## side -> how far the foot was slid along its length to sit on one surface this frame (trace).
 var debug_support_shift: Dictionary = {}
 var _smoothed_y := NAN
+var _smoother := FootIKV2BodySmoother.new()
 var _body_lag := 0.0
 var debug_body_lag := 0.0
 var _stance_shift: Dictionary = {}
 var _ground := FootIKV2GroundFilter.new()
 var _knee_hint := FootIKV2KneeHint.new()
-var _ledge_push: Dictionary = {} # side -> world direction away from the void under that foot
+var ledge := FootIKV2Ledge.new() # public: the player reads its step
 var _plant_weight: Dictionary = {}
 var _plant_state: Dictionary = {}
 var _plant_frame: Dictionary = {}
@@ -174,6 +176,7 @@ var debug_toe_lift: Dictionary = {}
 func _ready() -> void:
 	if player_body == null:
 		player_body = get_skeleton().get_parent() as PlayerBody if get_skeleton() != null else null
+	ledge.ray = _ray
 	_build_legs()
 
 
@@ -271,7 +274,7 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 			and Vector2(host.velocity.x, host.velocity.z).length() > still_speed)
 	_moving_hold = MOVING_HOLD_SECONDS if moving \
 			else maxf(_moving_hold - get_physics_process_delta_time(), 0.0)
-	moving = moving or _moving_hold > 0.0 # a stair step stalls the capsule a few frames
+	moving = moving or _moving_hold > 0.0 or ledge.stepping # a stair step stalls the capsule
 	var jumpish := false
 	if jump_counts_as_moving:
 		if host != null and (not host.is_on_floor() or absf(host.velocity.y) > JUMP_SPEED_EPSILON):
@@ -329,7 +332,7 @@ func _update_pelvis_drop(skel: Skeleton3D) -> void:
 			(_base[side] as Dictionary)[key] = pose
 
 
-## How far the VISIBLE body trails below the capsule: a capped first-order lag, snaps when airborne.
+## How far the VISIBLE body trails below the capsule: a capped two-stage lag, snaps when airborne.
 func _update_body_lag(host: CharacterBody3D, jumpish: bool, delta: float) -> void:
 	if not body_smooth or host == null:
 		_body_lag = 0.0
@@ -338,10 +341,9 @@ func _update_body_lag(host: CharacterBody3D, jumpish: bool, delta: float) -> voi
 		return
 	var root_y := host.global_position.y
 	if is_nan(_smoothed_y) or jumpish or absf(root_y - _smoothed_y) > BODY_LAG_SNAP:
-		_smoothed_y = root_y
+		_smoothed_y = _smoother.reset(root_y)
 	else:
-		_smoothed_y += (root_y - _smoothed_y) * (1.0 - exp(-body_follow_rate * delta))
-		_smoothed_y = clampf(_smoothed_y, root_y - body_max_lag, root_y)
+		_smoothed_y = _smoother.follow(root_y, delta, body_follow_rate, body_max_lag)
 	_body_lag = root_y - _smoothed_y
 	debug_body_lag = _body_lag
 
@@ -450,15 +452,14 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 		debug_target.erase(side)
 		debug_state[side] = "released"
 		_note_released(side)
-		_ledge_push[side] = Vector3(to_world.origin.x - animated_ankle.x, 0.0,
-				to_world.origin.z - animated_ankle.z).normalized() # away from the void
+		ledge.over_drop(side, to_world.origin, animated_ankle, hip_world)
 		return
 	var ground: Vector3 = hit["position"]
-	if to_world.origin.y - ground.y > LEDGE_DROP: # a lower tread than a step: slide back
-		_ledge_push[side] = Vector3(to_world.origin.x - animated_ankle.x, 0.0,
-				to_world.origin.z - animated_ankle.z).normalized()
+	if (to_world.origin.y - ground.y > LEDGE_DROP
+			or Vector2(ground.x - sample.x, ground.z - sample.z).length() > LEDGE_PROBED):
+		ledge.over_drop(side, to_world.origin, animated_ankle, hip_world)
 	else:
-		_ledge_push.erase(side)
+		ledge.on_ground(side)
 	var normal: Vector3 = hit["normal"]
 	ground.y = _ground.height(side, ground.y) if ground_filter else ground.y
 	debug_ground[side] = ground
@@ -469,6 +470,7 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 		debug_target.erase(side)
 		debug_state[side] = "released"
 		_note_released(side)
+		ledge.over_drop(side, to_world.origin, animated_ankle, hip_world)
 		return
 	var target := ground + normal * ankle_height
 	var keeps := _is_moving and normal.y >= 0.999 and absf(ground.y - to_world.origin.y) < 0.03 \
@@ -537,7 +539,6 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 	_limit_step(skel, leg, base, side)
 	_ease_correction(skel, leg, base, side)
 	var landed: Vector3 = skel.get_bone_global_pose(int(leg["foot"])).origin
-	# How far the foot ended from the FINAL target (after resample, retreat, lift): stale misread.
 	var final_target: Vector3 = to_world.affine_inverse() * (debug_target[side] as Vector3)
 	var miss := landed.distance_to(final_target)
 	debug_solve[side]["residual"] = miss
@@ -974,24 +975,23 @@ func _ease_correction(skel: Skeleton3D, leg: Dictionary, base: Dictionary,
 	if not eased.is_equal_approx(correction):
 		_solve(skel, leg, base, animated + eased, side)
 		_align_foot(skel, leg, debug_ground_normal.get(side, Vector3.UP), side)
-		# the eased foot may now be in a riser or a tread: clearance has the last word
+		# the eased foot may be in a riser or tread: clearance has the last word, eased in too
 		var to_world := skel.global_transform
 		_clear_toe(skel, leg, base, to_world, (to_world * (base["hip"] as Transform3D)).origin,
 				side)
+		var extra := skel.get_bone_global_pose(int(leg["foot"])).origin - animated - eased
+		if extra.length() > CORRECTION_STEP:
+			eased += extra.normalized() * CORRECTION_STEP
+			_solve(skel, leg, base, animated + eased, side)
+			_align_foot(skel, leg, debug_ground_normal.get(side, Vector3.UP), side)
+			extra = Vector3.ZERO
+		record["end"] = eased + extra
 		debug_solve[side]["eased"] = true # short of its target on purpose (the lab skips the grade)
 
 
-## Standing with a foot over a drop it cannot reach (nothing within reach under it): the direction,
-## horizontal, in which the body should move so both feet are on ground (like Uncharted 4: the IK
-## covers small steps; past that the character moves to a safe zone). ZERO when both feet have
-## ground or the character is moving. The player nudges its capsule along it (PlayerLedgeNudge).
+## The horizontal way the body should walk so both feet have ground (safe zone); ZERO when they do.
 func ledge_push() -> Vector3:
-	if not enabled or _is_moving or _ledge_push.is_empty():
-		return Vector3.ZERO
-	var total := Vector3.ZERO
-	for push: Vector3 in _ledge_push.values():
-		total += push
-	return total.normalized()
+	return ledge.push() if enabled and (not _is_moving or ledge.stepping) else Vector3.ZERO
 
 ## A released foot has no correction: noted, the next landing eases in from it (no 0.4 m snap).
 func _note_released(side: StringName) -> void:

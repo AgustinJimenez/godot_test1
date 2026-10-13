@@ -773,7 +773,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 			rate = minf(ground_speed / CROUCH_REF_SPEED, 1.0)
 		elif sprinting:
 			target = &"unarmed_sprint"
-			rate = ground_speed / SPRINT_REF_SPEED
+			rate = ground_speed / PlayerTempWalk.sprint_ref(SPRINT_REF_SPEED)
 		else:
 			target = PlayerDirectionalLocomotionLibrary.walk_animation(_anim_input_smoothed)
 			target = PlayerStairClips.select_walk(self, target,
