@@ -146,8 +146,12 @@ func _frame_camera(gap: float, row_gap: float, scale: float, tallest: float) -> 
 		for row in _rows.size():
 			_rows[row].visible = row == focus_row
 		var at := _cell(focus_row, focus_column, gap, row_gap)
-		_camera.position = at + Vector3(0.0, 1.5 * scale, 5.0 * scale)
-		_camera.look_at(at + Vector3(0.0, 1.6 * scale, 0.0), Vector3.UP)
+		# close to the plant whatever its size: low and near for a mushroom, eye level for a tree
+		var plant_height := _species[focus_row].height * scale
+		var eye := clampf(plant_height * 0.35, 0.12, 1.5 * scale)
+		var distance := clampf(plant_height * 4.0, 1.5, 5.0 * scale)
+		_camera.position = at + Vector3(0.0, eye, distance)
+		_camera.look_at(at + Vector3(0.0, eye * 1.05, 0.0), Vector3.UP)
 		return
 	# from above and in front, so every row shows over the one before it
 	var width := float(COLUMNS - 1) * gap

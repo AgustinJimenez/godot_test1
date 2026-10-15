@@ -124,3 +124,12 @@ A autumn, C close-up of one row (Left / Right individual, Up / Down species). Co
 `--form=CACTUS --seed=N --detailed`. Individuals are `PlantMeshes.build(species, random_variant,
 detailed)`. Use it after any change to a plant builder: look at several G / V rerolls in both looks,
 and in close-up, not only at the gallery's overview.
+
+### Mushroom clumps clipping (same day)
+
+A clump of 2-4 mushrooms put each one at a random spot within +-20 cm, while a cap is as wide as its
+stalk is tall times `crown` (up to 1.3), so neighbouring caps cut into each other.
+`PlantGroundBuilders.mushroom_layout` now places every next mushroom beside an earlier one at least
+the two cap radii plus 3 cm away, retrying 24 times (no free spot: that mushroom is left out).
+`species_check` tests it: 900 random clumps over three seeds, the least room between two caps is
+3.7 cm. The plant lab's close-up now frames the plant by its size (a mushroom was a speck).

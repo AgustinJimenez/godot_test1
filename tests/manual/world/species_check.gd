@@ -14,6 +14,7 @@ func _ready() -> void:
 	_check_determinism()
 	_check_coverage()
 	_check_meshes()
+	_check_mushroom_clumps()
 	for failure in _failures:
 		print("SPECIES_CHECK FAIL ", failure)
 	print("SPECIES_CHECK ", "PASS" if _failures.is_empty() else "FAIL (%d)" % _failures.size())
@@ -126,3 +127,31 @@ func _triangles(mesh: ArrayMesh) -> int:
 	if mesh.get_surface_count() == 0:
 		return 0
 	return (mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 3
+
+
+## No two caps of one mushroom clump may intersect (their circles on the ground must not overlap),
+## for every mushroom species of every seed over many random clumps.
+func _check_mushroom_clumps() -> void:
+	var clumps := 0
+	var worst := INF
+	for seed_value: int in SEEDS:
+		for one in _make(seed_value).species:
+			if one.form != PlantSpecies.Form.MUSHROOM:
+				continue
+			for variant in 150:
+				var rng := RandomNumberGenerator.new()
+				rng.seed = variant * 7919 + one.id
+				var spots := PlantGroundBuilders.mushroom_layout(one, rng)
+				clumps += 1
+				for first in spots.size():
+					for second in range(first + 1, spots.size()):
+						var a: Dictionary = spots[first]
+						var b: Dictionary = spots[second]
+						var apart := Vector2((a["at"] as Vector3).x - (b["at"] as Vector3).x,
+								(a["at"] as Vector3).z - (b["at"] as Vector3).z).length()
+						var room := apart - float(a["radius"]) - float(b["radius"])
+						worst = minf(worst, room)
+						if room < 0.0:
+							_fail("%s clump %d: two caps overlap by %.3f m" % [
+									one.common_name, variant, -room])
+	print("MUSHROOMS %d clumps, least room between two caps %.3f m" % [clumps, worst])
