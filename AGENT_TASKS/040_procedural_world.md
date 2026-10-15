@@ -217,7 +217,19 @@ scripts call `godot`), `python3` and `jq`. Results (36 pass, 6 known baseline fa
   foot_ik_stair_lab._spawn_player) and passes on 4.7.2.
 - "Foot IK partial upper-foot support check" PASSES on 4.6.2 and FAILS on 4.7.2, deterministic, same on
   the old commit with 4.7.2, so it is the engine upgrade: `FOOT_IK_KNEE_FLEX_CHECK FAIL right target
-  has no complete upper support patch` (right_flex 30.28 vs 30.86 on 4.6.2). Not investigated.
+  has no complete upper support patch` (right_flex 30.28 vs 30.86 on 4.6.2).
+  INVESTIGATED AND FIXED IN THE TEST (same day). Cause: in the spawn frame the landing planner's
+  `predict()` commits a landing on 4.7.2 (decision "commit coverage=15/18", committed_surface_y 0.6)
+  but finds nothing to commit on 4.6.2 (decision "none": which of the player's physics step and the
+  Foot IK's skeleton update runs first in that frame, and so whether the feet's landing probes exist
+  yet, differs between the engines). A landing commitment makes the sampler skip the idle upper-foot
+  repositioning (`landing_committed_target.has(side)` in `straighten_compressed_upper_target`), so the
+  right foot stayed at z=4.0786, 8 cm closer to the tread edge, with no ground 10 cm behind it; on
+  4.6.2 it was moved back to z=3.9986. The check is about an idle stand, so
+  `foot_ik_knee_flex_check.gd` now drops the planner's commitment after the spawn frame
+  (`require_lowest_support` only): PASS on 4.7.2 and on 4.6.2. Not changed: the runtime. Open
+  question, not tested: a real jump-landing that ends with a foot half over a tread edge keeps its
+  committed target (the repositioning is skipped while a commitment is held) on both engines.
 - v2 suite (`check_foot_ik_v2.sh`): "turn in place on the stairs, dz=0" fails once (idle check
   tip_clip_max 0.049 > 0.020) and passes on its repeats; the jq steps could not find
   `foot_ik_v2_check.jsonl` (the scripts look under ~/Library/Application Support, macOS paths).

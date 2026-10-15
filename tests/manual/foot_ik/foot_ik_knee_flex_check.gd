@@ -183,6 +183,12 @@ func _parse_arguments() -> void:
 
 func _physics_process(_delta: float) -> void:
 	_frame += 1
+	if _require_lowest_support and _frame == 2:
+		# The spawn frame can count as a landing (the body starts a hair above the tread, and which of
+		# the player and the Foot IK runs first in that frame differs between Godot 4.6 and 4.7): this
+		# check is about an idle stand, so drop any landing commitment the spawn made.
+		_ik._ground_sampler._landing_planner.reset()
+		_ik._ground_sampler.landing_committed_target.clear()
 	if _replay_committed_edge_landing and _frame == 1:
 		_capsule_corner_rejected = not _ik._ground_sampler._landing_planner \
 				._capsule_clears_landing(_player.get_world_3d().direct_space_state,
