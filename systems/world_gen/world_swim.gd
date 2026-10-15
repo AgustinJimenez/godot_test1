@@ -52,10 +52,16 @@ func update(player: Player) -> void:
 		elif Input.is_action_pressed(&"crouch"):
 			rise = -2.5
 		player.velocity.y = rise
-		# A cap, not a multiplier: the player re-accelerates every frame, so scaling the velocity each
-		# frame would compound and crawl at a fraction of this speed.
-		var horizontal := Vector2(player.velocity.x, player.velocity.z).limit_length(
-				player.walk_speed * SWIM_SPEED)
+		# The player only steers on the ground (or just after leaving it), so a floating body has to
+		# steer itself: otherwise a swimmer from a standstill never gets going, and one that lets go
+		# of the keys never stops. A cap, not a multiplier (scaling every frame would compound).
+		var swim_speed := player.walk_speed * SWIM_SPEED
+		var look := Basis(Vector3.UP, player.head.global_rotation.y)
+		var input := player.debug_movement_input
+		var goal := look * Vector3(input.x, 0.0, input.y) * swim_speed
+		var horizontal := Vector2(player.velocity.x, player.velocity.z).move_toward(
+				Vector2(goal.x, goal.z),
+				player.acceleration * get_physics_process_delta_time()).limit_length(swim_speed)
 		player.velocity.x = horizontal.x
 		player.velocity.z = horizontal.y
 		_play(player, CLIP_MOVE if Vector2(player.velocity.x, player.velocity.z).length() > 0.5

@@ -187,3 +187,17 @@ Costs: the screen texture copy happens for the water in both looks. Not measured
 Looked at with shore probes (low-poly, realistic, two shores, looking down): turquoise shallows with the
 sand visible, deep blue further out, soft foam line. Not done: rivers, SSR reflections of the shore,
 underwater look.
+
+## Could not move in deep water (2026-10-15)
+
+The user went into the water and could not move. Cause: `player.gd` only applies the walk input
+when on the floor (or within 0.15 s of leaving it); a swimmer floats with no floor, so from a
+standstill in deep water nothing ever accelerated it, and a swimmer that let go of the keys kept
+drifting at full speed (no braking, no steering; it only worked by carrying the momentum of the
+wade-in). `WorldSwim.update()` now steers the floating body itself: it moves the horizontal velocity
+toward the input (`player.debug_movement_input`, in the head's yaw) at the player's acceleration,
+capped at walk_speed * SWIM_SPEED. New check `tests/manual/world/world_water_walk_check.tscn`
+(`-- --seed=N`): walks from a beach into the sea, lets go of the keys (must stop), swims off again,
+then starts from a standstill in deep water. It FAILED before (moved 0.00 m from a standstill),
+PASS after (drift 0.17 m, 5.6 m in 3 s). gdlint does not catch a duplicate local name: also run the
+headless import after editing a gameplay script.
