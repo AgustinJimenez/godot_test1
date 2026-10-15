@@ -83,3 +83,14 @@ unchanged (same shader, same vertex-colour conventions).
 - The Godot editor does not pick up new `class_name` scripts until a headless `--import` has rewritten
   `.godot/global_script_class_cache.cfg` (a `filesystem_manage scan` did not). Run it once after adding
   a new global class, then the next play works.
+
+## Even forks and tiers (2026-10-15)
+
+The user saw trees "divided" with uneven divisions. Broadleaf crowns had forks at random angles and
+lengths and lumps scattered at random, so the canopy broke into detached blobs. Now
+`PlantTreeBuilders.broadleaf` places the forks at equal angles (phase random per mesh, +-0.1 rad)
+with equal reach, one lump of leaves at each fork tip, one on the axis and the rest on a ring
+between the forks; a single fork is dropped (it only looked like a crooked branch). Conifer tier
+radius jitter went from +-10% to +-3% so the tiers shrink evenly. Looked at in the species gallery
+(low-poly and realistic, two seeds). If the user meant something else by "divided" (e.g. the
+trunk pieces of palms), ask which species.

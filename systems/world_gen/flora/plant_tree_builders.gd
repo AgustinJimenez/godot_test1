@@ -25,7 +25,8 @@ static func conifer(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGene
 	for tier in tiers:
 		var along := float(tier) / float(tiers)
 		var base_y := trunk * 0.8 + along * (height - trunk) * 0.78
-		var radius := lerpf(s.crown, s.crown * 0.4, along) * rng.randf_range(0.9, 1.1)
+		# tiers shrink evenly up the tree; only a hair of jitter so they do not look machined
+		var radius := lerpf(s.crown, s.crown * 0.4, along) * rng.randf_range(0.97, 1.03)
 		var tier_height := (height - base_y) * lerpf(0.3, 0.5, s.droop)
 		builder.add_frustum(Vector3(0.0, base_y, 0.0), tier_height, radius, 0.0, 7,
 				_sway(green.darkened(0.12), 0.35),
@@ -50,22 +51,37 @@ static func broadleaf(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGe
 	var crown_height := (height - trunk) * 0.5
 	var centre := top + Vector3(0.0, crown_height * 0.7, 0.0)
 	var reach := s.crown * 0.7
-	for branch in s.extra: # forks reaching toward the crown
-		var yaw := rng.randf() * TAU
-		var out := Vector3(cos(yaw), 0.0, sin(yaw)) * reach * rng.randf_range(0.5, 0.9)
-		builder.xf = Transform3D(Basis.looking_at(out + Vector3(0.0, crown_height, 0.0), Vector3.UP)
+	# The crown is built evenly: the forks leave the trunk at equal angles with equal reach, each
+	# one ends in a lump of leaves, and the remaining lumps sit on the axis and on a ring between
+	# the forks, so the divisions look the same all round and the canopy has no gaps. (One fork
+	# would only look like a crooked branch.)
+	var forks := 0 if s.extra == 1 else s.extra
+	var phase := rng.randf() * TAU
+	var rise := crown_height * 0.9
+	var spots: Array[Vector3] = []
+	for branch in forks:
+		var yaw := phase + TAU * float(branch) / float(forks) + rng.randf_range(-0.1, 0.1)
+		var out := Vector3(cos(yaw), 0.0, sin(yaw)) * reach * rng.randf_range(0.9, 1.0)
+		builder.xf = Transform3D(Basis.looking_at(out + Vector3(0.0, rise, 0.0), Vector3.UP)
 				* Basis(Vector3.RIGHT, -PI * 0.5), top - Vector3(0.0, 0.2, 0.0))
-		builder.add_frustum(Vector3.ZERO, (out + Vector3(0.0, crown_height, 0.0)).length(),
+		builder.add_frustum(Vector3.ZERO, (out + Vector3(0.0, rise, 0.0)).length(),
 				s.girth * 0.45, s.girth * 0.18, 5, _still(s.bark.darkened(0.2)), _still(s.bark))
 		builder.xf = Transform3D.IDENTITY
-	for lump in s.count:
-		var spot := centre + Vector3(rng.randf_range(-1.0, 1.0) * reach,
-				rng.randf_range(-1.0, 1.0) * crown_height * 0.55, rng.randf_range(-1.0, 1.0) * reach)
-		var size := s.crown * rng.randf_range(0.62, 0.95)
+		spots.append(top + out + Vector3(0.0, rise, 0.0))
+	if spots.size() < s.count:
+		spots.append(centre)
+	var ring := s.count - spots.size()
+	for index in ring:
+		var yaw := phase + PI / float(maxi(forks, 1)) + TAU * float(index) / float(ring)
+		spots.append(centre + Vector3(cos(yaw), 0.0, sin(yaw)) * reach * 0.6)
+	for spot_at in spots:
+		var spot := spot_at + Vector3(rng.randf_range(-0.08, 0.08) * reach,
+				rng.randf_range(-0.08, 0.08) * crown_height, rng.randf_range(-0.08, 0.08) * reach)
+		var size := s.crown * rng.randf_range(0.7, 0.9)
 		# weeping crowns hang lower toward the rim
 		spot.y -= s.droop * Vector2(spot.x - top.x, spot.z - top.z).length() * 0.5
 		spot.y = maxf(spot.y, top.y + size * 0.4) # never hangs below the trunk's top
-		var radius := Vector3(size, size * s.aspect * rng.randf_range(0.75, 1.0), size)
+		var radius := Vector3(size, size * s.aspect * rng.randf_range(0.8, 1.0), size)
 		var tone := s.leaf.lerp(s.leaf.lightened(0.08), rng.randf())
 		builder.add_blob(spot, radius, _sway(tone.darkened(0.25), 0.4), _sway(s.leaf_tip, 1.0), rng,
 				s.wobble + 0.06)
