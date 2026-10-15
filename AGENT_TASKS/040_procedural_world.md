@@ -161,3 +161,11 @@ are left to the normal slide). Sideways along the slope still works. New check:
 `tests/manual/world/world_steep_check.tscn` (walks uphill into slopes from 10 to 80 deg, fails if the
 body gains height while off the floor): FAIL before (2 slopes), PASS after.
 NOTE `player.gd` is at exactly 1000 lines (the lint limit); new player logic goes in its own file.
+
+### Sky3D tuning (same day, later)
+
+Sky3D's defaults put the sun on January at 16 N, longitude 108, UTC+7: sunset at about 17:30 on our
+clock. `_enter_sky3d()` now sets the equinox (March 21), latitude 30, longitude 0 and `utc = 0`, so
+the sun rises at 6, peaks at 12 and sets at 18 like the built-in sky (measured with a sun_height
+sweep). Night: ambient `1 + night * 2.6`, moon energy 1.0; checked at 18:30 (dusk, orange clouds) and
+21:00 / 23:30 (stars, readable ground) with clear weather. Under cloud the night is much darker.

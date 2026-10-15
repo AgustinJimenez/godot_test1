@@ -107,6 +107,12 @@ func _enter_sky3d() -> void:
 	_sky3d.game_time_enabled = false # `time_of_day` drives the clock
 	_sky3d.editor_time_enabled = false
 	_sky3d.fog_enabled = false # Godot's own fog is used (underwater, weather, volumetric)
+	# equinox on the meridian: sunrise near 6:00 and sunset near 18:00, a 12 hour day like ours
+	_sky3d.tod.month = 3
+	_sky3d.tod.day = 21
+	_sky3d.tod.latitude = deg_to_rad(30.0)
+	_sky3d.tod.longitude = 0.0
+	_sky3d.tod.utc = 0.0 # the clock is local solar time (Sky3D's default zone is UTC+7)
 	_sky3d.sun.directional_shadow_max_distance = 220.0
 	_sky3d.moon.directional_shadow_max_distance = 120.0
 	environment = _sky3d.environment
@@ -210,5 +216,5 @@ func _apply_sky3d() -> void:
 	_sky3d.cloud_intensity = lerpf(0.6, 0.2, maxf(cloud_dark, overcast * 0.6))
 	_sky3d.sun_energy = (1.0 - overcast * 0.7) + flash * 2.0
 	# Sky3D nights are very dark; lift the ambient and the moon so the world stays readable
-	_sky3d.ambient_energy = 1.0 + flash * 1.5 + _night_amount * 1.6
-	_sky3d.moon_energy = 0.6
+	_sky3d.ambient_energy = 1.0 + flash * 1.5 + _night_amount * 2.6
+	_sky3d.moon_energy = 1.0
