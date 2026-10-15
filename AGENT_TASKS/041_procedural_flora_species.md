@@ -107,3 +107,20 @@ rings (`_trunk` 5 rings, palm 9 rings with a slight bulge on every other ring fo
 follow the taper too). Lesson: the gallery framed whole trees from far away and hid this. The
 gallery now has a close-up mode: C toggles it (eye level, close to one species), Left / Right pick
 the species.
+
+### Plant lab and the cactus arms (same day)
+
+User screenshot of a cactus: the arms were plain cylinders crossing the trunk and floating cylinders
+beside it. The arm's rotation had the wrong sign (`Basis(BACK, side * PI/2)` points a piece along
++Y into -side), so each horizontal piece went INTO the trunk while its upward piece stood at the
+correct outer end, detached. Now the arm is placed with `Basis.looking_at(dir) * Basis(RIGHT, -PI/2)`
+(the same way the broadleaf forks are), arms leave in opposite directions (the third at a right
+angle) at different heights, and each upward piece starts where its horizontal piece ends.
+
+New lab `tests/manual/world/plant_lab.tscn` (the user asked for "a lab where we can generate
+randomly and see the results"): one growth form at a time, a row per species, a column per random
+individual. F / Shift+F form, G new random species (new seed), V new random individuals, D realistic,
+A autumn, C close-up of one row (Left / Right individual, Up / Down species). Command line:
+`--form=CACTUS --seed=N --detailed`. Individuals are `PlantMeshes.build(species, random_variant,
+detailed)`. Use it after any change to a plant builder: look at several G / V rerolls in both looks,
+and in close-up, not only at the gallery's overview.

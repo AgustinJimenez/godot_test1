@@ -45,15 +45,20 @@ static func cactus(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGener
 		return
 	builder.add_frustum(Vector3.ZERO, height, s.girth, s.girth * 0.8, 7, _still(s.leaf.darkened(0.2)),
 			_still(s.leaf), rng, 0.04, MeshBuilder.CAP_TOP)
+	# arms: out sideways from the trunk, then up. They leave in opposite directions (the third one
+	# at a right angle) at different heights, each one a horizontal piece that ends where its
+	# upward piece starts.
 	for arm in s.extra:
-		var side := -1.0 if arm % 2 == 0 else 1.0
-		var at := height * rng.randf_range(0.3, 0.62)
+		var yaw := PI * float(arm) + PI * 0.5 * float(arm / 2)
+		var dir := Vector3(cos(yaw), 0.0, sin(yaw))
+		var at := height * (0.3 + 0.1 * float(arm) + rng.randf_range(0.0, 0.08))
 		var reach := s.girth * rng.randf_range(2.0, 3.0)
-		builder.xf = Transform3D(Basis(Vector3.BACK, side * PI * 0.5),
-				Vector3(side * s.girth * 0.7, at, 0.0))
+		var start := dir * s.girth * 0.7 + Vector3(0.0, at, 0.0)
+		builder.xf = Transform3D(
+				Basis.looking_at(dir, Vector3.UP) * Basis(Vector3.RIGHT, -PI * 0.5), start)
 		builder.add_frustum(Vector3.ZERO, reach, s.girth * 0.6, s.girth * 0.6, 6,
 				_still(s.leaf.darkened(0.1)), _still(s.leaf))
-		builder.xf = Transform3D(Basis.IDENTITY, Vector3(side * (s.girth * 0.7 + reach), at, 0.0))
+		builder.xf = Transform3D(Basis.IDENTITY, start + dir * reach)
 		builder.add_frustum(Vector3.ZERO, height * rng.randf_range(0.25, 0.4), s.girth * 0.6,
 				s.girth * 0.45, 6, _still(s.leaf), _still(s.leaf_tip), null, 0.0,
 				MeshBuilder.CAP_TOP)
