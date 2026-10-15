@@ -201,3 +201,23 @@ capped at walk_speed * SWIM_SPEED. New check `tests/manual/world/world_water_wal
 then starts from a standstill in deep water. It FAILED before (moved 0.00 m from a standstill),
 PASS after (drift 0.17 m, 5.6 m in 3 s). gdlint does not catch a duplicate local name: also run the
 headless import after editing a gameplay script.
+
+## Foot IK suite on Godot 4.7.2 vs 4.6.2 (2026-10-15)
+
+Ran `scripts/check_foot_ik_all.sh` on the current tree with 4.7.2 and on the commit before this work
+(3ba8839, in a throwaway worktree) with 4.6.2. Needs on Windows: a `godot` wrapper on PATH (the
+scripts call `godot`), `python3` and `jq`. Results (36 pass, 6 known baseline failures in both):
+- 12 of the 14 "NEW" failures are identical on both engines with identical numbers (e.g.
+  locomotion 10.106/13.363 deg): they pre-date the upgrade and this work (the known-failures list in
+  the script dates from 2026-09-07). Included: "Foot IK project checks" (compile error: autoload
+  `PlayerProfile` not found when a script is checked alone, also what stops `scripts/check.sh` at its
+  GDScript parse step on 4.6.2 and 4.7.2 alike) and a test calling `_update_idle_lower_transition`
+  with the wrong number of arguments.
+- "Foot IK stair lab capture check" fails on 4.6.2 (Condition "!is_inside_tree()" in
+  foot_ik_stair_lab._spawn_player) and passes on 4.7.2.
+- "Foot IK partial upper-foot support check" PASSES on 4.6.2 and FAILS on 4.7.2, deterministic, same on
+  the old commit with 4.7.2, so it is the engine upgrade: `FOOT_IK_KNEE_FLEX_CHECK FAIL right target
+  has no complete upper support patch` (right_flex 30.28 vs 30.86 on 4.6.2). Not investigated.
+- v2 suite (`check_foot_ik_v2.sh`): "turn in place on the stairs, dz=0" fails once (idle check
+  tip_clip_max 0.049 > 0.020) and passes on its repeats; the jq steps could not find
+  `foot_ik_v2_check.jsonl` (the scripts look under ~/Library/Application Support, macOS paths).
