@@ -54,6 +54,7 @@ static func generate(world_seed: int, count: int) -> Array[PlantSpecies]:
 			_niche(species, rng, spread)
 			_shape(species, rng)
 			_name(species, rng, index, used)
+			_leaves(species)
 			species.patch_offset = Vector2(rng.randf_range(-500.0, 500.0), rng.randf_range(-500.0, 500.0))
 			made.append(species)
 	return made
@@ -350,6 +351,63 @@ static func _shape(s: PlantSpecies, rng: RandomNumberGenerator) -> void:
 					Color(0.85, 0.5, 0.2), Color(0.55, 0.35, 0.6)][rng.randi() % 5]
 			s.variants = 2
 	s.size_spread = 0.2 if s.is_tree() else 0.3
+
+
+## The leaf and the branching of a broadleaf tree, from the kind of tree its name says (a birch has
+## small diamond leaves, a willow long narrow ones). Its own dice, so nothing else of the species
+## (or of the world) changes when this is tuned.
+static func _leaves(s: PlantSpecies) -> void:
+	if s.form != F.BROADLEAF:
+		return
+	var dice := RandomNumberGenerator.new()
+	dice.seed = s.seed ^ 0x1EAF
+	var noun: String = s.common_name.get_slice(" ", s.common_name.get_slice_count(" ") - 1)
+	apply_leaf_traits(s, noun, dice)
+
+
+## The leaf and branching traits of a broadleaf species for the kind of tree `noun` (Oak, Maple,
+## Beech, Elm, Ash, Linden, Poplar, Birch or Willow). Public so a lab can try any kind.
+static func apply_leaf_traits(s: PlantSpecies, noun: String, dice: RandomNumberGenerator) -> void:
+	s.limb_count = dice.randi_range(4, 5)
+	match noun:
+		"Oak":
+			_leaf(s, PlantSpecies.LeafShape.LOBED, dice, 1.7, 0.2, 3, 62.0)
+		"Maple":
+			_leaf(s, PlantSpecies.LeafShape.PALMATE, dice, 1.0, 0.17, 2, 50.0)
+		"Beech":
+			_leaf(s, PlantSpecies.LeafShape.OVAL, dice, 1.8, 0.2, 0, 52.0)
+		"Elm":
+			_leaf(s, PlantSpecies.LeafShape.OVAL, dice, 1.6, 0.19, 0, 38.0)
+		"Ash":
+			_leaf(s, PlantSpecies.LeafShape.LANCEOLATE, dice, 3.4, 0.2, 0, 44.0)
+		"Linden":
+			_leaf(s, PlantSpecies.LeafShape.HEART, dice, 1.1, 0.22, 0, 48.0)
+		"Poplar":
+			_leaf(s, PlantSpecies.LeafShape.DIAMOND, dice, 1.2, 0.18, 0, 26.0)
+		"Birch":
+			_leaf(s, PlantSpecies.LeafShape.DIAMOND, dice, 1.3, 0.15, 0, 30.0)
+		"Willow":
+			_leaf(s, PlantSpecies.LeafShape.LANCEOLATE, dice, 4.5, 0.17, 0, 58.0)
+			s.droop = maxf(s.droop, 0.7) # a willow weeps
+		_:
+			_leaf(s, PlantSpecies.LeafShape.OVAL, dice, 1.8, 0.2, 0, 50.0)
+	s.leaf_edge = PlantSpecies.LeafEdge.SMOOTH
+	if noun in ["Elm", "Birch", "Poplar", "Linden"]:
+		s.leaf_edge = PlantSpecies.LeafEdge.SERRATED
+	elif noun in ["Beech", "Willow"]:
+		s.leaf_edge = PlantSpecies.LeafEdge.WAVY
+	s.leaf_pattern = (PlantSpecies.LeafPattern.OPPOSITE if noun == "Maple" or noun == "Ash"
+			else (PlantSpecies.LeafPattern.SPIRAL if noun == "Willow"
+			else PlantSpecies.LeafPattern.ALTERNATE))
+
+
+static func _leaf(s: PlantSpecies, shape: PlantSpecies.LeafShape, dice: RandomNumberGenerator,
+		aspect: float, size: float, lobes: int, angle: float) -> void:
+	s.leaf_shape = shape
+	s.leaf_aspect = aspect * dice.randf_range(0.88, 1.14)
+	s.leaf_size = size * dice.randf_range(0.9, 1.12)
+	s.leaf_lobes = lobes
+	s.limb_angle = angle * dice.randf_range(0.9, 1.1)
 
 
 static func _name(s: PlantSpecies, rng: RandomNumberGenerator, index: int,

@@ -10,6 +10,12 @@ enum Form {
 	CONIFER, BROADLEAF, PALM, BARE_TREE, SHRUB, CACTUS, GRASS, TALL_GRASS, REED, FLOWER, FERN,
 	MUSHROOM,
 }
+## The outline of one leaf of a broadleaf tree (see PlantLeafShapes).
+enum LeafShape { OVAL, LOBED, PALMATE, HEART, LANCEOLATE, DIAMOND }
+## The edge of a leaf (the realistic look draws it; low-poly leaves keep a clean edge).
+enum LeafEdge { SMOOTH, SERRATED, WAVY }
+## How leaves sit along a twig: one per node on alternating sides, two opposite, or in a spiral.
+enum LeafPattern { ALTERNATE, OPPOSITE, SPIRAL }
 ## Plants are scattered one layer at a time, each on its own grid spacing.
 enum Layer { CANOPY, UNDERSTORY, GRASS, MEADOW, COVER }
 
@@ -41,6 +47,16 @@ var wobble := 0.12 ## how irregular the mesh is
 var size_spread := 0.25 ## +- size difference between individuals
 var marked_bark := false ## dark patches on pale bark
 var frosted := false ## white snow on the leaves (cold species)
+
+# Broadleaf crown: branches and single leaves (PlantCrownBuilders).
+var leaf_shape := LeafShape.OVAL
+var leaf_pattern := LeafPattern.ALTERNATE
+var leaf_aspect := 1.8 ## leaf length / leaf width
+var leaf_size := 0.2 ## leaf length as a fraction of the crown radius
+var leaf_lobes := 0 ## lobes per side (lobed leaves)
+var leaf_edge := LeafEdge.SMOOTH
+var limb_count := 4 ## main limbs leaving the trunk top
+var limb_angle := 50.0 ## degrees from vertical the limbs leave at (small: upright, wide: spreading)
 
 # Colours (sRGB, like the old palette).
 var leaf := Color(0.26, 0.5, 0.18)

@@ -9,6 +9,7 @@ const CAP_BOTTOM := 2
 
 var xf := Transform3D.IDENTITY
 var detailed := false # finer geometry for the realistic look: rounder rings, 4x the blob facets
+var leafless := false # a debug look: tree builders leave their leaves out (bare branches and trunk)
 var _vertices := PackedVector3Array()
 var _normals := PackedVector3Array()
 var _colors := PackedColorArray()
@@ -42,7 +43,7 @@ func add_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color) -> v
 func add_frustum(base: Vector3, height: float, r0: float, r1: float, sides: int,
 		color_bottom: Color, color_top: Color, rng: RandomNumberGenerator = null,
 		jitter := 0.0, caps := 0) -> void:
-	if detailed and sides >= 5:
+	if detailed and sides >= 5 and sides < 12: # already round at 12 sides: no more
 		sides *= 2
 	var bottom_ring: Array[Vector3] = []
 	var top_ring: Array[Vector3] = []

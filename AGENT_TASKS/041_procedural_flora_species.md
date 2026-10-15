@@ -133,3 +133,190 @@ stalk is tall times `crown` (up to 1.3), so neighbouring caps cut into each othe
 the two cap radii plus 3 cm away, retrying 24 times (no free spot: that mushroom is left out).
 `species_check` tests it: 900 random clumps over three seeds, the least room between two caps is
 3.7 cm. The plant lab's close-up now frames the plant by its size (a mushroom was a speck).
+
+## Branches and single leaves instead of the leaf-ball crown (2026-10-15, step 1, NOT committed)
+
+The user asked for tree crowns made of branches and actual leaves with unique shapes, built one kind
+at a time. Design agreed in chat: limbs -> branches -> twigs (tubes, `PlantTreeBuilders.tube`),
+single leaves on the twigs in the species' pattern, a leaf outline per species, both looks
+(low-poly: fewer bigger flat leaves; realistic: more, smaller, curled), near trees keep the full
+crown out to the distance where the far stand-ins start, measure the cost.
+
+Built so far (only OVAL leaves, i.e. beech and elm; every other species still has the old crown
+until its leaf shape is done: `PlantCrownBuilders.supports()` is the switch):
+- `plant_species.gd`: `LeafShape` (OVAL, LOBED, PALMATE, HEART, LANCEOLATE, DIAMOND), `LeafPattern`,
+  `leaf_shape/pattern/aspect/size/lobes`, `limb_count`, `limb_angle`.
+- `species_generator.gd` `_leaves()`: leaf traits from the NOUN of the name (oak lobed, maple
+  palmate, beech and elm oval, ash narrow, linden heart, poplar and birch diamond, willow very
+  narrow), on their own dice (`seed ^ 0x1EAF`) so nothing else of the species or the world changes.
+- `plant_leaf_shapes.gd`: leaf outline in leaf space and `add_leaf` (a fan of triangles around a
+  centre lifted along the normal = folded midrib; tip curl in the realistic look).
+- `plant_crown_builders.gd`: the branching (golden-angle limbs, 4 branches per limb, 4 twigs per
+  branch, 5 / 8 leaves per twig low-poly / realistic, alternate / opposite / spiral).
+- Lab: `plant_lab` C cycles the view (all / trunk / crown); labels now say the leaf shape and limbs.
+  X toggles a free camera: W A S D fly (Q down, E up, Shift fast, wheel = speed) and holding the
+  right mouse button looks around; in free mode A and D fly the camera, so L (realistic) and U
+  (autumn) do what D and A do; R puts the camera back on the framed view.
+- `world_render_stats.tscn`: real-window render cost (triangles, draw calls, CPU frame, FPS); run it
+  with `-- --realistic` for the realistic look (the headless `--perf` cannot see triangles).
+
+Measured, seed 1337, standing in a forest and turning once (baseline = old crowns everywhere):
+low-poly 1.08M triangles/frame (worst 1.58M) -> 1.32M (worst 2.02M), CPU frame 5.76 -> 6.34 ms;
+realistic 3.35M (worst 5.31M) -> 3.69M (worst 5.93M), 5.60 -> 6.24 ms; draw calls unchanged; 120 FPS
+in both. That is with only the two oval-leaf species converted; expect about twice the increase when
+all broadleaf species have it. Largest tree mesh: 6160 triangles (budget 12000).
+Next kinds, one at a time: lobed (oak), palmate (maple), heart (linden), diamond (birch, poplar),
+narrow (ash; willow with hanging branches).
+
+### Branch joints (user screenshot, same day)
+
+"Branches not well connected": two faults in my first crown. (1) `PlantTreeBuilders.tube` drew its
+rings flat on the horizontal plane, which is right for an upright trunk and turns a sideways branch
+into a flat ribbon; the rings now stand at right angles to the path (a frame carried along it
+without twisting). (2) The tubes were open at both ends and a branch started on its parent's axis
+with the trunk top uncapped: tips and the trunk top are now capped (`caps` argument), a child
+starts a little inside its parent (parent radius there * 1.1) and the limbs start well inside the
+trunk top. Checked in the plant lab crown view and with the free camera at the joints.
+
+### Wind sync and the chain look (user report, same day)
+
+Two faults in the crown. (1) Wind: every ring of a branch carried one fixed sway weight (alpha) per
+depth, so a twig, which sways more, started away from the point of its branch it grows from (that
+point sways less): the joints moved apart. The weight is now continuous: it starts at 0 at the top of
+the trunk, grows along each tube (`SWAY_GAIN`), a child starts with the value its parent has at that
+spot, a leaf's stalk has the twig's value and its tip adds `LEAF_SWAY_GAIN`. (2) A child had half its
+parent's BASE radius, as thick as the parent's end, and left at a shallow angle, so thick pieces ran
+on in a row and overlapped like a chain: children now have `CHILD_RADIUS` (0.6) of the parent's radius
+where they leave and a wider angle (tangent 0.4, outward 0.9, up 0.25). The plant lab got T (calm,
+breeze, gale) to look at the sway.
+
+### Cylinders poking out of the parent, blunt twig tips (user report, same day)
+
+(1) A child started `1.1 x` the parent's radius behind the parent's centre line, i.e. past the far
+side of the parent, so its first ring and the cylinder after it came out of the back of the parent.
+It now starts `BURY` (0.4) of the parent's radius behind the attach point, which keeps the whole
+ring inside the parent (the limbs likewise start 0.5 limb radii inside the trunk top). (2) Every
+tube ended at half its radius with a flat cap, so twigs ended as short cylinders: tubes now end at
+`TIP_RADIUS` (limb 0.4, branch 0.25, twig 0.05 of its start radius), twigs end in a point, and the
+child radius follows the tapered parent. The plant lab got a fourth view, C: branches (close-up of
+the trunk top where the limbs leave and split).
+
+### Curved branches (user remark, same day)
+
+Branches were a few straight segments with random kinks (stiff, and the thin ends that move most in
+wind were the most rigid). Each branch is now one smooth arc: `CURVE` (limb 0.5, branch 0.8, twig 1.2
+rad at most, random 35-100% of it, to either side, in a random plane through the branch), more rings
+(`RINGS` 6 / 5 / 3), a little `WANDER`, `LIFT` for the limbs reaching up and `SAG` so thin twigs droop
+under their leaves. Cost: largest tree mesh 6638 -> 7982 triangles (budget 12000); render stats,
+seed 1337: low-poly 1.42M triangles/frame (old crowns 1.08M), realistic 3.83M (3.35M), CPU frame
+6.3 ms in both, 120 FPS, with only beech and elm converted.
+
+### Plant lab: one plant at a time, the mouse turns around it (user request, same day)
+
+`plant_lab.tscn` now opens on ONE plant. Left / Right step through every plant of every row (the
+next individual, 6 per species), Up / Down the species; the mouse (captured) turns the camera around
+the plant at a constant distance, the wheel zooms, M (or Esc) gives the mouse back (then hold the
+left button to turn). C cycles the view: individual, trunk, crown, branches (all orbit the plant,
+each with its own target height, distance and pitch scaled by the plant's size) and overview (all
+the plants of the form, as before). R puts the angle and zoom back; X is still the free camera (W A S D
+fly, right mouse looks); L / U / T as before. Only the focused plant is shown in the orbit views.
+The orbit was tested by injecting mouse-motion and wheel events (the camera stays at the same distance
+from the plant while it goes round; the wheel zooms).
+
+### Flat trunk top, planks for branches (user screenshot, same day)
+
+The trunk ended in a flat cut (a disc) with the limbs coming out of it, and the tubes had so few
+sides (limbs 6, trunk 7) that they read as planks. Now the top of the trunk narrows into a rounded
+dome (two more rings: 0.8 and 0.3 of the top radius, capped) and the limbs start well down inside
+that dome (2 limb radii below the top, 0.7 of the trunk-top radius thick instead of 0.55); the trunk
+has 9 sides, limbs 8, branches 6, twigs 4 (the realistic look doubles them). The lab's branches view
+now looks from just under the join.
+
+### Branches that ended bare (user report, same day)
+
+Children were placed along 30-85% of a parent, so the last stretch of every limb and branch was a
+bare tapered cone. In a real tree a branch never ends bare: it keeps dividing, and only the last
+twigs end, each in a leaf or bud. The last child (the "leader") now starts at the very tip and grows
+straight on (direction mostly the tangent, half the parent's length), the other three spread along
+30-85% as before; so limbs and branches end in twigs, and twigs end in a pointed tip with a leaf.
+
+### Lab key H: leaves hidden (user request, same day)
+
+`MeshBuilder.leafless` (a debug look): `PlantMeshes.build(species, variant, detailed, leafless)` builds
+a tree without its leaves (the new crown skips its leaves, the old crown skips its lumps and leaf
+cards); the branches are identical to the leafy mesh. The plant lab's H toggles it. Nothing in the
+game sets it.
+
+### Round trunks (user remark, same day)
+
+Trunks were 6-9 sided prisms (12-18 in the realistic look) and low-poly shading shows every side.
+Sides now: broadleaf trunk 14, conifer trunk 12, palm trunk 10 (dead tree 16), crown limbs 11,
+branches 8, twigs 5 low-poly (12 / 10 / 6 realistic: the crown chooses its own, `tube(...,
+refine=false)`); the radial wobble of the conifer and dead trunks went from 0.07-0.12 to 0.03 / 0.04,
+so a trunk is round and not lumpy. `add_frustum` and `tube` stop doubling the sides for the
+realistic look at 12 or more (already round). Cost, seed 1337: low-poly 1.54M triangles/frame, CPU 5.3
+ms; realistic 3.91M, CPU 5.9 ms (before the sides rise: 1.42M / 3.83M, 6.3 ms); largest tree mesh
+8678 triangles (budget 12000).
+
+### Steps where a branch carries on (user screenshot, same day)
+
+Where a limb or branch ends and the next one carries on (the "leader" child at its tip), the parent
+was closed with a cap at 0.4 / 0.25 of its radius and the leader started at 0.6 x that, buried 0.4
+radii back: a visible ring and a step in diameter. The leader now starts exactly at the parent's tip
+with the parent's tip radius (no burying), uses the parent's number of sides (`sides_depth`), and the
+parent is not capped when something continues it (only twigs are capped); the leader's kink is
+smaller (direction 0.95 tangent). `_branch(..., continues)`. Checked in the lab (H, branches view).
+
+### Which trees have the new crown (user could not find it, same day)
+
+Only species whose leaf shape is OVAL: Beech and Elm (`PlantCrownBuilders.supports()`); Linden,
+Birch, Oak, Maple, Ash, Poplar, Willow keep the old ball crown until their leaf shape is done. In the
+lab at seed 1337 plant 1 is a Linden (old crown), the Beech is plant 7, the Elm plant 13. The lab now
+opens on the first new-crown tree of the form and the label says "(new crown)" or "(old crown)". A
+procedural world only has the species its seed drew, so a world may have no beech or elm at all.
+
+## Every leafy species has the branch crown, one leaf kind at a time (same day, NOT committed)
+
+Built and looked at in the plant lab (new key K: sets what kind of tree the leafy species are, so a
+shape can be seen without a seed that draws it), in this order: lobed (oak: notch, lobe, notch...
+three lobes a side), palmate (maple: five lobes fanning from a point, leaf size 0.17 and shallow
+notches because the first try buried the branches), heart (linden), diamond (birch, poplar), narrow
+(ash, willow). `PlantCrownBuilders.IMPLEMENTED` lists the kinds that get the crown: now all six, so
+every broadleaf species has branches and single leaves; the old ball crown code is still in
+`PlantTreeBuilders.broadleaf` below `supports()` (unused now: delete it when the user is happy).
+Willow: its branches hang (`DROOP_SAG` x the species' droop; `apply_leaf_traits` gives a willow
+droop >= 0.7).
+
+Per-leaf variation: every leaf has its own asymmetry (one side up to 18% wider) and its tip bent
+sideways (up to 12% of its length, more on narrow leaves) next to the length (80-120%) and colour
+spread it already had. Species edge (`leaf_edge`): serrated (elm, birch, poplar, linden) and wavy
+(beech, willow); drawn only in the realistic look (every other outline point pulled in 20% / 8%),
+the low-poly look keeps clean edges.
+
+Cost (lesson): the first version with teeth doubled the leaf points and the realistic meshes reached
+13-20k triangles (SPECIES_CHECK limit 12000). Now: teeth add 2 points a side instead of the extra
+roundness, diamond leaves use the same few points as oval, 5 leaves per twig (4 low-poly). Largest
+tree mesh 11982 triangles. Render stats, seed 1337, forest, all broadleaf converted: low-poly 2.09M
+triangles/frame (old crowns 1.08M), realistic 4.74M (3.35M); CPU frame 6.3 ms, 120 FPS, draw calls
+unchanged. The realistic look is the one near the limit: if more is added, take leaves off first.
+Not done: sun and shade leaves, leaves that differ by position, veins, a lab view of one leaf alone.
+
+## Conifers: whorled branches and needle sprays (same day, NOT committed, first pass)
+
+The user pointed out that only the leafy trees had the new crown. `plant_conifer_builders.gd`
+(`PlantConiferBuilders.build`, used by `PlantMeshes` for `Form.CONIFER`; the old stacked-cone builder
+`PlantTreeBuilders.conifer` is unused now, `far()` still draws the horizon version): a straight trunk
+narrowing to a leader, whorls of 5-6 branches every 0.5-0.9 m (turned against the whorl below),
+drooping by the species' `droop` with their tips lifting, 2 branchlets each, and sprays of single
+needles (fan of thin triangles, 9 low-poly / 11 realistic) at every branch and branchlet tip and half
+way along a branch, plus four at the leader. Same rules as the leafy crown: tubes start inside their
+parent, taper under a spray, wind weight grows continuously from the trunk to the needle tips;
+frosted species get white needle tips. Largest tree mesh 11982 triangles (first try with 1.4 m whorl
+spacing was bare, with 13 needles and 3 branchlets realistic it was 13.7k). Looked at in the lab
+(Snow Fir) low-poly only. Not measured yet: render cost with conifers converted. Next: palm (a ring of
+pinnate fronds: a curved rachis with leaflets), shrub (stems from the ground with the leafy-crown
+builder at small scale).
+
+Open design question from the user (answered in chat): broadleaf and conifer need not be separate
+forms; one tree builder driven by traits (leader strength, branch arrangement whorled / spiral,
+droop, leaf kind blade / needle / frond) would also give mixed species. Not done.

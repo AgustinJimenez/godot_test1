@@ -17,8 +17,8 @@ static func _sway(color: Color, amount: float) -> Color:
 static func conifer(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGenerator) -> void:
 	var height := s.height * rng.randf_range(0.9, 1.1)
 	var trunk := height * s.bare
-	builder.add_frustum(Vector3.ZERO, trunk * 1.5, s.girth, s.girth * 0.55, 6,
-			_still(s.bark.darkened(0.3)), _still(s.bark), rng, s.wobble * 0.7)
+	builder.add_frustum(Vector3.ZERO, trunk * 1.5, s.girth, s.girth * 0.55, 12,
+			_still(s.bark.darkened(0.3)), _still(s.bark), rng, 0.03)
 	var tiers := s.count + rng.randi_range(-1, 1)
 	var green := s.leaf.lerp(s.leaf.lightened(0.1), rng.randf())
 	var top_color := Color(0.93, 0.95, 0.98) if s.frosted else s.leaf_tip
@@ -46,10 +46,13 @@ static func broadleaf(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGe
 			var at := float(mark) * 0.8 + 0.4
 			var radius := lerpf(s.girth, s.girth * s.taper, at / trunk) * 1.04
 			builder.add_frustum(_trunk_centre(tilt, trunk, at / trunk), 0.12, radius, radius * 0.99,
-					6, _still(Color(0.12, 0.12, 0.1)), _still(Color(0.12, 0.12, 0.1)))
+					14, _still(Color(0.12, 0.12, 0.1)), _still(Color(0.12, 0.12, 0.1)))
 	var top := tilt + Vector3(0.0, trunk, 0.0)
 	var crown_height := (height - trunk) * 0.5
 	var centre := top + Vector3(0.0, crown_height * 0.7, 0.0)
+	if PlantCrownBuilders.supports(s): # branches and single leaves instead of balls of leaves
+		PlantCrownBuilders.new(builder, s, rng).grow(top, crown_height)
+		return
 	var reach := s.crown * 0.7
 	# The crown is built evenly: the forks leave the trunk at equal angles with equal reach, each
 	# one ends in a lump of leaves, and the remaining lumps sit on the axis and on a ring between
@@ -83,6 +86,8 @@ static func broadleaf(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGe
 		spot.y = maxf(spot.y, top.y + size * 0.4) # never hangs below the trunk's top
 		var radius := Vector3(size, size * s.aspect * rng.randf_range(0.8, 1.0), size)
 		var tone := s.leaf.lerp(s.leaf.lightened(0.08), rng.randf())
+		if builder.leafless:
+			continue
 		builder.add_blob(spot, radius, _sway(tone.darkened(0.25), 0.4), _sway(s.leaf_tip, 1.0), rng,
 				s.wobble + 0.06)
 		if builder.detailed:
@@ -105,7 +110,7 @@ static func palm(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGenerat
 		centres.append(Vector3(lean.x * along * along, height * along, lean.z * along * along))
 		radii.append((s.girth - along * s.girth * 0.3) * (1.0 + 0.07 * float(index % 2)))
 		colors.append(_still(s.bark.darkened(0.15 * (1.0 - along))))
-	_tube(builder, centres, radii, colors, 6, rng, 0.03)
+	tube(builder, centres, radii, colors, 12, rng, 0.03, MeshBuilder.CAP_TOP)
 	builder.xf = Transform3D(Basis.IDENTITY, centres[rings - 1])
 	for frond in s.count:
 		var yaw := TAU * float(frond) / float(s.count) + rng.randf_range(-0.2, 0.2)
@@ -126,8 +131,8 @@ static func palm(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGenerat
 ## A dead tree: a tapering trunk with bare branches.
 static func bare_tree(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGenerator) -> void:
 	var height := s.height * rng.randf_range(0.85, 1.15)
-	builder.add_frustum(Vector3.ZERO, height, s.girth, s.girth * 0.27, 6, _still(s.bark.darkened(0.2)),
-			_still(s.bark), rng, 0.12)
+	builder.add_frustum(Vector3.ZERO, height, s.girth, s.girth * 0.27, 16,
+			_still(s.bark.darkened(0.2)), _still(s.bark), rng, 0.04)
 	for branch in s.count + rng.randi_range(-1, 1):
 		builder.xf = Transform3D(Basis(Vector3.UP, rng.randf() * TAU)
 				* Basis(Vector3.RIGHT, rng.randf_range(0.7, 1.2)),
@@ -165,7 +170,14 @@ static func _trunk(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGener
 		centres.append(_trunk_centre(tilt, trunk, along))
 		radii.append(lerpf(s.girth, s.girth * s.taper, along))
 		colors.append(_still(s.bark.darkened(0.25 * (1.0 - along))))
-	_tube(builder, centres, radii, colors, 7, rng, 0.06)
+	# the top of the trunk is a rounded dome the limbs grow out of (a flat cut shows as a disc)
+	var top_radius := s.girth * s.taper
+	var top := centres[centres.size() - 1]
+	for dome in [[0.5, 0.8], [0.95, 0.3]]:
+		centres.append(top + Vector3(0.0, top_radius * float(dome[0]), 0.0))
+		radii.append(top_radius * float(dome[1]))
+		colors.append(colors[colors.size() - 1])
+	tube(builder, centres, radii, colors, 14, rng, 0.05, MeshBuilder.CAP_TOP)
 
 
 ## Where the axis of a leaning trunk is at `along` (0 foot, 1 top): it leans more toward the top.
@@ -174,20 +186,43 @@ static func _trunk_centre(tilt: Vector3, trunk: float, along: float) -> Vector3:
 
 
 ## One continuous tube through ring centres. Neighbouring pieces share their ring, so a leaning or
-## bending trunk has no steps, gaps or colour bands (stacked separate cones had all three).
-static func _tube(builder: MeshBuilder, centres: Array[Vector3], radii: Array[float],
-		colors: Array[Color], sides: int, rng: RandomNumberGenerator, wobble: float) -> void:
-	if builder.detailed and sides >= 5:
+## bending trunk has no steps, gaps or colour bands (stacked separate cones had all three). The
+## rings stand at right angles to the path (carried along it without twisting), so a branch that
+## runs sideways is as round as an upright trunk. `caps` closes the tube at its end(s)
+## (MeshBuilder.CAP_*).
+static func tube(builder: MeshBuilder, centres: Array[Vector3], radii: Array[float],
+		colors: Array[Color], sides: int, rng: RandomNumberGenerator, wobble: float,
+		caps := 0, refine := true) -> void:
+	# the realistic look doubles the sides, unless the caller chose them (`refine` false) or the tube
+	# is already round at 12
+	if refine and builder.detailed and sides >= 5 and sides < 12:
 		sides *= 2
+	var count := centres.size()
 	var rings: Array[PackedVector3Array] = []
-	for ring in centres.size():
+	var side := Vector3.ZERO
+	var last_tangent := Vector3.ZERO
+	for ring in count:
+		var tangent := (centres[mini(ring + 1, count - 1)] - centres[maxi(ring - 1, 0)]).normalized()
+		if ring == 0:
+			# any direction at right angles to the path will do to start with
+			var reference := Vector3.RIGHT if absf(tangent.x) < 0.8 else Vector3.FORWARD
+			side = (reference - tangent * tangent.dot(reference)).normalized()
+		else:
+			# turn the frame by the same turn the path made, so it does not twist
+			var turn := last_tangent.cross(tangent)
+			if turn.length_squared() > 0.000001:
+				side = side.rotated(turn.normalized(), last_tangent.angle_to(tangent))
+			side = (side - tangent * tangent.dot(side)).normalized()
+		last_tangent = tangent
+		var across := side.cross(tangent) # side x across = -tangent: the winding of a cone
 		var points := PackedVector3Array()
 		for index in sides:
 			var angle := TAU * float(index) / float(sides)
 			var jitter := 1.0 + rng.randf_range(-wobble, wobble)
-			points.append(centres[ring] + Vector3(cos(angle), 0.0, sin(angle)) * radii[ring] * jitter)
+			points.append(centres[ring] + (side * cos(angle) + across * sin(angle)) * radii[ring]
+					* jitter)
 		rings.append(points)
-	for ring in centres.size() - 1:
+	for ring in count - 1:
 		for index in sides:
 			var next := (index + 1) % sides
 			var low: Color = colors[ring]
@@ -195,3 +230,10 @@ static func _tube(builder: MeshBuilder, centres: Array[Vector3], radii: Array[fl
 			builder.add_tri(rings[ring][index], rings[ring + 1][index], rings[ring][next], low, high, low)
 			builder.add_tri(rings[ring][next], rings[ring + 1][index], rings[ring + 1][next], low, high,
 					high)
+	for index in sides:
+		var next := (index + 1) % sides
+		if caps & MeshBuilder.CAP_TOP:
+			builder.add_tri(centres[count - 1], rings[count - 1][next], rings[count - 1][index],
+					colors[count - 1])
+		if caps & MeshBuilder.CAP_BOTTOM:
+			builder.add_tri(centres[0], rings[0][index], rings[0][next], colors[0])

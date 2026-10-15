@@ -4,13 +4,15 @@ extends RefCounted
 ## of that species and variant (so a variant is always the same mesh, and no two variants match).
 
 
-static func build(species: PlantSpecies, variant: int, detailed: bool) -> ArrayMesh:
+static func build(species: PlantSpecies, variant: int, detailed: bool,
+		leafless := false) -> ArrayMesh:
 	var rng := _rng(species, variant)
 	var builder := MeshBuilder.new()
 	builder.detailed = detailed
+	builder.leafless = leafless
 	match species.form:
 		PlantSpecies.Form.CONIFER:
-			PlantTreeBuilders.conifer(builder, species, rng)
+			PlantConiferBuilders.build(builder, species, rng)
 		PlantSpecies.Form.BROADLEAF:
 			PlantTreeBuilders.broadleaf(builder, species, rng)
 		PlantSpecies.Form.PALM:
