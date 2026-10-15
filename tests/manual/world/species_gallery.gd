@@ -1,7 +1,8 @@
 extends Node3D
 ## Shows every plant species of a seed side by side (a column per species, variants behind it).
 ## Keys: 1 trees, 2 shrubs and cacti, 3 grasses and reeds, 4 flowers, ferns and mushrooms,
-## R a new random seed, D low-poly / realistic meshes, A autumn on / off.
+## R a new random seed, D low-poly / realistic meshes, A autumn on / off, C close-up of the trunks
+## (then Left / Right pick the species).
 
 const PAGES := [
 	{"name": "Trees", "forms": [PlantSpecies.Form.CONIFER, PlantSpecies.Form.BROADLEAF,
@@ -18,10 +19,13 @@ var seed_value := 1337
 var page := 0
 var detailed := false
 var autumn := false
+var closeup := false
+var focus := 0
 var _registry: SpeciesRegistry
 var _plants: Node3D
 var _camera: Camera3D
 var _label: Label
+var _shown_count := 0
 
 
 func _ready() -> void:
@@ -103,11 +107,20 @@ func _show() -> void:
 		tag.position = Vector3(x, -0.0, gap * 0.9)
 		tag.no_depth_test = true
 		_plants.add_child(tag)
+	_shown_count = shown.size()
+	focus = clampi(focus, 0, maxi(shown.size() - 1, 0))
 	var span := float(shown.size()) * gap
 	var distance := maxf(span * 0.6, tallest * 2.1)
-	_camera.position = Vector3(0.0, tallest * 0.55 + 1.0, distance * 0.9)
-	_camera.look_at(Vector3(0.0, tallest * 0.4, -gap), Vector3.UP)
-	_label.text = "%s  seed %d  %s%s   [1-4] page  [R] new seed  [D] realistic  [A] autumn" % [
+	if closeup:
+		# eye level, close to one species' trunks (the variants stand behind each other)
+		var x := (float(focus) - float(shown.size() - 1) * 0.5) * gap
+		_camera.position = Vector3(x, 1.5 * scale, 5.0 * scale)
+		_camera.look_at(Vector3(x, 1.8 * scale, 0.0), Vector3.UP)
+	else:
+		_camera.position = Vector3(0.0, tallest * 0.55 + 1.0, distance * 0.9)
+		_camera.look_at(Vector3(0.0, tallest * 0.4, -gap), Vector3.UP)
+	_label.text = ("%s  seed %d  %s%s   [1-4] page  [R] new seed  [D] realistic  [A] autumn"
+			+ "  [C] close-up (Left / Right)") % [
 			info["name"], seed_value, "realistic" if detailed else "low-poly",
 			"  autumn" if autumn else ""]
 
@@ -125,6 +138,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			detailed = not detailed
 		KEY_A:
 			autumn = not autumn
+		KEY_C:
+			closeup = not closeup
+		KEY_LEFT:
+			focus = maxi(focus - 1, 0)
+		KEY_RIGHT:
+			focus = mini(focus + 1, maxi(_shown_count - 1, 0))
 		_:
 			return
 	_show()

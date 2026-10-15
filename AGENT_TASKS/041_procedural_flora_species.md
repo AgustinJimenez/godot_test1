@@ -94,3 +94,16 @@ between the forks; a single fork is dropped (it only looked like a crooked branc
 radius jitter went from +-10% to +-3% so the tiers shrink evenly. Looked at in the species gallery
 (low-poly and realistic, two seeds). If the user meant something else by "divided" (e.g. the
 trunk pieces of palms), ask which species.
+
+### The "divided" trees were the trunks (same day, found from a user screenshot)
+
+The user still saw divided trees after the crown change: the trunk of a broadleaf tree was three
+separate stacked cones, each straight and each with its own random rim wobble and its own dark to
+light colour ramp. On a leaning tree the pieces were shifted sideways by `tilt * t^2` per piece, so
+they did not meet (visible steps), and the colour banded at every joint. Palm trunks (5 stacked
+pieces) had the same fault. Now `PlantTreeBuilders._tube` builds one continuous tube through shared
+rings (`_trunk` 5 rings, palm 9 rings with a slight bulge on every other ring for the ringed look);
+`_trunk_centre` is the single formula for the lean, also used by the birch bark marks (which now
+follow the taper too). Lesson: the gallery framed whole trees from far away and hid this. The
+gallery now has a close-up mode: C toggles it (eye level, close to one species), Left / Right pick
+the species.

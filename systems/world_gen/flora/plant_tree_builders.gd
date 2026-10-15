@@ -44,8 +44,8 @@ static func broadleaf(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGe
 	if s.marked_bark: # the dark patches on pale bark
 		for mark in int(trunk / 0.8):
 			var at := float(mark) * 0.8 + 0.4
-			var shift := tilt * (at / trunk) * (at / trunk)
-			builder.add_frustum(Vector3(shift.x, at, shift.z), 0.12, s.girth * 1.02, s.girth * 1.01,
+			var radius := lerpf(s.girth, s.girth * s.taper, at / trunk) * 1.04
+			builder.add_frustum(_trunk_centre(tilt, trunk, at / trunk), 0.12, radius, radius * 0.99,
 					6, _still(Color(0.12, 0.12, 0.1)), _still(Color(0.12, 0.12, 0.1)))
 	var top := tilt + Vector3(0.0, trunk, 0.0)
 	var crown_height := (height - trunk) * 0.5
@@ -95,18 +95,18 @@ static func palm(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGenerat
 	var height := s.height * rng.randf_range(0.9, 1.1)
 	var lean := Vector3(rng.randf_range(-1.0, 1.0), 0.0, rng.randf_range(-1.0, 1.0)).normalized() \
 			* height * s.lean * rng.randf_range(0.6, 1.4)
-	var segments := 5
-	var top := Vector3.ZERO
-	for index in segments:
-		var along := float(index) / float(segments)
-		var shift := lean * along * along
-		builder.xf = Transform3D(Basis.IDENTITY, Vector3(shift.x, height * along, shift.z))
-		builder.add_frustum(Vector3.ZERO, height / float(segments) * 1.05,
-				s.girth - along * s.girth * 0.3, s.girth * 0.9 - (along + 0.2) * s.girth * 0.3, 6,
-				_still(s.bark.darkened(0.15 * (1.0 - along))), _still(s.bark), rng, 0.04)
-		top = Vector3(shift.x, height * along, shift.z)
-	builder.xf = Transform3D(Basis.IDENTITY, top + Vector3(lean.x * 0.2, height / float(segments),
-			lean.z * 0.2))
+	# one continuous bent trunk; the slight bulge on every other ring gives the palm's ringed look
+	var rings := 9
+	var centres: Array[Vector3] = []
+	var radii: Array[float] = []
+	var colors: Array[Color] = []
+	for index in rings:
+		var along := float(index) / float(rings - 1)
+		centres.append(Vector3(lean.x * along * along, height * along, lean.z * along * along))
+		radii.append((s.girth - along * s.girth * 0.3) * (1.0 + 0.07 * float(index % 2)))
+		colors.append(_still(s.bark.darkened(0.15 * (1.0 - along))))
+	_tube(builder, centres, radii, colors, 6, rng, 0.03)
+	builder.xf = Transform3D(Basis.IDENTITY, centres[rings - 1])
 	for frond in s.count:
 		var yaw := TAU * float(frond) / float(s.count) + rng.randf_range(-0.2, 0.2)
 		var out := Vector3(cos(yaw), 0.0, sin(yaw))
@@ -156,13 +156,42 @@ static func far(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGenerato
 
 static func _trunk(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGenerator, trunk: float,
 		tilt: Vector3) -> void:
-	var pieces := 3
-	for index in pieces: # a leaning trunk is a few short stacked pieces
-		var from := float(index) / float(pieces)
-		var to := float(index + 1) / float(pieces)
-		var shift := tilt * from * from
-		builder.xf = Transform3D(Basis.IDENTITY, Vector3(shift.x, trunk * from, shift.z))
-		builder.add_frustum(Vector3.ZERO, trunk / float(pieces) * 1.02,
-				lerpf(s.girth, s.girth * s.taper, from), lerpf(s.girth, s.girth * s.taper, to), 7,
-				_still(s.bark.darkened(0.25 * (1.0 - from))), _still(s.bark), rng, 0.08)
-	builder.xf = Transform3D.IDENTITY
+	var rings := 5
+	var centres: Array[Vector3] = []
+	var radii: Array[float] = []
+	var colors: Array[Color] = []
+	for index in rings:
+		var along := float(index) / float(rings - 1)
+		centres.append(_trunk_centre(tilt, trunk, along))
+		radii.append(lerpf(s.girth, s.girth * s.taper, along))
+		colors.append(_still(s.bark.darkened(0.25 * (1.0 - along))))
+	_tube(builder, centres, radii, colors, 7, rng, 0.06)
+
+
+## Where the axis of a leaning trunk is at `along` (0 foot, 1 top): it leans more toward the top.
+static func _trunk_centre(tilt: Vector3, trunk: float, along: float) -> Vector3:
+	return Vector3(tilt.x * along * along, trunk * along, tilt.z * along * along)
+
+
+## One continuous tube through ring centres. Neighbouring pieces share their ring, so a leaning or
+## bending trunk has no steps, gaps or colour bands (stacked separate cones had all three).
+static func _tube(builder: MeshBuilder, centres: Array[Vector3], radii: Array[float],
+		colors: Array[Color], sides: int, rng: RandomNumberGenerator, wobble: float) -> void:
+	if builder.detailed and sides >= 5:
+		sides *= 2
+	var rings: Array[PackedVector3Array] = []
+	for ring in centres.size():
+		var points := PackedVector3Array()
+		for index in sides:
+			var angle := TAU * float(index) / float(sides)
+			var jitter := 1.0 + rng.randf_range(-wobble, wobble)
+			points.append(centres[ring] + Vector3(cos(angle), 0.0, sin(angle)) * radii[ring] * jitter)
+		rings.append(points)
+	for ring in centres.size() - 1:
+		for index in sides:
+			var next := (index + 1) % sides
+			var low: Color = colors[ring]
+			var high: Color = colors[ring + 1]
+			builder.add_tri(rings[ring][index], rings[ring + 1][index], rings[ring][next], low, high, low)
+			builder.add_tri(rings[ring][next], rings[ring + 1][index], rings[ring + 1][next], low, high,
+					high)
