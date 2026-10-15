@@ -1,8 +1,9 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://tests/manual/foot_ik_v2/foot_ik_v2_lab.gd" id="1_lab"]
 [ext_resource type="PackedScene" path="res://actors/player/player.tscn" id="2_player"]
 [ext_resource type="Script" path="res://tests/manual/foot_ik_v2/foot_ik_v2_lab_row.gd" id="3_row"]
+[ext_resource type="Script" path="res://tests/manual/foot_ik_v2/foot_ik_v2_lab_climb.gd" id="4_climb"]
 
 [sub_resource type="Environment" id="Environment_v2"]
 background_mode = 1
@@ -12,10 +13,10 @@ ambient_light_color = Color(0.6, 0.62, 0.68, 1)
 ambient_light_energy = 0.6
 
 [sub_resource type="BoxMesh" id="BoxMesh_floor"]
-size = Vector3(140, 0.4, 40)
+size = Vector3(140, 0.4, 100)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
-size = Vector3(140, 0.4, 40)
+size = Vector3(140, 0.4, 100)
 
 [node name="FootIKV2Lab" type="Node3D"]
 script = ExtResource("1_lab")
@@ -43,3 +44,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
 
 [node name="ComparisonRow" type="Node" parent="."]
 script = ExtResource("3_row")
+
+[node name="ClimbCourse" type="Node" parent="."]
+script = ExtResource("4_climb")

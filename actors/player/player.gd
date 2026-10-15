@@ -86,6 +86,7 @@ var stamina: float
 var _sprint_locked := false
 var _crouched := false
 var _dead := false
+var climb: PlayerClimb = null # ledge climbing, opt-in (player_climb_install.gd)
 var _debug_cam_active := false
 var _roll_time_left := 0.0
 var _roll_cooldown_left := 0.0
@@ -135,6 +136,7 @@ var movement_input_override: Variant = null
 var debug_movement_input := Vector2.ZERO
 var _smoothed_input_dir := Vector2.ZERO
 var _ledge_direction_blocked := false
+var _ledge_commit := PlayerLedgeCommit.new() # holding into a blocked drop commits to the fall
 var gameplay_action_input_enabled := true
 var _stair_controller := STAIR_CONTROLLER.new()
 var _stair_hover_offset_y: float:
@@ -331,10 +333,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed(&"flashlight"):
 		flashlight.visible = not flashlight.visible
 	elif event.is_action_pressed(&"crouch") and not detached_cam_active:
-		# "crouch" also drives the detached camera's own descend - see
-		# _process() - without this guard it toggled the body's crouch
-		# state too every time you flew the camera downward.
-		if _crouched and uncrouch_check.is_colliding():
+		# the detached camera also descends on "crouch" (see _process()): no body crouch then
+		if climb != null and climb.wants_crouch():
+			pass  # crouch drops from a ledge instead
+		elif _crouched and uncrouch_check.is_colliding():
 			pass  # no headroom to stand up
 		else:
 			_crouched = not _crouched
@@ -434,6 +436,7 @@ func _catch_up_body_yaw(input_dir: Vector2, sprinting: bool, delta: float) -> vo
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
+	if climb != null and climb.update(delta): return
 	if free_mode_enabled:
 		_process_free_mode(delta)
 		return
@@ -492,13 +495,13 @@ func _physics_process(delta: float) -> void:
 		speed *= stair_walk_speed_scale
 	var stair_cadence := stair_walk_slowed and not is_equal_approx(stair_walk_speed_scale, 1.0)
 	body.locomotion_playback_scale = speed / STAIR_STEP_SPEED if stair_cadence else 1.0
-	# Movement follows where you're actually looking (body yaw + the head's
-	# offset from it), not just the body's facing - otherwise glancing to the
-	# side while walking forward would strafe instead of walking that way.
+	# Movement follows where you look (body yaw + the head offset), not the body facing:
+	# otherwise glancing sideways while walking forward would strafe.
 	var direction := (look_basis * Vector3(
 			_smoothed_input_dir.x, 0.0, _smoothed_input_dir.y)).normalized()
+	var walk_off := _ledge_commit.update(self, delta)
 	_ledge_direction_blocked = false
-	if ledge_safety_enabled:
+	if ledge_safety_enabled and not walk_off:
 		direction = _clamp_direction_to_ledge(direction)
 	if _roll_time_left > 0.0:
 		_roll_time_left = maxf(_roll_time_left - delta, 0.0)
@@ -506,9 +509,7 @@ func _physics_process(delta: float) -> void:
 			velocity.x = _roll_direction.x * roll_speed
 			velocity.z = _roll_direction.z * roll_speed
 		else:
-			# The roll owns horizontal velocity, so it must also release it.
-			# Leaving the final roll velocity for normal acceleration to decay
-			# makes the idle pose visibly slide for another half-second.
+			# The roll owns horizontal velocity, so it must also release it (else the idle slides).
 			velocity.x = direction.x * speed
 			velocity.z = direction.z * speed
 	elif is_on_floor() or (velocity.y <= 0.0 and _airborne_time < AIRBORNE_ANIMATION_GRACE):
