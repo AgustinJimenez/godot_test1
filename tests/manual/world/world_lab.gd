@@ -96,6 +96,10 @@ func _ready() -> void:
 		_start_tower_test()
 	print("WORLD built %d chunks in %d ms" % [world.generator.chunks.size(),
 			Time.get_ticks_msec() - started])
+	if _checking or "--flora" in args:
+		_print_flora()
+	if _checking or "--calm" in args:
+		_print_calm()
 	if "--biomes" in args:
 		_print_biomes()
 	if "--structures" in args:
@@ -163,6 +167,60 @@ func _process(delta: float) -> void:
 
 
 ## How much of the map each biome takes (a 70 x 70 sample over +-1400 m), and the height range.
+## `--flora` (also part of `--world-check`): how many different species the built tiles grow, and in
+## how many layers. A world that plants one or two species everywhere is a regression.
+func _print_flora() -> void:
+	var seen := {} # species id -> instances
+	var registry := SpeciesRegistry.for_settings(world.settings)
+	for node in get_tree().get_nodes_in_group(&"world_flora"):
+		var id: int = node.get_meta(&"species", 0)
+		if id > 0:
+			seen[id] = int(seen.get(id, 0)) + (node as MultiMeshInstance3D).multimesh.instance_count
+	var layers := {}
+	for id: int in seen.keys():
+		layers[registry.by_id(id).layer()] = true
+	var rows: Array[String] = []
+	for id: int in seen.keys():
+		rows.append("%s x%d" % [registry.by_id(id).common_name, seen[id]])
+	rows.sort()
+	var enough := seen.size() >= 14 and layers.size() == PlantSpecies.Layer.size()
+	print("FLORA_CHECK %s species=%d of %d layers=%d/%d" % ["PASS" if enough else "FAIL", seen.size(),
+			registry.species.size(), layers.size(), PlantSpecies.Layer.size()])
+	if "--flora" in OS.get_cmdline_user_args():
+		print("  ", ", ".join(rows))
+
+
+## The water calm map (how much of the sea's waves a spot gets): over maps scattered around the
+## origin, open sea must come out lively and enclosed or shallow water calm. A map that is all one
+## or the other is a regression. Only water texels (at least 1 m under the sea) are counted.
+func _print_calm() -> void:
+	var terrain := world.generator.noise
+	var calm := WaterCalmMap.new(ShaderMaterial.new())
+	calm.terrain = terrain
+	calm.sea_level = world.settings.sea_level
+	var lively := 0
+	var quiet := 0
+	var in_between := 0
+	for dz in range(-3, 4):
+		for dx in range(-3, 4):
+			var middle := Vector2(dx, dz) * 900.0
+			var cells := calm._cells(middle, terrain)
+			var corner := middle - Vector2.ONE * WaterCalmMap.CELLS * WaterCalmMap.CELL * 0.5
+			for index in cells.size():
+				var x := corner.x + (float(index % WaterCalmMap.CELLS) + 0.5) * WaterCalmMap.CELL
+				var z := corner.y + (float(index / WaterCalmMap.CELLS) + 0.5) * WaterCalmMap.CELL
+				if terrain.base_height(x, z) > calm.sea_level - 1.0:
+					continue
+				if cells[index] >= 230:
+					lively += 1
+				elif cells[index] <= 90:
+					quiet += 1
+				else:
+					in_between += 1
+	print("CALM_CHECK %s water texels: lively=%d calm=%d between=%d" % [
+			"PASS" if lively > 3000 and quiet > 3000 else "FAIL", lively, quiet, in_between])
+
+
 func _print_biomes() -> void:
 	var counts := {}
 	var examples := {}

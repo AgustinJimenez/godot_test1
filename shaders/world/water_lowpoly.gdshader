@@ -58,9 +58,30 @@ vec2 wave_slope(vec2 p, float t) {
 	return vec2(dx, dz);
 }
 
+// vertex colour red = how much of the waves this water gets: the open sea is 1 (a plane with no
+// vertex colour is white), small lakes ask for less so a pond does not roll like the ocean.
+varying float roll;
+
+// the sea also asks a map of the ground around the player: a pond in a basin or a shallow bay rolls
+// little, the wide deep sea fully. roll_area = x and z of the map's corner and its width (0: no map).
+uniform sampler2D roll_map : filter_linear, repeat_disable;
+uniform vec3 roll_area = vec3(0.0);
+
+float map_roll(vec2 p) {
+	if (roll_area.z <= 0.0) {
+		return 1.0;
+	}
+	vec2 uv = (p - roll_area.xy) / roll_area.z;
+	if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) {
+		return 1.0;
+	}
+	return textureLod(roll_map, uv, 0.0).r;
+}
+
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	VERTEX.y += waves(world_pos.xz, TIME * wave_speed) * wave_height;
+	roll = COLOR.r * map_roll(world_pos.xz);
+	VERTEX.y += waves(world_pos.xz, TIME * wave_speed) * wave_height * roll;
 }
 
 void fragment() {
@@ -69,8 +90,8 @@ void fragment() {
 		flat_normal = -flat_normal;
 	}
 	// realistic: smooth waves with fine ripples on top
-	vec2 slope = wave_slope(world_pos.xz, TIME * wave_speed) * wave_height * 1.1;
-	slope += ripples(world_pos.xz, TIME);
+	vec2 slope = wave_slope(world_pos.xz, TIME * wave_speed) * wave_height * 1.1 * roll;
+	slope += ripples(world_pos.xz, TIME) * mix(0.35, 1.0, roll);
 	vec3 smooth_normal = normalize((VIEW_MATRIX * vec4(-slope.x, 1.0, -slope.y, 0.0)).xyz);
 	NORMAL = normalize(mix(flat_normal, smooth_normal, realism));
 	float depth = texture(depth_texture, SCREEN_UV).r;

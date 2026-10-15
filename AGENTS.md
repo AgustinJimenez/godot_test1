@@ -6,8 +6,8 @@ evidence in the relevant `AGENT_TASKS/NNN_name.md` file; Git preserves old revis
 
 ## Project and task workflow
 
-This is a first-person survival-horror learning sandbox built with Godot 4.6 (Forward+, Jolt) and
-statically typed GDScript. Explain Godot ideas briefly in plain language when building systems.
+This is a first-person experiment and learning sandbox (not a survival-horror game, despite the
+project name) built with Godot 4.6 (Forward+, Jolt) and statically typed GDScript. Explain Godot ideas briefly in plain language when building systems.
 
 The user is not a game or IK developer and judges Foot IK work only by whether the animation looks
 smooth. For Foot IK discussion, lead with outcomes (smooth or not, fast or not, buggy or not) and
@@ -221,6 +221,13 @@ for a full writeup of the symptoms this produces (fps collapsing to single digit
 near the affected geometry, fully recovering elsewhere, with CPU-side process/solve timers
 staying flat and misleadingly innocent throughout).
 
+`HeightMapShape3D` (Jolt) splits every cell along one fixed diagonal (p10-p01, i.e. top-right to
+bottom-left in x/z). A terrain mesh that picks its own diagonal per cell ("ridges stay crisp") disagrees
+with it in about half the cells, 10-40 cm on rough ground, so the capsule and Foot IK stand on a surface
+that is not the visible one and the feet look like they float or sink even when IK is perfect. Always
+split the mesh (and any height lookup that places things) the same way; `world_surface_check.tscn`
+guards it. When "IK looks bad on terrain", compare the visible mesh to the collider before touching IK.
+
 Any retry/search loop that runs from `_process`/`_physics_process` needs a cooldown on failure,
 not just a success-path exit. `FootIKGroundSampler._request_overheight_split_safe_zone` re-ran
 a ~6500-raycast ring search every single physics tick whenever the search failed to find a
@@ -384,7 +391,9 @@ against `player.get_node(player.root_node).get_path_to(target_skeleton)` first -
 
 ## Foot IK and movement
 
-**Foot IK v2 lessons (runtime `actors/player/foot_ik_v2/`, only the v2 lab installs it - the game still runs v1; labs `tests/manual/foot_ik_v2/`, handoff `AGENT_TASKS/035`, open hard bug `036`).** Read bone poses
+**Foot IK v2 is the reduced, bug-free rewrite of v1 - prefer it.** The user judged v2 "so much better" than v1 on the procedural world terrain (2026-10-15). v1 has many special cases and known bugs; do not port v1 behaviour into v2, and new levels should install v2 (`FootIKV2Install.install(body, skeleton, body._foot_ik_modifier)`, preload the script). Debug any scene with `FootIkRecorder` (child of the Player): F10 records to `user://foot_ik_live.jsonl`, F11 marks a bad moment; it measures ankle/toe height above the real ground from outside, so it works for v1 and v2.
+
+**Foot IK v2 lessons (runtime `actors/player/foot_ik_v2/`; the v2 lab AND the procedural world (`levels/procedural_world.gd`) install it, every other scene still runs v1; labs `tests/manual/foot_ik_v2/`, handoff `AGENT_TASKS/035`, open hard bug `036`).** Read bone poses
 from the modifier's published `final_pose`, never from a node's `_process()` (stale by 12 cm+). v1
 re-enables itself on every landing - use `set_debug_enabled(false)`. The player's ledge safety pushes
 the root at 3 m/s while airborne (`landing_correction_speed`); the lab zeroes only that. The game pins

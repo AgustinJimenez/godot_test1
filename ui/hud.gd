@@ -20,6 +20,7 @@ const ITEM_GROUP_NAMES: Dictionary[int, String] = {
 	Item.Kind.MISC: "MISCELLANEOUS",
 }
 const CHARACTER_CATALOG := preload("res://characters/character_catalog.gd")
+const ESCAPE_DOUBLE_PRESS_SEC := 0.4
 
 @export var show_fps_debug := false
 
@@ -31,6 +32,9 @@ var _selected := -1
 var _toast_tween: Tween
 var _hurt_tween: Tween
 var _fps_refresh_left := 0.0
+var _last_escape_time := -1.0
+var _extra_pages: Array[Control] = []
+var _mouse_mode_before_escape := Input.MOUSE_MODE_CAPTURED
 var _object_list_built := false
 var _object_rows: Array[Dictionary] = []
 var _character_rows: Array[Dictionary] = []
@@ -133,6 +137,7 @@ var _character_rows: Array[Dictionary] = []
 var _anim_list_built := false
 var _character_list_built := false
 var _character_swap_in_progress := false
+var _foot_ik_record_toggle: CheckButton
 
 
 func _ready() -> void:
@@ -147,6 +152,10 @@ func _ready() -> void:
 	detached_camera_toggle.toggled.connect(_on_detached_camera_toggled)
 	foot_ik_follow_toggle.toggled.connect(_on_foot_ik_follow_toggled)
 	foot_ik_joint_graph_toggle.toggled.connect(_on_foot_ik_joint_graph_toggled)
+	_foot_ik_record_toggle = CheckButton.new()
+	_foot_ik_record_toggle.text = "Record foot IK (F10 on/off, F11 mark)"
+	_foot_ik_record_toggle.toggled.connect(_on_foot_ik_record_toggled)
+	foot_ik_joint_graph_toggle.add_sibling(_foot_ik_record_toggle)
 	foot_ik_residual_mode_toggle.toggled.connect(_on_foot_ik_residual_mode_toggled)
 	foot_ik_phase_locked_mode_toggle.toggled.connect(_on_foot_ik_phase_locked_mode_toggled)
 	skeleton_visible_toggle.toggled.connect(_on_skeleton_visible_toggled)
@@ -195,12 +204,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			or event.is_action_pressed(&"pause")):
 		toggle_inventory()
 		get_viewport().set_input_as_handled()
-	elif debug_overlay.visible and (event.is_action_pressed(&"pause")
-			or event.is_action_pressed(&"debug_menu")
+	elif debug_overlay.visible and event.is_action_pressed(&"pause"):
+		_on_escape_pressed()
+		get_viewport().set_input_as_handled()
+	elif debug_overlay.visible and (event.is_action_pressed(&"debug_menu")
 			or event.is_action_pressed(&"inventory")):
 		toggle_debug()
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed(&"pause") or event.is_action_pressed(&"debug_menu"):
+	elif event.is_action_pressed(&"pause"):
+		_on_escape_pressed()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(&"debug_menu"):
 		toggle_debug()
 		get_viewport().set_input_as_handled()
 
@@ -340,6 +354,23 @@ func _refresh_inventory() -> void:
 	_refresh_object_list()
 
 
+## Esc once opens / closes the menu. A second Esc within ESCAPE_DOUBLE_PRESS_SEC undoes that and
+## flips the mouse instead (free it to click world UI, or take it back).
+func _on_escape_pressed() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _last_escape_time <= ESCAPE_DOUBLE_PRESS_SEC:
+		_last_escape_time = -1.0
+		if debug_overlay.visible:
+			_close_debug()
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED \
+				if _mouse_mode_before_escape == Input.MOUSE_MODE_VISIBLE \
+				else Input.MOUSE_MODE_VISIBLE
+		return
+	_last_escape_time = now
+	_mouse_mode_before_escape = Input.mouse_mode
+	toggle_debug()
+
+
 func toggle_debug() -> void:
 	if note_overlay.visible or inv_overlay.visible:
 		return
@@ -373,6 +404,10 @@ func _open_debug() -> void:
 	if joint_graph != null:
 		foot_ik_joint_graph_toggle.set_pressed_no_signal(
 				bool(joint_graph.call(&"is_graph_visible")))
+	var recorder := get_tree().get_first_node_in_group(&"foot_ik_recorder") as FootIkRecorder
+	_foot_ik_record_toggle.visible = recorder != null
+	if recorder != null:
+		_foot_ik_record_toggle.set_pressed_no_signal(recorder.recording)
 	_show_debug_main()
 	debug_overlay.show()
 	set_prompt("")
@@ -391,9 +426,47 @@ func _close_app() -> void:
 	get_tree().quit()
 
 
+## A scene can add its own page to the menu: a button on the main page that opens `content`
+## (any Control) with a Back button. Only scenes that call this get the page. If `content` has a
+## refresh() method it runs each time the page opens.
+func add_menu_page(title: String, content: Control) -> void:
+	var page := PanelContainer.new()
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 14)
+	var box := VBoxContainer.new()
+	var heading := Label.new()
+	heading.text = title
+	var back := Button.new()
+	back.text = "Back"
+	back.pressed.connect(_show_debug_main)
+	box.add_child(heading)
+	box.add_child(content)
+	box.add_child(back)
+	margin.add_child(box)
+	page.add_child(margin)
+	page.hide()
+	main_panel.get_parent().add_child(page)
+	_extra_pages.append(page)
+	var open_button := Button.new()
+	open_button.text = title
+	open_button.pressed.connect(_show_extra_page.bind(page, content))
+	main_debug_button.add_sibling(open_button)
+
+
+func _show_extra_page(page: Control, content: Control) -> void:
+	_show_debug_main()
+	main_panel.hide()
+	if content.has_method(&"refresh"):
+		content.call(&"refresh")
+	page.show()
+
+
 ## Debug menu is one overlay with pages shown/hidden in place, not separate
 ## overlays - only one of these should ever be visible.
 func _show_debug_main() -> void:
+	for page in _extra_pages:
+		page.hide()
 	main_panel.show()
 	guide_panel.hide()
 	debug_panel.hide()
@@ -754,6 +827,12 @@ func _on_foot_ik_joint_graph_toggled(enabled: bool) -> void:
 		foot_ik_joint_graph_toggle.set_pressed_no_signal(false)
 		return
 	graph.call(&"set_graph_visible", enabled)
+
+
+func _on_foot_ik_record_toggled(enabled: bool) -> void:
+	var recorder := get_tree().get_first_node_in_group(&"foot_ik_recorder") as FootIkRecorder
+	if recorder != null:
+		recorder.recording = enabled
 
 
 func _on_foot_ik_residual_mode_toggled(enabled: bool) -> void:

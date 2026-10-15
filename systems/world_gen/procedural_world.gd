@@ -27,6 +27,8 @@ var _remesh: Array = [] # flora nodes waiting for the other mesh set
 func _ready() -> void:
 	if settings == null:
 		settings = WorldSettings.new()
+	_detail_on = realism > 0.5 # a world that starts realistic builds its plants finely at once
+	FloraMeshes.detailed = _detail_on
 	atmosphere = WorldAtmosphere.new()
 	atmosphere.time_of_day = time_of_day
 	atmosphere.day_seconds = day_seconds
@@ -61,6 +63,7 @@ func _ready() -> void:
 	add_child(swim)
 	water = WorldWater.new()
 	water.level = settings.sea_level
+	water.noise = generator.noise
 	add_child(water)
 
 
@@ -113,6 +116,7 @@ func rebuild() -> void:
 	generator.noise = TerrainNoise.new(settings)
 	weather.noise = generator.noise
 	swim.noise = generator.noise
+	water.noise = generator.noise
 	life.noise = generator.noise
 	fauna.noise = generator.noise
 	footprints.noise = generator.noise
@@ -142,7 +146,11 @@ func _update_detail() -> void:
 	while budget > 0 and not _remesh.is_empty():
 		var node: Node = _remesh.pop_back()
 		if is_instance_valid(node):
-			var kind: FloraMeshes.Kind = node.get_meta(&"kind")
-			(node as MultiMeshInstance3D).multimesh.mesh = FloraMeshes.mesh(
-					kind, node.get_meta(&"variant"), _detail_on)
+			var variant: int = node.get_meta(&"variant")
+			var species_id: int = node.get_meta(&"species", 0)
+			var multi := (node as MultiMeshInstance3D).multimesh
+			if species_id > 0:
+				multi.mesh = SpeciesRegistry.for_settings(settings).mesh(species_id, variant, _detail_on)
+			else:
+				multi.mesh = FloraMeshes.mesh(node.get_meta(&"kind"), variant, _detail_on)
 		budget -= 1

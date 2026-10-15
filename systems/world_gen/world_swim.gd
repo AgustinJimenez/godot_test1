@@ -7,8 +7,9 @@ extends Node
 const WADE_FROM := 0.35 ## m of water on the feet that starts slowing the walk
 const SWIM_FROM := 1.0 ## m deep (at the feet): floating, not standing
 const FLOAT_DEPTH := 1.2 ## m the feet hang under the surface while floating (head and chest out)
-const SWIM_SPEED := 0.6 ## horizontal speed kept each frame while swimming
+const SWIM_SPEED := 0.6 ## swim speed limit, as a fraction of the player's walk speed
 const WADE_SPEED := 0.75
+const CURRENT_PUSH := 0.4 ## how much of a river's flow carries you (1 = all of it)
 const CLIP_IDLE := &"Swim_Idle"
 const CLIP_MOVE := &"Swim_Fwd"
 
@@ -51,8 +52,12 @@ func update(player: Player) -> void:
 		elif Input.is_action_pressed(&"crouch"):
 			rise = -2.5
 		player.velocity.y = rise
-		player.velocity.x *= SWIM_SPEED
-		player.velocity.z *= SWIM_SPEED
+		# A cap, not a multiplier: the player re-accelerates every frame, so scaling the velocity each
+		# frame would compound and crawl at a fraction of this speed.
+		var horizontal := Vector2(player.velocity.x, player.velocity.z).limit_length(
+				player.walk_speed * SWIM_SPEED)
+		player.velocity.x = horizontal.x
+		player.velocity.z = horizontal.y
 		_play(player, CLIP_MOVE if Vector2(player.velocity.x, player.velocity.z).length() > 0.5
 				else CLIP_IDLE)
 	elif depth > WADE_FROM and player.is_on_floor():
@@ -60,8 +65,8 @@ func update(player: Player) -> void:
 		player.velocity.z *= WADE_SPEED
 	if noise != null and depth > 0.2: # a river current carries you along
 		var flow := noise.rivers.flow_at(player.global_position.x, player.global_position.z)
-		player.velocity.x += flow.x * 0.8
-		player.velocity.z += flow.y * 0.8
+		player.velocity.x += flow.x * CURRENT_PUSH
+		player.velocity.z += flow.y * CURRENT_PUSH
 	_water_effects(player, depth)
 	if was_swimming and not swimming:
 		_clip = &""

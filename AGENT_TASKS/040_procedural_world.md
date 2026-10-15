@@ -12,8 +12,8 @@ water, sky, weather, wind. Open `levels/procedural_world.tscn` and walk (keys on
 | `terrain_noise.gd` | height / moisture / heat / biome as pure functions of (x, z, seed) |
 | `terrain_chunk.gd`, `terrain_colors.gd` | one flat-shaded low-poly tile + HeightMap collider, facet colours by biome and slope |
 | `mesh_builder.gd` | flat-shaded triangle soup builder with vertex colour (frustums, lumpy blobs) |
-| `flora_meshes.gd` | pine, oak, birch, dead tree, bush, rock, grass, flower, cactus, reed, stump (variants) |
-| `world_scatter.gd` | jittered-grid placement by biome/slope, MultiMesh per kind, colliders for trunks and rocks |
+| `flora_meshes.gd` | rocks, stumps, logs, rock spires (variants); the plants moved to species, see [041](041_procedural_flora_species.md) (`flora/`) |
+| `world_scatter.gd` | jittered-grid placement: plants by species fit ([041](041_procedural_flora_species.md)), rocks and logs by biome/slope; MultiMesh per species and variant, colliders for trunks and rocks |
 | `world_water.gd` + `shaders/world/water_lowpoly.gdshader` | faceted sea, depth colour, foam at the shore |
 | `world_atmosphere.gd` | sun, sky, fog, day cycle; overcast + lightning inputs |
 | `world_weather.gd`, `rain_effect.gd`, `world_clouds.gd`, `world_wind.gd` | clear / cloudy / rain / storm / fog / snow, wind (shader globals in project.godot), wet ground |
@@ -73,3 +73,91 @@ water, sky, weather, wind. Open `levels/procedural_world.tscn` and walk (keys on
     boards (the `planks` parameter, `FloraMeshes.structure_material()`), stone gets grain, veins
     and lichen patches. Detected from the vertex colour (brown or grey, not swaying).
 - The shoe-print texture is a plain sole + heel; a proper tread would read better.
+
+## Water and swimming fixes (2026-10-15, after the user's live look)
+- Swim speed was `velocity *= 0.6` every frame, which compounds against the player's per-frame
+  acceleration (steady state about 0.3 m/s, a tenth of walking). Now a cap: `walk_speed * SWIM_SPEED`
+  (0.6) in `world_swim.gd`. Wading (`WADE_SPEED` 0.75) has the same compounding bug and was left as is
+  (the user only asked about swimming); fix it the same way if it feels slow.
+- River current pushed at 80 percent of the flow (up to 1.5 m/s, almost the new swim cap), so swimming
+  upstream stalled. `CURRENT_PUSH` is now 0.4.
+- Lakes are 24-44 m discs and rolled like the open sea. `WorldWater.lake_surface` now writes a calm
+  factor into the vertex colour red (`POND_ROLL` 0.2 for the smallest .. `BIG_LAKE_ROLL` 0.55), and
+  `water_lowpoly.gdshader` scales wave height and ripples by it (`roll`).
+- Natural basins below sea level are not lakes, they are sea water, so they still rolled like the
+  ocean. `WaterCalmMap` (`water_calm_map.gd`) is a 96 x 96 texel map (10 m texels, rebuilt on a worker
+  thread when the player is 120 m off its middle) of how much deep water lies around a spot: wide deep
+  sea 1.0, a basin pond or shallow bay down to 0.2. The sea shader samples it (`roll_map`, `roll_area`).
+  `ProceduralWorld.rebuild()` re-points it at the new seed's terrain. Lab: `-- --world-check` prints
+  `CALM_CHECK` (water texels split between lively and calm).
+- Two water layers on the coast: the far sea plane lies 0.4 m under the near one and showed through the
+  see-through shallows as a second foam line and second waves. The far plane is now a ring with a
+  square hole (`FAR_HOLE` 400 m) inside the near plane's 450 m.
+- Two ponds "merged": generated lakes sit at least 160 m apart and cannot touch, so this was most
+  likely two sea-level basins joined by a shallow neck (sea water, now calm). Not reproduced; if it shows
+  again, note the seed and place (the lab's `--lakes` and `--biomes` print `--at=x,z` spots).
+
+## Foot IK "does not work well on the terrain" (2026-10-15): the ground you see was not the ground you stand on
+- Cause found with numbers, not in IK: `TerrainChunk` split every cell along its own diagonal ("the
+  steeper pair, so ridges stay crisp") but `HeightMapShape3D` (Jolt) always splits along p10-p01. In
+  about half the cells (the ones where the mesh picked p00-p11) the visible ground differed from the
+  collider by 7-19 cm on average (p95 17-44 cm, worst 1-2 m on terrace edges) at 2 m cells. The capsule
+  and Foot IK stand on the collider, so feet floated or sank against the visible mesh.
+- Fix: the mesh always splits p10-p01 (`terrain_chunk.gd`), and `WorldScatter._grid_height` interpolates
+  on the same two triangles so plants stand on the visible ground. Cost: ridges are no longer picked out
+  by the diagonal choice. Guard: `tests/manual/world/world_surface_check.tscn` (visible mesh vs
+  collider at cell centres over four spots, limit 1 cm; after the fix it is 0.00 cm mean, 0.01 worst).
+- `tests/manual/world/world_ik_check.tscn` (`-- --v2`, `--off`, `--walk`, `--seed=N`) grades the ankles
+  against the real collision ground on spots of growing steepness. Idle: v1 and v2 are both within
+  3.2 cm on every slope tried (IK off: 11-15 cm float on the steepest). Walking numbers include the
+  natural swing of the leg (a foot far above ground that drops away), so they are not an IK grade yet.
+  v1 and v2 gave identical ankle numbers in this metric (v2 differs in sole tilt, knees, pelvis and
+  stepping, which it does not measure). The game still runs v1; v2 is opt-in (`FootIKV2Install`,
+  only the labs call it). Next, if the user still sees bad IK after this fix: try v2 in the procedural
+  world, and add sole tilt / toe clip to the terrain check.
+
+## Blocky clouds in the realistic sky (2026-10-15)
+
+Looking up in the realistic look, the cloud layer broke into hard-edged squares of different
+brightness. Cause: `world_sky.gdshader` built its noise from `fract(sin(dot(p, ...)) * 43758.5453)`,
+which loses precision on the GPU and turns the value noise into blocks. `hash2` now uses a sine-free
+hash (Hoskins style); the clouds are soft again (checked with a camera pitched up at noon, cloudy).
+Do not use `sin()`-based hashes in shaders here.
+
+## Sky3D as an optional sky (2026-10-15, uncommitted, waiting for the user's look)
+
+Added the Sky3D add-on (TokisanGames/Sky3D v2.1, MIT, commit 6e151bc of 2026-05-19, source read
+first: no network or file access) as `addons/sky_3d/` (demo folder left out; `.gdlintrc` excludes it).
+The plugin is NOT enabled in project.godot (not needed, the classes load by `class_name`).
+
+`WorldAtmosphere.use_sky3d(on)` switches the sky: World menu page, "Sky" row (Built-in / Sky3D).
+Built-in stays the default. In Sky3D mode: our WorldEnvironment is taken out and Sky3D's own is used
+(fog, SSAO, glow are set on it again); our sun and moon are hidden and Sky3D's lights run;
+`time_of_day` drives Sky3D's clock (its own clock is off); weather maps to cumulus/cirrus coverage,
+cloud intensity and sun energy; `sun_height()` reads Sky3D's sun so night/day numbers (ambience,
+fireflies, weather) agree with what is on screen. Both realism looks work with either sky.
+
+Findings: Sky3D's sky shader makes the volumetric-fog pass fail every frame ("Parameter uniform_set
+is null", draw_list_bind_uniform_set) so volumetric fog is off while Sky3D is on (found by trying
+realism 0 vs 1). Sky3D nights are very dark (matches a review): ambient and moon are lifted by
+`_night_amount` in `_apply_sky3d()`. Noon clouds look much better than the built-in sky; dusk is a
+deep red and fairly dark; not tuned further. Sky3D's lat/long (16, 108) set when sunrise/sunset
+happen, so the clock hours differ a little from the built-in sky.
+
+## Sky3D is the default in the procedural world; steep slopes stop the walk (2026-10-15)
+
+The user found squares/lines left in the built-in sky and none in Sky3D, so `levels/procedural_world.gd`
+now starts on Sky3D (World page: Sky -> Built-in switches back). The built-in sky's remaining
+squares/lines were NOT chased (suspects: the grid-aligned value noise of its cloud layer, the
+star cells at night).
+
+Steep slopes: past `floor_max_angle` (45) the terrain is not floor, the body plays the falling
+animation, and `move_and_slide()` slides the remaining horizontal velocity ALONG the slope, which
+carried the body uphill (measured: 0.13 m and 0.61 m climbed on frames off the floor).
+`actors/player/player_steep_slope.gd` (`PlayerSteepSlope.block_uphill`, called from
+`player.gd` right before the stair controller) removes the into-the-slope part of the horizontal
+velocity when the next 15 cm hit a surface steeper than floor_max_angle (walls, normal.y < 0.15,
+are left to the normal slide). Sideways along the slope still works. New check:
+`tests/manual/world/world_steep_check.tscn` (walks uphill into slopes from 10 to 80 deg, fails if the
+body gains height while off the floor): FAIL before (2 slopes), PASS after.
+NOTE `player.gd` is at exactly 1000 lines (the lint limit); new player logic goes in its own file.

@@ -1,7 +1,9 @@
 class_name WorldWater
 extends MeshInstance3D
 ## The sea and the lakes: a faceted plane at sea level that slides along with the player (in whole
-## facets, so the waves do not swim), plus a huge coarse plane just under it out to the horizon.
+## facets, so the waves do not swim), plus a huge coarse ring just under it from there out to the
+## horizon. The ring has a hole where the fine plane is: the water is see-through near the shore,
+## and a second surface under it showed up there as a second foam line and second waves.
 ## Everything below the surface is under water.
 
 const SHADER := preload("res://shaders/world/water_lowpoly.gdshader")
@@ -10,10 +12,18 @@ const FACET := 5.0 ## m, one fine water triangle pair
 const FAR_SIZE := 6000.0 ## m across, coarse facets to the horizon
 const FAR_FACET := 40.0
 const FAR_SINK := 0.4 ## m the far plane lies under the near one
+const FAR_HOLE := 400.0 ## m half width of the hole in the far plane (inside the fine plane's 450)
 
 var level := 0.0
+var noise: TerrainNoise: ## set by the world; without it all sea water rolls fully
+	set(value):
+		noise = value
+		if _calm != null:
+			_calm.terrain = value
+			_calm.invalidate()
 
 var _far: MeshInstance3D
+var _calm: WaterCalmMap
 
 
 func _init() -> void:
@@ -24,18 +34,21 @@ func _init() -> void:
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	extra_cull_margin = 4.0
 	_far = MeshInstance3D.new()
-	_far.mesh = _plane(FAR_SIZE, FAR_FACET)
+	_far.mesh = _ring(FAR_SIZE, FAR_FACET, FAR_HOLE)
 	_far.material_override = material
 	_far.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_far.extra_cull_margin = 4.0
 	_far.top_level = true
 	add_child(_far)
+	_calm = WaterCalmMap.new(material)
 
 
 func follow(target: Vector3) -> void:
+	_calm.sea_level = level
 	position = Vector3(snappedf(target.x, FACET), level, snappedf(target.z, FACET))
 	_far.global_position = Vector3(snappedf(target.x, FAR_FACET), level - FAR_SINK,
 			snappedf(target.z, FAR_FACET))
+	_calm.update(Vector2(target.x, target.z))
 
 
 func _plane(size: float, facet: float) -> PlaneMesh:
@@ -46,11 +59,50 @@ func _plane(size: float, facet: float) -> PlaneMesh:
 	return plane
 
 
+## A flat square of facets like `_plane`, minus the cells of a square hole in the middle. Its centre
+## is a vertex, so the hole follows the facet grid exactly.
+func _ring(size: float, facet: float, hole: float) -> ArrayMesh:
+	var cells := int(size / facet)
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	for row in cells + 1:
+		for column in cells + 1:
+			vertices.append(Vector3(-size * 0.5 + float(column) * facet, 0.0,
+					-size * 0.5 + float(row) * facet))
+			normals.append(Vector3.UP)
+	var indices := PackedInt32Array()
+	for row in cells:
+		for column in cells:
+			var middle_x := -size * 0.5 + (float(column) + 0.5) * facet
+			var middle_z := -size * 0.5 + (float(row) + 0.5) * facet
+			if absf(middle_x) < hole and absf(middle_z) < hole:
+				continue
+			var a := row * (cells + 1) + column
+			var b := a + 1
+			var c := a + cells + 1
+			var d := c + 1
+			indices.append_array([a, b, c, b, d, c]) # counter clockwise seen from above
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var ring := ArrayMesh.new()
+	ring.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return ring
+
+
 static var _lake_material: ShaderMaterial
 
 
+const POND_ROLL := 0.2 ## share of the sea's waves the smallest lake gets
+const BIG_LAKE_ROLL := 0.55 ## and the biggest lake (only the open sea rolls fully)
+const SMALL_LAKE := 24.0 ## m radius
+const BIG_LAKE := 44.0
+
+
 ## A flat round lake surface of `radius` metres at the node's own height (rings of facets, so the
-## water shader can roll waves across it).
+## water shader can roll waves across it). Small lakes roll less than big ones.
 static func lake_surface(radius: float) -> MeshInstance3D:
 	if _lake_material == null:
 		_lake_material = ShaderMaterial.new()
@@ -58,7 +110,8 @@ static func lake_surface(radius: float) -> MeshInstance3D:
 	var builder := MeshBuilder.new()
 	var rings := 7
 	var segments := 28
-	var white := Color.WHITE
+	var white := Color(lerpf(POND_ROLL, BIG_LAKE_ROLL, clampf(
+			inverse_lerp(SMALL_LAKE, BIG_LAKE, radius), 0.0, 1.0)), 1.0, 1.0, 1.0)
 	for ring in rings:
 		var inner := radius * float(ring) / float(rings)
 		var outer := radius * float(ring + 1) / float(rings)

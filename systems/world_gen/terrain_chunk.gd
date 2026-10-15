@@ -111,13 +111,11 @@ func _build_mesh(heights: PackedFloat32Array, cells: int) -> ArrayMesh:
 			var p10 := Vector3(x0 + _step, heights[i10], z0)
 			var p01 := Vector3(x0, heights[i01], z0 + _step)
 			var p11 := Vector3(x0 + _step, heights[i11], z0 + _step)
-			# the diagonal follows the steeper pair, so ridges stay crisp
-			if absf(p00.y - p11.y) < absf(p10.y - p01.y):
-				_triangle(builder, [p00, p01, p11], [i00, i01, i11], normals, smooth)
-				_triangle(builder, [p00, p11, p10], [i00, i11, i10], normals, smooth)
-			else:
-				_triangle(builder, [p00, p01, p10], [i00, i01, i10], normals, smooth)
-				_triangle(builder, [p10, p01, p11], [i10, i01, i11], normals, smooth)
+			# Every cell is split along p10-p01, because that is how the physics heightmap
+			# (HeightMapShape3D) splits it. A mesh that picked its own diagonal per cell showed
+			# the ground 10-40 cm away from the ground the feet and the capsule stand on.
+			_triangle(builder, [p00, p01, p10], [i00, i01, i10], normals, smooth)
+			_triangle(builder, [p10, p01, p11], [i10, i01, i11], normals, smooth)
 	if far:
 		_skirt(builder, heights, cells)
 	return builder.commit()
