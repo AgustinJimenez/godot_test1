@@ -12,12 +12,20 @@ uniform float wave_speed = 0.8;
 uniform float depth_fade = 5.0;
 uniform float foam_width = 0.55;
 uniform sampler2D depth_texture : hint_depth_texture, repeat_disable, filter_nearest;
+uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_linear_mipmap;
+// realistic: how fast the water swallows each colour per metre (red goes first, so deep water is
+// blue-green), how far the waves bend the picture of the bed, and the width of the shore foam
+uniform vec3 absorption = vec3(0.42, 0.11, 0.06);
+uniform float refraction_strength = 0.05;
 global uniform float realism;
 
 varying vec3 world_pos;
 
+// no sin(): its precision on the GPU turns value noise into hard-edged blocks
 float ripple_hash(vec2 p) {
-	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+	vec3 q = fract(vec3(p.xyx) * 0.1031);
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
 }
 
 float ripple_noise(vec2 p) {
@@ -84,6 +92,13 @@ void vertex() {
 	VERTEX.y += waves(world_pos.xz, TIME * wave_speed) * wave_height * roll;
 }
 
+// view-space z of the scene behind the water at a screen position
+float scene_z(vec2 uv, mat4 inv_projection) {
+	float d = texture(depth_texture, uv).r;
+	vec4 p = inv_projection * vec4(uv * 2.0 - 1.0, d, 1.0);
+	return p.z / p.w;
+}
+
 void fragment() {
 	vec3 flat_normal = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
 	if (dot(flat_normal, VIEW) < 0.0) {
@@ -94,16 +109,39 @@ void fragment() {
 	slope += ripples(world_pos.xz, TIME) * mix(0.35, 1.0, roll);
 	vec3 smooth_normal = normalize((VIEW_MATRIX * vec4(-slope.x, 1.0, -slope.y, 0.0)).xyz);
 	NORMAL = normalize(mix(flat_normal, smooth_normal, realism));
-	float depth = texture(depth_texture, SCREEN_UV).r;
-	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, depth);
-	vec4 scene = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
-	scene.xyz /= scene.w;
-	float thickness = max(VERTEX.z - scene.z, 0.0);
+	float behind = scene_z(SCREEN_UV, INV_PROJECTION_MATRIX);
+	float thickness = max(VERTEX.z - behind, 0.0);
 	float t = clamp(thickness / depth_fade, 0.0, 1.0);
 	vec4 color = mix(shallow_color, deep_color, sqrt(t));
-	float foam = 1.0 - smoothstep(0.0, foam_width, thickness);
-	ALBEDO = mix(color.rgb, foam_color.rgb, foam * 0.85);
-	ALPHA = clamp(mix(color.a, 1.0, foam), 0.0, 1.0);
+
+	// foam at the shore: the edge breathes in and out with the swell and is torn by noise
+	float swell = 0.5 + 0.5 * sin(TIME * 1.4 + world_pos.x * 0.17 + world_pos.z * 0.13);
+	float torn = ripple_noise(world_pos.xz * 1.7 + vec2(TIME * 0.2, -TIME * 0.15));
+	float edge = foam_width * mix(1.0, 0.45 + 1.1 * swell, realism) * mix(1.0, 0.55 + 0.9 * torn, realism);
+	float foam = 1.0 - smoothstep(0.0, edge, thickness);
+	// foam on the wave crests of open water, in streaks that drift
+	float crest = smoothstep(0.45, 0.95, waves(world_pos.xz, TIME * wave_speed)) * roll * roll;
+	float streaks = smoothstep(0.55, 0.8, ripple_noise(world_pos.xz * 2.6 + vec2(TIME * 0.3, TIME * 0.1)));
+	foam = max(foam, crest * streaks * 0.8 * realism);
+
+	// realistic: the bed seen through the water, bent by the waves, tinted by what the water absorbs
+	vec2 uv = SCREEN_UV + NORMAL.xz * refraction_strength * min(thickness, 1.0);
+	if (VERTEX.z - scene_z(uv, INV_PROJECTION_MATRIX) < 0.0) {
+		uv = SCREEN_UV; // something in front of the water: do not drag it into the bed
+	}
+	vec3 bed = textureLod(screen_texture, uv, 0.0).rgb;
+	vec3 transmit = exp(-thickness * absorption);
+	vec3 body = mix(shallow_color.rgb, deep_color.rgb, sqrt(t));
+	float see = (transmit.r + transmit.g + transmit.b) / 3.0;
+	// grazing angles reflect instead of letting the bed through
+	float fresnel = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
+
+	vec3 low_albedo = mix(color.rgb, foam_color.rgb, foam * 0.85);
+	vec3 real_albedo = mix(body * (1.0 - see * 0.85), foam_color.rgb, foam * 0.9);
+	ALBEDO = mix(low_albedo, real_albedo, realism);
+	EMISSION = bed * transmit * (1.0 - foam) * (1.0 - fresnel * 0.7) * realism;
+	float low_alpha = clamp(mix(color.a, 1.0, foam), 0.0, 1.0);
+	ALPHA = mix(low_alpha, 1.0, realism);
 	ROUGHNESS = mix(mix(0.08, 0.025, realism), 0.6, foam);
 	SPECULAR = mix(0.7, 1.0, realism);
 	METALLIC = 0.0;

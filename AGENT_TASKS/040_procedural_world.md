@@ -169,3 +169,21 @@ clock. `_enter_sky3d()` now sets the equinox (March 21), latitude 30, longitude 
 the sun rises at 6, peaks at 12 and sets at 18 like the built-in sky (measured with a sun_height
 sweep). Night: ambient `1 + night * 2.6`, moon energy 1.0; checked at 18:30 (dusk, orange clouds) and
 21:00 / 23:30 (stars, readable ground) with clear weather. Under cloud the night is much darker.
+
+## Realistic water (2026-10-15)
+
+`shaders/world/water_lowpoly.gdshader` (sea and lakes; the river shader was not touched). Everything
+new is scaled by the global `realism`, so the low-poly look is unchanged (checked side by side).
+- Refraction: the screen texture seen through the water, bent by the wave normal (`refraction_strength`
+  0.05, limited to the first metre of depth, and not dragged across things standing in front of the
+  water), tinted by per-colour absorption (`absorption` 0.42/0.11/0.06 per metre: red goes first, so
+  deeper water turns blue-green). The bed arrives as EMISSION (it is already lit), the water body
+  colour is the lit albedo.
+- Shore foam: the edge breathes with a swell and is torn by moving noise instead of a straight band.
+- Crest foam: streaks on the wave crests of open water (scaled by roll, so calm bays have none).
+- Fresnel: grazing angles let less of the bed through.
+- The shader's `sin()` hash (same cause as the blocky sky clouds) is now a sine-free hash.
+Costs: the screen texture copy happens for the water in both looks. Not measured in a window yet.
+Looked at with shore probes (low-poly, realistic, two shores, looking down): turquoise shallows with the
+sand visible, deep blue further out, soft foam line. Not done: rivers, SSR reflections of the shore,
+underwater look.
