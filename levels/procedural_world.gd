@@ -20,7 +20,8 @@ func _ready() -> void:
 	world.atmosphere.use_sky3d(true) # the better looking sky; the World page switches back
 	player = PLAYER_SCENE.instantiate() as Player
 	add_child(player)
-	FOOT_IK_V2.install(player.body, player.skeleton, player.body._foot_ik_modifier)
+	_install_foot_ik()
+	player.body.character_changed.connect(_install_foot_ik) # a new skin brings a new skeleton
 	world.set_target(player)
 	var world_menu := ProceduralWorldMenu.new()
 	world_menu.setup(self, world)
@@ -32,6 +33,11 @@ func _ready() -> void:
 	_label = Label.new()
 	_label.position = Vector2(16, 12)
 	layer.add_child(_label)
+
+
+## Foot IK v2 on the player's current skeleton (v1 stays loaded underneath, see the installer).
+func _install_foot_ik() -> void:
+	FOOT_IK_V2.install(player.body, player.skeleton, player.body._foot_ik_modifier)
 
 
 func set_realistic(value: bool) -> void:
