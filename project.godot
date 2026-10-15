@@ -162,3 +162,30 @@ zoom_out={
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+
+[shader_globals]
+
+wind_strength={
+"type": "float",
+"value": 0.15
+}
+wind_direction={
+"type": "vec2",
+"value": Vector2(1, 0.3)
+}
+ground_wetness={
+"type": "float",
+"value": 0.0
+}
+snow_cover={
+"type": "float",
+"value": 0.0
+}
+autumn={
+"type": "float",
+"value": 0.0
+}
+realism={
+"type": "float",
+"value": 0.0
+}
