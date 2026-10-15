@@ -27,6 +27,8 @@ excluded_directories: !!set
   .git: null
   .godot: null
   godot_gpu_cloth: null
+  godot_ai: null # third-party add-on (Godot AI MCP plugin), not our code
+  sky_3d: null # third-party add-on (Sky3D, MIT), not our code
 expression-not-assigned: null
 function-argument-name: _?[a-z][a-z0-9]*(_[a-z0-9]+)*
 function-arguments-number: 10
