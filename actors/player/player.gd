@@ -528,6 +528,7 @@ func _physics_process(delta: float) -> void:
 					._ground_sampler._settings.landing_correction_speed * delta)
 			if not test_move(global_transform, prediction_motion):
 				global_position += prediction_motion
+	PlayerSteepSlope.block_uphill(self) # a slope past floor_max_angle stops the walk
 	var horizontal_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
 	var frame_start_y := global_position.y
 	var frame_start_xz := Vector2(global_position.x, global_position.z)
