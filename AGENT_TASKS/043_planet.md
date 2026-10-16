@@ -22,6 +22,23 @@ Lab: `tests/manual/planet/planet_lab.tscn` (`-- --radius=N --seed=N`); check:
   as a share of relief), biome and colour from temperature and rain (rain forest, savanna, grass,
   forest, taiga, tundra, desert, ice, rock), and `find_spawn` (mild lowland). Pure functions of the
   direction and the seed. No rivers or lakes yet; no erosion.
+- `PlanetHydrology` (rivers, lakes): the ground (macro height, without the small hills) sampled at the
+  middle of 96x96 cells per cube face (327 m a cell on a 20 km planet); priority flood from the sea
+  gives every cell a downstream neighbour and fills hollows (lakes where deeper than 8 m); rain is
+  summed down the drainage; the top 4.5% of land cells by flow are rivers, wider with more water.
+  Each river is followed source to mouth, corners rounded (Chaikin x2), each node's water level set
+  below the real ground there and never above the node upstream, the river ends where the ground
+  falls under the sea. `carve` cuts a channel (bed, banks, valley) into `PlanetNoise.height`;
+  tiles draw river ribbons (shared node tangents, no gaps) and lake cells cut to the tile edges.
+  `water_at` tells the scatter where water stands: **ground and water come first, plants after**.
+- `PlanetScatter`: plants on the finest tiles (all layers near the player, trees only further out),
+  species from `SpeciesRegistry` (same generator as the flat world), fitness from the planet's
+  moisture (rain), warmth (temperature at the height) and slope; nothing grows in the sea, a river or
+  a lake. `Plants` bodies hold trunk colliders (the check ignores them).
+- Water: `shaders/world/planet_water.gdshader` is water_lowpoly with smooth lit normals (the faceted
+  low-poly normals made the sun glint a field of squares); sea facets ~5 m near, bigger and flat
+  (vertex colour red = wave share) far away.
+- Gullies: ridged noise on the high ground in `base_height`.
 - `PlanetTile`: one cell of one of the six cube faces bent onto the sphere (tan mapping). The mesh is
   built around the tile's own middle in doubles, so its numbers stay small on any planet. Every tile
   has `tile_cells` quads, so a tile twice as big has quads twice as wide: one code for the near ground
@@ -72,6 +89,5 @@ edges differ by 1e-10 m); the planet check avoids seams.
 
 ## Not done
 
-Plants and rocks, water shader tuned for tiles (it uses the flat world's water shader on bent
-patches), rivers and lakes, fauna, weather, planet rotation / day-night from the planet, other
+Rocks, fauna, weather, planet rotation / day-night from the planet, other
 planets, space.

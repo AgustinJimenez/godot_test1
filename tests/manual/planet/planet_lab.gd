@@ -2,8 +2,9 @@ extends Node3D
 ## Planet lab. Plain run: the player walks a round planet.
 ##   -- --radius=N     planet radius in metres (default 20000)
 ##   -- --seed=N       planet seed
+##   -- --dir=x,y,z   start there (a direction from the planet's centre) instead of the spawn
 ##   -- --view-alt=N   no player: a camera N metres above the ground, looking at the horizon
-##   -- --view-pitch=N degrees (negative looks down; with --view-alt)
+##   -- --view-pitch=N / --view-yaw=N degrees (negative pitch looks down; with --view-alt)
 ##   -- --shot=PATH    (with a window) saves a picture after the tiles have loaded, then quits
 ##   -- --planet-check (headless) stands the player on the planet, walks it in steps (turning the
 ##                     planet under them) and prints one PLANET_CHECK line.
@@ -23,8 +24,10 @@ var _walked := 0.0
 var _placed := true
 var _view_alt := 0.0
 var _shot := ""
+var _start_dir := Vector3.ZERO
 var _shot_frame := 360
 var _view_pitch := -18.0
+var _view_yaw := 0.0
 
 
 func _ready() -> void:
@@ -36,6 +39,11 @@ func _ready() -> void:
 			settings.world_seed = arg.trim_prefix("--seed=").to_int()
 		elif arg.begins_with("--view-alt="):
 			_view_alt = arg.trim_prefix("--view-alt=").to_float()
+		elif arg.begins_with("--dir="):
+			var parts := arg.trim_prefix("--dir=").split(",")
+			_start_dir = Vector3(parts[0].to_float(), parts[1].to_float(), parts[2].to_float()).normalized()
+		elif arg.begins_with("--view-yaw="):
+			_view_yaw = arg.trim_prefix("--view-yaw=").to_float()
 		elif arg.begins_with("--view-pitch="):
 			_view_pitch = arg.trim_prefix("--view-pitch=").to_float()
 		elif arg.begins_with("--shot-frame="):
@@ -54,16 +62,16 @@ func _ready() -> void:
 		camera.near = 0.5
 		add_child(camera)
 		camera.make_current()
-		var view_spawn := planet.start(camera)
+		var view_spawn := planet.start(camera, _start_dir)
 		camera.global_position.y = _view_alt
-		camera.rotation_degrees = Vector3(_view_pitch, 0.0, 0.0)
+		camera.rotation_degrees = Vector3(_view_pitch, _view_yaw, 0.0)
 		planet.build_now(true)
 		planet.update_now()
 		print("VIEW altitude %.0f m over %s" % [_view_alt, view_spawn])
 		return
 	player = PLAYER_SCENE.instantiate() as Player
 	add_child(player)
-	var spawn := planet.start(player)
+	var spawn := planet.start(player, _start_dir)
 	planet.build_now(not _checking)
 	print("PLANET radius %.0f m, max level %d, %d tiles in %d ms, spawn %s" % [settings.radius,
 			settings.max_level(), planet.surface.tiles.size(), Time.get_ticks_msec() - started,

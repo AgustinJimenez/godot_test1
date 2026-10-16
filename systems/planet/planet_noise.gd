@@ -14,9 +14,11 @@ var relief := 1000.0 ## m, from the sea to the top of the highest ranges (see Pl
 var tectonics: PlanetTectonics
 var climate := PlanetClimate.new()
 var species: SpeciesRegistry ## the plants of this planet
+var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
 
 var _rolling := FastNoiseLite.new()
 var _hills := FastNoiseLite.new()
+var _gullies := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
 var _sea := 0.0 ## the height (units of relief) that is sea level, so the ocean covers its share
 
@@ -30,9 +32,15 @@ func _init(planet_settings: PlanetSettings) -> void:
 	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
 	_setup(_rolling, settings.world_seed + 2, 0.0004, 3)
 	_setup(_hills, settings.world_seed + 1, 0.0022, 4)
+	_setup(_gullies, settings.world_seed + 3, 0.0018, 4)
+	_gullies.fractal_type = FastNoiseLite.FRACTAL_RIDGED
 	_setup(_detail, settings.world_seed + 7, 0.09, 2)
 	_find_sea_level()
 	climate.build(self)
+	if settings.hydrology_cells > 0:
+		var water := PlanetHydrology.new()
+		water.build(self, settings.hydrology_cells)
+		hydrology = water
 
 
 func _setup(noise: FastNoiseLite, noise_seed: int, frequency: float, octaves: int) -> void:
@@ -57,16 +65,37 @@ func _find_sea_level() -> void:
 	_sea = samples[clampi(int(settings.ocean_fraction * float(count)), 0, count - 1)]
 
 
-## Ground height in metres above the sea, in the unit direction (x, y, z).
+## Ground height in metres above the sea, in the unit direction (x, y, z), rivers cut in.
 func height(x: float, y: float, z: float) -> float:
-	var units := tectonics.height(Vector3(x, y, z)) - _sea
-	var metres := units * relief
-	# below the plates' scale: hills and little rises on the land (and only a little on the sea floor)
+	var ground := base_height(x, y, z)
+	if hydrology == null:
+		return ground
+	return hydrology.carve(Vector3(x, y, z), ground)
+
+
+## The ground before the rivers are cut in.
+func base_height(x: float, y: float, z: float) -> float:
+	var p := Vector3(x, y, z) * settings.radius
+	var land := smoothstep(-0.02, 0.05, _units(x, y, z))
+	var hills := _hills.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.01, 12.0, 45.0)
+	# the high ground is cut by gullies and spurs, as if water had run down it for ages
+	var units := _units(x, y, z)
+	var steep_country := smoothstep(0.12, 0.45, units)
+	var gullies := (_gullies.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.5 - 0.5) * relief * 0.05
+	return macro_height(x, y, z) + hills * land + gullies * steep_country
+
+
+## The ground without the smallest hills: what the water sees when it picks its way to the sea.
+func macro_height(x: float, y: float, z: float) -> float:
+	var units := _units(x, y, z)
 	var p := Vector3(x, y, z) * settings.radius
 	var land := smoothstep(-0.02, 0.05, units)
-	metres += _rolling.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.04, 25.0, 140.0) * land
-	metres += _hills.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.01, 12.0, 45.0) * land
-	return metres
+	var rolling := _rolling.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.04, 25.0, 140.0)
+	return units * relief + rolling * land
+
+
+func _units(x: float, y: float, z: float) -> float:
+	return tectonics.height(Vector3(x, y, z)) - _sea
 
 
 ## 0 dry .. 1 wet.

@@ -33,6 +33,17 @@ var _e1 := Vector3.ZERO # the tile's axes as unit vectors, for the maths below
 var _e3 := Vector3.ZERO
 
 
+static var _water_material: ShaderMaterial
+
+
+## The water shader material (made once, shared by every tile).
+static func water_material() -> ShaderMaterial:
+	if _water_material == null:
+		_water_material = ShaderMaterial.new()
+		_water_material.shader = preload("res://shaders/world/planet_water.gdshader")
+	return _water_material
+
+
 ## The tile key: (face, level, x, y) packed in one int.
 static func key_of(f: int, lvl: int, x: int, y: int) -> int:
 	return (((f * 32 + lvl) << 40) | (x << 20)) | y
@@ -129,6 +140,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool,
 	add_child(mesh_instance)
 	if min_height < _settings.sea_level + 0.5:
 		_add_sea(dirs, side, cells)
+	_add_running_water(s0, s1, t0, t1)
 	if plants != PlanetScatter.Detail.NONE:
 		PlanetScatter.new().populate(self, noise, positions, dirs, heights, cells, size, plants,
 				collide)
@@ -208,7 +220,11 @@ func _skirt(builder: MeshBuilder, positions: Array[Vector3], colors: Array[Color
 
 ## The sea over this tile: a coarse patch at sea level, bent like the ground.
 func _add_sea(dirs: Array[Vector3], side: int, cells: int) -> void:
-	var steps := 12
+	# near the player the facets are about 5 m (the waves roll them); further out they are bigger,
+	# and a facet bigger than the waves would catch the sun as one square, so the sea goes flat
+	var steps := clampi(int(size / 5.0), 12, 32)
+	var facet := size / float(steps)
+	var roll := Color(1.0 - smoothstep(6.0, 14.0, facet), 1.0, 1.0)
 	var builder := MeshBuilder.new()
 	var grid: Array[Vector3] = []
 	for row in steps + 1:
@@ -221,12 +237,96 @@ func _add_sea(dirs: Array[Vector3], side: int, cells: int) -> void:
 		for column in steps:
 			var i00 := row * (steps + 1) + column
 			var i01 := i00 + steps + 1
-			builder.add_tri_smooth(grid[i00], grid[i01], grid[i00 + 1], Color.WHITE, up, white)
-			builder.add_tri_smooth(grid[i00 + 1], grid[i01], grid[i01 + 1], Color.WHITE, up, white)
+			builder.add_tri_smooth(grid[i00], grid[i01], grid[i00 + 1], roll, up, white)
+			builder.add_tri_smooth(grid[i00 + 1], grid[i01], grid[i01 + 1], roll, up, white)
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.mesh = builder.commit()
-	var material := ShaderMaterial.new()
-	material.shader = preload("res://shaders/world/water_lowpoly.gdshader")
-	mesh_instance.material_override = material
+	mesh_instance.material_override = water_material()
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mesh_instance)
+
+
+## The rivers and lakes that run over this tile: ribbons and cell squares of water at the water's
+## own level, cut to the tile's edges so neighbouring tiles never draw the same water twice.
+func _add_running_water(s0: float, s1: float, t0: float, t1: float) -> void:
+	var water := _noise.hydrology
+	if water == null or level < _settings.max_level() - 1:
+		return
+	var rings := mini(ceili(size / water.cell_metres) + 2, 6)
+	var ids := water.cells_around(water.cell_of(centre), rings)
+	var rivers := water.river_segments(ids)
+	var lakes := water.lake_quads(ids)
+	if rivers.is_empty() and lakes.is_empty():
+		return
+	var radius := _settings.radius
+	var edge: Array[Vector3] = []
+	for corner: Vector2 in [Vector2(s0, t0), Vector2(s1, t0), Vector2(s1, t1), Vector2(s0, t1)]:
+		edge.append(_to_local(direction(face, corner.x, corner.y), radius))
+	var builder := MeshBuilder.new()
+	for river: Array in rivers:
+		var a := _to_local(river[0] as Vector3, radius + float(river[2]))
+		var b := _to_local(river[1] as Vector3, radius + float(river[3]))
+		var run_a := local_basis.transposed() * (river[6] as Vector3)
+		var run_b := local_basis.transposed() * (river[7] as Vector3)
+		var across_a := Vector3(-run_a.z, 0.0, run_a.x).normalized() * float(river[4]) * 0.5
+		var across_b := Vector3(-run_b.z, 0.0, run_b.x).normalized() * float(river[5]) * 0.5
+		_water_polygon(builder, [a + across_a, b + across_b, b - across_b, a - across_a], edge,
+				Color(0.25, 1.0, 1.0))
+	for lake: Array in lakes:
+		var square: Array[Vector3] = []
+		for corner in 4:
+			square.append(_to_local(lake[corner] as Vector3, radius + float(lake[4])))
+		_water_polygon(builder, square, edge, Color(0.4, 1.0, 1.0))
+	if builder.triangle_count() == 0:
+		return
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.mesh = builder.commit()
+	mesh_instance.material_override = water_material()
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mesh_instance)
+
+
+## Cuts `polygon` (convex, seen from above) to the tile's quad `edge` and adds it as a fan.
+func _water_polygon(builder: MeshBuilder, polygon: Array[Vector3], edge: Array[Vector3],
+		roll: Color) -> void:
+	var clipped := polygon
+	var turn := signf((edge[1].x - edge[0].x) * (edge[2].z - edge[0].z)
+			- (edge[1].z - edge[0].z) * (edge[2].x - edge[0].x))
+	for index in 4:
+		var p := edge[index]
+		var q := edge[(index + 1) % 4]
+		var kept: Array[Vector3] = []
+		for k in clipped.size():
+			var current := clipped[k]
+			var previous := clipped[(k + clipped.size() - 1) % clipped.size()]
+			var now := _side(p, q, current) * turn
+			var before := _side(p, q, previous) * turn
+			if now >= 0.0:
+				if before < 0.0:
+					kept.append(_cross(previous, current, before, now))
+				kept.append(current)
+			elif before >= 0.0:
+				kept.append(_cross(previous, current, before, now))
+		clipped = kept
+		if clipped.size() < 3:
+			return
+	var up: Array[Vector3] = [Vector3.UP, Vector3.UP, Vector3.UP]
+	var white: Array[Color] = [Color.WHITE, Color.WHITE, Color.WHITE]
+	for index in range(1, clipped.size() - 1):
+		var a := clipped[0]
+		var b := clipped[index]
+		var c := clipped[index + 1]
+		if (b - a).cross(c - a).y < 0.0:
+			b = clipped[index + 1]
+			c = clipped[index]
+		builder.add_tri_smooth(a, b, c, roll, up, white)
+
+
+## Which side of the line p -> q (in the ground plane) the point is on.
+func _side(p: Vector3, q: Vector3, point: Vector3) -> float:
+	return (q.x - p.x) * (point.z - p.z) - (q.z - p.z) * (point.x - p.x)
+
+
+## Where the polygon edge from `previous` to `current` crosses the line (sides `before`, `now`).
+func _cross(previous: Vector3, current: Vector3, before: float, now: float) -> Vector3:
+	return previous.lerp(current, before / (before - now))

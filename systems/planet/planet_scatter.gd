@@ -84,7 +84,10 @@ func _scatter(layer: PlantSpecies.Layer, stretch: float) -> void:
 			if ground < 0.9:
 				continue # the sea
 			var steep := _slope(fx, fz)
-			var plant := _pick(layer, _direction(fx, fz), ground, steep, x, z)
+			var dir := _direction(fx, fz)
+			if _noise.hydrology != null and _noise.hydrology.water_at(dir, ground) > ground - 0.3:
+				continue # a river or a lake
+			var plant := _pick(layer, dir, ground, steep, x, z)
 			if plant != null and _rng.randf() <= _pick_chance * density:
 				_place(plant, at)
 
