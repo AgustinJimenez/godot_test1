@@ -10,15 +10,15 @@ extends Node3D
 
 const ROWS := [
 	{"group": "Trunk"},
-	{"name": "height", "prop": "height", "min": 0.8, "max": 45.0, "step": 0.1},
-	{"name": "girth (trunk radius)", "prop": "girth", "min": 0.02, "max": 2.6, "step": 0.01},
+	{"name": "height", "prop": "height", "min": 0.2, "max": 45.0, "step": 0.05},
+	{"name": "girth (trunk radius)", "prop": "girth", "min": 0.01, "max": 2.6, "step": 0.005},
 	{"name": "root flare", "prop": "root_flare", "min": 0.0, "max": 1.0, "step": 0.01},
 	{"name": "column top (leader, <0 cone)", "prop": "column", "min": -0.01, "max": 1.0, "step": 0.01},
 	{"name": "taper", "prop": "taper", "min": 0.25, "max": 0.95, "step": 0.01},
 	{"name": "lean", "prop": "lean", "min": 0.0, "max": 0.3, "step": 0.01},
 	{"name": "bare trunk part", "prop": "trunk_part", "min": 0.05, "max": 0.8, "step": 0.01},
 	{"group": "Where the branches leave"},
-	{"name": "crown radius", "prop": "crown", "min": 0.4, "max": 14.0, "step": 0.1},
+	{"name": "crown radius", "prop": "crown", "min": 0.15, "max": 14.0, "step": 0.05},
 	{"name": "crown height / width", "prop": "aspect", "min": 0.4, "max": 2.0, "step": 0.01},
 	{"name": "droop", "prop": "droop", "min": 0.0, "max": 1.0, "step": 0.01},
 	{"name": "limbs / per node", "prop": "limbs", "min": 3, "max": 10, "step": 1},
@@ -198,7 +198,7 @@ func _build_panel() -> void:
 		_regrow())
 	_button(buttons, "Leafy preset", func() -> void: _preset(false))
 	_button(buttons, "Conifer preset", func() -> void: _preset(true))
-	for kind in ["umbrella", "giant", "oak", "dragon", "ancient", "willow", "cypress", "bush"]:
+	for kind in TreeArchetypes.NAMES.slice(2):
 		_button(buttons, kind.capitalize(), func() -> void: _archetype(kind))
 	_button(buttons, "Copy properties", func() -> void: _copy_properties())
 	_slider_row(outer, "randomness", randomness, func(value: float) -> void: randomness = value)
@@ -435,7 +435,7 @@ func _regrow() -> void:
 
 func _place_camera() -> void:
 	var offset := Vector3(sin(_yaw) * cos(_pitch), sin(_pitch), cos(_yaw) * cos(_pitch)) \
-			* _distance * maxf(maxf(genome.height / 9.0, genome.crown * genome.limb_length / 1.2), 0.5)
+			* _distance * maxf(maxf(genome.height / 9.0, genome.crown * genome.limb_length / 1.2), 0.12)
 	_camera.position = _target + offset
 	_camera.position.y = maxf(_camera.position.y, 0.1)
 	_camera.look_at(_target, Vector3.UP)

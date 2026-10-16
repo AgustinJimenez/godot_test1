@@ -7,12 +7,12 @@ extends RefCounted
 ## sliders almost never manage. The world species generator and the lab share this table.
 
 const NAMES: Array[String] = ["leafy", "conifer", "umbrella", "giant", "oak", "ancient", "dragon",
-		"willow", "cypress", "bush"]
+		"willow", "cypress", "bush", "shrub", "groundcover"]
 
 ## Plausible range of each numeric trait: [min, max]. A draw never leaves it.
 const RANGES := {
-	"height": [0.8, 45.0], "girth": [0.02, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
-	"trunk_part": [0.05, 0.8], "root_flare": [0.0, 1.0], "crown": [0.4, 14.0],
+	"height": [0.2, 45.0], "girth": [0.01, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
+	"trunk_part": [0.05, 0.8], "root_flare": [0.0, 1.0], "crown": [0.15, 14.0],
 	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "limb_angle": [15.0, 90.0],
 	"limb_length": [0.5, 2.2], "limb_thickness": [0.3, 1.3], "nodes_spacing": [0.3, 2.0],
 	"curve": [0.0, 1.4], "lift": [-0.1, 0.4], "sag": [0.0, 0.3], "tip_radius": [0.05, 0.8],
@@ -134,6 +134,17 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.trunk_sides = 6
 			g.leaf_size = 0.2
 			g.bark = Color(0.36, 0.28, 0.2)
+		"shrub", "groundcover":
+			# knee-high and below: many fine stems, small leaves
+			g = make("bush", leafy, conifer)
+			var low := kind == "groundcover"
+			g.height = 0.3 if low else 0.7
+			g.girth = 0.012 if low else 0.02
+			g.crown = 0.3 if low else 0.45
+			g.aspect = 0.8 if low else 1.0
+			g.limbs = 8 if low else 9
+			g.limb_angle = 65.0 if low else 50.0
+			g.leaf_size = 0.12 if low else 0.15
 		"dragon":
 			# thick trunk, limbs that fork again and again into an umbrella of bare branches, the
 			# leaves only in a tuft layer at the very ends

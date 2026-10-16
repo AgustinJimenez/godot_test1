@@ -74,7 +74,7 @@ func _grow() -> void:
 	# the low-poly look has fewer, bigger leaves and sprays (the lighter version bigger still)
 	var bigger := 1.0 + 0.8 * float(_lod)
 	# leaves grow with the crown, but slowly: a giant tree has more leaves, not door-sized ones
-	var leaf_basis := 2.0 * pow(maxf(_g.crown, 0.8) / 2.0, 0.55)
+	var leaf_basis := 2.0 * pow(maxf(_g.crown, 0.2) / 2.0, 0.55)
 	leaf_basis *= pow(maxf(_g.crown / 3.5, 1.0), 0.6) # a wide crown has clumps of leaves
 	_leaf_length = leaf_basis * _g.leaf_size * (1.7 if _fine else 2.5) * bigger
 	# sprays grow with a thick trunk too (a giant's needles are not a normal tree's)
