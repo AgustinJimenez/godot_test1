@@ -138,6 +138,8 @@ func _axis(y: float) -> Vector3:
 
 
 func _trunk() -> void:
+	if _g.foliage == TreeGenome.Foliage.FROND and _trunk_length < 0.5:
+		return # a fern, grass or flower grows straight from the ground: no trunk
 	var rings := (7 if _g.leader else 5) - _lod
 	var ringed := _g.bark_rings > 0.0 and _lod == 0
 	if ringed: # a bulge and a darker band every bark_rings metres
@@ -217,6 +219,8 @@ func _fronds() -> void:
 		var side := Vector3(-out.z, 0.0, out.x)
 		var length := _g.frond_length * _rng.randf_range(0.85, 1.1)
 		var steep := pow(_rng.randf(), 1.5) # the young ones stand up
+		if _g.flower.a > 0.0:
+			steep = lerpf(0.55, 0.95, _rng.randf()) # flower stems stand up
 		var parts := 9 - 3 * _lod
 		var points: Array[Vector3] = []
 		for step in parts + 1:
@@ -246,8 +250,9 @@ func _frond(points: Array[Vector3], side: Vector3) -> void:
 		var tip := dark
 		tip.a = minf(sway + 0.1, 1.0)
 		# the midrib narrows to the tip: a strip of two triangles per part
-		var wide_a := side * rib * (1.0 - 0.9 * t)
-		var wide_b := side * rib * (1.0 - 0.9 * (t + 1.0 / float(points.size() - 1)))
+		var narrow := 0.4 if _g.flower.a > 0.0 else 0.9 # a flower's stem stays thick up to the bloom
+		var wide_a := side * rib * (1.0 - narrow * t)
+		var wide_b := side * rib * (1.0 - narrow * (t + 1.0 / float(points.size() - 1)))
 		_b.add_tri(a - wide_a, a + wide_a, b + wide_b, base, base, tip)
 		_b.add_tri(a - wide_a, b + wide_b, b - wide_b, base, tip, tip)
 		# leaflets: one tri per side, hanging from the midrib, longest in the middle of the frond
@@ -270,18 +275,27 @@ func _frond(points: Array[Vector3], side: Vector3) -> void:
 		_flower(points[points.size() - 1])
 
 
-## A flat flower at `at`: a fan of petals round a lighter centre, facing the sky.
+## A flower at `at`: petals standing a little up round a yellow centre.
 func _flower(at: Vector3) -> void:
-	var petals := 6 if _fine else 5
+	var petals := 7 if _fine else 5
 	var petal := _g.flower
-	petal.a = 1.0
-	var centre := petal.lightened(0.45)
-	var lift := Vector3(0.0, _g.flower_size * 0.3, 0.0)
+	petal.a = 0.9
+	var inner := petal.darkened(0.1)
+	var outer := petal.lightened(0.15)
+	outer.a = 1.0
+	var middle := Color(0.9, 0.68, 0.1, 0.9)
+	var size := _g.flower_size
+	var heart := at + Vector3(0.0, size * 0.12, 0.0)
 	for index in petals:
-		var a := TAU * float(index) / float(petals)
-		var b := TAU * float(index + 1) / float(petals)
-		_b.add_tri(at + lift, at + Vector3(cos(a), 0.0, sin(a)) * _g.flower_size,
-				at + Vector3(cos(b), 0.0, sin(b)) * _g.flower_size, centre, petal, petal)
+		var angle := TAU * float(index) / float(petals)
+		var next := TAU * float(index + 1) / float(petals)
+		var dir := Vector3(cos(angle), 0.0, sin(angle))
+		var side := Vector3(-dir.z, 0.0, dir.x)
+		_b.add_tri(at + dir * size * 0.2 + side * size * 0.24,
+				at + dir * size * 0.2 - side * size * 0.24, at + dir * size + Vector3.UP * size * 0.4,
+				inner, inner, outer)
+		_b.add_tri(heart, at + dir * size * 0.22, at + Vector3(cos(next), 0.0, sin(next)) * size * 0.22,
+				middle, middle, middle)
 
 
 ## Whorls of branches up the trunk (a conifer), close together, each turned against the one below;

@@ -225,16 +225,16 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 					g.leaf = Color(0.4, 0.55, 0.18)
 					g.leaf_tip = Color(0.58, 0.68, 0.28)
 				_:
-					g.fronds = 6
-					g.frond_length = 0.45
-					g.frond_arch = 0.2
-					g.frond_droop = 0.1
+					g.fronds = 7
+					g.frond_length = 0.5
+					g.frond_arch = 0.1
+					g.frond_droop = 0.0
 					g.leaflet = 0.0
-					g.rib_width = 0.03
+					g.rib_width = 0.035
 					g.leaf = Color(0.35, 0.52, 0.2)
 					g.leaf_tip = Color(0.5, 0.65, 0.28)
 					g.flower = Color(0.95, 0.8, 0.2, 1.0)
-					g.flower_size = 0.05
+					g.flower_size = 0.08
 		"clump":
 			# a birch or hazel clump: several slim stems from one root
 			g = _leafy(leafy)
