@@ -130,6 +130,24 @@ func _slider_row(parent: Control, title: String, start: float, apply: Callable) 
 	row.add_child(slider)
 
 
+## A person (about 1.8 m) standing beside the tree, to judge its size; a capsule if the model fails.
+func _add_scale_figure() -> void:
+	var figure: Node3D = null
+	var path := "res://assets/models/universal_animation_library/UAL1_Standard.glb"
+	var scene := load(path) as PackedScene
+	if scene != null:
+		figure = scene.instantiate() as Node3D
+	if figure == null or figure.find_children("*", "MeshInstance3D").is_empty():
+		var capsule := MeshInstance3D.new()
+		capsule.mesh = CapsuleMesh.new()
+		(capsule.mesh as CapsuleMesh).height = 1.8
+		capsule.position.y = 0.9
+		figure = Node3D.new()
+		figure.add_child(capsule)
+	figure.position = Vector3(2.0, 0.0, 0.0)
+	add_child(figure)
+
+
 func _build_stage() -> void:
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_SKY
@@ -151,6 +169,7 @@ func _build_stage() -> void:
 	ground_material.albedo_color = Color(0.5, 0.5, 0.42)
 	ground.material_override = ground_material
 	add_child(ground)
+	_add_scale_figure()
 	_mesh = MeshInstance3D.new()
 	_mesh.material_override = FloraMeshes.material()
 	add_child(_mesh)
