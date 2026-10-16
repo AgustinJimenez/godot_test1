@@ -29,7 +29,7 @@ is rough) is `AGENT_TASKS/043_planet.md`. The flat world it grew next to is `AGE
 | `PlanetFrame` | the floating origin: the planet is turned under the player so the game's flat-world rules (up = +Y, gravity down) keep holding |
 | `PlanetScatter` | plants (the world's species by climate niche), rocks, logs, spires; nothing on water |
 | `PlanetFauna` | the flat world's deer and rabbits on the planet |
-| `PlanetMap`, `PlanetChart` | the M key: a full screen flat map that opens on the player's region, wheel zoom and drag, rivers, lakes, a grid and the player's arrow; `PlanetChart` draws a picture of the whole planet (coarse, then fine) or of the close region on 3 threads once the player is in |
+| `PlanetMap`, `PlanetChart` | the M key: a full screen flat map that opens on the player's region, wheel zoom and drag, rivers, lakes, a grid and the player's arrow; the layer buttons / keys 1-7 show the terrain, elevation, temperature, rain, biome, plates and slope with a legend and the numbers under the cursor; `PlanetChart` draws a picture of the whole planet (coarse, then fine) or of the close region on 3 threads once the player is in |
 | `PlanetSwim` | the flat world's swimming and wading (`WorldSwim`) with the planet's sea, lakes, rivers and river currents |
 | `PlanetWorld` | ties it together with `WorldAtmosphere`; rebases the frame every 80 m, shifts the world back every 2 km |
 

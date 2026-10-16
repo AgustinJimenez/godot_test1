@@ -9,6 +9,11 @@ extends CanvasLayer
 ## seconds), a fine one after, and, when you stop on a close view, a chart of just that region (so
 ## close up it is sharp). A flat (equirectangular) map: east to the right, north up, the poles
 ## stretched along the edges; it wraps round east-west.
+##
+## Layers (buttons under the map, or the keys 1 to 7): the terrain as it looks, the elevation (with
+## contour lines), the temperature, the rain, the biomes, the tectonic plates and the slope: the
+## planet's own numbers made visible, a debug tool as much as a map. Under the cursor the exact
+## numbers are listed (height, temperature, rain, biome, plate).
 
 const ACTION := &"planet_map"
 const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(1024, 512)]
@@ -19,6 +24,11 @@ const MARGIN := 14.0
 
 var planet: PlanetWorld
 
+var _layer := PlanetChart.Layer.TERRAIN
+var _cache: Dictionary = {} # layer -> {"whole": ImageTexture, "pass": int}: what was charted
+var _retired: Array[PlanetChart] = [] # charts of a layer left behind, drawing out their threads
+var _buttons: Array[Button] = []
+var _hover: Label
 var _whole: ImageTexture # the whole planet, as sharp as it has got
 var _whole_pass := -1 # the pass `_whole` is from (-1: none yet)
 var _chart: PlanetChart # the chart being drawn, if any
@@ -61,6 +71,23 @@ func _ready() -> void:
 	_view.clip_contents = true
 	_view.draw.connect(_draw_view)
 	column.add_child(_view)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_child(row)
+	var group := ButtonGroup.new()
+	for index in PlanetChart.NAMES.size():
+		var button := Button.new()
+		button.text = "%d  %s" % [index + 1, PlanetChart.NAMES[index]]
+		button.toggle_mode = true
+		button.button_group = group
+		button.focus_mode = Control.FOCUS_NONE
+		button.button_pressed = index == 0
+		button.pressed.connect(select_layer.bind(index))
+		row.add_child(button)
+		_buttons.append(button)
+	_hover = Label.new()
+	_hover.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(_hover)
 	_caption = Label.new()
 	_caption.text = "Charting the planet..."
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -90,10 +117,14 @@ func _input(event: InputEvent) -> void:
 				motion.relative.y / _view.size.y * size.y)
 		_clamp_centre()
 		get_viewport().set_input_as_handled()
-	elif event is InputEventKey and (event as InputEventKey).pressed \
-			and (event as InputEventKey).physical_keycode == KEY_R:
-		_go_home()
-		get_viewport().set_input_as_handled()
+	elif event is InputEventKey and (event as InputEventKey).pressed:
+		var code := (event as InputEventKey).physical_keycode
+		if code == KEY_R:
+			_go_home()
+			get_viewport().set_input_as_handled()
+		elif code >= KEY_1 and code < KEY_1 + PlanetChart.NAMES.size():
+			select_layer(code - KEY_1)
+			get_viewport().set_input_as_handled()
 
 
 ## Opens or closes the map (on the player's region).
@@ -106,6 +137,26 @@ func toggle() -> void:
 	else:
 		Input.mouse_mode = _mouse_before
 		_dragging = false
+
+
+## Shows another layer (a PlanetChart.Layer): what was charted of it before comes back at once, the
+## rest is charted again.
+func select_layer(layer: int) -> void:
+	if layer == _layer:
+		return
+	if _whole != null:
+		_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
+	_layer = layer as PlanetChart.Layer
+	_buttons[layer].set_pressed_no_signal(true)
+	var kept: Dictionary = _cache.get(layer, {})
+	_whole = kept.get("whole")
+	_whole_pass = kept.get("pass", -1)
+	_detail = null
+	if _chart != null:
+		_retired.append(_chart) # its threads finish on their own; the picture is thrown away
+		_chart = null
+	if _started and _whole_pass < PASSES.size() - 1:
+		_start_chart(_whole_pass + 1)
 
 
 ## Zooms to `zoom` (1: the whole planet) round the player.
@@ -169,6 +220,7 @@ func begin() -> void:
 func _start_chart(pass_index: int) -> void:
 	_chart = PlanetChart.new()
 	_chart.size = PASSES[pass_index]
+	_chart.layer = _layer
 	_chart_is_detail = false
 	_chart.start(planet.noise)
 
@@ -176,11 +228,18 @@ func _start_chart(pass_index: int) -> void:
 func _exit_tree() -> void:
 	if _chart != null:
 		_chart.stop()
+	for old in _retired:
+		old.stop()
 
 
 func _process(delta: float) -> void:
+	for index in range(_retired.size() - 1, -1, -1):
+		if _retired[index].finished():
+			_retired[index].texture() # joins the threads, the picture is not wanted
+			_retired.remove_at(index)
 	if visible:
 		_view.queue_redraw()
+		_hover.text = _numbers_under_the_cursor()
 	if _chart != null:
 		if _chart.finished():
 			_adopt_chart()
@@ -199,6 +258,7 @@ func _adopt_chart() -> void:
 		return
 	_whole = texture
 	_whole_pass += 1
+	_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
 	_chart = null
 	if _whole_pass + 1 < PASSES.size():
 		_start_chart(_whole_pass + 1) # the fine chart replaces the coarse one when it is done
@@ -219,6 +279,7 @@ func _maybe_chart_the_view(delta: float) -> void:
 	if rect.position.x < 0.0 or rect.end.x > 1.0 or rect.position.y < 0.0 or rect.end.y > 1.0:
 		return # over the edge of the map: the whole planet chart will do
 	_chart = PlanetChart.new()
+	_chart.layer = _layer
 	_chart.rect = rect
 	_chart.size = Vector2i(DETAIL_SIZE.x, int(DETAIL_SIZE.x * rect.size.y / rect.size.x
 			* 0.5))
@@ -228,6 +289,30 @@ func _maybe_chart_the_view(delta: float) -> void:
 
 func _covered_by_detail(view: Rect2) -> bool:
 	return _detail != null and _detail_rect.encloses(view)
+
+
+## The numbers of the planet under the mouse, as one line of text.
+func _numbers_under_the_cursor() -> String:
+	var local := _view.get_local_mouse_position()
+	if local.x < 0.0 or local.y < 0.0 or local.x > _view.size.x or local.y > _view.size.y:
+		return ""
+	var size := _visible_size()
+	var uv := Vector2(fposmod(_centre.x - size.x * 0.5 + local.x / _view.size.x * size.x, 1.0),
+			_centre.y - size.y * 0.5 + local.y / _view.size.y * size.y)
+	if uv.y < 0.0 or uv.y > 1.0:
+		return ""
+	var lat := (0.5 - uv.y) * PI
+	var lon := uv.x * TAU - PI
+	var dir := Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+	var noise := planet.noise
+	var ground := noise.height(dir.x, dir.y, dir.z)
+	var plate := noise.tectonics.plate_at(dir)
+	return "%.1f° %s %.1f° %s   height %d m   %.0f °C   rain %.2f   %s   plate %d (%s)" % [
+			absf(rad_to_deg(lat)), "N" if lat >= 0.0 else "S", absf(rad_to_deg(lon)),
+			"E" if lon >= 0.0 else "W", roundi(ground),
+			noise.temperature(dir.x, dir.y, dir.z, maxf(ground, 0.0)), noise.climate.sample(dir).y,
+			"sea" if ground < 0.0 else TerrainNoise.Biome.keys()[noise.biome(dir.x, dir.y, dir.z,
+			ground, 0.1)].to_lower(), int(plate.x), "land" if plate.z > 0.5 else "ocean"]
 
 
 func _uv_of(dir: Vector3) -> Vector2:
@@ -279,6 +364,7 @@ func _draw_view() -> void:
 			_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(0.0, view.position.y,
 					size.x - first_width, size.y), first_width)
 	_draw_grid()
+	_draw_legend()
 	var player := _where_is_the_player()
 	if player.is_empty():
 		return
@@ -310,6 +396,25 @@ func _draw_part(texture: ImageTexture, covers: Rect2, wanted: Rect2, offset_u :=
 			(part.position.y - view_top) / size.y * _view.size.y,
 			part.size.x / size.x * _view.size.x, part.size.y / size.y * _view.size.y)
 	_view.draw_texture_rect_region(texture, dest, source)
+
+
+## The scale of the layer (a bar and its two ends) in the corner of the map.
+func _draw_legend() -> void:
+	var labels := PlanetChart.scale_labels(_layer, planet.noise.relief)
+	if labels.is_empty():
+		return
+	var origin := Vector2(18.0, _view.size.y - 34.0)
+	var width := 260.0
+	for step in int(width):
+		_view.draw_rect(Rect2(origin + Vector2(float(step), 0.0), Vector2(1.0, 14.0)),
+				PlanetChart.ramp(_layer, float(step) / width))
+	_view.draw_rect(Rect2(origin, Vector2(width, 14.0)), Color.WHITE, false, 1.0)
+	var font := ThemeDB.fallback_font
+	_view.draw_string(font, origin + Vector2(0.0, -4.0), labels[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
+	_view.draw_string(font, origin + Vector2(width, -4.0), labels[1], HORIZONTAL_ALIGNMENT_RIGHT,
+			-1, 14)
+	_view.draw_string(font, origin + Vector2(width + 14.0, 12.0), PlanetChart.NAMES[_layer],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
 
 
 func _draw_grid() -> void:

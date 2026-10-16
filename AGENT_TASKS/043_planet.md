@@ -164,6 +164,15 @@ coarse whole-planet chart (320x160), then a fine one (1024x512), and when the vi
 on a close region for half a second, a chart of just that region (768 px wide, with a margin to pan
 in), so close up it is sharp.
 
+Eleventh pass (map layers, a debug tool): buttons under the map (and keys 1-7) switch the layer:
+Terrain, Elevation (with contour lines), Temperature, Rain, Biome, Plates (boundaries in black),
+Slope; each has a colour scale in the corner, and the line under the map gives the exact numbers
+under the cursor (height, temperature, rain, biome, plate). A layer's finished charts are kept, so
+switching back is instant. `PlanetChart.Layer` / `PlanetTectonics.plate_at`.
+What the layers showed straight away: the rain layer has big dry gaps inland (the climate model
+lets the air run dry after a few hundred km), and the biome layer is banded by latitude as it
+should be; both are the next things to tune in `PlanetClimate`.
+
 Still rough / ideas: tile LOD edge colour mismatch and popping, sea depth
 colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
 (mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile

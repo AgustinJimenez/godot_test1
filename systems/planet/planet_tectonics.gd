@@ -135,3 +135,25 @@ func _boundary(a: int, b: int, q: Vector3, edge: float) -> float:
 	var arc := 0.30 * together * exp(-pow((edge - 0.03) / 0.03, 2.0)) # an island arc
 	arc += 0.22 * apart * exp(-pow(edge / 0.12, 2.0)) # a mid-ocean ridge
 	return arc - 0.22 * together * near # and the trench beside it
+
+
+## Which plate is at `dir` (for the map): (its number, radians to the nearest boundary, 1 if it is a
+## continental plate else 0).
+func plate_at(dir: Vector3) -> Vector3:
+	var shifted := dir + Vector3(_warp.get_noise_3d(dir.x, dir.y, dir.z),
+			_warp.get_noise_3d(dir.x + 5.3, dir.y - 2.1, dir.z + 1.7),
+			_warp.get_noise_3d(dir.x - 3.7, dir.y + 4.4, dir.z - 6.2)) * 0.30
+	var q := shifted.normalized()
+	var first := 0
+	var best := -2.0
+	var next := -2.0
+	for index in _seeds.size():
+		var closeness := q.dot(_seeds[index])
+		if closeness > best:
+			next = best
+			best = closeness
+			first = index
+		elif closeness > next:
+			next = closeness
+	var edge := (acos(clampf(next, -1.0, 1.0)) - acos(clampf(best, -1.0, 1.0))) * 0.5
+	return Vector3(first, edge, 1.0 if _continental[first] else 0.0)

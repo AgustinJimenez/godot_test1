@@ -1,21 +1,74 @@
 class_name PlanetChart
 extends RefCounted
-## One picture of (a part of) a planet, drawn from PlanetNoise on background threads: the sea darker
-## where it is deep, the land in its biome colours with the relief shaded, lakes in blue, then the
-## rivers as thin blue lines. `rect` is the part of the map it covers in fractions (u east, v south,
-## the whole planet is (0, 0, 1, 1)); `size` is its size in pixels. Poll `finished()`, then take
-## `texture()`.
+## One picture of (a part of) a planet, drawn from PlanetNoise on background threads, in one of the
+## map's layers (what the colours show). `rect` is the part of the map it covers in fractions (u
+## east, v south, the whole planet is (0, 0, 1, 1)); `size` is its size in pixels. Poll
+## `finished()`, then take `texture()`.
 
+enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE }
+
+const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates",
+		"Slope"]
 const WORKERS := 3
+const BIOME_COLORS := {
+	TerrainNoise.Biome.BEACH: Color(0.93, 0.85, 0.55), TerrainNoise.Biome.MEADOW: Color(0.6, 0.8, 0.3),
+	TerrainNoise.Biome.FOREST: Color(0.1, 0.45, 0.15), TerrainNoise.Biome.ROCKY: Color(0.5, 0.5, 0.52),
+	TerrainNoise.Biome.SNOW: Color(0.97, 0.98, 1.0), TerrainNoise.Biome.MARSH: Color(0.3, 0.55, 0.5),
+	TerrainNoise.Biome.DESERT: Color(0.9, 0.6, 0.25),
+}
 
 var rect := Rect2(0.0, 0.0, 1.0, 1.0)
 var size := Vector2i(320, 160)
+var layer := Layer.TERRAIN
 
 var _noise: PlanetNoise
 var _threads: Array[Thread] = []
 var _bands: Array[PackedByteArray] = []
 var _rows_done := 0
 var _mutex := Mutex.new()
+
+
+## The colour of `t` (0..1) along a layer's scale (the legend and the picture use the same).
+static func ramp(which: Layer, t: float) -> Color:
+	t = clampf(t, 0.0, 1.0)
+	match which:
+		Layer.ELEVATION: # sea floor to peaks
+			return _along(t, [Color(0.05, 0.12, 0.4), Color(0.3, 0.6, 0.85), Color(0.25, 0.55, 0.25),
+					Color(0.85, 0.8, 0.35), Color(0.6, 0.4, 0.25), Color(1.0, 1.0, 1.0)],
+					[0.0, 0.33, 0.36, 0.55, 0.8, 1.0])
+		Layer.TEMPERATURE:
+			return _along(t, [Color(0.35, 0.2, 0.75), Color(0.25, 0.6, 1.0), Color(0.5, 0.9, 0.6),
+					Color(1.0, 0.9, 0.25), Color(0.95, 0.25, 0.1)], [0.0, 0.25, 0.5, 0.75, 1.0])
+		Layer.RAIN:
+			return _along(t, [Color(0.95, 0.85, 0.6), Color(0.8, 0.9, 0.7), Color(0.4, 0.75, 0.85),
+					Color(0.1, 0.3, 0.8)], [0.0, 0.3, 0.65, 1.0])
+		Layer.SLOPE:
+			return _along(t, [Color(0.95, 0.95, 0.9), Color(0.75, 0.6, 0.35), Color(0.3, 0.15, 0.1)],
+					[0.0, 0.4, 1.0])
+	return Color.WHITE
+
+
+## The two ends of a layer's scale as text (and the numbers they stand for).
+static func scale_labels(which: Layer, relief: float) -> Array[String]:
+	match which:
+		Layer.ELEVATION:
+			return ["%d m deep" % int(relief * 0.35), "%d m" % int(relief)]
+		Layer.TEMPERATURE:
+			return ["-30 °C", "35 °C"]
+		Layer.RAIN:
+			return ["dry", "wet"]
+		Layer.SLOPE:
+			return ["flat", "steep"]
+	return []
+
+
+static func _along(t: float, colors: Array, stops: Array) -> Color:
+	for index in stops.size() - 1:
+		if t <= float(stops[index + 1]):
+			var span := float(stops[index + 1]) - float(stops[index])
+			return (colors[index] as Color).lerp(colors[index + 1] as Color,
+					(t - float(stops[index])) / maxf(span, 0.0001))
+	return colors[colors.size() - 1]
 
 
 func start(noise: PlanetNoise) -> void:
@@ -50,11 +103,12 @@ func texture() -> ImageTexture:
 	for band in _bands:
 		all.append_array(band)
 	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, all)
-	_draw_rivers(image)
+	if layer == Layer.TERRAIN or layer == Layer.ELEVATION:
+		_draw_rivers(image)
 	return ImageTexture.create_from_image(image)
 
 
-## Waits for the threads (the map is closed or the game ends).
+## Waits for the threads (the game ends).
 func stop() -> void:
 	for thread in _threads:
 		thread.wait_to_finish()
@@ -66,37 +120,16 @@ func _chart(worker: int) -> void:
 	var from_row := worker * size.y / WORKERS
 	var to_row := (worker + 1) * size.y / WORKERS
 	var bytes := PackedByteArray()
-	var relief := _noise.relief
 	var step_lon := rect.size.x * TAU / float(size.x)
 	var step_lat := rect.size.y * PI / float(size.y)
-	var run := step_lon * _noise.settings.radius
-	var shading := 6.0 * 0.0098 / step_lon / relief # the same light on a close map as a far one
+	var needs_slope := layer in [Layer.TERRAIN, Layer.ELEVATION, Layer.BIOME, Layer.SLOPE]
 	for row in range(from_row, to_row):
 		var v := rect.position.y + (float(row) + 0.5) / float(size.y) * rect.size.y
 		var lat := (0.5 - v) * PI
 		for column in size.x:
 			var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
 			var lon := u * TAU - PI
-			var dir := Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
-			var ground := _noise.height(dir.x, dir.y, dir.z)
-			var east := Vector3(cos(lat) * cos(lon + step_lon), sin(lat),
-					cos(lat) * sin(lon + step_lon))
-			var up_lat := lat + step_lat
-			var north := Vector3(cos(up_lat) * cos(lon), sin(up_lat), cos(up_lat) * sin(lon))
-			var h_east := _noise.height(east.x, east.y, east.z)
-			var h_north := _noise.height(north.x, north.y, north.z)
-			var color: Color
-			if ground < 0.0:
-				var depth := clampf(-ground / (relief * 0.35), 0.0, 1.0)
-				color = Color(0.32, 0.62, 0.78).lerp(Color(0.03, 0.12, 0.33), sqrt(depth))
-			elif _noise.hydrology != null and _noise.hydrology.lake_level_at(dir, ground) > -INF:
-				color = Color(0.25, 0.5, 0.85)
-			else:
-				var slope := Vector2(h_east - ground, h_north - ground).length() / run
-				color = _noise.facet_color(dir.x, dir.y, dir.z, ground, clampf(slope, 0.0, 1.0))
-				# hill shading: the light from the north west
-				var shade := clampf(1.0 + ((ground - h_east) + (h_north - ground)) * shading, 0.55, 1.35)
-				color = Color(color.r * shade, color.g * shade, color.b * shade)
+			var color := _pixel_color(lat, lon, step_lon, step_lat, needs_slope)
 			bytes.append(clampi(int(color.r * 255.0), 0, 255))
 			bytes.append(clampi(int(color.g * 255.0), 0, 255))
 			bytes.append(clampi(int(color.b * 255.0), 0, 255))
@@ -104,6 +137,89 @@ func _chart(worker: int) -> void:
 		_rows_done += 1
 		_mutex.unlock()
 	_bands[worker] = bytes
+
+
+func _pixel_color(lat: float, lon: float, step_lon: float, step_lat: float,
+		needs_slope: bool) -> Color:
+	var noise := _noise
+	var relief := noise.relief
+	var dir := Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+	var ground := noise.height(dir.x, dir.y, dir.z)
+	var rise_east := 0.0
+	var rise_north := 0.0
+	var slope := 0.0
+	if needs_slope:
+		var east := Vector3(cos(lat) * cos(lon + step_lon), sin(lat), cos(lat) * sin(lon + step_lon))
+		var up_lat := lat + step_lat
+		var north := Vector3(cos(up_lat) * cos(lon), sin(up_lat), cos(up_lat) * sin(lon))
+		rise_east = noise.height(east.x, east.y, east.z) - ground
+		rise_north = noise.height(north.x, north.y, north.z) - ground
+		slope = clampf(Vector2(rise_east, rise_north).length() / (step_lon * noise.settings.radius),
+				0.0, 1.0)
+	var color := Color.WHITE
+	match layer:
+		Layer.ELEVATION:
+			var t := 0.0
+			if ground < 0.0:
+				t = lerpf(0.33, 0.0, clampf(-ground / (relief * 0.35), 0.0, 1.0))
+			else:
+				t = lerpf(0.36, 1.0, clampf(ground / relief, 0.0, 1.0))
+			color = ramp(Layer.ELEVATION, t)
+			# contour lines every 5% of the relief on the land
+			if ground >= 0.0:
+				var interval := relief * 0.05
+				var band := floorf(ground / interval)
+				var crosses_east := band != floorf((ground + rise_east) / interval)
+				var crosses_north := band != floorf((ground + rise_north) / interval)
+				if crosses_east or crosses_north:
+					color = color.darkened(0.3)
+		Layer.TEMPERATURE:
+			var degrees := noise.temperature(dir.x, dir.y, dir.z, maxf(ground, 0.0))
+			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 65.0)
+		Layer.RAIN:
+			color = ramp(Layer.RAIN, noise.climate.sample(dir).y / 1.2)
+			if ground < 0.0:
+				color = color.darkened(0.25)
+		Layer.BIOME:
+			color = _biome_color(dir, ground, slope)
+		Layer.PLATES:
+			var plate := noise.tectonics.plate_at(dir)
+			var land := plate.z > 0.5
+			color = Color.from_hsv(fposmod(plate.x * 0.61803, 1.0), 0.55 if land else 0.25,
+					0.95 if land else 0.6)
+			if ground < 0.0:
+				color = color.darkened(0.35)
+			if plate.y < 0.012:
+				color = Color.BLACK
+		Layer.SLOPE:
+			color = Color(0.2, 0.4, 0.7) if ground < 0.0 else ramp(Layer.SLOPE, slope / 0.6)
+		_:
+			color = _terrain_color(dir, ground, slope, rise_east - rise_north, step_lon)
+	return color
+
+
+## Sea (darker where it is deep), lakes and the land's biome colours with the relief shaded.
+func _terrain_color(dir: Vector3, ground: float, slope: float, light: float,
+		step_lon: float) -> Color:
+	var relief := _noise.relief
+	if ground < 0.0:
+		var depth := clampf(-ground / (relief * 0.35), 0.0, 1.0)
+		return Color(0.32, 0.62, 0.78).lerp(Color(0.03, 0.12, 0.33), sqrt(depth))
+	if _noise.hydrology != null and _noise.hydrology.lake_level_at(dir, ground) > -INF:
+		return Color(0.25, 0.5, 0.85)
+	var color := _noise.facet_color(dir.x, dir.y, dir.z, ground, slope)
+	# hill shading: the light from the north west, the same on a close map as on a far one
+	var shade := clampf(1.0 - light * 6.0 * 0.0098 / step_lon / relief, 0.55, 1.35)
+	return Color(color.r * shade, color.g * shade, color.b * shade)
+
+
+func _biome_color(dir: Vector3, ground: float, slope: float) -> Color:
+	if ground < 0.0:
+		return Color(0.2, 0.4, 0.7).lerp(Color(0.05, 0.12, 0.35),
+				clampf(-ground / (_noise.relief * 0.35), 0.0, 1.0))
+	if _noise.hydrology != null and _noise.hydrology.lake_level_at(dir, ground) > -INF:
+		return Color(0.25, 0.5, 0.85)
+	return BIOME_COLORS[_noise.biome(dir.x, dir.y, dir.z, ground, slope)]
 
 
 ## The rivers of this part of the map as thin blue lines.
