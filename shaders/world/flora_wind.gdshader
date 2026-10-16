@@ -62,13 +62,24 @@ void fragment() {
 	// leaves (they have a UV, nothing else does): a light midrib, side veins running up and out from
 	// it, and the blade a little lighter along the middle and darker toward the edge
 	if (UV.x > 0.001) {
+		// every leaf has its own two random numbers (UV2): how many side veins, how they slope,
+		// how thick and how strong they are, whether the two sides line up, how dark the edge is
+		float id = UV2.x;
+		float k = UV2.y;
 		float across = abs(UV.x - 0.5) * 2.0; // 0 on the midrib .. 1 at the edge
-		float midrib = 1.0 - smoothstep(0.03, 0.12, across);
-		float run = fract(UV.y * 7.0 - across * 2.6);
-		float side_vein = (1.0 - smoothstep(0.0, 0.22, min(run, 1.0 - run)))
-				* smoothstep(0.06, 0.15, across) * (1.0 - smoothstep(0.65, 0.95, across));
-		float vein = max(midrib, side_vein * 0.85);
-		float shade = 1.04 - 0.22 * across * across - 0.1 * UV.y;
+		float count = mix(3.5, 9.5, fract(id * 5.7 + 0.3));
+		float slope = mix(1.4, 3.8, fract(id * 3.1 + k));
+		float thick = mix(0.1, 0.3, fract(k * 7.9));
+		float strength = mix(0.3, 1.0, fract(id * 11.3 + k * 2.0));
+		float mid_width = mix(0.07, 0.16, fract(k * 4.3 + id));
+		float edge_dark = mix(0.1, 0.34, fract(id * 2.3 + k * 5.1));
+		float sides = step(UV.x, 0.5) * fract(id * 9.1) * 0.6; // the two sides need not line up
+		float midrib = 1.0 - smoothstep(0.02, mid_width, across);
+		float run = fract(UV.y * count - across * slope + sides + id * 4.0);
+		float side_vein = (1.0 - smoothstep(0.0, thick, min(run, 1.0 - run)))
+				* smoothstep(0.06, 0.15, across) * (1.0 - smoothstep(0.6, 0.95, across));
+		float vein = max(midrib * mix(0.6, 1.0, strength), side_vein * strength);
+		float shade = 1.04 - edge_dark * across * across - 0.1 * UV.y;
 		paint = mix(paint * shade, paint * 1.55 + vec3(0.02, 0.03, 0.0), vein * 0.9);
 	}
 	vec2 bump = vec2(0.0);

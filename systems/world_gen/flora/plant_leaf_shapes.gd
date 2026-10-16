@@ -100,14 +100,15 @@ static func _polar(centre: Vector2, spot: Vector2, squeeze: float) -> Vector2:
 ## Colours run from `base_color` at the stalk to `tip_color` at the tip; alpha is the wind sway.
 static func add_leaf(builder: MeshBuilder, outline: PackedVector2Array, base: Vector3,
 		axis: Vector3, normal: Vector3, length: float, fold: float, curl: float,
-		base_color: Color, tip_color: Color, asym := 0.0, skew := 0.0) -> void:
+		base_color: Color, tip_color: Color, asym := 0.0, skew := 0.0, width := 1.0,
+		leaf_dice := Vector2.ZERO) -> void:
 	var right := axis.cross(normal).normalized()
 	var corners: Array[Vector3] = []
 	var colors: Array[Color] = []
 	for point in outline:
 		# this leaf's own look: one side a little wider than the other (`asym`) and the tip bent
 		# to a side (`skew`, a share of the length)
-		var across := point.x * (1.0 + asym * signf(point.x)) + skew * point.y * point.y
+		var across := point.x * width * (1.0 + asym * signf(point.x)) + skew * point.y * point.y
 		corners.append(base + axis * (point.y * length) + right * (across * length)
 				+ normal * (curl * point.y * point.y * length))
 		colors.append(base_color.lerp(tip_color, point.y))
@@ -136,4 +137,4 @@ static func add_leaf(builder: MeshBuilder, outline: PackedVector2Array, base: Ve
 	for index in corners.size():
 		var next := (index + 1) % corners.size()
 		builder.add_tri_uv(centre, corners[index], corners[next], centre_color, colors[index],
-				colors[next], centre_uv, uvs[index], uvs[next])
+				colors[next], centre_uv, uvs[index], uvs[next], leaf_dice)

@@ -137,3 +137,10 @@ side veins running up and out from it (`fract(along * 7 - across * 2.6)`), the b
 the middle and darker toward the edge and the tip. No extra triangles, both looks, autumn colours
 and wind are untouched. Looked at in the tree builder lab (amber and green leaves). Not done: veins
 on needles and palm fronds, a vein colour per species, per-pixel serration.
+
+Leaf variation (user: all leaves look alike, even on one tree; same day): every leaf now has its own size
+(0.6 - 1.5 of the nominal, small ones commoner), width (0.8 - 1.2), asymmetry, bent tip, shade
+(some leaves up to 18% darker) and two random numbers (`UV2`, `MeshBuilder.add_tri_uv(..., leaf_dice)`)
+from which the shader gives it its own vein count (3.5 - 9.5), slope, thickness, strength (opacity),
+midrib width, edge darkness and whether the two sides line up. Needs the plant material to read UV2;
+no triangles added.

@@ -316,16 +316,20 @@ func _leaf(at: Vector3, tangent: Vector3, azimuth: float, sway: float, spread :=
 	normal = out if normal.length_squared() < 0.01 else normal.normalized()
 	normal = normal * 0.8 + out * 0.2
 	normal = (normal - axis * axis.dot(normal)).normalized()
-	var tone := _g.leaf.lerp(_g.leaf.lightened(0.1), _rng.randf())
+	var tone := _g.leaf.lerp(_g.leaf.lightened(0.14), _rng.randf())
+	tone = tone.darkened(_rng.randf_range(0.0, 0.18)) # some leaves are darker (in the shade)
 	var base_color := tone.darkened(0.3)
 	base_color.a = sway # the stalk moves with the twig it grows on
 	var tip_color := _g.leaf_tip.lerp(tone, 0.4)
 	tip_color.a = minf(sway + LEAF_SWAY, 1.0)
 	var curl := -0.12 if _fine else 0.0
 	var share := clampf(_g.leaf_aspect * 0.5, 0.5, 2.0) # a long narrow leaf may bend its tip more
-	PlantLeafShapes.add_leaf(_b, _outline, at, axis, normal,
-			_leaf_length * _rng.randf_range(0.8, 1.2), 0.1, curl, base_color, tip_color,
-			_rng.randf_range(-0.18, 0.18), _rng.randf_range(-0.12, 0.12) * share)
+	# every leaf is its own: a wide range of sizes (small ones are common), a little wider or
+	# narrower, and its own random numbers for the veins in the shader
+	var size := _leaf_length * lerpf(0.6, 1.5, pow(_rng.randf(), 1.2))
+	PlantLeafShapes.add_leaf(_b, _outline, at, axis, normal, size, 0.1, curl, base_color, tip_color,
+			_rng.randf_range(-0.2, 0.2), _rng.randf_range(-0.14, 0.14) * share,
+			_rng.randf_range(0.8, 1.2), Vector2(_rng.randf(), _rng.randf()))
 
 
 ## A fan of single needles in the plane of a branch: `axis` is where the branch points.
