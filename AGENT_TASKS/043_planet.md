@@ -28,17 +28,34 @@ Lab: `tests/manual/planet/planet_lab.tscn` (`-- --radius=N --seed=N`); check:
 
 ## Limits (measured with `-- --planet-check --radius=N`, 2.4 km walked in 60 m steps)
 
-| radius | max level | result |
+| radius | single precision (official 4.7.2) | double precision build |
 |---|---|---|
-| 20 km (default) | 8 | PASS, worst gap to the true ground 0.8 m |
-| 200 km | 12 | PASS |
-| 1,000 km | 14 | PASS (0.7 m) |
-| 6,371 km (Earth) | 17 | FAIL: the tile directions and the noise inputs are float32, 0.5 m steps |
+| 20 km (default) | PASS | PASS |
+| 200 km, 1,000 km | PASS (worst gap 0.7 m) | not run |
+| 6,371 km (Earth) | FAIL (float32 directions and noise inputs, 0.5 m steps) | PASS (0.86 m) |
+| 69,911 km (Jupiter) | not run | PASS (0.76 m) |
 
-Up to ~1,000 km the single precision build is fine (vertex positions are done in doubles around each
-tile's middle; only the unit directions and the noise inputs are float32, 6-12 cm at 1,000 km).
-Earth size needs the directions and the noise sampled in doubles (own noise, or a double precision
-engine build). The horizon of a 20 km planet at eye height is ~260 m.
+Tile keys hold levels up to 31 and x, y up to 2^20, so about 100,000 km radius is the ceiling of the
+current key packing (level 20); widen `PlanetTile.key_of` for more.
+The horizon of a 20 km planet at eye height is ~260 m.
+
+## The double precision editor build
+
+Built from the 4.7.2-stable tag (shallow clone) in `E:\Godot\double\src`, SCons in
+`E:\Godot\doubleenv`, MSVC 2022, 6 cores, 14 minutes:
+
+    python misc/scripts/install_d3d12_sdk_windows.py        # the project uses the D3D12 driver
+    scons platform=windows target=editor precision=double arch=x86_64 d3d12=yes debug_symbols=no -j6
+
+Output `bin/godot.windows.editor.double.x86_64.exe` (+ `.console.exe`, `D3D12Core.dll`, keep them
+together). No export templates were built (they need `target=template_release precision=double`).
+The project has no native GDExtensions, so nothing else needs a rebuild. Jolt switches on
+`JPH_DOUBLE_PRECISION` itself. Things a double build changes for GDScript: `Vector3`, `Transform3D`
+and noise coordinates are 64-bit, and `HeightMapShape3D.map_data` is a `PackedFloat64Array`
+(`TerrainChunk` sets it with `set()` so it works in both builds). Do not save scenes with the double
+build you also open in the single one unless you mean to: binary resources get a flag.
+A ray cast onto the exact seam between two tiles can slip through in the double build (the tiles'
+edges differ by 1e-10 m); the planet check avoids seams.
 
 ## Not done
 

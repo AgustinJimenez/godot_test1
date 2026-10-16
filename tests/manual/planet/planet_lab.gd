@@ -90,11 +90,20 @@ func _physics_process(_delta: float) -> void:
 	if _frame < 60:
 		return
 	_settle += 1
-	if not _placed and _settle == 4: # the new colliders are in: stand on the ground there
+	if not _placed and _settle == 10: # the new colliders are in: stand on the ground there
+		if "--verbose-check" in OS.get_cmdline_user_args():
+			var near := INF
+			var count := 0
+			for tile: PlanetTile in planet.surface.tiles.values():
+				if tile.has_collider:
+					count += 1
+					near = minf(near, (tile.global_position - player.global_position).length())
+			print("  placing: colliders=%d nearest=%.1f m ray_y=%.2f player=%s" % [count, near,
+					_ground_y(), player.global_position])
 		player.global_position.y = _ground_y() + 1.0
 		player.velocity = Vector3.ZERO
 		_placed = true
-	if _settle < 24:
+	if _settle < 30:
 		return
 	# how far the player is above the planet's ground by the noise itself (not by physics): near 0
 	# when the frame, the tiles and the colliders all agree
@@ -118,7 +127,7 @@ func _physics_process(_delta: float) -> void:
 		return
 	_settle = 0
 	_step += 1
-	var step := Vector3(60.0, 0.0, 0.0)
+	var step := Vector3(59.3, 0.0, 0.41) # not on a tile seam (a ray can slip through)
 	player.global_position += step
 	_walked += step.length()
 	player.global_position.y += 60.0

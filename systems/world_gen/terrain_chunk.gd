@@ -178,7 +178,7 @@ func _build_collider(heights: PackedFloat32Array, cells: int) -> StaticBody3D:
 	var shape := HeightMapShape3D.new()
 	shape.map_width = cells + 1
 	shape.map_depth = cells + 1
-	shape.map_data = heights
+	shape.set(&"map_data", heights) # float32 or float64 array, whichever build (double precision)
 	var collision := CollisionShape3D.new()
 	collision.shape = shape
 	body.add_child(collision)
