@@ -25,6 +25,10 @@ var underwater := false # the camera is under the sea
 ## Where the sun is, as a unit vector toward it in the world (a planet sets it from its real orbit
 ## and spin, see PlanetClock); zero: the sun follows `time_of_day` as in the flat world.
 var sun_direction := Vector3.ZERO
+## Where the moon is and how much of it is lit (a planet sets them from the moon's orbit); zero
+## direction: the moon is opposite the sun and always full.
+var moon_direction := Vector3.ZERO
+var moon_lit := 1.0
 
 var sky3d_on := false # the Sky3D add-on draws the sky and runs the sun and moon (use_sky3d)
 
@@ -179,12 +183,15 @@ func _apply() -> void:
 		sky_material.set_shader_parameter(&"ground_color", horizon.darkened(0.12))
 		sky_material.set_shader_parameter(&"night", _night_amount)
 		sky_material.set_shader_parameter(&"overcast", overcast)
-		sky_material.set_shader_parameter(&"moon_direction", -direction)
+		var moon_toward := moon_direction if moon_direction != Vector3.ZERO else -direction
+		sky_material.set_shader_parameter(&"moon_direction", moon_toward)
+		sky_material.set_shader_parameter(&"moon_lit", moon_lit)
 		sky_material.set_shader_parameter(&"sun_toward", direction)
 		sky_material.set_shader_parameter(&"cloud_cover", cloud_cover)
 		sky_material.set_shader_parameter(&"cloud_dark", cloud_dark)
-		moon.look_at_from_position(-direction * 100.0, Vector3.ZERO, Vector3.FORWARD)
-		moon.light_energy = _night_amount * 0.32 * (1.0 - overcast * 0.6)
+		moon.look_at_from_position(moon_toward * 100.0, Vector3.ZERO, Vector3.FORWARD)
+		var risen := smoothstep(-0.05, 0.15, moon_toward.y) if moon_direction != Vector3.ZERO else 1.0
+		moon.light_energy = _night_amount * 0.32 * moon_lit * risen * (1.0 - overcast * 0.6)
 	environment.fog_light_color = horizon.lerp(Color(0.5, 0.55, 0.6), 0.2)
 	# the realistic sky and the volumetric fog add haze of their own
 	var fog_scale := 1.0 - realism * 0.45

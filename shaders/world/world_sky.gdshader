@@ -15,6 +15,7 @@ uniform float overcast = 0.0;
 uniform float cloud_cover = 0.3;
 uniform float cloud_dark = 0.0;
 uniform vec3 moon_direction = vec3(0.0, 0.7, -0.7);
+uniform float moon_lit = 1.0; // 0 new .. 1 full: the share of the moon's face the sun lights
 uniform vec3 sun_toward = vec3(0.0, 1.0, 0.0); // unit vector from the ground to the sun
 
 float hash3(vec3 p) {
@@ -156,9 +157,19 @@ void sky() {
 		float twinkle = 0.65 + 0.35 * sin(TIME * 2.5 + hash3(cell + 7.0) * 40.0);
 		col += vec3(0.9, 0.95, 1.0) * star * twinkle * night_k * clear * smoothstep(0.0, 0.2, up);
 		// the moon: a pale disc and a soft halo
-		float moon = max(dot(dir, normalize(moon_direction)), 0.0);
-		col += vec3(0.85, 0.9, 1.0) * smoothstep(0.9990, 0.9994, moon) * night_k * clear * 1.4;
-		col += vec3(0.25, 0.3, 0.45) * pow(moon, 90.0) * night_k * clear;
+		vec3 moon_axis = normalize(moon_direction);
+		float moon = max(dot(dir, moon_axis), 0.0);
+		// the phase: the disc is a sphere lit from one side (toward the sun); a point of the disc
+		// is lit if its normal faces the light, which is at the angle the sun stands from the moon
+		vec3 offset = dir - moon_axis * dot(dir, moon_axis);
+		vec3 toward_sun = sun_toward - moon_axis * dot(sun_toward, moon_axis);
+		float across = length(offset) / 0.04;
+		float along = dot(offset, normalize(toward_sun + 0.0001)) / 0.04;
+		float depth = sqrt(max(1.0 - across * across, 0.0));
+		float cos_light = 2.0 * moon_lit - 1.0; // 1 full (the sun is behind us), -1 new
+		float lit = smoothstep(-0.08, 0.08, along * sqrt(max(1.0 - cos_light * cos_light, 0.0)) + depth * cos_light);
+		col += vec3(0.85, 0.9, 1.0) * smoothstep(0.9990, 0.9994, moon) * night_k * clear * 1.4 * (0.04 + 0.96 * lit);
+		col += vec3(0.25, 0.3, 0.45) * pow(moon, 90.0) * night_k * clear * moon_lit;
 	}
 	COLOR = col;
 }

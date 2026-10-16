@@ -14,6 +14,7 @@ extends Resource
 @export var hydrology_cells := 96 ## cells along a cube face for rivers and lakes (0: none)
 @export var day_seconds := 1440.0 ## a solar day in seconds of play (what a clock day is)
 @export var year_days := 16.0 ## solar days in a year
+@export var month_days := 3.5 ## solar days the moon takes to go round (game scale)
 @export var axial_tilt := 23.4 ## degrees: how far the spin axis leans from the orbit's normal
 @export var start_hour := 9.0 ## local solar time of the first moment (12 is noon)
 @export var start_year := 0.12 ## share of the year at the start (0: the northern spring equinox)

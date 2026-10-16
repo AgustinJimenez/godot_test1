@@ -17,6 +17,8 @@ var day_seconds := 1440.0 ## a solar day, in seconds of play (a clock day)
 var year_days := 16.0 ## solar days in a year
 var axial_tilt := deg_to_rad(23.4) ## radians
 var time := 0.0 ## seconds since the start
+var month_days := 3.5 ## solar days the moon takes to go round the planet (game scale, not real)
+var moon_tilt := deg_to_rad(5.1) ## the moon's orbit against the planet's orbit
 
 var _spin_offset := 0.0 # the spin angle (radians) at time 0: where the start asks the sun to be
 var _year_start := 0.0 # the share of the year (0..1) at time 0, 0 being the northern spring equinox
@@ -48,6 +50,12 @@ func start(year_share_at_start: float, hour: float, where: Vector3) -> void:
 	_spin_offset = wrapf(have - want, -PI, PI)
 
 
+## The days gone by since the start of the year the clock began in (solar days, any real number,
+## growing with time and going back when time does): what the winds, the clouds and the moon follow.
+func absolute_days() -> float:
+	return _year_start * year_days + time / day_seconds
+
+
 func advance(seconds: float) -> void:
 	time += seconds
 
@@ -72,6 +80,8 @@ func copy() -> PlanetClock:
 	other.year_days = year_days
 	other.axial_tilt = axial_tilt
 	other.time = time
+	other.month_days = month_days
+	other.moon_tilt = moon_tilt
 	other._spin_offset = _spin_offset
 	other._year_start = _year_start
 	return other

@@ -9,6 +9,7 @@ extends Node3D
 ##   -- --show-map [--map-zoom=N] [--map-layer=N]   the planet map open from the start (M in play)
 ##   -- --time-scale=N --hour=H --year=Y   how fast time runs, the first hour (12 noon), the first
 ##                    share of the year (0 northern spring equinox)
+##   -- --look-moon  the camera looks at the moon (with --view-alt)
 ##   -- --bare       no plants (to look at the ground)
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
 ##   -- --walk-check  (use --fixed-fps 60) the real player holds forward and sprint for 90 s,
@@ -22,6 +23,7 @@ var planet: PlanetWorld
 var player: Player
 var _checking := false
 var _walking := false
+var _look_moon := false ## point the camera at the moon (with --view-alt)
 var _show_map := false ## open the planet map (the M key) from the start
 var _map_zoom := 6.0
 var _map_layer := 0
@@ -82,6 +84,8 @@ func _ready() -> void:
 			_map_zoom = arg.trim_prefix("--map-zoom=").to_float()
 		elif arg == "--show-map":
 			_show_map = true
+		elif arg == "--look-moon":
+			_look_moon = true
 		elif arg == "--bare":
 			settings.plant_density = 0.0
 		elif arg == "--walk-check":
@@ -108,6 +112,9 @@ func _ready() -> void:
 		camera.rotation_degrees = Vector3(_view_pitch, _view_yaw, 0.0)
 		planet.build_now(true)
 		planet.update_now()
+		if _look_moon:
+			planet._set_the_sun()
+			camera.look_at(camera.global_position + planet.atmosphere.moon_direction * 100.0)
 		print("VIEW altitude %.0f m over %s" % [_view_alt, view_spawn])
 		return
 	player = PLAYER_SCENE.instantiate() as Player

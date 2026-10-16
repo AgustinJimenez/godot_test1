@@ -1,0 +1,129 @@
+class_name PlanetWeather
+extends RefCounted
+## The weather of the planet, from its causes. Clouds form where moist air is lifted and cooled, so
+## the amount of cloud at a place is the moisture there (a warm sea gives off a lot, wet land some:
+## from the temperature the seasons give, PlanetSeasons, and the rain climate) times how much the
+## air is lifted: along the belt where the trade winds meet (it follows the sun north and south with
+## the seasons), along the storm tracks of the middle latitudes where the cold and the warm air
+## meet, and up the windward side of the mountains; and it is held down under the subtropical highs,
+## where the air sinks and the deserts lie. The clouds are carried by the winds, which blow east to
+## west in the tropics and the polar regions and west to east in the middle latitudes (they turn
+## with the planet's spin, which is why), so a cloud pattern drifts and changes shape as time runs,
+## and runs back when time does: the pattern is a function of the date, nothing is stored.
+##
+## From the clouds, the temperature and the moisture, the weather at a place: clear, cloudy, fog on
+## a wet morning, rain when thick cloud sits on moist, lifted air, a storm where the lift and the
+## heat are great, and snow where it is cold.
+
+const WIND_TURN := 0.035 ## the share of a turn the strongest wind carries the clouds in a day
+
+enum Kind { CLEAR, CLOUDY, RAIN, STORM, FOG, SNOW } ## the same order as WorldWeather.State
+
+var _noise: PlanetNoise
+var _big_a := FastNoiseLite.new() # the weather systems (a few thousand km across on an Earth)
+var _big_b := FastNoiseLite.new() # a second pattern the first one changes into and back
+var _small := FastNoiseLite.new() # the clumps inside them
+
+
+func _init(noise: PlanetNoise) -> void:
+	_noise = noise
+	var seed_value := noise.settings.world_seed
+	_setup(_big_a, seed_value + 31, 1.7, 3)
+	_setup(_big_b, seed_value + 32, 1.7, 3)
+	_setup(_small, seed_value + 33, 6.5, 3)
+
+
+func _setup(source: FastNoiseLite, noise_seed: int, frequency: float, octaves: int) -> void:
+	source.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	source.seed = noise_seed
+	source.frequency = frequency
+	source.fractal_type = FastNoiseLite.FRACTAL_FBM
+	source.fractal_octaves = octaves
+
+
+## The east-west wind at latitude `lat` (radians) as a share of the strongest: negative blows
+## toward the west (the trade winds and the polar easterlies), positive toward the east (the
+## westerlies of the middle latitudes).
+static func zonal_wind(lat: float) -> float:
+	return -cos(lat * 4.0)
+
+
+## How much cloud the air at `dir` is ready to make (0..1): moisture times lift, held down under the
+## subtropical highs. The big pattern of the weather, before the clouds are placed in it.
+func readiness(dir: Vector3, clock: PlanetClock) -> float:
+	var lat := asin(clampf(dir.y, -1.0, 1.0))
+	var declination := clock.declination()
+	var moisture := _moisture(dir, clock)
+	var south := -1.0 if lat < 0.0 else 1.0
+	# the belt where the trade winds meet follows the sun, but not all the way
+	var trade_belt := 0.75 * exp(-pow((lat - 0.4 * declination) / 0.17, 2.0))
+	# the storm tracks of the middle latitudes, a little poleward in the summer
+	var storm_lat := south * 0.87 + 0.3 * declination
+	var storms := 0.55 * exp(-pow((lat - storm_lat) / 0.2, 2.0))
+	# the subtropical highs, where the air sinks
+	var high_lat := south * 0.48 + 0.3 * declination
+	var sinking := exp(-pow((lat - high_lat) / 0.15, 2.0))
+	var wet := clampf(_noise.climate.sample(dir).y / 1.2, 0.0, 1.0)
+	# moisture alone makes some cloud; the trade winds' belt lifts the moist air; the storm tracks lift
+	# whatever air they find (a front is a front even over dry ground)
+	var ready := 0.06 + 0.3 * moisture + 0.8 * trade_belt * moisture
+	ready += 0.9 * storms * (0.5 + 0.5 * moisture) + 0.2 * wet * moisture
+	ready += 0.25 * smoothstep(0.9, 1.4, absf(lat)) # the cloud decks of the polar regions
+	return clampf(ready * (1.0 - 0.65 * sinking), 0.0, 1.0)
+
+
+## The moisture the air picks up at `dir` now (0..1): a warm sea gives off a great deal, wet land
+## some, a frozen or dry place little.
+func _moisture(dir: Vector3, clock: PlanetClock) -> float:
+	var degrees := _noise.climate.seasons.at(dir, clock.year_share())
+	if _noise.macro_height(dir.x, dir.y, dir.z) < 0.0:
+		return 0.25 + 0.75 * smoothstep(-30.0, 30.0, degrees)
+	var wet := clampf(_noise.climate.sample(dir).y / 1.2, 0.0, 1.0)
+	return wet * (0.25 + 0.75 * smoothstep(-30.0, 25.0, degrees))
+
+
+## Where the cloud is: 0 clear sky .. 1 thick cloud, at `dir` at the clock's moment. The weather
+## systems are carried east or west by the wind of the latitude and change shape slowly.
+func cloud(dir: Vector3, clock: PlanetClock) -> float:
+	return cloud_cells(dir, clock).x
+
+
+## The cloud and, with it, the strength of the small clumps inside the systems (-1..1: the cells
+## where a thick cloud rains hard are the high ones).
+func cloud_cells(dir: Vector3, clock: PlanetClock) -> Vector2:
+	var ready := readiness(dir, clock)
+	var days := clock.absolute_days()
+	var lat := asin(clampf(dir.y, -1.0, 1.0))
+	var shift := zonal_wind(lat) * WIND_TURN * TAU * days
+	var lon := atan2(dir.z, dir.x) - shift
+	var carried := Vector3(cos(lat) * cos(lon), dir.y, cos(lat) * sin(lon))
+	var morph := 0.5 + 0.5 * sin(days * 0.45)
+	var big := lerpf(_big_a.get_noise_3d(carried.x, carried.y, carried.z),
+			_big_b.get_noise_3d(carried.x, carried.y, carried.z), morph)
+	var clumps := _small.get_noise_3d(carried.x, carried.y, carried.z)
+	var pattern := clampf(0.5 + 0.5 * (0.75 * big + 0.35 * clumps), 0.0, 1.0)
+	var threshold := 1.0 - ready * 1.15
+	return Vector2(smoothstep(threshold - 0.12, threshold + 0.12, pattern), clumps)
+
+
+## The weather at `dir` (`ground` metres above the sea) right now: {"kind", "cloud", "ready"}.
+func at(dir: Vector3, ground: float, clock: PlanetClock) -> Dictionary:
+	var ready := readiness(dir, clock)
+	var cells := cloud_cells(dir, clock)
+	var cover := cells.x
+	var degrees := _noise.temperature_now(dir.x, dir.y, dir.z, ground, clock)
+	var kind := Kind.CLEAR
+	if cover > 0.35:
+		kind = Kind.CLOUDY
+	if cover > 0.8 and ready > 0.45 and cells.y > 0.05:
+		kind = Kind.RAIN
+		if ready > 0.8 and cells.y > 0.3 and degrees > 20.0:
+			kind = Kind.STORM
+		if degrees < 0.5:
+			kind = Kind.SNOW
+	elif cover < 0.45 and ready > 0.4:
+		# fog: a still, wet morning (the air has cooled in the night)
+		var hour := clock.local_hour(dir)
+		if hour > 3.0 and hour < 8.5 and _moisture(dir, clock) > 0.5:
+			kind = Kind.FOG
+	return {"kind": kind, "cloud": cover, "ready": ready, "degrees": degrees}

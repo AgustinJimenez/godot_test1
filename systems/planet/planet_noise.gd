@@ -14,6 +14,7 @@ var relief := 1000.0 ## m, from the sea to the top of the highest ranges (see Pl
 var tectonics: PlanetTectonics
 var climate := PlanetClimate.new()
 var species: SpeciesRegistry ## the plants of this planet
+var weather: PlanetWeather ## the clouds and the weather (made once the climate is)
 var clock: PlanetClock ## the time of day and the season (set by PlanetWorld; null: the yearly mean)
 var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep off a little round it
 var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
@@ -49,6 +50,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 	_setup(_detail, settings.world_seed + 7, 0.09, 2)
 	_find_sea_level()
 	climate.build(self)
+	weather = PlanetWeather.new(self)
 	if settings.hydrology_cells > 0:
 		var water := PlanetHydrology.new()
 		water.build(self, settings.hydrology_cells)

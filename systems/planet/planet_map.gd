@@ -304,10 +304,11 @@ func _process(delta: float) -> void:
 		_maybe_chart_the_view(delta)
 
 
-## The temperature layer shows a moment: when time has moved on, it is charted again (the coarse
-## chart only, a second or so), so the colours follow the seasons and the day as they pass.
+## The temperature and cloud layers show a moment: when time has moved on, they are charted again
+## (the coarse chart only, a second or so), so they follow the seasons, the day and the winds.
 func _refresh_temperature(delta: float) -> void:
-	if _layer != PlanetChart.Layer.TEMPERATURE or _chart != null or _whole_pass < 0:
+	var moving := _layer == PlanetChart.Layer.TEMPERATURE or _layer == PlanetChart.Layer.CLOUDS
+	if not moving or _chart != null or _whole_pass < 0:
 		return
 	_refresh_wait -= delta
 	var moved := absf(planet.clock.time - _drawn_at)
@@ -329,7 +330,7 @@ func _adopt_chart() -> void:
 	_whole = texture
 	_whole_pass += 1
 	_drawn_at = _chart_time
-	if _layer != PlanetChart.Layer.TEMPERATURE:
+	if _layer != PlanetChart.Layer.TEMPERATURE and _layer != PlanetChart.Layer.CLOUDS:
 		_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
 	_chart = null
 	if _whole_pass + 1 < PASSES.size():
@@ -454,7 +455,7 @@ func _draw_view() -> void:
 		_caption.text = ("%.1f° %s  %.1f° %s    altitude %d m    %02d:%02d    %s    "
 				+ "[wheel] zoom  [drag] move  [R] my region  [M] close") % [absf(lat),
 				north_south, absf(lon), east_west, roundi(planet.altitude()), int(hour),
-				int((hour - floorf(hour)) * 60.0), planet.season_text()]
+				int((hour - floorf(hour)) * 60.0), planet.season_text() + "  " + planet.weather_text]
 
 
 ## Draws the part `wanted` (map fractions) of `texture`, which shows `covers` (map fractions), where

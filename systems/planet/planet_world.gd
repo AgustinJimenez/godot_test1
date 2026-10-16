@@ -23,6 +23,10 @@ var atmosphere: WorldAtmosphere
 var fauna: PlanetFauna
 var swim: PlanetSwim
 var map: PlanetMap
+var weather: WorldWeather ## the effects of the weather; the planet picks the state they follow
+var cloud_shell: PlanetCloudShell
+var weather_text := ""
+var _weather_timer := 0.0
 var time_rate := 1.0 ## how fast time runs on top of `time_scale`: negative is backward, 0 stops it
 var clock := PlanetClock.new() ## the star, the orbit, the spin: where the sun is (real geometry)
 var splash: WaterSplash
@@ -43,6 +47,7 @@ func _ready() -> void:
 	clock.day_seconds = settings.day_seconds
 	clock.year_days = settings.year_days
 	clock.axial_tilt = deg_to_rad(settings.axial_tilt)
+	clock.month_days = settings.month_days
 	atmosphere = WorldAtmosphere.new()
 	atmosphere.time_of_day = time_of_day
 	add_child(atmosphere)
@@ -52,6 +57,12 @@ func _ready() -> void:
 	fauna = PlanetFauna.new()
 	fauna.planet = self
 	add_child(fauna)
+	weather = WorldWeather.new()
+	weather.atmosphere = atmosphere
+	add_child(weather)
+	cloud_shell = PlanetCloudShell.new()
+	cloud_shell.planet = self
+	add_child(cloud_shell)
 	map = PlanetMap.new()
 	map.planet = self
 	add_child(map)
@@ -113,6 +124,24 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	return dir
 
 
+## The weather at the player, from the planet's own clouds, temperature and moisture: sets the state
+## the effects (clouds, rain, snow, fog, wind) ease toward.
+func _pick_the_weather() -> void:
+	var here := planet_position().normalized()
+	var now := noise.weather.at(here, maxf(altitude(), 0.0), clock)
+	var kind: int = now["kind"]
+	var wanted: WorldWeather.State = kind as WorldWeather.State
+	if weather.state != wanted:
+		weather.set_state(wanted)
+	weather_text = "%s  %d%% cloud  %d °C" % [WorldWeather.State.keys()[kind].capitalize(),
+			int(float(now["cloud"]) * 100.0), roundi(float(now["degrees"]))]
+	# the wind blows along the parallel: east or west by the latitude, as the clouds are carried
+	var lat := asin(clampf(here.y, -1.0, 1.0))
+	var east := Vector3(-here.z, 0.0, here.x).normalized()
+	var wind := frame.rot * (east * -PlanetWeather.zonal_wind(lat)) # toward where it blows from
+	weather.forced_wind = Vector2(-wind.x, -wind.z) if wind.length() > 0.01 else Vector2.ZERO
+
+
 ## 'Day 3, early spring' for the caption of the map.
 func season_text() -> String:
 	var share := clock.year_share()
@@ -142,6 +171,8 @@ func set_year_share(share: float) -> void:
 func _set_the_sun() -> void:
 	if atmosphere != null:
 		atmosphere.sun_direction = (frame.rot * clock.sun_in_body()).normalized()
+		atmosphere.moon_direction = (frame.rot * PlanetMoon.in_body(clock)).normalized()
+		atmosphere.moon_lit = PlanetMoon.lit(clock)
 
 
 ## Tells the ground shader where the planet is (it reads its detail noise at planet positions).
@@ -257,6 +288,11 @@ func _physics_process(delta: float) -> void:
 		_timer = 0.3
 		surface.update(planet_position())
 	WorldWind.set_realism(0.0)
+	_weather_timer -= delta
+	if _weather_timer <= 0.0 and not loading:
+		_weather_timer = 1.5
+		_pick_the_weather()
+	weather.update(_target.global_position, delta)
 	if not loading:
 		clock.advance(delta * settings.time_scale * time_rate)
 	_set_the_sun()

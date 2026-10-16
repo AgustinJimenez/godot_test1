@@ -5,10 +5,11 @@ extends RefCounted
 ## east, v south, the whole planet is (0, 0, 1, 1)); `size` is its size in pixels. Poll
 ## `finished()`, then take `texture()`.
 
-enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_TEMPERATURE }
+enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_TEMPERATURE,
+		CLOUDS, CLOUD_MASK } ## CLOUD_MASK is the cloud cover alone (for the shell round the planet)
 
 const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates",
-		"Slope", "Mean temp"]
+		"Slope", "Mean temp", "Clouds"]
 const WORKERS := 3
 const BIOME_COLORS := {
 	TerrainNoise.Biome.BEACH: Color(0.93, 0.85, 0.55), TerrainNoise.Biome.MEADOW: Color(0.6, 0.8, 0.3),
@@ -180,6 +181,13 @@ func _pixel_color(lat: float, lon: float, step_lon: float, step_lat: float,
 		Layer.MEAN_TEMPERATURE:
 			var degrees := noise.temperature(dir.x, dir.y, dir.z, maxf(ground, 0.0))
 			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 65.0)
+		Layer.CLOUDS:
+			var base := _terrain_color(dir, ground, 0.1, 0.0, step_lon).darkened(0.45)
+			var cover := noise.weather.cloud(dir, clock)
+			color = base.lerp(Color(0.97, 0.98, 1.0), cover * 0.92)
+		Layer.CLOUD_MASK:
+			var cover := noise.weather.cloud(dir, clock)
+			color = Color(cover, cover, cover)
 		Layer.RAIN:
 			color = ramp(Layer.RAIN, noise.climate.sample(dir).y / 1.2)
 			if ground < 0.0:

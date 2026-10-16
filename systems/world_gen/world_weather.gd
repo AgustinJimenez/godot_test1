@@ -29,6 +29,7 @@ const NEXT := {
 @export var auto := false
 @export var change_every := 120.0 ## s between weathers in auto mode
 @export var blend_seconds := 18.0
+var forced_wind := Vector2.ZERO ## a planet gives the real wind direction here (zero: it wanders)
 
 var state := State.CLEAR
 var clouds := WorldClouds.new()
@@ -78,6 +79,8 @@ func update(target: Vector3, delta: float) -> void:
 		_values[index] = move_toward(_values[index], preset[index], delta / blend_seconds
 				* maxf(absf(float(preset[index]) - _values[index]), 0.25))
 	var wind_dir := Vector2.RIGHT.rotated(0.35 + sin(_time * 0.013) * 1.1)
+	if forced_wind != Vector2.ZERO:
+		wind_dir = forced_wind.normalized()
 	WorldWind.set_wind(_values[4], wind_dir)
 	clouds.wind = wind_dir
 	clouds.cover = _values[0]

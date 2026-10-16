@@ -62,7 +62,27 @@ biomes and plants follow, so they stay put); `temperature_now` is the season and
 (it is charted again as time moves), layer 8 "Mean temp" the climate; a Time row moves time: speeds
 -1000x to 1000x and pause, a day or an eighth of a year at a time, a slider through the year (the sun
 and the temperature follow, backward too). `PlanetWorld.time_rate`, `jump_time`, `set_year_share`.
-Not done yet: heat carried by the wind along its direction (it is mixed evenly), a moon, clouds, weather, a moon, an
+Weather and clouds (`PlanetWeather`, derived from causes, a function of the date so it runs
+backward with time): the cloud a place can make (`readiness`) is its moisture (a warm sea gives off a
+lot, wet land some, a frozen place little, from the seasonal temperature and the rain climate) times
+the lift: the belt where the trade winds meet (it follows the sun, 0.4 of the declination), the
+storm tracks of the middle latitudes (about 50 degrees, shifting with the season) and the wet
+windward sides; held down under the subtropical highs (about 28 degrees). The clouds are noise
+(two patterns that morph into each other, plus clumps) carried round the planet by the zonal wind
+(`zonal_wind`: easterly in the tropics and the polar regions, westerly between, 3.5% of a turn a
+day at the strongest), so the pattern drifts and reshapes as time runs. The weather at a place:
+cloud over 35% cloudy, thick cloud on lifted moist air rain (snow below 0.5 C, a storm where it is
+hot and the lift great), fog on a wet morning (hours 3-8:30), else clear. Measured over the planet:
+mean cloud 0.46, clear 51%, cloudy 31%, rain 13-15%, snow 2-4%, storm 1%, fog 1%. `PlanetWorld`
+picks the state every 1.5 s for the player's spot and the flat world's `WorldWeather` makes the
+effects (clouds, rain, snow, fog, wind, wet ground) and eases between states; the wind blows along
+the parallel as the clouds are carried (`WorldWeather.forced_wind`). From orbit a cloud shell
+(`PlanetCloudShell`, `planet_clouds.gdshader`) shows the cover, lit by the real sun, from 1.5 km
+up (a 256x128 picture charted on a thread every 2.5 s). Map layer 9 "Clouds" (and the caption
+shows the weather where the player is). The moon (`PlanetMoon`): a circular orbit tilted 5.1 degrees,
+`month_days` 3.5 (game scale), its place in the sky and its phase from the geometry (new to full,
+the sky shader draws the lit part, the moonlight scales with it and with the moon being up).
+Not done: heat carried by the wind along its direction (it is mixed evenly), a moon, clouds, weather, a moon, an
 elliptical orbit, other planets in the sky, a star disc and its colour per star.
 
 ## Design
