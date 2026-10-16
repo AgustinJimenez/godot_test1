@@ -8,11 +8,12 @@ extends RefCounted
 
 const NAMES: Array[String] = ["leafy", "conifer", "umbrella", "giant", "oak", "ancient", "dragon",
 		"willow", "cypress", "bush", "shrub", "groundcover",
-		"clump", "palm"]
+		"clump", "palm",
+		"dead", "cactus", "fern", "grass", "wildflower"]
 
 ## Plausible range of each numeric trait: [min, max]. A draw never leaves it.
 const RANGES := {
-	"height": [0.2, 45.0], "girth": [0.01, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
+	"height": [0.1, 45.0], "girth": [0.01, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
 	"trunk_part": [0.05, 1.0], "root_flare": [0.0, 1.0], "crown": [0.15, 14.0],
 	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "stems": [1, 6],
 	"stem_spread": [0.05, 0.5], "limb_angle": [15.0, 90.0],
@@ -21,12 +22,13 @@ const RANGES := {
 	"children": [1, 7], "child_radius": [0.3, 0.9], "child_length": [0.2, 0.9],
 	"child_forward": [0.0, 1.5], "child_side": [0.0, 1.5], "child_up": [-0.5, 1.0],
 	"leaf_aspect": [0.8, 5.0], "leaf_size": [0.08, 0.45], "needle_size": [0.2, 1.5],
-	"leaf_density": [0.1, 1.0], "fronds": [6, 24], "frond_length": [0.8, 8.0],
-	"frond_arch": [0.1, 1.0], "frond_droop": [0.1, 1.0], "leaflet": [0.1, 0.4],
+	"leaf_density": [0.0, 1.0], "rib_width": [0.005, 0.06], "flower_size": [0.02, 0.15],
+	"bark_rough": [0.5, 3.0], "fronds": [6, 24], "frond_length": [0.2, 8.0],
+	"frond_arch": [0.1, 1.0], "frond_droop": [0.1, 1.0], "leaflet": [0.0, 0.4],
 }
 ## Traits that are a choice from a list, not a number (blended by picking one side).
 ## Sizes that vary by proportion (a bush and a giant both change by a few percent, not by metres).
-const PROPORTIONAL := ["height", "girth", "crown", "frond_length"]
+const PROPORTIONAL := ["height", "girth", "crown", "frond_length", "leaflet", "rib_width"]
 const CHOICES := ["leaf_shape", "leaf_edge", "leaf_pattern", "foliage", "profile"]
 
 
@@ -152,8 +154,87 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.frond_droop = 0.6
 			g.leaflet = 0.2
 			g.bark = Color(0.45, 0.36, 0.26)
+			g.bark_rings = 0.4
 			g.leaf = Color(0.22, 0.45, 0.16)
 			g.leaf_tip = Color(0.36, 0.58, 0.22)
+		"dead":
+			# a dead tree: grey, rough, bare crooked limbs
+			g = make("oak", leafy, conifer)
+			g.height = 9.0
+			g.girth = 0.45
+			g.taper = 0.55
+			g.trunk_part = 0.3
+			g.crown = 3.2
+			g.limbs = 5
+			g.limb_angle = 55.0
+			g.limb_length = 1.0
+			g.curve = [1.0, 1.2, 1.4]
+			g.leaf_density = 0.0
+			g.bark = Color(0.42, 0.38, 0.34)
+			g.bark_rough = 1.8
+		"cactus":
+			# a candelabra cactus: a short thick green trunk, arms that turn up
+			g = _leafy(leafy)
+			g.height = 5.0
+			g.girth = 0.28
+			g.taper = 0.9
+			g.trunk_part = 0.35
+			g.crown = 1.5
+			g.aspect = 1.0
+			g.limbs = 3
+			g.limb_angle = 85.0
+			g.limb_length = 1.1
+			g.limb_thickness = 0.7
+			g.depth = 1
+			g.rings = [5, 3, 2]
+			g.sides = [8, 5, 4]
+			g.sides_real = [10, 6, 4]
+			g.curve = [1.3, 0.0, 0.0]
+			g.lift = [1.2, 0.0, 0.0]
+			g.tip_radius = [0.9, 0.9, 0.9]
+			g.trunk_sides = 8
+			g.trunk_dark = 0.1
+			g.bark_rough = 0.3
+			g.leaf_density = 0.0
+			g.bark = Color(0.25, 0.45, 0.25)
+		"fern", "grass", "wildflower":
+			# low plants of fronds or blades straight from the ground
+			g = make("palm", leafy, conifer)
+			g.height = 0.12
+			g.girth = 0.01
+			g.taper = 1.0
+			g.lean = 0.0
+			g.bark_rings = 0.0
+			g.bark = Color(0.3, 0.4, 0.2)
+			match kind:
+				"fern":
+					g.fronds = 11
+					g.frond_length = 0.7
+					g.frond_arch = 0.9
+					g.frond_droop = 0.8
+					g.leaflet = 0.28
+					g.leaf = Color(0.2, 0.5, 0.2)
+					g.leaf_tip = Color(0.32, 0.62, 0.26)
+				"grass":
+					g.fronds = 34
+					g.frond_length = 0.5
+					g.frond_arch = 0.25
+					g.frond_droop = 0.4
+					g.leaflet = 0.0
+					g.rib_width = 0.035
+					g.leaf = Color(0.4, 0.55, 0.18)
+					g.leaf_tip = Color(0.58, 0.68, 0.28)
+				_:
+					g.fronds = 6
+					g.frond_length = 0.45
+					g.frond_arch = 0.2
+					g.frond_droop = 0.1
+					g.leaflet = 0.0
+					g.rib_width = 0.03
+					g.leaf = Color(0.35, 0.52, 0.2)
+					g.leaf_tip = Color(0.5, 0.65, 0.28)
+					g.flower = Color(0.95, 0.8, 0.2, 1.0)
+					g.flower_size = 0.05
 		"clump":
 			# a birch or hazel clump: several slim stems from one root
 			g = _leafy(leafy)
@@ -309,6 +390,8 @@ static func _nudge(g: TreeGenome, rng: RandomNumberGenerator, amount: float) -> 
 			clampf(g.leaf.v + rng.randf_range(-0.08, 0.08), 0.2, 0.7))
 	g.leaf_tip = g.leaf.lightened(0.15)
 	g.bark = g.bark.lightened(rng.randf_range(-0.08, 0.08))
+	if g.flower.a > 0.0: # every flowering plant its own colour
+		g.flower = Color.from_hsv(rng.randf(), rng.randf_range(0.5, 0.9), rng.randf_range(0.8, 1.0))
 
 
 static func _moved(value: Variant, low: float, high: float, rng: RandomNumberGenerator,

@@ -26,6 +26,8 @@ var stems := 1 ## trunks from one root (a birch clump, hazel): each a smaller tr
 var stem_spread := 0.25 ## how far the stems lean apart, as a fraction of the height
 var trunk_sides := 14
 var trunk_wobble := 0.05
+var bark_rings := 0.0 ## metres between rings round the trunk (palms, bamboo); 0 none
+var bark_rough := 1.0 ## 1 the usual wobble of the trunk's surface; more is rougher bark
 var trunk_dark := 0.25 ## how much darker the foot of the trunk is
 var marked_bark := false # dark patches on pale bark (birch)
 
@@ -82,7 +84,10 @@ var fronds := 14 ## (palm) fronds in the crown
 var frond_length := 3.0 ## metres
 var frond_arch := 0.5 ## 0..1: how high the frond rises before it bends over
 var frond_droop := 0.5 ## 0..1: how far the tip hangs down
-var leaflet := 0.22 ## leaflet length as a share of the frond
+var leaflet := 0.22 ## leaflet length as a share of the frond (under 0.02: a bare blade, grass)
+var rib_width := 0.012 ## the frond's midrib width as a share of its length (grass blades: 0.04)
+var flower := Color(0.0, 0.0, 0.0, 0.0) ## a flower at the tip of each frond (alpha 0: none)
+var flower_size := 0.05 ## flower radius, metres
 var leaf_density := 1.0 ## 1 full; less: some twigs have no leaves, the others fewer (an old oak)
 
 # Colours (sRGB)

@@ -27,6 +27,7 @@ var _thrift := 1.0 ## 1 as drawn; less: fewer branches, whorls and leaves (see b
 var _g: TreeGenome
 var _b: MeshBuilder
 var _rng: RandomNumberGenerator
+var _budget := BUDGET ## small plants get a smaller budget
 var _lod := 0 ## 0 full tree, 1 the lighter one for trees at a distance
 var _fine := false ## the realistic geometry (never in the lighter version)
 var _depth := 3 ## levels of branching in this version
@@ -48,7 +49,7 @@ static func build(builder: MeshBuilder, genome: TreeGenome, rng: RandomNumberGen
 		lod := 0) -> bool:
 	var start := rng.state
 	var grower: TreeGrower
-	for thrift: float in [1.0, 0.7, 0.5, 0.35, 0.25, 0.18, 0.12]:
+	for thrift: float in [1.0, 0.94, 0.88, 0.82, 0.76, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.12]:
 		builder.reset()
 		rng.state = start
 		grower = TreeGrower.new()
@@ -59,6 +60,7 @@ static func build(builder: MeshBuilder, genome: TreeGenome, rng: RandomNumberGen
 		grower._fine = builder.detailed and lod == 0
 		grower._depth = genome.depth
 		grower._thrift = thrift
+		grower._budget = clampi(int(1500.0 + 2000.0 * genome.height), 1500, BUDGET)
 		grower._grow()
 		if not grower.capped:
 			break
@@ -119,7 +121,7 @@ func _grow_stem(lean_to := Vector3.ZERO) -> void:
 
 ## True once the mesh has used its triangle budget.
 func _full() -> bool:
-	if _b.triangle_count() < BUDGET - MARGIN:
+	if _b.triangle_count() < _budget - MARGIN:
 		return false
 	capped = true
 	return true
@@ -137,14 +139,18 @@ func _axis(y: float) -> Vector3:
 
 func _trunk() -> void:
 	var rings := (7 if _g.leader else 5) - _lod
+	var ringed := _g.bark_rings > 0.0 and _lod == 0
+	if ringed: # a bulge and a darker band every bark_rings metres
+		rings = clampi(int(_trunk_length / (_g.bark_rings * 0.5)), rings, 40)
 	var centres: Array[Vector3] = []
 	var radii: Array[float] = []
 	var colors: Array[Color] = []
 	for index in rings:
 		var along := float(index) / float(rings - 1)
 		centres.append(_axis(_trunk_length * along))
-		radii.append(_trunk_radius(along))
-		colors.append(_still(_g.bark.darkened(_g.trunk_dark * (1.0 - along))))
+		radii.append(_trunk_radius(along) * (1.0 + 0.08 * float(index % 2) if ringed else 1.0))
+		colors.append(_still(_g.bark.darkened(_g.trunk_dark * (1.0 - along)
+				+ (0.12 if ringed and index % 2 == 1 else 0.0))))
 	if not _g.leader:
 		# the top of the trunk is a rounded dome the limbs grow out of (a flat cut shows as a disc)
 		var top_radius := _g.girth * _g.taper
@@ -154,7 +160,8 @@ func _trunk() -> void:
 			radii.append(top_radius * float(dome[1]))
 			colors.append(colors[colors.size() - 1])
 	var trunk_sides := _g.trunk_sides - 5 * _lod
-	PlantTreeBuilders.tube(_b, centres, radii, colors, trunk_sides, _rng, _g.trunk_wobble,
+	PlantTreeBuilders.tube(_b, centres, radii, colors, trunk_sides, _rng,
+			_g.trunk_wobble * _g.bark_rough,
 			MeshBuilder.CAP_TOP, false)
 	if _g.marked_bark and not _g.leader and _lod == 0: # the dark patches on pale bark
 		for mark in int(_trunk_length / 0.8):
@@ -225,7 +232,7 @@ func _frond(points: Array[Vector3], side: Vector3) -> void:
 	if _b.leafless or _full():
 		return
 	var length := (points[points.size() - 1] - points[0]).length()
-	var rib := length * 0.012
+	var rib := length * _g.rib_width
 	var dark := _g.leaf.darkened(0.35)
 	var tone := _g.leaf.lerp(_g.leaf.lightened(0.12), _rng.randf())
 	for index in points.size() - 1:
@@ -238,15 +245,19 @@ func _frond(points: Array[Vector3], side: Vector3) -> void:
 		base.a = sway
 		var tip := dark
 		tip.a = minf(sway + 0.1, 1.0)
-		_b.add_tri(a - side * rib, a + side * rib, b, base, base, tip)
+		# the midrib narrows to the tip: a strip of two triangles per part
+		var wide_a := side * rib * (1.0 - 0.9 * t)
+		var wide_b := side * rib * (1.0 - 0.9 * (t + 1.0 / float(points.size() - 1)))
+		_b.add_tri(a - wide_a, a + wide_a, b + wide_b, base, base, tip)
+		_b.add_tri(a - wide_a, b + wide_b, b - wide_b, base, tip, tip)
 		# leaflets: one tri per side, hanging from the midrib, longest in the middle of the frond
-		var leaflets := (5 if _fine else 3) - _lod
-		for leaf_index in maxi(leaflets, 1):
-			var u := (float(leaf_index) + 0.5) / float(maxi(leaflets, 1))
+		var leaflets := (5 if _fine else 3) - _lod if _g.leaflet >= 0.02 else 0
+		for leaf_index in leaflets:
+			var u := (float(leaf_index) + 0.5) / float(leaflets)
 			var at := a.lerp(b, u)
 			var shape := pow(sin(PI * clampf(t + u / float(points.size() - 1), 0.05, 0.98)), 0.7)
 			var size := length * _g.leaflet * shape * _rng.randf_range(0.85, 1.1)
-			var step_len := (b - a).length() / float(maxi(leaflets, 1))
+			var step_len := (b - a).length() / float(leaflets)
 			for sign_side: float in [-1.0, 1.0]:
 				var dir := (side * sign_side * 0.9 + tangent * 0.5 + Vector3.DOWN * 0.45).normalized()
 				var from_colour := tone.darkened(0.2)
@@ -255,6 +266,22 @@ func _frond(points: Array[Vector3], side: Vector3) -> void:
 				tip_colour.a = minf(sway + LEAF_SWAY, 1.0)
 				_b.add_tri(at, at + tangent * step_len, at + dir * size + tangent * step_len * 0.5,
 						from_colour, from_colour, tip_colour)
+	if _g.flower.a > 0.0:
+		_flower(points[points.size() - 1])
+
+
+## A flat flower at `at`: a fan of petals round a lighter centre, facing the sky.
+func _flower(at: Vector3) -> void:
+	var petals := 6 if _fine else 5
+	var petal := _g.flower
+	petal.a = 1.0
+	var centre := petal.lightened(0.45)
+	var lift := Vector3(0.0, _g.flower_size * 0.3, 0.0)
+	for index in petals:
+		var a := TAU * float(index) / float(petals)
+		var b := TAU * float(index + 1) / float(petals)
+		_b.add_tri(at + lift, at + Vector3(cos(a), 0.0, sin(a)) * _g.flower_size,
+				at + Vector3(cos(b), 0.0, sin(b)) * _g.flower_size, centre, petal, petal)
 
 
 ## Whorls of branches up the trunk (a conifer), close together, each turned against the one below;

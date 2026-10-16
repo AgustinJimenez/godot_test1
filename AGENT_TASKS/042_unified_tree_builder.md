@@ -199,3 +199,20 @@ draw the world's species from the same table.
 - Budget check keeps a 150-triangle margin: 300 random draws stay under 12000.
 - Still to do: cactus/succulent, grasses/ferns/flowers, dead trees, bark texture, per-tree variation in
   the world scatter, a small-plant triangle budget (a 0.3 m groundcover can use ~10k triangles).
+
+## Second batch (dead tree, cactus, fern, grass, wildflower)
+
+- New kinds: dead (grey rough bare tree), cactus (candelabra: short green trunk, arms bending up),
+  fern, grass (frond blades with no leaflets, `leaflet` < 0.02, wider midrib via `rib_width`),
+  wildflower (blades plus a flower fan at each tip: `flower` colour, `flower_size`).
+- New traits: `rib_width`, `flower`, `flower_size`, `bark_rings` (palm trunk rings), `bark_rough`.
+- Triangle budget scales with size: `1500 + 2000 * height`, capped at 12000, so a 0.3 m plant cannot
+  use 10k triangles. Regrow steps are finer (1.0, 0.94, 0.88 ... 0.12) so a tree just over the limit
+  loses a little, not half its leaves.
+- Per-tree variation in the world already exists in the scatter (size spread, yaw, tint, two grown
+  variants per species); not changed.
+- Checks after this batch: 300 draws worst 11873 triangles, no NaN; species_check PASS (largest mesh
+  11134); world_lab --world-check PASS.
+- Still open: moss/lichen on bark, vines, fruit and cones, a save/load for liked trees, the world
+  stage itself (species drawn from the archetype table, delete the old builders), saguaro arms from the
+  side of a trunk, a ground tuft of leaves under the wildflower.

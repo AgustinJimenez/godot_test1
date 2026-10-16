@@ -10,7 +10,7 @@ extends Node3D
 
 const ROWS := [
 	{"group": "Trunk"},
-	{"name": "height", "prop": "height", "min": 0.2, "max": 45.0, "step": 0.05},
+	{"name": "height", "prop": "height", "min": 0.1, "max": 45.0, "step": 0.05},
 	{"name": "girth (trunk radius)", "prop": "girth", "min": 0.01, "max": 2.6, "step": 0.005},
 	{"name": "root flare", "prop": "root_flare", "min": 0.0, "max": 1.0, "step": 0.01},
 	{"name": "column top (leader, <0 cone)", "prop": "column", "min": -0.01, "max": 1.0, "step": 0.01},
@@ -51,11 +51,14 @@ const ROWS := [
 	{"name": "lobes", "prop": "leaf_lobes", "min": 0, "max": 4, "step": 1},
 	{"name": "needle size", "prop": "needle_size", "min": 0.2, "max": 1.5, "step": 0.01},
 	{"name": "fronds (palm)", "prop": "fronds", "min": 6, "max": 24, "step": 1},
-	{"name": "frond length", "prop": "frond_length", "min": 0.8, "max": 8.0, "step": 0.05},
+	{"name": "frond length", "prop": "frond_length", "min": 0.2, "max": 8.0, "step": 0.05},
 	{"name": "frond arch", "prop": "frond_arch", "min": 0.1, "max": 1.0, "step": 0.01},
 	{"name": "frond droop", "prop": "frond_droop", "min": 0.1, "max": 1.0, "step": 0.01},
-	{"name": "leaflet length", "prop": "leaflet", "min": 0.1, "max": 0.4, "step": 0.01},
-	{"name": "leaf density", "prop": "leaf_density", "min": 0.1, "max": 1.0, "step": 0.01},
+	{"name": "leaflet length", "prop": "leaflet", "min": 0.0, "max": 0.4, "step": 0.01},
+	{"name": "blade width", "prop": "rib_width", "min": 0.005, "max": 0.06, "step": 0.001},
+	{"name": "flower size", "prop": "flower_size", "min": 0.02, "max": 0.15, "step": 0.005},
+	{"name": "bark roughness", "prop": "bark_rough", "min": 0.5, "max": 3.0, "step": 0.05},
+	{"name": "leaf density", "prop": "leaf_density", "min": 0.0, "max": 1.0, "step": 0.01},
 ]
 const OPTIONS := [
 	{"name": "leaf shape", "prop": "leaf_shape", "items": ["oval", "lobed", "palmate", "heart",
@@ -440,9 +443,16 @@ func _regrow() -> void:
 			"realistic" if detailed else "low-poly", "distance version" if lod == 1 else "full", _recipe]
 
 
+## How big the plant is, for framing: 1 for a tree of 9 m.
+func _plant_size() -> float:
+	if genome.foliage == TreeGenome.Foliage.FROND:
+		return maxf(genome.height / 9.0, genome.frond_length / 3.0)
+	return maxf(maxf(genome.height / 9.0, genome.crown * genome.limb_length / 1.2), 0.12)
+
+
 func _place_camera() -> void:
 	var offset := Vector3(sin(_yaw) * cos(_pitch), sin(_pitch), cos(_yaw) * cos(_pitch)) \
-			* _distance * maxf(maxf(genome.height / 9.0, genome.crown * genome.limb_length / 1.2), 0.12)
+			* _distance * _plant_size()
 	_camera.position = _target + offset
 	_camera.position.y = maxf(_camera.position.y, 0.1)
 	_camera.look_at(_target, Vector3.UP)
