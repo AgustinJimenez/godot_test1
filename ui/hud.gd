@@ -108,6 +108,10 @@ var _character_rows: Array[Dictionary] = []
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SlowMoRow/SlowMoSlider")
 @onready var slow_mo_value_label: Label = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/SlowMoRow/SlowMoValueLabel")
+@onready var free_speed_slider: HSlider = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FreeSpeedRow/FreeSpeedSlider")
+@onready var free_speed_value_label: Label = get_node(
+		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FreeSpeedRow/FreeSpeedValueLabel")
 @onready var vision_button: Button = get_node(
 		^"DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/VisionButton")
 @onready var debug_back_button: Button = get_node(
@@ -149,6 +153,7 @@ func _ready() -> void:
 	show_fps_toggle.toggled.connect(_on_show_fps_toggled)
 	visual_filters_toggle.toggled.connect(_on_visual_filters_toggled)
 	free_mode_toggle.toggled.connect(_on_free_mode_toggled)
+	free_speed_slider.value_changed.connect(_on_free_speed_changed)
 	detached_camera_toggle.toggled.connect(_on_detached_camera_toggled)
 	foot_ik_follow_toggle.toggled.connect(_on_foot_ik_follow_toggled)
 	foot_ik_joint_graph_toggle.toggled.connect(_on_foot_ik_joint_graph_toggled)
@@ -803,6 +808,24 @@ func _on_free_mode_toggled(enabled: bool) -> void:
 	var player := get_tree().get_first_node_in_group(&"player")
 	if player != null and player.has_method(&"set_free_mode"):
 		player.set_free_mode(enabled)
+
+
+## Free mode speed: the slider is the exponent, so the whole range from a stroll to crossing a
+## planet is on one short slider: 2 m/s at the left end, 600 m/s at the right (sprint triples it;
+## the planet streams its ground in fine at those speeds, much faster tears the physics world).
+const FREE_SPEED_MIN := 2.0
+const FREE_SPEED_MAX := 600.0
+
+
+func _on_free_speed_changed(value: float) -> void:
+	var speed := FREE_SPEED_MIN * pow(FREE_SPEED_MAX / FREE_SPEED_MIN, value)
+	if speed < 100.0:
+		free_speed_value_label.text = "%d m/s" % roundi(speed)
+	else:
+		free_speed_value_label.text = "%d km/h" % roundi(speed * 3.6)
+	var player := get_tree().get_first_node_in_group(&"player")
+	if player != null and "free_mode_speed" in player:
+		player.free_mode_speed = speed
 
 
 func _on_detached_camera_toggled(enabled: bool) -> void:

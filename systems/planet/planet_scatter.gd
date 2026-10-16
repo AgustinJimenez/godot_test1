@@ -283,8 +283,11 @@ func _place(plant: PlantSpecies, at: Vector3) -> void:
 		tint = Color(1.0, 1.0, 1.0).lerp(Color(1.25, 1.05, 0.7), (1.0 - _wet) * 0.7)
 		tint = tint.darkened(_rng.randf_range(0.0, 0.2))
 	else:
-		var shade := _rng.randf_range(0.9, 1.1)
-		tint = Color(shade, shade * _rng.randf_range(0.97, 1.03), shade)
+		# every plant its own shade: lighter or darker, a little more of one colour (a tree of the
+		# same species still differs from its neighbour)
+		var shade := _rng.randf_range(0.82, 1.18)
+		tint = Color(shade * _rng.randf_range(0.92, 1.08), shade * _rng.randf_range(0.95, 1.05),
+				shade * _rng.randf_range(0.9, 1.1))
 	var key := PLANT_KEY + plant.id * 100 + variant
 	if not _batches.has(key):
 		_batches[key] = []

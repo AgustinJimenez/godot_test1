@@ -115,7 +115,7 @@ var _pending_melee_range := 0.0
 ## person view is active (no point drawing the first-person camera's FOV
 ## from inside its own view) - this is a second, manual gate on top of
 ## that, for when it's just cluttering the third-person view too.
-var show_fov_gizmo := true
+var show_fov_gizmo := false # the debug menu button turns it on (its label starts at OFF)
 
 func toggle_fov_gizmo() -> void:
 	show_fov_gizmo = not show_fov_gizmo

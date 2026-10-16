@@ -388,6 +388,22 @@ button_pressed = true
 [node name="FreeModeToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Free Mode (noclip)"
 
+[node name="FreeSpeedRow" type="HBoxContainer" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
+theme_override_constants/separation = 6
+
+[node name="FreeSpeedLabel" type="Label" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FreeSpeedRow"]
+text = "Free speed:"
+
+[node name="FreeSpeedSlider" type="HSlider" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FreeSpeedRow"]
+custom_minimum_size = Vector2(120, 0)
+max_value = 1.0
+step = 0.005
+value = 0.243
+
+[node name="FreeSpeedValueLabel" type="Label" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FreeSpeedRow"]
+custom_minimum_size = Vector2(90, 0)
+text = "8 m/s"
+
 [node name="DetachedCameraToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Detached Camera"
 

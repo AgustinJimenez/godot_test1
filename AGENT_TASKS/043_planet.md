@@ -106,6 +106,13 @@ Relief is now `clamp(R * 0.0035, 300, 9000)` m.
 Third pass: planet ground shader with planet-anchored 3D detail noise (globals `planet_from_world`,
 `world_from_planet` in project.godot), horizon trees on the next three tile sizes.
 
+Fourth pass (user feedback): debug menu "Free speed" slider for free mode (2 to 600 m/s on an
+exponential slider, `ui/hud.gd`, sprint triples it; `-- --fly-check` flies the planet at 100 m/s,
+fast flight faster than ~1,800 m/s made Jolt print shape errors from the tile churn); the red camera
+cone was the FOV gizmo of the third-person debug camera, on by default while its button said OFF
+(now off by default); tree variety: a planet makes 120 species (`species_count`, was 36: one red
+oak-like tree dominated), 6 looks per tree species, wider per-tree tint range.
+
 Still rough / ideas: tile LOD edge colour mismatch and popping, sea depth
 colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
 (mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile

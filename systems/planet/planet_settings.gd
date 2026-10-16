@@ -7,7 +7,7 @@ extends Resource
 @export var sea_level := 0.0 ## m above `radius`
 @export var relief := 0.0 ## m from the sea to the highest ranges; 0: from the radius (at least 300)
 @export var ocean_fraction := 0.7 ## the share of the planet's area under the sea
-@export var species_count := 36 ## how many plant species the seed makes (SpeciesGenerator)
+@export var species_count := 120 ## how many plant species the seed makes (SpeciesGenerator)
 @export var plant_density := 1.0
 @export var rock_density := 1.0
 @export var lake_depth_share := 0.08 ## a hollow is a lake when deeper than this share of the relief

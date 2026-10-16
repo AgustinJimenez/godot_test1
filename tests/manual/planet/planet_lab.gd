@@ -7,6 +7,7 @@ extends Node3D
 ##   -- --view-pitch=N / --view-yaw=N degrees (negative pitch looks down; with --view-alt)
 ##   -- --shot=PATH    (with a window) saves a picture after the tiles have loaded, then quits
 ##   -- --bare       no plants (to look at the ground)
+##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
 ##   -- --walk-check  (use --fixed-fps 60) the real player holds forward and sprint for 90 s,
 ##                    walking over the planet; prints one WALK_CHECK line
 ##   -- --planet-check (headless) stands the player on the planet, walks it in steps (turning the
@@ -18,10 +19,13 @@ var planet: PlanetWorld
 var player: Player
 var _checking := false
 var _walking := false
+var _flying := false ## the walk check in free mode (noclip) at 100 m/s
 var _walk_start := Vector3.ZERO
 var _walk_floor := 0
 var _walk_worst := 0.0
 var _stuck := false
+var _side := 0
+var _stuck_count := 0
 var _last_here := Vector3.ZERO
 var _frame := 0
 var _step := 0
@@ -63,6 +67,9 @@ func _ready() -> void:
 			settings.plant_density = 0.0
 		elif arg == "--walk-check":
 			_walking = true
+		elif arg == "--fly-check":
+			_walking = true
+			_flying = true
 		elif arg == "--planet-check":
 			_checking = true
 	planet = PlanetWorld.new()
@@ -188,25 +195,44 @@ func _walk_step() -> void:
 	if _frame == 60:
 		Input.action_press(&"move_forward")
 		Input.action_press(&"sprint")
+		if _flying:
+			player.set_free_mode(true)
+			player.free_mode_speed = 100.0
 		_walk_start = planet.planet_position()
 	if _frame <= 60:
 		return
 	if player.is_on_floor():
 		_walk_floor += 1
-	# a tree or a rock in the way: sidestep it for a second, like a person would
+	if "--verbose-check" in OS.get_cmdline_user_args() and _frame % 60 == 0:
+		var touching := ""
+		for index in player.get_slide_collision_count():
+			var hit := player.get_slide_collision(index)
+			touching += " %s n=%s" % [(hit.get_collider() as Node).name, hit.get_normal().snapped(
+					Vector3.ONE * 0.01)]
+		print("walk %d: pos %s floor %s%s" % [_frame, player.global_position.snapped(
+				Vector3.ONE * 0.01), player.is_on_floor(), touching])
+	# a tree or a rock in the way: sidestep it (left, then right, jumping), like a person would
 	if _frame % 120 == 0:
 		var here := planet.planet_position()
 		_stuck = here.distance_to(_last_here) < 1.5
 		_last_here = here
-		Input.action_release(&"move_right")
+		for action in [&"move_right", &"move_left", &"jump"]:
+			Input.action_release(action)
 		if _stuck:
-			Input.action_press(&"move_right")
+			_stuck_count += 1
+			if _stuck_count % 3 == 0: # wedged between trunks: lift the player out of it
+				player.global_position += Vector3(3.0, 1.0, 3.0)
+			_side = 1 - _side
+			Input.action_press(&"move_right" if _side == 0 else &"move_left")
+			Input.action_press(&"jump")
 	var at := planet.planet_position().normalized()
 	var above := planet.altitude() - planet.noise.height(at.x, at.y, at.z)
 	_walk_worst = maxf(_walk_worst, absf(above))
 	if _frame >= 60 + 90 * 60:
 		var travelled := planet.planet_position().distance_to(_walk_start)
 		var verdict := "PASS" if travelled > 150.0 and _walk_worst < 4.0 else "FAIL"
+		if _flying:
+			verdict = "PASS" if travelled > 10000.0 else "FAIL"
 		print("WALK_CHECK %s travelled=%.0f m rebases=%d on_floor=%.0f%% worst_above_ground=%.2f m "
 				% [verdict, travelled, planet.rebases, 100.0 * float(_walk_floor) / float(_frame - 60),
 				_walk_worst] + "world_pos=%.0f" % player.global_position.length())

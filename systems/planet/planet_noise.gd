@@ -33,6 +33,11 @@ func _init(planet_settings: PlanetSettings) -> void:
 		relief = clampf(settings.radius * 0.0035, 300.0, 9000.0)
 	tectonics = PlanetTectonics.new(settings.world_seed, settings.plates)
 	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
+	for one in species.species: # a planet has many plants: more looks of each tree
+		if one.is_tree():
+			one.variants = 6
+		elif one.variants < 3:
+			one.variants = 3
 	_setup(_rolling, settings.world_seed + 2, 0.0004, 3)
 	_setup(_ranges, settings.world_seed + 4, 1.0 / (settings.radius * 0.18), 5)
 	_ranges.fractal_type = FastNoiseLite.FRACTAL_RIDGED
