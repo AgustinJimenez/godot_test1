@@ -20,6 +20,15 @@ func triangle_count() -> int:
 	return _vertices.size() / 3
 
 
+## Throws away everything added so far (to build the same thing again with less).
+func reset() -> void:
+	_vertices.clear()
+	_normals.clear()
+	_colors.clear()
+	_custom.clear()
+	xf = Transform3D.IDENTITY
+
+
 func add_tri(a: Vector3, b: Vector3, c: Vector3, color_a: Color, color_b := color_a,
 		color_c := color_a) -> void:
 	var pa := xf * a

@@ -104,3 +104,20 @@ Forest cost (`world_render_stats`, seed 1337): low-poly 5.4M -> 2.5M triangles p
 10.4M -> 4.8M (90 m gave 3.25M / 6.4M). Still above the 2.1M / 4.7M with only the leafy trees
 converted, since every conifer is converted too. Not done: a lod 2 for the 50-200 m band (the far
 proxies start at the far tiles), measuring the GPU on a real card, checking the swap for pops.
+
+## Tree builder lab (2026-10-15, user request)
+
+The user said the trees were already good enough and asked for a scene to SEE the build and its
+parameters and press "generate random". `tests/manual/world/tree_builder_lab.tscn`: one tree, a panel
+with a slider for each trait of the `TreeGenome` (trunk, where the branches leave, branches, leaves),
+dropdowns (leaf shape, edge, pattern, foliage), checkboxes (leader, whorls, planar children, carry on,
+frosted), the triangle count; every change regrows the tree at once. Buttons: Generate random (starts
+from a leafy or conifer preset and moves each trait toward a random value by the Randomness slider:
+0.3 gives believable trees, 1 anything, including mixed trees), New dice (same traits, other branches),
+Leafy / Conifer preset, realistic, no leaves, distance version, wind. Mouse: left drag turns, wheel
+zooms, right drag moves the target up and down. Sliders hold the plausible ranges.
+`TreeGrower.build` now stays inside 12000 triangles for any genome: it grows the tree again from the
+same dice with `thrift` 1, 0.7, 0.5, 0.35 (fewer branches, whorls and leaves) and returns true if even
+that was cut short (the lab shows CAPPED). Found with a random mixed tree (conifer whorls carrying
+single leaves, 0.3 m apart) of 148,000 triangles, and a divide by zero when a twig had one leaf node
+(minimum two). Real species are unchanged (they fit the first try).

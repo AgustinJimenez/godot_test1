@@ -16,6 +16,12 @@ extends RefCounted
 const GOLDEN_ANGLE := 2.39996323
 const LEAF_SWAY := 0.45 ## wind weight added from the stalk to the tip of a leaf
 const NEEDLE_SWAY := 0.35 ## and from the base of a needle spray to its tips
+## No tree gets more triangles than this: once the mesh is full no more branches or leaves are
+## added (a wild genome then has a bare top instead of a forest-sized mesh).
+const BUDGET := 12000
+
+var capped := false ## the budget ran out while growing
+var _thrift := 1.0 ## 1 as drawn; less: fewer branches, whorls and leaves (see build)
 
 var _g: TreeGenome
 var _b: MeshBuilder
@@ -33,16 +39,28 @@ var _needle_length := 0.5
 
 ## `lod` 1 grows a lighter version of the same tree (one level of branching less, fewer limbs and
 ## whorls, leaves and needles, fewer sides) for trees seen from far away.
+## A tree that does not fit the budget is grown again with less (fewer branches, whorls and leaves:
+## `thrift` 1, 0.7, 0.5, 0.35) from the same dice, so it keeps its shape and its whole height.
+## Returns true if even that was cut short.
 static func build(builder: MeshBuilder, genome: TreeGenome, rng: RandomNumberGenerator,
-		lod := 0) -> void:
-	var grower := TreeGrower.new()
-	grower._g = genome
-	grower._b = builder
-	grower._rng = rng
-	grower._lod = lod
-	grower._fine = builder.detailed and lod == 0
-	grower._depth = genome.depth
-	grower._grow()
+		lod := 0) -> bool:
+	var start := rng.state
+	var grower: TreeGrower
+	for thrift: float in [1.0, 0.7, 0.5, 0.35]:
+		builder.reset()
+		rng.state = start
+		grower = TreeGrower.new()
+		grower._g = genome
+		grower._b = builder
+		grower._rng = rng
+		grower._lod = lod
+		grower._fine = builder.detailed and lod == 0
+		grower._depth = genome.depth
+		grower._thrift = thrift
+		grower._grow()
+		if not grower.capped:
+			break
+	return grower.capped
 
 
 func _grow() -> void:
@@ -62,6 +80,14 @@ func _grow() -> void:
 		_whorls()
 	else:
 		_limbs()
+
+
+## True once the mesh has used its triangle budget.
+func _full() -> bool:
+	if _b.triangle_count() < BUDGET:
+		return false
+	capped = true
+	return true
 
 
 func _still(color: Color) -> Color:
@@ -138,7 +164,7 @@ func _limbs() -> void:
 func _whorls() -> void:
 	var first := _height * _g.nodes_from
 	var last := _height * 0.94
-	var spacing := maxf(_g.nodes_spacing, 0.1) * (1.0 + 0.8 * float(_lod))
+	var spacing := maxf(_g.nodes_spacing, 0.1) * (1.0 + 0.8 * float(_lod)) / _thrift
 	var tiers := maxi(int((last - first) / spacing), 5)
 	var phase := _rng.randf() * TAU
 	for tier in tiers:
@@ -170,6 +196,8 @@ func _whorls() -> void:
 ## of its parent.
 func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: int, sway: float,
 		continues := false) -> void:
+	if _full():
+		return
 	var rings := maxi(_g.rings[level] - (1 if level < 2 else 0) * _lod, 2)
 	var points: Array[Vector3] = [start]
 	var tangents: Array[Vector3] = [dir]
@@ -222,6 +250,7 @@ func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: 
 func _children(points: Array[Vector3], tangents: Array[Vector3], length: float, radius: float,
 		level: int, sway: float, _continues: bool) -> void:
 	var total: int = maxi(_g.children[level] - _lod, mini(_g.children[level], 2))
+	total = maxi(roundi(float(total) * _thrift), mini(total, 2))
 	var spread := total - (1 if _g.carry_on else 0)
 	for index in total:
 		# the last child grows straight on from the tip: a branch never ends bare
@@ -257,7 +286,7 @@ func _children(points: Array[Vector3], tangents: Array[Vector3], length: float, 
 ## tip.
 func _leaves_along(points: Array[Vector3], tangents: Array[Vector3], sway: float,
 		level: int) -> void:
-	var nodes := 5 if _fine else (4 - _lod)
+	var nodes := maxi(roundi(float(5 if _fine else (4 - _lod)) * _thrift), 2)
 	var gain: float = _g.sway[level]
 	for node in nodes:
 		var along := 0.3 + 0.65 * float(node) / float(nodes - 1)
@@ -278,7 +307,7 @@ func _leaves_along(points: Array[Vector3], tangents: Array[Vector3], sway: float
 ## One leaf at `at` on a twig running along `tangent`, turned `azimuth` around the twig. A leaf at
 ## the very tip (`spread` 0) points straight on. `sway` is the twig's own wind weight at `at`.
 func _leaf(at: Vector3, tangent: Vector3, azimuth: float, sway: float, spread := 0.7) -> void:
-	if _b.leafless:
+	if _b.leafless or _full():
 		return
 	var out := _outward(tangent, azimuth)
 	var axis := (tangent * 0.6 + out * spread + Vector3.UP * 0.15).normalized()
@@ -300,7 +329,7 @@ func _leaf(at: Vector3, tangent: Vector3, azimuth: float, sway: float, spread :=
 
 ## A fan of single needles in the plane of a branch: `axis` is where the branch points.
 func _spray(base: Vector3, axis: Vector3, length: float, sway: float) -> void:
-	if _b.leafless:
+	if _b.leafless or _full():
 		return
 	var count := 11 if _fine else (9 - 3 * _lod)
 	var side := axis.cross(Vector3.UP)
