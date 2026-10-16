@@ -17,8 +17,9 @@ const MAX_CHANCE := {
 	PlantSpecies.Layer.GRASS: 0.95, PlantSpecies.Layer.MEADOW: 0.7, PlantSpecies.Layer.COVER: 0.5,
 }
 const PLANT_KEY := 100000
+const FAR_KEY := 200000
 
-enum Detail { NONE, TREES, ALL }
+enum Detail { NONE, FAR, TREES, ALL } ## FAR: only the cheap horizon trees, sparse
 
 var _tile: Node3D
 var _noise: PlanetNoise
@@ -59,6 +60,10 @@ func populate(tile: Node3D, noise: PlanetNoise, positions: Array[Vector3], dirs:
 		_body.collision_layer = 1
 		_body.name = "Plants"
 		tile.add_child(_body)
+	if detail == Detail.FAR:
+		_scatter_far()
+		_flush(false)
+		return
 	_scatter(PlantSpecies.Layer.CANOPY, 1.0 if detail == Detail.ALL else 2.0)
 	_scatter(PlantSpecies.Layer.UNDERSTORY, 1.0 if detail == Detail.ALL else 2.0)
 	if detail != Detail.NONE:
@@ -94,6 +99,40 @@ func _scatter(layer: PlantSpecies.Layer, stretch: float) -> void:
 			var plant := _pick(layer, dir, ground, steep, x, z)
 			if plant != null and _rng.randf() <= _pick_chance * density:
 				_place(plant, at)
+
+
+## The horizon: a sparse grid of the cheap far trees (one cone or one trunk and ball each), so a
+## forest does not stop where the real trees do. Same species rules as near trees.
+func _scatter_far() -> void:
+	var spacing := clampf(_size / 14.0, 20.0, 140.0)
+	var count := int(_size / spacing)
+	for row in count:
+		for column in count:
+			var x := (float(column) + _rng.randf()) * spacing
+			var z := (float(row) + _rng.randf()) * spacing
+			var fx := clampf(x / _size * float(_cells), 0.0, float(_cells) - 0.001)
+			var fz := clampf(z / _size * float(_cells), 0.0, float(_cells) - 0.001)
+			var ground := _height_at(fx, fz)
+			if ground < 0.9:
+				continue
+			var dir := _direction(fx, fz)
+			if _noise.hydrology != null and _noise.hydrology.water_at(dir, ground) > ground - 0.3:
+				continue
+			var tree := _pick(PlantSpecies.Layer.CANOPY, dir, ground, _slope(fx, fz), x, z)
+			if tree == null or not PlantMeshes.has_far(tree):
+				continue
+			if _rng.randf() > _pick_chance * _noise.settings.plant_density:
+				continue
+			var key := FAR_KEY + tree.id * 100 + _rng.randi() % 2
+			if not _batches.has(key):
+				_batches[key] = []
+				_colors[key] = []
+			# a far tree stands for the trees around it: a little bigger than one
+			var scale := _rng.randf_range(0.9, 1.5)
+			(_batches[key] as Array).append(Transform3D(
+					Basis(Vector3.UP, _rng.randf_range(0.0, TAU)).scaled(Vector3.ONE * scale),
+					_ground(fx, fz) - Vector3(0.0, 0.2, 0.0)))
+			(_colors[key] as Array).append(Color.WHITE)
 
 
 ## Rocks (more and bigger on rocky, snowy and dry ground and steep slopes) and, further apart,
@@ -268,6 +307,9 @@ func _place(plant: PlantSpecies, at: Vector3) -> void:
 func _flush(near: bool) -> void:
 	for key: int in _batches.keys():
 		var transforms: Array = _batches[key]
+		if key >= FAR_KEY:
+			_flush_far(key, transforms)
+			continue
 		var plant := key >= PLANT_KEY
 		var id := (key - PLANT_KEY) / 100
 		var variant := key % 100
@@ -292,6 +334,22 @@ func _flush(near: bool) -> void:
 		elif not near:
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_tile.add_child(instance)
+
+
+func _flush_far(key: int, transforms: Array) -> void:
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.use_colors = true
+	multi.mesh = _species.far_mesh((key - FAR_KEY) / 100, key % 100)
+	multi.instance_count = transforms.size()
+	for index in transforms.size():
+		multi.set_instance_transform(index, transforms[index])
+		multi.set_instance_color(index, (_colors[key] as Array)[index])
+	var instance := MultiMeshInstance3D.new()
+	instance.multimesh = multi
+	instance.material_override = FloraMeshes.material()
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_tile.add_child(instance)
 
 
 ## The tile's grid index (fractional) to the padded array index of its lower corner.

@@ -145,6 +145,10 @@ func _plants(entry: Array) -> PlanetScatter.Detail:
 		return PlanetScatter.Detail.TREES
 	if level == _settings.max_level() - 1 and _distance(entry) < _settings.tile_max * 10.0:
 		return PlanetScatter.Detail.TREES
+	# the horizon: cheap sparse trees on the next few sizes of tile, out to a few kilometres
+	var far_level := level >= _settings.max_level() - 4 and level < _settings.max_level() - 1
+	if far_level and _distance(entry) < _settings.tile_max * 40.0:
+		return PlanetScatter.Detail.FAR
 	return PlanetScatter.Detail.NONE
 
 

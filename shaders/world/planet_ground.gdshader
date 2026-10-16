@@ -1,0 +1,123 @@
+shader_type spatial;
+render_mode specular_schlick_ggx;
+// A planet's ground: the flat world's low-poly ground (a flat colour per facet) with detail laid
+// over it that belongs to the planet and not to the screen or to the tile: 3D noise read at the
+// point's position on the planet, found from the world position through `planet_from_world` (the
+// planet is turned under the player every few tens of metres, see PlanetFrame; the pattern must not
+// swim when that happens, and must continue over the seams between tiles). Patches of soil and
+// rock tone, a fine grain, layers of rock that run level round the whole planet (they follow the
+// distance from its centre), a bumpy surface on the steep faces, all fading out with distance so
+// the far ground costs next to nothing. The weather (rain, snow, autumn) works as in the flat world.
+
+global uniform float ground_wetness;
+global uniform float snow_cover;
+global uniform float autumn;
+global uniform float realism;
+global uniform mat4 planet_from_world;
+global uniform mat4 world_from_planet;
+
+uniform float detail_strength : hint_range(0.0, 1.0) = 0.8;
+uniform float detail_range = 260.0; // m: the detail is gone by twice this
+
+varying vec3 smooth_color;
+varying vec3 world_pos;
+varying vec3 world_normal;
+
+float hash3(vec3 p) {
+	p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise3(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = smoothstep(0.0, 1.0, fract(p));
+	return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), f.x),
+			mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), f.x), f.y),
+			mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), f.x),
+			mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+float fbm3(vec3 p) {
+	float sum = 0.0;
+	float amp = 0.5;
+	for (int i = 0; i < 3; i++) {
+		sum += noise3(p) * amp;
+		p = p * 2.03 + vec3(17.3, 9.1, 5.7);
+		amp *= 0.5;
+	}
+	return sum;
+}
+
+float cell_hash(vec2 p) {
+	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+float smooth_noise(vec2 p) {
+	vec2 cell = floor(p);
+	vec2 f = smoothstep(0.0, 1.0, fract(p));
+	return mix(mix(cell_hash(cell), cell_hash(cell + vec2(1.0, 0.0)), f.x),
+			mix(cell_hash(cell + vec2(0.0, 1.0)), cell_hash(cell + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+void vertex() {
+	smooth_color = CUSTOM0.rgb;
+	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+}
+
+void fragment() {
+	vec3 flat_normal = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
+	if (dot(flat_normal, VIEW) < 0.0) {
+		flat_normal = -flat_normal;
+	}
+	vec3 base = mix(COLOR.rgb, smooth_color, realism);
+	vec3 paint = pow(base, vec3(2.2));
+	float leafy = smoothstep(0.0, 0.08, paint.g - max(paint.r, paint.b));
+	float which = smooth_noise(world_pos.xz * 0.035);
+	vec3 turned = mix(vec3(paint.g * 1.6, paint.g * 1.0, paint.g * 0.2),
+			vec3(paint.g * 1.3, paint.g * 0.38, paint.g * 0.1), which);
+	paint = mix(paint, turned, autumn * leafy);
+
+	vec3 view_normal = flat_normal;
+	float up = (INV_VIEW_MATRIX * vec4(flat_normal, 0.0)).y;
+	float rough = 0.95;
+	float near = 1.0 - smoothstep(detail_range, detail_range * 2.0, length(VERTEX));
+	float strength = detail_strength * near;
+	if (strength > 0.001) {
+		vec3 on_planet = (planet_from_world * vec4(world_pos, 1.0)).xyz;
+		float slope = 1.0 - clamp(world_normal.y, 0.0, 1.0);
+		float patch = fbm3(on_planet * 0.17);
+		float mid = fbm3(on_planet * 1.3 + 31.0);
+		float grain = noise3(on_planet * 7.0);
+		vec3 detail = paint * mix(0.78, 1.22, patch) * mix(0.9, 1.1, mid) * (0.94 + 0.12 * grain);
+		// bare soil shows through the green in patches
+		float greenish = smoothstep(0.0, 0.07, paint.g - max(paint.r, paint.b));
+		detail = mix(detail, vec3(0.23, 0.16, 0.1) * mix(0.8, 1.3, mid),
+				greenish * smoothstep(0.64, 0.82, patch) * (1.0 - slope * 2.0) * 0.5);
+		// layers of rock on the steep faces, level round the planet (distance from its centre)
+		float layer = length(on_planet) * 0.6 + patch * 3.0;
+		float strata = sin(layer * 3.1) * 0.5 + 0.5;
+		float rocky = smoothstep(0.22, 0.5, slope);
+		detail *= mix(1.0, mix(0.78, 1.14, strata), rocky);
+		paint = mix(paint, detail, strength);
+		// a bumpy surface: the slope of the fine noise tilts the normal, more on steep ground
+		vec2 e = vec2(0.15, 0.0);
+		float here = fbm3(on_planet * 2.7);
+		float dx = fbm3((on_planet + e.xyy) * 2.7) - here;
+		float dy = fbm3((on_planet + e.yxy) * 2.7) - here;
+		float dz = fbm3((on_planet + e.yyx) * 2.7) - here;
+		vec3 bump_planet = -vec3(dx, dy, dz) * (0.8 + slope * 5.0) * strength;
+		vec3 bump_world = (world_from_planet * vec4(bump_planet, 0.0)).xyz;
+		vec3 bumpy = normalize(NORMAL + (VIEW_MATRIX * vec4(bump_world, 0.0)).xyz);
+		view_normal = normalize(mix(flat_normal, bumpy, strength));
+		rough = mix(0.95, 0.88 - patch * 0.1, strength);
+	}
+	float snow = snow_cover * smoothstep(0.45, 0.8, up);
+	vec3 col = paint * (1.0 - ground_wetness * 0.3);
+	col = mix(col, vec3(0.8, 0.84, 0.9), snow);
+	NORMAL = view_normal;
+	ALBEDO = col;
+	ROUGHNESS = mix(mix(rough, 0.42, ground_wetness), 0.7, snow);
+	SPECULAR = mix(0.3, 0.6, ground_wetness);
+}

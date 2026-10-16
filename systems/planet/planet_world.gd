@@ -46,7 +46,15 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	noise.clearing = dir
 	frame.start(PackedFloat64Array([dir.x * reach, dir.y * reach, dir.z * reach]), Vector3.ZERO)
 	target.global_position = Vector3.ZERO
+	publish_frame()
 	return dir
+
+
+## Tells the ground shader where the planet is (it reads its detail noise at planet positions).
+func publish_frame() -> void:
+	var to_world := frame.planet_to_world()
+	RenderingServer.global_shader_parameter_set(&"world_from_planet", to_world)
+	RenderingServer.global_shader_parameter_set(&"planet_from_world", to_world.affine_inverse())
 
 
 ## Builds the ground around the target now, no waiting for the worker. `near_only`: only the ground
@@ -101,6 +109,7 @@ func _physics_process(delta: float) -> void:
 		moved = true
 	if moved:
 		surface.place_all()
+		publish_frame()
 	_timer -= delta
 	if _timer <= 0.0 or moved:
 		_timer = 0.3

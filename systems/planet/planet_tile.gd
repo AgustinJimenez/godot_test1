@@ -33,8 +33,17 @@ var _e1 := Vector3.ZERO # the tile's axes as unit vectors, for the maths below
 var _e3 := Vector3.ZERO
 
 
+static var _ground_material: ShaderMaterial
 static var _water_material: ShaderMaterial
 static var _river_material: ShaderMaterial
+
+
+## The ground shader material (made once, shared by every tile).
+static func ground_material() -> ShaderMaterial:
+	if _ground_material == null:
+		_ground_material = ShaderMaterial.new()
+		_ground_material.shader = preload("res://shaders/world/planet_ground.gdshader")
+	return _ground_material
 
 
 ## The water shader material (made once, shared by every tile).
@@ -143,7 +152,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool,
 		_skirt(builder, positions, colors, cells)
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.mesh = builder.commit()
-	mesh_instance.material_override = TerrainChunk.ground_material()
+	mesh_instance.material_override = ground_material()
 	if not collide and level < _settings.max_level() - 1:
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mesh_instance)

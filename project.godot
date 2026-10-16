@@ -166,6 +166,14 @@ rendering_device/driver.windows="d3d12"
 
 [shader_globals]
 
+planet_from_world={
+"type": "transform",
+"value": Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+}
+world_from_planet={
+"type": "transform",
+"value": Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+}
 wind_strength={
 "type": "float",
 "value": 0.15

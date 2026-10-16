@@ -103,8 +103,10 @@ ripples, bank foam, clear shallows), lakes built from each tile's own grid (shor
 fewer lakes (`lake_depth_share`, 8% of the relief, about 2% of the land), clear spawn.
 Relief is now `clamp(R * 0.0035, 300, 9000)` m.
 
-Still rough / ideas: ground texture detail (triplanar in a planet ground shader), tile LOD edge
-colour mismatch and popping, far trees (only the two finest tile levels have plants), sea depth
+Third pass: planet ground shader with planet-anchored 3D detail noise (globals `planet_from_world`,
+`world_from_planet` in project.godot), horizon trees on the next three tile sizes.
+
+Still rough / ideas: tile LOD edge colour mismatch and popping, sea depth
 colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
 (mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile
 build ~80 ms, startup).

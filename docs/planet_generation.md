@@ -31,6 +31,13 @@ is rough) is `AGENT_TASKS/043_planet.md`. The flat world it grew next to is `AGE
 | `PlanetFauna` | the flat world's deer and rabbits on the planet |
 | `PlanetWorld` | ties it together with `WorldAtmosphere`; rebases the frame every 80 m, shifts the world back every 2 km |
 
+Ground shader: `shaders/world/planet_ground.gdshader` is the flat world's low-poly ground with detail
+that belongs to the planet: 3D noise read at the point's planet position (the shader globals
+`planet_from_world` / `world_from_planet` are set by `PlanetWorld.publish_frame` after every rebase, so
+the pattern neither swims nor breaks at tile seams): soil and rock patches, grain, rock layers level
+round the planet, bumps on steep faces, fading out with distance. Plants: the two finest tile levels
+have real trees, the next three have sparse cheap horizon trees (`Detail.FAR`) out to ~5 km.
+
 Water shaders: `shaders/world/planet_water.gdshader` (sea and lakes, smooth lit normals),
 `shaders/world/river.gdshader` (flowing ripples, bank foam, UVs along and across the ribbon).
 
@@ -89,6 +96,6 @@ through in the double build (edges differ by 1e-10 m): physics checks avoid seam
 
 ## Not done
 
-Ground texture detail (triplanar rock in a planet ground shader), far trees, swimming and
+Swimming and
 underwater, weather and day/night from the planet's rotation, birds and butterflies, rocks that
 are generated per biome beyond the flat world's, planets without life (craters, ice), star systems.

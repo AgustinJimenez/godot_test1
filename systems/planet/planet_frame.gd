@@ -49,6 +49,12 @@ func shift(delta: Vector3) -> void:
 	origin_w += delta
 
 
+## The planet space -> world transform (and back), for the ground shader's detail noise.
+func planet_to_world() -> Transform3D:
+	var offset := Vector3(anchor[0], anchor[1], anchor[2])
+	return Transform3D(rot, origin_w - rot * offset)
+
+
 func tile_transform(tile: PlanetTile) -> Transform3D:
 	var offset := Vector3(tile.origin[0] - anchor[0], tile.origin[1] - anchor[1],
 			tile.origin[2] - anchor[2])
