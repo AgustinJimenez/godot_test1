@@ -22,6 +22,9 @@ var cloud_cover := 0.3 # for the realistic sky's clouds (weather sets these two)
 var cloud_dark := 0.0
 var realism := 0.0 # 0 low-poly .. 1 realistic (the world sets it)
 var underwater := false # the camera is under the sea
+## Where the sun is, as a unit vector toward it in the world (a planet sets it from its real orbit
+## and spin, see PlanetClock); zero: the sun follows `time_of_day` as in the flat world.
+var sun_direction := Vector3.ZERO
 
 var sky3d_on := false # the Sky3D add-on draws the sky and runs the sun and moon (use_sky3d)
 
@@ -80,6 +83,8 @@ func _process(delta: float) -> void:
 func sun_height() -> float:
 	if sky3d_on and _sky3d != null and _sky3d.sun != null:
 		return _sky3d.sun.global_basis.z.y # the sun's own height, from where Sky3D put it
+	if sun_direction != Vector3.ZERO:
+		return sun_direction.y
 	return sin((time_of_day - 6.0) / 24.0 * TAU)
 
 
@@ -143,6 +148,8 @@ func _apply() -> void:
 	var angle := (time_of_day - 6.0) / 24.0 * TAU
 	# the sun climbs in the east (+x), crosses the south and sets in the west
 	var direction := Vector3(cos(angle), sin(angle), 0.35).normalized()
+	if sun_direction != Vector3.ZERO:
+		direction = sun_direction
 	if not sky3d_on:
 		sun.look_at_from_position(direction * 100.0, Vector3.ZERO, Vector3.FORWARD)
 	var day := smoothstep(-0.05, 0.35, height)

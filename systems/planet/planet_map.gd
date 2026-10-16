@@ -376,9 +376,12 @@ func _draw_view() -> void:
 		var lon: float = player["lon"]
 		var north_south := "N" if lat >= 0.0 else "S"
 		var east_west := "E" if lon >= 0.0 else "W"
-		_caption.text = ("%.1f° %s  %.1f° %s    altitude %d m    [wheel] zoom  [drag] move  "
-				+ "[R] my region  [M] close") % [absf(lat), north_south, absf(lon), east_west,
-				roundi(planet.altitude())]
+		var here := planet.planet_position().normalized()
+		var hour := planet.clock.local_hour(here)
+		_caption.text = ("%.1f° %s  %.1f° %s    altitude %d m    %02d:%02d    %s    "
+				+ "[wheel] zoom  [drag] move  [R] my region  [M] close") % [absf(lat),
+				north_south, absf(lon), east_west, roundi(planet.altitude()), int(hour),
+				int((hour - floorf(hour)) * 60.0), planet.season_text()]
 
 
 ## Draws the part `wanted` (map fractions) of `texture`, which shows `covers` (map fractions), where

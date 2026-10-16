@@ -23,6 +23,7 @@ var atmosphere: WorldAtmosphere
 var fauna: PlanetFauna
 var swim: PlanetSwim
 var map: PlanetMap
+var clock := PlanetClock.new() ## the star, the orbit, the spin: where the sun is (real geometry)
 var splash: WaterSplash
 var rebases := 0 ## how many times the planet has been turned (labs and tests)
 var loading := false ## the player is held still while the ground around them is made
@@ -38,6 +39,9 @@ func _ready() -> void:
 	if settings == null:
 		settings = PlanetSettings.new()
 	noise = PlanetNoise.new(settings)
+	clock.day_seconds = settings.day_seconds
+	clock.year_days = settings.year_days
+	clock.axial_tilt = deg_to_rad(settings.axial_tilt)
 	atmosphere = WorldAtmosphere.new()
 	atmosphere.time_of_day = time_of_day
 	add_child(atmosphere)
@@ -86,6 +90,8 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	var dir := direction if direction != Vector3.ZERO else noise.find_spawn()
 	var reach := settings.radius + noise.height(dir.x, dir.y, dir.z) + 1.0
 	noise.clearing = dir
+	clock.start(settings.start_year, settings.start_hour, dir)
+	_set_the_sun()
 	frame.start(PackedFloat64Array([dir.x * reach, dir.y * reach, dir.z * reach]), Vector3.ZERO)
 	target.global_position = Vector3.ZERO
 	publish_frame()
@@ -103,6 +109,26 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 		_dark.visible = true
 		surface.update(planet_position())
 	return dir
+
+
+## 'Day 3, early spring' for the caption of the map.
+func season_text() -> String:
+	var share := clock.year_share()
+	var names := ["early spring", "late spring", "early summer", "late summer", "early autumn",
+			"late autumn", "early winter", "late winter"]
+	# the northern seasons; the southern hemisphere has the other half of the year
+	var here := planet_position().normalized()
+	var shifted := share if here.y >= 0.0 else fposmod(share + 0.5, 1.0)
+	var day := int(floorf(clock.time / clock.day_seconds)) + 1
+	return "day %d, %s%s" % [day, names[int(shifted * 8.0) % 8],
+			"" if here.y >= 0.0 else " (south)"]
+
+
+## Puts the sun where the planet's orbit and spin put it: the direction to the star in the planet's
+## frame, turned into the world by the frame (the planet is turned under the player as they walk).
+func _set_the_sun() -> void:
+	if atmosphere != null:
+		atmosphere.sun_direction = (frame.rot * clock.sun_in_body()).normalized()
 
 
 ## Tells the ground shader where the planet is (it reads its detail noise at planet positions).
@@ -218,6 +244,9 @@ func _physics_process(delta: float) -> void:
 		_timer = 0.3
 		surface.update(planet_position())
 	WorldWind.set_realism(0.0)
+	if not loading:
+		clock.advance(delta * settings.time_scale)
+	_set_the_sun()
 	fauna.update(_target.global_position, 1.0 - atmosphere.night_amount(), delta)
 	if swim != null:
 		atmosphere.underwater = swim.underwater

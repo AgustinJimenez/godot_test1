@@ -12,6 +12,12 @@ extends Resource
 @export var rock_density := 1.0
 @export var lake_depth_share := 0.08 ## a hollow is a lake when deeper than this share of the relief
 @export var hydrology_cells := 96 ## cells along a cube face for rivers and lakes (0: none)
+@export var day_seconds := 1440.0 ## a solar day in seconds of play (what a clock day is)
+@export var year_days := 16.0 ## solar days in a year
+@export var axial_tilt := 23.4 ## degrees: how far the spin axis leans from the orbit's normal
+@export var start_hour := 9.0 ## local solar time of the first moment (12 is noon)
+@export var start_year := 0.12 ## share of the year at the start (0: the northern spring equinox)
+@export var time_scale := 1.0 ## 1: real play time; more makes the days and years pass faster
 @export var plates := 14 ## tectonic plates (Earth has about 15 big ones)
 @export var tile_cells := 48 ## quads along one tile edge, at every level of detail
 @export var tile_max := 128.0 ## m, the widest a finest tile may be

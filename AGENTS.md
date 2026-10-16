@@ -792,5 +792,6 @@ Code-only worlds: the flat streaming world (`systems/world_gen/`, `AGENT_TASKS/0
 player (it turns the planet under the player, `PlanetFrame`); ground and water are built before plants
 and nothing grows in water; do not assign `HeightMapShape3D.map_data` directly (use `set()`, it is a
 float64 array in a double precision build); planets above ~1,000 km need the double precision editor
-(build notes in the planet doc). Checks: `species_check.tscn`, `world_lab.tscn -- --world-check`,
+(build notes in the planet doc). The planet follows real causes (orbit, spin and tilt give the sun, day and seasons; do not fake an effect that
+has a cause: `AGENT_TASKS/043`). Checks: `species_check.tscn`, `world_lab.tscn -- --world-check`,
 `planet_lab.tscn -- --planet-check` and `-- --walk-check --fixed-fps 60`.

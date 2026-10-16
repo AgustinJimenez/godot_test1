@@ -7,6 +7,8 @@ extends Node3D
 ##   -- --view-pitch=N / --view-yaw=N degrees (negative pitch looks down; with --view-alt)
 ##   -- --shot=PATH    (with a window) saves a picture after the tiles have loaded, then quits
 ##   -- --show-map [--map-zoom=N] [--map-layer=N]   the planet map open from the start (M in play)
+##   -- --time-scale=N --hour=H --year=Y   how fast time runs, the first hour (12 noon), the first
+##                    share of the year (0 northern spring equinox)
 ##   -- --bare       no plants (to look at the ground)
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
 ##   -- --walk-check  (use --fixed-fps 60) the real player holds forward and sprint for 90 s,
@@ -68,6 +70,12 @@ func _ready() -> void:
 			_shot_frame = arg.trim_prefix("--shot-frame=").to_int()
 		elif arg.begins_with("--shot="):
 			_shot = arg.trim_prefix("--shot=")
+		elif arg.begins_with("--time-scale="):
+			settings.time_scale = arg.trim_prefix("--time-scale=").to_float()
+		elif arg.begins_with("--hour="):
+			settings.start_hour = arg.trim_prefix("--hour=").to_float()
+		elif arg.begins_with("--year="):
+			settings.start_year = arg.trim_prefix("--year=").to_float()
 		elif arg.begins_with("--map-layer="):
 			_map_layer = arg.trim_prefix("--map-layer=").to_int()
 		elif arg.begins_with("--map-zoom="):

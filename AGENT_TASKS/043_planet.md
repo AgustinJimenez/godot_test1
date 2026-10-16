@@ -23,6 +23,32 @@ except that `TerrainChunk.ground_material`, `MeshBuilder` and `TerrainColors` ar
 Lab: `tests/manual/planet/planet_lab.tscn` (`-- --radius=N --seed=N`); check:
 `-- --planet-check` (headless, expect `PLANET_CHECK PASS`).
 
+## Principle: real features, not fakes (user decision, 2026-10-16)
+
+When the planet needs a behaviour that exists in nature (day and night, seasons, weather, clouds,
+tides, climate), build the cause and derive the effect, do not paint the effect. Example: the sun is
+not a time-of-day number, it is the direction to a star computed from the planet's orbit, spin and
+axial tilt (`PlanetClock`); day length by latitude, the polar day and night, the seasons and the
+warm belt moving north and south all come out of that geometry. Temperature by season will come from
+the sunlight a latitude receives (`PlanetClock.daily_light`), clouds and weather from the climate and
+the winds, moons and tides (later) from orbits. Keep the numbers (day length, year length, tilt,
+orbit) in `PlanetSettings` so each planet can differ. Game scale: sizes and distances are not
+real, the angles and the ratios are.
+
+## Time, orbit and spin (2026-10-16)
+
+`PlanetClock` (pure geometry, verified by a script: noon sun height at 45 N is 68.4 deg at the
+summer solstice and 21.6 deg at the winter one, the day is 12 h at the equator all year, 24 h at 80 N
+in midsummer and 0 h in midwinter, an hour of clock time moves the sun by 15 deg, the year closes):
+the planet circles the star in a plane once a year (`year_days` solar days), spins once a sidereal
+day about an axis tilted `axial_tilt` from the orbit's normal and fixed in space; the star's
+direction in the planet's own frame gives the sun anywhere. `PlanetWorld` advances it with play time
+(`time_scale` speeds it up) and sets `WorldAtmosphere.sun_direction` (the frame turns planet
+space into world space), so the sun, the sky, dusk and the night all follow the real sun. The map
+caption shows the local solar time and the season. Lab: `-- --hour=H --year=Y --time-scale=N`.
+Not done yet: seasons in the climate (temperature from `daily_light`), clouds, weather, a moon, an
+elliptical orbit, other planets in the sky, a star disc and its colour per star.
+
 ## Design
 
 - `PlanetTectonics`: ~14 plates (Fibonacci spread, jittered), each continental or oceanic with a spin.
