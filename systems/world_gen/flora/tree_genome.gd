@@ -26,6 +26,12 @@ var column := -1.0 ## a leader trunk's radius at the top, as a share of the foot
 var root_flare := 0.0 ## 0..1: the foot of the trunk widens into buttress roots (sequoia)
 var stems := 1 ## trunks from one root (a birch clump, hazel): each a smaller tree leaning outward
 var stem_spread := 0.25 ## how far the stems lean apart, as a fraction of the height
+var flutes := 0 ## ridges and grooves up the trunk (a swamp cypress, a beech)
+var flute_depth := 0.0 ## how deep the grooves are at the foot, as a share of the radius
+var trunk_bend := 0.0 ## 0..1: the trunk wanders from side to side (an old, crooked tree)
+var trunk_lumps := 0.0 ## 0..1: swellings and burls along the trunk
+var roots := 0 ## roots running out over the ground from the foot of the trunk
+var root_reach := 1.0 ## how far they run, in trunks' widths (about 2.5 each)
 var trunk_sides := 14
 var trunk_wobble := 0.05
 var bark_rings := 0.0 ## metres between rings round the trunk (palms, bamboo); 0 none
@@ -100,6 +106,7 @@ var blossom := Color(0.0, 0.0, 0.0, 0.0) ## colour of the blossom on a tree's tw
 var blossom_kind := Bloom.SINGLE
 var blossom_size := 0.07 ## blossom flower radius, metres
 var blossom_density := 0.5 ## the share of twigs that carry blossom
+var compound := false ## each leaf is a feather of small leaflets (acacia, rain tree, jacaranda)
 var leaf_density := 1.0 ## 1 full; less: some twigs have no leaves, the others fewer (an old oak)
 
 # Colours (sRGB)

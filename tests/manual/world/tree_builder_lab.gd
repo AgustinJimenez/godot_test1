@@ -15,6 +15,12 @@ const ROWS := [
 	{"name": "root flare", "prop": "root_flare", "min": 0.0, "max": 1.0, "step": 0.01},
 	{"name": "column top (leader, <0 cone)", "prop": "column", "min": -0.01, "max": 1.0, "step": 0.01},
 	{"name": "taper", "prop": "taper", "min": 0.25, "max": 0.95, "step": 0.01},
+	{"name": "trunk flutes", "prop": "flutes", "min": 0, "max": 8, "step": 1},
+	{"name": "flute depth", "prop": "flute_depth", "min": 0.0, "max": 0.4, "step": 0.01},
+	{"name": "trunk bend", "prop": "trunk_bend", "min": 0.0, "max": 1.0, "step": 0.01},
+	{"name": "trunk lumps", "prop": "trunk_lumps", "min": 0.0, "max": 1.0, "step": 0.01},
+	{"name": "roots", "prop": "roots", "min": 0, "max": 10, "step": 1},
+	{"name": "root reach", "prop": "root_reach", "min": 0.5, "max": 3.0, "step": 0.05},
 	{"name": "stems (a clump)", "prop": "stems", "min": 1, "max": 6, "step": 1},
 	{"name": "stem spread", "prop": "stem_spread", "min": 0.05, "max": 0.5, "step": 0.01},
 	{"name": "lean", "prop": "lean", "min": 0.0, "max": 0.3, "step": 0.01},
@@ -84,6 +90,7 @@ const FLAGS := [
 	{"name": "frosted needles", "prop": "frosted"},
 	{"name": "needles only at the tips", "prop": "tips_only"},
 	{"name": "branches avoid each other", "prop": "avoid"},
+	{"name": "feathery compound leaves", "prop": "compound"},
 ]
 
 var genome: TreeGenome

@@ -230,3 +230,17 @@ draw the world's species from the same table.
   the foliage is thin). Needs: a visible huge trunk, limbs that fork into thick curving branches,
   foliage clumps, moss. Wide-crown twig bonus is skipped at twig level when `avoid` (budget).
 - Checks: 300 draws worst 11840, species_check PASS, world-check PASS.
+
+## Fourth batch (from reference photos: buttress roots, fluted bases, rain-tree dome)
+
+- New traits: `flutes`/`flute_depth` (ridges up the trunk, deeper at the foot), `trunk_bend` (S-shaped
+  trunk), `trunk_lumps` (swellings), `roots` / `root_reach` (roots running over the ground, starting at
+  the flared foot), `compound` (feather leaves: a stalk with pairs of leaflets, 9 triangles).
+- New kinds: raintree (wide dome, compound leaves, avoid), buttress (fluted, bent, lumpy, 2 fused stems,
+  roots). Ancient oak got roots/lumps/bend/flutes. Random draws add these imperfections now and then
+  (`_imperfect`).
+- Findings from the photos: a real dense dome needs far more leaves than 12k triangles buy; the rain
+  tree here reads as a wide acacia, not a solid mass. Ideas not done: foliage clump blobs (a few big soft
+  leaf masses under the leaves), bark texture/normal map, moss, vertex colour variation inside a ring
+  (grooves darker than ridges), roots that flow smoothly into the trunk (now they are separate tubes
+  with pointed ends).

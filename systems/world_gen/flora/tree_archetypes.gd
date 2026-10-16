@@ -10,13 +10,17 @@ const NAMES: Array[String] = ["leafy", "conifer", "umbrella", "giant", "oak", "a
 		"willow", "cypress", "bush", "shrub", "groundcover",
 		"clump", "palm",
 		"dead", "cactus", "fern", "grass", "wildflower",
-		"cherry", "blossom"]
+		"cherry", "blossom",
+		"raintree", "buttress"]
 
 ## Plausible range of each numeric trait: [min, max]. A draw never leaves it.
 const RANGES := {
 	"height": [0.1, 45.0], "girth": [0.01, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
 	"trunk_part": [0.05, 1.0], "root_flare": [0.0, 1.0], "crown": [0.15, 14.0],
-	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "twist": [0.0, 1.0], "stems": [1, 6],
+	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "flutes": [0, 8],
+	"flute_depth": [0.0, 0.4], "trunk_bend": [0.0, 1.0],
+	"trunk_lumps": [0.0, 1.0], "roots": [0, 10], "root_reach": [0.5, 3.0], "twist": [0.0, 1.0],
+	"stems": [1, 6],
 	"stem_spread": [0.05, 0.5], "limb_angle": [15.0, 90.0],
 	"limb_length": [0.5, 3.0], "limb_thickness": [0.3, 1.3], "nodes_spacing": [0.3, 2.0],
 	"curve": [0.0, 1.4], "lift": [-0.1, 0.4], "sag": [0.0, 0.3], "tip_radius": [0.05, 0.8],
@@ -133,6 +137,12 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.children = [6, 3, 0]
 			g.child_length = [0.7, 0.5, 0.0]
 			g.children_from = 0.15
+			g.roots = 8
+			g.root_reach = 1.4
+			g.trunk_lumps = 0.6
+			g.trunk_bend = 0.3
+			g.flutes = 5
+			g.flute_depth = 0.22
 			g.bark = Color(0.3, 0.3, 0.2)
 		"willow":
 			g = _leafy(leafy)
@@ -261,6 +271,51 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 					g.leaf_tip = Color(0.5, 0.65, 0.28)
 					g.flower = Color(0.95, 0.8, 0.2, 1.0)
 					g.flower_size = 0.08
+		"raintree":
+			# a rain tree: a short thick trunk, then a vast dome of feathery leaves on spreading limbs
+			g = make("umbrella", leafy, conifer)
+			g.height = 22.0
+			g.girth = 1.3
+			g.trunk_part = 0.3
+			g.crown = 7.5
+			g.aspect = 0.6
+			g.limbs = 6
+			g.limb_angle = 68.0
+			g.limb_length = 1.25
+			g.limb_thickness = 0.9
+			g.avoid = true
+			g.compound = true
+			g.leaf_size = 0.28
+			g.leaf = Color(0.3, 0.5, 0.14)
+			g.leaf_tip = Color(0.45, 0.65, 0.22)
+			g.bark = Color(0.28, 0.22, 0.17)
+			g.children = [4, 3, 0]
+			g.rings = [5, 4, 3]
+			g.sides = [6, 5, 4]
+			g.sides_real = [8, 6, 4]
+			g.roots = 5
+			g.root_reach = 0.8
+			g.trunk_lumps = 0.4
+		"buttress":
+			# an old swamp-type tree: a fluted trunk, widening into roots that run over the ground,
+			# bumpy and crooked, several stems growing together
+			g = _leafy(leafy)
+			g.height = 20.0
+			g.girth = 1.0
+			g.taper = 0.5
+			g.trunk_part = 0.55
+			g.crown = 4.5
+			g.stems = 2
+			g.stem_spread = 0.1
+			g.flutes = 6
+			g.flute_depth = 0.28
+			g.roots = 8
+			g.root_reach = 1.6
+			g.root_flare = 0.6
+			g.trunk_lumps = 0.7
+			g.trunk_bend = 0.25
+			g.bark = Color(0.45, 0.33, 0.24)
+			g.leaf_size = 0.26
 		"cherry", "blossom":
 			# a tree in flower: a bird cherry's hanging white stems, or a spring tree with pink blossom
 			# covering bare twigs
@@ -440,6 +495,7 @@ static func _nudge(g: TreeGenome, rng: RandomNumberGenerator, amount: float) -> 
 	g.leaf_tip = g.leaf.lightened(0.15)
 	g.bark = g.bark.lightened(rng.randf_range(-0.08, 0.08))
 	_vary_flowers(g, rng)
+	_imperfect(g, rng, amount * 5.0)
 
 
 static func _moved(value: Variant, low: float, high: float, rng: RandomNumberGenerator,
@@ -448,6 +504,23 @@ static func _moved(value: Variant, low: float, high: float, rng: RandomNumberGen
 		return clampf(float(value) * exp(rng.randf_range(-1.0, 1.0) * amount * 2.5), low, high)
 	var moved := clampf(float(value) + rng.randf_range(-1.0, 1.0) * (high - low) * amount, low, high)
 	return roundi(moved) if typeof(value) == TYPE_INT else moved
+
+
+## A real tree is not a clean model: now and then a crooked trunk, swellings, a few roots, and a
+## fluted foot. `chance` 0..1 is how often.
+static func _imperfect(g: TreeGenome, rng: RandomNumberGenerator, chance: float) -> void:
+	if g.height < 3.0 or g.foliage == TreeGenome.Foliage.FROND:
+		return
+	if rng.randf() < chance:
+		g.trunk_lumps = maxf(g.trunk_lumps, rng.randf_range(0.2, 0.8))
+	if rng.randf() < chance * 0.7:
+		g.trunk_bend = maxf(g.trunk_bend, rng.randf_range(0.1, 0.5))
+	if g.girth > 0.5 and rng.randf() < chance:
+		g.roots = maxi(g.roots, rng.randi_range(4, 8))
+		g.root_reach = maxf(g.root_reach, rng.randf_range(0.7, 2.0))
+	if g.girth > 0.8 and rng.randf() < chance * 0.5:
+		g.flutes = maxi(g.flutes, rng.randi_range(4, 7))
+		g.flute_depth = maxf(g.flute_depth, rng.randf_range(0.12, 0.3))
 
 
 ## Every flowering plant its own flowers: colour, petal count, flat or cupped, the middle.

@@ -192,7 +192,7 @@ static func _trunk_centre(tilt: Vector3, trunk: float, along: float) -> Vector3:
 ## (MeshBuilder.CAP_*).
 static func tube(builder: MeshBuilder, centres: Array[Vector3], radii: Array[float],
 		colors: Array[Color], sides: int, rng: RandomNumberGenerator, wobble: float,
-		caps := 0, refine := true) -> void:
+		caps := 0, refine := true, flutes := 0, flute_depths := PackedFloat32Array()) -> void:
 	# the realistic look doubles the sides, unless the caller chose them (`refine` false) or the tube
 	# is already round at 12
 	if refine and builder.detailed and sides >= 5 and sides < 12:
@@ -219,6 +219,9 @@ static func tube(builder: MeshBuilder, centres: Array[Vector3], radii: Array[flo
 		for index in sides:
 			var angle := TAU * float(index) / float(sides)
 			var jitter := 1.0 + rng.randf_range(-wobble, wobble)
+			if flutes > 0: # ridges and grooves running up the trunk, turning slowly
+				var depth := flute_depths[mini(ring, flute_depths.size() - 1)]
+				jitter *= 1.0 + depth * cos(float(flutes) * angle + float(ring) * 0.12)
 			points.append(centres[ring] + (side * cos(angle) + across * sin(angle)) * radii[ring]
 					* jitter)
 		rings.append(points)

@@ -152,10 +152,25 @@ func _trunk() -> void:
 	var centres: Array[Vector3] = []
 	var radii: Array[float] = []
 	var colors: Array[Color] = []
+	if _g.trunk_bend > 0.0 or _g.trunk_lumps > 0.0 or _g.flutes > 0:
+		rings = maxi(rings, 12 - 3 * _lod)
+	var bend_phase := _rng.randf() * TAU
+	var lump_phase := _rng.randf() * TAU
+	var flute_depths := PackedFloat32Array()
 	for index in rings:
 		var along := float(index) / float(rings - 1)
-		centres.append(_axis(_trunk_length * along))
-		radii.append(_trunk_radius(along) * (1.0 + 0.08 * float(index % 2) if ringed else 1.0))
+		var centre := _axis(_trunk_length * along)
+		if _g.trunk_bend > 0.0: # the trunk wanders from side to side
+			var sway_by := _g.girth * 2.0 * _g.trunk_bend * sin(along * PI * 1.6 + bend_phase) * along
+			centre += Vector3(sway_by, 0.0, sway_by * 0.6 * cos(along * 5.0 + bend_phase))
+		centres.append(centre)
+		var lumps := 1.0
+		if _g.trunk_lumps > 0.0:
+			lumps += _g.trunk_lumps * (0.14 * sin(along * TAU * 2.1 + lump_phase)
+					+ 0.1 * sin(along * TAU * 4.3 + bend_phase))
+		flute_depths.append(_g.flute_depth * (1.0 - 0.6 * along))
+		radii.append(_trunk_radius(along) * lumps
+				* (1.0 + 0.08 * float(index % 2) if ringed else 1.0))
 		colors.append(_still(_g.bark.darkened(_g.trunk_dark * (1.0 - along)
 				+ (0.12 if ringed and index % 2 == 1 else 0.0))))
 	if not _g.leader:
@@ -167,15 +182,47 @@ func _trunk() -> void:
 			radii.append(top_radius * float(dome[1]))
 			colors.append(colors[colors.size() - 1])
 	var trunk_sides := _g.trunk_sides - 5 * _lod
+	var flutes := _g.flutes if _lod == 0 else 0
+	if flutes > 0:
+		trunk_sides = maxi(trunk_sides, flutes * 4)
 	PlantTreeBuilders.tube(_b, centres, radii, colors, trunk_sides, _rng,
-			_g.trunk_wobble * _g.bark_rough,
-			MeshBuilder.CAP_TOP, false)
+			_g.trunk_wobble * _g.bark_rough, MeshBuilder.CAP_TOP, false, flutes, flute_depths)
+	_roots()
 	if _g.marked_bark and not _g.leader and _lod == 0: # the dark patches on pale bark
 		for mark in int(_trunk_length / 0.8):
 			var at := float(mark) * 0.8 + 0.4
 			var radius := _trunk_radius(at / _trunk_length) * 1.04
 			var patch := _still(Color(0.12, 0.12, 0.1))
 			_b.add_frustum(_axis(at), 0.12, radius, radius * 0.99, _g.trunk_sides, patch, patch)
+
+
+## Roots running out over the ground from the foot of the trunk, thick where they leave it, then
+## thinner, sinking into the soil. Not drawn for the lighter distant version.
+func _roots() -> void:
+	if _g.roots <= 0 or _lod > 0:
+		return
+	var phase := _rng.randf() * TAU
+	for index in _g.roots:
+		var yaw := phase + TAU * float(index) / float(_g.roots) + _rng.randf_range(-0.3, 0.3)
+		var out := Vector3(cos(yaw), 0.0, sin(yaw))
+		var side := Vector3(-out.z, 0.0, out.x)
+		var reach := _g.girth * (1.6 + 2.2 * _g.root_reach * _rng.randf_range(0.6, 1.2))
+		var thick := _g.girth * _rng.randf_range(0.3, 0.55)
+		var rise := _g.girth * _rng.randf_range(0.5, 1.2) # how high up the trunk it starts
+		var wander := _rng.randf_range(-0.5, 0.5)
+		var centres: Array[Vector3] = []
+		var radii: Array[float] = []
+		var colors: Array[Color] = []
+		var parts := 6
+		for step in parts:
+			var t := float(step) / float(parts - 1)
+			var distance := _g.girth * (0.5 + 1.0 * _g.root_flare) + reach * t
+			var height := rise * pow(1.0 - t, 2.2) - 0.12 * t # arches down into the ground
+			centres.append(_origin + out * distance + side * wander * reach * t * t
+					+ Vector3(0.0, height, 0.0))
+			radii.append(thick * lerpf(1.0, 0.18, pow(t, 0.8)) * (1.0 + 0.5 * (1.0 - t) * (1.0 - t)))
+			colors.append(_still(_g.bark.darkened(0.12 + 0.1 * t)))
+		PlantTreeBuilders.tube(_b, centres, radii, colors, 6, _rng, 0.08, MeshBuilder.CAP_TOP, false)
 
 
 ## The trunk's radius at `along` (0 foot .. 1 top).
@@ -585,9 +632,36 @@ func _leaf(at: Vector3, tangent: Vector3, azimuth: float, sway: float, spread :=
 	# every leaf is its own: a wide range of sizes (small ones are common), a little wider or
 	# narrower, and its own random numbers for the veins in the shader
 	var size := _leaf_length * lerpf(0.6, 1.5, pow(_rng.randf(), 1.2))
+	if _g.compound:
+		_feather(at, axis, normal, size * 1.6, base_color, tip_color)
+		return
 	PlantLeafShapes.add_leaf(_b, _outline, at, axis, normal, size, 0.1, curl, base_color, tip_color,
 			_rng.randf_range(-0.2, 0.2), _rng.randf_range(-0.14, 0.14) * share,
 			_rng.randf_range(0.8, 1.2), Vector2(_rng.randf(), _rng.randf()))
+
+
+## A compound leaf: a stalk with pairs of small leaflets along it, one at the tip.
+func _feather(at: Vector3, axis: Vector3, normal: Vector3, length: float, base_color: Color,
+		tip_color: Color) -> void:
+	var across := axis.cross(normal).normalized()
+	var pairs := 4 if _fine else 3
+	var stalk_end := at + axis * length
+	var stalk := across * length * 0.02
+	_b.add_tri(at - stalk, at + stalk, stalk_end, base_color, base_color, tip_color)
+	for index in pairs:
+		var t := (float(index) + 0.6) / float(pairs)
+		var on := at + axis * length * t
+		var leaflet := length * 0.3 * (1.0 - 0.45 * t)
+		var color := base_color.lerp(tip_color, t)
+		for sign_side: float in [-1.0, 1.0]:
+			var reach := on + (across * sign_side * 0.9 + axis * 0.45 + normal * 0.15) * leaflet
+			_b.add_tri(on, on + axis * leaflet * 0.5, reach, color, color, tip_color)
+	_b.add_tri(stalk_end - across * leaflet_width(length), stalk_end + across * leaflet_width(length),
+			stalk_end + axis * length * 0.22, tip_color, tip_color, tip_color)
+
+
+func leaflet_width(length: float) -> float:
+	return length * 0.07
 
 
 ## A fan of single needles in the plane of a branch: `axis` is where the branch points.
