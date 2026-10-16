@@ -124,6 +124,20 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	return dir
 
 
+## The clouds and the rain of the sky belong to the first kilometre and a half above the ground:
+## the puffs ride at their height above the ground under the player (not at a height of the world,
+## which would leave them hanging in space when the player flies up), and above that the rain and
+## the puffs are gone (the cloud shell of the planet takes over, PlanetCloudShell).
+func _keep_the_weather_near_the_ground() -> void:
+	var here := planet_position().normalized()
+	var ground := noise.height(here.x, here.y, here.z)
+	var above := altitude() - ground
+	var low := above < PlanetCloudShell.SHOW_FROM
+	weather.clouds.visible = low
+	weather.rain.visible = low
+	weather.position.y = frame.to_world(here * (settings.radius + maxf(ground, 0.0))).y
+
+
 ## The weather at the player, from the planet's own clouds, temperature and moisture: sets the state
 ## the effects (clouds, rain, snow, fog, wind) ease toward.
 func _pick_the_weather() -> void:
@@ -292,6 +306,7 @@ func _physics_process(delta: float) -> void:
 	if _weather_timer <= 0.0 and not loading:
 		_weather_timer = 1.5
 		_pick_the_weather()
+	_keep_the_weather_near_the_ground()
 	weather.update(_target.global_position, delta)
 	if not loading:
 		clock.advance(delta * settings.time_scale * time_rate)

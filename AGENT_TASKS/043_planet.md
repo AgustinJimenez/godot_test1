@@ -82,6 +82,10 @@ up (a 256x128 picture charted on a thread every 2.5 s). Map layer 9 "Clouds" (an
 shows the weather where the player is). The moon (`PlanetMoon`): a circular orbit tilted 5.1 degrees,
 `month_days` 3.5 (game scale), its place in the sky and its phase from the geometry (new to full,
 the sky shader draws the lit part, the moonlight scales with it and with the moon being up).
+Clouds are height limited (user saw them far from the planet): the flat world's cloud puffs and rain
+sit at a height of the WORLD, so when the player flew up they hung in space. `PlanetWorld.
+_keep_the_weather_near_the_ground` now rides them at their height above the ground under the player
+and hides them and the rain above 1.5 km (where the cloud shell takes over).
 Not done: heat carried by the wind along its direction (it is mixed evenly), a moon, clouds, weather, a moon, an
 elliptical orbit, other planets in the sky, a star disc and its colour per star.
 
