@@ -8,6 +8,8 @@ extends RefCounted
 ## and the belts at ~28 degrees dry. Built once from the planet's height (PlanetNoise.height).
 
 const WIDTH := 192
+const RAIN_BASE := 0.08 ## the share of the moisture in the air that falls on a flat cell
+const RAIN_SCALE := 5.0
 const HEIGHT := 96
 
 var _temperature := PackedFloat32Array() ## degrees C at sea level
@@ -59,9 +61,11 @@ func _advect_row(row: int, elevation: PackedFloat32Array, ocean: PackedByteArray
 				rain[column] = 0.0
 			else:
 				var climb := maxf(elevation[index] - elevation[row * WIDTH + behind], 0.0)
-				var fall := carried * (0.05 + minf(climb * 9.0, 0.55)) * dry_belt
-				carried = maxf(carried - fall * 0.8, 0.0) * 0.988 # the plants give some back
-				rain[column] = fall * 9.0
+				var fall := carried * (RAIN_BASE + minf(climb * 9.0, 0.55)) * dry_belt
+				# half of what falls is given back by the plants and the soil, so rain reaches far
+				# inland on a wet coast; a mountain wrings out what it makes rise
+				carried = maxf(carried - fall * (0.5 - minf(climb * 6.0, 0.3)), 0.0) * 0.996
+				rain[column] = fall * RAIN_SCALE
 	for column in WIDTH:
 		var wet_belt := (itcz + storms) * (1.0 if ocean[row * WIDTH + column] == 0 else 0.4)
 		_rain[row * WIDTH + column] = rain[column] + wet_belt

@@ -173,6 +173,14 @@ What the layers showed straight away: the rain layer has big dry gaps inland (th
 lets the air run dry after a few hundred km), and the biome layer is banded by latitude as it
 should be; both are the next things to tune in `PlanetClimate`.
 
+Twelfth pass (what the map layers showed): rain no longer runs out inland (`PlanetClimate`: a flat
+cell drops 8% of the moisture in the air, half of it is given back by the plants, 0.996 loss a cell,
+mountains wring out more), so the continents are green with deserts where they belong. Land share
+by biome over four seeds: forest 39-60%, grass 26-43%, desert 2-9%, snow 2-16% (desert if wetness
+< 0.2, forest if > 0.5). `find_spawn` now picks green country (mild, wet), with hills and the sea
+within a few km, not the foot of a cliff, and not a dead flat plain. Rain tree pads are half the
+size (they looked like flat green doors).
+
 Still rough / ideas: tile LOD edge colour mismatch and popping, sea depth
 colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
 (mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile

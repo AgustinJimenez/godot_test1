@@ -346,6 +346,7 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.avoid = true
 			g.compound = true
 			g.foliage_mass = 0.7
+			g.mass_size = 0.5 # pads the size of a hand of leaves, not a door
 			g.leaf_size = 0.28
 			g.leaf = Color(0.3, 0.5, 0.14)
 			g.leaf_tip = Color(0.45, 0.65, 0.22)

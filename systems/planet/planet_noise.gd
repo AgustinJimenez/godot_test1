@@ -174,9 +174,9 @@ func biome(x: float, y: float, z: float, ground: float, steepness: float) -> Ter
 		return TerrainNoise.Biome.SNOW
 	if steepness > 0.62 or ground > relief * 0.5:
 		return TerrainNoise.Biome.ROCKY
-	if wet < 0.12 and degrees > 2.0:
+	if wet < 0.2 and degrees > 2.0:
 		return TerrainNoise.Biome.DESERT
-	return TerrainNoise.Biome.FOREST if wet > 0.4 else TerrainNoise.Biome.MEADOW
+	return TerrainNoise.Biome.FOREST if wet > 0.5 else TerrainNoise.Biome.MEADOW
 
 
 ## The colour of a ground facet. Every ingredient is a smooth weight, so the biomes blend into one
@@ -190,7 +190,7 @@ func facet_color(x: float, y: float, z: float, ground: float, steep: float) -> C
 	var rain := climate.sample(dir).y
 	var color := _vegetation(degrees, rain, speckle)
 	# dry and not frozen: sand and red earth
-	var dry := (1.0 - smoothstep(0.08, 0.28, rain)) * smoothstep(-4.0, 8.0, degrees)
+	var dry := (1.0 - smoothstep(0.1, 0.4, rain)) * smoothstep(-4.0, 8.0, degrees)
 	var sand := TerrainColors.DESERT_RED.lerp(TerrainColors.DESERT, speckle)
 	sand = sand.lerp(TerrainColors.DESERT_PALE, smoothstep(0.55, 0.9, speckle) * 0.5)
 	color = color.lerp(sand, dry)
@@ -233,24 +233,44 @@ func _vegetation(degrees: float, rain: float, speckle: float) -> Color:
 	return color.lerp(color.darkened(0.15), speckle * 0.3)
 
 
-## A direction on lowland in a mild, wet-enough climate, for a player to start on.
+## A direction for the player to start on: green country (mild, wet enough) that is not a dead flat
+## plain: a little above the sea, with hills round it, and a river or the sea within a few
+## kilometres, the best of the places found by a spiral over the planet.
 func find_spawn() -> Vector3:
-	var fallback := Vector3(0.0, 0.0, 1.0)
-	for index in 1500:
+	var best := Vector3(0.0, 0.0, 1.0)
+	var best_score := -INF
+	for index in 2500:
 		var angle := float(index) * 2.399963
-		var y := 0.8 * sin(float(index) * 0.7)
+		var y := 0.85 * sin(float(index) * 0.7)
 		var ring := sqrt(1.0 - y * y)
 		var dir := Vector3(cos(angle) * ring, y, sin(angle) * ring)
 		var h := height(dir.x, dir.y, dir.z)
-		if h < 3.0 or h > relief * 0.04:
+		if h < 4.0 or h > relief * 0.1:
 			continue
-		var climate_here := climate.sample(dir)
-		if climate_here.x < 8.0 or climate_here.x > 27.0 or climate_here.y < 0.35:
+		var weather := climate.sample(dir)
+		if weather.x < 6.0 or weather.x > 28.0 or weather.y < 0.4:
 			continue
-		var steep := 0.0
-		for side: Vector3 in [Vector3(1, 0, 0), Vector3(0, 0, 1)]:
-			var near := (dir + side * 3.0 / settings.radius).normalized()
-			steep = maxf(steep, absf(height(near.x, near.y, near.z) - h) / 3.0)
-		if steep < 0.12:
-			return dir
-	return fallback
+		var up := dir.cross(Vector3.UP).normalized()
+		var lowest := h
+		var highest := h
+		var sea := false
+		var steepest := 0.0
+		for k in 8:
+			for metres in [60.0, 400.0, 2500.0]:
+				var reach: float = metres
+				var side := (dir + up.rotated(dir, float(k) * PI * 0.25) * reach
+						/ settings.radius).normalized()
+				var there := height(side.x, side.y, side.z)
+				lowest = minf(lowest, there)
+				highest = maxf(highest, there)
+				sea = sea or there < 0.0
+				if reach == 60.0:
+					steepest = maxf(steepest, absf(there - h) / 60.0)
+		if steepest > 0.3:
+			continue # the foot of a cliff
+		var score := minf(highest - lowest, relief * 0.2) + (relief * 0.05 if sea else 0.0)
+		score += weather.y * relief * 0.03 - absf(weather.x - 17.0)
+		if score > best_score:
+			best_score = score
+			best = dir
+	return best
