@@ -4,6 +4,11 @@ extends RefCounted
 ## of that species and variant (so a variant is always the same mesh, and no two variants match).
 
 
+## Leafy trees and conifers come from the one TreeGrower (traits in a TreeGenome); false draws them
+## with the old builders (kept until the new one is checked, see AGENT_TASKS/042).
+static var use_tree_grower := true
+
+
 static func build(species: PlantSpecies, variant: int, detailed: bool,
 		leafless := false) -> ArrayMesh:
 	var rng := _rng(species, variant)
@@ -12,9 +17,15 @@ static func build(species: PlantSpecies, variant: int, detailed: bool,
 	builder.leafless = leafless
 	match species.form:
 		PlantSpecies.Form.CONIFER:
-			PlantConiferBuilders.build(builder, species, rng)
+			if use_tree_grower:
+				TreeGrower.build(builder, TreeGenome.from_species(species), rng)
+			else:
+				PlantConiferBuilders.build(builder, species, rng)
 		PlantSpecies.Form.BROADLEAF:
-			PlantTreeBuilders.broadleaf(builder, species, rng)
+			if use_tree_grower:
+				TreeGrower.build(builder, TreeGenome.from_species(species), rng)
+			else:
+				PlantTreeBuilders.broadleaf(builder, species, rng)
 		PlantSpecies.Form.PALM:
 			PlantTreeBuilders.palm(builder, species, rng)
 		PlantSpecies.Form.BARE_TREE:

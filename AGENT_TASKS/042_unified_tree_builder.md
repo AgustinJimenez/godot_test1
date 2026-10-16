@@ -1,6 +1,6 @@
 # 042 - One tree builder driven by traits
 
-Status: **design, agreed in chat 2026-10-15, not started**. Follows [041](041_procedural_flora_species.md).
+Status: **stage 1 done (2026-10-15), stages 2-5 not started**. Follows [041](041_procedural_flora_species.md).
 Branch: `godot-4.7-upgrade`.
 
 ## Why
@@ -62,3 +62,29 @@ exotic ones come later as an experiment.
 
 `PlantTreeBuilders.tube`, `PlantLeafShapes` (outlines, per-leaf variation), the needle spray, the
 leafless debug build, `plant_lab` (K and H keys), `world_render_stats`.
+
+## Stage 1 result (2026-10-15)
+
+Built: `tree_genome.gd` (`TreeGenome`: the traits, plus `from_species` reading a leafy or conifer
+species) and `tree_grower.gd` (`TreeGrower.build(builder, genome, rng)`: trunk, limbs at the top of a
+forking trunk or whorls up a leader trunk, the levels of branching with the joint rules, leaves along
+twigs or needle sprays at the ends). `PlantMeshes.use_tree_grower` (default true) picks it over the old
+builders; the plant lab's Y key flips it (the label shows `[TreeGrower]` or `[old builders]`).
+`PlantLeafShapes.outline_for(shape, aspect, lobes, edge, detailed)` takes loose numbers now.
+
+Parity: a Beech and a Wild Spruce, low-poly, same species and angle with Y on and off: the Beech is
+the same picture; the spruce has the same shape and tiers (individual branches differ because the
+dice are drawn in another order). Triangle counts and the species check are unchanged (largest tree
+11982). Not compared: realistic by eye, the other species.
+
+**Cost finding (needs a decision).** Measured per tree, seed 1337: conifers average 6,231 triangles
+low-poly (worst 6,828) and 9,481 realistic (worst 10,397); leafy trees 6,395 (7,632) and 10,206
+(11,982). The ball and cone trees they replaced were a few hundred to about two thousand. A forest
+seen from the ground (`world_render_stats`, seed 1337) went from 2.09M triangles per frame
+(only the leafy trees converted) to 5.4M low-poly and 10.4M realistic once the conifers were
+converted too; the CPU frame is 6-8 ms and the frame rate 120 in this headless-GPU-less measurement,
+but the GPU cost on a real card is not known and 10M triangles a frame is a lot. The 12000 limit in
+`species_check` is per mesh and says nothing about a whole forest. Needed: a mid-distance LOD
+(`TreeGrower` with a `lod` argument: fewer rings and sides, fewer branches, leaves and needles) used
+by the scatter between the near full trees and the far proxies (`PlantMeshes.build_far`), and a
+look at where the scatter switches (`world_scatter.gd`, FAR_KEY).

@@ -12,6 +12,7 @@ extends Node3D
 ##   V             new random individuals           L (or D)  low-poly / realistic meshes
 ##   U (or A)      autumn on / off                  T  wind: calm, breeze, gale
 ##   H             hide / show the leaves (bare trunk and branches; trees only)
+##   Y             leafy trees and conifers from the one TreeGrower / from the old builders
 ##   K             what kind of tree the leafy species are: as drawn, or Oak, Maple, Beech, Elm,
 ##                 Ash, Linden, Poplar, Birch, Willow (their leaf shape, size, branching)
 ##   R             put the camera back on the view's own angle and distance
@@ -369,6 +370,8 @@ func _update_label() -> void:
 				crown += " as %s" % KINDS[kind]
 		where = "  %s: %s%s  plant %d of %d" % [View.keys()[view].to_lower(), one.common_name, crown,
 				focus_row * COLUMNS + focus_column + 1, _species.size() * COLUMNS]
+		if form in [PlantSpecies.Form.BROADLEAF, PlantSpecies.Form.CONIFER]:
+			where += "  [%s]" % ("TreeGrower" if PlantMeshes.use_tree_grower else "old builders")
 	_label.text = ("%s  world seed %d  %s%s  %d species  wind: %s%s%s\n"
 			+ "[Left / Right] plant  [Up / Down] species  [mouse] turn around it  [wheel] zoom  "
 			+ "[M] mouse free\n"
@@ -410,6 +413,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			wind = (wind + 1) % 3
 		KEY_H:
 			leafless = not leafless
+			rebuild = true
+		KEY_Y:
+			PlantMeshes.use_tree_grower = not PlantMeshes.use_tree_grower
 			rebuild = true
 		KEY_K:
 			kind = (kind + 2) % (KINDS.size() + 1) - 1
