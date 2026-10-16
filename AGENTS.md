@@ -782,3 +782,15 @@ subsystem (toe clearance, stair support, swing lift, balance, idle stance) plus 
 prints a `[FOOT_IK_PERF]` per-part table. Off by default = zero cost. First measured result: the
 `support` (pelvis/support/leg-solve) pipeline is ~78% of the IK frame cost, the clearance retry
 ~0 - see `AGENT_TASKS/027`. Engine-wide counters remain in `foot_ik_perf_probe.gd` (`FOOT_IK_PERF_LOG=1`).
+
+## Procedural world, plants and planet
+
+Code-only worlds: the flat streaming world (`systems/world_gen/`, `AGENT_TASKS/040`), the plants
+(`systems/world_gen/flora/`, one `TreeGrower` for every plant but mushrooms, reference
+`docs/tree_builder.md`) and a round walkable planet (`systems/planet/`, reference
+`docs/planet_generation.md`, handoff `AGENT_TASKS/043`). Durable rules: the planet never changes the
+player (it turns the planet under the player, `PlanetFrame`); ground and water are built before plants
+and nothing grows in water; do not assign `HeightMapShape3D.map_data` directly (use `set()`, it is a
+float64 array in a double precision build); planets above ~1,000 km need the double precision editor
+(build notes in the planet doc). Checks: `species_check.tscn`, `world_lab.tscn -- --world-check`,
+`planet_lab.tscn -- --planet-check` and `-- --walk-check --fixed-fps 60`.
