@@ -1,6 +1,9 @@
 # 042 - One tree builder driven by traits
 
-Status: **stage 1 done (2026-10-15), stages 2-5 not started**. Follows [041](041_procedural_flora_species.md).
+Status: **done (2026-10-16)**: TreeGrower builds every plant in the world except mushrooms, from the
+archetype table (`TreeArchetypes`), the old builders are deleted; see the stage 2a-2c sections at the end.
+Open ideas: bark texture / moss, Ancient oak vs the Angel Oak photo, more broadleaf species per world.
+(Old status: stage 1 done 2026-10-15.) Follows [041](041_procedural_flora_species.md).
 Branch: `godot-4.7-upgrade`.
 
 ## Why

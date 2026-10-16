@@ -1,5 +1,21 @@
 # 043 Planet (round world prototype)
 
+Status (2026-10-16): **prototype works**: a walkable round planet with plates, climate biomes, rivers,
+lakes, plants and a double precision option. Branch `godot-4.7-upgrade`, code in `systems/planet/`,
+lab `tests/manual/planet/planet_lab.tscn`, check `-- --planet-check` (expect `PLANET_CHECK PASS`).
+Nothing in the flat world was changed except `TerrainChunk` (collider `map_data` set by `set()` so
+it also compiles in the double build). Not play-tested by the user yet.
+
+Run: `godot --path . res://tests/manual/planet/planet_lab.tscn -- --radius=20000 --seed=1337`
+(`--dir=x,y,z --view-alt=N --view-pitch=N --shot=PATH --shot-frame=N` for pictures without a player).
+Earth size needs the double build (see below).
+
+Next (by value): walk it and tune the river look (flat opaque water, steep mouths) and plant
+density; rocks and fauna; weather and day/night from the planet's rotation; erosion simulation;
+planet types without life (craters, ice); star systems above this (see the chat plan: seeds ->
+frames -> floating origin per planet).
+
+
 Goal: a walkable round planet, built next to the flat world (nothing in `systems/world_gen` changed
 except that `TerrainChunk.ground_material`, `MeshBuilder` and `TerrainColors` are reused).
 Lab: `tests/manual/planet/planet_lab.tscn` (`-- --radius=N --seed=N`); check:
