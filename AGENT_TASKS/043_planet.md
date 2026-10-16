@@ -156,6 +156,14 @@ hill shading on the land, lakes, rivers (`PlanetHydrology.river_lines`), a lat/l
 player's arrow (which way the camera looks) and the position and altitude under the map. Lab:
 `-- --show-map`.
 
+Tenth pass (map): the map fills the screen and opens on the player's region (zoom 6, about 60 degrees
+across, the arrow in the middle). Wheel zooms (to the point under the cursor, 1 = the whole planet
+fitting the screen, up to 60x), dragging pans, R goes back to the player, M closes; the mouse is
+freed while it is open. `PlanetChart` draws one picture of (a part of) the planet on 3 threads: a
+coarse whole-planet chart (320x160), then a fine one (1024x512), and when the view has stayed still
+on a close region for half a second, a chart of just that region (768 px wide, with a margin to pan
+in), so close up it is sharp.
+
 Still rough / ideas: tile LOD edge colour mismatch and popping, sea depth
 colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
 (mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile

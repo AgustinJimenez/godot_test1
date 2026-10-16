@@ -1,27 +1,39 @@
 class_name PlanetMap
 extends CanvasLayer
-## A map of the whole planet on the M key: the sea (darker where it is deep), the land in its
-## biome colours with the relief shaded, lakes and rivers, a lat/long grid, and where the player is
-## and which way they face. It is drawn once from the planet's own height function (PlanetNoise), a
-## few seconds on background threads after the player is in, and shows "charting" until then. A flat
-## (equirectangular) map: east to the right, north up, the poles stretched along the edges.
+## A map of the planet on the M key, over the whole screen. It opens on the player's region (about a
+## sixth of the planet round them, their arrow in the middle); the mouse wheel zooms in and out (all
+## the way out is the whole planet), dragging moves the view, R comes back to the player. The sea is
+## darker where it is deep, the land has its biome colours with the relief shaded, with lakes,
+## rivers and a lat/long grid. It is drawn from the planet's own height function (PlanetNoise) on
+## background threads once the player is in: a coarse chart of the whole planet first (a couple of
+## seconds), a fine one after, and, when you stop on a close view, a chart of just that region (so
+## close up it is sharp). A flat (equirectangular) map: east to the right, north up, the poles
+## stretched along the edges; it wraps round east-west.
 
 const ACTION := &"planet_map"
-const WIDTH := 640
-const HEIGHT := 320
-const WORKERS := 3
+const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(1024, 512)]
+const DETAIL_SIZE := Vector2i(768, 384)
+const START_ZOOM := 6.0
+const MAX_ZOOM := 60.0
+const MARGIN := 14.0
 
 var planet: PlanetWorld
 
-var _image_ready := false
-var _threads: Array[Thread] = []
-var _rows: Array[PackedByteArray] = [] # each worker's rows, RGB
-var _rows_done := 0
-var _mutex := Mutex.new()
-var _panel: PanelContainer
-var _picture: TextureRect
-var _marker: Control
+var _whole: ImageTexture # the whole planet, as sharp as it has got
+var _whole_pass := -1 # the pass `_whole` is from (-1: none yet)
+var _chart: PlanetChart # the chart being drawn, if any
+var _chart_is_detail := false
+var _detail: ImageTexture # a close chart of `_detail_rect` (fractions of the map)
+var _detail_rect := Rect2()
+var _wanted_rect := Rect2() # the region the next close chart is for
+var _still := 0.0 # seconds the view has stayed as it is
+var _last_view := Rect2()
+var _view: Control
 var _caption: Label
+var _zoom := START_ZOOM
+var _centre := Vector2(0.5, 0.5) # in map fractions (u east, v south)
+var _dragging := false
+var _mouse_before := Input.MOUSE_MODE_VISIBLE
 var _started := false
 
 
@@ -33,183 +45,292 @@ func _ready() -> void:
 		var key := InputEventKey.new()
 		key.physical_keycode = KEY_M
 		InputMap.action_add_event(ACTION, key)
-	_panel = PanelContainer.new()
-	_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	add_child(_panel)
+	var panel := PanelContainer.new()
+	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	panel.offset_left = MARGIN
+	panel.offset_top = MARGIN
+	panel.offset_right = -MARGIN
+	panel.offset_bottom = -MARGIN
+	add_child(panel)
 	var column := VBoxContainer.new()
-	_panel.add_child(column)
-	_picture = TextureRect.new()
-	_picture.custom_minimum_size = Vector2(WIDTH * 2, HEIGHT * 2)
-	_picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_picture.stretch_mode = TextureRect.STRETCH_SCALE
-	_picture.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	column.add_child(_picture)
-	_marker = Control.new()
-	_marker.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_marker.draw.connect(_draw_marker)
-	_picture.add_child(_marker)
+	panel.add_child(column)
+	_view = Control.new()
+	_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_view.custom_minimum_size = Vector2(400.0, 300.0)
+	_view.clip_contents = true
+	_view.draw.connect(_draw_view)
+	column.add_child(_view)
 	_caption = Label.new()
 	_caption.text = "Charting the planet..."
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(_caption)
 
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	if event.is_action_pressed(ACTION):
-		visible = not visible
+		toggle()
+		get_viewport().set_input_as_handled()
+		return
+	if not visible:
+		return
+	if event is InputEventMouseButton:
+		var button := event as InputEventMouseButton
+		if button.button_index == MOUSE_BUTTON_WHEEL_UP and button.pressed:
+			_zoom_at(button.position, 1.25)
+		elif button.button_index == MOUSE_BUTTON_WHEEL_DOWN and button.pressed:
+			_zoom_at(button.position, 0.8)
+		elif button.button_index == MOUSE_BUTTON_LEFT:
+			_dragging = button.pressed
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion and _dragging:
+		var motion := event as InputEventMouseMotion
+		var size := _visible_size()
+		_centre -= Vector2(motion.relative.x / _view.size.x * size.x,
+				motion.relative.y / _view.size.y * size.y)
+		_clamp_centre()
+		get_viewport().set_input_as_handled()
+	elif event is InputEventKey and (event as InputEventKey).pressed \
+			and (event as InputEventKey).physical_keycode == KEY_R:
+		_go_home()
 		get_viewport().set_input_as_handled()
 
 
-## Starts drawing the map on background threads (a no-op without a window, and the second time).
+## Opens or closes the map (on the player's region).
+func toggle() -> void:
+	visible = not visible
+	if visible:
+		_mouse_before = Input.mouse_mode
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_go_home()
+	else:
+		Input.mouse_mode = _mouse_before
+		_dragging = false
+
+
+## Zooms to `zoom` (1: the whole planet) round the player.
+func show_zoom(zoom: float) -> void:
+	if not visible:
+		toggle()
+	_zoom = clampf(zoom, 1.0, MAX_ZOOM)
+	_centre = _where_is_the_player().get("uv", Vector2(0.5, 0.5))
+	_clamp_centre()
+
+
+## Back to the player's region.
+func _go_home() -> void:
+	_zoom = START_ZOOM
+	_centre = _where_is_the_player().get("uv", Vector2(0.5, 0.5))
+	_clamp_centre()
+
+
+## How many screen pixels one whole map width is at zoom 1: the whole planet just fits the view.
+func _pixels_per_map() -> float:
+	return minf(_view.size.x, _view.size.y * 2.0)
+
+
+## The part of the map the view shows, as fractions of the map (more than 1 high or wide when the
+## map is smaller than the view: the bars round it).
+func _visible_size() -> Vector2:
+	var pixels := _pixels_per_map() * _zoom
+	return Vector2(_view.size.x / pixels, _view.size.y / (pixels * 0.5))
+
+
+func _clamp_centre() -> void:
+	var size := _visible_size()
+	_centre.x = fposmod(_centre.x, 1.0) # the map wraps east-west
+	if size.y >= 1.0:
+		_centre.y = 0.5
+	else:
+		_centre.y = clampf(_centre.y, size.y * 0.5, 1.0 - size.y * 0.5)
+
+
+## Zooms by `factor`, keeping the point of the map under the cursor where it is.
+func _zoom_at(mouse: Vector2, factor: float) -> void:
+	var local := mouse - _view.global_position
+	var inside := Vector2(clampf(local.x / _view.size.x, 0.0, 1.0),
+			clampf(local.y / _view.size.y, 0.0, 1.0))
+	var before := _visible_size()
+	var under := _centre - before * 0.5 + inside * before
+	_zoom = clampf(_zoom * factor, 1.0, MAX_ZOOM)
+	var after := _visible_size()
+	_centre = under - inside * after + after * 0.5
+	_clamp_centre()
+
+
+## Starts charting the map on background threads (a no-op without a window, and the second time).
 func begin() -> void:
 	if _started or planet == null or DisplayServer.get_name() == "headless":
 		return
 	_started = true
-	_rows.resize(WORKERS)
-	for index in WORKERS:
-		var worker := Thread.new()
-		worker.start(_chart.bind(index))
-		_threads.append(worker)
+	_start_chart(0)
+
+
+func _start_chart(pass_index: int) -> void:
+	_chart = PlanetChart.new()
+	_chart.size = PASSES[pass_index]
+	_chart_is_detail = false
+	_chart.start(planet.noise)
 
 
 func _exit_tree() -> void:
-	for worker in _threads:
-		worker.wait_to_finish()
-	_threads.clear()
+	if _chart != null:
+		_chart.stop()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if visible:
-		_marker.queue_redraw()
-	if _started and not _image_ready:
-		_mutex.lock()
-		var done := _rows_done
-		_mutex.unlock()
-		if done >= HEIGHT:
-			_finish()
-		elif visible:
-			_caption.text = "Charting the planet...  %d %%" % int(100.0 * float(done) / float(HEIGHT))
+		_view.queue_redraw()
+	if _chart != null:
+		if _chart.finished():
+			_adopt_chart()
+		elif visible and _whole_pass < 0:
+			_caption.text = "Charting the planet...  %d %%" % int(100.0 * _chart.progress())
+	if visible and _chart == null and _whole_pass == PASSES.size() - 1:
+		_maybe_chart_the_view(delta)
 
 
-## One worker's share of the map: a band of rows, as RGB bytes.
-func _chart(worker: int) -> void:
-	var noise := planet.noise
-	var from_row := worker * HEIGHT / WORKERS
-	var to_row := (worker + 1) * HEIGHT / WORKERS
-	var bytes := PackedByteArray()
-	var relief := noise.relief
-	var step := TAU / float(WIDTH)
-	for row in range(from_row, to_row):
-		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
-		for column in WIDTH:
-			var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
-			var dir := Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
-			var ground := noise.height(dir.x, dir.y, dir.z)
-			var east := Vector3(cos(lat) * cos(lon + step), sin(lat), cos(lat) * sin(lon + step))
-			var up_lat := lat + step
-			var north := Vector3(cos(up_lat) * cos(lon), sin(up_lat), cos(up_lat) * sin(lon))
-			var h_east := noise.height(east.x, east.y, east.z)
-			var h_north := noise.height(north.x, north.y, north.z)
-			var color: Color
-			if ground < 0.0:
-				var depth := clampf(-ground / (relief * 0.35), 0.0, 1.0)
-				color = Color(0.32, 0.62, 0.78).lerp(Color(0.03, 0.12, 0.33), sqrt(depth))
-			else:
-				var lake := noise.hydrology != null and noise.hydrology.lake_level_at(dir, ground) > -INF
-				if lake:
-					color = Color(0.25, 0.5, 0.85)
-				else:
-					var run := step * noise.settings.radius
-					var slope := Vector2(h_east - ground, h_north - ground).length() / run
-					color = noise.facet_color(dir.x, dir.y, dir.z, ground, clampf(slope, 0.0, 1.0))
-					# hill shading: the light from the north west
-					var shade := clampf(1.0 + ((ground - h_east) + (h_north - ground)) / relief * 6.0,
-							0.55, 1.35)
-					color = Color(color.r * shade, color.g * shade, color.b * shade)
-			bytes.append(clampi(int(color.r * 255.0), 0, 255))
-			bytes.append(clampi(int(color.g * 255.0), 0, 255))
-			bytes.append(clampi(int(color.b * 255.0), 0, 255))
-		_mutex.lock()
-		_rows_done += 1
-		_mutex.unlock()
-	_rows[worker] = bytes
-
-
-func _finish() -> void:
-	for worker in _threads:
-		worker.wait_to_finish()
-	_threads.clear()
-	var all := PackedByteArray()
-	for part in _rows:
-		all.append_array(part)
-	var image := Image.create_from_data(WIDTH, HEIGHT, false, Image.FORMAT_RGB8, all)
-	_draw_rivers(image)
-	_picture.texture = ImageTexture.create_from_image(image)
-	_image_ready = true
-	_caption.text = ""
-
-
-## The rivers as thin blue lines (the widest a pixel thicker).
-func _draw_rivers(image: Image) -> void:
-	if planet.noise.hydrology == null:
+func _adopt_chart() -> void:
+	var texture := _chart.texture()
+	if _chart_is_detail:
+		_detail = texture
+		_detail_rect = _chart.rect
+		_chart = null
 		return
-	for line: Array in planet.noise.hydrology.river_lines():
-		var a := _pixel_of(line[0] as Vector3)
-		var b := _pixel_of(line[1] as Vector3)
-		if absf(a.x - b.x) > WIDTH * 0.5:
-			continue # across the edge of the map
-		var count := int(maxf(absf(b.x - a.x), absf(b.y - a.y))) + 1
-		for index in count + 1:
-			var at := a.lerp(b, float(index) / float(maxi(count, 1)))
-			var pixel := Vector2i(int(at.x), int(at.y))
-			if pixel.x >= 0 and pixel.x < WIDTH and pixel.y >= 0 and pixel.y < HEIGHT:
-				image.set_pixelv(pixel, Color(0.2, 0.45, 0.95))
+	_whole = texture
+	_whole_pass += 1
+	_chart = null
+	if _whole_pass + 1 < PASSES.size():
+		_start_chart(_whole_pass + 1) # the fine chart replaces the coarse one when it is done
 
 
-func _pixel_of(dir: Vector3) -> Vector2:
+## When the view has stayed still on a close region, draws that region sharply.
+func _maybe_chart_the_view(delta: float) -> void:
+	var size := _visible_size()
+	var view := Rect2(_centre - size * 0.5, size)
+	if view.is_equal_approx(_last_view):
+		_still += delta
+	else:
+		_still = 0.0
+		_last_view = view
+	if _still < 0.5 or _zoom < 2.5 or _covered_by_detail(view):
+		return
+	var rect := Rect2(view.position - size * 0.25, size * 1.5) # a margin to pan in
+	if rect.position.x < 0.0 or rect.end.x > 1.0 or rect.position.y < 0.0 or rect.end.y > 1.0:
+		return # over the edge of the map: the whole planet chart will do
+	_chart = PlanetChart.new()
+	_chart.rect = rect
+	_chart.size = Vector2i(DETAIL_SIZE.x, int(DETAIL_SIZE.x * rect.size.y / rect.size.x
+			* 0.5))
+	_chart_is_detail = true
+	_chart.start(planet.noise)
+
+
+func _covered_by_detail(view: Rect2) -> bool:
+	return _detail != null and _detail_rect.encloses(view)
+
+
+func _uv_of(dir: Vector3) -> Vector2:
 	var lon := atan2(dir.z, dir.x)
 	var lat := asin(clampf(dir.y, -1.0, 1.0))
-	return Vector2((lon + PI) / TAU * float(WIDTH), (0.5 - lat / PI) * float(HEIGHT))
+	return Vector2((lon + PI) / TAU, 0.5 - lat / PI)
 
 
-## The lat/long grid, the player and which way they look.
-func _draw_marker() -> void:
-	var size := _marker.size
-	var scale := Vector2(size.x / float(WIDTH), size.y / float(HEIGHT))
-	var grid := Color(1.0, 1.0, 1.0, 0.18)
-	for degrees in range(-60, 61, 30):
-		var y := (0.5 - float(degrees) / 180.0) * size.y
-		var colour := grid if degrees != 0 else Color(1.0, 1.0, 1.0, 0.35)
-		_marker.draw_line(Vector2(0.0, y), Vector2(size.x, y), colour)
-	for degrees in range(-150, 151, 30):
-		var x := (float(degrees) + 180.0) / 360.0 * size.x
-		_marker.draw_line(Vector2(x, 0.0), Vector2(x, size.y), grid)
+## The player's place on the map: {"uv", "lat", "lon", "heading"} (empty without a player).
+func _where_is_the_player() -> Dictionary:
 	if planet == null or planet.target() == null:
-		return
+		return {}
 	var here := planet.planet_position().normalized()
-	var spot := _pixel_of(here) * scale
-	# which way the camera looks, on the map: east to the right, north up
-	var camera := get_viewport().get_camera_3d()
+	var east := Vector3(-here.z, 0.0, here.x).normalized()
+	var north := east.cross(here)
 	var heading := Vector2(0.0, -1.0)
+	var camera := get_viewport().get_camera_3d()
 	if camera != null:
 		var forward := planet.frame.rot.inverse() * (-camera.global_basis.z)
-		var east := Vector3(-here.z, 0.0, here.x).normalized()
-		var north := east.cross(here)
 		heading = Vector2(forward.dot(east), -forward.dot(north)).normalized()
-	var side := Vector2(-heading.y, heading.x)
-	var tip := spot + heading * 13.0
-	var points := PackedVector2Array([tip, spot - heading * 7.0 + side * 7.0,
-			spot - heading * 7.0 - side * 7.0])
-	_marker.draw_colored_polygon(points, Color(1.0, 0.25, 0.2))
-	_marker.draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[0]]),
-			Color.WHITE, 1.5)
-	if _image_ready:
-		var lat := rad_to_deg(asin(here.y))
-		var lon := rad_to_deg(atan2(here.z, here.x))
+	return {"uv": _uv_of(here), "lat": rad_to_deg(asin(here.y)),
+			"lon": rad_to_deg(atan2(here.z, here.x)), "heading": heading}
+
+
+## Where a point of the map (fractions) is in the view (off the view when out of it).
+func _on_screen(uv: Vector2) -> Vector2:
+	var size := _visible_size()
+	var left := _centre.x - size.x * 0.5
+	var across := fposmod(uv.x - left, 1.0)
+	var down := uv.y - (_centre.y - size.y * 0.5)
+	if across > size.x or down < 0.0 or down > size.y:
+		return Vector2(-1.0, -1.0)
+	return Vector2(across / size.x * _view.size.x, down / size.y * _view.size.y)
+
+
+func _draw_view() -> void:
+	_view.draw_rect(Rect2(Vector2.ZERO, _view.size), Color(0.02, 0.05, 0.12))
+	var size := _visible_size()
+	var view := Rect2(_centre - size * 0.5, size)
+	if _covered_by_detail(view):
+		_draw_part(_detail, _detail_rect, view)
+	elif _whole != null:
+		# the map wraps east-west: the view may need the end of the picture and then its start
+		var first_u := fposmod(view.position.x, 1.0)
+		var first_width := minf(size.x, 1.0 - first_u)
+		_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(first_u, view.position.y, first_width,
+				size.y))
+		if first_width < size.x:
+			_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(0.0, view.position.y,
+					size.x - first_width, size.y), first_width)
+	_draw_grid()
+	var player := _where_is_the_player()
+	if player.is_empty():
+		return
+	var spot := _on_screen(player["uv"])
+	if spot.x >= 0.0:
+		_draw_arrow(spot, player["heading"])
+	if _whole != null:
+		var lat: float = player["lat"]
+		var lon: float = player["lon"]
 		var north_south := "N" if lat >= 0.0 else "S"
 		var east_west := "E" if lon >= 0.0 else "W"
-		_caption.text = "%.1f° %s  %.1f° %s     altitude %d m     [M] close" % [absf(lat),
-				north_south, absf(lon), east_west, roundi(planet.altitude())]
+		_caption.text = ("%.1f° %s  %.1f° %s    altitude %d m    [wheel] zoom  [drag] move  "
+				+ "[R] my region  [M] close") % [absf(lat), north_south, absf(lon), east_west,
+				roundi(planet.altitude())]
+
+
+## Draws the part `wanted` (map fractions) of `texture`, which shows `covers` (map fractions), where
+## it belongs in the view (`offset_u`: how far into the view this part starts, in map fractions).
+func _draw_part(texture: ImageTexture, covers: Rect2, wanted: Rect2, offset_u := 0.0) -> void:
+	var size := _visible_size()
+	var part := wanted.intersection(covers)
+	if part.size.x <= 0.0 or part.size.y <= 0.0:
+		return
+	var tex := Vector2(texture.get_size())
+	var source := Rect2((part.position - covers.position) / covers.size * tex,
+			part.size / covers.size * tex)
+	var view_top := _centre.y - size.y * 0.5
+	var dest := Rect2((offset_u + part.position.x - wanted.position.x) / size.x * _view.size.x,
+			(part.position.y - view_top) / size.y * _view.size.y,
+			part.size.x / size.x * _view.size.x, part.size.y / size.y * _view.size.y)
+	_view.draw_texture_rect_region(texture, dest, source)
+
+
+func _draw_grid() -> void:
+	var gap := 30 if _zoom < 3.0 else (10 if _zoom < 12.0 else 5)
+	var line := Color(1.0, 1.0, 1.0, 0.18)
+	for degrees in range(-90, 91, gap):
+		var at := _on_screen(Vector2(_centre.x, 0.5 - float(degrees) / 180.0))
+		if at.y >= 0.0:
+			_view.draw_line(Vector2(0.0, at.y), Vector2(_view.size.x, at.y),
+					line if degrees != 0 else Color(1.0, 1.0, 1.0, 0.4))
+	for degrees in range(-180, 181, gap):
+		var uv := (float(degrees) + 180.0) / 360.0
+		var at := _on_screen(Vector2(fposmod(uv, 1.0), _centre.y))
+		if at.x >= 0.0:
+			_view.draw_line(Vector2(at.x, 0.0), Vector2(at.x, _view.size.y), line)
+
+
+func _draw_arrow(spot: Vector2, heading: Vector2) -> void:
+	var side := Vector2(-heading.y, heading.x)
+	var points := PackedVector2Array([spot + heading * 13.0, spot - heading * 7.0 + side * 7.0,
+			spot - heading * 7.0 - side * 7.0])
+	_view.draw_colored_polygon(points, Color(1.0, 0.25, 0.2))
+	_view.draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[0]]),
+			Color.WHITE, 1.5)
