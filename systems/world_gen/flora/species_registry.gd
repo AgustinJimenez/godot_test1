@@ -43,11 +43,12 @@ func by_id(id: int) -> PlantSpecies:
 	return species[id - 1]
 
 
-func mesh(id: int, variant: int, detailed: bool) -> ArrayMesh:
-	var key := id * 100 + variant + (100000 if detailed else 0)
+## `lod` 1 is the lighter version of a tree (see TreeGrower); other plants have only one.
+func mesh(id: int, variant: int, detailed: bool, lod := 0) -> ArrayMesh:
+	var key := id * 100 + variant + (100000 if detailed else 0) + lod * 1000000
 	_lock.lock()
 	if not _meshes.has(key):
-		_meshes[key] = PlantMeshes.build(by_id(id), variant, detailed)
+		_meshes[key] = PlantMeshes.build(by_id(id), variant, detailed, false, lod)
 	var result: ArrayMesh = _meshes[key]
 	_lock.unlock()
 	return result

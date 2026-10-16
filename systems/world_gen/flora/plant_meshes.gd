@@ -9,8 +9,9 @@ extends RefCounted
 static var use_tree_grower := true
 
 
+## `lod` 1: the lighter version of a tree for trees at a distance (other plants ignore it).
 static func build(species: PlantSpecies, variant: int, detailed: bool,
-		leafless := false) -> ArrayMesh:
+		leafless := false, lod := 0) -> ArrayMesh:
 	var rng := _rng(species, variant)
 	var builder := MeshBuilder.new()
 	builder.detailed = detailed
@@ -18,12 +19,12 @@ static func build(species: PlantSpecies, variant: int, detailed: bool,
 	match species.form:
 		PlantSpecies.Form.CONIFER:
 			if use_tree_grower:
-				TreeGrower.build(builder, TreeGenome.from_species(species), rng)
+				TreeGrower.build(builder, TreeGenome.from_species(species), rng, lod)
 			else:
 				PlantConiferBuilders.build(builder, species, rng)
 		PlantSpecies.Form.BROADLEAF:
 			if use_tree_grower:
-				TreeGrower.build(builder, TreeGenome.from_species(species), rng)
+				TreeGrower.build(builder, TreeGenome.from_species(species), rng, lod)
 			else:
 				PlantTreeBuilders.broadleaf(builder, species, rng)
 		PlantSpecies.Form.PALM:

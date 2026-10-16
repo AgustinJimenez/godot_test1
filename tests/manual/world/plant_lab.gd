@@ -13,6 +13,7 @@ extends Node3D
 ##   U (or A)      autumn on / off                  T  wind: calm, breeze, gale
 ##   H             hide / show the leaves (bare trunk and branches; trees only)
 ##   Y             leafy trees and conifers from the one TreeGrower / from the old builders
+##   B             trees at full detail / the lighter version used at a distance
 ##   K             what kind of tree the leafy species are: as drawn, or Oak, Maple, Beech, Elm,
 ##                 Ash, Linden, Poplar, Birch, Willow (their leaf shape, size, branching)
 ##   R             put the camera back on the view's own angle and distance
@@ -40,6 +41,7 @@ var view := View.INDIVIDUAL
 var free_camera := false
 var wind := 0 ## 0 calm, 1 breeze, 2 gale
 var leafless := false ## trees without their leaves
+var lod := 0 ## 1: the lighter tree used at a distance
 const KINDS := ["Oak", "Maple", "Beech", "Elm", "Ash", "Linden", "Poplar", "Birch", "Willow"]
 var kind := -1 ## -1: the leafy species as the seed drew them; else an index into KINDS
 var focus_row := 0
@@ -164,7 +166,7 @@ func _rebuild() -> void:
 		var one := _species[row]
 		for column in COLUMNS:
 			var instance := MeshInstance3D.new()
-			instance.mesh = PlantMeshes.build(one, _variants[column], detailed, leafless)
+			instance.mesh = PlantMeshes.build(one, _variants[column], detailed, leafless, lod)
 			instance.material_override = FloraMeshes.material()
 			instance.scale = Vector3.ONE * _scale
 			instance.position = _cell(row, column)
@@ -372,6 +374,7 @@ func _update_label() -> void:
 				focus_row * COLUMNS + focus_column + 1, _species.size() * COLUMNS]
 		if form in [PlantSpecies.Form.BROADLEAF, PlantSpecies.Form.CONIFER]:
 			where += "  [%s]" % ("TreeGrower" if PlantMeshes.use_tree_grower else "old builders")
+			where += "  [distance version]" if lod == 1 else ""
 	_label.text = ("%s  world seed %d  %s%s  %d species  wind: %s%s%s\n"
 			+ "[Left / Right] plant  [Up / Down] species  [mouse] turn around it  [wheel] zoom  "
 			+ "[M] mouse free\n"
@@ -413,6 +416,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			wind = (wind + 1) % 3
 		KEY_H:
 			leafless = not leafless
+			rebuild = true
+		KEY_B:
+			lod = 1 - lod
 			rebuild = true
 		KEY_Y:
 			PlantMeshes.use_tree_grower = not PlantMeshes.use_tree_grower

@@ -24,6 +24,10 @@ const MAX_CHANCE := {
 const PLANT_KEY := 100000
 const FAR_KEY := 200000
 
+## Where the player is (x, z), kept up to date by the world: a tile builds its trees in the version
+## that suits its distance from here (WorldSettings.tree_lod_distance). Read from the tile workers.
+static var focus := Vector2.ZERO
+
 var _noise: TerrainNoise
 var _settings: WorldSettings
 var _species: SpeciesRegistry
@@ -274,6 +278,14 @@ func _add_shape(shape: Shape3D, at: Vector3, size := Vector3.ONE, yaw := 0.0) ->
 	collision.transform = Transform3D(Basis(Vector3.UP, yaw), at - _chunk.position)
 	_body.add_child(collision)
 
+## 1 (the lighter tree) when this tile is further from the player than tree_lod_distance, else 0.
+func _tree_lod() -> int:
+	var size := _settings.chunk_size
+	var coord: Vector2i = _chunk.get("coord")
+	var middle := Vector2((float(coord.x) + 0.5) * size, (float(coord.y) + 0.5) * size)
+	return 1 if middle.distance_to(focus) > _settings.tree_lod_distance else 0
+
+
 func _flush(near: bool) -> void:
 	for key: int in _batches.keys():
 		var transforms: Array = _batches[key]
@@ -288,11 +300,14 @@ func _flush(near: bool) -> void:
 		elif key >= PLANT_KEY:
 			var id := (key - PLANT_KEY) / 100
 			var variant := key % 100
-			multi.mesh = _species.mesh(id, variant, FloraMeshes.detailed)
+			var layer := _species.by_id(id).layer()
+			var lod := _tree_lod() if layer == PlantSpecies.Layer.CANOPY else 0
+			multi.mesh = _species.mesh(id, variant, FloraMeshes.detailed, lod)
 			instance.set_meta(&"species", id)
 			instance.set_meta(&"variant", variant)
+			instance.set_meta(&"lod", lod)
+			instance.set_meta(&"tree", layer == PlantSpecies.Layer.CANOPY)
 			instance.add_to_group(&"world_flora")
-			var layer := _species.by_id(id).layer()
 			short_range = layer == PlantSpecies.Layer.GRASS or layer == PlantSpecies.Layer.MEADOW
 		else:
 			var kind := key / 100 as FloraMeshes.Kind

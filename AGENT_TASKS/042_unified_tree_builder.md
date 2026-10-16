@@ -88,3 +88,19 @@ but the GPU cost on a real card is not known and 10M triangles a frame is a lot.
 (`TreeGrower` with a `lod` argument: fewer rings and sides, fewer branches, leaves and needles) used
 by the scatter between the near full trees and the far proxies (`PlantMeshes.build_far`), and a
 look at where the scatter switches (`world_scatter.gd`, FAR_KEY).
+
+## Mid-distance LOD (2026-10-15)
+
+`TreeGrower.build(..., lod)`: lod 1 is the same tree, lighter: fewer rings and trunk sides, a child
+less per branch, a whorl spacing 1.8x, no realistic geometry, bigger leaves and needles, 3 leaves
+a twig. Averages (seed 1337): conifer 6231 -> 1846 triangles, leafy 6395 -> 2106 (the realistic look
+uses the same lod 1 mesh: 9481 / 10206 -> 1846 / 2106).
+Wiring: `PlantMeshes.build(..., lod)`, `SpeciesRegistry.mesh(id, variant, detailed, lod)` (cached),
+`WorldSettings.tree_lod_distance` (50 m), `WorldScatter.focus` (static, the player's x/z) so a tile is
+built with the version for its distance, and `ProceduralWorld._update_tree_lod` swaps the batches of
+tiles the player has come closer to / moved from (6 a frame, scan twice a second). Plant lab: B toggles
+the distance version.
+Forest cost (`world_render_stats`, seed 1337): low-poly 5.4M -> 2.5M triangles per frame, realistic
+10.4M -> 4.8M (90 m gave 3.25M / 6.4M). Still above the 2.1M / 4.7M with only the leafy trees
+converted, since every conifer is converted too. Not done: a lod 2 for the 50-200 m band (the far
+proxies start at the far tiles), measuring the GPU on a real card, checking the swap for pops.

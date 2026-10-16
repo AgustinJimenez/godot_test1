@@ -20,6 +20,9 @@ const NEEDLE_SWAY := 0.35 ## and from the base of a needle spray to its tips
 var _g: TreeGenome
 var _b: MeshBuilder
 var _rng: RandomNumberGenerator
+var _lod := 0 ## 0 full tree, 1 the lighter one for trees at a distance
+var _fine := false ## the realistic geometry (never in the lighter version)
+var _depth := 3 ## levels of branching in this version
 var _height := 8.0
 var _trunk_length := 2.0 ## metres of trunk: to the limbs, or all the way for a leader
 var _tilt := Vector3.ZERO
@@ -28,11 +31,17 @@ var _leaf_length := 0.3
 var _needle_length := 0.5
 
 
-static func build(builder: MeshBuilder, genome: TreeGenome, rng: RandomNumberGenerator) -> void:
+## `lod` 1 grows a lighter version of the same tree (one level of branching less, fewer limbs and
+## whorls, leaves and needles, fewer sides) for trees seen from far away.
+static func build(builder: MeshBuilder, genome: TreeGenome, rng: RandomNumberGenerator,
+		lod := 0) -> void:
 	var grower := TreeGrower.new()
 	grower._g = genome
 	grower._b = builder
 	grower._rng = rng
+	grower._lod = lod
+	grower._fine = builder.detailed and lod == 0
+	grower._depth = genome.depth
 	grower._grow()
 
 
@@ -43,10 +52,11 @@ func _grow() -> void:
 		_tilt = Vector3(_rng.randf_range(-1.0, 1.0), 0.0, _rng.randf_range(-1.0, 1.0)).normalized() \
 				* _g.lean * _height
 	_outline = PlantLeafShapes.outline_for(_g.leaf_shape, _g.leaf_aspect, _g.leaf_lobes,
-			_g.leaf_edge, _b.detailed)
-	# the low-poly look has fewer, bigger leaves and sprays
-	_leaf_length = _g.crown * _g.leaf_size * (1.7 if _b.detailed else 2.5)
-	_needle_length = clampf(_g.crown * _g.needle_size, 0.6, 1.1) * (1.0 if _b.detailed else 1.2)
+			_g.leaf_edge, _fine)
+	# the low-poly look has fewer, bigger leaves and sprays (the lighter version bigger still)
+	var bigger := 1.0 + 0.8 * float(_lod)
+	_leaf_length = _g.crown * _g.leaf_size * (1.7 if _fine else 2.5) * bigger
+	_needle_length = clampf(_g.crown * _g.needle_size, 0.6, 1.1) * (1.0 if _fine else 1.2) * bigger
 	_trunk()
 	if _g.leader:
 		_whorls()
@@ -65,7 +75,7 @@ func _axis(y: float) -> Vector3:
 
 
 func _trunk() -> void:
-	var rings := 7 if _g.leader else 5
+	var rings := (7 if _g.leader else 5) - _lod
 	var centres: Array[Vector3] = []
 	var radii: Array[float] = []
 	var colors: Array[Color] = []
@@ -82,9 +92,10 @@ func _trunk() -> void:
 			centres.append(top + Vector3(0.0, top_radius * float(dome[0]), 0.0))
 			radii.append(top_radius * float(dome[1]))
 			colors.append(colors[colors.size() - 1])
-	PlantTreeBuilders.tube(_b, centres, radii, colors, _g.trunk_sides, _rng, _g.trunk_wobble,
+	var trunk_sides := _g.trunk_sides - 5 * _lod
+	PlantTreeBuilders.tube(_b, centres, radii, colors, trunk_sides, _rng, _g.trunk_wobble,
 			MeshBuilder.CAP_TOP, false)
-	if _g.marked_bark and not _g.leader: # the dark patches on pale bark
+	if _g.marked_bark and not _g.leader and _lod == 0: # the dark patches on pale bark
 		for mark in int(_trunk_length / 0.8):
 			var at := float(mark) * 0.8 + 0.4
 			var radius := _trunk_radius(at / _trunk_length) * 1.04
@@ -109,7 +120,7 @@ func _limbs() -> void:
 	var radius_v := maxf(crown_height * 0.85, _g.crown * _g.aspect)
 	var limb_radius := _g.girth * _g.taper * 0.7
 	var phase := _rng.randf() * TAU
-	for index in _g.limbs:
+	for index in maxi(_g.limbs - _lod, 3):
 		var yaw := phase + float(index) * GOLDEN_ANGLE
 		var pitch := deg_to_rad(_g.limb_angle * _rng.randf_range(0.85, 1.15))
 		var dir := Vector3(sin(pitch) * cos(yaw), cos(pitch), sin(pitch) * sin(yaw))
@@ -127,13 +138,14 @@ func _limbs() -> void:
 func _whorls() -> void:
 	var first := _height * _g.nodes_from
 	var last := _height * 0.94
-	var tiers := maxi(int((last - first) / maxf(_g.nodes_spacing, 0.1)), 5)
+	var spacing := maxf(_g.nodes_spacing, 0.1) * (1.0 + 0.8 * float(_lod))
+	var tiers := maxi(int((last - first) / spacing), 5)
 	var phase := _rng.randf() * TAU
 	for tier in tiers:
 		var along := float(tier) / float(tiers - 1)
 		var y := lerpf(first, last, pow(along, 0.92))
 		var reach := lerpf(_g.crown, _g.crown * 0.1, pow(along, 0.9)) * _rng.randf_range(0.94, 1.06)
-		var count := _g.limbs + (1 if along < 0.6 else 0) + (1 if _b.detailed else 0)
+		var count := _g.limbs + (1 if along < 0.6 else 0) + (1 if _fine else 0) - _lod
 		phase += 1.9
 		for index in count:
 			var yaw := phase + TAU * float(index) / float(count) + _rng.randf_range(-0.2, 0.2)
@@ -158,7 +170,7 @@ func _whorls() -> void:
 ## of its parent.
 func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: int, sway: float,
 		continues := false) -> void:
-	var rings: int = _g.rings[level]
+	var rings := maxi(_g.rings[level] - (1 if level < 2 else 0) * _lod, 2)
 	var points: Array[Vector3] = [start]
 	var tangents: Array[Vector3] = [dir]
 	var heading := dir
@@ -187,8 +199,9 @@ func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: 
 		colors.append(Color(bark.r, bark.g, bark.b, sway + _g.sway[level] * along))
 	# a branch that continues its parent has the parent's number of sides, so they meet edge to edge
 	var sides_level := level - 1 if continues else level
-	var sides: int = _g.sides_real[sides_level] if _b.detailed else _g.sides[sides_level]
-	var last_level := level == _g.depth - 1
+	var sides: int = _g.sides_real[sides_level] if _fine else _g.sides[sides_level]
+	sides = maxi(sides - 3 * _lod, 3)
+	var last_level := level == _depth - 1
 	var closed := MeshBuilder.CAP_TOP if (last_level or not _g.carry_on) else 0
 	PlantTreeBuilders.tube(_b, points, radii, colors, sides, _rng, 0.0, closed, false)
 	var tip_sway: float = sway + _g.sway[level]
@@ -208,7 +221,7 @@ func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: 
 
 func _children(points: Array[Vector3], tangents: Array[Vector3], length: float, radius: float,
 		level: int, sway: float, _continues: bool) -> void:
-	var total: int = _g.children[level]
+	var total: int = maxi(_g.children[level] - _lod, mini(_g.children[level], 2))
 	var spread := total - (1 if _g.carry_on else 0)
 	for index in total:
 		# the last child grows straight on from the tip: a branch never ends bare
@@ -244,7 +257,7 @@ func _children(points: Array[Vector3], tangents: Array[Vector3], length: float, 
 ## tip.
 func _leaves_along(points: Array[Vector3], tangents: Array[Vector3], sway: float,
 		level: int) -> void:
-	var nodes := 4 if not _b.detailed else 5
+	var nodes := 5 if _fine else (4 - _lod)
 	var gain: float = _g.sway[level]
 	for node in nodes:
 		var along := 0.3 + 0.65 * float(node) / float(nodes - 1)
@@ -278,7 +291,7 @@ func _leaf(at: Vector3, tangent: Vector3, azimuth: float, sway: float, spread :=
 	base_color.a = sway # the stalk moves with the twig it grows on
 	var tip_color := _g.leaf_tip.lerp(tone, 0.4)
 	tip_color.a = minf(sway + LEAF_SWAY, 1.0)
-	var curl := -0.12 if _b.detailed else 0.0
+	var curl := -0.12 if _fine else 0.0
 	var share := clampf(_g.leaf_aspect * 0.5, 0.5, 2.0) # a long narrow leaf may bend its tip more
 	PlantLeafShapes.add_leaf(_b, _outline, at, axis, normal,
 			_leaf_length * _rng.randf_range(0.8, 1.2), 0.1, curl, base_color, tip_color,
@@ -289,7 +302,7 @@ func _leaf(at: Vector3, tangent: Vector3, azimuth: float, sway: float, spread :=
 func _spray(base: Vector3, axis: Vector3, length: float, sway: float) -> void:
 	if _b.leafless:
 		return
-	var count := 11 if _b.detailed else 9
+	var count := 11 if _fine else (9 - 3 * _lod)
 	var side := axis.cross(Vector3.UP)
 	if side.length_squared() < 0.0001:
 		side = axis.cross(Vector3.RIGHT)

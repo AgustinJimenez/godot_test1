@@ -22,6 +22,8 @@ var footprints: WorldFootprints
 var _target: Node3D
 var _detail_on := false
 var _remesh: Array = [] # flora nodes waiting for the other mesh set
+var _lod_queue: Array = [] # tree batches waiting for the other level of detail
+var _lod_time := 0.0
 
 
 func _ready() -> void:
@@ -134,9 +136,50 @@ func _shore_amount() -> float:
 	return clampf(1.0 - maxf(lowest - settings.sea_level, 0.0) / 10.0, 0.0, 1.0)
 
 
+## Trees of a tile further from the target than `tree_lod_distance` use the lighter mesh, nearer
+## ones the full one. Tiles are built with the right one for where the player was; this swaps the
+## batches of tiles the player has since come closer to or moved away from (a few a frame, twice a
+## second, from meshes that are cached once made).
+func _update_tree_lod() -> void:
+	if _target == null:
+		return
+	var here := Vector2(_target.global_position.x, _target.global_position.z)
+	WorldScatter.focus = here
+	_lod_time -= get_process_delta_time()
+	if _lod_time > 0.0 and _lod_queue.is_empty():
+		return
+	if _lod_queue.is_empty():
+		_lod_time = 0.5
+		for node: Node in get_tree().get_nodes_in_group(&"world_flora"):
+			var current: int = node.get_meta(&"lod", 0)
+			if node.get_meta(&"tree", false) and _wanted_lod(node as Node3D, here) != current:
+				_lod_queue.append(node)
+	var registry := SpeciesRegistry.for_settings(settings)
+	var budget := 6
+	while budget > 0 and not _lod_queue.is_empty():
+		var node: Node = _lod_queue.pop_back()
+		if not is_instance_valid(node):
+			continue
+		var lod := _wanted_lod(node as Node3D, here)
+		(node as MultiMeshInstance3D).multimesh.mesh = registry.mesh(node.get_meta(&"species"),
+				node.get_meta(&"variant"), _detail_on, lod)
+		node.set_meta(&"lod", lod)
+		budget -= 1
+
+
+func _wanted_lod(batch: Node3D, here: Vector2) -> int:
+	var chunk := batch.get_parent() as Node3D
+	if chunk == null:
+		return 0
+	var middle := Vector2(chunk.position.x + settings.chunk_size * 0.5,
+			chunk.position.z + settings.chunk_size * 0.5)
+	return 1 if middle.distance_to(here) > settings.tree_lod_distance else 0
+
+
 ## Past half way to the realistic look the plants switch to their finer meshes (many per frame, so
 ## there is no hitch), and back again.
 func _update_detail() -> void:
+	_update_tree_lod()
 	var wanted := realism > 0.5
 	if wanted != _detail_on:
 		_detail_on = wanted
@@ -150,7 +193,8 @@ func _update_detail() -> void:
 			var species_id: int = node.get_meta(&"species", 0)
 			var multi := (node as MultiMeshInstance3D).multimesh
 			if species_id > 0:
-				multi.mesh = SpeciesRegistry.for_settings(settings).mesh(species_id, variant, _detail_on)
+				multi.mesh = SpeciesRegistry.for_settings(settings).mesh(species_id, variant, _detail_on,
+						node.get_meta(&"lod", 0))
 			else:
 				multi.mesh = FloraMeshes.mesh(node.get_meta(&"kind"), variant, _detail_on)
 		budget -= 1
