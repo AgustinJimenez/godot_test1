@@ -274,3 +274,13 @@ New low-plant kinds: `lawn` (short dense), `meadow` (tall, golden tips), `reed` 
   its own colours). `PlantMeshes` builds CONIFER, BROADLEAF, PALM and BARE_TREE with it;
   height/girth/crown of the species are set from it so colliders and scatter match.
 - Ground plants (shrub, grass, flower, fern, cactus, reed) still use the old builders: next.
+
+## Stage 2b: world ground plants from the archetypes
+
+- Shrubs (`shrub`, `bush`), cacti, grasses (`grass`, `lawn`, `meadow`, `tussock`, `pampas`), reeds,
+  wildflowers and ferns are built by TreeGrower too (everything but mushrooms). Ground species get
+  `frond_parts` 4, at most 16 blades, wider blades, and the lighter (lod 1) build.
+- `world_render_stats` (seed 1337, low-poly, avg triangles per frame): old builders 12.4 M; new trees
+  with old ground plants 13.5 M; old trees with new ground plants 4.2 M; all new 5.3 M.
+- Old builders are still in the tree (`use_tree_grower` false path, `PlantTreeBuilders.far`, mushroom
+  in `PlantGroundBuilders`); deleting them is the last step.

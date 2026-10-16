@@ -491,6 +491,14 @@ static func for_species(s: PlantSpecies) -> TreeGenome:
 		g.leaf_tip = s.leaf_tip
 		g.bark = s.bark
 	g.frosted = s.frosted
+	if g.flower.a > 0.0:
+		g.flower = s.accent
+	if not s.is_tree():
+		g.frond_parts = 4 # a world has thousands of these: short, few
+		g.fronds = mini(g.fronds, 16)
+		if g.leaflet < 0.02: # a blade of grass: wider, stands straighter
+			g.rib_width = maxf(g.rib_width * 2.0, 0.05)
+			g.frond_droop *= 0.5
 	_settle(g)
 	return g
 

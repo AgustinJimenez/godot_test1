@@ -394,6 +394,21 @@ static func _archetype(s: PlantSpecies) -> void:
 			weights = {"palm": 1.0}
 		F.BARE_TREE:
 			weights = {"dead": 1.0}
+		F.SHRUB:
+			weights = {"shrub": 3.0, "bush": 1.5}
+		F.CACTUS:
+			weights = {"cactus": 1.0}
+		F.GRASS:
+			weights = {"grass": 3.0, "meadow": 1.0, "lawn": 2.0 if s.moisture > 0.65 else 0.0,
+					"tussock": 2.0 if s.moisture < 0.45 else 0.0}
+		F.TALL_GRASS:
+			weights = {"meadow": 3.0, "pampas": 2.0, "tussock": 1.0}
+		F.REED:
+			weights = {"reed": 1.0}
+		F.FLOWER:
+			weights = {"wildflower": 1.0}
+		F.FERN:
+			weights = {"fern": 1.0}
 		_:
 			return
 	var total := 0.0

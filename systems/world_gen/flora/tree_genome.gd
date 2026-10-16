@@ -91,6 +91,7 @@ var leaf_edge := PlantSpecies.LeafEdge.SMOOTH
 var leaf_pattern := PlantSpecies.LeafPattern.ALTERNATE
 var needle_size := 0.45 ## needle spray length as a fraction of the crown radius
 var tips_only := false ## needle sprays only at the very ends of the branches: a tuft layer on top
+var frond_parts := 9 ## segments along a frond or blade (a ground plant in the world has 3)
 var fronds := 14 ## (palm) fronds in the crown
 var frond_length := 3.0 ## metres
 var frond_arch := 0.5 ## 0..1: how high the frond rises before it bends over

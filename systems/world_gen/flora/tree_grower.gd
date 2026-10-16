@@ -277,7 +277,7 @@ func _fronds() -> void:
 		var steep := pow(_rng.randf(), 1.5) # the young ones stand up
 		if _g.flower.a > 0.0:
 			steep = lerpf(0.55, 0.95, _rng.randf()) # flower stems stand up
-		var parts := 9 - 3 * _lod
+		var parts := maxi(_g.frond_parts - 3 * _lod, 2)
 		var points: Array[Vector3] = []
 		for step in parts + 1:
 			var t := float(step) / float(parts)

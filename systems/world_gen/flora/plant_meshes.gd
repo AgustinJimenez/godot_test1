@@ -29,20 +29,10 @@ static func build(species: PlantSpecies, variant: int, detailed: bool,
 				PlantTreeBuilders.broadleaf(builder, species, rng)
 		PlantSpecies.Form.PALM, PlantSpecies.Form.BARE_TREE:
 			TreeGrower.build(builder, TreeArchetypes.for_species(species), rng, lod)
-		PlantSpecies.Form.SHRUB:
-			PlantGroundBuilders.shrub(builder, species, rng)
-		PlantSpecies.Form.CACTUS:
-			PlantGroundBuilders.cactus(builder, species, rng)
-		PlantSpecies.Form.GRASS, PlantSpecies.Form.TALL_GRASS:
-			PlantGroundBuilders.grass(builder, species, rng)
-		PlantSpecies.Form.REED:
-			PlantGroundBuilders.reed(builder, species, rng)
-		PlantSpecies.Form.FLOWER:
-			PlantGroundBuilders.flower(builder, species, rng)
-		PlantSpecies.Form.FERN:
-			PlantGroundBuilders.fern(builder, species, rng)
 		PlantSpecies.Form.MUSHROOM:
 			PlantGroundBuilders.mushroom(builder, species, rng)
+		_: # shrubs, cacti, grasses, reeds, flowers and ferns
+			TreeGrower.build(builder, TreeArchetypes.for_species(species), rng, maxi(lod, 1))
 	return builder.commit()
 
 
