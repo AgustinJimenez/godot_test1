@@ -477,6 +477,24 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 	return g
 
 
+## The genome of a world species: its kind (`archetype`, picked from its climate by
+## SpeciesGenerator) nudged by its own dice, in its own colours. Always the same for a species.
+static func for_species(s: PlantSpecies) -> TreeGenome:
+	if s.archetype == "":
+		return TreeGenome.from_species(s)
+	var g := make(s.archetype, s, s)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = s.seed ^ 0x7A11
+	_nudge(g, rng, 0.08)
+	if s.archetype not in ["cactus", "dead"]:
+		g.leaf = s.leaf
+		g.leaf_tip = s.leaf_tip
+		g.bark = s.bark
+	g.frosted = s.frosted
+	_settle(g)
+	return g
+
+
 static func _leafy(leafy: PlantSpecies) -> TreeGenome:
 	return TreeGenome.from_species(leafy)
 

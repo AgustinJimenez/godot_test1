@@ -31,6 +31,7 @@ var common_name := ""
 var form := Form.BROADLEAF
 var seed := 0 ## the dice of its meshes
 var variants := 3 ## how many different meshes it makes
+var archetype := "" ## the kind of tree it is (TreeArchetypes.NAMES), picked by its climate; "" none
 
 # Shape. Metres at scale 1.
 var height := 8.0 ## whole plant (grass: blade length, mushroom: cap stalk)

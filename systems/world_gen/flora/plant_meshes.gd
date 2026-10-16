@@ -19,18 +19,16 @@ static func build(species: PlantSpecies, variant: int, detailed: bool,
 	match species.form:
 		PlantSpecies.Form.CONIFER:
 			if use_tree_grower:
-				TreeGrower.build(builder, TreeGenome.from_species(species), rng, lod)
+				TreeGrower.build(builder, TreeArchetypes.for_species(species), rng, lod)
 			else:
 				PlantConiferBuilders.build(builder, species, rng)
 		PlantSpecies.Form.BROADLEAF:
 			if use_tree_grower:
-				TreeGrower.build(builder, TreeGenome.from_species(species), rng, lod)
+				TreeGrower.build(builder, TreeArchetypes.for_species(species), rng, lod)
 			else:
 				PlantTreeBuilders.broadleaf(builder, species, rng)
-		PlantSpecies.Form.PALM:
-			PlantTreeBuilders.palm(builder, species, rng)
-		PlantSpecies.Form.BARE_TREE:
-			PlantTreeBuilders.bare_tree(builder, species, rng)
+		PlantSpecies.Form.PALM, PlantSpecies.Form.BARE_TREE:
+			TreeGrower.build(builder, TreeArchetypes.for_species(species), rng, lod)
 		PlantSpecies.Form.SHRUB:
 			PlantGroundBuilders.shrub(builder, species, rng)
 		PlantSpecies.Form.CACTUS:

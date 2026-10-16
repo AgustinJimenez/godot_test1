@@ -13,6 +13,12 @@ const QUOTA := {
 	F.CACTUS: 2, F.GRASS: 4, F.TALL_GRASS: 2, F.REED: 2, F.FLOWER: 6, F.FERN: 3,
 	F.MUSHROOM: 2,
 }
+## What a kind of tree is called (the name of a kind that has its own).
+const KIND_NOUNS := {
+	"umbrella": "Acacia", "dragon": "Dragon Tree", "raintree": "Rain Tree", "buttress": "Fig",
+	"willow": "Willow", "cherry": "Cherry", "blossom": "Plum", "ancient": "Live Oak",
+	"oak": "Oak", "cypress": "Cypress", "giant": "Redwood",
+}
 const NOUNS := {
 	F.CONIFER: ["Spruce", "Fir", "Pine", "Cedar", "Hemlock", "Larch"],
 	F.BROADLEAF: ["Oak", "Maple", "Beech", "Ash", "Elm", "Linden", "Poplar"],
@@ -53,8 +59,10 @@ static func generate(world_seed: int, count: int) -> Array[PlantSpecies]:
 			var spread := (float(index) + rng.randf()) / float(share)
 			_niche(species, rng, spread)
 			_shape(species, rng)
+			_archetype(species)
 			_name(species, rng, index, used)
 			_leaves(species)
+			_fit_size(species)
 			species.patch_offset = Vector2(rng.randf_range(-500.0, 500.0), rng.randf_range(-500.0, 500.0))
 			made.append(species)
 	return made
@@ -353,6 +361,63 @@ static func _shape(s: PlantSpecies, rng: RandomNumberGenerator) -> void:
 	s.size_spread = 0.2 if s.is_tree() else 0.3
 
 
+## The kind of tree a species is (TreeArchetypes), from its climate: the dry heat grows flat-topped
+## acacias and cacti, the wet heat rain trees and buttressed figs, a wet bank willows, the cold
+## spruces. Its own dice, so nothing else of the species (or of the world) changes.
+static func _archetype(s: PlantSpecies) -> void:
+	var dice := RandomNumberGenerator.new()
+	dice.seed = s.seed ^ 0xA2C4
+	var hot := s.heat > 0.6
+	var wet := s.moisture > 0.6
+	var weights := {}
+	match s.form:
+		F.BROADLEAF:
+			if s.marked_bark:
+				weights = {"leafy": 1.0} # a birch
+			elif s.droop > 0.4:
+				weights = {"willow": 1.0}
+			else:
+				weights = {
+					"leafy": 3.0, "oak": 2.0 if s.moisture > 0.4 else 0.5,
+					"umbrella": 3.0 if hot and not wet else 0.2,
+					"dragon": 1.0 if hot and s.moisture < 0.4 else 0.0,
+					"raintree": 3.0 if hot and wet else 0.0,
+					"buttress": 2.0 if hot and s.moisture > 0.7 else 0.0,
+					"cherry": 1.0 if not hot else 0.0, "blossom": 1.0 if not hot else 0.0,
+					"ancient": 0.3 if s.moisture > 0.5 else 0.0,
+				}
+		F.CONIFER:
+			weights = {"conifer": 4.0,
+					"cypress": 3.0 if s.heat > 0.4 else 0.0,
+					"giant": 0.25 if s.moisture > 0.7 else 0.0}
+		F.PALM:
+			weights = {"palm": 1.0}
+		F.BARE_TREE:
+			weights = {"dead": 1.0}
+		_:
+			return
+	var total := 0.0
+	for weight: float in weights.values():
+		total += weight
+	var roll := dice.randf() * total
+	for kind: String in weights:
+		roll -= weights[kind] as float
+		if roll <= 0.0 and weights[kind] as float > 0.0:
+			s.archetype = kind
+			return
+	s.archetype = weights.keys()[0]
+
+
+## A tree's size is its kind's, so the collider and the scatter read the real numbers.
+static func _fit_size(s: PlantSpecies) -> void:
+	if s.archetype == "" or not s.is_tree():
+		return
+	var g := TreeArchetypes.for_species(s)
+	s.height = g.height
+	s.girth = g.girth
+	s.crown = g.crown
+
+
 ## The leaf and the branching of a broadleaf tree, from the kind of tree its name says (a birch has
 ## small diamond leaves, a willow long narrow ones). Its own dice, so nothing else of the species
 ## (or of the world) changes when this is tuned.
@@ -414,7 +479,9 @@ static func _name(s: PlantSpecies, rng: RandomNumberGenerator, index: int,
 		used: Dictionary) -> void:
 	var nouns: Array = NOUNS[s.form]
 	var noun: String = nouns[(index * 2 + rng.randi()) % nouns.size()]
-	if s.form == F.BROADLEAF and s.marked_bark: # the shape picks these two names
+	if KIND_NOUNS.has(s.archetype):
+		noun = KIND_NOUNS[s.archetype]
+	elif s.form == F.BROADLEAF and s.marked_bark: # the shape picks these two names
 		noun = "Birch"
 	elif s.form == F.BROADLEAF and s.droop > 0.4:
 		noun = "Willow"

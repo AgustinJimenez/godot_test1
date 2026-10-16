@@ -262,3 +262,15 @@ draw the world's species from the same table.
 New low-plant kinds: `lawn` (short dense), `meadow` (tall, golden tips), `reed` (tall upright),
 `pampas` (arching fountain, cream plumes at the tips), `tussock` (drooping golden mound), beside
 `grass` and `wildflower`. All are frond plants with bare blades (`leaflet` 0).
+
+## Stage 2a: world trees come from the archetypes
+
+- `PlantSpecies.archetype`: the kind of tree a species is, picked by `SpeciesGenerator._archetype`
+  from its climate (own dice, `seed ^ 0xA2C4`, so nothing else in a seed changes): hot and dry gives
+  acacia (`umbrella`) and dragon trees, hot and wet rain trees and figs (`buttress`), wet banks
+  willows, temperate oaks, cherries, plums, leafy trees, warm conifers cypresses, wet ones
+  an occasional redwood (`giant`). Palms and dead trees use `palm` and `dead`.
+- `TreeArchetypes.for_species(s)`: the genome of a species (its kind nudged by its own dice, in
+  its own colours). `PlantMeshes` builds CONIFER, BROADLEAF, PALM and BARE_TREE with it;
+  height/girth/crown of the species are set from it so colliders and scatter match.
+- Ground plants (shrub, grass, flower, fern, cactus, reed) still use the old builders: next.
