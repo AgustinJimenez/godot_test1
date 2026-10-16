@@ -149,6 +149,13 @@ boundary effect weighted by both plates' say, so nothing jumps. Land faces steep
 of 300,000 samples before, 3 now (the steepest rise in 10 m 57 m before, 19 m now, the rest are river
 gorges). The screen is black with the loading text until the ground is made, then fades.
 
+Ninth pass: the planet map on the M key (`PlanetMap`, an action `planet_map` added at runtime):
+640x320 equirectangular, drawn from `PlanetNoise` by 3 background threads once the player is in
+(a few seconds, "Charting the planet... N %" meanwhile): depth shading on the sea, biome colours and
+hill shading on the land, lakes, rivers (`PlanetHydrology.river_lines`), a lat/long grid, the
+player's arrow (which way the camera looks) and the position and altitude under the map. Lab:
+`-- --show-map`.
+
 Still rough / ideas: tile LOD edge colour mismatch and popping, sea depth
 colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
 (mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile

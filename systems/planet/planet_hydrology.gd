@@ -491,3 +491,12 @@ func flow_at(dir: Vector3) -> Vector3:
 		return Vector3.ZERO
 	var along: Vector3 = (best_piece[6] as Vector3).lerp(best_piece[7] as Vector3, best_t)
 	return along.normalized() * clampf(0.7 * sqrt(width / 8.0), 0.5, 3.0)
+
+
+## Every river piece as [from dir, to dir, width at the start] (for the map).
+func river_lines() -> Array[Array]:
+	var found: Array[Array] = []
+	for id: int in _pieces:
+		for piece: Array in _pieces[id]:
+			found.append([piece[0], piece[1], piece[4]])
+	return found

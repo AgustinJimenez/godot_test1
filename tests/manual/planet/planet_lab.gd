@@ -6,6 +6,7 @@ extends Node3D
 ##   -- --view-alt=N   no player: a camera N metres above the ground, looking at the horizon
 ##   -- --view-pitch=N / --view-yaw=N degrees (negative pitch looks down; with --view-alt)
 ##   -- --shot=PATH    (with a window) saves a picture after the tiles have loaded, then quits
+##   -- --show-map   the planet map open from the start (M toggles it in play)
 ##   -- --bare       no plants (to look at the ground)
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
 ##   -- --walk-check  (use --fixed-fps 60) the real player holds forward and sprint for 90 s,
@@ -19,6 +20,7 @@ var planet: PlanetWorld
 var player: Player
 var _checking := false
 var _walking := false
+var _show_map := false ## open the planet map (the M key) from the start
 var _swim_check := false ## drop the player in the sea and see them float (PlanetSwim)
 var _flying := false ## the walk check in free mode (noclip) at 100 m/s
 var _walk_start := Vector3.ZERO
@@ -64,6 +66,8 @@ func _ready() -> void:
 			_shot_frame = arg.trim_prefix("--shot-frame=").to_int()
 		elif arg.begins_with("--shot="):
 			_shot = arg.trim_prefix("--shot=")
+		elif arg == "--show-map":
+			_show_map = true
 		elif arg == "--bare":
 			settings.plant_density = 0.0
 		elif arg == "--walk-check":
@@ -126,6 +130,8 @@ func _physics_process(_delta: float) -> void:
 	if _walking and player != null:
 		_walk_step()
 		return
+	if _show_map and _frame == 30:
+		planet.map.visible = true
 	if _shot != "" and _frame == _shot_frame:
 		var animals := 0
 		for animal in planet.fauna.get_children():

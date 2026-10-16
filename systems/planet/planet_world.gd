@@ -22,6 +22,7 @@ var surface: PlanetSurface
 var atmosphere: WorldAtmosphere
 var fauna: PlanetFauna
 var swim: PlanetSwim
+var map: PlanetMap
 var splash: WaterSplash
 var rebases := 0 ## how many times the planet has been turned (labs and tests)
 var loading := false ## the player is held still while the ground around them is made
@@ -46,6 +47,9 @@ func _ready() -> void:
 	fauna = PlanetFauna.new()
 	fauna.planet = self
 	add_child(fauna)
+	map = PlanetMap.new()
+	map.planet = self
+	add_child(map)
 	var layer := CanvasLayer.new()
 	layer.layer = 80
 	add_child(layer)
@@ -60,6 +64,11 @@ func _ready() -> void:
 	_load_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_load_label.visible = false
 	layer.add_child(_load_label)
+
+
+## The node the world is built around (the player), or null.
+func target() -> Node3D:
+	return _target
 
 
 ## Stands `target` on the planet at the spawn spot (or `direction`, a unit vector from the centre).
@@ -80,6 +89,8 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	frame.start(PackedFloat64Array([dir.x * reach, dir.y * reach, dir.z * reach]), Vector3.ZERO)
 	target.global_position = Vector3.ZERO
 	publish_frame()
+	if not (target is Player and surface.is_threaded()):
+		map.begin()
 	# the ground and the water come first: the player stands still until the land round them is made
 	# (the plants follow, starting with the ones nearest to them)
 	if target is Player and surface.is_threaded():
@@ -87,6 +98,7 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 		_load_time = 0.0
 		target.process_mode = Node.PROCESS_MODE_DISABLED
 		_load_label.visible = true
+		loaded.connect(map.begin, CONNECT_ONE_SHOT) # the map is drawn once the player is in
 		_dark.modulate.a = 1.0
 		_dark.visible = true
 		surface.update(planet_position())
