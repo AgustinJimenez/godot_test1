@@ -19,7 +19,7 @@ signal loaded
 var noise: PlanetNoise
 var frame := PlanetFrame.new()
 var surface: PlanetSurface
-var atmosphere: WorldAtmosphere
+var atmosphere: PlanetAtmosphere
 var fauna: PlanetFauna
 var swim: PlanetSwim
 var map: PlanetMap
@@ -48,7 +48,9 @@ func _ready() -> void:
 	clock.year_days = settings.year_days
 	clock.axial_tilt = deg_to_rad(settings.axial_tilt)
 	clock.month_days = settings.month_days
-	atmosphere = WorldAtmosphere.new()
+	atmosphere = PlanetAtmosphere.new()
+	atmosphere.radius = settings.radius
+	atmosphere.air_height = settings.air_height
 	atmosphere.time_of_day = time_of_day
 	add_child(atmosphere)
 	surface = PlanetSurface.new()
@@ -184,6 +186,7 @@ func set_year_share(share: float) -> void:
 ## frame, turned into the world by the frame (the planet is turned under the player as they walk).
 func _set_the_sun() -> void:
 	if atmosphere != null:
+		atmosphere.planet_centre = frame.to_world(Vector3.ZERO)
 		atmosphere.sun_direction = (frame.rot * clock.sun_in_body()).normalized()
 		atmosphere.moon_direction = (frame.rot * PlanetMoon.in_body(clock)).normalized()
 		atmosphere.moon_lit = PlanetMoon.lit(clock)
@@ -314,10 +317,8 @@ func _physics_process(delta: float) -> void:
 	fauna.update(_target.global_position, 1.0 - atmosphere.night_amount(), delta)
 	if swim != null:
 		atmosphere.underwater = swim.underwater
-	# the air thins with height: no fog in space
-	var thin := fog * exp(-maxf(altitude(), 0.0) / 1200.0)
-	atmosphere.fog_extra = thin - WorldAtmosphere.BASE_FOG
 	var camera := get_viewport().get_camera_3d()
 	if camera != null and camera.far < settings.radius:
 		camera.far = settings.radius * 1.2
 	atmosphere.global_position = _target.global_position
+	atmosphere.altitude = altitude()

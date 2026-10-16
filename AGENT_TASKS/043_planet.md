@@ -86,6 +86,25 @@ Clouds are height limited (user saw them far from the planet): the flat world's 
 sit at a height of the WORLD, so when the player flew up they hung in space. `PlanetWorld.
 _keep_the_weather_near_the_ground` now rides them at their height above the ground under the player
 and hides them and the rain above 1.5 km (where the cloud shell takes over).
+Light and sky from physics (user: "disable sky3d for now, make it ourselves, space dark, only light
+from the sun"). The planet uses `PlanetAtmosphere extends WorldAtmosphere` and the sky shader
+`planet_sky.gdshader`; Sky3D is not used on the planet (the flat world's level still turns it on in
+`levels/procedural_world.gd`). `PlanetAir` is the maths (shared with the shader): single scattering
+of the star's light through a spherical atmosphere (Rayleigh for the molecules, Mie for haze, density
+falling off with height): the sun's light is what the air lets by (`sun_transmittance`: white in space,
+yellow at noon, red low down, none where the planet is in the way), the sky is the air scattering it, and
+above the air there is nothing: space is black, with the stars, the moon (phase) and the sun disc.
+The ambient light is the sky's own (the sky is rendered into the environment, so it is blue by day,
+red at dusk, dark at night; only inside the air a trace of starlight is added; in space none), the fog
+colour is the air's colour at the horizon seen away from the sun. Small planets get a shrunken
+atmosphere (`air_scale` = radius / Earth's radius: lengths times it, scattering per metre divided by
+it) so the optical depths are the Earth's and the sunsets are red: with the Earth's air round a 20 km
+planet the grazing sun path is 28 times too short to redden. A 20 km planet's air is then about 310 m
+thick (`PlanetSettings.air_height` is the Earth-equivalent 100 km). From orbit: black sky, stars, the
+planet lit only by the sun, a thin blue rim of air with the sunset colours on the terminator.
+Not done: sky clouds in the planet sky shader (the flat world's puffs and the cloud shell are used),
+a star of another colour or brightness, aurora, eclipses, eye adaptation (the night is dark; a floor
+of ambient keeps it playable), the cost of the realtime sky radiance has not been measured.
 Not done: heat carried by the wind along its direction (it is mixed evenly), a moon, clouds, weather, a moon, an
 elliptical orbit, other planets in the sky, a star disc and its colour per star.
 

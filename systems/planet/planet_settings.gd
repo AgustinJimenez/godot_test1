@@ -19,6 +19,7 @@ extends Resource
 @export var start_hour := 9.0 ## local solar time of the first moment (12 is noon)
 @export var start_year := 0.12 ## share of the year at the start (0: the northern spring equinox)
 @export var time_scale := 1.0 ## 1: real play time; more makes the days and years pass faster
+@export var air_height := 100000.0 ## m the Earth air would reach (scaled to the radius)
 @export var plates := 14 ## tectonic plates (Earth has about 15 big ones)
 @export var tile_cells := 48 ## quads along one tile edge, at every level of detail
 @export var tile_max := 128.0 ## m, the widest a finest tile may be
