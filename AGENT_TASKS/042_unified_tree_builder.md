@@ -127,3 +127,13 @@ spacing) with leaves low down and a bare spike above ("inverted"): the budget ra
 whorls. `thrift` now goes down to 0.12 and also scales the branches per whorl (minimum 3); nine
 such genomes (spacing 0.3 - 1.0, 4 - 8 limbs) fit the budget uncapped with 34-42% of the vertices in
 the top 40% of the tree. Lab: "Copy properties" puts every trait, the dice and the look on the clipboard.
+
+## Leaf veins (user remark: big leaves look too simple, they need a pattern; same day)
+
+Leaf size unchanged. Colours at the corners of a 6-point leaf cannot make a pattern, so leaf vertices now
+have a UV (`MeshBuilder.add_tri_uv`; across 0..1 with 0.5 on the midrib, along 0..1 stalk to tip;
+every other triangle has UV (0, 0)) and `flora_wind.gdshader` draws, where `UV.x > 0`: a light midrib,
+side veins running up and out from it (`fract(along * 7 - across * 2.6)`), the blade lighter along
+the middle and darker toward the edge and the tip. No extra triangles, both looks, autumn colours
+and wind are untouched. Looked at in the tree builder lab (amber and green leaves). Not done: veins
+on needles and palm fronds, a vein colour per species, per-pixel serration.

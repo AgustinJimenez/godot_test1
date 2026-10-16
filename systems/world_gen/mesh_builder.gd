@@ -14,6 +14,7 @@ var _vertices := PackedVector3Array()
 var _normals := PackedVector3Array()
 var _colors := PackedColorArray()
 var _custom := PackedByteArray() # smooth per-vertex colour (CUSTOM0) for the smooth terrain
+var _uvs := PackedVector2Array() # only leaves have them (see add_tri_uv); everything else is (0, 0)
 
 
 func triangle_count() -> int:
@@ -26,6 +27,7 @@ func reset() -> void:
 	_normals.clear()
 	_colors.clear()
 	_custom.clear()
+	_uvs.clear()
 	xf = Transform3D.IDENTITY
 
 
@@ -39,6 +41,17 @@ func add_tri(a: Vector3, b: Vector3, c: Vector3, color_a: Color, color_b := colo
 	_vertices.append_array([pa, pc, pb])
 	_normals.append_array([normal, normal, normal])
 	_colors.append_array([color_a, color_c, color_b])
+
+
+## A triangle with a UV on each corner (a leaf: x 0..1 across with 0.5 on the midrib, y 0..1 from
+## the stalk to the tip, so the plant shader can draw its veins). Others have no UV (0, 0).
+func add_tri_uv(a: Vector3, b: Vector3, c: Vector3, color_a: Color, color_b: Color,
+		color_c: Color, uv_a: Vector2, uv_b: Vector2, uv_c: Vector2) -> void:
+	add_tri(a, b, c, color_a, color_b, color_c)
+	var before := _vertices.size() - 3
+	while _uvs.size() < before:
+		_uvs.append(Vector2.ZERO)
+	_uvs.append_array([uv_a, uv_c, uv_b]) # the same order as the vertices
 
 
 ## A quad a-b-c-d (counter clockwise seen from the front).
@@ -131,6 +144,10 @@ func commit() -> ArrayMesh:
 	arrays[Mesh.ARRAY_VERTEX] = _vertices
 	arrays[Mesh.ARRAY_NORMAL] = _normals if not _custom.is_empty() else _smoothed_normals()
 	arrays[Mesh.ARRAY_COLOR] = _colors
+	if not _uvs.is_empty():
+		while _uvs.size() < _vertices.size():
+			_uvs.append(Vector2.ZERO)
+		arrays[Mesh.ARRAY_TEX_UV] = _uvs
 	var flags := 0
 	if not _custom.is_empty():
 		arrays[Mesh.ARRAY_CUSTOM0] = _custom

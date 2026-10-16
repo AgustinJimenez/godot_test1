@@ -59,6 +59,18 @@ void fragment() {
 	// the realistic look: leaf-scale variation, lighter tips
 	float speckle = smooth_noise(world_pos.xz * 5.0 + world_pos.y * 3.0);
 	paint *= mix(1.0, 0.8 + 0.4 * speckle, realism);
+	// leaves (they have a UV, nothing else does): a light midrib, side veins running up and out from
+	// it, and the blade a little lighter along the middle and darker toward the edge
+	if (UV.x > 0.001) {
+		float across = abs(UV.x - 0.5) * 2.0; // 0 on the midrib .. 1 at the edge
+		float midrib = 1.0 - smoothstep(0.03, 0.12, across);
+		float run = fract(UV.y * 7.0 - across * 2.6);
+		float side_vein = (1.0 - smoothstep(0.0, 0.22, min(run, 1.0 - run)))
+				* smoothstep(0.06, 0.15, across) * (1.0 - smoothstep(0.65, 0.95, across));
+		float vein = max(midrib, side_vein * 0.85);
+		float shade = 1.04 - 0.22 * across * across - 0.1 * UV.y;
+		paint = mix(paint * shade, paint * 1.55 + vec3(0.02, 0.03, 0.0), vein * 0.9);
+	}
 	vec2 bump = vec2(0.0);
 	float bump_amount = 0.0;
 	if (realism > 0.001 && sway < 0.1) {

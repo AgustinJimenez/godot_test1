@@ -111,9 +111,29 @@ static func add_leaf(builder: MeshBuilder, outline: PackedVector2Array, base: Ve
 		corners.append(base + axis * (point.y * length) + right * (across * length)
 				+ normal * (curl * point.y * point.y * length))
 		colors.append(base_color.lerp(tip_color, point.y))
+	# Veins, drawn with the vertex colours (no extra triangles): the midrib and the point where the
+	# veins meet are light, and the points along the edge alternate light and dark, so bands fan
+	# out from the middle to the rim the way the veins of a leaf do.
+	for index in colors.size():
+		var on_midrib := outline[index].x == 0.0
+		if on_midrib:
+			colors[index] = colors[index].lightened(0.22)
+		elif index % 2 == 1:
+			colors[index] = colors[index].lightened(0.14)
+		else:
+			colors[index] = colors[index].darkened(0.16)
 	var centre := base + axis * (0.45 * length) + normal * (fold * length)
-	var centre_color := base_color.lerp(tip_color, 0.35).darkened(0.12)
+	var centre_color := base_color.lerp(tip_color, 0.35).lightened(0.2)
+	# where each corner is on the leaf, for the shader's veins: across 0..1 (0.5 on the midrib) and
+	# along 0..1
+	var widest := 0.001
+	for point in outline:
+		widest = maxf(widest, absf(point.x))
+	var uvs: Array[Vector2] = []
+	for point in outline:
+		uvs.append(Vector2(0.5 + 0.5 * point.x / widest, point.y))
+	var centre_uv := Vector2(0.5, 0.45)
 	for index in corners.size():
 		var next := (index + 1) % corners.size()
-		builder.add_tri(centre, corners[index], corners[next], centre_color, colors[index],
-				colors[next])
+		builder.add_tri_uv(centre, corners[index], corners[next], centre_color, colors[index],
+				colors[next], centre_uv, uvs[index], uvs[next])
