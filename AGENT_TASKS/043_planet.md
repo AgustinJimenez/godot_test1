@@ -9,6 +9,8 @@ it also compiles in the double build). Not play-tested by the user yet.
 Run: `godot --path . res://tests/manual/planet/planet_lab.tscn -- --radius=20000 --seed=1337`
 (`--dir=x,y,z --view-alt=N --view-pitch=N --shot=PATH --shot-frame=N` for pictures without a player).
 Earth size needs the double build (see below).
+`-- --walk-check` (with `--fixed-fps 60`, headless ok): the real player holds forward + sprint for 90 s
+on the streaming planet; expect `WALK_CHECK PASS` (434 m, 5 rebases, 100% on the floor).
 
 Next (by value): walk it and tune the river look (flat opaque water, steep mouths) and plant
 density; birds, butterflies and fireflies; weather and day/night from the planet's rotation; erosion simulation;

@@ -6,6 +6,8 @@ extends Node3D
 ##   -- --view-alt=N   no player: a camera N metres above the ground, looking at the horizon
 ##   -- --view-pitch=N / --view-yaw=N degrees (negative pitch looks down; with --view-alt)
 ##   -- --shot=PATH    (with a window) saves a picture after the tiles have loaded, then quits
+##   -- --walk-check  (use --fixed-fps 60) the real player holds forward and sprint for 90 s,
+##                    walking over the planet; prints one WALK_CHECK line
 ##   -- --planet-check (headless) stands the player on the planet, walks it in steps (turning the
 ##                     planet under them) and prints one PLANET_CHECK line.
 
@@ -14,6 +16,10 @@ const PLAYER_SCENE := preload("res://actors/player/player.tscn")
 var planet: PlanetWorld
 var player: Player
 var _checking := false
+var _walking := false
+var _walk_start := Vector3.ZERO
+var _walk_floor := 0
+var _walk_worst := 0.0
 var _frame := 0
 var _step := 0
 var _start_up := Vector3.ZERO
@@ -50,6 +56,8 @@ func _ready() -> void:
 			_shot_frame = arg.trim_prefix("--shot-frame=").to_int()
 		elif arg.begins_with("--shot="):
 			_shot = arg.trim_prefix("--shot=")
+		elif arg == "--walk-check":
+			_walking = true
 		elif arg == "--planet-check":
 			_checking = true
 	planet = PlanetWorld.new()
@@ -89,6 +97,9 @@ func _ready() -> void:
 
 func _physics_process(_delta: float) -> void:
 	_frame += 1
+	if _walking and player != null:
+		_walk_step()
+		return
 	if _shot != "" and _frame == _shot_frame:
 		var animals := 0
 		for animal in planet.fauna.get_children():
@@ -164,3 +175,26 @@ func _ground_y() -> float:
 			return (hit["position"] as Vector3).y
 		skipped.append(hit["rid"] as RID)
 	return player.global_position.y
+
+
+## Holds the player's forward and sprint keys and watches how the walk goes (real physics, the
+## real player: the planet turns under it every 80 m).
+func _walk_step() -> void:
+	if _frame == 60:
+		Input.action_press(&"move_forward")
+		Input.action_press(&"sprint")
+		_walk_start = planet.planet_position()
+	if _frame <= 60:
+		return
+	if player.is_on_floor():
+		_walk_floor += 1
+	var at := planet.planet_position().normalized()
+	var above := planet.altitude() - planet.noise.height(at.x, at.y, at.z)
+	_walk_worst = maxf(_walk_worst, absf(above))
+	if _frame >= 60 + 90 * 60:
+		var travelled := planet.planet_position().distance_to(_walk_start)
+		var verdict := "PASS" if travelled > 150.0 and _walk_worst < 4.0 else "FAIL"
+		print("WALK_CHECK %s travelled=%.0f m rebases=%d on_floor=%.0f%% worst_above_ground=%.2f m "
+				% [verdict, travelled, planet.rebases, 100.0 * float(_walk_floor) / float(_frame - 60),
+				_walk_worst] + "world_pos=%.0f" % player.global_position.length())
+		get_tree().quit()

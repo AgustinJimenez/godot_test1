@@ -21,6 +21,7 @@ var _semaphore := Semaphore.new()
 var _stop := false
 var _near := Vector3.ZERO # the point the tiles are chosen for (planet space)
 var _tiles_per_frame := 2
+var _inline: Array = [] # without a worker thread (headless): tiles built here, a few a frame
 
 
 func setup(planet_noise: PlanetNoise, planet_frame: PlanetFrame) -> void:
@@ -67,6 +68,8 @@ func update(at: Vector3) -> void:
 			_jobs.append(entry)
 			_mutex.unlock()
 			_semaphore.post()
+	else:
+		_inline = missing.slice(0, 12)
 	_drop_stale()
 
 
@@ -87,6 +90,14 @@ func build_all(at: Vector3, near_only := false) -> void:
 
 func _process(_delta: float) -> void:
 	var added := 0
+	while added < _tiles_per_frame and not _inline.is_empty():
+		var entry: Array = _inline.pop_front()
+		var key := PlanetTile.key_of(entry[0], entry[1], entry[2], entry[3])
+		if _wanted.has(key):
+			if tiles.has(key):
+				(tiles[key] as PlanetTile).queue_free()
+			_add(_make(entry))
+			added += 1
 	while added < _tiles_per_frame:
 		_mutex.lock()
 		var tile: PlanetTile = _done.pop_front() if not _done.is_empty() else null
