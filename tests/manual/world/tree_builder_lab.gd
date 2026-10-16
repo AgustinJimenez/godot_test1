@@ -72,7 +72,9 @@ var detailed := false
 var leafless := false
 var lod := 0
 var wind := 0
-var randomness := 0.3 ## how far "Generate random" strays from the preset: 0 none .. 1 anything
+var randomness := 0.3 ## how far "Generate random" strays from its archetypes: 0 none .. 1 anything
+var exotic := 0.2 ## how often "Generate random" pushes a trait somewhere unusual
+var _recipe := "" ## what the current tree was made of
 var _mesh: MeshInstance3D
 var _camera: Camera3D
 var _panel_info: Label
@@ -107,6 +109,25 @@ func _ready() -> void:
 	_build_stage()
 	_build_panel()
 	_preset(false)
+
+
+func _slider_row(parent: Control, title: String, start: float, apply: Callable) -> void:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	var label := Label.new()
+	label.text = "%s %.2f" % [title, start]
+	label.custom_minimum_size = Vector2(130, 0)
+	row.add_child(label)
+	var slider := HSlider.new()
+	slider.max_value = 1.0
+	slider.step = 0.01
+	slider.value = start
+	slider.custom_minimum_size = Vector2(240, 0)
+	slider.focus_mode = Control.FOCUS_NONE
+	slider.value_changed.connect(func(value: float) -> void:
+		apply.call(value)
+		label.text = "%s %.2f" % [title, value])
+	row.add_child(slider)
 
 
 func _build_stage() -> void:
@@ -158,29 +179,11 @@ func _build_panel() -> void:
 		_regrow())
 	_button(buttons, "Leafy preset", func() -> void: _preset(false))
 	_button(buttons, "Conifer preset", func() -> void: _preset(true))
-	_button(buttons, "Umbrella", func() -> void: _archetype("umbrella"))
-	_button(buttons, "Giant", func() -> void: _archetype("giant"))
-	_button(buttons, "Spreading oak", func() -> void: _archetype("oak"))
-	_button(buttons, "Dragon tree", func() -> void: _archetype("dragon"))
-	_button(buttons, "Ancient oak", func() -> void: _archetype("ancient"))
+	for kind in ["umbrella", "giant", "oak", "dragon", "ancient", "willow", "cypress"]:
+		_button(buttons, kind.capitalize(), func() -> void: _archetype(kind))
 	_button(buttons, "Copy properties", func() -> void: _copy_properties())
-	var spread := HBoxContainer.new()
-	outer.add_child(spread)
-	var spread_label := Label.new()
-	spread_label.text = "randomness 0.30"
-	spread_label.custom_minimum_size = Vector2(130, 0)
-	spread.add_child(spread_label)
-	var spread_slider := HSlider.new()
-	spread_slider.min_value = 0.0
-	spread_slider.max_value = 1.0
-	spread_slider.step = 0.01
-	spread_slider.value = randomness
-	spread_slider.custom_minimum_size = Vector2(240, 0)
-	spread_slider.focus_mode = Control.FOCUS_NONE
-	spread_slider.value_changed.connect(func(value: float) -> void:
-		randomness = value
-		spread_label.text = "randomness %.2f" % value)
-	spread.add_child(spread_slider)
+	_slider_row(outer, "randomness", randomness, func(value: float) -> void: randomness = value)
+	_slider_row(outer, "exoticness", exotic, func(value: float) -> void: exotic = value)
 	var checks := HFlowContainer.new()
 	outer.add_child(checks)
 	_check(checks, "realistic", detailed, func(on: bool) -> void:
@@ -325,125 +328,18 @@ func _preset(conifer: bool) -> void:
 	_regrow()
 
 
-## A famous kind of tree, as numbers: starts from the leafy tree or conifer preset and sets what
-## makes that tree what it is.
-##  umbrella: a baobab or acacia, a thick short trunk and a wide flat crown on long near-level limbs
-##  giant: a sequoia, an enormous straight trunk with a flared foot, very tall, the crown high up
-##  oak: an old spreading oak, a short trunk and huge crooked limbs reaching far to the sides
+## One of the named kinds of tree in TreeArchetypes (umbrella, giant, oak, dragon, ancient...).
 func _archetype(kind: String) -> void:
-	match kind:
-		"umbrella":
-			genome = TreeGenome.from_species(_species_leafy)
-			genome.height = 14.0
-			genome.girth = 1.45
-			genome.taper = 0.8
-			genome.trunk_part = 0.5
-			genome.root_flare = 0.2
-			genome.crown = 4.0
-			genome.aspect = 0.45
-			genome.limbs = 5
-			genome.limb_angle = 82.0
-			genome.limb_length = 1.1
-			genome.limb_thickness = 0.8
-			genome.curve = [0.5, 0.9, 1.2]
-			genome.lift = [0.05, 0.04, 0.0]
-			genome.leaf_size = 0.16
-		"giant":
-			genome = TreeGenome.from_species(_species_conifer)
-			genome.height = 42.0
-			genome.girth = 2.0
-			genome.root_flare = 0.7
-			genome.column = 0.22
-			genome.trunk_part = 0.5
-			genome.nodes_from = 0.5
-			genome.crown = 5.0
-			genome.nodes_spacing = 1.8
-			genome.limbs = 5
-			genome.droop = 0.5
-		"dragon":
-			# a dragon blood tree: a thick trunk, then limbs that fork again and again into a dense
-			# umbrella of bare branches, with the leaves only in a tuft layer at the very ends
-			genome = TreeGenome.from_species(_species_conifer)
-			genome.leader = false
-			genome.whorled = false
-			genome.profile = TreeGenome.Profile.DOME
-			genome.foliage = TreeGenome.Foliage.NEEDLE
-			genome.tips_only = true
-			genome.carry_on = true
-			genome.children_planar = false
-			genome.frosted = false
-			genome.depth = 3
-			genome.rings = [5, 4, 3]
-			genome.sides = [9, 6, 4]
-			genome.sides_real = [11, 8, 5]
-			genome.curve = [0.4, 0.5, 0.6]
-			genome.wander = [0.05, 0.05, 0.05]
-			genome.lift = [0.1, 0.1, 0.0]
-			genome.sag = [0.0, 0.0, 0.0]
-			genome.droop_sag = [0.0, 0.0, 0.0]
-			genome.sway = [0.16, 0.2, 0.22]
-			genome.tip_radius = [0.4, 0.3, 0.1]
-			genome.children = [7, 7, 0]
-			genome.child_length = [0.5, 0.45, 0.0]
-			genome.child_forward = 0.8
-			genome.child_side = 0.55
-			genome.child_up = 0.25
-			genome.child_radius = 0.7
-			genome.height = 9.0
-			genome.girth = 1.3
-			genome.taper = 0.75
-			genome.trunk_part = 0.55
-			genome.root_flare = 0.1
-			genome.column = -1.0
-			genome.trunk_sides = 14
-			genome.crown = 4.6
-			genome.aspect = 0.5
-			genome.limbs = 8
-			genome.limb_angle = 66.0
-			genome.limb_length = 1.2
-			genome.limb_thickness = 0.8
-			genome.needle_size = 1.0
-			genome.bark = Color(0.55, 0.45, 0.38)
-			genome.leaf = Color(0.38, 0.45, 0.16)
-			genome.leaf_tip = Color(0.55, 0.6, 0.25)
-		"ancient":
-			# an ancient live oak: the spreading oak, larger, its limbs longer and heavier, with the
-			# leaves in sparse clumps
-			genome = TreeGenome.from_species(_species_leafy)
-			genome.height = 14.0
-			genome.girth = 2.0
-			genome.taper = 0.78
-			genome.trunk_part = 0.3
-			genome.root_flare = 0.55
-			genome.crown = 4.4
-			genome.aspect = 0.5
-			genome.limbs = 7
-			genome.limb_angle = 78.0
-			genome.limb_length = 1.45
-			genome.limb_thickness = 0.9
-			genome.curve = [1.2, 1.2, 1.5]
-			genome.lift = [0.14, 0.05, 0.0]
-			genome.sag = [0.0, 0.03, 0.08]
-			genome.leaf_density = 0.45
-			genome.leaf_size = 0.15
-			genome.bark = Color(0.3, 0.26, 0.21)
-		"oak":
-			genome = TreeGenome.from_species(_species_leafy)
-			genome.height = 12.0
-			genome.girth = 1.5
-			genome.taper = 0.75
-			genome.trunk_part = 0.35
-			genome.root_flare = 0.4
-			genome.crown = 3.6
-			genome.aspect = 0.5
-			genome.limbs = 7
-			genome.limb_angle = 78.0
-			genome.limb_length = 1.2
-			genome.limb_thickness = 0.85
-			genome.curve = [1.2, 1.2, 1.5]
-			genome.lift = [0.14, 0.05, 0.0]
-			genome.sag = [0.0, 0.03, 0.08]
-			genome.leaf_size = 0.14
+	genome = TreeArchetypes.make(kind, _species_leafy, _species_conifer)
+	_recipe = kind
+	dice = _random.randi()
+	_show_genome()
+	_regrow()
+## A new tree drawn from the archetypes (see TreeArchetypes.draw).
+func _generate_random() -> void:
+	var info: Array = []
+	genome = TreeArchetypes.draw(_random, _species_leafy, _species_conifer, randomness, exotic, info)
+	_recipe = info[0]
 	dice = _random.randi()
 	_show_genome()
 	_regrow()
@@ -464,36 +360,6 @@ func _show_genome() -> void:
 	_rebuilding = false
 
 
-## A new tree: start from a leafy tree or a conifer, then draw every trait at random within its
-## slider.
-func _generate_random() -> void:
-	_preset(_random.randf() < 0.4)
-	for index in ROWS.size():
-		var row: Dictionary = ROWS[index]
-		if row.has("group"):
-			continue
-		var low := float(row["min"])
-		var high := float(row["max"])
-		var drawn := _random.randf_range(low, high)
-		var value := snappedf(lerpf(_read(row), drawn, randomness), float(row["step"]))
-		_put(row, clampf(value, low, high))
-	if _random.randf() < 0.3 + randomness * 0.7:
-		genome.leaf_shape = _random.randi() % 6 as PlantSpecies.LeafShape
-		genome.leaf_edge = _random.randi() % 3 as PlantSpecies.LeafEdge
-		genome.leaf_pattern = _random.randi() % 3 as PlantSpecies.LeafPattern
-	if genome.leaf_shape == PlantSpecies.LeafShape.LOBED and genome.leaf_lobes == 0:
-		genome.leaf_lobes = 2
-	if _random.randf() < randomness: # a mixed tree: the conifer's trunk with leaves, or the reverse
-		genome.leader = not genome.leader
-		genome.whorled = genome.leader
-	genome.leaf = Color.from_hsv(_random.randf_range(0.2, 0.42), _random.randf_range(0.45, 0.8),
-			_random.randf_range(0.3, 0.6))
-	genome.leaf_tip = genome.leaf.lightened(_random.randf_range(0.1, 0.25))
-	genome.bark = Color.from_hsv(_random.randf_range(0.04, 0.1), _random.randf_range(0.2, 0.5),
-			_random.randf_range(0.2, 0.5))
-	dice = _random.randi()
-	_show_genome()
-	_regrow()
 
 
 ## Every trait of the tree as text, onto the clipboard (to paste into a note or a message).
@@ -543,9 +409,9 @@ func _regrow() -> void:
 	_mesh.mesh = builder.commit()
 	_target = Vector3(0.0, genome.height * 0.45, 0.0)
 	_place_camera()
-	_panel_info.text = "%d triangles%s   (%s, %s)" % [builder.triangle_count(),
+	_panel_info.text = "%d triangles%s   (%s, %s)   %s" % [builder.triangle_count(),
 			"  CAPPED: too many branches and leaves" if capped else "",
-			"realistic" if detailed else "low-poly", "distance version" if lod == 1 else "full"]
+			"realistic" if detailed else "low-poly", "distance version" if lod == 1 else "full", _recipe]
 
 
 func _place_camera() -> void:

@@ -179,3 +179,13 @@ make a canopy) and `leaf_density` (some twigs bare, the others fewer leaves). La
   with limbs at 86 deg) were a coiled / spiky heap on the ground: do not raise the limb curve above ~1.2.
 Not done: sagging limbs that reach and rest on the ground, moss on the limbs, bark colour variety, the
 fine branch lattice (would need a 4th branching level cheap enough: ribbons or fewer sides).
+
+## Archetype-based random draw
+
+`systems/world_gen/flora/tree_archetypes.gd` (`TreeArchetypes`) holds the named kinds (leafy, conifer,
+umbrella, giant, oak, ancient, dragon, willow, cypress) as genomes, plus `draw(rng, leafy, conifer,
+randomness, exotic, info)`: pick one or two kinds, blend traits by a random weight, nudge every numeric
+trait inside `RANGES`, and with probability `exotic` push one trait somewhere unusual; `_settle`
+makes the traits agree. The lab's "Generate random" uses it (new Exoticness slider; the label shows the
+recipe, e.g. "cypress 77% + giant 23%"). Check: 300 draws, worst 11992 triangles, no NaN. Stage 2 will
+draw the world's species from the same table.
