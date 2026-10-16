@@ -119,6 +119,7 @@ var _distance := 14.0
 var _target := Vector3(0.0, 4.0, 0.0)
 var _rebuilding := false
 var _random := RandomNumberGenerator.new()
+var _pool := 0 ## what "Generate random" draws: 0 anything, 1 trees only, 2 plants only
 
 
 func _ready() -> void:
@@ -222,14 +223,28 @@ func _build_panel() -> void:
 	var buttons := HFlowContainer.new()
 	outer.add_child(buttons)
 	_button(buttons, "Generate random", func() -> void: _generate_random())
+	var pool := OptionButton.new()
+	for label in ["any kind", "trees only", "plants only"]:
+		pool.add_item(label)
+	pool.focus_mode = Control.FOCUS_NONE
+	pool.item_selected.connect(func(index: int) -> void: _pool = index)
+	buttons.add_child(pool)
 	_button(buttons, "New dice", func() -> void:
 		dice = _random.randi()
 		_regrow())
 	_button(buttons, "Leafy preset", func() -> void: _preset(false))
 	_button(buttons, "Conifer preset", func() -> void: _preset(true))
-	for kind in TreeArchetypes.NAMES.slice(2):
-		_button(buttons, kind.capitalize(), func() -> void: _archetype(kind))
 	_button(buttons, "Copy properties", func() -> void: _copy_properties())
+	var kinds_toggle := CheckButton.new()
+	kinds_toggle.text = "Kinds"
+	kinds_toggle.focus_mode = Control.FOCUS_NONE
+	outer.add_child(kinds_toggle)
+	var kinds := HFlowContainer.new()
+	kinds.visible = false
+	outer.add_child(kinds)
+	kinds_toggle.toggled.connect(func(on: bool) -> void: kinds.visible = on)
+	for kind in TreeArchetypes.NAMES.slice(2):
+		_button(kinds, kind.capitalize(), func() -> void: _archetype(kind))
 	_slider_row(outer, "randomness", randomness, func(value: float) -> void: randomness = value)
 	_slider_row(outer, "exoticness", exotic, func(value: float) -> void: exotic = value)
 	var checks := HFlowContainer.new()
@@ -383,10 +398,17 @@ func _archetype(kind: String) -> void:
 	dice = _random.randi()
 	_show_genome()
 	_regrow()
+
+
 ## A new tree drawn from the archetypes (see TreeArchetypes.draw).
 func _generate_random() -> void:
 	var info: Array = []
-	genome = TreeArchetypes.draw(_random, _species_leafy, _species_conifer, randomness, exotic, info)
+	var pool: Array[String] = []
+	for kind in TreeArchetypes.NAMES:
+		if _pool == 0 or (kind in TreeArchetypes.PLANTS) == (_pool == 2):
+			pool.append(kind)
+	genome = TreeArchetypes.draw(_random, _species_leafy, _species_conifer, randomness, exotic,
+			info, pool)
 	_recipe = info[0]
 	dice = _random.randi()
 	_show_genome()

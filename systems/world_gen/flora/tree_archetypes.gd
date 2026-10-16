@@ -13,6 +13,10 @@ const NAMES: Array[String] = ["leafy", "conifer", "umbrella", "giant", "oak", "a
 		"cherry", "blossom",
 		"raintree", "buttress"]
 
+## The low plants (under a metre or two); everything else in NAMES is a tree or a bush.
+const PLANTS: Array[String] = ["shrub", "groundcover", "fern", "grass", "lawn", "meadow", "reed",
+		"pampas", "tussock", "wildflower"]
+
 ## Plausible range of each numeric trait: [min, max]. A draw never leaves it.
 const RANGES := {
 	"height": [0.1, 45.0], "girth": [0.01, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
@@ -480,14 +484,15 @@ static func _leafy(leafy: PlantSpecies) -> TreeGenome:
 ## A new random tree from the kinds above. `randomness` 0..1: how far traits stray from their kind
 ## (and how often two kinds are mixed); `exotic` 0..1: how often one trait is pushed somewhere
 ## unusual (tufts at the tips, a leader trunk with leaves, bare twigs). Returns the genome and, in
-## `info`, what it was made of.
+## `info`, what it was made of. `pool` limits the kinds drawn from (default: all of NAMES).
 static func draw(rng: RandomNumberGenerator, leafy: PlantSpecies, conifer: PlantSpecies,
-		randomness: float, exotic: float, info: Array) -> TreeGenome:
-	var first := NAMES[rng.randi() % NAMES.size()]
+		randomness: float, exotic: float, info: Array, pool: Array[String] = []) -> TreeGenome:
+	var kinds: Array[String] = pool if not pool.is_empty() else NAMES
+	var first := kinds[rng.randi() % kinds.size()]
 	var g := make(first, leafy, conifer)
 	var recipe := first
 	if rng.randf() < 0.25 + 0.6 * randomness:
-		var second := NAMES[rng.randi() % NAMES.size()]
+		var second := kinds[rng.randi() % kinds.size()]
 		if second != first:
 			var weight := rng.randf_range(0.2, 0.8)
 			g = blend(g, make(second, leafy, conifer), weight, rng)
