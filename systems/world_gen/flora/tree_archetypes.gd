@@ -51,7 +51,7 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.column = 0.3
 			g.trunk_part = 0.05
 			g.nodes_from = 0.08
-			g.crown = 1.5
+			g.crown = 1.9
 			g.nodes_spacing = 0.6
 			g.limbs = 4
 			g.droop = 0.0
@@ -291,6 +291,8 @@ static func _settle(g: TreeGenome) -> void:
 			g.nodes_spacing = maxf(g.nodes_spacing, 1.0) # single leaves are costly: few whorls
 	if g.leaf_shape == PlantSpecies.LeafShape.LOBED and g.leaf_lobes == 0:
 		g.leaf_lobes = 2
+	# branches never shorter than a share of the height, or they look stitched to the trunk
+	g.crown = maxf(g.crown, g.height * (0.12 if g.leader else 0.1))
 	g.limbs = clampi(g.limbs, 3, 10)
 	g.depth = 3 if g.depth > 3 else maxi(g.depth, 2)
 	g.nodes_from = clampf(g.nodes_from, 0.02, 0.9)
