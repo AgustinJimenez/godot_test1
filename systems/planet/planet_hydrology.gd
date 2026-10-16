@@ -9,9 +9,9 @@ extends RefCounted
 ## lakes. Built once per planet from PlanetNoise.base_height, then only read.
 
 const RIVER_SHARE := 0.045 ## the share of land cells that carry a river
-const LAKE_DEPTH := 8.0 ## m a filled hollow must be deeper than to count as a lake
 
 var cells := 96 ## cells along a cube face edge
+var lake_depth := 8.0 ## m a filled hollow must be deeper than to count as a lake
 var _count := 0 ## cells on all faces
 var _radius := 1.0
 var _dirs := PackedVector3Array() ## the middle of every cell, as a unit direction
@@ -24,6 +24,7 @@ var _flow := PackedFloat32Array() ## the water that passes through the cell
 var _is_river := PackedByteArray()
 var _erosion_near := PackedByteArray() ## 1 where a cell or a neighbour is eroded
 var _near := PackedByteArray() ## 1 on a river cell and the cells next to one
+var _lake_cell := PackedByteArray() ## 1 on a cell whose hollow is filled into a lake
 var _width := PackedFloat32Array() ## river width in metres (0: no river)
 var _noise: PlanetNoise
 var cell_metres := 100.0
@@ -36,6 +37,7 @@ var lake_cells := 0
 func build(noise: PlanetNoise, cells_per_edge: int) -> void:
 	_noise = noise
 	cells = cells_per_edge
+	lake_depth = maxf(noise.relief * noise.settings.lake_depth_share, 6.0)
 	_count = 6 * cells * cells
 	_radius = noise.settings.radius
 	cell_metres = _radius * PI * 0.5 / float(cells)
@@ -191,6 +193,7 @@ func _rivers(noise: PlanetNoise) -> void:
 	var threshold: float = flows[clampi(int(float(flows.size()) * (1.0 - RIVER_SHARE)), 0,
 			flows.size() - 1)]
 	_is_river.resize(_count)
+	_lake_cell.resize(_count)
 	_near.resize(_count)
 	_width.resize(_count)
 	var biggest: float = flows[flows.size() - 1]
@@ -203,8 +206,9 @@ func _rivers(noise: PlanetNoise) -> void:
 			var most := sqrt(biggest / maxf(threshold, 0.0001))
 			_width[id] = clampf(6.0 + 14.0 * share * minf(cell_metres / 400.0, 3.0), 6.0,
 					minf(cell_metres * 0.35, 6.0 + 14.0 * most * minf(cell_metres / 400.0, 3.0)))
-		if _filled[id] - _ground[id] > LAKE_DEPTH and _ground[id] >= 0.0:
+		if _filled[id] - _ground[id] > lake_depth and _ground[id] >= 0.0:
 			lake_cells += 1
+			_lake_cell[id] = 1
 	_smooth_rivers(noise)
 	for key: int in _pieces:
 		_near[key] = 1
@@ -397,22 +401,27 @@ func river_segments(ids: PackedInt32Array) -> Array[Array]:
 	return found
 
 
-## The lakes among these cells: each is [the four corner dirs of the cell, the water level].
-func lake_quads(ids: PackedInt32Array) -> Array[Array]:
-	var found: Array[Array] = []
+## The level of the lake water at `dir` if the ground there (`ground`) is below the lake that fills
+## this cell or a neighbour, else -INF. (A tile uses it at its own vertices, so a lake's shore
+## follows the real ground and not the grid.)
+func lake_level_at(dir: Vector3, ground: float) -> float:
+	if ground < 0.5:
+		return -INF # the sea
+	var here := cell_of(dir)
+	var best := -INF
+	for n in 9:
+		var id := here if n == 8 else _neighbours[here * 8 + n]
+		if _lake_cell[id] == 1 and ground < _filled[id]:
+			best = maxf(best, _filled[id])
+	return best
+
+
+## True if any of these cells holds a lake.
+func has_lake(ids: PackedInt32Array) -> bool:
 	for id in ids:
-		if _ground[id] >= 0.0 and _filled[id] - _ground[id] > LAKE_DEPTH:
-			var face := id / (cells * cells)
-			var j := (id / cells) % cells
-			var i := id % cells
-			var s0 := -1.0 + 2.0 * float(i) / float(cells)
-			var s1 := -1.0 + 2.0 * float(i + 1) / float(cells)
-			var t0 := -1.0 + 2.0 * float(j) / float(cells)
-			var t1 := -1.0 + 2.0 * float(j + 1) / float(cells)
-			found.append([PlanetTile.direction(face, s0, t0), PlanetTile.direction(face, s1, t0),
-					PlanetTile.direction(face, s1, t1), PlanetTile.direction(face, s0, t1),
-					_filled[id]])
-	return found
+		if _lake_cell[id] == 1:
+			return true
+	return false
 
 
 ## The level of the river or lake water at `dir` if there is some there and `ground` is below it
@@ -420,8 +429,7 @@ func lake_quads(ids: PackedInt32Array) -> Array[Array]:
 func water_at(dir: Vector3, ground: float) -> float:
 	var here := cell_of(dir)
 	var level := -INF
-	if _filled[here] - _ground[here] > LAKE_DEPTH and ground < _filled[here]:
-		level = _filled[here]
+	level = lake_level_at(dir, ground)
 	if _near[here] == 0:
 		return level
 	for n in 9:

@@ -10,6 +10,7 @@ extends Resource
 @export var species_count := 36 ## how many plant species the seed makes (SpeciesGenerator)
 @export var plant_density := 1.0
 @export var rock_density := 1.0
+@export var lake_depth_share := 0.08 ## a hollow is a lake when deeper than this share of the relief
 @export var hydrology_cells := 96 ## cells along a cube face for rivers and lakes (0: none)
 @export var plates := 14 ## tectonic plates (Earth has about 15 big ones)
 @export var tile_cells := 48 ## quads along one tile edge, at every level of detail

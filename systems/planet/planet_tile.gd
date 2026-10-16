@@ -149,7 +149,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool,
 	add_child(mesh_instance)
 	if min_height < _settings.sea_level + 0.5:
 		_add_sea(dirs, side, cells)
-	_add_running_water(s0, s1, t0, t1)
+	_add_running_water(s0, s1, t0, t1, dirs, heights)
 	if plants != PlanetScatter.Detail.NONE:
 		PlanetScatter.new().populate(self, noise, positions, dirs, heights, cells, size, plants,
 				collide)
@@ -257,15 +257,16 @@ func _add_sea(dirs: Array[Vector3], side: int, cells: int) -> void:
 
 ## The rivers and lakes that run over this tile: ribbons and cell squares of water at the water's
 ## own level, cut to the tile's edges so neighbouring tiles never draw the same water twice.
-func _add_running_water(s0: float, s1: float, t0: float, t1: float) -> void:
+func _add_running_water(s0: float, s1: float, t0: float, t1: float, dirs: Array[Vector3],
+		heights: PackedFloat32Array) -> void:
 	var water := _noise.hydrology
 	if water == null or level < _settings.max_level() - 1:
 		return
 	var rings := mini(ceili(size / water.cell_metres) + 2, 6)
 	var ids := water.cells_around(water.cell_of(centre), rings)
 	var rivers := water.river_segments(ids)
-	var lakes := water.lake_quads(ids)
-	if rivers.is_empty() and lakes.is_empty():
+	var lakes := water.has_lake(ids)
+	if rivers.is_empty() and not lakes:
 		return
 	var radius := _settings.radius
 	var edge: Array[Vector3] = []
@@ -286,14 +287,8 @@ func _add_running_water(s0: float, s1: float, t0: float, t1: float) -> void:
 				Vector2(1.0, along_b), Vector2(1.0, along_a)]
 		_water_polygon(river_builder, ribbon, uvs, edge, Color(0.25, 1.0, 1.0))
 	_add_water_mesh(river_builder, river_material())
-	var lake_builder := MeshBuilder.new()
-	for lake: Array in lakes:
-		var square: Array[Vector3] = []
-		for corner in 4:
-			square.append(_to_local(lake[corner] as Vector3, radius + float(lake[4])))
-		var flat: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
-		_water_polygon(lake_builder, square, flat, edge, Color(0.4, 1.0, 1.0))
-	_add_water_mesh(lake_builder, water_material())
+	if lakes:
+		_add_lakes(dirs, heights)
 
 
 func _add_water_mesh(builder: MeshBuilder, material: ShaderMaterial) -> void:
@@ -304,6 +299,46 @@ func _add_water_mesh(builder: MeshBuilder, material: ShaderMaterial) -> void:
 	mesh_instance.material_override = material
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mesh_instance)
+
+
+## The lakes on this tile: a quad of water for every square of the tile's own grid whose four
+## corners are under a lake's level, so the shore follows the ground (down to the grid's size).
+func _add_lakes(dirs: Array[Vector3], heights: PackedFloat32Array) -> void:
+	var water := _noise.hydrology
+	var cells := _settings.tile_cells
+	var side := cells + 3
+	var levels := PackedFloat32Array()
+	levels.resize(side * side)
+	var any := false
+	for index in side * side:
+		var level := water.lake_level_at(dirs[index], heights[index])
+		levels[index] = level if level > -INF else -1000.0
+		any = any or level > -INF
+	if not any:
+		return
+	var builder := MeshBuilder.new()
+	var radius := _settings.radius
+	var up: Array[Vector3] = [Vector3.UP, Vector3.UP, Vector3.UP]
+	var roll := Color(0.4, 1.0, 1.0)
+	var white: Array[Color] = [roll, roll, roll]
+	for row in range(1, cells + 1):
+		for column in range(1, cells + 1):
+			var i00 := row * side + column
+			var corners := [i00, i00 + 1, i00 + side, i00 + side + 1]
+			var level := -1000.0
+			var all_wet := true
+			for corner: int in corners:
+				level = maxf(level, levels[corner])
+				all_wet = all_wet and levels[corner] > -999.0
+			if not all_wet:
+				continue
+			var p00 := _to_local(dirs[i00], radius + level)
+			var p10 := _to_local(dirs[i00 + 1], radius + level)
+			var p01 := _to_local(dirs[i00 + side], radius + level)
+			var p11 := _to_local(dirs[i00 + side + 1], radius + level)
+			builder.add_tri_smooth(p00, p01, p10, roll, up, white)
+			builder.add_tri_smooth(p10, p01, p11, roll, up, white)
+	_add_water_mesh(builder, water_material())
 
 
 ## Cuts `polygon` (convex, seen from above, with a texture coordinate per corner) to the tile's quad

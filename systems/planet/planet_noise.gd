@@ -18,6 +18,8 @@ var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep of
 var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
 
 var _rolling := FastNoiseLite.new()
+var _ranges := FastNoiseLite.new()
+var _range_mask := FastNoiseLite.new()
 var _hills := FastNoiseLite.new()
 var _gullies := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
@@ -32,6 +34,9 @@ func _init(planet_settings: PlanetSettings) -> void:
 	tectonics = PlanetTectonics.new(settings.world_seed, settings.plates)
 	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
 	_setup(_rolling, settings.world_seed + 2, 0.0004, 3)
+	_setup(_ranges, settings.world_seed + 4, 1.0 / (settings.radius * 0.18), 5)
+	_ranges.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	_setup(_range_mask, settings.world_seed + 5, 1.0 / (settings.radius * 0.5), 2)
 	_setup(_hills, settings.world_seed + 1, 0.0022, 4)
 	_setup(_gullies, settings.world_seed + 3, 0.0018, 4)
 	_gullies.fractal_type = FastNoiseLite.FRACTAL_RIDGED
@@ -79,7 +84,7 @@ func base_height(x: float, y: float, z: float) -> float:
 	var units := _units(x, y, z)
 	var p := Vector3(x, y, z) * settings.radius
 	var land := smoothstep(-0.02, 0.05, units)
-	var hills := _hills.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.01, 12.0, 45.0)
+	var hills := _hills.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.04, 14.0, 90.0)
 	var ground := _macro(units, p) + hills * land
 	# the high ground is cut by gullies and spurs, as if water had run down it for ages
 	var high := smoothstep(0.12, 0.45, units)
@@ -100,10 +105,14 @@ func macro_height(x: float, y: float, z: float) -> float:
 
 func _macro(units: float, p: Vector3) -> float:
 	var land := smoothstep(-0.02, 0.05, units)
-	var rolling := _rolling.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.04, 25.0, 140.0)
+	var rolling := _rolling.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.12, 25.0, 220.0)
+	# ranges of mountains inside the continents, away from the plate edges (old folded belts)
+	var belt := smoothstep(0.0, 0.5, _range_mask.get_noise_3d(p.x, p.y, p.z) + 0.15)
+	var ridges := (_ranges.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.5) * relief * 0.22
+	ridges *= belt * smoothstep(0.03, 0.14, units)
 	# beaches and shallows: the ground eases toward the sea instead of dropping into it
 	var shore := lerpf(0.3, 1.0, smoothstep(0.0, 0.06, absf(units)))
-	return units * shore * relief + rolling * land
+	return units * shore * relief + rolling * land + ridges
 
 
 func _units(x: float, y: float, z: float) -> float:
@@ -183,7 +192,7 @@ func facet_color(x: float, y: float, z: float, ground: float, steep: float) -> C
 	# the shore: wet sand, a beach, then marsh where the low land is wet
 	var marsh := (1.0 - smoothstep(1.5, 6.0, ground)) * smoothstep(0.55, 0.8, rain / 1.2)
 	color = color.lerp(TerrainColors.MARSH.lerp(TerrainColors.WET_SAND, speckle * 0.5), marsh * 0.8)
-	var beach := 1.0 - smoothstep(0.8, 2.6, ground)
+	var beach := 1.0 - smoothstep(0.6, 1.9, ground)
 	var sand_beach := TerrainColors.WET_SAND.lerp(TerrainColors.SAND, smoothstep(0.0, 1.4, ground))
 	return color.lerp(sand_beach, beach)
 

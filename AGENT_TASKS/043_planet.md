@@ -78,6 +78,37 @@ Lab: `tests/manual/planet/planet_lab.tscn` (`-- --radius=N --seed=N`); check:
   coordinates stay small however far the player walks.
 - `PlanetWorld`: ties them together with the existing `WorldAtmosphere`.
 
+## Surface polish (2026-10-16, second pass) and the work it was inspired by
+
+Ideas taken from existing work (read only the abstracts / pages, not the full papers):
+- Cordonnier et al. 2016, "Large Scale Terrain Generation from Tectonic Uplift and Fluvial Erosion"
+  (stream power law over a drainage graph) -> `PlanetHydrology._erode`: slope allowed = f(water
+  through the cell), so big rivers sit in wide low valleys and trickles barely cut. Tzathas et al.
+  2024 (analytical stream power) is the next step if it must be faster or finer.
+- Red Blob Games mapgen4/mapgen2: rain from the sea on the wind, rivers from drainage, biomes from
+  moisture and temperature; cheap and good looking -> `PlanetClimate`, `PlanetHydrology`.
+- Kerbal Space Program's PQS and the Parallax terrain shader: a cube-sphere quadtree with height and
+  colour "mods", and slope / altitude based blending of low, mid, high and steep ground (rock on
+  steep faces, triplanar for cliffs) -> `PlanetNoise.facet_color` blends every ingredient with
+  smooth weights. Triplanar detail textures on a sphere are a later step (needs a ground shader
+  change; the planet reuses the flat world's low-poly ground shader).
+- Inigo Quilez's derivative-damped eroded fbm (already `ErodedNoise` for the flat world): the
+  planet uses ridged gully noise on the high ground instead (cheaper, no derivatives).
+
+Done: beaches and shallows (`_macro` shore profile), rock ledges (`base_height` layers), mountain
+belts inside the continents (`_ranges`), rolling hills scaled with the relief, stream power
+erosion field, blended biome colours (no hard edges, rock on steep or high ground, snow by
+temperature), river shader (`shaders/world/river.gdshader`: UVs along/across the ribbon, flowing
+ripples, bank foam, clear shallows), lakes built from each tile's own grid (shore follows the ground),
+fewer lakes (`lake_depth_share`, 8% of the relief, about 2% of the land), clear spawn.
+Relief is now `clamp(R * 0.0035, 300, 9000)` m.
+
+Still rough / ideas: ground texture detail (triplanar in a planet ground shader), tile LOD edge
+colour mismatch and popping, far trees (only the two finest tile levels have plants), sea depth
+colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
+(mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile
+build ~80 ms, startup).
+
 ## Limits (measured with `-- --planet-check --radius=N`, 2.4 km walked in 60 m steps)
 
 | radius | single precision (official 4.7.2) | double precision build |

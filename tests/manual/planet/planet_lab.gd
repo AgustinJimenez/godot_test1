@@ -6,6 +6,7 @@ extends Node3D
 ##   -- --view-alt=N   no player: a camera N metres above the ground, looking at the horizon
 ##   -- --view-pitch=N / --view-yaw=N degrees (negative pitch looks down; with --view-alt)
 ##   -- --shot=PATH    (with a window) saves a picture after the tiles have loaded, then quits
+##   -- --bare       no plants (to look at the ground)
 ##   -- --walk-check  (use --fixed-fps 60) the real player holds forward and sprint for 90 s,
 ##                    walking over the planet; prints one WALK_CHECK line
 ##   -- --planet-check (headless) stands the player on the planet, walks it in steps (turning the
@@ -58,6 +59,8 @@ func _ready() -> void:
 			_shot_frame = arg.trim_prefix("--shot-frame=").to_int()
 		elif arg.begins_with("--shot="):
 			_shot = arg.trim_prefix("--shot=")
+		elif arg == "--bare":
+			settings.plant_density = 0.0
 		elif arg == "--walk-check":
 			_walking = true
 		elif arg == "--planet-check":
