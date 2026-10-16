@@ -160,3 +160,7 @@ under ground), Giant (42 m, trunk r 2, flare 0.7, column top 0.22, first whorl a
 (12 m, trunk r 1.5, trunk part 0.35, limbs at 78 deg, crooked). Found by measuring the vertices headless: a
 first umbrella was 26 m wide and went 3.5 m under ground (limbs 1.3 x too long, sag), a first oak
 went 4.4 m under ground. Not done: bark texture and moss on the old oak, a lab slider for the flare shape.
+
+Giant's needles were too small for its 2 m trunk (user): needle sprays now scale with the trunk radius
+above 0.4 m (`stout = (girth / 0.4)^0.75`, 1 for every existing species), so the giant's sprays are about 2.9 x
+bigger and its crown reads as a crown. Looked at in the lab (low-poly).

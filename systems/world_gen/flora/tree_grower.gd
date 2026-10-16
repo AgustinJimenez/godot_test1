@@ -77,7 +77,10 @@ func _grow() -> void:
 	var leaf_basis := 2.0 * pow(maxf(_g.crown, 0.8) / 2.0, 0.55)
 	leaf_basis *= pow(maxf(_g.crown / 3.5, 1.0), 0.6) # a wide crown has clumps of leaves
 	_leaf_length = leaf_basis * _g.leaf_size * (1.7 if _fine else 2.5) * bigger
-	_needle_length = clampf(leaf_basis * _g.needle_size, 0.6, 1.1) * (1.0 if _fine else 1.2) * bigger
+	# sprays grow with a thick trunk too (a giant's needles are not a normal tree's)
+	var stout := pow(maxf(_g.girth / 0.4, 1.0), 0.75)
+	var needle := clampf(leaf_basis * _g.needle_size, 0.6, 1.1) * stout
+	_needle_length = needle * (1.0 if _fine else 1.2) * bigger
 	_trunk()
 	if _g.leader:
 		_whorls()
