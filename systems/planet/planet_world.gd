@@ -23,6 +23,7 @@ var atmosphere: WorldAtmosphere
 var fauna: PlanetFauna
 var swim: PlanetSwim
 var map: PlanetMap
+var time_rate := 1.0 ## how fast time runs on top of `time_scale`: negative is backward, 0 stops it
 var clock := PlanetClock.new() ## the star, the orbit, the spin: where the sun is (real geometry)
 var splash: WaterSplash
 var rebases := 0 ## how many times the planet has been turned (labs and tests)
@@ -90,6 +91,7 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	var dir := direction if direction != Vector3.ZERO else noise.find_spawn()
 	var reach := settings.radius + noise.height(dir.x, dir.y, dir.z) + 1.0
 	noise.clearing = dir
+	noise.clock = clock
 	clock.start(settings.start_year, settings.start_hour, dir)
 	_set_the_sun()
 	frame.start(PackedFloat64Array([dir.x * reach, dir.y * reach, dir.z * reach]), Vector3.ZERO)
@@ -122,6 +124,17 @@ func season_text() -> String:
 	var day := int(floorf(clock.time / clock.day_seconds)) + 1
 	return "day %d, %s%s" % [day, names[int(shifted * 8.0) % 8],
 			"" if here.y >= 0.0 else " (south)"]
+
+
+## Moves time by `days` solar days (negative: backward), keeping the sun's hour as it is.
+func jump_time(days: float) -> void:
+	clock.advance(days * clock.day_seconds)
+
+
+## Moves the orbit to `share` of the year, leaving the hour of day where it is.
+func set_year_share(share: float) -> void:
+	if _target != null:
+		clock.set_year(share, planet_position().normalized())
 
 
 ## Puts the sun where the planet's orbit and spin put it: the direction to the star in the planet's
@@ -245,7 +258,7 @@ func _physics_process(delta: float) -> void:
 		surface.update(planet_position())
 	WorldWind.set_realism(0.0)
 	if not loading:
-		clock.advance(delta * settings.time_scale)
+		clock.advance(delta * settings.time_scale * time_rate)
 	_set_the_sun()
 	fauna.update(_target.global_position, 1.0 - atmosphere.night_amount(), delta)
 	if swim != null:

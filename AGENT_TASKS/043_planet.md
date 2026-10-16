@@ -46,7 +46,23 @@ direction in the planet's own frame gives the sun anywhere. `PlanetWorld` advanc
 (`time_scale` speeds it up) and sets `WorldAtmosphere.sun_direction` (the frame turns planet
 space into world space), so the sun, the sky, dusk and the night all follow the real sun. The map
 caption shows the local solar time and the season. Lab: `-- --hour=H --year=Y --time-scale=N`.
-Not done yet: seasons in the climate (temperature from `daily_light`), clouds, weather, a moon, an
+Seasons (`PlanetSeasons`, the energy balance behind the temperature; not a painted curve): a grid
+of 96x48 cells, each warmed by the sunlight its latitude receives that day (`PlanetClock.daily_light`),
+cooling by radiating (the balance temperature follows the fourth root of the absorbed light), moving
+toward that balance at a rate set by its heat capacity (the sea 0.2 years, the land 0.05), snow and ice
+reflecting 30% of the light (a feedback that keeps the caps), evaporation and cloud capping the
+hottest values, and heat shared between neighbours (winds and currents, 3 passes of 30%). The planet is
+run through its year until the cycle repeats (3-4 years, about 2 s at start) and one year is kept as 48
+pictures: the temperature at any moment, forward or backward in time, is read off that cycle (nothing
+is simulated while playing). Results: land warmest about 3 weeks after the solstice, the sea about 6
+weeks after (it lags), the continental interiors swing 60-70 C a year, the tropics barely at all,
+yearly mean 29 C at the equator and -23 at the pole. `PlanetNoise.temperature` is the yearly mean (what
+biomes and plants follow, so they stay put); `temperature_now` is the season and the time of day
+(land swings 6 C a day, the sea 0.8) minus the lapse rate. Map: layer 3 "Temperature" is the moment now
+(it is charted again as time moves), layer 8 "Mean temp" the climate; a Time row moves time: speeds
+-1000x to 1000x and pause, a day or an eighth of a year at a time, a slider through the year (the sun
+and the temperature follow, backward too). `PlanetWorld.time_rate`, `jump_time`, `set_year_share`.
+Not done yet: heat carried by the wind along its direction (it is mixed evenly), a moon, clouds, weather, a moon, an
 elliptical orbit, other planets in the sky, a star disc and its colour per star.
 
 ## Design

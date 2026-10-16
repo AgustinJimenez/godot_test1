@@ -29,6 +29,12 @@ var _cache: Dictionary = {} # layer -> {"whole": ImageTexture, "pass": int}: wha
 var _retired: Array[PlanetChart] = [] # charts of a layer left behind, drawing out their threads
 var _buttons: Array[Button] = []
 var _hover: Label
+var _time_row: HBoxContainer
+var _season_slider: HSlider
+var _rate_label: Label
+var _drawn_at := -1.0 # the clock time the temperature chart on the screen is of
+var _refresh_wait := 0.0
+var _chart_time := 0.0
 var _whole: ImageTexture # the whole planet, as sharp as it has got
 var _whole_pass := -1 # the pass `_whole` is from (-1: none yet)
 var _chart: PlanetChart # the chart being drawn, if any
@@ -85,6 +91,7 @@ func _ready() -> void:
 		button.pressed.connect(select_layer.bind(index))
 		row.add_child(button)
 		_buttons.append(button)
+	_build_time_controls(column)
 	_hover = Label.new()
 	_hover.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(_hover)
@@ -137,6 +144,48 @@ func toggle() -> void:
 	else:
 		Input.mouse_mode = _mouse_before
 		_dragging = false
+
+
+## The buttons that move time: the speed (backward too), a jump of a day or an eighth of a year, and
+## a slider through the year, to watch the temperature (and the sun) change.
+func _build_time_controls(column: VBoxContainer) -> void:
+	_time_row = HBoxContainer.new()
+	_time_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_child(_time_row)
+	var title := Label.new()
+	title.text = "Time:  "
+	_time_row.add_child(title)
+	for rate in [-1000, -100, -10, -1]:
+		_time_button("%d×" % rate, func() -> void: planet.time_rate = float(rate))
+	_time_button("pause", func() -> void: planet.time_rate = 0.0)
+	for rate in [1, 10, 100, 1000]:
+		_time_button("%d×" % rate, func() -> void: planet.time_rate = float(rate))
+	_time_button("-day", func() -> void: planet.jump_time(-1.0))
+	_time_button("+day", func() -> void: planet.jump_time(1.0))
+	_time_button("-1/8 year", func() -> void: planet.jump_time(-planet.clock.year_days / 8.0))
+	_time_button("+1/8 year", func() -> void: planet.jump_time(planet.clock.year_days / 8.0))
+	var year := Label.new()
+	year.text = "  year:"
+	_time_row.add_child(year)
+	_season_slider = HSlider.new()
+	_season_slider.custom_minimum_size = Vector2(200.0, 0.0)
+	_season_slider.max_value = 1.0
+	_season_slider.step = 0.002
+	_season_slider.focus_mode = Control.FOCUS_NONE
+	_season_slider.value_changed.connect(func(value: float) -> void:
+			if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+				planet.set_year_share(value))
+	_time_row.add_child(_season_slider)
+	_rate_label = Label.new()
+	_time_row.add_child(_rate_label)
+
+
+func _time_button(text: String, action: Callable) -> void:
+	var button := Button.new()
+	button.text = text
+	button.focus_mode = Control.FOCUS_NONE
+	button.pressed.connect(action)
+	_time_row.add_child(button)
 
 
 ## Shows another layer (a PlanetChart.Layer): what was charted of it before comes back at once, the
@@ -221,6 +270,8 @@ func _start_chart(pass_index: int) -> void:
 	_chart = PlanetChart.new()
 	_chart.size = PASSES[pass_index]
 	_chart.layer = _layer
+	_chart.clock = planet.clock.copy()
+	_chart_time = planet.clock.time
 	_chart_is_detail = false
 	_chart.start(planet.noise)
 
@@ -240,6 +291,10 @@ func _process(delta: float) -> void:
 	if visible:
 		_view.queue_redraw()
 		_hover.text = _numbers_under_the_cursor()
+		_season_slider.set_value_no_signal(planet.clock.year_share())
+		var rate := "paused" if planet.time_rate == 0.0 else "%d×" % int(planet.time_rate)
+		_rate_label.text = "   " + rate
+		_refresh_temperature(delta)
 	if _chart != null:
 		if _chart.finished():
 			_adopt_chart()
@@ -247,6 +302,21 @@ func _process(delta: float) -> void:
 			_caption.text = "Charting the planet...  %d %%" % int(100.0 * _chart.progress())
 	if visible and _chart == null and _whole_pass == PASSES.size() - 1:
 		_maybe_chart_the_view(delta)
+
+
+## The temperature layer shows a moment: when time has moved on, it is charted again (the coarse
+## chart only, a second or so), so the colours follow the seasons and the day as they pass.
+func _refresh_temperature(delta: float) -> void:
+	if _layer != PlanetChart.Layer.TEMPERATURE or _chart != null or _whole_pass < 0:
+		return
+	_refresh_wait -= delta
+	var moved := absf(planet.clock.time - _drawn_at)
+	if _refresh_wait > 0.0 or moved < planet.clock.day_seconds * 0.04:
+		return
+	_refresh_wait = 0.4
+	_whole_pass = -1
+	_detail = null
+	_start_chart(0)
 
 
 func _adopt_chart() -> void:
@@ -258,7 +328,9 @@ func _adopt_chart() -> void:
 		return
 	_whole = texture
 	_whole_pass += 1
-	_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
+	_drawn_at = _chart_time
+	if _layer != PlanetChart.Layer.TEMPERATURE:
+		_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
 	_chart = null
 	if _whole_pass + 1 < PASSES.size():
 		_start_chart(_whole_pass + 1) # the fine chart replaces the coarse one when it is done
@@ -280,6 +352,7 @@ func _maybe_chart_the_view(delta: float) -> void:
 		return # over the edge of the map: the whole planet chart will do
 	_chart = PlanetChart.new()
 	_chart.layer = _layer
+	_chart.clock = planet.clock.copy()
 	_chart.rect = rect
 	_chart.size = Vector2i(DETAIL_SIZE.x, int(DETAIL_SIZE.x * rect.size.y / rect.size.x
 			* 0.5))
@@ -310,7 +383,7 @@ func _numbers_under_the_cursor() -> String:
 	return "%.1f° %s %.1f° %s   height %d m   %.0f °C   rain %.2f   %s   plate %d (%s)" % [
 			absf(rad_to_deg(lat)), "N" if lat >= 0.0 else "S", absf(rad_to_deg(lon)),
 			"E" if lon >= 0.0 else "W", roundi(ground),
-			noise.temperature(dir.x, dir.y, dir.z, maxf(ground, 0.0)), noise.climate.sample(dir).y,
+			noise.temperature_now(dir.x, dir.y, dir.z, maxf(ground, 0.0)), noise.climate.sample(dir).y,
 			"sea" if ground < 0.0 else TerrainNoise.Biome.keys()[noise.biome(dir.x, dir.y, dir.z,
 			ground, 0.1)].to_lower(), int(plate.x), "land" if plate.z > 0.5 else "ocean"]
 

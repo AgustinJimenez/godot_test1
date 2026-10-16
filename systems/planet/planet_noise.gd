@@ -14,6 +14,7 @@ var relief := 1000.0 ## m, from the sea to the top of the highest ranges (see Pl
 var tectonics: PlanetTectonics
 var climate := PlanetClimate.new()
 var species: SpeciesRegistry ## the plants of this planet
+var clock: PlanetClock ## the time of day and the season (set by PlanetWorld; null: the yearly mean)
 var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep off a little round it
 var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
 
@@ -152,6 +153,24 @@ func heat(x: float, y: float, z: float, ground: float) -> float:
 func temperature(x: float, y: float, z: float, ground: float) -> float:
 	var sea_level := climate.sample(Vector3(x, y, z)).x
 	return sea_level - maxf(ground, 0.0) / relief * EARTH_RELIEF / 1000.0 * LAPSE
+
+
+## Degrees C right now at the direction and height: the season (the cycle PlanetSeasons made,
+## read at the clock's share of the year) and the time of day (warmest in the early afternoon, more
+## so over land and under a clear sky), minus the lapse rate. With no clock it is the yearly mean.
+func temperature_now(x: float, y: float, z: float, ground: float,
+		at_clock: PlanetClock = null) -> float:
+	var which := at_clock if at_clock != null else clock
+	if which == null:
+		return temperature(x, y, z, ground)
+	var dir := Vector3(x, y, z)
+	var degrees := climate.seasons.at(dir, which.year_share())
+	var land := macro_height(x, y, z) >= 0.0
+	var swing := 6.0 if land else 0.8
+	var hour := which.local_hour(dir)
+	var clear := clampf(which.day_length(asin(y)) * 2.0 + 0.3, 0.3, 1.0)
+	degrees += swing * cos((hour - 14.5) / 24.0 * TAU) * clear
+	return degrees - maxf(ground, 0.0) / relief * EARTH_RELIEF / 1000.0 * LAPSE
 
 
 ## Fine variation 0..1, for colour speckle.

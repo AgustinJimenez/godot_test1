@@ -5,10 +5,10 @@ extends RefCounted
 ## east, v south, the whole planet is (0, 0, 1, 1)); `size` is its size in pixels. Poll
 ## `finished()`, then take `texture()`.
 
-enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE }
+enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_TEMPERATURE }
 
 const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates",
-		"Slope"]
+		"Slope", "Mean temp"]
 const WORKERS := 3
 const BIOME_COLORS := {
 	TerrainNoise.Biome.BEACH: Color(0.93, 0.85, 0.55), TerrainNoise.Biome.MEADOW: Color(0.6, 0.8, 0.3),
@@ -20,6 +20,7 @@ const BIOME_COLORS := {
 var rect := Rect2(0.0, 0.0, 1.0, 1.0)
 var size := Vector2i(320, 160)
 var layer := Layer.TERRAIN
+var clock: PlanetClock ## the moment the temperature layer shows (a copy: the game moves on)
 
 var _noise: PlanetNoise
 var _threads: Array[Thread] = []
@@ -36,7 +37,7 @@ static func ramp(which: Layer, t: float) -> Color:
 			return _along(t, [Color(0.05, 0.12, 0.4), Color(0.3, 0.6, 0.85), Color(0.25, 0.55, 0.25),
 					Color(0.85, 0.8, 0.35), Color(0.6, 0.4, 0.25), Color(1.0, 1.0, 1.0)],
 					[0.0, 0.33, 0.36, 0.55, 0.8, 1.0])
-		Layer.TEMPERATURE:
+		Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE:
 			return _along(t, [Color(0.35, 0.2, 0.75), Color(0.25, 0.6, 1.0), Color(0.5, 0.9, 0.6),
 					Color(1.0, 0.9, 0.25), Color(0.95, 0.25, 0.1)], [0.0, 0.25, 0.5, 0.75, 1.0])
 		Layer.RAIN:
@@ -53,7 +54,7 @@ static func scale_labels(which: Layer, relief: float) -> Array[String]:
 	match which:
 		Layer.ELEVATION:
 			return ["%d m deep" % int(relief * 0.35), "%d m" % int(relief)]
-		Layer.TEMPERATURE:
+		Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE:
 			return ["-30 °C", "35 °C"]
 		Layer.RAIN:
 			return ["dry", "wet"]
@@ -174,6 +175,9 @@ func _pixel_color(lat: float, lon: float, step_lon: float, step_lat: float,
 				if crosses_east or crosses_north:
 					color = color.darkened(0.3)
 		Layer.TEMPERATURE:
+			var degrees := noise.temperature_now(dir.x, dir.y, dir.z, maxf(ground, 0.0), clock)
+			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 65.0)
+		Layer.MEAN_TEMPERATURE:
 			var degrees := noise.temperature(dir.x, dir.y, dir.z, maxf(ground, 0.0))
 			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 65.0)
 		Layer.RAIN:

@@ -52,6 +52,31 @@ func advance(seconds: float) -> void:
 	time += seconds
 
 
+## Moves the orbit to `share` of the year (0 the northern spring equinox) without moving the hour
+## of day anywhere: the planet's turn is kept to the same sun hour at the direction `where`.
+func set_year(share: float, where: Vector3) -> void:
+	start(share, local_hour(where), where)
+
+
+## Sets the share of the year only (no care for the hour; for the climate model, which does not
+## look at the spin).
+func set_year_share(share: float) -> void:
+	_year_start = share
+	time = 0.0
+
+
+## A copy of this clock as it is now (a worker thread can read it while the game moves on).
+func copy() -> PlanetClock:
+	var other := PlanetClock.new()
+	other.day_seconds = day_seconds
+	other.year_days = year_days
+	other.axial_tilt = axial_tilt
+	other.time = time
+	other._spin_offset = _spin_offset
+	other._year_start = _year_start
+	return other
+
+
 ## The share of the year (0..1, 0 the northern spring equinox).
 func year_share() -> float:
 	return fposmod(_year_start + time / year_seconds(), 1.0)

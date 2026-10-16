@@ -14,6 +14,7 @@ const HEIGHT := 96
 
 var _temperature := PackedFloat32Array() ## degrees C at sea level
 var _rain := PackedFloat32Array() ## 0 none .. ~1.5 a rain forest
+var seasons := PlanetSeasons.new() ## the temperature through the year (the mean is `_temperature`)
 
 
 func build(noise: PlanetNoise) -> void:
@@ -33,7 +34,17 @@ func build(noise: PlanetNoise) -> void:
 			var index := row * WIDTH + column
 			elevation[index] = h / noise.relief
 			ocean[index] = 1 if h < 0.0 else 0
-			_temperature[index] = -25.0 + 55.0 * pow(cos(lat), 1.5)
+	var clock := PlanetClock.new() # the orbit and the tilt of this planet, for the seasons
+	clock.day_seconds = noise.settings.day_seconds
+	clock.year_days = noise.settings.year_days
+	clock.axial_tilt = deg_to_rad(noise.settings.axial_tilt)
+	seasons.build(noise, clock)
+	for row in HEIGHT: # the climate's temperature is the mean of the year
+		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
+		for column in WIDTH:
+			var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
+			_temperature[row * WIDTH + column] = seasons.mean_at(
+					Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon)))
 	for row in HEIGHT:
 		_advect_row(row, elevation, ocean)
 	_smooth()
@@ -87,7 +98,7 @@ func _smooth() -> void:
 			_rain[row * WIDTH + column] = clampf(total / weight, 0.0, 1.6)
 
 
-## (sea level temperature in degrees C, rain 0..1.6) at the unit direction.
+## (sea level temperature in degrees C, averaged over the year; rain 0..1.6) at the unit direction.
 func sample(dir: Vector3) -> Vector2:
 	var lat := asin(clampf(dir.y, -1.0, 1.0))
 	var lon := atan2(dir.z, dir.x)
