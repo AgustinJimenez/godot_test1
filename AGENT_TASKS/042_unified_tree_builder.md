@@ -164,3 +164,18 @@ went 4.4 m under ground. Not done: bark texture and moss on the old oak, a lab s
 Giant's needles were too small for its 2 m trunk (user): needle sprays now scale with the trunk radius
 above 0.4 m (`stout = (girth / 0.4)^0.75`, 1 for every existing species), so the giant's sprays are about 2.9 x
 bigger and its crown reads as a crown. Looked at in the lab (low-poly).
+
+## Dragon blood tree and ancient live oak (user photos, same day; FIRST PASS)
+
+New traits: `tips_only` (needle sprays only at the very ends of the branches, facing up so together they
+make a canopy) and `leaf_density` (some twigs bare, the others fewer leaves). Lab sliders for both and
+`needle size` up to 1.5; buttons Dragon tree and Ancient oak.
+- Dragon tree (leafy-form trunk 9 m, radius 1.3, trunk part 0.55, 8 limbs at 66 deg, 7 branches per limb and
+  7 twigs per branch, tufts at the ends): reads as a thick trunk forking into a tuft canopy; it is NOT yet the
+  flat disc over a visible lattice of fine branches (the 12000 triangle budget thins the branches: ~11000
+  triangles; the real tree has hundreds of fine forks).
+- Ancient oak (14 m, trunk radius 2, limbs 1.45 x, leaf density 0.45): a sparse dark spreading crown; the limbs are
+  thinner and spikier than the huge sagging ones of the photo. My first tries (limb curve 1.5-1.8, then 0.7
+  with limbs at 86 deg) were a coiled / spiky heap on the ground: do not raise the limb curve above ~1.2.
+Not done: sagging limbs that reach and rest on the ground, moss on the limbs, bark colour variety, the
+fine branch lattice (would need a 4th branching level cheap enough: ribbons or fewer sides).

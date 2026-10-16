@@ -74,6 +74,8 @@ var leaf_lobes := 0
 var leaf_edge := PlantSpecies.LeafEdge.SMOOTH
 var leaf_pattern := PlantSpecies.LeafPattern.ALTERNATE
 var needle_size := 0.45 ## needle spray length as a fraction of the crown radius
+var tips_only := false ## needle sprays only at the very ends of the branches: a tuft layer on top
+var leaf_density := 1.0 ## 1 full; less: some twigs have no leaves, the others fewer (an old oak)
 
 # Colours (sRGB)
 var bark := Color(0.33, 0.23, 0.15)

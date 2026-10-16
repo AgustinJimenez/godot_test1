@@ -247,11 +247,13 @@ func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: 
 	var closed := MeshBuilder.CAP_TOP if (last_level or not _g.carry_on) else 0
 	PlantTreeBuilders.tube(_b, points, radii, colors, sides, _rng, 0.0, closed, false)
 	var tip_sway: float = sway + _g.sway[level]
-	if _g.foliage == TreeGenome.Foliage.NEEDLE:
+	if _g.foliage == TreeGenome.Foliage.NEEDLE and (last_level or not _g.tips_only):
 		var tip_tangent := tangents[tangents.size() - 1]
+		if _g.tips_only: # the tufts face up, so together they make a canopy
+			tip_tangent = (tip_tangent * 0.35 + Vector3.UP * 0.9).normalized()
 		_spray(points[points.size() - 1], tip_tangent,
 				_needle_length * (1.0 if level == 0 else 0.8), tip_sway)
-		if level == 0: # and one half way along, so the branch is not bare between its ends
+		if level == 0 and not _g.tips_only: # and one half way along, so it is not bare between
 			_spray(_point_along(points, 0.55), _tangent_along(tangents, 0.55),
 					_needle_length * 0.8, sway + _g.sway[0] * 0.55)
 	if last_level:
@@ -306,6 +308,10 @@ func _leaves_along(points: Array[Vector3], tangents: Array[Vector3], sway: float
 	var nodes := maxi(roundi(float(5 if _fine else (4 - _lod)) * _thrift), 2)
 	if _g.crown > 3.5:
 		nodes += 1 # a wide crown: more leaves on each twig
+	if _g.leaf_density < 1.0:
+		if _rng.randf() > _g.leaf_density: # this twig has no leaves at all
+			return
+		nodes = maxi(roundi(float(nodes) * _g.leaf_density), 2)
 	var gain: float = _g.sway[level]
 	for node in nodes:
 		var along := 0.3 + 0.65 * float(node) / float(nodes - 1)
