@@ -51,6 +51,7 @@ static func water_material() -> ShaderMaterial:
 	if _water_material == null:
 		_water_material = ShaderMaterial.new()
 		_water_material.shader = preload("res://shaders/world/planet_water.gdshader")
+		_water_material.set_shader_parameter(&"depth_fade", 24.0) # the shelf shows as it deepens
 	return _water_material
 
 

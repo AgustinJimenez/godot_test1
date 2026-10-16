@@ -37,8 +37,7 @@ func _physics_process(_delta: float) -> void:
 
 
 func update(player: Player) -> void:
-	if noise != null:
-		level = noise.water_level(player.global_position.x, player.global_position.z)
+	level = _water_level(player)
 	var depth := level - player.global_position.y
 	var was_swimming := swimming
 	swimming = depth > SWIM_FROM or (swimming and depth > SWIM_FROM - 0.25)
@@ -69,14 +68,28 @@ func update(player: Player) -> void:
 	elif depth > WADE_FROM and player.is_on_floor():
 		player.velocity.x *= WADE_SPEED
 		player.velocity.z *= WADE_SPEED
-	if noise != null and depth > 0.2: # a river current carries you along
-		var flow := noise.rivers.flow_at(player.global_position.x, player.global_position.z)
+	if depth > 0.2: # a river current carries you along
+		var flow := _flow(player)
 		player.velocity.x += flow.x * CURRENT_PUSH
 		player.velocity.z += flow.y * CURRENT_PUSH
 	_water_effects(player, depth)
 	if was_swimming and not swimming:
 		_clip = &""
 		player.body._debug_preview_active = false # the normal clips take over again
+
+
+## Where the water stands under the player (a world's sea or lake; a planet overrides this).
+func _water_level(player: Player) -> float:
+	if noise == null:
+		return level
+	return noise.water_level(player.global_position.x, player.global_position.z)
+
+
+## The river's current at the player, in x and z (a planet overrides this).
+func _flow(player: Player) -> Vector2:
+	if noise == null:
+		return Vector2.ZERO
+	return noise.rivers.flow_at(player.global_position.x, player.global_position.z)
 
 
 func _play(player: Player, clip: StringName) -> void:

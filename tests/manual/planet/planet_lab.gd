@@ -19,6 +19,7 @@ var planet: PlanetWorld
 var player: Player
 var _checking := false
 var _walking := false
+var _swim_check := false ## drop the player in the sea and see them float (PlanetSwim)
 var _flying := false ## the walk check in free mode (noclip) at 100 m/s
 var _walk_start := Vector3.ZERO
 var _walk_floor := 0
@@ -67,6 +68,8 @@ func _ready() -> void:
 			settings.plant_density = 0.0
 		elif arg == "--walk-check":
 			_walking = true
+		elif arg == "--swim-check":
+			_swim_check = true
 		elif arg == "--fly-check":
 			_walking = true
 			_flying = true
@@ -91,6 +94,8 @@ func _ready() -> void:
 		return
 	player = PLAYER_SCENE.instantiate() as Player
 	add_child(player)
+	if _swim_check:
+		_start_dir = _find_sea(planet.noise)
 	var spawn := planet.start(player, _start_dir)
 	planet.build_now(not _checking)
 	print("PLANET radius %.0f m, max level %d, %d tiles in %d ms, spawn %s" % [settings.radius,
@@ -109,6 +114,13 @@ func _ready() -> void:
 
 func _physics_process(_delta: float) -> void:
 	_frame += 1
+	if _swim_check and _frame == 300:
+		var level := planet.water_at_world(player.global_position)
+		var afloat := planet.swim != null and planet.swim.swimming
+		print("SWIM_CHECK %s swimming=%s water_y=%.2f player_y=%.2f" % ["PASS" if afloat and absf(
+				player.global_position.y - level) < 2.5 else "FAIL", afloat, level,
+				player.global_position.y])
+		get_tree().quit()
 	if _walking and player != null:
 		_walk_step()
 		return
@@ -237,3 +249,18 @@ func _walk_step() -> void:
 				% [verdict, travelled, planet.rebases, 100.0 * float(_walk_floor) / float(_frame - 60),
 				_walk_worst] + "world_pos=%.0f" % player.global_position.length())
 		get_tree().quit()
+
+
+## A direction over open sea a few metres deep, near the planet's spawn.
+func _find_sea(noise: PlanetNoise) -> Vector3:
+	var spawn := noise.find_spawn()
+	for index in 4000:
+		var angle := float(index) * 2.399963
+		var reach := 0.002 + 0.0000025 * float(index)
+		var around := spawn.cross(Vector3.UP).normalized() * cos(angle) + spawn.cross(
+				spawn.cross(Vector3.UP)).normalized() * sin(angle)
+		var dir := (spawn + around * reach * 40.0).normalized()
+		var height := noise.height(dir.x, dir.y, dir.z)
+		if height < -4.0 and height > -14.0:
+			return dir
+	return spawn

@@ -460,3 +460,34 @@ func erosion_at(dir: Vector3) -> float:
 		total += _erosion[id] * w
 		weight += w
 	return total / maxf(weight, 0.0001)
+
+
+## The current of the river at `dir` (a planet space vector, m/s along the river, longer in a bigger
+## river) if the point is in one, else zero.
+func flow_at(dir: Vector3) -> Vector3:
+	var here := cell_of(dir)
+	if _near[here] == 0:
+		return Vector3.ZERO
+	var best := INF
+	var best_piece: Array = []
+	var best_t := 0.0
+	for n in 9:
+		var id := here if n == 8 else _neighbours[here * 8 + n]
+		if not _pieces.has(id):
+			continue
+		for piece: Array in _pieces[id]:
+			var a: Vector3 = piece[0]
+			var ab := (piece[1] as Vector3) - a
+			var t := clampf((dir - a).dot(ab) / maxf(ab.length_squared(), 0.0000000001), 0.0, 1.0)
+			var distance := (dir - (a + ab * t)).length() * _radius
+			if distance < best:
+				best = distance
+				best_piece = piece
+				best_t = t
+	if best_piece.is_empty():
+		return Vector3.ZERO
+	var width := lerpf(float(best_piece[4]), float(best_piece[5]), best_t)
+	if best > width * 0.5:
+		return Vector3.ZERO
+	var along: Vector3 = (best_piece[6] as Vector3).lerp(best_piece[7] as Vector3, best_t)
+	return along.normalized() * clampf(0.7 * sqrt(width / 8.0), 0.5, 3.0)

@@ -113,6 +113,13 @@ cone was the FOV gizmo of the third-person debug camera, on by default while its
 (now off by default); tree variety: a planet makes 120 species (`species_count`, was 36: one red
 oak-like tree dominated), 6 looks per tree species, wider per-tree tint range.
 
+Fifth pass: the far ground is shaded smooth (colours and normals blend from facets to the smooth
+vertex colours between 90 and 320 m, so coarse and fine tiles meet without a seam), the sea shows its
+shelf (`depth_fade` 24 m), swimming on the planet (`PlanetSwim extends WorldSwim`, which now has two
+hooks `_water_level` / `_flow`; the planet answers with the sea, lake or river at the player's
+spot and river currents from `PlanetHydrology.flow_at`; `-- --swim-check` expects `SWIM_CHECK PASS`),
+and the underwater fog flag goes to the atmosphere.
+
 Still rough / ideas: tile LOD edge colour mismatch and popping, sea depth
 colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
 (mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile

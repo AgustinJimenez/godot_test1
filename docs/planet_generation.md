@@ -29,6 +29,7 @@ is rough) is `AGENT_TASKS/043_planet.md`. The flat world it grew next to is `AGE
 | `PlanetFrame` | the floating origin: the planet is turned under the player so the game's flat-world rules (up = +Y, gravity down) keep holding |
 | `PlanetScatter` | plants (the world's species by climate niche), rocks, logs, spires; nothing on water |
 | `PlanetFauna` | the flat world's deer and rabbits on the planet |
+| `PlanetSwim` | the flat world's swimming and wading (`WorldSwim`) with the planet's sea, lakes, rivers and river currents |
 | `PlanetWorld` | ties it together with `WorldAtmosphere`; rebases the frame every 80 m, shifts the world back every 2 km |
 
 Ground shader: `shaders/world/planet_ground.gdshader` is the flat world's low-poly ground with detail
@@ -96,6 +97,5 @@ through in the double build (edges differ by 1e-10 m): physics checks avoid seam
 
 ## Not done
 
-Swimming and
-underwater, weather and day/night from the planet's rotation, birds and butterflies, rocks that
-are generated per biome beyond the flat world's, planets without life (craters, ice), star systems.
+Weather and day/night from the planet's rotation, birds and butterflies, underwater look beyond
+the fog colour, planets without life (craters, ice), star systems.

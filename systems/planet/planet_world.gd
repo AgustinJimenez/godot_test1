@@ -16,6 +16,8 @@ var frame := PlanetFrame.new()
 var surface: PlanetSurface
 var atmosphere: WorldAtmosphere
 var fauna: PlanetFauna
+var swim: PlanetSwim
+var splash: WaterSplash
 var rebases := 0 ## how many times the planet has been turned (labs and tests)
 
 var _target: Node3D
@@ -41,6 +43,14 @@ func _ready() -> void:
 ## The target ends up at the world origin; returns the direction it stands in.
 func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	_target = target
+	if target is Player:
+		splash = WaterSplash.new()
+		add_child(splash)
+		swim = PlanetSwim.new()
+		swim.planet = self
+		swim.target = target as Player
+		swim.splash = splash
+		add_child(swim)
 	var dir := direction if direction != Vector3.ZERO else noise.find_spawn()
 	var reach := settings.radius + noise.height(dir.x, dir.y, dir.z) + 1.0
 	noise.clearing = dir
@@ -82,6 +92,31 @@ func ground_at(x: float, z: float, near_y: float) -> Dictionary:
 	return {"y": up.y, "wet": wet, "biome": noise.biome(dir.x, dir.y, dir.z, h, 0.1)}
 
 
+## The world height of the water at a world position (the sea, a lake or a river there), or -INF
+## where the ground is dry. The player swims in it (PlanetSwim).
+func water_at_world(position: Vector3) -> float:
+	var here := frame.to_planet(position)
+	var dir := Vector3(here[0], here[1], here[2]).normalized()
+	var h := noise.height(dir.x, dir.y, dir.z)
+	var level := -INF
+	if h < 0.0:
+		level = 0.0
+	elif noise.hydrology != null:
+		level = noise.hydrology.water_at(dir, h)
+	if level == -INF:
+		return -INF
+	return frame.to_world(dir * (settings.radius + level)).y
+
+
+## The river current at a world position, as a world vector (zero out of a river).
+func flow_at_world(position: Vector3) -> Vector3:
+	if noise.hydrology == null:
+		return Vector3.ZERO
+	var here := frame.to_planet(position)
+	var dir := Vector3(here[0], here[1], here[2]).normalized()
+	return frame.rot * noise.hydrology.flow_at(dir)
+
+
 ## Metres above sea level at the target (the ground under it, not its feet).
 func altitude() -> float:
 	return planet_position().length() - settings.radius
@@ -116,6 +151,8 @@ func _physics_process(delta: float) -> void:
 		surface.update(planet_position())
 	WorldWind.set_realism(0.0)
 	fauna.update(_target.global_position, 1.0 - atmosphere.night_amount(), delta)
+	if swim != null:
+		atmosphere.underwater = swim.underwater
 	# the air thins with height: no fog in space
 	var thin := fog * exp(-maxf(altitude(), 0.0) / 1200.0)
 	atmosphere.fog_extra = thin - WorldAtmosphere.BASE_FOG

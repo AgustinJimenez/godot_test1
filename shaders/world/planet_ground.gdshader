@@ -71,7 +71,10 @@ void fragment() {
 	if (dot(flat_normal, VIEW) < 0.0) {
 		flat_normal = -flat_normal;
 	}
-	vec3 base = mix(COLOR.rgb, smooth_color, realism);
+	// the far ground is shaded smooth (the facets of coarse tiles would not match the fine ones
+	// at the seams between them); the near ground keeps its facets
+	float far = smoothstep(90.0, 320.0, length(VERTEX));
+	vec3 base = mix(COLOR.rgb, smooth_color, max(realism, far));
 	vec3 paint = pow(base, vec3(2.2));
 	float leafy = smoothstep(0.0, 0.08, paint.g - max(paint.r, paint.b));
 	float which = smooth_noise(world_pos.xz * 0.035);
@@ -79,7 +82,7 @@ void fragment() {
 			vec3(paint.g * 1.3, paint.g * 0.38, paint.g * 0.1), which);
 	paint = mix(paint, turned, autumn * leafy);
 
-	vec3 view_normal = flat_normal;
+	vec3 view_normal = normalize(mix(flat_normal, normalize(NORMAL), far));
 	float up = (INV_VIEW_MATRIX * vec4(flat_normal, 0.0)).y;
 	float rough = 0.95;
 	float near = 1.0 - smoothstep(detail_range, detail_range * 2.0, length(VERTEX));
@@ -110,7 +113,7 @@ void fragment() {
 		vec3 bump_planet = -vec3(dx, dy, dz) * (0.8 + slope * 5.0) * strength;
 		vec3 bump_world = (world_from_planet * vec4(bump_planet, 0.0)).xyz;
 		vec3 bumpy = normalize(NORMAL + (VIEW_MATRIX * vec4(bump_world, 0.0)).xyz);
-		view_normal = normalize(mix(flat_normal, bumpy, strength));
+		view_normal = normalize(mix(view_normal, bumpy, strength));
 		rough = mix(0.95, 0.88 - patch * 0.1, strength);
 	}
 	float snow = snow_cover * smoothstep(0.45, 0.8, up);
