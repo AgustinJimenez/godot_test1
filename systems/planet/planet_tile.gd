@@ -34,7 +34,7 @@ var _e3 := Vector3.ZERO
 
 ## The tile key: (face, level, x, y) packed in one int.
 static func key_of(f: int, lvl: int, x: int, y: int) -> int:
-	return (((f * 16 + lvl) << 20) | (x << 10)) | y
+	return (((f * 32 + lvl) << 40) | (x << 20)) | y
 
 
 ## Direction on the planet of the cube face point (s, t), both -1..1.

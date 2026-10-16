@@ -9,6 +9,7 @@ const RECENTER_DISTANCE := 2000.0 ## m from the world origin before everything i
 
 @export var settings: PlanetSettings
 @export var time_of_day := 10.0
+@export var fog := 0.001 ## fog density: a planet has a far horizon (the flat world uses 0.0032)
 
 var noise: PlanetNoise
 var frame := PlanetFrame.new()
@@ -87,4 +88,10 @@ func _physics_process(delta: float) -> void:
 		_timer = 0.3
 		surface.update(planet_position())
 	WorldWind.set_realism(0.0)
+	# the air thins with height: no fog in space
+	var thin := fog * exp(-maxf(altitude(), 0.0) / 1200.0)
+	atmosphere.fog_extra = thin - WorldAtmosphere.BASE_FOG
+	var camera := get_viewport().get_camera_3d()
+	if camera != null and camera.far < settings.radius:
+		camera.far = settings.radius * 1.2
 	atmosphere.global_position = _target.global_position

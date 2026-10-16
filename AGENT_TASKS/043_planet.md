@@ -26,11 +26,19 @@ Lab: `tests/manual/planet/planet_lab.tscn` (`-- --radius=N --seed=N`); check:
   coordinates stay small however far the player walks.
 - `PlanetWorld`: ties them together with the existing `WorldAtmosphere`.
 
-## Limits
+## Limits (measured with `-- --planet-check --radius=N`, 2.4 km walked in 60 m steps)
 
-- Float32 Godot: planet radius up to ~100 km is clean (noise inputs and the player's planet
-  position are float32); beyond, use a double precision build or a smaller radius.
-- The horizon of a 20 km planet at eye height is ~260 m.
+| radius | max level | result |
+|---|---|---|
+| 20 km (default) | 8 | PASS, worst gap to the true ground 0.8 m |
+| 200 km | 12 | PASS |
+| 1,000 km | 14 | PASS (0.7 m) |
+| 6,371 km (Earth) | 17 | FAIL: the tile directions and the noise inputs are float32, 0.5 m steps |
+
+Up to ~1,000 km the single precision build is fine (vertex positions are done in doubles around each
+tile's middle; only the unit directions and the noise inputs are float32, 6-12 cm at 1,000 km).
+Earth size needs the directions and the noise sampled in doubles (own noise, or a double precision
+engine build). The horizon of a 20 km planet at eye height is ~260 m.
 
 ## Not done
 

@@ -2,6 +2,9 @@ extends Node3D
 ## Planet lab. Plain run: the player walks a round planet.
 ##   -- --radius=N     planet radius in metres (default 20000)
 ##   -- --seed=N       planet seed
+##   -- --view-alt=N   no player: a camera N metres above the ground, looking at the horizon
+##   -- --view-pitch=N degrees (negative looks down; with --view-alt)
+##   -- --shot=PATH    (with a window) saves a picture after the tiles have loaded, then quits
 ##   -- --planet-check (headless) stands the player on the planet, walks it in steps (turning the
 ##                     planet under them) and prints one PLANET_CHECK line.
 
@@ -18,6 +21,10 @@ var _worst_height := 0.0
 var _floor_misses := 0
 var _walked := 0.0
 var _placed := true
+var _view_alt := 0.0
+var _shot := ""
+var _shot_frame := 360
+var _view_pitch := -18.0
 
 
 func _ready() -> void:
@@ -27,14 +34,35 @@ func _ready() -> void:
 			settings.radius = arg.trim_prefix("--radius=").to_float()
 		elif arg.begins_with("--seed="):
 			settings.world_seed = arg.trim_prefix("--seed=").to_int()
+		elif arg.begins_with("--view-alt="):
+			_view_alt = arg.trim_prefix("--view-alt=").to_float()
+		elif arg.begins_with("--view-pitch="):
+			_view_pitch = arg.trim_prefix("--view-pitch=").to_float()
+		elif arg.begins_with("--shot-frame="):
+			_shot_frame = arg.trim_prefix("--shot-frame=").to_int()
+		elif arg.begins_with("--shot="):
+			_shot = arg.trim_prefix("--shot=")
 		elif arg == "--planet-check":
 			_checking = true
 	planet = PlanetWorld.new()
 	planet.settings = settings
 	add_child(planet)
+	var started := Time.get_ticks_msec()
+	if _view_alt > 0.0:
+		var camera := Camera3D.new()
+		camera.far = settings.radius * 4.0
+		camera.near = 0.5
+		add_child(camera)
+		camera.make_current()
+		var view_spawn := planet.start(camera)
+		camera.global_position.y = _view_alt
+		camera.rotation_degrees = Vector3(_view_pitch, 0.0, 0.0)
+		planet.build_now(true)
+		planet.update_now()
+		print("VIEW altitude %.0f m over %s" % [_view_alt, view_spawn])
+		return
 	player = PLAYER_SCENE.instantiate() as Player
 	add_child(player)
-	var started := Time.get_ticks_msec()
 	var spawn := planet.start(player)
 	planet.build_now(not _checking)
 	print("PLANET radius %.0f m, max level %d, %d tiles in %d ms, spawn %s" % [settings.radius,
@@ -53,7 +81,10 @@ func _ready() -> void:
 
 func _physics_process(_delta: float) -> void:
 	_frame += 1
-	if not _checking:
+	if _shot != "" and _frame == _shot_frame:
+		get_viewport().get_texture().get_image().save_png(_shot)
+		get_tree().quit()
+	if not _checking or player == null:
 		return
 	# let the player land, then walk 60 m at a time along the world's +X, building as we go
 	if _frame < 60:
