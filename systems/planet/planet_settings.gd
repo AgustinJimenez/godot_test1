@@ -5,7 +5,9 @@ extends Resource
 @export var world_seed := 1337
 @export var radius := 20000.0 ## m, the sea level sphere (Earth: 6,371,000)
 @export var sea_level := 0.0 ## m above `radius`
-@export var height_scale := 140.0 ## m from the deepest basin to the highest peak, roughly
+@export var relief := 0.0 ## m from the sea to the highest ranges; 0: from the radius (Earth: 8,800)
+@export var ocean_fraction := 0.7 ## the share of the planet's area under the sea
+@export var plates := 14 ## tectonic plates (Earth has about 15 big ones)
 @export var tile_cells := 48 ## quads along one tile edge, at every level of detail
 @export var tile_max := 128.0 ## m, the widest a finest tile may be
 @export var split_factor := 2.0 ## a tile splits when the player is closer than this many widths

@@ -1,33 +1,36 @@
 class_name PlanetNoise
 extends RefCounted
-## The shape of a planet: height, wetness and warmth at any direction from its centre. Pure
-## functions of the direction and the seed (3D noise on the sphere), so any tile can be built
-## alone and neighbours agree on their shared edge, and there are no seams or poles to pinch.
+## The shape and climate of a planet: height, rain, warmth and biome at any direction from its
+## centre. The land comes from tectonic plates (PlanetTectonics) at the scale of the planet and
+## from noise below that; the climate from latitude, height and the winds (PlanetClimate). Pure
+## functions of the direction and the seed, so any tile can be built alone and neighbours agree on
+## their shared edge, and there are no seams or poles to pinch.
+
+const LAPSE := 6.5 ## degrees C lost per km of height
+const EARTH_RELIEF := 8800.0 ## m: what "one relief" is on Earth
 
 var settings: PlanetSettings
-var _continent := FastNoiseLite.new()
+var relief := 1000.0 ## m, from the sea to the top of the highest ranges (see PlanetSettings)
+var tectonics: PlanetTectonics
+var climate := PlanetClimate.new()
+
+var _rolling := FastNoiseLite.new()
 var _hills := FastNoiseLite.new()
-var _ridges := FastNoiseLite.new()
-var _mountain_mask := FastNoiseLite.new()
-var _warp := FastNoiseLite.new()
-var _moisture := FastNoiseLite.new()
-var _heat := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
+var _sea := 0.0 ## the height (units of relief) that is sea level, so the ocean covers its share
 
 
 func _init(planet_settings: PlanetSettings) -> void:
 	settings = planet_settings
-	var base_seed := settings.world_seed
-	var big := 1.0 / (settings.radius * 0.7) # continents: a few round the planet
-	_setup(_continent, base_seed, big, 3)
-	_setup(_hills, base_seed + 1, 0.0022, 4)
-	_setup(_ridges, base_seed + 2, 0.0008, 4)
-	_ridges.fractal_type = FastNoiseLite.FRACTAL_RIDGED
-	_setup(_mountain_mask, base_seed + 3, big * 3.0, 2)
-	_setup(_warp, base_seed + 4, 0.004, 2)
-	_setup(_moisture, base_seed + 5, big * 2.5, 3)
-	_setup(_heat, base_seed + 6, big * 3.0, 2)
-	_setup(_detail, base_seed + 7, 0.09, 2)
+	relief = settings.relief
+	if relief <= 0.0:
+		relief = clampf(settings.radius * 0.0014, 150.0, 9000.0)
+	tectonics = PlanetTectonics.new(settings.world_seed, settings.plates)
+	_setup(_rolling, settings.world_seed + 2, 0.0004, 3)
+	_setup(_hills, settings.world_seed + 1, 0.0022, 4)
+	_setup(_detail, settings.world_seed + 7, 0.09, 2)
+	_find_sea_level()
+	climate.build(self)
 
 
 func _setup(noise: FastNoiseLite, noise_seed: int, frequency: float, octaves: int) -> void:
@@ -38,37 +41,48 @@ func _setup(noise: FastNoiseLite, noise_seed: int, frequency: float, octaves: in
 	noise.fractal_octaves = octaves
 
 
-## Ground height in metres above the radius, in the unit direction (x, y, z).
+## The sea level is wherever the heights have the planet's ocean share below it (sampled over the
+## sphere, every sample weighing the same area).
+func _find_sea_level() -> void:
+	var count := 6000
+	var samples := PackedFloat32Array()
+	for index in count:
+		var y := 1.0 - 2.0 * (float(index) + 0.5) / float(count)
+		var ring := sqrt(1.0 - y * y)
+		var angle := float(index) * 2.399963
+		samples.append(tectonics.height(Vector3(cos(angle) * ring, y, sin(angle) * ring)))
+	samples.sort()
+	_sea = samples[clampi(int(settings.ocean_fraction * float(count)), 0, count - 1)]
+
+
+## Ground height in metres above the sea, in the unit direction (x, y, z).
 func height(x: float, y: float, z: float) -> float:
+	var units := tectonics.height(Vector3(x, y, z)) - _sea
+	var metres := units * relief
+	# below the plates' scale: hills and little rises on the land (and only a little on the sea floor)
 	var p := Vector3(x, y, z) * settings.radius
-	var warped := p + Vector3(_warp.get_noise_3d(p.x, p.y, p.z),
-			_warp.get_noise_3d(p.x + 311.0, p.y - 97.0, p.z),
-			_warp.get_noise_3d(p.x, p.y + 57.0, p.z - 211.0)) * 60.0
-	var land := _continent.get_noise_3d(warped.x, warped.y, warped.z)
-	var rolling := _hills.get_noise_3d(warped.x, warped.y, warped.z) * 0.22
-	var mask := smoothstep(-0.12, 0.32, _mountain_mask.get_noise_3d(p.x, p.y, p.z))
-	var peaks := _ridges.get_noise_3d(warped.x, warped.y, warped.z) * 0.5 + 0.5
-	var raw := land * 0.55 + rolling + mask * peaks * 0.95 * (0.4 + maxf(land, 0.0))
-	var h := settings.sea_level + (raw + 0.08) * settings.height_scale
-	if h < settings.sea_level: # the sea floor is shallow near the shore
-		h = settings.sea_level + (h - settings.sea_level) * 0.7
-	return h
+	var land := smoothstep(-0.02, 0.05, units)
+	metres += _rolling.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.04, 25.0, 140.0) * land
+	metres += _hills.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.01, 12.0, 45.0) * land
+	return metres
 
 
-## 0 dry .. 1 wet: the tropics are wet, the dry belts lie either side of them.
+## 0 dry .. 1 wet.
 func moisture(x: float, y: float, z: float) -> float:
-	var p := Vector3(x, y, z) * settings.radius
-	var belt := 0.22 * exp(-pow((absf(y) - 0.4) / 0.18, 2.0)) # dry subtropics
-	return clampf(_moisture.get_noise_3d(p.x, p.y, p.z) * 0.9 + 0.5 - belt
-			+ 0.12 * (1.0 - absf(y)), 0.0, 1.0)
+	return clampf(climate.sample(Vector3(x, y, z)).y / 1.2, 0.0, 1.0)
 
 
-## 0 cold .. 1 hot: the poles are cold, the equator hot, and the high ground colder.
+## 0 cold .. 1 hot (the temperature at `ground` metres, see `temperature`).
 func heat(x: float, y: float, z: float, ground: float) -> float:
-	var p := Vector3(x, y, z) * settings.radius
-	var warmth := 1.05 - pow(absf(y), 1.7) * 1.15 + _heat.get_noise_3d(p.x, p.y, p.z) * 0.25
-	return clampf(warmth - maxf(ground - settings.sea_level, 0.0) / settings.height_scale * 0.9,
-			0.0, 1.0)
+	return clampf((temperature(x, y, z, ground) + 20.0) / 55.0, 0.0, 1.0)
+
+
+## Degrees C at the direction and height: the latitude's sea level warmth minus the lapse rate. A
+## tall range of a small planet is as cold on top as a tall range of a big one (height is taken as
+## a share of the planet's relief).
+func temperature(x: float, y: float, z: float, ground: float) -> float:
+	var sea_level := climate.sample(Vector3(x, y, z)).x
+	return sea_level - maxf(ground, 0.0) / relief * EARTH_RELIEF / 1000.0 * LAPSE
 
 
 ## Fine variation 0..1, for colour speckle.
@@ -78,64 +92,85 @@ func detail(x: float, y: float, z: float) -> float:
 
 
 func biome(x: float, y: float, z: float, ground: float, steepness: float) -> TerrainNoise.Biome:
-	var above := ground - settings.sea_level
 	var wet := moisture(x, y, z)
-	if above < 1.4:
-		return TerrainNoise.Biome.BEACH if wet < 0.62 else TerrainNoise.Biome.MARSH
-	var warmth := heat(x, y, z, ground)
-	if warmth < 0.2 or (above > settings.height_scale * 0.62 and warmth < 0.55):
+	if ground < 1.4:
+		return TerrainNoise.Biome.BEACH if wet < 0.5 else TerrainNoise.Biome.MARSH
+	var degrees := temperature(x, y, z, ground)
+	if degrees < -14.0:
 		return TerrainNoise.Biome.SNOW
-	if steepness > 0.62 or above > settings.height_scale * 0.5:
+	if steepness > 0.62 or ground > relief * 0.5:
 		return TerrainNoise.Biome.ROCKY
-	if warmth > 0.52 and wet < 0.5:
+	if wet < 0.12 and degrees > 2.0:
 		return TerrainNoise.Biome.DESERT
-	return TerrainNoise.Biome.FOREST if wet > 0.5 else TerrainNoise.Biome.MEADOW
+	return TerrainNoise.Biome.FOREST if wet > 0.4 else TerrainNoise.Biome.MEADOW
 
 
-## The colour of a ground facet: the biome's palette, a speckle, rock on steep faces (the same
-## palette as the flat world's TerrainColors).
+## The colour of a ground facet: the climate's palette (rain forest, forest, taiga, grass, savanna,
+## desert, tundra, ice), a speckle, rock on steep faces.
 func facet_color(x: float, y: float, z: float, ground: float, steep: float) -> Color:
 	var kind := biome(x, y, z, ground, steep)
 	var speckle := detail(x, y, z)
-	var wet := moisture(x, y, z)
+	var degrees := temperature(x, y, z, ground)
+	var rain := climate.sample(Vector3(x, y, z)).y
 	var color: Color
 	match kind:
 		TerrainNoise.Biome.BEACH:
-			color = TerrainColors.WET_SAND.lerp(TerrainColors.SAND, smoothstep(settings.sea_level,
-					settings.sea_level + 1.4, ground))
+			color = TerrainColors.WET_SAND.lerp(TerrainColors.SAND, smoothstep(0.0, 1.4, ground))
 		TerrainNoise.Biome.MARSH:
 			color = TerrainColors.MARSH.lerp(TerrainColors.WET_SAND, speckle * 0.5)
-		TerrainNoise.Biome.FOREST:
-			color = TerrainColors.FOREST_DARK.lerp(TerrainColors.FOREST, speckle)
+		TerrainNoise.Biome.SNOW:
+			color = TerrainColors.SNOW.lerp(TerrainColors.ROCK, maxf(steep - 0.35, 0.0))
 		TerrainNoise.Biome.ROCKY:
 			color = TerrainColors.ROCK_DARK.lerp(TerrainColors.ROCK, speckle).lerp(
 					TerrainColors.ROCK_WARM, TerrainColors.strata(ground, speckle))
-		TerrainNoise.Biome.SNOW:
-			color = TerrainColors.SNOW.lerp(TerrainColors.ROCK, maxf(steep - 0.35, 0.0))
 		TerrainNoise.Biome.DESERT:
 			color = TerrainColors.DESERT_RED.lerp(TerrainColors.DESERT, speckle).lerp(
 					TerrainColors.DESERT_PALE, TerrainColors.strata(ground, speckle) * 0.6)
 		_:
-			color = TerrainColors.MEADOW_DRY.lerp(TerrainColors.MEADOW, wet).lerp(
-					TerrainColors.MEADOW.darkened(0.12), speckle * 0.4)
+			color = _vegetation(degrees, rain, speckle)
 	if kind != TerrainNoise.Biome.ROCKY and kind != TerrainNoise.Biome.SNOW:
 		color = color.lerp(TerrainColors.ROCK.lerp(TerrainColors.ROCK_DARK, speckle),
 				smoothstep(0.35, 0.6, steep))
 	return color
 
 
-## A direction on land with gentle ground near the equator, for a player to start on.
+## Ground cover by warmth and rain: tundra, taiga, forest, grassland, savanna, rain forest.
+func _vegetation(degrees: float, rain: float, speckle: float) -> Color:
+	var tundra := Color(0.52, 0.56, 0.44)
+	var taiga := Color(0.14, 0.30, 0.2)
+	var forest := TerrainColors.FOREST_DARK.lerp(TerrainColors.FOREST, speckle)
+	var grass := TerrainColors.MEADOW_DRY.lerp(TerrainColors.MEADOW, clampf(rain, 0.0, 1.0))
+	var savanna := Color(0.72, 0.64, 0.3)
+	var jungle := Color(0.09, 0.34, 0.12).lerp(Color(0.14, 0.42, 0.16), speckle)
+	var color := grass
+	var wet := smoothstep(0.35, 0.7, rain)
+	if degrees > 18.0: # tropics: savanna to rain forest by rain
+		color = savanna.lerp(grass, smoothstep(0.2, 0.45, rain)).lerp(jungle, smoothstep(0.7, 1.1, rain))
+	else:
+		color = grass.lerp(forest, wet)
+	var cold := smoothstep(10.0, -2.0, degrees) # the cold north: forest turns to taiga, then tundra
+	color = color.lerp(taiga, cold * wet).lerp(tundra, smoothstep(3.0, -10.0, degrees))
+	return color.lerp(color.darkened(0.15), speckle * 0.3)
+
+
+## A direction on lowland in a mild, wet-enough climate, for a player to start on.
 func find_spawn() -> Vector3:
-	for index in 400:
+	var fallback := Vector3(0.0, 0.0, 1.0)
+	for index in 1500:
 		var angle := float(index) * 2.399963
-		var y := 0.25 * sin(float(index) * 0.7)
+		var y := 0.8 * sin(float(index) * 0.7)
 		var ring := sqrt(1.0 - y * y)
 		var dir := Vector3(cos(angle) * ring, y, sin(angle) * ring)
 		var h := height(dir.x, dir.y, dir.z)
+		if h < 3.0 or h > relief * 0.04:
+			continue
+		var climate_here := climate.sample(dir)
+		if climate_here.x < 8.0 or climate_here.x > 27.0 or climate_here.y < 0.35:
+			continue
 		var steep := 0.0
 		for side: Vector3 in [Vector3(1, 0, 0), Vector3(0, 0, 1)]:
 			var near := (dir + side * 3.0 / settings.radius).normalized()
 			steep = maxf(steep, absf(height(near.x, near.y, near.z) - h) / 3.0)
-		if h > settings.sea_level + 4.0 and h < settings.sea_level + 40.0 and steep < 0.12:
+		if steep < 0.12:
 			return dir
-	return Vector3(0.0, 0.0, 1.0)
+	return fallback

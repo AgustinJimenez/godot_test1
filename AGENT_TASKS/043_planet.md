@@ -7,8 +7,21 @@ Lab: `tests/manual/planet/planet_lab.tscn` (`-- --radius=N --seed=N`); check:
 
 ## Design
 
-- `PlanetNoise`: 3D noise sampled on the sphere (height, moisture, heat by latitude, biome, colour).
-  No rivers or lakes yet.
+- `PlanetTectonics`: ~14 plates (Fibonacci spread, jittered), each continental or oceanic with a spin.
+  Height in units of `relief`: plate base height blended across boundaries, plus uplift by boundary
+  type (continent/continent collision = high ranges, subduction coast = coastal range + trench,
+  ocean/ocean = island arc + trench, divergent = mid-ocean ridge or rift), ridged noise on the ranges,
+  plate-interior noise. Plate lookup uses a warped direction so edges wander.
+- `PlanetClimate`: 192x96 equirect maps of sea level temperature (latitude) and rain (moisture carried
+  along trade winds / westerlies / polar easterlies: picked up over sea, dropped over land and where
+  the ground climbs, so rain shadows and dry interiors; wet tropics, dry belt at 28 deg, storm tracks
+  at 48 deg).
+- `PlanetNoise`: relief from the radius (`clamp(R*0.0014, 150, 9000)` m, Earth 8.9 km, or
+  `PlanetSettings.relief`), the sea level found so `ocean_fraction` (0.7) of the area is below it,
+  rolling hills (2 km) and hills (450 m) on the land, temperature with the lapse rate (height taken
+  as a share of relief), biome and colour from temperature and rain (rain forest, savanna, grass,
+  forest, taiga, tundra, desert, ice, rock), and `find_spawn` (mild lowland). Pure functions of the
+  direction and the seed. No rivers or lakes yet; no erosion.
 - `PlanetTile`: one cell of one of the six cube faces bent onto the sphere (tan mapping). The mesh is
   built around the tile's own middle in doubles, so its numbers stay small on any planet. Every tile
   has `tile_cells` quads, so a tile twice as big has quads twice as wide: one code for the near ground
