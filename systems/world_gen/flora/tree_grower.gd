@@ -262,7 +262,11 @@ func _limbs() -> void:
 ## A palm's crown: fronds out from the top of the trunk, the young ones in the middle pointing up,
 ## the old ones arching out and hanging. Each is a midrib with a row of leaflets down both sides.
 func _fronds() -> void:
-	var top := _axis(_trunk_length) + Vector3(0.0, 0.05, 0.0)
+	# a plant of the ground (grass, fern) starts at the ground; a palm's fronds start above its trunk
+	var low := _g.height < 1.0
+	var top := _axis(_trunk_length) + Vector3(0.0, 0.0 if low else 0.05, 0.0)
+	if low:
+		top.y = 0.0
 	var count := maxi(_g.fronds - 3 * _lod, 5)
 	var phase := _rng.randf() * TAU
 	for index in count:
@@ -280,7 +284,10 @@ func _fronds() -> void:
 			var reach := length * t * (1.0 - 0.6 * steep)
 			var rise := length * (0.9 * steep * t + 0.5 * _g.frond_arch * sin(PI * t)
 					- _g.frond_droop * t * t)
-			points.append(top + out * reach + Vector3(0.0, rise, 0.0))
+			var spot := top + out * reach + Vector3(0.0, rise, 0.0)
+			if low: # blades that droop lie on the ground, not under it
+				spot.y = maxf(spot.y, 0.01)
+			points.append(spot)
 		_frond(points, side)
 
 
