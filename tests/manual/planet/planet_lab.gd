@@ -136,9 +136,18 @@ func _physics_process(_delta: float) -> void:
 	_placed = false
 
 
-## The world height of the ground under the player, by asking physics.
+## The world height of the ground under the player, by asking physics (trunks are skipped).
 func _ground_y() -> float:
 	var query := PhysicsRayQueryParameters3D.create(player.global_position + Vector3.UP * 100.0,
 			player.global_position + Vector3.DOWN * 200.0, 1)
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	return (hit["position"] as Vector3).y if not hit.is_empty() else player.global_position.y
+	var skipped: Array[RID] = []
+	for attempt in 12:
+		query.exclude = skipped
+		var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		if hit.is_empty():
+			return player.global_position.y
+		var body := hit["collider"] as Node
+		if body.name != "Plants":
+			return (hit["position"] as Vector3).y
+		skipped.append(hit["rid"] as RID)
+	return player.global_position.y

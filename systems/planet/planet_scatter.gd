@@ -57,6 +57,7 @@ func populate(tile: Node3D, noise: PlanetNoise, positions: Array[Vector3], dirs:
 	if collide:
 		_body = StaticBody3D.new()
 		_body.collision_layer = 1
+		_body.name = "Plants"
 		tile.add_child(_body)
 	_scatter(PlantSpecies.Layer.CANOPY, 1.0 if detail == Detail.ALL else 2.0)
 	_scatter(PlantSpecies.Layer.UNDERSTORY, 1.0 if detail == Detail.ALL else 2.0)
