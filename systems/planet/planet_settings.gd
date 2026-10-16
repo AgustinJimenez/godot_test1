@@ -7,6 +7,8 @@ extends Resource
 @export var sea_level := 0.0 ## m above `radius`
 @export var relief := 0.0 ## m from the sea to the highest ranges; 0: from the radius (Earth: 8,800)
 @export var ocean_fraction := 0.7 ## the share of the planet's area under the sea
+@export var species_count := 36 ## how many plant species the seed makes (SpeciesGenerator)
+@export var plant_density := 1.0
 @export var plates := 14 ## tectonic plates (Earth has about 15 big ones)
 @export var tile_cells := 48 ## quads along one tile edge, at every level of detail
 @export var tile_max := 128.0 ## m, the widest a finest tile may be

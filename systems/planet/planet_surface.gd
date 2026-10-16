@@ -120,7 +120,21 @@ func _add(tile: PlanetTile) -> void:
 
 func _make(entry: Array) -> PlanetTile:
 	var level: int = entry[1]
-	return PlanetTile.new().build(entry[0], level, entry[2], entry[3], noise, _collides(entry))
+	return PlanetTile.new().build(entry[0], level, entry[2], entry[3], noise, _collides(entry),
+			_plants(entry))
+
+
+## What grows on a tile: everything on the finest tiles near the player, only trees further out
+## (and on the next size up), nothing on the far tiles.
+func _plants(entry: Array) -> PlanetScatter.Detail:
+	var level: int = entry[1]
+	if level == _settings.max_level():
+		if _distance(entry) < _settings.tile_max * 4.0:
+			return PlanetScatter.Detail.ALL
+		return PlanetScatter.Detail.TREES
+	if level == _settings.max_level() - 1 and _distance(entry) < _settings.tile_max * 10.0:
+		return PlanetScatter.Detail.TREES
+	return PlanetScatter.Detail.NONE
 
 
 ## Only the finest tiles close to the player get a collider.

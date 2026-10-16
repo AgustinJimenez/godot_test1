@@ -25,6 +25,7 @@ var local_basis := Basis.IDENTITY ## the tile's axes in planet space: y is up
 var size := 0.0 ## m, along one edge
 var has_collider := false
 var min_height := 0.0
+var tile_key := 0 ## see key_of
 
 var _noise: PlanetNoise
 var _settings: PlanetSettings
@@ -47,7 +48,9 @@ static func direction(f: int, s: float, t: float) -> Vector3:
 
 
 ## Builds the tile (on any thread). `collide`: also build the collider (the player walks here).
-func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) -> PlanetTile:
+func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool,
+		plants := PlanetScatter.Detail.NONE) -> PlanetTile:
+	tile_key = key_of(f, lvl, x, y)
 	face = f
 	level = lvl
 	tile_x = x
@@ -126,6 +129,9 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 	add_child(mesh_instance)
 	if min_height < _settings.sea_level + 0.5:
 		_add_sea(dirs, side, cells)
+	if plants != PlanetScatter.Detail.NONE:
+		PlanetScatter.new().populate(self, noise, positions, dirs, heights, cells, size, plants,
+				collide)
 	if collide:
 		has_collider = true
 		var body := StaticBody3D.new()

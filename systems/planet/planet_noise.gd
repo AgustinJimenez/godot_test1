@@ -13,6 +13,7 @@ var settings: PlanetSettings
 var relief := 1000.0 ## m, from the sea to the top of the highest ranges (see PlanetSettings)
 var tectonics: PlanetTectonics
 var climate := PlanetClimate.new()
+var species: SpeciesRegistry ## the plants of this planet
 
 var _rolling := FastNoiseLite.new()
 var _hills := FastNoiseLite.new()
@@ -26,6 +27,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 	if relief <= 0.0:
 		relief = clampf(settings.radius * 0.0014, 150.0, 9000.0)
 	tectonics = PlanetTectonics.new(settings.world_seed, settings.plates)
+	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
 	_setup(_rolling, settings.world_seed + 2, 0.0004, 3)
 	_setup(_hills, settings.world_seed + 1, 0.0022, 4)
 	_setup(_detail, settings.world_seed + 7, 0.09, 2)
@@ -89,6 +91,11 @@ func temperature(x: float, y: float, z: float, ground: float) -> float:
 func detail(x: float, y: float, z: float) -> float:
 	var p := Vector3(x, y, z) * settings.radius
 	return _detail.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.5
+
+
+## Fine variation 0..1 at a made-up point (patches of one plant species).
+func detail_at(point: Vector3) -> float:
+	return _detail.get_noise_3d(point.x, point.y, point.z) * 0.5 + 0.5
 
 
 func biome(x: float, y: float, z: float, ground: float, steepness: float) -> TerrainNoise.Biome:
