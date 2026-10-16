@@ -8,12 +8,12 @@ extends RefCounted
 
 const NAMES: Array[String] = ["leafy", "conifer", "umbrella", "giant", "oak", "ancient", "dragon",
 		"willow", "cypress", "bush", "shrub", "groundcover",
-		"clump"]
+		"clump", "palm"]
 
 ## Plausible range of each numeric trait: [min, max]. A draw never leaves it.
 const RANGES := {
 	"height": [0.2, 45.0], "girth": [0.01, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
-	"trunk_part": [0.05, 0.8], "root_flare": [0.0, 1.0], "crown": [0.15, 14.0],
+	"trunk_part": [0.05, 1.0], "root_flare": [0.0, 1.0], "crown": [0.15, 14.0],
 	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "stems": [1, 6],
 	"stem_spread": [0.05, 0.5], "limb_angle": [15.0, 90.0],
 	"limb_length": [0.5, 2.2], "limb_thickness": [0.3, 1.3], "nodes_spacing": [0.3, 2.0],
@@ -21,11 +21,12 @@ const RANGES := {
 	"children": [1, 7], "child_radius": [0.3, 0.9], "child_length": [0.2, 0.9],
 	"child_forward": [0.0, 1.5], "child_side": [0.0, 1.5], "child_up": [-0.5, 1.0],
 	"leaf_aspect": [0.8, 5.0], "leaf_size": [0.08, 0.45], "needle_size": [0.2, 1.5],
-	"leaf_density": [0.1, 1.0],
+	"leaf_density": [0.1, 1.0], "fronds": [6, 24], "frond_length": [0.8, 8.0],
+	"frond_arch": [0.1, 1.0], "frond_droop": [0.1, 1.0], "leaflet": [0.1, 0.4],
 }
 ## Traits that are a choice from a list, not a number (blended by picking one side).
 ## Sizes that vary by proportion (a bush and a giant both change by a few percent, not by metres).
-const PROPORTIONAL := ["height", "girth", "crown"]
+const PROPORTIONAL := ["height", "girth", "crown", "frond_length"]
 const CHOICES := ["leaf_shape", "leaf_edge", "leaf_pattern", "foliage", "profile"]
 
 
@@ -136,6 +137,23 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.trunk_sides = 6
 			g.leaf_size = 0.2
 			g.bark = Color(0.36, 0.28, 0.2)
+		"palm":
+			# one bare leaning trunk, a crown of long arching fronds
+			g = _leafy(leafy)
+			g.height = 9.0
+			g.girth = 0.22
+			g.taper = 0.7
+			g.lean = 0.1
+			g.trunk_part = 0.97
+			g.foliage = TreeGenome.Foliage.FROND
+			g.fronds = 14
+			g.frond_length = 3.2
+			g.frond_arch = 0.5
+			g.frond_droop = 0.6
+			g.leaflet = 0.2
+			g.bark = Color(0.45, 0.36, 0.26)
+			g.leaf = Color(0.22, 0.45, 0.16)
+			g.leaf_tip = Color(0.36, 0.58, 0.22)
 		"clump":
 			# a birch or hazel clump: several slim stems from one root
 			g = _leafy(leafy)
@@ -338,6 +356,10 @@ static func _settle(g: TreeGenome) -> void:
 		g.profile = TreeGenome.Profile.CONE
 		if g.foliage == TreeGenome.Foliage.BLADE:
 			g.nodes_spacing = maxf(g.nodes_spacing, 1.0) # single leaves are costly: few whorls
+	if g.foliage == TreeGenome.Foliage.FROND:
+		g.leader = false
+		g.trunk_part = maxf(g.trunk_part, 0.9)
+		g.frond_length = maxf(g.frond_length, g.height * 0.2)
 	if g.leaf_shape == PlantSpecies.LeafShape.LOBED and g.leaf_lobes == 0:
 		g.leaf_lobes = 2
 	# branches never shorter than a share of the height, or they look stitched to the trunk

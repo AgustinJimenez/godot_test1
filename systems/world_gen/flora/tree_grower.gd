@@ -19,6 +19,7 @@ const NEEDLE_SWAY := 0.35 ## and from the base of a needle spray to its tips
 ## No tree gets more triangles than this: once the mesh is full no more branches or leaves are
 ## added (a wild genome then has a bare top instead of a forest-sized mesh).
 const BUDGET := 12000
+const MARGIN := 150 ## the check runs between branches, so one more can still be added after it
 
 var capped := false ## the budget ran out while growing
 var _thrift := 1.0 ## 1 as drawn; less: fewer branches, whorls and leaves (see build)
@@ -108,7 +109,9 @@ func _grow_stem(lean_to := Vector3.ZERO) -> void:
 	var needle := clampf(leaf_basis * _g.needle_size, 0.6, 1.1) * stout
 	_needle_length = needle * (1.0 if _fine else 1.2) * bigger
 	_trunk()
-	if _g.leader:
+	if _g.foliage == TreeGenome.Foliage.FROND:
+		_fronds()
+	elif _g.leader:
 		_whorls()
 	else:
 		_limbs()
@@ -116,7 +119,7 @@ func _grow_stem(lean_to := Vector3.ZERO) -> void:
 
 ## True once the mesh has used its triangle budget.
 func _full() -> bool:
-	if _b.triangle_count() < BUDGET:
+	if _b.triangle_count() < BUDGET - MARGIN:
 		return false
 	capped = true
 	return true
@@ -193,6 +196,65 @@ func _limbs() -> void:
 		length = minf(length, (centre.y + radius_v - start.y) / maxf(cos(pitch), 0.2))
 		length *= _g.limb_length
 		_branch(start, dir, length, limb_radius, 0, 0.0)
+
+
+## A palm's crown: fronds out from the top of the trunk, the young ones in the middle pointing up,
+## the old ones arching out and hanging. Each is a midrib with a row of leaflets down both sides.
+func _fronds() -> void:
+	var top := _axis(_trunk_length) + Vector3(0.0, 0.05, 0.0)
+	var count := maxi(_g.fronds - 3 * _lod, 5)
+	var phase := _rng.randf() * TAU
+	for index in count:
+		var yaw := phase + float(index) * GOLDEN_ANGLE
+		var out := Vector3(cos(yaw), 0.0, sin(yaw))
+		var side := Vector3(-out.z, 0.0, out.x)
+		var length := _g.frond_length * _rng.randf_range(0.85, 1.1)
+		var steep := pow(_rng.randf(), 1.5) # the young ones stand up
+		var parts := 9 - 3 * _lod
+		var points: Array[Vector3] = []
+		for step in parts + 1:
+			var t := float(step) / float(parts)
+			var reach := length * t * (1.0 - 0.6 * steep)
+			var rise := length * (0.9 * steep * t + 0.5 * _g.frond_arch * sin(PI * t)
+					- _g.frond_droop * t * t)
+			points.append(top + out * reach + Vector3(0.0, rise, 0.0))
+		_frond(points, side)
+
+
+func _frond(points: Array[Vector3], side: Vector3) -> void:
+	if _b.leafless or _full():
+		return
+	var length := (points[points.size() - 1] - points[0]).length()
+	var rib := length * 0.012
+	var dark := _g.leaf.darkened(0.35)
+	var tone := _g.leaf.lerp(_g.leaf.lightened(0.12), _rng.randf())
+	for index in points.size() - 1:
+		var t := float(index) / float(points.size() - 1)
+		var sway := 0.35 + 0.5 * t
+		var a := points[index]
+		var b := points[index + 1]
+		var tangent := (b - a).normalized()
+		var base := dark
+		base.a = sway
+		var tip := dark
+		tip.a = minf(sway + 0.1, 1.0)
+		_b.add_tri(a - side * rib, a + side * rib, b, base, base, tip)
+		# leaflets: one tri per side, hanging from the midrib, longest in the middle of the frond
+		var leaflets := (5 if _fine else 3) - _lod
+		for leaf_index in maxi(leaflets, 1):
+			var u := (float(leaf_index) + 0.5) / float(maxi(leaflets, 1))
+			var at := a.lerp(b, u)
+			var shape := pow(sin(PI * clampf(t + u / float(points.size() - 1), 0.05, 0.98)), 0.7)
+			var size := length * _g.leaflet * shape * _rng.randf_range(0.85, 1.1)
+			var step_len := (b - a).length() / float(maxi(leaflets, 1))
+			for sign_side: float in [-1.0, 1.0]:
+				var dir := (side * sign_side * 0.9 + tangent * 0.5 + Vector3.DOWN * 0.45).normalized()
+				var from_colour := tone.darkened(0.2)
+				from_colour.a = sway
+				var tip_colour := _g.leaf_tip.lerp(tone, 0.3)
+				tip_colour.a = minf(sway + LEAF_SWAY, 1.0)
+				_b.add_tri(at, at + tangent * step_len, at + dir * size + tangent * step_len * 0.5,
+						from_colour, from_colour, tip_colour)
 
 
 ## Whorls of branches up the trunk (a conifer), close together, each turned against the one below;

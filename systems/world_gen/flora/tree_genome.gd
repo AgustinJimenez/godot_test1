@@ -9,8 +9,9 @@ extends RefCounted
 ## How far a branch can reach at each height: a cone (long below, short above) or a dome (the limbs
 ## reach out and up to an envelope).
 enum Profile { CONE, DOME }
-## What a branch carries: single leaves along the last twigs, or sprays of needles at the ends.
-enum Foliage { BLADE, NEEDLE }
+## What a branch carries: single leaves along the last twigs, sprays of needles at the ends, or (a
+## palm) big fronds from the top of one bare trunk.
+enum Foliage { BLADE, NEEDLE, FROND }
 
 # Trunk
 var height := 8.0 ## metres (the grower varies it a little per tree)
@@ -77,6 +78,11 @@ var leaf_edge := PlantSpecies.LeafEdge.SMOOTH
 var leaf_pattern := PlantSpecies.LeafPattern.ALTERNATE
 var needle_size := 0.45 ## needle spray length as a fraction of the crown radius
 var tips_only := false ## needle sprays only at the very ends of the branches: a tuft layer on top
+var fronds := 14 ## (palm) fronds in the crown
+var frond_length := 3.0 ## metres
+var frond_arch := 0.5 ## 0..1: how high the frond rises before it bends over
+var frond_droop := 0.5 ## 0..1: how far the tip hangs down
+var leaflet := 0.22 ## leaflet length as a share of the frond
 var leaf_density := 1.0 ## 1 full; less: some twigs have no leaves, the others fewer (an old oak)
 
 # Colours (sRGB)

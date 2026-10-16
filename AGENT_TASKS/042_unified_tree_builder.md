@@ -189,3 +189,13 @@ trait inside `RANGES`, and with probability `exotic` push one trait somewhere un
 makes the traits agree. The lab's "Generate random" uses it (new Exoticness slider; the label shows the
 recipe, e.g. "cypress 77% + giant 23%"). Check: 300 draws, worst 11992 triangles, no NaN. Stage 2 will
 draw the world's species from the same table.
+
+## Later additions (archetypes)
+
+- Kinds added: willow, cypress, bush (1.6 m), shrub (0.7 m), groundcover (0.3 m), clump (multi-stem,
+  `stems`/`stem_spread`), palm (`Foliage.FROND`: `fronds`, `frond_length`, `frond_arch`, `frond_droop`,
+  `leaflet`; ~1500 triangles). Ranges go down to 0.2 m height; leaf size scales down for crowns <0.8 m.
+- Minimum crown radius (10-12% of height) so branches are never stitched to the trunk.
+- Budget check keeps a 150-triangle margin: 300 random draws stay under 12000.
+- Still to do: cactus/succulent, grasses/ferns/flowers, dead trees, bark texture, per-tree variation in
+  the world scatter, a small-plant triangle budget (a 0.3 m groundcover can use ~10k triangles).

@@ -18,7 +18,7 @@ const ROWS := [
 	{"name": "stems (a clump)", "prop": "stems", "min": 1, "max": 6, "step": 1},
 	{"name": "stem spread", "prop": "stem_spread", "min": 0.05, "max": 0.5, "step": 0.01},
 	{"name": "lean", "prop": "lean", "min": 0.0, "max": 0.3, "step": 0.01},
-	{"name": "bare trunk part", "prop": "trunk_part", "min": 0.05, "max": 0.8, "step": 0.01},
+	{"name": "bare trunk part", "prop": "trunk_part", "min": 0.05, "max": 1.0, "step": 0.01},
 	{"group": "Where the branches leave"},
 	{"name": "crown radius", "prop": "crown", "min": 0.15, "max": 14.0, "step": 0.05},
 	{"name": "crown height / width", "prop": "aspect", "min": 0.4, "max": 2.0, "step": 0.01},
@@ -50,6 +50,11 @@ const ROWS := [
 	{"name": "leaf size", "prop": "leaf_size", "min": 0.08, "max": 0.45, "step": 0.005},
 	{"name": "lobes", "prop": "leaf_lobes", "min": 0, "max": 4, "step": 1},
 	{"name": "needle size", "prop": "needle_size", "min": 0.2, "max": 1.5, "step": 0.01},
+	{"name": "fronds (palm)", "prop": "fronds", "min": 6, "max": 24, "step": 1},
+	{"name": "frond length", "prop": "frond_length", "min": 0.8, "max": 8.0, "step": 0.05},
+	{"name": "frond arch", "prop": "frond_arch", "min": 0.1, "max": 1.0, "step": 0.01},
+	{"name": "frond droop", "prop": "frond_droop", "min": 0.1, "max": 1.0, "step": 0.01},
+	{"name": "leaflet length", "prop": "leaflet", "min": 0.1, "max": 0.4, "step": 0.01},
 	{"name": "leaf density", "prop": "leaf_density", "min": 0.1, "max": 1.0, "step": 0.01},
 ]
 const OPTIONS := [
@@ -57,7 +62,7 @@ const OPTIONS := [
 			"narrow", "diamond"]},
 	{"name": "leaf edge", "prop": "leaf_edge", "items": ["smooth", "serrated", "wavy"]},
 	{"name": "leaf pattern", "prop": "leaf_pattern", "items": ["alternate", "opposite", "spiral"]},
-	{"name": "foliage", "prop": "foliage", "items": ["blades", "needles"]},
+	{"name": "foliage", "prop": "foliage", "items": ["blades", "needles", "fronds"]},
 ]
 const FLAGS := [
 	{"name": "one trunk to the top (leader)", "prop": "leader"},
