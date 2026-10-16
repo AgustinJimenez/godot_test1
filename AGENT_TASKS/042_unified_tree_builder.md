@@ -247,3 +247,12 @@ draw the world's species from the same table.
 - Foliage clumps (`foliage_mass`): flat jittered eight-sided pads at twig tips in the leaf colours, so a
   crown reads as layered mass (raintree 0.7, ancient 0.6). They look like stylised canopy pads; the
   realistic look may want a softer shape later.
+
+## Fifth batch: ancient oak retune
+
+- The ancient oak spent its budget on serrated heart leaves (14 triangles each) on a wood skeleton.
+  It now has small smooth oval live-oak leaves, a dark green, `leaf_density` 0.6, and big foliage
+  clumps (`mass_size` 2.2, new genome trait: clump size as a multiple of a leaf) at twig tips so
+  the crown reads as a leafy mass. `children` [6, 5, 0]. Lab has a "clump size" slider.
+- Still not the Angel Oak photo: reads as a tall bush of limbs; a flatter, wider, lower crown and a
+  more visible trunk are open.

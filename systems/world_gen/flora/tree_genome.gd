@@ -108,6 +108,7 @@ var blossom_size := 0.07 ## blossom flower radius, metres
 var blossom_density := 0.5 ## the share of twigs that carry blossom
 var compound := false ## each leaf is a feather of small leaflets (acacia, rain tree, jacaranda)
 var foliage_mass := 0.0 ## 0..1: soft clumps of foliage behind the leaves (a crown as a mass)
+var mass_size := 1.0 ## how big the clumps of foliage are, as a multiple of a leaf
 var leaf_density := 1.0 ## 1 full; less: some twigs have no leaves, the others fewer (an old oak)
 
 # Colours (sRGB)

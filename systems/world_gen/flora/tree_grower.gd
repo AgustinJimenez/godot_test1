@@ -368,7 +368,7 @@ func _bloom(at: Vector3, normal: Vector3, size: float, colour: Color, centre: Co
 func _mass(at: Vector3, sway: float) -> void:
 	if _g.foliage_mass <= 0.0 or _lod > 0 or _full() or _rng.randf() > _g.foliage_mass:
 		return
-	var size := _leaf_length * _rng.randf_range(1.4, 2.2)
+	var size := _leaf_length * _g.mass_size * _rng.randf_range(1.4, 2.2)
 	var tone := _g.leaf.lerp(_g.leaf_tip, _rng.randf() * 0.5).darkened(_rng.randf_range(0.0, 0.2))
 	var low := tone.darkened(0.3)
 	low.a = sway
