@@ -6,7 +6,7 @@ extends Node3D
 ## dice" keeps the traits and only regrows the branches differently, the presets go back to a
 ## leafy tree or a conifer. Mouse: drag the left button over the tree to turn around it, wheel to
 ## zoom, right button drag to pan. The label shows the triangle count of what is on screen.
-## Command line (after --): --seed=N  --realistic
+## Command line (after --): --seed=N  --lowpoly
 
 const ROWS := [
 	{"group": "Trunk"},
@@ -68,7 +68,7 @@ const FLAGS := [
 
 var genome: TreeGenome
 var dice := 1
-var detailed := false
+var detailed := true
 var leafless := false
 var lod := 0
 var wind := 0
@@ -97,8 +97,8 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--seed="):
 			seed_value = int(arg.get_slice("=", 1))
-		elif arg == "--realistic":
-			detailed = true
+		elif arg == "--lowpoly":
+			detailed = false
 	_random.seed = seed_value
 	var registry := SpeciesRegistry.new(seed_value, 36)
 	for one in registry.species:
