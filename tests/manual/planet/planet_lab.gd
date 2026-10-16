@@ -90,6 +90,11 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	_frame += 1
 	if _shot != "" and _frame == _shot_frame:
+		var animals := 0
+		for animal in planet.fauna.get_children():
+			if (animal as Node3D).visible:
+				animals += 1
+		print("ANIMALS visible: %d" % animals)
 		get_viewport().get_texture().get_image().save_png(_shot)
 		get_tree().quit()
 	if not _checking or player == null:

@@ -61,6 +61,8 @@ func populate(tile: Node3D, noise: PlanetNoise, positions: Array[Vector3], dirs:
 		tile.add_child(_body)
 	_scatter(PlantSpecies.Layer.CANOPY, 1.0 if detail == Detail.ALL else 2.0)
 	_scatter(PlantSpecies.Layer.UNDERSTORY, 1.0 if detail == Detail.ALL else 2.0)
+	if detail != Detail.NONE:
+		_rocks(detail == Detail.ALL)
 	if detail == Detail.ALL:
 		_scatter(PlantSpecies.Layer.GRASS, 1.0)
 		_scatter(PlantSpecies.Layer.MEADOW, 1.0)
@@ -90,6 +92,107 @@ func _scatter(layer: PlantSpecies.Layer, stretch: float) -> void:
 			var plant := _pick(layer, dir, ground, steep, x, z)
 			if plant != null and _rng.randf() <= _pick_chance * density:
 				_place(plant, at)
+
+
+## Rocks (more and bigger on rocky, snowy and dry ground and steep slopes) and, further apart,
+## the things that stand out: fallen logs and stumps in forests, rock spires in the hills and
+## deserts, driftwood on beaches. The same kinds and chances as the flat world's WorldScatter.
+func _rocks(near: bool) -> void:
+	var spacing := 10.0 if near else 20.0
+	var count := int(_size / spacing)
+	for row in count:
+		for column in count:
+			var x := (float(column) + _rng.randf()) * spacing
+			var z := (float(row) + _rng.randf()) * spacing
+			var fx := clampf(x / _size * float(_cells), 0.0, float(_cells) - 0.001)
+			var fz := clampf(z / _size * float(_cells), 0.0, float(_cells) - 0.001)
+			var ground := _height_at(fx, fz)
+			if ground < 0.9:
+				continue
+			var dir := _direction(fx, fz)
+			if _noise.hydrology != null and _noise.hydrology.water_at(dir, ground) > ground - 0.3:
+				continue
+			var steep := _slope(fx, fz)
+			var biome := _noise.biome(dir.x, dir.y, dir.z, ground, steep)
+			_rock_at(biome, steep, _ground(fx, fz), near)
+
+
+func _rock_at(biome: int, steep: float, at: Vector3, near: bool) -> void:
+	var chance := 0.1
+	var big := 1.0
+	match biome:
+		TerrainNoise.Biome.ROCKY:
+			chance = 0.55
+			big = 2.2
+		TerrainNoise.Biome.SNOW:
+			chance = 0.3
+			big = 1.8
+		TerrainNoise.Biome.BEACH:
+			chance = 0.1
+			big = 0.7
+		TerrainNoise.Biome.DESERT:
+			chance = 0.2
+			big = 1.4
+	chance += steep * 0.3
+	var density := _noise.settings.rock_density
+	if _rng.randf() < chance * density:
+		var scale := _rng.randf_range(0.5, 1.5) * big
+		var yaw := _rng.randf_range(0.0, TAU)
+		var kind := FloraMeshes.Kind.ROCK
+		_queue_kind(kind, _rng.randi() % FloraMeshes.variant_count(kind), at, scale, yaw)
+		if _body != null:
+			var box := BoxShape3D.new()
+			box.size = Vector3(1.7, 1.0, 1.5) * scale
+			_add_box(box, at + Vector3(0.0, scale * 0.2, 0.0), yaw)
+	if not near:
+		return
+	var feature := FloraMeshes.Kind.LOG
+	var odds := 0.0
+	match biome:
+		TerrainNoise.Biome.FOREST:
+			odds = 0.16
+			feature = FloraMeshes.Kind.LOG if _rng.randf() < 0.6 else FloraMeshes.Kind.STUMP
+		TerrainNoise.Biome.MARSH:
+			odds = 0.1
+			feature = FloraMeshes.Kind.STUMP
+		TerrainNoise.Biome.BEACH:
+			odds = 0.06
+		TerrainNoise.Biome.ROCKY, TerrainNoise.Biome.SNOW:
+			odds = 0.16
+			feature = FloraMeshes.Kind.SPIRE
+		TerrainNoise.Biome.DESERT:
+			odds = 0.1
+			feature = FloraMeshes.Kind.SPIRE
+	if _rng.randf() < odds * density:
+		var scale := _rng.randf_range(0.8, 1.4)
+		var yaw := _rng.randf_range(0.0, TAU)
+		_queue_kind(feature, _rng.randi() % FloraMeshes.variant_count(feature), at, scale, yaw)
+		if _body != null:
+			var box := BoxShape3D.new()
+			if feature == FloraMeshes.Kind.LOG:
+				box.size = Vector3(3.6, 0.6, 0.6) * scale
+			elif feature == FloraMeshes.Kind.STUMP:
+				box.size = Vector3(0.8, 0.8, 0.8) * scale
+			else:
+				box.size = Vector3(1.6, 5.0, 1.6) * scale
+			_add_box(box, at + Vector3(0.0, box.size.y * 0.4, 0.0), yaw)
+
+
+func _queue_kind(kind: int, variant: int, at: Vector3, scale: float, yaw: float) -> void:
+	var key := kind * 100 + variant
+	if not _batches.has(key):
+		_batches[key] = []
+		_colors[key] = []
+	(_batches[key] as Array).append(Transform3D(
+			Basis(Vector3.UP, yaw).scaled(Vector3.ONE * scale), at - Vector3(0.0, scale * 0.12, 0.0)))
+	(_colors[key] as Array).append(Color.WHITE)
+
+
+func _add_box(box: BoxShape3D, at: Vector3, yaw: float) -> void:
+	var collision := CollisionShape3D.new()
+	collision.shape = box
+	collision.transform = Transform3D(Basis(Vector3.UP, yaw), at)
+	_body.add_child(collision)
 
 
 ## The species of `layer` that grows at this spot, in proportion to how well each fits, or null.
@@ -154,13 +257,17 @@ func _place(plant: PlantSpecies, at: Vector3) -> void:
 func _flush(near: bool) -> void:
 	for key: int in _batches.keys():
 		var transforms: Array = _batches[key]
+		var plant := key >= PLANT_KEY
 		var id := (key - PLANT_KEY) / 100
 		var variant := key % 100
-		var layer := _species.by_id(id).layer()
+		var layer := _species.by_id(id).layer() if plant else PlantSpecies.Layer.CANOPY
 		var multi := MultiMesh.new()
 		multi.transform_format = MultiMesh.TRANSFORM_3D
 		multi.use_colors = true
-		multi.mesh = _species.mesh(id, variant, FloraMeshes.detailed, 0)
+		if plant:
+			multi.mesh = _species.mesh(id, variant, FloraMeshes.detailed, 0)
+		else:
+			multi.mesh = FloraMeshes.mesh(key / 100 as FloraMeshes.Kind, variant, FloraMeshes.detailed)
 		multi.instance_count = transforms.size()
 		for index in transforms.size():
 			multi.set_instance_transform(index, transforms[index])

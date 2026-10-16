@@ -15,6 +15,7 @@ var noise: PlanetNoise
 var frame := PlanetFrame.new()
 var surface: PlanetSurface
 var atmosphere: WorldAtmosphere
+var fauna: PlanetFauna
 var rebases := 0 ## how many times the planet has been turned (labs and tests)
 
 var _target: Node3D
@@ -31,6 +32,9 @@ func _ready() -> void:
 	surface = PlanetSurface.new()
 	surface.setup(noise, frame)
 	add_child(surface)
+	fauna = PlanetFauna.new()
+	fauna.planet = self
+	add_child(fauna)
 
 
 ## Stands `target` on the planet at the spawn spot (or `direction`, a unit vector from the centre).
@@ -54,6 +58,19 @@ func build_now(near_only := false) -> void:
 func planet_position() -> Vector3:
 	var at := frame.to_planet(_target.global_position)
 	return Vector3(at[0], at[1], at[2])
+
+
+## The ground under the world position (x, z), found near the world height `near_y`: its world
+## height, the biome there and whether it is under water (sea, river or lake).
+func ground_at(x: float, z: float, near_y: float) -> Dictionary:
+	var here := frame.to_planet(Vector3(x, near_y, z))
+	var dir := Vector3(here[0], here[1], here[2]).normalized()
+	var h := noise.height(dir.x, dir.y, dir.z)
+	var wet := h < 0.6
+	if not wet and noise.hydrology != null:
+		wet = noise.hydrology.water_at(dir, h) > h - 0.3
+	var up := frame.to_world(dir * (settings.radius + h))
+	return {"y": up.y, "wet": wet, "biome": noise.biome(dir.x, dir.y, dir.z, h, 0.1)}
 
 
 ## Metres above sea level at the target (the ground under it, not its feet).
@@ -88,6 +105,7 @@ func _physics_process(delta: float) -> void:
 		_timer = 0.3
 		surface.update(planet_position())
 	WorldWind.set_realism(0.0)
+	fauna.update(_target.global_position, 1.0 - atmosphere.night_amount(), delta)
 	# the air thins with height: no fog in space
 	var thin := fog * exp(-maxf(altitude(), 0.0) / 1200.0)
 	atmosphere.fog_extra = thin - WorldAtmosphere.BASE_FOG

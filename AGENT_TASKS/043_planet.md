@@ -11,7 +11,7 @@ Run: `godot --path . res://tests/manual/planet/planet_lab.tscn -- --radius=20000
 Earth size needs the double build (see below).
 
 Next (by value): walk it and tune the river look (flat opaque water, steep mouths) and plant
-density; rocks and fauna; weather and day/night from the planet's rotation; erosion simulation;
+density; birds, butterflies and fireflies; weather and day/night from the planet's rotation; erosion simulation;
 planet types without life (craters, ice); star systems above this (see the chat plan: seeds ->
 frames -> floating origin per planet).
 
@@ -51,6 +51,10 @@ Lab: `tests/manual/planet/planet_lab.tscn` (`-- --radius=N --seed=N`); check:
   species from `SpeciesRegistry` (same generator as the flat world), fitness from the planet's
   moisture (rain), warmth (temperature at the height) and slope; nothing grows in the sea, a river or
   a lake. `Plants` bodies hold trunk colliders (the check ignores them).
+- Rocks, logs, stumps, rock spires and driftwood: `PlanetScatter._rocks`, the flat world's kinds and
+  chances by biome (`FloraMeshes`), box colliders on the finest tiles.
+- Fauna: `PlanetFauna extends WorldFauna` (deer and rabbits, same behaviour) looks the ground up with
+  `PlanetWorld.ground_at` (world height, biome, under water?), so animals stay out of the water.
 - Water: `shaders/world/planet_water.gdshader` is water_lowpoly with smooth lit normals (the faceted
   low-poly normals made the sun glint a field of squares); sea facets ~5 m near, bigger and flat
   (vertex colour red = wave share) far away.
@@ -105,5 +109,5 @@ edges differ by 1e-10 m); the planet check avoids seams.
 
 ## Not done
 
-Rocks, fauna, weather, planet rotation / day-night from the planet, other
+Birds and butterflies (WorldLife), weather, planet rotation / day-night from the planet, other
 planets, space.

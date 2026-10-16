@@ -28,6 +28,13 @@ func to_planet(world_position: Vector3) -> PackedFloat64Array:
 	return PackedFloat64Array([anchor[0] + offset.x, anchor[1] + offset.y, anchor[2] + offset.z])
 
 
+## The world position of a planet space position.
+func to_world(planet_position: Vector3) -> Vector3:
+	var offset := Vector3(planet_position.x - anchor[0], planet_position.y - anchor[1],
+			planet_position.z - anchor[2])
+	return rot * offset + origin_w
+
+
 ## Turns the planet about the player's feet so the ground there is level, and makes the player's
 ## spot the new anchor. The player does not move.
 func rebase(world_position: Vector3) -> void:
