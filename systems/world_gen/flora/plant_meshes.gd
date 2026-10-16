@@ -4,35 +4,18 @@ extends RefCounted
 ## of that species and variant (so a variant is always the same mesh, and no two variants match).
 
 
-## Leafy trees and conifers come from the one TreeGrower (traits in a TreeGenome); false draws them
-## with the old builders (kept until the new one is checked, see AGENT_TASKS/042).
-static var use_tree_grower := true
-
-
-## `lod` 1: the lighter version of a tree for trees at a distance (other plants ignore it).
+## `lod` 1: the lighter version of a tree for trees at a distance.
 static func build(species: PlantSpecies, variant: int, detailed: bool,
 		leafless := false, lod := 0) -> ArrayMesh:
 	var rng := _rng(species, variant)
 	var builder := MeshBuilder.new()
 	builder.detailed = detailed
 	builder.leafless = leafless
-	match species.form:
-		PlantSpecies.Form.CONIFER:
-			if use_tree_grower:
-				TreeGrower.build(builder, TreeArchetypes.for_species(species), rng, lod)
-			else:
-				PlantConiferBuilders.build(builder, species, rng)
-		PlantSpecies.Form.BROADLEAF:
-			if use_tree_grower:
-				TreeGrower.build(builder, TreeArchetypes.for_species(species), rng, lod)
-			else:
-				PlantTreeBuilders.broadleaf(builder, species, rng)
-		PlantSpecies.Form.PALM, PlantSpecies.Form.BARE_TREE:
-			TreeGrower.build(builder, TreeArchetypes.for_species(species), rng, lod)
-		PlantSpecies.Form.MUSHROOM:
-			PlantGroundBuilders.mushroom(builder, species, rng)
-		_: # shrubs, cacti, grasses, reeds, flowers and ferns
-			TreeGrower.build(builder, TreeArchetypes.for_species(species), rng, maxi(lod, 1))
+	if species.form == PlantSpecies.Form.MUSHROOM:
+		PlantGroundBuilders.mushroom(builder, species, rng)
+	else: # every other plant is grown by TreeGrower; the small ones always in the light version
+		var level := lod if species.is_tree() else maxi(lod, 1)
+		TreeGrower.build(builder, TreeArchetypes.for_species(species), rng, level)
 	return builder.commit()
 
 

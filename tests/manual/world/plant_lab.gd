@@ -12,7 +12,6 @@ extends Node3D
 ##   V             new random individuals           L (or D)  low-poly / realistic meshes
 ##   U (or A)      autumn on / off                  T  wind: calm, breeze, gale
 ##   H             hide / show the leaves (bare trunk and branches; trees only)
-##   Y             leafy trees and conifers from the one TreeGrower / from the old builders
 ##   B             trees at full detail / the lighter version used at a distance
 ##   K             what kind of tree the leafy species are: as drawn, or Oak, Maple, Beech, Elm,
 ##                 Ash, Linden, Poplar, Birch, Willow (their leaf shape, size, branching)
@@ -139,7 +138,7 @@ func _generate_species() -> void:
 				SpeciesGenerator.apply_leaf_traits(one, KINDS[kind], dice)
 	focus_row = clampi(focus_row, 0, maxi(_species.size() - 1, 0))
 	for row in _species.size(): # start on a tree that has the branch-and-leaf crown
-		if form == PlantSpecies.Form.BROADLEAF and PlantCrownBuilders.supports(_species[row]):
+		if form == PlantSpecies.Form.BROADLEAF:
 			focus_row = row
 			break
 
@@ -366,14 +365,12 @@ func _update_label() -> void:
 		var one := _species[focus_row]
 		var crown := ""
 		if form == PlantSpecies.Form.BROADLEAF:
-			crown = " (new crown)" if PlantCrownBuilders.supports(one) else " (old crown)"
-			crown += " leaf: %s" % PlantSpecies.LeafShape.keys()[one.leaf_shape].to_lower()
+			crown = " leaf: %s" % PlantSpecies.LeafShape.keys()[one.leaf_shape].to_lower()
 			if kind >= 0:
 				crown += " as %s" % KINDS[kind]
 		where = "  %s: %s%s  plant %d of %d" % [View.keys()[view].to_lower(), one.common_name, crown,
 				focus_row * COLUMNS + focus_column + 1, _species.size() * COLUMNS]
 		if form in [PlantSpecies.Form.BROADLEAF, PlantSpecies.Form.CONIFER]:
-			where += "  [%s]" % ("TreeGrower" if PlantMeshes.use_tree_grower else "old builders")
 			where += "  [distance version]" if lod == 1 else ""
 	_label.text = ("%s  world seed %d  %s%s  %d species  wind: %s%s%s\n"
 			+ "[Left / Right] plant  [Up / Down] species  [mouse] turn around it  [wheel] zoom  "
@@ -419,9 +416,6 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			rebuild = true
 		KEY_B:
 			lod = 1 - lod
-			rebuild = true
-		KEY_Y:
-			PlantMeshes.use_tree_grower = not PlantMeshes.use_tree_grower
 			rebuild = true
 		KEY_K:
 			kind = (kind + 2) % (KINDS.size() + 1) - 1

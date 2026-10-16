@@ -284,3 +284,9 @@ New low-plant kinds: `lawn` (short dense), `meadow` (tall, golden tips), `reed` 
   with old ground plants 13.5 M; old trees with new ground plants 4.2 M; all new 5.3 M.
 - Old builders are still in the tree (`use_tree_grower` false path, `PlantTreeBuilders.far`, mushroom
   in `PlantGroundBuilders`); deleting them is the last step.
+
+## Stage 2c: old builders deleted
+
+`PlantConiferBuilders`, `PlantCrownBuilders`, `PlantTreeBuilders.conifer/broadleaf/palm/bare_tree`,
+`PlantGroundBuilders.shrub/cactus/grass/reed/flower/fern` and `PlantMeshes.use_tree_grower` are gone.
+`PlantTreeBuilders` keeps `tube` and `far`; `PlantGroundBuilders` keeps the mushroom.

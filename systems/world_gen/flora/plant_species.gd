@@ -49,7 +49,7 @@ var size_spread := 0.25 ## +- size difference between individuals
 var marked_bark := false ## dark patches on pale bark
 var frosted := false ## white snow on the leaves (cold species)
 
-# Broadleaf crown: branches and single leaves (PlantCrownBuilders).
+# Broadleaf crown: branches and single leaves (TreeGenome.from_species).
 var leaf_shape := LeafShape.OVAL
 var leaf_pattern := LeafPattern.ALTERNATE
 var leaf_aspect := 1.8 ## leaf length / leaf width
