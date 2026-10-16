@@ -10,6 +10,7 @@ extends Node3D
 ##   -- --time-scale=N --hour=H --year=Y   how fast time runs, the first hour (12 noon), the first
 ##                    share of the year (0 northern spring equinox)
 ##   -- --look-moon  the camera looks at the moon (with --view-alt)
+##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --planet-page  the Planet page of the Esc menu open from the start
 ##   -- --bare       no plants (to look at the ground)
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
@@ -24,6 +25,7 @@ var planet: PlanetWorld
 var player: Player
 var _checking := false
 var _walking := false
+var _weather_name := "" ## a WorldWeather.State name to force from the start (rain, snow...)
 var _planet_page := false ## open the Planet page of the Esc menu from the start
 var _look_moon := false ## point the camera at the moon (with --view-alt)
 var _show_map := false ## open the planet map (the M key) from the start
@@ -91,6 +93,8 @@ func _ready() -> void:
 			_show_map = true
 		elif arg == "--look-moon":
 			_look_moon = true
+		elif arg.begins_with("--weather="):
+			_weather_name = arg.trim_prefix("--weather=").to_upper()
 		elif arg == "--planet-page":
 			_planet_page = true
 		elif arg == "--bare":
@@ -163,6 +167,11 @@ func _physics_process(_delta: float) -> void:
 	if _walking and player != null:
 		_walk_step()
 		return
+	if _weather_name != "" and _frame == 30:
+		var state: int = WorldWeather.State.keys().find(_weather_name)
+		if state >= 0:
+			planet.weather_override = state
+			planet.weather.snap(state as WorldWeather.State)
 	if _planet_page and _frame == 30:
 		player.hud.debug_overlay.show()
 		for button in player.hud.find_children("*", "Button", true, false):

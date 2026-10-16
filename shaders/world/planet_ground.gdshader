@@ -11,6 +11,7 @@ render_mode specular_schlick_ggx;
 
 global uniform float ground_wetness;
 global uniform float snow_cover;
+global uniform float rain_fall;
 global uniform float autumn;
 global uniform float realism;
 global uniform mat4 planet_from_world;
@@ -58,6 +59,23 @@ float smooth_noise(vec2 p) {
 	vec2 f = smoothstep(0.0, 1.0, fract(p));
 	return mix(mix(cell_hash(cell), cell_hash(cell + vec2(1.0, 0.0)), f.x),
 			mix(cell_hash(cell + vec2(0.0, 1.0)), cell_hash(cell + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+// A raindrop's ring on the water: the slope of the surface (x, z) in a 1 m cell, one drop per cell
+// at a time, each at its own moment in a cycle.
+vec2 ripple(vec2 p, float rate) {
+	vec2 cell = floor(p);
+	vec2 at = fract(p) - 0.5;
+	float seed = cell_hash(cell);
+	vec2 centre = (vec2(cell_hash(cell + 3.1), cell_hash(cell + 7.7)) - 0.5) * 0.4;
+	float age = fract(TIME * (0.55 + 0.4 * seed) + seed * 7.0);
+	vec2 from_centre = at - centre;
+	float d = length(from_centre);
+	float radius = age * 0.45;
+	float width = 0.035;
+	float wave = sin((d - radius) / width * 3.14159) * exp(-pow((d - radius) / (width * 2.0), 2.0));
+	float live = (1.0 - age) * step(seed, rate);
+	return normalize(from_centre + 0.0001) * wave * live;
 }
 
 void vertex() {
@@ -116,11 +134,24 @@ void fragment() {
 		view_normal = normalize(mix(view_normal, bumpy, strength));
 		rough = mix(0.95, 0.88 - patch * 0.1, strength);
 	}
-	float snow = snow_cover * smoothstep(0.45, 0.8, up);
-	vec3 col = paint * (1.0 - ground_wetness * 0.3);
+	// snow settles unevenly: more on level ground, thinner and broken at the edges and on slopes
+	float broken = smooth_noise(world_pos.xz * 0.9) * 0.6 + smooth_noise(world_pos.xz * 4.1) * 0.4;
+	float snow = snow_cover * smoothstep(0.5, 0.85, up + (broken - 0.5) * 0.5 * (1.0 - snow_cover * 0.6));
+	// rain: the ground goes dark and glossy everywhere, and water stands in the low level patches
+	float low_patch = smooth_noise(world_pos.xz * 0.11) * 0.65 + smooth_noise(world_pos.xz * 0.43) * 0.35;
+	float puddle = ground_wetness * smoothstep(0.52, 0.66, low_patch) * smoothstep(0.88, 0.97, up);
+	puddle *= 1.0 - snow;
+	vec3 col = paint * (1.0 - ground_wetness * 0.35);
+	col = mix(col, col * 0.55, puddle);
 	col = mix(col, vec3(0.8, 0.84, 0.9), snow);
-	NORMAL = view_normal;
+	if (puddle > 0.01 && rain_fall > 0.01) {
+		// the drops make rings on the standing water
+		vec2 slope = ripple(world_pos.xz * 1.0, rain_fall) + ripple(world_pos.xz * 1.7 + 11.0, rain_fall);
+		vec3 tilt = (VIEW_MATRIX * vec4(slope.x, 0.0, slope.y, 0.0)).xyz * 0.35 * puddle;
+		view_normal = normalize(view_normal + tilt);
+	}
+	NORMAL = mix(view_normal, normalize(mix(view_normal, normalize(NORMAL), 0.8)), puddle);
 	ALBEDO = col;
-	ROUGHNESS = mix(mix(rough, 0.42, ground_wetness), 0.7, snow);
-	SPECULAR = mix(0.3, 0.6, ground_wetness);
+	ROUGHNESS = mix(mix(mix(rough, 0.35, ground_wetness), 0.04, puddle), 0.7, snow);
+	SPECULAR = mix(0.3, 0.7, max(ground_wetness, puddle));
 }

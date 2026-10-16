@@ -105,7 +105,7 @@ func _wet(delta: float) -> void:
 	wetness = move_toward(wetness, 1.0 if soaking else 0.0, delta / (20.0 if soaking else 90.0))
 	var snowing := _values[3] > 0.1 and rain.snowing
 	snow = move_toward(snow, 1.0 if snowing else 0.0, delta / (45.0 if snowing else 240.0))
-	WorldWind.set_surface(wetness, snow)
+	WorldWind.set_surface(wetness, snow, 0.0 if rain.snowing else _values[3])
 
 
 func _lightning(delta: float) -> void:

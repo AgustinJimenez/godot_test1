@@ -9,7 +9,10 @@ static func set_wind(strength: float, direction: Vector2) -> void:
 
 
 ## How wet (0..1) and how snowed under (0..1) the ground and the plants look.
-static func set_surface(wetness: float, snow: float) -> void:
+## `falling` is how hard rain is falling now (0..1): the wetness stays after the rain stops, the
+## ripples on the puddles do not.
+static func set_surface(wetness: float, snow: float, falling: float = 0.0) -> void:
+	RenderingServer.global_shader_parameter_set(&"rain_fall", clampf(falling, 0.0, 1.0))
 	RenderingServer.global_shader_parameter_set(&"ground_wetness", clampf(wetness, 0.0, 1.0))
 	RenderingServer.global_shader_parameter_set(&"snow_cover", clampf(snow, 0.0, 1.0))
 

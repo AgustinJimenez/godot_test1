@@ -186,6 +186,10 @@ wind_direction={
 "type": "vec2",
 "value": Vector2(1, 0.3)
 }
+rain_fall={
+"type": "float",
+"value": 0.0
+}
 ground_wetness={
 "type": "float",
 "value": 0.0

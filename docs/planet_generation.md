@@ -76,6 +76,14 @@ for the hour and the day of the year), the weather (follow the climate or force 
 (`PlanetMenu.pending` carries the settings over the scene reload) and the map. In the lab,
 `-- --planet-page` opens it from the start (screenshots).
 
+## Wet ground and snow
+
+`planet_ground.gdshader` reads three shader globals the weather sets (`WorldWind.set_surface`):
+`ground_wetness` (stays after the rain stops), `rain_fall` (how hard it rains now) and `snow_cover`.
+Wet ground goes dark and glossy everywhere; water stands in the low level patches (noise in the
+world position, only where the ground is almost flat) with rings from the drops while it rains; snow
+settles unevenly (more on level ground, broken at the edges). Lab: `-- --weather=rain|snow|storm`.
+
 ## Limits
 
 | radius | single precision (official Godot) | double precision build |
