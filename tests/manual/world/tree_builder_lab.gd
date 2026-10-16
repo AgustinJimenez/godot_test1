@@ -10,21 +10,27 @@ extends Node3D
 
 const ROWS := [
 	{"group": "Trunk"},
-	{"name": "height", "prop": "height", "min": 3.0, "max": 20.0, "step": 0.1},
-	{"name": "girth", "prop": "girth", "min": 0.1, "max": 0.9, "step": 0.01},
+	{"name": "height", "prop": "height", "min": 3.0, "max": 45.0, "step": 0.1},
+	{"name": "girth (trunk radius)", "prop": "girth", "min": 0.1, "max": 2.6, "step": 0.01},
+	{"name": "root flare", "prop": "root_flare", "min": 0.0, "max": 1.0, "step": 0.01},
+	{"name": "column top (leader, <0 cone)", "prop": "column", "min": -0.01, "max": 1.0, "step": 0.01},
 	{"name": "taper", "prop": "taper", "min": 0.25, "max": 0.95, "step": 0.01},
 	{"name": "lean", "prop": "lean", "min": 0.0, "max": 0.3, "step": 0.01},
-	{"name": "bare trunk part", "prop": "trunk_part", "min": 0.1, "max": 0.7, "step": 0.01},
+	{"name": "bare trunk part", "prop": "trunk_part", "min": 0.05, "max": 0.8, "step": 0.01},
 	{"group": "Where the branches leave"},
-	{"name": "crown radius", "prop": "crown", "min": 0.8, "max": 6.0, "step": 0.1},
+	{"name": "crown radius", "prop": "crown", "min": 0.8, "max": 14.0, "step": 0.1},
 	{"name": "crown height / width", "prop": "aspect", "min": 0.4, "max": 2.0, "step": 0.01},
 	{"name": "droop", "prop": "droop", "min": 0.0, "max": 1.0, "step": 0.01},
-	{"name": "limbs / per node", "prop": "limbs", "min": 3, "max": 9, "step": 1},
-	{"name": "limb angle", "prop": "limb_angle", "min": 15.0, "max": 85.0, "step": 1.0},
+	{"name": "limbs / per node", "prop": "limbs", "min": 3, "max": 10, "step": 1},
+	{"name": "limb angle", "prop": "limb_angle", "min": 15.0, "max": 90.0, "step": 1.0},
+	{"name": "limb length", "prop": "limb_length", "min": 0.5, "max": 2.2, "step": 0.01},
+	{"name": "limb thickness", "prop": "limb_thickness", "min": 0.3, "max": 1.3, "step": 0.01},
 	{"name": "node spacing (leader)", "prop": "nodes_spacing", "min": 0.3, "max": 2.0, "step": 0.05},
 	{"group": "Branches"},
-	{"name": "limb curve", "prop": "curve", "idx": 0, "min": 0.0, "max": 1.5, "step": 0.01},
-	{"name": "branch curve", "prop": "curve", "idx": 1, "min": 0.0, "max": 1.8, "step": 0.01},
+	{"name": "limb curve", "prop": "curve", "idx": 0, "min": 0.0, "max": 3.0, "step": 0.01},
+	{"name": "limb lift", "prop": "lift", "idx": 0, "min": -0.1, "max": 0.4, "step": 0.01},
+	{"name": "limb sag", "prop": "sag", "idx": 0, "min": 0.0, "max": 0.3, "step": 0.01},
+	{"name": "branch curve", "prop": "curve", "idx": 1, "min": 0.0, "max": 2.5, "step": 0.01},
 	{"name": "twig curve", "prop": "curve", "idx": 2, "min": 0.0, "max": 2.0, "step": 0.01},
 	{"name": "limb tip thickness", "prop": "tip_radius", "idx": 0, "min": 0.05, "max": 0.8,
 			"step": 0.01},
@@ -150,6 +156,9 @@ func _build_panel() -> void:
 		_regrow())
 	_button(buttons, "Leafy preset", func() -> void: _preset(false))
 	_button(buttons, "Conifer preset", func() -> void: _preset(true))
+	_button(buttons, "Umbrella", func() -> void: _archetype("umbrella"))
+	_button(buttons, "Giant", func() -> void: _archetype("giant"))
+	_button(buttons, "Spreading oak", func() -> void: _archetype("oak"))
 	_button(buttons, "Copy properties", func() -> void: _copy_properties())
 	var spread := HBoxContainer.new()
 	outer.add_child(spread)
@@ -312,6 +321,63 @@ func _preset(conifer: bool) -> void:
 	_regrow()
 
 
+## A famous kind of tree, as numbers: starts from the leafy tree or conifer preset and sets what
+## makes that tree what it is.
+##  umbrella: a baobab or acacia, a thick short trunk and a wide flat crown on long near-level limbs
+##  giant: a sequoia, an enormous straight trunk with a flared foot, very tall, the crown high up
+##  oak: an old spreading oak, a short trunk and huge crooked limbs reaching far to the sides
+func _archetype(kind: String) -> void:
+	match kind:
+		"umbrella":
+			genome = TreeGenome.from_species(_species_leafy)
+			genome.height = 14.0
+			genome.girth = 1.45
+			genome.taper = 0.8
+			genome.trunk_part = 0.5
+			genome.root_flare = 0.2
+			genome.crown = 4.0
+			genome.aspect = 0.45
+			genome.limbs = 5
+			genome.limb_angle = 82.0
+			genome.limb_length = 1.1
+			genome.limb_thickness = 0.8
+			genome.curve = [0.5, 0.9, 1.2]
+			genome.lift = [0.05, 0.04, 0.0]
+			genome.leaf_size = 0.16
+		"giant":
+			genome = TreeGenome.from_species(_species_conifer)
+			genome.height = 42.0
+			genome.girth = 2.0
+			genome.root_flare = 0.7
+			genome.column = 0.22
+			genome.trunk_part = 0.5
+			genome.nodes_from = 0.5
+			genome.crown = 5.0
+			genome.nodes_spacing = 1.8
+			genome.limbs = 5
+			genome.droop = 0.5
+		"oak":
+			genome = TreeGenome.from_species(_species_leafy)
+			genome.height = 12.0
+			genome.girth = 1.5
+			genome.taper = 0.75
+			genome.trunk_part = 0.35
+			genome.root_flare = 0.4
+			genome.crown = 3.6
+			genome.aspect = 0.5
+			genome.limbs = 7
+			genome.limb_angle = 78.0
+			genome.limb_length = 1.2
+			genome.limb_thickness = 0.85
+			genome.curve = [1.2, 1.2, 1.5]
+			genome.lift = [0.14, 0.05, 0.0]
+			genome.sag = [0.0, 0.03, 0.08]
+			genome.leaf_size = 0.14
+	dice = _random.randi()
+	_show_genome()
+	_regrow()
+
+
 ## Every slider, option and flag takes its value from the genome.
 func _show_genome() -> void:
 	_rebuilding = true
@@ -413,7 +479,7 @@ func _regrow() -> void:
 
 func _place_camera() -> void:
 	var offset := Vector3(sin(_yaw) * cos(_pitch), sin(_pitch), cos(_yaw) * cos(_pitch)) \
-			* _distance * maxf(genome.height / 9.0, 0.5)
+			* _distance * maxf(maxf(genome.height / 9.0, genome.crown * genome.limb_length / 1.2), 0.5)
 	_camera.position = _target + offset
 	_camera.position.y = maxf(_camera.position.y, 0.1)
 	_camera.look_at(_target, Vector3.UP)

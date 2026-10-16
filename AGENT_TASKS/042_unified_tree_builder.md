@@ -144,3 +144,19 @@ Leaf variation (user: all leaves look alike, even on one tree; same day): every 
 from which the shader gives it its own vein count (3.5 - 9.5), slope, thickness, strength (opacity),
 midrib width, edge darkness and whether the two sides line up. Needs the plant material to read UV2;
 no triangles added.
+
+## Very thick, very tall and very spreading trees (user photos: a baobab / umbrella tree, a sequoia, an old live oak; same day)
+
+New traits in `TreeGenome`: `root_flare` (the foot widens into buttress roots), `column` (a leader
+trunk stays thick far up instead of narrowing to a cone; < 0 is a cone), `limb_length`, `limb_thickness`.
+Wider ranges in the tree builder lab (height to 45 m, trunk radius to 2.6 m, crown radius to 14 m, limb
+curve to 3). Leaf size now grows with the crown but slowly (`leaf_basis`, an exponent of 0.55, and clumps
+x(crown/3.5)^0.6 above a crown of 3.5) so a wide crown has more leaves, not door-sized ones; a crown
+over 3.5 also carries more branches on a long limb and one more leaf per twig; limbs of a spreading tree
+(angle > 65) bend round the vertical, not up and down. Existing species are unchanged (species check
+passes, largest tree 11982).
+Lab buttons: Umbrella (14 m, trunk r 1.45, crown 4, limbs at 82 deg: measured 14.5 m tall, 11.7 m reach, nothing
+under ground), Giant (42 m, trunk r 2, flare 0.7, column top 0.22, first whorl at half height), Spreading oak
+(12 m, trunk r 1.5, trunk part 0.35, limbs at 78 deg, crooked). Found by measuring the vertices headless: a
+first umbrella was 26 m wide and went 3.5 m under ground (limbs 1.3 x too long, sag), a first oak
+went 4.4 m under ground. Not done: bark texture and moss on the old oak, a lab slider for the flare shape.

@@ -19,6 +19,8 @@ var taper := 0.6 ## top radius / foot radius of a trunk that ends in limbs
 var lean := 0.0 ## the trunk's lean at the top, as a fraction of the height
 var leader := false ## one trunk to the top, narrowing to a point, instead of forking into limbs
 var trunk_part := 0.3 ## the bare part of the trunk, as a fraction of the height
+var column := -1.0 ## a leader trunk's radius at the top, as a share of the foot's (-1: a cone)
+var root_flare := 0.0 ## 0..1: the foot of the trunk widens into buttress roots (sequoia)
 var trunk_sides := 14
 var trunk_wobble := 0.05
 var trunk_dark := 0.25 ## how much darker the foot of the trunk is
@@ -34,6 +36,8 @@ var limbs := 4 ## branches per node
 var nodes_spacing := 0.0 ## metres between nodes up the trunk (0: a single node at the trunk top)
 var nodes_from := 0.0 ## where the first node is, as a fraction of the height (spaced trees)
 var limb_angle := 50.0 ## degrees from vertical the limbs leave at (dome)
+var limb_length := 1.0 ## limbs reach this many times as far (a spreading oak, an umbrella crown)
+var limb_thickness := 0.7 ## limb radius at its foot, as a share of the trunk's radius at the top
 
 # Branches, by level (0 limb, 1 branch, 2 twig)
 var depth := 3 ## levels of branching

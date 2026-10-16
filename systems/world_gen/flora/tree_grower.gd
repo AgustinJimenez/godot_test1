@@ -73,8 +73,11 @@ func _grow() -> void:
 			_g.leaf_edge, _fine)
 	# the low-poly look has fewer, bigger leaves and sprays (the lighter version bigger still)
 	var bigger := 1.0 + 0.8 * float(_lod)
-	_leaf_length = _g.crown * _g.leaf_size * (1.7 if _fine else 2.5) * bigger
-	_needle_length = clampf(_g.crown * _g.needle_size, 0.6, 1.1) * (1.0 if _fine else 1.2) * bigger
+	# leaves grow with the crown, but slowly: a giant tree has more leaves, not door-sized ones
+	var leaf_basis := 2.0 * pow(maxf(_g.crown, 0.8) / 2.0, 0.55)
+	leaf_basis *= pow(maxf(_g.crown / 3.5, 1.0), 0.6) # a wide crown has clumps of leaves
+	_leaf_length = leaf_basis * _g.leaf_size * (1.7 if _fine else 2.5) * bigger
+	_needle_length = clampf(leaf_basis * _g.needle_size, 0.6, 1.1) * (1.0 if _fine else 1.2) * bigger
 	_trunk()
 	if _g.leader:
 		_whorls()
@@ -131,9 +134,12 @@ func _trunk() -> void:
 
 ## The trunk's radius at `along` (0 foot .. 1 top).
 func _trunk_radius(along: float) -> float:
+	var flare := 1.0 + 2.0 * _g.root_flare * pow(1.0 - along, 6.0) # widens at the foot
+	if _g.leader and _g.column >= 0.0: # a column: stays thick far up
+		return _g.girth * lerpf(1.0, _g.column, pow(along, 0.9)) * flare
 	if _g.leader:
-		return _g.girth * pow(1.0 - along, 0.85) + 0.02 # narrows to a point
-	return lerpf(_g.girth, _g.girth * _g.taper, along)
+		return (_g.girth * pow(1.0 - along, 0.85) + 0.02) * flare # narrows to a point
+	return lerpf(_g.girth, _g.girth * _g.taper, along) * flare
 
 
 ## Limbs at the top of the trunk (a leafy tree): they fan out at the species' angle, spiralling
@@ -144,7 +150,7 @@ func _limbs() -> void:
 	var centre := top + Vector3(0.0, crown_height * 0.7, 0.0)
 	var radius_h := _g.crown * 1.8
 	var radius_v := maxf(crown_height * 0.85, _g.crown * _g.aspect)
-	var limb_radius := _g.girth * _g.taper * 0.7
+	var limb_radius := _g.girth * _g.taper * _g.limb_thickness
 	var phase := _rng.randf() * TAU
 	for index in maxi(_g.limbs - _lod, 3):
 		var yaw := phase + float(index) * GOLDEN_ANGLE
@@ -156,6 +162,7 @@ func _limbs() -> void:
 		var length := clampf(radius_h * 0.85 / maxf(sin(pitch), 0.35), radius_h * 0.6,
 				radius_h * 1.3)
 		length = minf(length, (centre.y + radius_v - start.y) / maxf(cos(pitch), 0.2))
+		length *= _g.limb_length
 		_branch(start, dir, length, limb_radius, 0, 0.0)
 
 
@@ -206,6 +213,9 @@ func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: 
 	# one smooth bend over the whole length (an arc in a plane through the branch), to either side
 	var arc := _g.curve[level]
 	var bend_axis := _outward(dir, _rng.randf() * TAU)
+	if level == 0 and _g.limb_angle > 65.0:
+		# a spreading tree's limbs wander sideways (round the vertical), not up and down
+		bend_axis = (bend_axis * 0.3 + Vector3.UP).normalized()
 	var bend: float = arc * _rng.randf_range(0.35, 1.0)
 	if _rng.randf() < 0.5:
 		bend = -bend
@@ -251,6 +261,9 @@ func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: 
 func _children(points: Array[Vector3], tangents: Array[Vector3], length: float, radius: float,
 		level: int, sway: float, _continues: bool) -> void:
 	var total: int = maxi(_g.children[level] - _lod, mini(_g.children[level], 2))
+	# on a wide crown a long branch carries more branches and twigs (a full canopy, not bare limbs)
+	if _g.crown > 3.5:
+		total += mini(int(length / 3.5), 4)
 	total = maxi(roundi(float(total) * _thrift), mini(total, 2))
 	var spread := total - (1 if _g.carry_on else 0)
 	for index in total:
@@ -288,6 +301,8 @@ func _children(points: Array[Vector3], tangents: Array[Vector3], length: float, 
 func _leaves_along(points: Array[Vector3], tangents: Array[Vector3], sway: float,
 		level: int) -> void:
 	var nodes := maxi(roundi(float(5 if _fine else (4 - _lod)) * _thrift), 2)
+	if _g.crown > 3.5:
+		nodes += 1 # a wide crown: more leaves on each twig
 	var gain: float = _g.sway[level]
 	for node in nodes:
 		var along := 0.3 + 0.65 * float(node) / float(nodes - 1)
