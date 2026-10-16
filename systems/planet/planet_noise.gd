@@ -114,10 +114,22 @@ func _macro(units: float, p: Vector3) -> float:
 	# ranges of mountains inside the continents, away from the plate edges (old folded belts)
 	var belt := smoothstep(0.0, 0.5, _range_mask.get_noise_3d(p.x, p.y, p.z) + 0.15)
 	var ridges := (_ranges.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.5) * relief * 0.22
-	ridges *= belt * smoothstep(0.03, 0.14, units)
-	# beaches and shallows: the ground eases toward the sea instead of dropping into it
-	var shore := lerpf(0.3, 1.0, smoothstep(0.0, 0.06, absf(units)))
-	return units * shore * relief + rolling * land + ridges
+	ridges *= belt * smoothstep(0.08, 0.4, units)
+	return _shore(units) * relief + rolling * land + ridges
+
+
+## Beaches and shallows: the ground eases toward the sea instead of dropping into it. The slope is a
+## fifth of the plates' right at the sea and grows to the plates' own over `SHORE` of the relief
+## (this is that slope integrated, so it never gets steeper than the plates are, as scaling the
+## height by a factor does).
+const SHORE := 0.2
+const SHORE_FLAT := 0.16
+
+
+func _shore(units: float) -> float:
+	var reach := absf(units) / SHORE
+	var eased := reach * reach * reach * (1.0 - reach * 0.5) if reach < 1.0 else reach - 0.5
+	return signf(units) * (SHORE_FLAT * absf(units) + (1.0 - SHORE_FLAT) * SHORE * eased)
 
 
 func _units(x: float, y: float, z: float) -> float:

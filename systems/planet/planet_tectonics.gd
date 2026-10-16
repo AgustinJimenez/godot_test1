@@ -77,7 +77,7 @@ func height(dir: Vector3) -> float:
 	var here: bool = _continental[first]
 	var there: bool = _continental[second]
 	# the base height blends across the boundary (a continental shelf, not a cliff)
-	var other := 0.5 * exp(-edge / 0.035)
+	var other := 0.5 * exp(-edge / 0.07)
 	var base := lerpf(CONTINENT if here else OCEAN, CONTINENT if there else OCEAN, other)
 	# how hard the two plates push on each other here: + together, - apart
 	var toward := _seeds[second] - _seeds[first]
@@ -93,10 +93,13 @@ func height(dir: Vector3) -> float:
 	if here and there:
 		rise = near * (0.62 * together - 0.12 * apart) # a collision: the highest ranges
 	elif here != there:
-		if here: # the continental side of a subduction coast: a coastal range
-			rise = near * 0.42 * together
-		else: # the ocean side: a trench
-			rise = -near * 0.30 * together
+		# a coast where one plate dives under the other: a coastal range on the land side and a
+		# trench off shore, one smooth profile across the boundary (the side of the boundary this
+		# point is on only changes the sign of the distance, so there is no step at the bisector)
+		var inland := edge if here else -edge
+		var range_up := 0.26 * exp(-pow((inland - 0.03) / 0.045, 2.0))
+		var trench := 0.30 * exp(-pow((inland + 0.03) / 0.035, 2.0))
+		rise = together * (range_up - trench)
 	else:
 		rise = 0.30 * together * exp(-pow((edge - 0.03) / 0.03, 2.0)) # an island arc
 		rise += 0.22 * apart * exp(-pow(edge / 0.12, 2.0)) # a mid-ocean ridge
@@ -105,5 +108,6 @@ func height(dir: Vector3) -> float:
 	var ridged := _ridge.get_noise_3d(dir.x, dir.y, dir.z) * 0.5 + 0.5
 	var rough := maxf(rise, 0.0) * (ridged * 1.1 - 0.35)
 	# the plate interiors are not flat either: cratons, basins, plateaus
-	var inside := _interior.get_noise_3d(dir.x, dir.y, dir.z) * (0.11 if here else 0.06)
+	var variety := lerpf(0.11 if here else 0.06, 0.11 if there else 0.06, other)
+	var inside := _interior.get_noise_3d(dir.x, dir.y, dir.z) * variety
 	return base + rise + rough + inside

@@ -215,7 +215,10 @@ func _triangle(builder: MeshBuilder, faces: PackedVector3Array, ids: Array,
 func _skirt(builder: MeshBuilder, positions: Array[Vector3], colors: Array[Color],
 		cells: int) -> void:
 	var side := cells + 3
-	var drop := Vector3(0.0, -maxf(size * 0.04, 2.0), 0.0)
+	# deep enough to hide the crack between this tile and a finer neighbour (the ground between this
+	# tile's samples can be lower than its edge by about the hills), no deeper: a skirt that
+	# stands taller than that shows as a wall
+	var drop := Vector3(0.0, -clampf(size * 0.03, 2.0, _noise.relief * 0.15 + 4.0), 0.0)
 	var edges: Array[Vector2i] = []
 	for index in cells:
 		edges.append(Vector2i(side + 1 + index, side + 2 + index)) # first row

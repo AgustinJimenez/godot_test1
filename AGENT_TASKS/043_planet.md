@@ -120,6 +120,16 @@ hooks `_water_level` / `_flow`; the planet answers with the sea, lake or river a
 spot and river currents from `PlanetHydrology.flow_at`; `-- --swim-check` expects `SWIM_CHECK PASS`),
 and the underwater fog flag goes to the atmosphere.
 
+Sixth pass (user saw coasts like walls): the cause was a step in `PlanetTectonics.height` where a
+continental and an oceanic plate meet: the coastal range (land side) and the trench (sea side) were
+two different formulas, so the height jumped by up to 170 m across the boundary. Now one smooth
+profile of the signed distance to the boundary, and the plate-interior variety is blended across it
+too. Also: the shore easing is an integral (never steeper than the plates; before it multiplied the
+height and made the coast steeper than the plates), the ranges start further inland, the plate
+base blends over a wider band, tile skirts are at most `relief * 0.15 + 4` m deep (they showed as
+walls where a coarse tile misses the hills). Measured with 200,000 shore samples: the largest rise
+within 100 m of the shore went from 139 m to 45 m (p99 14 m); an ordinary shore rises ~1 m in 100.
+
 Still rough / ideas: tile LOD edge colour mismatch and popping, sea depth
 colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
 (mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile
