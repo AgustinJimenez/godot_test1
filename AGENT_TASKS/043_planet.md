@@ -130,6 +130,17 @@ base blends over a wider band, tile skirts are at most `relief * 0.15 + 4` m dee
 walls where a coarse tile misses the hills). Measured with 200,000 shore samples: the largest rise
 within 100 m of the shore went from 139 m to 45 m (p99 14 m); an ordinary shore rises ~1 m in 100.
 
+Seventh pass (loading): ground and water first, plants after. A tile is built without plants (4 ground
+threads, `PlanetSurface._workers`); plants are a second job (`_queue_plants`, 3 planting threads,
+nearest first) grown into a holder node and adopted by the tile on the main thread
+(`_adopt_plants`); a tile taken out of the world is freed only when no planting job holds it
+(`_retire`). The player is held still (process disabled, "Generating the planet... N %") until the
+ground within 2 km is built (colliders included) and the plants within 60 m are in
+(`PlanetWorld.loading`, `loaded` signal, `PlanetSurface.progress`); ~3 s for the ground, ~7 s in all
+on this machine, the rest of the plants keep coming in around the player. Headless runs have no
+threads (tiles and plants are made a few a frame) and no holding. `SpeciesRegistry.mesh` builds
+outside its lock now (several threads build different meshes at once).
+
 Still rough / ideas: tile LOD edge colour mismatch and popping, sea depth
 colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
 (mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile

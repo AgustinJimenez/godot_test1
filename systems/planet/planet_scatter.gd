@@ -39,12 +39,14 @@ var _pick_chance := 0.0
 var _wet := 0.0
 
 
-## Plants the tile. `grid` is the tile's padded grid (see PlanetTile.build): local positions,
+## Plants a tile into `holder` (a node of its own that the tile adopts when this is done, so it can
+## be built on a worker thread while the tile is already in the world). `key` is the tile's key (it
+## seeds the dice); the grid is the tile's padded grid (see PlanetTile.build): local positions,
 ## directions from the planet's centre and heights, `cells` quads along an edge.
-func populate(tile: Node3D, noise: PlanetNoise, positions: Array[Vector3], dirs: Array[Vector3],
-		heights: PackedFloat32Array, cells: int, size: float, detail: Detail,
+func populate(holder: Node3D, key: int, noise: PlanetNoise, positions: Array[Vector3],
+		dirs: Array[Vector3], heights: PackedFloat32Array, cells: int, size: float, detail: Detail,
 		collide: bool) -> void:
-	_tile = tile
+	_tile = holder
 	_noise = noise
 	_species = noise.species
 	_positions = positions
@@ -53,13 +55,12 @@ func populate(tile: Node3D, noise: PlanetNoise, positions: Array[Vector3], dirs:
 	_cells = cells
 	_side = cells + 3
 	_size = size
-	var key: int = tile.get("tile_key")
 	_rng.seed = hash(Vector2i(noise.settings.world_seed, key))
 	if collide:
 		_body = StaticBody3D.new()
 		_body.collision_layer = 1
 		_body.name = "Plants"
-		tile.add_child(_body)
+		holder.add_child(_body)
 	if detail == Detail.FAR:
 		_scatter_far()
 		_flush(false)

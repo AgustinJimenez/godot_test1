@@ -39,6 +39,12 @@ the pattern neither swims nor breaks at tile seams): soil and rock patches, grai
 round the planet, bumps on steep faces, fading out with distance. Plants: the two finest tile levels
 have real trees, the next three have sparse cheap horizon trees (`Detail.FAR`) out to ~5 km.
 
+Loading: the ground and water come first. `PlanetSurface` builds tiles without plants on 2-4 ground
+threads; plants are a second job on 2-3 planting threads (nearest tile first) that grows a holder node
+which the tile adopts later. The player stands still ("Generating the planet... N %") until the ground
+within 2 km (colliders included) and the plants within 60 m exist, about 7 s here; everything else
+keeps streaming in around them. `PlanetWorld.loaded` is emitted when they may move.
+
 Water shaders: `shaders/world/planet_water.gdshader` (sea and lakes, smooth lit normals),
 `shaders/world/river.gdshader` (flowing ripples, bank foam, UVs along and across the ribbon).
 

@@ -15,13 +15,22 @@ var _wanted: Dictionary = {} # key -> [face, level, x, y]
 var _pending: Dictionary = {} # key -> true while queued or being built
 var _jobs: Array = []
 var _done: Array = []
-var _thread: Thread
+var _thread: Thread # the first ground worker (is_threaded)
+var _workers: Array[Thread] = [] # the ground is made by several threads, the plants by one
 var _mutex := Mutex.new()
 var _semaphore := Semaphore.new()
 var _stop := false
 var _near := Vector3.ZERO # the point the tiles are chosen for (planet space)
 var _tiles_per_frame := 2
 var _inline: Array = [] # without a worker thread (headless): tiles built here, a few a frame
+# plants are a second job, after the ground and the water, on a thread of their own
+var _plant_jobs: Array = [] # [tile, detail]
+var _plant_done: Array = [] # [tile, holder, detail]
+var _plant_pending: Dictionary = {} # tile instance id -> true while queued or being grown
+var _retired: Array = [] # tiles taken out of the world, freed once no plant job holds them
+var _plant_workers: Array[Thread] = []
+var _plant_semaphore := Semaphore.new()
+var _plant_inline: Array = []
 
 
 func setup(planet_noise: PlanetNoise, planet_frame: PlanetFrame) -> void:
@@ -29,8 +38,16 @@ func setup(planet_noise: PlanetNoise, planet_frame: PlanetFrame) -> void:
 	frame = planet_frame
 	_settings = noise.settings
 	if threaded and DisplayServer.get_name() != "headless":
-		_thread = Thread.new()
-		_thread.start(_work)
+		var count := clampi(OS.get_processor_count() - 2, 2, 4)
+		for index in count:
+			var worker := Thread.new()
+			worker.start(_work)
+			_workers.append(worker)
+		_thread = _workers[0]
+		for index in clampi(OS.get_processor_count() / 3, 2, 3):
+			var planter := Thread.new()
+			planter.start(_work_plants)
+			_plant_workers.append(planter)
 
 
 func _exit_tree() -> void:
@@ -38,8 +55,14 @@ func _exit_tree() -> void:
 		_mutex.lock()
 		_stop = true
 		_mutex.unlock()
-		_semaphore.post()
-		_thread.wait_to_finish()
+		for worker in _workers:
+			_semaphore.post()
+		for planter in _plant_workers:
+			_plant_semaphore.post()
+		for worker in _workers:
+			worker.wait_to_finish()
+		for planter in _plant_workers:
+			planter.wait_to_finish()
 
 
 ## Chooses the tiles for a player at `at` (planet space) and queues what is missing.
@@ -70,6 +93,7 @@ func update(at: Vector3) -> void:
 			_semaphore.post()
 	else:
 		_inline = missing.slice(0, 12)
+	_queue_plants()
 	_drop_stale()
 
 
@@ -83,7 +107,7 @@ func build_all(at: Vector3, near_only := false) -> void:
 			continue
 		if not tiles.has(key) or (_collides(entry) and not (tiles[key] as PlanetTile).has_collider):
 			if tiles.has(key):
-				(tiles[key] as PlanetTile).queue_free()
+				_retire(tiles[key])
 			_add(_make(entry))
 	_drop_stale()
 
@@ -95,7 +119,7 @@ func _process(_delta: float) -> void:
 		var key := PlanetTile.key_of(entry[0], entry[1], entry[2], entry[3])
 		if _wanted.has(key):
 			if tiles.has(key):
-				(tiles[key] as PlanetTile).queue_free()
+				_retire(tiles[key])
 			_add(_make(entry))
 			added += 1
 	while added < _tiles_per_frame:
@@ -110,17 +134,127 @@ func _process(_delta: float) -> void:
 			tile.free()
 			continue
 		if tiles.has(key): # the same tile again, now with a collider
-			(tiles[key] as PlanetTile).queue_free()
+			_retire(tiles[key])
 		_add(tile)
 		added += 1
+	_adopt_plants()
+	_free_retired()
 	if added > 0:
 		_drop_stale()
+
+
+## Asks for the plants of the built tiles that should have more than they have (nearest first).
+func _queue_plants() -> void:
+	var wishes: Array = []
+	for key: int in _wanted:
+		if not tiles.has(key):
+			continue
+		var tile: PlanetTile = tiles[key]
+		if _plant_pending.has(tile.get_instance_id()):
+			continue
+		var entry: Array = _wanted[key]
+		var wanted := _plants(entry)
+		if wanted == PlanetScatter.Detail.NONE or wanted <= tile.plant_detail:
+			continue
+		if not tile.plant_grid.is_empty():
+			wishes.append([tile, wanted, _distance(entry)])
+	wishes.sort_custom(func(a: Array, b: Array) -> bool: return a[2] < b[2])
+	_mutex.lock()
+	for job: Array in _plant_jobs: # the player moved: the old queue may be for places it has left
+		_plant_pending.erase((job[0] as PlanetTile).get_instance_id())
+	_plant_jobs.clear()
+	_mutex.unlock()
+	if not _plant_workers.is_empty():
+		for wish: Array in wishes.slice(0, 6):
+			var tile: PlanetTile = wish[0]
+			_plant_pending[tile.get_instance_id()] = true
+			_mutex.lock()
+			_plant_jobs.append([tile, wish[1]])
+			_mutex.unlock()
+			_plant_semaphore.post()
+	else:
+		_plant_inline = wishes.slice(0, 4)
+
+
+## Puts the grown plants into their tiles (a few a frame).
+func _adopt_plants() -> void:
+	var adopted := 0
+	while adopted < 2:
+		var finished: Array = []
+		if not _plant_inline.is_empty():
+			var wish: Array = _plant_inline.pop_front()
+			var wished: PlanetTile = wish[0]
+			if is_instance_valid(wished) and tiles.get(wished.tile_key) == wished:
+				finished = [wished, wished.grow_plants(wish[1]), wish[1]]
+			else:
+				continue
+		else:
+			_mutex.lock()
+			if not _plant_done.is_empty():
+				finished = _plant_done.pop_front()
+			_mutex.unlock()
+		if finished.is_empty():
+			return
+		var tile: PlanetTile = finished[0]
+		var holder: Node3D = finished[1]
+		_plant_pending.erase(tile.get_instance_id())
+		if tiles.get(tile.tile_key) != tile or not tile.is_inside_tree():
+			holder.free()
+			continue
+		if tile.plant_holder != null:
+			tile.plant_holder.queue_free()
+		tile.add_child(holder)
+		tile.plant_holder = holder
+		tile.plant_detail = finished[2]
+		adopted += 1
+
+
+## 0..1: how much of what the player needs close by is there: every tile within `ground_metres`
+## built (with its collider where it needs one), and the plants of every tile within `plant_metres`.
+func progress(ground_metres: float, plant_metres: float) -> float:
+	var need := 0
+	var have := 0
+	for key: int in _wanted:
+		var entry: Array = _wanted[key]
+		var distance := _distance(entry)
+		var built: PlanetTile = tiles.get(key)
+		if distance < ground_metres:
+			need += 1
+			if built != null and (not _collides(entry) or built.has_collider):
+				have += 1
+		if distance < plant_metres and _plants(entry) != PlanetScatter.Detail.NONE:
+			need += 1
+			if built != null and (built.plant_grid.is_empty()
+					or built.plant_detail >= _plants(entry)):
+				have += 1
+	return 1.0 if need == 0 else float(have) / float(need)
+
+
+func is_threaded() -> bool:
+	return _thread != null
 
 
 ## Puts every tile where the frame says it is (after the frame moved).
 func place_all() -> void:
 	for tile: PlanetTile in tiles.values():
 		tile.transform = frame.tile_transform(tile)
+
+
+## Takes a tile out of the world. It is freed later, once no worker is still planting it.
+func _retire(tile: PlanetTile) -> void:
+	if tiles.get(tile.tile_key) == tile:
+		tiles.erase(tile.tile_key)
+	if tile.get_parent() != null:
+		tile.get_parent().remove_child(tile)
+	_retired.append(tile)
+
+
+func _free_retired() -> void:
+	for index in range(_retired.size() - 1, -1, -1):
+		var tile: PlanetTile = _retired[index]
+		if not _plant_pending.has(tile.get_instance_id()):
+			tile.free()
+			_retired.remove_at(index)
 
 
 func _add(tile: PlanetTile) -> void:
@@ -131,8 +265,7 @@ func _add(tile: PlanetTile) -> void:
 
 func _make(entry: Array) -> PlanetTile:
 	var level: int = entry[1]
-	return PlanetTile.new().build(entry[0], level, entry[2], entry[3], noise, _collides(entry),
-			_plants(entry))
+	return PlanetTile.new().build(entry[0], level, entry[2], entry[3], noise, _collides(entry))
 
 
 ## What grows on a tile: everything on the finest tiles near the player, only trees further out
@@ -186,8 +319,7 @@ func _drop_stale() -> void:
 			continue
 		var tile: PlanetTile = tiles[key]
 		if _covered(tile):
-			tile.queue_free()
-			tiles.erase(key)
+			_retire(tile)
 
 
 func _covered(tile: PlanetTile) -> bool:
@@ -224,4 +356,22 @@ func _work() -> void:
 		var tile := _make(job)
 		_mutex.lock()
 		_done.append(tile)
+		_mutex.unlock()
+
+
+func _work_plants() -> void:
+	while true:
+		_plant_semaphore.wait()
+		_mutex.lock()
+		var stop := _stop
+		var job: Array = _plant_jobs.pop_front() if not _plant_jobs.is_empty() else []
+		_mutex.unlock()
+		if stop:
+			return
+		if job.is_empty():
+			continue
+		var tile: PlanetTile = job[0]
+		var holder := tile.grow_plants(job[1])
+		_mutex.lock()
+		_plant_done.append([tile, holder, job[1]])
 		_mutex.unlock()

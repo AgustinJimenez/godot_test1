@@ -43,22 +43,37 @@ func by_id(id: int) -> PlantSpecies:
 	return species[id - 1]
 
 
-## `lod` 1 is the lighter version of a tree (see TreeGrower); other plants have only one.
+## `lod` 1 is the lighter version of a tree (see TreeGrower); other plants have only one. A mesh is
+## built outside the lock (several threads build different ones at once; two that want the same
+## one both build it and the first to finish is kept).
 func mesh(id: int, variant: int, detailed: bool, lod := 0) -> ArrayMesh:
 	var key := id * 100 + variant + (100000 if detailed else 0) + lod * 1000000
-	_lock.lock()
-	if not _meshes.has(key):
-		_meshes[key] = PlantMeshes.build(by_id(id), variant, detailed, false, lod)
-	var result: ArrayMesh = _meshes[key]
-	_lock.unlock()
-	return result
+	var found := _cached(key)
+	if found != null:
+		return found
+	return _keep(key, PlantMeshes.build(by_id(id), variant, detailed, false, lod))
 
 
 func far_mesh(id: int, variant: int) -> ArrayMesh:
 	var key := -(id * 100 + variant)
+	var found := _cached(key)
+	if found != null:
+		return found
+	return _keep(key, PlantMeshes.build_far(by_id(id), variant))
+
+
+func _cached(key: int) -> ArrayMesh:
 	_lock.lock()
-	if not _meshes.has(key):
-		_meshes[key] = PlantMeshes.build_far(by_id(id), variant)
-	var result: ArrayMesh = _meshes[key]
+	var found: ArrayMesh = _meshes.get(key)
 	_lock.unlock()
-	return result
+	return found
+
+
+func _keep(key: int, built: ArrayMesh) -> ArrayMesh:
+	_lock.lock()
+	if _meshes.has(key):
+		built = _meshes[key]
+	else:
+		_meshes[key] = built
+	_lock.unlock()
+	return built

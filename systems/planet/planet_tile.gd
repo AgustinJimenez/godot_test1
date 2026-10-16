@@ -26,6 +26,9 @@ var size := 0.0 ## m, along one edge
 var has_collider := false
 var min_height := 0.0
 var tile_key := 0 ## see key_of
+var plant_grid: Dictionary = {} ## the grid the plants are placed on (empty: this tile has none)
+var plant_detail := PlanetScatter.Detail.NONE ## what grows on it now
+var plant_holder: Node3D
 
 var _noise: PlanetNoise
 var _settings: PlanetSettings
@@ -78,8 +81,7 @@ static func direction(f: int, s: float, t: float) -> Vector3:
 
 
 ## Builds the tile (on any thread). `collide`: also build the collider (the player walks here).
-func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool,
-		plants := PlanetScatter.Detail.NONE) -> PlanetTile:
+func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) -> PlanetTile:
 	tile_key = key_of(f, lvl, x, y)
 	face = f
 	level = lvl
@@ -160,9 +162,8 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool,
 	if min_height < _settings.sea_level + 0.5:
 		_add_sea(dirs, side, cells)
 	_add_running_water(s0, s1, t0, t1, dirs, heights)
-	if plants != PlanetScatter.Detail.NONE:
-		PlanetScatter.new().populate(self, noise, positions, dirs, heights, cells, size, plants,
-				collide)
+	if level >= _settings.max_level() - 4: # plants can grow here later (PlanetSurface asks for them)
+		plant_grid = {"positions": positions, "dirs": dirs, "heights": heights}
 	if collide:
 		has_collider = true
 		var body := StaticBody3D.new()
@@ -174,6 +175,16 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool,
 		body.add_child(collision)
 		add_child(body)
 	return self
+
+
+## Plants this tile (on any thread): a node full of plants for `detail`, not yet in the tree.
+func grow_plants(detail: PlanetScatter.Detail) -> Node3D:
+	var holder := Node3D.new()
+	holder.name = "PlantsOf%d" % tile_key
+	PlanetScatter.new().populate(holder, tile_key, _noise, plant_grid["positions"],
+			plant_grid["dirs"], plant_grid["heights"], _settings.tile_cells, size, detail,
+			has_collider)
+	return holder
 
 
 ## The planet space direction `dir` at distance `reach` from the centre, as a position in this

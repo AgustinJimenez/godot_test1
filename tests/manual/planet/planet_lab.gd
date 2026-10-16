@@ -97,6 +97,8 @@ func _ready() -> void:
 	if _swim_check:
 		_start_dir = _find_sea(planet.noise)
 	var spawn := planet.start(player, _start_dir)
+	planet.loaded.connect(func() -> void: print("LOADED after %d ms (%d tiles)" % [
+			Time.get_ticks_msec() - started, planet.surface.tiles.size()]))
 	planet.build_now(not _checking)
 	print("PLANET radius %.0f m, max level %d, %d tiles in %d ms, spawn %s" % [settings.radius,
 			settings.max_level(), planet.surface.tiles.size(), Time.get_ticks_msec() - started,
