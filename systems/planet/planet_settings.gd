@@ -5,7 +5,7 @@ extends Resource
 @export var world_seed := 1337
 @export var radius := 20000.0 ## m, the sea level sphere (Earth: 6,371,000)
 @export var sea_level := 0.0 ## m above `radius`
-@export var relief := 0.0 ## m from the sea to the highest ranges; 0: from the radius (Earth: 8,800)
+@export var relief := 0.0 ## m from the sea to the highest ranges; 0: from the radius (at least 300)
 @export var ocean_fraction := 0.7 ## the share of the planet's area under the sea
 @export var species_count := 36 ## how many plant species the seed makes (SpeciesGenerator)
 @export var plant_density := 1.0

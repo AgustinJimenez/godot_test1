@@ -27,7 +27,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 	settings = planet_settings
 	relief = settings.relief
 	if relief <= 0.0:
-		relief = clampf(settings.radius * 0.0014, 150.0, 9000.0)
+		relief = clampf(settings.radius * 0.0035, 300.0, 9000.0)
 	tectonics = PlanetTectonics.new(settings.world_seed, settings.plates)
 	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
 	_setup(_rolling, settings.world_seed + 2, 0.0004, 3)
@@ -75,23 +75,34 @@ func height(x: float, y: float, z: float) -> float:
 
 ## The ground before the rivers are cut in.
 func base_height(x: float, y: float, z: float) -> float:
-	var p := Vector3(x, y, z) * settings.radius
-	var land := smoothstep(-0.02, 0.05, _units(x, y, z))
-	var hills := _hills.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.01, 12.0, 45.0)
-	# the high ground is cut by gullies and spurs, as if water had run down it for ages
 	var units := _units(x, y, z)
-	var steep_country := smoothstep(0.12, 0.45, units)
-	var gullies := (_gullies.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.5 - 0.5) * relief * 0.05
-	return macro_height(x, y, z) + hills * land + gullies * steep_country
+	var p := Vector3(x, y, z) * settings.radius
+	var land := smoothstep(-0.02, 0.05, units)
+	var hills := _hills.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.01, 12.0, 45.0)
+	var ground := _macro(units, p) + hills * land
+	# the high ground is cut by gullies and spurs, as if water had run down it for ages
+	var high := smoothstep(0.12, 0.45, units)
+	ground += (_gullies.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.5 - 0.5) * relief * 0.05 * high
+	# and by the water that has run down the valleys (stream power erosion, see PlanetHydrology)
+	if hydrology != null:
+		ground -= hydrology.erosion_at(Vector3(x, y, z)) * high
+	# hard and soft layers of rock weather into ledges and steps
+	var layer := maxf(relief * 0.025, 8.0)
+	var steps := floorf(ground / layer) + smoothstep(0.15, 0.85, fposmod(ground / layer, 1.0))
+	return lerpf(ground, steps * layer, smoothstep(0.3, 0.6, units) * 0.35)
 
 
 ## The ground without the smallest hills: what the water sees when it picks its way to the sea.
 func macro_height(x: float, y: float, z: float) -> float:
-	var units := _units(x, y, z)
-	var p := Vector3(x, y, z) * settings.radius
+	return _macro(_units(x, y, z), Vector3(x, y, z) * settings.radius)
+
+
+func _macro(units: float, p: Vector3) -> float:
 	var land := smoothstep(-0.02, 0.05, units)
 	var rolling := _rolling.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.04, 25.0, 140.0)
-	return units * relief + rolling * land
+	# beaches and shallows: the ground eases toward the sea instead of dropping into it
+	var shore := lerpf(0.3, 1.0, smoothstep(0.0, 0.06, absf(units)))
+	return units * shore * relief + rolling * land
 
 
 func _units(x: float, y: float, z: float) -> float:
@@ -141,33 +152,39 @@ func biome(x: float, y: float, z: float, ground: float, steepness: float) -> Ter
 	return TerrainNoise.Biome.FOREST if wet > 0.4 else TerrainNoise.Biome.MEADOW
 
 
-## The colour of a ground facet: the climate's palette (rain forest, forest, taiga, grass, savanna,
-## desert, tundra, ice), a speckle, rock on steep faces.
+## The colour of a ground facet. Every ingredient is a smooth weight, so the biomes blend into one
+## another instead of changing at a line: the ground cover by warmth and rain (tundra, taiga,
+## forest, grass, savanna, rain forest), sand where it is dry, bare rock on steep faces and high
+## ground, snow where it is cold, wet sand at the shore, marsh on the wet low land.
 func facet_color(x: float, y: float, z: float, ground: float, steep: float) -> Color:
-	var kind := biome(x, y, z, ground, steep)
 	var speckle := detail(x, y, z)
+	var dir := Vector3(x, y, z)
 	var degrees := temperature(x, y, z, ground)
-	var rain := climate.sample(Vector3(x, y, z)).y
-	var color: Color
-	match kind:
-		TerrainNoise.Biome.BEACH:
-			color = TerrainColors.WET_SAND.lerp(TerrainColors.SAND, smoothstep(0.0, 1.4, ground))
-		TerrainNoise.Biome.MARSH:
-			color = TerrainColors.MARSH.lerp(TerrainColors.WET_SAND, speckle * 0.5)
-		TerrainNoise.Biome.SNOW:
-			color = TerrainColors.SNOW.lerp(TerrainColors.ROCK, maxf(steep - 0.35, 0.0))
-		TerrainNoise.Biome.ROCKY:
-			color = TerrainColors.ROCK_DARK.lerp(TerrainColors.ROCK, speckle).lerp(
-					TerrainColors.ROCK_WARM, TerrainColors.strata(ground, speckle))
-		TerrainNoise.Biome.DESERT:
-			color = TerrainColors.DESERT_RED.lerp(TerrainColors.DESERT, speckle).lerp(
-					TerrainColors.DESERT_PALE, TerrainColors.strata(ground, speckle) * 0.6)
-		_:
-			color = _vegetation(degrees, rain, speckle)
-	if kind != TerrainNoise.Biome.ROCKY and kind != TerrainNoise.Biome.SNOW:
-		color = color.lerp(TerrainColors.ROCK.lerp(TerrainColors.ROCK_DARK, speckle),
-				smoothstep(0.35, 0.6, steep))
-	return color
+	var rain := climate.sample(dir).y
+	var color := _vegetation(degrees, rain, speckle)
+	# dry and not frozen: sand and red earth
+	var dry := (1.0 - smoothstep(0.08, 0.28, rain)) * smoothstep(-4.0, 8.0, degrees)
+	var sand := TerrainColors.DESERT_RED.lerp(TerrainColors.DESERT, speckle)
+	sand = sand.lerp(TerrainColors.DESERT_PALE, smoothstep(0.55, 0.9, speckle) * 0.5)
+	color = color.lerp(sand, dry)
+	# bare rock: steep faces and the ground above the trees, layered like real cliffs
+	var tall := ground / relief
+	var bare := maxf(smoothstep(0.36, 0.7, steep), smoothstep(0.3, 0.6, tall))
+	var band := ground / maxf(relief * 0.03, 6.0) + speckle * 0.5
+	var layers := smoothstep(0.35, 0.65, fposmod(band, 1.0))
+	var rock := TerrainColors.ROCK_DARK.lerp(TerrainColors.ROCK, speckle)
+	rock = rock.lerp(TerrainColors.ROCK_WARM, layers * 0.6)
+	color = color.lerp(rock, bare)
+	# snow where it is cold, thinner on steep faces
+	var frozen := 1.0 - smoothstep(-16.0, -8.0, degrees)
+	frozen *= 1.0 - smoothstep(0.5, 0.95, steep) * 0.75
+	color = color.lerp(TerrainColors.SNOW.lerp(TerrainColors.ROCK, steep * 0.25), frozen)
+	# the shore: wet sand, a beach, then marsh where the low land is wet
+	var marsh := (1.0 - smoothstep(1.5, 6.0, ground)) * smoothstep(0.55, 0.8, rain / 1.2)
+	color = color.lerp(TerrainColors.MARSH.lerp(TerrainColors.WET_SAND, speckle * 0.5), marsh * 0.8)
+	var beach := 1.0 - smoothstep(0.8, 2.6, ground)
+	var sand_beach := TerrainColors.WET_SAND.lerp(TerrainColors.SAND, smoothstep(0.0, 1.4, ground))
+	return color.lerp(sand_beach, beach)
 
 
 ## Ground cover by warmth and rain: tundra, taiga, forest, grassland, savanna, rain forest.

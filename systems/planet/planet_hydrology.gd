@@ -19,12 +19,15 @@ var _neighbours := PackedInt32Array() ## 8 per cell
 var _filled := PackedFloat32Array() ## the ground, with the hollows filled up (m above the sea)
 var _ground := PackedFloat32Array() ## the ground itself
 var _down := PackedInt32Array() ## the cell this one drains into (-1: it is sea)
+var _order: Array[int] = [] ## the cells in the order the flood from the sea reached them
 var _flow := PackedFloat32Array() ## the water that passes through the cell
 var _is_river := PackedByteArray()
+var _erosion_near := PackedByteArray() ## 1 where a cell or a neighbour is eroded
 var _near := PackedByteArray() ## 1 on a river cell and the cells next to one
 var _width := PackedFloat32Array() ## river width in metres (0: no river)
 var _noise: PlanetNoise
 var cell_metres := 100.0
+var _erosion := PackedFloat32Array() ## m the valley floor of each cell is cut below the ground
 var _pieces: Dictionary = {} ## cell -> the smoothed river pieces whose middle lies in it
 var river_cells := 0
 var lake_cells := 0
@@ -50,6 +53,7 @@ func build(noise: PlanetNoise, cells_per_edge: int) -> void:
 				rain[id] = noise.climate.sample(dir).y
 	_link_neighbours()
 	_fill(rain)
+	_erode(noise.relief)
 	_rivers(noise)
 
 
@@ -117,7 +121,8 @@ func _fill(rain: PackedFloat32Array) -> void:
 			_filled[id] = _ground[id]
 			done[id] = 1
 			_push(heap_keys, heap_ids, _ground[id], id)
-	var order: Array[int] = []
+	_order.clear()
+	var order := _order
 	var hair := 0.002
 	while not heap_ids.is_empty():
 		var id := _pop(heap_keys, heap_ids)
@@ -138,6 +143,41 @@ func _fill(rain: PackedFloat32Array) -> void:
 		var id := order[index]
 		if _down[id] >= 0:
 			_flow[_down[id]] += _flow[id]
+
+
+## Stream power erosion, the way rivers cut real valleys: a cell can only be as steep as the water
+## running through it allows (slope = uplift / (erodibility * water^0.5)), so the more water a cell
+## drains, the lower it sits below its upstream neighbours. Walking from the sea inland, the height
+## a cell can keep is its downstream neighbour's plus that slope times the distance; the ground
+## above that is cut away (smoothly, by at most a share of the relief). Big rivers get wide, deep
+## valleys and the small streams only scratch. (After Cordonnier et al. 2016.)
+func _erode(relief: float) -> void:
+	_erosion.resize(_count)
+	var most := 0.0
+	for id in _count:
+		most = maxf(most, _flow[id])
+	var reach := cell_metres
+	var cut_limit := relief * 0.12
+	var allowed := PackedFloat32Array() # the height each cell may keep
+	allowed.resize(_count)
+	for id in _count:
+		allowed[id] = _ground[id]
+	# the sea first, then inland in the order the flood reached the cells (low to high)
+	for id in _order:
+		var down := _down[id]
+		if down < 0 or _ground[id] < 0.0:
+			continue
+		var water := maxf(_flow[id], 0.0001) / maxf(most, 0.0001)
+		# slope allowed: steep for a trickle, shallow for a river (relief per cell distance)
+		var slope := 0.02 + 0.5 * pow(1.0 - minf(sqrt(water) * 6.0, 1.0), 2.0)
+		allowed[id] = minf(_ground[id], maxf(allowed[down], 0.0) + slope * reach * 0.2)
+		_erosion[id] = clampf(_ground[id] - allowed[id], 0.0, cut_limit)
+	_erosion_near.resize(_count)
+	for id in _count:
+		if _erosion[id] > 0.0:
+			_erosion_near[id] = 1
+			for n in 8:
+				_erosion_near[_neighbours[id * 8 + n]] = 1
 
 
 func _rivers(noise: PlanetNoise) -> void:
@@ -241,12 +281,16 @@ func _smooth_rivers(noise: PlanetNoise) -> void:
 			var before := points[maxi(k - 1, 0)]
 			var after := points[mini(k + 1, points.size() - 1)]
 			tangents.append((after - before).normalized())
+		var travelled := 0.0 # metres along the river from its source (the water's texture flows)
 		for k in points.size() - 1:
 			var home := cell_of((points[k] + points[k + 1]).normalized())
 			if not _pieces.has(home):
 				_pieces[home] = []
+			var length := (points[k + 1] - points[k]).length() * _radius
 			(_pieces[home] as Array).append([points[k], points[k + 1], levels[k], levels[k + 1],
-					widths[k], widths[k + 1], tangents[k], tangents[k + 1]])
+					widths[k], widths[k + 1], tangents[k], tangents[k + 1], travelled,
+					travelled + length])
+			travelled += length
 
 
 func _push(keys: Array[float], ids: Array[int], key: float, id: int) -> void:
@@ -343,8 +387,8 @@ func cells_around(id: int, rings: int) -> PackedInt32Array:
 
 
 ## The river pieces whose middle lies in these cells: each is [from dir, to dir, level at the start,
-## level at the end, width at the start, width at the end, direction at the start, at the end]
-## (levels in metres above the sea).
+## level at the end, width at the start, width at the end, direction at the start, at the end,
+## metres from the source at the start, at the end] (levels in metres above the sea).
 func river_segments(ids: PackedInt32Array) -> Array[Array]:
 	var found: Array[Array] = []
 	for id in ids:
@@ -392,3 +436,19 @@ func water_at(dir: Vector3, ground: float) -> float:
 			if distance < lerpf(float(piece[4]), float(piece[5]), t) * 0.5 + 1.0:
 				level = maxf(level, lerpf(float(piece[2]), float(piece[3]), t))
 	return level
+
+
+## How far (m) the valleys have cut the ground at `dir`: the cells' cuts blended smoothly.
+func erosion_at(dir: Vector3) -> float:
+	var here := cell_of(dir)
+	if _erosion[here] <= 0.0 and _erosion_near[here] == 0:
+		return 0.0
+	var total := _erosion[here] * 0.0
+	var weight := 0.0
+	for n in 9:
+		var id := here if n == 8 else _neighbours[here * 8 + n]
+		var d := (dir - _dirs[id]).length() * _radius / cell_metres
+		var w := exp(-d * d * 1.6)
+		total += _erosion[id] * w
+		weight += w
+	return total / maxf(weight, 0.0001)
