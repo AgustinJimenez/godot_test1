@@ -29,6 +29,7 @@ var loading := false ## the player is held still while the ground around them is
 var _target: Node3D
 var _timer := 0.0
 var _load_label: Label
+var _dark: ColorRect
 var _load_time := 0.0
 
 
@@ -48,6 +49,12 @@ func _ready() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 80
 	add_child(layer)
+	_dark = ColorRect.new() # the screen stays black while the planet is made
+	_dark.color = Color.BLACK
+	_dark.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_dark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dark.visible = false
+	layer.add_child(_dark)
 	_load_label = Label.new()
 	_load_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_load_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -80,6 +87,8 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 		_load_time = 0.0
 		target.process_mode = Node.PROCESS_MODE_DISABLED
 		_load_label.visible = true
+		_dark.modulate.a = 1.0
+		_dark.visible = true
 		surface.update(planet_position())
 	return dir
 
@@ -155,6 +164,9 @@ func _wait_for_the_ground(delta: float) -> void:
 		loading = false
 		_load_label.visible = false
 		_target.process_mode = Node.PROCESS_MODE_INHERIT
+		var fade := create_tween() # the dark lifts
+		fade.tween_property(_dark, "modulate:a", 0.0, 0.8)
+		fade.tween_callback(_dark.hide)
 		loaded.emit()
 
 

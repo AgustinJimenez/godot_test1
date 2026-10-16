@@ -10,6 +10,8 @@ extends RefCounted
 const CONTINENT := 0.10 ## base height of a continental plate (units of relief)
 const OCEAN := -0.42 ## base height of an oceanic plate
 const BOUNDARY := 0.08 ## radians: how wide a boundary's effect is (about 500 km on Earth)
+const NEAR := 4 ## how many of the nearest plates are looked at
+const SOFT := 0.14 ## radians: how fast a plate's say fades as it gets further than the nearest
 
 var _seeds := PackedVector3Array() ## the middle of each plate
 var _spin: Array[Vector3] = [] ## each plate's rotation (its velocity at p is spin x p)
@@ -51,63 +53,85 @@ func _setup(noise: FastNoiseLite, noise_seed: int, frequency: float, octaves: in
 	noise.fractal_octaves = octaves
 
 
-## Height in units of relief at the unit direction `dir`.
+## Height in units of relief at the unit direction `dir`. Every plate near enough has a say, with a
+## smooth weight (the nearest has all of it, a plate that is further by a few hundredths of a
+## radian has almost none), and every pair of the near plates adds its own boundary effect, weighted
+## the same way: so nothing jumps where the second nearest plate changes (a line through a plate
+## that made 50 m walls when only the two nearest plates counted).
 func height(dir: Vector3) -> float:
 	# plate edges wander: look the plate up at a direction pushed about by a slow noise
 	var shifted := dir + Vector3(_warp.get_noise_3d(dir.x, dir.y, dir.z),
 			_warp.get_noise_3d(dir.x + 5.3, dir.y - 2.1, dir.z + 1.7),
 			_warp.get_noise_3d(dir.x - 3.7, dir.y + 4.4, dir.z - 6.2)) * 0.30
 	var q := shifted.normalized()
-	var first := -1
-	var second := -1
-	var best := -2.0
-	var next := -2.0
+	# the nearest NEAR plates, nearest first
+	var order: Array[int] = []
+	var close: Array[float] = []
 	for index in _seeds.size():
 		var closeness := q.dot(_seeds[index])
-		if closeness > best:
-			next = best
-			second = first
-			best = closeness
-			first = index
-		elif closeness > next:
-			next = closeness
-			second = index
-	# how far (radians) from the boundary between the two nearest plates
-	var edge := (acos(clampf(next, -1.0, 1.0)) - acos(clampf(best, -1.0, 1.0))) * 0.5
-	var here: bool = _continental[first]
-	var there: bool = _continental[second]
-	# the base height blends across the boundary (a continental shelf, not a cliff)
-	var other := 0.5 * exp(-edge / 0.07)
-	var base := lerpf(CONTINENT if here else OCEAN, CONTINENT if there else OCEAN, other)
-	# how hard the two plates push on each other here: + together, - apart
-	var toward := _seeds[second] - _seeds[first]
-	toward -= q * q.dot(toward)
-	var push := 0.0
-	if toward.length_squared() > 0.000001:
-		var relative := _spin[first].cross(q) - _spin[second].cross(q)
-		push = clampf(relative.dot(toward.normalized()), -1.0, 1.0)
-	var near := exp(-pow(edge / BOUNDARY, 2.0))
+		var at := order.size()
+		while at > 0 and close[at - 1] < closeness:
+			at -= 1
+		if at < NEAR:
+			order.insert(at, index)
+			close.insert(at, closeness)
+			if order.size() > NEAR:
+				order.pop_back()
+				close.pop_back()
+	var count := order.size()
+	var angle: Array[float] = []
+	var weight: Array[float] = []
+	var total := 0.0
+	var base := 0.0
+	var variety := 0.0
+	for k in count:
+		angle.append(acos(clampf(close[k], -1.0, 1.0)))
+		weight.append(exp(-(angle[k] - angle[0]) / SOFT))
+		total += weight[k]
+		var land: bool = _continental[order[k]]
+		base += weight[k] * (CONTINENT if land else OCEAN)
+		variety += weight[k] * (0.11 if land else 0.06)
+	base /= total
+	variety /= total
 	var rise := 0.0 # the mountains, beyond the base height
-	var together := maxf(push, 0.0)
-	var apart := maxf(-push, 0.0)
-	if here and there:
-		rise = near * (0.62 * together - 0.12 * apart) # a collision: the highest ranges
-	elif here != there:
-		# a coast where one plate dives under the other: a coastal range on the land side and a
-		# trench off shore, one smooth profile across the boundary (the side of the boundary this
-		# point is on only changes the sign of the distance, so there is no step at the bisector)
-		var inland := edge if here else -edge
-		var range_up := 0.26 * exp(-pow((inland - 0.03) / 0.045, 2.0))
-		var trench := 0.30 * exp(-pow((inland + 0.03) / 0.035, 2.0))
-		rise = together * (range_up - trench)
-	else:
-		rise = 0.30 * together * exp(-pow((edge - 0.03) / 0.03, 2.0)) # an island arc
-		rise += 0.22 * apart * exp(-pow(edge / 0.12, 2.0)) # a mid-ocean ridge
-		rise -= 0.22 * together * near # and the trench beside it
+	for i in count - 1:
+		for j in range(i + 1, count):
+			# a boundary only matters while both its plates are among the nearest
+			var pair := weight[i] * weight[j] / (weight[0] * weight[1])
+			if pair < 0.002:
+				continue
+			rise += pair * _boundary(order[i], order[j], q, (angle[j] - angle[i]) * 0.5)
 	# the ranges are rough: ridged noise rides on the uplift
 	var ridged := _ridge.get_noise_3d(dir.x, dir.y, dir.z) * 0.5 + 0.5
 	var rough := maxf(rise, 0.0) * (ridged * 1.1 - 0.35)
 	# the plate interiors are not flat either: cratons, basins, plateaus
-	var variety := lerpf(0.11 if here else 0.06, 0.11 if there else 0.06, other)
 	var inside := _interior.get_noise_3d(dir.x, dir.y, dir.z) * variety
 	return base + rise + rough + inside
+
+
+## What the boundary between plates `a` (the nearer to `q`) and `b` does at `q`, which is `edge`
+## radians from the line between them (on a's side).
+func _boundary(a: int, b: int, q: Vector3, edge: float) -> float:
+	var toward := _seeds[b] - _seeds[a]
+	toward -= q * q.dot(toward)
+	var push := 0.0
+	if toward.length_squared() > 0.000001:
+		var relative := _spin[a].cross(q) - _spin[b].cross(q)
+		push = clampf(relative.dot(toward.normalized()), -1.0, 1.0)
+	var together := maxf(push, 0.0)
+	var apart := maxf(-push, 0.0)
+	var near := exp(-pow(edge / BOUNDARY, 2.0))
+	var here: bool = _continental[a]
+	var there: bool = _continental[b]
+	if here and there:
+		return near * (0.62 * together - 0.12 * apart) # a collision: the highest ranges
+	if here != there:
+		# a coast where one plate dives under the other: a coastal range on the land side and a
+		# trench off shore, one smooth profile across the boundary
+		var inland := edge if here else -edge
+		var range_up := 0.26 * exp(-pow((inland - 0.03) / 0.045, 2.0))
+		var trench := 0.30 * exp(-pow((inland + 0.03) / 0.035, 2.0))
+		return together * (range_up - trench)
+	var arc := 0.30 * together * exp(-pow((edge - 0.03) / 0.03, 2.0)) # an island arc
+	arc += 0.22 * apart * exp(-pow(edge / 0.12, 2.0)) # a mid-ocean ridge
+	return arc - 0.22 * together * near # and the trench beside it

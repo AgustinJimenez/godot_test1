@@ -141,6 +141,14 @@ on this machine, the rest of the plants keep coming in around the player. Headle
 threads (tiles and plants are made a few a frame) and no holding. `SpeciesRegistry.mesh` builds
 outside its lock now (several threads build different meshes at once).
 
+Eighth pass (a wall on land): the same kind of step as the coast walls, in the plate maths: with only
+the two nearest plates counted, the boundary uplift jumped by up to 57 m along every line where the
+second nearest plate changes (a triple junction line) near a boundary. `PlanetTectonics.height` now
+lets the four nearest plates each have a smooth say (`SOFT`), and every pair of them adds its
+boundary effect weighted by both plates' say, so nothing jumps. Land faces steeper than 1 in 10 m: 46
+of 300,000 samples before, 3 now (the steepest rise in 10 m 57 m before, 19 m now, the rest are river
+gorges). The screen is black with the loading text until the ground is made, then fades.
+
 Still rough / ideas: tile LOD edge colour mismatch and popping, sea depth
 colours, swimming / underwater, river mouths into steep coasts, lakes' outflow carving, river banks
 (mud, reeds), erosion by simulation on a finer grid, thermal erosion (talus), performance (tile
