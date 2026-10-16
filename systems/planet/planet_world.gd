@@ -43,6 +43,7 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	_target = target
 	var dir := direction if direction != Vector3.ZERO else noise.find_spawn()
 	var reach := settings.radius + noise.height(dir.x, dir.y, dir.z) + 1.0
+	noise.clearing = dir
 	frame.start(PackedFloat64Array([dir.x * reach, dir.y * reach, dir.z * reach]), Vector3.ZERO)
 	target.global_position = Vector3.ZERO
 	return dir

@@ -14,6 +14,7 @@ var relief := 1000.0 ## m, from the sea to the top of the highest ranges (see Pl
 var tectonics: PlanetTectonics
 var climate := PlanetClimate.new()
 var species: SpeciesRegistry ## the plants of this planet
+var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep off a little round it
 var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
 
 var _rolling := FastNoiseLite.new()

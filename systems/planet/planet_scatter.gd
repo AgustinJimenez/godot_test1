@@ -89,6 +89,8 @@ func _scatter(layer: PlantSpecies.Layer, stretch: float) -> void:
 			var dir := _direction(fx, fz)
 			if _noise.hydrology != null and _noise.hydrology.water_at(dir, ground) > ground - 0.3:
 				continue # a river or a lake
+			if layer <= PlantSpecies.Layer.UNDERSTORY and _in_clearing(dir):
+				continue
 			var plant := _pick(layer, dir, ground, steep, x, z)
 			if plant != null and _rng.randf() <= _pick_chance * density:
 				_place(plant, at)
@@ -111,6 +113,8 @@ func _rocks(near: bool) -> void:
 				continue
 			var dir := _direction(fx, fz)
 			if _noise.hydrology != null and _noise.hydrology.water_at(dir, ground) > ground - 0.3:
+				continue
+			if _in_clearing(dir):
 				continue
 			var steep := _slope(fx, fz)
 			var biome := _noise.biome(dir.x, dir.y, dir.z, ground, steep)
@@ -222,6 +226,13 @@ func _pick(layer: PlantSpecies.Layer, dir: Vector3, ground: float, steep: float,
 		if roll <= 0.0:
 			return candidates[index]
 	return candidates[candidates.size() - 1]
+
+
+## Where the player starts nothing tall grows (the flat world keeps its spawn clear too).
+func _in_clearing(dir: Vector3) -> bool:
+	if _noise.clearing == Vector3.ZERO:
+		return false
+	return dir.distance_to(_noise.clearing) * _noise.settings.radius < 12.0
 
 
 func _place(plant: PlantSpecies, at: Vector3) -> void:

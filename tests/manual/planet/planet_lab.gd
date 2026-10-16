@@ -20,6 +20,8 @@ var _walking := false
 var _walk_start := Vector3.ZERO
 var _walk_floor := 0
 var _walk_worst := 0.0
+var _stuck := false
+var _last_here := Vector3.ZERO
 var _frame := 0
 var _step := 0
 var _start_up := Vector3.ZERO
@@ -188,6 +190,14 @@ func _walk_step() -> void:
 		return
 	if player.is_on_floor():
 		_walk_floor += 1
+	# a tree or a rock in the way: sidestep it for a second, like a person would
+	if _frame % 120 == 0:
+		var here := planet.planet_position()
+		_stuck = here.distance_to(_last_here) < 1.5
+		_last_here = here
+		Input.action_release(&"move_right")
+		if _stuck:
+			Input.action_press(&"move_right")
 	var at := planet.planet_position().normalized()
 	var above := planet.altitude() - planet.noise.height(at.x, at.y, at.z)
 	_walk_worst = maxf(_walk_worst, absf(above))
