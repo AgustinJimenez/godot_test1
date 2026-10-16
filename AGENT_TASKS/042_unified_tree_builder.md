@@ -244,3 +244,6 @@ draw the world's species from the same table.
   leaf masses under the leaves), bark texture/normal map, moss, vertex colour variation inside a ring
   (grooves darker than ridges), roots that flow smoothly into the trunk (now they are separate tubes
   with pointed ends).
+- Foliage clumps (`foliage_mass`): flat jittered eight-sided pads at twig tips in the leaf colours, so a
+  crown reads as layered mass (raintree 0.7, ancient 0.6). They look like stylised canopy pads; the
+  realistic look may want a softer shape later.

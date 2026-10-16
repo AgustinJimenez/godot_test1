@@ -72,6 +72,7 @@ const ROWS := [
 	{"name": "blossom size", "prop": "blossom_size", "min": 0.03, "max": 0.4, "step": 0.005},
 	{"name": "blossom share of twigs", "prop": "blossom_density", "min": 0.1, "max": 1.0,
 			"step": 0.01},
+	{"name": "foliage clumps", "prop": "foliage_mass", "min": 0.0, "max": 1.0, "step": 0.01},
 	{"name": "leaf density", "prop": "leaf_density", "min": 0.0, "max": 1.0, "step": 0.01},
 ]
 const OPTIONS := [

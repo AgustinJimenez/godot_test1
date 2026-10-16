@@ -363,6 +363,42 @@ func _bloom(at: Vector3, normal: Vector3, size: float, colour: Color, centre: Co
 					at + (u * cos(next) + v * sin(next)) * size * 0.2, middle, middle, middle)
 
 
+## A soft clump of foliage at a twig's end: a small jittered eight-sided shape in the leaf colours,
+## darker underneath. Many of them make a crown look like a mass instead of scattered leaves.
+func _mass(at: Vector3, sway: float) -> void:
+	if _g.foliage_mass <= 0.0 or _lod > 0 or _full() or _rng.randf() > _g.foliage_mass:
+		return
+	var size := _leaf_length * _rng.randf_range(1.4, 2.2)
+	var tone := _g.leaf.lerp(_g.leaf_tip, _rng.randf() * 0.5).darkened(_rng.randf_range(0.0, 0.2))
+	var low := tone.darkened(0.3)
+	low.a = sway
+	var high := tone
+	high.a = minf(sway + LEAF_SWAY, 1.0)
+	var middle := tone.darkened(0.12)
+	middle.a = minf(sway + 0.2, 1.0)
+	var centre := at + Vector3(0.0, size * 0.25, 0.0)
+	var axes: Array[Vector3] = [Vector3.RIGHT, Vector3.UP * 0.35, Vector3.BACK]
+	var ends: Array[Array] = [[], [], []]
+	for axis in 3:
+		for sign_side: float in [1.0, -1.0]:
+			var jitter := Vector3(_rng.randf_range(-0.35, 0.35), _rng.randf_range(-0.2, 0.2),
+					_rng.randf_range(-0.35, 0.35))
+			ends[axis].append(centre + (axes[axis] * sign_side + jitter) * size)
+	for sx in 2:
+		for sy in 2:
+			for sz in 2:
+				var corner_x: Vector3 = ends[0][sx]
+				var corner_y: Vector3 = ends[1][sy]
+				var corner_z: Vector3 = ends[2][sz]
+				var flip := (sx + sy + sz) % 2 == 1
+				var a_color := high if sy == 0 else low
+				var side_color := middle
+				if flip:
+					_b.add_tri(corner_y, corner_x, corner_z, a_color, side_color, side_color)
+				else:
+					_b.add_tri(corner_y, corner_z, corner_x, a_color, side_color, side_color)
+
+
 ## Blossom on a twig: a single flower or two (`SINGLE`), a hanging stem of flowers like a bird
 ## cherry's (`RACEME`), or a round cluster (`UMBEL`).
 func _blossoms(points: Array[Vector3], tangents: Array[Vector3], sway: float) -> void:
@@ -586,6 +622,7 @@ func _children(points: Array[Vector3], tangents: Array[Vector3], length: float, 
 func _leaves_along(points: Array[Vector3], tangents: Array[Vector3], sway: float,
 		level: int) -> void:
 	_blossoms(points, tangents, sway)
+	_mass(points[points.size() - 1], sway)
 	var nodes := maxi(roundi(float(5 if _fine else (4 - _lod)) * _thrift), 2)
 	if _g.crown > 3.5:
 		nodes += 1 # a wide crown: more leaves on each twig

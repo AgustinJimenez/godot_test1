@@ -18,6 +18,7 @@ const RANGES := {
 	"height": [0.1, 45.0], "girth": [0.01, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
 	"trunk_part": [0.05, 1.0], "root_flare": [0.0, 1.0], "crown": [0.15, 14.0],
 	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "flutes": [0, 8],
+	"foliage_mass": [0.0, 1.0],
 	"flute_depth": [0.0, 0.4], "trunk_bend": [0.0, 1.0],
 	"trunk_lumps": [0.0, 1.0], "roots": [0, 10], "root_reach": [0.5, 3.0], "twist": [0.0, 1.0],
 	"stems": [1, 6],
@@ -121,6 +122,7 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.leaf_density = 0.8
 			g.leaf_size = 0.6
 			g.twist = 0.6
+			g.foliage_mass = 0.6
 			g.avoid = true
 			g.limb_length = 2.3
 			g.rings = [6, 5, 3]
@@ -285,6 +287,7 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.limb_thickness = 0.9
 			g.avoid = true
 			g.compound = true
+			g.foliage_mass = 0.7
 			g.leaf_size = 0.28
 			g.leaf = Color(0.3, 0.5, 0.14)
 			g.leaf_tip = Color(0.45, 0.65, 0.22)
