@@ -9,7 +9,7 @@ extends RefCounted
 const NAMES: Array[String] = ["leafy", "conifer", "umbrella", "giant", "oak", "ancient", "dragon",
 		"willow", "cypress", "bush", "shrub", "groundcover",
 		"clump", "palm",
-		"dead", "cactus", "fern", "grass", "wildflower",
+		"dead", "cactus", "fern", "grass", "lawn", "meadow", "reed", "pampas", "tussock", "wildflower",
 		"cherry", "blossom",
 		"raintree", "buttress"]
 
@@ -241,7 +241,7 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.bark_rough = 0.3
 			g.leaf_density = 0.0
 			g.bark = Color(0.25, 0.45, 0.25)
-		"fern", "grass", "wildflower":
+		"fern", "grass", "lawn", "meadow", "reed", "pampas", "tussock", "wildflower":
 			# low plants of fronds or blades straight from the ground
 			g = make("palm", leafy, conifer)
 			g.height = 0.12
@@ -259,6 +259,54 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 					g.leaflet = 0.28
 					g.leaf = Color(0.2, 0.5, 0.2)
 					g.leaf_tip = Color(0.32, 0.62, 0.26)
+				"lawn":
+					g.fronds = 60
+					g.frond_length = 0.14
+					g.frond_arch = 0.2
+					g.frond_droop = 0.5
+					g.leaflet = 0.0
+					g.rib_width = 0.05
+					g.leaf = Color(0.3, 0.5, 0.15)
+					g.leaf_tip = Color(0.42, 0.62, 0.22)
+				"meadow":
+					g.fronds = 26
+					g.frond_length = 0.9
+					g.frond_arch = 0.35
+					g.frond_droop = 0.7
+					g.leaflet = 0.0
+					g.rib_width = 0.025
+					g.leaf = Color(0.42, 0.55, 0.2)
+					g.leaf_tip = Color(0.7, 0.68, 0.35)
+				"reed":
+					g.fronds = 16
+					g.frond_length = 1.8
+					g.frond_arch = 0.6
+					g.frond_droop = 0.25
+					g.leaflet = 0.0
+					g.rib_width = 0.03
+					g.leaf = Color(0.3, 0.45, 0.16)
+					g.leaf_tip = Color(0.5, 0.6, 0.25)
+				"pampas":
+					g.fronds = 40
+					g.frond_length = 1.5
+					g.frond_arch = 0.5
+					g.frond_droop = 0.85
+					g.leaflet = 0.0
+					g.rib_width = 0.02
+					g.leaf = Color(0.45, 0.55, 0.25)
+					g.leaf_tip = Color(0.75, 0.72, 0.45)
+					g.flower = Color(0.93, 0.9, 0.78, 1.0)
+					g.flower_size = 0.1
+					g.flower_cup = 0.9
+				"tussock":
+					g.fronds = 50
+					g.frond_length = 0.6
+					g.frond_arch = 0.3
+					g.frond_droop = 0.95
+					g.leaflet = 0.0
+					g.rib_width = 0.02
+					g.leaf = Color(0.5, 0.5, 0.2)
+					g.leaf_tip = Color(0.78, 0.66, 0.3)
 				"grass":
 					g.fronds = 34
 					g.frond_length = 0.5

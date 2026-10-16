@@ -256,3 +256,9 @@ draw the world's species from the same table.
   the crown reads as a leafy mass. `children` [6, 5, 0]. Lab has a "clump size" slider.
 - Still not the Angel Oak photo: reads as a tall bush of limbs; a flatter, wider, lower crown and a
   more visible trunk are open.
+
+## Grass types
+
+New low-plant kinds: `lawn` (short dense), `meadow` (tall, golden tips), `reed` (tall upright),
+`pampas` (arching fountain, cream plumes at the tips), `tussock` (drooping golden mound), beside
+`grass` and `wildflower`. All are frond plants with bare blades (`leaflet` 0).
