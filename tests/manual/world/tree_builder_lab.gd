@@ -15,6 +15,8 @@ const ROWS := [
 	{"name": "root flare", "prop": "root_flare", "min": 0.0, "max": 1.0, "step": 0.01},
 	{"name": "column top (leader, <0 cone)", "prop": "column", "min": -0.01, "max": 1.0, "step": 0.01},
 	{"name": "taper", "prop": "taper", "min": 0.25, "max": 0.95, "step": 0.01},
+	{"name": "stems (a clump)", "prop": "stems", "min": 1, "max": 6, "step": 1},
+	{"name": "stem spread", "prop": "stem_spread", "min": 0.05, "max": 0.5, "step": 0.01},
 	{"name": "lean", "prop": "lean", "min": 0.0, "max": 0.3, "step": 0.01},
 	{"name": "bare trunk part", "prop": "trunk_part", "min": 0.05, "max": 0.8, "step": 0.01},
 	{"group": "Where the branches leave"},

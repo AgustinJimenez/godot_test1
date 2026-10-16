@@ -7,13 +7,15 @@ extends RefCounted
 ## sliders almost never manage. The world species generator and the lab share this table.
 
 const NAMES: Array[String] = ["leafy", "conifer", "umbrella", "giant", "oak", "ancient", "dragon",
-		"willow", "cypress", "bush", "shrub", "groundcover"]
+		"willow", "cypress", "bush", "shrub", "groundcover",
+		"clump"]
 
 ## Plausible range of each numeric trait: [min, max]. A draw never leaves it.
 const RANGES := {
 	"height": [0.2, 45.0], "girth": [0.01, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
 	"trunk_part": [0.05, 0.8], "root_flare": [0.0, 1.0], "crown": [0.15, 14.0],
-	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "limb_angle": [15.0, 90.0],
+	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "stems": [1, 6],
+	"stem_spread": [0.05, 0.5], "limb_angle": [15.0, 90.0],
 	"limb_length": [0.5, 2.2], "limb_thickness": [0.3, 1.3], "nodes_spacing": [0.3, 2.0],
 	"curve": [0.0, 1.4], "lift": [-0.1, 0.4], "sag": [0.0, 0.3], "tip_radius": [0.05, 0.8],
 	"children": [1, 7], "child_radius": [0.3, 0.9], "child_length": [0.2, 0.9],
@@ -134,6 +136,21 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.trunk_sides = 6
 			g.leaf_size = 0.2
 			g.bark = Color(0.36, 0.28, 0.2)
+		"clump":
+			# a birch or hazel clump: several slim stems from one root
+			g = _leafy(leafy)
+			g.height = 10.0
+			g.girth = 0.14
+			g.taper = 0.6
+			g.stems = 4
+			g.stem_spread = 0.22
+			g.trunk_part = 0.55
+			g.crown = 1.7
+			g.limbs = 4
+			g.limb_angle = 35.0
+			g.leaf_size = 0.15
+			g.bark = Color(0.78, 0.74, 0.68)
+			g.marked_bark = true
 		"shrub", "groundcover":
 			# knee-high and below: many fine stems, small leaves
 			g = make("bush", leafy, conifer)

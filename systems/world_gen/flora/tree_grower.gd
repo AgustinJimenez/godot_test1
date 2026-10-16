@@ -32,6 +32,7 @@ var _depth := 3 ## levels of branching in this version
 var _height := 8.0
 var _trunk_length := 2.0 ## metres of trunk: to the limbs, or all the way for a leader
 var _tilt := Vector3.ZERO
+var _origin := Vector3.ZERO ## where the stem being grown starts (a clump has several)
 var _outline := PackedVector2Array()
 var _leaf_length := 0.3
 var _needle_length := 0.5
@@ -64,10 +65,35 @@ static func build(builder: MeshBuilder, genome: TreeGenome, rng: RandomNumberGen
 
 
 func _grow() -> void:
+	if _g.stems <= 1 or _g.leader:
+		_grow_stem()
+		return
+	# a clump: every stem is a smaller tree of its own, leaning out from a shared root
+	var height := _g.height
+	var girth := _g.girth
+	var crown := _g.crown
+	var phase := _rng.randf() * TAU
+	for stem in _g.stems:
+		var size := 1.0 - 0.3 * float(stem) / float(_g.stems) * _rng.randf_range(0.6, 1.2)
+		_g.height = height * size
+		_g.girth = girth * size * 0.8
+		_g.crown = crown * (0.6 + 0.4 * size)
+		var yaw := phase + TAU * float(stem) / float(_g.stems) + _rng.randf_range(-0.3, 0.3)
+		var out := Vector3(cos(yaw), 0.0, sin(yaw))
+		_origin = out * girth * 0.8
+		_grow_stem(out * _g.stem_spread * _g.height)
+	_g.height = height
+	_g.girth = girth
+	_g.crown = crown
+	_origin = Vector3.ZERO
+
+
+func _grow_stem(lean_to := Vector3.ZERO) -> void:
 	_height = _g.height * _rng.randf_range(0.9, 1.1)
+	_tilt = lean_to
 	_trunk_length = _height if _g.leader else _height * _g.trunk_part
 	if _g.lean > 0.0:
-		_tilt = Vector3(_rng.randf_range(-1.0, 1.0), 0.0, _rng.randf_range(-1.0, 1.0)).normalized() \
+		_tilt += Vector3(_rng.randf_range(-1.0, 1.0), 0.0, _rng.randf_range(-1.0, 1.0)).normalized() \
 				* _g.lean * _height
 	_outline = PlantLeafShapes.outline_for(_g.leaf_shape, _g.leaf_aspect, _g.leaf_lobes,
 			_g.leaf_edge, _fine)
@@ -103,7 +129,7 @@ func _still(color: Color) -> Color:
 ## The point of the trunk's axis at height `y` (a leaning trunk leans more toward its top).
 func _axis(y: float) -> Vector3:
 	var along := y / _trunk_length
-	return Vector3(_tilt.x * along * along, y, _tilt.z * along * along)
+	return _origin + Vector3(_tilt.x * along * along, y, _tilt.z * along * along)
 
 
 func _trunk() -> void:
