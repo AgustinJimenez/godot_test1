@@ -27,6 +27,7 @@ var weather: WorldWeather ## the effects of the weather; the planet picks the st
 var cloud_shell: PlanetCloudShell
 var weather_text := ""
 var _weather_timer := 0.0
+var weather_override := -1 ## a WorldWeather.State to force, or -1 to follow the planet's climate
 var time_rate := 1.0 ## how fast time runs on top of `time_scale`: negative is backward, 0 stops it
 var clock := PlanetClock.new() ## the star, the orbit, the spin: where the sun is (real geometry)
 var splash: WaterSplash
@@ -104,6 +105,10 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	var dir := direction if direction != Vector3.ZERO else noise.find_spawn()
 	var reach := settings.radius + noise.height(dir.x, dir.y, dir.z) + 1.0
 	noise.clearing = dir
+	if target is Player and (target as Player).hud != null:
+		var page := PlanetMenu.new()
+		page.setup(self)
+		(target as Player).hud.call(&"add_menu_page", "Planet", page)
 	noise.clock = clock
 	clock.start(settings.start_year, settings.start_hour, dir)
 	_set_the_sun()
@@ -145,7 +150,7 @@ func _keep_the_weather_near_the_ground() -> void:
 func _pick_the_weather() -> void:
 	var here := planet_position().normalized()
 	var now := noise.weather.at(here, maxf(altitude(), 0.0), clock)
-	var kind: int = now["kind"]
+	var kind: int = now["kind"] if weather_override < 0 else weather_override
 	var wanted: WorldWeather.State = kind as WorldWeather.State
 	if weather.state != wanted:
 		weather.set_state(wanted)
@@ -174,6 +179,12 @@ func season_text() -> String:
 ## Moves time by `days` solar days (negative: backward), keeping the sun's hour as it is.
 func jump_time(days: float) -> void:
 	clock.advance(days * clock.day_seconds)
+
+
+## Moves the sun to the local solar `hour` (0..24) at the player, leaving the day of the year.
+func set_hour(hour: float) -> void:
+	if _target != null:
+		clock.start(clock.year_share(), hour, planet_position().normalized())
 
 
 ## Moves the orbit to `share` of the year, leaving the hour of day where it is.

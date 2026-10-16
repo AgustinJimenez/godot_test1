@@ -10,6 +10,7 @@ extends Node3D
 ##   -- --time-scale=N --hour=H --year=Y   how fast time runs, the first hour (12 noon), the first
 ##                    share of the year (0 northern spring equinox)
 ##   -- --look-moon  the camera looks at the moon (with --view-alt)
+##   -- --planet-page  the Planet page of the Esc menu open from the start
 ##   -- --bare       no plants (to look at the ground)
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
 ##   -- --walk-check  (use --fixed-fps 60) the real player holds forward and sprint for 90 s,
@@ -23,6 +24,7 @@ var planet: PlanetWorld
 var player: Player
 var _checking := false
 var _walking := false
+var _planet_page := false ## open the Planet page of the Esc menu from the start
 var _look_moon := false ## point the camera at the moon (with --view-alt)
 var _show_map := false ## open the planet map (the M key) from the start
 var _map_zoom := 6.0
@@ -54,6 +56,9 @@ var _view_yaw := 0.0
 
 func _ready() -> void:
 	var settings := PlanetSettings.new()
+	if PlanetMenu.pending != null: # a new planet asked for in the Planet page of the menu
+		settings = PlanetMenu.pending
+		PlanetMenu.pending = null
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--radius="):
 			settings.radius = arg.trim_prefix("--radius=").to_float()
@@ -86,6 +91,8 @@ func _ready() -> void:
 			_show_map = true
 		elif arg == "--look-moon":
 			_look_moon = true
+		elif arg == "--planet-page":
+			_planet_page = true
 		elif arg == "--bare":
 			settings.plant_density = 0.0
 		elif arg == "--walk-check":
@@ -129,6 +136,11 @@ func _ready() -> void:
 			settings.max_level(), planet.surface.tiles.size(), Time.get_ticks_msec() - started,
 			spawn])
 	_start_up = spawn
+	if _checking:
+		var found := false
+		for button in player.hud.find_children("*", "Button", true, false):
+			found = found or (button as Button).text == "Planet"
+		print("MENU_PAGE %s" % ("found" if found else "MISSING"))
 	var colliders := 0
 	var nearest := INF
 	for tile: PlanetTile in planet.surface.tiles.values():
@@ -151,6 +163,11 @@ func _physics_process(_delta: float) -> void:
 	if _walking and player != null:
 		_walk_step()
 		return
+	if _planet_page and _frame == 30:
+		player.hud.debug_overlay.show()
+		for button in player.hud.find_children("*", "Button", true, false):
+			if (button as Button).text == "Planet":
+				(button as Button).pressed.emit()
 	if _show_map and _frame == 30:
 		planet.map.show_zoom(_map_zoom)
 		planet.map.select_layer(_map_layer)

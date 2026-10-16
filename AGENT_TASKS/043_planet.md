@@ -306,3 +306,5 @@ edges differ by 1e-10 m); the planet check avoids seams.
 
 Birds and butterflies (WorldLife), weather, planet rotation / day-night from the planet, other
 planets, space.
+
+- Esc menu: a "Planet" page (`PlanetMenu`): time speed/jumps/sliders, weather override, new seed/radius, map. Lab: `--planet-page`.

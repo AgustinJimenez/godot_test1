@@ -66,6 +66,16 @@ Water shaders: `shaders/world/planet_water.gdshader` (sea and lakes, smooth lit 
 4. **Relief scales with the planet**: `clamp(R * 0.0035, 300, 9000)` m, the sea level is found so
    `ocean_fraction` of the area is under it.
 
+## The Planet page of the Esc menu
+
+`PlanetMenu` (`systems/planet/planet_menu.gd`) is the planet's counterpart of the flat world's
+"World" page; `PlanetWorld.start` adds it through the HUD's `add_menu_page` when the target is a
+player. It has the time controls (speed -1000x..1000x and pause, jumps of a day and 1/8 year, sliders
+for the hour and the day of the year), the weather (follow the climate or force a state through
+`PlanetWorld.weather_override`), seed and radius fields with "Make this planet" / "Random seed"
+(`PlanetMenu.pending` carries the settings over the scene reload) and the map. In the lab,
+`-- --planet-page` opens it from the start (screenshots).
+
 ## Limits
 
 | radius | single precision (official Godot) | double precision build |
