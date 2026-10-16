@@ -7,12 +7,12 @@ extends RefCounted
 ## sliders almost never manage. The world species generator and the lab share this table.
 
 const NAMES: Array[String] = ["leafy", "conifer", "umbrella", "giant", "oak", "ancient", "dragon",
-		"willow", "cypress"]
+		"willow", "cypress", "bush"]
 
 ## Plausible range of each numeric trait: [min, max]. A draw never leaves it.
 const RANGES := {
-	"height": [3.0, 45.0], "girth": [0.1, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
-	"trunk_part": [0.05, 0.8], "root_flare": [0.0, 1.0], "crown": [0.8, 14.0],
+	"height": [0.8, 45.0], "girth": [0.02, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
+	"trunk_part": [0.05, 0.8], "root_flare": [0.0, 1.0], "crown": [0.4, 14.0],
 	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "limb_angle": [15.0, 90.0],
 	"limb_length": [0.5, 2.2], "limb_thickness": [0.3, 1.3], "nodes_spacing": [0.3, 2.0],
 	"curve": [0.0, 1.4], "lift": [-0.1, 0.4], "sag": [0.0, 0.3], "tip_radius": [0.05, 0.8],
@@ -22,6 +22,8 @@ const RANGES := {
 	"leaf_density": [0.1, 1.0],
 }
 ## Traits that are a choice from a list, not a number (blended by picking one side).
+## Sizes that vary by proportion (a bush and a giant both change by a few percent, not by metres).
+const PROPORTIONAL := ["height", "girth", "crown"]
 const CHOICES := ["leaf_shape", "leaf_edge", "leaf_pattern", "foliage", "profile"]
 
 
@@ -115,6 +117,23 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.leaf_size = 0.17
 			g.leaf_pattern = PlantSpecies.LeafPattern.SPIRAL
 			g.sag = [0.05, 0.1, 0.2]
+		"bush":
+			# almost no trunk: many thin stems fanning out from the ground
+			g = _leafy(leafy)
+			g.height = 1.6
+			g.girth = 0.035
+			g.taper = 1.0
+			g.trunk_part = 0.05
+			g.root_flare = 0.0
+			g.crown = 0.8
+			g.aspect = 1.2
+			g.limbs = 10
+			g.limb_angle = 38.0
+			g.limb_length = 1.0
+			g.limb_thickness = 1.0
+			g.trunk_sides = 6
+			g.leaf_size = 0.2
+			g.bark = Color(0.36, 0.28, 0.2)
 		"dragon":
 			# thick trunk, limbs that fork again and again into an umbrella of bare branches, the
 			# leaves only in a tuft layer at the very ends
@@ -238,7 +257,7 @@ static func _nudge(g: TreeGenome, rng: RandomNumberGenerator, amount: float) -> 
 			for index in arr.size():
 				arr[index] = _moved(arr[index], low, high, rng, amount)
 		else:
-			g.set(key, _moved(value, low, high, rng, amount))
+			g.set(key, _moved(value, low, high, rng, amount, key in PROPORTIONAL))
 	g.leaf = Color.from_hsv(fposmod(g.leaf.h + rng.randf_range(-0.04, 0.04) * amount * 5.0, 1.0),
 			clampf(g.leaf.s + rng.randf_range(-0.1, 0.1), 0.3, 0.9),
 			clampf(g.leaf.v + rng.randf_range(-0.08, 0.08), 0.2, 0.7))
@@ -247,7 +266,9 @@ static func _nudge(g: TreeGenome, rng: RandomNumberGenerator, amount: float) -> 
 
 
 static func _moved(value: Variant, low: float, high: float, rng: RandomNumberGenerator,
-		amount: float) -> Variant:
+		amount: float, proportional := false) -> Variant:
+	if proportional:
+		return clampf(float(value) * exp(rng.randf_range(-1.0, 1.0) * amount * 2.5), low, high)
 	var moved := clampf(float(value) + rng.randf_range(-1.0, 1.0) * (high - low) * amount, low, high)
 	return roundi(moved) if typeof(value) == TYPE_INT else moved
 
