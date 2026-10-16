@@ -11,6 +11,8 @@ extends RefCounted
 enum Profile { CONE, DOME }
 ## What a branch carries: single leaves along the last twigs, sprays of needles at the ends, or (a
 ## palm) big fronds from the top of one bare trunk.
+## How a tree carries blossom: one or two flowers per twig, a hanging stem of them, a round cluster.
+enum Bloom { SINGLE, RACEME, UMBEL }
 enum Foliage { BLADE, NEEDLE, FROND }
 
 # Trunk
@@ -50,6 +52,8 @@ var rings: Array[int] = [6, 5, 3] ## rings of the tube at each level (more = a r
 var sides: Array[int] = [11, 8, 5] ## sides, low-poly
 var sides_real: Array[int] = [12, 10, 6] ## sides, realistic
 var curve: Array[float] = [0.5, 0.8, 1.2] ## the most a branch bends over its length (radians)
+var avoid := false ## limbs and branches steer away from each other instead of passing through
+var twist := 0.0 ## 0..1: limbs wind in S-curves and turn round their own axis (an old live oak)
 var wander: Array[float] = [0.06, 0.08, 0.1] ## irregularity on top of the curve
 var lift: Array[float] = [0.08, 0.05, 0.0] ## how much each ring reaches for the sky
 var sag: Array[float] = [0.0, 0.04, 0.1] ## how much each ring sags
@@ -57,6 +61,7 @@ var droop_sag: Array[float] = [0.0, 0.14, 0.3] ## more sag per unit of `droop`
 var sway: Array[float] = [0.16, 0.2, 0.22] ## wind weight added along a branch
 var tip_radius: Array[float] = [0.4, 0.25, 0.05] ## radius at the end, as a share of the start
 var children: Array[int] = [4, 4, 0] ## branches carried by a limb, a branch (last level: 0)
+var twig_radius := 1.0 ## twigs (children of branches) are this much thinner again
 var child_radius := 0.6 ## a child's radius, as a share of its parent's where it leaves
 var child_length: Array[float] = [0.55, 0.5, 0.0] ## and its length, as a share of the parent's
 var child_length_a := 1.25 ## children further out are shorter: length * (a - b * position)
@@ -88,6 +93,13 @@ var leaflet := 0.22 ## leaflet length as a share of the frond (under 0.02: a bar
 var rib_width := 0.012 ## the frond's midrib width as a share of its length (grass blades: 0.04)
 var flower := Color(0.0, 0.0, 0.0, 0.0) ## a flower at the tip of each frond (alpha 0: none)
 var flower_size := 0.05 ## flower radius, metres
+var flower_centre := Color(0.9, 0.68, 0.1) ## the middle of every flower
+var flower_cup := 0.4 ## 0 flat like a daisy .. 1 petals closed up like a tulip
+var petals := 5 ## petals per flower
+var blossom := Color(0.0, 0.0, 0.0, 0.0) ## colour of the blossom on a tree's twigs (alpha 0: none)
+var blossom_kind := Bloom.SINGLE
+var blossom_size := 0.07 ## blossom flower radius, metres
+var blossom_density := 0.5 ## the share of twigs that carry blossom
 var leaf_density := 1.0 ## 1 full; less: some twigs have no leaves, the others fewer (an old oak)
 
 # Colours (sRGB)

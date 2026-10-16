@@ -25,10 +25,11 @@ const ROWS := [
 	{"name": "droop", "prop": "droop", "min": 0.0, "max": 1.0, "step": 0.01},
 	{"name": "limbs / per node", "prop": "limbs", "min": 3, "max": 10, "step": 1},
 	{"name": "limb angle", "prop": "limb_angle", "min": 15.0, "max": 90.0, "step": 1.0},
-	{"name": "limb length", "prop": "limb_length", "min": 0.5, "max": 2.2, "step": 0.01},
+	{"name": "limb length", "prop": "limb_length", "min": 0.5, "max": 3.0, "step": 0.01},
 	{"name": "limb thickness", "prop": "limb_thickness", "min": 0.3, "max": 1.3, "step": 0.01},
 	{"name": "node spacing (leader)", "prop": "nodes_spacing", "min": 0.3, "max": 2.0, "step": 0.05},
 	{"group": "Branches"},
+	{"name": "twist (S-curves)", "prop": "twist", "min": 0.0, "max": 1.0, "step": 0.01},
 	{"name": "limb curve", "prop": "curve", "idx": 0, "min": 0.0, "max": 3.0, "step": 0.01},
 	{"name": "limb lift", "prop": "lift", "idx": 0, "min": -0.1, "max": 0.4, "step": 0.01},
 	{"name": "limb sag", "prop": "sag", "idx": 0, "min": 0.0, "max": 0.3, "step": 0.01},
@@ -38,6 +39,7 @@ const ROWS := [
 			"step": 0.01},
 	{"name": "branches per limb", "prop": "children", "idx": 0, "min": 1, "max": 7, "step": 1},
 	{"name": "twigs per branch", "prop": "children", "idx": 1, "min": 0, "max": 7, "step": 1},
+	{"name": "twig thickness", "prop": "twig_radius", "min": 0.2, "max": 1.0, "step": 0.01},
 	{"name": "child thickness", "prop": "child_radius", "min": 0.3, "max": 0.9, "step": 0.01},
 	{"name": "branch length", "prop": "child_length", "idx": 0, "min": 0.2, "max": 0.9,
 			"step": 0.01},
@@ -58,6 +60,12 @@ const ROWS := [
 	{"name": "blade width", "prop": "rib_width", "min": 0.005, "max": 0.06, "step": 0.001},
 	{"name": "flower size", "prop": "flower_size", "min": 0.02, "max": 0.15, "step": 0.005},
 	{"name": "bark roughness", "prop": "bark_rough", "min": 0.5, "max": 3.0, "step": 0.05},
+	{"name": "petals", "prop": "petals", "min": 4, "max": 10, "step": 1},
+	{"name": "flower cup (0 flat .. 1 tulip)", "prop": "flower_cup", "min": 0.0, "max": 1.0,
+			"step": 0.01},
+	{"name": "blossom size", "prop": "blossom_size", "min": 0.03, "max": 0.4, "step": 0.005},
+	{"name": "blossom share of twigs", "prop": "blossom_density", "min": 0.1, "max": 1.0,
+			"step": 0.01},
 	{"name": "leaf density", "prop": "leaf_density", "min": 0.0, "max": 1.0, "step": 0.01},
 ]
 const OPTIONS := [
@@ -66,6 +74,7 @@ const OPTIONS := [
 	{"name": "leaf edge", "prop": "leaf_edge", "items": ["smooth", "serrated", "wavy"]},
 	{"name": "leaf pattern", "prop": "leaf_pattern", "items": ["alternate", "opposite", "spiral"]},
 	{"name": "foliage", "prop": "foliage", "items": ["blades", "needles", "fronds"]},
+	{"name": "blossom kind", "prop": "blossom_kind", "items": ["single", "raceme", "umbel"]},
 ]
 const FLAGS := [
 	{"name": "one trunk to the top (leader)", "prop": "leader"},
@@ -74,6 +83,7 @@ const FLAGS := [
 	{"name": "last child carries on", "prop": "carry_on"},
 	{"name": "frosted needles", "prop": "frosted"},
 	{"name": "needles only at the tips", "prop": "tips_only"},
+	{"name": "branches avoid each other", "prop": "avoid"},
 ]
 
 var genome: TreeGenome

@@ -9,27 +9,31 @@ extends RefCounted
 const NAMES: Array[String] = ["leafy", "conifer", "umbrella", "giant", "oak", "ancient", "dragon",
 		"willow", "cypress", "bush", "shrub", "groundcover",
 		"clump", "palm",
-		"dead", "cactus", "fern", "grass", "wildflower"]
+		"dead", "cactus", "fern", "grass", "wildflower",
+		"cherry", "blossom"]
 
 ## Plausible range of each numeric trait: [min, max]. A draw never leaves it.
 const RANGES := {
 	"height": [0.1, 45.0], "girth": [0.01, 2.6], "taper": [0.25, 0.95], "lean": [0.0, 0.3],
 	"trunk_part": [0.05, 1.0], "root_flare": [0.0, 1.0], "crown": [0.15, 14.0],
-	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "stems": [1, 6],
+	"aspect": [0.4, 2.0], "droop": [0.0, 1.0], "limbs": [3, 10], "twist": [0.0, 1.0], "stems": [1, 6],
 	"stem_spread": [0.05, 0.5], "limb_angle": [15.0, 90.0],
-	"limb_length": [0.5, 2.2], "limb_thickness": [0.3, 1.3], "nodes_spacing": [0.3, 2.0],
+	"limb_length": [0.5, 3.0], "limb_thickness": [0.3, 1.3], "nodes_spacing": [0.3, 2.0],
 	"curve": [0.0, 1.4], "lift": [-0.1, 0.4], "sag": [0.0, 0.3], "tip_radius": [0.05, 0.8],
-	"children": [1, 7], "child_radius": [0.3, 0.9], "child_length": [0.2, 0.9],
+	"children": [1, 7], "twig_radius": [0.2, 1.0], "child_radius": [0.3, 0.9],
+	"child_length": [0.2, 0.9],
 	"child_forward": [0.0, 1.5], "child_side": [0.0, 1.5], "child_up": [-0.5, 1.0],
 	"leaf_aspect": [0.8, 5.0], "leaf_size": [0.08, 0.45], "needle_size": [0.2, 1.5],
 	"leaf_density": [0.0, 1.0], "rib_width": [0.005, 0.06], "flower_size": [0.02, 0.15],
-	"bark_rough": [0.5, 3.0], "fronds": [6, 24], "frond_length": [0.2, 8.0],
+	"bark_rough": [0.5, 3.0], "petals": [4, 10], "flower_cup": [0.0, 1.0],
+	"blossom_size": [0.03, 0.4], "blossom_density": [0.1, 1.0], "fronds": [6, 24],
+	"frond_length": [0.2, 8.0],
 	"frond_arch": [0.1, 1.0], "frond_droop": [0.1, 1.0], "leaflet": [0.0, 0.4],
 }
 ## Traits that are a choice from a list, not a number (blended by picking one side).
 ## Sizes that vary by proportion (a bush and a giant both change by a few percent, not by metres).
 const PROPORTIONAL := ["height", "girth", "crown", "frond_length", "leaflet", "rib_width"]
-const CHOICES := ["leaf_shape", "leaf_edge", "leaf_pattern", "foliage", "profile"]
+const CHOICES := ["blossom_kind", "leaf_shape", "leaf_edge", "leaf_pattern", "foliage", "profile"]
 
 
 ## The genome of the named kind. `leafy` and `conifer` are the species that give the colours and the
@@ -91,23 +95,45 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.limb_angle = 78.0
 			g.limb_length = 1.2
 			g.limb_thickness = 0.85
+			g.avoid = true
 			g.curve = [1.2, 1.2, 1.4]
 			g.lift = [0.14, 0.05, 0.0]
 			g.sag = [0.0, 0.03, 0.08]
 			g.leaf_size = 0.14
 		"ancient":
+			# an ancient live oak (the Angel Oak): a huge short trunk, limbs as thick as small trees that
+			# wind out sideways and almost touch the ground, thick branches off them
 			g = make("oak", leafy, conifer)
 			g.height = 14.0
 			g.girth = 2.0
 			g.taper = 0.78
 			g.trunk_part = 0.3
 			g.root_flare = 0.55
-			g.crown = 4.4
+			g.crown = 5.0
+			g.limbs = 7
+			g.limb_angle = 84.0
 			g.limb_length = 1.45
-			g.limb_thickness = 0.9
-			g.leaf_density = 0.45
-			g.leaf_size = 0.15
-			g.bark = Color(0.3, 0.26, 0.21)
+			g.limb_thickness = 1.0
+			g.leaf_density = 0.8
+			g.leaf_size = 0.6
+			g.twist = 0.6
+			g.avoid = true
+			g.limb_length = 2.3
+			g.rings = [6, 5, 3]
+			g.sides = [8, 6, 4]
+			g.sides_real = [10, 7, 4]
+			g.curve = [1.3, 1.3, 1.5]
+			g.lift = [0.07, 0.02, 0.0]
+			g.child_up = 0.0
+			g.aspect = 0.35
+			g.sag = [0.0, 0.03, 0.08]
+			g.tip_radius = [0.85, 0.75, 0.15]
+			g.child_radius = 0.75
+			g.twig_radius = 0.4
+			g.children = [6, 3, 0]
+			g.child_length = [0.7, 0.5, 0.0]
+			g.children_from = 0.15
+			g.bark = Color(0.3, 0.3, 0.2)
 		"willow":
 			g = _leafy(leafy)
 			g.height = 11.0
@@ -235,6 +261,29 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 					g.leaf_tip = Color(0.5, 0.65, 0.28)
 					g.flower = Color(0.95, 0.8, 0.2, 1.0)
 					g.flower_size = 0.08
+		"cherry", "blossom":
+			# a tree in flower: a bird cherry's hanging white stems, or a spring tree with pink blossom
+			# covering bare twigs
+			g = _leafy(leafy)
+			g.height = 9.0 if kind == "cherry" else 6.5
+			g.girth = 0.3
+			g.crown = 3.0 if kind == "cherry" else 3.4
+			g.leaf_density = 0.45 if kind == "cherry" else 0.15
+			g.leaf_size = 0.14
+			g.petals = 5
+			g.leaf = Color(0.3, 0.5, 0.2)
+			g.leaf_tip = Color(0.42, 0.6, 0.28)
+			g.blossom_size = 0.14 if kind == "cherry" else 0.26
+			if kind == "cherry":
+				g.blossom = Color(0.97, 0.97, 0.95, 1.0)
+				g.blossom_kind = TreeGenome.Bloom.RACEME
+				g.blossom_density = 1.0
+				g.flower_cup = 0.15
+			else:
+				g.blossom = Color(0.98, 0.7, 0.78, 1.0)
+				g.blossom_kind = TreeGenome.Bloom.SINGLE
+				g.blossom_density = 0.9
+				g.flower_cup = 0.3
 		"clump":
 			# a birch or hazel clump: several slim stems from one root
 			g = _leafy(leafy)
@@ -390,8 +439,7 @@ static func _nudge(g: TreeGenome, rng: RandomNumberGenerator, amount: float) -> 
 			clampf(g.leaf.v + rng.randf_range(-0.08, 0.08), 0.2, 0.7))
 	g.leaf_tip = g.leaf.lightened(0.15)
 	g.bark = g.bark.lightened(rng.randf_range(-0.08, 0.08))
-	if g.flower.a > 0.0: # every flowering plant its own colour
-		g.flower = Color.from_hsv(rng.randf(), rng.randf_range(0.5, 0.9), rng.randf_range(0.8, 1.0))
+	_vary_flowers(g, rng)
 
 
 static func _moved(value: Variant, low: float, high: float, rng: RandomNumberGenerator,
@@ -402,9 +450,29 @@ static func _moved(value: Variant, low: float, high: float, rng: RandomNumberGen
 	return roundi(moved) if typeof(value) == TYPE_INT else moved
 
 
+## Every flowering plant its own flowers: colour, petal count, flat or cupped, the middle.
+static func _vary_flowers(g: TreeGenome, rng: RandomNumberGenerator) -> void:
+	if g.flower.a > 0.0:
+		g.flower = Color.from_hsv(rng.randf(), rng.randf_range(0.0, 0.9), rng.randf_range(0.8, 1.0))
+		g.petals = rng.randi_range(4, 10)
+		g.flower_cup = rng.randf() * rng.randf() * 1.0 # mostly open, now and then a tulip
+		g.flower_size = g.flower_size * rng.randf_range(0.7, 1.5)
+	if g.blossom.a > 0.0:
+		g.blossom = Color.from_hsv(rng.randf_range(0.0, 1.0), rng.randf_range(0.0, 0.6),
+				rng.randf_range(0.85, 1.0))
+		g.petals = rng.randi_range(4, 8)
+		g.blossom_kind = rng.randi() % 3 as TreeGenome.Bloom
+	g.flower_centre = [Color(0.9, 0.68, 0.1), Color(0.55, 0.35, 0.1), Color(0.95, 0.9, 0.7),
+			Color(0.7, 0.2, 0.2)][rng.randi() % 4]
+
+
 ## One trait pushed somewhere unusual; returns what it did (for the label).
 static func _exotic(g: TreeGenome, rng: RandomNumberGenerator) -> String:
-	match rng.randi() % 6:
+	match rng.randi() % 7:
+		6:
+			g.blossom = Color.WHITE
+			g.blossom_kind = rng.randi() % 3 as TreeGenome.Bloom
+			return "in blossom"
 		0:
 			g.foliage = TreeGenome.Foliage.NEEDLE
 			g.tips_only = true

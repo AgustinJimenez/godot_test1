@@ -216,3 +216,17 @@ draw the world's species from the same table.
 - Still open: moss/lichen on bark, vines, fruit and cones, a save/load for liked trees, the world
   stage itself (species drawn from the archetype table, delete the old builders), saguaro arms from the
   side of a trunk, a ground tuft of leaves under the wildflower.
+
+## Third batch (thick winding limbs, no clipping, blossom, flower variation)
+
+- Traits: `twist` (S-curves, limbs wind in 3D), `avoid` (a growing limb/branch steers away from other
+  limbs and branches, so they do not pass through each other; branches only, not twigs), `twig_radius`
+  (twigs thinner than branches), `limb_length` up to 3.0, limbs rest on the ground instead of going under it.
+- Flowers: shared `_bloom` (petals 4-10, `flower_cup` 0 flat .. 1 tulip, centre colour); ground plants
+  carry one per frond tip; trees carry `blossom` (SINGLE, RACEME hanging stems like a bird cherry, UMBEL
+  round clusters). Kinds: cherry, blossom. Random draws vary colour, petals, cup, centre.
+- Ancient oak (Angel Oak): now 48 m wide, ~26 m tall with long thick winding limbs that do not
+  clip; it still does NOT look like the photo (a skeleton of spikes near the ground, the trunk is hidden,
+  the foliage is thin). Needs: a visible huge trunk, limbs that fork into thick curving branches,
+  foliage clumps, moss. Wide-crown twig bonus is skipped at twig level when `avoid` (budget).
+- Checks: 300 draws worst 11840, species_check PASS, world-check PASS.

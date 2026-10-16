@@ -34,6 +34,11 @@ var _depth := 3 ## levels of branching in this version
 var _height := 8.0
 var _trunk_length := 2.0 ## metres of trunk: to the limbs, or all the way for a leader
 var _tilt := Vector3.ZERO
+var _solid_points := PackedVector3Array() ## where limbs and branches already are (for `avoid`)
+var _solid_radii := PackedFloat32Array()
+var _solid_ids := PackedInt32Array()
+var _next_id := 0
+var _parent_id := -1
 var _origin := Vector3.ZERO ## where the stem being grown starts (a clump has several)
 var _outline := PackedVector2Array()
 var _leaf_length := 0.3
@@ -275,27 +280,80 @@ func _frond(points: Array[Vector3], side: Vector3) -> void:
 		_flower(points[points.size() - 1])
 
 
-## A flower at `at`: petals standing a little up round a yellow centre.
+## A flower of the genome's ground-plant kind, facing the sky.
 func _flower(at: Vector3) -> void:
-	var petals := 7 if _fine else 5
-	var petal := _g.flower
-	petal.a = 0.9
-	var inner := petal.darkened(0.1)
-	var outer := petal.lightened(0.15)
-	outer.a = 1.0
-	var middle := Color(0.9, 0.68, 0.1, 0.9)
-	var size := _g.flower_size
-	var heart := at + Vector3(0.0, size * 0.12, 0.0)
+	_bloom(at, Vector3.UP, _g.flower_size, _g.flower, _g.flower_centre, _g.petals, _g.flower_cup, 0.9)
+
+
+## One flower at `at` facing `normal`: `petals` petals round a centre, standing up more as `cup`
+## grows (0 flat daisy, 1 a closed tulip). `sway` is the wind weight of what it grows on.
+func _bloom(at: Vector3, normal: Vector3, size: float, colour: Color, centre: Color, petals: int,
+		cup: float, sway: float) -> void:
+	if _full():
+		return
+	var u := normal.cross(Vector3.UP)
+	if u.length_squared() < 0.01:
+		u = normal.cross(Vector3.RIGHT)
+	u = u.normalized()
+	var v := normal.cross(u)
+	var inner := colour.darkened(0.12)
+	inner.a = sway
+	var outer := colour.lightened(0.12)
+	outer.a = minf(sway + 0.2, 1.0)
+	var middle := centre
+	middle.a = sway
+	var heart := at + normal * size * 0.1
 	for index in petals:
 		var angle := TAU * float(index) / float(petals)
 		var next := TAU * float(index + 1) / float(petals)
-		var dir := Vector3(cos(angle), 0.0, sin(angle))
-		var side := Vector3(-dir.z, 0.0, dir.x)
-		_b.add_tri(at + dir * size * 0.2 + side * size * 0.24,
-				at + dir * size * 0.2 - side * size * 0.24, at + dir * size + Vector3.UP * size * 0.4,
-				inner, inner, outer)
-		_b.add_tri(heart, at + dir * size * 0.22, at + Vector3(cos(next), 0.0, sin(next)) * size * 0.22,
-				middle, middle, middle)
+		var dir := u * cos(angle) + v * sin(angle)
+		var side := v * cos(angle) - u * sin(angle)
+		var base := at + dir * size * lerpf(0.2, 0.1, cup)
+		var tip := at + dir * size * lerpf(1.0, 0.7, cup) + normal * size * lerpf(0.35, 1.0, cup)
+		_b.add_tri(base + side * size * 0.24, base - side * size * 0.24, tip, inner, inner, outer)
+		if _fine:
+			_b.add_tri(heart, at + dir * size * 0.2,
+					at + (u * cos(next) + v * sin(next)) * size * 0.2, middle, middle, middle)
+
+
+## Blossom on a twig: a single flower or two (`SINGLE`), a hanging stem of flowers like a bird
+## cherry's (`RACEME`), or a round cluster (`UMBEL`).
+func _blossoms(points: Array[Vector3], tangents: Array[Vector3], sway: float) -> void:
+	if _g.blossom.a <= 0.0 or _rng.randf() > _g.blossom_density:
+		return
+	var size := _g.blossom_size * _rng.randf_range(0.8, 1.2)
+	var tip := points[points.size() - 1]
+	var tangent := tangents[tangents.size() - 1]
+	var colour := _g.blossom.lerp(_g.blossom.lightened(0.15), _rng.randf())
+	match _g.blossom_kind:
+		TreeGenome.Bloom.RACEME:
+			var hang := (tangent * 0.35 + Vector3.DOWN * 0.65).normalized()
+			var length := size * 8.0
+			var count := 6 if _fine else 4
+			var green := _g.leaf.darkened(0.2)
+			green.a = sway
+			var green_tip := green
+			green_tip.a = minf(sway + 0.3, 1.0)
+			var side := _outward(hang, _rng.randf() * TAU) * size * 0.07
+			_b.add_tri(tip - side, tip + side, tip + hang * length, green, green, green_tip)
+			for index in count:
+				var t := (float(index) + 0.5) / float(count)
+				var out := _outward(hang, float(index) * GOLDEN_ANGLE)
+				_bloom(tip + hang * length * t + out * size * 0.5,
+						(out * 0.9 + Vector3.UP * 0.2).normalized(), size * (1.0 - 0.4 * t), colour,
+						_g.flower_centre, _g.petals, _g.flower_cup, minf(sway + 0.3, 1.0))
+		TreeGenome.Bloom.UMBEL:
+			var middle := tip + (tangent * 0.3 + Vector3.UP * 0.5).normalized() * size * 1.4
+			for index in 5:
+				var out := _outward(Vector3.UP, float(index) * GOLDEN_ANGLE * 2.0)
+				_bloom(middle + out * size * 1.1, (out * 0.6 + Vector3.UP).normalized(), size * 0.9,
+						colour, _g.flower_centre, _g.petals, _g.flower_cup, minf(sway + 0.3, 1.0))
+		_:
+			for index in 3:
+				var at := _point_along(points, 0.4 + 0.3 * float(index))
+				var out := _outward(tangent, _rng.randf() * TAU)
+				_bloom(at + out * size * 0.4, (out * 0.6 + Vector3.UP * 0.6).normalized(), size,
+						colour, _g.flower_centre, _g.petals, _g.flower_cup, minf(sway + 0.3, 1.0))
 
 
 ## Whorls of branches up the trunk (a conifer), close together, each turned against the one below;
@@ -338,6 +396,9 @@ func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: 
 		continues := false) -> void:
 	if _full():
 		return
+	var my_id := _next_id
+	_next_id += 1
+	var parent_id := _parent_id
 	var rings := maxi(_g.rings[level] - (1 if level < 2 else 0) * _lod, 2)
 	var points: Array[Vector3] = [start]
 	var tangents: Array[Vector3] = [dir]
@@ -351,15 +412,36 @@ func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: 
 	var bend: float = arc * _rng.randf_range(0.35, 1.0)
 	if _rng.randf() < 0.5:
 		bend = -bend
+	var wave_phase := _rng.randf() * TAU
+	var wave_count := _rng.randf_range(1.0, 2.2)
+	var ground := radius * 0.7 # a branch that sags to the ground lies on it
 	for ring in rings - 1:
 		if arc > 0.0:
-			heading = heading.rotated(bend_axis, bend / float(rings - 1))
+			var turn := bend / float(rings - 1)
+			if _g.twist > 0.0: # S-curves: the bend changes side along the branch
+				var wave := sin(wave_phase + wave_count * TAU * float(ring) / float(rings - 1))
+				turn *= (1.0 - _g.twist) + _g.twist * 2.0 * wave
+			heading = heading.rotated(bend_axis, turn)
+			if _g.twist > 0.0: # and the plane of the bend turns, so the branch winds in 3D
+				bend_axis = bend_axis.rotated(heading, _g.twist * 0.3)
 		var wander := Vector3(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-0.4, 0.6),
 				_rng.randf_range(-1.0, 1.0))
 		var sagging: float = _g.sag[level] + _g.droop * _g.droop_sag[level]
 		heading = (heading + wander * _g.wander[level] + Vector3.UP * _g.lift[level]
 				+ Vector3.DOWN * sagging).normalized()
-		points.append(points[ring] + heading * length / float(rings - 1))
+		var next := points[ring] + heading * length / float(rings - 1)
+		if _g.avoid and level < 2:
+			var here := lerpf(radius, radius * _g.tip_radius[level], float(ring + 1) / float(rings - 1))
+			if ring >= 1:
+				heading = _steer_clear(next, heading, here, my_id, parent_id)
+				next = points[ring] + heading * length / float(rings - 1)
+			_solid_points.append(next)
+			_solid_radii.append(here)
+			_solid_ids.append(my_id)
+		if next.y < ground and level < 2:
+			next.y = ground
+			heading = Vector3(heading.x, maxf(heading.y, 0.0), heading.z).normalized()
+		points.append(next)
 		tangents.append(heading)
 	var radii: Array[float] = []
 	var colors: Array[Color] = []
@@ -389,14 +471,35 @@ func _branch(start: Vector3, dir: Vector3, length: float, radius: float, level: 
 		if _g.foliage == TreeGenome.Foliage.BLADE:
 			_leaves_along(points, tangents, sway, level)
 		return
+	_parent_id = my_id
 	_children(points, tangents, length, radius, level, sway, continues)
+	_parent_id = parent_id
+
+
+## `heading` turned away from any other limb or branch that `spot` (a point of the one being grown,
+## `radius` thick) would run into. Its own branch and its parent are not counted.
+func _steer_clear(spot: Vector3, heading: Vector3, radius: float, my_id: int,
+		parent_id: int) -> Vector3:
+	var push := Vector3.ZERO
+	for index in _solid_points.size():
+		var id := _solid_ids[index]
+		if id == my_id or id == parent_id:
+			continue
+		var away := spot - _solid_points[index]
+		var wanted := radius + _solid_radii[index] + 0.1
+		var distance := away.length()
+		if distance < wanted and distance > 0.001:
+			push += away / distance * (wanted - distance) / wanted
+	if push == Vector3.ZERO:
+		return heading
+	return (heading + push * 1.5).normalized()
 
 
 func _children(points: Array[Vector3], tangents: Array[Vector3], length: float, radius: float,
 		level: int, sway: float, _continues: bool) -> void:
 	var total: int = maxi(_g.children[level] - _lod, mini(_g.children[level], 2))
 	# on a wide crown a long branch carries more branches and twigs (a full canopy, not bare limbs)
-	if _g.crown > 3.5:
+	if _g.crown > 3.5 and not (_g.avoid and level == 1):
 		total += mini(int(length / 3.5), 4)
 	total = maxi(roundi(float(total) * _thrift), mini(total, 2))
 	var spread := total - (1 if _g.carry_on else 0)
@@ -427,13 +530,15 @@ func _children(points: Array[Vector3], tangents: Array[Vector3], length: float, 
 		# and nothing sticks out at the back
 		var buried := local_radius * _g.bury
 		_branch(at - child_dir * buried, child_dir, child_length + buried,
-				local_radius * _g.child_radius, level + 1, child_sway)
+				local_radius * _g.child_radius * (_g.twig_radius if level == 1 else 1.0), level + 1,
+				child_sway)
 
 
 ## The single leaves of a twig: on alternate sides, in opposite pairs or in a spiral, and one at the
 ## tip.
 func _leaves_along(points: Array[Vector3], tangents: Array[Vector3], sway: float,
 		level: int) -> void:
+	_blossoms(points, tangents, sway)
 	var nodes := maxi(roundi(float(5 if _fine else (4 - _lod)) * _thrift), 2)
 	if _g.crown > 3.5:
 		nodes += 1 # a wide crown: more leaves on each twig
