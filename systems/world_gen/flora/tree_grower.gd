@@ -40,13 +40,13 @@ var _needle_length := 0.5
 ## `lod` 1 grows a lighter version of the same tree (one level of branching less, fewer limbs and
 ## whorls, leaves and needles, fewer sides) for trees seen from far away.
 ## A tree that does not fit the budget is grown again with less (fewer branches, whorls and leaves:
-## `thrift` 1, 0.7, 0.5, 0.35) from the same dice, so it keeps its shape and its whole height.
+## `thrift` 1 down to 0.12) from the same dice, so it keeps its shape and its whole height.
 ## Returns true if even that was cut short.
 static func build(builder: MeshBuilder, genome: TreeGenome, rng: RandomNumberGenerator,
 		lod := 0) -> bool:
 	var start := rng.state
 	var grower: TreeGrower
-	for thrift: float in [1.0, 0.7, 0.5, 0.35]:
+	for thrift: float in [1.0, 0.7, 0.5, 0.35, 0.25, 0.18, 0.12]:
 		builder.reset()
 		rng.state = start
 		grower = TreeGrower.new()
@@ -172,6 +172,7 @@ func _whorls() -> void:
 		var y := lerpf(first, last, pow(along, 0.92))
 		var reach := lerpf(_g.crown, _g.crown * 0.1, pow(along, 0.9)) * _rng.randf_range(0.94, 1.06)
 		var count := _g.limbs + (1 if along < 0.6 else 0) + (1 if _fine else 0) - _lod
+		count = maxi(roundi(float(count) * _thrift), 3)
 		phase += 1.9
 		for index in count:
 			var yaw := phase + TAU * float(index) / float(count) + _rng.randf_range(-0.2, 0.2)

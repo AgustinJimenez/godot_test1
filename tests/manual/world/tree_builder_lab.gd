@@ -150,6 +150,7 @@ func _build_panel() -> void:
 		_regrow())
 	_button(buttons, "Leafy preset", func() -> void: _preset(false))
 	_button(buttons, "Conifer preset", func() -> void: _preset(true))
+	_button(buttons, "Copy properties", func() -> void: _copy_properties())
 	var spread := HBoxContainer.new()
 	outer.add_child(spread)
 	var spread_label := Label.new()
@@ -356,6 +357,34 @@ func _generate_random() -> void:
 	dice = _random.randi()
 	_show_genome()
 	_regrow()
+
+
+## Every trait of the tree as text, onto the clipboard (to paste into a note or a message).
+func _copy_properties() -> void:
+	var names := {"leaf_shape": PlantSpecies.LeafShape.keys(),
+			"leaf_edge": PlantSpecies.LeafEdge.keys(),
+			"leaf_pattern": PlantSpecies.LeafPattern.keys(), "foliage": TreeGenome.Foliage.keys(),
+			"profile": TreeGenome.Profile.keys()}
+	var lines: PackedStringArray = ["TreeGenome (tree_builder_lab)"]
+	for info: Dictionary in genome.get_property_list():
+		if not (int(info["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE):
+			continue
+		var key: String = info["name"]
+		var value: Variant = genome.get(key)
+		if names.has(key):
+			lines.append("%s = %s" % [key, names[key][int(value)]])
+		elif value is Color:
+			lines.append("%s = #%s" % [key, (value as Color).to_html(false)])
+		elif value is float:
+			lines.append("%s = %.3f" % [key, value])
+		else:
+			lines.append("%s = %s" % [key, str(value)])
+	lines.append("dice (random seed of the branches) = %d" % dice)
+	lines.append("look = %s, %s, %s" % ["realistic" if detailed else "low-poly",
+			"no leaves" if leafless else "leaves", "distance version" if lod == 1 else "full"])
+	lines.append("triangles = %s" % _panel_info.text.get_slice(" ", 0))
+	DisplayServer.clipboard_set("\n".join(lines))
+	_panel_info.text = "copied %d lines to the clipboard" % lines.size()
 
 
 func _apply_globals() -> void:

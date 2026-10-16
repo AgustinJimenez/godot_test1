@@ -121,3 +121,9 @@ same dice with `thrift` 1, 0.7, 0.5, 0.35 (fewer branches, whorls and leaves) an
 that was cut short (the lab shows CAPPED). Found with a random mixed tree (conifer whorls carrying
 single leaves, 0.3 m apart) of 148,000 triangles, and a divide by zero when a twig had one leaf node
 (minimum two). Real species are unchanged (they fit the first try).
+
+Follow-up (same day): a user screenshot showed a mixed tree (leader trunk, whorls, broad leaves, 0.3 m
+spacing) with leaves low down and a bare spike above ("inverted"): the budget ran out in the lower
+whorls. `thrift` now goes down to 0.12 and also scales the branches per whorl (minimum 3); nine
+such genomes (spacing 0.3 - 1.0, 4 - 8 limbs) fit the budget uncapped with 34-42% of the vertices in
+the top 40% of the tree. Lab: "Copy properties" puts every trait, the dice and the look on the clipboard.
