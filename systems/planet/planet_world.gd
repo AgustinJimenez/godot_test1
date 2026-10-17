@@ -104,7 +104,13 @@ func target() -> Node3D:
 
 ## Stands `target` on the planet at the spawn spot (or `direction`, a unit vector from the centre).
 ## The target ends up at the world origin; returns the direction it stands in.
-func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
+## Starts the planet around `target`. `direction`: the point of the planet (a unit vector) it starts
+## over, or none to find a good place; `altitude`: how far above the ground there, in metres. The
+## target does not have to be near the planet: for a position anywhere in space (a ship arriving)
+## the point of the planet closest to it is `nearest_point(position)`, and its distance to the
+## ground is the altitude: the tiles are chosen for that point and that height, so the ground
+## under the target and the planet's coarse shape are what is made first, however far away.
+func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector3:
 	# the materials tiles share are made here, on the main thread: a worker thread making one
 	# first could read it half made while another does (a null shader error on a river tile)
 	PlanetTile.ground_material()
@@ -125,6 +131,7 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 		direction = Vector3(saved[0], saved[1], saved[2]).normalized()
 	var dir := direction if direction != Vector3.ZERO else noise.find_spawn()
 	var reach := settings.radius + noise.height(dir.x, dir.y, dir.z) + 1.0
+	reach += maxf(altitude, 0.0)
 	noise.clearing = dir
 	if target is Player and (target as Player).hud != null:
 		var page := PlanetMenu.new()
@@ -139,6 +146,8 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	_set_the_sun()
 	frame.start(PackedFloat64Array([dir.x * reach, dir.y * reach, dir.z * reach]), Vector3.ZERO)
 	target.global_position = Vector3.ZERO
+	if altitude > 500.0 and target is Player: # up in the air there is nothing to stand on: fly
+		(target as Player).set_free_mode(true)
 	if restored.has("heading"):
 		var saved: Array = restored["heading"]
 		var along := frame.rot * Vector3(saved[0], saved[1], saved[2])
@@ -160,6 +169,18 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 		_dark.visible = true
 		surface.update(planet_position())
 	return dir
+
+
+## The point of the planet closest to `position` (metres from the planet's centre, anywhere in
+## space): the unit direction to start over, the way a ship that arrives far away is placed.
+static func nearest_point(position: Vector3) -> Vector3:
+	return position.normalized() if position.length() > 0.0 else Vector3.UP
+
+
+## How far above the ground `position` is, for the direction found by `nearest_point`.
+func altitude_of(position: Vector3) -> float:
+	var dir := nearest_point(position)
+	return position.length() - settings.radius - noise.height(dir.x, dir.y, dir.z)
 
 
 ## The clouds and the rain of the sky belong to the first kilometre and a half above the ground:

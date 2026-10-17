@@ -19,6 +19,7 @@ extends Node3D
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
 ##   -- --no-clouds  hide the clouds
 ##   -- --tile-cells=N --tile-max=M  the ground resolution: quads a tile, widest finest tile (m)
+##   -- --spawn-alt=N  start N metres above the ground there (up to the other side of space)
 ##   -- --grounded  walk instead of starting in free mode (checks always walk)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
@@ -55,6 +56,7 @@ var _show_map := false ## open the planet map (the M key) from the start
 var _map_zoom := 6.0
 var _map_layer := 0
 var _no_clouds := false ## the debug switch for the clouds, from the start
+var _spawn_alt := 0.0 ## start this many metres above the ground (a ship arriving in space)
 var _grounded := false ## walk from the start instead of flying free
 var _swim_check := false ## drop the player in the sea and see them float (PlanetSwim)
 var _flying := false ## the walk check in free mode (noclip) at 100 m/s
@@ -241,7 +243,8 @@ func _water_check() -> bool:
 ## `--drainage-check` (headless): the water's way to the sea on a coarse grid, printed as
 ## DRAINAGE_CHECK (every drop of rain that falls on the land must reach the sea), and a map of it
 ## with `--drainage-image=PATH`. `--cells=N` cells an edge of a cube face, `--exponent=P`.
-var _drainage_view := PackedFloat64Array([0.0, 0.0, 360.0]) ## centre longitude, latitude, width (degrees)
+## centre longitude, latitude and width (degrees) of the drainage picture
+var _drainage_view := PackedFloat64Array([0.0, 0.0, 360.0])
 
 
 func _drainage_check() -> bool:
@@ -665,6 +668,8 @@ func _ready() -> void:
 			settings.animals_on = true
 		elif arg == "--no-clouds":
 			_no_clouds = true
+		elif arg.begins_with("--spawn-alt="):
+			_spawn_alt = arg.trim_prefix("--spawn-alt=").to_float()
 		elif arg == "--grounded":
 			_grounded = true
 		elif arg == "--earth":
@@ -718,7 +723,7 @@ func _ready() -> void:
 	add_child(player)
 	if _swim_check:
 		_start_dir = _find_sea(planet.noise)
-	var spawn := planet.start(player, _start_dir)
+	var spawn := planet.start(player, _start_dir, _spawn_alt)
 	planet.atmosphere.clouds_hidden = _no_clouds
 	if not (_grounded or _walking or _checking or _swim_check or _climb > 0.0):
 		player.set_free_mode(true) # looking at the planet: fly (the debug menu's toggle follows)
