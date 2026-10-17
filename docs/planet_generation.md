@@ -237,3 +237,12 @@ have a switch, in `PlanetSettings` and in the lab (`planet_lab`):
 
 The others (terrain, climate) are the base the rest reads, so they stay on. `plant_density` and
 `rock_density` still thin the plants and rocks without stopping them.
+
+## The flight recorder (what happened in the last seconds)
+
+While you play on a planet, `PlanetRecorder` keeps the last 10 seconds in `user://planet_live.jsonl`
+(on Windows: `%APPDATA%\Godot\app_userdata\SurvivalHorrorFps\planet_live.jsonl`): a sample every
+0.2 s (fps, altitude, position, speed, local hour, tiles, weather, fog, clouds, free mode) and every
+engine error or warning as it prints. It rewrites the file once a second, on exit and when you press
+**F9** ("this looks wrong now": a `mark` line). Copy the file out right after the moment you want
+looked at; the next run overwrites it. (The foot IK recorder, F10, is a separate, longer one.)

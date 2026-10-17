@@ -78,6 +78,9 @@ func _ready() -> void:
 	map = PlanetMap.new()
 	map.planet = self
 	add_child(map)
+	var recorder := PlanetRecorder.new() # the last seconds of play, kept in a file (F9 marks)
+	recorder.planet = self
+	add_child(recorder)
 	var layer := CanvasLayer.new()
 	layer.layer = 80
 	add_child(layer)
