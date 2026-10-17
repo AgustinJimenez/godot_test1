@@ -1,6 +1,6 @@
 # 058 - Climate and orbit depth
 
-Status: **step 4 done (2026-10-17): elliptical orbit** (`PlanetClock.eccentricity`, `perihelion_share`, `distance()`, `light_now()` = insolation / r^2 feeds `PlanetSeasons`; generated planets get 0..0.2; the default planet stays a circle; `UNIVERSE_CHECK` covers it); the other steps are planned. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **step 4 done (2026-10-17): elliptical orbit** (`PlanetClock.eccentricity`, `perihelion_share`, `distance()`, `light_now()` = insolation / r^2 feeds `PlanetSeasons`; generated planets get 0..0.2; the default planet stays a circle; `UNIVERSE_CHECK` covers it); **step 5 model done**: `PlanetTides.height(clock, where, coast)` is the equilibrium tide (moon bulge + star share 0.46, spring at new/full moon, neap at the quarters; `UNIVERSE_CHECK` covers it), not yet drawn on the sea (049) nor scaled by coast shape; the other steps are planned. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

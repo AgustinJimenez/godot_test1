@@ -129,5 +129,25 @@ func self_check() -> bool:
 	ok = ok and StarLight.leaf_colour(green, Star.from_mass(1.0)) == green
 	ok = ok and StarLight.leaf_colour(green, Star.from_mass(0.15)).v < green.v * 0.7
 	ok = ok and StarLight.leaf_colour(green, Star.from_mass(0.15), 1.0) == green
+	var tide := PlanetClock.new() # spring tides at new moon (aligned), neap at the first quarter
+	tide.moon_tilt = 0.0
+	tide.set_year_share(0.0)
+	var spring := _tide_range(tide)
+	tide.time = tide.day_seconds * tide.month_days * 0.25
+	ok = ok and spring > _tide_range(tide) * 1.2 and spring > 0.0
 	ok = ok and system(3).system_seed == system(3).system_seed and system_seed(1) != system_seed(2)
 	return ok
+
+
+## The tide's range (m) at the equator over one day: the highest minus the lowest height.
+static func _tide_range(clock: PlanetClock) -> float:
+	var high := -INF
+	var low := INF
+	var start := clock.time
+	for step in 48:
+		clock.time = start + clock.day_seconds * step / 48.0
+		var value: float = PlanetTides.height(clock, Vector3.RIGHT)
+		high = maxf(high, value)
+		low = minf(low, value)
+	clock.time = start
+	return high - low
