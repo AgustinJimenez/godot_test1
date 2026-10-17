@@ -6,7 +6,11 @@ extends Resource
 @export var radius := 20000.0 ## m, the sea level sphere (Earth: 6,371,000)
 @export var sea_level := 0.0 ## m above `radius`
 @export var relief := 0.0 ## m from the sea to the highest ranges; 0: from the radius (at least 300)
-@export var ocean_fraction := 0.7 ## the share of the planet's area under the sea
+@export var ocean_fraction := 0.7 ## share of the area under the sea (when `water_layer` is 0)
+## m: the planet's water as a layer over the whole planet (Earth 2,700). The sea fills the low
+## ground to that volume and the ocean share follows. 0: use `ocean_fraction`.
+@export var water_layer := 0.0
+@export var crust_samples := 6000 ## points sampled over the planet to find the sea level
 @export var species_count := 120 ## how many plant species the seed makes (SpeciesGenerator)
 @export var plants_on := false ## true: plants grow (off while terrain and water are worked on)
 @export var animals_on := false ## true: animals live
@@ -48,6 +52,7 @@ static func earth() -> PlanetSettings:
 	made.world_seed = 1337
 	made.radius = 6371000.0
 	made.ocean_fraction = 0.71
+	made.water_layer = 2000.0 # the ocean as a layer over the planet: ~28 % stays dry
 	made.plates = 15
 	made.day_seconds = 86400.0
 	made.year_days = 365.25

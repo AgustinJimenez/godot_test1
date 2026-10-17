@@ -287,3 +287,19 @@ step sees them too. It is not a water simulation: it is the same at every planet
 for every vertex. A real drainage simulation (flow and sediment on a grid) is still to do; it would
 need a finer grid near the player on a planet the size of the Earth. `--relief-patch=x,y,z,span,PNG`
 writes a shaded picture of a square of ground to judge the shape.
+
+## The sea from a volume of water, and the cost of resolution
+
+`PlanetSettings.water_layer` (m) is the planet's water spread as a layer over the whole planet (the
+Earth's ocean is about 2,600 m deep that way). When it is above 0 the sea fills the low ground of the
+crust up to the level that holds that volume (a bisection over `crust_samples` points of the crust
+height), and the ocean share follows from the crust; at 0 the older `ocean_fraction` (a share of the
+area) is used. The Earth preset uses 2,000 m: ~28 % land, a median depth of -1.9 km, a deepest point
+of -8.5 km. 6,000 sample points already give the same level as 250,000 (1.3 s against 5 s to build the
+crust), so more samples buy nothing.
+
+Resolution of the ground (Earth preset, windowed, first load: ground under the player / everything
+near): default 48 quads a tile and 128 m finest tiles: 5.4 s / 8.4 s, 178 tiles; 32 quads: 2.8 s / 5.8
+s; 96 quads: 18.8 s / 28.4 s; finest tiles of 64 m (same 1.3 m quads as 96 quads, but cheaper): 4.5 s /
+8.9 s, 217 tiles; finest tiles of 256 m: 5.1 s / 6.9 s, 131 tiles. Lab arguments: `--tile-cells=N`,
+`--tile-max=M`. Finer ground is cheapest by smaller finest tiles, not by more quads in a tile.

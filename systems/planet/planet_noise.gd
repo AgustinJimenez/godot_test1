@@ -90,7 +90,7 @@ func _setup(noise: FastNoiseLite, noise_seed: int, frequency: float, octaves: in
 ## The sea level is wherever the heights have the planet's ocean share below it (sampled over the
 ## sphere, every sample weighing the same area).
 func _find_sea_level() -> void:
-	var count := 6000
+	var count := maxi(settings.crust_samples, 500)
 	var samples := PackedFloat32Array()
 	for index in count:
 		var y := 1.0 - 2.0 * (float(index) + 0.5) / float(count)
@@ -98,7 +98,24 @@ func _find_sea_level() -> void:
 		var angle := float(index) * 2.399963
 		samples.append(tectonics.height(Vector3(cos(angle) * ring, y, sin(angle) * ring)))
 	samples.sort()
-	_sea = samples[clampi(int(settings.ocean_fraction * float(count)), 0, count - 1)]
+	if settings.water_layer <= 0.0:
+		_sea = samples[clampi(int(settings.ocean_fraction * float(count)), 0, count - 1)]
+		return
+	# the planet has an amount of water: fill the low ground up to the level that holds it
+	var low := samples[0]
+	var high := samples[count - 1]
+	for step in 40:
+		var level := (low + high) * 0.5
+		var depth := 0.0 # the mean depth of the water over the whole planet at this level (m)
+		for value in samples:
+			if value < level:
+				depth -= _shore(value - level) * relief
+		depth /= float(count)
+		if depth < settings.water_layer:
+			low = level
+		else:
+			high = level
+	_sea = (low + high) * 0.5
 
 
 ## Ground height in metres above the sea, in the unit direction (x, y, z), rivers cut in.

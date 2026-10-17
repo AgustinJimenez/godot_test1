@@ -18,6 +18,7 @@ extends Node3D
 ##                    --water is the rivers and lakes)
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
 ##   -- --no-clouds  hide the clouds
+##   -- --tile-cells=N --tile-max=M  the ground resolution: quads a tile, widest finest tile (m)
 ##   -- --grounded  walk instead of starting in free mode (checks always walk)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
@@ -248,7 +249,13 @@ func _terrain_check() -> bool:
 			made.radius = arg.trim_prefix("--radius=").to_float()
 		elif arg.begins_with("--seed="):
 			made.world_seed = arg.trim_prefix("--seed=").to_int()
+		elif arg.begins_with("--water-layer="):
+			made.water_layer = arg.trim_prefix("--water-layer=").to_float()
+		elif arg.begins_with("--crust-samples="):
+			made.crust_samples = arg.trim_prefix("--crust-samples=").to_int()
+	var started := Time.get_ticks_msec()
 	var noise := PlanetNoise.new(made)
+	print("TERRAIN_BUILD_MS ", Time.get_ticks_msec() - started)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
 	var heights := PackedFloat32Array()
@@ -500,6 +507,10 @@ func _ready() -> void:
 			_grounded = true
 		elif arg == "--earth":
 			settings = PlanetSettings.earth() # put it first: it replaces every setting before it
+		elif arg.begins_with("--tile-cells="):
+			settings.tile_cells = arg.trim_prefix("--tile-cells=").to_int()
+		elif arg.begins_with("--tile-max="):
+			settings.tile_max = arg.trim_prefix("--tile-max=").to_float()
 		elif arg == "--sea":
 			settings.sea_on = true
 		elif arg == "--water":
