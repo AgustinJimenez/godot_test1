@@ -38,22 +38,32 @@ func _process(delta: float) -> void:
 	var altitude := planet.altitude()
 	var fade := clampf((altitude - SHOW_FROM) / (FULL_AT - SHOW_FROM), 0.0, 1.0)
 	visible = fade > 0.0
-	if not visible:
-		return
+	if visible:
+		_place_the_shell(fade)
+	_refresh_the_cover(delta)
+
+
+func _place_the_shell(fade: float) -> void:
 	# the shell, as big as the planet plus a little, centred on the planet's centre
 	var radius := planet.settings.radius + clampf(planet.noise.relief * 0.8, 150.0, 12000.0)
 	var centre := planet.frame.to_world(Vector3.ZERO)
 	global_transform = Transform3D(planet.frame.rot.scaled(Vector3.ONE * radius), centre)
 	_material.set_shader_parameter(&"sun_toward", planet.atmosphere.sun_direction)
 	_material.set_shader_parameter(&"fade", fade)
+
+
+## The picture of the cloud cover: made again every few seconds on a background thread, for the
+## shell and for the volumetric clouds of the sky.
+func _refresh_the_cover(delta: float) -> void:
 	_wait -= delta
 	if _chart != null:
 		if _chart.finished():
 			var picture := _chart.texture()
 			_material.set_shader_parameter(&"cover_map", picture)
+			planet.atmosphere.sky_material.set_shader_parameter(&"cover_map", picture)
 			_chart = null
 	elif _wait <= 0.0 and absf(planet.clock.time - _drawn_time) > 1.0e-3:
-		_wait = REFRESH
+		_wait = REFRESH if visible else REFRESH * 2.0
 		_chart = PlanetChart.new()
 		_chart.layer = PlanetChart.Layer.CLOUD_MASK
 		_chart.size = SIZE

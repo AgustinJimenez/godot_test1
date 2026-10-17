@@ -16,6 +16,9 @@ var air_height := 100000.0 ## m above the surface where the Earth's air would en
 var sun_strength := 1.35 ## the light energy of the unobscured sun
 var scatter_intensity := 22.0
 var altitude := 0.0 ## m above the surface at the camera (set by the world)
+var cloud_floor := 450.0 ## m above the planet's radius where the layer of clouds begins
+var cloud_on := 0.0 ## 0 no clouds in the sky (up high the cloud shell takes over) .. 1
+var cloud_drift := Vector3.ZERO ## m, planet frame: how far the wind has carried the small clouds
 
 
 ## The air's size against the Earth's: the planet's radius over the Earth's (see PlanetAir).
@@ -73,6 +76,17 @@ func _apply() -> void:
 	sky_material.set_shader_parameter(&"moon_direction", moon_toward)
 	sky_material.set_shader_parameter(&"moon_lit", moon_lit)
 	sky_material.set_shader_parameter(&"star_k", star_k)
+	# the clouds: the light of the sky on them is the zenith's, and what is left of the night's
+	var zenith := PlanetAir.sky_color(from, up, sun_dir, radius, top, scatter_intensity, scale)
+	var starlight := Vector3(0.012, 0.015, 0.03) \
+			+ Vector3(0.02, 0.025, 0.04) * moon_lit * moon_risen
+	var ambient := zenith * 1.1 + starlight
+	sky_material.set_shader_parameter(&"cloud_ambient", ambient)
+	sky_material.set_shader_parameter(&"cloud_on", cloud_on)
+	sky_material.set_shader_parameter(&"cloud_least", overcast)
+	sky_material.set_shader_parameter(&"cloud_floor", cloud_floor)
+	sky_material.set_shader_parameter(&"cloud_drift", cloud_drift)
+	sky_material.set_shader_parameter(&"cloud_dark", maxf(cloud_dark, overcast * 0.6))
 	# the air thins with height, so the ambient light and the fog do too
 	var air := exp(-maxf(altitude, 0.0) / 1500.0) # the fog thins over a game kilometre or so
 	var inside := 1.0 - smoothstep(air_top() * 0.5, air_top(), maxf(altitude, 0.0))

@@ -76,6 +76,19 @@ for the hour and the day of the year), the weather (follow the climate or force 
 (`PlanetMenu.pending` carries the settings over the scene reload) and the map. In the lab,
 `-- --planet-page` opens it from the start (screenshots).
 
+## Clouds of the sky
+
+`planet_sky.gdshader` marches a layer of real volume (700 m thick, 450 m above the ground under the
+player; 20 steps, three light samples per step) and lights it with the sun's own light: forward
+scattering for the bright rims, a darker base, the sky's zenith colour as the light from above, so
+the clouds go orange at dusk and dark at night by themselves, and they hide the sun and the stars.
+Where there is cloud comes from the planet's own cover picture (the one the orbit shell shows,
+`PlanetCloudShell` keeps it fresh also on the ground and gives it to the sky), so what you see from
+the ground agrees with the map and with the view from orbit; the noise shapes the billows, and the
+wind that carries the cover (`PlanetWeather.zonal_wind`) carries the small shapes too
+(`PlanetWorld._drift_the_clouds`). The layer fades out between 850 and 1450 m above the ground,
+where the shell takes over. The old low-poly puffs are no longer used on the planet.
+
 ## Wet ground and snow
 
 `planet_ground.gdshader` reads three shader globals the weather sets (`WorldWind.set_surface`):

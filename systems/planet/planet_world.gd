@@ -140,8 +140,10 @@ func _keep_the_weather_near_the_ground() -> void:
 	var ground := noise.height(here.x, here.y, here.z)
 	var above := altitude() - ground
 	var low := above < PlanetCloudShell.SHOW_FROM
-	weather.clouds.visible = low
+	weather.clouds.visible = false # the planet's clouds are the sky's own (planet_sky.gdshader)
 	weather.rain.visible = low
+	atmosphere.cloud_floor = maxf(ground, 0.0) + 450.0
+	atmosphere.cloud_on = 1.0 - smoothstep(850.0, 1450.0, above)
 	weather.position.y = frame.to_world(here * (settings.radius + maxf(ground, 0.0))).y
 
 
@@ -161,6 +163,16 @@ func _pick_the_weather() -> void:
 	var east := Vector3(-here.z, 0.0, here.x).normalized()
 	var wind := frame.rot * (east * -PlanetWeather.zonal_wind(lat)) # toward where it blows from
 	weather.forced_wind = Vector2(-wind.x, -wind.z) if wind.length() > 0.01 else Vector2.ZERO
+
+
+## The small clouds of the sky ride the wind the planet's cloud cover is carried by (PlanetWeather).
+func _drift_the_clouds(clock_seconds: float) -> void:
+	var here := planet_position().normalized()
+	var lat := asin(clampf(here.y, -1.0, 1.0))
+	var east := Vector3(-here.z, 0.0, here.x).normalized()
+	var turn := PlanetWeather.zonal_wind(lat) * PlanetWeather.WIND_TURN * TAU
+	var speed := turn * settings.radius * cos(lat) / clock.day_seconds
+	atmosphere.cloud_drift -= east * speed * clock_seconds
 
 
 ## 'Day 3, early spring' for the caption of the map.
@@ -324,6 +336,7 @@ func _physics_process(delta: float) -> void:
 	weather.update(_target.global_position, delta)
 	if not loading:
 		clock.advance(delta * settings.time_scale * time_rate)
+		_drift_the_clouds(delta * settings.time_scale * time_rate)
 	_set_the_sun()
 	fauna.update(_target.global_position, 1.0 - atmosphere.night_amount(), delta)
 	if swim != null:
