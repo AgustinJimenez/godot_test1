@@ -311,3 +311,30 @@ planets, space.
 
 - Saved universes (`UniverseSave`, Planet page: Save here / Open / Delete; lab `--world=`, `--continue`, `--save-as=`, `SAVE_CHECK`).
 - Air: least scale 0.25 (`PlanetAir.MIN_AIR_SCALE`), clouds at 450-1150 m inside bright air; sunsets paler on small planets.
+
+## The universe (for later; today there is one planet)
+
+The player will be able to travel between planets, so what exists above a planet is a universe, not a
+planet. Decisions so far: saves, the start menu and the Planet page already speak of universes
+(`UniverseSave`: a list of planets, the current one, the moment on it; first-version saves still
+read). Not done, in the order it would be done:
+
+1. A universe seed; each planet's settings derived from it and a planet number (today the seed typed
+   in the start menu is the first planet's own).
+2. A star system: the star (colour, brightness, mass), planets on orbits around it (today the one
+   planet has its own orbit, spin and tilt in `PlanetClock`, and `PlanetMoon` is its moon). The
+   sun's direction and light would come from the planet's place on its orbit and from the star.
+3. One planet is built at a time (`PlanetWorld`); the others are far points with a position, radius,
+   orbit and a cover picture (so that from afar they are seen as the planet from orbit is today).
+   Going to another planet means building it when the player is near and letting the old one go.
+4. Flying between them: the scale (millions of km) needs the double precision build or a floating
+   origin of its own, speed controls, and the cloud shell and the air shaders per planet.
+5. The start menu and the Planet page get a list of the universe's planets to travel to.
+
+Open: whether a universe is one star system or many, and how the player travels (a ship, or free
+flight at a great speed as in the free mode today).
+- Clouds: one raymarched layer drawn by the sky (from under) and by a sphere round the planet (from
+  in and above it, to orbit), sharing `planet_cloud_march.gdshaderinc`; they show from above now.
+- Seen: the frame rate falls to about 27 fps looking down from 6 km and from orbit, with or without
+  the clouds (the terrain at that height, not looked into yet).
+

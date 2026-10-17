@@ -76,18 +76,21 @@ for the hour and the day of the year), the weather (follow the climate or force 
 (`PlanetMenu.pending` carries the settings over the scene reload) and the map. In the lab,
 `-- --planet-page` opens it from the start (screenshots).
 
-## Clouds of the sky
+## Clouds
 
-`planet_sky.gdshader` marches a layer of real volume (700 m thick, 450 m above the ground under the
-player; 20 steps, three light samples per step) and lights it with the sun's own light: forward
-scattering for the bright rims, a darker base, the sky's zenith colour as the light from above, so
-the clouds go orange at dusk and dark at night by themselves, and they hide the sun and the stars.
-Where there is cloud comes from the planet's own cover picture (the one the orbit shell shows,
-`PlanetCloudShell` keeps it fresh also on the ground and gives it to the sky), so what you see from
-the ground agrees with the map and with the view from orbit; the noise shapes the billows, and the
-wind that carries the cover (`PlanetWeather.zonal_wind`) carries the small shapes too
-(`PlanetWorld._drift_the_clouds`). The layer fades out between 850 and 1450 m above the ground,
-where the shell takes over. The old low-poly puffs are no longer used on the planet.
+One layer of real volume (700 m thick, 450 m above the ground under the player), marched and lit in
+`planet_cloud_march.gdshaderinc`, which two shaders share so they draw the same clouds: the sky
+(`planet_sky.gdshader`) from under the layer, and a sphere round the planet
+(`planet_clouds.gdshader`, `PlanetCloudShell`) from in the layer and above it, from just over the
+ground to orbit, stopping at the ground of the scene (the depth texture). Under 450 m above the
+ground the sky has them, over 700 m the shell, with a cross-fade between (`PlanetAtmosphere.cloud_on`).
+The star's light at a cloud depends on how high the star stands over that cloud (white high up,
+orange low down, none at night), so the day and the night side and the terminator show from orbit.
+Where there is cloud comes from the planet's own cover picture (`PlanetCloudShell` keeps it fresh
+every few seconds on a thread and gives it to both), so the ground, the map and the orbit agree; the
+noise shapes the billows, and the wind that carries the cover (`PlanetWeather.zonal_wind`) carries
+the small shapes too (`PlanetWorld._drift_the_clouds`). The old low-poly puffs are no longer used on
+the planet. Cost: the march skips clear sky and uses fewer steps on short ways.
 
 ## Saved universes
 

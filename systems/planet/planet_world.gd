@@ -6,6 +6,7 @@ extends Node3D
 
 const REBASE_DISTANCE := 80.0 ## m walked before the planet is turned level again
 const RECENTER_DISTANCE := 2000.0 ## m from the world origin before everything is shifted back
+const RAIN_UP_TO := 1500.0 ## m above the ground: higher up there is no rain
 const LOAD_GROUND := 2000.0 ## m of ground and water built before the player is let in
 const LOAD_PLANTS := 60.0 ## m round the player that must be planted before they are let in
 
@@ -153,11 +154,11 @@ func _keep_the_weather_near_the_ground() -> void:
 	var here := planet_position().normalized()
 	var ground := noise.height(here.x, here.y, here.z)
 	var above := altitude() - ground
-	var low := above < PlanetCloudShell.SHOW_FROM
+	var low := above < RAIN_UP_TO
 	weather.clouds.visible = false # the planet's clouds are the sky's own (planet_sky.gdshader)
 	weather.rain.visible = low
 	atmosphere.cloud_floor = maxf(ground, 0.0) + 450.0
-	atmosphere.cloud_on = 1.0 - smoothstep(850.0, 1450.0, above)
+	atmosphere.cloud_on = 1.0 - smoothstep(450.0, 700.0, above) # then the shell has them
 	weather.position.y = frame.to_world(here * (settings.radius + maxf(ground, 0.0))).y
 
 

@@ -1,14 +1,13 @@
 class_name PlanetCloudShell
 extends MeshInstance3D
-## The clouds seen from high up: a shell a little above the ground that shows the planet's cloud
-## cover (PlanetWeather) as the sun lights it. The cover picture is made on a background thread
-## every few seconds (and when time jumps) from the weather model, so it drifts and changes as time
-## runs. Near the ground the shell is gone (the sky has its own clouds, WorldClouds).
+## The clouds seen from in and above their layer, from a little over the ground to orbit: a sphere
+## round the planet whose pixels march the layer (planet_clouds.gdshader; the sky draws the same
+## clouds from under it). Where there is cloud comes from the planet's cloud cover (PlanetWeather):
+## a picture made on a background thread every few seconds (and when time jumps) from the weather
+## model, so it drifts and changes as time runs.
 
 const SIZE := Vector2i(256, 128)
 const REFRESH := 2.5 ## seconds between pictures
-const SHOW_FROM := 1500.0 ## m of altitude at which the shell begins to appear
-const FULL_AT := 6000.0
 
 var planet: PlanetWorld
 
@@ -35,8 +34,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if planet == null or planet.target() == null:
 		return
-	var altitude := planet.altitude()
-	var fade := clampf((altitude - SHOW_FROM) / (FULL_AT - SHOW_FROM), 0.0, 1.0)
+	var fade := 1.0 - planet.atmosphere.cloud_on # the sky has them from under the layer
 	visible = fade > 0.0
 	if visible:
 		_place_the_shell(fade)
@@ -44,11 +42,11 @@ func _process(delta: float) -> void:
 
 
 func _place_the_shell(fade: float) -> void:
-	# the shell, as big as the planet plus a little, centred on the planet's centre
-	var radius := planet.settings.radius + clampf(planet.noise.relief * 0.8, 150.0, 12000.0)
+	# a sphere a little bigger than the layer (the mesh is a polygon), centred on the planet
+	var top := planet.settings.radius + planet.atmosphere.cloud_floor + PlanetAtmosphere.CLOUD_DEPTH
 	var centre := planet.frame.to_world(Vector3.ZERO)
-	global_transform = Transform3D(planet.frame.rot.scaled(Vector3.ONE * radius), centre)
-	_material.set_shader_parameter(&"sun_toward", planet.atmosphere.sun_direction)
+	global_transform = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * top * 1.01), centre)
+	planet.atmosphere.set_cloud_parameters(_material)
 	_material.set_shader_parameter(&"fade", fade)
 
 

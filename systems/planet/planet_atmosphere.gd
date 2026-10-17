@@ -16,6 +16,7 @@ var air_height := 100000.0 ## m above the surface where the Earth's air would en
 var sun_strength := 1.35 ## the light energy of the unobscured sun
 var scatter_intensity := 22.0
 var altitude := 0.0 ## m above the surface at the camera (set by the world)
+const CLOUD_DEPTH := 700.0 ## m thick, the layer of clouds
 var cloud_floor := 450.0 ## m above the planet's radius where the layer of clouds begins
 var cloud_on := 0.0 ## 0 no clouds in the sky (up high the cloud shell takes over) .. 1
 var cloud_drift := Vector3.ZERO ## m, planet frame: how far the wind has carried the small clouds
@@ -41,6 +42,24 @@ func _init() -> void:
 	environment.ambient_light_sky_contribution = 0.92
 	environment.ambient_light_color = Color(0.1, 0.13, 0.25)
 	environment.volumetric_fog_enabled = false
+
+
+## Gives a material that draws the clouds (the sky's, the shell's) the numbers they share: where the
+## layer is, how the wind has carried it, how dark it is, the star's light and the planet.
+func set_cloud_parameters(material: ShaderMaterial) -> void:
+	material.set_shader_parameter(&"planet_centre", planet_centre)
+	material.set_shader_parameter(&"planet_radius", radius)
+	material.set_shader_parameter(&"sun_toward", sun_direction if sun_direction != Vector3.ZERO \
+			else Vector3.UP)
+	material.set_shader_parameter(&"cloud_floor", cloud_floor)
+	material.set_shader_parameter(&"cloud_depth", CLOUD_DEPTH)
+	material.set_shader_parameter(&"cloud_drift", cloud_drift)
+	material.set_shader_parameter(&"cloud_dark", maxf(cloud_dark, overcast * 0.6))
+	material.set_shader_parameter(&"cloud_least", overcast)
+	material.set_shader_parameter(&"cloud_sun", sun_strength)
+	# the sun's path through the air against the Earth's (a small planet has a short one)
+	var least_radius := PlanetAir.MIN_AIR_SCALE * PlanetAir.EARTH_RADIUS
+	material.set_shader_parameter(&"cloud_path", sqrt(minf(1.0, radius / least_radius)))
 
 
 func _apply() -> void:
@@ -76,17 +95,8 @@ func _apply() -> void:
 	sky_material.set_shader_parameter(&"moon_direction", moon_toward)
 	sky_material.set_shader_parameter(&"moon_lit", moon_lit)
 	sky_material.set_shader_parameter(&"star_k", star_k)
-	# the clouds: the light of the sky on them is the zenith's, and what is left of the night's
-	var zenith := PlanetAir.sky_color(from, up, sun_dir, radius, top, scatter_intensity, scale)
-	var starlight := Vector3(0.012, 0.015, 0.03) \
-			+ Vector3(0.02, 0.025, 0.04) * moon_lit * moon_risen
-	var ambient := zenith * 1.1 + starlight
-	sky_material.set_shader_parameter(&"cloud_ambient", ambient)
 	sky_material.set_shader_parameter(&"cloud_on", cloud_on)
-	sky_material.set_shader_parameter(&"cloud_least", overcast)
-	sky_material.set_shader_parameter(&"cloud_floor", cloud_floor)
-	sky_material.set_shader_parameter(&"cloud_drift", cloud_drift)
-	sky_material.set_shader_parameter(&"cloud_dark", maxf(cloud_dark, overcast * 0.6))
+	set_cloud_parameters(sky_material)
 	# the air thins with height, so the ambient light and the fog do too
 	var air := exp(-maxf(altitude, 0.0) / 1500.0) # the fog thins over a game kilometre or so
 	var inside := 1.0 - smoothstep(air_top() * 0.5, air_top(), maxf(altitude, 0.0))

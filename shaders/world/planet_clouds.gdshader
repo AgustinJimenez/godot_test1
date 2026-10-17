@@ -1,31 +1,35 @@
 shader_type spatial;
-render_mode blend_mix, unshaded, cull_back, depth_draw_never;
-// The clouds seen from space: a thin shell round the planet that reads the cloud cover picture (an
-// equirectangular map, the planet's own frame) at each point's own direction, and is lit by the sun:
-// white on the day side, dark on the night side, orange at the terminator. It fades out as the viewer
-// comes down to the ground (the clouds of the sky are the flat world's own).
+render_mode blend_premul_alpha, unshaded, cull_disabled, depth_draw_never, depth_test_disabled, fog_disabled;
+// The clouds seen from in and above their layer, from a little over the ground to orbit: a sphere
+// round the planet whose every pixel marches the layer of clouds along the ray from the camera
+// (the same march as the sky's, planet_cloud_march.gdshaderinc), stopping at the ground of the
+// scene. Under the layer the sky draws the clouds and this fades out.
 
-uniform sampler2D cover_map : filter_linear, repeat_enable;
-uniform vec3 sun_toward = vec3(0.0, 1.0, 0.0); // world space
-uniform float fade = 1.0; // 0 near the ground .. 1 from space
+#include "res://shaders/world/planet_cloud_march.gdshaderinc"
 
-varying vec3 object_direction;
-varying vec3 world_normal;
+uniform sampler2D scene_depth : hint_depth_texture, repeat_disable, filter_nearest;
+uniform vec3 planet_centre = vec3(0.0, -20000.0, 0.0); // world space
+uniform float planet_radius = 20000.0;
+uniform vec3 sun_toward = vec3(0.0, 1.0, 0.0); // unit vector from the planet to the star
+uniform float fade = 1.0; // 0 under the layer .. 1 in and above it
+
+varying vec3 world_position;
 
 void vertex() {
-	object_direction = normalize(VERTEX);
-	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
 void fragment() {
-	float lon = atan(object_direction.z, object_direction.x);
-	float lat = asin(clamp(object_direction.y, -1.0, 1.0));
-	vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927);
-	float cover = texture(cover_map, uv).r;
-	float day = dot(world_normal, normalize(sun_toward));
-	float light = smoothstep(-0.15, 0.35, day);
-	vec3 lit = mix(vec3(0.05, 0.06, 0.11), vec3(1.0), light);
-	lit = mix(lit, vec3(1.0, 0.62, 0.38), (1.0 - smoothstep(0.0, 0.25, abs(day))) * 0.5 * light);
-	ALBEDO = lit;
-	ALPHA = cover * 0.95 * fade;
+	vec3 eye = (INV_VIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+	vec3 dir = normalize(world_position - eye);
+	// how far the scene is along this ray: the clouds do not draw over what is nearer
+	float depth = texture(scene_depth, SCREEN_UV).r;
+	float limit = 1.0e9;
+	if (depth > 0.0) {
+		vec4 view = INV_PROJECTION_MATRIX * vec4(vec3(SCREEN_UV * 2.0 - 1.0, depth), 1.0);
+		limit = length(view.xyz / view.w);
+	}
+	vec4 cloud = cloud_march(eye - planet_centre, dir, normalize(sun_toward), planet_radius, limit);
+	ALBEDO = cloud.rgb * fade;
+	ALPHA = (1.0 - cloud.a) * fade;
 }
