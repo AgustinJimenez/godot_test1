@@ -24,6 +24,9 @@ void PlanetDrainageNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("cells_of", "dirs"), &PlanetDrainageNative::cells_of);
 	ClassDB::bind_method(D_METHOD("carve", "heights", "filled", "flow", "receiver", "river_flow", "base_slope", "max_cut"),
 			&PlanetDrainageNative::carve);
+	ClassDB::bind_method(D_METHOD("river_network", "heights", "filled", "flow", "receiver", "river_flow",
+					"base_slope", "samples", "meander"),
+			&PlanetDrainageNative::river_network);
 	ClassDB::bind_method(D_METHOD("solve", "heights", "rain", "sea_level", "exponent", "lake_depth", "lake_cells"),
 			&PlanetDrainageNative::solve);
 }
@@ -322,5 +325,144 @@ PackedFloat32Array PlanetDrainageNative::carve(const PackedFloat32Array &p_heigh
 	for (int id = 0; id < count; id++) {
 		result[id] = wide[id];
 	}
+	return result;
+}
+
+Dictionary PlanetDrainageNative::river_network(const PackedFloat32Array &p_heights, const PackedFloat32Array &p_filled,
+		const PackedFloat32Array &p_flow, const PackedInt32Array &p_receiver, double p_river_flow,
+		double p_base_slope, int p_samples, double p_meander) const {
+	const int count = 6 * cells * cells;
+	// the river beds, from the sea inland (as in `carve`)
+	std::vector<int> order(count);
+	for (int id = 0; id < count; id++) {
+		order[id] = id;
+	}
+	std::sort(order.begin(), order.end(), [&](int a, int b) { return p_filled[a] < p_filled[b]; });
+	std::vector<double> bed(count);
+	std::vector<char> river(count, 0);
+	for (int id = 0; id < count; id++) {
+		bed[id] = p_heights[id];
+	}
+	for (int at = 0; at < count; at++) {
+		const int id = order[at];
+		const int down = p_receiver[id];
+		if (down < 0 || (double)p_heights[id] < 0.0 || (double)p_flow[id] < p_river_flow) {
+			continue;
+		}
+		river[id] = 1;
+		Vector3 gap = dirs[id] - dirs[down];
+		double distance = (double)gap.length() * radius;
+		double slope = p_base_slope * std::sqrt(p_river_flow / (double)p_flow[id]);
+		double allowed = bed[down] + slope * distance;
+		if (allowed < bed[id]) {
+			bed[id] = allowed;
+		}
+	}
+	// the biggest river cell that flows into each cell: the main stem goes on through it
+	std::vector<int> main_up(count, -1);
+	for (int id = 0; id < count; id++) {
+		if (!river[id]) {
+			continue;
+		}
+		const int down = p_receiver[id];
+		if (main_up[down] < 0 || p_flow[id] > p_flow[main_up[down]]) {
+			main_up[down] = id;
+		}
+	}
+	auto tangent_at = [&](int node, int toward) -> Vector3 {
+		const int up = main_up[node];
+		const int down = river[node] ? p_receiver[node] : -1;
+		Vector3 t;
+		if (up >= 0 && down >= 0) {
+			t = dirs[down] - dirs[up];
+		} else if (down >= 0) {
+			t = dirs[down] - dirs[node];
+		} else if (up >= 0) {
+			t = dirs[node] - dirs[up];
+		} else {
+			t = dirs[toward] - dirs[node];
+		}
+		return t.normalized();
+	};
+	PackedVector3Array a_out, b_out;
+	PackedFloat32Array bed_a, bed_b, flow_a, flow_b;
+	std::vector<std::vector<int>> listed(count);
+	const int samples = p_samples < 1 ? 1 : p_samples;
+	for (int id = 0; id < count; id++) {
+		if (!river[id]) {
+			continue;
+		}
+		const int down = p_receiver[id];
+		const Vector3 p0 = dirs[id];
+		const Vector3 p1 = dirs[down];
+		const double length = (double)(p1 - p0).length();
+		const Vector3 t0 = tangent_at(id, down) * (real_t)length;
+		const Vector3 t1 = (river[down] ? tangent_at(down, down) : (p1 - p0).normalized()) * (real_t)length;
+		const double phase = (double)(id % 977) * 0.61;
+		Vector3 last = p0;
+		double last_bed = bed[id];
+		double last_flow = p_flow[id];
+		for (int k = 1; k <= samples; k++) {
+			const double u = (double)k / (double)samples;
+			const double h00 = 2 * u * u * u - 3 * u * u + 1;
+			const double h10 = u * u * u - 2 * u * u + u;
+			const double h01 = -2 * u * u * u + 3 * u * u;
+			const double h11 = u * u * u - u * u;
+			Vector3 point = p0 * (real_t)h00 + t0 * (real_t)h10 + p1 * (real_t)h01 + t1 * (real_t)h11;
+			point = point.normalized();
+			// the meander: a sideways wave that is nothing at the cells and swings between them
+			const Vector3 side = point.cross((p1 - p0)).normalized();
+			const double swing = std::sin(PI_VALUE * u) * std::sin(2.0 * PI_VALUE * u + phase);
+			point = (point + side * (real_t)(swing * p_meander * length)).normalized();
+			const double here_bed = bed[id] + (bed[down] - bed[id]) * u;
+			const double here_flow = (double)p_flow[id] + ((double)p_flow[down] - (double)p_flow[id]) * u;
+			const int piece = a_out.size();
+			a_out.append(last);
+			b_out.append(point);
+			bed_a.append((float)last_bed);
+			bed_b.append((float)here_bed);
+			flow_a.append((float)last_flow);
+			flow_b.append((float)here_flow);
+			// the cells the piece belongs to: its middle's cell and the eight round it
+			const Vector3 middle = ((last + point) * (real_t)0.5).normalized();
+			const int home = cell_at(middle);
+			listed[home].push_back(piece);
+			for (int n = 0; n < 8; n++) {
+				const int other = neighbours[home * 8 + n];
+				if (other >= 0) {
+					listed[other].push_back(piece);
+				}
+			}
+			last = point;
+			last_bed = here_bed;
+			last_flow = here_flow;
+		}
+	}
+	PackedInt32Array cell_start;
+	PackedInt32Array cell_items;
+	cell_start.resize(count + 1);
+	int total = 0;
+	for (int id = 0; id < count; id++) {
+		cell_start[id] = total;
+		total += (int)listed[id].size();
+	}
+	cell_start[count] = total;
+	cell_items.resize(total);
+	int at = 0;
+	for (int id = 0; id < count; id++) {
+		for (size_t k = 0; k < listed[id].size(); k++) {
+			cell_items[at++] = listed[id][k];
+		}
+	}
+	Dictionary result;
+	result["a"] = a_out;
+	result["b"] = b_out;
+	result["bed_a"] = bed_a;
+	result["bed_b"] = bed_b;
+	result["flow_a"] = flow_a;
+	result["flow_b"] = flow_b;
+	result["cell_start"] = cell_start;
+	result["cell_items"] = cell_items;
+	result["river_flow"] = p_river_flow;
 	return result;
 }

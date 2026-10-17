@@ -61,13 +61,15 @@ func river_threshold(share: float) -> float:
 	return land_flows[at]
 
 
-## How deep each cell's river valley is cut (m): the bed of a river cell is no higher than the bed
-## below it plus the slope its water allows (steep for a trickle, gentle for a big river), and the
-## ground above is cut away, the valley a cell wider than the river. The cuts are what the crust
-## subtracts (PlanetCrustNative.set_cut_field), after the flow was solved on the uncut ground.
-func carve(relief: float) -> PackedFloat32Array:
+## The rivers as curves for the crust to cut its valleys along: every river cell sends a smooth,
+## winding curve to the cell its water runs on to (10 pieces, a meander of 6 % of the way), each
+## piece with its bed height (from the sea inland, no higher than the bed below plus the slope its
+## water allows: steep for a trickle, gentle for a big river) and its flow. The crust
+## (PlanetCrustNative.set_rivers) lets the ground stand no higher than the nearest piece's bed and
+## the sides the valley allows, so the valleys are lines that follow the flow.
+func network() -> Dictionary:
 	var river := river_threshold(0.06)
-	return _native.call(&"carve", heights, filled, flow, receiver, river, 0.006, relief * 0.1)
+	return _native.call(&"river_network", heights, filled, flow, receiver, river, 0.006, 10, 0.06)
 
 
 ## The cell that holds the unit direction `dir`.

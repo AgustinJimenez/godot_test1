@@ -4,6 +4,7 @@
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 using namespace godot;
@@ -39,7 +40,7 @@ inline double sign_d(double p_x) {
 
 void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("setup", "config"), &PlanetCrustNative::setup);
-	ClassDB::bind_method(D_METHOD("set_cut_field", "cells", "field"), &PlanetCrustNative::set_cut_field);
+	ClassDB::bind_method(D_METHOD("set_rivers", "cells", "network", "cell_metres"), &PlanetCrustNative::set_rivers);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
 	ClassDB::bind_method(D_METHOD("tectonic_heights", "dirs"), &PlanetCrustNative::tectonic_heights);
@@ -266,7 +267,10 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point) c
 	// every layer below is multiplied by a weight that is exactly 0 over the sea (and a little
 	// inland), so those noises are not asked there: the same height, the sea floor much faster
 	double land = smooth(-0.02, 0.05, p_units);
-	const double floor_factor = valley_floor(p_point.normalized()); // a river's valley floor is smooth
+	Valley valley;
+	const bool in_valley = river_cells > 0 && valley_at(p_point.normalized(), valley);
+	// a river's valley floor is smooth: the rough layers fade there
+	const double floor_factor = in_valley ? 1.0 - 0.7 * (1.0 - smooth(valley.floor_half, valley.floor_half * 6.0, valley.distance)) : 1.0;
 	double rolling_height = land > 0.0 ? rolling.at(p_point) * clampd(relief * 0.12, 25.0, 120.0) * floor_factor : 0.0;
 	double ridges = 0.0;
 	if (p_units > 0.08) {
@@ -286,10 +290,14 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point) c
 	double cut = valley_cut(p_point, p_units);
 	double limit = (shore_height > 0.0 ? shore_height : 0.0) * 0.8;
 	double result = raised - (cut < limit ? cut : limit);
-	if (cut_cells > 0 && result > 0.0) {
-		// the rivers' valleys (from the drainage): never below the sea
-		double river_cut = cut_at(p_point.normalized());
-		result -= river_cut < result * 0.9 ? river_cut : result * 0.9;
+	if (in_valley && result > 0.0) {
+		// a river's valley (from the drainage): the ground may not stand above the river's bed
+		// and the sides it allows (blended in softly), and is never cut below the sea
+		const double envelope = valley.envelope > 0.5 ? valley.envelope : 0.5;
+		const double soft_k = 150.0;
+		const double h = std::max(soft_k - std::abs(result - envelope), 0.0) / soft_k;
+		const double joined = std::min(result, envelope) - h * h * soft_k * 0.25;
+		result = joined > 0.5 ? joined : 0.5;
 	}
 	return result;
 }
@@ -587,13 +595,24 @@ PackedFloat32Array PlanetCrustNative::macro_heights(const PackedVector3Array &p_
 	return result;
 }
 
-void PlanetCrustNative::set_cut_field(int p_cells, const PackedFloat32Array &p_field) {
-	cut_cells = p_field.size() == 6 * p_cells * p_cells ? p_cells : 0;
-	cut_field = p_field;
+
+void PlanetCrustNative::set_rivers(int p_cells, const Dictionary &p_network, double p_cell_metres) {
+	river_a = p_network["a"];
+	river_b = p_network["b"];
+	river_bed_a = p_network["bed_a"];
+	river_bed_b = p_network["bed_b"];
+	river_flow_a = p_network["flow_a"];
+	river_flow_b = p_network["flow_b"];
+	river_start = p_network["cell_start"];
+	river_items = p_network["cell_items"];
+	river_flow = p_network["river_flow"];
+	river_cell_metres = p_cell_metres;
+	river_cells = river_start.size() == 6 * p_cells * p_cells + 1 ? p_cells : 0;
 }
 
-// The river valleys' cut at a direction: the coarse cells' values blended (bilinear on the face).
-double PlanetCrustNative::cut_at(const Vector3 &p_dir) const {
+// The nearest river piece to a direction, and the envelope of the valley it cuts: its bed plus the
+// sides the valley allows from the edge of its floor.
+bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley) const {
 	double ax = std::abs((double)p_dir.x);
 	double ay = std::abs((double)p_dir.y);
 	double az = std::abs((double)p_dir.z);
@@ -608,35 +627,57 @@ double PlanetCrustNative::cut_at(const Vector3 &p_dir) const {
 	const Vector3 normal = cube_faces[face * 3];
 	const Vector3 u = cube_faces[face * 3 + 1];
 	const Vector3 v = cube_faces[face * 3 + 2];
-	double along = p_dir.dot(normal);
+	const double along = p_dir.dot(normal);
 	const double quarter_pi = 3.14159265358979323846 * 0.25;
 	double s = std::atan((double)p_dir.dot(u) / along) / quarter_pi;
 	double t = std::atan((double)p_dir.dot(v) / along) / quarter_pi;
-	double fi = (s + 1.0) * 0.5 * cut_cells - 0.5;
-	double fj = (t + 1.0) * 0.5 * cut_cells - 0.5;
-	int i0 = (int)std::floor(fi);
-	int j0 = (int)std::floor(fj);
-	double tx = fi - (double)i0;
-	double ty = fj - (double)j0;
-	double total = 0.0;
-	for (int dy = 0; dy < 2; dy++) {
-		for (int dx = 0; dx < 2; dx++) {
-			int i = i0 + dx;
-			int j = j0 + dy;
-			i = i < 0 ? 0 : (i > cut_cells - 1 ? cut_cells - 1 : i);
-			j = j < 0 ? 0 : (j > cut_cells - 1 ? cut_cells - 1 : j);
-			double weight = (dx == 1 ? tx : 1.0 - tx) * (dy == 1 ? ty : 1.0 - ty);
-			total += (double)cut_field[(face * cut_cells + j) * cut_cells + i] * weight;
+	int i = (int)((s + 1.0) * 0.5 * river_cells);
+	int j = (int)((t + 1.0) * 0.5 * river_cells);
+	i = i < 0 ? 0 : (i > river_cells - 1 ? river_cells - 1 : i);
+	j = j < 0 ? 0 : (j > river_cells - 1 ? river_cells - 1 : j);
+	const int cell = (face * river_cells + j) * river_cells + i;
+	const int from = river_start[cell];
+	const int to = river_start[cell + 1];
+	if (from == to) {
+		return false;
+	}
+	double best_envelope = 1.0e30;
+	double best_distance = 0.0;
+	double best_floor = 0.0;
+	for (int at = from; at < to; at++) {
+		const int piece = river_items[at];
+		const Vector3 a = river_a[piece];
+		const Vector3 b = river_b[piece];
+		const Vector3 ab = b - a;
+		const double length_squared = (double)ab.length_squared();
+		double position = length_squared > 1.0e-18 ? (double)(p_dir - a).dot(ab) / length_squared : 0.0;
+		position = position < 0.0 ? 0.0 : (position > 1.0 ? 1.0 : position);
+		const Vector3 nearest = a + ab * (real_t)position;
+		const double distance = (double)(p_dir - nearest).length() * radius;
+		const double flow = (double)river_flow_a[piece] + ((double)river_flow_b[piece] - (double)river_flow_a[piece]) * position;
+		const double bed = (double)river_bed_a[piece] + ((double)river_bed_b[piece] - (double)river_bed_a[piece]) * position;
+		double floor_half = 30.0 * std::sqrt(flow / river_flow);
+		floor_half = floor_half < 20.0 ? 20.0 : (floor_half > 0.3 * river_cell_metres ? 0.3 * river_cell_metres : floor_half);
+		const double beyond = distance - floor_half;
+		const double envelope = bed + (beyond > 0.0 ? beyond : 0.0) * 0.35;
+		if (envelope < best_envelope) {
+			best_envelope = envelope;
+			best_distance = distance;
+			best_floor = floor_half;
 		}
 	}
-	return total;
+	r_valley.envelope = best_envelope;
+	r_valley.distance = best_distance;
+	r_valley.floor_half = best_floor;
+	return true;
 }
 
 // How rough the ground is allowed to be at `p_dir`: 1 away from the rivers, down to 0.3 on the floor
-// of a deep valley (a river's valley is wide and smooth between its rough sides).
+// of a valley (a river's valley is smooth between its rough sides).
 double PlanetCrustNative::valley_floor(const Vector3 &p_dir) const {
-	if (cut_cells <= 0) {
+	Valley valley;
+	if (river_cells <= 0 || !valley_at(p_dir, valley)) {
 		return 1.0;
 	}
-	return 1.0 - 0.7 * smooth(0.0, 150.0, cut_at(p_dir));
+	return 1.0 - 0.7 * (1.0 - smooth(valley.floor_half, valley.floor_half * 6.0, valley.distance));
 }

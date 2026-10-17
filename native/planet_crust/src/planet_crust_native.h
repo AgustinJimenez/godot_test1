@@ -55,10 +55,20 @@ private:
 	Noise massif, chain, foothills, valleys[3]; // the rough ground and the valleys
 	Noise craton, basin; // the rock's
 	PackedVector3Array cube_faces; // the six cube faces: [normal, u, v] each
-	int cut_cells = 0; // the river valleys' cut, per cell of a coarse cube grid (0: none)
-	PackedFloat32Array cut_field;
-	double cut_at(const Vector3 &p_dir) const;
-	double valley_floor(const Vector3 &p_dir) const; // 1 away from the rivers, less in their valleys
+	// the rivers (from the drainage): pieces of curve with their bed and flow, listed by coarse cell
+	int river_cells = 0; // cells along a cube face of the grid they are listed on (0: no rivers)
+	double river_flow = 1.0;
+	double river_cell_metres = 1.0;
+	PackedVector3Array river_a, river_b;
+	PackedFloat32Array river_bed_a, river_bed_b, river_flow_a, river_flow_b;
+	PackedInt32Array river_start, river_items;
+	struct Valley {
+		double envelope = 0.0; // the highest the ground may stand here: the bed and the valley's sides
+		double distance = 0.0; // metres to the nearest river
+		double floor_half = 0.0; // half the width of that river's valley floor
+	};
+	bool valley_at(const Vector3 &p_dir, Valley &r_valley) const;
+	double valley_floor(const Vector3 &p_dir) const; // 1 away from the rivers, less on a valley floor
 
 	static void configure(Noise &r_noise, const Array &p_config);
 	Vector3 plate_shift(const Vector3 &p_dir) const;
@@ -76,7 +86,7 @@ protected:
 
 public:
 	void setup(const Dictionary &p_config);
-	void set_cut_field(int p_cells, const PackedFloat32Array &p_field);
+	void set_rivers(int p_cells, const Dictionary &p_network, double p_cell_metres);
 	PackedFloat32Array heights(const PackedVector3Array &p_dirs) const;
 	PackedColorArray colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedFloat32Array &p_steeps) const;

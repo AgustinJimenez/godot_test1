@@ -129,7 +129,7 @@ func _cube_faces() -> PackedVector3Array:
 
 
 ## The river valleys of the planet, from where its water runs: the drainage is solved on a coarse
-## grid and the valleys it cuts are handed to the native crust, which takes them off the ground.
+## grid and its rivers, as curves, go to the native crust, which cuts the valleys along them.
 func _carve_valleys() -> void:
 	drainage = null
 	if settings.drainage_cells <= 0 or OS.has_environment("PLANET_NO_DRAINAGE"):
@@ -137,7 +137,8 @@ func _carve_valleys() -> void:
 	var solved := PlanetDrainage.new()
 	if not solved.build(self, settings.drainage_cells):
 		return
-	native.call(&"set_cut_field", settings.drainage_cells, solved.carve(relief))
+	var cell_metres := settings.radius * PI * 0.5 / float(settings.drainage_cells)
+	native.call(&"set_rivers", settings.drainage_cells, solved.network(), cell_metres)
 	drainage = solved
 
 

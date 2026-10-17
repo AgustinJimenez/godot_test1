@@ -338,16 +338,19 @@ generator's integers (`PlanetTectonics._between`), the same on both: the two bui
 Earth preset to 22 % and 23 % land. This changed every planet once (the same seed makes another
 world than before). The plants (`SpeciesGenerator`) and other `randf` users are not changed yet.
 
-### Drainage, step 3: the valleys (coarse)
+### Drainage, step 3: the valleys, as lines
 
-`PlanetDrainage.carve` cuts the river valleys from the flow: from the sea inland, a river cell's bed is
-no higher than the bed below it plus the slope its water allows (`0.006 * sqrt(river_flow / flow)`:
-steep for a trickle, gentle for a big river), the ground above is cut away (up to 10 % of the relief),
-and a part of the cut goes to the cells beside it. The cuts are handed to the native crust
-(`PlanetCrustNative.set_cut_field`), which subtracts them (never below the sea) and smooths the ground
-on a valley floor (the roughness falls to 30 % where the cut is 150 m or more), so a valley reads as
-a broad smooth plain between rough sides. `PlanetSettings.drainage_cells` (0: none; the Earth preset
-256, 40 km cells, +1 s at start) sets it. Seen on a 120 km relief picture: smooth basins in rough
-mountains, but blotches the size of a cell rather than lines: the fine channel near the player is
-still to be traced from the coarse flow. Only the native crust has the valleys (the GDScript is the
-reference without them); `PLANET_NO_DRAINAGE=1` turns them off.
+`PlanetDrainage.network()` turns the coarse flow into curves: every river cell sends a smooth Hermite
+curve (tangents from the main stem through each cell) with a small meander (6 % of the way) to the
+cell its water runs on to, cut into 10 pieces, each with its bed height (from the sea inland, no
+higher than the bed below plus the slope its water allows: `0.006 * sqrt(river_flow / flow)`) and
+its flow, listed under the cells near it. The native crust (`PlanetCrustNative.set_rivers`) lets the
+ground stand no higher than the nearest piece's bed plus the sides of a valley (35 % beyond a floor
+of `30 m * sqrt(flow / river_flow)` each side, soft-blended over 150 m, never below the sea) and
+fades the rough layers on the floor to 30 %. `PlanetSettings.drainage_cells` (0: none; the Earth
+preset 256, 40 km cells, +1 s at start) sets it. Seen on a 120 km relief picture: winding V-valleys
+with tributaries joining, in rough mountains (the first try, a cut per 40 km cell, gave blotches; a
+meander of 12 % with 6 pieces gave kinks of 38 degrees: median turn between pieces now 9 degrees).
+Not yet: the river's own channel and water in the valley (the old hydrology is still what draws it),
+valleys below the 40 km grid, a local trace near the player. Only the native crust has the valleys
+(the GDScript is the reference without them); `PLANET_NO_DRAINAGE=1` turns them off.
