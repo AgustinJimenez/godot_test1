@@ -8,6 +8,9 @@ extends RefCounted
 ## Everything is drawn with one MultiMesh per species and variant, in the tile's local space.
 
 const GRASS_VISIBLE := 110.0
+const TREE_FULL := 100.0 ## m: beyond this a tree is drawn as its lighter version
+const SMALL_VISIBLE := 220.0 ## m: shrubs and ground cover are gone beyond this
+const TREE_LIGHT := 220.0 ## m: beyond this, as the cheap far tree (a cone or a ball on a trunk)
 const SPACING := {
 	PlantSpecies.Layer.CANOPY: 6.5, PlantSpecies.Layer.UNDERSTORY: 5.0,
 	PlantSpecies.Layer.GRASS: 1.7, PlantSpecies.Layer.MEADOW: 3.2, PlantSpecies.Layer.COVER: 2.6,
@@ -27,6 +30,8 @@ var _species: SpeciesRegistry
 var _rng := RandomNumberGenerator.new()
 var _batches: Dictionary = {} # key -> Array[Transform3D]
 var _colors: Dictionary = {} # key -> Array[Color]
+var _far_meshes: Array = [] # [mesh, transform, tint] of the far trees of the near ground
+var _horizon_meshes: Array = [] # the same for the horizon: no range, they are all there is
 var _body: StaticBody3D
 var _positions: Array[Vector3] = []
 var _dirs: Array[Vector3] = []
@@ -309,42 +314,104 @@ func _place(plant: PlantSpecies, at: Vector3) -> void:
 
 
 func _flush(near: bool) -> void:
+	_far_meshes.clear()
+	_horizon_meshes.clear()
 	for key: int in _batches.keys():
 		var transforms: Array = _batches[key]
 		if key >= FAR_KEY:
-			_flush_far(key, transforms)
+			_queue_far(_horizon_meshes, key, transforms,
+					_species.far_mesh((key - FAR_KEY) / 100, key % 100))
 			continue
 		var plant := key >= PLANT_KEY
 		var id := (key - PLANT_KEY) / 100
 		var variant := key % 100
 		var layer := _species.by_id(id).layer() if plant else PlantSpecies.Layer.CANOPY
-		var multi := MultiMesh.new()
-		multi.transform_format = MultiMesh.TRANSFORM_3D
-		multi.use_colors = true
+		var tree := plant and _species.by_id(id).is_tree()
+		if tree and not near:
+			# trees beyond the near ground are only ever seen from far: the lighter version
+			var light := _add_trees(key, transforms,
+					_species.mesh(id, variant, FloraMeshes.detailed, 1), false)
+			if PlantMeshes.has_far(_species.by_id(id)):
+				light.visibility_range_end = TREE_LIGHT
+				_queue_far(_far_meshes, key, transforms, _species.far_mesh(id, variant % 2))
+			continue
+		var mesh: ArrayMesh
 		if plant:
-			multi.mesh = _species.mesh(id, variant, FloraMeshes.detailed, 0)
+			mesh = _species.mesh(id, variant, FloraMeshes.detailed, 0)
 		else:
-			multi.mesh = FloraMeshes.mesh(key / 100 as FloraMeshes.Kind, variant, FloraMeshes.detailed)
-		multi.instance_count = transforms.size()
-		for index in transforms.size():
-			multi.set_instance_transform(index, transforms[index])
-			multi.set_instance_color(index, (_colors[key] as Array)[index])
-		var instance := MultiMeshInstance3D.new()
-		instance.multimesh = multi
-		instance.material_override = FloraMeshes.material()
+			mesh = FloraMeshes.mesh(key / 100 as FloraMeshes.Kind, variant, FloraMeshes.detailed)
+		var instance := _add_trees(key, transforms, mesh, true)
 		if layer == PlantSpecies.Layer.GRASS or layer == PlantSpecies.Layer.MEADOW:
 			instance.visibility_range_end = GRASS_VISIBLE
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif not near:
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_tile.add_child(instance)
+			instance.visibility_range_end = SMALL_VISIBLE
+		elif not tree:
+			instance.visibility_range_end = SMALL_VISIBLE
+		else:
+			# near trees: the full tree close up, the lighter one (no shadow) further out
+			instance.visibility_range_end = TREE_FULL
+			var light := _add_trees(key, transforms, _species.mesh(id, variant,
+					FloraMeshes.detailed, 1), false)
+			light.visibility_range_begin = TREE_FULL * 0.95
+			if PlantMeshes.has_far(_species.by_id(id)):
+				light.visibility_range_end = TREE_LIGHT
+				_queue_far(_far_meshes, key, transforms, _species.far_mesh(id, variant % 2))
+	_commit_far(_far_meshes, TREE_LIGHT * 0.95)
+	_commit_far(_horizon_meshes, 0.0)
 
 
-func _flush_far(key: int, transforms: Array) -> void:
+## Keeps the far trees of a batch to be merged into one mesh (a draw call for the whole tile instead
+## of one for each kind of tree: a tile's far trees are many kinds of a few triangles each).
+func _queue_far(into: Array, key: int, transforms: Array, mesh: ArrayMesh) -> void:
+	for index in transforms.size():
+		into.append([mesh, transforms[index], (_colors[key] as Array)[index]])
+
+
+## One mesh with all the queued far trees of the tile, drawn from `begin` metres away (0: always).
+func _commit_far(parts: Array, begin: float) -> void:
+	if parts.is_empty():
+		return
+	var arrays_of := {}
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	for part: Array in parts:
+		var mesh: ArrayMesh = part[0]
+		if not arrays_of.has(mesh):
+			arrays_of[mesh] = mesh.surface_get_arrays(0) if mesh.get_surface_count() > 0 else []
+		var arrays: Array = arrays_of[mesh]
+		if arrays.is_empty():
+			continue
+		var placed: Transform3D = part[1]
+		var tint: Color = part[2]
+		vertices.append_array(placed * (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array))
+		var turn := Transform3D(placed.basis.orthonormalized(), Vector3.ZERO)
+		normals.append_array(turn * (arrays[Mesh.ARRAY_NORMAL] as PackedVector3Array))
+		for color in arrays[Mesh.ARRAY_COLOR] as PackedColorArray:
+			colors.append(Color(color.r * tint.r, color.g * tint.g, color.b * tint.b, color.a))
+	var merged: Array = []
+	merged.resize(Mesh.ARRAY_MAX)
+	merged[Mesh.ARRAY_VERTEX] = vertices
+	merged[Mesh.ARRAY_NORMAL] = normals
+	merged[Mesh.ARRAY_COLOR] = colors
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, merged)
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	instance.material_override = FloraMeshes.material()
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	instance.visibility_range_begin = begin
+	_tile.add_child(instance)
+
+
+## One multimesh of `mesh` at the batch's `transforms` and colours, added to the tile.
+func _add_trees(key: int, transforms: Array, mesh: ArrayMesh, shadows: bool) -> MultiMeshInstance3D:
 	var multi := MultiMesh.new()
 	multi.transform_format = MultiMesh.TRANSFORM_3D
 	multi.use_colors = true
-	multi.mesh = _species.far_mesh((key - FAR_KEY) / 100, key % 100)
+	multi.mesh = mesh
 	multi.instance_count = transforms.size()
 	for index in transforms.size():
 		multi.set_instance_transform(index, transforms[index])
@@ -352,8 +419,10 @@ func _flush_far(key: int, transforms: Array) -> void:
 	var instance := MultiMeshInstance3D.new()
 	instance.multimesh = multi
 	instance.material_override = FloraMeshes.material()
-	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if not shadows:
+		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_tile.add_child(instance)
+	return instance
 
 
 ## The tile's grid index (fractional) to the padded array index of its lower corner.

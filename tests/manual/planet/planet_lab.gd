@@ -12,6 +12,8 @@ extends Node3D
 ##   -- --look-moon  the camera looks at the moon (with --view-alt)
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
+##   -- --no-shadow  the sun casts no shadows
+##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
 ##   -- --start-menu  the start menu first (saved planets, a new one); no arguments does it too
 ##   -- --world=NAME / --continue  open a saved universe (Planet page of the Esc menu saves them)
@@ -31,6 +33,8 @@ var _checking := false
 var _walking := false
 var _weather_name := "" ## a WorldWeather.State name to force from the start (rain, snow...)
 var _climb := 0.0 ## lift the player this many metres once the planet has loaded (they hang there)
+var _hide := "" ## trees, plants, ground or water: not drawn (to see what each costs)
+var _no_shadow := false ## the sun casts no shadows (to see what they cost)
 var _report_fps := false ## print the frame rate now and then
 var restored_state := {} ## the moment of a save to go back to (--world=, --continue, the menu)
 var _save_as := "" ## save the planet under this name right after it starts
@@ -64,6 +68,33 @@ var _view_pitch := -18.0
 var _view_yaw := 0.0
 
 
+## Hides one kind of thing (`--hide=`), the new tiles too: trees, plants, ground or water.
+func _hide_kind() -> void:
+	for node in planet.find_children("*", "GeometryInstance3D", true, false):
+		var tris := 0
+		if node is MultiMeshInstance3D and node.multimesh != null and node.multimesh.mesh != null:
+			tris = _mesh_triangles(node.multimesh.mesh)
+		var kind := "ground"
+		if node is MultiMeshInstance3D:
+			kind = "trees" if tris >= 1500 else "plants"
+			var begin: float = node.visibility_range_begin
+			var finish: float = node.visibility_range_end
+			if tris >= 1500 and is_equal_approx(finish, 100.0):
+				kind = "full"
+			elif tris >= 1500 and is_equal_approx(begin, 95.0):
+				kind = "light"
+			elif is_equal_approx(begin, 209.0):
+				kind = "far"
+			elif is_equal_approx(finish, 110.0):
+				kind = "grass"
+			elif tris < 1500 and begin == 0.0 and finish == 0.0:
+				kind = "horizon"
+		elif "ater" in str(node.name) or "ater" in str(node.get_parent().name):
+			kind = "water"
+		if kind == _hide or (_hide == "trees" and kind in ["full", "light", "midtrees"]):
+			node.visible = false
+
+
 ## The triangles the scene holds, by kind of node (a mesh's, times its instances for a multimesh):
 ## where a frame's geometry comes from.
 func _print_triangle_groups() -> void:
@@ -81,7 +112,18 @@ func _print_triangle_groups() -> void:
 			tris = _mesh_triangles(node.mesh)
 			var parent_name := node.get_parent().name.rstrip("0123456789").trim_prefix("@")
 			key = "mesh %s" % parent_name.get_slice("@", 0)
-		if node.is_visible_in_tree() and tris > 0:
+		var camera := get_viewport().get_camera_3d()
+		var drawn: bool = node.is_visible_in_tree() and tris > 0
+		if drawn and camera != null and node is GeometryInstance3D:
+			var distance := camera.global_position.distance_to(node.global_position)
+			var range_end: float = node.visibility_range_end
+			var in_range := range_end <= 0.0 or distance < range_end
+			in_range = in_range and distance >= node.visibility_range_begin
+			var in_view := camera.is_position_in_frustum(node.global_position + Vector3.UP * 5.0)
+			drawn = in_range and in_view
+			var limited: bool = range_end > 0.0 or node.visibility_range_begin > 0.0
+			key += " (range-limited)" if limited else " (always)"
+		if drawn:
 			var entry: Array = groups.get(key, [0, 0])
 			entry[0] += tris
 			entry[1] += 1
@@ -195,6 +237,10 @@ func _ready() -> void:
 			_weather_name = arg.trim_prefix("--weather=").to_upper()
 		elif arg.begins_with("--climb="):
 			_climb = arg.trim_prefix("--climb=").to_float()
+		elif arg.begins_with("--hide="):
+			_hide = arg.trim_prefix("--hide=")
+		elif arg == "--no-shadow":
+			_no_shadow = true
 		elif arg == "--fps":
 			_report_fps = true
 		elif arg == "--planet-page":
@@ -287,6 +333,10 @@ func _physics_process(_delta: float) -> void:
 		player.process_mode = Node.PROCESS_MODE_DISABLED
 		player.global_position.y += _climb
 		player.head.rotation.x = -1.0 # look down
+	if _hide != "" and _frame % 60 == 0:
+		_hide_kind()
+	if _no_shadow and _frame % 60 == 0:
+		planet.atmosphere.sun.shadow_enabled = false
 	if _report_fps and _frame == 900:
 		_print_triangle_groups()
 	if _report_fps and _frame % 300 == 0:

@@ -87,6 +87,18 @@ Measured in the lab with the player lifted by `-- --climb=N --fps` (draw calls, 
 level and the triangles by kind of node are printed). On the ground a frame is still about 40 million
 primitives (the trees are 8 to 10 thousand triangles each; shadows draw them again).
 
+### Distance levels of the plants (`PlanetScatter`)
+
+Measured at the ground with `-- --fps` (hide a kind with `--hide=`): trees were nearly all of a frame
+(hiding them: 74 to 219 fps), and most of that was draw calls, not triangles (the far trees alone were
+3,000 of 4,900 calls). Now a tree is the full mesh to 100 m (`TREE_FULL`, with shadows), its lighter
+version (`lod` 1, no shadow) to 220 m (`TREE_LIGHT`), and beyond that the cheap far tree; the far
+trees of a tile (and the horizon trees) are merged into one mesh per tile (`_commit_far`: the tint in
+the vertex colours, the sway weight kept in alpha), so a tile's far forest is one draw call. Shrubs
+and ground cover stop at 220 m, grass at 110 m. Ground frame: 55 fps, 4,900 draw calls, 39.6 M
+primitives before; 152 fps, 1,633 calls, 8.9 M after. The trees of the far tiles (beyond 512 m) are
+the lighter version, then the far tree.
+
 ## Clouds
 
 One layer of real volume (700 m thick, 450 m above the ground under the player), marched and lit in
