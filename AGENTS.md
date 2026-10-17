@@ -795,3 +795,5 @@ float64 array in a double precision build); planets above ~1,000 km need the dou
 (build notes in the planet doc). The planet follows real causes (orbit, spin and tilt give the sun, day and seasons; do not fake an effect that
 has a cause: `AGENT_TASKS/043`). Checks: `species_check.tscn`, `world_lab.tscn -- --world-check`,
 `planet_lab.tscn -- --planet-check` and `-- --walk-check --fixed-fps 60`.
+What we learned (how to measure frames and hitches, where the frame went, clouds, the air, saves,
+engine traps): `docs/planet_lessons.md`; read it before changing planet rendering or streaming.

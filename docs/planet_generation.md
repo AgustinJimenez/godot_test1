@@ -1,5 +1,7 @@
 # Planet generation (reference)
 
+> The why, the measurements and the traps behind this design are in `planet_lessons.md`.
+
 A walkable round planet made entirely of code, in `systems/planet/`. This is the stable reference:
 how it works, how to run and check it, its limits. The running handoff (status, next steps, what
 is rough) is `AGENT_TASKS/043_planet.md`. The flat world it grew next to is `AGENT_TASKS/040`.
