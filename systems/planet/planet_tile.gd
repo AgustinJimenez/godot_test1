@@ -160,7 +160,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 	if not collide and level < _settings.max_level() - 1:
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mesh_instance)
-	if min_height < _settings.sea_level + 0.5:
+	if _settings.sea_on and min_height < _settings.sea_level + 0.5:
 		_add_sea(dirs, side, cells)
 	_add_running_water(s0, s1, t0, t1, dirs, heights)
 	if level >= _settings.max_level() - 4: # plants can grow here later (PlanetSurface asks for them)

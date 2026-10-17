@@ -307,7 +307,7 @@ func water_at_world(position: Vector3) -> float:
 	var dir := Vector3(here[0], here[1], here[2]).normalized()
 	var h := noise.height(dir.x, dir.y, dir.z)
 	var level := -INF
-	if h < 0.0:
+	if h < 0.0 and settings.sea_on:
 		level = 0.0
 	elif noise.hydrology != null:
 		level = noise.hydrology.water_at(dir, h)

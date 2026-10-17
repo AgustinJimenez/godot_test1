@@ -14,8 +14,8 @@ extends Node3D
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
 ##   -- --no-shadow  the sun casts no shadows
-##   -- --plants / --animals / --water  switch those stages on (all off by default; --water is
-##                    the rivers and lakes, the sea is always there)
+##   -- --plants / --animals / --sea / --water  switch those stages on (all off by default;
+##                    --water is the rivers and lakes)
 ##   -- --grounded  walk instead of starting in free mode (checks always walk)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
@@ -369,6 +369,8 @@ func _ready() -> void:
 			settings.animals_on = true
 		elif arg == "--grounded":
 			_grounded = true
+		elif arg == "--sea":
+			settings.sea_on = true
 		elif arg == "--water":
 			settings.hydrology_on = true
 		elif arg == "--bare":
@@ -377,6 +379,7 @@ func _ready() -> void:
 			_walking = true
 		elif arg == "--swim-check":
 			_swim_check = true
+			settings.sea_on = true
 		elif arg == "--fly-check":
 			_walking = true
 			_flying = true
