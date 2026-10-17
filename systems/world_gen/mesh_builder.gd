@@ -140,6 +140,17 @@ func add_tri_smooth(a: Vector3, b: Vector3, c: Vector3, flat: Color, normals: Ar
 		_custom.append_array([int(color.r * 255.0), int(color.g * 255.0), int(color.b * 255.0), 255])
 
 
+## Adds smooth terrain triangles that were made elsewhere (native code), the arrays being what
+## `add_tri_smooth` would have appended: three vertices a triangle, the flat colour and the smooth
+## colour bytes.
+func append_smooth(vertices: PackedVector3Array, normals: PackedVector3Array,
+		flat: PackedColorArray, smooth_bytes: PackedByteArray) -> void:
+	_vertices.append_array(vertices)
+	_normals.append_array(normals)
+	_colors.append_array(flat)
+	_custom.append_array(smooth_bytes)
+
+
 func commit() -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	if _vertices.is_empty():

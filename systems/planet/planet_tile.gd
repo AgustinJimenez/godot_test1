@@ -108,65 +108,87 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 	var cells := _settings.tile_cells
 	var side := cells + 3
 	# padded grid of local positions (one extra ring round the tile, for the edge normals)
+	var fast := noise.native != null and noise.hydrology == null # the crust in native code
 	var positions: Array[Vector3] = []
 	var heights := PackedFloat32Array()
 	var dirs: Array[Vector3] = []
-	positions.resize(side * side)
-	heights.resize(side * side)
-	dirs.resize(side * side)
+	var packed_dirs := PackedVector3Array()
+	if fast:
+		packed_dirs = noise.native.call(&"tile_dirs", f, s0, s1, t0, t1, cells)
+	else:
+		packed_dirs.resize(side * side)
+		for row in side:
+			var t := lerpf(t0, t1, float(row - 1) / float(cells))
+			for column in side:
+				var s := lerpf(s0, s1, float(column - 1) / float(cells))
+				packed_dirs[row * side + column] = direction(f, s, t)
+	dirs.assign(packed_dirs)
+	heights = noise.heights_of(packed_dirs) # (the crust is asked for the whole grid at once)
+	var packed_positions := PackedVector3Array()
+	if fast:
+		packed_positions = noise.native.call(&"local_positions", packed_dirs, heights, origin, _e1,
+				centre, _e3)
+	else:
+		packed_positions.resize(side * side)
+		for index in side * side:
+			packed_positions[index] = _to_local(dirs[index], radius + heights[index])
+	positions.assign(packed_positions)
 	min_height = INF
-	var packed_dirs := PackedVector3Array() # (the crust is asked for the whole grid at once)
-	packed_dirs.resize(side * side)
-	for row in side:
-		var t := lerpf(t0, t1, float(row - 1) / float(cells))
-		for column in side:
-			var s := lerpf(s0, s1, float(column - 1) / float(cells))
-			var dir := direction(f, s, t)
-			dirs[row * side + column] = dir
-			packed_dirs[row * side + column] = dir
-	heights = noise.heights_of(packed_dirs)
-	for row in side:
-		for column in side:
-			var index := row * side + column
-			var h := heights[index]
-			positions[index] = _to_local(dirs[index], radius + h)
-			if row > 0 and column > 0 and row <= cells + 1 and column <= cells + 1:
-				min_height = minf(min_height, h)
+	for row in range(1, cells + 2):
+		for column in range(1, cells + 2):
+			min_height = minf(min_height, heights[row * side + column])
+	var packed_normals := PackedVector3Array()
+	if fast:
+		packed_normals = noise.native.call(&"grid_normals", packed_positions, cells)
+	else:
+		packed_normals.resize(side * side)
+		for row in range(1, cells + 2):
+			for column in range(1, cells + 2):
+				var along := positions[row * side + column + 1] - positions[row * side + column - 1]
+				var down := positions[(row + 1) * side + column] - positions[(row - 1) * side + column]
+				var normal := along.cross(down).normalized()
+				packed_normals[row * side + column] = normal if normal.y >= 0.0 else -normal
+	var packed_colours := PackedColorArray()
+	if fast:
+		packed_colours = noise.native.call(&"ground_colours", packed_dirs, heights, packed_normals,
+				cells)
+	else:
+		packed_colours.resize(side * side)
+		var inner_dirs := PackedVector3Array()
+		var inner_heights := PackedFloat32Array()
+		var inner_steeps := PackedFloat32Array()
+		for row in range(1, cells + 2):
+			for column in range(1, cells + 2):
+				var index := row * side + column
+				inner_dirs.append(dirs[index])
+				inner_heights.append(heights[index])
+				inner_steeps.append(1.0 - packed_normals[index].y)
+		var inner_colours := noise.colours_of(inner_dirs, inner_heights, inner_steeps)
+		var at := 0
+		for row in range(1, cells + 2):
+			for column in range(1, cells + 2):
+				packed_colours[row * side + column] = inner_colours[at]
+				at += 1
 	var normals: Array[Vector3] = []
-	normals.resize(side * side)
-	for row in range(1, cells + 2):
-		for column in range(1, cells + 2):
-			var along := positions[row * side + column + 1] - positions[row * side + column - 1]
-			var down := positions[(row + 1) * side + column] - positions[(row - 1) * side + column]
-			var normal := along.cross(down).normalized()
-			normals[row * side + column] = normal if normal.y >= 0.0 else -normal
+	normals.assign(packed_normals)
 	var colors: Array[Color] = []
-	colors.resize(side * side)
-	var inner_dirs := PackedVector3Array()
-	var inner_heights := PackedFloat32Array()
-	var inner_steeps := PackedFloat32Array()
-	for row in range(1, cells + 2):
-		for column in range(1, cells + 2):
-			var index := row * side + column
-			inner_dirs.append(dirs[index])
-			inner_heights.append(heights[index])
-			inner_steeps.append(1.0 - normals[index].y)
-	var inner_colours := noise.colours_of(inner_dirs, inner_heights, inner_steeps)
-	var at := 0
-	for row in range(1, cells + 2):
-		for column in range(1, cells + 2):
-			colors[row * side + column] = inner_colours[at]
-			at += 1
+	colors.assign(packed_colours)
 	var builder := MeshBuilder.new()
 	var faces := PackedVector3Array()
-	for row in range(1, cells + 1):
-		for column in range(1, cells + 1):
-			var i00 := row * side + column
-			var i10 := i00 + 1
-			var i01 := i00 + side
-			var i11 := i01 + 1
-			_triangle(builder, faces, [i00, i01, i10], positions, normals, colors, dirs, heights)
-			_triangle(builder, faces, [i10, i01, i11], positions, normals, colors, dirs, heights)
+	if fast:
+		var made: Dictionary = noise.native.call(&"triangles", packed_positions, packed_normals,
+				packed_colours, cells)
+		builder.append_smooth(made["vertices"], made["normals"], made["colours"], made["custom"])
+		faces = made["faces"]
+	else:
+		for row in range(1, cells + 1):
+			for column in range(1, cells + 1):
+				var i00 := row * side + column
+				var i10 := i00 + 1
+				var i01 := i00 + side
+				var i11 := i01 + 1
+				_triangle(builder, faces, [i00, i01, i10], positions, normals, colors, dirs, heights)
+				_triangle(builder, faces, [i10, i01, i11], positions, normals, colors, dirs, heights)
 	if not collide:
 		_skirt(builder, positions, colors, cells)
 	var mesh_instance := MeshInstance3D.new()

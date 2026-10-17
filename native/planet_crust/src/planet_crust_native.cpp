@@ -2,6 +2,7 @@
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
+#include <godot_cpp/variant/packed_float64_array.hpp>
 
 #include <cmath>
 
@@ -41,6 +42,14 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
 	ClassDB::bind_method(D_METHOD("tectonic_heights", "dirs"), &PlanetCrustNative::tectonic_heights);
+	ClassDB::bind_method(D_METHOD("tile_dirs", "face", "s0", "s1", "t0", "t1", "cells"), &PlanetCrustNative::tile_dirs);
+	ClassDB::bind_method(D_METHOD("local_positions", "dirs", "heights", "origin", "e1", "up", "e3"),
+			&PlanetCrustNative::local_positions);
+	ClassDB::bind_method(D_METHOD("grid_normals", "positions", "cells"), &PlanetCrustNative::grid_normals);
+	ClassDB::bind_method(D_METHOD("ground_colours", "dirs", "heights", "normals", "cells"),
+			&PlanetCrustNative::ground_colours);
+	ClassDB::bind_method(D_METHOD("triangles", "positions", "normals", "colours", "cells"),
+			&PlanetCrustNative::triangles);
 }
 
 // [seed, frequency, octaves, fractal type (0 none, 1 fbm, 2 ridged)] -> a smooth simplex noise, as
@@ -102,6 +111,7 @@ void PlanetCrustNative::setup(const Dictionary &p_config) {
 	for (int index = 0; index < 3; index++) {
 		configure(valleys[index], valley_noises[index]);
 	}
+	cube_faces = p_config["faces"];
 	configure(craton, p_config["craton"]);
 	configure(basin, p_config["basin"]);
 }
@@ -405,6 +415,154 @@ PackedColorArray PlanetCrustNative::colours(const PackedVector3Array &p_dirs,
 		Vector3 p = p_dirs[index] * (real_t)radius;
 		double speckle = (double)detail.at(p) * 0.5 + 0.5;
 		result[index] = rock_colour(p_dirs[index], p_heights[index], p_steeps[index], speckle);
+	}
+	return result;
+}
+
+// The directions of a tile's grid (PlanetTile.direction on the cube face, s and t from -1 to 1):
+// `cells + 3` points a side, the first and the last being the ring round the tile.
+PackedVector3Array PlanetCrustNative::tile_dirs(int p_face, double p_s0, double p_s1, double p_t0, double p_t1,
+		int p_cells) const {
+	const int side = p_cells + 3;
+	PackedVector3Array result;
+	result.resize(side * side);
+	const Vector3 normal = cube_faces[p_face * 3];
+	const Vector3 u = cube_faces[p_face * 3 + 1];
+	const Vector3 v = cube_faces[p_face * 3 + 2];
+	const double quarter_pi = 3.14159265358979323846 * 0.25;
+	for (int row = 0; row < side; row++) {
+		double t = p_t0 + (p_t1 - p_t0) * (double)(row - 1) / (double)p_cells;
+		double b = std::tan(t * quarter_pi);
+		for (int column = 0; column < side; column++) {
+			double s = p_s0 + (p_s1 - p_s0) * (double)(column - 1) / (double)p_cells;
+			double a = std::tan(s * quarter_pi);
+			Vector3 direction = normal + u * (real_t)a + v * (real_t)b;
+			result[row * side + column] = direction.normalized();
+		}
+	}
+	return result;
+}
+
+// The grid's points as positions in the tile's own axes (PlanetTile._to_local), measured from the
+// tile's middle in doubles, so a tile of a planet as big as the Earth is exact.
+PackedVector3Array PlanetCrustNative::local_positions(const PackedVector3Array &p_dirs,
+		const PackedFloat32Array &p_heights, const PackedFloat64Array &p_origin, const Vector3 &p_e1,
+		const Vector3 &p_up, const Vector3 &p_e3) const {
+	PackedVector3Array result;
+	result.resize(p_dirs.size());
+	for (int index = 0; index < p_dirs.size(); index++) {
+		double reach = radius + (double)p_heights[index];
+		double dx = (double)p_dirs[index].x * reach - p_origin[0];
+		double dy = (double)p_dirs[index].y * reach - p_origin[1];
+		double dz = (double)p_dirs[index].z * reach - p_origin[2];
+		result[index] = Vector3((real_t)(dx * p_e1.x + dy * p_e1.y + dz * p_e1.z),
+				(real_t)(dx * p_up.x + dy * p_up.y + dz * p_up.z),
+				(real_t)(dx * p_e3.x + dy * p_e3.y + dz * p_e3.z));
+	}
+	return result;
+}
+
+// The tile's triangles, two to each square of the grid (PlanetTile._triangle and
+// MeshBuilder.add_tri_smooth): three vertices a triangle with the facet's flat colour (the mean
+// of its corners') and the corners' smooth colours as bytes, plus the collision faces.
+Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
+		const PackedVector3Array &p_normals, const PackedColorArray &p_colours, int p_cells) const {
+	const int side = p_cells + 3;
+	const int count = p_cells * p_cells * 2;
+	PackedVector3Array vertices;
+	PackedVector3Array normals;
+	PackedColorArray flats;
+	PackedByteArray custom;
+	PackedVector3Array faces;
+	vertices.resize(count * 3);
+	normals.resize(count * 3);
+	flats.resize(count * 3);
+	custom.resize(count * 3 * 4);
+	faces.resize(count * 3);
+	int at = 0;
+	for (int row = 1; row <= p_cells; row++) {
+		for (int column = 1; column <= p_cells; column++) {
+			const int i00 = row * side + column;
+			const int i10 = i00 + 1;
+			const int i01 = i00 + side;
+			const int i11 = i01 + 1;
+			const int quads[2][3] = { { i00, i01, i10 }, { i10, i01, i11 } };
+			for (int which = 0; which < 2; which++) {
+				const int *ids = quads[which];
+				Vector3 a = p_positions[ids[0]];
+				Vector3 b = p_positions[ids[1]];
+				Vector3 c = p_positions[ids[2]];
+				int first = 1;
+				int second = 2;
+				if ((b - a).cross(c - a).y < 0.0f) {
+					b = p_positions[ids[2]];
+					c = p_positions[ids[1]];
+					first = 2;
+					second = 1;
+				}
+				faces[at * 3] = a;
+				faces[at * 3 + 1] = c;
+				faces[at * 3 + 2] = b;
+				const Color mean = (p_colours[ids[0]] + p_colours[ids[1]] + p_colours[ids[2]]) / 3.0f;
+				const int corner[3] = { ids[0], ids[first], ids[second] };
+				const Vector3 corner_points[3] = { a, b, c };
+				// the builder wants a, c, b: its corner numbers 0, 2, 1
+				const int order[3] = { 0, 2, 1 };
+				for (int slot = 0; slot < 3; slot++) {
+					const int k = order[slot];
+					const int out = at * 3 + slot;
+					vertices[out] = corner_points[k];
+					normals[out] = p_normals[corner[k]];
+					flats[out] = mean;
+					const Color smooth = p_colours[corner[k]];
+					custom[out * 4] = (uint8_t)(int)(smooth.r * 255.0f);
+					custom[out * 4 + 1] = (uint8_t)(int)(smooth.g * 255.0f);
+					custom[out * 4 + 2] = (uint8_t)(int)(smooth.b * 255.0f);
+					custom[out * 4 + 3] = 255;
+				}
+				at++;
+			}
+		}
+	}
+	Dictionary result;
+	result["vertices"] = vertices;
+	result["normals"] = normals;
+	result["colours"] = flats;
+	result["custom"] = custom;
+	result["faces"] = faces;
+	return result;
+}
+
+// The smooth normal of every point inside the ring (PlanetTile's normals loop): the cross product
+// of the two ways across the point, turned to face up.
+PackedVector3Array PlanetCrustNative::grid_normals(const PackedVector3Array &p_positions, int p_cells) const {
+	const int side = p_cells + 3;
+	PackedVector3Array result;
+	result.resize(side * side);
+	for (int row = 1; row <= p_cells + 1; row++) {
+		for (int column = 1; column <= p_cells + 1; column++) {
+			Vector3 along = p_positions[row * side + column + 1] - p_positions[row * side + column - 1];
+			Vector3 down = p_positions[(row + 1) * side + column] - p_positions[(row - 1) * side + column];
+			Vector3 normal = along.cross(down).normalized();
+			result[row * side + column] = normal.y >= 0.0f ? normal : -normal;
+		}
+	}
+	return result;
+}
+
+// The rock colour of every point inside the ring, from its direction, height and steepness.
+PackedColorArray PlanetCrustNative::ground_colours(const PackedVector3Array &p_dirs,
+		const PackedFloat32Array &p_heights, const PackedVector3Array &p_normals, int p_cells) const {
+	const int side = p_cells + 3;
+	PackedColorArray result;
+	result.resize(side * side);
+	for (int row = 1; row <= p_cells + 1; row++) {
+		for (int column = 1; column <= p_cells + 1; column++) {
+			const int index = row * side + column;
+			Vector3 p = p_dirs[index] * (real_t)radius;
+			double speckle = (double)detail.at(p) * 0.5 + 0.5;
+			result[index] = rock_colour(p_dirs[index], p_heights[index], 1.0 - (double)p_normals[index].y, speckle);
+		}
 	}
 	return result;
 }

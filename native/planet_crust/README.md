@@ -18,3 +18,13 @@ python -m venv E:/Godot/cpp/venv && E:/Godot/cpp/venv/Scripts/pip install scons
 Then `native/planet_crust/build.sh` builds the single precision (standard editor) and the double
 precision (E:\Godot\double) libraries into `bin/` (not committed). A library must match the engine's
 precision, or Godot refuses to load it.
+
+## What it does (measured, Earth preset, standard build)
+
+- `heights` / `colours`: a ground point 1.8 us instead of 8.9 us, a colour 0.75 us instead of 3.6 us
+  (the sea floor is fastest: the layers that are 0 over the sea are not asked for there).
+- `tile_dirs`, `local_positions`, `grid_normals`, `ground_colours`, `triangles`: a whole tile's
+  grid, normals, colours and triangles (with the collider faces) in a few calls.
+- A full-detail tile: 48 ms (GDScript) -> 9.5 ms. The pictures differ by 0.05 of 255 on average.
+- Not covered (GDScript is used): a planet with rivers on (the hydrology cuts the ground in
+  GDScript), the sea, the water, the plants.

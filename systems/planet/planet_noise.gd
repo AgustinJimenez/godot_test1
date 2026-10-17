@@ -112,10 +112,18 @@ func _make_native() -> void:
 		"hills": _noise_config(_hills), "gullies": _noise_config(_gullies),
 		"detail": _noise_config(_detail), "massif": _noise_config(_massif),
 		"chain": _noise_config(_chain), "foothills": _noise_config(_foothills),
-		"valleys": valley_configs, "craton": _noise_config(rock._craton),
+		"faces": _cube_faces(), "valleys": valley_configs, "craton": _noise_config(rock._craton),
 		"basin": _noise_config(rock._basin),
 	})
 	native = made
+
+
+func _cube_faces() -> PackedVector3Array:
+	var faces := PackedVector3Array()
+	for face: Array in PlanetTile.FACES:
+		for axis: Vector3 in face:
+			faces.append(axis)
+	return faces
 
 
 func _noise_config(source: FastNoiseLite) -> Array:

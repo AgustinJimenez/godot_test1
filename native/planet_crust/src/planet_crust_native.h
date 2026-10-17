@@ -54,6 +54,7 @@ private:
 	Noise rolling, ranges, range_mask, hills, gullies, detail; // the ground's
 	Noise massif, chain, foothills, valleys[3]; // the rough ground and the valleys
 	Noise craton, basin; // the rock's
+	PackedVector3Array cube_faces; // the six cube faces: [normal, u, v] each
 
 	static void configure(Noise &r_noise, const Array &p_config);
 	Vector3 plate_shift(const Vector3 &p_dir) const;
@@ -75,6 +76,15 @@ public:
 	PackedColorArray colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedFloat32Array &p_steeps) const;
 	PackedFloat32Array tectonic_heights(const PackedVector3Array &p_dirs) const;
+	// the ground of one tile (a grid of `cells + 3` points a side, one ring round the tile):
+	PackedVector3Array tile_dirs(int p_face, double p_s0, double p_s1, double p_t0, double p_t1, int p_cells) const;
+	PackedVector3Array local_positions(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
+			const PackedFloat64Array &p_origin, const Vector3 &p_e1, const Vector3 &p_up, const Vector3 &p_e3) const;
+	PackedVector3Array grid_normals(const PackedVector3Array &p_positions, int p_cells) const;
+	PackedColorArray ground_colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
+			const PackedVector3Array &p_normals, int p_cells) const;
+	Dictionary triangles(const PackedVector3Array &p_positions, const PackedVector3Array &p_normals,
+			const PackedColorArray &p_colours, int p_cells) const;
 };
 
 } // namespace godot
