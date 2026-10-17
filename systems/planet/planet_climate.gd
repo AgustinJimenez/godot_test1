@@ -38,6 +38,9 @@ func build(noise: PlanetNoise) -> void:
 	clock.day_seconds = noise.settings.day_seconds
 	clock.year_days = noise.settings.year_days
 	clock.axial_tilt = deg_to_rad(noise.settings.axial_tilt)
+	clock.insolation = noise.settings.insolation
+	clock.eccentricity = noise.settings.eccentricity
+	clock.perihelion_share = noise.settings.perihelion_share
 	seasons.build(noise, clock)
 	for row in HEIGHT: # the climate's temperature is the mean of the year
 		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI

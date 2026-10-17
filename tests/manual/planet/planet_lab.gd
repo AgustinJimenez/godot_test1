@@ -203,8 +203,52 @@ func _print_universe_table() -> bool:
 	return true
 
 
+## `--climate-check` (headless): builds the climate with and without the wind and prints
+## CLIMATE_CHECK, which passes when the wind makes the windward coasts warmer than the leeward ones.
+func _climate_check() -> bool:
+	if not "--climate-check" in OS.get_cmdline_user_args():
+		return false
+	var noise := PlanetNoise.new(PlanetSettings.new())
+	var clock := PlanetClock.new()
+	var calm := PlanetSeasons.new()
+	calm.wind = 0.0
+	calm.build(noise, clock)
+	var windy := PlanetSeasons.new()
+	windy.build(noise, clock)
+	var still := calm.coast_contrast()
+	var moving := windy.coast_contrast()
+	var monsoon := _monsoon_swing(noise)
+	var verdict := "PASS" if moving > still + 0.5 and monsoon > 0.05 else "FAIL"
+	print("CLIMATE_CHECK %s calm=%.2f windy=%.2f monsoon=%.2f" % [verdict, still, moving, monsoon])
+	get_tree().quit()
+	return true
+
+
+## The largest rise of cloud readiness, wet season against dry season, over the tropical land.
+func _monsoon_swing(noise: PlanetNoise) -> float:
+	var weather := PlanetWeather.new(noise)
+	var clock := PlanetClock.new()
+	var best := 0.0
+	for lat_degrees in range(-30, 31, 10):
+		for lon_degrees in range(-180, 180, 15):
+			var lat := deg_to_rad(float(lat_degrees))
+			var lon := deg_to_rad(float(lon_degrees))
+			var dir := Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+			if noise.macro_height(dir.x, dir.y, dir.z) < 0.0:
+				continue
+			var low := INF
+			var high := -INF
+			for step in 12:
+				clock.set_year_share(float(step) / 12.0)
+				var ready := weather.readiness(dir, clock)
+				low = minf(low, ready)
+				high = maxf(high, ready)
+			best = maxf(best, high - low)
+	return best
+
+
 func _ready() -> void:
-	if _print_universe_table():
+	if _climate_check() or _print_universe_table():
 		return
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()

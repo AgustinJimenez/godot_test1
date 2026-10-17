@@ -69,7 +69,25 @@ func readiness(dir: Vector3, clock: PlanetClock) -> float:
 	var ready := 0.06 + 0.3 * moisture + 0.8 * trade_belt * moisture
 	ready += 0.9 * storms * (0.5 + 0.5 * moisture) + 0.2 * wet * moisture
 	ready += 0.25 * smoothstep(0.9, 1.4, absf(lat)) # the cloud decks of the polar regions
+	ready += _monsoon(dir, clock, wet)
 	return clampf(ready * (1.0 - 0.65 * sinking), 0.0, 1.0)
+
+
+## The monsoon: in the warm half of the year a big land mass in the low latitudes heats more than
+## the sea beside it, its air rises and draws the moist air in from the sea (a wet season, more
+## cloud); in the cool half the air sinks and the wind turns the other way (a dry season). Found
+## from the land's own temperature against its yearly mean, so it is a function of the date and
+## only the land that has a rainy climate has a wet season to speak of.
+func _monsoon(dir: Vector3, clock: PlanetClock, wet: float) -> float:
+	if _noise.macro_height(dir.x, dir.y, dir.z) < 0.0:
+		return 0.0
+	var lat := asin(clampf(dir.y, -1.0, 1.0))
+	var tropics := exp(-pow(lat / 0.6, 2.0))
+	var seasons := _noise.climate.seasons
+	var anomaly := seasons.at(dir, clock.year_share()) - seasons.mean_at(dir)
+	var wetter := smoothstep(0.0, 8.0, anomaly)
+	var drier := smoothstep(0.0, 8.0, -anomaly)
+	return tropics * (0.5 * wetter * (0.3 + wet) - 0.2 * drier)
 
 
 ## The moisture the air picks up at `dir` now (0..1): a warm sea gives off a great deal, wet land

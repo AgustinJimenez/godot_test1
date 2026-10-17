@@ -31,9 +31,11 @@ const MIX := 0.3 ## share of a cell's heat shared with its neighbours each pass
 const PASSES := 3 ## passes a step
 const HOT := 27.0 ## degrees C above which evaporation and cloud take most of the extra heat
 const MAX_YEARS := 8
+const WIND := 0.2 ## share of a cell the zonal wind carries the heat each pass (at its strongest)
 
 var mean := PackedFloat32Array() ## degrees C at sea level, averaged over the year
 var _cycle: Array[PackedFloat32Array] = [] # SNAPSHOTS grids of degrees C at sea level
+var wind := WIND ## the lab sets 0 to see the climate without the wind
 var _sea := PackedByteArray() # 1 where the cell is sea
 
 
@@ -99,7 +101,64 @@ func _step(heat: PackedFloat32Array, light: PackedFloat32Array, clock: PlanetClo
 				balance = HOT + (balance - HOT) * 0.35
 			heat[index] = degrees + (balance - degrees) * (sea_pull if _sea[index] == 1 else land_pull)
 	for pass_number in PASSES:
+		_carry(heat)
 		_mix(heat)
+
+
+## The heat the zonal wind carries: eastward in the middle latitudes (the westerlies), westward in
+## the tropics (the trade winds), each cell taking some of the heat of the cell the wind comes from.
+## So the air that crosses the sea first reaches the land warm (or cool): the west coasts of the
+## continents are milder than the east ones.
+func _carry(heat: PackedFloat32Array) -> void:
+	if wind <= 0.0:
+		return
+	var moved := heat.duplicate()
+	for row in HEIGHT:
+		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
+		var push := -cos(3.0 * lat) * wind # + toward the east, - toward the west
+		for column in WIDTH:
+			var index := row * WIDTH + column
+			var side := (column + WIDTH - 1) % WIDTH if push > 0.0 else (column + 1) % WIDTH
+			var from := row * WIDTH + side
+			moved[index] = heat[index] + (heat[from] - heat[index]) * absf(push)
+	for index in heat.size():
+		heat[index] = moved[index]
+
+
+## How much wider the yearly swing of temperature is on the land where the wind comes off the land
+## than where it comes off the sea (degrees C, the middle latitudes of both hemispheres): the east
+## coasts against the west ones, which the sea keeps mild. For the lab: it should grow with `wind`.
+func coast_contrast() -> float:
+	var windward := 0.0
+	var leeward := 0.0
+	var windward_count := 0
+	var leeward_count := 0
+	for row in HEIGHT:
+		var lat := absf((0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI)
+		if lat < deg_to_rad(35.0) or lat > deg_to_rad(65.0):
+			continue
+		for column in WIDTH:
+			var index := row * WIDTH + column
+			if _sea[index] == 1:
+				continue
+			var west_sea := _sea[row * WIDTH + (column + WIDTH - 1) % WIDTH] == 1
+			var east_sea := _sea[row * WIDTH + (column + 1) % WIDTH] == 1
+			if west_sea == east_sea:
+				continue
+			var low := INF
+			var high := -INF
+			for picture in _cycle:
+				low = minf(low, picture[index])
+				high = maxf(high, picture[index])
+			if west_sea:
+				windward += high - low
+				windward_count += 1
+			else:
+				leeward += high - low
+				leeward_count += 1
+	if windward_count == 0 or leeward_count == 0:
+		return 0.0
+	return leeward / float(leeward_count) - windward / float(windward_count)
 
 
 ## The heat shared between neighbouring cells (a diffusion: the sea wraps east-west, the poles are
