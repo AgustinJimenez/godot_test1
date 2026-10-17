@@ -135,6 +135,7 @@ func self_check() -> bool:
 	var spring := _tide_range(tide)
 	tide.time = tide.day_seconds * tide.month_days * 0.25
 	ok = ok and spring > _tide_range(tide) * 1.2 and spring > 0.0
+	ok = ok and _eclipse_check()
 	ok = ok and system(3).system_seed == system(3).system_seed and system_seed(1) != system_seed(2)
 	return ok
 
@@ -151,3 +152,36 @@ static func _tide_range(clock: PlanetClock) -> float:
 		low = minf(low, value)
 	clock.time = start
 	return high - low
+
+
+## Eclipses from the geometry: with the moon's orbit flat they happen at new moon (the star's
+## light covered) and full moon (the moon in the planet's shadow), not at the quarters, and a
+## tilted orbit away from the nodes has none.
+static func _eclipse_check() -> bool:
+	var clock := PlanetClock.new()
+	clock.moon_tilt = 0.0
+	clock.set_year_share(0.0)
+	var month := clock.day_seconds * clock.month_days
+	var best_new := 0.0
+	var best_full := 0.0
+	var quarter := 0.0
+	for step in 4000:
+		clock.time = month * step / 4000.0
+		var sub := PlanetMoon.in_body(clock)
+		var phase := PlanetMoon.lit(clock)
+		if phase < 0.0001:
+			best_new = maxf(best_new, PlanetMoon.solar_cover(clock, sub))
+		elif phase > 0.9999:
+			best_full = maxf(best_full, PlanetMoon.lunar_depth(clock))
+		elif absf(phase - 0.5) < 0.1:
+			quarter = maxf(quarter, PlanetMoon.solar_cover(clock, sub))
+			quarter = maxf(quarter, PlanetMoon.lunar_depth(clock))
+	clock.moon_tilt = deg_to_rad(5.1)
+	clock.set_year_share(0.25) # the nodes are at the equinoxes: no eclipse at the solstice
+	var tilted := 0.0
+	for step in 4000:
+		clock.time = month * step / 4000.0
+		tilted = maxf(tilted, PlanetMoon.lunar_depth(clock))
+		tilted = maxf(tilted, PlanetMoon.solar_cover(clock, PlanetMoon.in_body(clock)))
+	print("ECLIPSES new=%.2f full=%.2f quarter=%.2f tilted=%.2f" % [best_new, best_full, quarter, tilted])
+	return best_new > 0.5 and best_full > 0.5 and quarter == 0.0 and tilted == 0.0
