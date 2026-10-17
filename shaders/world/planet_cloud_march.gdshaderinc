@@ -74,6 +74,9 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 	float r1 = r0 + cloud_depth;
 	float rc = length(origin);
 	float b = dot(origin, dir);
+	// how far the horizon of the layer's floor is: the fades below are for a view from the ground,
+	// and from high up the whole cap of the planet in sight has to keep its clouds
+	float horizon = sqrt(max(rc * rc - r0 * r0, 0.0));
 	float disc1 = b * b - (rc * rc - r1 * r1);
 	if (disc1 <= 0.0) {
 		return none;
@@ -100,7 +103,7 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 		t1 = min(t1, -b - sqrt(disc_ground));
 	}
 	t1 = min(min(t1, t_limit), t0 + 12000.0);
-	if (t0 > 40000.0 || t1 <= t0 || t_out1 < 0.0) {
+	if (t0 > 40000.0 + horizon || t1 <= t0 || t_out1 < 0.0) {
 		return none;
 	}
 	mat3 rot = mat3(planet_from_world);
@@ -135,7 +138,7 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 			continue;
 		}
 		// the far end of the way thins out (a hard end to the march would show as an edge)
-		float density = cloud_density(rot * p, h, true) * (1.0 - smoothstep(5000.0, 11000.0, t));
+		float density = cloud_density(rot * p, h, true) * (1.0 - smoothstep(5000.0 + horizon, 11000.0 + horizon, t));
 		if (density < 0.004) {
 			continue;
 		}
@@ -158,6 +161,10 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 	// far clouds melt into the air: along the way there is little of it high up
 	float mid = t0 + (t1 - t0) * 0.5;
 	float air_there = exp(-max(length(origin + dir * mid) - radius, 0.0) / 2500.0);
-	float haze = exp(-mid / 9000.0 * air_there);
+	float air_path = mid;
+	if (rc > r1) {
+		air_path = min(mid, 9000.0); // above the layer, only the lower air is between
+	}
+	float haze = exp(-air_path / 9000.0 * air_there);
 	return vec4(col * haze, seen + (1.0 - haze) * (1.0 - seen));
 }

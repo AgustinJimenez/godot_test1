@@ -395,7 +395,10 @@ func _physics_process(delta: float) -> void:
 	if swim != null:
 		atmosphere.underwater = swim.underwater
 	var camera := get_viewport().get_camera_3d()
-	if camera != null and camera.far < settings.radius:
-		camera.far = settings.radius * 1.2
+	if camera != null:
+		# far enough to see the whole cap of the planet in sight: its horizon is that far away
+		var high := maxf(altitude(), 0.0)
+		var horizon := sqrt(high * (2.0 * settings.radius + high))
+		camera.far = maxf(settings.radius * 1.2, horizon * 1.1 + 2000.0)
 	atmosphere.global_position = _target.global_position
 	atmosphere.altitude = altitude()
