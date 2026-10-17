@@ -27,11 +27,11 @@ var _year_start := 0.0 # the share of the year (0..1) at time 0, 0 being the nor
 ## The seconds of one turn of the planet against the stars (the sidereal day): a bit shorter than
 ## the solar day, because the planet also goes round the star (one more turn in a year than there
 ## are days).
-func sidereal_seconds() -> float:
+func _sidereal_seconds() -> float:
 	return 1.0 / (1.0 / day_seconds + 1.0 / (year_days * day_seconds))
 
 
-func year_seconds() -> float:
+func _year_seconds() -> float:
 	return year_days * day_seconds
 
 
@@ -74,6 +74,18 @@ func set_year_share(share: float) -> void:
 
 
 ## A copy of this clock as it is now (a worker thread can read it while the game moves on).
+## The numbers a save keeps to bring the clock back exactly.
+func snapshot() -> Dictionary:
+	return {"time": time, "year_start": _year_start, "spin_offset": _spin_offset}
+
+
+## Brings the clock back to a `snapshot`.
+func restore(state: Dictionary) -> void:
+	time = float(state.get("time", time))
+	_year_start = float(state.get("year_start", _year_start))
+	_spin_offset = float(state.get("spin_offset", _spin_offset))
+
+
 func copy() -> PlanetClock:
 	var other := PlanetClock.new()
 	other.day_seconds = day_seconds
@@ -89,29 +101,29 @@ func copy() -> PlanetClock:
 
 ## The share of the year (0..1, 0 the northern spring equinox).
 func year_share() -> float:
-	return fposmod(_year_start + time / year_seconds(), 1.0)
+	return fposmod(_year_start + time / _year_seconds(), 1.0)
 
 
 ## The planet's angle round the star (radians).
-func orbit_angle() -> float:
+func _orbit_angle() -> float:
 	return PI * 0.5 + TAU * year_share()
 
 
 ## The direction from the planet to its star, in the inertial frame (the orbit lies in x, z).
 func star_inertial() -> Vector3:
-	var angle := orbit_angle()
+	var angle := _orbit_angle()
 	return Vector3(-cos(angle), 0.0, -sin(angle))
 
 
 ## The planet's axis in the inertial frame: tilted from the ecliptic's normal (+Y), fixed in space.
-func axis_inertial() -> Vector3:
+func _axis_inertial() -> Vector3:
 	return Vector3(sin(axial_tilt), cos(axial_tilt), 0.0)
 
 
 ## The turn of the planet (radians) at the current time. Spinning the planet eastward (counter
 ## clockwise seen from the north pole) moves the star west across its sky.
 func spin_angle() -> float:
-	return _spin_offset - TAU * time / sidereal_seconds()
+	return _spin_offset - TAU * time / _sidereal_seconds()
 
 
 ## The star as seen from the planet's own frame (a unit vector: toward the star).
@@ -131,7 +143,7 @@ func sun_height_at(where: Vector3) -> float:
 ## The latitude (radians) over which the star stands straight up at noon today: how far the warm
 ## belt has moved. It is 0 at the equinoxes and the tilt at the solstices.
 func declination() -> float:
-	return asin(clampf(star_inertial().dot(axis_inertial()), -1.0, 1.0))
+	return asin(clampf(star_inertial().dot(_axis_inertial()), -1.0, 1.0))
 
 
 ## The local solar time at `where` in hours (12 is noon, when the star is on the local meridian).

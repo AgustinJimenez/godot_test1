@@ -89,6 +89,19 @@ wind that carries the cover (`PlanetWeather.zonal_wind`) carries the small shape
 (`PlanetWorld._drift_the_clouds`). The layer fades out between 850 and 1450 m above the ground,
 where the shell takes over. The old low-poly puffs are no longer used on the planet.
 
+## Saved planets
+
+`PlanetSave` (`systems/planet/planet_save.gd`) writes `user://planets/<name>.json`: the planet's
+settings (the same seed and numbers make the same planet, so the land is not stored) and the moment
+(`PlanetWorld.snapshot`: where the player stands, which way they face in the planet's frame, the
+clock, the speed of time, a forced weather). The Planet page of the Esc menu has "Save here", a list
+of saves with Open and Delete (opening reloads the scene with `PlanetMenu.pending` and
+`pending_state`, and `PlanetWorld.restored` puts the player back). The player is put on the ground
+at the saved place, whatever their height was. Opening still builds the ground from the seed, so
+the loading screen is the same; what a save spares is choosing the planet, the place and the time.
+Lab: `-- --world=NAME` or `-- --continue` (the newest), `-- --save-as=NAME`; `--planet-check`
+also runs `SAVE_CHECK`.
+
 ## Levels of the air
 
 The air has the Earth's levels, shrunk with the planet but not below a quarter (`PlanetAir.MIN_AIR_SCALE`):

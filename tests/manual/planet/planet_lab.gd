@@ -12,6 +12,7 @@ extends Node3D
 ##   -- --look-moon  the camera looks at the moon (with --view-alt)
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --fps  print the frame rate every 300 frames
+##   -- --world=NAME / --continue  open a saved planet (Planet page of the Esc menu saves them)
 ##   -- --planet-page  the Planet page of the Esc menu open from the start
 ##   -- --bare       no plants (to look at the ground)
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
@@ -28,6 +29,8 @@ var _checking := false
 var _walking := false
 var _weather_name := "" ## a WorldWeather.State name to force from the start (rain, snow...)
 var _report_fps := false ## print the frame rate now and then
+var restored_state := {} ## the moment of a save to go back to (--world=, --continue, the menu)
+var _save_as := "" ## save the planet under this name right after it starts
 var _planet_page := false ## open the Planet page of the Esc menu from the start
 var _look_moon := false ## point the camera at the moon (with --view-alt)
 var _show_map := false ## open the planet map (the M key) from the start
@@ -58,13 +61,48 @@ var _view_pitch := -18.0
 var _view_yaw := 0.0
 
 
+## Saves the planet, reads the save back and compares: the settings, the place and the clock.
+func _check_saving() -> void:
+	var before := planet.snapshot()
+	var ok := PlanetSave.save(planet, "_check")
+	var data := PlanetSave.load_data("_check")
+	var settings := PlanetSave.settings_from(data)
+	ok = ok and settings.world_seed == planet.settings.world_seed
+	ok = ok and is_equal_approx(settings.radius, planet.settings.radius)
+	ok = ok and is_equal_approx(settings.axial_tilt, planet.settings.axial_tilt)
+	var state: Dictionary = data.get("state", {})
+	var here: Array = state.get("direction", [0, 0, 0])
+	var was: Array = before["direction"]
+	for index in 3:
+		ok = ok and absf(float(here[index]) - float(was[index])) < 1.0e-6
+	var clock := PlanetClock.new()
+	clock.restore(state.get("clock", {}))
+	ok = ok and absf(clock.time - planet.clock.time) < 1.0e-3
+	ok = ok and PlanetSave.list().size() > 0
+	PlanetSave.delete("_check")
+	print("SAVE_CHECK %s" % ("PASS" if ok else "FAIL"))
+
+
 func _ready() -> void:
 	var settings := PlanetSettings.new()
 	if PlanetMenu.pending != null: # a new planet asked for in the Planet page of the menu
 		settings = PlanetMenu.pending
 		PlanetMenu.pending = null
+		restored_state = PlanetMenu.pending_state
+		PlanetMenu.pending_state = {}
 	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--radius="):
+		if arg == "--continue" or arg.begins_with("--world="):
+			var save_name := PlanetSave.latest() if arg == "--continue" \
+					else arg.trim_prefix("--world=")
+			var data := PlanetSave.load_data(save_name)
+			if data.is_empty():
+				print("NO_SAVE '%s'" % save_name)
+			else:
+				settings = PlanetSave.settings_from(data)
+				restored_state = data.get("state", {})
+		elif arg.begins_with("--save-as="):
+			_save_as = arg.trim_prefix("--save-as=")
+		elif arg.begins_with("--radius="):
 			settings.radius = arg.trim_prefix("--radius=").to_float()
 		elif arg.begins_with("--seed="):
 			settings.world_seed = arg.trim_prefix("--seed=").to_int()
@@ -114,6 +152,7 @@ func _ready() -> void:
 			_checking = true
 	planet = PlanetWorld.new()
 	planet.settings = settings
+	planet.restored = restored_state
 	add_child(planet)
 	var started := Time.get_ticks_msec()
 	if _view_alt > 0.0:
@@ -144,7 +183,12 @@ func _ready() -> void:
 			settings.max_level(), planet.surface.tiles.size(), Time.get_ticks_msec() - started,
 			spawn])
 	_start_up = spawn
+	if _save_as != "":
+		print("SAVED %s %s" % [_save_as, PlanetSave.save(planet, _save_as)])
+	var here := planet.planet_position().normalized()
+	print("LOCAL_HOUR %.2f year %.3f" % [planet.clock.local_hour(here), planet.clock.year_share()])
 	if _checking:
+		_check_saving()
 		var found := false
 		for button in player.hud.find_children("*", "Button", true, false):
 			found = found or (button as Button).text == "Planet"

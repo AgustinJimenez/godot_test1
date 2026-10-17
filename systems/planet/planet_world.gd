@@ -27,6 +27,7 @@ var weather: WorldWeather ## the effects of the weather; the planet picks the st
 var cloud_shell: PlanetCloudShell
 var weather_text := ""
 var _weather_timer := 0.0
+var restored := {} ## a save's moment (PlanetSave) to bring back when `start` runs
 var weather_override := -1 ## a WorldWeather.State to force, or -1 to follow the planet's climate
 var time_rate := 1.0 ## how fast time runs on top of `time_scale`: negative is backward, 0 stops it
 var clock := PlanetClock.new() ## the star, the orbit, the spin: where the sun is (real geometry)
@@ -102,6 +103,9 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 		swim.target = target as Player
 		swim.splash = splash
 		add_child(swim)
+	if direction == Vector3.ZERO and restored.has("direction"):
+		var saved: Array = restored["direction"]
+		direction = Vector3(saved[0], saved[1], saved[2]).normalized()
 	var dir := direction if direction != Vector3.ZERO else noise.find_spawn()
 	var reach := settings.radius + noise.height(dir.x, dir.y, dir.z) + 1.0
 	noise.clearing = dir
@@ -111,9 +115,19 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 		(target as Player).hud.call(&"add_menu_page", "Planet", page)
 	noise.clock = clock
 	clock.start(settings.start_year, settings.start_hour, dir)
+	if restored.has("clock"):
+		clock.restore(restored["clock"])
+		time_rate = float(restored.get("time_rate", time_rate))
+		weather_override = int(restored.get("weather_override", weather_override))
 	_set_the_sun()
 	frame.start(PackedFloat64Array([dir.x * reach, dir.y * reach, dir.z * reach]), Vector3.ZERO)
 	target.global_position = Vector3.ZERO
+	if restored.has("heading"):
+		var saved: Array = restored["heading"]
+		var along := frame.rot * Vector3(saved[0], saved[1], saved[2])
+		if Vector2(along.x, along.z).length() > 0.01:
+			target.rotation.y = atan2(-along.x, -along.z)
+	restored = {}
 	publish_frame()
 	if not (target is Player and surface.is_threaded()):
 		map.begin()
@@ -163,6 +177,24 @@ func _pick_the_weather() -> void:
 	var east := Vector3(-here.z, 0.0, here.x).normalized()
 	var wind := frame.rot * (east * -PlanetWeather.zonal_wind(lat)) # toward where it blows from
 	weather.forced_wind = Vector2(-wind.x, -wind.z) if wind.length() > 0.01 else Vector2.ZERO
+
+
+## What a save keeps of this moment: where the player stands (a unit direction from the centre) and
+## which way they face (in the planet's frame, which turns under them), the clock, the speed of time
+## and the weather forced, if any. PlanetSave writes it; `restored` takes it back.
+func snapshot() -> Dictionary:
+	var here := planet_position().normalized()
+	var state := {
+		"direction": [here.x, here.y, here.z],
+		"clock": clock.snapshot(),
+		"time_rate": time_rate,
+		"weather_override": weather_override,
+	}
+	if _target != null:
+		var forward := -_target.global_basis.z
+		var along := frame.rot.inverse() * Vector3(forward.x, 0.0, forward.z).normalized()
+		state["heading"] = [along.x, along.y, along.z]
+	return state
 
 
 ## The small clouds of the sky ride the wind the planet's cloud cover is carried by (PlanetWeather).

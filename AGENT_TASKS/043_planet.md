@@ -308,3 +308,6 @@ Birds and butterflies (WorldLife), weather, planet rotation / day-night from the
 planets, space.
 
 - Esc menu: a "Planet" page (`PlanetMenu`): time speed/jumps/sliders, weather override, new seed/radius, map. Lab: `--planet-page`.
+
+- Saved planets (`PlanetSave`, Planet page: Save here / Open / Delete; lab `--world=`, `--continue`, `--save-as=`, `SAVE_CHECK`).
+- Air: least scale 0.25 (`PlanetAir.MIN_AIR_SCALE`), clouds at 450-1150 m inside bright air; sunsets paler on small planets.
