@@ -6,6 +6,9 @@ Read `docs/planet_lessons.md` first (how to measure, the traps).
 Idea (user, 2026-10-17): cavern systems, and not only holes: a way of going under the ground that comes
 from the planet's geology.
 
+Decisions (user, 2026-10-17): **a maze that takes hours to explore, if possible, and realistic**; eruptions
+and everything else dangerous stay safe for now.
+
 ## Goal
 
 Caves that exist for a reason (the rock, the water, the heat), that can be entered from the surface,
@@ -36,6 +39,49 @@ Stay a pure function of the seed and the position, as the land is.
 - Cave rooms are bigger and more numerous where there is more water and more soluble rock; none in thin
   soil over hard crystalline rock.
 
+## Research (2026-10-17: what is published, so we copy real methods)
+
+- **Real caves form by a feedback**: water flows through a fracture, dissolves the rock, the passage widens,
+  more water flows. A proto-conduit grows slowly for a long time, then *breaks through* and speeds up by orders
+  of magnitude; competing paths then stop growing (Dreybrodt and Palmer). The **pattern depends on the
+  water**: concentrated recharge (a stream sinking) gives a *branchwork* of tributaries joining downhill
+  (vadose); diffuse recharge or rising water under a confining layer (artesian, hypogene, often gypsum or
+  limestone with acid water) gives an *angular maze* along the fracture grid, with little selection between
+  paths; a changing *water table* gives horizontal, looping levels (base-level conduits); a spongework of
+  small connected holes appears in some rocks. A quantitative study of 26 caves separates branchwork from
+  angular mazes from water-table/looping caves by their geometry and topology (nodes, loops, lengths).
+  So a "maze of hours" is a real thing (Mammoth Cave has over 600 km of passage, Jewel Cave over 300 km) and
+  it comes from the angular-maze and looping types.
+- **Paris, Guerin, Peytavie, Collon, Galin, "Synthesizing Geologically Coherent Cave Networks"**
+  (Computer Graphics Forum 2021, Pacific Graphics): builds the cave *skeleton* from geology: inputs are
+  inlets and outlets (where water enters and leaves), faults, fractures, inception horizons (bedding planes
+  where dissolution starts) and permeability contrasts; the skeleton is a set of **anisotropic shortest
+  paths** between inlets and outlets (paths are cheaper along fractures and horizons), computed gridless; the
+  *geometry* is a **signed distance function construction tree** of primitives with blending and warping
+  operators, with control over the cross-section shapes and the detail of the conduits. The authors' C++
+  re-implementation (MIT licence, no dependencies) makes the skeletons only; the network classification and
+  the implicit surface are not in it. Use the paper's method; write our own GDScript (or a small C++
+  module is *not* wanted: the project has no native code).
+- **Real-time caves in games** (Mark and Berechet, 2015, GPU pipeline; a hobby SDF project, ProcGrotto): a
+  tunnel layout from an L-system or Perlin worms, a signed distance field of it warped by layers of simplex
+  and Worley noise, meshed per chunk with marching cubes or surface nets on the GPU or a worker, **skipping
+  chunks that are all inside or all outside**; boolean operations on distance fields are min and max, so
+  carving and blending are cheap; octrees save memory for big volumes. This is design choice A below.
+- Not found: a comparison of surface nets with dual contouring on big cave systems in shipped games; we
+  decide by the spike's numbers.
+
+Sources: [Paris et al. 2021, Eurographics DL](https://diglib.eg.org/handle/10.1111/cgf14420),
+[the paper's HAL preprint](https://hal.archives-ouvertes.fr/hal-03331697),
+[project page](https://perso.liris.cnrs.fr/aparis/public_html/projects/paris2021_Karsts.html),
+[code (skeletons)](https://github.com/aparis69/Karst-Synthesis),
+[speleogenesis of 3D karst conduits, quantitative study](https://hal.univ-lorraine.fr/hal-01615432),
+[coupled reactive-transport karst model, 2023](https://link.springer.com/doi/10.1007/s12665-023-11035-6),
+[karst development models (Dreybrodt, Palmer, Klimchouk; EGU abstracts)](https://hess.copernicus.org/preprints/11/6519/2014/hessd-11-6519-2014.pdf),
+[Mark and Berechet, caves on the GPU](https://dc2.philarchive.org/rec/MARPGO),
+[ProcGrotto (SDF and marching cubes per chunk)](https://quintin-steiner.itch.io/procgrotto).
+I read abstracts and the project and repository pages, not the full papers: read the full paper before
+implementing the skeleton step.
+
 ## Design choices (to confirm with a spike)
 
 A. **Voxel / distance-field chunks near a cave only.** The surface stays a height field everywhere. Where
@@ -60,10 +106,25 @@ Recommendation: A for the entrance region and the first rooms, with the cave net
    ice, soil; from the plates' ages and boundaries, the climate and the sea history. Add it to the map as a
    layer and use it in the ground shader (rock colours by type, not by noise only: also feeds
    [057](057_terrain_realism.md)).
-3. **Cave field.** A 3D function (worm tunnels along the water table, rooms where soluble rock and water
-   meet; lava tubes down the slope of a volcano; sea caves along coastal cliffs) giving density; the
-   entrance candidates are where the field meets the surface on a steep face or a sinkhole.
-4. **Streaming.** Cave chunks are built only when the player is within a range of an entrance or inside;
+3. **Cave network (the paper's pipeline, per karst region).** For each region of soluble rock (a cell of
+   maybe 5 to 20 km across, found by the geology map, seeded from the region's id so it is the same every time):
+   place **inlets** (sinking streams, sinkholes, fed by the surface hydrology) and **outlets** (springs at
+   the lowest valley, the water table); lay **fractures** (a few orientation sets with spacing and
+   length from noise) and **inception horizons** (bedding planes by depth); compute the skeleton as
+   **anisotropic shortest paths** inlet to outlet (a graph on a coarse 3D grid, or gridless as the paper does;
+   edge cost low along fractures and horizons), then **classify** it (branchwork when recharge is
+   concentrated, angular maze when diffuse or artesian: add many cross-links along the fracture grid and
+   loops at a few levels of the water table), subdivide the edges, and add rooms where paths cross and
+   at the horizons. Scale target: **tens of kilometres of passage per region**, so a thorough exploration
+   takes hours at walking pace (about 5 km/h in a cave is optimistic: allow for climbs and squeezes).
+   The skeleton is a *graph per region*, small (thousands of nodes), computed once on a thread and kept in
+   memory; the geometry is made from it only near the player (step 4). Entrance candidates are where
+   the skeleton meets the surface (a sinkhole, a spring, a cliff face).
+4. **Geometry and streaming.** The geometry is an SDF construction tree along the skeleton (tubes of varying
+   cross-section: round for phreatic, keyhole or canyon-shaped for vadose, angular along fractures; blends at
+   junctions; noise warping for the wall detail; flat ceilings at bedding planes); chunks are meshed from
+   it (surface nets), skipping empty and full ones. Cave chunks are built only when the player is within a
+   range of an entrance or inside;
    the planet's frame turning and recentring (`PlanetFrame`) must move them; free them when far.
 5. **Inside look.** Darkness: ambient light fades with depth and distance from the entrance (a function
    of the cave's openness); fog with a cool tint; no sky; stalactites, stalagmites, columns, flowstone,
@@ -95,5 +156,9 @@ Recommendation: A for the entrance region and the first rooms, with the cave net
 - Lighting in Godot without baked probes: a dark cave needs a torch or emissive features (the player's
   tools are parked: [063](063_things_to_do_on_the_planet.md)); a cave with no light is unplayable, so a
   simple head lamp may be needed early.
-- **Open (user):** how deep and how large should a cave system be (a few rooms, or a maze of hours)? Start
-  with one cave of a few rooms per geological region.
+- **Decided (user, 2026-10-17):** a maze that takes hours, realistic. Build it in steps: the spike (one
+  tunnel), then one karst region with a branchwork, then the maze pattern, and only then the size.
+- A maze of hours needs a map of the cave for the player (a survey drawn as they explore, the way real
+  cavers do) and a compass or a way back: add them with the cave, not later.
+- Realism limits: we model the pattern and the shapes, not the chemistry (no dissolution simulation over
+  geological time; the skeleton comes from the paper's shortest-path method).

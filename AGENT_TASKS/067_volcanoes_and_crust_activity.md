@@ -3,6 +3,9 @@
 Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
+Decision (user, 2026-10-17): **eruptions are short events (temporary spikes) and stay safe for now**: no damage,
+scenery only.
+
 Idea (user, 2026-10-17): volcanoes, if the crust is active. The planet already has plates, so the cause is
 there; the activity of the crust becomes a property of the planet.
 
@@ -97,4 +100,4 @@ orbit) to near (a lava flow, ash, a crater you can stand in).
 - Eruptions are the first *dynamic* terrain: lava can change the ground a player stands on. Keep the ground
   shape fixed and make the lava a surface layer (a decal and a shader) first, not a height change.
 - Particles in large numbers are expensive; far plumes must be cloud-like volumes.
-- **Open (user):** do eruptions hurt (damage, death), or are they scenery? (Parked with the player, 063.)
+- **Decided (user, 2026-10-17):** eruptions are safe for now (scenery); revisit with the player work (063).
