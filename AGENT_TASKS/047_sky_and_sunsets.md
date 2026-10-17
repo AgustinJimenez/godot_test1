@@ -22,6 +22,9 @@ and a sky that costs what it should.
 - Not measured: the cost of the realtime sky radiance (re-rendered each frame) and of the sky shader
   (14 x 5 steps per pixel).
 
+The air's composition (gases, dust, haze) will change the sky's colours and the sunsets: see
+[065](065_atmosphere_composition.md); do the sunset layer here with that in mind (coefficients as data).
+
 ## Plan
 
 1. **Decouple the colour of sunsets from the planet's size.** Add a second, thin "dust and haze" layer

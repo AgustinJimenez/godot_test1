@@ -353,7 +353,8 @@ order and what depends on what:
 | 2 | [064](064_stars_and_life.md) stars and what their light does to life | 054 |
 | 2 | [047](047_sky_and_sunsets.md) sky and sunsets (the star's colour feeds it) | 064 |
 | 2 | [058](058_climate_and_orbit_depth.md) climate and orbit depth (tidal locking, insolation) | 064 |
-| 2 | [061](061_other_planet_types.md) other planet types | 054, 064 |
+| 2 | [065](065_atmosphere_composition.md) atmosphere composition and pressure (sky, greenhouse, weather) | 054, 064; shares work with 047 and 058 |
+| 2 | [061](061_other_planet_types.md) other planet types | 054, 064, 065 |
 | 2 | [048](048_cloud_polish.md) cloud polish | 047 for the cost budget |
 | 2 | [050](050_tree_look_fixes.md) tree look fixes | - |
 | 3 | [049](049_water_and_coasts.md) water and coasts | 058 for tides |

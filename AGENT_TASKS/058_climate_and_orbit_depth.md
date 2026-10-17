@@ -18,6 +18,9 @@ moon effects.
 - Orbit and spin are circular and constant (`PlanetClock`); axial tilt 23.4; the moon has a fixed orbit
   and phases (`PlanetMoon`, month 3.5 days); no tides.
 
+The greenhouse effect, the heat capacity of the air, wind patterns from the spin and what falls as
+"rain" depend on the atmosphere's composition and pressure: see [065](065_atmosphere_composition.md).
+
 ## Plan
 
 1. **Heat carried by the wind.** In `PlanetSeasons`, advect the temperature along the zonal wind (a

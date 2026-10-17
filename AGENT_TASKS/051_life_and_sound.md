@@ -16,6 +16,8 @@ weather, the biome, the time of day and where the player is (under the sky, in a
   `WorldWeather`. Footsteps exist for the player in the project; per-surface footsteps on the planet are not
   checked.
 
+Sound speed and loudness depend on the air's density: see [065](065_atmosphere_composition.md).
+
 ## Plan
 
 1. **Ambience bus and layers.** Wind (by `WorldWind` strength, louder in the open, softer in a forest),

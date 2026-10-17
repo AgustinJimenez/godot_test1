@@ -20,6 +20,8 @@ look at from afar. All from the same code with different settings, following "re
 - There is no gas composition, no pressure, no airless planet (the sky shader has space black above the
   air, so an air of zero thickness is nearly supported), no star colour.
 
+The atmosphere item (composition, pressure, dust) is its own task: [065](065_atmosphere_composition.md).
+
 ## Plan
 
 1. **Atmosphere settings.** Pressure (scale of the density), composition as scattering colours (blue

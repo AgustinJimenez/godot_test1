@@ -36,6 +36,9 @@ light sets the planet's sky, climate, day length of the year, and the colours an
   ozone layer (from oxygen made by plants) is a result of life, not a given.
 - **Time:** a planet around a short-lived star has had little time for life; the star's age is a setting.
 
+The light that reaches the ground is the star's light filtered by the air, so the air's composition matters
+here too (ozone and UV, haze, the ground spectrum): see [065](065_atmosphere_composition.md).
+
 ## Plan
 
 1. `Star` resource: mass -> L, R, T, colour (Planck sRGB), lifetime, a flare level for M stars; a lab table
