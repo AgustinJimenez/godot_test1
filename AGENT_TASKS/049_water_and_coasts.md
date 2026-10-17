@@ -1,6 +1,6 @@
 # 049 - Water and coasts
 
-Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **partly done (2026-10-17): no overlaps** (rivers end at the shore, sources in the sea are dropped, the ground between nodes is used for the level, nothing grows within `BANK` 4 m of a river, the river material draws after the sea and lakes; `WATER_CHECK` in `planet_check.sh` counts river points over the sea or above a lake); the plan below is not started. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

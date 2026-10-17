@@ -205,6 +205,25 @@ func _print_universe_table() -> bool:
 
 ## `--climate-check` (headless): builds the climate with and without the wind and prints
 ## CLIMATE_CHECK, which passes when the wind makes the windward coasts warmer than the leeward ones.
+func _water_check() -> bool:
+	if not "--water-check" in OS.get_cmdline_user_args():
+		return false
+	var made := PlanetSettings.new()
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--seed="):
+			made.world_seed = arg.trim_prefix("--seed=").to_int()
+		elif arg.begins_with("--radius="):
+			made.radius = arg.trim_prefix("--radius=").to_float()
+	var noise := PlanetNoise.new(made)
+	var report := noise.hydrology.overlap_report()
+	var clashes: int = report["over_sea"] + report["lake_clash"]
+	var verdict := "PASS" if clashes <= report["points"] / 1000 else "FAIL"
+	print("WATER_CHECK %s %s rivers=%d lakes=%d" % [verdict, report, noise.hydrology.river_cells,
+			noise.hydrology.lake_cells])
+	get_tree().quit()
+	return true
+
+
 func _climate_check() -> bool:
 	if not "--climate-check" in OS.get_cmdline_user_args():
 		return false
@@ -248,7 +267,7 @@ func _monsoon_swing(noise: PlanetNoise) -> float:
 
 
 func _ready() -> void:
-	if _climate_check() or _print_universe_table():
+	if _climate_check() or _water_check() or _print_universe_table():
 		return
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()

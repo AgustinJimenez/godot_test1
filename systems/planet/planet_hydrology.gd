@@ -266,10 +266,16 @@ func _smooth_rivers(noise: PlanetNoise) -> void:
 			widths = cut_widths
 		# the water runs downhill on the real ground: each node's level is below the ground there and
 		# never above the node upstream; where the ground falls under the sea the river ends
+		if noise.base_height(points[0].x, points[0].y, points[0].z) < 0.6:
+			continue # a source in the sea (the grid's ground and the real ground differ a little)
 		var lowest := INF
 		for k in points.size():
 			var ground := noise.base_height(points[k].x, points[k].y, points[k].z)
-			if ground < 0.6 and k > 0:
+			var dip := 1000.0 # the ground half way back to the last node (a bay can cut in between)
+			if k > 0:
+				var half := points[k - 1].lerp(points[k], 0.5).normalized()
+				dip = noise.base_height(half.x, half.y, half.z)
+			if (ground < 0.6 or dip < 0.6) and k > 0:
 				points.resize(k + 1)
 				levels.resize(k + 1)
 				widths.resize(k + 1)
@@ -277,6 +283,9 @@ func _smooth_rivers(noise: PlanetNoise) -> void:
 				lowest = minf(lowest, 0.0)
 				levels[k] = 0.0
 				break
+			if k > 0: # the ground between the nodes too, or the ribbon floats over a dip
+				var between := points[k - 1].lerp(points[k], 0.5).normalized()
+				lowest = minf(lowest, noise.base_height(between.x, between.y, between.z) - 1.0)
 			lowest = minf(lowest, ground - 1.0)
 			levels[k] = maxf(lowest, 0.0)
 		# the direction the river runs at each node (shared by the two pieces that meet there, so
@@ -332,6 +341,29 @@ func near_water(dir: Vector3, ground: float, margin: float) -> bool:
 			if distance < lerpf(float(piece[4]), float(piece[5]), t) * 0.5 + margin:
 				return true
 	return false
+
+
+## Looks for river water that overlaps other water, along every river piece: the number of points
+## checked, those on the centre line over the sea (the natural ground is under the sea level
+## there) and those inside a lake with the river's level over half a metre above the lake's. (A
+## river's level is above its own carved bed by design, so height above the bed is not a fault.)
+## For the lab (`WATER_CHECK`): both should be almost none.
+func overlap_report() -> Dictionary:
+	var report := {"points": 0, "over_sea": 0, "lake_clash": 0}
+	for key: int in _pieces:
+		for piece: Array in _pieces[key]:
+			for step in 5:
+				var t := float(step) * 0.25
+				var dir: Vector3 = (piece[0] as Vector3).lerp(piece[1] as Vector3, t).normalized()
+				var level := lerpf(float(piece[2]), float(piece[3]), t)
+				var ground := _noise.base_height(dir.x, dir.y, dir.z)
+				report["points"] += 1
+				if ground < 0.0:
+					report["over_sea"] += 1
+				var lake := lake_level_at(dir, ground)
+				if lake > -INF and level - lake > 0.5:
+					report["lake_clash"] += 1
+	return report
 
 
 func _push(keys: Array[float], ids: Array[int], key: float, id: int) -> void:

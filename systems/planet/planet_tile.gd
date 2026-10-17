@@ -63,6 +63,7 @@ static func river_material() -> ShaderMaterial:
 	if _river_material == null:
 		_river_material = ShaderMaterial.new()
 		_river_material.shader = preload("res://shaders/world/river.gdshader")
+		_river_material.render_priority = 1 # where water meets water, the river is drawn last
 	return _river_material
 
 
