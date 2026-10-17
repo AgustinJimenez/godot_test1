@@ -214,10 +214,10 @@ func _triangle(builder: MeshBuilder, faces: PackedVector3Array, ids: Array,
 		first = 2
 		second = 1
 	faces.append_array([a, c, b]) # clockwise from above is the front face: solid from above
-	var middle := (dirs[ids[0]] + dirs[ids[1]] + dirs[ids[2]]).normalized()
-	var normal := (b - a).cross(c - a).normalized()
-	var height := (heights[ids[0]] + heights[ids[1]] + heights[ids[2]]) / 3.0
-	var flat := _noise.facet_color(middle.x, middle.y, middle.z, height, 1.0 - absf(normal.y))
+	# the facet's own colour: the mean of its corners' (they were made from the crust, with the
+	# smooth steepness); asking the crust again for each of the ~4,600 triangles cost a quarter of
+	# a tile
+	var flat := (colors[ids[0]] + colors[ids[1]] + colors[ids[2]]) / 3.0
 	var corner_normals: Array[Vector3] = [normals[ids[0]], normals[ids[first]], normals[ids[second]]]
 	var corner_colors: Array[Color] = [colors[ids[0]], colors[ids[first]], colors[ids[second]]]
 	builder.add_tri_smooth(a, b, c, flat, corner_normals, corner_colors)
