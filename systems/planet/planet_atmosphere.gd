@@ -82,6 +82,8 @@ func set_cloud_parameters(material: ShaderMaterial) -> void:
 			else Vector3.UP)
 	material.set_shader_parameter(&"cloud_floor", cloud_floor)
 	material.set_shader_parameter(&"clouds_off", 1.0 if clouds_hidden else 0.0)
+	var cloud_quality: int = GraphicsSettings.get_graphics_value(&"cloud_quality")
+	material.set_shader_parameter(&"cloud_steps_max", [6.0, 10.0, 16.0][clampi(cloud_quality, 0, 2)])
 	material.set_shader_parameter(&"cloud_depth", CLOUD_DEPTH)
 	material.set_shader_parameter(&"cloud_drift", cloud_drift)
 	material.set_shader_parameter(&"cloud_dark", maxf(cloud_dark, overcast * 0.6))
@@ -163,4 +165,6 @@ func _apply() -> void:
 	var chosen: int = GraphicsSettings.get_graphics_value(&"tone_mapper")
 	environment.tonemap_mode = chosen as Environment.ToneMapper
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	sun.directional_shadow_max_distance = 220.0
+	var shadows: int = GraphicsSettings.get_graphics_value(&"shadow_quality")
+	sun.shadow_enabled = shadows > 0
+	sun.directional_shadow_max_distance = [0.0, 90.0, 160.0, 300.0][clampi(shadows, 0, 3)]

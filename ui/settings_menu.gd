@@ -12,6 +12,7 @@ var _preset_buttons: Array[Button] = []
 var _syncing := false
 var _tone_mapper: OptionButton
 var _hdr: CheckButton
+var _cloud_quality: OptionButton
 var _settings: Node
 
 @onready var low_button: Button = %LowButton
@@ -78,6 +79,18 @@ func _add_look_controls() -> void:
 	_hdr.toggled.connect(_on_toggle_changed.bind(&"hdr"))
 	parent.add_child(_hdr)
 	parent.move_child(_hdr, at + 2)
+	var cloud_label := Label.new()
+	cloud_label.text = "Cloud quality (the planet)"
+	parent.add_child(cloud_label)
+	parent.move_child(cloud_label, at + 3)
+	_cloud_quality = OptionButton.new()
+	for name_of: String in ["Low", "Medium", "High"]:
+		_cloud_quality.add_item(name_of)
+	_cloud_quality.item_selected.connect(func(index: int) -> void:
+		if not _syncing:
+			_settings.set_graphics_value(&"cloud_quality", index))
+	parent.add_child(_cloud_quality)
+	parent.move_child(_cloud_quality, at + 4)
 
 
 func refresh() -> void:
@@ -134,6 +147,7 @@ func _sync_controls() -> void:
 	glow.button_pressed = bool(_settings.get_graphics_value(&"glow"))
 	_tone_mapper.select(int(_settings.get_graphics_value(&"tone_mapper")))
 	_hdr.button_pressed = bool(_settings.get_graphics_value(&"hdr"))
+	_cloud_quality.select(int(_settings.get_graphics_value(&"cloud_quality")))
 	vsync.button_pressed = bool(_settings.get_graphics_value(&"vsync"))
 	max_fps.value = float(_settings.get_graphics_value(&"max_fps"))
 	render_scale_value.text = "%d%%" % roundi(render_scale.value)

@@ -5,6 +5,7 @@
 
 global uniform mat4 planet_from_world;
 uniform sampler2D cover_map : filter_linear, repeat_enable, hint_default_black;
+uniform float cloud_steps_max = 16.0; // the most samples a ray takes (the graphics setting)
 uniform float clouds_off = 0.0; // 1: the debug switch has the clouds hidden
 uniform float cloud_floor = 450.0; // m above the planet's radius where the layer begins
 uniform float cloud_depth = 700.0; // m thick
@@ -122,7 +123,7 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 		return none;
 	}
 	const int STEPS = 16;
-	int steps = int(clamp((t1 - t0) / 70.0, 6.0, float(STEPS))); // short ways need fewer samples
+	int steps = int(clamp((t1 - t0) / 70.0, 4.0, min(float(STEPS), cloud_steps_max))); // short ways need fewer
 	float step_len = (t1 - t0) / float(steps);
 	// seen from far, the puffs are too small to see: the billows grow with the distance
 	float grain = mix(1.0, 0.1, smoothstep(6000.0, 40000.0, t0));

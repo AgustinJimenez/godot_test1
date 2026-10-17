@@ -13,7 +13,7 @@ const SECTION := "graphics"
 const PRESET_NAMES: PackedStringArray = ["Low", "Medium", "High", "Ultra", "Custom"]
 const QUALITY_KEYS: Array[StringName] = [
 	&"render_scale", &"anti_aliasing", &"shadow_quality",
-	&"ssao", &"ssil", &"glow",
+	&"ssao", &"ssil", &"glow", &"cloud_quality",
 ]
 const DEFAULT_VALUES: Dictionary = {
 	&"render_scale": 1.0,
@@ -22,6 +22,7 @@ const DEFAULT_VALUES: Dictionary = {
 	&"ssao": true,
 	&"ssil": false,
 	&"glow": false,
+	&"cloud_quality": 2,
 	&"vsync": true,
 	&"max_fps": 120,
 	&"tone_mapper": Environment.TONE_MAPPER_FILMIC,
@@ -32,25 +33,25 @@ const PRESETS: Dictionary = {
 		&"render_scale": 0.65,
 		&"anti_aliasing": AntiAliasing.OFF,
 		&"shadow_quality": ShadowQuality.OFF,
-		&"ssao": false, &"ssil": false, &"glow": false,
+		&"ssao": false, &"ssil": false, &"glow": false, &"cloud_quality": 0,
 	},
 	Preset.MEDIUM: {
 		&"render_scale": 0.8,
 		&"anti_aliasing": AntiAliasing.FXAA,
 		&"shadow_quality": ShadowQuality.LOW,
-		&"ssao": false, &"ssil": false, &"glow": false,
+		&"ssao": false, &"ssil": false, &"glow": false, &"cloud_quality": 1,
 	},
 	Preset.HIGH: {
 		&"render_scale": 1.0,
 		&"anti_aliasing": AntiAliasing.TAA,
 		&"shadow_quality": ShadowQuality.MEDIUM,
-		&"ssao": true, &"ssil": false, &"glow": false,
+		&"ssao": true, &"ssil": false, &"glow": false, &"cloud_quality": 2,
 	},
 	Preset.ULTRA: {
 		&"render_scale": 1.15,
 		&"anti_aliasing": AntiAliasing.TAA,
 		&"shadow_quality": ShadowQuality.HIGH,
-		&"ssao": true, &"ssil": true, &"glow": true,
+		&"ssao": true, &"ssil": true, &"glow": true, &"cloud_quality": 2,
 	},
 }
 
@@ -195,6 +196,8 @@ func _sanitize_value(key: StringName, value: Variant) -> Variant:
 			return clampi(int(value), ShadowQuality.OFF, ShadowQuality.HIGH)
 		&"max_fps":
 			return clampi(int(value), 30, 240)
+		&"cloud_quality":
+			return clampi(int(value), 0, 2)
 		&"tone_mapper":
 			return clampi(int(value), Environment.TONE_MAPPER_LINEAR, Environment.TONE_MAPPER_AGX)
 		&"ssao", &"ssil", &"glow", &"vsync", &"hdr":

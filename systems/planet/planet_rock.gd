@@ -116,8 +116,9 @@ func colour(dir: Vector3, ground: float, steep: float, speckle: float) -> Color:
 	# the beds: bands that run level, in the sedimentary rocks
 	var sedimentary := w[Kind.LIMESTONE] + w[Kind.SANDSTONE] + w[Kind.RED_SANDSTONE] + w[Kind.SHALE]
 	var bed := maxf(_relief * 0.03, 6.0)
-	var layers := smoothstep(0.35, 0.65, fposmod(ground / bed + speckle * 0.5, 1.0))
-	rock = rock * (1.0 + (layers - 0.5) * 0.3 * sedimentary)
-	rock = rock * (0.88 + 0.24 * speckle)
+	# (no fine noise in the band's phase: it would break the beds into patches one facet big)
+	var layers := 0.5 + 0.5 * sin(ground / bed * TAU)
+	rock = rock * (1.0 + (layers - 0.5) * 0.24 * sedimentary)
+	rock = rock * (0.94 + 0.12 * speckle)
 	rock = rock.lerp(rock * 0.62, smoothstep(0.35, 0.8, steep))
 	return Color(clampf(rock.r, 0.0, 1.0), clampf(rock.g, 0.0, 1.0), clampf(rock.b, 0.0, 1.0))
