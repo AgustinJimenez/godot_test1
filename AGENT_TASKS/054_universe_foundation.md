@@ -88,3 +88,14 @@ still built the way the one planet is built today. No travel yet (that is [055](
   - Show local time (already in the Planet page) and, optionally later, the standard time and the true
     year next to it in the planet info panel; nothing else depends on it.
   - If it turns out not to matter, drop the standard time display and keep the numbers in the data.
+
+## Notes (autonomous session, 2026-10-17, user away)
+
+- Stage 3 begun: the star's colour tints the sun lamp, the sky and the clouds (`Star.light_tint`,
+  `PlanetSettings.star_mass` / `star_readability`, lab `--star-mass=M --star-readability=R`). The Sun is exactly
+  white, so the default planet looks the same. `PLANET_CHECK` and `SAVE_CHECK` pass.
+- Pictures (seed 1337, 17:30, clear, no plants): a red dwarf (0.15) gives a grey-green sky and warm rocks, 0.55 a
+  slightly warm one, 1.6 a bluer one. Only 75% of the colour difference is applied (the eye adapts,
+  `Star.ADAPTATION`). **The user has not judged these**: compare `--star-mass=0.15|0.55|1.0|1.6
+  --hour=17.5 --weather=clear --bare --view-alt=3 --view-pitch=8`.
+- Still open in stage 3: sun disc size, brightness from distance, insolation into `PlanetSeasons`.
