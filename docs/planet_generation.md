@@ -315,4 +315,3 @@ reference and runs when the library is not built, when a planet has rivers on, o
 0.02) and is part of `scripts/planet_check.sh`. A full-detail tile on the Earth preset: 64 ms at the
 start of the work, 48 ms after the GDScript wins, 9.5 ms with the native ground (a picture of the
 same view differs by 0.05 of 255). The library has to match the engine's precision: the standard
-editor needs the single library, `E:\Godot\double` the double one (`native/planet_crust/build.sh`).

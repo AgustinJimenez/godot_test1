@@ -10,14 +10,25 @@ GDScript in `setup`, so nothing is copied twice. `PLANET_NO_NATIVE=1` turns it o
 
 ## Build (Windows, MinGW, outside the repo: `E:\Godot\cpp`)
 
+A library must match the engine's precision, or Godot refuses to load it (or crashes).
+
 ```
-git clone --depth 1 --branch godot-4.5-stable https://github.com/godotengine/godot-cpp E:/Godot/cpp/godot-cpp
 python -m venv E:/Godot/cpp/venv && E:/Godot/cpp/venv/Scripts/pip install scons
+
+# standard (single precision) editor: godot-cpp 4.5 is enough
+git clone --depth 1 --branch godot-4.5-stable https://github.com/godotengine/godot-cpp E:/Godot/cpp/godot-cpp
+scons platform=windows use_mingw=yes arch=x86_64 target=template_debug precision=single
+
+# the double precision build (E:\Godot\double): godot-cpp master and the engine's own API dump
+git clone --depth 1 https://github.com/godotengine/godot-cpp E:/Godot/cpp/godot-cpp-double
+E:/Godot/double/src/bin/godot.windows.editor.double.x86_64.console.exe --headless --dump-extension-api
+# (writes extension_api.json in the current folder: keep it as E:/Godot/cpp/dump/extension_api.json)
+GODOT_CPP=E:/Godot/cpp/godot-cpp-double scons platform=windows use_mingw=yes arch=x86_64     target=template_debug precision=double custom_api_file=E:/Godot/cpp/dump/extension_api.json
 ```
 
-Then `native/planet_crust/build.sh` builds the single precision (standard editor) and the double
-precision (E:\Godot\double) libraries into `bin/` (not committed). A library must match the engine's
-precision, or Godot refuses to load it.
+(Run `scons` in this folder. godot-cpp itself takes about 15 minutes the first time, the library a few
+seconds. godot-cpp 4.5 with the default API crashed the double engine, and its generator cannot read
+the 4.7 API dump; master reads it.) The libraries go to `bin/` (not committed).
 
 ## What it does (measured, Earth preset, standard build)
 
