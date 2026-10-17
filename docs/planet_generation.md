@@ -303,3 +303,16 @@ near): default 48 quads a tile and 128 m finest tiles: 5.4 s / 8.4 s, 178 tiles;
 s; 96 quads: 18.8 s / 28.4 s; finest tiles of 64 m (same 1.3 m quads as 96 quads, but cheaper): 4.5 s /
 8.9 s, 217 tiles; finest tiles of 256 m: 5.1 s / 6.9 s, 131 tiles. Lab arguments: `--tile-cells=N`,
 `--tile-max=M`. Finer ground is cheapest by smaller finest tiles, not by more quads in a tile.
+
+## The native crust (optional, C++)
+
+`native/planet_crust` (a GDExtension, see its README) does the ground of a tile in C++: the plates'
+height, the layers of rough ground, the rock colour, the grid, the normals and the triangles. It is an
+accelerator: the GDScript (`PlanetTectonics`, `PlanetNoise`, `PlanetRock`, `PlanetTile`) is the
+reference and runs when the library is not built, when a planet has rivers on, or with
+`PLANET_NO_NATIVE=1`. Numbers come from GDScript at start, so nothing is copied by hand.
+`planet_lab --native-check` compares the two on 20,000 points (heights within 1 m, colours within
+0.02) and is part of `scripts/planet_check.sh`. A full-detail tile on the Earth preset: 64 ms at the
+start of the work, 48 ms after the GDScript wins, 9.5 ms with the native ground (a picture of the
+same view differs by 0.05 of 255). The library has to match the engine's precision: the standard
+editor needs the single library, `E:\Godot\double` the double one (`native/planet_crust/build.sh`).
