@@ -273,6 +273,7 @@ func _smooth_rivers(noise: PlanetNoise) -> void:
 				points.resize(k + 1)
 				levels.resize(k + 1)
 				widths.resize(k + 1)
+				points[k] = _shore_between(noise, points[k - 1], points[k]) # stop at the shore
 				lowest = minf(lowest, 0.0)
 				levels[k] = 0.0
 				break
@@ -295,6 +296,42 @@ func _smooth_rivers(noise: PlanetNoise) -> void:
 					widths[k], widths[k + 1], tangents[k], tangents[k + 1], travelled,
 					travelled + length])
 			travelled += length
+
+
+## The point between `inland` (ground above 0.6 m) and `sea` (below it) where the ground crosses
+## 0.6 m, found by halving: the river ends there, so its ribbon does not run out over the sea.
+func _shore_between(noise: PlanetNoise, inland: Vector3, sea: Vector3) -> Vector3:
+	var near := inland
+	var far := sea
+	for step in 12:
+		var middle := near.lerp(far, 0.5).normalized()
+		if noise.base_height(middle.x, middle.y, middle.z) >= 0.6:
+			near = middle
+		else:
+			far = middle
+	return near
+
+
+## True if `dir` is in a river or lake, or within `margin` metres of a river's edge: nothing
+## should grow there, whatever the height of the bank.
+func near_water(dir: Vector3, ground: float, margin: float) -> bool:
+	if water_at(dir, ground) > ground - 0.3:
+		return true
+	var here := cell_of(dir)
+	if _near[here] == 0:
+		return false
+	for n in 9:
+		var id := here if n == 8 else _neighbours[here * 8 + n]
+		if not _pieces.has(id):
+			continue
+		for piece: Array in _pieces[id]:
+			var a: Vector3 = piece[0]
+			var ab := (piece[1] as Vector3) - a
+			var t := clampf((dir - a).dot(ab) / maxf(ab.length_squared(), 0.0000000001), 0.0, 1.0)
+			var distance := (dir - (a + ab * t)).length() * _radius
+			if distance < lerpf(float(piece[4]), float(piece[5]), t) * 0.5 + margin:
+				return true
+	return false
 
 
 func _push(keys: Array[float], ids: Array[int], key: float, id: int) -> void:
