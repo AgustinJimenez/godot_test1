@@ -83,7 +83,7 @@ func update(at: Vector3) -> void:
 			continue
 		if not tiles.has(key) or (_collides(entry) and not (tiles[key] as PlanetTile).has_collider):
 			missing.append(entry)
-	missing.sort_custom(func(a: Array, b: Array) -> bool: return _distance(a) < _distance(b))
+	missing.sort_custom(_before)
 	_mutex.lock()
 	for job: Array in _jobs: # the player moved: the old queue may be for places it has left
 		_pending.erase(PlanetTile.key_of(job[0], job[1], job[2], job[3]))
@@ -100,6 +100,30 @@ func update(at: Vector3) -> void:
 		_inline = missing.slice(0, 12)
 	_queue_plants()
 	_drop_stale()
+
+
+## The order tiles are made in: the ground the player stands on first, then the planet's whole
+## coarse shape (so it is there to see from the start, the big shapes of the crust), coarsest first,
+## then the rest nearest first.
+func _before(a: Array, b: Array) -> bool:
+	var class_a := _urgency(a)
+	var class_b := _urgency(b)
+	if class_a != class_b:
+		return class_a < class_b
+	if class_a == 1 and a[1] != b[1]:
+		return a[1] < b[1]
+	return _distance(a) < _distance(b)
+
+
+func _urgency(entry: Array) -> int:
+	if _collides(entry):
+		return 0
+	return 1 if int(entry[1]) <= coarse_level() else 2
+
+
+## The tile levels up to this make the planet's coarse shape (seen from far away).
+func coarse_level() -> int:
+	return clampi(_settings.max_level() - 3, 2, 4)
 
 
 ## Builds everything wanted around `at` right now (labs and tests). `near_only`: just the tiles the
@@ -231,6 +255,10 @@ func progress(ground_metres: float, plant_metres: float) -> float:
 		if distance < ground_metres:
 			need += 1
 			if built != null and (not _collides(entry) or built.has_collider):
+				have += 1
+		if distance >= ground_metres and int(entry[1]) <= coarse_level():
+			need += 1 # the planet's coarse shape is part of arriving
+			if built != null:
 				have += 1
 		if distance < plant_metres and _plants(entry) != PlanetScatter.Detail.NONE:
 			need += 1
