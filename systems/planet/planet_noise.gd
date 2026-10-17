@@ -35,6 +35,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 		relief = clampf(settings.radius * 0.0035, 300.0, 9000.0)
 	tectonics = PlanetTectonics.new(settings.world_seed, settings.plates)
 	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
+	StarLight.apply(species.species, Star.from_mass(settings.star_mass), settings.star_readability)
 	for one in species.species: # a planet has many plants: more looks of each tree
 		if one.is_tree():
 			one.variants = 6

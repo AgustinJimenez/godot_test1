@@ -78,3 +78,14 @@ here too (ozone and UV, haze, the ground spectrum): see [065](065_atmosphere_com
   hues and the darkness of the leaves toward Earth-like values, so the two modes are the ends of a slider
   and any middle value works too. A red dwarf's sun looks orange-red, not pure red, because the eye adapts:
   the physical mode should apply that adaptation, or it will look wrong.
+
+## Progress (autonomous session, 2026-10-17, user away)
+
+- Done: `Star` (mass to luminosity, radius, temperature, lifetime, colour, habitable zone, frost line, flare level),
+  the colour tint of the light (step 2, see 054), insolation into the seasons (step 3), plant leaf colours by star
+  (`StarLight`, step 6: cool stars give dark, rust and purple leaves, hot stars paler and yellower; `star_readability`
+  blends back). Pictures at `--star-mass=0.15|1.0|1.6 --seed=1337 --view-alt=3 --view-pitch=8 --hour=12`: a red dwarf's
+  forest is rust brown and near black, the Sun's is as before, an F star's is a little paler.
+- **The user has not judged these colours.** The ground grass is still green under every star (step 7: the ground and
+  sea colour have not been tied to the light yet). Not done: tidal locking (5), PAR and plant size (6, partly), UV
+  and flares (8), the look table (9).

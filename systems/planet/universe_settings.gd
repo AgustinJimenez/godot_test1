@@ -125,5 +125,9 @@ func self_check() -> bool:
 	ok = ok and absf(orbit.distance() - 0.8) < 0.001
 	orbit.set_year_share(0.75)
 	ok = ok and absf(orbit.distance() - 1.2) < 0.001 and orbit.light_now() < 1.0
+	var green := Color(0.26, 0.5, 0.18) # leaves: the Sun's are unchanged, a red dwarf's darker
+	ok = ok and StarLight.leaf_colour(green, Star.from_mass(1.0)) == green
+	ok = ok and StarLight.leaf_colour(green, Star.from_mass(0.15)).v < green.v * 0.7
+	ok = ok and StarLight.leaf_colour(green, Star.from_mass(0.15), 1.0) == green
 	ok = ok and system(3).system_seed == system(3).system_seed and system_seed(1) != system_seed(2)
 	return ok
