@@ -17,6 +17,7 @@ var species: SpeciesRegistry ## the plants of this planet
 var weather: PlanetWeather ## the clouds and the weather (made once the climate is)
 var clock: PlanetClock ## the time of day and the season (set by PlanetWorld; null: the yearly mean)
 var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep off a little round it
+var rock: PlanetRock ## the colour of the crust
 var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
 
 var _rolling := FastNoiseLite.new()
@@ -34,6 +35,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 	if relief <= 0.0:
 		relief = clampf(settings.radius * 0.0035, 300.0, 9000.0)
 	tectonics = PlanetTectonics.new(settings.world_seed, settings.plates)
+	rock = PlanetRock.new(tectonics, settings.world_seed, settings.radius, relief)
 	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
 	StarLight.apply(species.species, Star.from_mass(settings.star_mass), settings.star_readability)
 	for one in species.species: # a planet has many plants: more looks of each tree
@@ -201,58 +203,9 @@ func biome(x: float, y: float, z: float, ground: float, steepness: float) -> Ter
 	return TerrainNoise.Biome.FOREST if wet > 0.5 else TerrainNoise.Biome.MEADOW
 
 
-## The colour of a ground facet. Every ingredient is a smooth weight, so the biomes blend into one
-## another instead of changing at a line: the ground cover by warmth and rain (tundra, taiga,
-## forest, grass, savanna, rain forest), sand where it is dry, bare rock on steep faces and high
-## ground, snow where it is cold, wet sand at the shore, marsh on the wet low land.
+## The colour of a ground facet: the rock of the crust there (PlanetRock), nothing grows on it yet.
 func facet_color(x: float, y: float, z: float, ground: float, steep: float) -> Color:
-	var speckle := detail(x, y, z)
-	var dir := Vector3(x, y, z)
-	var degrees := temperature(x, y, z, ground)
-	var rain := climate.sample(dir).y
-	var color := _vegetation(degrees, rain, speckle)
-	# dry and not frozen: sand and red earth
-	var dry := (1.0 - smoothstep(0.1, 0.4, rain)) * smoothstep(-4.0, 8.0, degrees)
-	var sand := TerrainColors.DESERT_RED.lerp(TerrainColors.DESERT, speckle)
-	sand = sand.lerp(TerrainColors.DESERT_PALE, smoothstep(0.55, 0.9, speckle) * 0.5)
-	color = color.lerp(sand, dry)
-	# bare rock: steep faces and the ground above the trees, layered like real cliffs
-	var tall := ground / relief
-	var bare := maxf(smoothstep(0.36, 0.7, steep), smoothstep(0.3, 0.6, tall))
-	var band := ground / maxf(relief * 0.03, 6.0) + speckle * 0.5
-	var layers := smoothstep(0.35, 0.65, fposmod(band, 1.0))
-	var rock := TerrainColors.ROCK_DARK.lerp(TerrainColors.ROCK, speckle)
-	rock = rock.lerp(TerrainColors.ROCK_WARM, layers * 0.6)
-	color = color.lerp(rock, bare)
-	# snow where it is cold, thinner on steep faces
-	var frozen := 1.0 - smoothstep(-16.0, -8.0, degrees)
-	frozen *= 1.0 - smoothstep(0.5, 0.95, steep) * 0.75
-	color = color.lerp(TerrainColors.SNOW.lerp(TerrainColors.ROCK, steep * 0.25), frozen)
-	# the shore: wet sand, a beach, then marsh where the low land is wet
-	var marsh := (1.0 - smoothstep(1.5, 6.0, ground)) * smoothstep(0.55, 0.8, rain / 1.2)
-	color = color.lerp(TerrainColors.MARSH.lerp(TerrainColors.WET_SAND, speckle * 0.5), marsh * 0.8)
-	var beach := 1.0 - smoothstep(0.6, 1.9, ground)
-	var sand_beach := TerrainColors.WET_SAND.lerp(TerrainColors.SAND, smoothstep(0.0, 1.4, ground))
-	return color.lerp(sand_beach, beach)
-
-
-## Ground cover by warmth and rain: tundra, taiga, forest, grassland, savanna, rain forest.
-func _vegetation(degrees: float, rain: float, speckle: float) -> Color:
-	var tundra := Color(0.52, 0.56, 0.44)
-	var taiga := Color(0.14, 0.30, 0.2)
-	var forest := TerrainColors.FOREST_DARK.lerp(TerrainColors.FOREST, speckle)
-	var grass := TerrainColors.MEADOW_DRY.lerp(TerrainColors.MEADOW, clampf(rain, 0.0, 1.0))
-	var savanna := Color(0.72, 0.64, 0.3)
-	var jungle := Color(0.09, 0.34, 0.12).lerp(Color(0.14, 0.42, 0.16), speckle)
-	var color := grass
-	var wet := smoothstep(0.35, 0.7, rain)
-	if degrees > 18.0: # tropics: savanna to rain forest by rain
-		color = savanna.lerp(grass, smoothstep(0.2, 0.45, rain)).lerp(jungle, smoothstep(0.7, 1.1, rain))
-	else:
-		color = grass.lerp(forest, wet)
-	var cold := smoothstep(10.0, -2.0, degrees) # the cold north: forest turns to taiga, then tundra
-	color = color.lerp(taiga, cold * wet).lerp(tundra, smoothstep(3.0, -10.0, degrees))
-	return color.lerp(color.darkened(0.15), speckle * 0.3)
+	return rock.colour(Vector3(x, y, z), ground, steep, detail(x, y, z))
 
 
 ## A direction for the player to start on: green country (mild, wet enough) that is not a dead flat

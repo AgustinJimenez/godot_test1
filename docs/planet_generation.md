@@ -247,3 +247,11 @@ While you play on a planet, `PlanetRecorder` keeps the last 10 seconds in `user:
 engine error or warning as it prints. It rewrites the file once a second, on exit and when you press
 **F9** ("this looks wrong now": a `mark` line). Copy the file out right after the moment you want
 looked at; the next run overwrites it. (The foot IK recorder, F10, is a separate, longer one.)
+
+## The crust's colour (rock types)
+
+Every ground facet is coloured by the rock under it (`PlanetRock`), not by what grows on it: no
+grass, sand, snow or marsh colours. Each plate has its own mix along one scale (basalt, shale, grey
+granite, pink granite, limestone, sandstone, red sandstone), changing slowly across the plate; plates
+under the sea are young basalt; high ground shows granite; beds show as level bands; steep faces are
+darker. Vegetation and snow come back later as layers over this, from the climate.
