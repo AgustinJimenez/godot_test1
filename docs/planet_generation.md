@@ -76,6 +76,17 @@ for the hour and the day of the year), the weather (follow the climate or force 
 (`PlanetMenu.pending` carries the settings over the scene reload) and the map. In the lab,
 `-- --planet-page` opens it from the start (screenshots).
 
+## Detail follows the distance in space
+
+`PlanetSurface._distance` (what picks the size of a tile, which tiles get plants and which get
+colliders) is the distance in space from the player to the tile: along the ground from the point under
+them, and their height over the ground there (`_height`, not over the sea: a climber on a mountain
+keeps the fine tiles). Before this it was along the ground only, so a player 6 km up still had the
+finest tiles and every tree below them drawn: 147 million primitives a frame and 28 fps (now 463).
+Measured in the lab with the player lifted by `-- --climb=N --fps` (draw calls, primitives, tiles by
+level and the triangles by kind of node are printed). On the ground a frame is still about 40 million
+primitives (the trees are 8 to 10 thousand triangles each; shadows draw them again).
+
 ## Clouds
 
 One layer of real volume (700 m thick, 450 m above the ground under the player), marched and lit in

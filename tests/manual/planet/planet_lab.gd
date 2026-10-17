@@ -11,6 +11,7 @@ extends Node3D
 ##                    share of the year (0 northern spring equinox)
 ##   -- --look-moon  the camera looks at the moon (with --view-alt)
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
+##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
 ##   -- --fps  print the frame rate every 300 frames
 ##   -- --start-menu  the start menu first (saved planets, a new one); no arguments does it too
 ##   -- --world=NAME / --continue  open a saved universe (Planet page of the Esc menu saves them)
@@ -29,6 +30,7 @@ var player: Player
 var _checking := false
 var _walking := false
 var _weather_name := "" ## a WorldWeather.State name to force from the start (rain, snow...)
+var _climb := 0.0 ## lift the player this many metres once the planet has loaded (they hang there)
 var _report_fps := false ## print the frame rate now and then
 var restored_state := {} ## the moment of a save to go back to (--world=, --continue, the menu)
 var _save_as := "" ## save the planet under this name right after it starts
@@ -60,6 +62,48 @@ var _start_dir := Vector3.ZERO
 var _shot_frame := 360
 var _view_pitch := -18.0
 var _view_yaw := 0.0
+
+
+## The triangles the scene holds, by kind of node (a mesh's, times its instances for a multimesh):
+## where a frame's geometry comes from.
+func _print_triangle_groups() -> void:
+	var groups := {}
+	for node in planet.find_children("*", "VisualInstance3D", true, false):
+		var tris := 0
+		var key := node.get_class()
+		if node is MultiMeshInstance3D and node.multimesh != null and node.multimesh.mesh != null:
+			var each := _mesh_triangles(node.multimesh.mesh)
+			var count: int = node.multimesh.visible_instance_count
+			tris = each * (node.multimesh.instance_count if count < 0 else count)
+			var kind := "plants" if each < 1500 else "trees (%dk+ tris each)" % (each / 1000)
+			key = "multimesh of %s" % kind
+		elif node is MeshInstance3D and node.mesh != null:
+			tris = _mesh_triangles(node.mesh)
+			var parent_name := node.get_parent().name.rstrip("0123456789").trim_prefix("@")
+			key = "mesh %s" % parent_name.get_slice("@", 0)
+		if node.is_visible_in_tree() and tris > 0:
+			var entry: Array = groups.get(key, [0, 0])
+			entry[0] += tris
+			entry[1] += 1
+			groups[key] = entry
+	var by_level := {}
+	for tile: PlanetTile in planet.surface.tiles.values():
+		var label := "level %d plants %d" % [tile.level, tile.plant_detail]
+		by_level[label] = int(by_level.get(label, 0)) + 1
+	print("TILES %s" % [by_level])
+	var keys := groups.keys()
+	keys.sort_custom(func(a: String, b: String) -> bool: return groups[a][0] > groups[b][0])
+	for key: String in keys.slice(0, 14):
+		print("TRIS %10d in %5d nodes  %s" % [groups[key][0], groups[key][1], key])
+
+
+func _mesh_triangles(mesh: Mesh) -> int:
+	var total := 0
+	for surface in mesh.get_surface_count():
+		if mesh is ArrayMesh:
+			var indices := (mesh as ArrayMesh).surface_get_array_index_len(surface)
+			total += (indices if indices > 0 else (mesh as ArrayMesh).surface_get_array_len(surface)) / 3
+	return total
 
 
 ## Saves the planet, reads the save back and compares: the settings, the place and the clock.
@@ -149,6 +193,8 @@ func _ready() -> void:
 			_look_moon = true
 		elif arg.begins_with("--weather="):
 			_weather_name = arg.trim_prefix("--weather=").to_upper()
+		elif arg.begins_with("--climb="):
+			_climb = arg.trim_prefix("--climb=").to_float()
 		elif arg == "--fps":
 			_report_fps = true
 		elif arg == "--planet-page":
@@ -237,8 +283,23 @@ func _physics_process(_delta: float) -> void:
 	if _report_fps and _frame % 60 == 0: # no cap, to see what the frames cost
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 		Engine.max_fps = 0
+	if _climb > 0.0 and _frame == 600 and player != null:
+		player.process_mode = Node.PROCESS_MODE_DISABLED
+		player.global_position.y += _climb
+		player.head.rotation.x = -1.0 # look down
+	if _report_fps and _frame == 900:
+		_print_triangle_groups()
 	if _report_fps and _frame % 300 == 0:
-		print("FPS frame=%d fps=%d alt=%d" % [_frame, Engine.get_frames_per_second(), planet.altitude()])
+		var vp := get_viewport().get_viewport_rid()
+		var visible := RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE
+		var calls := RenderingServer.viewport_get_render_info(vp, visible,
+				RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		var prims := RenderingServer.viewport_get_render_info(vp, visible,
+				RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME)
+		var cpu := Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		print("FPS frame=%d fps=%d alt=%d tiles=%d draw_calls=%d primitives=%d process_ms=%.1f" % [
+				_frame, Engine.get_frames_per_second(), planet.altitude(), planet.surface.tiles.size(),
+				calls, prims, cpu])
 	if _planet_page and _frame == 30:
 		player.hud.debug_overlay.show()
 		for button in player.hud.find_children("*", "Button", true, false):

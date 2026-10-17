@@ -21,6 +21,7 @@ var _mutex := Mutex.new()
 var _semaphore := Semaphore.new()
 var _stop := false
 var _near := Vector3.ZERO # the point the tiles are chosen for (planet space)
+var _height := 0.0 # m the player is over the ground there
 var _tiles_per_frame := 2
 var _inline: Array = [] # without a worker thread (headless): tiles built here, a few a frame
 # plants are a second job, after the ground and the water, on a thread of their own
@@ -68,6 +69,10 @@ func _exit_tree() -> void:
 ## Chooses the tiles for a player at `at` (planet space) and queues what is missing.
 func update(at: Vector3) -> void:
 	_near = at
+	# how high the player is over the ground under them: detail follows the distance in space, so
+	# up in the air the ground is coarse and nothing grows (the trees below are far away)
+	var here := at.normalized()
+	_height = maxf(at.length() - _settings.radius - noise.height(here.x, here.y, here.z), 0.0)
 	_wanted.clear()
 	for face in 6:
 		_select(face, 0, 0, 0)
@@ -314,7 +319,9 @@ func _distance(entry: Array) -> float:
 	var count := float(1 << int(entry[1]))
 	var s := -1.0 + 2.0 * (float(entry[2]) + 0.5) / count
 	var t := -1.0 + 2.0 * (float(entry[3]) + 0.5) / count
-	return PlanetTile.direction(entry[0], s, t).distance_to(_near.normalized()) * _settings.radius
+	var centre := PlanetTile.direction(entry[0], s, t)
+	var along := centre.distance_to(_near.normalized()) * _settings.radius
+	return sqrt(along * along + _height * _height)
 
 
 ## Removes a tile once every wanted tile that overlaps it is built.

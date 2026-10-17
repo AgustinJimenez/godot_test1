@@ -335,6 +335,6 @@ Open: whether a universe is one star system or many, and how the player travels 
 flight at a great speed as in the free mode today).
 - Clouds: one raymarched layer drawn by the sky (from under) and by a sphere round the planet (from
   in and above it, to orbit), sharing `planet_cloud_march.gdshaderinc`; they show from above now.
-- Seen: the frame rate falls to about 27 fps looking down from 6 km and from orbit, with or without
-  the clouds (the terrain at that height, not looked into yet).
+- Fixed: the frame rate fell to 28 fps at 6 km because tile detail ignored altitude (see "Detail follows the
+  distance in space" in the doc); now 463. Open: on the ground a frame is ~40 M primitives, 55 fps.
 
