@@ -9,7 +9,8 @@ extends Node3D
 ##   -- --show-map [--map-zoom=N] [--map-layer=N]   the planet map open from the start (M in play)
 ##   -- --time-scale=N --hour=H --year=Y   how fast time runs, the first hour (12 noon), the first
 ##                    share of the year (0 northern spring equinox)
-##   -- --look-moon  the camera looks at the moon (with --view-alt)
+##   -- --look-moon / --look-sun  the camera looks at the moon / the star (--view-alt)
+##   -- --insolation=X  the star's light here against the Earth's (sun disc and climate)
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
 ##   -- --no-shadow  the sun casts no shadows
@@ -42,6 +43,7 @@ var _report_fps := false ## print the frame rate now and then
 var restored_state := {} ## the moment of a save to go back to (--world=, --continue, the menu)
 var _save_as := "" ## save the planet under this name right after it starts
 var _planet_page := false ## open the Planet page of the Esc menu from the start
+var _look_sun := false ## point the camera at the star (with --view-alt)
 var _look_moon := false ## point the camera at the moon (with --view-alt)
 var _show_map := false ## open the planet map (the M key) from the start
 var _map_zoom := 6.0
@@ -273,6 +275,10 @@ func _ready() -> void:
 			_map_zoom = arg.trim_prefix("--map-zoom=").to_float()
 		elif arg == "--show-map":
 			_show_map = true
+		elif arg == "--look-sun":
+			_look_sun = true
+		elif arg.begins_with("--insolation="):
+			settings.insolation = arg.trim_prefix("--insolation=").to_float()
 		elif arg == "--look-moon":
 			_look_moon = true
 		elif arg.begins_with("--weather="):
@@ -314,6 +320,9 @@ func _ready() -> void:
 		camera.rotation_degrees = Vector3(_view_pitch, _view_yaw, 0.0)
 		planet.build_now(true)
 		planet.update_now()
+		if _look_sun:
+			planet._set_the_sun()
+			camera.look_at(camera.global_position + planet.atmosphere.sun_direction * 100.0)
 		if _look_moon:
 			planet._set_the_sun()
 			camera.look_at(camera.global_position + planet.atmosphere.moon_direction * 100.0)

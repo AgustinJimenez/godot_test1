@@ -107,3 +107,5 @@ still built the way the one planet is built today. No travel yet (that is [055](
   question for small planets (see 057/061), not caused by the star changes.
 - Not done: the Planet page shows no star data yet; the sun disc does not change size; the universe clock as one
   shared time is only data (local time is what runs).
+- The sun's disc follows radius / distance (`PlanetAtmosphere.sun_size`, sky shader `sun_size`; the ellipse varies it
+  through the year); checked with `--look-sun --view-alt=3 --insolation=1|4` (4 doubles the disc). Default unchanged.

@@ -31,6 +31,7 @@ var _weather_timer := 0.0
 var restored := {} ## a save's moment (UniverseSave) to bring back when `start` runs
 var weather_override := -1 ## a WorldWeather.State to force, or -1 to follow the planet's climate
 var time_rate := 1.0 ## how fast time runs on top of `time_scale`: negative is backward, 0 stops it
+var _star_disc := 1.0 ## the star's disc at the semi-major distance against the Sun from the Earth
 var clock := PlanetClock.new() ## the star, the orbit, the spin: where the sun is (real geometry)
 var splash: WaterSplash
 var rebases := 0 ## how many times the planet has been turned (labs and tests)
@@ -57,7 +58,9 @@ func _ready() -> void:
 	atmosphere = PlanetAtmosphere.new()
 	atmosphere.radius = settings.radius
 	atmosphere.air_height = settings.air_height
-	atmosphere.star_tint = Star.from_mass(settings.star_mass).light_tint(settings.star_readability)
+	var star := Star.from_mass(settings.star_mass)
+	atmosphere.star_tint = star.light_tint(settings.star_readability)
+	_star_disc = star.radius * sqrt(settings.insolation / star.luminosity)
 	atmosphere.time_of_day = time_of_day
 	add_child(atmosphere)
 	surface = PlanetSurface.new()
@@ -248,6 +251,7 @@ func _set_the_sun() -> void:
 	if atmosphere != null:
 		atmosphere.planet_centre = frame.to_world(Vector3.ZERO)
 		atmosphere.sun_direction = (frame.rot * clock.sun_in_body()).normalized()
+		atmosphere.sun_size = _star_disc / clock.distance()
 		atmosphere.moon_direction = (frame.rot * PlanetMoon.in_body(clock)).normalized()
 		atmosphere.moon_lit = PlanetMoon.lit(clock)
 

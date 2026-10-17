@@ -18,6 +18,7 @@ var scatter_intensity := 22.0
 var altitude := 0.0 ## m above the surface at the camera (set by the world)
 const CLOUD_DEPTH := 700.0 ## m thick, the layer of clouds
 var cloud_floor := 450.0 ## m above the planet's radius where the layer of clouds begins
+var sun_size := 1.0 ## the star's disc against the Sun's seen from the Earth (radius / distance)
 var star_tint := Color.WHITE ## the star's light against the Sun's (Star.light_tint)
 var cloud_on := 0.0 ## 0 no clouds in the sky (up high the cloud shell takes over) .. 1
 var cloud_drift := Vector3.ZERO ## m, planet frame: how far the wind has carried the small clouds
@@ -95,6 +96,7 @@ func _apply() -> void:
 	sky_material.set_shader_parameter(&"intensity", scatter_intensity * (1.0 - overcast * 0.5))
 	sky_material.set_shader_parameter(&"sun_toward", sun_dir)
 	sky_material.set_shader_parameter(&"moon_direction", moon_toward)
+	sky_material.set_shader_parameter(&"sun_size", clampf(sun_size, 0.3, 5.0))
 	sky_material.set_shader_parameter(&"moon_lit", moon_lit)
 	sky_material.set_shader_parameter(&"star_k", star_k)
 	sky_material.set_shader_parameter(&"cloud_on", cloud_on)

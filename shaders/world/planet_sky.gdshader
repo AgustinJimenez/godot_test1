@@ -14,6 +14,7 @@ uniform float intensity = 22.0;
 uniform float air_scale = 1.0; // the planet's radius over the Earth's: the air shrinks with it
 uniform vec3 sun_toward = vec3(0.0, 1.0, 0.0); // unit vector from the camera to the sun
 uniform vec3 moon_direction = vec3(0.0, -1.0, 0.0);
+uniform float sun_size = 1.0; // the star's disc against the Sun's from the Earth (radius / distance)
 uniform float moon_lit = 1.0; // 0 new .. 1 full
 uniform float star_k = 1.0; // 0 .. 1: how many stars are shown (cloud and glare take them away)
 
@@ -113,7 +114,7 @@ void sky() {
 	}
 	if (LIGHT0_ENABLED && !behind_planet) {
 		float s = max(dot(dir, sun), 0.0);
-		float disc = smoothstep(0.9993, 0.9998, s);
+		float disc = smoothstep(cos(0.0372 * sun_size), cos(0.0201 * sun_size), s);
 		float glow = pow(s, 48.0) * 0.12;
 		col += LIGHT0_COLOR * (disc * 8.0 + glow) * LIGHT0_ENERGY;
 	}
