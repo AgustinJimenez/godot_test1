@@ -1,7 +1,8 @@
 shader_type spatial;
 render_mode blend_premul_alpha, unshaded, cull_disabled, depth_draw_never, depth_test_disabled, fog_disabled;
-// The clouds seen from in and above their layer, from a little over the ground to orbit: a sphere
-// round the planet whose every pixel marches the layer of clouds along the ray from the camera
+// The clouds seen from in and above their layer, from a little over the ground to orbit: a screen
+// quad (a sphere would be cut by the camera's far plane, leaving a clear disc where its far side is
+// out of range) whose every pixel marches the layer of clouds along the ray from the camera
 // (the same march as the sky's, planet_cloud_march.gdshaderinc), stopping at the ground of the
 // scene. Under the layer the sky draws the clouds and this fades out.
 
@@ -13,15 +14,14 @@ uniform float planet_radius = 20000.0;
 uniform vec3 sun_toward = vec3(0.0, 1.0, 0.0); // unit vector from the planet to the star
 uniform float fade = 1.0; // 0 under the layer .. 1 in and above it
 
-varying vec3 world_position;
-
 void vertex() {
-	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	POSITION = vec4(VERTEX.xy, 1.0, 1.0); // the whole screen, whatever the camera's far plane
 }
 
 void fragment() {
 	vec3 eye = (INV_VIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-	vec3 dir = normalize(world_position - eye);
+	vec4 on_near = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, 1.0, 1.0);
+	vec3 dir = normalize((INV_VIEW_MATRIX * vec4(on_near.xyz / on_near.w, 0.0)).xyz);
 	// how far the scene is along this ray: the clouds do not draw over what is nearer
 	float depth = texture(scene_depth, SCREEN_UV).r;
 	float limit = 1.0e9;

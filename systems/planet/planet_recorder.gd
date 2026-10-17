@@ -68,6 +68,12 @@ func _sample() -> Dictionary:
 	sample["cloud_on"] = snappedf(atmosphere.cloud_on, 0.01)
 	sample["overcast"] = snappedf(atmosphere.overcast, 0.01)
 	sample["underwater"] = atmosphere.underwater
+	var environment := atmosphere.environment
+	sample["fog"] = {"on": environment.fog_enabled, "mode": environment.fog_mode,
+			"density": snappedf(environment.fog_density, 0.00001),
+			"begin": environment.fog_depth_begin, "end": environment.fog_depth_end,
+			"curve": environment.fog_depth_curve, "sky": environment.fog_sky_affect,
+			"height": environment.fog_height_density}
 	if target is Player:
 		sample["speed"] = snappedf((target as Player).velocity.length(), 0.1)
 		sample["free_mode"] = (target as Player).free_mode_enabled
