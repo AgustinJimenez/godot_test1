@@ -86,6 +86,8 @@ func _planet_at(rng: RandomNumberGenerator, star: Star, distance: float,
 		"year_standard_days": 365.25 * sqrt(pow(distance, 3.0) / star.mass),
 		"day_standard_hours": rng.randf_range(10.0, 40.0),
 		"tilt_deg": rng.randf_range(0.0, 40.0),
+		"eccentricity": rng.randf_range(0.0, 0.2) * rng.randf(),
+		"perihelion_share": rng.randf(),
 		"habitable": rocky and distance >= zone.x and distance <= zone.y,
 	}
 

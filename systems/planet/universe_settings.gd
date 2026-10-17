@@ -39,6 +39,8 @@ func planet_settings(index: int, number: int) -> PlanetSettings:
 	made.day_seconds = day_hours * 60.0
 	made.year_days = clampf(body["year_standard_days"] * 24.0 / day_hours, 6.0, 64.0)
 	made.axial_tilt = body["tilt_deg"]
+	made.eccentricity = body["eccentricity"]
+	made.perihelion_share = body["perihelion_share"]
 	made.universe_seed = universe_seed
 	made.universe_system = index
 	made.universe_planet = number
@@ -116,5 +118,12 @@ func self_check() -> bool:
 		var b := planet_settings(0, number)
 		ok = ok and a.world_seed == b.world_seed and a.radius == b.radius
 		ok = ok and a.year_days == b.year_days and a.radius >= 8000.0 and a.day_seconds > 0.0
+	var orbit := PlanetClock.new() # an ellipse: nearest at perihelion, farthest half a year later
+	orbit.eccentricity = 0.2
+	orbit.perihelion_share = 0.25
+	orbit.set_year_share(0.25)
+	ok = ok and absf(orbit.distance() - 0.8) < 0.001
+	orbit.set_year_share(0.75)
+	ok = ok and absf(orbit.distance() - 1.2) < 0.001 and orbit.light_now() < 1.0
 	ok = ok and system(3).system_seed == system(3).system_seed and system_seed(1) != system_seed(2)
 	return ok

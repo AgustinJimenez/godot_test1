@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# One command for every planet check: lint, import, then each lab check, one line per check and a
+# final PASS/FAIL (exit 1 on any failure). `--quick` skips the slow fly check; `--lint-only` stops
+# after lint. Godot is $GODOT, else `godot` on PATH, else the 4.7.2 install on this machine.
+# Walk, swim and fly run headless at a fixed 60 fps; the logs stay in $LOG_DIR (default: a temp dir).
+set -uo pipefail
+
+readonly PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly DEFAULT_GODOT="/e/Godot/4.7.2/Godot_v4.7.2-stable_win64_console.exe"
+cd "${PROJECT_ROOT}"
+
+GODOT="${GODOT:-}"
+if [[ -z "${GODOT}" ]]; then
+	if command -v godot >/dev/null 2>&1; then
+		GODOT="godot"
+	else
+		GODOT="${DEFAULT_GODOT}"
+	fi
+fi
+GDLINT="${GDLINT:-gdlint}"
+LOG_DIR="${LOG_DIR:-$(mktemp -d)}"
+quick=0
+lint_only=0
+for arg in "$@"; do
+	case "${arg}" in
+		--quick) quick=1 ;;
+		--lint-only) lint_only=1 ;;
+		*) echo "unknown argument ${arg}" >&2; exit 2 ;;
+	esac
+done
+
+failures=0
+
+report() { # name verdict-line
+	if [[ "$2" == *PASS* || "$2" == Success* ]]; then
+		echo "PASS  $1  ($2)"
+	else
+		echo "FAIL  $1  (${2:-no verdict line})"
+		failures=$((failures + 1))
+	fi
+}
+
+# run_check name seconds pattern scene [scene arguments...]
+run_check() {
+	local name="$1" seconds="$2" pattern="$3" scene="$4"
+	shift 4
+	local log="${LOG_DIR}/${name}.log"
+	timeout "${seconds}" "${GODOT}" --headless --path . "${scene}" -- "$@" >"${log}" 2>&1 || true
+	report "${name}" "$(grep -E "${pattern}" "${log}" | head -1)"
+}
+
+echo "logs: ${LOG_DIR}"
+lint_out="$("${GDLINT}" . 2>&1)"
+report lint "$(echo "${lint_out}" | tail -1)"
+[[ ${lint_only} -eq 1 ]] && exit $((failures > 0))
+
+"${GODOT}" --headless --path . --import >"${LOG_DIR}/import.log" 2>&1 || true
+if grep -q "SCRIPT ERROR" "${LOG_DIR}/import.log"; then
+	report import "SCRIPT ERROR in import.log"
+else
+	report import "PASS"
+fi
+
+lab=res://tests/manual/planet/planet_lab.tscn
+run_check universe 300 "UNIVERSE_CHECK" "${lab}" --universe=42 --systems=3
+run_check species 600 "SPECIES_CHECK (PASS|FAIL)" res://tests/manual/world/species_check.tscn
+run_check world 900 "WORLD_CHECK" res://tests/manual/world/world_lab.tscn --world-check
+run_check planet 1200 "PLANET_CHECK" "${lab}" --planet-check --fixed-fps 60
+report save "$(grep -E "SAVE_CHECK" "${LOG_DIR}/planet.log" | head -1)" # printed by the planet run
+run_check walk 1800 "WALK_CHECK" "${lab}" --walk-check --fixed-fps 60
+run_check swim 900 "SWIM_CHECK" "${lab}" --swim-check --fixed-fps 60
+if [[ ${quick} -eq 0 ]]; then
+	run_check fly 2400 "WALK_CHECK|FLY_CHECK" "${lab}" --fly-check --fixed-fps 60
+fi
+
+if [[ ${failures} -eq 0 ]]; then
+	echo "PLANET_CHECKS PASS"
+else
+	echo "PLANET_CHECKS FAIL (${failures})"
+	exit 1
+fi

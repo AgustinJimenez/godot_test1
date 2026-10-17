@@ -16,6 +16,8 @@ extends RefCounted
 var day_seconds := 1440.0 ## a solar day, in seconds of play (a clock day)
 var year_days := 16.0 ## solar days in a year
 var axial_tilt := deg_to_rad(23.4) ## radians
+var eccentricity := 0.0 ## 0 a circle .. <1 an ellipse (Earth 0.017)
+var perihelion_share := 0.0 ## the share of the year at which the planet is nearest the star
 var insolation := 1.0 ## the star's light at the planet's distance, against the Earth's (L / a^2)
 var time := 0.0 ## seconds since the start
 var month_days := 3.5 ## solar days the moon takes to go round the planet (game scale, not real)
@@ -93,6 +95,8 @@ func copy() -> PlanetClock:
 	other.year_days = year_days
 	other.axial_tilt = axial_tilt
 	other.insolation = insolation
+	other.eccentricity = eccentricity
+	other.perihelion_share = perihelion_share
 	other.time = time
 	other.month_days = month_days
 	other.moon_tilt = moon_tilt
@@ -106,9 +110,33 @@ func year_share() -> float:
 	return fposmod(_year_start + time / _year_seconds(), 1.0)
 
 
-## The planet's angle round the star (radians).
+## The planet's angle round the star (radians): on a circle it grows evenly with the year; on an
+## ellipse it goes faster near the star (Kepler's second law, from solving his equation).
 func _orbit_angle() -> float:
-	return PI * 0.5 + TAU * year_share()
+	return PI * 0.5 + TAU * perihelion_share + _true_anomaly()
+
+
+## The angle from the nearest point of the orbit (radians, -PI..PI) at this time of year.
+func _true_anomaly() -> float:
+	var mean := wrapf(TAU * (year_share() - perihelion_share), -PI, PI)
+	if eccentricity <= 0.0:
+		return mean
+	var anomaly := mean + eccentricity * sin(mean) # a first guess, then Newton's steps
+	for step in 5:
+		anomaly -= (anomaly - eccentricity * sin(anomaly) - mean) / (1.0 - eccentricity * cos(anomaly))
+	return 2.0 * atan2(sqrt(1.0 + eccentricity) * sin(anomaly * 0.5),
+			sqrt(1.0 - eccentricity) * cos(anomaly * 0.5))
+
+
+## The distance to the star now, in the orbit's semi-major axes (1 on a circle).
+func distance() -> float:
+	return (1.0 - eccentricity * eccentricity) / (1.0 + eccentricity * cos(_true_anomaly()))
+
+
+## The star's light at the planet now against the Earth's mean: it falls with the distance squared.
+func light_now() -> float:
+	var away := distance()
+	return insolation / (away * away)
 
 
 ## The direction from the planet to its star, in the inertial frame (the orbit lies in x, z).

@@ -1,6 +1,6 @@
 # 058 - Climate and orbit depth
 
-Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **step 4 done (2026-10-17): elliptical orbit** (`PlanetClock.eccentricity`, `perihelion_share`, `distance()`, `light_now()` = insolation / r^2 feeds `PlanetSeasons`; generated planets get 0..0.2; the default planet stays a circle; `UNIVERSE_CHECK` covers it); the other steps are planned. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

@@ -21,6 +21,8 @@ extends Resource
 @export var time_scale := 1.0 ## 1: real play time; more makes the days and years pass faster
 @export var star_mass := 1.0 ## solar masses of the planet's star (1: the Sun, a white light)
 @export var star_readability := 0.0 ## 0 the star's true colour .. 1 readable (Sun-like light)
+@export var eccentricity := 0.0 ## the orbit's: 0 a circle (Earth 0.017)
+@export var perihelion_share := 0.0 ## share of the year the planet is nearest its star
 @export var insolation := 1.0 ## the star's light here against the Earth's: luminosity / distance^2
 @export var universe_seed := 0 ## the universe this planet comes from (0: none, a plain planet)
 @export var universe_system := 0 ## its star system's number in that universe

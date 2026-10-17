@@ -821,6 +821,9 @@ arguments the lab opens the universe start menu, so scripted runs always pass so
 - **Pass/fail checks** (no window needed): `--planet-check` (also runs `SAVE_CHECK`), `--walk-check`,
   `--swim-check`, `--fly-check` (slow, run in the background), `species_check.tscn`,
   `world_lab.tscn -- --world-check`.
+- **All checks in one go:** `scripts/planet_check.sh [--quick] [--lint-only]` (lint, import, universe, species, world,
+  planet, save, walk, swim and, without `--quick`, fly; one PASS/FAIL line each, exit 1 on a failure; set `GODOT=` if
+  `godot` is not on PATH; logs in `$LOG_DIR`).
 - Record the numbers in the doc or task you are working on (`planet_lessons.md` has the measured history),
   and keep new measuring tools as lab arguments. A single script that runs everything and compares to a
   budget is planned: `AGENT_TASKS/046`.
