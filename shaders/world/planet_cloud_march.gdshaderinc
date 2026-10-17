@@ -32,11 +32,11 @@ float value_noise(vec3 p) {
 // how much cloud there is at `q` (planet frame, from its centre) `h` of the way up the layer:
 // the cover picture of the planet's weather says where the sky is full, the noise shapes the
 // billows, the layer is flat below and rounded on top
-float cloud_density(vec3 q, float h, bool fine) {
+float cloud_density(vec3 q, float h, bool fine, float grain) {
 	vec3 d = normalize(q);
 	vec2 uv = vec2(atan(d.z, d.x) / TAU + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI);
 	float cover = max(textureLod(cover_map, uv, 0.0).r, cloud_least);
-	vec3 p = (q + cloud_drift) * 0.0022; // one unit is some 450 m
+	vec3 p = (q + cloud_drift) * 0.0022 * grain; // one unit is some 450 m (more, seen from far)
 	float shape = value_noise(p) * 0.55 + value_noise(p * 2.1 + 7.0) * 0.3;
 	shape += fine ? value_noise(p * 4.3 + 3.0) * 0.15 : 0.075;
 	float profile = smoothstep(0.0, 0.1, h) * (1.0 - smoothstep(0.55, 1.0, h));
@@ -120,6 +120,8 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 	const int STEPS = 16;
 	int steps = int(clamp((t1 - t0) / 70.0, 6.0, float(STEPS))); // short ways need fewer samples
 	float step_len = (t1 - t0) / float(steps);
+	// seen from far, the puffs are too small to see: the billows grow with the distance
+	float grain = mix(1.0, 0.1, smoothstep(6000.0, 40000.0, t0));
 	float sigma = 0.022 * (1.0 + cloud_dark * 0.8);
 	float light_step = cloud_depth * 0.25;
 	float mu = dot(dir, sun);
@@ -138,14 +140,14 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 			continue;
 		}
 		// the far end of the way thins out (a hard end to the march would show as an edge)
-		float density = cloud_density(rot * p, h, true) * (1.0 - smoothstep(5000.0 + horizon, 11000.0 + horizon, t));
+		float density = cloud_density(rot * p, h, t0 < 9000.0, grain) * (1.0 - smoothstep(5000.0 + horizon, 11000.0 + horizon, t));
 		if (density < 0.004) {
 			continue;
 		}
 		float depth_to_sun = 0.0;
 		for (int j = 0; j < 2; j++) {
 			vec3 pl = p + sun * (float(j) + 0.5) * light_step;
-			depth_to_sun += cloud_density(rot * pl, (length(pl) - r0) / cloud_depth, false) * light_step;
+			depth_to_sun += cloud_density(rot * pl, (length(pl) - r0) / cloud_depth, false, grain) * light_step;
 		}
 		float direct = mix(exp(-depth_to_sun * sigma), exp(-depth_to_sun * sigma * 0.25), 0.35);
 		float height = dot(normalize(p), sun);
