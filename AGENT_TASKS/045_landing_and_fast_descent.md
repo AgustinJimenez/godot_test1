@@ -1,6 +1,9 @@
 # 045 - Landing and fast descent
 
 Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+
+**Note (2026-10-17):** this is about the free-flying camera/player moving fast over the ground; keep it small
+because the player is not the focus now, but a dive through the tile streaming is a planet problem too.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

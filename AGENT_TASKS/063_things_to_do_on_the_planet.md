@@ -1,6 +1,8 @@
 # 063 - Things to do on the planet
 
 Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+
+**Parked (user, 2026-10-17):** not the player yet. Keep for later.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

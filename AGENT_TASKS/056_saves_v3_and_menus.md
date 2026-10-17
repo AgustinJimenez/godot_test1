@@ -1,6 +1,9 @@
 # 056 - Saves v3, menus and the way back in
 
 Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+
+**Part parked (user, 2026-10-17):** the player is not the focus now. Only the universe part (save the universe
+settings, migrate v2) goes with [054](054_universe_foundation.md); the comfort items wait.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

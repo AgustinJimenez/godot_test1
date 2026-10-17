@@ -1,6 +1,9 @@
 # 061 - Other kinds of planets
 
 Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+
+**Note (2026-10-17):** do it together with [064](064_stars_and_life.md): the star decides much of what a planet is
+(temperature, locking, plant colours).
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

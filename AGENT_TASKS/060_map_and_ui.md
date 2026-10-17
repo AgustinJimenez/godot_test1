@@ -1,6 +1,9 @@
 # 060 - Map, HUD and tools for the player
 
 Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+
+**Part parked (user, 2026-10-17):** the player is not the focus now. Do the universe and star map and the planet
+info panel first (they show the work of 054 and 064); waypoints, mini-map and photo mode later.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

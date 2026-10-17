@@ -1,6 +1,10 @@
 # 055 - Space travel between planets
 
 Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+
+**Parked (user, 2026-10-17):** the focus is the planet and the star, not the player. Do not start this before
+[054](054_universe_foundation.md) and [064](064_stars_and_life.md) are done. Many star systems are wanted, so the
+space frame must cover distances between stars as well as between planets.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal
