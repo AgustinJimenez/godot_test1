@@ -13,6 +13,8 @@ static var requested := false
 var _saves: ItemList
 var _seed_field: LineEdit
 var _radius_field: LineEdit
+var _home: OptionButton
+var _readability: HSlider
 var _note: Label
 
 
@@ -40,7 +42,7 @@ func _ready() -> void:
 	_add_button(row, "Open", _open_selected)
 	_add_button(row, "Delete", _delete_selected)
 	column.add_child(HSeparator.new())
-	_add_label(column, "New universe (its first planet)", 16)
+	_add_label(column, "New universe (it starts on one planet)", 16)
 	var fields := HBoxContainer.new()
 	column.add_child(fields)
 	_add_label(fields, "seed", 16)
@@ -50,9 +52,26 @@ func _ready() -> void:
 	fields.add_child(_seed_field)
 	_add_label(fields, "  radius (m)", 16)
 	_radius_field = LineEdit.new()
-	_radius_field.text = str(int(PlanetSettings.new().radius))
+	_radius_field.placeholder_text = "from the planet"
 	_radius_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	fields.add_child(_radius_field)
+	var home_row := HBoxContainer.new()
+	column.add_child(home_row)
+	_add_label(home_row, "home planet ", 16)
+	_home = OptionButton.new()
+	_home.add_item("Sun-like star, habitable planet")
+	_home.add_item("Any star and planet")
+	_home.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	home_row.add_child(_home)
+	var colour_row := HBoxContainer.new()
+	column.add_child(colour_row)
+	_add_label(colour_row, "star colours: physical ", 16)
+	_readability = HSlider.new()
+	_readability.max_value = 1.0
+	_readability.step = 0.05
+	_readability.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	colour_row.add_child(_readability)
+	_add_label(colour_row, " readable", 16)
 	var buttons := HBoxContainer.new()
 	column.add_child(buttons)
 	_add_button(buttons, "Create", func() -> void: _create(_seed_field.text))
@@ -103,9 +122,11 @@ func _delete_selected() -> void:
 
 
 func _create(seed_text: String) -> void:
-	var settings := PlanetSettings.new()
+	var universe := UniverseSettings.new()
 	var text := seed_text.strip_edges()
-	settings.world_seed = int(text) if text.is_valid_int() else hash(text)
+	universe.universe_seed = int(text) if text.is_valid_int() else hash(text)
+	universe.sunlike_home = _home.selected == 0
+	var settings := universe.home_settings(_readability.value)
 	if _radius_field.text.strip_edges().is_valid_float():
 		settings.radius = clampf(_radius_field.text.to_float(), 2000.0, 6.4e6)
 	_begin(settings, {})

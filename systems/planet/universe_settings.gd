@@ -39,6 +39,10 @@ func planet_settings(index: int, number: int) -> PlanetSettings:
 	made.day_seconds = day_hours * 60.0
 	made.year_days = clampf(body["year_standard_days"] * 24.0 / day_hours, 6.0, 64.0)
 	made.axial_tilt = body["tilt_deg"]
+	made.universe_seed = universe_seed
+	made.universe_system = index
+	made.universe_planet = number
+	made.universe_sunlike = 1 if sunlike_home else 0
 	var star := system_data.stars[0]
 	made.star_mass = star.mass
 	made.insolation = star.luminosity / (body["orbit_au"] * body["orbit_au"])
@@ -47,6 +51,36 @@ func planet_settings(index: int, number: int) -> PlanetSettings:
 	else:
 		made.ocean_fraction = rng.randf_range(0.0, 0.3)
 	return made
+
+
+## The planet the player starts on: the first habitable planet of system 0, else its first rocky one
+## (other kinds wait for task 061). A system without any is made Sun-like instead, so there is
+## always a home. `readability` is the start menu's star colour setting (0 true .. 1 readable).
+func home_settings(readability := 0.0) -> PlanetSettings:
+	var first := system(0)
+	var number := _home_number(first)
+	if number < 0:
+		var fixed := UniverseSettings.new()
+		fixed.universe_seed = universe_seed
+		fixed.sunlike_home = true
+		var made := fixed.planet_settings(0, fixed._home_number(fixed.system(0)))
+		made.star_readability = readability
+		made.universe_sunlike = 1
+		return made
+	var home := planet_settings(0, number)
+	home.star_readability = readability
+	return home
+
+
+func _home_number(system_data: StarSystem) -> int:
+	var rocky := -1
+	for number in system_data.planets.size():
+		var planet: Dictionary = system_data.planets[number]
+		if planet["habitable"]:
+			return number
+		if rocky < 0 and planet["kind"] <= StarSystem.Kind.LARGE_ROCKY:
+			rocky = number
+	return rocky
 
 
 ## A text table of the first `count` systems, one line per planet, for the lab (`--universe=SEED`).

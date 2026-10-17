@@ -205,3 +205,21 @@ through in the double build (edges differ by 1e-10 m): physics checks avoid seam
 
 Weather and day/night from the planet's rotation, birds and butterflies, underwater look beyond
 the fog colour, planets without life (craters, ice), star systems.
+
+## Universe (task 054)
+
+A universe is a seed (`UniverseSettings`). System N comes from the seed and N (`system_seed`), so nothing is stored:
+`StarSystem.generate` makes a `Star` (mass sets luminosity, radius, temperature, lifetime, colour) and its planets on
+Kepler orbits (year from distance and star mass; rocky inside the frost line, giants beyond; "habitable" is rocky and
+inside the liquid-water zone). `UniverseSettings.planet_settings(system, planet)` turns one planet into the
+`PlanetSettings` the planet is built from (game scale: Earth is 20,000 m; the day is the planet's, the year is the true
+one in local days clamped to 6..64). The star reaches the planet in two ways, both physical: its colour tints the sun
+lamp, the sky scattering and the clouds (`Star.light_tint`; the eye adapts, so only 75% of the colour difference
+shows; `star_readability` blends it back to white), and its light at the planet's distance (`insolation` = L / a^2)
+multiplies the sunlight the seasons' energy balance receives (half the light: the equator drops from +27 to -16 C
+with the ice feedback). The Sun is exactly white and insolation 1, so a plain planet is unchanged. Lab:
+`planet_lab -- --universe=SEED [--systems=N] [--any]` prints the table and `UNIVERSE_CHECK`; `-- --home=SEED [--any]`
+starts on that universe's home planet; `-- --star-mass=M --star-readability=R` sets the star alone. The start menu
+creates a universe (home planet: Sun-like or any; star colours: physical .. readable). Saves are version 3 (a
+`universe` block; version 2 still loads). Not done yet: other planet kinds (061), travel (055), the Planet page's star
+data, sun disc size.

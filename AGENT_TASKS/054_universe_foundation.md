@@ -99,3 +99,11 @@ still built the way the one planet is built today. No travel yet (that is [055](
   `Star.ADAPTATION`). **The user has not judged these**: compare `--star-mass=0.15|0.55|1.0|1.6
   --hour=17.5 --weather=clear --bare --view-alt=3 --view-pitch=8`.
 - Still open in stage 3: sun disc size, brightness from distance, insolation into `PlanetSeasons`.
+- Stages 4-6 partly done: insolation (L / a^2) drives `PlanetSeasons`; `UniverseSettings.home_settings()`; the start
+  menu makes a universe (seed, home planet sun-like or any, star colours slider) and saves are version 3 with a
+  `universe` block; `docs/planet_generation.md` has the Universe section. `UNIVERSE_CHECK`, `SAVE_CHECK` pass;
+  `--home=7|1|99 --planet-check` pass. **`--home=42 --planet-check` FAILS** (`worst_gap` 4.4 m against 3 m on an
+  11 km planet, tall relief on a small sphere, the same radius with the default seed passes): a terrain steepness
+  question for small planets (see 057/061), not caused by the star changes.
+- Not done: the Planet page shows no star data yet; the sun disc does not change size; the universe clock as one
+  shared time is only data (local time is what runs).

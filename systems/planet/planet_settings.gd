@@ -22,6 +22,10 @@ extends Resource
 @export var star_mass := 1.0 ## solar masses of the planet's star (1: the Sun, a white light)
 @export var star_readability := 0.0 ## 0 the star's true colour .. 1 readable (Sun-like light)
 @export var insolation := 1.0 ## the star's light here against the Earth's: luminosity / distance^2
+@export var universe_seed := 0 ## the universe this planet comes from (0: none, a plain planet)
+@export var universe_system := 0 ## its star system's number in that universe
+@export var universe_planet := 0 ## its number among that system's planets
+@export var universe_sunlike := 1 ## 1: that universe's home system was made Sun-like
 @export var air_height := 100000.0 ## m the Earth air would reach (scaled to the radius)
 @export var plates := 14 ## tectonic plates (Earth has about 15 big ones)
 @export var tile_cells := 48 ## quads along one tile edge, at every level of detail

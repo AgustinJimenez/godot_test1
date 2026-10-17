@@ -16,6 +16,7 @@ extends Node3D
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
 ##   -- --star-mass=M [--star-readability=0..1]  the star in solar masses (0.15 red, 1.6 white)
+##   -- --home=SEED [--any]  start on the home planet of that universe (Sun-like unless --any)
 ##   -- --universe=SEED [--systems=N]  (headless ok) print the table of N star systems and quit
 ##   -- --start-menu  the start menu first (saved planets, a new one); no arguments does it too
 ##   -- --world=NAME / --continue  open a saved universe (Planet page of the Esc menu saves them)
@@ -161,6 +162,10 @@ func _check_saving() -> void:
 	ok = ok and settings.world_seed == planet.settings.world_seed
 	ok = ok and is_equal_approx(settings.radius, planet.settings.radius)
 	ok = ok and is_equal_approx(settings.axial_tilt, planet.settings.axial_tilt)
+	ok = ok and settings.universe_seed == planet.settings.universe_seed
+	ok = ok and is_equal_approx(settings.star_mass, planet.settings.star_mass)
+	ok = ok and is_equal_approx(settings.insolation, planet.settings.insolation)
+	ok = ok and int(data.get("version", 0)) == 3 and data.has("universe")
 	var state: Dictionary = data.get("state", {})
 	var here: Array = state.get("direction", [0, 0, 0])
 	var was: Array = before["direction"]
@@ -249,6 +254,11 @@ func _ready() -> void:
 			_shot = arg.trim_prefix("--shot=")
 		elif arg.begins_with("--time-scale="):
 			settings.time_scale = arg.trim_prefix("--time-scale=").to_float()
+		elif arg.begins_with("--home="): # the home planet of a universe (add --any for any star)
+			var universe := UniverseSettings.new()
+			universe.universe_seed = arg.trim_prefix("--home=").to_int()
+			universe.sunlike_home = not "--any" in OS.get_cmdline_user_args()
+			settings = universe.home_settings()
 		elif arg.begins_with("--star-mass="):
 			settings.star_mass = arg.trim_prefix("--star-mass=").to_float()
 		elif arg.begins_with("--star-readability="):

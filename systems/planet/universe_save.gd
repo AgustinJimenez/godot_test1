@@ -11,7 +11,7 @@ extends RefCounted
 
 const DIR := "user://universes"
 const OLD_DIR := "user://planets" ## the first saves (one planet, no universe): still read
-const VERSION := 2
+const VERSION := 3 ## 3 adds the universe block (2: planets only; both are read)
 const FIRST_PLANET := "planet_1"
 
 
@@ -45,6 +45,8 @@ static func save(planet: PlanetWorld, save_name: String) -> bool:
 		"version": VERSION,
 		"name": save_name.strip_edges(),
 		"saved_at": int(Time.get_unix_time_from_system()),
+		"universe": {"seed": planet.settings.universe_seed, "systems": 1,
+				"sunlike_home": planet.settings.universe_sunlike},
 		"planets": planets,
 		"current": planet_id,
 		"state": planet.snapshot(),
