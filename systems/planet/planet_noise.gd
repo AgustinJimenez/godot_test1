@@ -28,6 +28,8 @@ var _gullies := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
 var _massif := FastNoiseLite.new() # ranges and massifs, tens of km across on an Earth
 var _chain := FastNoiseLite.new() # the mountain chains, a hundred km and more
+var _valleys: Array[FastNoiseLite] = [] # three scales of valley networks (the work of erosion)
+var _valley_depth: Array[float] = []
 var _foothills := FastNoiseLite.new() # the ridges and spurs between them, a fifth of that
 var _sea := 0.0 ## the height (units of relief) that is sea level, so the ocean covers its share
 
@@ -57,6 +59,13 @@ func _init(planet_settings: PlanetSettings) -> void:
 	var massif_length := clampf(settings.radius * 0.005, 800.0, 40000.0)
 	_setup(_massif, settings.world_seed + 11, 1.0 / massif_length, 5)
 	_massif.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	var valley_length := clampf(settings.radius * 0.02, 600.0, 120000.0)
+	for scale_index in 3:
+		var valley := FastNoiseLite.new()
+		var length := valley_length / pow(4.0, float(scale_index))
+		_setup(valley, settings.world_seed + 21 + scale_index, 1.0 / maxf(length, 150.0), 3)
+		_valleys.append(valley)
+		_valley_depth.append(minf(length * 0.05, relief * 0.06) * pow(0.5, float(scale_index)))
 	_setup(_chain, settings.world_seed + 17, 1.0 / clampf(settings.radius * 0.03, 1500.0, 300000.0), 4)
 	_chain.fractal_type = FastNoiseLite.FRACTAL_RIDGED
 	_setup(_foothills, settings.world_seed + 13, 5.0 / massif_length, 4)
@@ -120,6 +129,22 @@ func base_height(x: float, y: float, z: float) -> float:
 	return lerpf(ground, steps * layer, smoothstep(0.3, 0.6, units) * 0.35)
 
 
+## How deep the valleys cut at `p` (m): where a slow noise crosses zero it makes a line, and a
+## valley follows each line, three scales of them, the biggest the deepest. The lowland and the
+## shelf are left alone; the upland is cut the most. (Not a simulation of water: it is the look of
+## drainage, the same at any planet size and cheap enough for every vertex.)
+func _valley_cut(p: Vector3, units: float) -> float:
+	var upland := smoothstep(0.03, 0.25, units)
+	if upland <= 0.0:
+		return 0.0
+	var cut := 0.0
+	for index in _valleys.size():
+		var line := absf(_valleys[index].get_noise_3d(p.x, p.y, p.z))
+		var floor_ := 1.0 - smoothstep(0.0, VALLEY_WIDTH, line)
+		cut += _valley_depth[index] * floor_ * sqrt(floor_)
+	return cut * upland
+
+
 ## The ground without the smallest hills: what the water sees when it picks its way to the sea.
 func macro_height(x: float, y: float, z: float) -> float:
 	return _macro(_units(x, y, z), Vector3(x, y, z) * settings.radius)
@@ -138,7 +163,11 @@ func _macro(units: float, p: Vector3) -> float:
 	var massifs := (_massif.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * MASSIF * rugged
 	var chains := (_chain.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * CHAINS * rugged
 	var spurs := (_foothills.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * FOOTHILLS * rugged
-	return _shore(units) * relief + rolling * land + ridges + chains + massifs + spurs
+	# erosion has cut valley networks into the upland, small ones into big ones (the water sees them)
+	var shore := _shore(units) * relief
+	var raised := shore + rolling * land + ridges + chains + massifs + spurs
+	# the valleys never cut below the sea: near the coast they only cut what stands above it
+	return raised - minf(_valley_cut(p, units), maxf(shore, 0.0) * 0.8)
 
 
 ## Beaches and shallows: the ground eases toward the sea instead of dropping into it. The slope is a
@@ -146,6 +175,7 @@ func _macro(units: float, p: Vector3) -> float:
 ## (this is that slope integrated, so it never gets steeper than the plates are, as scaling the
 ## height by a factor does).
 const SHORE := 0.2
+const VALLEY_WIDTH := 0.09 ## of the noise's range either side of its zero line
 const CHAINS := 0.32 ## of the relief: the chains of mountains, the broadest rough ground
 const MASSIF := 0.3 ## of the relief: the height of the massifs on the roughest ground
 const FOOTHILLS := 0.07 ## and of the foothills

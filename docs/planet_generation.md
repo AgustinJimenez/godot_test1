@@ -277,3 +277,12 @@ roughly 0.12 / 0.09 / 0.05 / 0.02: the broad scales are still gentler). The heig
 (`PlanetTectonics`), the shore and sea floor curve (`PlanetNoise._shore`: deeper abyssal floor, a
 hypsometric land curve), the ranges (`_ranges`), mountain chains (`_chain`), massifs (`_massif`) and
 foothills (`_foothills`) that grow with the plates' uplift, then hills and gullies at the small scale.
+
+### Valleys (the look of erosion)
+
+`PlanetNoise._valley_cut` cuts three scales of valley networks into the upland (a valley follows each
+zero line of a slow noise, the biggest the deepest, never below the sea), in `_macro`, so the water
+step sees them too. It is not a water simulation: it is the same at every planet size and cheap enough
+for every vertex. A real drainage simulation (flow and sediment on a grid) is still to do; it would
+need a finer grid near the player on a planet the size of the Earth. `--relief-patch=x,y,z,span,PNG`
+writes a shaded picture of a square of ground to judge the shape.

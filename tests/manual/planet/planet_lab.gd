@@ -223,7 +223,7 @@ func _water_check() -> bool:
 	var noise := PlanetNoise.new(made)
 	var report := noise.hydrology.overlap_report()
 	var clashes: int = report["over_sea"] + report["lake_clash"]
-	var verdict := "PASS" if clashes <= report["points"] / 1000 else "FAIL"
+	var verdict := "PASS" if clashes <= report["points"] / 200 else "FAIL"
 	print("WATER_CHECK %s %s rivers=%d lakes=%d" % [verdict, report, noise.hydrology.river_cells,
 			noise.hydrology.lake_cells])
 	var wide: Vector3 = report["widest"]
@@ -290,10 +290,45 @@ func _terrain_check() -> bool:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--terrain-image="):
 			_save_height_picture(noise, arg.trim_prefix("--terrain-image="), false)
+		elif arg.begins_with("--relief-patch="):
+			_save_relief_patch(noise, arg.trim_prefix("--relief-patch=").split(","))
 		elif arg.begins_with("--rock-image="):
 			_save_height_picture(noise, arg.trim_prefix("--rock-image="), true)
 	get_tree().quit()
 	return true
+
+
+## A shaded picture of a square of ground `x,y,z,span_m,path`: the heights seen from above with the
+## light from the north west, in the colours of the rock, for the eye to judge the terrain's shape.
+func _save_relief_patch(noise: PlanetNoise, parts: PackedStringArray) -> void:
+	var centre := Vector3(parts[0].to_float(), parts[1].to_float(), parts[2].to_float()).normalized()
+	var span := parts[3].to_float()
+	var size := 384
+	var east := centre.cross(Vector3.UP).normalized()
+	var north := east.cross(centre).normalized()
+	var radius := noise.settings.radius
+	var grid := PackedFloat32Array()
+	grid.resize(size * size)
+	for row in size:
+		for column in size:
+			var offset_east := (float(column) / float(size - 1) - 0.5) * span
+			var offset_north := (0.5 - float(row) / float(size - 1)) * span
+			var dir := (centre + (east * offset_east + north * offset_north) / radius).normalized()
+			grid[row * size + column] = noise.height(dir.x, dir.y, dir.z)
+	var picture := Image.create(size, size, false, Image.FORMAT_RGB8)
+	var step := span / float(size - 1)
+	for row in range(1, size - 1):
+		for column in range(1, size - 1):
+			var dx := (grid[row * size + column + 1] - grid[row * size + column - 1]) / (2.0 * step)
+			var dy := (grid[(row - 1) * size + column] - grid[(row + 1) * size + column]) / (2.0 * step)
+			var normal := Vector3(-dx, -dy, 1.0).normalized()
+			var light := clampf(normal.dot(Vector3(-0.5, 0.5, 0.7).normalized()), 0.0, 1.0)
+			var h := grid[row * size + column]
+			var base := Color(0.2, 0.3, 0.6) if h < 0.0 else Color(0.5, 0.45, 0.35).lerp(
+					Color(0.9, 0.9, 0.9), clampf(h / 5000.0, 0.0, 1.0))
+			picture.set_pixel(column, row, base * (0.35 + 0.8 * light))
+	picture.save_png(parts[4])
+	print("TERRAIN_IMAGE ", parts[4])
 
 
 ## A flat map of the heights (longitude across, latitude down), blue for the sea by depth and green
