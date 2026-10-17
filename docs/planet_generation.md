@@ -250,11 +250,14 @@ looked at; the next run overwrites it. (The foot IK recorder, F10, is a separate
 
 ## The crust's colour (rock types)
 
-Every ground facet is coloured by the rock under it (`PlanetRock`), not by what grows on it: no
-grass, sand, snow or marsh colours. Each plate has its own mix along one scale (basalt, shale, grey
-granite, pink granite, limestone, sandstone, red sandstone), changing slowly across the plate; plates
-under the sea are young basalt; high ground shows granite; beds show as level bands; steep faces are
-darker. Vegetation and snow come back later as layers over this, from the climate.
+Every ground facet is coloured by the rock under it (`PlanetRock`), never by what grows on it. Nine
+rocks (basalt, andesite, granite, gneiss, schist, limestone, sandstone, red sandstone, shale), mixed
+by weight from the setting that makes them: the sea floor is basalt under a cover of shale; plate
+boundaries are volcanic (andesite) where an ocean plate is involved and metamorphic (gneiss, schist)
+where continents met; the old cores of the continents (cratons) and the high ground are granite and
+gneiss; the basins in between are sedimentary, which kind following a slow regional pattern. Beds
+show as level bands, steep faces are darker. `--terrain-check` prints the count of each rock and
+`--rock-image=PATH` writes a rock map. Vegetation and snow come back later as layers over this.
 
 ## The Earth preset
 
@@ -264,3 +267,13 @@ primary test planet: 6,371 km radius, a real day (86,400 s of play, speed it up 
 nearest point about 3 January, 71 % sea, 15 plates, the Sun. The sea, rivers, plants and animals follow
 the switches above. Earth size needs the double precision build (`E:\Godot\double`); the single
 precision build jitters above about 1,000 km and the menu says so.
+
+## Terrain measurements and the height scales
+
+`planet_lab --terrain-check [--earth|--radius=N] [--terrain-image=PNG]` prints the height spread and
+the mean slope of the land at 100 m, 1 km, 10 km and 100 km, and writes a height map. On the Earth
+preset: land 29 %, highest ~7 km, deepest ~7.5 km, slopes 0.15 / 0.085 / 0.028 / 0.005 (Earth's are
+roughly 0.12 / 0.09 / 0.05 / 0.02: the broad scales are still gentler). The height is the plate model
+(`PlanetTectonics`), the shore and sea floor curve (`PlanetNoise._shore`: deeper abyssal floor, a
+hypsometric land curve), the ranges (`_ranges`), mountain chains (`_chain`), massifs (`_massif`) and
+foothills (`_foothills`) that grow with the plates' uplift, then hills and gullies at the small scale.

@@ -250,6 +250,8 @@ func _terrain_check() -> bool:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
 	var heights := PackedFloat32Array()
+	var rock_count := PackedInt32Array()
+	rock_count.resize(PlanetRock.Kind.size())
 	var scales := [100.0, 1000.0, 10000.0, 100000.0]
 	var slope_sum := [0.0, 0.0, 0.0, 0.0]
 	var slope_count := [0, 0, 0, 0]
@@ -257,6 +259,7 @@ func _terrain_check() -> bool:
 		var dir := Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized()
 		var h := noise.height(dir.x, dir.y, dir.z)
 		heights.append(h)
+		rock_count[noise.rock.dominant(dir, h)] += 1
 		if h < 5.0:
 			continue
 		var side := dir.cross(Vector3.UP).normalized()
@@ -282,16 +285,20 @@ func _terrain_check() -> bool:
 		if slope_count[k] > 0:
 			slopes += " %dm=%.3f" % [int(scales[k]), slope_sum[k] / float(slope_count[k])]
 	print(slopes)
+	print("TERRAIN_ROCK ", rock_count, " = basalt, andesite, granite, gneiss, schist,"
+			+ " limestone, sandstone, red sandstone, shale")
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--terrain-image="):
-			_save_height_picture(noise, arg.trim_prefix("--terrain-image="))
+			_save_height_picture(noise, arg.trim_prefix("--terrain-image="), false)
+		elif arg.begins_with("--rock-image="):
+			_save_height_picture(noise, arg.trim_prefix("--rock-image="), true)
 	get_tree().quit()
 	return true
 
 
 ## A flat map of the heights (longitude across, latitude down), blue for the sea by depth and green
 ## to brown to white for the land by height, written as a PNG for the eye to judge the terrain.
-func _save_height_picture(noise: PlanetNoise, path: String) -> void:
+func _save_height_picture(noise: PlanetNoise, path: String, rock_colours := false) -> void:
 	var width := 720
 	var height := 360
 	var picture := Image.create(width, height, false, Image.FORMAT_RGB8)
@@ -301,7 +308,9 @@ func _save_height_picture(noise: PlanetNoise, path: String) -> void:
 			var lon := (float(column) + 0.5) / float(width) * TAU - PI
 			var h := noise.height(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
 			var colour: Color
-			if h < 0.0:
+			if rock_colours:
+				colour = noise.facet_color(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon), h, 0.1)
+			elif h < 0.0:
 				colour = Color(0.02, 0.1, 0.35).lerp(Color(0.25, 0.55, 0.8), clampf(1.0 + h / 6000.0, 0.0, 1.0))
 			else:
 				var up := clampf(h / 6000.0, 0.0, 1.0)
