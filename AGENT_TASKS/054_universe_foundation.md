@@ -1,6 +1,6 @@
 # 054 - Universe foundation: seed, star systems, planets
 
-Status: **stage 1 done (2026-10-17): `Star`, `StarSystem`, `UniverseSettings` in `systems/planet/`, table with `planet_lab -- --universe=SEED [--systems=N] [--any]` (headless ok, same seed = same table); next: stage 2**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **stages 1-2 done (2026-10-17): `Star`, `StarSystem`, `UniverseSettings` (+ `planet_settings(system, planet)`) in `systems/planet/`; `planet_lab -- --universe=SEED [--systems=N] [--any]` prints the table and `UNIVERSE_CHECK PASS`; next: stage 3 (the star drives the sun)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 Decisions (user, 2026-10-17): **many star systems are wanted** ("if possible, let's do it"); the focus is

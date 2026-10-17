@@ -190,6 +190,7 @@ func _print_universe_table() -> bool:
 		return false
 	for line in universe.table(count):
 		print(line)
+	print("UNIVERSE_CHECK %s" % ("PASS" if universe.self_check() else "FAIL"))
 	get_tree().quit()
 	return true
 

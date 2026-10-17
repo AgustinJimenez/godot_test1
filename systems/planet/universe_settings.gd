@@ -24,6 +24,28 @@ func system(index: int) -> StarSystem:
 	return made
 
 
+## The settings of planet `number` (0-based) of system `index`, from the star and the orbit: the
+## same ids always give the same planet. Rocky planets only for now (other kinds: task 061).
+## Game scale: Earth is 20,000 m; the year is the true one in local days, clamped to 6..64.
+func planet_settings(index: int, number: int) -> PlanetSettings:
+	var made := PlanetSettings.new()
+	var system_data := system(index)
+	var body: Dictionary = system_data.planets[number]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([system_data.system_seed, number])
+	made.world_seed = rng.randi() & 0x7fffffff
+	made.radius = 20000.0 * clampf(body["radius_earth"], 0.4, 2.2)
+	var day_hours: float = body["day_standard_hours"]
+	made.day_seconds = day_hours * 60.0
+	made.year_days = clampf(body["year_standard_days"] * 24.0 / day_hours, 6.0, 64.0)
+	made.axial_tilt = body["tilt_deg"]
+	if body["habitable"]:
+		made.ocean_fraction = rng.randf_range(0.55, 0.8)
+	else:
+		made.ocean_fraction = rng.randf_range(0.0, 0.3)
+	return made
+
+
 ## A text table of the first `count` systems, one line per planet, for the lab (`--universe=SEED`).
 func table(count: int) -> PackedStringArray:
 	var lines := PackedStringArray()
@@ -42,3 +64,20 @@ func table(count: int) -> PackedStringArray:
 					planet["radius_earth"], planet["year_standard_days"], planet["day_standard_hours"],
 					planet["tilt_deg"], " HABITABLE" if planet["habitable"] else ""])
 	return lines
+
+
+## Pass/fail for the lab (`UNIVERSE_CHECK`): the same ids give the same planet twice, the Sun-like
+## start has a G or K star with a habitable planet, and every derived planet is playable.
+func self_check() -> bool:
+	var ok := true
+	var first := system(0)
+	if sunlike_home:
+		ok = ok and first.stars[0].spectral_class in ["G", "K"] and first.planets.any(
+				func(planet: Dictionary) -> bool: return planet["habitable"])
+	for number in first.planets.size():
+		var a := planet_settings(0, number)
+		var b := planet_settings(0, number)
+		ok = ok and a.world_seed == b.world_seed and a.radius == b.radius
+		ok = ok and a.year_days == b.year_days and a.radius >= 8000.0 and a.day_seconds > 0.0
+	ok = ok and system(3).system_seed == system(3).system_seed and system_seed(1) != system_seed(2)
+	return ok
