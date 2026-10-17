@@ -102,6 +102,11 @@ func target() -> Node3D:
 ## Stands `target` on the planet at the spawn spot (or `direction`, a unit vector from the centre).
 ## The target ends up at the world origin; returns the direction it stands in.
 func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
+	# the materials tiles share are made here, on the main thread: a worker thread making one
+	# first could read it half made while another does (a null shader error on a river tile)
+	PlanetTile.ground_material()
+	PlanetTile.water_material()
+	PlanetTile.river_material()
 	_target = target
 	if target is Player:
 		splash = WaterSplash.new()

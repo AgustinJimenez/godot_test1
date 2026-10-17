@@ -12,6 +12,7 @@ static var pending_state := {}
 
 var _planet: PlanetWorld
 var _info: Label
+var _star_info: Label
 var _rate_label: Label
 var _hour_slider: HSlider
 var _year_slider: HSlider
@@ -27,6 +28,7 @@ func setup(planet: PlanetWorld) -> void:
 	_planet = planet
 	custom_minimum_size = Vector2(420, 0)
 	_info = _label("")
+	_star_info = _label(_star_text())
 	_add_time_rows()
 	_add_weather_row()
 	_add_new_planet_rows()
@@ -69,6 +71,21 @@ func _sync() -> void:
 	var rate := "paused" if _planet.time_rate == 0.0 else "%d×" % int(_planet.time_rate)
 	_rate_label.text = "Speed: %s   (a day lasts %d s at 1×)" % [rate,
 			int(_planet.clock.day_seconds)]
+
+
+## The star and the orbit in a few lines (read-only: travel to other planets comes later).
+func _star_text() -> String:
+	var settings := _planet.settings
+	var star := Star.from_mass(settings.star_mass)
+	var text := "Star: class %s, %.2f solar masses, %d K, %.2f times the Earth's light here" % [
+			star.spectral_class, star.mass, int(star.temperature), settings.insolation]
+	if settings.eccentricity > 0.005:
+		text += "\nOrbit: eccentricity %.2f (the light varies %d%% over the year)" % [
+				settings.eccentricity, int(round(400.0 * settings.eccentricity))]
+	if settings.universe_seed != 0:
+		text += "\nUniverse %d, system %d, planet %d" % [settings.universe_seed,
+				settings.universe_system, settings.universe_planet + 1]
+	return text
 
 
 func _add_time_rows() -> void:
