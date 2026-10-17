@@ -13,7 +13,7 @@ extends Node3D
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --fps  print the frame rate every 300 frames
 ##   -- --start-menu  the start menu first (saved planets, a new one); no arguments does it too
-##   -- --world=NAME / --continue  open a saved planet (Planet page of the Esc menu saves them)
+##   -- --world=NAME / --continue  open a saved universe (Planet page of the Esc menu saves them)
 ##   -- --planet-page  the Planet page of the Esc menu open from the start
 ##   -- --bare       no plants (to look at the ground)
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
@@ -65,9 +65,9 @@ var _view_yaw := 0.0
 ## Saves the planet, reads the save back and compares: the settings, the place and the clock.
 func _check_saving() -> void:
 	var before := planet.snapshot()
-	var ok := PlanetSave.save(planet, "_check")
-	var data := PlanetSave.load_data("_check")
-	var settings := PlanetSave.settings_from(data)
+	var ok := UniverseSave.save(planet, "_check")
+	var data := UniverseSave.load_data("_check")
+	var settings := UniverseSave.settings_from(data)
 	ok = ok and settings.world_seed == planet.settings.world_seed
 	ok = ok and is_equal_approx(settings.radius, planet.settings.radius)
 	ok = ok and is_equal_approx(settings.axial_tilt, planet.settings.axial_tilt)
@@ -79,17 +79,18 @@ func _check_saving() -> void:
 	var clock := PlanetClock.new()
 	clock.restore(state.get("clock", {}))
 	ok = ok and absf(clock.time - planet.clock.time) < 1.0e-3
-	ok = ok and PlanetSave.list().size() > 0
-	PlanetSave.delete("_check")
+	ok = ok and UniverseSave.list().size() > 0
+	UniverseSave.delete("_check")
 	print("SAVE_CHECK %s" % ("PASS" if ok else "FAIL"))
 
 
 func _ready() -> void:
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()
-	var menu_first := PlanetStartMenu.requested or user_args.is_empty() or "--start-menu" in user_args
+	var menu_first := UniverseStartMenu.requested or user_args.is_empty()
+	menu_first = menu_first or "--start-menu" in user_args
 	if not asked and menu_first:
-		add_child(PlanetStartMenu.new()) # the saved planets and a new one, before anything is built
+		add_child(UniverseStartMenu.new()) # the saved planets and a new one, before anything is built
 		for arg in user_args:
 			if arg.begins_with("--shot="):
 				var path := arg.trim_prefix("--shot=")
@@ -105,13 +106,13 @@ func _ready() -> void:
 		PlanetMenu.pending_state = {}
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--continue" or arg.begins_with("--world="):
-			var save_name := PlanetSave.latest() if arg == "--continue" \
+			var save_name := UniverseSave.latest() if arg == "--continue" \
 					else arg.trim_prefix("--world=")
-			var data := PlanetSave.load_data(save_name)
+			var data := UniverseSave.load_data(save_name)
 			if data.is_empty():
 				print("NO_SAVE '%s'" % save_name)
 			else:
-				settings = PlanetSave.settings_from(data)
+				settings = UniverseSave.settings_from(data)
 				restored_state = data.get("state", {})
 		elif arg.begins_with("--save-as="):
 			_save_as = arg.trim_prefix("--save-as=")
@@ -197,7 +198,7 @@ func _ready() -> void:
 			spawn])
 	_start_up = spawn
 	if _save_as != "":
-		print("SAVED %s %s" % [_save_as, PlanetSave.save(planet, _save_as)])
+		print("SAVED %s %s" % [_save_as, UniverseSave.save(planet, _save_as)])
 	var here := planet.planet_position().normalized()
 	print("LOCAL_HOUR %.2f year %.3f" % [planet.clock.local_hour(here), planet.clock.year_share()])
 	if _checking:

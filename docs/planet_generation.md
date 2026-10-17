@@ -89,18 +89,22 @@ wind that carries the cover (`PlanetWeather.zonal_wind`) carries the small shape
 (`PlanetWorld._drift_the_clouds`). The layer fades out between 850 and 1450 m above the ground,
 where the shell takes over. The old low-poly puffs are no longer used on the planet.
 
-## Saved planets
+## Saved universes
 
-`PlanetSave` (`systems/planet/planet_save.gd`) writes `user://planets/<name>.json`: the planet's
-settings (the same seed and numbers make the same planet, so the land is not stored) and the moment
+`UniverseSave` (`systems/planet/universe_save.gd`) writes `user://universes/<name>.json`: the planets
+of the universe (a list; today the one, each with its settings, since the same seed and numbers make
+the same planet and the land is not stored), the planet the player is on and the moment on it
 (`PlanetWorld.snapshot`: where the player stands, which way they face in the planet's frame, the
-clock, the speed of time, a forced weather). The Planet page of the Esc menu has "Save here", a list
-of saves with Open and Delete (opening reloads the scene with `PlanetMenu.pending` and
-`pending_state`, and `PlanetWorld.restored` puts the player back). The player is put on the ground
-at the saved place, whatever their height was. Opening still builds the ground from the seed, so
-the loading screen is the same; what a save spares is choosing the planet, the place and the time.
+clock, the speed of time, a forced weather). The format is made for the day the player can travel
+between planets: each planet keeps its settings, the save knows which one is current, and saving
+keeps the other planets of the file. First-version saves (`user://planets/`, one planet) are still
+read. The Planet page of the Esc menu has "Save here", a list of saves with Open and Delete
+(opening reloads the scene with `PlanetMenu.pending` and `pending_state`, and
+`PlanetWorld.restored` puts the player back). The player is put on the ground at the saved place,
+whatever their height was. Opening still builds the ground from the seed, so the loading screen is
+the same; what a save spares is choosing the planet, the place and the time.
 The lab (started with no arguments, or with `-- --start-menu`, or from "Main menu" in the Planet
-page) shows `PlanetStartMenu` first: the list of saves (Open, Delete, double click), a new planet
+page) shows `UniverseStartMenu` first: the list of saved universes (Open, Delete, double click), a new planet
 (seed and radius, a random seed) and a quick start with the default planet; choosing sets
 `PlanetMenu.pending` and reloads the scene. Other lab options: `-- --world=NAME` or `-- --continue`
 (the newest), `-- --save-as=NAME`; `--planet-check` also runs `SAVE_CHECK`.

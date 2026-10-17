@@ -1,8 +1,10 @@
-class_name PlanetStartMenu
+class_name UniverseStartMenu
 extends CanvasLayer
-## The menu in front of a planet: the saved planets (open one, delete one) and a new planet (a seed
-## and a size, a random seed, or just the default one). Choosing sets what the next planet is made
-## from (PlanetMenu.pending and pending_state) and makes the scene again, which builds it.
+## The menu in front of the universe: the saved universes (open one, delete one) and a new universe
+## (the seed and size of its first planet, a random seed, or just the default one). Choosing sets
+## what the next planet is made from (PlanetMenu.pending and pending_state) and makes the scene
+## again, which builds it. A universe has one planet today; the player will be able to travel to
+## others.
 
 ## True when the next start of the scene should show this menu (set by "Main menu" in the Planet
 ## page); a start with no arguments shows it too.
@@ -27,8 +29,8 @@ func _ready() -> void:
 	column.custom_minimum_size = Vector2(520, 0)
 	column.add_theme_constant_override("separation", 8)
 	centre.add_child(column)
-	_add_label(column, "Planets", 32)
-	_add_label(column, "Saved planets", 16)
+	_add_label(column, "Universe", 32)
+	_add_label(column, "Saved universes", 16)
 	_saves = ItemList.new()
 	_saves.custom_minimum_size = Vector2(0, 190)
 	_saves.item_activated.connect(func(_index: int) -> void: _open_selected())
@@ -38,7 +40,7 @@ func _ready() -> void:
 	_add_button(row, "Open", _open_selected)
 	_add_button(row, "Delete", _delete_selected)
 	column.add_child(HSeparator.new())
-	_add_label(column, "New planet", 16)
+	_add_label(column, "New universe (its first planet)", 16)
 	var fields := HBoxContainer.new()
 	column.add_child(fields)
 	_add_label(fields, "seed", 16)
@@ -55,7 +57,7 @@ func _ready() -> void:
 	column.add_child(buttons)
 	_add_button(buttons, "Create", func() -> void: _create(_seed_field.text))
 	_add_button(buttons, "Random seed", func() -> void: _create(str(randi() % 100000)))
-	_add_button(buttons, "Quick start (default planet)",
+	_add_button(buttons, "Quick start (default universe)",
 			func() -> void: _begin(PlanetSettings.new(), {}))
 	_note = _add_label(column, "", 14)
 	_fill_saves()
@@ -63,15 +65,16 @@ func _ready() -> void:
 
 func _fill_saves() -> void:
 	_saves.clear()
-	for entry in PlanetSave.list():
+	for entry in UniverseSave.list():
 		var when := Time.get_datetime_string_from_unix_time(int(entry["saved_at"]), true)
-		_saves.add_item("%s    seed %d, radius %d m    %s" % [entry["name"], entry["seed"],
-				int(entry["radius"]), when])
+		var count := int(entry["planets"])
+		_saves.add_item("%s    %d planet%s, seed %d, radius %d m    %s" % [entry["name"], count,
+				"" if count == 1 else "s", entry["seed"], int(entry["radius"]), when])
 		_saves.set_item_metadata(_saves.item_count - 1, entry["name"])
 	if _saves.item_count > 0:
 		_saves.select(0)
 	else:
-		_saves.add_item("(no saved planet yet)")
+		_saves.add_item("(no saved universe yet)")
 		_saves.set_item_disabled(0, true)
 
 
@@ -84,17 +87,17 @@ func _selected_save() -> String:
 
 func _open_selected() -> void:
 	var save_name := _selected_save()
-	var data := PlanetSave.load_data(save_name)
+	var data := UniverseSave.load_data(save_name)
 	if data.is_empty():
-		_note.text = "Choose a saved planet to open"
+		_note.text = "Choose a saved universe to open"
 		return
-	_begin(PlanetSave.settings_from(data), data.get("state", {}))
+	_begin(UniverseSave.settings_from(data), data.get("state", {}))
 
 
 func _delete_selected() -> void:
 	var save_name := _selected_save()
 	if save_name != "":
-		PlanetSave.delete(save_name)
+		UniverseSave.delete(save_name)
 		_note.text = "Deleted '%s'" % save_name
 	_fill_saves()
 

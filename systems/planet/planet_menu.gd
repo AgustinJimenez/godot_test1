@@ -32,9 +32,9 @@ func setup(planet: PlanetWorld) -> void:
 	_add_new_planet_rows()
 	_add_save_rows()
 	var main := Button.new()
-	main.text = "Main menu (saved planets, a new one)"
+	main.text = "Main menu (saved universes, a new one)"
 	main.pressed.connect(func() -> void:
-		PlanetStartMenu.requested = true
+		UniverseStartMenu.requested = true
 		get_tree().paused = false
 		get_tree().reload_current_scene())
 	add_child(main)
@@ -152,11 +152,11 @@ func _add_new_planet_rows() -> void:
 
 
 func _add_save_rows() -> void:
-	_label("Saved planets (the land is made again from the seed)")
+	_label("Saved universes (the land is made again from the seed)")
 	var row := HBoxContainer.new()
 	add_child(row)
 	_save_name = LineEdit.new()
-	_save_name.text = "world"
+	_save_name.text = "universe"
 	_save_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(_save_name)
 	var save := Button.new()
@@ -183,7 +183,7 @@ func _add_save_rows() -> void:
 
 func _fill_saves() -> void:
 	_saves.clear()
-	for entry in PlanetSave.list():
+	for entry in UniverseSave.list():
 		_saves.add_item("%s   (seed %d, radius %d m)" % [entry["name"], entry["seed"],
 				int(entry["radius"])])
 		_saves.set_item_metadata(_saves.item_count - 1, entry["name"])
@@ -198,19 +198,19 @@ func _selected_save() -> String:
 func _save_here() -> void:
 	var save_name := _save_name.text.strip_edges()
 	if save_name == "":
-		save_name = "world"
-	var written := PlanetSave.save(_planet, save_name)
+		save_name = "universe"
+	var written := UniverseSave.save(_planet, save_name)
 	_save_note.text = ("Saved '%s'" % save_name) if written else "Could not save '%s'" % save_name
 	_fill_saves()
 
 
 func _open_selected() -> void:
 	var save_name := _selected_save()
-	var data := PlanetSave.load_data(save_name)
+	var data := UniverseSave.load_data(save_name)
 	if data.is_empty():
 		_save_note.text = "Nothing to open"
 		return
-	pending = PlanetSave.settings_from(data)
+	pending = UniverseSave.settings_from(data)
 	pending_state = data.get("state", {})
 	get_tree().paused = false
 	get_tree().reload_current_scene()
@@ -219,7 +219,7 @@ func _open_selected() -> void:
 func _delete_selected() -> void:
 	var save_name := _selected_save()
 	if save_name != "":
-		PlanetSave.delete(save_name)
+		UniverseSave.delete(save_name)
 		_save_note.text = "Deleted '%s'" % save_name
 	_fill_saves()
 

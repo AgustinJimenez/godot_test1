@@ -27,7 +27,7 @@ var weather: WorldWeather ## the effects of the weather; the planet picks the st
 var cloud_shell: PlanetCloudShell
 var weather_text := ""
 var _weather_timer := 0.0
-var restored := {} ## a save's moment (PlanetSave) to bring back when `start` runs
+var restored := {} ## a save's moment (UniverseSave) to bring back when `start` runs
 var weather_override := -1 ## a WorldWeather.State to force, or -1 to follow the planet's climate
 var time_rate := 1.0 ## how fast time runs on top of `time_scale`: negative is backward, 0 stops it
 var clock := PlanetClock.new() ## the star, the orbit, the spin: where the sun is (real geometry)
@@ -181,7 +181,7 @@ func _pick_the_weather() -> void:
 
 ## What a save keeps of this moment: where the player stands (a unit direction from the centre) and
 ## which way they face (in the planet's frame, which turns under them), the clock, the speed of time
-## and the weather forced, if any. PlanetSave writes it; `restored` takes it back.
+## and the weather forced, if any. UniverseSave writes it; `restored` takes it back.
 func snapshot() -> Dictionary:
 	var here := planet_position().normalized()
 	var state := {
