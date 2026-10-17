@@ -63,7 +63,8 @@ func _own_every_look_setting() -> void:
 	environment.fog_depth_begin = 10.0 # (used by the depth mode only)
 	environment.fog_depth_end = 100.0
 	environment.fog_depth_curve = 1.0
-	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	var mapper: int = GraphicsSettings.get_graphics_value(&"tone_mapper")
+	environment.tonemap_mode = mapper as Environment.ToneMapper
 	environment.tonemap_exposure = 1.0
 	environment.tonemap_white = 1.0
 	environment.adjustment_enabled = false
@@ -159,6 +160,7 @@ func _apply() -> void:
 		environment.fog_light_color = Color(0.05, 0.3, 0.4) * lerpf(0.25, 1.0, 1.0 - _night_amount)
 		environment.fog_sky_affect = 1.0
 	environment.background_energy_multiplier = 1.0
-	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	var chosen: int = GraphicsSettings.get_graphics_value(&"tone_mapper")
+	environment.tonemap_mode = chosen as Environment.ToneMapper
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = 220.0

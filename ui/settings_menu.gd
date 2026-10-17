@@ -10,6 +10,8 @@ const SHADOW_NAMES: PackedStringArray = ["Off", "Low", "Medium", "High"]
 
 var _preset_buttons: Array[Button] = []
 var _syncing := false
+var _tone_mapper: OptionButton
+var _hdr: CheckButton
 var _settings: Node
 
 @onready var low_button: Button = %LowButton
@@ -48,10 +50,34 @@ func _ready() -> void:
 	ssil.toggled.connect(_on_toggle_changed.bind(&"ssil"))
 	glow.toggled.connect(_on_toggle_changed.bind(&"glow"))
 	vsync.toggled.connect(_on_toggle_changed.bind(&"vsync"))
+	_add_look_controls()
 	max_fps.value_changed.connect(_on_max_fps_changed)
 	back_button.pressed.connect(back_requested.emit)
 	_settings.settings_changed.connect(_on_settings_changed)
 	_sync_controls()
+
+
+## The tone mapper and the HDR output (Godot 4.7), added under the glow switch.
+func _add_look_controls() -> void:
+	var parent := glow.get_parent()
+	var at := glow.get_index() + 1
+	var label := Label.new()
+	label.text = "Tone mapping"
+	parent.add_child(label)
+	parent.move_child(label, at)
+	_tone_mapper = OptionButton.new()
+	for name_of: String in ["Linear", "Reinhard", "Filmic", "ACES", "AgX"]:
+		_tone_mapper.add_item(name_of)
+	_tone_mapper.item_selected.connect(func(index: int) -> void:
+		if not _syncing:
+			_settings.set_graphics_value(&"tone_mapper", index))
+	parent.add_child(_tone_mapper)
+	parent.move_child(_tone_mapper, at + 1)
+	_hdr = CheckButton.new()
+	_hdr.text = "HDR output (needs an HDR display)"
+	_hdr.toggled.connect(_on_toggle_changed.bind(&"hdr"))
+	parent.add_child(_hdr)
+	parent.move_child(_hdr, at + 2)
 
 
 func refresh() -> void:
@@ -106,6 +132,8 @@ func _sync_controls() -> void:
 	ssao.button_pressed = bool(_settings.get_graphics_value(&"ssao"))
 	ssil.button_pressed = bool(_settings.get_graphics_value(&"ssil"))
 	glow.button_pressed = bool(_settings.get_graphics_value(&"glow"))
+	_tone_mapper.select(int(_settings.get_graphics_value(&"tone_mapper")))
+	_hdr.button_pressed = bool(_settings.get_graphics_value(&"hdr"))
 	vsync.button_pressed = bool(_settings.get_graphics_value(&"vsync"))
 	max_fps.value = float(_settings.get_graphics_value(&"max_fps"))
 	render_scale_value.text = "%d%%" % roundi(render_scale.value)

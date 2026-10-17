@@ -24,6 +24,8 @@ const DEFAULT_VALUES: Dictionary = {
 	&"glow": false,
 	&"vsync": true,
 	&"max_fps": 120,
+	&"tone_mapper": Environment.TONE_MAPPER_FILMIC,
+	&"hdr": false,
 }
 const PRESETS: Dictionary = {
 	Preset.LOW: {
@@ -107,6 +109,8 @@ func apply() -> void:
 	viewport.scaling_3d_scale = float(_values[&"render_scale"])
 	_apply_anti_aliasing(viewport, int(_values[&"anti_aliasing"]))
 	Engine.max_fps = int(_values[&"max_fps"])
+	var supported := DisplayServer.window_is_hdr_output_supported()
+	get_tree().root.hdr_output_requested = bool(_values[&"hdr"]) and supported
 	DisplayServer.window_set_vsync_mode(
 			DisplayServer.VSYNC_ENABLED if bool(_values[&"vsync"])
 			else DisplayServer.VSYNC_DISABLED)
@@ -162,6 +166,7 @@ func _apply_single_node(node: Node) -> void:
 			environment.ssao_enabled = bool(_values[&"ssao"])
 			environment.ssil_enabled = bool(_values[&"ssil"])
 			environment.glow_enabled = bool(_values[&"glow"])
+			environment.tonemap_mode = int(_values[&"tone_mapper"]) as Environment.ToneMapper
 	elif node is DirectionalLight3D:
 		var light := node as DirectionalLight3D
 		var quality := int(_values[&"shadow_quality"])
@@ -190,7 +195,9 @@ func _sanitize_value(key: StringName, value: Variant) -> Variant:
 			return clampi(int(value), ShadowQuality.OFF, ShadowQuality.HIGH)
 		&"max_fps":
 			return clampi(int(value), 30, 240)
-		&"ssao", &"ssil", &"glow", &"vsync":
+		&"tone_mapper":
+			return clampi(int(value), Environment.TONE_MAPPER_LINEAR, Environment.TONE_MAPPER_AGX)
+		&"ssao", &"ssil", &"glow", &"vsync", &"hdr":
 			return bool(value)
 	return value
 
