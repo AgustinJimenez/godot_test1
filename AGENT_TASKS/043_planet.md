@@ -339,3 +339,34 @@ flight at a great speed as in the free mode today).
   distance in space" in the doc); now 463. On the ground: tree distance levels and merged far trees took a frame from 55 to 152 fps
   (see "Distance levels of the plants" in the doc).
 
+## Follow-up tasks (planned 2026-10-17, none started)
+
+Read `docs/planet_lessons.md` before any of them. Suggested order and what depends on what:
+
+| First | Task | Depends on |
+|---|---|---|
+| 1 | [044](044_planet_performance_round_2.md) performance round 2 | - |
+| 1 | [045](045_landing_and_fast_descent.md) landing and fast descent | - |
+| 1 | [046](046_performance_budget_and_checks.md) budget and one check script | - (helps all) |
+| 2 | [047](047_sky_and_sunsets.md) sky and sunsets | - |
+| 2 | [048](048_cloud_polish.md) cloud polish | 047 for the cost budget |
+| 2 | [050](050_tree_look_fixes.md) tree look fixes | - |
+| 2 | [052](052_graphics_options_for_the_planet.md) graphics options | 044, 046 |
+| 3 | [049](049_water_and_coasts.md) water and coasts | 058 for tides |
+| 3 | [057](057_terrain_realism.md) terrain realism | 049 |
+| 3 | [058](058_climate_and_orbit_depth.md) climate and orbit depth | - |
+| 3 | [059](059_plant_variety.md) plant variety | 044, 050 |
+| 3 | [051](051_life_and_sound.md) life and sound | - |
+| 3 | [060](060_map_and_ui.md) map, HUD and tools | - |
+| 3 | [053](053_flat_world_parity.md) flat world parity | user decision on Sky3D |
+| 4 | [054](054_universe_foundation.md) universe foundation | user decision: one star system or many |
+| 4 | [056](056_saves_v3_and_menus.md) saves v3 and menus | 045; 054 for the universe part |
+| 4 | [061](061_other_planet_types.md) other planet types | 054, 047 |
+| 5 | [055](055_space_travel.md) space travel | 054, 062, 045; user decision on how to travel |
+| 5 | [062](062_earth_scale_and_double_precision.md) Earth scale and double precision | 044 |
+| 5 | [063](063_things_to_do_on_the_planet.md) things to do on the planet | user decision on what is wanted |
+
+Decisions only the user can make (also written in the tasks): Sky3D in the flat world (053), one star
+system or many and how the player travels (054, 055), which interactions to build and none with hunger or
+health unless asked (063), gravity changes to the player controller (061).
+
