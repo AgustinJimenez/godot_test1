@@ -21,6 +21,8 @@ moon effects.
 The greenhouse effect, the heat capacity of the air, wind patterns from the spin and what falls as
 "rain" depend on the atmosphere's composition and pressure: see [065](065_atmosphere_composition.md).
 
+Pressure fields, fronts and storms are the weather side: [068](068_weather_systems_and_storms.md).
+
 ## Plan
 
 1. **Heat carried by the wind.** In `PlanetSeasons`, advect the temperature along the zonal wind (a

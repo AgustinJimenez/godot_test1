@@ -19,6 +19,9 @@ see, and a standing-above-the-clouds view.
   not from the clouds overhead.
 - Clouds cost 0.4-0.9 ms at 1080p; the march skips clear sky and uses fewer steps on short ways.
 
+Storm cells, fronts and cyclones as visible structures come from [068](068_weather_systems_and_storms.md);
+the cumulonimbus item below should read its cells.
+
 ## Plan
 
 1. **Cloud sea.** A flat, thick layer of low cloud (stratus/fog sea) at the valleys or at a fixed height that
