@@ -400,6 +400,9 @@ func _physics_process(delta: float) -> void:
 		# far enough to see the whole cap of the planet in sight: its horizon is that far away
 		var high := maxf(altitude(), 0.0)
 		var horizon := sqrt(high * (2.0 * settings.radius + high))
-		camera.far = maxf(settings.radius * 1.2, horizon * 1.1 + 2000.0)
+		camera.far = maxf(minf(settings.radius * 1.2, 600000.0), horizon * 1.1 + 2000.0)
+		# the near plane grows with the height: the depth range stays workable (a far plane a million
+		# times the near one breaks the projection and the shadow culling) and nothing is that close
+		camera.near = clampf(high * 0.0005, 0.01, 2000.0)
 	atmosphere.global_position = _target.global_position
 	atmosphere.altitude = altitude()
