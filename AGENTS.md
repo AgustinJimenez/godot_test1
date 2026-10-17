@@ -797,3 +797,30 @@ has a cause: `AGENT_TASKS/043`). Checks: `species_check.tscn`, `world_lab.tscn -
 `planet_lab.tscn -- --planet-check` and `-- --walk-check --fixed-fps 60`.
 What we learned (how to measure frames and hitches, where the frame went, clouds, the air, saves,
 engine traps): `docs/planet_lessons.md`; read it before changing planet rendering or streaming.
+
+### Measuring planet performance and looking at results
+
+All of it runs through the lab, `godot --path . res://tests/manual/planet/planet_lab.tscn -- <args>`
+(every argument is listed in the comment at the top of `tests/manual/planet/planet_lab.gd`; with no
+arguments the lab opens the universe start menu, so scripted runs always pass some). Needs a window
+(not `--headless`) for anything about frames, shaders or pictures; stop the game after a verification run.
+- **Frames:** `-- --fps` prints every 300 physics frames: fps (uncapped), draw calls, primitives, tiles and
+  the triangles by kind of node (draw calls and primitives are the main pass; shadows are not in them).
+  Read the *last* lines: plants and tiles stream in for ~900 frames after the loading screen.
+- **What a kind costs:** `--hide=trees|plants|ground|water|grass|full|light` (one kind not drawn),
+  `--no-shadow`; the fps difference against a plain run is the cost.
+- **Altitude:** `--climb=N` lifts the real player N metres looking down (`--view-alt=N` is a camera
+  without a player and does not refresh the tile detail: not for performance).
+- **Hitches (streaming):** `--walk-check` and `--fly-check` print `HITCH worst_frame=... frames over 33 ms`
+  after the loading; it is noisy (4-38 slow frames between identical runs): run it three times and compare
+  the middle values.
+- **Pictures:** `-- --shot-frame=N --shot=E:/path/x.png` saves the screen at frame N and quits; read the PNG
+  to look at it. Set the scene with `--hour=`, `--year=`, `--weather=rain|snow|storm`, `--view-alt=`,
+  `--view-pitch=`, `--radius=`, `--seed=`, `--planet-page`, `--start-menu`. Take one before and one after a
+  change at the same arguments.
+- **Pass/fail checks** (no window needed): `--planet-check` (also runs `SAVE_CHECK`), `--walk-check`,
+  `--swim-check`, `--fly-check` (slow, run in the background), `species_check.tscn`,
+  `world_lab.tscn -- --world-check`.
+- Record the numbers in the doc or task you are working on (`planet_lessons.md` has the measured history),
+  and keep new measuring tools as lab arguments. A single script that runs everything and compares to a
+  budget is planned: `AGENT_TASKS/046`.
