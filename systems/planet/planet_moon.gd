@@ -56,8 +56,8 @@ static func lunar_depth(clock: PlanetClock) -> float:
 	return clampf((UMBRA + MOON_RADIUS - off_axis) / (2.0 * MOON_RADIUS), 0.0, 1.0)
 
 
-## The share (0..1) of a disc of angular radius `hidden` that a disc of radius `cover` hides when the
-## centres are `apart` radians apart (a straight blend between touching and one inside the other).
+## The share (0..1) of a disc of angular radius `hidden` that a disc of radius `cover` hides when
+## the centres are `apart` radians apart (a straight blend from touching to one inside the other).
 static func _overlap(apart: float, cover: float, hidden: float) -> float:
 	var reach := cover + hidden
 	if apart >= reach:
