@@ -11,6 +11,8 @@ uniform vec4 foam_color : source_color = vec4(0.93, 0.97, 1.0, 1.0);
 uniform float flow_speed = 1.6; // m/s the ripples travel
 uniform float depth_fade = 2.5;
 uniform sampler2D depth_texture : hint_depth_texture, repeat_disable, filter_nearest;
+uniform float sea_radius = 20000.0; // the sea level's distance from the planet's centre
+global uniform mat4 planet_from_world;
 
 varying vec3 world_pos;
 
@@ -38,6 +40,15 @@ float scene_z(vec2 uv, mat4 inv_projection) {
 }
 
 void fragment() {
+	// where the ground under the ribbon is below the sea, the sea is there: draw nothing
+	float ground_depth = texture(depth_texture, SCREEN_UV).r;
+	if (ground_depth > 0.0) {
+		vec4 ground_view = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, ground_depth, 1.0);
+		vec3 ground_world = (INV_VIEW_MATRIX * vec4(ground_view.xyz / ground_view.w, 1.0)).xyz;
+		if (length((planet_from_world * vec4(ground_world, 1.0)).xyz) < sea_radius) {
+			discard;
+		}
+	}
 	float across = abs(UV.x * 2.0 - 1.0); // 0 in the middle, 1 at the bank
 	// ripples stretched along the flow, sliding downstream
 	vec2 flow = vec2(UV.x * 7.0, UV.y * 0.5 - TIME * flow_speed * 0.5);

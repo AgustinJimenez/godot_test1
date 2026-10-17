@@ -52,7 +52,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 	_find_sea_level()
 	climate.build(self)
 	weather = PlanetWeather.new(self)
-	if settings.hydrology_cells > 0:
+	if settings.hydrology_on and settings.hydrology_cells > 0:
 		var water := PlanetHydrology.new()
 		water.build(self, settings.hydrology_cells)
 		hydrology = water

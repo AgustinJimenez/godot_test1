@@ -14,8 +14,8 @@ extends Node3D
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
 ##   -- --no-shadow  the sun casts no shadows
-##   -- --plants / --animals  switch those stages on (both are off by default); --no-water: no
-##                    rivers or lakes (the sea stays)
+##   -- --plants / --animals / --water  switch those stages on (all off by default; --water is
+##                    the rivers and lakes, the sea is always there)
 ##   -- --grounded  walk instead of starting in free mode (checks always walk)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
@@ -213,6 +213,7 @@ func _water_check() -> bool:
 	if not "--water-check" in OS.get_cmdline_user_args():
 		return false
 	var made := PlanetSettings.new()
+	made.hydrology_on = true
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--seed="):
 			made.world_seed = arg.trim_prefix("--seed=").to_int()
@@ -224,6 +225,8 @@ func _water_check() -> bool:
 	var verdict := "PASS" if clashes <= report["points"] / 1000 else "FAIL"
 	print("WATER_CHECK %s %s rivers=%d lakes=%d" % [verdict, report, noise.hydrology.river_cells,
 			noise.hydrology.lake_cells])
+	var wide: Vector3 = report["widest"]
+	print("RIVER_AT %f,%f,%f" % [wide.x, wide.y, wide.z])
 	get_tree().quit()
 	return true
 
@@ -366,8 +369,8 @@ func _ready() -> void:
 			settings.animals_on = true
 		elif arg == "--grounded":
 			_grounded = true
-		elif arg == "--no-water":
-			settings.hydrology_cells = 0
+		elif arg == "--water":
+			settings.hydrology_on = true
 		elif arg == "--bare":
 			settings.plant_density = 0.0
 		elif arg == "--walk-check":

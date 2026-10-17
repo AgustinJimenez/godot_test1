@@ -9,6 +9,7 @@ extends RefCounted
 ## lakes. Built once per planet from PlanetNoise.base_height, then only read.
 
 const RIVER_SHARE := 0.045 ## the share of land cells that carry a river
+const MOUTH_LEVEL := 0.3 ## m: the lowest a river runs (its mouth sits just above the sea)
 
 var cells := 96 ## cells along a cube face edge
 var lake_depth := 8.0 ## m a filled hollow must be deeper than to count as a lake
@@ -264,6 +265,7 @@ func _smooth_rivers(noise: PlanetNoise) -> void:
 			points = cut_points
 			levels = cut_levels
 			widths = cut_widths
+		_meander(points, widths, start)
 		# the water runs downhill on the real ground: each node's level is below the ground there and
 		# never above the node upstream; where the ground falls under the sea the river ends
 		if noise.base_height(points[0].x, points[0].y, points[0].z) < 0.6:
@@ -280,14 +282,14 @@ func _smooth_rivers(noise: PlanetNoise) -> void:
 				levels.resize(k + 1)
 				widths.resize(k + 1)
 				points[k] = _shore_between(noise, points[k - 1], points[k]) # stop at the shore
-				lowest = minf(lowest, 0.0)
-				levels[k] = 0.0
+				lowest = minf(lowest, MOUTH_LEVEL)
+				levels[k] = MOUTH_LEVEL
 				break
 			if k > 0: # the ground between the nodes too, or the ribbon floats over a dip
 				var between := points[k - 1].lerp(points[k], 0.5).normalized()
 				lowest = minf(lowest, noise.base_height(between.x, between.y, between.z) - 1.0)
 			lowest = minf(lowest, ground - 1.0)
-			levels[k] = maxf(lowest, 0.0)
+			levels[k] = maxf(lowest, MOUTH_LEVEL)
 		# the direction the river runs at each node (shared by the two pieces that meet there, so
 		# the ribbons join without a gap or an overlap)
 		var tangents: Array[Vector3] = []
@@ -305,6 +307,32 @@ func _smooth_rivers(noise: PlanetNoise) -> void:
 					widths[k], widths[k + 1], tangents[k], tangents[k + 1], travelled,
 					travelled + length])
 			travelled += length
+
+
+## Makes a river wind: the path is pushed sideways by slow waves along its length (more for a
+## wide river, none at the source or the mouth) and the width swells and narrows, so a river does
+## not run as straight as the grid's cells make it. The ground and the levels follow this.
+func _meander(points: Array[Vector3], widths: Array[float], river_id: int) -> void:
+	var count := points.size()
+	if count < 6:
+		return
+	var phase := float(river_id % 977) * 0.61
+	var shifted: Array[Vector3] = []
+	var travelled := 0.0
+	for k in count:
+		if k > 0:
+			travelled += (points[k] - points[k - 1]).length() * _radius
+		var before := points[maxi(k - 1, 0)]
+		var after := points[mini(k + 1, count - 1)]
+		var along := (after - before).normalized()
+		var side := points[k].cross(along).normalized()
+		var wave := 0.6 * sin(travelled * 0.0085 + phase) + 0.4 * sin(travelled * 0.021 + phase * 1.7)
+		var taper := smoothstep(0.0, 10.0, float(mini(k, count - 1 - k)))
+		var amplitude := clampf(widths[k] * 2.5, 8.0, cell_metres * 0.45)
+		shifted.append((points[k] + side * (wave * amplitude * taper / _radius)).normalized())
+		widths[k] *= 0.8 + 0.35 * sin(travelled * 0.013 + phase * 2.3)
+	for k in count:
+		points[k] = shifted[k]
 
 
 ## The point between `inland` (ground above 0.6 m) and `sea` (below it) where the ground crosses
@@ -349,7 +377,8 @@ func near_water(dir: Vector3, ground: float, margin: float) -> bool:
 ## river's level is above its own carved bed by design, so height above the bed is not a fault.)
 ## For the lab (`WATER_CHECK`): both should be almost none.
 func overlap_report() -> Dictionary:
-	var report := {"points": 0, "over_sea": 0, "lake_clash": 0}
+	var report := {"points": 0, "over_sea": 0, "lake_clash": 0, "widest": Vector3.ZERO}
+	var widest := 0.0
 	for key: int in _pieces:
 		for piece: Array in _pieces[key]:
 			for step in 5:
@@ -358,6 +387,9 @@ func overlap_report() -> Dictionary:
 				var level := lerpf(float(piece[2]), float(piece[3]), t)
 				var ground := _noise.base_height(dir.x, dir.y, dir.z)
 				report["points"] += 1
+				if float(piece[4]) > widest and ground > 8.0: # a river inland, for the lab to look at
+					widest = float(piece[4])
+					report["widest"] = dir
 				if ground < 0.0:
 					report["over_sea"] += 1
 				var lake := lake_level_at(dir, ground)
@@ -441,6 +473,48 @@ func carve(dir: Vector3, h: float) -> float:
 	var outer := minf(inner + width * 2.2 + 8.0, maxf(cell_metres * 0.7, inner + 4.0))
 	var blend := 1.0 - smoothstep(inner, outer, best)
 	return lerpf(h, minf(h, bed), blend) # a river only cuts down, it never builds a dike
+
+
+## The river water over `dir`, if the point is in a river's valley (the reach of its carving): x the
+## water's level (m above the sea), y the metres from the river's source (the water's texture
+## flows along it), z how far across the river it is (0 one bank, 0.5 the middle, 1 the other).
+## The tile draws the water where the carved ground is below that level, so the water takes the
+## shape of the valley the ground was cut into first; none: x is -INF.
+func river_sample(dir: Vector3) -> Vector3:
+	var here := cell_of(dir)
+	if _near[here] == 0:
+		return Vector3(-INF, 0.0, 0.0)
+	var best := INF
+	var best_piece: Array = []
+	var best_t := 0.0
+	var best_point := Vector3.ZERO
+	for n in 9:
+		var id := here if n == 8 else _neighbours[here * 8 + n]
+		if not _pieces.has(id):
+			continue
+		for piece: Array in _pieces[id]:
+			var a: Vector3 = piece[0]
+			var ab := (piece[1] as Vector3) - a
+			var t := clampf((dir - a).dot(ab) / maxf(ab.length_squared(), 0.0000000001), 0.0, 1.0)
+			var closest := a + ab * t
+			var distance := (dir - closest).length() * _radius
+			if distance < best:
+				best = distance
+				best_piece = piece
+				best_t = t
+				best_point = closest
+	if best_piece.is_empty():
+		return Vector3(-INF, 0.0, 0.0)
+	var width := lerpf(float(best_piece[4]), float(best_piece[5]), best_t)
+	var inner := width * 0.5
+	var outer := minf(inner + width * 2.2 + 8.0, maxf(cell_metres * 0.7, inner + 4.0))
+	if best > outer:
+		return Vector3(-INF, 0.0, 0.0)
+	var run: Vector3 = (best_piece[6] as Vector3).lerp(best_piece[7] as Vector3, best_t)
+	var side := signf(run.cross(dir - best_point).dot(best_point))
+	var across := 0.5 + 0.5 * clampf(side * best / maxf(inner * 1.5, 1.0), -1.0, 1.0)
+	return Vector3(lerpf(float(best_piece[2]), float(best_piece[3]), best_t),
+			lerpf(float(best_piece[8]), float(best_piece[9]), best_t), across)
 
 
 ## The cells within `rings` steps of cell `id` (itself included), across cube faces.

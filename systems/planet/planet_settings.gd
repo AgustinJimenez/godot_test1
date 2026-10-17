@@ -13,6 +13,7 @@ extends Resource
 @export var plant_density := 1.0
 @export var rock_density := 1.0
 @export var lake_depth_share := 0.08 ## a hollow is a lake when deeper than this share of the relief
+@export var hydrology_on := false ## true: rivers and lakes (off while the bare terrain is worked on)
 @export var hydrology_cells := 96 ## cells along a cube face for rivers and lakes (0: none)
 @export var day_seconds := 1440.0 ## a solar day in seconds of play (what a clock day is)
 @export var year_days := 16.0 ## solar days in a year

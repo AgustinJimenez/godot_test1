@@ -233,7 +233,7 @@ have a switch, in `PlanetSettings` and in the lab (`planet_lab`):
 
 - `plants_on` (off by default) / `--plants`: when off no plant or tree is placed (the species are still made, they are cheap).
 - `animals_on` (off by default) / `--animals`: when off no animals.
-- `hydrology_cells = 0` / `--no-water`: no rivers or lakes (the sea stays).
+- `hydrology_on` (off by default) / `--water`: when off no rivers or lakes (the sea stays; the valleys they cut are not made either).
 
 The others (terrain, climate) are the base the rest reads, so they stay on. `plant_density` and
 `rock_density` still thin the plants and rocks without stopping them.

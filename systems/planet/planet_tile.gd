@@ -297,21 +297,8 @@ func _add_running_water(s0: float, s1: float, t0: float, t1: float, dirs: Array[
 	var edge: Array[Vector3] = []
 	for corner: Vector2 in [Vector2(s0, t0), Vector2(s1, t0), Vector2(s1, t1), Vector2(s0, t1)]:
 		edge.append(_to_local(direction(face, corner.x, corner.y), radius))
-	var river_builder := MeshBuilder.new()
-	for river: Array in rivers:
-		var a := _to_local(river[0] as Vector3, radius + float(river[2]))
-		var b := _to_local(river[1] as Vector3, radius + float(river[3]))
-		var run_a := local_basis.transposed() * (river[6] as Vector3)
-		var run_b := local_basis.transposed() * (river[7] as Vector3)
-		var across_a := Vector3(-run_a.z, 0.0, run_a.x).normalized() * float(river[4]) * 0.5
-		var across_b := Vector3(-run_b.z, 0.0, run_b.x).normalized() * float(river[5]) * 0.5
-		var along_a := float(river[8])
-		var along_b := float(river[9])
-		var ribbon: Array[Vector3] = [a + across_a, b + across_b, b - across_b, a - across_a]
-		var uvs: Array[Vector2] = [Vector2(0.0, along_a), Vector2(0.0, along_b),
-				Vector2(1.0, along_b), Vector2(1.0, along_a)]
-		_water_polygon(river_builder, ribbon, uvs, edge, Color(0.25, 1.0, 1.0))
-	_add_water_mesh(river_builder, river_material())
+	if not rivers.is_empty():
+		_add_rivers(dirs, heights)
 	if lakes:
 		_add_lakes(dirs, heights)
 
@@ -324,6 +311,70 @@ func _add_water_mesh(builder: MeshBuilder, material: ShaderMaterial) -> void:
 	mesh_instance.material_override = material
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mesh_instance)
+
+
+## The rivers on this tile: water laid over the ground the valleys were already cut into. Every
+## corner of the tile's grid asks the river for its water level; where the (carved) ground is under
+## it the corner is wet. A square with a wet corner gets a quad, its dry corners sunk into the
+## ground so the terrain hides them: the bank is where the water meets the ground, the shape the
+## valley has, not the straight edge of a ribbon. The sea owns everything below the sea level.
+func _add_rivers(dirs: Array[Vector3], heights: PackedFloat32Array) -> void:
+	var water := _noise.hydrology
+	var cells := _settings.tile_cells
+	var side := cells + 3
+	var wet := PackedByteArray()
+	wet.resize(side * side)
+	var samples: Array[Vector3] = []
+	var any := false
+	for index in side * side:
+		var sample := water.river_sample(dirs[index])
+		samples.append(sample)
+		if sample.x > -INF and heights[index] > 0.0 and heights[index] < sample.x - 0.02:
+			wet[index] = 1
+			any = true
+	if not any:
+		return
+	var builder := MeshBuilder.new()
+	var radius := _settings.radius
+	var roll := Color(0.25, 1.0, 1.0)
+	for row in range(1, cells + 1):
+		for column in range(1, cells + 1):
+			var i00 := row * side + column
+			var corners := [i00, i00 + 1, i00 + side, i00 + side + 1]
+			var level := -INF
+			var wet_corner := false
+			for corner: int in corners:
+				if wet[corner] == 1:
+					wet_corner = true
+					level = maxf(level, samples[corner].x)
+			if not wet_corner:
+				continue
+			var points: Array[Vector3] = []
+			var coords: Array[Vector2] = []
+			for corner: int in corners:
+				var sample := samples[corner]
+				var height := level if wet[corner] == 1 else minf(heights[corner] - 0.15, level)
+				points.append(_to_local(dirs[corner], radius + height))
+				coords.append(Vector2(sample.z if sample.x > -INF else 0.5, maxf(sample.y, 0.0)))
+			_river_triangle(builder, points, coords, 0, 2, 1, roll)
+			_river_triangle(builder, points, coords, 1, 2, 3, roll)
+	_add_water_mesh(builder, river_material())
+
+
+func _river_triangle(builder: MeshBuilder, points: Array[Vector3], coords: Array[Vector2],
+		i: int, j: int, k: int, roll: Color) -> void:
+	var a := points[i]
+	var b := points[j]
+	var c := points[k]
+	var uv_a := coords[i]
+	var uv_b := coords[j]
+	var uv_c := coords[k]
+	if (b - a).cross(c - a).y < 0.0:
+		b = points[k]
+		c = points[j]
+		uv_b = coords[k]
+		uv_c = coords[j]
+	builder.add_tri_uv(a, b, c, roll, roll, roll, uv_a, uv_b, uv_c)
 
 
 ## The lakes on this tile: a quad of water for every square of the tile's own grid whose four

@@ -109,7 +109,8 @@ func start(target: Node3D, direction := Vector3.ZERO) -> Vector3:
 	# first could read it half made while another does (a null shader error on a river tile)
 	PlanetTile.ground_material()
 	PlanetTile.water_material()
-	PlanetTile.river_material()
+	PlanetTile.river_material().set_shader_parameter(&"sea_radius",
+			settings.radius + settings.sea_level)
 	_target = target
 	if target is Player:
 		splash = WaterSplash.new()
