@@ -22,6 +22,8 @@ void PlanetDrainageNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("cell_neighbours"), &PlanetDrainageNative::cell_neighbours);
 	ClassDB::bind_method(D_METHOD("cell_of", "dir"), &PlanetDrainageNative::cell_of);
 	ClassDB::bind_method(D_METHOD("cells_of", "dirs"), &PlanetDrainageNative::cells_of);
+	ClassDB::bind_method(D_METHOD("carve", "heights", "filled", "flow", "receiver", "river_flow", "base_slope", "max_cut"),
+			&PlanetDrainageNative::carve);
 	ClassDB::bind_method(D_METHOD("solve", "heights", "rain", "sea_level", "exponent", "lake_depth", "lake_cells"),
 			&PlanetDrainageNative::solve);
 }
@@ -265,5 +267,60 @@ Dictionary PlanetDrainageNative::solve(const PackedFloat32Array &p_heights, cons
 	result["flow"] = flow_out;
 	result["receiver"] = receiver;
 	result["lake"] = lake;
+	return result;
+}
+
+PackedFloat32Array PlanetDrainageNative::carve(const PackedFloat32Array &p_heights, const PackedFloat32Array &p_filled,
+		const PackedFloat32Array &p_flow, const PackedInt32Array &p_receiver, double p_river_flow,
+		double p_base_slope, double p_max_cut) const {
+	const int count = 6 * cells * cells;
+	std::vector<int> order(count);
+	for (int id = 0; id < count; id++) {
+		order[id] = id;
+	}
+	std::sort(order.begin(), order.end(), [&](int a, int b) { return p_filled[a] < p_filled[b]; });
+	std::vector<double> bed(count);
+	for (int id = 0; id < count; id++) {
+		bed[id] = p_heights[id];
+	}
+	std::vector<float> cut(count, 0.0f);
+	for (int at = 0; at < count; at++) {
+		const int id = order[at];
+		const int down = p_receiver[id];
+		if (down < 0 || (double)p_heights[id] < 0.0 || (double)p_flow[id] < p_river_flow) {
+			continue;
+		}
+		Vector3 gap = dirs[id] - dirs[down];
+		double distance = (double)gap.length() * radius;
+		// more water, a gentler bed: the slope falls with the square root of the flow
+		double slope = p_base_slope * std::sqrt(p_river_flow / (double)p_flow[id]);
+		double allowed = bed[down] + slope * distance;
+		if (allowed < bed[id]) {
+			bed[id] = allowed;
+		}
+		double dug = (double)p_heights[id] - bed[id];
+		cut[id] = (float)(dug < 0.0 ? 0.0 : (dug > p_max_cut ? p_max_cut : dug));
+	}
+	// the valley is wider than the river: a part of the cut goes to the cells beside it
+	std::vector<float> wide(cut);
+	for (int id = 0; id < count; id++) {
+		if (cut[id] <= 0.0f) {
+			continue;
+		}
+		for (int n = 0; n < 8; n++) {
+			const int other = neighbours[id * 8 + n];
+			if (other >= 0 && (double)p_heights[other] >= 0.0) {
+				const float shared = cut[id] * 0.5f;
+				if (shared > wide[other]) {
+					wide[other] = shared;
+				}
+			}
+		}
+	}
+	PackedFloat32Array result;
+	result.resize(count);
+	for (int id = 0; id < count; id++) {
+		result[id] = wide[id];
+	}
 	return result;
 }

@@ -297,6 +297,12 @@ func _drainage_check() -> bool:
 	var verdict := "PASS" if absf(kept - 1.0) < 0.001 and drainage.land_cells > 0 else "FAIL"
 	print("DRAINAGE_CHECK %s cells=%d land=%d lakes=%d river_cells=%d reached=%.4f in %d ms" % [
 			verdict, drainage.dirs.size(), drainage.land_cells, lakes, rivers, kept, built_ms])
+	var biggest := 0
+	for index in drainage.flow.size():
+		if drainage.heights[index] > 300.0 and drainage.flow[index] > drainage.flow[biggest]:
+			biggest = index
+	var there := drainage.dirs[biggest]
+	print("RIVER_AT %f,%f,%f" % [there.x, there.y, there.z])
 	if image_path != "":
 		_save_drainage_picture(drainage, threshold, image_path)
 	get_tree().quit()
@@ -352,6 +358,7 @@ func _native_check() -> bool:
 			made.radius = arg.trim_prefix("--radius=").to_float()
 		elif arg.begins_with("--seed="):
 			made.world_seed = arg.trim_prefix("--seed=").to_int()
+	made.drainage_cells = 0 # the native crust is compared with the script before any valley is cut
 	var noise := PlanetNoise.new(made)
 	if noise.native == null:
 		print("NATIVE_CHECK SKIP the native library is not loaded")
@@ -479,21 +486,21 @@ func _save_relief_patch(noise: PlanetNoise, parts: PackedStringArray) -> void:
 	var east := centre.cross(Vector3.UP).normalized()
 	var north := east.cross(centre).normalized()
 	var radius := noise.settings.radius
-	var grid := PackedFloat32Array()
-	grid.resize(size * size)
+	var points := PackedVector3Array()
 	for row in size:
 		for column in size:
 			var offset_east := (float(column) / float(size - 1) - 0.5) * span
 			var offset_north := (0.5 - float(row) / float(size - 1)) * span
-			var dir := (centre + (east * offset_east + north * offset_north) / radius).normalized()
-			grid[row * size + column] = noise.height(dir.x, dir.y, dir.z)
+			points.append((centre + (east * offset_east + north * offset_north) / radius).normalized())
+	var grid := noise.heights_of(points) # (native when it is there, with the valleys of the water)
 	var picture := Image.create(size, size, false, Image.FORMAT_RGB8)
 	var step := span / float(size - 1)
+	var exaggeration := clampf(span / 8000.0, 1.0, 40.0) # the heights stretched, so a wide view shows
 	for row in range(1, size - 1):
 		for column in range(1, size - 1):
 			var dx := (grid[row * size + column + 1] - grid[row * size + column - 1]) / (2.0 * step)
 			var dy := (grid[(row - 1) * size + column] - grid[(row + 1) * size + column]) / (2.0 * step)
-			var normal := Vector3(-dx, -dy, 1.0).normalized()
+			var normal := Vector3(-dx * exaggeration, -dy * exaggeration, 1.0).normalized()
 			var light := clampf(normal.dot(Vector3(-0.5, 0.5, 0.7).normalized()), 0.0, 1.0)
 			var h := grid[row * size + column]
 			var base := Color(0.2, 0.3, 0.6) if h < 0.0 else Color(0.5, 0.45, 0.35).lerp(
@@ -678,6 +685,8 @@ func _ready() -> void:
 			settings.tile_cells = arg.trim_prefix("--tile-cells=").to_int()
 		elif arg.begins_with("--tile-max="):
 			settings.tile_max = arg.trim_prefix("--tile-max=").to_float()
+		elif arg.begins_with("--drainage="):
+			settings.drainage_cells = arg.trim_prefix("--drainage=").to_int()
 		elif arg == "--sea":
 			settings.sea_on = true
 		elif arg == "--water":

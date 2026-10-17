@@ -19,6 +19,7 @@ var clock: PlanetClock ## the time of day and the season (set by PlanetWorld; nu
 var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep off a little round it
 var rock: PlanetRock ## the colour of the crust
 var native: Object ## the native crust (PlanetCrustNative), or null: this file is the reference
+var drainage: PlanetDrainage ## where the water runs (coarse), when the planet has it
 var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
 
 var _rolling := FastNoiseLite.new()
@@ -116,6 +117,7 @@ func _make_native() -> void:
 		"basin": _noise_config(rock._basin),
 	})
 	native = made
+	_carve_valleys()
 
 
 func _cube_faces() -> PackedVector3Array:
@@ -124,6 +126,19 @@ func _cube_faces() -> PackedVector3Array:
 		for axis: Vector3 in face:
 			faces.append(axis)
 	return faces
+
+
+## The river valleys of the planet, from where its water runs: the drainage is solved on a coarse
+## grid and the valleys it cuts are handed to the native crust, which takes them off the ground.
+func _carve_valleys() -> void:
+	drainage = null
+	if settings.drainage_cells <= 0 or OS.has_environment("PLANET_NO_DRAINAGE"):
+		return
+	var solved := PlanetDrainage.new()
+	if not solved.build(self, settings.drainage_cells):
+		return
+	native.call(&"set_cut_field", settings.drainage_cells, solved.carve(relief))
+	drainage = solved
 
 
 func _noise_config(source: FastNoiseLite) -> Array:

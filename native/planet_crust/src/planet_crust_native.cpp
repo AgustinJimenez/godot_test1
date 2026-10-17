@@ -39,6 +39,7 @@ inline double sign_d(double p_x) {
 
 void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("setup", "config"), &PlanetCrustNative::setup);
+	ClassDB::bind_method(D_METHOD("set_cut_field", "cells", "field"), &PlanetCrustNative::set_cut_field);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
 	ClassDB::bind_method(D_METHOD("tectonic_heights", "dirs"), &PlanetCrustNative::tectonic_heights);
@@ -265,7 +266,8 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point) c
 	// every layer below is multiplied by a weight that is exactly 0 over the sea (and a little
 	// inland), so those noises are not asked there: the same height, the sea floor much faster
 	double land = smooth(-0.02, 0.05, p_units);
-	double rolling_height = land > 0.0 ? rolling.at(p_point) * clampd(relief * 0.12, 25.0, 120.0) : 0.0;
+	const double floor_factor = valley_floor(p_point.normalized()); // a river's valley floor is smooth
+	double rolling_height = land > 0.0 ? rolling.at(p_point) * clampd(relief * 0.12, 25.0, 120.0) * floor_factor : 0.0;
 	double ridges = 0.0;
 	if (p_units > 0.08) {
 		double belt = smooth(0.0, 0.5, (double)range_mask.at(p_point) + 0.15);
@@ -275,15 +277,21 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point) c
 	double rugged = smooth(0.02, 0.4, p_units);
 	double massifs = 0.0, chains = 0.0, spurs = 0.0;
 	if (rugged > 0.0) {
-		massifs = ((double)massif.at(p_point) * 0.5 + 0.1) * relief * massif_scale * rugged;
-		chains = ((double)chain.at(p_point) * 0.5 + 0.1) * relief * chain_scale * rugged;
-		spurs = ((double)foothills.at(p_point) * 0.5 + 0.1) * relief * foothill_scale * rugged;
+		massifs = ((double)massif.at(p_point) * 0.5 + 0.1) * relief * massif_scale * rugged * floor_factor;
+		chains = ((double)chain.at(p_point) * 0.5 + 0.1) * relief * chain_scale * rugged * floor_factor;
+		spurs = ((double)foothills.at(p_point) * 0.5 + 0.1) * relief * foothill_scale * rugged * floor_factor;
 	}
 	double shore_height = shore_curve(p_units) * relief;
 	double raised = shore_height + rolling_height * land + ridges + chains + massifs + spurs;
 	double cut = valley_cut(p_point, p_units);
 	double limit = (shore_height > 0.0 ? shore_height : 0.0) * 0.8;
-	return raised - (cut < limit ? cut : limit);
+	double result = raised - (cut < limit ? cut : limit);
+	if (cut_cells > 0 && result > 0.0) {
+		// the rivers' valleys (from the drainage): never below the sea
+		double river_cut = cut_at(p_point.normalized());
+		result -= river_cut < result * 0.9 ? river_cut : result * 0.9;
+	}
+	return result;
 }
 
 // The ground before any water has cut it (PlanetNoise.base_height with no hydrology).
@@ -291,7 +299,7 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 	double units = tectonic_height(p_dir) - sea;
 	Vector3 p = p_dir * (real_t)radius;
 	double land = smooth(-0.02, 0.05, units);
-	double hill_height = land > 0.0 ? hills.at(p) * clampd(relief * 0.04, 14.0, 45.0) : 0.0;
+	double hill_height = land > 0.0 ? hills.at(p) * clampd(relief * 0.04, 14.0, 45.0) * valley_floor(p_dir) : 0.0;
 	double ground = macro_ground(units, p) + hill_height * land;
 	double high = smooth(0.12, 0.45, units);
 	double gully_depth = relief * 0.05 < 90.0 ? relief * 0.05 : 90.0;
@@ -577,4 +585,58 @@ PackedFloat32Array PlanetCrustNative::macro_heights(const PackedVector3Array &p_
 		result[index] = (float)macro_ground(units, p_dirs[index] * (real_t)radius);
 	}
 	return result;
+}
+
+void PlanetCrustNative::set_cut_field(int p_cells, const PackedFloat32Array &p_field) {
+	cut_cells = p_field.size() == 6 * p_cells * p_cells ? p_cells : 0;
+	cut_field = p_field;
+}
+
+// The river valleys' cut at a direction: the coarse cells' values blended (bilinear on the face).
+double PlanetCrustNative::cut_at(const Vector3 &p_dir) const {
+	double ax = std::abs((double)p_dir.x);
+	double ay = std::abs((double)p_dir.y);
+	double az = std::abs((double)p_dir.z);
+	int face = 0;
+	if (ax >= ay && ax >= az) {
+		face = p_dir.x > 0 ? 0 : 1;
+	} else if (ay >= az) {
+		face = p_dir.y > 0 ? 2 : 3;
+	} else {
+		face = p_dir.z > 0 ? 4 : 5;
+	}
+	const Vector3 normal = cube_faces[face * 3];
+	const Vector3 u = cube_faces[face * 3 + 1];
+	const Vector3 v = cube_faces[face * 3 + 2];
+	double along = p_dir.dot(normal);
+	const double quarter_pi = 3.14159265358979323846 * 0.25;
+	double s = std::atan((double)p_dir.dot(u) / along) / quarter_pi;
+	double t = std::atan((double)p_dir.dot(v) / along) / quarter_pi;
+	double fi = (s + 1.0) * 0.5 * cut_cells - 0.5;
+	double fj = (t + 1.0) * 0.5 * cut_cells - 0.5;
+	int i0 = (int)std::floor(fi);
+	int j0 = (int)std::floor(fj);
+	double tx = fi - (double)i0;
+	double ty = fj - (double)j0;
+	double total = 0.0;
+	for (int dy = 0; dy < 2; dy++) {
+		for (int dx = 0; dx < 2; dx++) {
+			int i = i0 + dx;
+			int j = j0 + dy;
+			i = i < 0 ? 0 : (i > cut_cells - 1 ? cut_cells - 1 : i);
+			j = j < 0 ? 0 : (j > cut_cells - 1 ? cut_cells - 1 : j);
+			double weight = (dx == 1 ? tx : 1.0 - tx) * (dy == 1 ? ty : 1.0 - ty);
+			total += (double)cut_field[(face * cut_cells + j) * cut_cells + i] * weight;
+		}
+	}
+	return total;
+}
+
+// How rough the ground is allowed to be at `p_dir`: 1 away from the rivers, down to 0.3 on the floor
+// of a deep valley (a river's valley is wide and smooth between its rough sides).
+double PlanetCrustNative::valley_floor(const Vector3 &p_dir) const {
+	if (cut_cells <= 0) {
+		return 1.0;
+	}
+	return 1.0 - 0.7 * smooth(0.0, 150.0, cut_at(p_dir));
 }

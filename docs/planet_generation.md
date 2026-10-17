@@ -337,3 +337,17 @@ double build (the Earth had 28 % land on one and 12 % on the other). The plates 
 generator's integers (`PlanetTectonics._between`), the same on both: the two builds agree, on the
 Earth preset to 22 % and 23 % land. This changed every planet once (the same seed makes another
 world than before). The plants (`SpeciesGenerator`) and other `randf` users are not changed yet.
+
+### Drainage, step 3: the valleys (coarse)
+
+`PlanetDrainage.carve` cuts the river valleys from the flow: from the sea inland, a river cell's bed is
+no higher than the bed below it plus the slope its water allows (`0.006 * sqrt(river_flow / flow)`:
+steep for a trickle, gentle for a big river), the ground above is cut away (up to 10 % of the relief),
+and a part of the cut goes to the cells beside it. The cuts are handed to the native crust
+(`PlanetCrustNative.set_cut_field`), which subtracts them (never below the sea) and smooths the ground
+on a valley floor (the roughness falls to 30 % where the cut is 150 m or more), so a valley reads as
+a broad smooth plain between rough sides. `PlanetSettings.drainage_cells` (0: none; the Earth preset
+256, 40 km cells, +1 s at start) sets it. Seen on a 120 km relief picture: smooth basins in rough
+mountains, but blotches the size of a cell rather than lines: the fine channel near the player is
+still to be traced from the coarse flow. Only the native crust has the valleys (the GDScript is the
+reference without them); `PLANET_NO_DRAINAGE=1` turns them off.

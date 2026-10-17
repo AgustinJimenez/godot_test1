@@ -61,6 +61,15 @@ func river_threshold(share: float) -> float:
 	return land_flows[at]
 
 
+## How deep each cell's river valley is cut (m): the bed of a river cell is no higher than the bed
+## below it plus the slope its water allows (steep for a trickle, gentle for a big river), and the
+## ground above is cut away, the valley a cell wider than the river. The cuts are what the crust
+## subtracts (PlanetCrustNative.set_cut_field), after the flow was solved on the uncut ground.
+func carve(relief: float) -> PackedFloat32Array:
+	var river := river_threshold(0.06)
+	return _native.call(&"carve", heights, filled, flow, receiver, river, 0.006, relief * 0.1)
+
+
 ## The cell that holds the unit direction `dir`.
 func cell_of(dir: Vector3) -> int:
 	return _native.call(&"cell_of", dir)

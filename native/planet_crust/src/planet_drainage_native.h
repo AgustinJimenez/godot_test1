@@ -39,6 +39,13 @@ public:
 	PackedInt32Array cell_neighbours() const { return neighbours; }
 	int cell_of(const Vector3 &p_dir) const { return cell_at(p_dir); }
 	PackedInt32Array cells_of(const PackedVector3Array &p_dirs) const;
+	// How deep the river valleys are cut (m, per cell): from the sea inland, a cell's river bed is
+	// no higher than the bed below it plus the slope the water allows (steep for a trickle,
+	// gentle for a big river), so the ground above that is cut away; the valley is then widened a
+	// cell round.
+	PackedFloat32Array carve(const PackedFloat32Array &p_heights, const PackedFloat32Array &p_filled,
+			const PackedFloat32Array &p_flow, const PackedInt32Array &p_receiver, double p_river_flow,
+			double p_base_slope, double p_max_cut) const;
 	Dictionary solve(const PackedFloat32Array &p_heights, const PackedFloat32Array &p_rain,
 			double p_sea_level, double p_exponent, double p_lake_depth, int p_lake_cells) const;
 };

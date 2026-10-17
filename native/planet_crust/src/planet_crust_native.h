@@ -55,6 +55,10 @@ private:
 	Noise massif, chain, foothills, valleys[3]; // the rough ground and the valleys
 	Noise craton, basin; // the rock's
 	PackedVector3Array cube_faces; // the six cube faces: [normal, u, v] each
+	int cut_cells = 0; // the river valleys' cut, per cell of a coarse cube grid (0: none)
+	PackedFloat32Array cut_field;
+	double cut_at(const Vector3 &p_dir) const;
+	double valley_floor(const Vector3 &p_dir) const; // 1 away from the rivers, less in their valleys
 
 	static void configure(Noise &r_noise, const Array &p_config);
 	Vector3 plate_shift(const Vector3 &p_dir) const;
@@ -72,6 +76,7 @@ protected:
 
 public:
 	void setup(const Dictionary &p_config);
+	void set_cut_field(int p_cells, const PackedFloat32Array &p_field);
 	PackedFloat32Array heights(const PackedVector3Array &p_dirs) const;
 	PackedColorArray colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedFloat32Array &p_steeps) const;

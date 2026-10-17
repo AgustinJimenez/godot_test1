@@ -19,6 +19,8 @@ extends Resource
 @export var lake_depth_share := 0.08 ## a hollow is a lake when deeper than this share of the relief
 @export var sea_on := false ## true: the sea is drawn (off while the bare terrain is worked on)
 @export var hydrology_on := false ## true: rivers and lakes (off while terrain is worked on)
+## cells along a cube face for the coarse drainage that carves the river valleys (0: none)
+@export var drainage_cells := 0
 @export var hydrology_cells := 96 ## cells along a cube face for rivers and lakes (0: none)
 @export var day_seconds := 1440.0 ## a solar day in seconds of play (what a clock day is)
 @export var year_days := 16.0 ## solar days in a year
@@ -52,6 +54,7 @@ static func earth() -> PlanetSettings:
 	made.world_seed = 1337
 	made.radius = 6371000.0
 	made.ocean_fraction = 0.71
+	made.drainage_cells = 256
 	made.water_layer = 2000.0 # the ocean as a layer over the planet: ~28 % stays dry
 	made.plates = 15
 	made.day_seconds = 86400.0
