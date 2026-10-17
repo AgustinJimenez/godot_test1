@@ -154,7 +154,9 @@ func _apply() -> void:
 	var fog_color := Color(haze.x, haze.y, haze.z)
 	environment.fog_light_color = fog_color.lerp(Color(0.5, 0.55, 0.6) * maxf(strongest, 0.05),
 			overcast * 0.5)
-	var density := (BASE_FOG * air + fog_extra)
+	# the weather's fog (snow, rain, mist) lives in the low air too: it thins with the height, or from
+	# orbit the whole planet would be buried under it
+	var density := (BASE_FOG + fog_extra) * air
 	environment.fog_density = UNDERWATER_FOG if underwater else maxf(density, 0.0)
 	environment.fog_aerial_perspective = 0.0
 	environment.fog_sky_affect = 0.0 if altitude > air_top() else 0.35
