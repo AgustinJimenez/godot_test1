@@ -14,8 +14,9 @@ extends Node3D
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
 ##   -- --no-shadow  the sun casts no shadows
-##   -- --no-plants / --no-animals / --no-water  switch a stage off (--no-water: no rivers or lakes;
-##                    the sea stays)
+##   -- --plants / --animals  switch those stages on (both are off by default); --no-water: no
+##                    rivers or lakes (the sea stays)
+##   -- --grounded  walk instead of starting in free mode (checks always walk)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
 ##   -- --star-mass=M [--star-readability=0..1]  the star in solar masses (0.15 red, 1.6 white)
@@ -50,6 +51,7 @@ var _look_moon := false ## point the camera at the moon (with --view-alt)
 var _show_map := false ## open the planet map (the M key) from the start
 var _map_zoom := 6.0
 var _map_layer := 0
+var _grounded := false ## walk from the start instead of flying free
 var _swim_check := false ## drop the player in the sea and see them float (PlanetSwim)
 var _flying := false ## the walk check in free mode (noclip) at 100 m/s
 var _walk_start := Vector3.ZERO
@@ -358,10 +360,12 @@ func _ready() -> void:
 			_report_fps = true
 		elif arg == "--planet-page":
 			_planet_page = true
-		elif arg == "--no-plants":
-			settings.plants_on = false
-		elif arg == "--no-animals":
-			settings.animals_on = false
+		elif arg == "--plants":
+			settings.plants_on = true
+		elif arg == "--animals":
+			settings.animals_on = true
+		elif arg == "--grounded":
+			_grounded = true
 		elif arg == "--no-water":
 			settings.hydrology_cells = 0
 		elif arg == "--bare":
@@ -404,6 +408,9 @@ func _ready() -> void:
 	if _swim_check:
 		_start_dir = _find_sea(planet.noise)
 	var spawn := planet.start(player, _start_dir)
+	if not (_grounded or _walking or _checking or _swim_check or _climb > 0.0):
+		player.set_free_mode(true) # looking at the planet: fly (the debug menu's toggle follows)
+		player.hud.free_mode_toggle.set_pressed_no_signal(true)
 	planet.loaded.connect(func() -> void: print("LOADED after %d ms (%d tiles)" % [
 			Time.get_ticks_msec() - started, planet.surface.tiles.size()]))
 	planet.build_now(not _checking)

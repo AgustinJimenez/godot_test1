@@ -231,8 +231,8 @@ seasons, then the yearly temperature and the rain), the weather, hydrology (rive
 in the world the ground tiles, the sky and clouds, the plants and rocks, the animals. Three of them
 have a switch, in `PlanetSettings` and in the lab (`planet_lab`):
 
-- `plants_on` / `--no-plants`: no plant or tree is placed (the species are still made, they are cheap).
-- `animals_on` / `--no-animals`: no animals.
+- `plants_on` (off by default) / `--plants`: when off no plant or tree is placed (the species are still made, they are cheap).
+- `animals_on` (off by default) / `--animals`: when off no animals.
 - `hydrology_cells = 0` / `--no-water`: no rivers or lakes (the sea stays).
 
 The others (terrain, climate) are the base the rest reads, so they stay on. `plant_density` and

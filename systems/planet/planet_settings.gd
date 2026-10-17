@@ -8,8 +8,8 @@ extends Resource
 @export var relief := 0.0 ## m from the sea to the highest ranges; 0: from the radius (at least 300)
 @export var ocean_fraction := 0.7 ## the share of the planet's area under the sea
 @export var species_count := 120 ## how many plant species the seed makes (SpeciesGenerator)
-@export var plants_on := true ## false: no plants grow (a stage of the generation switched off)
-@export var animals_on := true ## false: no animals
+@export var plants_on := false ## true: plants grow (off while terrain and water are worked on)
+@export var animals_on := false ## true: animals live
 @export var plant_density := 1.0
 @export var rock_density := 1.0
 @export var lake_depth_share := 0.08 ## a hollow is a lake when deeper than this share of the relief

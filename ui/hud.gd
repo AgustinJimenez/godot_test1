@@ -811,10 +811,10 @@ func _on_free_mode_toggled(enabled: bool) -> void:
 
 
 ## Free mode speed: the slider is the exponent, so the whole range from a stroll to crossing a
-## planet is on one short slider: 2 m/s at the left end, 600 m/s at the right (sprint triples it;
+## planet is on one short slider: 2 m/s at the left end, 1800 m/s at the right (sprint triples it;
 ## the planet streams its ground in fine at those speeds, much faster tears the physics world).
 const FREE_SPEED_MIN := 2.0
-const FREE_SPEED_MAX := 600.0
+const FREE_SPEED_MAX := 1800.0
 
 
 func _on_free_speed_changed(value: float) -> void:
