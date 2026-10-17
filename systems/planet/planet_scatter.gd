@@ -330,7 +330,7 @@ func _flush(near: bool) -> void:
 		if tree and not near:
 			# trees beyond the near ground are only ever seen from far: the lighter version
 			var light := _add_trees(key, transforms,
-					_species.mesh(id, variant, FloraMeshes.detailed, 1), false)
+					_species.mesh(id, variant % 2, FloraMeshes.detailed, 1), false)
 			if PlantMeshes.has_far(_species.by_id(id)):
 				light.visibility_range_end = TREE_LIGHT
 				_queue_far(_far_meshes, key, transforms, _species.far_mesh(id, variant % 2))
@@ -352,7 +352,7 @@ func _flush(near: bool) -> void:
 		else:
 			# near trees: the full tree close up, the lighter one (no shadow) further out
 			instance.visibility_range_end = TREE_FULL
-			var light := _add_trees(key, transforms, _species.mesh(id, variant,
+			var light := _add_trees(key, transforms, _species.mesh(id, variant % 2,
 					FloraMeshes.detailed, 1), false)
 			light.visibility_range_begin = TREE_FULL * 0.95
 			if PlantMeshes.has_far(_species.by_id(id)):

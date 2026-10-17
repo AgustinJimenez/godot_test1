@@ -99,6 +99,12 @@ and ground cover stop at 220 m, grass at 110 m. Ground frame: 55 fps, 4,900 draw
 primitives before; 152 fps, 1,633 calls, 8.9 M after. The trees of the far tiles (beyond 512 m) are
 the lighter version, then the far tree.
 
+Streaming cost: a first version of this gave hitches (195 frames over 33 ms on the 24 km fly check,
+against 6 before), because every new species and variant also built and uploaded a light mesh and a far
+mesh on first use. The light mesh is now shared by two variants per species (`variant % 2`, like the far
+tree): 17 slow frames, worst 68 ms. Full-detail plants are only on tiles within 256 m of the player.
+`-- --fly-check` and `--walk-check` print `HITCH worst_frame=... frames over 33 ms` (after the loading).
+
 ## Clouds
 
 One layer of real volume (700 m thick, 450 m above the ground under the player), marched and lit in

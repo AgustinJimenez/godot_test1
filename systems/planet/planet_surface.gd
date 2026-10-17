@@ -283,7 +283,7 @@ func _make(entry: Array) -> PlanetTile:
 func _plants(entry: Array) -> PlanetScatter.Detail:
 	var level: int = entry[1]
 	if level == _settings.max_level():
-		if _distance(entry) < _settings.tile_max * 4.0:
+		if _distance(entry) < _settings.tile_max * 2.0:
 			return PlanetScatter.Detail.ALL
 		return PlanetScatter.Detail.TREES
 	if level == _settings.max_level() - 1 and _distance(entry) < _settings.tile_max * 10.0:

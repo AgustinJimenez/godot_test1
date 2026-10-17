@@ -53,6 +53,8 @@ var _side := 0
 var _stuck_count := 0
 var _last_here := Vector3.ZERO
 var _frame := 0
+var _worst_frame := 0.0 ## the longest frame (s) since the last report
+var _slow_frames := 0 ## frames over 33 ms since the last report
 var _step := 0
 var _start_up := Vector3.ZERO
 var _settle := 0
@@ -309,6 +311,15 @@ func _ready() -> void:
 			planet.frame.origin_w])
 
 
+func _process(delta: float) -> void:
+	if _frame == 700: # the loading screen is over
+		_worst_frame = 0.0
+		_slow_frames = 0
+	_worst_frame = maxf(_worst_frame, delta)
+	if delta > 0.033:
+		_slow_frames += 1
+
+
 func _physics_process(_delta: float) -> void:
 	_frame += 1
 	if _swim_check and _frame == 300:
@@ -350,6 +361,10 @@ func _physics_process(_delta: float) -> void:
 		print("FPS frame=%d fps=%d alt=%d tiles=%d draw_calls=%d primitives=%d process_ms=%.1f" % [
 				_frame, Engine.get_frames_per_second(), planet.altitude(), planet.surface.tiles.size(),
 				calls, prims, cpu])
+		print("HITCH worst_frame=%.1f ms, frames over 33 ms: %d" % [_worst_frame * 1000.0,
+				_slow_frames])
+		_worst_frame = 0.0
+		_slow_frames = 0
 	if _planet_page and _frame == 30:
 		player.hud.debug_overlay.show()
 		for button in player.hud.find_children("*", "Button", true, false):
@@ -482,6 +497,7 @@ func _walk_step() -> void:
 		print("WALK_CHECK %s travelled=%.0f m rebases=%d on_floor=%.0f%% worst_above_ground=%.2f m "
 				% [verdict, travelled, planet.rebases, 100.0 * float(_walk_floor) / float(_frame - 60),
 				_walk_worst] + "world_pos=%.0f" % player.global_position.length())
+		print("HITCH worst_frame=%.1f ms, frames over 33 ms: %d" % [_worst_frame * 1000.0, _slow_frames])
 		get_tree().quit()
 
 
