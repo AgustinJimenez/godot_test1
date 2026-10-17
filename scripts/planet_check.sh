@@ -66,6 +66,7 @@ run_check universe 300 "UNIVERSE_CHECK" "${lab}" --universe=42 --systems=3
 run_check climate 300 "CLIMATE_CHECK" "${lab}" --climate-check
 run_check water 300 "WATER_CHECK" "${lab}" --water-check --seed=7
 run_check native 300 "NATIVE_CHECK" "${lab}" --native-check --earth
+run_check drainage 300 "DRAINAGE_CHECK" "${lab}" --drainage-check --earth --cells=128
 run_check species 600 "SPECIES_CHECK (PASS|FAIL)" res://tests/manual/world/species_check.tscn
 run_check world 900 "WORLD_CHECK" res://tests/manual/world/world_lab.tscn --world-check
 run_check planet 1200 "PLANET_CHECK" "${lab}" --planet-check --fixed-fps 60

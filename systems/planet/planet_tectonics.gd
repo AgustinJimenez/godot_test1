@@ -29,20 +29,27 @@ func _init(world_seed: int, plates: int) -> void:
 	for index in plates:
 		var y := 1.0 - 2.0 * (float(index) + 0.5) / float(plates)
 		var ring := sqrt(1.0 - y * y)
-		var angle := float(index) * 2.399963 + rng.randf_range(-0.5, 0.5)
+		var angle := float(index) * 2.399963 + _between(rng, -0.5, 0.5)
 		var spot := Vector3(cos(angle) * ring, y, sin(angle) * ring)
-		spot += Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-1.0, 1.0),
-				rng.randf_range(-1.0, 1.0)) * 0.28
+		spot += Vector3(_between(rng, -1.0, 1.0), _between(rng, -1.0, 1.0),
+				_between(rng, -1.0, 1.0)) * 0.28
 		_seeds.append(spot.normalized())
-		var axis := Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-1.0, 1.0),
-				rng.randf_range(-1.0, 1.0)).normalized()
-		_spin.append(axis * rng.randf_range(0.4, 1.0))
+		var axis := Vector3(_between(rng, -1.0, 1.0), _between(rng, -1.0, 1.0),
+				_between(rng, -1.0, 1.0)).normalized()
+		_spin.append(axis * _between(rng, 0.4, 1.0))
 		# the poles are mostly sea, as on Earth (Antarctica is the exception)
-		_continental.append(rng.randf() < (0.42 if absf(spot.y) < 0.75 else 0.2))
+		_continental.append(_between(rng, 0.0, 1.0) < (0.42 if absf(spot.y) < 0.75 else 0.2))
 	_setup(_warp, world_seed + 11, 1.4, 3)
 	_setup(_ridge, world_seed + 12, 6.0, 5)
 	_ridge.fractal_type = FastNoiseLite.FRACTAL_RIDGED
 	_setup(_interior, world_seed + 13, 2.2, 4)
+
+
+## A number between `low` and `high` from the generator's integers: the same on every build of the
+## engine (its own `randf_range` is not: the double precision build draws other numbers, so the
+## same seed made another planet there).
+func _between(rng: RandomNumberGenerator, low: float, high: float) -> float:
+	return low + (high - low) * float(rng.randi() >> 8) / 16777216.0
 
 
 func _setup(noise: FastNoiseLite, noise_seed: int, frequency: float, octaves: int) -> void:

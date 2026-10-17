@@ -315,3 +315,25 @@ reference and runs when the library is not built, when a planet has rivers on, o
 0.02) and is part of `scripts/planet_check.sh`. A full-detail tile on the Earth preset: 64 ms at the
 start of the work, 48 ms after the GDScript wins, 9.5 ms with the native ground (a picture of the
 same view differs by 0.05 of 255). The library has to match the engine's precision: the standard
+
+## Drainage on the crust (step 1 and 2: the map of the flow)
+
+`PlanetDrainage` (with `PlanetDrainageNative`, the same extension) solves where the water goes on a
+coarse grid of the cube sphere: the hollows are filled to where they would spill (Priority-Flood with
+an epsilon), the climate's rain of every cell runs down the filled ground split between the lower
+neighbours by slope^4 (a multiple flow direction, so the rivers branch and wind), and a hollow only
+counts as a lake when it is deep (1.5 % of the relief) and wide (cells / 16 cells joined). Every drop
+of rain that falls on the land reaches the sea (checked). On the Earth preset: 98,000 cells in 0.3 s,
+393,000 in 1.1 s, 1.6 million in 4.3 s (20 km cells). `planet_lab --drainage-check --earth --cells=N
+--drainage-image=PNG [--drainage-view=lon,lat,degrees]` prints the check and draws the map. Not yet
+done: cutting the valleys from the flow, tracing the fine channel near the player, drawing the water.
+It needs the native library; without it nothing is made (rivers stay off, as today).
+
+## The same planet on both builds
+
+The double precision engine drew other random numbers for the same seed (`randf_range` is not the
+same there), so the plates, and with them the whole planet, differed between the standard and the
+double build (the Earth had 28 % land on one and 12 % on the other). The plates now use the
+generator's integers (`PlanetTectonics._between`), the same on both: the two builds agree, on the
+Earth preset to 22 % and 23 % land. This changed every planet once (the same seed makes another
+world than before). The plants (`SpeciesGenerator`) and other `randf` users are not changed yet.

@@ -76,6 +76,7 @@ public:
 	PackedColorArray colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedFloat32Array &p_steeps) const;
 	PackedFloat32Array tectonic_heights(const PackedVector3Array &p_dirs) const;
+	PackedFloat32Array macro_heights(const PackedVector3Array &p_dirs) const;
 	// the ground of one tile (a grid of `cells + 3` points a side, one ring round the tile):
 	PackedVector3Array tile_dirs(int p_face, double p_s0, double p_s1, double p_t0, double p_t1, int p_cells) const;
 	PackedVector3Array local_positions(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,

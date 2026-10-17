@@ -42,6 +42,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
 	ClassDB::bind_method(D_METHOD("tectonic_heights", "dirs"), &PlanetCrustNative::tectonic_heights);
+	ClassDB::bind_method(D_METHOD("macro_heights", "dirs"), &PlanetCrustNative::macro_heights);
 	ClassDB::bind_method(D_METHOD("tile_dirs", "face", "s0", "s1", "t0", "t1", "cells"), &PlanetCrustNative::tile_dirs);
 	ClassDB::bind_method(D_METHOD("local_positions", "dirs", "heights", "origin", "e1", "up", "e3"),
 			&PlanetCrustNative::local_positions);
@@ -563,6 +564,17 @@ PackedColorArray PlanetCrustNative::ground_colours(const PackedVector3Array &p_d
 			double speckle = (double)detail.at(p) * 0.5 + 0.5;
 			result[index] = rock_colour(p_dirs[index], p_heights[index], 1.0 - (double)p_normals[index].y, speckle);
 		}
+	}
+	return result;
+}
+
+// The ground without the smallest hills (PlanetNoise.macro_height): what the water sees.
+PackedFloat32Array PlanetCrustNative::macro_heights(const PackedVector3Array &p_dirs) const {
+	PackedFloat32Array result;
+	result.resize(p_dirs.size());
+	for (int index = 0; index < p_dirs.size(); index++) {
+		double units = tectonic_height(p_dirs[index]) - sea;
+		result[index] = (float)macro_ground(units, p_dirs[index] * (real_t)radius);
 	}
 	return result;
 }

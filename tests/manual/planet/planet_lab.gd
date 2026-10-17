@@ -238,6 +238,104 @@ func _water_check() -> bool:
 ## `--terrain-check` (headless): how the heights are spread and how rough the land is at several
 ## scales, printed as TERRAIN lines (give --earth or --radius=). Mean slope is |height change| over
 ## the distance, for land points, at 100 m, 1 km, 10 km and 100 km.
+## `--drainage-check` (headless): the water's way to the sea on a coarse grid, printed as
+## DRAINAGE_CHECK (every drop of rain that falls on the land must reach the sea), and a map of it
+## with `--drainage-image=PATH`. `--cells=N` cells an edge of a cube face, `--exponent=P`.
+var _drainage_view := PackedFloat64Array([0.0, 0.0, 360.0]) ## centre longitude, latitude, width (degrees)
+
+
+func _drainage_check() -> bool:
+	if not "--drainage-check" in OS.get_cmdline_user_args():
+		return false
+	var made := PlanetSettings.new()
+	var cells := 128
+	var exponent := 4.0
+	var image_path := ""
+	for arg in OS.get_cmdline_user_args():
+		if arg == "--earth":
+			made = PlanetSettings.earth()
+		elif arg.begins_with("--radius="):
+			made.radius = arg.trim_prefix("--radius=").to_float()
+		elif arg.begins_with("--seed="):
+			made.world_seed = arg.trim_prefix("--seed=").to_int()
+		elif arg.begins_with("--drainage-view="):
+			_drainage_view = arg.trim_prefix("--drainage-view=").split_floats(",")
+		elif arg.begins_with("--cells="):
+			cells = arg.trim_prefix("--cells=").to_int()
+		elif arg.begins_with("--exponent="):
+			exponent = arg.trim_prefix("--exponent=").to_float()
+		elif arg.begins_with("--drainage-image="):
+			image_path = arg.trim_prefix("--drainage-image=")
+	var noise := PlanetNoise.new(made)
+	var drainage := PlanetDrainage.new()
+	var started := Time.get_ticks_msec()
+	if not drainage.build(noise, cells, exponent):
+		print("DRAINAGE_CHECK SKIP the native library is not loaded")
+		get_tree().quit()
+		return true
+	var built_ms := Time.get_ticks_msec() - started
+	var rained := 0.0
+	var reached := 0.0
+	var areas := drainage.areas()
+	for index in drainage.flow.size():
+		if drainage.heights[index] >= 0.0:
+			rained += drainage.rain[index] * areas[index]
+		else:
+			reached += drainage.flow[index]
+	var lakes := 0
+	for flag in drainage.lake:
+		lakes += flag
+	var threshold := drainage.river_threshold(0.04)
+	var rivers := 0
+	for index in drainage.flow.size():
+		if drainage.heights[index] >= 0.0 and drainage.flow[index] >= threshold:
+			rivers += 1
+	var kept := reached / maxf(rained, 0.000001)
+	var verdict := "PASS" if absf(kept - 1.0) < 0.001 and drainage.land_cells > 0 else "FAIL"
+	print("DRAINAGE_CHECK %s cells=%d land=%d lakes=%d river_cells=%d reached=%.4f in %d ms" % [
+			verdict, drainage.dirs.size(), drainage.land_cells, lakes, rivers, kept, built_ms])
+	if image_path != "":
+		_save_drainage_picture(drainage, threshold, image_path)
+	get_tree().quit()
+	return true
+
+
+## A flat map of the drainage: the sea blue by depth, the land by height, the lakes cyan and the
+## rivers drawn bluer the more water they carry.
+func _save_drainage_picture(drainage: PlanetDrainage, threshold: float, path: String) -> void:
+	var width := 1024
+	var height := 512
+	var directions := PackedVector3Array()
+	var span := _drainage_view[2]
+	for row in height:
+		var lat := deg_to_rad(_drainage_view[1] + (0.5 - (float(row) + 0.5) / float(height)) * span * 0.5)
+		for column in width:
+			var lon := deg_to_rad(_drainage_view[0] + ((float(column) + 0.5) / float(width) - 0.5) * span)
+			directions.append(Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon)))
+	var found := drainage.cells_of(directions)
+	var picture := Image.create(width, height, false, Image.FORMAT_RGB8)
+	for index in directions.size():
+		var cell := found[index]
+		var ground := drainage.heights[cell]
+		var colour: Color
+		if ground < 0.0:
+			var deep := clampf(1.0 + ground / 5000.0, 0.0, 1.0)
+			colour = Color(0.02, 0.1, 0.3).lerp(Color(0.2, 0.45, 0.7), deep)
+		else:
+			var up := clampf(ground / 5000.0, 0.0, 1.0)
+			colour = Color(0.28, 0.45, 0.22).lerp(Color(0.6, 0.5, 0.35), smoothstep(0.0, 0.5, up))
+			colour = colour.lerp(Color(0.95, 0.95, 0.95), smoothstep(0.5, 1.0, up))
+			if drainage.lake[cell] == 1:
+				colour = Color(0.2, 0.7, 0.85)
+			var carried := drainage.flow[cell]
+			if carried >= threshold:
+				var strength := clampf(log(carried / threshold) / log(400.0), 0.0, 1.0)
+				colour = colour.lerp(Color(0.1, 0.3, 1.0), 0.45 + 0.55 * strength)
+		picture.set_pixel(index % width, index / width, colour)
+	picture.save_png(path)
+	print("DRAINAGE_IMAGE ", path)
+
+
 ## `--native-check` (headless): the native crust against the GDScript one on many points, printed as
 ## NATIVE_CHECK (the largest differences in heights (m) and colours, and the time of each).
 func _native_check() -> bool:
@@ -470,7 +568,8 @@ func _monsoon_swing(noise: PlanetNoise) -> float:
 
 
 func _ready() -> void:
-	var report_run := _native_check() or _terrain_check() or _climate_check() or _water_check()
+	var report_run := _drainage_check() or _native_check() or _terrain_check()
+	report_run = report_run or _climate_check() or _water_check()
 	if report_run or _print_universe_table():
 		return
 	var asked := PlanetMenu.pending != null
