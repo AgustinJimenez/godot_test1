@@ -20,6 +20,8 @@ const CLOUD_DEPTH := 700.0 ## m thick, the layer of clouds
 var cloud_floor := 450.0 ## m above the planet's radius where the layer of clouds begins
 var sun_size := 1.0 ## the star's disc against the Sun's seen from the Earth (radius / distance)
 var star_tint := Color.WHITE ## the star's light against the Sun's (Star.light_tint)
+var sun_cover := 0.0 ## 0..1 the share of the star the moon hides (a solar eclipse)
+var moon_shadow := 0.0 ## 0..1 how deep the moon is in the planet's shadow (a lunar eclipse)
 var cloud_on := 0.0 ## 0 no clouds in the sky (up high the cloud shell takes over) .. 1
 var cloud_drift := Vector3.ZERO ## m, planet frame: how far the wind has carried the small clouds
 
@@ -79,14 +81,15 @@ func _apply() -> void:
 	if strongest > 0.0001:
 		lamp_color = Color(through.x / strongest, through.y / strongest, through.z / strongest)
 	sun.light_color = lamp_color * star_tint
-	sun.light_energy = sun_strength * strongest * (1.0 - overcast * 0.7)
+	sun.light_energy = sun_strength * strongest * (1.0 - overcast * 0.7) * (1.0 - sun_cover * 0.97)
 	sun.look_at_from_position(sun_dir * 100.0, Vector3.ZERO, Vector3.FORWARD)
 	# how dark it is for the eye: the glow of the sky after sunset goes on a while
 	_night_amount = 1.0 - smoothstep(-0.25, 0.05, height)
 	var moon_toward := moon_direction if moon_direction != Vector3.ZERO else -sun_dir
 	var moon_risen := smoothstep(-0.05, 0.15, moon_toward.dot(up))
 	moon.look_at_from_position(moon_toward * 100.0, Vector3.ZERO, Vector3.FORWARD)
-	moon.light_energy = 0.25 * moon_lit * moon_risen * _night_amount * (1.0 - overcast * 0.6)
+	var moon_light := 0.25 * moon_lit * moon_risen * _night_amount * (1.0 - overcast * 0.6)
+	moon.light_energy = moon_light * (1.0 - moon_shadow * 0.85)
 	# the sky shader's own numbers
 	var star_k := 1.0 - maxf(cloud_cover * 0.5, overcast) * 0.9
 	sky_material.set_shader_parameter(&"planet_centre", planet_centre)

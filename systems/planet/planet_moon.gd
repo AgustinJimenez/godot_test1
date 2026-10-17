@@ -10,7 +10,8 @@ extends RefCounted
 static func inertial(clock: PlanetClock) -> Vector3:
 	var angle := 1.0 + TAU * clock.absolute_days() / clock.month_days
 	var flat := Vector3(cos(angle), 0.0, sin(angle))
-	return Basis(Vector3.RIGHT, clock.moon_tilt) * flat
+	var node := TAU * clock.absolute_days() / (clock.node_years * clock.year_days)
+	return Basis(Vector3.UP, node) * Basis(Vector3.RIGHT, clock.moon_tilt) * flat
 
 
 ## The moon as seen from the planet's own frame (a unit vector toward it).

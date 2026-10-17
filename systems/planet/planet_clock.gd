@@ -22,6 +22,7 @@ var insolation := 1.0 ## the star's light at the planet's distance, against the 
 var time := 0.0 ## seconds since the start
 var month_days := 3.5 ## solar days the moon takes to go round the planet (game scale, not real)
 var moon_tilt := deg_to_rad(5.1) ## the moon's orbit against the planet's orbit
+var node_years := 6.0 ## years the moon orbit takes to turn once about the axis (Earth 18.6)
 
 var _spin_offset := 0.0 # the spin angle (radians) at time 0: where the start asks the sun to be
 var _year_start := 0.0 # the share of the year (0..1) at time 0, 0 being the northern spring equinox
@@ -100,6 +101,7 @@ func copy() -> PlanetClock:
 	other.time = time
 	other.month_days = month_days
 	other.moon_tilt = moon_tilt
+	other.node_years = node_years
 	other._spin_offset = _spin_offset
 	other._year_start = _year_start
 	return other

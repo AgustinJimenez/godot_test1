@@ -259,6 +259,9 @@ func _set_the_sun() -> void:
 		atmosphere.sun_size = _star_disc / clock.distance()
 		atmosphere.moon_direction = (frame.rot * PlanetMoon.in_body(clock)).normalized()
 		atmosphere.moon_lit = PlanetMoon.lit(clock)
+		atmosphere.moon_shadow = PlanetMoon.lunar_depth(clock)
+		if _target != null:
+			atmosphere.sun_cover = PlanetMoon.solar_cover(clock, planet_position().normalized())
 
 
 ## Tells the ground shader where the planet is (it reads its detail noise at planet positions).
