@@ -98,10 +98,12 @@ func table(count: int) -> PackedStringArray:
 				system_data.planets.size()])
 		for number in system_data.planets.size():
 			var planet: Dictionary = system_data.planets[number]
+			var notes := " HABITABLE" if planet["habitable"] else ""
+			notes += " LOCKED" if planet["locked"] else ""
 			lines.append("  planet %d %-11s a=%.2fAU r=%.1fEarth year=%.0fd day=%.0fh tilt=%.0f%s"
 					% [number + 1, StarSystem.kind_name(planet["kind"]), planet["orbit_au"],
 					planet["radius_earth"], planet["year_standard_days"], planet["day_standard_hours"],
-					planet["tilt_deg"], " HABITABLE" if planet["habitable"] else ""])
+					planet["tilt_deg"], notes])
 	return lines
 
 
@@ -136,6 +138,8 @@ func self_check() -> bool:
 	tide.time = tide.day_seconds * tide.month_days * 0.25
 	ok = ok and spring > _tide_range(tide) * 1.2 and spring > 0.0
 	ok = ok and _eclipse_check()
+	ok = ok and Star.from_mass(0.2).lock_distance() > Star.from_mass(0.2).habitable_zone().y
+	ok = ok and Star.from_mass(1.0).lock_distance() < Star.from_mass(1.0).habitable_zone().x
 	ok = ok and system(3).system_seed == system(3).system_seed and system_seed(1) != system_seed(2)
 	return ok
 
@@ -183,5 +187,6 @@ static func _eclipse_check() -> bool:
 		clock.time = month * step / 4000.0
 		tilted = maxf(tilted, PlanetMoon.lunar_depth(clock))
 		tilted = maxf(tilted, PlanetMoon.solar_cover(clock, PlanetMoon.in_body(clock)))
-	print("ECLIPSES new=%.2f full=%.2f quarter=%.2f tilted=%.2f" % [best_new, best_full, quarter, tilted])
+	print("ECLIPSES new=%.2f full=%.2f quarter=%.2f tilted=%.2f"
+			% [best_new, best_full, quarter, tilted])
 	return best_new > 0.5 and best_full > 0.5 and quarter == 0.0 and tilted == 0.0

@@ -87,5 +87,5 @@ here too (ozone and UV, haze, the ground spectrum): see [065](065_atmosphere_com
   blends back). Pictures at `--star-mass=0.15|1.0|1.6 --seed=1337 --view-alt=3 --view-pitch=8 --hour=12`: a red dwarf's
   forest is rust brown and near black, the Sun's is as before, an F star's is a little paler.
 - **The user has not judged these colours.** The ground grass is still green under every star (step 7: the ground and
-  sea colour have not been tied to the light yet). Not done: tidal locking (5), PAR and plant size (6, partly), UV
+  sea colour have not been tied to the light yet). Tidal locking (5) is **flagged only**: `Star.lock_distance()` (0.3 * M^(1/3) AU), `locked` in the planet dict, `LOCKED` in the lab table (most red dwarf planets); the clock still spins a locked planet and the climate is still zonal, so a true locked world (fixed sun, day and night side, a non-zonal light map) is not done. Not done: PAR and plant size (6, partly), UV
   and flares (8), the look table (9).

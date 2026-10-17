@@ -56,6 +56,13 @@ func frost_line() -> float:
 	return 2.7 * sqrt(luminosity)
 
 
+## The distance (AU) inside which a planet is tidally locked to the star: the pull falls with the
+## cube of the distance and the time to lock grows with the sixth power, so it is short for
+## dim stars (whose habitable zone is near) and long for the Sun (Mercury is not locked).
+func lock_distance() -> float:
+	return 0.3 * pow(mass, 1.0 / 3.0)
+
+
 ## True if complex life has had the time to appear (the star's age against a few billion years).
 func old_enough_for_life() -> bool:
 	return age >= 2.5 and age < lifetime

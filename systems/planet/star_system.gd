@@ -13,7 +13,8 @@ const MAX_PLANETS := 8
 @export var position := Vector3.ZERO ## light years, in the universe's region
 @export var stars: Array[Star] = []
 ## One dictionary per planet, inner to outer: orbit_au, radius_earth, kind (Kind),
-## year_standard_days, day_standard_hours, tilt_deg, habitable (rocky, inside the water zone).
+## year_standard_days, day_standard_hours, tilt_deg, habitable (rocky, inside the water zone),
+## locked (tidally locked: one side always faces the star; flagged only, the clock still spins it).
 @export var planets: Array[Dictionary] = []
 
 
@@ -89,6 +90,7 @@ func _planet_at(rng: RandomNumberGenerator, star: Star, distance: float,
 		"eccentricity": rng.randf_range(0.0, 0.2) * rng.randf(),
 		"perihelion_share": rng.randf(),
 		"habitable": rocky and distance >= zone.x and distance <= zone.y,
+		"locked": distance < star.lock_distance(),
 	}
 
 
