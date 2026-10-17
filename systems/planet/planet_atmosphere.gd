@@ -47,6 +47,29 @@ func _init() -> void:
 	environment.ambient_light_sky_contribution = 0.92
 	environment.ambient_light_color = Color(0.1, 0.13, 0.25)
 	environment.volumetric_fog_enabled = false
+	_own_every_look_setting()
+
+
+## The planet decides how it looks: every fog, tone and colour setting of the environment is set
+## here, so no default of the engine (or of a version of it) leaks in. The density, the colours and
+## the sky's share of the fog change every frame in `_apply`; these stay as they are.
+func _own_every_look_setting() -> void:
+	environment.fog_enabled = true
+	environment.fog_mode = Environment.FOG_MODE_EXPONENTIAL
+	environment.fog_light_energy = 1.0
+	environment.fog_sun_scatter = 0.0
+	environment.fog_height = 0.0
+	environment.fog_height_density = 0.0
+	environment.fog_depth_begin = 10.0 # (used by the depth mode only)
+	environment.fog_depth_end = 100.0
+	environment.fog_depth_curve = 1.0
+	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	environment.tonemap_exposure = 1.0
+	environment.tonemap_white = 1.0
+	environment.adjustment_enabled = false
+	environment.adjustment_brightness = 1.0
+	environment.adjustment_contrast = 1.0
+	environment.adjustment_saturation = 1.0
 
 
 ## Gives a material that draws the clouds (the sky's, the shell's) the numbers they share: where the
