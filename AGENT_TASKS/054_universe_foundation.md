@@ -76,7 +76,15 @@ still built the way the one planet is built today. No travel yet (that is [055](
   travel exists.
 - **Decided:** a start-menu parameter (sun-like and habitable, or any); the universe size starts at one
   star and one planet.
-- **Open (small):** the year. A real year at 1 AU is 365 days, and a day of play is 1,440 s, so seasons
-  would take 6 hours of play; the planet uses a game year of 16 days (`year_days`). Keep the game scale (the
-  year's *length in days* is a setting per planet, ordered by Kepler: closer planets have shorter years
-  within a clamp of ~6 to ~64 days) or use true ratios? Suggested: the clamped game scale.
+- **Decided (user, 2026-10-17): keep both times, and do not make the time display a feature yet** ("I
+  don't know if having the time noted is critical"):
+  - *Universe time* is one number, seconds of play since the start (`PlanetClock.time` today), the same for
+    every planet.
+  - *Standard (Earth-like) time* is a fixed conversion, 1 standard day = 24 h = 1,440 s of play at 1x (the
+    game compresses time 60x), and is what a Kepler orbit is measured in: `Star`/`Planet` data keep the
+    true values (`day_standard_hours`, `year_standard_days` from the distance and the star's mass).
+  - *Planet (local) time* is what the clock uses: `day_seconds` and `year_days` of the planet. The year is
+    clamped to a game range (~6 to ~64 local days) so seasons are playable; the true year stays in the data.
+  - Show local time (already in the Planet page) and, optionally later, the standard time and the true
+    year next to it in the planet info panel; nothing else depends on it.
+  - If it turns out not to matter, drop the standard time display and keep the numbers in the data.

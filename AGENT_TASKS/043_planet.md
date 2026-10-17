@@ -373,5 +373,6 @@ Decisions so far (user, 2026-10-17): many star systems wanted but **start with o
 polish it**; start-menu parameters **home planet: sun-like habitable or any** and **star colours: physical or
 readable** (both kept, decide after seeing them); flat world to be retired; player parked.
 
-Open (also written in the tasks): the year length rule (054: clamped game scale or true ratios); how the player
-will travel and how far apart things are (055, parked); gravity in the player controller (061).
+Time (user, 2026-10-17): keep **both** universe/standard (Earth-like) time and each planet's local time, as data,
+without building a display for it yet (054). Open (also written in the tasks): how the player will travel and how
+far apart things are (055, parked); gravity in the player controller (061).
