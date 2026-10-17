@@ -16,6 +16,7 @@ extends RefCounted
 var day_seconds := 1440.0 ## a solar day, in seconds of play (a clock day)
 var year_days := 16.0 ## solar days in a year
 var axial_tilt := deg_to_rad(23.4) ## radians
+var insolation := 1.0 ## the star's light at the planet's distance, against the Earth's (L / a^2)
 var time := 0.0 ## seconds since the start
 var month_days := 3.5 ## solar days the moon takes to go round the planet (game scale, not real)
 var moon_tilt := deg_to_rad(5.1) ## the moon's orbit against the planet's orbit
@@ -91,6 +92,7 @@ func copy() -> PlanetClock:
 	other.day_seconds = day_seconds
 	other.year_days = year_days
 	other.axial_tilt = axial_tilt
+	other.insolation = insolation
 	other.time = time
 	other.month_days = month_days
 	other.moon_tilt = moon_tilt

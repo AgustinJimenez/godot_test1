@@ -82,7 +82,8 @@ func _step(heat: PackedFloat32Array, light: PackedFloat32Array, clock: PlanetClo
 		dt: float) -> void:
 	clock.set_year_share(at)
 	for row in HEIGHT:
-		light[row] = clock.daily_light((0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI)
+		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
+		light[row] = clock.daily_light(lat) * clock.insolation
 	var sea_pull := 1.0 - exp(-dt / SEA_TAU)
 	var land_pull := 1.0 - exp(-dt / LAND_TAU)
 	for row in HEIGHT:

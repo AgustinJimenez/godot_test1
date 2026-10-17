@@ -21,6 +21,7 @@ extends Resource
 @export var time_scale := 1.0 ## 1: real play time; more makes the days and years pass faster
 @export var star_mass := 1.0 ## solar masses of the planet's star (1: the Sun, a white light)
 @export var star_readability := 0.0 ## 0 the star's true colour .. 1 readable (Sun-like light)
+@export var insolation := 1.0 ## the star's light here against the Earth's: luminosity / distance^2
 @export var air_height := 100000.0 ## m the Earth air would reach (scaled to the radius)
 @export var plates := 14 ## tectonic plates (Earth has about 15 big ones)
 @export var tile_cells := 48 ## quads along one tile edge, at every level of detail

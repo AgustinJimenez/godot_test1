@@ -39,6 +39,9 @@ func planet_settings(index: int, number: int) -> PlanetSettings:
 	made.day_seconds = day_hours * 60.0
 	made.year_days = clampf(body["year_standard_days"] * 24.0 / day_hours, 6.0, 64.0)
 	made.axial_tilt = body["tilt_deg"]
+	var star := system_data.stars[0]
+	made.star_mass = star.mass
+	made.insolation = star.luminosity / (body["orbit_au"] * body["orbit_au"])
 	if body["habitable"]:
 		made.ocean_fraction = rng.randf_range(0.55, 0.8)
 	else:

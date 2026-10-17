@@ -50,6 +50,7 @@ func _ready() -> void:
 	clock.day_seconds = settings.day_seconds
 	clock.year_days = settings.year_days
 	clock.axial_tilt = deg_to_rad(settings.axial_tilt)
+	clock.insolation = settings.insolation
 	clock.month_days = settings.month_days
 	atmosphere = PlanetAtmosphere.new()
 	atmosphere.radius = settings.radius
