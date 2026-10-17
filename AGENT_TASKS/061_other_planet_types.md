@@ -22,6 +22,8 @@ look at from afar. All from the same code with different settings, following "re
 
 The atmosphere item (composition, pressure, dust) is its own task: [065](065_atmosphere_composition.md).
 
+A volcanic planet's activity and its volcanoes are in [067](067_volcanoes_and_crust_activity.md).
+
 ## Plan
 
 1. **Atmosphere settings.** Pressure (scale of the density), composition as scattering colours (blue

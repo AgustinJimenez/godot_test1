@@ -32,9 +32,11 @@ and strata, beaches, dunes, glaciers, a snow line, and smooth biome transitions.
 4. **Beaches and shores.** Sand where the slope is low and the waves reach, shingle, cliffs where steep;
    a gradual colour change from sea to land.
 5. **Deserts.** Dunes (an anisotropic noise along the wind), dry riverbeds, salt flats, rock pavements.
-6. **Volcanoes and craters** (rare features): a cone with a crater, lava rock colour, ash fall; impact
+6. **Volcanoes and craters** (rare features; volcanoes are now their own task:
+   [067](067_volcanoes_and_crust_activity.md)): a cone with a crater, lava rock colour, ash fall; impact
    craters on the airless planets of [061](061_other_planet_types.md).
-7. **Caves and overhangs** need volumetric terrain: out of scope except as separate placed features
+7. **Caves and overhangs** need volumetric terrain (now their own task:
+   [066](066_caves_and_underground.md)); in this task only as separate placed features
    (a cave mouth in a cliff as a mesh with a room behind it; see how `procedural_room_generation_plan.md`
    did rooms).
 8. **Biome transitions.** Smooth blends with an ecotone (mixed species) instead of a line; check the

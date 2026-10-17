@@ -358,6 +358,8 @@ order and what depends on what:
 | 2 | [048](048_cloud_polish.md) cloud polish | 047 for the cost budget |
 | 2 | [050](050_tree_look_fixes.md) tree look fixes | - |
 | 3 | [049](049_water_and_coasts.md) water and coasts | 058 for tides |
+| 3 | [067](067_volcanoes_and_crust_activity.md) volcanoes and crust activity | 057, 054 (activity from size and age), 065 for gases |
+| 4 | [066](066_caves_and_underground.md) caves and the underground (starts with a spike) | 057, 067 for lava tubes, 049 for water |
 | 3 | [057](057_terrain_realism.md) terrain realism | 049 |
 | 3 | [059](059_plant_variety.md) plant variety (star light shapes plant colour) | 044, 050, 064 |
 | 3 | [052](052_graphics_options_for_the_planet.md) graphics options | 044, 046 |

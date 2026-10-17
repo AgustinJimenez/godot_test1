@@ -100,6 +100,6 @@ that `PlanetAir` and the weather use today.
 - The air shrinking with the planet (`air_scale`, `MIN_AIR_SCALE`, [047](047_sky_and_sunsets.md)) is a game
   choice for small planets; the composition settings must keep working with it (the optical depths stay
   the Earth's by design; the *colours* change with the gases).
-- **Open (small):** start with a few parameters (pressure, greenhouse, dust, methane) or the whole gas
-  list? Suggested: the few, with the data model open to more.
+- **Decided (user, 2026-10-17): small first**: pressure, greenhouse, dust and methane (and the humidity
+  the weather already has); keep the data model open to more gases later.
 - The player's breathing and health are not considered now (the player is parked).

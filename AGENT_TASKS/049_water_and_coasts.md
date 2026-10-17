@@ -15,6 +15,8 @@ on the player.
 - Open ideas already listed in 043: rivers ending in cliffs at steep coasts; tides.
 - Rain ripples exist on ground puddles only, not on water. Underwater: fog colour and a darkening, no caustics.
 
+Sea caves and underground rivers that sink and re-appear are in [066](066_caves_and_underground.md).
+
 ## Plan
 
 1. **River mouths.** Where a river reaches a steep coast it should widen into an estuary or fall as a
