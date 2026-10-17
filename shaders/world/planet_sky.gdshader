@@ -100,7 +100,7 @@ void sky() {
 	float radius = planet_radius;
 	float top = planet_radius + atmosphere_top;
 	vec3 sun = normalize(sun_toward);
-	vec3 col = intensity * scatter(origin, dir, sun, radius, top);
+	vec3 col = intensity * star_tint * scatter(origin, dir, sun, radius, top);
 
 	// the sun: a bright disc (what the air has not taken from it, the light of the sun on the
 	// ground, LIGHT0, is already that) behind the planet's own limb

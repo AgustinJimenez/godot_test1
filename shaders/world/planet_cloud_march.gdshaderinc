@@ -10,6 +10,7 @@ uniform float cloud_depth = 700.0; // m thick
 uniform vec3 cloud_drift = vec3(0.0); // m, in the planet's frame: where the wind has carried them
 uniform float cloud_dark = 0.0; // 0 white .. 1 storm grey
 uniform float cloud_least = 0.0; // the cover is at least this (a forced overcast weather)
+uniform vec3 star_tint = vec3(1.0); // the star's light against the Sun's
 uniform float cloud_sun = 1.35; // the light energy of the unobscured star
 uniform float cloud_path = 0.11; // the sun's path through this planet's air against the Earth's
 
@@ -56,7 +57,7 @@ vec3 cloud_sun_light(float height) {
 	float h = max(height, -0.02);
 	float mass = 1.0 / (h + 0.50572 * pow(96.07995 - degrees(acos(h)), -1.6364)); // Kasten-Young
 	vec3 tau = vec3(0.074, 0.136, 0.293) * mass * cloud_path;
-	return cloud_sun * exp(-tau) * smoothstep(-0.14, -0.02, height);
+	return cloud_sun * star_tint * exp(-tau) * smoothstep(-0.14, -0.02, height);
 }
 
 // the light of the sky on a cloud, blue by day, a trace of starlight at night

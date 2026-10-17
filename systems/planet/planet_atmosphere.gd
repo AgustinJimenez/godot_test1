@@ -18,6 +18,7 @@ var scatter_intensity := 22.0
 var altitude := 0.0 ## m above the surface at the camera (set by the world)
 const CLOUD_DEPTH := 700.0 ## m thick, the layer of clouds
 var cloud_floor := 450.0 ## m above the planet's radius where the layer of clouds begins
+var star_tint := Color.WHITE ## the star's light against the Sun's (Star.light_tint)
 var cloud_on := 0.0 ## 0 no clouds in the sky (up high the cloud shell takes over) .. 1
 var cloud_drift := Vector3.ZERO ## m, planet frame: how far the wind has carried the small clouds
 
@@ -57,6 +58,7 @@ func set_cloud_parameters(material: ShaderMaterial) -> void:
 	material.set_shader_parameter(&"cloud_dark", maxf(cloud_dark, overcast * 0.6))
 	material.set_shader_parameter(&"cloud_least", overcast)
 	material.set_shader_parameter(&"cloud_sun", sun_strength)
+	material.set_shader_parameter(&"star_tint", Vector3(star_tint.r, star_tint.g, star_tint.b))
 	# the sun's path through the air against the Earth's (a small planet has a short one)
 	var least_radius := PlanetAir.MIN_AIR_SCALE * PlanetAir.EARTH_RADIUS
 	material.set_shader_parameter(&"cloud_path", sqrt(minf(1.0, radius / least_radius)))
@@ -75,7 +77,7 @@ func _apply() -> void:
 	var lamp_color := Color.WHITE
 	if strongest > 0.0001:
 		lamp_color = Color(through.x / strongest, through.y / strongest, through.z / strongest)
-	sun.light_color = lamp_color
+	sun.light_color = lamp_color * star_tint
 	sun.light_energy = sun_strength * strongest * (1.0 - overcast * 0.7)
 	sun.look_at_from_position(sun_dir * 100.0, Vector3.ZERO, Vector3.FORWARD)
 	# how dark it is for the eye: the glow of the sky after sunset goes on a while

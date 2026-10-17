@@ -4,6 +4,7 @@ extends Resource
 ## (mass, luminosity, radius), Kelvin, billions of years. Pure data: nothing here touches a scene.
 
 const SUN_TEMPERATURE := 5772.0 ## K
+const ADAPTATION := 0.75 ## how much of a star's colour the eye still sees
 
 @export var mass := 1.0 ## solar masses
 @export var age := 4.6 ## billions of years
@@ -80,6 +81,20 @@ func _get_spectral_class() -> String:
 
 func _get_flare_level() -> float:
 	return clampf((0.6 - mass) / 0.5, 0.0, 1.0)
+
+
+## The multiplier on the Sun's light that this star's light is: (1, 1, 1) for the Sun, orange for
+## a red dwarf, bluer for an F or A star. The eye adapts to a colour it lives under, so only
+## `ADAPTATION` of the difference is seen; `readability` (0 true .. 1 readable) blends to white.
+func light_tint(readability := 0.0) -> Color:
+	var sun := blackbody(SUN_TEMPERATURE)
+	var mine := colour
+	var ratio := Vector3(mine.r / sun.r, mine.g / sun.g, mine.b / sun.b)
+	var strongest := maxf(ratio.x, maxf(ratio.y, ratio.z))
+	var tint := Vector3(pow(ratio.x / strongest, ADAPTATION), pow(ratio.y / strongest, ADAPTATION),
+			pow(ratio.z / strongest, ADAPTATION))
+	var seen := Color(tint.x, tint.y, tint.z)
+	return seen.lerp(Color.WHITE, clampf(readability, 0.0, 1.0))
 
 
 ## Blackbody colour for a temperature (Tanner Helland's fit, good from 1000 K to 40000 K).

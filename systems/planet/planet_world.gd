@@ -54,6 +54,7 @@ func _ready() -> void:
 	atmosphere = PlanetAtmosphere.new()
 	atmosphere.radius = settings.radius
 	atmosphere.air_height = settings.air_height
+	atmosphere.star_tint = Star.from_mass(settings.star_mass).light_tint(settings.star_readability)
 	atmosphere.time_of_day = time_of_day
 	add_child(atmosphere)
 	surface = PlanetSurface.new()

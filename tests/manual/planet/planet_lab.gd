@@ -15,6 +15,7 @@ extends Node3D
 ##   -- --no-shadow  the sun casts no shadows
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
+##   -- --star-mass=M [--star-readability=0..1]  the star in solar masses (0.15 red, 1.6 white)
 ##   -- --universe=SEED [--systems=N]  (headless ok) print the table of N star systems and quit
 ##   -- --start-menu  the start menu first (saved planets, a new one); no arguments does it too
 ##   -- --world=NAME / --continue  open a saved universe (Planet page of the Esc menu saves them)
@@ -248,6 +249,10 @@ func _ready() -> void:
 			_shot = arg.trim_prefix("--shot=")
 		elif arg.begins_with("--time-scale="):
 			settings.time_scale = arg.trim_prefix("--time-scale=").to_float()
+		elif arg.begins_with("--star-mass="):
+			settings.star_mass = arg.trim_prefix("--star-mass=").to_float()
+		elif arg.begins_with("--star-readability="):
+			settings.star_readability = arg.trim_prefix("--star-readability=").to_float()
 		elif arg.begins_with("--hour="):
 			settings.start_hour = arg.trim_prefix("--hour=").to_float()
 		elif arg.begins_with("--year="):
