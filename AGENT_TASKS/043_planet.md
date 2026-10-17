@@ -9,6 +9,8 @@ what we learned: `docs/planet_lessons.md`.
 
 ## Handoff to the next agent (written 2026-10-17 when the previous session ran out of tokens)
 
+**Update (autonomous session, 2026-10-17, user away; newer than the text below).** Done and pushed, in order: 054 stages 1-6 (the universe as data: `Star`, `StarSystem`, `UniverseSettings`; `home_settings`; start menu with home planet sun-like/any and a star colour slider; saves v3; Planet page shows the star), 064 (star colour tints sun, sky, clouds; leaf colours follow the star: `StarLight`), 054 (insolation L/a^2 into the seasons; the sun disc by radius/distance), 058 step 4 (elliptical orbits), 046 step 1 (`scripts/planet_check.sh`), and a fix for a worker-thread race on the shared tile materials. **None of the visual results were judged by the user**: pictures and the arguments to look at them are in 054 and 064. Known failing: `--home=42 --planet-check` (gap 4.4 m on an 11 km planet, see 054 notes). Nothing in the tasks was started beyond this: tidal locking, ground and sea colour by star light, UV and flares (064), 044, 047-053, 055-063, 065-068 are untouched. The old text below still says 'start with 054 stage 1': that is done.
+
 **State.** Everything is committed and pushed (last commit when this was written: `e131c42`). The only local
 change is `assets/models/kaykit_fantasy_weapons/weapons_bits_texture.png.import`, a re-import artifact:
 **never commit it**. `stash@{0}` ("pre-update local changes (other machine sync)") is the user's: leave it.
