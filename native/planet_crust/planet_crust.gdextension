@@ -1,0 +1,11 @@
+[configuration]
+
+entry_symbol = "planet_crust_init"
+compatibility_minimum = "4.5"
+
+[libraries]
+
+windows.debug.x86_64 = "res://native/planet_crust/bin/planet_crust.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "res://native/planet_crust/bin/planet_crust.windows.template_release.x86_64.dll"
+windows.debug.double.x86_64 = "res://native/planet_crust/bin/planet_crust.windows.template_debug.double.x86_64.dll"
+windows.release.double.x86_64 = "res://native/planet_crust/bin/planet_crust.windows.template_release.double.x86_64.dll"

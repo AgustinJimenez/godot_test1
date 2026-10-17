@@ -1,0 +1,13 @@
+#!/usr/bin/env python
+# Builds the planet crust extension against godot-cpp (GODOT_CPP, default E:/Godot/cpp/godot-cpp).
+# See README.md. Floating point precision follows `precision=single|double`, like the engine's.
+import os
+
+godot_cpp = os.environ.get("GODOT_CPP", "E:/Godot/cpp/godot-cpp")
+env = SConscript(godot_cpp + "/SConstruct")
+
+env.Append(CPPPATH=["src/"])
+sources = Glob("src/*.cpp")
+suffix = env["suffix"].replace(".dev", "").replace(".universal", "")
+library = env.SharedLibrary("bin/planet_crust{}{}".format(suffix, env["SHLIBSUFFIX"]), source=sources)
+Default(library)

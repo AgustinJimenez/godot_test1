@@ -115,15 +115,21 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 	heights.resize(side * side)
 	dirs.resize(side * side)
 	min_height = INF
+	var packed_dirs := PackedVector3Array() # (the crust is asked for the whole grid at once)
+	packed_dirs.resize(side * side)
 	for row in side:
 		var t := lerpf(t0, t1, float(row - 1) / float(cells))
 		for column in side:
 			var s := lerpf(s0, s1, float(column - 1) / float(cells))
 			var dir := direction(f, s, t)
-			var h := noise.height(dir.x, dir.y, dir.z)
 			dirs[row * side + column] = dir
-			heights[row * side + column] = h
-			positions[row * side + column] = _to_local(dir, radius + h)
+			packed_dirs[row * side + column] = dir
+	heights = noise.heights_of(packed_dirs)
+	for row in side:
+		for column in side:
+			var index := row * side + column
+			var h := heights[index]
+			positions[index] = _to_local(dirs[index], radius + h)
 			if row > 0 and column > 0 and row <= cells + 1 and column <= cells + 1:
 				min_height = minf(min_height, h)
 	var normals: Array[Vector3] = []
@@ -136,12 +142,21 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 			normals[row * side + column] = normal if normal.y >= 0.0 else -normal
 	var colors: Array[Color] = []
 	colors.resize(side * side)
+	var inner_dirs := PackedVector3Array()
+	var inner_heights := PackedFloat32Array()
+	var inner_steeps := PackedFloat32Array()
 	for row in range(1, cells + 2):
 		for column in range(1, cells + 2):
 			var index := row * side + column
-			var dir := dirs[index]
-			colors[index] = _noise.facet_color(dir.x, dir.y, dir.z, heights[index],
-					1.0 - normals[index].y)
+			inner_dirs.append(dirs[index])
+			inner_heights.append(heights[index])
+			inner_steeps.append(1.0 - normals[index].y)
+	var inner_colours := noise.colours_of(inner_dirs, inner_heights, inner_steeps)
+	var at := 0
+	for row in range(1, cells + 2):
+		for column in range(1, cells + 2):
+			colors[row * side + column] = inner_colours[at]
+			at += 1
 	var builder := MeshBuilder.new()
 	var faces := PackedVector3Array()
 	for row in range(1, cells + 1):

@@ -18,6 +18,7 @@ var weather: PlanetWeather ## the clouds and the weather (made once the climate 
 var clock: PlanetClock ## the time of day and the season (set by PlanetWorld; null: the yearly mean)
 var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep off a little round it
 var rock: PlanetRock ## the colour of the crust
+var native: Object ## the native crust (PlanetCrustNative), or null: this file is the reference
 var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
 
 var _rolling := FastNoiseLite.new()
@@ -77,6 +78,72 @@ func _init(planet_settings: PlanetSettings) -> void:
 		var water := PlanetHydrology.new()
 		water.build(self, settings.hydrology_cells)
 		hydrology = water
+	_make_native()
+
+
+## Hands the crust's numbers to the native class, when its library is there (native/planet_crust,
+## see its README). The GDScript below stays the reference: `PLANET_NO_NATIVE=1` turns this off and
+## `planet_lab --native-check` compares the two.
+func _make_native() -> void:
+	native = null
+	if OS.has_environment("PLANET_NO_NATIVE") or not ClassDB.class_exists(&"PlanetCrustNative"):
+		return
+	var valley_configs: Array = []
+	for valley in _valleys:
+		valley_configs.append(_noise_config(valley))
+	var depths := PackedFloat32Array()
+	for depth in _valley_depth:
+		depths.append(depth)
+	var made: Object = ClassDB.instantiate(&"PlanetCrustNative")
+	made.call(&"setup", {
+		"seeds": tectonics._seeds, "spins": PackedVector3Array(tectonics._spin),
+		"continental": PackedByteArray(tectonics._continental.map(func(land: bool) -> int:
+				return 1 if land else 0)),
+		"continent": PlanetTectonics.CONTINENT, "ocean": PlanetTectonics.OCEAN,
+		"boundary": PlanetTectonics.BOUNDARY, "soft": PlanetTectonics.SOFT,
+		"radius": settings.radius, "relief": relief, "sea": _sea,
+		"shore": SHORE, "shore_flat": SHORE_FLAT, "land_curve": LAND_CURVE, "deep": DEEP,
+		"massif_scale": MASSIF, "chain_scale": CHAINS, "foothill_scale": FOOTHILLS,
+		"valley_width": VALLEY_WIDTH, "valley_depths": depths,
+		"rock_boundary": PlanetRock.BOUNDARY, "rock_colours": PackedColorArray(PlanetRock.COLOURS),
+		"warp": _noise_config(tectonics._warp), "ridge": _noise_config(tectonics._ridge),
+		"interior": _noise_config(tectonics._interior), "rolling": _noise_config(_rolling),
+		"ranges": _noise_config(_ranges), "range_mask": _noise_config(_range_mask),
+		"hills": _noise_config(_hills), "gullies": _noise_config(_gullies),
+		"detail": _noise_config(_detail), "massif": _noise_config(_massif),
+		"chain": _noise_config(_chain), "foothills": _noise_config(_foothills),
+		"valleys": valley_configs, "craton": _noise_config(rock._craton),
+		"basin": _noise_config(rock._basin),
+	})
+	native = made
+
+
+func _noise_config(source: FastNoiseLite) -> Array:
+	return [source.seed, source.frequency, source.fractal_octaves, int(source.fractal_type)]
+
+
+## The ground heights at many directions at once (native when it can: no rivers cut in).
+func heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
+	if native != null and hydrology == null:
+		return native.call(&"heights", dirs)
+	var result := PackedFloat32Array()
+	result.resize(dirs.size())
+	for index in dirs.size():
+		result[index] = height(dirs[index].x, dirs[index].y, dirs[index].z)
+	return result
+
+
+## The crust colours at many directions at once, with each one's ground height and steepness.
+func colours_of(dirs: PackedVector3Array, grounds: PackedFloat32Array,
+		steeps: PackedFloat32Array) -> PackedColorArray:
+	if native != null:
+		return native.call(&"colours", dirs, grounds, steeps)
+	var result := PackedColorArray()
+	result.resize(dirs.size())
+	for index in dirs.size():
+		result[index] = facet_color(dirs[index].x, dirs[index].y, dirs[index].z, grounds[index],
+				steeps[index])
+	return result
 
 
 func _setup(noise: FastNoiseLite, noise_seed: int, frequency: float, octaves: int) -> void:
