@@ -15,6 +15,7 @@ extends Node3D
 ##   -- --no-shadow  the sun casts no shadows
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
+##   -- --universe=SEED [--systems=N]  (headless ok) print the table of N star systems and quit
 ##   -- --start-menu  the start menu first (saved planets, a new one); no arguments does it too
 ##   -- --world=NAME / --continue  open a saved universe (Planet page of the Esc menu saves them)
 ##   -- --planet-page  the Planet page of the Esc menu open from the start
@@ -172,7 +173,30 @@ func _check_saving() -> void:
 	print("SAVE_CHECK %s" % ("PASS" if ok else "FAIL"))
 
 
+## `--universe=SEED [--systems=N] [--any]`: prints the star systems of that universe and quits.
+func _print_universe_table() -> bool:
+	var universe := UniverseSettings.new()
+	var asked := false
+	var count := 5
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--universe="):
+			universe.universe_seed = arg.trim_prefix("--universe=").to_int()
+			asked = true
+		elif arg.begins_with("--systems="):
+			count = arg.trim_prefix("--systems=").to_int()
+		elif arg == "--any":
+			universe.sunlike_home = false
+	if not asked:
+		return false
+	for line in universe.table(count):
+		print(line)
+	get_tree().quit()
+	return true
+
+
 func _ready() -> void:
+	if _print_universe_table():
+		return
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()
 	var menu_first := UniverseStartMenu.requested or user_args.is_empty()
