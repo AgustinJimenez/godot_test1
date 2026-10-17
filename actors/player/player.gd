@@ -127,7 +127,7 @@ func toggle_fov_gizmo() -> void:
 ## code while this is on; collision is zeroed rather than just skipping
 ## move_and_slide() so the player also can't be hit/detected by other
 ## collision-based systems (AI perception, hitscans) while noclipping.
-@export var free_mode_speed: float = 8.0
+@export var free_mode_speed: float = 111.1 # m/s: 400 km/h (the debug slider starts here)
 @export var free_mode_sprint_multiplier: float = 3.0
 var free_mode_enabled := false
 var _free_mode_default_collision_layer := 0

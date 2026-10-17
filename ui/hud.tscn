@@ -398,11 +398,11 @@ text = "Free speed:"
 custom_minimum_size = Vector2(120, 0)
 max_value = 1.0
 step = 0.005
-value = 0.204
+value = 0.591
 
 [node name="FreeSpeedValueLabel" type="Label" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox/FreeSpeedRow"]
 custom_minimum_size = Vector2(90, 0)
-text = "8 m/s"
+text = "400 km/h"
 
 [node name="DetachedCameraToggle" type="CheckButton" parent="DebugOverlay/Center/DebugPanel/DebugMargin/DebugVBox"]
 text = "Detached Camera"
