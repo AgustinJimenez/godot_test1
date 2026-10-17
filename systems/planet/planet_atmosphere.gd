@@ -23,7 +23,7 @@ var cloud_drift := Vector3.ZERO ## m, planet frame: how far the wind has carried
 
 ## The air's size against the Earth's: the planet's radius over the Earth's (see PlanetAir).
 func air_scale() -> float:
-	return radius / PlanetAir.EARTH_RADIUS
+	return PlanetAir.scale_for(radius)
 
 
 ## Metres above the surface where this planet's air ends.
@@ -103,7 +103,9 @@ func _apply() -> void:
 	var far_sun := PlanetAir.sky_color(from, away, sun_dir, radius, top, scatter_intensity, scale)
 	# the fog is the air's colour seen away from the sun (toward it the glare would wash it white)
 	var haze := far_sun * 0.85 + near_sun * 0.15
-	haze = Vector3(minf(haze.x, 1.2), minf(haze.y, 1.2), minf(haze.z, 1.2))
+	# (the scene is lit by the sun as the air lets it through, so haze brighter than that washes out)
+	var cap := maxf(0.25, minf(strongest * 1.3, 0.8))
+	haze = Vector3(minf(haze.x, cap), minf(haze.y, cap), minf(haze.z, cap))
 	var fog_color := Color(haze.x, haze.y, haze.z)
 	environment.fog_light_color = fog_color.lerp(Color(0.5, 0.55, 0.6) * maxf(strongest, 0.05),
 			overcast * 0.5)

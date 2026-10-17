@@ -9,17 +9,28 @@ extends RefCounted
 ## centre. Above the atmosphere there is no air: no sky light, only the sun.
 ##
 ## A planet smaller than the Earth gets an atmosphere shrunk to match (`air_scale`, the planet's
-## radius over the Earth's): every length of the air (its scale heights and its top) is multiplied
-## by it and the scattering per metre is divided by it, so the optical depths are the Earth's and a
-## small planet has the Earth's blue day and red sunset, only in a shell of a few hundred metres.
-## (With the Earth's air round a 20 km planet the sun's path at sunset would be 28 times too thin
-## to turn red.)
+## radius over the Earth's, but not under MIN_AIR_SCALE): every length of the air (its scale heights
+## and its top) is multiplied by it and the scattering per metre is divided by it, so the optical
+## depths are the Earth's and a small planet has the Earth's blue day and red sunset, only in a
+## shell of a few hundred metres. (With the Earth's air round a 20 km planet the sun's path at
+## sunset would be 28 times too thin to turn red.)
 
 const BETA_RAYLEIGH := Vector3(5.8e-6, 13.5e-6, 33.1e-6) ## per metre at sea level: red, green, blue
 const BETA_MIE := 21e-6
 const SCALE_RAYLEIGH := 8000.0 ## m: how fast the molecules thin out with height (the Earth's)
 const SCALE_MIE := 1200.0 ## m: the haze and dust, which hug the ground (the Earth's)
 const EARTH_RADIUS := 6371000.0
+## The least `air_scale`: a planet smaller than a quarter of the Earth still has air a quarter as
+## deep (its top at 25 km, a scale height of 2 km), so the weather, the clouds and the mountains lie
+## in the lower air and the sky only darkens high above them, as on the Earth. Its sunsets are a
+## little less red than the Earth's for it (the sun's path through the air is shorter), still
+## orange.
+const MIN_AIR_SCALE := 0.25
+
+
+## The air's size against the Earth's for a planet of `radius` (see the top of this file).
+static func scale_for(radius: float) -> float:
+	return maxf(radius / EARTH_RADIUS, MIN_AIR_SCALE)
 
 
 ## True if the ray from `from` along `along` (a unit vector) hits the planet of `radius`.

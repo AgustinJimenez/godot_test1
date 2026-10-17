@@ -183,8 +183,10 @@ func _adopt_plants() -> void:
 		var finished: Array = []
 		if not _plant_inline.is_empty():
 			var wish: Array = _plant_inline.pop_front()
+			if not is_instance_valid(wish[0]): # the tile went away since the wish was made
+				continue
 			var wished: PlanetTile = wish[0]
-			if is_instance_valid(wished) and tiles.get(wished.tile_key) == wished:
+			if tiles.get(wished.tile_key) == wished:
 				finished = [wished, wished.grow_plants(wish[1]), wish[1]]
 			else:
 				continue
@@ -195,8 +197,11 @@ func _adopt_plants() -> void:
 			_mutex.unlock()
 		if finished.is_empty():
 			return
-		var tile: PlanetTile = finished[0]
 		var holder: Node3D = finished[1]
+		if not is_instance_valid(finished[0]): # the tile went away while its plants were grown
+			holder.free()
+			continue
+		var tile: PlanetTile = finished[0]
 		_plant_pending.erase(tile.get_instance_id())
 		if tiles.get(tile.tile_key) != tile or not tile.is_inside_tree():
 			holder.free()

@@ -11,6 +11,7 @@ extends Node3D
 ##                    share of the year (0 northern spring equinox)
 ##   -- --look-moon  the camera looks at the moon (with --view-alt)
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
+##   -- --fps  print the frame rate every 300 frames
 ##   -- --planet-page  the Planet page of the Esc menu open from the start
 ##   -- --bare       no plants (to look at the ground)
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
@@ -26,6 +27,7 @@ var player: Player
 var _checking := false
 var _walking := false
 var _weather_name := "" ## a WorldWeather.State name to force from the start (rain, snow...)
+var _report_fps := false ## print the frame rate now and then
 var _planet_page := false ## open the Planet page of the Esc menu from the start
 var _look_moon := false ## point the camera at the moon (with --view-alt)
 var _show_map := false ## open the planet map (the M key) from the start
@@ -95,6 +97,8 @@ func _ready() -> void:
 			_look_moon = true
 		elif arg.begins_with("--weather="):
 			_weather_name = arg.trim_prefix("--weather=").to_upper()
+		elif arg == "--fps":
+			_report_fps = true
 		elif arg == "--planet-page":
 			_planet_page = true
 		elif arg == "--bare":
@@ -172,6 +176,11 @@ func _physics_process(_delta: float) -> void:
 		if state >= 0:
 			planet.weather_override = state
 			planet.weather.snap(state as WorldWeather.State)
+	if _report_fps and _frame % 60 == 0: # no cap, to see what the frames cost
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+		Engine.max_fps = 0
+	if _report_fps and _frame % 300 == 0:
+		print("FPS frame=%d fps=%d alt=%d" % [_frame, Engine.get_frames_per_second(), planet.altitude()])
 	if _planet_page and _frame == 30:
 		player.hud.debug_overlay.show()
 		for button in player.hud.find_children("*", "Button", true, false):

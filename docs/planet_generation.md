@@ -89,6 +89,16 @@ wind that carries the cover (`PlanetWeather.zonal_wind`) carries the small shape
 (`PlanetWorld._drift_the_clouds`). The layer fades out between 850 and 1450 m above the ground,
 where the shell takes over. The old low-poly puffs are no longer used on the planet.
 
+## Levels of the air
+
+The air has the Earth's levels, shrunk with the planet but not below a quarter (`PlanetAir.MIN_AIR_SCALE`):
+a scale height of 2 km and a top at 25 km on any planet under 1600 km across. The clouds (450 to 1150 m
+above the ground) lie in the lowest part, in bright blue air; the sky is deep blue at 3 km, dark
+navy at 8 km, black with the stars above the top. Below the least scale (a 20 km planet at full
+physical shrink) the whole air would have been 300 m deep and the sky already black at cloud level.
+The cost: the sun's path through the air at sunset is shorter than on the Earth, so the sunsets are
+pale and hazy rather than red.
+
 ## Wet ground and snow
 
 `planet_ground.gdshader` reads three shader globals the weather sets (`WorldWind.set_surface`):

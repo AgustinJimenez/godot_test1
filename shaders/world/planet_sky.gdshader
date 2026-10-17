@@ -120,16 +120,18 @@ float value_noise(vec3 p) {
 // how much cloud there is at `q` (planet frame, from its centre) `h` of the way up the layer:
 // the cover picture of the planet's weather says where the sky is full, the noise shapes the
 // billows, the layer is flat below and rounded on top
-float cloud_density(vec3 q, float h) {
+float cloud_density(vec3 q, float h, bool fine) {
 	vec3 d = normalize(q);
 	vec2 uv = vec2(atan(d.z, d.x) / TAU + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI);
 	float cover = max(textureLod(cover_map, uv, 0.0).r, cloud_least);
 	vec3 p = (q + cloud_drift) * 0.0022; // one unit is some 450 m
-	float shape = value_noise(p) * 0.55 + value_noise(p * 2.1 + 7.0) * 0.3
-			+ value_noise(p * 4.3 + 3.0) * 0.15;
+	float shape = value_noise(p) * 0.55 + value_noise(p * 2.1 + 7.0) * 0.3;
+	shape += fine ? value_noise(p * 4.3 + 3.0) * 0.15 : 0.075;
 	float profile = smoothstep(0.0, 0.1, h) * (1.0 - smoothstep(0.55, 1.0, h));
 	float body = shape - (1.0 - cover) * 0.75 - 0.12;
-	body -= (1.0 - value_noise(p * 9.0 + 13.0)) * 0.12 * (0.3 + h); // the ragged edges
+	if (fine) {
+		body -= (1.0 - value_noise(p * 9.0 + 13.0)) * 0.12 * (0.3 + h); // the ragged edges
+	}
 	return clamp(body * 3.2, 0.0, 1.0) * profile;
 }
 
@@ -161,30 +163,44 @@ vec4 clouds(vec3 origin, vec3 dir, vec3 sun, vec3 sun_light, float radius) {
 		return vec4(0.0, 0.0, 0.0, 1.0);
 	}
 	mat3 rot = mat3(planet_from_world);
-	const int STEPS = 20;
-	float step_len = (t1 - t0) / float(STEPS);
+	// clear sky along the whole stretch: nothing to march through
+	float seen_cover = 0.0;
+	for (int k = 0; k < 3; k++) {
+		vec3 d = normalize(rot * (origin + dir * mix(t0, t1, float(k) * 0.5)));
+		vec2 uv = vec2(atan(d.z, d.x) / TAU + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI);
+		seen_cover = max(seen_cover, textureLod(cover_map, uv, 0.0).r);
+	}
+	if (max(seen_cover, cloud_least) < 0.04) {
+		return vec4(0.0, 0.0, 0.0, 1.0);
+	}
+	const int STEPS = 16;
+	int steps = int(clamp((t1 - t0) / 70.0, 6.0, float(STEPS))); // short ways need fewer samples
+	float step_len = (t1 - t0) / float(steps);
 	float sigma = 0.022 * (1.0 + cloud_dark * 0.8);
-	float light_step = cloud_depth * 0.18;
+	float light_step = cloud_depth * 0.25;
 	float mu = dot(dir, sun);
 	float phase = mix(henyey_greenstein(mu, 0.55), henyey_greenstein(mu, -0.25), 0.4) * 0.5;
 	float jitter = hash3(dir * 3331.0);
 	vec3 col = vec3(0.0);
 	float seen = 1.0;
 	for (int i = 0; i < STEPS; i++) {
+		if (i >= steps) {
+			break;
+		}
 		float t = t0 + (float(i) + jitter) * step_len;
 		vec3 p = origin + dir * t;
 		float h = (length(p) - r0) / cloud_depth;
 		if (h < 0.0 || h > 1.0) {
 			continue;
 		}
-		float density = cloud_density(rot * p, h);
+		float density = cloud_density(rot * p, h, true);
 		if (density < 0.004) {
 			continue;
 		}
 		float depth_to_sun = 0.0;
-		for (int j = 0; j < 3; j++) {
+		for (int j = 0; j < 2; j++) {
 			vec3 pl = p + sun * (float(j) + 0.5) * light_step;
-			depth_to_sun += cloud_density(rot * pl, (length(pl) - r0) / cloud_depth) * light_step;
+			depth_to_sun += cloud_density(rot * pl, (length(pl) - r0) / cloud_depth, false) * light_step;
 		}
 		float direct = mix(exp(-depth_to_sun * sigma), exp(-depth_to_sun * sigma * 0.25), 0.35);
 		vec3 lit = sun_light * direct * (0.25 + phase) * (1.0 - cloud_dark * 0.55);
