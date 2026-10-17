@@ -31,6 +31,13 @@ func setup(planet: PlanetWorld) -> void:
 	_add_weather_row()
 	_add_new_planet_rows()
 	_add_save_rows()
+	var main := Button.new()
+	main.text = "Main menu (saved planets, a new one)"
+	main.pressed.connect(func() -> void:
+		PlanetStartMenu.requested = true
+		get_tree().paused = false
+		get_tree().reload_current_scene())
+	add_child(main)
 	var map := Button.new()
 	map.text = "Open the map (M)"
 	map.pressed.connect(func() -> void:

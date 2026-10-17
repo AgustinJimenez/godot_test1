@@ -12,6 +12,7 @@ extends Node3D
 ##   -- --look-moon  the camera looks at the moon (with --view-alt)
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --fps  print the frame rate every 300 frames
+##   -- --start-menu  the start menu first (saved planets, a new one); no arguments does it too
 ##   -- --world=NAME / --continue  open a saved planet (Planet page of the Esc menu saves them)
 ##   -- --planet-page  the Planet page of the Esc menu open from the start
 ##   -- --bare       no plants (to look at the ground)
@@ -84,6 +85,18 @@ func _check_saving() -> void:
 
 
 func _ready() -> void:
+	var asked := PlanetMenu.pending != null
+	var user_args := OS.get_cmdline_user_args()
+	var menu_first := PlanetStartMenu.requested or user_args.is_empty() or "--start-menu" in user_args
+	if not asked and menu_first:
+		add_child(PlanetStartMenu.new()) # the saved planets and a new one, before anything is built
+		for arg in user_args:
+			if arg.begins_with("--shot="):
+				var path := arg.trim_prefix("--shot=")
+				get_tree().create_timer(1.0).timeout.connect(func() -> void:
+					get_viewport().get_texture().get_image().save_png(path)
+					get_tree().quit())
+		return
 	var settings := PlanetSettings.new()
 	if PlanetMenu.pending != null: # a new planet asked for in the Planet page of the menu
 		settings = PlanetMenu.pending

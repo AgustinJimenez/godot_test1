@@ -99,8 +99,11 @@ of saves with Open and Delete (opening reloads the scene with `PlanetMenu.pendin
 `pending_state`, and `PlanetWorld.restored` puts the player back). The player is put on the ground
 at the saved place, whatever their height was. Opening still builds the ground from the seed, so
 the loading screen is the same; what a save spares is choosing the planet, the place and the time.
-Lab: `-- --world=NAME` or `-- --continue` (the newest), `-- --save-as=NAME`; `--planet-check`
-also runs `SAVE_CHECK`.
+The lab (started with no arguments, or with `-- --start-menu`, or from "Main menu" in the Planet
+page) shows `PlanetStartMenu` first: the list of saves (Open, Delete, double click), a new planet
+(seed and radius, a random seed) and a quick start with the default planet; choosing sets
+`PlanetMenu.pending` and reloads the scene. Other lab options: `-- --world=NAME` or `-- --continue`
+(the newest), `-- --save-as=NAME`; `--planet-check` also runs `SAVE_CHECK`.
 
 ## Levels of the air
 
