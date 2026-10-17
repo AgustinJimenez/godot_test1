@@ -17,6 +17,7 @@ extends Node3D
 ##   -- --plants / --animals / --sea / --water  switch those stages on (all off by default;
 ##                    --water is the rivers and lakes)
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
+##   -- --no-clouds  hide the clouds
 ##   -- --grounded  walk instead of starting in free mode (checks always walk)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
@@ -52,6 +53,7 @@ var _look_moon := false ## point the camera at the moon (with --view-alt)
 var _show_map := false ## open the planet map (the M key) from the start
 var _map_zoom := 6.0
 var _map_layer := 0
+var _no_clouds := false ## the debug switch for the clouds, from the start
 var _grounded := false ## walk from the start instead of flying free
 var _swim_check := false ## drop the player in the sea and see them float (PlanetSwim)
 var _flying := false ## the walk check in free mode (noclip) at 100 m/s
@@ -492,6 +494,8 @@ func _ready() -> void:
 			settings.plants_on = true
 		elif arg == "--animals":
 			settings.animals_on = true
+		elif arg == "--no-clouds":
+			_no_clouds = true
 		elif arg == "--grounded":
 			_grounded = true
 		elif arg == "--earth":
@@ -524,6 +528,7 @@ func _ready() -> void:
 		add_child(camera)
 		camera.make_current()
 		var view_spawn := planet.start(camera, _start_dir)
+		planet.atmosphere.clouds_hidden = _no_clouds
 		camera.global_position.y = _view_alt
 		camera.rotation_degrees = Vector3(_view_pitch, _view_yaw, 0.0)
 		planet.build_now(true)
@@ -541,6 +546,7 @@ func _ready() -> void:
 	if _swim_check:
 		_start_dir = _find_sea(planet.noise)
 	var spawn := planet.start(player, _start_dir)
+	planet.atmosphere.clouds_hidden = _no_clouds
 	if not (_grounded or _walking or _checking or _swim_check or _climb > 0.0):
 		player.set_free_mode(true) # looking at the planet: fly (the debug menu's toggle follows)
 		player.hud.free_mode_toggle.set_pressed_no_signal(true)

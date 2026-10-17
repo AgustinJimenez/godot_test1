@@ -232,6 +232,7 @@ in the world the ground tiles, the sky and clouds, the plants and rocks, the ani
 have a switch, in `PlanetSettings` and in the lab (`planet_lab`):
 
 - `plants_on` (off by default) / `--plants`: when off no plant or tree is placed (the species are still made, they are cheap).
+- Show the clouds (the Planet page, `--no-clouds` in the lab): a debug switch, no clouds in the sky or from above.
 - `animals_on` (off by default) / `--animals`: when off no animals.
 - `sea_on` (off by default) / `--sea`: when off the sea is not drawn and nothing floats in it (the seabed shows).
 - `hydrology_on` (off by default) / `--water`: when off no rivers or lakes (the sea stays; the valleys they cut are not made either).

@@ -20,6 +20,7 @@ const CLOUD_DEPTH := 700.0 ## m thick, the layer of clouds
 var cloud_floor := 450.0 ## m above the planet's radius where the layer of clouds begins
 var sun_size := 1.0 ## the star's disc against the Sun's seen from the Earth (radius / distance)
 var star_tint := Color.WHITE ## the star's light against the Sun's (Star.light_tint)
+var clouds_hidden := false ## the debug switch: no clouds, in the sky or from above
 var sun_cover := 0.0 ## 0..1 the share of the star the moon hides (a solar eclipse)
 var moon_shadow := 0.0 ## 0..1 how deep the moon is in the planet's shadow (a lunar eclipse)
 var cloud_on := 0.0 ## 0 no clouds in the sky (up high the cloud shell takes over) .. 1
@@ -56,6 +57,7 @@ func set_cloud_parameters(material: ShaderMaterial) -> void:
 	material.set_shader_parameter(&"sun_toward", sun_direction if sun_direction != Vector3.ZERO \
 			else Vector3.UP)
 	material.set_shader_parameter(&"cloud_floor", cloud_floor)
+	material.set_shader_parameter(&"clouds_off", 1.0 if clouds_hidden else 0.0)
 	material.set_shader_parameter(&"cloud_depth", CLOUD_DEPTH)
 	material.set_shader_parameter(&"cloud_drift", cloud_drift)
 	material.set_shader_parameter(&"cloud_dark", maxf(cloud_dark, overcast * 0.6))

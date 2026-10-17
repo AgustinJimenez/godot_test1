@@ -5,6 +5,7 @@
 
 global uniform mat4 planet_from_world;
 uniform sampler2D cover_map : filter_linear, repeat_enable, hint_default_black;
+uniform float clouds_off = 0.0; // 1: the debug switch has the clouds hidden
 uniform float cloud_floor = 450.0; // m above the planet's radius where the layer begins
 uniform float cloud_depth = 700.0; // m thick
 uniform vec3 cloud_drift = vec3(0.0); // m, in the planet's frame: where the wind has carried them
@@ -70,6 +71,9 @@ vec3 cloud_sky_light(float height) {
 // (the ground of the scene, for the shell).
 vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 	vec4 none = vec4(0.0, 0.0, 0.0, 1.0);
+	if (clouds_off > 0.5) {
+		return none;
+	}
 	float r0 = radius + cloud_floor;
 	float r1 = r0 + cloud_depth;
 	float rc = length(origin);
