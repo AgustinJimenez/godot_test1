@@ -281,6 +281,8 @@ func _make(entry: Array) -> PlanetTile:
 ## What grows on a tile: everything on the finest tiles near the player, only trees further out
 ## (and on the next size up), nothing on the far tiles.
 func _plants(entry: Array) -> PlanetScatter.Detail:
+	if not _settings.plants_on:
+		return PlanetScatter.Detail.NONE
 	var level: int = entry[1]
 	if level == _settings.max_level():
 		if _distance(entry) < _settings.tile_max * 2.0:

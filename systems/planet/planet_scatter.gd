@@ -7,7 +7,7 @@ extends RefCounted
 ## Plants stand upright in the tile's own frame (a tile is small, so its "up" is the plant's up).
 ## Everything is drawn with one MultiMesh per species and variant, in the tile's local space.
 
-const BANK := 4.0 ## m from a river's edge inside which nothing grows (the bank can be higher than the water)
+const BANK := 4.0 ## m from a river edge inside which nothing grows (the bank can be higher)
 const GRASS_VISIBLE := 110.0
 const TREE_FULL := 100.0 ## m: beyond this a tree is drawn as its lighter version
 const SMALL_VISIBLE := 220.0 ## m: shrubs and ground cover are gone beyond this

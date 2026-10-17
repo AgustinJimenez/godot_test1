@@ -14,6 +14,8 @@ extends Node3D
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
 ##   -- --no-shadow  the sun casts no shadows
+##   -- --no-plants / --no-animals / --no-water  switch a stage off (--no-water: no rivers or lakes;
+##                    the sea stays)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
 ##   -- --star-mass=M [--star-readability=0..1]  the star in solar masses (0.15 red, 1.6 white)
@@ -356,6 +358,12 @@ func _ready() -> void:
 			_report_fps = true
 		elif arg == "--planet-page":
 			_planet_page = true
+		elif arg == "--no-plants":
+			settings.plants_on = false
+		elif arg == "--no-animals":
+			settings.animals_on = false
+		elif arg == "--no-water":
+			settings.hydrology_cells = 0
 		elif arg == "--bare":
 			settings.plant_density = 0.0
 		elif arg == "--walk-check":

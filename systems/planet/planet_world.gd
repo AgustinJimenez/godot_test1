@@ -387,7 +387,8 @@ func _physics_process(delta: float) -> void:
 		clock.advance(delta * settings.time_scale * time_rate)
 		_drift_the_clouds(delta * settings.time_scale * time_rate)
 	_set_the_sun()
-	fauna.update(_target.global_position, 1.0 - atmosphere.night_amount(), delta)
+	if settings.animals_on:
+		fauna.update(_target.global_position, 1.0 - atmosphere.night_amount(), delta)
 	if swim != null:
 		atmosphere.underwater = swim.underwater
 	var camera := get_viewport().get_camera_3d()

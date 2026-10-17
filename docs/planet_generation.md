@@ -223,3 +223,17 @@ starts on that universe's home planet; `-- --star-mass=M --star-readability=R` s
 creates a universe (home planet: Sun-like or any; star colours: physical .. readable). Saves are version 3 (a
 `universe` block; version 2 still loads). Not done yet: other planet kinds (061), travel (055), the Planet page's star
 data, sun disc size.
+
+## Stages (what can be switched off)
+
+A planet is made in this order: tectonics and the height noise, the sea level, the climate (the
+seasons, then the yearly temperature and the rain), the weather, hydrology (rivers and lakes), then
+in the world the ground tiles, the sky and clouds, the plants and rocks, the animals. Three of them
+have a switch, in `PlanetSettings` and in the lab (`planet_lab`):
+
+- `plants_on` / `--no-plants`: no plant or tree is placed (the species are still made, they are cheap).
+- `animals_on` / `--no-animals`: no animals.
+- `hydrology_cells = 0` / `--no-water`: no rivers or lakes (the sea stays).
+
+The others (terrain, climate) are the base the rest reads, so they stay on. `plant_density` and
+`rock_density` still thin the plants and rocks without stopping them.
