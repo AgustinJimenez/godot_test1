@@ -40,6 +40,28 @@ extends Resource
 @export var collide_tiles := 1.2 ## finest tiles within this many tile widths get a collider
 
 
+## The Earth: its size, its day, year and month, its tilt and orbit, its oceans, around the Sun.
+## Time runs as on Earth (a day is 86,400 s of play; speed it up in the Planet page). The sea,
+## the rivers and the plants are the switches above and stay as they are.
+static func earth() -> PlanetSettings:
+	var made := PlanetSettings.new()
+	made.world_seed = 1337
+	made.radius = 6371000.0
+	made.ocean_fraction = 0.71
+	made.plates = 15
+	made.day_seconds = 86400.0
+	made.year_days = 365.25
+	made.month_days = 29.53
+	made.axial_tilt = 23.44
+	made.eccentricity = 0.0167
+	made.perihelion_share = 0.789 # about 3 January, the year starting at the March equinox
+	made.star_mass = 1.0
+	made.insolation = 1.0
+	made.start_year = 0.12
+	made.start_hour = 9.0
+	return made
+
+
 ## How many times a cube face is halved to get the finest tiles.
 func max_level() -> int:
 	var face_arc := radius * PI * 0.5

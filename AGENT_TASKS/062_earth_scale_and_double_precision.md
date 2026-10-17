@@ -1,6 +1,6 @@
 # 062 - Earth scale and double precision
 
-Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **started (2026-10-17): `PlanetSettings.earth()`, the start menu button "New Earth" and the lab's `--earth`** (6,371 km, day 86,400 s, year 365.25 d, month 29.53 d, tilt 23.44, eccentricity 0.0167, 71 % sea, 15 plates); `--earth --planet-check` passes on the single precision build but the start takes 57 s (765 tiles) there; the rest is planned. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

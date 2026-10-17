@@ -78,7 +78,11 @@ func _ready() -> void:
 	_add_button(buttons, "Random seed", func() -> void: _create(str(randi() % 100000)))
 	_add_button(buttons, "Quick start (default universe)",
 			func() -> void: _begin(PlanetSettings.new(), {}))
+	_add_button(buttons, "New Earth (real size, day, year)",
+			func() -> void: _begin(PlanetSettings.earth(), {}))
 	_note = _add_label(column, "", 14)
+	if not OS.has_feature("double"):
+		_note.text = "Single precision build: an Earth-size planet jitters (it needs the double build)"
 	_fill_saves()
 
 

@@ -255,3 +255,12 @@ grass, sand, snow or marsh colours. Each plate has its own mix along one scale (
 granite, pink granite, limestone, sandstone, red sandstone), changing slowly across the plate; plates
 under the sea are young basalt; high ground shows granite; beds show as level bands; steep faces are
 darker. Vegetation and snow come back later as layers over this, from the climate.
+
+## The Earth preset
+
+`PlanetSettings.earth()` (start menu: "New Earth"; lab: `--earth`, before the other arguments) is the
+primary test planet: 6,371 km radius, a real day (86,400 s of play, speed it up in the Planet page), a
+365.25-day year, a 29.53-day month, 23.44 degrees of tilt, an orbit of eccentricity 0.0167 with the
+nearest point about 3 January, 71 % sea, 15 plates, the Sun. The sea, rivers, plants and animals follow
+the switches above. Earth size needs the double precision build (`E:\Godot\double`); the single
+precision build jitters above about 1,000 km and the menu says so.

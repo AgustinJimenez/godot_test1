@@ -16,6 +16,7 @@ extends Node3D
 ##   -- --no-shadow  the sun casts no shadows
 ##   -- --plants / --animals / --sea / --water  switch those stages on (all off by default;
 ##                    --water is the rivers and lakes)
+##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
 ##   -- --grounded  walk instead of starting in free mode (checks always walk)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --fps  print the frame rate every 300 frames
@@ -369,6 +370,8 @@ func _ready() -> void:
 			settings.animals_on = true
 		elif arg == "--grounded":
 			_grounded = true
+		elif arg == "--earth":
+			settings = PlanetSettings.earth() # put it first: it replaces every setting before it
 		elif arg == "--sea":
 			settings.sea_on = true
 		elif arg == "--water":
