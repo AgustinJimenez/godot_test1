@@ -26,6 +26,9 @@ var _range_mask := FastNoiseLite.new()
 var _hills := FastNoiseLite.new()
 var _gullies := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
+var _massif := FastNoiseLite.new() # ranges and massifs, tens of km across on an Earth
+var _chain := FastNoiseLite.new() # the mountain chains, a hundred km and more
+var _foothills := FastNoiseLite.new() # the ridges and spurs between them, a fifth of that
 var _sea := 0.0 ## the height (units of relief) that is sea level, so the ocean covers its share
 
 
@@ -33,7 +36,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 	settings = planet_settings
 	relief = settings.relief
 	if relief <= 0.0:
-		relief = clampf(settings.radius * 0.0035, 300.0, 9000.0)
+		relief = clampf(settings.radius * 0.0035, 300.0, 12000.0)
 	tectonics = PlanetTectonics.new(settings.world_seed, settings.plates)
 	rock = PlanetRock.new(tectonics, settings.world_seed, settings.radius, relief)
 	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
@@ -51,6 +54,13 @@ func _init(planet_settings: PlanetSettings) -> void:
 	_setup(_gullies, settings.world_seed + 3, 0.0018, 4)
 	_gullies.fractal_type = FastNoiseLite.FRACTAL_RIDGED
 	_setup(_detail, settings.world_seed + 7, 0.09, 2)
+	var massif_length := clampf(settings.radius * 0.005, 800.0, 40000.0)
+	_setup(_massif, settings.world_seed + 11, 1.0 / massif_length, 5)
+	_massif.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	_setup(_chain, settings.world_seed + 17, 1.0 / clampf(settings.radius * 0.03, 1500.0, 300000.0), 4)
+	_chain.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	_setup(_foothills, settings.world_seed + 13, 5.0 / massif_length, 4)
+	_foothills.fractal_type = FastNoiseLite.FRACTAL_RIDGED
 	_find_sea_level()
 	climate.build(self)
 	weather = PlanetWeather.new(self)
@@ -95,16 +105,17 @@ func base_height(x: float, y: float, z: float) -> float:
 	var units := _units(x, y, z)
 	var p := Vector3(x, y, z) * settings.radius
 	var land := smoothstep(-0.02, 0.05, units)
-	var hills := _hills.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.04, 14.0, 90.0)
+	var hills := _hills.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.04, 14.0, 45.0)
 	var ground := _macro(units, p) + hills * land
 	# the high ground is cut by gullies and spurs, as if water had run down it for ages
 	var high := smoothstep(0.12, 0.45, units)
-	ground += (_gullies.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.5 - 0.5) * relief * 0.05 * high
+	var gully_depth := minf(relief * 0.05, 90.0)
+	ground += _gullies.get_noise_3d(p.x, p.y, p.z) * 0.5 * gully_depth * high
 	# and by the water that has run down the valleys (stream power erosion, see PlanetHydrology)
 	if hydrology != null:
 		ground -= hydrology.erosion_at(Vector3(x, y, z)) * high
 	# hard and soft layers of rock weather into ledges and steps
-	var layer := maxf(relief * 0.025, 8.0)
+	var layer := clampf(relief * 0.025, 8.0, 40.0)
 	var steps := floorf(ground / layer) + smoothstep(0.15, 0.85, fposmod(ground / layer, 1.0))
 	return lerpf(ground, steps * layer, smoothstep(0.3, 0.6, units) * 0.35)
 
@@ -116,12 +127,18 @@ func macro_height(x: float, y: float, z: float) -> float:
 
 func _macro(units: float, p: Vector3) -> float:
 	var land := smoothstep(-0.02, 0.05, units)
-	var rolling := _rolling.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.12, 25.0, 220.0)
+	var rolling := _rolling.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.12, 25.0, 120.0)
 	# ranges of mountains inside the continents, away from the plate edges (old folded belts)
 	var belt := smoothstep(0.0, 0.5, _range_mask.get_noise_3d(p.x, p.y, p.z) + 0.15)
 	var ridges := (_ranges.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.5) * relief * 0.22
 	ridges *= belt * smoothstep(0.08, 0.4, units)
-	return _shore(units) * relief + rolling * land + ridges
+	# the massifs and foothills: rough ground that grows with the height of the plates' uplift, so
+	# the mountain belts are rugged and the old plains stay gentle
+	var rugged := smoothstep(0.02, 0.4, units)
+	var massifs := (_massif.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * MASSIF * rugged
+	var chains := (_chain.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * CHAINS * rugged
+	var spurs := (_foothills.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * FOOTHILLS * rugged
+	return _shore(units) * relief + rolling * land + ridges + chains + massifs + spurs
 
 
 ## Beaches and shallows: the ground eases toward the sea instead of dropping into it. The slope is a
@@ -129,13 +146,23 @@ func _macro(units: float, p: Vector3) -> float:
 ## (this is that slope integrated, so it never gets steeper than the plates are, as scaling the
 ## height by a factor does).
 const SHORE := 0.2
+const CHAINS := 0.32 ## of the relief: the chains of mountains, the broadest rough ground
+const MASSIF := 0.3 ## of the relief: the height of the massifs on the roughest ground
+const FOOTHILLS := 0.07 ## and of the foothills
+const LAND_CURVE := 1.6 ## the land's height share is raised to this: plains common, plateaus rare
+const DEEP := 1.6 ## how much deeper the ocean floor is than the plates' slope alone (abyssal depth)
 const SHORE_FLAT := 0.16
 
 
 func _shore(units: float) -> float:
 	var reach := absf(units) / SHORE
 	var eased := reach * reach * reach * (1.0 - reach * 0.5) if reach < 1.0 else reach - 0.5
-	return signf(units) * (SHORE_FLAT * absf(units) + (1.0 - SHORE_FLAT) * SHORE * eased)
+	var raw := signf(units) * (SHORE_FLAT * absf(units) + (1.0 - SHORE_FLAT) * SHORE * eased)
+	if units > 0.0: # most of the land is low: a hypsometric curve (the high ground is the rare part)
+		raw = pow(raw, LAND_CURVE)
+	if units < 0.0: # the sea floor drops away past the shelf toward the abyssal plains
+		raw *= 1.0 + DEEP * smoothstep(0.05, 0.3, -units)
+	return raw
 
 
 func _units(x: float, y: float, z: float) -> float:

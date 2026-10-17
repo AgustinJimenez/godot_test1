@@ -232,6 +232,86 @@ func _water_check() -> bool:
 	return true
 
 
+## `--terrain-check` (headless): how the heights are spread and how rough the land is at several
+## scales, printed as TERRAIN lines (give --earth or --radius=). Mean slope is |height change| over
+## the distance, for land points, at 100 m, 1 km, 10 km and 100 km.
+func _terrain_check() -> bool:
+	if not "--terrain-check" in OS.get_cmdline_user_args():
+		return false
+	var made := PlanetSettings.new()
+	for arg in OS.get_cmdline_user_args():
+		if arg == "--earth":
+			made = PlanetSettings.earth()
+		elif arg.begins_with("--radius="):
+			made.radius = arg.trim_prefix("--radius=").to_float()
+		elif arg.begins_with("--seed="):
+			made.world_seed = arg.trim_prefix("--seed=").to_int()
+	var noise := PlanetNoise.new(made)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var heights := PackedFloat32Array()
+	var scales := [100.0, 1000.0, 10000.0, 100000.0]
+	var slope_sum := [0.0, 0.0, 0.0, 0.0]
+	var slope_count := [0, 0, 0, 0]
+	for index in 4000:
+		var dir := Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized()
+		var h := noise.height(dir.x, dir.y, dir.z)
+		heights.append(h)
+		if h < 5.0:
+			continue
+		var side := dir.cross(Vector3.UP).normalized()
+		for k in 4:
+			var metres: float = scales[k]
+			if metres > made.radius * 0.5:
+				continue
+			var there := (dir + side * metres / made.radius).normalized()
+			slope_sum[k] += absf(noise.height(there.x, there.y, there.z) - h) / metres
+			slope_count[k] += 1
+	heights.sort()
+	var land := 0
+	for h in heights:
+		land += 1 if h >= 0.0 else 0
+	var line := ("TERRAIN radius=%d relief=%.0f land=%.0f%% min=%.0f p10=%.0f p50=%.0f p90=%.0f"
+			+ " max=%.0f") % [
+			int(made.radius), noise.relief, 100.0 * float(land) / float(heights.size()), heights[0],
+			heights[heights.size() / 10], heights[heights.size() / 2],
+			heights[heights.size() * 9 / 10], heights[heights.size() - 1]]
+	print(line)
+	var slopes := "TERRAIN_SLOPE (land, mean |dh|/d)"
+	for k in 4:
+		if slope_count[k] > 0:
+			slopes += " %dm=%.3f" % [int(scales[k]), slope_sum[k] / float(slope_count[k])]
+	print(slopes)
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--terrain-image="):
+			_save_height_picture(noise, arg.trim_prefix("--terrain-image="))
+	get_tree().quit()
+	return true
+
+
+## A flat map of the heights (longitude across, latitude down), blue for the sea by depth and green
+## to brown to white for the land by height, written as a PNG for the eye to judge the terrain.
+func _save_height_picture(noise: PlanetNoise, path: String) -> void:
+	var width := 720
+	var height := 360
+	var picture := Image.create(width, height, false, Image.FORMAT_RGB8)
+	for row in height:
+		var lat := (0.5 - (float(row) + 0.5) / float(height)) * PI
+		for column in width:
+			var lon := (float(column) + 0.5) / float(width) * TAU - PI
+			var h := noise.height(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+			var colour: Color
+			if h < 0.0:
+				colour = Color(0.02, 0.1, 0.35).lerp(Color(0.25, 0.55, 0.8), clampf(1.0 + h / 6000.0, 0.0, 1.0))
+			else:
+				var up := clampf(h / 6000.0, 0.0, 1.0)
+				colour = Color(0.2, 0.55, 0.2).lerp(Color(0.55, 0.42, 0.25), smoothstep(0.0, 0.5, up))
+				colour = colour.lerp(Color(0.95, 0.95, 0.97), smoothstep(0.5, 1.0, up))
+			picture.set_pixel(column, row, colour)
+	picture.save_png(path)
+	print("TERRAIN_IMAGE ", path)
+
+
 func _climate_check() -> bool:
 	if not "--climate-check" in OS.get_cmdline_user_args():
 		return false
@@ -275,7 +355,7 @@ func _monsoon_swing(noise: PlanetNoise) -> float:
 
 
 func _ready() -> void:
-	if _climate_check() or _water_check() or _print_universe_table():
+	if _terrain_check() or _climate_check() or _water_check() or _print_universe_table():
 		return
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()
