@@ -369,6 +369,9 @@ order and what depends on what:
 | parked | [055](055_space_travel.md) space travel | 054, 064, 062 |
 | parked | [063](063_things_to_do_on_the_planet.md) things to do | player focus |
 
-Questions still open for the user (also written in the tasks): is the start of a new universe always a
-sun-like habitable planet, or anywhere (054); physical star colours or readable ones (064); how the player
-will travel and how big the universe is (055, parked); gravity in the player controller (061).
+Decisions so far (user, 2026-10-17): many star systems wanted but **start with one star and one planet and
+polish it**; start-menu parameters **home planet: sun-like habitable or any** and **star colours: physical or
+readable** (both kept, decide after seeing them); flat world to be retired; player parked.
+
+Open (also written in the tasks): the year length rule (054: clamped game scale or true ratios); how the player
+will travel and how far apart things are (055, parked); gravity in the player controller (061).

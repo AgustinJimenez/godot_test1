@@ -69,5 +69,9 @@ light sets the planet's sky, climate, day length of the year, and the colours an
 - Colour is physics but beauty is not: a plain black-forest world may look bad; give the user a "plausible
   but readable" slider that blends toward Earth-like greens (default full physical? ask).
 - A single scattering model with three channels is enough for the sky; a real spectrum is overkill.
-- **Question for the user:** show stars with physical colours (a red dwarf's sun looks orange-red, not
-  pure red, because of the eye's adaptation), or exaggerate for readability?
+- **Decided (user, 2026-10-17):** both colour modes exist as a start-menu parameter, **physical** and
+  **readable**, and we look at the results and decide later. Implement it as one number
+  (`star_colour_readability`, 0 physical .. 1 readable) that blends the star's spectrum weights, the plant
+  hues and the darkness of the leaves toward Earth-like values, so the two modes are the ends of a slider
+  and any middle value works too. A red dwarf's sun looks orange-red, not pure red, because the eye adapts:
+  the physical mode should apply that adaptation, or it will look wrong.

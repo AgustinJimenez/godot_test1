@@ -8,6 +8,15 @@ the planet and the star, **not the player yet**; the flat world may be retired o
 ([053](053_flat_world_parity.md)). Stars differ in colour and that changes life: see
 [064](064_stars_and_life.md).
 
+**Start small (user, 2026-10-17): the first version is ONE star and ONE planet, polished well; more planets
+and many systems come later.** Build the data model for many (a list of systems, of stars, of planets) but
+generate and show only one of each at first.
+
+**Start menu parameters (user, 2026-10-17), for now:**
+- *Home planet:* **sun-like and habitable** or **any** kind of star and planet.
+- *Star colours:* **physical** or **readable** (see [064](064_stars_and_life.md): both exist, we look at
+  the results and decide later which one stays).
+
 ## Goal
 
 A universe made of many star systems, each with a star and planets, all derived from one seed, each planet
@@ -47,8 +56,9 @@ still built the way the one planet is built today. No travel yet (that is [055](
 3. Make the star data drive the sun in the sky (colour, brightness, angular size), the light in the cloud
    and sky shaders, and the planet's insolation (the seasons model has an energy balance to feed).
 4. The universe clock: one time for all planets; each planet's year and day follow its orbit and spin.
-5. Menus: the start menu creates a universe (seed, number of systems, a preset like "sun-like only" or
-   "all kinds of stars"); the Planet page shows the system's planet list and the star (read-only until 055).
+5. Menus: the start menu creates a universe (seed; the two parameters above; the number of systems is 1 and
+   the number of planets 1 for now); the Planet page shows the star and the planet's data (read-only until
+   travel exists).
 6. Save: version 3 with the universe settings (migrate v2: one system, one planet).
 7. A map of the universe (list first, then a picture): later, with [060](060_map_and_ui.md).
 
@@ -64,5 +74,9 @@ still built the way the one planet is built today. No travel yet (that is [055](
   planet and one star: list the places before changing them.
 - How many systems and how far apart (realistic is empty and slow): leave it a parameter; decide when
   travel exists.
-- **Question for the user:** should the home planet of a new universe always be sun-like and habitable (a
-  safe start), or can the start be anywhere (a red dwarf's tidally locked world)?
+- **Decided:** a start-menu parameter (sun-like and habitable, or any); the universe size starts at one
+  star and one planet.
+- **Open (small):** the year. A real year at 1 AU is 365 days, and a day of play is 1,440 s, so seasons
+  would take 6 hours of play; the planet uses a game year of 16 days (`year_days`). Keep the game scale (the
+  year's *length in days* is a setting per planet, ordered by Kepler: closer planets have shorter years
+  within a clamp of ~6 to ~64 days) or use true ratios? Suggested: the clamped game scale.
