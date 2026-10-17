@@ -16,7 +16,7 @@ extends RefCounted
 enum Kind { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE }
 
 const COLOURS: Array[Color] = [
-	Color(0.17, 0.17, 0.19), # basalt
+	Color(0.25, 0.24, 0.26), # basalt
 	Color(0.38, 0.35, 0.33), # andesite
 	Color(0.64, 0.56, 0.52), # granite
 	Color(0.48, 0.48, 0.51), # gneiss
@@ -62,8 +62,12 @@ func weights(dir: Vector3, ground: float) -> PackedFloat32Array:
 	var w := PackedFloat32Array()
 	w.resize(Kind.size())
 	if not continental:
-		w[Kind.BASALT] = 0.8
-		w[Kind.SHALE] = 0.2
+		# young crust under a cover of sediment that thickens toward the continents' feet
+		var cover := smoothstep(-0.2, 0.0, ground / _relief)
+		w[Kind.BASALT] = 0.5
+		w[Kind.SHALE] = 0.25
+		w[Kind.LIMESTONE] = 0.1 + 0.25 * cover
+		w[Kind.SANDSTONE] = 0.15 * cover
 		w[Kind.ANDESITE] = near_edge * 0.9 # the arcs and the trenches' sides
 	else:
 		var high := smoothstep(0.12, 0.5, tall) # stripped to the old rock
