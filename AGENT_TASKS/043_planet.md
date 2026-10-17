@@ -1,10 +1,69 @@
 # 043 Planet (round world prototype)
 
-Status (2026-10-16): **prototype works**: a walkable round planet with plates, climate biomes, rivers,
-lakes, plants and a double precision option. Branch `godot-4.7-upgrade`, code in `systems/planet/`,
-lab `tests/manual/planet/planet_lab.tscn`, check `-- --planet-check` (expect `PLANET_CHECK PASS`).
-Nothing in the flat world was changed except `TerrainChunk` (collider `map_data` set by `set()` so
-it also compiles in the double build). Not play-tested by the user yet.
+Status (2026-10-17): **the planet is built and works**: a walkable round planet with plates, climate and
+seasons, rivers, lakes, plants (120 species), fauna, a sun/moon/star from orbit and spin, weather and
+volumetric clouds, a physical sky, saved universes and a start menu, a map, and a double precision option.
+Branch `godot-4.7-upgrade`, code in `systems/planet/`, lab `tests/manual/planet/planet_lab.tscn`. The
+next work is the planned tasks 044-068 (table at the end of this file). Reference: `docs/planet_generation.md`;
+what we learned: `docs/planet_lessons.md`.
+
+## Handoff to the next agent (written 2026-10-17 when the previous session ran out of tokens)
+
+**State.** Everything is committed and pushed (last commit when this was written: `e131c42`). The only local
+change is `assets/models/kaykit_fantasy_weapons/weapons_bits_texture.png.import`, a re-import artifact:
+**never commit it**. `stash@{0}` ("pre-update local changes (other machine sync)") is the user's: leave it.
+
+**Read in this order:** this file (the Principle, then the follow-up table at the end), `docs/planet_lessons.md`,
+`docs/planet_generation.md`, the planet section and the "Measuring planet performance" subsection of
+`AGENTS.md`, then the task you pick. Start with **054 stage 1** (data classes for star, system, universe and a
+lab table; nothing visual) unless the user says otherwise; 044 and 046 are the other safe starts.
+
+**How the user works.** They judge by what they see and how it feels, not by code: lead with outcomes in
+short plain sentences, keep jargon out, and say what you did not check. They ask a question before building
+and decide in the chat: do not start a large change without their go-ahead. They said "commit and push" is
+expected after each step. They want real causes and no fakes (the Principle below). Decisions of
+2026-10-17: many star systems wanted but **start with one star and one planet and polish it**; start-menu
+parameters *home planet: sun-like habitable or any* and *star colours: physical or readable* (a slider, decide
+after seeing both); keep both standard (Earth-like) and planet time as data; focus on the planet and the
+star, **not the player** (player tasks are parked); the flat world is to be retired later (053); eruptions and
+storms are scenery, no damage; caves are a **realistic maze that takes hours** (066); the atmosphere starts
+with pressure, greenhouse, dust and methane (065).
+
+**Environment (Windows 11).**
+- Godot 4.7.2: `E:\Godot\4.7.2\Godot_v4.7.2-stable_win64_console.exe`. Double precision editor (built from
+  the 4.7.2 tag, not in git): `E:\Godot\double\src\bin\godot.windows.editor.double.x86_64.console.exe`.
+- Lint must be clean before a commit: `gdlint .` (gdtoolkit 4.5.0 from `requirements-dev.txt`; it was in
+  `E:/Temp/claude/lintenv/Scripts/gdlint.exe`, a temp folder: recreate the venv if it is gone). Limits: line
+  100, 20 public methods per class (make helpers private), file 1000 lines.
+- After adding a `class_name`, run `godot --headless --path . --import` before opening the editor or the lab.
+- Git Bash and PowerShell exist. `sleep` is blocked in the agent harness: wait for a background run with a
+  loop of `timeout 10 tail -f /dev/null` or the Monitor tool, and write long runs (the windowed fly check is
+  about 4 minutes; headless is slower) to a log in the background.
+- Commit and push after each step: `GIT_TERMINAL_PROMPT=0 timeout 120 git push` (origin is
+  `github.com/AgustinJimenez/godot_test1`, `gh` is not installed). End every commit message with
+  `Co-Authored-By:` and `Claude-Session:` lines as the harness reminder gives them.
+- The files are CRLF in the working tree (git warns about it); scripted edits must keep the line endings
+  (detect `\r\n` and replace with it). The Edit tool needs a Read of the file first.
+
+**Traps** (more in `docs/planet_lessons.md` section 8): bash heredocs with several quoted blocks sometimes
+fail with "unexpected EOF": write the script with the file tool and run it. Python and shell edits turn a
+GDScript backslash line continuation into tabs and a parse error: use two statements. A sky shader has no
+`return`. `git checkout <commit> -- .` in a dirty tree is dangerous: copy one file out and back.
+
+**Not verified, so do not assume.** The user never judged: the pop when a tree switches level at 100 m and
+220 m in motion; the clouds from above and the fps on their own machine (all numbers are from one fast GPU);
+the paler sunsets on small planets (a known trade-off, see 047). A fast dive from altitude was never tested
+(045). The hitch test is noisy (run it three times). Last full check run before the planning started: lint,
+`--planet-check` (with `SAVE_CHECK`), `--walk-check`, `--swim-check`, `--fly-check`, `species_check` and
+`--world-check` all passed.
+
+**Memory notes of the previous agent** (they live outside the repo, so they are repeated here): the project
+is an experiment sandbox, not a survival-horror game (ignore that framing in old text); the Foot IK v2 rewrite
+is the preferred one, use it and not v1.
+
+**Open questions for the user** are written in the tasks (054: is the start always sun-like; 055: how the
+player travels and how far apart things are, parked; 061: gravity in the player controller, ask before
+touching the controller).
 
 Run: `godot --path . res://tests/manual/planet/planet_lab.tscn -- --radius=20000 --seed=1337`
 (`--dir=x,y,z --view-alt=N --view-pitch=N --shot=PATH --shot-frame=N` for pictures without a player).
