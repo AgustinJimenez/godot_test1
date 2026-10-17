@@ -64,43 +64,92 @@ func height(dir: Vector3) -> float:
 			_warp.get_noise_3d(dir.x + 5.3, dir.y - 2.1, dir.z + 1.7),
 			_warp.get_noise_3d(dir.x - 3.7, dir.y + 4.4, dir.z - 6.2)) * 0.30
 	var q := shifted.normalized()
-	# the nearest NEAR plates, nearest first
-	var order: Array[int] = []
-	var close: Array[float] = []
-	for index in _seeds.size():
-		var closeness := q.dot(_seeds[index])
-		var at := order.size()
-		while at > 0 and close[at - 1] < closeness:
-			at -= 1
-		if at < NEAR:
-			order.insert(at, index)
-			close.insert(at, closeness)
-			if order.size() > NEAR:
-				order.pop_back()
-				close.pop_back()
-	var count := order.size()
-	var angle: Array[float] = []
-	var weight: Array[float] = []
-	var total := 0.0
-	var base := 0.0
-	var variety := 0.0
-	for k in count:
-		angle.append(acos(clampf(close[k], -1.0, 1.0)))
-		weight.append(exp(-(angle[k] - angle[0]) / SOFT))
-		total += weight[k]
-		var land: bool = _continental[order[k]]
-		base += weight[k] * (CONTINENT if land else OCEAN)
-		variety += weight[k] * (0.11 if land else 0.06)
+	# the four nearest plates, nearest first (kept in plain variables: this runs for every vertex of
+	# the ground, from several threads, and arrays made per call were most of its cost)
+	var c0 := -2.0
+	var c1 := -2.0
+	var c2 := -2.0
+	var c3 := -2.0
+	var p0 := 0
+	var p1 := 0
+	var p2 := 0
+	var p3 := 0
+	var index := -1
+	for centre: Vector3 in _seeds:
+		index += 1
+		var closeness := q.dot(centre)
+		if closeness <= c3:
+			continue
+		if closeness > c1:
+			if closeness > c0:
+				c3 = c2
+				p3 = p2
+				c2 = c1
+				p2 = p1
+				c1 = c0
+				p1 = p0
+				c0 = closeness
+				p0 = index
+			else:
+				c3 = c2
+				p3 = p2
+				c2 = c1
+				p2 = p1
+				c1 = closeness
+				p1 = index
+		elif closeness > c2:
+			c3 = c2
+			p3 = p2
+			c2 = closeness
+			p2 = index
+		else:
+			c3 = closeness
+			p3 = index
+	var a0 := acos(clampf(c0, -1.0, 1.0))
+	var a1 := acos(clampf(c1, -1.0, 1.0))
+	var a2 := acos(clampf(c2, -1.0, 1.0))
+	var a3 := acos(clampf(c3, -1.0, 1.0))
+	var w0 := 1.0 # exp(-(a0 - a0) / SOFT)
+	var w1 := exp(-(a1 - a0) / SOFT)
+	var w2 := exp(-(a2 - a0) / SOFT)
+	var w3 := exp(-(a3 - a0) / SOFT)
+	var total := w0 + w1 + w2 + w3
+	var land0: bool = _continental[p0]
+	var land1: bool = _continental[p1]
+	var land2: bool = _continental[p2]
+	var land3: bool = _continental[p3]
+	var base := w0 * (CONTINENT if land0 else OCEAN)
+	base += w1 * (CONTINENT if land1 else OCEAN)
+	base += w2 * (CONTINENT if land2 else OCEAN)
+	base += w3 * (CONTINENT if land3 else OCEAN)
+	var variety := w0 * (0.11 if land0 else 0.06)
+	variety += w1 * (0.11 if land1 else 0.06)
+	variety += w2 * (0.11 if land2 else 0.06)
+	variety += w3 * (0.11 if land3 else 0.06)
 	base /= total
 	variety /= total
-	var rise := 0.0 # the mountains, beyond the base height
-	for i in count - 1:
-		for j in range(i + 1, count):
-			# a boundary only matters while both its plates are among the nearest
-			var pair := weight[i] * weight[j] / (weight[0] * weight[1])
-			if pair < 0.002:
-				continue
-			rise += pair * _boundary(order[i], order[j], q, (angle[j] - angle[i]) * 0.5)
+	# the mountains, beyond the base height: every pair of the near plates adds its boundary, weighed
+	# by the two plates' say (a pair matters while both are among the nearest)
+	var scale := 1.0 / (w0 * w1)
+	var rise := 0.0
+	var pair := w0 * w1 * scale
+	if pair >= 0.002:
+		rise += pair * _boundary(p0, p1, q, (a1 - a0) * 0.5)
+	pair = w0 * w2 * scale
+	if pair >= 0.002:
+		rise += pair * _boundary(p0, p2, q, (a2 - a0) * 0.5)
+	pair = w0 * w3 * scale
+	if pair >= 0.002:
+		rise += pair * _boundary(p0, p3, q, (a3 - a0) * 0.5)
+	pair = w1 * w2 * scale
+	if pair >= 0.002:
+		rise += pair * _boundary(p1, p2, q, (a2 - a1) * 0.5)
+	pair = w1 * w3 * scale
+	if pair >= 0.002:
+		rise += pair * _boundary(p1, p3, q, (a3 - a1) * 0.5)
+	pair = w2 * w3 * scale
+	if pair >= 0.002:
+		rise += pair * _boundary(p2, p3, q, (a3 - a2) * 0.5)
 	# the ranges are rough: ridged noise rides on the uplift
 	var ridged := _ridge.get_noise_3d(dir.x, dir.y, dir.z) * 0.5 + 0.5
 	var rough := maxf(rise, 0.0) * (ridged * 1.1 - 0.35)
@@ -120,7 +169,8 @@ func _boundary(a: int, b: int, q: Vector3, edge: float) -> float:
 		push = clampf(relative.dot(toward.normalized()), -1.0, 1.0)
 	var together := maxf(push, 0.0)
 	var apart := maxf(-push, 0.0)
-	var near := exp(-pow(edge / BOUNDARY, 2.0))
+	var edge_scaled := edge / BOUNDARY
+	var near := exp(-edge_scaled * edge_scaled)
 	var here: bool = _continental[a]
 	var there: bool = _continental[b]
 	if here and there:
@@ -129,11 +179,15 @@ func _boundary(a: int, b: int, q: Vector3, edge: float) -> float:
 		# a coast where one plate dives under the other: a coastal range on the land side and a
 		# trench off shore, one smooth profile across the boundary
 		var inland := edge if here else -edge
-		var range_up := 0.26 * exp(-pow((inland - 0.03) / 0.045, 2.0))
-		var trench := 0.30 * exp(-pow((inland + 0.03) / 0.035, 2.0))
+		var up_scaled := (inland - 0.03) / 0.045
+		var range_up := 0.26 * exp(-up_scaled * up_scaled)
+		var down_scaled := (inland + 0.03) / 0.035
+		var trench := 0.30 * exp(-down_scaled * down_scaled)
 		return together * (range_up - trench)
-	var arc := 0.30 * together * exp(-pow((edge - 0.03) / 0.03, 2.0)) # an island arc
-	arc += 0.22 * apart * exp(-pow(edge / 0.12, 2.0)) # a mid-ocean ridge
+	var arc_scaled := (edge - 0.03) / 0.03
+	var arc := 0.30 * together * exp(-arc_scaled * arc_scaled) # an island arc
+	var ridge_scaled := edge / 0.12
+	arc += 0.22 * apart * exp(-ridge_scaled * ridge_scaled) # a mid-ocean ridge
 	return arc - 0.22 * together * near # and the trench beside it
 
 
