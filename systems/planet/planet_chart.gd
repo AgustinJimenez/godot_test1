@@ -346,7 +346,7 @@ func _illustrated_color(dir: Vector3, ground: float, slope: float) -> Color:
 	color = color.lerp(Color(0.5, 0.48, 0.46), smoothstep(0.3, 0.65, tall + slope * 0.4))
 	var snow := smoothstep(-1.0, -5.0, degrees) * (1.0 - 0.7 * smoothstep(0.5, 0.95, slope))
 	color = color.lerp(Color(0.95, 0.97, 1.0), snow)
-	var sand := smoothstep(4.0, 0.5, ground) # a beach by the sea
+	var sand := smoothstep(1.0, 0.0, ground) # a beach by the sea
 	return color.lerp(Color(0.9, 0.82, 0.55), sand * 0.8)
 
 

@@ -133,6 +133,9 @@ func _make_native() -> void:
 		"radius": settings.radius, "relief": relief, "sea": _sea,
 		"shore": SHORE, "shore_flat": SHORE_FLAT, "land_curve": LAND_CURVE, "deep": DEEP,
 		"massif_scale": MASSIF, "chain_scale": CHAINS, "foothill_scale": FOOTHILLS,
+		"erosion": 0.0 if OS.has_environment("PLANET_NO_EROSION") else EROSION,
+		"erosion_seed": settings.world_seed + 41, "erosion_octaves": EROSION_OCTAVES,
+		"erosion_wavelength": clampf(settings.radius * 0.005, 800.0, 40000.0) * EROSION_SCALE,
 		"valley_width": VALLEY_WIDTH, "valley_depths": depths,
 		"rock_boundary": PlanetRock.BOUNDARY, "rock_colours": PackedColorArray(PlanetRock.COLOURS),
 		"warp": _noise_config(tectonics._warp), "ridge": _noise_config(tectonics._ridge),
@@ -267,6 +270,9 @@ func _find_sea_level() -> void:
 
 ## Ground height in metres above the sea, in the unit direction (x, y, z), rivers cut in.
 func height(x: float, y: float, z: float) -> float:
+	if native != null and hydrology == null and native.has_method(&"height_at"):
+		# (the native crust is the ground: it has the eroded ridges the script below does not)
+		return native.call(&"height_at", Vector3(x, y, z))
 	var ground := base_height(x, y, z)
 	if hydrology == null:
 		return ground
@@ -335,6 +341,9 @@ func _macro(units: float, p: Vector3) -> float:
 	if result > 0.0: # the land's heights follow a hypsometric curve: most of it low, the peaks kept
 		var pivot := relief * HYPSO_PIVOT
 		result = pivot * pow(result / pivot, HYPSO)
+	if units > 0.05 and result < 8.0: # a basin below the sea is a shallow bowl (no puddles inland)
+		var bowl := 8.0 * exp((result - 8.0) / 60.0)
+		result += (bowl - result) * smoothstep(0.05, 0.15, units)
 	return result
 
 
@@ -345,8 +354,11 @@ func _macro(units: float, p: Vector3) -> float:
 const SHORE := 0.2
 const VALLEY_WIDTH := 0.09 ## of the noise's range either side of its zero line
 const CHAINS := 0.5 ## of the relief: the chains of mountains, the broadest rough ground
-const MASSIF := 0.3 ## of the relief: the height of the massifs on the roughest ground
-const FOOTHILLS := 0.07 ## and of the foothills
+const MASSIF := 0.15 ## of the relief: the height of the massifs on the roughest ground
+const FOOTHILLS := 0.0 ## and of the foothills (the eroded ridges took their place)
+const EROSION := 0.20 ## of the relief: the eroded ridges (native only; 0 turns them off)
+const EROSION_OCTAVES := 6
+const EROSION_SCALE := 1.1 ## of the massifs' length: the first wavelength of the eroded ridges
 const HYPSO := 1.4 ## land heights h become pivot * (h / pivot) ^ this: low ground lower, peaks kept
 const HYPSO_PIVOT := 0.5 ## of the relief
 const LAND_CURVE := 1.6 ## the land's height share is raised to this: plains common, plateaus rare

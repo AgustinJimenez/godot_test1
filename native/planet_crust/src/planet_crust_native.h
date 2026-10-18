@@ -58,6 +58,9 @@ private:
 	double sea = 0.0;
 	// the ground's shape
 	double shore = 0.2, shore_flat = 0.16, land_curve = 1.6, deep = 1.6;
+	double erosion_scale = 0.0, erosion_wavelength = 10000.0;
+	uint32_t erosion_seed = 1;
+	int erosion_octaves = 5;
 	double massif_scale = 0.3, chain_scale = 0.32, foothill_scale = 0.07, valley_width = 0.09;
 	double valley_depth[3] = { 0.0, 0.0, 0.0 };
 	// the rock
@@ -130,6 +133,8 @@ public:
 	PackedFloat32Array run_heights(int p_mode, const PackedVector3Array &p_dirs, PackedFloat32Array &r_result,
 			PackedFloat32Array &r_second, double p_pixel = 0.0) const;
 	PackedFloat32Array heights(const PackedVector3Array &p_dirs) const;
+	// one point's ground height (the same number `heights` gives; the game asks one at a time)
+	double height_at(const Vector3 &p_dir) const;
 	// One row of the map's Terrain layer as RGB bytes (the sea by depth, the land's rock shaded by the
 	// light from the north west): the heights of the points, of the points a pixel east and a pixel north
 	// of them, and the angle one pixel spans.

@@ -1,4 +1,5 @@
 #include "planet_crust_native.h"
+#include "erosion_noise.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
@@ -52,6 +53,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
 	ClassDB::bind_method(D_METHOD("macro_and_tectonic_heights", "dirs"), &PlanetCrustNative::macro_and_tectonic_heights);
 	ClassDB::bind_method(D_METHOD("tectonic_heights", "dirs"), &PlanetCrustNative::tectonic_heights);
+	ClassDB::bind_method(D_METHOD("height_at", "dir"), &PlanetCrustNative::height_at);
 	ClassDB::bind_method(D_METHOD("macro_heights", "dirs"), &PlanetCrustNative::macro_heights);
 	ClassDB::bind_method(D_METHOD("broad_heights", "dirs", "pixel"), &PlanetCrustNative::broad_heights);
 	ClassDB::bind_method(D_METHOD("tile_dirs", "face", "s0", "s1", "t0", "t1", "cells"), &PlanetCrustNative::tile_dirs);
@@ -105,6 +107,10 @@ void PlanetCrustNative::setup(const Dictionary &p_config) {
 	massif_scale = p_config["massif_scale"];
 	chain_scale = p_config["chain_scale"];
 	foothill_scale = p_config["foothill_scale"];
+	erosion_scale = p_config.get("erosion", 0.0);
+	erosion_seed = (uint32_t)(int64_t)p_config.get("erosion_seed", 1);
+	erosion_wavelength = p_config.get("erosion_wavelength", 10000.0);
+	erosion_octaves = (int)(int64_t)p_config.get("erosion_octaves", 5);
 	valley_width = p_config["valley_width"];
 	PackedFloat32Array depths = p_config["valley_depths"];
 	for (int index = 0; index < 3; index++) {
@@ -305,14 +311,29 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 				spurs = ((double)foothills.at_lod(p_point, p_pixel) * 0.5 + 0.0) * relief * foothill_scale * rugged * floor_factor;
 			}
 	}
+	// the eroded ridges and gullies: rugged ground only, softened in a river's valley floor
+	double eroded = 0.0;
+	if (erosion_scale > 0.0 && rugged > 0.0) {
+		eroded = erosion_noise::fbm({ (double)p_point.x, (double)p_point.y, (double)p_point.z }, erosion_wavelength, erosion_octaves, p_pixel,
+						 erosion_seed) *
+				relief * erosion_scale * rugged * floor_factor;
+	}
 	double shore_height = shore_curve(p_units) * relief;
-	double raised = shore_height + rolling_height * land + ridges + chains + massifs + spurs;
+	double raised = shore_height + rolling_height * land + ridges + chains + massifs + spurs + eroded;
 	double cut = valley_cut(p_point, p_units);
 	double limit = (shore_height > 0.0 ? shore_height : 0.0) * 0.8;
 	double result = raised - (cut < limit ? cut : limit);
 	if (result > 0.0) { // the land's heights follow a hypsometric curve (PlanetNoise.HYPSO)
 		const double pivot = relief * 0.5;
 		result = pivot * std::pow(result / pivot, 1.4);
+	}
+	if (p_units > 0.05) { // inland ground does not dip below the sea (no puddles: lakes come from the drainage)
+		// a basin below the sea becomes a shallow bowl (8 m falling off smoothly, never below 0)
+		const double inland = smooth(0.05, 0.15, p_units);
+		if (result < 8.0) {
+			const double bowl = 8.0 * std::exp((result - 8.0) / 60.0);
+			result = result + (bowl - result) * inland;
+		}
 	}
 	if (in_valley && result > 0.0) {
 		// a river's valley (from the drainage): the ground may not stand above the river's bed
@@ -563,6 +584,10 @@ Dictionary PlanetCrustNative::macro_and_tectonic_heights(const PackedVector3Arra
 	}
 	result["uplift"] = uplift;
 	return result;
+}
+
+double PlanetCrustNative::height_at(const Vector3 &p_dir) const {
+	return ground_height(p_dir.normalized());
 }
 
 PackedFloat32Array PlanetCrustNative::heights(const PackedVector3Array &p_dirs) const {

@@ -401,3 +401,20 @@ Permanent snow and ice come from the crust's colour now (`PlanetRock.colour` and
 temperature is the climate's mean (`PlanetClimate.sea_temperature`, handed to the native crust with
 `set_climate` after the climate is built). So the snow line is about 4.4 km at the equator, 1.8 km at
 45 degrees and down at the sea near the poles, with no extra noise, on the map and on the ground.
+
+## Eroded ridges (2026-10-18)
+
+The ground's rough layer used to be fractal noise (isotropic bumps), which read as grain on the map and had no
+valleys. `native/planet_crust/src/erosion_noise.h` adds an *eroded* noise to the macro height: ridged gradient
+noise (with analytic derivatives) whose every octave is warped and damped by the slope the coarser octaves have
+built. Steep ground keeps sharp ridges, the finer octaves fade where the ground is flat, and the creases branch
+like drainage. Tunables in `planet_noise.gd`: `EROSION` (share of the relief), `EROSION_SCALE` (the first
+wavelength, of the massifs' length), `EROSION_OCTAVES`; the massifs are halved and the foothills off.
+
+- Native only. `PLANET_NO_EROSION=1` turns it off. The script crust has no erosion, so
+  `PlanetNoise.height` asks the native crust for a single point (the player must stand on the tiles' ground);
+  `--native-check` and `planet_check.sh` run without erosion.
+- The octaves finer than three pixels are left out (`p_pixel`), so a far map shows what its pixels can hold.
+- Land below the sea inland is bent into a shallow bowl (8 m, falling off smoothly) instead of puddles.
+- The open list of what is still unrealistic: `AGENT_TASKS/069_realism_gaps.md`.
+
