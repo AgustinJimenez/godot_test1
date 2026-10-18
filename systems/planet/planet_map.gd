@@ -357,6 +357,7 @@ func _process(delta: float) -> void:
 		if _globe_mode:
 			_hover.text = "Drag to turn the planet, wheel to come closer, G: the flat map"
 			_globe.set_chart(_whole)
+			_globe.set_sun(planet.clock.sun_in_body())
 			var here := Vector3.ZERO
 			if planet != null and planet.target() != null:
 				here = planet.planet_position().normalized()

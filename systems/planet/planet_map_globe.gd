@@ -9,6 +9,8 @@ shader_type spatial;
 render_mode unshaded;
 uniform sampler2D chart : filter_linear, repeat_disable;
 uniform vec3 rim_colour = vec3(0.45, 0.65, 1.0);
+uniform vec3 sun = vec3(0.0, 0.0, 1.0); // toward the star, on the ball
+uniform float night = 0.55; // how dark the night side gets (0 none)
 varying vec3 dir;
 
 void vertex() {
@@ -22,6 +24,8 @@ void fragment() {
 	float v = 0.5 - asin(clamp(n.y, -1.0, 1.0)) / PI;
 	vec3 colour = texture(chart, vec2(u, v)).rgb;
 	float rim = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
+	float day = smoothstep(-0.12, 0.2, dot(n, normalize(sun)));
+	colour *= 1.0 - night * (1.0 - day);
 	ALBEDO = mix(colour, rim_colour, rim * 0.55);
 }
 """
@@ -93,6 +97,11 @@ func set_chart(texture: Texture2D) -> void:
 		return
 	_shown = texture
 	_material.set_shader_parameter(&"chart", texture)
+
+
+## Where the star is (the planet's unit direction): the night side of the ball is darkened.
+func set_sun(dir: Vector3) -> void:
+	_material.set_shader_parameter(&"sun", Vector3(dir.x, dir.y, -dir.z))
 
 
 ## Puts the pin where the planet's unit direction `dir` is (the ball shows the picture as seen from
