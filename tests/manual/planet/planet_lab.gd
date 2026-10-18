@@ -556,8 +556,12 @@ func _ready() -> void:
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()
 	if not asked and user_args.is_empty() and not UniverseStartMenu.requested:
-		# for now no menu: an Earth with a random seed (--start-menu brings the menu back)
-		PlanetMenu.pending = PlanetSettings.earth()
+		# for now no menu: an Earth with a random seed, a tenth of the size (PLANET_SCALE=1: the whole
+		# Earth; --start-menu brings the menu back)
+		var scale := 0.1
+		if OS.has_environment("PLANET_SCALE"):
+			scale = OS.get_environment("PLANET_SCALE").to_float()
+		PlanetMenu.pending = PlanetSettings.earth(clampf(scale, 0.02, 1.0))
 		PlanetMenu.pending.world_seed = randi() % 100000
 		asked = true
 	var menu_first := UniverseStartMenu.requested or user_args.is_empty()

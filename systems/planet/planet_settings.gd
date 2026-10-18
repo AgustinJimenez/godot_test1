@@ -49,13 +49,15 @@ extends Resource
 ## The Earth: its size, its day, year and month, its tilt and orbit, its oceans, around the Sun.
 ## Time runs as on Earth (a day is 86,400 s of play; speed it up in the Planet page). The sea,
 ## the rivers and the plants are the switches above and stay as they are.
-static func earth() -> PlanetSettings:
+## `scale` makes a smaller Earth to work on (0.1: a tenth of the radius, with the relief, the ocean
+## and the drainage grid scaled to it); time, tilt and orbit stay the Earth's.
+static func earth(scale := 1.0) -> PlanetSettings:
 	var made := PlanetSettings.new()
 	made.world_seed = 1337
-	made.radius = 6371000.0
+	made.radius = 6371000.0 * scale
 	made.ocean_fraction = 0.71
-	made.drainage_cells = 512
-	made.water_layer = 2000.0 # the ocean as a layer over the planet: ~28 % stays dry
+	made.drainage_cells = clampi(roundi(512.0 * scale), 96, 512)
+	made.water_layer = 2000.0 * scale # the ocean as a layer over the planet: ~28 % stays dry
 	made.plates = 15
 	made.day_seconds = 86400.0
 	made.year_days = 365.25
