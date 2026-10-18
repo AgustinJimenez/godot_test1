@@ -15,6 +15,7 @@ extends RefCounted
 
 enum Kind { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE }
 
+const SAND := Color(0.80, 0.72, 0.52) ## beaches: low, level ground by the sea
 const SNOW := Color(0.93, 0.95, 0.98) ## permanent snow and ice
 const LAPSE := 0.0065 ## degrees C the air cools a metre higher
 const COLOURS: Array[Color] = [
@@ -131,4 +132,7 @@ func colour(dir: Vector3, ground: float, steep: float, speckle: float,
 	var snow := smoothstep(-0.5, -4.5, cold) * smoothstep(0.0, 60.0, ground)
 	snow *= 1.0 - 0.85 * smoothstep(0.5, 0.95, steep) # the steepest rock stays bare
 	rock = rock.lerp(SNOW, snow * 0.92)
+	var beach := smoothstep(4.0, 0.5, ground) * smoothstep(0.0, 0.5, ground + 0.5)
+	beach *= 1.0 - smoothstep(0.15, 0.45, steep)
+	rock = rock.lerp(SAND, beach * 0.85 * (1.0 - snow))
 	return Color(clampf(rock.r, 0.0, 1.0), clampf(rock.g, 0.0, 1.0), clampf(rock.b, 0.0, 1.0))

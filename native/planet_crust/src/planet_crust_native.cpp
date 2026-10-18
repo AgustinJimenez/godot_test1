@@ -457,6 +457,13 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	r += (0.93f - r) * (float)snow;
 	g += (0.95f - g) * (float)snow;
 	b += (0.98f - b) * (float)snow;
+	// beaches: low, level ground by the sea (PlanetRock.colour)
+	double beach = smooth(4.0, 0.5, p_ground) * smooth(0.0, 0.5, p_ground + 0.5);
+	beach *= 1.0 - smooth(0.15, 0.45, p_steep);
+	beach *= 0.85 * (1.0 - snow);
+	r += (0.80f - r) * (float)beach;
+	g += (0.72f - g) * (float)beach;
+	b += (0.52f - b) * (float)beach;
 	return Color((float)clampd(r, 0.0, 1.0), (float)clampd(g, 0.0, 1.0), (float)clampd(b, 0.0, 1.0), 1.0f);
 }
 
