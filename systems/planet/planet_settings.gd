@@ -54,7 +54,7 @@ static func earth() -> PlanetSettings:
 	made.world_seed = 1337
 	made.radius = 6371000.0
 	made.ocean_fraction = 0.71
-	made.drainage_cells = 256
+	made.drainage_cells = 512
 	made.water_layer = 2000.0 # the ocean as a layer over the planet: ~28 % stays dry
 	made.plates = 15
 	made.day_seconds = 86400.0
