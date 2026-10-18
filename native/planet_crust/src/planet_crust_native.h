@@ -94,7 +94,8 @@ private:
 		double flow = 0.0; // its flow there
 		double side = 1.0; // +1 or -1: which bank of the river the point is on
 	};
-	bool valley_at(const Vector3 &p_dir, Valley &r_valley) const;
+	// `p_side`: how fast the valley's sides climb away from the river (0.35 a V, more a canyon)
+	bool valley_at(const Vector3 &p_dir, Valley &r_valley, double p_side = 0.35) const;
 	// the lakes of the drainage: the water level of each cell (-1e9 where there is no lake)
 	PackedFloat32Array lake_level;
 	// how much of a lake the direction is in (0..1, soft at the shore) and the water level of the nearest lake

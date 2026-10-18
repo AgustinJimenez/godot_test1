@@ -315,7 +315,13 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 	// inland), so those noises are not asked there: the same height, the sea floor much faster
 	double land = smooth(-0.02, 0.05, p_units);
 	Valley valley;
-	const bool in_valley = river_cells > 0 && valley_at(p_point.normalized(), valley);
+	// where it is dry and the ground is raised a river cuts a canyon: steep walls instead of a V
+	double side = 0.35;
+	if (!rain_grid.is_empty() && p_units > 0.12) {
+		const double dry = smooth(0.35, 0.1, grid_at(rain_grid, p_point.normalized(), 0.5));
+		side += 1.5 * dry * smooth(0.12, 0.3, p_units);
+	}
+	const bool in_valley = river_cells > 0 && valley_at(p_point.normalized(), valley, side);
 	// a river's valley floor is smooth: the rough layers fade there
 	const double floor_factor = in_valley ? 1.0 - 0.7 * (1.0 - smooth(valley.floor_half, valley.floor_half * 6.0, valley.distance)) : 1.0;
 	double rolling_height = (land > 0.0 && !p_broad) ? rolling.at_lod(p_point, p_pixel) * clampd(relief * 0.12, 25.0, 120.0) * floor_factor : 0.0;
@@ -1080,7 +1086,7 @@ PackedFloat32Array PlanetCrustNative::lake_surfaces(const PackedVector3Array &p_
 
 // The nearest river piece to a direction, and the envelope of the valley it cuts: its bed plus the
 // sides the valley allows from the edge of its floor.
-bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley) const {
+bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley, double p_side) const {
 	double ax = std::abs((double)p_dir.x);
 	double ay = std::abs((double)p_dir.y);
 	double az = std::abs((double)p_dir.z);
@@ -1127,7 +1133,7 @@ bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley) const 
 		double floor_half = 30.0 * std::sqrt(flow / river_flow);
 		floor_half = floor_half < 20.0 ? 20.0 : (floor_half > 0.3 * river_cell_metres ? 0.3 * river_cell_metres : floor_half);
 		const double beyond = distance - floor_half;
-		const double envelope = bed + (beyond > 0.0 ? beyond : 0.0) * 0.35;
+		const double envelope = bed + (beyond > 0.0 ? beyond : 0.0) * p_side;
 		if (envelope < best_envelope) {
 			best_envelope = envelope;
 			best_distance = distance;
