@@ -20,8 +20,8 @@ const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(640, 320), Vector2
 		Vector2i(2048, 1024)]
 const DETAIL_MIN := 768 ## pixels across the close chart, at least (more for a big view)
 const DETAIL_MAX := 2560
-const START_ZOOM := 60.0 # the map opens as close as it goes, on the player
-const MAX_ZOOM := 60.0
+const MAX_ZOOM := 1500.0 ## a pixel of the sharpest chart is then about 15 m on an Earth
+const START_ZOOM := MAX_ZOOM # the map opens as close as it goes, on the player
 const MARGIN := 14.0
 
 var planet: PlanetWorld
@@ -701,15 +701,27 @@ func _draw_legend() -> void:
 
 
 func _draw_grid() -> void:
-	var gap := 30 if _zoom < 3.0 else (10 if _zoom < 12.0 else 5)
+	# the lines every `gap` degrees, finer as the view comes closer (only the ones in view)
+	var gap := 30.0
+	var steps := [[3.0, 10.0], [12.0, 5.0], [70.0, 1.0], [140.0, 0.5], [700.0, 0.1], [1400.0, 0.05]]
+	for pair: Array in steps: # (from this zoom on, this gap)
+		if _zoom >= float(pair[0]):
+			gap = float(pair[1])
 	var line := Color(1.0, 1.0, 1.0, 0.18)
-	for degrees in range(-90, 91, gap):
-		var at := _on_screen(Vector2(_centre.x, 0.5 - float(degrees) / 180.0))
-		if at.y >= 0.0:
+	var size := _visible_size()
+	var lat_from := (0.5 - (_centre.y + size.y * 0.5)) * 180.0
+	var lat_to := (0.5 - (_centre.y - size.y * 0.5)) * 180.0
+	for index in range(floori(lat_from / gap), ceili(lat_to / gap) + 1):
+		var degrees := float(index) * gap
+		var at := _on_screen(Vector2(_centre.x, 0.5 - degrees / 180.0))
+		if at.y >= 0.0 and absf(degrees) <= 90.0:
 			_view.draw_line(Vector2(0.0, at.y), Vector2(_view.size.x, at.y),
-					line if degrees != 0 else Color(1.0, 1.0, 1.0, 0.4))
-	for degrees in range(-180, 181, gap):
-		var uv := (float(degrees) + 180.0) / 360.0
+					line if index != 0 else Color(1.0, 1.0, 1.0, 0.4))
+	var lon_centre := (_centre.x - 0.5) * 360.0
+	var lon_half := minf(size.x * 180.0, 180.0)
+	var first := floori((lon_centre - lon_half) / gap)
+	for index in range(first, ceili((lon_centre + lon_half) / gap) + 1):
+		var uv := (float(index) * gap + 180.0) / 360.0
 		var at := _on_screen(Vector2(fposmod(uv, 1.0), _centre.y))
 		if at.x >= 0.0:
 			_view.draw_line(Vector2(at.x, 0.0), Vector2(at.x, _view.size.y), line)

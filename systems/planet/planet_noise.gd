@@ -295,7 +295,10 @@ func base_height(x: float, y: float, z: float) -> float:
 	# hard and soft layers of rock weather into ledges and steps
 	var layer := clampf(relief * 0.025, 8.0, 40.0)
 	var steps := floorf(ground / layer) + smoothstep(0.15, 0.85, fposmod(ground / layer, 1.0))
-	return lerpf(ground, steps * layer, smoothstep(0.3, 0.6, units) * 0.35)
+	ground = lerpf(ground, steps * layer, smoothstep(0.3, 0.6, units) * 0.35)
+	if units > 0.0 and ground < 8.0: # the hills and gullies must not dip an inland basin below the sea
+		ground += (8.0 * exp((ground - 8.0) / 60.0) - ground) * smoothstep(0.0, 0.1, units)
+	return ground
 
 
 ## How deep the valleys cut at `p` (m): where a slow noise crosses zero it makes a line, and a

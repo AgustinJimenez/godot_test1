@@ -414,6 +414,10 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 	double steps = std::floor(ground / layer) + smooth(0.15, 0.85, fposmod_d(ground / layer, 1.0));
 	double mixed = smooth(0.3, 0.6, units) * 0.35;
 	ground += (steps * layer - ground) * mixed;
+	if (units > 0.0 && ground < 8.0) { // the hills and gullies must not dip an inland basin below the sea either
+		const double bowl = 8.0 * std::exp((ground - 8.0) / 60.0);
+		ground += (bowl - ground) * smooth(0.0, 0.1, units);
+	}
 	// dunes: low sand ridges on the flat, hot, dry ground (native only, like the eroded ridges)
 	if (erosion_scale > 0.0 && ground > 3.0 && units > 0.05 && ground < relief * 0.2) {
 		const double dry = smooth(0.28, 0.08, grid_at(rain_grid, p_dir, 0.5));

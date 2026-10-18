@@ -46,7 +46,7 @@ func setup(planet: PlanetWorld) -> void:
 	map.text = "Open the map (M)"
 	map.pressed.connect(func() -> void:
 		_planet.map.toggle()
-		_planet.map.show_zoom(6.0))
+		_planet.map.show_zoom(PlanetMap.MAX_ZOOM))
 	add_child(map)
 
 

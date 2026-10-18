@@ -169,7 +169,7 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 			# the world is defined before it is built: its map, every layer, comes first, and the
 			# ground waits (map.paused) until the map is closed
 			map.begin()
-			map.show_zoom(1.0)
+			map.show_zoom(PlanetMap.MAX_ZOOM)
 			map.visibility_changed.connect(_cover_the_loading, CONNECT_ONE_SHOT)
 			return dir
 		_cover_the_loading()
