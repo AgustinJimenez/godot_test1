@@ -75,3 +75,5 @@ Still fixed, in order of how much they show:
 a direction (a desert, a coast), run a small `-s` script that builds `PlanetNoise` and scans a spiral of points by
 `climate.sample(dir)` and `height(...)`. Seen so far from the ground: a desert on seed 8 (pale sand, gentle dune
 swells of 7 m over ~170 m: soft, not sharp ridges).
+
+- 2026-10-18: the haze follows the climate: `PlanetAtmosphere.haze_wanted` (0.55..2.05 x the base fog by warmth and rain) and `dust_wanted` (hot and dry: extra density and a tan tint), set from `climate.sample` in `PlanetWorld._pick_the_weather` and eased in. Seen: the desert on seed 8 is tan-hazed. Open: the delta of seed 8 (--dir=-0.95545,-0.29145,-0.04661) renders as a flat olive plane though the height profile varies: unexplained.

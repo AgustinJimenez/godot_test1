@@ -21,6 +21,13 @@ var cloud_floor := 450.0 ## m above the planet's radius where the layer of cloud
 var sun_size := 1.0 ## the star's disc against the Sun's seen from the Earth (radius / distance)
 var star_tint := Color.WHITE ## the star's light against the Sun's (Star.light_tint)
 var clouds_hidden := false ## the debug switch: no clouds, in the sky or from above
+## The haze of the place (set by the world from the local climate, eased toward here): how thick the
+## air is against the planet's base (humid and warm thick, cold and dry clear) and how much dust
+## (0..1) hangs in it (hot and dry places).
+var haze_wanted := 1.0
+var dust_wanted := 0.0
+var _haze := 1.0
+var _dust := 0.0
 var fog_hidden := false ## the debug switch: no fog at all
 var sun_cover := 0.0 ## 0..1 the share of the star the moon hides (a solar eclipse)
 var moon_shadow := 0.0 ## 0..1 how deep the moon is in the planet's shadow (a lunar eclipse)
@@ -157,7 +164,12 @@ func _apply() -> void:
 			overcast * 0.5)
 	# the weather's fog (snow, rain, mist) lives in the low air too: it thins with the height, or from
 	# orbit the whole planet would be buried under it
-	var density := (BASE_FOG + fog_extra) * air
+	_haze = lerpf(_haze, haze_wanted, 0.02)
+	_dust = lerpf(_dust, dust_wanted, 0.02)
+	var density := (BASE_FOG * _haze + 0.0016 * _dust + fog_extra) * air
+	# dust tints the haze the colour of the ground it came from
+	environment.fog_light_color = environment.fog_light_color.lerp(
+			Color(0.74, 0.62, 0.44) * maxf(strongest, 0.05), _dust * 0.45)
 	if fog_hidden:
 		density = 0.0
 	environment.fog_density = UNDERWATER_FOG if underwater else maxf(density, 0.0)

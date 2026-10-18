@@ -390,9 +390,9 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 		// a delta: where a big river meets the sea the ground spreads out into a flat, low plain
 		const double share = valley.flow / river_flow;
 		const double delta = smooth(0.12, 0.04, p_units) * smooth(0.25, 1.0, share) *
-				smooth(valley.floor_half * 12.0, valley.floor_half * 2.0, valley.distance);
+				smooth(valley.floor_half * 5.0, valley.floor_half * 1.5, valley.distance);
 		if (delta > 0.0 && result > 3.0) {
-			result += (3.0 - result) * delta;
+			result += (3.0 + (result - 3.0) * 0.3 - result) * delta; // (a gentle plain, not a dead flat one)
 		}
 	}
 	return result;

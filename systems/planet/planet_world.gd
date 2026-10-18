@@ -223,6 +223,13 @@ func _pick_the_weather() -> void:
 		weather.set_state(wanted)
 	weather_text = "%s  %d%% cloud  %d °C" % [WorldWeather.State.keys()[kind].capitalize(),
 			int(float(now["cloud"]) * 100.0), roundi(float(now["degrees"]))]
+	# the haze follows the climate here: thick and soft where it is warm and wet, clear where it is
+	# cold and dry, dusty where it is hot and dry
+	var local := noise.climate.sample(here)
+	var humid := clampf(local.y / 0.9, 0.0, 1.0)
+	var warm := smoothstep(0.0, 25.0, local.x)
+	atmosphere.haze_wanted = 0.55 + 1.5 * humid * warm
+	atmosphere.dust_wanted = (1.0 - humid) * smoothstep(14.0, 30.0, local.x)
 	# the wind blows along the parallel: east or west by the latitude, as the clouds are carried
 	var lat := asin(clampf(here.y, -1.0, 1.0))
 	var east := Vector3(-here.z, 0.0, here.x).normalized()
