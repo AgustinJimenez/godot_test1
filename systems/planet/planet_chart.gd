@@ -190,7 +190,7 @@ func _chart(worker: int) -> void:
 	var at := 0
 	var step_lat := rect.size.y * PI / float(size.y)
 	var needs_slope := layer in [Layer.TERRAIN, Layer.ELEVATION, Layer.BIOME, Layer.SLOPE,
-			Layer.SATELLITE]
+			Layer.SATELLITE, Layer.ATLAS]
 	# a pixel wider than a few tens of metres would only alias the hills and gullies into grain: the
 	# smooth ground is drawn (shaded like an illustration); closer in, the real ground
 	var smooth_ground := step_lon * _noise.settings.radius > SMOOTH_PIXEL

@@ -23,16 +23,21 @@ const DETAIL_MAX := 2560
 const MIDDLE_DETAIL := 1280 ## the picture between the quick one and the sharp one
 const MAX_ZOOM := 1500.0 ## a pixel of the sharpest chart is then about 15 m on an Earth
 const START_ZOOM := MAX_ZOOM # the map opens as close as it goes, on the player
+## the layers as the buttons and the keys 1.. list them (the Atlas first, the rest are extra)
+const LAYER_ORDER := [PlanetChart.Layer.ATLAS, PlanetChart.Layer.TERRAIN,
+		PlanetChart.Layer.ELEVATION, PlanetChart.Layer.TEMPERATURE, PlanetChart.Layer.RAIN,
+		PlanetChart.Layer.BIOME, PlanetChart.Layer.PLATES, PlanetChart.Layer.SLOPE,
+		PlanetChart.Layer.MEAN_TEMPERATURE, PlanetChart.Layer.CLOUDS, PlanetChart.Layer.SATELLITE]
 const MARGIN := 14.0
 const TILE_ZOOM := 2.0 ## from this zoom on the flat map is drawn from tiles
 const FIRST_BIG_PASS := 3 ## the whole passes before this are short: they finish first
 
 var planet: PlanetWorld
 
-var _layer := PlanetChart.Layer.TERRAIN
+var _layer := PlanetChart.Layer.ATLAS # (the simple map to read: the others are extra modes)
 var _cache: Dictionary = {} # layer -> {"whole": ImageTexture, "pass": int}: what was charted
 var _retired: Array[PlanetChart] = [] # charts of a layer left behind, drawing out their threads
-var _buttons: Array[Button] = []
+var _buttons := {} # layer -> its button
 var _hover: Label
 var _time_row: HBoxContainer
 var _season_slider: HSlider
@@ -113,17 +118,18 @@ func _ready() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_child(row)
 	var group := ButtonGroup.new()
-	for index in PlanetChart.NAMES.size():
+	for position in LAYER_ORDER.size():
+		var index: int = LAYER_ORDER[position]
 		var button := Button.new()
-		var key_name := "A" if index == int(PlanetChart.Layer.ATLAS) else str((index + 1) % 10)
+		var key_name := str((position + 1) % 10) if position < 10 else " "
 		button.text = "%s  %s" % [key_name, PlanetChart.NAMES[index]]
 		button.toggle_mode = true
 		button.button_group = group
 		button.focus_mode = Control.FOCUS_NONE
-		button.button_pressed = index == 0
+		button.button_pressed = index == int(_layer)
 		button.pressed.connect(select_layer.bind(index))
 		row.add_child(button)
-		_buttons.append(button)
+		_buttons[index] = button
 	_globe_button = Button.new()
 	_globe_button.text = "G  Globe"
 	_globe_button.toggle_mode = true
@@ -209,14 +215,11 @@ func _input(event: InputEvent) -> void:
 		elif code == KEY_MINUS or code == KEY_KP_SUBTRACT:
 			_zoom_at(_view.size * 0.5, 0.8)
 			get_viewport().set_input_as_handled()
-		elif code == KEY_A:
-			select_layer(int(PlanetChart.Layer.ATLAS))
+		elif code >= KEY_1 and code <= KEY_9 and code - KEY_1 < LAYER_ORDER.size():
+			select_layer(LAYER_ORDER[code - KEY_1]) # (1 is the Atlas, then the extra modes)
 			get_viewport().set_input_as_handled()
-		elif code == KEY_0 and PlanetChart.NAMES.size() > 9:
-			select_layer(9)
-			get_viewport().set_input_as_handled()
-		elif code >= KEY_1 and code < KEY_1 + 9:
-			select_layer(code - KEY_1)
+		elif code == KEY_0 and LAYER_ORDER.size() > 9:
+			select_layer(LAYER_ORDER[9])
 			get_viewport().set_input_as_handled()
 
 
