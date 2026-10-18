@@ -389,7 +389,9 @@ func _terrain_color(dir: Vector3, ground: float, slope: float, light: float,
 	if _noise.hydrology != null and _noise.hydrology.lake_level_at(dir, ground) > -INF:
 		return Color(0.25, 0.5, 0.85)
 	var coarse := step_lon * _noise.settings.radius > COARSE_PIXEL
-	var color := _illustrated_color(dir, ground, slope) if coarse 			else _noise.facet_color(dir.x, dir.y, dir.z, ground, slope, false)
+	var color := _noise.facet_color(dir.x, dir.y, dir.z, ground, slope, false)
+	if coarse:
+		color = _illustrated_color(dir, ground, slope)
 	# hill shading: the light from the north west, the same on a close map as on a far one
 	# (the height difference over the metres a pixel spans is the slope; the relief is drawn with a
 	# fixed vertical exaggeration, so plains stay smooth and only real slopes are lit and shadowed)
