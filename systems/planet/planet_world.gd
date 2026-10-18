@@ -366,6 +366,8 @@ func flow_at_world(position: Vector3) -> Vector3:
 ## While the player is held: keeps the tiles coming and lets the player in when the ground within
 ## `LOAD_GROUND` and the plants within `LOAD_PLANTS` are there.
 func _wait_for_the_ground(delta: float) -> void:
+	if map_first and map != null and map.visible:
+		return # the map is open first: nothing is built and the 90 s of waiting do not run yet
 	_load_time += delta
 	_timer -= delta
 	if _timer <= 0.0:
