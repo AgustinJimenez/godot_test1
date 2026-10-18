@@ -100,6 +100,11 @@ public:
 	PackedFloat32Array macro_heights(const PackedVector3Array &p_dirs) const;
 	// the ground of one tile (a grid of `cells + 3` points a side, one ring round the tile):
 	PackedVector3Array tile_dirs(int p_face, double p_s0, double p_s1, double p_t0, double p_t1, int p_cells) const;
+	// The same grid with every point worked out in double precision (a float direction is only good to
+	// half a metre on a planet the size of the Earth): the positions of the vertices in the tile's frame.
+	PackedVector3Array tile_positions(int p_face, double p_s0, double p_s1, double p_t0, double p_t1, int p_cells,
+			const PackedFloat32Array &p_heights, const PackedFloat64Array &p_origin, const Vector3 &p_e1,
+			const Vector3 &p_up, const Vector3 &p_e3) const;
 	PackedVector3Array local_positions(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedFloat64Array &p_origin, const Vector3 &p_e1, const Vector3 &p_up, const Vector3 &p_e3) const;
 	PackedVector3Array grid_normals(const PackedVector3Array &p_positions, int p_cells) const;

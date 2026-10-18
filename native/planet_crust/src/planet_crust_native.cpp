@@ -47,6 +47,8 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("tectonic_heights", "dirs"), &PlanetCrustNative::tectonic_heights);
 	ClassDB::bind_method(D_METHOD("macro_heights", "dirs"), &PlanetCrustNative::macro_heights);
 	ClassDB::bind_method(D_METHOD("tile_dirs", "face", "s0", "s1", "t0", "t1", "cells"), &PlanetCrustNative::tile_dirs);
+	ClassDB::bind_method(D_METHOD("tile_positions", "face", "s0", "s1", "t0", "t1", "cells", "heights", "origin", "e1", "up",
+			"e3"), &PlanetCrustNative::tile_positions);
 	ClassDB::bind_method(D_METHOD("local_positions", "dirs", "heights", "origin", "e1", "up", "e3"),
 			&PlanetCrustNative::local_positions);
 	ClassDB::bind_method(D_METHOD("grid_normals", "positions", "cells"), &PlanetCrustNative::grid_normals);
@@ -463,6 +465,34 @@ PackedVector3Array PlanetCrustNative::tile_dirs(int p_face, double p_s0, double 
 
 // The grid's points as positions in the tile's own axes (PlanetTile._to_local), measured from the
 // tile's middle in doubles, so a tile of a planet as big as the Earth is exact.
+PackedVector3Array PlanetCrustNative::tile_positions(int p_face, double p_s0, double p_s1, double p_t0, double p_t1,
+		int p_cells, const PackedFloat32Array &p_heights, const PackedFloat64Array &p_origin, const Vector3 &p_e1,
+		const Vector3 &p_up, const Vector3 &p_e3) const {
+	const int side = p_cells + 3;
+	PackedVector3Array result;
+	result.resize(side * side);
+	const Vector3 normal = cube_faces[p_face * 3];
+	const Vector3 u = cube_faces[p_face * 3 + 1];
+	const Vector3 v = cube_faces[p_face * 3 + 2];
+	const double quarter_pi = 3.14159265358979323846 * 0.25;
+	for (int row = 0; row < side; row++) {
+		const double b = std::tan((p_t0 + (p_t1 - p_t0) * (double)(row - 1) / (double)p_cells) * quarter_pi);
+		for (int column = 0; column < side; column++) {
+			const double a = std::tan((p_s0 + (p_s1 - p_s0) * (double)(column - 1) / (double)p_cells) * quarter_pi);
+			const double x = (double)normal.x + (double)u.x * a + (double)v.x * b;
+			const double y = (double)normal.y + (double)u.y * a + (double)v.y * b;
+			const double z = (double)normal.z + (double)u.z * a + (double)v.z * b;
+			const double reach = (radius + (double)p_heights[row * side + column]) / std::sqrt(x * x + y * y + z * z);
+			const double dx = x * reach - p_origin[0];
+			const double dy = y * reach - p_origin[1];
+			const double dz = z * reach - p_origin[2];
+			result.set(row * side + column, Vector3((real_t)(dx * p_e1.x + dy * p_e1.y + dz * p_e1.z),
+					(real_t)(dx * p_up.x + dy * p_up.y + dz * p_up.z), (real_t)(dx * p_e3.x + dy * p_e3.y + dz * p_e3.z)));
+		}
+	}
+	return result;
+}
+
 PackedVector3Array PlanetCrustNative::local_positions(const PackedVector3Array &p_dirs,
 		const PackedFloat32Array &p_heights, const PackedFloat64Array &p_origin, const Vector3 &p_e1,
 		const Vector3 &p_up, const Vector3 &p_e3) const {

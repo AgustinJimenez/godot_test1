@@ -126,7 +126,8 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 	heights = noise.heights_of(packed_dirs) # (the crust is asked for the whole grid at once)
 	var packed_positions := PackedVector3Array()
 	if fast:
-		packed_positions = noise.native.call(&"local_positions", packed_dirs, heights, origin, _e1,
+		packed_positions = noise.native.call(&"tile_positions", f, s0, s1, t0, t1, cells, heights,
+				origin, _e1,
 				centre, _e3)
 	else:
 		packed_positions.resize(side * side)
