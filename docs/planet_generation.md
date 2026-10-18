@@ -354,3 +354,30 @@ meander of 12 % with 6 pieces gave kinks of 38 degrees: median turn between piec
 Not yet: the river's own channel and water in the valley (the old hydrology is still what draws it),
 valleys below the 40 km grid, a local trace near the player. Only the native crust has the valleys
 (the GDScript is the reference without them); `PLANET_NO_DRAINAGE=1` turns them off.
+
+## Speed: how long a planet takes, and what made it fast (2026-10-18)
+
+`PLANET_TIMING=1` prints the laps of making a planet (`PlanetNoise._lap`) and "ground ready after" (the
+loading screen). The full Earth on a 6 core PC went from about 15 s to 3.5 s:
+
+| step | before | now | how |
+|---|---|---|---|
+| drainage (1.57 M cells) | 6.1 s | 1.5 s | the native crust spreads many heights over threads (`heights_by`, `std::thread`, 4096 points a chunk, only above 4 chunks, so tiles and map rows stay single threaded); the rain grid is read natively (`PlanetDrainageNative.sample_grid`) |
+| climate year (96 x 48 cells, 48 snapshots) | 0.9 s | 0.06 s | `PlanetSeasonsNative.run`, the same steps and bit identical (`PlanetSeasons.native_year = false` runs the script to compare) |
+| ground ready (the player waits) | 6.7 s | 1.1 s | only 12 tiles were queued per 0.3 s: now every missing tile is queued while the player waits (`PlanetSurface.burst`), 48 otherwise |
+| a tile | 9.5 ms | less | the skirt comes from the native `triangles` call; the script arrays (`dirs`, `positions`, `normals`, `colors`) are filled only when plants, the sea or rivers need them |
+| map, Terrain 2048 x 1024 | 5.9 s | 1.0 s | rows from the native `terrain_row`, east and north heights taken from the neighbouring pixels and rows (a third of the lookups), a thread for every core but one |
+
+Lessons: measure the wait, not the worker (the workers were idle: the queue was starved); a Godot
+`WorkerThreadPool` group task from a GDExtension ran on one thread, `std::thread` with an atomic chunk
+counter works on MinGW (posix model) and clang; float directions are only good to half a metre on an
+Earth, so anything that places a vertex or reads a fine noise from a planet position must use doubles
+or a position near the player (see the ground shader's `anchor_*` globals).
+
+## The map as a globe
+
+`PlanetMapGlobe` (G or the Globe button in the map): a sphere wearing the map's picture (the layer on
+show, as sharp as the charting got), turned by dragging, zoomed by the wheel or a pinch, a pin where the
+player stands. The ball is shown as seen from outside, east to the right, so it mirrors the planet's z.
+`planet_lab --show-map --map-globe` opens it. The map opens zoomed in on the player; zoom out for the
+planet.
