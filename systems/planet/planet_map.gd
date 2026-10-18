@@ -124,6 +124,10 @@ func _input(event: InputEvent) -> void:
 		toggle()
 		get_viewport().set_input_as_handled()
 		return
+	if visible and event.is_action_pressed(&"pause"): # Esc closes the map (not the menu behind it)
+		toggle()
+		get_viewport().set_input_as_handled()
+		return
 	var key := event as InputEventKey
 	if key != null and key.pressed and key.physical_keycode == KEY_G:
 		_globe_button.button_pressed = not _globe_mode
@@ -185,6 +189,8 @@ func toggle() -> void:
 		_mouse_before = Input.mouse_mode
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		_go_home()
+		if planet != null:
+			_globe.look_at_direction(planet.planet_position().normalized())
 	else:
 		Input.mouse_mode = _mouse_before
 		_dragging = false

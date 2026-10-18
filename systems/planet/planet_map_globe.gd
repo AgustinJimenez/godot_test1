@@ -117,6 +117,7 @@ func look_at_direction(dir: Vector3) -> void:
 	var seen := Vector3(dir.x, dir.y, -dir.z).normalized()
 	_yaw = atan2(seen.x, seen.z)
 	_pitch = clampf(asin(clampf(seen.y, -1.0, 1.0)), -1.4, 1.4)
+	_distance = 3.2
 	_aim()
 
 
