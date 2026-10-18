@@ -17,7 +17,8 @@ extends CanvasLayer
 
 const ACTION := &"planet_map"
 const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(1024, 512)]
-const DETAIL_SIZE := Vector2i(768, 384)
+const DETAIL_MIN := 768 ## pixels across the close chart, at least (more for a big view: see _maybe_chart_the_view)
+const DETAIL_MAX := 1792
 const START_ZOOM := 6.0
 const MAX_ZOOM := 60.0
 const MARGIN := 14.0
@@ -369,8 +370,10 @@ func _maybe_chart_the_view(delta: float) -> void:
 	_chart.layer = _layer
 	_chart.clock = planet.clock.copy()
 	_chart.rect = rect
-	_chart.size = Vector2i(DETAIL_SIZE.x, int(DETAIL_SIZE.x * rect.size.y / rect.size.x
-			* 0.5))
+	# about one chart pixel and a quarter for every screen pixel of the 1.5 times wider chart, so a
+	# close zoom stays sharp
+	var across := clampi(int(_view.size.x * 1.5 * 1.25), DETAIL_MIN, DETAIL_MAX)
+	_chart.size = Vector2i(across, int(across * rect.size.y / rect.size.x * 0.5))
 	_chart_is_detail = true
 	_chart.start(planet.noise)
 

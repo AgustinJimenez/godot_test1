@@ -40,6 +40,7 @@ inline double sign_d(double p_x) {
 
 void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("setup", "config"), &PlanetCrustNative::setup);
+	ClassDB::bind_method(D_METHOD("river_waters", "dirs"), &PlanetCrustNative::river_waters);
 	ClassDB::bind_method(D_METHOD("set_rivers", "cells", "network", "cell_metres"), &PlanetCrustNative::set_rivers);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
@@ -643,7 +644,7 @@ bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley) const 
 	}
 	double best_envelope = 1.0e30;
 	double best_distance = 0.0;
-	double best_floor = 0.0;
+	double best_floor = 0.0, best_bed = 0.0, best_flow = 0.0, best_side = 1.0;
 	for (int at = from; at < to; at++) {
 		const int piece = river_items[at];
 		const Vector3 a = river_a[piece];
@@ -664,12 +665,36 @@ bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley) const 
 			best_envelope = envelope;
 			best_distance = distance;
 			best_floor = floor_half;
+			best_bed = bed;
+			best_flow = flow;
+			best_side = ab.cross(p_dir - nearest).dot(nearest) < 0.0 ? -1.0 : 1.0;
 		}
 	}
 	r_valley.envelope = best_envelope;
 	r_valley.distance = best_distance;
 	r_valley.floor_half = best_floor;
+	r_valley.bed = best_bed;
+	r_valley.flow = best_flow;
+	r_valley.side = best_side;
 	return true;
+}
+
+PackedVector3Array PlanetCrustNative::river_waters(const PackedVector3Array &p_dirs) const {
+	PackedVector3Array out;
+	out.resize(p_dirs.size());
+	for (int index = 0; index < p_dirs.size(); index++) {
+		Valley valley;
+		const Vector3 dir = p_dirs[index].normalized();
+		if (river_cells <= 0 || !valley_at(dir, valley) || valley.distance > valley.floor_half * 1.6) {
+			out.set(index, Vector3(-1.0e9f, 0.0f, 0.5f));
+			continue;
+		}
+		const double share = valley.flow / river_flow;
+		const double depth = 0.6 + 1.4 * std::sqrt(share > 4.0 ? 4.0 : share);
+		const double across = 0.5 + 0.5 * valley.side * clampd(valley.distance / (valley.floor_half * 1.6), 0.0, 1.0);
+		out.set(index, Vector3((real_t)(valley.bed + depth), (real_t)share, (real_t)across));
+	}
+	return out;
 }
 
 // How rough the ground is allowed to be at `p_dir`: 1 away from the rivers, down to 0.3 on the floor

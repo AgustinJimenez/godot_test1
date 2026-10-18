@@ -66,6 +66,9 @@ private:
 		double envelope = 0.0; // the highest the ground may stand here: the bed and the valley's sides
 		double distance = 0.0; // metres to the nearest river
 		double floor_half = 0.0; // half the width of that river's valley floor
+		double bed = 0.0; // that river's bed height there (m)
+		double flow = 0.0; // its flow there
+		double side = 1.0; // +1 or -1: which bank of the river the point is on
 	};
 	bool valley_at(const Vector3 &p_dir, Valley &r_valley) const;
 	double valley_floor(const Vector3 &p_dir) const; // 1 away from the rivers, less on a valley floor
@@ -86,6 +89,9 @@ protected:
 
 public:
 	void setup(const Dictionary &p_config);
+	// The river water at each direction: x the water level (m; -1e9 where there is no river), y the
+	// river's flow as a share of a big river's, z 0..1 across the river (0.5 in the middle).
+	PackedVector3Array river_waters(const PackedVector3Array &p_dirs) const;
 	void set_rivers(int p_cells, const Dictionary &p_network, double p_cell_metres);
 	PackedFloat32Array heights(const PackedVector3Array &p_dirs) const;
 	PackedColorArray colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,

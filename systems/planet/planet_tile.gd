@@ -322,7 +322,10 @@ func _add_sea(dirs: Array[Vector3], side: int, cells: int) -> void:
 func _add_running_water(s0: float, s1: float, t0: float, t1: float, dirs: Array[Vector3],
 		heights: PackedFloat32Array) -> void:
 	var water := _noise.hydrology
-	if water == null or level < _settings.max_level() - 1:
+	if water == null:
+		_add_crust_rivers(dirs, heights)
+		return
+	if level < _settings.max_level() - 1:
 		return
 	var rings := mini(ceili(size / water.cell_metres) + 2, 6)
 	var ids := water.cells_around(water.cell_of(centre), rings)
@@ -506,3 +509,49 @@ func _water_polygon(builder: MeshBuilder, polygon: Array[Vector3], uvs: Array[Ve
 ## Which side of the line p -> q (in the ground plane) the point is on.
 func _side(p: Vector3, q: Vector3, point: Vector3) -> float:
 	return (q.x - p.x) * (point.z - p.z) - (q.z - p.z) * (point.x - p.x)
+
+
+## The rivers of the crust's own valleys (the drainage): the native crust says, for every corner of
+## the tile's grid, the water level of the river whose valley is there; where the ground is under
+## it (and above the sea) the corner is wet, and a square with a wet corner gets water, its dry
+## corners sunk into the ground, so the bank is where the valley's ground meets the water.
+func _add_crust_rivers(dirs: Array[Vector3], heights: PackedFloat32Array) -> void:
+	if not _settings.hydrology_on or _noise.drainage == null or _noise.native == null \
+			or level < _settings.max_level() - 3:
+		return
+	var samples: PackedVector3Array = _noise.native.call(&"river_waters", PackedVector3Array(dirs))
+	var cells := _settings.tile_cells
+	var side := cells + 3
+	var wet := PackedByteArray()
+	wet.resize(side * side)
+	var any := false
+	for index in side * side:
+		var water_level := samples[index].x
+		if water_level > _settings.sea_level and heights[index] < water_level - 0.02 \
+				and heights[index] > _settings.sea_level:
+			wet[index] = 1
+			any = true
+	if not any:
+		return
+	var builder := MeshBuilder.new()
+	var radius := _settings.radius
+	var roll := Color(0.25, 1.0, 1.0)
+	for row in range(1, cells + 1):
+		for column in range(1, cells + 1):
+			var i00 := row * side + column
+			var corners := [i00, i00 + 1, i00 + side, i00 + side + 1]
+			var surface := -INF
+			for corner: int in corners:
+				if wet[corner] == 1:
+					surface = maxf(surface, samples[corner].x)
+			if surface == -INF:
+				continue
+			var points: Array[Vector3] = []
+			var coords: Array[Vector2] = []
+			for corner: int in corners:
+				var height := surface if wet[corner] == 1 else minf(heights[corner] - 0.15, surface)
+				points.append(_to_local(dirs[corner], radius + height))
+				coords.append(Vector2(samples[corner].z, maxf(samples[corner].y, 0.0)))
+			_river_triangle(builder, points, coords, 0, 2, 1, roll)
+			_river_triangle(builder, points, coords, 1, 2, 3, roll)
+	_add_water_mesh(builder, river_material())
