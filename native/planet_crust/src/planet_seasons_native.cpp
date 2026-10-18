@@ -97,7 +97,7 @@ void step(std::vector<float> &r_heat, const float *p_light, const Grid &p_grid, 
 
 void PlanetSeasonsNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("rain", "elevation", "ocean", "temperature", "width", "height", "rain_base",
-			"rain_scale"), &PlanetSeasonsNative::rain);
+			"rain_scale", "belts"), &PlanetSeasonsNative::rain);
 	ClassDB::bind_method(D_METHOD("run", "sea", "lights", "width", "height", "snapshots", "wind", "max_years"),
 			&PlanetSeasonsNative::run);
 }
@@ -151,7 +151,13 @@ Dictionary PlanetSeasonsNative::run(const PackedByteArray &p_sea, const PackedFl
 
 PackedFloat32Array PlanetSeasonsNative::rain(const PackedFloat32Array &p_elevation, const PackedByteArray &p_ocean,
 		const PackedFloat32Array &p_temperature, int p_width, int p_height, double p_rain_base,
-		double p_rain_scale) const {
+		double p_rain_scale, const Dictionary &p_belts) const {
+	// this planet's circulation (PlanetClimate.circulation): where its wet and dry belts and winds are
+	const double itcz_lat = p_belts.get("itcz_lat", 0.0), itcz_width = p_belts.get("itcz_width", 9.0);
+	const double itcz_power = p_belts.get("itcz_power", 0.8), storm_lat = p_belts.get("storm_lat", 48.0);
+	const double storm_power = p_belts.get("storm_power", 0.3), dry_lat = p_belts.get("dry_lat", 27.0);
+	const double dry_power = p_belts.get("dry_power", 0.55), wind_low = p_belts.get("wind_low", 30.0);
+	const double wind_high = p_belts.get("wind_high", 60.0);
 	const int size = p_width * p_height;
 	PackedFloat32Array result;
 	result.resize(size);
@@ -163,10 +169,10 @@ PackedFloat32Array PlanetSeasonsNative::rain(const PackedFloat32Array &p_elevati
 	std::vector<float> row_rain(p_width);
 	for (int row = 0; row < p_height; row++) {
 		const double lat = std::abs((0.5 - ((double)row + 0.5) / (double)p_height) * 180.0);
-		const int wind = (lat > 30.0 && lat < 60.0) ? 1 : -1;
-		const double itcz = 0.8 * std::exp(-std::pow(lat / 9.0, 2.0));
-		const double storms = 0.3 * std::exp(-std::pow((lat - 48.0) / 12.0, 2.0));
-		const double dry_belt = 1.0 - 0.55 * std::exp(-std::pow((lat - 27.0) / 9.0, 2.0));
+		const int wind = (lat > wind_low && lat < wind_high) ? 1 : -1;
+		const double itcz = itcz_power * std::exp(-std::pow((lat - itcz_lat) / itcz_width, 2.0));
+		const double storms = storm_power * std::exp(-std::pow((lat - storm_lat) / 12.0, 2.0));
+		const double dry_belt = 1.0 - dry_power * std::exp(-std::pow((lat - dry_lat) / 9.0, 2.0));
 		double carried = 0.0;
 		std::fill(row_rain.begin(), row_rain.end(), 0.0f);
 		for (int lap = 0; lap < 2; lap++) {

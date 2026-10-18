@@ -26,7 +26,7 @@ public:
 	// relief, `ocean` 1 on the sea, `temperature` degrees C at sea level.
 	PackedFloat32Array rain(const PackedFloat32Array &p_elevation, const PackedByteArray &p_ocean,
 			const PackedFloat32Array &p_temperature, int p_width, int p_height, double p_rain_base,
-			double p_rain_scale) const;
+			double p_rain_scale, const Dictionary &p_belts = Dictionary()) const;
 	Dictionary run(const PackedByteArray &p_sea, const PackedFloat32Array &p_lights, int p_width, int p_height,
 			int p_snapshots, double p_wind, int p_max_years) const;
 };

@@ -49,3 +49,21 @@ the slope of the coarser ones, so valleys branch). Inland basins below the sea a
 - `scripts/planet_check.sh --quick` (the native step runs without erosion: the script crust has none).
 - Look at the map: `planet_lab --earth --seed=N --show-map --map-layer=0 --map-zoom=Z --shot=PATH`.
 - The player must stand on the same ground the tiles draw: `PlanetNoise.height` asks the native crust.
+
+## Fixed numbers that are the same on every planet (audit 2026-10-18)
+
+Done: the rain belts and wind edges (`PlanetClock`-free: `PlanetClimate.circulation`, drawn from the seed, used
+by the native and script rain and by the weather); the cloud belts, their strength and breaking.
+
+Still fixed, in order of how much they show:
+- **Zonal wind profile**: `-cos(4 lat)` in `PlanetWeather.zonal_wind` and `-cos(3 lat)` in the seasons' heat carry
+  (native too). Real planets have 1 to 4 cells per hemisphere by how fast they spin. Idea: a `cells` number from
+  the day length and use it in both.
+- **Heat model**: EMIT, FLOOR, SEA_TAU, LAND_TAU, MIX, the HOT cap: one planet's physics. Should follow the
+  star's insolation and the air/sea share of the planet (`PlanetSettings.insolation` already scales the light).
+- **Sea level** share of land is fixed by the plates' ratio; real planets vary from water worlds to deserts.
+- **Plate boundary sizes** (BOUNDARY, SOFT, CONTINENT, OCEAN heights) and the HYPSO curve.
+- **Rain model constants** (RAIN_BASE, RAIN_SCALE, the 0.996 decay, the 192x96 grid).
+- **Erosion tunables** (EROSION, EROSION_SCALE, octaves): the same look on every world; a wet planet should be
+  more eroded than a dry one (scale by the climate's rain at the point).
+- **Biome thresholds** (snow line at -0.5 to -4.5 C, beaches at 4 m, tree line).

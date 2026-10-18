@@ -31,6 +31,7 @@ var _belt_shift := 0.0 ## radians the equatorial belt sits off the equator
 var _belt_power := 1.0
 var _storm_shift := 0.0 ## radians the storm tracks sit from their usual latitude
 var _storm_power := 1.0
+var _sink_shift := 0.0 ## radians the dry highs sit from their usual latitude
 var _sink_power := 1.0 ## the dry subtropical highs
 var _pool_break := 1.0 ## 0 the belt is even, 1 strongly broken by the pools
 var _pool := FastNoiseLite.new() # warm pools and cold tongues: the belts vary round the planet
@@ -46,11 +47,13 @@ func _init(noise: PlanetNoise) -> void:
 	_setup(_warp, seed_value + 34, 2.4, 3)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value + 36
-	_belt_shift = rng.randf_range(-0.26, 0.26)
+	var circulation: Dictionary = _noise.climate.circulation
+	_belt_shift = deg_to_rad(float(circulation["itcz_lat"])) + rng.randf_range(-0.12, 0.12)
 	_belt_power = rng.randf_range(0.08, 0.95)
-	_storm_shift = rng.randf_range(-0.12, 0.12)
+	_storm_shift = deg_to_rad(float(circulation["storm_lat"]) - 48.0)
 	_storm_power = rng.randf_range(0.5, 1.3)
 	_sink_power = rng.randf_range(0.7, 1.2)
+	_sink_shift = deg_to_rad(float(circulation["dry_lat"]) - 27.5)
 	_pool_break = rng.randf_range(0.5, 1.4)
 	_setup(_pool, seed_value + 35, rng.randf_range(0.8, 1.9), 2)
 
@@ -90,7 +93,7 @@ func readiness(dir: Vector3, clock: PlanetClock, macro := NAN) -> float:
 	var storm_lat := south * (0.87 + lean + _storm_shift) + 0.3 * declination
 	var storms := 0.55 * _storm_power * exp(-pow((lat - storm_lat) / 0.2, 2.0))
 	# the subtropical highs, where the air sinks
-	var high_lat := south * 0.48 + 0.3 * declination
+	var high_lat := south * (0.48 + _sink_shift) + 0.3 * declination
 	var sinking := _sink_power * exp(-pow((lat - high_lat) / 0.15, 2.0))
 	var wet := clampf(_noise.climate.sample(dir).y / 1.2, 0.0, 1.0)
 	# moisture alone makes some cloud; the trade winds' belt lifts the moist air; the storm tracks lift

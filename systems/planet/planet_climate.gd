@@ -15,10 +15,15 @@ const HEIGHT := 96
 var _temperature := PackedFloat32Array() ## degrees C at sea level
 var _rain := PackedFloat32Array() ## 0 none .. ~1.5 a rain forest
 var seasons := PlanetSeasons.new() ## the temperature through the year (the mean is `_temperature`)
+## This planet's circulation, drawn from its seed: the latitude and strength of the wet belt of the
+## tropics, the storm belt and the dry belt, and where the westerlies begin and end (degrees).
+var circulation := {"itcz_lat": 0.0, "itcz_width": 9.0, "itcz_power": 0.8, "storm_lat": 48.0,
+		"storm_power": 0.3, "dry_lat": 27.0, "dry_power": 0.55, "wind_low": 30.0, "wind_high": 60.0}
 var native_rain := true ## false: the rain is made by the script below (to compare)
 
 
 func build(noise: PlanetNoise) -> void:
+	_draw_circulation(noise.settings.world_seed)
 	var size := WIDTH * HEIGHT
 	_temperature.resize(size)
 	_rain.resize(size)
@@ -53,7 +58,7 @@ func build(noise: PlanetNoise) -> void:
 				PlanetSeasons.HEIGHT, dirs)
 		var air: RefCounted = ClassDB.instantiate(&"PlanetSeasonsNative")
 		_rain = air.call(&"rain", elevation, ocean, _temperature, WIDTH, HEIGHT, RAIN_BASE,
-				RAIN_SCALE)
+				RAIN_SCALE, circulation)
 		return
 	for row in HEIGHT: # the climate's temperature is the mean of the year
 		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
@@ -70,10 +75,13 @@ func build(noise: PlanetNoise) -> void:
 ## over the sea and dropping it over land (more where the ground rises).
 func _advect_row(row: int, elevation: PackedFloat32Array, ocean: PackedByteArray) -> void:
 	var lat := absf((0.5 - (float(row) + 0.5) / float(HEIGHT)) * 180.0)
-	var wind := 1 if (lat > 30.0 and lat < 60.0) else -1 # westerlies / trades and polar easterlies
-	var itcz := 0.8 * exp(-pow(lat / 9.0, 2.0)) # the rain belt of the tropics
-	var storms := 0.3 * exp(-pow((lat - 48.0) / 12.0, 2.0)) # fronts: the mid latitude storm tracks
-	var dry_belt := 1.0 - 0.55 * exp(-pow((lat - 27.0) / 9.0, 2.0)) # the subtropical highs
+	var wind := 1 if (lat > circulation["wind_low"] and lat < circulation["wind_high"]) else -1 # westerlies / trades and polar easterlies
+	var itcz: float = circulation["itcz_power"] * exp(-pow((lat - circulation["itcz_lat"])
+			/ circulation["itcz_width"], 2.0)) # the rain belt of the tropics
+	var storms: float = circulation["storm_power"] * exp(
+			-pow((lat - circulation["storm_lat"]) / 12.0, 2.0)) # fronts: the mid latitude storm tracks
+	var dry_belt: float = 1.0 - circulation["dry_power"] * exp(
+			-pow((lat - circulation["dry_lat"]) / 9.0, 2.0)) # the subtropical highs
 	var carried := 0.0
 	var rain := PackedFloat32Array()
 	rain.resize(WIDTH)
@@ -96,6 +104,19 @@ func _advect_row(row: int, elevation: PackedFloat32Array, ocean: PackedByteArray
 	for column in WIDTH:
 		var wet_belt := (itcz + storms) * (1.0 if ocean[row * WIDTH + column] == 0 else 0.4)
 		_rain[row * WIDTH + column] = rain[column] + wet_belt
+
+
+## Draws this planet's circulation from the seed (the defaults above are the Earth's: no two planets
+## share one wet belt at the equator, one storm belt at 48 and one dry belt at 27).
+func _draw_circulation(world_seed: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = world_seed + 50
+	circulation = {
+		"itcz_lat": rng.randf_range(-6.0, 6.0), "itcz_width": rng.randf_range(6.0, 13.0),
+		"itcz_power": rng.randf_range(0.35, 1.0), "storm_lat": rng.randf_range(40.0, 56.0),
+		"storm_power": rng.randf_range(0.15, 0.45), "dry_lat": rng.randf_range(20.0, 33.0),
+		"dry_power": rng.randf_range(0.3, 0.7), "wind_low": rng.randf_range(24.0, 36.0),
+		"wind_high": rng.randf_range(54.0, 68.0)}
 
 
 func _smooth() -> void:
