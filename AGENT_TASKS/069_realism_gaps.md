@@ -68,3 +68,10 @@ Still fixed, in order of how much they show:
 - **Biome thresholds** (snow line at -0.5 to -4.5 C, beaches at 4 m, tree line).
 
 - 2026-10-18: deltas (a big river near the sea flattens the ground to ~3 m over a wide fan; native) and wetland colour (dark green-brown on low flat wet ground; native and script). Neither looked at on the ground yet; the map's illustrated colours do not show the wetland.
+
+## How to look at a place (2026-10-18)
+
+`planet_lab --earth --seed=N --dir=x,y,z --shot-frame=1500 --shot=PATH` starts the player at that unit direction. To find
+a direction (a desert, a coast), run a small `-s` script that builds `PlanetNoise` and scans a spiral of points by
+`climate.sample(dir)` and `height(...)`. Seen so far from the ground: a desert on seed 8 (pale sand, gentle dune
+swells of 7 m over ~170 m: soft, not sharp ridges).
