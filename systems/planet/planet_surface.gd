@@ -23,7 +23,10 @@ var _semaphore := Semaphore.new()
 var _stop := false
 var _near := Vector3.ZERO # the point the tiles are chosen for (planet space)
 var _height := 0.0 # m the player is over the ground there
+const BURST_TILES := 24
+
 var _tiles_per_frame := 2
+var burst := false ## true while the player waits: many tiles a frame, hitches do not matter
 var _inline: Array = [] # without a worker thread (headless): tiles built here, a few a frame
 # plants are a second job, after the ground and the water, on a thread of their own
 var _plant_jobs: Array = [] # [tile, detail]
@@ -90,8 +93,9 @@ func update(at: Vector3) -> void:
 		_pending.erase(PlanetTile.key_of(job[0], job[1], job[2], job[3]))
 	_jobs.clear()
 	_mutex.unlock()
+	var batch := 600 if burst else 12 # (the player waits: every tile that is missing, nearest first)
 	if threaded and _thread != null:
-		for entry: Array in missing.slice(0, 12):
+		for entry: Array in missing.slice(0, batch):
 			_pending[PlanetTile.key_of(entry[0], entry[1], entry[2], entry[3])] = true
 			_mutex.lock()
 			_jobs.append(entry)
@@ -144,7 +148,8 @@ func build_all(at: Vector3, near_only := false) -> void:
 
 func _process(_delta: float) -> void:
 	var added := 0
-	while added < _tiles_per_frame and not _inline.is_empty():
+	var limit := BURST_TILES if burst else _tiles_per_frame
+	while added < limit and not _inline.is_empty():
 		var entry: Array = _inline.pop_front()
 		var key := PlanetTile.key_of(entry[0], entry[1], entry[2], entry[3])
 		if _wanted.has(key):
@@ -152,7 +157,7 @@ func _process(_delta: float) -> void:
 				_retire(tiles[key])
 			_add(_make(entry))
 			added += 1
-	while added < _tiles_per_frame:
+	while added < limit:
 		_mutex.lock()
 		var tile: PlanetTile = _done.pop_front() if not _done.is_empty() else null
 		_mutex.unlock()

@@ -371,10 +371,15 @@ func _wait_for_the_ground(delta: float) -> void:
 	if _timer <= 0.0:
 		_timer = 0.3
 		surface.update(planet_position())
+	surface.burst = true
 	var done := surface.progress(LOAD_GROUND, LOAD_PLANTS)
 	_load_label.text = "Generating the planet...  %d %%" % int(done * 100.0)
 	if done >= 0.999 or _load_time > 90.0:
+		if OS.has_environment("PLANET_TIMING"):
+			print("PLANET_TIMING ground ready after %.1f s, %d tiles built, %d wanted" % [
+					_load_time, surface.tiles.size(), surface._wanted.size()])
 		loading = false
+		surface.burst = false
 		_load_label.visible = false
 		_target.process_mode = Node.PROCESS_MODE_INHERIT
 		var fade := create_tween() # the dark lifts
