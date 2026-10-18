@@ -13,6 +13,8 @@ var _syncing := false
 var _tone_mapper: OptionButton
 var _hdr: CheckButton
 var _cloud_quality: OptionButton
+var _look_options := {} # key -> its OptionButton (the look settings)
+var _look_toggles := {} # key -> its CheckButton
 var _settings: Node
 
 @onready var low_button: Button = %LowButton
@@ -91,6 +93,43 @@ func _add_look_controls() -> void:
 			_settings.set_graphics_value(&"cloud_quality", index))
 	parent.add_child(_cloud_quality)
 	parent.move_child(_cloud_quality, at + 4)
+	var next := at + 5
+	next = _look_option(parent, next, &"upscaler", "Upscaler (below 100% scale)",
+			GraphicsLook.UPSCALER_NAMES)
+	next = _look_option(parent, next, &"colour_grade", "Colour grade", GraphicsLook.GRADE_NAMES)
+	next = _look_option(parent, next, &"reflections", "Reflections (SSR)",
+			GraphicsLook.REFLECTION_NAMES)
+	next = _look_toggle(parent, next, &"auto_exposure", "Auto exposure")
+	next = _look_toggle(parent, next, &"debanding", "Debanding (smooth sky gradients)")
+	next = _look_toggle(parent, next, &"volumetric_fog", "Light shafts (near the ground)")
+
+
+func _look_option(parent: Node, at: int, key: StringName, title: String,
+		names: PackedStringArray) -> int:
+	var label := Label.new()
+	label.text = title
+	parent.add_child(label)
+	parent.move_child(label, at)
+	var options := OptionButton.new()
+	for name_of: String in names:
+		options.add_item(name_of)
+	options.item_selected.connect(func(index: int) -> void:
+		if not _syncing:
+			_settings.set_graphics_value(key, index))
+	parent.add_child(options)
+	parent.move_child(options, at + 1)
+	_look_options[key] = options
+	return at + 2
+
+
+func _look_toggle(parent: Node, at: int, key: StringName, title: String) -> int:
+	var toggle := CheckButton.new()
+	toggle.text = title
+	toggle.toggled.connect(_on_toggle_changed.bind(key))
+	parent.add_child(toggle)
+	parent.move_child(toggle, at)
+	_look_toggles[key] = toggle
+	return at + 1
 
 
 func refresh() -> void:
@@ -148,6 +187,10 @@ func _sync_controls() -> void:
 	_tone_mapper.select(int(_settings.get_graphics_value(&"tone_mapper")))
 	_hdr.button_pressed = bool(_settings.get_graphics_value(&"hdr"))
 	_cloud_quality.select(int(_settings.get_graphics_value(&"cloud_quality")))
+	for key: StringName in _look_options:
+		(_look_options[key] as OptionButton).select(int(_settings.get_graphics_value(key)))
+	for key: StringName in _look_toggles:
+		(_look_toggles[key] as CheckButton).button_pressed = bool(_settings.get_graphics_value(key))
 	vsync.button_pressed = bool(_settings.get_graphics_value(&"vsync"))
 	max_fps.value = float(_settings.get_graphics_value(&"max_fps"))
 	render_scale_value.text = "%d%%" % roundi(render_scale.value)

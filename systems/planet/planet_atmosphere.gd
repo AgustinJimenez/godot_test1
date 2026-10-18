@@ -55,6 +55,12 @@ func _init() -> void:
 	environment.ambient_light_sky_contribution = 0.92
 	environment.ambient_light_color = Color(0.1, 0.13, 0.25)
 	environment.volumetric_fog_enabled = false
+	environment.volumetric_fog_temporal_reprojection_enabled = true
+	environment.volumetric_fog_gi_inject = 0.0
+	environment.volumetric_fog_ambient_inject = 0.3
+	environment.volumetric_fog_anisotropy = 0.6 # (light shafts: the light scatters forward)
+	environment.volumetric_fog_length = 120.0
+	environment.volumetric_fog_detail_spread = 2.0
 	_own_every_look_setting()
 
 
@@ -79,6 +85,23 @@ func _own_every_look_setting() -> void:
 	environment.adjustment_brightness = 1.0
 	environment.adjustment_contrast = 1.0
 	environment.adjustment_saturation = 1.0
+
+
+## Light shafts: volumetric fog, only near the ground (a froxel grid cannot cover a planet), fading
+## out with the altitude, its density following the haze of the place (humid air shows the sun's
+## beams, dry air hardly). Off underwater and when the setting is off.
+func _shafts() -> void:
+	var wanted: bool = GraphicsSettings.get_graphics_value(&"volumetric_fog")
+	var low := 1.0 - smoothstep(600.0, 2500.0, maxf(altitude, 0.0))
+	var on := wanted and not underwater and not fog_hidden and low > 0.02
+	environment.volumetric_fog_enabled = on
+	if not on:
+		return
+	var humid := clampf(_haze - 0.4, 0.0, 1.8)
+	environment.volumetric_fog_density = (0.0009 + 0.0014 * humid + fog_extra * 0.3) * low
+	environment.volumetric_fog_albedo = environment.fog_light_color.lerp(Color.WHITE, 0.45)
+	environment.volumetric_fog_sky_affect = 0.0
+	sun.light_volumetric_fog_energy = 1.0
 
 
 ## Gives a material that draws the clouds (the sky's, the shell's) the numbers they share: where the
@@ -174,6 +197,7 @@ func _apply() -> void:
 		density = 0.0
 	environment.fog_density = UNDERWATER_FOG if underwater else maxf(density, 0.0)
 	environment.fog_aerial_perspective = 0.0
+	_shafts()
 	environment.fog_sky_affect = 0.0 if altitude > air_top() else 0.35
 	if underwater:
 		environment.fog_light_color = Color(0.05, 0.3, 0.4) * lerpf(0.25, 1.0, 1.0 - _night_amount)

@@ -14,6 +14,7 @@ const PRESET_NAMES: PackedStringArray = ["Low", "Medium", "High", "Ultra", "Cust
 const QUALITY_KEYS: Array[StringName] = [
 	&"render_scale", &"anti_aliasing", &"shadow_quality",
 	&"ssao", &"ssil", &"glow", &"cloud_quality",
+	&"upscaler", &"debanding", &"colour_grade", &"auto_exposure", &"reflections", &"volumetric_fog",
 ]
 const DEFAULT_VALUES: Dictionary = {
 	&"render_scale": 1.0,
@@ -23,6 +24,12 @@ const DEFAULT_VALUES: Dictionary = {
 	&"ssil": false,
 	&"glow": false,
 	&"cloud_quality": 2,
+	&"upscaler": 0, # 0 off, 1 FSR 1, 2 FSR 2 (only below 100% render scale)
+	&"debanding": false,
+	&"colour_grade": 0, # GraphicsLook.GRADE_NAMES
+	&"auto_exposure": false,
+	&"reflections": 0, # 0 off, 1 low, 2 high (screen space)
+	&"volumetric_fog": false, # light shafts near the ground
 	&"vsync": true,
 	&"max_fps": 120,
 	&"tone_mapper": Environment.TONE_MAPPER_FILMIC,
@@ -34,30 +41,39 @@ const PRESETS: Dictionary = {
 		&"anti_aliasing": AntiAliasing.OFF,
 		&"shadow_quality": ShadowQuality.OFF,
 		&"ssao": false, &"ssil": false, &"glow": false, &"cloud_quality": 0,
+		&"upscaler": 0, &"debanding": false, &"colour_grade": 0, &"auto_exposure": false,
+		&"reflections": 0, &"volumetric_fog": false,
 	},
 	Preset.MEDIUM: {
 		&"render_scale": 0.8,
 		&"anti_aliasing": AntiAliasing.FXAA,
 		&"shadow_quality": ShadowQuality.LOW,
 		&"ssao": false, &"ssil": false, &"glow": false, &"cloud_quality": 1,
+		&"upscaler": 2, &"debanding": true, &"colour_grade": 1, &"auto_exposure": true,
+		&"reflections": 0, &"volumetric_fog": false,
 	},
 	Preset.HIGH: {
 		&"render_scale": 1.0,
 		&"anti_aliasing": AntiAliasing.TAA,
 		&"shadow_quality": ShadowQuality.MEDIUM,
-		&"ssao": true, &"ssil": false, &"glow": false, &"cloud_quality": 2,
+		&"ssao": true, &"ssil": false, &"glow": true, &"cloud_quality": 2,
+		&"upscaler": 2, &"debanding": true, &"colour_grade": 1, &"auto_exposure": true,
+		&"reflections": 0, &"volumetric_fog": true,
 	},
 	Preset.ULTRA: {
 		&"render_scale": 1.15,
 		&"anti_aliasing": AntiAliasing.TAA,
 		&"shadow_quality": ShadowQuality.HIGH,
 		&"ssao": true, &"ssil": true, &"glow": true, &"cloud_quality": 2,
+		&"upscaler": 2, &"debanding": true, &"colour_grade": 1, &"auto_exposure": true,
+		&"reflections": 2, &"volumetric_fog": true,
 	},
 }
 
 var current_preset: Preset = Preset.HIGH
 var _values := DEFAULT_VALUES.duplicate()
 var _save_timer: Timer
+var _ephemeral := false # a test preset from the environment: never saved
 
 
 func _ready() -> void:
@@ -69,8 +85,23 @@ func _ready() -> void:
 	_save_timer.timeout.connect(_save)
 	add_child(_save_timer)
 	_load()
+	_ephemeral_preset()
 	get_tree().node_added.connect(_on_node_added)
 	apply()
+
+
+## `PLANET_PRESET=low|medium|high|ultra` (for pictures and tests): that preset is used for this run
+## only, and nothing is written to the saved settings.
+func _ephemeral_preset() -> void:
+	if not OS.has_environment("PLANET_PRESET"):
+		return
+	var which := PRESET_NAMES.find(OS.get_environment("PLANET_PRESET").capitalize())
+	if which < 0 or which >= Preset.CUSTOM:
+		return
+	_ephemeral = true
+	current_preset = which as Preset
+	for key: StringName in PRESETS[which]:
+		_values[key] = PRESETS[which][key]
 
 
 func get_preset_name(preset: int) -> String:
@@ -109,6 +140,7 @@ func apply() -> void:
 	var viewport := get_tree().root as Viewport
 	viewport.scaling_3d_scale = float(_values[&"render_scale"])
 	_apply_anti_aliasing(viewport, int(_values[&"anti_aliasing"]))
+	GraphicsLook.apply_viewport(viewport, _values)
 	Engine.max_fps = int(_values[&"max_fps"])
 	var supported := DisplayServer.window_is_hdr_output_supported()
 	get_tree().root.hdr_output_requested = bool(_values[&"hdr"]) and supported
@@ -168,6 +200,7 @@ func _apply_single_node(node: Node) -> void:
 			environment.ssil_enabled = bool(_values[&"ssil"])
 			environment.glow_enabled = bool(_values[&"glow"])
 			environment.tonemap_mode = int(_values[&"tone_mapper"]) as Environment.ToneMapper
+			GraphicsLook.apply_environment(world_environment, _values)
 	elif node is DirectionalLight3D:
 		var light := node as DirectionalLight3D
 		var quality := int(_values[&"shadow_quality"])
@@ -199,9 +232,13 @@ func _sanitize_value(key: StringName, value: Variant) -> Variant:
 			clean = clampi(int(value), 30, 240)
 		&"cloud_quality":
 			clean = clampi(int(value), 0, 2)
+		&"upscaler", &"reflections":
+			clean = clampi(int(value), 0, 2)
+		&"colour_grade":
+			clean = clampi(int(value), 0, GraphicsLook.GRADE_NAMES.size() - 1)
 		&"tone_mapper":
 			clean = clampi(int(value), Environment.TONE_MAPPER_LINEAR, Environment.TONE_MAPPER_AGX)
-		&"ssao", &"ssil", &"glow", &"vsync", &"hdr":
+		&"ssao", &"ssil", &"glow", &"vsync", &"hdr", &"debanding", &"auto_exposure", 		&"volumetric_fog":
 			clean = bool(value)
 	return clean
 
@@ -223,6 +260,8 @@ func _queue_save() -> void:
 
 
 func _save() -> void:
+	if _ephemeral:
+		return
 	var config := ConfigFile.new()
 	config.set_value(SECTION, "preset", current_preset)
 	for key: StringName in _values:
