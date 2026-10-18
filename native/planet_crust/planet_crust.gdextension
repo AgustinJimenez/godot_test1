@@ -9,3 +9,7 @@ windows.debug.x86_64 = "res://native/planet_crust/bin/planet_crust.windows.templ
 windows.release.x86_64 = "res://native/planet_crust/bin/planet_crust.windows.template_release.x86_64.dll"
 windows.debug.double.x86_64 = "res://native/planet_crust/bin/planet_crust.windows.template_debug.double.x86_64.dll"
 windows.release.double.x86_64 = "res://native/planet_crust/bin/planet_crust.windows.template_release.double.x86_64.dll"
+macos.debug = "res://native/planet_crust/bin/planet_crust.macos.template_debug.universal.dylib"
+macos.release = "res://native/planet_crust/bin/planet_crust.macos.template_release.universal.dylib"
+macos.debug.double = "res://native/planet_crust/bin/planet_crust.macos.template_debug.double.universal.dylib"
+macos.release.double = "res://native/planet_crust/bin/planet_crust.macos.template_release.double.universal.dylib"

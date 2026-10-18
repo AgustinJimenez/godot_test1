@@ -25,7 +25,7 @@ void PlanetDrainageNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("carve", "heights", "filled", "flow", "receiver", "river_flow", "base_slope", "max_cut"),
 			&PlanetDrainageNative::carve);
 	ClassDB::bind_method(D_METHOD("river_network", "heights", "filled", "flow", "receiver", "river_flow",
-					"base_slope", "samples", "meander"),
+					"base_slope", "samples", "meander", "uplift"),
 			&PlanetDrainageNative::river_network);
 	ClassDB::bind_method(D_METHOD("solve", "heights", "rain", "sea_level", "exponent", "lake_depth", "lake_cells"),
 			&PlanetDrainageNative::solve);
@@ -330,7 +330,7 @@ PackedFloat32Array PlanetDrainageNative::carve(const PackedFloat32Array &p_heigh
 
 Dictionary PlanetDrainageNative::river_network(const PackedFloat32Array &p_heights, const PackedFloat32Array &p_filled,
 		const PackedFloat32Array &p_flow, const PackedInt32Array &p_receiver, double p_river_flow,
-		double p_base_slope, int p_samples, double p_meander) const {
+		double p_base_slope, int p_samples, double p_meander, const PackedFloat32Array &p_uplift) const {
 	const int count = 6 * cells * cells;
 	// the river beds, from the sea inland (as in `carve`)
 	std::vector<int> order(count);
@@ -352,7 +352,10 @@ Dictionary PlanetDrainageNative::river_network(const PackedFloat32Array &p_heigh
 		river[id] = 1;
 		Vector3 gap = dirs[id] - dirs[down];
 		double distance = (double)gap.length() * radius;
-		double slope = p_base_slope * std::sqrt(p_river_flow / (double)p_flow[id]);
+		// the steady state of the stream power law (slope = (uplift / erodibility)^(1/n) * area^(-m/n),
+		// with m/n = 1/2): a river climbing a rising range is steeper than one crossing a plain
+		double rise = 0.5 + 1.5 * (p_uplift.size() == count ? (double)p_uplift[id] : 0.5);
+		double slope = p_base_slope * rise * std::sqrt(p_river_flow / (double)p_flow[id]);
 		double allowed = bed[down] + slope * distance;
 		if (allowed < bed[id]) {
 			bed[id] = allowed;

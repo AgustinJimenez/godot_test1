@@ -117,6 +117,14 @@ func _input(event: InputEvent) -> void:
 		elif button.button_index == MOUSE_BUTTON_LEFT:
 			_dragging = button.pressed
 		get_viewport().set_input_as_handled()
+	elif event is InputEventMagnifyGesture: # a pinch on a trackpad
+		var pinch := event as InputEventMagnifyGesture
+		_zoom_at(pinch.position, clampf(pinch.factor, 0.5, 2.0))
+		get_viewport().set_input_as_handled()
+	elif event is InputEventPanGesture: # two fingers moving on a trackpad: the wheel
+		var pan := event as InputEventPanGesture
+		_zoom_at(get_viewport().get_mouse_position(), pow(1.25, -pan.delta.y))
+		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and _dragging:
 		var motion := event as InputEventMouseMotion
 		var size := _visible_size()
@@ -128,6 +136,12 @@ func _input(event: InputEvent) -> void:
 		var code := (event as InputEventKey).physical_keycode
 		if code == KEY_R:
 			_go_home()
+			get_viewport().set_input_as_handled()
+		elif code == KEY_EQUAL or code == KEY_KP_ADD: # the keyboard zooms too (+ and -)
+			_zoom_at(_view.size * 0.5, 1.25)
+			get_viewport().set_input_as_handled()
+		elif code == KEY_MINUS or code == KEY_KP_SUBTRACT:
+			_zoom_at(_view.size * 0.5, 0.8)
 			get_viewport().set_input_as_handled()
 		elif code >= KEY_1 and code < KEY_1 + PlanetChart.NAMES.size():
 			select_layer(code - KEY_1)
@@ -453,7 +467,7 @@ func _draw_view() -> void:
 		var here := planet.planet_position().normalized()
 		var hour := planet.clock.local_hour(here)
 		_caption.text = ("%.1f° %s  %.1f° %s    altitude %d m    %02d:%02d    %s    "
-				+ "[wheel] zoom  [drag] move  [R] my region  [M] close") % [absf(lat),
+				+ "[wheel, pinch, + -] zoom  [drag] move  [R] my region  [M] close") % [absf(lat),
 				north_south, absf(lon), east_west, roundi(planet.altitude()), int(hour),
 				int((hour - floorf(hour)) * 60.0), planet.season_text() + "  " + planet.weather_text]
 

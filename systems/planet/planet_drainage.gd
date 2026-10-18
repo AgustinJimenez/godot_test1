@@ -18,6 +18,7 @@ var filled := PackedFloat32Array() ## the ground with its hollows filled up to w
 var flow := PackedFloat32Array() ## the water that passes through the cell (rain x area)
 var receiver := PackedInt32Array() ## the main cell it runs on to (-1: the sea)
 var lake := PackedByteArray() ## 1 where the hollow is a lake
+var uplift := PackedFloat32Array() ## 0..1 how far the plates have raised the ground there
 var land_cells := 0
 var _native: Object
 
@@ -32,6 +33,10 @@ func build(noise: PlanetNoise, cells_per_edge: int, exponent := 4.0) -> bool:
 	_native.call(&"setup", cells, noise.settings.radius, noise._cube_faces())
 	dirs = _native.call(&"cell_dirs")
 	heights = noise.native.call(&"macro_heights", dirs)
+	var raised: PackedFloat32Array = noise.native.call(&"tectonic_heights", dirs)
+	uplift.resize(dirs.size())
+	for index in dirs.size():
+		uplift[index] = clampf((raised[index] - noise._sea) / 0.4, 0.0, 1.0)
 	rain.resize(dirs.size())
 	for index in dirs.size():
 		rain[index] = noise.climate.sample(dirs[index]).y
@@ -69,7 +74,8 @@ func river_threshold(share: float) -> float:
 ## the sides the valley allows, so the valleys are lines that follow the flow.
 func network() -> Dictionary:
 	var river := river_threshold(0.06)
-	return _native.call(&"river_network", heights, filled, flow, receiver, river, 0.006, 10, 0.06)
+	return _native.call(&"river_network", heights, filled, flow, receiver, river, 0.006, 10, 0.06,
+			uplift)
 
 
 ## The cell that holds the unit direction `dir`.

@@ -51,7 +51,7 @@ public:
 	// pieces; each piece has its bed height and its flow, and is listed under the cells near it.
 	Dictionary river_network(const PackedFloat32Array &p_heights, const PackedFloat32Array &p_filled,
 			const PackedFloat32Array &p_flow, const PackedInt32Array &p_receiver, double p_river_flow,
-			double p_base_slope, int p_samples, double p_meander) const;
+			double p_base_slope, int p_samples, double p_meander, const PackedFloat32Array &p_uplift) const;
 	Dictionary solve(const PackedFloat32Array &p_heights, const PackedFloat32Array &p_rain,
 			double p_sea_level, double p_exponent, double p_lake_depth, int p_lake_cells) const;
 };

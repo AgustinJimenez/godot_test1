@@ -3,7 +3,7 @@
 # See README.md. Floating point precision follows `precision=single|double`, like the engine's.
 import os
 
-godot_cpp = os.environ.get("GODOT_CPP", "E:/Godot/cpp/godot-cpp")
+godot_cpp = os.environ.get("GODOT_CPP", "E:/Godot/cpp/godot-cpp")  # (set GODOT_CPP elsewhere)
 env = SConscript(godot_cpp + "/SConstruct")
 
 env.Append(CPPPATH=["src/"])

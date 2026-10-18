@@ -369,6 +369,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_look_pitch = 0.0
 			head.rotation.x = 0.0
 			third_person_arm.rotation.x = 0.0
+	elif _debug_cam_active and event is InputEventMagnifyGesture: # a pinch on a trackpad
+		var pinch := event as InputEventMagnifyGesture
+		_set_third_person_zoom(third_person_arm.spring_length
+				- (pinch.factor - 1.0) * 6.0 * THIRD_PERSON_ZOOM_STEP)
+	elif _debug_cam_active and event is InputEventPanGesture: # two fingers moving on a trackpad
+		var pan := event as InputEventPanGesture
+		_set_third_person_zoom(third_person_arm.spring_length + pan.delta.y * THIRD_PERSON_ZOOM_STEP)
 	elif _debug_cam_active and event.is_action_pressed(&"zoom_in"):
 		_set_third_person_zoom(third_person_arm.spring_length - THIRD_PERSON_ZOOM_STEP)
 	elif _debug_cam_active and event.is_action_pressed(&"zoom_out"):

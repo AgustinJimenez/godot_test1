@@ -39,3 +39,15 @@ the 4.7 API dump; master reads it.) The libraries go to `bin/` (not committed).
 - A full-detail tile: 48 ms (GDScript) -> 9.5 ms. The pictures differ by 0.05 of 255 on average.
 - Not covered (GDScript is used): a planet with rivers on (the hydrology cuts the ground in
   GDScript), the sea, the water, the plants.
+
+## macOS (not built or tried yet)
+
+The libraries in `bin/` are Windows ones; on a Mac the game runs on the GDScript (about 5 times
+slower, and without the river valleys) until the library is built there. The `.gdextension` has the
+macOS entries. Build on the Mac with Xcode's command line tools, godot-cpp 4.5 and scons:
+
+```
+git clone --depth 1 --branch godot-4.5-stable https://github.com/godotengine/godot-cpp ~/godot-cpp
+python3 -m venv ~/scons-venv && ~/scons-venv/bin/pip install scons
+GODOT_CPP=~/godot-cpp ~/scons-venv/bin/scons platform=macos arch=universal target=template_debug
+```
