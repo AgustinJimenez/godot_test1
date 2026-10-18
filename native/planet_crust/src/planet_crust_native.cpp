@@ -59,8 +59,8 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("grid_normals", "positions", "cells"), &PlanetCrustNative::grid_normals);
 	ClassDB::bind_method(D_METHOD("ground_colours", "dirs", "heights", "normals", "cells"),
 			&PlanetCrustNative::ground_colours);
-	ClassDB::bind_method(D_METHOD("triangles", "positions", "normals", "colours", "cells"),
-			&PlanetCrustNative::triangles);
+	ClassDB::bind_method(D_METHOD("triangles", "positions", "normals", "colours", "cells", "skirt_drop"),
+			&PlanetCrustNative::triangles, DEFVAL(0.0));
 }
 
 // [seed, frequency, octaves, fractal type (0 none, 1 fbm, 2 ridged)] -> a smooth simplex noise, as
@@ -590,7 +590,7 @@ PackedVector3Array PlanetCrustNative::local_positions(const PackedVector3Array &
 // MeshBuilder.add_tri_smooth): three vertices a triangle with the facet's flat colour (the mean
 // of its corners') and the corners' smooth colours as bytes, plus the collision faces.
 Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
-		const PackedVector3Array &p_normals, const PackedColorArray &p_colours, int p_cells) const {
+		const PackedVector3Array &p_normals, const PackedColorArray &p_colours, int p_cells, double p_skirt_drop) const {
 	const int side = p_cells + 3;
 	const int count = p_cells * p_cells * 2;
 	PackedVector3Array vertices;
@@ -598,10 +598,12 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 	PackedColorArray flats;
 	PackedByteArray custom;
 	PackedVector3Array faces;
-	vertices.resize(count * 3);
-	normals.resize(count * 3);
-	flats.resize(count * 3);
-	custom.resize(count * 3 * 4);
+	// (a skirt: a double sided wall round the tile, hanging `p_skirt_drop` m, that hides the crack to a finer neighbour)
+	const int skirt_count = p_skirt_drop > 0.0 ? p_cells * 16 : 0;
+	vertices.resize((count + skirt_count) * 3);
+	normals.resize((count + skirt_count) * 3);
+	flats.resize((count + skirt_count) * 3);
+	custom.resize((count + skirt_count) * 3 * 4);
 	faces.resize(count * 3);
 	int at = 0;
 	for (int row = 1; row <= p_cells; row++) {
@@ -645,6 +647,39 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 					custom[out * 4 + 3] = 255;
 				}
 				at++;
+			}
+		}
+	}
+	if (skirt_count > 0) {
+		const Vector3 drop(0.0f, (real_t)-p_skirt_drop, 0.0f);
+		int out_at = count * 3;
+		auto put = [&](const Vector3 &p_a, const Vector3 &p_b, const Vector3 &p_c, const Vector3 &p_normal, const Color &p_colour) {
+			const Vector3 points[3] = { p_a, p_c, p_b }; // (the builder's order a, c, b)
+			for (int slot = 0; slot < 3; slot++) {
+				vertices[out_at] = points[slot];
+				normals[out_at] = p_normal;
+				flats[out_at] = p_colour;
+				custom[out_at * 4] = (uint8_t)(int)(p_colour.r * 255.0f);
+				custom[out_at * 4 + 1] = (uint8_t)(int)(p_colour.g * 255.0f);
+				custom[out_at * 4 + 2] = (uint8_t)(int)(p_colour.b * 255.0f);
+				custom[out_at * 4 + 3] = 255;
+				out_at++;
+			}
+		};
+		for (int index = 0; index < p_cells; index++) {
+			const int edges[4][2] = { { side + 1 + index, side + 2 + index },
+					{ (p_cells + 1) * side + 1 + index, (p_cells + 1) * side + 2 + index },
+					{ (1 + index) * side + 1, (2 + index) * side + 1 },
+					{ (1 + index) * side + p_cells + 1, (2 + index) * side + p_cells + 1 } };
+			for (int edge = 0; edge < 4; edge++) {
+				const Vector3 a = p_positions[edges[edge][0]];
+				const Vector3 b = p_positions[edges[edge][1]];
+				const Color colour = p_colours[edges[edge][0]];
+				const Vector3 wall = (b - a).cross(drop).normalized();
+				put(a, b, b + drop, wall, colour);
+				put(a, b + drop, a + drop, wall, colour);
+				put(a, b + drop, b, -wall, colour);
+				put(a, a + drop, b + drop, -wall, colour);
 			}
 		}
 	}

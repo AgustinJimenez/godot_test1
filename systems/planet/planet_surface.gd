@@ -93,7 +93,7 @@ func update(at: Vector3) -> void:
 		_pending.erase(PlanetTile.key_of(job[0], job[1], job[2], job[3]))
 	_jobs.clear()
 	_mutex.unlock()
-	var batch := 600 if burst else 12 # (the player waits: every tile that is missing, nearest first)
+	var batch := 600 if burst else 48 # (the player waits: every tile that is missing, nearest first)
 	if threaded and _thread != null:
 		for entry: Array in missing.slice(0, batch):
 			_pending[PlanetTile.key_of(entry[0], entry[1], entry[2], entry[3])] = true

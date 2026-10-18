@@ -126,7 +126,7 @@ public:
 	PackedColorArray ground_colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedVector3Array &p_normals, int p_cells) const;
 	Dictionary triangles(const PackedVector3Array &p_positions, const PackedVector3Array &p_normals,
-			const PackedColorArray &p_colours, int p_cells) const;
+			const PackedColorArray &p_colours, int p_cells, double p_skirt_drop = 0.0) const;
 };
 
 } // namespace godot

@@ -122,7 +122,12 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 			for column in side:
 				var s := lerpf(s0, s1, float(column - 1) / float(cells))
 				packed_dirs[row * side + column] = direction(f, s, t)
-	dirs.assign(packed_dirs)
+	# the script arrays are only needed by what the native path does not do itself: the plants'
+	# grid, the sea and the rivers, and the whole script path
+	var scripted := not fast or level >= _settings.max_level() - 4
+	scripted = scripted or _settings.sea_on or _settings.hydrology_on
+	if scripted:
+		dirs.assign(packed_dirs)
 	heights = noise.heights_of(packed_dirs) # (the crust is asked for the whole grid at once)
 	var packed_positions := PackedVector3Array()
 	if fast:
@@ -133,7 +138,8 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 		packed_positions.resize(side * side)
 		for index in side * side:
 			packed_positions[index] = _to_local(dirs[index], radius + heights[index])
-	positions.assign(packed_positions)
+	if scripted:
+		positions.assign(packed_positions)
 	min_height = INF
 	for row in range(1, cells + 2):
 		for column in range(1, cells + 2):
@@ -171,14 +177,16 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 				packed_colours[row * side + column] = inner_colours[at]
 				at += 1
 	var normals: Array[Vector3] = []
-	normals.assign(packed_normals)
 	var colors: Array[Color] = []
-	colors.assign(packed_colours)
+	if scripted:
+		normals.assign(packed_normals)
+		colors.assign(packed_colours)
 	var builder := MeshBuilder.new()
 	var faces := PackedVector3Array()
 	if fast:
 		var made: Dictionary = noise.native.call(&"triangles", packed_positions, packed_normals,
-				packed_colours, cells)
+				packed_colours, cells,
+				0.0 if collide else _skirt_drop())
 		builder.append_smooth(made["vertices"], made["normals"], made["colours"], made["custom"])
 		faces = made["faces"]
 	else:
@@ -190,7 +198,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 				var i11 := i01 + 1
 				_triangle(builder, faces, [i00, i01, i10], positions, normals, colors)
 				_triangle(builder, faces, [i10, i01, i11], positions, normals, colors)
-	if not collide:
+	if not collide and not fast:
 		_skirt(builder, positions, colors, cells)
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.mesh = builder.commit()
@@ -261,13 +269,20 @@ func _triangle(builder: MeshBuilder, faces: PackedVector3Array, ids: Array,
 
 
 ## Walls hanging under the four edges, hiding the cracks to a neighbour of another size.
+## How far the skirt round a tile hangs: deep enough to hide the crack between this tile and a finer
+## neighbour (the ground between this tile's samples can be lower than its edge by about the hills),
+## no deeper: a skirt that stands taller than that shows as a wall.
+func _skirt_drop() -> float:
+	return clampf(size * 0.03, 2.0, _noise.relief * 0.15 + 4.0)
+
+
 func _skirt(builder: MeshBuilder, positions: Array[Vector3], colors: Array[Color],
 		cells: int) -> void:
 	var side := cells + 3
 	# deep enough to hide the crack between this tile and a finer neighbour (the ground between this
 	# tile's samples can be lower than its edge by about the hills), no deeper: a skirt that
 	# stands taller than that shows as a wall
-	var drop := Vector3(0.0, -clampf(size * 0.03, 2.0, _noise.relief * 0.15 + 4.0), 0.0)
+	var drop := Vector3(0.0, -_skirt_drop(), 0.0)
 	var edges: Array[Vector2i] = []
 	for index in cells:
 		edges.append(Vector2i(side + 1 + index, side + 2 + index)) # first row
