@@ -418,3 +418,28 @@ wavelength, of the massifs' length), `EROSION_OCTAVES`; the massifs are halved a
 - Land below the sea inland is bent into a shallow bowl (8 m, falling off smoothly) instead of puddles.
 - The open list of what is still unrealistic: `AGENT_TASKS/069_realism_gaps.md`.
 
+## What a planet gets from its seed (2026-10-18)
+
+No two random planets share one climate or one coast. From the seed (`PlanetSettings.vary()` for the lab's random Earth,
+`PlanetClimate._draw_circulation`, `PlanetWeather._init`, `PlanetNoise._hotspots`):
+
+- **Settings**: the water amount (x0.3..2.8, land 22..67 % over ten seeds), the axial tilt (8..38 deg), the greenhouse (0.85..1.25,
+  scales the light the energy balance sees; the star's light is `insolation`).
+- **Circulation** (`PlanetClimate.circulation`): the latitude/width/strength of the wet belt, the storm belt, the dry belt, the wind
+  profile `-cos(k lat)` (k 2.6..5.2, shared by the weather, the rain edges and the heat carry). The cloud belts, their strength and
+  how much longitude breaks them, are drawn too.
+- **Hot spots**: 9 fixed points; a plate drifting round its spin axis leaves a chain of seamounts and islands (native).
+
+Native-only shapes (the script crust has none; `PLANET_NO_EROSION=1` turns them off, and `planet_check.sh` compares the two crusts
+with them off): the eroded ridges (`erosion_noise.h`), dunes, the seamount chains. Both crusts: soil, wetland, scree and glacier-ice
+colours, U-shaped glacial valleys and fjords, the inland bowl floor (no puddles), canyons (steep valley walls in dry raised ground),
+deltas (flat low plain where a big river meets the sea).
+
+The haze follows the local climate (`PlanetAtmosphere.haze_wanted`/`dust_wanted`, set by `PlanetWorld._pick_the_weather`).
+
+## The map's close views (2026-10-18)
+
+Zoom goes to 1500 (about 15 m a pixel) and the map opens at it. The Terrain layer draws the smooth ground above 30 m a pixel (an
+illustrated look: green, tan, grey rock, snow, ice, sea ice) and the real ground below; close in (under 400 m a pixel) it paints the
+rivers' water. `--dir=x,y,z` starts the lab anywhere to look at a place (see `AGENT_TASKS/069_realism_gaps.md` for how to find one).
+
