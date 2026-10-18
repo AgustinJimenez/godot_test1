@@ -38,6 +38,7 @@ var _pixel_metres := 0.0 ## metres a pixel spans
 var _threads: Array[Thread] = []
 var _bands: Array[PackedByteArray] = []
 var _blend := PackedFloat32Array() # the seasons' grid at this chart's moment (Temperature)
+var _ground_bands: Array[PackedFloat32Array] = [] # each worker's heights (the map's cache)
 var _land_bands: Array[PackedByteArray] = [] # 1 where the pixel is land (for the coast lines)
 var _rows_done := 0
 var _mutex := Mutex.new()
@@ -93,6 +94,7 @@ func start(noise: PlanetNoise) -> void:
 	_noise = noise
 	_bands.resize(workers)
 	_land_bands.resize(workers)
+	_ground_bands.resize(workers)
 	if layer == Layer.TEMPERATURE and clock != null:
 		_blend = noise.climate.seasons.blended(clock.year_share())
 	for worker in workers:
@@ -126,6 +128,13 @@ func texture() -> ImageTexture:
 	var tidy := layer != Layer.PLATES and layer != Layer.CLOUD_MASK
 	if tidy and _noise.native != null and _noise.native.has_method(&"despeckle"):
 		all = _noise.native.call(&"despeckle", all, size.x, size.y) # (lone dots are grain)
+	var full_map := rect == Rect2(0.0, 0.0, 1.0, 1.0) and _pixel_metres > SMOOTH_PIXEL
+	if not _cancelled and full_map and not _noise.map_heights.has(size):
+		var heights := PackedFloat32Array()
+		for band in _ground_bands:
+			heights.append_array(band)
+		if heights.size() == size.x * size.y:
+			_noise.map_heights[size] = heights
 	var far := _pixel_metres > CALM_PIXEL * 50.0 # (kilometres a pixel: Elevation is grain too)
 	if _noise.native != null and (layer in SMOOTHED or (layer == Layer.ELEVATION and far)):
 		# (a data layer is a smooth gradient: the grain of the small pixels is averaged away, and a thin
@@ -179,6 +188,13 @@ func _chart(worker: int) -> void:
 	var calm := clampf(sqrt(CALM_PIXEL / (step_lon * _noise.settings.radius)), 0.5, 1.0)
 	_pixel_metres = step_lon * _noise.settings.radius
 	var above := PackedFloat32Array() # the heights of the row before (the point a pixel north)
+	# the whole planet's pictures share their heights: a layer drawn after another reads them
+	var whole := rect == Rect2(0.0, 0.0, 1.0, 1.0) and smooth_ground
+	var cached := PackedFloat32Array()
+	if whole:
+		cached = _noise.map_heights.get(size, PackedFloat32Array())
+	var use_cache := cached.size() == size.x * size.y
+	var recorded := PackedFloat32Array()
 	for row in range(from_row, to_row):
 		if _cancelled:
 			land.resize(land.size() + size.x)
@@ -201,10 +217,18 @@ func _chart(worker: int) -> void:
 		for column in size.x:
 			var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
 			dirs[column] = _direction(lat, u * TAU - PI)
-		var grounds := _ground_of(dirs, smooth_ground)
+		var grounds := PackedFloat32Array()
+		if use_cache:
+			grounds = cached.slice(row * size.x, (row + 1) * size.x)
+		else:
+			grounds = _ground_of(dirs, smooth_ground)
 		var east_grounds := grounds
 		var north_grounds := grounds
-		if needs_slope:
+		if use_cache:
+			east_grounds = grounds.slice(1)
+			east_grounds.append(grounds[0]) # (the map wraps east-west)
+			north_grounds = cached.slice(maxi(row - 1, 0) * size.x, maxi(row - 1, 0) * size.x + size.x)
+		elif needs_slope:
 			# the point a pixel east is the next pixel of the row, the one a pixel north is the same
 			# pixel of the row before (kept from the last turn): only the row's last pixel and the
 			# first row of a thread need points of their own
@@ -221,7 +245,11 @@ func _chart(worker: int) -> void:
 			north_grounds = above
 			above = grounds
 		var macros := grounds
-		if layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.CLOUDS, Layer.SATELLITE,
+		if whole and not use_cache:
+			recorded.append_array(grounds)
+		if smooth_ground:
+			pass # (the broad ground of a far view is the ground itself)
+		elif layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.CLOUDS, Layer.SATELLITE,
 				Layer.CLOUD_MASK]:
 			macros = _ground_of(dirs, true)
 		for column in size.x:
@@ -257,6 +285,7 @@ func _chart(worker: int) -> void:
 		_mutex.unlock()
 	_bands[worker] = bytes
 	_land_bands[worker] = land
+	_ground_bands[worker] = recorded
 
 
 ## What the native row needs besides the heights (the seasons' grid now, the sun's longitude, and

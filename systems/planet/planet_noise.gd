@@ -20,6 +20,9 @@ var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep of
 var rock: PlanetRock ## the colour of the crust
 var native: Object ## the native crust (PlanetCrustNative), or null: this file is the reference
 var drainage: PlanetDrainage ## where the water runs (coarse), when the planet has it
+## The heights of the whole planet's map passes, by the picture's size (the map's layers all read the
+## same ones, so only the first of them pays for the heights)
+var map_heights := {}
 var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
 
 var _rolling := FastNoiseLite.new()
