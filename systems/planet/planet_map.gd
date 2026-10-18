@@ -24,6 +24,7 @@ const MIDDLE_DETAIL := 1280 ## the picture between the quick one and the sharp o
 const MAX_ZOOM := 1500.0 ## a pixel of the sharpest chart is then about 15 m on an Earth
 const START_ZOOM := MAX_ZOOM # the map opens as close as it goes, on the player
 const MARGIN := 14.0
+const TILE_ZOOM := 2.0 ## from this zoom on the flat map is drawn from tiles
 const FIRST_BIG_PASS := 3 ## the whole passes before this are short: they finish first
 
 var planet: PlanetWorld
@@ -58,6 +59,7 @@ var _globe_button: Button
 var _globe_mode := false
 var _caption: Label
 var _labels: PlanetMapLabels # the names of the seas and lands (built on the first look)
+var _tiles: PlanetMapTiles # the close views as tiles (from TILE_ZOOM on, on the flat map)
 var warm_up := false ## the world sets it: the map is all charted (black meanwhile) before it shows
 var _warming := false
 var _warm_queue: Array[int] = [] # the layers still to get a first picture
@@ -410,6 +412,7 @@ func begin() -> void:
 	if _started or planet == null or DisplayServer.get_name() == "headless":
 		return
 	_started = true
+	_tiles = PlanetMapTiles.new(planet.noise)
 	if warm_up:
 		_warming = true
 		for layer in PlanetChart.NAMES.size():
@@ -443,6 +446,8 @@ func _start_chart(pass_index: int) -> void:
 
 
 func _exit_tree() -> void:
+	if _tiles != null:
+		_tiles.stop()
 	if _chart != null:
 		_chart.cancel()
 		_chart.stop()
@@ -459,6 +464,7 @@ func _process(delta: float) -> void:
 	if visible:
 		_drop_a_stale_chart()
 		_log_the_view()
+		_serve_the_tiles()
 		if not _warming:
 			_update_reveal(delta)
 		_view.queue_redraw()
@@ -488,12 +494,75 @@ func _process(delta: float) -> void:
 	if _warming:
 		_drive_the_warm_up()
 	var whole_is_drawing := _chart != null and not _chart_is_detail
-	if visible and not _warming and _whole_pass >= 0 and (_chart == null or whole_is_drawing):
+	var by_tiles := _tile_mode()
+	if visible and not _warming and not by_tiles and _whole_pass >= 0 \
+			and (_chart == null or whole_is_drawing):
 		_maybe_chart_the_view(delta)
 
 
 ## The temperature and cloud layers show a moment: when time has moved on, they are charted again
 ## (the coarse chart only, a second or so), so they follow the seasons, the day and the winds.
+## True when the flat map is drawn from tiles (close enough, and not the globe).
+func _tile_mode() -> bool:
+	return _tiles != null and _zoom >= TILE_ZOOM and not _globe_mode
+
+
+func _tile_level() -> int:
+	return PlanetMapTiles.level_for(_pixels_per_map() * _zoom)
+
+
+## The part of the map the tiles are asked for: the view and a margin to pan in.
+func _tile_view() -> Rect2:
+	var size := _visible_size()
+	if _warming: # (the start: just what is seen)
+		return Rect2(_centre - size * 0.5, size)
+	return Rect2(_centre - size * 0.6, size * 1.2)
+
+
+## Asks for the tiles of the view and lets the chart in hand go on (a step of the tile cache).
+func _serve_the_tiles() -> void:
+	if _tiles == null:
+		return
+	if not _tile_mode():
+		_tiles.ask(Rect2(), 0) # nothing wanted (the chart in hand is given up)
+		return
+	if _warming and _whole_pass < _last_pass():
+		return # (the whole planet's passes come first: nothing else uses the CPU)
+	_tiles.layer = _layer
+	_tiles.clock = planet.clock
+	_tiles.ask(_tile_view(), _tile_level())
+	_tiles.step()
+
+
+## The whole planet's picture under the view (the map wraps east-west).
+func _draw_whole(view: Rect2, size: Vector2) -> void:
+	var first_u := fposmod(view.position.x, 1.0)
+	var first_width := minf(size.x, 1.0 - first_u)
+	_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(first_u, view.position.y, first_width, size.y))
+	if first_width < size.x:
+		_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(0.0, view.position.y,
+				size.x - first_width, size.y), first_width)
+
+
+## The tiles over it: each from its own picture, or its finest charted ancestor.
+func _draw_tiles(view: Rect2, size: Vector2) -> void:
+	var level := _tile_level()
+	for tile in PlanetMapTiles.tiles_of(view, level):
+		var found := _tiles.piece(level, tile.x, tile.y)
+		if found.is_empty():
+			continue
+		var rect := PlanetMapTiles.rect_of(level, tile.x, tile.y)
+		var dx := fposmod(rect.position.x - view.position.x + rect.size.x, 1.0) - rect.size.x
+		var at := Vector2(dx / size.x * _view.size.x, (rect.position.y - view.position.y) / size.y
+				* _view.size.y)
+		var extent := Vector2(rect.size.x / size.x * _view.size.x, rect.size.y / size.y * _view.size.y)
+		var texture: ImageTexture = found["texture"]
+		var part: Rect2 = found["part"]
+		var pixels := Vector2(texture.get_size())
+		_view.draw_texture_rect_region(texture, Rect2(at, extent + Vector2.ONE * 0.5),
+				Rect2(part.position * pixels, part.size * pixels))
+
+
 ## The warm-up: the whole planet's passes, then the sharp close view where the player stands, then a
 ## first picture of every other layer, one after the other; then the map is shown.
 func _drive_the_warm_up() -> void:
@@ -503,7 +572,10 @@ func _drive_the_warm_up() -> void:
 	var view := Rect2(_centre - size * 0.5, size)
 	if _whole_pass < _last_pass():
 		_start_chart(_whole_pass + 1)
-	elif _warm_close == 0 and not _sharply_covered(view):
+	elif _tile_mode() and not _tiles.covers(view, _tile_level()):
+		_warm_close = 1 # (the tiles of the start view are being charted)
+		return
+	elif not _tile_mode() and _warm_close == 0 and not _sharply_covered(view):
 		_warm_close = 1
 		_chart_close_view(view, size)
 	elif not _warm_queue.is_empty():
@@ -531,7 +603,10 @@ func _start_warm_layer(layer: int) -> void:
 func _warm_progress() -> float:
 	var whole := clampf(float(_whole_pass + 1) / float(_last_pass() + 1), 0.0, 1.0) * 0.4
 	var close := 0.0
-	if _warm_close > 0:
+	if _tile_mode():
+		var have := _tiles.share(_tile_view(), _tile_level())
+		close = 0.3 * float(have.x) / float(maxi(have.y, 1))
+	elif _warm_close > 0:
 		close = 0.1
 		if _detail != null:
 			close = 0.2 if _detail_preview else 0.3
@@ -555,6 +630,8 @@ func _refresh_temperature(delta: float) -> void:
 	if _refresh_wait > 0.0 or moved < planet.clock.day_seconds * 0.04:
 		return
 	_refresh_wait = 0.4
+	if _tiles != null:
+		_tiles.forget(int(_layer))
 	PlanetMapLog.line("time moved: charting the %s layer again" % PlanetChart.NAMES[_layer])
 	_whole_pass = -1
 	_detail = null
@@ -750,6 +827,8 @@ func _on_screen(uv: Vector2) -> Vector2:
 ## True when the picture is as sharp as it will get for this view: the close chart (not its quick
 ## preview) covers the view, or every pass of the whole planet is done.
 func _sharp_enough(view: Rect2) -> bool:
+	if _tile_mode():
+		return _tiles.covers(view, _tile_level())
 	if _sharply_covered(view) and not _detail_preview:
 		return true
 	if _whole == null or _zoom >= 2.5:
@@ -808,7 +887,10 @@ func _draw_view() -> void:
 	var size := _visible_size()
 	var view := Rect2(_centre - size * 0.5, size)
 	_view.draw_rect(Rect2(Vector2.ZERO, _view.size), Color(0.02, 0.05, 0.12))
-	if _covered_by_detail(view):
+	if _tile_mode() and _whole != null:
+		_draw_whole(view, size)
+		_draw_tiles(view, size)
+	elif _covered_by_detail(view):
 		_draw_part(_detail, _detail_rect, view)
 	elif _whole != null:
 		# the map wraps east-west: the view may need the end of the picture and then its start

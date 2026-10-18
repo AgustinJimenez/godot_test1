@@ -1,9 +1,9 @@
 class_name PlanetMapOverlay
 extends RefCounted
-## What the map draws over its picture: the legend of the layer's colours, the names of the seas and
-## lands, the grid of latitude and longitude, and the arrow where the player stands. All of them draw
-## on the map's `view` control; `on_screen` turns a map point (fractions) into a point of the view
-## (off the view when it is out of it).
+## What the map draws over its picture: the legend of the layer's colours, the names of the seas
+## and lands, the grid of latitude and longitude, and the arrow where the player stands. All of
+## them draw on the map's `view` control; `on_screen` turns a map point (fractions) into a point
+## of the view (off the view when it is out of it).
 
 
 ## The scale of the layer (a bar, its two ends and, for the temperature, ticks) in the corner.
