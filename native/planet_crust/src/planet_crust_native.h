@@ -102,6 +102,8 @@ private:
 	double shore_curve(double p_units) const;
 	double valley_cut(const Vector3 &p_point, double p_units) const;
 	// `p_pixel` > 0: the ground a pixel of that many metres can show (finer detail left out)
+	// the slope (height per metre, a vector in space) of the broad ground: massifs, chains and ranges
+	Vector3 coarse_slope(const Vector3 &p_point, double p_rugged, double p_pixel) const;
 	double macro_ground(double p_units, const Vector3 &p_point, double p_pixel = 0.0) const;
 	double ground_height(const Vector3 &p_dir) const;
 	Color rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle, bool p_strata = true) const;

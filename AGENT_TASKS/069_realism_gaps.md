@@ -13,8 +13,9 @@ the slope of the coarser ones, so valleys branch). Inland basins below the sea a
 
 ## Land shape (the biggest gap)
 
-1. **Erosion is a texture, not a process.** The eroded ridges look like drainage but do not flow *to* the
-   rivers: tributaries do not join the drainage network and valleys do not deepen toward the sea. Idea: run the
+1. **Erosion is a texture, not a process.** (2026-10-18: the gullies now stand on the broad slope of the
+   massifs and chains, so they run downhill toward the rivers; still not joined to the drainage network.)
+   Tributaries do not join the network and valleys do not deepen toward the sea. Idea: run the
    drainage solve on a finer grid near the player and carve its tributaries as the finer valley levels.
 2. **Terrain exists only as noise at metre scale.** No talus slopes, no cliffs where hard rock outcrops, no
    scree. Idea: a thermal-erosion pass on the tile (steep slopes relax to the angle of repose).

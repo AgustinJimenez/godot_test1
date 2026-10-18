@@ -287,6 +287,24 @@ double PlanetCrustNative::valley_cut(const Vector3 &p_point, double p_units) con
 	return cut * upland;
 }
 
+Vector3 PlanetCrustNative::coarse_slope(const Vector3 &p_point, double p_rugged, double p_pixel) const {
+	const double step = std::max(erosion_wavelength * 0.08, std::max(p_pixel * 1.5, 150.0));
+	const double lod = std::max(p_pixel, step * 2.0); // (a few octaves are enough for a slope over `step`)
+	const Vector3 up = p_point.normalized();
+	const Vector3 axis = std::abs((double)up.y) < 0.9 ? Vector3(0, 1, 0) : Vector3(1, 0, 0);
+	const Vector3 east = up.cross(axis).normalized();
+	const Vector3 north = up.cross(east);
+	auto broad = [&](const Vector3 &q) {
+		return ((double)massif.at_lod(q, lod) * 0.5 * massif_scale + (double)chain.at_lod(q, lod) * 0.5 * chain_scale +
+					   ((double)ranges.at_lod(q, lod) * 0.5 + 0.5) * 0.22) *
+				relief * p_rugged;
+	};
+	const double h = step;
+	const double dx = (broad(p_point + east * (real_t)h) - broad(p_point - east * (real_t)h)) / (2.0 * h);
+	const double dy = (broad(p_point + north * (real_t)h) - broad(p_point - north * (real_t)h)) / (2.0 * h);
+	return east * (real_t)dx + north * (real_t)dy;
+}
+
 double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, double p_pixel) const {
 	const bool p_broad = p_pixel > 2000.0; // (huge pixels: not even the small hills' first octave)
 	// every layer below is multiplied by a weight that is exactly 0 over the sea (and a little
@@ -315,8 +333,10 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 	// the eroded ridges and gullies: rugged ground only, softened in a river's valley floor
 	double eroded = 0.0;
 	if (erosion_scale > 0.0 && rugged > 0.0) {
+		const Vector3 slope = coarse_slope(p_point, rugged, p_pixel);
+		const double to_lattice = erosion_wavelength / (relief * erosion_scale * 2.0);
 		eroded = erosion_noise::fbm({ (double)p_point.x, (double)p_point.y, (double)p_point.z }, erosion_wavelength, erosion_octaves, p_pixel,
-						 erosion_seed) *
+						 erosion_seed, { (double)slope.x * to_lattice, (double)slope.y * to_lattice, (double)slope.z * to_lattice }) *
 				relief * erosion_scale * rugged * floor_factor;
 	}
 	double shore_height = shore_curve(p_units) * relief;

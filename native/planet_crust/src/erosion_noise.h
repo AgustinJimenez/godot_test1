@@ -76,11 +76,13 @@ inline Sample noise(double x, double y, double z, uint32_t seed) {
 
 // The eroded noise at `p` (metres): about -0.5..0.5, the first octave `wavelength` metres across. Octaves
 // finer than three pixels (`pixel` > 0) are left out.
-inline double fbm(const Vec &p, double wavelength, int octaves, double pixel, uint32_t seed) {
+inline double fbm(const Vec &p, double wavelength, int octaves, double pixel, uint32_t seed, const Vec &slope = { 0, 0, 0 }) {
 	const double warp0 = 0.4, warp = 0.3, damp0 = 1.0, damp = 0.8, damp_scale = 0.9, gain = 0.5;
 	double frequency = 1.0 / wavelength;
 	double amp = 1.0, total_amp = 0.0, sum = 0.0;
-	Vec warp_sum = { 0, 0, 0 }, damp_sum = { 0, 0, 0 };
+	// the ground's own slope (in the first octave's lattice units) is what the first octave's ridges stand on:
+	// the gullies are strongest where it is steep and follow its direction
+	Vec warp_sum = slope * 0.5, damp_sum = slope;
 	double damped = 1.0;
 	for (int octave = 0; octave < octaves; octave++) {
 		if (octave > 0 && pixel > 0.0 && wavelength / (double)(1 << octave) < pixel * 3.0) {
