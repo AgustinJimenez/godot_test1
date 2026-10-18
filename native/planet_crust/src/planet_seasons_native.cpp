@@ -27,14 +27,14 @@ struct Grid {
 };
 
 // The heat the zonal wind carries (see PlanetSeasons._carry).
-void carry(std::vector<float> &r_heat, const Grid &p_grid, double p_wind) {
+void carry(std::vector<float> &r_heat, const Grid &p_grid, double p_wind, double p_wind_k) {
 	if (p_wind <= 0.0) {
 		return;
 	}
 	std::vector<float> moved = r_heat;
 	for (int row = 0; row < p_grid.height; row++) {
 		const double lat = (0.5 - ((double)row + 0.5) / (double)p_grid.height) * PI;
-		const double push = -std::cos(3.0 * lat) * p_wind;
+		const double push = -std::cos(p_wind_k * lat) * p_wind;
 		for (int column = 0; column < p_grid.width; column++) {
 			const int index = row * p_grid.width + column;
 			const int side = push > 0.0 ? (column + p_grid.width - 1) % p_grid.width : (column + 1) % p_grid.width;
@@ -63,7 +63,8 @@ void mix(std::vector<float> &r_heat, const Grid &p_grid) {
 }
 
 // One step of `dt` years (PlanetSeasons._step), the rows' sunlight being `p_light`.
-void step(std::vector<float> &r_heat, const float *p_light, const Grid &p_grid, double p_dt, double p_wind) {
+void step(std::vector<float> &r_heat, const float *p_light, const Grid &p_grid, double p_dt, double p_wind,
+		double p_wind_k) {
 	const double sea_pull = 1.0 - std::exp(-p_dt / SEA_TAU);
 	const double land_pull = 1.0 - std::exp(-p_dt / LAND_TAU);
 	for (int row = 0; row < p_grid.height; row++) {
@@ -88,7 +89,7 @@ void step(std::vector<float> &r_heat, const float *p_light, const Grid &p_grid, 
 		}
 	}
 	for (int pass = 0; pass < PASSES; pass++) {
-		carry(r_heat, p_grid, p_wind);
+		carry(r_heat, p_grid, p_wind, p_wind_k);
 		mix(r_heat, p_grid);
 	}
 }
@@ -98,12 +99,12 @@ void step(std::vector<float> &r_heat, const float *p_light, const Grid &p_grid, 
 void PlanetSeasonsNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("rain", "elevation", "ocean", "temperature", "width", "height", "rain_base",
 			"rain_scale", "belts"), &PlanetSeasonsNative::rain);
-	ClassDB::bind_method(D_METHOD("run", "sea", "lights", "width", "height", "snapshots", "wind", "max_years"),
+	ClassDB::bind_method(D_METHOD("run", "sea", "lights", "width", "height", "snapshots", "wind", "max_years", "wind_k"),
 			&PlanetSeasonsNative::run);
 }
 
 Dictionary PlanetSeasonsNative::run(const PackedByteArray &p_sea, const PackedFloat32Array &p_lights, int p_width,
-		int p_height, int p_snapshots, double p_wind, int p_max_years) const {
+		int p_height, int p_snapshots, double p_wind, int p_max_years, double p_wind_k) const {
 	Dictionary result;
 	const int size = p_width * p_height;
 	if (p_width <= 0 || p_height <= 0 || p_snapshots <= 0 || p_sea.size() < size ||
@@ -117,7 +118,7 @@ Dictionary PlanetSeasonsNative::run(const PackedByteArray &p_sea, const PackedFl
 	std::vector<float> previous = heat;
 	for (int year = 0; year < p_max_years; year++) {
 		for (int at = 0; at < p_snapshots; at++) {
-			step(heat, lights + at * p_height, grid, dt, p_wind);
+			step(heat, lights + at * p_height, grid, dt, p_wind, p_wind_k);
 		}
 		double total = 0.0;
 		for (int index = 0; index < size; index++) {
@@ -135,7 +136,7 @@ Dictionary PlanetSeasonsNative::run(const PackedByteArray &p_sea, const PackedFl
 	mean.resize(size);
 	mean.fill(0.0f);
 	for (int at = 0; at < p_snapshots; at++) {
-		step(heat, lights + at * p_height, grid, dt, p_wind);
+		step(heat, lights + at * p_height, grid, dt, p_wind, p_wind_k);
 		PackedFloat32Array picture;
 		picture.resize(size);
 		for (int index = 0; index < size; index++) {

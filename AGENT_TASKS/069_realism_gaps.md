@@ -56,7 +56,7 @@ Done: the rain belts and wind edges (`PlanetClock`-free: `PlanetClimate.circulat
 by the native and script rain and by the weather); the cloud belts, their strength and breaking.
 
 Still fixed, in order of how much they show:
-- **Zonal wind profile**: `-cos(4 lat)` in `PlanetWeather.zonal_wind` and `-cos(3 lat)` in the seasons' heat carry
+- **Zonal wind profile** (done 2026-10-18: `circulation.wind_k`, -cos(k lat), drawn from the seed and shared by the weather, the rain edges and the heat carry; a real spin-rate link is still open).
   (native too). Real planets have 1 to 4 cells per hemisphere by how fast they spin. Idea: a `cells` number from
   the day length and use it in both.
 - **Heat model**: EMIT, FLOOR, SEA_TAU, LAND_TAU, MIX, the HOT cap: one planet's physics. Should follow the

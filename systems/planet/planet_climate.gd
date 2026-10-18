@@ -18,7 +18,8 @@ var seasons := PlanetSeasons.new() ## the temperature through the year (the mean
 ## This planet's circulation, drawn from its seed: the latitude and strength of the wet belt of the
 ## tropics, the storm belt and the dry belt, and where the westerlies begin and end (degrees).
 var circulation := {"itcz_lat": 0.0, "itcz_width": 9.0, "itcz_power": 0.8, "storm_lat": 48.0,
-		"storm_power": 0.3, "dry_lat": 27.0, "dry_power": 0.55, "wind_low": 30.0, "wind_high": 60.0}
+		"storm_power": 0.3, "dry_lat": 27.0, "dry_power": 0.55, "wind_low": 30.0, "wind_high": 60.0,
+		"wind_k": 3.0}
 var native_rain := true ## false: the rain is made by the script below (to compare)
 
 
@@ -49,6 +50,7 @@ func build(noise: PlanetNoise) -> void:
 	clock.insolation = noise.settings.insolation
 	clock.eccentricity = noise.settings.eccentricity
 	clock.perihelion_share = noise.settings.perihelion_share
+	seasons.wind_k = circulation["wind_k"]
 	seasons.build(noise, clock)
 	var native_ready := native_rain and ClassDB.class_exists(&"PlanetSeasonsNative")
 	native_ready = native_ready and ClassDB.class_exists(&"PlanetDrainageNative")
@@ -115,8 +117,12 @@ func _draw_circulation(world_seed: int) -> void:
 		"itcz_lat": rng.randf_range(-6.0, 6.0), "itcz_width": rng.randf_range(6.0, 13.0),
 		"itcz_power": rng.randf_range(0.35, 1.0), "storm_lat": rng.randf_range(40.0, 56.0),
 		"storm_power": rng.randf_range(0.15, 0.45), "dry_lat": rng.randf_range(20.0, 33.0),
-		"dry_power": rng.randf_range(0.3, 0.7), "wind_low": rng.randf_range(24.0, 36.0),
-		"wind_high": rng.randf_range(54.0, 68.0)}
+		"dry_power": rng.randf_range(0.3, 0.7)}
+	# the winds: -cos(k * latitude), k = how many belts of wind (a faster spinning planet has more)
+	var k := rng.randf_range(2.6, 5.2)
+	circulation["wind_k"] = k
+	circulation["wind_low"] = rad_to_deg(PI * 0.5 / k)
+	circulation["wind_high"] = minf(rad_to_deg(PI * 1.5 / k), 90.0)
 
 
 func _smooth() -> void:

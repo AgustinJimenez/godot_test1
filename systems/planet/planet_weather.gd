@@ -31,6 +31,7 @@ var _belt_shift := 0.0 ## radians the equatorial belt sits off the equator
 var _belt_power := 1.0
 var _storm_shift := 0.0 ## radians the storm tracks sit from their usual latitude
 var _storm_power := 1.0
+var _wind_k := 4.0 ## this planet's wind profile (PlanetClimate.circulation)
 var _sink_shift := 0.0 ## radians the dry highs sit from their usual latitude
 var _sink_power := 1.0 ## the dry subtropical highs
 var _pool_break := 1.0 ## 0 the belt is even, 1 strongly broken by the pools
@@ -53,6 +54,7 @@ func _init(noise: PlanetNoise) -> void:
 	_storm_shift = deg_to_rad(float(circulation["storm_lat"]) - 48.0)
 	_storm_power = rng.randf_range(0.5, 1.3)
 	_sink_power = rng.randf_range(0.7, 1.2)
+	_wind_k = circulation["wind_k"]
 	_sink_shift = deg_to_rad(float(circulation["dry_lat"]) - 27.5)
 	_pool_break = rng.randf_range(0.5, 1.4)
 	_setup(_pool, seed_value + 35, rng.randf_range(0.8, 1.9), 2)
@@ -69,8 +71,13 @@ func _setup(source: FastNoiseLite, noise_seed: int, frequency: float, octaves: i
 ## The east-west wind at latitude `lat` (radians) as a share of the strongest: negative blows
 ## toward the west (the trade winds and the polar easterlies), positive toward the east (the
 ## westerlies of the middle latitudes).
-static func zonal_wind(lat: float) -> float:
-	return -cos(lat * 4.0)
+static func zonal_wind(lat: float, wind_k := 4.0) -> float:
+	return -cos(lat * wind_k)
+
+
+## The planet's wind profile number (its zonal wind is `-cos(k * latitude)`).
+func wind_k() -> float:
+	return _wind_k
 
 
 ## How much cloud the air at `dir` is ready to make (0..1): moisture times lift, held down under the
@@ -163,7 +170,7 @@ func cloud_cells(dir: Vector3, clock: PlanetClock, macro := NAN) -> Vector2:
 	var cells := 0.0
 	for turn in 2:
 		var drift := first if turn == 0 else second
-		var shift := zonal_wind(lat) * WIND_TURN * TAU * drift
+		var shift := zonal_wind(lat, _wind_k) * WIND_TURN * TAU * drift
 		var lon := atan2(dir.z, dir.x) - shift
 		var carried := Vector3(cos(lat) * cos(lon), dir.y, cos(lat) * sin(lon))
 		# the air swirls: the place the pattern is read from is pushed round by a slow noise

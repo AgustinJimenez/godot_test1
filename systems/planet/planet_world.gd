@@ -226,7 +226,7 @@ func _pick_the_weather() -> void:
 	# the wind blows along the parallel: east or west by the latitude, as the clouds are carried
 	var lat := asin(clampf(here.y, -1.0, 1.0))
 	var east := Vector3(-here.z, 0.0, here.x).normalized()
-	var wind := frame.rot * (east * -PlanetWeather.zonal_wind(lat)) # toward where it blows from
+	var wind := frame.rot * (east * -PlanetWeather.zonal_wind(lat, noise.weather.wind_k())) # toward where it blows from
 	weather.forced_wind = Vector2(-wind.x, -wind.z) if wind.length() > 0.01 else Vector2.ZERO
 
 
@@ -253,7 +253,7 @@ func _drift_the_clouds(clock_seconds: float) -> void:
 	var here := planet_position().normalized()
 	var lat := asin(clampf(here.y, -1.0, 1.0))
 	var east := Vector3(-here.z, 0.0, here.x).normalized()
-	var turn := PlanetWeather.zonal_wind(lat) * PlanetWeather.WIND_TURN * TAU
+	var turn := PlanetWeather.zonal_wind(lat, noise.weather.wind_k()) * PlanetWeather.WIND_TURN * TAU
 	var speed := turn * settings.radius * cos(lat) / clock.day_seconds
 	atmosphere.cloud_drift -= east * speed * clock_seconds
 

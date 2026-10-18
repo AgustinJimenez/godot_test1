@@ -28,7 +28,7 @@ public:
 			const PackedFloat32Array &p_temperature, int p_width, int p_height, double p_rain_base,
 			double p_rain_scale, const Dictionary &p_belts = Dictionary()) const;
 	Dictionary run(const PackedByteArray &p_sea, const PackedFloat32Array &p_lights, int p_width, int p_height,
-			int p_snapshots, double p_wind, int p_max_years) const;
+			int p_snapshots, double p_wind, int p_max_years, double p_wind_k = 3.0) const;
 };
 
 } // namespace godot
