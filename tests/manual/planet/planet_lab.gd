@@ -555,6 +555,11 @@ func _ready() -> void:
 		return
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()
+	if not asked and user_args.is_empty() and not UniverseStartMenu.requested:
+		# for now no menu: an Earth with a random seed (--start-menu brings the menu back)
+		PlanetMenu.pending = PlanetSettings.earth()
+		PlanetMenu.pending.world_seed = randi() % 100000
+		asked = true
 	var menu_first := UniverseStartMenu.requested or user_args.is_empty()
 	menu_first = menu_first or "--start-menu" in user_args
 	if not asked and menu_first:
