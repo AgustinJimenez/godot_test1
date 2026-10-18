@@ -132,7 +132,7 @@ Vector3 PlanetCrustNative::plate_shift(const Vector3 &p_dir) const {
 	Vector3 shifted = p_dir + Vector3(warp.at(p_dir),
 										warp.at(Vector3(p_dir.x + 5.3f, p_dir.y - 2.1f, p_dir.z + 1.7f)),
 										warp.at(Vector3(p_dir.x - 3.7f, p_dir.y + 4.4f, p_dir.z - 6.2f))) *
-							(real_t)0.30;
+							(real_t)0.20;
 	return shifted.normalized();
 }
 

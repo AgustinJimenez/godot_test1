@@ -10,6 +10,7 @@ extends RefCounted
 const CONTINENT := 0.10 ## base height of a continental plate (units of relief)
 const OCEAN := -0.42 ## base height of an oceanic plate
 const BOUNDARY := 0.08 ## radians: how wide a boundary's effect is (about 500 km on Earth)
+const WARP := 0.20 ## how far the plate edges are bent (a unit sphere; 0.3 made loops in the sea)
 const NEAR := 4 ## how many of the nearest plates are looked at
 const SOFT := 0.14 ## radians: how fast a plate's say fades as it gets further than the nearest
 
@@ -69,7 +70,7 @@ func height(dir: Vector3) -> float:
 	# plate edges wander: look the plate up at a direction pushed about by a slow noise
 	var shifted := dir + Vector3(_warp.get_noise_3d(dir.x, dir.y, dir.z),
 			_warp.get_noise_3d(dir.x + 5.3, dir.y - 2.1, dir.z + 1.7),
-			_warp.get_noise_3d(dir.x - 3.7, dir.y + 4.4, dir.z - 6.2)) * 0.30
+			_warp.get_noise_3d(dir.x - 3.7, dir.y + 4.4, dir.z - 6.2)) * WARP
 	var q := shifted.normalized()
 	# the four nearest plates, nearest first (kept in plain variables: this runs for every vertex of
 	# the ground, from several threads, and arrays made per call were most of its cost)
@@ -203,7 +204,7 @@ func _boundary(a: int, b: int, q: Vector3, edge: float) -> float:
 func plate_at(dir: Vector3) -> Vector3:
 	var shifted := dir + Vector3(_warp.get_noise_3d(dir.x, dir.y, dir.z),
 			_warp.get_noise_3d(dir.x + 5.3, dir.y - 2.1, dir.z + 1.7),
-			_warp.get_noise_3d(dir.x - 3.7, dir.y + 4.4, dir.z - 6.2)) * 0.30
+			_warp.get_noise_3d(dir.x - 3.7, dir.y + 4.4, dir.z - 6.2)) * WARP
 	var q := shifted.normalized()
 	var first := 0
 	var best := -2.0
