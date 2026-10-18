@@ -43,8 +43,8 @@ var _chart: PlanetChart # the chart being drawn, if any
 var _chart_is_detail := false
 var _detail: ImageTexture # a close chart of `_detail_rect` (fractions of the map)
 var _detail_rect := Rect2()
-var _revealed := false # the picture is sharp enough to be shown (until then the map stays black)
-var _black_time := 0.0 # seconds the map has been black since it was opened
+var _revealed := false # the picture is sharp (until then a loading note is drawn over the map)
+var _unsharp_time := 0.0 # seconds the map has been unsharp since it was opened
 var _detail_preview := false # the close chart in `_detail` is the quick small one
 var _detail_full := 0 # pixels across of the sharp chart that follows a quick preview (0: none)
 var _wanted_rect := Rect2() # the region the next close chart is for
@@ -203,8 +203,8 @@ func toggle() -> void:
 		_mouse_before = Input.mouse_mode
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		_go_home()
-		_revealed = false # (black until the sharp picture of this view is ready)
-		_black_time = 0.0
+		_revealed = false # (the loading note until the sharp picture of this view is ready)
+		_unsharp_time = 0.0
 		if planet != null:
 			_globe.look_at_direction(planet.planet_position().normalized())
 	else:
@@ -268,8 +268,8 @@ func select_layer(layer: int) -> void:
 	_whole_pass = kept.get("pass", -1)
 	_detail = null
 	_detail_full = 0
-	_revealed = false # (a new layer: black until it is sharp)
-	_black_time = 0.0
+	_revealed = false # (a new layer: with the loading note until it is sharp)
+	_unsharp_time = 0.0
 	if _chart != null:
 		_chart.cancel()
 		_retired.append(_chart) # its threads finish on their own; the picture is thrown away
@@ -420,7 +420,7 @@ func _process(delta: float) -> void:
 		_view.queue_redraw()
 		if _globe_mode:
 			_hover.text = "Drag to turn the planet, wheel to come closer, G: the flat map"
-			_globe.set_chart(_whole if _revealed else null)
+			_globe.set_chart(_whole)
 			_globe.set_detail(_detail, _detail_rect)
 			_globe.set_zoom(_zoom)
 			_globe.set_sun(planet.clock.sun_in_body())
@@ -599,29 +599,37 @@ func _sharp_enough(view: Rect2) -> bool:
 	return _whole != null and _whole_pass >= _last_pass() and _zoom < 2.5
 
 
-## Lifts the black when the picture is sharp enough (or, for a view the close chart cannot cover
+## While the picture is still the quick blurry one, a note over it says the map is being charted.
+func _draw_loading() -> void:
+	if _revealed:
+		return
+	var text := "Charting the planet... the map sharpens as it finishes"
+	if _chart != null:
+		text = "Charting the planet...  %d %%  (the map sharpens as it finishes)" % int(
+				100.0 * _chart.progress())
+	var font := ThemeDB.fallback_font
+	var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+	var box := Rect2((_view.size.x - width) * 0.5 - 14.0, 18.0, width + 28.0, 34.0)
+	_view.draw_rect(box, Color(0.0, 0.0, 0.0, 0.7))
+	_view.draw_string(font, box.position + Vector2(14.0, 24.0), text, HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0, 18, Color(0.9, 0.93, 1.0))
+
+
+## Lifts the note when the picture is sharp enough (or, for a view the close chart cannot cover
 ## such as one over a pole, once the whole planet is charted and a few seconds have passed).
 func _update_reveal(delta: float) -> void:
 	if _revealed:
 		return
 	var size := _visible_size()
-	_black_time += delta
+	_unsharp_time += delta
 	var all_done := _whole != null and _whole_pass >= _last_pass()
-	if _sharp_enough(Rect2(_centre - size * 0.5, size)) or (all_done and _black_time > 6.0):
+	if _sharp_enough(Rect2(_centre - size * 0.5, size)) or (all_done and _unsharp_time > 6.0):
 		_revealed = true
 
 
 func _draw_view() -> void:
 	var size := _visible_size()
 	var view := Rect2(_centre - size * 0.5, size)
-	if not _revealed: # no blurry picture: black until the sharp one is there
-		_view.draw_rect(Rect2(Vector2.ZERO, _view.size), Color.BLACK)
-		var text := "Charting the planet..."
-		if _chart != null:
-			text += "  %d %%" % int(100.0 * _chart.progress())
-		_view.draw_string(ThemeDB.fallback_font, _view.size * 0.5 - Vector2(100.0, 0.0), text,
-				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color(0.8, 0.85, 0.95))
-		return
 	_view.draw_rect(Rect2(Vector2.ZERO, _view.size), Color(0.02, 0.05, 0.12))
 	if _covered_by_detail(view):
 		_draw_part(_detail, _detail_rect, view)
@@ -636,6 +644,7 @@ func _draw_view() -> void:
 					size.x - first_width, size.y), first_width)
 	_draw_grid()
 	_draw_legend()
+	_draw_loading()
 	var player := _where_is_the_player()
 	if player.is_empty():
 		return
