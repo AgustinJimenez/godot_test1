@@ -16,7 +16,8 @@ extends CanvasLayer
 ## numbers are listed (height, temperature, rain, biome, plate).
 
 const ACTION := &"planet_map"
-const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(1024, 512), Vector2i(2048, 1024)]
+const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(640, 320), Vector2i(1024, 512),
+		Vector2i(2048, 1024)]
 const DETAIL_MIN := 768 ## pixels across the close chart, at least (more for a big view)
 const DETAIL_MAX := 2560
 const START_ZOOM := 6.0

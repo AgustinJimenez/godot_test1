@@ -10,7 +10,8 @@ enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_T
 
 const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates",
 		"Slope", "Mean temp", "Clouds"]
-const WORKERS := 3
+## threads a chart is drawn on: every core but one (the main thread), at most 8
+var workers := clampi(OS.get_processor_count() - 1, 2, 8)
 const BIOME_COLORS := {
 	TerrainNoise.Biome.BEACH: Color(0.93, 0.85, 0.55), TerrainNoise.Biome.MEADOW: Color(0.6, 0.8, 0.3),
 	TerrainNoise.Biome.FOREST: Color(0.1, 0.45, 0.15), TerrainNoise.Biome.ROCKY: Color(0.5, 0.5, 0.52),
@@ -76,8 +77,8 @@ static func _along(t: float, colors: Array, stops: Array) -> Color:
 
 func start(noise: PlanetNoise) -> void:
 	_noise = noise
-	_bands.resize(WORKERS)
-	for worker in WORKERS:
+	_bands.resize(workers)
+	for worker in workers:
 		var thread := Thread.new()
 		thread.start(_chart.bind(worker), Thread.PRIORITY_HIGH) # (over the world's builders)
 		_threads.append(thread)
@@ -125,15 +126,17 @@ func stop() -> void:
 
 ## One worker's share: a band of rows, as RGB bytes.
 func _chart(worker: int) -> void:
-	var from_row := worker * size.y / WORKERS
-	var to_row := (worker + 1) * size.y / WORKERS
+	var from_row := worker * size.y / workers
+	var to_row := (worker + 1) * size.y / workers
 	var bytes := PackedByteArray()
+	bytes.resize((to_row - from_row) * size.x * 3)
+	var at := 0
 	var step_lon := rect.size.x * TAU / float(size.x)
 	var step_lat := rect.size.y * PI / float(size.y)
 	var needs_slope := layer in [Layer.TERRAIN, Layer.ELEVATION, Layer.BIOME, Layer.SLOPE]
 	for row in range(from_row, to_row):
 		if _cancelled:
-			bytes.resize(bytes.size() + size.x * 3)
+			at += size.x * 3
 			_mutex.lock()
 			_rows_done += 1
 			_mutex.unlock()
@@ -173,9 +176,10 @@ func _chart(worker: int) -> void:
 			var color := _pixel_color(dirs[column], ground, east_grounds[column] - ground,
 					north_grounds[column] - ground, step_lon, needs_slope, macros[column],
 					bases[column] if not bases.is_empty() else Color.BLACK)
-			bytes.append(clampi(int(color.r * 255.0), 0, 255))
-			bytes.append(clampi(int(color.g * 255.0), 0, 255))
-			bytes.append(clampi(int(color.b * 255.0), 0, 255))
+			bytes[at] = clampi(int(color.r * 255.0), 0, 255)
+			bytes[at + 1] = clampi(int(color.g * 255.0), 0, 255)
+			bytes[at + 2] = clampi(int(color.b * 255.0), 0, 255)
+			at += 3
 		_mutex.lock()
 		_rows_done += 1
 		_mutex.unlock()
