@@ -35,6 +35,7 @@ const WIND := 0.2 ## share of a cell the zonal wind carries the heat each pass (
 
 var mean := PackedFloat32Array() ## degrees C at sea level, averaged over the year
 var _cycle: Array[PackedFloat32Array] = [] # SNAPSHOTS grids of degrees C at sea level
+var greenhouse := 1.0 ## how much heat the air holds in (1: Earth's)
 var wind_k := 3.0 ## the planet's wind profile: -cos(wind_k * latitude) (PlanetClimate.circulation)
 var wind := WIND ## the lab sets 0 to see the climate without the wind
 var native_year := true ## false: the year is run by the script below (to compare with native)
@@ -167,7 +168,7 @@ func _run_native(clock: PlanetClock) -> void:
 		clock.set_year_share((float(moment) + 0.5) / float(SNAPSHOTS))
 		for row in HEIGHT:
 			var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
-			lights[moment * HEIGHT + row] = clock.daily_light(lat) * clock.light_now()
+			lights[moment * HEIGHT + row] = clock.daily_light(lat) * clock.light_now() * greenhouse
 	var year: RefCounted = ClassDB.instantiate(&"PlanetSeasonsNative")
 	var made: Dictionary = year.call(&"run", _sea, lights, WIDTH, HEIGHT, SNAPSHOTS, wind, MAX_YEARS,
 			wind_k)
@@ -183,7 +184,7 @@ func _step(heat: PackedFloat32Array, light: PackedFloat32Array, clock: PlanetClo
 	clock.set_year_share(at)
 	for row in HEIGHT:
 		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
-		light[row] = clock.daily_light(lat) * clock.light_now()
+		light[row] = clock.daily_light(lat) * clock.light_now() * greenhouse
 	var sea_pull := 1.0 - exp(-dt / SEA_TAU)
 	var land_pull := 1.0 - exp(-dt / LAND_TAU)
 	for row in HEIGHT:

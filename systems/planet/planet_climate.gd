@@ -51,6 +51,7 @@ func build(noise: PlanetNoise) -> void:
 	clock.eccentricity = noise.settings.eccentricity
 	clock.perihelion_share = noise.settings.perihelion_share
 	seasons.wind_k = circulation["wind_k"]
+	seasons.greenhouse = noise.settings.greenhouse
 	seasons.build(noise, clock)
 	var native_ready := native_rain and ClassDB.class_exists(&"PlanetSeasonsNative")
 	native_ready = native_ready and ClassDB.class_exists(&"PlanetDrainageNative")

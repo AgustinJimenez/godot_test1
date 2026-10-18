@@ -33,6 +33,7 @@ extends Resource
 @export var star_readability := 0.0 ## 0 the star's true colour .. 1 readable (Sun-like light)
 @export var eccentricity := 0.0 ## the orbit's: 0 a circle (Earth 0.017)
 @export var perihelion_share := 0.0 ## share of the year the planet is nearest its star
+@export var greenhouse := 1.0 ## heat the air holds in: 1 Earth's
 @export var insolation := 1.0 ## the star's light here against the Earth's: luminosity / distance^2
 @export var universe_seed := 0 ## the universe this planet comes from (0: none, a plain planet)
 @export var universe_system := 0 ## its star system's number in that universe
@@ -58,6 +59,7 @@ func vary() -> void:
 	roll.seed = world_seed
 	water_layer *= exp(roll.randf_range(log(0.3), log(2.8))) # (from a dry world to a water one)
 	axial_tilt = roll.randf_range(8.0, 38.0)
+	greenhouse = roll.randf_range(0.85, 1.25)
 
 
 static func earth(scale := 1.0) -> PlanetSettings:

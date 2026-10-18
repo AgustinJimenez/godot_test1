@@ -59,7 +59,7 @@ Still fixed, in order of how much they show:
 - **Zonal wind profile** (done 2026-10-18: `circulation.wind_k`, -cos(k lat), drawn from the seed and shared by the weather, the rain edges and the heat carry; a real spin-rate link is still open).
   (native too). Real planets have 1 to 4 cells per hemisphere by how fast they spin. Idea: a `cells` number from
   the day length and use it in both.
-- **Heat model**: EMIT, FLOOR, SEA_TAU, LAND_TAU, MIX, the HOT cap: one planet's physics. Should follow the
+- **Heat model** (2026-10-18: `PlanetSettings.greenhouse`, rolled 0.85..1.25 by `vary()`, scales the light the energy balance sees; the star's light was already `insolation`): EMIT, FLOOR, SEA_TAU, LAND_TAU, MIX, the HOT cap: one planet's physics. Should follow the
   star's insolation and the air/sea share of the planet (`PlanetSettings.insolation` already scales the light).
 - **Sea level** share of land (2026-10-18, widened: water amount x0.3..2.8 log-uniform, land 22 to 67 % over ten seeds; earlier: x0.55..1.6 and tilt 8..38 from the seed with `PlanetSettings.vary()`; land came out 43 to 64 %). Real planets span water worlds to deserts: the roll could be wider and the plates' continental share could vary too.
 - **Plate boundary sizes** (BOUNDARY, SOFT, CONTINENT, OCEAN heights) and the HYPSO curve.
