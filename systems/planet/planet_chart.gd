@@ -394,7 +394,16 @@ func _terrain_color(dir: Vector3, ground: float, slope: float, light: float,
 	var relief := _noise.relief
 	if ground < 0.0:
 		var depth := clampf(-ground / (relief * 0.35), 0.0, 1.0)
-		return Color(0.32, 0.62, 0.78).lerp(Color(0.03, 0.12, 0.33), sqrt(depth))
+		var water := Color(0.32, 0.62, 0.78).lerp(Color(0.03, 0.12, 0.33), sqrt(depth))
+		# sea ice where the sea's mean temperature is below its freezing point
+		var lat := asin(clampf(dir.y, -1.0, 1.0))
+		var lon := atan2(dir.z, dir.x)
+		var warm := 0.0 # (the mean over a band of latitude, wobbled: a ragged edge of ice)
+		for step in range(-2, 3):
+			var l := clampf(lat + 0.14 * sin(lon * 3.0 + lat * 5.0) + float(step) * 0.06, -1.5, 1.5)
+			warm += _noise.climate.sea_temperature(_direction(l, lon)) / 5.0
+		var ice := smoothstep(-1.5, -8.0, warm) * 0.92
+		return water.lerp(Color(0.90, 0.94, 0.98), ice)
 	if _noise.hydrology != null and _noise.hydrology.lake_level_at(dir, ground) > -INF:
 		return Color(0.25, 0.5, 0.85)
 	var coarse := step_lon * _noise.settings.radius > COARSE_PIXEL

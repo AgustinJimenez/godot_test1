@@ -437,6 +437,20 @@ double PlanetCrustNative::sea_temperature(const Vector3 &p_dir) const {
 	return grid_at(climate_grid, p_dir, 15.0);
 }
 
+// How frozen the sea is at a direction: the mean temperature over a band of latitude (the climate's ice-albedo
+// feedback makes it jump, a straight line round the planet), wobbled by noise so the edge of the ice is ragged.
+double PlanetCrustNative::sea_ice(const Vector3 &p_dir) const {
+	const double lat = std::asin(std::max(-1.0, std::min(1.0, (double)p_dir.y)));
+	const double lon = std::atan2((double)p_dir.z, (double)p_dir.x);
+	const double wobble = (double)warp.at(p_dir * (real_t)3.0) * 0.14;
+	double sum = 0.0;
+	for (int step = -2; step <= 2; step++) {
+		const double l = std::max(-1.5, std::min(1.5, lat + wobble + (double)step * 0.06));
+		sum += sea_temperature(Vector3((real_t)(std::cos(l) * std::cos(lon)), (real_t)std::sin(l), (real_t)(std::cos(l) * std::sin(lon))));
+	}
+	return smooth(-1.5, -8.0, sum / 5.0);
+}
+
 double PlanetCrustNative::grid_at(const PackedFloat32Array &p_grid, const Vector3 &p_dir, double p_default) const {
 	if (climate_width <= 0 || climate_height <= 0 || p_grid.size() < climate_width * climate_height) {
 		return p_default;
@@ -725,6 +739,11 @@ PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs,
 			r = 0.32 + (0.03 - 0.32) * depth;
 			g = 0.62 + (0.12 - 0.62) * depth;
 			b = 0.78 + (0.33 - 0.78) * depth;
+			// sea ice where the sea's mean temperature is below its freezing point (PlanetChart)
+			const double ice = sea_ice(p_dirs[index]) * 0.92;
+			r += (0.90 - r) * ice;
+			g += (0.94 - g) * ice;
+			b += (0.98 - b) * ice;
 		} else {
 			const double rise_east = ((double)p_east[index] - ground) * p_calm; // (calm < 1: a gentler relief for big pixels)
 			const double rise_north = ((double)p_north[index] - ground) * p_calm;

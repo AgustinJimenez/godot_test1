@@ -82,6 +82,7 @@ private:
 	// the climate's temperature at sea level (a grid, rows from the north pole, wrapping east-west)
 	PackedFloat32Array climate_grid;
 	PackedFloat32Array rain_grid; // the rain on the same grid (soil)
+	double sea_ice(const Vector3 &p_dir) const; // 0..1 how frozen the sea is there (a ragged, gradual edge)
 	double grid_at(const PackedFloat32Array &p_grid, const Vector3 &p_dir, double p_default) const;
 	int climate_width = 0, climate_height = 0;
 	double sea_temperature(const Vector3 &p_dir) const;
