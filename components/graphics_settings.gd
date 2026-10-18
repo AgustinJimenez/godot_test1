@@ -187,22 +187,23 @@ func _on_node_added(node: Node) -> void:
 
 
 func _sanitize_value(key: StringName, value: Variant) -> Variant:
+	var clean: Variant = value
 	match key:
 		&"render_scale":
-			return clampf(float(value), 0.5, 1.25)
+			clean = clampf(float(value), 0.5, 1.25)
 		&"anti_aliasing":
-			return clampi(int(value), AntiAliasing.OFF, AntiAliasing.MSAA_4X)
+			clean = clampi(int(value), AntiAliasing.OFF, AntiAliasing.MSAA_4X)
 		&"shadow_quality":
-			return clampi(int(value), ShadowQuality.OFF, ShadowQuality.HIGH)
+			clean = clampi(int(value), ShadowQuality.OFF, ShadowQuality.HIGH)
 		&"max_fps":
-			return clampi(int(value), 30, 240)
+			clean = clampi(int(value), 30, 240)
 		&"cloud_quality":
-			return clampi(int(value), 0, 2)
+			clean = clampi(int(value), 0, 2)
 		&"tone_mapper":
-			return clampi(int(value), Environment.TONE_MAPPER_LINEAR, Environment.TONE_MAPPER_AGX)
+			clean = clampi(int(value), Environment.TONE_MAPPER_LINEAR, Environment.TONE_MAPPER_AGX)
 		&"ssao", &"ssil", &"glow", &"vsync", &"hdr":
-			return bool(value)
-	return value
+			clean = bool(value)
+	return clean
 
 
 func _load() -> void:

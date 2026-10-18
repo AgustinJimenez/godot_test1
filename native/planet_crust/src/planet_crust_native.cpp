@@ -279,7 +279,7 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point) c
 		ridges = ((double)ranges.at(p_point) * 0.5 + 0.5) * relief * 0.22;
 		ridges *= belt * smooth(0.08, 0.4, p_units);
 	}
-	double rugged = smooth(0.02, 0.4, p_units);
+	double rugged = smooth(0.0, 0.25, p_units);
 	double massifs = 0.0, chains = 0.0, spurs = 0.0;
 	if (rugged > 0.0) {
 		massifs = ((double)massif.at(p_point) * 0.5 + 0.1) * relief * massif_scale * rugged * floor_factor;

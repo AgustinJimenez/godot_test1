@@ -91,3 +91,38 @@ func cells_of(many: PackedVector3Array) -> PackedInt32Array:
 ## Each cell's share of the sphere (1 on average).
 func areas() -> PackedFloat32Array:
 	return _native.call(&"cell_areas")
+
+
+## A flat map of the drainage: the sea blue by depth, the land by height, the lakes cyan and the
+## rivers drawn bluer the more water they carry.
+func picture(view: PackedFloat64Array, threshold: float) -> Image:
+	var width := 1024
+	var height := 512
+	var directions := PackedVector3Array()
+	var span := view[2]
+	for row in height:
+		var lat := deg_to_rad(view[1] + (0.5 - (float(row) + 0.5) / float(height)) * span * 0.5)
+		for column in width:
+			var lon := deg_to_rad(view[0] + ((float(column) + 0.5) / float(width) - 0.5) * span)
+			directions.append(Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon)))
+	var found := cells_of(directions)
+	var image := Image.create(width, height, false, Image.FORMAT_RGB8)
+	for index in directions.size():
+		var cell := found[index]
+		var ground := heights[cell]
+		var colour: Color
+		if ground < 0.0:
+			var deep := clampf(1.0 + ground / 5000.0, 0.0, 1.0)
+			colour = Color(0.02, 0.1, 0.3).lerp(Color(0.2, 0.45, 0.7), deep)
+		else:
+			var up := clampf(ground / 5000.0, 0.0, 1.0)
+			colour = Color(0.28, 0.45, 0.22).lerp(Color(0.6, 0.5, 0.35), smoothstep(0.0, 0.5, up))
+			colour = colour.lerp(Color(0.95, 0.95, 0.95), smoothstep(0.5, 1.0, up))
+			if lake[cell] == 1:
+				colour = Color(0.2, 0.7, 0.85)
+			var carried := flow[cell]
+			if carried >= threshold:
+				var strength := clampf(log(carried / threshold) / log(400.0), 0.0, 1.0)
+				colour = colour.lerp(Color(0.1, 0.3, 1.0), 0.45 + 0.55 * strength)
+		image.set_pixel(index % width, index / width, colour)
+	return image

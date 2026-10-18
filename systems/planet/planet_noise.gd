@@ -68,7 +68,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 		_setup(valley, settings.world_seed + 21 + scale_index, 1.0 / maxf(length, 150.0), 3)
 		_valleys.append(valley)
 		_valley_depth.append(minf(length * 0.05, relief * 0.06) * pow(0.5, float(scale_index)))
-	_setup(_chain, settings.world_seed + 17, 1.0 / clampf(settings.radius * 0.03, 1500.0, 300000.0), 4)
+	_setup(_chain, settings.world_seed + 17, 1.0 / clampf(settings.radius * 0.02, 1500.0, 200000.0), 4)
 	_chain.fractal_type = FastNoiseLite.FRACTAL_RIDGED
 	_setup(_foothills, settings.world_seed + 13, 5.0 / massif_length, 4)
 	_foothills.fractal_type = FastNoiseLite.FRACTAL_RIDGED
@@ -252,8 +252,8 @@ func _valley_cut(p: Vector3, units: float) -> float:
 	var cut := 0.0
 	for index in _valleys.size():
 		var line := absf(_valleys[index].get_noise_3d(p.x, p.y, p.z))
-		var floor_ := 1.0 - smoothstep(0.0, VALLEY_WIDTH, line)
-		cut += _valley_depth[index] * floor_ * sqrt(floor_)
+		var valley_floor := 1.0 - smoothstep(0.0, VALLEY_WIDTH, line)
+		cut += _valley_depth[index] * valley_floor * sqrt(valley_floor)
 	return cut * upland
 
 
@@ -271,7 +271,7 @@ func _macro(units: float, p: Vector3) -> float:
 	ridges *= belt * smoothstep(0.08, 0.4, units)
 	# the massifs and foothills: rough ground that grows with the height of the plates' uplift, so
 	# the mountain belts are rugged and the old plains stay gentle
-	var rugged := smoothstep(0.02, 0.4, units)
+	var rugged := smoothstep(0.0, 0.25, units)
 	var massifs := (_massif.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * MASSIF * rugged
 	var chains := (_chain.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * CHAINS * rugged
 	var spurs := (_foothills.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * FOOTHILLS * rugged
@@ -288,7 +288,7 @@ func _macro(units: float, p: Vector3) -> float:
 ## height by a factor does).
 const SHORE := 0.2
 const VALLEY_WIDTH := 0.09 ## of the noise's range either side of its zero line
-const CHAINS := 0.32 ## of the relief: the chains of mountains, the broadest rough ground
+const CHAINS := 0.5 ## of the relief: the chains of mountains, the broadest rough ground
 const MASSIF := 0.3 ## of the relief: the height of the massifs on the roughest ground
 const FOOTHILLS := 0.07 ## and of the foothills
 const LAND_CURVE := 1.6 ## the land's height share is raised to this: plains common, plateaus rare

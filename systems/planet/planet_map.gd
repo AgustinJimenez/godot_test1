@@ -17,7 +17,7 @@ extends CanvasLayer
 
 const ACTION := &"planet_map"
 const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(1024, 512)]
-const DETAIL_MIN := 768 ## pixels across the close chart, at least (more for a big view: see _maybe_chart_the_view)
+const DETAIL_MIN := 768 ## pixels across the close chart, at least (more for a big view)
 const DETAIL_MAX := 1792
 const START_ZOOM := 6.0
 const MAX_ZOOM := 60.0

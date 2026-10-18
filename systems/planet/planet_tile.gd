@@ -187,8 +187,8 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 				var i10 := i00 + 1
 				var i01 := i00 + side
 				var i11 := i01 + 1
-				_triangle(builder, faces, [i00, i01, i10], positions, normals, colors, dirs, heights)
-				_triangle(builder, faces, [i10, i01, i11], positions, normals, colors, dirs, heights)
+				_triangle(builder, faces, [i00, i01, i10], positions, normals, colors)
+				_triangle(builder, faces, [i10, i01, i11], positions, normals, colors)
 	if not collide:
 		_skirt(builder, positions, colors, cells)
 	var mesh_instance := MeshInstance3D.new()
@@ -237,8 +237,7 @@ func _to_local(dir: Vector3, reach: float) -> Vector3:
 
 
 func _triangle(builder: MeshBuilder, faces: PackedVector3Array, ids: Array,
-		positions: Array[Vector3], normals: Array[Vector3], colors: Array[Color],
-		dirs: Array[Vector3], heights: PackedFloat32Array) -> void:
+		positions: Array[Vector3], normals: Array[Vector3], colors: Array[Color]) -> void:
 	var a := positions[ids[0]]
 	var b := positions[ids[1]]
 	var c := positions[ids[2]]

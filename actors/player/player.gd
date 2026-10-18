@@ -306,9 +306,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if detached_cam_active and event is InputEventMouseMotion \
 			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		# Deliberately bypasses _apply_yaw()/head.rotation entirely - this
-		# camera's yaw/pitch are its own state, never the body's, which is
-		# the whole point of "detached".
+		# bypasses _apply_yaw()/head.rotation: this camera's yaw/pitch are its own state
 		var detached_motion := event as InputEventMouseMotion
 		_detached_yaw -= detached_motion.relative.x * detached_cam_sensitivity
 		_detached_pitch = clampf(_detached_pitch - detached_motion.relative.y * detached_cam_sensitivity,
@@ -362,10 +360,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			debug_cam.make_current()
 			_debug_cam_active = true
 			hud.set_center_dot_visible(false)
-			# Pitch still gets a level start - the camera's orbit pitch has
-			# no equivalent "catch up" partner to stay consistent with like
-			# yaw does, so carrying over a steep first-person pitch would
-			# just be a jarring snap.
+			# the orbit pitch has no partner to catch up with (unlike yaw): start level, no snap
 			_look_pitch = 0.0
 			head.rotation.x = 0.0
 			third_person_arm.rotation.x = 0.0
@@ -382,10 +377,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_set_third_person_zoom(third_person_arm.spring_length + THIRD_PERSON_ZOOM_STEP)
 	elif event.is_action_pressed(&"inventory"):
 		hud.toggle_inventory()
-	# "pause" (Esc) is handled entirely by hud.gd's own _unhandled_input,
-	# not here - it needs to check which overlay (if any) is already open
-	# to decide whether to close that or open the debug/pause menu, and
-	# handling it in both places would double-toggle on a single press.
+	# "pause" (Esc) is handled by hud.gd's own _unhandled_input (it knows which overlay is open)
 
 ## SpringArm3D repositions its children itself every frame (to spring_length,
 ## pulled closer via its own collision raycast when something's in the way)
