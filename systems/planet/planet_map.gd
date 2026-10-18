@@ -20,9 +20,11 @@ const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(640, 320), Vector2
 		Vector2i(2048, 1024)]
 const DETAIL_MIN := 768 ## pixels across the close chart, at least (more for a big view)
 const DETAIL_MAX := 2560
+const MIDDLE_DETAIL := 1280 ## the picture between the quick one and the sharp one
 const MAX_ZOOM := 1500.0 ## a pixel of the sharpest chart is then about 15 m on an Earth
 const START_ZOOM := MAX_ZOOM # the map opens as close as it goes, on the player
 const MARGIN := 14.0
+const FIRST_BIG_PASS := 3 ## the whole passes before this are short: they finish first
 
 var planet: PlanetWorld
 
@@ -440,6 +442,7 @@ func _process(delta: float) -> void:
 			_retired[index].texture() # joins the threads, the picture is not wanted
 			_retired.remove_at(index)
 	if visible:
+		_drop_a_stale_chart()
 		_log_the_view()
 		_update_reveal(delta)
 		_view.queue_redraw()
@@ -506,9 +509,13 @@ func _adopt_chart() -> void:
 		_detail_preview = _detail_full > 0
 		_detail_rect = _chart.rect
 		var rect := _chart.rect
+		var done_width := _chart.size.x
 		_chart = null
-		if _detail_full > 0: # the quick preview is up: now the sharp one over the same region
+		if _detail_full > 0: # a preview is up: now a better one over the same region
 			var across := _detail_full
+			if done_width < MIDDLE_DETAIL and across > MIDDLE_DETAIL:
+				_start_detail(rect, MIDDLE_DETAIL) # (still a preview: the sharp one follows)
+				return
 			_detail_full = 0
 			_start_detail(rect, across)
 			return
@@ -526,6 +533,21 @@ func _adopt_chart() -> void:
 
 
 ## When the view has stayed still on a close region, draws that region sharply.
+## A close chart of a place the view has left is no use: it is given up (the threads are free for
+## the next view).
+func _drop_a_stale_chart() -> void:
+	if _chart == null or not _chart_is_detail:
+		return
+	var size := _visible_size()
+	if _chart.rect.encloses(Rect2(_centre - size * 0.5, size)):
+		return
+	PlanetMapLog.line("close chart given up: the view moved out of it")
+	_chart.cancel()
+	_retired.append(_chart)
+	_chart = null
+	_detail_full = 0
+
+
 func _maybe_chart_the_view(delta: float) -> void:
 	var size := _visible_size()
 	var view := Rect2(_centre - size * 0.5, size)
@@ -538,6 +560,8 @@ func _maybe_chart_the_view(delta: float) -> void:
 	var close := 2.5 if _last_pass() < PASSES.size() - 1 else 1.4
 	if _still < 0.5 or _zoom < close or _sharply_covered(view):
 		return
+	if _chart != null and not _chart_is_detail and _whole_pass + 1 < FIRST_BIG_PASS:
+		return # the short whole passes (under half a second) finish first: a zoom out shows them
 	var rect := Rect2(view.position - size * 0.25, size * 1.5) # a margin to pan in
 	# the margin stops at the poles (east-west the map wraps, so x may run past 0 and 1)
 	var top := maxf(rect.position.y, 0.0)
@@ -567,7 +591,7 @@ func _start_detail(rect: Rect2, across: int) -> void:
 	_chart_is_detail = true
 	_chart_ms = Time.get_ticks_msec()
 	PlanetMapLog.line("chart close view (%s): %dx%d, rect %s, %s" % [
-			"quick" if _detail_full > 0 else "sharp", _chart.size.x, _chart.size.y, rect,
+			"preview" if _detail_full > 0 else "sharp", _chart.size.x, _chart.size.y, rect,
 			PlanetChart.NAMES[_layer]])
 	_chart.start(planet.noise)
 
