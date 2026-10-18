@@ -56,6 +56,32 @@ godot --doctool <path> --headless
 pre-commit hook and CI. Keep `.gdlintrc`'s 1000-line ceiling and disabled
 `class-definitions-order` unless deliberately changing the convention.
 
+### Native planet crust (C++), once per machine
+
+`native/planet_crust` is an optional GDExtension (the ground height, the rock colours, a tile's mesh, the
+drainage and the river valleys of a planet in C++). The GDScript (`PlanetTectonics`, `PlanetNoise`,
+`PlanetRock`, `PlanetTile`) stays the reference and the fallback, but without the library a planet is
+about 5 times slower to build and has no river valleys, and the game prints one line saying so.
+
+- **First thing on a new machine or clone** (Windows in Git Bash, a Mac in Terminal): `scripts/setup_native.sh`.
+  It fetches godot-cpp and scons into `~/.cache/godot-native`, builds the library, and adds a line to the
+  clone's post-merge and post-checkout hooks so that a pull or a checkout rebuilds it when the C++ changed
+  (log: `native/planet_crust/build.log`). Needs git, python3 and a C++ compiler (Xcode command line tools on a
+  Mac, MinGW on Windows). `scripts/build_native.sh [--force] [--release] [--double]` builds alone and does
+  nothing when the library is up to date. The built libraries are not committed.
+- **The user is on the Windows PC, sometimes by remote control from a Mac** (the game runs on the PC: the
+  Windows libraries in `native/planet_crust/bin` are the ones that matter), and has a clone on a Mac too (the
+  macOS build is written but not yet run there).
+- **After any change to the C++, rebuild and compare**: `scripts/build_native.sh`, then
+  `planet_lab.tscn -- --native-check --earth` (`NATIVE_CHECK PASS`, part of `scripts/planet_check.sh`). The
+  library must match the engine's precision: the standard editor needs the single library, the custom
+  double build in `E:\Godot\double` needs the double one (`--double`, see the folder's README: godot-cpp
+  master and the engine's own API dump), or the engine crashes on load. Rebuild both after a C++ change.
+- Keep the native and the GDScript maths the same: the numbers (noise settings, constants) are handed over
+  from GDScript in `setup`, never copied. Planets must be the same on every engine build: do not use
+  `randf` / `randf_range` for anything that shapes a planet (the double build draws other numbers; use
+  `rng.randi()` as `PlanetTectonics._between` does).
+
 There are no unit tests. Persistent acceptance scenes live under `tests/manual/<domain>/`.
 Temporary capture scenes may use `tests/manual/_<name>_demo.tscn` but must be removed before commit.
 After launching a verification scene, stop the game before handing control back to the user.
