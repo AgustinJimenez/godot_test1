@@ -46,8 +46,10 @@ static func ramp(which: Layer, t: float) -> Color:
 					Color(0.85, 0.8, 0.35), Color(0.6, 0.4, 0.25), Color(1.0, 1.0, 1.0)],
 					[0.0, 0.33, 0.36, 0.55, 0.8, 1.0])
 		Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE:
-			return _along(t, [Color(0.35, 0.2, 0.75), Color(0.25, 0.6, 1.0), Color(0.5, 0.9, 0.6),
-					Color(1.0, 0.9, 0.25), Color(0.95, 0.25, 0.1)], [0.0, 0.25, 0.5, 0.75, 1.0])
+			# -30 .. 45 °C: purple, blue, green (5), yellow (20), orange (30), red, dark red (45)
+			return _along(t, [Color(0.35, 0.2, 0.75), Color(0.25, 0.6, 1.0), Color(0.45, 0.85, 0.6),
+					Color(1.0, 0.9, 0.25), Color(0.98, 0.5, 0.1), Color(0.8, 0.12, 0.08),
+					Color(0.4, 0.04, 0.02)], [0.0, 0.2, 0.46, 0.67, 0.8, 0.92, 1.0])
 		Layer.RAIN:
 			return _along(t, [Color(0.95, 0.85, 0.6), Color(0.8, 0.9, 0.7), Color(0.4, 0.75, 0.85),
 					Color(0.1, 0.3, 0.8)], [0.0, 0.3, 0.65, 1.0])
@@ -63,7 +65,7 @@ static func scale_labels(which: Layer, relief: float) -> Array[String]:
 		Layer.ELEVATION:
 			return ["%d m deep" % int(relief * 0.35), "%d m" % int(relief)]
 		Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE:
-			return ["-30 °C", "35 °C"]
+			return ["-30 °C", "45 °C"]
 		Layer.RAIN:
 			return ["dry", "wet"]
 		Layer.SLOPE:
@@ -190,8 +192,10 @@ func _chart(worker: int) -> void:
 			north_grounds = above
 			above = grounds
 		var macros := grounds
-		if layer in [Layer.TEMPERATURE, Layer.CLOUDS, Layer.CLOUD_MASK]:
-			macros = _noise.macro_heights_of(dirs)
+		if layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.CLOUDS, Layer.CLOUD_MASK]:
+			macros = _ground_of(dirs, true)
+			if _broad and layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE]:
+				macros = _averaged(dirs, macros, lat, step_lat, step_lon)
 		if native_rows:
 			bytes.append_array(_noise.native.call(&"terrain_row", dirs, grounds, east_grounds,
 					north_grounds, step_lon, calm))
@@ -227,6 +231,27 @@ func _ground_of(dirs: PackedVector3Array, smooth_shape: bool) -> PackedFloat32Ar
 	return _noise.broad_heights_of(dirs) if _broad else _noise.macro_heights_of(dirs)
 
 
+## The heights `centre` of the pixels of a row averaged with the heights at the pixels' four corners
+## (a pixel of many kilometres has one noisy height, and the altitude would speckle the map).
+func _averaged(dirs: PackedVector3Array, centre: PackedFloat32Array, lat: float, step_lat: float,
+		step_lon: float) -> PackedFloat32Array:
+	var total := centre.duplicate()
+	for corner in 4:
+		var corner_dirs := PackedVector3Array()
+		corner_dirs.resize(dirs.size())
+		var d_lat := step_lat * (0.5 if corner < 2 else -0.5)
+		var d_lon := step_lon * (0.5 if corner % 2 == 0 else -0.5)
+		for column in dirs.size():
+			var lon := atan2(dirs[column].z, dirs[column].x) + d_lon
+			corner_dirs[column] = _direction(clampf(lat + d_lat, -PI * 0.5, PI * 0.5), lon)
+		var heights := _ground_of(corner_dirs, true)
+		for column in dirs.size():
+			total[column] += heights[column]
+	for column in dirs.size():
+		total[column] /= 5.0
+	return total
+
+
 static func _direction(lat: float, lon: float) -> Vector3:
 	return Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
 
@@ -259,12 +284,15 @@ func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: flo
 				if crosses_east or crosses_north:
 					color = color.darkened(0.3)
 		Layer.TEMPERATURE:
-			var degrees := noise.temperature_now(dir.x, dir.y, dir.z, maxf(ground, 0.0), clock,
+			# (the broad ground: the small hills would only speckle the map)
+			var shape := macro if not is_nan(macro) else ground
+			var degrees := noise.temperature_now(dir.x, dir.y, dir.z, maxf(shape, 0.0), clock,
 					macro)
-			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 65.0)
+			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 75.0)
 		Layer.MEAN_TEMPERATURE:
-			var degrees := noise.temperature(dir.x, dir.y, dir.z, maxf(ground, 0.0))
-			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 65.0)
+			var shape := macro if not is_nan(macro) else ground
+			var degrees := noise.temperature(dir.x, dir.y, dir.z, maxf(shape, 0.0))
+			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 75.0)
 		Layer.CLOUDS:
 			var land_colour := base_colour if ground >= 0.0 and noise.hydrology == null else \
 					_terrain_color(dir, ground, 0.1, 0.0, step_lon)
