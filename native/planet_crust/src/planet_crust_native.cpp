@@ -856,7 +856,7 @@ PackedByteArray PlanetCrustNative::coast_lines(const PackedByteArray &p_rgb, con
 			if (here != east || here != south) {
 				uint8_t *target = result + (y * p_width + x) * 3;
 				for (int c = 0; c < 3; c++) {
-					target[c] = (uint8_t)(target[c] * 0.38);
+					target[c] = (uint8_t)(target[c] * 0.45);
 				}
 			}
 		}
@@ -1175,47 +1175,53 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 					b = lb + (cb - lb) * cover * 0.92;
 				}
 			} break;
-			case 10: { // the atlas: a simple map for people to read (flat colours, a height tint, a light relief)
-				const double lit = clampd(1.0 - 0.9 * (rise_east - rise_north) / metres, 0.88, 1.12);
+			case 10: { // the atlas: an old parchment map (flat inks, hatched mountains, pale water)
+				const double pi = 3.14159265358979323846;
+				const double lit = clampd(1.0 - 1.1 * (rise_east - rise_north) / metres, 0.8, 1.2);
+				// the paper: a warm parchment with a slow stain
+				const double lat_angle = std::asin(clampd((double)dir.y, -1.0, 1.0));
+				const double lon_angle = std::atan2((double)dir.z, (double)dir.x);
+				const double stain = 0.5 + 0.5 * std::sin(lon_angle * 7.0 + 2.0 * std::sin(lat_angle * 5.0));
+				const double paper_r = 0.86 - 0.05 * stain, paper_g = 0.75 - 0.05 * stain, paper_b = 0.52 - 0.05 * stain;
 				if (ground < 0.0) {
 					const double depth = clampd(-ground / (relief * 0.35), 0.0, 1.0);
-					r = 0.70 + (0.45 - 0.70) * depth;
-					g = 0.85 + (0.68 - 0.85) * depth;
-					b = 0.95 + (0.88 - 0.95) * depth;
-					const double ice = sea_ice(dir) * 0.9;
-					r += (0.93 - r) * ice;
-					g += (0.96 - g) * ice;
-					b += (0.99 - b) * ice;
+					// the sea: a grey blue wash on the paper, darker with depth
+					const double wash = 0.55 + 0.25 * depth;
+					r = paper_r + (0.60 - paper_r) * wash;
+					g = paper_g + (0.67 - paper_g) * wash;
+					b = paper_b + (0.69 - paper_b) * wash;
+					const double ice = sea_ice(dir) * 0.8;
+					r += (0.90 - r) * ice;
+					g += (0.88 - g) * ice;
+					b += (0.80 - b) * ice;
 					break;
 				}
 				const double wet = clampd(grid_at(rain_grid, dir, 0.5) / 0.9, 0.0, 1.0);
 				const double degrees = sea_temperature(dir) - (broad > 0.0 ? broad : 0.0) / relief * 8800.0 / 1000.0 * 6.5;
 				const double warm = clampd((degrees + 4.0) / 16.0, 0.0, 1.0);
-				const double tall = clampd(ground / (relief * 0.55), 0.0, 1.0);
-				// the lowland by climate: desert, grass, forest, tundra
-				double lr = 0.93 + (0.58 - 0.93) * clampd(wet * 1.6, 0.0, 1.0);
-				double lg = 0.86 + (0.78 - 0.86) * clampd(wet * 1.6, 0.0, 1.0);
-				double lb = 0.62 + (0.45 - 0.62) * clampd(wet * 1.6, 0.0, 1.0);
-				const double forest = smooth(0.55, 0.9, wet) * warm;
+				const double tall = clampd(ground / (relief * 0.5), 0.0, 1.0);
+				// the lowland: paper where it is dry, a soft green wash where it is wet, a deeper green in forests
+				const double green = smooth(0.15, 0.7, wet) * warm;
+				double lr = paper_r + (0.50 - paper_r) * green;
+				double lg = paper_g + (0.62 - paper_g) * green;
+				double lb = paper_b + (0.22 - paper_b) * green;
+				const double forest = smooth(0.6, 0.95, wet) * warm;
 				lr += (0.36 - lr) * forest;
-				lg += (0.62 - lg) * forest;
-				lb += (0.36 - lb) * forest;
-				lr += (0.80 - lr) * (1.0 - warm);
-				lg += (0.82 - lg) * (1.0 - warm);
-				lb += (0.74 - lb) * (1.0 - warm);
-				// the height tint: the higher, the browner and the greyer
-				const double up = smooth(0.12, 0.6, tall);
-				lr += (0.72 - lr) * up;
-				lg += (0.62 - lg) * up;
-				lb += (0.50 - lb) * up;
-				const double high = smooth(0.6, 1.0, tall);
-				lr += (0.86 - lr) * high;
-				lg += (0.84 - lg) * high;
-				lb += (0.82 - lb) * high;
+				lg += (0.50 - lg) * forest;
+				lb += (0.16 - lb) * forest;
+				// the hills and mountains: a brown ink, hatched like the drawn ranges of an old map
+				const double hill = smooth(0.06, 0.4, tall + clampd(std::sqrt(rise_east * rise_east + rise_north * rise_north) / metres, 0.0, 1.0) * 0.5);
+				const double step_angle = std::max(p_step_lon, 1.0e-9);
+				const double phase = (lon_angle * 0.9 + lat_angle * 1.4) / (step_angle * 7.0);
+				const double hatch = 0.5 + 0.5 * std::sin(phase * 2.0 * pi);
+				const double ink = hill * (0.55 + 0.45 * hatch);
+				lr += (0.55 - lr) * ink;
+				lg += (0.40 - lg) * ink;
+				lb += (0.22 - lb) * ink;
 				const double snow = smooth(-2.0, -7.0, degrees);
-				lr += (0.97 - lr) * snow;
-				lg += (0.98 - lg) * snow;
-				lb += (1.0 - lb) * snow;
+				lr += (0.95 - lr) * snow;
+				lg += (0.92 - lg) * snow;
+				lb += (0.84 - lb) * snow;
 				r = lr * lit;
 				g = lg * lit;
 				b = lb * lit;

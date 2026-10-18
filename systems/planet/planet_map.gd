@@ -37,7 +37,7 @@ var planet: PlanetWorld
 var _layer := PlanetChart.Layer.ATLAS # (the simple map to read: the others are extra modes)
 var _cache: Dictionary = {} # layer -> {"whole": ImageTexture, "pass": int}: what was charted
 var _retired: Array[PlanetChart] = [] # charts of a layer left behind, drawing out their threads
-var _buttons := {} # layer -> its button
+var _modes: OptionButton # the layers, as a dropdown (the Atlas first)
 var _hover: Label
 var _time_row: HBoxContainer
 var _season_slider: HSlider
@@ -117,19 +117,15 @@ func _ready() -> void:
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_child(row)
-	var group := ButtonGroup.new()
+	_modes = OptionButton.new()
+	_modes.focus_mode = Control.FOCUS_NONE
+	_modes.custom_minimum_size = Vector2(190.0, 0.0)
 	for position in LAYER_ORDER.size():
-		var index: int = LAYER_ORDER[position]
-		var button := Button.new()
 		var key_name := str((position + 1) % 10) if position < 10 else " "
-		button.text = "%s  %s" % [key_name, PlanetChart.NAMES[index]]
-		button.toggle_mode = true
-		button.button_group = group
-		button.focus_mode = Control.FOCUS_NONE
-		button.button_pressed = index == int(_layer)
-		button.pressed.connect(select_layer.bind(index))
-		row.add_child(button)
-		_buttons[index] = button
+		_modes.add_item("%s  %s" % [key_name, PlanetChart.NAMES[LAYER_ORDER[position]]], position)
+	_modes.select(LAYER_ORDER.find(_layer))
+	_modes.item_selected.connect(func(position: int) -> void: select_layer(LAYER_ORDER[position]))
+	row.add_child(_modes)
 	_globe_button = Button.new()
 	_globe_button.text = "G  Globe"
 	_globe_button.toggle_mode = true
@@ -297,7 +293,7 @@ func select_layer(layer: int) -> void:
 	if _whole != null:
 		_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
 	_layer = layer as PlanetChart.Layer
-	_buttons[layer].set_pressed_no_signal(true)
+	_modes.select(LAYER_ORDER.find(layer))
 	var kept: Dictionary = _cache.get(layer, {})
 	_whole = kept.get("whole")
 	_whole_pass = kept.get("pass", -1)
@@ -911,6 +907,8 @@ func _draw_view() -> void:
 	PlanetMapOverlay.draw_grid(_view, _zoom, _centre, _visible_size(), _on_screen)
 	_draw_names()
 	PlanetMapOverlay.draw_legend(_view, _layer, planet.noise.relief)
+	if _layer == PlanetChart.Layer.ATLAS: # the atlas is an old map: a burnt frame round it
+		PlanetMapOverlay.draw_parchment_frame(_view)
 	_draw_loading()
 	var player := _where_is_the_player()
 	if player.is_empty():
@@ -955,7 +953,7 @@ func _draw_names() -> void:
 	if _labels == null:
 		_labels = PlanetMapLabels.new()
 		_labels.build(planet.noise)
-	PlanetMapOverlay.draw_names(_view, _labels, _zoom, _on_screen)
+	PlanetMapOverlay.draw_names(_view, _labels, _zoom, _on_screen, _layer == PlanetChart.Layer.ATLAS)
 
 
 ## Opens the map as the 3D globe (or the flat map).

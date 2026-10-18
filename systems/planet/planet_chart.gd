@@ -139,7 +139,8 @@ func texture() -> ImageTexture:
 			_noise.map_heights[size] = heights
 	var far := _pixel_metres > CALM_PIXEL * 50.0 # (kilometres a pixel: Elevation is grain too)
 	if layer == Layer.ATLAS and _noise.native != null: # (flat colours: a blur, coast lines)
-		for pass_number in 4:
+		var atlas_passes := 4 if _pixel_metres > 2000.0 else 1 # (close in the hatching must stay)
+		for pass_number in atlas_passes:
 			all = _noise.native.call(&"smooth_rgb", all, size.x, size.y)
 		var atlas_land := PackedByteArray()
 		for band in _land_bands:

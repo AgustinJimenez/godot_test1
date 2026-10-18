@@ -34,7 +34,7 @@ static func draw_legend(view: Control, layer: int, relief: float) -> void:
 
 ## The names of the seas and the lands, spaced capitals, while the view is far enough to show them.
 static func draw_names(view: Control, labels: PlanetMapLabels, zoom: float,
-		on_screen: Callable) -> void:
+		on_screen: Callable, parchment := false) -> void:
 	var font := ThemeDB.fallback_font
 	var size := clampi(int(13.0 + 3.0 * log(zoom + 1.0)), 13, 22)
 	for item in labels.items:
@@ -44,9 +44,13 @@ static func draw_names(view: Control, labels: PlanetMapLabels, zoom: float,
 		var text := PlanetMapLabels.spaced(item["text"])
 		var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x
 		var at := spot - Vector2(width * 0.5, 0.0)
-		var colour := Color(0.88, 0.95, 1.0, 0.8) if item["sea"] else Color(1.0, 1.0, 1.0, 0.85)
+		var colour := Color(0.95, 0.82, 0.45, 0.95) if not parchment else Color(0.40, 0.25, 0.08, 0.95)
+		if parchment and item["sea"]:
+			colour = Color(0.30, 0.38, 0.45, 0.9)
+		elif not parchment:
+			colour = Color(0.88, 0.95, 1.0, 0.8) if item["sea"] else Color(1.0, 1.0, 1.0, 0.85)
 		view.draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, 3,
-				Color(0.0, 0.0, 0.0, 0.55))
+				Color(0.95, 0.88, 0.7, 0.6) if parchment else Color(0.0, 0.0, 0.0, 0.55))
 		view.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, colour)
 
 
@@ -75,6 +79,23 @@ static func draw_grid(view: Control, zoom: float, centre: Vector2, size: Vector2
 		var at: Vector2 = on_screen.call(Vector2(fposmod(uv, 1.0), centre.y))
 		if at.x >= 0.0:
 			view.draw_line(Vector2(at.x, 0.0), Vector2(at.x, view.size.y), line)
+
+
+## A frame like an old map's: the corners and edges darkened as burnt paper, a thin gold border.
+static func draw_parchment_frame(view: Control) -> void:
+	var size := view.size
+	var dark := Color(0.12, 0.07, 0.02)
+	for step in 36:
+		var share := 1.0 - float(step) / 36.0
+		var colour := Color(dark.r, dark.g, dark.b, 0.5 * share * share)
+		view.draw_rect(Rect2(float(step) * 2.0, float(step) * 2.0, size.x - float(step) * 4.0,
+				size.y - float(step) * 4.0), colour, false, 2.0)
+	var gold := Color(0.78, 0.6, 0.2, 0.9)
+	view.draw_rect(Rect2(10.0, 10.0, size.x - 20.0, size.y - 20.0), gold, false, 2.0)
+	for corner in [Vector2(10.0, 10.0), Vector2(size.x - 10.0, 10.0), Vector2(10.0, size.y - 10.0),
+			Vector2(size.x - 10.0, size.y - 10.0)]:
+		view.draw_circle(corner, 6.0, Color(0.78, 0.6, 0.2, 0.95))
+		view.draw_circle(corner, 3.0, Color(0.25, 0.15, 0.05, 0.95))
 
 
 ## The player: an arrow at `spot` pointing along `heading`.
