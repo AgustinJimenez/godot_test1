@@ -118,7 +118,7 @@ public:
 	// light from the north west): the heights of the points, of the points a pixel east and a pixel north
 	// of them, and the angle one pixel spans.
 	PackedByteArray terrain_row(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
-			const PackedFloat32Array &p_east, const PackedFloat32Array &p_north, double p_step_lon) const;
+			const PackedFloat32Array &p_east, const PackedFloat32Array &p_north, double p_step_lon, double p_calm = 1.0) const;
 	PackedColorArray colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedFloat32Array &p_steeps) const;
 	PackedFloat32Array tectonic_heights(const PackedVector3Array &p_dirs) const;

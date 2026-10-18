@@ -7,7 +7,9 @@ extends SubViewportContainer
 const SHADER := """
 shader_type spatial;
 render_mode unshaded;
-uniform sampler2D chart : filter_linear, repeat_disable;
+uniform sampler2D chart : source_color, filter_linear, repeat_disable;
+uniform sampler2D detail : source_color, filter_linear, repeat_disable; // the sharp chart of a part of the map
+uniform vec4 detail_rect = vec4(0.0); // its x, y, width, height as fractions of the map (0: none)
 uniform vec3 rim_colour = vec3(0.45, 0.65, 1.0);
 uniform vec3 sun = vec3(0.0, 0.0, 1.0); // toward the star, on the ball
 uniform float night = 0.55; // how dark the night side gets (0 none)
@@ -23,6 +25,13 @@ void fragment() {
 	float u = (PI - atan(n.z, n.x)) / TAU;
 	float v = 0.5 - asin(clamp(n.y, -1.0, 1.0)) / PI;
 	vec3 colour = texture(chart, vec2(u, v)).rgb;
+	if (detail_rect.z > 0.0) {
+		float dx = fract(u - detail_rect.x);
+		float dy = (v - detail_rect.y) / detail_rect.w;
+		if (dx < detail_rect.z && dy >= 0.0 && dy <= 1.0) {
+			colour = texture(detail, vec2(dx / detail_rect.z, dy)).rgb;
+		}
+	}
 	float rim = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
 	float day = smoothstep(-0.12, 0.2, dot(n, normalize(sun)));
 	colour *= 1.0 - night * (1.0 - day);
@@ -30,8 +39,13 @@ void fragment() {
 }
 """
 
-const MIN_DISTANCE := 1.35
-const MAX_DISTANCE := 7.0
+const ZOOM_SPAN := 0.6 ## how much of the way round the sky the view takes at zoom 1 (x PI)
+const FOV := 40.0
+
+## the globe was turned (its centre as a unit direction of the planet); the wheel or a pinch asks for a
+## zoom by this factor (more than 1: closer), as on the flat map
+signal moved(dir: Vector3)
+signal zoomed(factor: float)
 
 var _viewport: SubViewport
 var _camera: Camera3D
@@ -43,6 +57,7 @@ var _pitch := 0.3
 var _distance := 3.2
 var _dragging := false
 var _shown: Texture2D
+var _detail_shown: Texture2D
 
 
 func _init() -> void:
@@ -84,8 +99,8 @@ func _init() -> void:
 	_pin.visible = false
 	_viewport.add_child(_pin)
 	_camera = Camera3D.new()
-	_camera.fov = 40.0
-	_camera.near = 0.05
+	_camera.fov = FOV
+	_camera.near = 0.002
 	_camera.far = 50.0
 	_viewport.add_child(_camera)
 	_aim()
@@ -97,6 +112,28 @@ func set_chart(texture: Texture2D) -> void:
 		return
 	_shown = texture
 	_material.set_shader_parameter(&"chart", texture)
+
+
+## The sharp chart of the part of the map `rect` (fractions of the map), drawn over the whole one.
+func set_detail(texture: Texture2D, rect: Rect2) -> void:
+	if texture == null:
+		_material.set_shader_parameter(&"detail_rect", Vector4())
+		_detail_shown = null
+		return
+	if texture != _detail_shown:
+		_detail_shown = texture
+		_material.set_shader_parameter(&"detail", texture)
+	_material.set_shader_parameter(&"detail_rect",
+			Vector4(rect.position.x, rect.position.y, rect.size.x, rect.size.y))
+
+
+## The map's zoom (1: the whole planet) as the camera's distance: the view takes the same part of the
+## planet as the flat map's.
+func set_zoom(zoom: float) -> void:
+	var span := PI * ZOOM_SPAN / maxf(zoom, 1.0)
+	_distance = 1.0 + span / (2.0 * tan(deg_to_rad(FOV) * 0.5))
+	_pin.scale = Vector3.ONE * clampf((_distance - 1.0) / 2.6, 0.02, 1.0)
+	_aim()
 
 
 ## Where the star is (the planet's unit direction): the night side of the ball is darkened.
@@ -117,7 +154,6 @@ func look_at_direction(dir: Vector3) -> void:
 	var seen := Vector3(dir.x, dir.y, -dir.z).normalized()
 	_yaw = atan2(seen.x, seen.z)
 	_pitch = clampf(asin(clampf(seen.y, -1.0, 1.0)), -1.4, 1.4)
-	_distance = 3.2
 	_aim()
 
 
@@ -126,31 +162,33 @@ func handle_input(event: InputEvent) -> bool:
 	if event is InputEventMouseButton:
 		var button := event as InputEventMouseButton
 		if button.button_index == MOUSE_BUTTON_WHEEL_UP and button.pressed:
-			_zoom_by(0.88)
+			zoomed.emit(1.25)
 		elif button.button_index == MOUSE_BUTTON_WHEEL_DOWN and button.pressed:
-			_zoom_by(1.14)
+			zoomed.emit(0.8)
 		elif button.button_index == MOUSE_BUTTON_LEFT:
 			_dragging = button.pressed
 		return true
 	if event is InputEventMagnifyGesture:
-		_zoom_by(1.0 / clampf((event as InputEventMagnifyGesture).factor, 0.5, 2.0))
+		zoomed.emit(clampf((event as InputEventMagnifyGesture).factor, 0.5, 2.0))
 		return true
 	if event is InputEventPanGesture:
-		_zoom_by(pow(1.14, (event as InputEventPanGesture).delta.y))
+		zoomed.emit(pow(1.25, -(event as InputEventPanGesture).delta.y))
 		return true
 	if event is InputEventMouseMotion and _dragging:
 		var motion := event as InputEventMouseMotion
-		var speed := 0.0045 * (_distance - 0.8)
+		var speed := 0.001 * (_distance - 1.0) + 0.0045 * maxf(_distance - 2.0, 0.0)
 		_yaw -= motion.relative.x * speed
 		_pitch = clampf(_pitch + motion.relative.y * speed, -1.45, 1.45)
 		_aim()
+		moved.emit(facing())
 		return true
 	return false
 
 
-func _zoom_by(factor: float) -> void:
-	_distance = clampf(_distance * factor, MIN_DISTANCE, MAX_DISTANCE)
-	_aim()
+## The unit direction of the planet the camera looks down on.
+func facing() -> Vector3:
+	var seen := _camera.position.normalized()
+	return Vector3(seen.x, seen.y, -seen.z)
 
 
 func _aim() -> void:

@@ -47,7 +47,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_climate", "grid", "width", "height"), &PlanetCrustNative::set_climate);
 	ClassDB::bind_method(D_METHOD("set_rivers", "cells", "network", "cell_metres"), &PlanetCrustNative::set_rivers);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
-	ClassDB::bind_method(D_METHOD("terrain_row", "dirs", "grounds", "east", "north", "step_lon"),
+	ClassDB::bind_method(D_METHOD("terrain_row", "dirs", "grounds", "east", "north", "step_lon", "calm"),
 			&PlanetCrustNative::terrain_row);
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
 	ClassDB::bind_method(D_METHOD("macro_and_tectonic_heights", "dirs"), &PlanetCrustNative::macro_and_tectonic_heights);
@@ -561,7 +561,7 @@ PackedFloat32Array PlanetCrustNative::tectonic_heights(const PackedVector3Array 
 }
 
 PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
-		const PackedFloat32Array &p_east, const PackedFloat32Array &p_north, double p_step_lon) const {
+		const PackedFloat32Array &p_east, const PackedFloat32Array &p_north, double p_step_lon, double p_calm) const {
 	PackedByteArray out;
 	out.resize(p_dirs.size() * 3);
 	uint8_t *bytes = out.ptrw();
@@ -574,8 +574,8 @@ PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs,
 			g = 0.62 + (0.12 - 0.62) * depth;
 			b = 0.78 + (0.33 - 0.78) * depth;
 		} else {
-			const double rise_east = (double)p_east[index] - ground;
-			const double rise_north = (double)p_north[index] - ground;
+			const double rise_east = ((double)p_east[index] - ground) * p_calm; // (calm < 1: a gentler relief for big pixels)
+			const double rise_north = ((double)p_north[index] - ground) * p_calm;
 			const double slope = clampd(std::sqrt(rise_east * rise_east + rise_north * rise_north) / (p_step_lon * radius), 0.0, 1.0);
 			const Vector3 p = p_dirs[index] * (real_t)radius;
 			const Color rock = rock_colour(p_dirs[index], ground, slope, p_step_lon * radius > 60.0 ? 0.5 : (double)detail.at(p) * 0.5 + 0.5);

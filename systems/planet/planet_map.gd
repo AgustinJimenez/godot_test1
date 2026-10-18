@@ -88,6 +88,8 @@ func _ready() -> void:
 	_globe.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_globe.custom_minimum_size = Vector2(400.0, 300.0)
 	_globe.visible = false
+	_globe.zoomed.connect(_zoom_by)
+	_globe.moved.connect(_look_from_globe)
 	column.add_child(_globe)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -260,13 +262,32 @@ func select_layer(layer: int) -> void:
 		_start_chart(_whole_pass + 1)
 
 
+## The unit direction of the planet at the map's point `uv`.
+static func _direction_of(uv: Vector2) -> Vector3:
+	var lat := (0.5 - uv.y) * PI
+	var lon := uv.x * TAU - PI
+	return Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+
+
+## The globe turned: the map's centre follows where it looks (so the close chart is drawn there).
+func _look_from_globe(dir: Vector3) -> void:
+	_centre = Vector2((atan2(dir.z, dir.x) + PI) / TAU, 0.5 - asin(clampf(dir.y, -1.0, 1.0)) / PI)
+	_clamp_centre()
+
+
+## The globe's wheel and pinch zoom the map (the same zoom as the flat one).
+func _zoom_by(factor: float) -> void:
+	_zoom = clampf(_zoom * factor, 1.0, MAX_ZOOM)
+	_clamp_centre()
+
+
 ## Shows the map as a small planet in 3D (on) or flat (off).
 func _set_globe(on: bool) -> void:
 	_globe_mode = on
 	_view.visible = not on
 	_globe.visible = on
-	if on and planet != null and planet.target() != null:
-		_globe.look_at_direction(planet.planet_position().normalized())
+	if on:
+		_globe.look_at_direction(_direction_of(_centre)) # (where the flat map looks)
 
 ## Zooms to `zoom` (1: the whole planet) round the player.
 func show_zoom(zoom: float) -> void:
@@ -284,16 +305,24 @@ func _go_home() -> void:
 	_clamp_centre()
 
 
+## The size of what shows the map (the flat view, or the globe).
+func _pane() -> Vector2:
+	var pane := _globe.size if _globe_mode else _view.size
+	return pane.max(Vector2(64.0, 64.0))
+
+
 ## How many screen pixels one whole map width is at zoom 1: the whole planet just fits the view.
 func _pixels_per_map() -> float:
-	return minf(_view.size.x, _view.size.y * 2.0)
+	var pane := _pane()
+	return minf(pane.x, pane.y * 2.0)
 
 
 ## The part of the map the view shows, as fractions of the map (more than 1 high or wide when the
 ## map is smaller than the view: the bars round it).
 func _visible_size() -> Vector2:
 	var pixels := _pixels_per_map() * _zoom
-	return Vector2(_view.size.x / pixels, _view.size.y / (pixels * 0.5))
+	var pane := _pane()
+	return Vector2(pane.x / pixels, pane.y / (pixels * 0.5))
 
 
 func _clamp_centre() -> void:
@@ -363,6 +392,8 @@ func _process(delta: float) -> void:
 		if _globe_mode:
 			_hover.text = "Drag to turn the planet, wheel to come closer, G: the flat map"
 			_globe.set_chart(_whole)
+			_globe.set_detail(_detail, _detail_rect)
+			_globe.set_zoom(_zoom)
 			_globe.set_sun(planet.clock.sun_in_body())
 			var here := Vector3.ZERO
 			if planet != null and planet.target() != null:
@@ -453,7 +484,7 @@ func _maybe_chart_the_view(delta: float) -> void:
 	# about one chart pixel and a quarter for every screen pixel of the 1.5 times wider chart, so a
 	# close zoom stays sharp; a quarter of that size comes first (a sixteenth of the time) so the
 	# view is better than the whole planet's picture within a second
-	var across := clampi(int(_view.size.x * 1.5 * 1.25), DETAIL_MIN, DETAIL_MAX)
+	var across := clampi(int(_pane().x * 1.5 * 1.25), DETAIL_MIN, DETAIL_MAX)
 	_detail_full = across
 	_start_detail(rect, maxi(across / 4, 256))
 

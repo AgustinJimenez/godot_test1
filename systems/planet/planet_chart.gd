@@ -10,6 +10,7 @@ enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_T
 
 const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates",
 		"Slope", "Mean temp", "Clouds"]
+const CALM_PIXEL := 2000.0 ## metres a pixel spans above which the Terrain relief is shaded gently
 const SMOOTH_PIXEL := 30.0 ## metres a pixel spans above which the map draws the smooth ground
 
 const BIOME_COLORS := {
@@ -142,6 +143,8 @@ func _chart(worker: int) -> void:
 	# a pixel wider than a few tens of metres would only alias the hills and gullies into grain: the
 	# smooth ground is drawn (shaded like an illustration); closer in, the real ground
 	var smooth_ground := step_lon * _noise.settings.radius > SMOOTH_PIXEL
+	# the relief of a pixel of many kilometres is shaded gently (steeper looks like grain)
+	var calm := clampf(sqrt(CALM_PIXEL / (step_lon * _noise.settings.radius)), 0.3, 1.0)
 	var above := PackedFloat32Array() # the heights of the row before (the point a pixel north)
 	for row in range(from_row, to_row):
 		if _cancelled:
@@ -188,7 +191,7 @@ func _chart(worker: int) -> void:
 			macros = _noise.macro_heights_of(dirs)
 		if native_rows:
 			bytes.append_array(_noise.native.call(&"terrain_row", dirs, grounds, east_grounds,
-					north_grounds, step_lon))
+					north_grounds, step_lon, calm))
 			_mutex.lock()
 			_rows_done += 1
 			_mutex.unlock()
