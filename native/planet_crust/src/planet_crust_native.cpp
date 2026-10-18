@@ -1280,25 +1280,14 @@ PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs,
 			const double rise_east = ((double)p_east[index] - ground) * p_calm; // (calm < 1: a gentler relief for big pixels)
 			const double rise_north = ((double)p_north[index] - ground) * p_calm;
 			const double slope = clampd(std::sqrt(rise_east * rise_east + rise_north * rise_north) / (p_step_lon * radius), 0.0, 1.0);
-			if (p_step_lon * radius > 20.0) { // the map's illustrated look (PlanetChart._illustrated_color)
-				const Color land = illustrated_colour(p_dirs[index], ground, slope);
-				const double lat_part = std::sqrt(std::max(1.0 - (double)p_dirs[index].y * (double)p_dirs[index].y, 0.04));
-				const double lit = clampd(1.0 - 2.0 * (rise_east - rise_north) / (p_step_lon * radius * lat_part), 0.55, 1.35);
-				r = land.r * lit;
-				g = land.g * lit;
-				b = land.b * lit;
-				bytes[index * 3] = (uint8_t)clampd((double)(int)(clampd(r, 0.0, 1.0) * 255.0), 0.0, 255.0);
-				bytes[index * 3 + 1] = (uint8_t)clampd((double)(int)(clampd(g, 0.0, 1.0) * 255.0), 0.0, 255.0);
-				bytes[index * 3 + 2] = (uint8_t)clampd((double)(int)(clampd(b, 0.0, 1.0) * 255.0), 0.0, 255.0);
-				continue;
-			}
-			const Vector3 p = p_dirs[index] * (real_t)radius;
-			const Color rock = rock_colour(p_dirs[index], ground, slope, p_step_lon * radius > 60.0 ? 0.5 : (double)detail.at(p) * 0.5 + 0.5, p_step_lon * radius < 20.0);
-			const double lat_scale = std::sqrt(std::max(1.0 - (double)p_dirs[index].y * (double)p_dirs[index].y, 0.04));
-				const double shade = clampd(1.0 - 2.0 * (rise_east - rise_north) / (p_step_lon * radius * lat_scale), 0.55, 1.35); // (as PlanetChart: a fixed vertical exaggeration)
-			r = rock.r * shade;
-			g = rock.g * shade;
-			b = rock.b * shade;
+			// the map's illustrated look (PlanetChart._illustrated_color) at every zoom: the colours must not
+			// change as the pixels get smaller (the rock types are for the ground itself, not the map)
+			const Color land = illustrated_colour(p_dirs[index], ground, slope);
+			const double lat_part = std::sqrt(std::max(1.0 - (double)p_dirs[index].y * (double)p_dirs[index].y, 0.04));
+			const double lit = clampd(1.0 - 2.0 * (rise_east - rise_north) / (p_step_lon * radius * lat_part), 0.55, 1.35);
+			r = land.r * lit;
+			g = land.g * lit;
+			b = land.b * lit;
 			// close in, the water of the rivers: a channel half the width of the valley's floor
 			if (river_cells > 0 && p_step_lon * radius < 400.0) {
 				Valley valley;
