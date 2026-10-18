@@ -796,6 +796,16 @@ PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs,
 			r = rock.r * shade;
 			g = rock.g * shade;
 			b = rock.b * shade;
+			// close in, the water of the rivers: a channel half the width of the valley's floor
+			if (river_cells > 0 && p_step_lon * radius < 400.0) {
+				Valley valley;
+				if (valley_at(p_dirs[index], valley) && valley.nearest < valley.floor_half * 0.5) {
+					const double edge = smooth(valley.floor_half * 0.5, valley.floor_half * 0.35, valley.nearest);
+					r += (0.20 - r) * edge * 0.9;
+					g += (0.45 - g) * edge * 0.9;
+					b += (0.74 - b) * edge * 0.9;
+				}
+			}
 		}
 		bytes[index * 3] = (uint8_t)clampd((double)(int)(clampd(r, 0.0, 1.0) * 255.0), 0.0, 255.0);
 		bytes[index * 3 + 1] = (uint8_t)clampd((double)(int)(clampd(g, 0.0, 1.0) * 255.0), 0.0, 255.0);
@@ -1137,6 +1147,7 @@ bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley, double
 	if (from == to) {
 		return false;
 	}
+	double nearest_distance = 1.0e30;
 	double best_envelope = 1.0e30;
 	double best_distance = 0.0;
 	double best_floor = 0.0, best_bed = 0.0, best_flow = 0.0, best_side = 1.0;
@@ -1156,6 +1167,7 @@ bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley, double
 		floor_half = floor_half < 20.0 ? 20.0 : (floor_half > 0.3 * river_cell_metres ? 0.3 * river_cell_metres : floor_half);
 		const double beyond = distance - floor_half;
 		const double envelope = bed + (beyond > 0.0 ? beyond : 0.0) * p_side;
+		nearest_distance = distance < nearest_distance ? distance : nearest_distance;
 		if (envelope < best_envelope) {
 			best_envelope = envelope;
 			best_distance = distance;
@@ -1166,6 +1178,7 @@ bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley, double
 		}
 	}
 	r_valley.envelope = best_envelope;
+	r_valley.nearest = nearest_distance;
 	r_valley.distance = best_distance;
 	r_valley.floor_half = best_floor;
 	r_valley.bed = best_bed;

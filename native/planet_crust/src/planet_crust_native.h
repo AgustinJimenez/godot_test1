@@ -88,7 +88,8 @@ private:
 	double sea_temperature(const Vector3 &p_dir) const;
 	struct Valley {
 		double envelope = 0.0; // the highest the ground may stand here: the bed and the valley's sides
-		double distance = 0.0; // metres to the nearest river
+		double distance = 0.0; // metres to the piece that sets the valley (the lowest envelope)
+		double nearest = 0.0; // metres to the nearest river piece of all
 		double floor_half = 0.0; // half the width of that river's valley floor
 		double bed = 0.0; // that river's bed height there (m)
 		double flow = 0.0; // its flow there
