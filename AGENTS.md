@@ -821,6 +821,12 @@ arguments the lab opens the universe start menu, so scripted runs always pass so
 - **Pass/fail checks** (no window needed): `--planet-check` (also runs `SAVE_CHECK`), `--walk-check`,
   `--swim-check`, `--fly-check` (slow, run in the background), `species_check.tscn`,
   `world_lab.tscn -- --world-check`.
+- **Native planet crust (optional C++):** `scripts/setup_native.sh` once per machine builds `native/planet_crust` 
+  (godot-cpp and scons are fetched into `~/.cache/godot-native`) and hooks a pull or a checkout to rebuild it
+  when the C++ changes; `scripts/build_native.sh` alone builds if needed. Without the library the planet runs
+  on the GDScript (the reference, about 5 times slower, no river valleys). `planet_check.sh` checks it
+  (`NATIVE_CHECK`). A library must match the engine's precision (the double build has its own, see the
+  README of the folder).
 - **All checks in one go:** `scripts/planet_check.sh [--quick] [--lint-only]` (lint, import, universe, species, world,
   planet, save, walk, swim and, without `--quick`, fly; one PASS/FAIL line each, exit 1 on a failure; set `GODOT=` if
   `godot` is not on PATH; logs in `$LOG_DIR`).

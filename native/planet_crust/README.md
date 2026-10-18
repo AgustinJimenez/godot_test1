@@ -8,27 +8,33 @@ GDScript in `setup`, so nothing is copied twice. `PLANET_NO_NATIVE=1` turns it o
 
 `src/FastNoiseLite.h` is the same file Godot uses (MIT, Auburn/FastNoiseLite).
 
-## Build (Windows, MinGW, outside the repo: `E:\Godot\cpp`)
-
-A library must match the engine's precision, or Godot refuses to load it (or crashes).
+## Build: one command
 
 ```
-python -m venv E:/Godot/cpp/venv && E:/Godot/cpp/venv/Scripts/pip install scons
+scripts/setup_native.sh      # once on a machine (Git Bash on Windows, Terminal on a Mac)
+```
 
-# standard (single precision) editor: godot-cpp 4.5 is enough
-git clone --depth 1 --branch godot-4.5-stable https://github.com/godotengine/godot-cpp E:/Godot/cpp/godot-cpp
-scons platform=windows use_mingw=yes arch=x86_64 target=template_debug precision=single
+It fetches godot-cpp and scons into `~/.cache/godot-native` (outside the project), builds the debug
+library for this machine, and adds a line to this clone's post-merge and post-checkout git hooks (the
+Git LFS ones stay) so that a pull or a checkout builds it again by itself, in the background, when the
+C++ changes (`native/planet_crust/build.log` says how it went). `scripts/build_native.sh` does the
+build alone and does nothing when the library is up to date (`--force`, `--release`, `--double`).
+It needs git, python3 and a C++ compiler: Xcode's command line tools (`xcode-select --install`) on a
+Mac, MinGW (`/c/ProgramData/mingw64/mingw64/bin`) on Windows. The first build takes about 15 minutes
+(godot-cpp), the next ones seconds. On a Mac it builds a universal library (Intel and Apple).
 
-# the double precision build (E:\Godot\double): godot-cpp master and the engine's own API dump
+A library must match the engine's precision, or Godot refuses to load it (or crashes): the standard
+editor loads the single library; the double precision build (`E:\Godot\double`) needs the double one:
+
+```
 git clone --depth 1 https://github.com/godotengine/godot-cpp E:/Godot/cpp/godot-cpp-double
 E:/Godot/double/src/bin/godot.windows.editor.double.x86_64.console.exe --headless --dump-extension-api
-# (writes extension_api.json in the current folder: keep it as E:/Godot/cpp/dump/extension_api.json)
-GODOT_CPP=E:/Godot/cpp/godot-cpp-double scons platform=windows use_mingw=yes arch=x86_64     target=template_debug precision=double custom_api_file=E:/Godot/cpp/dump/extension_api.json
+# (writes extension_api.json here: keep it as E:/Godot/cpp/dump/extension_api.json)
+GODOT_CPP_DOUBLE=E:/Godot/cpp/godot-cpp-double GODOT_API_DOUBLE=E:/Godot/cpp/dump/extension_api.json     scripts/build_native.sh --double
 ```
 
-(Run `scons` in this folder. godot-cpp itself takes about 15 minutes the first time, the library a few
-seconds. godot-cpp 4.5 with the default API crashed the double engine, and its generator cannot read
-the 4.7 API dump; master reads it.) The libraries go to `bin/` (not committed).
+(godot-cpp 4.5 with the default API crashed the double engine, and its generator cannot read the 4.7
+API dump; master reads it.) The libraries go to `bin/` (not committed).
 
 ## What it does (measured, Earth preset, standard build)
 
@@ -40,14 +46,8 @@ the 4.7 API dump; master reads it.) The libraries go to `bin/` (not committed).
 - Not covered (GDScript is used): a planet with rivers on (the hydrology cuts the ground in
   GDScript), the sea, the water, the plants.
 
-## macOS (not built or tried yet)
+## macOS
 
-The libraries in `bin/` are Windows ones; on a Mac the game runs on the GDScript (about 5 times
-slower, and without the river valleys) until the library is built there. The `.gdextension` has the
-macOS entries. Build on the Mac with Xcode's command line tools, godot-cpp 4.5 and scons:
-
-```
-git clone --depth 1 --branch godot-4.5-stable https://github.com/godotengine/godot-cpp ~/godot-cpp
-python3 -m venv ~/scons-venv && ~/scons-venv/bin/pip install scons
-GODOT_CPP=~/godot-cpp ~/scons-venv/bin/scons platform=macos arch=universal target=template_debug
-```
+The `.gdextension` has the macOS entries and `scripts/setup_native.sh` builds the universal library,
+but it has not been run on a Mac yet. Without the library the game runs on the GDScript (about 5
+times slower, and without the river valleys) and says so once in the output.

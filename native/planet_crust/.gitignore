@@ -2,3 +2,4 @@ bin/
 *.obj
 *.o
 .sconsign*.dblite
+build.log

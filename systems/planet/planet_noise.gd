@@ -87,7 +87,11 @@ func _init(planet_settings: PlanetSettings) -> void:
 ## `planet_lab --native-check` compares the two.
 func _make_native() -> void:
 	native = null
-	if OS.has_environment("PLANET_NO_NATIVE") or not ClassDB.class_exists(&"PlanetCrustNative"):
+	if OS.has_environment("PLANET_NO_NATIVE"):
+		return
+	if not ClassDB.class_exists(&"PlanetCrustNative"):
+		print("The native planet crust is not built here: the planet runs on the slower script and has"
+				+ " no river valleys (scripts/setup_native.sh builds it).")
 		return
 	var valley_configs: Array = []
 	for valley in _valleys:

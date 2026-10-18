@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# After a pull or a merge: make the native planet crust library for this machine if its sources changed
+# or it was never built. It runs in the background (the first time takes a while: godot-cpp is built)
+# and does nothing when the library is up to date. Turn the hooks on once with scripts/setup_native.sh.
+root="$(git rev-parse --show-toplevel)"
+log="${root}/native/planet_crust/build.log"
+echo "planet crust: checking the native library (log: native/planet_crust/build.log)"
+nohup "${root}/scripts/build_native.sh" >"${log}" 2>&1 &
+exit 0
