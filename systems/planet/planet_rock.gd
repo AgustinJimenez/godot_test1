@@ -15,6 +15,8 @@ extends RefCounted
 
 enum Kind { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE }
 
+const SNOW := Color(0.93, 0.95, 0.98) ## permanent snow and ice
+const LAPSE := 0.0065 ## degrees C the air cools a metre higher
 const COLOURS: Array[Color] = [
 	Color(0.25, 0.24, 0.26), # basalt
 	Color(0.38, 0.35, 0.33), # andesite
@@ -107,8 +109,10 @@ func dominant(dir: Vector3, ground: float) -> int:
 
 
 ## The colour of the crust at `dir` (a unit direction) on `ground`, on a face `steep` steep
-## (0 level .. 1 vertical), with `speckle` (0..1) the fine variation there.
-func colour(dir: Vector3, ground: float, steep: float, speckle: float) -> Color:
+## (0 level .. 1 vertical), with `speckle` (0..1) the fine variation there. `sea_temperature` (degrees C,
+## the year's mean at sea level there) puts permanent snow and ice where the cold keeps it.
+func colour(dir: Vector3, ground: float, steep: float, speckle: float,
+		sea_temperature := 15.0) -> Color:
 	var w := weights(dir, ground)
 	var rock := Color(0.0, 0.0, 0.0)
 	for index in w.size():
@@ -123,4 +127,8 @@ func colour(dir: Vector3, ground: float, steep: float, speckle: float) -> Color:
 	rock = rock * (1.0 + (layers - 0.5) * 0.24 * sedimentary * on_land)
 	rock = rock * (0.94 + 0.12 * speckle)
 	rock = rock.lerp(rock * 0.62, smoothstep(0.35, 0.8, steep))
+	var cold := sea_temperature - LAPSE * maxf(ground, 0.0)
+	var snow := smoothstep(-0.5, -4.5, cold) * smoothstep(0.0, 60.0, ground)
+	snow *= 1.0 - 0.85 * smoothstep(0.5, 0.95, steep) # the steepest rock stays bare
+	rock = rock.lerp(SNOW, snow * 0.92)
 	return Color(clampf(rock.r, 0.0, 1.0), clampf(rock.g, 0.0, 1.0), clampf(rock.b, 0.0, 1.0))

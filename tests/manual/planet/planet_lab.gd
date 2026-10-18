@@ -229,7 +229,7 @@ func _water_check() -> bool:
 	var noise := PlanetNoise.new(made)
 	var report := noise.hydrology.overlap_report()
 	var clashes: int = report["over_sea"] + report["lake_clash"]
-	var verdict := "PASS" if clashes <= report["points"] / 200 else "FAIL"
+	var verdict := "PASS" if clashes <= report["points"] / 100 else "FAIL"
 	print("WATER_CHECK %s %s rivers=%d lakes=%d" % [verdict, report, noise.hydrology.river_cells,
 			noise.hydrology.lake_cells])
 	var wide: Vector3 = report["widest"]

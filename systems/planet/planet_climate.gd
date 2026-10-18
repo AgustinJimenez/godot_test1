@@ -120,6 +120,15 @@ func rain_grid() -> PackedFloat32Array:
 	return _rain
 
 
+## The year's mean temperature at sea level at the direction (15 before the climate is built).
+func sea_temperature(dir: Vector3) -> float:
+	return sample(dir).x if not _temperature.is_empty() else 15.0
+
+
+## The grid of the temperature at sea level (rows from the north pole, WIDTH columns from the west).
+func temperature_grid() -> PackedFloat32Array:
+	return _temperature
+
 func sample(dir: Vector3) -> Vector2:
 	var lat := asin(clampf(dir.y, -1.0, 1.0))
 	var lon := atan2(dir.z, dir.x)

@@ -12,7 +12,7 @@ using namespace godot;
 namespace {
 
 const double EMIT = 0.34;
-const double FLOOR_HEAT = 0.11;
+const double FLOOR_HEAT = 0.13;
 const double SNOW_ALBEDO = 0.3;
 const double LAND_TAU = 0.05;
 const double SEA_TAU = 0.2;

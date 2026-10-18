@@ -92,6 +92,9 @@ func _init(planet_settings: PlanetSettings) -> void:
 	_make_native()
 	_lap("sea level")
 	climate.build(self)
+	if native != null:
+		native.call(&"set_climate", climate.temperature_grid(), PlanetClimate.WIDTH,
+				PlanetClimate.HEIGHT)
 	_lap("climate")
 	weather = PlanetWeather.new(self)
 	_lap("weather")
@@ -314,14 +317,18 @@ func _macro(units: float, p: Vector3) -> float:
 	# the massifs and foothills: rough ground that grows with the height of the plates' uplift, so
 	# the mountain belts are rugged and the old plains stay gentle
 	var rugged := smoothstep(0.0, 0.25, units)
-	var massifs := (_massif.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * MASSIF * rugged
-	var chains := (_chain.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * CHAINS * rugged
-	var spurs := (_foothills.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.1) * relief * FOOTHILLS * rugged
+	var massifs := (_massif.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.0) * relief * MASSIF * rugged
+	var chains := (_chain.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.0) * relief * CHAINS * rugged
+	var spurs := (_foothills.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.0) * relief * FOOTHILLS * rugged
 	# erosion has cut valley networks into the upland, small ones into big ones (the water sees them)
 	var shore := _shore(units) * relief
 	var raised := shore + rolling * land + ridges + chains + massifs + spurs
 	# the valleys never cut below the sea: near the coast they only cut what stands above it
-	return raised - minf(_valley_cut(p, units), maxf(shore, 0.0) * 0.8)
+	var result := raised - minf(_valley_cut(p, units), maxf(shore, 0.0) * 0.8)
+	if result > 0.0: # the land's heights follow a hypsometric curve: most of it low, the peaks kept
+		var pivot := relief * HYPSO_PIVOT
+		result = pivot * pow(result / pivot, HYPSO)
+	return result
 
 
 ## Beaches and shallows: the ground eases toward the sea instead of dropping into it. The slope is a
@@ -333,6 +340,8 @@ const VALLEY_WIDTH := 0.09 ## of the noise's range either side of its zero line
 const CHAINS := 0.5 ## of the relief: the chains of mountains, the broadest rough ground
 const MASSIF := 0.3 ## of the relief: the height of the massifs on the roughest ground
 const FOOTHILLS := 0.07 ## and of the foothills
+const HYPSO := 1.4 ## land heights h become pivot * (h / pivot) ^ this: low ground lower, peaks kept
+const HYPSO_PIVOT := 0.5 ## of the relief
 const LAND_CURVE := 1.6 ## the land's height share is raised to this: plains common, plateaus rare
 const DEEP := 1.6 ## how much deeper the ocean floor is than the plates' slope alone (abyssal depth)
 const SHORE_FLAT := 0.16
@@ -417,7 +426,8 @@ func biome(x: float, y: float, z: float, ground: float, steepness: float) -> Ter
 
 ## The colour of a ground facet: the rock of the crust there (PlanetRock), nothing grows on it yet.
 func facet_color(x: float, y: float, z: float, ground: float, steep: float) -> Color:
-	return rock.colour(Vector3(x, y, z), ground, steep, detail(x, y, z))
+	return rock.colour(Vector3(x, y, z), ground, steep, detail(x, y, z),
+			climate.sea_temperature(Vector3(x, y, z)))
 
 
 ## A direction for the player to start on: green country (mild, wet enough) that is not a dead flat

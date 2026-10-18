@@ -44,6 +44,7 @@ inline double sign_d(double p_x) {
 void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("setup", "config"), &PlanetCrustNative::setup);
 	ClassDB::bind_method(D_METHOD("river_waters", "dirs"), &PlanetCrustNative::river_waters);
+	ClassDB::bind_method(D_METHOD("set_climate", "grid", "width", "height"), &PlanetCrustNative::set_climate);
 	ClassDB::bind_method(D_METHOD("set_rivers", "cells", "network", "cell_metres"), &PlanetCrustNative::set_rivers);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
 	ClassDB::bind_method(D_METHOD("terrain_row", "dirs", "grounds", "east", "north", "step_lon"),
@@ -290,15 +291,19 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point) c
 	double rugged = smooth(0.0, 0.25, p_units);
 	double massifs = 0.0, chains = 0.0, spurs = 0.0;
 	if (rugged > 0.0) {
-		massifs = ((double)massif.at(p_point) * 0.5 + 0.1) * relief * massif_scale * rugged * floor_factor;
-		chains = ((double)chain.at(p_point) * 0.5 + 0.1) * relief * chain_scale * rugged * floor_factor;
-		spurs = ((double)foothills.at(p_point) * 0.5 + 0.1) * relief * foothill_scale * rugged * floor_factor;
+		massifs = ((double)massif.at(p_point) * 0.5 + 0.0) * relief * massif_scale * rugged * floor_factor;
+		chains = ((double)chain.at(p_point) * 0.5 + 0.0) * relief * chain_scale * rugged * floor_factor;
+		spurs = ((double)foothills.at(p_point) * 0.5 + 0.0) * relief * foothill_scale * rugged * floor_factor;
 	}
 	double shore_height = shore_curve(p_units) * relief;
 	double raised = shore_height + rolling_height * land + ridges + chains + massifs + spurs;
 	double cut = valley_cut(p_point, p_units);
 	double limit = (shore_height > 0.0 ? shore_height : 0.0) * 0.8;
 	double result = raised - (cut < limit ? cut : limit);
+	if (result > 0.0) { // the land's heights follow a hypsometric curve (PlanetNoise.HYPSO)
+		const double pivot = relief * 0.5;
+		result = pivot * std::pow(result / pivot, 1.4);
+	}
 	if (in_valley && result > 0.0) {
 		// a river's valley (from the drainage): the ground may not stand above the river's bed
 		// and the sides it allows (blended in softly), and is never cut below the sea
@@ -348,6 +353,38 @@ void PlanetCrustNative::plate_at(const Vector3 &p_dir, int &r_plate, real_t &r_e
 	r_edge = (real_t)((std::acos(clampd(next, -1.0, 1.0)) - std::acos(clampd(best, -1.0, 1.0))) * 0.5);
 	r_plate = first;
 	r_continental = continental[first] != 0;
+}
+
+void PlanetCrustNative::set_climate(const PackedFloat32Array &p_grid, int p_width, int p_height) {
+	climate_grid = p_grid;
+	climate_width = p_width;
+	climate_height = p_height;
+}
+
+// The year's mean temperature at sea level at a direction (bilinear on the climate's grid), 15 without one.
+double PlanetCrustNative::sea_temperature(const Vector3 &p_dir) const {
+	if (climate_width <= 0 || climate_height <= 0 || climate_grid.size() < climate_width * climate_height) {
+		return 15.0;
+	}
+	const double pi = 3.14159265358979323846;
+	const double lat = std::asin(std::max(-1.0, std::min(1.0, (double)p_dir.y)));
+	const double lon = std::atan2((double)p_dir.z, (double)p_dir.x);
+	const double fx = (lon + pi) / (2.0 * pi) * climate_width - 0.5;
+	const double fy = (0.5 - lat / pi) * climate_height - 0.5;
+	const int x0 = (int)std::floor(fx);
+	const int y0 = (int)std::floor(fy);
+	const double tx = fx - x0;
+	const double ty = fy - y0;
+	double value = 0.0;
+	for (int dy = 0; dy < 2; dy++) {
+		for (int dx = 0; dx < 2; dx++) {
+			const double weight = (dx == 1 ? tx : 1.0 - tx) * (dy == 1 ? ty : 1.0 - ty);
+			const int row = std::max(0, std::min(climate_height - 1, y0 + dy));
+			const int column = (((x0 + dx) % climate_width) + climate_width) % climate_width;
+			value += (double)climate_grid[row * climate_width + column] * weight;
+		}
+	}
+	return value;
 }
 
 Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle) const {
@@ -412,6 +449,14 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	float r = rock.r + (dark.r - rock.r) * steep_mix;
 	float g = rock.g + (dark.g - rock.g) * steep_mix;
 	float b = rock.b + (dark.b - rock.b) * steep_mix;
+	// permanent snow and ice where the cold keeps it (PlanetRock.colour)
+	const double cold = sea_temperature(p_dir) - 0.0065 * (p_ground > 0.0 ? p_ground : 0.0);
+	double snow = smooth(-0.5, -4.5, cold) * smooth(0.0, 60.0, p_ground);
+	snow *= 1.0 - 0.85 * smooth(0.5, 0.95, p_steep);
+	snow *= 0.92;
+	r += (0.93f - r) * (float)snow;
+	g += (0.95f - g) * (float)snow;
+	b += (0.98f - b) * (float)snow;
 	return Color((float)clampd(r, 0.0, 1.0), (float)clampd(g, 0.0, 1.0), (float)clampd(b, 0.0, 1.0), 1.0f);
 }
 
