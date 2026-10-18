@@ -66,3 +66,5 @@ Still fixed, in order of how much they show:
 - **Erosion tunables** (EROSION, EROSION_SCALE, octaves): the same look on every world; a wet planet should be
   more eroded than a dry one (scale by the climate's rain at the point).
 - **Biome thresholds** (snow line at -0.5 to -4.5 C, beaches at 4 m, tree line).
+
+- 2026-10-18: deltas (a big river near the sea flattens the ground to ~3 m over a wide fan; native) and wetland colour (dark green-brown on low flat wet ground; native and script). Neither looked at on the ground yet; the map's illustrated colours do not show the wetland.

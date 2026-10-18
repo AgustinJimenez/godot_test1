@@ -387,6 +387,13 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 		const double h = std::max(soft_k - std::abs(result - envelope), 0.0) / soft_k;
 		const double joined = std::min(result, envelope) - h * h * soft_k * 0.25;
 		result = joined > 0.5 ? joined : 0.5;
+		// a delta: where a big river meets the sea the ground spreads out into a flat, low plain
+		const double share = valley.flow / river_flow;
+		const double delta = smooth(0.12, 0.04, p_units) * smooth(0.25, 1.0, share) *
+				smooth(valley.floor_half * 12.0, valley.floor_half * 2.0, valley.distance);
+		if (delta > 0.0 && result > 3.0) {
+			result += (3.0 - result) * delta;
+		}
 	}
 	return result;
 }
@@ -564,6 +571,12 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	r += (0.58f - r) * (float)scree;
 	g += (0.56f - g) * (float)scree;
 	b += (0.52f - b) * (float)scree;
+	// wetland: dark green-brown on the low, flat, wet ground (PlanetRock.colour)
+	const double wet_here = clampd(grid_at(rain_grid, p_dir, 0.5) / 0.9, 0.0, 1.0);
+	const double wetland = smooth(25.0, 4.0, p_ground) * (1.0 - smooth(0.05, 0.2, p_steep)) * smooth(0.5, 0.9, wet_here) * smooth(2.0, 10.0, cold) * smooth(0.0, 1.0, p_ground) * 0.55;
+	r += (0.22f - r) * (float)wetland;
+	g += (0.30f - g) * (float)wetland;
+	b += (0.16f - b) * (float)wetland;
 	// soil: deep and dark where it is wet and mild, thin and pale where it is dry, none on steep rock
 	const double fertile = clampd(grid_at(rain_grid, p_dir, 0.5) / 0.9, 0.0, 1.0) * smooth(-5.0, 10.0, cold);
 	const double soil = on_land * (1.0 - smooth(0.2, 0.55, p_steep)) * (0.3 + 0.7 * fertile) * 0.6;
