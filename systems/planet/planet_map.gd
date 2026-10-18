@@ -55,6 +55,7 @@ var _globe: PlanetMapGlobe # the map as a small planet in 3D (G)
 var _globe_button: Button
 var _globe_mode := false
 var _caption: Label
+var _labels: PlanetMapLabels # the names of the seas and lands (built on the first look)
 var _zoom := START_ZOOM
 var _centre := Vector2(0.5, 0.5) # in map fractions (u east, v south)
 var _dragging := false
@@ -661,6 +662,7 @@ func _draw_view() -> void:
 			_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(0.0, view.position.y,
 					size.x - first_width, size.y), first_width)
 	_draw_grid()
+	_draw_names()
 	_draw_legend()
 	_draw_loading()
 	var player := _where_is_the_player()
@@ -723,6 +725,28 @@ func _draw_legend() -> void:
 			-1, 14)
 	_view.draw_string(font, origin + Vector2(width + 14.0, 12.0), PlanetChart.NAMES[_layer],
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
+
+
+## The names of the seas and the lands, spaced capitals, while the view is far enough to show them.
+func _draw_names() -> void:
+	if _zoom > 6.0 or planet == null or planet.noise == null:
+		return
+	if _labels == null:
+		_labels = PlanetMapLabels.new()
+		_labels.build(planet.noise)
+	var font := ThemeDB.fallback_font
+	var size := clampi(int(13.0 + 3.0 * log(_zoom + 1.0)), 13, 22)
+	for item in _labels.items:
+		var spot := _on_screen(item["uv"])
+		if spot.x < 0.0:
+			continue
+		var text := PlanetMapLabels.spaced(item["text"])
+		var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x
+		var at := spot - Vector2(width * 0.5, 0.0)
+		var colour := Color(0.88, 0.95, 1.0, 0.8) if item["sea"] else Color(1.0, 1.0, 1.0, 0.85)
+		_view.draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, 3,
+				Color(0.0, 0.0, 0.0, 0.55))
+		_view.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, colour)
 
 
 func _draw_grid() -> void:
