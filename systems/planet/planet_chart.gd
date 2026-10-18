@@ -15,6 +15,8 @@ const CALM_PIXEL := 2000.0 ## metres a pixel spans above which the Terrain relie
 const COARSE_PIXEL := 20.0 ## metres a pixel spans above which the map has no fine grain or beds
 const SHADE_EXAGGERATION := 2.0 ## the map's hill shading: how much a slope lights or darkens
 const SMOOTHED := [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.RAIN, Layer.CLOUDS]
+const NATIVE_LAYERS := [Layer.ELEVATION, Layer.TEMPERATURE, Layer.RAIN, Layer.SLOPE,
+		Layer.MEAN_TEMPERATURE] ## the layers whose rows the native crust colours
 const SMOOTH_PIXEL := 30.0 ## metres a pixel spans above which the map draws the smooth ground
 
 const BIOME_COLORS := {
@@ -35,6 +37,7 @@ var _noise: PlanetNoise
 var _pixel_metres := 0.0 ## metres a pixel spans
 var _threads: Array[Thread] = []
 var _bands: Array[PackedByteArray] = []
+var _blend := PackedFloat32Array() # the seasons' grid at this chart's moment (Temperature)
 var _land_bands: Array[PackedByteArray] = [] # 1 where the pixel is land (for the coast lines)
 var _rows_done := 0
 var _mutex := Mutex.new()
@@ -90,6 +93,8 @@ func start(noise: PlanetNoise) -> void:
 	_noise = noise
 	_bands.resize(workers)
 	_land_bands.resize(workers)
+	if layer == Layer.TEMPERATURE and clock != null:
+		_blend = noise.climate.seasons.blended(clock.year_share())
 	for worker in workers:
 		var thread := Thread.new()
 		thread.start(_chart.bind(worker), Thread.PRIORITY_HIGH) # (over the world's builders)
@@ -121,7 +126,8 @@ func texture() -> ImageTexture:
 	var tidy := layer != Layer.PLATES and layer != Layer.CLOUD_MASK
 	if tidy and _noise.native != null and _noise.native.has_method(&"despeckle"):
 		all = _noise.native.call(&"despeckle", all, size.x, size.y) # (lone dots are grain)
-	if _noise.native != null and layer in SMOOTHED:
+	var far := _pixel_metres > CALM_PIXEL * 50.0 # (kilometres a pixel: Elevation is grain too)
+	if _noise.native != null and (layer in SMOOTHED or (layer == Layer.ELEVATION and far)):
 		# (a data layer is a smooth gradient: the grain of the small pixels is averaged away, and a thin
 		# dark line follows the coasts so the sea and the land read through the colours)
 		var passes := 8 if layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE] else 3
@@ -158,8 +164,8 @@ func _chart(worker: int) -> void:
 	var land := PackedByteArray()
 	# the Terrain layer's rows come ready from the native crust (rows are then added one by one)
 	var step_lon := rect.size.x * TAU / float(size.x)
-	var native_rows := layer == Layer.TERRAIN and _noise.native != null \
-			and _noise.hydrology == null
+	var native_rows := _noise.native != null and ((layer == Layer.TERRAIN and _noise.hydrology == null)
+			or layer in NATIVE_LAYERS)
 	if not native_rows:
 		bytes.resize((to_row - from_row) * size.x * 3)
 	var at := 0
@@ -218,13 +224,15 @@ func _chart(worker: int) -> void:
 		if layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.CLOUDS, Layer.SATELLITE,
 				Layer.CLOUD_MASK]:
 			macros = _ground_of(dirs, true)
-			if _pixel_metres > CALM_PIXEL and layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE]:
-				macros = _averaged(dirs, macros, lat, step_lat, step_lon)
 		for column in size.x:
 			land.append(1 if grounds[column] >= 0.0 else 0)
 		if native_rows:
-			bytes.append_array(_noise.native.call(&"terrain_row", dirs, grounds, east_grounds,
-					north_grounds, step_lon, calm))
+			if layer == Layer.TERRAIN:
+				bytes.append_array(_noise.native.call(&"terrain_row", dirs, grounds, east_grounds,
+						north_grounds, step_lon, calm))
+			else:
+				bytes.append_array(_noise.native.call(&"data_row", int(layer), dirs, grounds, macros,
+						east_grounds, north_grounds, step_lon, _row_params(lat)))
 			_mutex.lock()
 			_rows_done += 1
 			_mutex.unlock()
@@ -251,32 +259,22 @@ func _chart(worker: int) -> void:
 	_land_bands[worker] = land
 
 
+## What the native row needs besides the heights (the seasons' grid now, the sun's longitude, and
+## how clear the sky is on this row's latitude).
+func _row_params(lat: float) -> Dictionary:
+	if clock == null or _blend.is_empty():
+		return {}
+	var sun := clock.sun_in_body()
+	return {"grid": _blend, "gw": PlanetSeasons.WIDTH, "gh": PlanetSeasons.HEIGHT,
+			"sun_lon": atan2(sun.z, sun.x),
+			"clear": clampf(clock.day_length(lat) * 2.0 + 0.3, 0.3, 1.0)}
+
+
 ## The ground at many directions: its smooth shape (without the hills and gullies) for a far view.
 func _ground_of(dirs: PackedVector3Array, smooth_shape: bool) -> PackedFloat32Array:
 	if not smooth_shape:
 		return _noise.heights_of(dirs)
 	return _noise.broad_heights_of(dirs, _pixel_metres)
-
-
-## The heights `centre` of the pixels of a row averaged with the heights at the pixels' four corners
-## (a pixel of many kilometres has one noisy height, and the altitude would speckle the map).
-func _averaged(dirs: PackedVector3Array, centre: PackedFloat32Array, lat: float, step_lat: float,
-		step_lon: float) -> PackedFloat32Array:
-	var total := centre.duplicate()
-	for corner in 4:
-		var corner_dirs := PackedVector3Array()
-		corner_dirs.resize(dirs.size())
-		var d_lat := step_lat * (0.5 if corner < 2 else -0.5)
-		var d_lon := step_lon * (0.5 if corner % 2 == 0 else -0.5)
-		for column in dirs.size():
-			var lon := atan2(dirs[column].z, dirs[column].x) + d_lon
-			corner_dirs[column] = _direction(clampf(lat + d_lat, -PI * 0.5, PI * 0.5), lon)
-		var heights := _ground_of(corner_dirs, true)
-		for column in dirs.size():
-			total[column] += heights[column]
-	for column in dirs.size():
-		total[column] /= 5.0
-	return total
 
 
 static func _direction(lat: float, lon: float) -> Vector3:

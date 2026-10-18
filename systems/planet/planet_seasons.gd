@@ -291,6 +291,20 @@ func at(dir: Vector3, year_share: float) -> float:
 
 
 ## The yearly mean at the direction (bilinear).
+## The whole grid at `year_share`: the two pictures of the cycle round it, blended (native map).
+func blended(year_share: float) -> PackedFloat32Array:
+	var position := fposmod(year_share, 1.0) * float(SNAPSHOTS)
+	var first := int(floorf(position)) % SNAPSHOTS
+	var blend := position - floorf(position)
+	var a := _cycle[first]
+	var b := _cycle[(first + 1) % SNAPSHOTS]
+	var out := PackedFloat32Array()
+	out.resize(a.size())
+	for index in a.size():
+		out[index] = lerpf(a[index], b[index], blend)
+	return out
+
+
 func mean_at(dir: Vector3) -> float:
 	return _look(mean, dir)
 

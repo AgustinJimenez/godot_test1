@@ -52,6 +52,8 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("smooth_rgb", "rgb", "width", "height"), &PlanetCrustNative::smooth_rgb);
 	ClassDB::bind_method(D_METHOD("coast_lines", "rgb", "land", "width", "height"), &PlanetCrustNative::coast_lines);
 	ClassDB::bind_method(D_METHOD("despeckle", "rgb", "width", "height"), &PlanetCrustNative::despeckle);
+	ClassDB::bind_method(D_METHOD("data_row", "layer", "dirs", "grounds", "macros", "east", "north", "step_lon", "params"),
+			&PlanetCrustNative::data_row);
 	ClassDB::bind_method(D_METHOD("terrain_row", "dirs", "grounds", "east", "north", "step_lon", "calm"),
 			&PlanetCrustNative::terrain_row);
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
@@ -907,6 +909,142 @@ PackedByteArray PlanetCrustNative::despeckle(const PackedByteArray &p_rgb, int p
 				}
 			}
 		}
+	}
+	return out;
+}
+
+namespace {
+struct Stop {
+	double at, r, g, b;
+};
+
+// The colour of `t` (0..1) along a list of stops (PlanetChart.ramp).
+void along(const Stop *p_stops, int p_count, double p_t, double &r_r, double &r_g, double &r_b) {
+	p_t = p_t < 0.0 ? 0.0 : (p_t > 1.0 ? 1.0 : p_t);
+	for (int index = 0; index < p_count - 1; index++) {
+		if (p_t <= p_stops[index + 1].at) {
+			const double span = std::max(p_stops[index + 1].at - p_stops[index].at, 0.0001);
+			const double k = (p_t - p_stops[index].at) / span;
+			r_r = p_stops[index].r + (p_stops[index + 1].r - p_stops[index].r) * k;
+			r_g = p_stops[index].g + (p_stops[index + 1].g - p_stops[index].g) * k;
+			r_b = p_stops[index].b + (p_stops[index + 1].b - p_stops[index].b) * k;
+			return;
+		}
+	}
+	r_r = p_stops[p_count - 1].r;
+	r_g = p_stops[p_count - 1].g;
+	r_b = p_stops[p_count - 1].b;
+}
+
+const Stop ELEVATION_STOPS[] = { { 0.0, 0.05, 0.12, 0.4 }, { 0.33, 0.3, 0.6, 0.85 }, { 0.36, 0.25, 0.55, 0.25 },
+	{ 0.55, 0.85, 0.8, 0.35 }, { 0.8, 0.6, 0.4, 0.25 }, { 1.0, 1.0, 1.0, 1.0 } };
+const Stop TEMPERATURE_STOPS[] = { { 0.0, 0.35, 0.2, 0.75 }, { 0.2, 0.25, 0.6, 1.0 }, { 0.46, 0.45, 0.85, 0.6 },
+	{ 0.67, 1.0, 0.9, 0.25 }, { 0.8, 0.98, 0.5, 0.1 }, { 0.92, 0.8, 0.12, 0.08 }, { 1.0, 0.4, 0.04, 0.02 } };
+const Stop RAIN_STOPS[] = { { 0.0, 0.95, 0.85, 0.6 }, { 0.3, 0.8, 0.9, 0.7 }, { 0.65, 0.4, 0.75, 0.85 }, { 1.0, 0.1, 0.3, 0.8 } };
+const Stop SLOPE_STOPS[] = { { 0.0, 0.95, 0.95, 0.9 }, { 0.4, 0.75, 0.6, 0.35 }, { 1.0, 0.3, 0.15, 0.1 } };
+
+// A grid of width x height cells (rows from the north pole, columns from the west) read bilinearly at a direction.
+double read_grid(const float *p_grid, int p_width, int p_height, const Vector3 &p_dir) {
+	const double pi = 3.14159265358979323846;
+	const double lat = std::asin(std::max(-1.0, std::min(1.0, (double)p_dir.y)));
+	const double lon = std::atan2((double)p_dir.z, (double)p_dir.x);
+	const double fx = (lon + pi) / (2.0 * pi) * p_width - 0.5;
+	const double fy = (0.5 - lat / pi) * p_height - 0.5;
+	const int x0 = (int)std::floor(fx), y0 = (int)std::floor(fy);
+	const double tx = fx - x0, ty = fy - y0;
+	double value = 0.0;
+	for (int dy = 0; dy < 2; dy++) {
+		for (int dx = 0; dx < 2; dx++) {
+			const double w = (dx ? tx : 1.0 - tx) * (dy ? ty : 1.0 - ty);
+			const int row = std::max(0, std::min(p_height - 1, y0 + dy));
+			const int column = (((x0 + dx) % p_width) + p_width) % p_width;
+			value += (double)p_grid[row * p_width + column] * w;
+		}
+	}
+	return value;
+}
+} // namespace
+
+PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
+		const PackedFloat32Array &p_macros, const PackedFloat32Array &p_east, const PackedFloat32Array &p_north,
+		double p_step_lon, const Dictionary &p_params) const {
+	PackedByteArray out;
+	out.resize(p_dirs.size() * 3);
+	uint8_t *bytes = out.ptrw();
+	const double pi = 3.14159265358979323846;
+	const double metres = p_step_lon * radius;
+	const PackedFloat32Array grid = p_params.get("grid", PackedFloat32Array());
+	const int gw = p_params.get("gw", 96), gh = p_params.get("gh", 48);
+	const double sun_lon = p_params.get("sun_lon", 0.0), clear = p_params.get("clear", 1.0);
+	const bool have_grid = grid.size() >= gw * gh;
+	for (int index = 0; index < p_dirs.size(); index++) {
+		const Vector3 dir = p_dirs[index];
+		const double ground = p_grounds[index];
+		const double rise_east = (double)p_east[index] - ground, rise_north = (double)p_north[index] - ground;
+		const double broad = p_macros.size() > index ? (double)p_macros[index] : ground;
+		double r = 1.0, g = 1.0, b = 1.0;
+		switch (p_layer) {
+			case 1: { // elevation
+				double shown = ground;
+				if (metres > 2000.0 && ground >= 0.0) {
+					shown = std::max(ground + (rise_east + rise_north) * 0.25, 0.0);
+				}
+				double deep = ground;
+				if (metres > 2000.0 && ground < 0.0) {
+					deep = std::min((ground + (ground + rise_east + rise_north)) * 0.5, 0.0);
+				}
+				double t = ground < 0.0 ? 0.33 + (0.0 - 0.33) * clampd(-deep / (relief * 0.35), 0.0, 1.0)
+										 : 0.36 + (1.0 - 0.36) * clampd(shown / relief, 0.0, 1.0);
+				along(ELEVATION_STOPS, 6, t, r, g, b);
+				if (ground >= 0.0 && metres <= 2000.0) { // contour lines every 5 % of the relief
+					const double interval = relief * 0.05;
+					const double band = std::floor(ground / interval);
+					if (band != std::floor((ground + rise_east) / interval) || band != std::floor((ground + rise_north) / interval)) {
+						r *= 0.7;
+						g *= 0.7;
+						b *= 0.7;
+					}
+				}
+			} break;
+			case 2:
+			case 7: { // temperature now / mean temperature
+				const double lapse = (broad > 0.0 ? broad : 0.0) / relief * 8800.0 / 1000.0 * 6.5;
+				double degrees = sea_temperature(dir);
+				if (p_layer == 2 && have_grid) {
+					degrees = read_grid(grid.ptr(), gw, gh, dir);
+					const double lon = std::atan2((double)dir.z, (double)dir.x);
+					double angle = std::fmod(lon - sun_lon + 3.0 * pi, 2.0 * pi) - pi;
+					const double hour = std::fmod(12.0 + angle / (2.0 * pi) * 24.0 + 24.0, 24.0);
+					const double swing = broad >= 0.0 ? 6.0 : 0.8;
+					degrees += swing * std::cos((hour - 14.5) / 24.0 * 2.0 * pi) * clear;
+				}
+				degrees -= lapse;
+				along(TEMPERATURE_STOPS, 7, (degrees + 30.0) / 75.0, r, g, b);
+			} break;
+			case 3: { // rain
+				along(RAIN_STOPS, 4, grid_at(rain_grid, dir, 0.5) / 1.2, r, g, b);
+				if (ground < 0.0) {
+					r *= 0.75;
+					g *= 0.75;
+					b *= 0.75;
+				}
+			} break;
+			case 6: { // slope
+				if (ground < 0.0) {
+					r = 0.2;
+					g = 0.4;
+					b = 0.7;
+				} else {
+					const double slope = clampd(std::sqrt(rise_east * rise_east + rise_north * rise_north) / metres, 0.0, 1.0);
+					along(SLOPE_STOPS, 3, slope / 0.6, r, g, b);
+				}
+			} break;
+			default:
+				break;
+		}
+		bytes[index * 3] = (uint8_t)clampd((double)(int)(clampd(r, 0.0, 1.0) * 255.0), 0.0, 255.0);
+		bytes[index * 3 + 1] = (uint8_t)clampd((double)(int)(clampd(g, 0.0, 1.0) * 255.0), 0.0, 255.0);
+		bytes[index * 3 + 2] = (uint8_t)clampd((double)(int)(clampd(b, 0.0, 1.0) * 255.0), 0.0, 255.0);
 	}
 	return out;
 }

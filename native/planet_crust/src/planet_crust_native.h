@@ -160,6 +160,12 @@ public:
 	PackedByteArray smooth_rgb(const PackedByteArray &p_rgb, int p_width, int p_height) const;
 	PackedByteArray coast_lines(const PackedByteArray &p_rgb, const PackedByteArray &p_land, int p_width, int p_height) const;
 	PackedByteArray despeckle(const PackedByteArray &p_rgb, int p_width, int p_height) const;
+	// One row of a data layer's picture as RGB bytes: layer is PlanetChart.Layer (1 Elevation, 2 Temperature, 3 Rain,
+	// 6 Slope, 7 Mean temperature). `macros`: the broad ground (for the air's cooling). `params`: grid (the seasons'
+	// grid at this moment, 96x48 by gw, gh), sun_lon, clear (this row's clear-sky share), pixel (metres a pixel spans)
+	PackedByteArray data_row(int p_layer, const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
+			const PackedFloat32Array &p_macros, const PackedFloat32Array &p_east, const PackedFloat32Array &p_north,
+			double p_step_lon, const Dictionary &p_params) const;
 	PackedByteArray terrain_row(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
 			const PackedFloat32Array &p_east, const PackedFloat32Array &p_north, double p_step_lon, double p_calm = 1.0) const;
 	PackedColorArray colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
