@@ -33,7 +33,7 @@ the slope of the coarser ones, so valleys branch). Inland basins below the sea a
    hurricanes (see 068).
 8. **Temperature**: land heating and currents are crude (a few degrees from cell neighbours). Missing: sea ice,
    snow albedo from real snow cover, El Nino-like swings, a proper monsoon wind.
-9. **Rain** follows the winds on a 192x96 grid: no rain shadows finer than ~200 km, no orographic rain from
+9. **Rain** (2026-10-18: the climate grid is 384x192 now, with the per-cell terms scaled; rain shadows to ~100 km) follows the winds on a grid: no rain shadows finer than ~200 km, no orographic rain from
    the real ridges.
 10. **Seasons of the plants**: leaves, snow cover on the ground and the dry season do not change the colours.
 

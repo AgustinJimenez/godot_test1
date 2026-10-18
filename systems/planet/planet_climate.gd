@@ -7,10 +7,10 @@ extends RefCounted
 ## shadows behind ranges, dry continental interiors and wet windward coasts. The tropics are wet
 ## and the belts at ~28 degrees dry. Built once from the planet's height (PlanetNoise.height).
 
-const WIDTH := 192
+const WIDTH := 384 ## (the rain below is tuned for 192: its per-cell terms scale by WIDTH / 192)
 const RAIN_BASE := 0.08 ## the share of the moisture in the air that falls on a flat cell
 const RAIN_SCALE := 5.0
-const HEIGHT := 96
+const HEIGHT := 192
 
 var _temperature := PackedFloat32Array() ## degrees C at sea level
 var _rain := PackedFloat32Array() ## 0 none .. ~1.5 a rain forest
@@ -96,14 +96,15 @@ func _advect_row(row: int, elevation: PackedFloat32Array, ocean: PackedByteArray
 			var index := row * WIDTH + column
 			if ocean[index] == 1:
 				var warmth := clampf((_temperature[index] + 5.0) / 30.0, 0.1, 1.0)
-				carried = lerpf(carried, 1.0, 0.5 * warmth)
+				carried = lerpf(carried, 1.0, 1.0 - pow(1.0 - 0.5 * warmth, 192.0 / float(WIDTH)))
 				rain[column] = 0.0
 			else:
 				var climb := maxf(elevation[index] - elevation[row * WIDTH + behind], 0.0)
-				var fall := carried * (RAIN_BASE + minf(climb * 9.0, 0.55)) * dry_belt
+				var fall := carried * (RAIN_BASE * 192.0 / float(WIDTH) + minf(climb * 9.0, 0.55)) * dry_belt
 				# half of what falls is given back by the plants and the soil, so rain reaches far
 				# inland on a wet coast; a mountain wrings out what it makes rise
-				carried = maxf(carried - fall * (0.5 - minf(climb * 6.0, 0.3)), 0.0) * 0.996
+				var keep := pow(0.996, 192.0 / float(WIDTH))
+				carried = maxf(carried - fall * (0.5 - minf(climb * 6.0, 0.3)), 0.0) * keep
 				rain[column] = fall * RAIN_SCALE
 	for column in WIDTH:
 		var wet_belt := (itcz + storms) * (1.0 if ocean[row * WIDTH + column] == 0 else 0.4)

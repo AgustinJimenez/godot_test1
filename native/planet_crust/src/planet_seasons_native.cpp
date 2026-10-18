@@ -166,6 +166,7 @@ PackedFloat32Array PlanetSeasonsNative::rain(const PackedFloat32Array &p_elevati
 			p_temperature.size() < size) {
 		return result;
 	}
+	const double finer = 192.0 / (double)p_width; // (the rain is tuned for 192 columns: per-cell terms scale)
 	std::vector<float> raw(size, 0.0f);
 	std::vector<float> row_rain(p_width);
 	for (int row = 0; row < p_height; row++) {
@@ -184,13 +185,13 @@ PackedFloat32Array PlanetSeasonsNative::rain(const PackedFloat32Array &p_elevati
 				if (p_ocean[index] == 1) {
 					double warmth = ((double)p_temperature[index] + 5.0) / 30.0;
 					warmth = warmth < 0.1 ? 0.1 : (warmth > 1.0 ? 1.0 : warmth);
-					carried = carried + (1.0 - carried) * (0.5 * warmth);
+					carried = carried + (1.0 - carried) * (1.0 - std::pow(1.0 - 0.5 * warmth, finer));
 					row_rain[column] = 0.0f;
 				} else {
 					double climb = (double)p_elevation[index] - (double)p_elevation[row * p_width + behind];
 					climb = climb < 0.0 ? 0.0 : climb;
-					const double fall = carried * (p_rain_base + std::min(climb * 9.0, 0.55)) * dry_belt;
-					carried = std::max(carried - fall * (0.5 - std::min(climb * 6.0, 0.3)), 0.0) * 0.996;
+					const double fall = carried * (p_rain_base * finer + std::min(climb * 9.0, 0.55)) * dry_belt;
+					carried = std::max(carried - fall * (0.5 - std::min(climb * 6.0, 0.3)), 0.0) * std::pow(0.996, finer);
 					row_rain[column] = (float)(fall * p_rain_scale);
 				}
 			}
