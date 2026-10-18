@@ -36,6 +36,7 @@ const WIND := 0.2 ## share of a cell the zonal wind carries the heat each pass (
 var mean := PackedFloat32Array() ## degrees C at sea level, averaged over the year
 var _cycle: Array[PackedFloat32Array] = [] # SNAPSHOTS grids of degrees C at sea level
 var wind := WIND ## the lab sets 0 to see the climate without the wind
+var native_year := true ## false: the year is run by the script below (to compare with the native one)
 var _sea := PackedByteArray() # 1 where the cell is sea
 
 
@@ -50,6 +51,9 @@ func build(noise: PlanetNoise, clock: PlanetClock) -> void:
 			var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
 			var h := noise.macro_height(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
 			_sea[row * WIDTH + column] = 1 if h < 0.0 else 0
+	if native_year and ClassDB.class_exists(&"PlanetSeasonsNative"):
+		_run_native(clock)
+		return
 	var heat := PackedFloat32Array()
 	heat.resize(size)
 	var light := PackedFloat32Array() # the sunlight of each row at the moment
@@ -78,6 +82,24 @@ func build(noise: PlanetNoise, clock: PlanetClock) -> void:
 		for index in size:
 			mean[index] += heat[index] / float(SNAPSHOTS)
 
+
+
+## The year run natively (PlanetSeasonsNative, the same steps as below): the script only works out
+## the sunlight of every row at every moment, the orbit being its own.
+func _run_native(clock: PlanetClock) -> void:
+	var lights := PackedFloat32Array()
+	lights.resize(SNAPSHOTS * HEIGHT)
+	for moment in SNAPSHOTS:
+		clock.set_year_share((float(moment) + 0.5) / float(SNAPSHOTS))
+		for row in HEIGHT:
+			var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
+			lights[moment * HEIGHT + row] = clock.daily_light(lat) * clock.light_now()
+	var year: RefCounted = ClassDB.instantiate(&"PlanetSeasonsNative")
+	var made: Dictionary = year.call(&"run", _sea, lights, WIDTH, HEIGHT, SNAPSHOTS, wind, MAX_YEARS)
+	mean = made["mean"]
+	_cycle.clear()
+	for picture: PackedFloat32Array in made["cycle"]:
+		_cycle.append(picture)
 
 ## One step of `dt` years, from the share `at` - dt/2 to at + dt/2 of the year.
 func _step(heat: PackedFloat32Array, light: PackedFloat32Array, clock: PlanetClock, at: float,

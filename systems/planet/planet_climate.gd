@@ -25,15 +25,17 @@ func build(noise: PlanetNoise) -> void:
 	elevation.resize(size)
 	var ocean := PackedByteArray()
 	ocean.resize(size)
+	var dirs := PackedVector3Array() # (all the grid's heights in one go, on several threads)
+	dirs.resize(size)
 	for row in HEIGHT:
 		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
 		for column in WIDTH:
 			var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
-			var dir := Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
-			var h := noise.height(dir.x, dir.y, dir.z)
-			var index := row * WIDTH + column
-			elevation[index] = h / noise.relief
-			ocean[index] = 1 if h < 0.0 else 0
+			dirs[row * WIDTH + column] = Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+	var grounds := noise.heights_of(dirs)
+	for index in size:
+		elevation[index] = grounds[index] / noise.relief
+		ocean[index] = 1 if grounds[index] < 0.0 else 0
 	var clock := PlanetClock.new() # the orbit and the tilt of this planet, for the seasons
 	clock.day_seconds = noise.settings.day_seconds
 	clock.year_days = noise.settings.year_days
