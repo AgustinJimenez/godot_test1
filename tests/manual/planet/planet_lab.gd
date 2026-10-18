@@ -686,7 +686,9 @@ func _ready() -> void:
 		elif arg == "--planet-check":
 			_checking = true
 	planet = PlanetWorld.new()
-	planet.map_first = "--map-first" in OS.get_cmdline_user_args() # (the lab waits for no map)
+	# played with no arguments the map comes first; with arguments (checks, pictures) only on --map-first
+	var lab_args := OS.get_cmdline_user_args()
+	planet.map_first = lab_args.is_empty() or "--map-first" in lab_args
 	planet.settings = settings
 	planet.restored = restored_state
 	add_child(planet)
