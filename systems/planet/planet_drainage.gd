@@ -32,11 +32,9 @@ func build(noise: PlanetNoise, cells_per_edge: int, exponent := 4.0) -> bool:
 	_native = ClassDB.instantiate(&"PlanetDrainageNative")
 	_native.call(&"setup", cells, noise.settings.radius, noise._cube_faces())
 	dirs = _native.call(&"cell_dirs")
-	heights = noise.native.call(&"macro_heights", dirs)
-	var raised: PackedFloat32Array = noise.native.call(&"tectonic_heights", dirs)
-	uplift.resize(dirs.size())
-	for index in dirs.size():
-		uplift[index] = clampf((raised[index] - noise._sea) / 0.4, 0.0, 1.0)
+	var both: Dictionary = noise.native.call(&"macro_and_tectonic_heights", dirs)
+	heights = both["macro"]
+	uplift = both["uplift"]
 	rain = _native.call(&"sample_grid", noise.climate.rain_grid(), PlanetClimate.WIDTH,
 			PlanetClimate.HEIGHT, dirs)
 	var lake_depth := maxf(noise.relief * 0.015, 6.0) # a hollow this deep is a lake
@@ -46,9 +44,7 @@ func build(noise: PlanetNoise, cells_per_edge: int, exponent := 4.0) -> bool:
 	flow = solved["flow"]
 	receiver = solved["receiver"]
 	lake = solved["lake"]
-	land_cells = 0
-	for height in heights:
-		land_cells += 1 if height >= 0.0 else 0
+	land_cells = solved["land"]
 	return true
 
 

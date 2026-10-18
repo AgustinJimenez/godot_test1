@@ -94,15 +94,20 @@ public:
 	PackedVector3Array river_waters(const PackedVector3Array &p_dirs) const;
 	void set_rivers(int p_cells, const Dictionary &p_network, double p_cell_metres);
 	// Many points at once are split over the engine's worker threads (every call is pure, so any order).
-	enum HeightMode { GROUND, TECTONIC, MACRO };
+	enum HeightMode { GROUND, TECTONIC, MACRO, MACRO_AND_TECTONIC };
 	struct HeightJob {
 		int mode;
 		const Vector3 *dirs;
 		float *out;
+		float *out2; // (the second answer of MACRO_AND_TECTONIC)
 		int count;
 	};
 	void height_chunk(int p_chunk, int64_t p_job); // (not const: callable_mp of a const void method does not compile)
 	PackedFloat32Array heights_by(int p_mode, const PackedVector3Array &p_dirs) const;
+	// The smooth ground and the plates' height in one go (the plates' part is the costly one and is shared).
+	Dictionary macro_and_tectonic_heights(const PackedVector3Array &p_dirs) const;
+	PackedFloat32Array run_heights(int p_mode, const PackedVector3Array &p_dirs, PackedFloat32Array &r_result,
+			PackedFloat32Array &r_second) const;
 	PackedFloat32Array heights(const PackedVector3Array &p_dirs) const;
 	// One row of the map's Terrain layer as RGB bytes (the sea by depth, the land's rock shaded by the
 	// light from the north west): the heights of the points, of the points a pixel east and a pixel north

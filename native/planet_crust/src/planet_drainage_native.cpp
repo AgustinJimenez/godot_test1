@@ -304,6 +304,11 @@ Dictionary PlanetDrainageNative::solve(const PackedFloat32Array &p_heights, cons
 	result["flow"] = flow_out;
 	result["receiver"] = receiver;
 	result["lake"] = lake;
+	int land = 0;
+	for (int index = 0; index < p_heights.size(); index++) {
+		land += p_heights[index] >= 0.0f ? 1 : 0;
+	}
+	result["land"] = land;
 	return result;
 }
 

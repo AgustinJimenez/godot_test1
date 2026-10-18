@@ -49,6 +49,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("terrain_row", "dirs", "grounds", "east", "north", "step_lon"),
 			&PlanetCrustNative::terrain_row);
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
+	ClassDB::bind_method(D_METHOD("macro_and_tectonic_heights", "dirs"), &PlanetCrustNative::macro_and_tectonic_heights);
 	ClassDB::bind_method(D_METHOD("tectonic_heights", "dirs"), &PlanetCrustNative::tectonic_heights);
 	ClassDB::bind_method(D_METHOD("macro_heights", "dirs"), &PlanetCrustNative::macro_heights);
 	ClassDB::bind_method(D_METHOD("tile_dirs", "face", "s0", "s1", "t0", "t1", "cells"), &PlanetCrustNative::tile_dirs);
@@ -427,6 +428,12 @@ void PlanetCrustNative::height_chunk(int p_chunk, int64_t p_job) {
 			case TECTONIC:
 				job->out[index] = (float)tectonic_height(dir);
 				break;
+			case MACRO_AND_TECTONIC: {
+				const double raised = tectonic_height(dir);
+				job->out[index] = (float)macro_ground(raised - sea, dir * (real_t)radius);
+				job->out2[index] = (float)raised;
+				break;
+			}
 			default:
 				job->out[index] = (float)macro_ground(tectonic_height(dir) - sea, dir * (real_t)radius);
 		}
@@ -435,8 +442,18 @@ void PlanetCrustNative::height_chunk(int p_chunk, int64_t p_job) {
 
 PackedFloat32Array PlanetCrustNative::heights_by(int p_mode, const PackedVector3Array &p_dirs) const {
 	PackedFloat32Array result;
+	PackedFloat32Array second;
+	return run_heights(p_mode, p_dirs, result, second);
+}
+
+PackedFloat32Array PlanetCrustNative::run_heights(int p_mode, const PackedVector3Array &p_dirs, PackedFloat32Array &r_result,
+		PackedFloat32Array &r_second) const {
+	PackedFloat32Array &result = r_result;
 	result.resize(p_dirs.size());
-	HeightJob job = { p_mode, p_dirs.ptr(), result.ptrw(), (int)p_dirs.size() };
+	if (p_mode == MACRO_AND_TECTONIC) {
+		r_second.resize(p_dirs.size());
+	}
+	HeightJob job = { p_mode, p_dirs.ptr(), result.ptrw(), p_mode == MACRO_AND_TECTONIC ? r_second.ptrw() : nullptr, (int)p_dirs.size() };
 	const int chunks = (job.count + 4095) / 4096;
 	if (chunks <= 4) { // few points (a tile, a row): not worth waking the workers
 		for (int chunk = 0; chunk < chunks; chunk++) {
@@ -461,6 +478,25 @@ PackedFloat32Array PlanetCrustNative::heights_by(int p_mode, const PackedVector3
 	for (std::thread &thread : threads) {
 		thread.join();
 	}
+	return result;
+}
+
+Dictionary PlanetCrustNative::macro_and_tectonic_heights(const PackedVector3Array &p_dirs) const {
+	PackedFloat32Array macro;
+	PackedFloat32Array raised;
+	run_heights(MACRO_AND_TECTONIC, p_dirs, macro, raised);
+	Dictionary result;
+	result["macro"] = macro;
+	result["tectonic"] = raised;
+	// how far the plates have raised the ground (0 at the sea .. 1 at 0.4 relief above it)
+	PackedFloat32Array uplift;
+	uplift.resize(raised.size());
+	float *out = uplift.ptrw();
+	for (int index = 0; index < raised.size(); index++) {
+		const double lift = ((double)raised[index] - sea) / 0.4;
+		out[index] = (float)(lift < 0.0 ? 0.0 : (lift > 1.0 ? 1.0 : lift));
+	}
+	result["uplift"] = uplift;
 	return result;
 }
 
