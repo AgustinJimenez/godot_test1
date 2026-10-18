@@ -121,3 +121,20 @@ static func draw_loading(view: Control, progress: float) -> void:
 	view.draw_string(font, box.position + Vector2(14.0, 24.0), text, HORIZONTAL_ALIGNMENT_LEFT,
 			-1.0, 18, Color(0.9, 0.93, 1.0))
 
+
+## The numbers at the map point `uv` (fractions): where, height, temperature, rain, biome, plate.
+static func describe(noise: PlanetNoise, uv: Vector2) -> String:
+	var lat := (0.5 - uv.y) * PI
+	var lon := uv.x * TAU - PI
+	var dir := Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+	var ground := noise.height(dir.x, dir.y, dir.z)
+	var plate := noise.tectonics.plate_at(dir)
+	var biome := "sea"
+	if ground >= 0.0:
+		biome = TerrainNoise.Biome.keys()[noise.biome(dir.x, dir.y, dir.z, ground, 0.1)].to_lower()
+	return "%.1f° %s %.1f° %s   height %d m   %.0f °C   rain %.2f   %s   plate %d (%s)" % [
+			absf(rad_to_deg(lat)), "N" if lat >= 0.0 else "S", absf(rad_to_deg(lon)),
+			"E" if lon >= 0.0 else "W", roundi(ground),
+			noise.temperature_now(dir.x, dir.y, dir.z, maxf(ground, 0.0)), noise.climate.sample(dir).y,
+			biome, int(plate.x), "land" if plate.z > 0.5 else "ocean"]
+

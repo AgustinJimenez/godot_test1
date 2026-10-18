@@ -75,8 +75,7 @@ var _warm_layers_done := 0
 var _warm_close := 0 # 0 the close view of the start is not charted yet, 1 it has been started
 var _chart_layer := PlanetChart.Layer.TERRAIN # the layer of the chart in hand (maybe not shown)
 var _chart_ms := 0 # when the chart in hand was started
-var _logged_zoom := -1.0
-var _logged_centre := Vector2(-1.0, -1.0)
+var _logged_view := Vector3(-1.0, -1.0, -1.0) # (zoom, centre) last logged
 var _zoom := START_ZOOM
 var _centre := Vector2(0.5, 0.5) # in map fractions (u east, v south)
 var _dragging := false
@@ -354,8 +353,8 @@ func _clamp_centre() -> void:
 	_centre.x = fposmod(_centre.x, 1.0) # the map wraps east-west
 	if size.y >= 1.0:
 		_centre.y = 0.5
-	else:
-		_centre.y = clampf(_centre.y, size.y * 0.5, 1.0 - size.y * 0.5)
+	else: # past a pole is the other side of the planet: the map goes on, upside down, half a turn on
+		_centre.y = fposmod(_centre.y + 0.5, 2.0) - 0.5
 
 
 ## Zooms by `factor`, keeping the point of the map under the cursor where it is.
@@ -381,7 +380,6 @@ func begin() -> void:
 	_tiles.disk = _disk
 	if planet.has_signal(&"world_changed"):
 		planet.world_changed.connect(world_changed)
-	PlanetMapLog.line("disk cache: " + _disk.directory())
 	if warm_up:
 		_warming = true
 		for layer in PlanetChart.NAMES.size():
@@ -408,8 +406,6 @@ func _start_chart(pass_index: int) -> void:
 		_chart = null
 		if not _is_moving(_layer):
 			_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
-		PlanetMapLog.line("whole pass %d (%d px) of the %s layer from the disk" % [pass_index,
-				PASSES[pass_index].x, PlanetChart.NAMES[_layer]])
 		if _whole_pass < _last_pass():
 			_start_chart(_whole_pass + 1)
 		return
@@ -421,8 +417,8 @@ func _start_chart(pass_index: int) -> void:
 	_chart_is_detail = false
 	_chart_layer = _layer
 	_chart_ms = Time.get_ticks_msec()
-	PlanetMapLog.line("chart whole planet pass %d: %dx%d, %s" % [pass_index, _chart.size.x,
-			_chart.size.y, PlanetChart.NAMES[_layer]])
+	PlanetMapLog.line("chart whole pass %d: %d px, %s" % [pass_index, _chart.size.x,
+			PlanetChart.NAMES[_layer]])
 	_chart.start(planet.noise)
 
 
@@ -509,12 +505,12 @@ func _serve_the_tiles() -> void:
 		return # (the whole planet's passes come first: nothing else uses the CPU)
 	_tiles.layer = _layer
 	_tiles.clock = planet.clock
-	_tiles.ask(_tile_view(), _tile_level())
+	_tiles.ask(_tile_view(), _tile_level(), _tile_view_beyond())
 	_tiles.step()
 
 
-## Gives the globe the sharp picture it can have: the tiles round where it looks, put together (the
-## same tiles the flat map uses: nothing is charted again when the map changes to the globe).
+## Gives the globe the sharp picture it can have: the tiles round where it looks, put together
+## (the same tiles as the flat map: changing to the globe charts nothing again).
 func _set_the_globe_detail() -> void:
 	if not _tile_mode():
 		_globe.set_detail(null, Rect2())
@@ -541,29 +537,16 @@ func _set_the_globe_detail() -> void:
 func _draw_whole(view: Rect2, size: Vector2) -> void:
 	var first_u := fposmod(view.position.x, 1.0)
 	var first_width := minf(size.x, 1.0 - first_u)
-	_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(first_u, view.position.y, first_width, size.y))
+	var rows := view.size.y # (a view taller than the screen is the part beyond a pole, mirrored)
+	_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(first_u, view.position.y, first_width, rows))
 	if first_width < size.x:
 		_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(0.0, view.position.y,
-				size.x - first_width, size.y), first_width)
+				size.x - first_width, rows), first_width)
 
 
-## The tiles over it: each from its own picture, or its finest charted ancestor.
+## The tiles over it (each from its own picture, or its finest charted ancestor).
 func _draw_tiles(view: Rect2, size: Vector2) -> void:
-	var level := _tile_level()
-	for tile in PlanetMapTiles.tiles_of(view, level):
-		var found := _tiles.piece(level, tile.x, tile.y)
-		if found.is_empty():
-			continue
-		var rect := PlanetMapTiles.rect_of(level, tile.x, tile.y)
-		var dx := fposmod(rect.position.x - view.position.x + rect.size.x, 1.0) - rect.size.x
-		var at := Vector2(dx / size.x * _view.size.x, (rect.position.y - view.position.y) / size.y
-				* _view.size.y)
-		var extent := Vector2(rect.size.x / size.x * _view.size.x, rect.size.y / size.y * _view.size.y)
-		var texture: ImageTexture = found["texture"]
-		var part: Rect2 = found["part"]
-		var pixels := Vector2(texture.get_size())
-		_view.draw_texture_rect_region(texture, Rect2(at, extent + Vector2.ONE * 0.5),
-				Rect2(part.position * pixels, part.size * pixels))
+	_tiles.draw(_view, view, size, _tile_level())
 
 
 ## The warm-up: the whole planet's passes, then the sharp close view where the player stands, then a
@@ -595,7 +578,6 @@ func _start_warm_layer(layer: int) -> void:
 	if kept != null:
 		_cache[layer] = {"whole": kept, "pass": 2}
 		_warm_layers_done += 1
-		PlanetMapLog.line("warm-up: the %s layer from the disk" % PlanetChart.NAMES[layer])
 		return
 	_chart = PlanetChart.new()
 	_chart.layer = layer as PlanetChart.Layer
@@ -623,16 +605,15 @@ func _warm_progress() -> float:
 
 
 func _log_the_view() -> void:
-	if _zoom != _logged_zoom or not _centre.is_equal_approx(_logged_centre):
-		PlanetMapLog.line_every("view", 0.25, "view: zoom %.1f, centre %.4f, %.4f (%.2f N, %.2f E)" % [
-				_zoom, _centre.x, _centre.y, (0.5 - _centre.y) * 180.0, (_centre.x - 0.5) * 360.0])
-		_logged_zoom = _zoom
-		_logged_centre = _centre
+	var now := Vector3(_zoom, _centre.x, _centre.y)
+	if not now.is_equal_approx(_logged_view):
+		PlanetMapLog.line_every("view", 0.25, "view: zoom %.1f, centre %.4f, %.4f" % [
+				_zoom, now.y, now.z])
+		_logged_view = now
 
 
 func _refresh_temperature(delta: float) -> void:
-	var moving := _is_moving(_layer)
-	if not moving or _chart != null or _whole_pass < 0:
+	if not _is_moving(_layer) or _chart != null or _whole_pass < 0:
 		return
 	_refresh_wait -= delta
 	var moved := absf(planet.clock.time - _drawn_at)
@@ -789,20 +770,12 @@ func _numbers_under_the_cursor() -> String:
 	var size := _visible_size()
 	var uv := Vector2(fposmod(_centre.x - size.x * 0.5 + local.x / _view.size.x * size.x, 1.0),
 			_centre.y - size.y * 0.5 + local.y / _view.size.y * size.y)
-	if uv.y < 0.0 or uv.y > 1.0:
-		return ""
-	var lat := (0.5 - uv.y) * PI
-	var lon := uv.x * TAU - PI
-	var dir := Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
-	var noise := planet.noise
-	var ground := noise.height(dir.x, dir.y, dir.z)
-	var plate := noise.tectonics.plate_at(dir)
-	return "%.1f° %s %.1f° %s   height %d m   %.0f °C   rain %.2f   %s   plate %d (%s)" % [
-			absf(rad_to_deg(lat)), "N" if lat >= 0.0 else "S", absf(rad_to_deg(lon)),
-			"E" if lon >= 0.0 else "W", roundi(ground),
-			noise.temperature_now(dir.x, dir.y, dir.z, maxf(ground, 0.0)), noise.climate.sample(dir).y,
-			"sea" if ground < 0.0 else TerrainNoise.Biome.keys()[noise.biome(dir.x, dir.y, dir.z,
-			ground, 0.1)].to_lower(), int(plate.x), "land" if plate.z > 0.5 else "ocean"]
+	if uv.y < 0.0: # beyond the north pole: the other side of the planet
+		uv = Vector2(fposmod(uv.x + 0.5, 1.0), -uv.y)
+	elif uv.y > 1.0:
+		uv = Vector2(fposmod(uv.x + 0.5, 1.0), 2.0 - uv.y)
+	uv.y = clampf(uv.y, 0.0, 1.0)
+	return PlanetMapOverlay.describe(planet.noise, uv)
 
 
 func _uv_of(dir: Vector3) -> Vector2:
@@ -890,6 +863,7 @@ func _draw_view() -> void:
 	var size := _visible_size()
 	var view := Rect2(_centre - size * 0.5, size)
 	_view.draw_rect(Rect2(Vector2.ZERO, _view.size), Color(0.02, 0.05, 0.12))
+	_draw_beyond_the_poles(view, size)
 	if _tile_mode() and _whole != null:
 		_draw_whole(view, size)
 		_draw_tiles(view, size)
@@ -927,6 +901,40 @@ func _draw_view() -> void:
 				+ "[wheel, pinch, + -] zoom  [drag] move  [R] my region  [M] close") % [absf(lat),
 				north_south, absf(lon), east_west, roundi(planet.altitude()), int(hour),
 				int((hour - floorf(hour)) * 60.0), planet.season_text() + "  " + planet.weather_text]
+
+
+## Beyond the north and south edges the map goes on: over a pole is the other side of the planet,
+## 180 degrees of longitude away, seen upside down. The picture is drawn again half a map to the
+## east and mirrored in the edge it goes over.
+func _draw_beyond_the_poles(view: Rect2, size: Vector2) -> void:
+	for edge: float in [0.0, 1.0]:
+		var reach := -view.position.y if edge == 0.0 else view.end.y - 1.0 # how far beyond the edge
+		if reach <= 0.0 or _whole == null:
+			continue
+		# the part of the map that shows there, mirrored: as deep into the map as the view goes beyond
+		var top := 0.0 if edge == 0.0 else 1.0 - reach
+		var shifted := Rect2(view.position.x + 0.5, minf(top, view.position.y), size.x,
+				maxf(size.y, reach + absf(top - minf(top, view.position.y))))
+		var at := (edge - view.position.y) / size.y * _view.size.y # (the edge on the screen)
+		_view.draw_set_transform(Vector2(0.0, 2.0 * at), 0.0, Vector2(1.0, -1.0))
+		_draw_whole(shifted, size)
+		if _tile_mode():
+			_tiles.draw(_view, Rect2(view.position + Vector2(0.5, 0.0), size), size, _tile_level(), shifted)
+		_view.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## The parts beyond the poles that tiles are needed for (as they are in the map).
+func _tile_view_beyond() -> Array[Rect2]:
+	var size := _visible_size()
+	var view := Rect2(_centre - size * 0.5, size)
+	var out: Array[Rect2] = []
+	if view.position.y < 0.0:
+		out.append(Rect2(view.position.x + 0.5 - size.x * 0.1, 0.0, size.x * 1.2,
+				minf(-view.position.y * 1.2, 1.0)))
+	if view.end.y > 1.0:
+		var depth := minf((view.end.y - 1.0) * 1.2, 1.0)
+		out.append(Rect2(view.position.x + 0.5 - size.x * 0.1, 1.0 - depth, size.x * 1.2, depth))
+	return out
 
 
 ## Draws the part `wanted` (map fractions) of `texture`, which shows `covers` (map fractions), where
@@ -970,8 +978,8 @@ func world_changed(area: Rect2) -> void:
 ## The same, for a place on the planet: the unit direction, the radius of the change in metres.
 func world_changed_at(direction: Vector3, radius_metres: float) -> void:
 	var uv := _uv_of(direction.normalized())
-	var half := Vector2(radius_metres / (planet.settings.radius * TAU) * 1.0,
-			radius_metres / (planet.settings.radius * PI) * 1.0)
+	var half := Vector2(radius_metres / (planet.settings.radius * TAU),
+			radius_metres / (planet.settings.radius * PI))
 	world_changed(Rect2(uv - half, half * 2.0))
 
 

@@ -84,14 +84,17 @@ func share(view: Rect2, level: int) -> Vector2i:
 
 ## Asks for the tiles of the view (the missing ones, the centre first). Called every frame it
 ## changes; what was asked before and is not needed any more is dropped.
-func ask(view: Rect2, level: int) -> void:
+func ask(view: Rect2, level: int, extra: Array[Rect2] = []) -> void:
 	var centre := view.get_center()
 	var missing: Array[Vector4i] = []
-	for tile in tiles_of(view, level):
+	var wanted_tiles := tiles_of(view, level)
+	for more in extra: # (the parts beyond the poles)
+		wanted_tiles.append_array(tiles_of(more, level))
+	for tile in wanted_tiles:
 		var key := _key(level, tile.x, tile.y)
 		if _textures.has(key):
 			_use(key)
-		else:
+		elif not missing.has(key):
 			missing.append(key)
 	missing.sort_custom(func(a: Vector4i, b: Vector4i) -> bool:
 		return _distance(a, centre) < _distance(b, centre))
@@ -268,3 +271,24 @@ func piece(level: int, x: int, y: int) -> Dictionary:
 						1.0 / side, 1.0 / side)
 			return {"texture": _textures[key], "part": part}
 	return {}
+
+
+## Draws the tiles of `view` (map fractions) of `level` on `canvas`, `size` being the view's size in
+## the map's fractions (`area`: the tiles to draw when they are not the view's): each from its own
+## picture, or its finest charted ancestor.
+func draw(canvas: Control, view: Rect2, size: Vector2, level: int, area := Rect2()) -> void:
+	for tile in tiles_of(view if area.size == Vector2.ZERO else area, level):
+		var found := piece(level, tile.x, tile.y)
+		if found.is_empty():
+			continue
+		var rect := rect_of(level, tile.x, tile.y)
+		var dx := fposmod(rect.position.x - view.position.x + rect.size.x, 1.0) - rect.size.x
+		var at := Vector2(dx / size.x * canvas.size.x, (rect.position.y - view.position.y) / size.y
+				* canvas.size.y)
+		var extent := Vector2(rect.size.x / size.x * canvas.size.x, rect.size.y / size.y * canvas.size.y)
+		var texture: ImageTexture = found["texture"]
+		var part: Rect2 = found["part"]
+		var pixels := Vector2(texture.get_size())
+		canvas.draw_texture_rect_region(texture, Rect2(at, extent + Vector2.ONE * 0.5),
+				Rect2(part.position * pixels, part.size * pixels))
+
