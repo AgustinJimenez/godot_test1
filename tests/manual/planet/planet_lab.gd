@@ -847,6 +847,9 @@ func _physics_process(_delta: float) -> void:
 		for button in player.hud.find_children("*", "Button", true, false):
 			if (button as Button).text == "Planet":
 				(button as Button).pressed.emit()
+	for arg in OS.get_cmdline_user_args(): # --close-map=N closes the map at frame N (map first)
+		if arg.begins_with("--close-map=") and _frame == arg.trim_prefix("--close-map=").to_int():
+			planet.map.toggle()
 	if _show_map and _frame == 30:
 		planet.map.show_zoom(_map_zoom)
 		planet.map.show_globe("--map-globe" in OS.get_cmdline_user_args())
