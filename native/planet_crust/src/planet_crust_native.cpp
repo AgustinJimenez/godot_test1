@@ -559,6 +559,11 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	float b = rock.b + (dark.b - rock.b) * steep_mix;
 	// permanent snow and ice where the cold keeps it (PlanetRock.colour)
 	const double cold = sea_temperature(p_dir) - 0.0065 * (p_ground > 0.0 ? p_ground : 0.0);
+	// scree: pale rubble that has fallen on the moderately steep slopes of the high ground (PlanetRock.colour)
+	const double scree = smooth(0.2, 0.38, p_steep) * (1.0 - smooth(0.55, 0.75, p_steep)) * smooth(150.0, 600.0, p_ground) * 0.45;
+	r += (0.58f - r) * (float)scree;
+	g += (0.56f - g) * (float)scree;
+	b += (0.52f - b) * (float)scree;
 	// soil: deep and dark where it is wet and mild, thin and pale where it is dry, none on steep rock
 	const double fertile = clampd(grid_at(rain_grid, p_dir, 0.5) / 0.9, 0.0, 1.0) * smooth(-5.0, 10.0, cold);
 	const double soil = on_land * (1.0 - smooth(0.2, 0.55, p_steep)) * (0.3 + 0.7 * fertile) * 0.6;

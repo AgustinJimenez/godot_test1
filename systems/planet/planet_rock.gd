@@ -18,6 +18,7 @@ enum Kind { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED
 const SOIL_DRY := Color(0.64, 0.55, 0.38) ## the soil of a dry place
 const SOIL_RICH := Color(0.27, 0.20, 0.13) ## and of a wet, mild one
 const ICE := Color(0.72, 0.86, 0.96) ## glacier ice
+const SCREE := Color(0.58, 0.56, 0.52) ## rubble on the slopes
 const SAND := Color(0.80, 0.72, 0.52) ## beaches: low, level ground by the sea
 const SNOW := Color(0.93, 0.95, 0.98) ## permanent snow and ice
 const LAPSE := 0.0065 ## degrees C the air cools a metre higher
@@ -134,6 +135,10 @@ func colour(dir: Vector3, ground: float, steep: float, speckle: float,
 	rock = rock * (0.94 + 0.12 * speckle)
 	rock = rock.lerp(rock * 0.62, smoothstep(0.35, 0.8, steep))
 	var cold := sea_temperature - LAPSE * maxf(ground, 0.0)
+	# scree: pale rubble that has fallen on the moderately steep slopes of the high ground
+	var scree := smoothstep(0.2, 0.38, steep) * (1.0 - smoothstep(0.55, 0.75, steep))
+	scree *= smoothstep(150.0, 600.0, ground) * 0.45
+	rock = rock.lerp(SCREE, scree)
 	# soil: deep and dark where it is wet and mild, thin and pale where it is dry, none on steep rock
 	var fertile := clampf(rain / 0.9, 0.0, 1.0) * smoothstep(-5.0, 10.0, cold)
 	var soil_colour := SOIL_DRY.lerp(SOIL_RICH, fertile)

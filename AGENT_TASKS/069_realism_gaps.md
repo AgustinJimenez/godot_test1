@@ -17,8 +17,7 @@ the slope of the coarser ones, so valleys branch). Inland basins below the sea a
    massifs and chains, so they run downhill toward the rivers; still not joined to the drainage network.)
    Tributaries do not join the network and valleys do not deepen toward the sea. Idea: run the
    drainage solve on a finer grid near the player and carve its tributaries as the finer valley levels.
-2. **Terrain exists only as noise at metre scale.** No talus slopes, no cliffs where hard rock outcrops, no
-   scree. Idea: a thermal-erosion pass on the tile (steep slopes relax to the angle of repose).
+2. **Terrain exists only as noise at metre scale.** (2026-10-18: pale scree colour on moderately steep high slopes; no real talus shape.) No cliffs where hard rock outcrops. Idea: a thermal-erosion pass on the tile (steep slopes relax to the angle of repose).
 3. **Glaciers.** (2026-10-18: above the snow line the valleys are wide with a flat floor and steep walls, a U instead of a V, native and script alike; glacier ice is blue-white on gentle ground where it is very cold, on the map too. Still missing: cirques, moraines, ice that flows and fills the valleys as a surface.) Cold high ground should carve U-shaped valleys, cirques and moraines, and fill them with ice.
 4. **Lakes.** (2026-10-18: the drainage's lake cells now pass their water level to the native crust: the ground sinks under it with a soft shore and the Terrain map paints the water; only on the 512-cell grid, so lakes are big ones; the water layer is still off.) Inland basins are bowls, not lakes. Lakes should sit where the drainage ends in a closed basin
    (it already finds them: `lakes=581` in DRAINAGE_CHECK) with a flat surface and an outlet river.
