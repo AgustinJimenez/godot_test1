@@ -190,6 +190,30 @@ anchor_up={
 "type": "vec3",
 "value": Vector3(0, 1, 0)
 }
+cloud_cover_map={
+"type": "sampler2D",
+"value": ""
+}
+cloud_shadow={
+"type": "vec4",
+"value": Color(0, 0, 0, 0)
+}
+cloud_layer={
+"type": "vec4",
+"value": Color(0, 0, 0, 0)
+}
+cloud_centre={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+cloud_sun_world={
+"type": "vec3",
+"value": Vector3(0, 1, 0)
+}
+cloud_drift_planet={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
 ground_detail={
 "type": "float",
 "value": 1.0

@@ -126,12 +126,27 @@ func set_cloud_parameters(material: ShaderMaterial) -> void:
 	material.set_shader_parameter(&"cloud_path", sqrt(minf(1.0, radius / least_radius)))
 
 
+## The clouds' shadow on the ground: where the layer is, which way the star is, how the wind has
+## carried the clouds (the ground shader draws the same clouds the sky does).
+func _share_the_clouds(sun_dir: Vector3) -> void:
+	var on: bool = GraphicsSettings.get_graphics_value(&"cloud_shadows") and not clouds_hidden
+	var strength := (1.0 - overcast * 0.4) if on and cloud_on > 0.0 else 0.0
+	RenderingServer.global_shader_parameter_set(&"cloud_shadow",
+			Color(strength, maxf(cloud_dark, overcast * 0.6), overcast, 0.0))
+	RenderingServer.global_shader_parameter_set(&"cloud_layer",
+			Color(radius, cloud_floor, CLOUD_DEPTH, 0.0))
+	RenderingServer.global_shader_parameter_set(&"cloud_centre", planet_centre)
+	RenderingServer.global_shader_parameter_set(&"cloud_sun_world", sun_dir)
+	RenderingServer.global_shader_parameter_set(&"cloud_drift_planet", cloud_drift)
+
+
 func _apply() -> void:
 	var up := (global_position - planet_centre).normalized()
 	var from := global_position - planet_centre
 	var scale := air_scale()
 	var top := radius + air_top()
 	var sun_dir := sun_direction if sun_direction != Vector3.ZERO else Vector3.UP
+	_share_the_clouds(sun_dir)
 	var height := sun_dir.dot(up)
 	# the light of the sun, as much of each colour as the air lets by
 	var through := PlanetAir.sun_transmittance(from, sun_dir, radius, top, scale)

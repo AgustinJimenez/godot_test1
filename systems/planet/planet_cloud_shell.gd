@@ -53,6 +53,7 @@ func _refresh_the_cover(delta: float) -> void:
 			var picture := _chart.texture()
 			_material.set_shader_parameter(&"cover_map", picture)
 			planet.atmosphere.sky_material.set_shader_parameter(&"cover_map", picture)
+			RenderingServer.global_shader_parameter_set(&"cloud_cover_map", picture) # (the ground's shadow)
 			_chart = null
 	elif _wait <= 0.0 and absf(planet.clock.time - _drawn_time) > 1.0e-3:
 		_wait = REFRESH if visible else REFRESH * 2.0
