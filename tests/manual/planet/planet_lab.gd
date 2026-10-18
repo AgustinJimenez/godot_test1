@@ -58,6 +58,7 @@ var _map_layer := 0
 var _no_clouds := false ## the debug switch for the clouds, from the start
 var _spawn_alt := 0.0 ## start this many metres above the ground (a ship arriving in space)
 var _grounded := false ## walk from the start instead of flying free
+var _map_check := false ## send the map the events a wheel, a pinch and two fingers make
 var _swim_check := false ## drop the player in the sea and see them float (PlanetSwim)
 var _flying := false ## the walk check in free mode (noclip) at 100 m/s
 var _walk_start := Vector3.ZERO
@@ -687,6 +688,8 @@ func _ready() -> void:
 			settings.tile_max = arg.trim_prefix("--tile-max=").to_float()
 		elif arg.begins_with("--drainage="):
 			settings.drainage_cells = arg.trim_prefix("--drainage=").to_int()
+		elif arg == "--map-check":
+			_map_check = true
 		elif arg == "--sea":
 			settings.sea_on = true
 		elif arg == "--water":
@@ -773,8 +776,47 @@ func _process(delta: float) -> void:
 		_slow_frames += 1
 
 
+## `--map-check`: opens the map and sends it a wheel turn, a pinch, two fingers, and the + key, and
+## prints the zoom after each (MAP_CHECK passes when every one of them zooms).
+func _map_check_step() -> void:
+	var map := planet.map
+	var zooms: Array[float] = []
+	if _frame == 200:
+		map.toggle()
+		map.show_zoom(1.0)
+	elif _frame == 210:
+		var wheel := InputEventMouseButton.new()
+		wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+		wheel.pressed = true
+		wheel.position = Vector2(400, 300)
+		Input.parse_input_event(wheel)
+	elif _frame == 220:
+		var pinch := InputEventMagnifyGesture.new()
+		pinch.factor = 1.4
+		pinch.position = Vector2(400, 300)
+		Input.parse_input_event(pinch)
+	elif _frame == 230:
+		var pan := InputEventPanGesture.new()
+		pan.delta = Vector2(0.0, -2.0)
+		Input.parse_input_event(pan)
+	elif _frame == 240:
+		var plus := InputEventKey.new()
+		plus.physical_keycode = KEY_EQUAL
+		plus.pressed = true
+		Input.parse_input_event(plus)
+	elif _frame == 250:
+		print("MAP_CHECK zoom after wheel, pinch, pan, plus: ", map._zoom)
+		get_tree().quit()
+	if _frame in [205, 215, 225, 235, 245]:
+		print("MAP_ZOOM frame %d zoom %.3f" % [_frame, map._zoom])
+	zooms.clear()
+
+
 func _physics_process(_delta: float) -> void:
 	_frame += 1
+	if _map_check:
+		_map_check_step()
+		return
 	if _swim_check and _frame == 300:
 		var level := planet.water_at_world(player.global_position)
 		var afloat := planet.swim != null and planet.swim.swimming
