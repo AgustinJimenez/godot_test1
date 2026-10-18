@@ -184,6 +184,47 @@ func stop() -> void:
 	_retired.clear()
 
 
+## The tiles of the view put together as one picture (for the globe, which takes one texture):
+## the texture and the part of the map (fractions) it covers. Empty when the view crosses the
+## map's seam or is too big. A tile not charted yet is filled from its finest charted ancestor.
+func compose(view: Rect2, level: int) -> Dictionary:
+	var tiles := tiles_of(view, level)
+	if tiles.is_empty() or tiles.size() > 64:
+		return {}
+	var across := 2 << level
+	var low_x := across
+	var high_x := -1
+	var low_y := 1 << level
+	var high_y := -1
+	for tile in tiles:
+		low_x = mini(low_x, tile.x)
+		high_x = maxi(high_x, tile.x)
+		low_y = mini(low_y, tile.y)
+		high_y = maxi(high_y, tile.y)
+	if (high_x - low_x + 1) * (high_y - low_y + 1) != tiles.size():
+		return {} # (the view reaches over the east-west seam)
+	var image := Image.create((high_x - low_x + 1) * TILE, (high_y - low_y + 1) * TILE, false,
+			Image.FORMAT_RGB8)
+	for tile in tiles:
+		var found := piece(level, tile.x, tile.y)
+		if found.is_empty():
+			continue
+		var source: Image = (found["texture"] as ImageTexture).get_image()
+		var part: Rect2 = found["part"]
+		var region := Rect2i(Vector2i(part.position * Vector2(source.get_size())),
+				Vector2i(maxi(int(part.size.x * source.get_width()), 1),
+				maxi(int(part.size.y * source.get_height()), 1)))
+		var piece_image := source.get_region(region)
+		if piece_image.get_size() != Vector2i(TILE, TILE):
+			piece_image.resize(TILE, TILE, Image.INTERPOLATE_BILINEAR)
+		image.blit_rect(piece_image, Rect2i(0, 0, TILE, TILE),
+				Vector2i((tile.x - low_x) * TILE, (tile.y - low_y) * TILE))
+	var first := rect_of(level, low_x, low_y)
+	var last := rect_of(level, high_x, high_y)
+	return {"texture": ImageTexture.create_from_image(image),
+			"rect": Rect2(first.position, last.end - first.position)}
+
+
 ## What to draw for the tile (level, x, y): the texture and the part of it (fractions) that is the
 ## tile, from the tile itself or its finest charted ancestor. Null when none is charted.
 func piece(level: int, x: int, y: int) -> Dictionary:

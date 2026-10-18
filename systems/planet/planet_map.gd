@@ -64,6 +64,9 @@ var _globe_button: Button
 var _globe_mode := false
 var _caption: Label
 var _labels: PlanetMapLabels # the names of the seas and lands (built on the first look)
+var _globe_tiles := -1 # what the globe's picture was made from, to see when it needs a new one
+var _globe_level := -1
+var _globe_view := Rect2()
 var _tiles: PlanetMapTiles # the close views as tiles (from TILE_ZOOM on, on the flat map)
 var warm_up := false ## the world sets it: the map is all charted (black meanwhile) before it shows
 var _warming := false
@@ -474,7 +477,7 @@ func _process(delta: float) -> void:
 		if _globe_mode:
 			_hover.text = "Drag to turn the planet, wheel to come closer, G: the flat map"
 			_globe.set_chart(_whole)
-			_globe.set_detail(_detail, _detail_rect)
+			_set_the_globe_detail()
 			_globe.set_zoom(_zoom)
 			_globe.set_sun(planet.clock.sun_in_body())
 			var here := Vector3.ZERO
@@ -507,7 +510,7 @@ func _process(delta: float) -> void:
 ## (the coarse chart only, a second or so), so they follow the seasons, the day and the winds.
 ## True when the flat map is drawn from tiles (close enough, and not the globe).
 func _tile_mode() -> bool:
-	return _tiles != null and _zoom >= TILE_ZOOM and not _globe_mode
+	return _tiles != null and _zoom >= TILE_ZOOM
 
 
 func _tile_level() -> int:
@@ -535,6 +538,30 @@ func _serve_the_tiles() -> void:
 	_tiles.clock = planet.clock
 	_tiles.ask(_tile_view(), _tile_level())
 	_tiles.step()
+
+
+## Gives the globe the sharp picture it can have: the tiles round where it looks, put together (the
+## same tiles the flat map uses: nothing is charted again when the map changes to the globe).
+func _set_the_globe_detail() -> void:
+	if not _tile_mode():
+		_globe.set_detail(null, Rect2())
+		return
+	var level := _tile_level()
+	var view := _tile_view()
+	var shown := _tiles.share(view, level).x
+	if shown == _globe_tiles and level == _globe_level and view.position.distance_to(
+			_globe_view.position) < view.size.x * 0.05:
+		return # (nothing new since the last picture)
+	var made := _tiles.compose(view, level)
+	_globe_tiles = shown
+	_globe_level = level
+	_globe_view = view
+	if made.is_empty():
+		_globe.set_detail(null, Rect2())
+		return
+	PlanetMapLog.line_every("globe", 0.5, "globe detail: %d tiles of level %d put together" % [
+			shown, level])
+	_globe.set_detail(made["texture"], made["rect"])
 
 
 ## The whole planet's picture under the view (the map wraps east-west).
