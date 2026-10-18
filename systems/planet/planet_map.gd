@@ -500,7 +500,7 @@ func _maybe_chart_the_view(delta: float) -> void:
 		_last_view = view
 	# (the slow layers, drawn again as time moves, wait for a closer look)
 	var close := 2.5 if _last_pass() < PASSES.size() - 1 else 1.4
-	if _still < 0.5 or _zoom < close or _covered_by_detail(view):
+	if _still < 0.5 or _zoom < close or _sharply_covered(view):
 		return
 	var rect := Rect2(view.position - size * 0.25, size * 1.5) # a margin to pan in
 	# the margin stops at the poles (east-west the map wraps, so x may run past 0 and 1)
@@ -532,6 +532,16 @@ func _start_detail(rect: Rect2, across: int) -> void:
 
 func _covered_by_detail(view: Rect2) -> bool:
 	return _detail != null and _detail_rect.encloses(view)
+
+
+## True when the close chart covers the view AND has about a pixel for every screen pixel (one
+## made at a lower zoom contains the view too, but would only be a blur).
+func _sharply_covered(view: Rect2) -> bool:
+	if not _covered_by_detail(view):
+		return false
+	var chart_pixels := float(_detail.get_width()) / _detail_rect.size.x
+	var screen_pixels := _pane().x / view.size.x
+	return chart_pixels >= screen_pixels * 0.7
 
 
 ## The numbers of the planet under the mouse, as one line of text.
@@ -594,7 +604,7 @@ func _on_screen(uv: Vector2) -> Vector2:
 ## True when the picture is as sharp as it will get for this view: the close chart (not its quick
 ## preview) covers the view, or every pass of the whole planet is done.
 func _sharp_enough(view: Rect2) -> bool:
-	if _covered_by_detail(view) and not _detail_preview:
+	if _sharply_covered(view) and not _detail_preview:
 		return true
 	return _whole != null and _whole_pass >= _last_pass() and _zoom < 2.5
 
@@ -618,12 +628,15 @@ func _draw_loading() -> void:
 ## Lifts the note when the picture is sharp enough (or, for a view the close chart cannot cover
 ## such as one over a pole, once the whole planet is charted and a few seconds have passed).
 func _update_reveal(delta: float) -> void:
-	if _revealed:
-		return
 	var size := _visible_size()
-	_unsharp_time += delta
 	var all_done := _whole != null and _whole_pass >= _last_pass()
-	if _sharp_enough(Rect2(_centre - size * 0.5, size)) or (all_done and _unsharp_time > 6.0):
+	if _sharp_enough(Rect2(_centre - size * 0.5, size)):
+		_revealed = true
+		_unsharp_time = 0.0
+		return
+	_revealed = false # (zooming in on a place only charted blurrily brings the note back)
+	_unsharp_time += delta
+	if all_done and _unsharp_time > 6.0:
 		_revealed = true
 
 

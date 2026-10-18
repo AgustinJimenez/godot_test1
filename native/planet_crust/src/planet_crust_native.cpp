@@ -419,7 +419,9 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 		double level = -1.0e9;
 		const double weight = lake_weight(p_point.normalized(), level);
 		if (weight > 0.0) {
-			const double soft = smooth(0.0, 1.0, weight);
+			// only the real hollow fills: ground well above the water (a hill in the cell) stays
+			const double hollow = smooth(level + 30.0, level + 4.0, result);
+			const double soft = smooth(0.0, 1.0, weight) * hollow;
 			const double bottom = std::max(level - (1.0 + 7.0 * smooth(0.55, 1.0, weight)), 0.6);
 			result = result + (std::min(result, bottom) - result) * soft;
 		}

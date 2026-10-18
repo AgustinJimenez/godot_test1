@@ -493,6 +493,10 @@ func find_spawn() -> Vector3:
 		var h := height(dir.x, dir.y, dir.z)
 		if h < 4.0 or h > relief * 0.1:
 			continue
+		if native != null and native.has_method(&"lake_surfaces"):
+			var surface: float = native.call(&"lake_surfaces", PackedVector3Array([dir]))[0]
+			if surface > -1.0e8: # not in a lake
+				continue
 		var weather := climate.sample(dir)
 		if weather.x < 6.0 or weather.x > 28.0 or weather.y < 0.4:
 			continue
