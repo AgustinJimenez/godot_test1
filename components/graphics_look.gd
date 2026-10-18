@@ -51,6 +51,12 @@ static func apply_environment(world_environment: WorldEnvironment, values: Dicti
 	environment.ssr_fade_in = 0.15
 	environment.ssr_fade_out = 2.0
 	environment.ssr_depth_tolerance = 0.2
+	environment.sdfgi_enabled = bool(values.get(&"sdfgi", false))
+	if environment.sdfgi_enabled:
+		environment.sdfgi_use_occlusion = true
+		environment.sdfgi_min_cell_size = 1.0
+		environment.sdfgi_cascades = 4
+		environment.sdfgi_energy = 0.8
 	if bool(values.get(&"glow", false)):
 		# a bloom that catches the sun, the snow and wet ground without washing the picture out
 		environment.glow_intensity = 0.7

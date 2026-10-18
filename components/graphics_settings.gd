@@ -15,7 +15,7 @@ const QUALITY_KEYS: Array[StringName] = [
 	&"render_scale", &"anti_aliasing", &"shadow_quality",
 	&"ssao", &"ssil", &"glow", &"cloud_quality",
 	&"upscaler", &"debanding", &"colour_grade", &"auto_exposure", &"reflections", &"volumetric_fog",
-	&"ground_detail", &"cloud_shadows",
+	&"ground_detail", &"cloud_shadows", &"sdfgi",
 ]
 const DEFAULT_VALUES: Dictionary = {
 	&"render_scale": 1.0,
@@ -31,6 +31,7 @@ const DEFAULT_VALUES: Dictionary = {
 	&"auto_exposure": false,
 	&"reflections": 0, # 0 off, 1 low, 2 high (screen space)
 	&"volumetric_fog": false, # light shafts near the ground
+	&"sdfgi": false, # bounced light near the camera (costly)
 	&"cloud_shadows": false, # the clouds' shadow moving over the ground
 	&"ground_detail": 1, # 0 plain, 1 the noise detail, 2 + fine bump, ripples, glints, 3 + finest
 	&"vsync": true,
@@ -73,7 +74,7 @@ const PRESETS: Dictionary = {
 		&"ssao": true, &"ssil": true, &"glow": true, &"cloud_quality": 2,
 		&"upscaler": 2, &"debanding": true, &"colour_grade": 1, &"auto_exposure": true,
 		&"reflections": 2, &"volumetric_fog": true, &"ground_detail": 3,
-		&"cloud_shadows": true,
+		&"cloud_shadows": true, &"sdfgi": true,
 	},
 }
 
@@ -250,7 +251,7 @@ func _sanitize_value(key: StringName, value: Variant) -> Variant:
 			clean = clampi(int(value), Environment.TONE_MAPPER_LINEAR, Environment.TONE_MAPPER_AGX)
 		&"ssao", &"ssil", &"glow", &"vsync", &"hdr", &"debanding":
 			clean = bool(value)
-		&"auto_exposure", &"volumetric_fog", &"cloud_shadows":
+		&"auto_exposure", &"volumetric_fog", &"cloud_shadows", &"sdfgi":
 			clean = bool(value)
 	return clean
 
