@@ -102,6 +102,11 @@ func _smooth() -> void:
 
 
 ## (sea level temperature in degrees C, averaged over the year; rain 0..1.6) at the unit direction.
+## The grid of the rain (rows from the north pole, WIDTH columns from the west).
+func rain_grid() -> PackedFloat32Array:
+	return _rain
+
+
 func sample(dir: Vector3) -> Vector2:
 	var lat := asin(clampf(dir.y, -1.0, 1.0))
 	var lon := atan2(dir.z, dir.x)

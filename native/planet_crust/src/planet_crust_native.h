@@ -93,6 +93,16 @@ public:
 	// river's flow as a share of a big river's, z 0..1 across the river (0.5 in the middle).
 	PackedVector3Array river_waters(const PackedVector3Array &p_dirs) const;
 	void set_rivers(int p_cells, const Dictionary &p_network, double p_cell_metres);
+	// Many points at once are split over the engine's worker threads (every call is pure, so any order).
+	enum HeightMode { GROUND, TECTONIC, MACRO };
+	struct HeightJob {
+		int mode;
+		const Vector3 *dirs;
+		float *out;
+		int count;
+	};
+	void height_chunk(int p_chunk, int64_t p_job); // (not const: callable_mp of a const void method does not compile)
+	PackedFloat32Array heights_by(int p_mode, const PackedVector3Array &p_dirs) const;
 	PackedFloat32Array heights(const PackedVector3Array &p_dirs) const;
 	// One row of the map's Terrain layer as RGB bytes (the sea by depth, the land's rock shaded by the
 	// light from the north west): the heights of the points, of the points a pixel east and a pixel north

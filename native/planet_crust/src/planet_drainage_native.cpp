@@ -15,8 +15,42 @@ namespace {
 const double PI_VALUE = 3.14159265358979323846;
 }
 
+PackedFloat32Array PlanetDrainageNative::sample_grid(const PackedFloat32Array &p_grid, int p_width, int p_height,
+		const PackedVector3Array &p_dirs) const {
+	PackedFloat32Array out;
+	out.resize(p_dirs.size());
+	if (p_width <= 0 || p_height <= 0 || p_grid.size() < p_width * p_height) {
+		return out;
+	}
+	const double pi = 3.14159265358979323846;
+	for (int index = 0; index < p_dirs.size(); index++) {
+		const Vector3 dir = p_dirs[index];
+		const double lat = std::asin(std::max(-1.0, std::min(1.0, (double)dir.y)));
+		const double lon = std::atan2((double)dir.z, (double)dir.x);
+		const double fx = (lon + pi) / (2.0 * pi) * p_width - 0.5;
+		const double fy = (0.5 - lat / pi) * p_height - 0.5;
+		const int x0 = (int)std::floor(fx);
+		const int y0 = (int)std::floor(fy);
+		const double tx = fx - x0;
+		const double ty = fy - y0;
+		double value = 0.0;
+		for (int dy = 0; dy < 2; dy++) {
+			for (int dx = 0; dx < 2; dx++) {
+				const double weight = (dx == 1 ? tx : 1.0 - tx) * (dy == 1 ? ty : 1.0 - ty);
+				const int row = std::max(0, std::min(p_height - 1, y0 + dy));
+				const int column = (((x0 + dx) % p_width) + p_width) % p_width;
+				value += (double)p_grid[row * p_width + column] * weight;
+			}
+		}
+		out.set(index, (float)value);
+	}
+	return out;
+}
+
 void PlanetDrainageNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("setup", "cells", "radius", "faces"), &PlanetDrainageNative::setup);
+	ClassDB::bind_method(D_METHOD("sample_grid", "grid", "width", "height", "dirs"),
+			&PlanetDrainageNative::sample_grid);
 	ClassDB::bind_method(D_METHOD("cell_dirs"), &PlanetDrainageNative::cell_dirs);
 	ClassDB::bind_method(D_METHOD("cell_areas"), &PlanetDrainageNative::cell_areas);
 	ClassDB::bind_method(D_METHOD("cell_neighbours"), &PlanetDrainageNative::cell_neighbours);

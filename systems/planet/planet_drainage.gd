@@ -37,9 +37,8 @@ func build(noise: PlanetNoise, cells_per_edge: int, exponent := 4.0) -> bool:
 	uplift.resize(dirs.size())
 	for index in dirs.size():
 		uplift[index] = clampf((raised[index] - noise._sea) / 0.4, 0.0, 1.0)
-	rain.resize(dirs.size())
-	for index in dirs.size():
-		rain[index] = noise.climate.sample(dirs[index]).y
+	rain = _native.call(&"sample_grid", noise.climate.rain_grid(), PlanetClimate.WIDTH,
+			PlanetClimate.HEIGHT, dirs)
 	var lake_depth := maxf(noise.relief * 0.015, 6.0) # a hollow this deep is a lake
 	var solved: Dictionary = _native.call(&"solve", heights, rain, 0.0, exponent, lake_depth,
 			maxi(cells / 16, 4))

@@ -5,6 +5,9 @@
 #include <godot_cpp/variant/packed_float64_array.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <thread>
+#include <vector>
 #include <cmath>
 
 using namespace godot;
@@ -411,22 +414,62 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	return Color((float)clampd(r, 0.0, 1.0), (float)clampd(g, 0.0, 1.0), (float)clampd(b, 0.0, 1.0), 1.0f);
 }
 
-PackedFloat32Array PlanetCrustNative::heights(const PackedVector3Array &p_dirs) const {
+void PlanetCrustNative::height_chunk(int p_chunk, int64_t p_job) {
+	const HeightJob *job = reinterpret_cast<const HeightJob *>((intptr_t)p_job);
+	const int from = p_chunk * 4096;
+	const int to = std::min(from + 4096, job->count);
+	for (int index = from; index < to; index++) {
+		const Vector3 dir = job->dirs[index];
+		switch (job->mode) {
+			case GROUND:
+				job->out[index] = (float)ground_height(dir);
+				break;
+			case TECTONIC:
+				job->out[index] = (float)tectonic_height(dir);
+				break;
+			default:
+				job->out[index] = (float)macro_ground(tectonic_height(dir) - sea, dir * (real_t)radius);
+		}
+	}
+}
+
+PackedFloat32Array PlanetCrustNative::heights_by(int p_mode, const PackedVector3Array &p_dirs) const {
 	PackedFloat32Array result;
 	result.resize(p_dirs.size());
-	for (int index = 0; index < p_dirs.size(); index++) {
-		result[index] = (float)ground_height(p_dirs[index]);
+	HeightJob job = { p_mode, p_dirs.ptr(), result.ptrw(), (int)p_dirs.size() };
+	const int chunks = (job.count + 4095) / 4096;
+	if (chunks <= 4) { // few points (a tile, a row): not worth waking the workers
+		for (int chunk = 0; chunk < chunks; chunk++) {
+			const_cast<PlanetCrustNative *>(this)->height_chunk(chunk, (int64_t)(intptr_t)&job);
+		}
+		return result;
+	}
+	// threads of our own, each taking the next chunk (the engine's pool would not spread this group)
+	std::atomic<int> next(0);
+	PlanetCrustNative *self = const_cast<PlanetCrustNative *>(this);
+	auto work = [&]() {
+		for (int chunk = next++; chunk < chunks; chunk = next++) {
+			self->height_chunk(chunk, (int64_t)(intptr_t)&job);
+		}
+	};
+	const int count = std::max(2, std::min(8, (int)std::thread::hardware_concurrency() - 1));
+	std::vector<std::thread> threads;
+	for (int index = 1; index < count && index < chunks; index++) {
+		threads.emplace_back(work);
+	}
+	work();
+	for (std::thread &thread : threads) {
+		thread.join();
 	}
 	return result;
 }
 
+PackedFloat32Array PlanetCrustNative::heights(const PackedVector3Array &p_dirs) const {
+	return heights_by(GROUND, p_dirs);
+}
+
 PackedFloat32Array PlanetCrustNative::tectonic_heights(const PackedVector3Array &p_dirs) const {
-	PackedFloat32Array result;
-	result.resize(p_dirs.size());
-	for (int index = 0; index < p_dirs.size(); index++) {
-		result[index] = (float)tectonic_height(p_dirs[index]);
-	}
-	return result;
+	return heights_by(TECTONIC, p_dirs);
 }
 
 PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
@@ -650,13 +693,7 @@ PackedColorArray PlanetCrustNative::ground_colours(const PackedVector3Array &p_d
 
 // The ground without the smallest hills (PlanetNoise.macro_height): what the water sees.
 PackedFloat32Array PlanetCrustNative::macro_heights(const PackedVector3Array &p_dirs) const {
-	PackedFloat32Array result;
-	result.resize(p_dirs.size());
-	for (int index = 0; index < p_dirs.size(); index++) {
-		double units = tectonic_height(p_dirs[index]) - sea;
-		result[index] = (float)macro_ground(units, p_dirs[index] * (real_t)radius);
-	}
-	return result;
+	return heights_by(MACRO, p_dirs);
 }
 
 

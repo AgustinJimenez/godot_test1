@@ -38,6 +38,10 @@ public:
 	PackedFloat32Array cell_areas() const { return areas; }
 	PackedInt32Array cell_neighbours() const { return neighbours; }
 	int cell_of(const Vector3 &p_dir) const { return cell_at(p_dir); }
+	// A grid of values over the sphere (rows from the north pole, columns from the west, wrapping east-west)
+	// read at many directions, bilinear (the climate's rain, to every drainage cell at once).
+	PackedFloat32Array sample_grid(const PackedFloat32Array &p_grid, int p_width, int p_height,
+			const PackedVector3Array &p_dirs) const;
 	PackedInt32Array cells_of(const PackedVector3Array &p_dirs) const;
 	// How deep the river valleys are cut (m, per cell): from the sea inland, a cell's river bed is
 	// no higher than the bed below it plus the slope the water allows (steep for a trickle,

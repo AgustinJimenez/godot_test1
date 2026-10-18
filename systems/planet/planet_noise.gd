@@ -36,13 +36,26 @@ var _foothills := FastNoiseLite.new() # the ridges and spurs between them, a fif
 var _sea := 0.0 ## the height (units of relief) that is sea level, so the ocean covers its share
 
 
+## PLANET_TIMING=1 prints how long each step of making a planet takes.
+var _lap_at := 0
+
+
+func _lap(what: String) -> void:
+	if OS.has_environment("PLANET_TIMING"):
+		var now := Time.get_ticks_msec()
+		print("PLANET_TIMING %-22s %5d ms" % [what, now - _lap_at])
+		_lap_at = now
+
+
 func _init(planet_settings: PlanetSettings) -> void:
+	_lap_at = Time.get_ticks_msec()
 	settings = planet_settings
 	relief = settings.relief
 	if relief <= 0.0:
 		relief = clampf(settings.radius * 0.0035, 300.0, 12000.0)
 	tectonics = PlanetTectonics.new(settings.world_seed, settings.plates)
 	rock = PlanetRock.new(tectonics, settings.world_seed, settings.radius, relief)
+	_lap("plates and rock")
 	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
 	StarLight.apply(species.species, Star.from_mass(settings.star_mass), settings.star_readability)
 	for one in species.species: # a planet has many plants: more looks of each tree
@@ -50,6 +63,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 			one.variants = 6
 		elif one.variants < 3:
 			one.variants = 3
+	_lap("species")
 	_setup(_rolling, settings.world_seed + 2, 0.0004, 3)
 	_setup(_ranges, settings.world_seed + 4, 1.0 / (settings.radius * 0.18), 5)
 	_ranges.fractal_type = FastNoiseLite.FRACTAL_RIDGED
@@ -72,14 +86,19 @@ func _init(planet_settings: PlanetSettings) -> void:
 	_chain.fractal_type = FastNoiseLite.FRACTAL_RIDGED
 	_setup(_foothills, settings.world_seed + 13, 5.0 / massif_length, 4)
 	_foothills.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	_lap("noises")
 	_find_sea_level()
+	_lap("sea level")
 	climate.build(self)
+	_lap("climate")
 	weather = PlanetWeather.new(self)
+	_lap("weather")
 	if settings.hydrology_on and settings.hydrology_cells > 0:
 		var water := PlanetHydrology.new()
 		water.build(self, settings.hydrology_cells)
 		hydrology = water
 	_make_native()
+	_lap("native and drainage")
 
 
 ## Hands the crust's numbers to the native class, when its library is there (native/planet_crust,
@@ -139,10 +158,14 @@ func _carve_valleys() -> void:
 	if settings.drainage_cells <= 0 or OS.has_environment("PLANET_NO_DRAINAGE"):
 		return
 	var solved := PlanetDrainage.new()
+	_lap("native setup")
 	if not solved.build(self, settings.drainage_cells):
 		return
+	_lap("drainage solve")
 	var cell_metres := settings.radius * PI * 0.5 / float(settings.drainage_cells)
-	native.call(&"set_rivers", settings.drainage_cells, solved.network(), cell_metres)
+	var network := solved.network()
+	_lap("river network")
+	native.call(&"set_rivers", settings.drainage_cells, network, cell_metres)
 	drainage = solved
 
 
