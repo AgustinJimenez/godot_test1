@@ -159,10 +159,20 @@ func _chart(worker: int) -> void:
 		var grounds := _noise.heights_of(dirs)
 		var east_grounds := _noise.heights_of(east_dirs) if needs_slope else grounds
 		var north_grounds := _noise.heights_of(north_dirs) if needs_slope else grounds
+		var macros := grounds
+		if layer in [Layer.TEMPERATURE, Layer.CLOUDS, Layer.CLOUD_MASK]:
+			macros = _noise.macro_heights_of(dirs)
+		var bases := PackedColorArray()
+		if layer == Layer.CLOUDS:
+			var flat := PackedFloat32Array()
+			flat.resize(size.x)
+			flat.fill(0.1)
+			bases = _noise.colours_of(dirs, grounds, flat)
 		for column in size.x:
 			var ground := grounds[column]
 			var color := _pixel_color(dirs[column], ground, east_grounds[column] - ground,
-					north_grounds[column] - ground, step_lon, needs_slope)
+					north_grounds[column] - ground, step_lon, needs_slope, macros[column],
+					bases[column] if not bases.is_empty() else Color.BLACK)
 			bytes.append(clampi(int(color.r * 255.0), 0, 255))
 			bytes.append(clampi(int(color.g * 255.0), 0, 255))
 			bytes.append(clampi(int(color.b * 255.0), 0, 255))
@@ -179,7 +189,7 @@ static func _direction(lat: float, lon: float) -> Vector3:
 ## The colour of the pixel looking along `dir`, from its ground height and how far the ground
 ## rises one pixel east and north of it.
 func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: float,
-		step_lon: float, needs_slope: bool) -> Color:
+		step_lon: float, needs_slope: bool, macro := NAN, base_colour := Color.BLACK) -> Color:
 	var noise := _noise
 	var relief := noise.relief
 	var slope := 0.0
@@ -204,17 +214,20 @@ func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: flo
 				if crosses_east or crosses_north:
 					color = color.darkened(0.3)
 		Layer.TEMPERATURE:
-			var degrees := noise.temperature_now(dir.x, dir.y, dir.z, maxf(ground, 0.0), clock)
+			var degrees := noise.temperature_now(dir.x, dir.y, dir.z, maxf(ground, 0.0), clock,
+					macro)
 			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 65.0)
 		Layer.MEAN_TEMPERATURE:
 			var degrees := noise.temperature(dir.x, dir.y, dir.z, maxf(ground, 0.0))
 			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 65.0)
 		Layer.CLOUDS:
-			var base := _terrain_color(dir, ground, 0.1, 0.0, step_lon).darkened(0.45)
-			var cover := noise.weather.cloud(dir, clock)
+			var land_colour := base_colour if ground >= 0.0 and noise.hydrology == null else \
+					_terrain_color(dir, ground, 0.1, 0.0, step_lon)
+			var base := land_colour.darkened(0.45)
+			var cover := noise.weather.cloud(dir, clock, macro)
 			color = base.lerp(Color(0.97, 0.98, 1.0), cover * 0.92)
 		Layer.CLOUD_MASK:
-			var cover := noise.weather.cloud(dir, clock)
+			var cover := noise.weather.cloud(dir, clock, macro)
 			color = Color(cover, cover, cover)
 		Layer.RAIN:
 			color = ramp(Layer.RAIN, noise.climate.sample(dir).y / 1.2)

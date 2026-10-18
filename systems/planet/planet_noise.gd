@@ -161,6 +161,18 @@ func heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
 	return result
 
 
+## The heights before the rivers are cut, the sign of which says land or sea (the weather asks),
+## at many directions at once (native when it can).
+func macro_heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
+	if native != null:
+		return native.call(&"macro_heights", dirs)
+	var result := PackedFloat32Array()
+	result.resize(dirs.size())
+	for index in dirs.size():
+		result[index] = macro_height(dirs[index].x, dirs[index].y, dirs[index].z)
+	return result
+
+
 ## The crust colours at many directions at once, with each one's ground height and steepness.
 func colours_of(dirs: PackedVector3Array, grounds: PackedFloat32Array,
 		steeps: PackedFloat32Array) -> PackedColorArray:
@@ -333,13 +345,14 @@ func temperature(x: float, y: float, z: float, ground: float) -> float:
 ## read at the clock's share of the year) and the time of day (warmest in the early afternoon, more
 ## so over land and under a clear sky), minus the lapse rate. With no clock it is the yearly mean.
 func temperature_now(x: float, y: float, z: float, ground: float,
-		at_clock: PlanetClock = null) -> float:
+		at_clock: PlanetClock = null, macro := NAN) -> float:
 	var which := at_clock if at_clock != null else clock
 	if which == null:
 		return temperature(x, y, z, ground)
 	var dir := Vector3(x, y, z)
 	var degrees := climate.seasons.at(dir, which.year_share())
-	var land := macro_height(x, y, z) >= 0.0
+	# (`macro`: the height before the rivers, when the caller has it already, as a map row does)
+	var land := (macro if not is_nan(macro) else macro_height(x, y, z)) >= 0.0
 	var swing := 6.0 if land else 0.8
 	var hour := which.local_hour(dir)
 	var clear := clampf(which.day_length(asin(y)) * 2.0 + 0.3, 0.3, 1.0)

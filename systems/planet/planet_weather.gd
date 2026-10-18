@@ -50,10 +50,10 @@ static func zonal_wind(lat: float) -> float:
 
 ## How much cloud the air at `dir` is ready to make (0..1): moisture times lift, held down under the
 ## subtropical highs. The big pattern of the weather, before the clouds are placed in it.
-func readiness(dir: Vector3, clock: PlanetClock) -> float:
+func readiness(dir: Vector3, clock: PlanetClock, macro := NAN) -> float:
 	var lat := asin(clampf(dir.y, -1.0, 1.0))
 	var declination := clock.declination()
-	var moisture := _moisture(dir, clock)
+	var moisture := _moisture(dir, clock, macro)
 	var south := -1.0 if lat < 0.0 else 1.0
 	# the belt where the trade winds meet follows the sun, but not all the way
 	var trade_belt := 0.75 * exp(-pow((lat - 0.4 * declination) / 0.17, 2.0))
@@ -69,7 +69,7 @@ func readiness(dir: Vector3, clock: PlanetClock) -> float:
 	var ready := 0.06 + 0.3 * moisture + 0.8 * trade_belt * moisture
 	ready += 0.9 * storms * (0.5 + 0.5 * moisture) + 0.2 * wet * moisture
 	ready += 0.25 * smoothstep(0.9, 1.4, absf(lat)) # the cloud decks of the polar regions
-	ready += _monsoon(dir, clock, wet)
+	ready += _monsoon(dir, clock, wet, macro)
 	return clampf(ready * (1.0 - 0.65 * sinking), 0.0, 1.0)
 
 
@@ -78,8 +78,8 @@ func readiness(dir: Vector3, clock: PlanetClock) -> float:
 ## cloud); in the cool half the air sinks and the wind turns the other way (a dry season). Found
 ## from the land's own temperature against its yearly mean, so it is a function of the date and
 ## only the land that has a rainy climate has a wet season to speak of.
-func _monsoon(dir: Vector3, clock: PlanetClock, wet: float) -> float:
-	if _noise.macro_height(dir.x, dir.y, dir.z) < 0.0:
+func _monsoon(dir: Vector3, clock: PlanetClock, wet: float, macro := NAN) -> float:
+	if _macro(dir, macro) < 0.0:
 		return 0.0
 	var lat := asin(clampf(dir.y, -1.0, 1.0))
 	var tropics := exp(-pow(lat / 0.6, 2.0))
@@ -90,11 +90,17 @@ func _monsoon(dir: Vector3, clock: PlanetClock, wet: float) -> float:
 	return tropics * (0.5 * wetter * (0.3 + wet) - 0.2 * drier)
 
 
+## The height before the rivers at `dir`: `macro` when the caller has it already (a map row asks
+## the native crust for a whole row at once), else worked out here.
+func _macro(dir: Vector3, macro: float) -> float:
+	return macro if not is_nan(macro) else _noise.macro_height(dir.x, dir.y, dir.z)
+
+
 ## The moisture the air picks up at `dir` now (0..1): a warm sea gives off a great deal, wet land
 ## some, a frozen or dry place little.
-func _moisture(dir: Vector3, clock: PlanetClock) -> float:
+func _moisture(dir: Vector3, clock: PlanetClock, macro := NAN) -> float:
 	var degrees := _noise.climate.seasons.at(dir, clock.year_share())
-	if _noise.macro_height(dir.x, dir.y, dir.z) < 0.0:
+	if _macro(dir, macro) < 0.0:
 		return 0.25 + 0.75 * smoothstep(-30.0, 30.0, degrees)
 	var wet := clampf(_noise.climate.sample(dir).y / 1.2, 0.0, 1.0)
 	return wet * (0.25 + 0.75 * smoothstep(-30.0, 25.0, degrees))
@@ -102,14 +108,14 @@ func _moisture(dir: Vector3, clock: PlanetClock) -> float:
 
 ## Where the cloud is: 0 clear sky .. 1 thick cloud, at `dir` at the clock's moment. The weather
 ## systems are carried east or west by the wind of the latitude and change shape slowly.
-func cloud(dir: Vector3, clock: PlanetClock) -> float:
-	return cloud_cells(dir, clock).x
+func cloud(dir: Vector3, clock: PlanetClock, macro := NAN) -> float:
+	return cloud_cells(dir, clock, macro).x
 
 
 ## The cloud and, with it, the strength of the small clumps inside the systems (-1..1: the cells
 ## where a thick cloud rains hard are the high ones).
-func cloud_cells(dir: Vector3, clock: PlanetClock) -> Vector2:
-	var ready := readiness(dir, clock)
+func cloud_cells(dir: Vector3, clock: PlanetClock, macro := NAN) -> Vector2:
+	var ready := readiness(dir, clock, macro)
 	var days := clock.absolute_days()
 	var lat := asin(clampf(dir.y, -1.0, 1.0))
 	var shift := zonal_wind(lat) * WIND_TURN * TAU * days
