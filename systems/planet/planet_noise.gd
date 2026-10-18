@@ -87,7 +87,9 @@ func _init(planet_settings: PlanetSettings) -> void:
 	_setup(_foothills, settings.world_seed + 13, 5.0 / massif_length, 4)
 	_foothills.fractal_type = FastNoiseLite.FRACTAL_RIDGED
 	_lap("noises")
+	_make_native() # (twice: the first only to find the sea level with, the second knows it)
 	_find_sea_level()
+	_make_native()
 	_lap("sea level")
 	climate.build(self)
 	_lap("climate")
@@ -97,8 +99,8 @@ func _init(planet_settings: PlanetSettings) -> void:
 		var water := PlanetHydrology.new()
 		water.build(self, settings.hydrology_cells)
 		hydrology = water
-	_make_native()
-	_lap("native and drainage")
+	_carve_valleys()
+	_lap("drainage")
 
 
 ## Hands the crust's numbers to the native class, when its library is there (native/planet_crust,
@@ -140,7 +142,6 @@ func _make_native() -> void:
 		"basin": _noise_config(rock._basin),
 	})
 	native = made
-	_carve_valleys()
 
 
 func _cube_faces() -> PackedVector3Array:
@@ -221,12 +222,18 @@ func _setup(noise: FastNoiseLite, noise_seed: int, frequency: float, octaves: in
 ## sphere, every sample weighing the same area).
 func _find_sea_level() -> void:
 	var count := maxi(settings.crust_samples, 500)
-	var samples := PackedFloat32Array()
+	var spots := PackedVector3Array()
 	for index in count:
 		var y := 1.0 - 2.0 * (float(index) + 0.5) / float(count)
 		var ring := sqrt(1.0 - y * y)
 		var angle := float(index) * 2.399963
-		samples.append(tectonics.height(Vector3(cos(angle) * ring, y, sin(angle) * ring)))
+		spots.append(Vector3(cos(angle) * ring, y, sin(angle) * ring))
+	var samples := PackedFloat32Array() # the plates' height at the spots (native when it is there)
+	if native != null:
+		samples = native.call(&"tectonic_heights", spots)
+	else:
+		for spot in spots:
+			samples.append(tectonics.height(spot))
 	samples.sort()
 	if settings.water_layer <= 0.0:
 		_sea = samples[clampi(int(settings.ocean_fraction * float(count)), 0, count - 1)]
