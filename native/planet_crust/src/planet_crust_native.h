@@ -156,6 +156,9 @@ public:
 	// of them, and the angle one pixel spans.
 	// RGB bytes with the lone dots taken out: a pixel unlike all its eight neighbours (which are alike)
 	// takes their mean (a map's grain: land and sea flipping pixel by pixel along a coast)
+	// a 3x3 blur of the RGB bytes (a data layer's grain), and a dark line where the land meets the sea
+	PackedByteArray smooth_rgb(const PackedByteArray &p_rgb, int p_width, int p_height) const;
+	PackedByteArray coast_lines(const PackedByteArray &p_rgb, const PackedByteArray &p_land, int p_width, int p_height) const;
 	PackedByteArray despeckle(const PackedByteArray &p_rgb, int p_width, int p_height) const;
 	PackedByteArray terrain_row(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
 			const PackedFloat32Array &p_east, const PackedFloat32Array &p_north, double p_step_lon, double p_calm = 1.0) const;

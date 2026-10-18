@@ -14,6 +14,7 @@ const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Bi
 const CALM_PIXEL := 2000.0 ## metres a pixel spans above which the Terrain relief is shaded gently
 const COARSE_PIXEL := 20.0 ## metres a pixel spans above which the map has no fine grain or beds
 const SHADE_EXAGGERATION := 2.0 ## the map's hill shading: how much a slope lights or darkens
+const SMOOTHED := [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.RAIN, Layer.CLOUDS]
 const SMOOTH_PIXEL := 30.0 ## metres a pixel spans above which the map draws the smooth ground
 
 const BIOME_COLORS := {
@@ -34,6 +35,7 @@ var _noise: PlanetNoise
 var _pixel_metres := 0.0 ## metres a pixel spans
 var _threads: Array[Thread] = []
 var _bands: Array[PackedByteArray] = []
+var _land_bands: Array[PackedByteArray] = [] # 1 where the pixel is land (for the coast lines)
 var _rows_done := 0
 var _mutex := Mutex.new()
 var _cancelled := false # a chart nobody wants any more: its workers skip the pixels
@@ -87,6 +89,7 @@ static func _along(t: float, colors: Array, stops: Array) -> Color:
 func start(noise: PlanetNoise) -> void:
 	_noise = noise
 	_bands.resize(workers)
+	_land_bands.resize(workers)
 	for worker in workers:
 		var thread := Thread.new()
 		thread.start(_chart.bind(worker), Thread.PRIORITY_HIGH) # (over the world's builders)
@@ -118,6 +121,17 @@ func texture() -> ImageTexture:
 	var tidy := layer != Layer.PLATES and layer != Layer.CLOUD_MASK
 	if tidy and _noise.native != null and _noise.native.has_method(&"despeckle"):
 		all = _noise.native.call(&"despeckle", all, size.x, size.y) # (lone dots are grain)
+	if _noise.native != null and layer in SMOOTHED:
+		# (a data layer is a smooth gradient: the grain of the small pixels is averaged away, and a thin
+		# dark line follows the coasts so the sea and the land read through the colours)
+		var passes := 8 if layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE] else 3
+		for pass_number in passes:
+			all = _noise.native.call(&"smooth_rgb", all, size.x, size.y)
+		var land_all := PackedByteArray()
+		for band in _land_bands:
+			land_all.append_array(band)
+		if land_all.size() >= size.x * size.y:
+			all = _noise.native.call(&"coast_lines", all, land_all, size.x, size.y)
 	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, all)
 	if layer == Layer.TERRAIN or layer == Layer.ELEVATION:
 		_draw_rivers(image)
@@ -141,6 +155,7 @@ func _chart(worker: int) -> void:
 	var from_row := worker * size.y / workers
 	var to_row := (worker + 1) * size.y / workers
 	var bytes := PackedByteArray()
+	var land := PackedByteArray()
 	# the Terrain layer's rows come ready from the native crust (rows are then added one by one)
 	var step_lon := rect.size.x * TAU / float(size.x)
 	var native_rows := layer == Layer.TERRAIN and _noise.native != null \
@@ -160,6 +175,7 @@ func _chart(worker: int) -> void:
 	var above := PackedFloat32Array() # the heights of the row before (the point a pixel north)
 	for row in range(from_row, to_row):
 		if _cancelled:
+			land.resize(land.size() + size.x)
 			if native_rows:
 				bytes.resize(bytes.size() + size.x * 3)
 			at += size.x * 3
@@ -204,6 +220,8 @@ func _chart(worker: int) -> void:
 			macros = _ground_of(dirs, true)
 			if _pixel_metres > CALM_PIXEL and layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE]:
 				macros = _averaged(dirs, macros, lat, step_lat, step_lon)
+		for column in size.x:
+			land.append(1 if grounds[column] >= 0.0 else 0)
 		if native_rows:
 			bytes.append_array(_noise.native.call(&"terrain_row", dirs, grounds, east_grounds,
 					north_grounds, step_lon, calm))
@@ -230,6 +248,7 @@ func _chart(worker: int) -> void:
 		_rows_done += 1
 		_mutex.unlock()
 	_bands[worker] = bytes
+	_land_bands[worker] = land
 
 
 ## The ground at many directions: its smooth shape (without the hills and gullies) for a far view.

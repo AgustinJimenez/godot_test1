@@ -711,6 +711,13 @@ func _draw_legend() -> void:
 				PlanetChart.ramp(_layer, float(step) / width))
 	_view.draw_rect(Rect2(origin, Vector2(width, 14.0)), Color.WHITE, false, 1.0)
 	var font := ThemeDB.fallback_font
+	if _layer == PlanetChart.Layer.TEMPERATURE or _layer == PlanetChart.Layer.MEAN_TEMPERATURE:
+		# ticks every 10 degrees C (the scale runs -30 to 45), as a weather map's legend has
+		for degrees in range(-20, 41, 10):
+			var x := (float(degrees) + 30.0) / 75.0 * width
+			_view.draw_line(origin + Vector2(x, 10.0), origin + Vector2(x, 14.0), Color.WHITE, 1.0)
+			_view.draw_string(font, origin + Vector2(x - 8.0, 27.0), str(degrees),
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
 	_view.draw_string(font, origin + Vector2(0.0, -4.0), labels[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
 	_view.draw_string(font, origin + Vector2(width, -4.0), labels[1], HORIZONTAL_ALIGNMENT_RIGHT,
 			-1, 14)

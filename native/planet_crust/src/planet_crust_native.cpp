@@ -49,6 +49,8 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_rivers", "cells", "network", "cell_metres"), &PlanetCrustNative::set_rivers);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
 	ClassDB::bind_method(D_METHOD("lake_surfaces", "dirs"), &PlanetCrustNative::lake_surfaces);
+	ClassDB::bind_method(D_METHOD("smooth_rgb", "rgb", "width", "height"), &PlanetCrustNative::smooth_rgb);
+	ClassDB::bind_method(D_METHOD("coast_lines", "rgb", "land", "width", "height"), &PlanetCrustNative::coast_lines);
 	ClassDB::bind_method(D_METHOD("despeckle", "rgb", "width", "height"), &PlanetCrustNative::despeckle);
 	ClassDB::bind_method(D_METHOD("terrain_row", "dirs", "grounds", "east", "north", "step_lon", "calm"),
 			&PlanetCrustNative::terrain_row);
@@ -788,6 +790,75 @@ PackedFloat32Array PlanetCrustNative::heights(const PackedVector3Array &p_dirs) 
 
 PackedFloat32Array PlanetCrustNative::tectonic_heights(const PackedVector3Array &p_dirs) const {
 	return heights_by(TECTONIC, p_dirs);
+}
+
+PackedByteArray PlanetCrustNative::smooth_rgb(const PackedByteArray &p_rgb, int p_width, int p_height) const {
+	PackedByteArray out = p_rgb;
+	if (p_width < 3 || p_height < 3 || p_rgb.size() < p_width * p_height * 3) {
+		return out;
+	}
+	const uint8_t *in = p_rgb.ptr();
+	uint8_t *result = out.ptrw();
+	for (int y = 0; y < p_height; y++) {
+		for (int x = 0; x < p_width; x++) {
+			int total[3] = { 0, 0, 0 };
+			int weight = 0;
+			for (int dy = -1; dy <= 1; dy++) {
+				for (int dx = -1; dx <= 1; dx++) {
+					const int ny = y + dy < 0 ? 0 : (y + dy >= p_height ? p_height - 1 : y + dy);
+					const int nx = (x + dx + p_width) % p_width;
+					const int w = (dx == 0 && dy == 0) ? 4 : (dx == 0 || dy == 0 ? 2 : 1);
+					const uint8_t *n = in + (ny * p_width + nx) * 3;
+					total[0] += n[0] * w;
+					total[1] += n[1] * w;
+					total[2] += n[2] * w;
+					weight += w;
+				}
+			}
+			uint8_t *target = result + (y * p_width + x) * 3;
+			for (int c = 0; c < 3; c++) {
+				target[c] = (uint8_t)(total[c] / weight);
+			}
+		}
+	}
+	return out;
+}
+
+PackedByteArray PlanetCrustNative::coast_lines(const PackedByteArray &p_rgb, const PackedByteArray &p_land, int p_width, int p_height) const {
+	PackedByteArray out = p_rgb;
+	if (p_width < 2 || p_height < 2 || p_rgb.size() < p_width * p_height * 3 || p_land.size() < p_width * p_height) {
+		return out;
+	}
+	// the land mask by a majority of the 3x3 pixels round each (the coast's own grain is not a coast)
+	std::vector<uint8_t> voted((size_t)p_width * (size_t)p_height);
+	for (int y = 0; y < p_height; y++) {
+		for (int x = 0; x < p_width; x++) {
+			int votes = 0;
+			for (int dy = -1; dy <= 1; dy++) {
+				for (int dx = -1; dx <= 1; dx++) {
+					const int ny = y + dy < 0 ? 0 : (y + dy >= p_height ? p_height - 1 : y + dy);
+					votes += p_land[ny * p_width + (x + dx + p_width) % p_width] ? 1 : 0;
+				}
+			}
+			voted[(size_t)y * (size_t)p_width + x] = votes >= 5 ? 1 : 0;
+		}
+	}
+	const uint8_t *land = voted.data();
+	uint8_t *result = out.ptrw();
+	for (int y = 0; y < p_height - 1; y++) {
+		for (int x = 0; x < p_width; x++) {
+			const int here = land[y * p_width + x];
+			const int east = land[y * p_width + (x + 1) % p_width];
+			const int south = land[(y + 1) * p_width + x];
+			if (here != east || here != south) {
+				uint8_t *target = result + (y * p_width + x) * 3;
+				for (int c = 0; c < 3; c++) {
+					target[c] = (uint8_t)(target[c] * 0.38);
+				}
+			}
+		}
+	}
+	return out;
 }
 
 PackedByteArray PlanetCrustNative::despeckle(const PackedByteArray &p_rgb, int p_width, int p_height) const {
