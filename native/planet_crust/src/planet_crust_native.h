@@ -81,6 +81,8 @@ private:
 	PackedInt32Array river_start, river_items;
 	// the climate's temperature at sea level (a grid, rows from the north pole, wrapping east-west)
 	PackedFloat32Array climate_grid;
+	PackedFloat32Array rain_grid; // the rain on the same grid (soil)
+	double grid_at(const PackedFloat32Array &p_grid, const Vector3 &p_dir, double p_default) const;
 	int climate_width = 0, climate_height = 0;
 	double sea_temperature(const Vector3 &p_dir) const;
 	struct Valley {
@@ -121,7 +123,8 @@ public:
 	// The river water at each direction: x the water level (m; -1e9 where there is no river), y the
 	// river's flow as a share of a big river's, z 0..1 across the river (0.5 in the middle).
 	PackedVector3Array river_waters(const PackedVector3Array &p_dirs) const;
-	void set_climate(const PackedFloat32Array &p_grid, int p_width, int p_height);
+	void set_climate(const PackedFloat32Array &p_grid, int p_width, int p_height,
+			const PackedFloat32Array &p_rain = PackedFloat32Array());
 	void set_rivers(int p_cells, const Dictionary &p_network, double p_cell_metres);
 	// Many points at once are split over the engine's worker threads (every call is pure, so any order).
 	enum HeightMode { GROUND, TECTONIC, MACRO, MACRO_AND_TECTONIC, BROAD };

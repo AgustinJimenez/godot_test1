@@ -45,7 +45,7 @@ inline double sign_d(double p_x) {
 void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("setup", "config"), &PlanetCrustNative::setup);
 	ClassDB::bind_method(D_METHOD("river_waters", "dirs"), &PlanetCrustNative::river_waters);
-	ClassDB::bind_method(D_METHOD("set_climate", "grid", "width", "height"), &PlanetCrustNative::set_climate);
+	ClassDB::bind_method(D_METHOD("set_climate", "grid", "width", "height", "rain"), &PlanetCrustNative::set_climate);
 	ClassDB::bind_method(D_METHOD("set_rivers", "cells", "network", "cell_metres"), &PlanetCrustNative::set_rivers);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
 	ClassDB::bind_method(D_METHOD("lake_surfaces", "dirs"), &PlanetCrustNative::lake_surfaces);
@@ -421,16 +421,22 @@ void PlanetCrustNative::plate_at(const Vector3 &p_dir, int &r_plate, real_t &r_e
 	r_continental = continental[first] != 0;
 }
 
-void PlanetCrustNative::set_climate(const PackedFloat32Array &p_grid, int p_width, int p_height) {
+void PlanetCrustNative::set_climate(const PackedFloat32Array &p_grid, int p_width, int p_height,
+		const PackedFloat32Array &p_rain) {
 	climate_grid = p_grid;
+	rain_grid = p_rain;
 	climate_width = p_width;
 	climate_height = p_height;
 }
 
 // The year's mean temperature at sea level at a direction (bilinear on the climate's grid), 15 without one.
 double PlanetCrustNative::sea_temperature(const Vector3 &p_dir) const {
-	if (climate_width <= 0 || climate_height <= 0 || climate_grid.size() < climate_width * climate_height) {
-		return 15.0;
+	return grid_at(climate_grid, p_dir, 15.0);
+}
+
+double PlanetCrustNative::grid_at(const PackedFloat32Array &p_grid, const Vector3 &p_dir, double p_default) const {
+	if (climate_width <= 0 || climate_height <= 0 || p_grid.size() < climate_width * climate_height) {
+		return p_default;
 	}
 	const double pi = 3.14159265358979323846;
 	const double lat = std::asin(std::max(-1.0, std::min(1.0, (double)p_dir.y)));
@@ -447,7 +453,7 @@ double PlanetCrustNative::sea_temperature(const Vector3 &p_dir) const {
 			const double weight = (dx == 1 ? tx : 1.0 - tx) * (dy == 1 ? ty : 1.0 - ty);
 			const int row = std::max(0, std::min(climate_height - 1, y0 + dy));
 			const int column = (((x0 + dx) % climate_width) + climate_width) % climate_width;
-			value += (double)climate_grid[row * climate_width + column] * weight;
+			value += (double)p_grid[row * climate_width + column] * weight;
 		}
 	}
 	return value;
@@ -517,6 +523,14 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	float b = rock.b + (dark.b - rock.b) * steep_mix;
 	// permanent snow and ice where the cold keeps it (PlanetRock.colour)
 	const double cold = sea_temperature(p_dir) - 0.0065 * (p_ground > 0.0 ? p_ground : 0.0);
+	// soil: deep and dark where it is wet and mild, thin and pale where it is dry, none on steep rock
+	const double fertile = clampd(grid_at(rain_grid, p_dir, 0.5) / 0.9, 0.0, 1.0) * smooth(-5.0, 10.0, cold);
+	const double soil = on_land * (1.0 - smooth(0.2, 0.55, p_steep)) * (0.3 + 0.7 * fertile) * 0.6;
+	const float soil_r = (float)(0.64 + (0.27 - 0.64) * fertile), soil_g = (float)(0.55 + (0.20 - 0.55) * fertile);
+	const float soil_b = (float)(0.38 + (0.13 - 0.38) * fertile);
+	r += (soil_r - r) * (float)soil;
+	g += (soil_g - g) * (float)soil;
+	b += (soil_b - b) * (float)soil;
 	double snow = smooth(-0.5, -4.5, cold) * smooth(0.0, 60.0, p_ground);
 	snow *= 1.0 - 0.85 * smooth(0.5, 0.95, p_steep);
 	snow *= 0.92;

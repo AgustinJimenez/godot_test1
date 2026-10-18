@@ -15,6 +15,8 @@ extends RefCounted
 
 enum Kind { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE }
 
+const SOIL_DRY := Color(0.64, 0.55, 0.38) ## the soil of a dry place
+const SOIL_RICH := Color(0.27, 0.20, 0.13) ## and of a wet, mild one
 const SAND := Color(0.80, 0.72, 0.52) ## beaches: low, level ground by the sea
 const SNOW := Color(0.93, 0.95, 0.98) ## permanent snow and ice
 const LAPSE := 0.0065 ## degrees C the air cools a metre higher
@@ -114,7 +116,7 @@ func dominant(dir: Vector3, ground: float) -> int:
 ## (degrees C, the year's mean at sea level there) puts permanent snow and ice where the cold
 ## keeps it.
 func colour(dir: Vector3, ground: float, steep: float, speckle: float,
-		sea_temperature := 15.0, strata := true) -> Color:
+		sea_temperature := 15.0, strata := true, rain := 0.5) -> Color:
 	var w := weights(dir, ground)
 	var rock := Color(0.0, 0.0, 0.0)
 	for index in w.size():
@@ -131,6 +133,11 @@ func colour(dir: Vector3, ground: float, steep: float, speckle: float,
 	rock = rock * (0.94 + 0.12 * speckle)
 	rock = rock.lerp(rock * 0.62, smoothstep(0.35, 0.8, steep))
 	var cold := sea_temperature - LAPSE * maxf(ground, 0.0)
+	# soil: deep and dark where it is wet and mild, thin and pale where it is dry, none on steep rock
+	var fertile := clampf(rain / 0.9, 0.0, 1.0) * smoothstep(-5.0, 10.0, cold)
+	var soil_colour := SOIL_DRY.lerp(SOIL_RICH, fertile)
+	var soil := on_land * (1.0 - smoothstep(0.2, 0.55, steep)) * (0.3 + 0.7 * fertile) * 0.6
+	rock = rock.lerp(soil_colour, soil)
 	var snow := smoothstep(-0.5, -4.5, cold) * smoothstep(0.0, 60.0, ground)
 	snow *= 1.0 - 0.85 * smoothstep(0.5, 0.95, steep) # the steepest rock stays bare
 	rock = rock.lerp(SNOW, snow * 0.92)

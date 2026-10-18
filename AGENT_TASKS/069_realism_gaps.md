@@ -40,7 +40,7 @@ the slope of the coarser ones, so valleys branch). Inland basins below the sea a
 ## Life and the surface
 
 11. Plants and animals are off by default and not tied to the biome map the planet produces.
-12. **Soil**: no soil depth, no wetlands, no desert crust. The ground colour follows rock, not soil.
+12. **Soil** (2026-10-18: the ground colour now mixes in a soil tone by rain, warmth and slope: dark and deep where wet and mild, pale and thin where dry, none on steep rock; same in the native and script crusts). Still missing: soil depth that changes the shape, wetlands, desert crust, the plants' own seasonal colours.
 13. **Water layers** (sea, rivers, lakes) are off by default; river widths and the shore are not checked on
     the whole Earth.
 

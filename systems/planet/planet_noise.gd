@@ -94,7 +94,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 	climate.build(self)
 	if native != null:
 		native.call(&"set_climate", climate.temperature_grid(), PlanetClimate.WIDTH,
-				PlanetClimate.HEIGHT)
+				PlanetClimate.HEIGHT, climate.rain_grid())
 	_lap("climate")
 	weather = PlanetWeather.new(self)
 	_lap("weather")
@@ -446,8 +446,9 @@ func biome(x: float, y: float, z: float, ground: float, steepness: float) -> Ter
 func facet_color(x: float, y: float, z: float, ground: float, steep: float,
 		coarse := false) -> Color:
 	var speckle := 0.5 if coarse else detail(x, y, z) # (a map's pixels of many metres: no fine grain)
-	return rock.colour(Vector3(x, y, z), ground, steep, speckle,
-			climate.sea_temperature(Vector3(x, y, z)), not coarse)
+	var here := Vector3(x, y, z)
+	return rock.colour(here, ground, steep, speckle, climate.sea_temperature(here), not coarse,
+			climate.sample(here).y)
 
 
 ## A direction for the player to start on: green country (mild, wet enough) that is not a dead flat
