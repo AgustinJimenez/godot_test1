@@ -7,7 +7,7 @@ evidence in the relevant `AGENT_TASKS/NNN_name.md` file; Git preserves old revis
 ## Project and task workflow
 
 This is a first-person experiment and learning sandbox (not a survival-horror game, despite the
-project name) built with Godot 4.6 (Forward+, Jolt) and statically typed GDScript. Explain Godot ideas briefly in plain language when building systems.
+project name) built with Godot 4.7 (Forward+, Jolt) and statically typed GDScript. Explain Godot ideas briefly in plain language when building systems.
 
 The user is not a game or IK developer and judges Foot IK work only by whether the animation looks
 smooth. For Foot IK discussion, lead with outcomes (smooth or not, fast or not, buggy or not) and
@@ -39,7 +39,7 @@ repository-local; do not change the globally active GitHub CLI account to make a
 
 ## Commands and validation
 
-The `godot` command is the installed Godot 4.6 mono build.
+The `godot` command is the installed Godot 4.7 mono build.
 
 ```sh
 python3 -m venv .venv
