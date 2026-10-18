@@ -15,6 +15,7 @@ extends RefCounted
 ## a wet morning, rain when thick cloud sits on moist, lifted air, a storm where the lift and the
 ## heat are great, and snow where it is cold.
 
+const SHEAR_DAYS := 2.5 ## how long the weather systems drift before they fade into a fresh copy
 const WIND_TURN := 0.035 ## the share of a turn the strongest wind carries the clouds in a day
 
 enum Kind { CLEAR, CLOUDY, RAIN, STORM, FOG, SNOW } ## the same order as WorldWeather.State
@@ -118,16 +119,28 @@ func cloud_cells(dir: Vector3, clock: PlanetClock, macro := NAN) -> Vector2:
 	var ready := readiness(dir, clock, macro)
 	var days := clock.absolute_days()
 	var lat := asin(clampf(dir.y, -1.0, 1.0))
-	var shift := zonal_wind(lat) * WIND_TURN * TAU * days
-	var lon := atan2(dir.z, dir.x) - shift
-	var carried := Vector3(cos(lat) * cos(lon), dir.y, cos(lat) * sin(lon))
 	var morph := 0.5 + 0.5 * sin(days * 0.45)
-	var big := lerpf(_big_a.get_noise_3d(carried.x, carried.y, carried.z),
-			_big_b.get_noise_3d(carried.x, carried.y, carried.z), morph)
-	var clumps := _small.get_noise_3d(carried.x, carried.y, carried.z)
-	var pattern := clampf(0.5 + 0.5 * (0.75 * big + 0.35 * clumps), 0.0, 1.0)
+	# the winds carry each latitude at its own speed, which would stretch the pattern into long
+	# streaks as days go by: it is drawn twice, drifted for at most SHEAR_DAYS each, and the two
+	# are faded into each other (one restarts while the other is at its most visible)
+	var first := fposmod(days, SHEAR_DAYS)
+	var second := fposmod(days + SHEAR_DAYS * 0.5, SHEAR_DAYS)
+	var weight := 1.0 - absf(2.0 * first / SHEAR_DAYS - 1.0)
+	var pattern := 0.0
+	var cells := 0.0
+	for turn in 2:
+		var drift := first if turn == 0 else second
+		var shift := zonal_wind(lat) * WIND_TURN * TAU * drift
+		var lon := atan2(dir.z, dir.x) - shift
+		var carried := Vector3(cos(lat) * cos(lon), dir.y, cos(lat) * sin(lon))
+		var big := lerpf(_big_a.get_noise_3d(carried.x, carried.y, carried.z),
+				_big_b.get_noise_3d(carried.x, carried.y, carried.z), morph)
+		var clumps := _small.get_noise_3d(carried.x, carried.y, carried.z)
+		var share := weight if turn == 0 else 1.0 - weight
+		pattern += clampf(0.5 + 0.5 * (0.75 * big + 0.35 * clumps), 0.0, 1.0) * share
+		cells += clumps * share
 	var threshold := 1.0 - ready * 1.15
-	return Vector2(smoothstep(threshold - 0.12, threshold + 0.12, pattern), clumps)
+	return Vector2(smoothstep(threshold - 0.12, threshold + 0.12, pattern), cells)
 
 
 ## The weather at `dir` (`ground` metres above the sea) right now: {"kind", "cloud", "ready"}.
