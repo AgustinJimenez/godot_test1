@@ -6,11 +6,11 @@ extends RefCounted
 ## `finished()`, then take `texture()`.
 
 enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_TEMPERATURE,
-		CLOUDS, SATELLITE, CLOUD_MASK }
+		CLOUDS, SATELLITE, ATLAS, CLOUD_MASK }
 ## CLOUD_MASK is the cloud cover alone (for the shell round the planet)
 
 const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates",
-		"Slope", "Mean temp", "Clouds", "Satellite"]
+		"Slope", "Mean temp", "Clouds", "Satellite", "Atlas"]
 const CALM_PIXEL := 2000.0 ## metres a pixel spans above which the Terrain relief is shaded gently
 const COARSE_PIXEL := 20.0 ## metres a pixel spans above which the map has no fine grain or beds
 const SHADE_EXAGGERATION := 2.0 ## the map's hill shading: how much a slope lights or darkens
@@ -18,7 +18,7 @@ const SMOOTHED := [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.RAIN, Layer.
 ## the layers whose rows the native crust colours
 const NATIVE_LAYERS := [Layer.ELEVATION, Layer.TEMPERATURE, Layer.RAIN, Layer.SLOPE,
 		Layer.MEAN_TEMPERATURE, Layer.BIOME, Layer.PLATES, Layer.CLOUDS, Layer.SATELLITE,
-		Layer.CLOUD_MASK]
+		Layer.ATLAS, Layer.CLOUD_MASK]
 const SMOOTH_PIXEL := 30.0 ## metres a pixel spans above which the map draws the smooth ground
 
 const BIOME_COLORS := {
@@ -138,6 +138,14 @@ func texture() -> ImageTexture:
 		if heights.size() == size.x * size.y:
 			_noise.map_heights[size] = heights
 	var far := _pixel_metres > CALM_PIXEL * 50.0 # (kilometres a pixel: Elevation is grain too)
+	if layer == Layer.ATLAS and _noise.native != null: # (flat colours: a blur, coast lines)
+		for pass_number in 4:
+			all = _noise.native.call(&"smooth_rgb", all, size.x, size.y)
+		var atlas_land := PackedByteArray()
+		for band in _land_bands:
+			atlas_land.append_array(band)
+		if atlas_land.size() >= size.x * size.y:
+			all = _noise.native.call(&"coast_lines", all, atlas_land, size.x, size.y)
 	if _noise.native != null and (layer in SMOOTHED or (layer == Layer.ELEVATION and far)):
 		# (a data layer is a smooth gradient: the grain of the small pixels is averaged away, and a thin
 		# dark line follows the coasts so the sea and the land read through the colours)
@@ -150,7 +158,7 @@ func texture() -> ImageTexture:
 		if land_all.size() >= size.x * size.y:
 			all = _noise.native.call(&"coast_lines", all, land_all, size.x, size.y)
 	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, all)
-	if layer == Layer.TERRAIN or layer == Layer.ELEVATION:
+	if layer == Layer.TERRAIN or layer == Layer.ELEVATION or layer == Layer.ATLAS:
 		_draw_rivers(image)
 	return ImageTexture.create_from_image(image)
 

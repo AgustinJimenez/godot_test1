@@ -115,7 +115,8 @@ func _ready() -> void:
 	var group := ButtonGroup.new()
 	for index in PlanetChart.NAMES.size():
 		var button := Button.new()
-		button.text = "%d  %s" % [(index + 1) % 10, PlanetChart.NAMES[index]]
+		var key_name := "A" if index == int(PlanetChart.Layer.ATLAS) else str((index + 1) % 10)
+		button.text = "%s  %s" % [key_name, PlanetChart.NAMES[index]]
 		button.toggle_mode = true
 		button.button_group = group
 		button.focus_mode = Control.FOCUS_NONE
@@ -208,10 +209,13 @@ func _input(event: InputEvent) -> void:
 		elif code == KEY_MINUS or code == KEY_KP_SUBTRACT:
 			_zoom_at(_view.size * 0.5, 0.8)
 			get_viewport().set_input_as_handled()
+		elif code == KEY_A:
+			select_layer(int(PlanetChart.Layer.ATLAS))
+			get_viewport().set_input_as_handled()
 		elif code == KEY_0 and PlanetChart.NAMES.size() > 9:
 			select_layer(9)
 			get_viewport().set_input_as_handled()
-		elif code >= KEY_1 and code < KEY_1 + mini(PlanetChart.NAMES.size(), 9):
+		elif code >= KEY_1 and code < KEY_1 + 9:
 			select_layer(code - KEY_1)
 			get_viewport().set_input_as_handled()
 

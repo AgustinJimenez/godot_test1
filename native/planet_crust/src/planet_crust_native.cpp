@@ -1110,13 +1110,13 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 			} break;
 			case 8:
 			case 9:
-			case 10: { // clouds, satellite, the cloud cover alone
+			case 11: { // clouds, satellite, the cloud cover alone
 				const bool ready_grid = have_grid && season_mean.size() >= gw * gh;
 				double cover = 0.0;
 				if (ready_grid) {
 					cover = (double)cloud_cells(dir, broad, grid.ptr(), gw, gh, p_params.get("decl", 0.0), p_params.get("days", 0.0)).x;
 				}
-				if (p_layer == 10) {
+				if (p_layer == 11) {
 					r = g = b = cover;
 					break;
 				}
@@ -1174,6 +1174,51 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 					g = lg + (cg - lg) * cover * 0.92;
 					b = lb + (cb - lb) * cover * 0.92;
 				}
+			} break;
+			case 10: { // the atlas: a simple map for people to read (flat colours, a height tint, a light relief)
+				const double lit = clampd(1.0 - 0.9 * (rise_east - rise_north) / metres, 0.88, 1.12);
+				if (ground < 0.0) {
+					const double depth = clampd(-ground / (relief * 0.35), 0.0, 1.0);
+					r = 0.70 + (0.45 - 0.70) * depth;
+					g = 0.85 + (0.68 - 0.85) * depth;
+					b = 0.95 + (0.88 - 0.95) * depth;
+					const double ice = sea_ice(dir) * 0.9;
+					r += (0.93 - r) * ice;
+					g += (0.96 - g) * ice;
+					b += (0.99 - b) * ice;
+					break;
+				}
+				const double wet = clampd(grid_at(rain_grid, dir, 0.5) / 0.9, 0.0, 1.0);
+				const double degrees = sea_temperature(dir) - (broad > 0.0 ? broad : 0.0) / relief * 8800.0 / 1000.0 * 6.5;
+				const double warm = clampd((degrees + 4.0) / 16.0, 0.0, 1.0);
+				const double tall = clampd(ground / (relief * 0.55), 0.0, 1.0);
+				// the lowland by climate: desert, grass, forest, tundra
+				double lr = 0.93 + (0.58 - 0.93) * clampd(wet * 1.6, 0.0, 1.0);
+				double lg = 0.86 + (0.78 - 0.86) * clampd(wet * 1.6, 0.0, 1.0);
+				double lb = 0.62 + (0.45 - 0.62) * clampd(wet * 1.6, 0.0, 1.0);
+				const double forest = smooth(0.55, 0.9, wet) * warm;
+				lr += (0.36 - lr) * forest;
+				lg += (0.62 - lg) * forest;
+				lb += (0.36 - lb) * forest;
+				lr += (0.80 - lr) * (1.0 - warm);
+				lg += (0.82 - lg) * (1.0 - warm);
+				lb += (0.74 - lb) * (1.0 - warm);
+				// the height tint: the higher, the browner and the greyer
+				const double up = smooth(0.12, 0.6, tall);
+				lr += (0.72 - lr) * up;
+				lg += (0.62 - lg) * up;
+				lb += (0.50 - lb) * up;
+				const double high = smooth(0.6, 1.0, tall);
+				lr += (0.86 - lr) * high;
+				lg += (0.84 - lg) * high;
+				lb += (0.82 - lb) * high;
+				const double snow = smooth(-2.0, -7.0, degrees);
+				lr += (0.97 - lr) * snow;
+				lg += (0.98 - lg) * snow;
+				lb += (1.0 - lb) * snow;
+				r = lr * lit;
+				g = lg * lit;
+				b = lb * lit;
 			} break;
 			case 4: { // biome
 				if (ground < 0.0) {
