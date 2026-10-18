@@ -677,6 +677,7 @@ func _ready() -> void:
 		elif arg == "--planet-check":
 			_checking = true
 	planet = PlanetWorld.new()
+	planet.map_first = "--map-first" in OS.get_cmdline_user_args() # (the lab waits for no map)
 	planet.settings = settings
 	planet.restored = restored_state
 	add_child(planet)

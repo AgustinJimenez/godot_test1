@@ -36,6 +36,7 @@ var clock := PlanetClock.new() ## the star, the orbit, the spin: where the sun i
 var splash: WaterSplash
 var rebases := 0 ## how many times the planet has been turned (labs and tests)
 var loading := false ## the player is held still while the ground around them is made
+var map_first := true ## the map opens first, the ground is built once it is closed (a window only)
 
 var _target: Node3D
 var _timer := 0.0
@@ -163,12 +164,24 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 		loading = true
 		_load_time = 0.0
 		target.process_mode = Node.PROCESS_MODE_DISABLED
-		_load_label.visible = true
-		loaded.connect(map.begin, CONNECT_ONE_SHOT) # the map is drawn once the player is in
-		_dark.modulate.a = 1.0
-		_dark.visible = true
 		surface.update(planet_position())
+		if map_first and DisplayServer.get_name() != "headless":
+			# the world is defined before it is built: its map, every layer, comes first, and the
+			# ground waits (map.paused) until the map is closed
+			map.begin()
+			map.show_zoom(1.0)
+			map.visibility_changed.connect(_cover_the_loading, CONNECT_ONE_SHOT)
+			return dir
+		_cover_the_loading()
+		loaded.connect(map.begin, CONNECT_ONE_SHOT) # the map is drawn once the player is in
 	return dir
+
+
+## Black screen and the loading text while the ground round the player is made.
+func _cover_the_loading() -> void:
+	_load_label.visible = true
+	_dark.modulate.a = 1.0
+	_dark.visible = true
 
 
 ## The point of the planet closest to `position` (metres from the planet's centre, anywhere in
