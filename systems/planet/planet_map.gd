@@ -329,7 +329,10 @@ func _process(delta: float) -> void:
 			_adopt_chart()
 		elif visible and _whole_pass < 0:
 			_caption.text = "Charting the planet...  %d %%" % int(100.0 * _chart.progress())
-	if visible and _chart == null and _whole_pass == _last_pass():
+	# a close view is charted sharply as soon as there is a picture to look at: it does not wait for
+	# the whole planet's last passes (those go on afterwards)
+	var whole_is_drawing := _chart != null and not _chart_is_detail
+	if visible and _whole_pass >= 0 and (_chart == null or whole_is_drawing):
 		_maybe_chart_the_view(delta)
 
 
@@ -355,6 +358,8 @@ func _adopt_chart() -> void:
 		_detail = texture
 		_detail_rect = _chart.rect
 		_chart = null
+		if _whole_pass < _last_pass():
+			_start_chart(_whole_pass + 1) # the passes the close view interrupted go on
 		return
 	_whole = texture
 	_whole_pass += 1
@@ -385,6 +390,9 @@ func _maybe_chart_the_view(delta: float) -> void:
 	rect = Rect2(rect.position.x, top, rect.size.x, minf(rect.end.y, 1.0) - top)
 	if not rect.encloses(view):
 		return # the view reaches over a pole: the whole planet chart will do
+	if _chart != null: # a whole planet pass still drawing gives way to the close view
+		_chart.cancel()
+		_retired.append(_chart)
 	_chart = PlanetChart.new()
 	_chart.layer = _layer
 	_chart.clock = planet.clock.copy()
