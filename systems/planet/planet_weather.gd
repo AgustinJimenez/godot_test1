@@ -16,6 +16,7 @@ extends RefCounted
 ## heat are great, and snow where it is cold.
 
 const SHEAR_DAYS := 2.5 ## how long the weather systems drift before they fade into a fresh copy
+const WARP := 0.45 ## how far the swirls push the places the cloud pattern is read from
 const WIND_TURN := 0.035 ## the share of a turn the strongest wind carries the clouds in a day
 
 enum Kind { CLEAR, CLOUDY, RAIN, STORM, FOG, SNOW } ## the same order as WorldWeather.State
@@ -24,6 +25,7 @@ var _noise: PlanetNoise
 var _big_a := FastNoiseLite.new() # the weather systems (a few thousand km across on an Earth)
 var _big_b := FastNoiseLite.new() # a second pattern the first one changes into and back
 var _small := FastNoiseLite.new() # the clumps inside them
+var _warp := FastNoiseLite.new() # bends the systems into swirls and filaments
 
 
 func _init(noise: PlanetNoise) -> void:
@@ -32,6 +34,7 @@ func _init(noise: PlanetNoise) -> void:
 	_setup(_big_a, seed_value + 31, 1.7, 3)
 	_setup(_big_b, seed_value + 32, 1.7, 3)
 	_setup(_small, seed_value + 33, 6.5, 3)
+	_setup(_warp, seed_value + 34, 2.4, 3)
 
 
 func _setup(source: FastNoiseLite, noise_seed: int, frequency: float, octaves: int) -> void:
@@ -133,13 +136,18 @@ func cloud_cells(dir: Vector3, clock: PlanetClock, macro := NAN) -> Vector2:
 		var shift := zonal_wind(lat) * WIND_TURN * TAU * drift
 		var lon := atan2(dir.z, dir.x) - shift
 		var carried := Vector3(cos(lat) * cos(lon), dir.y, cos(lat) * sin(lon))
+		# the air swirls: the place the pattern is read from is pushed round by a slow noise
+		var bend_x := _warp.get_noise_3d(carried.x, carried.y, carried.z)
+		var bend_y := _warp.get_noise_3d(carried.z + 7.3, carried.x - 3.1, carried.y + 1.7)
+		var bent := (carried + WARP * Vector3(bend_x, bend_y, bend_x - bend_y)).normalized()
+		carried = bent
 		var big := lerpf(_big_a.get_noise_3d(carried.x, carried.y, carried.z),
 				_big_b.get_noise_3d(carried.x, carried.y, carried.z), morph)
 		var clumps := _small.get_noise_3d(carried.x, carried.y, carried.z)
 		var share := weight if turn == 0 else 1.0 - weight
 		pattern += clampf(0.5 + 0.5 * (0.75 * big + 0.35 * clumps), 0.0, 1.0) * share
 		cells += clumps * share
-	var threshold := 1.0 - ready * 1.15
+	var threshold := 0.97 - ready * 0.8
 	return Vector2(smoothstep(threshold - 0.12, threshold + 0.12, pattern), cells)
 
 
