@@ -95,6 +95,16 @@ vec3 scatter(vec3 origin, vec3 dir, vec3 sun, float radius, float top) {
 	return (sum_r * BETA_R * phase_r + sum_m * BETA_M * phase_m) / air_scale;
 }
 
+// Smooth value noise in 3D (for the Milky Way: only asked where the sky is dark).
+float sky_noise(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = smoothstep(0.0, 1.0, fract(p));
+	return mix(mix(mix(hash3(i), hash3(i + vec3(1.0, 0.0, 0.0)), f.x),
+			mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+			mix(mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), f.x),
+			mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z);
+}
+
 void sky() {
 	vec3 dir = normalize(EYEDIR);
 	vec3 origin = POSITION - planet_centre;
@@ -134,7 +144,22 @@ void sky() {
 		vec3 cell = floor(dir * 140.0);
 		float star = step(0.9985, hash3(cell)) * smoothstep(0.42, 0.05, length(fract(dir * 140.0) - 0.5));
 		float twinkle = 0.65 + 0.35 * sin(TIME * 2.5 + hash3(cell + 7.0) * 40.0);
-		col += vec3(0.9, 0.95, 1.0) * star * twinkle * dark;
+		// stars of different brightness and colour
+		float magnitude = hash3(cell + 3.0);
+		vec3 tint = mix(vec3(1.0, 0.85, 0.7), vec3(0.75, 0.85, 1.0), hash3(cell + 11.0));
+		col += tint * star * twinkle * dark * (0.6 + 1.6 * magnitude * magnitude);
+		// the Milky Way: a band round the sky with dust lanes in it, brighter toward its centre
+		vec3 galaxy_axis = normalize(vec3(0.31, 0.88, 0.36));
+		float from_plane = dot(dir, galaxy_axis);
+		float band = exp(-from_plane * from_plane / (2.0 * 0.09 * 0.09));
+		if (band > 0.01) {
+			float star_clouds = sky_noise(dir * 9.0) * 0.6 + sky_noise(dir * 23.0) * 0.4;
+			float lanes = smoothstep(0.3, 0.8, sky_noise(dir * 15.0 + 5.0));
+			float core = pow(max(dot(dir, normalize(vec3(0.7, 0.0, 0.7))) * 0.5 + 0.5, 0.0), 3.0);
+			float dust = 0.7 + 0.3 * hash3(floor(dir * 420.0)); // (a haze of stars too faint to see one by one)
+			float milk = band * (0.55 + 0.45 * star_clouds) * (1.0 - 0.3 * lanes) * (0.6 + 0.7 * core) * dust;
+			col += mix(vec3(0.6, 0.66, 0.9), vec3(0.95, 0.8, 0.6), core) * milk * 0.028 * dark;
+		}
 		vec3 moon_axis = normalize(moon_direction);
 		float moon = max(dot(dir, moon_axis), 0.0);
 		vec3 offset = dir - moon_axis * dot(dir, moon_axis);

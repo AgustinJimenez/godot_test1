@@ -1,6 +1,6 @@
 # 071 - How close to an Unreal Engine 5 look can the planet get?
 
-Status: **investigation done, nothing built (2026-10-18)**. Read `docs/planet_lessons.md` first (how to measure).
+Status: **tier 1, the ground detail and the night sky are built (2026-10-18); the rest is open (see "Done")**. Read `docs/planet_lessons.md` first (how to measure).
 Goal: a "triple A" look where it counts, every part behind the graphics settings (`components/graphics_settings.gd`,
 presets Low / Medium / High / Ultra / Custom) so a weak PC can switch it off. Measure the frame time of each step
 (`--report-fps` in the lab) before and after, and keep the 60 fps budget of the High preset.
@@ -87,3 +87,36 @@ three screenshots the user uses (a desert, a forest, a snow range at dawn).
 
 `planet_lab --earth --seed=8 --dir=x,y,z --shot-frame=1500 --shot=PATH` (see 069 for finding a place), once per preset, plus
 `--report-fps`. Compare the same three places before and after, and write the ms per frame next to each setting.
+
+
+## Done (2026-10-18) and what it costs
+
+All of it is in `components/graphics_look.gd` (applied by `GraphicsSettings`, new keys in the presets and in the
+settings menu). `PLANET_PRESET=low|medium|high|ultra` forces a preset for pictures and tests without writing the saved
+settings. Frame time, uncapped, full Earth seed 8, on a strong GPU at 1920x1010 (`--fps`): **Low 0.68 ms, Medium 1.0 ms,
+High 1.4 ms, Ultra 1.9 ms**. All far inside 16 ms here; measure on a weak GPU before trusting the High default.
+
+- Tier 1.1/1.3: colour grade (None / Natural / Vivid / Filmic via `adjustment_*`), auto exposure (gentle, a limited range:
+  a night is not lit up to day), a tuned bloom (soft light, HDR threshold 1.1), SSAO from High (as before).
+- Tier 1.2: upscaler Off / FSR 1 / FSR 2 (only below 100 % render scale; FSR 2 replaces TAA/MSAA/FXAA), debanding.
+- Tier 1.5: light shafts (volumetric fog) only within ~1.5 km of the ground, density from the local haze, off in space and
+  underwater (`PlanetAtmosphere._shafts`).
+- Reflections (SSR) Off / Low / High (Ultra). Not looked at on a wet place yet.
+- Tier 2.6 (without downloaded textures): `ground_detail` Plain / Normal / Fine / Finest (global shader parameter): from
+  Fine a bump a hand wide, darker crevices (AO), sand ripples, snow glints; Finest adds a second bump.
+- Tier 3.13: the night sky has stars of different brightness and colour and a faint Milky Way (a band with dust lanes and
+  fine grain, only computed where the sky is dark).
+
+Presets: Low (nothing new, ground Normal), Medium (FSR 2, debanding, Natural grade, auto exposure), High (+ bloom, light
+shafts, ground Fine), Ultra (+ SSR high, ground Finest). The render scales are unchanged (0.65 / 0.8 / 1.0 / 1.15).
+
+## Not done yet (in the plan's order)
+
+- 2.6 real PBR textures (needs CC0 files: downloading them was not asked; the procedural ground above is the stand-in).
+- 2.7 detail scatter (shares the plants work: "for later"), 2.8 SSR looked at on wet ground, 2.9 decals and dust particles.
+- 3.10 water (foam, refraction, underwater; the water layer is off by default), 3.11 cloud shadows and shafts under clouds,
+  3.12 sun glare / lens flare / DOF in photo mode, aurora near the poles (the climate knows the cold).
+- 4.14 SDFGI, 4.15 reflection probes, 4.16 occlusion culling and LOD: need a test of the cost with the tile builder running.
+- Seen on the way, not part of this: the far ground at the horizon draws as a black, stair-stepped silhouette in the snow
+  range (`--dir=-0.92717,0.00139,-0.37464`), and rectangular dark patches with straight edges close to the ground on the
+  wet place (cloud/shadow or tile seams: look at `planet_ground.gdshader`'s `far` blend and the cascade distance).
