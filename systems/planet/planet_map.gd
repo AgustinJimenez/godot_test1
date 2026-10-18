@@ -351,10 +351,8 @@ func _visible_size() -> Vector2:
 func _clamp_centre() -> void:
 	var size := _visible_size()
 	_centre.x = fposmod(_centre.x, 1.0) # the map wraps east-west
-	if size.y >= 1.0:
-		_centre.y = 0.5
-	else: # past a pole is the other side of the planet: the map goes on, upside down, half a turn on
-		_centre.y = fposmod(_centre.y + 0.5, 2.0) - 0.5
+	# past a pole is the other side of the planet: the map goes on, upside down, half a turn on
+	_centre.y = fposmod(_centre.y + 0.5, 2.0) - 0.5
 
 
 ## Zooms by `factor`, keeping the point of the map under the cursor where it is.
@@ -535,13 +533,14 @@ func _set_the_globe_detail() -> void:
 
 ## The whole planet's picture under the view (the map wraps east-west).
 func _draw_whole(view: Rect2, size: Vector2) -> void:
-	var first_u := fposmod(view.position.x, 1.0)
-	var first_width := minf(size.x, 1.0 - first_u)
 	var rows := view.size.y # (a view taller than the screen is the part beyond a pole, mirrored)
-	_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(first_u, view.position.y, first_width, rows))
-	if first_width < size.x:
-		_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(0.0, view.position.y,
-				size.x - first_width, rows), first_width)
+	var drawn := 0.0 # the map goes round east-west: its copies are drawn until the view is full
+	while drawn < size.x - 0.00001:
+		var first_u := fposmod(view.position.x + drawn, 1.0)
+		var width := minf(size.x - drawn, 1.0 - first_u)
+		_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(first_u, view.position.y, width, rows),
+				drawn)
+		drawn += width
 
 
 ## The tiles over it (each from its own picture, or its finest charted ancestor).
@@ -870,14 +869,7 @@ func _draw_view() -> void:
 	elif _covered_by_detail(view):
 		_draw_part(_detail, _detail_rect, view)
 	elif _whole != null:
-		# the map wraps east-west: the view may need the end of the picture and then its start
-		var first_u := fposmod(view.position.x, 1.0)
-		var first_width := minf(size.x, 1.0 - first_u)
-		_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(first_u, view.position.y, first_width,
-				size.y))
-		if first_width < size.x:
-			_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(0.0, view.position.y,
-					size.x - first_width, size.y), first_width)
+		_draw_whole(view, size)
 	PlanetMapOverlay.draw_grid(_view, _zoom, _centre, _visible_size(), _on_screen)
 	_draw_names()
 	PlanetMapOverlay.draw_legend(_view, _layer, planet.noise.relief)
