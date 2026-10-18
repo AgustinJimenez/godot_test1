@@ -554,6 +554,38 @@ double PlanetCrustNative::grid_at(const PackedFloat32Array &p_grid, const Vector
 	return value;
 }
 
+// The land as the map shows it from far: green where wet and warm, tan where dry, grey rock up the mountains,
+// snow and ice where cold, sand by the sea (PlanetChart._illustrated_color).
+Color PlanetCrustNative::illustrated_colour(const Vector3 &p_dir, double p_ground, double p_slope) const {
+	auto mix = [](double a, double b, double t) { return a + (b - a) * t; };
+	const double degrees = sea_temperature(p_dir) - (p_ground > 0.0 ? p_ground : 0.0) / relief * 8800.0 / 1000.0 * 6.5;
+	const double wet = clampd(grid_at(rain_grid, p_dir, 0.5) / 0.9, 0.0, 1.0);
+	const double warm = clampd((degrees + 6.0) / 16.0, 0.0, 1.0);
+	double cr = mix(0.78, 0.46, wet * warm), cg = mix(0.70, 0.60, wet * warm), cb = mix(0.46, 0.27, wet * warm);
+	cr = mix(cr, 0.62, 1.0 - warm);
+	cg = mix(cg, 0.64, 1.0 - warm);
+	cb = mix(cb, 0.50, 1.0 - warm);
+	const double tall = clampd(p_ground / relief, 0.0, 1.0);
+	double t = smooth(0.12, 0.4, tall);
+	cr = mix(cr, 0.58, t);
+	cg = mix(cg, 0.50, t);
+	cb = mix(cb, 0.38, t);
+	t = smooth(0.3, 0.65, tall + p_slope * 0.4);
+	cr = mix(cr, 0.50, t);
+	cg = mix(cg, 0.48, t);
+	cb = mix(cb, 0.46, t);
+	const double snow = smooth(-1.0, -5.0, degrees) * (1.0 - 0.7 * smooth(0.5, 0.95, p_slope));
+	cr = mix(cr, 0.95, snow);
+	cg = mix(cg, 0.97, snow);
+	cb = mix(cb, 1.00, snow);
+	const double ice = smooth(-8.0, -14.0, degrees) * (1.0 - smooth(0.25, 0.6, p_slope)) * snow * 0.7;
+	cr = mix(cr, 0.72, ice);
+	cg = mix(cg, 0.86, ice);
+	cb = mix(cb, 0.96, ice);
+	const double sand = smooth(1.0, 0.0, p_ground) * 0.8;
+	return Color((float)mix(cr, 0.90, sand), (float)mix(cg, 0.82, sand), (float)mix(cb, 0.55, sand), 1.0f);
+}
+
 Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle, bool p_strata) const {
 	int plate = 0;
 	real_t edge = 0;
@@ -817,7 +849,7 @@ PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs,
 		const double ground = p_grounds[index];
 		double r, g, b;
 		double lake_level_here = -1.0e9;
-		const bool in_lake = ground >= 0.0 && lake_weight(p_dirs[index], lake_level_here) > 0.5 && ground < lake_level_here;
+		const bool in_lake = ground >= 0.0 && p_step_lon * radius <= 20.0 && lake_weight(p_dirs[index], lake_level_here) > 0.5 && ground < lake_level_here;
 		if (in_lake) { // a lake: the water, darker where it is deeper
 			const double depth = std::sqrt(clampd((lake_level_here - ground) / 12.0, 0.0, 1.0));
 			r = 0.27 + (0.12 - 0.27) * depth;
@@ -837,6 +869,18 @@ PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs,
 			const double rise_east = ((double)p_east[index] - ground) * p_calm; // (calm < 1: a gentler relief for big pixels)
 			const double rise_north = ((double)p_north[index] - ground) * p_calm;
 			const double slope = clampd(std::sqrt(rise_east * rise_east + rise_north * rise_north) / (p_step_lon * radius), 0.0, 1.0);
+			if (p_step_lon * radius > 20.0) { // the map's illustrated look (PlanetChart._illustrated_color)
+				const Color land = illustrated_colour(p_dirs[index], ground, slope);
+				const double lat_part = std::sqrt(std::max(1.0 - (double)p_dirs[index].y * (double)p_dirs[index].y, 0.04));
+				const double lit = clampd(1.0 - 2.0 * (rise_east - rise_north) / (p_step_lon * radius * lat_part), 0.55, 1.35);
+				r = land.r * lit;
+				g = land.g * lit;
+				b = land.b * lit;
+				bytes[index * 3] = (uint8_t)clampd((double)(int)(clampd(r, 0.0, 1.0) * 255.0), 0.0, 255.0);
+				bytes[index * 3 + 1] = (uint8_t)clampd((double)(int)(clampd(g, 0.0, 1.0) * 255.0), 0.0, 255.0);
+				bytes[index * 3 + 2] = (uint8_t)clampd((double)(int)(clampd(b, 0.0, 1.0) * 255.0), 0.0, 255.0);
+				continue;
+			}
 			const Vector3 p = p_dirs[index] * (real_t)radius;
 			const Color rock = rock_colour(p_dirs[index], ground, slope, p_step_lon * radius > 60.0 ? 0.5 : (double)detail.at(p) * 0.5 + 0.5, p_step_lon * radius < 20.0);
 			const double lat_scale = std::sqrt(std::max(1.0 - (double)p_dirs[index].y * (double)p_dirs[index].y, 0.04));

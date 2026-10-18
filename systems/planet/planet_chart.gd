@@ -144,7 +144,7 @@ func _chart(worker: int) -> void:
 	# the Terrain layer's rows come ready from the native crust (rows are then added one by one)
 	var step_lon := rect.size.x * TAU / float(size.x)
 	var native_rows := layer == Layer.TERRAIN and _noise.native != null \
-			and _noise.hydrology == null and step_lon * _noise.settings.radius <= COARSE_PIXEL
+			and _noise.hydrology == null
 	if not native_rows:
 		bytes.resize((to_row - from_row) * size.x * 3)
 	var at := 0

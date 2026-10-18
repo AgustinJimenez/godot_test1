@@ -118,6 +118,7 @@ private:
 	Vector3 coarse_slope(const Vector3 &p_point, double p_rugged, double p_pixel) const;
 	double macro_ground(double p_units, const Vector3 &p_point, double p_pixel = 0.0) const;
 	double ground_height(const Vector3 &p_dir) const;
+	Color illustrated_colour(const Vector3 &p_dir, double p_ground, double p_slope) const;
 	Color rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle, bool p_strata = true) const;
 
 protected:

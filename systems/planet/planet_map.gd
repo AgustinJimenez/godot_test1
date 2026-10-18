@@ -606,7 +606,12 @@ func _on_screen(uv: Vector2) -> Vector2:
 func _sharp_enough(view: Rect2) -> bool:
 	if _sharply_covered(view) and not _detail_preview:
 		return true
-	return _whole != null and _whole_pass >= _last_pass() and _zoom < 2.5
+	if _whole == null or _zoom >= 2.5:
+		return false
+	# the whole planet's picture is sharp enough once it has about half a pixel for every screen
+	# pixel (a middle pass does at far zooms: no waiting for the last, slowest one)
+	var screen_width := _pixels_per_map() * _zoom
+	return float(_whole.get_width()) >= screen_width * 0.4 or _whole_pass >= _last_pass()
 
 
 ## While the picture is still the quick blurry one, a note over it says the map is being charted.
