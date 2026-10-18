@@ -79,7 +79,7 @@ func start(noise: PlanetNoise) -> void:
 	_bands.resize(WORKERS)
 	for worker in WORKERS:
 		var thread := Thread.new()
-		thread.start(_chart.bind(worker))
+		thread.start(_chart.bind(worker), Thread.PRIORITY_HIGH) # (over the world's builders)
 		_threads.append(thread)
 
 

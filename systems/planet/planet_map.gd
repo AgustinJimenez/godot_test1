@@ -152,6 +152,8 @@ func _input(event: InputEvent) -> void:
 ## Opens or closes the map (on the player's region).
 func toggle() -> void:
 	visible = not visible
+	if planet != null and planet.surface != null:
+		planet.surface.paused = visible and _started # (not while the world is still loading)
 	if visible:
 		_mouse_before = Input.mouse_mode
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

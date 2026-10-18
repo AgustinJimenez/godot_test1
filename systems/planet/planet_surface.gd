@@ -16,6 +16,7 @@ var _pending: Dictionary = {} # key -> true while queued or being built
 var _jobs: Array = []
 var _done: Array = []
 var _thread: Thread # the first ground worker (is_threaded)
+var paused := false ## true while the map is open: workers keep their jobs (the charts get the CPU)
 var _workers: Array[Thread] = [] # the ground is made by several threads, the plants by one
 var _mutex := Mutex.new()
 var _semaphore := Semaphore.new()
@@ -384,9 +385,17 @@ func _overlap(tile: PlanetTile, entry: Array) -> bool:
 	return (tile.tile_x >> up) == int(entry[2]) and (tile.tile_y >> up) == int(entry[3])
 
 
+## A worker that has woken for a job holds it back while the map is open (until it is closed or the
+## game ends).
+func _wait_while_paused() -> void:
+	while paused and not _stop:
+		OS.delay_msec(30)
+
+
 func _work() -> void:
 	while true:
 		_semaphore.wait()
+		_wait_while_paused()
 		_mutex.lock()
 		var stop := _stop
 		var job: Array = _jobs.pop_front() if not _jobs.is_empty() else []
@@ -404,6 +413,7 @@ func _work() -> void:
 func _work_plants() -> void:
 	while true:
 		_plant_semaphore.wait()
+		_wait_while_paused()
 		_mutex.lock()
 		var stop := _stop
 		var job: Array = _plant_jobs.pop_front() if not _plant_jobs.is_empty() else []
