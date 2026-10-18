@@ -58,6 +58,10 @@ private:
 	double sea = 0.0;
 	// the ground's shape
 	double shore = 0.2, shore_flat = 0.16, land_curve = 1.6, deep = 1.6;
+	Noise cloud_big_a, cloud_big_b, cloud_small, cloud_warp, cloud_pool;
+	double belt_shift = 0.0, belt_power = 1.0, storm_shift = 0.0, storm_power = 1.0, sink_shift = 0.0, sink_power = 1.0;
+	double pool_break = 1.0, cloud_wind_k = 4.0;
+	PackedFloat32Array season_mean; // the seasons' yearly mean grid (96 x 48)
 	PackedVector3Array hotspots; // fixed points in the mantle: the seamount chains trail from them
 	double seamounts(const Vector3 &p_dir, double p_units) const;
 	double erosion_scale = 0.0, erosion_wavelength = 10000.0;
@@ -163,6 +167,12 @@ public:
 	// One row of a data layer's picture as RGB bytes: layer is PlanetChart.Layer (1 Elevation, 2 Temperature, 3 Rain,
 	// 6 Slope, 7 Mean temperature). `macros`: the broad ground (for the air's cooling). `params`: grid (the seasons'
 	// grid at this moment, 96x48 by gw, gh), sun_lon, clear (this row's clear-sky share), pixel (metres a pixel spans)
+	// The weather's noises and numbers (PlanetWeather), so the map's cloud layers are made natively.
+	void set_weather(const Dictionary &p_config);
+	// {cover, clumps} of the cloud at a direction (PlanetWeather.cloud_cells); `p_grid` is the seasons' grid now,
+	// `p_decl` the star's declination and `p_days` the absolute day
+	Vector2 cloud_cells(const Vector3 &p_dir, double p_macro, const float *p_grid, int p_gw, int p_gh, double p_decl,
+			double p_days) const;
 	PackedByteArray data_row(int p_layer, const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
 			const PackedFloat32Array &p_macros, const PackedFloat32Array &p_east, const PackedFloat32Array &p_north,
 			double p_step_lon, const Dictionary &p_params) const;

@@ -20,8 +20,8 @@ var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep of
 var rock: PlanetRock ## the colour of the crust
 var native: Object ## the native crust (PlanetCrustNative), or null: this file is the reference
 var drainage: PlanetDrainage ## where the water runs (coarse), when the planet has it
-## The heights of the whole planet's map passes, by the picture's size (the map's layers all read the
-## same ones, so only the first of them pays for the heights)
+## The heights of the whole planet's map passes, by the picture's size (the map's layers all
+## read the same ones, so only the first of them pays for the heights)
 var map_heights := {}
 var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
 
@@ -133,7 +133,7 @@ func _make_native() -> void:
 		return
 	var valley_configs: Array = []
 	for valley in _valleys:
-		valley_configs.append(_noise_config(valley))
+		valley_configs.append(noise_config(valley))
 	var depths := PackedFloat32Array()
 	for depth in _valley_depth:
 		depths.append(depth)
@@ -153,14 +153,14 @@ func _make_native() -> void:
 		"erosion_wavelength": clampf(settings.radius * 0.005, 800.0, 40000.0) * EROSION_SCALE,
 		"valley_width": VALLEY_WIDTH, "valley_depths": depths,
 		"rock_boundary": PlanetRock.BOUNDARY, "rock_colours": PackedColorArray(PlanetRock.COLOURS),
-		"warp": _noise_config(tectonics._warp), "ridge": _noise_config(tectonics._ridge),
-		"interior": _noise_config(tectonics._interior), "rolling": _noise_config(_rolling),
-		"ranges": _noise_config(_ranges), "range_mask": _noise_config(_range_mask),
-		"hills": _noise_config(_hills), "gullies": _noise_config(_gullies),
-		"detail": _noise_config(_detail), "massif": _noise_config(_massif),
-		"chain": _noise_config(_chain), "foothills": _noise_config(_foothills),
-		"faces": _cube_faces(), "valleys": valley_configs, "craton": _noise_config(rock._craton),
-		"basin": _noise_config(rock._basin),
+		"warp": noise_config(tectonics._warp), "ridge": noise_config(tectonics._ridge),
+		"interior": noise_config(tectonics._interior), "rolling": noise_config(_rolling),
+		"ranges": noise_config(_ranges), "range_mask": noise_config(_range_mask),
+		"hills": noise_config(_hills), "gullies": noise_config(_gullies),
+		"detail": noise_config(_detail), "massif": noise_config(_massif),
+		"chain": noise_config(_chain), "foothills": noise_config(_foothills),
+		"faces": _cube_faces(), "valleys": valley_configs, "craton": noise_config(rock._craton),
+		"basin": noise_config(rock._basin),
 	})
 	native = made
 
@@ -191,7 +191,7 @@ func _carve_valleys() -> void:
 	drainage = solved
 
 
-func _noise_config(source: FastNoiseLite) -> Array:
+func noise_config(source: FastNoiseLite) -> Array:
 	return [source.seed, source.frequency, source.fractal_octaves, int(source.fractal_type)]
 
 

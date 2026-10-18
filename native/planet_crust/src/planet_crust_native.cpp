@@ -52,6 +52,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("smooth_rgb", "rgb", "width", "height"), &PlanetCrustNative::smooth_rgb);
 	ClassDB::bind_method(D_METHOD("coast_lines", "rgb", "land", "width", "height"), &PlanetCrustNative::coast_lines);
 	ClassDB::bind_method(D_METHOD("despeckle", "rgb", "width", "height"), &PlanetCrustNative::despeckle);
+	ClassDB::bind_method(D_METHOD("set_weather", "config"), &PlanetCrustNative::set_weather);
 	ClassDB::bind_method(D_METHOD("data_row", "layer", "dirs", "grounds", "macros", "east", "north", "step_lon", "params"),
 			&PlanetCrustNative::data_row);
 	ClassDB::bind_method(D_METHOD("terrain_row", "dirs", "grounds", "east", "north", "step_lon", "calm"),
@@ -965,6 +966,84 @@ double read_grid(const float *p_grid, int p_width, int p_height, const Vector3 &
 }
 } // namespace
 
+void PlanetCrustNative::set_weather(const Dictionary &p_config) {
+	configure(cloud_big_a, p_config["big_a"]);
+	configure(cloud_big_b, p_config["big_b"]);
+	configure(cloud_small, p_config["small"]);
+	configure(cloud_warp, p_config["warp"]);
+	configure(cloud_pool, p_config["pool"]);
+	belt_shift = p_config["belt_shift"];
+	belt_power = p_config["belt_power"];
+	storm_shift = p_config["storm_shift"];
+	storm_power = p_config["storm_power"];
+	sink_shift = p_config["sink_shift"];
+	sink_power = p_config["sink_power"];
+	pool_break = p_config["pool_break"];
+	cloud_wind_k = p_config["wind_k"];
+	season_mean = p_config["season_mean"];
+}
+
+Vector2 PlanetCrustNative::cloud_cells(const Vector3 &p_dir, double p_macro, const float *p_grid, int p_gw, int p_gh,
+		double p_decl, double p_days) const {
+	const double pi = 3.14159265358979323846;
+	const double tau = 2.0 * pi;
+	const double lat = std::asin(clampd((double)p_dir.y, -1.0, 1.0));
+	// the air's readiness to make cloud (PlanetWeather.readiness)
+	const double degrees = read_grid(p_grid, p_gw, p_gh, p_dir);
+	const double wet = clampd(grid_at(rain_grid, p_dir, 0.5) / 1.2, 0.0, 1.0);
+	const double moisture = p_macro < 0.0 ? 0.25 + 0.75 * smooth(-30.0, 30.0, degrees)
+										  : wet * (0.25 + 0.75 * smooth(-30.0, 25.0, degrees));
+	const double south = lat < 0.0 ? -1.0 : 1.0;
+	const double pool_here = (double)cloud_pool.at(p_dir);
+	const double pools = 0.5 + 0.5 * pool_here;
+	const double low = 1.0 - 0.65 * pool_break, high = 1.0 + 0.4 * pool_break;
+	const double pools_factor = low + (high - low) * smooth(0.2, 0.8, pools);
+	const double trade_x = (lat - 0.4 * p_decl - belt_shift) / 0.17;
+	const double trade = 0.75 * belt_power * pools_factor * std::exp(-trade_x * trade_x);
+	const double lean = 0.12 * std::sin(std::atan2((double)p_dir.z, (double)p_dir.x) * 2.0 + pool_here * 3.0);
+	const double storm_lat = south * (0.87 + lean + storm_shift) + 0.3 * p_decl;
+	const double storm_x = (lat - storm_lat) / 0.2;
+	const double storms = 0.55 * storm_power * std::exp(-storm_x * storm_x);
+	const double high_lat = south * (0.48 + sink_shift) + 0.3 * p_decl;
+	const double sink_x = (lat - high_lat) / 0.15;
+	const double sinking = sink_power * std::exp(-sink_x * sink_x);
+	double ready = 0.06 + 0.3 * moisture + 0.8 * trade * moisture;
+	ready += 0.9 * storms * (0.5 + 0.5 * moisture) + 0.2 * wet * moisture;
+	ready += 0.25 * smooth(0.9, 1.4, std::abs(lat));
+	if (p_macro >= 0.0 && season_mean.size() >= p_gw * p_gh) { // the monsoon
+		const double tropics = std::exp(-(lat / 0.6) * (lat / 0.6));
+		const double anomaly = degrees - read_grid(season_mean.ptr(), p_gw, p_gh, p_dir);
+		ready += tropics * (0.5 * smooth(0.0, 8.0, anomaly) * (0.3 + wet) - 0.2 * smooth(0.0, 8.0, -anomaly));
+	}
+	const double lo = 1.0 - 0.4 * pool_break, hi = 1.0 + 0.3 * pool_break;
+	ready *= lo + (hi - lo) * smooth(0.25, 0.75, pools);
+	ready = clampd(ready * (1.0 - 0.65 * sinking), 0.0, 1.0);
+	// the pattern, carried by the wind and drawn twice (PlanetWeather.cloud_cells)
+	const double morph = 0.5 + 0.5 * std::sin(p_days * 0.45);
+	const double shear = 2.5;
+	const double first = std::fmod(std::fmod(p_days, shear) + shear, shear);
+	const double second = std::fmod(std::fmod(p_days + shear * 0.5, shear) + shear, shear);
+	const double weight = 1.0 - std::abs(2.0 * first / shear - 1.0);
+	double pattern = 0.0, cells = 0.0;
+	for (int turn = 0; turn < 2; turn++) {
+		const double drift = turn == 0 ? first : second;
+		const double shift = -std::cos(lat * cloud_wind_k) * 0.035 * tau * drift;
+		const double lon = std::atan2((double)p_dir.z, (double)p_dir.x) - shift;
+		Vector3 carried((real_t)(std::cos(lat) * std::cos(lon)), p_dir.y, (real_t)(std::cos(lat) * std::sin(lon)));
+		const double bend_x = (double)cloud_warp.at(carried);
+		const double bend_y = (double)cloud_warp.at(Vector3(carried.z + 7.3f, carried.x - 3.1f, carried.y + 1.7f));
+		carried = (carried + Vector3((real_t)bend_x, (real_t)bend_y, (real_t)(bend_x - bend_y)) * (real_t)0.45).normalized();
+		const double a = (double)cloud_big_a.at(carried), b = (double)cloud_big_b.at(carried);
+		const double big = a + (b - a) * morph;
+		const double clumps = (double)cloud_small.at(carried);
+		const double share = turn == 0 ? weight : 1.0 - weight;
+		pattern += clampd(0.5 + 0.5 * (0.75 * big + 0.35 * clumps), 0.0, 1.0) * share;
+		cells += clumps * share;
+	}
+	const double threshold = 0.97 - ready * 0.8;
+	return Vector2((real_t)smooth(threshold - 0.12, threshold + 0.12, pattern), (real_t)cells);
+}
+
 PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
 		const PackedFloat32Array &p_macros, const PackedFloat32Array &p_east, const PackedFloat32Array &p_north,
 		double p_step_lon, const Dictionary &p_params) const {
@@ -1027,6 +1106,73 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 					r *= 0.75;
 					g *= 0.75;
 					b *= 0.75;
+				}
+			} break;
+			case 8:
+			case 9:
+			case 10: { // clouds, satellite, the cloud cover alone
+				const bool ready_grid = have_grid && season_mean.size() >= gw * gh;
+				double cover = 0.0;
+				if (ready_grid) {
+					cover = (double)cloud_cells(dir, broad, grid.ptr(), gw, gh, p_params.get("decl", 0.0), p_params.get("days", 0.0)).x;
+				}
+				if (p_layer == 10) {
+					r = g = b = cover;
+					break;
+				}
+				// the ground below: the sea by depth (with its ice), the land as the map shows it
+				double lr, lg, lb;
+				if (ground < 0.0) {
+					const double depth = std::sqrt(clampd(-ground / (relief * 0.35), 0.0, 1.0));
+					if (p_layer == 8) {
+						const double ice = sea_ice(dir) * 0.92;
+						lr = (0.32 + (0.03 - 0.32) * depth) * (1.0 - ice) + 0.90 * ice;
+						lg = (0.62 + (0.12 - 0.62) * depth) * (1.0 - ice) + 0.94 * ice;
+						lb = (0.78 + (0.33 - 0.78) * depth) * (1.0 - ice) + 0.98 * ice;
+					} else {
+						lr = 0.12 + (0.04 - 0.12) * depth;
+						lg = 0.27 + (0.1 - 0.27) * depth;
+						lb = 0.52 + (0.3 - 0.52) * depth;
+					}
+				} else if (p_layer == 8) {
+					const Color land = illustrated_colour(dir, ground, 0.1);
+					lr = land.r;
+					lg = land.g;
+					lb = land.b;
+				} else { // satellite land
+					const double green = clampd(grid_at(rain_grid, dir, 0.5) / 0.9, 0.0, 1.0);
+					const double degrees = sea_temperature(dir) - (broad > 0.0 ? broad : 0.0) / relief * 8800.0 / 1000.0 * 6.5;
+					const double warm = clampd((degrees + 8.0) / 14.0, 0.0, 1.0);
+					const double mixed = green * warm;
+					lr = 0.62 + (0.17 - 0.62) * mixed;
+					lg = 0.56 + (0.30 - 0.56) * mixed;
+					lb = 0.38 + (0.10 - 0.38) * mixed;
+					lr += (0.5 - lr) * (1.0 - warm);
+					lg += (0.5 - lg) * (1.0 - warm);
+					lb += (0.42 - lb) * (1.0 - warm);
+					const double snow = 1.0 - clampd((degrees + 6.0) / 5.0, 0.0, 1.0);
+					lr += (0.95 - lr) * snow;
+					lg += (0.97 - lg) * snow;
+					lb += (1.0 - lb) * snow;
+					const double lat_part = std::sqrt(std::max(1.0 - (double)dir.y * (double)dir.y, 0.04));
+					const double shade = clampd(1.0 - 1.2 * 2.0 * 0.5 * (rise_east - rise_north) / (metres * lat_part), 0.75, 1.2);
+					lr *= shade;
+					lg *= shade;
+					lb *= shade;
+				}
+				if (p_layer == 8) {
+					lr *= 0.55;
+					lg *= 0.55;
+					lb *= 0.55;
+					r = lr + (0.97 - lr) * cover * 0.92;
+					g = lg + (0.98 - lg) * cover * 0.92;
+					b = lb + (1.0 - lb) * cover * 0.92;
+				} else {
+					const double fade = 0.25 * (1.0 - cover);
+					const double cr = 0.93 + (0.72 - 0.93) * fade, cg = 0.95 + (0.75 - 0.95) * fade, cb = 0.98 + (0.82 - 0.98) * fade;
+					r = lr + (cr - lr) * cover * 0.92;
+					g = lg + (cg - lg) * cover * 0.92;
+					b = lb + (cb - lb) * cover * 0.92;
 				}
 			} break;
 			case 4: { // biome

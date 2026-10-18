@@ -58,6 +58,19 @@ func _init(noise: PlanetNoise) -> void:
 	_sink_shift = deg_to_rad(float(circulation["dry_lat"]) - 27.5)
 	_pool_break = rng.randf_range(0.5, 1.4)
 	_setup(_pool, seed_value + 35, rng.randf_range(0.8, 1.9), 2)
+	if noise.native != null:
+		_hand_to_native()
+
+
+## Gives the native crust this weather's noises and numbers, so the map's cloud layers are native.
+func _hand_to_native() -> void:
+	_noise.native.call(&"set_weather", {
+		"big_a": _noise.noise_config(_big_a), "big_b": _noise.noise_config(_big_b),
+		"small": _noise.noise_config(_small), "warp": _noise.noise_config(_warp),
+		"pool": _noise.noise_config(_pool), "belt_shift": _belt_shift, "belt_power": _belt_power,
+		"storm_shift": _storm_shift, "storm_power": _storm_power, "sink_shift": _sink_shift,
+		"sink_power": _sink_power, "pool_break": _pool_break, "wind_k": _wind_k,
+		"season_mean": _noise.climate.seasons.mean})
 
 
 func _setup(source: FastNoiseLite, noise_seed: int, frequency: float, octaves: int) -> void:

@@ -17,7 +17,8 @@ const SHADE_EXAGGERATION := 2.0 ## the map's hill shading: how much a slope ligh
 const SMOOTHED := [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.RAIN, Layer.CLOUDS]
 ## the layers whose rows the native crust colours
 const NATIVE_LAYERS := [Layer.ELEVATION, Layer.TEMPERATURE, Layer.RAIN, Layer.SLOPE,
-		Layer.MEAN_TEMPERATURE, Layer.BIOME, Layer.PLATES]
+		Layer.MEAN_TEMPERATURE, Layer.BIOME, Layer.PLATES, Layer.CLOUDS, Layer.SATELLITE,
+		Layer.CLOUD_MASK]
 const SMOOTH_PIXEL := 30.0 ## metres a pixel spans above which the map draws the smooth ground
 
 const BIOME_COLORS := {
@@ -96,7 +97,7 @@ func start(noise: PlanetNoise) -> void:
 	_bands.resize(workers)
 	_land_bands.resize(workers)
 	_ground_bands.resize(workers)
-	if layer == Layer.TEMPERATURE and clock != null:
+	if layer in [Layer.TEMPERATURE, Layer.CLOUDS, Layer.SATELLITE, Layer.CLOUD_MASK] and clock != null:
 		_blend = noise.climate.seasons.blended(clock.year_share())
 	for worker in workers:
 		var thread := Thread.new()
@@ -296,7 +297,7 @@ func _row_params(lat: float) -> Dictionary:
 		return {}
 	var sun := clock.sun_in_body()
 	return {"grid": _blend, "gw": PlanetSeasons.WIDTH, "gh": PlanetSeasons.HEIGHT,
-			"sun_lon": atan2(sun.z, sun.x),
+			"sun_lon": atan2(sun.z, sun.x), "decl": clock.declination(), "days": clock.absolute_days(),
 			"clear": clampf(clock.day_length(lat) * 2.0 + 0.3, 0.3, 1.0)}
 
 
