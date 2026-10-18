@@ -196,6 +196,9 @@ func _chart(worker: int) -> void:
 	if whole:
 		cached = _noise.map_heights.get(size, PackedFloat32Array())
 	var use_cache := cached.size() == size.x * size.y
+	if worker == 0 and whole:
+		PlanetMapLog.line("  heights of the whole planet %dx%d: %s" % [size.x, size.y,
+				"from the cache" if use_cache else "computed"])
 	var recorded := PackedFloat32Array()
 	for row in range(from_row, to_row):
 		if _cancelled:

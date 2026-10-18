@@ -56,6 +56,9 @@ var _globe_button: Button
 var _globe_mode := false
 var _caption: Label
 var _labels: PlanetMapLabels # the names of the seas and lands (built on the first look)
+var _chart_ms := 0 # when the chart in hand was started
+var _logged_zoom := -1.0
+var _logged_centre := Vector2(-1.0, -1.0)
 var _zoom := START_ZOOM
 var _centre := Vector2(0.5, 0.5) # in map fractions (u east, v south)
 var _dragging := false
@@ -153,18 +156,24 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var button := event as InputEventMouseButton
 		if button.button_index == MOUSE_BUTTON_WHEEL_UP and button.pressed:
+			PlanetMapLog.line_every("input", 0.1, "input: wheel up (zoom in)")
 			_zoom_at(button.position, 1.25)
 		elif button.button_index == MOUSE_BUTTON_WHEEL_DOWN and button.pressed:
+			PlanetMapLog.line_every("input", 0.1, "input: wheel down (zoom out)")
 			_zoom_at(button.position, 0.8)
 		elif button.button_index == MOUSE_BUTTON_LEFT:
+			if _dragging != button.pressed:
+				PlanetMapLog.line("input: drag " + ("starts" if button.pressed else "ends"))
 			_dragging = button.pressed
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMagnifyGesture: # a pinch on a trackpad
 		var pinch := event as InputEventMagnifyGesture
+		PlanetMapLog.line_every("input", 0.1, "input: pinch x%.2f" % pinch.factor)
 		_zoom_at(pinch.position, clampf(pinch.factor, 0.5, 2.0))
 		get_viewport().set_input_as_handled()
 	elif event is InputEventPanGesture: # two fingers moving on a trackpad: the wheel
 		var pan := event as InputEventPanGesture
+		PlanetMapLog.line_every("input", 0.1, "input: two fingers %.2f" % pan.delta.y)
 		_zoom_at(get_viewport().get_mouse_position(), pow(1.25, -pan.delta.y))
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and _dragging:
@@ -176,6 +185,7 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and (event as InputEventKey).pressed:
 		var code := (event as InputEventKey).physical_keycode
+		PlanetMapLog.line("input: key " + OS.get_keycode_string(code))
 		if code == KEY_R:
 			_go_home()
 			if _globe_mode:
@@ -198,6 +208,10 @@ func _input(event: InputEvent) -> void:
 ## Opens or closes the map (on the player's region).
 func toggle() -> void:
 	visible = not visible
+	if visible:
+		PlanetMapLog.begin("layer %s, globe %s" % [PlanetChart.NAMES[_layer], _globe_mode])
+	else:
+		PlanetMapLog.end()
 	if planet != null and planet.surface != null:
 		planet.surface.paused = visible and _started # (not while the world is still loading)
 	if visible:
@@ -260,6 +274,8 @@ func _time_button(text: String, action: Callable) -> void:
 func select_layer(layer: int) -> void:
 	if layer == _layer:
 		return
+	PlanetMapLog.line("layer %s -> %s (picture kept: %s)" % [PlanetChart.NAMES[_layer],
+			PlanetChart.NAMES[layer], _cache.has(layer)])
 	if _whole != null:
 		_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
 	_layer = layer as PlanetChart.Layer
@@ -272,6 +288,7 @@ func select_layer(layer: int) -> void:
 	_revealed = false # (a new layer: with the loading note until it is sharp)
 	_unsharp_time = 0.0
 	if _chart != null:
+		PlanetMapLog.line("chart given up (the layer changed)")
 		_chart.cancel()
 		_retired.append(_chart) # its threads finish on their own; the picture is thrown away
 		_chart = null
@@ -306,6 +323,7 @@ func _zoom_by(factor: float) -> void:
 
 ## Shows the map as a small planet in 3D (on) or flat (off).
 func _set_globe(on: bool) -> void:
+	PlanetMapLog.line("globe %s" % ("on" if on else "off"))
 	_globe_mode = on
 	_view.visible = not on
 	_globe.visible = on
@@ -316,6 +334,7 @@ func _set_globe(on: bool) -> void:
 func show_zoom(zoom: float) -> void:
 	if not visible:
 		toggle()
+	PlanetMapLog.line("show zoom %.1f on the player" % zoom)
 	_zoom = clampf(zoom, 1.0, MAX_ZOOM)
 	_centre = _where_is_the_player().get("uv", Vector2(0.5, 0.5))
 	_clamp_centre()
@@ -323,6 +342,7 @@ func show_zoom(zoom: float) -> void:
 
 ## Back to the player's region.
 func _go_home() -> void:
+	PlanetMapLog.line("home: the player's region at the closest zoom")
 	_zoom = START_ZOOM
 	_centre = _where_is_the_player().get("uv", Vector2(0.5, 0.5))
 	_clamp_centre()
@@ -399,6 +419,9 @@ func _start_chart(pass_index: int) -> void:
 	_chart.clock = planet.clock.copy()
 	_chart_time = planet.clock.time
 	_chart_is_detail = false
+	_chart_ms = Time.get_ticks_msec()
+	PlanetMapLog.line("chart whole planet pass %d: %dx%d, %s" % [pass_index, _chart.size.x,
+			_chart.size.y, PlanetChart.NAMES[_layer]])
 	_chart.start(planet.noise)
 
 
@@ -417,6 +440,7 @@ func _process(delta: float) -> void:
 			_retired[index].texture() # joins the threads, the picture is not wanted
 			_retired.remove_at(index)
 	if visible:
+		_log_the_view()
 		_update_reveal(delta)
 		_view.queue_redraw()
 		if _globe_mode:
@@ -449,6 +473,14 @@ func _process(delta: float) -> void:
 
 ## The temperature and cloud layers show a moment: when time has moved on, they are charted again
 ## (the coarse chart only, a second or so), so they follow the seasons, the day and the winds.
+func _log_the_view() -> void:
+	if _zoom != _logged_zoom or not _centre.is_equal_approx(_logged_centre):
+		PlanetMapLog.line_every("view", 0.25, "view: zoom %.1f, centre %.4f, %.4f (%.2f N, %.2f E)" % [
+				_zoom, _centre.x, _centre.y, (0.5 - _centre.y) * 180.0, (_centre.x - 0.5) * 360.0])
+		_logged_zoom = _zoom
+		_logged_centre = _centre
+
+
 func _refresh_temperature(delta: float) -> void:
 	var moving := _is_moving(_layer)
 	if not moving or _chart != null or _whole_pass < 0:
@@ -458,6 +490,7 @@ func _refresh_temperature(delta: float) -> void:
 	if _refresh_wait > 0.0 or moved < planet.clock.day_seconds * 0.04:
 		return
 	_refresh_wait = 0.4
+	PlanetMapLog.line("time moved: charting the %s layer again" % PlanetChart.NAMES[_layer])
 	_whole_pass = -1
 	_detail = null
 	_detail_full = 0
@@ -466,6 +499,8 @@ func _refresh_temperature(delta: float) -> void:
 
 func _adopt_chart() -> void:
 	var texture := _chart.texture()
+	PlanetMapLog.line("chart done: %s in %d ms" % ["close view" if _chart_is_detail
+			else "whole pass %d" % (_whole_pass + 1), Time.get_ticks_msec() - _chart_ms])
 	if _chart_is_detail:
 		_detail = texture
 		_detail_preview = _detail_full > 0
@@ -509,6 +544,8 @@ func _maybe_chart_the_view(delta: float) -> void:
 	rect = Rect2(rect.position.x, top, rect.size.x, minf(rect.end.y, 1.0) - top)
 	if not rect.encloses(view):
 		return # the view reaches over a pole: the whole planet chart will do
+	PlanetMapLog.line("view still at zoom %.1f: charting it (%s)" % [_zoom,
+			"a pass gives way" if _chart != null else "free"])
 	if _chart != null: # a whole planet pass still drawing gives way to the close view
 		_chart.cancel()
 		_retired.append(_chart)
@@ -528,6 +565,10 @@ func _start_detail(rect: Rect2, across: int) -> void:
 	_chart.rect = rect
 	_chart.size = Vector2i(across, int(across * rect.size.y / rect.size.x * 0.5))
 	_chart_is_detail = true
+	_chart_ms = Time.get_ticks_msec()
+	PlanetMapLog.line("chart close view (%s): %dx%d, rect %s, %s" % [
+			"quick" if _detail_full > 0 else "sharp", _chart.size.x, _chart.size.y, rect,
+			PlanetChart.NAMES[_layer]])
 	_chart.start(planet.noise)
 
 
@@ -637,12 +678,17 @@ func _update_reveal(delta: float) -> void:
 	var size := _visible_size()
 	var all_done := _whole != null and _whole_pass >= _last_pass()
 	if _sharp_enough(Rect2(_centre - size * 0.5, size)):
+		if not _revealed:
+			PlanetMapLog.line("the picture is sharp: the loading note is gone")
 		_revealed = true
 		_unsharp_time = 0.0
 		return
+	if _revealed:
+		PlanetMapLog.line("the view is not sharp: the loading note is back (zoom %.1f)" % _zoom)
 	_revealed = false # (zooming in on a place only charted blurrily brings the note back)
 	_unsharp_time += delta
 	if all_done and _unsharp_time > 6.0:
+		PlanetMapLog.line("6 s unsharp with every pass done: the note is dropped")
 		_revealed = true
 
 

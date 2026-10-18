@@ -443,3 +443,13 @@ Zoom goes to 1500 (about 15 m a pixel) and the map opens at it. The Terrain laye
 illustrated look: green, tan, grey rock, snow, ice, sea ice) and the real ground below; close in (under 400 m a pixel) it paints the
 rivers' water. `--dir=x,y,z` starts the lab anywhere to look at a place (see `AGENT_TASKS/069_realism_gaps.md` for how to find one).
 
+## The map's log (2026-10-18)
+
+While the map is open it writes `user://planet_map.log` (`PlanetMapLog`; on Windows
+`%APPDATA%\Godotpp_userdata\SurvivalHorrorFps\planet_map.log`): the opening, every zoom and pan (the
+view, at most four lines a second), the raw inputs (wheel, pinch, drag, keys), the layer changes, every chart that
+starts / finishes (with its milliseconds) / is given up, whether the heights came from the cache, and when the
+loading note goes or comes back. The file is emptied each time the map is opened and stops at 120 KB, so it keeps
+only the last session and never grows. To find why the map was slow or blurry: open it, do the thing, close it,
+read the file (`chart done: close view in 3974 ms` is how a slow sharp picture shows).
+
