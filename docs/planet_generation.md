@@ -381,3 +381,23 @@ show, as sharp as the charting got), turned by dragging, zoomed by the wheel or 
 player stands. The ball is shown as seen from outside, east to the right, so it mirrors the planet's z.
 `planet_lab --show-map --map-globe` opens it. The map opens zoomed in on the player; zoom out for the
 planet.
+
+## Hypsometry, snow and a warmer climate (2026-10-18)
+
+The land of the first Earth was too high (median 2.1 km, p75 3.5 km; the Earth's land has a mean near
+0.8 km). Two changes: the rough layers (massifs, chains, foothills) no longer add a constant of 10 %
+of their height (`* 0.5 + 0.0`), and the finished land height is bent by a hypsometric curve,
+`pivot * (h / pivot) ^ 1.4` with `pivot = relief / 2` (`PlanetNoise.HYPSO`; the same in the native
+crust): low ground gets lower, the peaks stay. Measured on the Earth preset: land median 0.8 km, p75
+1.9 km, p90 2.8 km, highest sample 5.8 km, 10 km slope 0.041, 100 km 0.006.
+
+The climate's temperature by latitude was 6 to 9 K too cold at 45 to 75 degrees: the heat floor of
+`PlanetSeasons` went from 0.11 to 0.13 (equator 28.9, 30 degrees 22, 45 degrees 11, 60 degrees -2.8,
+75 degrees -13 degrees C at sea level, near the Earth's). Raising `MIX` hardly changed it.
+
+Permanent snow and ice come from the crust's colour now (`PlanetRock.colour` and the native
+`rock_colour`): `cold = sea_temperature - 0.0065 * height` (the lapse rate), snow = `smoothstep(-0.5,
+-4.5, cold)`, kept off the steepest rock and the sea floor, mixed 92 % into a white. The sea
+temperature is the climate's mean (`PlanetClimate.sea_temperature`, handed to the native crust with
+`set_climate` after the climate is built). So the snow line is about 4.4 km at the equator, 1.8 km at
+45 degrees and down at the sea near the poles, with no extra noise, on the map and on the ground.
