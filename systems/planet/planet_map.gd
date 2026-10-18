@@ -16,9 +16,9 @@ extends CanvasLayer
 ## numbers are listed (height, temperature, rain, biome, plate).
 
 const ACTION := &"planet_map"
-const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(1024, 512)]
+const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(1024, 512), Vector2i(2048, 1024)]
 const DETAIL_MIN := 768 ## pixels across the close chart, at least (more for a big view)
-const DETAIL_MAX := 1792
+const DETAIL_MAX := 2560
 const START_ZOOM := 6.0
 const MAX_ZOOM := 60.0
 const MARGIN := 14.0
@@ -217,9 +217,10 @@ func select_layer(layer: int) -> void:
 	_whole_pass = kept.get("pass", -1)
 	_detail = null
 	if _chart != null:
+		_chart.cancel()
 		_retired.append(_chart) # its threads finish on their own; the picture is thrown away
 		_chart = null
-	if _started and _whole_pass < PASSES.size() - 1:
+	if _started and _whole_pass < _last_pass():
 		_start_chart(_whole_pass + 1)
 
 
@@ -281,6 +282,14 @@ func begin() -> void:
 	_start_chart(0)
 
 
+## The finest picture of the layer: the layers that follow the clock are charted again as time
+## moves and cost more per pixel, so they stop one pass short.
+func _last_pass() -> int:
+	if _layer == PlanetChart.Layer.TEMPERATURE or _layer == PlanetChart.Layer.CLOUDS:
+		return PASSES.size() - 2
+	return PASSES.size() - 1
+
+
 func _start_chart(pass_index: int) -> void:
 	_chart = PlanetChart.new()
 	_chart.size = PASSES[pass_index]
@@ -293,8 +302,10 @@ func _start_chart(pass_index: int) -> void:
 
 func _exit_tree() -> void:
 	if _chart != null:
+		_chart.cancel()
 		_chart.stop()
 	for old in _retired:
+		old.cancel()
 		old.stop()
 
 
@@ -315,7 +326,7 @@ func _process(delta: float) -> void:
 			_adopt_chart()
 		elif visible and _whole_pass < 0:
 			_caption.text = "Charting the planet...  %d %%" % int(100.0 * _chart.progress())
-	if visible and _chart == null and _whole_pass == PASSES.size() - 1:
+	if visible and _chart == null and _whole_pass == _last_pass():
 		_maybe_chart_the_view(delta)
 
 
@@ -348,7 +359,7 @@ func _adopt_chart() -> void:
 	if _layer != PlanetChart.Layer.TEMPERATURE and _layer != PlanetChart.Layer.CLOUDS:
 		_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
 	_chart = null
-	if _whole_pass + 1 < PASSES.size():
+	if _whole_pass < _last_pass():
 		_start_chart(_whole_pass + 1) # the fine chart replaces the coarse one when it is done
 
 
@@ -361,11 +372,16 @@ func _maybe_chart_the_view(delta: float) -> void:
 	else:
 		_still = 0.0
 		_last_view = view
-	if _still < 0.5 or _zoom < 2.5 or _covered_by_detail(view):
+	# (the slow layers, drawn again as time moves, wait for a closer look)
+	var close := 2.5 if _last_pass() < PASSES.size() - 1 else 1.4
+	if _still < 0.5 or _zoom < close or _covered_by_detail(view):
 		return
 	var rect := Rect2(view.position - size * 0.25, size * 1.5) # a margin to pan in
-	if rect.position.x < 0.0 or rect.end.x > 1.0 or rect.position.y < 0.0 or rect.end.y > 1.0:
-		return # over the edge of the map: the whole planet chart will do
+	# the margin stops at the poles (east-west the map wraps, so x may run past 0 and 1)
+	var top := maxf(rect.position.y, 0.0)
+	rect = Rect2(rect.position.x, top, rect.size.x, minf(rect.end.y, 1.0) - top)
+	if not rect.encloses(view):
+		return # the view reaches over a pole: the whole planet chart will do
 	_chart = PlanetChart.new()
 	_chart.layer = _layer
 	_chart.clock = planet.clock.copy()

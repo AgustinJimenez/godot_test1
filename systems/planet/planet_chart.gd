@@ -28,6 +28,7 @@ var _threads: Array[Thread] = []
 var _bands: Array[PackedByteArray] = []
 var _rows_done := 0
 var _mutex := Mutex.new()
+var _cancelled := false # a chart nobody wants any more: its workers skip the pixels
 
 
 ## The colour of `t` (0..1) along a layer's scale (the legend and the picture use the same).
@@ -110,6 +111,11 @@ func texture() -> ImageTexture:
 	return ImageTexture.create_from_image(image)
 
 
+## Stops drawing (the rows still left come out empty and fast); the picture is thrown away.
+func cancel() -> void:
+	_cancelled = true
+
+
 ## Waits for the threads (the game ends).
 func stop() -> void:
 	for thread in _threads:
@@ -126,12 +132,37 @@ func _chart(worker: int) -> void:
 	var step_lat := rect.size.y * PI / float(size.y)
 	var needs_slope := layer in [Layer.TERRAIN, Layer.ELEVATION, Layer.BIOME, Layer.SLOPE]
 	for row in range(from_row, to_row):
+		if _cancelled:
+			bytes.resize(bytes.size() + size.x * 3)
+			_mutex.lock()
+			_rows_done += 1
+			_mutex.unlock()
+			continue
 		var v := rect.position.y + (float(row) + 0.5) / float(size.y) * rect.size.y
 		var lat := (0.5 - v) * PI
+		# the heights of the whole row (and the points east and north of it) in one go: the
+		# native crust answers many at once much faster than one by one
+		var dirs := PackedVector3Array()
+		var east_dirs := PackedVector3Array()
+		var north_dirs := PackedVector3Array()
+		dirs.resize(size.x)
 		for column in size.x:
 			var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
-			var lon := u * TAU - PI
-			var color := _pixel_color(lat, lon, step_lon, step_lat, needs_slope)
+			dirs[column] = _direction(lat, u * TAU - PI)
+		if needs_slope:
+			east_dirs.resize(size.x)
+			north_dirs.resize(size.x)
+			for column in size.x:
+				var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
+				east_dirs[column] = _direction(lat, u * TAU - PI + step_lon)
+				north_dirs[column] = _direction(lat + step_lat, u * TAU - PI)
+		var grounds := _noise.heights_of(dirs)
+		var east_grounds := _noise.heights_of(east_dirs) if needs_slope else grounds
+		var north_grounds := _noise.heights_of(north_dirs) if needs_slope else grounds
+		for column in size.x:
+			var ground := grounds[column]
+			var color := _pixel_color(dirs[column], ground, east_grounds[column] - ground,
+					north_grounds[column] - ground, step_lon, needs_slope)
 			bytes.append(clampi(int(color.r * 255.0), 0, 255))
 			bytes.append(clampi(int(color.g * 255.0), 0, 255))
 			bytes.append(clampi(int(color.b * 255.0), 0, 255))
@@ -141,21 +172,18 @@ func _chart(worker: int) -> void:
 	_bands[worker] = bytes
 
 
-func _pixel_color(lat: float, lon: float, step_lon: float, step_lat: float,
-		needs_slope: bool) -> Color:
+static func _direction(lat: float, lon: float) -> Vector3:
+	return Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+
+
+## The colour of the pixel looking along `dir`, from its ground height and how far the ground
+## rises one pixel east and north of it.
+func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: float,
+		step_lon: float, needs_slope: bool) -> Color:
 	var noise := _noise
 	var relief := noise.relief
-	var dir := Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
-	var ground := noise.height(dir.x, dir.y, dir.z)
-	var rise_east := 0.0
-	var rise_north := 0.0
 	var slope := 0.0
 	if needs_slope:
-		var east := Vector3(cos(lat) * cos(lon + step_lon), sin(lat), cos(lat) * sin(lon + step_lon))
-		var up_lat := lat + step_lat
-		var north := Vector3(cos(up_lat) * cos(lon), sin(up_lat), cos(up_lat) * sin(lon))
-		rise_east = noise.height(east.x, east.y, east.z) - ground
-		rise_north = noise.height(north.x, north.y, north.z) - ground
 		slope = clampf(Vector2(rise_east, rise_north).length() / (step_lon * noise.settings.radius),
 				0.0, 1.0)
 	var color := Color.WHITE

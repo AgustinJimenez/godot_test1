@@ -21,6 +21,7 @@ var cloud_floor := 450.0 ## m above the planet's radius where the layer of cloud
 var sun_size := 1.0 ## the star's disc against the Sun's seen from the Earth (radius / distance)
 var star_tint := Color.WHITE ## the star's light against the Sun's (Star.light_tint)
 var clouds_hidden := false ## the debug switch: no clouds, in the sky or from above
+var fog_hidden := false ## the debug switch: no fog at all
 var sun_cover := 0.0 ## 0..1 the share of the star the moon hides (a solar eclipse)
 var moon_shadow := 0.0 ## 0..1 how deep the moon is in the planet's shadow (a lunar eclipse)
 var cloud_on := 0.0 ## 0 no clouds in the sky (up high the cloud shell takes over) .. 1
@@ -157,6 +158,8 @@ func _apply() -> void:
 	# the weather's fog (snow, rain, mist) lives in the low air too: it thins with the height, or from
 	# orbit the whole planet would be buried under it
 	var density := (BASE_FOG + fog_extra) * air
+	if fog_hidden:
+		density = 0.0
 	environment.fog_density = UNDERWATER_FOG if underwater else maxf(density, 0.0)
 	environment.fog_aerial_perspective = 0.0
 	environment.fog_sky_affect = 0.0 if altitude > air_top() else 0.35

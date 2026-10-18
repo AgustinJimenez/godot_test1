@@ -18,6 +18,7 @@ var _hour_slider: HSlider
 var _year_slider: HSlider
 var _weather: OptionButton
 var _clouds: CheckBox
+var _fog: CheckBox
 var _seed_field: LineEdit
 var _radius_field: LineEdit
 var _save_name: LineEdit
@@ -54,6 +55,7 @@ func refresh() -> void:
 	_radius_field.text = str(int(_planet.settings.radius))
 	_weather.select(_planet.weather_override + 1)
 	_clouds.set_pressed_no_signal(not _planet.atmosphere.clouds_hidden)
+	_fog.set_pressed_no_signal(not _planet.atmosphere.fog_hidden)
 	_fill_saves()
 	_sync()
 
@@ -143,6 +145,12 @@ func _add_weather_row() -> void:
 	_clouds.toggled.connect(func(shown: bool) -> void:
 		_planet.atmosphere.clouds_hidden = not shown)
 	add_child(_clouds)
+	_fog = CheckBox.new()
+	_fog.text = "Show the fog"
+	_fog.button_pressed = true
+	_fog.toggled.connect(func(shown: bool) -> void:
+		_planet.atmosphere.fog_hidden = not shown)
+	add_child(_fog)
 
 
 func _add_new_planet_rows() -> void:

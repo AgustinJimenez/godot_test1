@@ -55,8 +55,8 @@ func planet_to_world() -> Transform3D:
 	return Transform3D(rot, origin_w - rot * offset)
 
 
-## For the ground shader's detail noise, which needs small numbers (a float holds a planet's metres to
-## half a metre): world -> planet position minus the anchor, the anchor wrapped to the noise's
+## For the ground shader's detail noise, which needs small numbers (a float holds a planet's metres
+## to half a metre): world -> planet position minus the anchor, the anchor wrapped to the noise's
 ## period (the same `NOISE_PERIOD` as the shader's cell counts), the anchor's way up (planet space)
 ## and the phase of its distance from the centre for the rock layers (a sine of 1.86 per metre).
 const NOISE_PERIOD := 1024.0
