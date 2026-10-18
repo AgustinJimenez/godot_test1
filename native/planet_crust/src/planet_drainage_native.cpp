@@ -321,7 +321,7 @@ PackedFloat32Array PlanetDrainageNative::carve(const PackedFloat32Array &p_heigh
 		bed[id] = p_heights[id];
 	}
 	std::vector<float> cut(count, 0.0f);
-	for (int at = 0; at < count; at++) {
+	for (size_t at = 0; at < order.size(); at++) {
 		const int id = order[at];
 		const int down = p_receiver[id];
 		if (down < 0 || (double)p_heights[id] < 0.0 || (double)p_flow[id] < p_river_flow) {
@@ -366,18 +366,25 @@ Dictionary PlanetDrainageNative::river_network(const PackedFloat32Array &p_heigh
 		const PackedFloat32Array &p_flow, const PackedInt32Array &p_receiver, double p_river_flow,
 		double p_base_slope, int p_samples, double p_meander, const PackedFloat32Array &p_uplift) const {
 	const int count = 6 * cells * cells;
-	// the river beds, from the sea inland (as in `carve`)
-	std::vector<int> order(count);
+	// the river beds, from the sea inland (as in `carve`): only the cells that are rivers are ordered, the
+	// lowest first, ties by number (so every build and platform sorts them the same way)
+	std::vector<int> order;
 	for (int id = 0; id < count; id++) {
-		order[id] = id;
+		if (p_receiver[id] >= 0 && (double)p_heights[id] >= 0.0 && (double)p_flow[id] >= p_river_flow) {
+			order.push_back(id);
+		}
 	}
-	std::sort(order.begin(), order.end(), [&](int a, int b) { return p_filled[a] < p_filled[b]; });
+	std::sort(order.begin(), order.end(), [&](int a, int b) {
+		const float fa = std::isnan(p_filled[a]) ? 1.0e30f : p_filled[a];
+		const float fb = std::isnan(p_filled[b]) ? 1.0e30f : p_filled[b];
+		return fa != fb ? fa < fb : a < b;
+	});
 	std::vector<double> bed(count);
 	std::vector<char> river(count, 0);
 	for (int id = 0; id < count; id++) {
 		bed[id] = p_heights[id];
 	}
-	for (int at = 0; at < count; at++) {
+	for (size_t at = 0; at < order.size(); at++) {
 		const int id = order[at];
 		const int down = p_receiver[id];
 		if (down < 0 || (double)p_heights[id] < 0.0 || (double)p_flow[id] < p_river_flow) {
@@ -423,7 +430,7 @@ Dictionary PlanetDrainageNative::river_network(const PackedFloat32Array &p_heigh
 	};
 	PackedVector3Array a_out, b_out;
 	PackedFloat32Array bed_a, bed_b, flow_a, flow_b;
-	std::vector<std::vector<int>> listed(count);
+	std::vector<std::pair<int, int>> listed; // (cell, piece) in the order they were made
 	const int samples = p_samples < 1 ? 1 : p_samples;
 	for (int id = 0; id < count; id++) {
 		if (!river[id]) {
@@ -463,11 +470,11 @@ Dictionary PlanetDrainageNative::river_network(const PackedFloat32Array &p_heigh
 			// the cells the piece belongs to: its middle's cell and the eight round it
 			const Vector3 middle = ((last + point) * (real_t)0.5).normalized();
 			const int home = cell_at(middle);
-			listed[home].push_back(piece);
+			listed.emplace_back(home, piece);
 			for (int n = 0; n < 8; n++) {
 				const int other = neighbours[home * 8 + n];
 				if (other >= 0) {
-					listed[other].push_back(piece);
+					listed.emplace_back(other, piece);
 				}
 			}
 			last = point;
@@ -478,18 +485,20 @@ Dictionary PlanetDrainageNative::river_network(const PackedFloat32Array &p_heigh
 	PackedInt32Array cell_start;
 	PackedInt32Array cell_items;
 	cell_start.resize(count + 1);
-	int total = 0;
-	for (int id = 0; id < count; id++) {
-		cell_start[id] = total;
-		total += (int)listed[id].size();
-	}
-	cell_start[count] = total;
-	cell_items.resize(total);
-	int at = 0;
-	for (int id = 0; id < count; id++) {
-		for (size_t k = 0; k < listed[id].size(); k++) {
-			cell_items[at++] = listed[id][k];
+	cell_start.fill(0);
+	for (const std::pair<int, int> &entry : listed) {
+		if (entry.first < 0 || entry.first >= count) {
+			break;
 		}
+		cell_start[entry.first + 1]++;
+	}
+	for (int id = 0; id < count; id++) {
+		cell_start[id + 1] += cell_start[id];
+	}
+	cell_items.resize((int)listed.size());
+	std::vector<int> filled_to(count, 0);
+	for (const std::pair<int, int> &entry : listed) {
+		cell_items[cell_start[entry.first] + filled_to[entry.first]++] = entry.second;
 	}
 	Dictionary result;
 	result["a"] = a_out;
