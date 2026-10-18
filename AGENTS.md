@@ -828,8 +828,13 @@ engine traps): `docs/planet_lessons.md`; read it before changing planet renderin
 
 All of it runs through the lab, `godot --path . res://tests/manual/planet/planet_lab.tscn -- <args>`
 (every argument is listed in the comment at the top of `tests/manual/planet/planet_lab.gd`; with no
-arguments the lab opens the universe start menu, so scripted runs always pass some). Needs a window
+arguments the lab now starts an Earth with a random seed at a tenth of the size (`PLANET_SCALE=1` for the whole
+Earth, `--start-menu` for the menu) with the map open first; scripted runs always pass some arguments). Needs a window
 (not `--headless`) for anything about frames, shaders or pictures; stop the game after a verification run.
+- **Where the time goes:** `PLANET_TIMING=1` prints the laps of making a planet (plates, sea level, climate,
+  drainage, river network) and `ground ready after N s, T tiles built`; `--map-first --close-map=N` tests the
+  map-first loading. Heavy native calls spread over threads by themselves (above 16 k points), so a run on a
+  busy machine is slower than the numbers in docs/planet_generation.md.
 - **Frames:** `-- --fps` prints every 300 physics frames: fps (uncapped), draw calls, primitives, tiles and
   the triangles by kind of node (draw calls and primitives are the main pass; shadows are not in them).
   Read the *last* lines: plants and tiles stream in for ~900 frames after the loading screen.
