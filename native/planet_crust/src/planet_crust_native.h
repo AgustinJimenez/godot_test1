@@ -24,8 +24,22 @@ class PlanetCrustNative : public RefCounted {
 public:
 	struct Noise {
 		fastnoiselite::FastNoiseLite generator;
+		fastnoiselite::FastNoiseLite reduced[8]; // the same noise with 1, 2, ... octaves
+		int octaves = 1;
+		double wavelength = 1.0; // of the first octave, in metres
 		real_t at(const Vector3 &p_point) const {
 			return (real_t)generator.GetNoise(p_point.x, p_point.y, p_point.z);
+		}
+		// the noise a pixel of `p_pixel` metres can show: the octaves finer than three pixels are left out
+		real_t at_lod(const Vector3 &p_point, double p_pixel) const {
+			if (p_pixel <= 0.0 || octaves <= 1) {
+				return at(p_point);
+			}
+			int keep = 1;
+			for (double length = wavelength * 0.5; keep < octaves && length >= p_pixel * 3.0; length *= 0.5) {
+				keep++;
+			}
+			return keep >= octaves ? at(p_point) : (real_t)reduced[keep - 1].GetNoise(p_point.x, p_point.y, p_point.z);
 		}
 	};
 
@@ -84,7 +98,8 @@ private:
 	void plate_at(const Vector3 &p_dir, int &r_plate, real_t &r_edge, bool &r_continental) const;
 	double shore_curve(double p_units) const;
 	double valley_cut(const Vector3 &p_point, double p_units) const;
-	double macro_ground(double p_units, const Vector3 &p_point, bool p_broad = false) const;
+	// `p_pixel` > 0: the ground a pixel of that many metres can show (finer detail left out)
+	double macro_ground(double p_units, const Vector3 &p_point, double p_pixel = 0.0) const;
 	double ground_height(const Vector3 &p_dir) const;
 	Color rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle, bool p_strata = true) const;
 
@@ -106,13 +121,14 @@ public:
 		float *out;
 		float *out2; // (the second answer of MACRO_AND_TECTONIC)
 		int count;
+		double pixel; // metres of a map pixel (BROAD)
 	};
 	void height_chunk(int p_chunk, int64_t p_job); // (not const: callable_mp of a const void method does not compile)
-	PackedFloat32Array heights_by(int p_mode, const PackedVector3Array &p_dirs) const;
+	PackedFloat32Array heights_by(int p_mode, const PackedVector3Array &p_dirs, double p_pixel = 0.0) const;
 	// The smooth ground and the plates' height in one go (the plates' part is the costly one and is shared).
 	Dictionary macro_and_tectonic_heights(const PackedVector3Array &p_dirs) const;
 	PackedFloat32Array run_heights(int p_mode, const PackedVector3Array &p_dirs, PackedFloat32Array &r_result,
-			PackedFloat32Array &r_second) const;
+			PackedFloat32Array &r_second, double p_pixel = 0.0) const;
 	PackedFloat32Array heights(const PackedVector3Array &p_dirs) const;
 	// One row of the map's Terrain layer as RGB bytes (the sea by depth, the land's rock shaded by the
 	// light from the north west): the heights of the points, of the points a pixel east and a pixel north
@@ -124,7 +140,7 @@ public:
 	PackedFloat32Array tectonic_heights(const PackedVector3Array &p_dirs) const;
 	PackedFloat32Array macro_heights(const PackedVector3Array &p_dirs) const;
 	// the macro height without the small rolling hills and foothills (for maps of big pixels)
-	PackedFloat32Array broad_heights(const PackedVector3Array &p_dirs) const;
+	PackedFloat32Array broad_heights(const PackedVector3Array &p_dirs, double p_pixel) const;
 	// the ground of one tile (a grid of `cells + 3` points a side, one ring round the tile):
 	PackedVector3Array tile_dirs(int p_face, double p_s0, double p_s1, double p_t0, double p_t1, int p_cells) const;
 	// The same grid with every point worked out in double precision (a float direction is only good to

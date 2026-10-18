@@ -188,10 +188,10 @@ func heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
 	return result
 
 
-## The macro heights without the small hills and foothills (maps of big pixels).
-func broad_heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
+## The macro heights a map pixel of `pixel` metres can show (the finer detail left out).
+func broad_heights_of(dirs: PackedVector3Array, pixel: float) -> PackedFloat32Array:
 	if native != null and native.has_method(&"broad_heights"):
-		return native.call(&"broad_heights", dirs)
+		return native.call(&"broad_heights", dirs, pixel)
 	return macro_heights_of(dirs)
 
 

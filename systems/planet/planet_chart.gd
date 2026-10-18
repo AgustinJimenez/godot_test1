@@ -13,6 +13,7 @@ const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Bi
 		"Slope", "Mean temp", "Clouds", "Satellite"]
 const CALM_PIXEL := 2000.0 ## metres a pixel spans above which the Terrain relief is shaded gently
 const COARSE_PIXEL := 20.0 ## metres a pixel spans above which the map has no fine grain or beds
+const SHADE_EXAGGERATION := 2.0 ## the map's hill shading: how much a slope lights or darkens
 const SMOOTH_PIXEL := 30.0 ## metres a pixel spans above which the map draws the smooth ground
 
 const BIOME_COLORS := {
@@ -30,7 +31,7 @@ var layer := Layer.TERRAIN
 var clock: PlanetClock ## the moment the temperature layer shows (a copy: the game moves on)
 
 var _noise: PlanetNoise
-var _broad := false ## the pixels are so big that the small hills are left out
+var _pixel_metres := 0.0 ## metres a pixel spans
 var _threads: Array[Thread] = []
 var _bands: Array[PackedByteArray] = []
 var _rows_done := 0
@@ -138,11 +139,12 @@ func _chart(worker: int) -> void:
 	var to_row := (worker + 1) * size.y / workers
 	var bytes := PackedByteArray()
 	# the Terrain layer's rows come ready from the native crust (rows are then added one by one)
-	var native_rows := layer == Layer.TERRAIN and _noise.native != null and _noise.hydrology == null
+	var step_lon := rect.size.x * TAU / float(size.x)
+	var native_rows := layer == Layer.TERRAIN and _noise.native != null \
+			and _noise.hydrology == null and step_lon * _noise.settings.radius <= COARSE_PIXEL
 	if not native_rows:
 		bytes.resize((to_row - from_row) * size.x * 3)
 	var at := 0
-	var step_lon := rect.size.x * TAU / float(size.x)
 	var step_lat := rect.size.y * PI / float(size.y)
 	var needs_slope := layer in [Layer.TERRAIN, Layer.ELEVATION, Layer.BIOME, Layer.SLOPE,
 			Layer.SATELLITE]
@@ -151,7 +153,7 @@ func _chart(worker: int) -> void:
 	var smooth_ground := step_lon * _noise.settings.radius > SMOOTH_PIXEL
 	# the relief of a pixel of many kilometres is shaded gently (steeper looks like grain)
 	var calm := clampf(sqrt(CALM_PIXEL / (step_lon * _noise.settings.radius)), 0.5, 1.0)
-	_broad = step_lon * _noise.settings.radius > CALM_PIXEL
+	_pixel_metres = step_lon * _noise.settings.radius
 	var above := PackedFloat32Array() # the heights of the row before (the point a pixel north)
 	for row in range(from_row, to_row):
 		if _cancelled:
@@ -197,7 +199,7 @@ func _chart(worker: int) -> void:
 		if layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.CLOUDS, Layer.SATELLITE,
 				Layer.CLOUD_MASK]:
 			macros = _ground_of(dirs, true)
-			if _broad and layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE]:
+			if _pixel_metres > CALM_PIXEL and layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE]:
 				macros = _averaged(dirs, macros, lat, step_lat, step_lon)
 		if native_rows:
 			bytes.append_array(_noise.native.call(&"terrain_row", dirs, grounds, east_grounds,
@@ -231,7 +233,7 @@ func _chart(worker: int) -> void:
 func _ground_of(dirs: PackedVector3Array, smooth_shape: bool) -> PackedFloat32Array:
 	if not smooth_shape:
 		return _noise.heights_of(dirs)
-	return _noise.broad_heights_of(dirs) if _broad else _noise.macro_heights_of(dirs)
+	return _noise.broad_heights_of(dirs, _pixel_metres)
 
 
 ## The heights `centre` of the pixels of a row averaged with the heights at the pixels' four corners
@@ -329,6 +331,25 @@ func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: flo
 	return color
 
 
+## The land as a map shows it from far: green where it is wet and warm, tan where it is dry, brown
+## and grey rock up the mountains and snow where it is cold (the rock types are left to the close
+## views).
+func _illustrated_color(dir: Vector3, ground: float, slope: float) -> Color:
+	var noise := _noise
+	var degrees := noise.temperature(dir.x, dir.y, dir.z, ground)
+	var wet := clampf(noise.climate.sample(dir).y / 0.9, 0.0, 1.0)
+	var warm := clampf((degrees + 6.0) / 16.0, 0.0, 1.0)
+	var low := Color(0.78, 0.7, 0.46).lerp(Color(0.46, 0.6, 0.27), wet * warm)
+	low = low.lerp(Color(0.62, 0.64, 0.5), 1.0 - warm) # cold ground: tundra
+	var tall := clampf(ground / noise.relief, 0.0, 1.0)
+	var color := low.lerp(Color(0.58, 0.5, 0.38), smoothstep(0.12, 0.4, tall))
+	color = color.lerp(Color(0.5, 0.48, 0.46), smoothstep(0.3, 0.65, tall + slope * 0.4))
+	var snow := smoothstep(-1.0, -5.0, degrees) * (1.0 - 0.7 * smoothstep(0.5, 0.95, slope))
+	color = color.lerp(Color(0.95, 0.97, 1.0), snow)
+	var sand := smoothstep(4.0, 0.5, ground) # a beach by the sea
+	return color.lerp(Color(0.9, 0.82, 0.55), sand * 0.8)
+
+
 ## The planet as a weather satellite sees it: a deep blue sea, green and brown land (greener where
 ## it rains), white snow and ice, and the clouds over it with a little shade of their own.
 func _satellite_color(dir: Vector3, ground: float, macro: float, light: float,
@@ -350,7 +371,8 @@ func _satellite_color(dir: Vector3, ground: float, macro: float, light: float,
 		var snow := 1.0 - clampf((noise.temperature(dir.x, dir.y, dir.z, maxf(shape, 0.0)) + 6.0)
 				/ 5.0, 0.0, 1.0)
 		color = color.lerp(Color(0.95, 0.97, 1.0), snow)
-		var shade := clampf(1.0 - light * 3.0 * 0.0098 / step_lon / noise.relief, 0.75, 1.2)
+		var metres := step_lon * noise.settings.radius * sqrt(maxf(1.0 - dir.y * dir.y, 0.04))
+		var shade := clampf(1.0 - 1.2 * SHADE_EXAGGERATION * 0.5 * light / metres, 0.75, 1.2)
 		color = Color(color.r * shade, color.g * shade, color.b * shade)
 	var cover := noise.weather.cloud(dir, clock, macro)
 	var cloud := Color(0.93, 0.95, 0.98).lerp(Color(0.72, 0.75, 0.82), 0.25 * (1.0 - cover))
@@ -367,9 +389,12 @@ func _terrain_color(dir: Vector3, ground: float, slope: float, light: float,
 	if _noise.hydrology != null and _noise.hydrology.lake_level_at(dir, ground) > -INF:
 		return Color(0.25, 0.5, 0.85)
 	var coarse := step_lon * _noise.settings.radius > COARSE_PIXEL
-	var color := _noise.facet_color(dir.x, dir.y, dir.z, ground, slope, coarse)
+	var color := _illustrated_color(dir, ground, slope) if coarse 			else _noise.facet_color(dir.x, dir.y, dir.z, ground, slope, false)
 	# hill shading: the light from the north west, the same on a close map as on a far one
-	var shade := clampf(1.0 - light * 6.0 * 0.0098 / step_lon / relief, 0.55, 1.35)
+	# (the height difference over the metres a pixel spans is the slope; the relief is drawn with a
+	# fixed vertical exaggeration, so plains stay smooth and only real slopes are lit and shadowed)
+	var metres := step_lon * _noise.settings.radius * sqrt(maxf(1.0 - dir.y * dir.y, 0.04))
+	var shade := clampf(1.0 - SHADE_EXAGGERATION * light / metres, 0.55, 1.35)
 	return Color(color.r * shade, color.g * shade, color.b * shade)
 
 
