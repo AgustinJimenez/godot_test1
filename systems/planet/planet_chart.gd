@@ -6,10 +6,11 @@ extends RefCounted
 ## `finished()`, then take `texture()`.
 
 enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_TEMPERATURE,
-		CLOUDS, CLOUD_MASK } ## CLOUD_MASK is the cloud cover alone (for the shell round the planet)
+		CLOUDS, SATELLITE, CLOUD_MASK }
+## CLOUD_MASK is the cloud cover alone (for the shell round the planet)
 
 const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates",
-		"Slope", "Mean temp", "Clouds"]
+		"Slope", "Mean temp", "Clouds", "Satellite"]
 const CALM_PIXEL := 2000.0 ## metres a pixel spans above which the Terrain relief is shaded gently
 const COARSE_PIXEL := 20.0 ## metres a pixel spans above which the map has no fine grain or beds
 const SMOOTH_PIXEL := 30.0 ## metres a pixel spans above which the map draws the smooth ground
@@ -143,7 +144,8 @@ func _chart(worker: int) -> void:
 	var at := 0
 	var step_lon := rect.size.x * TAU / float(size.x)
 	var step_lat := rect.size.y * PI / float(size.y)
-	var needs_slope := layer in [Layer.TERRAIN, Layer.ELEVATION, Layer.BIOME, Layer.SLOPE]
+	var needs_slope := layer in [Layer.TERRAIN, Layer.ELEVATION, Layer.BIOME, Layer.SLOPE,
+			Layer.SATELLITE]
 	# a pixel wider than a few tens of metres would only alias the hills and gullies into grain: the
 	# smooth ground is drawn (shaded like an illustration); closer in, the real ground
 	var smooth_ground := step_lon * _noise.settings.radius > SMOOTH_PIXEL
@@ -192,7 +194,8 @@ func _chart(worker: int) -> void:
 			north_grounds = above
 			above = grounds
 		var macros := grounds
-		if layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.CLOUDS, Layer.CLOUD_MASK]:
+		if layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.CLOUDS, Layer.SATELLITE,
+				Layer.CLOUD_MASK]:
 			macros = _ground_of(dirs, true)
 			if _broad and layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE]:
 				macros = _averaged(dirs, macros, lat, step_lat, step_lon)
@@ -299,6 +302,8 @@ func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: flo
 			var base := land_colour.darkened(0.45)
 			var cover := noise.weather.cloud(dir, clock, macro)
 			color = base.lerp(Color(0.97, 0.98, 1.0), cover * 0.92)
+		Layer.SATELLITE:
+			color = _satellite_color(dir, ground, macro, rise_east - rise_north, step_lon)
 		Layer.CLOUD_MASK:
 			var cover := noise.weather.cloud(dir, clock, macro)
 			color = Color(cover, cover, cover)
@@ -322,6 +327,34 @@ func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: flo
 		_:
 			color = _terrain_color(dir, ground, slope, rise_east - rise_north, step_lon)
 	return color
+
+
+## The planet as a weather satellite sees it: a deep blue sea, green and brown land (greener where
+## it rains), white snow and ice, and the clouds over it with a little shade of their own.
+func _satellite_color(dir: Vector3, ground: float, macro: float, light: float,
+		step_lon: float) -> Color:
+	var noise := _noise
+	var shape := macro if not is_nan(macro) else ground
+	var color: Color
+	if ground < 0.0:
+		var depth := clampf(-ground / (noise.relief * 0.35), 0.0, 1.0)
+		color = Color(0.12, 0.27, 0.52).lerp(Color(0.04, 0.1, 0.3), sqrt(depth))
+	else:
+		var weather := noise.climate.sample(dir)
+		var green := clampf(weather.y / 0.9, 0.0, 1.0)
+		var warm := clampf((noise.temperature(dir.x, dir.y, dir.z, maxf(shape, 0.0)) + 8.0) / 14.0,
+				0.0, 1.0)
+		var dry := Color(0.62, 0.56, 0.38)
+		var forest := Color(0.17, 0.3, 0.1)
+		color = dry.lerp(forest, green * warm).lerp(Color(0.5, 0.5, 0.42), 1.0 - warm)
+		var snow := 1.0 - clampf((noise.temperature(dir.x, dir.y, dir.z, maxf(shape, 0.0)) + 6.0)
+				/ 5.0, 0.0, 1.0)
+		color = color.lerp(Color(0.95, 0.97, 1.0), snow)
+		var shade := clampf(1.0 - light * 3.0 * 0.0098 / step_lon / noise.relief, 0.75, 1.2)
+		color = Color(color.r * shade, color.g * shade, color.b * shade)
+	var cover := noise.weather.cloud(dir, clock, macro)
+	var cloud := Color(0.93, 0.95, 0.98).lerp(Color(0.72, 0.75, 0.82), 0.25 * (1.0 - cover))
+	return color.lerp(cloud, cover * 0.92)
 
 
 ## Sea (darker where it is deep), lakes and the land's biome colours with the relief shaded.

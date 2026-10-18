@@ -51,6 +51,7 @@ func build(noise: PlanetNoise, clock: PlanetClock) -> void:
 			var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
 			var h := noise.macro_height(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
 			_sea[row * WIDTH + column] = 1 if h < 0.0 else 0
+	_mark_the_dry_land()
 	if native_year and ClassDB.class_exists(&"PlanetSeasonsNative"):
 		_run_native(clock)
 		return
@@ -81,7 +82,79 @@ func build(noise: PlanetNoise, clock: PlanetClock) -> void:
 		_cycle[(step + 1) % SNAPSHOTS] = heat.duplicate()
 		for index in size:
 			mean[index] += heat[index] / float(SNAPSHOTS)
+	_add_the_currents()
 
+
+
+## The land's byte becomes 2 + 100 times its dryness: far from the sea, and under the subtropical
+## highs (the Sahara, Arabia, the Australian interior), the ground is dry and gets hotter than wet
+## land does; the sea stays 1.
+func _mark_the_dry_land() -> void:
+	var far := PackedInt32Array() # cells to the nearest sea (east-west it wraps)
+	far.resize(WIDTH * HEIGHT)
+	for index in far.size():
+		far[index] = 0 if _sea[index] == 1 else 99
+	for pass_number in 2: # forward and backward sweeps: a cheap distance
+		for row in HEIGHT:
+			for step in WIDTH * 2:
+				var column := step % WIDTH
+				var here := row * WIDTH + column
+				var west := row * WIDTH + (column + WIDTH - 1) % WIDTH
+				far[here] = mini(far[here], far[west] + 1)
+			for step in WIDTH * 2:
+				var column := WIDTH - 1 - step % WIDTH
+				var here := row * WIDTH + column
+				var east := row * WIDTH + (column + 1) % WIDTH
+				far[here] = mini(far[here], far[east] + 1)
+		for row in range(1, HEIGHT):
+			for column in WIDTH:
+				far[row * WIDTH + column] = mini(far[row * WIDTH + column],
+						far[(row - 1) * WIDTH + column] + 1)
+		for row in range(HEIGHT - 2, -1, -1):
+			for column in WIDTH:
+				far[row * WIDTH + column] = mini(far[row * WIDTH + column],
+						far[(row + 1) * WIDTH + column] + 1)
+	for row in HEIGHT:
+		var lat := absf((0.5 - (float(row) + 0.5) / float(HEIGHT)) * 180.0)
+		var highs := exp(-pow((lat - 26.0) / 13.0, 2.0)) # the dry belts
+		for column in WIDTH:
+			var index := row * WIDTH + column
+			if _sea[index] == 1:
+				continue
+			var inland := clampf(float(far[index]) / 6.0, 0.0, 1.0)
+			var dry := inland * clampf(0.3 + 0.9 * highs, 0.0, 1.0)
+			_sea[index] = 2 + int(round(dry * 100.0))
+
+
+## The ocean currents, as a change of the sea's temperature next to the land: the cold ones along
+## the west coasts of the continents in the subtropics (California, Peru, the Canaries, Benguela),
+## the warm ones along the east coasts (the Gulf Stream, the Kuroshio, Brazil, Agulhas).
+func _add_the_currents() -> void:
+	var offsets := PackedFloat32Array()
+	offsets.resize(WIDTH * HEIGHT)
+	for row in HEIGHT:
+		var lat := absf((0.5 - (float(row) + 0.5) / float(HEIGHT)) * 180.0)
+		var cold := exp(-pow((lat - 22.0) / 14.0, 2.0))
+		var warm := exp(-pow((lat - 36.0) / 16.0, 2.0))
+		for column in WIDTH:
+			var index := row * WIDTH + column
+			if _sea[index] != 1:
+				continue
+			for reach in range(1, 4): # land close to the east: a cold current runs along it
+				if _sea[row * WIDTH + (column + reach) % WIDTH] != 1:
+					offsets[index] -= 5.0 * cold * (1.0 - float(reach - 1) / 3.0)
+					break
+			for reach in range(1, 4): # land close to the west: a warm current leaves it
+				if _sea[row * WIDTH + (column + WIDTH - reach) % WIDTH] != 1:
+					offsets[index] += 4.0 * warm * (1.0 - float(reach - 1) / 3.0)
+					break
+	for at in _cycle.size():
+		var picture := _cycle[at]
+		for index in picture.size():
+			picture[index] += offsets[index]
+		_cycle[at] = picture
+	for index in mean.size():
+		mean[index] += offsets[index]
 
 
 ## The year run natively (PlanetSeasonsNative, the same steps as below): the script only works out
@@ -100,6 +173,7 @@ func _run_native(clock: PlanetClock) -> void:
 	_cycle.clear()
 	for picture: PackedFloat32Array in made["cycle"]:
 		_cycle.append(picture)
+	_add_the_currents()
 
 ## One step of `dt` years, from the share `at` - dt/2 to at + dt/2 of the year.
 func _step(heat: PackedFloat32Array, light: PackedFloat32Array, clock: PlanetClock, at: float,
@@ -119,8 +193,10 @@ func _step(heat: PackedFloat32Array, light: PackedFloat32Array, clock: PlanetClo
 			var absorbed := sun * (1.0 - SNOW_ALBEDO * frozen) + FLOOR
 			var ratio := sqrt(sqrt(absorbed / EMIT))
 			var balance := 15.0 + 288.0 * (ratio - 1.0)
-			if balance > HOT: # water evaporates and clouds form: not all the extra heat is kept
-				balance = HOT + (balance - HOT) * 0.35
+			var dry := float(_sea[index] - 2) * 0.01 if _sea[index] >= 2 else 0.0
+			var hot := HOT + 10.0 * dry
+			if balance > hot: # water evaporates and clouds form: not all the extra heat is kept
+				balance = hot + (balance - hot) * (0.35 + 0.5 * dry)
 			heat[index] = degrees + (balance - degrees) * (sea_pull if _sea[index] == 1 else land_pull)
 	for pass_number in PASSES:
 		_carry(heat)

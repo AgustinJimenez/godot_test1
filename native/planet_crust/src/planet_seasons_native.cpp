@@ -76,8 +76,13 @@ void step(std::vector<float> &r_heat, const float *p_light, const Grid &p_grid, 
 			const double absorbed = sun * (1.0 - SNOW_ALBEDO * frozen) + FLOOR_HEAT;
 			const double ratio = std::sqrt(std::sqrt(absorbed / EMIT));
 			double balance = 15.0 + 288.0 * (ratio - 1.0);
-			if (balance > HOT) {
-				balance = HOT + (balance - HOT) * 0.35;
+			// dry land (the byte of a land cell is 2 + 100 times its dryness) keeps more of its heat: a
+			// desert has no water to evaporate and no cloud
+			const int cell = p_grid.sea[index];
+			const double dry = cell >= 2 ? (double)(cell - 2) * 0.01 : 0.0;
+			const double hot = HOT + 10.0 * dry;
+			if (balance > hot) {
+				balance = hot + (balance - hot) * (0.35 + 0.5 * dry);
 			}
 			r_heat[index] = (float)(degrees + (balance - degrees) * (p_grid.sea[index] == 1 ? sea_pull : land_pull));
 		}

@@ -97,7 +97,7 @@ func _ready() -> void:
 	var group := ButtonGroup.new()
 	for index in PlanetChart.NAMES.size():
 		var button := Button.new()
-		button.text = "%d  %s" % [index + 1, PlanetChart.NAMES[index]]
+		button.text = "%d  %s" % [(index + 1) % 10, PlanetChart.NAMES[index]]
 		button.toggle_mode = true
 		button.button_group = group
 		button.focus_mode = Control.FOCUS_NONE
@@ -135,8 +135,9 @@ func _input(event: InputEvent) -> void:
 		_globe_button.button_pressed = not _globe_mode
 		get_viewport().set_input_as_handled()
 		return
-	if event is InputEventMouseButton and not _over_the_pane((event as InputEventMouseButton).position):
-		if not (event as InputEventMouseButton).pressed:
+	var click := event as InputEventMouseButton
+	if click != null and not _over_the_pane(click.position):
+		if not click.pressed:
 			_dragging = false
 			_globe.release()
 		return # (a click on a button or the bars is theirs)
@@ -182,7 +183,10 @@ func _input(event: InputEvent) -> void:
 		elif code == KEY_MINUS or code == KEY_KP_SUBTRACT:
 			_zoom_at(_view.size * 0.5, 0.8)
 			get_viewport().set_input_as_handled()
-		elif code >= KEY_1 and code < KEY_1 + PlanetChart.NAMES.size():
+		elif code == KEY_0 and PlanetChart.NAMES.size() > 9:
+			select_layer(9)
+			get_viewport().set_input_as_handled()
+		elif code >= KEY_1 and code < KEY_1 + mini(PlanetChart.NAMES.size(), 9):
 			select_layer(code - KEY_1)
 			get_viewport().set_input_as_handled()
 
@@ -265,6 +269,12 @@ func select_layer(layer: int) -> void:
 		_chart = null
 	if _started and _whole_pass < _last_pass():
 		_start_chart(_whole_pass + 1)
+
+
+## The layers that show a moment (they are charted again as time moves on).
+static func _is_moving(layer: int) -> bool:
+	return layer in [PlanetChart.Layer.TEMPERATURE, PlanetChart.Layer.CLOUDS,
+			PlanetChart.Layer.SATELLITE]
 
 
 ## The unit direction of the planet at the map's point `uv`.
@@ -369,7 +379,7 @@ func begin() -> void:
 ## The finest picture of the layer: the layers that follow the clock are charted again as time
 ## moves and cost more per pixel, so they stop one pass short.
 func _last_pass() -> int:
-	if _layer == PlanetChart.Layer.TEMPERATURE or _layer == PlanetChart.Layer.CLOUDS:
+	if _is_moving(_layer):
 		return PASSES.size() - 2
 	return PASSES.size() - 1
 
@@ -431,7 +441,7 @@ func _process(delta: float) -> void:
 ## The temperature and cloud layers show a moment: when time has moved on, they are charted again
 ## (the coarse chart only, a second or so), so they follow the seasons, the day and the winds.
 func _refresh_temperature(delta: float) -> void:
-	var moving := _layer == PlanetChart.Layer.TEMPERATURE or _layer == PlanetChart.Layer.CLOUDS
+	var moving := _is_moving(_layer)
 	if not moving or _chart != null or _whole_pass < 0:
 		return
 	_refresh_wait -= delta
@@ -463,7 +473,7 @@ func _adopt_chart() -> void:
 	_whole = texture
 	_whole_pass += 1
 	_drawn_at = _chart_time
-	if _layer != PlanetChart.Layer.TEMPERATURE and _layer != PlanetChart.Layer.CLOUDS:
+	if not _is_moving(_layer):
 		_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
 	_chart = null
 	if _whole_pass < _last_pass():
