@@ -1029,6 +1029,62 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 					b *= 0.75;
 				}
 			} break;
+			case 4: { // biome
+				if (ground < 0.0) {
+					const double depth = clampd(-ground / (relief * 0.35), 0.0, 1.0);
+					r = 0.2 + (0.05 - 0.2) * depth;
+					g = 0.4 + (0.12 - 0.4) * depth;
+					b = 0.7 + (0.35 - 0.7) * depth;
+					break;
+				}
+				const double slope = clampd(std::sqrt(rise_east * rise_east + rise_north * rise_north) / metres, 0.0, 1.0);
+				const double wet = clampd(grid_at(rain_grid, dir, 0.5) / 1.2, 0.0, 1.0);
+				const double degrees = sea_temperature(dir) - (ground > 0.0 ? ground : 0.0) / relief * 8800.0 / 1000.0 * 6.5;
+				static const double palette[7][3] = { { 0.93, 0.85, 0.55 }, { 0.6, 0.8, 0.3 }, { 0.1, 0.45, 0.15 },
+					{ 0.5, 0.5, 0.52 }, { 0.97, 0.98, 1.0 }, { 0.3, 0.55, 0.5 }, { 0.9, 0.6, 0.25 } };
+				int biome = 1; // meadow
+				if (ground < 1.4) {
+					biome = wet < 0.5 ? 0 : 5; // beach or marsh
+				} else if (degrees < -14.0) {
+					biome = 4;
+				} else if (slope > 0.62 || ground > relief * 0.5) {
+					biome = 3;
+				} else if (wet < 0.2 && degrees > 2.0) {
+					biome = 6;
+				} else if (wet > 0.5) {
+					biome = 2;
+				}
+				r = palette[biome][0];
+				g = palette[biome][1];
+				b = palette[biome][2];
+			} break;
+			case 5: { // plates
+				int plate = 0;
+				real_t edge = 0;
+				bool is_continental = false;
+				plate_at(dir, plate, edge, is_continental);
+				const double hue = std::fmod((double)plate * 0.61803, 1.0) * 6.0;
+				const double saturation = is_continental ? 0.55 : 0.25, value = is_continental ? 0.95 : 0.6;
+				const int sector = (int)hue;
+				const double f = hue - sector;
+				const double p = value * (1.0 - saturation), q = value * (1.0 - saturation * f), t = value * (1.0 - saturation * (1.0 - f));
+				switch (sector % 6) {
+					case 0: r = value; g = t; b = p; break;
+					case 1: r = q; g = value; b = p; break;
+					case 2: r = p; g = value; b = t; break;
+					case 3: r = p; g = q; b = value; break;
+					case 4: r = t; g = p; b = value; break;
+					default: r = value; g = p; b = q; break;
+				}
+				if (ground < 0.0) {
+					r *= 0.65;
+					g *= 0.65;
+					b *= 0.65;
+				}
+				if (edge < 0.012) {
+					r = g = b = 0.0;
+				}
+			} break;
 			case 6: { // slope
 				if (ground < 0.0) {
 					r = 0.2;

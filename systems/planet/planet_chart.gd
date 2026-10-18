@@ -15,8 +15,9 @@ const CALM_PIXEL := 2000.0 ## metres a pixel spans above which the Terrain relie
 const COARSE_PIXEL := 20.0 ## metres a pixel spans above which the map has no fine grain or beds
 const SHADE_EXAGGERATION := 2.0 ## the map's hill shading: how much a slope lights or darkens
 const SMOOTHED := [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.RAIN, Layer.CLOUDS]
+## the layers whose rows the native crust colours
 const NATIVE_LAYERS := [Layer.ELEVATION, Layer.TEMPERATURE, Layer.RAIN, Layer.SLOPE,
-		Layer.MEAN_TEMPERATURE] ## the layers whose rows the native crust colours
+		Layer.MEAN_TEMPERATURE, Layer.BIOME, Layer.PLATES]
 const SMOOTH_PIXEL := 30.0 ## metres a pixel spans above which the map draws the smooth ground
 
 const BIOME_COLORS := {
