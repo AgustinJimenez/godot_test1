@@ -20,7 +20,7 @@ const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(640, 320), Vector2
 		Vector2i(2048, 1024)]
 const DETAIL_MIN := 768 ## pixels across the close chart, at least (more for a big view)
 const DETAIL_MAX := 2560
-const START_ZOOM := 6.0
+const START_ZOOM := 60.0 # the map opens as close as it goes, on the player (zoom out for the planet)
 const MAX_ZOOM := 60.0
 const MARGIN := 14.0
 
@@ -43,6 +43,7 @@ var _chart: PlanetChart # the chart being drawn, if any
 var _chart_is_detail := false
 var _detail: ImageTexture # a close chart of `_detail_rect` (fractions of the map)
 var _detail_rect := Rect2()
+var _detail_full := 0 # pixels across of the sharp close chart that follows a quick preview (0: none)
 var _wanted_rect := Rect2() # the region the next close chart is for
 var _still := 0.0 # seconds the view has stayed as it is
 var _last_view := Rect2()
@@ -219,6 +220,7 @@ func select_layer(layer: int) -> void:
 	_whole = kept.get("whole")
 	_whole_pass = kept.get("pass", -1)
 	_detail = null
+	_detail_full = 0
 	if _chart != null:
 		_chart.cancel()
 		_retired.append(_chart) # its threads finish on their own; the picture is thrown away
@@ -349,6 +351,7 @@ func _refresh_temperature(delta: float) -> void:
 	_refresh_wait = 0.4
 	_whole_pass = -1
 	_detail = null
+	_detail_full = 0
 	_start_chart(0)
 
 
@@ -357,7 +360,13 @@ func _adopt_chart() -> void:
 	if _chart_is_detail:
 		_detail = texture
 		_detail_rect = _chart.rect
+		var rect := _chart.rect
 		_chart = null
+		if _detail_full > 0: # the quick preview is up: now the sharp one over the same region
+			var across := _detail_full
+			_detail_full = 0
+			_start_detail(rect, across)
+			return
 		if _whole_pass < _last_pass():
 			_start_chart(_whole_pass + 1) # the passes the close view interrupted go on
 		return
@@ -393,13 +402,20 @@ func _maybe_chart_the_view(delta: float) -> void:
 	if _chart != null: # a whole planet pass still drawing gives way to the close view
 		_chart.cancel()
 		_retired.append(_chart)
+	# about one chart pixel and a quarter for every screen pixel of the 1.5 times wider chart, so a
+	# close zoom stays sharp; a quarter of that size comes first (a sixteenth of the time) so the
+	# view is better than the whole planet's picture within a second
+	var across := clampi(int(_view.size.x * 1.5 * 1.25), DETAIL_MIN, DETAIL_MAX)
+	_detail_full = across
+	_start_detail(rect, maxi(across / 4, 256))
+
+
+## Charts `rect` (fractions of the map) `across` pixels wide, the close view.
+func _start_detail(rect: Rect2, across: int) -> void:
 	_chart = PlanetChart.new()
 	_chart.layer = _layer
 	_chart.clock = planet.clock.copy()
 	_chart.rect = rect
-	# about one chart pixel and a quarter for every screen pixel of the 1.5 times wider chart, so a
-	# close zoom stays sharp
-	var across := clampi(int(_view.size.x * 1.5 * 1.25), DETAIL_MIN, DETAIL_MAX)
 	_chart.size = Vector2i(across, int(across * rect.size.y / rect.size.x * 0.5))
 	_chart_is_detail = true
 	_chart.start(planet.noise)
