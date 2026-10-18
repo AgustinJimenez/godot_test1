@@ -56,7 +56,7 @@ extends Resource
 func vary() -> void:
 	var roll := RandomNumberGenerator.new()
 	roll.seed = world_seed
-	water_layer *= roll.randf_range(0.55, 1.6)
+	water_layer *= exp(roll.randf_range(log(0.3), log(2.8))) # (from a dry world to a water one)
 	axial_tilt = roll.randf_range(8.0, 38.0)
 
 
