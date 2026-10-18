@@ -110,8 +110,9 @@ func dominant(dir: Vector3, ground: float) -> int:
 
 
 ## The colour of the crust at `dir` (a unit direction) on `ground`, on a face `steep` steep
-## (0 level .. 1 vertical), with `speckle` (0..1) the fine variation there. `sea_temperature` (degrees C,
-## the year's mean at sea level there) puts permanent snow and ice where the cold keeps it.
+## (0 level .. 1 vertical), with `speckle` (0..1) the fine variation there. `sea_temperature`
+## (degrees C, the year's mean at sea level there) puts permanent snow and ice where the cold
+## keeps it.
 func colour(dir: Vector3, ground: float, steep: float, speckle: float,
 		sea_temperature := 15.0, strata := true) -> Color:
 	var w := weights(dir, ground)

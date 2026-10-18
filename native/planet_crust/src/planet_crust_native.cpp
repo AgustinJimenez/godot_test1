@@ -178,9 +178,12 @@ double PlanetCrustNative::boundary_effect(int p_a, int p_b, const Vector3 &p_q, 
 		double trench = 0.30 * std::exp(-down_scaled * down_scaled);
 		return together * (range_up - trench);
 	}
+	const Vector3 along_at = p_q * (real_t)1.9;
+	const double along = (double)interior.at(along_at);
+	const double steps = (double)interior.at(along_at + Vector3(7.0f, 3.0f, 1.0f));
 	double arc_scaled = (p_edge - 0.03) / 0.03;
-	double arc = 0.30 * together * std::exp(-arc_scaled * arc_scaled);
-	double ridge_scaled = p_edge / 0.12;
+	double arc = 0.30 * together * smooth(-0.3, 0.25, along) * std::exp(-arc_scaled * arc_scaled);
+	double ridge_scaled = (p_edge - 0.04 * clampd(steps * 3.0, -1.0, 1.0)) / 0.09;
 	arc += 0.22 * apart * std::exp(-ridge_scaled * ridge_scaled);
 	return arc - 0.22 * together * near;
 }

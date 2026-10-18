@@ -115,7 +115,8 @@ func texture() -> ImageTexture:
 	var all := PackedByteArray()
 	for band in _bands:
 		all.append_array(band)
-	if _noise.native != null and layer != Layer.PLATES and layer != Layer.CLOUD_MASK 			and _noise.native.has_method(&"despeckle"):
+	var tidy := layer != Layer.PLATES and layer != Layer.CLOUD_MASK
+	if tidy and _noise.native != null and _noise.native.has_method(&"despeckle"):
 		all = _noise.native.call(&"despeckle", all, size.x, size.y) # (lone dots are grain)
 	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, all)
 	if layer == Layer.TERRAIN or layer == Layer.ELEVATION:
@@ -277,13 +278,17 @@ func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: flo
 	match layer:
 		Layer.ELEVATION:
 			var t := 0.0
+			# (pixels of kilometres: the colour is the mean of the pixel and its east and north ones)
+			var shown := ground
+			if _pixel_metres > CALM_PIXEL and ground >= 0.0:
+				shown = maxf(ground + (rise_east + rise_north) * 0.25, 0.0)
 			if ground < 0.0:
 				t = lerpf(0.33, 0.0, clampf(-ground / (relief * 0.35), 0.0, 1.0))
 			else:
-				t = lerpf(0.36, 1.0, clampf(ground / relief, 0.0, 1.0))
+				t = lerpf(0.36, 1.0, clampf(shown / relief, 0.0, 1.0))
 			color = ramp(Layer.ELEVATION, t)
 			# contour lines every 5% of the relief on the land
-			if ground >= 0.0:
+			if ground >= 0.0 and _pixel_metres <= CALM_PIXEL: # (at kilometres a pixel they are only grain)
 				var interval := relief * 0.05
 				var band := floorf(ground / interval)
 				var crosses_east := band != floorf((ground + rise_east) / interval)

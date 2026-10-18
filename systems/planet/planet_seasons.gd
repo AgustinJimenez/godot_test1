@@ -37,7 +37,7 @@ var mean := PackedFloat32Array() ## degrees C at sea level, averaged over the ye
 var _cycle: Array[PackedFloat32Array] = [] # SNAPSHOTS grids of degrees C at sea level
 var wind_k := 3.0 ## the planet's wind profile: -cos(wind_k * latitude) (PlanetClimate.circulation)
 var wind := WIND ## the lab sets 0 to see the climate without the wind
-var native_year := true ## false: the year is run by the script below (to compare with the native one)
+var native_year := true ## false: the year is run by the script below (to compare with native)
 var _sea := PackedByteArray() # 1 where the cell is sea
 
 

@@ -77,7 +77,9 @@ func build(noise: PlanetNoise) -> void:
 ## over the sea and dropping it over land (more where the ground rises).
 func _advect_row(row: int, elevation: PackedFloat32Array, ocean: PackedByteArray) -> void:
 	var lat := absf((0.5 - (float(row) + 0.5) / float(HEIGHT)) * 180.0)
-	var wind := 1 if (lat > circulation["wind_low"] and lat < circulation["wind_high"]) else -1 # westerlies / trades and polar easterlies
+	# westerlies between the wind edges, trades and polar easterlies outside them
+	var in_westerlies: bool = lat > circulation["wind_low"] and lat < circulation["wind_high"]
+	var wind := 1 if in_westerlies else -1
 	var itcz: float = circulation["itcz_power"] * exp(-pow((lat - circulation["itcz_lat"])
 			/ circulation["itcz_width"], 2.0)) # the rain belt of the tropics
 	var storms: float = circulation["storm_power"] * exp(

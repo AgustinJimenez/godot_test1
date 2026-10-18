@@ -23,7 +23,7 @@ the slope of the coarser ones, so valleys branch). Inland basins below the sea a
 4. **Lakes.** (2026-10-18: the drainage's lake cells now pass their water level to the native crust: the ground sinks under it with a soft shore and the Terrain map paints the water; only on the 512-cell grid, so lakes are big ones; the water layer is still off.) Inland basins are bowls, not lakes. Lakes should sit where the drainage ends in a closed basin
    (it already finds them: `lakes=581` in DRAINAGE_CHECK) with a flat surface and an outlet river.
 5. **Deltas, estuaries, fjords, canyons, karst, dunes and volcanoes** are all missing (see 057, 067).
-6. **Sea floor.** Plate boundaries show as parallel double lines; real ones have trenches, ridges with
+6. **Sea floor.** (2026-10-18: island arcs are broken into chains with gaps and the mid-ocean ridge is offset in steps like transform faults; trenches stay. Still missing: abyssal plains, seamount chains, fracture zones.) Plate boundaries show as parallel double lines; real ones have trenches, ridges with
    transform faults, abyssal plains, seamount chains and island arcs.
 
 ## Climate and weather

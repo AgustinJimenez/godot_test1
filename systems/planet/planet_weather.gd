@@ -25,8 +25,8 @@ var _noise: PlanetNoise
 var _big_a := FastNoiseLite.new() # the weather systems (a few thousand km across on an Earth)
 var _big_b := FastNoiseLite.new() # a second pattern the first one changes into and back
 var _small := FastNoiseLite.new() # the clumps inside them
-## This planet's own weather: how far its belts sit from the usual latitudes, how strong each is, and
-## how much longitude breaks them (all from the seed, so no two planets share one band of cloud)
+## This planet's own weather: how far its belts sit from the usual latitudes, how strong each is,
+## and how much longitude breaks them (all from the seed: no two planets share one band of cloud)
 var _belt_shift := 0.0 ## radians the equatorial belt sits off the equator
 var _belt_power := 1.0
 var _storm_shift := 0.0 ## radians the storm tracks sit from their usual latitude

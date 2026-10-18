@@ -8,7 +8,7 @@ const SHADER := """
 shader_type spatial;
 render_mode unshaded;
 uniform sampler2D chart : source_color, filter_linear, repeat_disable;
-uniform sampler2D detail : source_color, filter_linear, repeat_disable; // the sharp chart of a part of the map
+uniform sampler2D detail : source_color, filter_linear, repeat_disable; // sharp chart of a part
 uniform vec4 detail_rect = vec4(0.0); // its x, y, width, height as fractions of the map (0: none)
 uniform vec3 rim_colour = vec3(0.45, 0.65, 1.0);
 uniform vec3 sun = vec3(0.0, 0.0, 1.0); // toward the star, on the ball
@@ -42,8 +42,8 @@ void fragment() {
 const ZOOM_SPAN := 0.6 ## how much of the way round the sky the view takes at zoom 1 (x PI)
 const FOV := 40.0
 
-## the globe was turned (its centre as a unit direction of the planet); the wheel or a pinch asks for a
-## zoom by this factor (more than 1: closer), as on the flat map
+## the globe was turned (its centre as a unit direction of the planet); the wheel or a pinch asks
+## for a zoom by this factor (more than 1: closer), as on the flat map
 signal moved(dir: Vector3)
 signal zoomed(factor: float)
 
@@ -127,8 +127,8 @@ func set_detail(texture: Texture2D, rect: Rect2) -> void:
 			Vector4(rect.position.x, rect.position.y, rect.size.x, rect.size.y))
 
 
-## The map's zoom (1: the whole planet) as the camera's distance: the view takes the same part of the
-## planet as the flat map's.
+## The map's zoom (1: the whole planet) as the camera's distance: the view takes the same part of
+## the planet as the flat map's.
 func set_zoom(zoom: float) -> void:
 	var span := PI * ZOOM_SPAN / maxf(zoom, 1.0)
 	_distance = 1.0 + span / (2.0 * tan(deg_to_rad(FOV) * 0.5))

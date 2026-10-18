@@ -226,7 +226,8 @@ func _pick_the_weather() -> void:
 	# the wind blows along the parallel: east or west by the latitude, as the clouds are carried
 	var lat := asin(clampf(here.y, -1.0, 1.0))
 	var east := Vector3(-here.z, 0.0, here.x).normalized()
-	var wind := frame.rot * (east * -PlanetWeather.zonal_wind(lat, noise.weather.wind_k())) # toward where it blows from
+	var blowing := -PlanetWeather.zonal_wind(lat, noise.weather.wind_k())
+	var wind := frame.rot * (east * blowing) # toward where it blows from
 	weather.forced_wind = Vector2(-wind.x, -wind.z) if wind.length() > 0.01 else Vector2.ZERO
 
 

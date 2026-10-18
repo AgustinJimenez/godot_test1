@@ -69,8 +69,8 @@ func river_threshold(share: float) -> float:
 ## the sides the valley allows, so the valleys are lines that follow the flow.
 func network() -> Dictionary:
 	var river := river_threshold(0.06)
-	var made: Dictionary = _native.call(&"river_network", heights, filled, flow, receiver, river, 0.006,
-			10, 0.06, uplift)
+	var made: Dictionary = _native.call(&"river_network", heights, filled, flow, receiver, river,
+			0.006, 10, 0.06, uplift)
 	var levels := PackedFloat32Array() # the water level of every lake cell (-1e9: no lake)
 	levels.resize(lake.size())
 	for id in lake.size():

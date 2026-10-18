@@ -192,9 +192,14 @@ func _boundary(a: int, b: int, q: Vector3, edge: float) -> float:
 		var down_scaled := (inland + 0.03) / 0.035
 		var trench := 0.30 * exp(-down_scaled * down_scaled)
 		return together * (range_up - trench)
+	# along a boundary the slow noise breaks the island arc into chains with gaps, and shifts the
+	# mid-ocean ridge sideways in steps (the transform faults), so they are not one long clean line
+	var along := _interior.get_noise_3d(q.x * 1.9, q.y * 1.9, q.z * 1.9)
+	var steps := _interior.get_noise_3d(q.x * 1.9 + 7.0, q.y * 1.9 + 3.0, q.z * 1.9 + 1.0)
 	var arc_scaled := (edge - 0.03) / 0.03
-	var arc := 0.30 * together * exp(-arc_scaled * arc_scaled) # an island arc
-	var ridge_scaled := edge / 0.12
+	var chain := smoothstep(-0.3, 0.25, along)
+	var arc := 0.30 * together * chain * exp(-arc_scaled * arc_scaled) # an island arc
+	var ridge_scaled := (edge - 0.04 * clampf(steps * 3.0, -1.0, 1.0)) / 0.09
 	arc += 0.22 * apart * exp(-ridge_scaled * ridge_scaled) # a mid-ocean ridge
 	return arc - 0.22 * together * near # and the trench beside it
 
