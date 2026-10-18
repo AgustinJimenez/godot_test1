@@ -356,7 +356,9 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 	const double cold_here = sea_temperature(p_point / (real_t)radius) - 0.0065 * (raised > 0.0 ? raised : 0.0);
 	const double glacial = smooth(-2.0, -8.0, cold_here);
 	double cut = valley_cut(p_point, p_units, glacial);
-	double limit = (shore_height > 0.0 ? shore_height : 0.0) * 0.8;
+	// a fjord: where a glaciated valley reaches the coast it may cut below the sea
+	const double coastal = smooth(0.12, 0.02, p_units);
+	double limit = (shore_height > 0.0 ? shore_height : 0.0) * 0.8 + glacial * coastal * relief * 0.12;
 	double result = raised - (cut < limit ? cut : limit);
 	if (result > 0.0) { // the land's heights follow a hypsometric curve (PlanetNoise.HYPSO)
 		const double pivot = relief * 0.5;
@@ -364,7 +366,7 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 	}
 	if (p_units > 0.0) { // inland ground does not dip below the sea (no puddles: lakes come from the drainage)
 		// a basin below the sea becomes a shallow bowl (8 m falling off smoothly, never below 0)
-		const double inland = smooth(0.0, 0.1, p_units);
+		const double inland = smooth(0.0, 0.1, p_units) * (1.0 - glacial * coastal); // (fjords stay below the sea)
 		if (result < 8.0) {
 			const double bowl = 8.0 * std::exp((result - 8.0) / 60.0);
 			result = result + (bowl - result) * inland;
@@ -416,7 +418,8 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 	ground += (steps * layer - ground) * mixed;
 	if (units > 0.0 && ground < 8.0) { // the hills and gullies must not dip an inland basin below the sea either
 		const double bowl = 8.0 * std::exp((ground - 8.0) / 60.0);
-		ground += (bowl - ground) * smooth(0.0, 0.1, units);
+		const double ice = smooth(-2.0, -8.0, sea_temperature(p_dir) - 0.0065 * (ground > 0.0 ? ground : 0.0));
+		ground += (bowl - ground) * smooth(0.0, 0.1, units) * (1.0 - ice * smooth(0.12, 0.02, units));
 	}
 	// dunes: low sand ridges on the flat, hot, dry ground (native only, like the eroded ridges)
 	if (erosion_scale > 0.0 && ground > 3.0 && units > 0.05 && ground < relief * 0.2) {

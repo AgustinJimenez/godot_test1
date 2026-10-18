@@ -297,7 +297,11 @@ func base_height(x: float, y: float, z: float) -> float:
 	var steps := floorf(ground / layer) + smoothstep(0.15, 0.85, fposmod(ground / layer, 1.0))
 	ground = lerpf(ground, steps * layer, smoothstep(0.3, 0.6, units) * 0.35)
 	if units > 0.0 and ground < 8.0: # the hills and gullies must not dip an inland basin below the sea
-		ground += (8.0 * exp((ground - 8.0) / 60.0) - ground) * smoothstep(0.0, 0.1, units)
+		var ice := smoothstep(-2.0, -8.0, climate.sea_temperature(p / settings.radius)
+				- 0.0065 * maxf(ground, 0.0))
+		var bowl := 8.0 * exp((ground - 8.0) / 60.0)
+		var keep := 1.0 - ice * smoothstep(0.12, 0.02, units) # (fjords stay below the sea)
+		ground += (bowl - ground) * smoothstep(0.0, 0.1, units) * keep
 	return ground
 
 
@@ -345,13 +349,16 @@ func _macro(units: float, p: Vector3) -> float:
 	# where it is cold enough for permanent ice the valleys are glaciated (see _valley_cut)
 	var cold := climate.sea_temperature(p / settings.radius) - 0.0065 * maxf(raised, 0.0)
 	var glacial := smoothstep(-2.0, -8.0, cold)
-	var result := raised - minf(_valley_cut(p, units, glacial), maxf(shore, 0.0) * 0.8)
+	# a fjord: where a glaciated valley reaches the coast it may cut below the sea
+	var coastal := smoothstep(0.12, 0.02, units)
+	var allowed := maxf(shore, 0.0) * 0.8 + glacial * coastal * relief * 0.12
+	var result := raised - minf(_valley_cut(p, units, glacial), allowed)
 	if result > 0.0: # the land's heights follow a hypsometric curve: most of it low, the peaks kept
 		var pivot := relief * HYPSO_PIVOT
 		result = pivot * pow(result / pivot, HYPSO)
 	if units > 0.0 and result < 8.0: # a basin below the sea is a shallow bowl (no puddles inland)
 		var bowl := 8.0 * exp((result - 8.0) / 60.0)
-		result += (bowl - result) * smoothstep(0.0, 0.1, units)
+		result += (bowl - result) * smoothstep(0.0, 0.1, units) * (1.0 - glacial * coastal)
 	return result
 
 
