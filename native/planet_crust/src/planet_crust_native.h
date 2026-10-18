@@ -94,6 +94,11 @@ public:
 	PackedVector3Array river_waters(const PackedVector3Array &p_dirs) const;
 	void set_rivers(int p_cells, const Dictionary &p_network, double p_cell_metres);
 	PackedFloat32Array heights(const PackedVector3Array &p_dirs) const;
+	// One row of the map's Terrain layer as RGB bytes (the sea by depth, the land's rock shaded by the
+	// light from the north west): the heights of the points, of the points a pixel east and a pixel north
+	// of them, and the angle one pixel spans.
+	PackedByteArray terrain_row(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
+			const PackedFloat32Array &p_east, const PackedFloat32Array &p_north, double p_step_lon) const;
 	PackedColorArray colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedFloat32Array &p_steeps) const;
 	PackedFloat32Array tectonic_heights(const PackedVector3Array &p_dirs) const;

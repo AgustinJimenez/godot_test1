@@ -129,17 +129,24 @@ func _chart(worker: int) -> void:
 	var from_row := worker * size.y / workers
 	var to_row := (worker + 1) * size.y / workers
 	var bytes := PackedByteArray()
-	bytes.resize((to_row - from_row) * size.x * 3)
+	# the Terrain layer's rows come ready from the native crust (rows are then added one by one)
+	var native_rows := layer == Layer.TERRAIN and _noise.native != null and _noise.hydrology == null
+	if not native_rows:
+		bytes.resize((to_row - from_row) * size.x * 3)
 	var at := 0
 	var step_lon := rect.size.x * TAU / float(size.x)
 	var step_lat := rect.size.y * PI / float(size.y)
 	var needs_slope := layer in [Layer.TERRAIN, Layer.ELEVATION, Layer.BIOME, Layer.SLOPE]
+	var above := PackedFloat32Array() # the heights of the row before (the point a pixel north)
 	for row in range(from_row, to_row):
 		if _cancelled:
+			if native_rows:
+				bytes.resize(bytes.size() + size.x * 3)
 			at += size.x * 3
 			_mutex.lock()
 			_rows_done += 1
 			_mutex.unlock()
+			above = PackedFloat32Array() # the next row is not beside this one
 			continue
 		var v := rect.position.y + (float(row) + 0.5) / float(size.y) * rect.size.y
 		var lat := (0.5 - v) * PI
@@ -152,19 +159,35 @@ func _chart(worker: int) -> void:
 		for column in size.x:
 			var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
 			dirs[column] = _direction(lat, u * TAU - PI)
-		if needs_slope:
-			east_dirs.resize(size.x)
-			north_dirs.resize(size.x)
-			for column in size.x:
-				var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
-				east_dirs[column] = _direction(lat, u * TAU - PI + step_lon)
-				north_dirs[column] = _direction(lat + step_lat, u * TAU - PI)
 		var grounds := _noise.heights_of(dirs)
-		var east_grounds := _noise.heights_of(east_dirs) if needs_slope else grounds
-		var north_grounds := _noise.heights_of(north_dirs) if needs_slope else grounds
+		var east_grounds := grounds
+		var north_grounds := grounds
+		if needs_slope:
+			# the point a pixel east is the next pixel of the row, the one a pixel north is the same
+			# pixel of the row before (kept from the last turn): only the row's last pixel and the
+			# first row of a thread need points of their own
+			var u_end := rect.end.x + 0.5 / float(size.x) * rect.size.x
+			var last_east := PackedVector3Array([_direction(lat, u_end * TAU - PI)])
+			east_grounds = grounds.slice(1)
+			east_grounds.append_array(_noise.heights_of(last_east))
+			if above.is_empty():
+				north_dirs.resize(size.x)
+				for column in size.x:
+					var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
+					north_dirs[column] = _direction(lat + step_lat, u * TAU - PI)
+				above = _noise.heights_of(north_dirs)
+			north_grounds = above
+			above = grounds
 		var macros := grounds
 		if layer in [Layer.TEMPERATURE, Layer.CLOUDS, Layer.CLOUD_MASK]:
 			macros = _noise.macro_heights_of(dirs)
+		if native_rows:
+			bytes.append_array(_noise.native.call(&"terrain_row", dirs, grounds, east_grounds,
+					north_grounds, step_lon))
+			_mutex.lock()
+			_rows_done += 1
+			_mutex.unlock()
+			continue
 		var bases := PackedColorArray()
 		if layer == Layer.CLOUDS:
 			var flat := PackedFloat32Array()

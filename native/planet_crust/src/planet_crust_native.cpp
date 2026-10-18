@@ -43,6 +43,8 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("river_waters", "dirs"), &PlanetCrustNative::river_waters);
 	ClassDB::bind_method(D_METHOD("set_rivers", "cells", "network", "cell_metres"), &PlanetCrustNative::set_rivers);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
+	ClassDB::bind_method(D_METHOD("terrain_row", "dirs", "grounds", "east", "north", "step_lon"),
+			&PlanetCrustNative::terrain_row);
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
 	ClassDB::bind_method(D_METHOD("tectonic_heights", "dirs"), &PlanetCrustNative::tectonic_heights);
 	ClassDB::bind_method(D_METHOD("macro_heights", "dirs"), &PlanetCrustNative::macro_heights);
@@ -425,6 +427,37 @@ PackedFloat32Array PlanetCrustNative::tectonic_heights(const PackedVector3Array 
 		result[index] = (float)tectonic_height(p_dirs[index]);
 	}
 	return result;
+}
+
+PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
+		const PackedFloat32Array &p_east, const PackedFloat32Array &p_north, double p_step_lon) const {
+	PackedByteArray out;
+	out.resize(p_dirs.size() * 3);
+	uint8_t *bytes = out.ptrw();
+	for (int index = 0; index < p_dirs.size(); index++) {
+		const double ground = p_grounds[index];
+		double r, g, b;
+		if (ground < 0.0) {
+			const double depth = std::sqrt(clampd(-ground / (relief * 0.35), 0.0, 1.0));
+			r = 0.32 + (0.03 - 0.32) * depth;
+			g = 0.62 + (0.12 - 0.62) * depth;
+			b = 0.78 + (0.33 - 0.78) * depth;
+		} else {
+			const double rise_east = (double)p_east[index] - ground;
+			const double rise_north = (double)p_north[index] - ground;
+			const double slope = clampd(std::sqrt(rise_east * rise_east + rise_north * rise_north) / (p_step_lon * radius), 0.0, 1.0);
+			const Vector3 p = p_dirs[index] * (real_t)radius;
+			const Color rock = rock_colour(p_dirs[index], ground, slope, (double)detail.at(p) * 0.5 + 0.5);
+			const double shade = clampd(1.0 - (rise_east - rise_north) * 6.0 * 0.0098 / p_step_lon / relief, 0.55, 1.35);
+			r = rock.r * shade;
+			g = rock.g * shade;
+			b = rock.b * shade;
+		}
+		bytes[index * 3] = (uint8_t)clampd((double)(int)(clampd(r, 0.0, 1.0) * 255.0), 0.0, 255.0);
+		bytes[index * 3 + 1] = (uint8_t)clampd((double)(int)(clampd(g, 0.0, 1.0) * 255.0), 0.0, 255.0);
+		bytes[index * 3 + 2] = (uint8_t)clampd((double)(int)(clampd(b, 0.0, 1.0) * 255.0), 0.0, 255.0);
+	}
+	return out;
 }
 
 PackedColorArray PlanetCrustNative::colours(const PackedVector3Array &p_dirs,
