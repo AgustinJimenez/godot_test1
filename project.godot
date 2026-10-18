@@ -190,6 +190,10 @@ anchor_up={
 "type": "vec3",
 "value": Vector3(0, 1, 0)
 }
+ground_detail={
+"type": "float",
+"value": 1.0
+}
 anchor_phase={
 "type": "float",
 "value": 0.0

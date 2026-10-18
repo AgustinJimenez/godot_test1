@@ -14,6 +14,7 @@ global uniform float snow_cover;
 global uniform float rain_fall;
 global uniform float autumn;
 global uniform float realism;
+global uniform float ground_detail; // 0 plain .. 3 finest (GraphicsSettings: Low 1, Medium 1, High 2, Ultra 3)
 global uniform mat4 planet_from_world;
 global uniform mat4 world_from_planet;
 // the detail noise is read near the player, where numbers stay small (a float cannot hold a planet's
@@ -116,7 +117,12 @@ void fragment() {
 	float up = (INV_VIEW_MATRIX * vec4(flat_normal, 0.0)).y;
 	float rough = 0.95;
 	float near = 1.0 - smoothstep(detail_range, detail_range * 2.0, length(VERTEX));
-	float strength = detail_strength * near;
+	float level = ground_detail;
+	float reach = 1.0 + 0.4 * step(2.5, level);
+	near = 1.0 - smoothstep(detail_range * reach, detail_range * reach * 2.0, length(VERTEX));
+	float strength = detail_strength * near * step(0.5, level);
+	float ao = 1.0;
+	float sparkle = 0.0;
 	if (strength > 0.001) {
 		vec3 near_anchor = (anchor_from_world * vec4(world_pos, 1.0)).xyz;
 		vec3 on_planet = near_anchor + anchor_wrap; // the planet position, to the noise's period
@@ -146,6 +152,40 @@ void fragment() {
 		vec3 bumpy = normalize(NORMAL + (VIEW_MATRIX * vec4(bump_world, 0.0)).xyz);
 		view_normal = normalize(mix(view_normal, bumpy, strength));
 		rough = mix(0.95, 0.88 - patch * 0.1, strength);
+		if (level > 1.5) {
+			// the finer ground (High and up): a bump a hand wide, crevices that are darker, ripples
+			// in the sand, glints in the snow; all fade out within a few tens of metres
+			float fine = 1.0 - smoothstep(28.0, 60.0, length(VERTEX));
+			float micro_here = fbm3(on_planet * 14.0625, 14400.0);
+			float mx = fbm3((on_planet + vec3(0.04, 0.0, 0.0)) * 14.0625, 14400.0) - micro_here;
+			float my = fbm3((on_planet + vec3(0.0, 0.04, 0.0)) * 14.0625, 14400.0) - micro_here;
+			float mz = fbm3((on_planet + vec3(0.0, 0.0, 0.04)) * 14.0625, 14400.0) - micro_here;
+			vec3 micro_planet = -vec3(mx, my, mz) * (1.4 + slope * 3.0) * fine * strength;
+			vec3 micro_world = (world_from_planet * vec4(micro_planet, 0.0)).xyz;
+			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(micro_world, 0.0)).xyz);
+			// crevices and the hollows between stones are darker (the low parts of the bump)
+			ao = mix(1.0, mix(0.7, 1.0, smoothstep(0.25, 0.7, here)), strength * (0.5 + slope));
+			// sand: the wind lays ripples, a few centimetres high, a few metres apart
+			float sandy = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(0.0, 0.05, paint.g - paint.r + 0.02))
+					* smoothstep(0.7, 0.95, world_normal.y);
+			float ripple_phase = (on_planet.x + on_planet.z * 0.6) * 6.283185 * 300.0 / 1024.0 + patch * 5.0;
+			float ripples = sin(ripple_phase) * 0.5 + 0.5;
+			vec3 across = (VIEW_MATRIX * vec4(0.7, 0.0, 0.42, 0.0)).xyz;
+			view_normal = normalize(view_normal + across * (ripples - 0.5) * 0.35 * sandy * fine);
+			paint *= mix(1.0, mix(0.94, 1.05, ripples), sandy * fine);
+			// glints: the snow has crystals that catch the sun
+			sparkle = step(0.985, hash3(floor(on_planet * 90.0))) * fine;
+		}
+		if (level > 2.5) {
+			// the finest (Ultra): a second, finer bump
+			float fine2 = 1.0 - smoothstep(10.0, 24.0, length(VERTEX));
+			float f_here = fbm3(on_planet * 31.25, 32000.0);
+			float fx = fbm3((on_planet + vec3(0.02, 0.0, 0.0)) * 31.25, 32000.0) - f_here;
+			float fz = fbm3((on_planet + vec3(0.0, 0.0, 0.02)) * 31.25, 32000.0) - f_here;
+			vec3 f_planet = -vec3(fx, 0.0, fz) * 2.2 * fine2 * strength;
+			vec3 f_world = (world_from_planet * vec4(f_planet, 0.0)).xyz;
+			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(f_world, 0.0)).xyz);
+		}
 	}
 	// snow settles unevenly: more on level ground, thinner and broken at the edges and on slopes
 	float broken = smooth_noise(world_pos.xz * 0.9) * 0.6 + smooth_noise(world_pos.xz * 4.1) * 0.4;
@@ -166,5 +206,8 @@ void fragment() {
 	NORMAL = mix(view_normal, normalize(mix(view_normal, normalize(NORMAL), 0.8)), puddle);
 	ALBEDO = col;
 	ROUGHNESS = mix(mix(mix(rough, 0.35, ground_wetness), 0.04, puddle), 0.7, snow);
+	ROUGHNESS = mix(ROUGHNESS, 0.18, snow * sparkle);
+	AO = ao;
+	AO_LIGHT_AFFECT = 0.5;
 	SPECULAR = mix(0.3, 0.7, max(ground_wetness, puddle));
 }

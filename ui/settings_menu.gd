@@ -96,6 +96,8 @@ func _add_look_controls() -> void:
 	var next := at + 5
 	next = _look_option(parent, next, &"upscaler", "Upscaler (below 100% scale)",
 			GraphicsLook.UPSCALER_NAMES)
+	next = _look_option(parent, next, &"ground_detail", "Ground detail",
+			PackedStringArray(["Plain", "Normal", "Fine", "Finest"]))
 	next = _look_option(parent, next, &"colour_grade", "Colour grade", GraphicsLook.GRADE_NAMES)
 	next = _look_option(parent, next, &"reflections", "Reflections (SSR)",
 			GraphicsLook.REFLECTION_NAMES)

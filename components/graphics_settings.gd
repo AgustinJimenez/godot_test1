@@ -15,6 +15,7 @@ const QUALITY_KEYS: Array[StringName] = [
 	&"render_scale", &"anti_aliasing", &"shadow_quality",
 	&"ssao", &"ssil", &"glow", &"cloud_quality",
 	&"upscaler", &"debanding", &"colour_grade", &"auto_exposure", &"reflections", &"volumetric_fog",
+	&"ground_detail",
 ]
 const DEFAULT_VALUES: Dictionary = {
 	&"render_scale": 1.0,
@@ -30,6 +31,7 @@ const DEFAULT_VALUES: Dictionary = {
 	&"auto_exposure": false,
 	&"reflections": 0, # 0 off, 1 low, 2 high (screen space)
 	&"volumetric_fog": false, # light shafts near the ground
+	&"ground_detail": 1, # 0 plain, 1 the noise detail, 2 + fine bump, ripples, glints, 3 + finest
 	&"vsync": true,
 	&"max_fps": 120,
 	&"tone_mapper": Environment.TONE_MAPPER_FILMIC,
@@ -42,7 +44,7 @@ const PRESETS: Dictionary = {
 		&"shadow_quality": ShadowQuality.OFF,
 		&"ssao": false, &"ssil": false, &"glow": false, &"cloud_quality": 0,
 		&"upscaler": 0, &"debanding": false, &"colour_grade": 0, &"auto_exposure": false,
-		&"reflections": 0, &"volumetric_fog": false,
+		&"reflections": 0, &"volumetric_fog": false, &"ground_detail": 1,
 	},
 	Preset.MEDIUM: {
 		&"render_scale": 0.8,
@@ -50,7 +52,7 @@ const PRESETS: Dictionary = {
 		&"shadow_quality": ShadowQuality.LOW,
 		&"ssao": false, &"ssil": false, &"glow": false, &"cloud_quality": 1,
 		&"upscaler": 2, &"debanding": true, &"colour_grade": 1, &"auto_exposure": true,
-		&"reflections": 0, &"volumetric_fog": false,
+		&"reflections": 0, &"volumetric_fog": false, &"ground_detail": 1,
 	},
 	Preset.HIGH: {
 		&"render_scale": 1.0,
@@ -58,7 +60,7 @@ const PRESETS: Dictionary = {
 		&"shadow_quality": ShadowQuality.MEDIUM,
 		&"ssao": true, &"ssil": false, &"glow": true, &"cloud_quality": 2,
 		&"upscaler": 2, &"debanding": true, &"colour_grade": 1, &"auto_exposure": true,
-		&"reflections": 0, &"volumetric_fog": true,
+		&"reflections": 0, &"volumetric_fog": true, &"ground_detail": 2,
 	},
 	Preset.ULTRA: {
 		&"render_scale": 1.15,
@@ -66,7 +68,7 @@ const PRESETS: Dictionary = {
 		&"shadow_quality": ShadowQuality.HIGH,
 		&"ssao": true, &"ssil": true, &"glow": true, &"cloud_quality": 2,
 		&"upscaler": 2, &"debanding": true, &"colour_grade": 1, &"auto_exposure": true,
-		&"reflections": 2, &"volumetric_fog": true,
+		&"reflections": 2, &"volumetric_fog": true, &"ground_detail": 3,
 	},
 }
 
@@ -141,6 +143,7 @@ func apply() -> void:
 	viewport.scaling_3d_scale = float(_values[&"render_scale"])
 	_apply_anti_aliasing(viewport, int(_values[&"anti_aliasing"]))
 	GraphicsLook.apply_viewport(viewport, _values)
+	RenderingServer.global_shader_parameter_set(&"ground_detail", float(_values[&"ground_detail"]))
 	Engine.max_fps = int(_values[&"max_fps"])
 	var supported := DisplayServer.window_is_hdr_output_supported()
 	get_tree().root.hdr_output_requested = bool(_values[&"hdr"]) and supported
@@ -234,6 +237,8 @@ func _sanitize_value(key: StringName, value: Variant) -> Variant:
 			clean = clampi(int(value), 0, 2)
 		&"upscaler", &"reflections":
 			clean = clampi(int(value), 0, 2)
+		&"ground_detail":
+			clean = clampi(int(value), 0, 3)
 		&"colour_grade":
 			clean = clampi(int(value), 0, GraphicsLook.GRADE_NAMES.size() - 1)
 		&"tone_mapper":
