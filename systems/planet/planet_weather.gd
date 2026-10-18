@@ -25,6 +25,14 @@ var _noise: PlanetNoise
 var _big_a := FastNoiseLite.new() # the weather systems (a few thousand km across on an Earth)
 var _big_b := FastNoiseLite.new() # a second pattern the first one changes into and back
 var _small := FastNoiseLite.new() # the clumps inside them
+## This planet's own weather: how far its belts sit from the usual latitudes, how strong each is, and
+## how much longitude breaks them (all from the seed, so no two planets share one band of cloud)
+var _belt_shift := 0.0 ## radians the equatorial belt sits off the equator
+var _belt_power := 1.0
+var _storm_shift := 0.0 ## radians the storm tracks sit from their usual latitude
+var _storm_power := 1.0
+var _sink_power := 1.0 ## the dry subtropical highs
+var _pool_break := 1.0 ## 0 the belt is even, 1 strongly broken by the pools
 var _pool := FastNoiseLite.new() # warm pools and cold tongues: the belts vary round the planet
 var _warp := FastNoiseLite.new() # bends the systems into swirls and filaments
 
@@ -36,7 +44,15 @@ func _init(noise: PlanetNoise) -> void:
 	_setup(_big_b, seed_value + 32, 1.7, 3)
 	_setup(_small, seed_value + 33, 6.5, 3)
 	_setup(_warp, seed_value + 34, 2.4, 3)
-	_setup(_pool, seed_value + 35, 1.1, 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value + 36
+	_belt_shift = rng.randf_range(-0.26, 0.26)
+	_belt_power = rng.randf_range(0.08, 0.95)
+	_storm_shift = rng.randf_range(-0.12, 0.12)
+	_storm_power = rng.randf_range(0.5, 1.3)
+	_sink_power = rng.randf_range(0.7, 1.2)
+	_pool_break = rng.randf_range(0.5, 1.4)
+	_setup(_pool, seed_value + 35, rng.randf_range(0.8, 1.9), 2)
 
 
 func _setup(source: FastNoiseLite, noise_seed: int, frequency: float, octaves: int) -> void:
@@ -64,16 +80,18 @@ func readiness(dir: Vector3, clock: PlanetClock, macro := NAN) -> float:
 	# the belt where the trade winds meet follows the sun, but not all the way
 	# (the belt is broken up by longitude: strong over the warm pools, weak over the cold tongues)
 	var pools := 0.5 + 0.5 * _pool.get_noise_3d(dir.x, dir.y, dir.z)
-	var pools_factor := lerpf(0.35, 1.4, smoothstep(0.2, 0.8, pools))
-	var trade_belt := 0.75 * pools_factor * exp(-pow((lat - 0.4 * declination) / 0.17, 2.0))
+	var pools_factor := lerpf(1.0 - 0.65 * _pool_break, 1.0 + 0.4 * _pool_break,
+			smoothstep(0.2, 0.8, pools))
+	var trade_belt := 0.75 * _belt_power * pools_factor \
+			* exp(-pow((lat - 0.4 * declination - _belt_shift) / 0.17, 2.0))
 	# the storm tracks of the middle latitudes, a little poleward in the summer
 	# the storm tracks lean: they run poleward toward the east, and wander with longitude
 	var lean := 0.12 * sin(atan2(dir.z, dir.x) * 2.0 + _pool.get_noise_3d(dir.x, dir.y, dir.z) * 3.0)
-	var storm_lat := south * (0.87 + lean) + 0.3 * declination
-	var storms := 0.55 * exp(-pow((lat - storm_lat) / 0.2, 2.0))
+	var storm_lat := south * (0.87 + lean + _storm_shift) + 0.3 * declination
+	var storms := 0.55 * _storm_power * exp(-pow((lat - storm_lat) / 0.2, 2.0))
 	# the subtropical highs, where the air sinks
 	var high_lat := south * 0.48 + 0.3 * declination
-	var sinking := exp(-pow((lat - high_lat) / 0.15, 2.0))
+	var sinking := _sink_power * exp(-pow((lat - high_lat) / 0.15, 2.0))
 	var wet := clampf(_noise.climate.sample(dir).y / 1.2, 0.0, 1.0)
 	# moisture alone makes some cloud; the trade winds' belt lifts the moist air; the storm tracks lift
 	# whatever air they find (a front is a front even over dry ground)
@@ -81,6 +99,8 @@ func readiness(dir: Vector3, clock: PlanetClock, macro := NAN) -> float:
 	ready += 0.9 * storms * (0.5 + 0.5 * moisture) + 0.2 * wet * moisture
 	ready += 0.25 * smoothstep(0.9, 1.4, absf(lat)) # the cloud decks of the polar regions
 	ready += _monsoon(dir, clock, wet, macro)
+	# warm pools and cold tongues change the whole cloudiness, whatever made it (seed by seed)
+	ready *= lerpf(1.0 - 0.4 * _pool_break, 1.0 + 0.3 * _pool_break, smoothstep(0.25, 0.75, pools))
 	return clampf(ready * (1.0 - 0.65 * sinking), 0.0, 1.0)
 
 
