@@ -106,6 +106,17 @@ func _init(planet_settings: PlanetSettings) -> void:
 	_lap("drainage")
 
 
+## Fixed hot spots in the mantle (unit directions, from the seed): as a plate drifts over one, a
+## chain of volcanoes is left on it (the native crust draws the seamounts and the islands).
+func _hotspots() -> PackedVector3Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = settings.world_seed + 61
+	var spots := PackedVector3Array()
+	for index in 9:
+		spots.append(Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized())
+	return spots
+
+
 ## Hands the crust's numbers to the native class, when its library is there (native/planet_crust,
 ## see its README). The GDScript below stays the reference: `PLANET_NO_NATIVE=1` turns this off and
 ## `planet_lab --native-check` compares the two.
@@ -135,6 +146,7 @@ func _make_native() -> void:
 		"massif_scale": MASSIF, "chain_scale": CHAINS, "foothill_scale": FOOTHILLS,
 		"erosion": 0.0 if OS.has_environment("PLANET_NO_EROSION") else EROSION,
 		"erosion_seed": settings.world_seed + 41, "erosion_octaves": EROSION_OCTAVES,
+		"hotspots": _hotspots(),
 		"erosion_wavelength": clampf(settings.radius * 0.005, 800.0, 40000.0) * EROSION_SCALE,
 		"valley_width": VALLEY_WIDTH, "valley_depths": depths,
 		"rock_boundary": PlanetRock.BOUNDARY, "rock_colours": PackedColorArray(PlanetRock.COLOURS),

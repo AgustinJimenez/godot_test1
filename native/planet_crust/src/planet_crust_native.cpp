@@ -113,6 +113,7 @@ void PlanetCrustNative::setup(const Dictionary &p_config) {
 	erosion_seed = (uint32_t)(int64_t)p_config.get("erosion_seed", 1);
 	erosion_wavelength = p_config.get("erosion_wavelength", 10000.0);
 	erosion_octaves = (int)(int64_t)p_config.get("erosion_octaves", 5);
+	hotspots = p_config.get("hotspots", PackedVector3Array());
 	valley_width = p_config["valley_width"];
 	PackedFloat32Array depths = p_config["valley_depths"];
 	for (int index = 0; index < 3; index++) {
@@ -309,6 +310,47 @@ Vector3 PlanetCrustNative::coarse_slope(const Vector3 &p_point, double p_rugged,
 	return east * (real_t)dx + north * (real_t)dy;
 }
 
+// The height (m) of the seamounts and islands at a direction on the deep sea floor: the plate there drifts
+// round its spin axis over the fixed hot spots, so each leaves a trail of volcanoes behind it, along the
+// circle round the axis through the hot spot, smaller the older (further along) they are.
+double PlanetCrustNative::seamounts(const Vector3 &p_dir, double p_units) const {
+	if (hotspots.is_empty() || p_units > -0.12) {
+		return 0.0;
+	}
+	int plate = 0;
+	real_t edge = 0;
+	bool is_continental = false;
+	plate_at(p_dir, plate, edge, is_continental);
+	if (is_continental || spins[plate].length_squared() < 1.0e-8f) {
+		return 0.0;
+	}
+	const Vector3 axis = spins[plate].normalized();
+	const Vector3 across = axis.cross(std::abs((double)axis.y) < 0.9 ? Vector3(0, 1, 0) : Vector3(1, 0, 0)).normalized();
+	const Vector3 third = axis.cross(across);
+	const double q_lat = std::asin(clampd((double)p_dir.dot(axis), -1.0, 1.0));
+	const double q_az = std::atan2((double)p_dir.dot(third), (double)p_dir.dot(across));
+	const double pi = 3.14159265358979323846;
+	double best = 0.0;
+	for (int index = 0; index < hotspots.size(); index++) {
+		const Vector3 h = hotspots[index];
+		const double d = q_lat - std::asin(clampd((double)h.dot(axis), -1.0, 1.0));
+		if (std::abs(d) > 0.06) {
+			continue;
+		}
+		double along = q_az - std::atan2((double)h.dot(third), (double)h.dot(across));
+		along = std::fmod(along + 3.0 * pi, 2.0 * pi) - pi; // -pi .. pi
+		const double trail = 0.9;
+		if (along < 0.0 || along > trail) {
+			continue;
+		}
+		const double age = along / trail;
+		const double clump = smooth(0.0, 0.5, (double)interior.at(p_dir * (real_t)9.0) * 0.5 + 0.3);
+		const double bump = std::exp(-(d / 0.018) * (d / 0.018)) * (1.0 - age) * (0.35 + 0.65 * clump);
+		best = bump > best ? bump : best;
+	}
+	return best * relief * 0.55 * smooth(-0.12, -0.2, p_units);
+}
+
 double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, double p_pixel) const {
 	const bool p_broad = p_pixel > 2000.0; // (huge pixels: not even the small hills' first octave)
 	// every layer below is multiplied by a weight that is exactly 0 over the sea (and a little
@@ -351,7 +393,8 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 	}
 	double shore_height = shore_curve(p_units) * relief;
 	const double coast = smooth(0.01, 0.12, p_units); // (the rolling hills fade in inland: a clean shore)
-	double raised = shore_height + rolling_height * coast + ridges + chains + massifs + spurs + eroded;
+	const double mounts = erosion_scale > 0.0 ? seamounts(p_point.normalized(), p_units) : 0.0;
+	double raised = shore_height + rolling_height * coast + ridges + chains + massifs + spurs + eroded + mounts;
 	// where it is cold enough for permanent ice the valleys are glaciated (PlanetNoise._valley_cut)
 	const double cold_here = sea_temperature(p_point / (real_t)radius) - 0.0065 * (raised > 0.0 ? raised : 0.0);
 	const double glacial = smooth(-2.0, -8.0, cold_here);

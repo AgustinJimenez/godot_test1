@@ -58,6 +58,8 @@ private:
 	double sea = 0.0;
 	// the ground's shape
 	double shore = 0.2, shore_flat = 0.16, land_curve = 1.6, deep = 1.6;
+	PackedVector3Array hotspots; // fixed points in the mantle: the seamount chains trail from them
+	double seamounts(const Vector3 &p_dir, double p_units) const;
 	double erosion_scale = 0.0, erosion_wavelength = 10000.0;
 	uint32_t erosion_seed = 1;
 	int erosion_octaves = 5;
