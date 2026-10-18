@@ -10,8 +10,8 @@ enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_T
 
 const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates",
 		"Slope", "Mean temp", "Clouds"]
-## threads a chart is drawn on: every core but one (the main thread), at most 8
-var workers := clampi(OS.get_processor_count() - 1, 2, 8)
+const SMOOTH_PIXEL := 30.0 ## metres a pixel spans above which the map draws the smooth ground
+
 const BIOME_COLORS := {
 	TerrainNoise.Biome.BEACH: Color(0.93, 0.85, 0.55), TerrainNoise.Biome.MEADOW: Color(0.6, 0.8, 0.3),
 	TerrainNoise.Biome.FOREST: Color(0.1, 0.45, 0.15), TerrainNoise.Biome.ROCKY: Color(0.5, 0.5, 0.52),
@@ -19,6 +19,8 @@ const BIOME_COLORS := {
 	TerrainNoise.Biome.DESERT: Color(0.9, 0.6, 0.25),
 }
 
+## threads a chart is drawn on: every core but one (the main thread), at most 8
+var workers := clampi(OS.get_processor_count() - 1, 2, 8)
 var rect := Rect2(0.0, 0.0, 1.0, 1.0)
 var size := Vector2i(320, 160)
 var layer := Layer.TERRAIN
@@ -137,8 +139,9 @@ func _chart(worker: int) -> void:
 	var step_lon := rect.size.x * TAU / float(size.x)
 	var step_lat := rect.size.y * PI / float(size.y)
 	var needs_slope := layer in [Layer.TERRAIN, Layer.ELEVATION, Layer.BIOME, Layer.SLOPE]
-	# a pixel of many kilometres would only alias the hills and gullies: the smooth ground is drawn
-	var smooth_ground := step_lon * _noise.settings.radius > 1500.0
+	# a pixel wider than a few tens of metres would only alias the hills and gullies into grain: the
+	# smooth ground is drawn (shaded like an illustration); closer in, the real ground
+	var smooth_ground := step_lon * _noise.settings.radius > SMOOTH_PIXEL
 	var above := PackedFloat32Array() # the heights of the row before (the point a pixel north)
 	for row in range(from_row, to_row):
 		if _cancelled:
