@@ -51,6 +51,15 @@ extends Resource
 ## the rivers and the plants are the switches above and stay as they are.
 ## `scale` makes a smaller Earth to work on (0.1: a tenth of the radius, with the relief, the ocean
 ## and the drainage grid scaled to it); time, tilt and orbit stay the Earth's.
+## Makes this world its own, from its seed: how much water it holds and how far its axis leans (the
+## rest stays as it was set). Earth-like, but no two alike.
+func vary() -> void:
+	var roll := RandomNumberGenerator.new()
+	roll.seed = world_seed
+	water_layer *= roll.randf_range(0.55, 1.6)
+	axial_tilt = roll.randf_range(8.0, 38.0)
+
+
 static func earth(scale := 1.0) -> PlanetSettings:
 	var made := PlanetSettings.new()
 	made.world_seed = 1337

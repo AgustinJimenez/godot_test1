@@ -563,6 +563,7 @@ func _ready() -> void:
 			scale = OS.get_environment("PLANET_SCALE").to_float()
 		PlanetMenu.pending = PlanetSettings.earth(clampf(scale, 0.02, 1.0))
 		PlanetMenu.pending.world_seed = randi() % 100000
+		PlanetMenu.pending.vary() # (an Earth-like world, but no two alike)
 		asked = true
 	var menu_first := UniverseStartMenu.requested or user_args.is_empty()
 	menu_first = menu_first or "--start-menu" in user_args

@@ -61,7 +61,7 @@ Still fixed, in order of how much they show:
   the day length and use it in both.
 - **Heat model**: EMIT, FLOOR, SEA_TAU, LAND_TAU, MIX, the HOT cap: one planet's physics. Should follow the
   star's insolation and the air/sea share of the planet (`PlanetSettings.insolation` already scales the light).
-- **Sea level** share of land is fixed by the plates' ratio; real planets vary from water worlds to deserts.
+- **Sea level** share of land (2026-10-18: the no-argument lab start now rolls water amount x0.55..1.6 and tilt 8..38 from the seed with `PlanetSettings.vary()`; land came out 43 to 64 %). Real planets span water worlds to deserts: the roll could be wider and the plates' continental share could vary too.
 - **Plate boundary sizes** (BOUNDARY, SOFT, CONTINENT, OCEAN heights) and the HYPSO curve.
 - **Rain model constants** (RAIN_BASE, RAIN_SCALE, the 0.996 decay, the 192x96 grid).
 - **Erosion tunables** (EROSION, EROSION_SCALE, octaves): the same look on every world; a wet planet should be
