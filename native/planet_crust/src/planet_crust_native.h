@@ -107,7 +107,7 @@ private:
 	double boundary_effect(int p_a, int p_b, const Vector3 &p_q, double p_edge) const;
 	void plate_at(const Vector3 &p_dir, int &r_plate, real_t &r_edge, bool &r_continental) const;
 	double shore_curve(double p_units) const;
-	double valley_cut(const Vector3 &p_point, double p_units) const;
+	double valley_cut(const Vector3 &p_point, double p_units, double p_glacial) const;
 	// `p_pixel` > 0: the ground a pixel of that many metres can show (finer detail left out)
 	// the slope (height per metre, a vector in space) of the broad ground: massifs, chains and ranges
 	Vector3 coarse_slope(const Vector3 &p_point, double p_rugged, double p_pixel) const;

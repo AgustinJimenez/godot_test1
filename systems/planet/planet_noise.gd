@@ -302,15 +302,18 @@ func base_height(x: float, y: float, z: float) -> float:
 ## valley follows each line, three scales of them, the biggest the deepest. The lowland and the
 ## shelf are left alone; the upland is cut the most. (Not a simulation of water: it is the look of
 ## drainage, the same at any planet size and cheap enough for every vertex.)
-func _valley_cut(p: Vector3, units: float) -> float:
+## `glacial` (0..1): where ice has filled the valleys they are wide with a flat floor and steep
+## walls (a U), not a V.
+func _valley_cut(p: Vector3, units: float, glacial := 0.0) -> float:
 	var upland := smoothstep(0.03, 0.25, units)
 	if upland <= 0.0:
 		return 0.0
 	var cut := 0.0
 	for index in _valleys.size():
 		var line := absf(_valleys[index].get_noise_3d(p.x, p.y, p.z))
-		var valley_floor := 1.0 - smoothstep(0.0, VALLEY_WIDTH, line)
-		cut += _valley_depth[index] * valley_floor * sqrt(valley_floor)
+		var valley_floor := 1.0 - smoothstep(0.0, VALLEY_WIDTH * (1.0 + 1.2 * glacial), line)
+		cut += _valley_depth[index] * (1.0 + 0.6 * glacial) \
+				* pow(valley_floor, lerpf(1.5, 0.5, glacial))
 	return cut * upland
 
 
@@ -336,7 +339,10 @@ func _macro(units: float, p: Vector3) -> float:
 	var coast := smoothstep(0.01, 0.12, units) # (the rolling hills fade in inland: a clean shore)
 	var raised := shore + rolling * coast + ridges + chains + massifs + spurs
 	# the valleys never cut below the sea: near the coast they only cut what stands above it
-	var result := raised - minf(_valley_cut(p, units), maxf(shore, 0.0) * 0.8)
+	# where it is cold enough for permanent ice the valleys are glaciated (see _valley_cut)
+	var cold := climate.sea_temperature(p / settings.radius) - 0.0065 * maxf(raised, 0.0)
+	var glacial := smoothstep(-2.0, -8.0, cold)
+	var result := raised - minf(_valley_cut(p, units, glacial), maxf(shore, 0.0) * 0.8)
 	if result > 0.0: # the land's heights follow a hypsometric curve: most of it low, the peaks kept
 		var pivot := relief * HYPSO_PIVOT
 		result = pivot * pow(result / pivot, HYPSO)

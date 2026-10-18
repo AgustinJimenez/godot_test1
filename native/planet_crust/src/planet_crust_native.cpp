@@ -277,7 +277,7 @@ double PlanetCrustNative::shore_curve(double p_units) const {
 	return raw;
 }
 
-double PlanetCrustNative::valley_cut(const Vector3 &p_point, double p_units) const {
+double PlanetCrustNative::valley_cut(const Vector3 &p_point, double p_units, double p_glacial) const {
 	double upland = smooth(0.03, 0.25, p_units);
 	if (upland <= 0.0) {
 		return 0.0;
@@ -285,8 +285,8 @@ double PlanetCrustNative::valley_cut(const Vector3 &p_point, double p_units) con
 	double cut = 0.0;
 	for (int index = 0; index < 3; index++) {
 		double line = std::abs((double)valleys[index].at(p_point));
-		double floor_value = 1.0 - smooth(0.0, valley_width, line);
-		cut += valley_depth[index] * floor_value * std::sqrt(floor_value);
+		double floor_value = 1.0 - smooth(0.0, valley_width * (1.0 + 1.2 * p_glacial), line);
+		cut += valley_depth[index] * (1.0 + 0.6 * p_glacial) * std::pow(floor_value, 1.5 - 1.0 * p_glacial);
 	}
 	return cut * upland;
 }
@@ -346,7 +346,10 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 	double shore_height = shore_curve(p_units) * relief;
 	const double coast = smooth(0.01, 0.12, p_units); // (the rolling hills fade in inland: a clean shore)
 	double raised = shore_height + rolling_height * coast + ridges + chains + massifs + spurs + eroded;
-	double cut = valley_cut(p_point, p_units);
+	// where it is cold enough for permanent ice the valleys are glaciated (PlanetNoise._valley_cut)
+	const double cold_here = sea_temperature(p_point / (real_t)radius) - 0.0065 * (raised > 0.0 ? raised : 0.0);
+	const double glacial = smooth(-2.0, -8.0, cold_here);
+	double cut = valley_cut(p_point, p_units, glacial);
 	double limit = (shore_height > 0.0 ? shore_height : 0.0) * 0.8;
 	double result = raised - (cut < limit ? cut : limit);
 	if (result > 0.0) { // the land's heights follow a hypsometric curve (PlanetNoise.HYPSO)
@@ -537,6 +540,11 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	r += (0.93f - r) * (float)snow;
 	g += (0.95f - g) * (float)snow;
 	b += (0.98f - b) * (float)snow;
+	// glacier ice: blue-white on the gentle ground where it is very cold (PlanetRock.colour)
+	const double ice = smooth(-7.0, -13.0, cold) * (1.0 - smooth(0.25, 0.6, p_steep)) * snow * 0.7;
+	r += (0.72f - r) * (float)ice;
+	g += (0.86f - g) * (float)ice;
+	b += (0.96f - b) * (float)ice;
 	// beaches: low, level ground by the sea (PlanetRock.colour)
 	double beach = smooth(4.0, 0.5, p_ground) * smooth(0.0, 0.5, p_ground + 0.5);
 	beach *= 1.0 - smooth(0.15, 0.45, p_steep);
