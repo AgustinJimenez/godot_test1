@@ -1177,7 +1177,7 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 			} break;
 			case 10: { // the atlas: an old parchment map (flat inks, hatched mountains, pale water)
 				const double pi = 3.14159265358979323846;
-				const double lit = clampd(1.0 - 1.1 * (rise_east - rise_north) / metres, 0.8, 1.2);
+				const double lit = clampd(1.0 - 0.45 * (rise_east - rise_north) / metres, 0.93, 1.07); // (light: the relief grain is not for a map)
 				// the paper: a warm parchment with a slow stain
 				const double lat_angle = std::asin(clampd((double)dir.y, -1.0, 1.0));
 				const double lon_angle = std::atan2((double)dir.z, (double)dir.x);
@@ -1212,13 +1212,17 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 				// the hills and mountains: a brown ink, hatched like the drawn ranges of an old map
 				// only the broad ground counts (its small bumps are everywhere): real hills and ranges get ink
 				const double broad_tall = clampd((broad > 0.0 ? broad : 0.0) / (relief * 0.5), 0.0, 1.0);
-				const double hill = smooth(0.2, 0.5, broad_tall);
+				const double hill = smooth(0.45, 0.8, broad_tall); // (only the real ranges)
 				const double step_angle = std::max(p_step_lon, 1.0e-9);
 				// the strokes wander a little, like a hand's, instead of a regular grid
 				const double wander = 2.5 * (double)warp.at(dir * (real_t)(6.0 / std::max(step_angle * radius / 1000.0, 0.05)));
-				const double phase = (lon_angle * 0.9 + lat_angle * 1.4) / (step_angle * 7.0) + wander;
-				const double hatch = 0.5 + 0.5 * std::sin(phase * 2.0 * pi);
-				const double ink = hill * (0.55 + 0.45 * hatch);
+				// strokes about 16 pixels apart: at most the pixel size of an engraved line
+				const double phase = (lon_angle * 0.9 + lat_angle * 1.4) / (step_angle * 16.0) + wander;
+				const double hatch = smooth(0.55, 0.95, 0.5 + 0.5 * std::sin(phase * 2.0 * pi)); // (thin lines)
+				// the level of detail follows the zoom: strokes only while a pixel is small (under ~1.5 km),
+				// a soft wash of the ranges (no lines) when it is bigger, nothing finer than the map can show
+				const double strokes = smooth(4000.0, 1200.0, metres);
+				const double ink = hill * (0.18 + (0.12 + 0.45 * hatch) * strokes - 0.1 * (1.0 - strokes));
 				lr += (0.55 - lr) * ink;
 				lg += (0.40 - lg) * ink;
 				lb += (0.22 - lb) * ink;
