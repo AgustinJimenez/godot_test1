@@ -1210,9 +1210,13 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 				lg += (0.50 - lg) * forest;
 				lb += (0.16 - lb) * forest;
 				// the hills and mountains: a brown ink, hatched like the drawn ranges of an old map
-				const double hill = smooth(0.06, 0.4, tall + clampd(std::sqrt(rise_east * rise_east + rise_north * rise_north) / metres, 0.0, 1.0) * 0.5);
+				// only the broad ground counts (its small bumps are everywhere): real hills and ranges get ink
+				const double broad_tall = clampd((broad > 0.0 ? broad : 0.0) / (relief * 0.5), 0.0, 1.0);
+				const double hill = smooth(0.2, 0.5, broad_tall);
 				const double step_angle = std::max(p_step_lon, 1.0e-9);
-				const double phase = (lon_angle * 0.9 + lat_angle * 1.4) / (step_angle * 7.0);
+				// the strokes wander a little, like a hand's, instead of a regular grid
+				const double wander = 2.5 * (double)warp.at(dir * (real_t)(6.0 / std::max(step_angle * radius / 1000.0, 0.05)));
+				const double phase = (lon_angle * 0.9 + lat_angle * 1.4) / (step_angle * 7.0) + wander;
 				const double hatch = 0.5 + 0.5 * std::sin(phase * 2.0 * pi);
 				const double ink = hill * (0.55 + 0.45 * hatch);
 				lr += (0.55 - lr) * ink;

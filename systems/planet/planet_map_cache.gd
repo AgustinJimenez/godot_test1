@@ -11,7 +11,7 @@ extends RefCounted
 ## `forget_area` throws away the tiles that touch it and `forget_whole` the whole-planet pictures;
 ## the map charts them again. See PlanetMap.world_changed.
 
-const VERSION := 1
+const VERSION := 2 ## 2: the atlas inks only the broad hills
 const ROOT := "user://map_cache"
 const MAX_TILES := 900 ## tile files kept per world (the oldest go first)
 const MAX_WORLDS := 6 ## worlds kept (the least recently used go)

@@ -264,7 +264,7 @@ func _chart(worker: int) -> void:
 		if smooth_ground:
 			pass # (the broad ground of a far view is the ground itself)
 		elif layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.CLOUDS, Layer.SATELLITE,
-				Layer.CLOUD_MASK]:
+				Layer.ATLAS, Layer.CLOUD_MASK]:
 			macros = _ground_of(dirs, true)
 		for column in size.x:
 			land.append(1 if grounds[column] >= 0.0 else 0)
