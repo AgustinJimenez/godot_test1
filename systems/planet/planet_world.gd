@@ -12,6 +12,9 @@ const LOAD_PLANTS := 60.0 ## m round the player that must be planted before they
 
 ## The ground and water round the player are ready (and the plants close by): the player may move.
 signal loaded
+## something occasional changed in the world (a fire, an impact): the map forgets that part. Its
+## area in map fractions (x east, y south); `PlanetMap.world_changed_at` takes a place and a radius.
+signal world_changed(area: Rect2)
 
 @export var settings: PlanetSettings
 @export var time_of_day := 10.0

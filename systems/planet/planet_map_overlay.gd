@@ -106,3 +106,18 @@ static func draw_arrow(view: Control, spot: Vector2, heading: Vector2) -> void:
 	view.draw_colored_polygon(points, Color(1.0, 0.25, 0.2))
 	view.draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[0]]),
 			Color.WHITE, 1.5)
+
+
+## While the picture is still the quick blurry one: a note over it says the map is being charted
+## (`progress` 0..1 of the chart in hand, or negative when there is none).
+static func draw_loading(view: Control, progress: float) -> void:
+	var text := "Charting the planet... the map sharpens as it finishes"
+	if progress >= 0.0:
+		text = "Charting the planet...  %d %%  (the map sharpens as it finishes)" % int(100.0 * progress)
+	var font := ThemeDB.fallback_font
+	var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
+	var box := Rect2((view.size.x - width) * 0.5 - 14.0, 18.0, width + 28.0, 34.0)
+	view.draw_rect(box, Color(0.0, 0.0, 0.0, 0.7))
+	view.draw_string(font, box.position + Vector2(14.0, 24.0), text, HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0, 18, Color(0.9, 0.93, 1.0))
+

@@ -39,9 +39,7 @@ var _cache: Dictionary = {} # layer -> {"whole": ImageTexture, "pass": int}: wha
 var _retired: Array[PlanetChart] = [] # charts of a layer left behind, drawing out their threads
 var _modes: OptionButton # the layers, as a dropdown (the Atlas first)
 var _hover: Label
-var _time_row: HBoxContainer
-var _season_slider: HSlider
-var _rate_label: Label
+var _time_bar: PlanetMapTimeBar
 var _drawn_at := -1.0 # the clock time the temperature chart on the screen is of
 var _refresh_wait := 0.0
 var _chart_time := 0.0
@@ -67,6 +65,7 @@ var _labels: PlanetMapLabels # the names of the seas and lands (built on the fir
 var _globe_tiles := -1 # what the globe's picture was made from, to see when it needs a new one
 var _globe_level := -1
 var _globe_view := Rect2()
+var _disk: PlanetMapCache # what was charted in an earlier run of this world
 var _tiles: PlanetMapTiles # the close views as tiles (from TILE_ZOOM on, on the flat map)
 var warm_up := false ## the world sets it: the map is all charted (black meanwhile) before it shows
 var _warming := false
@@ -135,7 +134,8 @@ func _ready() -> void:
 	_globe_button.focus_mode = Control.FOCUS_NONE
 	_globe_button.toggled.connect(_set_globe)
 	row.add_child(_globe_button)
-	_build_time_controls(column)
+	_time_bar = PlanetMapTimeBar.new(planet)
+	column.add_child(_time_bar)
 	_hover = Label.new()
 	_hover.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(_hover)
@@ -242,48 +242,6 @@ func toggle() -> void:
 	else:
 		Input.mouse_mode = _mouse_before
 		_dragging = false
-
-
-## The buttons that move time: the speed (backward too), a jump of a day or an eighth of a year, and
-## a slider through the year, to watch the temperature (and the sun) change.
-func _build_time_controls(column: VBoxContainer) -> void:
-	_time_row = HBoxContainer.new()
-	_time_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	column.add_child(_time_row)
-	var title := Label.new()
-	title.text = "Time:  "
-	_time_row.add_child(title)
-	for rate in [-1000, -100, -10, -1]:
-		_time_button("%d×" % rate, func() -> void: planet.time_rate = float(rate))
-	_time_button("pause", func() -> void: planet.time_rate = 0.0)
-	for rate in [1, 10, 100, 1000]:
-		_time_button("%d×" % rate, func() -> void: planet.time_rate = float(rate))
-	_time_button("-day", func() -> void: planet.jump_time(-1.0))
-	_time_button("+day", func() -> void: planet.jump_time(1.0))
-	_time_button("-1/8 year", func() -> void: planet.jump_time(-planet.clock.year_days / 8.0))
-	_time_button("+1/8 year", func() -> void: planet.jump_time(planet.clock.year_days / 8.0))
-	var year := Label.new()
-	year.text = "  year:"
-	_time_row.add_child(year)
-	_season_slider = HSlider.new()
-	_season_slider.custom_minimum_size = Vector2(200.0, 0.0)
-	_season_slider.max_value = 1.0
-	_season_slider.step = 0.002
-	_season_slider.focus_mode = Control.FOCUS_NONE
-	_season_slider.value_changed.connect(func(value: float) -> void:
-			if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-				planet.set_year_share(value))
-	_time_row.add_child(_season_slider)
-	_rate_label = Label.new()
-	_time_row.add_child(_rate_label)
-
-
-func _time_button(text: String, action: Callable) -> void:
-	var button := Button.new()
-	button.text = text
-	button.focus_mode = Control.FOCUS_NONE
-	button.pressed.connect(action)
-	_time_row.add_child(button)
 
 
 ## Shows another layer (a PlanetChart.Layer): what was charted of it before comes back at once, the
@@ -419,6 +377,11 @@ func begin() -> void:
 		return
 	_started = true
 	_tiles = PlanetMapTiles.new(planet.noise)
+	_disk = PlanetMapCache.new(planet.settings)
+	_tiles.disk = _disk
+	if planet.has_signal(&"world_changed"):
+		planet.world_changed.connect(world_changed)
+	PlanetMapLog.line("disk cache: " + _disk.directory())
 	if warm_up:
 		_warming = true
 		for layer in PlanetChart.NAMES.size():
@@ -438,6 +401,18 @@ func _last_pass() -> int:
 
 
 func _start_chart(pass_index: int) -> void:
+	var kept := _disk.load_whole(int(_layer), PASSES[pass_index].x) if _disk != null else null
+	if kept != null: # charted in an earlier run: no charting
+		_whole = kept
+		_whole_pass = pass_index
+		_chart = null
+		if not _is_moving(_layer):
+			_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
+		PlanetMapLog.line("whole pass %d (%d px) of the %s layer from the disk" % [pass_index,
+				PASSES[pass_index].x, PlanetChart.NAMES[_layer]])
+		if _whole_pass < _last_pass():
+			_start_chart(_whole_pass + 1)
+		return
 	_chart = PlanetChart.new()
 	_chart.size = PASSES[pass_index]
 	_chart.layer = _layer
@@ -486,9 +461,7 @@ func _process(delta: float) -> void:
 			_globe.set_pin(here)
 		else:
 			_hover.text = _numbers_under_the_cursor()
-		_season_slider.set_value_no_signal(planet.clock.year_share())
-		var rate := "paused" if planet.time_rate == 0.0 else "%d×" % int(planet.time_rate)
-		_rate_label.text = "   " + rate
+		_time_bar.refresh()
 		_refresh_temperature(delta)
 	if _chart != null:
 		if _chart.finished():
@@ -618,6 +591,12 @@ func _drive_the_warm_up() -> void:
 
 ## Charts a first (1024 px) picture of `layer` for later, without showing it.
 func _start_warm_layer(layer: int) -> void:
+	var kept := _disk.load_whole(layer, PASSES[2].x) if _disk != null else null
+	if kept != null:
+		_cache[layer] = {"whole": kept, "pass": 2}
+		_warm_layers_done += 1
+		PlanetMapLog.line("warm-up: the %s layer from the disk" % PlanetChart.NAMES[layer])
+		return
 	_chart = PlanetChart.new()
 	_chart.layer = layer as PlanetChart.Layer
 	_chart.size = PASSES[2]
@@ -671,7 +650,10 @@ func _refresh_temperature(delta: float) -> void:
 
 func _adopt_chart() -> void:
 	if not _chart_is_detail and _chart_layer != _layer: # a layer charted ahead (the warm-up)
-		_cache[_chart_layer] = {"whole": _chart.texture(), "pass": 2}
+		var ahead := _chart.texture()
+		_cache[_chart_layer] = {"whole": ahead, "pass": 2}
+		if _disk != null:
+			_disk.save_whole(int(_chart_layer), PASSES[2].x, ahead)
 		PlanetMapLog.line("chart done: first picture of the %s layer in %d ms" % [
 				PlanetChart.NAMES[_chart_layer], Time.get_ticks_msec() - _chart_ms])
 		_chart = null
@@ -700,6 +682,8 @@ func _adopt_chart() -> void:
 		return
 	_whole = texture
 	_whole_pass += 1
+	if _disk != null and not _is_moving(_layer):
+		_disk.save_whole(int(_layer), PASSES[_whole_pass].x, texture)
 	_drawn_at = _chart_time
 	if not _is_moving(_layer):
 		_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
@@ -869,20 +853,9 @@ func _sharp_enough(view: Rect2) -> bool:
 	return float(_whole.get_width()) >= screen_width * 0.4 or _whole_pass >= _last_pass()
 
 
-## While the picture is still the quick blurry one, a note over it says the map is being charted.
 func _draw_loading() -> void:
-	if _revealed:
-		return
-	var text := "Charting the planet... the map sharpens as it finishes"
-	if _chart != null:
-		text = "Charting the planet...  %d %%  (the map sharpens as it finishes)" % int(
-				100.0 * _chart.progress())
-	var font := ThemeDB.fallback_font
-	var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-	var box := Rect2((_view.size.x - width) * 0.5 - 14.0, 18.0, width + 28.0, 34.0)
-	_view.draw_rect(box, Color(0.0, 0.0, 0.0, 0.7))
-	_view.draw_string(font, box.position + Vector2(14.0, 24.0), text, HORIZONTAL_ALIGNMENT_LEFT,
-			-1.0, 18, Color(0.9, 0.93, 1.0))
+	if not _revealed:
+		PlanetMapOverlay.draw_loading(_view, _chart.progress() if _chart != null else -1.0)
 
 
 ## Lifts the note when the picture is sharp enough (or, for a view the close chart cannot cover
@@ -971,6 +944,35 @@ func _draw_part(texture: ImageTexture, covers: Rect2, wanted: Rect2, offset_u :=
 			(part.position.y - view_top) / size.y * _view.size.y,
 			part.size.x / size.x * _view.size.x, part.size.y / size.y * _view.size.y)
 	_view.draw_texture_rect_region(texture, dest, source)
+
+
+## Something in the world changed around `area` (map fractions: x east, y south): the tiles that
+## touch it are forgotten and charted again when looked at, and the whole-planet pictures (which
+## showed the old state) are charted again behind the current one. Rare events only (a fire, an
+## impact, a building): the map is not meant to follow real-time changes.
+func world_changed(area: Rect2) -> void:
+	if _tiles == null:
+		return
+	var gone := _tiles.invalidate(area)
+	if _disk != null:
+		_disk.forget_whole()
+	_cache.clear()
+	PlanetMapLog.line("the world changed at %s: %d tiles forgotten, the whole pictures again" % [
+			area, gone])
+	if _started and not _warming:
+		if _chart != null:
+			_chart.cancel()
+			_retired.append(_chart)
+		_whole_pass = -1
+		_start_chart(0)
+
+
+## The same, for a place on the planet: the unit direction, the radius of the change in metres.
+func world_changed_at(direction: Vector3, radius_metres: float) -> void:
+	var uv := _uv_of(direction.normalized())
+	var half := Vector2(radius_metres / (planet.settings.radius * TAU) * 1.0,
+			radius_metres / (planet.settings.radius * PI) * 1.0)
+	world_changed(Rect2(uv - half, half * 2.0))
 
 
 ## The names of the seas and lands: built on the first look, drawn while the view is far.

@@ -13,6 +13,7 @@ const MAX_LEVEL := 14
 const DENSITY := 0.85 ## tile pixels per screen pixel (a little under one is sharp enough)
 
 var layer := PlanetChart.Layer.TERRAIN
+var disk: PlanetMapCache ## the tiles kept between runs (null: none)
 var clock: PlanetClock ## the moment the moving layers (temperature, clouds) show
 
 var _noise: PlanetNoise
@@ -133,6 +134,8 @@ func step() -> bool:
 		var texture := _chart.texture()
 		if texture != null:
 			_textures[_chart_key] = texture
+			if disk != null:
+				disk.save_tile(_chart_key, texture)
 			_use(_chart_key)
 			finished_tiles += 1
 			added = true
@@ -142,6 +145,15 @@ func step() -> bool:
 		_chart = null
 		_wanted.erase(_chart_key)
 		_evict()
+	while _chart == null and not _wanted.is_empty() and disk != null:
+		var kept := disk.load_tile(_wanted[0]) # a tile from an earlier run: no charting
+		if kept == null:
+			break
+		_textures[_wanted[0]] = kept
+		_use(_wanted[0])
+		finished_tiles += 1
+		added = true
+		_wanted.remove_at(0)
 	if _chart == null and not _wanted.is_empty():
 		_chart_key = _wanted[0]
 		_chart = PlanetChart.new()
@@ -158,6 +170,24 @@ func _evict() -> void:
 	while _order.size() > MAX_TILES:
 		var old: Vector4i = _order.pop_front()
 		_textures.erase(old)
+
+
+## A change in the world touched `area` (fractions of the map): its tiles are forgotten, here and on
+## disk, and charted again when they are looked at.
+func invalidate(area: Rect2) -> int:
+	var gone := 0
+	for key in _textures.keys():
+		if rect_of(key.y, key.z, key.w).intersects(area):
+			_textures.erase(key)
+			_order.erase(key)
+			gone += 1
+	if _chart != null and rect_of(_chart_key.y, _chart_key.z, _chart_key.w).intersects(area):
+		_chart.cancel()
+		_retired.append(_chart)
+		_chart = null
+	if disk != null:
+		disk.forget_area(area)
+	return gone
 
 
 ## Forgets the tiles of a layer (the moving ones, when time has moved on).

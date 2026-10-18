@@ -453,3 +453,18 @@ loading note goes or comes back. The file is emptied each time the map is opened
 only the last session and never grows. To find why the map was slow or blurry: open it, do the thing, close it,
 read the file (`chart done: close view in 3974 ms` is how a slow sharp picture shows).
 
+## The map's disk cache and changes in the world (2026-10-18)
+
+`PlanetMapCache` keeps the map's pictures between runs in `user://map_cache/<key>/`: the whole-planet pictures of
+every layer that does not follow the clock (not Temperature, Clouds, Satellite) and the 256 px tiles you looked at.
+The key is a hash of the world's settings and `PlanetMapCache.VERSION`: the same settings are the same land. **Raise
+`VERSION` whenever the crust, the climate or the way a layer is drawn changes**, or the old look stays on disk.
+Measured on the full Earth (seed 8): the map is ready 8.5 s after opening the first time and 2.2 s the second time (only
+the three clock layers are charted again). At most 6 worlds are kept and 900 tiles each; the least recently used go.
+
+For occasional events (a fire, an impact, a building) the world emits `PlanetWorld.world_changed(area)` (map
+fractions) or calls `PlanetMap.world_changed_at(direction, radius_metres)`: the tiles that touch the area are forgotten
+(memory and disk), the whole pictures are charted again, and the map shows the old picture meanwhile. It is not meant for
+changes that happen every frame. The list of changes is not saved yet: a world that is loaded again shows the base
+terrain until its changes are replayed (save them with the world and call `world_changed` for each on load).
+
