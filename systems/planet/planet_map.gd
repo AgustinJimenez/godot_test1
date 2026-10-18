@@ -819,16 +819,16 @@ func _draw_view() -> void:
 		if first_width < size.x:
 			_draw_part(_whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(0.0, view.position.y,
 					size.x - first_width, size.y), first_width)
-	_draw_grid()
+	PlanetMapOverlay.draw_grid(_view, _zoom, _centre, _visible_size(), _on_screen)
 	_draw_names()
-	_draw_legend()
+	PlanetMapOverlay.draw_legend(_view, _layer, planet.noise.relief)
 	_draw_loading()
 	var player := _where_is_the_player()
 	if player.is_empty():
 		return
 	var spot := _on_screen(player["uv"])
 	if spot.x >= 0.0:
-		_draw_arrow(spot, player["heading"])
+		PlanetMapOverlay.draw_arrow(_view, spot, player["heading"])
 	if _whole != null:
 		var lat: float = player["lat"]
 		var lon: float = player["lon"]
@@ -859,88 +859,14 @@ func _draw_part(texture: ImageTexture, covers: Rect2, wanted: Rect2, offset_u :=
 	_view.draw_texture_rect_region(texture, dest, source)
 
 
-## The scale of the layer (a bar and its two ends) in the corner of the map.
-func _draw_legend() -> void:
-	var labels := PlanetChart.scale_labels(_layer, planet.noise.relief)
-	if labels.is_empty():
-		return
-	var origin := Vector2(18.0, _view.size.y - 34.0)
-	var width := 260.0
-	for step in int(width):
-		_view.draw_rect(Rect2(origin + Vector2(float(step), 0.0), Vector2(1.0, 14.0)),
-				PlanetChart.ramp(_layer, float(step) / width))
-	_view.draw_rect(Rect2(origin, Vector2(width, 14.0)), Color.WHITE, false, 1.0)
-	var font := ThemeDB.fallback_font
-	if _layer == PlanetChart.Layer.TEMPERATURE or _layer == PlanetChart.Layer.MEAN_TEMPERATURE:
-		# ticks every 10 degrees C (the scale runs -30 to 45), as a weather map's legend has
-		for degrees in range(-20, 41, 10):
-			var x := (float(degrees) + 30.0) / 75.0 * width
-			_view.draw_line(origin + Vector2(x, 10.0), origin + Vector2(x, 14.0), Color.WHITE, 1.0)
-			_view.draw_string(font, origin + Vector2(x - 8.0, 27.0), str(degrees),
-					HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
-	_view.draw_string(font, origin + Vector2(0.0, -4.0), labels[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
-	_view.draw_string(font, origin + Vector2(width, -4.0), labels[1], HORIZONTAL_ALIGNMENT_RIGHT,
-			-1, 14)
-	_view.draw_string(font, origin + Vector2(width + 14.0, 12.0), PlanetChart.NAMES[_layer],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
-
-
-## The names of the seas and the lands, spaced capitals, while the view is far enough to show them.
+## The names of the seas and lands: built on the first look, drawn while the view is far.
 func _draw_names() -> void:
 	if _zoom > 6.0 or planet == null or planet.noise == null:
 		return
 	if _labels == null:
 		_labels = PlanetMapLabels.new()
 		_labels.build(planet.noise)
-	var font := ThemeDB.fallback_font
-	var size := clampi(int(13.0 + 3.0 * log(_zoom + 1.0)), 13, 22)
-	for item in _labels.items:
-		var spot := _on_screen(item["uv"])
-		if spot.x < 0.0:
-			continue
-		var text := PlanetMapLabels.spaced(item["text"])
-		var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x
-		var at := spot - Vector2(width * 0.5, 0.0)
-		var colour := Color(0.88, 0.95, 1.0, 0.8) if item["sea"] else Color(1.0, 1.0, 1.0, 0.85)
-		_view.draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, 3,
-				Color(0.0, 0.0, 0.0, 0.55))
-		_view.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, colour)
-
-
-func _draw_grid() -> void:
-	# the lines every `gap` degrees, finer as the view comes closer (only the ones in view)
-	var gap := 30.0
-	var steps := [[3.0, 10.0], [12.0, 5.0], [70.0, 1.0], [140.0, 0.5], [700.0, 0.1], [1400.0, 0.05]]
-	for pair: Array in steps: # (from this zoom on, this gap)
-		if _zoom >= float(pair[0]):
-			gap = float(pair[1])
-	var line := Color(1.0, 1.0, 1.0, 0.18)
-	var size := _visible_size()
-	var lat_from := (0.5 - (_centre.y + size.y * 0.5)) * 180.0
-	var lat_to := (0.5 - (_centre.y - size.y * 0.5)) * 180.0
-	for index in range(floori(lat_from / gap), ceili(lat_to / gap) + 1):
-		var degrees := float(index) * gap
-		var at := _on_screen(Vector2(_centre.x, 0.5 - degrees / 180.0))
-		if at.y >= 0.0 and absf(degrees) <= 90.0:
-			_view.draw_line(Vector2(0.0, at.y), Vector2(_view.size.x, at.y),
-					line if index != 0 else Color(1.0, 1.0, 1.0, 0.4))
-	var lon_centre := (_centre.x - 0.5) * 360.0
-	var lon_half := minf(size.x * 180.0, 180.0)
-	var first := floori((lon_centre - lon_half) / gap)
-	for index in range(first, ceili((lon_centre + lon_half) / gap) + 1):
-		var uv := (float(index) * gap + 180.0) / 360.0
-		var at := _on_screen(Vector2(fposmod(uv, 1.0), _centre.y))
-		if at.x >= 0.0:
-			_view.draw_line(Vector2(at.x, 0.0), Vector2(at.x, _view.size.y), line)
-
-
-func _draw_arrow(spot: Vector2, heading: Vector2) -> void:
-	var side := Vector2(-heading.y, heading.x)
-	var points := PackedVector2Array([spot + heading * 13.0, spot - heading * 7.0 + side * 7.0,
-			spot - heading * 7.0 - side * 7.0])
-	_view.draw_colored_polygon(points, Color(1.0, 0.25, 0.2))
-	_view.draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[0]]),
-			Color.WHITE, 1.5)
+	PlanetMapOverlay.draw_names(_view, _labels, _zoom, _on_screen)
 
 
 ## Opens the map as the 3D globe (or the flat map).
