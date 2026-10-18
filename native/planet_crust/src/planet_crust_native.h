@@ -138,6 +138,9 @@ public:
 	// One row of the map's Terrain layer as RGB bytes (the sea by depth, the land's rock shaded by the
 	// light from the north west): the heights of the points, of the points a pixel east and a pixel north
 	// of them, and the angle one pixel spans.
+	// RGB bytes with the lone dots taken out: a pixel unlike all its eight neighbours (which are alike)
+	// takes their mean (a map's grain: land and sea flipping pixel by pixel along a coast)
+	PackedByteArray despeckle(const PackedByteArray &p_rgb, int p_width, int p_height) const;
 	PackedByteArray terrain_row(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
 			const PackedFloat32Array &p_east, const PackedFloat32Array &p_north, double p_step_lon, double p_calm = 1.0) const;
 	PackedColorArray colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,

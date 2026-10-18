@@ -283,9 +283,8 @@ func height(x: float, y: float, z: float) -> float:
 func base_height(x: float, y: float, z: float) -> float:
 	var units := _units(x, y, z)
 	var p := Vector3(x, y, z) * settings.radius
-	var land := smoothstep(-0.02, 0.05, units)
 	var hills := _hills.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.04, 14.0, 45.0)
-	var ground := _macro(units, p) + hills * land
+	var ground := _macro(units, p) + hills * smoothstep(0.01, 0.12, units)
 	# the high ground is cut by gullies and spurs, as if water had run down it for ages
 	var high := smoothstep(0.12, 0.45, units)
 	var gully_depth := minf(relief * 0.05, 90.0)
@@ -321,7 +320,6 @@ func macro_height(x: float, y: float, z: float) -> float:
 
 
 func _macro(units: float, p: Vector3) -> float:
-	var land := smoothstep(-0.02, 0.05, units)
 	var rolling := _rolling.get_noise_3d(p.x, p.y, p.z) * clampf(relief * 0.12, 25.0, 120.0)
 	# ranges of mountains inside the continents, away from the plate edges (old folded belts)
 	var belt := smoothstep(0.0, 0.5, _range_mask.get_noise_3d(p.x, p.y, p.z) + 0.15)
@@ -335,15 +333,16 @@ func _macro(units: float, p: Vector3) -> float:
 	var spurs := (_foothills.get_noise_3d(p.x, p.y, p.z) * 0.5 + 0.0) * relief * FOOTHILLS * rugged
 	# erosion has cut valley networks into the upland, small ones into big ones (the water sees them)
 	var shore := _shore(units) * relief
-	var raised := shore + rolling * land + ridges + chains + massifs + spurs
+	var coast := smoothstep(0.01, 0.12, units) # (the rolling hills fade in inland: a clean shore)
+	var raised := shore + rolling * coast + ridges + chains + massifs + spurs
 	# the valleys never cut below the sea: near the coast they only cut what stands above it
 	var result := raised - minf(_valley_cut(p, units), maxf(shore, 0.0) * 0.8)
 	if result > 0.0: # the land's heights follow a hypsometric curve: most of it low, the peaks kept
 		var pivot := relief * HYPSO_PIVOT
 		result = pivot * pow(result / pivot, HYPSO)
-	if units > 0.05 and result < 8.0: # a basin below the sea is a shallow bowl (no puddles inland)
+	if units > 0.0 and result < 8.0: # a basin below the sea is a shallow bowl (no puddles inland)
 		var bowl := 8.0 * exp((result - 8.0) / 60.0)
-		result += (bowl - result) * smoothstep(0.05, 0.15, units)
+		result += (bowl - result) * smoothstep(0.0, 0.1, units)
 	return result
 
 

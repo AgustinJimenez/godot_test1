@@ -48,6 +48,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_climate", "grid", "width", "height"), &PlanetCrustNative::set_climate);
 	ClassDB::bind_method(D_METHOD("set_rivers", "cells", "network", "cell_metres"), &PlanetCrustNative::set_rivers);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
+	ClassDB::bind_method(D_METHOD("despeckle", "rgb", "width", "height"), &PlanetCrustNative::despeckle);
 	ClassDB::bind_method(D_METHOD("terrain_row", "dirs", "grounds", "east", "north", "step_lon", "calm"),
 			&PlanetCrustNative::terrain_row);
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
@@ -319,7 +320,8 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 				relief * erosion_scale * rugged * floor_factor;
 	}
 	double shore_height = shore_curve(p_units) * relief;
-	double raised = shore_height + rolling_height * land + ridges + chains + massifs + spurs + eroded;
+	const double coast = smooth(0.01, 0.12, p_units); // (the rolling hills fade in inland: a clean shore)
+	double raised = shore_height + rolling_height * coast + ridges + chains + massifs + spurs + eroded;
 	double cut = valley_cut(p_point, p_units);
 	double limit = (shore_height > 0.0 ? shore_height : 0.0) * 0.8;
 	double result = raised - (cut < limit ? cut : limit);
@@ -327,9 +329,9 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 		const double pivot = relief * 0.5;
 		result = pivot * std::pow(result / pivot, 1.4);
 	}
-	if (p_units > 0.05) { // inland ground does not dip below the sea (no puddles: lakes come from the drainage)
+	if (p_units > 0.0) { // inland ground does not dip below the sea (no puddles: lakes come from the drainage)
 		// a basin below the sea becomes a shallow bowl (8 m falling off smoothly, never below 0)
-		const double inland = smooth(0.05, 0.15, p_units);
+		const double inland = smooth(0.0, 0.1, p_units);
 		if (result < 8.0) {
 			const double bowl = 8.0 * std::exp((result - 8.0) / 60.0);
 			result = result + (bowl - result) * inland;
@@ -353,7 +355,7 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 	Vector3 p = p_dir * (real_t)radius;
 	double land = smooth(-0.02, 0.05, units);
 	double hill_height = land > 0.0 ? hills.at(p) * clampd(relief * 0.04, 14.0, 45.0) * valley_floor(p_dir) : 0.0;
-	double ground = macro_ground(units, p) + hill_height * land;
+	double ground = macro_ground(units, p) + hill_height * smooth(0.01, 0.12, units);
 	double high = smooth(0.12, 0.45, units);
 	double gully_depth = relief * 0.05 < 90.0 ? relief * 0.05 : 90.0;
 	if (high > 0.0) {
@@ -596,6 +598,56 @@ PackedFloat32Array PlanetCrustNative::heights(const PackedVector3Array &p_dirs) 
 
 PackedFloat32Array PlanetCrustNative::tectonic_heights(const PackedVector3Array &p_dirs) const {
 	return heights_by(TECTONIC, p_dirs);
+}
+
+PackedByteArray PlanetCrustNative::despeckle(const PackedByteArray &p_rgb, int p_width, int p_height) const {
+	PackedByteArray out = p_rgb;
+	if (p_width < 3 || p_height < 3 || p_rgb.size() < p_width * p_height * 3) {
+		return out;
+	}
+	const uint8_t *in = p_rgb.ptr();
+	uint8_t *result = out.ptrw();
+	for (int y = 1; y < p_height - 1; y++) {
+		for (int x = 1; x < p_width - 1; x++) {
+			double mean[3] = { 0.0, 0.0, 0.0 };
+			for (int dy = -1; dy <= 1; dy++) {
+				for (int dx = -1; dx <= 1; dx++) {
+					if (dx != 0 || dy != 0) {
+						const uint8_t *n = in + ((y + dy) * p_width + x + dx) * 3;
+						mean[0] += n[0];
+						mean[1] += n[1];
+						mean[2] += n[2];
+					}
+				}
+			}
+			for (double &channel : mean) {
+				channel /= 8.0;
+			}
+			double spread = 0.0;
+			for (int dy = -1; dy <= 1; dy++) {
+				for (int dx = -1; dx <= 1; dx++) {
+					if (dx != 0 || dy != 0) {
+						const uint8_t *n = in + ((y + dy) * p_width + x + dx) * 3;
+						for (int c = 0; c < 3; c++) {
+							spread = std::max(spread, std::abs(n[c] - mean[c]));
+						}
+					}
+				}
+			}
+			const uint8_t *centre = in + (y * p_width + x) * 3;
+			double gap = 0.0;
+			for (int c = 0; c < 3; c++) {
+				gap = std::max(gap, std::abs(centre[c] - mean[c]));
+			}
+			if (gap > 28.0 && spread < gap * 0.5) {
+				uint8_t *target = result + (y * p_width + x) * 3;
+				for (int c = 0; c < 3; c++) {
+					target[c] = (uint8_t)(mean[c] + 0.5);
+				}
+			}
+		}
+	}
+	return out;
 }
 
 PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,

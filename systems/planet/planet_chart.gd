@@ -115,6 +115,8 @@ func texture() -> ImageTexture:
 	var all := PackedByteArray()
 	for band in _bands:
 		all.append_array(band)
+	if _noise.native != null and layer != Layer.PLATES and layer != Layer.CLOUD_MASK 			and _noise.native.has_method(&"despeckle"):
+		all = _noise.native.call(&"despeckle", all, size.x, size.y) # (lone dots are grain)
 	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, all)
 	if layer == Layer.TERRAIN or layer == Layer.ELEVATION:
 		_draw_rivers(image)
