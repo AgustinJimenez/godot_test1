@@ -20,7 +20,7 @@ const PASSES: Array[Vector2i] = [Vector2i(320, 160), Vector2i(640, 320), Vector2
 		Vector2i(2048, 1024)]
 const DETAIL_MIN := 768 ## pixels across the close chart, at least (more for a big view)
 const DETAIL_MAX := 2560
-const START_ZOOM := 60.0 # the map opens as close as it goes, on the player (zoom out for the planet)
+const START_ZOOM := 60.0 # the map opens as close as it goes, on the player
 const MAX_ZOOM := 60.0
 const MARGIN := 14.0
 
@@ -43,11 +43,14 @@ var _chart: PlanetChart # the chart being drawn, if any
 var _chart_is_detail := false
 var _detail: ImageTexture # a close chart of `_detail_rect` (fractions of the map)
 var _detail_rect := Rect2()
-var _detail_full := 0 # pixels across of the sharp close chart that follows a quick preview (0: none)
+var _detail_full := 0 # pixels across of the sharp chart that follows a quick preview (0: none)
 var _wanted_rect := Rect2() # the region the next close chart is for
 var _still := 0.0 # seconds the view has stayed as it is
 var _last_view := Rect2()
 var _view: Control
+var _globe: PlanetMapGlobe # the map as a small planet in 3D (G)
+var _globe_button: Button
+var _globe_mode := false
 var _caption: Label
 var _zoom := START_ZOOM
 var _centre := Vector2(0.5, 0.5) # in map fractions (u east, v south)
@@ -80,6 +83,12 @@ func _ready() -> void:
 	_view.clip_contents = true
 	_view.draw.connect(_draw_view)
 	column.add_child(_view)
+	_globe = PlanetMapGlobe.new()
+	_globe.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_globe.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_globe.custom_minimum_size = Vector2(400.0, 300.0)
+	_globe.visible = false
+	column.add_child(_globe)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_child(row)
@@ -94,6 +103,12 @@ func _ready() -> void:
 		button.pressed.connect(select_layer.bind(index))
 		row.add_child(button)
 		_buttons.append(button)
+	_globe_button = Button.new()
+	_globe_button.text = "G  Globe"
+	_globe_button.toggle_mode = true
+	_globe_button.focus_mode = Control.FOCUS_NONE
+	_globe_button.toggled.connect(_set_globe)
+	row.add_child(_globe_button)
 	_build_time_controls(column)
 	_hover = Label.new()
 	_hover.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -107,6 +122,14 @@ func _ready() -> void:
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed(ACTION):
 		toggle()
+		get_viewport().set_input_as_handled()
+		return
+	var key := event as InputEventKey
+	if key != null and key.pressed and key.physical_keycode == KEY_G:
+		_globe_button.button_pressed = not _globe_mode
+		get_viewport().set_input_as_handled()
+		return
+	if _globe_mode and not (event is InputEventKey) and _globe.handle_input(event):
 		get_viewport().set_input_as_handled()
 		return
 	if not visible:
@@ -139,6 +162,8 @@ func _input(event: InputEvent) -> void:
 		var code := (event as InputEventKey).physical_keycode
 		if code == KEY_R:
 			_go_home()
+			if _globe_mode:
+				_globe.look_at_direction(planet.planet_position().normalized())
 			get_viewport().set_input_as_handled()
 		elif code == KEY_EQUAL or code == KEY_KP_ADD: # the keyboard zooms too (+ and -)
 			_zoom_at(_view.size * 0.5, 1.25)
@@ -228,6 +253,14 @@ func select_layer(layer: int) -> void:
 	if _started and _whole_pass < _last_pass():
 		_start_chart(_whole_pass + 1)
 
+
+## Shows the map as a small planet in 3D (on) or flat (off).
+func _set_globe(on: bool) -> void:
+	_globe_mode = on
+	_view.visible = not on
+	_globe.visible = on
+	if on and planet != null and planet.target() != null:
+		_globe.look_at_direction(planet.planet_position().normalized())
 
 ## Zooms to `zoom` (1: the whole planet) round the player.
 func show_zoom(zoom: float) -> void:
@@ -321,7 +354,15 @@ func _process(delta: float) -> void:
 			_retired.remove_at(index)
 	if visible:
 		_view.queue_redraw()
-		_hover.text = _numbers_under_the_cursor()
+		if _globe_mode:
+			_hover.text = "Drag to turn the planet, wheel to come closer, G: the flat map"
+			_globe.set_chart(_whole)
+			var here := Vector3.ZERO
+			if planet != null and planet.target() != null:
+				here = planet.planet_position().normalized()
+			_globe.set_pin(here)
+		else:
+			_hover.text = _numbers_under_the_cursor()
 		_season_slider.set_value_no_signal(planet.clock.year_share())
 		var rate := "paused" if planet.time_rate == 0.0 else "%d×" % int(planet.time_rate)
 		_rate_label.text = "   " + rate
@@ -576,3 +617,10 @@ func _draw_arrow(spot: Vector2, heading: Vector2) -> void:
 	_view.draw_colored_polygon(points, Color(1.0, 0.25, 0.2))
 	_view.draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[0]]),
 			Color.WHITE, 1.5)
+
+
+## Opens the map as the 3D globe (or the flat map).
+func show_globe(on := true) -> void:
+	if not visible:
+		toggle()
+	_globe_button.button_pressed = on

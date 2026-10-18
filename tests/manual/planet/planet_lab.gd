@@ -847,6 +847,7 @@ func _physics_process(_delta: float) -> void:
 				(button as Button).pressed.emit()
 	if _show_map and _frame == 30:
 		planet.map.show_zoom(_map_zoom)
+		planet.map.show_globe("--map-globe" in OS.get_cmdline_user_args())
 		planet.map.select_layer(_map_layer)
 	if _shot != "" and _frame == _shot_frame:
 		var animals := 0
