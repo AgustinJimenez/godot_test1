@@ -282,8 +282,11 @@ func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: flo
 			var shown := ground
 			if _pixel_metres > CALM_PIXEL and ground >= 0.0:
 				shown = maxf(ground + (rise_east + rise_north) * 0.25, 0.0)
+			var deep := ground
+			if _pixel_metres > CALM_PIXEL and ground < 0.0: # (the sea floor's noise only makes grain)
+				deep = minf((ground + (ground + rise_east + rise_north)) * 0.5, 0.0)
 			if ground < 0.0:
-				t = lerpf(0.33, 0.0, clampf(-ground / (relief * 0.35), 0.0, 1.0))
+				t = lerpf(0.33, 0.0, clampf(-deep / (relief * 0.35), 0.0, 1.0))
 			else:
 				t = lerpf(0.36, 1.0, clampf(shown / relief, 0.0, 1.0))
 			color = ramp(Layer.ELEVATION, t)
