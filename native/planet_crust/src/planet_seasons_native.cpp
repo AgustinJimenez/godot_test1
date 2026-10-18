@@ -91,6 +91,8 @@ void step(std::vector<float> &r_heat, const float *p_light, const Grid &p_grid, 
 } // namespace
 
 void PlanetSeasonsNative::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("rain", "elevation", "ocean", "temperature", "width", "height", "rain_base",
+			"rain_scale"), &PlanetSeasonsNative::rain);
 	ClassDB::bind_method(D_METHOD("run", "sea", "lights", "width", "height", "snapshots", "wind", "max_years"),
 			&PlanetSeasonsNative::run);
 }
@@ -139,5 +141,70 @@ Dictionary PlanetSeasonsNative::run(const PackedByteArray &p_sea, const PackedFl
 	}
 	result["mean"] = mean;
 	result["cycle"] = cycle;
+	return result;
+}
+
+PackedFloat32Array PlanetSeasonsNative::rain(const PackedFloat32Array &p_elevation, const PackedByteArray &p_ocean,
+		const PackedFloat32Array &p_temperature, int p_width, int p_height, double p_rain_base,
+		double p_rain_scale) const {
+	const int size = p_width * p_height;
+	PackedFloat32Array result;
+	result.resize(size);
+	if (p_width <= 0 || p_height <= 0 || p_elevation.size() < size || p_ocean.size() < size ||
+			p_temperature.size() < size) {
+		return result;
+	}
+	std::vector<float> raw(size, 0.0f);
+	std::vector<float> row_rain(p_width);
+	for (int row = 0; row < p_height; row++) {
+		const double lat = std::abs((0.5 - ((double)row + 0.5) / (double)p_height) * 180.0);
+		const int wind = (lat > 30.0 && lat < 60.0) ? 1 : -1;
+		const double itcz = 0.8 * std::exp(-std::pow(lat / 9.0, 2.0));
+		const double storms = 0.3 * std::exp(-std::pow((lat - 48.0) / 12.0, 2.0));
+		const double dry_belt = 1.0 - 0.55 * std::exp(-std::pow((lat - 27.0) / 9.0, 2.0));
+		double carried = 0.0;
+		std::fill(row_rain.begin(), row_rain.end(), 0.0f);
+		for (int lap = 0; lap < 2; lap++) {
+			for (int step = 0; step < p_width; step++) {
+				const int column = wind > 0 ? step : p_width - 1 - step;
+				const int behind = (((column - wind) % p_width) + p_width) % p_width;
+				const int index = row * p_width + column;
+				if (p_ocean[index] == 1) {
+					double warmth = ((double)p_temperature[index] + 5.0) / 30.0;
+					warmth = warmth < 0.1 ? 0.1 : (warmth > 1.0 ? 1.0 : warmth);
+					carried = carried + (1.0 - carried) * (0.5 * warmth);
+					row_rain[column] = 0.0f;
+				} else {
+					double climb = (double)p_elevation[index] - (double)p_elevation[row * p_width + behind];
+					climb = climb < 0.0 ? 0.0 : climb;
+					const double fall = carried * (p_rain_base + std::min(climb * 9.0, 0.55)) * dry_belt;
+					carried = std::max(carried - fall * (0.5 - std::min(climb * 6.0, 0.3)), 0.0) * 0.996;
+					row_rain[column] = (float)(fall * p_rain_scale);
+				}
+			}
+		}
+		for (int column = 0; column < p_width; column++) {
+			const double wet_belt = (itcz + storms) * (p_ocean[row * p_width + column] == 0 ? 1.0 : 0.4);
+			raw[row * p_width + column] = (float)((double)row_rain[column] + wet_belt);
+		}
+	}
+	for (int row = 0; row < p_height; row++) {
+		for (int column = 0; column < p_width; column++) {
+			double total = 0.0;
+			double weight = 0.0;
+			for (int dy = -1; dy <= 1; dy++) {
+				for (int dx = -1; dx <= 1; dx++) {
+					const int r = std::max(0, std::min(p_height - 1, row + dy));
+					const int c = (((column + dx) % p_width) + p_width) % p_width;
+					const double w = (dx == 0 && dy == 0) ? 2.0 : 1.0;
+					total += (double)raw[r * p_width + c] * w;
+					weight += w;
+				}
+			}
+			double value = total / weight;
+			value = value < 0.0 ? 0.0 : (value > 1.6 ? 1.6 : value);
+			result.set(row * p_width + column, (float)value);
+		}
+	}
 	return result;
 }

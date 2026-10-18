@@ -15,6 +15,7 @@ const HEIGHT := 96
 var _temperature := PackedFloat32Array() ## degrees C at sea level
 var _rain := PackedFloat32Array() ## 0 none .. ~1.5 a rain forest
 var seasons := PlanetSeasons.new() ## the temperature through the year (the mean is `_temperature`)
+var native_rain := true ## false: the rain is made by the script below (to compare)
 
 
 func build(noise: PlanetNoise) -> void:
@@ -44,6 +45,16 @@ func build(noise: PlanetNoise) -> void:
 	clock.eccentricity = noise.settings.eccentricity
 	clock.perihelion_share = noise.settings.perihelion_share
 	seasons.build(noise, clock)
+	var native_ready := native_rain and ClassDB.class_exists(&"PlanetSeasonsNative")
+	native_ready = native_ready and ClassDB.class_exists(&"PlanetDrainageNative")
+	if native_ready: # the same numbers, made natively
+		var sampler: RefCounted = ClassDB.instantiate(&"PlanetDrainageNative")
+		_temperature = sampler.call(&"sample_grid", seasons.mean, PlanetSeasons.WIDTH,
+				PlanetSeasons.HEIGHT, dirs)
+		var air: RefCounted = ClassDB.instantiate(&"PlanetSeasonsNative")
+		_rain = air.call(&"rain", elevation, ocean, _temperature, WIDTH, HEIGHT, RAIN_BASE,
+				RAIN_SCALE)
+		return
 	for row in HEIGHT: # the climate's temperature is the mean of the year
 		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
 		for column in WIDTH:
