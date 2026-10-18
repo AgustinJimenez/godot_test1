@@ -168,6 +168,7 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 		if map_first and DisplayServer.get_name() != "headless":
 			# the world is defined before it is built: its map, every layer, comes first, and the
 			# ground waits (map.paused) until the map is closed
+			map.warm_up = true # (black, with its progress, until the whole map is charted)
 			map.begin()
 			map.show_zoom(PlanetMap.MAX_ZOOM)
 			map.visibility_changed.connect(_cover_the_loading, CONNECT_ONE_SHOT)

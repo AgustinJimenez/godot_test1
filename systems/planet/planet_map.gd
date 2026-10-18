@@ -58,6 +58,13 @@ var _globe_button: Button
 var _globe_mode := false
 var _caption: Label
 var _labels: PlanetMapLabels # the names of the seas and lands (built on the first look)
+var warm_up := false ## the world sets it: the map is all charted (black meanwhile) before it shows
+var _warming := false
+var _warm_queue: Array[int] = [] # the layers still to get a first picture
+var _warm_total := 1
+var _warm_layers_done := 0
+var _warm_close := 0 # 0 the close view of the start is not charted yet, 1 it has been started
+var _chart_layer := PlanetChart.Layer.TERRAIN # the layer of the chart in hand (maybe not shown)
 var _chart_ms := 0 # when the chart in hand was started
 var _logged_zoom := -1.0
 var _logged_centre := Vector2(-1.0, -1.0)
@@ -274,7 +281,7 @@ func _time_button(text: String, action: Callable) -> void:
 ## Shows another layer (a PlanetChart.Layer): what was charted of it before comes back at once, the
 ## rest is charted again.
 func select_layer(layer: int) -> void:
-	if layer == _layer:
+	if layer == _layer or _warming:
 		return
 	PlanetMapLog.line("layer %s -> %s (picture kept: %s)" % [PlanetChart.NAMES[_layer],
 			PlanetChart.NAMES[layer], _cache.has(layer)])
@@ -403,6 +410,13 @@ func begin() -> void:
 	if _started or planet == null or DisplayServer.get_name() == "headless":
 		return
 	_started = true
+	if warm_up:
+		_warming = true
+		for layer in PlanetChart.NAMES.size():
+			if layer != _layer:
+				_warm_queue.append(layer)
+		_warm_total = maxi(_warm_queue.size(), 1)
+		PlanetMapLog.line("warm-up: the whole map is charted before it is shown")
 	_start_chart(0)
 
 
@@ -421,6 +435,7 @@ func _start_chart(pass_index: int) -> void:
 	_chart.clock = planet.clock.copy()
 	_chart_time = planet.clock.time
 	_chart_is_detail = false
+	_chart_layer = _layer
 	_chart_ms = Time.get_ticks_msec()
 	PlanetMapLog.line("chart whole planet pass %d: %dx%d, %s" % [pass_index, _chart.size.x,
 			_chart.size.y, PlanetChart.NAMES[_layer]])
@@ -444,7 +459,8 @@ func _process(delta: float) -> void:
 	if visible:
 		_drop_a_stale_chart()
 		_log_the_view()
-		_update_reveal(delta)
+		if not _warming:
+			_update_reveal(delta)
 		_view.queue_redraw()
 		if _globe_mode:
 			_hover.text = "Drag to turn the planet, wheel to come closer, G: the flat map"
@@ -469,13 +485,59 @@ func _process(delta: float) -> void:
 			_caption.text = "Charting the planet...  %d %%" % int(100.0 * _chart.progress())
 	# a close view is charted sharply as soon as there is a picture to look at: it does not wait for
 	# the whole planet's last passes (those go on afterwards)
+	if _warming:
+		_drive_the_warm_up()
 	var whole_is_drawing := _chart != null and not _chart_is_detail
-	if visible and _whole_pass >= 0 and (_chart == null or whole_is_drawing):
+	if visible and not _warming and _whole_pass >= 0 and (_chart == null or whole_is_drawing):
 		_maybe_chart_the_view(delta)
 
 
 ## The temperature and cloud layers show a moment: when time has moved on, they are charted again
 ## (the coarse chart only, a second or so), so they follow the seasons, the day and the winds.
+## The warm-up: the whole planet's passes, then the sharp close view where the player stands, then a
+## first picture of every other layer, one after the other; then the map is shown.
+func _drive_the_warm_up() -> void:
+	if _chart != null:
+		return
+	var size := _visible_size()
+	var view := Rect2(_centre - size * 0.5, size)
+	if _whole_pass < _last_pass():
+		_start_chart(_whole_pass + 1)
+	elif _warm_close == 0 and not _sharply_covered(view):
+		_warm_close = 1
+		_chart_close_view(view, size)
+	elif not _warm_queue.is_empty():
+		_start_warm_layer(_warm_queue.pop_front())
+	else:
+		_warming = false
+		_revealed = true
+		PlanetMapLog.line("warm-up done: the map is ready")
+
+
+## Charts a first (1024 px) picture of `layer` for later, without showing it.
+func _start_warm_layer(layer: int) -> void:
+	_chart = PlanetChart.new()
+	_chart.layer = layer as PlanetChart.Layer
+	_chart.size = PASSES[2]
+	_chart.clock = planet.clock.copy()
+	_chart_layer = layer as PlanetChart.Layer
+	_chart_is_detail = false
+	_chart_ms = Time.get_ticks_msec()
+	PlanetMapLog.line("warm-up: first picture of the %s layer" % PlanetChart.NAMES[layer])
+	_chart.start(planet.noise)
+
+
+## How far the warm-up is (0..1): the whole passes, the close view, the other layers.
+func _warm_progress() -> float:
+	var whole := clampf(float(_whole_pass + 1) / float(_last_pass() + 1), 0.0, 1.0) * 0.4
+	var close := 0.0
+	if _warm_close > 0:
+		close = 0.1
+		if _detail != null:
+			close = 0.2 if _detail_preview else 0.3
+	return whole + close + float(_warm_layers_done) / float(_warm_total) * 0.3
+
+
 func _log_the_view() -> void:
 	if _zoom != _logged_zoom or not _centre.is_equal_approx(_logged_centre):
 		PlanetMapLog.line_every("view", 0.25, "view: zoom %.1f, centre %.4f, %.4f (%.2f N, %.2f E)" % [
@@ -501,6 +563,13 @@ func _refresh_temperature(delta: float) -> void:
 
 
 func _adopt_chart() -> void:
+	if not _chart_is_detail and _chart_layer != _layer: # a layer charted ahead (the warm-up)
+		_cache[_chart_layer] = {"whole": _chart.texture(), "pass": 2}
+		PlanetMapLog.line("chart done: first picture of the %s layer in %d ms" % [
+				PlanetChart.NAMES[_chart_layer], Time.get_ticks_msec() - _chart_ms])
+		_chart = null
+		_warm_layers_done += 1
+		return
 	var texture := _chart.texture()
 	PlanetMapLog.line("chart done: %s in %d ms" % ["close view" if _chart_is_detail
 			else "whole pass %d" % (_whole_pass + 1), Time.get_ticks_msec() - _chart_ms])
@@ -562,12 +631,18 @@ func _maybe_chart_the_view(delta: float) -> void:
 		return
 	if _chart != null and not _chart_is_detail and _whole_pass + 1 < FIRST_BIG_PASS:
 		return # the short whole passes (under half a second) finish first: a zoom out shows them
-	var rect := Rect2(view.position - size * 0.25, size * 1.5) # a margin to pan in
+	_chart_close_view(view, size)
+
+
+## Starts the close chart of `view` (a margin round it to pan in): false when the view reaches
+## over a pole (the whole planet's chart will do).
+func _chart_close_view(view: Rect2, size: Vector2) -> bool:
+	var rect := Rect2(view.position - size * 0.25, size * 1.5)
 	# the margin stops at the poles (east-west the map wraps, so x may run past 0 and 1)
 	var top := maxf(rect.position.y, 0.0)
 	rect = Rect2(rect.position.x, top, rect.size.x, minf(rect.end.y, 1.0) - top)
 	if not rect.encloses(view):
-		return # the view reaches over a pole: the whole planet chart will do
+		return false
 	PlanetMapLog.line("view still at zoom %.1f: charting it (%s)" % [_zoom,
 			"a pass gives way" if _chart != null else "free"])
 	if _chart != null: # a whole planet pass still drawing gives way to the close view
@@ -577,8 +652,13 @@ func _maybe_chart_the_view(delta: float) -> void:
 	# close zoom stays sharp; a quarter of that size comes first (a sixteenth of the time) so the
 	# view is better than the whole planet's picture within a second
 	var across := clampi(int(_pane().x * 1.5 * 1.25), DETAIL_MIN, DETAIL_MAX)
+	if _warming: # (nobody looks at a preview behind a black screen: straight to the sharp one)
+		_detail_full = 0
+		_start_detail(rect, across)
+		return true
 	_detail_full = across
 	_start_detail(rect, maxi(across / 4, 256))
+	return true
 
 
 ## Charts `rect` (fractions of the map) `across` pixels wide, the close view.
@@ -717,6 +797,14 @@ func _update_reveal(delta: float) -> void:
 
 
 func _draw_view() -> void:
+	if _warming: # the map is not shown until it is all charted: black and how far it is
+		_view.draw_rect(Rect2(Vector2.ZERO, _view.size), Color.BLACK)
+		var font := ThemeDB.fallback_font
+		var text := "Charting the planet...  %d %%" % int(100.0 * _warm_progress())
+		var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 22).x
+		_view.draw_string(font, (_view.size - Vector2(width, -8.0)) * 0.5, text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 22, Color(0.85, 0.9, 1.0))
+		return
 	var size := _visible_size()
 	var view := Rect2(_centre - size * 0.5, size)
 	_view.draw_rect(Rect2(Vector2.ZERO, _view.size), Color(0.02, 0.05, 0.12))
