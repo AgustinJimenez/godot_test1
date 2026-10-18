@@ -92,6 +92,11 @@ private:
 		double side = 1.0; // +1 or -1: which bank of the river the point is on
 	};
 	bool valley_at(const Vector3 &p_dir, Valley &r_valley) const;
+	// the lakes of the drainage: the water level of each cell (-1e9 where there is no lake)
+	PackedFloat32Array lake_level;
+	// how much of a lake the direction is in (0..1, soft at the shore) and the water level of the nearest lake
+	double lake_weight(const Vector3 &p_dir, double &r_level) const;
+	PackedFloat32Array lake_surfaces(const PackedVector3Array &p_dirs) const;
 	double valley_floor(const Vector3 &p_dir) const; // 1 away from the rivers, less on a valley floor
 
 	static void configure(Noise &r_noise, const Array &p_config);

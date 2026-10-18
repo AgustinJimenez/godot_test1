@@ -48,6 +48,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_climate", "grid", "width", "height"), &PlanetCrustNative::set_climate);
 	ClassDB::bind_method(D_METHOD("set_rivers", "cells", "network", "cell_metres"), &PlanetCrustNative::set_rivers);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
+	ClassDB::bind_method(D_METHOD("lake_surfaces", "dirs"), &PlanetCrustNative::lake_surfaces);
 	ClassDB::bind_method(D_METHOD("despeckle", "rgb", "width", "height"), &PlanetCrustNative::despeckle);
 	ClassDB::bind_method(D_METHOD("terrain_row", "dirs", "grounds", "east", "north", "step_lon", "calm"),
 			&PlanetCrustNative::terrain_row);
@@ -355,6 +356,15 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 		if (result < 8.0) {
 			const double bowl = 8.0 * std::exp((result - 8.0) / 60.0);
 			result = result + (bowl - result) * inland;
+		}
+	}
+	if (!lake_level.is_empty() && p_units > 0.0) { // the lakes of the drainage: the ground sinks under the water
+		double level = -1.0e9;
+		const double weight = lake_weight(p_point.normalized(), level);
+		if (weight > 0.0) {
+			const double soft = smooth(0.0, 1.0, weight);
+			const double bottom = std::max(level - (1.0 + 7.0 * smooth(0.55, 1.0, weight)), 0.6);
+			result = result + (std::min(result, bottom) - result) * soft;
 		}
 	}
 	if (in_valley && result > 0.0) {
@@ -678,7 +688,14 @@ PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs,
 	for (int index = 0; index < p_dirs.size(); index++) {
 		const double ground = p_grounds[index];
 		double r, g, b;
-		if (ground < 0.0) {
+		double lake_level_here = -1.0e9;
+		const bool in_lake = ground >= 0.0 && lake_weight(p_dirs[index], lake_level_here) > 0.5 && ground < lake_level_here;
+		if (in_lake) { // a lake: the water, darker where it is deeper
+			const double depth = std::sqrt(clampd((lake_level_here - ground) / 12.0, 0.0, 1.0));
+			r = 0.27 + (0.12 - 0.27) * depth;
+			g = 0.52 + (0.32 - 0.52) * depth;
+			b = 0.78 + (0.62 - 0.78) * depth;
+		} else if (ground < 0.0) {
 			const double depth = std::sqrt(clampd(-ground / (relief * 0.35), 0.0, 1.0));
 			r = 0.32 + (0.03 - 0.32) * depth;
 			g = 0.62 + (0.12 - 0.62) * depth;
@@ -947,6 +964,61 @@ void PlanetCrustNative::set_rivers(int p_cells, const Dictionary &p_network, dou
 	river_flow = p_network["river_flow"];
 	river_cell_metres = p_cell_metres;
 	river_cells = river_start.size() == 6 * p_cells * p_cells + 1 ? p_cells : 0;
+	lake_level = p_network.get("lake_level", PackedFloat32Array());
+	if (lake_level.size() != 6 * p_cells * p_cells) {
+		lake_level = PackedFloat32Array();
+	}
+}
+
+double PlanetCrustNative::lake_weight(const Vector3 &p_dir, double &r_level) const {
+	if (river_cells <= 0 || lake_level.is_empty()) {
+		return 0.0;
+	}
+	const double ax = std::abs((double)p_dir.x), ay = std::abs((double)p_dir.y), az = std::abs((double)p_dir.z);
+	int face = 0;
+	if (ax >= ay && ax >= az) {
+		face = p_dir.x > 0 ? 0 : 1;
+	} else if (ay >= az) {
+		face = p_dir.y > 0 ? 2 : 3;
+	} else {
+		face = p_dir.z > 0 ? 4 : 5;
+	}
+	const double along = p_dir.dot(cube_faces[face * 3]);
+	const double quarter_pi = 3.14159265358979323846 * 0.25;
+	const double s = std::atan((double)p_dir.dot(cube_faces[face * 3 + 1]) / along) / quarter_pi;
+	const double t = std::atan((double)p_dir.dot(cube_faces[face * 3 + 2]) / along) / quarter_pi;
+	const double fx = (s + 1.0) * 0.5 * river_cells - 0.5;
+	const double fy = (t + 1.0) * 0.5 * river_cells - 0.5;
+	const int x0 = (int)std::floor(fx), y0 = (int)std::floor(fy);
+	const double tx = fx - x0, ty = fy - y0;
+	double weight = 0.0;
+	double level_sum = 0.0, level_weight = 0.0;
+	for (int dy = 0; dy < 2; dy++) {
+		for (int dx = 0; dx < 2; dx++) {
+			const int i = std::max(0, std::min(river_cells - 1, x0 + dx));
+			const int j = std::max(0, std::min(river_cells - 1, y0 + dy));
+			const double level = (double)lake_level[(face * river_cells + j) * river_cells + i];
+			const double w = (dx ? tx : 1.0 - tx) * (dy ? ty : 1.0 - ty);
+			if (level > -1.0e8) {
+				weight += w;
+				level_sum += level * w;
+				level_weight += w;
+			}
+		}
+	}
+	r_level = level_weight > 0.0 ? level_sum / level_weight : -1.0e9;
+	return weight;
+}
+
+PackedFloat32Array PlanetCrustNative::lake_surfaces(const PackedVector3Array &p_dirs) const {
+	PackedFloat32Array out;
+	out.resize(p_dirs.size());
+	for (int index = 0; index < p_dirs.size(); index++) {
+		double level = -1.0e9;
+		const double weight = lake_weight(p_dirs[index].normalized(), level);
+		out.set(index, weight > 0.5 ? (float)level : -1.0e9f);
+	}
+	return out;
 }
 
 // The nearest river piece to a direction, and the envelope of the valley it cuts: its bed plus the
