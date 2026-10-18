@@ -490,7 +490,7 @@ PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs,
 			const double rise_north = (double)p_north[index] - ground;
 			const double slope = clampd(std::sqrt(rise_east * rise_east + rise_north * rise_north) / (p_step_lon * radius), 0.0, 1.0);
 			const Vector3 p = p_dirs[index] * (real_t)radius;
-			const Color rock = rock_colour(p_dirs[index], ground, slope, (double)detail.at(p) * 0.5 + 0.5);
+			const Color rock = rock_colour(p_dirs[index], ground, slope, p_step_lon * radius > 60.0 ? 0.5 : (double)detail.at(p) * 0.5 + 0.5);
 			const double shade = clampd(1.0 - (rise_east - rise_north) * 6.0 * 0.0098 / p_step_lon / relief, 0.55, 1.35);
 			r = rock.r * shade;
 			g = rock.g * shade;

@@ -137,6 +137,8 @@ func _chart(worker: int) -> void:
 	var step_lon := rect.size.x * TAU / float(size.x)
 	var step_lat := rect.size.y * PI / float(size.y)
 	var needs_slope := layer in [Layer.TERRAIN, Layer.ELEVATION, Layer.BIOME, Layer.SLOPE]
+	# a pixel of many kilometres would only alias the hills and gullies: the smooth ground is drawn
+	var smooth_ground := step_lon * _noise.settings.radius > 1500.0
 	var above := PackedFloat32Array() # the heights of the row before (the point a pixel north)
 	for row in range(from_row, to_row):
 		if _cancelled:
@@ -159,7 +161,7 @@ func _chart(worker: int) -> void:
 		for column in size.x:
 			var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
 			dirs[column] = _direction(lat, u * TAU - PI)
-		var grounds := _noise.heights_of(dirs)
+		var grounds := _ground_of(dirs, smooth_ground)
 		var east_grounds := grounds
 		var north_grounds := grounds
 		if needs_slope:
@@ -169,13 +171,13 @@ func _chart(worker: int) -> void:
 			var u_end := rect.end.x + 0.5 / float(size.x) * rect.size.x
 			var last_east := PackedVector3Array([_direction(lat, u_end * TAU - PI)])
 			east_grounds = grounds.slice(1)
-			east_grounds.append_array(_noise.heights_of(last_east))
+			east_grounds.append_array(_ground_of(last_east, smooth_ground))
 			if above.is_empty():
 				north_dirs.resize(size.x)
 				for column in size.x:
 					var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
 					north_dirs[column] = _direction(lat + step_lat, u * TAU - PI)
-				above = _noise.heights_of(north_dirs)
+				above = _ground_of(north_dirs, smooth_ground)
 			north_grounds = above
 			above = grounds
 		var macros := grounds
@@ -207,6 +209,11 @@ func _chart(worker: int) -> void:
 		_rows_done += 1
 		_mutex.unlock()
 	_bands[worker] = bytes
+
+
+## The ground at many directions: its smooth shape (without the hills and gullies) for a far view.
+func _ground_of(dirs: PackedVector3Array, smooth_shape: bool) -> PackedFloat32Array:
+	return _noise.macro_heights_of(dirs) if smooth_shape else _noise.heights_of(dirs)
 
 
 static func _direction(lat: float, lon: float) -> Vector3:
