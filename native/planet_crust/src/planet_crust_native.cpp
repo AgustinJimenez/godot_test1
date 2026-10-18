@@ -400,7 +400,20 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 	double layer = clampd(relief * 0.025, 8.0, 40.0);
 	double steps = std::floor(ground / layer) + smooth(0.15, 0.85, fposmod_d(ground / layer, 1.0));
 	double mixed = smooth(0.3, 0.6, units) * 0.35;
-	return ground + (steps * layer - ground) * mixed;
+	ground += (steps * layer - ground) * mixed;
+	// dunes: low sand ridges on the flat, hot, dry ground (native only, like the eroded ridges)
+	if (erosion_scale > 0.0 && ground > 3.0 && units > 0.05 && ground < relief * 0.2) {
+		const double dry = smooth(0.28, 0.08, grid_at(rain_grid, p_dir, 0.5));
+		const double hot = smooth(8.0, 20.0, sea_temperature(p_dir) - 0.0065 * ground);
+		const double desert = dry * hot;
+		if (desert > 0.0) {
+			const Vector3 east = Vector3(-p_dir.z, 0.0f, p_dir.x).normalized();
+			const double phase = (double)p.dot(east) / 170.0 + 2.5 * (double)hills.at(p);
+			const double crest = 1.0 - std::abs(std::sin(phase));
+			ground += crest * crest * 7.0 * desert;
+		}
+	}
+	return ground;
 }
 
 void PlanetCrustNative::plate_at(const Vector3 &p_dir, int &r_plate, real_t &r_edge, bool &r_continental) const {
