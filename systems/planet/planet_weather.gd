@@ -25,6 +25,7 @@ var _noise: PlanetNoise
 var _big_a := FastNoiseLite.new() # the weather systems (a few thousand km across on an Earth)
 var _big_b := FastNoiseLite.new() # a second pattern the first one changes into and back
 var _small := FastNoiseLite.new() # the clumps inside them
+var _pool := FastNoiseLite.new() # warm pools and cold tongues: the belts vary round the planet
 var _warp := FastNoiseLite.new() # bends the systems into swirls and filaments
 
 
@@ -35,6 +36,7 @@ func _init(noise: PlanetNoise) -> void:
 	_setup(_big_b, seed_value + 32, 1.7, 3)
 	_setup(_small, seed_value + 33, 6.5, 3)
 	_setup(_warp, seed_value + 34, 2.4, 3)
+	_setup(_pool, seed_value + 35, 1.1, 2)
 
 
 func _setup(source: FastNoiseLite, noise_seed: int, frequency: float, octaves: int) -> void:
@@ -60,9 +62,14 @@ func readiness(dir: Vector3, clock: PlanetClock, macro := NAN) -> float:
 	var moisture := _moisture(dir, clock, macro)
 	var south := -1.0 if lat < 0.0 else 1.0
 	# the belt where the trade winds meet follows the sun, but not all the way
-	var trade_belt := 0.75 * exp(-pow((lat - 0.4 * declination) / 0.17, 2.0))
+	# (the belt is broken up by longitude: strong over the warm pools, weak over the cold tongues)
+	var pools := 0.5 + 0.5 * _pool.get_noise_3d(dir.x, dir.y, dir.z)
+	var pools_factor := lerpf(0.35, 1.4, smoothstep(0.2, 0.8, pools))
+	var trade_belt := 0.75 * pools_factor * exp(-pow((lat - 0.4 * declination) / 0.17, 2.0))
 	# the storm tracks of the middle latitudes, a little poleward in the summer
-	var storm_lat := south * 0.87 + 0.3 * declination
+	# the storm tracks lean: they run poleward toward the east, and wander with longitude
+	var lean := 0.12 * sin(atan2(dir.z, dir.x) * 2.0 + _pool.get_noise_3d(dir.x, dir.y, dir.z) * 3.0)
+	var storm_lat := south * (0.87 + lean) + 0.3 * declination
 	var storms := 0.55 * exp(-pow((lat - storm_lat) / 0.2, 2.0))
 	# the subtropical highs, where the air sinks
 	var high_lat := south * 0.48 + 0.3 * declination

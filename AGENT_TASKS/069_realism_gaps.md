@@ -28,7 +28,7 @@ the slope of the coarser ones, so valleys branch). Inland basins below the sea a
 
 ## Climate and weather
 
-7. **Clouds** are still arranged in latitude belts: the equatorial band is a bell curve in latitude only.
+7. **Clouds** (2026-10-18: the belts now vary by longitude, warm pools and cold tongues, and the storm tracks lean). Still arranged in latitude belts.
    Real cover is broken by the warm and cold waters under it, has diagonal fronts, tropical clusters and
    hurricanes (see 068).
 8. **Temperature**: land heating and currents are crude (a few degrees from cell neighbours). Missing: sea ice,

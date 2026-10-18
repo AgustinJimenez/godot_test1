@@ -211,7 +211,7 @@ func _chart(worker: int) -> void:
 			_mutex.unlock()
 			continue
 		var bases := PackedColorArray()
-		if layer == Layer.CLOUDS:
+		if layer == Layer.CLOUDS and _pixel_metres <= COARSE_PIXEL:
 			var flat := PackedFloat32Array()
 			flat.resize(size.x)
 			flat.fill(0.1)
@@ -301,8 +301,8 @@ func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: flo
 			var degrees := noise.temperature(dir.x, dir.y, dir.z, maxf(shape, 0.0))
 			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 75.0)
 		Layer.CLOUDS:
-			var land_colour := base_colour if ground >= 0.0 and noise.hydrology == null else \
-					_terrain_color(dir, ground, 0.1, 0.0, step_lon)
+			var own := ground >= 0.0 and noise.hydrology == null and base_colour != Color.BLACK
+			var land_colour := base_colour if own else 					_terrain_color(dir, ground, 0.1, 0.0, step_lon)
 			var base := land_colour.darkened(0.45)
 			var cover := noise.weather.cloud(dir, clock, macro)
 			color = base.lerp(Color(0.97, 0.98, 1.0), cover * 0.92)
