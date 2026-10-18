@@ -84,9 +84,9 @@ private:
 	void plate_at(const Vector3 &p_dir, int &r_plate, real_t &r_edge, bool &r_continental) const;
 	double shore_curve(double p_units) const;
 	double valley_cut(const Vector3 &p_point, double p_units) const;
-	double macro_ground(double p_units, const Vector3 &p_point) const;
+	double macro_ground(double p_units, const Vector3 &p_point, bool p_broad = false) const;
 	double ground_height(const Vector3 &p_dir) const;
-	Color rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle) const;
+	Color rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle, bool p_strata = true) const;
 
 protected:
 	static void _bind_methods();
@@ -99,7 +99,7 @@ public:
 	void set_climate(const PackedFloat32Array &p_grid, int p_width, int p_height);
 	void set_rivers(int p_cells, const Dictionary &p_network, double p_cell_metres);
 	// Many points at once are split over the engine's worker threads (every call is pure, so any order).
-	enum HeightMode { GROUND, TECTONIC, MACRO, MACRO_AND_TECTONIC };
+	enum HeightMode { GROUND, TECTONIC, MACRO, MACRO_AND_TECTONIC, BROAD };
 	struct HeightJob {
 		int mode;
 		const Vector3 *dirs;
@@ -123,6 +123,8 @@ public:
 			const PackedFloat32Array &p_steeps) const;
 	PackedFloat32Array tectonic_heights(const PackedVector3Array &p_dirs) const;
 	PackedFloat32Array macro_heights(const PackedVector3Array &p_dirs) const;
+	// the macro height without the small rolling hills and foothills (for maps of big pixels)
+	PackedFloat32Array broad_heights(const PackedVector3Array &p_dirs) const;
 	// the ground of one tile (a grid of `cells + 3` points a side, one ring round the tile):
 	PackedVector3Array tile_dirs(int p_face, double p_s0, double p_s1, double p_t0, double p_t1, int p_cells) const;
 	// The same grid with every point worked out in double precision (a float direction is only good to

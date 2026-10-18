@@ -113,7 +113,7 @@ func dominant(dir: Vector3, ground: float) -> int:
 ## (0 level .. 1 vertical), with `speckle` (0..1) the fine variation there. `sea_temperature` (degrees C,
 ## the year's mean at sea level there) puts permanent snow and ice where the cold keeps it.
 func colour(dir: Vector3, ground: float, steep: float, speckle: float,
-		sea_temperature := 15.0) -> Color:
+		sea_temperature := 15.0, strata := true) -> Color:
 	var w := weights(dir, ground)
 	var rock := Color(0.0, 0.0, 0.0)
 	for index in w.size():
@@ -125,7 +125,8 @@ func colour(dir: Vector3, ground: float, steep: float, speckle: float,
 	var layers := 0.5 + 0.5 * sin(ground / bed * TAU)
 	# the sea floor shows no beds (they showed as contour rings)
 	var on_land := smoothstep(0.0, 200.0, ground)
-	rock = rock * (1.0 + (layers - 0.5) * 0.24 * sedimentary * on_land)
+	if strata: # (a map's big pixels would only alias the beds into grain)
+		rock = rock * (1.0 + (layers - 0.5) * 0.24 * sedimentary * on_land)
 	rock = rock * (0.94 + 0.12 * speckle)
 	rock = rock.lerp(rock * 0.62, smoothstep(0.35, 0.8, steep))
 	var cold := sea_temperature - LAPSE * maxf(ground, 0.0)

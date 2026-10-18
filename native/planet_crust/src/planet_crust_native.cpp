@@ -53,6 +53,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("macro_and_tectonic_heights", "dirs"), &PlanetCrustNative::macro_and_tectonic_heights);
 	ClassDB::bind_method(D_METHOD("tectonic_heights", "dirs"), &PlanetCrustNative::tectonic_heights);
 	ClassDB::bind_method(D_METHOD("macro_heights", "dirs"), &PlanetCrustNative::macro_heights);
+	ClassDB::bind_method(D_METHOD("broad_heights", "dirs"), &PlanetCrustNative::broad_heights);
 	ClassDB::bind_method(D_METHOD("tile_dirs", "face", "s0", "s1", "t0", "t1", "cells"), &PlanetCrustNative::tile_dirs);
 	ClassDB::bind_method(D_METHOD("tile_positions", "face", "s0", "s1", "t0", "t1", "cells", "heights", "origin", "e1", "up",
 			"e3"), &PlanetCrustNative::tile_positions);
@@ -273,7 +274,7 @@ double PlanetCrustNative::valley_cut(const Vector3 &p_point, double p_units) con
 	return cut * upland;
 }
 
-double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point) const {
+double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, bool p_broad) const {
 	// every layer below is multiplied by a weight that is exactly 0 over the sea (and a little
 	// inland), so those noises are not asked there: the same height, the sea floor much faster
 	double land = smooth(-0.02, 0.05, p_units);
@@ -281,7 +282,7 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point) c
 	const bool in_valley = river_cells > 0 && valley_at(p_point.normalized(), valley);
 	// a river's valley floor is smooth: the rough layers fade there
 	const double floor_factor = in_valley ? 1.0 - 0.7 * (1.0 - smooth(valley.floor_half, valley.floor_half * 6.0, valley.distance)) : 1.0;
-	double rolling_height = land > 0.0 ? rolling.at(p_point) * clampd(relief * 0.12, 25.0, 120.0) * floor_factor : 0.0;
+	double rolling_height = (land > 0.0 && !p_broad) ? rolling.at(p_point) * clampd(relief * 0.12, 25.0, 120.0) * floor_factor : 0.0;
 	double ridges = 0.0;
 	if (p_units > 0.08) {
 		double belt = smooth(0.0, 0.5, (double)range_mask.at(p_point) + 0.15);
@@ -293,7 +294,9 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point) c
 	if (rugged > 0.0) {
 		massifs = ((double)massif.at(p_point) * 0.5 + 0.0) * relief * massif_scale * rugged * floor_factor;
 		chains = ((double)chain.at(p_point) * 0.5 + 0.0) * relief * chain_scale * rugged * floor_factor;
-		spurs = ((double)foothills.at(p_point) * 0.5 + 0.0) * relief * foothill_scale * rugged * floor_factor;
+		if (!p_broad) {
+				spurs = ((double)foothills.at(p_point) * 0.5 + 0.0) * relief * foothill_scale * rugged * floor_factor;
+			}
 	}
 	double shore_height = shore_curve(p_units) * relief;
 	double raised = shore_height + rolling_height * land + ridges + chains + massifs + spurs;
@@ -387,7 +390,7 @@ double PlanetCrustNative::sea_temperature(const Vector3 &p_dir) const {
 	return value;
 }
 
-Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle) const {
+Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle, bool p_strata) const {
 	int plate = 0;
 	real_t edge = 0;
 	bool is_continental = false;
@@ -440,7 +443,7 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	double bed = relief * 0.03 > 6.0 ? relief * 0.03 : 6.0;
 	double layers = 0.5 + 0.5 * std::sin(p_ground / bed * 6.283185307179586);
 	double on_land = smooth(0.0, 200.0, p_ground);
-	float stripes = (float)(1.0 + (layers - 0.5) * 0.24 * sedimentary * on_land);
+	float stripes = p_strata ? (float)(1.0 + (layers - 0.5) * 0.24 * sedimentary * on_land) : 1.0f; // (a map's big pixels would only alias them)
 	rock = Color(rock.r * stripes, rock.g * stripes, rock.b * stripes, 0.0f);
 	float speckle = (float)(0.94 + 0.12 * p_speckle);
 	rock = Color(rock.r * speckle, rock.g * speckle, rock.b * speckle, 0.0f);
@@ -486,6 +489,9 @@ void PlanetCrustNative::height_chunk(int p_chunk, int64_t p_job) {
 				job->out2[index] = (float)raised;
 				break;
 			}
+			case BROAD:
+				job->out[index] = (float)macro_ground(tectonic_height(dir) - sea, dir * (real_t)radius, true);
+				break;
 			default:
 				job->out[index] = (float)macro_ground(tectonic_height(dir) - sea, dir * (real_t)radius);
 		}
@@ -578,7 +584,7 @@ PackedByteArray PlanetCrustNative::terrain_row(const PackedVector3Array &p_dirs,
 			const double rise_north = ((double)p_north[index] - ground) * p_calm;
 			const double slope = clampd(std::sqrt(rise_east * rise_east + rise_north * rise_north) / (p_step_lon * radius), 0.0, 1.0);
 			const Vector3 p = p_dirs[index] * (real_t)radius;
-			const Color rock = rock_colour(p_dirs[index], ground, slope, p_step_lon * radius > 60.0 ? 0.5 : (double)detail.at(p) * 0.5 + 0.5);
+			const Color rock = rock_colour(p_dirs[index], ground, slope, p_step_lon * radius > 60.0 ? 0.5 : (double)detail.at(p) * 0.5 + 0.5, p_step_lon * radius < 20.0);
 			const double shade = clampd(1.0 - (rise_east - rise_north) * 6.0 * 0.0098 / p_step_lon / relief, 0.55, 1.35);
 			r = rock.r * shade;
 			g = rock.g * shade;
@@ -815,6 +821,10 @@ PackedColorArray PlanetCrustNative::ground_colours(const PackedVector3Array &p_d
 }
 
 // The ground without the smallest hills (PlanetNoise.macro_height): what the water sees.
+PackedFloat32Array PlanetCrustNative::broad_heights(const PackedVector3Array &p_dirs) const {
+	return heights_by(BROAD, p_dirs);
+}
+
 PackedFloat32Array PlanetCrustNative::macro_heights(const PackedVector3Array &p_dirs) const {
 	return heights_by(MACRO, p_dirs);
 }

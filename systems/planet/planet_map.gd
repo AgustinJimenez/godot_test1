@@ -135,6 +135,11 @@ func _input(event: InputEvent) -> void:
 		_globe_button.button_pressed = not _globe_mode
 		get_viewport().set_input_as_handled()
 		return
+	if event is InputEventMouseButton and not _over_the_pane((event as InputEventMouseButton).position):
+		if not (event as InputEventMouseButton).pressed:
+			_dragging = false
+			_globe.release()
+		return # (a click on a button or the bars is theirs)
 	if _globe_mode and not (event is InputEventKey) and _globe.handle_input(event):
 		get_viewport().set_input_as_handled()
 		return
@@ -303,6 +308,12 @@ func _go_home() -> void:
 	_zoom = START_ZOOM
 	_centre = _where_is_the_player().get("uv", Vector2(0.5, 0.5))
 	_clamp_centre()
+
+
+## True when the screen point is on the map itself (the flat view or the globe), not on the buttons.
+func _over_the_pane(point: Vector2) -> bool:
+	var pane: Control = _globe if _globe_mode else _view
+	return pane.get_global_rect().has_point(point)
 
 
 ## The size of what shows the map (the flat view, or the globe).

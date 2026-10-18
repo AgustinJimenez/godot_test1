@@ -188,6 +188,13 @@ func heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
 	return result
 
 
+## The macro heights without the small hills and foothills (maps of big pixels).
+func broad_heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
+	if native != null and native.has_method(&"broad_heights"):
+		return native.call(&"broad_heights", dirs)
+	return macro_heights_of(dirs)
+
+
 ## The heights before the rivers are cut, the sign of which says land or sea (the weather asks),
 ## at many directions at once (native when it can).
 func macro_heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
@@ -425,9 +432,11 @@ func biome(x: float, y: float, z: float, ground: float, steepness: float) -> Ter
 
 
 ## The colour of a ground facet: the rock of the crust there (PlanetRock), nothing grows on it yet.
-func facet_color(x: float, y: float, z: float, ground: float, steep: float) -> Color:
-	return rock.colour(Vector3(x, y, z), ground, steep, detail(x, y, z),
-			climate.sea_temperature(Vector3(x, y, z)))
+func facet_color(x: float, y: float, z: float, ground: float, steep: float,
+		coarse := false) -> Color:
+	var speckle := 0.5 if coarse else detail(x, y, z) # (a map's pixels of many metres: no fine grain)
+	return rock.colour(Vector3(x, y, z), ground, steep, speckle,
+			climate.sea_temperature(Vector3(x, y, z)), not coarse)
 
 
 ## A direction for the player to start on: green country (mild, wet enough) that is not a dead flat

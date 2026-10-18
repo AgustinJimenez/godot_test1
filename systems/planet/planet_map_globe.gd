@@ -185,6 +185,11 @@ func handle_input(event: InputEvent) -> bool:
 	return false
 
 
+## The mouse button went up elsewhere: the turning stops.
+func release() -> void:
+	_dragging = false
+
+
 ## The unit direction of the planet the camera looks down on.
 func facing() -> Vector3:
 	var seen := _camera.position.normalized()

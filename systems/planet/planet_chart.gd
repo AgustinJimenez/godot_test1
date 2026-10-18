@@ -11,6 +11,7 @@ enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_T
 const NAMES: Array[String] = ["Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates",
 		"Slope", "Mean temp", "Clouds"]
 const CALM_PIXEL := 2000.0 ## metres a pixel spans above which the Terrain relief is shaded gently
+const COARSE_PIXEL := 20.0 ## metres a pixel spans above which the map has no fine grain or beds
 const SMOOTH_PIXEL := 30.0 ## metres a pixel spans above which the map draws the smooth ground
 
 const BIOME_COLORS := {
@@ -28,6 +29,7 @@ var layer := Layer.TERRAIN
 var clock: PlanetClock ## the moment the temperature layer shows (a copy: the game moves on)
 
 var _noise: PlanetNoise
+var _broad := false ## the pixels are so big that the small hills are left out
 var _threads: Array[Thread] = []
 var _bands: Array[PackedByteArray] = []
 var _rows_done := 0
@@ -144,7 +146,8 @@ func _chart(worker: int) -> void:
 	# smooth ground is drawn (shaded like an illustration); closer in, the real ground
 	var smooth_ground := step_lon * _noise.settings.radius > SMOOTH_PIXEL
 	# the relief of a pixel of many kilometres is shaded gently (steeper looks like grain)
-	var calm := clampf(sqrt(CALM_PIXEL / (step_lon * _noise.settings.radius)), 0.3, 1.0)
+	var calm := clampf(sqrt(CALM_PIXEL / (step_lon * _noise.settings.radius)), 0.5, 1.0)
+	_broad = step_lon * _noise.settings.radius > CALM_PIXEL
 	var above := PackedFloat32Array() # the heights of the row before (the point a pixel north)
 	for row in range(from_row, to_row):
 		if _cancelled:
@@ -219,7 +222,9 @@ func _chart(worker: int) -> void:
 
 ## The ground at many directions: its smooth shape (without the hills and gullies) for a far view.
 func _ground_of(dirs: PackedVector3Array, smooth_shape: bool) -> PackedFloat32Array:
-	return _noise.macro_heights_of(dirs) if smooth_shape else _noise.heights_of(dirs)
+	if not smooth_shape:
+		return _noise.heights_of(dirs)
+	return _noise.broad_heights_of(dirs) if _broad else _noise.macro_heights_of(dirs)
 
 
 static func _direction(lat: float, lon: float) -> Vector3:
@@ -300,7 +305,8 @@ func _terrain_color(dir: Vector3, ground: float, slope: float, light: float,
 		return Color(0.32, 0.62, 0.78).lerp(Color(0.03, 0.12, 0.33), sqrt(depth))
 	if _noise.hydrology != null and _noise.hydrology.lake_level_at(dir, ground) > -INF:
 		return Color(0.25, 0.5, 0.85)
-	var color := _noise.facet_color(dir.x, dir.y, dir.z, ground, slope)
+	var coarse := step_lon * _noise.settings.radius > COARSE_PIXEL
+	var color := _noise.facet_color(dir.x, dir.y, dir.z, ground, slope, coarse)
 	# hill shading: the light from the north west, the same on a close map as on a far one
 	var shade := clampf(1.0 - light * 6.0 * 0.0098 / step_lon / relief, 0.55, 1.35)
 	return Color(color.r * shade, color.g * shade, color.b * shade)
