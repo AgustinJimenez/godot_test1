@@ -294,6 +294,10 @@ func publish_frame() -> void:
 	var to_world := frame.planet_to_world()
 	RenderingServer.global_shader_parameter_set(&"world_from_planet", to_world)
 	RenderingServer.global_shader_parameter_set(&"planet_from_world", to_world.affine_inverse())
+	RenderingServer.global_shader_parameter_set(&"anchor_from_world", frame.anchor_from_world())
+	RenderingServer.global_shader_parameter_set(&"anchor_wrap", frame.anchor_wrap())
+	RenderingServer.global_shader_parameter_set(&"anchor_up", frame.anchor_up())
+	RenderingServer.global_shader_parameter_set(&"anchor_phase", frame.anchor_phase())
 
 
 ## Builds the ground around the target now, no waiting for the worker. `near_only`: only the ground

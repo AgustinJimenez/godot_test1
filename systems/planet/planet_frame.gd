@@ -55,6 +55,33 @@ func planet_to_world() -> Transform3D:
 	return Transform3D(rot, origin_w - rot * offset)
 
 
+## For the ground shader's detail noise, which needs small numbers (a float holds a planet's metres to
+## half a metre): world -> planet position minus the anchor, the anchor wrapped to the noise's
+## period (the same `NOISE_PERIOD` as the shader's cell counts), the anchor's way up (planet space)
+## and the phase of its distance from the centre for the rock layers (a sine of 1.86 per metre).
+const NOISE_PERIOD := 1024.0
+const LAYER_RATE := 1.86
+
+
+func anchor_from_world() -> Transform3D:
+	var back := rot.inverse()
+	return Transform3D(back, -(back * origin_w))
+
+
+func anchor_wrap() -> Vector3:
+	return Vector3(fposmod(anchor[0], NOISE_PERIOD), fposmod(anchor[1], NOISE_PERIOD),
+			fposmod(anchor[2], NOISE_PERIOD))
+
+
+func anchor_up() -> Vector3:
+	return _unit(anchor)
+
+
+func anchor_phase() -> float:
+	var length := sqrt(anchor[0] * anchor[0] + anchor[1] * anchor[1] + anchor[2] * anchor[2])
+	return fposmod(length * LAYER_RATE, TAU)
+
+
 func tile_transform(tile: PlanetTile) -> Transform3D:
 	var offset := Vector3(tile.origin[0] - anchor[0], tile.origin[1] - anchor[1],
 			tile.origin[2] - anchor[2])
