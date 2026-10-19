@@ -82,3 +82,12 @@ seeds checked (two heights 446 and 451 with nothing between: probably the edge o
 the ground down to the water's level: `lake_weight` is per cell); to chase: where the lake's weight stops, the ground
 should blend over tens of metres. To find the user's wall, the world seed and the place are needed (the position is in the
 recorder file, `user://`, F9 marks it).
+
+## Things on slopes (2026-10-19, reported: a big stone and a trunk floating on a hill)
+Everything was placed upright at one point of the ground, so on a slope the downhill side of a rock or a trunk hung in the
+air. `PlanetScatterNative` now tilts and sinks each thing by the ground under it (the slope's normal and gradient are read
+before each candidate): rocks lean 75 % to the ground's normal and sink by scale x (0.12 + 0.8 x slope), logs and stumps lean
+90 %, spires 20 % and sink by scale x (0.12 + slope), pebbles, leaves and sticks lie on the slope, trees lean 30 % (a tree
+grows against gravity: nearly upright) and sink by their trunk's radius x 1.3 x slope + 0.15, low plants lean 50 %. The
+instance transform is a full rotation (the MultiMesh buffer already had it). Colliders are not tilted (a rock's box is yaw
+only: on a steep slope it can differ by a few decimetres).

@@ -223,6 +223,22 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		return clampd(std::sqrt(dx * dx + dz * dz), 0.0, 1.0);
 	};
 
+	// the way the ground faces and how steep it is at the spot being looked at (set by `for_grid` before each candidate): what
+	// tilts and sinks the things placed on a slope
+	Vector3 spot_normal(0, 1, 0);
+	double spot_gradient = 0.0;
+	auto look_at_ground = [&](double fx, double fz) {
+		const int i = index_of(fx, fz);
+		const double step = t.size / t.cells;
+		const double dx = (t.positions[i + 1].y - t.positions[i].y + t.positions[i + t.side + 1].y - t.positions[i + t.side].y) / (2.0 * step);
+		const double dz = (t.positions[i + t.side].y - t.positions[i].y + t.positions[i + t.side + 1].y - t.positions[i + 1].y) / (2.0 * step);
+		spot_normal = Vector3((real_t)-dx, 1.0f, (real_t)-dz).normalized();
+		spot_gradient = std::sqrt(dx * dx + dz * dz);
+		if (spot_gradient > 1.5) {
+			spot_gradient = 1.5;
+		}
+	};
+
 	// ---- the climate, the biome ----
 	auto climate_at = [&](const Vector3 &dir) {
 		Climate c;
@@ -291,17 +307,36 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	};
 
 	// ---- placing ----
-	auto queue = [&](int batch_key, const Vector3 &at, double scale, double yaw, const Color &tint) {
+	// `tilt`: how far the thing leans to the ground's own normal (0 stays upright, 1 lies on the slope); `bury`: metres it sinks
+	// (on a slope the downhill side of its foot would hang in the air)
+	auto queue = [&](int batch_key, const Vector3 &at, double scale, double yaw, const Color &tint, double tilt, double bury) {
 		std::vector<float> &buffer = t.batches[batch_key];
-		double c = std::cos(yaw) * scale, s = std::sin(yaw) * scale;
-		// Basis(UP, yaw).scaled(scale): rows (c 0 s) (0 scale 0) (-s 0 c), then the origin, then the colour
-		float values[16] = { (float)c, 0.0f, (float)s, (float)at.x, 0.0f, (float)scale, 0.0f, (float)at.y, (float)-s, 0.0f, (float)c,
-			(float)at.z, tint.r, tint.g, tint.b, tint.a };
+		Basis basis(Vector3(0, 1, 0), (real_t)yaw);
+		const Vector3 lean_to = Vector3(0, 1, 0).lerp(spot_normal, (real_t)tilt).normalized();
+		const Vector3 axis = Vector3(0, 1, 0).cross(lean_to);
+		if (axis.length_squared() > 1.0e-8f) {
+			basis = Basis(axis.normalized(), (real_t)std::acos(clampd((double)lean_to.y, -1.0, 1.0))) * basis;
+		}
+		basis = basis.scaled(Vector3((real_t)scale, (real_t)scale, (real_t)scale));
+		const Vector3 sunk = at - Vector3(0, (real_t)bury, 0);
+		float values[16] = { (float)basis.rows[0][0], (float)basis.rows[0][1], (float)basis.rows[0][2], (float)sunk.x, (float)basis.rows[1][0],
+			(float)basis.rows[1][1], (float)basis.rows[1][2], (float)sunk.y, (float)basis.rows[2][0], (float)basis.rows[2][1],
+			(float)basis.rows[2][2], (float)sunk.z, tint.r, tint.g, tint.b, tint.a };
 		buffer.insert(buffer.end(), values, values + 16);
 	};
 	auto queue_kind = [&](int kind, int variant, const Vector3 &at, double scale, double yaw) {
-		bool flat = kind == LITTER || kind == TWIGS;
-		queue(kind * 100 + variant, at - Vector3(0, flat ? 0.0f : (real_t)(scale * 0.12), 0), scale, yaw, Color(1, 1, 1, 1));
+		double tilt = 0.5, bury = scale * (0.12 + 0.5 * spot_gradient);
+		switch (kind) {
+			case ROCK: tilt = 0.75; bury = scale * (0.12 + 0.8 * spot_gradient); break;
+			case STUMP:
+			case LOG: tilt = 0.9; bury = scale * (0.12 + 0.5 * spot_gradient); break;
+			case SPIRE: tilt = 0.2; bury = scale * (0.12 + 1.0 * spot_gradient); break;
+			case PEBBLES: tilt = 1.0; bury = scale * 0.03; break;
+			case LITTER:
+			case TWIGS: tilt = 1.0; bury = 0.0; break;
+			default: break;
+		}
+		queue(kind * 100 + variant, at, scale, yaw, Color(1, 1, 1, 1), tilt, bury);
 	};
 	auto add_box = [&](const Vector3 &at, double yaw, const Vector3 &size) {
 		const float values[7] = { (float)at.x, (float)at.y, (float)at.z, (float)yaw, (float)size.x, (float)size.y, (float)size.z };
@@ -432,8 +467,10 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			tint = Color((float)(shade * t.rng.range(0.92, 1.08)), (float)(shade * t.rng.range(0.95, 1.05)),
 					(float)(shade * t.rng.range(0.9, 1.1)), 1.0f);
 		}
-		Vector3 lowered = at - Vector3(0, plant.tree ? 0.15f : 0.03f, 0);
-		queue(PLANT_KEY + plant.id * 100 + variant, lowered, scale, yaw, tint);
+		// a trunk is round and its foot flat: on a slope the downhill side would hang, so it sinks by the foot's radius times the
+		// slope; trees stand nearly upright (they grow against gravity) but lean a little with the ground, low plants more
+		const double bury = plant.tree ? 0.15 + spot_gradient * (1.3 * plant.foot_x * scale + 0.15) : 0.03 + spot_gradient * 0.08;
+		queue(PLANT_KEY + plant.id * 100 + variant, at, scale, yaw, tint, plant.tree ? 0.3 : 0.5, bury);
 		if (t.collide && (plant.foot_x != 0.0 || plant.foot_y != 0.0)) {
 			const float values[5] = { (float)at.x, (float)(at.y + plant.foot_y * scale * 0.5), (float)at.z, (float)(plant.foot_x * scale),
 				(float)(plant.foot_y * scale) };
@@ -450,6 +487,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 				double z = (row + t.rng.randf()) * spacing;
 				double fx = clampd(x / t.size * t.cells, 0.0, t.cells - 0.001);
 				double fz = clampd(z / t.size * t.cells, 0.0, t.cells - 0.001);
+				look_at_ground(fx, fz);
 				body(x, z, fx, fz);
 			}
 		}
@@ -515,8 +553,8 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			}
 			int batch_key = FAR_KEY + species[chosen].id * 100 + t.rng.randi() % 2;
 			double scale = t.rng.range(1.0, 1.8);
-			Vector3 at = ground_at(fx, fz) - Vector3(0, 0.2f, 0);
-			queue(batch_key, at, scale, t.rng.range(0.0, TAU_D), Color(1, 1, 1, 1));
+			Vector3 at = ground_at(fx, fz);
+			queue(batch_key, at, scale, t.rng.range(0.0, TAU_D), Color(1, 1, 1, 1), 0.3, 0.2 + spot_gradient * scale);
 		});
 	};
 
