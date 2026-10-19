@@ -24,7 +24,6 @@ var drainage: PlanetDrainage ## where the water runs (coarse), when the planet h
 ## The heights of the whole planet's map passes, by the picture's size (the map's layers all
 ## read the same ones, so only the first of them pays for the heights)
 var map_heights := {}
-var hydrology: PlanetHydrology ## rivers and lakes (null while it is being built)
 
 var _rolling := FastNoiseLite.new()
 var _ranges := FastNoiseLite.new()
@@ -103,10 +102,6 @@ func _init(planet_settings: PlanetSettings) -> void:
 	_lap("climate")
 	weather = PlanetWeather.new(self)
 	_lap("weather")
-	if settings.hydrology_on and settings.hydrology_cells > 0:
-		var water := PlanetHydrology.new()
-		water.build(self, settings.hydrology_cells)
-		hydrology = water
 	_carve_valleys()
 	_lap("drainage")
 
@@ -218,10 +213,8 @@ func noise_config(source: FastNoiseLite) -> Array:
 
 
 ## The level of the river or lake water at `dir` where `ground` is under it, else -INF (the native
-## crust knows the rivers; the script hydrology is only there when asked for).
+## crust knows the rivers).
 func water_at(dir: Vector3, ground: float) -> float:
-	if hydrology != null:
-		return hydrology.water_at(dir, ground)
 	if native != null and native.has_method(&"water_at"):
 		var level: float = native.call(&"water_at", dir, ground)
 		return level if level > -1.0e20 else -INF
@@ -230,15 +223,11 @@ func water_at(dir: Vector3, ground: float) -> float:
 
 ## True if river or lake water is within `margin` metres of `dir`.
 func near_water(dir: Vector3, ground: float, margin: float) -> bool:
-	if hydrology != null:
-		return hydrology.near_water(dir, ground, margin)
 	return native != null and native.has_method(&"near_water") 			and native.call(&"near_water", dir, ground, margin)
 
 
 ## The current of the river at `dir` (planet space, m/s), zero out of a river.
 func flow_at(dir: Vector3) -> Vector3:
-	if hydrology != null:
-		return hydrology.flow_at(dir)
 	if native != null and native.has_method(&"flow_at"):
 		return native.call(&"flow_at", dir)
 	return Vector3.ZERO
@@ -246,7 +235,7 @@ func flow_at(dir: Vector3) -> Vector3:
 
 ## The ground heights at many directions at once (native when it can: no rivers cut in).
 func heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
-	if native != null and hydrology == null:
+	if native != null:
 		return native.call(&"heights", dirs)
 	var result := PackedFloat32Array()
 	result.resize(dirs.size())
@@ -334,13 +323,10 @@ func _find_sea_level() -> void:
 
 ## Ground height in metres above the sea, in the unit direction (x, y, z), rivers cut in.
 func height(x: float, y: float, z: float) -> float:
-	if native != null and hydrology == null and native.has_method(&"height_at"):
+	if native != null and native.has_method(&"height_at"):
 		# (the native crust is the ground: it has the eroded ridges the script below does not)
 		return native.call(&"height_at", Vector3(x, y, z))
-	var ground := base_height(x, y, z)
-	if hydrology == null:
-		return ground
-	return hydrology.carve(Vector3(x, y, z), ground)
+	return base_height(x, y, z)
 
 
 ## The ground before the rivers are cut in.
@@ -353,9 +339,6 @@ func base_height(x: float, y: float, z: float) -> float:
 	var high := smoothstep(0.12, 0.45, units)
 	var gully_depth := minf(relief * 0.05, 90.0)
 	ground += _gullies.get_noise_3d(p.x, p.y, p.z) * 0.5 * gully_depth * high
-	# and by the water that has run down the valleys (stream power erosion, see PlanetHydrology)
-	if hydrology != null:
-		ground -= hydrology.erosion_at(Vector3(x, y, z)) * high
 	# hard and soft layers of rock weather into ledges and steps
 	var layer := clampf(relief * 0.025, 8.0, 40.0)
 	var steps := floorf(ground / layer) + smoothstep(0.15, 0.85, fposmod(ground / layer, 1.0))

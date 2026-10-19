@@ -115,7 +115,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 	var cells := _settings.tile_cells
 	var side := cells + 3
 	# padded grid of local positions (one extra ring round the tile, for the edge normals)
-	var fast := noise.native != null and noise.hydrology == null # the crust in native code
+	var fast := noise.native != null # the crust in native code
 	var positions: Array[Vector3] = []
 	var heights := PackedFloat32Array()
 	var dirs: Array[Vector3] = []
@@ -217,7 +217,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 		_add_occluder(packed_positions, side, cells)
 	if _settings.sea_on and min_height < _settings.sea_level + 0.5:
 		_add_sea(dirs, side, cells)
-	_add_running_water(s0, s1, t0, t1, dirs, heights)
+	_add_running_water(dirs, heights)
 	if level >= _settings.max_level() - 4: # plants can grow here later (PlanetSurface asks for them)
 		plant_grid = {"positions": positions, "dirs": dirs, "heights": heights,
 				"packed_positions": packed_positions, "packed_dirs": packed_dirs}
@@ -375,30 +375,9 @@ func _add_sea(dirs: Array[Vector3], side: int, cells: int) -> void:
 	add_child(mesh_instance)
 
 
-## The rivers and lakes that run over this tile: ribbons and cell squares of water at the water's
-## own level, cut to the tile's edges so neighbouring tiles never draw the same water twice.
-func _add_running_water(s0: float, s1: float, t0: float, t1: float, dirs: Array[Vector3],
-		heights: PackedFloat32Array) -> void:
-	var water := _noise.hydrology
-	if water == null:
-		_add_crust_rivers(dirs, heights)
-		return
-	if level < _settings.max_level() - 1:
-		return
-	var rings := mini(ceili(size / water.cell_metres) + 2, 6)
-	var ids := water.cells_around(water.cell_of(centre), rings)
-	var rivers := water.river_segments(ids)
-	var lakes := water.has_lake(ids)
-	if rivers.is_empty() and not lakes:
-		return
-	var radius := _settings.radius
-	var edge: Array[Vector3] = []
-	for corner: Vector2 in [Vector2(s0, t0), Vector2(s1, t0), Vector2(s1, t1), Vector2(s0, t1)]:
-		edge.append(_to_local(direction(face, corner.x, corner.y), radius))
-	if not rivers.is_empty():
-		_add_rivers(dirs, heights)
-	if lakes:
-		_add_lakes(dirs, heights)
+## The rivers that run over this tile (the crust's own valleys, see `_add_crust_rivers`).
+func _add_running_water(dirs: Array[Vector3], heights: PackedFloat32Array) -> void:
+	_add_crust_rivers(dirs, heights)
 
 
 func _add_water_mesh(builder: MeshBuilder, material: ShaderMaterial) -> void:
@@ -409,54 +388,6 @@ func _add_water_mesh(builder: MeshBuilder, material: ShaderMaterial) -> void:
 	mesh_instance.material_override = material
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mesh_instance)
-
-
-## The rivers on this tile: water laid over the ground the valleys were already cut into. Every
-## corner of the tile's grid asks the river for its water level; where the (carved) ground is under
-## it the corner is wet. A square with a wet corner gets a quad, its dry corners sunk into the
-## ground so the terrain hides them: the bank is where the water meets the ground, the shape the
-## valley has, not the straight edge of a ribbon. The sea owns everything below the sea level.
-func _add_rivers(dirs: Array[Vector3], heights: PackedFloat32Array) -> void:
-	var water := _noise.hydrology
-	var cells := _settings.tile_cells
-	var side := cells + 3
-	var wet := PackedByteArray()
-	wet.resize(side * side)
-	var samples: Array[Vector3] = []
-	var any := false
-	for index in side * side:
-		var sample := water.river_sample(dirs[index])
-		samples.append(sample)
-		if sample.x > -INF and heights[index] > 0.0 and heights[index] < sample.x - 0.02:
-			wet[index] = 1
-			any = true
-	if not any:
-		return
-	var builder := MeshBuilder.new()
-	var radius := _settings.radius
-	var roll := Color(0.25, 1.0, 1.0)
-	for row in range(1, cells + 1):
-		for column in range(1, cells + 1):
-			var i00 := row * side + column
-			var corners := [i00, i00 + 1, i00 + side, i00 + side + 1]
-			var level := -INF
-			var wet_corner := false
-			for corner: int in corners:
-				if wet[corner] == 1:
-					wet_corner = true
-					level = maxf(level, samples[corner].x)
-			if not wet_corner:
-				continue
-			var points: Array[Vector3] = []
-			var coords: Array[Vector2] = []
-			for corner: int in corners:
-				var sample := samples[corner]
-				var height := level if wet[corner] == 1 else minf(heights[corner] - 0.15, level)
-				points.append(_to_local(dirs[corner], radius + height))
-				coords.append(Vector2(sample.z if sample.x > -INF else 0.5, maxf(sample.y, 0.0)))
-			_river_triangle(builder, points, coords, 0, 2, 1, roll)
-			_river_triangle(builder, points, coords, 1, 2, 3, roll)
-	_add_water_mesh(builder, river_material())
 
 
 func _river_triangle(builder: MeshBuilder, points: Array[Vector3], coords: Array[Vector2],
@@ -473,100 +404,6 @@ func _river_triangle(builder: MeshBuilder, points: Array[Vector3], coords: Array
 		uv_b = coords[k]
 		uv_c = coords[j]
 	builder.add_tri_uv(a, b, c, roll, roll, roll, uv_a, uv_b, uv_c)
-
-
-## The lakes on this tile: a quad of water for every square of the tile's own grid whose four
-## corners are under a lake's level, so the shore follows the ground (down to the grid's size).
-func _add_lakes(dirs: Array[Vector3], heights: PackedFloat32Array) -> void:
-	var water := _noise.hydrology
-	var cells := _settings.tile_cells
-	var side := cells + 3
-	var levels := PackedFloat32Array()
-	levels.resize(side * side)
-	var any := false
-	for index in side * side:
-		var level := water.lake_level_at(dirs[index], heights[index])
-		levels[index] = level if level > -INF else -1000.0
-		any = any or level > -INF
-	if not any:
-		return
-	var builder := MeshBuilder.new()
-	var radius := _settings.radius
-	var up: Array[Vector3] = [Vector3.UP, Vector3.UP, Vector3.UP]
-	var roll := Color(0.4, 1.0, 1.0)
-	var white: Array[Color] = [roll, roll, roll]
-	for row in range(1, cells + 1):
-		for column in range(1, cells + 1):
-			var i00 := row * side + column
-			var corners := [i00, i00 + 1, i00 + side, i00 + side + 1]
-			var level := -1000.0
-			var all_wet := true
-			for corner: int in corners:
-				level = maxf(level, levels[corner])
-				all_wet = all_wet and levels[corner] > -999.0
-			if not all_wet:
-				continue
-			var p00 := _to_local(dirs[i00], radius + level)
-			var p10 := _to_local(dirs[i00 + 1], radius + level)
-			var p01 := _to_local(dirs[i00 + side], radius + level)
-			var p11 := _to_local(dirs[i00 + side + 1], radius + level)
-			builder.add_tri_smooth(p00, p01, p10, roll, up, white)
-			builder.add_tri_smooth(p10, p01, p11, roll, up, white)
-	_add_water_mesh(builder, water_material())
-
-
-## Cuts `polygon` (convex, seen from above, with a texture coordinate per corner) to the tile's quad
-## `edge` and adds it as a fan.
-func _water_polygon(builder: MeshBuilder, polygon: Array[Vector3], uvs: Array[Vector2],
-		edge: Array[Vector3], roll: Color) -> void:
-	var clipped := polygon
-	var coords := uvs
-	var turn := signf((edge[1].x - edge[0].x) * (edge[2].z - edge[0].z)
-			- (edge[1].z - edge[0].z) * (edge[2].x - edge[0].x))
-	for index in 4:
-		var p := edge[index]
-		var q := edge[(index + 1) % 4]
-		var kept: Array[Vector3] = []
-		var kept_uv: Array[Vector2] = []
-		for k in clipped.size():
-			var before_index := (k + clipped.size() - 1) % clipped.size()
-			var current := clipped[k]
-			var previous := clipped[before_index]
-			var now := _side(p, q, current) * turn
-			var before := _side(p, q, previous) * turn
-			if now >= 0.0:
-				if before < 0.0:
-					var t := before / (before - now)
-					kept.append(previous.lerp(current, t))
-					kept_uv.append(coords[before_index].lerp(coords[k], t))
-				kept.append(current)
-				kept_uv.append(coords[k])
-			elif before >= 0.0:
-				var t := before / (before - now)
-				kept.append(previous.lerp(current, t))
-				kept_uv.append(coords[before_index].lerp(coords[k], t))
-		clipped = kept
-		coords = kept_uv
-		if clipped.size() < 3:
-			return
-	for index in range(1, clipped.size() - 1):
-		var a := clipped[0]
-		var b := clipped[index]
-		var c := clipped[index + 1]
-		var uv_a := coords[0]
-		var uv_b := coords[index]
-		var uv_c := coords[index + 1]
-		if (b - a).cross(c - a).y < 0.0:
-			b = clipped[index + 1]
-			c = clipped[index]
-			uv_b = coords[index + 1]
-			uv_c = coords[index]
-		builder.add_tri_uv(a, b, c, roll, roll, roll, uv_a, uv_b, uv_c)
-
-
-## Which side of the line p -> q (in the ground plane) the point is on.
-func _side(p: Vector3, q: Vector3, point: Vector3) -> float:
-	return (q.x - p.x) * (point.z - p.z) - (q.z - p.z) * (point.x - p.x)
 
 
 ## The rivers of the crust's own valleys (the drainage): the native crust says, for every corner of

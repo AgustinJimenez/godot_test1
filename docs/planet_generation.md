@@ -24,7 +24,7 @@ is rough) is `AGENT_TASKS/043_planet.md`. The flat world it grew next to is `AGE
 | `PlanetSettings` | every number: seed, radius, relief, ocean share, plates, tile sizes, hydrology cells, lake depth, densities |
 | `PlanetTectonics` | ~14 plates (continental or oceanic) with a spin; height from the plate's base plus uplift by boundary type (collision ranges, coastal range and trench, island arc, mid-ocean ridge, rift) and ridged noise |
 | `PlanetClimate` | 192x96 maps of sea level temperature (latitude) and rain (carried by trade winds / westerlies / easterlies, picked up over sea, dropped over land and where the ground climbs) |
-| `PlanetHydrology` | flow routing on a cube-face grid: priority flood from the sea (lakes in the hollows), drainage area from the rain, rivers = the top share by flow, smoothed river paths with water levels below the ground, stream power erosion field, carving of channels |
+| `PlanetDrainage` / `PlanetDrainageNative` | flow routing on a cube-face grid (priority flood from the sea, lakes in the hollows, drainage area, rivers); the native crust cuts the valleys along the result and answers the water questions (the old script `PlanetHydrology` was removed) |
 | `PlanetNoise` | the planet as pure functions of a direction: `height` (plates + hills + gullies + erosion + ledges, rivers cut in), `moisture`, `heat`, `temperature`, `biome`, `facet_color` (smooth blend of every biome), `find_spawn` |
 | `PlanetTile` | one cell of a cube face bent onto the sphere (tan mapping): mesh, collider, sea, river ribbons, lakes, plants; built around its own middle in doubles |
 | `PlanetSurface` | quadtree LOD per face, worker thread, a tile is only dropped once its replacements exist, skirts hide the cracks |

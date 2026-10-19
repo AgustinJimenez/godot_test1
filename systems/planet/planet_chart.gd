@@ -159,8 +159,6 @@ func texture() -> ImageTexture:
 		if land_all.size() >= size.x * size.y:
 			all = _noise.native.call(&"coast_lines", all, land_all, size.x, size.y)
 	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, all)
-	if layer == Layer.TERRAIN or layer == Layer.ELEVATION or layer == Layer.ATLAS:
-		_draw_rivers(image)
 	return ImageTexture.create_from_image(image)
 
 
@@ -184,7 +182,7 @@ func _chart(worker: int) -> void:
 	var land := PackedByteArray()
 	# the Terrain layer's rows come ready from the native crust (rows are then added one by one)
 	var step_lon := rect.size.x * TAU / float(size.x)
-	var native_rows := _noise.native != null and ((layer == Layer.TERRAIN and _noise.hydrology == null)
+	var native_rows := _noise.native != null and ((layer == Layer.TERRAIN)
 			or layer in NATIVE_LAYERS)
 	if not native_rows:
 		bytes.resize((to_row - from_row) * size.x * 3)
@@ -369,7 +367,7 @@ func _pixel_color(dir: Vector3, ground: float, rise_east: float, rise_north: flo
 			var degrees := noise.temperature(dir.x, dir.y, dir.z, maxf(shape, 0.0))
 			color = ramp(Layer.TEMPERATURE, (degrees + 30.0) / 75.0)
 		Layer.CLOUDS:
-			var own := ground >= 0.0 and noise.hydrology == null and base_colour != Color.BLACK
+			var own := ground >= 0.0 and base_colour != Color.BLACK
 			var land_colour := base_colour if own else 					_terrain_color(dir, ground, 0.1, 0.0, step_lon)
 			var base := land_colour.darkened(0.45)
 			var cover := noise.weather.cloud(dir, clock, macro)
@@ -467,8 +465,6 @@ func _terrain_color(dir: Vector3, ground: float, slope: float, light: float,
 			warm += _noise.climate.sea_temperature(_direction(l, lon)) / 5.0
 		var ice := smoothstep(-1.5, -8.0, warm) * 0.92
 		return water.lerp(Color(0.90, 0.94, 0.98), ice)
-	if _noise.hydrology != null and _noise.hydrology.lake_level_at(dir, ground) > -INF:
-		return Color(0.25, 0.5, 0.85)
 	# (the map's colours are the illustrated ones at every zoom, not the rock types of the ground)
 	var color := _illustrated_color(dir, ground, slope)
 	# hill shading: the light from the north west, the same on a close map as on a far one
@@ -483,35 +479,4 @@ func _biome_color(dir: Vector3, ground: float, slope: float) -> Color:
 	if ground < 0.0:
 		return Color(0.2, 0.4, 0.7).lerp(Color(0.05, 0.12, 0.35),
 				clampf(-ground / (_noise.relief * 0.35), 0.0, 1.0))
-	if _noise.hydrology != null and _noise.hydrology.lake_level_at(dir, ground) > -INF:
-		return Color(0.25, 0.5, 0.85)
 	return BIOME_COLORS[_noise.biome(dir.x, dir.y, dir.z, ground, slope)]
-
-
-## The rivers of this part of the map as thin blue lines.
-func _draw_rivers(image: Image) -> void:
-	if _noise.hydrology == null:
-		return
-	var pixels := Vector2(size)
-	for line: Array in _noise.hydrology.river_lines():
-		var a := _pixel(line[0] as Vector3, pixels)
-		var b := _pixel(line[1] as Vector3, pixels)
-		if absf(a.x - b.x) > pixels.x * 0.5 or (a.x < -pixels.x and b.x < -pixels.x):
-			continue
-		var count := int(maxf(absf(b.x - a.x), absf(b.y - a.y))) + 1
-		if count > size.x * 2:
-			continue
-		for index in count + 1:
-			var at := a.lerp(b, float(index) / float(maxi(count, 1)))
-			var pixel := Vector2i(int(at.x), int(at.y))
-			if pixel.x >= 0 and pixel.x < size.x and pixel.y >= 0 and pixel.y < size.y:
-				image.set_pixelv(pixel, Color(0.2, 0.45, 0.95))
-
-
-func _pixel(dir: Vector3, pixels: Vector2) -> Vector2:
-	var lon := atan2(dir.z, dir.x)
-	var lat := asin(clampf(dir.y, -1.0, 1.0))
-	var u := (lon + PI) / TAU
-	var v := 0.5 - lat / PI
-	return Vector2((u - rect.position.x) / rect.size.x * pixels.x,
-			(v - rect.position.y) / rect.size.y * pixels.y)

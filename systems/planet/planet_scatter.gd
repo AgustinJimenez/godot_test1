@@ -74,7 +74,7 @@ func populate(holder: Node3D, key: int, noise: PlanetNoise, positions: Array[Vec
 		_body.collision_layer = 1
 		_body.name = "Plants"
 		holder.add_child(_body)
-	if noise.scatter_native != null and noise.hydrology == null and not _packed_positions.is_empty():
+	if noise.scatter_native != null and not _packed_positions.is_empty():
 		_populate_native(key, detail, collide)
 		return
 	if detail == Detail.FAR:
