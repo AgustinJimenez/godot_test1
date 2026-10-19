@@ -51,7 +51,9 @@ var _load_time := 0.0
 func _ready() -> void:
 	if settings == null:
 		settings = PlanetSettings.new()
-	FloraMeshes.detailed = true # the planet's plants are built in the finer, realistic look
+	# the plants are built in the finer, realistic look from the Fine ground detail (High and Ultra); the
+	# light meshes cost a third of the triangles for Low and Medium
+	FloraMeshes.detailed = int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 2
 	noise = PlanetNoise.new(settings)
 	clock.day_seconds = settings.day_seconds
 	clock.year_days = settings.year_days

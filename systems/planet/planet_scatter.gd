@@ -10,7 +10,7 @@ extends RefCounted
 const BANK := 4.0 ## m from a river edge inside which nothing grows (the bank can be higher)
 const GRASS_VISIBLE := 110.0
 const PEBBLE_VISIBLE := 45.0 ## m: small stones are gone beyond this
-const TREE_FULL := 100.0 ## m: beyond this a tree is drawn as its lighter version
+const TREE_FULL := 80.0 ## m: beyond this a tree is drawn as its lighter version
 const SMALL_VISIBLE := 220.0 ## m: shrubs and ground cover are gone beyond this
 const TREE_LIGHT := 220.0 ## m: beyond this, as the cheap far tree (a cone or a ball on a trunk)
 const SPACING := {

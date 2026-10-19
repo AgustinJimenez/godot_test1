@@ -112,5 +112,8 @@ the water, the smooth foliage lighting and the finer meshes were all off). Now `
 3. Leaf-cluster cards (`PlantLeafShapes.add_leaf_card`, a procedural cluster of ~12 small veined
    leaves drawn in `flora_wind.gdshader`, alpha-cut): used for the `_mass` clumps and the single leaves
    of non-compound trees. Not yet seen on a tree of that kind (the test meadow's tree is compound).
-Cost: with plants on, at High, the greenest meadow went from ~116 fps / 8.5 M triangles to ~88 fps /
-14.6 M triangles (RTX 4090). Next: where those triangles are (trees at full detail within 100 m).
+Cost (RTX 4090, the greenest meadow of seed 8, full Earth): 14 M triangles, ~90 fps at High and ~109 fps at
+Medium (light meshes). An earlier note here said the realistic look had cost 8.5 M -> 14.6 M triangles:
+wrong, that was another, sparser place. The light and the detailed meshes draw nearly the same number of
+triangles there (80 % of them are trees: 11.6 M of 14.6 M). The detailed plant meshes are now only built
+at High and Ultra (the Fine ground detail), the realistic shading is always on.
