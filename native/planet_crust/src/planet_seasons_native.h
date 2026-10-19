@@ -8,6 +8,7 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/packed_vector3_array.hpp>
 
 namespace godot {
 
@@ -27,6 +28,10 @@ public:
 	PackedFloat32Array rain(const PackedFloat32Array &p_elevation, const PackedByteArray &p_ocean,
 			const PackedFloat32Array &p_temperature, int p_width, int p_height, double p_rain_base,
 			double p_rain_scale, const Dictionary &p_belts = Dictionary()) const;
+	// the unit directions of a width x height grid of cell centres (rows from the north pole, columns from the west)
+	PackedVector3Array grid_dirs(int p_width, int p_height) const;
+	// {"elevation": the heights in units of `relief`, "ocean": 1 where the ground is under the sea level (0)}
+	Dictionary elevation_and_ocean(const PackedFloat32Array &p_grounds, double p_relief) const;
 	Dictionary run(const PackedByteArray &p_sea, const PackedFloat32Array &p_lights, int p_width, int p_height,
 			int p_snapshots, double p_wind, int p_max_years, double p_wind_k = 3.0) const;
 };

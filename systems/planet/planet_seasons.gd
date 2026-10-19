@@ -47,12 +47,16 @@ var _sea := PackedByteArray() # 1 where the cell is sea
 func build(noise: PlanetNoise, clock: PlanetClock) -> void:
 	var size := WIDTH * HEIGHT
 	_sea.resize(size)
+	var dirs := PackedVector3Array() # the whole grid's ground in one go (native, on several threads)
+	dirs.resize(size)
 	for row in HEIGHT:
 		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
 		for column in WIDTH:
 			var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
-			var h := noise.macro_height(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
-			_sea[row * WIDTH + column] = 1 if h < 0.0 else 0
+			dirs[row * WIDTH + column] = Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+	var grounds := noise.macro_heights_of(dirs)
+	for index in size:
+		_sea[index] = 1 if grounds[index] < 0.0 else 0
 	_mark_the_dry_land()
 	if native_year and ClassDB.class_exists(&"PlanetSeasonsNative"):
 		_run_native(clock)

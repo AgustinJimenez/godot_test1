@@ -97,6 +97,8 @@ void step(std::vector<float> &r_heat, const float *p_light, const Grid &p_grid, 
 } // namespace
 
 void PlanetSeasonsNative::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("grid_dirs", "width", "height"), &PlanetSeasonsNative::grid_dirs);
+	ClassDB::bind_method(D_METHOD("elevation_and_ocean", "grounds", "relief"), &PlanetSeasonsNative::elevation_and_ocean);
 	ClassDB::bind_method(D_METHOD("rain", "elevation", "ocean", "temperature", "width", "height", "rain_base",
 			"rain_scale", "belts"), &PlanetSeasonsNative::rain);
 	ClassDB::bind_method(D_METHOD("run", "sea", "lights", "width", "height", "snapshots", "wind", "max_years", "wind_k"),
@@ -219,5 +221,33 @@ PackedFloat32Array PlanetSeasonsNative::rain(const PackedFloat32Array &p_elevati
 			result.set(row * p_width + column, (float)value);
 		}
 	}
+	return result;
+}
+
+PackedVector3Array PlanetSeasonsNative::grid_dirs(int p_width, int p_height) const {
+	PackedVector3Array out;
+	out.resize((int64_t)p_width * p_height);
+	for (int row = 0; row < p_height; row++) {
+		const double lat = (0.5 - (row + 0.5) / p_height) * PI;
+		for (int column = 0; column < p_width; column++) {
+			const double lon = (column + 0.5) / p_width * 2.0 * PI - PI;
+			out.set(row * p_width + column, Vector3((real_t)(std::cos(lat) * std::cos(lon)), (real_t)std::sin(lat), (real_t)(std::cos(lat) * std::sin(lon))));
+		}
+	}
+	return out;
+}
+
+Dictionary PlanetSeasonsNative::elevation_and_ocean(const PackedFloat32Array &p_grounds, double p_relief) const {
+	PackedFloat32Array elevation;
+	PackedByteArray ocean;
+	elevation.resize(p_grounds.size());
+	ocean.resize(p_grounds.size());
+	for (int index = 0; index < p_grounds.size(); index++) {
+		elevation.set(index, (float)(p_grounds[index] / p_relief));
+		ocean.set(index, p_grounds[index] < 0.0f ? 1 : 0);
+	}
+	Dictionary result;
+	result["elevation"] = elevation;
+	result["ocean"] = ocean;
 	return result;
 }

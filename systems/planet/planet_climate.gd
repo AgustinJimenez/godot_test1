@@ -29,20 +29,30 @@ func build(noise: PlanetNoise) -> void:
 	_temperature.resize(size)
 	_rain.resize(size)
 	var elevation := PackedFloat32Array() # in units of relief
-	elevation.resize(size)
 	var ocean := PackedByteArray()
-	ocean.resize(size)
 	var dirs := PackedVector3Array() # (all the grid's heights in one go, on several threads)
-	dirs.resize(size)
-	for row in HEIGHT:
-		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
-		for column in WIDTH:
-			var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
-			dirs[row * WIDTH + column] = Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+	var air_native := native_rain and ClassDB.class_exists(&"PlanetSeasonsNative")
+	if air_native:
+		dirs = (ClassDB.instantiate(&"PlanetSeasonsNative") as RefCounted).call(&"grid_dirs", WIDTH, HEIGHT)
+	else:
+		dirs.resize(size)
+		for row in HEIGHT:
+			var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
+			for column in WIDTH:
+				var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
+				dirs[row * WIDTH + column] = Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
 	var grounds := noise.heights_of(dirs)
-	for index in size:
-		elevation[index] = grounds[index] / noise.relief
-		ocean[index] = 1 if grounds[index] < 0.0 else 0
+	if air_native:
+		var split: Dictionary = (ClassDB.instantiate(&"PlanetSeasonsNative") as RefCounted).call(
+				&"elevation_and_ocean", grounds, noise.relief)
+		elevation = split["elevation"]
+		ocean = split["ocean"]
+	else:
+		elevation.resize(size)
+		ocean.resize(size)
+		for index in size:
+			elevation[index] = grounds[index] / noise.relief
+			ocean[index] = 1 if grounds[index] < 0.0 else 0
 	var clock := PlanetClock.new() # the orbit and the tilt of this planet, for the seasons
 	clock.day_seconds = noise.settings.day_seconds
 	clock.year_days = noise.settings.year_days

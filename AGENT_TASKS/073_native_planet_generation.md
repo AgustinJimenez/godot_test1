@@ -37,3 +37,14 @@ the library the scripts grow the plant as before). All 36 species x 3 variants o
 debug library), the triangle counts within 1-2 %. The grower's dice are PCG32 of its own, so the meshes are not
 the script's exact ones. Species check and quick suite pass.
 Still script: mushrooms, the far trees, the rocks (`FloraMeshes`), the placement (`PlanetScatter`).
+
+## 3. Plant placement and far-tree merge native (`PlanetScatterNative`)
+`PlanetScatter`'s loops (every layer's jittered grid, the species pick with the niche fitness and the patch noise,
+rocks, pebbles, debris, logs, spires, the horizon trees, the colliders) run in C++ and answer with MultiMesh buffers
+(16 floats an instance) ready for the tile to hang; the horizon trees of a tile are merged natively too. The script loops
+remain as the fallback (no library, or the script hydrology). The climate grid setup (grid directions, elevation and
+ocean) and the seasons' sea mask are native/batched: climate startup 166 -> 115 ms.
+Measured per tile (714 tiles, High, seed 8): grid + heights 10.9 ms (the crust, native), normals/colours/triangles
+1.7 ms, mesh node 1.0 ms, water 0.9 ms: the tile build is native already. What is left in script is node work the
+engine owns (adding MultiMeshInstance3D, colliders, tile placement), the 0.3 s quadtree selection (1-2 ms; 20 ms
+while the world loads) and orchestration (atmosphere, weather, menus).
