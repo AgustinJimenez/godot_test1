@@ -47,6 +47,8 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("river_waters", "dirs"), &PlanetCrustNative::river_waters);
 	ClassDB::bind_method(D_METHOD("water_at", "dir", "ground"), &PlanetCrustNative::water_at);
 	ClassDB::bind_method(D_METHOD("tinted", "colours", "tint"), &PlanetCrustNative::tinted);
+	ClassDB::bind_method(D_METHOD("row_dirs", "lat", "u0", "du", "width"), &PlanetCrustNative::row_dirs);
+	ClassDB::bind_method(D_METHOD("land_of", "grounds"), &PlanetCrustNative::land_of);
 	ClassDB::bind_method(D_METHOD("near_water", "dir", "ground", "margin"), &PlanetCrustNative::near_water);
 	ClassDB::bind_method(D_METHOD("flow_at", "dir"), &PlanetCrustNative::flow_at);
 	ClassDB::bind_method(D_METHOD("set_climate", "grid", "width", "height", "rain"), &PlanetCrustNative::set_climate);
@@ -1840,4 +1842,24 @@ double PlanetCrustNative::valley_floor(const Vector3 &p_dir) const {
 		return 1.0;
 	}
 	return 1.0 - 0.7 * (1.0 - smooth(valley.floor_half, valley.floor_half * 6.0, valley.distance));
+}
+
+PackedVector3Array PlanetCrustNative::row_dirs(double p_lat, double p_u0, double p_du, int p_width) const {
+	PackedVector3Array out;
+	out.resize(p_width);
+	const double two_pi = 2.0 * 3.14159265358979323846;
+	for (int column = 0; column < p_width; column++) {
+		const double lon = (p_u0 + (column + 0.5) * p_du) * two_pi - 3.14159265358979323846;
+		out.set(column, Vector3((real_t)(std::cos(p_lat) * std::cos(lon)), (real_t)std::sin(p_lat), (real_t)(std::cos(p_lat) * std::sin(lon))));
+	}
+	return out;
+}
+
+PackedByteArray PlanetCrustNative::land_of(const PackedFloat32Array &p_grounds) const {
+	PackedByteArray out;
+	out.resize(p_grounds.size());
+	for (int index = 0; index < p_grounds.size(); index++) {
+		out.set(index, p_grounds[index] >= 0.0f ? 1 : 0);
+	}
+	return out;
 }

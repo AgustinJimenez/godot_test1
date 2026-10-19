@@ -141,6 +141,11 @@ public:
 	PackedColorArray tinted(const PackedColorArray &p_colours, const Color &p_tint) const;
 	// the fine 0..1 noise at a made-up point (patches of one plant species), as PlanetNoise.detail_at
 	double detail_at(const Vector3 &p_point) const { return (double)detail.at(p_point) * 0.5 + 0.5; }
+	// the directions of one row of a map: `p_width` pixel centres at latitude `p_lat` from `p_u0` (a share of the way round)
+	// in steps of `p_du` of it
+	PackedVector3Array row_dirs(double p_lat, double p_u0, double p_du, int p_width) const;
+	// 1 where the ground is dry land (0 or more), else 0
+	PackedByteArray land_of(const PackedFloat32Array &p_grounds) const;
 	double water_at(const Vector3 &p_dir, double p_ground) const;
 	bool near_water(const Vector3 &p_dir, double p_ground, double p_margin) const;
 	Vector3 flow_at(const Vector3 &p_dir) const;

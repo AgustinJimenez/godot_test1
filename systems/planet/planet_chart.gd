@@ -222,13 +222,8 @@ func _chart(worker: int) -> void:
 		var lat := (0.5 - v) * PI
 		# the heights of the whole row (and the points east and north of it) in one go: the
 		# native crust answers many at once much faster than one by one
-		var dirs := PackedVector3Array()
-		var east_dirs := PackedVector3Array()
 		var north_dirs := PackedVector3Array()
-		dirs.resize(size.x)
-		for column in size.x:
-			var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
-			dirs[column] = _direction(lat, u * TAU - PI)
+		var dirs := _row_dirs(lat)
 		var grounds := PackedFloat32Array()
 		if use_cache:
 			grounds = cached.slice(row * size.x, (row + 1) * size.x)
@@ -249,10 +244,7 @@ func _chart(worker: int) -> void:
 			east_grounds = grounds.slice(1)
 			east_grounds.append_array(_ground_of(last_east, smooth_ground))
 			if above.is_empty():
-				north_dirs.resize(size.x)
-				for column in size.x:
-					var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
-					north_dirs[column] = _direction(lat + step_lat, u * TAU - PI)
+				north_dirs = _row_dirs(lat + step_lat)
 				above = _ground_of(north_dirs, smooth_ground)
 			north_grounds = above
 			above = grounds
@@ -264,8 +256,8 @@ func _chart(worker: int) -> void:
 		elif layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.CLOUDS, Layer.SATELLITE,
 				Layer.ATLAS, Layer.CLOUD_MASK]:
 			macros = _ground_of(dirs, true)
-		for column in size.x:
-			land.append(1 if grounds[column] >= 0.0 else 0)
+		land.append_array(_noise.native.call(&"land_of", grounds) if _noise.native != null
+				else _land_of(grounds))
 		if native_rows:
 			if layer == Layer.TERRAIN:
 				bytes.append_array(_noise.native.call(&"terrain_row", dirs, grounds, east_grounds,
@@ -298,6 +290,25 @@ func _chart(worker: int) -> void:
 	_bands[worker] = bytes
 	_land_bands[worker] = land
 	_ground_bands[worker] = recorded
+
+
+## The directions of the pixels of one row (latitude `lat`).
+func _row_dirs(lat: float) -> PackedVector3Array:
+	if _noise.native != null:
+		return _noise.native.call(&"row_dirs", lat, rect.position.x, rect.size.x / float(size.x), size.x)
+	var dirs := PackedVector3Array()
+	dirs.resize(size.x)
+	for column in size.x:
+		var u := rect.position.x + (float(column) + 0.5) / float(size.x) * rect.size.x
+		dirs[column] = _direction(lat, u * TAU - PI)
+	return dirs
+
+
+func _land_of(grounds: PackedFloat32Array) -> PackedByteArray:
+	var land := PackedByteArray()
+	for ground in grounds:
+		land.append(1 if ground >= 0.0 else 0)
+	return land
 
 
 ## What the native row needs besides the heights (the seasons' grid now, the sun's longitude, and
