@@ -174,6 +174,10 @@ func _populate_native(key: int, detail: Detail, collide: bool) -> void:
 	if placed.is_empty():
 		return
 	_tile.set_meta(&"stems", placed["stems"]) # the undergrowth a walker pushes through (PlanetUndergrowth)
+	var turf: PackedFloat32Array = placed.get("turf", PackedFloat32Array())
+	if not turf.is_empty(): # where short grass grows over the ground: PlanetTurf makes the tufts round the walker from it
+		_tile.set_meta(&"turf", {"positions": _packed_positions, "field": turf, "cells": _cells, "size": _size, "key": key,
+				"corner": _packed_positions[_side + 1], "ax": _grid_axis(1), "az": _grid_axis(_side)})
 	if _body != null and not OS.has_environment("PLANET_NO_PLANT_COLLIDERS"):
 		# trunks and rocks stand where they were put: the colliders lean and sink as the things do
 		var cylinders: PackedFloat32Array = placed["cylinders"]
@@ -249,6 +253,13 @@ func _add_limb_colliders(keys: PackedInt32Array, buffers: Array) -> void:
 				var side := along.cross(Vector3.RIGHT if absf(along.x) < 0.9 else Vector3.FORWARD).normalized()
 				collision.transform = Transform3D(Basis(side, along, side.cross(along)), (from + to) * 0.5)
 				_body.add_child(collision)
+
+
+## The tile's own xz (metres) of one step along the grid, `step` indices along it, a metre of the grid's x or z: the grid is not
+## lined up with the tile's axes.
+func _grid_axis(step: int) -> Vector2:
+	var along := _packed_positions[_side + 1 + step] - _packed_positions[_side + 1]
+	return Vector2(along.x, along.z) / (_size / _cells)
 
 
 ## One layer of plants over the tile (`stretch` widens the grid: a far tile has fewer, bigger gaps).

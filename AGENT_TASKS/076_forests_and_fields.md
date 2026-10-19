@@ -152,3 +152,14 @@ which is what Low and Medium use. `FloraMeshes.fine_trees` (set from ground deta
 trees and shrubs, which are few and near, in the fine ones (leaf cards, strips of leaflets, smoother branches and bark) through
 `SpeciesRegistry.mesh`; grass, ferns and flowers (7x the triangles when fine) still wait for ground detail 2. Measured on the spawn
 view: +7% primitives, +1.5 ms GPU (7.6 -> 9.1 ms, 129 -> 107 fps on the 4090).
+
+## Turf: short grass all over the ground (PlanetTurf)
+
+- `PlanetScatterNative.scatter` also returns `turf`: how well turf grows at each vertex of the padded grid (rain, warmth, slope, stones, shade
+  of the crowns, patches; 0 on the beach, under 0.9 m and in the cold), kept as the holder's `turf` meta with the positions and the grid's
+  own axes (`ax`, `az`: the grid is not lined up with the tile's xz).
+- `PlanetScatterNative.turf_chunk(positions, field, cells, size, x0, z0, x1, z1, spacing, density, seed)` places the tufts of a square of
+  the grid on a jittered grid (the same spots whatever the field says); `PlanetTurf` makes the 16 m chunks within 26 m of the walker
+  (3 a look), lets them go beyond 36 m, one MultiMesh of `FloraMeshes.turf_tuft()` each (three crossed cards, 6 triangles). The blades
+  are drawn by the plant shader (`grass_blades`, UV2.y of 8 marks a tuft; no far fill). About 24 000 tufts at the spawn; no measurable frame cost.
+- `PLANET_NO_TURF` switches it off. Check: `--plants --grounded --turf-check` (TURF_CHECK).

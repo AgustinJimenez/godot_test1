@@ -135,3 +135,18 @@ static func sway_step(planet: PlanetWorld, player: Player, frame: int) -> void:
 		print("SWAY_CHECK %s live=%d most_turned=%.2f rad still_jitter=%.4f rad/step nearest_tree=%.1f m" % [
 				"PASS" if ok else "FAIL", live, _sway_worst, _sway_drift, _sway_target.distance_to(player.global_position)])
 		planet.get_tree().quit(0 if ok else 1)
+
+
+## `--turf-check` (with --plants, a window or headless): after the walker has stood still for a while the short grass of the ground
+## is made round them (PlanetTurf): thousands of tufts, no more than a ring's worth. Prints TURF_CHECK and quits.
+static func turf_step(planet: PlanetWorld, frame: int) -> void:
+	if not "--turf-check" in OS.get_cmdline_user_args() or frame != 600:
+		return
+	var turf: PlanetTurf = null
+	for node in planet.get_children():
+		if node is PlanetTurf:
+			turf = node
+	var count := 0 if turf == null else turf.tuft_count()
+	var ok := count > 3000 and count < 120000
+	print("TURF_CHECK %s tufts=%d" % ["PASS" if ok else "FAIL", count])
+	planet.get_tree().quit(0 if ok else 1)

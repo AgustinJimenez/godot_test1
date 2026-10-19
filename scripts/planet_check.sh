@@ -73,6 +73,7 @@ run_check species 600 "SPECIES_CHECK (PASS|FAIL)" res://tests/manual/world/speci
 run_check branches 300 "BRANCH_CHECK (PASS|FAIL)" res://tests/manual/world/branch_check.tscn
 run_check undergrowth 300 "UNDERGROWTH_CHECK" res://tests/manual/planet/undergrowth_check.tscn
 run_check sway 400 "SWAY_CHECK" "${lab}" --plants --grounded --sway-check
+run_check turf 400 "TURF_CHECK" "${lab}" --plants --grounded --turf-check
 run_check world 900 "WORLD_CHECK" res://tests/manual/world/world_lab.tscn --world-check
 run_check planet 1200 "PLANET_CHECK" "${lab}" --planet-check --fixed-fps 60
 report save "$(grep -E "SAVE_CHECK" "${LOG_DIR}/planet.log" | head -1)" # printed by the planet run

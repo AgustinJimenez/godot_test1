@@ -177,3 +177,42 @@ static func _spire(builder: MeshBuilder, rng: RandomNumberGenerator, variant: in
 	if variant != 1:
 		builder.add_frustum(Vector3(1.1, 0.0, 0.5), height * 0.5, 0.8, 0.12, 5,
 				_still(stone.darkened(0.2)), _still(stone), rng, 0.2)
+
+
+## One tuft of short grass for the turf of the ground (PlanetTurf): three crossed cards on which the plant shader draws the blades
+## (UV2.y of 8 marks it), 0.3 m wide and tall at scale 1. Built once.
+static var _turf: ArrayMesh
+
+
+static func turf_tuft() -> ArrayMesh:
+	if _turf != null:
+		return _turf
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var uvs := PackedVector2Array()
+	var uv2s := PackedVector2Array()
+	var width := 0.34
+	var height := 0.3
+	for card in 3:
+		var turn := Basis(Vector3.UP, PI * card / 3.0 + 0.4)
+		var corners := [Vector3(-width * 0.5, 0.0, 0.0), Vector3(width * 0.5, 0.0, 0.0),
+				Vector3(width * 0.5, height, 0.0), Vector3(-width * 0.5, height, 0.0)]
+		var corner_uv := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
+		for index in [0, 1, 2, 0, 2, 3]:
+			vertices.append(turn * corners[index])
+			normals.append(Vector3.UP)
+			colors.append(Color(0.25, 0.4, 0.13, 0.0 if index < 2 else 0.8)) # (alpha: how much the wind moves it)
+			uvs.append(corner_uv[index])
+			uv2s.append(Vector2(0.137 * (card + 1), 8.0))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_TEX_UV2] = uv2s
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_turf = mesh
+	return _turf

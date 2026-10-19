@@ -88,6 +88,8 @@ void PlanetScatterNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("scatter", "tile"), &PlanetScatterNative::scatter);
 	ClassDB::bind_method(D_METHOD("merge_far", "parts"), &PlanetScatterNative::merge_far);
 	ClassDB::bind_method(D_METHOD("drag", "stems", "x", "z"), &PlanetScatterNative::drag);
+	ClassDB::bind_method(D_METHOD("turf_chunk", "positions", "field", "cells", "size", "x0", "z0", "x1", "z1", "spacing", "density", "seed"),
+			&PlanetScatterNative::turf_chunk);
 }
 
 void PlanetScatterNative::setup(const Dictionary &p_config) {
@@ -727,6 +729,38 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		}
 	}
 
+	// how well turf (short grass all over the ground) grows at each vertex of the grid: rain and warmth, not steep, not stony,
+	// less under the crowns, patchy; PlanetTurf puts the tufts round the walker from it (turf_chunk)
+	PackedFloat32Array turf;
+	if (detail == ALL) {
+		turf.resize((int64_t)t.side * t.side);
+		for (int row = 0; row < t.side; row++) {
+			for (int column = 0; column < t.side; column++) {
+				const int i = row * t.side + column;
+				const double ground = t.heights[i];
+				float value = 0.0f;
+				if (ground >= 0.9) {
+					const double fx = clampd(column - 1.0, 0.0, t.cells - 0.001), fz = clampd(row - 1.0, 0.0, t.cells - 0.001);
+					const Vector3 dir = t.dirs[i];
+					const Vector3 here = t.positions[i];
+					const double steep = slope_at(fx, fz);
+					const Climate c = climate_at(dir);
+					const double degrees = degrees_at(c, ground);
+					double grows = smoothstep(0.08, 0.38, c.wet) * smoothstep(-6.0, 3.0, degrees) * (1.0 - smoothstep(34.0, 42.0, degrees));
+					grows *= 1.0 - smoothstep(0.35, 0.8, steep);
+					grows *= 1.0 - 0.85 * stony_at(dir, ground, steep);
+					grows *= 1.0 - 0.6 * shade_at(here.x, here.z);
+					if (ground < 1.4) {
+						grows *= 0.3; // the beach
+					}
+					const double patch = crust.is_valid() ? crust->detail_at(Vector3((real_t)(here.x * 0.045 + 11.0), (real_t)(here.z * 0.045 + 5.0), 3.0f)) : 0.5;
+					value = (float)clampd(grows * (0.55 + 0.9 * patch), 0.0, 1.0);
+				}
+				turf.ptrw()[i] = value;
+			}
+		}
+	}
+
 	PackedInt32Array keys;
 	Array buffers;
 	for (const auto &entry : t.batches) {
@@ -756,7 +790,72 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		memcpy(stems.ptrw(), t.stems.data(), t.stems.size() * sizeof(float));
 	}
 	result["stems"] = stems;
+	result["turf"] = turf;
 	return result;
+}
+
+PackedFloat32Array PlanetScatterNative::turf_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells,
+		double p_size, double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed) const {
+	PackedFloat32Array out;
+	const int side = p_cells + 3;
+	if (p_cells < 1 || (int)p_positions.size() < side * side || (int)p_field.size() < side * side || p_spacing <= 0.0) {
+		return out;
+	}
+	const Vector3 *positions = p_positions.ptr();
+	const float *field = p_field.ptr();
+	Rng rng;
+	rng.seed((uint64_t)p_seed * 0x9E3779B97F4A7C15ULL + 0x1234567ULL);
+	std::vector<float> buffer;
+	const double step = p_size / p_cells;
+	const int columns = (int)std::ceil((p_x1 - p_x0) / p_spacing), rows = (int)std::ceil((p_z1 - p_z0) / p_spacing);
+	for (int row = 0; row < rows; row++) {
+		for (int column = 0; column < columns; column++) {
+			const double x = p_x0 + (column + rng.randf()) * p_spacing, z = p_z0 + (row + rng.randf()) * p_spacing;
+			// the dice are thrown for every spot, so the same spots keep their tufts whatever the field says
+			const double dice = rng.randf(), size_dice = rng.randf(), yaw = rng.range(0.0, TAU_D), tone = rng.randf();
+			if (x < 0.0 || z < 0.0 || x >= p_size || z >= p_size) {
+				continue;
+			}
+			const double fx = clampd(x / p_size * p_cells, 0.0, p_cells - 0.001), fz = clampd(z / p_size * p_cells, 0.0, p_cells - 0.001);
+			const int i = ((int)fz + 1) * side + (int)fx + 1;
+			const double tx = fx - std::floor(fx), tz = fz - std::floor(fz);
+			const double f = (field[i] * (1 - tx) + field[i + 1] * tx) * (1 - tz) + (field[i + side] * (1 - tx) + field[i + side + 1] * tx) * tz;
+			if (dice >= f * p_density) {
+				continue;
+			}
+			Vector3 at;
+			const Vector3 p00 = positions[i], p10 = positions[i + 1], p01 = positions[i + side], p11 = positions[i + side + 1];
+			if (tx + tz <= 1.0) {
+				at = p00 + (p10 - p00) * (real_t)tx + (p01 - p00) * (real_t)tz;
+			} else {
+				at = p11 + (p01 - p11) * (real_t)(1.0 - tx) + (p10 - p11) * (real_t)(1.0 - tz);
+			}
+			const double dx = (p10.y - p00.y + p11.y - p01.y) / (2.0 * step), dz = (p01.y - p00.y + p11.y - p10.y) / (2.0 * step);
+			const Vector3 normal = Vector3((real_t)-dx, 1.0f, (real_t)-dz).normalized();
+			Basis basis(Vector3(0, 1, 0), (real_t)yaw);
+			const Vector3 lean_to = Vector3(0, 1, 0).lerp(normal, 0.6f).normalized();
+			const Vector3 axis = Vector3(0, 1, 0).cross(lean_to);
+			if (axis.length_squared() > 1.0e-8f) {
+				basis = Basis(axis.normalized(), (real_t)std::acos(clampd((double)lean_to.y, -1.0, 1.0))) * basis;
+			}
+			// taller where it grows well, shorter and drier where it hardly does
+			const double scale = (0.55 + 0.9 * size_dice) * (0.65 + 0.55 * f);
+			basis = basis.scaled(Vector3((real_t)scale, (real_t)scale, (real_t)scale));
+			const double dry = (1.0 - f) * 0.8;
+			const double dark = 0.78 + 0.3 * tone;
+			at.y -= (real_t)(0.02 + 0.1 * std::sqrt(dx * dx + dz * dz));
+			const float values[16] = { (float)basis.rows[0][0], (float)basis.rows[0][1], (float)basis.rows[0][2], (float)at.x, (float)basis.rows[1][0],
+				(float)basis.rows[1][1], (float)basis.rows[1][2], (float)at.y, (float)basis.rows[2][0], (float)basis.rows[2][1],
+				(float)basis.rows[2][2], (float)at.z, (float)(dark * (1.0 + 0.3 * dry)), (float)(dark * (1.0 + 0.03 * dry)),
+				(float)(dark * (1.0 - 0.35 * dry)), 1.0f };
+			buffer.insert(buffer.end(), values, values + 16);
+		}
+	}
+	out.resize((int64_t)buffer.size());
+	if (!buffer.empty()) {
+		memcpy(out.ptrw(), buffer.data(), buffer.size() * sizeof(float));
+	}
+	return out;
 }
 
 Dictionary PlanetScatterNative::merge_far(const Array &p_parts) const {

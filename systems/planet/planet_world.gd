@@ -153,6 +153,11 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 			sway.planet = self
 			sway.player = target as Player
 			add_child(sway)
+		if not OS.has_environment("PLANET_NO_TURF"):
+			var turf := PlanetTurf.new() # short grass all over the ground where it grows
+			turf.planet = self
+			turf.player = target as Player
+			add_child(turf)
 	if direction == Vector3.ZERO and restored.has("direction"):
 		var saved: Array = restored["direction"]
 		direction = Vector3(saved[0], saved[1], saved[2]).normalized()

@@ -63,6 +63,11 @@ public:
 	// How much a walker at (x, z) of the tile (its own frame) is held back by the undergrowth round it: `p_stems` is the tile's
 	// "stems" (x, z, reach, drag each); 0 in the open, up to 1 in a thicket.
 	double drag(const PackedFloat32Array &p_stems, double p_x, double p_z) const;
+	// The short grass of the ground (turf), as MultiMesh buffers (16 floats a tuft) for the square (x0, z0)..(x1, z1) of a tile's grid
+	// space (metres from its corner): one tuft for each `p_spacing` of a jittered grid, kept with the odds `field` (the tile's "turf",
+	// how well turf grows at each vertex of the padded grid) times `p_density`. The same spots whatever the field says.
+	PackedFloat32Array turf_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells, double p_size,
+			double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed) const;
 };
 
 } // namespace godot
