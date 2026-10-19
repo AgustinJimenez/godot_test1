@@ -316,6 +316,7 @@ func _frond(points: Array[Vector3], side: Vector3) -> void:
 		_b.add_tri(a - wide_a, b + wide_b, b - wide_b, base, tip, tip)
 		# leaflets: one tri per side, hanging from the midrib, longest in the middle of the frond
 		var leaflets := (5 if _fine else 3) - _lod if _g.leaflet >= 0.02 else 0
+		var low_plant := _g.height < 1.5 # a fern: its leaflets are leaves; a palm has far too many
 		for leaf_index in leaflets:
 			var u := (float(leaf_index) + 0.5) / float(leaflets)
 			var at := a.lerp(b, u)
@@ -328,7 +329,7 @@ func _frond(points: Array[Vector3], side: Vector3) -> void:
 				from_colour.a = sway
 				var tip_colour := _g.leaf_tip.lerp(tone, 0.3)
 				tip_colour.a = minf(sway + LEAF_SWAY, 1.0)
-				if _fine and not _outline.is_empty():
+				if _fine and low_plant and not _outline.is_empty():
 					# realistic: a leaflet is a small veined leaf along its direction, not a triangle
 					var up := (Vector3.UP - dir * dir.dot(Vector3.UP)).normalized()
 					PlantLeafShapes.add_leaf(_b, _outline, at, dir, up, size * 1.25, 0.08, -0.06,
