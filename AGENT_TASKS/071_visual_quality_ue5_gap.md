@@ -215,3 +215,12 @@ pixels across at that distance (`resolved(wavelength, px)`, `px` = the pixel wid
 distance), so from orbit only the big billows remain, and the edges soften with the distance (from
 orbit the weather's cover picture is the edge). The ground's cloud shadow uses the same layers. Checked
 at 3.5 km, 150 km, 300 km, 1,000 km and 2,500 km up and from the ground.
+
+## Sun rays / golden hour (light shafts, High and Ultra)
+
+The volumetric fog of the light shafts now follows the sun: its density is up to 5 times higher when the
+sun is low (dawn, dusk), it scatters forward (anisotropy 0.7) so the haze glows toward the sun, and it
+reaches 220 m. The look is a warm golden haze round the sun. Real beams (crepuscular rays) need gaps
+in a canopy or clouds to cut the light, and in the dense test forest they were not seen; open ground
+with few trees, or broken clouds, is the place to check. The effect is off above ~2.5 km and in
+space, and needs the haze of the place (humid air more than dry).

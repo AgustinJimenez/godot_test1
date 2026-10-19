@@ -98,7 +98,14 @@ func _shafts() -> void:
 	if not on:
 		return
 	var humid := clampf(_haze - 0.4, 0.0, 1.8)
-	environment.volumetric_fog_density = (0.0009 + 0.0014 * humid + fog_extra * 0.3) * low
+	# the beams show when the sun is low (dawn, dusk): more haze lit then, and the light is scattered
+	# forward, toward the eye that looks at the sun (anisotropy), through a longer stretch of air
+	var up_here := (global_position - planet_centre).normalized()
+	var low_sun := 1.0 - smoothstep(0.05, 0.6, clampf(sun_direction.dot(up_here), 0.0, 1.0))
+	var density_here := (0.0018 + 0.0018 * humid + fog_extra * 0.3) * (1.0 + 4.0 * low_sun)
+	environment.volumetric_fog_density = density_here * low
+	environment.volumetric_fog_anisotropy = 0.7
+	environment.volumetric_fog_length = 220.0
 	environment.volumetric_fog_albedo = environment.fog_light_color.lerp(Color.WHITE, 0.45)
 	environment.volumetric_fog_sky_affect = 0.0
 	sun.light_volumetric_fog_energy = 1.0
