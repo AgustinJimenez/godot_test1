@@ -249,3 +249,11 @@ steep one. Lab notes: `--view-alt` is above the ground, so over deep sea add the
 down here, so 2012 puts the camera 16 m above the water); tests that run with `godot -s` no longer
 compile when they touch `PlanetScatter` or `PlanetAtmosphere` (they use the GraphicsSettings autoload),
 so use the lab scene or give the script the autoload.
+
+## Fog was too thick for a clear day (fixed)
+
+The planet used the flat world's `BASE_FOG` (0.0032 per metre: an object is 5% visible at 1 km). The
+planet has its own `PlanetAtmosphere.PLANET_FOG` = 0.00045 now (about 7 times thinner), scaled by the
+place's haze 0.55 (cold, dry: about 12 km) to 2.05 (warm, wet: about 3 km); dust adds 0.0008 and the
+weather's fog, rain and snow still add on top. On the snow range a clear day now shows distant
+mountains and cloud banks; the warm wet lowland keeps a teal haze that fades the far hills.

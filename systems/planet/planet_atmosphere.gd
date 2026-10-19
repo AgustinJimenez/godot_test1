@@ -90,6 +90,11 @@ func _own_every_look_setting() -> void:
 ## Light shafts: volumetric fog, only near the ground (a froxel grid cannot cover a planet), fading
 ## out with the altitude, its density following the haze of the place (humid air shows the sun's
 ## beams, dry air hardly). Off underwater and when the setting is off.
+## The air's own haze on a clear day, per metre (the flat world's BASE_FOG is 7 times that: a visibility
+## of a kilometre). The place scales it by 0.55 (cold, dry: about 12 km) to 2.05 (warm and wet: 3 km).
+const PLANET_FOG := 0.00045
+
+
 func _shafts() -> void:
 	var wanted: bool = GraphicsSettings.get_graphics_value(&"volumetric_fog")
 	var low := 1.0 - smoothstep(600.0, 2500.0, maxf(altitude, 0.0))
@@ -211,7 +216,7 @@ func _apply() -> void:
 	# orbit the whole planet would be buried under it
 	_haze = lerpf(_haze, haze_wanted, 0.02)
 	_dust = lerpf(_dust, dust_wanted, 0.02)
-	var density := (BASE_FOG * _haze + 0.0016 * _dust + fog_extra) * air
+	var density := (PLANET_FOG * _haze + 0.0008 * _dust + fog_extra) * air
 	# dust tints the haze the colour of the ground it came from
 	environment.fog_light_color = environment.fog_light_color.lerp(
 			Color(0.74, 0.62, 0.44) * maxf(strongest, 0.05), _dust * 0.45)
