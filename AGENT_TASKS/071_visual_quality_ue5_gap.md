@@ -164,3 +164,22 @@ planet is large and SDFGI wants a small scene; a custom `sdfgi_min_cell_size` pe
   not switch on the underwater fog the game uses with a player), and the yellow-green haze colour at the
   horizon that the sea (and the land) reflect.
 - Lab note: `--sea --water` are needed to see any water; without them the sea is not drawn at all.
+
+## Scatter, decals, occlusion culling (done, with the settings)
+
+- **Pebbles** (`FloraMeshes.Kind.PEBBLES`, placed by `PlanetScatter._pebbles`): clusters of small stones
+  every ~2.4 m near the player, thick on rocky, snowy, desert and beach ground, more on slopes, none in
+  water; visible within 45 m, no shadow. Only with the plants on and the ground detail at Fine or
+  more (High, Ultra).
+- **Footprints** (`PlanetFootprints`, setting `decals`, High and Ultra): one Decal a step, alternating
+  feet, on snow (a pale ground colour), sand and marsh; kept in planet space (the world turns under the
+  player), at most 48 and gone after two minutes. The decal box is 2 m deep because the collider the
+  ray hits and the drawn ground can differ by about half a metre; a shallower box was invisible.
+- **Occlusion culling and mesh LOD** (`occlusion_culling`, High and Ultra): the viewport flag, mesh LOD
+  threshold 1.0 instead of 2.0, and a coarse occluder under every tile of the six finest sizes
+  (`PlanetTile._add_occluder`: 8 x 8 quads from the tile's grid, sunk by twice the skirt's depth so it
+  cannot hide visible ground). In the snow-range lab view the draw calls fell from about 2,970
+  (Medium) to about 1,100 (Ultra), which also has other changes; frames per second are lower on Ultra
+  (about 255 against 395) for the other effects, not for this.
+- Lab note: new `class_name` files need `godot --headless --import` once (the class cache), or the
+  scripts that use them fail to compile; the editor does it on opening the project.

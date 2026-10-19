@@ -28,6 +28,11 @@ static func apply_viewport(viewport: Viewport, values: Dictionary) -> void:
 			viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	viewport.fsr_sharpness = 0.2
 	viewport.use_debanding = bool(values.get(&"debanding", false))
+	# things hidden behind hills and buildings are not drawn (the planet tiles carry occluders, see
+	# PlanetTile._add_occluder), and the meshes of plants and rocks keep their detail longer
+	var occlusion := bool(values.get(&"occlusion_culling", false))
+	viewport.use_occlusion_culling = occlusion
+	viewport.mesh_lod_threshold = 1.0 if occlusion else 2.0
 	viewport.texture_mipmap_bias = -0.5 if upscaler > 0 and scale < 0.999 else 0.0
 	if viewport.scaling_3d_mode == Viewport.SCALING_3D_MODE_FSR2:
 		viewport.use_taa = false
