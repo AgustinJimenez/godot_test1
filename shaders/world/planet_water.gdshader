@@ -99,6 +99,37 @@ float scene_z(vec2 uv, mat4 inv_projection) {
 	return p.z / p.w;
 }
 
+// What the water mirrors of the land: a short march in screen space along the reflected ray, against the
+// depth of the scene drawn before the water. Returns the colour (rgb) and how sure the hit is (a); the
+// sky is mirrored by the environment's own reflection, this adds the hills, trees and shores.
+vec4 mirror_of_the_land(vec3 view_pos, vec3 normal, mat4 projection, mat4 inv_projection) {
+	vec3 ray = reflect(normalize(view_pos), normal);
+	if (ray.z > -0.02 && ray.y < 0.0) {
+		return vec4(0.0);
+	}
+	float stride = max(length(view_pos) * 0.02, 1.5);
+	vec3 at = view_pos;
+	for (int i = 0; i < 28; i++) {
+		at += ray * stride;
+		stride *= 1.22;
+		vec4 clip = projection * vec4(at, 1.0);
+		if (clip.w <= 0.0) {
+			return vec4(0.0);
+		}
+		vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
+		if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+			return vec4(0.0);
+		}
+		float scene = scene_z(uv, inv_projection);
+		float gap = at.z - scene; // view z is negative ahead: the ray is behind the scene when gap < 0
+		if (gap < 0.0 && gap > -stride * 3.0) {
+			float edge = 1.0 - smoothstep(0.35, 0.5, max(abs(uv.x - 0.5), abs(uv.y - 0.5)));
+			return vec4(textureLod(screen_texture, uv, 0.0).rgb, edge * (1.0 - float(i) / 40.0));
+		}
+	}
+	return vec4(0.0);
+}
+
 void fragment() {
 	vec3 flat_normal = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
 	if (dot(flat_normal, VIEW) < 0.0) {
@@ -145,6 +176,11 @@ void fragment() {
 	vec3 real_albedo = mix(body * (1.0 - see * 0.85), foam_color.rgb, foam * 0.9);
 	ALBEDO = mix(low_albedo, real_albedo, realism);
 	EMISSION = bed * transmit * (1.0 - foam) * (1.0 - fresnel * 0.7) * realism;
+	if (realism > 0.5 && away < 6000.0) {
+		vec4 mirror = mirror_of_the_land(VERTEX, NORMAL, PROJECTION_MATRIX, INV_PROJECTION_MATRIX);
+		float grazing = 0.08 + 0.92 * fresnel; // water mirrors little looking straight down
+		EMISSION = mix(EMISSION, mirror.rgb, mirror.a * grazing * (1.0 - foam) * 0.85);
+	}
 	float low_alpha = clamp(mix(color.a, 1.0, foam), 0.0, 1.0);
 	ALPHA = mix(low_alpha, 1.0, realism);
 	ROUGHNESS = mix(mix(0.08, 0.025, realism) + 0.1 * smoothstep(300.0, 5000.0, away), 0.6, foam);

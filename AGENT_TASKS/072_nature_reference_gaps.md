@@ -88,3 +88,8 @@ variety of near things* (A, E, F) and *light mood* (B, C).
 4. **Warm / cool haze split** (`environment.fog_sun_scatter`, 0.55 on a clear day): toward a low sun the
    haze takes the sun's colour and gives long warm layers; away from it it stays blue-green. Noon looks
    as before (checked at 12:30). Seen on the green hills of seed 8 at 8:00.
+5. **Water mirrors the land** (`mirror_of_the_land` in `planet_water.gdshader`: a 28-step screen-space
+   march along the reflected ray, blended by a Fresnel term; only within 6 km, only in realistic mode).
+   It compiles and the open sea is unchanged; NOT yet seen working: no view of land across water was
+   found (the lab's coast of seed 8 is a flat mud plain, and scans for an island timed out). Check it
+   on a lake or fjord when one is found (`--sea --water` and a camera 3-10 m over the water).
