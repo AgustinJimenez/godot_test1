@@ -305,11 +305,11 @@ static func _shape(s: PlantSpecies, rng: RandomNumberGenerator) -> void:
 			s.variants = 2
 		F.GRASS:
 			s.height = rng.randf_range(0.3, 0.8)
-			s.girth = rng.randf_range(0.035, 0.06)
-			s.count = rng.randi_range(6, 9)
+			s.girth = rng.randf_range(0.022, 0.038) # slim blades: a real blade is a few millimetres wide
+			s.count = rng.randi_range(13, 20) # a clump has many
 			s.droop = rng.randf_range(0.1, 0.55)
 			var golden := rng.randf() < 0.2
-			s.leaf = _rhsv(rng, 0.22, 0.3, 0.6, 0.75, 0.4, 0.5)
+			s.leaf = _rhsv(rng, 0.2, 0.3, 0.5, 0.7, 0.5, 0.64)
 			s.leaf_tip = (_rhsv(rng, 0.11, 0.16, 0.5, 0.65, 0.75, 0.88)
 					if golden else _rhsv(rng, 0.16, 0.25, 0.5, 0.65, 0.65, 0.8))
 			s.variants = 2

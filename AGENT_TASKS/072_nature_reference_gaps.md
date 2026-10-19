@@ -117,3 +117,8 @@ Medium (light meshes). An earlier note here said the realistic look had cost 8.5
 wrong, that was another, sparser place. The light and the detailed meshes draw nearly the same number of
 triangles there (80 % of them are trees: 11.6 M of 14.6 M). The detailed plant meshes are now only built
 at High and Ultra (the Fine ground detail), the realistic shading is always on.
+4. Grass clumps: 13-20 slimmer blades in lighter, more varied greens (they were 6-9 thick dark ones).
+   Still sparse spiky tufts next to a ground shader that already reads as short grass: a dense field of
+   fine blades near the player (instanced, cheap) is the next step, and the ground plants that are fans of
+   a few large triangles (the "leafy" ground species) and the 5-petal flowers need leaf outlines like the
+   trees now have.
