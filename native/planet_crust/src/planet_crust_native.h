@@ -137,6 +137,8 @@ public:
 	// the water queries of the game (what PlanetHydrology answered in script): the level of the river or lake
 	// water at a direction where the ground is under it (-1e30: dry), whether water is within a margin, and
 	// the current of the river there (planet space, m/s)
+	// the colours of a mesh, each multiplied by a tint (the plant batches merge meshes in script no more)
+	PackedColorArray tinted(const PackedColorArray &p_colours, const Color &p_tint) const;
 	double water_at(const Vector3 &p_dir, double p_ground) const;
 	bool near_water(const Vector3 &p_dir, double p_ground, double p_margin) const;
 	Vector3 flow_at(const Vector3 &p_dir) const;

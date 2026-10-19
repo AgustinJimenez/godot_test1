@@ -426,8 +426,7 @@ func _commit_far(parts: Array, begin: float) -> void:
 		vertices.append_array(placed * (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array))
 		var turn := Transform3D(placed.basis.orthonormalized(), Vector3.ZERO)
 		normals.append_array(turn * (arrays[Mesh.ARRAY_NORMAL] as PackedVector3Array))
-		for color in arrays[Mesh.ARRAY_COLOR] as PackedColorArray:
-			colors.append(Color(color.r * tint.r, color.g * tint.g, color.b * tint.b, color.a))
+		colors.append_array(_noise.native.call(&"tinted", arrays[Mesh.ARRAY_COLOR], tint))
 	var merged: Array = []
 	merged.resize(Mesh.ARRAY_MAX)
 	merged[Mesh.ARRAY_VERTEX] = vertices
@@ -450,9 +449,32 @@ func _add_trees(key: int, transforms: Array, mesh: ArrayMesh, shadows: bool) -> 
 	multi.use_colors = true
 	multi.mesh = mesh
 	multi.instance_count = transforms.size()
+	# one write of the whole buffer: 12 floats of transform (3 rows of basis x, y, z and the origin) and 4 of
+	# colour for every instance (thousands of set_instance_* calls cost far more)
+	var buffer := PackedFloat32Array()
+	buffer.resize(transforms.size() * 16)
+	var colours: Array = _colors[key]
 	for index in transforms.size():
-		multi.set_instance_transform(index, transforms[index])
-		multi.set_instance_color(index, (_colors[key] as Array)[index])
+		var t: Transform3D = transforms[index]
+		var c: Color = colours[index]
+		var at := index * 16
+		buffer[at] = t.basis.x.x
+		buffer[at + 1] = t.basis.y.x
+		buffer[at + 2] = t.basis.z.x
+		buffer[at + 3] = t.origin.x
+		buffer[at + 4] = t.basis.x.y
+		buffer[at + 5] = t.basis.y.y
+		buffer[at + 6] = t.basis.z.y
+		buffer[at + 7] = t.origin.y
+		buffer[at + 8] = t.basis.x.z
+		buffer[at + 9] = t.basis.y.z
+		buffer[at + 10] = t.basis.z.z
+		buffer[at + 11] = t.origin.z
+		buffer[at + 12] = c.r
+		buffer[at + 13] = c.g
+		buffer[at + 14] = c.b
+		buffer[at + 15] = c.a
+	multi.buffer = buffer
 	var instance := MultiMeshInstance3D.new()
 	instance.multimesh = multi
 	instance.material_override = FloraMeshes.material()

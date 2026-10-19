@@ -46,6 +46,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("setup", "config"), &PlanetCrustNative::setup);
 	ClassDB::bind_method(D_METHOD("river_waters", "dirs"), &PlanetCrustNative::river_waters);
 	ClassDB::bind_method(D_METHOD("water_at", "dir", "ground"), &PlanetCrustNative::water_at);
+	ClassDB::bind_method(D_METHOD("tinted", "colours", "tint"), &PlanetCrustNative::tinted);
 	ClassDB::bind_method(D_METHOD("near_water", "dir", "ground", "margin"), &PlanetCrustNative::near_water);
 	ClassDB::bind_method(D_METHOD("flow_at", "dir"), &PlanetCrustNative::flow_at);
 	ClassDB::bind_method(D_METHOD("set_climate", "grid", "width", "height", "rain"), &PlanetCrustNative::set_climate);
@@ -1766,6 +1767,16 @@ bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley, double
 static double river_surface(double p_bed, double p_flow, double p_river_flow) {
 	const double share = p_flow / p_river_flow;
 	return p_bed + 0.6 + 1.4 * std::sqrt(share > 4.0 ? 4.0 : share);
+}
+
+PackedColorArray PlanetCrustNative::tinted(const PackedColorArray &p_colours, const Color &p_tint) const {
+	PackedColorArray out;
+	out.resize(p_colours.size());
+	for (int index = 0; index < p_colours.size(); index++) {
+		const Color c = p_colours[index];
+		out.set(index, Color(c.r * p_tint.r, c.g * p_tint.g, c.b * p_tint.b, c.a));
+	}
+	return out;
 }
 
 double PlanetCrustNative::water_at(const Vector3 &p_dir, double p_ground) const {

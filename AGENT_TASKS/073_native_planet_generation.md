@@ -19,3 +19,12 @@ climate 0.17 s, sea level 0.05 s)
   candidate point. The next conversion (and the frame cost of plants is big: see the draw calls).
 - Map charts: native rows for every layer already.
 - The script hydrology and its pieces (645 lines) are now dead code by default; remove once nothing uses it.
+
+## Measured on the plants (full detail tile, 76 m, seed 8 greenest meadow, High, 2026-10-19)
+- Placement of all layers: ~95 ms a tile (per-candidate queries cost 1-5 us each in script).
+- Building the batches (`_flush`): 56-130 ms a tile in steady state (was 75-330: the per-instance
+  `set_instance_*` calls are now one `MultiMesh.buffer` write and the far-tree vertex tint is native
+  `tinted`), but **1-4.4 s on the first tiles**: the plant meshes of each species are generated in script
+  the first time they are needed (`PlantMeshes`, on the worker thread, so the tiles wait).
+- So the plants' real cost is mesh generation. The plan: task 3 replaces the plant meshes with a native
+  generator (realistic, non-repeating), which also removes this stall.
