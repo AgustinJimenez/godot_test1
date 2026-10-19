@@ -15,6 +15,7 @@ var _vertices := PackedVector3Array()
 var _normals := PackedVector3Array()
 var _colors := PackedColorArray()
 var _custom := PackedByteArray() # smooth per-vertex colour (CUSTOM0) for the smooth terrain
+var _custom1 := PackedByteArray() # what the ground is made of (CUSTOM1: stones angular, coarse, pale, flaky)
 var _uvs := PackedVector2Array() # only leaves have them (see add_tri_uv); everything else is (0, 0)
 var _uv2s := PackedVector2Array() # a leaf's own random numbers (its veins), same corners as _uvs
 
@@ -29,6 +30,7 @@ func reset() -> void:
 	_normals.clear()
 	_colors.clear()
 	_custom.clear()
+	_custom1.clear()
 	_uvs.clear()
 	_uv2s.clear()
 	xf = Transform3D.IDENTITY
@@ -186,11 +188,13 @@ func add_tri_smooth(a: Vector3, b: Vector3, c: Vector3, flat: Color, normals: Ar
 ## `add_tri_smooth` would have appended: three vertices a triangle, the flat colour and the smooth
 ## colour bytes.
 func append_smooth(vertices: PackedVector3Array, normals: PackedVector3Array,
-		flat: PackedColorArray, smooth_bytes: PackedByteArray) -> void:
+		flat: PackedColorArray, smooth_bytes: PackedByteArray,
+		material_bytes := PackedByteArray()) -> void:
 	_vertices.append_array(vertices)
 	_normals.append_array(normals)
 	_colors.append_array(flat)
 	_custom.append_array(smooth_bytes)
+	_custom1.append_array(material_bytes)
 
 
 func commit() -> ArrayMesh:
@@ -212,6 +216,9 @@ func commit() -> ArrayMesh:
 	if not _custom.is_empty():
 		arrays[Mesh.ARRAY_CUSTOM0] = _custom
 		flags = Mesh.ARRAY_CUSTOM_RGBA8_UNORM << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+		if _custom1.size() == _custom.size():
+			arrays[Mesh.ARRAY_CUSTOM1] = _custom1
+			flags |= Mesh.ARRAY_CUSTOM_RGBA8_UNORM << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 	return mesh
 

@@ -28,3 +28,18 @@ the soil has depth and is not one painted colour. Grass hides them, sand keeps o
 some patches and on slopes. Costs 8 cells x 5 hashes a size class (about 120 hashes) and about 1 ms of GPU: 150 fps at High
 with 13 M primitives. Not done: real parallax (the depth is the normal, the occlusion and the dark gaps), stones as meshes
 very near (`PEBBLES` instances exist further out), wet stones darker than the soil, frost and moss on the north side.
+
+## Soil and stones follow the geology (2026-10-19)
+`PlanetCrustNative::ground_materials` gives every vertex six bytes from the rocks of the place (`rock_weights`, the same
+nine rocks and weights as `rock_colour`) and the climate: how **angular**, how **coarse**, how **pale** and how **flaky** its
+stones are (table per rock: granite coarse, angular, pale; basalt dark, angular; limestone pale and rounded; sandstone fine
+and slabby; shale and schist plates; gneiss and andesite between), the soil's **organic** matter (128 neutral; black earth
+in mild, moderately wet places and peat in cool wet flats above; the ash of cold wet forests, loess and desert dust below)
+and its **iron** (red laterite where it is hot and wet, red sandstone). They ride in the mesh as CUSTOM1 (the four stone
+numbers), the alpha of CUSTOM0 (organic) and the alpha of the flat colour (iron), and are smooth numbers, so places grade into
+one another. `planet_ground.gdshader` tints bare soil by them (grass and snow hide it) and shapes the stones: angular ones
+are edged (an L1 metric), flaky ones are flat plates, coarse rock thickens the pebbles and cobbles, pale rock gives pale
+stones. `rock_colour` is untouched, so the native check against the script still passes. The mesh gets the extra array
+only on the native path (`MeshBuilder.append_smooth(..., material_bytes)`); the script path has none and reads zeros.
+Not done: the soil's depth (thin on slopes and ridges, deep in valleys: from the slope and the drainage), more soil
+colours in `rock_colour` itself (it has a script twin), wet soil and wet stones, frost and moss on the north side.

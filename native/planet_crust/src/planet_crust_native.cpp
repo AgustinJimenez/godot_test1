@@ -88,6 +88,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("local_positions", "dirs", "heights", "origin", "e1", "up", "e3"),
 			&PlanetCrustNative::local_positions);
 	ClassDB::bind_method(D_METHOD("grid_normals", "positions", "cells"), &PlanetCrustNative::grid_normals);
+	ClassDB::bind_method(D_METHOD("ground_materials", "dirs", "heights", "normals", "cells"), &PlanetCrustNative::ground_materials);
 	ClassDB::bind_method(D_METHOD("ground_colours", "dirs", "heights", "normals", "cells"),
 			&PlanetCrustNative::ground_colours);
 	ClassDB::bind_method(D_METHOD("triangles", "positions", "normals", "colours", "cells", "skirt_drop"),
@@ -632,7 +633,9 @@ Color PlanetCrustNative::illustrated_colour(const Vector3 &p_dir, double p_groun
 	return Color((float)mix(cr, 0.90, sand), (float)mix(cg, 0.82, sand), (float)mix(cb, 0.55, sand), 1.0f);
 }
 
-Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle, bool p_strata) const {
+// How much of each of the nine rocks (basalt, andesite, granite, gneiss, schist, limestone, sandstone, red sandstone, shale)
+// is at a direction on ground of height `p_ground`: weights that add up to 1 (PlanetRock.weights).
+void PlanetCrustNative::rock_weights(const Vector3 &p_dir, double p_ground, float *w) const {
 	int plate = 0;
 	real_t edge = 0;
 	bool is_continental = false;
@@ -643,7 +646,9 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	double old = smooth(-0.15, 0.3, craton.at(p));
 	double regional = clampd(0.5 + 1.1 * (double)basin.at(p), 0.0, 1.0);
 	enum { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE };
-	float w[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	for (int index = 0; index < 9; index++) {
+		w[index] = 0.0f;
+	}
 	if (!is_continental) {
 		double cover = smooth(-0.2, 0.0, p_ground / relief);
 		w[BASALT] = 0.5f;
@@ -677,6 +682,13 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	for (int index = 0; index < 9; index++) {
 		w[index] = (float)((double)w[index] / total);
 	}
+}
+
+Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle, bool p_strata) const {
+	float w[9];
+	rock_weights(p_dir, p_ground, w);
+	enum { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE };
+	const double tall = clampd(p_ground / relief, 0.0, 1.0);
 	Color rock(0.0f, 0.0f, 0.0f, 0.0f);
 	for (int index = 0; index < 9; index++) {
 		rock += rock_colours[index] * w[index];
@@ -1543,7 +1555,10 @@ PackedVector3Array PlanetCrustNative::local_positions(const PackedVector3Array &
 // MeshBuilder.add_tri_smooth): three vertices a triangle with the facet's flat colour (the mean
 // of its corners') and the corners' smooth colours as bytes, plus the collision faces.
 Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
-		const PackedVector3Array &p_normals, const PackedColorArray &p_colours, int p_cells, double p_skirt_drop) const {
+		const PackedVector3Array &p_normals, const PackedColorArray &p_colours, int p_cells, double p_skirt_drop,
+		const PackedByteArray &p_materials) const {
+	const bool have_materials = p_materials.size() >= (p_cells + 3) * (p_cells + 3) * 6;
+	PackedByteArray custom1;
 	const int side = p_cells + 3;
 	const int count = p_cells * p_cells * 2;
 	PackedVector3Array vertices;
@@ -1557,6 +1572,7 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 	normals.resize((count + skirt_count) * 3);
 	flats.resize((count + skirt_count) * 3);
 	custom.resize((count + skirt_count) * 3 * 4);
+	custom1.resize(have_materials ? (count + skirt_count) * 3 * 4 : 0);
 	faces.resize(count * 3);
 	int at = 0;
 	for (int row = 1; row <= p_cells; row++) {
@@ -1598,6 +1614,15 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 					custom[out * 4 + 1] = (uint8_t)(int)(smooth.g * 255.0f);
 					custom[out * 4 + 2] = (uint8_t)(int)(smooth.b * 255.0f);
 					custom[out * 4 + 3] = 255;
+					if (have_materials) {
+						const uint8_t *m = p_materials.ptr() + corner[k] * 6;
+						custom1[out * 4] = m[0];
+						custom1[out * 4 + 1] = m[1];
+						custom1[out * 4 + 2] = m[2];
+						custom1[out * 4 + 3] = m[3];
+						custom[out * 4 + 3] = m[4]; // the soil's organic matter
+						flats[out].a = (float)m[5] / 255.0f; // and its iron
+					}
 				}
 				at++;
 			}
@@ -1606,7 +1631,7 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 	if (skirt_count > 0) {
 		const Vector3 drop(0.0f, (real_t)-p_skirt_drop, 0.0f);
 		int out_at = count * 3;
-		auto put = [&](const Vector3 &p_a, const Vector3 &p_b, const Vector3 &p_c, const Vector3 &p_normal, const Color &p_colour) {
+		auto put = [&](const Vector3 &p_a, const Vector3 &p_b, const Vector3 &p_c, const Vector3 &p_normal, const Color &p_colour, int p_point) {
 			const Vector3 points[3] = { p_a, p_c, p_b }; // (the builder's order a, c, b)
 			for (int slot = 0; slot < 3; slot++) {
 				vertices[out_at] = points[slot];
@@ -1616,6 +1641,15 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 				custom[out_at * 4 + 1] = (uint8_t)(int)(p_colour.g * 255.0f);
 				custom[out_at * 4 + 2] = (uint8_t)(int)(p_colour.b * 255.0f);
 				custom[out_at * 4 + 3] = 255;
+				if (have_materials) {
+					const uint8_t *m = p_materials.ptr() + p_point * 6;
+					custom1[out_at * 4] = m[0];
+					custom1[out_at * 4 + 1] = m[1];
+					custom1[out_at * 4 + 2] = m[2];
+					custom1[out_at * 4 + 3] = m[3];
+					custom[out_at * 4 + 3] = m[4];
+					flats[out_at].a = (float)m[5] / 255.0f;
+				}
 				out_at++;
 			}
 		};
@@ -1629,10 +1663,10 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 				const Vector3 b = p_positions[edges[edge][1]];
 				const Color colour = p_colours[edges[edge][0]];
 				const Vector3 wall = (b - a).cross(drop).normalized();
-				put(a, b, b + drop, wall, colour);
-				put(a, b + drop, a + drop, wall, colour);
-				put(a, b + drop, b, -wall, colour);
-				put(a, a + drop, b + drop, -wall, colour);
+				put(a, b, b + drop, wall, colour, edges[edge][0]);
+				put(a, b + drop, a + drop, wall, colour, edges[edge][0]);
+				put(a, b + drop, b, -wall, colour, edges[edge][0]);
+				put(a, a + drop, b + drop, -wall, colour, edges[edge][0]);
 			}
 		}
 	}
@@ -1641,6 +1675,7 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 	result["normals"] = normals;
 	result["colours"] = flats;
 	result["custom"] = custom;
+	result["custom1"] = custom1;
 	result["faces"] = faces;
 	return result;
 }
@@ -1674,6 +1709,56 @@ PackedColorArray PlanetCrustNative::ground_colours(const PackedVector3Array &p_d
 			Vector3 p = p_dirs[index] * (real_t)radius;
 			double speckle = (double)detail.at(p) * 0.5 + 0.5;
 			result[index] = rock_colour(p_dirs[index], p_heights[index], 1.0 - (double)p_normals[index].y, speckle);
+		}
+	}
+	return result;
+}
+
+// What the ground's surface is made of, besides its colour (read by planet_ground.gdshader): for every point of the tile's
+// grid six bytes: how angular its stones are, how coarse, how pale, how flaky (from the rocks of the place: granite breaks
+// into coarse angular pale gravel, basalt into dark angular, limestone into pale rounded pebbles, sandstone into fine grit and
+// slabs, shale and schist into plates), how organic the soil is (128 neutral: black earth and peat above, the ash of cold
+// forests, loess and desert dust below) and how much iron (red laterite where it is hot and wet, red sandstone). Smooth
+// numbers, so the stones and the soil change gradually from one place to the next.
+PackedByteArray PlanetCrustNative::ground_materials(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
+		const PackedVector3Array &p_normals, int p_cells) const {
+	const int side = p_cells + 3;
+	PackedByteArray result;
+	result.resize(side * side * 6);
+	// per rock: angular, coarse, pale, flaky
+	static const float TABLE[9][4] = { { 0.8f, 0.35f, 0.0f, 0.1f }, { 0.75f, 0.45f, 0.25f, 0.1f }, { 0.85f, 0.85f, 0.65f, 0.0f },
+		{ 0.7f, 0.6f, 0.5f, 0.35f }, { 0.5f, 0.35f, 0.4f, 0.9f }, { 0.2f, 0.55f, 0.95f, 0.1f }, { 0.3f, 0.15f, 0.7f, 0.4f },
+		{ 0.3f, 0.15f, 0.45f, 0.4f }, { 0.4f, 0.2f, 0.15f, 1.0f } };
+	uint8_t *out = result.ptrw();
+	for (int row = 1; row <= p_cells + 1; row++) {
+		for (int column = 1; column <= p_cells + 1; column++) {
+			const int index = row * side + column;
+			const Vector3 dir = p_dirs[index];
+			const double ground = p_heights[index];
+			const double steep = 1.0 - (double)p_normals[index].y;
+			float w[9];
+			rock_weights(dir, ground, w);
+			float mixed[4] = { 0, 0, 0, 0 };
+			for (int rock = 0; rock < 9; rock++) {
+				for (int k = 0; k < 4; k++) {
+					mixed[k] += TABLE[rock][k] * w[rock];
+				}
+			}
+			const double cold = sea_temperature(dir) - 0.0065 * (ground > 0.0 ? ground : 0.0);
+			const double wet = clampd(grid_at(rain_grid, dir, 0.5) / 0.9, 0.0, 1.0);
+			const double dry = smooth(0.3, 0.1, wet);
+			const double laterite = smooth(16.0, 24.0, cold) * smooth(0.55, 0.9, wet);
+			const double black_earth = smooth(2.0, 8.0, cold) * (1.0 - smooth(16.0, 22.0, cold)) * smooth(0.3, 0.45, wet) * (1.0 - smooth(0.6, 0.8, wet));
+			const double peat = smooth(0.7, 0.95, wet) * smooth(-2.0, 6.0, cold) * (1.0 - smooth(12.0, 18.0, cold)) * (1.0 - smooth(0.1, 0.3, steep));
+			const double ash = smooth(8.0, 2.0, cold) * smooth(-6.0, 0.0, cold) * smooth(0.6, 0.85, wet);
+			const double organic = clampd(0.5 + 0.4 * black_earth + 0.45 * peat - 0.35 * ash - 0.3 * dry, 0.0, 1.0);
+			const double iron = clampd(laterite + 0.6 * (double)w[7] + 0.15 * (double)w[6] * dry, 0.0, 1.0);
+			uint8_t *at = out + index * 6;
+			for (int k = 0; k < 4; k++) {
+				at[k] = (uint8_t)(int)(clampd((double)mixed[k], 0.0, 1.0) * 255.0);
+			}
+			at[4] = (uint8_t)(int)(organic * 255.0);
+			at[5] = (uint8_t)(int)(iron * 255.0);
 		}
 	}
 	return result;

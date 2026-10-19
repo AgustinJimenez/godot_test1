@@ -44,6 +44,9 @@ uniform float detail_range = 260.0; // m: the detail is gone by twice this
 varying vec3 smooth_color;
 varying vec3 world_pos;
 varying vec3 world_normal;
+varying vec4 geology; // what the rock of the place breaks into: angular, coarse, pale, flaky (0..1, from the crust)
+varying float soil_organic; // 0.5 neutral; above: black earth and peat; below: the ash of cold forests, loess, desert dust
+varying float soil_iron; // 0..1: red laterite and red sandstone soil
 
 float hash3(vec3 p) {
 	p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
@@ -82,7 +85,8 @@ float fbm3(vec3 p, float period) {
 // tilts there (planet axes, a slope: the normal leans by it), `shade` that stone's own tone (0..1), `crevice` how
 // much the point lies in the dark gap hugging a stone (0 far from any, 1 touching one). `period` makes the field repeat
 // over the noise's wrapped distance (1024 m) so the planet's position can stay small.
-void stones(vec3 p, float scale, float period, float size, out float h, out vec3 lean, out float shade, out float crevice) {
+void stones(vec3 p, float scale, float period, float size, float angular, float flaky, out float h, out vec3 lean,
+		out float shade, out float crevice) {
 	vec3 q = p * scale;
 	vec3 base = floor(q);
 	vec3 toward = vec3(fract(q.x) < 0.5 ? -1.0 : 1.0, fract(q.y) < 0.5 ? -1.0 : 1.0, fract(q.z) < 0.5 ? -1.0 : 1.0);
@@ -98,13 +102,15 @@ void stones(vec3 p, float scale, float period, float size, out float h, out vec3
 				vec3 centre = c + 0.3 + 0.4 * vec3(hash3(w + 1.7), hash3(w + 4.1), hash3(w + 8.3));
 				float radius = size * (0.4 + 0.6 * hash3(w + 11.9)) * step(0.15, hash3(w + 3.3)); // some cells hold no stone
 				vec3 d = q - centre;
-				float d2 = dot(d, d) / max(radius * radius, 0.0001);
+				d.y *= 1.0 + 2.2 * flaky; // flaky rock breaks into plates: flat stones
+				float metric = mix(length(d), (abs(d.x) + abs(d.y) + abs(d.z)) * 0.62, angular); // round, or edged like a crystal
+				float d2 = metric * metric / max(radius * radius, 0.0001);
 				nearest = min(nearest, d2);
 				float tall = 0.5 + 0.5 * hash3(w + 2.9);
 				float height = max(1.0 - d2, 0.0) * tall;
 				if (height > h) {
 					h = height;
-					lean = d / radius * 1.6 * tall;
+					lean = mix(d / radius, sign(d) * 0.62 * metric / max(radius, 0.0001) * 1.5, angular) * 1.6 * tall;
 					shade = hash3(w + 5.5);
 				}
 			}
@@ -199,6 +205,9 @@ vec4 triplanar(sampler2D map, vec3 at, vec3 facing, float scale) {
 
 void vertex() {
 	smooth_color = CUSTOM0.rgb;
+	geology = CUSTOM1;
+	soil_organic = CUSTOM0.a;
+	soil_iron = COLOR.a;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
@@ -218,6 +227,14 @@ void fragment() {
 	vec3 turned = mix(vec3(paint.g * 1.6, paint.g * 1.0, paint.g * 0.2),
 			vec3(paint.g * 1.3, paint.g * 0.38, paint.g * 0.1), which);
 	paint = mix(paint, turned, autumn * leafy);
+
+	// the kind of soil: black earth and peat darker, the ash of cold forests, loess and desert dust paler, laterite and red
+	// sandstone soil red with iron (the crust's numbers); grass and snow hide it
+	float bare_soil = 1.0 - smoothstep(0.0, 0.08, paint.g - max(paint.r, paint.b)) * 0.9;
+	float organic = (soil_organic - 0.5) * 2.0;
+	paint *= 1.0 - 0.45 * max(organic, 0.0) * bare_soil;
+	paint = mix(paint, paint * 0.6 + vec3(0.2, 0.19, 0.16), max(-organic, 0.0) * 0.55 * bare_soil);
+	paint = mix(paint, paint * vec3(1.4, 0.72, 0.5), soil_iron * 0.55 * bare_soil);
 
 	vec3 view_normal = normalize(mix(flat_normal, normalize(NORMAL), far));
 	float up = (INV_VIEW_MATRIX * vec4(flat_normal, 0.0)).y;
@@ -314,7 +331,8 @@ void fragment() {
 			// dome that tilts the light, and a dark gap hugging it, so the ground has depth and grain and is not one
 			// painted colour. Grass hides them; sand has only its grit; the coarse sizes thicken in some patches
 			// and on slopes and fade out with distance (their size is under a pixel beyond it)
-			float cover_open = (1.0 - smoothstep(0.0, 0.09, paint.g - max(paint.r, paint.b)) * 0.85) * (1.0 - snow_cover);
+			float green_here = smoothstep(0.0, 0.09, paint.g - max(paint.r, paint.b));
+			float cover_open = (1.0 - green_here * 0.97) * (1.0 - snow_cover);
 			float dist = length(VERTEX);
 			float sand_here = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(-0.03, 0.0, paint.g - paint.r));
 			vec3 stone_leans = vec3(0.0);
@@ -328,11 +346,13 @@ void fragment() {
 				if (fade < 0.01) {
 					continue;
 				}
-				float coverage = size_class == 0 ? 0.9 : smoothstep(0.2, 0.5, mid + slope * 0.7 + (size_class == 2 ? 0.0 : 0.2));
+				// coarse rock (granite) breaks into cobbles, fine rock (sandstone, shale) into grit and flakes
+				float coverage = size_class == 0 ? 0.9 * (1.15 - 0.35 * geology.y)
+						: smoothstep(0.2, 0.5, mid + slope * 0.7 + (size_class == 2 ? 0.0 : 0.2));
 				if (size_class == 1) {
-					coverage *= 1.0 - sand_here;
+					coverage *= (1.0 - sand_here) * (0.5 + geology.y);
 				} else if (size_class == 2) {
-					coverage *= (1.0 - sand_here) * smoothstep(0.42, 0.8, patch + slope);
+					coverage *= (1.0 - sand_here) * smoothstep(0.42, 0.8, patch + slope) * (0.1 + 1.5 * geology.y * geology.y);
 				}
 				coverage *= cover_open * fade;
 				if (coverage < 0.01) {
@@ -342,12 +362,16 @@ void fragment() {
 				vec3 ln;
 				float tone;
 				float gap;
-				stones(on_planet, scale, 1024.0 * scale, 0.46, sh, ln, tone, gap);
+				stones(on_planet, scale, 1024.0 * scale, 0.46, geology.x, geology.w, sh, ln, tone, gap);
 				float on_top = smoothstep(0.0, 0.12, sh) * coverage;
 				// a stone's colour: pale quartz, dark basalt, or the ground's own tone lightened and greyed
-				vec3 own = mix(paint, vec3(dot(paint, vec3(0.33))), 0.45) * (0.5 + 1.2 * tone);
-				own = mix(own, vec3(0.62, 0.6, 0.56), smoothstep(0.86, 1.0, tone) * 0.8);
-				own = mix(own, vec3(0.07, 0.065, 0.07), smoothstep(0.16, 0.0, tone) * 0.8);
+				// pale rock (limestone, granite) gives pale stones, basalt and shale dark ones; each stone a little lighter or
+				// darker, a few much (quartz, a dark cobble); the ground's own hue is kept in part
+				float lightness = clamp(geology.z + (tone - 0.5) * 0.7, 0.0, 1.0);
+				vec3 hue = clamp(paint / max(dot(paint, vec3(0.33)), 0.02), vec3(0.5), vec3(1.8));
+				vec3 own = mix(vec3(0.04), vec3(0.6), lightness) * mix(vec3(1.0), hue, 0.5 * (1.0 - green_here));
+				own = mix(own, vec3(0.62, 0.6, 0.56), smoothstep(0.93, 1.0, tone) * 0.8);
+				own = mix(own, vec3(0.06, 0.055, 0.06), smoothstep(0.07, 0.0, tone) * 0.8);
 				own *= 0.8 + 0.4 * sh;
 				stone_paint = mix(stone_paint, own, on_top);
 				// between the stones the soil is darker and damper, darkest hugging them

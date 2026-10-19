@@ -191,10 +191,14 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 	var builder := MeshBuilder.new()
 	var faces := PackedVector3Array()
 	if fast:
+		var materials := PackedByteArray()
+		if noise.native.has_method(&"ground_materials"):
+			materials = noise.native.call(&"ground_materials", packed_dirs, heights, packed_normals, cells)
 		var made: Dictionary = noise.native.call(&"triangles", packed_positions, packed_normals,
 				packed_colours, cells,
-				0.0 if collide else _skirt_drop())
-		builder.append_smooth(made["vertices"], made["normals"], made["colours"], made["custom"])
+				0.0 if collide else _skirt_drop(), materials)
+		builder.append_smooth(made["vertices"], made["normals"], made["colours"], made["custom"],
+				made.get("custom1", PackedByteArray()))
 		faces = made["faces"]
 	else:
 		for row in range(1, cells + 1):

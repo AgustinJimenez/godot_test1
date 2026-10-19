@@ -220,8 +220,14 @@ public:
 	PackedVector3Array grid_normals(const PackedVector3Array &p_positions, int p_cells) const;
 	PackedColorArray ground_colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedVector3Array &p_normals, int p_cells) const;
+	// `p_materials` (from `ground_materials`): the stone and soil numbers of every point, which go into the mesh's CUSTOM1,
+	// the alpha of CUSTOM0 and the alpha of the flat colour
 	Dictionary triangles(const PackedVector3Array &p_positions, const PackedVector3Array &p_normals,
-			const PackedColorArray &p_colours, int p_cells, double p_skirt_drop = 0.0) const;
+			const PackedColorArray &p_colours, int p_cells, double p_skirt_drop = 0.0,
+			const PackedByteArray &p_materials = PackedByteArray()) const;
+	PackedByteArray ground_materials(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
+			const PackedVector3Array &p_normals, int p_cells) const;
+	void rock_weights(const Vector3 &p_dir, double p_ground, float *w) const;
 };
 
 } // namespace godot
