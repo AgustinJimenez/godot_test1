@@ -26,3 +26,48 @@ see the memory note).
 
 First step proposed: plants on by default, measure the frame cost on a game-size planet, then ground
 cover (moss and litter by moisture) and the shoreline.
+
+## Side by side with our own pictures (2026-10-19)
+
+Compared the references (a lit lake valley at sunset with a flower meadow, a misty path through a forest,
+a mossy boulder in a dark glade, a grassy lake edge, a mountain with a lit cabin) with our latest pictures:
+the snow forest with plants (Ultra), the desert start of a game-size planet, the open sea, the clear-day
+horizon. What separates them, in the order the eye catches it:
+
+A. **Everything in front is simple.** References: the first 5 m are full of different small things (ferns,
+   flowers, stones, leaves, roots, moss), each a different colour. Ours: a dozen grass clumps and a few
+   pebbles on a flat colour. Needs: more kinds of ground cover (flowers in patches, ferns, moss and leaf
+   litter by moisture), clumped not evenly spread, with colour variety.
+B. **Light has direction and mood.** References: a low sun with long shadows, rim light on leaves, warm
+   light against cool shade, dark foreground against bright distance. Ours: flat even daylight, shadows
+   the same blue everywhere. Needs: warm sun / cool shadow split, a lower default sun hour or a golden
+   hour on start, stronger contrast in the grade, rim light (sun through leaves: translucent leaves).
+C. **Depth haze.** References: 4-5 clear planes of mountains, each paler and bluer; light mist in the
+   valleys. Ours (after the thinner fog): good but the colour of the haze is green-teal in the middle
+   distance, where it should go blue-grey and warm toward the sun. Needs: fog colour from the sky colour
+   in that direction (sun side warm, far side blue), valley mist in low wet ground at dawn.
+D. **Water reflects the world.** References: the lake mirrors trees, mountains and the sunset glow. Ours:
+   reflects the sky only. Needs: planar reflection or SSR on water (SSR is a setting: check it on water),
+   a visible shore line with reeds and wet sand.
+E. **Terrain has strong large forms with texture variety.** References: cliffs with strata, scree,
+   boulders on slopes, ground that changes colour in patches (rock, grass, soil, flowers). Ours: smooth hills,
+   one or two ground colours per region. Needs: slope-based rock outcrops (thermal erosion), patchy
+   ground colour by noise inside a biome.
+F. **Trees are varied and leafy.** References: broad canopies, branches, different species and ages,
+   fallen trunks. Ours: low-poly spiky conifers, same silhouette. Needs: more tree shapes (broadleaf,
+   dead trees, saplings), leaf cards with translucency, wind motion (exists in the shader).
+G. **Sky and clouds.** References: tall cumulus with dark bases and bright edges, sunset gradients. Ours:
+   flat layers, white. Needs: taller billows, darker undersides, a sunset sky colour check.
+H. **Atmosphere particles.** References: pollen, dust and small insects in the sunbeams, falling leaves.
+   Ours: none. Needs: a particle system near the player (GPUParticles) for dust and pollen in shafts.
+
+Not a gap but worth keeping: our haze, sun glare, sea sheen, ground texture detail and footprints are
+already in the same family as the references at this distance; what is missing is mostly *quantity and
+variety of near things* (A, E, F) and *light mood* (B, C).
+
+### Order proposed
+1. B+C first (cheap, shows everywhere): sun/shade colour split, golden-hour default, haze colour toward the
+   sun and blue-grey far; contrast in the default grade.
+2. A: ground cover variety + plants on by default (measure cost).
+3. D: water reflection and shoreline.
+4. E, F, G, H as separate items.
