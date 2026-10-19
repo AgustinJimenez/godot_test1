@@ -159,6 +159,11 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 			turf.player = target as Player
 			if not OS.has_environment("PLANET_NO_GRASS"):
 				add_child(turf)
+			if OS.has_environment("PLANET_SHELLS"): # (off: it cost 1.5 ms and showed little)
+				var shells := PlanetShells.new() # the loose stones of the near ground as relief (layers of the ground mesh)
+				shells.planet = self
+				shells.player = target as Player
+				add_child(shells)
 			if not OS.has_environment("PLANET_NO_GRAVEL"):
 				var gravel := PlanetTurf.new() # and small stones on the bare ground, real ones that cast shadows
 				gravel.gravel = true

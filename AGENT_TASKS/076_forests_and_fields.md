@@ -195,3 +195,7 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   sizes from 1 cm to 20 cm (many small, a few large), each flat or tall, turned, tilted, sunk into the ground, in the soil's red, dark, grey or
   pale; they cast shadows, so they have true shadows and heights where the shader cannot. Odds: 35% where grass grows well up to 100%
   where the ground is bare. +1 ms GPU. `PLANET_NO_GRAVEL` switches them off; `PLANET_NO_GRASS` only the grass (to look at the ground).
+- Shell layers (tried, off): `PlanetShells` + `planet_shells.gdshader` copy the near ground mesh 8 times, each lifted up to 6 cm along the normals and
+  kept only where the procedural stone height (`planet_stones.gdshaderinc`, now shared with planet_ground) reaches it (the idea of the "POM 1.7"
+  Godot add-on, MIT, which stacks MultiMesh layers with a heightmap in the alpha). Works (magenta test), but at standing height the stones have
+  the ground's own colour and read as nothing, for ~1.5 ms. Enable with `PLANET_SHELLS=1`. Real chips (PlanetTurf gravel) did more.

@@ -29,6 +29,7 @@ var tile_key := 0 ## see key_of
 var plant_grid: Dictionary = {} ## the grid the plants are placed on (empty: this tile has none)
 var plant_detail := PlanetScatter.Detail.NONE ## what grows on it now
 var plant_holder: Node3D
+var ground_instance: MeshInstance3D ## the ground mesh of the tile (the shell layers of the near ground copy it)
 
 var _noise: PlanetNoise
 var _settings: PlanetSettings
@@ -214,6 +215,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.mesh = builder.commit()
 	mesh_instance.material_override = ground_material()
+	ground_instance = mesh_instance # (PlanetShells copies it)
 	if not collide and level < _settings.max_level() - 1:
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mesh_instance)
