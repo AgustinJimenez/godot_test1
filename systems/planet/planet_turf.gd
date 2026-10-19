@@ -10,7 +10,7 @@ extends Node
 const CHUNK := 16.0 ## m: the square of a tile's ground made at a time
 const ENTER := 26.0 ## m: chunks whose middle is closer than this are made
 const LEAVE := 36.0 ## m: and let go beyond this
-const SPACING := 0.36 ## m: one tuft for each spot of a jittered grid of this
+const SPACING := 0.21 ## m: one tuft for each spot of a jittered grid of this (PLANET_TURF_SPACING: another, to try)
 const DENSITY := 1.6 ## the odds of a tuft are the field times this (the field is 1 only where grass grows best)
 const DRAWN := 32.0 ## m: how far a tuft is drawn (it fades out)
 const LOOK_EVERY := 0.3 ## s
@@ -64,7 +64,7 @@ func _physics_process(delta: float) -> void:
 func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void:
 	var size: float = grid["size"]
 	var buffers: Array = planet.noise.scatter_native.call(&"turf_chunk", grid["positions"], grid["field"],
-			grid["cells"], size, ix * CHUNK, iz * CHUNK, minf((ix + 1) * CHUNK, size), minf((iz + 1) * CHUNK, size), SPACING,
+			grid["cells"], size, ix * CHUNK, iz * CHUNK, minf((ix + 1) * CHUNK, size), minf((iz + 1) * CHUNK, size), _spacing(),
 			DENSITY, key ^ int(grid["key"]), FloraMeshes.TURF_VARIANTS)
 	var entry := {"nodes": [], "holder": holder, "grid": grid, "at": Vector2((ix + 0.5) * CHUNK, (iz + 0.5) * CHUNK), "buffers": []}
 	for variant in buffers.size():
@@ -128,6 +128,10 @@ func chunk_sets() -> Array:
 				if is_instance_valid(entry["nodes"][at]):
 					sets.append([entry["holder"], [entry["nodes"][at], entry["buffers"][at], PlanetSway.TURF]])
 	return sets
+
+
+static func _spacing() -> float:
+	return OS.get_environment("PLANET_TURF_SPACING").to_float() if OS.has_environment("PLANET_TURF_SPACING") else SPACING
 
 
 ## How many tufts are drawn now (for the checks).
