@@ -205,3 +205,8 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
 - The "POM 1.7" Godot add-on (MIT) read in full: one MultiMesh of N identical meshes, the instance colour is the layer index, the shader
   pushes each along its normal by `layer_gap`, and the alpha is height + layer cut at a scissor of 1. No tricks beyond that: its realism is the
   photographed albedo, normal and ORM maps (rock2 scan), which we do not have (procedural and local, no downloads without leave).
+- Ground scans (CC0, ambientCG Ground110 gravel, Ground111 red gravelly soil, Ground106 forest earth, 1K; downloaded with the user's leave
+  to E:/Temp/claude/refs/ground_sets/, packed by `scripts/make_scan_textures.py` into assets/textures/ground/scans/, 17 MB of PNG, VRAM
+  compressed with mipmaps on import): planet_ground.gdshader samples the set the soil is (iron: red, organic: forest, else gravel) on the
+  three planes within 32 m of the walker, keeps the soil's own colour (the scan divided by its mean is the detail), its occlusion, normal and
+  roughness. +1.8 ms GPU. `scan_strength` and `scan_scale` are uniforms of the ground material. Licence note in the scans' README.md.

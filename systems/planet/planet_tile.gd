@@ -54,6 +54,12 @@ static func ground_material() -> ShaderMaterial:
 				preload("res://assets/textures/ground/soil.png"))
 		_ground_material.set_shader_parameter(&"sand_map",
 				preload("res://assets/textures/ground/sand.png"))
+		# scans of real ground for the near detail (CC0, ambientCG): see assets/textures/ground/scans/README.md
+		for scan: String in ["gravel", "red", "leaf"]:
+			_ground_material.set_shader_parameter("scan_%s_c" % scan,
+					load("res://assets/textures/ground/scans/%s_c.png" % scan))
+			_ground_material.set_shader_parameter("scan_%s_n" % scan,
+					load("res://assets/textures/ground/scans/%s_n.png" % scan))
 	return _ground_material
 
 

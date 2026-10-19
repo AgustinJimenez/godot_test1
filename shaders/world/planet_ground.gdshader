@@ -37,6 +37,16 @@ global uniform float anchor_phase;
 uniform sampler2D rock_map : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D soil_map : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D sand_map : filter_linear_mipmap_anisotropic, repeat_enable;
+// scans of real ground (ambientCG, CC0; scripts/make_scan_textures.py): colour + occlusion, and normal + roughness. They give the near
+// ground the detail of a photograph (the soil's own colour is kept: the scan only says how it varies)
+uniform sampler2D scan_gravel_c : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D scan_gravel_n : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D scan_red_c : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D scan_red_n : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D scan_leaf_c : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D scan_leaf_n : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float scan_strength : hint_range(0.0, 1.0) = 0.85;
+uniform float scan_scale = 0.7; // tiles a metre
 uniform float flat_look : hint_range(0.0, 1.0) = 0.0; // 1: each quad one flat colour (the low-poly look)
 uniform float detail_strength : hint_range(0.0, 1.0) = 0.8;
 uniform float detail_range = 260.0; // m: the detail is gone by twice this
@@ -218,6 +228,31 @@ vec3 leaf_litter(vec3 p, vec3 ground_up, float scale) {
 	return result;
 }
 
+// One scan on the three planes, as the detail it adds: out `ratio` the colour over the scan's own mean (1: the soil's colour), `ao`
+// its occlusion, `tilt` the way its relief leans the normal (planet axes), `rough` its roughness.
+void scan_triplanar(sampler2D colour_map, sampler2D normal_map, vec3 at, vec3 facing, float scale, vec3 mean, out vec3 ratio,
+		out float ao, out vec3 tilt, out float rough) {
+	vec3 w = pow(abs(facing), vec3(4.0));
+	w /= w.x + w.y + w.z;
+	vec2 uv_x = at.yz * scale;
+	vec2 uv_y = at.xz * scale;
+	vec2 uv_z = at.xy * scale;
+	vec4 cx = texture(colour_map, uv_x);
+	vec4 cy = texture(colour_map, uv_y);
+	vec4 cz = texture(colour_map, uv_z);
+	vec4 nx = texture(normal_map, uv_x);
+	vec4 ny = texture(normal_map, uv_y);
+	vec4 nz = texture(normal_map, uv_z);
+	vec3 colour = cx.rgb * w.x + cy.rgb * w.y + cz.rgb * w.z;
+	ratio = clamp(colour / mean, vec3(0.2), vec3(3.0));
+	ao = cx.a * w.x + cy.a * w.y + cz.a * w.z;
+	vec2 tx = nx.xy * 2.0 - 1.0;
+	vec2 ty = ny.xy * 2.0 - 1.0;
+	vec2 tz = nz.xy * 2.0 - 1.0;
+	tilt = vec3(0.0, tx.x, tx.y) * w.x + vec3(ty.x, 0.0, ty.y) * w.y + vec3(tz.x, tz.y, 0.0) * w.z;
+	rough = nx.b * w.x + ny.b * w.y + nz.b * w.z;
+}
+
 void fragment() {
 	vec3 flat_normal = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
 	if (dot(flat_normal, VIEW) < 0.0) {
@@ -297,6 +332,38 @@ void fragment() {
 			float zone_mid = noise3(on_planet * 0.3125 + 9.0, 320.0); // a few metres: how pale, how grey, how dense the fine
 			float zone_far = noise3(on_planet * 0.015625 + 21.0, 16.0); // hundreds of metres: the hue of the soil
 			paint *= mix(vec3(0.93, 0.99, 1.05), vec3(1.12, 0.98, 0.82), zone_far);
+			// the scans: which one the soil is (red iron soil, dark forest earth, otherwise grey gravel), near the walker only
+			float scan_fade = (1.0 - smoothstep(10.0, 32.0, crumb_dist)) * scan_strength * crumb_bare;
+			if (scan_fade > 0.01) {
+				vec3 facing_scan = normalize(mat3(anchor_from_world) * world_normal);
+				float w_red = smoothstep(0.25, 0.75, soil_iron);
+				float w_leaf = smoothstep(0.5, 0.75, soil_organic) * (1.0 - w_red);
+				float w_gravel = 1.0 - w_red - w_leaf;
+				vec3 ratio_sum = vec3(0.0);
+				vec3 tilt_sum = vec3(0.0);
+				float ao_sum = 0.0;
+				float rough_sum = 0.0;
+				vec3 ratio;
+				float ao_one;
+				vec3 tilt;
+				float rough_one;
+				if (w_gravel > 0.02) {
+					scan_triplanar(scan_gravel_c, scan_gravel_n, on_planet, facing_scan, scan_scale, vec3(0.1452, 0.1181, 0.0898), ratio, ao_one, tilt, rough_one);
+					ratio_sum += ratio * w_gravel; tilt_sum += tilt * w_gravel; ao_sum += ao_one * w_gravel; rough_sum += rough_one * w_gravel;
+				}
+				if (w_red > 0.02) {
+					scan_triplanar(scan_red_c, scan_red_n, on_planet, facing_scan, scan_scale, vec3(0.3041, 0.2007, 0.1305), ratio, ao_one, tilt, rough_one);
+					ratio_sum += ratio * w_red; tilt_sum += tilt * w_red; ao_sum += ao_one * w_red; rough_sum += rough_one * w_red;
+				}
+				if (w_leaf > 0.02) {
+					scan_triplanar(scan_leaf_c, scan_leaf_n, on_planet, facing_scan, scan_scale, vec3(0.1943, 0.1288, 0.0655), ratio, ao_one, tilt, rough_one);
+					ratio_sum += ratio * w_leaf; tilt_sum += tilt * w_leaf; ao_sum += ao_one * w_leaf; rough_sum += rough_one * w_leaf;
+				}
+				paint *= mix(vec3(1.0), ratio_sum * mix(0.55, 1.0, ao_sum), scan_fade);
+				vec3 scan_world = (world_from_planet * vec4(tilt_sum * 0.9, 0.0)).xyz;
+				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(scan_world, 0.0)).xyz * scan_fade);
+				rough = mix(rough, clamp(rough_sum, 0.3, 1.0), scan_fade);
+			}
 			vec3 nudge = vec3(noise3(on_planet * 1.875, 1920.0), noise3(on_planet * 1.875 + 7.1, 1920.0), noise3(on_planet * 1.875 + 3.3, 1920.0));
 			vec3 crumb_at = on_planet + (nudge - 0.5) * 0.09; // (fragments are moved off their grid a little)
 			float size_fine = 0.95 * mix(0.6, 1.05, zone_mid);
