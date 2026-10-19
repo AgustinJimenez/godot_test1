@@ -11,6 +11,8 @@ const WINDOW := 10.0 ## seconds kept
 const INTERVAL := 0.2 ## seconds between samples
 const WRITE_EVERY := 1.0 ## seconds between file writes
 const MARK_KEY := KEY_F9
+const MARKS_DIR := "user://planet_marks" ## a copy of the file for every F9 (the live file is overwritten by the next run)
+const MAX_MARKS := 20
 
 var planet: PlanetWorld
 
@@ -38,6 +40,41 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_marks += 1
 		_add({"kind": "mark", "mark": _marks})
 		_write()
+		_keep_a_copy()
+
+
+## The world this file is about, the first line: without it a position means nothing (the seed and the size make the planet).
+func _world_line() -> String:
+	var settings := planet.settings if planet != null else null
+	if settings == null:
+		return ""
+	var here := planet.planet_position() if planet.target() != null else Vector3.ZERO
+	return JSON.stringify({"kind": "world", "seed": settings.world_seed, "radius": settings.radius,
+			"drainage_cells": settings.drainage_cells, "plants": settings.plants_on,
+			"direction": [snappedf(here.normalized().x, 0.0000001), snappedf(here.normalized().y, 0.0000001),
+			snappedf(here.normalized().z, 0.0000001)], "scene": get_tree().current_scene.scene_file_path})
+
+
+## F9: the file as it is now, kept under its own name (`planet_marks/mark_<when>.jsonl`), the oldest of 20 dropped.
+func _keep_a_copy() -> void:
+	if _in_a_lab():
+		return
+	DirAccess.make_dir_recursive_absolute(MARKS_DIR)
+	var stamp := Time.get_datetime_string_from_system().replace(":", "-")
+	var path := "%s/mark_%s_%d.jsonl" % [MARKS_DIR, stamp, _marks]
+	DirAccess.copy_absolute(PATH, path)
+	var files: Array[String] = []
+	for file in DirAccess.get_files_at(MARKS_DIR):
+		files.append(file)
+	files.sort()
+	for index in maxi(files.size() - MAX_MARKS, 0):
+		DirAccess.remove_absolute("%s/%s" % [MARKS_DIR, files[index]])
+
+
+## The lab and the checks (tests/...) run the same planet: they must not overwrite the file of a real session.
+func _in_a_lab() -> bool:
+	var scene := get_tree().current_scene
+	return scene != null and scene.scene_file_path.begins_with("res://tests/")
 
 
 func _process(delta: float) -> void:
@@ -91,9 +128,14 @@ func _add(entry: Dictionary) -> void:
 
 
 func _write() -> void:
+	if _in_a_lab():
+		return
 	var file := FileAccess.open(PATH, FileAccess.WRITE)
 	if file == null:
 		return
+	var world := _world_line()
+	if world != "":
+		file.store_line(world)
 	for entry in _lines:
 		file.store_line(entry[1] as String)
 	file.close()

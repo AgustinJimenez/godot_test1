@@ -185,3 +185,9 @@ repeated runs.
   indentation (tabs). Keep edits that matter to behaviour in the repo's checks, not in scratch scripts.
 - **Keep files under the lint limits as you add**: the lab went past 1000 lines twice; move a check into
   `tests/manual/planet/planet_lab_checks.gd` instead of squeezing.
+- **Reporting a place** (a wall, a hole, a wrong plant): press F9 where it is. `PlanetRecorder` keeps the last 10 s of play (position
+  in planet space, altitude, fps, weather, errors) in `user://planet_live.jsonl`, and since F9 also copies it to
+  `user://planet_marks/mark_<time>_<n>.jsonl` (the 20 newest), with a first `world` line: the seed, the radius, the
+  drainage cells and the direction. The lab and the checks (scenes under `res://tests/`) no longer write the file, so a test run
+  cannot overwrite a session's. To visit the place: `planet_lab --seed=S --radius=R --dir=x,y,z --grounded` (use the direction
+  of the world line, or `position` normalised).
