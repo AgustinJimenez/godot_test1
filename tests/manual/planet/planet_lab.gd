@@ -662,7 +662,8 @@ func _ready() -> void:
 		elif arg == "--grounded":
 			_grounded = true
 		elif arg == "--earth":
-			settings = PlanetSettings.earth() # put it first: it replaces every setting before it
+			var es := OS.get_environment("PLANET_SCALE").to_float() # first: it replaces every setting
+			settings = PlanetSettings.earth(es if es > 0.0 else 1.0) # PLANET_SCALE=0.1: the game
 		elif arg.begins_with("--tile-cells="):
 			settings.tile_cells = arg.trim_prefix("--tile-cells=").to_int()
 		elif arg.begins_with("--tile-max="):
