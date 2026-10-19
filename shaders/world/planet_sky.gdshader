@@ -125,7 +125,8 @@ void sky() {
 	if (LIGHT0_ENABLED && !behind_planet) {
 		float s = max(dot(dir, sun), 0.0);
 		float disc = smoothstep(cos(0.0372 * sun_size), cos(0.0201 * sun_size), s);
-		float glow = pow(s, 48.0) * 0.12;
+		// the glare: a tight halo and a wide, faint one (the eye and the lens scatter the sun's light)
+		float glow = pow(s, 48.0) * 0.12 + pow(s, 400.0) * 0.5 + pow(s, 6.0) * 0.012;
 		col += LIGHT0_COLOR * (disc * 8.0 + glow) * LIGHT0_ENERGY;
 	}
 
