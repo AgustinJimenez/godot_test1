@@ -45,6 +45,8 @@ var _size := 0.0
 var _weights: Array[float] = []
 var _pick_chance := 0.0
 var _wet := 0.0
+var _packed_positions := PackedVector3Array() ## the grid as packed arrays, for the native placement
+var _packed_dirs := PackedVector3Array()
 
 
 ## Plants a tile into `holder` (a node of its own that the tile adopts when this is done, so it can
@@ -53,7 +55,10 @@ var _wet := 0.0
 ## directions from the planet's centre and heights, `cells` quads along an edge.
 func populate(holder: Node3D, key: int, noise: PlanetNoise, positions: Array[Vector3],
 		dirs: Array[Vector3], heights: PackedFloat32Array, cells: int, size: float, detail: Detail,
-		collide: bool) -> void:
+		collide: bool, packed_positions := PackedVector3Array(),
+		packed_dirs := PackedVector3Array()) -> void:
+	_packed_positions = packed_positions
+	_packed_dirs = packed_dirs
 	_tile = holder
 	_noise = noise
 	_species = noise.species
@@ -69,6 +74,9 @@ func populate(holder: Node3D, key: int, noise: PlanetNoise, positions: Array[Vec
 		_body.collision_layer = 1
 		_body.name = "Plants"
 		holder.add_child(_body)
+	if noise.scatter_native != null and noise.hydrology == null and not _packed_positions.is_empty():
+		_populate_native(key, detail, collide)
+		return
 	if detail == Detail.FAR:
 		_scatter_far()
 		_flush(false)
@@ -85,6 +93,50 @@ func populate(holder: Node3D, key: int, noise: PlanetNoise, positions: Array[Vec
 		_scatter(PlantSpecies.Layer.MEADOW, 1.0)
 		_scatter(PlantSpecies.Layer.COVER, 1.0)
 	_flush(detail == Detail.ALL)
+
+
+## The species as plain numbers, for the native placement (PlanetScatterNative.setup).
+static func species_table(registry: SpeciesRegistry) -> Array:
+	var table: Array = []
+	for one in registry.species:
+		table.append({"id": one.id, "layer": one.layer(), "variants": one.variants, "tree": one.is_tree(),
+				"has_far": PlantMeshes.has_far(one), "moisture": one.moisture,
+				"moisture_tol": one.moisture_tol, "heat": one.heat, "heat_tol": one.heat_tol,
+				"above_min": one.above_min, "above_max": one.above_max, "slope_max": one.slope_max,
+				"density": one.density, "patch_freq": one.patch_freq,
+				"patch_strength": one.patch_strength, "size_spread": one.size_spread,
+				"patch_offset": one.patch_offset, "footprint": one.footprint()})
+	return table
+
+
+## The same placement as the loops below, run natively (the plants' buffers come back ready to hang).
+func _populate_native(key: int, detail: Detail, collide: bool) -> void:
+	var placed: Dictionary = _noise.scatter_native.call(&"scatter", {
+		"key": key, "positions": _packed_positions, "dirs": _packed_dirs, "heights": _heights,
+		"cells": _cells, "size": _size, "detail": int(detail), "collide": collide,
+		"clearing": _noise.clearing,
+		"fine": int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 2,
+		"grass_fine": FloraMeshes.detailed})
+	if placed.is_empty():
+		return
+	if _body != null:
+		var cylinders: PackedFloat32Array = placed["cylinders"]
+		for index in cylinders.size() / 5:
+			var shape := CylinderShape3D.new()
+			shape.radius = cylinders[index * 5 + 3]
+			shape.height = cylinders[index * 5 + 4]
+			var collision := CollisionShape3D.new()
+			collision.shape = shape
+			collision.position = Vector3(cylinders[index * 5], cylinders[index * 5 + 1],
+					cylinders[index * 5 + 2])
+			_body.add_child(collision)
+		var boxes: PackedFloat32Array = placed["boxes"]
+		for index in boxes.size() / 7:
+			var box := BoxShape3D.new()
+			box.size = Vector3(boxes[index * 7 + 4], boxes[index * 7 + 5], boxes[index * 7 + 6])
+			_add_box(box, Vector3(boxes[index * 7], boxes[index * 7 + 1], boxes[index * 7 + 2]),
+					boxes[index * 7 + 3])
+	_hang(placed["keys"], placed["buffers"], detail == Detail.ALL)
 
 
 ## One layer of plants over the tile (`stretch` widens the grid: a far tile has fewer, bigger gaps).
@@ -386,113 +438,21 @@ func _place(plant: PlantSpecies, at: Vector3) -> void:
 
 
 func _flush(near: bool) -> void:
-	_far_meshes.clear()
-	_horizon_meshes.clear()
+	var keys := PackedInt32Array()
+	var buffers: Array = []
 	for key: int in _batches.keys():
-		var transforms: Array = _batches[key]
-		if key >= FAR_KEY:
-			_queue_far(_horizon_meshes, key, transforms,
-					_species.far_mesh((key - FAR_KEY) / 100, key % 100))
-			continue
-		var plant := key >= PLANT_KEY
-		var id := (key - PLANT_KEY) / 100
-		var variant := key % 100
-		var layer := _species.by_id(id).layer() if plant else PlantSpecies.Layer.CANOPY
-		var tree := plant and _species.by_id(id).is_tree()
-		if tree and not near:
-			# trees beyond the near ground are only ever seen from far: the lighter version
-			var light := _add_trees(key, transforms,
-					_species.mesh(id, variant % 2, FloraMeshes.detailed, 1), false)
-			if PlantMeshes.has_far(_species.by_id(id)):
-				light.visibility_range_end = TREE_LIGHT
-				_queue_far(_far_meshes, key, transforms, _species.far_mesh(id, variant % 2))
-			continue
-		var mesh: ArrayMesh
-		if plant:
-			mesh = _species.mesh(id, variant, FloraMeshes.detailed, 0)
-		else:
-			mesh = FloraMeshes.mesh(key / 100 as FloraMeshes.Kind, variant, FloraMeshes.detailed)
-		var instance := _add_trees(key, transforms, mesh, true)
-		if not plant and key / 100 in [FloraMeshes.Kind.PEBBLES, FloraMeshes.Kind.LITTER,
-				FloraMeshes.Kind.TWIGS]:
-			instance.visibility_range_end = PEBBLE_VISIBLE
-			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		elif layer == PlantSpecies.Layer.GRASS or layer == PlantSpecies.Layer.MEADOW:
-			instance.visibility_range_end = GRASS_VISIBLE
-			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		elif not near:
-			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			instance.visibility_range_end = SMALL_VISIBLE
-		elif not tree:
-			instance.visibility_range_end = SMALL_VISIBLE
-		else:
-			# near trees: the full tree close up, the lighter one (no shadow) further out
-			instance.visibility_range_end = TREE_FULL
-			var light := _add_trees(key, transforms, _species.mesh(id, variant % 2,
-					FloraMeshes.detailed, 1), false)
-			light.visibility_range_begin = TREE_FULL * 0.95
-			if PlantMeshes.has_far(_species.by_id(id)):
-				light.visibility_range_end = TREE_LIGHT
-				_queue_far(_far_meshes, key, transforms, _species.far_mesh(id, variant % 2))
-	_commit_far(_far_meshes, TREE_LIGHT * 0.95)
-	_commit_far(_horizon_meshes, 0.0)
+		keys.append(key)
+		buffers.append(_buffer_of(key))
+	_hang(keys, buffers, near)
 
 
-## Keeps the far trees of a batch to be merged into one mesh (a draw call for the whole tile instead
-## of one for each kind of tree: a tile's far trees are many kinds of a few triangles each).
-func _queue_far(into: Array, key: int, transforms: Array, mesh: ArrayMesh) -> void:
-	for index in transforms.size():
-		into.append([mesh, transforms[index], (_colors[key] as Array)[index]])
-
-
-## One mesh with all the queued far trees of the tile, drawn from `begin` metres away (0: always).
-func _commit_far(parts: Array, begin: float) -> void:
-	if parts.is_empty():
-		return
-	var arrays_of := {}
-	var vertices := PackedVector3Array()
-	var normals := PackedVector3Array()
-	var colors := PackedColorArray()
-	for part: Array in parts:
-		var mesh: ArrayMesh = part[0]
-		if not arrays_of.has(mesh):
-			arrays_of[mesh] = mesh.surface_get_arrays(0) if mesh.get_surface_count() > 0 else []
-		var arrays: Array = arrays_of[mesh]
-		if arrays.is_empty():
-			continue
-		var placed: Transform3D = part[1]
-		var tint: Color = part[2]
-		vertices.append_array(placed * (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array))
-		var turn := Transform3D(placed.basis.orthonormalized(), Vector3.ZERO)
-		normals.append_array(turn * (arrays[Mesh.ARRAY_NORMAL] as PackedVector3Array))
-		colors.append_array(_noise.native.call(&"tinted", arrays[Mesh.ARRAY_COLOR], tint))
-	var merged: Array = []
-	merged.resize(Mesh.ARRAY_MAX)
-	merged[Mesh.ARRAY_VERTEX] = vertices
-	merged[Mesh.ARRAY_NORMAL] = normals
-	merged[Mesh.ARRAY_COLOR] = colors
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, merged)
-	var instance := MeshInstance3D.new()
-	instance.mesh = mesh
-	instance.material_override = FloraMeshes.material()
-	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	instance.visibility_range_begin = begin
-	_tile.add_child(instance)
-
-
-## One multimesh of `mesh` at the batch's `transforms` and colours, added to the tile.
-func _add_trees(key: int, transforms: Array, mesh: ArrayMesh, shadows: bool) -> MultiMeshInstance3D:
-	var multi := MultiMesh.new()
-	multi.transform_format = MultiMesh.TRANSFORM_3D
-	multi.use_colors = true
-	multi.mesh = mesh
-	multi.instance_count = transforms.size()
-	# one write of the whole buffer: 12 floats of transform (3 rows of basis x, y, z and the origin) and 4 of
-	# colour for every instance (thousands of set_instance_* calls cost far more)
+## What a MultiMesh wants for the batch of `key`: 12 floats of transform (3 rows of basis x, y, z and the origin) and 4
+## of colour for every instance (thousands of set_instance_* calls cost far more).
+func _buffer_of(key: int) -> PackedFloat32Array:
+	var transforms: Array = _batches[key]
+	var colours: Array = _colors[key]
 	var buffer := PackedFloat32Array()
 	buffer.resize(transforms.size() * 16)
-	var colours: Array = _colors[key]
 	for index in transforms.size():
 		var t: Transform3D = transforms[index]
 		var c: Color = colours[index]
@@ -513,6 +473,131 @@ func _add_trees(key: int, transforms: Array, mesh: ArrayMesh, shadows: bool) -> 
 		buffer[at + 13] = c.g
 		buffer[at + 14] = c.b
 		buffer[at + 15] = c.a
+	return buffer
+
+
+## Hangs the batches (a key and its instances' buffer each) on the tile: a multimesh for each, and the far trees
+## merged into one mesh.
+func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
+	var far_parts: Array = [] # [mesh, buffer] of the far trees of the near ground
+	var horizon_parts: Array = [] # the same for the horizon: no range, they are all there is
+	for at in keys.size():
+		var key := keys[at]
+		var buffer: PackedFloat32Array = buffers[at]
+		if key >= FAR_KEY:
+			horizon_parts.append([_species.far_mesh((key - FAR_KEY) / 100, key % 100), buffer])
+			continue
+		var plant := key >= PLANT_KEY
+		var id := (key - PLANT_KEY) / 100
+		var variant := key % 100
+		var layer := _species.by_id(id).layer() if plant else PlantSpecies.Layer.CANOPY
+		var tree := plant and _species.by_id(id).is_tree()
+		if tree and not near:
+			# trees beyond the near ground are only ever seen from far: the lighter version
+			var light := _add_trees(buffer, _species.mesh(id, variant % 2, FloraMeshes.detailed, 1), false)
+			if PlantMeshes.has_far(_species.by_id(id)):
+				light.visibility_range_end = TREE_LIGHT
+				far_parts.append([_species.far_mesh(id, variant % 2), buffer])
+			continue
+		var mesh: ArrayMesh
+		if plant:
+			mesh = _species.mesh(id, variant, FloraMeshes.detailed, 0)
+		else:
+			mesh = FloraMeshes.mesh(key / 100 as FloraMeshes.Kind, variant, FloraMeshes.detailed)
+		var instance := _add_trees(buffer, mesh, true)
+		if not plant and key / 100 in [FloraMeshes.Kind.PEBBLES, FloraMeshes.Kind.LITTER,
+				FloraMeshes.Kind.TWIGS]:
+			instance.visibility_range_end = PEBBLE_VISIBLE
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif layer == PlantSpecies.Layer.GRASS or layer == PlantSpecies.Layer.MEADOW:
+			instance.visibility_range_end = GRASS_VISIBLE
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif not near:
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			instance.visibility_range_end = SMALL_VISIBLE
+		elif not tree:
+			instance.visibility_range_end = SMALL_VISIBLE
+		else:
+			# near trees: the full tree close up, the lighter one (no shadow) further out
+			instance.visibility_range_end = TREE_FULL
+			var light := _add_trees(buffer, _species.mesh(id, variant % 2, FloraMeshes.detailed, 1),
+					false)
+			light.visibility_range_begin = TREE_FULL * 0.95
+			if PlantMeshes.has_far(_species.by_id(id)):
+				light.visibility_range_end = TREE_LIGHT
+				far_parts.append([_species.far_mesh(id, variant % 2), buffer])
+	_commit_far(far_parts, TREE_LIGHT * 0.95)
+	_commit_far(horizon_parts, 0.0)
+
+
+## One mesh with all the far trees of the tile (parts: [mesh, instances' buffer]), drawn from `begin` metres away (0:
+## always): a draw call for the whole tile instead of one for each kind of tree.
+func _commit_far(parts: Array, begin: float) -> void:
+	if parts.is_empty():
+		return
+	var arrays_of := {}
+	var sources: Array = []
+	for part: Array in parts:
+		var mesh: ArrayMesh = part[0]
+		if not arrays_of.has(mesh):
+			arrays_of[mesh] = mesh.surface_get_arrays(0) if mesh.get_surface_count() > 0 else []
+		var arrays: Array = arrays_of[mesh]
+		if arrays.is_empty():
+			continue
+		sources.append({"vertices": arrays[Mesh.ARRAY_VERTEX], "normals": arrays[Mesh.ARRAY_NORMAL],
+				"colors": arrays[Mesh.ARRAY_COLOR], "buffer": part[1]})
+	if sources.is_empty():
+		return
+	var merged: Dictionary
+	if _noise.scatter_native != null:
+		merged = _noise.scatter_native.call(&"merge_far", sources)
+	else:
+		merged = _merge_far_script(sources)
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = merged["vertices"]
+	arrays[Mesh.ARRAY_NORMAL] = merged["normals"]
+	arrays[Mesh.ARRAY_COLOR] = merged["colors"]
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	instance.material_override = FloraMeshes.material()
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	instance.visibility_range_begin = begin
+	_tile.add_child(instance)
+
+
+## What `merge_far` does natively, for a planet without the library.
+func _merge_far_script(sources: Array) -> Dictionary:
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	for source: Dictionary in sources:
+		var buffer: PackedFloat32Array = source["buffer"]
+		for index in buffer.size() / 16:
+			var at := index * 16
+			var placed := Transform3D(Basis(
+					Vector3(buffer[at], buffer[at + 4], buffer[at + 8]),
+					Vector3(buffer[at + 1], buffer[at + 5], buffer[at + 9]),
+					Vector3(buffer[at + 2], buffer[at + 6], buffer[at + 10])),
+					Vector3(buffer[at + 3], buffer[at + 7], buffer[at + 11]))
+			var tint := Color(buffer[at + 12], buffer[at + 13], buffer[at + 14], buffer[at + 15])
+			vertices.append_array(placed * (source["vertices"] as PackedVector3Array))
+			var turn := Transform3D(placed.basis.orthonormalized(), Vector3.ZERO)
+			normals.append_array(turn * (source["normals"] as PackedVector3Array))
+			for colour: Color in source["colors"]:
+				colors.append(Color(colour.r * tint.r, colour.g * tint.g, colour.b * tint.b, colour.a))
+	return {"vertices": vertices, "normals": normals, "colors": colors}
+
+
+## One multimesh of `mesh` at the instances in `buffer` (12 floats of transform and 4 of colour each), added to the tile.
+func _add_trees(buffer: PackedFloat32Array, mesh: ArrayMesh, shadows: bool) -> MultiMeshInstance3D:
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.use_colors = true
+	multi.mesh = mesh
+	multi.instance_count = buffer.size() / 16
 	multi.buffer = buffer
 	var instance := MultiMeshInstance3D.new()
 	instance.multimesh = multi

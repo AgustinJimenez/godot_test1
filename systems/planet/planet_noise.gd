@@ -18,6 +18,7 @@ var weather: PlanetWeather ## the clouds and the weather (made once the climate 
 var clock: PlanetClock ## the time of day and the season (set by PlanetWorld; null: the yearly mean)
 var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep off a little round it
 var rock: PlanetRock ## the colour of the crust
+var scatter_native: Object ## the native plant placement (PlanetScatterNative), or null: PlanetScatter's loops run
 var native: Object ## the native crust (PlanetCrustNative), or null: this file is the reference
 var drainage: PlanetDrainage ## where the water runs (coarse), when the planet has it
 ## The heights of the whole planet's map passes, by the picture's size (the map's layers all
@@ -98,6 +99,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 	if native != null:
 		native.call(&"set_climate", climate.temperature_grid(), PlanetClimate.WIDTH,
 				PlanetClimate.HEIGHT, climate.rain_grid())
+	_make_scatter()
 	_lap("climate")
 	weather = PlanetWeather.new(self)
 	_lap("weather")
@@ -107,6 +109,26 @@ func _init(planet_settings: PlanetSettings) -> void:
 		hydrology = water
 	_carve_valleys()
 	_lap("drainage")
+
+
+## The native plant placement, with the species and the climate it reads.
+func _make_scatter() -> void:
+	scatter_native = null
+	if native == null or OS.has_environment("PLANET_NO_NATIVE") \
+			or not ClassDB.class_exists(&"PlanetScatterNative"):
+		return
+	var kinds := {}
+	for kind: int in FloraMeshes.VARIANTS:
+		kinds[kind] = FloraMeshes.VARIANTS[kind]
+	var made: Object = ClassDB.instantiate(&"PlanetScatterNative")
+	made.call(&"setup", {
+		"crust": native, "species": PlanetScatter.species_table(species),
+		"temperature": climate.temperature_grid(), "rain": climate.rain_grid(),
+		"width": PlanetClimate.WIDTH, "height": PlanetClimate.HEIGHT, "relief": relief,
+		"radius": settings.radius, "plant_density": settings.plant_density,
+		"rock_density": settings.rock_density, "world_seed": settings.world_seed,
+		"kind_variants": kinds})
+	scatter_native = made
 
 
 ## Fixed hot spots in the mantle (unit directions, from the seed): as a plate drifts over one, a

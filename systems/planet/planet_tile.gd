@@ -219,7 +219,8 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 		_add_sea(dirs, side, cells)
 	_add_running_water(s0, s1, t0, t1, dirs, heights)
 	if level >= _settings.max_level() - 4: # plants can grow here later (PlanetSurface asks for them)
-		plant_grid = {"positions": positions, "dirs": dirs, "heights": heights}
+		plant_grid = {"positions": positions, "dirs": dirs, "heights": heights,
+				"packed_positions": packed_positions, "packed_dirs": packed_dirs}
 	if collide:
 		has_collider = true
 		var body := StaticBody3D.new()
@@ -239,7 +240,7 @@ func grow_plants(detail: PlanetScatter.Detail) -> Node3D:
 	holder.name = "PlantsOf%d" % tile_key
 	PlanetScatter.new().populate(holder, tile_key, _noise, plant_grid["positions"],
 			plant_grid["dirs"], plant_grid["heights"], _settings.tile_cells, size, detail,
-			has_collider)
+			has_collider, plant_grid["packed_positions"], plant_grid["packed_dirs"])
 	return holder
 
 

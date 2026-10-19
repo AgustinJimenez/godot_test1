@@ -139,6 +139,8 @@ public:
 	// the current of the river there (planet space, m/s)
 	// the colours of a mesh, each multiplied by a tint (the plant batches merge meshes in script no more)
 	PackedColorArray tinted(const PackedColorArray &p_colours, const Color &p_tint) const;
+	// the fine 0..1 noise at a made-up point (patches of one plant species), as PlanetNoise.detail_at
+	double detail_at(const Vector3 &p_point) const { return (double)detail.at(p_point) * 0.5 + 0.5; }
 	double water_at(const Vector3 &p_dir, double p_ground) const;
 	bool near_water(const Vector3 &p_dir, double p_ground, double p_margin) const;
 	Vector3 flow_at(const Vector3 &p_dir) const;
