@@ -277,6 +277,40 @@ void fragment() {
 		vec3 bumpy = normalize(NORMAL + (VIEW_MATRIX * vec4(bump_world, 0.0)).xyz);
 		view_normal = normalize(mix(view_normal, bumpy, strength));
 		rough = mix(0.95, 0.88 - patch * 0.1, strength);
+		// crumbly gravel: bare soil that breaks into angular fragments (laterite and red sandstone soil the most): chips a few centimetres
+		// and a hand across, each its own tone and its own tilt to the light, a few grey pebbles among them, a dark gap round each. Two
+		// sizes, near the walker only (a fragment is under a pixel beyond a few tens of metres); grass and snow hide it
+		float crumb_dist = length(VERTEX);
+		float crumb_bare = (1.0 - smoothstep(0.0, 0.08, paint.g - max(paint.r, paint.b))) * (1.0 - snow_cover)
+				* (1.0 - smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(-0.03, 0.0, paint.g - paint.r)) * 0.7);
+		float crumbly = mix(0.45, 1.0, soil_iron) * (1.0 - 0.35 * max((soil_organic - 0.5) * 2.0, 0.0)) * crumb_bare;
+		if (crumbly > 0.02 && crumb_dist < 40.0) {
+			for (int crumb_class = 0; crumb_class < 3; crumb_class++) {
+				float crumb_scale = crumb_class == 0 ? 30.0 : (crumb_class == 1 ? 11.0 : 4.2); // cells a metre
+				float crumb_fade = 1.0 - smoothstep(crumb_class == 0 ? 7.0 : (crumb_class == 1 ? 16.0 : 28.0),
+						crumb_class == 0 ? 13.0 : (crumb_class == 1 ? 30.0 : 52.0), crumb_dist);
+				if (crumb_fade < 0.01) {
+					continue;
+				}
+				float c_h;
+				vec3 c_lean;
+				float c_tone;
+				float c_gap;
+				stones(on_planet + 40.0 + float(crumb_class) * 13.0, crumb_scale, 1024.0 * crumb_scale, 0.95, 0.5, 0.4, c_h, c_lean,
+						c_tone, c_gap);
+				float c_cover = smoothstep(0.0, 0.1, c_h) * crumbly * crumb_fade;
+				// the fragments are the soil's own colour, darker or lighter, a few much lighter (dried crust), a few grey pebbles
+				float lighter = 0.62 + 0.85 * c_tone + 0.2 * c_h;
+				vec3 fragment = paint * lighter;
+				fragment = mix(fragment, vec3(0.1, 0.095, 0.09) * (0.7 + 0.6 * c_tone), smoothstep(0.85, 0.93, c_tone) * 0.9 * (crumb_class == 2 ? 0.0 : 1.0));
+				fragment = mix(fragment, vec3(0.5, 0.36, 0.26) * (0.8 + 0.5 * c_tone), smoothstep(0.1, 0.0, c_tone) * 0.75 * (crumb_class == 2 ? 0.0 : 1.0)); // pale chips
+				paint = mix(paint, fragment, c_cover);
+				paint *= 1.0 - c_gap * crumbly * crumb_fade * 0.8; // the dark gap hugging each fragment
+				vec3 c_world = (world_from_planet * vec4(c_lean, 0.0)).xyz;
+				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(c_world, 0.0)).xyz * c_cover * (crumb_class == 2 ? 1.3 : 1.0) * strength);
+				rough = mix(rough, 0.82, c_cover * strength);
+			}
+		}
 		if (level > 1.5) {
 			// the finer ground (High and up): a bump a hand wide, crevices that are darker, ripples
 			// in the sand, glints in the snow; all fade out within a few tens of metres

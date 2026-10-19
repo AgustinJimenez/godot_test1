@@ -532,6 +532,8 @@ func _monsoon_swing(noise: PlanetNoise) -> float:
 
 
 func _ready() -> void:
+	if OS.has_environment("LAB_GROUND"): # a ground detail (0..3) for this run only (not saved with the graphics settings)
+		RenderingServer.global_shader_parameter_set(&"ground_detail", OS.get_environment("LAB_GROUND").to_float())
 	var report_run := _drainage_check() or _native_check() or _terrain_check()
 	report_run = report_run or _climate_check() or _water_check()
 	report_run = report_run or PlanetLabChecks.spawn_check(get_tree())

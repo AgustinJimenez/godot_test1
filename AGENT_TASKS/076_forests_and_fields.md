@@ -171,3 +171,13 @@ view: +7% primitives, +1.5 ms GPU (7.6 -> 9.1 ms, 129 -> 107 fps on the 4090).
 - Blade shading: a blade is a flat card lit as a round one (`flora_wind.gdshader`: the normal is tilted across its width, from the UV
   derivatives, and leaned to the sky). Tried and dropped: `alpha_to_coverage` for smooth edges with MSAA (the blades came out wide and
   square, and MSAA costs about 1 ms on its own); the pack's alpha blending needs sorting and was never tried.
+
+## Crumbly gravel on bare soil (planet_ground.gdshader)
+
+At ground detail 1 (the default) the ground was smooth soil with soft noise: the stones, soil textures and fine bump only came at 2 and
+up. Three sizes of angular, flat-ish fragments (30, 11 and 4 cells a metre, `stones()` again, near the walker only: 13, 30 and 52 m)
+now cover bare soil from ground detail 1: each its own tone (pale chips, small dark pebbles), its own tilt to the light, a dark gap round
+it; more of it on iron-red soil (`soil_iron`: laterite, red sandstone), less on black earth, none under grass, snow or on sand. About
++0.5 ms GPU. `LAB_GROUND=0..3` (planet_lab) sets a ground detail for one run without saving it. What UE5 calls this: normal mapping and
+parallax occlusion mapping (fake depth that makes light and shadows fall across the relief) or real displacement (Nanite); not done
+here: parallax occlusion mapping, the self-shadow of fragments on each other, a texture scanned from a photo.
