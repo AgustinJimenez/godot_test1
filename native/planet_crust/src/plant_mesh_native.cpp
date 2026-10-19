@@ -715,6 +715,11 @@ struct Grower {
 			top.y = 0;
 		}
 		int count = std::max(g->fronds - 3 * lod, 5);
+		// the realistic look: a grass tuft is a real tuft, many thin blades, each bending in more places
+		bool tuft = fine && low && g->leaflet < 0.02;
+		if (tuft) {
+			count = std::min(count * 2, 40);
+		}
 		double phase = rf() * TAU_D;
 		for (int index = 0; index < count; index++) {
 			double yaw = phase + index * GOLDEN_ANGLE;
@@ -726,6 +731,10 @@ struct Grower {
 				steep = lerpd(0.55, 0.95, rf());
 			}
 			int parts = std::max(g->frond_parts - 3 * lod, 2);
+			if (tuft) {
+				parts = std::max(parts, 6);
+				length *= rr(0.55, 1.0); // blades of all lengths
+			}
 			std::vector<Vector3> points;
 			for (int step = 0; step <= parts; step++) {
 				double t = (double)step / parts;
@@ -746,7 +755,7 @@ struct Grower {
 			return;
 		}
 		double length = (points.back() - points.front()).length();
-		double rib = length * g->rib_width;
+		double rib = length * g->rib_width * (fine && g->leaflet < 0.02 && g->height < 1.5 ? 0.5 : 1.0);
 		Color dark = g->leaf.darkened(0.35f);
 		Color tone = mix(g->leaf, g->leaf.lightened(0.12f), rf());
 		int segments = (int)points.size() - 1;

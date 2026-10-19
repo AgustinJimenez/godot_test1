@@ -14,7 +14,7 @@ static func build(species: PlantSpecies, variant: int, detailed: bool,
 	if species.form == PlantSpecies.Form.MUSHROOM:
 		PlantGroundBuilders.mushroom(builder, species, rng)
 	else: # every other plant is grown by TreeGrower; the small ones always in the light version
-		var level := lod if species.is_tree() else maxi(lod, 1)
+		var level := lod if species.is_tree() else maxi(lod, 0 if detailed else 1)
 		var genome := TreeArchetypes.for_species(species)
 		var native := _native()
 		if native != null:
