@@ -105,9 +105,21 @@ static func species_table(registry: SpeciesRegistry) -> Array:
 				"above_min": one.above_min, "above_max": one.above_max, "slope_max": one.slope_max,
 				"density": one.density, "patch_freq": one.patch_freq,
 				"patch_strength": one.patch_strength, "size_spread": one.size_spread,
-				"patch_offset": one.patch_offset, "footprint": one.footprint(), "crown": one.crown,
+				"patch_offset": one.patch_offset, "footprint": _trunk_footprint(one), "crown": one.crown,
 				"shade_tolerance": _shade_tolerance(one.form)})
 	return table
+
+
+## The radius and height of a tree's trunk collider: the trunk's own size (its foot flared by buttress roots, narrowed up a
+## tapering trunk) and its bare height (all of it for a conifer), not the old fixed guess.
+static func _trunk_footprint(one: PlantSpecies) -> Vector2:
+	if not one.is_tree():
+		return one.footprint()
+	var genome := TreeArchetypes.for_species(one)
+	var foot := genome.girth * (1.0 + 2.0 * genome.root_flare)
+	var up := genome.height if genome.leader else genome.height * genome.trunk_part
+	var mid := foot * (0.6 if genome.leader else lerpf(1.0, genome.taper, 0.4))
+	return Vector2(maxf(mid, 0.15), clampf(up, 1.5, 14.0))
 
 
 ## How well a growth form lives in the shade of trees: 1 as well as anywhere, 0 not at all.
@@ -139,23 +151,78 @@ func _populate_native(key: int, detail: Detail, collide: bool) -> void:
 	if placed.is_empty():
 		return
 	if _body != null:
+		# trunks and rocks stand where they were put: the colliders lean and sink as the things do
 		var cylinders: PackedFloat32Array = placed["cylinders"]
-		for index in cylinders.size() / 5:
+		for index in cylinders.size() / 14:
+			var at := index * 14
 			var shape := CylinderShape3D.new()
-			shape.radius = cylinders[index * 5 + 3]
-			shape.height = cylinders[index * 5 + 4]
+			shape.radius = cylinders[at + 3]
+			shape.height = cylinders[at + 4]
 			var collision := CollisionShape3D.new()
 			collision.shape = shape
-			collision.position = Vector3(cylinders[index * 5], cylinders[index * 5 + 1],
-					cylinders[index * 5 + 2])
+			collision.transform = Transform3D(_basis_of(cylinders, at + 5),
+					Vector3(cylinders[at], cylinders[at + 1], cylinders[at + 2]))
 			_body.add_child(collision)
 		var boxes: PackedFloat32Array = placed["boxes"]
-		for index in boxes.size() / 7:
+		for index in boxes.size() / 15:
+			var at := index * 15
 			var box := BoxShape3D.new()
-			box.size = Vector3(boxes[index * 7 + 4], boxes[index * 7 + 5], boxes[index * 7 + 6])
-			_add_box(box, Vector3(boxes[index * 7], boxes[index * 7 + 1], boxes[index * 7 + 2]),
-					boxes[index * 7 + 3])
+			box.size = Vector3(boxes[at + 12], boxes[at + 13], boxes[at + 14])
+			var collision := CollisionShape3D.new()
+			collision.shape = box
+			collision.transform = Transform3D(_basis_of(boxes, at + 3),
+					Vector3(boxes[at], boxes[at + 1], boxes[at + 2]))
+			_body.add_child(collision)
 	_hang(placed["keys"], placed["buffers"], detail == Detail.ALL)
+	if _body != null:
+		_add_limb_colliders(placed["keys"], placed["buffers"])
+
+
+## The rotation stored as three rows of three numbers from `at` in `values`.
+func _basis_of(values: PackedFloat32Array, at: int) -> Basis:
+	return Basis(Vector3(values[at], values[at + 3], values[at + 6]),
+			Vector3(values[at + 1], values[at + 4], values[at + 7]),
+			Vector3(values[at + 2], values[at + 5], values[at + 8]))
+
+
+## The thick low limbs of the trees placed on a tile that can be walked into (7 cm and thicker, under 2.4 m: the mesh of each
+## variant keeps its six thickest as capsules, see PlantMeshNative): a capsule collider on each, moved with its tree.
+func _add_limb_colliders(keys: PackedInt32Array, buffers: Array) -> void:
+	for at in keys.size():
+		var key := keys[at]
+		if key < PLANT_KEY or key >= FAR_KEY:
+			continue
+		var one := _species.by_id((key - PLANT_KEY) / 100)
+		if not one.is_tree():
+			continue
+		var mesh := _species.mesh(one.id, key % 100, FloraMeshes.detailed, 0)
+		var capsules: PackedFloat32Array = mesh.get_meta(&"capsules", PackedFloat32Array())
+		if capsules.is_empty():
+			continue
+		var buffer: PackedFloat32Array = buffers[at]
+		for tree in buffer.size() / 16:
+			var i := tree * 16
+			var placed := Transform3D(Basis(
+					Vector3(buffer[i], buffer[i + 4], buffer[i + 8]),
+					Vector3(buffer[i + 1], buffer[i + 5], buffer[i + 9]),
+					Vector3(buffer[i + 2], buffer[i + 6], buffer[i + 10])),
+					Vector3(buffer[i + 3], buffer[i + 7], buffer[i + 11]))
+			for limb in capsules.size() / 7:
+				var c := limb * 7
+				var from := placed * Vector3(capsules[c], capsules[c + 1], capsules[c + 2])
+				var to := placed * Vector3(capsules[c + 3], capsules[c + 4], capsules[c + 5])
+				var length := from.distance_to(to)
+				if length < 0.05:
+					continue
+				var shape := CapsuleShape3D.new()
+				shape.radius = capsules[c + 6] * placed.basis.get_scale().x
+				shape.height = length + 2.0 * shape.radius
+				var collision := CollisionShape3D.new()
+				collision.shape = shape
+				var along := (to - from) / length # the capsule's axis is its y
+				var side := along.cross(Vector3.RIGHT if absf(along.x) < 0.9 else Vector3.FORWARD).normalized()
+				collision.transform = Transform3D(Basis(side, along, side.cross(along)), (from + to) * 0.5)
+				_body.add_child(collision)
 
 
 ## One layer of plants over the tile (`stretch` widens the grid: a far tile has fewer, bigger gaps).

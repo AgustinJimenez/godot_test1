@@ -67,3 +67,24 @@ static func spawn_check(tree: SceneTree) -> bool:
 	print("SPAWN_CHECK %s starts=120 moved=%d not_solid=%d" % ["PASS" if failed == 0 else "FAIL", moved, failed])
 	tree.quit()
 	return true
+
+
+
+## The collision shapes of the plants (the bodies named Plants on the tiles): trunks, thick low limbs and rocks.
+static func plant_shapes(node: Node) -> Dictionary:
+	var found := {"cylinders": 0, "capsules": 0, "boxes": 0}
+	for child in node.get_children():
+		if child is StaticBody3D and child.name == &"Plants":
+			for shape_node in child.get_children():
+				var shape := (shape_node as CollisionShape3D).shape
+				if shape is CylinderShape3D:
+					found["cylinders"] += 1
+				elif shape is CapsuleShape3D:
+					found["capsules"] += 1
+				elif shape is BoxShape3D:
+					found["boxes"] += 1
+		else:
+			var inner := plant_shapes(child)
+			for key: String in inner:
+				found[key] += inner[key]
+	return found

@@ -697,6 +697,7 @@ struct Grower {
 	MeshData *b;
 	Rng *rng;
 	bool capped = false;
+	std::vector<std::array<float, 7>> low_limbs; // the thick low limbs: two points and a radius
 	double thrift = 1.0;
 	int budget = BUDGET;
 	int lod = 0;
@@ -1283,6 +1284,15 @@ struct Grower {
 		bool last_level = level == depth - 1;
 		int closed = (last_level || !g->carry_on) ? CAP_TOP : 0;
 		b->tube(points, radii, colors, sides, *rng, 0.0, closed, false, 0, std::vector<double>());
+		// thick limbs that a person can walk into (low and 7 cm or thicker): kept as capsules for the colliders
+		for (size_t ring = 0; ring + 1 < points.size(); ring++) {
+			const double r = 0.5 * (radii[ring] + radii[ring + 1]);
+			const double low_y = std::min(points[ring].y, points[ring + 1].y);
+			if (r >= 0.07 && low_y < 2.4) {
+				low_limbs.push_back({ (float)points[ring].x, (float)points[ring].y, (float)points[ring].z, (float)points[ring + 1].x,
+					(float)points[ring + 1].y, (float)points[ring + 1].z, (float)r });
+			}
+		}
 		double tip_sway = sway + g->sway[level];
 		if (g->foliage == NEEDLE && (last_level || !g->tips_only)) {
 			Vector3 tip_tangent = tangents.back();
@@ -1823,6 +1833,7 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 	rng.seed((uint64_t)p_seed);
 	uint64_t start = rng.state;
 	bool capped = false;
+	std::vector<std::array<float, 7>> limbs;
 	const double thrifts[] = { 1.0, 0.94, 0.88, 0.82, 0.76, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.12 };
 	for (double thrift : thrifts) {
 		mesh.reset();
@@ -1840,9 +1851,21 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 		grower.budget = (int)clampd(1500.0 + 2000.0 * g.height, 1500, BUDGET);
 		grower.grow();
 		capped = grower.capped;
+		limbs = grower.low_limbs;
+		limbs = grower.low_limbs;
 		if (!capped) {
 			break;
 		}
 	}
-	return package(mesh, capped);
+	Dictionary result = package(mesh, capped);
+	// the six thickest low limbs, for the colliders (two points and a radius each, in the mesh's own space)
+	std::sort(limbs.begin(), limbs.end(), [](const std::array<float, 7> &a, const std::array<float, 7> &b) { return a[6] > b[6]; });
+	PackedFloat32Array capsules;
+	for (size_t i = 0; i < limbs.size() && i < 6; i++) {
+		for (int k = 0; k < 7; k++) {
+			capsules.push_back(limbs[i][k]);
+		}
+	}
+	result["capsules"] = capsules;
+	return result;
 }

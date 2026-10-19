@@ -91,3 +91,16 @@ before each candidate): rocks lean 75 % to the ground's normal and sink by scale
 grows against gravity: nearly upright) and sink by their trunk's radius x 1.3 x slope + 0.15, low plants lean 50 %. The
 instance transform is a full rotation (the MultiMesh buffer already had it). Colliders are not tilted (a rock's box is yaw
 only: on a steep slope it can differ by a few decimetres).
+
+## Collisions of trees and rocks (2026-10-19, reported: walking through trunks and branches)
+- **Trunks**: the collider was a fixed guess (radius `max(girth * 0.9, 0.18)`, height 1.5 to 4 m). `PlanetScatter._trunk_footprint`
+  now reads the genome: the foot's radius (girth flared by the buttress roots, narrowed up a tapering trunk) and the bare
+  trunk's height (all of a conifer's, up to 14 m). The cylinder follows the leaning, sunk tree (the full rotation comes from
+  the native placement: 14 floats a cylinder).
+- **Thick low limbs**: `PlantMeshNative.grow` keeps the six thickest limb segments of 7 cm or more under 2.4 m as capsules (the
+  mesh's meta `capsules`, two points and a radius each); `PlanetScatter._add_limb_colliders` puts a capsule collider on each for
+  every tree placed on a tile with colliders. On seed 8's lab walk: 1443 trunks, 4396 limb capsules, 544 rocks and logs, 115 fps.
+- **Rocks, logs, stumps**: the box colliders are rotated with the thing (15 floats a box).
+- Not done: branches that bend when pushed and slow the character; foliage, grass and thin twigs have no collision (see the
+  proposal in the conversation of 2026-10-19: bending in the shader from a few pusher positions, a drag from the undergrowth
+  around the player, thick branches as the capsules above).

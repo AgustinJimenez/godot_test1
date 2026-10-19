@@ -309,6 +309,8 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	// ---- placing ----
 	// `tilt`: how far the thing leans to the ground's own normal (0 stays upright, 1 lies on the slope); `bury`: metres it sinks
 	// (on a slope the downhill side of its foot would hang in the air)
+	Basis last_basis; // the last thing queued: its rotation and where its foot is (the colliders follow it)
+	Vector3 last_foot;
 	auto queue = [&](int batch_key, const Vector3 &at, double scale, double yaw, const Color &tint, double tilt, double bury) {
 		std::vector<float> &buffer = t.batches[batch_key];
 		Basis basis(Vector3(0, 1, 0), (real_t)yaw);
@@ -319,6 +321,8 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		}
 		basis = basis.scaled(Vector3((real_t)scale, (real_t)scale, (real_t)scale));
 		const Vector3 sunk = at - Vector3(0, (real_t)bury, 0);
+		last_basis = basis.orthonormalized();
+		last_foot = sunk;
 		float values[16] = { (float)basis.rows[0][0], (float)basis.rows[0][1], (float)basis.rows[0][2], (float)sunk.x, (float)basis.rows[1][0],
 			(float)basis.rows[1][1], (float)basis.rows[1][2], (float)sunk.y, (float)basis.rows[2][0], (float)basis.rows[2][1],
 			(float)basis.rows[2][2], (float)sunk.z, tint.r, tint.g, tint.b, tint.a };
@@ -338,9 +342,13 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		}
 		queue(kind * 100 + variant, at, scale, yaw, Color(1, 1, 1, 1), tilt, bury);
 	};
-	auto add_box = [&](const Vector3 &at, double yaw, const Vector3 &size) {
-		const float values[7] = { (float)at.x, (float)at.y, (float)at.z, (float)yaw, (float)size.x, (float)size.y, (float)size.z };
-		t.boxes.insert(t.boxes.end(), values, values + 7);
+	// a box collider (centre `lift` metres up the last thing's own axis, its size): position, the rotation's rows, size
+	auto add_box = [&](double lift, const Vector3 &size) {
+		const Vector3 centre = last_foot + last_basis.xform(Vector3(0, (real_t)lift, 0));
+		const float values[15] = { (float)centre.x, (float)centre.y, (float)centre.z, (float)last_basis.rows[0][0], (float)last_basis.rows[0][1],
+			(float)last_basis.rows[0][2], (float)last_basis.rows[1][0], (float)last_basis.rows[1][1], (float)last_basis.rows[1][2],
+			(float)last_basis.rows[2][0], (float)last_basis.rows[2][1], (float)last_basis.rows[2][2], (float)size.x, (float)size.y, (float)size.z };
+		t.boxes.insert(t.boxes.end(), values, values + 15);
 	};
 
 	std::vector<double> weights;
@@ -472,9 +480,13 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		const double bury = plant.tree ? 0.15 + spot_gradient * (1.3 * plant.foot_x * scale + 0.15) : 0.03 + spot_gradient * 0.08;
 		queue(PLANT_KEY + plant.id * 100 + variant, at, scale, yaw, tint, plant.tree ? 0.3 : 0.5, bury);
 		if (t.collide && (plant.foot_x != 0.0 || plant.foot_y != 0.0)) {
-			const float values[5] = { (float)at.x, (float)(at.y + plant.foot_y * scale * 0.5), (float)at.z, (float)(plant.foot_x * scale),
-				(float)(plant.foot_y * scale) };
-			t.cylinders.insert(t.cylinders.end(), values, values + 5);
+			// the trunk's cylinder stands on the leaning tree's own axis, from its sunk foot
+			const Vector3 centre = last_foot + last_basis.xform(Vector3(0, (real_t)(plant.foot_y * scale * 0.5), 0));
+			const float values[14] = { (float)centre.x, (float)centre.y, (float)centre.z, (float)(plant.foot_x * scale), (float)(plant.foot_y * scale),
+				(float)last_basis.rows[0][0], (float)last_basis.rows[0][1], (float)last_basis.rows[0][2], (float)last_basis.rows[1][0],
+				(float)last_basis.rows[1][1], (float)last_basis.rows[1][2], (float)last_basis.rows[2][0], (float)last_basis.rows[2][1],
+				(float)last_basis.rows[2][2] };
+			t.cylinders.insert(t.cylinders.end(), values, values + 14);
 		}
 	};
 
@@ -574,7 +586,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			double yaw = t.rng.range(0.0, TAU_D);
 			queue_kind(ROCK, t.rng.randi() % kind_variants[ROCK], at, scale, yaw);
 			if (t.collide) {
-				add_box(at + Vector3(0, (real_t)(scale * 0.2), 0), yaw, Vector3(1.7f, 1.0f, 1.5f) * (real_t)scale);
+				add_box(scale * 0.32, Vector3(1.7f, 1.0f, 1.5f) * (real_t)scale);
 			}
 		}
 		if (!near) {
@@ -613,7 +625,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			if (t.collide) {
 				Vector3 box = feature == LOG ? Vector3(3.6f, 0.6f, 0.6f) : (feature == STUMP ? Vector3(0.8f, 0.8f, 0.8f) : Vector3(1.6f, 5.0f, 1.6f));
 				box *= (real_t)scale;
-				add_box(at + Vector3(0, (real_t)(box.y * 0.4), 0), yaw, box);
+				add_box(box.y * 0.4, box);
 			}
 		}
 	};

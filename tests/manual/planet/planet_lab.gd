@@ -826,6 +826,7 @@ func _physics_process(_delta: float) -> void:
 				_frame, Engine.get_frames_per_second(), planet.altitude(), planet.surface.tiles.size(),
 				calls, prims, cpu, RenderingServer.viewport_get_measured_render_time_cpu(vp),
 				RenderingServer.viewport_get_measured_render_time_gpu(vp)])
+		print("PLANT_COLLIDERS ", PlanetLabChecks.plant_shapes(planet.surface))
 		print("HITCH worst_frame=%.1f ms, frames over 33 ms: %d" % [_worst_frame * 1000.0,
 				_slow_frames])
 		_worst_frame = 0.0

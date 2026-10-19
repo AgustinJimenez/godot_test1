@@ -67,6 +67,8 @@ static func mesh_from(grown: Dictionary) -> ArrayMesh:
 		arrays[Mesh.ARRAY_TEX_UV] = grown["uvs"]
 		arrays[Mesh.ARRAY_TEX_UV2] = grown["uv2s"]
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	if grown.has("capsules"): # the thick low limbs a person can walk into (the placed trees get colliders from them)
+		mesh.set_meta(&"capsules", grown["capsules"])
 	return mesh
 
 
