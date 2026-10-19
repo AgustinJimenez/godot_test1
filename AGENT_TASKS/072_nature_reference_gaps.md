@@ -98,3 +98,7 @@ variety of near things* (A, E, F) and *light mood* (B, C).
    is unchanged. Not yet looked at in a wet lowland at dawn (the greenest test place is 330 m up).
 7. **Dawn fill light**: the ambient light lifts by up to 1.6 when the sun is low, so the shadowed side
    of the land is dark green and not black. Seen at 6:12 on seed 8.
+8. **Dust and pollen** (`PlanetMotes`, setting `particles`, High and Ultra): 700 tiny warm specks in a box of
+   air that follows the camera, in world space, drifting on a noise; only in daylight, fair weather and
+   under 2.5 km, not underwater. Seen as a few faint specks in a still at 8:20; their motion and amount
+   need a look in play (the lab's `--view-alt` views have no player, so they do not show there).

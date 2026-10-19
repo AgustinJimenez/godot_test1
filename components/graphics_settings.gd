@@ -16,7 +16,7 @@ const QUALITY_KEYS: Array[StringName] = [
 	&"ssao", &"ssil", &"glow", &"cloud_quality",
 	&"upscaler", &"debanding", &"colour_grade", &"auto_exposure", &"reflections", &"volumetric_fog",
 	&"ground_detail", &"cloud_shadows", &"sdfgi", &"decals",
-	&"occlusion_culling",
+	&"occlusion_culling", &"particles",
 ]
 const DEFAULT_VALUES: Dictionary = {
 	&"render_scale": 1.0,
@@ -32,6 +32,7 @@ const DEFAULT_VALUES: Dictionary = {
 	&"auto_exposure": false,
 	&"reflections": 0, # 0 off, 1 low, 2 high (screen space)
 	&"volumetric_fog": false, # light shafts near the ground
+	&"particles": false, # dust and pollen in the air
 	&"occlusion_culling": false, # skip what is hidden; keep mesh detail longer
 	&"decals": false, # footprints in snow, sand and mud
 	# bounced light near the camera (experimental: it reset the GPU in a coast view, so no preset
@@ -70,7 +71,7 @@ const PRESETS: Dictionary = {
 		&"ssao": true, &"ssil": false, &"glow": true, &"cloud_quality": 2,
 		&"upscaler": 2, &"debanding": true, &"colour_grade": 1, &"auto_exposure": true,
 		&"reflections": 0, &"volumetric_fog": true, &"ground_detail": 2,
-		&"cloud_shadows": true, &"decals": true, &"occlusion_culling": true,
+		&"cloud_shadows": true, &"decals": true, &"occlusion_culling": true, &"particles": true,
 	},
 	Preset.ULTRA: {
 		&"render_scale": 1.15,
@@ -80,7 +81,7 @@ const PRESETS: Dictionary = {
 		&"upscaler": 2, &"debanding": true, &"colour_grade": 1, &"auto_exposure": true,
 		&"reflections": 2, &"volumetric_fog": true, &"ground_detail": 3,
 		&"cloud_shadows": true, &"sdfgi": false, &"decals": true,
-		&"occlusion_culling": true,
+		&"occlusion_culling": true, &"particles": true,
 	},
 }
 
@@ -257,7 +258,7 @@ func _sanitize_value(key: StringName, value: Variant) -> Variant:
 			clean = clampi(int(value), Environment.TONE_MAPPER_LINEAR, Environment.TONE_MAPPER_AGX)
 		&"ssao", &"ssil", &"glow", &"vsync", &"hdr", &"debanding":
 			clean = bool(value)
-		&"auto_exposure", &"volumetric_fog", &"cloud_shadows", &"sdfgi", &"decals", &"occlusion_culling":
+		&"auto_exposure", &"volumetric_fog", &"cloud_shadows", &"sdfgi", &"decals", &"occlusion_culling", &"particles":
 			clean = bool(value)
 	return clean
 

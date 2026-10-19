@@ -103,6 +103,7 @@ func _add_look_controls() -> void:
 			GraphicsLook.REFLECTION_NAMES)
 	next = _look_toggle(parent, next, &"auto_exposure", "Auto exposure")
 	next = _look_toggle(parent, next, &"debanding", "Debanding (smooth sky gradients)")
+	next = _look_toggle(parent, next, &"particles", "Dust and pollen in the air")
 	next = _look_toggle(parent, next, &"occlusion_culling", "Occlusion culling and mesh detail")
 	next = _look_toggle(parent, next, &"decals", "Footprints in snow, sand and mud")
 	next = _look_toggle(parent, next, &"sdfgi",

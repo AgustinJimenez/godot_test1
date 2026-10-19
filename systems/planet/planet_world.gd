@@ -134,6 +134,9 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 		footprints.planet = self
 		footprints.target = target as Player
 		add_child(footprints)
+		var motes := PlanetMotes.new()
+		motes.planet = self
+		add_child(motes)
 	if direction == Vector3.ZERO and restored.has("direction"):
 		var saved: Array = restored["direction"]
 		direction = Vector3(saved[0], saved[1], saved[2]).normalized()
