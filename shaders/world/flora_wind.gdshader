@@ -324,6 +324,19 @@ void fragment() {
 		smooth_normal = -smooth_normal;
 	}
 	NORMAL = normalize(mix(flat_normal, smooth_normal, realism));
+	if (is_card && UV2.y > 7.5) {
+		// a blade of grass is a flat card but is round across: tilt the normal one way on one side of the midrib and the other way on the
+		// other (the direction of the card's across from the derivatives of its UV), and lean it toward the sky as the ground's light does
+		vec3 dp1 = dFdx(VERTEX);
+		vec3 dp2 = dFdy(VERTEX);
+		vec2 du1 = dFdx(UV);
+		vec2 du2 = dFdy(UV);
+		float det = du1.x * du2.y - du1.y * du2.x;
+		vec3 across_dir = normalize(dp1 * du2.y - dp2 * du1.y) * (det < 0.0 ? -1.0 : 1.0);
+		float round_across = (UV.x - 0.5) * 2.0;
+		vec3 sky = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+		NORMAL = normalize(NORMAL + across_dir * round_across * 0.75 + sky * 0.45);
+	}
 	if (bump_amount > 0.001) {
 		NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(bump.x, 0.0, bump.y, 0.0)).xyz * 0.35 * bump_amount);
 	}

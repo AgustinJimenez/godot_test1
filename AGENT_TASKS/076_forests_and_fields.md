@@ -168,3 +168,6 @@ view: +7% primitives, +1.5 ms GPU (7.6 -> 9.1 ms, 129 -> 107 fps on the 4090).
 - Turf blades are bent over in two parts (the upper leans further, `arch`) and are two bending links each (10 blades, 40 triangles a
   tuft); the tint is fresh, aged (olive) or dry (hay), by how poorly grass grows there, patches of dry of about 5 m and each tuft's own
   dryness. +0.3 ms GPU against the straight blades. Ideas not done: a tall turf type (the Sketchfab grass pack has one up to 1 m).
+- Blade shading: a blade is a flat card lit as a round one (`flora_wind.gdshader`: the normal is tilted across its width, from the UV
+  derivatives, and leaned to the sky). Tried and dropped: `alpha_to_coverage` for smooth edges with MSAA (the blades came out wide and
+  square, and MSAA costs about 1 ms on its own); the pack's alpha blending needs sorting and was never tried.
