@@ -9,6 +9,7 @@ extends RefCounted
 
 const BANK := 4.0 ## m from a river edge inside which nothing grows (the bank can be higher)
 const GRASS_VISIBLE := 110.0
+const PEBBLE_VISIBLE := 45.0 ## m: small stones are gone beyond this
 const TREE_FULL := 100.0 ## m: beyond this a tree is drawn as its lighter version
 const SMALL_VISIBLE := 220.0 ## m: shrubs and ground cover are gone beyond this
 const TREE_LIGHT := 220.0 ## m: beyond this, as the cheap far tree (a cone or a ball on a trunk)
@@ -75,6 +76,8 @@ func populate(holder: Node3D, key: int, noise: PlanetNoise, positions: Array[Vec
 	_scatter(PlantSpecies.Layer.UNDERSTORY, 1.0 if detail == Detail.ALL else 2.0)
 	if detail != Detail.NONE:
 		_rocks(detail == Detail.ALL)
+	if detail == Detail.ALL and int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 2:
+		_pebbles()
 	if detail == Detail.ALL:
 		_scatter(PlantSpecies.Layer.GRASS, 1.0)
 		_scatter(PlantSpecies.Layer.MEADOW, 1.0)
@@ -165,6 +168,36 @@ func _rocks(near: bool) -> void:
 			var steep := _slope(fx, fz)
 			var biome := _noise.biome(dir.x, dir.y, dir.z, ground, steep)
 			_rock_at(biome, steep, _ground(fx, fz), near)
+
+
+## Small stones lying about near the player (the Fine ground detail and up): thick on bare, rocky,
+## snowy and desert ground, a few on the rest, none in the sea or by the water.
+func _pebbles() -> void:
+	var spacing := 2.4
+	var count := int(_size / spacing)
+	for row in count:
+		for column in count:
+			var x := (float(column) + _rng.randf()) * spacing
+			var z := (float(row) + _rng.randf()) * spacing
+			var fx := clampf(x / _size * float(_cells), 0.0, float(_cells) - 0.001)
+			var fz := clampf(z / _size * float(_cells), 0.0, float(_cells) - 0.001)
+			var ground := _height_at(fx, fz)
+			if ground < 0.9:
+				continue
+			var dir := _direction(fx, fz)
+			if _noise.hydrology != null and _noise.hydrology.near_water(dir, ground, BANK * 0.5):
+				continue
+			var steep := _slope(fx, fz)
+			var chance := 0.08 + steep * 0.5
+			match _noise.biome(dir.x, dir.y, dir.z, ground, steep):
+				TerrainNoise.Biome.ROCKY, TerrainNoise.Biome.SNOW:
+					chance += 0.35
+				TerrainNoise.Biome.DESERT, TerrainNoise.Biome.BEACH:
+					chance += 0.2
+			if _rng.randf() < chance * _noise.settings.rock_density:
+				var kind := FloraMeshes.Kind.PEBBLES
+				_queue_kind(kind, _rng.randi() % FloraMeshes.variant_count(kind), _ground(fx, fz),
+						_rng.randf_range(0.7, 1.5), _rng.randf_range(0.0, TAU))
 
 
 func _rock_at(biome: int, steep: float, at: Vector3, near: bool) -> void:
@@ -342,7 +375,10 @@ func _flush(near: bool) -> void:
 		else:
 			mesh = FloraMeshes.mesh(key / 100 as FloraMeshes.Kind, variant, FloraMeshes.detailed)
 		var instance := _add_trees(key, transforms, mesh, true)
-		if layer == PlantSpecies.Layer.GRASS or layer == PlantSpecies.Layer.MEADOW:
+		if not plant and key / 100 == FloraMeshes.Kind.PEBBLES:
+			instance.visibility_range_end = PEBBLE_VISIBLE
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif layer == PlantSpecies.Layer.GRASS or layer == PlantSpecies.Layer.MEADOW:
 			instance.visibility_range_end = GRASS_VISIBLE
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif not near:

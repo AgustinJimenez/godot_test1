@@ -6,9 +6,9 @@ extends RefCounted
 ## and shared. Vertex colour alpha = how much a vertex sways in the wind.
 
 ## The numbers stay what they were when plants shared this enum, so the rocks keep their shapes.
-enum Kind { ROCK = 5, STUMP = 10, LOG = 14, SPIRE = 15 }
+enum Kind { ROCK = 5, STUMP = 10, LOG = 14, SPIRE = 15, PEBBLES = 16 }
 
-const VARIANTS := {Kind.ROCK: 6, Kind.STUMP: 2, Kind.LOG: 3, Kind.SPIRE: 3}
+const VARIANTS := {Kind.ROCK: 6, Kind.STUMP: 2, Kind.LOG: 3, Kind.SPIRE: 3, Kind.PEBBLES: 4}
 const BARK := Color(0.33, 0.23, 0.15)
 const BARK_DARK := Color(0.22, 0.15, 0.1)
 
@@ -62,6 +62,8 @@ static func _build(kind: Kind, variant: int, detailed: bool) -> ArrayMesh:
 			_log(builder, rng)
 		Kind.SPIRE:
 			_spire(builder, rng, variant)
+		Kind.PEBBLES:
+			_pebbles(builder, rng, variant)
 	return builder.commit()
 
 
@@ -84,6 +86,18 @@ static func _rock(builder: MeshBuilder, rng: RandomNumberGenerator, variant: int
 			low, high, rng, 0.3)
 	if variant % 2 == 1: # a second, smaller stone leaning on it
 		builder.add_blob(Vector3(0.7, 0.1, 0.4), Vector3(0.5, 0.4, 0.45), low, high, rng, 0.3)
+
+
+## A few small stones lying together (a hand's width each), pale or dark by variant.
+static func _pebbles(builder: MeshBuilder, rng: RandomNumberGenerator, variant: int) -> void:
+	var tones := [Color(0.5, 0.48, 0.45), Color(0.38, 0.36, 0.35), Color(0.6, 0.55, 0.47), Color(0.45, 0.37, 0.3)]
+	var stone: Color = tones[variant % tones.size()]
+	for index in 3 + variant % 3:
+		var size := rng.randf_range(0.07, 0.17)
+		var at := Vector3(rng.randf_range(-0.4, 0.4), size * 0.3, rng.randf_range(-0.4, 0.4))
+		var shade := rng.randf_range(0.85, 1.1)
+		builder.add_blob(at, Vector3(size, size * 0.6, size * 0.85), _still(stone.darkened(0.2) * shade),
+				_still(stone.lightened(0.08) * shade), rng, 0.25)
 
 
 static func _stump(builder: MeshBuilder, rng: RandomNumberGenerator) -> void:
