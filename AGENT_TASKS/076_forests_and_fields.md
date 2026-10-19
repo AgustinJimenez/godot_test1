@@ -181,3 +181,7 @@ it; more of it on iron-red soil (`soil_iron`: laterite, red sandstone), less on 
 +0.5 ms GPU. `LAB_GROUND=0..3` (planet_lab) sets a ground detail for one run without saving it. What UE5 calls this: normal mapping and
 parallax occlusion mapping (fake depth that makes light and shadows fall across the relief) or real displacement (Nanite); not done
 here: parallax occlusion mapping, the self-shadow of fragments on each other, a texture scanned from a photo.
+- The gravel has depth now (parallax occlusion mapping within 3 to 7 m: a 6 step march of the view ray into the height of the two coarser
+  sizes, 3 cm deep; the chunks shade each other from the sun, 3 steps toward `cloud_sun_world`). Its patterns change at three scales
+  (`zone_big` tens of metres: which size dominates and how thick; `zone_mid` a few metres: how pale, grey and dense the fine; `zone_far`
+  hundreds: the hue of the soil), and each fragment is nudged off its grid by a noise (all of them wrap at 1024 m). +0.5 ms GPU more.

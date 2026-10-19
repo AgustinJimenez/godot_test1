@@ -214,6 +214,19 @@ void vertex() {
 	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
+// The height (metres) of the crumbly ground at `p` for the parallax march: only the two coarser sizes of fragments (the finest are
+// under a centimetre and would not show in the parallax), each from where it stands out of the soil.
+float crumb_height(vec3 p, float size_mid, float size_big, float cover_mid, float cover_big) {
+	float h_mid;
+	float h_big;
+	vec3 lean;
+	float tone;
+	float gap;
+	stones(p + 53.0, 11.0, 1024.0 * 11.0, size_mid, 0.5, 0.4, h_mid, lean, tone, gap);
+	stones(p + 66.0, 4.2, 1024.0 * 4.2, size_big, 0.5, 0.4, h_big, lean, tone, gap);
+	return max(smoothstep(0.0, 0.1, h_mid) * h_mid * cover_mid * 0.012, smoothstep(0.0, 0.1, h_big) * h_big * cover_big * 0.03);
+}
+
 void fragment() {
 	vec3 flat_normal = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
 	if (dot(flat_normal, VIEW) < 0.0) {
@@ -278,13 +291,71 @@ void fragment() {
 		view_normal = normalize(mix(view_normal, bumpy, strength));
 		rough = mix(0.95, 0.88 - patch * 0.1, strength);
 		// crumbly gravel: bare soil that breaks into angular fragments (laterite and red sandstone soil the most): chips a few centimetres
-		// and a hand across, each its own tone and its own tilt to the light, a few grey pebbles among them, a dark gap round each. Two
-		// sizes, near the walker only (a fragment is under a pixel beyond a few tens of metres); grass and snow hide it
+		// and a hand across and chunks, each its own tone and its own tilt to the light, pale chips and a few dark pebbles among them, a
+		// dark gap round each. Three sizes, near the walker only (a fragment is under a pixel beyond a few tens of metres); grass and snow
+		// hide it. The patterns change over the ground at three scales (a few metres, tens of metres, hundreds) so no stretch of it repeats:
+		// which size dominates, how thick it lies, how pale and how grey, and the hue of the soil; and each fragment is nudged off the grid.
+		// Near the eye it has depth (parallax occlusion mapping: the view ray is marched into the height of the chunks, so they hide the
+		// soil behind them and shift with the view) and the chunks shade each other from the sun
 		float crumb_dist = length(VERTEX);
 		float crumb_bare = (1.0 - smoothstep(0.0, 0.08, paint.g - max(paint.r, paint.b))) * (1.0 - snow_cover)
 				* (1.0 - smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(-0.03, 0.0, paint.g - paint.r)) * 0.7);
 		float crumbly = mix(0.45, 1.0, soil_iron) * (1.0 - 0.35 * max((soil_organic - 0.5) * 2.0, 0.0)) * crumb_bare;
-		if (crumbly > 0.02 && crumb_dist < 40.0) {
+		if (crumbly > 0.02 && crumb_dist < 52.0) {
+			float zone_big = noise3(on_planet * 0.0625 + 3.0, 64.0); // tens of metres: which size dominates, how thick
+			float zone_mid = noise3(on_planet * 0.3125 + 9.0, 320.0); // a few metres: how pale, how grey, how dense the fine
+			float zone_far = noise3(on_planet * 0.015625 + 21.0, 16.0); // hundreds of metres: the hue of the soil
+			paint *= mix(vec3(0.93, 0.99, 1.05), vec3(1.12, 0.98, 0.82), zone_far);
+			vec3 nudge = vec3(noise3(on_planet * 1.875, 1920.0), noise3(on_planet * 1.875 + 7.1, 1920.0), noise3(on_planet * 1.875 + 3.3, 1920.0));
+			vec3 crumb_at = on_planet + (nudge - 0.5) * 0.09; // (fragments are moved off their grid a little)
+			float size_fine = 0.95 * mix(0.6, 1.05, zone_mid);
+			float size_mid = 0.95 * mix(0.55, 1.05, zone_big);
+			float size_big = 0.95 * mix(0.7, 1.05, zone_mid);
+			float cover_fine = crumbly * mix(0.55, 1.0, zone_mid);
+			float cover_mid = crumbly * mix(0.45, 1.0, zone_big);
+			float cover_big = crumbly * mix(0.12, 1.0, 1.0 - zone_big);
+			vec3 hit = crumb_at;
+			float hit_height = 0.0;
+			float shadow = 0.0;
+			float parallax_fade = 1.0 - smoothstep(3.0, 7.0, crumb_dist);
+			vec3 facing_anchor = normalize(mat3(anchor_from_world) * world_normal);
+			if (parallax_fade > 0.02) {
+				// the view ray into the height of the chunks (the surface is the top, 3 cm above the soil)
+				vec3 ray = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
+				float slant = max(dot(-ray, facing_anchor), 0.12);
+				const int STEPS = 6;
+				const float TOTAL = 0.03;
+				float last_gap = 0.0;
+				float last_s = 0.0;
+				for (int i = 1; i <= STEPS; i++) {
+					float depth = TOTAL * float(i) / float(STEPS);
+					float travel = depth / slant;
+					vec3 at = crumb_at + ray * travel;
+					float height_here = crumb_height(at, size_mid, size_big, cover_mid, cover_big);
+					float gap = depth - (TOTAL - height_here); // above 0: the ray is inside the ground
+					if (gap >= 0.0) {
+						float blend = last_gap / max(last_gap - gap, 0.0001); // where between the two steps it went in
+						float found = mix(last_s, travel, clamp(blend, 0.0, 1.0));
+						hit = mix(crumb_at, crumb_at + ray * found, parallax_fade);
+						hit_height = height_here;
+						break;
+					}
+					last_gap = gap;
+					last_s = travel;
+				}
+				// the sun: the chunks the ray from the hit towards the sun passes through shade it
+				vec3 sun_anchor = normalize(mat3(anchor_from_world) * normalize(cloud_sun_world));
+				float sun_up = dot(sun_anchor, facing_anchor);
+				if (sun_up > 0.1) {
+					vec3 along = (sun_anchor - facing_anchor * sun_up) / sun_up; // the ground travelled for each unit risen
+					float own = crumb_height(hit, size_mid, size_big, cover_mid, cover_big);
+					for (int k = 1; k <= 3; k++) {
+						float rise = 0.008 * float(k);
+						float blocking = crumb_height(hit + along * rise, size_mid, size_big, cover_mid, cover_big);
+						shadow = max(shadow, smoothstep(0.0, 0.006, blocking - (own + rise)));
+					}
+				}
+			}
 			for (int crumb_class = 0; crumb_class < 3; crumb_class++) {
 				float crumb_scale = crumb_class == 0 ? 30.0 : (crumb_class == 1 ? 11.0 : 4.2); // cells a metre
 				float crumb_fade = 1.0 - smoothstep(crumb_class == 0 ? 7.0 : (crumb_class == 1 ? 16.0 : 28.0),
@@ -296,20 +367,24 @@ void fragment() {
 				vec3 c_lean;
 				float c_tone;
 				float c_gap;
-				stones(on_planet + 40.0 + float(crumb_class) * 13.0, crumb_scale, 1024.0 * crumb_scale, 0.95, 0.5, 0.4, c_h, c_lean,
+				float class_size = crumb_class == 0 ? size_fine : (crumb_class == 1 ? size_mid : size_big);
+				float class_cover = crumb_class == 0 ? cover_fine : (crumb_class == 1 ? cover_mid : cover_big);
+				stones(hit + 40.0 + float(crumb_class) * 13.0, crumb_scale, 1024.0 * crumb_scale, class_size, 0.5, 0.4, c_h, c_lean,
 						c_tone, c_gap);
-				float c_cover = smoothstep(0.0, 0.1, c_h) * crumbly * crumb_fade;
+				float c_cover = smoothstep(0.0, 0.1, c_h) * class_cover * crumb_fade;
 				// the fragments are the soil's own colour, darker or lighter, a few much lighter (dried crust), a few grey pebbles
-				float lighter = 0.62 + 0.85 * c_tone + 0.2 * c_h;
+				float lighter = 0.62 + 0.85 * c_tone + 0.2 * c_h + (zone_mid - 0.5) * 0.35;
 				vec3 fragment = paint * lighter;
-				fragment = mix(fragment, vec3(0.1, 0.095, 0.09) * (0.7 + 0.6 * c_tone), smoothstep(0.85, 0.93, c_tone) * 0.9 * (crumb_class == 2 ? 0.0 : 1.0));
+				fragment = mix(fragment, vec3(0.1, 0.095, 0.09) * (0.7 + 0.6 * c_tone),
+						smoothstep(0.88 - 0.1 * zone_mid, 0.95 - 0.08 * zone_mid, c_tone) * 0.9 * (crumb_class == 2 ? 0.0 : 1.0));
 				fragment = mix(fragment, vec3(0.5, 0.36, 0.26) * (0.8 + 0.5 * c_tone), smoothstep(0.1, 0.0, c_tone) * 0.75 * (crumb_class == 2 ? 0.0 : 1.0)); // pale chips
 				paint = mix(paint, fragment, c_cover);
-				paint *= 1.0 - c_gap * crumbly * crumb_fade * 0.8; // the dark gap hugging each fragment
+				paint *= 1.0 - c_gap * class_cover * crumb_fade * 0.8; // the dark gap hugging each fragment
 				vec3 c_world = (world_from_planet * vec4(c_lean, 0.0)).xyz;
 				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(c_world, 0.0)).xyz * c_cover * (crumb_class == 2 ? 1.3 : 1.0) * strength);
 				rough = mix(rough, 0.82, c_cover * strength);
 			}
+			paint *= 1.0 - 0.55 * shadow * parallax_fade;
 		}
 		if (level > 1.5) {
 			// the finer ground (High and up): a bump a hand wide, crevices that are darker, ripples
