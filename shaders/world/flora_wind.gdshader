@@ -210,6 +210,14 @@ void vertex() {
 	float flutter = sin(TIME * sway_speed * 3.3 + dot(world.xz, vec2(0.9, 0.7)) + VERTEX.y * 2.0);
 	float amount = weight * (0.03 + wind_strength * 0.5) * (gust * 0.8 + flutter * 0.2);
 	vec3 push = vec3(wind_direction.x, 0.0, wind_direction.y) * amount;
+	if (UV2.y > 7.5) { // a tuft of turf: the blades ripple, the tips most, in swells that roll across the field
+		float tip = UV.y * UV.y;
+		float swell = sin(TIME * 1.1 + dot(world.xz, vec2(0.35, 0.27)));
+		float ripple = sin(TIME * 3.1 + dot(world.xz, vec2(1.7, 1.3)) + UV.x * 4.0);
+		float strength = tip * (0.07 + wind_strength * 0.45);
+		push = vec3(wind_direction.x, 0.0, wind_direction.y) * strength * (0.55 + 0.45 * swell + 0.18 * ripple)
+				+ vec3(-wind_direction.y, 0.0, wind_direction.x) * strength * 0.3 * ripple;
+	}
 	face_up = (MODEL_MATRIX * vec4(NORMAL, 0.0)).y;
 	VERTEX += inverse(mat3(MODEL_MATRIX)) * push;
 }
