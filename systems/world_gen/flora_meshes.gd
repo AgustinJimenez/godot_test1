@@ -6,9 +6,9 @@ extends RefCounted
 ## and shared. Vertex colour alpha = how much a vertex sways in the wind.
 
 ## The numbers stay what they were when plants shared this enum, so the rocks keep their shapes.
-enum Kind { ROCK = 5, STUMP = 10, LOG = 14, SPIRE = 15, PEBBLES = 16 }
+enum Kind { ROCK = 5, STUMP = 10, LOG = 14, SPIRE = 15, PEBBLES = 16, LITTER = 17, TWIGS = 18 }
 
-const VARIANTS := {Kind.ROCK: 6, Kind.STUMP: 2, Kind.LOG: 3, Kind.SPIRE: 3, Kind.PEBBLES: 4}
+const VARIANTS := {Kind.ROCK: 6, Kind.STUMP: 2, Kind.LOG: 3, Kind.SPIRE: 3, Kind.PEBBLES: 4, Kind.LITTER: 5, Kind.TWIGS: 4}
 const BARK := Color(0.33, 0.23, 0.15)
 const BARK_DARK := Color(0.22, 0.15, 0.1)
 
@@ -64,6 +64,10 @@ static func _build(kind: Kind, variant: int, detailed: bool) -> ArrayMesh:
 			_spire(builder, rng, variant)
 		Kind.PEBBLES:
 			_pebbles(builder, rng, variant)
+		Kind.LITTER:
+			_litter(builder, rng, variant)
+		Kind.TWIGS:
+			_twigs(builder, rng, variant)
 	return builder.commit()
 
 
@@ -99,6 +103,51 @@ static func _pebbles(builder: MeshBuilder, rng: RandomNumberGenerator, variant: 
 		var shade := rng.randf_range(0.85, 1.1)
 		builder.add_blob(at, Vector3(size, size * 0.6, size * 0.85), _still(stone.darkened(0.2) * shade),
 				_still(stone.lightened(0.08) * shade), rng, 0.25)
+
+
+## Fallen leaves lying flat on the ground, in the colours of a forest floor (greens, ochres, rusts,
+## browns by variant), each its own size, turn and tilt, a few overlapping.
+static func _litter(builder: MeshBuilder, rng: RandomNumberGenerator, variant: int) -> void:
+	var tones := [Color(0.55, 0.36, 0.14), Color(0.42, 0.3, 0.14), Color(0.62, 0.45, 0.16),
+			Color(0.34, 0.4, 0.14), Color(0.5, 0.22, 0.1)]
+	var tone: Color = tones[variant % tones.size()]
+	var shapes := [PlantSpecies.LeafShape.OVAL, PlantSpecies.LeafShape.LOBED, PlantSpecies.LeafShape.HEART,
+			PlantSpecies.LeafShape.LANCEOLATE]
+	var outline := PlantLeafShapes.outline_for(shapes[variant % shapes.size()], rng.randf_range(1.5, 2.2),
+			2, PlantSpecies.LeafEdge.SMOOTH, true)
+	for index in 9 + variant * 2:
+		var spot := Vector2.from_angle(rng.randf() * TAU) * 0.55 * sqrt(rng.randf())
+		var yaw := rng.randf() * TAU
+		var axis := Vector3(cos(yaw), rng.randf_range(0.0, 0.18), sin(yaw)).normalized()
+		var normal := (Vector3.UP - axis * axis.dot(Vector3.UP)).normalized()
+		var shade := rng.randf_range(0.7, 1.15)
+		var colour := tone.lerp(Color(0.3, 0.2, 0.1), rng.randf() * 0.5) * shade
+		colour.a = 0.0
+		PlantLeafShapes.add_leaf(builder, outline, Vector3(spot.x, 0.012 + 0.006 * index, spot.y), axis,
+				normal, rng.randf_range(0.08, 0.18), 0.04, 0.05, colour.darkened(0.2), colour, 0.0, 0.0,
+				rng.randf_range(0.9, 1.2), Vector2(rng.randf(), rng.randf()))
+
+
+## Fallen sticks: a few thin branches lying across each other (one forked), dry grey-brown wood.
+static func _twigs(builder: MeshBuilder, rng: RandomNumberGenerator, variant: int) -> void:
+	var wood := Color(0.36, 0.28, 0.2).lerp(Color(0.5, 0.44, 0.38), float(variant) / 4.0)
+	for index in 3 + variant % 3:
+		var length := rng.randf_range(0.35, 1.1)
+		var radius := rng.randf_range(0.012, 0.03)
+		var yaw := rng.randf() * TAU
+		var tilt := rng.randf_range(0.0, 0.2)
+		var at := Vector3(rng.randf_range(-0.35, 0.35), radius * 0.8 + 0.02 * index, rng.randf_range(-0.35, 0.35))
+		# the stick lies along the ground: a frustum turned from standing up to lying down
+		var lie := Basis(Vector3.UP, yaw) * Basis(Vector3.BACK, -PI * 0.5 + tilt)
+		builder.xf = Transform3D(lie, at)
+		var shade := rng.randf_range(0.85, 1.1)
+		builder.add_frustum(Vector3.ZERO, length, radius, radius * 0.45, 5, _still(wood.darkened(0.15) * shade),
+				_still(wood * shade), rng, 0.08, MeshBuilder.CAP_BOTTOM)
+		if index == 0:
+			builder.xf = Transform3D(lie * Basis(Vector3.FORWARD, 0.6), at + lie * Vector3(0.0, length * 0.5, 0.0))
+			builder.add_frustum(Vector3.ZERO, length * 0.5, radius * 0.6, radius * 0.25, 4,
+					_still(wood.darkened(0.1)), _still(wood), rng, 0.08)
+	builder.xf = Transform3D.IDENTITY
 
 
 static func _stump(builder: MeshBuilder, rng: RandomNumberGenerator) -> void:

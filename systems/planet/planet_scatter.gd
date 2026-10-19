@@ -79,6 +79,7 @@ func populate(holder: Node3D, key: int, noise: PlanetNoise, positions: Array[Vec
 		_rocks(detail == Detail.ALL)
 	if detail == Detail.ALL and int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 2:
 		_pebbles()
+		_debris()
 	if detail == Detail.ALL:
 		_scatter(PlantSpecies.Layer.GRASS, 1.0)
 		_scatter(PlantSpecies.Layer.MEADOW, 1.0)
@@ -203,6 +204,38 @@ func _pebbles() -> void:
 						_rng.randf_range(0.7, 1.5), _rng.randf_range(0.0, TAU))
 
 
+## Dead leaves and fallen sticks on the ground (the Fine ground detail and up): thick under a forest, some in a
+## meadow, none on bare rock, sand, snow or by the water.
+func _debris() -> void:
+	var spacing := 1.5
+	var count := int(_size / spacing)
+	for row in count:
+		for column in count:
+			var x := (float(column) + _rng.randf()) * spacing
+			var z := (float(row) + _rng.randf()) * spacing
+			var fx := clampf(x / _size * float(_cells), 0.0, float(_cells) - 0.001)
+			var fz := clampf(z / _size * float(_cells), 0.0, float(_cells) - 0.001)
+			var ground := _height_at(fx, fz)
+			if ground < 0.9:
+				continue
+			var dir := _direction(fx, fz)
+			if _noise.near_water(dir, ground, BANK * 0.5):
+				continue
+			var chance := 0.0
+			match _noise.biome(dir.x, dir.y, dir.z, ground, _slope(fx, fz)):
+				TerrainNoise.Biome.FOREST:
+					chance = 0.5
+				TerrainNoise.Biome.MEADOW:
+					chance = 0.12
+				TerrainNoise.Biome.MARSH:
+					chance = 0.1
+			if _rng.randf() >= chance:
+				continue
+			var kind := FloraMeshes.Kind.LITTER if _rng.randf() < 0.7 else FloraMeshes.Kind.TWIGS
+			_queue_kind(kind, _rng.randi() % FloraMeshes.variant_count(kind), _ground(fx, fz),
+					_rng.randf_range(0.8, 1.6), _rng.randf_range(0.0, TAU))
+
+
 func _rock_at(biome: int, steep: float, at: Vector3, near: bool) -> void:
 	var chance := 0.1
 	var big := 1.0
@@ -269,8 +302,10 @@ func _queue_kind(kind: int, variant: int, at: Vector3, scale: float, yaw: float)
 	if not _batches.has(key):
 		_batches[key] = []
 		_colors[key] = []
+	var flat := kind == FloraMeshes.Kind.LITTER or kind == FloraMeshes.Kind.TWIGS # lie on the ground
 	(_batches[key] as Array).append(Transform3D(
-			Basis(Vector3.UP, yaw).scaled(Vector3.ONE * scale), at - Vector3(0.0, scale * 0.12, 0.0)))
+			Basis(Vector3.UP, yaw).scaled(Vector3.ONE * scale),
+			at - Vector3(0.0, 0.0 if flat else scale * 0.12, 0.0)))
 	(_colors[key] as Array).append(Color.WHITE)
 
 
@@ -378,7 +413,8 @@ func _flush(near: bool) -> void:
 		else:
 			mesh = FloraMeshes.mesh(key / 100 as FloraMeshes.Kind, variant, FloraMeshes.detailed)
 		var instance := _add_trees(key, transforms, mesh, true)
-		if not plant and key / 100 == FloraMeshes.Kind.PEBBLES:
+		if not plant and key / 100 in [FloraMeshes.Kind.PEBBLES, FloraMeshes.Kind.LITTER,
+				FloraMeshes.Kind.TWIGS]:
 			instance.visibility_range_end = PEBBLE_VISIBLE
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif layer == PlantSpecies.Layer.GRASS or layer == PlantSpecies.Layer.MEADOW:

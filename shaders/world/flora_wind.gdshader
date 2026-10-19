@@ -144,7 +144,7 @@ void fragment() {
 	}
 	vec2 bump = vec2(0.0);
 	float bump_amount = 0.0;
-	if (realism > 0.001 && sway < 0.1) {
+	if (realism > 0.001 && sway < 0.1 && UV.x < 0.001) { // (a fallen leaf has a UV: not stone)
 		float brown = smoothstep(0.02, 0.1, paint.r - paint.b);
 		if (planks) {
 			// boards: lines every 25 cm, a grain along the board and a different tone per board
