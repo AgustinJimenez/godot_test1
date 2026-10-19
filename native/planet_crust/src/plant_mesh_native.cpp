@@ -534,6 +534,7 @@ struct Grower {
 	int budget = BUDGET;
 	int lod = 0;
 	bool fine = false;
+	bool cards = false; // the realistic look's leaves as cards and strips drawn by the shader (every level of detail)
 	int depth = 3;
 	double height = 8;
 	double trunk_length = 2;
@@ -585,7 +586,7 @@ struct Grower {
 		double bigger = 1.0 + 0.8 * lod;
 		double leaf_basis = 2.0 * pow(std::max(g->crown, 0.2) / 2.0, 0.55);
 		leaf_basis *= pow(std::max(g->crown / 3.5, 1.0), 0.6);
-		leaf_length = leaf_basis * g->leaf_size * (fine ? 1.7 : 2.5) * bigger;
+		leaf_length = leaf_basis * g->leaf_size * (fine || cards ? 1.7 : 2.5) * bigger;
 		double stout = pow(std::max(g->girth / 0.4, 1.0), 0.75);
 		double needle = clampd(leaf_basis * g->needle_size, 0.6, 1.1) * stout;
 		needle_length = needle * (fine ? 1.0 : 1.2) * bigger;
@@ -791,7 +792,7 @@ struct Grower {
 		bool low_plant = g->height < 1.5;
 		// the realistic look: a tall frond's leaflets are a strip along the rib, drawn on it by the shader
 		// (UV2.y 4 + rows / 100: a pinnate strip, see flora_wind.gdshader), not a triangle for each leaflet
-		bool strip = fine && !low_plant && b->leaf_cards && g->leaflet >= 0.02;
+		bool strip = cards && !low_plant && g->leaflet >= 0.02;
 		double rows = clampd(length / 0.08, 10.0, 80.0);
 		double pin_dice = rf();
 		for (int index = 0; index < segments; index++) {
@@ -885,7 +886,7 @@ struct Grower {
 	}
 
 	void mass(const Vector3 &at, double sway) {
-		if (g->foliage_mass <= 0.0 || lod > 0 || full() || rf() > g->foliage_mass) {
+		if (g->foliage_mass <= 0.0 || (lod > 0 && !cards) || full() || rf() > g->foliage_mass) {
 			return;
 		}
 		double size = leaf_length * g->mass_size * rr(1.4, 2.2);
@@ -893,7 +894,7 @@ struct Grower {
 		Color low = with_alpha(tone.darkened(0.3f), sway);
 		Color high = with_alpha(tone, std::min(sway + LEAF_SWAY, 1.0));
 		Color middle = with_alpha(tone.darkened(0.12f), std::min(sway + 0.2, 1.0));
-		if (fine && b->leaf_cards) {
+		if (cards) {
 			Vector3 heart = at + Vector3(0, (real_t)(size * 0.2), 0);
 			double turn = rf() * TAU_D;
 			for (int card = 0; card < 3; card++) {
@@ -1228,7 +1229,7 @@ struct Grower {
 			feather(at, axis, normal, size * 1.6, base_color, tip_color);
 			return;
 		}
-		if (fine && b->leaf_cards) {
+		if (cards && !g->compound) {
 			add_leaf_card(*b, at, axis, normal, size * 1.35, base_color, tip_color, rf());
 			return;
 		}
@@ -1239,6 +1240,22 @@ struct Grower {
 	void feather(const Vector3 &at, const Vector3 &axis, const Vector3 &normal, double length,
 			const Color &base_color, const Color &tip_color) {
 		Vector3 across = axis.cross(normal).normalized();
+		if (cards) {
+			// realistic: the leaflets of a feather leaf as one strip each side of its stalk, drawn by the shader
+			Vector3 stalk_to = at + axis * (real_t)length;
+			double rows = clampd(length / 0.045, 6.0, 20.0);
+			Vector2 mark((real_t)rf(), (real_t)(4.0 + rows * 0.01));
+			for (int s = 0; s < 2; s++) {
+				Vector3 way = (across * (real_t)(s == 0 ? -0.9 : 0.9) + axis * 0.45f + normal * 0.15f).normalized();
+				Vector3 out_a = at + way * (real_t)(length * 0.26);
+				Vector3 out_c = stalk_to + way * (real_t)(length * 0.1);
+				b->tri_uv(at, stalk_to, out_c, base_color, tip_color, tip_color, Vector2(0, 0), Vector2(0, 1),
+						Vector2(1, 1), mark);
+				b->tri_uv(at, out_c, out_a, base_color, tip_color, base_color, Vector2(0, 0), Vector2(1, 1),
+						Vector2(1, 0), mark);
+			}
+			return;
+		}
 		int pairs = fine ? 4 : 3;
 		Vector3 stalk_end = at + axis * (real_t)length;
 		Vector3 stalk = across * (real_t)(length * 0.02);
@@ -1282,6 +1299,30 @@ struct Grower {
 		Color tip_color = g->frosted ? Color(0.93f, 0.95f, 0.98f) : mix(g->leaf_tip, tone, 0.3);
 		Color base_color = with_alpha(tone.darkened(0.25f), sway);
 		tip_color.a = (float)std::min(sway + NEEDLE_SWAY, 1.0);
+		if (cards) {
+			// realistic: three feathery branchlets (the shader draws the needles on a strip along each, UV2.y
+			// 6 + rows / 100), the one along the spray and one turned each way, the outer ones a little shorter
+			double dice = rf();
+			Vector2 mark((real_t)dice, (real_t)(6.0 + 14.0 * 0.01));
+			for (int k = -1; k <= 1; k++) {
+				double turn = k * 0.6 + rr(-0.1, 0.1);
+				double lift = rr(-0.05, 0.3);
+				Vector3 dir = (axis * (real_t)cos(turn) + side * (real_t)sin(turn) + up * (real_t)lift).normalized();
+				double reach = length * rr(0.85, 1.1) * (k == 0 ? 1.0 : 0.82);
+				Vector3 across = dir.cross(up).normalized() * (real_t)(reach * 0.34);
+				Vector3 tip = base + dir * (real_t)reach + DOWN * (real_t)(reach * 0.08);
+				for (int s = 0; s < 2; s++) {
+					Vector3 spread = across * (real_t)(s == 0 ? -1.0 : 1.0);
+					Vector3 out_base = base + spread * 0.5f;
+					Vector3 out_tip = tip + spread * 0.55f;
+					b->tri_uv(base, tip, out_tip, base_color, tip_color, tip_color, Vector2(0, 0), Vector2(0, 1),
+							Vector2(1, 1), mark);
+					b->tri_uv(base, out_tip, out_base, base_color, tip_color, base_color, Vector2(0, 0), Vector2(1, 1),
+							Vector2(1, 0), mark);
+				}
+			}
+			return;
+		}
 		double width = length * 0.1;
 		for (int index = 0; index < count; index++) {
 			double fan = ((double)index / (count - 1) - 0.5) * 2.0;
@@ -1362,6 +1403,7 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 		grower.rng = &rng;
 		grower.lod = p_lod;
 		grower.fine = p_detailed && p_lod == 0;
+		grower.cards = p_detailed && p_leaf_cards;
 		grower.depth = g.depth;
 		grower.thrift = thrift;
 		grower.budget = (int)clampd(1500.0 + 2000.0 * g.height, 1500, BUDGET);

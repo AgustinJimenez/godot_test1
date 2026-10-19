@@ -61,7 +61,11 @@ func _initialize() -> void:
 	root.add_child(environment)
 	var camera := Camera3D.new()
 	root.add_child(camera)
-	if shown > 0.0:
+	if shown > 0.0 and args.size() > 2: # a close look: args[2] = "x,y,z" of the camera, looking at the origin's column
+		var parts := args[2].split(",")
+		camera.look_at_from_position(Vector3(parts[0].to_float(), parts[1].to_float(), parts[2].to_float()),
+				Vector3(parts[0].to_float(), parts[1].to_float(), 0.0))
+	elif shown > 0.0:
 		camera.look_at_from_position(Vector3(0.0, shown * 0.7, shown * 1.1 + 3.0), Vector3(0.0, shown * 0.75, 0.0))
 	else:
 		camera.look_at_from_position(Vector3(0.0, 2.6 if kind != FloraMeshes.Kind.ROCK else 2.0,
