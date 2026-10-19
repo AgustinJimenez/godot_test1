@@ -237,3 +237,15 @@ height: 54 m draws nothing, 74 m draws everything, the same place. The near plan
 a ten-millionth of the far plane (6 cm with a 600 km far plane). A first-person weapon closer than that
 would clip; if it shows, bring the far plane down at the ground instead (the horizon is only ~5 km
 there).
+
+## Water, looked at properly now (after the near-plane fix)
+
+Open sea 14-35 m above the surface (`--sea --water --dir=0.86766,0.49700,0.01278 --view-alt=2012`):
+small waves, a sun glitter path toward the sun, the water lighter and hazier toward the horizon, fine
+ripples fading with the distance (the far-glint fix). It reads as a sea. Not looked at yet: the
+shore line (foam and the bed seen through shallow water) and rivers close up; the places found
+by script had a very flat shore (the sea 500 m away from a 4 m high plain) and I did not find a
+steep one. Lab notes: `--view-alt` is above the ground, so over deep sea add the depth (floor 1996 m
+down here, so 2012 puts the camera 16 m above the water); tests that run with `godot -s` no longer
+compile when they touch `PlanetScatter` or `PlanetAtmosphere` (they use the GraphicsSettings autoload),
+so use the lab scene or give the script the autoload.
