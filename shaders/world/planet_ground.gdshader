@@ -396,25 +396,39 @@ void fragment() {
 				// the view ray into the height of the chunks (the surface is the top, 3 cm above the soil)
 				vec3 ray = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
 				float slant = max(dot(-ray, facing_anchor), 0.12);
-				const int STEPS = 6;
+				// a linear search down the ray (each pixel starts a little differently, so the steps do not show as bands), then four
+				// halvings of the step the ray went in at (the ground it hits is found, not guessed from the two nearest steps)
+				const int STEPS = 8;
 				const float TOTAL = 0.03;
-				float last_gap = 0.0;
-				float last_s = 0.0;
+				float jitter = fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453);
+				float last_travel = 0.0;
+				float found = -1.0;
+				float bracket_low = 0.0;
+				float bracket_high = 0.0;
 				for (int i = 1; i <= STEPS; i++) {
-					float depth = TOTAL * float(i) / float(STEPS);
+					float depth = TOTAL * (float(i) - 1.0 + jitter) / float(STEPS - 1);
 					float travel = depth / slant;
 					vec3 at = crumb_at + ray * travel;
 					float height_here = crumb_height(at, size_mid, size_big, cover_mid, cover_big);
-					float gap = depth - (TOTAL - height_here); // above 0: the ray is inside the ground
-					if (gap >= 0.0) {
-						float blend = last_gap / max(last_gap - gap, 0.0001); // where between the two steps it went in
-						float found = mix(last_s, travel, clamp(blend, 0.0, 1.0));
-						hit = mix(crumb_at, crumb_at + ray * found, parallax_fade);
-						hit_height = height_here;
+					if (depth >= TOTAL - height_here) {
+						bracket_low = last_travel;
+						bracket_high = travel;
+						found = travel;
 						break;
 					}
-					last_gap = gap;
-					last_s = travel;
+					last_travel = travel;
+				}
+				if (found >= 0.0) {
+					for (int k = 0; k < 4; k++) {
+						float middle = 0.5 * (bracket_low + bracket_high);
+						float depth_middle = middle * slant;
+						if (depth_middle >= TOTAL - crumb_height(crumb_at + ray * middle, size_mid, size_big, cover_mid, cover_big)) {
+							bracket_high = middle;
+						} else {
+							bracket_low = middle;
+						}
+					}
+					hit = mix(crumb_at, crumb_at + ray * bracket_high, parallax_fade);
 				}
 				// the sun: the chunks the ray from the hit towards the sun passes through shade it
 				vec3 sun_anchor = normalize(mat3(anchor_from_world) * normalize(cloud_sun_world));
