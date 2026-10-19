@@ -58,5 +58,7 @@ says depth falls with slope and rises in valleys, coarse hard parent rock gives 
 (stochastic "texture bombing" anti-tiling, height and slope blending as in Unity/Unreal terrain shaders, Horizon Zero Dawn's
 rule graphs for placement) are rule layers over masks: that is what this is. No published rule set for stone probability
 was found: the numbers above are ours, to be tuned by eye.
-Not done: the depth (CUSTOM2.g) is not used by the shader yet (thin soil should show more bare rock), and the odds are
-not used by the placed pebble and rock instances (`_pebbles`, `_rock_at` have their own odds by biome).
+Done afterwards: the soil depth (CUSTOM2.g) makes thin soil show more bare rock (`w_rock` rises by up to 0.25 where the soil
+is thin), and the placed pebble and rock instances follow the same odds (`PlanetCrustNative::stoniness_at`, called by
+`PlanetScatterNative`: pebbles x (0.1 + 1.5 stoniness), rocks x (0.3 + 1.4 stoniness)). Still not done: the rock spires, logs
+and stumps keep their own odds by biome; the spires (cones) look like obelisks and want a better shape.

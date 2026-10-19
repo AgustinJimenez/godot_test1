@@ -1730,15 +1730,76 @@ PackedColorArray PlanetCrustNative::ground_colours(const PackedVector3Array &p_d
 // slabs, shale and schist into plates), how organic the soil is (128 neutral: black earth and peat above, the ash of cold
 // forests, loess and desert dust below) and how much iron (red laterite where it is hot and wet, red sandstone). Smooth
 // numbers, so the stones and the soil change gradually from one place to the next.
+// The surface numbers of one point (see `ground_materials`): ten bytes written at `at`.
+void PlanetCrustNative::material_at(const Vector3 &dir, double ground, double steep, uint8_t *at) const {
+	// per rock: angular, coarse, pale, flaky
+	static const float TABLE[9][4] = { { 0.8f, 0.35f, 0.0f, 0.1f }, { 0.75f, 0.45f, 0.25f, 0.1f }, { 0.85f, 0.85f, 0.65f, 0.0f },
+		{ 0.7f, 0.6f, 0.5f, 0.35f }, { 0.5f, 0.35f, 0.4f, 0.9f }, { 0.2f, 0.55f, 0.95f, 0.1f }, { 0.3f, 0.15f, 0.7f, 0.4f },
+		{ 0.3f, 0.15f, 0.45f, 0.4f }, { 0.4f, 0.2f, 0.15f, 1.0f } };
+	float w[9];
+	rock_weights(dir, ground, w);
+	float mixed[4] = { 0, 0, 0, 0 };
+	for (int rock = 0; rock < 9; rock++) {
+		for (int k = 0; k < 4; k++) {
+			mixed[k] += TABLE[rock][k] * w[rock];
+		}
+	}
+	const double cold = sea_temperature(dir) - 0.0065 * (ground > 0.0 ? ground : 0.0);
+	const double wet = clampd(grid_at(rain_grid, dir, 0.5) / 0.9, 0.0, 1.0);
+	const double dry = smooth(0.3, 0.1, wet);
+	const double laterite = smooth(16.0, 24.0, cold) * smooth(0.55, 0.9, wet);
+	const double black_earth = smooth(2.0, 8.0, cold) * (1.0 - smooth(16.0, 22.0, cold)) * smooth(0.3, 0.45, wet) * (1.0 - smooth(0.6, 0.8, wet));
+	const double peat = smooth(0.7, 0.95, wet) * smooth(-2.0, 6.0, cold) * (1.0 - smooth(12.0, 18.0, cold)) * (1.0 - smooth(0.1, 0.3, steep));
+	const double ash = smooth(8.0, 2.0, cold) * smooth(-6.0, 0.0, cold) * smooth(0.6, 0.85, wet);
+	const double organic = clampd(0.5 + 0.4 * black_earth + 0.45 * peat - 0.35 * ash - 0.3 * dry, 0.0, 1.0);
+	const double iron = clampd(laterite + 0.6 * (double)w[7] + 0.15 * (double)w[6] * dry, 0.0, 1.0);
+	// where stones lie: a probability by area, not an everywhere. Coarse hard rock weathers to gravel, soft
+	// sedimentary rock to fine soil; steep ground sheds rubble (scree) and has thin soil, so does high ground and
+	// the cold above the tree line (frost shatters rock); dry ground is stripped (desert pavement) while deep, wet,
+	// organic soil buries its stones; rivers leave gravel bars along their beds; and over all of it large
+	// regions of the planet are stone free and others stony (the glaciers, the floods and the winds of the past)
+	const double hard = (double)mixed[1] * 0.6 + (double)(w[0] + w[1] + w[2] + w[3]) * 0.4; // coarse and igneous
+	const double ridge = smooth(100.0, 900.0, ground);
+	const double frost = smooth(2.0, -6.0, cold);
+	const double fertile_deep = wet * smooth(-2.0, 10.0, cold) * (1.0 - smooth(0.2, 0.5, steep));
+	double alluvial = 0.0;
+	if (river_cells > 0) {
+		Valley valley;
+		if (valley_at(dir.normalized(), valley)) {
+			const double reach = valley.floor_half * 2.5 + 20.0;
+			alluvial = std::exp(-std::max(valley.nearest - valley.floor_half * 0.5, 0.0) / reach) * smooth(0.0, 0.5, ground);
+		}
+	}
+	double stony = 0.12 + 0.3 * hard + 0.6 * smooth(0.12, 0.5, steep) + 0.3 * ridge + 0.35 * frost + 0.3 * dry
+			+ 0.7 * alluvial - 0.35 * fertile_deep * (0.4 + 0.6 * organic);
+	// the regions: stone free over a third of the land, thick elsewhere; patches a few hundred metres across
+	const double region = (double)detail.at(dir * (real_t)(radius / 180.0) + Vector3(5, 0, 3)) * 0.5 + 0.5;
+	const double patches = (double)detail.at(dir * (real_t)(radius / 26.0) + Vector3(0, 9, 4)) * 0.5 + 0.5;
+	stony *= smooth(0.38, 0.62, region + 0.35 * (patches - 0.5)); // 0 in the clean regions
+	stony *= 0.5 + 0.9 * smooth(0.3, 0.7, patches);
+	const double depth = clampd(0.25 + 0.65 * fertile_deep + 0.25 * alluvial - 0.5 * smooth(0.1, 0.45, steep) - 0.35 * ridge - 0.25 * frost - 0.2 * dry, 0.0, 1.0);
+	at[6] = (uint8_t)(int)(clampd(stony, 0.0, 1.0) * 255.0);
+	at[7] = (uint8_t)(int)(depth * 255.0);
+	at[8] = (uint8_t)(int)(clampd(alluvial, 0.0, 1.0) * 255.0);
+	at[9] = 0;
+	for (int k = 0; k < 4; k++) {
+		at[k] = (uint8_t)(int)(clampd((double)mixed[k], 0.0, 1.0) * 255.0);
+	}
+	at[4] = (uint8_t)(int)(organic * 255.0);
+	at[5] = (uint8_t)(int)(iron * 255.0);
+}
+
+double PlanetCrustNative::stoniness_at(const Vector3 &dir, double ground, double steep) const {
+	uint8_t at[10];
+	material_at(dir, ground, steep, at);
+	return (double)at[6] / 255.0;
+}
+
 PackedByteArray PlanetCrustNative::ground_materials(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 		const PackedVector3Array &p_normals, int p_cells) const {
 	const int side = p_cells + 3;
 	PackedByteArray result;
 	result.resize(side * side * 10);
-	// per rock: angular, coarse, pale, flaky
-	static const float TABLE[9][4] = { { 0.8f, 0.35f, 0.0f, 0.1f }, { 0.75f, 0.45f, 0.25f, 0.1f }, { 0.85f, 0.85f, 0.65f, 0.0f },
-		{ 0.7f, 0.6f, 0.5f, 0.35f }, { 0.5f, 0.35f, 0.4f, 0.9f }, { 0.2f, 0.55f, 0.95f, 0.1f }, { 0.3f, 0.15f, 0.7f, 0.4f },
-		{ 0.3f, 0.15f, 0.45f, 0.4f }, { 0.4f, 0.2f, 0.15f, 1.0f } };
 	uint8_t *out = result.ptrw();
 	for (int row = 1; row <= p_cells + 1; row++) {
 		for (int column = 1; column <= p_cells + 1; column++) {
@@ -1746,58 +1807,7 @@ PackedByteArray PlanetCrustNative::ground_materials(const PackedVector3Array &p_
 			const Vector3 dir = p_dirs[index];
 			const double ground = p_heights[index];
 			const double steep = 1.0 - (double)p_normals[index].y;
-			float w[9];
-			rock_weights(dir, ground, w);
-			float mixed[4] = { 0, 0, 0, 0 };
-			for (int rock = 0; rock < 9; rock++) {
-				for (int k = 0; k < 4; k++) {
-					mixed[k] += TABLE[rock][k] * w[rock];
-				}
-			}
-			const double cold = sea_temperature(dir) - 0.0065 * (ground > 0.0 ? ground : 0.0);
-			const double wet = clampd(grid_at(rain_grid, dir, 0.5) / 0.9, 0.0, 1.0);
-			const double dry = smooth(0.3, 0.1, wet);
-			const double laterite = smooth(16.0, 24.0, cold) * smooth(0.55, 0.9, wet);
-			const double black_earth = smooth(2.0, 8.0, cold) * (1.0 - smooth(16.0, 22.0, cold)) * smooth(0.3, 0.45, wet) * (1.0 - smooth(0.6, 0.8, wet));
-			const double peat = smooth(0.7, 0.95, wet) * smooth(-2.0, 6.0, cold) * (1.0 - smooth(12.0, 18.0, cold)) * (1.0 - smooth(0.1, 0.3, steep));
-			const double ash = smooth(8.0, 2.0, cold) * smooth(-6.0, 0.0, cold) * smooth(0.6, 0.85, wet);
-			const double organic = clampd(0.5 + 0.4 * black_earth + 0.45 * peat - 0.35 * ash - 0.3 * dry, 0.0, 1.0);
-			const double iron = clampd(laterite + 0.6 * (double)w[7] + 0.15 * (double)w[6] * dry, 0.0, 1.0);
-			// where stones lie: a probability by area, not an everywhere. Coarse hard rock weathers to gravel, soft
-			// sedimentary rock to fine soil; steep ground sheds rubble (scree) and has thin soil, so does high ground and
-			// the cold above the tree line (frost shatters rock); dry ground is stripped (desert pavement) while deep, wet,
-			// organic soil buries its stones; rivers leave gravel bars along their beds; and over all of it large
-			// regions of the planet are stone free and others stony (the glaciers, the floods and the winds of the past)
-			const double hard = (double)mixed[1] * 0.6 + (double)(w[0] + w[1] + w[2] + w[3]) * 0.4; // coarse and igneous
-			const double ridge = smooth(100.0, 900.0, ground);
-			const double frost = smooth(2.0, -6.0, cold);
-			const double fertile_deep = wet * smooth(-2.0, 10.0, cold) * (1.0 - smooth(0.2, 0.5, steep));
-			double alluvial = 0.0;
-			if (river_cells > 0) {
-				Valley valley;
-				if (valley_at(dir.normalized(), valley)) {
-					const double reach = valley.floor_half * 2.5 + 20.0;
-					alluvial = std::exp(-std::max(valley.nearest - valley.floor_half * 0.5, 0.0) / reach) * smooth(0.0, 0.5, ground);
-				}
-			}
-			double stony = 0.12 + 0.3 * hard + 0.6 * smooth(0.12, 0.5, steep) + 0.3 * ridge + 0.35 * frost + 0.3 * dry
-					+ 0.7 * alluvial - 0.35 * fertile_deep * (0.4 + 0.6 * organic);
-			// the regions: stone free over a third of the land, thick elsewhere; patches a few hundred metres across
-			const double region = (double)detail.at(dir * (real_t)(radius / 180.0) + Vector3(5, 0, 3)) * 0.5 + 0.5;
-			const double patches = (double)detail.at(dir * (real_t)(radius / 26.0) + Vector3(0, 9, 4)) * 0.5 + 0.5;
-			stony *= smooth(0.38, 0.62, region + 0.35 * (patches - 0.5)); // 0 in the clean regions
-			stony *= 0.5 + 0.9 * smooth(0.3, 0.7, patches);
-			const double depth = clampd(0.25 + 0.65 * fertile_deep + 0.25 * alluvial - 0.5 * smooth(0.1, 0.45, steep) - 0.35 * ridge - 0.25 * frost - 0.2 * dry, 0.0, 1.0);
-			uint8_t *at = out + index * 10;
-			at[6] = (uint8_t)(int)(clampd(stony, 0.0, 1.0) * 255.0);
-			at[7] = (uint8_t)(int)(depth * 255.0);
-			at[8] = (uint8_t)(int)(clampd(alluvial, 0.0, 1.0) * 255.0);
-			at[9] = 0;
-			for (int k = 0; k < 4; k++) {
-				at[k] = (uint8_t)(int)(clampd((double)mixed[k], 0.0, 1.0) * 255.0);
-			}
-			at[4] = (uint8_t)(int)(organic * 255.0);
-			at[5] = (uint8_t)(int)(iron * 255.0);
+			material_at(dir, ground, steep, out + index * 10);
 		}
 	}
 	return result;

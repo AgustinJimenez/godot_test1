@@ -311,7 +311,7 @@ void fragment() {
 			if (surface_fade > 0.01) {
 				vec3 facing = mat3(anchor_from_world) * world_normal;
 				float on_sand = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(-0.03, 0.0, paint.g - paint.r));
-				float w_rock = smoothstep(0.2, 0.45, slope);
+				float w_rock = smoothstep(0.2, 0.45, slope + (1.0 - lie.y) * 0.25 * (1.0 - snow_cover)); // thin soil shows the rock
 				float w_sand = on_sand * (1.0 - w_rock);
 				float w_soil = 1.0 - w_rock - w_sand;
 				vec4 surface = vec4(0.0, 0.0, 0.0, 0.0);

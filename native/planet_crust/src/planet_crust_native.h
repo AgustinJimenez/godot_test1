@@ -228,6 +228,10 @@ public:
 	PackedByteArray ground_materials(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedVector3Array &p_normals, int p_cells) const;
 	void rock_weights(const Vector3 &p_dir, double p_ground, float *w) const;
+	// the ten surface bytes of one point (stones angular, coarse, pale, flaky; organic; iron; stoniness; depth; river gravel; 0)
+	void material_at(const Vector3 &p_dir, double p_ground, double p_steep, uint8_t *r_bytes) const;
+	// how stony the ground is there, 0 (clean soil) .. 1 (a stone field): the placed stones and rocks follow it
+	double stoniness_at(const Vector3 &p_dir, double p_ground, double p_steep) const;
 };
 
 } // namespace godot

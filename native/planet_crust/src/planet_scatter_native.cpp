@@ -274,6 +274,14 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	auto near_water = [&](const Vector3 &dir, double ground, double margin) {
 		return crust.is_valid() && crust->near_water(dir, ground, margin);
 	};
+	// how stony the ground is (the crust's odds by area: geology, slope, height, frost, dryness, river gravel, whole regions
+	// with none): the placed stones and rocks follow it, as the stones the ground shader draws do
+	auto stony_at = [&](const Vector3 &dir, double ground, double gradient) {
+		if (!crust.is_valid()) {
+			return 0.5;
+		}
+		return crust->stoniness_at(dir, ground, 1.0 - 1.0 / std::sqrt(1.0 + gradient * gradient));
+	};
 	const Vector3 spawn = p_tile.get("clearing", clearing);
 	auto in_clearing = [&](const Vector3 &dir) {
 		if (spawn == Vector3()) {
@@ -512,7 +520,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		});
 	};
 
-	auto rock_at = [&](int biome, double steep, const Vector3 &at, bool near) {
+	auto rock_at = [&](int biome, double steep, const Vector3 &at, bool near, double stony) {
 		double chance = 0.1, big = 1.0;
 		switch (biome) {
 			case ROCKY: chance = 0.55; big = 2.2; break;
@@ -522,6 +530,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			default: break;
 		}
 		chance += steep * 0.3;
+		chance *= 0.3 + 1.4 * stony;
 		if (t.rng.randf() < chance * rock_density) {
 			double scale = t.rng.range(0.5, 1.5) * big;
 			double yaw = t.rng.range(0.0, TAU_D);
@@ -571,7 +580,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			}
 			double steep = slope_at(fx, fz);
 			Climate c = climate_at(dir);
-			rock_at(biome_of(c, ground, steep), steep, ground_at(fx, fz), near);
+			rock_at(biome_of(c, ground, steep), steep, ground_at(fx, fz), near, stony_at(dir, ground, steep));
 		});
 	};
 
@@ -595,6 +604,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 				case BEACH: chance += 0.2; break;
 				default: break;
 			}
+			chance *= 0.1 + 1.5 * stony_at(dir, ground, steep);
 			if (t.rng.randf() < chance * rock_density) {
 				queue_kind(PEBBLES, t.rng.randi() % kind_variants[PEBBLES], ground_at(fx, fz), t.rng.range(0.7, 1.5), t.rng.range(0.0, TAU_D));
 			}
