@@ -118,7 +118,7 @@ func _scatter(layer: PlantSpecies.Layer, stretch: float) -> void:
 ## The horizon: a sparse grid of the cheap far trees (one cone or one trunk and ball each), so a
 ## forest does not stop where the real trees do. Same species rules as near trees.
 func _scatter_far() -> void:
-	var spacing := clampf(_size / 14.0, 20.0, 140.0)
+	var spacing := clampf(_size / 26.0, 14.0, 90.0)
 	var count := int(_size / spacing)
 	for row in count:
 		for column in count:
@@ -142,7 +142,7 @@ func _scatter_far() -> void:
 				_batches[key] = []
 				_colors[key] = []
 			# a far tree stands for the trees around it: a little bigger than one
-			var scale := _rng.randf_range(0.9, 1.5)
+			var scale := _rng.randf_range(1.0, 1.8)
 			(_batches[key] as Array).append(Transform3D(
 					Basis(Vector3.UP, _rng.randf_range(0.0, TAU)).scaled(Vector3.ONE * scale),
 					_ground(fx, fz) - Vector3(0.0, 0.2, 0.0)))
