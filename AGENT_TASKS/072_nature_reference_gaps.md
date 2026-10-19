@@ -85,3 +85,6 @@ variety of near things* (A, E, F) and *light mood* (B, C).
    patches of yellowing grass, darker clumps, and flowers (white, yellow, purple) as round dots in
    drifts (3D cells, so they stay round on slopes). Flowers are still small and sparse at a distance:
    real flower meshes belong to task 3 (plants).
+4. **Warm / cool haze split** (`environment.fog_sun_scatter`, 0.55 on a clear day): toward a low sun the
+   haze takes the sun's colour and gives long warm layers; away from it it stays blue-green. Noon looks
+   as before (checked at 12:30). Seen on the green hills of seed 8 at 8:00.

@@ -224,6 +224,9 @@ func _apply() -> void:
 		density = 0.0
 	environment.fog_density = UNDERWATER_FOG if underwater else maxf(density, 0.0)
 	environment.fog_aerial_perspective = 0.0
+	# toward the sun the haze takes the sun's own colour (warm at dawn and dusk, white at noon); away
+	# from it it stays the blue of the air: the warm / cool split of a real landscape
+	environment.fog_sun_scatter = clampf(0.55 * (1.0 - overcast), 0.0, 0.55) if not underwater else 0.0
 	_shafts()
 	environment.fog_sky_affect = 0.0 if altitude > air_top() else 0.35
 	if underwater:
