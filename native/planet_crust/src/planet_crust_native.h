@@ -188,6 +188,13 @@ public:
 	void set_weather(const Dictionary &p_config);
 	// {cover, clumps} of the cloud at a direction (PlanetWeather.cloud_cells); `p_grid` is the seasons' grid now,
 	// `p_decl` the star's declination and `p_days` the absolute day
+	// the cloud pattern and the threshold it is cut at (cover = smooth(threshold - 0.12, threshold + 0.12, pattern)), and the
+	// clumps: what `cloud_cells` makes its answer from (a map row computes every other pixel and blends the two)
+	struct CloudField {
+		double pattern = 0.0, threshold = 0.0, cells = 0.0;
+	};
+	CloudField cloud_field(const Vector3 &p_dir, double p_macro, const float *p_grid, int p_gw, int p_gh, double p_decl,
+			double p_days) const;
 	Vector2 cloud_cells(const Vector3 &p_dir, double p_macro, const float *p_grid, int p_gw, int p_gh, double p_decl,
 			double p_days) const;
 	PackedByteArray data_row(int p_layer, const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,

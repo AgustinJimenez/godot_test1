@@ -56,3 +56,12 @@ on the seed 8 meadow. `PlantMeshNative` also builds the scenery (rocks, pebbles,
 sticks), the far trees and the mushrooms (`scenery`, `far_tree`, `mushroom`); its dice are the engine's own PCG32, so the
 meshes are the script's exactly. The scripts (`MeshBuilder`, `FloraMeshes._rock`..., `PlantTreeBuilders.far`,
 `PlantGroundBuilders`) stay as the fallback.
+
+## 5. Map pictures (2048x1024 whole Earth, 2026-10-19, `PlanetChartProfile` / `tests/manual/planet/chart_times.gd`)
+Every picture logs its phases (CPU per phase, summed over threads, plus the native cloud, sea-ice and land-colour time) to
+`user://planet_map.log`, and to the output with PLANET_CHART_PROFILE=1.
+Before -> after: Clouds 1160 -> 633 ms, Satellite 813 -> 442, Cloud mask 714 -> 328 (the cloud pattern is worked out for
+every other pixel of a row and blended: 3.3 s -> 1.45 s of CPU), sea ice 822 -> 238 ms CPU (no trig per latitude step),
+and the smoothing, despeckle and coast lines (60-430 ms) now run on the last chart thread, so the main thread only makes
+the image (0.0 ms). Terrain is 1.2-1.4 s: the heights of the whole planet (5 s of CPU over all threads), cached for the
+other layers.

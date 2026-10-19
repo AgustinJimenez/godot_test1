@@ -45,6 +45,9 @@ var _land_bands: Array[PackedByteArray] = [] # 1 where the pixel is land (for th
 var _rows_done := 0
 var _mutex := Mutex.new()
 var _started_usec := 0
+var _finishing := 0 ## workers that have finished their rows (the last one tidies the picture)
+var _tidied := false ## the picture is finished: smoothed, the coasts drawn
+var _picture := PackedByteArray()
 var _cancelled := false # a chart nobody wants any more: its workers skip the pixels
 
 
@@ -119,7 +122,10 @@ func progress() -> float:
 
 
 func finished() -> bool:
-	return progress() >= 1.0
+	_mutex.lock()
+	var tidied := _tidied
+	_mutex.unlock()
+	return tidied and progress() >= 1.0
 
 
 ## The finished picture (joins the threads). Null while it is not done.
@@ -130,12 +136,25 @@ func texture() -> ImageTexture:
 		thread.wait_to_finish()
 	_threads.clear()
 	var mark := Time.get_ticks_usec()
+	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, _picture)
+	var made := ImageTexture.create_from_image(image)
+	PlanetChartProfile.lap("image and texture (main thread)", mark)
+	PlanetChartProfile.report("%s %dx%d%s" % [NAMES[layer] if layer < NAMES.size() else "Cloud mask",
+			size.x, size.y, "" if rect == Rect2(0.0, 0.0, 1.0, 1.0) else " (a part)"],
+			float(Time.get_ticks_usec() - _started_usec) / 1000.0, _noise.native)
+	return made
+
+
+## The last worker to finish its rows tidies the picture on its own thread (the main thread only makes the image): the bands
+## are joined, lone dots taken out, a data layer smoothed and the coasts drawn, the heights kept for the next layer.
+func _tidy() -> void:
+	var mark := Time.get_ticks_usec()
 	var all := PackedByteArray()
 	for band in _bands:
 		all.append_array(band)
 	mark = PlanetChartProfile.lap("join the bands", mark)
 	var tidy := layer != Layer.PLATES and layer != Layer.CLOUD_MASK
-	if tidy and _noise.native != null and _noise.native.has_method(&"despeckle"):
+	if not _cancelled and tidy and _noise.native != null and _noise.native.has_method(&"despeckle"):
 		all = _noise.native.call(&"despeckle", all, size.x, size.y) # (lone dots are grain)
 		mark = PlanetChartProfile.lap("despeckle", mark)
 	var full_map := rect == Rect2(0.0, 0.0, 1.0, 1.0) and _pixel_metres > SMOOTH_PIXEL
@@ -147,7 +166,7 @@ func texture() -> ImageTexture:
 			_noise.map_heights[size] = heights
 		mark = PlanetChartProfile.lap("keep the heights", mark)
 	var far := _pixel_metres > CALM_PIXEL * 50.0 # (kilometres a pixel: Elevation is grain too)
-	if layer == Layer.ATLAS and _noise.native != null: # (flat colours: a blur, coast lines)
+	if not _cancelled and layer == Layer.ATLAS and _noise.native != null: # (flat colours: a blur, coast lines)
 		var atlas_passes := 4 if _pixel_metres > 2000.0 else 1 # (close in the hatching must stay)
 		for pass_number in atlas_passes:
 			all = _noise.native.call(&"smooth_rgb", all, size.x, size.y)
@@ -157,7 +176,7 @@ func texture() -> ImageTexture:
 		if atlas_land.size() >= size.x * size.y:
 			all = _noise.native.call(&"coast_lines", all, atlas_land, size.x, size.y)
 		mark = PlanetChartProfile.lap("atlas blur and coasts", mark)
-	if _noise.native != null and (layer in SMOOTHED or (layer == Layer.ELEVATION and far)):
+	if not _cancelled and _noise.native != null and (layer in SMOOTHED or (layer == Layer.ELEVATION and far)):
 		# (a data layer is a smooth gradient: the grain of the small pixels is averaged away, and a thin
 		# dark line follows the coasts so the sea and the land read through the colours)
 		var passes := 8 if layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE] else 3
@@ -169,13 +188,10 @@ func texture() -> ImageTexture:
 		if land_all.size() >= size.x * size.y:
 			all = _noise.native.call(&"coast_lines", all, land_all, size.x, size.y)
 		mark = PlanetChartProfile.lap("smooth and coasts", mark)
-	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, all)
-	var made := ImageTexture.create_from_image(image)
-	PlanetChartProfile.lap("image and texture", mark)
-	PlanetChartProfile.report("%s %dx%d%s" % [NAMES[mini(layer, NAMES.size() - 1)] if layer < NAMES.size() else "Cloud mask",
-			size.x, size.y, "" if rect == Rect2(0.0, 0.0, 1.0, 1.0) else " (a part)"],
-			float(Time.get_ticks_usec() - _started_usec) / 1000.0, _noise.native)
-	return made
+	_mutex.lock()
+	_picture = all
+	_tidied = true
+	_mutex.unlock()
 
 
 ## Stops drawing (the rows still left come out empty and fast); the picture is thrown away.
@@ -316,6 +332,12 @@ func _chart(worker: int) -> void:
 	_bands[worker] = bytes
 	_land_bands[worker] = land
 	_ground_bands[worker] = recorded
+	_mutex.lock()
+	_finishing += 1
+	var last := _finishing == workers
+	_mutex.unlock()
+	if last:
+		_tidy()
 
 
 ## The directions of the pixels of one row (latitude `lat`).

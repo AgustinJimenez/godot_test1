@@ -546,13 +546,31 @@ double PlanetCrustNative::sea_temperature(const Vector3 &p_dir) const {
 // How frozen the sea is at a direction: the mean temperature over a band of latitude (the climate's ice-albedo
 // feedback makes it jump, a straight line round the planet), wobbled by noise so the edge of the ice is ragged.
 double PlanetCrustNative::sea_ice(const Vector3 &p_dir) const {
+	const double pi = 3.14159265358979323846;
 	const double lat = std::asin(std::max(-1.0, std::min(1.0, (double)p_dir.y)));
 	const double lon = std::atan2((double)p_dir.z, (double)p_dir.x);
 	const double wobble = (double)warp.at(p_dir * (real_t)3.0) * 0.14;
+	if (climate_width <= 0 || climate_height <= 0 || climate_grid.size() < climate_width * climate_height) {
+		return smooth(-1.5, -8.0, 15.0);
+	}
+	// the temperature on the grid at (latitude, this longitude) for five latitudes round `lat`: the longitude's column
+	// weights are the same for all of them
+	const double fx = (lon + pi) / (2.0 * pi) * climate_width - 0.5;
+	const int x0 = (int)std::floor(fx);
+	const double tx = fx - x0;
+	const int column0 = ((x0 % climate_width) + climate_width) % climate_width;
+	const int column1 = (column0 + 1) % climate_width;
 	double sum = 0.0;
 	for (int step = -2; step <= 2; step++) {
 		const double l = std::max(-1.5, std::min(1.5, lat + wobble + (double)step * 0.06));
-		sum += sea_temperature(Vector3((real_t)(std::cos(l) * std::cos(lon)), (real_t)std::sin(l), (real_t)(std::cos(l) * std::sin(lon))));
+		const double fy = (0.5 - l / pi) * climate_height - 0.5;
+		const int y0 = (int)std::floor(fy);
+		const double ty = fy - y0;
+		const int row0 = std::max(0, std::min(climate_height - 1, y0));
+		const int row1 = std::max(0, std::min(climate_height - 1, y0 + 1));
+		const double top = (double)climate_grid[row0 * climate_width + column0] * (1.0 - tx) + (double)climate_grid[row0 * climate_width + column1] * tx;
+		const double bottom = (double)climate_grid[row1 * climate_width + column0] * (1.0 - tx) + (double)climate_grid[row1 * climate_width + column1] * tx;
+		sum += top * (1.0 - ty) + bottom * ty;
 	}
 	return smooth(-1.5, -8.0, sum / 5.0);
 }
@@ -1022,6 +1040,12 @@ void PlanetCrustNative::set_weather(const Dictionary &p_config) {
 
 Vector2 PlanetCrustNative::cloud_cells(const Vector3 &p_dir, double p_macro, const float *p_grid, int p_gw, int p_gh,
 		double p_decl, double p_days) const {
+	const CloudField field = cloud_field(p_dir, p_macro, p_grid, p_gw, p_gh, p_decl, p_days);
+	return Vector2((real_t)smooth(field.threshold - 0.12, field.threshold + 0.12, field.pattern), (real_t)field.cells);
+}
+
+PlanetCrustNative::CloudField PlanetCrustNative::cloud_field(const Vector3 &p_dir, double p_macro, const float *p_grid, int p_gw,
+		int p_gh, double p_decl, double p_days) const {
 	const double pi = 3.14159265358979323846;
 	const double tau = 2.0 * pi;
 	const double lat = std::asin(clampd((double)p_dir.y, -1.0, 1.0));
@@ -1077,8 +1101,11 @@ Vector2 PlanetCrustNative::cloud_cells(const Vector3 &p_dir, double p_macro, con
 		pattern += clampd(0.5 + 0.5 * (0.75 * big + 0.35 * clumps), 0.0, 1.0) * share;
 		cells += clumps * share;
 	}
-	const double threshold = 0.97 - ready * 0.8;
-	return Vector2((real_t)smooth(threshold - 0.12, threshold + 0.12, pattern), (real_t)cells);
+	CloudField field;
+	field.pattern = pattern;
+	field.threshold = 0.97 - ready * 0.8;
+	field.cells = cells;
+	return field;
 }
 
 PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds,
@@ -1093,6 +1120,27 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 	const int gw = p_params.get("gw", 96), gh = p_params.get("gh", 48);
 	const double sun_lon = p_params.get("sun_lon", 0.0), clear = p_params.get("clear", 1.0);
 	const bool have_grid = grid.size() >= gw * gh;
+	// the cloud layers: the pattern is worked out for every other pixel and blended between (a clump is a dozen pixels
+	// across or more, so half the samples lose nothing the eye can see, and the noise is the cost of these layers)
+	std::vector<double> row_pattern, row_threshold;
+	if ((p_layer == 8 || p_layer == 9 || p_layer == 11) && have_grid && season_mean.size() >= gw * gh) {
+		Timed timed(prof_clouds);
+		const int count = p_dirs.size();
+		row_pattern.resize(count);
+		row_threshold.resize(count);
+		const double decl = p_params.get("decl", 0.0), days = p_params.get("days", 0.0);
+		for (int index = 0; index < count; index += 2) {
+			const double broad = p_macros.size() > index ? (double)p_macros[index] : (double)p_grounds[index];
+			const CloudField field = cloud_field(p_dirs[index], broad, grid.ptr(), gw, gh, decl, days);
+			row_pattern[index] = field.pattern;
+			row_threshold[index] = field.threshold;
+		}
+		for (int index = 1; index < count; index += 2) {
+			const int next = index + 1 < count ? index + 1 : index - 1;
+			row_pattern[index] = 0.5 * (row_pattern[index - 1] + row_pattern[next]);
+			row_threshold[index] = 0.5 * (row_threshold[index - 1] + row_threshold[next]);
+		}
+	}
 	for (int index = 0; index < p_dirs.size(); index++) {
 		const Vector3 dir = p_dirs[index];
 		const double ground = p_grounds[index];
@@ -1150,11 +1198,8 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 			case 11: { // clouds, satellite, the cloud cover alone
 				const bool ready_grid = have_grid && season_mean.size() >= gw * gh;
 				double cover = 0.0;
-				if (ready_grid) {
-					{
-						Timed timed(prof_clouds);
-						cover = (double)cloud_cells(dir, broad, grid.ptr(), gw, gh, p_params.get("decl", 0.0), p_params.get("days", 0.0)).x;
-					}
+				if (ready_grid && !row_pattern.empty()) {
+					cover = smooth(row_threshold[index] - 0.12, row_threshold[index] + 0.12, row_pattern[index]);
 				}
 				if (p_layer == 11) {
 					r = g = b = cover;
