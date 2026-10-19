@@ -330,6 +330,7 @@ func _native_check() -> bool:
 		elif arg.begins_with("--seed="):
 			made.world_seed = arg.trim_prefix("--seed=").to_int()
 	made.drainage_cells = 0 # the native crust is compared with the script before any valley is cut
+	made.hydrology_on = false
 	var noise := PlanetNoise.new(made)
 	if noise.native == null:
 		print("NATIVE_CHECK SKIP the native library is not loaded")
