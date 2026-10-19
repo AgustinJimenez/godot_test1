@@ -190,3 +190,8 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   and straw), thicker on the dark soil of forests and in patches of a few metres (`litter_zone`). +1 ms GPU (77 fps against 91 in the lab
   with the turf off, on a 4090: the gravel is now the dearest part of the ground; lower `crumb_dist` limits or drop a size to buy it back).
   Debugging note: to see a layer force its zone to 1.0 in a copy of the shader, and put a loud colour on it first.
+- Real stones on the ground (`PlanetTurf` with `gravel = true`, a second node of the same chunk machinery; native `gravel_chunk`): small
+  angular stones (`FloraMeshes.chip(variant)`, 20 triangles, 4 shapes) one for each spot of a 12 cm jittered grid within 14 m of the walker,
+  sizes from 1 cm to 20 cm (many small, a few large), each flat or tall, turned, tilted, sunk into the ground, in the soil's red, dark, grey or
+  pale; they cast shadows, so they have true shadows and heights where the shader cannot. Odds: 35% where grass grows well up to 100%
+  where the ground is bare. +1 ms GPU. `PLANET_NO_GRAVEL` switches them off; `PLANET_NO_GRASS` only the grass (to look at the ground).

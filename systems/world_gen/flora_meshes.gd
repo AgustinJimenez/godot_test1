@@ -256,3 +256,59 @@ static func _make_tuft(variant: int) -> ArrayMesh:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, Mesh.ARRAY_CUSTOM_R_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
 	mesh.set_meta(&"branches", table)
 	return mesh
+
+
+## A small angular stone for the gravel of the ground (PlanetTurf): CHIP_VARIANTS shapes of a squashed, knocked about icosahedron (20
+## triangles), flat shaded, white (the instance colour paints it), about 2 m across at scale 1 (the instance's scale makes the stone and
+## its height). Built once.
+const CHIP_VARIANTS := 4
+static var _chips: Array[ArrayMesh] = []
+
+
+static func chip(variant: int) -> ArrayMesh:
+	if _chips.is_empty():
+		for index in CHIP_VARIANTS:
+			_chips.append(_make_chip(index))
+	return _chips[variant % CHIP_VARIANTS]
+
+
+static func _make_chip(variant: int) -> ArrayMesh:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 104729 * (variant + 3)
+	var golden := (1.0 + sqrt(5.0)) * 0.5
+	var corners: Array[Vector3] = [Vector3(-1, golden, 0), Vector3(1, golden, 0), Vector3(-1, -golden, 0), Vector3(1, -golden, 0),
+			Vector3(0, -1, golden), Vector3(0, 1, golden), Vector3(0, -1, -golden), Vector3(0, 1, -golden),
+			Vector3(golden, 0, -1), Vector3(golden, 0, 1), Vector3(-golden, 0, -1), Vector3(-golden, 0, 1)]
+	var shape := Vector3(rng.randf_range(0.8, 1.15), rng.randf_range(0.7, 1.0), rng.randf_range(0.8, 1.15))
+	for index in corners.size():
+		var point := corners[index].normalized() * rng.randf_range(0.72, 1.08) # (knocked about: no two corners as far)
+		point = Vector3(point.x * shape.x, point.y * shape.y, point.z * shape.z)
+		point.y = maxf(point.y, -0.35) # (the underside is flat: it is in the ground)
+		corners[index] = point
+	var faces := [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+			[3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]]
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	for face in faces:
+		var a: Vector3 = corners[face[0]]
+		var b: Vector3 = corners[face[1]]
+		var c: Vector3 = corners[face[2]]
+		var normal := (b - a).cross(c - a).normalized()
+		if normal.dot((a + b + c) / 3.0) < 0.0: # outward
+			var swap_point := b
+			b = c
+			c = swap_point
+			normal = -normal
+		for point in [a, c, b]: # (Godot wants clockwise)
+			vertices.append(point)
+			normals.append(normal)
+			colors.append(Color(1, 1, 1, 0.0)) # (alpha 0: a stone does not sway)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh

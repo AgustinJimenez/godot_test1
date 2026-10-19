@@ -13,14 +13,26 @@ const LEAVE := 36.0 ## m: and let go beyond this
 const SPACING := 0.21 ## m: one tuft for each spot of a jittered grid of this (PLANET_TURF_SPACING: another, to try)
 const DENSITY := 1.6 ## the odds of a tuft are the field times this (the field is 1 only where grass grows best)
 const DRAWN := 32.0 ## m: how far a tuft is drawn (it fades out)
+const GRAVEL_SPACING := 0.12 ## m: one stone for each spot of a jittered grid of this (the odds make them thin where grass grows)
+const GRAVEL_DRAWN := 14.0 ## m: how far a stone is drawn (its size is under a pixel beyond)
 const LOOK_EVERY := 0.3 ## s
 const MAKE_EACH_LOOK := 3 ## chunks made at most in each look: the walker is never held up
 
 var planet: PlanetWorld
 var player: Player
+## true: the small stones of the bare ground instead of grass (see PlanetScatterNative.gravel_chunk): a node of its own, nearer, finer, with shadows
+var gravel := false
 
 var _chunks: Dictionary = {} # key -> {node, holder, middle (the chunk's middle in the holder's space)}
 var _since := 0.0
+
+
+func _enter() -> float:
+	return GRAVEL_DRAWN + 4.0 if gravel else ENTER
+
+
+func _leave() -> float:
+	return GRAVEL_DRAWN + 12.0 if gravel else LEAVE
 
 
 func _physics_process(delta: float) -> void:
@@ -40,19 +52,19 @@ func _physics_process(delta: float) -> void:
 		var grid: Dictionary = holder.get_meta(&"turf")
 		var local := _grid_of(grid, holder.to_local(here)) # (the grid's own space: metres from its corner along its x and z)
 		var size: float = grid["size"]
-		if local.x < -ENTER or local.z < -ENTER or local.x > size + ENTER or local.z > size + ENTER:
+		if local.x < -_enter() or local.z < -_enter() or local.x > size + _enter() or local.z > size + _enter():
 			continue
-		var from_x := maxi(int(floorf((local.x - ENTER) / CHUNK)), 0)
-		var to_x := mini(int(floorf((local.x + ENTER) / CHUNK)), int(ceilf(size / CHUNK)) - 1)
-		var from_z := maxi(int(floorf((local.z - ENTER) / CHUNK)), 0)
-		var to_z := mini(int(floorf((local.z + ENTER) / CHUNK)), int(ceilf(size / CHUNK)) - 1)
+		var from_x := maxi(int(floorf((local.x - _enter()) / CHUNK)), 0)
+		var to_x := mini(int(floorf((local.x + _enter()) / CHUNK)), int(ceilf(size / CHUNK)) - 1)
+		var from_z := maxi(int(floorf((local.z - _enter()) / CHUNK)), 0)
+		var to_z := mini(int(floorf((local.z + _enter()) / CHUNK)), int(ceilf(size / CHUNK)) - 1)
 		for iz in range(from_z, to_z + 1):
 			for ix in range(from_x, to_x + 1):
 				var key := holder.get_instance_id() * 10000 + ix * 100 + iz
 				if _chunks.has(key):
 					continue
 				var middle := Vector2((ix + 0.5) * CHUNK, (iz + 0.5) * CHUNK)
-				if middle.distance_to(Vector2(local.x, local.z)) > ENTER + CHUNK * 0.4:
+				if middle.distance_to(Vector2(local.x, local.z)) > _enter() + CHUNK * 0.4:
 					continue
 				if made >= MAKE_EACH_LOOK:
 					return
@@ -63,9 +75,10 @@ func _physics_process(delta: float) -> void:
 ## Make the chunk (ix, iz) of the tile whose grid is `grid`, hanging in `holder`.
 func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void:
 	var size: float = grid["size"]
-	var buffers: Array = planet.noise.scatter_native.call(&"turf_chunk", grid["positions"], grid["field"],
-			grid["cells"], size, ix * CHUNK, iz * CHUNK, minf((ix + 1) * CHUNK, size), minf((iz + 1) * CHUNK, size), _spacing(),
-			DENSITY, key ^ int(grid["key"]), FloraMeshes.TURF_VARIANTS)
+	var buffers: Array = planet.noise.scatter_native.call(&"gravel_chunk" if gravel else &"turf_chunk", grid["positions"],
+			grid["field"], grid["cells"], size, ix * CHUNK, iz * CHUNK, minf((ix + 1) * CHUNK, size), minf((iz + 1) * CHUNK, size),
+			GRAVEL_SPACING if gravel else _spacing(), 1.0 if gravel else DENSITY, key ^ int(grid["key"]),
+			FloraMeshes.CHIP_VARIANTS if gravel else FloraMeshes.TURF_VARIANTS)
 	var entry := {"nodes": [], "holder": holder, "grid": grid, "at": Vector2((ix + 0.5) * CHUNK, (iz + 0.5) * CHUNK), "buffers": []}
 	for variant in buffers.size():
 		var buffer: PackedFloat32Array = buffers[variant]
@@ -74,14 +87,15 @@ func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void
 		var multi := MultiMesh.new()
 		multi.transform_format = MultiMesh.TRANSFORM_3D
 		multi.use_colors = true
-		multi.mesh = FloraMeshes.turf_tuft(variant)
+		multi.mesh = FloraMeshes.chip(variant) if gravel else FloraMeshes.turf_tuft(variant)
 		multi.instance_count = buffer.size() / 16
 		multi.buffer = buffer
 		var instance := MultiMeshInstance3D.new()
 		instance.multimesh = multi
 		instance.material_override = FloraMeshes.material()
-		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		instance.visibility_range_end = DRAWN
+		instance.cast_shadow = (GeometryInstance3D.SHADOW_CASTING_SETTING_ON if gravel
+				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+		instance.visibility_range_end = GRAVEL_DRAWN if gravel else DRAWN
 		instance.visibility_range_end_margin = 6.0
 		instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		holder.add_child(instance)
@@ -98,7 +112,7 @@ func _let_go(here: Vector3) -> void:
 		var gone := not is_instance_valid(holder) or not holder.is_inside_tree()
 		if not gone:
 			var local := _grid_of(entry["grid"], holder.to_local(here))
-			gone = Vector2(local.x, local.z).distance_to(entry["at"]) > LEAVE + CHUNK * 0.4
+			gone = Vector2(local.x, local.z).distance_to(entry["at"]) > _leave() + CHUNK * 0.4
 		if gone:
 			for node: Node in entry["nodes"]:
 				if is_instance_valid(node):

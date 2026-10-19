@@ -88,6 +88,8 @@ void PlanetScatterNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("scatter", "tile"), &PlanetScatterNative::scatter);
 	ClassDB::bind_method(D_METHOD("merge_far", "parts"), &PlanetScatterNative::merge_far);
 	ClassDB::bind_method(D_METHOD("drag", "stems", "x", "z"), &PlanetScatterNative::drag);
+	ClassDB::bind_method(D_METHOD("gravel_chunk", "positions", "field", "cells", "size", "x0", "z0", "x1", "z1", "spacing", "density", "seed", "variants"),
+			&PlanetScatterNative::gravel_chunk);
 	ClassDB::bind_method(D_METHOD("turf_chunk", "positions", "field", "cells", "size", "x0", "z0", "x1", "z1", "spacing", "density", "seed", "variants"),
 			&PlanetScatterNative::turf_chunk);
 }
@@ -792,6 +794,97 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	result["stems"] = stems;
 	result["turf"] = turf;
 	return result;
+}
+
+// Small stones lying on the bare ground (PlanetTurf in its gravel form): where grass grows poorly, one stone to each spot of a jittered grid
+// with the odds of how bare the ground is; each of its own size (many small, a few large), flatness, turn, tilt and colour (the soil's red,
+// darker, grey, pale), sunk a little into the ground. Answers a buffer for each of `p_variants` shapes, like turf_chunk.
+Array PlanetScatterNative::gravel_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells,
+		double p_size, double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed,
+		int p_variants) const {
+	Array out;
+	const int variants = std::max(p_variants, 1);
+	const int side = p_cells + 3;
+	if (p_cells < 1 || (int)p_positions.size() < side * side || (int)p_field.size() < side * side || p_spacing <= 0.0) {
+		return out;
+	}
+	const Vector3 *positions = p_positions.ptr();
+	const float *field = p_field.ptr();
+	Rng rng;
+	rng.seed((uint64_t)p_seed * 0x9E3779B97F4A7C15ULL + 0x7654321ULL);
+	std::vector<std::vector<float>> buffers((size_t)variants);
+	const double step = p_size / p_cells;
+	const int columns = (int)std::ceil((p_x1 - p_x0) / p_spacing), rows = (int)std::ceil((p_z1 - p_z0) / p_spacing);
+	for (int row = 0; row < rows; row++) {
+		for (int column = 0; column < columns; column++) {
+			const double x = p_x0 + (column + rng.randf()) * p_spacing, z = p_z0 + (row + rng.randf()) * p_spacing;
+			const double dice = rng.randf(), size_dice = rng.randf(), yaw = rng.range(0.0, TAU_D), tone = rng.randf(), flat = rng.randf();
+			const double tilt_dice = rng.randf(), way = rng.range(0.0, TAU_D), kind = rng.randf();
+			const int variant = rng.randi() % variants;
+			if (x < 0.0 || z < 0.0 || x >= p_size || z >= p_size) {
+				continue;
+			}
+			const double fx = clampd(x / p_size * p_cells, 0.0, p_cells - 0.001), fz = clampd(z / p_size * p_cells, 0.0, p_cells - 0.001);
+			const int i = ((int)fz + 1) * side + (int)fx + 1;
+			const double tx = fx - std::floor(fx), tz = fz - std::floor(fz);
+			const double f = (field[i] * (1 - tx) + field[i + 1] * tx) * (1 - tz) + (field[i + side] * (1 - tx) + field[i + side + 1] * tx) * tz;
+			const double odds = clampd(1.0 - f * 0.6, 0.35, 1.0) * p_density;
+			if (dice >= odds) {
+				continue;
+			}
+			Vector3 at;
+			const Vector3 p00 = positions[i], p10 = positions[i + 1], p01 = positions[i + side], p11 = positions[i + side + 1];
+			if (tx + tz <= 1.0) {
+				at = p00 + (p10 - p00) * (real_t)tx + (p01 - p00) * (real_t)tz;
+			} else {
+				at = p11 + (p01 - p11) * (real_t)(1.0 - tx) + (p10 - p11) * (real_t)(1.0 - tz);
+			}
+			const double dx = (p10.y - p00.y + p11.y - p01.y) / (2.0 * step), dz = (p01.y - p00.y + p11.y - p10.y) / (2.0 * step);
+			const Vector3 normal = Vector3((real_t)-dx, 1.0f, (real_t)-dz).normalized();
+			// many small stones, a few large: the radius (m) falls steeply with the dice
+			const double radius = 0.012 + 0.2 * std::pow(size_dice, 3.4);
+			const double tall = radius * (0.35 + 0.55 * flat);
+			Basis basis(Vector3(0, 1, 0), (real_t)yaw);
+			const Vector3 lean_to = (normal + Vector3((real_t)std::cos(way), 0, (real_t)std::sin(way)) * (real_t)(tilt_dice * 0.5)).normalized();
+			const Vector3 axis = Vector3(0, 1, 0).cross(lean_to);
+			if (axis.length_squared() > 1.0e-8f) {
+				basis = Basis(axis.normalized(), (real_t)std::acos(clampd((double)lean_to.y, -1.0, 1.0))) * basis;
+			}
+			basis = basis.scaled(Vector3((real_t)radius, (real_t)tall, (real_t)(radius * (0.7 + 0.5 * flat))));
+			at.y -= (real_t)(tall * 0.3 + 0.01 * std::sqrt(dx * dx + dz * dz));
+			// the colour: the soil's own red-brown mostly (a little lighter or darker), some dark, some grey, a few pale
+			double r, g, b;
+			if (kind < 0.55) {
+				const double v = 0.7 + 0.7 * tone;
+				r = 0.62 * v; g = 0.36 * v; b = 0.25 * v;
+			} else if (kind < 0.72) {
+				const double v = 0.5 + 0.5 * tone;
+				r = 0.4 * v; g = 0.21 * v; b = 0.14 * v;
+			} else if (kind < 0.84) {
+				const double v = 0.18 + 0.3 * tone;
+				r = v; g = v * 0.97; b = v * 0.94;
+			} else if (kind < 0.93) {
+				const double v = 0.6 + 0.4 * tone;
+				r = 0.75 * v; g = 0.55 * v; b = 0.38 * v;
+			} else {
+				const double v = 0.7 + 0.3 * tone;
+				r = 0.8 * v; g = 0.78 * v; b = 0.72 * v;
+			}
+			const float values[16] = { (float)basis.rows[0][0], (float)basis.rows[0][1], (float)basis.rows[0][2], (float)at.x, (float)basis.rows[1][0],
+				(float)basis.rows[1][1], (float)basis.rows[1][2], (float)at.y, (float)basis.rows[2][0], (float)basis.rows[2][1],
+				(float)basis.rows[2][2], (float)at.z, (float)r, (float)g, (float)b, 1.0f };
+			buffers[(size_t)variant].insert(buffers[(size_t)variant].end(), values, values + 16);
+		}
+	}
+	for (const std::vector<float> &buffer : buffers) {
+		PackedFloat32Array one;
+		one.resize((int64_t)buffer.size());
+		if (!buffer.empty()) {
+			memcpy(one.ptrw(), buffer.data(), buffer.size() * sizeof(float));
+		}
+		out.push_back(one);
+	}
+	return out;
 }
 
 Array PlanetScatterNative::turf_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells,

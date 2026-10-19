@@ -67,6 +67,9 @@ public:
 	// space (metres from its corner): one tuft for each `p_spacing` of a jittered grid, kept with the odds `field` (the tile's "turf",
 	// how well turf grows at each vertex of the padded grid) times `p_density`. The same spots whatever the field says.
 	// Answers one buffer for each of `p_variants` arrangements of tuft (an Array of PackedFloat32Array), every spot given one at random.
+	// The small stones of the bare ground, the same way (see PlanetTurf in its gravel form).
+	Array gravel_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells, double p_size,
+			double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed, int p_variants) const;
 	Array turf_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells, double p_size,
 			double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed, int p_variants) const;
 };

@@ -157,7 +157,14 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 			var turf := PlanetTurf.new() # short grass all over the ground where it grows
 			turf.planet = self
 			turf.player = target as Player
-			add_child(turf)
+			if not OS.has_environment("PLANET_NO_GRASS"):
+				add_child(turf)
+			if not OS.has_environment("PLANET_NO_GRAVEL"):
+				var gravel := PlanetTurf.new() # and small stones on the bare ground, real ones that cast shadows
+				gravel.gravel = true
+				gravel.planet = self
+				gravel.player = target as Player
+				add_child(gravel)
 	if direction == Vector3.ZERO and restored.has("direction"):
 		var saved: Array = restored["direction"]
 		direction = Vector3(saved[0], saved[1], saved[2]).normalized()
