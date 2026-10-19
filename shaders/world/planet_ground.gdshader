@@ -231,6 +231,24 @@ void fragment() {
 			vec3 micro_planet = -vec3(mx, my, mz) * (1.4 + slope * 3.0) * fine * strength;
 			vec3 micro_world = (world_from_planet * vec4(micro_planet, 0.0)).xyz;
 			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(micro_world, 0.0)).xyz);
+			// meadows: patches of yellowing grass, darker clumps and a sprinkle of flowers (the
+			// grass is one green to the map; a real meadow is many)
+			float meadow = smoothstep(0.02, 0.1, paint.g - max(paint.r, paint.b)) * (1.0 - slope * 2.5);
+			if (meadow > 0.01) {
+				float dry_patch = fbm3(on_planet * 0.045 + 71.0, 1152.0);
+				paint = mix(paint, paint * vec3(1.35, 1.1, 0.55), smoothstep(0.55, 0.78, dry_patch) * meadow * 0.7);
+				float clump = fbm3(on_planet * 0.6 + 17.0, 15360.0);
+				paint *= mix(1.0, 0.8 + 0.4 * clump, meadow * 0.6);
+				vec3 cell = floor(on_planet * 4.0);
+				float patch_k = smoothstep(0.45, 0.7, fbm3(on_planet * 0.09 + 5.0, 2304.0)); // flowers grow in drifts
+				float bloom = step(1.0 - 0.12 * patch_k - 0.012, hash3(cell + 3.0));
+				vec3 inside = fract(on_planet * 4.0) - 0.5; // (a little ball in the cell: round on any slope)
+				vec3 jitter = vec3(hash3(cell), hash3(cell + 9.0), hash3(cell + 13.0)) - 0.5;
+				float petal = smoothstep(0.3, 0.16, length(inside + jitter * 0.3));
+				float pick = hash3(cell + 5.0);
+				vec3 flower = pick < 0.4 ? vec3(0.85, 0.82, 0.75) : (pick < 0.7 ? vec3(0.9, 0.7, 0.1) : vec3(0.45, 0.25, 0.6));
+				paint = mix(paint, pow(flower, vec3(2.2)), bloom * petal * meadow * fine * 0.9);
+			}
 			// real surface detail: rock on the steep faces, sand on pale level ground, soil elsewhere
 			float surface_fade = 1.0 - smoothstep(30.0, 70.0, length(VERTEX));
 			if (surface_fade > 0.01) {

@@ -81,3 +81,7 @@ variety of near things* (A, E, F) and *light mood* (B, C).
    rock, desert or cold. Before this the land of seed 8 was grey-beige everywhere (0 of ~3800 land
    samples green); now 839 are and the wettest places read as meadows with darker patches and blue-green
    hills in the haze (`-0.60402,-0.07923,0.79302` and `-0.79710,-0.54198,0.26625` on seed 8).
+3. **Meadow variety in the ground shader** (`planet_ground.gdshader`, near the player, Fine detail and up):
+   patches of yellowing grass, darker clumps, and flowers (white, yellow, purple) as round dots in
+   drifts (3D cells, so they stay round on slopes). Flowers are still small and sparse at a distance:
+   real flower meshes belong to task 3 (plants).
