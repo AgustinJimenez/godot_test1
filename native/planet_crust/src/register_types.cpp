@@ -3,6 +3,7 @@
 #include "planet_crust_native.h"
 #include "planet_drainage_native.h"
 #include "planet_seasons_native.h"
+#include "plant_mesh_native.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
@@ -17,6 +18,7 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(PlanetCrustNative);
 	GDREGISTER_CLASS(PlanetDrainageNative);
 	GDREGISTER_CLASS(PlanetSeasonsNative);
+	GDREGISTER_CLASS(PlantMeshNative);
 }
 
 void uninitialize_planet_crust_module(ModuleInitializationLevel p_level) {

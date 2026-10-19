@@ -119,6 +119,15 @@ var leaf_tip := Color(0.4, 0.6, 0.25)
 var frosted := false
 
 
+## Every trait by name, for the native grower (PlantMeshNative reads this).
+func to_dictionary() -> Dictionary:
+	var out := {}
+	for property in get_property_list():
+		if int(property["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			out[property["name"]] = get(property["name"])
+	return out
+
+
 ## The genome of a leafy or conifer species, as the old builders drew them.
 static func from_species(s: PlantSpecies) -> TreeGenome:
 	var g := TreeGenome.new()

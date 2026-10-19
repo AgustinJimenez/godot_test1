@@ -28,3 +28,12 @@ climate 0.17 s, sea level 0.05 s)
   the first time they are needed (`PlantMeshes`, on the worker thread, so the tiles wait).
 - So the plants' real cost is mesh generation. The plan: task 3 replaces the plant meshes with a native
   generator (realistic, non-repeating), which also removes this stall.
+
+## 2. Plant meshes native (2026-10-19, `PlantMeshNative`)
+`native/planet_crust/src/plant_mesh_native.cpp` is the tree grower (`TreeGrower`), the leaf shapes, the tube
+builder and the smooth normals in C++ (`PlantMeshes.build` calls it with `TreeGenome.to_dictionary()`; without
+the library the scripts grow the plant as before). All 36 species x 3 variants of seed 8, flat and realistic
+(`tests/manual/world/native_plant_bench.gd`): 175 / 187 ms native against 1275 / 1476 ms in script (about 7.5x,
+debug library), the triangle counts within 1-2 %. The grower's dice are PCG32 of its own, so the meshes are not
+the script's exact ones. Species check and quick suite pass.
+Still script: mushrooms, the far trees, the rocks (`FloraMeshes`), the placement (`PlanetScatter`).
