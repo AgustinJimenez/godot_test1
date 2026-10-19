@@ -464,6 +464,9 @@ func _physics_process(delta: float) -> void:
 		camera.far = maxf(minf(settings.radius * 1.2, 600000.0), horizon * 1.1 + 2000.0)
 		# the near plane grows with the height: the depth range stays workable (a far plane a million
 		# times the near one breaks the projection and the shadow culling) and nothing is that close
-		camera.near = clampf(high * 0.0005, 0.01, 2000.0)
+		# and never under a ten-millionth of the far plane: past about 2^24 (16.7 million) the projection
+		# breaks and NOTHING is drawn (a grey screen: any place under ~70 m above the sea, with a far
+		# plane of 600 km, a coast, a beach, the sea)
+		camera.near = maxf(clampf(high * 0.0005, 0.01, 2000.0), camera.far / 1.0e7)
 	atmosphere.global_position = _target.global_position
 	atmosphere.altitude = altitude()

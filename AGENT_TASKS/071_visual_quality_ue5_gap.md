@@ -224,3 +224,16 @@ reaches 220 m. The look is a warm golden haze round the sun. Real beams (crepusc
 in a canopy or clouds to cut the light, and in the dense test forest they were not seen; open ground
 with few trees, or broken clouds, is the place to check. The effect is off above ~2.5 km and in
 space, and needs the haze of the place (humid air more than dry).
+
+## Nothing drawn near sea level: a grey (or sky-coloured) screen (found and fixed)
+
+`PlanetWorld` sets `camera.far` to up to 600 km and `camera.near = clamp(height * 0.0005, 0.01, ...)`
+where `height` is above SEA LEVEL. Under about 70 m above the sea the near plane is under 3.6 cm, the
+far/near ratio passes 2^24 (16.7 million) and the projection breaks: no ground, no sea, no plants are
+drawn (draw calls 0), only the sky and its below-horizon fill, a flat grey-green plane. Any spawn on a
+coast, a beach, a low plain or the sea itself showed it, and a random planet spawns there now and then:
+very likely the "plain grey screen on opening the app". It was found by sweeping the lab camera
+height: 54 m draws nothing, 74 m draws everything, the same place. The near plane is now never under
+a ten-millionth of the far plane (6 cm with a 600 km far plane). A first-person weapon closer than that
+would clip; if it shows, bring the far plane down at the ground instead (the horizon is only ~5 km
+there).
