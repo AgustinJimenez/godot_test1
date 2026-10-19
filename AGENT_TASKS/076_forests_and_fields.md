@@ -68,3 +68,17 @@ The old spires were smooth cones. `PlantMeshNative.scenery(SPIRE)` now builds fo
 draws their grain and joints): variant 0 a tor (four boulders stacked and offset), 1 a cluster of six to nine columns of
 different heights, 2 a leaning standing slab with a fallen one. They stand where the ground is stony (odds x (0.2 + 1.6
 stoniness)) in rocky, snowy and desert biomes. `tests/manual/world/rock_lab.gd -- <png> spire` shows them.
+
+## Knife edges and walls on ridges (2026-10-19, reported with a screenshot: a long steep dark face with a sharp crest)
+`tests/manual/planet/steep_walls.gd` samples land lines of 120 m at 1 m (game scale 0.1) and counts walls (more than 2.2 m of
+climb in 1 m, a 65 degree face) and knife edges (the slope changing by more than 1.6 within 2 m). Seed 3: 41 walls and 22
+knife edges in 839 lines; with the eroded ridges off (`PLANET_NO_EROSION=1`) 6 and 0, so the erosion noise made them
+(rivers had no part: `PLANET_NO_DRAINAGE=1` changed nothing). The cause is the ridged noise's crease, `1 - |n|`, a cusp.
+`erosion_noise.h` now uses a rounded absolute value, `sqrt(n^2 + 0.09) - 0.3`, with the matching smooth side sign, and caps the
+coarse slope that offsets the finer octaves at 1.5 lattice units. Seed 3: 18 walls, 8 knife edges; seed 8: 12 -> 3 walls and
+10 -> 2 edges. `PlanetMapCache.VERSION` is 6 (the terrain changed: old map pictures are not read).
+Left: about 2 % of lines still have a 65-70 degree face, most with a 5 m step at one metre at a height near 450 m in both
+seeds checked (two heights 446 and 451 with nothing between: probably the edge of a lake cell of the drainage, which sets
+the ground down to the water's level: `lake_weight` is per cell); to chase: where the lake's weight stops, the ground
+should blend over tens of metres. To find the user's wall, the world seed and the place are needed (the position is in the
+recorder file, `user://`, F9 marks it).

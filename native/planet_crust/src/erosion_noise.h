@@ -82,7 +82,11 @@ inline double fbm(const Vec &p, double wavelength, int octaves, double pixel, ui
 	double amp = 1.0, total_amp = 0.0, sum = 0.0;
 	// the ground's own slope (in the first octave's lattice units) is what the first octave's ridges stand on:
 	// the gullies are strongest where it is steep and follow its direction
-	Vec warp_sum = slope * 0.5, damp_sum = slope;
+	// (a very steep coarse slope is capped: it moves the finer octaves' lookup points by lattice units, and the
+	// ground that changes slope quickly then changes shape quickly too: a wall)
+	const double slope_size = std::sqrt(dot(slope, slope));
+	const Vec capped = slope_size > 1.5 ? slope * (1.5 / slope_size) : slope;
+	Vec warp_sum = capped * 0.5, damp_sum = capped;
 	double damped = 1.0;
 	for (int octave = 0; octave < octaves; octave++) {
 		if (octave > 0 && pixel > 0.0 && wavelength / (double)(1 << octave) < pixel * 3.0) {
@@ -99,10 +103,14 @@ inline double fbm(const Vec &p, double wavelength, int octaves, double pixel, ui
 		}
 		const Vec at = p * frequency + warp_sum * (octave == 0 ? 0.0 : 1.0) + Vec{ octave * 17.3, octave * 31.7, octave * 7.9 };
 		const Sample n = noise(at.x, at.y, at.z, seed);
-		const double ridge = 1.0 - std::abs(n.value) * 1.4; // a crease where the noise crosses zero
-		// which side of the crease the point is on: +1 / -1 far from it, passing through 0 AT it (a hard
-		// flip there moved every finer octave's lookup point suddenly: a cliff of tens of metres)
-		const double slope_sign = std::fmax(-1.0, std::fmin(1.0, -n.value / 0.08));
+		// a crest where the noise crosses zero, rounded: |n| has a cusp there (a knife edge: the slope flips by
+		// more than 1 m/m within a couple of metres, and the warped finer octaves made walls of it), the smooth
+		// absolute value sqrt(n^2 + e^2) has a rounded top a few tens of metres across and is |n| away from it
+		const double rounding = 0.3;
+		const double rounded = std::sqrt(n.value * n.value + rounding * rounding);
+		const double ridge = 1.0 - (rounded - rounding) * 1.4;
+		// which side of the crest the point is on: +1 / -1 far from it, passing smoothly through 0 at it
+		const double slope_sign = -n.value / rounded;
 		const Vec ridge_grad = n.grad * (slope_sign * 1.4);
 		sum += damped * amp * ridge;
 		total_amp += amp;
