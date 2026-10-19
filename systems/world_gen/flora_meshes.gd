@@ -81,15 +81,15 @@ static func _sway(color: Color, amount: float) -> Color:
 
 static func _rock(builder: MeshBuilder, rng: RandomNumberGenerator, variant: int) -> void:
 	var tone := rng.randf_range(0.0, 1.0)
-	var stone := Color(0.4, 0.39, 0.38).lerp(Color(0.56, 0.52, 0.47), tone)
+	var stone := Color(0.33, 0.32, 0.31).lerp(Color(0.47, 0.44, 0.4), tone)
 	if variant == 5: # a reddish one
 		stone = Color(0.52, 0.38, 0.3)
 	var low := _still(stone.darkened(0.25))
 	var high := _still(stone.lightened(0.1))
-	builder.add_blob(Vector3(0.0, 0.25, 0.0), Vector3(1.0, 0.7, 0.85) * rng.randf_range(0.9, 1.15),
-			low, high, rng, 0.3)
+	builder.add_rock(Vector3(0.0, 0.25, 0.0), Vector3(1.0, 0.85, 0.85) * rng.randf_range(0.9, 1.15),
+			low, high, rng, 6 + variant % 3)
 	if variant % 2 == 1: # a second, smaller stone leaning on it
-		builder.add_blob(Vector3(0.7, 0.1, 0.4), Vector3(0.5, 0.4, 0.45), low, high, rng, 0.3)
+		builder.add_rock(Vector3(0.7, 0.1, 0.4), Vector3(0.5, 0.4, 0.45), low, high, rng, 5)
 
 
 ## A few small stones lying together (a hand's width each), pale or dark by variant.

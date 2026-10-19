@@ -180,6 +180,7 @@ void fragment() {
 	float surface_height = 0.0;
 	float surface_bump = 0.0;
 	bool is_bark = UV.x < -0.5;
+	bool is_rock = UV.x < -0.1 && !is_bark; // add_rock marks its stones
 	if (realism > 0.001 && is_bark && !planks) {
 		float trunk = 1.0 - smoothstep(0.1, 0.3, sway);
 		vec3 bark = bark_at(vec2(-UV.x - 1.0, UV.y), UV2.x, trunk);
@@ -192,7 +193,7 @@ void fragment() {
 		paint = mix(paint, vec3(0.16, 0.19, 0.12), lichen * 0.55 * realism);
 		surface_height = bark.y;
 		surface_bump = realism * (0.5 + 0.5 * trunk);
-	} else if (realism > 0.001 && sway < 0.1 && UV.x < 0.001) { // (a fallen leaf has a UV: not stone)
+	} else if (realism > 0.001 && sway < 0.1 && (UV.x < 0.001)) { // (a fallen leaf has a UV: not stone)
 		float brown = smoothstep(0.02, 0.1, paint.r - paint.b);
 		if (planks) {
 			// boards: lines every 25 cm, a grain along the board and a different tone per board
@@ -202,7 +203,7 @@ void fragment() {
 			paint *= mix(1.0, (0.78 + 0.3 * cell_hash(vec2(board, 3.0))) * (0.85 + 0.3 * grain) * (0.6 + 0.4 * edge), realism * brown);
 			bump = vec2(0.0, (edge - 0.5) * 0.6);
 			bump_amount = realism * brown;
-		} else if (brown > 0.5 && abs(obj_up) < 0.5) {
+		} else if (!is_rock && brown > 0.5 && abs(obj_up) < 0.5) {
 			// bark: long furrows around the trunk, bright ridges between them
 			float around = atan(obj_pos.x, obj_pos.z) * 4.0;
 			float furrow = smooth_noise(vec2(around, obj_pos.y * 0.7));
@@ -211,14 +212,23 @@ void fragment() {
 			bump = vec2((furrow - 0.5) * 1.4, 0.0);
 			bump_amount = realism;
 		} else {
-			// stone: grain at two scales, darker veins and patches of lichen
-			float grain = smooth_noise(world_pos.xz * 9.0 + world_pos.y * 7.0);
+			// stone: strata, cracks, grain at three scales and patches of lichen (all in the rock's own space,
+			// so each rock has its own pattern), the cracks and grain bumped
+			vec3 op = obj_pos;
+			float broad = noise3(op * 1.7 + 5.0);
+			float bands = 0.5 + 0.5 * sin((op.y + 0.35 * op.x + 0.25 * broad) * 14.0);
+			// joints: thin cracks that run mostly across the rock, only in some parts of it
+			float crack_n = noise3(op * vec3(2.5, 11.0, 2.5) + broad * 1.5);
+			float crack = (1.0 - smoothstep(0.0, 0.03, abs(crack_n - 0.5))) * smoothstep(0.4, 0.65, noise3(op * 1.3 + 17.0));
+			float grain = noise3(op * 38.0);
+			float speck = noise3(op * 90.0);
 			float patch = smooth_noise(world_pos.xz * 1.6 + world_pos.y * 1.3);
-			float vein = 1.0 - smoothstep(0.0, 0.06, abs(smooth_noise(world_pos.xz * 2.4 + world_pos.y * 3.1) - 0.5));
-			paint *= mix(1.0, (0.8 + 0.35 * grain) * (1.0 - 0.28 * vein) * (0.88 + 0.24 * patch), realism);
+			float shade = (0.78 + 0.3 * bands) * (0.82 + 0.3 * grain) * (0.9 + 0.2 * speck) * (1.0 - 0.4 * crack)
+					* (0.88 + 0.24 * patch);
+			paint *= mix(1.0, shade, realism);
 			paint = mix(paint, paint * vec3(0.7, 1.0, 0.55), realism * smoothstep(0.62, 0.8, patch) * 0.45 * smoothstep(0.2, 0.9, obj_up));
-			bump = vec2(grain - 0.5, smooth_noise(world_pos.xz * 9.0 + 4.0) - 0.5) * 0.8;
-			bump_amount = realism * 0.6;
+			surface_height = broad * 0.4 + bands * 0.15 + grain * 0.15 + speck * 0.1 - crack * 0.5;
+			surface_bump = realism * 1.3;
 		}
 	}
 	ALBEDO = mix(paint, vec3(0.8, 0.84, 0.9), snow_cover * smoothstep(0.35, 0.75, face_up) * 0.9);

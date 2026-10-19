@@ -129,6 +129,47 @@ func add_blob(center: Vector3, radius: Vector3, color_low: Color, color_high: Co
 		add_tri(corners[0], corners[1], corners[2], colors[0], colors[1], colors[2])
 
 
+## A boulder: the lumpy ball cut by flat planes (like a rock that broke along its joints), so it has
+## faces and edges instead of a smooth bulge, and darker at the foot, lighter on top, with bands of
+## slightly different stone up its sides. `cuts` planes of a random lean, each at its own depth.
+func add_rock(center: Vector3, radius: Vector3, color_low: Color, color_high: Color,
+		rng: RandomNumberGenerator, cuts := 7) -> void:
+	var level := 3 if detailed else 2
+	var points := _icosphere_points(level)
+	var planes: Array[Vector4] = []
+	for cut in cuts:
+		var normal := Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-0.5, 0.8),
+				rng.randf_range(-1.0, 1.0)).normalized()
+		planes.append(Vector4(normal.x, normal.y, normal.z, rng.randf_range(0.74, 0.95)))
+	var bulges: Array = []
+	for wave in 3:
+		bulges.append([Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-1.0, 1.0),
+				rng.randf_range(-1.0, 1.0)).normalized(), rng.randf_range(1.2, 3.0), rng.randf() * TAU])
+	var phase := rng.randf() * TAU
+	var moved: Array[Vector3] = []
+	for unit: Vector3 in points:
+		var reach := 1.0
+		for plane in planes:
+			var facing := unit.dot(Vector3(plane.x, plane.y, plane.z))
+			if facing > 0.01:
+				reach = minf(reach, plane.w / facing) # the plane cuts the ball off here
+		for wave: Array in bulges:
+			reach *= 1.0 + 0.05 * sin(unit.dot(wave[0] as Vector3) * float(wave[1]) + float(wave[2]))
+		moved.append(unit * reach * (1.0 + rng.randf_range(-0.012, 0.012)))
+	for face in _icosphere_faces(level):
+		var corners: Array[Vector3] = []
+		var colors: Array[Color] = []
+		for index in 3:
+			var local: Vector3 = moved[face[index]]
+			corners.append(center + local * radius)
+			var band := 0.5 + 0.5 * sin(local.y * 9.0 + local.x * 3.0 + phase)
+			colors.append(color_low.lerp(color_high, clampf(local.y * 0.5 + 0.5, 0.0, 1.0))
+					* (0.93 + 0.1 * band))
+		# the UV only marks it as stone for the plant shader (it draws its own grain, cracks and strata)
+		add_tri_uv(corners[0], corners[1], corners[2], colors[0], colors[1], colors[2],
+				Vector2(-0.25, 0.0), Vector2(-0.25, 0.0), Vector2(-0.25, 0.0))
+
+
 ## A terrain triangle: flat colour for the low-poly look, smooth normals and colours for the
 ## realistic one (the ground shader picks). Corners counter clockwise seen from outside.
 func add_tri_smooth(a: Vector3, b: Vector3, c: Vector3, flat: Color, normals: Array[Vector3],
