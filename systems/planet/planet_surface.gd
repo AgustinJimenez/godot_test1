@@ -11,6 +11,8 @@ var threaded := true
 var tiles: Dictionary = {} # key -> PlanetTile (in the tree)
 
 var _settings: PlanetSettings
+var _native: Object ## PlanetSurfaceNative (the tile selection and the order), or null
+var _faces := PackedVector3Array()
 var _wanted: Dictionary = {} # key -> [face, level, x, y]
 var _pending: Dictionary = {} # key -> true while queued or being built
 var _jobs: Array = []
@@ -42,6 +44,10 @@ func setup(planet_noise: PlanetNoise, planet_frame: PlanetFrame) -> void:
 	noise = planet_noise
 	frame = planet_frame
 	_settings = noise.settings
+	if ClassDB.class_exists(&"PlanetSurfaceNative") and not OS.has_environment("PLANET_NO_NATIVE"):
+		_native = ClassDB.instantiate(&"PlanetSurfaceNative")
+		for axes: Array in PlanetTile.FACES:
+			_faces.append_array(PackedVector3Array(axes))
 	if threaded and DisplayServer.get_name() != "headless":
 		var count := clampi(OS.get_processor_count() - 2, 2, 4)
 		for index in count:
@@ -78,16 +84,28 @@ func update(at: Vector3) -> void:
 	var here := at.normalized()
 	_height = maxf(at.length() - _settings.radius - noise.height(here.x, here.y, here.z), 0.0)
 	_wanted.clear()
-	for face in 6:
-		_select(face, 0, 0, 0)
+	if _native != null:
+		_select_native(at)
+	else:
+		for face in 6:
+			_select(face, 0, 0, 0)
 	var missing: Array = []
+	var sorts := PackedFloat64Array()
 	for key: int in _wanted:
 		var entry: Array = _wanted[key]
 		if _pending.has(key):
 			continue
 		if not tiles.has(key) or (_collides(entry) and not (tiles[key] as PlanetTile).has_collider):
 			missing.append(entry)
-	missing.sort_custom(_before)
+			if _native != null:
+				sorts.append(entry[7])
+	if _native != null:
+		var ordered: Array = []
+		for index: int in _native.call(&"order", sorts):
+			ordered.append(missing[index])
+		missing = ordered
+	else:
+		missing.sort_custom(_before)
 	_mutex.lock()
 	for job: Array in _jobs: # the player moved: the old queue may be for places it has left
 		_pending.erase(PlanetTile.key_of(job[0], job[1], job[2], job[3]))
@@ -105,6 +123,26 @@ func update(at: Vector3) -> void:
 		_inline = missing.slice(0, 12)
 	_queue_plants()
 	_drop_stale()
+
+
+## The tiles wanted for a player at `at`, chosen natively: each entry is [face, level, x, y, distance, collides, plants,
+## sort key] (the extra numbers are what `_distance`, `_collides` and `_plants` would work out).
+func _select_native(at: Vector3) -> void:
+	var picked: Dictionary = _native.call(&"select", {
+		"near": at, "height": _height, "radius": _settings.radius, "max_level": _settings.max_level(),
+		"split_factor": _settings.split_factor, "tile_max": _settings.tile_max,
+		"collide_tiles": _settings.collide_tiles, "plants_on": _settings.plants_on,
+		"coarse_level": coarse_level(), "faces": _faces})
+	var entries: PackedInt32Array = picked["entries"]
+	var distance: PackedFloat64Array = picked["distance"]
+	var collides: PackedByteArray = picked["collides"]
+	var plants: PackedByteArray = picked["plants"]
+	var sort: PackedFloat64Array = picked["sort"]
+	for index in distance.size():
+		var at4 := index * 4
+		_wanted[PlanetTile.key_of(entries[at4], entries[at4 + 1], entries[at4 + 2], entries[at4 + 3])] = [
+				entries[at4], entries[at4 + 1], entries[at4 + 2], entries[at4 + 3], distance[index],
+				collides[index] == 1, plants[index], sort[index]]
 
 
 ## The order tiles are made in: the ground the player stands on first, then the planet's whole
@@ -315,6 +353,8 @@ func _make(entry: Array) -> PlanetTile:
 ## What grows on a tile: everything on the finest tiles near the player, only trees further out
 ## (and on the next size up), nothing on the far tiles.
 func _plants(entry: Array) -> PlanetScatter.Detail:
+	if entry.size() > 6:
+		return entry[6]
 	if not _settings.plants_on:
 		return PlanetScatter.Detail.NONE
 	var level: int = entry[1]
@@ -333,6 +373,8 @@ func _plants(entry: Array) -> PlanetScatter.Detail:
 
 ## Only the finest tiles close to the player get a collider.
 func _collides(entry: Array) -> bool:
+	if entry.size() > 5:
+		return entry[5]
 	if entry[1] != _settings.max_level():
 		return false
 	return _distance(entry) < _settings.tile_max * _settings.collide_tiles * 2.0 + 60.0
@@ -352,6 +394,8 @@ func _select(face: int, level: int, x: int, y: int) -> void:
 
 ## Metres from the player to the middle of a tile (on the sea level sphere).
 func _distance(entry: Array) -> float:
+	if entry.size() > 4:
+		return entry[4]
 	var count := float(1 << int(entry[1]))
 	var s := -1.0 + 2.0 * (float(entry[2]) + 0.5) / count
 	var t := -1.0 + 2.0 * (float(entry[3]) + 0.5) / count
