@@ -82,6 +82,18 @@ about 5 times slower to build and has no river valleys, and the game prints one 
   `randf` / `randf_range` for anything that shapes a planet (the double build draws other numbers; use
   `rng.randi()` as `PlanetTectonics._between` does).
 
+- **Native first for the planet (the user's rule, 2026-10-19).** New computation for the planet and its plants (noise,
+  grids, placement, meshes, selection, anything that loops over many points or builds arrays) is written in C++ in
+  `native/planet_crust` from the start, not in GDScript: converting to native has repeatedly made planet code several
+  times faster (plant meshes 7.5x, placement and selection, climate setup). GDScript stays for what only the engine can
+  do: creating and freeing nodes, materials and shaders' parameters, UI and menus, input, and the orchestration that
+  calls the native classes. Rules for doing it: measure first (`PLANET_TIMING=1`, the tile timings in
+  `AGENT_TASKS/073`); hand numbers over from GDScript in `setup`, never copy constants; make the native method pure (no
+  engine state, callable from worker threads); return packed arrays, not many small calls; keep a short script
+  fallback only where the library may be missing (a machine that has not built it yet) and say so in a comment; add the
+  class to `register_types.cpp`, rebuild both libraries (single and `--double`), and add or extend a check. Do not port
+  scene/UI code, one-off tools or the flat world.
+
 There are no unit tests. Persistent acceptance scenes live under `tests/manual/<domain>/`.
 Temporary capture scenes may use `tests/manual/_<name>_demo.tscn` but must be removed before commit.
 After launching a verification scene, stop the game before handing control back to the user.
