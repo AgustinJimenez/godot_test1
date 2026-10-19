@@ -6,7 +6,7 @@ extends Node
 ##     soil=laterite|brown|sand|black|grey|forest   the soil (what the crust gives: colour, iron, organic matter, stones, depth)
 ##     view=low|eye|down|far|top|macro   the camera: 25 cm above the ground looking along it, standing looking down ahead (the default), nearly straight down, standing looking out, from above, a hand's breadth
 ##     detail=0..3   the ground detail (the graphics setting)   chips=0|1   the real stones   sun=ELEVATION,AZIMUTH (degrees)
-##   (with no `out=` the lab stays open: WASD fly, Q/E down/up, right mouse look, Shift fast)
+##   (with no `out=` the lab stays open: drag with the mouse to circle the focus, wheel zooms, middle drag moves the focus)
 ##     stones=0..1   how stony   seed=N   which patch of ground   ref=PATH   a photograph beside the render   size=WIDTHxHEIGHT
 ## Prints GROUND_LAB with the numbers of the run.
 
@@ -15,7 +15,11 @@ var _out := "ground_lab.png"
 var _ref := ""
 var _options := {}
 var _camera: Camera3D
-var _live := false ## no `out=`: stay open, fly with WASD, Q/E down/up, right mouse button to look, Shift fast
+var _live := false ## no `out=`: stay open with an orbit camera (drag to circle the focus, wheel to zoom, middle drag to move it)
+var _focus := Vector3(0.0, 0.0, -0.5)
+var _yaw := 0.0
+var _pitch := 0.9
+var _distance := 2.2
 
 
 func _ready() -> void:
@@ -194,21 +198,33 @@ func _scatter_chips(seed_value: int, preset: Dictionary, stones: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not _live or _camera == null:
 		return
-	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+	if event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
-		_camera.rotate_y(-motion.relative.x * 0.003)
-		_camera.rotation.x = clampf(_camera.rotation.x - motion.relative.y * 0.003, -1.5, 1.5)
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+			_yaw -= motion.relative.x * 0.005
+			_pitch = clampf(_pitch + motion.relative.y * 0.005, 0.05, 1.55)
+		elif Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
+			var side := Vector3(cos(_yaw), 0.0, -sin(_yaw))
+			var ahead := Vector3(-sin(_yaw), 0.0, -cos(_yaw))
+			_focus += (-side * motion.relative.x + ahead * motion.relative.y) * 0.002 * _distance
+	elif event is InputEventMouseButton and event.is_pressed():
+		var button := event as InputEventMouseButton
+		if button.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_distance = maxf(_distance * 0.9, 0.25)
+		elif button.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_distance = minf(_distance * 1.1, 14.0)
 
 
-func _process(delta: float) -> void:
+## The orbit camera: always looking at `_focus` on the ground, `_distance` away, `_pitch` above the ground, `_yaw` round it.
+func _place_camera() -> void:
+	var offset := Vector3(sin(_yaw) * cos(_pitch), sin(_pitch), cos(_yaw) * cos(_pitch)) * _distance
+	_camera.look_at_from_position(_focus + offset, _focus)
+
+
+func _process(_delta: float) -> void:
 	var root := get_tree().root
 	if _live:
-		var way := Vector3(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)),
-				float(Input.is_key_pressed(KEY_E)) - float(Input.is_key_pressed(KEY_Q)),
-				float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
-		var speed := 4.0 if Input.is_key_pressed(KEY_SHIFT) else 1.2
-		_camera.global_position += _camera.global_basis * way * speed * delta
-		_camera.global_position.y = maxf(_camera.global_position.y, 0.05)
+		_place_camera()
 		return
 	_frames += 1
 	if _frames == 40:
