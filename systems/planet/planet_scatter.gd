@@ -105,8 +105,27 @@ static func species_table(registry: SpeciesRegistry) -> Array:
 				"above_min": one.above_min, "above_max": one.above_max, "slope_max": one.slope_max,
 				"density": one.density, "patch_freq": one.patch_freq,
 				"patch_strength": one.patch_strength, "size_spread": one.size_spread,
-				"patch_offset": one.patch_offset, "footprint": one.footprint()})
+				"patch_offset": one.patch_offset, "footprint": one.footprint(), "crown": one.crown,
+				"shade_tolerance": _shade_tolerance(one.form)})
 	return table
+
+
+## How well a growth form lives in the shade of trees: 1 as well as anywhere, 0 not at all.
+static func _shade_tolerance(form: PlantSpecies.Form) -> float:
+	match form:
+		PlantSpecies.Form.FERN:
+			return 0.9
+		PlantSpecies.Form.MUSHROOM:
+			return 0.95
+		PlantSpecies.Form.SHRUB:
+			return 0.55
+		PlantSpecies.Form.GRASS, PlantSpecies.Form.TALL_GRASS:
+			return 0.3
+		PlantSpecies.Form.FLOWER, PlantSpecies.Form.REED:
+			return 0.2
+		PlantSpecies.Form.CACTUS:
+			return 0.0
+	return 1.0
 
 
 ## The same placement as the loops below, run natively (the plants' buffers come back ready to hang).

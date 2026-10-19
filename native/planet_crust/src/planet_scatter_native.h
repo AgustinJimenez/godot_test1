@@ -28,6 +28,8 @@ public:
 		double moisture = 0.5, moisture_tol = 0.3, heat = 0.5, heat_tol = 0.3, above_min = 1.5, above_max = 60.0;
 		double slope_max = 0.5, density = 0.5, patch_freq = 0.05, patch_strength = 0.0, size_spread = 0.25;
 		double patch_x = 0.0, patch_y = 0.0, foot_x = 0.0, foot_y = 0.0;
+		double crown = 2.0; // radius of the crown (m): trees keep their crowns apart and shade what is under them
+		double shade_tolerance = 1.0; // 0 a plant of the open, 1 grows as well under a canopy
 		double fitness(double p_wet, double p_warm, double p_above, double p_steep) const;
 	};
 

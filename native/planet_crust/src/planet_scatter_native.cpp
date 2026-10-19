@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstring>
 #include <map>
+#include <unordered_map>
 #include <vector>
 
 using namespace godot;
@@ -120,6 +121,8 @@ void PlanetScatterNative::setup(const Dictionary &p_config) {
 		Vector2 foot = d.get("footprint", Vector2());
 		s.foot_x = foot.x;
 		s.foot_y = foot.y;
+		s.crown = d.get("crown", 2.0);
+		s.shade_tolerance = d.get("shade_tolerance", 1.0);
 		species.push_back(s);
 		if (s.layer >= 0 && s.layer < 5) {
 			by_layer[s.layer].push_back((int)species.size() - 1);
@@ -331,8 +334,83 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		return candidates.back();
 	};
 
+	// How open the ground is: forest where it is wet, open fields where it is dry, a mosaic of groves and meadows in between
+	// (the rain sets the trees' share, as it does on a real planet: more than about 900 mm a year is forest, less is savanna
+	// and grassland, and fire, grazing and soil keep the edges ragged). Two large noises make the mosaic (about 300 m and
+	// 1.5 km across, from the direction on the planet, so tiles agree), and steep ground is more open.
+	auto closed_share = [&](const Vector3 &dir, const Climate &c, double steep) {
+		if (!crust.is_valid()) {
+			return 1.0;
+		}
+		const double groves = crust->detail_at(dir * (real_t)(radius / 27.0) + Vector3(11, 0, 0));
+		const double regions = crust->detail_at(dir * (real_t)(radius / 140.0) + Vector3(0, 23, 0));
+		const double cover = smoothstep(0.25, 0.7, c.wet) + 1.6 * (regions - 0.5) + 1.2 * (groves - 0.5) - 0.35 * smoothstep(0.35, 0.7, steep);
+		return smoothstep(0.15, 0.55, cover);
+	};
+
+	// the crowns of the trees placed so far (a hash of 10 m cells): crowns keep apart, and shade what grows under them
+	struct Crown {
+		double x, z, radius;
+	};
+	std::vector<Crown> crowns;
+	std::unordered_map<int64_t, std::vector<int>> crown_cells;
+	const double CROWN_CELL = 10.0, CROWN_MAX = 14.0;
+	auto cell_key = [](int cx, int cz) { return ((int64_t)cx << 32) ^ (int64_t)(uint32_t)cz; };
+	auto each_crown_near = [&](double x, double z, double reach, auto &&visit) {
+		const int span = (int)std::ceil((reach + CROWN_MAX) / CROWN_CELL);
+		const int cx = (int)std::floor(x / CROWN_CELL), cz = (int)std::floor(z / CROWN_CELL);
+		for (int dz = -span; dz <= span; dz++) {
+			for (int dx = -span; dx <= span; dx++) {
+				auto found = crown_cells.find(cell_key(cx + dx, cz + dz));
+				if (found == crown_cells.end()) {
+					continue;
+				}
+				for (int id : found->second) {
+					if (visit(crowns[id])) {
+						return;
+					}
+				}
+			}
+		}
+	};
+	// crowns may overlap a little at the edges, not more (distance under 70 % of the two radii together is too close)
+	auto crowded = [&](double x, double z, double radius_here) {
+		bool too_close = false;
+		each_crown_near(x, z, radius_here, [&](const Crown &other) {
+			const double dx = other.x - x, dz = other.z - z;
+			const double limit = 0.7 * (other.radius + radius_here);
+			too_close = dx * dx + dz * dz < limit * limit;
+			return too_close;
+		});
+		return too_close;
+	};
+	// 0 in the open .. 1 under thick canopy: each crown over the spot shades it, most near its middle
+	auto shade_at = [&](double x, double z) {
+		if (crowns.empty()) {
+			return 0.0;
+		}
+		double light = 1.0;
+		each_crown_near(x, z, 0.0, [&](const Crown &other) {
+			const double dx = other.x - x, dz = other.z - z;
+			const double distance = std::sqrt(dx * dx + dz * dz);
+			if (distance < other.radius) {
+				light *= 1.0 - 0.85 * (1.0 - distance / other.radius);
+			}
+			return false;
+		});
+		return 1.0 - light;
+	};
+
 	auto place = [&](const Species &plant, const Vector3 &at) {
 		double scale = 1.0 + t.rng.range(-plant.size_spread, plant.size_spread);
+		if (plant.layer == CANOPY) { // a tree keeps its crown clear of its neighbours'
+			const double radius_here = plant.crown * scale;
+			if (crowded(at.x, at.z, radius_here)) {
+				return;
+			}
+			crowns.push_back({ (double)at.x, (double)at.z, radius_here });
+			crown_cells[cell_key((int)std::floor(at.x / CROWN_CELL), (int)std::floor(at.z / CROWN_CELL))].push_back((int)crowns.size() - 1);
+		}
 		double yaw = t.rng.range(0.0, TAU_D);
 		int variant = t.rng.randi() % plant.variants;
 		Color tint;
@@ -390,7 +468,19 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			}
 			Climate c = climate_at(dir);
 			int chosen = pick(layer, c, dir, ground, steep, x, z);
-			if (chosen >= 0 && t.rng.randf() <= pick_chance * plant_density) {
+			if (chosen < 0) {
+				return;
+			}
+			double chance = pick_chance * plant_density;
+			if (layer == CANOPY) {
+				chance *= closed_share(dir, c, steep); // open fields and clearings
+			} else if (layer == UNDERSTORY) {
+				chance *= 0.4 + 0.6 * closed_share(dir, c, steep);
+			}
+			if (layer >= GRASS) { // what grows in the shade of the trees (the crowns are placed first)
+				chance *= 1.0 - shade_at(at.x, at.z) * (1.0 - species[chosen].shade_tolerance);
+			}
+			if (t.rng.randf() <= chance) {
 				place(species[chosen], at);
 			}
 		});
@@ -412,7 +502,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			if (chosen < 0 || !species[chosen].has_far) {
 				return;
 			}
-			if (t.rng.randf() > pick_chance * plant_density) {
+			if (t.rng.randf() > pick_chance * plant_density * closed_share(dir, c, slope_at(fx, fz))) {
 				return;
 			}
 			int batch_key = FAR_KEY + species[chosen].id * 100 + t.rng.randi() % 2;
