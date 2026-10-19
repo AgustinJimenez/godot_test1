@@ -18,3 +18,13 @@ have these rules):
 - Not done: trees across tile edges still ignore each other's crowns; fire, grazing and soil depth are not modelled
   (a tree line by cold comes from the species' heat niche); the openness could also come from the drainage (wet valleys
   forest, dry ridges open) and from the seasons' dry spell.
+
+## Soil with grain and depth (`shaders/world/planet_ground.gdshader`, `stones()`)
+Loose stones of three sizes (grit 7 cm, pebbles 22 cm, cobbles 60 cm cells; High and Ultra, within 24/55/90 m) lie in the
+soil, from 3D cells in the planet's wrapped coordinates (continuous over tiles, same after a rebase): one jittered stone
+a cell (some cells empty), each with its own radius, height, shade (pale quartz, dark basalt, or the ground's own tone
+greyed) and dome that tilts the normal; a darker, damper band hugs each stone and the hollows get ambient occlusion, so
+the soil has depth and is not one painted colour. Grass hides them, sand keeps only its grit, pebbles and cobbles thicken in
+some patches and on slopes. Costs 8 cells x 5 hashes a size class (about 120 hashes) and about 1 ms of GPU: 150 fps at High
+with 13 M primitives. Not done: real parallax (the depth is the normal, the occlusion and the dark gaps), stones as meshes
+very near (`PEBBLES` instances exist further out), wet stones darker than the soil, frost and moss on the north side.

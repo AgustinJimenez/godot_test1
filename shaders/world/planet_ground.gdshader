@@ -75,6 +75,44 @@ float fbm3(vec3 p, float period) {
 	return sum;
 }
 
+// A field of loose stones in the planet's own coordinates: one stone to every cell of 1/`scale` metres, each at its own
+// place, size, height and shade. Only the 2 x 2 x 2 cells nearest to the point are looked at (a stone's dome is smaller than
+// half a cell and its centre is kept near the middle of its cell, so no other cell can cover the point). Out: `h` the
+// height of the stone under the point (0 between stones, 1 at the top of the tallest), `lean` the way the surface
+// tilts there (planet axes, a slope: the normal leans by it), `shade` that stone's own tone (0..1), `crevice` how
+// much the point lies in the dark gap hugging a stone (0 far from any, 1 touching one). `period` makes the field repeat
+// over the noise's wrapped distance (1024 m) so the planet's position can stay small.
+void stones(vec3 p, float scale, float period, float size, out float h, out vec3 lean, out float shade, out float crevice) {
+	vec3 q = p * scale;
+	vec3 base = floor(q);
+	vec3 toward = vec3(fract(q.x) < 0.5 ? -1.0 : 1.0, fract(q.y) < 0.5 ? -1.0 : 1.0, fract(q.z) < 0.5 ? -1.0 : 1.0);
+	h = 0.0;
+	lean = vec3(0.0);
+	shade = 0.5;
+	float nearest = 4.0;
+	for (int i = 0; i < 2; i++) {
+		for (int j = 0; j < 2; j++) {
+			for (int k = 0; k < 2; k++) {
+				vec3 c = base + vec3(float(i), float(j), float(k)) * toward;
+				vec3 w = mod(c, period);
+				vec3 centre = c + 0.3 + 0.4 * vec3(hash3(w + 1.7), hash3(w + 4.1), hash3(w + 8.3));
+				float radius = size * (0.4 + 0.6 * hash3(w + 11.9)) * step(0.15, hash3(w + 3.3)); // some cells hold no stone
+				vec3 d = q - centre;
+				float d2 = dot(d, d) / max(radius * radius, 0.0001);
+				nearest = min(nearest, d2);
+				float tall = 0.5 + 0.5 * hash3(w + 2.9);
+				float height = max(1.0 - d2, 0.0) * tall;
+				if (height > h) {
+					h = height;
+					lean = d / radius * 1.6 * tall;
+					shade = hash3(w + 5.5);
+				}
+			}
+		}
+	}
+	crevice = smoothstep(1.6, 1.0, nearest) * (1.0 - smoothstep(0.0, 0.15, h));
+}
+
 float cell_hash(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
 }
@@ -272,8 +310,59 @@ void fragment() {
 				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(tilt_world, 0.0)).xyz * amount);
 				paint *= mix(1.0, 0.45 + surface.w * 1.1, amount);
 			}
+			// loose stones of three sizes (grit, pebbles, cobbles) lying in the soil: each stone has its own shade, its own
+			// dome that tilts the light, and a dark gap hugging it, so the ground has depth and grain and is not one
+			// painted colour. Grass hides them; sand has only its grit; the coarse sizes thicken in some patches
+			// and on slopes and fade out with distance (their size is under a pixel beyond it)
+			float cover_open = (1.0 - smoothstep(0.0, 0.09, paint.g - max(paint.r, paint.b)) * 0.85) * (1.0 - snow_cover);
+			float dist = length(VERTEX);
+			float sand_here = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(-0.03, 0.0, paint.g - paint.r));
+			vec3 stone_leans = vec3(0.0);
+			float stone_ao = 1.0;
+			vec3 stone_paint = paint;
+			float gravel_amount = 0.0;
+			for (int size_class = 0; size_class < 3; size_class++) {
+				float scale = size_class == 0 ? 14.0 : (size_class == 1 ? 4.5 : 1.6); // cells a metre
+				float reach_here = size_class == 0 ? 24.0 : (size_class == 1 ? 55.0 : 90.0);
+				float fade = 1.0 - smoothstep(reach_here * 0.5, reach_here, dist);
+				if (fade < 0.01) {
+					continue;
+				}
+				float coverage = size_class == 0 ? 0.9 : smoothstep(0.2, 0.5, mid + slope * 0.7 + (size_class == 2 ? 0.0 : 0.2));
+				if (size_class == 1) {
+					coverage *= 1.0 - sand_here;
+				} else if (size_class == 2) {
+					coverage *= (1.0 - sand_here) * smoothstep(0.42, 0.8, patch + slope);
+				}
+				coverage *= cover_open * fade;
+				if (coverage < 0.01) {
+					continue;
+				}
+				float sh;
+				vec3 ln;
+				float tone;
+				float gap;
+				stones(on_planet, scale, 1024.0 * scale, 0.46, sh, ln, tone, gap);
+				float on_top = smoothstep(0.0, 0.12, sh) * coverage;
+				// a stone's colour: pale quartz, dark basalt, or the ground's own tone lightened and greyed
+				vec3 own = mix(paint, vec3(dot(paint, vec3(0.33))), 0.45) * (0.5 + 1.2 * tone);
+				own = mix(own, vec3(0.62, 0.6, 0.56), smoothstep(0.86, 1.0, tone) * 0.8);
+				own = mix(own, vec3(0.07, 0.065, 0.07), smoothstep(0.16, 0.0, tone) * 0.8);
+				own *= 0.8 + 0.4 * sh;
+				stone_paint = mix(stone_paint, own, on_top);
+				// between the stones the soil is darker and damper, darkest hugging them
+				stone_paint *= 1.0 - gap * coverage * 0.35;
+				stone_leans += ln * on_top * (size_class == 0 ? 0.5 : 0.9);
+				stone_ao *= 1.0 - coverage * (gap * 0.3 + (1.0 - smoothstep(0.0, 0.3, sh)) * 0.1);
+				gravel_amount = max(gravel_amount, on_top);
+			}
+			paint = mix(paint, stone_paint, strength);
+			vec3 stone_world = (world_from_planet * vec4(stone_leans, 0.0)).xyz;
+			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(stone_world, 0.0)).xyz * strength);
+			rough = mix(rough, 0.78, gravel_amount * strength);
 			// crevices and the hollows between stones are darker (the low parts of the bump)
 			ao = mix(1.0, mix(0.7, 1.0, smoothstep(0.25, 0.7, here)), strength * (0.5 + slope));
+			ao *= mix(1.0, stone_ao, strength);
 			// sand: the wind lays ripples, a few centimetres high, a few metres apart
 			float sandy = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(0.0, 0.05, paint.g - paint.r + 0.02))
 					* smoothstep(0.7, 0.95, world_normal.y);
