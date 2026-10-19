@@ -982,7 +982,7 @@ struct Grower {
 			const int from = link * segments / chain, to = (link + 1) * segments / chain;
 			const int id = next_id++;
 			table.resize((size_t)id + 1);
-			table[(size_t)id] = { (float)before, 0.0f, (float)points[(size_t)from].x, (float)points[(size_t)from].y, (float)points[(size_t)from].z,
+			table[(size_t)id] = { (float)before, 9.0f, (float)points[(size_t)from].x, (float)points[(size_t)from].y, (float)points[(size_t)from].z,
 				(float)points[(size_t)to].x, (float)points[(size_t)to].y, (float)points[(size_t)to].z, (float)std::max(rib, 0.008),
 				(float)(points[(size_t)to] - points[(size_t)from]).length() };
 			chain_ids.push_back(id);
@@ -1193,22 +1193,35 @@ struct Grower {
 		double last = height * 0.94;
 		double spacing = std::max(g->nodes_spacing, 0.1) * (1.0 + 0.8 * lod) / thrift;
 		int tiers = std::max((int)((last - first) / spacing), 5);
+		double step = (last - first) / (tiers - 1);
 		double phase = rf() * TAU_D;
+		// a real tree is not a layered cake: one side of the crown reaches further (the light, the wind), the tiers are not evenly
+		// spaced, the branches of a tier are not evenly turned or equally long, some are lost or broken
+		double lean_yaw = rf() * TAU_D;
+		double lean = rr(0.12, 0.3);
 		for (int tier = 0; tier < tiers; tier++) {
 			double along = (double)tier / (tiers - 1);
-			double y = lerpd(first, last, pow(along, 0.92));
-			double reach = lerpd(g->crown, g->crown * 0.1, pow(along, 0.9)) * rr(0.94, 1.06);
-			int count = g->limbs + (along < 0.6 ? 1 : 0) + (fine ? 1 : 0) - lod;
+			double y = clampd(lerpd(first, last, pow(along, 0.92)) + rr(-0.4, 0.4) * step, first, last);
+			double reach = lerpd(g->crown, g->crown * 0.1, pow(along, 0.9)) * rr(0.8, 1.15);
+			int count = g->limbs + (along < 0.6 ? 1 : 0) + (fine ? 1 : 0) - lod + (rf() < 0.3 ? (rf() < 0.5 ? -1 : 1) : 0);
 			count = std::max((int)std::lround(count * thrift), 3);
-			phase += 1.9;
+			phase += 1.9 + rr(-0.5, 0.5);
 			for (int index = 0; index < count; index++) {
-				double yaw = phase + TAU_D * index / count + rr(-0.2, 0.2);
+				if (rf() < 0.1 + 0.06 * (1.0 - along)) {
+					continue; // a branch the tree has lost
+				}
+				double yaw = phase + TAU_D * (index + rr(-0.3, 0.3)) / count;
 				Vector3 out((real_t)cos(yaw), 0, (real_t)sin(yaw));
-				double below = lerpd(-0.1, 0.55, g->droop) * (1.0 - 0.7 * along);
+				double below = (lerpd(-0.1, 0.55, g->droop) * (1.0 - 0.7 * along)) + rr(-0.1, 0.14);
 				Vector3 dir = (out * (real_t)cos(below) + DOWN * (real_t)sin(below)).normalized();
-				double radius = trunk_radius(y / trunk_length) * 0.45;
-				Vector3 start = axis_at(y) - dir * (real_t)(radius * 0.5);
-				branch(start, dir, reach, radius, 0, 0.0, false);
+				double radius = trunk_radius(y / trunk_length) * 0.45 * rr(0.8, 1.15);
+				double this_reach = reach * rr(0.6, 1.2) * (1.0 + lean * cos(yaw - lean_yaw));
+				if (rf() < 0.06) {
+					this_reach *= 0.35; // broken short
+				}
+				double here = clampd(y + rr(-0.5, 0.5) * step * 0.5, first, last);
+				Vector3 start = axis_at(here) - dir * (real_t)(radius * 0.5);
+				branch(start, dir, this_reach, radius, 0, 0.0, false);
 			}
 		}
 		if (g->foliage == NEEDLE) {
@@ -1361,6 +1374,7 @@ struct Grower {
 			double f = 1.0;
 			if (!leader) {
 				f = g->children_from + (g->children_to - g->children_from) * index / (double)std::max(spread - 1, 1);
+				f = clampd(f + rr(-0.05, 0.05), 0.05, 0.95); // not evenly spaced
 			}
 			Vector3 at = point_along(points, f);
 			Vector3 tangent = tangent_along(tangents, f);
@@ -1376,7 +1390,7 @@ struct Grower {
 				continue;
 			}
 			Vector3 child_dir = (tangent * (real_t)g->child_forward + out * (real_t)g->child_side + UP * (real_t)g->child_up).normalized();
-			double child_length = length * g->child_length[level] * (g->child_length_a - g->child_length_b * f);
+			double child_length = length * g->child_length[level] * (g->child_length_a - g->child_length_b * f) * rr(0.75, 1.2);
 			double buried = local_radius * g->bury;
 			branch(at - child_dir * (real_t)buried, child_dir, child_length + buried,
 					local_radius * g->child_radius * (level == 1 ? g->twig_radius : 1.0), level + 1, child_sway, false);

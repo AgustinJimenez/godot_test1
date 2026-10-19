@@ -115,7 +115,8 @@ Dictionary PlantSwayNative::step(const PackedFloat32Array &p_table, const Packed
 		const Vector3 parent_origin = origins[(size_t)parent];
 		float *s = st + id * STATE_STRIDE;
 		Vector3 turn(s[0], s[1], s[2]), rate(s[3], s[4], s[5]);
-		const double limit = max_turn(radius);
+		const bool blade = row[1] > 8.5f; // a link of a blade or frond: ground plants give less than a tree's twigs
+		const double limit = blade ? std::min(max_turn(radius), 0.45) : max_turn(radius);
 		bool held = false; // resting against the body: it holds the branch where it is (the spring does not pull it back in)
 		if (body) {
 			// the pose before this step's turn is what the walker meets
@@ -126,7 +127,7 @@ Dictionary PlantSwayNative::step(const PackedFloat32Array &p_table, const Packed
 			Vector3 on_body, on_branch;
 			closest_points(body_a, body_b, posed_foot, posed_tip, on_body, on_branch);
 			// (the leaves round a thin branch; a short link of a blade or frond has hardly any)
-			const double reach = body_radius + radius + (radius < 0.04 ? std::min(0.3, 0.5 * length + 0.02) : 0.05);
+			const double reach = body_radius + radius + (blade ? 0.02 : (radius < 0.04 ? std::min(0.3, 0.5 * length + 0.02) : 0.05));
 			const Vector3 apart = on_branch - on_body;
 			const double distance = apart.length();
 			held = distance < reach + 0.04;
