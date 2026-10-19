@@ -44,3 +44,17 @@ meadow flowers on the ground. Tile occluders are made on the main thread (a cras
   always the light one): grass tufts of up to 40 thin blades with 6 bends, flowers in whole clumps.
 - The grass grid is 0.6 x as wide in the realistic look (`PlanetScatter.GRASS_FINE`): a meadow of tufts. Seed 8 meadow at
   High: ground ready after 1.7 s (it was 4.5 s with plants before the native meshes), 85 fps, 18.3 M primitives.
+- Forest-floor debris (`FloraMeshes.LITTER` / `TWIGS`, `PlanetScatter._debris`, Fine ground detail and up): fallen leaves and
+  sticks, thick in forests, some in meadows.
+- Procedural bark (`flora_wind.gdshader` `bark_at`): the native tubes write UV.x = -(1 + way round), UV.y = metres along,
+  UV2.x = radius, so furrows run along each branch (round trunks and horizontal limbs alike), cracks, grain, moss at the
+  foot of a trunk, lichen, and a screen-space bump. Boulders (`MeshBuilder.add_rock`) are a ball cut by flat planes with
+  strata, joints and grain in the shader (UV.x -0.25 marks a rock). `tests/manual/world/rock_lab.gd` renders the scenery
+  or the species of one growth form (`form:PALM`) with a camera of choice: use it for close looks.
+- Palm / fern leaflets, feather leaves and conifer needle branchlets are strips along the rib drawn by the shader
+  (`pinnate`, UV2.y 4 + rows/100, needles 6 + rows/100) in the realistic look, at every level of detail (the lighter
+  version of trees uses cards too, so no more big flat triangles when seen from above; 18.3 M -> 16.1 M primitives).
+- Far trees have a crown of four lumps in their own tones.
+- Still unrealistic (next): the far forest (beyond 220 m only sparse far trees on bare hills: dense canopy needs a
+  far canopy layer or a terrain colour that carries the forest), compound/needle detail at mid distance, leaf
+  shading (very light leaves under strong sun), tree trunks of low-poly angular look from 5 sides, flowers, reeds.
