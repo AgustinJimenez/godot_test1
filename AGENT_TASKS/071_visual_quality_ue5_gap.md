@@ -120,3 +120,17 @@ shafts, ground Fine), Ultra (+ SSR high, ground Finest). The render scales are u
 - Seen on the way, not part of this: the far ground at the horizon draws as a black, stair-stepped silhouette in the snow
   range (`--dir=-0.92717,0.00139,-0.37464`), and rectangular dark patches with straight edges close to the ground on the
   wet place (cloud/shadow or tile seams: look at `planet_ground.gdshader`'s `far` blend and the cascade distance).
+
+## Update: clouds, lighting, surface textures
+
+- **Cloud shadows** (`cloud_shadows`, High and Ultra): the ground shader marches nothing; it reads the
+  same cloud layer (cover picture + the coarse noise octaves) along the ray to the star and darkens the
+  ground under it. Scaled by `1 - overcast` (a full overcast already dims the sun). Cost: one cover
+  fetch and 4 noise taps per ground pixel, no measurable frame change in the lab.
+- **Bounced light** (`sdfgi`, Ultra only): the engine's SDFGI, 4 cascades. A subtle lift on flat
+  ground; no clear frame cost seen in the lab (the tile builder's noise is larger). A reflection probe
+  was not added.
+- **Surface textures** (Fine and up, within ~70 m): tileable rock, soil and sand (normal + brightness,
+  512 px) made by `scripts/make_ground_textures.py` (no downloads; run it again to remake them),
+  blended triplanar by slope and sand colour, faded out by distance and under snow. Real photo-scanned
+  PBR sets would look better; the script is the place to swap them in.

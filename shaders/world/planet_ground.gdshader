@@ -34,6 +34,9 @@ global uniform vec3 anchor_wrap;
 global uniform vec3 anchor_up;
 global uniform float anchor_phase;
 
+uniform sampler2D rock_map : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D soil_map : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D sand_map : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float flat_look : hint_range(0.0, 1.0) = 0.0; // 1: each quad one flat colour (the low-poly look)
 uniform float detail_strength : hint_range(0.0, 1.0) = 0.8;
 uniform float detail_range = 260.0; // m: the detail is gone by twice this
@@ -138,6 +141,21 @@ float cloud_shade_at(vec3 from_centre) {
 	return clamp(body * 3.2, 0.0, 1.0);
 }
 
+// A surface texture (RGB normal, A brightness) projected along the three axes of the planet and blended by
+// the way the ground faces: returns the tilt (planet axes) in xyz and the brightness in w.
+vec4 triplanar(sampler2D map, vec3 at, vec3 facing, float scale) {
+	vec3 w = pow(abs(facing), vec3(4.0));
+	w /= w.x + w.y + w.z;
+	vec4 sx = texture(map, at.yz * scale);
+	vec4 sy = texture(map, at.xz * scale);
+	vec4 sz = texture(map, at.xy * scale);
+	vec2 nx = sx.xy * 2.0 - 1.0;
+	vec2 ny = sy.xy * 2.0 - 1.0;
+	vec2 nz = sz.xy * 2.0 - 1.0;
+	vec3 tilt = vec3(0.0, nx.x, nx.y) * w.x + vec3(ny.x, 0.0, ny.y) * w.y + vec3(nz.x, nz.y, 0.0) * w.z;
+	return vec4(tilt, sx.a * w.x + sy.a * w.y + sz.a * w.z);
+}
+
 void vertex() {
 	smooth_color = CUSTOM0.rgb;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -210,6 +228,29 @@ void fragment() {
 			vec3 micro_planet = -vec3(mx, my, mz) * (1.4 + slope * 3.0) * fine * strength;
 			vec3 micro_world = (world_from_planet * vec4(micro_planet, 0.0)).xyz;
 			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(micro_world, 0.0)).xyz);
+			// real surface detail: rock on the steep faces, sand on pale level ground, soil elsewhere
+			float surface_fade = 1.0 - smoothstep(30.0, 70.0, length(VERTEX));
+			if (surface_fade > 0.01) {
+				vec3 facing = mat3(anchor_from_world) * world_normal;
+				float on_sand = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(-0.03, 0.0, paint.g - paint.r));
+				float w_rock = smoothstep(0.2, 0.45, slope);
+				float w_sand = on_sand * (1.0 - w_rock);
+				float w_soil = 1.0 - w_rock - w_sand;
+				vec4 surface = vec4(0.0, 0.0, 0.0, 0.0);
+				if (w_rock > 0.01) {
+					surface += triplanar(rock_map, on_planet, facing, 0.31) * w_rock;
+				}
+				if (w_sand > 0.01) {
+					surface += triplanar(sand_map, on_planet, facing, 0.7) * w_sand;
+				}
+				if (w_soil > 0.01) {
+					surface += triplanar(soil_map, on_planet, facing, 0.5) * w_soil;
+				}
+				float amount = surface_fade * strength * (1.0 - snow_cover * 0.7);
+				vec3 tilt_world = (world_from_planet * vec4(surface.xyz * 0.9, 0.0)).xyz;
+				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(tilt_world, 0.0)).xyz * amount);
+				paint *= mix(1.0, 0.45 + surface.w * 1.1, amount);
+			}
 			// crevices and the hollows between stones are darker (the low parts of the bump)
 			ao = mix(1.0, mix(0.7, 1.0, smoothstep(0.25, 0.7, here)), strength * (0.5 + slope));
 			// sand: the wind lays ripples, a few centimetres high, a few metres apart
