@@ -1,11 +1,9 @@
 class_name PlanetUndergrowth
 extends Node
-## Pushing through plants: the shrubs, ferns and grass round the walker bend away from them (the plant shader reads where the
-## walker is: `pusher_a`, a position and a reach) and hold them back (the more and the thicker the undergrowth, the slower the
-## walk). Trunks and thick low limbs are solid (colliders); this is the soft part. The drag comes from the stems each tile's
+## Pushing through plants: they hold the walker back (the more and the thicker the undergrowth, the slower the walk); how they
+## bend away is PlanetSway's, branch by branch. Trunks and thick low limbs are solid (colliders); this is the soft part. The drag comes from the stems each tile's
 ## native placement kept (PlanetScatterNative.drag) and is felt as the same kind of slowing as wading (WorldSwim).
 
-const REACH := 1.5 ## m: how far from the walker the plants bend
 const MAX_SLOW := 0.55 ## the most a thicket takes off the walking speed
 const LOOK_EVERY := 0.1 ## s between looks at the stems round the walker
 
@@ -25,7 +23,6 @@ func _physics_process(delta: float) -> void:
 	if player == null or planet == null:
 		return
 	var here := player.global_position
-	RenderingServer.global_shader_parameter_set(&"pusher_a", Vector4(here.x, here.y, here.z, REACH))
 	_since += delta
 	if _since >= LOOK_EVERY:
 		_since = 0.0
@@ -36,10 +33,6 @@ func _physics_process(delta: float) -> void:
 	_slow = move_toward(_slow, wanted, delta * 3.0) # (it eases in and out: no jerk at the edge of a bush)
 	player.velocity.x *= _slow
 	player.velocity.z *= _slow
-
-
-func _exit_tree() -> void:
-	RenderingServer.global_shader_parameter_set(&"pusher_a", Vector4(0.0, -1000.0, 0.0, 0.0))
 
 
 ## The undergrowth round `world_position`: 0 in the open .. 1 in a thicket (the worst of the tiles it is over).

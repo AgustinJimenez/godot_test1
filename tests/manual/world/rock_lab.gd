@@ -14,10 +14,6 @@ func _initialize() -> void:
 	if args.size() > 1:
 		kind_name = args[1]
 	RenderingServer.global_shader_parameter_set(&"realism", 1.0)
-	if OS.has_environment("LAB_PUSH"): # someone pushing through the plants: "x,y,z,reach"
-		var push := OS.get_environment("LAB_PUSH").split(",")
-		RenderingServer.global_shader_parameter_set(&"pusher_a", Vector4(push[0].to_float(), push[1].to_float(),
-				push[2].to_float(), push[3].to_float()))
 	FloraMeshes.detailed = not OS.has_environment("LAB_LOW") # LAB_LOW=1: the cheaper meshes of the default ground detail
 	var kind: FloraMeshes.Kind = FloraMeshes.Kind.ROCK
 	var shown := 0.0 # the height of what is shown, for the camera

@@ -11,11 +11,6 @@ global uniform float snow_cover;
 global uniform float autumn;
 global uniform float realism;
 global uniform vec2 wind_direction;
-// those who push through the plants (xyz the position in the world, w the reach in metres; the planet's walker is `a`):
-// the leaves and tips bend away from them
-global uniform vec4 pusher_a;
-global uniform vec4 pusher_b;
-global uniform vec4 pusher_c;
 uniform float sway_speed = 1.3;
 uniform bool planks = false; // wood boards (a cabin) instead of tree bark
 // A tree near the walker, bent branch by branch (PlantSway): row 0 of the texture holds each branch's foot and its parent's id, row 1
@@ -176,37 +171,6 @@ vec2 pinnate(vec2 uv, float rows, float id, float needles) {
 	return vec2(inside_leaflet, shade);
 }
 
-// How far (in the world, metres) a plant's vertex is shoved away from a pusher (a walker 0 to 2 m tall). The way and the amount
-// come from the plant's own foot (it leans as one, never splays) and grow with the vertex's height over the foot: a smooth
-// function of position alone, so a leaf, whose base and tip have different `sway` weights, is moved as one piece and not sheared.
-vec3 shove_from(vec4 pusher, vec3 foot, vec3 world) {
-	if (pusher.w <= 0.0) {
-		return vec3(0.0);
-	}
-	vec3 away = foot - pusher.xyz;
-	float distance_to = length(away.xz);
-	float near = 1.0 - clamp(distance_to / pusher.w, 0.0, 1.0);
-	float body = smoothstep(-0.6, 0.0, away.y) * (1.0 - smoothstep(1.6, 2.4, away.y)); // (not what is above their head)
-	vec2 outward = away.xz / max(distance_to, 0.05);
-	float height = max(world.y - foot.y, 0.0);
-	return vec3(outward.x, -0.1, outward.y) * near * near * body * min(height * height * 0.08, 0.7);
-}
-
-// The foliage near a pusher's body (an upright capsule from its feet up 1.8 m) is bulged outward: each point is moved away from
-// the body's axis by a smooth bump (at most 0.3 m, nothing beyond a metre), so leaves part round a walker. A bump that never
-// has a steeper slope than 0.9 cannot fold or tear a leaf, which is what moving each vertex to the body's skin did (a leaf
-// across the axis was pulled both ways into a streak).
-vec3 part_for(vec4 pusher, vec3 world) {
-	if (pusher.w <= 0.0) {
-		return vec3(0.0);
-	}
-	vec3 axis = pusher.xyz + vec3(0.0, clamp(world.y - pusher.y, 0.0, 1.8), 0.0);
-	vec3 away = world - axis;
-	float distance_to = length(away);
-	float bump = 1.0 - clamp(distance_to / 1.0, 0.0, 1.0);
-	return away * (0.3 / max(distance_to, 0.33)) * bump * bump; // (a trunk shifts a few centimetres at most: nobody can stand closer than its collider)
-}
-
 vec3 turn_by(vec3 rotation, vec3 v) {
 	float angle = length(rotation);
 	if (angle < 0.00001) {
@@ -247,10 +211,7 @@ void vertex() {
 	float amount = weight * (0.03 + wind_strength * 0.5) * (gust * 0.8 + flutter * 0.2);
 	vec3 push = vec3(wind_direction.x, 0.0, wind_direction.y) * amount;
 	face_up = (MODEL_MATRIX * vec4(NORMAL, 0.0)).y;
-	vec3 foot = MODEL_MATRIX[3].xyz;
-	vec3 shove = bendable ? vec3(0.0) : shove_from(pusher_a, foot, world) + shove_from(pusher_b, foot, world) + shove_from(pusher_c, foot, world);
-	vec3 part = bendable ? vec3(0.0) : part_for(pusher_a, world) + part_for(pusher_b, world) + part_for(pusher_c, world);
-	VERTEX += inverse(mat3(MODEL_MATRIX)) * (push + shove + part);
+	VERTEX += inverse(mat3(MODEL_MATRIX)) * push;
 }
 
 void fragment() {
