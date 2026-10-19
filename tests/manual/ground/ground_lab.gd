@@ -6,6 +6,7 @@ extends Node
 ##     soil=laterite|brown|sand|black|grey|forest   the soil (what the crust gives: colour, iron, organic matter, stones, depth)
 ##     view=low|eye|top|macro   the camera: 25 cm above the ground looking along it, standing height, from above, a hand's breadth
 ##     detail=0..3   the ground detail (the graphics setting)   chips=0|1   the real stones   sun=ELEVATION,AZIMUTH (degrees)
+##   (with no `out=` the lab stays open: WASD fly, Q/E down/up, right mouse look, Shift fast)
 ##     stones=0..1   how stony   seed=N   which patch of ground   ref=PATH   a photograph beside the render   size=WIDTHxHEIGHT
 ## Prints GROUND_LAB with the numbers of the run.
 
@@ -13,6 +14,8 @@ var _frames := 0
 var _out := "ground_lab.png"
 var _ref := ""
 var _options := {}
+var _camera: Camera3D
+var _live := false ## no `out=`: stay open, fly with WASD, Q/E down/up, right mouse button to look, Shift fast
 
 
 func _ready() -> void:
@@ -21,6 +24,7 @@ func _ready() -> void:
 		var parts := arg.split("=", true, 1)
 		if parts.size() == 2:
 			_options[parts[0]] = parts[1]
+	_live = not _options.has("out")
 	_out = _options.get("out", _out)
 	_ref = _options.get("ref", "")
 	var soil: String = _options.get("soil", "laterite")
@@ -68,6 +72,7 @@ func _ready() -> void:
 	add_child(environment)
 
 	var camera := Camera3D.new()
+	_camera = camera
 	add_child(camera)
 	camera.fov = 55.0
 	match view:
@@ -182,8 +187,25 @@ func _scatter_chips(seed_value: int, preset: Dictionary, stones: float) -> void:
 	print("GROUND_LAB stones ", ", ".join(Array(buffers.map(func(buffer: PackedFloat32Array) -> int: return buffer.size() / 16))))
 
 
-func _process(_delta: float) -> void:
+func _unhandled_input(event: InputEvent) -> void:
+	if not _live or _camera == null:
+		return
+	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+		var motion := event as InputEventMouseMotion
+		_camera.rotate_y(-motion.relative.x * 0.003)
+		_camera.rotation.x = clampf(_camera.rotation.x - motion.relative.y * 0.003, -1.5, 1.5)
+
+
+func _process(delta: float) -> void:
 	var root := get_tree().root
+	if _live:
+		var way := Vector3(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)),
+				float(Input.is_key_pressed(KEY_E)) - float(Input.is_key_pressed(KEY_Q)),
+				float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
+		var speed := 4.0 if Input.is_key_pressed(KEY_SHIFT) else 1.2
+		_camera.global_position += _camera.global_basis * way * speed * delta
+		_camera.global_position.y = maxf(_camera.global_position.y, 0.05)
+		return
 	_frames += 1
 	if _frames == 40:
 		var image := root.get_texture().get_image()
