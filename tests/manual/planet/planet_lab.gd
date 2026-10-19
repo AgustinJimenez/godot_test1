@@ -540,14 +540,17 @@ func _ready() -> void:
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()
 	if not asked and user_args.is_empty() and not UniverseStartMenu.requested:
-		# no menu for now: a random-seed Earth a tenth of the size (PLANET_SCALE=1: all; --start-menu: menu)
-		var scale := 0.1
+		# no menu for now: the default planet (seed 1337, 20 km) on foot, with plants (--start-menu: menu;
+		# PLANET_SCALE=0.1..1: a random-seed Earth that size instead)
 		if OS.has_environment("PLANET_SCALE"):
-			scale = OS.get_environment("PLANET_SCALE").to_float()
-		PlanetMenu.pending = PlanetSettings.earth(clampf(scale, 0.02, 1.0))
-		PlanetMenu.pending.world_seed = randi() % 100000
-		PlanetMenu.pending.vary() # (an Earth-like world, but no two alike)
+			var scale := OS.get_environment("PLANET_SCALE").to_float()
+			PlanetMenu.pending = PlanetSettings.earth(clampf(scale, 0.02, 1.0))
+			PlanetMenu.pending.world_seed = randi() % 100000
+			PlanetMenu.pending.vary() # (an Earth-like world, but no two alike)
+		else:
+			PlanetMenu.pending = PlanetSettings.new()
 		PlanetMenu.pending.plants_on = true # (the game has plants, the other lab starts not)
+		_grounded = true
 		asked = true
 	var menu_first := UniverseStartMenu.requested or user_args.is_empty()
 	menu_first = menu_first or "--start-menu" in user_args
