@@ -4,7 +4,7 @@ extends Node
 ## (put the photo in E:/Temp/claude/refs/, outside the project, and pass it as `ref=`: it is placed beside the render).
 ##   godot --path . res://tests/manual/ground/ground_lab.tscn -- out=E:/path/picture.png [options]
 ##     soil=laterite|brown|sand|black|grey|forest   the soil (what the crust gives: colour, iron, organic matter, stones, depth)
-##     view=low|eye|top|macro   the camera: 25 cm above the ground looking along it, standing height, from above, a hand's breadth
+##     view=low|eye|down|far|top|macro   the camera: 25 cm above the ground looking along it, standing looking down ahead (the default), nearly straight down, standing looking out, from above, a hand's breadth
 ##     detail=0..3   the ground detail (the graphics setting)   chips=0|1   the real stones   sun=ELEVATION,AZIMUTH (degrees)
 ##   (with no `out=` the lab stays open: WASD fly, Q/E down/up, right mouse look, Shift fast)
 ##     stones=0..1   how stony   seed=N   which patch of ground   ref=PATH   a photograph beside the render   size=WIDTHxHEIGHT
@@ -82,8 +82,12 @@ func _ready() -> void:
 			camera.look_at_from_position(Vector3(0.0, 2.4, 0.4), Vector3(0.0, 0.0, 0.0))
 		"macro":
 			camera.look_at_from_position(Vector3(0.0, 0.35, 0.45), Vector3(0.0, 0.0, 0.0))
-		_:
+		"down":
+			camera.look_at_from_position(Vector3(0.0, 1.5, 0.35), Vector3(0.0, 0.0, 0.0))
+		"far":
 			camera.look_at_from_position(Vector3(0.0, 1.7, 1.6), Vector3(0.0, 0.0, -2.2))
+		_: # eye: standing, looking down at the ground a couple of metres ahead (no horizon)
+			camera.look_at_from_position(Vector3(0.0, 1.6, 1.2), Vector3(0.0, 0.0, -0.5))
 	print("GROUND_LAB soil=%s view=%s detail=%.0f stones=%.2f seed=%d chips=%s" % [soil, view, detail, stones, seed_value,
 			_options.get("chips", "1")])
 
