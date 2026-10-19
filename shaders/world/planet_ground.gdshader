@@ -136,7 +136,10 @@ float cloud_shade_at(vec3 from_centre) {
 	vec2 uv = vec2(atan(d.z, d.x) / TAU + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI);
 	float cover = max(textureLod(cloud_cover_map, uv, 0.0).r, cloud_shadow.z);
 	vec3 p = (q + cloud_drift_planet) * 0.0022;
-	float shape = cloud_shadow_noise(p) * 0.55 + cloud_shadow_noise(p * 2.1 + 7.0) * 0.3 + 0.075;
+	// the same layers of noise as the clouds themselves (planet_cloud_march.gdshaderinc)
+	float shape = cloud_shadow_noise(p * 0.1 + 11.0) * 0.2 + cloud_shadow_noise(p * 0.25 + 23.0) * 0.15
+			+ cloud_shadow_noise(p) * 0.4 + cloud_shadow_noise(p * 2.1 + 7.0) * 0.15
+			+ cloud_shadow_noise(p * 4.3 + 3.0) * 0.1;
 	float body = shape - (1.0 - cover) * 0.75 - 0.12;
 	return clamp(body * 3.2, 0.0, 1.0);
 }

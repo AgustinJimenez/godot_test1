@@ -204,3 +204,14 @@ noise field itself was bent into rings round the eye; and the fine layers switch
 (the circle). Now the noise never changes scale: the second layer of billows and the fine and ragged
 layers fade out smoothly with the distance (`detail`, `far_fade`), so the same clouds are seen near
 and far, only less fine.
+
+## Clouds from orbit were a speckle (the first ring fix had caused it)
+
+Removing the distance scaling of the cloud noise (the ring fix) left the 450 m billows at that size
+from orbit, where a pixel is hundreds of metres: a salt-and-pepper speckle over the whole planet. The
+cloud field is now layers of noise of fixed sizes (4.5 km, 1.8 km, 450 m, 214 m, 105 m; the same
+clouds near and far) and a layer fades to its average once its features are under about a dozen
+pixels across at that distance (`resolved(wavelength, px)`, `px` = the pixel width at the sample's
+distance), so from orbit only the big billows remain, and the edges soften with the distance (from
+orbit the weather's cover picture is the edge). The ground's cloud shadow uses the same layers. Checked
+at 3.5 km, 150 km, 300 km, 1,000 km and 2,500 km up and from the ground.
