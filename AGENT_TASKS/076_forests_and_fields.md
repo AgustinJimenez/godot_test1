@@ -110,3 +110,21 @@ only: on a steep slope it can differ by a few decimetres).
 - Native `PlanetScatterNative` records the stems (x, z, reach, drag) of every shrub, fern, grass tuft and reed placed on a tile (tile meta `stems`); `drag(stems, x, z)` is the walker's held-back share (0 open .. 1 thicket).
 - `PlanetUndergrowth` (a node of the Player) slows the walk by that, easing in and out (at most 55%), and feeds the player's position to the shader global `pusher_a`; `flora_wind.gdshader` bends nearby plants away from it (`shove_from`). `pusher_b`/`pusher_c` are free for animals.
 - Check: `tests/manual/planet/undergrowth_check.tscn`. Debug switches: `PLANET_NO_UNDERGROWTH`, `PLANET_NO_PLANT_COLLIDERS`, `PLANET_NO_LIMBS`; `LAB_PUSH="x,y,z,reach"` for `rock_lab.gd`.
+
+## Reference models (measurements only, nothing imported)
+
+Three Sketchfab packs, all CC-BY-4.0, kept outside the repo (the user's Downloads): "Oak trees pack (17var, LODs, seasons,
+gameready)" and "Grass pack (lowpoly, game-ready)" by LOLIPOP, "Rigged & Animated Weeping Willows" by Jagobo. Only numbers
+were taken from them (read with a small Python glTF reader), so nothing needs attributing in the game.
+
+| Oak (LOD0 bark and clusters) | Height | Trunk radius | Forks / crown base | Crown radius | Crown height / width |
+|---|---|---|---|---|---|
+| Medium | 10.5 m | 0.2 to 0.4 m | 3 m | 4 m | 0.87 |
+| Big | 19.6 m | 0.5 to 0.8 m | 2 to 3 m | 9.5 m | 0.85 |
+| Large | 26.5 m | 0.6 to 0.8 m | 2 m | 11 to 12 m | 1.0 |
+
+Oaks: trunk radius is 3% of the height, the crown as wide as it is tall (radius 45% of the height) and widest a third up;
+the branches reach the full crown radius with the leaf clusters at their tips. Willow: 24 m tall, 32 m wide, leafy to 1.4 m
+above the ground. Grass tufts: 0.2 to 0.25 m, about 11 blades each, fanned out to 0.3 m.
+The `oak` and `willow` archetypes were changed to those proportions (they had a 1.5 m radius trunk under a crown of 3.6 m).
+`rock_lab.gd` takes `arch:oak` (or any archetype) to preview a tree kind. Grass was not changed.

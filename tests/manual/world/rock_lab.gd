@@ -21,11 +21,12 @@ func _initialize() -> void:
 	FloraMeshes.detailed = true
 	var kind: FloraMeshes.Kind = FloraMeshes.Kind.ROCK
 	var shown := 0.0 # the height of what is shown, for the camera
-	if kind_name.begins_with("form:"): # the plants of one growth form, e.g. form:PALM
+	if kind_name.begins_with("form:") or kind_name.begins_with("arch:"): # the plants of one growth form (form:PALM) or tree kind (arch:oak)
 		var form: int = PlantSpecies.Form.keys().find(kind_name.trim_prefix("form:"))
+		var archetype := kind_name.trim_prefix("arch:") if kind_name.begins_with("arch:") else ""
 		var found := 0
 		for one in SpeciesRegistry.new(8, 36).species:
-			if one.form != form or found >= 5:
+			if found >= 5 or (one.archetype != archetype if archetype != "" else one.form != form):
 				continue
 			var instance := MeshInstance3D.new()
 			instance.mesh = PlantMeshes.build(one, 0, true)

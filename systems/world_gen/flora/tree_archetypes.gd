@@ -93,13 +93,15 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.leaf_size = 0.16
 		"oak":
 			g = _leafy(leafy)
+			# measured on a reference oak pack (CC-BY, Sketchfab, LOLIPOP): trunk radius about 3% of the height, forks at
+			# 15 to 25% of it, the crown as wide as it is tall (radius about 45% of the height), its widest at a third up
 			g.height = 12.0
-			g.girth = 1.5
-			g.taper = 0.75
-			g.trunk_part = 0.35
-			g.root_flare = 0.4
-			g.crown = 3.6
-			g.aspect = 0.5
+			g.girth = 0.5
+			g.taper = 0.7
+			g.trunk_part = 0.3
+			g.root_flare = 0.25
+			g.crown = 5.2
+			g.aspect = 0.85
 			g.limbs = 7
 			g.limb_angle = 78.0
 			g.limb_length = 1.2
@@ -158,10 +160,11 @@ static func make(kind: String, leafy: PlantSpecies, conifer: PlantSpecies) -> Tr
 			g.bark = Color(0.3, 0.3, 0.2)
 		"willow":
 			g = _leafy(leafy)
+			# a reference willow (CC-BY, Sketchfab, Jagobo) is 24 m tall and 32 m wide, leafy to within 1.5 m of the ground
 			g.height = 11.0
-			g.girth = 0.5
-			g.trunk_part = 0.3
-			g.crown = 3.4
+			g.girth = 0.45
+			g.trunk_part = 0.13
+			g.crown = 6.4
 			g.limbs = 5
 			g.limb_angle = 58.0
 			g.droop = 0.9
