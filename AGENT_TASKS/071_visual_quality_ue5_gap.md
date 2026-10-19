@@ -194,3 +194,13 @@ cyan, at 200 steps). The steps now crowd toward the eye (cubed spacing, same 14 
 within about 15-25% of the converged horizon and nowhere near yellow. The fog colour comes from the
 same integral (`PlanetAir.sky_color`, 10 steps) and got the same spacing, so the far land is no longer
 tinted yellow-green either. The sunset still warms the horizon toward the sun.
+
+## Clouds stretched into rings round the player, from above (found and fixed)
+
+Seen from above the layer the clouds were fine inside a circle round the camera and smeared into
+concentric rings outside it. Cause (planet_cloud_march.gdshaderinc): the noise coordinate was scaled
+by a `grain` that depended on the distance from the camera (billows "grow with the distance"), so the
+noise field itself was bent into rings round the eye; and the fine layers switched on at a hard 9 km
+(the circle). Now the noise never changes scale: the second layer of billows and the fine and ragged
+layers fade out smoothly with the distance (`detail`, `far_fade`), so the same clouds are seen near
+and far, only less fine.
