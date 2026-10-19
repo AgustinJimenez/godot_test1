@@ -151,6 +151,24 @@ func most_turned() -> float:
 	return worst
 
 
+## The most any live branch turned in the last step (radians).
+func jitter() -> float:
+	var worst := 0.0
+	for entry in _live:
+		if is_instance_valid(entry["tree"]):
+			worst = maxf(worst, (entry["tree"] as PlanetSwayTree).jitter())
+	return worst
+
+
+## The turns of all the live branches added up (radians): it stops changing when everything is at rest.
+func pose_sum() -> float:
+	var total := 0.0
+	for entry in _live:
+		if is_instance_valid(entry["tree"]):
+			total += (entry["tree"] as PlanetSwayTree).turn_sum()
+	return total
+
+
 func _exit_tree() -> void:
 	for entry in _live:
 		if is_instance_valid(entry["instance"]) and is_instance_valid(entry["tree"]):

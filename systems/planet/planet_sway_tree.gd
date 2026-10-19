@@ -11,6 +11,7 @@ var _image: Image
 var _texture: ImageTexture
 var _feet := PackedByteArray()
 var _awake := false
+var _jitter := 0.0 ## the most any branch turned in the last step (radians)
 
 
 ## Take the branches of `tree_mesh` (its "branches" meta) and draw them with `material` (the plant material, copied) tinted by `tint`.
@@ -44,7 +45,14 @@ func step(body_local: PackedFloat32Array, delta: float) -> void:
 	if not _awake and body_local.is_empty():
 		return
 	var made := _sway.step(_table, _state, body_local, delta)
+	var before := _state
 	_state = made["state"]
+	_jitter = 0.0
+	if before.size() == _state.size():
+		for at in _state.size() / 6:
+			for axis in 3:
+				var change := absf(_state[at * 6 + axis] - before[at * 6 + axis])
+				_jitter = maxf(_jitter, change)
 	_awake = made["awake"]
 	_image.set_data(_table.size() / 10, 2, false, Image.FORMAT_RGBAF, _feet + _sway.turns(_state).to_byte_array())
 	_texture.update(_image)
@@ -56,6 +64,19 @@ func most_turned() -> float:
 	for id in _state.size() / 6:
 		worst = maxf(worst, Vector3(_state[id * 6], _state[id * 6 + 1], _state[id * 6 + 2]).length())
 	return worst
+
+
+## How much the most moving branch turned in the last step (radians): for the checks.
+func jitter() -> float:
+	return _jitter
+
+
+## All the branches' turns added up (radians): for the checks.
+func turn_sum() -> float:
+	var total := 0.0
+	for id in _state.size() / 6:
+		total += Vector3(_state[id * 6], _state[id * 6 + 1], _state[id * 6 + 2]).length()
+	return total
 
 
 static func _zeros(count: int) -> PackedFloat32Array:

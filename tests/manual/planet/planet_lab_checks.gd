@@ -94,6 +94,7 @@ static func plant_shapes(node: Node) -> Dictionary:
 ## there; the check passes when that tree has been taken live and a branch of it was turned (PlanetSway). Prints SWAY_CHECK and quits.
 static var _sway_worst := 0.0
 static var _sway_target := Vector3.ZERO
+static var _sway_drift := 1.0
 
 
 static func sway_step(planet: PlanetWorld, player: Player, frame: int) -> void:
@@ -125,9 +126,12 @@ static func sway_step(planet: PlanetWorld, player: Player, frame: int) -> void:
 			sway = node
 	if sway != null and frame > 210:
 		_sway_worst = maxf(_sway_worst, sway.most_turned())
+	if sway != null and frame >= 290 and frame < 330:
+		_sway_drift = 0.0 if frame == 290 else _sway_drift
+		_sway_drift = maxf(_sway_drift, sway.jitter()) # (the body stands still: no branch may keep moving)
 	if frame == 330:
 		var live := 0 if sway == null else sway.live_count()
-		var ok := sway != null and live > 0 and _sway_worst > 0.05
-		print("SWAY_CHECK %s live=%d most_turned=%.2f rad nearest_tree=%.1f m" % [
-				"PASS" if ok else "FAIL", live, _sway_worst, _sway_target.distance_to(player.global_position)])
+		var ok := sway != null and live > 0 and _sway_worst > 0.05 and _sway_drift < 0.01
+		print("SWAY_CHECK %s live=%d most_turned=%.2f rad still_jitter=%.4f rad/step nearest_tree=%.1f m" % [
+				"PASS" if ok else "FAIL", live, _sway_worst, _sway_drift, _sway_target.distance_to(player.global_position)])
 		planet.get_tree().quit(0 if ok else 1)

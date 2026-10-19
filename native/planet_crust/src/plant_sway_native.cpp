@@ -2,6 +2,7 @@
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/basis.hpp>
+#include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <algorithm>
@@ -115,6 +116,7 @@ Dictionary PlantSwayNative::step(const PackedFloat32Array &p_table, const Packed
 		float *s = st + id * STATE_STRIDE;
 		Vector3 turn(s[0], s[1], s[2]), rate(s[3], s[4], s[5]);
 		const double limit = max_turn(radius);
+		bool held = false; // resting against the body: it holds the branch where it is (the spring does not pull it back in)
 		if (body) {
 			// the pose before this step's turn is what the walker meets
 			const Basis before = rotation_of(turn);
@@ -123,27 +125,48 @@ Dictionary PlantSwayNative::step(const PackedFloat32Array &p_table, const Packed
 			const Vector3 posed_tip = (parent_basis * before).xform(tip) + origin;
 			Vector3 on_body, on_branch;
 			closest_points(body_a, body_b, posed_foot, posed_tip, on_body, on_branch);
-			const double reach = body_radius + radius + (radius < 0.04 ? 0.3 : 0.05); // (the leaves round a thin branch)
+			// (the leaves round a thin branch; a short link of a blade or frond has hardly any)
+			const double reach = body_radius + radius + (radius < 0.04 ? std::min(0.3, 0.5 * length + 0.02) : 0.05);
 			const Vector3 apart = on_branch - on_body;
 			const double distance = apart.length();
+			held = distance < reach + 0.04;
 			if (distance < reach) {
 				const double depth = reach - distance;
-				const Vector3 push = distance > 1.0e-4 ? apart / (real_t)distance : (posed_tip - posed_foot).normalized();
+				// the way to push is the side the branch's tip is on, not the side of the nearest point: a branch that passes
+				// through the body would be pushed from one side and then the other on alternate steps
+				Vector3 tip_on_body, tip_on_branch;
+				closest_points(body_a, body_b, posed_tip, posed_tip, tip_on_body, tip_on_branch);
+				Vector3 push = posed_tip - tip_on_body;
+				if (push.length() < 1.0e-3f) {
+					push = distance > 1.0e-4 ? apart : (posed_tip - posed_foot);
+				}
+				push = push.normalized();
 				const Vector3 arm = on_branch - posed_foot;
 				const double arm_length = std::max((double)arm.length(), 0.15);
-				Vector3 axis = arm.cross(push);
-				if (axis.length_squared() > 1.0e-10f) {
-					axis = parent_basis.inverse().xform(axis.normalized()); // (the turn is relative to the parent)
-					const double angle = std::min(depth / arm_length, 0.4);
-					turn += axis * (real_t)(angle * 0.6);
-					rate += axis * (real_t)(angle * 9.0);
+				// the turn that carries the branch sideways, away from the body: about the axis across the branch and the push (a
+				// branch pointing straight at the body or away from it has no sideways to turn to, and is left to its spring)
+				Vector3 axis = (posed_tip - posed_foot).normalized().cross(push);
+				const double sideways = axis.length();
+				if (sideways > 0.25) {
+					axis = parent_basis.inverse().xform(axis / (real_t)sideways); // (the turn is relative to the parent)
+					// pushed out of the body, and held there: a contact only moves the branch out of the way (no kick on
+					// each step: a walker standing still must leave the plants at rest, not shaking)
+					const double angle = std::min(0.6 * depth / (arm_length * sideways), 0.4); // (a part of the way: it does not overshoot)
+					// (turns compose: adding rotation vectors goes wrong once a branch is turned a long way)
+					const Quaternion composed = (Basis(axis, (real_t)angle) * rotation_of(turn)).get_rotation_quaternion();
+					turn = composed.get_axis() * composed.get_angle();
+					rate = Vector3();
 				}
 			}
 		}
 		// the spring back
 		const double w = spring_rate(radius, length);
-		rate += (turn * (real_t)(-w * w) - rate * (real_t)(2.0 * 0.25 * w)) * (real_t)p_dt;
-		turn += rate * (real_t)p_dt;
+		if (held) {
+			rate = Vector3();
+		} else {
+			rate += (turn * (real_t)(-w * w) - rate * (real_t)(2.0 * 0.25 * w)) * (real_t)p_dt;
+			turn += rate * (real_t)p_dt;
+		}
 		const double angle = turn.length();
 		if (angle > limit) {
 			turn *= (real_t)(limit / angle);
