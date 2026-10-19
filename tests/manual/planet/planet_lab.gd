@@ -217,44 +217,7 @@ func _print_universe_table() -> bool:
 ## `--climate-check` (headless): builds the climate with and without the wind and prints
 ## CLIMATE_CHECK, which passes when the wind makes the windward coasts warmer than the leeward ones.
 func _water_check() -> bool:
-	if not "--water-check" in OS.get_cmdline_user_args():
-		return false
-	var made := PlanetSettings.new()
-	made.hydrology_on = true
-	made.drainage_cells = 96 # (the crust cuts the rivers along the drainage)
-	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--seed="):
-			made.world_seed = arg.trim_prefix("--seed=").to_int()
-		elif arg.begins_with("--radius="):
-			made.radius = arg.trim_prefix("--radius=").to_float()
-	var noise := PlanetNoise.new(made)
-	# the crust's rivers and lakes: over a spread of points of the planet there is some water (a river here and there,
-	# not everywhere), and it is rarely over the sea or under the ground (a river's mouth and its banks, a few in a hundred)
-	var points := 0
-	var wet := 0
-	var over_sea := 0
-	var under_ground := 0
-	var widest := Vector3.ZERO
-	var rng := RandomNumberGenerator.new()
-	rng.seed = made.world_seed
-	for index in 40000:
-		var dir := Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized()
-		var ground := noise.height(dir.x, dir.y, dir.z)
-		points += 1
-		var level := noise.water_at(dir, ground)
-		if level > -INF:
-			wet += 1
-			widest = dir
-			if ground < 0.0:
-				over_sea += 1
-			if level < ground - 0.31:
-				under_ground += 1
-	var verdict := "PASS" if wet > 0 and wet < points / 3 and over_sea + under_ground <= points / 100 else "FAIL"
-	print("WATER_CHECK %s points=%d wet=%d over_sea=%d under_ground=%d" % [verdict, points, wet, over_sea,
-			under_ground])
-	print("RIVER_AT %f,%f,%f" % [widest.x, widest.y, widest.z])
-	get_tree().quit()
-	return true
+	return PlanetLabChecks.water_check(get_tree())
 
 
 ## `--terrain-check` (headless): how the heights are spread and how rough the land is at several
@@ -856,9 +819,11 @@ func _physics_process(_delta: float) -> void:
 		var prims := RenderingServer.viewport_get_render_info(vp, visible,
 				RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME)
 		var cpu := Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
-		print("FPS frame=%d fps=%d alt=%d tiles=%d draw_calls=%d primitives=%d process_ms=%.1f" % [
+		RenderingServer.viewport_set_measure_render_time(vp, true)
+		print("FPS frame=%d fps=%d alt=%d tiles=%d draw_calls=%d primitives=%d process_ms=%.1f render_cpu_ms=%.1f render_gpu_ms=%.1f" % [
 				_frame, Engine.get_frames_per_second(), planet.altitude(), planet.surface.tiles.size(),
-				calls, prims, cpu])
+				calls, prims, cpu, RenderingServer.viewport_get_measured_render_time_cpu(vp),
+				RenderingServer.viewport_get_measured_render_time_gpu(vp)])
 		print("HITCH worst_frame=%.1f ms, frames over 33 ms: %d" % [_worst_frame * 1000.0,
 				_slow_frames])
 		_worst_frame = 0.0
