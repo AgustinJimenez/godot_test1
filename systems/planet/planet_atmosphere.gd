@@ -26,6 +26,8 @@ var clouds_hidden := false ## the debug switch: no clouds, in the sky or from ab
 ## (0..1) hangs in it (hot and dry places).
 var haze_wanted := 1.0
 var dust_wanted := 0.0
+var mist_wanted := 0.0 ## 0 .. 1: the morning mist of wet low ground (adds to the fog, eased in)
+var _mist := 0.0
 var _haze := 1.0
 var _dust := 0.0
 var fog_hidden := false ## the debug switch: no fog at all
@@ -90,8 +92,9 @@ func _own_every_look_setting() -> void:
 ## Light shafts: volumetric fog, only near the ground (a froxel grid cannot cover a planet), fading
 ## out with the altitude, its density following the haze of the place (humid air shows the sun's
 ## beams, dry air hardly). Off underwater and when the setting is off.
-## The air's own haze on a clear day, per metre (the flat world's BASE_FOG is 7 times that: a visibility
-## of a kilometre). The place scales it by 0.55 (cold, dry: about 12 km) to 2.05 (warm and wet: 3 km).
+## The air's own haze on a clear day, per metre (the flat world's BASE_FOG is 7 times that: a
+## visibility of a kilometre). The place scales it by 0.55 (cold, dry: about 12 km) to 2.05 (warm
+## and wet: 3 km).
 const PLANET_FOG := 0.00045
 
 
@@ -193,7 +196,10 @@ func _apply() -> void:
 	# the air thins with height, so the ambient light and the fog do too
 	var air := exp(-maxf(altitude, 0.0) / 1500.0) # the fog thins over a game kilometre or so
 	var inside := 1.0 - smoothstep(air_top() * 0.5, air_top(), maxf(altitude, 0.0))
-	environment.ambient_light_energy = 1.0 + flash * 1.5
+	# a low sun lights the ground at a slant and the sky fills the shadows: a lift of the sky light at
+	# dawn and dusk (a real dawn shows the shadowed side lit softly, never black)
+	var low_sun_fill := (1.0 - smoothstep(0.02, 0.4, height)) * smoothstep(-0.14, 0.0, height)
+	environment.ambient_light_energy = 1.0 + flash * 1.5 + 1.6 * low_sun_fill
 	# the eye adapts to the dark: a trace of starlight and airglow inside the air (none in space,
 	# where only the sun lights anything)
 	environment.ambient_light_sky_contribution = lerpf(1.0, 0.45, inside)
@@ -216,7 +222,8 @@ func _apply() -> void:
 	# orbit the whole planet would be buried under it
 	_haze = lerpf(_haze, haze_wanted, 0.02)
 	_dust = lerpf(_dust, dust_wanted, 0.02)
-	var density := (PLANET_FOG * _haze + 0.0008 * _dust + fog_extra) * air
+	_mist = lerpf(_mist, mist_wanted, 0.01)
+	var density := (PLANET_FOG * _haze + 0.0008 * _dust + 0.0028 * _mist + fog_extra) * air
 	# dust tints the haze the colour of the ground it came from
 	environment.fog_light_color = environment.fog_light_color.lerp(
 			Color(0.74, 0.62, 0.44) * maxf(strongest, 0.05), _dust * 0.45)

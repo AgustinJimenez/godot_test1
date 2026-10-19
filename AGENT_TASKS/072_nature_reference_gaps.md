@@ -93,3 +93,8 @@ variety of near things* (A, E, F) and *light mood* (B, C).
    It compiles and the open sea is unchanged; NOT yet seen working: no view of land across water was
    found (the lab's coast of seed 8 is a flat mud plain, and scans for an island timed out). Check it
    on a lake or fjord when one is found (`--sea --water` and a camera 3-10 m over the water).
+6. **Morning mist** (`PlanetAtmosphere.mist_wanted`, set by the world from the humidity, the local hour
+   3.5-10 and the height under 250 m): adds up to 0.0028 of fog in wet low ground at dawn, eased in. Noon
+   is unchanged. Not yet looked at in a wet lowland at dawn (the greenest test place is 330 m up).
+7. **Dawn fill light**: the ambient light lifts by up to 1.6 when the sun is low, so the shadowed side
+   of the land is dark green and not black. Seen at 6:12 on seed 8.

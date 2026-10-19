@@ -238,6 +238,11 @@ func _pick_the_weather() -> void:
 	var warm := smoothstep(0.0, 25.0, local.x)
 	atmosphere.haze_wanted = 0.55 + 1.5 * humid * warm
 	atmosphere.dust_wanted = (1.0 - humid) * smoothstep(14.0, 30.0, local.x)
+	# morning mist: the night's cold leaves a fog in wet low ground until the sun burns it off
+	var morning := clock.local_hour(here)
+	var dawn := smoothstep(3.5, 5.5, morning) * (1.0 - smoothstep(7.0, 10.0, morning))
+	var low_wet := humid * (1.0 - smoothstep(30.0, 250.0, maxf(altitude(), 0.0)))
+	atmosphere.mist_wanted = dawn * low_wet * smoothstep(2.0, 12.0, local.x)
 	# the wind blows along the parallel: east or west by the latitude, as the clouds are carried
 	var lat := asin(clampf(here.y, -1.0, 1.0))
 	var east := Vector3(-here.z, 0.0, here.x).normalized()
