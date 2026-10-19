@@ -19,10 +19,16 @@ static func far(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGenerato
 	var trunk := s.height * s.bare
 	builder.add_frustum(Vector3.ZERO, trunk, s.girth, s.girth * 0.6, 4, _still(s.bark.darkened(0.3)),
 			_still(s.bark))
+	# the crown: a few lumps of leaves of their own tone, so the outline is a cloud, not one ball
 	var size := s.crown * 1.3
-	builder.add_blob(Vector3(0.0, trunk + (s.height - trunk) * 0.55, 0.0),
-			Vector3(size, size * s.aspect * 0.8, size), _still(s.leaf.darkened(0.25)),
-			_still(s.leaf_tip), rng, 0.2)
+	var middle := Vector3(0.0, trunk + (s.height - trunk) * 0.55, 0.0)
+	for lump in 4:
+		var offset := Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-0.55, 0.65), rng.randf_range(-1.0, 1.0))
+		var radius := size * rng.randf_range(0.5, 0.72)
+		var tone := rng.randf_range(0.0, 0.18)
+		builder.add_blob(middle + offset * size * Vector3(0.55, 0.45 * s.aspect, 0.55),
+				Vector3(radius, radius * s.aspect * 0.8, radius),
+				_still(s.leaf.darkened(0.3 - tone)), _still(s.leaf_tip.darkened(tone * 0.5)), rng, 0.3)
 
 
 ## One continuous tube through ring centres. Neighbouring pieces share their ring, so a leaning or
