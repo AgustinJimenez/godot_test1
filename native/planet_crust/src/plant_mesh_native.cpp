@@ -341,24 +341,53 @@ struct MeshData {
 			}
 			rings.push_back(points);
 		}
+		// the bark's coordinates (see flora_wind.gdshader): UV.x = -(1 + the way round, 0..1), UV.y = metres
+		// along the tube, UV2.x = its radius there. Every triangle has its own corners, so the seam closes.
+		std::vector<double> along(count, 0.0);
+		for (int ring = 1; ring < count; ring++) {
+			along[ring] = along[ring - 1] + (centres[ring] - centres[ring - 1]).length();
+		}
+		auto bark = [&](int ring, double round_) { return Vector2((real_t)(-1.0 - round_), (real_t)along[ring]); };
+		auto girth = [&](int ring) { return Vector2((real_t)radii[ring], 0.0f); };
 		for (int ring = 0; ring < count - 1; ring++) {
 			for (int i = 0; i < sides; i++) {
 				int next = (i + 1) % sides;
+				double u0 = (double)i / sides, u1 = (double)(i + 1) / sides;
 				const Color &low = colors_in[ring];
 				const Color &high = colors_in[ring + 1];
 				tri(rings[ring][i], rings[ring + 1][i], rings[ring][next], low, high, low);
+				set_uv(bark(ring, u0), bark(ring + 1, u0), bark(ring, u1), girth(ring), girth(ring + 1), girth(ring));
 				tri(rings[ring][next], rings[ring + 1][i], rings[ring + 1][next], low, high, high);
+				set_uv(bark(ring, u1), bark(ring + 1, u0), bark(ring + 1, u1), girth(ring), girth(ring + 1),
+						girth(ring + 1));
 			}
 		}
 		for (int i = 0; i < sides; i++) {
 			int next = (i + 1) % sides;
+			double u0 = (double)i / sides, u1 = (double)(i + 1) / sides;
 			if (caps & CAP_TOP) {
 				tri(centres[count - 1], rings[count - 1][next], rings[count - 1][i], colors_in[count - 1]);
+				set_uv(bark(count - 1, 0.5), bark(count - 1, u1), bark(count - 1, u0), girth(count - 1),
+						girth(count - 1), girth(count - 1));
 			}
 			if (caps & CAP_BOTTOM) {
 				tri(centres[0], rings[0][i], rings[0][next], colors_in[0]);
+				set_uv(bark(0, 0.5), bark(0, u0), bark(0, u1), girth(0), girth(0), girth(0));
 			}
 		}
+	}
+
+	// the UVs of the triangle just added, given for its a, b, c corners (the vertices are a, c, b)
+	void set_uv(const Vector2 &ua, const Vector2 &ub, const Vector2 &uc, const Vector2 &va, const Vector2 &vb,
+			const Vector2 &vc) {
+		size_t at = vertices.size() - 3;
+		uvs[at] = ua;
+		uvs[at + 1] = uc;
+		uvs[at + 2] = ub;
+		uv2s[at] = va;
+		uv2s[at + 1] = vc;
+		uv2s[at + 2] = vb;
+		has_uv = true;
 	}
 };
 

@@ -32,6 +32,39 @@ float smooth_noise(vec2 p) {
 			mix(cell_hash(cell + vec2(0.0, 1.0)), cell_hash(cell + vec2(1.0, 1.0)), f.x), f.y);
 }
 
+float hash13(vec3 p) {
+	p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise3(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = smoothstep(0.0, 1.0, fract(p));
+	return mix(mix(mix(hash13(i), hash13(i + vec3(1, 0, 0)), f.x),
+			mix(hash13(i + vec3(0, 1, 0)), hash13(i + vec3(1, 1, 0)), f.x), f.y),
+			mix(mix(hash13(i + vec3(0, 0, 1)), hash13(i + vec3(1, 0, 1)), f.x),
+			mix(hash13(i + vec3(0, 1, 1)), hash13(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+// The bark of a tube (the native grower writes UV.x = -(1 + the way round, 0..1), UV.y = metres along the
+// branch, UV2.x = the tube's radius): furrows running along it, deep cracks between the ridges, fine grain.
+// Returns x: the shade, y: the height of the surface (for the bump), z: how deep a crack is.
+vec3 bark_at(vec2 around_along, float radius, float trunk) {
+	float angle = around_along.x * 6.2831853;
+	float spacing = clamp(radius * 0.4, 0.012, 0.11); // the furrows are wider on a thicker trunk
+	vec3 p = vec3(cos(angle) * radius / spacing, sin(angle) * radius / spacing, around_along.y / (spacing * 4.5));
+	float broad = noise3(p * 0.5 + 3.0); // where the bark is rougher
+	float furrow = noise3(p + broad * 1.4);
+	float fine = noise3(p * 2.7 + vec3(7.0, 1.0, 3.0));
+	float grain = noise3(p * 7.0 + vec3(1.0, 9.0, 5.0));
+	float crack = 1.0 - smoothstep(0.0, 0.1 + 0.08 * broad, abs(furrow - 0.5));
+	float ridge = smoothstep(0.25, 0.75, furrow);
+	float height = ridge * 0.7 + fine * 0.2 + grain * 0.1 - crack * 0.5;
+	float shade = mix(0.5, 1.15, ridge) * (1.0 - 0.45 * crack) * (0.85 + 0.3 * grain) * (0.9 + 0.2 * fine);
+	return vec3(shade, height * mix(0.35, 1.0, trunk), crack);
+}
+
 vec2 hash22(vec2 p) {
 	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
 	return fract(sin(p) * 43758.5453);
@@ -144,7 +177,22 @@ void fragment() {
 	}
 	vec2 bump = vec2(0.0);
 	float bump_amount = 0.0;
-	if (realism > 0.001 && sway < 0.1 && UV.x < 0.001) { // (a fallen leaf has a UV: not stone)
+	float surface_height = 0.0;
+	float surface_bump = 0.0;
+	bool is_bark = UV.x < -0.5;
+	if (realism > 0.001 && is_bark && !planks) {
+		float trunk = 1.0 - smoothstep(0.1, 0.3, sway);
+		vec3 bark = bark_at(vec2(-UV.x - 1.0, UV.y), UV2.x, trunk);
+		paint *= mix(1.0, bark.x, realism);
+		// moss at the foot of a trunk, thicker on the damp side, and pale lichen patches higher up
+		float damp = noise3(vec3(world_pos.xz * 0.6, world_pos.y * 0.3));
+		float moss = smoothstep(0.5, 0.72, damp + (1.6 - obj_pos.y) * 0.18) * smoothstep(2.4, 0.2, obj_pos.y) * trunk;
+		paint = mix(paint, vec3(0.1, 0.2, 0.05) * (0.7 + 0.6 * bark.x), moss * realism * (1.0 - bark.z * 0.7));
+		float lichen = smoothstep(0.7, 0.85, noise3(vec3(world_pos.xz * 1.7, world_pos.y * 1.3) + 11.0)) * trunk;
+		paint = mix(paint, vec3(0.16, 0.19, 0.12), lichen * 0.55 * realism);
+		surface_height = bark.y;
+		surface_bump = realism * (0.5 + 0.5 * trunk);
+	} else if (realism > 0.001 && sway < 0.1 && UV.x < 0.001) { // (a fallen leaf has a UV: not stone)
 		float brown = smoothstep(0.02, 0.1, paint.r - paint.b);
 		if (planks) {
 			// boards: lines every 25 cm, a grain along the board and a different tone per board
@@ -191,9 +239,21 @@ void fragment() {
 	if (bump_amount > 0.001) {
 		NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(bump.x, 0.0, bump.y, 0.0)).xyz * 0.35 * bump_amount);
 	}
+	if (surface_bump > 0.001) {
+		// a normal tilted by how the height changes across the pixel (screen-space bump mapping)
+		vec3 dpdx = dFdx(VERTEX);
+		vec3 dpdy = dFdy(VERTEX);
+		vec3 r1 = cross(dpdy, NORMAL);
+		vec3 r2 = cross(NORMAL, dpdx);
+		float det = dot(dpdx, r1);
+		float strength = 0.12 * surface_bump * clamp(12.0 / max(length(VERTEX), 1.0), 0.0, 1.0);
+		vec3 gradient = sign(det) * (dFdx(surface_height) * r1 + dFdy(surface_height) * r2);
+		NORMAL = normalize(abs(det) * NORMAL - strength * gradient);
+	}
 	ROUGHNESS = mix(0.92, 0.78, realism);
 	SPECULAR = 0.2;
-	BACKLIGHT = paint * 0.35 * realism * smoothstep(0.1, 0.5, sway); // light through the leaves
-	RIM = 0.25 * realism * smoothstep(0.1, 0.5, sway);
+	float leafy_part = is_bark ? 0.0 : 1.0;
+	BACKLIGHT = paint * 0.35 * realism * smoothstep(0.1, 0.5, sway) * leafy_part; // light through the leaves
+	RIM = 0.25 * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
 	RIM_TINT = 0.5;
 }
