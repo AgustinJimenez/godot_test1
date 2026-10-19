@@ -196,16 +196,26 @@ func _carve_valleys() -> void:
 	drainage = null
 	if settings.drainage_cells <= 0 or OS.has_environment("PLANET_NO_DRAINAGE"):
 		return
+	var cell_metres := settings.radius * PI * 0.5 / float(settings.drainage_cells)
+	var kept := {} if OS.has_environment("PLANET_NO_DRAINAGE_CACHE") else PlanetDrainageCache.load_network(settings)
+	if not kept.is_empty():
+		_lap("drainage from the cache")
+		native.call(&"set_rivers", settings.drainage_cells, kept, cell_metres)
+		drainage = PlanetDrainage.new() # (nothing but its being there: the rivers are the crust's now)
+		drainage.cells = settings.drainage_cells
+		return
 	var solved := PlanetDrainage.new()
 	_lap("native setup")
 	if not solved.build(self, settings.drainage_cells):
 		return
 	_lap("drainage solve")
-	var cell_metres := settings.radius * PI * 0.5 / float(settings.drainage_cells)
 	var network := solved.network()
 	_lap("river network")
 	native.call(&"set_rivers", settings.drainage_cells, network, cell_metres)
 	drainage = solved
+	if not OS.has_environment("PLANET_NO_DRAINAGE_CACHE"):
+		PlanetDrainageCache.save_network(settings, network)
+		_lap("drainage cache written")
 
 
 func noise_config(source: FastNoiseLite) -> Array:
