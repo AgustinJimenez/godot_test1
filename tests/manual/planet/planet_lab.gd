@@ -220,8 +220,8 @@ func _water_check() -> bool:
 	if not "--water-check" in OS.get_cmdline_user_args():
 		return false
 	var made := PlanetSettings.new()
-	made.hydrology_on = true # (the script rivers, PlanetHydrology, are what this checks)
-	made.hydrology_cells = 96
+	made.hydrology_on = true
+	made.hydrology_cells = 96 # (the script rivers, PlanetHydrology, are what this checks)
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--seed="):
 			made.world_seed = arg.trim_prefix("--seed=").to_int()
@@ -558,14 +558,14 @@ func _ready() -> void:
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()
 	if not asked and user_args.is_empty() and not UniverseStartMenu.requested:
-		# for now no menu: an Earth with a random seed, a tenth of the size (PLANET_SCALE=1: the whole
-		# Earth; --start-menu brings the menu back)
+		# no menu for now: a random-seed Earth a tenth of the size (PLANET_SCALE=1: all; --start-menu: menu)
 		var scale := 0.1
 		if OS.has_environment("PLANET_SCALE"):
 			scale = OS.get_environment("PLANET_SCALE").to_float()
 		PlanetMenu.pending = PlanetSettings.earth(clampf(scale, 0.02, 1.0))
 		PlanetMenu.pending.world_seed = randi() % 100000
 		PlanetMenu.pending.vary() # (an Earth-like world, but no two alike)
+		PlanetMenu.pending.plants_on = true # (the game has plants, the other lab starts not)
 		asked = true
 	var menu_first := UniverseStartMenu.requested or user_args.is_empty()
 	menu_first = menu_first or "--start-menu" in user_args
@@ -663,8 +663,8 @@ func _ready() -> void:
 		elif arg == "--grounded":
 			_grounded = true
 		elif arg == "--earth":
-			var es := OS.get_environment("PLANET_SCALE").to_float() # first: it replaces every setting
-			settings = PlanetSettings.earth(es if es > 0.0 else 1.0) # PLANET_SCALE=0.1: the game
+			var es := OS.get_environment("PLANET_SCALE").to_float() # (0.1 is the game's size)
+			settings = PlanetSettings.earth(es if es > 0.0 else 1.0) # first: it replaces the rest
 		elif arg.begins_with("--tile-cells="):
 			settings.tile_cells = arg.trim_prefix("--tile-cells=").to_int()
 		elif arg.begins_with("--tile-max="):

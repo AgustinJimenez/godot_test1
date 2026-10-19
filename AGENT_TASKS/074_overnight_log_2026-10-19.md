@@ -32,3 +32,8 @@ meadow flowers on the ground. Tile occluders are made on the main thread (a cras
   real flower meshes, ground plants that are still fans of triangles (some species), rock meshes with
   noise displacement, bark textures, terrain debris (fallen branches, leaf litter by moisture).
 - SDFGI resets some GPUs (off in every preset); close-up shore and river water not yet looked at.
+
+## Added later in the night
+- The game start (the lab with no arguments) has the plants on now (ground ready after 4.5 s at the
+  game's size, High). The other lab starts and the checks keep them off.
+- Veined leaflets only for low ground plants (the palm's triangle budget in the species check).
