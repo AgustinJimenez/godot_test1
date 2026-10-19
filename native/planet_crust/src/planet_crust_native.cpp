@@ -1557,8 +1557,8 @@ PackedVector3Array PlanetCrustNative::local_positions(const PackedVector3Array &
 Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 		const PackedVector3Array &p_normals, const PackedColorArray &p_colours, int p_cells, double p_skirt_drop,
 		const PackedByteArray &p_materials) const {
-	const bool have_materials = p_materials.size() >= (p_cells + 3) * (p_cells + 3) * 6;
-	PackedByteArray custom1;
+	const bool have_materials = p_materials.size() >= (p_cells + 3) * (p_cells + 3) * 10;
+	PackedByteArray custom1, custom2;
 	const int side = p_cells + 3;
 	const int count = p_cells * p_cells * 2;
 	PackedVector3Array vertices;
@@ -1573,6 +1573,7 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 	flats.resize((count + skirt_count) * 3);
 	custom.resize((count + skirt_count) * 3 * 4);
 	custom1.resize(have_materials ? (count + skirt_count) * 3 * 4 : 0);
+	custom2.resize(have_materials ? (count + skirt_count) * 3 * 4 : 0);
 	faces.resize(count * 3);
 	int at = 0;
 	for (int row = 1; row <= p_cells; row++) {
@@ -1615,11 +1616,15 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 					custom[out * 4 + 2] = (uint8_t)(int)(smooth.b * 255.0f);
 					custom[out * 4 + 3] = 255;
 					if (have_materials) {
-						const uint8_t *m = p_materials.ptr() + corner[k] * 6;
+						const uint8_t *m = p_materials.ptr() + corner[k] * 10;
 						custom1[out * 4] = m[0];
 						custom1[out * 4 + 1] = m[1];
 						custom1[out * 4 + 2] = m[2];
 						custom1[out * 4 + 3] = m[3];
+						custom2[out * 4] = m[6];
+						custom2[out * 4 + 1] = m[7];
+						custom2[out * 4 + 2] = m[8];
+						custom2[out * 4 + 3] = m[9];
 						custom[out * 4 + 3] = m[4]; // the soil's organic matter
 						flats[out].a = (float)m[5] / 255.0f; // and its iron
 					}
@@ -1642,11 +1647,15 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 				custom[out_at * 4 + 2] = (uint8_t)(int)(p_colour.b * 255.0f);
 				custom[out_at * 4 + 3] = 255;
 				if (have_materials) {
-					const uint8_t *m = p_materials.ptr() + p_point * 6;
+					const uint8_t *m = p_materials.ptr() + p_point * 10;
 					custom1[out_at * 4] = m[0];
 					custom1[out_at * 4 + 1] = m[1];
 					custom1[out_at * 4 + 2] = m[2];
 					custom1[out_at * 4 + 3] = m[3];
+					custom2[out_at * 4] = m[6];
+					custom2[out_at * 4 + 1] = m[7];
+					custom2[out_at * 4 + 2] = m[8];
+					custom2[out_at * 4 + 3] = m[9];
 					custom[out_at * 4 + 3] = m[4];
 					flats[out_at].a = (float)m[5] / 255.0f;
 				}
@@ -1676,6 +1685,7 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 	result["colours"] = flats;
 	result["custom"] = custom;
 	result["custom1"] = custom1;
+	result["custom2"] = custom2;
 	result["faces"] = faces;
 	return result;
 }
@@ -1724,7 +1734,7 @@ PackedByteArray PlanetCrustNative::ground_materials(const PackedVector3Array &p_
 		const PackedVector3Array &p_normals, int p_cells) const {
 	const int side = p_cells + 3;
 	PackedByteArray result;
-	result.resize(side * side * 6);
+	result.resize(side * side * 10);
 	// per rock: angular, coarse, pale, flaky
 	static const float TABLE[9][4] = { { 0.8f, 0.35f, 0.0f, 0.1f }, { 0.75f, 0.45f, 0.25f, 0.1f }, { 0.85f, 0.85f, 0.65f, 0.0f },
 		{ 0.7f, 0.6f, 0.5f, 0.35f }, { 0.5f, 0.35f, 0.4f, 0.9f }, { 0.2f, 0.55f, 0.95f, 0.1f }, { 0.3f, 0.15f, 0.7f, 0.4f },
@@ -1753,7 +1763,36 @@ PackedByteArray PlanetCrustNative::ground_materials(const PackedVector3Array &p_
 			const double ash = smooth(8.0, 2.0, cold) * smooth(-6.0, 0.0, cold) * smooth(0.6, 0.85, wet);
 			const double organic = clampd(0.5 + 0.4 * black_earth + 0.45 * peat - 0.35 * ash - 0.3 * dry, 0.0, 1.0);
 			const double iron = clampd(laterite + 0.6 * (double)w[7] + 0.15 * (double)w[6] * dry, 0.0, 1.0);
-			uint8_t *at = out + index * 6;
+			// where stones lie: a probability by area, not an everywhere. Coarse hard rock weathers to gravel, soft
+			// sedimentary rock to fine soil; steep ground sheds rubble (scree) and has thin soil, so does high ground and
+			// the cold above the tree line (frost shatters rock); dry ground is stripped (desert pavement) while deep, wet,
+			// organic soil buries its stones; rivers leave gravel bars along their beds; and over all of it large
+			// regions of the planet are stone free and others stony (the glaciers, the floods and the winds of the past)
+			const double hard = (double)mixed[1] * 0.6 + (double)(w[0] + w[1] + w[2] + w[3]) * 0.4; // coarse and igneous
+			const double ridge = smooth(100.0, 900.0, ground);
+			const double frost = smooth(2.0, -6.0, cold);
+			const double fertile_deep = wet * smooth(-2.0, 10.0, cold) * (1.0 - smooth(0.2, 0.5, steep));
+			double alluvial = 0.0;
+			if (river_cells > 0) {
+				Valley valley;
+				if (valley_at(dir.normalized(), valley)) {
+					const double reach = valley.floor_half * 2.5 + 20.0;
+					alluvial = std::exp(-std::max(valley.nearest - valley.floor_half * 0.5, 0.0) / reach) * smooth(0.0, 0.5, ground);
+				}
+			}
+			double stony = 0.12 + 0.3 * hard + 0.6 * smooth(0.12, 0.5, steep) + 0.3 * ridge + 0.35 * frost + 0.3 * dry
+					+ 0.7 * alluvial - 0.35 * fertile_deep * (0.4 + 0.6 * organic);
+			// the regions: stone free over a third of the land, thick elsewhere; patches a few hundred metres across
+			const double region = (double)detail.at(dir * (real_t)(radius / 180.0) + Vector3(5, 0, 3)) * 0.5 + 0.5;
+			const double patches = (double)detail.at(dir * (real_t)(radius / 26.0) + Vector3(0, 9, 4)) * 0.5 + 0.5;
+			stony *= smooth(0.38, 0.62, region + 0.35 * (patches - 0.5)); // 0 in the clean regions
+			stony *= 0.5 + 0.9 * smooth(0.3, 0.7, patches);
+			const double depth = clampd(0.25 + 0.65 * fertile_deep + 0.25 * alluvial - 0.5 * smooth(0.1, 0.45, steep) - 0.35 * ridge - 0.25 * frost - 0.2 * dry, 0.0, 1.0);
+			uint8_t *at = out + index * 10;
+			at[6] = (uint8_t)(int)(clampd(stony, 0.0, 1.0) * 255.0);
+			at[7] = (uint8_t)(int)(depth * 255.0);
+			at[8] = (uint8_t)(int)(clampd(alluvial, 0.0, 1.0) * 255.0);
+			at[9] = 0;
 			for (int k = 0; k < 4; k++) {
 				at[k] = (uint8_t)(int)(clampd((double)mixed[k], 0.0, 1.0) * 255.0);
 			}

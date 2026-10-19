@@ -43,3 +43,20 @@ stones. `rock_colour` is untouched, so the native check against the script still
 only on the native path (`MeshBuilder.append_smooth(..., material_bytes)`); the script path has none and reads zeros.
 Not done: the soil's depth (thin on slopes and ridges, deep in valleys: from the slope and the drainage), more soil
 colours in `rock_colour` itself (it has a script twin), wet soil and wet stones, frost and moss on the north side.
+
+## Where stones lie: odds by area (2026-10-19)
+Stones are not everywhere. `ground_materials` also gives a **stoniness** (0 clean soil .. 1 stone field), the soil's
+**depth** and the river **gravel** (CUSTOM2). Stoniness = 0.12 + hard coarse igneous rock (granite, gneiss, andesite, basalt
+weather to gravel, shale and sandstone to fine soil) + steep ground (scree and thin soil) + high ground + frost (the cold
+shatters rock above the tree line) + dry ground (desert pavement) + river gravel bars (distance to the river, rounded
+stones) - deep, wet, organic soil (buries its stones); then two large noises decide whole regions (about 1.5 km across)
+that are stone free and patches (about 150 m) that are stony. The shader multiplies each size class's coverage by it
+(grit by 0.1 + 0.9 x stoniness, pebbles from 0.1 to 0.6, cobbles from 0.35 to 0.9). Measured on seed 8 (flat land points,
+`tests/manual/planet/stoniness_check.gd`): 52 % clean (under 0.2), 15 % 0.2-0.4, 11 % 0.4-0.6, 9 % 0.6-0.8, 13 % above 0.8.
+Research (web, 2026-10-19): soil science (the six pedogenesis factors: parent material, climate, relief, organisms, time)
+says depth falls with slope and rises in valleys, coarse hard parent rock gives coarse stony soil; game pipelines
+(stochastic "texture bombing" anti-tiling, height and slope blending as in Unity/Unreal terrain shaders, Horizon Zero Dawn's
+rule graphs for placement) are rule layers over masks: that is what this is. No published rule set for stone probability
+was found: the numbers above are ours, to be tuned by eye.
+Not done: the depth (CUSTOM2.g) is not used by the shader yet (thin soil should show more bare rock), and the odds are
+not used by the placed pebble and rock instances (`_pebbles`, `_rock_at` have their own odds by biome).

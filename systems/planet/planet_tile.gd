@@ -198,7 +198,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 				packed_colours, cells,
 				0.0 if collide else _skirt_drop(), materials)
 		builder.append_smooth(made["vertices"], made["normals"], made["colours"], made["custom"],
-				made.get("custom1", PackedByteArray()))
+				made.get("custom1", PackedByteArray()), made.get("custom2", PackedByteArray()))
 		faces = made["faces"]
 	else:
 		for row in range(1, cells + 1):

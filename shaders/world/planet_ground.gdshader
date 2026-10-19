@@ -47,6 +47,7 @@ varying vec3 world_normal;
 varying vec4 geology; // what the rock of the place breaks into: angular, coarse, pale, flaky (0..1, from the crust)
 varying float soil_organic; // 0.5 neutral; above: black earth and peat; below: the ash of cold forests, loess, desert dust
 varying float soil_iron; // 0..1: red laterite and red sandstone soil
+varying vec3 lie; // where stones lie: how stony the place is (0: clean soil), the soil's depth, river gravel (0..1)
 
 float hash3(vec3 p) {
 	p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
@@ -208,6 +209,7 @@ void vertex() {
 	geology = CUSTOM1;
 	soil_organic = CUSTOM0.a;
 	soil_iron = COLOR.a;
+	lie = CUSTOM2.rgb;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
@@ -347,6 +349,8 @@ void fragment() {
 					continue;
 				}
 				// coarse rock (granite) breaks into cobbles, fine rock (sandstone, shale) into grit and flakes
+				float stony = lie.x; // the place's own odds of stones: whole regions have none
+				float odds = size_class == 0 ? 0.1 + 0.9 * stony : (size_class == 1 ? smoothstep(0.1, 0.6, stony) : smoothstep(0.35, 0.9, stony));
 				float coverage = size_class == 0 ? 0.9 * (1.15 - 0.35 * geology.y)
 						: smoothstep(0.2, 0.5, mid + slope * 0.7 + (size_class == 2 ? 0.0 : 0.2));
 				if (size_class == 1) {
@@ -354,7 +358,7 @@ void fragment() {
 				} else if (size_class == 2) {
 					coverage *= (1.0 - sand_here) * smoothstep(0.42, 0.8, patch + slope) * (0.1 + 1.5 * geology.y * geology.y);
 				}
-				coverage *= cover_open * fade;
+				coverage *= cover_open * fade * odds;
 				if (coverage < 0.01) {
 					continue;
 				}
@@ -362,7 +366,8 @@ void fragment() {
 				vec3 ln;
 				float tone;
 				float gap;
-				stones(on_planet, scale, 1024.0 * scale, 0.46, geology.x, geology.w, sh, ln, tone, gap);
+				stones(on_planet, scale, 1024.0 * scale, 0.46, mix(geology.x, 0.1, lie.z * 0.85), geology.w * (1.0 - lie.z * 0.8),
+						sh, ln, tone, gap); // (river gravel is rounded and not flat)
 				float on_top = smoothstep(0.0, 0.12, sh) * coverage;
 				// a stone's colour: pale quartz, dark basalt, or the ground's own tone lightened and greyed
 				// pale rock (limestone, granite) gives pale stones, basalt and shale dark ones; each stone a little lighter or
