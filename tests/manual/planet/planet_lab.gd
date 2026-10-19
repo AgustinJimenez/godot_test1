@@ -785,6 +785,7 @@ func _map_check_step() -> void:
 
 func _physics_process(_delta: float) -> void:
 	_frame += 1
+	PlanetLabChecks.sway_step(planet, player, _frame)
 	if _map_check:
 		_map_check_step()
 		return

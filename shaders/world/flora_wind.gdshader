@@ -18,6 +18,11 @@ global uniform vec4 pusher_b;
 global uniform vec4 pusher_c;
 uniform float sway_speed = 1.3;
 uniform bool planks = false; // wood boards (a cabin) instead of tree bark
+// A tree near the walker, bent branch by branch (PlantSway): row 0 of the texture holds each branch's foot and its parent's id, row 1
+// its turn (a rotation vector about the foot, relative to the parent). A vertex's branch is CUSTOM0.x (0: the trunk, never moves).
+uniform bool bendable = false;
+uniform sampler2D bend_data : filter_nearest, repeat_disable;
+uniform vec4 live_tint : source_color = vec4(1.0); // (the colour a tree has in a MultiMesh comes with each instance, not the mesh)
 
 varying float face_up;
 varying vec3 world_pos;
@@ -170,7 +175,35 @@ vec3 part_for(vec4 pusher, vec3 world) {
 	return away * (0.3 / max(distance_to, 0.33)) * bump * bump; // (a trunk shifts a few centimetres at most: nobody can stand closer than its collider)
 }
 
+vec3 turn_by(vec3 rotation, vec3 v) {
+	float angle = length(rotation);
+	if (angle < 0.00001) {
+		return v;
+	}
+	vec3 axis = rotation / angle;
+	return v * cos(angle) + cross(axis, v) * sin(angle) + axis * dot(axis, v) * (1.0 - cos(angle));
+}
+
 void vertex() {
+	if (bendable) {
+		float branch = CUSTOM0.x;
+		vec3 point = VERTEX;
+		vec3 normal = NORMAL;
+		for (int level = 0; level < 7; level++) { // the branch's own turn, then its parent's, up to the trunk
+			int id = int(branch + 0.5);
+			if (id <= 0) {
+				break;
+			}
+			vec4 foot = texelFetch(bend_data, ivec2(id, 0), 0);
+			vec3 turn = texelFetch(bend_data, ivec2(id, 1), 0).xyz;
+			point = foot.xyz + turn_by(turn, point - foot.xyz);
+			normal = turn_by(turn, normal);
+			branch = foot.w;
+		}
+		VERTEX = point;
+		NORMAL = normal;
+		COLOR = vec4(COLOR.rgb * live_tint.rgb, COLOR.a * live_tint.a);
+	}
 	vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_pos = world;
 	sway = COLOR.a;
@@ -183,8 +216,8 @@ void vertex() {
 	vec3 push = vec3(wind_direction.x, 0.0, wind_direction.y) * amount;
 	face_up = (MODEL_MATRIX * vec4(NORMAL, 0.0)).y;
 	vec3 foot = MODEL_MATRIX[3].xyz;
-	vec3 shove = shove_from(pusher_a, foot, world) + shove_from(pusher_b, foot, world) + shove_from(pusher_c, foot, world);
-	vec3 part = part_for(pusher_a, world) + part_for(pusher_b, world) + part_for(pusher_c, world);
+	vec3 shove = bendable ? vec3(0.0) : shove_from(pusher_a, foot, world) + shove_from(pusher_b, foot, world) + shove_from(pusher_c, foot, world);
+	vec3 part = bendable ? vec3(0.0) : part_for(pusher_a, world) + part_for(pusher_b, world) + part_for(pusher_c, world);
 	VERTEX += inverse(mat3(MODEL_MATRIX)) * (push + shove + part);
 }
 

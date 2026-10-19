@@ -88,3 +88,46 @@ static func plant_shapes(node: Node) -> Dictionary:
 			for key: String in inner:
 				found[key] += inner[key]
 	return found
+
+
+## `--sway-check` (with --plants, a window): at frame 200 the walker is put beside the nearest tree or shrub that can bend and held
+## there; the check passes when that tree has been taken live and a branch of it was turned (PlanetSway). Prints SWAY_CHECK and quits.
+static var _sway_worst := 0.0
+static var _sway_target := Vector3.ZERO
+
+
+static func sway_step(planet: PlanetWorld, player: Player, frame: int) -> void:
+	if not "--sway-check" in OS.get_cmdline_user_args():
+		return
+	if frame == 200:
+		var nearest := 1.0e9
+		for tile: PlanetTile in planet.surface.tiles.values():
+			if tile.plant_holder == null or not tile.plant_holder.has_meta(&"sway_sets"):
+				continue
+			for kind: Array in tile.plant_holder.get_meta(&"sway_sets"):
+				var buffer: PackedFloat32Array = kind[1]
+				var instance: MultiMeshInstance3D = kind[0]
+				if instance.multimesh.mesh.get_aabb().size.y > 3.5:
+					continue # (a shrub: its branches are within reach of the body)
+				for index in buffer.size() / 16:
+					var foot := tile.plant_holder.to_global(Vector3(buffer[index * 16 + 3], buffer[index * 16 + 7],
+							buffer[index * 16 + 11]))
+					var gap := foot.distance_to(player.global_position)
+					if gap < nearest:
+						nearest = gap
+						_sway_target = foot
+	if frame >= 200 and frame < 330 and _sway_target != Vector3.ZERO:
+		player.global_position = _sway_target + Vector3(0.45, 0.3, 0.0) # (the branches are at the body)
+		player.velocity = Vector3.ZERO
+	var sway: PlanetSway = null
+	for node in planet.get_children():
+		if node is PlanetSway:
+			sway = node
+	if sway != null and frame > 210:
+		_sway_worst = maxf(_sway_worst, sway.most_turned())
+	if frame == 330:
+		var live := 0 if sway == null else sway.live_count()
+		var ok := sway != null and live > 0 and _sway_worst > 0.05
+		print("SWAY_CHECK %s live=%d most_turned=%.2f rad nearest_tree=%.1f m" % [
+				"PASS" if ok else "FAIL", live, _sway_worst, _sway_target.distance_to(player.global_position)])
+		planet.get_tree().quit(0 if ok else 1)

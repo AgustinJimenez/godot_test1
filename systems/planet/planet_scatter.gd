@@ -616,6 +616,10 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 		else:
 			mesh = FloraMeshes.mesh(key / 100 as FloraMeshes.Kind, variant, FloraMeshes.detailed)
 		var instance := _add_trees(buffer, mesh, true)
+		if plant and mesh.has_meta(&"branches"): # a tree or shrub that can bend (PlanetSway takes the ones near the walker)
+			var sets: Array = _tile.get_meta(&"sway_sets", [])
+			sets.append([instance, buffer])
+			_tile.set_meta(&"sway_sets", sets)
 		if not plant and key / 100 in [FloraMeshes.Kind.PEBBLES, FloraMeshes.Kind.LITTER,
 				FloraMeshes.Kind.TWIGS]:
 			instance.visibility_range_end = PEBBLE_VISIBLE

@@ -147,6 +147,11 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 			undergrowth.planet = self
 			undergrowth.player = target as Player
 			add_child(undergrowth)
+		if not OS.has_environment("PLANET_NO_SWAY"):
+			var sway := PlanetSway.new() # the branches round the walker bend and spring back
+			sway.planet = self
+			sway.player = target as Player
+			add_child(sway)
 	if direction == Vector3.ZERO and restored.has("direction"):
 		var saved: Array = restored["direction"]
 		direction = Vector3(saved[0], saved[1], saved[2]).normalized()

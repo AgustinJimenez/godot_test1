@@ -4,6 +4,7 @@
 #include "planet_drainage_native.h"
 #include "planet_seasons_native.h"
 #include "plant_mesh_native.h"
+#include "plant_sway_native.h"
 #include "planet_scatter_native.h"
 #include "planet_surface_native.h"
 
@@ -21,6 +22,7 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(PlanetDrainageNative);
 	GDREGISTER_CLASS(PlanetSeasonsNative);
 	GDREGISTER_CLASS(PlantMeshNative);
+	GDREGISTER_CLASS(PlantSwayNative);
 	GDREGISTER_CLASS(PlanetScatterNative);
 	GDREGISTER_CLASS(PlanetSurfaceNative);
 }

@@ -128,3 +128,16 @@ the branches reach the full crown radius with the leaf clusters at their tips. W
 above the ground. Grass tufts: 0.2 to 0.25 m, about 11 blades each, fanned out to 0.3 m.
 The `oak` and `willow` archetypes were changed to those proportions (they had a 1.5 m radius trunk under a crown of 3.6 m).
 `rock_lab.gd` takes `arch:oak` (or any archetype) to preview a tree kind. Grass was not changed.
+
+## Branches that bend for real (PlanetSway)
+
+- `PlantMeshNative.grow` gives every vertex its branch (CUSTOM0.x, 0 = trunk) and the mesh a `branches` meta: ten floats a
+  branch (parent, level, foot, tip, radius, length). `BRANCH_CHECK` verifies the ids against the geometry.
+- `PlantSwayNative`: each branch is a damped spring turning about its foot (rotation vector relative to its parent), pushed
+  out of the way of the walker's capsule; thin twigs turn up to 1.2 rad, thick limbs hardly at all. Sleeps when at rest.
+- `PlanetSwayTree` draws one tree with `bendable` on in `flora_wind.gdshader`: the turns come from a 2 x N float texture and are
+  stacked up the parents. `PlanetSway` takes the trees and shrubs within 8 m of the walker out of their MultiMesh (instance
+  shrunk to nothing; the tile's `sway_sets` meta lists the batches) and gives them back beyond 11 m once at rest.
+  Off with `PLANET_NO_SWAY`. The older shader-only bump still moves grass and plants that have no branches.
+- Headless renderers do not keep MultiMesh instances: the transform and colour come from the tile's own buffer.
+- Check: `--plants --grounded --sway-check` (SWAY_CHECK) puts the walker in a shrub and needs a branch turned.
