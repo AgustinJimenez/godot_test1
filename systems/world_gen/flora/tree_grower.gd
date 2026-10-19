@@ -328,6 +328,13 @@ func _frond(points: Array[Vector3], side: Vector3) -> void:
 				from_colour.a = sway
 				var tip_colour := _g.leaf_tip.lerp(tone, 0.3)
 				tip_colour.a = minf(sway + LEAF_SWAY, 1.0)
+				if _fine and not _outline.is_empty():
+					# realistic: a leaflet is a small veined leaf along its direction, not a triangle
+					var up := (Vector3.UP - dir * dir.dot(Vector3.UP)).normalized()
+					PlantLeafShapes.add_leaf(_b, _outline, at, dir, up, size * 1.25, 0.08, -0.06,
+							from_colour, tip_colour, 0.0, 0.0, _rng.randf_range(0.9, 1.2),
+							Vector2(_rng.randf(), _rng.randf()))
+					continue
 				_b.add_tri(at, at + tangent * step_len, at + dir * size + tangent * step_len * 0.5,
 						from_colour, from_colour, tip_colour)
 	if _g.flower.a > 0.0:
