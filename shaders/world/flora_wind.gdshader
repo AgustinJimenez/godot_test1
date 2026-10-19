@@ -121,35 +121,16 @@ vec2 leaf_cluster(vec2 uv, float id) {
 	return vec2(inside_leaf, shade);
 }
 
-// A tuft of grass on a card (UV 0..1, the root at the bottom; UV2.y of 8 and more marks it): blades in a row of slots, each with
-// its own height, lean and width, narrowing to a point. Returns x: 1 inside a blade (0 outside), y: the shade (darker at the root).
+// One blade of grass on a narrow card (UV.x across, UV.y from the root to the tip; UV2.y of 8 marks it): tapering to a point, its
+// own bend to one side, darker at the root and with a lighter midrib. Returns x: 1 inside the blade (0 outside), y: the shade.
 vec2 grass_blades(vec2 uv, float id) {
-	const float N = 11.0;
-	float x = uv.x * N;
-	float cell = floor(x);
-	float inside_blade = 0.0;
-	float shade = 1.0;
-	float front = -1.0;
-	for (int k = -2; k <= 2; k++) {
-		float c = cell + float(k);
-		vec2 h = hash22(vec2(c, id * 23.1 + 3.7));
-		vec2 h2 = hash22(vec2(c * 1.3 + 7.0, id * 9.3));
-		float centre = c + 0.5 + (h.x - 0.5) * 0.9;
-		float tall = 0.4 + 0.6 * h.y;
-		float lean = (h2.x - 0.5) * 2.4;
-		float y = uv.y;
-		if (y > tall) {
-			continue;
-		}
-		float along = y / tall;
-		float half_width = (0.28 + 0.34 * h2.y) * (1.0 - along * along);
-		float d = abs(x - centre - lean * along * along * tall);
-		if (d < half_width && h.x > front) {
-			front = h.x;
-			inside_blade = 1.0;
-			shade = mix(0.45, 1.2, along) * (0.8 + 0.4 * h2.y) * (1.0 - 0.3 * d / half_width);
-		}
-	}
+	float t = uv.y;
+	float centre = 0.5 + (fract(id * 7.3) - 0.5) * 0.3 * t * t; // the blade curves a little to one side
+	float half_width = 0.5 * pow(max(1.0 - t, 0.0), 0.75) * smoothstep(0.0, 0.04, 1.0 - t);
+	float d = abs(uv.x - centre);
+	float inside_blade = d < half_width ? 1.0 : 0.0;
+	float rib = 1.0 - smoothstep(0.0, 0.18, d);
+	float shade = mix(0.5, 1.15, t) * (0.82 + 0.36 * fract(id * 3.7)) * (0.9 + 0.2 * rib);
 	return vec2(inside_blade, shade);
 }
 
@@ -245,7 +226,7 @@ void fragment() {
 		float rows = (UV2.y - mix(4.0, 6.0, needles)) * 100.0;
 		vec2 cluster = is_grass ? grass_blades(UV, UV2.x) : (is_pin ? pinnate(UV, rows, UV2.x, needles) : leaf_cluster(UV, UV2.x));
 		// far away the leaves are under a pixel and would shimmer: the card fills in toward a solid mass
-		float far_fill = smoothstep(0.35, 0.8, is_grass ? fwidth(UV.x) * 11.0 : (is_pin ? fwidth(UV.y) * rows : fwidth(UV.x) * 5.0));
+		float far_fill = smoothstep(0.35, 0.8, is_grass ? fwidth(UV.x) * 2.0 : (is_pin ? fwidth(UV.y) * rows : fwidth(UV.x) * 5.0));
 		far_fill *= smoothstep(5.0, 18.0, length(VERTEX)); // (a card seen edge on near the eye is not a distant one)
 		far_fill *= is_grass ? 0.0 : 1.0; // (a tuft is only drawn near: its blades stay blades, not a solid card)
 		card_alpha = mix(cluster.x, 0.62, far_fill);

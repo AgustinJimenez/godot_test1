@@ -63,15 +63,18 @@ func _physics_process(delta: float) -> void:
 ## Make the chunk (ix, iz) of the tile whose grid is `grid`, hanging in `holder`.
 func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void:
 	var size: float = grid["size"]
-	var buffer: PackedFloat32Array = planet.noise.scatter_native.call(&"turf_chunk", grid["positions"], grid["field"],
+	var buffers: Array = planet.noise.scatter_native.call(&"turf_chunk", grid["positions"], grid["field"],
 			grid["cells"], size, ix * CHUNK, iz * CHUNK, minf((ix + 1) * CHUNK, size), minf((iz + 1) * CHUNK, size), SPACING,
-			DENSITY, key ^ int(grid["key"]))
-	var entry := {"node": null, "holder": holder, "grid": grid, "at": Vector2((ix + 0.5) * CHUNK, (iz + 0.5) * CHUNK)}
-	if not buffer.is_empty():
+			DENSITY, key ^ int(grid["key"]), FloraMeshes.TURF_VARIANTS)
+	var entry := {"nodes": [], "holder": holder, "grid": grid, "at": Vector2((ix + 0.5) * CHUNK, (iz + 0.5) * CHUNK), "buffers": []}
+	for variant in buffers.size():
+		var buffer: PackedFloat32Array = buffers[variant]
+		if buffer.is_empty():
+			continue
 		var multi := MultiMesh.new()
 		multi.transform_format = MultiMesh.TRANSFORM_3D
 		multi.use_colors = true
-		multi.mesh = FloraMeshes.turf_tuft()
+		multi.mesh = FloraMeshes.turf_tuft(variant)
 		multi.instance_count = buffer.size() / 16
 		multi.buffer = buffer
 		var instance := MultiMeshInstance3D.new()
@@ -82,7 +85,8 @@ func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void
 		instance.visibility_range_end_margin = 6.0
 		instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		holder.add_child(instance)
-		entry["node"] = instance
+		entry["nodes"].append(instance)
+		entry["buffers"].append(buffer)
 	_chunks[key] = entry
 
 
@@ -96,8 +100,9 @@ func _let_go(here: Vector3) -> void:
 			var local := _grid_of(entry["grid"], holder.to_local(here))
 			gone = Vector2(local.x, local.z).distance_to(entry["at"]) > LEAVE + CHUNK * 0.4
 		if gone:
-			if is_instance_valid(entry["node"]):
-				(entry["node"] as Node).queue_free()
+			for node: Node in entry["nodes"]:
+				if is_instance_valid(node):
+					node.queue_free()
 			_chunks.erase(key)
 
 
@@ -113,10 +118,23 @@ static func _grid_of(grid: Dictionary, local: Vector3) -> Vector3:
 	return Vector3((d.x * az.y - d.y * az.x) / det, local.y, (ax.x * d.y - ax.y * d.x) / det)
 
 
+## The chunks as [holder, [MultiMeshInstance3D, buffer, true]] (the same as the plants' `sway_sets`): PlanetSway takes the tufts
+## nearest the walker out of them and bends them.
+func chunk_sets() -> Array:
+	var sets: Array = []
+	for entry: Dictionary in _chunks.values():
+		if is_instance_valid(entry["holder"]):
+			for at in entry["nodes"].size():
+				if is_instance_valid(entry["nodes"][at]):
+					sets.append([entry["holder"], [entry["nodes"][at], entry["buffers"][at], PlanetSway.TURF]])
+	return sets
+
+
 ## How many tufts are drawn now (for the checks).
 func tuft_count() -> int:
 	var total := 0
 	for entry: Dictionary in _chunks.values():
-		if is_instance_valid(entry["node"]):
-			total += ((entry["node"] as MultiMeshInstance3D).multimesh as MultiMesh).instance_count
+		for node: MultiMeshInstance3D in entry["nodes"]:
+			if is_instance_valid(node):
+				total += node.multimesh.instance_count
 	return total

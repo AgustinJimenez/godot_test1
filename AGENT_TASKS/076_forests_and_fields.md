@@ -160,6 +160,8 @@ view: +7% primitives, +1.5 ms GPU (7.6 -> 9.1 ms, 129 -> 107 fps on the 4090).
   own axes (`ax`, `az`: the grid is not lined up with the tile's xz).
 - `PlanetScatterNative.turf_chunk(positions, field, cells, size, x0, z0, x1, z1, spacing, density, seed)` places the tufts of a square of
   the grid on a jittered grid (the same spots whatever the field says); `PlanetTurf` makes the 16 m chunks within 26 m of the walker
-  (3 a look), lets them go beyond 36 m, one MultiMesh of `FloraMeshes.turf_tuft()` each (three crossed cards, 6 triangles). The blades
-  are drawn by the plant shader (`grass_blades`, UV2.y of 8 marks a tuft; no far fill). About 24 000 tufts at the spawn; no measurable frame cost.
+  (3 a look), lets them go beyond 36 m, three MultiMeshes a chunk (`FloraMeshes.turf_tuft(variant)`: a dozen separate blade cards at random places, turns and leans, 24 triangles,
+  each blade its own bending link). A blade is cut from its card by the plant shader (`grass_blades`, UV2.y of 8; no far fill). About 24 000 tufts at the spawn; no measurable frame cost.
 - `PLANET_NO_TURF` switches it off. Check: `--plants --grounded --turf-check` (TURF_CHECK).
+- The tufts at the walker's feet are taken live by PlanetSway as their own class (within 1.7 m, 90 at most) and bend for real; the rest
+  only sway in the wind (a rolling swell, the tips most). The length varies by clump (2.5 m cells) and a few tufts shoot up.

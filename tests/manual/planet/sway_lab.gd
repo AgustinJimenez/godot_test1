@@ -4,6 +4,7 @@ extends SceneTree
 ## `lift`: metres the body is raised (a tall oak's branches start high); the pictures are prefix_0.png, _1.png, _2.png.
 
 var _tree: PlanetSwayTree
+var _more: Array[PlanetSwayTree] = [] # (the turf: a row of tufts)
 var _frames := 0
 var _prefix := "sway"
 var _lift := 0.0
@@ -19,19 +20,29 @@ func _initialize() -> void:
 	FloraMeshes.detailed = true
 	var archetype := kind.trim_prefix("arch:") if kind.begins_with("arch:") else ""
 	var form: int = PlantSpecies.Form.keys().find(kind.trim_prefix("form:"))
-	var chosen: PlantSpecies
+	var chosen: PlantSpecies = null
 	for one in SpeciesRegistry.new(8, 36).species:
 		if (archetype != "" and one.archetype == archetype) or (archetype == "" and one.form == form):
 			chosen = one
 			break
-	var mesh := PlantMeshes.build(chosen, 0, true)
+	var turf := kind == "turf"
+	var mesh := FloraMeshes.turf_tuft(0) if turf else PlantMeshes.build(chosen, 0, true)
 	_tree = PlanetSwayTree.new()
 	if not _tree.setup(mesh, FloraMeshes.material(), Color(1, 1, 1, 1)):
 		print("SWAY_LAB no branches")
 		quit(1)
 		return
 	root.add_child(_tree)
-	_reach = maxf(chosen.crown * 1.2, 1.5)
+	_reach = 1.5 if turf else maxf(chosen.crown * 1.2, 1.5)
+	if turf:
+		for index in 24: # a patch of turf: the walker passes through the middle
+			var more := PlanetSwayTree.new()
+			more.setup(FloraMeshes.turf_tuft(index), FloraMeshes.material(), Color(0.9, 0.95, 0.9, 1.0))
+			more.position = Vector3(randf_range(-1.6, 1.6), 0.0, randf_range(-0.9, 0.9))
+			more.rotation.y = randf() * TAU
+			more.scale = Vector3.ONE * randf_range(0.8, 1.5)
+			root.add_child(more)
+			_more.append(more)
 	var floor_mesh := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(60.0, 40.0)
@@ -52,10 +63,13 @@ func _initialize() -> void:
 	root.add_child(environment)
 	var camera := Camera3D.new()
 	root.add_child(camera)
-	var height := maxf(chosen.height, 2.0)
+	var height := 0.5 if turf else maxf(chosen.height, 2.0)
 	camera.look_at_from_position(Vector3(0.0, height * 0.55, height * 1.3 + 1.2), Vector3(0.0, height * 0.5, 0.0))
+	if turf:
+		camera.look_at_from_position(Vector3(0.0, 0.55, 2.4), Vector3(0.0, 0.15, 0.0))
+		floor_material.albedo_color = Color(0.42, 0.3, 0.22)
 	root.size = Vector2i(1100, 800)
-	print("SWAY_LAB ", chosen.summary(), " branches=", (mesh.get_meta(&"branches") as PackedFloat32Array).size() / 10)
+	print("SWAY_LAB ", "turf" if turf else chosen.summary(), " branches=", (mesh.get_meta(&"branches") as PackedFloat32Array).size() / 10)
 
 
 ## The walker's x at a frame: from the left of the tree to its right over the first 120 frames, then gone.
@@ -68,8 +82,16 @@ func _process(_delta: float) -> bool:
 	var body := PackedFloat32Array()
 	if _frames <= 120:
 		var x := _body_x(_frames)
-		body = PackedFloat32Array([x, _lift, 0.35, x, _lift + 1.8, 0.35, 0.35])
+		body = PackedFloat32Array([x, _lift, 0.0, x, _lift + 1.8, 0.0, 0.4])
 	_tree.step(body, 1.0 / 60.0)
+	for more in _more:
+		var inverse := more.global_transform.affine_inverse()
+		var local := PackedFloat32Array()
+		if not body.is_empty():
+			var a := inverse * Vector3(body[0], body[1], body[2])
+			var b := inverse * Vector3(body[3], body[4], body[5])
+			local = PackedFloat32Array([a.x, a.y, a.z, b.x, b.y, b.z, body[6] / more.scale.x])
+		more.step(local, 1.0 / 60.0)
 	if _frames == 5 or _frames == 62 or _frames == 400:
 		root.get_texture().get_image().save_png("%s_%d.png" % [_prefix, 0 if _frames == 5 else (1 if _frames == 62 else 2)])
 		print("SWAY_LAB frame ", _frames, " most turned ", snappedf(_tree.most_turned(), 0.001), " rad")

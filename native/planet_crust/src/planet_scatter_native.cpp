@@ -88,7 +88,7 @@ void PlanetScatterNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("scatter", "tile"), &PlanetScatterNative::scatter);
 	ClassDB::bind_method(D_METHOD("merge_far", "parts"), &PlanetScatterNative::merge_far);
 	ClassDB::bind_method(D_METHOD("drag", "stems", "x", "z"), &PlanetScatterNative::drag);
-	ClassDB::bind_method(D_METHOD("turf_chunk", "positions", "field", "cells", "size", "x0", "z0", "x1", "z1", "spacing", "density", "seed"),
+	ClassDB::bind_method(D_METHOD("turf_chunk", "positions", "field", "cells", "size", "x0", "z0", "x1", "z1", "spacing", "density", "seed", "variants"),
 			&PlanetScatterNative::turf_chunk);
 }
 
@@ -794,9 +794,11 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	return result;
 }
 
-PackedFloat32Array PlanetScatterNative::turf_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells,
-		double p_size, double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed) const {
-	PackedFloat32Array out;
+Array PlanetScatterNative::turf_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells,
+		double p_size, double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed,
+		int p_variants) const {
+	Array out;
+	const int variants = std::max(p_variants, 1);
 	const int side = p_cells + 3;
 	if (p_cells < 1 || (int)p_positions.size() < side * side || (int)p_field.size() < side * side || p_spacing <= 0.0) {
 		return out;
@@ -805,7 +807,7 @@ PackedFloat32Array PlanetScatterNative::turf_chunk(const PackedVector3Array &p_p
 	const float *field = p_field.ptr();
 	Rng rng;
 	rng.seed((uint64_t)p_seed * 0x9E3779B97F4A7C15ULL + 0x1234567ULL);
-	std::vector<float> buffer;
+	std::vector<std::vector<float>> buffers((size_t)variants);
 	const double step = p_size / p_cells;
 	const int columns = (int)std::ceil((p_x1 - p_x0) / p_spacing), rows = (int)std::ceil((p_z1 - p_z0) / p_spacing);
 	for (int row = 0; row < rows; row++) {
@@ -813,6 +815,7 @@ PackedFloat32Array PlanetScatterNative::turf_chunk(const PackedVector3Array &p_p
 			const double x = p_x0 + (column + rng.randf()) * p_spacing, z = p_z0 + (row + rng.randf()) * p_spacing;
 			// the dice are thrown for every spot, so the same spots keep their tufts whatever the field says
 			const double dice = rng.randf(), size_dice = rng.randf(), yaw = rng.range(0.0, TAU_D), tone = rng.randf();
+			const int variant = rng.randi() % variants;
 			if (x < 0.0 || z < 0.0 || x >= p_size || z >= p_size) {
 				continue;
 			}
@@ -838,8 +841,15 @@ PackedFloat32Array PlanetScatterNative::turf_chunk(const PackedVector3Array &p_p
 			if (axis.length_squared() > 1.0e-8f) {
 				basis = Basis(axis.normalized(), (real_t)std::acos(clampd((double)lean_to.y, -1.0, 1.0))) * basis;
 			}
-			// taller where it grows well, shorter and drier where it hardly does
-			const double scale = (0.55 + 0.9 * size_dice) * (0.65 + 0.55 * f);
+			// taller where it grows well, shorter and drier where it hardly does; clumps a few metres across are tall or cropped, and a few
+			// tufts shoot up above the rest
+			const int cell_x = (int)std::floor(x / 2.5), cell_z = (int)std::floor(z / 2.5);
+			uint32_t h = (uint32_t)cell_x * 73856093u ^ (uint32_t)cell_z * 19349663u ^ (uint32_t)p_seed * 83492791u;
+			h ^= h >> 13;
+			h *= 0x5bd1e995u;
+			h ^= h >> 15;
+			const double clump = 0.55 + 1.0 * ((h & 0xFFFF) / 65535.0);
+			const double scale = (0.5 + 0.9 * size_dice) * (0.65 + 0.55 * f) * clump * (tone > 0.94 ? 1.6 : 1.0);
 			basis = basis.scaled(Vector3((real_t)scale, (real_t)scale, (real_t)scale));
 			const double dry = (1.0 - f) * 0.8;
 			const double dark = 0.78 + 0.3 * tone;
@@ -848,12 +858,16 @@ PackedFloat32Array PlanetScatterNative::turf_chunk(const PackedVector3Array &p_p
 				(float)basis.rows[1][1], (float)basis.rows[1][2], (float)at.y, (float)basis.rows[2][0], (float)basis.rows[2][1],
 				(float)basis.rows[2][2], (float)at.z, (float)(dark * (1.0 + 0.3 * dry)), (float)(dark * (1.0 + 0.03 * dry)),
 				(float)(dark * (1.0 - 0.35 * dry)), 1.0f };
-			buffer.insert(buffer.end(), values, values + 16);
+			buffers[(size_t)variant].insert(buffers[(size_t)variant].end(), values, values + 16);
 		}
 	}
-	out.resize((int64_t)buffer.size());
-	if (!buffer.empty()) {
-		memcpy(out.ptrw(), buffer.data(), buffer.size() * sizeof(float));
+	for (const std::vector<float> &buffer : buffers) {
+		PackedFloat32Array one;
+		one.resize((int64_t)buffer.size());
+		if (!buffer.empty()) {
+			memcpy(one.ptrw(), buffer.data(), buffer.size() * sizeof(float));
+		}
+		out.push_back(one);
 	}
 	return out;
 }

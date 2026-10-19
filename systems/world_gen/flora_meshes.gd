@@ -179,32 +179,58 @@ static func _spire(builder: MeshBuilder, rng: RandomNumberGenerator, variant: in
 				_still(stone.darkened(0.2)), _still(stone), rng, 0.2)
 
 
-## One tuft of short grass for the turf of the ground (PlanetTurf): three crossed cards on which the plant shader draws the blades
-## (UV2.y of 8 marks it), 0.3 m wide and tall at scale 1. Built once.
-static var _turf: ArrayMesh
+## The tufts of short grass for the turf of the ground (PlanetTurf): TURF_VARIANTS arrangements of a dozen separate blades, each a
+## narrow card (UV2.y of 8 marks it: the plant shader cuts the blade out of it) at its own place, turn and lean, so no plane or
+## line shows. A blade is its own bending link (CUSTOM0.x is its row in the mesh "branches" meta, as for a grown plant) so that the
+## walker can push the tufts nearby (PlanetSway). Built once.
+const TURF_VARIANTS := 3
+const TURF_BLADES := 12
+static var _turf: Array[ArrayMesh] = []
 
 
-static func turf_tuft() -> ArrayMesh:
-	if _turf != null:
-		return _turf
+static func turf_tuft(variant: int) -> ArrayMesh:
+	if _turf.is_empty():
+		for index in TURF_VARIANTS:
+			_turf.append(_make_tuft(index))
+	return _turf[variant % TURF_VARIANTS]
+
+
+static func _make_tuft(variant: int) -> ArrayMesh:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7919 * (variant + 1)
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
 	var uvs := PackedVector2Array()
 	var uv2s := PackedVector2Array()
-	var width := 0.34
-	var height := 0.3
-	for card in 3:
-		var turn := Basis(Vector3.UP, PI * card / 3.0 + 0.4)
-		var corners := [Vector3(-width * 0.5, 0.0, 0.0), Vector3(width * 0.5, 0.0, 0.0),
-				Vector3(width * 0.5, height, 0.0), Vector3(-width * 0.5, height, 0.0)]
+	var links := PackedFloat32Array()
+	var table := PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # the root (the ground): never moves
+	for blade in TURF_BLADES:
+		# at its own place (within a hand breadth, more of them near the middle), turned any way, leaning out a little
+		var around := rng.randf() * TAU
+		var reach := 0.14 * sqrt(rng.randf())
+		var root := Vector3(cos(around) * reach, 0.0, sin(around) * reach)
+		var yaw := rng.randf() * TAU
+		var lean_way := around + rng.randf_range(-0.8, 0.8)
+		var lean := rng.randf_range(0.0, 0.42)
+		var tall := rng.randf_range(0.14, 0.34)
+		var wide := rng.randf_range(0.03, 0.055)
+		var up := (Vector3.UP * cos(lean) + Vector3(cos(lean_way), 0.0, sin(lean_way)) * sin(lean)).normalized()
+		var across := Vector3(cos(yaw), 0.0, sin(yaw))
+		across = (across - up * across.dot(up)).normalized()
+		var tip := root + up * tall
+		table.append_array(PackedFloat32Array([0, 9, root.x, root.y, root.z, tip.x, tip.y, tip.z, 0.01, tall]))
+		var id := float(blade + 1)
+		var dice := rng.randf()
+		var corners := [root - across * wide * 0.5, root + across * wide * 0.5, tip + across * wide * 0.5, tip - across * wide * 0.5]
 		var corner_uv := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
 		for index in [0, 1, 2, 0, 2, 3]:
-			vertices.append(turn * corners[index])
+			vertices.append(corners[index])
 			normals.append(Vector3.UP)
-			colors.append(Color(0.25, 0.4, 0.13, 0.0 if index < 2 else 0.8)) # (alpha: how much the wind moves it)
+			colors.append(Color(0.22, 0.34, 0.12, 0.0 if index < 2 else 0.8)) # (alpha: how much the wind moves it)
 			uvs.append(corner_uv[index])
-			uv2s.append(Vector2(0.137 * (card + 1), 8.0))
+			uv2s.append(Vector2(dice, 8.0))
+			links.append(id)
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -212,7 +238,8 @@ static func turf_tuft() -> ArrayMesh:
 	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_TEX_UV2] = uv2s
+	arrays[Mesh.ARRAY_CUSTOM0] = links
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	_turf = mesh
-	return _turf
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, Mesh.ARRAY_CUSTOM_R_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
+	mesh.set_meta(&"branches", table)
+	return mesh
