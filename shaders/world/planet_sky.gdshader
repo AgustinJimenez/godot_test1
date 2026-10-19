@@ -23,6 +23,8 @@ uniform float cloud_on = 0.0; // 0 none .. 1 (the shell round the planet draws t
 
 const vec3 BETA_R = vec3(5.8e-6, 13.5e-6, 33.1e-6);
 const float BETA_M = 21e-6;
+// ozone takes the green and some red out of long paths: a blue horizon, a pink sunset (see PlanetAir)
+const vec3 BETA_O = vec3(0.65e-6, 1.881e-6, 0.085e-6) * 1.9;
 const float SCALE_R = 8000.0;
 const float SCALE_M = 1200.0;
 
@@ -93,7 +95,8 @@ vec3 scatter(vec3 origin, vec3 dir, vec3 sun, float radius, float top) {
 				sun_r += exp(-hq / (SCALE_R * air_scale)) * sun_step;
 				sun_m += exp(-hq / (SCALE_M * air_scale)) * sun_step;
 			}
-			vec3 tau = (BETA_R * (depth_r + sun_r) + BETA_M * 1.1 * (depth_m + sun_m)) / air_scale;
+			vec3 tau = ((BETA_R + BETA_O) * (depth_r + sun_r)
+					+ BETA_M * 1.1 * (depth_m + sun_m)) / air_scale;
 			vec3 attenuation = exp(-tau);
 			sum_r += attenuation * hr;
 			sum_m += attenuation * hm;

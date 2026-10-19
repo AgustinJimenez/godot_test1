@@ -15,8 +15,14 @@ extends RefCounted
 ## shell of a few hundred metres. (With the Earth's air round a 20 km planet the sun's path at
 ## sunset would be 28 times too thin to turn red.)
 
-const BETA_RAYLEIGH := Vector3(5.8e-6, 13.5e-6, 33.1e-6) ## per metre at sea level: red, green, blue
+## per metre at sea level: red, green, blue
+const BETA_RAYLEIGH := Vector3(5.8e-6, 13.5e-6, 33.1e-6)
 const BETA_MIE := 21e-6
+## Ozone takes the green and some red out of light that crosses a lot of air (it keeps the
+## horizon blue instead of yellow-green and turns the sunset pink). Its layer is about 15 km thick
+## against the 8 km scale height of the molecules: OZONE_DEPTH times their optical depth.
+const BETA_OZONE := Vector3(0.65e-6, 1.881e-6, 0.085e-6)
+const OZONE_DEPTH := 1.9
 const SCALE_RAYLEIGH := 8000.0 ## m: how fast the molecules thin out with height (the Earth's)
 const SCALE_MIE := 1200.0 ## m: the haze and dust, which hug the ground (the Earth's)
 const EARTH_RADIUS := 6371000.0
@@ -65,7 +71,8 @@ static func sun_transmittance(from: Vector3, sun: Vector3, radius: float, top: f
 		var height := at.length() - radius
 		rayleigh += exp(-height / (SCALE_RAYLEIGH * air_scale)) * step_length
 		mie += exp(-height / (SCALE_MIE * air_scale)) * step_length
-	var tau := (BETA_RAYLEIGH * rayleigh + Vector3.ONE * BETA_MIE * 1.1 * mie) / air_scale
+	var beta := BETA_RAYLEIGH + BETA_OZONE * OZONE_DEPTH
+	var tau := (beta * rayleigh + Vector3.ONE * BETA_MIE * 1.1 * mie) / air_scale
 	return Vector3(exp(-tau.x), exp(-tau.y), exp(-tau.z))
 
 
@@ -103,7 +110,7 @@ static func sky_color(from: Vector3, along: Vector3, sun: Vector3, radius: float
 		var light := sun_transmittance_inner(at, sun, radius, top, air_scale)
 		if light.x < 0.0:
 			continue
-		var tau := BETA_RAYLEIGH * (depth_r + light.x)
+		var tau := (BETA_RAYLEIGH + BETA_OZONE * OZONE_DEPTH) * (depth_r + light.x)
 		tau += Vector3.ONE * BETA_MIE * 1.1 * (depth_m + light.y)
 		tau /= air_scale
 		var attenuation := Vector3(exp(-tau.x), exp(-tau.y), exp(-tau.z))
