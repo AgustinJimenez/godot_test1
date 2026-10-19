@@ -558,6 +558,15 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		}
 		if (feature == SPIRE) {
 			odds *= 0.2 + 1.6 * stony; // rock formations stand where the ground is stony
+		} else if (feature == LOG || feature == STUMP) {
+			// dead wood lies where trees stand: the more crowns within 14 m the likelier (none in open fields)
+			int trees = 0;
+			each_crown_near(at.x, at.z, 14.0, [&](const Crown &other) {
+				const double dx = other.x - at.x, dz = other.z - at.z;
+				trees += dx * dx + dz * dz < 14.0 * 14.0 ? 1 : 0;
+				return false;
+			});
+			odds *= std::min(trees, 5) * 0.4;
 		}
 		if (t.rng.randf() < odds * rock_density) {
 			double scale = t.rng.range(0.8, 1.4);
