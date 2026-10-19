@@ -52,7 +52,9 @@ vec3 scatter(vec3 origin, vec3 dir, vec3 sun, float radius, float top) {
 		return vec3(0.0);
 	}
 	const int STEPS = 14;
-	float step_len = (t_far - t_near) / float(STEPS);
+	// the steps crowd toward the eye (u cubed): the dense air near the viewer is most of what a low
+	// ray sees; equal steps skipped it and turned the horizon yellow where the true sum is pale
+	float path = t_far - t_near;
 	float mu = dot(dir, sun);
 	float phase_r = 3.0 / (16.0 * PI) * (1.0 + mu * mu);
 	float g = 0.76;
@@ -63,7 +65,12 @@ vec3 scatter(vec3 origin, vec3 dir, vec3 sun, float radius, float top) {
 	float depth_r = 0.0;
 	float depth_m = 0.0;
 	for (int i = 0; i < STEPS; i++) {
-		vec3 p = origin + dir * (t_near + (float(i) + 0.5) * step_len);
+		float u0 = float(i) / float(STEPS);
+		float u1 = float(i + 1) / float(STEPS);
+		u0 = u0 * u0 * u0;
+		u1 = u1 * u1 * u1;
+		float step_len = path * (u1 - u0);
+		vec3 p = origin + dir * (t_near + path * 0.5 * (u0 + u1));
 		float h = length(p) - radius;
 		float hr = exp(-h / (SCALE_R * air_scale)) * step_len;
 		float hm = exp(-h / (SCALE_M * air_scale)) * step_len;

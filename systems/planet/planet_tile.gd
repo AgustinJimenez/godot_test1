@@ -214,7 +214,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mesh_instance)
 	if level >= _settings.max_level() - 6:
-		_add_occluder(positions, side, cells)
+		_add_occluder(packed_positions, side, cells)
 	if _settings.sea_on and min_height < _settings.sea_level + 0.5:
 		_add_sea(dirs, side, cells)
 	_add_running_water(s0, s1, t0, t1, dirs, heights)
@@ -317,7 +317,7 @@ func _skirt(builder: MeshBuilder, positions: Array[Vector3], colors: Array[Color
 ## rocks behind it): about 8 x 8 quads from the tile's own grid, lowered by twice the skirt's depth
 ## so it never hides ground that can be seen (the real ground is lower than a coarse mesh between
 ## its samples by about that much). Only used when the graphics setting asks for occlusion culling.
-func _add_occluder(positions: Array[Vector3], side: int, cells: int) -> void:
+func _add_occluder(positions: PackedVector3Array, side: int, cells: int) -> void:
 	var step := maxi(cells / 8, 1)
 	var across := cells / step + 1
 	var sunk := Vector3(0.0, -_skirt_drop() * 2.0, 0.0)

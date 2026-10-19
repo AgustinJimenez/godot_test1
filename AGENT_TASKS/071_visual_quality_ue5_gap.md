@@ -183,3 +183,14 @@ planet is large and SDFGI wants a small scene; a custom `sdfgi_min_cell_size` pe
   (about 255 against 395) for the other effects, not for this.
 - Lab note: new `class_name` files need `godot --headless --import` once (the class cache), or the
   scripts that use them fail to compile; the editor does it on opening the project.
+
+## The yellow-green horizon (found and fixed)
+
+It was the sky shader's own sum, not the climate or the haze setting. The air along a view ray was
+added up in 14 equal steps; a low ray is 300+ km long inside the air, so the first step already
+started 30 km out and the dense air near the viewer was skipped: no blue was left and the horizon went
+yellow (a Python copy of the shader gave (0.23, 0.21, 0.09) at 14 steps and (0.43, 0.54, 0.56), pale
+cyan, at 200 steps). The steps now crowd toward the eye (cubed spacing, same 14 steps), which comes
+within about 15-25% of the converged horizon and nowhere near yellow. The fog colour comes from the
+same integral (`PlanetAir.sky_color`, 10 steps) and got the same spacing, so the far land is no longer
+tinted yellow-green either. The sunset still warms the horizon toward the sun.

@@ -79,7 +79,6 @@ static func sky_color(from: Vector3, along: Vector3, sun: Vector3, radius: float
 		var disc := b * b - (from.length_squared() - radius * radius)
 		far = minf(far, maxf(-b - sqrt(maxf(disc, 0.0)), 0.0))
 	var steps := 10
-	var step_length := far / float(steps)
 	var mu := along.dot(sun)
 	var phase_r := 3.0 / (16.0 * PI) * (1.0 + mu * mu)
 	var g := 0.76
@@ -90,7 +89,12 @@ static func sky_color(from: Vector3, along: Vector3, sun: Vector3, radius: float
 	var depth_r := 0.0
 	var depth_m := 0.0
 	for index in steps:
-		var at := from + along * (float(index) + 0.5) * step_length
+		# the steps crowd toward the eye (cubed), as in the sky shader: equal steps skip the dense air
+		# near the viewer and turn the horizon yellow
+		var u0 := pow(float(index) / float(steps), 3.0)
+		var u1 := pow(float(index + 1) / float(steps), 3.0)
+		var step_length := far * (u1 - u0)
+		var at := from + along * far * 0.5 * (u0 + u1)
 		var height := at.length() - radius
 		var hr := exp(-height / (SCALE_RAYLEIGH * air_scale)) * step_length
 		var hm := exp(-height / (SCALE_MIE * air_scale)) * step_length
