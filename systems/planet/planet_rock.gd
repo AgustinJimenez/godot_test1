@@ -20,6 +20,9 @@ const SOIL_RICH := Color(0.27, 0.20, 0.13) ## and of a wet, mild one
 const ICE := Color(0.72, 0.86, 0.96) ## glacier ice
 const SCREE := Color(0.58, 0.56, 0.52) ## rubble on the slopes
 const WETLAND := Color(0.22, 0.30, 0.16) ## marsh
+const STEPPE := Color(0.50, 0.46, 0.22) ## the cover of a dry, mild place: dry grass
+const MEADOW := Color(0.22, 0.38, 0.12) ## wet and mild: grass
+const FOREST := Color(0.11, 0.24, 0.09) ## very wet and warm: the dark of the forest floor seen from far
 const SAND := Color(0.80, 0.72, 0.52) ## beaches: low, level ground by the sea
 const SNOW := Color(0.93, 0.95, 0.98) ## permanent snow and ice
 const LAPSE := 0.0065 ## degrees C the air cools a metre higher
@@ -151,6 +154,14 @@ func colour(dir: Vector3, ground: float, steep: float, speckle: float,
 	var soil_colour := SOIL_DRY.lerp(SOIL_RICH, fertile)
 	var soil := on_land * (1.0 - smoothstep(0.2, 0.55, steep)) * (0.3 + 0.7 * fertile) * 0.6
 	rock = rock.lerp(soil_colour, soil)
+	# plant cover: dry grass, grass, the dark of forests, by rain and warmth; none on steep rock, in
+	# the desert or the cold (the snow below covers it where it lies)
+	var wet := clampf(rain / 0.9, 0.0, 1.0)
+	var cover := on_land * smoothstep(-3.0, 6.0, cold) * smoothstep(0.12, 0.55, wet)
+	cover *= 1.0 - smoothstep(0.3, 0.65, steep)
+	var green := STEPPE.lerp(MEADOW, smoothstep(0.3, 0.7, wet))
+	green = green.lerp(FOREST, smoothstep(0.7, 1.0, wet) * smoothstep(8.0, 16.0, cold) * 0.8)
+	rock = rock.lerp(green, cover * 0.9)
 	var snow := smoothstep(-0.5, -4.5, cold) * smoothstep(0.0, 60.0, ground)
 	snow *= 1.0 - 0.85 * smoothstep(0.5, 0.95, steep) # the steepest rock stays bare
 	rock = rock.lerp(SNOW, snow * 0.92)

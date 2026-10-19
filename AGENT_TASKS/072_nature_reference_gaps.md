@@ -71,3 +71,13 @@ variety of near things* (A, E, F) and *light mood* (B, C).
 2. A: ground cover variety + plants on by default (measure cost).
 3. D: water reflection and shoreline.
 4. E, F, G, H as separate items.
+
+## Loop log (overnight 2026-10-19)
+
+1. **Ozone** in the air model (sky shader + `PlanetAir`): the horizon and the far hills go blue instead
+   of green-teal; the sunset has a warm band. Seen at noon and 17:54 on seed 8.
+2. **Plant cover colour** on the ground (`PlanetRock.colour` and the native twin, native check passes,
+   colour gap 0.0105): dry grass, grass and the dark of forest floor by rain and warmth, none on steep
+   rock, desert or cold. Before this the land of seed 8 was grey-beige everywhere (0 of ~3800 land
+   samples green); now 839 are and the wettest places read as meadows with darker patches and blue-green
+   hills in the haze (`-0.60402,-0.07923,0.79302` and `-0.79710,-0.54198,0.26625` on seed 8).

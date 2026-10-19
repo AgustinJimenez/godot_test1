@@ -678,6 +678,20 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	r += (soil_r - r) * (float)soil;
 	g += (soil_g - g) * (float)soil;
 	b += (soil_b - b) * (float)soil;
+	// plant cover: dry grass, grass, the dark of forests, by rain and warmth (PlanetRock.colour)
+	const double wet_cover = clampd(grid_at(rain_grid, p_dir, 0.5) / 0.9, 0.0, 1.0);
+	double cover = on_land * smooth(-3.0, 6.0, cold) * smooth(0.12, 0.55, wet_cover);
+	cover *= 1.0 - smooth(0.3, 0.65, p_steep);
+	const double meadow_k = smooth(0.3, 0.7, wet_cover);
+	const double forest_k = smooth(0.7, 1.0, wet_cover) * smooth(8.0, 16.0, cold) * 0.8;
+	double green_r = 0.50 + (0.22 - 0.50) * meadow_k, green_g = 0.46 + (0.38 - 0.46) * meadow_k;
+	double green_b = 0.22 + (0.12 - 0.22) * meadow_k;
+	green_r += (0.11 - green_r) * forest_k;
+	green_g += (0.24 - green_g) * forest_k;
+	green_b += (0.09 - green_b) * forest_k;
+	r += ((float)green_r - r) * (float)(cover * 0.9);
+	g += ((float)green_g - g) * (float)(cover * 0.9);
+	b += ((float)green_b - b) * (float)(cover * 0.9);
 	double snow = smooth(-0.5, -4.5, cold) * smooth(0.0, 60.0, p_ground);
 	snow *= 1.0 - 0.85 * smooth(0.5, 0.95, p_steep);
 	snow *= 0.92;
