@@ -90,7 +90,8 @@ static func _rock(builder: MeshBuilder, rng: RandomNumberGenerator, variant: int
 
 ## A few small stones lying together (a hand's width each), pale or dark by variant.
 static func _pebbles(builder: MeshBuilder, rng: RandomNumberGenerator, variant: int) -> void:
-	var tones := [Color(0.5, 0.48, 0.45), Color(0.38, 0.36, 0.35), Color(0.6, 0.55, 0.47), Color(0.45, 0.37, 0.3)]
+	var tones := [Color(0.5, 0.48, 0.45), Color(0.38, 0.36, 0.35), Color(0.6, 0.55, 0.47),
+			Color(0.45, 0.37, 0.3)]
 	var stone: Color = tones[variant % tones.size()]
 	for index in 3 + variant % 3:
 		var size := rng.randf_range(0.07, 0.17)
