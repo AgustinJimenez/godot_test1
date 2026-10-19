@@ -65,6 +65,7 @@ lab=res://tests/manual/planet/planet_lab.tscn
 run_check universe 300 "UNIVERSE_CHECK" "${lab}" --universe=42 --systems=3
 run_check climate 300 "CLIMATE_CHECK" "${lab}" --climate-check
 run_check water 300 "WATER_CHECK" "${lab}" --water-check --seed=7
+run_check spawn 300 "SPAWN_CHECK" "${lab}" --spawn-check
 # (the eroded ridges exist in the native crust only: the comparison runs without them)
 PLANET_NO_EROSION=1 run_check native 300 "NATIVE_CHECK" "${lab}" --native-check --earth
 run_check drainage 300 "DRAINAGE_CHECK" "${lab}" --drainage-check --earth --cells=128

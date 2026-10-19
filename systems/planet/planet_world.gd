@@ -38,6 +38,8 @@ var _star_disc := 1.0 ## the star's disc at the semi-major distance against the 
 var clock := PlanetClock.new() ## the star, the orbit, the spin: where the sun is (real geometry)
 var splash: WaterSplash
 var rebases := 0 ## how many times the planet has been turned (labs and tests)
+## false: the character starts exactly where `start` is asked to put them, in the sea if that is where it is (the swim check)
+var spawn_on_solid_ground := true
 var loading := false ## the player is held still while the ground around them is made
 var map_first := true ## the map opens first, the ground is built once it is closed (a window only)
 
@@ -144,6 +146,8 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 		var saved: Array = restored["direction"]
 		direction = Vector3(saved[0], saved[1], saved[2]).normalized()
 	var dir := direction if direction != Vector3.ZERO else noise.find_spawn()
+	if target is Player and altitude <= 0.0 and spawn_on_solid_ground:
+		dir = noise.solid_spawn(dir) # the character starts on solid ground, never in the sea or a river
 	var reach := settings.radius + noise.height(dir.x, dir.y, dir.z) + 1.0
 	reach += maxf(altitude, 0.0)
 	noise.clearing = dir
@@ -405,6 +409,7 @@ func _wait_for_the_ground(delta: float) -> void:
 		if OS.has_environment("PLANET_TIMING"):
 			print("PLANET_TIMING ground ready after %.1f s, %d tiles built, %d wanted" % [
 					_load_time, surface.tiles.size(), surface._wanted.size()])
+		_stand_on_the_ground()
 		loading = false
 		PlanetCloudGpu.warm_up() # (a thread of its own: the map's cloud cover runs on the GPU once this is done)
 		surface.burst = false
@@ -414,6 +419,23 @@ func _wait_for_the_ground(delta: float) -> void:
 		fade.tween_property(_dark, "modulate:a", 0.0, 0.8)
 		fade.tween_callback(_dark.hide)
 		loaded.emit()
+
+
+## The character is only let in once the ground under them is there: a ray from above finds the collider at the spawn spot
+## and puts the character on it (a character placed from the height formula alone could start inside a hill or fall through
+## ground that is not built yet). Without a hit (headless, or a ship far above) they stay where they are.
+func _stand_on_the_ground() -> void:
+	if not (_target is Player) or altitude() > 500.0 or not spawn_on_solid_ground:
+		return
+	var space := get_viewport().world_3d.direct_space_state
+	var from := _target.global_position + Vector3.UP * 60.0
+	var query := PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 160.0, 1)
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return
+	_target.global_position = (hit["position"] as Vector3) + Vector3.UP * 0.05
+	if OS.has_environment("PLANET_TIMING"):
+		print("PLANET_TIMING stood on the ground at %.1f m" % (hit["position"] as Vector3).y)
 
 
 ## Metres above sea level at the target (the ground under it, not its feet).

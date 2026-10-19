@@ -31,3 +31,14 @@ recomputed or what is slow to recompute:
 Tiles already stream by distance on worker threads; the store is read by those workers (a read-only memory map after the
 index is loaded) and written only by the main thread. Prefetch by the player's velocity (build the tiles ahead of the move)
 is a separate, cheap improvement of `PlanetSurface.update`.
+
+## Spawning (done, 2026-10-19)
+The character never starts in the sea, a lake or a river: `PlanetWorld.start` runs the asked-for direction through
+`PlanetNoise.solid_spawn`, which keeps it if `is_solid_ground` (3 m or more above the sea, no river or lake water within
+6 m, no cliff or sea within 8 m) and otherwise searches widening rings round it (to 30 km), and last falls back to
+`find_spawn`. The character stays held (process disabled) until the ground within 2 km and the plants within 60 m are built;
+then a ray from above finds the collider at the spawn and puts them on it (`_stand_on_the_ground`: it also fixes the 1 m the
+height formula adds), and only then are they let in. A check starting in the sea on purpose sets
+`planet.spawn_on_solid_ground = false` (the swim check). `--spawn-check` (in `planet_check.sh`): 120 random starts on seed
+7, none ends up not solid (96 of them had to move). Future mining or digging must keep this true: the spawn point is
+re-validated against the changes store (a dug pit or a flooded hole is not solid ground).

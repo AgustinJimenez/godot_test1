@@ -534,6 +534,7 @@ func _monsoon_swing(noise: PlanetNoise) -> float:
 func _ready() -> void:
 	var report_run := _drainage_check() or _native_check() or _terrain_check()
 	report_run = report_run or _climate_check() or _water_check()
+	report_run = report_run or PlanetLabChecks.spawn_check(get_tree())
 	if report_run or _print_universe_table():
 		return
 	var asked := PlanetMenu.pending != null
@@ -700,6 +701,7 @@ func _ready() -> void:
 	player = PLAYER_SCENE.instantiate() as Player
 	add_child(player)
 	if _swim_check:
+		planet.spawn_on_solid_ground = false # (the sea is the point)
 		_start_dir = _find_sea(planet.noise)
 	var spawn := planet.start(player, _start_dir, _spawn_alt)
 	planet.atmosphere.clouds_hidden = _no_clouds

@@ -43,3 +43,27 @@ static func water_check(tree: SceneTree) -> bool:
 	print("RIVER_AT %f,%f,%f" % [widest.x, widest.y, widest.z])
 	tree.quit()
 	return true
+
+
+## `--spawn-check` (headless): wherever a start is asked for (the sea included), the character is put on solid ground.
+static func spawn_check(tree: SceneTree) -> bool:
+	if not "--spawn-check" in OS.get_cmdline_user_args():
+		return false
+	var made := PlanetSettings.new()
+	made.drainage_cells = 96
+	made.world_seed = 7
+	var noise := PlanetNoise.new(made)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var failed := 0
+	var moved := 0
+	for index in 120:
+		var dir := Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized()
+		var spot := noise.solid_spawn(dir)
+		if not noise.is_solid_ground(spot):
+			failed += 1
+		if spot.distance_to(dir) > 1.0e-7:
+			moved += 1
+	print("SPAWN_CHECK %s starts=120 moved=%d not_solid=%d" % ["PASS" if failed == 0 else "FAIL", moved, failed])
+	tree.quit()
+	return true

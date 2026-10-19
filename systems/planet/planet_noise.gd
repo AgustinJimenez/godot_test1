@@ -6,6 +6,8 @@ extends RefCounted
 ## functions of the direction and the seed, so any tile can be built alone and neighbours agree on
 ## their shared edge, and there are no seams or poles to pinch.
 
+const SPAWN_ABOVE_SEA := 3.0 ## m: the lowest ground the character may start on
+const SPAWN_FROM_WATER := 6.0 ## m from a river or a lake
 const LAPSE := 6.5 ## degrees C lost per km of height
 const EARTH_RELIEF := 8800.0 ## m: what "one relief" is on Earth
 
@@ -522,6 +524,47 @@ func facet_color(x: float, y: float, z: float, ground: float, steep: float,
 	var here := Vector3(x, y, z)
 	return rock.colour(here, ground, steep, speckle, climate.sea_temperature(here), not coarse,
 			climate.sample(here).y)
+
+
+## True where a person can stand: dry land well above the sea, not in a lake or a river or at the
+## edge of one, and not on a steep slope (a cliff, a bank).
+func is_solid_ground(dir: Vector3) -> bool:
+	var ground := height(dir.x, dir.y, dir.z)
+	if ground < SPAWN_ABOVE_SEA:
+		return false
+	if water_at(dir, ground) > -INF or near_water(dir, ground, SPAWN_FROM_WATER):
+		return false
+	var up := dir.cross(Vector3.UP).normalized()
+	for k in 4: # the ground a few metres round: no cliff, nothing under the sea
+		var side := (dir + up.rotated(dir, float(k) * PI * 0.5) * 8.0 / settings.radius).normalized()
+		var there := height(side.x, side.y, side.z)
+		if there < SPAWN_ABOVE_SEA * 0.5 or absf(there - ground) > 8.0 * 0.5:
+			return false
+	return true
+
+
+## `dir` if it is solid ground, else the nearest direction that is (searched in widening rings round
+## it, out to about 30 km or the planet's own limit), else the planet's best spawn: the character is
+## never put in the sea or a river.
+func solid_spawn(dir: Vector3) -> Vector3:
+	var from := dir.normalized()
+	if is_solid_ground(from):
+		return from
+	var side := from.cross(Vector3.UP)
+	if side.length_squared() < 0.0001:
+		side = from.cross(Vector3.RIGHT)
+	side = side.normalized()
+	var reach := 40.0
+	var limit := minf(30000.0, settings.radius * 0.45)
+	while reach <= limit:
+		var count := clampi(int(reach * TAU / 60.0), 8, 96) # a point every 60 m round the ring
+		for step in count:
+			var around := side.rotated(from, TAU * float(step) / float(count))
+			var spot := (from + around * (reach / settings.radius)).normalized()
+			if is_solid_ground(spot):
+				return spot
+		reach *= 1.35
+	return find_spawn()
 
 
 ## A direction for the player to start on: green country (mild, wet enough) that is not a dead flat
