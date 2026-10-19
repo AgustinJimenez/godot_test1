@@ -1123,7 +1123,9 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 	// the cloud layers: the pattern is worked out for every other pixel and blended between (a clump is a dozen pixels
 	// across or more, so half the samples lose nothing the eye can see, and the noise is the cost of these layers)
 	std::vector<double> row_pattern, row_threshold;
-	if ((p_layer == 8 || p_layer == 9 || p_layer == 11) && have_grid && season_mean.size() >= gw * gh) {
+	const PackedFloat32Array covers = p_params.get("covers", PackedFloat32Array()); // worked out elsewhere (the GPU)
+	const bool have_covers = covers.size() == p_dirs.size();
+	if (!have_covers && (p_layer == 8 || p_layer == 9 || p_layer == 11) && have_grid && season_mean.size() >= gw * gh) {
 		Timed timed(prof_clouds);
 		const int count = p_dirs.size();
 		row_pattern.resize(count);
@@ -1198,7 +1200,9 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 			case 11: { // clouds, satellite, the cloud cover alone
 				const bool ready_grid = have_grid && season_mean.size() >= gw * gh;
 				double cover = 0.0;
-				if (ready_grid && !row_pattern.empty()) {
+				if (have_covers) {
+					cover = (double)covers[index];
+				} else if (ready_grid && !row_pattern.empty()) {
 					cover = smooth(row_threshold[index] - 0.12, row_threshold[index] + 0.12, row_pattern[index]);
 				}
 				if (p_layer == 11) {

@@ -78,3 +78,11 @@ workers) and roughly 3 s at 8192x4096, so the GPU is not faster where the map is
 fast at 8192. Not worth wiring in: the readback and the CPU colouring of the rest of the picture dominate. Kept as the
 way to do it if the maps get much bigger. The terrain heights must stay on the CPU (the game's ground is built from them;
 the GPU is single precision).
+
+## 7. The map's cloud cover on the GPU is wired in (`PlanetChart.use_gpu`, set by `PlanetMap`)
+A whole-planet Clouds, Satellite or Cloud mask picture uses the GPU's cloud cover when the compute shader is ready
+(`PlanetCloudGpu.warm_up` after loading) and the heights are known (a layer drawn before kept them); the CPU does it
+otherwise (the first picture, a part of the map, headless, `PLANET_NO_GPU=1`). 2048x1024: Clouds 643 -> 482 ms,
+Satellite 441 -> 287, Cloud mask 341 -> 183; pictures differ from the CPU's by 0.2-0.6 of 255 on average. The native
+`data_row` takes the covers as the `covers` parameter. One GPU thread owns the local rendering device (it is bound to the
+thread that made it); the shader takes 3.4 s to compile on D3D12, so it is warmed up in the background.

@@ -94,6 +94,15 @@ about 5 times slower to build and has no river valleys, and the game prints one 
   class to `register_types.cpp`, rebuild both libraries (single and `--double`), and add or extend a check. Do not port
   scene/UI code, one-off tools or the flat world.
 
+- **What the native conversion taught** (details in `docs/planet_lessons.md` section 10): measure first; the engine's
+  `RandomNumberGenerator` is PCG32, so a native port with the same constants reproduces it exactly; the frame is GPU-bound
+  in play, so the GPU is only for idle moments (the open map: `PlanetCloudGpu`, one thread owns the local
+  `RenderingDevice` and warms the shader up after loading); a native crash prints nothing, so run the full
+  `scripts/planet_check.sh` after every native change and bisect with `UtilityFunctions::print`; rename a locked
+  `bin/*.dll` to `.dll.old` before rebuilding while the editor or a game runs; run `godot --headless --path . --import`
+  after adding a `class_name` script; write multi-line edit scripts to a file instead of a shell heredoc; keep lab and
+  check files under 1000 lines (`tests/manual/planet/planet_lab_checks.gd` takes the overflow).
+
 There are no unit tests. Persistent acceptance scenes live under `tests/manual/<domain>/`.
 Temporary capture scenes may use `tests/manual/_<name>_demo.tscn` but must be removed before commit.
 After launching a verification scene, stop the game before handing control back to the user.

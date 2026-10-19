@@ -410,6 +410,7 @@ func _start_chart(pass_index: int) -> void:
 	_chart = PlanetChart.new()
 	_chart.size = PASSES[pass_index]
 	_chart.layer = _layer
+	_chart.use_gpu = true # (the game is paused while the map is open: the GPU is free)
 	_chart.clock = planet.clock.copy()
 	_chart_time = planet.clock.time
 	_chart_is_detail = false
@@ -581,6 +582,7 @@ func _start_warm_layer(layer: int) -> void:
 	_chart = PlanetChart.new()
 	_chart.layer = layer as PlanetChart.Layer
 	_chart.size = PASSES[2]
+	_chart.use_gpu = true
 	_chart.clock = planet.clock.copy()
 	_chart_layer = layer as PlanetChart.Layer
 	_chart_is_detail = false

@@ -406,6 +406,7 @@ func _wait_for_the_ground(delta: float) -> void:
 			print("PLANET_TIMING ground ready after %.1f s, %d tiles built, %d wanted" % [
 					_load_time, surface.tiles.size(), surface._wanted.size()])
 		loading = false
+		PlanetCloudGpu.warm_up() # (a thread of its own: the map's cloud cover runs on the GPU once this is done)
 		surface.burst = false
 		_load_label.visible = false
 		_target.process_mode = Node.PROCESS_MODE_INHERIT
@@ -424,6 +425,10 @@ func altitude() -> float:
 func update_now() -> void:
 	_physics_process(0.0)
 	surface.update(planet_position())
+
+
+func _exit_tree() -> void:
+	PlanetCloudGpu.stop()
 
 
 func _physics_process(delta: float) -> void:

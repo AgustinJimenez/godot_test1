@@ -155,3 +155,33 @@ repeated runs.
   darkness with height were both real and had different causes (cost of the march, the air's depth).
 - Keep every lab tool you wrote for an investigation (`--hide`, `--climb`, `--fps`, the triangle report):
   the next investigation starts with them.
+
+## 10. Going native (what the C++ conversion taught, 2026-10-19)
+
+- **Measure, then convert what costs.** The tile build was already native (grid and heights 10.9 ms, the rest about 4 ms);
+  the real costs were plant placement, plant meshes (1-4 s on the first tiles), the quadtree selection (20 ms while loading)
+  and a few per-pixel script loops in the map. `PLANET_TIMING=1`, the chart profile (`PLANET_CHART_PROFILE=1`,
+  `tests/manual/planet/chart_times.gd`) and the lab's FPS line (it shows the render thread's CPU and GPU time) found them.
+- **Godot's `RandomNumberGenerator` is PCG32 with the default increment**, so a native `Rng` with the same constants draws
+  the same numbers: a ported builder gives the very same meshes (`PlantMeshNative.scenery`), and the old script is a
+  true reference. Do not rely on it for planet shape (see the double build rule in `AGENTS.md`).
+- **The frame is GPU-bound when playing** (render thread 4-7 ms CPU, 9-12 ms GPU at High/Ultra on a 4090): spare CPU is not the
+  problem, so do not move per-frame work to the GPU. Idle moments (the map open, the game paused) are where the GPU can help:
+  the map's cloud cover runs on a compute shader (`PlanetCloudGpu`).
+- **A local `RenderingDevice` belongs to the thread that made it** ("can only be called from the render thread"): one
+  thread creates it, compiles and does all the GPU work (jobs through a semaphore). The first shader compile took 3.4 s on
+  D3D12, so start it on a thread after loading (`PlanetCloudGpu.warm_up`) and use the CPU until `available()`.
+- **Native crashes print nothing.** A function that called itself (a refactor that replaced the wrong "first match" of a
+  text) killed the headless checks with no message: run the full `planet_check.sh` after every native refactor, and bisect
+  with `UtilityFunctions::print` in the C++. A script edit that replaces "the first occurrence" can hit the wrong place.
+- **A running editor or game locks the DLL** (`Acceso denegado`): rename `bin/*.dll` to `.dll.old` first (both precisions).
+  A new `class_name` script is only known after `godot --headless --path . --import`.
+- **Approximations that pay**: half the samples on a cloud row (blend the rest) halved the cost with no visible change;
+  a latitude-only quantity (sea ice) needs no trig per pixel; do the picture's smoothing on the last chart thread, not on
+  the main one (it was a 60-430 ms hitch when a layer finished).
+- **Editing tools on this machine**: write Python edit scripts to a file (a heredoc with an apostrophe confuses the shell
+  tool), use `E:/...` paths in Python and `/e/...` in Git Bash, normalise `
+` when reading and match the file's real
+  indentation (tabs). Keep edits that matter to behaviour in the repo's checks, not in scratch scripts.
+- **Keep files under the lint limits as you add**: the lab went past 1000 lines twice; move a check into
+  `tests/manual/planet/planet_lab_checks.gd` instead of squeezing.

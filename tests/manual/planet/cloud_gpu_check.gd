@@ -8,6 +8,9 @@ func _init() -> void:
 	clock.day_seconds = settings.day_seconds
 	clock.year_days = settings.year_days
 	clock.axial_tilt = deg_to_rad(settings.axial_tilt)
+	PlanetCloudGpu.warm_up()
+	while not PlanetCloudGpu.available():
+		OS.delay_msec(50)
 	print("gpu available: ", PlanetCloudGpu.available())
 	var size := Vector2i(2048, 1024)
 	# the CPU's cloud mask picture (and its heights: the macro the GPU needs)

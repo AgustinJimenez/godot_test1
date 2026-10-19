@@ -2,45 +2,123 @@ class_name PlanetCloudGpu
 extends RefCounted
 ## The cloud cover of a whole map picture worked out on the GPU (a compute shader, shaders/compute/planet_cloud_cover.glsl):
 ## the same maths and the same noise as the native crust's `cloud_field`, one thread a pixel. An experiment: `cover` answers an
-## empty array where there is no GPU to compute on, and the chart then uses the CPU.
+## empty array where there is no GPU to compute on (or it is not ready yet: `warm_up`), and the chart then uses the CPU.
 
 static var _device: RenderingDevice
 static var _shader: RID
 static var _pipeline: RID
-static var _tried := false
+static var _thread: Thread
+static var _ready := false
+static var _lock := Mutex.new()
+static var _wake := Semaphore.new()
+static var _done := Semaphore.new()
+static var _job: Array = [] # the buffers of the work to do (empty: none)
+static var _result := PackedFloat32Array()
+static var _stopping := false
 
 
+## Starts getting the GPU ready on a thread of its own, which then does all the GPU's work (a local rendering device belongs
+## to the thread that made it; the shader takes about 3 s to compile: the map would freeze for that long the first time
+## it asked). Safe to call again; `available` says when it is done (and a GPU is there).
+static func warm_up() -> void:
+	_lock.lock()
+	var start := _thread == null and not OS.has_environment("PLANET_NO_GPU") 			and DisplayServer.get_name() != "headless"
+	if start:
+		_stopping = false
+		_thread = Thread.new()
+		_thread.start(_run, Thread.PRIORITY_LOW)
+	_lock.unlock()
+
+
+## Ends the GPU thread (the game ends).
+static func stop() -> void:
+	_lock.lock()
+	var thread := _thread
+	_stopping = true
+	_lock.unlock()
+	if thread != null:
+		_wake.post()
+		thread.wait_to_finish()
+		_lock.lock()
+		_thread = null
+		_ready = false
+		_lock.unlock()
+
+
+## True once the compute shader is ready to run.
 static func available() -> bool:
-	_open()
-	return _device != null
+	_lock.lock()
+	var ready := _ready
+	_lock.unlock()
+	return ready
 
 
-static func _open() -> void:
-	if _tried:
-		return
-	_tried = true
+static func _run() -> void:
 	_device = RenderingServer.create_local_rendering_device()
 	if _device == null:
 		return
 	var file := load("res://shaders/compute/planet_cloud_cover.glsl") as RDShaderFile
 	if file == null:
-		_device = null
 		return
 	var spirv := file.get_spirv()
 	if spirv.compile_error_compute != "":
 		push_warning("cloud cover shader: " + spirv.compile_error_compute)
-		_device = null
 		return
 	_shader = _device.shader_create_from_spirv(spirv)
 	_pipeline = _device.compute_pipeline_create(_shader)
+	_lock.lock()
+	_ready = true
+	_lock.unlock()
+	while true:
+		_wake.wait()
+		if _stopping:
+			break
+		_lock.lock()
+		var job := _job
+		_job = []
+		_lock.unlock()
+		_result = _compute(job) if not job.is_empty() else PackedFloat32Array()
+		_done.post()
+
+
+## One job on the GPU thread: `job` = [width, height, the buffers in the order the shader reads them].
+static func _compute(job: Array) -> PackedFloat32Array:
+	var width: int = job[0]
+	var height: int = job[1]
+	var buffers: Array[RID] = []
+	var uniforms: Array[RDUniform] = []
+	var sources: Array = job[2]
+	for binding in sources.size():
+		var data: PackedByteArray = sources[binding].to_byte_array()
+		if data.is_empty():
+			data.resize(4)
+		var buffer := _device.storage_buffer_create(data.size(), data)
+		buffers.append(buffer)
+		var uniform := RDUniform.new()
+		uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		uniform.binding = binding
+		uniform.add_id(buffer)
+		uniforms.append(uniform)
+	var set := _device.uniform_set_create(uniforms, _shader, 0)
+	var list := _device.compute_list_begin()
+	_device.compute_list_bind_compute_pipeline(list, _pipeline)
+	_device.compute_list_bind_uniform_set(list, set, 0)
+	_device.compute_list_dispatch(list, (width + 7) / 8, (height + 7) / 8, 1)
+	_device.compute_list_end()
+	_device.submit()
+	_device.sync()
+	var result := _device.buffer_get_data(buffers[0]).to_float32_array()
+	_device.free_rid(set)
+	for buffer in buffers:
+		_device.free_rid(buffer)
+	return result
 
 
 ## The cover (0..1) of every pixel of a `width` x `height` picture of the whole planet at `clock`'s moment, row after row from
 ## the north; `macros` is the ground height of each pixel (its sign says land or sea).
 static func cover(noise: PlanetNoise, clock: PlanetClock, width: int, height: int,
 		macros: PackedFloat32Array) -> PackedFloat32Array:
-	_open()
-	if _device == null or macros.size() != width * height:
+	if not available() or macros.size() != width * height:
 		return PackedFloat32Array()
 	var weather: Dictionary = noise.weather.config()
 	var now_grid := noise.climate.seasons.blended(clock.year_share())
@@ -83,32 +161,11 @@ static func cover(noise: PlanetNoise, clock: PlanetClock, width: int, height: in
 	ints[24] = PlanetClimate.WIDTH
 	ints[25] = PlanetClimate.HEIGHT
 	ints[26] = 1 if mean_grid.size() >= PlanetSeasons.WIDTH * PlanetSeasons.HEIGHT else 0
-	var buffers: Array[RID] = []
 	var out_bytes := PackedFloat32Array()
 	out_bytes.resize(width * height)
-	var uniforms: Array[RDUniform] = []
-	var sources: Array = [out_bytes, macros, now_grid, mean_grid, rain, floats, ints]
-	for binding in sources.size():
-		var data: PackedByteArray = sources[binding].to_byte_array()
-		if data.is_empty():
-			data.resize(4)
-		var buffer := _device.storage_buffer_create(data.size(), data)
-		buffers.append(buffer)
-		var uniform := RDUniform.new()
-		uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		uniform.binding = binding
-		uniform.add_id(buffer)
-		uniforms.append(uniform)
-	var set := _device.uniform_set_create(uniforms, _shader, 0)
-	var list := _device.compute_list_begin()
-	_device.compute_list_bind_compute_pipeline(list, _pipeline)
-	_device.compute_list_bind_uniform_set(list, set, 0)
-	_device.compute_list_dispatch(list, (width + 7) / 8, (height + 7) / 8, 1)
-	_device.compute_list_end()
-	_device.submit()
-	_device.sync()
-	var result := _device.buffer_get_data(buffers[0]).to_float32_array()
-	_device.free_rid(set)
-	for buffer in buffers:
-		_device.free_rid(buffer)
-	return result
+	_lock.lock()
+	_job = [width, height, [out_bytes, macros, now_grid, mean_grid, rain, floats, ints]]
+	_lock.unlock()
+	_wake.post()
+	_done.wait() # (the GPU thread does the work; a few hundred ms)
+	return _result

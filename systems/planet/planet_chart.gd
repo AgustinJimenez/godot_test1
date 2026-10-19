@@ -45,6 +45,10 @@ var _land_bands: Array[PackedByteArray] = [] # 1 where the pixel is land (for th
 var _rows_done := 0
 var _mutex := Mutex.new()
 var _started_usec := 0
+## true: the cloud cover of a whole-planet picture is worked out on the GPU when it can be (the map is open and the game
+## paused, so the GPU is idle; in play it is the busier side). The CPU does it otherwise.
+var use_gpu := false
+var _covers := PackedFloat32Array() # the cloud cover of every pixel, from the GPU
 var _finishing := 0 ## workers that have finished their rows (the last one tidies the picture)
 var _tidied := false ## the picture is finished: smoothed, the coasts drawn
 var _picture := PackedByteArray()
@@ -99,6 +103,7 @@ static func _along(t: float, colors: Array, stops: Array) -> Color:
 func start(noise: PlanetNoise) -> void:
 	_noise = noise
 	_started_usec = Time.get_ticks_usec()
+	_cloud_cover_on_the_gpu(noise)
 	PlanetChartProfile.take() # (a new picture starts its own account)
 	if noise.native != null and noise.native.has_method(&"profile_take"):
 		noise.native.call(&"profile_take")
@@ -111,6 +116,19 @@ func start(noise: PlanetNoise) -> void:
 		var thread := Thread.new()
 		thread.start(_chart.bind(worker), Thread.PRIORITY_HIGH) # (over the world's builders)
 		_threads.append(thread)
+
+
+## The cloud layers of a whole-planet picture: the cover of every pixel from the GPU, when the ground's heights are known
+## already (a layer drawn before kept them) and there is a GPU to compute on.
+func _cloud_cover_on_the_gpu(noise: PlanetNoise) -> void:
+	if not use_gpu or clock == null or rect != Rect2(0.0, 0.0, 1.0, 1.0) \
+			or not layer in [Layer.CLOUDS, Layer.SATELLITE, Layer.CLOUD_MASK] \
+			or OS.has_environment("PLANET_NO_GPU") or not noise.map_heights.has(size) \
+			or not PlanetCloudGpu.available():
+		return
+	var mark := Time.get_ticks_usec()
+	_covers = PlanetCloudGpu.cover(noise, clock, size.x, size.y, noise.map_heights[size])
+	PlanetChartProfile.lap("cloud cover on the GPU", mark)
 
 
 ## 0..1
@@ -304,7 +322,7 @@ func _chart(worker: int) -> void:
 						north_grounds, step_lon, calm))
 			else:
 				bytes.append_array(_noise.native.call(&"data_row", int(layer), dirs, grounds, macros,
-						east_grounds, north_grounds, step_lon, _row_params(lat)))
+						east_grounds, north_grounds, step_lon, _row_params(lat, row)))
 			mark = PlanetChartProfile.lap("native row colours", mark)
 			_mutex.lock()
 			_rows_done += 1
@@ -361,13 +379,16 @@ func _land_of(grounds: PackedFloat32Array) -> PackedByteArray:
 
 ## What the native row needs besides the heights (the seasons' grid now, the sun's longitude, and
 ## how clear the sky is on this row's latitude).
-func _row_params(lat: float) -> Dictionary:
+func _row_params(lat: float, row: int) -> Dictionary:
 	if clock == null or _blend.is_empty():
 		return {}
 	var sun := clock.sun_in_body()
-	return {"grid": _blend, "gw": PlanetSeasons.WIDTH, "gh": PlanetSeasons.HEIGHT,
+	var params := {"grid": _blend, "gw": PlanetSeasons.WIDTH, "gh": PlanetSeasons.HEIGHT,
 			"sun_lon": atan2(sun.z, sun.x), "decl": clock.declination(), "days": clock.absolute_days(),
 			"clear": clampf(clock.day_length(lat) * 2.0 + 0.3, 0.3, 1.0)}
+	if not _covers.is_empty():
+		params["covers"] = _covers.slice(row * size.x, (row + 1) * size.x) # (from the GPU)
+	return params
 
 
 ## The ground at many directions: its smooth shape (without the hills and gullies) for a far view.
