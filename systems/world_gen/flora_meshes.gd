@@ -115,7 +115,7 @@ static func _litter(builder: MeshBuilder, rng: RandomNumberGenerator, variant: i
 			PlantSpecies.LeafShape.LANCEOLATE]
 	var outline := PlantLeafShapes.outline_for(shapes[variant % shapes.size()], rng.randf_range(1.5, 2.2),
 			2, PlantSpecies.LeafEdge.SMOOTH, true)
-	for index in 9 + variant * 2:
+	for index in 12 + variant * 2:
 		var spot := Vector2.from_angle(rng.randf() * TAU) * 0.55 * sqrt(rng.randf())
 		var yaw := rng.randf() * TAU
 		var axis := Vector3(cos(yaw), rng.randf_range(0.0, 0.18), sin(yaw)).normalized()
@@ -124,7 +124,7 @@ static func _litter(builder: MeshBuilder, rng: RandomNumberGenerator, variant: i
 		var colour := tone.lerp(Color(0.3, 0.2, 0.1), rng.randf() * 0.5) * shade
 		colour.a = 0.0
 		PlantLeafShapes.add_leaf(builder, outline, Vector3(spot.x, 0.012 + 0.006 * index, spot.y), axis,
-				normal, rng.randf_range(0.08, 0.18), 0.04, 0.05, colour.darkened(0.2), colour, 0.0, 0.0,
+				normal, rng.randf_range(0.11, 0.24), 0.04, 0.05, colour.darkened(0.2), colour, 0.0, 0.0,
 				rng.randf_range(0.9, 1.2), Vector2(rng.randf(), rng.randf()))
 
 

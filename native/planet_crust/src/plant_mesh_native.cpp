@@ -788,6 +788,12 @@ struct Grower {
 		Color dark = g->leaf.darkened(0.35f);
 		Color tone = mix(g->leaf, g->leaf.lightened(0.12f), rf());
 		int segments = (int)points.size() - 1;
+		bool low_plant = g->height < 1.5;
+		// the realistic look: a tall frond's leaflets are a strip along the rib, drawn on it by the shader
+		// (UV2.y 4 + rows / 100: a pinnate strip, see flora_wind.gdshader), not a triangle for each leaflet
+		bool strip = fine && !low_plant && b->leaf_cards && g->leaflet >= 0.02;
+		double rows = clampd(length / 0.08, 10.0, 80.0);
+		double pin_dice = rf();
 		for (int index = 0; index < segments; index++) {
 			double t = (double)index / segments;
 			double sway = 0.35 + 0.5 * t;
@@ -801,8 +807,26 @@ struct Grower {
 			Vector3 wide_b = side * (real_t)(rib * (1.0 - narrow * (t + 1.0 / segments)));
 			b->tri(a - wide_a, a + wide_a, c + wide_b, base, base, tip);
 			b->tri(a - wide_a, c + wide_b, c - wide_b, base, tip, tip);
+			if (strip) {
+				double t2 = t + 1.0 / segments;
+				double size_a = length * g->leaflet * pow(sin(PI_D * clampd(t, 0.05, 0.98)), 0.7) * 1.15;
+				double size_c = length * g->leaflet * pow(sin(PI_D * clampd(t2, 0.05, 0.98)), 0.7) * 1.15;
+				Color from_colour = with_alpha(tone.darkened(0.2f), sway);
+				Color tip_colour = with_alpha(mix(g->leaf_tip, tone, 0.3), std::min(sway + LEAF_SWAY, 1.0));
+				Vector2 mark((real_t)pin_dice, (real_t)(4.0 + rows * 0.01));
+				for (int s = 0; s < 2; s++) {
+					double sign_side = s == 0 ? -1.0 : 1.0;
+					Vector3 dir = (side * (real_t)(sign_side * 0.9) + tangent * 0.5f + DOWN * 0.45f).normalized();
+					Vector3 out_a = a + dir * (real_t)size_a;
+					Vector3 out_c = c + dir * (real_t)size_c;
+					b->tri_uv(a, c, out_c, from_colour, from_colour, tip_colour, Vector2(0, (real_t)t),
+							Vector2(0, (real_t)t2), Vector2(1, (real_t)t2), mark);
+					b->tri_uv(a, out_c, out_a, from_colour, tip_colour, tip_colour, Vector2(0, (real_t)t),
+							Vector2(1, (real_t)t2), Vector2(1, (real_t)t), mark);
+				}
+				continue;
+			}
 			int leaflets = g->leaflet >= 0.02 ? (fine ? 5 : 3) - lod : 0;
-			bool low_plant = g->height < 1.5;
 			for (int leaf_index = 0; leaf_index < leaflets; leaf_index++) {
 				double u = (leaf_index + 0.5) / leaflets;
 				Vector3 at = a.lerp(c, (real_t)u);

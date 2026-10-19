@@ -116,6 +116,24 @@ vec2 leaf_cluster(vec2 uv, float id) {
 	return vec2(inside_leaf, shade);
 }
 
+// The leaflets of a palm or fern frond on a strip along its rib (UV.x 0 at the rib .. 1 at the leaflet tips,
+// UV.y 0..1 down the frond): narrow leaflets swept toward the tip, each its own length and width, with a midrib
+// and a darker edge. Returns x: 1 inside a leaflet, y: the shade.
+vec2 pinnate(vec2 uv, float rows, float id) {
+	float y = uv.y * rows;
+	float x = uv.x;
+	float slanted = y - x * 1.1;
+	float row = floor(slanted);
+	vec2 h = hash22(vec2(row, id * 17.0));
+	float cut = 0.78 + 0.22 * h.x; // each leaflet's own length
+	float half_width = 0.34 * (0.75 + 0.5 * h.y) * pow(max(1.0 - x / cut, 0.0), 0.55) * smoothstep(0.0, 0.07, x);
+	float across = abs(fract(slanted) - 0.5);
+	float inside_leaflet = (across < half_width && x < cut) ? 1.0 : 0.0;
+	float rib = 1.0 - smoothstep(0.0, 0.05, across);
+	float shade = (0.8 + 0.35 * h.y) * (1.0 - 0.25 * across / max(half_width, 0.01)) + rib * 0.15;
+	return vec2(inside_leaflet, shade);
+}
+
 void vertex() {
 	vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_pos = world;
@@ -148,9 +166,11 @@ void fragment() {
 	bool is_card = UV2.y > 1.5;
 	float card_alpha = 1.0;
 	if (is_card) {
-		vec2 cluster = leaf_cluster(UV, UV2.x);
+		bool is_pin = UV2.y > 3.5;
+		float rows = (UV2.y - 4.0) * 100.0;
+		vec2 cluster = is_pin ? pinnate(UV, rows, UV2.x) : leaf_cluster(UV, UV2.x);
 		// far away the leaves are under a pixel and would shimmer: the card fills in toward a solid mass
-		float far_fill = smoothstep(0.35, 0.8, fwidth(UV.x) * 5.0);
+		float far_fill = smoothstep(0.35, 0.8, is_pin ? fwidth(UV.y) * rows : fwidth(UV.x) * 5.0);
 		card_alpha = mix(cluster.x, 0.62, far_fill);
 		paint *= mix(cluster.y, 0.9, far_fill);
 	}

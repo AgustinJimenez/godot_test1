@@ -15,15 +15,32 @@ func _initialize() -> void:
 		kind_name = args[1]
 	RenderingServer.global_shader_parameter_set(&"realism", 1.0)
 	FloraMeshes.detailed = true
-	var kind: FloraMeshes.Kind = {"rock": FloraMeshes.Kind.ROCK, "pebbles": FloraMeshes.Kind.PEBBLES,
-			"litter": FloraMeshes.Kind.LITTER, "twigs": FloraMeshes.Kind.TWIGS}[kind_name]
-	var count := FloraMeshes.variant_count(kind)
-	for index in count:
-		var instance := MeshInstance3D.new()
-		instance.mesh = FloraMeshes.mesh(kind, index, true)
-		instance.material_override = FloraMeshes.material()
-		instance.position = Vector3((float(index) - float(count - 1) * 0.5) * 2.4, 0.0, 0.0)
-		root.add_child(instance)
+	var kind: FloraMeshes.Kind = FloraMeshes.Kind.ROCK
+	var shown := 0.0 # the height of what is shown, for the camera
+	if kind_name.begins_with("form:"): # the plants of one growth form, e.g. form:PALM
+		var form: int = PlantSpecies.Form.keys().find(kind_name.trim_prefix("form:"))
+		var found := 0
+		for one in SpeciesRegistry.new(8, 36).species:
+			if one.form != form or found >= 5:
+				continue
+			var instance := MeshInstance3D.new()
+			instance.mesh = PlantMeshes.build(one, 0, true)
+			instance.material_override = FloraMeshes.material()
+			instance.position = Vector3((float(found) - 2.0) * maxf(one.crown * 2.2, 2.4), 0.0, 0.0)
+			root.add_child(instance)
+			print(one.summary())
+			shown = maxf(shown, one.height)
+			found += 1
+	else:
+		kind = {"rock": FloraMeshes.Kind.ROCK, "pebbles": FloraMeshes.Kind.PEBBLES,
+				"litter": FloraMeshes.Kind.LITTER, "twigs": FloraMeshes.Kind.TWIGS}[kind_name]
+		var count := FloraMeshes.variant_count(kind)
+		for index in count:
+			var instance := MeshInstance3D.new()
+			instance.mesh = FloraMeshes.mesh(kind, index, true)
+			instance.material_override = FloraMeshes.material()
+			instance.position = Vector3((float(index) - float(count - 1) * 0.5) * 2.4, 0.0, 0.0)
+			root.add_child(instance)
 	var floor_mesh := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(40.0, 20.0)
@@ -44,8 +61,11 @@ func _initialize() -> void:
 	root.add_child(environment)
 	var camera := Camera3D.new()
 	root.add_child(camera)
-	camera.look_at_from_position(Vector3(0.0, 2.6 if kind != FloraMeshes.Kind.ROCK else 2.0, 7.0 if kind != FloraMeshes.Kind.ROCK else 6.5),
-			Vector3(0.0, 0.4, 0.0))
+	if shown > 0.0:
+		camera.look_at_from_position(Vector3(0.0, shown * 0.7, shown * 1.1 + 3.0), Vector3(0.0, shown * 0.75, 0.0))
+	else:
+		camera.look_at_from_position(Vector3(0.0, 2.6 if kind != FloraMeshes.Kind.ROCK else 2.0,
+				7.0 if kind != FloraMeshes.Kind.ROCK else 6.5), Vector3(0.0, 0.4, 0.0))
 	root.size = Vector2i(1600, 700)
 
 
