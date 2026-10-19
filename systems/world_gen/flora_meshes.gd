@@ -179,12 +179,13 @@ static func _spire(builder: MeshBuilder, rng: RandomNumberGenerator, variant: in
 				_still(stone.darkened(0.2)), _still(stone), rng, 0.2)
 
 
-## The tufts of short grass for the turf of the ground (PlanetTurf): TURF_VARIANTS arrangements of a dozen separate blades, each a
+## The tufts of short grass for the turf of the ground (PlanetTurf): TURF_VARIANTS arrangements of TURF_BLADES separate blades, each a
 ## narrow card (UV2.y of 8 marks it: the plant shader cuts the blade out of it) at its own place, turn and lean, so no plane or
-## line shows. A blade is its own bending link (CUSTOM0.x is its row in the mesh "branches" meta, as for a grown plant) so that the
-## walker can push the tufts nearby (PlanetSway). Built once.
+## line shows. A blade is bent over in two parts, the upper one leaning further than the lower, and is two bending links
+## (CUSTOM0.x is a vertex link: its row in the mesh "branches" meta, as for a grown plant) so that the walker can push the tufts
+## nearby (PlanetSway). Built once.
 const TURF_VARIANTS := 3
-const TURF_BLADES := 12
+const TURF_BLADES := 10
 static var _turf: Array[ArrayMesh] = []
 
 
@@ -206,31 +207,43 @@ static func _make_tuft(variant: int) -> ArrayMesh:
 	var links := PackedFloat32Array()
 	var table := PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # the root (the ground): never moves
 	for blade in TURF_BLADES:
-		# at its own place (within a hand breadth, more of them near the middle), turned any way, leaning out a little
+		# at its own place (within a hand breadth, more of them near the middle), turned any way, leaning out and over
 		var around := rng.randf() * TAU
 		var reach := 0.14 * sqrt(rng.randf())
 		var root := Vector3(cos(around) * reach, 0.0, sin(around) * reach)
 		var yaw := rng.randf() * TAU
 		var lean_way := around + rng.randf_range(-0.8, 0.8)
-		var lean := rng.randf_range(0.0, 0.42)
+		var lean := rng.randf_range(0.0, 0.3)
+		var arch := rng.randf_range(0.15, 0.75) # how much further the upper part leans over
 		var tall := rng.randf_range(0.14, 0.34)
 		var wide := rng.randf_range(0.03, 0.055)
-		var up := (Vector3.UP * cos(lean) + Vector3(cos(lean_way), 0.0, sin(lean_way)) * sin(lean)).normalized()
+		var side := Vector3(cos(lean_way), 0.0, sin(lean_way))
+		var low_up := (Vector3.UP * cos(lean) + side * sin(lean)).normalized()
+		var high_up := (Vector3.UP * cos(lean + arch) + side * sin(lean + arch)).normalized()
 		var across := Vector3(cos(yaw), 0.0, sin(yaw))
-		across = (across - up * across.dot(up)).normalized()
-		var tip := root + up * tall
-		table.append_array(PackedFloat32Array([0, 9, root.x, root.y, root.z, tip.x, tip.y, tip.z, 0.01, tall]))
-		var id := float(blade + 1)
+		across = (across - low_up * across.dot(low_up)).normalized()
+		var middle := root + low_up * tall * 0.5
+		var tip := middle + high_up * tall * 0.55
+		var low_id := 1 + blade * 2
+		table.append_array(PackedFloat32Array([0, 9, root.x, root.y, root.z, middle.x, middle.y, middle.z, 0.01, tall * 0.5]))
+		table.append_array(PackedFloat32Array([low_id, 9, middle.x, middle.y, middle.z, tip.x, tip.y, tip.z, 0.01, tall * 0.55]))
 		var dice := rng.randf()
-		var corners := [root - across * wide * 0.5, root + across * wide * 0.5, tip + across * wide * 0.5, tip - across * wide * 0.5]
-		var corner_uv := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
-		for index in [0, 1, 2, 0, 2, 3]:
-			vertices.append(corners[index])
-			normals.append(Vector3.UP)
-			colors.append(Color(0.22, 0.34, 0.12, 0.0 if index < 2 else 0.8)) # (alpha: how much the wind moves it)
-			uvs.append(corner_uv[index])
-			uv2s.append(Vector2(dice, 8.0))
-			links.append(id)
+		# three rows of the blade (root, middle, tip), its width kept; the shader tapers it to a point
+		var rows := [[root, 0.0, 0.0, float(low_id)], [middle, 0.5, 0.35, float(low_id)], [tip, 1.0, 0.8, float(low_id + 1)]]
+		for part in 2:
+			var from: Array = rows[part]
+			var to: Array = rows[part + 1]
+			var quad := [[from[0] - across * wide * 0.5, from], [from[0] + across * wide * 0.5, from],
+					[to[0] + across * wide * 0.5, to], [to[0] - across * wide * 0.5, to]]
+			var quad_uv := [Vector2(0, from[1]), Vector2(1, from[1]), Vector2(1, to[1]), Vector2(0, to[1])]
+			for index in [0, 1, 2, 0, 2, 3]:
+				var row: Array = quad[index][1]
+				vertices.append(quad[index][0])
+				normals.append(Vector3.UP)
+				colors.append(Color(0.22, 0.34, 0.12, row[2])) # (alpha: how much the wind moves it)
+				uvs.append(quad_uv[index])
+				uv2s.append(Vector2(dice, 8.0))
+				links.append(row[3])
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices

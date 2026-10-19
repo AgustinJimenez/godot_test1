@@ -165,3 +165,6 @@ view: +7% primitives, +1.5 ms GPU (7.6 -> 9.1 ms, 129 -> 107 fps on the 4090).
 - `PLANET_NO_TURF` switches it off. Check: `--plants --grounded --turf-check` (TURF_CHECK).
 - The tufts at the walker's feet are taken live by PlanetSway as their own class (within 1.7 m, 90 at most) and bend for real; the rest
   only sway in the wind (a rolling swell, the tips most). The length varies by clump (2.5 m cells) and a few tufts shoot up.
+- Turf blades are bent over in two parts (the upper leans further, `arch`) and are two bending links each (10 blades, 40 triangles a
+  tuft); the tint is fresh, aged (olive) or dry (hay), by how poorly grass grows there, patches of dry of about 5 m and each tuft's own
+  dryness. +0.3 ms GPU against the straight blades. Ideas not done: a tall turf type (the Sketchfab grass pack has one up to 1 m).

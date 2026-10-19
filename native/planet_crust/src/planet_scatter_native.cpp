@@ -851,13 +851,19 @@ Array PlanetScatterNative::turf_chunk(const PackedVector3Array &p_positions, con
 			const double clump = 0.55 + 1.0 * ((h & 0xFFFF) / 65535.0);
 			const double scale = (0.5 + 0.9 * size_dice) * (0.65 + 0.55 * f) * clump * (tone > 0.94 ? 1.6 : 1.0);
 			basis = basis.scaled(Vector3((real_t)scale, (real_t)scale, (real_t)scale));
-			const double dry = (1.0 - f) * 0.8;
-			const double dark = 0.78 + 0.3 * tone;
+			// fresh, aged or dry: where it grows poorly the grass is dry, in patches of a few metres some of it is, and each tuft
+			// is a little more or less so
+			const uint32_t hd = (uint32_t)(int)std::floor(x / 5.0) * 2654435761u ^ (uint32_t)(int)std::floor(z / 5.0) * 40503u ^ (uint32_t)p_seed * 2246822519u;
+			const double patch_dry = (double)((hd ^ (hd >> 15)) * 2246822519u >> 16) / 65535.0;
+			const double dry = clampd((1.0 - f) * 0.9 + (tone - 0.5) * 0.5 + (patch_dry > 0.78 ? 0.45 : 0.0), 0.0, 1.0);
+			const double dark = 0.82 + 0.3 * (size_dice * 13.0 - std::floor(size_dice * 13.0));
+			// the tints (they multiply the green of the blade): fresh, aged (olive), dry (straw)
+			const double aged = std::min(dry * 2.0, 1.0), straw = std::max(dry * 2.0 - 1.0, 0.0);
+			const double tr = (1.0 + 0.5 * aged + 1.3 * straw) * dark, tg = (1.05 + 0.1 * aged + 0.15 * straw) * dark, tb = (0.95 - 0.1 * aged + 0.45 * straw) * dark;
 			at.y -= (real_t)(0.02 + 0.1 * std::sqrt(dx * dx + dz * dz));
 			const float values[16] = { (float)basis.rows[0][0], (float)basis.rows[0][1], (float)basis.rows[0][2], (float)at.x, (float)basis.rows[1][0],
 				(float)basis.rows[1][1], (float)basis.rows[1][2], (float)at.y, (float)basis.rows[2][0], (float)basis.rows[2][1],
-				(float)basis.rows[2][2], (float)at.z, (float)(dark * (1.0 + 0.3 * dry)), (float)(dark * (1.0 + 0.03 * dry)),
-				(float)(dark * (1.0 - 0.35 * dry)), 1.0f };
+				(float)basis.rows[2][2], (float)at.z, (float)tr, (float)tg, (float)tb, 1.0f };
 			buffers[(size_t)variant].insert(buffers[(size_t)variant].end(), values, values + 16);
 		}
 	}
