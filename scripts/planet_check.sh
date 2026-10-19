@@ -70,6 +70,7 @@ run_check spawn 300 "SPAWN_CHECK" "${lab}" --spawn-check
 PLANET_NO_EROSION=1 run_check native 300 "NATIVE_CHECK" "${lab}" --native-check --earth
 run_check drainage 300 "DRAINAGE_CHECK" "${lab}" --drainage-check --earth --cells=128
 run_check species 600 "SPECIES_CHECK (PASS|FAIL)" res://tests/manual/world/species_check.tscn
+run_check branches 300 "BRANCH_CHECK (PASS|FAIL)" res://tests/manual/world/branch_check.tscn
 run_check undergrowth 300 "UNDERGROWTH_CHECK" res://tests/manual/planet/undergrowth_check.tscn
 run_check world 900 "WORLD_CHECK" res://tests/manual/world/world_lab.tscn --world-check
 run_check planet 1200 "PLANET_CHECK" "${lab}" --planet-check --fixed-fps 60

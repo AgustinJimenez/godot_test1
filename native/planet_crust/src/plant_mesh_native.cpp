@@ -289,6 +289,8 @@ struct MeshData {
 	std::vector<Vector3> vertices, normals;
 	std::vector<Color> colors;
 	std::vector<Vector2> uvs, uv2s;
+	std::vector<float> branch_of; // the branch each vertex belongs to (0: the trunk and what does not move), see Grower::table
+	float current_branch = 0.0f;
 	bool has_uv = false;
 
 	int triangle_count() const { return (int)vertices.size() / 3; }
@@ -298,6 +300,8 @@ struct MeshData {
 		colors.clear();
 		uvs.clear();
 		uv2s.clear();
+		branch_of.clear();
+		current_branch = 0.0f;
 		has_uv = false;
 	}
 
@@ -321,6 +325,9 @@ struct MeshData {
 		uv2s.push_back(Vector2());
 		uv2s.push_back(Vector2());
 		uv2s.push_back(Vector2());
+		branch_of.push_back(current_branch);
+		branch_of.push_back(current_branch);
+		branch_of.push_back(current_branch);
 	}
 	void tri(const Vector3 &a, const Vector3 &b, const Vector3 &c, const Color &col) { tri(a, b, c, col, col, col); }
 	void tri_uv(const Vector3 &a, const Vector3 &b, const Vector3 &c, const Color &ca, const Color &cb,
@@ -710,8 +717,11 @@ struct Grower {
 	std::vector<Vector3> solid_points;
 	std::vector<double> solid_radii;
 	std::vector<int> solid_ids;
-	int next_id = 0;
+	int next_id = 1; // 0 is the trunk (and everything that does not move); a branch's id is its row in `table`
 	int parent_id = -1;
+	// one row per branch: its parent's id (0: the trunk), level, where it starts, where it ends (its tip), its radius at the
+	// foot and its length: what the live bending of a tree near the player needs (PlantSway)
+	std::vector<std::array<float, 10>> table = { std::array<float, 10>{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
 	Vector3 origin;
 	std::vector<Vector2> outline;
 	double leaf_length = 0.3;
@@ -1278,6 +1288,11 @@ struct Grower {
 			Color bark = g->bark.lightened((float)(0.04 * level)).darkened((float)(0.12 * (1.0 - along)));
 			colors.push_back(Color(bark.r, bark.g, bark.b, (float)(sway + g->sway[level] * along)));
 		}
+		table.resize((size_t)my_id + 1);
+		table[(size_t)my_id] = { (float)(parent < 0 ? 0 : parent), (float)level, (float)points[0].x, (float)points[0].y, (float)points[0].z,
+			(float)points.back().x, (float)points.back().y, (float)points.back().z, (float)radius,
+			(float)(points.back() - points[0]).length() };
+		b->current_branch = (float)my_id;
 		int sides_level = continues ? level - 1 : level;
 		int sides = fine ? g->sides_real[sides_level] : g->sides[sides_level];
 		sides = std::max(sides - 3 * lod, 3);
@@ -1591,6 +1606,12 @@ Dictionary package(const MeshData &mesh, bool capped) {
 	result["colors"] = colors;
 	result["uvs"] = uvs;
 	result["uv2s"] = uv2s;
+	PackedFloat32Array branch_ids;
+	branch_ids.resize((int64_t)count);
+	for (size_t i = 0; i < count && i < mesh.branch_of.size(); i++) {
+		branch_ids[(int64_t)i] = mesh.branch_of[i];
+	}
+	result["branch_ids"] = branch_ids;
 	result["capped"] = capped;
 	result["triangles"] = (int)(count / 3);
 	return result;
@@ -1834,6 +1855,7 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 	uint64_t start = rng.state;
 	bool capped = false;
 	std::vector<std::array<float, 7>> limbs;
+	std::vector<std::array<float, 10>> table;
 	const double thrifts[] = { 1.0, 0.94, 0.88, 0.82, 0.76, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.12 };
 	for (double thrift : thrifts) {
 		mesh.reset();
@@ -1852,7 +1874,7 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 		grower.grow();
 		capped = grower.capped;
 		limbs = grower.low_limbs;
-		limbs = grower.low_limbs;
+		table = grower.table;
 		if (!capped) {
 			break;
 		}
@@ -1867,5 +1889,12 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 		}
 	}
 	result["capsules"] = capsules;
+	PackedFloat32Array branches;
+	for (const std::array<float, 10> &row : table) {
+		for (int k = 0; k < 10; k++) {
+			branches.push_back(row[k]);
+		}
+	}
+	result["branches"] = branches;
 	return result;
 }

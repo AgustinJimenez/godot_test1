@@ -66,7 +66,14 @@ static func mesh_from(grown: Dictionary) -> ArrayMesh:
 	if not (grown["uvs"] as PackedVector2Array).is_empty():
 		arrays[Mesh.ARRAY_TEX_UV] = grown["uvs"]
 		arrays[Mesh.ARRAY_TEX_UV2] = grown["uv2s"]
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var flags := 0
+	var branches: PackedFloat32Array = grown.get("branches", PackedFloat32Array())
+	if branches.size() > 10: # one row of ten per branch, the first is the trunk: a plant that can bend
+		arrays[Mesh.ARRAY_CUSTOM0] = grown["branch_ids"] # CUSTOM0.x: which branch the vertex is on (0: the trunk)
+		flags |= Mesh.ARRAY_CUSTOM_R_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
+	if branches.size() > 10:
+		mesh.set_meta(&"branches", branches) # parent, level, foot, tip, radius, length of every branch (see PlantMeshNative)
 	if grown.has("capsules"): # the thick low limbs a person can walk into (the placed trees get colliders from them)
 		mesh.set_meta(&"capsules", grown["capsules"])
 	return mesh
