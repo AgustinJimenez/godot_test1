@@ -14,6 +14,7 @@ const BARK_DARK := Color(0.22, 0.15, 0.1)
 
 static var _cache: Dictionary = {}
 static var _cache_lock := Mutex.new()
+static var fine_trees := false # trees and shrubs in the finer meshes even where `detailed` is off (the middle ground detail)
 static var detailed := false # the realistic look wants the finer meshes (set by the world)
 static var _material: ShaderMaterial
 static var _structure_material: ShaderMaterial

@@ -56,6 +56,7 @@ func _ready() -> void:
 	# the plants are built in the finer, realistic look from the Fine ground detail (High and Ultra); the
 	# light meshes cost a third of the triangles for Low and Medium
 	FloraMeshes.detailed = int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 2
+	FloraMeshes.fine_trees = int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 1 			and not OS.has_environment("PLANET_LIGHT_TREES")
 	noise = PlanetNoise.new(settings)
 	clock.day_seconds = settings.day_seconds
 	clock.year_days = settings.year_days

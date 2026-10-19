@@ -144,3 +144,11 @@ The `oak` and `willow` archetypes were changed to those proportions (they had a 
 - Plants without branches (grass, ferns, flowers, reeds, palm fronds): each frond or blade is a chain of up to three bending links
   (`Grower::frond` registers them in the same branch table). Plants lower than 1.4 m (`SMALL_PLANT`) are taken live only within 2.4 m
   (given back past 3.4 m, at most 160), the rest within 8 m (24 at most). Measured with 11 live: no frame-rate change, +2 ms process.
+
+## Trees in the finer meshes at the default ground detail
+
+The planet built every plant in the light meshes (polygon leaves, flat needle sprays, few-sided branches) below ground detail 2,
+which is what Low and Medium use. `FloraMeshes.fine_trees` (set from ground detail >= 1, off with `PLANET_LIGHT_TREES`) now builds
+trees and shrubs, which are few and near, in the fine ones (leaf cards, strips of leaflets, smoother branches and bark) through
+`SpeciesRegistry.mesh`; grass, ferns and flowers (7x the triangles when fine) still wait for ground detail 2. Measured on the spawn
+view: +7% primitives, +1.5 ms GPU (7.6 -> 9.1 ms, 129 -> 107 fps on the 4090).

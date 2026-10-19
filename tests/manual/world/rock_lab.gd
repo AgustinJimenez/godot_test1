@@ -18,7 +18,7 @@ func _initialize() -> void:
 		var push := OS.get_environment("LAB_PUSH").split(",")
 		RenderingServer.global_shader_parameter_set(&"pusher_a", Vector4(push[0].to_float(), push[1].to_float(),
 				push[2].to_float(), push[3].to_float()))
-	FloraMeshes.detailed = true
+	FloraMeshes.detailed = not OS.has_environment("LAB_LOW") # LAB_LOW=1: the cheaper meshes of the default ground detail
 	var kind: FloraMeshes.Kind = FloraMeshes.Kind.ROCK
 	var shown := 0.0 # the height of what is shown, for the camera
 	if kind_name.begins_with("form:") or kind_name.begins_with("arch:"): # the plants of one growth form (form:PALM) or tree kind (arch:oak)
