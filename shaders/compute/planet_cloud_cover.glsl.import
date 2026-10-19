@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dkrjsr3vo8bkp"
+path="res://.godot/imported/planet_cloud_cover.glsl-24a4469405724bd39aa29422a018bf84.res"
+
+[deps]
+
+source_file="res://shaders/compute/planet_cloud_cover.glsl"
+dest_files=["res://.godot/imported/planet_cloud_cover.glsl-24a4469405724bd39aa29422a018bf84.res"]
+
+[params]
+

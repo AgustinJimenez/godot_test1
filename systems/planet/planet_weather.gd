@@ -64,13 +64,18 @@ func _init(noise: PlanetNoise) -> void:
 
 ## Gives the native crust this weather's noises and numbers, so the map's cloud layers are native.
 func _hand_to_native() -> void:
-	_noise.native.call(&"set_weather", {
+	_noise.native.call(&"set_weather", config())
+
+
+## The noises and numbers of this weather (what the native crust and the GPU's cloud cover are given).
+func config() -> Dictionary:
+	return {
 		"big_a": _noise.noise_config(_big_a), "big_b": _noise.noise_config(_big_b),
 		"small": _noise.noise_config(_small), "warp": _noise.noise_config(_warp),
 		"pool": _noise.noise_config(_pool), "belt_shift": _belt_shift, "belt_power": _belt_power,
 		"storm_shift": _storm_shift, "storm_power": _storm_power, "sink_shift": _sink_shift,
 		"sink_power": _sink_power, "pool_break": _pool_break, "wind_k": _wind_k,
-		"season_mean": _noise.climate.seasons.mean})
+		"season_mean": _noise.climate.seasons.mean}
 
 
 func _setup(source: FastNoiseLite, noise_seed: int, frequency: float, octaves: int) -> void:

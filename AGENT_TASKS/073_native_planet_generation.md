@@ -65,3 +65,16 @@ every other pixel of a row and blended: 3.3 s -> 1.45 s of CPU), sea ice 822 -> 
 and the smoothing, despeckle and coast lines (60-430 ms) now run on the last chart thread, so the main thread only makes
 the image (0.0 ms). Terrain is 1.2-1.4 s: the heights of the whole planet (5 s of CPU over all threads), cached for the
 other layers.
+
+## 6. GPU experiment: cloud cover on a compute shader (2026-10-19, not wired in)
+`shaders/compute/planet_cloud_cover.glsl` + `PlanetCloudGpu` work out the cloud cover of a whole map picture on the GPU:
+`cloud_field` ported line by line with FastNoiseLite's OpenSimplex2S 3D and fBm (the hash in unsigned ints so it wraps like
+C++). It runs (RTX 4090, local RenderingDevice, needs a window: not in --headless) and matches the CPU: mean difference
+0.0025, 0.19 % of pixels off by more than 0.1 (single precision against double at the sharp edge of a cloud, and the CPU's
+half-sampled rows). `tests/manual/planet/cloud_gpu_check.gd` compares them.
+Timing (cloud cover only, GPU including the upload and the read back): 2048x1024 152 ms, 4096x2048 468 ms, 8192x4096
+1597 ms. The threaded CPU needs about 200 ms of wall time for the cloud noise at 2048x1024 (1.45 s of CPU over the
+workers) and roughly 3 s at 8192x4096, so the GPU is not faster where the map is drawn (2048 wide) and about twice as
+fast at 8192. Not worth wiring in: the readback and the CPU colouring of the rest of the picture dominate. Kept as the
+way to do it if the maps get much bigger. The terrain heights must stay on the CPU (the game's ground is built from them;
+the GPU is single precision).
