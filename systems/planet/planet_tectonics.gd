@@ -141,23 +141,23 @@ func height(dir: Vector3) -> float:
 	var scale := 1.0 / (w0 * w1)
 	var rise := 0.0
 	var pair := w0 * w1 * scale
-	if pair >= 0.002:
-		rise += pair * _boundary(p0, p1, q, (a1 - a0) * 0.5)
+	if pair > 0.002: # (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * _boundary(p0, p1, q, (a1 - a0) * 0.5)
 	pair = w0 * w2 * scale
-	if pair >= 0.002:
-		rise += pair * _boundary(p0, p2, q, (a2 - a0) * 0.5)
+	if pair > 0.002: # (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * _boundary(p0, p2, q, (a2 - a0) * 0.5)
 	pair = w0 * w3 * scale
-	if pair >= 0.002:
-		rise += pair * _boundary(p0, p3, q, (a3 - a0) * 0.5)
+	if pair > 0.002: # (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * _boundary(p0, p3, q, (a3 - a0) * 0.5)
 	pair = w1 * w2 * scale
-	if pair >= 0.002:
-		rise += pair * _boundary(p1, p2, q, (a2 - a1) * 0.5)
+	if pair > 0.002: # (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * _boundary(p1, p2, q, (a2 - a1) * 0.5)
 	pair = w1 * w3 * scale
-	if pair >= 0.002:
-		rise += pair * _boundary(p1, p3, q, (a3 - a1) * 0.5)
+	if pair > 0.002: # (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * _boundary(p1, p3, q, (a3 - a1) * 0.5)
 	pair = w2 * w3 * scale
-	if pair >= 0.002:
-		rise += pair * _boundary(p2, p3, q, (a3 - a2) * 0.5)
+	if pair > 0.002: # (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * _boundary(p2, p3, q, (a3 - a2) * 0.5)
 	# the ranges are rough: ridged noise rides on the uplift
 	var ridged := _ridge.get_noise_3d(dir.x, dir.y, dir.z) * 0.5 + 0.5
 	var rough := maxf(rise, 0.0) * (ridged * 1.1 - 0.35)
