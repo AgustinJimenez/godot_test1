@@ -842,7 +842,8 @@ Array PlanetScatterNative::gravel_chunk(const PackedVector3Array &p_positions, c
 			const double dx = (p10.y - p00.y + p11.y - p01.y) / (2.0 * step), dz = (p01.y - p00.y + p11.y - p10.y) / (2.0 * step);
 			const Vector3 normal = Vector3((real_t)-dx, 1.0f, (real_t)-dz).normalized();
 			// many small stones, a few large: the radius (m) falls steeply with the dice
-			const double radius = 0.012 + 0.2 * std::pow(size_dice, 3.4);
+			// (the chip mesh is two metres across at scale 1: the scale is the stone's half size)
+			const double radius = 0.5 * (0.012 + 0.2 * std::pow(size_dice, 3.4));
 			const double tall = radius * (0.35 + 0.55 * flat);
 			Basis basis(Vector3(0, 1, 0), (real_t)yaw);
 			const Vector3 lean_to = (normal + Vector3((real_t)std::cos(way), 0, (real_t)std::sin(way)) * (real_t)(tilt_dice * 0.5)).normalized();

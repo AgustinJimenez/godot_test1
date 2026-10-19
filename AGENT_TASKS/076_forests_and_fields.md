@@ -199,3 +199,9 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   kept only where the procedural stone height (`planet_stones.gdshaderinc`, now shared with planet_ground) reaches it (the idea of the "POM 1.7"
   Godot add-on, MIT, which stacks MultiMesh layers with a heightmap in the alpha). Works (magenta test), but at standing height the stones have
   the ground's own colour and read as nothing, for ~1.5 ms. Enable with `PLANET_SHELLS=1`. Real chips (PlanetTurf gravel) did more.
+- Ground lab: `res://tests/manual/ground/ground_lab.tscn -- out=PNG soil=laterite|brown|sand|black|grey|forest view=low|eye|top|macro detail=0..3
+  chips=0|1 sun=ELEV,AZ stones=0..1 seed=N ref=PHOTO size=WxH` (a 12 m flat patch of the real ground shader and real chips; `ref=` puts a
+  photograph beside the render). It showed the chips were twice the documented size (the mesh is 2 m across): now 0.6 to 11 cm radius.
+- The "POM 1.7" Godot add-on (MIT) read in full: one MultiMesh of N identical meshes, the instance colour is the layer index, the shader
+  pushes each along its normal by `layer_gap`, and the alpha is height + layer cut at a scissor of 1. No tricks beyond that: its realism is the
+  photographed albedo, normal and ORM maps (rock2 scan), which we do not have (procedural and local, no downloads without leave).
