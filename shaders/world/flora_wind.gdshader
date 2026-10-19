@@ -11,6 +11,11 @@ global uniform float snow_cover;
 global uniform float autumn;
 global uniform float realism;
 global uniform vec2 wind_direction;
+// those who push through the plants (xyz the position in the world, w the reach in metres; the planet's walker is `a`):
+// the leaves and tips bend away from them
+global uniform vec4 pusher_a;
+global uniform vec4 pusher_b;
+global uniform vec4 pusher_c;
 uniform float sway_speed = 1.3;
 uniform bool planks = false; // wood boards (a cabin) instead of tree bark
 
@@ -134,6 +139,19 @@ vec2 pinnate(vec2 uv, float rows, float id, float needles) {
 	return vec2(inside_leaflet, shade);
 }
 
+// How far (in the world, metres) a plant's vertex at `world` with the looseness `loose` (0 trunk .. 1 tip) is shoved away from a
+// pusher that stands 0 to 2 m tall: more the nearer, along the ground and a little down.
+vec3 shove_from(vec4 pusher, vec3 world, float loose) {
+	if (pusher.w <= 0.0) {
+		return vec3(0.0);
+	}
+	vec3 away = world - pusher.xyz;
+	float near = 1.0 - clamp(length(away.xz) / pusher.w, 0.0, 1.0);
+	float body = smoothstep(-0.4, 0.0, away.y) * (1.0 - smoothstep(1.6, 2.4, away.y)); // (not what is above their head)
+	vec2 outward = away.xz / max(length(away.xz), 0.05);
+	return vec3(outward.x, -0.3, outward.y) * near * near * body * sqrt(loose) * 1.6;
+}
+
 void vertex() {
 	vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_pos = world;
@@ -146,7 +164,8 @@ void vertex() {
 	float amount = weight * (0.03 + wind_strength * 0.5) * (gust * 0.8 + flutter * 0.2);
 	vec3 push = vec3(wind_direction.x, 0.0, wind_direction.y) * amount;
 	face_up = (MODEL_MATRIX * vec4(NORMAL, 0.0)).y;
-	VERTEX += inverse(mat3(MODEL_MATRIX)) * push;
+	vec3 shove = shove_from(pusher_a, world, weight) + shove_from(pusher_b, world, weight) + shove_from(pusher_c, world, weight);
+	VERTEX += inverse(mat3(MODEL_MATRIX)) * (push + shove);
 }
 
 void fragment() {

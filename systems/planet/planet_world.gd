@@ -142,6 +142,11 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 		var motes := PlanetMotes.new()
 		motes.planet = self
 		add_child(motes)
+		if not OS.has_environment("PLANET_NO_UNDERGROWTH"):
+			var undergrowth := PlanetUndergrowth.new() # the plants bend and hold the walker back
+			undergrowth.planet = self
+			undergrowth.player = target as Player
+			add_child(undergrowth)
 	if direction == Vector3.ZERO and restored.has("direction"):
 		var saved: Array = restored["direction"]
 		direction = Vector3(saved[0], saved[1], saved[2]).normalized()

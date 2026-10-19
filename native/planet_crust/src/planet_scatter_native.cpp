@@ -87,6 +87,7 @@ void PlanetScatterNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("setup", "config"), &PlanetScatterNative::setup);
 	ClassDB::bind_method(D_METHOD("scatter", "tile"), &PlanetScatterNative::scatter);
 	ClassDB::bind_method(D_METHOD("merge_far", "parts"), &PlanetScatterNative::merge_far);
+	ClassDB::bind_method(D_METHOD("drag", "stems", "x", "z"), &PlanetScatterNative::drag);
 }
 
 void PlanetScatterNative::setup(const Dictionary &p_config) {
@@ -122,6 +123,8 @@ void PlanetScatterNative::setup(const Dictionary &p_config) {
 		s.foot_x = foot.x;
 		s.foot_y = foot.y;
 		s.crown = d.get("crown", 2.0);
+		s.drag = d.get("drag", 0.0);
+		s.stem_radius = d.get("stem_radius", 0.3);
 		s.shade_tolerance = d.get("shade_tolerance", 1.0);
 		species.push_back(s);
 		if (s.layer >= 0 && s.layer < 5) {
@@ -165,6 +168,7 @@ struct Tile {
 	bool collide;
 	std::map<int, std::vector<float>> batches;
 	std::vector<float> cylinders, boxes;
+	std::vector<float> stems; // the undergrowth a walker pushes through: x, z, reach, drag
 };
 
 } // namespace
@@ -479,6 +483,10 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		// slope; trees stand nearly upright (they grow against gravity) but lean a little with the ground, low plants more
 		const double bury = plant.tree ? 0.15 + spot_gradient * (1.3 * plant.foot_x * scale + 0.15) : 0.03 + spot_gradient * 0.08;
 		queue(PLANT_KEY + plant.id * 100 + variant, at, scale, yaw, tint, plant.tree ? 0.3 : 0.5, bury);
+		if (!plant.tree && plant.drag > 0.0) {
+			const float stem[4] = { (float)at.x, (float)at.z, (float)(plant.stem_radius * scale), (float)plant.drag };
+			t.stems.insert(t.stems.end(), stem, stem + 4);
+		}
 		if (t.collide && (plant.foot_x != 0.0 || plant.foot_y != 0.0)) {
 			// the trunk's cylinder stands on the leaning tree's own axis, from its sunk foot
 			const Vector3 centre = last_foot + last_basis.xform(Vector3(0, (real_t)(plant.foot_y * scale * 0.5), 0));
@@ -742,6 +750,12 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	result["buffers"] = buffers;
 	result["cylinders"] = cylinders;
 	result["boxes"] = boxes;
+	PackedFloat32Array stems;
+	stems.resize((int64_t)t.stems.size());
+	if (!t.stems.empty()) {
+		memcpy(stems.ptrw(), t.stems.data(), t.stems.size() * sizeof(float));
+	}
+	result["stems"] = stems;
 	return result;
 }
 
@@ -782,4 +796,19 @@ Dictionary PlanetScatterNative::merge_far(const Array &p_parts) const {
 	result["normals"] = normals;
 	result["colors"] = colors;
 	return result;
+}
+
+double PlanetScatterNative::drag(const PackedFloat32Array &p_stems, double p_x, double p_z) const {
+	double free = 1.0;
+	const float *stems = p_stems.ptr();
+	for (int i = 0; i + 3 < p_stems.size(); i += 4) {
+		const double dx = stems[i] - p_x, dz = stems[i + 1] - p_z;
+		const double reach = stems[i + 2];
+		const double distance2 = dx * dx + dz * dz;
+		if (distance2 < reach * reach) {
+			const double inside = 1.0 - std::sqrt(distance2) / reach;
+			free *= 1.0 - stems[i + 3] * inside;
+		}
+	}
+	return 1.0 - free;
 }

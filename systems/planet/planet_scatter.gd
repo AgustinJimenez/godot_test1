@@ -106,8 +106,30 @@ static func species_table(registry: SpeciesRegistry) -> Array:
 				"density": one.density, "patch_freq": one.patch_freq,
 				"patch_strength": one.patch_strength, "size_spread": one.size_spread,
 				"patch_offset": one.patch_offset, "footprint": _trunk_footprint(one), "crown": one.crown,
-				"shade_tolerance": _shade_tolerance(one.form)})
+				"shade_tolerance": _shade_tolerance(one.form), "drag": _drag_of(one.form),
+				"stem_radius": clampf(one.crown * 0.7, 0.3, 1.2) if one.form == PlantSpecies.Form.SHRUB
+				else clampf(one.crown, 0.2, 0.7)})
 	return table
+
+
+## What pushing through a plant costs the walker, 0 nothing .. 1 a wall: shrubs and thickets the most, grass the least.
+static func _drag_of(form: PlantSpecies.Form) -> float:
+	match form:
+		PlantSpecies.Form.SHRUB:
+			return 0.5
+		PlantSpecies.Form.CACTUS:
+			return 0.6
+		PlantSpecies.Form.REED:
+			return 0.3
+		PlantSpecies.Form.FERN:
+			return 0.22
+		PlantSpecies.Form.TALL_GRASS:
+			return 0.2
+		PlantSpecies.Form.GRASS:
+			return 0.05
+		PlantSpecies.Form.FLOWER:
+			return 0.04
+	return 0.0
 
 
 ## The radius and height of a tree's trunk collider: the trunk's own size (its foot flared by buttress roots, narrowed up a
@@ -150,7 +172,8 @@ func _populate_native(key: int, detail: Detail, collide: bool) -> void:
 		"grass_fine": FloraMeshes.detailed})
 	if placed.is_empty():
 		return
-	if _body != null:
+	_tile.set_meta(&"stems", placed["stems"]) # the undergrowth a walker pushes through (PlanetUndergrowth)
+	if _body != null and not OS.has_environment("PLANET_NO_PLANT_COLLIDERS"):
 		# trunks and rocks stand where they were put: the colliders lean and sink as the things do
 		var cylinders: PackedFloat32Array = placed["cylinders"]
 		for index in cylinders.size() / 14:
@@ -174,7 +197,7 @@ func _populate_native(key: int, detail: Detail, collide: bool) -> void:
 					Vector3(boxes[at], boxes[at + 1], boxes[at + 2]))
 			_body.add_child(collision)
 	_hang(placed["keys"], placed["buffers"], detail == Detail.ALL)
-	if _body != null:
+	if _body != null and not OS.has_environment("PLANET_NO_PLANT_COLLIDERS"):
 		_add_limb_colliders(placed["keys"], placed["buffers"])
 
 
@@ -188,6 +211,8 @@ func _basis_of(values: PackedFloat32Array, at: int) -> Basis:
 ## The thick low limbs of the trees placed on a tile that can be walked into (7 cm and thicker, under 2.4 m: the mesh of each
 ## variant keeps its six thickest as capsules, see PlantMeshNative): a capsule collider on each, moved with its tree.
 func _add_limb_colliders(keys: PackedInt32Array, buffers: Array) -> void:
+	if OS.has_environment("PLANET_NO_LIMBS"):
+		return
 	for at in keys.size():
 		var key := keys[at]
 		if key < PLANT_KEY or key >= FAR_KEY:

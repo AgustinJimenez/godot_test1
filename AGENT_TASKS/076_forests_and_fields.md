@@ -104,3 +104,9 @@ only: on a steep slope it can differ by a few decimetres).
 - Not done: branches that bend when pushed and slow the character; foliage, grass and thin twigs have no collision (see the
   proposal in the conversation of 2026-10-19: bending in the shader from a few pusher positions, a drag from the undergrowth
   around the player, thick branches as the capsules above).
+
+## Pushing through undergrowth
+
+- Native `PlanetScatterNative` records the stems (x, z, reach, drag) of every shrub, fern, grass tuft and reed placed on a tile (tile meta `stems`); `drag(stems, x, z)` is the walker's held-back share (0 open .. 1 thicket).
+- `PlanetUndergrowth` (a node of the Player) slows the walk by that, easing in and out (at most 55%), and feeds the player's position to the shader global `pusher_a`; `flora_wind.gdshader` bends nearby plants away from it (`shove_from`). `pusher_b`/`pusher_c` are free for animals.
+- Check: `tests/manual/planet/undergrowth_check.tscn`. Debug switches: `PLANET_NO_UNDERGROWTH`, `PLANET_NO_PLANT_COLLIDERS`, `PLANET_NO_LIMBS`; `LAB_PUSH="x,y,z,reach"` for `rock_lab.gd`.
