@@ -21,7 +21,9 @@ extends Resource
 @export var hydrology_on := true ## true: rivers and lakes
 ## cells along a cube face for the coarse drainage that carves the river valleys (0: none)
 @export var drainage_cells := 0
-@export var hydrology_cells := 96 ## cells along a cube face for rivers and lakes (0: none)
+## cells along a cube face for the old script rivers and lakes (PlanetHydrology; 0: none, the default:
+## the native crust and drainage make the rivers and answer the water questions, much faster)
+@export var hydrology_cells := 0
 @export var day_seconds := 1440.0 ## a solar day in seconds of play (what a clock day is)
 @export var year_days := 16.0 ## solar days in a year
 @export var month_days := 3.5 ## solar days the moon takes to go round (game scale)

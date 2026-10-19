@@ -195,6 +195,33 @@ func noise_config(source: FastNoiseLite) -> Array:
 	return [source.seed, source.frequency, source.fractal_octaves, int(source.fractal_type)]
 
 
+## The level of the river or lake water at `dir` where `ground` is under it, else -INF (the native
+## crust knows the rivers; the script hydrology is only there when asked for).
+func water_at(dir: Vector3, ground: float) -> float:
+	if hydrology != null:
+		return hydrology.water_at(dir, ground)
+	if native != null and native.has_method(&"water_at"):
+		var level: float = native.call(&"water_at", dir, ground)
+		return level if level > -1.0e20 else -INF
+	return -INF
+
+
+## True if river or lake water is within `margin` metres of `dir`.
+func near_water(dir: Vector3, ground: float, margin: float) -> bool:
+	if hydrology != null:
+		return hydrology.near_water(dir, ground, margin)
+	return native != null and native.has_method(&"near_water") 			and native.call(&"near_water", dir, ground, margin)
+
+
+## The current of the river at `dir` (planet space, m/s), zero out of a river.
+func flow_at(dir: Vector3) -> Vector3:
+	if hydrology != null:
+		return hydrology.flow_at(dir)
+	if native != null and native.has_method(&"flow_at"):
+		return native.call(&"flow_at", dir)
+	return Vector3.ZERO
+
+
 ## The ground heights at many directions at once (native when it can: no rivers cut in).
 func heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
 	if native != null and hydrology == null:

@@ -100,6 +100,7 @@ private:
 		double bed = 0.0; // that river's bed height there (m)
 		double flow = 0.0; // its flow there
 		double side = 1.0; // +1 or -1: which bank of the river the point is on
+		Vector3 along; // the way that river runs there (unit, downstream)
 	};
 	// `p_side`: how fast the valley's sides climb away from the river (0.35 a V, more a canyon)
 	bool valley_at(const Vector3 &p_dir, Valley &r_valley, double p_side = 0.35) const;
@@ -133,6 +134,12 @@ public:
 	// The river water at each direction: x the water level (m; -1e9 where there is no river), y the
 	// river's flow as a share of a big river's, z 0..1 across the river (0.5 in the middle).
 	PackedVector3Array river_waters(const PackedVector3Array &p_dirs) const;
+	// the water queries of the game (what PlanetHydrology answered in script): the level of the river or lake
+	// water at a direction where the ground is under it (-1e30: dry), whether water is within a margin, and
+	// the current of the river there (planet space, m/s)
+	double water_at(const Vector3 &p_dir, double p_ground) const;
+	bool near_water(const Vector3 &p_dir, double p_ground, double p_margin) const;
+	Vector3 flow_at(const Vector3 &p_dir) const;
 	void set_climate(const PackedFloat32Array &p_grid, int p_width, int p_height,
 			const PackedFloat32Array &p_rain = PackedFloat32Array());
 	void set_rivers(int p_cells, const Dictionary &p_network, double p_cell_metres);

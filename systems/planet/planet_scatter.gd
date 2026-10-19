@@ -102,7 +102,7 @@ func _scatter(layer: PlantSpecies.Layer, stretch: float) -> void:
 				continue # the sea
 			var steep := _slope(fx, fz)
 			var dir := _direction(fx, fz)
-			if _noise.hydrology != null and _noise.hydrology.near_water(dir, ground, BANK):
+			if _noise.near_water(dir, ground, BANK):
 				continue # a river or a lake
 			if layer <= PlantSpecies.Layer.UNDERSTORY and _in_clearing(dir):
 				continue
@@ -126,7 +126,7 @@ func _scatter_far() -> void:
 			if ground < 0.9:
 				continue
 			var dir := _direction(fx, fz)
-			if _noise.hydrology != null and _noise.hydrology.near_water(dir, ground, BANK):
+			if _noise.near_water(dir, ground, BANK):
 				continue
 			var tree := _pick(PlantSpecies.Layer.CANOPY, dir, ground, _slope(fx, fz), x, z)
 			if tree == null or not PlantMeshes.has_far(tree):
@@ -161,7 +161,7 @@ func _rocks(near: bool) -> void:
 			if ground < 0.9:
 				continue
 			var dir := _direction(fx, fz)
-			if _noise.hydrology != null and _noise.hydrology.near_water(dir, ground, BANK):
+			if _noise.near_water(dir, ground, BANK):
 				continue
 			if _in_clearing(dir):
 				continue
@@ -185,7 +185,7 @@ func _pebbles() -> void:
 			if ground < 0.9:
 				continue
 			var dir := _direction(fx, fz)
-			if _noise.hydrology != null and _noise.hydrology.near_water(dir, ground, BANK * 0.5):
+			if _noise.near_water(dir, ground, BANK * 0.5):
 				continue
 			var steep := _slope(fx, fz)
 			var chance := 0.08 + steep * 0.5

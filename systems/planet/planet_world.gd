@@ -356,8 +356,8 @@ func ground_at(x: float, z: float, near_y: float) -> Dictionary:
 	var dir := Vector3(here[0], here[1], here[2]).normalized()
 	var h := noise.height(dir.x, dir.y, dir.z)
 	var wet := h < 0.6
-	if not wet and noise.hydrology != null:
-		wet = noise.hydrology.water_at(dir, h) > h - 0.3
+	if not wet:
+		wet = noise.water_at(dir, h) > h - 0.3
 	var up := frame.to_world(dir * (settings.radius + h))
 	return {"y": up.y, "wet": wet, "biome": noise.biome(dir.x, dir.y, dir.z, h, 0.1)}
 
@@ -371,8 +371,8 @@ func water_at_world(position: Vector3) -> float:
 	var level := -INF
 	if h < 0.0 and settings.sea_on:
 		level = 0.0
-	elif noise.hydrology != null:
-		level = noise.hydrology.water_at(dir, h)
+	else:
+		level = noise.water_at(dir, h)
 	if level == -INF:
 		return -INF
 	return frame.to_world(dir * (settings.radius + level)).y
@@ -380,11 +380,9 @@ func water_at_world(position: Vector3) -> float:
 
 ## The river current at a world position, as a world vector (zero out of a river).
 func flow_at_world(position: Vector3) -> Vector3:
-	if noise.hydrology == null:
-		return Vector3.ZERO
 	var here := frame.to_planet(position)
 	var dir := Vector3(here[0], here[1], here[2]).normalized()
-	return frame.rot * noise.hydrology.flow_at(dir)
+	return frame.rot * noise.flow_at(dir)
 
 
 ## While the player is held: keeps the tiles coming and lets the player in when the ground within

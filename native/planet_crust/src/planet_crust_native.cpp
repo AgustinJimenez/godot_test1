@@ -45,6 +45,9 @@ inline double sign_d(double p_x) {
 void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("setup", "config"), &PlanetCrustNative::setup);
 	ClassDB::bind_method(D_METHOD("river_waters", "dirs"), &PlanetCrustNative::river_waters);
+	ClassDB::bind_method(D_METHOD("water_at", "dir", "ground"), &PlanetCrustNative::water_at);
+	ClassDB::bind_method(D_METHOD("near_water", "dir", "ground", "margin"), &PlanetCrustNative::near_water);
+	ClassDB::bind_method(D_METHOD("flow_at", "dir"), &PlanetCrustNative::flow_at);
 	ClassDB::bind_method(D_METHOD("set_climate", "grid", "width", "height", "rain"), &PlanetCrustNative::set_climate);
 	ClassDB::bind_method(D_METHOD("set_rivers", "cells", "network", "cell_metres"), &PlanetCrustNative::set_rivers);
 	ClassDB::bind_method(D_METHOD("heights", "dirs"), &PlanetCrustNative::heights);
@@ -1720,6 +1723,7 @@ bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley, double
 	double best_envelope = 1.0e30;
 	double best_distance = 0.0;
 	double best_floor = 0.0, best_bed = 0.0, best_flow = 0.0, best_side = 1.0;
+	Vector3 best_along;
 	for (int at = from; at < to; at++) {
 		const int piece = river_items[at];
 		const Vector3 a = river_a[piece];
@@ -1744,6 +1748,7 @@ bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley, double
 			best_bed = bed;
 			best_flow = flow;
 			best_side = ab.cross(p_dir - nearest).dot(nearest) < 0.0 ? -1.0 : 1.0;
+			best_along = ab;
 		}
 	}
 	r_valley.envelope = best_envelope;
@@ -1753,7 +1758,49 @@ bool PlanetCrustNative::valley_at(const Vector3 &p_dir, Valley &r_valley, double
 	r_valley.bed = best_bed;
 	r_valley.flow = best_flow;
 	r_valley.side = best_side;
+	r_valley.along = best_along.length_squared() > 1.0e-18f ? best_along.normalized() : Vector3();
 	return true;
+}
+
+// The river's water level at a point: the bed plus a depth that grows with the flow (as river_waters draws it).
+static double river_surface(double p_bed, double p_flow, double p_river_flow) {
+	const double share = p_flow / p_river_flow;
+	return p_bed + 0.6 + 1.4 * std::sqrt(share > 4.0 ? 4.0 : share);
+}
+
+double PlanetCrustNative::water_at(const Vector3 &p_dir, double p_ground) const {
+	const Vector3 dir = p_dir.normalized();
+	double level = -1.0e30;
+	if (p_ground >= 0.5) {
+		double lake = -1.0e9;
+		if (lake_weight(dir, lake) > 0.5 && p_ground < lake) {
+			level = lake;
+		}
+	}
+	Valley valley;
+	if (river_cells > 0 && valley_at(dir, valley) && valley.distance < valley.floor_half + 1.0) {
+		const double surface = river_surface(valley.bed, valley.flow, river_flow);
+		level = surface > level ? surface : level;
+	}
+	return level;
+}
+
+bool PlanetCrustNative::near_water(const Vector3 &p_dir, double p_ground, double p_margin) const {
+	if (water_at(p_dir, p_ground) > p_ground - 0.3) {
+		return true;
+	}
+	Valley valley;
+	return river_cells > 0 && valley_at(p_dir.normalized(), valley) && valley.nearest < valley.floor_half + p_margin;
+}
+
+Vector3 PlanetCrustNative::flow_at(const Vector3 &p_dir) const {
+	Valley valley;
+	if (river_cells <= 0 || !valley_at(p_dir.normalized(), valley) || valley.distance > valley.floor_half) {
+		return Vector3();
+	}
+	const double width = valley.floor_half * 2.0;
+	const double speed = clampd(0.7 * std::sqrt(width / 8.0), 0.5, 3.0);
+	return valley.along * (real_t)speed;
 }
 
 PackedVector3Array PlanetCrustNative::river_waters(const PackedVector3Array &p_dirs) const {

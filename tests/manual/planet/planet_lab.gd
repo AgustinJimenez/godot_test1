@@ -220,7 +220,8 @@ func _water_check() -> bool:
 	if not "--water-check" in OS.get_cmdline_user_args():
 		return false
 	var made := PlanetSettings.new()
-	made.hydrology_on = true
+	made.hydrology_on = true # (the script rivers, PlanetHydrology, are what this checks)
+	made.hydrology_cells = 96
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--seed="):
 			made.world_seed = arg.trim_prefix("--seed=").to_int()
@@ -690,8 +691,7 @@ func _ready() -> void:
 			_checking = true
 	planet = PlanetWorld.new()
 	# the game starts in the world; the map comes first only on --map-first (M opens it in play)
-	var lab_args := OS.get_cmdline_user_args()
-	planet.map_first = "--map-first" in lab_args
+	planet.map_first = "--map-first" in OS.get_cmdline_user_args()
 	planet.settings = settings
 	planet.restored = restored_state
 	add_child(planet)
