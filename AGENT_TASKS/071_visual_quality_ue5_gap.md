@@ -134,3 +134,14 @@ shafts, ground Fine), Ultra (+ SSR high, ground Finest). The render scales are u
   512 px) made by `scripts/make_ground_textures.py` (no downloads; run it again to remake them),
   blended triplanar by slope and sand colour, faded out by distance and under snow. Real photo-scanned
   PBR sets would look better; the script is the place to swap them in.
+
+## The dark wall in the snow range (found and fixed)
+
+It was not a skirt or a shader flaw: the height function had real cliffs (tens of metres within
+centimetres). Cause: the erosion noise's warp used the gradient of a creased ridge, whose sign flips
+where the noise crosses zero, so every finer octave's lookup point jumped there (now a smooth sign).
+Two smaller steps were fixed with it: the plate-boundary pairs that dropped out under weight 0.002,
+the fine octaves left out at coarse tiles (now replaced by their average) and the start of a
+hotspot trail; the river valleys fade out before the edge of the cells they are known in.
+`tests/manual/planet/height_jumps.gd` samples random land lines and reports any step over 8 m (22 of
+596 lines before, 0 on seeds 8 and 3 after). The map cache version was raised (the heights changed).

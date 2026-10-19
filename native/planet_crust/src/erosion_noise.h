@@ -86,12 +86,23 @@ inline double fbm(const Vec &p, double wavelength, int octaves, double pixel, ui
 	double damped = 1.0;
 	for (int octave = 0; octave < octaves; octave++) {
 		if (octave > 0 && pixel > 0.0 && wavelength / (double)(1 << octave) < pixel * 3.0) {
+			// the octaves left out stand in as their average (measured: about 0.5 of their amplitude, the damping included), so
+			// a coarse tile and a fine one agree on the height, not only on the shape (without this
+			// the height jumped by tens of metres where two sizes of tile meet: a wall)
+			double left_out = 0.0, left_amp = amp;
+			for (int rest = octave; rest < octaves; rest++, left_amp *= gain) {
+				left_out += left_amp;
+			}
+			sum += left_out * 0.5;
+			total_amp += left_out;
 			break;
 		}
 		const Vec at = p * frequency + warp_sum * (octave == 0 ? 0.0 : 1.0) + Vec{ octave * 17.3, octave * 31.7, octave * 7.9 };
 		const Sample n = noise(at.x, at.y, at.z, seed);
 		const double ridge = 1.0 - std::abs(n.value) * 1.4; // a crease where the noise crosses zero
-		const double slope_sign = n.value < 0.0 ? 1.0 : -1.0;
+		// which side of the crease the point is on: +1 / -1 far from it, passing through 0 AT it (a hard
+		// flip there moved every finer octave's lookup point suddenly: a cliff of tens of metres)
+		const double slope_sign = std::fmax(-1.0, std::fmin(1.0, -n.value / 0.08));
 		const Vec ridge_grad = n.grad * (slope_sign * 1.4);
 		sum += damped * amp * ridge;
 		total_amp += amp;

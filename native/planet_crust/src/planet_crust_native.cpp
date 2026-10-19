@@ -241,28 +241,28 @@ double PlanetCrustNative::tectonic_height(const Vector3 &p_dir) const {
 	double scale = 1.0 / (w0 * w1);
 	double rise = 0.0;
 	double pair = w0 * w1 * scale;
-	if (pair >= 0.002) {
-		rise += pair * boundary_effect(p0, p1, q, (a1 - a0) * 0.5);
+	if (pair > 0.002) { // (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * boundary_effect(p0, p1, q, (a1 - a0) * 0.5);
 	}
 	pair = w0 * w2 * scale;
-	if (pair >= 0.002) {
-		rise += pair * boundary_effect(p0, p2, q, (a2 - a0) * 0.5);
+	if (pair > 0.002) { // (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * boundary_effect(p0, p2, q, (a2 - a0) * 0.5);
 	}
 	pair = w0 * w3 * scale;
-	if (pair >= 0.002) {
-		rise += pair * boundary_effect(p0, p3, q, (a3 - a0) * 0.5);
+	if (pair > 0.002) { // (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * boundary_effect(p0, p3, q, (a3 - a0) * 0.5);
 	}
 	pair = w1 * w2 * scale;
-	if (pair >= 0.002) {
-		rise += pair * boundary_effect(p1, p2, q, (a2 - a1) * 0.5);
+	if (pair > 0.002) { // (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * boundary_effect(p1, p2, q, (a2 - a1) * 0.5);
 	}
 	pair = w1 * w3 * scale;
-	if (pair >= 0.002) {
-		rise += pair * boundary_effect(p1, p3, q, (a3 - a1) * 0.5);
+	if (pair > 0.002) { // (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * boundary_effect(p1, p3, q, (a3 - a1) * 0.5);
 	}
 	pair = w2 * w3 * scale;
-	if (pair >= 0.002) {
-		rise += pair * boundary_effect(p2, p3, q, (a3 - a2) * 0.5);
+	if (pair > 0.002) { // (the weight starts from 0 at the cutoff: no step where a pair drops out)
+		rise += (pair - 0.002) * boundary_effect(p2, p3, q, (a3 - a2) * 0.5);
 	}
 	double ridged = ridge.at(p_dir) * 0.5 + 0.5;
 	double rough = (rise > 0.0 ? rise : 0.0) * (ridged * 1.1 - 0.35);
@@ -345,12 +345,13 @@ double PlanetCrustNative::seamounts(const Vector3 &p_dir, double p_units) const 
 		double along = q_az - std::atan2((double)h.dot(third), (double)h.dot(across));
 		along = std::fmod(along + 3.0 * pi, 2.0 * pi) - pi; // -pi .. pi
 		const double trail = 0.9;
-		if (along < 0.0 || along > trail) {
+		if (along <= 0.0 || along > trail) {
 			continue;
 		}
 		const double age = along / trail;
+		const double start = smooth(0.0, 0.05, along); // (the first volcano rises, it does not end in a cliff)
 		const double clump = smooth(0.0, 0.5, (double)interior.at(p_dir * (real_t)9.0) * 0.5 + 0.3);
-		const double bump = std::exp(-(d / 0.018) * (d / 0.018)) * (1.0 - age) * (0.35 + 0.65 * clump);
+		const double bump = std::exp(-(d / 0.018) * (d / 0.018)) * (1.0 - age) * (0.35 + 0.65 * clump) * start;
 		best = bump > best ? bump : best;
 	}
 	return best * relief * 0.55 * smooth(-0.12, -0.2, p_units);
@@ -438,7 +439,10 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 		const double soft_k = 150.0;
 		const double h = std::max(soft_k - std::abs(result - envelope), 0.0) / soft_k;
 		const double joined = std::min(result, envelope) - h * h * soft_k * 0.25;
-		result = joined > 0.5 ? joined : 0.5;
+		// the river pieces are only known within a cell of the point (valley_at looks in the nine cells
+		// round it): the valley's pull fades out before that, or the ground would end in a straight wall
+		const double known = 1.0 - smooth(0.45 * river_cell_metres, 0.85 * river_cell_metres, valley.nearest);
+		result += ((joined > 0.5 ? joined : 0.5) - result) * known;
 		// a delta: where a big river meets the sea the ground spreads out into a flat, low plain
 		const double share = valley.flow / river_flow;
 		const double delta = smooth(0.12, 0.04, p_units) * smooth(0.25, 1.0, share) *

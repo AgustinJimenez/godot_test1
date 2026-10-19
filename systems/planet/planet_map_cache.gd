@@ -11,7 +11,7 @@ extends RefCounted
 ## `forget_area` throws away the tiles that touch it and `forget_whole` the whole-planet pictures;
 ## the map charts them again. See PlanetMap.world_changed.
 
-const VERSION := 4 ## 4: the atlas draws strokes only when zoomed in
+const VERSION := 5 ## 5: valleys and erosion keep their height, no walls; 4: the atlas strokes only when zoomed in
 const ROOT := "user://map_cache"
 const MAX_TILES := 900 ## tile files kept per world (the oldest go first)
 const MAX_WORLDS := 6 ## worlds kept (the least recently used go)
