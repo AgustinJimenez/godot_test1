@@ -21,6 +21,7 @@ const MAX_CHANCE := {
 	PlantSpecies.Layer.CANOPY: 0.85, PlantSpecies.Layer.UNDERSTORY: 0.4,
 	PlantSpecies.Layer.GRASS: 0.95, PlantSpecies.Layer.MEADOW: 0.7, PlantSpecies.Layer.COVER: 0.5,
 }
+const GRASS_FINE := 0.6 ## the grass grid's spacing in the realistic look, as a share of the usual
 const PLANT_KEY := 100000
 const FAR_KEY := 200000
 
@@ -88,6 +89,8 @@ func populate(holder: Node3D, key: int, noise: PlanetNoise, positions: Array[Vec
 ## One layer of plants over the tile (`stretch` widens the grid: a far tile has fewer, bigger gaps).
 func _scatter(layer: PlantSpecies.Layer, stretch: float) -> void:
 	var spacing: float = SPACING[layer] * stretch
+	if layer == PlantSpecies.Layer.GRASS and FloraMeshes.detailed:
+		spacing *= GRASS_FINE # the realistic look: a meadow of tufts, not a few of them
 	var count := int(_size / spacing)
 	var density := _noise.settings.plant_density
 	for row in count:

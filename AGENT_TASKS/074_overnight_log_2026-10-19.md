@@ -37,3 +37,10 @@ meadow flowers on the ground. Tile occluders are made on the main thread (a cras
 - The game start (the lab with no arguments) has the plants on now (ground ready after 4.5 s at the
   game's size, High). The other lab starts and the checks keep them off.
 - Veined leaflets only for low ground plants (the palm's triangle budget in the species check).
+
+## Continued (after the user's "you did not continued")
+- `PlantMeshNative` (task 2): the tree grower, leaf shapes, tube builder and smooth normals in C++: 7.5x faster than
+  the scripts (see 073). Ground plants are now grown in the full realistic version at High/Ultra (before they were
+  always the light one): grass tufts of up to 40 thin blades with 6 bends, flowers in whole clumps.
+- The grass grid is 0.6 x as wide in the realistic look (`PlanetScatter.GRASS_FINE`): a meadow of tufts. Seed 8 meadow at
+  High: ground ready after 1.7 s (it was 4.5 s with plants before the native meshes), 85 fps, 18.3 M primitives.
