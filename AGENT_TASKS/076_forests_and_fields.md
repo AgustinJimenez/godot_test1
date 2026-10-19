@@ -62,3 +62,9 @@ Done afterwards: the soil depth (CUSTOM2.g) makes thin soil show more bare rock 
 is thin), and the placed pebble and rock instances follow the same odds (`PlanetCrustNative::stoniness_at`, called by
 `PlanetScatterNative`: pebbles x (0.1 + 1.5 stoniness), rocks x (0.3 + 1.4 stoniness)). Still not done: the rock spires, logs
 and stumps keep their own odds by biome; the spires (cones) look like obelisks and want a better shape.
+
+## Rock formations (spires), 2026-10-19
+The old spires were smooth cones. `PlantMeshNative.scenery(SPIRE)` now builds formations of cut stone blocks (the stone shader
+draws their grain and joints): variant 0 a tor (four boulders stacked and offset), 1 a cluster of six to nine columns of
+different heights, 2 a leaning standing slab with a fallen one. They stand where the ground is stony (odds x (0.2 + 1.6
+stoniness)) in rocky, snowy and desert biomes. `tests/manual/world/rock_lab.gd -- <png> spire` shows them.

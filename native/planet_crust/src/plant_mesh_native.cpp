@@ -1643,12 +1643,37 @@ Dictionary PlantMeshNative::scenery(int p_kind, int p_variant, bool p_detailed) 
 			break;
 		}
 		case KIND_SPIRE: {
+			// rock formations of cut, jagged blocks (never a smooth cone): 0 a tor, a stack of boulders that weathering has
+			// left balanced; 1 a cluster of columns of different heights; 2 a leaning slab with a fallen one beside it
 			Color stone = Color(0.42f, 0.4f, 0.4f).lerp(Color(0.6f, 0.55f, 0.5f), (float)(p_variant / 3.0));
-			double height = rng.range(4.0, 8.0);
-			double r0 = rng.range(1.0, 1.6), r1 = rng.range(0.1, 0.35);
-			m.frustum(Vector3(), height, r0, r1, 5, still(stone.darkened(0.25f)), still(stone.lightened(0.1f)), 0, &rng, 0.22);
-			if (p_variant != 1) {
-				m.frustum(Vector3(1.1f, 0, 0.5f), height * 0.5, 0.8, 0.12, 5, still(stone.darkened(0.2f)), still(stone), 0, &rng, 0.2);
+			Color low = still(stone.darkened(0.25f)), high = still(stone.lightened(0.1f));
+			if (p_variant == 0) {
+				const double widths[4] = { 1.7, 1.35, 1.05, 0.75 };
+				double y = 0.0;
+				for (int block = 0; block < 4; block++) {
+					const double w = widths[block] * rng.range(0.9, 1.1);
+					const double h = w * rng.range(0.7, 0.95);
+					m.rock(Vector3((real_t)rng.range(-0.25, 0.25), (real_t)(y + h * 0.8), (real_t)rng.range(-0.25, 0.25)),
+							Vector3((real_t)w, (real_t)h, (real_t)(w * rng.range(0.8, 1.1))), low, high, rng, 7 + block % 2);
+					y += h * 1.35;
+				}
+			} else if (p_variant == 1) {
+				const int count = 6 + (int)(rng.randf() * 4.0);
+				for (int pillar = 0; pillar < count; pillar++) {
+					const double angle = rng.randf() * TAU_D;
+					const double reach = 1.3 * std::sqrt(rng.randf());
+					const double h = rng.range(2.5, 7.5) * (1.0 - 0.45 * reach / 1.3);
+					const double w = rng.range(0.4, 0.65);
+					m.rock(Vector3((real_t)(std::cos(angle) * reach), (real_t)(h * 0.5), (real_t)(std::sin(angle) * reach)),
+							Vector3((real_t)w, (real_t)(h * 0.5), (real_t)(w * rng.range(0.8, 1.2))), low, high, rng, 9);
+				}
+			} else {
+				m.place(Transform3D(Basis(Vector3(0, 0, 1), (real_t)rng.range(0.14, 0.24)), Vector3(0, 0, 0)));
+				m.rock(Vector3(0, 2.5f, 0), Vector3(0.5f, 2.6f, (real_t)rng.range(1.2, 1.7)), low, high, rng, 9);
+				m.unplace();
+				m.place(Transform3D(Basis(Vector3(1, 0, 0), (real_t)rng.range(1.3, 1.5)), Vector3(2.4f, 0.3f, 0.4f)));
+				m.rock(Vector3(0, 0, 0), Vector3(0.45f, 1.7f, 1.0f), low, high, rng, 8);
+				m.unplace();
 			}
 			break;
 		}

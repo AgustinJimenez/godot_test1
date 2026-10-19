@@ -33,13 +33,14 @@ func _initialize() -> void:
 			found += 1
 	else:
 		kind = {"rock": FloraMeshes.Kind.ROCK, "pebbles": FloraMeshes.Kind.PEBBLES,
-				"litter": FloraMeshes.Kind.LITTER, "twigs": FloraMeshes.Kind.TWIGS}[kind_name]
+				"litter": FloraMeshes.Kind.LITTER, "twigs": FloraMeshes.Kind.TWIGS,
+				"spire": FloraMeshes.Kind.SPIRE, "log": FloraMeshes.Kind.LOG, "stump": FloraMeshes.Kind.STUMP}[kind_name]
 		var count := FloraMeshes.variant_count(kind)
 		for index in count:
 			var instance := MeshInstance3D.new()
 			instance.mesh = FloraMeshes.mesh(kind, index, true)
 			instance.material_override = FloraMeshes.material()
-			instance.position = Vector3((float(index) - float(count - 1) * 0.5) * 2.4, 0.0, 0.0)
+			instance.position = Vector3((float(index) - float(count - 1) * 0.5) * (6.0 if kind == FloraMeshes.Kind.SPIRE else 2.4), 0.0, 0.0)
 			root.add_child(instance)
 	var floor_mesh := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
@@ -68,8 +69,8 @@ func _initialize() -> void:
 	elif shown > 0.0:
 		camera.look_at_from_position(Vector3(0.0, shown * 0.7, shown * 1.1 + 3.0), Vector3(0.0, shown * 0.75, 0.0))
 	else:
-		camera.look_at_from_position(Vector3(0.0, 2.6 if kind != FloraMeshes.Kind.ROCK else 2.0,
-				7.0 if kind != FloraMeshes.Kind.ROCK else 6.5), Vector3(0.0, 0.4, 0.0))
+		var far := 15.0 if kind == FloraMeshes.Kind.SPIRE else (7.0 if kind != FloraMeshes.Kind.ROCK else 6.5)
+		camera.look_at_from_position(Vector3(0.0, far * 0.3, far), Vector3(0.0, 2.0 if kind == FloraMeshes.Kind.SPIRE else 0.4, 0.0))
 	root.size = Vector2i(1600, 700)
 
 

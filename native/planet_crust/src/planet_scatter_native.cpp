@@ -556,6 +556,9 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			case DESERT: odds = 0.1; feature = SPIRE; break;
 			default: break;
 		}
+		if (feature == SPIRE) {
+			odds *= 0.2 + 1.6 * stony; // rock formations stand where the ground is stony
+		}
 		if (t.rng.randf() < odds * rock_density) {
 			double scale = t.rng.range(0.8, 1.4);
 			double yaw = t.rng.range(0.0, TAU_D);
