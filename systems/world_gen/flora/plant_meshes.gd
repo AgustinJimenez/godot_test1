@@ -12,13 +12,18 @@ static func build(species: PlantSpecies, variant: int, detailed: bool,
 	builder.detailed = detailed
 	builder.leafless = leafless
 	if species.form == PlantSpecies.Form.MUSHROOM:
+		var maker := _native()
+		if maker != null:
+			return mesh_from(maker.mushroom({"height": species.height, "crown": species.crown,
+					"droop": species.droop, "count": species.count, "accent": species.accent}, rng.seed,
+					detailed))
 		PlantGroundBuilders.mushroom(builder, species, rng)
 	else: # every other plant is grown by TreeGrower; the small ones always in the light version
 		var level := lod if species.is_tree() else maxi(lod, 0 if detailed else 1)
 		var genome := TreeArchetypes.for_species(species)
 		var native := _native()
 		if native != null:
-			return _from_native(native.grow(genome.to_dictionary(), rng.seed, detailed, leafless,
+			return mesh_from(native.grow(genome.to_dictionary(), rng.seed, detailed, leafless,
 					level, builder.leaf_cards))
 		TreeGrower.build(builder, genome, rng, level)
 	return builder.commit()
@@ -26,6 +31,12 @@ static func build(species: PlantSpecies, variant: int, detailed: bool,
 
 ## The cheap horizon version; only trees have one (the others are never drawn that far).
 static func build_far(species: PlantSpecies, variant: int) -> ArrayMesh:
+	var maker := _native()
+	if maker != null:
+		return mesh_from(maker.far_tree({"conifer": species.form == PlantSpecies.Form.CONIFER,
+				"leaf": species.leaf, "leaf_tip": species.leaf_tip, "bark": species.bark,
+				"height": species.height, "crown": species.crown, "aspect": species.aspect,
+				"bare": species.bare, "girth": species.girth}, _rng(species, variant + 50).seed))
 	var builder := MeshBuilder.new()
 	PlantTreeBuilders.far(builder, species, _rng(species, variant + 50))
 	return builder.commit()
@@ -42,7 +53,8 @@ static func _native() -> Object:
 	return ClassDB.instantiate(&"PlantMeshNative")
 
 
-static func _from_native(grown: Dictionary) -> ArrayMesh:
+## The mesh of the arrays a PlantMeshNative call answers with.
+static func mesh_from(grown: Dictionary) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	if int(grown["triangles"]) == 0:
 		return mesh

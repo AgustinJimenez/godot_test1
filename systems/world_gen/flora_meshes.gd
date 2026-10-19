@@ -49,6 +49,9 @@ static func variant_count(kind: Kind) -> int:
 
 
 static func _build(kind: Kind, variant: int, detailed: bool) -> ArrayMesh:
+	if ClassDB.class_exists(&"PlantMeshNative"):
+		var maker: Object = ClassDB.instantiate(&"PlantMeshNative")
+		return PlantMeshes.mesh_from(maker.call(&"scenery", int(kind), variant, detailed))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = kind * 7919 + variant * 104729 + 17
 	var builder := MeshBuilder.new()

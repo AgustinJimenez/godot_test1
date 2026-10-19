@@ -6,12 +6,17 @@
 #include <godot_cpp/variant/packed_color_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
+#include <godot_cpp/variant/basis.hpp>
+#include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <array>
+#include <map>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -54,6 +59,7 @@ struct Rng {
 	}
 	double randf() { return (double)(next() >> 8) / 16777216.0; }
 	double range(double p_from, double p_to) { return p_from + (p_to - p_from) * randf(); }
+	int randi() { return (int)(next() >> 1); }
 };
 
 double lerpd(double a, double b, double t) { return a + (b - a) * t; }
@@ -222,7 +228,61 @@ enum LeafPattern { ALTERNATE = 0, OPPOSITE = 1, SPIRAL = 2 };
 enum Bloom { SINGLE = 0, RACEME = 1, UMBEL = 2 };
 
 // What MeshBuilder collects: flat-shaded triangles (three own vertices each) with a colour per vertex
+struct Ico {
+	std::vector<Vector3> points;
+	std::vector<std::array<int, 3>> faces;
+};
+
+// An icosahedron split `level` times (level 1 = 80 facets, 2 = 320, 3 = 1280), built once and shared
+const Ico &icosphere(int level) {
+	static std::mutex lock;
+	static std::map<int, Ico> cache;
+	std::lock_guard<std::mutex> guard(lock);
+	auto found = cache.find(level);
+	if (found != cache.end()) {
+		return found->second;
+	}
+	Ico ico;
+	const double t = (1.0 + std::sqrt(5.0)) * 0.5;
+	const double base[12][3] = { { -1, t, 0 }, { 1, t, 0 }, { -1, -t, 0 }, { 1, -t, 0 }, { 0, -1, t }, { 0, 1, t }, { 0, -1, -t },
+		{ 0, 1, -t }, { t, 0, -1 }, { t, 0, 1 }, { -t, 0, -1 }, { -t, 0, 1 } };
+	for (auto &point : base) {
+		ico.points.push_back(Vector3((real_t)point[0], (real_t)point[1], (real_t)point[2]).normalized());
+	}
+	const int faces[20][3] = { { 0, 11, 5 }, { 0, 5, 1 }, { 0, 1, 7 }, { 0, 7, 10 }, { 0, 10, 11 }, { 1, 5, 9 }, { 5, 11, 4 }, { 11, 10, 2 },
+		{ 10, 7, 6 }, { 7, 1, 8 }, { 3, 9, 4 }, { 3, 4, 2 }, { 3, 2, 6 }, { 3, 6, 8 }, { 3, 8, 9 }, { 4, 9, 5 }, { 2, 4, 11 }, { 6, 2, 10 },
+		{ 8, 6, 7 }, { 9, 8, 1 } };
+	for (auto &face : faces) {
+		ico.faces.push_back({ face[0], face[1], face[2] });
+	}
+	for (int split = 0; split < level; split++) {
+		std::map<std::pair<int, int>, int> midpoints;
+		std::vector<std::array<int, 3>> next;
+		for (const auto &face : ico.faces) {
+			int mids[3];
+			for (int edge = 0; edge < 3; edge++) {
+				int a = face[edge], b = face[(edge + 1) % 3];
+				std::pair<int, int> key(std::min(a, b), std::max(a, b));
+				auto at = midpoints.find(key);
+				if (at == midpoints.end()) {
+					at = midpoints.emplace(key, (int)ico.points.size()).first;
+					ico.points.push_back(((ico.points[a] + ico.points[b]) * (real_t)0.5).normalized());
+				}
+				mids[edge] = at->second;
+			}
+			next.push_back({ face[0], mids[0], mids[2] });
+			next.push_back({ face[1], mids[1], mids[0] });
+			next.push_back({ face[2], mids[2], mids[1] });
+			next.push_back({ mids[0], mids[1], mids[2] });
+		}
+		ico.faces = next;
+	}
+	return cache.emplace(level, std::move(ico)).first->second;
+}
+
 struct MeshData {
+	Transform3D xf; // applied to everything added (a placed part)
+	bool moved = false;
 	bool detailed = false;
 	bool leafless = false;
 	bool leaf_cards = true;
@@ -244,10 +304,11 @@ struct MeshData {
 	// the corners come counter clockwise seen from outside; Godot wants clockwise, so b and c swap
 	void tri(const Vector3 &a, const Vector3 &b, const Vector3 &c, const Color &ca, const Color &cb,
 			const Color &cc) {
-		Vector3 normal = (b - a).cross(c - a).normalized();
-		vertices.push_back(a);
-		vertices.push_back(c);
-		vertices.push_back(b);
+		const Vector3 pa = moved ? xf.xform(a) : a, pb = moved ? xf.xform(b) : b, pc = moved ? xf.xform(c) : c;
+		Vector3 normal = (pb - pa).cross(pc - pa).normalized();
+		vertices.push_back(pa);
+		vertices.push_back(pc);
+		vertices.push_back(pb);
 		normals.push_back(normal);
 		normals.push_back(normal);
 		normals.push_back(normal);
@@ -275,16 +336,122 @@ struct MeshData {
 		has_uv = true;
 	}
 
+	void place(const Transform3D &p_xf) {
+		xf = p_xf;
+		moved = true;
+	}
+	void unplace() {
+		xf = Transform3D();
+		moved = false;
+	}
+
+	// A lumpy ball: an icosahedron split once or twice, each point pushed in or out
+	void blob(const Vector3 &center, const Vector3 &radius, const Color &low, const Color &high, Rng &rng, double lumpiness) {
+		const Ico &ico = icosphere(detailed ? 2 : 1);
+		struct Wave {
+			Vector3 axis;
+			double frequency, phase, amplitude;
+		};
+		std::vector<Wave> waves;
+		if (detailed) {
+			for (int w = 0; w < 5; w++) {
+				Vector3 axis((real_t)rng.range(-1.0, 1.0), (real_t)rng.range(-1.0, 1.0), (real_t)rng.range(-1.0, 1.0));
+				double frequency = rng.range(1.5, 4.5);
+				double phase = rng.randf() * TAU_D;
+				double amplitude = rng.range(0.4, 1.0) * lumpiness;
+				waves.push_back({ axis.normalized(), frequency, phase, amplitude });
+			}
+		}
+		std::vector<Vector3> shape(ico.points.size());
+		for (size_t i = 0; i < ico.points.size(); i++) {
+			const Vector3 &unit = ico.points[i];
+			double bulge = 0.0;
+			for (const Wave &wave : waves) {
+				bulge += wave.amplitude * std::sin(unit.dot(wave.axis) * wave.frequency + wave.phase);
+			}
+			double factor = detailed ? bulge + rng.range(-lumpiness, lumpiness) * 0.12 : rng.range(-lumpiness, lumpiness);
+			shape[i] = unit * (real_t)(1.0 + factor);
+		}
+		for (const auto &face : ico.faces) {
+			Vector3 corners[3];
+			Color colors[3];
+			for (int k = 0; k < 3; k++) {
+				const Vector3 &local = shape[face[k]];
+				corners[k] = center + Vector3(local.x * radius.x, local.y * radius.y, local.z * radius.z);
+				colors[k] = low.lerp(high, (float)clampd(local.y * 0.5 + 0.5, 0.0, 1.0));
+			}
+			tri(corners[0], corners[1], corners[2], colors[0], colors[1], colors[2]);
+		}
+	}
+
+	// A boulder: the lumpy ball cut by flat planes, banded in tone (MeshBuilder.add_rock). The UV marks it as stone.
+	void rock(const Vector3 &center, const Vector3 &radius, const Color &low, const Color &high, Rng &rng, int cuts) {
+		const Ico &ico = icosphere(detailed ? 3 : 2);
+		std::vector<std::array<double, 4>> planes;
+		for (int cut = 0; cut < cuts; cut++) {
+			Vector3 normal((real_t)rng.range(-1.0, 1.0), (real_t)rng.range(-0.5, 0.8), (real_t)rng.range(-1.0, 1.0));
+			normal = normal.normalized();
+			planes.push_back({ (double)normal.x, (double)normal.y, (double)normal.z, rng.range(0.74, 0.95) });
+		}
+		struct Bulge {
+			Vector3 axis;
+			double frequency, phase;
+		};
+		std::vector<Bulge> bulges;
+		for (int w = 0; w < 3; w++) {
+			Vector3 axis((real_t)rng.range(-1.0, 1.0), (real_t)rng.range(-1.0, 1.0), (real_t)rng.range(-1.0, 1.0));
+			double frequency = rng.range(1.2, 3.0);
+			double phase = rng.randf() * TAU_D;
+			bulges.push_back({ axis.normalized(), frequency, phase });
+		}
+		double band_phase = rng.randf() * TAU_D;
+		std::vector<Vector3> shape(ico.points.size());
+		for (size_t i = 0; i < ico.points.size(); i++) {
+			const Vector3 &unit = ico.points[i];
+			double reach = 1.0;
+			for (const auto &plane : planes) {
+				double facing = unit.x * plane[0] + unit.y * plane[1] + unit.z * plane[2];
+				if (facing > 0.01) {
+					reach = std::min(reach, plane[3] / facing);
+				}
+			}
+			for (const Bulge &bulge : bulges) {
+				reach *= 1.0 + 0.05 * std::sin(unit.dot(bulge.axis) * bulge.frequency + bulge.phase);
+			}
+			shape[i] = unit * (real_t)(reach * (1.0 + rng.range(-0.012, 0.012)));
+		}
+		for (const auto &face : ico.faces) {
+			Vector3 corners[3];
+			Color colors[3];
+			for (int k = 0; k < 3; k++) {
+				const Vector3 &local = shape[face[k]];
+				corners[k] = center + Vector3(local.x * radius.x, local.y * radius.y, local.z * radius.z);
+				double band = 0.5 + 0.5 * std::sin(local.y * 9.0 + local.x * 3.0 + band_phase);
+				Color tone = low.lerp(high, (float)clampd(local.y * 0.5 + 0.5, 0.0, 1.0));
+				float scale = (float)(0.93 + 0.1 * band);
+				colors[k] = Color(tone.r * scale, tone.g * scale, tone.b * scale, tone.a * scale);
+			}
+			tri_uv(corners[0], corners[1], corners[2], colors[0], colors[1], colors[2], Vector2(-0.25f, 0), Vector2(-0.25f, 0),
+					Vector2(-0.25f, 0), Vector2());
+		}
+	}
+
 	void frustum(const Vector3 &base, double height, double r0, double r1, int sides, const Color &bottom,
-			const Color &top, int caps) {
+			const Color &top, int caps, Rng *rng = nullptr, double jitter = 0.0) {
 		if (detailed && sides >= 5 && sides < 12) {
 			sides *= 2;
 		}
 		std::vector<Vector3> bottom_ring(sides), top_ring(sides);
 		for (int i = 0; i < sides; i++) {
 			double angle = TAU_D * i / sides;
-			bottom_ring[i] = base + Vector3((real_t)(cos(angle) * r0), 0, (real_t)(sin(angle) * r0));
-			top_ring[i] = base + Vector3((real_t)(cos(angle) * r1), (real_t)height, (real_t)(sin(angle) * r1));
+			double wobble0 = 1.0, wobble1 = 1.0, lift = 0.0;
+			if (rng != nullptr) {
+				wobble0 += rng->range(-jitter, jitter);
+				wobble1 += rng->range(-jitter, jitter);
+				lift = rng->range(-jitter, jitter) * height * 0.15;
+			}
+			bottom_ring[i] = base + Vector3((real_t)(cos(angle) * r0 * wobble0), 0, (real_t)(sin(angle) * r0 * wobble0));
+			top_ring[i] = base + Vector3((real_t)(cos(angle) * r1 * wobble1), (real_t)(height + lift), (real_t)(sin(angle) * r1 * wobble1));
 		}
 		Vector3 apex = base + Vector3(0, (real_t)height, 0);
 		for (int i = 0; i < sides; i++) {
@@ -1378,6 +1545,245 @@ std::vector<Vector3> smoothed_normals(const MeshData &m) {
 void PlantMeshNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("grow", "genome", "seed", "detailed", "leafless", "lod", "leaf_cards"),
 			&PlantMeshNative::grow);
+	ClassDB::bind_method(D_METHOD("scenery", "kind", "variant", "detailed"), &PlantMeshNative::scenery);
+	ClassDB::bind_method(D_METHOD("far_tree", "species", "seed"), &PlantMeshNative::far_tree);
+	ClassDB::bind_method(D_METHOD("mushroom", "species", "seed", "detailed"), &PlantMeshNative::mushroom);
+}
+
+namespace {
+
+// The arrays of a finished mesh: vertices, the smoothed normals, colours and (for leaves) UVs
+Dictionary package(const MeshData &mesh, bool capped) {
+	size_t count = mesh.vertices.size();
+	PackedVector3Array vertices, normals;
+	PackedColorArray colors;
+	PackedVector2Array uvs, uv2s;
+	vertices.resize(count);
+	normals.resize(count);
+	colors.resize(count);
+	std::vector<Vector3> smooth = smoothed_normals(mesh);
+	for (size_t i = 0; i < count; i++) {
+		vertices[i] = mesh.vertices[i];
+		normals[i] = smooth[i];
+		colors[i] = mesh.colors[i];
+	}
+	if (mesh.has_uv) {
+		uvs.resize(count);
+		uv2s.resize(count);
+		for (size_t i = 0; i < count; i++) {
+			uvs[i] = mesh.uvs[i];
+			uv2s[i] = mesh.uv2s[i];
+		}
+	}
+	Dictionary result;
+	result["vertices"] = vertices;
+	result["normals"] = normals;
+	result["colors"] = colors;
+	result["uvs"] = uvs;
+	result["uv2s"] = uv2s;
+	result["capped"] = capped;
+	result["triangles"] = (int)(count / 3);
+	return result;
+}
+
+const int KIND_ROCK = 5, KIND_STUMP = 10, KIND_LOG = 14, KIND_SPIRE = 15, KIND_PEBBLES = 16, KIND_LITTER = 17, KIND_TWIGS = 18;
+const Color BARK(0.33f, 0.23f, 0.15f);
+const Color BARK_DARK(0.22f, 0.15f, 0.1f);
+
+Color scaled(const Color &c, double k) { return Color((float)(c.r * k), (float)(c.g * k), (float)(c.b * k), c.a); }
+
+} // namespace
+
+// The scenery that is not a plant (FloraMeshes._build): rocks, pebbles, stumps, logs, spires, fallen leaves and sticks
+Dictionary PlantMeshNative::scenery(int p_kind, int p_variant, bool p_detailed) const {
+	Rng rng;
+	rng.seed((uint64_t)((int64_t)p_kind * 7919 + (int64_t)p_variant * 104729 + 17));
+	MeshData m;
+	m.detailed = p_detailed;
+	switch (p_kind) {
+		case KIND_ROCK: {
+			double tone = rng.randf();
+			Color stone = Color(0.33f, 0.32f, 0.31f).lerp(Color(0.47f, 0.44f, 0.4f), (float)tone);
+			if (p_variant == 5) {
+				stone = Color(0.52f, 0.38f, 0.3f);
+			}
+			Color low = still(stone.darkened(0.25f)), high = still(stone.lightened(0.1f));
+			double stretch = rng.range(0.9, 1.15);
+			m.rock(Vector3(0, 0.25f, 0), Vector3(1.0f, 0.85f, 0.85f) * (real_t)stretch, low, high, rng, 6 + p_variant % 3);
+			if (p_variant % 2 == 1) {
+				m.rock(Vector3(0.7f, 0.1f, 0.4f), Vector3(0.5f, 0.4f, 0.45f), low, high, rng, 5);
+			}
+			break;
+		}
+		case KIND_PEBBLES: {
+			const Color tones[4] = { Color(0.5f, 0.48f, 0.45f), Color(0.38f, 0.36f, 0.35f), Color(0.6f, 0.55f, 0.47f), Color(0.45f, 0.37f, 0.3f) };
+			Color stone = tones[p_variant % 4];
+			int count = 3 + p_variant % 3;
+			for (int index = 0; index < count; index++) {
+				double size = rng.range(0.07, 0.17);
+				double x = rng.range(-0.4, 0.4), z = rng.range(-0.4, 0.4);
+				Vector3 at((real_t)x, (real_t)(size * 0.3), (real_t)z);
+				double shade = rng.range(0.85, 1.1);
+				m.blob(at, Vector3((real_t)size, (real_t)(size * 0.6), (real_t)(size * 0.85)), still(scaled(stone.darkened(0.2f), shade)),
+						still(scaled(stone.lightened(0.08f), shade)), rng, 0.25);
+			}
+			break;
+		}
+		case KIND_STUMP: {
+			double height = rng.range(0.5, 0.9);
+			m.frustum(Vector3(), height, 0.42, 0.34, 7, still(BARK_DARK), still(BARK), CAP_TOP, &rng, 0.1);
+			break;
+		}
+		case KIND_LOG: {
+			double length = rng.range(2.5, 4.5);
+			Color wood(0.4f, 0.3f, 0.22f);
+			m.place(Transform3D(Basis(Vector3(0, 0, 1), (real_t)(PI_D * 0.5)), Vector3((real_t)(-length * 0.5), 0.3f, 0)));
+			m.frustum(Vector3(), length, 0.3, 0.26, 7, still(wood), still(wood.lightened(0.08f)), CAP_TOP | CAP_BOTTOM, &rng, 0.06);
+			m.unplace();
+			break;
+		}
+		case KIND_SPIRE: {
+			Color stone = Color(0.42f, 0.4f, 0.4f).lerp(Color(0.6f, 0.55f, 0.5f), (float)(p_variant / 3.0));
+			double height = rng.range(4.0, 8.0);
+			double r0 = rng.range(1.0, 1.6), r1 = rng.range(0.1, 0.35);
+			m.frustum(Vector3(), height, r0, r1, 5, still(stone.darkened(0.25f)), still(stone.lightened(0.1f)), 0, &rng, 0.22);
+			if (p_variant != 1) {
+				m.frustum(Vector3(1.1f, 0, 0.5f), height * 0.5, 0.8, 0.12, 5, still(stone.darkened(0.2f)), still(stone), 0, &rng, 0.2);
+			}
+			break;
+		}
+		case KIND_LITTER: {
+			const Color tones[5] = { Color(0.55f, 0.36f, 0.14f), Color(0.42f, 0.3f, 0.14f), Color(0.62f, 0.45f, 0.16f), Color(0.34f, 0.4f, 0.14f),
+				Color(0.5f, 0.22f, 0.1f) };
+			Color tone = tones[p_variant % 5];
+			const int shapes[4] = { OVAL, LOBED, HEART, LANCEOLATE };
+			double aspect = rng.range(1.5, 2.2);
+			std::vector<Vector2> outline = leaf_outline(shapes[p_variant % 4], aspect, 2, SMOOTH, true);
+			int count = 12 + p_variant * 2;
+			for (int index = 0; index < count; index++) {
+				double angle = rng.randf() * TAU_D;
+				double reach = 0.55 * std::sqrt(rng.randf());
+				double yaw = rng.randf() * TAU_D;
+				Vector3 axis((real_t)std::cos(yaw), (real_t)rng.range(0.0, 0.18), (real_t)std::sin(yaw));
+				axis = axis.normalized();
+				Vector3 normal = (UP - axis * axis.dot(UP)).normalized();
+				double shade = rng.range(0.7, 1.15);
+				Color colour = scaled(tone.lerp(Color(0.3f, 0.2f, 0.1f), (float)(rng.randf() * 0.5)), shade);
+				colour.a = 0.0f;
+				double length = rng.range(0.11, 0.24);
+				double width = rng.range(0.9, 1.2);
+				Vector2 dice((real_t)rng.randf(), (real_t)rng.randf());
+				add_leaf(m, outline, Vector3((real_t)(std::cos(angle) * reach), (real_t)(0.012 + 0.006 * index), (real_t)(std::sin(angle) * reach)), axis,
+						normal, length, 0.04, 0.05, colour.darkened(0.2f), colour, 0.0, 0.0, width, dice);
+			}
+			break;
+		}
+		case KIND_TWIGS: {
+			Color wood = Color(0.36f, 0.28f, 0.2f).lerp(Color(0.5f, 0.44f, 0.38f), (float)(p_variant / 4.0));
+			int count = 3 + p_variant % 3;
+			for (int index = 0; index < count; index++) {
+				double length = rng.range(0.35, 1.1);
+				double radius = rng.range(0.012, 0.03);
+				double yaw = rng.randf() * TAU_D;
+				double tilt = rng.range(0.0, 0.2);
+				double x = rng.range(-0.35, 0.35), z = rng.range(-0.35, 0.35);
+				Vector3 at((real_t)x, (real_t)(radius * 0.8 + 0.02 * index), (real_t)z);
+				Basis lie = Basis(UP, (real_t)yaw) * Basis(Vector3(0, 0, 1), (real_t)(-PI_D * 0.5 + tilt));
+				m.place(Transform3D(lie, at));
+				double shade = rng.range(0.85, 1.1);
+				m.frustum(Vector3(), length, radius, radius * 0.45, 5, still(scaled(wood.darkened(0.15f), shade)), still(scaled(wood, shade)), CAP_BOTTOM, &rng, 0.08);
+				if (index == 0) {
+					m.place(Transform3D(lie * Basis(FORWARD, 0.6f), at + lie.xform(Vector3(0, (real_t)(length * 0.5), 0))));
+					m.frustum(Vector3(), length * 0.5, radius * 0.6, radius * 0.25, 4, still(wood.darkened(0.1f)), still(wood), 0, &rng, 0.08);
+				}
+			}
+			m.unplace();
+			break;
+		}
+		default:
+			break;
+	}
+	return package(m, false);
+}
+
+// The cheap horizon tree: one cone, or a trunk under a crown of four lumps (PlantTreeBuilders.far)
+Dictionary PlantMeshNative::far_tree(const Dictionary &p_species, int64_t p_seed) const {
+	Rng rng;
+	rng.seed((uint64_t)p_seed);
+	MeshData m;
+	bool conifer = (bool)p_species.get("conifer", false);
+	Color leaf = p_species.get("leaf", Color(0.26f, 0.5f, 0.18f));
+	Color leaf_tip = p_species.get("leaf_tip", Color(0.4f, 0.6f, 0.25f));
+	Color bark = p_species.get("bark", BARK);
+	double height = p_species.get("height", 8.0), crown = p_species.get("crown", 2.0), aspect = p_species.get("aspect", 1.0);
+	double bare = p_species.get("bare", 0.3), girth = p_species.get("girth", 0.3);
+	if (conifer) {
+		Color green = leaf.lerp(leaf_tip, 0.3f);
+		double tall = height * rng.range(0.9, 1.1);
+		m.frustum(Vector3(0, 0.8f, 0), tall, crown * 0.95, 0.0, 5, still(green.darkened(0.1f)), still(green.lightened(0.1f)), CAP_BOTTOM, &rng, 0.1);
+		return package(m, false);
+	}
+	double trunk = height * bare;
+	m.frustum(Vector3(), trunk, girth, girth * 0.6, 4, still(bark.darkened(0.3f)), still(bark), 0);
+	double size = crown * 1.3;
+	Vector3 middle(0, (real_t)(trunk + (height - trunk) * 0.55), 0);
+	for (int lump = 0; lump < 4; lump++) {
+		Vector3 offset((real_t)rng.range(-1.0, 1.0), (real_t)rng.range(-0.55, 0.65), (real_t)rng.range(-1.0, 1.0));
+		double radius = size * rng.range(0.5, 0.72);
+		double tone = rng.range(0.0, 0.18);
+		m.blob(middle + Vector3((real_t)(offset.x * size * 0.55), (real_t)(offset.y * size * 0.45 * aspect), (real_t)(offset.z * size * 0.55)),
+				Vector3((real_t)radius, (real_t)(radius * aspect * 0.8), (real_t)radius), still(leaf.darkened((float)(0.3 - tone))),
+				still(leaf_tip.darkened((float)(tone * 0.5))), rng, 0.3);
+	}
+	return package(m, false);
+}
+
+// A clump of mushrooms (PlantGroundBuilders): each cap beside an earlier one, no two caps cutting into each other
+Dictionary PlantMeshNative::mushroom(const Dictionary &p_species, int64_t p_seed, bool p_detailed) const {
+	Rng rng;
+	rng.seed((uint64_t)p_seed);
+	MeshData m;
+	m.detailed = p_detailed;
+	double height0 = p_species.get("height", 0.3), crown = p_species.get("crown", 0.6), droop = p_species.get("droop", 0.3);
+	int count = p_species.get("count", 3);
+	Color accent = p_species.get("accent", Color(0.8f, 0.2f, 0.2f));
+	struct Spot {
+		double x, z, height, radius;
+	};
+	std::vector<Spot> spots;
+	for (int index = 0; index < count; index++) {
+		double height = height0 * rng.range(0.7, 1.2);
+		double radius = height * crown;
+		double x = 0.0, z = 0.0;
+		if (index > 0) {
+			bool found = false;
+			for (int attempt = 0; attempt < 24 && !found; attempt++) {
+				const Spot &beside = spots[rng.randi() % spots.size()];
+				double angle = rng.randf() * TAU_D;
+				double distance = radius + beside.radius + rng.range(0.04, 0.1);
+				x = beside.x + std::cos(angle) * distance;
+				z = beside.z + std::sin(angle) * distance;
+				found = true;
+				for (const Spot &other : spots) {
+					if (std::sqrt((x - other.x) * (x - other.x) + (z - other.z) * (z - other.z)) < radius + other.radius + 0.03) {
+						found = false;
+						break;
+					}
+				}
+			}
+			if (!found) {
+				continue;
+			}
+		}
+		spots.push_back({ x, z, height, radius });
+	}
+	for (const Spot &spot : spots) {
+		Vector3 at((real_t)spot.x, 0, (real_t)spot.z);
+		m.frustum(at, spot.height, 0.035, 0.03, 5, still(Color(0.9f, 0.88f, 0.8f)), still(Color(0.92f, 0.9f, 0.84f)), 0);
+		m.frustum(at + Vector3(0, (real_t)spot.height, 0), spot.height * lerpd(0.3, 0.9, droop), spot.height * crown, 0.02, 7,
+				still(accent.darkened(0.15f)), still(accent), 0, &rng, 0.05);
+	}
+	return package(m, false);
 }
 
 Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, bool p_detailed, bool p_leafless,
@@ -1413,34 +1819,5 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 			break;
 		}
 	}
-	size_t count = mesh.vertices.size();
-	PackedVector3Array vertices, normals;
-	PackedColorArray colors;
-	PackedVector2Array uvs, uv2s;
-	vertices.resize(count);
-	normals.resize(count);
-	colors.resize(count);
-	std::vector<Vector3> smooth = smoothed_normals(mesh);
-	for (size_t i = 0; i < count; i++) {
-		vertices[i] = mesh.vertices[i];
-		normals[i] = smooth[i];
-		colors[i] = mesh.colors[i];
-	}
-	if (mesh.has_uv) {
-		uvs.resize(count);
-		uv2s.resize(count);
-		for (size_t i = 0; i < count; i++) {
-			uvs[i] = mesh.uvs[i];
-			uv2s[i] = mesh.uv2s[i];
-		}
-	}
-	Dictionary result;
-	result["vertices"] = vertices;
-	result["normals"] = normals;
-	result["colors"] = colors;
-	result["uvs"] = uvs;
-	result["uv2s"] = uv2s;
-	result["capped"] = capped;
-	result["triangles"] = (int)(count / 3);
-	return result;
+	return package(mesh, capped);
 }

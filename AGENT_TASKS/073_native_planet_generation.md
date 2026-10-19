@@ -48,3 +48,11 @@ Measured per tile (714 tiles, High, seed 8): grid + heights 10.9 ms (the crust, 
 1.7 ms, mesh node 1.0 ms, water 0.9 ms: the tile build is native already. What is left in script is node work the
 engine owns (adding MultiMeshInstance3D, colliders, tile placement), the 0.3 s quadtree selection (1-2 ms; 20 ms
 while the world loads) and orchestration (atmosphere, weather, menus).
+
+## 4. Quadtree selection and the scenery meshes native
+`PlanetSurfaceNative` chooses the tiles (the quadtree split, each tile's distance, collider and plant detail) and
+orders the ones to build (`select`, `order`): the 20 ms hitch of the first selections is gone, ground ready 1.7 -> 1.3 s
+on the seed 8 meadow. `PlantMeshNative` also builds the scenery (rocks, pebbles, stumps, logs, spires, fallen leaves and
+sticks), the far trees and the mushrooms (`scenery`, `far_tree`, `mushroom`); its dice are the engine's own PCG32, so the
+meshes are the script's exactly. The scripts (`MeshBuilder`, `FloraMeshes._rock`..., `PlantTreeBuilders.far`,
+`PlantGroundBuilders`) stay as the fallback.

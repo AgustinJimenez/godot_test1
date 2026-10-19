@@ -20,6 +20,10 @@ public:
 	// Grows one tree (or any plant TreeGrower grows) from `genome` (TreeGenome.to_dictionary()) with the dice
 	// `seed`. Returns {"vertices", "normals", "colors", "uvs", "uv2s" (empty without leaves), "capped": the
 	// triangle budget ran out even at the thinnest, "triangles"}: three vertices a triangle, like MeshBuilder.
+	// The scenery that is not a plant (FloraMeshes kinds), the cheap horizon tree and a clump of mushrooms, as the same arrays.
+	Dictionary scenery(int p_kind, int p_variant, bool p_detailed) const;
+	Dictionary far_tree(const Dictionary &p_species, int64_t p_seed) const;
+	Dictionary mushroom(const Dictionary &p_species, int64_t p_seed, bool p_detailed) const;
 	Dictionary grow(const Dictionary &p_genome, int64_t p_seed, bool p_detailed, bool p_leafless, int p_lod,
 			bool p_leaf_cards) const;
 };
