@@ -973,7 +973,23 @@ struct Grower {
 		bool strip = cards && !low_plant && g->leaflet >= 0.02;
 		double rows = clampd(length / 0.08, 10.0, 80.0);
 		double pin_dice = rf();
+		// the frond bends in up to three places (a chain of branches, each carrying what is further out): a blade of grass
+		// or a fern leaf curves away from a walker, and springs back (PlantSwayNative)
+		const int chain = std::min(3, std::max(segments, 1));
+		std::vector<int> chain_ids;
+		int before = 0;
+		for (int link = 0; link < chain; link++) {
+			const int from = link * segments / chain, to = (link + 1) * segments / chain;
+			const int id = next_id++;
+			table.resize((size_t)id + 1);
+			table[(size_t)id] = { (float)before, 0.0f, (float)points[(size_t)from].x, (float)points[(size_t)from].y, (float)points[(size_t)from].z,
+				(float)points[(size_t)to].x, (float)points[(size_t)to].y, (float)points[(size_t)to].z, (float)std::max(rib, 0.008),
+				(float)(points[(size_t)to] - points[(size_t)from]).length() };
+			chain_ids.push_back(id);
+			before = id;
+		}
 		for (int index = 0; index < segments; index++) {
+			b->current_branch = (float)chain_ids[(size_t)std::min(index * chain / std::max(segments, 1), chain - 1)];
 			double t = (double)index / segments;
 			double sway = 0.35 + 0.5 * t;
 			const Vector3 &a = points[index];
@@ -1031,6 +1047,7 @@ struct Grower {
 		if (g->flower.a > 0.0f) {
 			bloom(points.back(), UP, g->flower_size, g->flower, g->flower_centre, g->petals, g->flower_cup, 0.9);
 		}
+		b->current_branch = 0.0f;
 	}
 
 	void bloom(const Vector3 &at, const Vector3 &normal, double size, const Color &colour, const Color &centre,

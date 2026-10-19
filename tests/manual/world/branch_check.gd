@@ -6,15 +6,20 @@ extends Node
 func _ready() -> void:
 	var ok := true
 	var trees := 0
+	var seen := {}
 	for one in SpeciesRegistry.new(8, 36).species:
-		if not one.is_tree() or trees >= 6:
-			continue
+		if one.is_tree():
+			if trees >= 6:
+				continue
+		elif seen.has(one.form):
+			continue # (one of each growth form)
+		seen[one.form] = true
 		trees += 1
 		var mesh := PlantMeshes.build(one, 0, true)
 		var table: PackedFloat32Array = mesh.get_meta(&"branches", PackedFloat32Array())
 		if table.is_empty():
-			print("BRANCH_CHECK no table for ", one.summary())
-			ok = false
+			print("BRANCH_CHECK (nothing to bend) %s" % one.summary().substr(0, 40))
+			ok = ok and not one.is_tree()
 			continue
 		var arrays := mesh.surface_get_arrays(0)
 		var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
@@ -43,6 +48,6 @@ func _ready() -> void:
 		var share := float(near) / maxf(float(moving), 1.0)
 		print("BRANCH_CHECK %-22s branches=%d vertices=%d moving=%.0f%% near=%.0f%% farthest=%.1f m" % [
 				one.common_name, count - 1, points.size(), 100.0 * moving / points.size(), 100.0 * share, farthest])
-		ok = ok and count > 5 and share > 0.8 and moving > points.size() / 4
+		ok = ok and count > 3 and share > 0.8 and moving > points.size() / 4
 	print("BRANCH_CHECK ", "PASS" if ok and trees > 0 else "FAIL")
 	get_tree().quit(0 if ok else 1)

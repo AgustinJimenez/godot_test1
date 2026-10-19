@@ -10,6 +10,7 @@ extends RefCounted
 const BANK := 4.0 ## m from a river edge inside which nothing grows (the bank can be higher)
 const GRASS_VISIBLE := 110.0
 const PEBBLE_VISIBLE := 45.0 ## m: small stones are gone beyond this
+const SMALL_PLANT := 1.4 ## m: plants lower than this (grass, ferns, flowers, low shrubs) bend only a little way from the walker
 const TREE_FULL := 80.0 ## m: beyond this a tree is drawn as its lighter version
 const SMALL_VISIBLE := 220.0 ## m: shrubs and ground cover are gone beyond this
 const TREE_LIGHT := 220.0 ## m: beyond this, as the cheap far tree (a cone or a ball on a trunk)
@@ -618,7 +619,7 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 		var instance := _add_trees(buffer, mesh, true)
 		if plant and mesh.has_meta(&"branches"): # a tree or shrub that can bend (PlanetSway takes the ones near the walker)
 			var sets: Array = _tile.get_meta(&"sway_sets", [])
-			sets.append([instance, buffer])
+			sets.append([instance, buffer, mesh.get_aabb().size.y < SMALL_PLANT])
 			_tile.set_meta(&"sway_sets", sets)
 		if not plant and key / 100 in [FloraMeshes.Kind.PEBBLES, FloraMeshes.Kind.LITTER,
 				FloraMeshes.Kind.TWIGS]:

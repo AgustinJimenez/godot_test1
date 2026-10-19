@@ -9,8 +9,12 @@ extends Node
 const ENTER := 8.0 ## m: closer than this a tree is taken out of its batch
 const LEAVE := 11.0 ## m: farther than this (and at rest) it goes back
 const TOUCH := 6.0 ## m: the body is given to the trees within this (the others only settle)
+const ENTER_SMALL := 2.4 ## the same for grass, ferns, flowers and low shrubs: there are very many, and they are touched only close
+const LEAVE_SMALL := 3.4
+const TOUCH_SMALL := 1.8
 const LOOK_EVERY := 0.25 ## s between looks for trees to take or give back
 const MAX_LIVE := 24
+const MAX_SMALL := 160
 const BODY_HEIGHT := 1.8 ## m, the walker's body: an upright capsule from the feet
 const BODY_RADIUS := 0.4
 
@@ -20,6 +24,8 @@ var player: Player
 var _native := PlantSwayNative.new()
 var _live: Array[Dictionary] = [] # {tree, instance, index, original, holder}
 var _since := 0.0
+var _keys := {} # the live ones by batch and index, to ask quickly
+var _small := 0 # how many of the live ones are small plants
 
 
 func _ready() -> void:
@@ -44,7 +50,7 @@ func _physics_process(delta: float) -> void:
 	for entry in _live:
 		var tree: PlanetSwayTree = entry["tree"]
 		var body := PackedFloat32Array()
-		if tree.global_position.distance_to(here) < TOUCH:
+		if tree.global_position.distance_to(here) < (TOUCH_SMALL if entry["small"] else TOUCH):
 			body = _body_in(tree, here)
 		tree.step(body, delta)
 
@@ -72,21 +78,24 @@ func _take(here: Vector3) -> void:
 			var instance: MultiMeshInstance3D = kind[0]
 			if not is_instance_valid(instance) or instance.multimesh == null:
 				continue
-			for index in _native.within(kind[1], local.x, local.z, ENTER):
-				if _live.size() >= MAX_LIVE:
-					return
+			var small: bool = kind[2]
+			for index in _native.within(kind[1], local.x, local.z, ENTER_SMALL if small else ENTER):
+				if (_small if small else _live.size() - _small) >= (MAX_SMALL if small else MAX_LIVE):
+					break
 				if not _is_live(instance, index):
-					_go_live(holder, instance, kind[1], index)
+					_go_live(holder, instance, kind[1], index, small)
 
 
 func _is_live(instance: MultiMeshInstance3D, index: int) -> bool:
-	for entry in _live:
-		if entry["instance"] == instance and entry["index"] == index:
-			return true
-	return false
+	return _keys.has(_key_of(instance, index))
 
 
-func _go_live(holder: Node3D, instance: MultiMeshInstance3D, buffer: PackedFloat32Array, index: int) -> void:
+static func _key_of(instance: MultiMeshInstance3D, index: int) -> int:
+	return instance.get_instance_id() * 65536 + index
+
+
+func _go_live(holder: Node3D, instance: MultiMeshInstance3D, buffer: PackedFloat32Array, index: int,
+		small: bool) -> void:
 	var multi := instance.multimesh
 	var at := index * 16 # (the tile's own buffer: the renderer need not keep the instances)
 	var original := Transform3D(Basis(
@@ -103,7 +112,10 @@ func _go_live(holder: Node3D, instance: MultiMeshInstance3D, buffer: PackedFloat
 	tree.cast_shadow = instance.cast_shadow
 	holder.add_child(tree)
 	multi.set_instance_transform(index, Transform3D(Basis.from_scale(Vector3.ZERO), original.origin))
-	_live.append({"tree": tree, "instance": instance, "index": index, "original": original})
+	_live.append({"tree": tree, "instance": instance, "index": index, "original": original, "small": small,
+			"key": _key_of(instance, index)})
+	_small += 1 if small else 0
+	_keys[_key_of(instance, index)] = true # (see _is_live)
 
 
 ## Trees the walker has left, once their branches have settled, go back into their batch.
@@ -114,11 +126,14 @@ func _give_back(here: Vector3) -> void:
 		var tree: PlanetSwayTree = entry["tree"]
 		var instance: MultiMeshInstance3D = entry["instance"]
 		var gone := not is_instance_valid(instance) or not is_instance_valid(tree) or not tree.is_inside_tree()
-		if gone or (tree.global_position.distance_to(here) > LEAVE and tree.is_at_rest()):
+		var leave := LEAVE_SMALL if entry["small"] else LEAVE
+		if gone or (tree.global_position.distance_to(here) > leave and tree.is_at_rest()):
 			if not gone:
 				instance.multimesh.set_instance_transform(entry["index"], entry["original"])
 			if is_instance_valid(tree):
 				tree.queue_free()
+			_small -= 1 if entry["small"] else 0
+			_keys.erase(entry["key"])
 			_live.remove_at(at)
 		at -= 1
 

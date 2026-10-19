@@ -141,3 +141,6 @@ The `oak` and `willow` archetypes were changed to those proportions (they had a 
   Off with `PLANET_NO_SWAY`. The older shader-only bump still moves grass and plants that have no branches.
 - Headless renderers do not keep MultiMesh instances: the transform and colour come from the tile's own buffer.
 - Check: `--plants --grounded --sway-check` (SWAY_CHECK) puts the walker in a shrub and needs a branch turned.
+- Plants without branches (grass, ferns, flowers, reeds, palm fronds): each frond or blade is a chain of up to three bending links
+  (`Grower::frond` registers them in the same branch table). Plants lower than 1.4 m (`SMALL_PLANT`) are taken live only within 2.4 m
+  (given back past 3.4 m, at most 160), the rest within 8 m (24 at most). Measured with 11 live: no frame-rate change, +2 ms process.
