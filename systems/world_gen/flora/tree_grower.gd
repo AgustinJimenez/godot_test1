@@ -383,6 +383,17 @@ func _mass(at: Vector3, sway: float) -> void:
 	high.a = minf(sway + LEAF_SWAY, 1.0)
 	var middle := tone.darkened(0.12)
 	middle.a = minf(sway + 0.2, 1.0)
+	if _fine and _b.leaf_cards:
+		# realistic: the clump is three crossing cards of many small leaves, not a faceted lump
+		var heart := at + Vector3(0.0, size * 0.2, 0.0)
+		var turn := _rng.randf() * TAU
+		for card in 3:
+			var around := turn + TAU * float(card) / 3.0
+			var flat := Vector3(cos(around), 0.0, sin(around))
+			var tilt := (flat * 0.75 + Vector3.UP * 0.55).normalized()
+			var facing := Vector3.UP.cross(flat).normalized() if card != 1 else flat.cross(Vector3.UP).normalized()
+			PlantLeafShapes.add_leaf_card(_b, heart - tilt * size * 0.7, tilt, facing, size * 1.5, low, high, _rng.randf())
+		return
 	var centre := at + Vector3(0.0, size * 0.25, 0.0)
 	var axes: Array[Vector3] = [Vector3.RIGHT, Vector3.UP * 0.35, Vector3.BACK]
 	var ends: Array[Array] = [[], [], []]
@@ -679,6 +690,10 @@ func _leaf(at: Vector3, tangent: Vector3, azimuth: float, sway: float, spread :=
 	if _g.compound:
 		_feather(at, axis, normal, size * 1.6, base_color, tip_color)
 		return
+	if _fine and _b.leaf_cards:
+		# realistic: a card of many small leaves, a little longer than one big leaf (the shader draws them)
+		PlantLeafShapes.add_leaf_card(_b, at, axis, normal, size * 1.35, base_color, tip_color, _rng.randf())
+		return
 	PlantLeafShapes.add_leaf(_b, _outline, at, axis, normal, size, 0.1, curl, base_color, tip_color,
 			_rng.randf_range(-0.2, 0.2), _rng.randf_range(-0.14, 0.14) * share,
 			_rng.randf_range(0.8, 1.2), Vector2(_rng.randf(), _rng.randf()))
@@ -698,7 +713,15 @@ func _feather(at: Vector3, axis: Vector3, normal: Vector3, length: float, base_c
 		var leaflet := length * 0.3 * (1.0 - 0.45 * t)
 		var color := base_color.lerp(tip_color, t)
 		for sign_side: float in [-1.0, 1.0]:
-			var reach := on + (across * sign_side * 0.9 + axis * 0.45 + normal * 0.15) * leaflet
+			var way := (across * sign_side * 0.9 + axis * 0.45 + normal * 0.15).normalized()
+			if _fine:
+				# realistic: a leaflet is a small veined leaf of the tree's own shape, not a triangle
+				var up := (normal - way * way.dot(normal)).normalized()
+				PlantLeafShapes.add_leaf(_b, _outline, on, way, up, leaflet * 1.5, 0.1, -0.1, color,
+						tip_color, _rng.randf_range(-0.15, 0.15), 0.0, _rng.randf_range(0.9, 1.3),
+						Vector2(_rng.randf(), _rng.randf()))
+				continue
+			var reach := on + way * leaflet
 			_b.add_tri(on, on + axis * leaflet * 0.5, reach, color, color, tip_color)
 	_b.add_tri(stalk_end - across * leaflet_width(length), stalk_end + across * leaflet_width(length),
 			stalk_end + axis * length * 0.22, tip_color, tip_color, tip_color)

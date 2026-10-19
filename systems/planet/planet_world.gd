@@ -51,6 +51,7 @@ var _load_time := 0.0
 func _ready() -> void:
 	if settings == null:
 		settings = PlanetSettings.new()
+	FloraMeshes.detailed = true # the planet's plants are built in the finer, realistic look
 	noise = PlanetNoise.new(settings)
 	clock.day_seconds = settings.day_seconds
 	clock.year_days = settings.year_days
@@ -447,7 +448,7 @@ func _physics_process(delta: float) -> void:
 	if _timer <= 0.0 or moved:
 		_timer = 0.3
 		surface.update(planet_position())
-	WorldWind.set_realism(0.0)
+	WorldWind.set_realism(1.0) # the planet is the realistic look (smooth normals, finer plants, the sea's depth)
 	_weather_timer -= delta
 	if _weather_timer <= 0.0 and not loading:
 		_weather_timer = 1.5

@@ -32,6 +32,57 @@ float smooth_noise(vec2 p) {
 			mix(cell_hash(cell + vec2(0.0, 1.0)), cell_hash(cell + vec2(1.0, 1.0)), f.x), f.y);
 }
 
+vec2 hash22(vec2 p) {
+	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+	return fract(sin(p) * 43758.5453);
+}
+
+// A cluster of small leaves on a card (UV 0..1, the stalk at the bottom): leaves in a 5 x 5 grid, each
+// with its own size, turn (mostly pointing out from the stalk), shade and veins; the one drawn on top
+// where two overlap is the one with the larger dice. Returns x: 1 inside a leaf (0 outside), y: the shade.
+vec2 leaf_cluster(vec2 uv, float id) {
+	const float N = 5.0;
+	vec2 p = uv * N;
+	vec2 cell = floor(p);
+	float best = -1.0;
+	float inside_leaf = 0.0;
+	float shade = 1.0;
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			vec2 c = cell + vec2(float(i), float(j));
+			vec2 h = hash22(c + id * 13.7);
+			vec2 h2 = hash22(c * 1.7 + 5.3 + id * 7.1);
+			vec2 centre = c + 0.5 + (h - 0.5) * 0.7;
+			vec2 at = centre / N;
+			if (at.x < 0.14 || at.x > 0.86 || at.y < 0.08 || at.y > 0.86) {
+				continue; // a leaf must lie whole on the card
+			}
+			vec2 outward = normalize(centre - vec2(0.5 * N, -0.5 * N));
+			float angle = atan(outward.x, outward.y) + (h2.x - 0.5) * 1.5;
+			float cs = cos(angle);
+			float sn = sin(angle);
+			vec2 d = p - centre;
+			vec2 q = vec2(d.x * cs - d.y * sn, d.x * sn + d.y * cs);
+			float length_cells = 0.85 + h2.y * 0.45;
+			float width_cells = 0.34 + h.x * 0.14;
+			float t = q.y / length_cells + 0.5;
+			if (t > 0.0 && t < 1.0) {
+				float half_width = width_cells * 0.5 * sin(3.14159 * pow(t, 0.8));
+				if (abs(q.x) < half_width && h.y > best) {
+					best = h.y;
+					inside_leaf = 1.0;
+					float across = abs(q.x) / max(half_width, 0.001);
+					float rib = 1.0 - smoothstep(0.0, 0.07, abs(q.x) / width_cells);
+					float run = fract(t * 5.0 - across * 1.6 + h.x);
+					float side_vein = (1.0 - smoothstep(0.0, 0.16, min(run, 1.0 - run))) * (1.0 - across) * 0.7;
+					shade = (0.72 + 0.5 * h2.x) * (1.0 - 0.22 * across * across) + max(rib, side_vein) * 0.28;
+				}
+			}
+		}
+	}
+	return vec2(inside_leaf, shade);
+}
+
 void vertex() {
 	vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_pos = world;
@@ -61,7 +112,16 @@ void fragment() {
 	paint *= mix(1.0, 0.8 + 0.4 * speckle, realism);
 	// leaves (they have a UV, nothing else does): a light midrib, side veins running up and out from
 	// it, and the blade a little lighter along the middle and darker toward the edge
-	if (UV.x > 0.001) {
+	bool is_card = UV2.y > 1.5;
+	float card_alpha = 1.0;
+	if (is_card) {
+		vec2 cluster = leaf_cluster(UV, UV2.x);
+		// far away the leaves are under a pixel and would shimmer: the card fills in toward a solid mass
+		float far_fill = smoothstep(0.35, 0.8, fwidth(UV.x) * 5.0);
+		card_alpha = mix(cluster.x, 0.62, far_fill);
+		paint *= mix(cluster.y, 0.9, far_fill);
+	}
+	if (UV.x > 0.001 && !is_card) {
 		// every leaf has its own two random numbers (UV2): how many side veins, how they slope,
 		// how thick and how strong they are, whether the two sides line up, how dark the edge is
 		float id = UV2.x;
@@ -114,6 +174,10 @@ void fragment() {
 		}
 	}
 	ALBEDO = mix(paint, vec3(0.8, 0.84, 0.9), snow_cover * smoothstep(0.35, 0.75, face_up) * 0.9);
+	if (is_card) {
+		ALPHA = card_alpha;
+		ALPHA_SCISSOR_THRESHOLD = 0.5;
+	}
 	// normals: flat facets, or the mesh's smooth ones
 	vec3 flat_normal = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
 	if (dot(flat_normal, VIEW) < 0.0) {

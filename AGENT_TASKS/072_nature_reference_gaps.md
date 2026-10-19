@@ -102,3 +102,15 @@ variety of near things* (A, E, F) and *light mood* (B, C).
    air that follows the camera, in world space, drifting on a noise; only in daylight, fair weather and
    under 2.5 km, not underwater. Seen as a few faint specks in a still at 8:20; their motion and amount
    need a look in play (the lab's `--view-alt` views have no player, so they do not show there).
+
+## Task 3 loop: plants (2026-10-19 night)
+Found: the planet never switched the plants to their realistic look (`FloraMeshes.detailed` and the
+`realism` global were never set on the planet: `PlanetWorld` even forced `realism` to 0 every frame, so
+the water, the smooth foliage lighting and the finer meshes were all off). Now `PlanetWorld` sets both.
+1. Realistic look on (detailed meshes, smooth normals, light through leaves, the sea's depth).
+2. Compound leaves (`_feather`): each leaflet is a veined leaf of the tree's own outline, not a triangle.
+3. Leaf-cluster cards (`PlantLeafShapes.add_leaf_card`, a procedural cluster of ~12 small veined
+   leaves drawn in `flora_wind.gdshader`, alpha-cut): used for the `_mass` clumps and the single leaves
+   of non-compound trees. Not yet seen on a tree of that kind (the test meadow's tree is compound).
+Cost: with plants on, at High, the greenest meadow went from ~116 fps / 8.5 M triangles to ~88 fps /
+14.6 M triangles (RTX 4090). Next: where those triangles are (trees at full detail within 100 m).

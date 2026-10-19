@@ -94,6 +94,25 @@ static func _polar(centre: Vector2, spot: Vector2, squeeze: float) -> Vector2:
 	return Vector2(centre.x + sin(angle) * spot.y * squeeze, centre.y + cos(angle) * spot.y)
 
 
+## A cluster of leaves as one card (two triangles): a quad from the stalk `base` along `axis`, `length` long
+## and about as wide, facing `normal`. The shader (flora_wind.gdshader) draws a dozen small veined leaves
+## on it and cuts the rest away, so a crown reads as foliage (many small leaves), not as a few huge
+## flat ones, for a fraction of the triangles. UV2.y above 1.5 marks a card; UV2.x is its own dice.
+static func add_leaf_card(builder: MeshBuilder, base: Vector3, axis: Vector3, normal: Vector3,
+		length: float, base_color: Color, tip_color: Color, dice: float) -> void:
+	var right := axis.cross(normal).normalized()
+	var half := length * 0.5
+	var a := base - right * half * 0.8
+	var b := base + right * half * 0.8
+	var c := base + axis * length + right * half
+	var d := base + axis * length - right * half
+	var mark := Vector2(dice, 2.0 + dice)
+	builder.add_tri_uv(a, b, c, base_color, base_color, tip_color, Vector2(0.1, 0.0),
+			Vector2(0.9, 0.0), Vector2(1.0, 1.0), mark)
+	builder.add_tri_uv(a, c, d, base_color, tip_color, tip_color, Vector2(0.1, 0.0),
+			Vector2(1.0, 1.0), Vector2(0.0, 1.0), mark)
+
+
 ## One leaf as a fan of triangles around a centre point that sits a little above the leaf (the
 ## leaf is folded along its midrib, so its two halves catch the light differently), with the tip
 ## bent down by `curl`. `axis` runs from the stalk to the tip, `normal` is the side facing the sky.

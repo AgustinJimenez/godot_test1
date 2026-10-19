@@ -8,6 +8,7 @@ const CAP_TOP := 1
 const CAP_BOTTOM := 2
 
 var xf := Transform3D.IDENTITY
+var leaf_cards := true ## broadleaf crowns as cards of many small leaves in the realistic look
 var detailed := false # finer geometry for the realistic look: rounder rings, 4x the blob facets
 var leafless := false # a debug look: tree builders leave their leaves out (bare branches and trunk)
 var _vertices := PackedVector3Array()
