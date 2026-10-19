@@ -185,3 +185,8 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   sizes, 3 cm deep; the chunks shade each other from the sun, 3 steps toward `cloud_sun_world`). Its patterns change at three scales
   (`zone_big` tens of metres: which size dominates and how thick; `zone_mid` a few metres: how pale, grey and dense the fine; `zone_far`
   hundreds: the hue of the soil), and each fragment is nudged off its grid by a noise (all of them wrap at 1024 m). +0.5 ms GPU more.
+- Debris on the gravel (planet_ground.gdshader): among the fragments stones of other kinds (granite, limestone, basalt, ochre sandstone,
+  quartz; pale ones where the rock of the place is pale), twigs (`sticks()`), bark chips and fallen leaves (`leaf_litter()`, rust, brown, olive
+  and straw), thicker on the dark soil of forests and in patches of a few metres (`litter_zone`). +1 ms GPU (77 fps against 91 in the lab
+  with the turf off, on a 4090: the gravel is now the dearest part of the ground; lower `crumb_dist` limits or drop a size to buy it back).
+  Debugging note: to see a layer force its zone to 1.0 in a copy of the shader, and put a loud colour on it first.

@@ -214,6 +214,79 @@ void vertex() {
 	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
+// Twigs and sticks lying on the ground: in each cell of 1/`scale` metres (some have none) a thin rod `length_cells` long, `radius_cells` thick, at
+// a random angle. Out: `h` how high the rod stands at the point (0 off it .. 1 along its axis), `lean` the way its round surface tilts the light,
+// `tone` its own tone, `halo` how close the point is to a rod (a shadow on the ground beside it).
+void sticks(vec3 p, float scale, float period, float length_cells, float radius_cells, out float h, out vec3 lean, out float tone,
+		out float halo) {
+	vec3 q = p * scale;
+	vec3 base = floor(q);
+	vec3 toward = vec3(fract(q.x) < 0.5 ? -1.0 : 1.0, fract(q.y) < 0.5 ? -1.0 : 1.0, fract(q.z) < 0.5 ? -1.0 : 1.0);
+	h = 0.0;
+	lean = vec3(0.0);
+	tone = 0.5;
+	halo = 0.0;
+	for (int i = 0; i < 2; i++) {
+		for (int j = 0; j < 2; j++) {
+			for (int k = 0; k < 2; k++) {
+				vec3 c = base + vec3(float(i), float(j), float(k)) * toward;
+				vec3 w = mod(c, period);
+				float present = step(0.55, hash3(w + 31.7));
+				vec3 centre = c + 0.3 + 0.4 * vec3(hash3(w + 1.1), hash3(w + 4.3), hash3(w + 8.9));
+				vec3 dir = normalize(vec3(hash3(w + 21.3) - 0.5, (hash3(w + 23.7) - 0.5) * 0.35, hash3(w + 27.1) - 0.5));
+				vec3 d = q - centre;
+				float half_length = length_cells * (0.5 + 0.5 * hash3(w + 13.3)) * 0.5;
+				float along = clamp(dot(d, dir), -half_length, half_length);
+				vec3 perp = d - dir * along;
+				float ratio = length(perp) / (radius_cells * (0.7 + 0.6 * hash3(w + 6.1)));
+				halo = max(halo, present * smoothstep(2.6, 1.0, ratio));
+				float height = max(1.0 - ratio * ratio, 0.0) * present;
+				if (height > h) {
+					h = height;
+					lean = perp / max(length(perp), 0.0001) * ratio * 0.9;
+					tone = hash3(w + 5.9);
+				}
+			}
+		}
+	}
+}
+
+// Fallen leaves, flat on the ground: in each cell of 1/`scale` metres a leaf (some have none) pointed at both ends, at a random angle, on the
+// plane of `across` and `up` (the ground's own axes). Returns x: 1 inside a leaf, y: its tone (0..1), z: its midrib (0..1); the lower leaves are
+// covered by the ones with the larger dice.
+vec3 leaf_litter(vec3 p, vec3 ground_up, float scale) {
+	vec3 right = abs(ground_up.z) < 0.9 ? normalize(cross(ground_up, vec3(0.0, 0.0, 1.0))) : normalize(cross(ground_up, vec3(1.0, 0.0, 0.0)));
+	vec3 forward = cross(ground_up, right);
+	vec2 q = vec2(dot(p, right), dot(p, forward)) * scale;
+	vec2 base = floor(q);
+	float best = -1.0;
+	vec3 result = vec3(0.0);
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			vec2 c = base + vec2(float(i), float(j));
+			vec3 w = vec3(mod(c, 1024.0 * scale), 7.7);
+			float dice = hash3(w + 3.1);
+			if (hash3(w + 17.3) < 0.38 || dice <= best) { // some cells have no leaf
+				continue;
+			}
+			vec2 centre = c + 0.5 + (vec2(hash3(w + 1.9), hash3(w + 5.3)) - 0.5) * 0.7;
+			float angle = hash3(w + vec3(9.7, 2.3, 5.1)) * 6.2831853;
+			vec2 axis = vec2(cos(angle), sin(angle));
+			vec2 d = q - centre;
+			float u = dot(d, axis) / (0.36 + 0.2 * hash3(w + vec3(11.1, 3.7, 1.3))); // along the leaf, -1 stalk .. 1 tip
+			float v = dot(d, vec2(-axis.y, axis.x)) / (0.2 + 0.1 * hash3(w + vec3(13.9, 6.1, 2.2)));
+			if (abs(u) < 1.0) {
+				float half_width = pow(max(1.0 - u * u, 0.0), 0.75) * (u < 0.0 ? 0.8 : 1.0);
+				if (abs(v) < half_width) {
+					best = dice;
+					result = vec3(1.0, hash3(w + 15.1), 1.0 - smoothstep(0.0, 0.16, abs(v)));
+				}
+			}
+		}
+	}
+	return result;
+}
+
 // The height (metres) of the crumbly ground at `p` for the parallax march: only the two coarser sizes of fragments (the finest are
 // under a centimetre and would not show in the parallax), each from where it stands out of the soil.
 float crumb_height(vec3 p, float size_mid, float size_big, float cover_mid, float cover_big) {
@@ -372,11 +445,22 @@ void fragment() {
 				stones(hit + 40.0 + float(crumb_class) * 13.0, crumb_scale, 1024.0 * crumb_scale, class_size, 0.5, 0.4, c_h, c_lean,
 						c_tone, c_gap);
 				float c_cover = smoothstep(0.0, 0.1, c_h) * class_cover * crumb_fade;
-				// the fragments are the soil's own colour, darker or lighter, a few much lighter (dried crust), a few grey pebbles
+				// the fragments are the soil's own colour, darker or lighter, and among them stones of other kinds (what the rocks of the place and
+				// the rivers brought): grey granite, pale limestone and white quartz, dark basalt and shale, ochre sandstone; more of the pale
+				// ones where the rock of the place is pale, of the dark ones where it is dark
 				float lighter = 0.62 + 0.85 * c_tone + 0.2 * c_h + (zone_mid - 0.5) * 0.35;
 				vec3 fragment = paint * lighter;
-				fragment = mix(fragment, vec3(0.1, 0.095, 0.09) * (0.7 + 0.6 * c_tone),
-						smoothstep(0.88 - 0.1 * zone_mid, 0.95 - 0.08 * zone_mid, c_tone) * 0.9 * (crumb_class == 2 ? 0.0 : 1.0));
+				float kind_dice = fract(c_tone * 7.31 + zone_big * 3.0);
+				float other = (crumb_class == 2 ? 0.2 : 1.0) * (0.05 + 0.12 * zone_mid + 0.05 * float(crumb_class)); // how many are of another kind
+				float is_other = smoothstep(other, other * 0.7, fract(c_tone * 3.77 + 0.31));
+				vec3 granite = vec3(0.17, 0.165, 0.16) * (0.7 + 0.7 * c_tone);
+				vec3 limestone = vec3(0.34, 0.3, 0.24) * (0.8 + 0.5 * c_tone);
+				vec3 quartz = vec3(0.42, 0.4, 0.37) * (0.8 + 0.4 * c_tone);
+				vec3 basalt = vec3(0.04, 0.04, 0.042) * (0.8 + 0.6 * c_tone);
+				vec3 ochre = vec3(0.34, 0.2, 0.06) * (0.8 + 0.5 * c_tone);
+				float pale_rock = geology.z;
+				vec3 stone = kind_dice < 0.3 ? granite : (kind_dice < 0.3 + 0.35 * pale_rock ? limestone : (kind_dice < 0.7 ? basalt : (kind_dice < 0.86 ? ochre : quartz)));
+				fragment = mix(fragment, stone, is_other * 0.92);
 				fragment = mix(fragment, vec3(0.5, 0.36, 0.26) * (0.8 + 0.5 * c_tone), smoothstep(0.1, 0.0, c_tone) * 0.75 * (crumb_class == 2 ? 0.0 : 1.0)); // pale chips
 				paint = mix(paint, fragment, c_cover);
 				paint *= 1.0 - c_gap * class_cover * crumb_fade * 0.8; // the dark gap hugging each fragment
@@ -385,6 +469,35 @@ void fragment() {
 				rough = mix(rough, 0.82, c_cover * strength);
 			}
 			paint *= 1.0 - 0.55 * shadow * parallax_fade;
+			// wood and litter: twigs, bark chips and fallen leaves, thicker on the dark soil of forests (organic matter) and in patches
+			float forest_floor = smoothstep(0.42, 0.68, soil_organic) * 0.8 + 0.2;
+			float litter_zone = smoothstep(0.25, 0.75, noise3(on_planet * 0.1875 + 13.0, 192.0)) * (0.35 + 0.65 * forest_floor);
+			float litter_fade = 1.0 - smoothstep(14.0, 30.0, crumb_dist);
+			if (litter_zone > 0.02 && litter_fade > 0.01) {
+				float st_h;
+				vec3 st_lean;
+				float st_tone;
+				float st_halo;
+				sticks(hit + 77.0, 3.2, 1024.0 * 3.2, 0.8, 0.045, st_h, st_lean, st_tone, st_halo); // twigs a quarter of a metre long
+				float stick_cover = smoothstep(0.0, 0.2, st_h) * litter_zone * litter_fade * crumbly;
+				vec3 wood = paint * vec3(0.3, 0.24, 0.2) * (0.6 + 0.9 * st_tone);
+				paint *= 1.0 - st_halo * litter_zone * litter_fade * crumbly * 0.3;
+				paint = mix(paint, wood, stick_cover);
+				vec3 stick_world = (world_from_planet * vec4(st_lean, 0.0)).xyz;
+				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(stick_world, 0.0)).xyz * stick_cover * 1.4 * strength);
+				sticks(hit + 91.0, 14.0, 1024.0 * 14.0, 0.55, 0.16, st_h, st_lean, st_tone, st_halo); // bark chips and small sticks
+				float chip_cover = smoothstep(0.0, 0.2, st_h) * litter_zone * litter_fade * crumbly * (1.0 - smoothstep(8.0, 16.0, crumb_dist));
+				paint = mix(paint, paint * vec3(0.32, 0.25, 0.2) * (0.6 + 0.9 * st_tone), chip_cover);
+				float leaf_fade = litter_fade * (0.3 + 0.7 * forest_floor);
+				vec3 leaves = leaf_litter(hit + 53.0, normalize(anchor_up), 9.0);
+				float leaf_cover = leaves.x * litter_zone * leaf_fade * mix(0.6, 1.0, crumbly);
+				float palette = fract(leaves.y * 5.3);
+				// dead leaves of a few kinds: dark brown, rust, olive, pale straw; the leaf's own tone and a lighter midrib
+				vec3 leaf_tint = palette < 0.3 ? vec3(0.2, 0.15, 0.1) : (palette < 0.55 ? vec3(0.7, 0.28, 0.12) : (palette < 0.8 ? vec3(0.3, 0.34, 0.1) : vec3(1.8, 1.35, 0.7)));
+				leaf_tint *= 0.75 + 0.5 * leaves.y;
+				leaf_tint = mix(leaf_tint, leaf_tint * 1.6 + 0.08, leaves.z * 0.5);
+				paint = mix(paint, paint * leaf_tint, clamp(leaf_cover * 1.2, 0.0, 0.97));
+			}
 		}
 		if (level > 1.5) {
 			// the finer ground (High and up): a bump a hand wide, crevices that are darker, ripples
