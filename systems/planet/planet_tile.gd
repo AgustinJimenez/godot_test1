@@ -332,6 +332,13 @@ func _add_occluder(positions: PackedVector3Array, side: int, cells: int) -> void
 			var first := row * across + column
 			indices.append_array([first, first + across, first + 1, first + 1, first + across,
 					first + across + 1])
+	# the tile is built on a worker thread but the rendering server is fed from the main thread only:
+	# the occluder is made there (a deferred call; made on the worker it left null occluders and,
+	# now and then, a crash when the tile was freed)
+	call_deferred(&"_make_occluder", vertices, indices)
+
+
+func _make_occluder(vertices: PackedVector3Array, indices: PackedInt32Array) -> void:
 	var occluder := ArrayOccluder3D.new()
 	occluder.set_arrays(vertices, indices)
 	var instance := OccluderInstance3D.new()
