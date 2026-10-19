@@ -146,6 +146,7 @@ public:
 	PackedVector3Array row_dirs(double p_lat, double p_u0, double p_du, int p_width) const;
 	// 1 where the ground is dry land (0 or more), else 0
 	PackedByteArray land_of(const PackedFloat32Array &p_grounds) const;
+	Dictionary profile_take() const;
 	double water_at(const Vector3 &p_dir, double p_ground) const;
 	bool near_water(const Vector3 &p_dir, double p_ground, double p_margin) const;
 	Vector3 flow_at(const Vector3 &p_dir) const;

@@ -9,11 +9,23 @@
 #include <atomic>
 #include <thread>
 #include <vector>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 
 using namespace godot;
 
 namespace {
+
+// Nanoseconds the map's rows spent in the costly parts (`profile`): read and cleared by the script's chart log
+std::atomic<int64_t> prof_clouds{ 0 }, prof_ice{ 0 }, prof_illustrated{ 0 };
+struct Timed {
+	std::atomic<int64_t> &sink;
+	std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+	explicit Timed(std::atomic<int64_t> &p_sink) :
+			sink(p_sink) {}
+	~Timed() { sink += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count(); }
+};
 
 inline double smooth(double p_from, double p_to, double p_x) {
 	if (p_from == p_to) {
@@ -47,6 +59,7 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("river_waters", "dirs"), &PlanetCrustNative::river_waters);
 	ClassDB::bind_method(D_METHOD("water_at", "dir", "ground"), &PlanetCrustNative::water_at);
 	ClassDB::bind_method(D_METHOD("tinted", "colours", "tint"), &PlanetCrustNative::tinted);
+	ClassDB::bind_method(D_METHOD("profile_take"), &PlanetCrustNative::profile_take);
 	ClassDB::bind_method(D_METHOD("row_dirs", "lat", "u0", "du", "width"), &PlanetCrustNative::row_dirs);
 	ClassDB::bind_method(D_METHOD("land_of", "grounds"), &PlanetCrustNative::land_of);
 	ClassDB::bind_method(D_METHOD("near_water", "dir", "ground", "margin"), &PlanetCrustNative::near_water);
@@ -1138,7 +1151,10 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 				const bool ready_grid = have_grid && season_mean.size() >= gw * gh;
 				double cover = 0.0;
 				if (ready_grid) {
-					cover = (double)cloud_cells(dir, broad, grid.ptr(), gw, gh, p_params.get("decl", 0.0), p_params.get("days", 0.0)).x;
+					{
+						Timed timed(prof_clouds);
+						cover = (double)cloud_cells(dir, broad, grid.ptr(), gw, gh, p_params.get("decl", 0.0), p_params.get("days", 0.0)).x;
+					}
 				}
 				if (p_layer == 11) {
 					r = g = b = cover;
@@ -1149,6 +1165,7 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 				if (ground < 0.0) {
 					const double depth = std::sqrt(clampd(-ground / (relief * 0.35), 0.0, 1.0));
 					if (p_layer == 8) {
+						Timed timed_ice(prof_ice);
 						const double ice = sea_ice(dir) * 0.92;
 						lr = (0.32 + (0.03 - 0.32) * depth) * (1.0 - ice) + 0.90 * ice;
 						lg = (0.62 + (0.12 - 0.62) * depth) * (1.0 - ice) + 0.94 * ice;
@@ -1159,6 +1176,7 @@ PackedByteArray PlanetCrustNative::data_row(int p_layer, const PackedVector3Arra
 						lb = 0.52 + (0.3 - 0.52) * depth;
 					}
 				} else if (p_layer == 8) {
+					Timed timed_land(prof_illustrated);
 					const Color land = illustrated_colour(dir, ground, 0.1);
 					lr = land.r;
 					lg = land.g;
@@ -1861,5 +1879,14 @@ PackedByteArray PlanetCrustNative::land_of(const PackedFloat32Array &p_grounds) 
 	for (int index = 0; index < p_grounds.size(); index++) {
 		out.set(index, p_grounds[index] >= 0.0f ? 1 : 0);
 	}
+	return out;
+}
+
+// {"clouds": ms, "sea_ice": ms, "land_colours": ms} (the sum over all threads) since the last call
+Dictionary PlanetCrustNative::profile_take() const {
+	Dictionary out;
+	out["clouds"] = (double)prof_clouds.exchange(0) / 1.0e6;
+	out["sea_ice"] = (double)prof_ice.exchange(0) / 1.0e6;
+	out["land_colours"] = (double)prof_illustrated.exchange(0) / 1.0e6;
 	return out;
 }

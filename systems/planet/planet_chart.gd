@@ -44,6 +44,7 @@ var _ground_bands: Array[PackedFloat32Array] = [] # each worker's heights (the m
 var _land_bands: Array[PackedByteArray] = [] # 1 where the pixel is land (for the coast lines)
 var _rows_done := 0
 var _mutex := Mutex.new()
+var _started_usec := 0
 var _cancelled := false # a chart nobody wants any more: its workers skip the pixels
 
 
@@ -94,6 +95,10 @@ static func _along(t: float, colors: Array, stops: Array) -> Color:
 
 func start(noise: PlanetNoise) -> void:
 	_noise = noise
+	_started_usec = Time.get_ticks_usec()
+	PlanetChartProfile.take() # (a new picture starts its own account)
+	if noise.native != null and noise.native.has_method(&"profile_take"):
+		noise.native.call(&"profile_take")
 	_bands.resize(workers)
 	_land_bands.resize(workers)
 	_ground_bands.resize(workers)
@@ -124,12 +129,15 @@ func texture() -> ImageTexture:
 	for thread in _threads:
 		thread.wait_to_finish()
 	_threads.clear()
+	var mark := Time.get_ticks_usec()
 	var all := PackedByteArray()
 	for band in _bands:
 		all.append_array(band)
+	mark = PlanetChartProfile.lap("join the bands", mark)
 	var tidy := layer != Layer.PLATES and layer != Layer.CLOUD_MASK
 	if tidy and _noise.native != null and _noise.native.has_method(&"despeckle"):
 		all = _noise.native.call(&"despeckle", all, size.x, size.y) # (lone dots are grain)
+		mark = PlanetChartProfile.lap("despeckle", mark)
 	var full_map := rect == Rect2(0.0, 0.0, 1.0, 1.0) and _pixel_metres > SMOOTH_PIXEL
 	if not _cancelled and full_map and not _noise.map_heights.has(size):
 		var heights := PackedFloat32Array()
@@ -137,6 +145,7 @@ func texture() -> ImageTexture:
 			heights.append_array(band)
 		if heights.size() == size.x * size.y:
 			_noise.map_heights[size] = heights
+		mark = PlanetChartProfile.lap("keep the heights", mark)
 	var far := _pixel_metres > CALM_PIXEL * 50.0 # (kilometres a pixel: Elevation is grain too)
 	if layer == Layer.ATLAS and _noise.native != null: # (flat colours: a blur, coast lines)
 		var atlas_passes := 4 if _pixel_metres > 2000.0 else 1 # (close in the hatching must stay)
@@ -147,6 +156,7 @@ func texture() -> ImageTexture:
 			atlas_land.append_array(band)
 		if atlas_land.size() >= size.x * size.y:
 			all = _noise.native.call(&"coast_lines", all, atlas_land, size.x, size.y)
+		mark = PlanetChartProfile.lap("atlas blur and coasts", mark)
 	if _noise.native != null and (layer in SMOOTHED or (layer == Layer.ELEVATION and far)):
 		# (a data layer is a smooth gradient: the grain of the small pixels is averaged away, and a thin
 		# dark line follows the coasts so the sea and the land read through the colours)
@@ -158,8 +168,14 @@ func texture() -> ImageTexture:
 			land_all.append_array(band)
 		if land_all.size() >= size.x * size.y:
 			all = _noise.native.call(&"coast_lines", all, land_all, size.x, size.y)
+		mark = PlanetChartProfile.lap("smooth and coasts", mark)
 	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, all)
-	return ImageTexture.create_from_image(image)
+	var made := ImageTexture.create_from_image(image)
+	PlanetChartProfile.lap("image and texture", mark)
+	PlanetChartProfile.report("%s %dx%d%s" % [NAMES[mini(layer, NAMES.size() - 1)] if layer < NAMES.size() else "Cloud mask",
+			size.x, size.y, "" if rect == Rect2(0.0, 0.0, 1.0, 1.0) else " (a part)"],
+			float(Time.get_ticks_usec() - _started_usec) / 1000.0, _noise.native)
+	return made
 
 
 ## Stops drawing (the rows still left come out empty and fast); the picture is thrown away.
@@ -207,6 +223,7 @@ func _chart(worker: int) -> void:
 		PlanetMapLog.line("  heights of the whole planet %dx%d: %s" % [size.x, size.y,
 				"from the cache" if use_cache else "computed"])
 	var recorded := PackedFloat32Array()
+	var mark := Time.get_ticks_usec()
 	for row in range(from_row, to_row):
 		if _cancelled:
 			land.resize(land.size() + size.x)
@@ -223,12 +240,16 @@ func _chart(worker: int) -> void:
 		# the heights of the whole row (and the points east and north of it) in one go: the
 		# native crust answers many at once much faster than one by one
 		var north_dirs := PackedVector3Array()
+		mark = Time.get_ticks_usec()
 		var dirs := _row_dirs(lat)
+		mark = PlanetChartProfile.lap("pixel directions", mark)
 		var grounds := PackedFloat32Array()
 		if use_cache:
 			grounds = cached.slice(row * size.x, (row + 1) * size.x)
+			mark = PlanetChartProfile.lap("heights from the cache", mark)
 		else:
 			grounds = _ground_of(dirs, smooth_ground)
+			mark = PlanetChartProfile.lap("heights (the ground)", mark)
 		var east_grounds := grounds
 		var north_grounds := grounds
 		if use_cache:
@@ -248,6 +269,7 @@ func _chart(worker: int) -> void:
 				above = _ground_of(north_dirs, smooth_ground)
 			north_grounds = above
 			above = grounds
+			mark = PlanetChartProfile.lap("heights east and north", mark)
 		var macros := grounds
 		if whole and not use_cache:
 			recorded.append_array(grounds)
@@ -256,8 +278,10 @@ func _chart(worker: int) -> void:
 		elif layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE, Layer.CLOUDS, Layer.SATELLITE,
 				Layer.ATLAS, Layer.CLOUD_MASK]:
 			macros = _ground_of(dirs, true)
+			mark = PlanetChartProfile.lap("heights (the broad ground)", mark)
 		land.append_array(_noise.native.call(&"land_of", grounds) if _noise.native != null
 				else _land_of(grounds))
+		mark = PlanetChartProfile.lap("land mask", mark)
 		if native_rows:
 			if layer == Layer.TERRAIN:
 				bytes.append_array(_noise.native.call(&"terrain_row", dirs, grounds, east_grounds,
@@ -265,6 +289,7 @@ func _chart(worker: int) -> void:
 			else:
 				bytes.append_array(_noise.native.call(&"data_row", int(layer), dirs, grounds, macros,
 						east_grounds, north_grounds, step_lon, _row_params(lat)))
+			mark = PlanetChartProfile.lap("native row colours", mark)
 			_mutex.lock()
 			_rows_done += 1
 			_mutex.unlock()
@@ -284,6 +309,7 @@ func _chart(worker: int) -> void:
 			bytes[at + 1] = clampi(int(color.g * 255.0), 0, 255)
 			bytes[at + 2] = clampi(int(color.b * 255.0), 0, 255)
 			at += 3
+		mark = PlanetChartProfile.lap("script pixel colours", mark)
 		_mutex.lock()
 		_rows_done += 1
 		_mutex.unlock()
