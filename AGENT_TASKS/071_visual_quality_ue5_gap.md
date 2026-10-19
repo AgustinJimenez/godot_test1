@@ -152,3 +152,15 @@ At a coast on seed 8 (`--dir=-0.71513,0.16242,0.67986 --view-alt=5`) the Ultra p
 the D3D12 device get removed (`0x887a0005`, the game hangs). With SDFGI off the same view renders. So
 the setting stays (manual, labelled experimental) but no preset enables it. Not understood why: the
 planet is large and SDFGI wants a small scene; a custom `sdfgi_min_cell_size` per planet size may fix it.
+
+## Water (looked at, one fix)
+
+- Far sun glints were a speckle (the fine ripples alias below a pixel): the ripples now fade out by
+  500 m, the long waves partly by 4 km and the gloss softens with distance, so the glint is one
+  soft patch. Near water is unchanged.
+- The water was otherwise sound: with the lab's camera really above the surface it refracts, absorbs,
+  foams and reflects. What looked wrong in several pictures was the camera being UNDER the sea (the lab
+  `--view-alt` is above the ground, so over a deep sea it is far below the surface, and the lab does
+  not switch on the underwater fog the game uses with a player), and the yellow-green haze colour at the
+  horizon that the sea (and the land) reflect.
+- Lab note: `--sea --water` are needed to see any water; without them the sea is not drawn at all.

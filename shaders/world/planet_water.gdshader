@@ -105,8 +105,13 @@ void fragment() {
 		flat_normal = -flat_normal;
 	}
 	// realistic: smooth waves with fine ripples on top
-	vec2 slope = wave_slope(world_pos.xz, TIME * wave_speed) * wave_height * 1.1 * roll;
-	slope += ripples(world_pos.xz, TIME) * mix(0.35, 1.0, roll);
+	// far away the fine ripples (smaller than a pixel) would only alias into a speckle of sun glints:
+	// they fade out with the distance, then the long waves, so the glint is one soft patch
+	float away = length(VERTEX);
+	float fine_keep = 1.0 - smoothstep(40.0, 500.0, away);
+	float long_keep = 1.0 - 0.7 * smoothstep(400.0, 4000.0, away);
+	vec2 slope = wave_slope(world_pos.xz, TIME * wave_speed) * wave_height * 1.1 * roll * long_keep;
+	slope += ripples(world_pos.xz, TIME) * mix(0.35, 1.0, roll) * fine_keep;
 	vec3 smooth_normal = normalize((VIEW_MATRIX * vec4(-slope.x, 1.0, -slope.y, 0.0)).xyz);
 	NORMAL = normalize(mix(flat_normal, smooth_normal, 0.9)); // planet water: smooth glint, no facet squares
 	float behind = scene_z(SCREEN_UV, INV_PROJECTION_MATRIX);
@@ -142,7 +147,7 @@ void fragment() {
 	EMISSION = bed * transmit * (1.0 - foam) * (1.0 - fresnel * 0.7) * realism;
 	float low_alpha = clamp(mix(color.a, 1.0, foam), 0.0, 1.0);
 	ALPHA = mix(low_alpha, 1.0, realism);
-	ROUGHNESS = mix(mix(0.08, 0.025, realism), 0.6, foam);
+	ROUGHNESS = mix(mix(0.08, 0.025, realism) + 0.1 * smoothstep(300.0, 5000.0, away), 0.6, foam);
 	SPECULAR = mix(0.7, 1.0, realism);
 	METALLIC = 0.0;
 }
