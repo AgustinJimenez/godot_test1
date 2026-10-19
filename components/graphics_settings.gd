@@ -31,7 +31,7 @@ const DEFAULT_VALUES: Dictionary = {
 	&"auto_exposure": false,
 	&"reflections": 0, # 0 off, 1 low, 2 high (screen space)
 	&"volumetric_fog": false, # light shafts near the ground
-	&"sdfgi": false, # bounced light near the camera (costly)
+	&"sdfgi": false, # bounced light near the camera (experimental: reset the GPU in a coast view, so no preset turns it on)
 	&"cloud_shadows": false, # the clouds' shadow moving over the ground
 	&"ground_detail": 1, # 0 plain, 1 the noise detail, 2 + fine bump, ripples, glints, 3 + finest
 	&"vsync": true,
@@ -74,7 +74,7 @@ const PRESETS: Dictionary = {
 		&"ssao": true, &"ssil": true, &"glow": true, &"cloud_quality": 2,
 		&"upscaler": 2, &"debanding": true, &"colour_grade": 1, &"auto_exposure": true,
 		&"reflections": 2, &"volumetric_fog": true, &"ground_detail": 3,
-		&"cloud_shadows": true, &"sdfgi": true,
+		&"cloud_shadows": true, &"sdfgi": false,
 	},
 }
 

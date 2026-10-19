@@ -145,3 +145,10 @@ the fine octaves left out at coarse tiles (now replaced by their average) and th
 hotspot trail; the river valleys fade out before the edge of the cells they are known in.
 `tests/manual/planet/height_jumps.gd` samples random land lines and reports any step over 8 m (22 of
 596 lines before, 0 on seeds 8 and 3 after). The map cache version was raised (the heights changed).
+
+## SDFGI is not on in any preset (it reset the GPU)
+
+At a coast on seed 8 (`--dir=-0.71513,0.16242,0.67986 --view-alt=5`) the Ultra preset with SDFGI made
+the D3D12 device get removed (`0x887a0005`, the game hangs). With SDFGI off the same view renders. So
+the setting stays (manual, labelled experimental) but no preset enables it. Not understood why: the
+planet is large and SDFGI wants a small scene; a custom `sdfgi_min_cell_size` per planet size may fix it.
