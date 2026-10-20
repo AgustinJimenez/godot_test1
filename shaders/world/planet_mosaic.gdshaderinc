@@ -31,6 +31,7 @@ uniform float mosaic_slab_tilt : hint_range(0.0, 1.0) = 0.35; // how far the top
 uniform float mosaic_top_detail : hint_range(0.0, 1.0) = 0.3; // rough, pitted tops
 uniform float mosaic_cracks : hint_range(0.0, 1.0) = 0.25; // cracks across the large plates
 uniform float mosaic_veins : hint_range(0.0, 1.0) = 0.4; // bands of tone across the plates (layers of the crust)
+uniform float mosaic_dust : hint_range(0.0, 1.0) = 0.5; // pale dust settled on the flat tops, in patches
 uniform float mosaic_side_strata : hint_range(0.0, 1.0) = 0.5; // bands down the steep sides, so that they are not a smear
 // The heights of the plates baked into a picture round the camera (PlanetGroundBake, planet_mosaic_bake.gdshader): red the large plates,
 // green the medium ones, both before the fade with distance. The picture wraps (a torus): the ground at p is at p / size, repeated. The
@@ -155,7 +156,13 @@ void mosaic_surface(vec2 p, vec3 soil, vec3 fade, out vec3 colour, out float ao,
 			float bands = sin((dot(m.local, across) * (5.0 + 9.0 * m.tone) + wobble * 2.5) * 3.14159);
 			fragment *= 1.0 + mosaic_veins * 0.2 * bands;
 		}
-		fragment = mix(fragment, vec3(dot(fragment, vec3(0.33))), 0.0);
+		if (mosaic_dust > 0.001 && s > 0) {
+			// dust settles where it is flat: pale and flat of tone, in patches
+			float flat_top = 1.0 - smoothstep(0.3, 1.6, length(m.lean));
+			float patch_noise = noise3(vec3(p * per_m[s] * 2.5, scale_k[s] + 7.0), 262144.0);
+			float dust = clamp(mosaic_dust * 1.6, 0.0, 1.0) * flat_top * smoothstep(0.42, 0.58, patch_noise) * rim;
+			fragment = mix(fragment, vec3(3.6, 3.0, 2.3) * (0.8 + 0.25 * m.tone), dust);
+		}
 		if (m.pebble > 0.5 && s < 2) {
 			// a pebble: grey, pale or a dark crystal, not the soil's red
 			vec3 pebble_grey = m.kind < 0.55 ? vec3(0.09, 0.085, 0.08) : (m.kind < 0.85 ? vec3(0.17, 0.16, 0.14) : vec3(0.36, 0.33, 0.27));
