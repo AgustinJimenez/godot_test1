@@ -19,6 +19,7 @@ const STEP := 64 ## texels the window moves at a time: a strip this wide is draw
 const RECTS := 8 ## a strip is at most four pieces (it wraps in x and in y), and two strips
 
 var pixels := 2048 ## the picture is this many texels on a side
+var hdr := false ## 16-bit floats (32 MB) or 8 bits (16 MB: heights in 0.1 mm steps, same look)
 var metres := 12.0 ## and covers this much ground
 var _view: SubViewport
 var _rects: Array[ColorRect] = []
@@ -28,6 +29,7 @@ var _origin := Vector2i.ZERO ## the world texel at the window's corner
 var _key := 0
 var _valid := false
 var _used := 0 ## the rects drawn this frame
+var _paused := false
 
 
 ## Makes the picture and gives it to `ground` (the ground material).
@@ -37,7 +39,7 @@ func setup(ground: ShaderMaterial, texels := 2048, size_metres := 12.0) -> void:
 	metres = size_metres
 	_view = SubViewport.new()
 	_view.size = Vector2i(pixels, pixels)
-	_view.use_hdr_2d = true
+	_view.use_hdr_2d = hdr
 	_view.transparent_bg = false
 	_view.render_target_clear_mode = SubViewport.CLEAR_MODE_NEVER
 	_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -62,6 +64,18 @@ func set_parameter(key: StringName, value: Variant) -> void:
 	_valid = false
 
 
+## Stops using the picture (the camera is high above the ground, where the parallax is off): the
+## shader works the heights out again and nothing is drawn until `follow` is called.
+func pause() -> void:
+	if _paused:
+		return
+	_paused = true
+	_valid = false
+	for rect in _rects:
+		rect.visible = false
+	_ground.set_shader_parameter(&"mosaic_height_window", Vector4.ZERO)
+
+
 ## The ground's own metres at the world position `at`, as the ground shader finds them: the
 ## position from the anchor plus the wrapped anchor, along the anchor's right and forward axes.
 static func flat_of(frame: PlanetFrame, at: Vector3) -> Vector2:
@@ -76,6 +90,7 @@ static func flat_of(frame: PlanetFrame, at: Vector3) -> Vector2:
 ## Keeps the picture round `centre` (the camera in the march's coordinates). `key` names the
 ## frame those coordinates belong to: a new key draws everything again.
 func follow(centre: Vector2, key: int) -> void:
+	_paused = false
 	for rect in _rects:
 		rect.visible = false
 	_used = 0

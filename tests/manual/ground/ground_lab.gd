@@ -33,6 +33,8 @@ extends Node
 ##       (2048 and 12 m: 6 mm a pixel, PlanetGroundBake) that the parallax march reads, instead of
 ##       working the pattern out at every step (0, the default: worked out)
 ##     bake_scroll=X,Z   with bake: start the picture that far away and scroll it back (a check)
+##     bakehdr=0   an 8-bit picture (16 MB) instead of 16-bit floats (32 MB)   bake_redraw=1   draw
+##       the whole picture every frame (to time a redraw: the profile minus the one without)
 ##     ssao=0   no SSAO and SSIL (to see what the depth pre-pass costs)
 ## Prints GROUND_LAB with the numbers of the run.
 
@@ -240,6 +242,7 @@ func _setup_bake() -> void:
 		return
 	var metres := float(_options.get("bakesize", "12"))
 	_bake = PlanetGroundBake.new()
+	_bake.hdr = _options.get("bakehdr", "1") != "0"
 	add_child(_bake)
 	_bake.setup(PlanetTile.ground_material(), pixels, metres)
 	_send_bake_parameters()
@@ -265,7 +268,8 @@ func _follow_bake() -> void:
 	if _options.has("bake_scroll") and _frames < 2 and not _live:
 		var away := String(_options["bake_scroll"]).split(",")
 		centre += Vector2(float(away[1]), float(away[0]))
-	_bake.follow(centre, 1)
+	# (bake_redraw: a new key every frame, so the whole picture is drawn every frame: its cost alone)
+	_bake.follow(centre, _frames + 2 if _options.has("bake_redraw") else 1)
 
 
 func _rebuild() -> void:

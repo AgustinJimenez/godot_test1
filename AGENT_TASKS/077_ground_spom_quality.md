@@ -137,3 +137,36 @@ Not done / to look at:
 3. Not tried: third-person or a far camera behind the player (the window is 12 m, the march reads within about 4 m of the camera), an
    Earth-size planet, real play. 16 or 20 (or more) samples now cost almost the same: decide by eye.
 4. The other near-ground costs (the colour layers once at the hit, the scans, the stones) are what is left of the ground's ~5 ms.
+
+
+## Third step (2026-10-20): the format, the redraw, the height gate, the samples
+
+All measured with `godot --gpu-profile --disable-vsync` over 400 frames, mean of the last five seconds, RTX 4090, the standard low-angle
+view, 2048 px over 12 m unless said. The pictures for judging by eye are in `E:/Temp/claude/ground_eval/` (outside the repo): `sheet_low_angle.png`,
+`sheet_macro.png`, `sheet_standing.png`, each the same view worked out / baked 16-bit / baked 8-bit / baked with 32 samples. Live:
+`godot --path . res://tests/manual/ground/ground_lab.tscn -- bake=2048 bakesize=12 [bakehdr=0] [mosaic_pom_max_steps=N]`.
+
+| Setting | Total GPU | Depth pre-pass | Opaque pass |
+| --- | ---: | ---: | ---: |
+| worked out, 16 samples | 13.78 ms | 5.39 | 8.07 |
+| worked out, 20 samples | 16.45 ms | 6.41 | 9.35 |
+| baked, 16 samples | 5.31 ms | 1.54 | 2.30 |
+| baked, 20 samples | 5.42 ms | 1.69 | 2.50 |
+| baked, 32 samples | 6.26 ms | 1.48 | 2.30 |
+| baked 1024 px, 20 samples | 5.13 ms | 1.46 | 2.14 |
+
+- **8 bits against 16-bit floats**: the same picture to two decimals (against the worked-out heights, mean difference 1.03 / 255 low-angle,
+  2.0 macro, 0.23 standing, for both), half the memory (16 MB, not 32). It is the planet's default now (`PLANET_BAKE_16BIT=1` for the other;
+  the lab keeps 16-bit unless `bakehdr=0`).
+- **A full redraw** is timed alone by the profiler's "Render CanvasItems" pass (the lab's `bake_redraw=1` draws everything every frame):
+  1.7 ms at 2048 px (1.85 ms in 8 bits), 0.6 ms at 1024 px. That is what a rebase costs (about every 80 m of walking) and the start;
+  splitting it over frames is not needed on this GPU (a slow one may take ten times as long: one slow frame). 1024 px is the way to
+  halve it again, with softer plate edges.
+- **The height gate**: above 10 m over the ground (`PlanetWorld.BAKE_UP_TO`) the parallax is faded out anyway, so `PlanetGroundBake.pause()`
+  stops drawing and the shader goes back to the worked-out path; it is drawn again from scratch when the camera comes down. A flight
+  across the gate (the fly check) draws it again a few times; nothing else.
+- **The samples**: with the picture, 16, 20 and 32 samples cost 5.3, 5.4 and 6.3 ms. 32 finds thinner features, so it differs more from the
+  20-sample picture (macro: 4.5 / 255 and 6.9 % of pixels against 2.0 and 2.1 % for the baked 20): finer, busier detail. The choice is by
+  eye now.
+- **In the planet** (8 bits, standing, looking down, 1920 x 1009): render GPU 6.6 ms (the worked-out path was 43.5 ms), the picture within
+  0.26 / 255 of it; 20 m up (the gate) 3.6 ms; the windowed walk check had no slow frame, the fly check one (worst 50.5 ms).

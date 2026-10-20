@@ -166,8 +166,9 @@ settles unevenly (more on level ground, broken at the edges). Lab: `-- --weather
 The parallax of the ground's packed plates (task 077) reads the plates' heights from a picture baked round the camera
 (`PlanetGroundBake`, `planet_mosaic_bake.gdshader`) instead of working the pattern out at every step of the march: 43.5 ms down to 6.5 ms
 of render GPU time looking down at the ground, with the same look. The picture is made at run time from the same functions (a cache,
-not an asset), is 2048 px over 12 m, wraps round so that walking draws only a strip, and is drawn again whenever the planet's anchor
-changes (each rebase). On when the graphics setting `ground_detail` is 1 or more; `PLANET_NO_BAKE=1` turns it off.
+not an asset), is 2048 px (8 bits, 16 MB) over 12 m, wraps round so that walking draws only a strip, and is drawn again whenever the planet's anchor
+changes (each rebase, 1.7 ms). It is paused above 10 m over the ground (the parallax is off there). On when the graphics setting
+`ground_detail` is 1 or more; `PLANET_NO_BAKE=1` turns it off, `PLANET_BAKE_16BIT=1` makes it 16-bit floats.
 
 ## Limits
 

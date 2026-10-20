@@ -6,6 +6,7 @@ extends Node3D
 
 const REBASE_DISTANCE := 80.0 ## m walked before the planet is turned level again
 const RECENTER_DISTANCE := 2000.0 ## m from the world origin before everything is shifted back
+const BAKE_UP_TO := 10.0 ## m above the ground: higher up the ground plates have no parallax
 const RAIN_UP_TO := 1500.0 ## m above the ground: higher up there is no rain
 const LOAD_GROUND := 2000.0 ## m of ground and water built before the player is let in
 const LOAD_PLANTS := 60.0 ## m round the player that must be planted before they are let in
@@ -25,6 +26,7 @@ var frame := PlanetFrame.new()
 var surface: PlanetSurface
 var atmosphere: PlanetAtmosphere
 var ground_bake: PlanetGroundBake ## the heights of the near ground's plates, baked (null: none)
+var above_ground := 0.0 ## m of the target over the ground under it (updated every frame)
 var fauna: PlanetFauna
 var swim: PlanetSwim
 var map: PlanetMap
@@ -136,6 +138,8 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 	if (int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 1
 			and not OS.has_environment("PLANET_NO_BAKE") and DisplayServer.get_name() != "headless"):
 		ground_bake = PlanetGroundBake.new() # the parallax of the ground plates reads a picture
+		# (8 bits look the same as 16 and take half the memory)
+		ground_bake.hdr = OS.has_environment("PLANET_BAKE_16BIT")
 		add_child(ground_bake)
 		ground_bake.setup(PlanetTile.ground_material())
 	if target is Player:
@@ -262,6 +266,7 @@ func _keep_the_weather_near_the_ground() -> void:
 	var here := planet_position().normalized()
 	var ground := noise.height(here.x, here.y, here.z)
 	var above := altitude() - ground
+	above_ground = above
 	var low := above < RAIN_UP_TO
 	weather.clouds.visible = false # the planet's clouds are the sky's own (planet_sky.gdshader)
 	weather.rain.visible = low
@@ -390,6 +395,9 @@ func publish_frame() -> void:
 ## drawn again then, the same frame the shader gets the new anchor.
 func _follow_the_ground() -> void:
 	if ground_bake == null or _target == null:
+		return
+	if above_ground > BAKE_UP_TO: # (the parallax fades out within 4 m of the camera)
+		ground_bake.pause()
 		return
 	var camera := get_viewport().get_camera_3d()
 	var at := camera.global_position if camera != null else _target.global_position
