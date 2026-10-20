@@ -61,6 +61,8 @@ func _ready() -> void:
 		"depth": float(_options.get("depth", str(preset["depth"]))), "spacing": float(_options.get("spacing", "0.12")),
 		"density": float(_options.get("density", "1.0")), "strength": float(_options.get("strength", "0.8")),
 		"fov": float(_options.get("fov", "55")), "tilt": float(_options.get("tilt", "0")),
+		"cliff_row_height": 0.45, "cliff_col_width": 1.1, "cliff_warp": 0.4, "cliff_lip": 0.09, "cliff_terraces": 0.5, "cliff_cracks": 0.55,
+		"cliff_sand": 0.5, "cliff_tone": 0.6, "cliff_relief": 1.0, "cliff_seed": 3.0, "cliff_hue": 0.5,
 	}
 	_chips_on = _options.get("chips", "1") != "0"
 	var size_parts: PackedStringArray = String(_options.get("size", "1600x900")).split("x")
@@ -95,6 +97,11 @@ func _ready() -> void:
 	_camera.fov = _values["fov"]
 	_set_view(_options.get("view", "eye"))
 	_apply_sun()
+	for key: String in _values:
+		if key.begins_with("cliff_"):
+			if _options.has(key):
+				_values[key] = float(_options[key]) # (the command line sets them too: cliff_lip=0.12)
+			PlanetTile.ground_material().set_shader_parameter(key, _values[key])
 	_rebuild()
 	if _live:
 		_build_panel()
@@ -301,6 +308,12 @@ func _build_panel() -> void:
 		_chips_on = on
 		_rebuild_chips())
 	column.add_child(chips)
+	var procedural := CheckBox.new()
+	procedural.text = "cliff computed in the shader (off: the baked pictures)"
+	procedural.button_pressed = true
+	procedural.toggled.connect(func(on: bool) -> void:
+		PlanetTile.ground_material().set_shader_parameter(&"cliff_procedural", on))
+	column.add_child(procedural)
 	# (key, label, min, max, step, what it remakes: 0 nothing, 1 the sun, 2 the stones, 3 the ground)
 	var rows := [
 		["sun_elevation", "sun height (deg)", 2.0, 88.0, 1.0, 1], ["sun_azimuth", "sun direction (deg)", 0.0, 360.0, 1.0, 1],
@@ -309,6 +322,12 @@ func _build_panel() -> void:
 		["organic", "organic matter", 0.0, 1.0, 0.05, 3], ["pale", "pale rock", 0.0, 1.0, 0.05, 3], ["depth", "soil depth", 0.0, 1.0, 0.05, 3],
 		["spacing", "stone grid (m)", 0.04, 0.4, 0.01, 2], ["density", "stone odds", 0.0, 3.0, 0.1, 2],
 		["tilt", "lean the patch (-90 = cliff)", -90.0, 90.0, 1.0, 3], ["seed", "patch (seed)", 1.0, 99.0, 1.0, 3], ["fov", "field of view", 20.0, 100.0, 1.0, 0],
+		["cliff_row_height", "cliff: bed thickness (m)", 0.15, 1.5, 0.01, 4], ["cliff_col_width", "cliff: slab width (m)", 0.3, 3.0, 0.05, 4],
+		["cliff_warp", "cliff: edge wander (m)", 0.0, 1.0, 0.01, 4], ["cliff_lip", "cliff: lip width (m)", 0.01, 0.3, 0.005, 4],
+		["cliff_terraces", "cliff: terracing", 0.0, 1.0, 0.05, 4], ["cliff_cracks", "cliff: cracked slabs", 0.0, 1.0, 0.05, 4],
+		["cliff_sand", "cliff: sand shelves", 0.0, 1.0, 0.05, 4], ["cliff_tone", "cliff: tone patches", 0.0, 1.0, 0.05, 4],
+		["cliff_relief", "cliff: relief", 0.0, 4.0, 0.1, 4], ["cliff_seed", "cliff: layout (seed)", 1.0, 99.0, 1.0, 4],
+		["cliff_hue", "cliff: sandstone hue", 0.0, 1.0, 0.05, 4],
 	]
 	for row: Array in rows:
 		var line := HBoxContainer.new()
@@ -342,7 +361,9 @@ func _build_panel() -> void:
 			elif remakes == 2:
 				_chips_wanted = true
 			elif remakes == 3:
-				_rebuild_wanted = true)
+				_rebuild_wanted = true
+			elif remakes == 4:
+				PlanetTile.ground_material().set_shader_parameter(key, value))
 	var hint := Label.new()
 	hint.text = "drag: orbit   wheel: zoom   middle drag: move focus"
 	column.add_child(hint)

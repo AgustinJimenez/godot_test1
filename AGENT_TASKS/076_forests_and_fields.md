@@ -226,3 +226,9 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   rock's hue (the slabs bring light and shadow). `tilt=-70` in the ground lab shows a cliff face. Both the cliff and the scans now go through
   `unrepeated()` (a second sample at another scale and place blended by slow noise: not turned, to keep the slabs level and the normals true)
   so the 1.4 to 3 m repeat does not show. Prior art checked: the Substance Designer cliff workflow (strata, stepping, fractures, chipping).
+- The cliff computed in the shader (`shaders/world/planet_cliff.gdshaderinc`, uniform `cliff_procedural`, default on; off falls back to the
+  baked cliff_c/cliff_n): the generator's recipe as Voronoi cells (3 x 3 rows and columns, wide and low, rows offset) in metres along and up
+  the face, warped, with lip, roll and terraced tops, per-slab tilt and crack, sand on the low places, tone patches, stains; normals by two
+  forward differences (3 height evaluations a plane). Every shape number is a uniform (`cliff_row_height`, `_col_width`, `_warp`, `_lip`,
+  `_terraces`, `_cracks`, `_sand`, `_tone`, `_relief`, `_seed`, `_hue`) with a slider in the ground lab (and a command-line option each), set live.
+  Never repeats, and the layout can change with `cliff_seed` (not yet with the place or the geology). GPU cost not yet measured.

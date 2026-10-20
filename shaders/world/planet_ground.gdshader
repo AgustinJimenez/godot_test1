@@ -232,6 +232,8 @@ vec3 leaf_litter(vec3 p, vec3 ground_up, float scale) {
 	return result;
 }
 
+#include "res://shaders/world/planet_cliff.gdshaderinc"
+
 // A texture sampled so that its repeat does not show: a second look at it, at another scale and place, blended in by a slow noise
 // (the two share no repeat distance, so neither shows through). `uv` in tiles.
 vec4 unrepeated(sampler2D map, vec2 uv) {
@@ -345,19 +347,43 @@ void fragment() {
 			plane_weight /= max(plane_weight.x + plane_weight.y, 0.0001);
 			vec2 uv_a = vec2(spot.x, spot.y) * cliff_scale;
 			vec2 uv_b = vec2(spot.z, spot.y) * cliff_scale;
-			vec4 col_a = unrepeated(cliff_c, uv_a);
-			vec4 col_b = unrepeated(cliff_c, uv_b);
-			vec4 nor_a = unrepeated(cliff_n, uv_a);
-			vec4 nor_b = unrepeated(cliff_n, uv_b);
-			vec3 cliff_colour = col_a.rgb * plane_weight.x + col_b.rgb * plane_weight.y;
-			float cliff_ao = col_a.a * plane_weight.x + col_b.a * plane_weight.y;
-			vec2 tilt_a = nor_a.xy * 2.0 - 1.0;
-			vec2 tilt_b = nor_b.xy * 2.0 - 1.0;
-			vec3 tilt_planet = (right_local * tilt_a.x + up_local * tilt_a.y) * plane_weight.x
-					+ (forward_local * tilt_b.x + up_local * tilt_b.y) * plane_weight.y;
+			vec3 cliff_colour;
+			float cliff_ao;
+			vec3 tilt_planet;
+			vec3 cliff_mean = vec3(0.5716, 0.1905, 0.0373);
+			if (cliff_procedural) {
+				// computed here, in metres along the face and up it, on the planes the face looks along
+				vec3 colour_a = vec3(0.0);
+				vec3 colour_b = vec3(0.0);
+				float ao_a = 1.0;
+				float ao_b = 1.0;
+				vec2 tilt_a = vec2(0.0);
+				vec2 tilt_b = vec2(0.0);
+				if (plane_weight.x > 0.02) {
+					cliff_surface(vec2(spot.x, spot.y), colour_a, ao_a, tilt_a);
+				}
+				if (plane_weight.y > 0.02) {
+					cliff_surface(vec2(spot.z, spot.y), colour_b, ao_b, tilt_b);
+				}
+				cliff_colour = colour_a * plane_weight.x + colour_b * plane_weight.y;
+				cliff_ao = ao_a * plane_weight.x + ao_b * plane_weight.y;
+				tilt_planet = (right_local * tilt_a.x + up_local * tilt_a.y) * plane_weight.x
+						+ (forward_local * tilt_b.x + up_local * tilt_b.y) * plane_weight.y;
+			} else {
+				vec4 col_a = unrepeated(cliff_c, uv_a);
+				vec4 col_b = unrepeated(cliff_c, uv_b);
+				vec4 nor_a = unrepeated(cliff_n, uv_a);
+				vec4 nor_b = unrepeated(cliff_n, uv_b);
+				cliff_colour = col_a.rgb * plane_weight.x + col_b.rgb * plane_weight.y;
+				cliff_ao = col_a.a * plane_weight.x + col_b.a * plane_weight.y;
+				vec2 tilt_a = nor_a.xy * 2.0 - 1.0;
+				vec2 tilt_b = nor_b.xy * 2.0 - 1.0;
+				tilt_planet = (right_local * tilt_a.x + up_local * tilt_a.y) * plane_weight.x
+						+ (forward_local * tilt_b.x + up_local * tilt_b.y) * plane_weight.y;
+			}
 			vec3 cliff_ratio = clamp(cliff_colour / vec3(0.5716, 0.1905, 0.0373), vec3(0.25), vec3(2.2));
 			float luma = dot(cliff_ratio, vec3(0.33));
-			cliff_ratio = mix(vec3(luma), cliff_ratio, 0.55); // (the hue is the rock's own: the slabs bring the light and the shadow)
+			cliff_ratio = mix(vec3(luma), cliff_ratio, cliff_procedural ? cliff_hue : 0.55); // (the hue is the rock's own: the slabs bring the light and the shadow)
 			paint *= mix(vec3(1.0), cliff_ratio * mix(0.5, 1.0, cliff_ao), cliff_w);
 			vec3 cliff_world = (world_from_planet * vec4(tilt_planet * 1.1, 0.0)).xyz;
 			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(cliff_world, 0.0)).xyz * cliff_w);
