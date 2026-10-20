@@ -161,6 +161,14 @@ Wet ground goes dark and glossy everywhere; water stands in the low level patche
 world position, only where the ground is almost flat) with rings from the drops while it rains; snow
 settles unevenly (more on level ground, broken at the edges). Lab: `-- --weather=rain|snow|storm`.
 
+## Baked ground heights
+
+The parallax of the ground's packed plates (task 077) reads the plates' heights from a picture baked round the camera
+(`PlanetGroundBake`, `planet_mosaic_bake.gdshader`) instead of working the pattern out at every step of the march: 43.5 ms down to 6.5 ms
+of render GPU time looking down at the ground, with the same look. The picture is made at run time from the same functions (a cache,
+not an asset), is 2048 px over 12 m, wraps round so that walking draws only a strip, and is drawn again whenever the planet's anchor
+changes (each rebase). On when the graphics setting `ground_detail` is 1 or more; `PLANET_NO_BAKE=1` turns it off.
+
 ## Limits
 
 | radius | single precision (official Godot) | double precision build |

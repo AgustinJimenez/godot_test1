@@ -104,3 +104,36 @@ Not done (the plan to bring it to the planet):
 4. Decide 16 or 20 (or more) samples with the picture on: they cost almost the same.
 Run it: `godot --path . res://tests/manual/ground/ground_lab.tscn --gpu-profile --disable-vsync -- out=E:/Temp/x.png frames=400
 pitch=2.9 yaw=-72.2 dist=2.2 fx=0 fz=-0.5 fov=55 view=far chips=0 size=1400x600 aa=off bake=2048 bakesize=10`.
+
+
+## Baked heights in the planet (2026-10-20, second step)
+
+`systems/planet/planet_ground_bake.gd` (`PlanetGroundBake`) is now in the planet, not only in the lab:
+- A `SubViewport` (HDR 2D, 2048 px, never cleared) holds the heights of the plates over 12 m (5.9 mm a texel) as a **torus**: the texel of
+  the ground at world texel w is w mod 2048, so walking draws only the strip just reached (the window moves 64 texels at a time, with
+  hysteresis) and not the picture again. `mosaic_height_now` reads `p / size` with repeat and ignores the outer 8 % of the window (a strip
+  is being drawn there, and the bilinear read reaches a texel past the edge); outside the window the heights are worked out as before.
+- The picture is in the march's own coordinates (`PlanetGroundBake.flat_of`: the position from the anchor plus the wrapped anchor along the
+  anchor's right and forward axes). They change with every rebase, so `PlanetWorld._follow_the_ground` gives `follow` a key (a hash of
+  `frame.rot` and the anchor) and a new key draws everything again, from `publish_frame()` (the same frame the shader gets the new
+  anchor) and every physics frame for the scrolling. It follows the camera, not the player.
+- On when `ground_detail` >= 1 and not headless; `PLANET_NO_BAKE=1` turns it off (A/B). The planet does not change the `mosaic_*`
+  numbers, so the picture uses the shader's defaults; the lab's sliders are passed on (`bake=` in the lab).
+
+Checked:
+- Scrolling draws what a fresh picture does: lab `bake_scroll=3,2` (start away, scroll back) against a fresh picture, mean difference
+  0.00 / 255 (worst 7).
+- The picture against the worked-out heights: 1.4 / 255 in the lab view (0.9 % of pixels visibly different, thin lines along plate
+  edges), 0.3 / 255 in the planet view looking down (no pixel off by more than 23).
+- `planet_check.sh --quick` passes; the windowed walk check (90 s, 5 rebases) passes with no slow frame and a worst frame of 16.7 ms
+  (30.6 ms with `PLANET_NO_BAKE=1`).
+- **The planet's worst case for this shader** (standing, looking down, so every pixel is near ground, 1920 x 1009,
+  `planet_lab -- --hour=12 --fps --climb=0.3`): render GPU time **43.5 ms (23 fps) without the picture, 6.5 ms (145 fps) with it**.
+
+Not done / to look at:
+1. The memory is 32 MB (RGBA16F): try RGBA8 (16 MB; heights in 8 bits are 0.1 mm steps).
+2. A full redraw (each rebase, about every 80 m of walking; also at the start) draws 4 M texels once: no slow frame showed on this GPU, but
+   it was not timed alone, and a weak GPU may want it split over frames (the shader falls back to the slow path meanwhile).
+3. Not tried: third-person or a far camera behind the player (the window is 12 m, the march reads within about 4 m of the camera), an
+   Earth-size planet, real play. 16 or 20 (or more) samples now cost almost the same: decide by eye.
+4. The other near-ground costs (the colour layers once at the hit, the scans, the stones) are what is left of the ground's ~5 ms.

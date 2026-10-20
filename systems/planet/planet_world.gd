@@ -24,6 +24,7 @@ var noise: PlanetNoise
 var frame := PlanetFrame.new()
 var surface: PlanetSurface
 var atmosphere: PlanetAtmosphere
+var ground_bake: PlanetGroundBake ## the heights of the near ground's plates, baked (null: none)
 var fauna: PlanetFauna
 var swim: PlanetSwim
 var map: PlanetMap
@@ -132,6 +133,11 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 	PlanetTile.river_material().set_shader_parameter(&"sea_radius",
 			settings.radius + settings.sea_level)
 	_target = target
+	if (int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 1
+			and not OS.has_environment("PLANET_NO_BAKE") and DisplayServer.get_name() != "headless"):
+		ground_bake = PlanetGroundBake.new() # the parallax of the ground plates reads a picture
+		add_child(ground_bake)
+		ground_bake.setup(PlanetTile.ground_material())
 	if target is Player:
 		splash = WaterSplash.new()
 		add_child(splash)
@@ -376,6 +382,19 @@ func publish_frame() -> void:
 	RenderingServer.global_shader_parameter_set(&"anchor_wrap", frame.anchor_wrap())
 	RenderingServer.global_shader_parameter_set(&"anchor_up", frame.anchor_up())
 	RenderingServer.global_shader_parameter_set(&"anchor_phase", frame.anchor_phase())
+	_follow_the_ground()
+
+
+## Keeps the baked heights of the ground plates (PlanetGroundBake) round the camera, in the ground
+## shader's own coordinates. A new anchor (each rebase) turns those coordinates, so the picture is
+## drawn again then, the same frame the shader gets the new anchor.
+func _follow_the_ground() -> void:
+	if ground_bake == null or _target == null:
+		return
+	var camera := get_viewport().get_camera_3d()
+	var at := camera.global_position if camera != null else _target.global_position
+	var anchor := Vector3(frame.anchor[0], frame.anchor[1], frame.anchor[2])
+	ground_bake.follow(PlanetGroundBake.flat_of(frame, at), hash(frame.rot) ^ hash(anchor))
 
 
 ## Builds the ground around the target now, no waiting for the worker. `near_only`: only the ground
@@ -522,6 +541,7 @@ func _physics_process(delta: float) -> void:
 		_weather_timer = 1.5
 		_pick_the_weather()
 	_keep_the_weather_near_the_ground()
+	_follow_the_ground()
 	weather.update(_target.global_position, delta)
 	if not loading:
 		clock.advance(delta * settings.time_scale * time_rate)

@@ -203,5 +203,8 @@ repeated runs.
   18 cells with trigonometry) at each of 16-20 samples; drawing the heights once into a picture round the player and reading that cut
   the lab view from 14.0 to 5.4 ms with the same look (task 077). The picture is made at run time from the same functions: a cache,
   not an asset. Size changes memory and edge sharpness, hardly the cost.
+- **In the planet it mattered more than in the lab**: standing and looking down at the ground (every pixel near ground, 1920 x 1009) the
+  render GPU time went from 43.5 ms to 6.5 ms with the baked heights (`PlanetGroundBake`, task 077). The picture wraps (a torus), so
+  walking draws only a strip; a new anchor (each rebase) draws it all again, in the same frame the shader gets the new anchor.
 - A `SubViewport` with `use_hdr_2d = true` and `render_target_update_mode = UPDATE_ONCE` is a cheap way to bake a canvas-item shader
   into a texture the ground shader can read (the include files hold the shared functions; a canvas-item shader can include them).
