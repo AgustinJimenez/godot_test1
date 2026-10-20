@@ -843,7 +843,7 @@ Array PlanetScatterNative::gravel_chunk(const PackedVector3Array &p_positions, c
 			const Vector3 normal = Vector3((real_t)-dx, 1.0f, (real_t)-dz).normalized();
 			// many small stones, a few large: the radius (m) falls steeply with the dice
 			// (the chip mesh is two metres across at scale 1: the scale is the stone's half size)
-			const double radius = 0.5 * (0.012 + 0.2 * std::pow(size_dice, 3.4));
+			const double radius = 0.5 * (0.012 + 0.085 * std::pow(size_dice, 3.0)); // (1 to 5 cm radius: bigger ones stood out as boulders)
 			const double tall = radius * (0.35 + 0.55 * flat);
 			Basis basis(Vector3(0, 1, 0), (real_t)yaw);
 			const Vector3 lean_to = (normal + Vector3((real_t)std::cos(way), 0, (real_t)std::sin(way)) * (real_t)(tilt_dice * 0.5)).normalized();
@@ -857,7 +857,7 @@ Array PlanetScatterNative::gravel_chunk(const PackedVector3Array &p_positions, c
 			// different colour is rare)
 			double r, g, b;
 			if (kind < 0.58) {
-				const double v = 0.7 + 0.6 * tone;
+				const double v = 0.55 + 0.5 * tone;
 				r = 0.6 * v; g = 0.33 * v; b = 0.24 * v;
 			} else if (kind < 0.78) {
 				const double v = 0.55 + 0.5 * tone;
@@ -866,10 +866,10 @@ Array PlanetScatterNative::gravel_chunk(const PackedVector3Array &p_positions, c
 				const double v = 0.14 + 0.2 * tone;
 				r = v; g = v * 0.96; b = v * 0.92;
 			} else if (kind < 0.96) {
-				const double v = 0.6 + 0.35 * tone;
-				r = 0.6 * v; g = 0.42 * v; b = 0.29 * v;
+				const double v = 0.45 + 0.3 * tone;
+				r = 0.55 * v; g = 0.38 * v; b = 0.26 * v;
 			} else {
-				const double v = 0.5 + 0.3 * tone;
+				const double v = 0.4 + 0.25 * tone;
 				r = 0.55 * v; g = 0.5 * v; b = 0.44 * v;
 			}
 			const float values[16] = { (float)basis.rows[0][0], (float)basis.rows[0][1], (float)basis.rows[0][2], (float)at.x, (float)basis.rows[1][0],

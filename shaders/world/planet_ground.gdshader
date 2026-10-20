@@ -375,7 +375,7 @@ void fragment() {
 				if (hit_depth >= 0.0) {
 					on_the_plate = pm_flat + along * hit_depth;
 					on_planet += pm_right * (along.x * hit_depth) + pm_forward * (along.y * hit_depth);
-					pom_dark = 0.6 * pom_fade * smoothstep(0.0, pom_height, hit_depth); // (the deeper the ray went in, the darker: the sides of a plate)
+					pom_dark = 0.8 * pom_fade * smoothstep(0.0, pom_height * 0.8, hit_depth); // (the deeper the ray went in, the darker: the sides of a plate)
 				}
 				// soft self-shadowing (the paper penumbra estimate): from where the ray met the surface, sample the heights toward the sun, scale
 				// each blocker by how far above the ray to the sun it stands and by its distance, and keep the largest
