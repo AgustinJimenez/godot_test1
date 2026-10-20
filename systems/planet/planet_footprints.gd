@@ -1,6 +1,7 @@
 class_name PlanetFootprints
 extends Node3D
-## Footprints the player leaves in snow, sand and mud: one Decal a step, alternating left and
+## Footprints the player leaves in snow, sand and mud: on sand and desert a dent the ground
+## shader works out (PlanetDents, task 078), in snow and mud one Decal a step, alternating left and
 ## right, kept in planet space (the world turns under the player as they walk, a decal in world
 ## space would slide off the ground) and faded out over LIFE seconds. At most MAX decals exist; the
 ## oldest is reused. Only where the ground is soft (snow, sand, marsh), only when the Footprints
@@ -15,6 +16,7 @@ const SIZE := Vector3(0.26, 2.0, 0.44)
 
 var planet: PlanetWorld
 var target: Player
+var dents: PlanetDents
 
 var _prints: Array[Dictionary] = [] # {decal, at (planet, doubles), up, forward, age}
 var _since := 0.0
@@ -26,6 +28,10 @@ static var _texture: ImageTexture
 
 func _physics_process(delta: float) -> void:
 	_follow(delta)
+	if dents == null and planet != null:
+		dents = PlanetDents.new(PlanetTile.ground_material())
+	if dents != null:
+		dents.update(delta, planet.planet_position())
 	if target == null or not GraphicsSettings.get_graphics_value(&"decals"):
 		_clear()
 		return
@@ -48,9 +54,6 @@ func _press(feet: Vector3) -> void:
 	var ground := planet.ground_at(feet.x, feet.z, feet.y)
 	if ground["wet"]:
 		return
-	var tint := _tint(int(ground["biome"]), _paint(feet))
-	if tint.a <= 0.0:
-		return
 	# the ground the player really stands on (the tile's collider), not the analytic height
 	var query := PhysicsRayQueryParameters3D.create(feet + Vector3.UP * 1.2,
 			feet - Vector3.UP * 3.0, 1)
@@ -66,6 +69,12 @@ func _press(feet: Vector3) -> void:
 	spot -= up_world * up_world.dot(side) # (on the slope, not above or below it)
 	var frame := planet.frame
 	var back := frame.rot.inverse()
+	if _is_sand(int(ground["biome"])):
+		dents.add(frame.to_planet(spot), back * forward, back * up_world, -1.0 if _left else 1.0)
+		return
+	var tint := _tint(int(ground["biome"]), _paint(feet))
+	if tint.a <= 0.0:
+		return
 	var decal := _next_decal()
 	decal.modulate = tint
 	_prints.append({"decal": decal, "at": frame.to_planet(spot), "up": back * up_world,
@@ -79,6 +88,11 @@ func _paint(world_position: Vector3) -> Color:
 	var colours := planet.noise.colours_of(PackedVector3Array([dir]),
 			PackedFloat32Array([planet.noise.height(dir.x, dir.y, dir.z)]), PackedFloat32Array([0.1]))
 	return colours[0]
+
+
+## Sand and desert take a real dent; the rest a flat decal.
+func _is_sand(biome: int) -> bool:
+	return biome == TerrainNoise.Biome.DESERT or biome == TerrainNoise.Biome.BEACH
 
 
 ## The colour and strength of a footprint on this biome and ground colour (alpha 0: none).
@@ -137,6 +151,8 @@ func _follow(delta: float) -> void:
 
 
 func _clear() -> void:
+	if dents != null:
+		dents.clear()
 	for print_info in _prints:
 		(print_info["decal"] as Decal).queue_free()
 	_prints.clear()

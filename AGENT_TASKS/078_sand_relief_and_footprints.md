@@ -1,6 +1,6 @@
 # 078 - Sand relief and footprints that dent (desert ground)
 
-Status (2026-10-20): **step 1 (sand shading) built and in the ground lab, awaiting the user's look; step 2 (dent footprints) next.** Written after the user asked for desert sand with marks left by steps (and by
+Status (2026-10-20): **steps 1 (sand shading) and 2 (dent footprints) built, awaiting the user's look (lab: `soil=sand detail=3 dents=1`).** Written after the user asked for desert sand with marks left by steps (and by
 anything that falls on it) and asked for "the most realistic approach". The user calls the family of ground-relief tricks "SPOW
 texture" (the code keeps the names `spom` / `mosaic`; task 077 has the plates). Work and judging happen in
 `tests/manual/ground/ground_lab.tscn` first, then in a desert of the planet.
@@ -109,3 +109,26 @@ split the generic march, depth write and strata out of the ground shader first).
 - The lab needs `detail=3` (or 2) to show it (the ground detail setting; the lab's default is 1). The planet shows it at High and Ultra.
 - Still guessed: the sand share comes from the painted colour (no crust value yet), the wind is the planet's y axis crossed with up (not
   the weather's wind), the ripples are not yet shorter on the downwind side of a dune's crest.
+
+## Done: step 2 (2026-10-20)
+
+- **Not a picture, analytic:** `planet_dents.gdshaderinc` works a footprint out where the ground shader shades (no render target, no
+  ping-pong, no torus to clear, nothing to lose when the player walks away). `PlanetDents` (`systems/planet/planet_dents.gd`) keeps up to 240 stamps in
+  planet space, every 0.25 s puts the 32 nearest the camera in a 32 x 3 float texture (position wrapped to 1024 m + the clock it was made at;
+  the way the toe points + which foot; up) and the shader reads them with `texelFetch`. Age is `dent_now - born`.
+- **The print:** heel and ball of the foot as two ellipses (heel 4 x 5.5 cm, ball 6 x 10 cm half sizes), the weight on heel and ball (the arch
+  40 % shallower), a rim of pushed sand 25 % as high outside it, 3 cm deep when new. **Ageing:** the depth falls as `exp(-age / (0.4 life))`
+  (life 240 s: 13 % left at 3 minutes, so the wind fills it), the edges slump (the softness grows from 4 mm to 24 mm), the "pressed" share
+  (smoother, darker sand: the ripples are crushed inside) falls linearly to 0 at life.
+- **In the shader:** the dent's slope tilts the normal (finite differences over 4 mm in the ground's tangent plane), the pressed sand is
+  40 % darker, the floor of the dent gets up to 50 % ambient occlusion, the ripples fade out inside it. Only on `sandy` ground. The 3D
+  stones and the plates are not affected (sand has none of the plates).
+- **The player stamps** in `PlanetFootprints._press` on DESERT and BEACH ground (a left and a right foot every 0.85 m, the same events as
+  the old decals; the decals remain for snow and marsh). It follows the `decals` graphics setting (on at High and Ultra, off by default
+  otherwise). Walk check on a forced-sand run: 240 stamps kept over 427 m, no shader error, the walk check passes.
+- **Lab:** `dents=1` lays a trail of nine prints (alternating feet, the oldest `dent_age=150` s, the newest 0): e.g.
+  `ground_lab.tscn -- soil=sand detail=3 dents=1 pitch=32 dist=0.9 yaw=15 fx=0 fz=-0.5 dent_age=30`.
+- **Not done:** no parallax march into the dent (the far wall does not hide the floor: at a grazing angle a print reads as a lit rim and a
+  darker floor, not as a deep hole); no depth written for the dent (a stone beside a print is placed on the plane); only the player
+  stamps (not a falling stone, rain, animals); no snow or mud dents (decals); the print does not shear when the foot slides; the
+  number of stamps seen is 32 within 0.3 m of a point (a crowd of old prints on one spot would show the nearest 32).

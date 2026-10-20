@@ -246,6 +246,7 @@ vec3 leaf_litter(vec3 p, vec3 ground_up, float scale) {
 #include "res://shaders/world/planet_cliff.gdshaderinc"
 #include "res://shaders/world/planet_mosaic.gdshaderinc"
 #include "res://shaders/world/planet_sand.gdshaderinc"
+#include "res://shaders/world/planet_dents.gdshaderinc"
 
 // A texture sampled so that its repeat does not show: a second look at it, at another scale and place, blended in by a slow noise
 // (the two share no repeat distance, so neither shows through). `uv` in tiles.
@@ -865,7 +866,26 @@ void fragment() {
 			if (sandy > 0.01) {
 				float sand_h;
 				vec3 sand_tilt = (world_from_planet * vec4(sand_ripple_tilt(on_planet, normalize(anchor_up), sand_h), 0.0)).xyz;
-				float ripple_fade = sandy * sand_ripples * (1.0 - smoothstep(sand_ripple_length / 6.0, sand_ripple_length / 2.5, foot_m));
+				// footprints (planet_dents): a dent with a rim, the sand pressed smooth and darker inside it, the ripples crushed
+				float dent_pressed = 0.0;
+				if (dent_count > 0) {
+					vec3 up_d = normalize(anchor_up);
+					vec3 ref_d = abs(up_d.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+					vec3 right_d = normalize(cross(ref_d, up_d));
+					vec3 forward_d = cross(up_d, right_d);
+					float h_here = dent_height(on_planet, dent_pressed);
+					if (h_here != 0.0 || dent_pressed > 0.0) {
+						float unused;
+						float h_x = dent_height(on_planet + right_d * 0.004, unused);
+						float h_y = dent_height(on_planet + forward_d * 0.004, unused);
+						vec3 dent_tilt = -(right_d * (h_x - h_here) + forward_d * (h_y - h_here)) / 0.004;
+						view_normal = normalize(view_normal + (VIEW_MATRIX * world_from_planet * vec4(dent_tilt, 0.0)).xyz * sandy);
+						paint *= 1.0 - 0.4 * dent_pressed * sandy;
+						ao *= 1.0 - clamp(-h_here / dent_depth, 0.0, 1.0) * 0.5 * sandy; // (the floor of a dent sees less sky)
+					}
+				}
+				float ripple_fade = sandy * sand_ripples * (1.0 - smoothstep(sand_ripple_length / 6.0, sand_ripple_length / 2.5, foot_m))
+						* (1.0 - dent_pressed);
 				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(sand_tilt, 0.0)).xyz * ripple_fade);
 				paint *= mix(1.0, mix(0.93, 1.06, sand_h), ripple_fade);
 				if (sand_glitter > 0.001) {

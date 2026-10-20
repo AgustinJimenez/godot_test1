@@ -66,6 +66,7 @@ var _rebuild_wanted := false
 var _chips_wanted := false
 var _bake: PlanetGroundBake ## the baked heights (null: the heights are worked out at every step)
 var _bake_dirty := false
+var _dents: PlanetDents
 
 
 func _ready() -> void:
@@ -178,6 +179,7 @@ func _ready() -> void:
 		PlanetTile.ground_material().set_shader_parameter(&"scan_strength",
 				float(_options["scan_strength"]))
 	_setup_bake()
+	_setup_dents()
 	_rebuild()
 	if _live:
 		_build_panel()
@@ -255,6 +257,21 @@ func _setup_bake() -> void:
 	_send_bake_parameters()
 	print("GROUND_LAB bake %d px over %.1f m: %.1f mm a pixel" % [pixels, metres,
 			metres / float(pixels) * 1000.0])
+
+
+## dents=1: a trail of footprints on the sand, new ones near the camera and older ones further
+## away (dent_age=SECONDS for the oldest, 150 by default), for repeatable renders of the dents.
+func _setup_dents() -> void:
+	_dents = PlanetDents.new(PlanetTile.ground_material())
+	_dents.clock = 1000.0
+	if not _options.has("dents"):
+		return
+	var oldest := float(_options.get("dent_age", "150"))
+	for step in 9:
+		var along := -3.0 + 0.85 * float(step)
+		var at := PackedFloat64Array([0.11 * (1.0 if step % 2 == 0 else -1.0), 0.0, along])
+		_dents.add(at, Vector3(0.0, 0.0, -1.0), Vector3.UP, 1.0 if step % 2 == 0 else -1.0,
+				oldest * float(8 - step) / 8.0)
 
 
 func _send_bake_parameters() -> void:
@@ -663,8 +680,9 @@ func _place_camera() -> void:
 	_camera.look_at_from_position(_focus + offset, _focus)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var root := get_tree().root
+	_dents.update(delta, _focus)
 	if _live:
 		_place_camera()
 		if _readout != null:
