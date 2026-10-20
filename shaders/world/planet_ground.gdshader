@@ -322,7 +322,7 @@ void fragment() {
 		float pom_dark = 0.0;
 		float pom_shadow = 0.0;
 		if (mosaic_on && mosaic_height > 0.0005) {
-			float pom_fade = pow(1.0 - smoothstep(0.6, 9.0, length(VERTEX)), 1.6) * (1.0 - smoothstep(0.25, 0.5, slope)); // (by distance only: fading by view angle drew a ring round the walker)
+			float pom_fade = pow(1.0 - smoothstep(0.5, 6.0, length(VERTEX)), 1.6) * (1.0 - smoothstep(0.25, 0.5, slope)); // (by distance only: fading by view angle drew a ring round the walker)
 			float pom_height = mosaic_height * pom_fade; // (the heights fade with the distance, so every plate sinks into the ground smoothly and there is no ring)
 			if (pom_fade > 0.02) {
 				vec3 pm_up = normalize(anchor_up);
@@ -336,7 +336,7 @@ void fragment() {
 				// (Tatarchuk, I3D 2006) more samples as the view gets more grazing; the height profile is a series of straight segments and the ray
 				// is intersected with the segment it went through, exactly, with no extra samples
 				// a fixed count (a count that changed with the distance moved the hit points in rings): the paper varies it with the view angle, which here is the same as with the distance on flat ground
-				int pom_steps = int(mix(float(mosaic_pom_min_steps) + 4.0, float(mosaic_pom_max_steps), smoothstep(0.1, 0.5, 1.0 - down)));
+				int pom_steps = mosaic_pom_min_steps + 3; // 6 by default
 				float fade_mid_p = 1.0 - smoothstep(0.8, 5.0, length(VERTEX));
 				float last_depth = 0.0;
 				float last_gap = -pom_height;
@@ -364,12 +364,12 @@ void fragment() {
 				// each blocker by how far above the ray to the sun it stands and by its distance, and keep the largest
 				vec3 sun_pm = normalize(mat3(anchor_from_world) * normalize(cloud_sun_world));
 				float sun_up_pm = dot(sun_pm, pm_up);
-				if (sun_up_pm > 0.12 && mosaic_shadow > 0.01) {
+				if (sun_up_pm > 0.12 && mosaic_shadow > 0.01 && pom_fade > 0.3) { // (the shadows only near: they cost as much as the march)
 					vec2 toward_sun = vec2(dot(sun_pm, pm_right), dot(sun_pm, pm_forward)) / sun_up_pm; // ground travelled for each unit risen
 					float own_h = mosaic_height_at(on_the_plate, fade_mid_p) * pom_height;
 					float room = max(pom_height - own_h, 0.002);
-					for (int n = 1; n <= 4; n++) {
-						float rise = room * float(n) / 4.0;
+					for (int n = 1; n <= 3; n++) {
+						float rise = room * float(n) / 3.0;
 						float blocker = mosaic_height_at(on_the_plate + toward_sun * rise, fade_mid_p) * pom_height;
 						pom_shadow = max(pom_shadow, clamp((blocker - (own_h + rise)) / (0.35 * pom_height), 0.0, 1.0) * (1.15 - 0.15 * float(n)));
 					}
