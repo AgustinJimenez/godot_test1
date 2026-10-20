@@ -237,3 +237,8 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   angular cells (rotated, elongated, length-weighted), each its own tone and lean, dark gaps, bevelled rims, a share of tiny grey pebbles, a fine
   grain, the soil desaturated where it lies. The large plates hold 13% of the ground, the medium 42%, the small all of it. All numbers are
   uniforms with sliders in the ground lab (`view=photo` frames about 70 cm of ground, `ref=` puts the photograph beside the render).
+- Mosaic parallax (`mosaic_height_at` + the march in planet_ground.gdshader): within 1.2 to 3.6 m the view ray is marched (5 jittered steps, 2
+  halvings) into the heights of the large and (within 1.5 to 2.6 m) medium plates, `mosaic_height` metres (default 4 cm, slider), so tall plates
+  hide soil behind them and shift with the view; at grazing angles a tall plate stretches into a spike (the usual limit), 8 cm shows it. Fragment
+  shapes are random convex polygons (3 to 8 corners, random sides). +1 ms GPU. NB: `git checkout` of the weapons .import file makes the next
+  planet run start without a player (stale import): run `godot --headless --import` after it.

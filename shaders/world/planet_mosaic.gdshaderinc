@@ -19,6 +19,7 @@ uniform float mosaic_size_var : hint_range(0.0, 1.0) = 0.7; // how different the
 uniform float mosaic_shape_var : hint_range(0.0, 1.0) = 0.7; // how different their shapes are: round, diamond, square; stubby or long
 uniform float mosaic_desat : hint_range(0.0, 1.0) = 0.6; // the fragments are less saturated than the soil painted over them
 uniform float mosaic_grain : hint_range(0.0, 1.0) = 0.85; // the fine crumbly grain between and on the fragments
+uniform float mosaic_height = 0.04; // m: how far the tallest plates stand out of the soil (the parallax depth)
 uniform float mosaic_seed = 1.0;
 
 struct Mosaic {
@@ -142,4 +143,16 @@ void mosaic_surface(vec2 p, vec3 soil, vec3 fade, out vec3 colour, out float ao,
 	}
 	float tone_now = dot(colour, vec3(0.33));
 	colour = mix(colour, vec3(tone_now), 0.0);
+}
+
+// How high the fragments stand at `p` (0 the soil .. 1 the tallest large plate), for the parallax march: the large and the medium plates (the
+// crumbs are too low to matter), each its own height, rolled off at the rim.
+float mosaic_height_at(vec2 p, float fade_mid) {
+	Mosaic big = mosaic_layer(p, mosaic_big_per_m, mosaic_big_cover, 40.0);
+	float h = big.cover * smoothstep(0.0, 0.3, big.border) * (0.45 + 0.55 * big.tone);
+	if (fade_mid > 0.02) {
+		Mosaic mid = mosaic_layer(p, mosaic_mid_per_m, mosaic_mid_cover, 20.0);
+		h = max(h, mid.cover * smoothstep(0.0, 0.3, mid.border) * (0.15 + 0.3 * mid.tone));
+	}
+	return h;
 }

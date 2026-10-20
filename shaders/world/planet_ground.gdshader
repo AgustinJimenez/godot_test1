@@ -448,7 +448,7 @@ void fragment() {
 			vec3 hit = crumb_at;
 			float hit_height = 0.0;
 			float shadow = 0.0;
-			float parallax_fade = mosaic_on ? 0.0 : 1.0 - smoothstep(3.0, 7.0, crumb_dist); // (the mosaic does its own relief: no march)
+			float parallax_fade = mosaic_on ? 0.0 : 1.0 - smoothstep(3.0, 7.0, crumb_dist); // (the mosaic has its own march, below)
 			vec3 facing_anchor = normalize(mat3(anchor_from_world) * world_normal);
 			if (parallax_fade > 0.02) {
 				// the view ray into the height of the chunks (the surface is the top, 3 cm above the soil)
@@ -508,6 +508,44 @@ void fragment() {
 				vec3 right_m = normalize(cross(side_ref_m, up_m));
 				vec3 forward_m = cross(up_m, right_m);
 				vec2 flat_p = vec2(dot(hit, right_m), dot(hit, forward_m));
+				// parallax occlusion: the view ray into the height of the plates (they hide the soil behind them and shift as you move)
+				float pom_fade = (1.0 - smoothstep(1.2, 3.6, crumb_dist)) * (1.0 - smoothstep(0.25, 0.5, slope));
+				if (pom_fade > 0.02 && mosaic_height > 0.0005) {
+					vec3 ray_a = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
+					float down = max(-dot(ray_a, up_m), 0.1);
+					vec2 along = vec2(dot(ray_a, right_m), dot(ray_a, forward_m)) / down; // ground travelled for each unit of depth
+					const int POM_STEPS = 5;
+					float jitter_pom = fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453);
+					float found = -1.0;
+					float low_d = 0.0;
+					float high_d = 0.0;
+					float last_d = 0.0;
+					float fade_mid_p = 1.0 - smoothstep(1.5, 2.6, crumb_dist);
+					for (int i = 1; i <= POM_STEPS; i++) {
+						float depth = mosaic_height * (float(i) - 1.0 + jitter_pom) / float(POM_STEPS - 1);
+						float h_here = mosaic_height_at(flat_p + along * depth, fade_mid_p) * mosaic_height;
+						if (depth >= mosaic_height - h_here) {
+							low_d = last_d;
+							high_d = depth;
+							found = depth;
+							break;
+						}
+						last_d = depth;
+					}
+					if (found >= 0.0) {
+						for (int k = 0; k < 2; k++) {
+							float mid_d = 0.5 * (low_d + high_d);
+							if (mid_d >= mosaic_height - mosaic_height_at(flat_p + along * mid_d, fade_mid_p) * mosaic_height) {
+								high_d = mid_d;
+							} else {
+								low_d = mid_d;
+							}
+						}
+						flat_p += along * high_d * pom_fade;
+						// the soil seen in the shadow of a tall plate: what the ray went in under is darker
+						paint *= 1.0 - 0.35 * pom_fade * smoothstep(0.0, mosaic_height, high_d);
+					}
+				}
 				vec3 mosaic_fade = vec3(1.0 - smoothstep(2.5, 6.0, crumb_dist), 1.0 - smoothstep(7.0, 16.0, crumb_dist), 1.0 - smoothstep(18.0, 44.0, crumb_dist));
 				float flat_ground = 1.0 - smoothstep(0.25, 0.5, slope);
 				paint = mix(paint, vec3(dot(paint, vec3(0.33))) * vec3(1.0, 0.8, 0.66) * 1.25, mosaic_desat * mosaic_strength * crumbly * 0.6);
