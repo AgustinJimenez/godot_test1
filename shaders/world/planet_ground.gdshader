@@ -641,7 +641,7 @@ void fragment() {
 				float m_amount = mosaic_strength * crumbly;
 				paint *= (1.0 - pom_dark);
 				// the steep sides: bands down them (the colour read at the hit would only smear along the ray); the way they lean says which way they run
-				float face = smoothstep(0.5, 1.5, length(pom_relief)) * mosaic_strength;
+				float face = smoothstep(0.15, 0.6, length(pom_relief)) * mosaic_strength;
 				if (face > 0.001 && mosaic_side_strata > 0.001) {
 					vec2 face_dir = pom_relief / max(length(pom_relief), 0.0001);
 					vec2 across_face = vec2(-face_dir.y, face_dir.x);
