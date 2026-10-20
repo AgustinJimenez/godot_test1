@@ -322,7 +322,7 @@ void fragment() {
 		float pom_dark = 0.0;
 		float pom_shadow = 0.0;
 		if (mosaic_on && mosaic_height > 0.0005) {
-			float pom_fade = (1.0 - smoothstep(1.2, 3.6, length(VERTEX))) * (1.0 - smoothstep(0.25, 0.5, slope));
+			float pom_fade = (1.0 - smoothstep(1.2, 3.6, length(VERTEX))) * (1.0 - smoothstep(0.25, 0.5, slope)); // (by distance only: fading by view angle drew a ring round the walker)
 			if (pom_fade > 0.02) {
 				vec3 pm_up = normalize(anchor_up);
 				vec3 pm_ref = abs(pm_up.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
@@ -330,11 +330,12 @@ void fragment() {
 				vec3 pm_forward = cross(pm_up, pm_right);
 				vec2 pm_flat = vec2(dot(on_planet, pm_right), dot(on_planet, pm_forward));
 				vec3 ray_a = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
-				float down = max(-dot(ray_a, pm_up), 0.3); // (not lower than this: at a grazing angle the plates would smear into spikes)
+				float down = max(-dot(ray_a, pm_up), 0.2);
 				vec2 along = vec2(dot(ray_a, pm_right), dot(ray_a, pm_forward)) / down; // ground travelled for each unit of depth
 				// (Tatarchuk, I3D 2006) more samples as the view gets more grazing; the height profile is a series of straight segments and the ray
 				// is intersected with the segment it went through, exactly, with no extra samples
-				int pom_steps = int(mix(float(mosaic_pom_max_steps), float(mosaic_pom_min_steps), clamp(down, 0.0, 1.0)) + 0.5);
+				// each step crosses at most about a centimetre of ground, however flat the view (a flat view crossed whole plates in a step and stair-stepped)
+				int pom_steps = int(clamp(ceil(length(along) * mosaic_height / 0.01), float(mosaic_pom_min_steps), float(mosaic_pom_max_steps)));
 				float fade_mid_p = 1.0 - smoothstep(1.5, 2.6, length(VERTEX));
 				float last_depth = 0.0;
 				float last_gap = -mosaic_height;
