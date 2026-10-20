@@ -287,12 +287,37 @@ static func chip_material() -> ShaderMaterial:
 	return _chip_material
 
 
+static var _chip_shadow_material: ShaderMaterial
+static var _chip_shadow_mesh: PlaneMesh
+
+
+## The dark patch under every stone of `buffer` (the same 16 floats an instance as the stones':
+## planet_chip_shadow.gdshader), a node of its own for the holder of the stones to carry.
+static func chip_shadow(buffer: PackedFloat32Array) -> MultiMeshInstance3D:
+	if _chip_shadow_material == null:
+		_chip_shadow_material = ShaderMaterial.new()
+		_chip_shadow_material.shader = preload("res://shaders/world/planet_chip_shadow.gdshader")
+		_chip_shadow_mesh = PlaneMesh.new()
+		_chip_shadow_mesh.size = Vector2(2.0, 2.0)
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.use_colors = true
+	multi.mesh = _chip_shadow_mesh
+	multi.instance_count = buffer.size() / 16
+	multi.buffer = buffer
+	var instance := MultiMeshInstance3D.new()
+	instance.multimesh = multi
+	instance.material_override = _chip_shadow_material
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return instance
+
+
 ## A small angular stone for the gravel of the ground (PlanetTurf): CHIP_VARIANTS shapes of a
 ## squashed, knocked about icosahedron (20
 ## triangles), flat shaded, white (the instance colour paints it), about 2 m across at scale 1 (the
 ## instance's scale makes the stone and
 ## its height). Built once.
-const CHIP_VARIANTS := 4
+const CHIP_VARIANTS := 8
 static var _chips: Array[ArrayMesh] = []
 
 
@@ -323,6 +348,27 @@ static func _make_chip(variant: int) -> ArrayMesh:
 			[11, 10, 2], [10, 7, 6], [7, 1, 8],
 			[3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10],
 			[8, 6, 7], [9, 8, 1]]
+	# each triangle in four (80 in all): the new points pushed in or out, so that a stone has more
+	# than twenty flat faces; the odd variants are rounder (smaller pushes) than the even (angular)
+	var push := 0.05 if variant % 2 == 1 else 0.14
+	var midpoints := {}
+	var split: Array = []
+	for face in faces:
+		var mids: Array[int] = []
+		for pair in [[face[0], face[1]], [face[1], face[2]], [face[2], face[0]]]:
+			var edge_key := mini(pair[0], pair[1]) * 64 + maxi(pair[0], pair[1])
+			if not midpoints.has(edge_key):
+				var middle: Vector3 = (corners[pair[0]] + corners[pair[1]]) * 0.5
+				middle *= 1.0 + rng.randf_range(-push, push) + 0.08
+				middle.y = maxf(middle.y, -0.35)
+				corners.append(middle)
+				midpoints[edge_key] = corners.size() - 1
+			mids.append(midpoints[edge_key])
+		split.append([face[0], mids[0], mids[2]])
+		split.append([mids[0], face[1], mids[1]])
+		split.append([mids[2], mids[1], face[2]])
+		split.append([mids[0], mids[1], mids[2]])
+	faces = split
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()

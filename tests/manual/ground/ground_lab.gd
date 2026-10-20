@@ -418,6 +418,10 @@ func _scatter_chips(seed_value: int, stones: float) -> void:
 		instance.material_override = FloraMeshes.chip_material()
 		_chip_root.add_child(instance)
 		_chip_nodes.append(instance)
+		if not _options.has("no_patch"):
+			var patch := FloraMeshes.chip_shadow(buffer)
+			_chip_root.add_child(patch)
+			_chip_nodes.append(patch)
 	var counts := buffers.map(func(buffer: PackedFloat32Array) -> int: return buffer.size() / 16)
 	print("GROUND_LAB stones ", ", ".join(Array(counts)))
 

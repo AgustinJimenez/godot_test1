@@ -94,7 +94,7 @@ func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void
 			GRAVEL_SPACING if gravel else _spacing(), 1.0 if gravel else DENSITY, key ^ int(grid["key"]),
 			FloraMeshes.CHIP_VARIANTS if gravel else FloraMeshes.TURF_VARIANTS)
 	var entry := {"nodes": [], "holder": holder, "grid": grid, "at": Vector2((ix + 0.5) * CHUNK,
-			(iz + 0.5) * CHUNK), "buffers": []}
+			(iz + 0.5) * CHUNK), "buffers": [], "shadows": []}
 	for variant in buffers.size():
 		var buffer: PackedFloat32Array = buffers[variant]
 		if buffer.is_empty():
@@ -116,6 +116,13 @@ func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void
 		holder.add_child(instance)
 		entry["nodes"].append(instance)
 		entry["buffers"].append(buffer)
+		if gravel:
+			var patch := FloraMeshes.chip_shadow(buffer)
+			patch.visibility_range_end = GRAVEL_DRAWN
+			patch.visibility_range_end_margin = 6.0
+			patch.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			holder.add_child(patch)
+			entry["shadows"].append(patch)
 	_chunks[key] = entry
 
 
@@ -129,7 +136,7 @@ func _let_go(here: Vector3) -> void:
 			var local := _grid_of(entry["grid"], holder.to_local(here))
 			gone = Vector2(local.x, local.z).distance_to(entry["at"]) > _leave() + CHUNK * 0.4
 		if gone:
-			for node: Node in entry["nodes"]:
+			for node: Node in entry["nodes"] + entry["shadows"]:
 				if is_instance_valid(node):
 					node.queue_free()
 			_chunks.erase(key)
