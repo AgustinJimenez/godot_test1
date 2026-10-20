@@ -258,6 +258,17 @@ static func _make_tuft(variant: int) -> ArrayMesh:
 	return mesh
 
 
+static var _chip_material: ShaderMaterial
+
+
+## The look of the small stones of the ground (planet_chip.gdshader: flat facets in the instance colour).
+static func chip_material() -> ShaderMaterial:
+	if _chip_material == null:
+		_chip_material = ShaderMaterial.new()
+		_chip_material.shader = preload("res://shaders/world/planet_chip.gdshader")
+	return _chip_material
+
+
 ## A small angular stone for the gravel of the ground (PlanetTurf): CHIP_VARIANTS shapes of a squashed, knocked about icosahedron (20
 ## triangles), flat shaded, white (the instance colour paints it), about 2 m across at scale 1 (the instance's scale makes the stone and
 ## its height). Built once.

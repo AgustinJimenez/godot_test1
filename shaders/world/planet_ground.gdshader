@@ -63,6 +63,8 @@ uniform float detail_strength : hint_range(0.0, 1.0) = 0.8;
 uniform float detail_range = 260.0; // m: the detail is gone by twice this
 
 varying vec3 smooth_color;
+varying float light_specular; // SPECULAR as the fragment set it (light() cannot read it)
+varying float plate_shadow; // how much of the direct light the plates take (set in fragment(), used in light())
 varying vec3 world_pos;
 varying vec3 world_normal;
 varying vec4 geology; // what the rock of the place breaks into: angular, coarse, pale, flaky (0..1, from the crust)
@@ -627,7 +629,8 @@ void fragment() {
 				vec2 m_lean;
 				mosaic_surface(flat_p, max(paint, vec3(0.02)), mosaic_fade * flat_ground, m_colour, m_ao, m_lean);
 				float m_amount = mosaic_strength * crumbly;
-				paint *= (1.0 - pom_dark) * (1.0 - 0.7 * pom_shadow);
+				paint *= (1.0 - pom_dark);
+				plate_shadow = pom_shadow; // (only the direct light is shadowed, in light(): the sky light and the ambient stay, as in the real thing)
 				paint *= mix(vec3(1.0), m_colour, m_amount);
 				// fine grain on the fragments themselves (a plate is not a smooth tint): small bright and dark specks, finer as you get closer
 				float speck = noise3(vec3(flat_p * 260.0, mosaic_seed), 266240.0) * 0.6 + noise3(vec3(flat_p * 640.0, 3.0), 655360.0) * 0.4;
@@ -875,4 +878,39 @@ void fragment() {
 	AO = ao;
 	AO_LIGHT_AFFECT = 0.5;
 	SPECULAR = mix(0.3, 0.7, max(ground_wetness, puddle));
+	light_specular = SPECULAR;
+}
+
+
+// The lighting of the ground, the same models as the engine's own (Burley diffuse, Schlick-GGX specular) so that nothing else changes, with
+// the plates' shadows taken off the direct light only.
+float light_fresnel(float u) {
+	float m = 1.0 - clamp(u, 0.0, 1.0);
+	float m2 = m * m;
+	return m2 * m2 * m;
+}
+
+void light() {
+	float shadowed = 1.0 - 0.8 * plate_shadow;
+	float n_dot_l = clamp(dot(NORMAL, LIGHT), 0.0, 1.0);
+	float n_dot_v = max(dot(NORMAL, VIEW), 0.0001);
+	vec3 half_vector = normalize(VIEW + LIGHT);
+	float l_dot_h = clamp(dot(LIGHT, half_vector), 0.0, 1.0);
+	float n_dot_h = clamp(dot(NORMAL, half_vector), 0.0, 1.0);
+	// Burley diffuse
+	float fd90_minus_1 = 2.0 * l_dot_h * l_dot_h * ROUGHNESS - 0.5;
+	float fd_v = 1.0 + fd90_minus_1 * light_fresnel(n_dot_v);
+	float fd_l = 1.0 + fd90_minus_1 * light_fresnel(n_dot_l);
+	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (1.0 / PI) * fd_v * fd_l * n_dot_l * shadowed;
+	// GGX specular
+	if (n_dot_l > 0.0) {
+		float alpha = max(ROUGHNESS * ROUGHNESS, 0.002);
+		float a = n_dot_h * alpha;
+		float k = alpha / (1.0 - n_dot_h * n_dot_h + a * a);
+		float d = k * k * (1.0 / PI);
+		float g = 0.5 / mix(2.0 * n_dot_l * n_dot_v, n_dot_l + n_dot_v, alpha);
+		float f0 = 0.16 * light_specular * light_specular;
+		float f = f0 + (1.0 - f0) * light_fresnel(l_dot_h);
+		SPECULAR_LIGHT += LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT * n_dot_l * d * f * g * shadowed;
+	}
 }

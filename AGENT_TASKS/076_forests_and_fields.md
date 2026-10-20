@@ -250,3 +250,10 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   three scan soils (each soil's height = its occlusion and brightness + 1.6 x its weight, the highest wins with a band `scan_blend_depth`), so one
   soil pokes through the other where they meet. Not done: the paper's in-shader LOD from the mip level (we fade by distance), macro variation.
   Fragments are bound inside a circle so a missing neighbour never cuts one with a straight edge.
+- Research: cone-step and relaxed-cone mapping need a precomputed cone map of a height texture (our heights are procedural) and the cone step
+  method has patent notes; a 2018 Pretoria dissertation found linear search with interval refinement the best of those tried, which is the march
+  we have (9 samples + 3 halvings). The Godot Shaders "SPOM" example (CC0) is the same POM plus silhouette clipping and horizon erosion for single
+  meshes (not for a continuous ground) and self-shadows in `light()`: done here too. The ground shader now has its own `light()` (Burley diffuse,
+  Schlick-GGX specular, like the engine's, within 2% of its brightness) so the plate shadows (`plate_shadow`, set in fragment) take only the direct
+  light and leave the ambient. The real small stones have their own shader (`planet_chip.gdshader`: flat facets in the instance colour, no pixel
+  noise) and a palette near the soil (reds, a few dark greys, ochre and pale ones).

@@ -92,7 +92,7 @@ func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void
 		multi.buffer = buffer
 		var instance := MultiMeshInstance3D.new()
 		instance.multimesh = multi
-		instance.material_override = FloraMeshes.material()
+		instance.material_override = FloraMeshes.chip_material() if gravel else FloraMeshes.material()
 		instance.cast_shadow = (GeometryInstance3D.SHADOW_CASTING_SETTING_ON if gravel
 				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 		instance.visibility_range_end = GRAVEL_DRAWN if gravel else DRAWN

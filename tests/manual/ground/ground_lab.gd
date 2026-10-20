@@ -298,7 +298,7 @@ func _scatter_chips(seed_value: int, stones: float) -> void:
 		multi.buffer = buffer
 		var instance := MultiMeshInstance3D.new()
 		instance.multimesh = multi
-		instance.material_override = FloraMeshes.material()
+		instance.material_override = FloraMeshes.chip_material()
 		_chip_root.add_child(instance)
 		_chip_nodes.append(instance)
 	print("GROUND_LAB stones ", ", ".join(Array(buffers.map(func(buffer: PackedFloat32Array) -> int: return buffer.size() / 16))))

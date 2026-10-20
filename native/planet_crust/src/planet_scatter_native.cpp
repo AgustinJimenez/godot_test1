@@ -853,23 +853,24 @@ Array PlanetScatterNative::gravel_chunk(const PackedVector3Array &p_positions, c
 			}
 			basis = basis.scaled(Vector3((real_t)radius, (real_t)tall, (real_t)(radius * (0.7 + 0.5 * flat))));
 			at.y -= (real_t)(tall * 0.3 + 0.01 * std::sqrt(dx * dx + dz * dz));
-			// the colour: the soil's own red-brown mostly (a little lighter or darker), some dark, some grey, a few pale
+			// the colour (sRGB): the soil's own red-brown mostly, some darker, a few dark grey, ochre or pale (kept near the soil: a stone of a
+			// different colour is rare)
 			double r, g, b;
-			if (kind < 0.55) {
-				const double v = 0.7 + 0.7 * tone;
-				r = 0.62 * v; g = 0.36 * v; b = 0.25 * v;
-			} else if (kind < 0.72) {
-				const double v = 0.5 + 0.5 * tone;
-				r = 0.4 * v; g = 0.21 * v; b = 0.14 * v;
-			} else if (kind < 0.84) {
-				const double v = 0.18 + 0.3 * tone;
-				r = v; g = v * 0.97; b = v * 0.94;
-			} else if (kind < 0.93) {
-				const double v = 0.6 + 0.4 * tone;
-				r = 0.75 * v; g = 0.55 * v; b = 0.38 * v;
+			if (kind < 0.58) {
+				const double v = 0.7 + 0.6 * tone;
+				r = 0.6 * v; g = 0.33 * v; b = 0.24 * v;
+			} else if (kind < 0.78) {
+				const double v = 0.55 + 0.5 * tone;
+				r = 0.42 * v; g = 0.21 * v; b = 0.15 * v;
+			} else if (kind < 0.89) {
+				const double v = 0.14 + 0.2 * tone;
+				r = v; g = v * 0.96; b = v * 0.92;
+			} else if (kind < 0.96) {
+				const double v = 0.6 + 0.35 * tone;
+				r = 0.6 * v; g = 0.42 * v; b = 0.29 * v;
 			} else {
-				const double v = 0.7 + 0.3 * tone;
-				r = 0.8 * v; g = 0.78 * v; b = 0.72 * v;
+				const double v = 0.5 + 0.3 * tone;
+				r = 0.55 * v; g = 0.5 * v; b = 0.44 * v;
 			}
 			const float values[16] = { (float)basis.rows[0][0], (float)basis.rows[0][1], (float)basis.rows[0][2], (float)at.x, (float)basis.rows[1][0],
 				(float)basis.rows[1][1], (float)basis.rows[1][2], (float)at.y, (float)basis.rows[2][0], (float)basis.rows[2][1],
