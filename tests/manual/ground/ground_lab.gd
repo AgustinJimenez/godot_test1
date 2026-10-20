@@ -6,7 +6,7 @@ extends Node
 ## project, and pass it as `ref=`: it is placed beside the render).
 ##   godot --path . res://tests/manual/ground/ground_lab.tscn -- out=E:/path/picture.png [options]
 ##     soil=laterite|brown|sand|black|grey|forest   the soil (colour, iron, organic matter, stones, depth, paleness of the rock)
-##     view=low|eye|down|far|top|macro   the camera: 25 cm above the ground, standing looking down ahead (the default), nearly
+##     view=low|eye|down|photo|far|top|macro   the camera: 25 cm above the ground, standing looking down ahead (the default), nearly
 ##       straight down, standing looking out, from above, a hand's breadth
 ##     detail=0..3   the ground detail (the graphics setting)   chips=0|1   the real stones   sun=ELEVATION,AZIMUTH (degrees)
 ##     stones=0..1   how stony   seed=N   which patch of ground   ref=PATH   a photograph beside the render   size=WIDTHxHEIGHT
@@ -61,6 +61,9 @@ func _ready() -> void:
 		"depth": float(_options.get("depth", str(preset["depth"]))), "spacing": float(_options.get("spacing", "0.12")),
 		"density": float(_options.get("density", "1.0")), "strength": float(_options.get("strength", "0.8")),
 		"fov": float(_options.get("fov", "55")), "tilt": float(_options.get("tilt", "0")),
+		"mosaic_strength": 0.9, "mosaic_big_per_m": 15.0, "mosaic_mid_per_m": 42.0, "mosaic_small_per_m": 150.0, "mosaic_big_cover": 0.13,
+		"mosaic_mid_cover": 0.42, "mosaic_angular": 0.8, "mosaic_gap": 0.75, "mosaic_tilt": 1.4, "mosaic_tone": 0.7, "mosaic_pebbles": 0.11,
+		"mosaic_seed": 1.0, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
 		"cliff_row_height": 0.45, "cliff_col_width": 1.1, "cliff_warp": 0.4, "cliff_lip": 0.09, "cliff_terraces": 0.5, "cliff_cracks": 0.55,
 		"cliff_sand": 0.5, "cliff_tone": 0.6, "cliff_relief": 1.0, "cliff_seed": 3.0, "cliff_hue": 0.5,
 	}
@@ -98,7 +101,7 @@ func _ready() -> void:
 	_set_view(_options.get("view", "eye"))
 	_apply_sun()
 	for key: String in _values:
-		if key.begins_with("cliff_"):
+		if key.begins_with("cliff_") or key.begins_with("mosaic_"):
 			if _options.has(key):
 				_values[key] = float(_options[key]) # (the command line sets them too: cliff_lip=0.12)
 			PlanetTile.ground_material().set_shader_parameter(key, _values[key])
@@ -124,6 +127,10 @@ func _set_view(view: String) -> void:
 			_focus = Vector3.ZERO
 			_pitch = 0.75
 			_distance = 0.56
+		"photo": # as close as a photograph taken standing over the ground: about 70 cm across
+			_focus = Vector3.ZERO
+			_pitch = 1.54
+			_distance = 0.7
 		"down":
 			_focus = Vector3.ZERO
 			_pitch = 1.34
@@ -322,6 +329,12 @@ func _build_panel() -> void:
 		["organic", "organic matter", 0.0, 1.0, 0.05, 3], ["pale", "pale rock", 0.0, 1.0, 0.05, 3], ["depth", "soil depth", 0.0, 1.0, 0.05, 3],
 		["spacing", "stone grid (m)", 0.04, 0.4, 0.01, 2], ["density", "stone odds", 0.0, 3.0, 0.1, 2],
 		["tilt", "lean the patch (-90 = cliff)", -90.0, 90.0, 1.0, 3], ["seed", "patch (seed)", 1.0, 99.0, 1.0, 3], ["fov", "field of view", 20.0, 100.0, 1.0, 0],
+		["mosaic_strength", "mosaic: strength", 0.0, 1.0, 0.05, 4], ["mosaic_big_per_m", "mosaic: large per m", 2.0, 40.0, 0.5, 4],
+		["mosaic_mid_per_m", "mosaic: medium per m", 8.0, 100.0, 1.0, 4], ["mosaic_small_per_m", "mosaic: small per m", 30.0, 300.0, 5.0, 4],
+		["mosaic_big_cover", "mosaic: large cover", 0.0, 1.0, 0.05, 4], ["mosaic_mid_cover", "mosaic: medium cover", 0.0, 1.0, 0.05, 4],
+		["mosaic_angular", "mosaic: sharpness", 0.0, 1.0, 0.05, 4], ["mosaic_gap", "mosaic: dark gaps", 0.0, 1.0, 0.05, 4],
+		["mosaic_tilt", "mosaic: plate lean", 0.0, 2.0, 0.05, 4], ["mosaic_tone", "mosaic: tone spread", 0.0, 1.0, 0.05, 4],
+		["mosaic_pebbles", "mosaic: pebbles", 0.0, 0.5, 0.01, 4], ["mosaic_desat", "mosaic: desaturation", 0.0, 1.0, 0.05, 4], ["mosaic_grain", "mosaic: fine grain", 0.0, 1.0, 0.05, 4], ["mosaic_seed", "mosaic: layout (seed)", 1.0, 99.0, 1.0, 4],
 		["cliff_row_height", "cliff: bed thickness (m)", 0.15, 1.5, 0.01, 4], ["cliff_col_width", "cliff: slab width (m)", 0.3, 3.0, 0.05, 4],
 		["cliff_warp", "cliff: edge wander (m)", 0.0, 1.0, 0.01, 4], ["cliff_lip", "cliff: lip width (m)", 0.01, 0.3, 0.005, 4],
 		["cliff_terraces", "cliff: terracing", 0.0, 1.0, 0.05, 4], ["cliff_cracks", "cliff: cracked slabs", 0.0, 1.0, 0.05, 4],
@@ -423,6 +436,8 @@ func _process(_delta: float) -> void:
 		if _ref != "" and FileAccess.file_exists(_ref):
 			var reference := Image.load_from_file(_ref)
 			if reference != null:
+				reference.convert(Image.FORMAT_RGB8)
+				image.convert(Image.FORMAT_RGB8)
 				var scale := float(image.get_height()) / float(reference.get_height())
 				reference.resize(int(reference.get_width() * scale), image.get_height(), Image.INTERPOLATE_LANCZOS)
 				var both := Image.create(image.get_width() + reference.get_width(), image.get_height(), false, Image.FORMAT_RGB8)

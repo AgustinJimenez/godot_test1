@@ -233,6 +233,7 @@ vec3 leaf_litter(vec3 p, vec3 ground_up, float scale) {
 }
 
 #include "res://shaders/world/planet_cliff.gdshaderinc"
+#include "res://shaders/world/planet_mosaic.gdshaderinc"
 
 // A texture sampled so that its repeat does not show: a second look at it, at another scale and place, blended in by a slow noise
 // (the two share no repeat distance, so neither shows through). `uv` in tiles.
@@ -500,7 +501,29 @@ void fragment() {
 					}
 				}
 			}
-			for (int crumb_class = 0; crumb_class < 3; crumb_class++) {
+			if (mosaic_on) {
+				// the packed fragments (planet_mosaic): on the ground's own plane, the fine ones near, the large ones farther
+				vec3 up_m = normalize(anchor_up);
+				vec3 side_ref_m = abs(up_m.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+				vec3 right_m = normalize(cross(side_ref_m, up_m));
+				vec3 forward_m = cross(up_m, right_m);
+				vec2 flat_p = vec2(dot(hit, right_m), dot(hit, forward_m));
+				vec3 mosaic_fade = vec3(1.0 - smoothstep(2.5, 6.0, crumb_dist), 1.0 - smoothstep(7.0, 16.0, crumb_dist), 1.0 - smoothstep(18.0, 44.0, crumb_dist));
+				float flat_ground = 1.0 - smoothstep(0.25, 0.5, slope);
+				paint = mix(paint, vec3(dot(paint, vec3(0.33))) * vec3(1.0, 0.8, 0.66) * 1.25, mosaic_desat * mosaic_strength * crumbly * 0.6);
+				vec3 m_colour;
+				float m_ao;
+				vec2 m_lean;
+				mosaic_surface(flat_p, max(paint, vec3(0.02)), mosaic_fade * flat_ground, m_colour, m_ao, m_lean);
+				float m_amount = mosaic_strength * crumbly;
+				paint *= mix(vec3(1.0), m_colour, m_amount);
+				ao *= mix(1.0, m_ao, m_amount);
+				vec3 m_planet = right_m * m_lean.x + forward_m * m_lean.y;
+				vec3 m_world = (world_from_planet * vec4(m_planet * 0.9, 0.0)).xyz;
+				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(m_world * 2.0, 0.0)).xyz * m_amount);
+				rough = mix(rough, 0.9, m_amount);
+			}
+			for (int crumb_class = 0; crumb_class < (mosaic_on ? 0 : 3); crumb_class++) {
 				float crumb_scale = crumb_class == 0 ? 30.0 : (crumb_class == 1 ? 11.0 : 4.2); // cells a metre
 				float crumb_fade = 1.0 - smoothstep(crumb_class == 0 ? 7.0 : (crumb_class == 1 ? 16.0 : 28.0),
 						crumb_class == 0 ? 13.0 : (crumb_class == 1 ? 30.0 : 52.0), crumb_dist);

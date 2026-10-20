@@ -232,3 +232,8 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   forward differences (3 height evaluations a plane). Every shape number is a uniform (`cliff_row_height`, `_col_width`, `_warp`, `_lip`,
   `_terraces`, `_cracks`, `_sand`, `_tone`, `_relief`, `_seed`, `_hue`) with a slider in the ground lab (and a command-line option each), set live.
   Never repeats, and the layout can change with `cliff_seed` (not yet with the place or the geology). GPU cost not yet measured.
+- Packed fragments (`shaders/world/planet_mosaic.gdshaderinc`, uniform `mosaic_on`, default on, replaces the three stone sizes of the crumbly gravel): the
+  look of the user's laterite photograph (E:/Temp/claude/refs/laterite_ref.png): three scales (15, 42 and 150 fragments to a metre) of jittered
+  angular cells (rotated, elongated, length-weighted), each its own tone and lean, dark gaps, bevelled rims, a share of tiny grey pebbles, a fine
+  grain, the soil desaturated where it lies. The large plates hold 13% of the ground, the medium 42%, the small all of it. All numbers are
+  uniforms with sliders in the ground lab (`view=photo` frames about 70 cm of ground, `ref=` puts the photograph beside the render).
