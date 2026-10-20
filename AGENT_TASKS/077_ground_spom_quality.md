@@ -1,6 +1,6 @@
 # 077 - Ground parallax quality (SPOM investigation)
 
-Status (2026-10-20): **active; the speckle is reduced in captures, awaiting a live verdict.** The user explicitly asked for a
+Status (2026-10-20): **16 samples is the default (chosen 2026-10-20 after the user compared 16 and 32 in the lab: the same shapes, 32 only a finer speckle in the distance for about 1 ms more).** The user explicitly asked for a
 commit/push of the whole prior working tree, so the 20-sample checkpoint is in `c9d2964` despite the
 usual live-verdict commit rule. The user then explicitly requested a commit/push of the later side-darkness change too.
 The user chose quality first: make the close, nearly horizontal ground view look three-dimensional and free of visible bugs, then reduce GPU use. Work and tuning should happen in `tests/manual/ground/ground_lab.tscn` before judging the planet during ordinary play.
@@ -17,9 +17,8 @@ The user chose quality first: make the close, nearly horizontal ground view look
 - `planet_ground.gdshader`: the march loop allows 32 iterations; `foot_m = length(fwidth(near_anchor))` fades the three fragment scales and fine grain when they become smaller than a pixel.
 - `planet_mosaic.gdshaderinc`: the fixed sample count changes from 9 to 20. The shader currently uses `mosaic_pom_max_steps` as its fixed count; `mosaic_pom_min_steps` is still exposed but unused. A varying count previously made a visible ring, so the fixed count is deliberate for now.
 - `tests/manual/ground/ground_lab.gd`: default and slider range updated for the 20-sample setting.
-- These changes have **not** received a final user live-test verdict. The unrelated texture `.import` change
-  was also committed because the user explicitly asked for all then-uncommitted files. Any new visual
-  changes wait for live confirmation under the normal `AGENTS.md` rule.
+- The unrelated texture `.import` change
+  was also committed because the user explicitly asked for all then-uncommitted files.
 
 ## Current quality result
 
@@ -45,11 +44,44 @@ status was FAIL solely because repository-wide `gdlint` 4.5.0 reports 294 style 
 predominantly lines over 100 characters across the project. `git diff --check` passes. The user
 authorized committing this visual checkpoint before a live quality verdict.
 
+## GPU profile after visual acceptance
+
+The user judged the current 20-sample look acceptable on 2026-10-20. In the saved low-angle ground-lab
+view (`1400x600`, AA off, chips off, D3D12 / RTX 4090), `godot --gpu-profile --disable-vsync` over 400
+frames gave the following mean of the last five one-second profiles (the first is warm-up):
+
+| Lab setting | Total GPU | Depth pre-pass | Opaque pass |
+| --- | ---: | ---: | ---: |
+| Accepted 20 samples, shadow 0.6 | 16.40 ms | 6.36 ms | 9.38 ms |
+| 16 samples, shadow 0.6 | 13.95 ms | 5.32 ms | 8.04 ms |
+| 12 samples, shadow 0.6 | 11.66 ms | 4.30 ms | 6.73 ms |
+| 20 samples, shadow off | 15.44 ms | 6.36 ms | 8.46 ms |
+| Parallax height off | ~5 ms | ~1.4 ms | ~2 ms |
+
+The 12/16-sample still captures look close to the accepted one, but motion and nearby plate sides have
+not had a live verdict. `ground_lab.gd` now accepts `frames=400`
+for reproducible profiling (default remains 40); logs and captures are under `E:/Temp/spom_profile_*`.
+The cost is mostly the height search itself, and is incurred in both depth and opaque passes; removing
+self-shadow saves only about 1 ms. This is a lab view, not a whole-planet frame estimate.
+
+The user then asked to reduce that cost. Two exact-output shader experiments were reverted: a
+conservative distance bound made the search slower (~17.0 ms), and a height-only function produced a
+pixel-identical PNG with no speedup (~16.5 ms), showing the shader compiler already removes unused
+outputs. The uncommitted candidate changes the fixed march count from 20 to 16. It saves ~2.45 ms
+(15%) in the same low-angle lab view. The 40-frame 1-degree-per-frame TAA capture differs from the
+20-sample one by mean absolute RGB below 0.8/255 per channel; low and macro still views look close,
+though isolated edge pixels differ more. A 1000-frame planet lab run compiled and rendered without
+shader errors; its depth/opaque passes were roughly 1.4/2.1 ms rather than 1.6/2.3 ms in a separate
+20-sample run, but whole-frame totals varied with loading. No silhouette clipping was added: on a
+continuous ground mesh, discarding those pixels could expose the background as holes.
+
 ## Next steps
 
-1. In the ground lab, reproduce the saved low-angle view and judge the new 0.35 side darkness during motion. Check nearby relief, the middle-distance field, plate-side streaks, and the transition to flat ground. Captures support improvement but cannot give the final live verdict.
-2. If a defect remains, inspect its sampled height, hit depth and final shading separately before altering the ray march. The 0.35 shading change should not be mistaken for a geometry fix.
-3. After quality is accepted, benchmark GPU time and tune sample/shadow cost without reintroducing the artifact. The 20-sample march is expected to cost more; no current benchmark establishes that cost as acceptable.
+1. Have the user judge the 16-sample candidate live, moving the camera close to plate sides and across
+   the saved low-angle view. If it looks worse, restore the accepted 20-sample default; still captures
+   alone cannot approve a visual change. Do not commit the candidate before that verdict.
+2. Once the visual setting is settled, profile a representative moving whole-planet frame. The lab
+   isolates shader cost, while the idle planet lab view has variable loading and other frame costs.
 
 `AGENT_TASKS/076_forests_and_fields.md` records the earlier mosaic design and research, but its parallax sample counts and limits predate this task. This file is the current status for the quality pass.
 

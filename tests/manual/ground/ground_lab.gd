@@ -105,7 +105,7 @@ func _ready() -> void:
 		"mosaic_mid_cover": 0.42, "mosaic_angular": 0.8, "mosaic_gap": 0.75, "mosaic_tilt": 1.4,
 		"mosaic_tone": 0.7, "mosaic_pebbles": 0.11,
 		"mosaic_seed": 1.0, "mosaic_shadow": 0.6, "mosaic_side_dark": 0.35, "mosaic_pom_min_steps": 3,
-		"mosaic_pom_max_steps": 20, "scan_blend_depth": 0.25, "mosaic_height": 0.03,
+		"mosaic_pom_max_steps": 16, "scan_blend_depth": 0.25, "mosaic_height": 0.03,
 		"mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
 		"mosaic_relief_light": 0.7, "mosaic_slab_tilt": 0.35,
 		"mosaic_top_detail": 0.3, "mosaic_cracks": 0.25, "mosaic_dust": 0.5, "mosaic_veins": 0.4,
