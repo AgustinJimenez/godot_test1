@@ -1878,7 +1878,14 @@ void PlanetCrustNative::material_at(const Vector3 &dir, double ground, double st
 	at[6] = (uint8_t)(int)(clampd(stony, 0.0, 1.0) * 255.0);
 	at[7] = (uint8_t)(int)(depth * 255.0);
 	at[8] = (uint8_t)(int)(clampd(alluvial, 0.0, 1.0) * 255.0);
-	at[9] = 0;
+	// how wooded the place is: the share of closed ground the trees and the plants are placed by (the same two noises and the
+	// rain as PlanetScatterNative's closed_share), and none where it is too dry for any of them. The ground shader lays the
+	// litter of leaves, twigs and bark only where this is high: a plain desert has none
+	const double groves = detail_at(dir * (real_t)(radius / 27.0) + Vector3(11, 0, 0));
+	const double regions = detail_at(dir * (real_t)(radius / 140.0) + Vector3(0, 23, 0));
+	const double cover = smooth(0.25, 0.7, wet) + 1.6 * (regions - 0.5) + 1.2 * (groves - 0.5) - 0.35 * smooth(0.35, 0.7, steep);
+	const double wooded = smooth(0.15, 0.55, cover) * smooth(0.12, 0.35, wet) * smooth(-4.0, 4.0, cold);
+	at[9] = (uint8_t)(int)(clampd(wooded, 0.0, 1.0) * 255.0);
 	for (int k = 0; k < 4; k++) {
 		at[k] = (uint8_t)(int)(clampd((double)mixed[k], 0.0, 1.0) * 255.0);
 	}

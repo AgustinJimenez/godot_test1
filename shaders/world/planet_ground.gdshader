@@ -71,6 +71,7 @@ varying vec4 geology; // what the rock of the place breaks into: angular, coarse
 varying float soil_organic; // 0.5 neutral; above: black earth and peat; below: the ash of cold forests, loess, desert dust
 varying float soil_iron; // 0..1: red laterite and red sandstone soil
 varying vec3 lie; // where stones lie: how stony the place is (0: clean soil), the soil's depth, river gravel (0..1)
+varying float woodland; // 0: open ground (a desert, a plain), 1: wooded (trees and plants about): only there the litter of leaves, twigs and bark lies
 
 #include "res://shaders/world/planet_stones.gdshaderinc"
 
@@ -164,6 +165,7 @@ void vertex() {
 	soil_organic = CUSTOM0.a;
 	soil_iron = COLOR.a;
 	lie = CUSTOM2.rgb;
+	woodland = CUSTOM2.a;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
@@ -705,7 +707,7 @@ void fragment() {
 			paint *= 1.0 - 0.55 * shadow * parallax_fade;
 			// wood and litter: twigs, bark chips and fallen leaves, thicker on the dark soil of forests (organic matter) and in patches
 			float forest_floor = smoothstep(0.42, 0.68, soil_organic) * 0.8 + 0.2;
-			float litter_zone = smoothstep(0.25, 0.75, noise3(on_planet * 0.1875 + 13.0, 192.0)) * (0.35 + 0.65 * forest_floor);
+			float litter_zone = smoothstep(0.25, 0.75, noise3(on_planet * 0.1875 + 13.0, 192.0)) * (0.35 + 0.65 * forest_floor) * smoothstep(0.05, 0.45, woodland);
 			float litter_fade = 1.0 - smoothstep(14.0, 30.0, crumb_dist);
 			if (litter_zone > 0.02 && litter_fade > 0.01) {
 				float st_h;

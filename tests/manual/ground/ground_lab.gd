@@ -107,6 +107,7 @@ func _ready() -> void:
 		"mosaic_seed": 1.0, "mosaic_shadow": 0.6, "mosaic_side_dark": 0.35, "mosaic_pom_min_steps": 3,
 		"mosaic_pom_max_steps": 16, "scan_blend_depth": 0.25, "mosaic_height": 0.055, "mosaic_range": 6.0,
 		"mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
+		"woodland": float(_options.get("woodland", "0.0")),
 		"mosaic_relief_light": 0.7, "mosaic_slab_tilt": 0.35,
 		"mosaic_top_detail": 0.3, "mosaic_cracks": 0.25, "mosaic_dust": 0.5, "mosaic_veins": 0.4,
 		"mosaic_side_strata": 0.5,
@@ -358,7 +359,8 @@ func _patch(preset: Dictionary, stones: float, seed_value: int) -> MeshInstance3
 					int(colour.b * 255), int(float(preset["organic"]) * 255)]))
 			geology.append_array(PackedByteArray([int(0.6 * 255), int(0.5 * 255),
 					int(float(preset["pale"]) * 255), int(0.3 * 255)]))
-			lie.append_array(PackedByteArray([int(stones * 255), int(float(preset["depth"]) * 255), 0, 0]))
+			lie.append_array(PackedByteArray([int(stones * 255), int(float(preset["depth"]) * 255), 0,
+					int(float(_values["woodland"]) * 255)]))
 	for row in cells:
 		for column in cells:
 			var i := row * (cells + 1) + column
@@ -513,6 +515,7 @@ func _build_panel() -> void:
 		0.05, 3],
 		["stones", "how stony", 0.0, 1.0, 0.05, 3], ["iron", "iron (red soil)", 0.0, 1.0, 0.05, 3],
 		["organic", "organic matter", 0.0, 1.0, 0.05, 3], ["pale", "pale rock", 0.0, 1.0, 0.05, 3],
+		["woodland", "woodland (litter of leaves, twigs)", 0.0, 1.0, 0.05, 3],
 		["depth", "soil depth", 0.0, 1.0, 0.05, 3],
 		["spacing", "stone grid (m)", 0.04, 0.4, 0.01, 2], ["density", "stone odds", 0.0, 3.0, 0.1, 2],
 		["tilt", "lean the patch (-90 = cliff)", -90.0, 90.0, 1.0, 3],
