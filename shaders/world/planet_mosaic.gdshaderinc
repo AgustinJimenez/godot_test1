@@ -31,6 +31,25 @@ struct Mosaic {
 	vec2 dir; // from the fragment's centre to the point (its rim leans outward)
 };
 
+// A random convex polygon round the origin as a "metric": 1 on its outline. `seed` makes its corner count (3 to 8, `sides_var` how much
+// the count varies from the usual 5) and the length of every side (each side is a line at its own turn and its own distance).
+float mosaic_polygon(vec2 r, float seed, float sides_var) {
+	int corners = 5 + int(floor((fract(seed * 91.7) - 0.5) * 6.99 * sides_var + 0.5));
+	corners = clamp(corners, 3, 8);
+	float turn0 = fract(seed * 17.3) * 6.2831853;
+	float worst = 0.0;
+	for (int k = 0; k < 8; k++) {
+		if (k >= corners) {
+			break;
+		}
+		float jitter = fract(sin(seed * 91.7 + float(k) * 13.3) * 4375.5);
+		float angle = turn0 + (float(k) + (jitter - 0.5) * 0.9 * sides_var) * 6.2831853 / float(corners);
+		float reach = 0.55 + 0.9 * mix(0.5, fract(sin(seed * 47.3 + float(k) * 7.7) * 1234.5), sides_var); // the side's distance: long or short
+		worst = max(worst, dot(r, vec2(cos(angle), sin(angle))) / reach);
+	}
+	return worst;
+}
+
 float mosaic_hash(vec2 id, float k) {
 	return hash3(vec3(mod(id, 4096.0), k + mosaic_seed * 3.7));
 }
@@ -59,9 +78,8 @@ Mosaic mosaic_layer(vec2 p, float per_m, float present, float k) {
 			vec3 b = vec3(mosaic_hash(cell, k + 4.0), mosaic_hash(cell, k + 5.0), mosaic_hash(cell, k + 13.0));
 			r.x *= mix(0.8, 0.35 + 1.25 * b.x, mosaic_shape_var); // stubby or long, each its own
 			float angular = clamp(mosaic_angular + (b.y - 0.5) * 1.6 * mosaic_shape_var, 0.0, 1.0); // some round, some sharp
-			float diamond = (abs(r.x) + abs(r.y)) * 0.74;
-			float square_metric = max(abs(r.x), abs(r.y)) * 1.05; // squared off plates
-			float metric = mix(length(r), mix(diamond, square_metric, b.z), angular);
+			float polygon = mosaic_polygon(r, b.z * 0.9 + 0.05 * b.y, mosaic_shape_var) * 0.85; // its own corners and sides
+			float metric = mix(length(r), polygon, angular);
 			metric *= exp((fract(b.x * 7.31 + b.y * 3.7) - 0.5) * 2.4 * mosaic_size_var) * zone; // sizes spread over a wide range
 			if (metric < best) {
 				second = best;
