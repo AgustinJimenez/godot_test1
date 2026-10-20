@@ -316,6 +316,7 @@ void fragment() {
 	if (strength > 0.001) {
 		vec3 near_anchor = (anchor_from_world * vec4(world_pos, 1.0)).xyz;
 		vec3 on_planet = near_anchor + anchor_wrap; // the planet position, to the noise's period
+		float foot_m = length(fwidth(near_anchor)); // metres of ground one pixel covers (huge at a flat angle): a detail finer than this only sparkles, so it fades out
 		float slope = 1.0 - clamp(world_normal.y, 0.0, 1.0);
 		// Parallax occlusion of the packed fragments, done first so that EVERY layer of the near ground is moved with it: the view ray is
 		// marched into the heights of the plates, and the ground position all the detail below reads (the scans, the bumps, the patches, the
@@ -343,7 +344,7 @@ void fragment() {
 				float last_depth = 0.0;
 				float last_gap = -pom_height;
 				float hit_depth = -1.0;
-				for (int i = 0; i < 14; i++) {
+				for (int i = 0; i < 32; i++) {
 					if (i >= pom_steps) {
 						break;
 					}
@@ -621,7 +622,8 @@ void fragment() {
 				vec3 right_m = normalize(cross(side_ref_m, up_m));
 				vec3 forward_m = cross(up_m, right_m);
 				vec2 flat_p = vec2(dot(on_planet, right_m), dot(on_planet, forward_m)); // (on_planet is already moved by the parallax: see above)
-				vec3 mosaic_fade = vec3(1.0 - smoothstep(2.5, 6.0, crumb_dist), 1.0 - smoothstep(7.0, 16.0, crumb_dist), 1.0 - smoothstep(18.0, 44.0, crumb_dist));
+				vec3 mosaic_fade = vec3(1.0 - smoothstep(2.5, 6.0, crumb_dist), 1.0 - smoothstep(7.0, 16.0, crumb_dist), 1.0 - smoothstep(18.0, 44.0, crumb_dist))
+						* vec3(1.0 - smoothstep(0.25 / mosaic_small_per_m, 0.9 / mosaic_small_per_m, foot_m), 1.0 - smoothstep(0.25 / mosaic_mid_per_m, 0.9 / mosaic_mid_per_m, foot_m), 1.0 - smoothstep(0.25 / mosaic_big_per_m, 0.9 / mosaic_big_per_m, foot_m)); // (each scale fades out where a pixel covers more than its fragments)
 				float flat_ground = 1.0 - smoothstep(0.25, 0.5, slope);
 				paint = mix(paint, vec3(dot(paint, vec3(0.33))) * vec3(1.0, 0.8, 0.66) * 1.25, mosaic_desat * mosaic_strength * crumbly * 0.6);
 				vec3 m_colour;
@@ -634,7 +636,7 @@ void fragment() {
 				paint *= mix(vec3(1.0), m_colour, m_amount);
 				// fine grain on the fragments themselves (a plate is not a smooth tint): small bright and dark specks, finer as you get closer
 				float speck = noise3(vec3(flat_p * 260.0, mosaic_seed), 266240.0) * 0.6 + noise3(vec3(flat_p * 640.0, 3.0), 655360.0) * 0.4;
-				paint *= 1.0 + (speck - 0.5) * 0.9 * mosaic_grain * m_amount * (1.0 - smoothstep(2.0, 8.0, crumb_dist));
+				paint *= 1.0 + (speck - 0.5) * 0.9 * mosaic_grain * m_amount * (1.0 - smoothstep(2.0, 8.0, crumb_dist)) * (1.0 - smoothstep(0.0015, 0.005, foot_m));
 				ao *= mix(1.0, m_ao, m_amount);
 				vec3 m_planet = right_m * m_lean.x + forward_m * m_lean.y;
 				vec3 m_world = (world_from_planet * vec4(m_planet * 0.9, 0.0)).xyz;

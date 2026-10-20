@@ -22,7 +22,7 @@ uniform float mosaic_grain : hint_range(0.0, 1.0) = 0.85; // the fine crumbly gr
 uniform float mosaic_height = 0.03; // m: how far the tallest plates stand out of the soil (the parallax depth)
 uniform float mosaic_shadow : hint_range(0.0, 1.0) = 0.6; // how dark a plate shadow on its neighbours (soft self-shadowing)
 uniform int mosaic_pom_min_steps : hint_range(2, 12) = 3; // parallax samples looking straight down (Tatarchuk: n = min + (max - min)(1 - V.N))
-uniform int mosaic_pom_max_steps : hint_range(3, 14) = 9; // and at a grazing angle
+uniform int mosaic_pom_max_steps : hint_range(3, 32) = 20; // and at a grazing angle
 uniform float mosaic_seed = 1.0;
 
 struct Mosaic {
