@@ -512,7 +512,7 @@ void fragment() {
 				float pom_fade = (1.0 - smoothstep(1.2, 3.6, crumb_dist)) * (1.0 - smoothstep(0.25, 0.5, slope));
 				if (pom_fade > 0.02 && mosaic_height > 0.0005) {
 					vec3 ray_a = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
-					float down = max(-dot(ray_a, up_m), 0.1);
+					float down = max(-dot(ray_a, up_m), 0.3); // (not lower than this: at a grazing angle the plates would smear into spikes)
 					vec2 along = vec2(dot(ray_a, right_m), dot(ray_a, forward_m)) / down; // ground travelled for each unit of depth
 					const int POM_STEPS = 5;
 					float jitter_pom = fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453);
@@ -543,7 +543,7 @@ void fragment() {
 						}
 						flat_p += along * high_d * pom_fade;
 						// the soil seen in the shadow of a tall plate: what the ray went in under is darker
-						paint *= 1.0 - 0.35 * pom_fade * smoothstep(0.0, mosaic_height, high_d);
+						paint *= 1.0 - 0.6 * pom_fade * smoothstep(0.0, mosaic_height, high_d); // (the deeper the ray went in, the darker: the sides of a plate)
 					}
 				}
 				vec3 mosaic_fade = vec3(1.0 - smoothstep(2.5, 6.0, crumb_dist), 1.0 - smoothstep(7.0, 16.0, crumb_dist), 1.0 - smoothstep(18.0, 44.0, crumb_dist));
@@ -555,6 +555,9 @@ void fragment() {
 				mosaic_surface(flat_p, max(paint, vec3(0.02)), mosaic_fade * flat_ground, m_colour, m_ao, m_lean);
 				float m_amount = mosaic_strength * crumbly;
 				paint *= mix(vec3(1.0), m_colour, m_amount);
+				// fine grain on the fragments themselves (a plate is not a smooth tint): small bright and dark specks, finer as you get closer
+				float speck = noise3(vec3(flat_p * 260.0, mosaic_seed), 266240.0) * 0.6 + noise3(vec3(flat_p * 640.0, 3.0), 655360.0) * 0.4;
+				paint *= 1.0 + (speck - 0.5) * 0.9 * mosaic_grain * m_amount * (1.0 - smoothstep(2.0, 8.0, crumb_dist));
 				ao *= mix(1.0, m_ao, m_amount);
 				vec3 m_planet = right_m * m_lean.x + forward_m * m_lean.y;
 				vec3 m_world = (world_from_planet * vec4(m_planet * 0.9, 0.0)).xyz;

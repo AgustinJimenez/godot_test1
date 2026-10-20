@@ -19,7 +19,7 @@ uniform float mosaic_size_var : hint_range(0.0, 1.0) = 0.7; // how different the
 uniform float mosaic_shape_var : hint_range(0.0, 1.0) = 0.7; // how different their shapes are: round, diamond, square; stubby or long
 uniform float mosaic_desat : hint_range(0.0, 1.0) = 0.6; // the fragments are less saturated than the soil painted over them
 uniform float mosaic_grain : hint_range(0.0, 1.0) = 0.85; // the fine crumbly grain between and on the fragments
-uniform float mosaic_height = 0.04; // m: how far the tallest plates stand out of the soil (the parallax depth)
+uniform float mosaic_height = 0.03; // m: how far the tallest plates stand out of the soil (the parallax depth)
 uniform float mosaic_seed = 1.0;
 
 struct Mosaic {
