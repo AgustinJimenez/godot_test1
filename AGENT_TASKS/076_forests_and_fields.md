@@ -216,3 +216,7 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   pillowed by the border distance, cracks inside slabs, bed lines; height, albedo, normal, orm; all wrap). It has the structure but not the
   original's contrast and detail: missing are stepped terrace edges with a hard shadow lip, sandy debris shelves with pebbles, and painted
   tone patches. Not yet used by any shader.
+- make_cliff_textures.py v2 adds terraced slabs (steep lips, flat tilted tops, heights stepped by cell), a second smaller set of slabs in patches,
+  sandy shelves in the low places with a few pebbles, painted tone patches and stains, a saturated sandstone palette. Still short of the
+  original: no overhang shadows under the lips, the thin curved hairlines (the border of one set showing in the other) and the ledge stripes
+  are artefacts, and the painted look of the original's light/dark shapes is only approximated by noise.
