@@ -331,7 +331,7 @@ void fragment() {
 				vec3 pm_forward = cross(pm_up, pm_right);
 				vec2 pm_flat = vec2(dot(on_planet, pm_right), dot(on_planet, pm_forward));
 				vec3 ray_a = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
-				float down = max(-dot(ray_a, pm_up), 0.2);
+				float down = max(-dot(ray_a, pm_up), 0.42); // (the ray never travels more than 2.4 times the depth: with six steps each stays about a centimetre, so no plate is jumped over and shown as stacked copies; the cost is that very flat views show a little less relief)
 				vec2 along = vec2(dot(ray_a, pm_right), dot(ray_a, pm_forward)) / down; // ground travelled for each unit of depth
 				// (Tatarchuk, I3D 2006) more samples as the view gets more grazing; the height profile is a series of straight segments and the ray
 				// is intersected with the segment it went through, exactly, with no extra samples
