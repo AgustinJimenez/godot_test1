@@ -1,6 +1,6 @@
 # 054 - Universe foundation: seed, star systems, planets
 
-Status: **stages 1-2 done (2026-10-17): `Star`, `StarSystem`, `UniverseSettings` (+ `planet_settings(system, planet)`) in `systems/planet/`; `planet_lab -- --universe=SEED [--systems=N] [--any]` prints the table and `UNIVERSE_CHECK PASS`; next: stage 3 (the star drives the sun)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **stages 1-6 done (2026-10-17), none judged by the user**: `Star`, `StarSystem`, `UniverseSettings` (+ `planet_settings(system, planet)`, `home_settings`); the star's colour tints the sun, the sky, the clouds and the leaves; insolation (L / a^2) drives the seasons; the sun disc follows radius / distance; the start menu makes a universe (seed, home planet sun-like or any, star colour slider); saves are version 3. Not done: the universe clock as one shared time (it is data only), star data in the Planet page, more than one system on screen. Known failing: `--home=42 --planet-check` (see Notes). Follows [043](043_planet.md). Branch: `main` (it was `godot-4.7-upgrade` until 2026-10-20).
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 Decisions (user, 2026-10-17): **many star systems are wanted** ("if possible, let's do it"); the focus is

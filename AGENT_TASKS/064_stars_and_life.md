@@ -1,6 +1,6 @@
 # 064 - Stars and what their light does to life
 
-Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **partly done (2026-10-17), none judged by the user**: `Star` (mass to luminosity, radius, temperature, lifetime, colour, habitable zone, frost line, flare level), the colour of the light on sun, sky and clouds, insolation into the seasons, leaf colours by star; tidal locking is only flagged. Not done: UV and flares, PAR and plant size, the ground and sea colour by star, a true locked world, the look table (see Progress). Follows [043](043_planet.md). Branch: `main` (it was `godot-4.7-upgrade` until 2026-10-20).
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 Decision (user, 2026-10-17): stars may have different colours, and that may alter the life on their planets.

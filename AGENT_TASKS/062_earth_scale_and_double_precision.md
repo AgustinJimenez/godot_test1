@@ -1,6 +1,6 @@
 # 062 - Earth scale and double precision
 
-Status: **started (2026-10-17): `PlanetSettings.earth()`, the start menu button "New Earth" and the lab's `--earth`** (6,371 km, day 86,400 s, year 365.25 d, month 29.53 d, tilt 23.44, eccentricity 0.0167, 71 % sea, 15 plates); `--earth --planet-check` passes on the single precision build but the start takes 57 s (765 tiles) there; the rest is planned. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **started (2026-10-17): `PlanetSettings.earth()`, the start menu button "New Earth" and the lab's `--earth`** (6,371 km, day 86,400 s, year 365.25 d, month 29.53 d, tilt 23.44, eccentricity 0.0167, 71 % sea, 15 plates); `--earth --planet-check` passes on the single precision build but the start takes 57 s (765 tiles) there; the rest is planned. Follows [043](043_planet.md). Branch: `main` (it was `godot-4.7-upgrade` until 2026-10-20).
 Update (2026-10-18): `PlanetSettings.earth(scale)` (a smaller Earth for debugging; the lab starts a 0.1 scale Earth with a random seed when run with no arguments, PLANET_SCALE=1 for the whole), the planet takes 2.2 s to make and the ground 1.1 s to load on a 6 core PC (was ~15 s), vertices placed in doubles, the ground shader's detail noise read near the player (`anchor_*` globals).
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 

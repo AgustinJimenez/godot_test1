@@ -1,6 +1,6 @@
 # 057 - Terrain realism
 
-Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `main` (it was `godot-4.7-upgrade` until 2026-10-20).
 Update (2026-10-18): the crust is now native C++ (`native/planet_crust`, docs/planet_generation.md): 9 rock types by plate/craton/basin, relief scales tuned to Earth (10 km slope 0.043, 100 km 0.007), V-valleys along drainage rivers (512 cells a face on the Earth preset), plate edges bent less. Not done: thermal erosion near the player, snow line and glaciers in the crust colour, beaches, dunes, volcanoes.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 

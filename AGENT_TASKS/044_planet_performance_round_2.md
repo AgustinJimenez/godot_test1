@@ -1,6 +1,6 @@
 # 044 - Planet performance, round 2
 
-Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **planned (2026-10-17); remeasure first**: the native port ([073](073_native_planet_generation.md)) and the ground parallax ([077](077_ground_spom_quality.md)) changed every number below. Follows [043](043_planet.md). Branch: `main` (it was `godot-4.7-upgrade` until 2026-10-20).
 Update (2026-10-18): the loading starvation is fixed (12 tiles queued per 0.3 s; now all while the player waits, 48 otherwise) and the tile build is mostly native; plants are off by default so the tree numbers below are unchanged. `PLANET_TIMING=1` prints the laps.
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 

@@ -1,6 +1,6 @@
 # 046 - Performance budget and one check script
 
-Status: **step 1 done (2026-10-17): `scripts/planet_check.sh`** (budget, hitch median and screenshot steps still planned). Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **step 1 done (2026-10-17): `scripts/planet_check.sh`** (budget, hitch median and screenshot steps still planned). Follows [043](043_planet.md). Branch: `main` (it was `godot-4.7-upgrade` until 2026-10-20).
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

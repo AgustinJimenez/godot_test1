@@ -1,6 +1,6 @@
 # 060 - Map, HUD and tools for the player
 
-Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `main` (it was `godot-4.7-upgrade` until 2026-10-20).
 Update (2026-10-18): the map opens first on a new game (the ground waits until it is closed), at max zoom on the player, with a quarter-size close preview then the sharp chart; a 3D globe mode (G); native Terrain rows (2048x1024 in 1 s); Planet page switch for fog. Not done: native rows for the other layers (Temperature and Clouds take 1.5 s a 1024x512 pass).
 
 **Part parked (user, 2026-10-17):** the player is not the focus now. Do the universe and star map and the planet

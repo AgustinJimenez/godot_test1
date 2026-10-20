@@ -1,11 +1,34 @@
 # 043 Planet (round world prototype)
 
-Status (2026-10-17): **the planet is built and works**: a walkable round planet with plates, climate and
-seasons, rivers, lakes, plants (120 species), fauna, a sun/moon/star from orbit and spin, weather and
-volumetric clouds, a physical sky, saved universes and a start menu, a map, and a double precision option.
-Branch `godot-4.7-upgrade`, code in `systems/planet/`, lab `tests/manual/planet/planet_lab.tscn`. The
-next work is the planned tasks 044-068 (table at the end of this file). Reference: `docs/planet_generation.md`;
-what we learned: `docs/planet_lessons.md`.
+Status (2026-10-20): **the planet is built and works, and has grown far past the prototype**: plates, climate and
+seasons, rivers, lakes, forests and meadows with a native plant generator, fauna, a star, sun and moon from orbit and
+spin, weather, volumetric clouds, a physical sky, ground detail with parallax, saved universes and a start menu, a map,
+native C++ generation (`native/planet_crust`) and a double precision option. Branch `main`, code in `systems/planet/`,
+lab `tests/manual/planet/planet_lab.tscn`. Reference: `docs/planet_generation.md`; what we learned:
+`docs/planet_lessons.md`; every check in one command: `scripts/planet_check.sh --quick`.
+
+## Status on 2026-10-20 (a read-through of the files, then lint and the quick checks; nothing else re-tested)
+
+- **Where the work is now:** [077](077_ground_spom_quality.md) (ground parallax quality). The 20-sample look was accepted
+  and committed; a 16-sample version (about 2.4 ms cheaper) is **uncommitted in the working tree and waits for the user's
+  live verdict** (`shaders/world/planet_mosaic.gdshaderinc`, `tests/manual/ground/ground_lab.gd`, the 077 note).
+- **Lint is clean** again (gdlint 4.5.0, all 302 problems fixed on 2026-10-20) and `scripts/planet_check.sh --quick` passes
+  every check. Not in the suite and known to fail: `--home=42 --planet-check` (4.4 m gap on an 11 km planet, see 054).
+- **Native code exists now.** `native/planet_crust` is a GDExtension (C++): crust, tiles, water meshes, drainage, seasons,
+  map rows, plant placement and plant meshes ([073](073_native_planet_generation.md)). Build it with
+  `scripts/build_native.sh` (run `scripts/setup_native.sh` once per machine so a pull or checkout rebuilds it); a Mac needs a rebuild after
+  C++ changes; a running editor locks the DLL. Plans that said "no native code" (066) are updated.
+- **The flat world** is retired by decision (the user said it may be deprecated; 072 treats it as retired) but its code and
+  Sky3D are still in the repo ([053](053_flat_world_parity.md)).
+- **Tasks 044-068 (planned 2026-10-17):** done or started: 046 (step 1: `planet_check.sh`), 049 (no overlaps),
+  054 (stages 1-6), 058 (steps 1, 3, 4), 062 (started: `PlanetSettings.earth()`), 064 (partly), 065 (ozone). Untouched:
+  044, 045, 047, 048, 050-053, 055-057, 059-061, 063, 066-068. The table below is still the suggested order.
+- **Tasks 069-077 (written by other sessions, 2026-10-18 to 20):** 069 realism gaps seen on the map; 070 map speed and cache;
+  071 the visual-quality gap to an Unreal look (tier 1, the ground detail and the night sky are built); 072 what realistic
+  nature references have that the planet lacks (plants on by default, haze, meadows, ozone done); 073 native generation
+  (almost all done); 074 the overnight log of 2026-10-19; 075 the design for storing what the player changes (nothing
+  built); 076 forests, fields and crowding (done) and the stone soil; 077 the ground parallax (active).
+- **Not judged by the user** (as far as the files say): the star colours (054, 064), the 16-sample ground (077).
 
 ## Handoff to the next agent (written 2026-10-17 when the previous session ran out of tokens)
 
@@ -17,8 +40,8 @@ change is `assets/models/kaykit_fantasy_weapons/weapons_bits_texture.png.import`
 
 **Read in this order:** this file (the Principle, then the follow-up table at the end), `docs/planet_lessons.md`,
 `docs/planet_generation.md`, the planet section and the "Measuring planet performance" subsection of
-`AGENTS.md`, then the task you pick. Start with **054 stage 1** (data classes for star, system, universe and a
-lab table; nothing visual) unless the user says otherwise; 044 and 046 are the other safe starts.
+`AGENTS.md`, then the task you pick. Then the status block above: 054 stages 1-6 are done, so the safe starts are the open parts of
+054 and 064 (the Planet page, the locked world) and 044, 046, 047; ask the user before anything big.
 
 **How the user works.** They judge by what they see and how it feels, not by code: lead with outcomes in
 short plain sentences, keep jargon out, and say what you did not check. They ask a question before building
@@ -400,7 +423,7 @@ flight at a great speed as in the free mode today).
   distance in space" in the doc); now 463. On the ground: tree distance levels and merged far trees took a frame from 55 to 152 fps
   (see "Distance levels of the plants" in the doc).
 
-## Follow-up tasks (planned 2026-10-17, none started)
+## Follow-up tasks (planned 2026-10-17; their status on 2026-10-20 is in the block at the top)
 
 Read `docs/planet_lessons.md` before any of them. **Focus (user, 2026-10-17): the planet and the star, not the
 player; many star systems are wanted; the flat world may be retired once the universe exists.** Suggested

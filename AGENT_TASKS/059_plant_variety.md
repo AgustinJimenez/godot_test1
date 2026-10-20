@@ -1,6 +1,6 @@
 # 059 - Plant variety
 
-Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `main` (it was `godot-4.7-upgrade` until 2026-10-20).
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 ## Goal

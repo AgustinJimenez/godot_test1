@@ -1,6 +1,6 @@
 # 065 - Atmospheric composition, pressure and what they do
 
-Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **started (2026-10-18): ozone is in the air model** (`PlanetAir.BETA_OZONE`, from 072); the settings data, the gases, dust, pressure and the weather effects are planned. Follows [043](043_planet.md). Branch: `main` (it was `godot-4.7-upgrade` until 2026-10-20).
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 Idea (user, 2026-10-17): the air's composition may change the weather and the colours. It does, and it

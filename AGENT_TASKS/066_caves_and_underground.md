@@ -1,6 +1,6 @@
 # 066 - Caves and the underground
 
-Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `godot-4.7-upgrade`.
+Status: **planned (2026-10-17)**. Follows [043](043_planet.md). Branch: `main` (it was `godot-4.7-upgrade` until 2026-10-20).
 Read `docs/planet_lessons.md` first (how to measure, the traps).
 
 Idea (user, 2026-10-17): cavern systems, and not only holes: a way of going under the ground that comes
@@ -60,8 +60,7 @@ Stay a pure function of the seed and the position, as the land is.
   *geometry* is a **signed distance function construction tree** of primitives with blending and warping
   operators, with control over the cross-section shapes and the detail of the conduits. The authors' C++
   re-implementation (MIT licence, no dependencies) makes the skeletons only; the network classification and
-  the implicit surface are not in it. Use the paper's method; write our own GDScript (or a small C++
-  module is *not* wanted: the project has no native code).
+  the implicit surface are not in it. Use the paper's method. The project now has a native C++ library (`native/planet_crust`, task [073](073_native_planet_generation.md)): write the skeleton search and the surface meshing there, as the water and plant meshes were, and keep GDScript for the nodes and the streaming.
 - **Real-time caves in games** (Mark and Berechet, 2015, GPU pipeline; a hobby SDF project, ProcGrotto): a
   tunnel layout from an L-system or Perlin worms, a signed distance field of it warped by layers of simplex
   and Worley noise, meshed per chunk with marching cubes or surface nets on the GPU or a worker, **skipping
