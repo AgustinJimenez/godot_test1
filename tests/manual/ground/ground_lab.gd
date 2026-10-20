@@ -12,6 +12,7 @@ extends Node
 ##     stones=0..1   how stony   seed=N   which patch of ground   ref=PATH   a photograph beside the render   size=WIDTHxHEIGHT
 ##     iron=0..1 organic=0..1 pale=0..1 depth=0..1   the soil's numbers   spacing=M   the grid of the stones   density=X   their odds
 ##     tilt=DEGREES   leans the patch over (70: a cliff face)
+##     aa=off|fxaa|smaa|taa|msaa   antialiasing (the game uses TAA, which can ghost: the lab starts with it off)
 ##     strength=0..1   the ground shader's detail strength   fov=DEGREES
 ## Prints GROUND_LAB with the numbers of the run.
 
@@ -36,6 +37,7 @@ var _patch_node: MeshInstance3D
 var _chip_nodes: Array[Node] = []
 var _chip_root := Node3D.new() # (the stones lean over with the patch)
 var _sun: DirectionalLight3D
+var _environment: Environment
 var _chips_on := true
 var _rebuild_wanted := false
 var _chips_wanted := false
@@ -88,6 +90,7 @@ func _ready() -> void:
 	add_child(_sun)
 	var environment := WorldEnvironment.new()
 	environment.environment = Environment.new()
+	_environment = environment.environment
 	environment.environment.background_mode = Environment.BG_COLOR
 	environment.environment.background_color = Color(0.62, 0.74, 0.9)
 	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -97,6 +100,7 @@ func _ready() -> void:
 
 	_camera = Camera3D.new()
 	add_child(_camera)
+	_set_antialiasing(String(_options.get("aa", "off")))
 	_camera.fov = _values["fov"]
 	_set_view(_options.get("view", "eye"))
 	_apply_sun()
@@ -109,6 +113,16 @@ func _ready() -> void:
 	if _live:
 		_build_panel()
 	print("GROUND_LAB soil=%s view=%s %s chips=%s" % [_soil_name, _options.get("view", "eye"), _values, _chips_on])
+
+
+## The viewport's antialiasing for this run only (not saved with the game's graphics settings). The game defaults to TAA, which blends frames
+## and leaves a ghosted, blurry film over a moving or finely jittered picture: the lab starts with it off.
+func _set_antialiasing(mode: String) -> void:
+	var viewport := get_tree().root
+	viewport.use_taa = mode == "taa"
+	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if mode == "fxaa" else (
+			Viewport.SCREEN_SPACE_AA_SMAA if mode == "smaa" else Viewport.SCREEN_SPACE_AA_DISABLED)
+	viewport.msaa_3d = Viewport.MSAA_4X if mode == "msaa" else Viewport.MSAA_DISABLED
 
 
 ## The camera of a named view, as the orbit's focus, yaw, pitch and distance.
@@ -312,6 +326,26 @@ func _build_panel() -> void:
 			_sync(key)
 		_rebuild())
 	column.add_child(soil)
+	var aa_line := HBoxContainer.new()
+	var aa_label := Label.new()
+	aa_label.text = "antialiasing"
+	aa_line.add_child(aa_label)
+	var aa_choice := OptionButton.new()
+	for name in ["off", "fxaa", "smaa", "taa", "msaa"]:
+		aa_choice.add_item(name)
+	aa_choice.select(["off", "fxaa", "smaa", "taa", "msaa"].find(String(_options.get("aa", "off"))))
+	aa_choice.item_selected.connect(func(index: int) -> void:
+		_set_antialiasing(["off", "fxaa", "smaa", "taa", "msaa"][index]))
+	aa_line.add_child(aa_choice)
+	column.add_child(aa_line)
+	for effect: Array in [["ssao_enabled", "screen space occlusion (SSAO)"], ["glow_enabled", "glow"], ["ssr_enabled", "reflections (SSR)"],
+			["fog_enabled", "fog"], ["volumetric_fog_enabled", "volumetric fog"], ["sdfgi_enabled", "global illumination (SDFGI)"]]:
+		var effect_box := CheckBox.new()
+		effect_box.text = effect[1]
+		var property: String = effect[0]
+		effect_box.button_pressed = bool(_environment.get(property))
+		effect_box.toggled.connect(func(on: bool) -> void: _environment.set(property, on))
+		column.add_child(effect_box)
 	var hide_title := Label.new()
 	hide_title.text = "layers (untick to hide)"
 	column.add_child(hide_title)
