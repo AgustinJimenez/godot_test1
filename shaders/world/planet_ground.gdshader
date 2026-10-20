@@ -322,7 +322,7 @@ void fragment() {
 		float pom_dark = 0.0;
 		float pom_shadow = 0.0;
 		if (mosaic_on && mosaic_height > 0.0005) {
-			float pom_fade = pow(1.0 - smoothstep(0.5, 6.0, length(VERTEX)), 1.6) * (1.0 - smoothstep(0.25, 0.5, slope)); // (by distance only: fading by view angle drew a ring round the walker)
+			float pom_fade = pow(1.0 - smoothstep(0.4, 4.0, length(VERTEX)), 1.5) * (1.0 - smoothstep(0.25, 0.5, slope)); // (by distance only: fading by view angle drew a ring round the walker)
 			float pom_height = mosaic_height * pom_fade; // (the heights fade with the distance, so every plate sinks into the ground smoothly and there is no ring)
 			if (pom_fade > 0.02) {
 				vec3 pm_up = normalize(anchor_up);
@@ -331,12 +331,12 @@ void fragment() {
 				vec3 pm_forward = cross(pm_up, pm_right);
 				vec2 pm_flat = vec2(dot(on_planet, pm_right), dot(on_planet, pm_forward));
 				vec3 ray_a = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
-				float down = max(-dot(ray_a, pm_up), 0.42); // (the ray never travels more than 2.4 times the depth: with six steps each stays about a centimetre, so no plate is jumped over and shown as stacked copies; the cost is that very flat views show a little less relief)
+				float down = max(-dot(ray_a, pm_up), 0.18); // (a flat view gives the full relief: the ray is long, so there are more samples, a fixed number so that no ring shows where the count would change)
 				vec2 along = vec2(dot(ray_a, pm_right), dot(ray_a, pm_forward)) / down; // ground travelled for each unit of depth
 				// (Tatarchuk, I3D 2006) more samples as the view gets more grazing; the height profile is a series of straight segments and the ray
 				// is intersected with the segment it went through, exactly, with no extra samples
 				// a fixed count (a count that changed with the distance moved the hit points in rings): the paper varies it with the view angle, which here is the same as with the distance on flat ground
-				int pom_steps = mosaic_pom_min_steps + 3; // 6 by default
+				int pom_steps = mosaic_pom_max_steps;
 				float fade_mid_p = 1.0 - smoothstep(0.8, 5.0, length(VERTEX));
 				float last_depth = 0.0;
 				float last_gap = -pom_height;
