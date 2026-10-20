@@ -695,7 +695,7 @@ void fragment() {
 			float stone_ao = 1.0;
 			vec3 stone_paint = paint;
 			float gravel_amount = 0.0;
-			for (int size_class = 0; size_class < 3; size_class++) {
+			for (int size_class = 0; size_class < (mosaic_on ? 0 : 3); size_class++) { // (the mosaic replaces these painted stones)
 				float scale = size_class == 0 ? 14.0 : (size_class == 1 ? 4.5 : 1.6); // cells a metre
 				float reach_here = size_class == 0 ? 24.0 : (size_class == 1 ? 55.0 : 90.0);
 				float fade = 1.0 - smoothstep(reach_here * 0.5, reach_here, dist);
