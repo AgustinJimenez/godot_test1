@@ -65,7 +65,7 @@ func _ready() -> void:
 		"fov": float(_options.get("fov", "55")), "tilt": float(_options.get("tilt", "0")),
 		"mosaic_strength": 0.9, "mosaic_big_per_m": 15.0, "mosaic_mid_per_m": 42.0, "mosaic_small_per_m": 150.0, "mosaic_big_cover": 0.13,
 		"mosaic_mid_cover": 0.42, "mosaic_angular": 0.8, "mosaic_gap": 0.75, "mosaic_tilt": 1.4, "mosaic_tone": 0.7, "mosaic_pebbles": 0.11,
-		"mosaic_seed": 1.0, "mosaic_height": 0.03, "mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
+		"mosaic_seed": 1.0, "mosaic_shadow": 0.6, "mosaic_pom_min_steps": 3, "mosaic_pom_max_steps": 10, "scan_blend_depth": 0.25, "mosaic_height": 0.03, "mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
 		"cliff_row_height": 0.45, "cliff_col_width": 1.1, "cliff_warp": 0.4, "cliff_lip": 0.09, "cliff_terraces": 0.5, "cliff_cracks": 0.55,
 		"cliff_sand": 0.5, "cliff_tone": 0.6, "cliff_relief": 1.0, "cliff_seed": 3.0, "cliff_hue": 0.5,
 	}
@@ -105,7 +105,7 @@ func _ready() -> void:
 	_set_view(_options.get("view", "eye"))
 	_apply_sun()
 	for key: String in _values:
-		if key.begins_with("cliff_") or key.begins_with("mosaic_"):
+		if key.begins_with("cliff_") or key.begins_with("mosaic_") or key == "scan_blend_depth":
 			if _options.has(key):
 				_values[key] = float(_options[key]) # (the command line sets them too: cliff_lip=0.12)
 			PlanetTile.ground_material().set_shader_parameter(key, _values[key])
@@ -380,7 +380,7 @@ func _build_panel() -> void:
 		["mosaic_big_cover", "mosaic: large cover", 0.0, 1.0, 0.05, 4], ["mosaic_mid_cover", "mosaic: medium cover", 0.0, 1.0, 0.05, 4],
 		["mosaic_angular", "mosaic: sharpness", 0.0, 1.0, 0.05, 4], ["mosaic_gap", "mosaic: dark gaps", 0.0, 1.0, 0.05, 4],
 		["mosaic_tilt", "mosaic: plate lean", 0.0, 2.0, 0.05, 4], ["mosaic_tone", "mosaic: tone spread", 0.0, 1.0, 0.05, 4],
-		["mosaic_pebbles", "mosaic: pebbles", 0.0, 0.5, 0.01, 4], ["mosaic_height", "mosaic: height (m, parallax)", 0.0, 0.15, 0.005, 4], ["mosaic_size_var", "mosaic: size variation", 0.0, 1.0, 0.05, 4], ["mosaic_shape_var", "mosaic: shape variation", 0.0, 1.0, 0.05, 4], ["mosaic_desat", "mosaic: desaturation", 0.0, 1.0, 0.05, 4], ["mosaic_grain", "mosaic: fine grain", 0.0, 1.0, 0.05, 4], ["mosaic_seed", "mosaic: layout (seed)", 1.0, 99.0, 1.0, 4],
+		["mosaic_pebbles", "mosaic: pebbles", 0.0, 0.5, 0.01, 4], ["mosaic_shadow", "mosaic: plate shadows", 0.0, 1.0, 0.05, 4], ["mosaic_pom_min_steps", "mosaic: parallax steps (down)", 2.0, 12.0, 1.0, 4], ["mosaic_pom_max_steps", "mosaic: parallax steps (grazing)", 3.0, 14.0, 1.0, 4], ["scan_blend_depth", "scans: blend softness (height blend)", 0.02, 1.0, 0.02, 4], ["mosaic_height", "mosaic: height (m, parallax)", 0.0, 0.15, 0.005, 4], ["mosaic_size_var", "mosaic: size variation", 0.0, 1.0, 0.05, 4], ["mosaic_shape_var", "mosaic: shape variation", 0.0, 1.0, 0.05, 4], ["mosaic_desat", "mosaic: desaturation", 0.0, 1.0, 0.05, 4], ["mosaic_grain", "mosaic: fine grain", 0.0, 1.0, 0.05, 4], ["mosaic_seed", "mosaic: layout (seed)", 1.0, 99.0, 1.0, 4],
 		["cliff_row_height", "cliff: bed thickness (m)", 0.15, 1.5, 0.01, 4], ["cliff_col_width", "cliff: slab width (m)", 0.3, 3.0, 0.05, 4],
 		["cliff_warp", "cliff: edge wander (m)", 0.0, 1.0, 0.01, 4], ["cliff_lip", "cliff: lip width (m)", 0.01, 0.3, 0.005, 4],
 		["cliff_terraces", "cliff: terracing", 0.0, 1.0, 0.05, 4], ["cliff_cracks", "cliff: cracked slabs", 0.0, 1.0, 0.05, 4],

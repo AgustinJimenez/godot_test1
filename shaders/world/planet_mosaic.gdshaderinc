@@ -20,6 +20,9 @@ uniform float mosaic_shape_var : hint_range(0.0, 1.0) = 0.7; // how different th
 uniform float mosaic_desat : hint_range(0.0, 1.0) = 0.6; // the fragments are less saturated than the soil painted over them
 uniform float mosaic_grain : hint_range(0.0, 1.0) = 0.85; // the fine crumbly grain between and on the fragments
 uniform float mosaic_height = 0.03; // m: how far the tallest plates stand out of the soil (the parallax depth)
+uniform float mosaic_shadow : hint_range(0.0, 1.0) = 0.6; // how dark a plate shadow on its neighbours (soft self-shadowing)
+uniform int mosaic_pom_min_steps : hint_range(2, 12) = 3; // parallax samples looking straight down (Tatarchuk: n = min + (max - min)(1 - V.N))
+uniform int mosaic_pom_max_steps : hint_range(3, 14) = 10; // and at a grazing angle
 uniform float mosaic_seed = 1.0;
 
 struct Mosaic {
@@ -67,7 +70,7 @@ Mosaic mosaic_layer(vec2 p, float per_m, float present, float k) {
 	// patch to patch the sizes drift: where this noise is high the fragments of the scale are larger (the cells keep their place, they only
 	// count for more or less of the distance)
 	float patch_noise = noise3(vec3(p * 0.9, k * 0.31 + mosaic_seed), 4096.0);
-	float zone = exp((patch_noise - 0.5) * 1.6 * mosaic_size_var);
+	float zone = exp((patch_noise - 0.5) * 0.9 * mosaic_size_var);
 	for (int j = -1; j <= 1; j++) {
 		for (int i = -1; i <= 1; i++) {
 			vec2 cell = base + vec2(float(i), float(j));
@@ -79,9 +82,9 @@ Mosaic mosaic_layer(vec2 p, float per_m, float present, float k) {
 			vec3 b = vec3(mosaic_hash(cell, k + 4.0), mosaic_hash(cell, k + 5.0), mosaic_hash(cell, k + 13.0));
 			r.x *= mix(0.8, 0.35 + 1.25 * b.x, mosaic_shape_var); // stubby or long, each its own
 			float angular = clamp(mosaic_angular + (b.y - 0.5) * 1.6 * mosaic_shape_var, 0.0, 1.0); // some round, some sharp
-			float polygon = mosaic_polygon(r, b.z * 0.9 + 0.05 * b.y, mosaic_shape_var) * 0.85; // its own corners and sides
+			float polygon = max(mosaic_polygon(r, b.z * 0.9 + 0.05 * b.y, mosaic_shape_var) * 0.85, length(r) * 0.8); // its own corners and sides, never reaching past a circle (a fragment cut off by a missing neighbour showed as a straight edge)
 			float metric = mix(length(r), polygon, angular);
-			metric *= exp((fract(b.x * 7.31 + b.y * 3.7) - 0.5) * 2.4 * mosaic_size_var) * zone; // sizes spread over a wide range
+			metric *= exp((fract(b.x * 7.31 + b.y * 3.7) - 0.5) * 1.5 * mosaic_size_var) * zone; // (kept in range: a fragment larger than the 3 x 3 cells searched would be cut off straight) // sizes spread over a wide range
 			if (metric < best) {
 				second = best;
 				best = metric;

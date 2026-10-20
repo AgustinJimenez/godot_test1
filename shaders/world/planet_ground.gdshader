@@ -51,6 +51,7 @@ uniform sampler2D cliff_n : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float cliff_scale = 0.33; // tiles a metre
 uniform float scan_strength : hint_range(0.0, 1.0) = 0.85;
 uniform float scan_scale = 0.7; // tiles a metre
+uniform float scan_blend_depth : hint_range(0.02, 1.0) = 0.25; // how soft the meeting of two soils is (height blending)
 // switches for each layer of the near ground (the ground lab has a checkbox for each, to find which one is which)
 uniform bool layer_patches = true; // the soft colour patches over the soil
 uniform bool layer_bump = true; // the broad bump of the surface
@@ -319,6 +320,7 @@ void fragment() {
 		// fragments' colours and normals) is moved to where the ray met the plates. (Moving only the fragments left the other layers where
 		// they were, sliding over the plates as the view turned: a transparent layer over the rocks.)
 		float pom_dark = 0.0;
+		float pom_shadow = 0.0;
 		if (mosaic_on && mosaic_height > 0.0005) {
 			float pom_fade = (1.0 - smoothstep(1.2, 3.6, length(VERTEX))) * (1.0 - smoothstep(0.25, 0.5, slope));
 			if (pom_fade > 0.02) {
@@ -330,36 +332,46 @@ void fragment() {
 				vec3 ray_a = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
 				float down = max(-dot(ray_a, pm_up), 0.3); // (not lower than this: at a grazing angle the plates would smear into spikes)
 				vec2 along = vec2(dot(ray_a, pm_right), dot(ray_a, pm_forward)) / down; // ground travelled for each unit of depth
-				const int POM_STEPS = 6;
-				float jitter_pom = 0.5; // (no random start: noise along the edges of the plates showed without TAA; the halvings below find the edge exactly)
-				float found = -1.0;
-				float low_d = 0.0;
-				float high_d = 0.0;
-				float last_d = 0.0;
+				// (Tatarchuk, I3D 2006) more samples as the view gets more grazing; the height profile is a series of straight segments and the ray
+				// is intersected with the segment it went through, exactly, with no extra samples
+				int pom_steps = int(mix(float(mosaic_pom_max_steps), float(mosaic_pom_min_steps), clamp(down, 0.0, 1.0)) + 0.5);
 				float fade_mid_p = 1.0 - smoothstep(1.5, 2.6, length(VERTEX));
-				for (int i = 1; i <= POM_STEPS; i++) {
-					float depth = mosaic_height * (float(i) - 1.0 + jitter_pom) / float(POM_STEPS - 1);
-					float h_here = mosaic_height_at(pm_flat + along * depth, fade_mid_p) * mosaic_height;
-					if (depth >= mosaic_height - h_here) {
-						low_d = last_d;
-						high_d = depth;
-						found = depth;
+				float last_depth = 0.0;
+				float last_gap = -mosaic_height;
+				float hit_depth = -1.0;
+				for (int i = 0; i < 14; i++) {
+					if (i >= pom_steps) {
 						break;
 					}
-					last_d = depth;
-				}
-				if (found >= 0.0) {
-					for (int k = 0; k < 4; k++) {
-						float mid_d = 0.5 * (low_d + high_d);
-						if (mid_d >= mosaic_height - mosaic_height_at(pm_flat + along * mid_d, fade_mid_p) * mosaic_height) {
-							high_d = mid_d;
-						} else {
-							low_d = mid_d;
-						}
+					float depth = mosaic_height * float(i) / float(max(pom_steps - 1, 1));
+					float gap_here = depth - (mosaic_height - mosaic_height_at(pm_flat + along * depth, fade_mid_p) * mosaic_height); // 0 and above: in the ground
+					if (gap_here >= 0.0) {
+						hit_depth = i == 0 ? 0.0 : mix(last_depth, depth, clamp(last_gap / (last_gap - gap_here), 0.0, 1.0));
+						break;
 					}
-					vec2 moved = along * high_d * pom_fade;
-					on_planet += pm_right * moved.x + pm_forward * moved.y;
-					pom_dark = 0.6 * pom_fade * smoothstep(0.0, mosaic_height, high_d); // (the deeper the ray went in, the darker: the sides of a plate)
+					last_depth = depth;
+					last_gap = gap_here;
+				}
+				vec2 on_the_plate = pm_flat;
+				if (hit_depth >= 0.0) {
+					on_the_plate = pm_flat + along * hit_depth * pom_fade;
+					on_planet += pm_right * (along.x * hit_depth * pom_fade) + pm_forward * (along.y * hit_depth * pom_fade);
+					pom_dark = 0.6 * pom_fade * smoothstep(0.0, mosaic_height, hit_depth); // (the deeper the ray went in, the darker: the sides of a plate)
+				}
+				// soft self-shadowing (the paper penumbra estimate): from where the ray met the surface, sample the heights toward the sun, scale
+				// each blocker by how far above the ray to the sun it stands and by its distance, and keep the largest
+				vec3 sun_pm = normalize(mat3(anchor_from_world) * normalize(cloud_sun_world));
+				float sun_up_pm = dot(sun_pm, pm_up);
+				if (sun_up_pm > 0.12 && mosaic_shadow > 0.01) {
+					vec2 toward_sun = vec2(dot(sun_pm, pm_right), dot(sun_pm, pm_forward)) / sun_up_pm; // ground travelled for each unit risen
+					float own_h = mosaic_height_at(on_the_plate, fade_mid_p) * mosaic_height;
+					float room = max(mosaic_height - own_h, 0.002);
+					for (int n = 1; n <= 4; n++) {
+						float rise = room * float(n) / 4.0;
+						float blocker = mosaic_height_at(on_the_plate + toward_sun * rise, fade_mid_p) * mosaic_height;
+						pom_shadow = max(pom_shadow, clamp((blocker - (own_h + rise)) / (0.35 * mosaic_height), 0.0, 1.0) * (1.15 - 0.15 * float(n)));
+					}
+					pom_shadow *= pom_fade * mosaic_shadow;
 				}
 			}
 		}
@@ -467,26 +479,53 @@ void fragment() {
 				float w_red = smoothstep(0.25, 0.75, soil_iron);
 				float w_leaf = smoothstep(0.5, 0.75, soil_organic) * (1.0 - w_red);
 				float w_gravel = 1.0 - w_red - w_leaf;
+				// Height-based blending: each soil scan has a height of its own (its occlusion and its brightness), the soil weight is added to it, and the
+				// highest wins with a soft band (scan_blend_depth) where two are close: the pebbles of one soil poke out of the other where they meet,
+				// instead of the two fading through each other
+				vec3 ratios[3];
+				vec3 tilts[3];
+				float aos[3];
+				float roughs[3];
+				float weights[3] = float[3](w_gravel, w_red, w_leaf);
+				float effective[3];
+				float top = -1.0;
+				for (int soil_index = 0; soil_index < 3; soil_index++) {
+					effective[soil_index] = -10.0;
+					ratios[soil_index] = vec3(1.0);
+					tilts[soil_index] = vec3(0.0);
+					aos[soil_index] = 1.0;
+					roughs[soil_index] = 0.9;
+					if (weights[soil_index] <= 0.02) {
+						continue;
+					}
+					if (soil_index == 0) {
+						scan_triplanar(scan_gravel_c, scan_gravel_n, on_planet, facing_scan, scan_scale, vec3(0.1452, 0.1181, 0.0898), ratios[0], aos[0], tilts[0], roughs[0]);
+					} else if (soil_index == 1) {
+						scan_triplanar(scan_red_c, scan_red_n, on_planet, facing_scan, scan_scale, vec3(0.3041, 0.2007, 0.1305), ratios[1], aos[1], tilts[1], roughs[1]);
+					} else {
+						scan_triplanar(scan_leaf_c, scan_leaf_n, on_planet, facing_scan, scan_scale, vec3(0.1943, 0.1288, 0.0655), ratios[2], aos[2], tilts[2], roughs[2]);
+					}
+					float own_height = 0.55 * aos[soil_index] + 0.45 * clamp(dot(ratios[soil_index], vec3(0.33)) * 0.5, 0.0, 1.0);
+					effective[soil_index] = own_height + 1.6 * weights[soil_index];
+					top = max(top, effective[soil_index]);
+				}
 				vec3 ratio_sum = vec3(0.0);
 				vec3 tilt_sum = vec3(0.0);
 				float ao_sum = 0.0;
 				float rough_sum = 0.0;
-				vec3 ratio;
-				float ao_one;
-				vec3 tilt;
-				float rough_one;
-				if (w_gravel > 0.02) {
-					scan_triplanar(scan_gravel_c, scan_gravel_n, on_planet, facing_scan, scan_scale, vec3(0.1452, 0.1181, 0.0898), ratio, ao_one, tilt, rough_one);
-					ratio_sum += ratio * w_gravel; tilt_sum += tilt * w_gravel; ao_sum += ao_one * w_gravel; rough_sum += rough_one * w_gravel;
+				float blend_total = 0.0001;
+				for (int soil_index = 0; soil_index < 3; soil_index++) {
+					float blend = max(effective[soil_index] - (top - scan_blend_depth), 0.0);
+					blend_total += blend;
+					ratio_sum += ratios[soil_index] * blend;
+					tilt_sum += tilts[soil_index] * blend;
+					ao_sum += aos[soil_index] * blend;
+					rough_sum += roughs[soil_index] * blend;
 				}
-				if (w_red > 0.02) {
-					scan_triplanar(scan_red_c, scan_red_n, on_planet, facing_scan, scan_scale, vec3(0.3041, 0.2007, 0.1305), ratio, ao_one, tilt, rough_one);
-					ratio_sum += ratio * w_red; tilt_sum += tilt * w_red; ao_sum += ao_one * w_red; rough_sum += rough_one * w_red;
-				}
-				if (w_leaf > 0.02) {
-					scan_triplanar(scan_leaf_c, scan_leaf_n, on_planet, facing_scan, scan_scale, vec3(0.1943, 0.1288, 0.0655), ratio, ao_one, tilt, rough_one);
-					ratio_sum += ratio * w_leaf; tilt_sum += tilt * w_leaf; ao_sum += ao_one * w_leaf; rough_sum += rough_one * w_leaf;
-				}
+				ratio_sum /= blend_total;
+				tilt_sum /= blend_total;
+				ao_sum /= blend_total;
+				rough_sum /= blend_total;
 				paint *= mix(vec3(1.0), ratio_sum * mix(0.55, 1.0, ao_sum), scan_fade);
 				vec3 scan_world = (world_from_planet * vec4(tilt_sum * 0.9, 0.0)).xyz;
 				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(scan_world, 0.0)).xyz * scan_fade);
@@ -571,7 +610,7 @@ void fragment() {
 				vec2 m_lean;
 				mosaic_surface(flat_p, max(paint, vec3(0.02)), mosaic_fade * flat_ground, m_colour, m_ao, m_lean);
 				float m_amount = mosaic_strength * crumbly;
-				paint *= 1.0 - pom_dark;
+				paint *= (1.0 - pom_dark) * (1.0 - 0.7 * pom_shadow);
 				paint *= mix(vec3(1.0), m_colour, m_amount);
 				// fine grain on the fragments themselves (a plate is not a smooth tint): small bright and dark specks, finer as you get closer
 				float speck = noise3(vec3(flat_p * 260.0, mosaic_seed), 266240.0) * 0.6 + noise3(vec3(flat_p * 640.0, 3.0), 655360.0) * 0.4;

@@ -242,3 +242,11 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   hide soil behind them and shift with the view; at grazing angles a tall plate stretches into a spike (the usual limit), 8 cm shows it. Fragment
   shapes are random convex polygons (3 to 8 corners, random sides). +1 ms GPU. NB: `git checkout` of the weapons .import file makes the next
   planet run start without a player (stale import): run `godot --headless --import` after it.
+- Read in full: Tatarchuk, "Dynamic Parallax Occlusion Mapping with Approximate Soft Shadows" (I3D 2006; the PDF text extracted to
+  E:/Temp/claude/scratch/pom_paper.txt) and the jMonkeyEngine height-splatting post. Applied: (1) the ray is intersected exactly with the straight
+  segment of the height profile it went through (no halvings), and the sample count rises with the view angle (n = min + (max - min)(1 - V.N),
+  `mosaic_pom_min_steps` 3, `_max_steps` 10); (2) soft self-shadows (the paper's penumbra estimate: from the displaced point sample 4 heights
+  towards the sun, each blocker scaled by how far above the ray it stands, the largest kept; `mosaic_shadow`); (3) height blending between the
+  three scan soils (each soil's height = its occlusion and brightness + 1.6 x its weight, the highest wins with a band `scan_blend_depth`), so one
+  soil pokes through the other where they meet. Not done: the paper's in-shader LOD from the mip level (we fade by distance), macro variation.
+  Fragments are bound inside a circle so a missing neighbour never cuts one with a straight edge.
