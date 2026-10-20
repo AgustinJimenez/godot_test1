@@ -9,9 +9,17 @@ uniform float sand_ripples : hint_range(0.0, 1.0) = 1.0; // how strong the rippl
 uniform float sand_ripple_height = 0.007; // m, crest above trough
 uniform float sand_ripple_length = 0.09; // m between crests (each cell 0.75 .. 1.35 of it)
 uniform float sand_glitter : hint_range(0.0, 1.0) = 0.6; // the grains that flash in the sun
+uniform float sand_swell_height = 0.1; // m: the broad hummocks of the sand between the ripples and the dunes (1-3 m across), crest above hollow
 uniform float sand_wind_turn = 0.0; // radians: turns the wind (the lab; the planet's own wind later)
 
 const float SAND_CELL = 2.56;
+
+// The height of the broad, irregular swell of the sand at planet position `p` (metres, about -swell .. +swell): two noises, 1.28 m and
+// 0.51 m across (1024 m is a whole number of them, so there is no jump at the wrap), the larger one the stronger.
+float sand_swell(vec3 p) {
+	float n = noise3(p / 1.28, 800.0) * 0.65 + noise3(p / 0.512 + 5.3, 2000.0) * 0.35;
+	return (n - 0.5) * 2.0 * sand_swell_height;
+}
 
 // Height 0..1 across one period of a ripple, x in 0..1: a long rise to the crest at 0.72, a short fall.
 float sand_rise(float x) {

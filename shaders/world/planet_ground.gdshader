@@ -884,8 +884,22 @@ void fragment() {
 						ao *= 1.0 - clamp(-h_here / dent_depth, 0.0, 1.0) * 0.5 * sandy; // (the floor of a dent sees less sky)
 					}
 				}
+				// the broad swell (hummocks a metre or two across): a tilt of the light, and the ripples are stronger on the crests
+				float swell_here = sand_swell(on_planet);
+				if (sand_swell_height > 0.0005) {
+					vec3 up_s = normalize(anchor_up);
+					vec3 ref_s = abs(up_s.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+					vec3 right_s = normalize(cross(ref_s, up_s));
+					vec3 forward_s = cross(up_s, right_s);
+					float swell_x = sand_swell(on_planet + right_s * 0.05);
+					float swell_y = sand_swell(on_planet + forward_s * 0.05);
+					vec3 swell_tilt = -(right_s * (swell_x - swell_here) + forward_s * (swell_y - swell_here)) / 0.05;
+					float swell_fade = sandy * (1.0 - smoothstep(10.0, 30.0, length(VERTEX)));
+					view_normal = normalize(view_normal + (VIEW_MATRIX * world_from_planet * vec4(swell_tilt, 0.0)).xyz * swell_fade * 3.0);
+					paint *= 1.0 + 0.5 * swell_here / max(sand_swell_height, 0.001) * 0.2 * swell_fade; // (a little paler on the crests)
+				}
 				float ripple_fade = sandy * sand_ripples * (1.0 - smoothstep(sand_ripple_length / 6.0, sand_ripple_length / 2.5, foot_m))
-						* (1.0 - dent_pressed);
+						* (1.0 - dent_pressed) * clamp(0.65 + swell_here / max(sand_swell_height, 0.001) * 0.5, 0.2, 1.3);
 				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(sand_tilt, 0.0)).xyz * ripple_fade);
 				paint *= mix(1.0, mix(0.93, 1.06, sand_h), ripple_fade);
 				if (sand_glitter > 0.001) {
