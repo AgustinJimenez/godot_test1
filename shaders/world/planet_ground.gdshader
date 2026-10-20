@@ -280,6 +280,7 @@ void scan_triplanar(sampler2D colour_map, sampler2D normal_map, vec3 at, vec3 fa
 }
 
 void fragment() {
+	float pom_push = 0.0; // how much farther along the view ray the soil is than the mesh (m): the depth written, so that the stones on the ground stand on the soil, not above it
 	vec3 flat_normal = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
 	if (dot(flat_normal, VIEW) < 0.0) {
 		flat_normal = -flat_normal;
@@ -379,6 +380,7 @@ void fragment() {
 					on_the_plate = pm_flat + along * hit_depth;
 					on_planet += pm_right * (along.x * hit_depth) + pm_forward * (along.y * hit_depth);
 					pom_depth = clamp(hit_depth / max(pom_height, 0.0001), 0.0, 1.0);
+					pom_push = hit_depth / down;
 					float step_m = 0.006; // (about a texel of the baked heights)
 					pom_relief = vec2(
 							mosaic_height_now(on_the_plate + vec2(step_m, 0.0), fade_mid_p) - mosaic_height_now(on_the_plate - vec2(step_m, 0.0), fade_mid_p),
@@ -899,6 +901,8 @@ void fragment() {
 	AO_LIGHT_AFFECT = 0.5;
 	SPECULAR = mix(0.3, 0.7, max(ground_wetness, puddle));
 	light_specular = SPECULAR;
+	vec4 pom_clip = PROJECTION_MATRIX * vec4(VERTEX + normalize(VERTEX) * pom_push, 1.0);
+	DEPTH = pom_clip.z / pom_clip.w;
 }
 
 
