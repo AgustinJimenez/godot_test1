@@ -25,6 +25,13 @@ uniform float mosaic_side_dark : hint_range(0.0, 1.0) = 0.35; // stylized depth 
 uniform int mosaic_pom_min_steps : hint_range(2, 12) = 3; // parallax samples looking straight down (Tatarchuk: n = min + (max - min)(1 - V.N))
 uniform int mosaic_pom_max_steps : hint_range(3, 32) = 20; // and at a grazing angle
 uniform float mosaic_seed = 1.0;
+// How textured the plates are (the ground lab has a slider for each; 0 on all of them is the plain plates of before)
+uniform float mosaic_relief_light : hint_range(0.0, 1.0) = 0.7; // how much the light on the plates follows their real shape (the slope of the baked heights) and not each plate's made-up lean
+uniform float mosaic_slab_tilt : hint_range(0.0, 1.0) = 0.35; // how far the tops lean: higher on one side
+uniform float mosaic_top_detail : hint_range(0.0, 1.0) = 0.3; // rough, pitted tops
+uniform float mosaic_cracks : hint_range(0.0, 1.0) = 0.25; // cracks across the large plates
+uniform float mosaic_veins : hint_range(0.0, 1.0) = 0.4; // bands of tone across the plates (layers of the crust)
+uniform float mosaic_side_strata : hint_range(0.0, 1.0) = 0.5; // bands down the steep sides, so that they are not a smear
 // The heights of the plates baked into a picture round the camera (PlanetGroundBake, planet_mosaic_bake.gdshader): red the large plates,
 // green the medium ones, both before the fade with distance. The picture wraps (a torus): the ground at p is at p / size, repeated. The
 // window is its corner and size in the ground's own metres (the march's coordinates); a size of 0 means there is no picture and the
@@ -40,6 +47,7 @@ struct Mosaic {
 	float pebble; // 0 soil fragment .. 1 a grey or pale pebble
 	float kind;
 	vec2 dir; // from the fragment's centre to the point (its rim leans outward)
+	vec2 local; // the same, with its length, in cell units (a plate spans about -1 .. 1)
 };
 
 // A random convex polygon round the origin as a "metric": 1 on its outline. `seed` makes its corner count (3 to 8, `sides_var` how much
@@ -111,6 +119,7 @@ Mosaic mosaic_layer(vec2 p, float per_m, float present, float k) {
 	m.pebble = mosaic_hash(best_cell, k + 10.0) < mosaic_pebbles ? 1.0 : 0.0;
 	m.kind = fract(m.tone * 13.7 + 0.3);
 	m.dir = normalize(best_d + vec2(0.0001));
+	m.local = best_d;
 	m.border = second - best;
 	return m;
 }
@@ -138,6 +147,14 @@ void mosaic_surface(vec2 p, vec3 soil, vec3 fade, out vec3 colour, out float ao,
 		float dark = 1.0 - mosaic_gap * (1.0 - rim) * (s == 0 ? 0.75 : 1.0);
 		float toned = mix(1.0, 0.55 + 0.9 * m.tone, mosaic_tone);
 		vec3 fragment = vec3(toned) * dark;
+		if (mosaic_veins > 0.001 && s > 0) {
+			// bands of tone across the plate (a crust that formed in layers), each plate its own direction and spacing
+			vec2 along_lean = m.lean / max(length(m.lean), 0.0001);
+			vec2 across = vec2(-along_lean.y, along_lean.x);
+			float wobble = noise3(vec3(m.local * 2.3, m.tone * 11.0), 4096.0);
+			float bands = sin((dot(m.local, across) * (5.0 + 9.0 * m.tone) + wobble * 2.5) * 3.14159);
+			fragment *= 1.0 + mosaic_veins * 0.2 * bands;
+		}
 		fragment = mix(fragment, vec3(dot(fragment, vec3(0.33))), 0.0);
 		if (m.pebble > 0.5 && s < 2) {
 			// a pebble: grey, pale or a dark crystal, not the soil's red
@@ -155,14 +172,29 @@ void mosaic_surface(vec2 p, vec3 soil, vec3 fade, out vec3 colour, out float ao,
 	colour = mix(colour, vec3(tone_now), 0.0);
 }
 
+// How high one plate scale stands at `p` (0 the soil .. 1 the tallest): its own height, a lean across its top, a rough top, cracks, and the
+// rim rolled off. `crack_scale` 0: none (the medium plates are too small for a crack a texel wide).
+float mosaic_plate_height(Mosaic m, vec2 p, float per_m, float low, float span, float seed, float crack_scale) {
+	float top = low + span * m.tone;
+	float lean_size = max(length(m.lean), 0.0001);
+	top += mosaic_slab_tilt * 0.22 * dot(m.local, m.lean / lean_size) * (0.5 + 0.5 * m.tone);
+	top += mosaic_top_detail * 0.16 * (noise3(vec3(p * per_m * 0.9, seed + 1.0), 262144.0) - 0.5);
+	float crack = 1.0;
+	if (crack_scale > 0.0) {
+		float ridge = abs(noise3(vec3(p * per_m * crack_scale, seed + 3.0), 262144.0) - 0.5);
+		crack = 1.0 - mosaic_cracks * 0.7 * (1.0 - smoothstep(0.0, 0.05, ridge));
+	}
+	return m.cover * smoothstep(0.0, 0.3, m.border) * clamp(top, 0.0, 1.0) * crack;
+}
+
 // How high the fragments stand at `p` (0 the soil .. 1 the tallest large plate), for the parallax march: the large and the medium plates (the
 // crumbs are too low to matter), each its own height, rolled off at the rim.
 float mosaic_height_at(vec2 p, float fade_mid) {
 	Mosaic big = mosaic_layer(p, mosaic_big_per_m, mosaic_big_cover, 40.0);
-	float h = big.cover * smoothstep(0.0, 0.3, big.border) * (0.45 + 0.55 * big.tone);
+	float h = mosaic_plate_height(big, p, mosaic_big_per_m, 0.45, 0.55, 40.0, 0.35);
 	if (fade_mid > 0.001) {
 		Mosaic mid = mosaic_layer(p, mosaic_mid_per_m, mosaic_mid_cover, 20.0);
-		h = max(h, mid.cover * smoothstep(0.0, 0.3, mid.border) * (0.15 + 0.3 * mid.tone) * fade_mid); // (fading smoothly: a plate dropping out at once drew a ring)
+		h = max(h, mosaic_plate_height(mid, p, mosaic_mid_per_m, 0.15, 0.3, 20.0, 0.0) * fade_mid); // (fading smoothly: a plate dropping out at once drew a ring)
 	}
 	return h;
 }
@@ -171,8 +203,8 @@ float mosaic_height_at(vec2 p, float fade_mid) {
 vec2 mosaic_height_terms(vec2 p) {
 	Mosaic big = mosaic_layer(p, mosaic_big_per_m, mosaic_big_cover, 40.0);
 	Mosaic mid = mosaic_layer(p, mosaic_mid_per_m, mosaic_mid_cover, 20.0);
-	return vec2(big.cover * smoothstep(0.0, 0.3, big.border) * (0.45 + 0.55 * big.tone),
-			mid.cover * smoothstep(0.0, 0.3, mid.border) * (0.15 + 0.3 * mid.tone));
+	return vec2(mosaic_plate_height(big, p, mosaic_big_per_m, 0.45, 0.55, 40.0, 0.35),
+			mosaic_plate_height(mid, p, mosaic_mid_per_m, 0.15, 0.3, 20.0, 0.0));
 }
 
 // The same height as mosaic_height_at, read from the baked picture where it covers `p` (one read), else worked out. The edges of the

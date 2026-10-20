@@ -324,6 +324,8 @@ void fragment() {
 		// they were, sliding over the plates as the view turned: a transparent layer over the rocks.)
 		float pom_dark = 0.0;
 		float pom_shadow = 0.0;
+		vec2 pom_relief = vec2(0.0); // the slope of the plates where the ray met them (a metre of height in a metre across, along the ground's axes)
+		float pom_depth = 0.0; // how deep the hit is, 0..1
 		if (mosaic_on && mosaic_height > 0.0005) {
 			float pom_fade = pow(1.0 - smoothstep(0.4, 4.0, length(VERTEX)), 1.5) * (1.0 - smoothstep(0.25, 0.5, slope)); // (by distance only: fading by view angle drew a ring round the walker)
 			float pom_height = mosaic_height * pom_fade; // (the heights fade with the distance, so every plate sinks into the ground smoothly and there is no ring)
@@ -376,6 +378,12 @@ void fragment() {
 				if (hit_depth >= 0.0) {
 					on_the_plate = pm_flat + along * hit_depth;
 					on_planet += pm_right * (along.x * hit_depth) + pm_forward * (along.y * hit_depth);
+					pom_depth = clamp(hit_depth / max(pom_height, 0.0001), 0.0, 1.0);
+					float step_m = 0.006; // (about a texel of the baked heights)
+					pom_relief = vec2(
+							mosaic_height_now(on_the_plate + vec2(step_m, 0.0), fade_mid_p) - mosaic_height_now(on_the_plate - vec2(step_m, 0.0), fade_mid_p),
+							mosaic_height_now(on_the_plate + vec2(0.0, step_m), fade_mid_p) - mosaic_height_now(on_the_plate - vec2(0.0, step_m), fade_mid_p))
+							* pom_height / (2.0 * step_m);
 					pom_dark = mosaic_side_dark * pom_fade * smoothstep(0.0, pom_height * 0.8, hit_depth); // (depth is not proof of a side: keep this modest or the gaps become a dark field)
 				}
 				// soft self-shadowing (the paper penumbra estimate): from where the ray met the surface, sample the heights toward the sun, scale
@@ -632,12 +640,22 @@ void fragment() {
 				mosaic_surface(flat_p, max(paint, vec3(0.02)), mosaic_fade * flat_ground, m_colour, m_ao, m_lean);
 				float m_amount = mosaic_strength * crumbly;
 				paint *= (1.0 - pom_dark);
+				// the steep sides: bands down them (the colour read at the hit would only smear along the ray); the way they lean says which way they run
+				float face = smoothstep(0.5, 1.5, length(pom_relief)) * mosaic_strength;
+				if (face > 0.001 && mosaic_side_strata > 0.001) {
+					vec2 face_dir = pom_relief / max(length(pom_relief), 0.0001);
+					vec2 across_face = vec2(-face_dir.y, face_dir.x);
+					float strata = noise3(vec3(dot(flat_p, across_face) * 70.0, pom_depth * 16.0, mosaic_seed), 262144.0) * 0.65
+							+ noise3(vec3(dot(flat_p, across_face) * 190.0, pom_depth * 41.0, 2.0), 262144.0) * 0.35;
+					paint *= 1.0 + face * mosaic_side_strata * (strata - 0.5) * 1.1;
+				}
 				plate_shadow = pom_shadow; // (only the direct light is shadowed, in light(): the sky light and the ambient stay, as in the real thing)
 				paint *= mix(vec3(1.0), m_colour, m_amount);
 				// fine grain on the fragments themselves (a plate is not a smooth tint): small bright and dark specks, finer as you get closer
 				float speck = noise3(vec3(flat_p * 260.0, mosaic_seed), 266240.0) * 0.6 + noise3(vec3(flat_p * 640.0, 3.0), 655360.0) * 0.4;
 				paint *= 1.0 + (speck - 0.5) * 0.9 * mosaic_grain * m_amount * (1.0 - smoothstep(2.0, 8.0, crumb_dist)) * (1.0 - smoothstep(0.0015, 0.005, foot_m));
 				ao *= mix(1.0, m_ao, m_amount);
+				m_lean = m_lean * (1.0 - 0.6 * mosaic_relief_light) - pom_relief * 1.6 * mosaic_relief_light;
 				vec3 m_planet = right_m * m_lean.x + forward_m * m_lean.y;
 				vec3 m_world = (world_from_planet * vec4(m_planet * 0.9, 0.0)).xyz;
 				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(m_world * 2.0, 0.0)).xyz * m_amount);
