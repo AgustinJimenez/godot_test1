@@ -34,6 +34,7 @@ var _values := {}
 var _sliders := {}
 var _patch_node: MeshInstance3D
 var _chip_nodes: Array[Node] = []
+var _chip_root := Node3D.new() # (the stones lean over with the patch)
 var _sun: DirectionalLight3D
 var _chips_on := true
 var _rebuild_wanted := false
@@ -59,7 +60,7 @@ func _ready() -> void:
 		"organic": float(_options.get("organic", str(preset["organic"]))), "pale": float(_options.get("pale", str(preset["pale"]))),
 		"depth": float(_options.get("depth", str(preset["depth"]))), "spacing": float(_options.get("spacing", "0.12")),
 		"density": float(_options.get("density", "1.0")), "strength": float(_options.get("strength", "0.8")),
-		"fov": float(_options.get("fov", "55")),
+		"fov": float(_options.get("fov", "55")), "tilt": float(_options.get("tilt", "0")),
 	}
 	_chips_on = _options.get("chips", "1") != "0"
 	var size_parts: PackedStringArray = String(_options.get("size", "1600x900")).split("x")
@@ -75,6 +76,7 @@ func _ready() -> void:
 	RenderingServer.global_shader_parameter_set(&"anchor_phase", 0.0)
 	RenderingServer.global_shader_parameter_set(&"cloud_centre", Vector3(0.0, -20000.0, 0.0))
 
+	add_child(_chip_root)
 	_sun = DirectionalLight3D.new()
 	_sun.shadow_enabled = true
 	_sun.directional_shadow_max_distance = 30.0
@@ -145,11 +147,13 @@ func _rebuild() -> void:
 		_patch_node.queue_free()
 	_patch_node = _patch(_preset(), float(_values["stones"]), int(_values["seed"]))
 	add_child(_patch_node)
-	var tilt := deg_to_rad(float(_options.get("tilt", "0"))) # (the patch leant over: a slope, a cliff face at 70 or more)
+	var tilt := deg_to_rad(float(_values["tilt"])) # (the patch leant over: a slope, a cliff face at 70 or more)
 	_patch_node.basis = Basis(Vector3.RIGHT, -tilt)
 	_patch_node.position = Vector3(0.0, 0.0, -2.0) - _patch_node.basis * Vector3(0.0, 0.0, -2.0)
 	PlanetTile.ground_material().set_shader_parameter(&"detail_strength", float(_values["strength"]))
 	_rebuild_chips()
+	_chip_root.basis = _patch_node.basis
+	_chip_root.position = _patch_node.position
 
 
 func _rebuild_chips() -> void:
@@ -262,7 +266,7 @@ func _scatter_chips(seed_value: int, stones: float) -> void:
 		var instance := MultiMeshInstance3D.new()
 		instance.multimesh = multi
 		instance.material_override = FloraMeshes.material()
-		add_child(instance)
+		_chip_root.add_child(instance)
 		_chip_nodes.append(instance)
 	print("GROUND_LAB stones ", ", ".join(Array(buffers.map(func(buffer: PackedFloat32Array) -> int: return buffer.size() / 16))))
 
@@ -304,7 +308,7 @@ func _build_panel() -> void:
 		["stones", "how stony", 0.0, 1.0, 0.05, 3], ["iron", "iron (red soil)", 0.0, 1.0, 0.05, 3],
 		["organic", "organic matter", 0.0, 1.0, 0.05, 3], ["pale", "pale rock", 0.0, 1.0, 0.05, 3], ["depth", "soil depth", 0.0, 1.0, 0.05, 3],
 		["spacing", "stone grid (m)", 0.04, 0.4, 0.01, 2], ["density", "stone odds", 0.0, 3.0, 0.1, 2],
-		["seed", "patch (seed)", 1.0, 99.0, 1.0, 3], ["fov", "field of view", 20.0, 100.0, 1.0, 0],
+		["tilt", "lean the patch (-90 = cliff)", -90.0, 90.0, 1.0, 3], ["seed", "patch (seed)", 1.0, 99.0, 1.0, 3], ["fov", "field of view", 20.0, 100.0, 1.0, 0],
 	]
 	for row: Array in rows:
 		var line := HBoxContainer.new()
