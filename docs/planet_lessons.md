@@ -191,3 +191,17 @@ repeated runs.
   drainage cells and the direction. The lab and the checks (scenes under `res://tests/`) no longer write the file, so a test run
   cannot overwrite a session's. To visit the place: `planet_lab --seed=S --radius=R --dir=x,y,z --grounded` (use the direction
   of the world line, or `position` normalised).
+
+
+## 11. The ground shader and the depth pre-pass (2026-10-20)
+
+- **With SSAO, SSIL or SSR on, Forward+ runs the whole fragment function in the depth pre-pass** (to write the normal and the
+  roughness), so a heavy material is paid twice. The ground lab measured it: 14.0 ms with them on, 8.35 ms with them off, the opaque
+  pass unchanged (the pre-pass 5.3 -> 0.0 ms). `godot --gpu-profile --disable-vsync` lists "Render Depth Pre-Pass" and "Render Opaque
+  Pass" separately: look at both before judging a shader.
+- **Do not evaluate a procedural pattern at every step of a march.** The parallax of the packed plates worked the pattern out (about
+  18 cells with trigonometry) at each of 16-20 samples; drawing the heights once into a picture round the player and reading that cut
+  the lab view from 14.0 to 5.4 ms with the same look (task 077). The picture is made at run time from the same functions: a cache,
+  not an asset. Size changes memory and edge sharpness, hardly the cost.
+- A `SubViewport` with `use_hdr_2d = true` and `render_target_update_mode = UPDATE_ONCE` is a cheap way to bake a canvas-item shader
+  into a texture the ground shader can read (the include files hold the shared functions; a canvas-item shader can include them).

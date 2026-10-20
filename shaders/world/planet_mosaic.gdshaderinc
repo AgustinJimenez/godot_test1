@@ -25,6 +25,11 @@ uniform float mosaic_side_dark : hint_range(0.0, 1.0) = 0.35; // stylized depth 
 uniform int mosaic_pom_min_steps : hint_range(2, 12) = 3; // parallax samples looking straight down (Tatarchuk: n = min + (max - min)(1 - V.N))
 uniform int mosaic_pom_max_steps : hint_range(3, 32) = 20; // and at a grazing angle
 uniform float mosaic_seed = 1.0;
+// The heights of the plates baked into a picture round the player (a test, see planet_mosaic_bake.gdshader): red the large plates,
+// green the medium ones, both before the fade with distance. The window is its corner and its size in the ground's own metres
+// (the same coordinates the march uses); a size of 0 means there is no picture and the heights are worked out at every sample.
+uniform sampler2D mosaic_height_map : filter_linear, repeat_disable;
+uniform vec4 mosaic_height_window = vec4(0.0);
 
 struct Mosaic {
 	float cover; // 1 inside a fragment of this scale (0: the ground under shows)
@@ -159,4 +164,24 @@ float mosaic_height_at(vec2 p, float fade_mid) {
 		h = max(h, mid.cover * smoothstep(0.0, 0.3, mid.border) * (0.15 + 0.3 * mid.tone) * fade_mid); // (fading smoothly: a plate dropping out at once drew a ring)
 	}
 	return h;
+}
+
+// The two terms of the height at `p` (the large plates, the medium plates), each 0..1: what the bake stores.
+vec2 mosaic_height_terms(vec2 p) {
+	Mosaic big = mosaic_layer(p, mosaic_big_per_m, mosaic_big_cover, 40.0);
+	Mosaic mid = mosaic_layer(p, mosaic_mid_per_m, mosaic_mid_cover, 20.0);
+	return vec2(big.cover * smoothstep(0.0, 0.3, big.border) * (0.45 + 0.55 * big.tone),
+			mid.cover * smoothstep(0.0, 0.3, mid.border) * (0.15 + 0.3 * mid.tone));
+}
+
+// The same height as mosaic_height_at, read from the baked picture where it covers `p` (one read), else worked out.
+float mosaic_height_now(vec2 p, float fade_mid) {
+	if (mosaic_height_window.z > 0.0) {
+		vec2 uv = (p - mosaic_height_window.xy) / mosaic_height_window.z;
+		if (uv.x > 0.002 && uv.y > 0.002 && uv.x < 0.998 && uv.y < 0.998) {
+			vec2 terms = textureLod(mosaic_height_map, uv, 0.0).rg;
+			return max(terms.x, terms.y * fade_mid);
+		}
+	}
+	return mosaic_height_at(p, fade_mid);
 }

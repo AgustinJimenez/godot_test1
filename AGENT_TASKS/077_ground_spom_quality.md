@@ -52,3 +52,55 @@ authorized committing this visual checkpoint before a live quality verdict.
 3. After quality is accepted, benchmark GPU time and tune sample/shadow cost without reintroducing the artifact. The 20-sample march is expected to cost more; no current benchmark establishes that cost as acceptable.
 
 `AGENT_TASKS/076_forests_and_fields.md` records the earlier mosaic design and research, but its parallax sample counts and limits predate this task. This file is the current status for the quality pass.
+
+
+## Baked height window (prototype, 2026-10-20): the march reads a picture
+
+Opinion that led to it: the march evaluated the procedural plate pattern at every step (about 18 neighbour cells with
+trigonometry each, a few hundred evaluations a pixel), for a relief 3 cm deep that fades by 4 m. Now the heights can be drawn
+once into a picture round the focus and the march reads that (one texture read a step). **Still procedural**: the picture is made
+at run time by `shaders/world/planet_mosaic_bake.gdshader` from the same functions and the same sliders; nothing is authored.
+
+What exists (lab only; off by default, so the planet and every earlier number are unchanged):
+- `planet_mosaic.gdshaderinc`: `mosaic_height_map` (the picture: red the large plates, green the medium ones, before the
+  distance fade), `mosaic_height_window` (corner x, y, size in the march's own metres; size 0 = no picture), `mosaic_height_terms(p)`
+  (what the bake stores) and `mosaic_height_now(p, fade)` (reads the picture where it covers `p`, else works it out). The four
+  `mosaic_height_at` calls of the march, the refinement and the shadows in `planet_ground.gdshader` call `mosaic_height_now`.
+- `ground_lab`: `bake=PIXELS bakesize=METRES` (a SubViewport with HDR 2D draws the picture once, again when a `mosaic_` slider
+  changes or the focus leaves the middle of the window); `ssao=0` switches SSAO and SSIL off.
+
+Measured, the standard low-angle view (`pitch=2.9 yaw=-72.2 dist=2.2 fx=0 fz=-0.5 fov=55 view=far chips=0 size=1400x600 aa=off`),
+16 samples, `godot --gpu-profile --disable-vsync` over 400 frames, mean of the last five seconds, RTX 4090 / D3D12:
+
+| Setting | Total GPU | Depth pre-pass | Opaque pass | Picture vs the worked-out one (mean / pixels off by > 24) |
+| --- | ---: | ---: | ---: | --- |
+| worked out at every step (before) | 14.00 ms | 5.34 | 8.07 | - |
+| baked 1024 px over 10 m (10 mm a pixel) | 4.03 ms | 1.36 | 2.01 | 2.3 / 1.8 % |
+| baked 2048 px over 10 m (5 mm a pixel) | 5.42 ms | 1.80 | 2.67 | 1.1 / 0.6 % |
+| baked 4096 px over 10 m (2.4 mm a pixel) | 5.12 ms | 1.47 | 2.18 | 0.4 / 0.14 % |
+| worked out, SSAO and SSIL off | 8.35 ms | 0.00 | 8.10 | - |
+| baked 2048, SSAO and SSIL off | 3.29 ms | 0.02 | 2.53 | - |
+
+Macro view (`view=macro`, a hand's breadth from the ground): 2048 differs from the worked-out one by 2.0 / 1.2 %, 4096 by 0.8 / 0.3 %;
+the differences are thin lines along plate edges (the picture's pixels), not shape or tone. Picture size hardly changes the cost
+(a read is a read); it changes memory (RGBA16F: 8 MB at 1024, 32 MB at 2048, 128 MB at 4096) and how sharp the edges are.
+
+Findings:
+- **The march was the cost**: 14.0 -> 5.4 ms (-61 %) with a picture that is nearly the same, about what the shader costs with the
+  parallax off (about 5 ms in the table above). With the march this cheap, the step count (16 or 20 or 32) stops being a cost question.
+- **The shader runs twice while SSAO or SSIL is on**: the depth pre-pass then also writes the normal and roughness, so Godot runs the
+  whole fragment function in it (5.3 ms of the 14.0). With both off the pre-pass costs nothing and the opaque pass is unchanged.
+  Any heavy ground shader pays this: keep the expensive part cheap or baked.
+
+Not done (the plan to bring it to the planet):
+1. **Scroll it**: the window follows the player (a toroidal picture: only the new strip is drawn as they walk; or a full redraw when they
+   leave the middle quarter, split over frames), 2048 px over 10 m is the first size to try; RGBA8 instead of HDR (16 MB, heights in 8 bits
+   are 0.1 mm steps) should be tried.
+2. **The planet's coordinates**: on the planet the march's coordinates come from `on_planet` along `anchor_up`'s right and forward axes, which
+   change when the anchor does (each rebase): rebuild the window then (a few ms of GPU), or keep it in an anchor-local frame. A small node
+   (`PlanetGroundBake`) would own the SubViewport and set `mosaic_height_window` and the texture on the ground material.
+3. The other per-step costs that remain (the colour layers read once at the hit, the scans, the stones) are about 5 ms in the lab view:
+   next candidates after the picture is in.
+4. Decide 16 or 20 (or more) samples with the picture on: they cost almost the same.
+Run it: `godot --path . res://tests/manual/ground/ground_lab.tscn --gpu-profile --disable-vsync -- out=E:/Temp/x.png frames=400
+pitch=2.9 yaw=-72.2 dist=2.2 fx=0 fz=-0.5 fov=55 view=far chips=0 size=1400x600 aa=off bake=2048 bakesize=10`.

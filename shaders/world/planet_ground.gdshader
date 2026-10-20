@@ -349,7 +349,7 @@ void fragment() {
 						break;
 					}
 					float depth = pom_height * float(i) / float(max(pom_steps - 1, 1));
-					float gap_here = depth - (pom_height - mosaic_height_at(pm_flat + along * depth, fade_mid_p) * pom_height); // 0 and above: in the ground
+					float gap_here = depth - (pom_height - mosaic_height_now(pm_flat + along * depth, fade_mid_p) * pom_height); // 0 and above: in the ground
 					if (gap_here >= 0.0) {
 						hit_depth = i == 0 ? 0.0 : mix(last_depth, depth, clamp(last_gap / (last_gap - gap_here), 0.0, 1.0));
 						if (i > 0) {
@@ -359,7 +359,7 @@ void fragment() {
 							float hi = depth;
 							for (int refine = 0; refine < 3; refine++) {
 								float mid = 0.5 * (lo + hi);
-								if (mid >= pom_height - mosaic_height_at(pm_flat + along * mid, fade_mid_p) * pom_height) {
+								if (mid >= pom_height - mosaic_height_now(pm_flat + along * mid, fade_mid_p) * pom_height) {
 									hi = mid;
 								} else {
 									lo = mid;
@@ -384,11 +384,11 @@ void fragment() {
 				float sun_up_pm = dot(sun_pm, pm_up);
 				if (sun_up_pm > 0.12 && mosaic_shadow > 0.01 && pom_fade > 0.3) { // (the shadows only near: they cost as much as the march)
 					vec2 toward_sun = vec2(dot(sun_pm, pm_right), dot(sun_pm, pm_forward)) / sun_up_pm; // ground travelled for each unit risen
-					float own_h = mosaic_height_at(on_the_plate, fade_mid_p) * pom_height;
+					float own_h = mosaic_height_now(on_the_plate, fade_mid_p) * pom_height;
 					float room = max(pom_height - own_h, 0.002);
 					for (int n = 1; n <= 3; n++) {
 						float rise = room * float(n) / 3.0;
-						float blocker = mosaic_height_at(on_the_plate + toward_sun * rise, fade_mid_p) * pom_height;
+						float blocker = mosaic_height_now(on_the_plate + toward_sun * rise, fade_mid_p) * pom_height;
 						pom_shadow = max(pom_shadow, clamp((blocker - (own_h + rise)) / (0.35 * pom_height), 0.0, 1.0) * (1.15 - 0.15 * float(n)));
 					}
 					pom_shadow *= pom_fade * mosaic_shadow;

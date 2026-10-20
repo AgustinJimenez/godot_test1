@@ -28,8 +28,14 @@ extends Node
 ## pitch=DEGREES dist=METRES the camera angle over the ground (3 is nearly flat) and its distance
 ##     strength=0..1   the ground shader's detail strength   fov=DEGREES
 ## sweep=DEGREES turn that much per rendered frame in an out= capture (compare AA while moving)
+##     frames=N   capture after N rendered frames (40 by default; 400 for --gpu-profile)
+##     bake=PIXELS bakesize=METRES   the plates' heights drawn once into a picture round the focus
+##       (2048 and 10 m: 5 mm a pixel) that the parallax march reads, instead of working the
+##       pattern out at every step (0, the default: worked out)
+##     ssao=0   no SSAO and SSIL (to see what the depth pre-pass costs)
 ## Prints GROUND_LAB with the numbers of the run.
 
+const BAKE_SHADER := preload("res://shaders/world/planet_mosaic_bake.gdshader")
 const SOILS := ["laterite", "brown", "sand", "black", "grey", "forest"]
 
 var _frames := 0
@@ -56,6 +62,12 @@ var _environment: Environment
 var _chips_on := true
 var _rebuild_wanted := false
 var _chips_wanted := false
+var _bake_px := 0 ## pixels of the baked height picture (0: none, the heights are worked out)
+var _bake_metres := 10.0 ## the metres of ground the picture covers
+var _bake_centre := Vector2.ZERO ## where the picture is centred, in the march's own coordinates
+var _bake_view: SubViewport
+var _bake_material := ShaderMaterial.new()
+var _bake_wanted := false
 
 
 func _ready() -> void:
@@ -160,6 +172,7 @@ func _ready() -> void:
 	if _options.has("scan_strength"):
 		PlanetTile.ground_material().set_shader_parameter(&"scan_strength",
 				float(_options["scan_strength"]))
+	_setup_bake()
 	_rebuild()
 	if _live:
 		_build_panel()
@@ -224,6 +237,46 @@ func _apply_sun() -> void:
 
 
 ## The ground and the stones made again from the values.
+## The baked heights (`bake=PIXELS bakesize=METRES`): the heights of the plates drawn once into a
+## picture round the focus, which the ground's parallax march reads instead of working the pattern
+## out at every step (planet_mosaic_bake.gdshader).
+func _setup_bake() -> void:
+	_bake_px = int(_options.get("bake", "0"))
+	if _bake_px <= 0:
+		return
+	_bake_metres = float(_options.get("bakesize", "10"))
+	_bake_view = SubViewport.new()
+	_bake_view.size = Vector2i(_bake_px, _bake_px)
+	_bake_view.use_hdr_2d = true
+	_bake_view.transparent_bg = false
+	var rect := ColorRect.new()
+	rect.size = Vector2(_bake_px, _bake_px)
+	_bake_material.shader = BAKE_SHADER
+	rect.material = _bake_material
+	_bake_view.add_child(rect)
+	add_child(_bake_view)
+	var ground := PlanetTile.ground_material()
+	ground.set_shader_parameter(&"mosaic_height_map", _bake_view.get_texture())
+	_rebake()
+	print("GROUND_LAB bake %d px over %.1f m: %.1f mm a pixel" % [_bake_px, _bake_metres,
+			_bake_metres / float(_bake_px) * 1000.0])
+
+
+## Draws the picture again, centred on the focus (the march's coordinates are x = world z and
+## y = world x on the lab's flat ground).
+func _rebake() -> void:
+	_bake_centre = Vector2(_focus.z, _focus.x)
+	var corner := _bake_centre - Vector2.ONE * _bake_metres * 0.5
+	for key: String in _values:
+		if key.begins_with("mosaic_"):
+			_bake_material.set_shader_parameter(key, _values[key])
+	_bake_material.set_shader_parameter(&"bake_window",
+			Vector4(corner.x, corner.y, _bake_metres, 0.0))
+	PlanetTile.ground_material().set_shader_parameter(&"mosaic_height_window",
+			Vector4(corner.x, corner.y, _bake_metres, 1.0))
+	_bake_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
 func _rebuild() -> void:
 	RenderingServer.global_shader_parameter_set(&"ground_detail", float(_values["detail"]))
 	if _patch_node != null:
@@ -529,7 +582,9 @@ func _build_panel() -> void:
 			elif remakes == 3:
 				_rebuild_wanted = true
 			elif remakes == 4:
-				PlanetTile.ground_material().set_shader_parameter(key, value))
+				PlanetTile.ground_material().set_shader_parameter(key, value)
+				if key.begins_with("mosaic_"):
+					_bake_wanted = true)
 	var hint := Label.new()
 	hint.text = "drag: orbit   wheel: zoom   middle drag: move focus   C: copy the view"
 	column.add_child(hint)
@@ -593,6 +648,11 @@ func _process(_delta: float) -> void:
 		_place_camera()
 		if _readout != null:
 			_readout.text = _view_text().replace("  (", "\n(")
+		if _bake_px > 0 and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+			var drift := Vector2(_focus.z, _focus.x) - _bake_centre
+			if _bake_wanted or drift.length() > _bake_metres * 0.2:
+				_bake_wanted = false
+				_rebake()
 		# the ground and the stones are made again once the mouse button is up (a slider being dragged
 		# changes many times a second)
 		if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
@@ -608,7 +668,10 @@ func _process(_delta: float) -> void:
 		_yaw += deg_to_rad(float(_options["sweep"]))
 		_place_camera()
 	_frames += 1
-	if _frames == 40:
+	if _frames == 3 and _options.has("ssao"):
+		_environment.ssao_enabled = _options["ssao"] != "0"
+		_environment.ssil_enabled = _options["ssao"] != "0"
+	if _frames == int(_options.get("frames", "40")):
 		var image := root.get_texture().get_image()
 		if _ref != "" and FileAccess.file_exists(_ref):
 			var reference := Image.load_from_file(_ref)
