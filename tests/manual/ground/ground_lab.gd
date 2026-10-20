@@ -53,6 +53,12 @@ func _ready() -> void:
 		if parts.size() == 2:
 			_options[parts[0]] = parts[1]
 	_live = not _options.has("out")
+	if _live:
+		# the live lab draws a frame only when something changes (the camera, a slider), and never more than 60 a second: a still picture
+		# does not need the GPU running flat out
+		OS.low_processor_usage_mode = true
+		OS.low_processor_usage_mode_sleep_usec = 16000
+		Engine.max_fps = 60
 	_out = _options.get("out", _out)
 	_ref = _options.get("ref", "")
 	_soil_name = _options.get("soil", "laterite")
