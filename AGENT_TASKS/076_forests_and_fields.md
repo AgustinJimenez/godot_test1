@@ -210,3 +210,9 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   compressed with mipmaps on import): planet_ground.gdshader samples the set the soil is (iron: red, organic: forest, else gravel) on the
   three planes within 32 m of the walker, keeps the soil's own colour (the scan divided by its mean is the detail), its occlusion, normal and
   roughness. +1.8 ms GPU. `scan_strength` and `scan_scale` are uniforms of the ground material. Licence note in the scans' README.md.
+- The POM add-on's rock2 maps (downloaded to E:/Temp/claude/refs/pom_rock2/ to study, not shipped; the repo is MIT, the maps' own licence unknown)
+  are not scans but a stylised sculpted cliff: stacked sandstone slabs with soft bevels, vertical cracks, ledge lines, sandy shelves with scattered
+  rubble, bright lips. `scripts/make_cliff_textures.py OUT [seed] [size]` is a first procedural version (warped stretched Voronoi slabs,
+  pillowed by the border distance, cracks inside slabs, bed lines; height, albedo, normal, orm; all wrap). It has the structure but not the
+  original's contrast and detail: missing are stepped terrace edges with a hard shadow lip, sandy debris shelves with pebbles, and painted
+  tone patches. Not yet used by any shader.
