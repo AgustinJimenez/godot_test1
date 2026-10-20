@@ -170,3 +170,27 @@ view, 2048 px over 12 m unless said. The pictures for judging by eye are in `E:/
   eye now.
 - **In the planet** (8 bits, standing, looking down, 1920 x 1009): render GPU 6.6 ms (the worked-out path was 43.5 ms), the picture within
   0.26 / 255 of it; 20 m up (the gate) 3.6 ms; the windowed walk check had no slow frame, the fly check one (worst 50.5 ms).
+
+
+## Fourth step (2026-10-20): a textured look, stones that stand in the soil
+
+The user said some bumps looked stretched and some were too simple. All of it is baked into the same height picture, so the cost stays
+the same (lab low-angle view 4.2 ms with 20 samples, no stones).
+
+- **The plates** (`planet_mosaic.gdshaderinc`, `mosaic_plate_height`): each top leans (`mosaic_slab_tilt`), is rough (`mosaic_top_detail`),
+  the large plates have cracks (`mosaic_cracks`), each plate has bands of tone across it (`mosaic_veins`) and pale dust on the flat tops
+  (`mosaic_dust`). The worked-out fallback uses the same function, so the picture and the fallback agree.
+- **The light** follows the real slope of the baked heights at the hit (`mosaic_relief_light`, four extra reads), not only each plate's
+  made-up lean. **The steep sides** get bands down them (`mosaic_side_strata`): the colour read at the hit only smears along the ray. The
+  first steepness threshold was too high (0.27 / 255 of change in a closeup); 0.15-0.6 gives 1.2.
+- Every number has a slider in the ground lab ("mosaic:" rows); all at 0 is the plain plates. A texel is 5.9 mm: nothing finer than
+  about 3 cm can be baked.
+- **The 3D stones hovered**: the parallax only repaints the ground, so the soil looks up to 3 cm below the mesh and the stones stood on the
+  mesh. Sinking them does not help (the mesh hides them). The ground shader now writes `DEPTH` for the point the ray found
+  (`pom_push`), which cost 0.3 ms in the lab (4.21 -> 4.52 ms) and about 1 ms in the planet (render GPU 7.3-7.7 ms standing, looking down at
+  leaf litter; was 6.5 ms before the textures and the depth). Writing depth turns off early depth rejection for the ground; it cannot be
+  limited to the near pixels in one material.
+- **The stones**: a dark soft patch under each (`planet_chip_shadow.gdshader`, the same instances, pushed down like the soil), and rounder
+  80-face shapes in 8 variants (4 angular, 4 rounded) instead of 20-face gems.
+- **Not done**: the plate size and cover following rock type and slope; splitting the bake in a big and a mid picture; a cheaper strata
+  noise (one read saved, not worth it).

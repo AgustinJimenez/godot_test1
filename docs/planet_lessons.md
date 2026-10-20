@@ -208,3 +208,12 @@ repeated runs.
   walking draws only a strip; a new anchor (each rebase) draws it all again, in the same frame the shader gets the new anchor.
 - A `SubViewport` with `use_hdr_2d = true` and `render_target_update_mode = UPDATE_ONCE` is a cheap way to bake a canvas-item shader
   into a texture the ground shader can read (the include files hold the shared functions; a canvas-item shader can include them).
+
+
+## 12. Parallax that does not write depth (2026-10-20)
+
+- A parallax material that only repaints the mesh leaves the depth of the mesh: a real object standing on it (stones) hovers, and
+  sinking the object does not help, the flat mesh hides it. Write `DEPTH` from the found point (`PROJECTION_MATRIX * vec4(VERTEX +
+  normalize(VERTEX) * push, 1.0)`, z over w) and the objects stand in it. Cost 0.3 ms in the lab; early depth rejection is lost for that material.
+- Tune a new look by the difference to the old picture, not by eye alone: a first dust and a first strata were both invisible (0.03 and
+  0.27 / 255 of change) because a mask was too strict (strata) and the ground's colour mixing weakens a multiplier (about a third came through).
