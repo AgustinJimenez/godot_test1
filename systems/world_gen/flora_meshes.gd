@@ -8,13 +8,15 @@ extends RefCounted
 ## The numbers stay what they were when plants shared this enum, so the rocks keep their shapes.
 enum Kind { ROCK = 5, STUMP = 10, LOG = 14, SPIRE = 15, PEBBLES = 16, LITTER = 17, TWIGS = 18 }
 
-const VARIANTS := {Kind.ROCK: 6, Kind.STUMP: 2, Kind.LOG: 3, Kind.SPIRE: 3, Kind.PEBBLES: 4, Kind.LITTER: 5, Kind.TWIGS: 4}
+const VARIANTS := {Kind.ROCK: 6, Kind.STUMP: 2, Kind.LOG: 3, Kind.SPIRE: 3, Kind.PEBBLES: 4,
+		Kind.LITTER: 5, Kind.TWIGS: 4}
 const BARK := Color(0.33, 0.23, 0.15)
 const BARK_DARK := Color(0.22, 0.15, 0.1)
 
 static var _cache: Dictionary = {}
 static var _cache_lock := Mutex.new()
-static var fine_trees := false # trees and shrubs in the finer meshes even where `detailed` is off (the middle ground detail)
+# trees and shrubs in the finer meshes even where `detailed` is off (the middle ground detail)
+static var fine_trees := false
 static var detailed := false # the realistic look wants the finer meshes (set by the world)
 static var _material: ShaderMaterial
 static var _structure_material: ShaderMaterial
@@ -115,9 +117,11 @@ static func _litter(builder: MeshBuilder, rng: RandomNumberGenerator, variant: i
 	var tones := [Color(0.55, 0.36, 0.14), Color(0.42, 0.3, 0.14), Color(0.62, 0.45, 0.16),
 			Color(0.34, 0.4, 0.14), Color(0.5, 0.22, 0.1)]
 	var tone: Color = tones[variant % tones.size()]
-	var shapes := [PlantSpecies.LeafShape.OVAL, PlantSpecies.LeafShape.LOBED, PlantSpecies.LeafShape.HEART,
+	var shapes := [PlantSpecies.LeafShape.OVAL, PlantSpecies.LeafShape.LOBED,
+			PlantSpecies.LeafShape.HEART,
 			PlantSpecies.LeafShape.LANCEOLATE]
-	var outline := PlantLeafShapes.outline_for(shapes[variant % shapes.size()], rng.randf_range(1.5, 2.2),
+	var outline := PlantLeafShapes.outline_for(shapes[variant % shapes.size()],
+			rng.randf_range(1.5, 2.2),
 			2, PlantSpecies.LeafEdge.SMOOTH, true)
 	for index in 12 + variant * 2:
 		var spot := Vector2.from_angle(rng.randf() * TAU) * 0.55 * sqrt(rng.randf())
@@ -140,15 +144,18 @@ static func _twigs(builder: MeshBuilder, rng: RandomNumberGenerator, variant: in
 		var radius := rng.randf_range(0.012, 0.03)
 		var yaw := rng.randf() * TAU
 		var tilt := rng.randf_range(0.0, 0.2)
-		var at := Vector3(rng.randf_range(-0.35, 0.35), radius * 0.8 + 0.02 * index, rng.randf_range(-0.35, 0.35))
+		var at := Vector3(rng.randf_range(-0.35, 0.35), radius * 0.8 + 0.02 * index,
+				rng.randf_range(-0.35, 0.35))
 		# the stick lies along the ground: a frustum turned from standing up to lying down
 		var lie := Basis(Vector3.UP, yaw) * Basis(Vector3.BACK, -PI * 0.5 + tilt)
 		builder.xf = Transform3D(lie, at)
 		var shade := rng.randf_range(0.85, 1.1)
-		builder.add_frustum(Vector3.ZERO, length, radius, radius * 0.45, 5, _still(wood.darkened(0.15) * shade),
+		builder.add_frustum(Vector3.ZERO, length, radius, radius * 0.45, 5,
+				_still(wood.darkened(0.15) * shade),
 				_still(wood * shade), rng, 0.08, MeshBuilder.CAP_BOTTOM)
 		if index == 0:
-			builder.xf = Transform3D(lie * Basis(Vector3.FORWARD, 0.6), at + lie * Vector3(0.0, length * 0.5, 0.0))
+			builder.xf = Transform3D(lie * Basis(Vector3.FORWARD, 0.6),
+					at + lie * Vector3(0.0, length * 0.5, 0.0))
 			builder.add_frustum(Vector3.ZERO, length * 0.5, radius * 0.6, radius * 0.25, 4,
 					_still(wood.darkened(0.1)), _still(wood), rng, 0.08)
 	builder.xf = Transform3D.IDENTITY
@@ -179,10 +186,14 @@ static func _spire(builder: MeshBuilder, rng: RandomNumberGenerator, variant: in
 				_still(stone.darkened(0.2)), _still(stone), rng, 0.2)
 
 
-## The tufts of short grass for the turf of the ground (PlanetTurf): TURF_VARIANTS arrangements of TURF_BLADES separate blades, each a
-## narrow card (UV2.y of 8 marks it: the plant shader cuts the blade out of it) at its own place, turn and lean, so no plane or
-## line shows. A blade is bent over in two parts, the upper one leaning further than the lower, and is two bending links
-## (CUSTOM0.x is a vertex link: its row in the mesh "branches" meta, as for a grown plant) so that the walker can push the tufts
+## The tufts of short grass for the turf of the ground (PlanetTurf): TURF_VARIANTS arrangements of
+## TURF_BLADES separate blades, each a
+## narrow card (UV2.y of 8 marks it: the plant shader cuts the blade out of it) at its own place,
+## turn and lean, so no plane or
+## line shows. A blade is bent over in two parts, the upper one leaning further than the lower, and
+## is two bending links
+## (CUSTOM0.x is a vertex link: its row in the mesh "branches" meta, as for a grown plant) so that
+## the walker can push the tufts
 ## nearby (PlanetSway). Built once.
 const TURF_VARIANTS := 3
 const TURF_BLADES := 10
@@ -205,9 +216,11 @@ static func _make_tuft(variant: int) -> ArrayMesh:
 	var uvs := PackedVector2Array()
 	var uv2s := PackedVector2Array()
 	var links := PackedFloat32Array()
-	var table := PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) # the root (the ground): never moves
+	# the root (the ground): never moves
+	var table := PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 	for blade in TURF_BLADES:
-		# at its own place (within a hand breadth, more of them near the middle), turned any way, leaning out and over
+		# at its own place (within a hand breadth, more of them near the middle), turned any way, leaning
+		# out and over
 		var around := rng.randf() * TAU
 		var reach := 0.14 * sqrt(rng.randf())
 		var root := Vector3(cos(around) * reach, 0.0, sin(around) * reach)
@@ -225,11 +238,14 @@ static func _make_tuft(variant: int) -> ArrayMesh:
 		var middle := root + low_up * tall * 0.5
 		var tip := middle + high_up * tall * 0.55
 		var low_id := 1 + blade * 2
-		table.append_array(PackedFloat32Array([0, 9, root.x, root.y, root.z, middle.x, middle.y, middle.z, 0.01, tall * 0.5]))
-		table.append_array(PackedFloat32Array([low_id, 9, middle.x, middle.y, middle.z, tip.x, tip.y, tip.z, 0.01, tall * 0.55]))
+		table.append_array(PackedFloat32Array([0, 9, root.x, root.y, root.z, middle.x, middle.y, middle.z,
+				0.01, tall * 0.5]))
+		table.append_array(PackedFloat32Array([low_id, 9, middle.x, middle.y, middle.z, tip.x, tip.y,
+				tip.z, 0.01, tall * 0.55]))
 		var dice := rng.randf()
 		# three rows of the blade (root, middle, tip), its width kept; the shader tapers it to a point
-		var rows := [[root, 0.0, 0.0, float(low_id)], [middle, 0.5, 0.35, float(low_id)], [tip, 1.0, 0.8, float(low_id + 1)]]
+		var rows := [[root, 0.0, 0.0, float(low_id)], [middle, 0.5, 0.35, float(low_id)],
+				[tip, 1.0, 0.8, float(low_id + 1)]]
 		for part in 2:
 			var from: Array = rows[part]
 			var to: Array = rows[part + 1]
@@ -253,7 +269,8 @@ static func _make_tuft(variant: int) -> ArrayMesh:
 	arrays[Mesh.ARRAY_TEX_UV2] = uv2s
 	arrays[Mesh.ARRAY_CUSTOM0] = links
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, Mesh.ARRAY_CUSTOM_R_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {},
+			Mesh.ARRAY_CUSTOM_R_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
 	mesh.set_meta(&"branches", table)
 	return mesh
 
@@ -261,7 +278,8 @@ static func _make_tuft(variant: int) -> ArrayMesh:
 static var _chip_material: ShaderMaterial
 
 
-## The look of the small stones of the ground (planet_chip.gdshader: flat facets in the instance colour).
+## The look of the small stones of the ground (planet_chip.gdshader: flat facets in the instance
+## colour).
 static func chip_material() -> ShaderMaterial:
 	if _chip_material == null:
 		_chip_material = ShaderMaterial.new()
@@ -269,8 +287,10 @@ static func chip_material() -> ShaderMaterial:
 	return _chip_material
 
 
-## A small angular stone for the gravel of the ground (PlanetTurf): CHIP_VARIANTS shapes of a squashed, knocked about icosahedron (20
-## triangles), flat shaded, white (the instance colour paints it), about 2 m across at scale 1 (the instance's scale makes the stone and
+## A small angular stone for the gravel of the ground (PlanetTurf): CHIP_VARIANTS shapes of a
+## squashed, knocked about icosahedron (20
+## triangles), flat shaded, white (the instance colour paints it), about 2 m across at scale 1 (the
+## instance's scale makes the stone and
 ## its height). Built once.
 const CHIP_VARIANTS := 4
 static var _chips: Array[ArrayMesh] = []
@@ -287,17 +307,22 @@ static func _make_chip(variant: int) -> ArrayMesh:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 104729 * (variant + 3)
 	var golden := (1.0 + sqrt(5.0)) * 0.5
-	var corners: Array[Vector3] = [Vector3(-1, golden, 0), Vector3(1, golden, 0), Vector3(-1, -golden, 0), Vector3(1, -golden, 0),
+	var corners: Array[Vector3] = [Vector3(-1, golden, 0), Vector3(1, golden, 0),
+			Vector3(-1, -golden, 0), Vector3(1, -golden, 0),
 			Vector3(0, -1, golden), Vector3(0, 1, golden), Vector3(0, -1, -golden), Vector3(0, 1, -golden),
 			Vector3(golden, 0, -1), Vector3(golden, 0, 1), Vector3(-golden, 0, -1), Vector3(-golden, 0, 1)]
-	var shape := Vector3(rng.randf_range(0.8, 1.15), rng.randf_range(0.7, 1.0), rng.randf_range(0.8, 1.15))
+	var shape := Vector3(rng.randf_range(0.8, 1.15), rng.randf_range(0.7, 1.0),
+			rng.randf_range(0.8, 1.15))
 	for index in corners.size():
-		var point := corners[index].normalized() * rng.randf_range(0.72, 1.08) # (knocked about: no two corners as far)
+		# (knocked about: no two corners as far)
+		var point := corners[index].normalized() * rng.randf_range(0.72, 1.08)
 		point = Vector3(point.x * shape.x, point.y * shape.y, point.z * shape.z)
 		point.y = maxf(point.y, -0.35) # (the underside is flat: it is in the ground)
 		corners[index] = point
-	var faces := [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-			[3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]]
+	var faces := [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4],
+			[11, 10, 2], [10, 7, 6], [7, 1, 8],
+			[3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10],
+			[8, 6, 7], [9, 8, 1]]
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()

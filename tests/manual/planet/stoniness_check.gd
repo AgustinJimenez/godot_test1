@@ -1,4 +1,5 @@
-## How stony the planet is: the share of land points by stoniness (godot --headless --path . -s tests/manual/planet/stoniness_check.gd), and a place of middling and of high stoniness to look at
+## How stony the planet is: the share of land points by stoniness (godot --headless --path . -s
+## tests/manual/planet/stoniness_check.gd), and a place of middling and of high stoniness to look at
 extends SceneTree
 func _init() -> void:
 	var settings := PlanetSettings.earth()
@@ -33,8 +34,10 @@ func _init() -> void:
 		if bucket == 2 and not by_area.has("mid") and noise.is_solid_ground(dir):
 			by_area["mid"] = dir
 		total += 1
-	print("STONINESS of %d land points (flat ground): 0-0.2 %.0f%%  0.2-0.4 %.0f%%  0.4-0.6 %.0f%%  0.6-0.8 %.0f%%  0.8-1 %.0f%%" % [total,
-			counts[0] * 100.0 / total, counts[1] * 100.0 / total, counts[2] * 100.0 / total, counts[3] * 100.0 / total, counts[4] * 100.0 / total])
+	print(("STONINESS of %d land points (flat ground): 0-0.2 %.0f%%  0.2-0.4 %.0f%%  "
+			+ "0.4-0.6 %.0f%%  0.6-0.8 %.0f%%  0.8-1 %.0f%%") % [total,
+			counts[0] * 100.0 / total, counts[1] * 100.0 / total, counts[2] * 100.0 / total,
+			counts[3] * 100.0 / total, counts[4] * 100.0 / total])
 	for key in by_area:
 		var d: Vector3 = by_area[key]
 		print("DIR %s %f,%f,%f" % [key, d.x, d.y, d.z])

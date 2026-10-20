@@ -1,5 +1,7 @@
-## Looks for cliffs the height function should not have: samples random land points along a 100 m line
-## at 0.5 m and reports any step over 8 m. Run: godot --headless -s tests/manual/planet/height_jumps.gd -- --seed=8
+## Looks for cliffs the height function should not have: samples random land points along a 100 m
+## line
+## at 0.5 m and reports any step over 8 m. Run: godot --headless -s
+## tests/manual/planet/height_jumps.gd -- --seed=8
 ## (found the erosion noise cliffs of AGENT_TASKS/071: 22 of 596 lines before the fix, none after)
 extends SceneTree
 
@@ -36,8 +38,10 @@ func _init() -> void:
 			prev = h
 		if worst > 8.0:
 			bad += 1
-			report.append("  %.5f,%.5f,%.5f jump %.0f m at +%.1f m (h %.0f)" % [dir.x, dir.y, dir.z, worst, worst_at * 0.5, h0])
-	print("HEIGHT JUMPS seed ", seed_value, " lines checked ", checked, " with a jump >8 m per 0.5 m: ", bad)
+			report.append("  %.5f,%.5f,%.5f jump %.0f m at +%.1f m (h %.0f)" % [dir.x, dir.y, dir.z, worst,
+					worst_at * 0.5, h0])
+	print("HEIGHT JUMPS seed ", seed_value, " lines checked ", checked,
+			" with a jump >8 m per 0.5 m: ", bad)
 	for line in report.slice(0, 12):
 		print(line)
 	quit()

@@ -29,7 +29,8 @@ var tile_key := 0 ## see key_of
 var plant_grid: Dictionary = {} ## the grid the plants are placed on (empty: this tile has none)
 var plant_detail := PlanetScatter.Detail.NONE ## what grows on it now
 var plant_holder: Node3D
-var ground_instance: MeshInstance3D ## the ground mesh of the tile (the shell layers of the near ground copy it)
+## the ground mesh of the tile (the shell layers of the near ground copy it)
+var ground_instance: MeshInstance3D
 
 var _noise: PlanetNoise
 var _settings: PlanetSettings
@@ -54,9 +55,12 @@ static func ground_material() -> ShaderMaterial:
 				preload("res://assets/textures/ground/soil.png"))
 		_ground_material.set_shader_parameter(&"sand_map",
 				preload("res://assets/textures/ground/sand.png"))
-		# scans of real ground for the near detail (CC0, ambientCG): see assets/textures/ground/scans/README.md
-		_ground_material.set_shader_parameter(&"cliff_c", load("res://assets/textures/ground/scans/cliff_c.png"))
-		_ground_material.set_shader_parameter(&"cliff_n", load("res://assets/textures/ground/scans/cliff_n.png"))
+		# scans of real ground for the near detail (CC0, ambientCG): see
+		# assets/textures/ground/scans/README.md
+		_ground_material.set_shader_parameter(&"cliff_c",
+				load("res://assets/textures/ground/scans/cliff_c.png"))
+		_ground_material.set_shader_parameter(&"cliff_n",
+				load("res://assets/textures/ground/scans/cliff_n.png"))
 		for scan: String in ["gravel", "red", "leaf"]:
 			_ground_material.set_shader_parameter("scan_%s_c" % scan,
 					load("res://assets/textures/ground/scans/%s_c.png" % scan))
@@ -140,7 +144,8 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 				packed_dirs[row * side + column] = direction(f, s, t)
 	# Native planting and water use the packed grids directly. Only their script fallbacks need copies.
 	var scripted := not fast or (level >= _settings.max_level() - 4 and noise.scatter_native == null)
-	scripted = scripted or (_noise.water_native == null and (_settings.sea_on or _settings.hydrology_on))
+	scripted = scripted or (_noise.water_native == null and (_settings.sea_on
+			or _settings.hydrology_on))
 	if scripted:
 		dirs.assign(packed_dirs)
 	heights = noise.heights_of(packed_dirs) # (the crust is asked for the whole grid at once)
@@ -252,9 +257,8 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 func grow_plants(detail: PlanetScatter.Detail) -> Node3D:
 	var holder := Node3D.new()
 	holder.name = "PlantsOf%d" % tile_key
-	PlanetScatter.new().populate(holder, tile_key, _noise, plant_grid["positions"],
-			plant_grid["dirs"], plant_grid["heights"], _settings.tile_cells, size, detail,
-			has_collider, plant_grid["packed_positions"], plant_grid["packed_dirs"])
+	PlanetScatter.new().populate(holder, tile_key, _noise, plant_grid, _settings.tile_cells,
+			size, detail, has_collider)
 	return holder
 
 

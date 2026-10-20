@@ -22,7 +22,8 @@ const SCREE := Color(0.58, 0.56, 0.52) ## rubble on the slopes
 const WETLAND := Color(0.22, 0.30, 0.16) ## marsh
 const STEPPE := Color(0.50, 0.46, 0.22) ## the cover of a dry, mild place: dry grass
 const MEADOW := Color(0.22, 0.38, 0.12) ## wet and mild: grass
-const FOREST := Color(0.11, 0.24, 0.09) ## very wet and warm: the dark of the forest floor seen from far
+## very wet and warm: the dark of the forest floor seen from far
+const FOREST := Color(0.11, 0.24, 0.09)
 const SAND := Color(0.80, 0.72, 0.52) ## beaches: low, level ground by the sea
 const SNOW := Color(0.93, 0.95, 0.98) ## permanent snow and ice
 const LAPSE := 0.0065 ## degrees C the air cools a metre higher

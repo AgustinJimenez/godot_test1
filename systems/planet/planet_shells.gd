@@ -1,8 +1,11 @@
 class_name PlanetShells
 extends Node
-## The loose stones of the near ground as relief: round the walker the ground tiles get LAYERS extra copies of their mesh (planet_shells
-## shader), each lifted a little further and drawn only where a stone reaches that high. On only with `PLANET_SHELLS` (tried: about 1.5 ms and little to see at standing height).
+## The loose stones of the near ground as relief: round the walker the ground tiles get LAYERS extra
+## copies of their mesh (planet_shells
+## shader), each lifted a little further and drawn only where a stone reaches that high. On only
+## with `PLANET_SHELLS` (tried: about 1.5 ms and little to see at standing height).
 
+const SHADER := preload("res://shaders/world/planet_shells.gdshader")
 const LAYERS := 8
 const TOP := 0.06 ## m: the tallest stone
 const REACH := 7.0 ## m
@@ -17,10 +20,9 @@ var _since := 0.0
 
 
 func _ready() -> void:
-	var shader: Shader = preload("res://shaders/world/planet_shells.gdshader")
 	for layer in LAYERS:
 		var material := ShaderMaterial.new()
-		material.shader = shader
+		material.shader = SHADER
 		material.set_shader_parameter(&"level", float(layer + 1) / float(LAYERS))
 		material.set_shader_parameter(&"top", TOP)
 		material.set_shader_parameter(&"reach", REACH)

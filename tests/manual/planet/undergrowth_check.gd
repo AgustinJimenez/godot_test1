@@ -1,6 +1,8 @@
 extends Node
-## The undergrowth a walker pushes through: places a tile of plants on wet ground and asks the native drag at a shrub, at a
-## spot with no plant near, and in the middle of the tile. Prints UNDERGROWTH_CHECK PASS when a shrub holds the walker back
+## The undergrowth a walker pushes through: places a tile of plants on wet ground and asks the
+## native drag at a shrub, at a
+## spot with no plant near, and in the middle of the tile. Prints UNDERGROWTH_CHECK PASS when a
+## shrub holds the walker back
 ## (drag above 0.2), open ground does not (under 0.05) and the numbers stay under 1.
 ## godot --headless --path . res://tests/manual/planet/undergrowth_check.tscn
 
@@ -39,6 +41,7 @@ func _ready() -> void:
 	var on_shrub: float = noise.scatter_native.call(&"drag", stems, at_strongest.x, at_strongest.y)
 	var far_away: float = noise.scatter_native.call(&"drag", stems, 5000.0, 5000.0)
 	var ok := stems.size() > 0 and on_shrub > 0.2 and far_away < 0.05 and on_shrub <= 1.0
-	print("UNDERGROWTH_CHECK %s stems=%d on the thickest stem %.2f (its own drag %.2f), far away %.3f" % [
+	print(("UNDERGROWTH_CHECK %s stems=%d on the thickest stem %.2f (its own drag %.2f), "
+			+ "far away %.3f") % [
 			"PASS" if ok else "FAIL", stems.size() / 4, on_shrub, strongest, far_away])
 	get_tree().quit(0 if ok else 1)

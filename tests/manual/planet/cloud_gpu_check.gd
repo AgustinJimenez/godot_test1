@@ -1,4 +1,5 @@
-## GPU experiment: the cloud cover of the whole Earth on the GPU against the CPU cloud mask (run with a window: godot --path . -s tests/manual/planet/cloud_gpu_check.gd)
+## GPU experiment: the cloud cover of the whole Earth on the GPU against the CPU cloud mask (run
+## with a window: godot --path . -s tests/manual/planet/cloud_gpu_check.gd)
 extends SceneTree
 func _init() -> void:
 	var settings := PlanetSettings.earth()
@@ -44,7 +45,8 @@ func _init() -> void:
 					big += 1
 				var v := gpu[index]
 				image.set_pixel(index % size.x, index / size.x, Color(v, v, v))
-			print("mean difference %.4f, worst %.3f, pixels off by more than 0.1: %d of %d" % [diff / gpu.size(), worst, big, gpu.size()])
+			print(("mean difference %.4f, worst %.3f, pixels off by more than 0.1: %d of %d")
+					% [diff / gpu.size(), worst, big, gpu.size()])
 			image.save_png("E:/Temp/claude/scratch/gpu_cover.png")
 			cpu_image.save_png("E:/Temp/claude/scratch/cpu_cover.png")
 	quit()

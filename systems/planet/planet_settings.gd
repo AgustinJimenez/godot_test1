@@ -17,7 +17,8 @@ extends Resource
 @export var plant_density := 1.0
 @export var rock_density := 1.0
 @export var lake_depth_share := 0.08 ## a hollow is a lake when deeper than this share of the relief
-@export var sea_on := true ## true: the sea is drawn (a check that wants the bare ground turns it off)
+## true: the sea is drawn (a check that wants the bare ground turns it off)
+@export var sea_on := true
 @export var hydrology_on := true ## true: rivers and lakes
 ## cells along a cube face for the coarse drainage that carves the river valleys (0: none)
 @export var drainage_cells := 0

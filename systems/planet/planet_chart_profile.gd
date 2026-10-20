@@ -1,8 +1,11 @@
 class_name PlanetChartProfile
 extends RefCounted
-## Where the time of a map picture goes: every part of the process adds the microseconds it took (summed over the chart's
-## threads: the CPU time, more than the wall time when several threads work), and when the picture is done the chart
-## writes them to the map log (`user://planet_map.log`) and, with PLANET_CHART_PROFILE=1 in the environment, to the
+## Where the time of a map picture goes: every part of the process adds the microseconds it took
+## (summed over the chart's
+## threads: the CPU time, more than the wall time when several threads work), and when the picture
+## is done the chart
+## writes them to the map log (`user://planet_map.log`) and, with PLANET_CHART_PROFILE=1 in the
+## environment, to the
 ## output. Safe to use from the chart threads.
 
 static var _mutex := Mutex.new()
@@ -10,7 +13,8 @@ static var _phases := {} # phase -> microseconds
 static var _order: Array[String] = [] # the phases in the order they first appeared
 
 
-## Adds the time since `since` (a Time.get_ticks_usec value) to `phase`; returns now, for the next phase.
+## Adds the time since `since` (a Time.get_ticks_usec value) to `phase`; returns now, for the next
+## phase.
 static func lap(phase: String, since: int) -> int:
 	var now := Time.get_ticks_usec()
 	_mutex.lock()
@@ -34,7 +38,8 @@ static func take() -> Array:
 	return out
 
 
-## The report of a picture: its wall time and every phase's CPU time (and the native parts inside the rows).
+## The report of a picture: its wall time and every phase's CPU time (and the native parts inside
+## the rows).
 static func report(title: String, wall_ms: float, native: Object) -> void:
 	var lines: Array[String] = ["chart %s: %.0f ms wall" % [title, wall_ms]]
 	for entry: Array in take():

@@ -1,29 +1,39 @@
 class_name PlanetTurf
 extends Node
-## The short grass that covers the ground where grass grows: thousands of small tufts round the walker. A tile cannot hold them all
-## (a hundred metres of ground at a few tufts a square metre is hundreds of thousands), so the tufts are made in chunks of the
-## tile's ground, only the chunks within ENTER metres of the walker, and let go again beyond LEAVE. Where they grow comes from the
-## tile's "turf" (how well turf grows at each vertex of its grid: rain, warmth, slope, stones, shade; the native placement makes
-## it); each chunk is one MultiMesh (PlanetScatterNative.turf_chunk) of one tuft mesh, drawn by the plant shader.
+## The short grass that covers the ground where grass grows: thousands of small tufts round the
+## walker. A tile cannot hold them all
+## (a hundred metres of ground at a few tufts a square metre is hundreds of thousands), so the tufts
+## are made in chunks of the
+## tile's ground, only the chunks within ENTER metres of the walker, and let go again beyond LEAVE.
+## Where they grow comes from the
+## tile's "turf" (how well turf grows at each vertex of its grid: rain, warmth, slope, stones,
+## shade; the native placement makes
+## it); each chunk is one MultiMesh (PlanetScatterNative.turf_chunk) of one tuft mesh, drawn by the
+## plant shader.
 ## Off with `PLANET_NO_TURF`.
 
 const CHUNK := 16.0 ## m: the square of a tile's ground made at a time
 const ENTER := 26.0 ## m: chunks whose middle is closer than this are made
 const LEAVE := 36.0 ## m: and let go beyond this
-const SPACING := 0.21 ## m: one tuft for each spot of a jittered grid of this (PLANET_TURF_SPACING: another, to try)
-const DENSITY := 1.6 ## the odds of a tuft are the field times this (the field is 1 only where grass grows best)
+## m: one tuft for each spot of a jittered grid of this (PLANET_TURF_SPACING: another, to try)
+const SPACING := 0.21
+## the odds of a tuft are the field times this (the field is 1 only where grass grows best)
+const DENSITY := 1.6
 const DRAWN := 32.0 ## m: how far a tuft is drawn (it fades out)
-const GRAVEL_SPACING := 0.12 ## m: one stone for each spot of a jittered grid of this (the odds make them thin where grass grows)
+## m: one stone for each spot of a jittered grid of this (the odds make them thin where grass grows)
+const GRAVEL_SPACING := 0.12
 const GRAVEL_DRAWN := 14.0 ## m: how far a stone is drawn (its size is under a pixel beyond)
 const LOOK_EVERY := 0.3 ## s
 const MAKE_EACH_LOOK := 3 ## chunks made at most in each look: the walker is never held up
 
 var planet: PlanetWorld
 var player: Player
-## true: the small stones of the bare ground instead of grass (see PlanetScatterNative.gravel_chunk): a node of its own, nearer, finer, with shadows
+## true: the small stones of the bare ground instead of grass (see
+## PlanetScatterNative.gravel_chunk): a node of its own, nearer, finer, with shadows
 var gravel := false
 
-var _chunks: Dictionary = {} # key -> {node, holder, middle (the chunk's middle in the holder's space)}
+# key -> {node, holder, middle (the chunk's middle in the holder's space)}
+var _chunks: Dictionary = {}
 var _since := 0.0
 
 
@@ -50,9 +60,11 @@ func _physics_process(delta: float) -> void:
 		if holder == null or not holder.has_meta(&"turf"):
 			continue
 		var grid: Dictionary = holder.get_meta(&"turf")
-		var local := _grid_of(grid, holder.to_local(here)) # (the grid's own space: metres from its corner along its x and z)
+		# (the grid's own space: metres from its corner along its x and z)
+		var local := _grid_of(grid, holder.to_local(here))
 		var size: float = grid["size"]
-		if local.x < -_enter() or local.z < -_enter() or local.x > size + _enter() or local.z > size + _enter():
+		if (local.x < -_enter() or local.z < -_enter() or local.x > size + _enter()
+				or local.z > size + _enter()):
 			continue
 		var from_x := maxi(int(floorf((local.x - _enter()) / CHUNK)), 0)
 		var to_x := mini(int(floorf((local.x + _enter()) / CHUNK)), int(ceilf(size / CHUNK)) - 1)
@@ -75,11 +87,14 @@ func _physics_process(delta: float) -> void:
 ## Make the chunk (ix, iz) of the tile whose grid is `grid`, hanging in `holder`.
 func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void:
 	var size: float = grid["size"]
-	var buffers: Array = planet.noise.scatter_native.call(&"gravel_chunk" if gravel else &"turf_chunk", grid["positions"],
-			grid["field"], grid["cells"], size, ix * CHUNK, iz * CHUNK, minf((ix + 1) * CHUNK, size), minf((iz + 1) * CHUNK, size),
+	var buffers: Array = planet.noise.scatter_native.call(&"gravel_chunk" if gravel else &"turf_chunk",
+			grid["positions"],
+			grid["field"], grid["cells"], size, ix * CHUNK, iz * CHUNK, minf((ix + 1) * CHUNK, size),
+			minf((iz + 1) * CHUNK, size),
 			GRAVEL_SPACING if gravel else _spacing(), 1.0 if gravel else DENSITY, key ^ int(grid["key"]),
 			FloraMeshes.CHIP_VARIANTS if gravel else FloraMeshes.TURF_VARIANTS)
-	var entry := {"nodes": [], "holder": holder, "grid": grid, "at": Vector2((ix + 0.5) * CHUNK, (iz + 0.5) * CHUNK), "buffers": []}
+	var entry := {"nodes": [], "holder": holder, "grid": grid, "at": Vector2((ix + 0.5) * CHUNK,
+			(iz + 0.5) * CHUNK), "buffers": []}
 	for variant in buffers.size():
 		var buffer: PackedFloat32Array = buffers[variant]
 		if buffer.is_empty():
@@ -120,7 +135,8 @@ func _let_go(here: Vector3) -> void:
 			_chunks.erase(key)
 
 
-## A point of the holder's space in the grid's: x and z in metres from the grid's corner along the grid's own axes (y: unchanged).
+## A point of the holder's space in the grid's: x and z in metres from the grid's corner along the
+## grid's own axes (y: unchanged).
 static func _grid_of(grid: Dictionary, local: Vector3) -> Vector3:
 	var corner: Vector3 = grid["corner"]
 	var ax: Vector2 = grid["ax"]
@@ -132,7 +148,8 @@ static func _grid_of(grid: Dictionary, local: Vector3) -> Vector3:
 	return Vector3((d.x * az.y - d.y * az.x) / det, local.y, (ax.x * d.y - ax.y * d.x) / det)
 
 
-## The chunks as [holder, [MultiMeshInstance3D, buffer, true]] (the same as the plants' `sway_sets`): PlanetSway takes the tufts
+## The chunks as [holder, [MultiMeshInstance3D, buffer, true]] (the same as the plants'
+## `sway_sets`): PlanetSway takes the tufts
 ## nearest the walker out of them and bends them.
 func chunk_sets() -> Array:
 	var sets: Array = []
@@ -145,7 +162,8 @@ func chunk_sets() -> Array:
 
 
 static func _spacing() -> float:
-	return OS.get_environment("PLANET_TURF_SPACING").to_float() if OS.has_environment("PLANET_TURF_SPACING") else SPACING
+	return (OS.get_environment("PLANET_TURF_SPACING").to_float()
+			if OS.has_environment("PLANET_TURF_SPACING") else SPACING)
 
 
 ## How many tufts are drawn now (for the checks).

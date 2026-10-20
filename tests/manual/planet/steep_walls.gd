@@ -1,4 +1,5 @@
-## Looks for walls and knife edges: samples land lines of 120 m at 1 m and reports where the ground climbs more than
+## Looks for walls and knife edges: samples land lines of 120 m at 1 m and reports where the ground
+## climbs more than
 ## 2.2 m in 1 m (a 65 degree wall) or its slope changes by more than 1.6 within 2 m (a knife edge).
 ## Run: godot --headless -s tests/manual/planet/steep_walls.gd -- --seed=8 [--scale=0.1]
 extends SceneTree
@@ -56,8 +57,10 @@ func _init() -> void:
 				var dq := (dir + east * q * step).normalized()
 				profile += " %.1f" % noise.height(dq.x, dq.y, dq.z)
 			report.append(profile)
-			report.append("  %.8f,%.8f,%.8f wall %.1f m/m at +%d, kink %.1f at +%d (h %.0f)" % [dir.x, dir.y, dir.z, steepest, at_wall, sharpest, at_edge, h0])
-	print("STEEP WALLS seed %d scale %.2f: %d land lines, %d with a wall over 65 degrees, %d with a knife edge" % [seed_value, scale, checked, walls, edges])
+			report.append("  %.8f,%.8f,%.8f wall %.1f m/m at +%d, kink %.1f at +%d (h %.0f)" % [dir.x, dir.y,
+					dir.z, steepest, at_wall, sharpest, at_edge, h0])
+	print(("STEEP WALLS seed %d scale %.2f: %d land lines, %d with a wall over 65 degrees, "
+			+ "%d with a knife edge") % [seed_value, scale, checked, walls, edges])
 	for line in report.slice(0, 10):
 		print(line)
 	quit()

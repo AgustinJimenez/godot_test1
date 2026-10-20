@@ -20,7 +20,8 @@ var weather: PlanetWeather ## the clouds and the weather (made once the climate 
 var clock: PlanetClock ## the time of day and the season (set by PlanetWorld; null: the yearly mean)
 var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep off a little round it
 var rock: PlanetRock ## the colour of the crust
-var scatter_native: Object ## the native plant placement (PlanetScatterNative), or null: PlanetScatter's loops run
+## the native plant placement (PlanetScatterNative), or null: PlanetScatter's loops run
+var scatter_native: Object
 var native: Object ## the native crust (PlanetCrustNative), or null: this file is the reference
 var water_native: Object ## pure native tile-water geometry; null uses PlanetTile's script fallback
 var drainage: PlanetDrainage ## where the water runs (coarse), when the planet has it
@@ -203,7 +204,8 @@ func _carve_valleys() -> void:
 	if native == null or settings.drainage_cells <= 0 or OS.has_environment("PLANET_NO_DRAINAGE"):
 		return
 	var cell_metres := settings.radius * PI * 0.5 / float(settings.drainage_cells)
-	var kept := {} if OS.has_environment("PLANET_NO_DRAINAGE_CACHE") else PlanetDrainageCache.load_network(settings)
+	var kept := ({} if OS.has_environment("PLANET_NO_DRAINAGE_CACHE")
+			else PlanetDrainageCache.load_network(settings))
 	if not kept.is_empty():
 		_lap("drainage from the cache")
 		native.call(&"set_rivers", settings.drainage_cells, kept, cell_metres)
@@ -239,7 +241,8 @@ func water_at(dir: Vector3, ground: float) -> float:
 
 ## True if river or lake water is within `margin` metres of `dir`.
 func near_water(dir: Vector3, ground: float, margin: float) -> bool:
-	return native != null and native.has_method(&"near_water") 			and native.call(&"near_water", dir, ground, margin)
+	return native != null and native.has_method(&"near_water") 			and native.call(&"near_water", dir,
+			ground, margin)
 
 
 ## The current of the river at `dir` (planet space, m/s), zero out of a river.
@@ -261,15 +264,13 @@ func heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
 
 
 ## The macro heights a map pixel of `pixel` metres can show (the finer detail left out).
-func broad_heights_of(dirs: PackedVector3Array, pixel: float) -> PackedFloat32Array:
-	if native != null and native.has_method(&"broad_heights"):
-		return native.call(&"broad_heights", dirs, pixel)
-	return macro_heights_of(dirs)
 
 
 ## The heights before the rivers are cut, the sign of which says land or sea (the weather asks),
 ## at many directions at once (native when it can).
-func macro_heights_of(dirs: PackedVector3Array) -> PackedFloat32Array:
+func macro_heights_of(dirs: PackedVector3Array, pixel := -1.0) -> PackedFloat32Array:
+	if pixel >= 0.0 and native != null and native.has_method(&"broad_heights"):
+		return native.call(&"broad_heights", dirs, pixel)
 	if native != null:
 		return native.call(&"macro_heights", dirs)
 	var result := PackedFloat32Array()
@@ -287,7 +288,7 @@ func colours_of(dirs: PackedVector3Array, grounds: PackedFloat32Array,
 	var result := PackedColorArray()
 	result.resize(dirs.size())
 	for index in dirs.size():
-		result[index] = facet_color(dirs[index].x, dirs[index].y, dirs[index].z, grounds[index],
+		result[index] = _facet_color(dirs[index].x, dirs[index].y, dirs[index].z, grounds[index],
 				steeps[index])
 	return result
 
@@ -526,7 +527,7 @@ func biome(x: float, y: float, z: float, ground: float, steepness: float) -> Ter
 
 
 ## The colour of a ground facet: the rock of the crust there (PlanetRock), nothing grows on it yet.
-func facet_color(x: float, y: float, z: float, ground: float, steep: float,
+func _facet_color(x: float, y: float, z: float, ground: float, steep: float,
 		coarse := false) -> Color:
 	var speckle := 0.5 if coarse else detail(x, y, z) # (a map's pixels of many metres: no fine grain)
 	var here := Vector3(x, y, z)

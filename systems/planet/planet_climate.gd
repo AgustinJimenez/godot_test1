@@ -33,7 +33,8 @@ func build(noise: PlanetNoise) -> void:
 	var dirs := PackedVector3Array() # (all the grid's heights in one go, on several threads)
 	var air_native := native_rain and ClassDB.class_exists(&"PlanetSeasonsNative")
 	if air_native:
-		dirs = (ClassDB.instantiate(&"PlanetSeasonsNative") as RefCounted).call(&"grid_dirs", WIDTH, HEIGHT)
+		dirs = (ClassDB.instantiate(&"PlanetSeasonsNative") as RefCounted).call(&"grid_dirs", WIDTH,
+				HEIGHT)
 	else:
 		dirs.resize(size)
 		for row in HEIGHT:

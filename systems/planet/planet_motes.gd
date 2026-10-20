@@ -2,7 +2,8 @@ class_name PlanetMotes
 extends GPUParticles3D
 ## Dust and pollen drifting in the air round the player: tiny warm specks that catch the sun, thick
 ## in dry dusty places and in flowery green ones, fewer in the cold, none in rain, snow, fog, at
-## night or under water. A box of air that follows the camera; the specks are in world space, so they
+## night or under water. A box of air that follows the camera; the specks are in world space, so
+## they
 ## hang where they were while the player walks through them. Setting `particles` (High and up).
 
 const BOX := Vector3(26.0, 9.0, 26.0) ## m: half sizes of the air they live in

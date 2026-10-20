@@ -1,7 +1,8 @@
 extends SceneTree
 ## A tree whose branches bend as a body walks through it, saved as pictures (before, during, after):
 ##   godot --path . -s tests/manual/planet/sway_lab.gd -- E:/path/prefix arch:oak|form:SHRUB [lift]
-## `lift`: metres the body is raised (a tall oak's branches start high); the pictures are prefix_0.png, _1.png, _2.png.
+## `lift`: metres the body is raised (a tall oak's branches start high); the pictures are
+## prefix_0.png, _1.png, _2.png.
 
 var _tree: PlanetSwayTree
 var _more: Array[PlanetSwayTree] = [] # (the turf: a row of tufts)
@@ -64,15 +65,18 @@ func _initialize() -> void:
 	var camera := Camera3D.new()
 	root.add_child(camera)
 	var height := 0.5 if turf else maxf(chosen.height, 2.0)
-	camera.look_at_from_position(Vector3(0.0, height * 0.55, height * 1.3 + 1.2), Vector3(0.0, height * 0.5, 0.0))
+	camera.look_at_from_position(Vector3(0.0, height * 0.55, height * 1.3 + 1.2),
+			Vector3(0.0, height * 0.5, 0.0))
 	if turf:
 		camera.look_at_from_position(Vector3(0.0, 0.55, 2.4), Vector3(0.0, 0.15, 0.0))
 		floor_material.albedo_color = Color(0.42, 0.3, 0.22)
 	root.size = Vector2i(1100, 800)
-	print("SWAY_LAB ", "turf" if turf else chosen.summary(), " branches=", (mesh.get_meta(&"branches") as PackedFloat32Array).size() / 10)
+	print("SWAY_LAB ", "turf" if turf else chosen.summary(), " branches=",
+			(mesh.get_meta(&"branches") as PackedFloat32Array).size() / 10)
 
 
-## The walker's x at a frame: from the left of the tree to its right over the first 120 frames, then gone.
+## The walker's x at a frame: from the left of the tree to its right over the first 120 frames, then
+## gone.
 func _body_x(frame: int) -> float:
 	return lerpf(-_reach, _reach, clampf(float(frame) / 120.0, 0.0, 1.0))
 
@@ -93,7 +97,8 @@ func _process(_delta: float) -> bool:
 			local = PackedFloat32Array([a.x, a.y, a.z, b.x, b.y, b.z, body[6] / more.scale.x])
 		more.step(local, 1.0 / 60.0)
 	if _frames == 5 or _frames == 62 or _frames == 400:
-		root.get_texture().get_image().save_png("%s_%d.png" % [_prefix, 0 if _frames == 5 else (1 if _frames == 62 else 2)])
+		root.get_texture().get_image().save_png("%s_%d.png" % [_prefix,
+				0 if _frames == 5 else (1 if _frames == 62 else 2)])
 		print("SWAY_LAB frame ", _frames, " most turned ", snappedf(_tree.most_turned(), 0.001), " rad")
 	if _frames == 401:
 		quit()

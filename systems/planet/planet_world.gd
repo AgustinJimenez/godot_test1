@@ -38,7 +38,8 @@ var _star_disc := 1.0 ## the star's disc at the semi-major distance against the 
 var clock := PlanetClock.new() ## the star, the orbit, the spin: where the sun is (real geometry)
 var splash: WaterSplash
 var rebases := 0 ## how many times the planet has been turned (labs and tests)
-## false: the character starts exactly where `start` is asked to put them, in the sea if that is where it is (the swim check)
+## false: the character starts exactly where `start` is asked to put them, in the sea if that is
+## where it is (the swim check)
 var spawn_on_solid_ground := true
 var loading := false ## the player is held still while the ground around them is made
 var map_first := true ## the map opens first, the ground is built once it is closed (a window only)
@@ -53,10 +54,13 @@ var _load_time := 0.0
 func _ready() -> void:
 	if settings == null:
 		settings = PlanetSettings.new()
-	# the plants are built in the finer, realistic look from the Fine ground detail (High and Ultra); the
+	# the plants are built in the finer, realistic look from the Fine ground detail (High and Ultra);
+	# the
 	# light meshes cost a third of the triangles for Low and Medium
 	FloraMeshes.detailed = int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 2
-	FloraMeshes.fine_trees = int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 1 			and not OS.has_environment("PLANET_LIGHT_TREES")
+	FloraMeshes.fine_trees = (
+			int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 1
+			and not OS.has_environment("PLANET_LIGHT_TREES"))
 	noise = PlanetNoise.new(settings)
 	clock.day_seconds = settings.day_seconds
 	clock.year_days = settings.year_days
@@ -160,12 +164,14 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 			if not OS.has_environment("PLANET_NO_GRASS"):
 				add_child(turf)
 			if OS.has_environment("PLANET_SHELLS"): # (off: it cost 1.5 ms and showed little)
-				var shells := PlanetShells.new() # the loose stones of the near ground as relief (layers of the ground mesh)
+				# the loose stones of the near ground as relief (layers of the ground mesh)
+				var shells := PlanetShells.new()
 				shells.planet = self
 				shells.player = target as Player
 				add_child(shells)
 			if not OS.has_environment("PLANET_NO_GRAVEL"):
-				var gravel := PlanetTurf.new() # and small stones on the bare ground, real ones that cast shadows
+				# and small stones on the bare ground, real ones that cast shadows
+				var gravel := PlanetTurf.new()
 				gravel.gravel = true
 				gravel.planet = self
 				gravel.player = target as Player
@@ -439,7 +445,8 @@ func _wait_for_the_ground(delta: float) -> void:
 					_load_time, surface.tiles.size(), surface._wanted.size()])
 		_stand_on_the_ground()
 		loading = false
-		PlanetCloudGpu.warm_up() # (a thread of its own: the map's cloud cover runs on the GPU once this is done)
+		# (a thread of its own: the map's cloud cover runs on the GPU once this is done)
+		PlanetCloudGpu.warm_up()
 		surface.burst = false
 		_load_label.visible = false
 		_target.process_mode = Node.PROCESS_MODE_INHERIT
@@ -449,9 +456,12 @@ func _wait_for_the_ground(delta: float) -> void:
 		loaded.emit()
 
 
-## The character is only let in once the ground under them is there: a ray from above finds the collider at the spawn spot
-## and puts the character on it (a character placed from the height formula alone could start inside a hill or fall through
-## ground that is not built yet). Without a hit (headless, or a ship far above) they stay where they are.
+## The character is only let in once the ground under them is there: a ray from above finds the
+## collider at the spawn spot
+## and puts the character on it (a character placed from the height formula alone could start inside
+## a hill or fall through
+## ground that is not built yet). Without a hit (headless, or a ship far above) they stay where they
+## are.
 func _stand_on_the_ground() -> void:
 	if not (_target is Player) or altitude() > 500.0 or not spawn_on_solid_ground:
 		return
@@ -505,7 +515,8 @@ func _physics_process(delta: float) -> void:
 	if _timer <= 0.0 or moved:
 		_timer = 0.3
 		surface.update(planet_position())
-	WorldWind.set_realism(1.0) # the planet is the realistic look (smooth normals, finer plants, the sea's depth)
+	# the planet is the realistic look (smooth normals, finer plants, the sea's depth)
+	WorldWind.set_realism(1.0)
 	_weather_timer -= delta
 	if _weather_timer <= 0.0 and not loading:
 		_weather_timer = 1.5

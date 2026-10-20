@@ -10,7 +10,9 @@ extends RefCounted
 const BANK := 4.0 ## m from a river edge inside which nothing grows (the bank can be higher)
 const GRASS_VISIBLE := 110.0
 const PEBBLE_VISIBLE := 45.0 ## m: small stones are gone beyond this
-const SMALL_PLANT := 1.4 ## m: plants lower than this (grass, ferns, flowers, low shrubs) bend only a little way from the walker
+## m: plants lower than this (grass, ferns, flowers, low shrubs) bend only a little way from the
+## walker
+const SMALL_PLANT := 1.4
 const TREE_FULL := 80.0 ## m: beyond this a tree is drawn as its lighter version
 const SMALL_VISIBLE := 220.0 ## m: shrubs and ground cover are gone beyond this
 const TREE_LIGHT := 220.0 ## m: beyond this, as the cheap far tree (a cone or a ball on a trunk)
@@ -54,18 +56,16 @@ var _packed_dirs := PackedVector3Array()
 ## be built on a worker thread while the tile is already in the world). `key` is the tile's key (it
 ## seeds the dice); the grid is the tile's padded grid (see PlanetTile.build): local positions,
 ## directions from the planet's centre and heights, `cells` quads along an edge.
-func populate(holder: Node3D, key: int, noise: PlanetNoise, positions: Array[Vector3],
-		dirs: Array[Vector3], heights: PackedFloat32Array, cells: int, size: float, detail: Detail,
-		collide: bool, packed_positions := PackedVector3Array(),
-		packed_dirs := PackedVector3Array()) -> void:
-	_packed_positions = packed_positions
-	_packed_dirs = packed_dirs
+func populate(holder: Node3D, key: int, noise: PlanetNoise, grid: Dictionary, cells: int,
+		size: float, detail: Detail, collide: bool) -> void:
+	_packed_positions = grid["packed_positions"]
+	_packed_dirs = grid["packed_dirs"]
 	_tile = holder
 	_noise = noise
 	_species = noise.species
-	_positions = positions
-	_dirs = dirs
-	_heights = heights
+	_positions = grid["positions"]
+	_dirs = grid["dirs"]
+	_heights = grid["heights"]
 	_cells = cells
 	_side = cells + 3
 	_size = size
@@ -113,7 +113,8 @@ static func species_table(registry: SpeciesRegistry) -> Array:
 	return table
 
 
-## What pushing through a plant costs the walker, 0 nothing .. 1 a wall: shrubs and thickets the most, grass the least.
+## What pushing through a plant costs the walker, 0 nothing .. 1 a wall: shrubs and thickets the
+## most, grass the least.
 static func _drag_of(form: PlantSpecies.Form) -> float:
 	match form:
 		PlantSpecies.Form.SHRUB:
@@ -133,7 +134,8 @@ static func _drag_of(form: PlantSpecies.Form) -> float:
 	return 0.0
 
 
-## The radius and height of a tree's trunk collider: the trunk's own size (its foot flared by buttress roots, narrowed up a
+## The radius and height of a tree's trunk collider: the trunk's own size (its foot flared by
+## buttress roots, narrowed up a
 ## tapering trunk) and its bare height (all of it for a conifer), not the old fixed guess.
 static func _trunk_footprint(one: PlantSpecies) -> Vector2:
 	if not one.is_tree():
@@ -163,7 +165,8 @@ static func _shade_tolerance(form: PlantSpecies.Form) -> float:
 	return 1.0
 
 
-## The same placement as the loops below, run natively (the plants' buffers come back ready to hang).
+## The same placement as the loops below, run natively (the plants' buffers come back ready to
+## hang).
 func _populate_native(key: int, detail: Detail, collide: bool) -> void:
 	var placed: Dictionary = _noise.scatter_native.call(&"scatter", {
 		"key": key, "positions": _packed_positions, "dirs": _packed_dirs, "heights": _heights,
@@ -173,10 +176,13 @@ func _populate_native(key: int, detail: Detail, collide: bool) -> void:
 		"grass_fine": FloraMeshes.detailed})
 	if placed.is_empty():
 		return
-	_tile.set_meta(&"stems", placed["stems"]) # the undergrowth a walker pushes through (PlanetUndergrowth)
+	# the undergrowth a walker pushes through (PlanetUndergrowth)
+	_tile.set_meta(&"stems", placed["stems"])
 	var turf: PackedFloat32Array = placed.get("turf", PackedFloat32Array())
-	if not turf.is_empty(): # where short grass grows over the ground: PlanetTurf makes the tufts round the walker from it
-		_tile.set_meta(&"turf", {"positions": _packed_positions, "field": turf, "cells": _cells, "size": _size, "key": key,
+	# where short grass grows over the ground: PlanetTurf makes the tufts round the walker from it
+	if not turf.is_empty():
+		_tile.set_meta(&"turf", {"positions": _packed_positions, "field": turf, "cells": _cells,
+				"size": _size, "key": key,
 				"corner": _packed_positions[_side + 1], "ax": _grid_axis(1), "az": _grid_axis(_side)})
 	if _body != null and not OS.has_environment("PLANET_NO_PLANT_COLLIDERS"):
 		# trunks and rocks stand where they were put: the colliders lean and sink as the things do
@@ -213,8 +219,10 @@ func _basis_of(values: PackedFloat32Array, at: int) -> Basis:
 			Vector3(values[at + 2], values[at + 5], values[at + 8]))
 
 
-## The thick low limbs of the trees placed on a tile that can be walked into (7 cm and thicker, under 2.4 m: the mesh of each
-## variant keeps its six thickest as capsules, see PlantMeshNative): a capsule collider on each, moved with its tree.
+## The thick low limbs of the trees placed on a tile that can be walked into (7 cm and thicker,
+## under 2.4 m: the mesh of each
+## variant keeps its six thickest as capsules, see PlantMeshNative): a capsule collider on each,
+## moved with its tree.
 func _add_limb_colliders(keys: PackedInt32Array, buffers: Array) -> void:
 	if OS.has_environment("PLANET_NO_LIMBS"):
 		return
@@ -255,7 +263,8 @@ func _add_limb_colliders(keys: PackedInt32Array, buffers: Array) -> void:
 				_body.add_child(collision)
 
 
-## The tile's own xz (metres) of one step along the grid, `step` indices along it, a metre of the grid's x or z: the grid is not
+## The tile's own xz (metres) of one step along the grid, `step` indices along it, a metre of the
+## grid's x or z: the grid is not
 ## lined up with the tile's axes.
 func _grid_axis(step: int) -> Vector2:
 	var along := _packed_positions[_side + 1 + step] - _packed_positions[_side + 1]
@@ -379,7 +388,8 @@ func _pebbles() -> void:
 						_rng.randf_range(0.7, 1.5), _rng.randf_range(0.0, TAU))
 
 
-## Dead leaves and fallen sticks on the ground (the Fine ground detail and up): thick under a forest, some in a
+## Dead leaves and fallen sticks on the ground (the Fine ground detail and up): thick under a
+## forest, some in a
 ## meadow, none on bare rock, sand, snow or by the water.
 func _debris() -> void:
 	var spacing := 1.5
@@ -569,7 +579,8 @@ func _flush(near: bool) -> void:
 	_hang(keys, buffers, near)
 
 
-## What a MultiMesh wants for the batch of `key`: 12 floats of transform (3 rows of basis x, y, z and the origin) and 4
+## What a MultiMesh wants for the batch of `key`: 12 floats of transform (3 rows of basis x, y, z
+## and the origin) and 4
 ## of colour for every instance (thousands of set_instance_* calls cost far more).
 func _buffer_of(key: int) -> PackedFloat32Array:
 	var transforms: Array = _batches[key]
@@ -599,7 +610,8 @@ func _buffer_of(key: int) -> PackedFloat32Array:
 	return buffer
 
 
-## Hangs the batches (a key and its instances' buffer each) on the tile: a multimesh for each, and the far trees
+## Hangs the batches (a key and its instances' buffer each) on the tile: a multimesh for each, and
+## the far trees
 ## merged into one mesh.
 func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 	var far_parts: Array = [] # [mesh, buffer] of the far trees of the near ground
@@ -628,7 +640,8 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 		else:
 			mesh = FloraMeshes.mesh(key / 100 as FloraMeshes.Kind, variant, FloraMeshes.detailed)
 		var instance := _add_trees(buffer, mesh, true)
-		if plant and mesh.has_meta(&"branches"): # a tree or shrub that can bend (PlanetSway takes the ones near the walker)
+		# a tree or shrub that can bend (PlanetSway takes the ones near the walker)
+		if plant and mesh.has_meta(&"branches"):
 			var sets: Array = _tile.get_meta(&"sway_sets", [])
 			sets.append([instance, buffer, mesh.get_aabb().size.y < SMALL_PLANT])
 			_tile.set_meta(&"sway_sets", sets)
@@ -657,7 +670,8 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 	_commit_far(horizon_parts, 0.0)
 
 
-## One mesh with all the far trees of the tile (parts: [mesh, instances' buffer]), drawn from `begin` metres away (0:
+## One mesh with all the far trees of the tile (parts: [mesh, instances' buffer]), drawn from
+## `begin` metres away (0:
 ## always): a draw call for the whole tile instead of one for each kind of tree.
 func _commit_far(parts: Array, begin: float) -> void:
 	if parts.is_empty():
@@ -718,7 +732,8 @@ func _merge_far_script(sources: Array) -> Dictionary:
 	return {"vertices": vertices, "normals": normals, "colors": colors}
 
 
-## One multimesh of `mesh` at the instances in `buffer` (12 floats of transform and 4 of colour each), added to the tile.
+## One multimesh of `mesh` at the instances in `buffer` (12 floats of transform and 4 of colour
+## each), added to the tile.
 func _add_trees(buffer: PackedFloat32Array, mesh: ArrayMesh, shadows: bool) -> MultiMeshInstance3D:
 	var multi := MultiMesh.new()
 	multi.transform_format = MultiMesh.TRANSFORM_3D

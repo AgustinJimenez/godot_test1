@@ -67,7 +67,8 @@ func _hand_to_native() -> void:
 	_noise.native.call(&"set_weather", config())
 
 
-## The noises and numbers of this weather (what the native crust and the GPU's cloud cover are given).
+## The noises and numbers of this weather (what the native crust and the GPU's cloud cover are
+## given).
 func config() -> Dictionary:
 	return {
 		"big_a": _noise.noise_config(_big_a), "big_b": _noise.noise_config(_big_b),

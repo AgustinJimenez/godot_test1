@@ -94,8 +94,10 @@ static func _polar(centre: Vector2, spot: Vector2, squeeze: float) -> Vector2:
 	return Vector2(centre.x + sin(angle) * spot.y * squeeze, centre.y + cos(angle) * spot.y)
 
 
-## A cluster of leaves as one card (two triangles): a quad from the stalk `base` along `axis`, `length` long
-## and about as wide, facing `normal`. The shader (flora_wind.gdshader) draws a dozen small veined leaves
+## A cluster of leaves as one card (two triangles): a quad from the stalk `base` along `axis`,
+## `length` long
+## and about as wide, facing `normal`. The shader (flora_wind.gdshader) draws a dozen small veined
+## leaves
 ## on it and cuts the rest away, so a crown reads as foliage (many small leaves), not as a few huge
 ## flat ones, for a fraction of the triangles. UV2.y above 1.5 marks a card; UV2.x is its own dice.
 static func add_leaf_card(builder: MeshBuilder, base: Vector3, axis: Vector3, normal: Vector3,

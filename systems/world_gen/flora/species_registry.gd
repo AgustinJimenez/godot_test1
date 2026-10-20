@@ -47,11 +47,14 @@ func by_id(id: int) -> PlantSpecies:
 ## built outside the lock (several threads build different ones at once; two that want the same
 ## one both build it and the first to finish is kept).
 func mesh(id: int, variant: int, detailed_wanted: bool, lod := 0) -> ArrayMesh:
-	# trees and shrubs are few and near, and the finer mesh (leaf cards, strips of leaflets, smoother branches) costs little more
-	# than the light one: they use it from the middle ground detail up (`FloraMeshes.fine_trees`); the many small plants wait
+	# trees and shrubs are few and near, and the finer mesh (leaf cards, strips of leaflets, smoother
+	# branches) costs little more
+	# than the light one: they use it from the middle ground detail up (`FloraMeshes.fine_trees`); the
+	# many small plants wait
 	# for the Fine ground detail
 	var one := by_id(id)
-	var detailed := detailed_wanted or (FloraMeshes.fine_trees and (one.is_tree() or one.form == PlantSpecies.Form.SHRUB))
+	var detailed := detailed_wanted or (FloraMeshes.fine_trees
+			and (one.is_tree() or one.form == PlantSpecies.Form.SHRUB))
 	var key := id * 100 + variant + (100000 if detailed else 0) + lod * 1000000
 	var found := _cached(key)
 	if found != null:

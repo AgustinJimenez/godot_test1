@@ -1,21 +1,30 @@
 class_name PlanetSway
 extends Node
-## The trees and shrubs round the walker bend for real. The plants of a tile are drawn in batches (one MultiMesh for a kind),
-## which cannot hold a pose for each tree; so every tree within ENTER metres of the walker is taken out of its batch (its
-## instance is shrunk to nothing) and drawn by a PlanetSwayTree of its own, whose branches the native springs turn when the walker's
-## body touches them and let go again after. Beyond LEAVE metres, and once it has come to rest, it goes back into the batch.
-## The tiles keep what is needed: `sway_sets` on a tile's plant holder, [MultiMeshInstance3D, buffer] for each kind that can bend.
+## The trees and shrubs round the walker bend for real. The plants of a tile are drawn in batches
+## (one MultiMesh for a kind),
+## which cannot hold a pose for each tree; so every tree within ENTER metres of the walker is taken
+## out of its batch (its
+## instance is shrunk to nothing) and drawn by a PlanetSwayTree of its own, whose branches the
+## native springs turn when the walker's
+## body touches them and let go again after. Beyond LEAVE metres, and once it has come to rest, it
+## goes back into the batch.
+## The tiles keep what is needed: `sway_sets` on a tile's plant holder, [MultiMeshInstance3D,
+## buffer] for each kind that can bend.
 
 const ENTER := 8.0 ## m: closer than this a tree is taken out of its batch
 const LEAVE := 11.0 ## m: farther than this (and at rest) it goes back
 const TOUCH := 6.0 ## m: the body is given to the trees within this (the others only settle)
-const ENTER_SMALL := 2.4 ## the same for grass, ferns, flowers and low shrubs: there are very many, and they are touched only close
+## the same for grass, ferns, flowers and low shrubs: there are very many, and they are touched only
+## close
+const ENTER_SMALL := 2.4
 const LEAVE_SMALL := 3.4
 const TOUCH_SMALL := 1.8
 const LOOK_EVERY := 0.25 ## s between looks for trees to take or give back
 const MAX_LIVE := 24
 const MAX_SMALL := 120
-const ENTER_TURF := 1.7 ## and the tufts of the turf of the ground: hundreds a few metres round, only the ones at the feet are pushed
+## and the tufts of the turf of the ground: hundreds a few metres round, only the ones at the feet
+## are pushed
+const ENTER_TURF := 1.7
 const LEAVE_TURF := 2.6
 const TOUCH_TURF := 1.4
 const MAX_TURF := 90
@@ -63,7 +72,8 @@ func _physics_process(delta: float) -> void:
 		tree.step(body, delta)
 
 
-## The walker's body as a capsule in `tree`'s own space: from the feet up, its radius made smaller or larger by the tree's scale.
+## The walker's body as a capsule in `tree`'s own space: from the feet up, its radius made smaller
+## or larger by the tree's scale.
 func _body_in(tree: PlanetSwayTree, feet: Vector3) -> PackedFloat32Array:
 	var inverse := tree.global_transform.affine_inverse()
 	var a := inverse * feet
@@ -94,7 +104,8 @@ func _take(here: Vector3) -> void:
 			_take_kind(entry[0], entry[1], (entry[0] as Node3D).to_local(here))
 
 
-## The instances of one batch `kind` ([MultiMeshInstance3D, buffer, class]) of `holder` near `local` go live.
+## The instances of one batch `kind` ([MultiMeshInstance3D, buffer, class]) of `holder` near `local`
+## go live.
 func _take_kind(holder: Node3D, kind: Array, local: Vector3) -> void:
 	var instance: MultiMeshInstance3D = kind[0]
 	if not is_instance_valid(instance) or instance.multimesh == null:
@@ -133,7 +144,8 @@ func _go_live(holder: Node3D, instance: MultiMeshInstance3D, buffer: PackedFloat
 	tree.cast_shadow = instance.cast_shadow
 	holder.add_child(tree)
 	multi.set_instance_transform(index, Transform3D(Basis.from_scale(Vector3.ZERO), original.origin))
-	_live.append({"tree": tree, "instance": instance, "index": index, "original": original, "klass": klass,
+	_live.append({"tree": tree, "instance": instance, "index": index, "original": original,
+			"klass": klass,
 			"key": _key_of(instance, index)})
 	_counts[klass] += 1
 	_keys[_key_of(instance, index)] = true # (see _is_live)
@@ -146,7 +158,8 @@ func _give_back(here: Vector3) -> void:
 		var entry := _live[at]
 		var tree: PlanetSwayTree = entry["tree"]
 		var instance: MultiMeshInstance3D = entry["instance"]
-		var gone := not is_instance_valid(instance) or not is_instance_valid(tree) or not tree.is_inside_tree()
+		var gone := (not is_instance_valid(instance) or not is_instance_valid(tree)
+			or not tree.is_inside_tree())
 		var leave: float = [LEAVE, LEAVE_SMALL, LEAVE_TURF][entry["klass"]]
 		if gone or (tree.global_position.distance_to(here) > leave and tree.is_at_rest()):
 			if not gone:
@@ -159,7 +172,8 @@ func _give_back(here: Vector3) -> void:
 		at -= 1
 
 
-## How many trees are drawn live now, and the most any branch of them is turned (radians): for the checks.
+## How many trees are drawn live now, and the most any branch of them is turned (radians): for the
+## checks.
 func live_count() -> int:
 	return _live.size()
 
@@ -181,7 +195,8 @@ func jitter() -> float:
 	return worst
 
 
-## The turns of all the live branches added up (radians): it stops changing when everything is at rest.
+## The turns of all the live branches added up (radians): it stops changing when everything is at
+## rest.
 func pose_sum() -> float:
 	var total := 0.0
 	for entry in _live:
@@ -193,5 +208,6 @@ func pose_sum() -> float:
 func _exit_tree() -> void:
 	for entry in _live:
 		if is_instance_valid(entry["instance"]) and is_instance_valid(entry["tree"]):
-			(entry["instance"] as MultiMeshInstance3D).multimesh.set_instance_transform(entry["index"], entry["original"])
+			(entry["instance"] as MultiMeshInstance3D).multimesh.set_instance_transform(entry["index"],
+					entry["original"])
 	_live.clear()

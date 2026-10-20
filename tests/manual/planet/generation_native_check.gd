@@ -114,7 +114,8 @@ func _ready() -> void:
 	for label in labels.items:
 		good = good and label["uv"].x >= 0.0 and label["uv"].x <= 1.0
 		good = good and label["uv"].y >= 0.0 and label["uv"].y <= 1.0
-	print("GENERATION_NATIVE_CHECK %s sea_gap=%.8f light_gap=%.8f min=%.2f occluder=%d/%d regions=%d" % [
+	print(("GENERATION_NATIVE_CHECK %s sea_gap=%.8f light_gap=%.8f min=%.2f "
+			+ "occluder=%d/%d regions=%d") % [
 			"PASS" if good else "FAIL", absf(noise._sea - expected_sea), light_gap,
 			low_native, vertices.size(), indices.size(), regions.size()])
 	get_tree().quit(0 if good else 1)

@@ -125,7 +125,8 @@ func update(at: Vector3) -> void:
 	_drop_stale()
 
 
-## The tiles wanted for a player at `at`, chosen natively: each entry is [face, level, x, y, distance, collides, plants,
+## The tiles wanted for a player at `at`, chosen natively: each entry is [face, level, x, y,
+## distance, collides, plants,
 ## sort key] (the extra numbers are what `_distance`, `_collides` and `_plants` would work out).
 func _select_native(at: Vector3) -> void:
 	var picked: Dictionary = _native.call(&"select", {
@@ -355,8 +356,13 @@ func _make(entry: Array) -> PlanetTile:
 func _plants(entry: Array) -> PlanetScatter.Detail:
 	if entry.size() > 6:
 		return entry[6]
-	if not _settings.plants_on:
-		return PlanetScatter.Detail.NONE
+	var detail := PlanetScatter.Detail.NONE
+	if _settings.plants_on:
+		detail = _plants_by_distance(entry)
+	return detail
+
+
+func _plants_by_distance(entry: Array) -> PlanetScatter.Detail:
 	var level: int = entry[1]
 	if level == _settings.max_level():
 		if _distance(entry) < _settings.tile_max * 2.0:

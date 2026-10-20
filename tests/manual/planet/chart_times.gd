@@ -1,4 +1,5 @@
-## Times every map layer of the Earth (seed 8) with the chart profile on: godot --headless --path . -s tests/manual/planet/chart_times.gd (PLANET_CHART_PROFILE=1 prints each picture's parts)
+## Times every map layer of the Earth (seed 8) with the chart profile on: godot --headless --path .
+## -s tests/manual/planet/chart_times.gd (PLANET_CHART_PROFILE=1 prints each picture's parts)
 extends SceneTree
 func _init() -> void:
 	var settings := PlanetSettings.earth()

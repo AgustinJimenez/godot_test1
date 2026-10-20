@@ -23,7 +23,8 @@ static func far(builder: MeshBuilder, s: PlantSpecies, rng: RandomNumberGenerato
 	var size := s.crown * 1.3
 	var middle := Vector3(0.0, trunk + (s.height - trunk) * 0.55, 0.0)
 	for lump in 4:
-		var offset := Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-0.55, 0.65), rng.randf_range(-1.0, 1.0))
+		var offset := Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-0.55, 0.65),
+				rng.randf_range(-1.0, 1.0))
 		var radius := size * rng.randf_range(0.5, 0.72)
 		var tone := rng.randf_range(0.0, 0.18)
 		builder.add_blob(middle + offset * size * Vector3(0.55, 0.45 * s.aspect, 0.55),

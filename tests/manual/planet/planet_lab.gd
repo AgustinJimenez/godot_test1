@@ -477,7 +477,9 @@ func _save_height_picture(noise: PlanetNoise, path: String, rock_colours := fals
 			var h := noise.height(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
 			var colour: Color
 			if rock_colours:
-				colour = noise.facet_color(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon), h, 0.1)
+				var here := Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+				colour = noise.colours_of(PackedVector3Array([here]), PackedFloat32Array([h]),
+						PackedFloat32Array([0.1]))[0]
 			elif h < 0.0:
 				colour = Color(0.02, 0.1, 0.35).lerp(Color(0.25, 0.55, 0.8), clampf(1.0 + h / 6000.0, 0.0, 1.0))
 			else:
@@ -532,8 +534,10 @@ func _monsoon_swing(noise: PlanetNoise) -> float:
 
 
 func _ready() -> void:
-	if OS.has_environment("LAB_GROUND"): # a ground detail (0..3) for this run only (not saved with the graphics settings)
-		RenderingServer.global_shader_parameter_set(&"ground_detail", OS.get_environment("LAB_GROUND").to_float())
+	# a ground detail (0..3) for this run only (not saved with the graphics settings)
+	if OS.has_environment("LAB_GROUND"):
+		RenderingServer.global_shader_parameter_set(&"ground_detail",
+				OS.get_environment("LAB_GROUND").to_float())
 	var report_run := _drainage_check() or _native_check() or _terrain_check()
 	report_run = report_run or _climate_check() or _water_check()
 	report_run = report_run or PlanetLabChecks.spawn_check(get_tree())
@@ -829,7 +833,8 @@ func _physics_process(_delta: float) -> void:
 				RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME)
 		var cpu := Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 		RenderingServer.viewport_set_measure_render_time(vp, true)
-		print("FPS frame=%d fps=%d alt=%d tiles=%d draw_calls=%d primitives=%d process_ms=%.1f render_cpu_ms=%.1f render_gpu_ms=%.1f" % [
+		print(("FPS frame=%d fps=%d alt=%d tiles=%d draw_calls=%d primitives=%d "
+				+ "process_ms=%.1f render_cpu_ms=%.1f render_gpu_ms=%.1f") % [
 				_frame, Engine.get_frames_per_second(), planet.altitude(), planet.surface.tiles.size(),
 				calls, prims, cpu, RenderingServer.viewport_get_measured_render_time_cpu(vp),
 				RenderingServer.viewport_get_measured_render_time_gpu(vp)])

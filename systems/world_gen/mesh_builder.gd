@@ -16,7 +16,8 @@ var _normals := PackedVector3Array()
 var _colors := PackedColorArray()
 var _custom := PackedByteArray() # smooth per-vertex colour (CUSTOM0) for the smooth terrain
 var _custom2 := PackedByteArray() # where stones lie (CUSTOM2: stoniness, soil depth, river gravel)
-var _custom1 := PackedByteArray() # what the ground is made of (CUSTOM1: stones angular, coarse, pale, flaky)
+# what the ground is made of (CUSTOM1: stones angular, coarse, pale, flaky)
+var _custom1 := PackedByteArray()
 var _uvs := PackedVector2Array() # only leaves have them (see add_tri_uv); everything else is (0, 0)
 var _uv2s := PackedVector2Array() # a leaf's own random numbers (its veins), same corners as _uvs
 

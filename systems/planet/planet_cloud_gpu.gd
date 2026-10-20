@@ -1,8 +1,11 @@
 class_name PlanetCloudGpu
 extends RefCounted
-## The cloud cover of a whole map picture worked out on the GPU (a compute shader, shaders/compute/planet_cloud_cover.glsl):
-## the same maths and the same noise as the native crust's `cloud_field`, one thread a pixel. An experiment: `cover` answers an
-## empty array where there is no GPU to compute on (or it is not ready yet: `warm_up`), and the chart then uses the CPU.
+## The cloud cover of a whole map picture worked out on the GPU (a compute shader,
+## shaders/compute/planet_cloud_cover.glsl):
+## the same maths and the same noise as the native crust's `cloud_field`, one thread a pixel. An
+## experiment: `cover` answers an
+## empty array where there is no GPU to compute on (or it is not ready yet: `warm_up`), and the
+## chart then uses the CPU.
 
 static var _device: RenderingDevice
 static var _shader: RID
@@ -17,12 +20,15 @@ static var _result := PackedFloat32Array()
 static var _stopping := false
 
 
-## Starts getting the GPU ready on a thread of its own, which then does all the GPU's work (a local rendering device belongs
-## to the thread that made it; the shader takes about 3 s to compile: the map would freeze for that long the first time
+## Starts getting the GPU ready on a thread of its own, which then does all the GPU's work (a local
+## rendering device belongs
+## to the thread that made it; the shader takes about 3 s to compile: the map would freeze for that
+## long the first time
 ## it asked). Safe to call again; `available` says when it is done (and a GPU is there).
 static func warm_up() -> void:
 	_lock.lock()
-	var start := _thread == null and not OS.has_environment("PLANET_NO_GPU") 			and DisplayServer.get_name() != "headless"
+	var start := (_thread == null and not OS.has_environment("PLANET_NO_GPU")
+			and DisplayServer.get_name() != "headless")
 	if start:
 		_stopping = false
 		_thread = Thread.new()
@@ -81,7 +87,8 @@ static func _run() -> void:
 		_done.post()
 
 
-## One job on the GPU thread: `job` = [width, height, the buffers in the order the shader reads them].
+## One job on the GPU thread: `job` = [width, height, the buffers in the order the shader reads
+## them].
 static func _compute(job: Array) -> PackedFloat32Array:
 	var width: int = job[0]
 	var height: int = job[1]
@@ -99,22 +106,23 @@ static func _compute(job: Array) -> PackedFloat32Array:
 		uniform.binding = binding
 		uniform.add_id(buffer)
 		uniforms.append(uniform)
-	var set := _device.uniform_set_create(uniforms, _shader, 0)
+	var uniform_set := _device.uniform_set_create(uniforms, _shader, 0)
 	var list := _device.compute_list_begin()
 	_device.compute_list_bind_compute_pipeline(list, _pipeline)
-	_device.compute_list_bind_uniform_set(list, set, 0)
+	_device.compute_list_bind_uniform_set(list, uniform_set, 0)
 	_device.compute_list_dispatch(list, (width + 7) / 8, (height + 7) / 8, 1)
 	_device.compute_list_end()
 	_device.submit()
 	_device.sync()
 	var result := _device.buffer_get_data(buffers[0]).to_float32_array()
-	_device.free_rid(set)
+	_device.free_rid(uniform_set)
 	for buffer in buffers:
 		_device.free_rid(buffer)
 	return result
 
 
-## The cover (0..1) of every pixel of a `width` x `height` picture of the whole planet at `clock`'s moment, row after row from
+## The cover (0..1) of every pixel of a `width` x `height` picture of the whole planet at `clock`'s
+## moment, row after row from
 ## the north; `macros` is the ground height of each pixel (its sign says land or sea).
 static func cover(noise: PlanetNoise, clock: PlanetClock, width: int, height: int,
 		macros: PackedFloat32Array) -> PackedFloat32Array:

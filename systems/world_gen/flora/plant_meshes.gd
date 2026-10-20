@@ -46,7 +46,8 @@ static func has_far(species: PlantSpecies) -> bool:
 	return species.form == PlantSpecies.Form.CONIFER or species.form == PlantSpecies.Form.BROADLEAF
 
 
-## The native grower, one for each thread (null where the library is not built: the scripts grow the plant).
+## The native grower, one for each thread (null where the library is not built: the scripts grow the
+## plant).
 static func _native() -> Object:
 	if not ClassDB.class_exists(&"PlantMeshNative"):
 		return null
@@ -69,12 +70,15 @@ static func mesh_from(grown: Dictionary) -> ArrayMesh:
 	var flags := 0
 	var branches: PackedFloat32Array = grown.get("branches", PackedFloat32Array())
 	if branches.size() > 10: # one row of ten per branch, the first is the trunk: a plant that can bend
-		arrays[Mesh.ARRAY_CUSTOM0] = grown["branch_ids"] # CUSTOM0.x: which branch the vertex is on (0: the trunk)
+		# CUSTOM0.x: which branch the vertex is on (0: the trunk)
+		arrays[Mesh.ARRAY_CUSTOM0] = grown["branch_ids"]
 		flags |= Mesh.ARRAY_CUSTOM_R_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 	if branches.size() > 10:
-		mesh.set_meta(&"branches", branches) # parent, level, foot, tip, radius, length of every branch (see PlantMeshNative)
-	if grown.has("capsules"): # the thick low limbs a person can walk into (the placed trees get colliders from them)
+		# parent, level, foot, tip, radius, length of every branch (see PlantMeshNative)
+		mesh.set_meta(&"branches", branches)
+	# the thick low limbs a person can walk into (the placed trees get colliders from them)
+	if grown.has("capsules"):
 		mesh.set_meta(&"capsules", grown["capsules"])
 	return mesh
 

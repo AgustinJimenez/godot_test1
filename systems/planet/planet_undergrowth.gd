@@ -1,8 +1,11 @@
 class_name PlanetUndergrowth
 extends Node
-## Pushing through plants: they hold the walker back (the more and the thicker the undergrowth, the slower the walk); how they
-## bend away is PlanetSway's, branch by branch. Trunks and thick low limbs are solid (colliders); this is the soft part. The drag comes from the stems each tile's
-## native placement kept (PlanetScatterNative.drag) and is felt as the same kind of slowing as wading (WorldSwim).
+## Pushing through plants: they hold the walker back (the more and the thicker the undergrowth, the
+## slower the walk); how they
+## bend away is PlanetSway's, branch by branch. Trunks and thick low limbs are solid (colliders);
+## this is the soft part. The drag comes from the stems each tile's
+## native placement kept (PlanetScatterNative.drag) and is felt as the same kind of slowing as
+## wading (WorldSwim).
 
 const MAX_SLOW := 0.55 ## the most a thicket takes off the walking speed
 const LOOK_EVERY := 0.1 ## s between looks at the stems round the walker
@@ -16,7 +19,8 @@ var _since := 0.0
 
 
 func _ready() -> void:
-	process_physics_priority = 100 # after the player has made its velocity for the frame, like WorldSwim
+	# after the player has made its velocity for the frame, like WorldSwim
+	process_physics_priority = 100
 
 
 func _physics_process(delta: float) -> void:
@@ -29,13 +33,16 @@ func _physics_process(delta: float) -> void:
 		_drag = _drag_at(here)
 		if OS.has_environment("PLANET_TIMING") and _drag > 0.0:
 			print("PLANET_TIMING undergrowth drag %.2f -> speed x%.2f" % [_drag, 1.0 - MAX_SLOW * _drag])
-	var wanted := 1.0 - MAX_SLOW * _drag if player.is_on_floor() and not player.free_mode_enabled else 1.0
-	_slow = move_toward(_slow, wanted, delta * 3.0) # (it eases in and out: no jerk at the edge of a bush)
+	var wanted := (1.0 - MAX_SLOW * _drag
+			if player.is_on_floor() and not player.free_mode_enabled else 1.0)
+	# (it eases in and out: no jerk at the edge of a bush)
+	_slow = move_toward(_slow, wanted, delta * 3.0)
 	player.velocity.x *= _slow
 	player.velocity.z *= _slow
 
 
-## The undergrowth round `world_position`: 0 in the open .. 1 in a thicket (the worst of the tiles it is over).
+## The undergrowth round `world_position`: 0 in the open .. 1 in a thicket (the worst of the tiles
+## it is over).
 func _drag_at(world_position: Vector3) -> float:
 	var native: Object = planet.noise.scatter_native
 	if native == null:

@@ -1,22 +1,33 @@
 extends Node
-## The ground lab: a flat patch of the real ground shader (planet_ground), with the real small stones (PlanetTurf's gravel) and the
-## sun of your choice. Without `out=` it stays open with an orbit camera (drag with the mouse to circle the focus, wheel to zoom,
-## middle drag to move the focus) and a panel of sliders for everything below; with `out=` it saves one picture and quits, so a look
-## can be reproduced from the command line and compared with a photograph (put the photo in E:/Temp/claude/refs/, outside the
+## The ground lab: a flat patch of the real ground shader (planet_ground), with the real small
+## stones (PlanetTurf's gravel) and the
+## sun of your choice. Without `out=` it stays open with an orbit camera (drag with the mouse to
+## circle the focus, wheel to zoom,
+## middle drag to move the focus) and a panel of sliders for everything below; with `out=` it saves
+## one picture and quits, so a look
+## can be reproduced from the command line and compared with a photograph (put the photo in
+## E:/Temp/claude/refs/, outside the
 ## project, and pass it as `ref=`: it is placed beside the render).
 ##   godot --path . res://tests/manual/ground/ground_lab.tscn -- out=E:/path/picture.png [options]
-##     soil=laterite|brown|sand|black|grey|forest   the soil (colour, iron, organic matter, stones, depth, paleness of the rock)
-##     view=low|eye|down|photo|far|top|macro   the camera: 25 cm above the ground, standing looking down ahead (the default), nearly
+## soil=laterite|brown|sand|black|grey|forest the soil (colour, iron, organic matter, stones, depth,
+## paleness of the rock)
+## view=low|eye|down|photo|far|top|macro the camera: 25 cm above the ground, standing looking down
+## ahead (the default), nearly
 ##       straight down, standing looking out, from above, a hand's breadth
-##     detail=0..3   the ground detail (the graphics setting)   chips=0|1   the real stones   sun=ELEVATION,AZIMUTH (degrees)
-##     stones=0..1   how stony   seed=N   which patch of ground   ref=PATH   a photograph beside the render   size=WIDTHxHEIGHT
-##     iron=0..1 organic=0..1 pale=0..1 depth=0..1   the soil's numbers   spacing=M   the grid of the stones   density=X   their odds
+## detail=0..3 the ground detail (the graphics setting) chips=0|1 the real stones
+## sun=ELEVATION,AZIMUTH (degrees)
+## stones=0..1 how stony seed=N which patch of ground ref=PATH a photograph beside the render
+## size=WIDTHxHEIGHT
+## iron=0..1 organic=0..1 pale=0..1 depth=0..1 the soil's numbers spacing=M the grid of the stones
+## density=X their odds
 ##     tilt=DEGREES   leans the patch over (70: a cliff face)
-##     aa=off|fxaa|smaa|taa|msaa   antialiasing (the game uses TAA, which can ghost: the lab starts with it off)
-##     yaw=DEGREES fx=X fz=Z   where the camera circles and what it looks at (the readout in the live lab, key C, gives all of these)
-##     pitch=DEGREES dist=METRES   the camera angle over the ground (3 is nearly flat) and its distance
+## aa=off|fxaa|smaa|taa|msaa antialiasing (the game uses TAA, which can ghost: the lab starts with
+## it off)
+## yaw=DEGREES fx=X fz=Z where the camera circles and what it looks at (the readout in the live lab,
+## key C, gives all of these)
+## pitch=DEGREES dist=METRES the camera angle over the ground (3 is nearly flat) and its distance
 ##     strength=0..1   the ground shader's detail strength   fov=DEGREES
-##     sweep=DEGREES   turn that much per rendered frame in an out= capture (compare AA while moving)
+## sweep=DEGREES turn that much per rendered frame in an out= capture (compare AA while moving)
 ## Prints GROUND_LAB with the numbers of the run.
 
 const SOILS := ["laterite", "brown", "sand", "black", "grey", "forest"]
@@ -55,7 +66,8 @@ func _ready() -> void:
 			_options[parts[0]] = parts[1]
 	_live = not _options.has("out")
 	if _live:
-		# the live lab draws a frame only when something changes (the camera, a slider), and never more than 60 a second: a still picture
+		# the live lab draws a frame only when something changes (the camera, a slider), and never more
+		# than 60 a second: a still picture
 		# does not need the GPU running flat out
 		OS.low_processor_usage_mode = true
 		OS.low_processor_usage_mode_sleep_usec = 16000
@@ -67,16 +79,26 @@ func _ready() -> void:
 	var sun_parts: PackedStringArray = String(_options.get("sun", "38,215")).split(",")
 	_values = {
 		"detail": float(_options.get("detail", "1")), "seed": float(_options.get("seed", "1")),
-		"sun_elevation": float(sun_parts[0]), "sun_azimuth": float(sun_parts[1]) if sun_parts.size() > 1 else 215.0,
-		"stones": float(_options.get("stones", str(preset["stones"]))), "iron": float(_options.get("iron", str(preset["iron"]))),
-		"organic": float(_options.get("organic", str(preset["organic"]))), "pale": float(_options.get("pale", str(preset["pale"]))),
-		"depth": float(_options.get("depth", str(preset["depth"]))), "spacing": float(_options.get("spacing", "0.12")),
-		"density": float(_options.get("density", "1.0")), "strength": float(_options.get("strength", "0.8")),
+		"sun_elevation": float(sun_parts[0]),
+		"sun_azimuth": float(sun_parts[1]) if sun_parts.size() > 1 else 215.0,
+		"stones": float(_options.get("stones", str(preset["stones"]))),
+		"iron": float(_options.get("iron", str(preset["iron"]))),
+		"organic": float(_options.get("organic", str(preset["organic"]))),
+		"pale": float(_options.get("pale", str(preset["pale"]))),
+		"depth": float(_options.get("depth", str(preset["depth"]))),
+		"spacing": float(_options.get("spacing", "0.12")),
+		"density": float(_options.get("density", "1.0")), "strength": float(_options.get("strength",
+		"0.8")),
 		"fov": float(_options.get("fov", "55")), "tilt": float(_options.get("tilt", "0")),
-		"mosaic_strength": 0.9, "mosaic_big_per_m": 15.0, "mosaic_mid_per_m": 42.0, "mosaic_small_per_m": 150.0, "mosaic_big_cover": 0.13,
-		"mosaic_mid_cover": 0.42, "mosaic_angular": 0.8, "mosaic_gap": 0.75, "mosaic_tilt": 1.4, "mosaic_tone": 0.7, "mosaic_pebbles": 0.11,
-		"mosaic_seed": 1.0, "mosaic_shadow": 0.6, "mosaic_side_dark": 0.35, "mosaic_pom_min_steps": 3, "mosaic_pom_max_steps": 20, "scan_blend_depth": 0.25, "mosaic_height": 0.03, "mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
-		"cliff_row_height": 0.45, "cliff_col_width": 1.1, "cliff_warp": 0.4, "cliff_lip": 0.09, "cliff_terraces": 0.5, "cliff_cracks": 0.55,
+		"mosaic_strength": 0.9, "mosaic_big_per_m": 15.0, "mosaic_mid_per_m": 42.0,
+		"mosaic_small_per_m": 150.0, "mosaic_big_cover": 0.13,
+		"mosaic_mid_cover": 0.42, "mosaic_angular": 0.8, "mosaic_gap": 0.75, "mosaic_tilt": 1.4,
+		"mosaic_tone": 0.7, "mosaic_pebbles": 0.11,
+		"mosaic_seed": 1.0, "mosaic_shadow": 0.6, "mosaic_side_dark": 0.35, "mosaic_pom_min_steps": 3,
+		"mosaic_pom_max_steps": 20, "scan_blend_depth": 0.25, "mosaic_height": 0.03,
+		"mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
+		"cliff_row_height": 0.45, "cliff_col_width": 1.1, "cliff_warp": 0.4, "cliff_lip": 0.09,
+		"cliff_terraces": 0.5, "cliff_cracks": 0.55,
 		"cliff_sand": 0.5, "cliff_tone": 0.6, "cliff_relief": 1.0, "cliff_seed": 3.0, "cliff_hue": 0.5,
 	}
 	_chips_on = _options.get("chips", "1") != "0"
@@ -113,14 +135,16 @@ func _ready() -> void:
 	_set_antialiasing(String(_options.get("aa", "off")))
 	_camera.fov = _values["fov"]
 	_set_view(_options.get("view", "eye"))
-	if _options.has("pitch"): # radians above the ground, and the distance to the focus: any angle, for reproducing a view
+	# radians above the ground, and the distance to the focus: any angle, for reproducing a view
+	if _options.has("pitch"):
 		_pitch = deg_to_rad(float(_options["pitch"]))
 		_distance = float(_options.get("dist", str(_distance)))
 		_place_camera()
 	if _options.has("yaw"):
 		_yaw = deg_to_rad(float(_options["yaw"]))
 	if _options.has("fx") or _options.has("fz"):
-		_focus = Vector3(float(_options.get("fx", str(_focus.x))), 0.0, float(_options.get("fz", str(_focus.z))))
+		_focus = Vector3(float(_options.get("fx", str(_focus.x))), 0.0,
+				float(_options.get("fz", str(_focus.z))))
 	_place_camera()
 	_apply_sun()
 	for key: String in _values:
@@ -134,15 +158,19 @@ func _ready() -> void:
 		if _options.has(String(key)):
 			PlanetTile.ground_material().set_shader_parameter(key, _options[String(key)] != "0")
 	if _options.has("scan_strength"):
-		PlanetTile.ground_material().set_shader_parameter(&"scan_strength", float(_options["scan_strength"]))
+		PlanetTile.ground_material().set_shader_parameter(&"scan_strength",
+				float(_options["scan_strength"]))
 	_rebuild()
 	if _live:
 		_build_panel()
-	print("GROUND_LAB soil=%s view=%s %s chips=%s" % [_soil_name, _options.get("view", "eye"), _values, _chips_on])
+	print("GROUND_LAB soil=%s view=%s %s chips=%s" % [_soil_name, _options.get("view", "eye"), _values,
+			_chips_on])
 
 
-## The viewport's antialiasing for this run only (not saved with the game's graphics settings). The game defaults to TAA, which blends frames
-## and leaves a ghosted, blurry film over a moving or finely jittered picture: the lab starts with it off.
+## The viewport's antialiasing for this run only (not saved with the game's graphics settings). The
+## game defaults to TAA, which blends frames
+## and leaves a ghosted, blurry film over a moving or finely jittered picture: the lab starts with
+## it off.
 func _set_antialiasing(mode: String) -> void:
 	var viewport := get_tree().root
 	viewport.use_taa = mode == "taa"
@@ -189,7 +217,8 @@ func _set_view(view: String) -> void:
 func _apply_sun() -> void:
 	var elevation := deg_to_rad(float(_values["sun_elevation"]))
 	var azimuth := deg_to_rad(float(_values["sun_azimuth"]))
-	var toward_sun := Vector3(cos(elevation) * sin(azimuth), sin(elevation), cos(elevation) * cos(azimuth))
+	var toward_sun := Vector3(cos(elevation) * sin(azimuth), sin(elevation),
+			cos(elevation) * cos(azimuth))
 	RenderingServer.global_shader_parameter_set(&"cloud_sun_world", toward_sun)
 	_sun.look_at_from_position(Vector3.ZERO, -toward_sun)
 
@@ -201,7 +230,8 @@ func _rebuild() -> void:
 		_patch_node.queue_free()
 	_patch_node = _patch(_preset(), float(_values["stones"]), int(_values["seed"]))
 	add_child(_patch_node)
-	var tilt := deg_to_rad(float(_values["tilt"])) # (the patch leant over: a slope, a cliff face at 70 or more)
+	# (the patch leant over: a slope, a cliff face at 70 or more)
+	var tilt := deg_to_rad(float(_values["tilt"]))
 	_patch_node.basis = Basis(Vector3.RIGHT, -tilt)
 	_patch_node.position = Vector3(0.0, 0.0, -2.0) - _patch_node.basis * Vector3(0.0, 0.0, -2.0)
 	PlanetTile.ground_material().set_shader_parameter(&"detail_strength", float(_values["strength"]))
@@ -226,24 +256,32 @@ func _preset() -> Dictionary:
 	return preset
 
 
-## A soil: the colour of the ground, its iron, its organic matter, how stony, how deep, and the rock it came from.
+## A soil: the colour of the ground, its iron, its organic matter, how stony, how deep, and the rock
+## it came from.
 func _soil(name: String) -> Dictionary:
 	match name:
 		"brown":
-			return {"colour": Color(0.38, 0.27, 0.17), "iron": 0.15, "organic": 0.55, "stones": 0.5, "depth": 0.6, "pale": 0.4}
+			return {"colour": Color(0.38, 0.27, 0.17), "iron": 0.15, "organic": 0.55, "stones": 0.5,
+					"depth": 0.6, "pale": 0.4}
 		"sand":
-			return {"colour": Color(0.78, 0.68, 0.46), "iron": 0.1, "organic": 0.3, "stones": 0.25, "depth": 0.5, "pale": 0.6}
+			return {"colour": Color(0.78, 0.68, 0.46), "iron": 0.1, "organic": 0.3, "stones": 0.25,
+					"depth": 0.5, "pale": 0.6}
 		"black":
-			return {"colour": Color(0.17, 0.12, 0.09), "iron": 0.0, "organic": 0.9, "stones": 0.2, "depth": 0.9, "pale": 0.3}
+			return {"colour": Color(0.17, 0.12, 0.09), "iron": 0.0, "organic": 0.9, "stones": 0.2,
+					"depth": 0.9, "pale": 0.3}
 		"grey":
-			return {"colour": Color(0.46, 0.44, 0.4), "iron": 0.0, "organic": 0.45, "stones": 0.8, "depth": 0.3, "pale": 0.7}
+			return {"colour": Color(0.46, 0.44, 0.4), "iron": 0.0, "organic": 0.45, "stones": 0.8,
+					"depth": 0.3, "pale": 0.7}
 		"forest":
-			return {"colour": Color(0.22, 0.16, 0.1), "iron": 0.05, "organic": 0.8, "stones": 0.3, "depth": 0.8, "pale": 0.4}
+			return {"colour": Color(0.22, 0.16, 0.1), "iron": 0.05, "organic": 0.8, "stones": 0.3,
+					"depth": 0.8, "pale": 0.4}
 		_:
-			return {"colour": Color(0.55, 0.27, 0.17), "iron": 0.9, "organic": 0.45, "stones": 0.7, "depth": 0.4, "pale": 0.35}
+			return {"colour": Color(0.55, 0.27, 0.17), "iron": 0.9, "organic": 0.45, "stones": 0.7,
+					"depth": 0.4, "pale": 0.35}
 
 
-## The patch: 12 x 12 m, 96 quads, every vertex with the soil's numbers (what PlanetTile and the crust give the real ground).
+## The patch: 12 x 12 m, 96 quads, every vertex with the soil's numbers (what PlanetTile and the
+## crust give the real ground).
 func _patch(preset: Dictionary, stones: float, seed_value: int) -> MeshInstance3D:
 	var cells := 96
 	var size := 12.0
@@ -265,13 +303,16 @@ func _patch(preset: Dictionary, stones: float, seed_value: int) -> MeshInstance3
 			vertices.append(Vector3(x, 0.025 * noise.get_noise_2d(x, z), z)) # (a very gentle swell)
 			normals.append(Vector3.UP)
 			colours.append(Color(colour.r, colour.g, colour.b, preset["iron"]))
-			smooth.append_array(PackedByteArray([int(colour.r * 255), int(colour.g * 255), int(colour.b * 255), int(float(preset["organic"]) * 255)]))
-			geology.append_array(PackedByteArray([int(0.6 * 255), int(0.5 * 255), int(float(preset["pale"]) * 255), int(0.3 * 255)]))
+			smooth.append_array(PackedByteArray([int(colour.r * 255), int(colour.g * 255),
+					int(colour.b * 255), int(float(preset["organic"]) * 255)]))
+			geology.append_array(PackedByteArray([int(0.6 * 255), int(0.5 * 255),
+					int(float(preset["pale"]) * 255), int(0.3 * 255)]))
 			lie.append_array(PackedByteArray([int(stones * 255), int(float(preset["depth"]) * 255), 0, 0]))
 	for row in cells:
 		for column in cells:
 			var i := row * (cells + 1) + column
-			indices.append_array(PackedInt32Array([i, i + 1, i + cells + 1, i + 1, i + cells + 2, i + cells + 1]))
+			indices.append_array(PackedInt32Array([i, i + 1, i + cells + 1, i + 1, i + cells + 2,
+					i + cells + 1]))
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -281,8 +322,10 @@ func _patch(preset: Dictionary, stones: float, seed_value: int) -> MeshInstance3
 	arrays[Mesh.ARRAY_CUSTOM1] = geology
 	arrays[Mesh.ARRAY_CUSTOM2] = lie
 	arrays[Mesh.ARRAY_INDEX] = indices
-	var flags := (Mesh.ARRAY_CUSTOM_RGBA8_UNORM << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) | (Mesh.ARRAY_CUSTOM_RGBA8_UNORM << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT) \
-			| (Mesh.ARRAY_CUSTOM_RGBA8_UNORM << Mesh.ARRAY_FORMAT_CUSTOM2_SHIFT)
+	var rgba := Mesh.ARRAY_CUSTOM_RGBA8_UNORM
+	var flags := ((rgba << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
+			| (rgba << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT)
+			| (rgba << Mesh.ARRAY_FORMAT_CUSTOM2_SHIFT))
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 	var instance := MeshInstance3D.new()
@@ -291,7 +334,8 @@ func _patch(preset: Dictionary, stones: float, seed_value: int) -> MeshInstance3
 	return instance
 
 
-## The real small stones on the patch (the native placement the planet uses), with the same chips and the same shadows.
+## The real small stones on the patch (the native placement the planet uses), with the same chips
+## and the same shadows.
 func _scatter_chips(seed_value: int, stones: float) -> void:
 	if not ClassDB.class_exists(&"PlanetScatterNative"):
 		print("GROUND_LAB no native library: no stones")
@@ -303,9 +347,11 @@ func _scatter_chips(seed_value: int, stones: float) -> void:
 	var field := PackedFloat32Array()
 	for row in side:
 		for column in side:
-			positions.append(Vector3((float(column - 1) / cells - 0.5) * 12.0, 0.0, (float(row - 1) / cells - 0.5) * 12.0 - 2.0))
+			positions.append(Vector3((float(column - 1) / cells - 0.5) * 12.0, 0.0,
+					(float(row - 1) / cells - 0.5) * 12.0 - 2.0))
 			field.append(1.0 - stones) # (the more stones, the less grass: the more chips)
-	var buffers: Array = native.call(&"gravel_chunk", positions, field, cells, 12.0, 0.0, 0.0, 12.0, 12.0, float(_values["spacing"]),
+	var buffers: Array = native.call(&"gravel_chunk", positions, field, cells, 12.0, 0.0, 0.0, 12.0,
+			12.0, float(_values["spacing"]),
 			float(_values["density"]), seed_value, FloraMeshes.CHIP_VARIANTS)
 	for variant in buffers.size():
 		var buffer: PackedFloat32Array = buffers[variant]
@@ -322,10 +368,12 @@ func _scatter_chips(seed_value: int, stones: float) -> void:
 		instance.material_override = FloraMeshes.chip_material()
 		_chip_root.add_child(instance)
 		_chip_nodes.append(instance)
-	print("GROUND_LAB stones ", ", ".join(Array(buffers.map(func(buffer: PackedFloat32Array) -> int: return buffer.size() / 16))))
+	var counts := buffers.map(func(buffer: PackedFloat32Array) -> int: return buffer.size() / 16)
+	print("GROUND_LAB stones ", ", ".join(Array(counts)))
 
 
-## The panel: a slider for each number, a choice of soil and the stones on or off. A change that makes the ground again waits until the
+## The panel: a slider for each number, a choice of soil and the stones on or off. A change that
+## makes the ground again waits until the
 ## mouse button is let go (the patch takes a moment).
 func _build_panel() -> void:
 	var layer := CanvasLayer.new()
@@ -367,8 +415,10 @@ func _build_panel() -> void:
 		_set_antialiasing(["off", "fxaa", "smaa", "taa", "msaa"][index]))
 	aa_line.add_child(aa_choice)
 	column.add_child(aa_line)
-	for effect: Array in [["ssao_enabled", "screen space occlusion (SSAO)"], ["glow_enabled", "glow"], ["ssr_enabled", "reflections (SSR)"],
-			["fog_enabled", "fog"], ["volumetric_fog_enabled", "volumetric fog"], ["sdfgi_enabled", "global illumination (SDFGI)"]]:
+	for effect: Array in [["ssao_enabled", "screen space occlusion (SSAO)"], ["glow_enabled", "glow"],
+			["ssr_enabled", "reflections (SSR)"],
+			["fog_enabled", "fog"], ["volumetric_fog_enabled", "volumetric fog"],
+			["sdfgi_enabled", "global illumination (SDFGI)"]]:
 		var effect_box := CheckBox.new()
 		effect_box.text = effect[1]
 		var property: String = effect[0]
@@ -378,10 +428,14 @@ func _build_panel() -> void:
 	var hide_title := Label.new()
 	hide_title.text = "layers (untick to hide)"
 	column.add_child(hide_title)
-	# (what, label): a shader switch of the ground material, "chips" the real stones, "scans" the photograph scans
-	var layers := [["chips", "real 3D stones"], ["mosaic_on", "packed fragments (mosaic)"], ["scans", "photograph scans (CC0)"],
-			["cliff_procedural", "cliff: computed (off: baked pictures)"], ["layer_patches", "colour patches"], ["layer_bump", "broad bump"],
-			["layer_micro", "fine bump"], ["layer_surface", "rock/soil/sand texture maps"], ["layer_meadow", "painted meadow and flowers"]]
+	# (what, label): a shader switch of the ground material, "chips" the real stones, "scans" the
+	# photograph scans
+	var layers := [["chips", "real 3D stones"], ["mosaic_on", "packed fragments (mosaic)"],
+			["scans", "photograph scans (CC0)"],
+			["cliff_procedural", "cliff: computed (off: baked pictures)"],
+			["layer_patches", "colour patches"], ["layer_bump", "broad bump"],
+			["layer_micro", "fine bump"], ["layer_surface", "rock/soil/sand texture maps"],
+			["layer_meadow", "painted meadow and flowers"]]
 	for entry: Array in layers:
 		var box := CheckBox.new()
 		box.text = entry[1]
@@ -398,23 +452,47 @@ func _build_panel() -> void:
 		column.add_child(box)
 	# (key, label, min, max, step, what it remakes: 0 nothing, 1 the sun, 2 the stones, 3 the ground)
 	var rows := [
-		["sun_elevation", "sun height (deg)", 2.0, 88.0, 1.0, 1], ["sun_azimuth", "sun direction (deg)", 0.0, 360.0, 1.0, 1],
-		["detail", "ground detail (0-3)", 0.0, 3.0, 1.0, 3], ["strength", "detail strength", 0.0, 1.0, 0.05, 3],
+		["sun_elevation", "sun height (deg)", 2.0, 88.0, 1.0, 1], ["sun_azimuth", "sun direction (deg)",
+		0.0, 360.0, 1.0, 1],
+		["detail", "ground detail (0-3)", 0.0, 3.0, 1.0, 3], ["strength", "detail strength", 0.0, 1.0,
+		0.05, 3],
 		["stones", "how stony", 0.0, 1.0, 0.05, 3], ["iron", "iron (red soil)", 0.0, 1.0, 0.05, 3],
-		["organic", "organic matter", 0.0, 1.0, 0.05, 3], ["pale", "pale rock", 0.0, 1.0, 0.05, 3], ["depth", "soil depth", 0.0, 1.0, 0.05, 3],
+		["organic", "organic matter", 0.0, 1.0, 0.05, 3], ["pale", "pale rock", 0.0, 1.0, 0.05, 3],
+		["depth", "soil depth", 0.0, 1.0, 0.05, 3],
 		["spacing", "stone grid (m)", 0.04, 0.4, 0.01, 2], ["density", "stone odds", 0.0, 3.0, 0.1, 2],
-		["tilt", "lean the patch (-90 = cliff)", -90.0, 90.0, 1.0, 3], ["seed", "patch (seed)", 1.0, 99.0, 1.0, 3], ["fov", "field of view", 20.0, 100.0, 1.0, 0],
-		["mosaic_strength", "mosaic: strength", 0.0, 1.0, 0.05, 4], ["mosaic_big_per_m", "mosaic: large per m", 2.0, 40.0, 0.5, 4],
-		["mosaic_mid_per_m", "mosaic: medium per m", 8.0, 100.0, 1.0, 4], ["mosaic_small_per_m", "mosaic: small per m", 30.0, 300.0, 5.0, 4],
-		["mosaic_big_cover", "mosaic: large cover", 0.0, 1.0, 0.05, 4], ["mosaic_mid_cover", "mosaic: medium cover", 0.0, 1.0, 0.05, 4],
-		["mosaic_angular", "mosaic: sharpness", 0.0, 1.0, 0.05, 4], ["mosaic_gap", "mosaic: dark gaps", 0.0, 1.0, 0.05, 4],
-		["mosaic_tilt", "mosaic: plate lean", 0.0, 2.0, 0.05, 4], ["mosaic_tone", "mosaic: tone spread", 0.0, 1.0, 0.05, 4],
-		["mosaic_pebbles", "mosaic: pebbles", 0.0, 0.5, 0.01, 4], ["mosaic_shadow", "mosaic: plate shadows", 0.0, 1.0, 0.05, 4], ["mosaic_side_dark", "mosaic: side darkness", 0.0, 1.0, 0.05, 4], ["mosaic_pom_min_steps", "mosaic: parallax steps (down)", 2.0, 12.0, 1.0, 4], ["mosaic_pom_max_steps", "mosaic: parallax steps", 3.0, 32.0, 1.0, 4], ["scan_blend_depth", "scans: blend softness (height blend)", 0.02, 1.0, 0.02, 4], ["mosaic_height", "mosaic: height (m, parallax)", 0.0, 0.15, 0.005, 4], ["mosaic_size_var", "mosaic: size variation", 0.0, 1.0, 0.05, 4], ["mosaic_shape_var", "mosaic: shape variation", 0.0, 1.0, 0.05, 4], ["mosaic_desat", "mosaic: desaturation", 0.0, 1.0, 0.05, 4], ["mosaic_grain", "mosaic: fine grain", 0.0, 1.0, 0.05, 4], ["mosaic_seed", "mosaic: layout (seed)", 1.0, 99.0, 1.0, 4],
-		["cliff_row_height", "cliff: bed thickness (m)", 0.15, 1.5, 0.01, 4], ["cliff_col_width", "cliff: slab width (m)", 0.3, 3.0, 0.05, 4],
-		["cliff_warp", "cliff: edge wander (m)", 0.0, 1.0, 0.01, 4], ["cliff_lip", "cliff: lip width (m)", 0.01, 0.3, 0.005, 4],
-		["cliff_terraces", "cliff: terracing", 0.0, 1.0, 0.05, 4], ["cliff_cracks", "cliff: cracked slabs", 0.0, 1.0, 0.05, 4],
-		["cliff_sand", "cliff: sand shelves", 0.0, 1.0, 0.05, 4], ["cliff_tone", "cliff: tone patches", 0.0, 1.0, 0.05, 4],
-		["cliff_relief", "cliff: relief", 0.0, 4.0, 0.1, 4], ["cliff_seed", "cliff: layout (seed)", 1.0, 99.0, 1.0, 4],
+		["tilt", "lean the patch (-90 = cliff)", -90.0, 90.0, 1.0, 3],
+		["seed", "patch (seed)", 1.0, 99.0, 1.0, 3], ["fov", "field of view", 20.0, 100.0, 1.0, 0],
+		["mosaic_strength", "mosaic: strength", 0.0, 1.0, 0.05, 4],
+		["mosaic_big_per_m", "mosaic: large per m", 2.0, 40.0, 0.5, 4],
+		["mosaic_mid_per_m", "mosaic: medium per m", 8.0, 100.0, 1.0, 4],
+		["mosaic_small_per_m", "mosaic: small per m", 30.0, 300.0, 5.0, 4],
+		["mosaic_big_cover", "mosaic: large cover", 0.0, 1.0, 0.05, 4],
+		["mosaic_mid_cover", "mosaic: medium cover", 0.0, 1.0, 0.05, 4],
+		["mosaic_angular", "mosaic: sharpness", 0.0, 1.0, 0.05, 4],
+		["mosaic_gap", "mosaic: dark gaps", 0.0, 1.0, 0.05, 4],
+		["mosaic_tilt", "mosaic: plate lean", 0.0, 2.0, 0.05, 4], ["mosaic_tone", "mosaic: tone spread",
+		0.0, 1.0, 0.05, 4],
+		["mosaic_pebbles", "mosaic: pebbles", 0.0, 0.5, 0.01, 4], ["mosaic_shadow",
+		"mosaic: plate shadows", 0.0, 1.0, 0.05, 4], ["mosaic_side_dark", "mosaic: side darkness", 0.0,
+		1.0, 0.05, 4], ["mosaic_pom_min_steps", "mosaic: parallax steps (down)", 2.0, 12.0, 1.0, 4],
+		["mosaic_pom_max_steps", "mosaic: parallax steps", 3.0, 32.0, 1.0, 4],
+		["scan_blend_depth", "scans: blend softness (height blend)", 0.02, 1.0, 0.02, 4],
+		["mosaic_height", "mosaic: height (m, parallax)", 0.0, 0.15, 0.005, 4],
+		["mosaic_size_var", "mosaic: size variation", 0.0, 1.0, 0.05, 4],
+		["mosaic_shape_var", "mosaic: shape variation", 0.0, 1.0, 0.05, 4],
+		["mosaic_desat", "mosaic: desaturation", 0.0, 1.0, 0.05, 4],
+		["mosaic_grain", "mosaic: fine grain", 0.0, 1.0, 0.05, 4],
+		["mosaic_seed", "mosaic: layout (seed)", 1.0, 99.0, 1.0, 4],
+		["cliff_row_height", "cliff: bed thickness (m)", 0.15, 1.5, 0.01, 4],
+		["cliff_col_width", "cliff: slab width (m)", 0.3, 3.0, 0.05, 4],
+		["cliff_warp", "cliff: edge wander (m)", 0.0, 1.0, 0.01, 4],
+		["cliff_lip", "cliff: lip width (m)", 0.01, 0.3, 0.005, 4],
+		["cliff_terraces", "cliff: terracing", 0.0, 1.0, 0.05, 4],
+		["cliff_cracks", "cliff: cracked slabs", 0.0, 1.0, 0.05, 4],
+		["cliff_sand", "cliff: sand shelves", 0.0, 1.0, 0.05, 4], ["cliff_tone", "cliff: tone patches",
+		0.0, 1.0, 0.05, 4],
+		["cliff_relief", "cliff: relief", 0.0, 4.0, 0.1, 4], ["cliff_seed", "cliff: layout (seed)", 1.0,
+		99.0, 1.0, 4],
 		["cliff_hue", "cliff: sandstone hue", 0.0, 1.0, 0.05, 4],
 	]
 	for row: Array in rows:
@@ -465,23 +543,29 @@ func _sync(key: String) -> void:
 		(pair[1] as Label).text = "%.2f" % _values[key]
 
 
-## The view as the command line options that bring it back (what the readout shows and key C copies).
+## The view as the command line options that bring it back (what the readout shows and key C
+## copies).
 func _view_text() -> String:
 	var height := _camera.global_position.y
-	return "pitch=%.1f yaw=%.1f dist=%.2f fx=%.2f fz=%.2f fov=%.0f view=far  (camera height %.3f m, at %.2f %.2f %.2f, ground detail %.0f, aa %s)" % [
-			rad_to_deg(_pitch), rad_to_deg(_yaw), _distance, _focus.x, _focus.z, _camera.fov, height, _camera.global_position.x, height,
-			_camera.global_position.z, float(_values["detail"]), "taa" if get_tree().root.use_taa else ("msaa" if get_tree().root.msaa_3d != 0 else "off")]
+	return ("pitch=%.1f yaw=%.1f dist=%.2f fx=%.2f fz=%.2f fov=%.0f view=far  (camera height "
+			+ "%.3f m, at %.2f %.2f %.2f, ground detail %.0f, aa %s)") % [
+			rad_to_deg(_pitch), rad_to_deg(_yaw), _distance, _focus.x, _focus.z, _camera.fov, height,
+			_camera.global_position.x, height,
+			_camera.global_position.z, float(_values["detail"]),
+			"taa" if get_tree().root.use_taa else ("msaa" if get_tree().root.msaa_3d != 0 else "off")]
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _live or _camera == null:
 		return
-	if event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).keycode == KEY_C:
+	if (event is InputEventKey and event.pressed and not event.echo
+			and (event as InputEventKey).keycode == KEY_C):
 		DisplayServer.clipboard_set(_view_text())
 		print("GROUND_LAB_VIEW ", _view_text())
 	if event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
-		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+		if (Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+				or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
 			_yaw -= motion.relative.x * 0.005
 			_pitch = clampf(_pitch + motion.relative.y * 0.005, 0.05, 1.55)
 		elif Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
@@ -496,7 +580,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_distance = minf(_distance * 1.1, 14.0)
 
 
-## The orbit camera: always looking at `_focus` on the ground, `_distance` away, `_pitch` above the ground, `_yaw` round it.
+## The orbit camera: always looking at `_focus` on the ground, `_distance` away, `_pitch` above the
+## ground, `_yaw` round it.
 func _place_camera() -> void:
 	var offset := Vector3(sin(_yaw) * cos(_pitch), sin(_pitch), cos(_yaw) * cos(_pitch)) * _distance
 	_camera.look_at_from_position(_focus + offset, _focus)
@@ -508,7 +593,8 @@ func _process(_delta: float) -> void:
 		_place_camera()
 		if _readout != null:
 			_readout.text = _view_text().replace("  (", "\n(")
-		# the ground and the stones are made again once the mouse button is up (a slider being dragged changes many times a second)
+		# the ground and the stones are made again once the mouse button is up (a slider being dragged
+		# changes many times a second)
 		if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 			if _rebuild_wanted:
 				_rebuild_wanted = false
@@ -530,10 +616,13 @@ func _process(_delta: float) -> void:
 				reference.convert(Image.FORMAT_RGB8)
 				image.convert(Image.FORMAT_RGB8)
 				var scale := float(image.get_height()) / float(reference.get_height())
-				reference.resize(int(reference.get_width() * scale), image.get_height(), Image.INTERPOLATE_LANCZOS)
-				var both := Image.create(image.get_width() + reference.get_width(), image.get_height(), false, Image.FORMAT_RGB8)
+				reference.resize(int(reference.get_width() * scale), image.get_height(),
+						Image.INTERPOLATE_LANCZOS)
+				var both := Image.create(image.get_width() + reference.get_width(), image.get_height(), false,
+						Image.FORMAT_RGB8)
 				both.blit_rect(image, Rect2i(Vector2i.ZERO, image.get_size()), Vector2i.ZERO)
-				both.blit_rect(reference, Rect2i(Vector2i.ZERO, reference.get_size()), Vector2i(image.get_width(), 0))
+				both.blit_rect(reference, Rect2i(Vector2i.ZERO, reference.get_size()),
+						Vector2i(image.get_width(), 0))
 				image = both
 		image.save_png(_out)
 		get_tree().quit()

@@ -1,12 +1,14 @@
 extends Node
-## How many plants of each layer a hectare gets at several wetnesses (seed 8): godot --headless --path . res://tests/manual/planet/forest_density.tscn
+## How many plants of each layer a hectare gets at several wetnesses (seed 8): godot --headless
+## --path . res://tests/manual/planet/forest_density.tscn
 
 
 func _ready() -> void:
 	var settings := PlanetSettings.earth()
 	settings.world_seed = 8
 	var noise := PlanetNoise.new(settings)
-	var spots := {0.30: Vector3(0.216485,-0.689424,-0.691251), 0.45: Vector3(-0.063721,0.401967,0.913434),
+	var spots := {0.30: Vector3(0.216485,-0.689424,-0.691251), 0.45: Vector3(-0.063721,0.401967,
+			0.913434),
 			0.60: Vector3(-0.765716,-0.586536,0.263922), 0.85: Vector3(-0.665889,-0.723404,0.182422)}
 	var cells := 48
 	var side := cells + 3
@@ -50,7 +52,8 @@ func _ready() -> void:
 						PlantSpecies.Layer.MEADOW: totals["flowers"] += count
 						_: totals["cover"] += count
 		var per_hectare := 10000.0 / (size * size * tiles)
-		print("WET %.2f at %.0f m: per hectare  trees %.1f  shrubs %.1f  grass tufts %.0f  flowers %.1f  cover %.1f" % [wet, h,
+		print(("WET %.2f at %.0f m: per hectare  trees %.1f  shrubs %.1f  grass tufts %.0f  "
+				+ "flowers %.1f  cover %.1f") % [wet, h,
 				totals["trees"] * per_hectare, totals["shrubs"] * per_hectare, totals["grass"] * per_hectare,
 				totals["flowers"] * per_hectare, totals["cover"] * per_hectare])
 	get_tree().quit()

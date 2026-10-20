@@ -11,7 +11,8 @@ const WINDOW := 10.0 ## seconds kept
 const INTERVAL := 0.2 ## seconds between samples
 const WRITE_EVERY := 1.0 ## seconds between file writes
 const MARK_KEY := KEY_F9
-const MARKS_DIR := "user://planet_marks" ## a copy of the file for every F9 (the live file is overwritten by the next run)
+## a copy of the file for every F9 (the live file is overwritten by the next run)
+const MARKS_DIR := "user://planet_marks"
 const MAX_MARKS := 20
 
 var planet: PlanetWorld
@@ -43,7 +44,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_keep_a_copy()
 
 
-## The world this file is about, the first line: without it a position means nothing (the seed and the size make the planet).
+## The world this file is about, the first line: without it a position means nothing (the seed and
+## the size make the planet).
 func _world_line() -> String:
 	var settings := planet.settings if planet != null else null
 	if settings == null:
@@ -55,7 +57,8 @@ func _world_line() -> String:
 			snappedf(here.normalized().z, 0.0000001)], "scene": get_tree().current_scene.scene_file_path})
 
 
-## F9: the file as it is now, kept under its own name (`planet_marks/mark_<when>.jsonl`), the oldest of 20 dropped.
+## F9: the file as it is now, kept under its own name (`planet_marks/mark_<when>.jsonl`), the oldest
+## of 20 dropped.
 func _keep_a_copy() -> void:
 	if _in_a_lab():
 		return
@@ -71,7 +74,8 @@ func _keep_a_copy() -> void:
 		DirAccess.remove_absolute("%s/%s" % [MARKS_DIR, files[index]])
 
 
-## The lab and the checks (tests/...) run the same planet: they must not overwrite the file of a real session.
+## The lab and the checks (tests/...) run the same planet: they must not overwrite the file of a
+## real session.
 func _in_a_lab() -> bool:
 	var scene := get_tree().current_scene
 	return scene != null and scene.scene_file_path.begins_with("res://tests/")

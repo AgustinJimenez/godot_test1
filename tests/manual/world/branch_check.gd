@@ -43,11 +43,13 @@ func _ready() -> void:
 			var closest := Geometry3D.get_closest_point_to_segment(points[index], foot, tip)
 			var gap := points[index].distance_to(closest)
 			farthest = maxf(farthest, gap)
-			if gap < 0.6 + table[row + 8] * 2.0 + table[row + 9] * 0.7: # (a leaf mass hangs about a branch tip)
+			# (a leaf mass hangs about a branch tip)
+			if gap < 0.6 + table[row + 8] * 2.0 + table[row + 9] * 0.7:
 				near += 1
 		var share := float(near) / maxf(float(moving), 1.0)
 		print("BRANCH_CHECK %-22s branches=%d vertices=%d moving=%.0f%% near=%.0f%% farthest=%.1f m" % [
-				one.common_name, count - 1, points.size(), 100.0 * moving / points.size(), 100.0 * share, farthest])
+				one.common_name, count - 1, points.size(), 100.0 * moving / points.size(), 100.0 * share,
+				farthest])
 		ok = ok and count > 3 and share > 0.8 and moving > points.size() / 4
 	print("BRANCH_CHECK ", "PASS" if ok and trees > 0 else "FAIL")
 	get_tree().quit(0 if ok else 1)

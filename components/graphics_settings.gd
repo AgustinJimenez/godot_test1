@@ -258,7 +258,9 @@ func _sanitize_value(key: StringName, value: Variant) -> Variant:
 			clean = clampi(int(value), Environment.TONE_MAPPER_LINEAR, Environment.TONE_MAPPER_AGX)
 		&"ssao", &"ssil", &"glow", &"vsync", &"hdr", &"debanding":
 			clean = bool(value)
-		&"auto_exposure", &"volumetric_fog", &"cloud_shadows", &"sdfgi", &"decals", &"occlusion_culling", &"particles":
+		&"auto_exposure", &"volumetric_fog", &"cloud_shadows", &"sdfgi":
+			clean = bool(value)
+		&"decals", &"occlusion_culling", &"particles":
 			clean = bool(value)
 	return clean
 

@@ -45,7 +45,8 @@ var _land_bands: Array[PackedByteArray] = [] # 1 where the pixel is land (for th
 var _rows_done := 0
 var _mutex := Mutex.new()
 var _started_usec := 0
-## true: the cloud cover of a whole-planet picture is worked out on the GPU when it can be (the map is open and the game
+## true: the cloud cover of a whole-planet picture is worked out on the GPU when it can be (the map
+## is open and the game
 ## paused, so the GPU is idle; in play it is the busier side). The CPU does it otherwise.
 var use_gpu := false
 var _covers := PackedFloat32Array() # the cloud cover of every pixel, from the GPU
@@ -118,7 +119,8 @@ func start(noise: PlanetNoise) -> void:
 		_threads.append(thread)
 
 
-## The cloud layers of a whole-planet picture: the cover of every pixel from the GPU, when the ground's heights are known
+## The cloud layers of a whole-planet picture: the cover of every pixel from the GPU, when the
+## ground's heights are known
 ## already (a layer drawn before kept them) and there is a GPU to compute on.
 func _cloud_cover_on_the_gpu(noise: PlanetNoise) -> void:
 	if not use_gpu or clock == null or rect != Rect2(0.0, 0.0, 1.0, 1.0) \
@@ -163,8 +165,10 @@ func texture() -> ImageTexture:
 	return made
 
 
-## The last worker to finish its rows tidies the picture on its own thread (the main thread only makes the image): the bands
-## are joined, lone dots taken out, a data layer smoothed and the coasts drawn, the heights kept for the next layer.
+## The last worker to finish its rows tidies the picture on its own thread (the main thread only
+## makes the image): the bands
+## are joined, lone dots taken out, a data layer smoothed and the coasts drawn, the heights kept for
+## the next layer.
 func _tidy() -> void:
 	var mark := Time.get_ticks_usec()
 	var all := PackedByteArray()
@@ -184,7 +188,8 @@ func _tidy() -> void:
 			_noise.map_heights[size] = heights
 		mark = PlanetChartProfile.lap("keep the heights", mark)
 	var far := _pixel_metres > CALM_PIXEL * 50.0 # (kilometres a pixel: Elevation is grain too)
-	if not _cancelled and layer == Layer.ATLAS and _noise.native != null: # (flat colours: a blur, coast lines)
+	# (flat colours: a blur, coast lines)
+	if not _cancelled and layer == Layer.ATLAS and _noise.native != null:
 		var atlas_passes := 4 if _pixel_metres > 2000.0 else 1 # (close in the hatching must stay)
 		for pass_number in atlas_passes:
 			all = _noise.native.call(&"smooth_rgb", all, size.x, size.y)
@@ -194,7 +199,8 @@ func _tidy() -> void:
 		if atlas_land.size() >= size.x * size.y:
 			all = _noise.native.call(&"coast_lines", all, atlas_land, size.x, size.y)
 		mark = PlanetChartProfile.lap("atlas blur and coasts", mark)
-	if not _cancelled and _noise.native != null and (layer in SMOOTHED or (layer == Layer.ELEVATION and far)):
+	if not _cancelled and _noise.native != null and (layer in SMOOTHED
+			or (layer == Layer.ELEVATION and far)):
 		# (a data layer is a smooth gradient: the grain of the small pixels is averaged away, and a thin
 		# dark line follows the coasts so the sea and the land read through the colours)
 		var passes := 8 if layer in [Layer.TEMPERATURE, Layer.MEAN_TEMPERATURE] else 3
@@ -395,7 +401,7 @@ func _row_params(lat: float, row: int) -> Dictionary:
 func _ground_of(dirs: PackedVector3Array, smooth_shape: bool) -> PackedFloat32Array:
 	if not smooth_shape:
 		return _noise.heights_of(dirs)
-	return _noise.broad_heights_of(dirs, _pixel_metres)
+	return _noise.macro_heights_of(dirs, _pixel_metres)
 
 
 static func _direction(lat: float, lon: float) -> Vector3:
