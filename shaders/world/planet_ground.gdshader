@@ -448,7 +448,7 @@ void fragment() {
 			vec3 hit = crumb_at;
 			float hit_height = 0.0;
 			float shadow = 0.0;
-			float parallax_fade = 1.0 - smoothstep(3.0, 7.0, crumb_dist);
+			float parallax_fade = mosaic_on ? 0.0 : 1.0 - smoothstep(3.0, 7.0, crumb_dist); // (the mosaic does its own relief: no march)
 			vec3 facing_anchor = normalize(mat3(anchor_from_world) * world_normal);
 			if (parallax_fade > 0.02) {
 				// the view ray into the height of the chunks (the surface is the top, 3 cm above the soil)

@@ -33,47 +33,46 @@ float mosaic_hash(vec2 id, float k) {
 	return hash3(vec3(mod(id, 4096.0), k + mosaic_seed * 3.7));
 }
 
-// One scale: `per_m` fragments to a metre, `present` the share of the cells that hold a fragment.
+// One scale: `per_m` fragments to a metre, `present` the share of the cells that hold a fragment. The search for the nearest fragment
+// reads only what the distance needs (five numbers a cell); the rest is read once for the one that won.
 Mosaic mosaic_layer(vec2 p, float per_m, float present, float k) {
 	vec2 q = p * per_m;
 	vec2 base = floor(q);
 	float best = 1.0e9;
 	float second = 1.0e9;
-	Mosaic m;
-	m.cover = 0.0;
-	m.lean = vec2(0.0);
-	m.tone = 0.5;
-	m.pebble = 0.0;
-	m.kind = 0.0;
-	m.dir = vec2(0.0);
+	vec2 best_cell = base;
+	vec2 best_d = vec2(0.0);
 	for (int j = -1; j <= 1; j++) {
 		for (int i = -1; i <= 1; i++) {
 			vec2 cell = base + vec2(float(i), float(j));
-			vec2 centre = cell + 0.5 + (vec2(mosaic_hash(cell, k + 1.0), mosaic_hash(cell, k + 2.0)) - 0.5) * 0.8;
-			float turn = mosaic_hash(cell, k + 3.0) * 6.2831853;
+			vec3 a = vec3(mosaic_hash(cell, k + 1.0), mosaic_hash(cell, k + 2.0), mosaic_hash(cell, k + 3.0));
+			vec2 centre = cell + 0.5 + (a.xy - 0.5) * 0.8;
+			float turn = a.z * 6.2831853;
 			vec2 d = q - centre;
 			vec2 r = vec2(cos(turn) * d.x - sin(turn) * d.y, sin(turn) * d.x + cos(turn) * d.y);
-			r.x *= 0.65 + 0.5 * mosaic_hash(cell, k + 4.0); // plates are longer one way
+			float shape = mosaic_hash(cell, k + 4.0);
+			r.x *= 0.65 + 0.5 * shape; // plates are longer one way
 			float metric = mix(length(r), (abs(r.x) + abs(r.y)) * 0.74, mosaic_angular);
-			metric *= 0.75 + 0.5 * mosaic_hash(cell, k + 5.0); // some are bigger than their neighbours
+			metric *= 0.75 + 0.5 * fract(shape * 7.31); // some are bigger than their neighbours
 			if (metric < best) {
 				second = best;
 				best = metric;
-				m.cover = mosaic_hash(cell, k + 6.0) < present ? 1.0 : 0.0;
-				float tilt_turn = mosaic_hash(cell, k + 7.0) * 6.2831853;
-				m.lean = vec2(cos(tilt_turn), sin(tilt_turn)) * (0.2 + 0.8 * mosaic_hash(cell, k + 8.0)) * mosaic_tilt
-						;
-				m.dir = normalize(d + vec2(0.0001));
-				m.tone = mosaic_hash(cell, k + 9.0);
-				m.pebble = mosaic_hash(cell, k + 10.0) < mosaic_pebbles ? 1.0 : 0.0;
-				m.kind = mosaic_hash(cell, k + 11.0);
+				best_cell = cell;
+				best_d = d;
 			} else if (metric < second) {
 				second = metric;
 			}
 		}
 	}
+	Mosaic m;
+	m.cover = mosaic_hash(best_cell, k + 6.0) < present ? 1.0 : 0.0;
+	float tilt_turn = mosaic_hash(best_cell, k + 7.0) * 6.2831853;
+	m.lean = vec2(cos(tilt_turn), sin(tilt_turn)) * (0.2 + 0.8 * mosaic_hash(best_cell, k + 8.0)) * mosaic_tilt;
+	m.tone = mosaic_hash(best_cell, k + 9.0);
+	m.pebble = mosaic_hash(best_cell, k + 10.0) < mosaic_pebbles ? 1.0 : 0.0;
+	m.kind = fract(m.tone * 13.7 + 0.3);
+	m.dir = normalize(best_d + vec2(0.0001));
 	m.border = second - best;
-	// the rim of a plate rolls off: its normal leans outward there (the vector from the centre is not kept: the border's slope is enough)
 	return m;
 }
 
