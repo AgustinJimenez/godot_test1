@@ -153,9 +153,9 @@ void mosaic_surface(vec2 p, vec3 soil, vec3 fade, out vec3 colour, out float ao,
 float mosaic_height_at(vec2 p, float fade_mid) {
 	Mosaic big = mosaic_layer(p, mosaic_big_per_m, mosaic_big_cover, 40.0);
 	float h = big.cover * smoothstep(0.0, 0.3, big.border) * (0.45 + 0.55 * big.tone);
-	if (fade_mid > 0.02) {
+	if (fade_mid > 0.001) {
 		Mosaic mid = mosaic_layer(p, mosaic_mid_per_m, mosaic_mid_cover, 20.0);
-		h = max(h, mid.cover * smoothstep(0.0, 0.3, mid.border) * (0.15 + 0.3 * mid.tone));
+		h = max(h, mid.cover * smoothstep(0.0, 0.3, mid.border) * (0.15 + 0.3 * mid.tone) * fade_mid); // (fading smoothly: a plate dropping out at once drew a ring)
 	}
 	return h;
 }
