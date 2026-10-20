@@ -67,17 +67,21 @@ def slabs(columns, rows, tall_scale, warp_x, warp_y):
 border_a, owner_a, cells_a, px, py = slabs(3, 7, 3.4, 150.0, 45.0)
 border_b, owner_b, cells_b, px_b, py_b = slabs(6, 15, 3.0, 90.0, 30.0)
 use_small = smooth(0.52, 0.62, tiled_noise(3, 3))
-border = border_a * (1 - use_small) + border_b * 0.8 * use_small
-top = cells_a[owner_a, 2] * (1 - use_small) + cells_b[owner_b, 2] * use_small
-tilt = (cells_a[owner_a, 3] * ((px - cells_a[owner_a, 0]) / N) + cells_a[owner_a, 4] * ((py - cells_a[owner_a, 1]) / N)) * (1 - use_small) \
-    + (cells_b[owner_b, 3] * ((px_b - cells_b[owner_b, 0]) / N) + cells_b[owner_b, 4] * ((py_b - cells_b[owner_b, 1]) / N)) * use_small
 
-# ---- terraces: a slab is a flat tilted top with a steep lip (a quick rise at the border), not a pillow; the top steps by cell
-lip = smooth(0.0, 0.035 * N, border)  # the steep part
-roll = smooth(0.0, 0.16 * N, border)  # the gentle roundness of the top
-step = np.round(top * 6.0) / 6.0 * 0.5 + top * 0.5  # heights half way to whole terraces
-height = (0.1 + 0.9 * step) * (0.3 + 0.55 * lip + 0.15 * roll) + tilt * 4.0
-gap = 1.0 - smooth(0.0, 0.03 * N, border)
+
+def terraces(border, owner, cells, px, py):
+    """The height of one set of slabs: a flat tilted top with a steep lip (a quick rise at the border), the top stepping by cell."""
+    top = cells[owner, 2]
+    tilt = cells[owner, 3] * ((px - cells[owner, 0]) / N) + cells[owner, 4] * ((py - cells[owner, 1]) / N)
+    lip = smooth(0.0, 0.035 * N, border)  # the steep part
+    roll = smooth(0.0, 0.16 * N, border)  # the gentle roundness of the top
+    step = np.round(top * 6.0) / 6.0 * 0.5 + top * 0.5  # heights half way to whole terraces
+    return (0.1 + 0.9 * step) * (0.3 + 0.55 * lip + 0.15 * roll) + tilt * 4.0
+
+
+# each set is finished before they are blended (blending the cells themselves would leave hairline steps where the two meet)
+height = terraces(border_a, owner_a, cells_a, px, py) * (1 - use_small) + terraces(border_b * 0.8, owner_b, cells_b, px_b, py_b) * use_small
+gap = (1.0 - smooth(0.0, 0.016 * N, border_a)) * (1 - use_small) + (1.0 - smooth(0.0, 0.016 * N, border_b * 0.8)) * use_small
 
 # ---- cracks inside some slabs (a wandering vertical line), and the level lines of the beds
 cracks = np.zeros((N, N))
@@ -89,7 +93,7 @@ for index, (cx, cy, _, _, _) in enumerate(cells_a):
         cracks = np.maximum(cracks, (near & (owner_a == index) & (use_small < 0.05)).astype(float))
 cracks = np.clip(gaussian_filter(cracks, 0.9, mode="wrap") * 2.0, 0.0, 1.0)
 beds = tiled_noise(3, 3, stretch=(0.25, 6.0))
-ledge = (np.abs(beds - 0.5) < 0.006).astype(float) * (1.0 - gap)
+ledge = (np.abs(beds - 0.5) < 0.006).astype(float) * (1.0 - gap) * smooth(0.5, 0.62, tiled_noise(6, 3))  # (broken into pieces)
 ledge = gaussian_filter(ledge, 0.7, mode="wrap")
 
 # ---- sandy shelves: in the low places between slabs sand lies, flat, with pebbles on it
@@ -114,6 +118,13 @@ gy = (np.roll(height, -1, 0) - np.roll(height, 1, 0)) * strength
 normal = np.dstack([-gx, gy, np.ones_like(gx)])  # (OpenGL: y up in the picture means the surface faces up)
 normal /= np.linalg.norm(normal, axis=2, keepdims=True)
 
+# ---- the shadow under a lip: where something higher stands a little above (towards the top of the picture), the light does not reach
+overhang = np.zeros((N, N))
+for reach in range(3, int(0.04 * N), 3):
+    drop = np.roll(height, reach, axis=0) - height  # how much higher the ground is `reach` pixels above
+    overhang = np.maximum(overhang, np.clip((drop - 0.12) * 4.0, 0.0, 1.0) * (1.0 - reach / (0.04 * N)))
+overhang = np.clip(gaussian_filter(overhang, 2.0, mode="wrap"), 0.0, 1.0) * (1.0 - sand)
+
 # ---- the colour: light from above (tops bright, the steep lips lit on top and dark under), painted tone patches, stains, sand
 sun = np.clip(0.55 + 1.5 * (gy * 0.9 - gx * 0.25) / 4.0, 0.0, 1.4)
 streak = tiled_noise(5, 4, stretch=(6.0, 0.4))  # long vertical runs: water stains
@@ -123,16 +134,16 @@ low = np.array([0.5, 0.2, 0.08])
 high = np.array([0.98, 0.6, 0.28])
 t = np.clip(0.15 + 0.95 * height + 0.35 * (patches - 0.5), 0.0, 1.0)[..., None]
 colour = low * (1 - t) + high * t
-colour *= (0.62 + 0.55 * sun)[..., None]
+colour *= (0.62 + 0.55 * sun)[..., None] * (1.0 - 0.4 * overhang)[..., None]
 colour *= (1.0 - 0.22 * streak - 0.12 * blotch + 0.08)[..., None]
 sand_colour = np.array([0.95, 0.6, 0.3]) * (0.75 + 0.35 * sun)[..., None]
 colour = colour * (1 - sand[..., None]) + sand_colour * sand[..., None]
-colour = colour * (1.0 - 0.7 * np.maximum(gap, cracks * 0.8))[..., None]
+colour = colour * (1.0 - 0.55 * np.maximum(gap, cracks * 0.8))[..., None]
 colour = np.clip(colour + 0.14 * ledge[..., None] * np.array([1.0, 0.8, 0.6]), 0.0, 1.0)
 colour = np.where(pebbles[..., None] > 0.3, colour * np.array([0.6, 0.5, 0.45]), colour)
 
 # ---- occlusion (red), roughness (green), metal (blue)
-occlusion = 1.0 - 0.65 * np.maximum(gap, cracks) - 0.2 * (1.0 - np.clip(height * 1.4, 0.0, 1.0))
+occlusion = 1.0 - 0.65 * np.maximum(gap, cracks) - 0.25 * overhang - 0.2 * (1.0 - np.clip(height * 1.4, 0.0, 1.0))
 roughness = np.clip(0.8 + 0.12 * patches - 0.2 * ledge - 0.12 * np.clip(sun - 0.9, 0.0, 1.0) + 0.1 * sand, 0.3, 1.0)
 orm = np.dstack([occlusion, roughness, np.zeros_like(roughness)])
 
@@ -150,3 +161,11 @@ for i, name in enumerate(["cliff_albedo", "cliff_height", "cliff_normal", "cliff
     sheet.paste(Image.open(f"{OUT}/{name}.png").convert("RGB").resize((600, 600)), ((i % 2) * 600, (i // 2) * 600))
 sheet.save(f"{OUT}/cliff_sheet.png")
 print("cliff maps", N, "seed", SEED, "cells", len(cells_a), len(cells_b))
+
+# ---- packed for the ground shader (when a fourth argument, the assets folder, is given): colour + occlusion, normal + roughness
+if len(sys.argv) > 4:
+    c = np.dstack([colour, occlusion])
+    n = np.dstack([normal[:, :, 0] * 0.5 + 0.5, normal[:, :, 1] * 0.5 + 0.5, roughness, np.ones_like(roughness)])
+    Image.fromarray((np.clip(c, 0, 1) * 255).astype(np.uint8)).save(sys.argv[4] + "/cliff_c.png", optimize=True)
+    Image.fromarray((np.clip(n, 0, 1) * 255).astype(np.uint8)).save(sys.argv[4] + "/cliff_n.png", optimize=True)
+    print("mean linear colour", [round(float(v), 4) for v in (colour ** 2.2).reshape(-1, 3).mean(0)])

@@ -45,6 +45,10 @@ uniform sampler2D scan_red_c : source_color, filter_linear_mipmap_anisotropic, r
 uniform sampler2D scan_red_n : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D scan_leaf_c : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D scan_leaf_n : filter_linear_mipmap_anisotropic, repeat_enable;
+// the procedural cliff (scripts/make_cliff_textures.py): stacked sandstone slabs, on the steep faces, its strata level
+uniform sampler2D cliff_c : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D cliff_n : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float cliff_scale = 0.33; // tiles a metre
 uniform float scan_strength : hint_range(0.0, 1.0) = 0.85;
 uniform float scan_scale = 0.7; // tiles a metre
 uniform float flat_look : hint_range(0.0, 1.0) = 0.0; // 1: each quad one flat colour (the low-poly look)
@@ -228,6 +232,16 @@ vec3 leaf_litter(vec3 p, vec3 ground_up, float scale) {
 	return result;
 }
 
+// A texture sampled so that its repeat does not show: a second look at it, at another scale and place, blended in by a slow noise
+// (the two share no repeat distance, so neither shows through). `uv` in tiles.
+vec4 unrepeated(sampler2D map, vec2 uv) {
+	vec4 first = texture(map, uv);
+	vec2 turned = uv * vec2(0.71, 0.77) + vec2(0.37, 0.61); // (not turned: the slabs stay level and the normal map's directions stay true)
+	vec4 second = texture(map, turned);
+	float mixture = smoothstep(0.3, 0.7, smooth_noise(uv * 0.23 + 3.1));
+	return mix(first, second, mixture);
+}
+
 // One scan on the three planes, as the detail it adds: out `ratio` the colour over the scan's own mean (1: the soil's colour), `ao`
 // its occlusion, `tilt` the way its relief leans the normal (planet axes), `rough` its roughness.
 void scan_triplanar(sampler2D colour_map, sampler2D normal_map, vec3 at, vec3 facing, float scale, vec3 mean, out vec3 ratio,
@@ -237,9 +251,9 @@ void scan_triplanar(sampler2D colour_map, sampler2D normal_map, vec3 at, vec3 fa
 	vec2 uv_x = at.yz * scale;
 	vec2 uv_y = at.xz * scale;
 	vec2 uv_z = at.xy * scale;
-	vec4 cx = texture(colour_map, uv_x);
-	vec4 cy = texture(colour_map, uv_y);
-	vec4 cz = texture(colour_map, uv_z);
+	vec4 cx = unrepeated(colour_map, uv_x);
+	vec4 cy = unrepeated(colour_map, uv_y);
+	vec4 cz = unrepeated(colour_map, uv_z);
 	vec4 nx = texture(normal_map, uv_x);
 	vec4 ny = texture(normal_map, uv_y);
 	vec4 nz = texture(normal_map, uv_z);
@@ -316,6 +330,38 @@ void fragment() {
 		vec3 bumpy = normalize(NORMAL + (VIEW_MATRIX * vec4(bump_world, 0.0)).xyz);
 		view_normal = normalize(mix(view_normal, bumpy, strength));
 		rough = mix(0.95, 0.88 - patch * 0.1, strength);
+		// the steep faces are cliff: slabs with their strata level (the texture is drawn on two vertical planes of the place's own frame:
+		// u along the face, v up), its colour kept as the detail over the rock's own (the crust's colour for the place)
+		float cliff_w = smoothstep(0.35, 0.6, slope) * (1.0 - smoothstep(60.0, 140.0, length(VERTEX))) * scan_strength;
+		if (cliff_w > 0.01) {
+			vec3 up_local = normalize(anchor_up);
+			vec3 side_ref = abs(up_local.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+			vec3 right_local = normalize(cross(side_ref, up_local));
+			vec3 forward_local = cross(up_local, right_local);
+			vec3 spot = vec3(dot(on_planet, right_local), dot(on_planet, up_local), dot(on_planet, forward_local));
+			vec3 facing_cliff = normalize(mat3(anchor_from_world) * world_normal);
+			vec2 across = vec2(abs(dot(facing_cliff, forward_local)), abs(dot(facing_cliff, right_local))); // (a face looking along forward is drawn on the plane of right and up)
+			vec2 plane_weight = pow(across, vec2(4.0));
+			plane_weight /= max(plane_weight.x + plane_weight.y, 0.0001);
+			vec2 uv_a = vec2(spot.x, spot.y) * cliff_scale;
+			vec2 uv_b = vec2(spot.z, spot.y) * cliff_scale;
+			vec4 col_a = unrepeated(cliff_c, uv_a);
+			vec4 col_b = unrepeated(cliff_c, uv_b);
+			vec4 nor_a = unrepeated(cliff_n, uv_a);
+			vec4 nor_b = unrepeated(cliff_n, uv_b);
+			vec3 cliff_colour = col_a.rgb * plane_weight.x + col_b.rgb * plane_weight.y;
+			float cliff_ao = col_a.a * plane_weight.x + col_b.a * plane_weight.y;
+			vec2 tilt_a = nor_a.xy * 2.0 - 1.0;
+			vec2 tilt_b = nor_b.xy * 2.0 - 1.0;
+			vec3 tilt_planet = (right_local * tilt_a.x + up_local * tilt_a.y) * plane_weight.x
+					+ (forward_local * tilt_b.x + up_local * tilt_b.y) * plane_weight.y;
+			vec3 cliff_ratio = clamp(cliff_colour / vec3(0.5716, 0.1905, 0.0373), vec3(0.25), vec3(2.2));
+			float luma = dot(cliff_ratio, vec3(0.33));
+			cliff_ratio = mix(vec3(luma), cliff_ratio, 0.55); // (the hue is the rock's own: the slabs bring the light and the shadow)
+			paint *= mix(vec3(1.0), cliff_ratio * mix(0.5, 1.0, cliff_ao), cliff_w);
+			vec3 cliff_world = (world_from_planet * vec4(tilt_planet * 1.1, 0.0)).xyz;
+			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(cliff_world, 0.0)).xyz * cliff_w);
+		}
 		// crumbly gravel: bare soil that breaks into angular fragments (laterite and red sandstone soil the most): chips a few centimetres
 		// and a hand across and chunks, each its own tone and its own tilt to the light, pale chips and a few dark pebbles among them, a
 		// dark gap round each. Three sizes, near the walker only (a fragment is under a pixel beyond a few tens of metres); grass and snow

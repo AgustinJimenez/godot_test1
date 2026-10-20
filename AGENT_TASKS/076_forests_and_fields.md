@@ -220,3 +220,9 @@ here: parallax occlusion mapping, the self-shadow of fragments on each other, a 
   sandy shelves in the low places with a few pebbles, painted tone patches and stains, a saturated sandstone palette. Still short of the
   original: no overhang shadows under the lips, the thin curved hairlines (the border of one set showing in the other) and the ledge stripes
   are artefacts, and the painted look of the original's light/dark shapes is only approximated by noise.
+- The procedural cliff is wired in: `scripts/make_cliff_textures.py OUT 5 1024 assets/textures/ground/scans` also packs cliff_c/cliff_n (colour +
+  occlusion, normal + roughness; v3: gaps narrowed, overhang shadow only under real lips, ledge stripes broken). planet_ground.gdshader draws it
+  on the steep faces (slope above 0.35 to 0.6, to 140 m) on two vertical planes of the place's own frame (`anchor_up`: strata level), keeping the
+  rock's hue (the slabs bring light and shadow). `tilt=-70` in the ground lab shows a cliff face. Both the cliff and the scans now go through
+  `unrepeated()` (a second sample at another scale and place blended by slow noise: not turned, to keep the slabs level and the normals true)
+  so the 1.4 to 3 m repeat does not show. Prior art checked: the Substance Designer cliff workflow (strata, stepping, fractures, chipping).

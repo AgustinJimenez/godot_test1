@@ -11,6 +11,7 @@ extends Node
 ##     detail=0..3   the ground detail (the graphics setting)   chips=0|1   the real stones   sun=ELEVATION,AZIMUTH (degrees)
 ##     stones=0..1   how stony   seed=N   which patch of ground   ref=PATH   a photograph beside the render   size=WIDTHxHEIGHT
 ##     iron=0..1 organic=0..1 pale=0..1 depth=0..1   the soil's numbers   spacing=M   the grid of the stones   density=X   their odds
+##     tilt=DEGREES   leans the patch over (70: a cliff face)
 ##     strength=0..1   the ground shader's detail strength   fov=DEGREES
 ## Prints GROUND_LAB with the numbers of the run.
 
@@ -144,6 +145,9 @@ func _rebuild() -> void:
 		_patch_node.queue_free()
 	_patch_node = _patch(_preset(), float(_values["stones"]), int(_values["seed"]))
 	add_child(_patch_node)
+	var tilt := deg_to_rad(float(_options.get("tilt", "0"))) # (the patch leant over: a slope, a cliff face at 70 or more)
+	_patch_node.basis = Basis(Vector3.RIGHT, -tilt)
+	_patch_node.position = Vector3(0.0, 0.0, -2.0) - _patch_node.basis * Vector3(0.0, 0.0, -2.0)
 	PlanetTile.ground_material().set_shader_parameter(&"detail_strength", float(_values["strength"]))
 	_rebuild_chips()
 
