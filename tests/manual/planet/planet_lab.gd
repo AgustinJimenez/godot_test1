@@ -64,6 +64,7 @@ var _flying := false ## the walk check in free mode (noclip) at 100 m/s
 var _walk_start := Vector3.ZERO
 var _walk_floor := 0
 var _walk_worst := 0.0
+var _fly_lowest := INF
 var _stuck := false
 var _side := 0
 var _stuck_count := 0
@@ -866,8 +867,7 @@ func _physics_process(_delta: float) -> void:
 	if not _checking or player == null:
 		return
 	# let the player land, then walk 60 m at a time along the world's +X, building as we go
-	if _frame < 60:
-		return
+	if _frame < 60: return
 	_settle += 1
 	if not _placed and _settle == 10: # the new colliders are in: stand on the ground there
 		if "--verbose-check" in OS.get_cmdline_user_args():
@@ -882,8 +882,7 @@ func _physics_process(_delta: float) -> void:
 		player.global_position.y = _ground_y() + 1.0
 		player.velocity = Vector3.ZERO
 		_placed = true
-	if _settle < 30:
-		return
+	if _settle < 30: return
 	# how far the player is above the planet's ground by the noise itself (not by physics): near 0
 	# when the frame, the tiles and the colliders all agree
 	var at := planet.planet_position().normalized()
@@ -941,9 +940,9 @@ func _walk_step() -> void:
 		if _flying:
 			player.set_free_mode(true)
 			player.free_mode_speed = 100.0
+			Input.action_press(&"crouch") # dive: the flight must hold off the ground
 		_walk_start = planet.planet_position()
-	if _frame <= 60:
-		return
+	if _frame <= 60: return
 	if player.is_on_floor():
 		_walk_floor += 1
 	if "--verbose-check" in OS.get_cmdline_user_args() and _frame % 60 == 0:
@@ -971,14 +970,17 @@ func _walk_step() -> void:
 	var at := planet.planet_position().normalized()
 	var above := planet.altitude() - planet.noise.height(at.x, at.y, at.z)
 	_walk_worst = maxf(_walk_worst, absf(above))
+	if player.process_mode != Node.PROCESS_MODE_DISABLED: _fly_lowest = minf(_fly_lowest, above)
 	if _frame >= 60 + 90 * 60:
 		var travelled := planet.planet_position().distance_to(_walk_start)
 		var verdict := "PASS" if travelled > 150.0 and _walk_worst < 4.0 else "FAIL"
 		if _flying:
-			verdict = "PASS" if travelled > 10000.0 else "FAIL"
+			var held_off := _fly_lowest > player.free_mode_min_height - 0.5
+			verdict = "PASS" if travelled > 10000.0 and held_off else "FAIL"
 		print("WALK_CHECK %s travelled=%.0f m rebases=%d on_floor=%.0f%% worst_above_ground=%.2f m "
 				% [verdict, travelled, planet.rebases, 100.0 * float(_walk_floor) / float(_frame - 60),
-				_walk_worst] + "world_pos=%.0f" % player.global_position.length())
+				_walk_worst] + "world_pos=%.0f lowest=%.2f m" % [player.global_position.length(),
+				_fly_lowest])
 		print("HITCH worst_frame=%.1f ms, frames over 33 ms: %d" % [_worst_frame * 1000.0, _slow_frames])
 		get_tree().quit()
 

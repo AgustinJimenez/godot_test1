@@ -208,6 +208,8 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 	_set_the_sun()
 	frame.start(PackedFloat64Array([dir.x * reach, dir.y * reach, dir.z * reach]), Vector3.ZERO)
 	target.global_position = Vector3.ZERO
+	if target is Player:
+		(target as Player).flight_floor = flight_floor
 	if altitude > 500.0 and target is Player: # up in the air there is nothing to stand on: fly
 		(target as Player).set_free_mode(true)
 	if restored.has("heading"):
@@ -428,6 +430,17 @@ func ground_at(x: float, z: float, near_y: float) -> Dictionary:
 		wet = noise.water_at(dir, h) > h - 0.3
 	var up := frame.to_world(dir * (settings.radius + h))
 	return {"y": up.y, "wet": wet, "biome": noise.biome(dir.x, dir.y, dir.z, h, 0.1)}
+
+
+## The world height of the ground (or of the sea, where it is deeper) under a world position: what
+## free flight is kept above, so the player does not cut through the crust.
+func flight_floor(position: Vector3) -> float:
+	var here := frame.to_planet(position)
+	var dir := Vector3(here[0], here[1], here[2]).normalized()
+	var h := noise.height(dir.x, dir.y, dir.z)
+	if settings.sea_on:
+		h = maxf(h, 0.0)
+	return frame.to_world(dir * (settings.radius + h)).y
 
 
 ## The world height of the water at a world position (the sea, a lake or a river there), or -INF

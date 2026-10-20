@@ -116,6 +116,12 @@ func toggle_fov_gizmo() -> void:
 @export var free_mode_speed: float = 111.1 # m/s: 400 km/h (the debug slider starts here)
 @export var free_mode_sprint_multiplier: float = 3.0
 var free_mode_enabled := false
+## Where the ground is, for free mode: a Callable taking a world position and returning the world
+## height of the ground (or the sea) under it, set by the planet. Free mode never goes lower than
+## `free_mode_min_height` above that, so flying does not cut through the crust. Unset: no floor
+## (the rooms and the flat world, where there is nothing to hold the camera up).
+var flight_floor := Callable()
+@export var free_mode_min_height: float = 3.0
 var _free_mode_default_collision_layer := 0
 var _free_mode_default_collision_mask := 0
 var movement_input_override: Variant = null
@@ -609,6 +615,11 @@ func _process_free_mode(delta: float) -> void:
 		current_speed *= free_mode_sprint_multiplier
 	velocity = move_direction * current_speed
 	global_position += velocity * delta
+	if flight_floor.is_valid():
+		var lowest: float = float(flight_floor.call(global_position)) + free_mode_min_height
+		if global_position.y < lowest:
+			global_position.y = lowest
+			velocity.y = maxf(velocity.y, 0.0)
 
 	_eye_marker.position = head.position
 	_eye_marker.visible = _debug_cam_active
