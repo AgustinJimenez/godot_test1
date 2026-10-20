@@ -328,7 +328,7 @@ void fragment() {
 		vec2 pom_relief = vec2(0.0); // the slope of the plates where the ray met them (a metre of height in a metre across, along the ground's axes)
 		float pom_depth = 0.0; // how deep the hit is, 0..1
 		if (mosaic_on && mosaic_height > 0.0005) {
-			float pom_fade = pow(1.0 - smoothstep(0.4, 4.0, length(VERTEX)), 1.5) * (1.0 - smoothstep(0.25, 0.5, slope)); // (by distance only: fading by view angle drew a ring round the walker)
+			float pom_fade = pow(1.0 - smoothstep(0.4, mosaic_range, length(VERTEX)), 1.5) * (1.0 - smoothstep(0.25, 0.5, slope)); // (by distance only: fading by view angle drew a ring round the walker)
 			float pom_height = mosaic_height * pom_fade; // (the heights fade with the distance, so every plate sinks into the ground smoothly and there is no ring)
 			if (pom_fade > 0.02) {
 				vec3 pm_up = normalize(anchor_up);
@@ -343,7 +343,7 @@ void fragment() {
 				// is intersected with the segment it went through, exactly, with no extra samples
 				// a fixed count (a count that changed with the distance moved the hit points in rings): the paper varies it with the view angle, which here is the same as with the distance on flat ground
 				int pom_steps = mosaic_pom_max_steps;
-				float fade_mid_p = 1.0 - smoothstep(0.8, 5.0, length(VERTEX));
+				float fade_mid_p = 1.0 - smoothstep(0.8, mosaic_range * 1.25, length(VERTEX));
 				float last_depth = 0.0;
 				float last_gap = -pom_height;
 				float hit_depth = -1.0;
