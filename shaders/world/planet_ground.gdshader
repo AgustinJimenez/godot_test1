@@ -314,6 +314,55 @@ void fragment() {
 		vec3 near_anchor = (anchor_from_world * vec4(world_pos, 1.0)).xyz;
 		vec3 on_planet = near_anchor + anchor_wrap; // the planet position, to the noise's period
 		float slope = 1.0 - clamp(world_normal.y, 0.0, 1.0);
+		// Parallax occlusion of the packed fragments, done first so that EVERY layer of the near ground is moved with it: the view ray is
+		// marched into the heights of the plates, and the ground position all the detail below reads (the scans, the bumps, the patches, the
+		// fragments' colours and normals) is moved to where the ray met the plates. (Moving only the fragments left the other layers where
+		// they were, sliding over the plates as the view turned: a transparent layer over the rocks.)
+		float pom_dark = 0.0;
+		if (mosaic_on && mosaic_height > 0.0005) {
+			float pom_fade = (1.0 - smoothstep(1.2, 3.6, length(VERTEX))) * (1.0 - smoothstep(0.25, 0.5, slope));
+			if (pom_fade > 0.02) {
+				vec3 pm_up = normalize(anchor_up);
+				vec3 pm_ref = abs(pm_up.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+				vec3 pm_right = normalize(cross(pm_ref, pm_up));
+				vec3 pm_forward = cross(pm_up, pm_right);
+				vec2 pm_flat = vec2(dot(on_planet, pm_right), dot(on_planet, pm_forward));
+				vec3 ray_a = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
+				float down = max(-dot(ray_a, pm_up), 0.3); // (not lower than this: at a grazing angle the plates would smear into spikes)
+				vec2 along = vec2(dot(ray_a, pm_right), dot(ray_a, pm_forward)) / down; // ground travelled for each unit of depth
+				const int POM_STEPS = 5;
+				float jitter_pom = fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453);
+				float found = -1.0;
+				float low_d = 0.0;
+				float high_d = 0.0;
+				float last_d = 0.0;
+				float fade_mid_p = 1.0 - smoothstep(1.5, 2.6, length(VERTEX));
+				for (int i = 1; i <= POM_STEPS; i++) {
+					float depth = mosaic_height * (float(i) - 1.0 + jitter_pom) / float(POM_STEPS - 1);
+					float h_here = mosaic_height_at(pm_flat + along * depth, fade_mid_p) * mosaic_height;
+					if (depth >= mosaic_height - h_here) {
+						low_d = last_d;
+						high_d = depth;
+						found = depth;
+						break;
+					}
+					last_d = depth;
+				}
+				if (found >= 0.0) {
+					for (int k = 0; k < 2; k++) {
+						float mid_d = 0.5 * (low_d + high_d);
+						if (mid_d >= mosaic_height - mosaic_height_at(pm_flat + along * mid_d, fade_mid_p) * mosaic_height) {
+							high_d = mid_d;
+						} else {
+							low_d = mid_d;
+						}
+					}
+					vec2 moved = along * high_d * pom_fade;
+					on_planet += pm_right * moved.x + pm_forward * moved.y;
+					pom_dark = 0.6 * pom_fade * smoothstep(0.0, mosaic_height, high_d); // (the deeper the ray went in, the darker: the sides of a plate)
+				}
+			}
+		}
 		float patch = fbm3(on_planet * 0.171875, 176.0);
 		float mid = fbm3(on_planet * 1.296875 + 31.0, 1328.0);
 		float grain = noise3(on_planet * 7.0, 7168.0);
@@ -513,45 +562,7 @@ void fragment() {
 				vec3 side_ref_m = abs(up_m.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
 				vec3 right_m = normalize(cross(side_ref_m, up_m));
 				vec3 forward_m = cross(up_m, right_m);
-				vec2 flat_p = vec2(dot(hit, right_m), dot(hit, forward_m));
-				// parallax occlusion: the view ray into the height of the plates (they hide the soil behind them and shift as you move)
-				float pom_fade = (1.0 - smoothstep(1.2, 3.6, crumb_dist)) * (1.0 - smoothstep(0.25, 0.5, slope));
-				if (pom_fade > 0.02 && mosaic_height > 0.0005) {
-					vec3 ray_a = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
-					float down = max(-dot(ray_a, up_m), 0.3); // (not lower than this: at a grazing angle the plates would smear into spikes)
-					vec2 along = vec2(dot(ray_a, right_m), dot(ray_a, forward_m)) / down; // ground travelled for each unit of depth
-					const int POM_STEPS = 5;
-					float jitter_pom = fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453);
-					float found = -1.0;
-					float low_d = 0.0;
-					float high_d = 0.0;
-					float last_d = 0.0;
-					float fade_mid_p = 1.0 - smoothstep(1.5, 2.6, crumb_dist);
-					for (int i = 1; i <= POM_STEPS; i++) {
-						float depth = mosaic_height * (float(i) - 1.0 + jitter_pom) / float(POM_STEPS - 1);
-						float h_here = mosaic_height_at(flat_p + along * depth, fade_mid_p) * mosaic_height;
-						if (depth >= mosaic_height - h_here) {
-							low_d = last_d;
-							high_d = depth;
-							found = depth;
-							break;
-						}
-						last_d = depth;
-					}
-					if (found >= 0.0) {
-						for (int k = 0; k < 2; k++) {
-							float mid_d = 0.5 * (low_d + high_d);
-							if (mid_d >= mosaic_height - mosaic_height_at(flat_p + along * mid_d, fade_mid_p) * mosaic_height) {
-								high_d = mid_d;
-							} else {
-								low_d = mid_d;
-							}
-						}
-						flat_p += along * high_d * pom_fade;
-						// the soil seen in the shadow of a tall plate: what the ray went in under is darker
-						paint *= 1.0 - 0.6 * pom_fade * smoothstep(0.0, mosaic_height, high_d); // (the deeper the ray went in, the darker: the sides of a plate)
-					}
-				}
+				vec2 flat_p = vec2(dot(on_planet, right_m), dot(on_planet, forward_m)); // (on_planet is already moved by the parallax: see above)
 				vec3 mosaic_fade = vec3(1.0 - smoothstep(2.5, 6.0, crumb_dist), 1.0 - smoothstep(7.0, 16.0, crumb_dist), 1.0 - smoothstep(18.0, 44.0, crumb_dist));
 				float flat_ground = 1.0 - smoothstep(0.25, 0.5, slope);
 				paint = mix(paint, vec3(dot(paint, vec3(0.33))) * vec3(1.0, 0.8, 0.66) * 1.25, mosaic_desat * mosaic_strength * crumbly * 0.6);
@@ -560,6 +571,7 @@ void fragment() {
 				vec2 m_lean;
 				mosaic_surface(flat_p, max(paint, vec3(0.02)), mosaic_fade * flat_ground, m_colour, m_ao, m_lean);
 				float m_amount = mosaic_strength * crumbly;
+				paint *= 1.0 - pom_dark;
 				paint *= mix(vec3(1.0), m_colour, m_amount);
 				// fine grain on the fragments themselves (a plate is not a smooth tint): small bright and dark specks, finer as you get closer
 				float speck = noise3(vec3(flat_p * 260.0, mosaic_seed), 266240.0) * 0.6 + noise3(vec3(flat_p * 640.0, 3.0), 655360.0) * 0.4;
