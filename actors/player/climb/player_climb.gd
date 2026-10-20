@@ -285,7 +285,6 @@ func face(direction: Vector3, delta: float) -> void:
 	var step := angle_difference(_player.rotation.y, yaw) * minf(TURN_SPEED * delta, 1.0)
 	# the view stays where the mouse put it while the body turns (as the player's own catch-up does)
 	_player._look_yaw -= step
-	_player.head.rotation.y = _player._look_yaw
 	_player.third_person_arm.rotation.y = _player._look_yaw
 	_player.rotate_y(step)
 

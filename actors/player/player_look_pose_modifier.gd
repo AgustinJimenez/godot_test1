@@ -32,18 +32,26 @@ var player_body: PlayerBody
 var adjusted_global_poses: Dictionary = {}
 
 
+## The look the head is really drawn with (pitch, yaw): what the bones are bent by. The camera
+## rides the head bone and turns on the spot by whatever of the look the neck cannot do.
+static func applied_look(body: PlayerBody) -> Vector2:
+	var pitch := body.clamp_head_pitch(body.head_pitch)
+	var yaw := body.head_yaw
+	var combined := Vector2(yaw, pitch)
+	var max_combined := deg_to_rad(body.MAX_BEND_UP_DEG)
+	if combined.length() > max_combined:
+		yaw = (combined.normalized() * max_combined).x
+	return Vector2(pitch, yaw)
+
+
 func _process_modification_with_delta(_delta: float) -> void:
 	var skel := get_skeleton()
 	if skel == null or player_body == null:
 		return
-	var pitch := player_body.clamp_head_pitch(player_body.head_pitch)
-	var yaw := player_body.head_yaw
+	var applied := applied_look(player_body)
+	var pitch := applied.x
+	var yaw := applied.y
 	var loco_yaw := player_body.locomotion_torso_yaw
-	var combined := Vector2(yaw, pitch)
-	var max_combined := deg_to_rad(player_body.MAX_BEND_UP_DEG)
-	if combined.length() > max_combined:
-		combined = combined.normalized() * max_combined
-		yaw = combined.x
 	if pitch < 0.0 or not is_zero_approx(yaw) or not is_zero_approx(loco_yaw):
 		_bend_torso(skel, pitch, yaw, loco_yaw)
 	if not is_zero_approx(pitch) or not is_zero_approx(yaw):

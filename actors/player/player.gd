@@ -9,28 +9,14 @@ const STAIR_CONTROLLER := preload("res://actors/player/player_stair_controller.g
 ## How far out to draw the FOV wireframe in the debug view - purely visual,
 ## does not affect the camera's actual near/far planes.
 const FOV_GIZMO_DISTANCE := 2.5
-## Minimum distance the eye must keep from each torso/arm bone, so the
-## camera's own near-clip volume never ends up inside the hood/collar/
-## shoulder/arm mesh - the neck-bend angle clamp alone isn't enough for
-## that. Per-bone, not one shared radius: the shoulder joints sit only
-## ~6.5cm from the head bone's own rest position in this rig (anatomically
-## close), so eye_offset (whose own magnitude is ~0.16m) can never clear a
-## 0.25m radius there - the best case is offset pointing directly away,
-## giving ~0.22m at most. The chest bone has more baseline room, so it
-## keeps the larger radius. The arms are included because the idle pose
-## holds them crossed low - looking down and to a side swings the eye
-## toward the upper arm, which was the closest obstacle of all of them.
-const TORSO_CLEARANCE: Dictionary = {
-	&"Spine2": 0.3,
-	&"LeftShoulder": 0.19,
-	&"RightShoulder": 0.19,
-	&"LeftArm": 0.17,
-	&"RightArm": 0.17,
-}
+## Where the eye is, in the player's frame with the character at rest: from the head bone's own
+## origin, up and forward (-Z). It is turned into a fixed point in the head bone's frame
+## (`_eye_socket`), so the camera rides the head mesh and never moves relative to it.
 var eye_offset := Vector3(0, 0.12, -0.24)
 
 func set_eye_offset(v: Vector3) -> void:
 	eye_offset = v
+	_rebuild_eye_socket()
 
 @export_group("Look")
 @export var mouse_sensitivity: float = 0.002
@@ -214,8 +200,7 @@ func _process(delta: float) -> void:
 	detached_cam.global_position += move_direction.normalized() * speed * delta
 
 var _head_bone_idx := -1
-var _torso_bone_indices: PackedInt32Array = []
-var _torso_bone_clearances: PackedFloat32Array = []
+var _eye_socket := Transform3D.IDENTITY ## the eye, in the head bone's own frame
 var _eye_marker: MeshInstance3D
 var _fov_gizmo: MeshInstance3D
 var _fov_mesh := ImmediateMesh.new()
@@ -281,25 +266,17 @@ func _ready() -> void:
 	# is exactly what was triggering the falling animation on every step.
 	floor_snap_length = step_height
 
-## TORSO_CLEARANCE's keys (and "Head") are canonical role names, not
-## necessarily this skeleton's own real bone names - resolve each through
-## body.resolve_bone_name() before find_bone() so this still works after
-## body.swap_character() puts on a differently-prefixed skin (e.g.
-## "Head" -> "mixamorig_Head" for x_bot/y_bot). Re-run via
-## body.character_changed whenever that happens - skeleton itself is
-## reassigned here too, since body.swap_character() replaces body.skeleton
-## with a brand new Skeleton3D instance, not the one this was last resolved
-## against.
+## "Head" is a canonical role name, not necessarily this skeleton's own bone name: resolve it
+## through body.resolve_bone_name() before find_bone() so this still works after
+## body.swap_character() puts on a differently-prefixed skin. Re-run via body.character_changed
+## whenever that happens: swap_character() replaces body.skeleton with a brand new Skeleton3D.
 func _resolve_body_bone_indices() -> void:
 	skeleton = body.skeleton
 	_head_bone_idx = skeleton.find_bone(body.resolve_bone_name(&"Head"))
-	_torso_bone_indices.clear()
-	_torso_bone_clearances.clear()
-	for bone_name: StringName in TORSO_CLEARANCE:
-		var idx := skeleton.find_bone(body.resolve_bone_name(bone_name))
-		if idx >= 0:
-			_torso_bone_indices.append(idx)
-			_torso_bone_clearances.append(TORSO_CLEARANCE[bone_name])
+	_rebuild_eye_socket()
+	if not skeleton.skeleton_updated.is_connected(_place_head):
+		skeleton.skeleton_updated.connect(_place_head)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _dead:
@@ -326,8 +303,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			# version), so the camera can keep tilting past where the neck
 			# would stop.
 			third_person_arm.rotation.x = _look_pitch
-		else:
-			head.rotation.x = _look_pitch
 	elif event.is_action_pressed(&"flashlight"):
 		flashlight.visible = not flashlight.visible
 	elif event.is_action_pressed(&"crouch") and not detached_cam_active:
@@ -362,7 +337,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.set_center_dot_visible(false)
 			# the orbit pitch has no partner to catch up with (unlike yaw): start level, no snap
 			_look_pitch = 0.0
-			head.rotation.x = 0.0
 			third_person_arm.rotation.x = 0.0
 	elif _debug_cam_active and event is InputEventMagnifyGesture: # a pinch on a trackpad
 		var pinch := event as InputEventMagnifyGesture
@@ -394,7 +368,6 @@ func _apply_yaw(delta_yaw: float) -> void:
 	var limit := deg_to_rad(head_yaw_limit_deg)
 	var new_head_yaw := _look_yaw + delta_yaw
 	_look_yaw = clampf(new_head_yaw, -limit, limit)
-	head.rotation.y = _look_yaw
 	# Third person has no HeadPivot in its parent chain (ThirdPersonArm
 	# hangs off the player root, not the head), so it needs this offset
 	# applied explicitly to see the same head-leads-then-body-catches-up
@@ -427,7 +400,6 @@ func _catch_up_body_yaw(input_dir: Vector2, sprinting: bool, delta: float) -> vo
 	if is_zero_approx(step):
 		return
 	_look_yaw -= step
-	head.rotation.y = _look_yaw
 	third_person_arm.rotation.y = _look_yaw
 	rotate_y(step)
 
@@ -601,15 +573,7 @@ func _physics_process(delta: float) -> void:
 	body.head_pitch = body.clamp_head_pitch(_look_pitch) if _debug_cam_active else _look_pitch
 	body.head_yaw = _look_yaw
 
-	if _head_bone_idx >= 0:
-		var head_pose := body.get_visual_bone_global_pose(_head_bone_idx)
-		var head_pos := body.transform * head_pose.origin
-		var safe_look := _solve_safe_look(_look_pitch, _look_yaw, head_pos)
-		var pitch_rot := Basis(Vector3.UP, safe_look.y) * Basis(Vector3.RIGHT, safe_look.x)
-		# The stair controller already spreads the root's rise across several frames
-		# (step_rise_rate), so head_pos is already smooth: a per-camera pull-down on top of
-		# that fought it (confirmed live: reported shake on stairs).
-		head.position = head_pos + pitch_rot * eye_offset
+	_place_head()
 
 
 func _update_stair_hover(delta: float) -> void:
@@ -655,65 +619,30 @@ func _process_free_mode(delta: float) -> void:
 
 
 
-## Keeps the eye clear of each torso bone's own TORSO_CLEARANCE radius. Only
-## affects this small position nudge, not the camera's actual look direction
-## (_look_pitch/_look_yaw, set directly from mouse input) - so you can still
-## look anywhere, this just stops the near clip from riding inside your own
-## mesh while doing it.
-##
-## Yaw is solved first, checked at level pitch (0): that's the least
-## constrained case for a given yaw, so if it's already unsafe there, no
-## amount of pitch clamping would help either (this is what plain pitch-only
-## clamping missed - turning far enough to the side puts the shoulder in the
-## way even before you look down at all). Pitch is then solved at whatever
-## yaw came out of that first step.
-func _solve_safe_look(raw_pitch: float, raw_yaw: float, head_pos: Vector3) -> Vector2:
-	var pitch_candidate := body.clamp_head_pitch(raw_pitch)
-	if _torso_bone_indices.is_empty():
-		return Vector2(pitch_candidate, raw_yaw)
-	var torso_points := _torso_points()
-	var safe_yaw := raw_yaw
-	if not _look_is_safe(head_pos, torso_points, 0.0, raw_yaw):
-		safe_yaw = _bisect_toward_safe(0.0, raw_yaw,
-				func(y): return _look_is_safe(head_pos, torso_points, 0.0, y))
-	var safe_pitch := pitch_candidate
-	if pitch_candidate < 0.0 and not _look_is_safe(head_pos, torso_points, pitch_candidate, safe_yaw):
-		safe_pitch = _bisect_toward_safe(0.0, pitch_candidate,
-				func(p): return _look_is_safe(head_pos, torso_points, p, safe_yaw))
-	return Vector2(safe_pitch, safe_yaw)
+## The eye as a fixed point in the head bone's own frame: from the character at rest, the head
+## bone's origin plus `eye_offset` (the player's frame), with the axes of the player's frame. The
+## head turns and bends, the walk sways it, and the eye goes with it (it cannot end up inside the
+## head mesh, or behind it).
+func _rebuild_eye_socket() -> void:
+	if _head_bone_idx < 0 or skeleton == null:
+		return
+	var rest := body.transform * skeleton.get_bone_global_rest(_head_bone_idx)
+	_eye_socket = rest.affine_inverse() * Transform3D(Basis.IDENTITY, rest.origin + eye_offset)
 
 
-## Binary search between a known-safe value and a candidate that failed
-## clearance, for the value closest to the candidate that's still safe.
-func _bisect_toward_safe(safe: float, candidate: float, is_safe_at: Callable) -> float:
-	var lo := safe
-	var hi := candidate
-	for i in 8:
-		var mid := (lo + hi) * 0.5
-		if is_safe_at.call(mid):
-			lo = mid
-		else:
-			hi = mid
-	return lo
-
-
-func _torso_points() -> Array[Vector3]:
-	var pts: Array[Vector3] = []
-	for idx in _torso_bone_indices:
-		pts.append(body.transform * body.get_visual_bone_global_pose(idx).origin)
-	return pts
-
-
-## Matches the real eye-position formula (head_pos + yaw-then-pitch rotated
-## eye_offset) exactly - a clearance check built from a different formula
-## than the one actually used to place the camera checks the wrong point.
-func _look_is_safe(
-		head_pos: Vector3, torso_points: Array[Vector3], pitch: float, yaw: float) -> bool:
-	var eye := head_pos + Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch) * eye_offset
-	for i in torso_points.size():
-		if eye.distance_to(torso_points[i]) < _torso_bone_clearances[i]:
-			return false
-	return true
+## Puts the camera's pivot on the head bone as drawn this frame (called when the skeleton has
+## been updated, so it is the pose on the screen, and every physics tick). The head follows the
+## look up to the neck's limits; further than that only the camera turns on the spot (it does
+## not move).
+func _place_head() -> void:
+	if _head_bone_idx < 0 or not is_instance_valid(body):
+		return
+	var placed := body.transform * body.get_visual_bone_global_pose(_head_bone_idx) * _eye_socket
+	var applied := PlayerLookPoseModifier.applied_look(body)
+	var drawn := Basis(Vector3.UP, applied.y) * Basis(Vector3.RIGHT, applied.x)
+	var wanted := Basis(Vector3.UP, _look_yaw) * Basis(Vector3.RIGHT, _look_pitch)
+	placed.basis = (wanted * drawn.inverse() * placed.basis).orthonormalized()
+	head.transform = placed
 
 
 func _spawn_eye_marker() -> void:
@@ -831,7 +760,6 @@ func _apply_equipped_item() -> void:
 func _on_weapon_fired() -> void:
 	# Recoil stays player-side: the weapon signals up, the player owns the head.
 	_look_pitch = minf(_look_pitch + 0.014, deg_to_rad(pitch_limit_deg))
-	head.rotation.x = _look_pitch
 
 
 func _on_body_action_finished(animation_name: StringName) -> void:
