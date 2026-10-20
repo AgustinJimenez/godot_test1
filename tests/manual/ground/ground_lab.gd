@@ -293,9 +293,13 @@ func _build_panel() -> void:
 	var panel := PanelContainer.new()
 	panel.position = Vector2(10.0, 10.0)
 	layer.add_child(panel)
+	var scroll := ScrollContainer.new() # (the list is long: it scrolls)
+	scroll.custom_minimum_size = Vector2(370.0, minf(float(get_tree().root.size.y) - 30.0, 760.0))
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
 	var column := VBoxContainer.new()
-	column.custom_minimum_size = Vector2(340.0, 0.0)
-	panel.add_child(column)
+	column.custom_minimum_size = Vector2(345.0, 0.0)
+	scroll.add_child(column)
 	var soil := OptionButton.new()
 	for name in SOILS:
 		soil.add_item(name)
@@ -308,19 +312,27 @@ func _build_panel() -> void:
 			_sync(key)
 		_rebuild())
 	column.add_child(soil)
-	var chips := CheckBox.new()
-	chips.text = "real stones"
-	chips.button_pressed = _chips_on
-	chips.toggled.connect(func(on: bool) -> void:
-		_chips_on = on
-		_rebuild_chips())
-	column.add_child(chips)
-	var procedural := CheckBox.new()
-	procedural.text = "cliff computed in the shader (off: the baked pictures)"
-	procedural.button_pressed = true
-	procedural.toggled.connect(func(on: bool) -> void:
-		PlanetTile.ground_material().set_shader_parameter(&"cliff_procedural", on))
-	column.add_child(procedural)
+	var hide_title := Label.new()
+	hide_title.text = "layers (untick to hide)"
+	column.add_child(hide_title)
+	# (what, label): a shader switch of the ground material, "chips" the real stones, "scans" the photograph scans
+	var layers := [["chips", "real 3D stones"], ["mosaic_on", "packed fragments (mosaic)"], ["scans", "photograph scans (CC0)"],
+			["cliff_procedural", "cliff: computed (off: baked pictures)"], ["layer_patches", "colour patches"], ["layer_bump", "broad bump"],
+			["layer_micro", "fine bump"], ["layer_surface", "rock/soil/sand texture maps"], ["layer_meadow", "painted meadow and flowers"]]
+	for entry: Array in layers:
+		var box := CheckBox.new()
+		box.text = entry[1]
+		var which: String = entry[0]
+		box.button_pressed = _chips_on if which == "chips" else (which != "scans" or true)
+		box.toggled.connect(func(on: bool) -> void:
+			if which == "chips":
+				_chips_on = on
+				_rebuild_chips()
+			elif which == "scans":
+				PlanetTile.ground_material().set_shader_parameter(&"scan_strength", 0.85 if on else 0.0)
+			else:
+				PlanetTile.ground_material().set_shader_parameter(which, on))
+		column.add_child(box)
 	# (key, label, min, max, step, what it remakes: 0 nothing, 1 the sun, 2 the stones, 3 the ground)
 	var rows := [
 		["sun_elevation", "sun height (deg)", 2.0, 88.0, 1.0, 1], ["sun_azimuth", "sun direction (deg)", 0.0, 360.0, 1.0, 1],

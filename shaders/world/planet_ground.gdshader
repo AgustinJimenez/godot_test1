@@ -51,6 +51,12 @@ uniform sampler2D cliff_n : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float cliff_scale = 0.33; // tiles a metre
 uniform float scan_strength : hint_range(0.0, 1.0) = 0.85;
 uniform float scan_scale = 0.7; // tiles a metre
+// switches for each layer of the near ground (the ground lab has a checkbox for each, to find which one is which)
+uniform bool layer_patches = true; // the soft colour patches over the soil
+uniform bool layer_bump = true; // the broad bump of the surface
+uniform bool layer_micro = true; // the fine bump
+uniform bool layer_surface = true; // the texture maps of rock, soil and sand (triplanar)
+uniform bool layer_meadow = true; // the painted patches of yellow grass and flowers
 uniform float flat_look : hint_range(0.0, 1.0) = 0.0; // 1: each quad one flat colour (the low-poly look)
 uniform float detail_strength : hint_range(0.0, 1.0) = 0.8;
 uniform float detail_range = 260.0; // m: the detail is gone by twice this
@@ -321,7 +327,7 @@ void fragment() {
 		float strata = sin(anchor_phase + rise * 1.86 + patch * 9.3) * 0.5 + 0.5;
 		float rocky = smoothstep(0.22, 0.5, slope);
 		detail *= mix(1.0, mix(0.78, 1.14, strata), rocky);
-		paint = mix(paint, detail, strength);
+		paint = mix(paint, detail, layer_patches ? strength : 0.0);
 		// a bumpy surface: the slope of the fine noise tilts the normal, more on steep ground
 		vec2 e = vec2(0.15, 0.0);
 		float here = fbm3(on_planet * 2.703125, 2768.0);
@@ -331,7 +337,7 @@ void fragment() {
 		vec3 bump_planet = -vec3(dx, dy, dz) * (0.8 + slope * 5.0) * strength;
 		vec3 bump_world = (world_from_planet * vec4(bump_planet, 0.0)).xyz;
 		vec3 bumpy = normalize(NORMAL + (VIEW_MATRIX * vec4(bump_world, 0.0)).xyz);
-		view_normal = normalize(mix(view_normal, bumpy, strength));
+		view_normal = normalize(mix(view_normal, bumpy, layer_bump ? strength : 0.0));
 		rough = mix(0.95, 0.88 - patch * 0.1, strength);
 		// the steep faces are cliff: slabs with their strata level (the texture is drawn on two vertical planes of the place's own frame:
 		// u along the face, v up), its colour kept as the detail over the rock's own (the crust's colour for the place)
@@ -644,10 +650,10 @@ void fragment() {
 			float mz = fbm3((on_planet + vec3(0.0, 0.0, 0.04)) * 14.0625, 14400.0) - micro_here;
 			vec3 micro_planet = -vec3(mx, my, mz) * (1.4 + slope * 3.0) * fine * strength;
 			vec3 micro_world = (world_from_planet * vec4(micro_planet, 0.0)).xyz;
-			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(micro_world, 0.0)).xyz);
+			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(layer_micro ? micro_world : vec3(0.0), 0.0)).xyz);
 			// meadows: patches of yellowing grass, darker clumps and a sprinkle of flowers (the
 			// grass is one green to the map; a real meadow is many)
-			float meadow = smoothstep(0.02, 0.1, paint.g - max(paint.r, paint.b)) * (1.0 - slope * 2.5);
+			float meadow = layer_meadow ? smoothstep(0.02, 0.1, paint.g - max(paint.r, paint.b)) * (1.0 - slope * 2.5) : 0.0;
 			if (meadow > 0.01) {
 				float dry_patch = fbm3(on_planet * 0.045 + 71.0, 1152.0);
 				paint = mix(paint, paint * vec3(1.35, 1.1, 0.55), smoothstep(0.55, 0.78, dry_patch) * meadow * 0.7);
@@ -665,7 +671,7 @@ void fragment() {
 			}
 			// real surface detail: rock on the steep faces, sand on pale level ground, soil elsewhere
 			float surface_fade = 1.0 - smoothstep(30.0, 70.0, length(VERTEX));
-			if (surface_fade > 0.01) {
+			if (surface_fade > 0.01 && layer_surface) {
 				vec3 facing = mat3(anchor_from_world) * world_normal;
 				float on_sand = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(-0.03, 0.0, paint.g - paint.r));
 				float w_rock = smoothstep(0.2, 0.45, slope + (1.0 - lie.y) * 0.25 * (1.0 - snow_cover)); // thin soil shows the rock
