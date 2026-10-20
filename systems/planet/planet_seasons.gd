@@ -32,6 +32,12 @@ const PASSES := 3 ## passes a step
 const HOT := 27.0 ## degrees C above which evaporation and cloud take most of the extra heat
 const MAX_YEARS := 8
 const WIND := 0.2 ## share of a cell the zonal wind carries the heat each pass (at its strongest)
+const DRY := {"max_distance": 99, "belt_lat": 26.0, "belt_width": 13.0,
+		"distance": 6.0, "base": 0.3, "belt_power": 0.9, "scale": 100.0}
+const CURRENTS := {"cold_lat": 22.0, "cold_width": 14.0, "warm_lat": 36.0,
+		"warm_width": 16.0, "cold_power": 5.0, "warm_power": 4.0, "reach": 3}
+const HEAT := {"emit": EMIT, "floor": FLOOR, "snow_albedo": SNOW_ALBEDO,
+		"land_tau": LAND_TAU, "sea_tau": SEA_TAU, "mix": MIX, "hot": HOT, "passes": PASSES}
 
 var mean := PackedFloat32Array() ## degrees C at sea level, averaged over the year
 var _cycle: Array[PackedFloat32Array] = [] # SNAPSHOTS grids of degrees C at sea level
@@ -48,19 +54,26 @@ func build(noise: PlanetNoise, clock: PlanetClock) -> void:
 	var size := WIDTH * HEIGHT
 	_sea.resize(size)
 	var dirs := PackedVector3Array() # the whole grid's ground in one go (native, on several threads)
-	dirs.resize(size)
-	for row in HEIGHT:
-		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
-		for column in WIDTH:
-			var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
-			dirs[row * WIDTH + column] = Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+	var native_available := native_year and ClassDB.class_exists(&"PlanetSeasonsNative")
+	if native_available:
+		var grid: RefCounted = ClassDB.instantiate(&"PlanetSeasonsNative")
+		dirs = grid.call(&"grid_dirs", WIDTH, HEIGHT)
+	else: # fallback when the optional native library has not been built
+		dirs.resize(size)
+		for row in HEIGHT:
+			var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
+			for column in WIDTH:
+				var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
+				dirs[row * WIDTH + column] = Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
 	var grounds := noise.macro_heights_of(dirs)
+	if native_available:
+		var grid: RefCounted = ClassDB.instantiate(&"PlanetSeasonsNative")
+		_sea = grid.call(&"mark_sea", grounds, WIDTH, HEIGHT, DRY)
+		_run_native(clock)
+		return
 	for index in size:
 		_sea[index] = 1 if grounds[index] < 0.0 else 0
 	_mark_the_dry_land()
-	if native_year and ClassDB.class_exists(&"PlanetSeasonsNative"):
-		_run_native(clock)
-		return
 	var heat := PackedFloat32Array()
 	heat.resize(size)
 	var light := PackedFloat32Array() # the sunlight of each row at the moment
@@ -99,7 +112,7 @@ func _mark_the_dry_land() -> void:
 	var far := PackedInt32Array() # cells to the nearest sea (east-west it wraps)
 	far.resize(WIDTH * HEIGHT)
 	for index in far.size():
-		far[index] = 0 if _sea[index] == 1 else 99
+		far[index] = 0 if _sea[index] == 1 else DRY["max_distance"]
 	for pass_number in 2: # forward and backward sweeps: a cheap distance
 		for row in HEIGHT:
 			for step in WIDTH * 2:
@@ -122,14 +135,14 @@ func _mark_the_dry_land() -> void:
 						far[(row + 1) * WIDTH + column] + 1)
 	for row in HEIGHT:
 		var lat := absf((0.5 - (float(row) + 0.5) / float(HEIGHT)) * 180.0)
-		var highs := exp(-pow((lat - 26.0) / 13.0, 2.0)) # the dry belts
+		var highs := exp(-pow((lat - DRY["belt_lat"]) / DRY["belt_width"], 2.0))
 		for column in WIDTH:
 			var index := row * WIDTH + column
 			if _sea[index] == 1:
 				continue
-			var inland := clampf(float(far[index]) / 6.0, 0.0, 1.0)
-			var dry := inland * clampf(0.3 + 0.9 * highs, 0.0, 1.0)
-			_sea[index] = 2 + int(round(dry * 100.0))
+			var inland := clampf(float(far[index]) / DRY["distance"], 0.0, 1.0)
+			var dry := inland * clampf(DRY["base"] + DRY["belt_power"] * highs, 0.0, 1.0)
+			_sea[index] = 2 + int(round(dry * DRY["scale"]))
 
 
 ## The ocean currents, as a change of the sea's temperature next to the land: the cold ones along
@@ -140,19 +153,19 @@ func _add_the_currents() -> void:
 	offsets.resize(WIDTH * HEIGHT)
 	for row in HEIGHT:
 		var lat := absf((0.5 - (float(row) + 0.5) / float(HEIGHT)) * 180.0)
-		var cold := exp(-pow((lat - 22.0) / 14.0, 2.0))
-		var warm := exp(-pow((lat - 36.0) / 16.0, 2.0))
+		var cold := exp(-pow((lat - CURRENTS["cold_lat"]) / CURRENTS["cold_width"], 2.0))
+		var warm := exp(-pow((lat - CURRENTS["warm_lat"]) / CURRENTS["warm_width"], 2.0))
 		for column in WIDTH:
 			var index := row * WIDTH + column
 			if _sea[index] != 1:
 				continue
-			for reach in range(1, 4): # land close to the east: a cold current runs along it
+			for reach in range(1, CURRENTS["reach"] + 1):
 				if _sea[row * WIDTH + (column + reach) % WIDTH] != 1:
-					offsets[index] -= 5.0 * cold * (1.0 - float(reach - 1) / 3.0)
+					offsets[index] -= CURRENTS["cold_power"] * cold * (1.0 - float(reach - 1) / CURRENTS["reach"])
 					break
-			for reach in range(1, 4): # land close to the west: a warm current leaves it
+			for reach in range(1, CURRENTS["reach"] + 1):
 				if _sea[row * WIDTH + (column + WIDTH - reach) % WIDTH] != 1:
-					offsets[index] += 4.0 * warm * (1.0 - float(reach - 1) / 3.0)
+					offsets[index] += CURRENTS["warm_power"] * warm * (1.0 - float(reach - 1) / CURRENTS["reach"])
 					break
 	for at in _cycle.size():
 		var picture := _cycle[at]
@@ -166,21 +179,23 @@ func _add_the_currents() -> void:
 ## The year run natively (PlanetSeasonsNative, the same steps as below): the script only works out
 ## the sunlight of every row at every moment, the orbit being its own.
 func _run_native(clock: PlanetClock) -> void:
-	var lights := PackedFloat32Array()
-	lights.resize(SNAPSHOTS * HEIGHT)
-	for moment in SNAPSHOTS:
-		clock.set_year_share((float(moment) + 0.5) / float(SNAPSHOTS))
-		for row in HEIGHT:
-			var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
-			lights[moment * HEIGHT + row] = clock.daily_light(lat) * clock.light_now() * greenhouse
 	var year: RefCounted = ClassDB.instantiate(&"PlanetSeasonsNative")
+	var lights: PackedFloat32Array = year.call(&"light_grid", SNAPSHOTS, HEIGHT,
+			{"tilt": clock.axial_tilt, "eccentricity": clock.eccentricity,
+			"perihelion": clock.perihelion_share, "insolation": clock.insolation,
+			"greenhouse": greenhouse})
 	var made: Dictionary = year.call(&"run", _sea, lights, WIDTH, HEIGHT, SNAPSHOTS, wind, MAX_YEARS,
-			wind_k)
+			wind_k, HEAT)
 	mean = made["mean"]
 	_cycle.clear()
 	for picture: PackedFloat32Array in made["cycle"]:
 		_cycle.append(picture)
-	_add_the_currents()
+	var corrected: Dictionary = year.call(&"add_currents", _sea, made["cycle"], mean,
+			WIDTH, HEIGHT, CURRENTS)
+	mean = corrected["mean"]
+	_cycle.clear()
+	for picture: PackedFloat32Array in corrected["cycle"]:
+		_cycle.append(picture)
 
 ## One step of `dt` years, from the share `at` - dt/2 to at + dt/2 of the year.
 func _step(heat: PackedFloat32Array, light: PackedFloat32Array, clock: PlanetClock, at: float,
@@ -302,6 +317,9 @@ func blended(year_share: float) -> PackedFloat32Array:
 	var blend := position - floorf(position)
 	var a := _cycle[first]
 	var b := _cycle[(first + 1) % SNAPSHOTS]
+	if native_year and ClassDB.class_exists(&"PlanetSeasonsNative"):
+		var seasons: RefCounted = ClassDB.instantiate(&"PlanetSeasonsNative")
+		return seasons.call(&"blend", a, b, blend)
 	var out := PackedFloat32Array()
 	out.resize(a.size())
 	for index in a.size():

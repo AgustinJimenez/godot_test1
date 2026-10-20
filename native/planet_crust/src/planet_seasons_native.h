@@ -6,6 +6,7 @@
 
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
@@ -30,10 +31,20 @@ public:
 			double p_rain_scale, const Dictionary &p_belts = Dictionary()) const;
 	// the unit directions of a width x height grid of cell centres (rows from the north pole, columns from the west)
 	PackedVector3Array grid_dirs(int p_width, int p_height) const;
+	PackedByteArray mark_sea(const PackedFloat32Array &p_grounds, int p_width, int p_height,
+			const Dictionary &p_dry) const;
+	Dictionary add_currents(const PackedByteArray &p_sea, const Array &p_cycle,
+			const PackedFloat32Array &p_mean, int p_width, int p_height,
+			const Dictionary &p_currents) const;
+	PackedFloat32Array blend(const PackedFloat32Array &p_first,
+			const PackedFloat32Array &p_next, double p_weight) const;
+	PackedFloat32Array light_grid(int p_snapshots, int p_height,
+			const Dictionary &p_orbit) const;
 	// {"elevation": the heights in units of `relief`, "ocean": 1 where the ground is under the sea level (0)}
 	Dictionary elevation_and_ocean(const PackedFloat32Array &p_grounds, double p_relief) const;
 	Dictionary run(const PackedByteArray &p_sea, const PackedFloat32Array &p_lights, int p_width, int p_height,
-			int p_snapshots, double p_wind, int p_max_years, double p_wind_k = 3.0) const;
+			int p_snapshots, double p_wind, int p_max_years, double p_wind_k,
+			const Dictionary &p_heat) const;
 };
 
 } // namespace godot

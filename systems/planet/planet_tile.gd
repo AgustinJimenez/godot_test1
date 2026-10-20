@@ -138,10 +138,9 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 			for column in side:
 				var s := lerpf(s0, s1, float(column - 1) / float(cells))
 				packed_dirs[row * side + column] = direction(f, s, t)
-	# the script arrays are only needed by what the native path does not do itself: the plants'
-	# grid, the sea and the rivers, and the whole script path
-	var scripted := not fast or level >= _settings.max_level() - 4
-	scripted = scripted or _settings.sea_on or _settings.hydrology_on
+	# Native planting and water use the packed grids directly. Only their script fallbacks need copies.
+	var scripted := not fast or (level >= _settings.max_level() - 4 and noise.scatter_native == null)
+	scripted = scripted or (_noise.water_native == null and (_settings.sea_on or _settings.hydrology_on))
 	if scripted:
 		dirs.assign(packed_dirs)
 	heights = noise.heights_of(packed_dirs) # (the crust is asked for the whole grid at once)
@@ -156,10 +155,11 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 			packed_positions[index] = _to_local(dirs[index], radius + heights[index])
 	if scripted:
 		positions.assign(packed_positions)
-	min_height = INF
-	for row in range(1, cells + 2):
-		for column in range(1, cells + 2):
-			min_height = minf(min_height, heights[row * side + column])
+	min_height = noise.native.call(&"tile_min_height", heights, cells) if fast else INF
+	if not fast:
+		for row in range(1, cells + 2):
+			for column in range(1, cells + 2):
+				min_height = minf(min_height, heights[row * side + column])
 	var packed_normals := PackedVector3Array()
 	if fast:
 		packed_normals = noise.native.call(&"grid_normals", packed_positions, cells)
@@ -230,8 +230,8 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 	if level >= _settings.max_level() - 6:
 		_add_occluder(packed_positions, side, cells)
 	if _settings.sea_on and min_height < _settings.sea_level + 0.5:
-		_add_sea(dirs, side, cells)
-	_add_running_water(dirs, heights)
+		_add_sea(packed_dirs, side, cells)
+	_add_running_water(packed_dirs, heights)
 	if level >= _settings.max_level() - 4: # plants can grow here later (PlanetSurface asks for them)
 		plant_grid = {"positions": positions, "dirs": dirs, "heights": heights,
 				"packed_positions": packed_positions, "packed_dirs": packed_dirs}
@@ -333,6 +333,10 @@ func _skirt(builder: MeshBuilder, positions: Array[Vector3], colors: Array[Color
 ## so it never hides ground that can be seen (the real ground is lower than a coarse mesh between
 ## its samples by about that much). Only used when the graphics setting asks for occlusion culling.
 func _add_occluder(positions: PackedVector3Array, side: int, cells: int) -> void:
+	if _noise.native != null:
+		var made: Dictionary = _noise.native.call(&"tile_occluder", positions, cells, _skirt_drop())
+		call_deferred(&"_make_occluder", made["vertices"], made["indices"])
+		return
 	var step := maxi(cells / 8, 1)
 	var across := cells / step + 1
 	var sunk := Vector3(0.0, -_skirt_drop() * 2.0, 0.0)
@@ -362,7 +366,14 @@ func _make_occluder(vertices: PackedVector3Array, indices: PackedInt32Array) -> 
 
 
 ## The sea over this tile: a coarse patch at sea level, bent like the ground.
-func _add_sea(dirs: Array[Vector3], side: int, cells: int) -> void:
+func _add_sea(dirs: PackedVector3Array, side: int, cells: int) -> void:
+	if _noise.water_native != null:
+		var made: Dictionary = _noise.water_native.call(&"sea_mesh", dirs, cells, size,
+				_settings.radius, _settings.sea_level, origin, _e1, centre, _e3)
+		var native_builder := MeshBuilder.new()
+		native_builder.append_water(made["vertices"], made["normals"], made["colours"])
+		_add_water_mesh(native_builder, water_material())
+		return
 	# near the player the facets are about 5 m (the waves roll them); further out they are bigger,
 	# and a facet bigger than the waves would catch the sun as one square, so the sea goes flat
 	var steps := clampi(int(size / 5.0), 12, 32)
@@ -390,7 +401,7 @@ func _add_sea(dirs: Array[Vector3], side: int, cells: int) -> void:
 
 
 ## The rivers that run over this tile (the crust's own valleys, see `_add_crust_rivers`).
-func _add_running_water(dirs: Array[Vector3], heights: PackedFloat32Array) -> void:
+func _add_running_water(dirs: PackedVector3Array, heights: PackedFloat32Array) -> void:
 	_add_crust_rivers(dirs, heights)
 
 
@@ -424,12 +435,20 @@ func _river_triangle(builder: MeshBuilder, points: Array[Vector3], coords: Array
 ## the tile's grid, the water level of the river whose valley is there; where the ground is under
 ## it (and above the sea) the corner is wet, and a square with a wet corner gets water, its dry
 ## corners sunk into the ground, so the bank is where the valley's ground meets the water.
-func _add_crust_rivers(dirs: Array[Vector3], heights: PackedFloat32Array) -> void:
+func _add_crust_rivers(dirs: PackedVector3Array, heights: PackedFloat32Array) -> void:
 	if not _settings.hydrology_on or _noise.drainage == null or _noise.native == null \
 			or level < _settings.max_level() - 3:
 		return
-	var samples: PackedVector3Array = _noise.native.call(&"river_waters", PackedVector3Array(dirs))
+	var samples: PackedVector3Array = _noise.native.call(&"river_waters", dirs)
 	var cells := _settings.tile_cells
+	if _noise.water_native != null:
+		var made: Dictionary = _noise.water_native.call(&"river_mesh", dirs, heights, samples, cells,
+				_settings.radius, _settings.sea_level, origin, _e1, centre, _e3)
+		var native_builder := MeshBuilder.new()
+		native_builder.append_water(made["vertices"], made["normals"], made["colours"],
+				made.get("uvs", PackedVector2Array()))
+		_add_water_mesh(native_builder, river_material())
+		return
 	var side := cells + 3
 	var wet := PackedByteArray()
 	wet.resize(side * side)

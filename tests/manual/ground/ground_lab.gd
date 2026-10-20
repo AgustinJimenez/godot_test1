@@ -16,6 +16,7 @@ extends Node
 ##     yaw=DEGREES fx=X fz=Z   where the camera circles and what it looks at (the readout in the live lab, key C, gives all of these)
 ##     pitch=DEGREES dist=METRES   the camera angle over the ground (3 is nearly flat) and its distance
 ##     strength=0..1   the ground shader's detail strength   fov=DEGREES
+##     sweep=DEGREES   turn that much per rendered frame in an out= capture (compare AA while moving)
 ## Prints GROUND_LAB with the numbers of the run.
 
 const SOILS := ["laterite", "brown", "sand", "black", "grey", "forest"]
@@ -74,7 +75,7 @@ func _ready() -> void:
 		"fov": float(_options.get("fov", "55")), "tilt": float(_options.get("tilt", "0")),
 		"mosaic_strength": 0.9, "mosaic_big_per_m": 15.0, "mosaic_mid_per_m": 42.0, "mosaic_small_per_m": 150.0, "mosaic_big_cover": 0.13,
 		"mosaic_mid_cover": 0.42, "mosaic_angular": 0.8, "mosaic_gap": 0.75, "mosaic_tilt": 1.4, "mosaic_tone": 0.7, "mosaic_pebbles": 0.11,
-		"mosaic_seed": 1.0, "mosaic_shadow": 0.6, "mosaic_pom_min_steps": 3, "mosaic_pom_max_steps": 20, "scan_blend_depth": 0.25, "mosaic_height": 0.03, "mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
+		"mosaic_seed": 1.0, "mosaic_shadow": 0.6, "mosaic_side_dark": 0.35, "mosaic_pom_min_steps": 3, "mosaic_pom_max_steps": 20, "scan_blend_depth": 0.25, "mosaic_height": 0.03, "mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
 		"cliff_row_height": 0.45, "cliff_col_width": 1.1, "cliff_warp": 0.4, "cliff_lip": 0.09, "cliff_terraces": 0.5, "cliff_cracks": 0.55,
 		"cliff_sand": 0.5, "cliff_tone": 0.6, "cliff_relief": 1.0, "cliff_seed": 3.0, "cliff_hue": 0.5,
 	}
@@ -127,6 +128,13 @@ func _ready() -> void:
 			if _options.has(key):
 				_values[key] = float(_options[key]) # (the command line sets them too: cliff_lip=0.12)
 			PlanetTile.ground_material().set_shader_parameter(key, _values[key])
+	# The same layer switches as the live checkboxes, for repeatable one-layer renders.
+	for key in [&"mosaic_on", &"layer_patches", &"layer_bump", &"layer_micro",
+			&"layer_surface", &"layer_meadow", &"cliff_procedural"]:
+		if _options.has(String(key)):
+			PlanetTile.ground_material().set_shader_parameter(key, _options[String(key)] != "0")
+	if _options.has("scan_strength"):
+		PlanetTile.ground_material().set_shader_parameter(&"scan_strength", float(_options["scan_strength"]))
 	_rebuild()
 	if _live:
 		_build_panel()
@@ -401,7 +409,7 @@ func _build_panel() -> void:
 		["mosaic_big_cover", "mosaic: large cover", 0.0, 1.0, 0.05, 4], ["mosaic_mid_cover", "mosaic: medium cover", 0.0, 1.0, 0.05, 4],
 		["mosaic_angular", "mosaic: sharpness", 0.0, 1.0, 0.05, 4], ["mosaic_gap", "mosaic: dark gaps", 0.0, 1.0, 0.05, 4],
 		["mosaic_tilt", "mosaic: plate lean", 0.0, 2.0, 0.05, 4], ["mosaic_tone", "mosaic: tone spread", 0.0, 1.0, 0.05, 4],
-		["mosaic_pebbles", "mosaic: pebbles", 0.0, 0.5, 0.01, 4], ["mosaic_shadow", "mosaic: plate shadows", 0.0, 1.0, 0.05, 4], ["mosaic_pom_min_steps", "mosaic: parallax steps (down)", 2.0, 12.0, 1.0, 4], ["mosaic_pom_max_steps", "mosaic: parallax steps", 3.0, 32.0, 1.0, 4], ["scan_blend_depth", "scans: blend softness (height blend)", 0.02, 1.0, 0.02, 4], ["mosaic_height", "mosaic: height (m, parallax)", 0.0, 0.15, 0.005, 4], ["mosaic_size_var", "mosaic: size variation", 0.0, 1.0, 0.05, 4], ["mosaic_shape_var", "mosaic: shape variation", 0.0, 1.0, 0.05, 4], ["mosaic_desat", "mosaic: desaturation", 0.0, 1.0, 0.05, 4], ["mosaic_grain", "mosaic: fine grain", 0.0, 1.0, 0.05, 4], ["mosaic_seed", "mosaic: layout (seed)", 1.0, 99.0, 1.0, 4],
+		["mosaic_pebbles", "mosaic: pebbles", 0.0, 0.5, 0.01, 4], ["mosaic_shadow", "mosaic: plate shadows", 0.0, 1.0, 0.05, 4], ["mosaic_side_dark", "mosaic: side darkness", 0.0, 1.0, 0.05, 4], ["mosaic_pom_min_steps", "mosaic: parallax steps (down)", 2.0, 12.0, 1.0, 4], ["mosaic_pom_max_steps", "mosaic: parallax steps", 3.0, 32.0, 1.0, 4], ["scan_blend_depth", "scans: blend softness (height blend)", 0.02, 1.0, 0.02, 4], ["mosaic_height", "mosaic: height (m, parallax)", 0.0, 0.15, 0.005, 4], ["mosaic_size_var", "mosaic: size variation", 0.0, 1.0, 0.05, 4], ["mosaic_shape_var", "mosaic: shape variation", 0.0, 1.0, 0.05, 4], ["mosaic_desat", "mosaic: desaturation", 0.0, 1.0, 0.05, 4], ["mosaic_grain", "mosaic: fine grain", 0.0, 1.0, 0.05, 4], ["mosaic_seed", "mosaic: layout (seed)", 1.0, 99.0, 1.0, 4],
 		["cliff_row_height", "cliff: bed thickness (m)", 0.15, 1.5, 0.01, 4], ["cliff_col_width", "cliff: slab width (m)", 0.3, 3.0, 0.05, 4],
 		["cliff_warp", "cliff: edge wander (m)", 0.0, 1.0, 0.01, 4], ["cliff_lip", "cliff: lip width (m)", 0.01, 0.3, 0.005, 4],
 		["cliff_terraces", "cliff: terracing", 0.0, 1.0, 0.05, 4], ["cliff_cracks", "cliff: cracked slabs", 0.0, 1.0, 0.05, 4],
@@ -499,8 +507,7 @@ func _process(_delta: float) -> void:
 	if _live:
 		_place_camera()
 		if _readout != null:
-			_readout.text = _view_text().replace("  (", "
-(")
+			_readout.text = _view_text().replace("  (", "\n(")
 		# the ground and the stones are made again once the mouse button is up (a slider being dragged changes many times a second)
 		if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 			if _rebuild_wanted:
@@ -511,6 +518,9 @@ func _process(_delta: float) -> void:
 				_chips_wanted = false
 				_rebuild_chips()
 		return
+	if _options.has("sweep"):
+		_yaw += deg_to_rad(float(_options["sweep"]))
+		_place_camera()
 	_frames += 1
 	if _frames == 40:
 		var image := root.get_texture().get_image()

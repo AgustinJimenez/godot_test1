@@ -7,6 +7,8 @@
 #include "plant_sway_native.h"
 #include "planet_scatter_native.h"
 #include "planet_surface_native.h"
+#include "planet_water_native.h"
+#include "planet_map_native.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
@@ -25,6 +27,8 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(PlantSwayNative);
 	GDREGISTER_CLASS(PlanetScatterNative);
 	GDREGISTER_CLASS(PlanetSurfaceNative);
+	GDREGISTER_CLASS(PlanetWaterNative);
+	GDREGISTER_CLASS(PlanetMapNative);
 }
 
 void uninitialize_planet_crust_module(ModuleInitializationLevel p_level) {

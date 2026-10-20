@@ -205,6 +205,10 @@ public:
 	PackedColorArray colours(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights,
 			const PackedFloat32Array &p_steeps) const;
 	PackedFloat32Array tectonic_heights(const PackedVector3Array &p_dirs) const;
+	// Fibonacci sphere samples and the water-volume search for one sea level.
+	double find_sea_level(int p_count, double p_ocean_fraction, double p_water_layer, double p_relief) const;
+	double tile_min_height(const PackedFloat32Array &p_heights, int p_cells) const;
+	Dictionary tile_occluder(const PackedVector3Array &p_positions, int p_cells, double p_skirt_drop) const;
 	PackedFloat32Array macro_heights(const PackedVector3Array &p_dirs) const;
 	// the macro height without the small rolling hills and foothills (for maps of big pixels)
 	PackedFloat32Array broad_heights(const PackedVector3Array &p_dirs, double p_pixel) const;

@@ -4,6 +4,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
+#include <godot_cpp/variant/packed_int32_array.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -12,6 +13,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <limits>
 
 using namespace godot;
 
@@ -79,6 +81,11 @@ void PlanetCrustNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("colours", "dirs", "heights", "steeps"), &PlanetCrustNative::colours);
 	ClassDB::bind_method(D_METHOD("macro_and_tectonic_heights", "dirs"), &PlanetCrustNative::macro_and_tectonic_heights);
 	ClassDB::bind_method(D_METHOD("tectonic_heights", "dirs"), &PlanetCrustNative::tectonic_heights);
+	ClassDB::bind_method(D_METHOD("find_sea_level", "count", "ocean_fraction", "water_layer", "relief"),
+			&PlanetCrustNative::find_sea_level);
+	ClassDB::bind_method(D_METHOD("tile_min_height", "heights", "cells"), &PlanetCrustNative::tile_min_height);
+	ClassDB::bind_method(D_METHOD("tile_occluder", "positions", "cells", "skirt_drop"),
+			&PlanetCrustNative::tile_occluder);
 	ClassDB::bind_method(D_METHOD("height_at", "dir"), &PlanetCrustNative::height_at);
 	ClassDB::bind_method(D_METHOD("macro_heights", "dirs"), &PlanetCrustNative::macro_heights);
 	ClassDB::bind_method(D_METHOD("broad_heights", "dirs", "pixel"), &PlanetCrustNative::broad_heights);
@@ -860,6 +867,96 @@ PackedFloat32Array PlanetCrustNative::heights(const PackedVector3Array &p_dirs) 
 
 PackedFloat32Array PlanetCrustNative::tectonic_heights(const PackedVector3Array &p_dirs) const {
 	return heights_by(TECTONIC, p_dirs);
+}
+
+double PlanetCrustNative::find_sea_level(int p_count, double p_ocean_fraction,
+		double p_water_layer, double p_relief) const {
+	const int count = std::max(p_count, 500);
+	std::vector<float> samples(count);
+	for (int i = 0; i < count; i++) {
+		const double y = 1.0 - 2.0 * (double(i) + 0.5) / double(count);
+		const double ring = std::sqrt(1.0 - y * y);
+		const double angle = double(i) * 2.399963;
+		const Vector3 dir((real_t)(std::cos(angle) * ring), (real_t)y, (real_t)(std::sin(angle) * ring));
+		samples[i] = (float)tectonic_height(dir);
+	}
+	std::sort(samples.begin(), samples.end());
+	if (p_water_layer <= 0.0) {
+		const int index = std::clamp((int)(p_ocean_fraction * count), 0, count - 1);
+		return samples[index];
+	}
+	double low = samples.front();
+	double high = samples.back();
+	for (int step = 0; step < 40; step++) {
+		const double level = (low + high) * 0.5;
+		double depth = 0.0;
+		for (float value : samples) {
+			if (value < level) {
+				depth -= shore_curve((double)value - level) * p_relief;
+			}
+		}
+		depth /= double(count);
+		if (depth < p_water_layer) {
+			low = level;
+		} else {
+			high = level;
+		}
+	}
+	return (low + high) * 0.5;
+}
+
+double PlanetCrustNative::tile_min_height(const PackedFloat32Array &p_heights, int p_cells) const {
+	const int side = p_cells + 3;
+	if (p_cells <= 0 || p_heights.size() < side * side) {
+		return std::numeric_limits<double>::infinity();
+	}
+	double low = std::numeric_limits<double>::infinity();
+	for (int row = 1; row <= p_cells + 1; row++) {
+		for (int column = 1; column <= p_cells + 1; column++) {
+			low = std::min(low, (double)p_heights[row * side + column]);
+		}
+	}
+	return low;
+}
+
+Dictionary PlanetCrustNative::tile_occluder(const PackedVector3Array &p_positions,
+		int p_cells, double p_skirt_drop) const {
+	Dictionary out;
+	PackedVector3Array vertices;
+	PackedInt32Array indices;
+	const int side = p_cells + 3;
+	if (p_cells <= 0 || p_positions.size() < side * side) {
+		out["vertices"] = vertices;
+		out["indices"] = indices;
+		return out;
+	}
+	const int step = std::max(p_cells / 8, 1);
+	const int across = p_cells / step + 1;
+	vertices.resize(across * across);
+	const Vector3 sunk(0.0, (real_t)(-p_skirt_drop * 2.0), 0.0);
+	for (int row = 0; row < across; row++) {
+		for (int column = 0; column < across; column++) {
+			const int at = (1 + std::min(row * step, p_cells)) * side
+					+ 1 + std::min(column * step, p_cells);
+			vertices.set(row * across + column, p_positions[at] + sunk);
+		}
+	}
+	indices.resize((across - 1) * (across - 1) * 6);
+	int at = 0;
+	for (int row = 0; row < across - 1; row++) {
+		for (int column = 0; column < across - 1; column++) {
+			const int first = row * across + column;
+			indices.set(at++, first);
+			indices.set(at++, first + across);
+			indices.set(at++, first + 1);
+			indices.set(at++, first + 1);
+			indices.set(at++, first + across);
+			indices.set(at++, first + across + 1);
+		}
+	}
+	out["vertices"] = vertices;
+	out["indices"] = indices;
+	return out;
 }
 
 PackedByteArray PlanetCrustNative::smooth_rgb(const PackedByteArray &p_rgb, int p_width, int p_height) const {

@@ -2,6 +2,30 @@
 
 Measure first, convert what costs, match the old output with a check, one commit per step.
 
+Current status (2026-10-20): all normal-path array/grid/mesh planet generation and plant placement
+computations identified in the latest inventory are native: crust and tiles (including sea level,
+minimum height, and occluders), water meshes, drainage, climate and seasons grids, map regions and
+rows, plant meshes and placement, and quadtree selection. GDScript owns node/material/resource creation,
+UI, orbit sampling, scheduling, one-time settings, and short fallbacks when the library is absent.
+The user explicitly requested a commit and push of the conversion and SPOM visual change on
+2026-10-20. SPOM still awaits a live visual verdict; its checkpoint is not a quality sign-off.
+
+## Final normal-path computation pass (2026-10-20)
+
+- `PlanetCrustNative`: sea-level selection (including the water-volume search), tile interior minimum,
+  and occluder vertices/indices. The script keeps matching fallbacks.
+- `PlanetSeasonsNative`: grid directions, dry-land mask, sunlight grid from setup-supplied orbit
+  parameters, ocean-current offsets for the whole yearly cycle, and cycle blending. The existing
+  energy-balance constants are now handed over from `PlanetSeasons` instead of copied in C++.
+- `PlanetMapNative`: connected sea/land regions, spherical area ranking, and central map-label cells.
+  GDScript still chooses display names and creates the label dictionaries.
+- `generation_native_check.tscn` compares sea level, tile geometry, dry-land masks, current-adjusted
+  grids, orbit sunlight (worst gap 0.00000005), blend, and map-region cases including longitude wrap.
+  PASS on both precision builds after the final sunlight change. The climate check also passes on both.
+  `planet_check.sh --quick`: every functional check PASS; suite exit remains FAIL only because the
+  pre-existing repository-wide gdlint run reports 294 style problems. Native crust comparison PASS:
+  standard height gap 0.2070 m / colour gap 0.0105; double 0.0593 m / 0.0113.
+
 ## Done
 1. **River and lake water queries native** (`PlanetCrustNative::water_at / near_water / flow_at`, wrapped
    by `PlanetNoise.water_at / near_water / flow_at`): what the 645-line script `PlanetHydrology` answered
@@ -12,13 +36,28 @@ Measure first, convert what costs, match the old output with a check, one commit
    After: ground ready after 1.3 s, startup 0 ms there, tiles on the native path, ~490 fps at 700 tiles.
    `scripts/planet_check.sh --quick` passes (the water check builds the script hydrology on purpose).
 
-## What still runs in GDScript (measured at full Earth, startup 2.1 s: drainage solve 1.6 s native,
+## Earlier profile before the later conversions (full Earth startup 2.1 s: drainage solve 1.6 s native,
 climate 0.17 s, sea level 0.05 s)
 - Tile building (`PlanetTile.build`: the skirt, running-water meshes, normals fallback): partly native.
 - Plants (`PlanetScatter`, ~500 lines): the placement loops, one `_noise.biome` / `moisture` call per
   candidate point. The next conversion (and the frame cost of plants is big: see the draw calls).
 - Map charts: native rows for every layer already.
 - The script hydrology and its pieces (645 lines) are now dead code by default; remove once nothing uses it.
+
+## Tile water geometry native (2026-10-20)
+
+The previous full-detail tile profile put water at about 0.9 ms per tile. `PlanetWaterNative` now builds
+packed sea and river triangles from the same tile grid and river samples that `PlanetTile` used in its
+script loops. `PlanetTile` still makes the `MeshInstance3D` and assigns materials; the script loops stay
+as the fallback. The native path no longer copies the grid into typed GDScript arrays solely for water
+or native plant placement. `water_mesh_native_check.tscn` checks sea geometry, dry river, wet river and
+UVs. Both precision libraries rebuilt; native comparison and the planet quick suite's functional checks
+passed on the standard build; the native and water-mesh checks passed on the double build too. The check
+script initially labelled `gdlint: ok` as FAIL, so its reporter now accepts that exact success line
+(confirmed with `--lint-only`). No after-port tile timing has been measured yet.
+`PLANET_NO_NATIVE=1 --spawn-check` also exposed a pre-existing null call in `_carve_valleys` when a
+cached drainage network existed but the crust was disabled. It now skips native-only river carving;
+the script fallback spawn check passes without a script error.
 
 ## Measured on the plants (full detail tile, 76 m, seed 8 greenest meadow, High, 2026-10-19)
 - Placement of all layers: ~95 ms a tile (per-candidate queries cost 1-5 us each in script).

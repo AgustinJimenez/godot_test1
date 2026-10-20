@@ -22,6 +22,7 @@ var clearing := Vector3.ZERO ## where the player starts: trees and rocks keep of
 var rock: PlanetRock ## the colour of the crust
 var scatter_native: Object ## the native plant placement (PlanetScatterNative), or null: PlanetScatter's loops run
 var native: Object ## the native crust (PlanetCrustNative), or null: this file is the reference
+var water_native: Object ## pure native tile-water geometry; null uses PlanetTile's script fallback
 var drainage: PlanetDrainage ## where the water runs (coarse), when the planet has it
 ## The heights of the whole planet's map passes, by the picture's size (the map's layers all
 ## read the same ones, so only the first of them pays for the heights)
@@ -144,6 +145,7 @@ func _hotspots() -> PackedVector3Array:
 ## `planet_lab --native-check` compares the two.
 func _make_native() -> void:
 	native = null
+	water_native = null
 	if OS.has_environment("PLANET_NO_NATIVE"):
 		return
 	if not ClassDB.class_exists(&"PlanetCrustNative"):
@@ -182,6 +184,8 @@ func _make_native() -> void:
 		"basin": noise_config(rock._basin),
 	})
 	native = made
+	if ClassDB.class_exists(&"PlanetWaterNative"):
+		water_native = ClassDB.instantiate(&"PlanetWaterNative")
 
 
 func _cube_faces() -> PackedVector3Array:
@@ -196,7 +200,7 @@ func _cube_faces() -> PackedVector3Array:
 ## grid and its rivers, as curves, go to the native crust, which cuts the valleys along them.
 func _carve_valleys() -> void:
 	drainage = null
-	if settings.drainage_cells <= 0 or OS.has_environment("PLANET_NO_DRAINAGE"):
+	if native == null or settings.drainage_cells <= 0 or OS.has_environment("PLANET_NO_DRAINAGE"):
 		return
 	var cell_metres := settings.radius * PI * 0.5 / float(settings.drainage_cells)
 	var kept := {} if OS.has_environment("PLANET_NO_DRAINAGE_CACHE") else PlanetDrainageCache.load_network(settings)
@@ -299,6 +303,10 @@ func _setup(noise: FastNoiseLite, noise_seed: int, frequency: float, octaves: in
 ## The sea level is wherever the heights have the planet's ocean share below it (sampled over the
 ## sphere, every sample weighing the same area).
 func _find_sea_level() -> void:
+	if native != null:
+		_sea = native.call(&"find_sea_level", settings.crust_samples, settings.ocean_fraction,
+				settings.water_layer, relief)
+		return
 	var count := maxi(settings.crust_samples, 500)
 	var spots := PackedVector3Array()
 	for index in count:

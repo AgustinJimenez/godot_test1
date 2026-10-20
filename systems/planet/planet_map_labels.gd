@@ -18,15 +18,30 @@ var items: Array[Dictionary] = [] ## {uv, text, sea, area} of each name
 func build(noise: PlanetNoise) -> void:
 	items.clear()
 	var dirs := PackedVector3Array()
-	dirs.resize(WIDTH * HEIGHT)
-	for row in HEIGHT:
-		var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
-		for column in WIDTH:
-			var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
-			dirs[row * WIDTH + column] = Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+	var has_native := ClassDB.class_exists(&"PlanetMapNative")
+	if has_native:
+		var grid: RefCounted = ClassDB.instantiate(&"PlanetSeasonsNative")
+		dirs = grid.call(&"grid_dirs", WIDTH, HEIGHT)
+	else: # fallback when the optional native library has not been built
+		dirs.resize(WIDTH * HEIGHT)
+		for row in HEIGHT:
+			var lat := (0.5 - (float(row) + 0.5) / float(HEIGHT)) * PI
+			for column in WIDTH:
+				var lon := (float(column) + 0.5) / float(WIDTH) * TAU - PI
+				dirs[row * WIDTH + column] = Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
 	var heights := noise.macro_heights_of(dirs)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = noise.settings.world_seed + 77
+	if has_native:
+		var finder: RefCounted = ClassDB.instantiate(&"PlanetMapNative")
+		var regions: Array = finder.call(&"regions", heights, WIDTH, HEIGHT, 150.0, 6)
+		for body: Dictionary in regions:
+			var name_text := _name(rng)
+			if body["sea"]:
+				name_text += " OCEAN" if body["area"] > 2500.0 else " SEA"
+			items.append({"uv": body["uv"], "text": name_text.to_upper(),
+					"sea": body["sea"], "area": body["area"]})
+		return
 	var seen := PackedByteArray()
 	seen.resize(WIDTH * HEIGHT)
 	var found: Array[Dictionary] = []

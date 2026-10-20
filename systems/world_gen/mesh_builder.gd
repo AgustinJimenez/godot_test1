@@ -200,6 +200,17 @@ func append_smooth(vertices: PackedVector3Array, normals: PackedVector3Array,
 	_custom2.append_array(place_bytes)
 
 
+## Water triangles calculated natively. Keep the same normal smoothing and UV layout as add_tri_uv.
+func append_water(vertices: PackedVector3Array, normals: PackedVector3Array,
+		colors: PackedColorArray, uvs := PackedVector2Array()) -> void:
+	_vertices.append_array(vertices)
+	_normals.append_array(normals)
+	_colors.append_array(colors)
+	if not uvs.is_empty():
+		_uvs.append_array(uvs)
+		_uv2s.resize(_uvs.size())
+
+
 func commit() -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	if _vertices.is_empty():
