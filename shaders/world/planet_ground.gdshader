@@ -330,8 +330,8 @@ void fragment() {
 				vec3 ray_a = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
 				float down = max(-dot(ray_a, pm_up), 0.3); // (not lower than this: at a grazing angle the plates would smear into spikes)
 				vec2 along = vec2(dot(ray_a, pm_right), dot(ray_a, pm_forward)) / down; // ground travelled for each unit of depth
-				const int POM_STEPS = 5;
-				float jitter_pom = fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453);
+				const int POM_STEPS = 6;
+				float jitter_pom = 0.5; // (no random start: noise along the edges of the plates showed without TAA; the halvings below find the edge exactly)
 				float found = -1.0;
 				float low_d = 0.0;
 				float high_d = 0.0;
@@ -349,7 +349,7 @@ void fragment() {
 					last_d = depth;
 				}
 				if (found >= 0.0) {
-					for (int k = 0; k < 2; k++) {
+					for (int k = 0; k < 4; k++) {
 						float mid_d = 0.5 * (low_d + high_d);
 						if (mid_d >= mosaic_height - mosaic_height_at(pm_flat + along * mid_d, fade_mid_p) * mosaic_height) {
 							high_d = mid_d;
