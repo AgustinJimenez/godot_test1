@@ -349,6 +349,21 @@ void fragment() {
 					float gap_here = depth - (pom_height - mosaic_height_at(pm_flat + along * depth, fade_mid_p) * pom_height); // 0 and above: in the ground
 					if (gap_here >= 0.0) {
 						hit_depth = i == 0 ? 0.0 : mix(last_depth, depth, clamp(last_gap / (last_gap - gap_here), 0.0, 1.0));
+						if (i > 0) {
+							// a few halvings of the step the ray went in at (the height between two samples is not a straight line: a plate side is steep, and
+							// the straight guess drew horizontal slices on it at a flat view)
+							float lo = last_depth;
+							float hi = depth;
+							for (int refine = 0; refine < 3; refine++) {
+								float mid = 0.5 * (lo + hi);
+								if (mid >= pom_height - mosaic_height_at(pm_flat + along * mid, fade_mid_p) * pom_height) {
+									hi = mid;
+								} else {
+									lo = mid;
+								}
+							}
+							hit_depth = 0.5 * (lo + hi);
+						}
 						break;
 					}
 					last_depth = depth;

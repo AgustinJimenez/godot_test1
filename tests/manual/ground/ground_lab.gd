@@ -66,7 +66,7 @@ func _ready() -> void:
 		"fov": float(_options.get("fov", "55")), "tilt": float(_options.get("tilt", "0")),
 		"mosaic_strength": 0.9, "mosaic_big_per_m": 15.0, "mosaic_mid_per_m": 42.0, "mosaic_small_per_m": 150.0, "mosaic_big_cover": 0.13,
 		"mosaic_mid_cover": 0.42, "mosaic_angular": 0.8, "mosaic_gap": 0.75, "mosaic_tilt": 1.4, "mosaic_tone": 0.7, "mosaic_pebbles": 0.11,
-		"mosaic_seed": 1.0, "mosaic_shadow": 0.6, "mosaic_pom_min_steps": 3, "mosaic_pom_max_steps": 14, "scan_blend_depth": 0.25, "mosaic_height": 0.03, "mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
+		"mosaic_seed": 1.0, "mosaic_shadow": 0.6, "mosaic_pom_min_steps": 3, "mosaic_pom_max_steps": 9, "scan_blend_depth": 0.25, "mosaic_height": 0.03, "mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
 		"cliff_row_height": 0.45, "cliff_col_width": 1.1, "cliff_warp": 0.4, "cliff_lip": 0.09, "cliff_terraces": 0.5, "cliff_cracks": 0.55,
 		"cliff_sand": 0.5, "cliff_tone": 0.6, "cliff_relief": 1.0, "cliff_seed": 3.0, "cliff_hue": 0.5,
 	}
