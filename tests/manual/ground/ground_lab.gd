@@ -13,6 +13,7 @@ extends Node
 ##     iron=0..1 organic=0..1 pale=0..1 depth=0..1   the soil's numbers   spacing=M   the grid of the stones   density=X   their odds
 ##     tilt=DEGREES   leans the patch over (70: a cliff face)
 ##     aa=off|fxaa|smaa|taa|msaa   antialiasing (the game uses TAA, which can ghost: the lab starts with it off)
+##     yaw=DEGREES fx=X fz=Z   where the camera circles and what it looks at (the readout in the live lab, key C, gives all of these)
 ##     pitch=DEGREES dist=METRES   the camera angle over the ground (3 is nearly flat) and its distance
 ##     strength=0..1   the ground shader's detail strength   fov=DEGREES
 ## Prints GROUND_LAB with the numbers of the run.
@@ -29,6 +30,7 @@ var _focus := Vector3(0.0, 0.0, -0.5)
 var _yaw := 0.0
 var _pitch := 0.9
 var _distance := 2.2
+var _readout: Label
 
 ## What the sliders change.
 var _soil_name := "laterite"
@@ -108,6 +110,11 @@ func _ready() -> void:
 		_pitch = deg_to_rad(float(_options["pitch"]))
 		_distance = float(_options.get("dist", str(_distance)))
 		_place_camera()
+	if _options.has("yaw"):
+		_yaw = deg_to_rad(float(_options["yaw"]))
+	if _options.has("fx") or _options.has("fz"):
+		_focus = Vector3(float(_options.get("fx", str(_focus.x))), 0.0, float(_options.get("fz", str(_focus.z))))
+	_place_camera()
 	_apply_sun()
 	for key: String in _values:
 		if key.begins_with("cliff_") or key.begins_with("mosaic_") or key == "scan_blend_depth":
@@ -331,6 +338,9 @@ func _build_panel() -> void:
 			_sync(key)
 		_rebuild())
 	column.add_child(soil)
+	_readout = Label.new()
+	_readout.add_theme_font_size_override("font_size", 13)
+	column.add_child(_readout)
 	var aa_line := HBoxContainer.new()
 	var aa_label := Label.new()
 	aa_label.text = "antialiasing"
@@ -429,7 +439,7 @@ func _build_panel() -> void:
 			elif remakes == 4:
 				PlanetTile.ground_material().set_shader_parameter(key, value))
 	var hint := Label.new()
-	hint.text = "drag: orbit   wheel: zoom   middle drag: move focus"
+	hint.text = "drag: orbit   wheel: zoom   middle drag: move focus   C: copy the view"
 	column.add_child(hint)
 
 
@@ -441,9 +451,20 @@ func _sync(key: String) -> void:
 		(pair[1] as Label).text = "%.2f" % _values[key]
 
 
+## The view as the command line options that bring it back (what the readout shows and key C copies).
+func _view_text() -> String:
+	var height := _camera.global_position.y
+	return "pitch=%.1f yaw=%.1f dist=%.2f fx=%.2f fz=%.2f fov=%.0f view=far  (camera height %.3f m, at %.2f %.2f %.2f, ground detail %.0f, aa %s)" % [
+			rad_to_deg(_pitch), rad_to_deg(_yaw), _distance, _focus.x, _focus.z, _camera.fov, height, _camera.global_position.x, height,
+			_camera.global_position.z, float(_values["detail"]), "taa" if get_tree().root.use_taa else ("msaa" if get_tree().root.msaa_3d != 0 else "off")]
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not _live or _camera == null:
 		return
+	if event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).keycode == KEY_C:
+		DisplayServer.clipboard_set(_view_text())
+		print("GROUND_LAB_VIEW ", _view_text())
 	if event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
 		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
@@ -471,6 +492,9 @@ func _process(_delta: float) -> void:
 	var root := get_tree().root
 	if _live:
 		_place_camera()
+		if _readout != null:
+			_readout.text = _view_text().replace("  (", "
+(")
 		# the ground and the stones are made again once the mouse button is up (a slider being dragged changes many times a second)
 		if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 			if _rebuild_wanted:
