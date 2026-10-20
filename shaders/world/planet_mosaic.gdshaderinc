@@ -15,6 +15,8 @@ uniform float mosaic_gap : hint_range(0.0, 1.0) = 0.75; // how dark the gaps bet
 uniform float mosaic_tilt : hint_range(0.0, 2.0) = 1.4; // how far each plate leans (how much light and shade it takes)
 uniform float mosaic_tone : hint_range(0.0, 1.0) = 0.7; // how different the fragments are from each other
 uniform float mosaic_pebbles : hint_range(0.0, 0.5) = 0.11; // the share that are grey or pale pebbles
+uniform float mosaic_size_var : hint_range(0.0, 1.0) = 0.7; // how different the fragments of one scale are in size (and how the sizes shift from patch to patch)
+uniform float mosaic_shape_var : hint_range(0.0, 1.0) = 0.7; // how different their shapes are: round, diamond, square; stubby or long
 uniform float mosaic_desat : hint_range(0.0, 1.0) = 0.6; // the fragments are less saturated than the soil painted over them
 uniform float mosaic_grain : hint_range(0.0, 1.0) = 0.85; // the fine crumbly grain between and on the fragments
 uniform float mosaic_seed = 1.0;
@@ -42,6 +44,10 @@ Mosaic mosaic_layer(vec2 p, float per_m, float present, float k) {
 	float second = 1.0e9;
 	vec2 best_cell = base;
 	vec2 best_d = vec2(0.0);
+	// patch to patch the sizes drift: where this noise is high the fragments of the scale are larger (the cells keep their place, they only
+	// count for more or less of the distance)
+	float patch_noise = noise3(vec3(p * 0.9, k * 0.31 + mosaic_seed), 4096.0);
+	float zone = exp((patch_noise - 0.5) * 1.6 * mosaic_size_var);
 	for (int j = -1; j <= 1; j++) {
 		for (int i = -1; i <= 1; i++) {
 			vec2 cell = base + vec2(float(i), float(j));
@@ -50,10 +56,13 @@ Mosaic mosaic_layer(vec2 p, float per_m, float present, float k) {
 			float turn = a.z * 6.2831853;
 			vec2 d = q - centre;
 			vec2 r = vec2(cos(turn) * d.x - sin(turn) * d.y, sin(turn) * d.x + cos(turn) * d.y);
-			float shape = mosaic_hash(cell, k + 4.0);
-			r.x *= 0.65 + 0.5 * shape; // plates are longer one way
-			float metric = mix(length(r), (abs(r.x) + abs(r.y)) * 0.74, mosaic_angular);
-			metric *= 0.75 + 0.5 * fract(shape * 7.31); // some are bigger than their neighbours
+			vec3 b = vec3(mosaic_hash(cell, k + 4.0), mosaic_hash(cell, k + 5.0), mosaic_hash(cell, k + 13.0));
+			r.x *= mix(0.8, 0.35 + 1.25 * b.x, mosaic_shape_var); // stubby or long, each its own
+			float angular = clamp(mosaic_angular + (b.y - 0.5) * 1.6 * mosaic_shape_var, 0.0, 1.0); // some round, some sharp
+			float diamond = (abs(r.x) + abs(r.y)) * 0.74;
+			float square_metric = max(abs(r.x), abs(r.y)) * 1.05; // squared off plates
+			float metric = mix(length(r), mix(diamond, square_metric, b.z), angular);
+			metric *= exp((fract(b.x * 7.31 + b.y * 3.7) - 0.5) * 2.4 * mosaic_size_var) * zone; // sizes spread over a wide range
 			if (metric < best) {
 				second = best;
 				best = metric;
@@ -65,7 +74,8 @@ Mosaic mosaic_layer(vec2 p, float per_m, float present, float k) {
 		}
 	}
 	Mosaic m;
-	m.cover = mosaic_hash(best_cell, k + 6.0) < present ? 1.0 : 0.0;
+	float present_here = clamp(present * mix(1.0, 0.4 + 1.2 * patch_noise, mosaic_size_var), 0.0, 1.0);
+	m.cover = mosaic_hash(best_cell, k + 6.0) < present_here ? 1.0 : 0.0;
 	float tilt_turn = mosaic_hash(best_cell, k + 7.0) * 6.2831853;
 	m.lean = vec2(cos(tilt_turn), sin(tilt_turn)) * (0.2 + 0.8 * mosaic_hash(best_cell, k + 8.0)) * mosaic_tilt;
 	m.tone = mosaic_hash(best_cell, k + 9.0);
