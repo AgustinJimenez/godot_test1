@@ -27,7 +27,7 @@ lab `tests/manual/planet/planet_lab.tscn`. Reference: `docs/planet_generation.md
   071 the visual-quality gap to an Unreal look (tier 1, the ground detail and the night sky are built); 072 what realistic
   nature references have that the planet lacks (plants on by default, haze, meadows, ozone done); 073 native generation
   (almost all done); 074 the overnight log of 2026-10-19; 075 the design for storing what the player changes (nothing
-  built); 076 forests, fields and crowding (done) and the stone soil; 077 the ground parallax (active).
+  built); 076 forests, fields and crowding (done) and the stone soil; 077 the ground parallax (active); 078 sand relief and footprints that dent (planned).
 - **Not judged by the user** (as far as the files say): the star colours (054, 064), the 16-sample ground (077).
 
 ## Handoff to the next agent (written 2026-10-17 when the previous session ran out of tokens)
