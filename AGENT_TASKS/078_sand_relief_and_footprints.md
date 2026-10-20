@@ -1,6 +1,6 @@
 # 078 - Sand relief and footprints that dent (desert ground)
 
-Status (2026-10-20): **planned, nothing built.** Written after the user asked for desert sand with marks left by steps (and by
+Status (2026-10-20): **step 1 (sand shading) built and in the ground lab, awaiting the user's look; step 2 (dent footprints) next.** Written after the user asked for desert sand with marks left by steps (and by
 anything that falls on it) and asked for "the most realistic approach". The user calls the family of ground-relief tricks "SPOW
 texture" (the code keeps the names `spom` / `mosaic`; task 077 has the plates). Work and judging happen in
 `tests/manual/ground/ground_lab.tscn` first, then in a desert of the planet.
@@ -91,3 +91,21 @@ split the generic march, depth write and strata out of the ground shader first).
   so a render is repeatable.
 - Open questions for the user: which grounds beyond sand, what else leaves marks, how long marks last (default: sand, feet,
   a few minutes).
+
+## Done: step 1 (2026-10-20)
+
+- `shaders/world/planet_sand.gdshaderinc`: ripples from 2.56 m cells (1024 m is a whole number of them: no jump at the planet's coordinate
+  wrap or at a rebase), each cell its own direction (across the east-west wind, turned up to 23 degrees), wavelength (0.75-1.35 of
+  9 cm) and phase, the eight cells round a point blended (squared weights); an asymmetric profile (rise to the crest at 0.72 of the
+  period: about 9 degrees windward at 7 mm, 23 degrees downwind). Glitter: three grids of flakes (4 mm, 13 mm, 4 cm), a fifth of the
+  cells with a mirror turned at random, shown by a narrow lobe on the half vector (sun + eye), fixed to the ground; the grids finer than
+  a pixel are dropped. Uniforms `sand_ripples`, `sand_ripple_height`, `sand_ripple_length`, `sand_glitter`, `sand_wind_turn`
+  (lab sliders "sand:").
+- `planet_ground.gdshader`: replaces the old sine ripples (one fixed direction, 3.4 m apart, symmetric). On sand (`sand_ground`, from
+  the painted colour, level, not wooded) the plates (colour and relief) give way (`plates_here`), the photo sand texture is weakened
+  (it has ripples and pits of its own), the crevice shading and the hand-wide bump are eased. Written to `EMISSION`: a mirror throws the sun
+  back, so the glitter does not depend on the direct light (it is not shadowed: a shadowed grain would still flash; fine for now).
+- Cost (lab, standing view, detail 3): sand 4.38 ms against 4.83 ms for plated soil; ripples + glitter about 0.05 ms.
+- The lab needs `detail=3` (or 2) to show it (the ground detail setting; the lab's default is 1). The planet shows it at High and Ultra.
+- Still guessed: the sand share comes from the painted colour (no crust value yet), the wind is the planet's y axis crossed with up (not
+  the weather's wind), the ripples are not yet shorter on the downwind side of a dune's crest.

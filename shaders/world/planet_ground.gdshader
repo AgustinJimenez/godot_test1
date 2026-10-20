@@ -245,6 +245,7 @@ vec3 leaf_litter(vec3 p, vec3 ground_up, float scale) {
 
 #include "res://shaders/world/planet_cliff.gdshaderinc"
 #include "res://shaders/world/planet_mosaic.gdshaderinc"
+#include "res://shaders/world/planet_sand.gdshaderinc"
 
 // A texture sampled so that its repeat does not show: a second look at it, at another scale and place, blended in by a slow noise
 // (the two share no repeat distance, so neither shows through). `uv` in tiles.
@@ -316,6 +317,12 @@ void fragment() {
 	float strength = detail_strength * near * step(0.5, level);
 	float ao = 1.0;
 	float sparkle = 0.0;
+	vec3 sand_emission = vec3(0.0); // the glitter of the sand grains (added to the light as it is: a mirror throws the sun back)
+	// loose sand is not crumbled gravel: the plates (their colour, their relief) give way to the sand's ripples (planet_sand) where
+	// the ground is sandy and not stony
+	float sand_ground = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(0.0, 0.05, paint.g - paint.r + 0.02))
+			* smoothstep(0.7, 0.95, world_normal.y) * (1.0 - smoothstep(0.05, 0.4, woodland));
+	float plates_here = 1.0 - 0.9 * sand_ground * (1.0 - smoothstep(0.3, 0.9, lie.x));
 	if (strength > 0.001) {
 		vec3 near_anchor = (anchor_from_world * vec4(world_pos, 1.0)).xyz;
 		vec3 on_planet = near_anchor + anchor_wrap; // the planet position, to the noise's period
@@ -330,7 +337,7 @@ void fragment() {
 		vec2 pom_relief = vec2(0.0); // the slope of the plates where the ray met them (a metre of height in a metre across, along the ground's axes)
 		float pom_depth = 0.0; // how deep the hit is, 0..1
 		if (mosaic_on && mosaic_height > 0.0005) {
-			float pom_fade = pow(1.0 - smoothstep(0.4, mosaic_range, length(VERTEX)), 1.5) * (1.0 - smoothstep(0.25, 0.5, slope)); // (by distance only: fading by view angle drew a ring round the walker)
+			float pom_fade = pow(1.0 - smoothstep(0.4, mosaic_range, length(VERTEX)), 1.5) * (1.0 - smoothstep(0.25, 0.5, slope)) * plates_here; // (by distance only: fading by view angle drew a ring round the walker)
 			float pom_height = mosaic_height * pom_fade; // (the heights fade with the distance, so every plate sinks into the ground smoothly and there is no ring)
 			if (pom_fade > 0.02) {
 				vec3 pm_up = normalize(anchor_up);
@@ -499,6 +506,7 @@ void fragment() {
 		float crumb_bare = (1.0 - smoothstep(0.0, 0.08, paint.g - max(paint.r, paint.b))) * (1.0 - snow_cover)
 				* (1.0 - smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(-0.03, 0.0, paint.g - paint.r)) * 0.7);
 		float crumbly = mix(0.45, 1.0, soil_iron) * (1.0 - 0.35 * max((soil_organic - 0.5) * 2.0, 0.0)) * crumb_bare;
+		crumbly *= plates_here;
 		if (crumbly > 0.02 && crumb_dist < 52.0) {
 			float zone_big = noise3(on_planet * 0.0625 + 3.0, 64.0); // tens of metres: which size dominates, how thick
 			float zone_mid = noise3(on_planet * 0.3125 + 9.0, 320.0); // a few metres: how pale, how grey, how dense the fine
@@ -743,7 +751,7 @@ void fragment() {
 			float mx = fbm3((on_planet + vec3(0.04, 0.0, 0.0)) * 14.0625, 14400.0) - micro_here;
 			float my = fbm3((on_planet + vec3(0.0, 0.04, 0.0)) * 14.0625, 14400.0) - micro_here;
 			float mz = fbm3((on_planet + vec3(0.0, 0.0, 0.04)) * 14.0625, 14400.0) - micro_here;
-			vec3 micro_planet = -vec3(mx, my, mz) * (1.4 + slope * 3.0) * fine * strength;
+			vec3 micro_planet = -vec3(mx, my, mz) * (1.4 + slope * 3.0) * fine * strength * (1.0 - 0.7 * sand_ground); // (sand is smooth between its ripples)
 			vec3 micro_world = (world_from_planet * vec4(micro_planet, 0.0)).xyz;
 			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(layer_micro ? micro_world : vec3(0.0), 0.0)).xyz);
 			// meadows: patches of yellowing grass, darker clumps and a sprinkle of flowers (the
@@ -782,7 +790,7 @@ void fragment() {
 				if (w_soil > 0.01) {
 					surface += triplanar(soil_map, on_planet, facing, 0.5) * w_soil;
 				}
-				float amount = surface_fade * strength * (1.0 - snow_cover * 0.7);
+				float amount = surface_fade * strength * (1.0 - snow_cover * 0.7) * (1.0 - 0.8 * sand_ground); // (the photograph of sand has ripples and pits of its own: the sand's ripples replace them)
 				vec3 tilt_world = (world_from_planet * vec4(surface.xyz * 0.9, 0.0)).xyz;
 				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(tilt_world, 0.0)).xyz * amount);
 				paint *= mix(1.0, 0.45 + surface.w * 1.1, amount);
@@ -848,16 +856,26 @@ void fragment() {
 			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(stone_world, 0.0)).xyz * strength);
 			rough = mix(rough, 0.78, gravel_amount * strength);
 			// crevices and the hollows between stones are darker (the low parts of the bump)
-			ao = mix(1.0, mix(0.7, 1.0, smoothstep(0.25, 0.7, here)), strength * (0.5 + slope));
+			ao = mix(1.0, mix(0.7, 1.0, smoothstep(0.25, 0.7, here)), strength * (0.5 + slope) * (1.0 - 0.85 * sand_ground)); // (sand has no crevices)
 			ao *= mix(1.0, stone_ao, strength);
-			// sand: the wind lays ripples, a few centimetres high, a few metres apart
+			// sand (planet_sand.gdshaderinc): ripples across the wind, a few centimetres apart and a few millimetres high, and the
+			// glitter of the grains; not under trees, not on steep faces
 			float sandy = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(0.0, 0.05, paint.g - paint.r + 0.02))
-					* smoothstep(0.7, 0.95, world_normal.y);
-			float ripple_phase = (on_planet.x + on_planet.z * 0.6) * 6.283185 * 300.0 / 1024.0 + patch * 5.0;
-			float ripples = sin(ripple_phase) * 0.5 + 0.5;
-			vec3 across = (VIEW_MATRIX * vec4(0.7, 0.0, 0.42, 0.0)).xyz;
-			view_normal = normalize(view_normal + across * (ripples - 0.5) * 0.35 * sandy * fine);
-			paint *= mix(1.0, mix(0.94, 1.05, ripples), sandy * fine);
+					* smoothstep(0.7, 0.95, world_normal.y) * (1.0 - smoothstep(0.05, 0.4, woodland));
+			if (sandy > 0.01) {
+				float sand_h;
+				vec3 sand_tilt = (world_from_planet * vec4(sand_ripple_tilt(on_planet, normalize(anchor_up), sand_h), 0.0)).xyz;
+				float ripple_fade = sandy * sand_ripples * (1.0 - smoothstep(sand_ripple_length / 6.0, sand_ripple_length / 2.5, foot_m));
+				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(sand_tilt, 0.0)).xyz * ripple_fade);
+				paint *= mix(1.0, mix(0.93, 1.06, sand_h), ripple_fade);
+				if (sand_glitter > 0.001) {
+					vec3 sun_view = normalize((VIEW_MATRIX * vec4(normalize(cloud_sun_world), 0.0)).xyz);
+					vec3 half_view = normalize(sun_view - normalize(VERTEX));
+					float sun_high = clamp(dot(normalize(world_pos - cloud_centre), normalize(cloud_sun_world)) * 4.0, 0.0, 1.0);
+					sand_emission = vec3(1.0, 0.93, 0.8) * sand_glints(on_planet, view_normal, half_view, foot_m) * sand_glitter * 3.0
+							* sandy * sun_high * (1.0 - snow_cover);
+				}
+			}
 			// glints: the snow has crystals that catch the sun
 			sparkle = step(0.985, hash3(floor(on_planet * 90.0))) * fine;
 		}
@@ -897,6 +915,7 @@ void fragment() {
 	}
 	NORMAL = mix(view_normal, normalize(mix(view_normal, normalize(NORMAL), 0.8)), puddle);
 	ALBEDO = col;
+	EMISSION = sand_emission * (1.0 - puddle);
 	ROUGHNESS = mix(mix(mix(rough, 0.35, ground_wetness), 0.04, puddle), 0.7, snow);
 	ROUGHNESS = mix(ROUGHNESS, 0.18, snow * sparkle);
 	AO = ao;

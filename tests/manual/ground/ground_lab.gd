@@ -108,6 +108,8 @@ func _ready() -> void:
 		"mosaic_pom_max_steps": 16, "scan_blend_depth": 0.25, "mosaic_height": 0.055, "mosaic_range": 6.0,
 		"mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
 		"woodland": float(_options.get("woodland", "0.0")),
+		"sand_ripples": 1.0, "sand_ripple_height": 0.007, "sand_ripple_length": 0.09,
+		"sand_glitter": 0.6, "sand_wind_turn": 0.0,
 		"mosaic_relief_light": 0.7, "mosaic_slab_tilt": 0.35,
 		"mosaic_top_detail": 0.3, "mosaic_cracks": 0.25, "mosaic_dust": 0.5, "mosaic_veins": 0.4,
 		"mosaic_side_strata": 0.5,
@@ -162,7 +164,8 @@ func _ready() -> void:
 	_place_camera()
 	_apply_sun()
 	for key: String in _values:
-		if key.begins_with("cliff_") or key.begins_with("mosaic_") or key == "scan_blend_depth":
+		var tuned := key.begins_with("cliff_") or key.begins_with("mosaic_") or key.begins_with("sand_")
+		if tuned or key == "scan_blend_depth":
 			if _options.has(key):
 				_values[key] = float(_options[key]) # (the command line sets them too: cliff_lip=0.12)
 			PlanetTile.ground_material().set_shader_parameter(key, _values[key])
@@ -516,6 +519,11 @@ func _build_panel() -> void:
 		["stones", "how stony", 0.0, 1.0, 0.05, 3], ["iron", "iron (red soil)", 0.0, 1.0, 0.05, 3],
 		["organic", "organic matter", 0.0, 1.0, 0.05, 3], ["pale", "pale rock", 0.0, 1.0, 0.05, 3],
 		["woodland", "woodland (litter of leaves, twigs)", 0.0, 1.0, 0.05, 3],
+		["sand_ripples", "sand: ripples", 0.0, 1.0, 0.05, 4],
+		["sand_ripple_height", "sand: ripple height (m)", 0.0, 0.03, 0.001, 4],
+		["sand_ripple_length", "sand: ripple spacing (m)", 0.03, 0.3, 0.005, 4],
+		["sand_glitter", "sand: glitter", 0.0, 1.0, 0.05, 4],
+		["sand_wind_turn", "sand: wind turn (rad)", -1.57, 1.57, 0.05, 4],
 		["depth", "soil depth", 0.0, 1.0, 0.05, 3],
 		["spacing", "stone grid (m)", 0.04, 0.4, 0.01, 2], ["density", "stone odds", 0.0, 3.0, 0.1, 2],
 		["tilt", "lean the patch (-90 = cliff)", -90.0, 90.0, 1.0, 3],

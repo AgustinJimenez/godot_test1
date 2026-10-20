@@ -1,0 +1,93 @@
+// Sand (task 078): wind ripples and glitter for the ground shader. Needs hash3 (planet_stones.gdshaderinc) before it.
+//
+// The ripples are made of cells (2.56 m, so that 1024 m is a whole number of them: the planet's coordinates wrap every 1024 m and a
+// pattern may not jump there). Each cell has its own direction (across the wind, turned a little), wavelength and phase; a point takes
+// the eight cells round it, weighted, so the ripples bend and break where cells meet, as real ones do round a defect. Each ripple
+// is asymmetric: a gentle windward side (about 9 degrees) and a steep downwind side (about 23 degrees).
+
+uniform float sand_ripples : hint_range(0.0, 1.0) = 1.0; // how strong the ripples are (0: none)
+uniform float sand_ripple_height = 0.007; // m, crest above trough
+uniform float sand_ripple_length = 0.09; // m between crests (each cell 0.75 .. 1.35 of it)
+uniform float sand_glitter : hint_range(0.0, 1.0) = 0.6; // the grains that flash in the sun
+uniform float sand_wind_turn = 0.0; // radians: turns the wind (the lab; the planet's own wind later)
+
+const float SAND_CELL = 2.56;
+
+// Height 0..1 across one period of a ripple, x in 0..1: a long rise to the crest at 0.72, a short fall.
+float sand_rise(float x) {
+	return x < 0.72 ? smoothstep(0.0, 0.72, x) : 1.0 - smoothstep(0.72, 1.0, x);
+}
+
+// Its slope: d height / d x.
+float sand_slope(float x) {
+	if (x < 0.72) {
+		float t = x / 0.72;
+		return 6.0 * t * (1.0 - t) / 0.72;
+	}
+	float t = (x - 0.72) / 0.28;
+	return -6.0 * t * (1.0 - t) / 0.28;
+}
+
+// The tilt the ripples give the light at planet position `p` (a vector in the tangent plane, planet axes, to add to the normal
+// like the other layers' tilts) and `height` (0..1, for a touch of shade). `up` is the way up. The wind blows along the parallels
+// (east-west); the crests run across it.
+vec3 sand_ripple_tilt(vec3 p, vec3 up, out float height) {
+	vec3 east = cross(vec3(0.0, 1.0, 0.0), up);
+	if (length(east) < 0.2) {
+		east = cross(vec3(1.0, 0.0, 0.0), up);
+	}
+	east = normalize(east);
+	vec3 north = cross(up, east);
+	vec3 scaled = p / SAND_CELL;
+	vec3 base = floor(scaled);
+	vec3 f = fract(scaled);
+	vec3 total = vec3(0.0);
+	float shape = 0.0;
+	float weights = 0.0;
+	for (int i = 0; i < 8; i++) {
+		vec3 corner = vec3(mod(float(i), 2.0), mod(floor(float(i) * 0.5), 2.0), floor(float(i) * 0.25));
+		vec3 mixing = mix(vec3(1.0) - f, f, corner);
+		float w = mixing.x * mixing.y * mixing.z;
+		w *= w; // (sharper: the cells keep more of their own ripples)
+		vec3 cell = base + corner;
+		vec3 id = mod(cell, 400.0);
+		float h1 = hash3(id + 1.0);
+		float h2 = hash3(id + 7.3);
+		float h3 = hash3(id + 13.1);
+		float turn = (h1 - 0.5) * 0.8 + sand_wind_turn;
+		vec3 across = east * cos(turn) + north * sin(turn);
+		float length_m = sand_ripple_length * (0.75 + 0.6 * h2);
+		float phase = dot(p - cell * SAND_CELL, across) / length_m + h3 * 7.0;
+		float x = fract(phase);
+		float amplitude = sand_ripple_height * (0.7 + 0.6 * h3);
+		total += -across * (sand_slope(x) * amplitude / length_m) * w;
+		shape += sand_rise(x) * w;
+		weights += w;
+	}
+	height = shape / weights;
+	return total / weights;
+}
+
+// The flash of the grains in the sun: three grids of flakes (4 mm, 13 mm, 4 cm), a fifth of the cells with a flake, each its own small
+// mirror turned a random way; it shows when that mirror throws the sun at the eye. Fixed to the ground, so it twinkles as the eye
+// moves and does not crawl. `h_view` is the half vector (sun + eye) and `n_view` the surface normal, both in view space, `foot` the
+// metres a pixel covers: a grid finer than a pixel is left out (it would only be noise).
+float sand_glints(vec3 p, vec3 n_view, vec3 h_view, float foot) {
+	float total = 0.0;
+	float size[3] = float[3](0.004, 0.0128, 0.04096);
+	for (int g = 0; g < 3; g++) {
+		float seen = smoothstep(0.35, 1.2, size[g] / max(foot, 0.0001));
+		if (seen < 0.01) {
+			continue;
+		}
+		vec3 cell = floor(p / size[g]);
+		vec3 id = mod(cell, 1024.0 / size[g]);
+		float here = hash3(id + float(g) * 19.0);
+		if (here > 0.8) {
+			vec3 turned = vec3(hash3(id + 3.1), hash3(id + 5.7), hash3(id + 9.3)) * 2.0 - 1.0;
+			vec3 flake = normalize(n_view + turned * 0.7);
+			total += pow(max(dot(flake, h_view), 0.0), 700.0) * seen;
+		}
+	}
+	return total;
+}
