@@ -19,6 +19,7 @@ var planet: PlanetWorld
 var target: Player
 var dents: PlanetDents
 var imprinter: PlanetImprinter
+var dust: PlanetDust
 
 var _prints: Array[Dictionary] = [] # {decal, at (planet, doubles), up, forward, age}
 var _since := 0.0
@@ -110,6 +111,10 @@ func _dent_sand(at: Vector3, forward: Vector3, up_world: Vector3) -> void:
 		return
 	_retry = 0
 	dents.add(where, back * forward, back * up_world, 1.0, 0.0, profile)
+	if dust == null:
+		dust = PlanetDust.new()
+		add_child(dust)
+	dust.puff(at, up_world, _paint(at), 0.5 + 0.1 * target.velocity.length())
 
 
 ## The colour of the ground under a world position (what the ground shader starts from).

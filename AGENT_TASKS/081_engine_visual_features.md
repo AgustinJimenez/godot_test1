@@ -15,6 +15,16 @@ walk check), commit and push each step.
 - Research: octahedral impostors (Ryan Brucks' article and the UE `ImpostorBaker`, Godot addons for impostors), crossfade/dither
   LOD, Godot's `visibility_range` and `MultiMesh`, how the scatter (`planet_scatter_native.cpp`) places trees.
 - Why first: the biggest frame-time win in forests, and the tree count can then grow.
+- Measured 2026-10-21 (planet_lab `--fps`, seed 1337, eye 1.7 m, ground detail 3): desert 160 fps, GPU 5.9 ms, 2.3 M primitives;
+  the default green country 71 fps, GPU 13.8 ms, 11.4 M primitives, of which about 3 M triangles are tree multimeshes
+  (4k+ tris trees 1.34 M, 2k+ 0.87 M, 1k+ 0.43 M ...; tiers today: full under 80 m, lighter to 220 m, then a cone or ball).
+  So the 80-220 m tier is where an impostor would pay.
+- Research notes (web, 2026-10-21): the standard is octahedral impostors (Ryan Brucks, https://www.shaderbits.com/blog/octahedral-impostors;
+  UE ImpostorBaker); Godot has an asset "Octahedral Impostor LOD" (https://godotengine.org/asset-library/asset/5528, 144 views, depth
+  and normals, MultiMesh) and the older https://github.com/SIsilicon/Godot-Octahedral-Impostors (Godot 3 era); a forum thread
+  (https://forum.godotengine.org/t/simple-bilboard-impostor-shader/1990) shows a per-instance view pick in the shader. Not read in depth.
+  Decision pending: our trees are procedural per species and variant, so bake one atlas per (species, variant) on the first use
+  with a SubViewport, like PlanetImprinter does.
 
 ## 2. Dust and sandstorm volumes, and sand that moves (our Niagara and heterogeneous volumes)
 - What: a ray-marched dust volume (storms, haze in the desert, smoke), puffs of dust at footsteps and landings, sand blowing off
@@ -23,6 +33,10 @@ walk check), commit and push each step.
   clouds, Sebastian Aaltonen's talks), GPU particles with collision against a height field, sand avalanche (angle of repose) in
   cellular automata, "Journey" sand rendering (GDC 2013, Nathan and John Edwards).
 - Uses the dune and ground shaders (078) and the wind from `planet_weather.gd`.
+
+- Built 2026-10-21 (first part): `PlanetDust` (a burst of soft round flakes, GPU particles, one-shot) puffs at each sand footprint
+  (`PlanetFootprints._dent_sand`). Open: puffs on landings, sand blowing off crests, avalanches on slip faces, the raymarched
+  sandstorm volume (research not done).
 
 ## 3. A post stack: sun bloom, lens flare, depth of field, per-object motion blur
 - What: what the UE post process volume does that Godot's environment does not: a flare and glow round the sun and bright
