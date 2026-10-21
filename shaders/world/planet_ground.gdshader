@@ -71,6 +71,7 @@ varying vec4 geology; // what the rock of the place breaks into: angular, coarse
 varying float soil_organic; // 0.5 neutral; above: black earth and peat; below: the ash of cold forests, loess, desert dust
 varying float soil_iron; // 0..1: red laterite and red sandstone soil
 varying vec3 lie; // where stones lie: how stony the place is (0: clean soil), the soil's depth, river gravel (0..1)
+varying float sand_share; // 0..1: dune sand (the crust's dry, hot, low ground): golden, rippled, glittering, and it takes footprints
 varying float woodland; // 0: open ground (a desert, a plain), 1: wooded (trees and plants about): only there the litter of leaves, twigs and bark lies
 
 #include "res://shaders/world/planet_stones.gdshaderinc"
@@ -165,7 +166,9 @@ void vertex() {
 	soil_organic = CUSTOM0.a;
 	soil_iron = COLOR.a;
 	lie = CUSTOM2.rgb;
-	woodland = CUSTOM2.a;
+	woodland = clamp(CUSTOM2.a * 2.0 - 1.0, 0.0, 1.0); // (one byte: 0.5 neither, above wooded, below sand)
+	sand_share = clamp(1.0 - CUSTOM2.a * 2.0, 0.0, 1.0) * step(0.002, CUSTOM2.a); // (a mesh without the crust's numbers has 0: no sand)
+	lie.x *= 1.0 - 0.97 * sand_share; // (a dune has no stones)
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
@@ -308,6 +311,11 @@ void fragment() {
 	paint = mix(paint, paint * 0.6 + vec3(0.2, 0.19, 0.16), max(-organic, 0.0) * 0.55 * bare_soil);
 	paint = mix(paint, paint * vec3(1.4, 0.72, 0.5), soil_iron * 0.55 * bare_soil);
 
+	// dune sand is golden, a little paler on the high ground and ruddier in the broad hollows
+	float sand_tone = smooth_noise(world_pos.xz * 0.012 + 3.0);
+	vec3 sand_paint = mix(vec3(0.62, 0.34, 0.11), vec3(0.78, 0.5, 0.2), sand_tone);
+	paint = mix(paint, sand_paint, sand_share * 0.92);
+
 	vec3 view_normal = normalize(mix(flat_normal, normalize(NORMAL), far));
 	float up = (INV_VIEW_MATRIX * vec4(flat_normal, 0.0)).y;
 	float rough = 0.95;
@@ -321,9 +329,9 @@ void fragment() {
 	vec3 sand_emission = vec3(0.0); // the glitter of the sand grains (added to the light as it is: a mirror throws the sun back)
 	// loose sand is not crumbled gravel: the plates (their colour, their relief) give way to the sand's ripples (planet_sand) where
 	// the ground is sandy and not stony
-	float sand_ground = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(0.0, 0.05, paint.g - paint.r + 0.02))
-			* smoothstep(0.7, 0.95, world_normal.y) * (1.0 - smoothstep(0.05, 0.4, woodland));
-	float plates_here = 1.0 - 0.9 * sand_ground * (1.0 - smoothstep(0.3, 0.9, lie.x));
+	float sand_ground = max(smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(0.0, 0.05, paint.g - paint.r + 0.02)),
+			sand_share) * smoothstep(0.55, 0.8, world_normal.y) * (1.0 - smoothstep(0.05, 0.4, woodland));
+	float plates_here = 1.0 - 0.98 * sand_ground * (1.0 - smoothstep(0.3, 0.9, lie.x));
 	if (strength > 0.001) {
 		vec3 near_anchor = (anchor_from_world * vec4(world_pos, 1.0)).xyz;
 		vec3 on_planet = near_anchor + anchor_wrap; // the planet position, to the noise's period
@@ -752,7 +760,7 @@ void fragment() {
 			float mx = fbm3((on_planet + vec3(0.04, 0.0, 0.0)) * 14.0625, 14400.0) - micro_here;
 			float my = fbm3((on_planet + vec3(0.0, 0.04, 0.0)) * 14.0625, 14400.0) - micro_here;
 			float mz = fbm3((on_planet + vec3(0.0, 0.0, 0.04)) * 14.0625, 14400.0) - micro_here;
-			vec3 micro_planet = -vec3(mx, my, mz) * (1.4 + slope * 3.0) * fine * strength * (1.0 - 0.7 * sand_ground); // (sand is smooth between its ripples)
+			vec3 micro_planet = -vec3(mx, my, mz) * (1.4 + slope * 3.0) * fine * strength * (1.0 - 0.96 * sand_ground); // (sand is smooth between its ripples)
 			vec3 micro_world = (world_from_planet * vec4(micro_planet, 0.0)).xyz;
 			view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(layer_micro ? micro_world : vec3(0.0), 0.0)).xyz);
 			// meadows: patches of yellowing grass, darker clumps and a sprinkle of flowers (the
@@ -791,7 +799,7 @@ void fragment() {
 				if (w_soil > 0.01) {
 					surface += triplanar(soil_map, on_planet, facing, 0.5) * w_soil;
 				}
-				float amount = surface_fade * strength * (1.0 - snow_cover * 0.7) * (1.0 - 0.8 * sand_ground); // (the photograph of sand has ripples and pits of its own: the sand's ripples replace them)
+				float amount = surface_fade * strength * (1.0 - snow_cover * 0.7) * (1.0 - 0.95 * sand_ground); // (the photograph of sand has ripples and pits of its own: the sand's ripples replace them)
 				vec3 tilt_world = (world_from_planet * vec4(surface.xyz * 0.9, 0.0)).xyz;
 				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(tilt_world, 0.0)).xyz * amount);
 				paint *= mix(1.0, 0.45 + surface.w * 1.1, amount);
@@ -861,8 +869,7 @@ void fragment() {
 			ao *= mix(1.0, stone_ao, strength);
 			// sand (planet_sand.gdshaderinc): ripples across the wind, a few centimetres apart and a few millimetres high, and the
 			// glitter of the grains; not under trees, not on steep faces
-			float sandy = smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(0.0, 0.05, paint.g - paint.r + 0.02))
-					* smoothstep(0.7, 0.95, world_normal.y) * (1.0 - smoothstep(0.05, 0.4, woodland));
+			float sandy = sand_ground;
 			if (sandy > 0.01) {
 				float sand_h;
 				vec3 sand_tilt = (world_from_planet * vec4(sand_ripple_tilt(on_planet, normalize(anchor_up), sand_h), 0.0)).xyz;
@@ -895,7 +902,7 @@ void fragment() {
 					float swell_y = sand_swell(on_planet + forward_s * 0.05);
 					vec3 swell_tilt = -(right_s * (swell_x - swell_here) + forward_s * (swell_y - swell_here)) / 0.05;
 					float swell_fade = sandy * (1.0 - smoothstep(10.0, 30.0, length(VERTEX)));
-					view_normal = normalize(view_normal + (VIEW_MATRIX * world_from_planet * vec4(swell_tilt, 0.0)).xyz * swell_fade * 3.0);
+					view_normal = normalize(view_normal + (VIEW_MATRIX * world_from_planet * vec4(swell_tilt, 0.0)).xyz * swell_fade * 1.0);
 					paint *= 1.0 + 0.5 * swell_here / max(sand_swell_height, 0.001) * 0.2 * swell_fade; // (a little paler on the crests)
 				}
 				float ripple_fade = sandy * sand_ripples * (1.0 - smoothstep(sand_ripple_length / 6.0, sand_ripple_length / 2.5, foot_m))

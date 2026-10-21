@@ -509,9 +509,21 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 		const double desert = dry * hot;
 		if (desert > 0.0) {
 			const Vector3 east = Vector3(-p_dir.z, 0.0f, p_dir.x).normalized();
-			const double phase = (double)p.dot(east) / 170.0 + 2.5 * (double)hills.at(p);
-			const double crest = 1.0 - std::abs(std::sin(phase));
-			ground += crest * crest * 7.0 * desert;
+			// a sawtooth that wanders: a long gentle windward side up to a sharp crest, then a steep slip face
+				// (the wind blows along `east`); the height changes from dune to dune
+				const double phase = (double)p.dot(east) / 190.0 + 4.0 * (double)hills.at(p);
+			const double along = fposmod_d(phase / 6.283185307, 1.0);
+				const double lee = 0.14; // the share of a wavelength the slip face takes
+				double dune;
+				if (along < 1.0 - lee) {
+					const double t = along / (1.0 - lee);
+					dune = t * t * (1.6 - 0.6 * t); // rises slowly, then faster to the crest
+				} else {
+					const double t = (along - (1.0 - lee)) / lee;
+					dune = 1.0 - t * t * (3.0 - 2.0 * t);
+				}
+				const double tall = 11.0 + 7.0 * (double)hills.at(p * 0.12f + Vector3(2, 5, 1));
+			ground += dune * tall * desert;
 		}
 	}
 	return ground;
@@ -1875,6 +1887,7 @@ void PlanetCrustNative::material_at(const Vector3 &dir, double ground, double st
 	stony *= smooth(0.38, 0.62, region + 0.35 * (patches - 0.5)); // 0 in the clean regions
 	stony *= 0.5 + 0.9 * smooth(0.3, 0.7, patches);
 	const double depth = clampd(0.25 + 0.65 * fertile_deep + 0.25 * alluvial - 0.5 * smooth(0.1, 0.45, steep) - 0.35 * ridge - 0.25 * frost - 0.2 * dry, 0.0, 1.0);
+	stony *= 1.0 - 0.85 * smooth(0.28, 0.08, grid_at(rain_grid, dir, 0.5)) * smooth(8.0, 20.0, cold); // (dunes are not stony)
 	at[6] = (uint8_t)(int)(clampd(stony, 0.0, 1.0) * 255.0);
 	at[7] = (uint8_t)(int)(depth * 255.0);
 	at[8] = (uint8_t)(int)(clampd(alluvial, 0.0, 1.0) * 255.0);
@@ -1885,7 +1898,11 @@ void PlanetCrustNative::material_at(const Vector3 &dir, double ground, double st
 	const double regions = detail_at(dir * (real_t)(radius / 140.0) + Vector3(0, 23, 0));
 	const double cover = smooth(0.25, 0.7, wet) + 1.6 * (regions - 0.5) + 1.2 * (groves - 0.5) - 0.35 * smooth(0.35, 0.7, steep);
 	const double wooded = smooth(0.15, 0.55, cover) * smooth(0.12, 0.35, wet) * smooth(-4.0, 4.0, cold);
-	at[9] = (uint8_t)(int)(clampd(wooded, 0.0, 1.0) * 255.0);
+	// dune sand: the dry, hot, low ground (what the dunes are made on), and no river bed. Sand and woods never share a place, so
+	// one byte holds both: 128 is neither, above is wooded, below is sand
+	const double sand = smooth(0.28, 0.08, grid_at(rain_grid, dir, 0.5)) * smooth(8.0, 20.0, cold) * smooth(1.0, 6.0, ground)
+			* (1.0 - alluvial) * (1.0 - smooth(0.6, 0.85, steep));
+	at[9] = (uint8_t)(int)(clampd(0.5 + 0.5 * (wooded - sand), 0.01, 1.0) * 255.0);
 	for (int k = 0; k < 4; k++) {
 		at[k] = (uint8_t)(int)(clampd((double)mixed[k], 0.0, 1.0) * 255.0);
 	}

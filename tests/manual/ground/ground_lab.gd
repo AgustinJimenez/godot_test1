@@ -109,8 +109,8 @@ func _ready() -> void:
 		"mosaic_pom_max_steps": 16, "scan_blend_depth": 0.25, "mosaic_height": 0.055, "mosaic_range": 6.0,
 		"mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
 		"woodland": float(_options.get("woodland", "0.0")),
-		"sand_ripples": 1.0, "sand_ripple_height": 0.007, "sand_ripple_length": 0.09,
-		"sand_glitter": 0.6, "sand_wind_turn": 0.0, "sand_swell_height": 0.1,
+		"sand_ripples": 1.0, "sand_ripple_height": 0.02, "sand_ripple_length": 0.24,
+		"sand_glitter": 0.6, "sand_wind_turn": 0.0, "sand_swell_height": 0.05,
 		"mosaic_relief_light": 0.7, "mosaic_slab_tilt": 0.35,
 		"mosaic_top_detail": 0.3, "mosaic_cracks": 0.25, "mosaic_dust": 0.5, "mosaic_veins": 0.4,
 		"mosaic_side_strata": 0.5,
@@ -380,7 +380,8 @@ func _patch(preset: Dictionary, stones: float, seed_value: int) -> MeshInstance3
 			geology.append_array(PackedByteArray([int(0.6 * 255), int(0.5 * 255),
 					int(float(preset["pale"]) * 255), int(0.3 * 255)]))
 			lie.append_array(PackedByteArray([int(stones * 255), int(float(preset["depth"]) * 255), 0,
-					int(float(_values["woodland"]) * 255)]))
+					int(clampf(0.5 + 0.5 * (float(_values["woodland"])
+					- (1.0 if _soil_name == "sand" else 0.0)), 0.01, 1.0) * 255)]))
 	for row in cells:
 		for column in cells:
 			var i := row * (cells + 1) + column

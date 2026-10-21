@@ -132,3 +132,19 @@ split the generic march, depth write and strata out of the ground shader first).
   darker floor, not as a deep hole); no depth written for the dent (a stone beside a print is placed on the plane); only the player
   stamps (not a falling stone, rain, animals); no snow or mud dents (decals); the print does not shear when the foot slides; the
   number of stamps seen is 32 within 0.3 m of a point (a crowd of old prints on one spot would show the nearest 32).
+
+## Step 3 (done): a real sand desert, steep dunes, coherent ripples
+
+The target is the user's photograph: big smooth dunes with sharp crests (long gentle windward side, steep shadowed slip face), a low
+golden sun, long unbroken wavy ripple lines, deep footprints with a dark floor and a rim.
+
+- Native: the dunes are a sawtooth (86 % gentle windward side, 14 % slip face), 11-18 m tall, 190 m apart, the crests wandering with
+  the hills noise. `material_at` byte 9 now holds woodland and sand in one byte (128 = neither, above = wooded, below = dune sand:
+  dry, hot, low, not a river bed); stones are thinned by 85 % on the dry hot ground.
+- Shader: `sand_share` (golden sand colour, plates and stones give way, ripples/glitter/dents switch on) no longer depends on the
+  painted colour. A mesh without the crust's numbers has byte 0 = no sand.
+- Ripples: the cells now blend their PHASES (not their heights), so the crests run on unbroken; the direction turns +-0.2 rad and the
+  spacing +-15 % from cell to cell. Defaults 24 cm apart, 2 cm tall (the planet's grazing sun needs them taller than a close-up).
+- Lessons: the dark blotches at low sun were the hummock tilt (x3): now x1 and 5 cm.
+- Still to do: the lee faces are cold dark blue in shadow (the photo's are warm: a warm bounce on sand), the golden sun/sky grade
+  (atmosphere work), the terrain mesh is coarse at the far crests, deeper footprints with a parallax march into the dent.
