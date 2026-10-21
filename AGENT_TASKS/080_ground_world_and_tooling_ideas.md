@@ -19,6 +19,6 @@ the order to try them in. Each idea needs its own look-and-measure step before i
 - Water: shore foam, wet sand at the waterline, waves.
 
 ## Tooling
-- Visual regression: a render of fixed spots (desert, forest, snow, coast, night) after each change, compared with the last accepted
+- **DONE 2026-10-21: `scripts/visual_check.sh`** (5 views: desert dunes, close sand, far dunes, desert with plants, green country; compared at 640x360 with `tests/visual/baseline`, mean difference limit 4, 8 % of pixels; `--accept` stores new baselines after a look; differences in `$OUT_DIR/diff`). Add views for snow, coast, night as they become useful. Original idea: a render of fixed spots (desert, forest, snow, coast, night) after each change, compared with the last accepted
   one, so a regression such as the stretched columns on slopes is caught without the user.
 - One ground-detail control that maps to what each effect costs (and a table of those costs, measured).
