@@ -25,6 +25,8 @@ var _semaphore := Semaphore.new()
 var _stop := false
 var _near := Vector3.ZERO # the point the tiles are chosen for (planet space)
 var _height := 0.0 # m the player is over the ground there
+## m: the horizon trees (sparse, cheap) are planted out to here
+const PLANT_RANGE := 6000.0
 const BURST_TILES := 24
 
 var _tiles_per_frame := 2
@@ -372,7 +374,7 @@ func _plants_by_distance(entry: Array) -> PlanetScatter.Detail:
 		return PlanetScatter.Detail.TREES
 	# the horizon: cheap sparse trees on the next few sizes of tile, out to a few kilometres
 	var far_level := level >= _settings.max_level() - 4 and level < _settings.max_level() - 1
-	if far_level and _distance(entry) < _settings.tile_max * 40.0:
+	if far_level and _distance(entry) < PLANT_RANGE:
 		return PlanetScatter.Detail.FAR
 	return PlanetScatter.Detail.NONE
 

@@ -9,7 +9,7 @@ const RECENTER_DISTANCE := 2000.0 ## m from the world origin before everything i
 const BAKE_UP_TO := 10.0 ## m above the ground: higher up the ground plates have no parallax
 const RAIN_UP_TO := 1500.0 ## m above the ground: higher up there is no rain
 const LOAD_GROUND := 2000.0 ## m of ground and water built before the player is let in
-const LOAD_PLANTS_DEFAULT := 2000.0 ## m round the player planted before they are let in
+const LOAD_PLANTS_DEFAULT := 6000.0 ## m round the player planted before they are let in
 
 ## The ground and water round the player are ready (and the plants close by): the player may move.
 signal loaded
