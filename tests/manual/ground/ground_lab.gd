@@ -110,7 +110,7 @@ func _ready() -> void:
 		"mosaic_size_var": 0.7, "mosaic_shape_var": 0.7, "mosaic_desat": 0.6, "mosaic_grain": 0.85,
 		"woodland": float(_options.get("woodland", "0.0")),
 		"sand_ripples": 1.0, "sand_ripple_height": 0.02, "sand_ripple_length": 0.24,
-		"sand_glitter": 0.6, "sand_wind_turn": 0.0, "sand_swell_height": 0.05,
+		"sand_glitter": 0.35, "sand_wind_turn": 0.0, "sand_swell_height": 0.05,
 		"mosaic_relief_light": 0.7, "mosaic_slab_tilt": 0.35,
 		"mosaic_top_detail": 0.3, "mosaic_cracks": 0.25, "mosaic_dust": 0.5, "mosaic_veins": 0.4,
 		"mosaic_side_strata": 0.5,

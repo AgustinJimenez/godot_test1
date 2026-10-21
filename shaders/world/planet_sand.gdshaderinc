@@ -9,7 +9,7 @@
 uniform float sand_ripples : hint_range(0.0, 1.0) = 1.0; // how strong the ripples are (0: none)
 uniform float sand_ripple_height = 0.02; // m, crest above trough
 uniform float sand_ripple_length = 0.24; // m between crests (each cell 0.85 .. 1.15 of it)
-uniform float sand_glitter : hint_range(0.0, 1.0) = 0.6; // the grains that flash in the sun
+uniform float sand_glitter : hint_range(0.0, 1.0) = 0.35; // the grains that flash in the sun
 uniform float sand_swell_height = 0.05; // m: the broad hummocks of the sand between the ripples and the dunes (1-3 m across), crest above hollow
 uniform float sand_wind_turn = 0.0; // radians: turns the wind (the lab; the planet's own wind later)
 
@@ -66,10 +66,10 @@ vec3 sand_ripple_tilt(vec3 p, vec3 up, out float height) {
 		float h1 = hash3(id + 1.0);
 		float h2 = hash3(id + 7.3);
 		float h3 = hash3(id + 13.1);
-		float turn = (h1 - 0.5) * 0.4 + sand_wind_turn;
+		float turn = (h1 - 0.5) * 0.12 + sand_wind_turn;
 		vec3 across = east * cos(turn) + north * sin(turn);
-		vec3 wave = across / (sand_ripple_length * (0.85 + 0.3 * h2)); // ripples per metre, along `across`
-		float here = dot(p - cell * SAND_CELL, wave) + h3 * 2.0;
+		vec3 wave = across / (sand_ripple_length * (0.94 + 0.12 * h2)); // ripples per metre, along `across`
+		float here = dot(p - cell * SAND_CELL, wave) + h3 * 0.8;
 		phase += here * w;
 		slope += wave * w + dw * here;
 		amplitude += sand_ripple_height * (0.7 + 0.6 * h3) * w;
