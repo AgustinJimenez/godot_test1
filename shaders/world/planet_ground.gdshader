@@ -337,7 +337,7 @@ void fragment() {
 	// loose sand is not crumbled gravel: the plates (their colour, their relief) give way to the sand's ripples (planet_sand) where
 	// the ground is sandy and not stony
 	float sand_ground = max(smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(0.0, 0.05, paint.g - paint.r + 0.02)),
-			sand_share) * smoothstep(0.55, 0.8, world_normal.y) * (1.0 - smoothstep(0.05, 0.4, woodland));
+			sand_share) * smoothstep(0.3, 0.55, world_normal.y) * (1.0 - smoothstep(0.05, 0.4, woodland));
 	float plates_here = 1.0 - 0.98 * max(sand_ground, sand_share) * (1.0 - smoothstep(0.3, 0.9, lie.x));
 	if (strength > 0.001) {
 		vec3 near_anchor = (anchor_from_world * vec4(world_pos, 1.0)).xyz;
