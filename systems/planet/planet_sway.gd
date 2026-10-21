@@ -65,7 +65,10 @@ func _physics_process(delta: float) -> void:
 					sets += (tile.plant_holder.get_meta(&"sway_sets") as Array).size()
 			print("PLANET_TIMING sway live=%d kinds=%d" % [_live.size(), sets])
 	for entry in _live:
-		var tree: PlanetSwayTree = entry["tree"]
+		var tree_value: Variant = entry["tree"] # (a tree of a tile that has gone is a freed object)
+		if not is_instance_valid(tree_value) or not (tree_value as Node3D).is_inside_tree():
+			continue # (_give_back lets it go)
+		var tree: PlanetSwayTree = tree_value
 		var body := PackedFloat32Array()
 		if tree.global_position.distance_to(here) < [TOUCH, TOUCH_SMALL, TOUCH_TURF][entry["klass"]]:
 			body = _body_in(tree, here)
@@ -107,8 +110,11 @@ func _take(here: Vector3) -> void:
 ## The instances of one batch `kind` ([MultiMeshInstance3D, buffer, class]) of `holder` near `local`
 ## go live.
 func _take_kind(holder: Node3D, kind: Array, local: Vector3) -> void:
-	var instance: MultiMeshInstance3D = kind[0]
-	if not is_instance_valid(instance) or instance.multimesh == null:
+	var instance_value: Variant = kind[0]
+	if not is_instance_valid(instance_value):
+		return
+	var instance: MultiMeshInstance3D = instance_value
+	if instance.multimesh == null:
 		return
 	var klass := int(kind[2]) # (the plants' batches say only true for the small ones)
 	for index in _native.within(kind[1], local.x, local.z, [ENTER, ENTER_SMALL, ENTER_TURF][klass]):
@@ -156,16 +162,18 @@ func _give_back(here: Vector3) -> void:
 	var at := _live.size() - 1
 	while at >= 0:
 		var entry := _live[at]
-		var tree: PlanetSwayTree = entry["tree"]
-		var instance: MultiMeshInstance3D = entry["instance"]
-		var gone := (not is_instance_valid(instance) or not is_instance_valid(tree)
-			or not tree.is_inside_tree())
+		var tree_value: Variant = entry["tree"]
+		var instance_value: Variant = entry["instance"]
+		var gone := (not is_instance_valid(instance_value) or not is_instance_valid(tree_value)
+				or not (tree_value as Node3D).is_inside_tree())
+		var tree: PlanetSwayTree = null if gone else tree_value
+		var instance: MultiMeshInstance3D = null if gone else instance_value
 		var leave: float = [LEAVE, LEAVE_SMALL, LEAVE_TURF][entry["klass"]]
 		if gone or (tree.global_position.distance_to(here) > leave and tree.is_at_rest()):
 			if not gone:
 				instance.multimesh.set_instance_transform(entry["index"], entry["original"])
-			if is_instance_valid(tree):
-				tree.queue_free()
+			if is_instance_valid(tree_value):
+				(tree_value as Node).queue_free()
 			_counts[entry["klass"]] -= 1
 			_keys.erase(entry["key"])
 			_live.remove_at(at)
