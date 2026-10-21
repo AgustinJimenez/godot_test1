@@ -516,7 +516,7 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 				// (the wind blows along `east`); the height changes from dune to dune
 				const double phase = (double)p.dot(east) / 190.0 + 4.0 * (double)hills.at(p);
 			const double along = fposmod_d(phase / 6.283185307, 1.0);
-				const double lee = 0.14; // the share of a wavelength the slip face takes
+				const double lee = 0.2; // the share of a wavelength the slip face takes
 				auto profile = [&](double a) {
 					a = fposmod_d(a, 1.0);
 					if (a < 1.0 - lee) {
@@ -527,7 +527,7 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 					return 1.0 - t * t * (3.0 - 2.0 * t);
 				};
 				// the crest is rounded over a few metres (a wavelength is 190 m): the coarse tiles of the middle distance cannot hold a corner
-				const double dune = 0.25 * profile(along - 0.012) + 0.5 * profile(along) + 0.25 * profile(along + 0.012);
+				const double dune = 0.25 * profile(along - 0.02) + 0.5 * profile(along) + 0.25 * profile(along + 0.02);
 				const double tall = 11.0 + 7.0 * (double)hills.at(p * 0.12f + Vector3(2, 5, 1));
 			ground += dune * tall * desert;
 		}

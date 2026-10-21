@@ -24,7 +24,7 @@ the order to try them in. Each idea needs its own look-and-measure step before i
 - One ground-detail control that maps to what each effect costs (and a table of those costs, measured).
 
 ## Open artifacts seen on 2026-10-21 (to look at)
-- Pale smooth rectangles (about 5 x 10 m, four or five in a row down a dune's slip face) in `tests/visual/baseline/desert_far.png`
+- (Mostly fixed 2026-10-21: the slip face is wider, 20 % of a wavelength, and the sand treatment reaches 53 degrees; the stair-like ledges are gone.) Pale smooth rectangles (about 5 x 10 m, four or five in a row down a dune's slip face) in `tests/visual/baseline/desert_far.png`
   (seed 1, `--dir=-0.7687,0.6392,-0.0225`, eye 40 m, pitch -12). They stay with ground detail 1 (so not the sand block), with
   `PLANET_NO_BAKE=1` and with `--hide=water`; they were there before the geomorphing. Not found yet: look at the tile edges
   (skirt walls, `_skirt_drop`), the river/lake meshes of the tile (`_add_running_water`) and the placed rocks.
