@@ -615,9 +615,12 @@ func get_stair_debug_state() -> Dictionary:
 func _process_free_mode(delta: float) -> void:
 	var input_dir := Input.get_vector(
 			&"move_left", &"move_right", &"move_forward", &"move_back")
-	# the way the player looks (yaw and pitch of the look itself, not the head bone's own tilt, which
-	# leaned flight 17 degrees toward the ground), as the screen shows it in either view
-	var look := Basis(Vector3.UP, _look_yaw) * Basis(Vector3.RIGHT, _look_pitch)
+	# the way the screen looks: the active camera's own axes (third person: the orbit camera, first
+	# person: the head's camera), without its roll
+	var view := get_viewport().get_camera_3d()
+	var aim := (view if view != null else camera).global_basis
+	var forward := -aim.z
+	var look := Basis.looking_at(forward, Vector3.UP) if absf(forward.y) < 0.999 else aim
 	var move_direction := look * Vector3(input_dir.x, 0.0, input_dir.y)
 	if Input.is_action_pressed(&"jump"):
 		move_direction.y += 1.0
