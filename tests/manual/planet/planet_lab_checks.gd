@@ -169,3 +169,25 @@ static func turf_step(planet: PlanetWorld, frame: int) -> void:
 ## No arguments (or LAB_PLAIN set, for a picture of a plain open): the dunes at full ground detail.
 static func plain_open() -> bool:
 	return OS.get_cmdline_user_args().is_empty() or OS.has_environment("LAB_PLAIN")
+
+
+## `--guard-check` (with --grounded): at frame 400 the player is dropped 30 m into the crust; the
+## crust guard must put them back on top (the player higher than 10 m under it) within 100 frames.
+## Prints GUARD_CHECK and quits.
+static func guard_step(planet: PlanetWorld, player: Player, frame: int) -> void:
+	if not "--guard-check" in OS.get_cmdline_user_args() or player == null:
+		return
+	if frame == 400:
+		player.global_position.y -= 30.0
+	if frame != 500:
+		return
+	var guard: PlanetCrustGuard = null
+	for node in planet.get_children():
+		if node is PlanetCrustGuard:
+			guard = node
+	var ground_y: float = planet.ground_at(player.global_position.x, player.global_position.z,
+			player.global_position.y)["y"]
+	var ok := guard != null and guard.rescues >= 1 and player.global_position.y > ground_y - 10.0
+	print("GUARD_CHECK %s rescues=%d below_ground=%.1f m" % ["PASS" if ok else "FAIL",
+			guard.rescues if guard else -1, ground_y - player.global_position.y])
+	planet.get_tree().quit(0 if ok else 1)

@@ -13,7 +13,7 @@ extends Node3D
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
 ##   -- --no-shadow  no sun shadows   --no-clouds  hide the clouds
-##   -- --plants / --animals / --sea / --water  switch those stages on (off by default)
+##   -- --plants / --animals / --sea / --water  switch those on (off by default); --bare: no plants
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
 ##   -- --tile-cells=N --tile-max=M  the ground resolution: quads a tile, widest finest tile (m)
 ##   -- --spawn-alt=N  start N metres above the ground there (up to the other side of space)
@@ -26,7 +26,6 @@ extends Node3D
 ##   -- --start-menu  the start menu first (saved planets, a new one); no arguments does it too
 ##   -- --world=NAME / --continue  open a saved universe (Planet page of the Esc menu saves them)
 ##   -- --planet-page  the Planet page of the Esc menu open from the start
-##   -- --bare       no plants (to look at the ground)
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
 ##   -- --walk-check  (use --fixed-fps 60) the real player walks forward for 90 s (WALK_CHECK)
 ##   -- --planet-check (headless) stands the player on the planet, walks it in steps (turning the
@@ -791,6 +790,7 @@ func _physics_process(_delta: float) -> void:
 	_frame += 1
 	PlanetLabChecks.sway_step(planet, player, _frame)
 	PlanetLabChecks.turf_step(planet, _frame)
+	PlanetLabChecks.guard_step(planet, player, _frame)
 	if _map_check:
 		_map_check_step()
 		return
