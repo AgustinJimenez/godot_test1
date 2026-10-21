@@ -11,6 +11,9 @@ var world_seed := 0
 var species: Array[PlantSpecies] = []
 var _by_layer: Dictionary = {} # PlantSpecies.Layer -> Array[PlantSpecies]
 var _meshes: Dictionary = {}
+var impostors_expected := false ## true once PlanetImpostors is baking
+var _impostors: Dictionary = {}
+var _waiting: Dictionary = {}
 var _lock := Mutex.new()
 
 
@@ -85,3 +88,39 @@ func _keep(key: int, built: ArrayMesh) -> ArrayMesh:
 		_meshes[key] = built
 	_lock.unlock()
 	return built
+
+
+## The impostor of a tree variant (PlanetImpostors bakes it): {"mesh": a quad as big as the picture,
+## "material": the shader with the atlas}, or an empty dictionary until it is baked.
+func impostor(id: int, variant: int) -> Dictionary:
+	_lock.lock()
+	var found: Dictionary = _impostors.get(id * 100 + variant, {})
+	_lock.unlock()
+	return found
+
+
+func set_impostor(id: int, variant: int, baked: Dictionary) -> void:
+	_lock.lock()
+	_impostors[id * 100 + variant] = baked
+	_lock.unlock()
+
+
+## Tile instances showing the lighter mesh of a tree variant until its impostor is baked
+## (PlanetImpostors swaps them): {"instance": id, "buffer": the placements}.
+func wait_for_impostor(id: int, variant: int, instance_id: int, buffer: PackedFloat32Array) -> void:
+	if not impostors_expected:
+		return
+	_lock.lock()
+	var key := id * 100 + variant
+	if not _waiting.has(key):
+		_waiting[key] = []
+	(_waiting[key] as Array).append({"instance": instance_id, "buffer": buffer})
+	_lock.unlock()
+
+
+func take_waiting(id: int, variant: int) -> Array:
+	_lock.lock()
+	var found: Array = _waiting.get(id * 100 + variant, [])
+	_waiting.erase(id * 100 + variant)
+	_lock.unlock()
+	return found

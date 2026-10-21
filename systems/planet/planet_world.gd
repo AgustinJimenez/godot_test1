@@ -144,6 +144,9 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 		ground_bake.hdr = OS.has_environment("PLANET_BAKE_16BIT")
 		add_child(ground_bake)
 		ground_bake.setup(PlanetTile.ground_material())
+	var impostors := PlanetImpostors.new() # far trees as pictures (081)
+	add_child(impostors)
+	impostors.start(noise.species)
 	if target is Player:
 		splash = WaterSplash.new()
 		add_child(splash)

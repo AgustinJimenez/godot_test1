@@ -629,7 +629,7 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 		var tree := plant and _species.by_id(id).is_tree()
 		if tree and not near:
 			# trees beyond the near ground are only ever seen from far: the lighter version
-			var light := _add_trees(buffer, _species.mesh(id, variant % 2, FloraMeshes.detailed, 1), false)
+			var light := _light_trees(buffer, id, variant % 2)
 			if PlantMeshes.has_far(_species.by_id(id)):
 				light.visibility_range_end = TREE_LIGHT
 				far_parts.append([_species.far_mesh(id, variant % 2), buffer])
@@ -660,14 +660,26 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 		else:
 			# near trees: the full tree close up, the lighter one (no shadow) further out
 			instance.visibility_range_end = TREE_FULL
-			var light := _add_trees(buffer, _species.mesh(id, variant % 2, FloraMeshes.detailed, 1),
-					false)
+			var light := _light_trees(buffer, id, variant % 2)
 			light.visibility_range_begin = TREE_FULL * 0.95
 			if PlantMeshes.has_far(_species.by_id(id)):
 				light.visibility_range_end = TREE_LIGHT
 				far_parts.append([_species.far_mesh(id, variant % 2), buffer])
 	_commit_far(far_parts, TREE_LIGHT * 0.95)
 	_commit_far(horizon_parts, 0.0)
+
+
+## The lighter trees of a variant for the middle distance: quads that show the baked impostor when
+## PlanetImpostors has made it, else the lighter mesh itself.
+func _light_trees(buffer: PackedFloat32Array, id: int, variant: int) -> MultiMeshInstance3D:
+	var baked := _species.impostor(id, variant)
+	if baked.is_empty():
+		var plain := _add_trees(buffer, _species.mesh(id, variant, FloraMeshes.detailed, 1), false)
+		_species.wait_for_impostor(id, variant, plain.get_instance_id(), buffer)
+		return plain
+	var instance := _add_trees(buffer, baked["mesh"] as Mesh, false)
+	instance.material_override = baked["material"] as Material
+	return instance
 
 
 ## One mesh with all the far trees of the tile (parts: [mesh, instances' buffer]), drawn from
@@ -734,7 +746,7 @@ func _merge_far_script(sources: Array) -> Dictionary:
 
 ## One multimesh of `mesh` at the instances in `buffer` (12 floats of transform and 4 of colour
 ## each), added to the tile.
-func _add_trees(buffer: PackedFloat32Array, mesh: ArrayMesh, shadows: bool) -> MultiMeshInstance3D:
+func _add_trees(buffer: PackedFloat32Array, mesh: Mesh, shadows: bool) -> MultiMeshInstance3D:
 	var multi := MultiMesh.new()
 	multi.transform_format = MultiMesh.TRANSFORM_3D
 	multi.use_colors = true

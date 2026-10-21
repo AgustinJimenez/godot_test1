@@ -21,6 +21,8 @@ public:
 	PackedByteArray profile_of(const PackedByteArray &p_levels, int p_tile, int p_nothing, int p_reach, double p_span) const;
 	// A bare foot as a profile (`p_side` +1 right, -1 left), `p_span` metres across the picture.
 	PackedByteArray sole_profile(double p_side, int p_tile, double p_span) const;
+	// Fills the alpha-0 texels of an RGBA8 picture with the colour of the nearest solid ones (impostor atlases).
+	PackedByteArray bleed(const PackedByteArray &p_rgba, int p_width, int p_height, int p_passes) const;
 };
 
 } // namespace godot
