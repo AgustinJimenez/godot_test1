@@ -170,6 +170,8 @@ func set_free_mode(enabled: bool) -> void:
 @export var detached_cam_speed: float = 6.0
 @export var detached_cam_sprint_multiplier: float = 3.0
 @export var detached_cam_sensitivity: float = 0.0015
+## true: the game starts in third person (the debug camera key switches to first person)
+@export var third_person_start := true
 var detached_cam_active := false
 var _detached_yaw := 0.0
 var _detached_pitch := 0.0
@@ -271,6 +273,16 @@ func _ready() -> void:
 	# comes up short reads as is_on_floor() flicking false for a frame, which
 	# is exactly what was triggering the falling animation on every step.
 	floor_snap_length = step_height
+	if third_person_start:
+		_start_third_person.call_deferred()
+
+## The third-person view the game starts in (the same one the debug camera key switches to).
+func _start_third_person() -> void:
+	debug_cam.make_current()
+	_debug_cam_active = true
+	hud.set_center_dot_visible(false)
+	_look_pitch = 0.0
+	third_person_arm.rotation.x = 0.0
 
 ## "Head" is a canonical role name, not necessarily this skeleton's own bone name: resolve it
 ## through body.resolve_bone_name() before find_bone() so this still works after

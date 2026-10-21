@@ -37,8 +37,8 @@ func _physics_process(delta: float) -> void:
 		_clear()
 		return
 	_decals_on = bool(GraphicsSettings.get_graphics_value(&"decals"))
-	if not _decals_on:
-		_clear() # (the dents in sand are not decals: they stay on)
+	if not _decals_on and not _prints.is_empty():
+		_clear(false) # (the dents in sand are not decals: they stay on)
 	var here := target.global_position
 	if not target.is_on_floor():
 		_have_last = false
@@ -156,8 +156,8 @@ func _follow(delta: float) -> void:
 		decal.modulate = Color(tint.r, tint.g, tint.b, tint.a * (1.0 - smoothstep(LIFE * 0.6, LIFE, age)))
 
 
-func _clear() -> void:
-	if dents != null:
+func _clear(with_dents := true) -> void:
+	if dents != null and with_dents:
 		dents.clear()
 	for print_info in _prints:
 		(print_info["decal"] as Decal).queue_free()
