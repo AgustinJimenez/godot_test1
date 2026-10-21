@@ -26,6 +26,8 @@ func _ready() -> void:
 	var chosen: PlantSpecies = trees[number % trees.size()]
 	print("BARK species ", chosen.id, " ", chosen.common_name if "common_name" in chosen else "")
 	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--kind="):
+			FloraMeshes.material().set_shader_parameter(&"bark_force", float(argument.get_slice("=", 1)))
 		if argument.begins_with("--debug="):
 			FloraMeshes.material().set_shader_parameter(&"bark_debug", float(argument.get_slice("=", 1)))
 	var instance := MeshInstance3D.new()

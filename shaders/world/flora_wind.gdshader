@@ -13,6 +13,7 @@ global uniform float realism;
 global uniform vec2 wind_direction;
 uniform float sway_speed = 1.3;
 uniform float bark_debug = 0.0; // 1: the bark's height as grey, 2: the cells (a tool)
+uniform float bark_force = -1.0; // >= 0: every bark gets this look (a tool)
 uniform bool planks = false; // wood boards (a cabin) instead of tree bark
 // A tree near the walker, bent branch by branch (PlantSway): row 0 of the texture holds each branch's foot and its parent's id, row 1
 // its turn (a rotation vector about the foot, relative to the parent). A vertex's branch is CUSTOM0.x (0: the trunk, never moves).
@@ -114,16 +115,16 @@ float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float 
 		return 0.78 + 0.1 * (tone - 0.5) - band * 0.25;
 	}
 	if (kind == 3) { // ash: a lattice of diamond-shaped ridges
-		float cells = max(2.0, floor(count * 0.5));
+		float cells = max(3.0, floor(count * 1.1));
 		float u = aa.x * cells * 2.0;
-		float v = aa.y / (width * 1.6);
-		float warp = (noise3(vec3(aa.x * count, aa.y * 3.0, 1.0)) - 0.5) * 0.5;
+		float v = aa.y / (width * 0.75);
+		float warp = (noise3(vec3(aa.x * count * 0.8, aa.y * 2.0, 1.0)) - 0.5) * 1.5;
 		float f1 = fract((u + v) * 0.5 + warp);
 		float f2 = fract((u - v) * 0.5 - warp);
 		float g = min(min(f1, 1.0 - f1), min(f2, 1.0 - f2));
 		tone = cell_hash(vec2(floor((u + v) * 0.5), floor((u - v) * 0.5)) + 3.3);
 		crack = smoothstep(0.02, 0.16, g);
-		return smoothstep(0.0, 0.3, g) * (0.7 + 0.3 * tone);
+		return 0.25 + 0.5 * smoothstep(0.0, 0.3, g) * (0.7 + 0.3 * tone);
 	}
 	if (kind == 6 || kind == 5) { // cedar: stringy strands running along the trunk, breaking here and there; 5: bands (palm rings)
 		if (kind == 5) {
@@ -133,14 +134,14 @@ float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float 
 			crack = smoothstep(0.0, 0.5, 1.0 - g * g) * 0.7 + 0.3;
 			return 0.35 + 0.5 * smoothstep(0.1, 0.8, g);
 		}
-		float u = aa.x * count * 3.0 + (noise3(vec3(aa.x * count, aa.y * 1.3, 5.0)) - 0.5) * 1.4;
+		float u = aa.x * count * 7.0 + (noise3(vec3(aa.x * count, aa.y * 1.3, 5.0)) - 0.5) * 3.0;
 		float strand = floor(u);
 		float f = fract(u);
 		float broken = noise3(vec3(strand * 0.7, aa.y * 5.0, 8.0));
 		tone = cell_hash(vec2(strand, floor(aa.y * 3.0 + cell_hash(vec2(strand, 1.0)) * 4.0)));
 		float ridge = smoothstep(0.0, 0.35, f) * smoothstep(1.0, 0.65, f);
 		crack = mix(0.5, 1.0, ridge) * smoothstep(0.1, 0.4, broken + 0.2);
-		return ridge * (0.55 + 0.35 * tone) * smoothstep(0.1, 0.45, broken + 0.2);
+		return 0.3 + 0.35 * ridge * (0.55 + 0.45 * tone) * smoothstep(0.1, 0.45, broken + 0.2);
 	}
 	float edge_sharp = crack_edge;
 	float shift = cell_hash(vec2(floor(aa.x * count), 3.7 + style.x)) * (kind == 0 ? 3.0 : 0.0);
@@ -313,6 +314,9 @@ void vertex() {
 	obj_pos = VERTEX;
 	obj_up = NORMAL.y;
 	bark_kind = UV.x < -0.5 ? floor(UV2.y * 10.0 + 0.5) : 2.0;
+	if (bark_force >= 0.0) {
+		bark_kind = bark_force;
+	}
 	bark_style = vec2(hash13(MODEL_MATRIX[3].xyz * 0.37), hash13(MODEL_MATRIX[3].zyx * 0.53 + 3.0));
 	float weight = COLOR.a;
 	float gust = sin(TIME * sway_speed + dot(world.xz, vec2(0.11, 0.08))) * 0.5 + 0.5;
