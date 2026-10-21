@@ -471,7 +471,7 @@ void fragment() {
 			float shade = mix(0.4, 1.5, smoothstep(0.1, 0.9, h0)) * mix(0.35, 1.0, crack) * (0.78 + 0.4 * tone);
 			shade *= 0.85 + 0.3 * noise3(vec3(aa.x * 40.0, aa.y * 9.0, tone * 7.0));
 			paint = mix(paint, vec3(0.34, 0.3, 0.26) * (0.55 + 0.9 * tone), smoothstep(0.4, 0.85, h0) * 0.55 * trunk * realism); // (the weathered tops of the plates)
-			paint *= mix(1.0, shade, realism);
+			paint *= mix(1.0, shade * 1.4, realism); // (lighter: the vertex brown alone made every trunk near black)
 			if (bark_debug > 0.5) {
 				paint = bark_debug > 1.5 ? vec3(tone, crack, h0) : vec3(h0);
 			}
@@ -517,7 +517,7 @@ void fragment() {
 			float patch = smooth_noise(world_pos.xz * 1.6 + world_pos.y * 1.3);
 			float shade = (0.78 + 0.3 * bands) * (0.82 + 0.3 * grain) * (0.9 + 0.2 * speck) * (1.0 - 0.4 * crack)
 					* (0.88 + 0.24 * patch);
-			paint *= mix(1.0, shade, realism);
+			paint *= mix(1.0, shade * 1.4, realism); // (lighter: the vertex brown alone made every trunk near black)
 			paint = mix(paint, paint * vec3(0.7, 1.0, 0.55), realism * smoothstep(0.62, 0.8, patch) * 0.45 * smoothstep(0.2, 0.9, obj_up));
 			surface_height = broad * 0.4 + bands * 0.15 + grain * 0.15 + speck * 0.1 - crack * 0.5;
 			surface_bump = realism * 1.3;
