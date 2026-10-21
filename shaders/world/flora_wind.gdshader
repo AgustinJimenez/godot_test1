@@ -26,6 +26,7 @@ varying float sway;
 varying vec3 obj_pos;
 varying float obj_up;
 varying vec2 bark_style; // from the tree's own place: which bark it has
+varying float bark_kind; // 0 oak, 1 birch, 2 pine, 3 ash, 4 maple, 5 rings (palm), 6 cedar (the grower writes it in UV2.y of a trunk)
 
 float cell_hash(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -82,10 +83,68 @@ vec2 hash22(vec2 p) {
 // tree's own place) makes one tree's plates broad and short, another's narrow and long. Returns the height (1 the top of a
 // plate, 0 the bottom of a crack); crack: 0 in a crack .. 1 on a plate; tone: the plate's own shade (0..1).
 float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float tone) {
-	float width = clamp(radius * 0.45, 0.04, 0.9) * mix(0.7, 1.5, style.x);
-	float length_m = width * mix(2.0, 5.5, style.y);
+	int kind = int(bark_kind + 0.5);
+	float spread = 1.0;
+	float stretch_lo = 2.0;
+	float stretch_hi = 5.5;
+	float blockiness = 0.55;
+	float crack_edge = 0.2;
+	if (kind == 0) { // oak: long, interrupted ridges with deep furrows between
+		spread = 0.65;
+		stretch_lo = 4.0;
+		stretch_hi = 9.0;
+		blockiness = 0.85;
+	} else if (kind == 4) { // maple: wide smooth plates, thin cracks
+		spread = 1.7;
+		stretch_lo = 7.0;
+		stretch_hi = 15.0;
+		blockiness = 0.9;
+		crack_edge = 0.1;
+	}
+	float width = clamp(radius * 0.45, 0.04, 0.9) * mix(0.7, 1.5, style.x) * spread;
 	float count = max(3.0, floor(6.2831853 * radius / width + 0.5));
-	vec2 p = vec2(aa.x * count, aa.y / length_m);
+	float length_m = width * mix(stretch_lo, stretch_hi, style.y);
+	if (kind == 1) { // birch: nearly smooth, dark horizontal dashes (lenticels), the odd curl of peeling
+		float dash_zone = noise3(vec3(aa.x * count * 1.2, aa.y * 1.4, 2.0));
+		float dashes = noise3(vec3(aa.x * count * 2.2, aa.y * 55.0, 9.0));
+		float mark = smoothstep(0.7, 0.8, dashes) * smoothstep(0.35, 0.6, dash_zone);
+		float band = smoothstep(0.82, 0.9, noise3(vec3(aa.x * count * 0.4, aa.y * 7.0, 4.0)));
+		crack = 1.0 - max(mark * 0.85, band * 0.7);
+		tone = noise3(vec3(aa.x * count, aa.y * 3.0, 6.0));
+		return 0.78 + 0.1 * (tone - 0.5) - band * 0.25;
+	}
+	if (kind == 3) { // ash: a lattice of diamond-shaped ridges
+		float cells = max(2.0, floor(count * 0.5));
+		float u = aa.x * cells * 2.0;
+		float v = aa.y / (width * 1.6);
+		float warp = (noise3(vec3(aa.x * count, aa.y * 3.0, 1.0)) - 0.5) * 0.5;
+		float f1 = fract((u + v) * 0.5 + warp);
+		float f2 = fract((u - v) * 0.5 - warp);
+		float g = min(min(f1, 1.0 - f1), min(f2, 1.0 - f2));
+		tone = cell_hash(vec2(floor((u + v) * 0.5), floor((u - v) * 0.5)) + 3.3);
+		crack = smoothstep(0.02, 0.16, g);
+		return smoothstep(0.0, 0.3, g) * (0.7 + 0.3 * tone);
+	}
+	if (kind == 6 || kind == 5) { // cedar: stringy strands running along the trunk, breaking here and there; 5: bands (palm rings)
+		if (kind == 5) {
+			float band = aa.y / max(radius * 0.7, 0.05);
+			float g = abs(fract(band) - 0.5) * 2.0;
+			tone = noise3(vec3(aa.x * count, band, 2.0));
+			crack = smoothstep(0.0, 0.5, 1.0 - g * g) * 0.7 + 0.3;
+			return 0.35 + 0.5 * smoothstep(0.1, 0.8, g);
+		}
+		float u = aa.x * count * 3.0 + (noise3(vec3(aa.x * count, aa.y * 1.3, 5.0)) - 0.5) * 1.4;
+		float strand = floor(u);
+		float f = fract(u);
+		float broken = noise3(vec3(strand * 0.7, aa.y * 5.0, 8.0));
+		tone = cell_hash(vec2(strand, floor(aa.y * 3.0 + cell_hash(vec2(strand, 1.0)) * 4.0)));
+		float ridge = smoothstep(0.0, 0.35, f) * smoothstep(1.0, 0.65, f);
+		crack = mix(0.5, 1.0, ridge) * smoothstep(0.1, 0.4, broken + 0.2);
+		return ridge * (0.55 + 0.35 * tone) * smoothstep(0.1, 0.45, broken + 0.2);
+	}
+	float edge_sharp = crack_edge;
+	float shift = cell_hash(vec2(floor(aa.x * count), 3.7 + style.x)) * (kind == 0 ? 3.0 : 0.0);
+	vec2 p = vec2(aa.x * count, aa.y / length_m + shift);
 	p += (vec2(smooth_noise(p * 0.8 + 5.0), smooth_noise(p * 0.8 + 17.0)) - 0.5) * vec2(0.5, 0.9);
 	vec2 cell = floor(p);
 	float f1 = 9.0;
@@ -97,7 +156,7 @@ float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float 
 			vec2 wrapped = vec2(mod(c.x, count), c.y);
 			vec2 h = hash22(wrapped + style * 31.0);
 			vec2 d = p - (c + 0.5 + (h - 0.5) * 0.75);
-			float dist = mix(length(d), max(abs(d.x), abs(d.y)), 0.55); // (rounded blocks, not diamonds)
+			float dist = mix(length(d), max(abs(d.x), abs(d.y)), blockiness); // (rounded blocks, not diamonds)
 			if (dist < f1) {
 				f2 = f1;
 				f1 = dist;
@@ -109,11 +168,12 @@ float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float 
 	}
 	float edge = f2 - f1;
 	tone = cell_hash(id + 9.1);
-	crack = smoothstep(0.03, 0.2, edge);
+	crack = smoothstep(edge_sharp * 0.15, edge_sharp, edge);
 	float flakes = noise3(vec3(aa.x * count * 2.5, aa.y / length_m * 2.0, tone * 10.0));
 	float strands = noise3(vec3(aa.x * count * 9.0, aa.y / length_m * 0.7, tone * 5.0 + 3.0)); // (grain running along the trunk)
 	float top = 0.55 + 0.4 * tone;
-	return clamp(smoothstep(0.0, 0.5, edge) * top + (0.08 * (flakes - 0.5) + 0.07 * (strands - 0.5)) * smoothstep(0.0, 0.4, edge), 0.0, 1.0);
+	float plate = kind == 4 ? 0.35 : 0.5;
+	return clamp(smoothstep(0.0, plate, edge) * top + (0.04 * (flakes - 0.5) + 0.035 * (strands - 0.5)) * smoothstep(0.0, 0.4, edge), 0.0, 1.0);
 }
 
 
@@ -252,6 +312,7 @@ void vertex() {
 	sway = COLOR.a;
 	obj_pos = VERTEX;
 	obj_up = NORMAL.y;
+	bark_kind = UV.x < -0.5 ? floor(UV2.y * 10.0 + 0.5) : 2.0;
 	bark_style = vec2(hash13(MODEL_MATRIX[3].xyz * 0.37), hash13(MODEL_MATRIX[3].zyx * 0.53 + 3.0));
 	float weight = COLOR.a;
 	float gust = sin(TIME * sway_speed + dot(world.xz, vec2(0.11, 0.08))) * 0.5 + 0.5;

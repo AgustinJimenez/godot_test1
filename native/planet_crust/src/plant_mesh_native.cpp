@@ -291,6 +291,7 @@ struct MeshData {
 	std::vector<Vector2> uvs, uv2s;
 	std::vector<float> branch_of; // the branch each vertex belongs to (0: the trunk and what does not move), see Grower::table
 	float current_branch = 0.0f;
+	int bark_kind = 2; // the look of the bark (flora_wind.gdshader bark_kind), written in UV2.y of every tube vertex
 	bool has_uv = false;
 
 	int triangle_count() const { return (int)vertices.size() / 3; }
@@ -532,7 +533,7 @@ struct MeshData {
 			along[ring] = along[ring - 1] + (centres[ring] - centres[ring - 1]).length();
 		}
 		auto bark = [&](int ring, double round_) { return Vector2((real_t)(-1.0 - round_), (real_t)along[ring]); };
-		auto girth = [&](int ring) { return Vector2((real_t)radii[ring], 0.0f); };
+		auto girth = [&](int ring) { return Vector2((real_t)radii[ring], (real_t)(bark_kind * 0.1)); };
 		for (int ring = 0; ring < count - 1; ring++) {
 			for (int i = 0; i < sides; i++) {
 				int next = (i + 1) % sides;
@@ -2023,6 +2024,19 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 		mesh.reset();
 		rng.state = start;
 		Genome g = genome; // a clump changes the numbers while it grows
+		{ // the bark of this species (its look is fixed by its genome, so every tree of it matches): birch, palm rings, then by form
+			const int dice = (int)std::abs((int)(g.bark.r * 977.0f + g.bark.g * 131.0f + g.bark.b * 53.0f + (float)g.height * 7.0f));
+			if (g.marked_bark) {
+				mesh.bark_kind = 1;
+			} else if (g.bark_rings > 0.0) {
+				mesh.bark_kind = 5;
+			} else if (g.leader) {
+				mesh.bark_kind = dice % 3 == 0 ? 6 : 2; // conifers: flaky plates, now and then stringy
+			} else {
+				const int broadleaf[3] = { 0, 3, 4 };
+				mesh.bark_kind = broadleaf[dice % 3];
+			}
+		}
 		Grower grower;
 		grower.g = &g;
 		grower.b = &mesh;
