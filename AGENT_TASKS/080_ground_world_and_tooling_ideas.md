@@ -22,3 +22,10 @@ the order to try them in. Each idea needs its own look-and-measure step before i
 - **DONE 2026-10-21: `scripts/visual_check.sh`** (5 views: desert dunes, close sand, far dunes, desert with plants, green country; compared at 640x360 with `tests/visual/baseline`, mean difference limit 4, 8 % of pixels; `--accept` stores new baselines after a look; differences in `$OUT_DIR/diff`). Add views for snow, coast, night as they become useful. Original idea: a render of fixed spots (desert, forest, snow, coast, night) after each change, compared with the last accepted
   one, so a regression such as the stretched columns on slopes is caught without the user.
 - One ground-detail control that maps to what each effect costs (and a table of those costs, measured).
+
+## Open artifacts seen on 2026-10-21 (to look at)
+- Pale smooth rectangles (about 5 x 10 m, four or five in a row down a dune's slip face) in `tests/visual/baseline/desert_far.png`
+  (seed 1, `--dir=-0.7687,0.6392,-0.0225`, eye 40 m, pitch -12). They stay with ground detail 1 (so not the sand block), with
+  `PLANET_NO_BAKE=1` and with `--hide=water`; they were there before the geomorphing. Not found yet: look at the tile edges
+  (skirt walls, `_skirt_drop`), the river/lake meshes of the tile (`_add_running_water`) and the placed rocks.
+- Dunes: crest rounded over about 3 m (native), no stepped ledges on dry hot ground, skirt walls take the ground's normal.

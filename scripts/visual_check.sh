@@ -13,7 +13,8 @@ OUT_DIR="${OUT_DIR:-${TEMP:-/tmp}/visual_check}"
 accept=""
 [[ "${1:-}" == "--accept" ]] && accept="--accept"
 rm -rf "${OUT_DIR}"
-mkdir -p "${OUT_DIR}/diff"
+export APPDATA="${OUT_DIR}/appdata" # (a fresh user folder: the pictures must not depend on the graphics settings saved on this machine)
+mkdir -p "${OUT_DIR}/diff" "${APPDATA}"
 
 # name | extra lab arguments | LAB_GROUND (the ground detail) ; the dirs are on seed 1337 unless said
 shoot() {

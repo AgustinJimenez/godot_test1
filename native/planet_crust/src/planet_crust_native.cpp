@@ -496,6 +496,9 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 	double layer = clampd(relief * 0.025, 8.0, 40.0);
 	double steps = std::floor(ground / layer) + smooth(0.15, 0.85, fposmod_d(ground / layer, 1.0));
 	double mixed = smooth(0.3, 0.6, units) * 0.35;
+	if (erosion_scale > 0.0 && units > 0.05) { // (no stepped ledges on the dry hot ground: they would show as contour lines across the dunes)
+		mixed *= 1.0 - 0.9 * smooth(0.28, 0.08, grid_at(rain_grid, p_dir, 0.5)) * smooth(8.0, 20.0, sea_temperature(p_dir) - 0.0065 * (ground > 0.0 ? ground : 0.0));
+	}
 	ground += (steps * layer - ground) * mixed;
 	if (units > 0.0 && ground < 8.0) { // the hills and gullies must not dip an inland basin below the sea either
 		const double bowl = 8.0 * std::exp((ground - 8.0) / 60.0);
@@ -514,14 +517,17 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 				const double phase = (double)p.dot(east) / 190.0 + 4.0 * (double)hills.at(p);
 			const double along = fposmod_d(phase / 6.283185307, 1.0);
 				const double lee = 0.14; // the share of a wavelength the slip face takes
-				double dune;
-				if (along < 1.0 - lee) {
-					const double t = along / (1.0 - lee);
-					dune = t * t * (1.6 - 0.6 * t); // rises slowly, then faster to the crest
-				} else {
-					const double t = (along - (1.0 - lee)) / lee;
-					dune = 1.0 - t * t * (3.0 - 2.0 * t);
-				}
+				auto profile = [&](double a) {
+					a = fposmod_d(a, 1.0);
+					if (a < 1.0 - lee) {
+						const double t = a / (1.0 - lee);
+						return t * t * (1.6 - 0.6 * t); // rises slowly, then faster to the crest
+					}
+					const double t = (a - (1.0 - lee)) / lee;
+					return 1.0 - t * t * (3.0 - 2.0 * t);
+				};
+				// the crest is rounded over a few metres (a wavelength is 190 m): the coarse tiles of the middle distance cannot hold a corner
+				const double dune = 0.25 * profile(along - 0.012) + 0.5 * profile(along) + 0.25 * profile(along + 0.012);
 				const double tall = 11.0 + 7.0 * (double)hills.at(p * 0.12f + Vector3(2, 5, 1));
 			ground += dune * tall * desert;
 		}
@@ -1769,7 +1775,7 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 			for (int slot = 0; slot < 3; slot++) {
 				vertices[out_at] = points[slot];
 					morph[out_at] = coarse[(size_t)p_point];
-				normals[out_at] = p_normal;
+				normals[out_at] = p_normals[p_point]; // (the ground's own normal: a wall shaded as the ground beside it is not a pale stripe)
 				flats[out_at] = p_colour;
 				custom[out_at * 4] = (uint8_t)(int)(p_colour.r * 255.0f);
 				custom[out_at * 4 + 1] = (uint8_t)(int)(p_colour.g * 255.0f);
