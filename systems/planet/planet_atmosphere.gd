@@ -135,7 +135,8 @@ func _sun_glow(sun_dir: Vector3) -> void:
 		_world_environment.compositor = compositor
 	_glow.sun_direction = sun_dir
 	_glow.tint = sun.light_color
-	var cheap: bool = int(GraphicsSettings.get_graphics_value(&"shadow_quality")) < 2 # (Off and Low presets)
+	var quality: int = GraphicsSettings.get_graphics_value(&"shadow_quality")
+	var cheap := quality < 2 # (the Off and Low presets)
 	_glow.strength = 0.0 if underwater or cheap else glow_strength * sun.light_energy / sun_strength
 
 
