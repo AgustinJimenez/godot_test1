@@ -389,7 +389,7 @@ func _valley_cut(p: Vector3, units: float, glacial := 0.0) -> float:
 		var valley_floor := 1.0 - smoothstep(0.0, VALLEY_WIDTH * (1.0 + 1.2 * glacial), line)
 		cut += _valley_depth[index] * (1.0 + 0.6 * glacial) \
 				* pow(valley_floor, lerpf(1.5, 0.5, glacial))
-	return cut * upland
+	return cut * upland * 0.3 # (as in the native crust: shallow)
 
 
 ## The ground without the smallest hills: what the water sees when it picks its way to the sea.

@@ -321,7 +321,8 @@ double PlanetCrustNative::valley_cut(const Vector3 &p_point, double p_units, dou
 		double floor_value = 1.0 - smooth(0.0, valley_width * (1.0 + 1.2 * p_glacial), line);
 		cut += valley_depth[index] * (1.0 + 0.6 * p_glacial) * std::pow(floor_value, 1.5 - 1.0 * p_glacial);
 	}
-	return cut * upland;
+	// the noise-line valleys are only the look of drainage and run across hills (the real river valleys follow the drainage), so they are kept shallow
+	return cut * upland * 0.3;
 }
 
 Vector3 PlanetCrustNative::coarse_slope(const Vector3 &p_point, double p_rugged, double p_pixel) const {
@@ -514,7 +515,7 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 			const Vector3 east = Vector3(-p_dir.z, 0.0f, p_dir.x).normalized();
 			// a sawtooth that wanders: a long gentle windward side up to a sharp crest, then a steep slip face
 				// (the wind blows along `east`); the height changes from dune to dune
-				const double phase = (double)p.dot(east) / 190.0 + 4.0 * (double)hills.at(p);
+				const double phase = (double)p.dot(east) / 190.0 + 1.2 * (double)hills.at(p * 0.25f); // (a slow sway: a faster one made the crests follow the hills noise as closed contour lines)
 			const double along = fposmod_d(phase / 6.283185307, 1.0);
 				const double lee = 0.2; // the share of a wavelength the slip face takes
 				auto profile = [&](double a) {
