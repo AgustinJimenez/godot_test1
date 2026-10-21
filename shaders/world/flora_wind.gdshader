@@ -318,7 +318,7 @@ void vertex() {
 		bark_kind = bark_force;
 	}
 	bark_style = vec2(hash13(MODEL_MATRIX[3].xyz * 0.37), hash13(MODEL_MATRIX[3].zyx * 0.53 + 3.0));
-	float weight = COLOR.a;
+	float weight = COLOR.a * smoothstep(0.0, 0.35, VERTEX.y); // (the foot of a plant stays where it grows: the sway grows with the height above the ground)
 	float gust = sin(TIME * sway_speed + dot(world.xz, vec2(0.11, 0.08))) * 0.5 + 0.5;
 	float flutter = sin(TIME * sway_speed * 3.3 + dot(world.xz, vec2(0.9, 0.7)) + VERTEX.y * 2.0);
 	float amount = weight * (0.03 + wind_strength * 0.5) * (gust * 0.8 + flutter * 0.2);
