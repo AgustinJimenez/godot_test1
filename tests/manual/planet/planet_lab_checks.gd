@@ -158,7 +158,7 @@ static func turf_step(planet: PlanetWorld, frame: int) -> void:
 		return
 	var turf: PlanetTurf = null
 	for node in planet.get_children():
-		if node is PlanetTurf:
+		if node is PlanetTurf and not (node as PlanetTurf).gravel: # (the grass, not the gravel)
 			turf = node
 	var count := 0 if turf == null else turf.tuft_count()
 	var ok := count > 3000 and count < 120000

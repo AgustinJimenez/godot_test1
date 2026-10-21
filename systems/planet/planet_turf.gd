@@ -87,14 +87,17 @@ func _physics_process(delta: float) -> void:
 ## Make the chunk (ix, iz) of the tile whose grid is `grid`, hanging in `holder`.
 func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void:
 	var size: float = grid["size"]
-	var arguments := [grid["positions"], grid["field"], grid["cells"], size, ix * CHUNK, iz * CHUNK,
-			minf((ix + 1) * CHUNK, size), minf((iz + 1) * CHUNK, size),
-			GRAVEL_SPACING if gravel else _spacing(), 1.0 if gravel else DENSITY,
-			key ^ int(grid["key"]), FloraMeshes.CHIP_VARIANTS if gravel else FloraMeshes.TURF_VARIANTS]
-	if gravel: # (and where the crust says there are no stones, there is no gravel: a dune)
-		arguments.append(grid.get("stones", PackedFloat32Array()))
-	var buffers: Array = planet.noise.scatter_native.callv(
-			&"gravel_chunk" if gravel else &"turf_chunk", arguments)
+	var buffers: Array
+	var native := planet.noise.scatter_native
+	if gravel: # (none where the crust says there are no stones: a dune, a clean region)
+		buffers = native.call(&"gravel_chunk", grid["positions"], grid["field"], grid["cells"], size,
+				ix * CHUNK, iz * CHUNK, minf((ix + 1) * CHUNK, size), minf((iz + 1) * CHUNK, size),
+				GRAVEL_SPACING, 1.0, key ^ int(grid["key"]), FloraMeshes.CHIP_VARIANTS,
+				grid.get("stones", PackedFloat32Array()))
+	else:
+		buffers = native.call(&"turf_chunk", grid["positions"], grid["field"], grid["cells"], size,
+				ix * CHUNK, iz * CHUNK, minf((ix + 1) * CHUNK, size), minf((iz + 1) * CHUNK, size),
+				_spacing(), DENSITY, key ^ int(grid["key"]), FloraMeshes.TURF_VARIANTS)
 	var entry := {"nodes": [], "holder": holder, "grid": grid, "at": Vector2((ix + 0.5) * CHUNK,
 			(iz + 0.5) * CHUNK), "buffers": [], "shadows": []}
 	for variant in buffers.size():
