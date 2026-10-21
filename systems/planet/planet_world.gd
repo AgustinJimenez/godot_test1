@@ -9,7 +9,7 @@ const RECENTER_DISTANCE := 2000.0 ## m from the world origin before everything i
 const BAKE_UP_TO := 10.0 ## m above the ground: higher up the ground plates have no parallax
 const RAIN_UP_TO := 1500.0 ## m above the ground: higher up there is no rain
 const LOAD_GROUND := 2000.0 ## m of ground and water built before the player is let in
-const LOAD_PLANTS := 60.0 ## m round the player that must be planted before they are let in
+const LOAD_PLANTS_DEFAULT := 2000.0 ## m round the player planted before they are let in
 
 ## The ground and water round the player are ready (and the plants close by): the player may move.
 signal loaded
@@ -479,6 +479,12 @@ func flow_at_world(position: Vector3) -> Vector3:
 
 ## While the player is held: keeps the tiles coming and lets the player in when the ground within
 ## `LOAD_GROUND` and the plants within `LOAD_PLANTS` are there.
+## m round the player that must be planted first (PLANET_LOAD_PLANTS: another, to try)
+static func _load_plants() -> float:
+	return (OS.get_environment("PLANET_LOAD_PLANTS").to_float()
+			if OS.has_environment("PLANET_LOAD_PLANTS") else LOAD_PLANTS_DEFAULT)
+
+
 func _wait_for_the_ground(delta: float) -> void:
 	if map_first and map != null and map.visible:
 		return # the map is open first: nothing is built and the 90 s of waiting do not run yet
@@ -488,7 +494,7 @@ func _wait_for_the_ground(delta: float) -> void:
 		_timer = 0.3
 		surface.update(planet_position())
 	surface.burst = true
-	var done := surface.progress(LOAD_GROUND, LOAD_PLANTS)
+	var done := surface.progress(LOAD_GROUND, _load_plants())
 	_load_label.text = "Generating the planet...  %d %%" % int(done * 100.0)
 	if done >= 0.999 or _load_time > 90.0:
 		if OS.has_environment("PLANET_TIMING"):

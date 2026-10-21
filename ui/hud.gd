@@ -22,7 +22,7 @@ const ITEM_GROUP_NAMES: Dictionary[int, String] = {
 const CHARACTER_CATALOG := preload("res://characters/character_catalog.gd")
 const ESCAPE_DOUBLE_PRESS_SEC := 0.4
 
-@export var show_fps_debug := false
+@export var show_fps_debug := true
 
 var _inventory: Inventory
 var _health: Health
