@@ -239,7 +239,7 @@ func _queue_plants() -> void:
 	_plant_jobs.clear()
 	_mutex.unlock()
 	if not _plant_workers.is_empty():
-		for wish: Array in wishes.slice(0, 6):
+		for wish: Array in wishes.slice(0, 24):
 			var tile: PlanetTile = wish[0]
 			_plant_pending[tile.get_instance_id()] = true
 			_mutex.lock()
@@ -253,7 +253,7 @@ func _queue_plants() -> void:
 ## Puts the grown plants into their tiles (a few a frame).
 func _adopt_plants() -> void:
 	var adopted := 0
-	while adopted < 2:
+	while adopted < 4:
 		var finished: Array = []
 		if not _plant_inline.is_empty():
 			var wish: Array = _plant_inline.pop_front()

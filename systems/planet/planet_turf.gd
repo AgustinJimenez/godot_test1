@@ -143,7 +143,7 @@ func _let_go(here: Vector3) -> void:
 			var local := _grid_of(entry["grid"], holder.to_local(here))
 			gone = Vector2(local.x, local.z).distance_to(entry["at"]) > _leave() + CHUNK * 0.4
 		if gone:
-			for node: Node in entry["nodes"] + entry["shadows"]:
+			for node in entry["nodes"] + entry["shadows"]: # (untyped: a freed node would be an error)
 				if is_instance_valid(node):
 					node.queue_free()
 			_chunks.erase(key)
@@ -184,7 +184,7 @@ static func _spacing() -> float:
 func tuft_count() -> int:
 	var total := 0
 	for entry: Dictionary in _chunks.values():
-		for node: MultiMeshInstance3D in entry["nodes"]:
+		for node in entry["nodes"]: # (untyped: a freed node is skipped below)
 			if is_instance_valid(node):
-				total += node.multimesh.instance_count
+				total += (node as MultiMeshInstance3D).multimesh.instance_count
 	return total
