@@ -679,7 +679,7 @@ func _ready() -> void:
 			_checking = true
 	planet = PlanetWorld.new()
 	planet.map_first = "--map-first" in OS.get_cmdline_user_args() # (else the world first)
-	planet.start_in_desert = PlanetLabChecks.plain_open() # (opened plainly: the dunes)
+	planet.start_in_desert = OS.has_environment("LAB_DESERT") # (plainly: the forest, else the dunes)
 	planet.settings = settings
 	planet.restored = restored_state
 	add_child(planet)

@@ -166,7 +166,8 @@ static func turf_step(planet: PlanetWorld, frame: int) -> void:
 	planet.get_tree().quit(0 if ok else 1)
 
 
-## No arguments (or LAB_PLAIN set, for a picture of a plain open): the dunes at full ground detail.
+## No arguments (or LAB_PLAIN set, for a picture of a plain open): the forest (LAB_DESERT: the
+## dunes) at full ground detail.
 static func plain_open() -> bool:
 	return OS.get_cmdline_user_args().is_empty() or OS.has_environment("LAB_PLAIN")
 
