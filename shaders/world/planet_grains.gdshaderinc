@@ -14,7 +14,7 @@ vec3 grains(vec3 p, float dist, vec3 up, vec3 paint, float pale, float iron, flo
 	float size[3] = float[3](1.0 / 512.0, 1.0 / 256.0, 1.0 / 64.0);
 	float cover[3] = float[3](0.8, 0.6, 0.12); // how much of the ground each size takes
 	vec3 quartz = vec3(0.72, 0.64, 0.5);
-	vec3 mineral = vec3(0.07, 0.06, 0.06);
+	vec3 mineral = vec3(0.2, 0.16, 0.13);
 	vec3 rust = vec3(0.5, 0.17, 0.08);
 	for (int g = 0; g < 3; g++) {
 		float seen = smoothstep(0.4, 1.4, size[g] / (max(dist, 0.05) * 0.0015));
@@ -31,13 +31,13 @@ vec3 grains(vec3 p, float dist, vec3 up, vec3 paint, float pale, float iron, flo
 		float r = length(off);
 		float on = smoothstep(radius, radius * 0.6, r) * step(hash3(id + 6.1), cover[g]);
 		float pick = hash3(id);
-		float dark_odds = 0.14 * (1.3 - pale);
+		float dark_odds = 0.07 * (1.3 - pale);
 		float rust_odds = 0.03 + 0.25 * iron;
 		vec3 tone = paint * (0.8 + 0.4 * hash3(id + 3.3)); // the ground's own tone
 		if (pick < 0.35) {
 			tone = mix(paint, quartz, 0.3 + 0.3 * pale);
 		} else if (pick > 1.0 - dark_odds) {
-			tone = mix(paint * 0.4, mineral, 0.5);
+			tone = mix(paint * 0.6, mineral, 0.5);
 		} else if (pick > 1.0 - dark_odds - rust_odds) {
 			tone = mix(paint, rust, 0.5 + 0.4 * iron);
 		}

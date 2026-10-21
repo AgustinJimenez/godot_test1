@@ -88,8 +88,8 @@ void PlanetScatterNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("scatter", "tile"), &PlanetScatterNative::scatter);
 	ClassDB::bind_method(D_METHOD("merge_far", "parts"), &PlanetScatterNative::merge_far);
 	ClassDB::bind_method(D_METHOD("drag", "stems", "x", "z"), &PlanetScatterNative::drag);
-	ClassDB::bind_method(D_METHOD("gravel_chunk", "positions", "field", "cells", "size", "x0", "z0", "x1", "z1", "spacing", "density", "seed", "variants"),
-			&PlanetScatterNative::gravel_chunk);
+	ClassDB::bind_method(D_METHOD("gravel_chunk", "positions", "field", "cells", "size", "x0", "z0", "x1", "z1", "spacing", "density", "seed", "variants", "stones"),
+			&PlanetScatterNative::gravel_chunk, DEFVAL(PackedFloat32Array()));
 	ClassDB::bind_method(D_METHOD("turf_chunk", "positions", "field", "cells", "size", "x0", "z0", "x1", "z1", "spacing", "density", "seed", "variants"),
 			&PlanetScatterNative::turf_chunk);
 }
@@ -733,9 +733,10 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 
 	// how well turf (short grass all over the ground) grows at each vertex of the grid: rain and warmth, not steep, not stony,
 	// less under the crowns, patchy; PlanetTurf puts the tufts round the walker from it (turf_chunk)
-	PackedFloat32Array turf;
+	PackedFloat32Array turf, stones; // (stones: how stony each vertex is, for the placed gravel)
 	if (detail == ALL) {
 		turf.resize((int64_t)t.side * t.side);
+		stones.resize((int64_t)t.side * t.side);
 		for (int row = 0; row < t.side; row++) {
 			for (int column = 0; column < t.side; column++) {
 				const int i = row * t.side + column;
@@ -757,6 +758,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 					}
 					const double patch = crust.is_valid() ? crust->detail_at(Vector3((real_t)(here.x * 0.045 + 11.0), (real_t)(here.z * 0.045 + 5.0), 3.0f)) : 0.5;
 					value = (float)clampd(grows * (0.55 + 0.9 * patch), 0.0, 1.0);
+						stones.ptrw()[i] = (float)stony_at(dir, ground, steep);
 				}
 				turf.ptrw()[i] = value;
 			}
@@ -793,6 +795,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	}
 	result["stems"] = stems;
 	result["turf"] = turf;
+	result["stones"] = stones;
 	return result;
 }
 
@@ -801,7 +804,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 // darker, grey, pale), sunk a little into the ground. Answers a buffer for each of `p_variants` shapes, like turf_chunk.
 Array PlanetScatterNative::gravel_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells,
 		double p_size, double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed,
-		int p_variants) const {
+		int p_variants, const PackedFloat32Array &p_stones) const {
 	Array out;
 	const int variants = std::max(p_variants, 1);
 	const int side = p_cells + 3;
@@ -810,6 +813,8 @@ Array PlanetScatterNative::gravel_chunk(const PackedVector3Array &p_positions, c
 	}
 	const Vector3 *positions = p_positions.ptr();
 	const float *field = p_field.ptr();
+	const bool have_stones = (int)p_stones.size() >= side * side;
+	const float *stones = p_stones.ptr();
 	Rng rng;
 	rng.seed((uint64_t)p_seed * 0x9E3779B97F4A7C15ULL + 0x7654321ULL);
 	std::vector<std::vector<float>> buffers((size_t)variants);
@@ -828,7 +833,11 @@ Array PlanetScatterNative::gravel_chunk(const PackedVector3Array &p_positions, c
 			const int i = ((int)fz + 1) * side + (int)fx + 1;
 			const double tx = fx - std::floor(fx), tz = fz - std::floor(fz);
 			const double f = (field[i] * (1 - tx) + field[i + 1] * tx) * (1 - tz) + (field[i + side] * (1 - tx) + field[i + side + 1] * tx) * tz;
-			const double odds = clampd(1.0 - f * 0.6, 0.35, 1.0) * p_density;
+			double odds = clampd(1.0 - f * 0.6, 0.35, 1.0) * p_density;
+			if (have_stones) { // (none where the crust says the ground has no stones: a dune, a clean region)
+				const double stony = (stones[i] * (1 - tx) + stones[i + 1] * tx) * (1 - tz) + (stones[i + side] * (1 - tx) + stones[i + side + 1] * tx) * tz;
+				odds *= smoothstep(0.02, 0.35, stony);
+			}
 			if (dice >= odds) {
 				continue;
 			}

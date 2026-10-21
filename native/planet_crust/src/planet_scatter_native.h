@@ -69,7 +69,7 @@ public:
 	// Answers one buffer for each of `p_variants` arrangements of tuft (an Array of PackedFloat32Array), every spot given one at random.
 	// The small stones of the bare ground, the same way (see PlanetTurf in its gravel form).
 	Array gravel_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells, double p_size,
-			double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed, int p_variants) const;
+			double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed, int p_variants, const PackedFloat32Array &p_stones = PackedFloat32Array()) const;
 	Array turf_chunk(const PackedVector3Array &p_positions, const PackedFloat32Array &p_field, int p_cells, double p_size,
 			double p_x0, double p_z0, double p_x1, double p_z1, double p_spacing, double p_density, int64_t p_seed, int p_variants) const;
 };

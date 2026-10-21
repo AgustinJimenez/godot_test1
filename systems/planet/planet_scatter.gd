@@ -182,7 +182,7 @@ func _populate_native(key: int, detail: Detail, collide: bool) -> void:
 	# where short grass grows over the ground: PlanetTurf makes the tufts round the walker from it
 	if not turf.is_empty():
 		_tile.set_meta(&"turf", {"positions": _packed_positions, "field": turf, "cells": _cells,
-				"size": _size, "key": key,
+				"stones": placed.get("stones", PackedFloat32Array()), "size": _size, "key": key,
 				"corner": _packed_positions[_side + 1], "ax": _grid_axis(1), "az": _grid_axis(_side)})
 	if _body != null and not OS.has_environment("PLANET_NO_PLANT_COLLIDERS"):
 		# trunks and rocks stand where they were put: the colliders lean and sink as the things do
