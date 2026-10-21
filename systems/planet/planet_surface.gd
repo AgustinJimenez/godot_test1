@@ -57,7 +57,7 @@ func setup(planet_noise: PlanetNoise, planet_frame: PlanetFrame) -> void:
 			worker.start(_work)
 			_workers.append(worker)
 		_thread = _workers[0]
-		for index in clampi(OS.get_processor_count() / 3, 2, 3):
+		for index in clampi(OS.get_processor_count() - 2, 2, 4):
 			var planter := Thread.new()
 			planter.start(_work_plants)
 			_plant_workers.append(planter)
