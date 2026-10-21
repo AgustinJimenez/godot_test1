@@ -1887,7 +1887,7 @@ void PlanetCrustNative::material_at(const Vector3 &dir, double ground, double st
 	stony *= smooth(0.38, 0.62, region + 0.35 * (patches - 0.5)); // 0 in the clean regions
 	stony *= 0.5 + 0.9 * smooth(0.3, 0.7, patches);
 	const double depth = clampd(0.25 + 0.65 * fertile_deep + 0.25 * alluvial - 0.5 * smooth(0.1, 0.45, steep) - 0.35 * ridge - 0.25 * frost - 0.2 * dry, 0.0, 1.0);
-	stony *= 1.0 - 0.85 * smooth(0.28, 0.08, grid_at(rain_grid, dir, 0.5)) * smooth(8.0, 20.0, cold); // (dunes are not stony)
+	stony *= 1.0 - 0.99 * smooth(0.28, 0.08, grid_at(rain_grid, dir, 0.5)) * smooth(8.0, 20.0, cold); // (dunes are not stony)
 	at[6] = (uint8_t)(int)(clampd(stony, 0.0, 1.0) * 255.0);
 	at[7] = (uint8_t)(int)(depth * 255.0);
 	at[8] = (uint8_t)(int)(clampd(alluvial, 0.0, 1.0) * 255.0);

@@ -156,6 +156,10 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 		footprints.planet = self
 		footprints.target = target as Player
 		add_child(footprints)
+		var guard := PlanetCrustGuard.new() # the player and the camera never go inside the crust
+		guard.planet = self
+		guard.target = target as Player
+		add_child(guard)
 		var motes := PlanetMotes.new()
 		motes.planet = self
 		add_child(motes)

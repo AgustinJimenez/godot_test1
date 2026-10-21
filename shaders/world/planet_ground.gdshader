@@ -331,7 +331,7 @@ void fragment() {
 	// the ground is sandy and not stony
 	float sand_ground = max(smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(0.0, 0.05, paint.g - paint.r + 0.02)),
 			sand_share) * smoothstep(0.55, 0.8, world_normal.y) * (1.0 - smoothstep(0.05, 0.4, woodland));
-	float plates_here = 1.0 - 0.98 * sand_ground * (1.0 - smoothstep(0.3, 0.9, lie.x));
+	float plates_here = 1.0 - 0.98 * max(sand_ground, sand_share) * (1.0 - smoothstep(0.3, 0.9, lie.x));
 	if (strength > 0.001) {
 		vec3 near_anchor = (anchor_from_world * vec4(world_pos, 1.0)).xyz;
 		vec3 on_planet = near_anchor + anchor_wrap; // the planet position, to the noise's period
