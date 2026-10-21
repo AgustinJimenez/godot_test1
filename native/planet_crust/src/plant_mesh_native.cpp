@@ -343,6 +343,16 @@ struct MeshData {
 		has_uv = true;
 	}
 
+	// the same with each corner's own normal (a smooth surface)
+	void tri_uv_n(const Vector3 &a, const Vector3 &b, const Vector3 &c, const Color &ca, const Color &cb, const Color &cc,
+			const Vector2 &ua, const Vector2 &ub, const Vector2 &uc, const Vector2 &dice, const Vector3 &na,
+			const Vector3 &nb, const Vector3 &nc) {
+		tri_uv(a, b, c, ca, cb, cc, ua, ub, uc, dice);
+		const size_t at = vertices.size() - 3;
+		normals[at] = moved ? xf.basis.xform(na) : na;
+		normals[at + 1] = moved ? xf.basis.xform(nc) : nc;
+		normals[at + 2] = moved ? xf.basis.xform(nb) : nb;
+	}
 	void place(const Transform3D &p_xf) {
 		xf = p_xf;
 		moved = true;
@@ -606,22 +616,48 @@ std::vector<Vector2> palmate(double aspect) {
 	return points;
 }
 
+// Rounds the corners of a closed outline (Chaikin: each corner is cut at a quarter of both edges); the two points on the
+// midrib (x == 0, the base and the tip) stay where they are, so the leaf keeps its point.
+std::vector<Vector2> rounded(const std::vector<Vector2> &p_points, int p_times) {
+	std::vector<Vector2> points = p_points;
+	for (int pass = 0; pass < p_times; pass++) {
+		std::vector<Vector2> next;
+		const size_t n = points.size();
+		for (size_t i = 0; i < n; i++) {
+			const Vector2 &a = points[i];
+			const Vector2 &b = points[(i + 1) % n];
+			if (a.x == 0.0f) {
+				next.push_back(a);
+				next.push_back(a.lerp(b, 0.5f));
+			} else if (b.x == 0.0f) {
+				next.push_back(a.lerp(b, 0.5f));
+			} else {
+				next.push_back(a.lerp(b, 0.25f));
+				next.push_back(a.lerp(b, 0.75f));
+			}
+		}
+		points = next;
+	}
+	return points;
+}
+
 std::vector<Vector2> leaf_outline(int shape, double aspect, int lobes, int edge_kind, bool detailed) {
 	if (shape == PALMATE) {
-		return palmate(aspect);
+		return detailed ? rounded(palmate(aspect), 2) : palmate(aspect);
 	}
 	bool simple = shape == OVAL || shape == DIAMOND;
-	int per_side = simple ? 2 : 3;
+	int per_side = simple ? 3 : 4; // (the lightest look is not a triangle any more either)
 	if (detailed) {
-		per_side += 1;
+		per_side = simple ? 9 : 11; // (a smooth margin: with a few points a leaf is a diamond)
 	}
+	const int cycles = shape == LOBED ? 2 * std::max(lobes, 1) + 1 : per_side; // (how many lobes the width swings through)
 	if (shape == LOBED) {
-		per_side = 2 * std::max(lobes, 1) + 1;
+		per_side = (detailed ? 9 : 2) * std::max(lobes, 1) + 1;
 	}
 	double edge = 1.0;
 	bool toothed = edge_kind != SMOOTH;
 	if (detailed && toothed && shape != LOBED) {
-		per_side += 2;
+		per_side += 4;
 		edge = edge_kind == SERRATED ? 0.8 : 0.92;
 	}
 	double half = 0.5 / aspect;
@@ -629,13 +665,13 @@ std::vector<Vector2> leaf_outline(int shape, double aspect, int lobes, int edge_
 	points.push_back(Vector2(0, 0));
 	for (int i = 0; i < per_side; i++) {
 		double along = (double)(i + 1) / (per_side + 1);
-		points.push_back(Vector2((real_t)(half * leaf_width(shape, along, per_side) * tooth(i, edge)), (real_t)along));
+		points.push_back(Vector2((real_t)(half * leaf_width(shape, along, cycles) * tooth(i, edge)), (real_t)along));
 	}
 	points.push_back(Vector2(0, 1));
 	for (int i = 0; i < per_side; i++) {
 		double along = (double)(per_side - i) / (per_side + 1);
 		double t = tooth(per_side - 1 - i, edge);
-		points.push_back(Vector2((real_t)(-half * leaf_width(shape, along, per_side) * t), (real_t)along));
+		points.push_back(Vector2((real_t)(-half * leaf_width(shape, along, cycles) * t), (real_t)along));
 	}
 	return points;
 }
@@ -654,10 +690,101 @@ void add_leaf_card(MeshData &b, const Vector3 &base, const Vector3 &axis, const 
 	b.tri_uv(a, c, d, base_color, tip_color, tip_color, Vector2(0.1f, 0), Vector2(1, 1), Vector2(0, 1), mark);
 }
 
+// One leaf as a smooth, uneven surface (the realistic look): the outline, a ring of points half way in from it and a centre,
+// lifted along the midrib (the blade folds up from it), rippled toward the edge, with the tip drooping and the whole blade
+// turned a little, all different from leaf to leaf (`dice`); the normals are the average of the faces at each point so the
+// light runs smoothly over it, and the veins and colour are the shader's job.
+void add_leaf_surface(MeshData &b, const std::vector<Vector2> &outline, const Vector3 &base, const Vector3 &axis,
+		const Vector3 &normal, double length, double fold, double curl, const Color &base_color, const Color &tip_color,
+		double asym, double skew, double width, const Vector2 &dice) {
+	const Vector3 right = axis.cross(normal).normalized();
+	const size_t n = outline.size();
+	double widest = 0.001;
+	for (const Vector2 &p : outline) {
+		widest = std::max(widest, (double)std::abs(p.x));
+	}
+	const double phase = dice.x * 6.28318, wave_amp = 0.012 + 0.03 * dice.y, wave_freq = 5.0 + 5.0 * dice.x;
+	const double twist = (dice.y - 0.5) * 0.35, droop = 0.6 + dice.x * 0.8;
+	// the surface at leaf coordinates (x across, y along)
+	auto place = [&](double x, double y) {
+		const double sign = x > 0 ? 1.0 : (x < 0 ? -1.0 : 0.0);
+		const double across = x * width * (1.0 + asym * sign) + skew * y * y;
+		const double u = std::min(std::abs(x) / widest, 1.0); // 0 on the midrib .. 1 at the edge
+		double lift = fold * length * (1.0 - std::pow(u, 1.3)); // folded up along the midrib
+		lift += wave_amp * length * std::sin(y * wave_freq + phase + u * 2.0) * u; // rippled toward the edge
+		lift += curl * droop * y * y * length; // the tip droops
+		lift += twist * x * y * length; // the blade is turned a little
+		return base + axis * (real_t)(y * length) + right * (real_t)(across * length) + normal * (real_t)lift;
+	};
+	std::vector<Vector3> position; // [0, n): the outline, [n, 2n): the inner ring, 2n: the centre
+	std::vector<Color> colour;
+	std::vector<Vector2> uv;
+	position.reserve(2 * n + 1);
+	for (size_t i = 0; i < n; i++) {
+		position.push_back(place(outline[i].x, outline[i].y));
+		colour.push_back(mix(base_color, tip_color, outline[i].y).darkened(0.05f));
+		uv.push_back(Vector2((real_t)(0.5 + 0.5 * outline[i].x / widest), outline[i].y));
+	}
+	const bool rings = b.detailed; // (the light look: a fan from the centre, the close one adds a ring half way in)
+	if (rings) {
+		for (size_t i = 0; i < n; i++) {
+			const double x = outline[i].x * 0.5, y = outline[i].y * 0.92 + 0.04;
+			position.push_back(place(x, y));
+			colour.push_back(mix(base_color, tip_color, y));
+			uv.push_back(Vector2((real_t)(0.5 + 0.5 * x / widest), (real_t)y));
+		}
+	}
+	const size_t centre = position.size();
+	position.push_back(place(0.0, 0.45));
+	colour.push_back(mix(base_color, tip_color, 0.35).lightened(0.12f));
+	uv.push_back(Vector2(0.5f, 0.45f));
+	std::vector<std::array<size_t, 3>> faces;
+	for (size_t i = 0; i < n; i++) {
+		const size_t j = (i + 1) % n;
+		if (rings) {
+			faces.push_back({ i, j, n + j });
+			faces.push_back({ i, n + j, n + i });
+			faces.push_back({ centre, n + i, n + j });
+		} else {
+			faces.push_back({ centre, i, j });
+		}
+	}
+	std::vector<Vector3> smooth(position.size());
+	for (const auto &face : faces) {
+		const Vector3 cross = (position[face[1]] - position[face[0]]).cross(position[face[2]] - position[face[0]]);
+		for (size_t corner : face) {
+			smooth[corner] += cross; // (larger faces count more)
+		}
+	}
+	for (Vector3 &s : smooth) {
+		s = s.normalized();
+	}
+	for (auto &face : faces) { // (wind each face so its geometric normal looks to the card's side: the shader flips it for the back)
+		if ((position[face[1]] - position[face[0]]).cross(position[face[2]] - position[face[0]]).dot(normal) < 0.0f) {
+			std::swap(face[1], face[2]);
+		}
+	}
+	for (const auto &face : faces) {
+		// the leaf's faces are drawn from both sides: the normal faces the side the card's `normal` looks to
+		Vector3 na = smooth[face[0]], nb = smooth[face[1]], nc = smooth[face[2]];
+		if (na.dot(normal) < 0.0f) {
+			na = -na;
+			nb = -nb;
+			nc = -nc;
+		}
+		b.tri_uv_n(position[face[0]], position[face[1]], position[face[2]], colour[face[0]], colour[face[1]], colour[face[2]],
+				uv[face[0]], uv[face[1]], uv[face[2]], dice, na, nb, nc);
+	}
+}
+
 // One leaf as a fan of triangles round a centre point a little above it (PlantLeafShapes.add_leaf)
 void add_leaf(MeshData &b, const std::vector<Vector2> &outline, const Vector3 &base, const Vector3 &axis,
 		const Vector3 &normal, double length, double fold, double curl, const Color &base_color,
 		const Color &tip_color, double asym, double skew, double width, const Vector2 &dice) {
+	if (true) { // (every look: the smooth uneven surface; the fan below is the old flat one)
+		add_leaf_surface(b, outline, base, axis, normal, length, fold, curl, base_color, tip_color, asym, skew, width, dice);
+		return;
+	}
 	Vector3 right = axis.cross(normal).normalized();
 	size_t n = outline.size();
 	std::vector<Vector3> corners(n);
@@ -1033,7 +1160,7 @@ struct Grower {
 					Vector3 dir = (side * (real_t)(sign_side * 0.9) + tangent * 0.5f + DOWN * 0.45f).normalized();
 					Color from_colour = with_alpha(tone.darkened(0.2f), sway);
 					Color tip_colour = with_alpha(mix(g->leaf_tip, tone, 0.3), std::min(sway + LEAF_SWAY, 1.0));
-					if (fine && low_plant && !outline.empty()) {
+					if (low_plant && !outline.empty()) {
 						Vector3 up = (UP - dir * dir.dot(UP)).normalized();
 						add_leaf(*b, outline, at, dir, up, size * 1.25, 0.08, -0.06, from_colour, tip_colour, 0.0, 0.0,
 								rr(0.9, 1.2), Vector2((real_t)rf(), (real_t)rf()));

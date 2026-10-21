@@ -76,20 +76,24 @@ vec2 hash22(vec2 p) {
 }
 
 // A cluster of small leaves on a card (UV 0..1, the stalk at the bottom): leaves in a 5 x 5 grid, each
-// with its own size, turn (mostly pointing out from the stalk), shade and veins; the one drawn on top
-// where two overlap is the one with the larger dice. Returns x: 1 inside a leaf (0 outside), y: the shade.
-vec2 leaf_cluster(vec2 uv, float id) {
+// with its own size, turn (mostly pointing out from the stalk), shade, curve, wavy margin, veins and
+// wear (holes, dry brown edges); the one drawn on top where two overlap is the one with the larger dice.
+// Returns x: 1 inside a leaf (0 outside), y: the shade, z: how worn and dry it is there (0..1), w: how
+// the surface leans across the leaf (-1 .. 1: round across the midrib, rippled along it); `across_uv` is
+// the direction across the leaf in the card's UV.
+vec4 leaf_cluster(vec2 uv, float id, out vec2 across_uv) {
 	const float N = 5.0;
 	vec2 p = uv * N;
 	vec2 cell = floor(p);
 	float best = -1.0;
-	float inside_leaf = 0.0;
-	float shade = 1.0;
+	vec4 result = vec4(0.0, 1.0, 0.0, 0.0);
+	across_uv = vec2(1.0, 0.0);
 	for (int j = -1; j <= 1; j++) {
 		for (int i = -1; i <= 1; i++) {
 			vec2 c = cell + vec2(float(i), float(j));
 			vec2 h = hash22(c + id * 13.7);
 			vec2 h2 = hash22(c * 1.7 + 5.3 + id * 7.1);
+			vec2 h3 = hash22(c * 2.3 + 1.9 + id * 3.3);
 			vec2 centre = c + 0.5 + (h - 0.5) * 0.7;
 			vec2 at = centre / N;
 			if (at.x < 0.14 || at.x > 0.86 || at.y < 0.08 || at.y > 0.86) {
@@ -104,21 +108,41 @@ vec2 leaf_cluster(vec2 uv, float id) {
 			float length_cells = 0.85 + h2.y * 0.45;
 			float width_cells = 0.34 + h.x * 0.14;
 			float t = q.y / length_cells + 0.5;
+			// the midrib is not straight: the leaf curves to one side and the tip droops sideways
+			q.x -= (h3.x - 0.5) * 0.3 * width_cells * sin(3.14159 * t) + (h3.y - 0.5) * 0.35 * width_cells * t * t;
 			if (t > 0.0 && t < 1.0) {
-				float half_width = width_cells * 0.5 * sin(3.14159 * pow(t, 0.8));
-				if (abs(q.x) < half_width && h.y > best) {
+				// the margin is not a clean curve: slow waves, some leaves broader at the base, some at the tip
+				float skew = mix(0.8, 1.15, h3.y) + (h3.x - 0.5) * 0.5 * t;
+				float wavy = 1.0 + 0.1 * sin(t * (9.0 + 8.0 * h3.x) + h.y * 20.0) + 0.05 * sin(t * 31.0 + h2.x * 9.0);
+				float half_width = width_cells * 0.5 * sin(3.14159 * pow(t, mix(0.6, 1.0, h3.y))) * wavy * skew;
+				float across_raw = q.x / max(half_width, 0.001);
+				float across = abs(across_raw);
+				// wear: a few holes bitten out, brown dry tips and edges
+				float hole = 0.0;
+				if (h2.x > 0.8) {
+					vec2 spot = vec2((h3.x - 0.5) * 0.5 * width_cells, (0.3 + 0.4 * h3.y) * length_cells - 0.5 * length_cells);
+					hole = 1.0 - smoothstep(0.02, 0.03 + 0.05 * h2.y, length(q - spot));
+				}
+				float dry = smoothstep(0.55, 1.0, across * (0.7 + 0.5 * h3.x) + t * t * h2.x * 0.5) * step(0.82, h.y);
+				if (across < 1.0 && h.y > best && hole < 0.5) {
 					best = h.y;
-					inside_leaf = 1.0;
-					float across = abs(q.x) / max(half_width, 0.001);
 					float rib = 1.0 - smoothstep(0.0, 0.07, abs(q.x) / width_cells);
 					float run = fract(t * 5.0 - across * 1.6 + h.x);
 					float side_vein = (1.0 - smoothstep(0.0, 0.16, min(run, 1.0 - run))) * (1.0 - across) * 0.7;
-					shade = (0.72 + 0.5 * h2.x) * (1.0 - 0.22 * across * across) + max(rib, side_vein) * 0.28;
+					// the fine net of small veins between the big ones
+					float net = abs(sin(q.x * 70.0 + q.y * 55.0)) * abs(sin(q.x * 55.0 - q.y * 70.0));
+					float fine = 1.0 - 0.09 * smoothstep(0.35, 0.0, net);
+					float shade = (0.72 + 0.5 * h2.x) * (1.0 - 0.22 * across * across) * fine + max(rib, side_vein) * 0.28;
+					// between the side veins the blade puffs up a little: a ripple along the leaf
+					float ripple = sin(t * 14.0 + h.x * 6.0) * 0.5;
+					float lean = clamp(across_raw * 0.85 + ripple * across, -1.0, 1.0);
+					result = vec4(1.0, shade * mix(1.0, 0.82, dry), dry, lean);
+					across_uv = vec2(cs, -sn); // (q.x runs along this in the card)
 				}
 			}
 		}
 	}
-	return vec2(inside_leaf, shade);
+	return result;
 }
 
 // One blade of grass on a narrow card (UV.x across, UV.y from the root to the tip; UV2.y of 8 marks it): tapering to a point, its
@@ -219,18 +243,30 @@ void fragment() {
 	// it, and the blade a little lighter along the middle and darker toward the edge
 	bool is_card = UV2.y > 1.5;
 	float card_alpha = 1.0;
+	vec2 card_across = vec2(1.0, 0.0);
+	float card_lean = 0.0;
 	if (is_card) {
 		bool is_grass = UV2.y > 7.5;
 		bool is_pin = UV2.y > 3.5 && !is_grass;
 		float needles = (UV2.y > 5.5 && !is_grass) ? 1.0 : 0.0;
 		float rows = (UV2.y - mix(4.0, 6.0, needles)) * 100.0;
-		vec2 cluster = is_grass ? grass_blades(UV, UV2.x) : (is_pin ? pinnate(UV, rows, UV2.x, needles) : leaf_cluster(UV, UV2.x));
+		vec4 cluster = vec4(0.0, 1.0, 0.0, 0.0);
+		if (is_grass) {
+			cluster.xy = grass_blades(UV, UV2.x);
+		} else if (is_pin) {
+			cluster.xy = pinnate(UV, rows, UV2.x, needles);
+		} else {
+			cluster = leaf_cluster(UV, UV2.x, card_across);
+		}
 		// far away the leaves are under a pixel and would shimmer: the card fills in toward a solid mass
 		float far_fill = smoothstep(0.35, 0.8, is_grass ? fwidth(UV.x) * 2.0 : (is_pin ? fwidth(UV.y) * rows : fwidth(UV.x) * 5.0));
 		far_fill *= smoothstep(5.0, 18.0, length(VERTEX)); // (a card seen edge on near the eye is not a distant one)
 		far_fill *= is_grass ? 0.0 : 1.0; // (a tuft is only drawn near: its blades stay blades, not a solid card)
 		card_alpha = mix(cluster.x, 0.62, far_fill);
 		paint *= mix(cluster.y, 0.9, far_fill);
+		// dry brown tips and edges, and the lean of the leaf's surface for the normal
+		paint = mix(paint, vec3(paint.g * 0.95, paint.g * 0.6, paint.g * 0.22), cluster.z * 0.7 * (1.0 - far_fill));
+		card_lean = cluster.w * (1.0 - far_fill);
 	}
 	if (UV.x > 0.001 && !is_card) {
 		// every leaf has its own two random numbers (UV2): how many side veins, how they slope,
@@ -324,6 +360,20 @@ void fragment() {
 		smooth_normal = -smooth_normal;
 	}
 	NORMAL = normalize(mix(flat_normal, smooth_normal, realism));
+	if (is_card && UV2.y < 3.5 && abs(card_lean) > 0.001) {
+		// a leaf of a cluster is round across its midrib and rippled along it: tip the normal across the leaf (the card's
+		// UV directions from the derivatives of the position and the UV)
+		vec3 dq1 = dFdx(VERTEX);
+		vec3 dq2 = dFdy(VERTEX);
+		vec2 dv1 = dFdx(UV);
+		vec2 dv2 = dFdy(UV);
+		float dt = dv1.x * dv2.y - dv1.y * dv2.x;
+		float sgn = dt < 0.0 ? -1.0 : 1.0;
+		vec3 along_u = normalize(dq1 * dv2.y - dq2 * dv1.y) * sgn;
+		vec3 along_v = normalize(dq2 * dv1.x - dq1 * dv2.x) * sgn;
+		vec3 across_dir3 = normalize(along_u * card_across.x + along_v * card_across.y);
+		NORMAL = normalize(NORMAL + across_dir3 * card_lean * 0.6);
+	}
 	if (is_card && UV2.y > 7.5) {
 		// a blade of grass is a flat card but is round across: tilt the normal one way on one side of the midrib and the other way on the
 		// other (the direction of the card's across from the derivatives of its UV), and lean it toward the sky as the ground's light does

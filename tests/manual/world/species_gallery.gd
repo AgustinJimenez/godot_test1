@@ -38,6 +38,9 @@ func _ready() -> void:
 		elif arg == "--detailed":
 			detailed = true
 	_build_stage()
+	for arg in args:
+		if arg.begins_with("--shot="):
+			_shoot.call_deferred(arg.substr(7))
 	_show()
 
 
@@ -147,3 +150,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_:
 			return
 	_show()
+
+
+## `--shot=PATH`: saves the picture after a moment and quits.
+func _shoot(path: String) -> void:
+	await get_tree().create_timer(2.0).timeout
+	get_viewport().get_texture().get_image().save_png(path)
+	get_tree().quit()
