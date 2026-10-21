@@ -27,6 +27,7 @@ var _left := false
 var _last := Vector3.ZERO
 var _have_last := false
 var _retry := 0
+var _fall := 0.0 ## m/s, the fastest the player fell since they left the ground
 var _decals_on := false
 static var _texture: ImageTexture
 
@@ -46,7 +47,11 @@ func _physics_process(delta: float) -> void:
 	var here := target.global_position
 	if not target.is_on_floor():
 		_have_last = false
+		_fall = minf(_fall, target.velocity.y)
 		return
+	if _fall < -3.5: # (a landing: a puff of dust on sand, the harder the more)
+		_land(here, -_fall)
+	_fall = 0.0
 	if not _have_last:
 		_last = here
 		_have_last = true
@@ -115,6 +120,17 @@ func _dent_sand(at: Vector3, forward: Vector3, up_world: Vector3) -> void:
 		dust = PlanetDust.new()
 		add_child(dust)
 	dust.puff(at, up_world, _paint(at), 0.5 + 0.1 * target.velocity.length())
+
+
+## A landing at `feet` from a fall of `speed` m/s: dust on sand and dry ground.
+func _land(feet: Vector3, speed: float) -> void:
+	var ground := planet.ground_at(feet.x, feet.z, feet.y)
+	if ground["wet"] or not _is_sand(int(ground["biome"])):
+		return
+	if dust == null:
+		dust = PlanetDust.new()
+		add_child(dust)
+	dust.puff(feet, Vector3.UP, _paint(feet), clampf(speed * 0.15, 0.6, 1.5))
 
 
 ## The colour of the ground under a world position (what the ground shader starts from).
