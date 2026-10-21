@@ -9,6 +9,7 @@ extends Node3D
 
 const MAX := 48
 const STEP := 0.85 ## m between two footprints
+const RETRIES := 8 ## frames a print is tried again while no foot is on the ground
 const LIFE := 120.0 ## s
 ## m: foot width, depth of the box that projects (deep: it must reach the ground whatever the
 ## collider and the drawn ground disagree by), foot length
@@ -17,12 +18,14 @@ const SIZE := Vector3(0.26, 2.0, 0.44)
 var planet: PlanetWorld
 var target: Player
 var dents: PlanetDents
+var imprinter: PlanetImprinter
 
 var _prints: Array[Dictionary] = [] # {decal, at (planet, doubles), up, forward, age}
 var _since := 0.0
 var _left := false
 var _last := Vector3.ZERO
 var _have_last := false
+var _retry := 0
 var _decals_on := false
 static var _texture: ImageTexture
 
@@ -47,9 +50,13 @@ func _physics_process(delta: float) -> void:
 		_last = here
 		_have_last = true
 	var moved := Vector2(here.x - _last.x, here.z - _last.z).length()
-	if moved < STEP:
+	if moved >= STEP:
+		_last = here
+		_retry = RETRIES
+	elif _retry > 0:
+		_retry -= 1 # (the foot was in the air: look again next frame)
+	else:
 		return
-	_last = here
 	_press(here)
 
 
@@ -74,7 +81,7 @@ func _press(feet: Vector3) -> void:
 	var frame := planet.frame
 	var back := frame.rot.inverse()
 	if _is_sand(int(ground["biome"])):
-		dents.add(frame.to_planet(spot), back * forward, back * up_world, -1.0 if _left else 1.0)
+		_dent_sand(hit["position"], forward, up_world)
 		return
 	if not _decals_on:
 		return
@@ -85,6 +92,24 @@ func _press(feet: Vector3) -> void:
 	decal.modulate = tint
 	_prints.append({"decal": decal, "at": frame.to_planet(spot), "up": back * up_world,
 			"forward": back * forward, "age": 0.0, "tint": tint})
+
+
+## What touches the sand at `at` leaves its own shape: the real mesh is looked at from under the
+## ground (PlanetImprinter), and the print keeps that. A foot in the air leaves nothing and the
+## next frames try again.
+func _dent_sand(at: Vector3, forward: Vector3, up_world: Vector3) -> void:
+	if imprinter == null:
+		imprinter = PlanetImprinter.new()
+		add_child(imprinter)
+	var rebased := planet.rebases
+	var frame := planet.frame
+	var back := frame.rot.inverse()
+	var where := frame.to_planet(at)
+	var profile := await imprinter.take(at, forward, up_world)
+	if profile.is_empty() or planet.rebases != rebased or dents == null:
+		return
+	_retry = 0
+	dents.add(where, back * forward, back * up_world, 1.0, 0.0, profile)
 
 
 ## The colour of the ground under a world position (what the ground shader starts from).

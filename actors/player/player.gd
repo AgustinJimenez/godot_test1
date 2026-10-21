@@ -281,8 +281,8 @@ func _start_third_person() -> void:
 	debug_cam.make_current()
 	_debug_cam_active = true
 	hud.set_center_dot_visible(false)
-	_look_pitch = 0.0
-	third_person_arm.rotation.x = 0.0
+	_look_pitch = deg_to_rad(OS.get_environment("PLAYER_PITCH").to_float()) # (-50: from above)
+	third_person_arm.rotation.x = _look_pitch
 
 ## "Head" is a canonical role name, not necessarily this skeleton's own bone name: resolve it
 ## through body.resolve_bone_name() before find_bone() so this still works after

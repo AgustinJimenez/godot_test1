@@ -148,3 +148,16 @@ golden sun, long unbroken wavy ripple lines, deep footprints with a dark floor a
 - Lessons: the dark blotches at low sun were the hummock tilt (x3): now x1 and 5 cm.
 - Still to do: the lee faces are cold dark blue in shadow (the photo's are warm: a warm bounce on sand), the golden sun/sky grade
   (atmosphere work), the terrain mesh is coarse at the far crests, deeper footprints with a parallax march into the dent.
+
+## Step 4 (done): prints take the shape of what touches the sand (any mesh)
+
+No fixed sole any more. PlanetImprinter puts a small orthographic camera just under the ground, looking up at a 10 cm slab; the
+ground's faces turn away from it, so it sees only the undersides of what touches the sand (the skinned barefoot, a shoe, a crate:
+any mesh). A depth quad (planet_imprint_depth.gdshader) writes the height of each underside as a grey level; the lowest few percent
+of the pixels is the contact level and every spot within 4 cm of it is pressed (255 = deepest). That 192 x 192 picture (0.8 m square,
+4 mm a pixel) is the stamp's PROFILE: PlanetDents keeps 240, puts the 32 nearest into an atlas (with mipmaps: an old print is a blur
+of its young one) and the ground shader reads it. A foot in the air (lowest point over 2.7 cm up) leaves nothing and the next frames
+try again (8). `PlanetDents.sole_profile` is a bare foot drawn by hand, for the lab (dents=1).
+- Measured: an imprint takes one frame to render and a few ms to process; a running foot leaves the ball and toes only (as it should).
+- Open: other things that touch (dropped items, animals, falling stones) call `imprinter.take(at, forward, up)` and `dents.add`;
+  snow and mud still use the flat decals; the rim and the slump are guesses; PLAYER_PITCH=-55 (env) takes a picture from above.
