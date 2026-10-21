@@ -12,10 +12,9 @@ extends Node3D
 ##   -- --insolation=X  the star's light here against the Earth's (sun disc and climate)
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
-##   -- --no-shadow  the sun casts no shadows
+##   -- --no-shadow  no sun shadows   --no-clouds  hide the clouds
 ##   -- --plants / --animals / --sea / --water  switch those stages on (off by default)
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
-##   -- --no-clouds  hide the clouds
 ##   -- --tile-cells=N --tile-max=M  the ground resolution: quads a tile, widest finest tile (m)
 ##   -- --spawn-alt=N  start N metres above the ground there (up to the other side of space)
 ##   -- --grounded  walk instead of starting in free mode (checks always walk)
@@ -29,8 +28,7 @@ extends Node3D
 ##   -- --planet-page  the Planet page of the Esc menu open from the start
 ##   -- --bare       no plants (to look at the ground)
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
-##   -- --walk-check  (use --fixed-fps 60) the real player holds forward and sprint for 90 s,
-##                    walking over the planet; prints one WALK_CHECK line
+##   -- --walk-check  (use --fixed-fps 60) the real player walks forward for 90 s (WALK_CHECK)
 ##   -- --planet-check (headless) stands the player on the planet, walks it in steps (turning the
 ##                     planet under them) and prints one PLANET_CHECK line.
 
@@ -533,7 +531,7 @@ func _monsoon_swing(noise: PlanetNoise) -> float:
 
 
 func _ready() -> void:
-	var detail := 3.0 if OS.get_cmdline_user_args().is_empty() else -1.0 # (per run, not saved)
+	var detail := 3.0 if PlanetLabChecks.plain_open() else -1.0 # (per run, not saved)
 	if OS.has_environment("LAB_GROUND"):
 		detail = OS.get_environment("LAB_GROUND").to_float()
 	if detail >= 0.0:
@@ -682,7 +680,7 @@ func _ready() -> void:
 			_checking = true
 	planet = PlanetWorld.new()
 	planet.map_first = "--map-first" in OS.get_cmdline_user_args() # (else the world first)
-	planet.start_in_desert = OS.get_cmdline_user_args().is_empty() # (opened plainly: the dunes)
+	planet.start_in_desert = PlanetLabChecks.plain_open() # (opened plainly: the dunes)
 	planet.settings = settings
 	planet.restored = restored_state
 	add_child(planet)
@@ -805,6 +803,9 @@ func _physics_process(_delta: float) -> void:
 		get_tree().quit()
 	if _walking and player != null:
 		_walk_step()
+		if _shot != "" and _frame == _shot_frame: # (a picture of a walk, LAB_PLAIN for the sand)
+			get_viewport().get_texture().get_image().save_png(_shot)
+			get_tree().quit()
 		return
 	if _weather_name != "" and _frame == 30:
 		var state: int = WorldWeather.State.keys().find(_weather_name)

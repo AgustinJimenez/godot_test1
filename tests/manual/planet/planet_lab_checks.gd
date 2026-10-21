@@ -164,3 +164,8 @@ static func turf_step(planet: PlanetWorld, frame: int) -> void:
 	var ok := count > 3000 and count < 120000
 	print("TURF_CHECK %s tufts=%d" % ["PASS" if ok else "FAIL", count])
 	planet.get_tree().quit(0 if ok else 1)
+
+
+## No arguments (or LAB_PLAIN set, for a picture of a plain open): the dunes at full ground detail.
+static func plain_open() -> bool:
+	return OS.get_cmdline_user_args().is_empty() or OS.has_environment("LAB_PLAIN")

@@ -8,7 +8,7 @@ uniform sampler2D dent_stamps : filter_nearest; // texel 0: position (planet axe
 uniform int dent_count = 0;
 uniform float dent_now = 0.0; // s, the clock the ages are read against
 uniform float dent_life = 240.0; // s, when a print has gone (its depth is down to a tenth after 0.9 of it)
-uniform float dent_depth = 0.03; // m under the heel of a new print
+uniform float dent_depth = 0.05; // m under the heel of a new print
 
 // One print in its own frame: q = (across, along) in metres, the toe at +along. Returns the height change (negative: down) and how pressed
 // the sand is there (0..1, for darker, damper, smoother sand).

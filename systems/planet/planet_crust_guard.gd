@@ -7,14 +7,35 @@ extends Node
 ## inside of the ground.
 
 const PLAYER_DEPTH := 3.0 ## m under the crust before the player is lifted back
-const CAMERA_CLEARANCE := 0.3 ## m the camera keeps above the crust
+const CAMERA_CLEARANCE := 0.5 ## m the camera keeps above the crust
 
 var planet: PlanetWorld
 var target: Player
 var rescues := 0 ## how many times the player was put back (a check reads it)
 
+var _core: MeshInstance3D # a black ball inside the crust: what is seen through the ground is dark
+
+
+func _ready() -> void:
+	var ball := SphereMesh.new()
+	ball.radius = planet.settings.radius * 0.97
+	ball.height = ball.radius * 2.0
+	ball.radial_segments = 48
+	ball.rings = 24
+	var black := StandardMaterial3D.new()
+	black.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	black.albedo_color = Color.BLACK
+	black.disable_fog = true
+	_core = MeshInstance3D.new()
+	_core.mesh = ball
+	_core.material_override = black
+	_core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_core.extra_cull_margin = 16384.0
+	add_child(_core)
+
 
 func _physics_process(_delta: float) -> void:
+	_core.global_position = planet.frame.to_world(Vector3.ZERO)
 	if target == null or planet == null or planet.loading:
 		return
 	var here := target.global_position

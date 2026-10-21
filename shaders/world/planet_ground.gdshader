@@ -887,7 +887,7 @@ void fragment() {
 						float h_y = dent_height(on_planet + forward_d * 0.004, unused);
 						vec3 dent_tilt = -(right_d * (h_x - h_here) + forward_d * (h_y - h_here)) / 0.004;
 						view_normal = normalize(view_normal + (VIEW_MATRIX * world_from_planet * vec4(dent_tilt, 0.0)).xyz * sandy);
-						paint *= 1.0 - 0.4 * dent_pressed * sandy;
+						paint *= 1.0 - 0.55 * dent_pressed * sandy;
 						ao *= 1.0 - clamp(-h_here / dent_depth, 0.0, 1.0) * 0.5 * sandy; // (the floor of a dent sees less sky)
 					}
 				}
@@ -901,7 +901,7 @@ void fragment() {
 					float swell_x = sand_swell(on_planet + right_s * 0.05);
 					float swell_y = sand_swell(on_planet + forward_s * 0.05);
 					vec3 swell_tilt = -(right_s * (swell_x - swell_here) + forward_s * (swell_y - swell_here)) / 0.05;
-					float swell_fade = sandy * (1.0 - smoothstep(10.0, 30.0, length(VERTEX)));
+					float swell_fade = sandy * (1.0 - smoothstep(20.0, 70.0, length(VERTEX)));
 					view_normal = normalize(view_normal + (VIEW_MATRIX * world_from_planet * vec4(swell_tilt, 0.0)).xyz * swell_fade * 1.0);
 					paint *= 1.0 + 0.5 * swell_here / max(sand_swell_height, 0.001) * 0.2 * swell_fade; // (a little paler on the crests)
 				}
