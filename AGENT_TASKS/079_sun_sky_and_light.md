@@ -11,7 +11,7 @@ shadows, volumetric fog): several of these may be half there.
 
 ## Steps, in this order
 
-1. **Warm light in the shadows (quick).** Shadowed ground is lit by the bright ground round it: add a bounce term from the
+1. **Warm light in the shadows (quick). DONE 2026-10-21** (`shade_bounce` 0.55 in `planet_ground.gdshader`: `col * paint * shaded * sun height` as emission; the slip faces of the dunes are warm, not blue; no extra pass). Shadowed ground is lit by the bright ground round it: add a bounce term from the
    ground's own colour (sand: warm) to the ambient on ground facing away from the sun, scaled by the sun's height (none at
    night). Today the slip faces are cold blue. Measure: one more term in the ground shader; no extra pass.
 2. **Sky and sun colour from physics.** Rayleigh and Mie scattering from the star's colour and the sun's height: blue at noon, gold

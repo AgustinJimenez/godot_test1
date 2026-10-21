@@ -59,6 +59,7 @@ uniform bool layer_micro = true; // the fine bump
 uniform bool layer_surface = true; // the texture maps of rock, soil and sand (triplanar)
 uniform bool layer_meadow = true; // the painted patches of yellow grass and flowers
 uniform float flat_look : hint_range(0.0, 1.0) = 0.0; // 1: each quad one flat colour (the low-poly look)
+uniform float shade_bounce : hint_range(0.0, 2.0) = 0.55; // the warm light the sunlit ground throws into its own shade (0: none)
 uniform float detail_strength : hint_range(0.0, 1.0) = 0.8;
 uniform float detail_range = 260.0; // m: the detail is gone by twice this
 
@@ -960,7 +961,13 @@ void fragment() {
 	}
 	NORMAL = mix(view_normal, normalize(mix(view_normal, normalize(NORMAL), 0.8)), puddle);
 	ALBEDO = col;
-	EMISSION = sand_emission * (1.0 - puddle);
+	// the light the sunlit ground throws into the shade (task 079): ground in shadow is lit by the bright ground round it, in the
+	// ground's own colour (warm on sand), more with the sun high, none at night; the sky's cold ambient alone made the shade blue
+	vec3 sun_bounce = normalize(cloud_sun_world);
+	float shaded_bounce = 1.0 - smoothstep(-0.1, 0.45, dot(world_normal, sun_bounce));
+	float sun_height = clamp(dot(normalize(world_pos - cloud_centre), sun_bounce) * 4.0, 0.0, 1.0);
+	vec3 bounce_light = col * paint * shade_bounce * shaded_bounce * sun_height * (1.0 - snow * 0.5);
+	EMISSION = (sand_emission + bounce_light) * (1.0 - puddle);
 	ROUGHNESS = mix(mix(mix(rough, 0.35, ground_wetness), 0.04, puddle), 0.7, snow);
 	ROUGHNESS = mix(ROUGHNESS, 0.18, snow * sparkle);
 	AO = ao;
