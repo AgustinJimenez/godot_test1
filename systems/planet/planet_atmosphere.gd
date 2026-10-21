@@ -246,3 +246,9 @@ func _apply() -> void:
 	var shadows: int = GraphicsSettings.get_graphics_value(&"shadow_quality")
 	sun.shadow_enabled = shadows > 0
 	sun.directional_shadow_max_distance = [0.0, 90.0, 160.0, 300.0][clampi(shadows, 0, 3)]
+	if shadows >= 3: # High: four cascades out to 1.5 km, long dune and ridge shadows (+3 ms in forest)
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		sun.directional_shadow_max_distance = 1500.0
+		sun.directional_shadow_split_1 = 0.03
+		sun.directional_shadow_split_2 = 0.12
+		sun.directional_shadow_split_3 = 0.4
