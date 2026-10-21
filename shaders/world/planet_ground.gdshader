@@ -905,7 +905,7 @@ void fragment() {
 					view_normal = normalize(view_normal + (VIEW_MATRIX * world_from_planet * vec4(swell_tilt, 0.0)).xyz * swell_fade * 1.0);
 					paint *= 1.0 + 0.5 * swell_here / max(sand_swell_height, 0.001) * 0.2 * swell_fade; // (a little paler on the crests)
 				}
-				float ripple_fade = sandy * sand_ripples * (1.0 - smoothstep(sand_ripple_length / 6.0, sand_ripple_length / 2.5, foot_m))
+				float ripple_fade = sandy * sand_ripples * (1.0 - smoothstep(sand_ripple_length / 6.0, sand_ripple_length / 2.5, length(VERTEX) * 0.0015))
 						* (1.0 - dent_pressed) * clamp(0.65 + swell_here / max(sand_swell_height, 0.001) * 0.5, 0.2, 1.3);
 				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(sand_tilt, 0.0)).xyz * ripple_fade);
 				paint *= mix(1.0, mix(0.93, 1.06, sand_h), ripple_fade);
