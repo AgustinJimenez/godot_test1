@@ -14,7 +14,7 @@ shadows, volumetric fog): several of these may be half there.
 1. **Warm light in the shadows (quick). DONE 2026-10-21** (`shade_bounce` 0.55 in `planet_ground.gdshader`: `col * paint * shaded * sun height` as emission; the slip faces of the dunes are warm, not blue; no extra pass). Shadowed ground is lit by the bright ground round it: add a bounce term from the
    ground's own colour (sand: warm) to the ambient on ground facing away from the sun, scaled by the sun's height (none at
    night). Today the slip faces are cold blue. Measure: one more term in the ground shader; no extra pass.
-2. **Sky and sun colour from physics.** Rayleigh and Mie scattering from the star's colour and the sun's height: blue at noon, gold
+2. **Sky and sun colour from physics. MOSTLY THERE (checked 2026-10-21):** `planet_atmosphere.gd` + `PlanetAir` + `planet_sky.gdshader` already scatter the star's light (Rayleigh and Mie from the air of the planet); at hour 18 on the seed 1337 dunes the sun is low and gold and the horizon is warm (see `tests/visual/baseline/desert_sunset.png`). What is left is tuning towards the photo (the teal at the zenith, the strength of the horizon glow) and the sun disc; do that after steps 3 and 4. Rayleigh and Mie scattering from the star's colour and the sun's height: blue at noon, gold
    and orange near the horizon, the warm glow along the horizon; the sun a little flatter and redder when low (refraction).
    Follows the star mass setting and the atmosphere thickness of the planet. Replaces the grey-blue sky of the desert render.
 3. **Far shadows from the terrain.** At a low sun the long dune and mountain shadows make the picture, and the shadow map only

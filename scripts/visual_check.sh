@@ -26,6 +26,7 @@ common=(--hour=15 --seed=1337)
 shoot desert_dunes "${common[@]}" --bare --dir=0.45221,0.67183,-0.58664 --view-alt=1.5 --view-pitch=-15
 shoot desert_close "${common[@]}" --bare --dir=0.45221,0.67183,-0.58664 --view-alt=0.8 --view-pitch=-50
 shoot desert_far --hour=17.5 --seed=1 --bare --dir=-0.7687,0.6392,-0.0225 --view-alt=40 --view-pitch=-12
+shoot desert_sunset --hour=18 --seed=1337 --bare --dir=0.45221,0.67183,-0.58664 --view-alt=3 --view-pitch=-5 --view-yaw=90
 shoot desert_plants "${common[@]}" --plants --dir=0.45221,0.67183,-0.58664 --view-alt=1.5 --view-pitch=-35
 shoot green_country "${common[@]}" --plants --view-alt=1.7 --view-pitch=-8
 
