@@ -80,22 +80,23 @@ vec3 sand_ripple_tilt(vec3 p, vec3 up, out float height) {
 	return -slope * (sand_slope(x) * amplitude);
 }
 
-// The flash of the grains in the sun: three grids of flakes (4 mm, 13 mm, 4 cm), a fifth of the cells with a flake, each its own small
+// The flash of the grains in the sun: two grids of round flakes (2.5 mm and 8 mm), a fifth of the cells with a flake, each its own small
 // mirror turned a random way; it shows when that mirror throws the sun at the eye. Fixed to the ground, so it twinkles as the eye
-// moves and does not crawl. `h_view` is the half vector (sun + eye) and `n_view` the surface normal, both in view space, `foot` the
-// metres a pixel covers: a grid finer than a pixel is left out (it would only be noise).
-float sand_glints(vec3 p, vec3 n_view, vec3 h_view, float foot) {
+// moves and does not crawl. `h_view` is the half vector (sun + eye) and `n_view` the surface normal, both in view space, `dist` the
+// metres to the eye: a grid finer than a pixel is left out (it would only be noise).
+float sand_glints(vec3 p, vec3 n_view, vec3 h_view, float dist) {
 	float total = 0.0;
-	float size[3] = float[3](0.004, 0.0128, 0.04096);
-	for (int g = 0; g < 3; g++) {
-		float seen = smoothstep(0.35, 1.2, size[g] / max(foot, 0.0001));
+	float size[2] = float[2](0.0025, 0.008);
+	for (int g = 0; g < 2; g++) {
+		float seen = smoothstep(0.35, 1.2, size[g] / (max(dist, 0.05) * 0.0015));
 		if (seen < 0.01) {
 			continue;
 		}
 		vec3 cell = floor(p / size[g]);
 		vec3 id = mod(cell, 1024.0 / size[g]);
 		float here = hash3(id + float(g) * 19.0);
-		if (here > 0.8) {
+		vec3 off = fract(p / size[g]) - 0.5 - (vec3(hash3(id + 1.3), hash3(id + 2.9), hash3(id + 4.7)) - 0.5) * 0.4;
+		if (here > 0.8 && length(off) < 0.32) { // (a round flake, not a square)
 			vec3 turned = vec3(hash3(id + 3.1), hash3(id + 5.7), hash3(id + 9.3)) * 2.0 - 1.0;
 			vec3 flake = normalize(n_view + turned * 0.7);
 			total += pow(max(dot(flake, h_view), 0.0), 700.0) * seen;

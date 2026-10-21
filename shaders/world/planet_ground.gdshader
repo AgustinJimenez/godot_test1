@@ -248,6 +248,7 @@ vec3 leaf_litter(vec3 p, vec3 ground_up, float scale) {
 
 #include "res://shaders/world/planet_cliff.gdshaderinc"
 #include "res://shaders/world/planet_mosaic.gdshaderinc"
+#include "res://shaders/world/planet_grains.gdshaderinc"
 #include "res://shaders/world/planet_sand.gdshaderinc"
 #include "res://shaders/world/planet_dents.gdshaderinc"
 
@@ -905,6 +906,9 @@ void fragment() {
 					view_normal = normalize(view_normal + (VIEW_MATRIX * world_from_planet * vec4(swell_tilt, 0.0)).xyz * swell_fade * 1.0);
 					paint *= 1.0 + 0.5 * swell_here / max(sand_swell_height, 0.001) * 0.2 * swell_fade; // (a little paler on the crests)
 				}
+				vec3 grain_tilt;
+				paint = grains(on_planet, length(VERTEX), normalize(anchor_up), paint, geology.z, soil_iron, sandy * sand_grain * (1.0 - dent_pressed), grain_tilt);
+				view_normal = normalize(view_normal + (VIEW_MATRIX * world_from_planet * vec4(grain_tilt, 0.0)).xyz);
 				float ripple_fade = sandy * sand_ripples * (1.0 - smoothstep(sand_ripple_length / 6.0, sand_ripple_length / 2.5, length(VERTEX) * 0.0015))
 						* (1.0 - dent_pressed) * clamp(0.65 + swell_here / max(sand_swell_height, 0.001) * 0.5, 0.2, 1.3);
 				view_normal = normalize(view_normal + (VIEW_MATRIX * vec4(sand_tilt, 0.0)).xyz * ripple_fade);
@@ -913,7 +917,7 @@ void fragment() {
 					vec3 sun_view = normalize((VIEW_MATRIX * vec4(normalize(cloud_sun_world), 0.0)).xyz);
 					vec3 half_view = normalize(sun_view - normalize(VERTEX));
 					float sun_high = clamp(dot(normalize(world_pos - cloud_centre), normalize(cloud_sun_world)) * 4.0, 0.0, 1.0);
-					sand_emission = vec3(1.0, 0.93, 0.8) * sand_glints(on_planet, view_normal, half_view, foot_m) * sand_glitter * 3.0
+					sand_emission = vec3(1.0, 0.93, 0.8) * sand_glints(on_planet, view_normal, half_view, length(VERTEX)) * sand_glitter * 3.0
 							* sandy * sun_high * (1.0 - snow_cover);
 				}
 			}
