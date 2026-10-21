@@ -4,7 +4,7 @@ extends Node3D
 ## shader works out (PlanetDents, task 078), in snow and mud one Decal a step, alternating left and
 ## right, kept in planet space (the world turns under the player as they walk, a decal in world
 ## space would slide off the ground) and faded out over LIFE seconds. At most MAX decals exist; the
-## oldest is reused. Only where the ground is soft (snow, sand, marsh), only when the Footprints
+## right, kept in planet space (the world turns under the player as they walk, a decal in world
 ## setting is on, and only close to the camera (the decals fade out by distance).
 
 const MAX := 48
@@ -23,6 +23,7 @@ var _since := 0.0
 var _left := false
 var _last := Vector3.ZERO
 var _have_last := false
+var _decals_on := false
 static var _texture: ImageTexture
 
 
@@ -32,9 +33,12 @@ func _physics_process(delta: float) -> void:
 		dents = PlanetDents.new(PlanetTile.ground_material())
 	if dents != null:
 		dents.update(delta, planet.planet_position())
-	if target == null or not GraphicsSettings.get_graphics_value(&"decals"):
+	if target == null:
 		_clear()
 		return
+	_decals_on = bool(GraphicsSettings.get_graphics_value(&"decals"))
+	if not _decals_on:
+		_clear() # (the dents in sand are not decals: they stay on)
 	var here := target.global_position
 	if not target.is_on_floor():
 		_have_last = false
@@ -71,6 +75,8 @@ func _press(feet: Vector3) -> void:
 	var back := frame.rot.inverse()
 	if _is_sand(int(ground["biome"])):
 		dents.add(frame.to_planet(spot), back * forward, back * up_world, -1.0 if _left else 1.0)
+		return
+	if not _decals_on:
 		return
 	var tint := _tint(int(ground["biome"]), _paint(feet))
 	if tint.a <= 0.0:

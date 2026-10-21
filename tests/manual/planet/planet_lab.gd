@@ -7,15 +7,13 @@ extends Node3D
 ##   -- --view-pitch=N / --view-yaw=N degrees (negative pitch looks down; with --view-alt)
 ##   -- --shot=PATH    (with a window) saves a picture after the tiles have loaded, then quits
 ##   -- --show-map [--map-zoom=N] [--map-layer=N]   the planet map open from the start (M in play)
-##   -- --time-scale=N --hour=H --year=Y   how fast time runs, the first hour (12 noon), the first
-##                    share of the year (0 northern spring equinox)
+##   -- --time-scale=N --hour=H --year=Y   time speed, the first hour (12 noon), the year share
 ##   -- --look-moon / --look-sun  the camera looks at the moon / the star (--view-alt)
 ##   -- --insolation=X  the star's light here against the Earth's (sun disc and climate)
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
 ##   -- --no-shadow  the sun casts no shadows
-##   -- --plants / --animals / --sea / --water  switch those stages on (all off by default;
-##                    --water is the rivers and lakes)
+##   -- --plants / --animals / --sea / --water  switch those stages on (off by default)
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
 ##   -- --no-clouds  hide the clouds
 ##   -- --tile-cells=N --tile-max=M  the ground resolution: quads a tile, widest finest tile (m)
@@ -535,10 +533,11 @@ func _monsoon_swing(noise: PlanetNoise) -> float:
 
 
 func _ready() -> void:
-	# a ground detail (0..3) for this run only (not saved with the graphics settings)
+	var detail := 3.0 if OS.get_cmdline_user_args().is_empty() else -1.0 # (per run, not saved)
 	if OS.has_environment("LAB_GROUND"):
-		RenderingServer.global_shader_parameter_set(&"ground_detail",
-				OS.get_environment("LAB_GROUND").to_float())
+		detail = OS.get_environment("LAB_GROUND").to_float()
+	if detail >= 0.0:
+		RenderingServer.global_shader_parameter_set(&"ground_detail", detail)
 	var report_run := _drainage_check() or _native_check() or _terrain_check()
 	report_run = report_run or _climate_check() or _water_check()
 	report_run = report_run or PlanetLabChecks.spawn_check(get_tree())
