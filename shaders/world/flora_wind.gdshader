@@ -12,6 +12,7 @@ global uniform float autumn;
 global uniform float realism;
 global uniform vec2 wind_direction;
 uniform float sway_speed = 1.3;
+uniform float bark_debug = 0.0; // 1: the bark's height as grey, 2: the cells (a tool)
 uniform bool planks = false; // wood boards (a cabin) instead of tree bark
 // A tree near the walker, bent branch by branch (PlantSway): row 0 of the texture holds each branch's foot and its parent's id, row 1
 // its turn (a rotation vector about the foot, relative to the parent). A vertex's branch is CUSTOM0.x (0: the trunk, never moves).
@@ -24,6 +25,7 @@ varying vec3 world_pos;
 varying float sway;
 varying vec3 obj_pos;
 varying float obj_up;
+varying vec2 bark_style; // from the tree's own place: which bark it has
 
 float cell_hash(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -74,6 +76,46 @@ vec2 hash22(vec2 p) {
 	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
 	return fract(sin(p) * 43758.5453);
 }
+// The bark of a tube as plates (the native grower writes UV.x = -(1 + the way round, 0..1), UV.y = metres along the branch,
+// UV2.x = the tube's radius): a staggered field of cells stretched along the trunk (a Voronoi diagram, the number of cells round
+// a whole one so the pattern closes), each cell a plate with its own height, the gaps between them deep cracks. `style` (from the
+// tree's own place) makes one tree's plates broad and short, another's narrow and long. Returns the height (1 the top of a
+// plate, 0 the bottom of a crack); crack: 0 in a crack .. 1 on a plate; tone: the plate's own shade (0..1).
+float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float tone) {
+	float width = clamp(radius * 0.45, 0.04, 0.9) * mix(0.7, 1.5, style.x);
+	float length_m = width * mix(2.0, 5.5, style.y);
+	float count = max(3.0, floor(6.2831853 * radius / width + 0.5));
+	vec2 p = vec2(aa.x * count, aa.y / length_m);
+	p += (vec2(smooth_noise(p * 0.8 + 5.0), smooth_noise(p * 0.8 + 17.0)) - 0.5) * vec2(0.5, 0.9);
+	vec2 cell = floor(p);
+	float f1 = 9.0;
+	float f2 = 9.0;
+	vec2 id = vec2(0.0);
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			vec2 c = cell + vec2(float(i), float(j));
+			vec2 wrapped = vec2(mod(c.x, count), c.y);
+			vec2 h = hash22(wrapped + style * 31.0);
+			vec2 d = p - (c + 0.5 + (h - 0.5) * 0.75);
+			float dist = mix(length(d), max(abs(d.x), abs(d.y)), 0.55); // (rounded blocks, not diamonds)
+			if (dist < f1) {
+				f2 = f1;
+				f1 = dist;
+				id = wrapped;
+			} else if (dist < f2) {
+				f2 = dist;
+			}
+		}
+	}
+	float edge = f2 - f1;
+	tone = cell_hash(id + 9.1);
+	crack = smoothstep(0.03, 0.2, edge);
+	float flakes = noise3(vec3(aa.x * count * 2.5, aa.y / length_m * 2.0, tone * 10.0));
+	float strands = noise3(vec3(aa.x * count * 9.0, aa.y / length_m * 0.7, tone * 5.0 + 3.0)); // (grain running along the trunk)
+	float top = 0.55 + 0.4 * tone;
+	return clamp(smoothstep(0.0, 0.5, edge) * top + (0.08 * (flakes - 0.5) + 0.07 * (strands - 0.5)) * smoothstep(0.0, 0.4, edge), 0.0, 1.0);
+}
+
 
 // A cluster of small leaves on a card (UV 0..1, the stalk at the bottom): leaves in a 5 x 5 grid, each
 // with its own size, turn (mostly pointing out from the stalk), shade, curve, wavy margin, veins and
@@ -210,6 +252,7 @@ void vertex() {
 	sway = COLOR.a;
 	obj_pos = VERTEX;
 	obj_up = NORMAL.y;
+	bark_style = vec2(hash13(MODEL_MATRIX[3].xyz * 0.37), hash13(MODEL_MATRIX[3].zyx * 0.53 + 3.0));
 	float weight = COLOR.a;
 	float gust = sin(TIME * sway_speed + dot(world.xz, vec2(0.11, 0.08))) * 0.5 + 0.5;
 	float flutter = sin(TIME * sway_speed * 3.3 + dot(world.xz, vec2(0.9, 0.7)) + VERTEX.y * 2.0);
@@ -289,6 +332,10 @@ void fragment() {
 		float shade = 1.04 - edge_dark * across * across - 0.1 * UV.y;
 		paint = mix(paint * shade, paint * 1.55 + vec3(0.02, 0.03, 0.0), vein * 0.9);
 	}
+	vec3 pom_a = vec3(1.0, 0.0, 0.0); // the bark's directions and normal in view space (parallax occlusion)
+	vec3 pom_l = vec3(0.0, 1.0, 0.0);
+	vec3 pom_normal = vec3(0.0, 0.0, 1.0);
+	bool has_pom = false;
 	vec2 bump = vec2(0.0);
 	float bump_amount = 0.0;
 	float surface_height = 0.0;
@@ -297,16 +344,82 @@ void fragment() {
 	bool is_rock = UV.x < -0.1 && !is_bark; // add_rock marks its stones
 	if (realism > 0.001 && is_bark && !planks) {
 		float trunk = 1.0 - smoothstep(0.1, 0.3, sway);
-		vec3 bark = bark_at(vec2(-UV.x - 1.0, UV.y), UV2.x, trunk);
-		paint *= mix(1.0, bark.x, realism);
-		// moss at the foot of a trunk, thicker on the damp side, and pale lichen patches higher up
-		float damp = noise3(vec3(world_pos.xz * 0.6, world_pos.y * 0.3));
-		float moss = smoothstep(0.5, 0.72, damp + (1.6 - obj_pos.y) * 0.18) * smoothstep(2.4, 0.2, obj_pos.y) * trunk;
-		paint = mix(paint, vec3(0.1, 0.2, 0.05) * (0.7 + 0.6 * bark.x), moss * realism * (1.0 - bark.z * 0.7));
-		float lichen = smoothstep(0.7, 0.85, noise3(vec3(world_pos.xz * 1.7, world_pos.y * 1.3) + 11.0)) * trunk;
-		paint = mix(paint, vec3(0.16, 0.19, 0.12), lichen * 0.55 * realism);
-		surface_height = bark.y;
-		surface_bump = realism * (0.5 + 0.5 * trunk);
+		float radius = max(UV2.x, 0.01);
+		vec2 aa = vec2(-UV.x - 1.0, UV.y); // (the way round 0..1, metres along)
+		float plate_depth = clamp(radius * 0.22, 0.01, 0.045) * mix(0.75, 1.3, bark_style.y);
+		float near = smoothstep(20.0, 8.0, length(VERTEX)); // the depth is only worth working out up close
+		// the surface's own directions (per unit way round, per metre along) from the derivatives of the position and the UV
+		vec3 dq1 = dFdx(VERTEX);
+		vec3 dq2 = dFdy(VERTEX);
+		vec2 dv1 = dFdx(UV);
+		vec2 dv2 = dFdy(UV);
+		float dt = dv1.x * dv2.y - dv1.y * dv2.x;
+		if (abs(dt) > 1e-12) {
+			vec3 around_p = -(dq1 * dv2.y - dq2 * dv1.y) / dt;
+			vec3 along_p = (dq2 * dv1.x - dq1 * dv2.x) / dt;
+			float len_a = max(length(around_p), 1e-4);
+			float len_l = max(length(along_p), 1e-4);
+			pom_a = around_p / len_a;
+			pom_l = along_p / len_l;
+			vec3 n0 = normalize(NORMAL);
+			if (!FRONT_FACING) {
+				n0 = -n0;
+			}
+			vec3 to_eye = normalize(-VERTEX);
+			float vz = max(dot(to_eye, n0), 0.28);
+			vec2 slide = vec2(-dot(to_eye, pom_a), -dot(to_eye, pom_l)) / vz * plate_depth;
+			vec2 per_layer = vec2(slide.x / len_a, slide.y / len_l) / 20.0 * near;
+			// parallax occlusion: step down through the bark until the ray meets a plate
+			vec2 here = aa;
+			float crack_here;
+			float tone_here;
+			float h_here = bark_height(here, radius, bark_style, crack_here, tone_here);
+			float layer = 0.0;
+			float layer_height = h_here;
+			vec2 last = here;
+			float last_diff = 0.0;
+			for (int i = 0; i < 20; i++) {
+				if (layer >= 1.0 - h_here) {
+					break;
+				}
+				last = here;
+				last_diff = (1.0 - h_here) - layer;
+				here += per_layer;
+				layer += 1.0 / 20.0;
+				h_here = bark_height(here, radius, bark_style, crack_here, tone_here);
+			}
+			float after = (1.0 - h_here) - layer; // (how far the ray is below the surface now, <= 0)
+			float mix_at = clamp(last_diff / max(last_diff - after, 1e-4), 0.0, 1.0);
+			aa = mix(last, here, mix_at);
+			float crack;
+			float tone;
+			float h0 = bark_height(aa, radius, bark_style, crack, tone);
+			float ea = 0.004 / len_a;
+			float c1, t1;
+			float ha = bark_height(aa + vec2(ea, 0.0), radius, bark_style, c1, t1);
+			float hl = bark_height(aa + vec2(0.0, 0.004 / len_l), radius, bark_style, c1, t1);
+			vec2 slope = vec2(ha - h0, hl - h0) / 0.004 * plate_depth;
+			pom_normal = normalize(vec3(-slope.x, -slope.y, 1.0));
+			pom_normal = normalize(mix(vec3(0.0, 0.0, 1.0), pom_normal, 0.85 * near + 0.15));
+			has_pom = true;
+			// the colour: plates lighter, cracks and the low ground between them dark, each plate its own tone
+			float shade = mix(0.4, 1.5, smoothstep(0.1, 0.9, h0)) * mix(0.35, 1.0, crack) * (0.78 + 0.4 * tone);
+			shade *= 0.85 + 0.3 * noise3(vec3(aa.x * 40.0, aa.y * 9.0, tone * 7.0));
+			paint = mix(paint, vec3(0.34, 0.3, 0.26) * (0.55 + 0.9 * tone), smoothstep(0.4, 0.85, h0) * 0.55 * trunk * realism); // (the weathered tops of the plates)
+			paint *= mix(1.0, shade, realism);
+			if (bark_debug > 0.5) {
+				paint = bark_debug > 1.5 ? vec3(tone, crack, h0) : vec3(h0);
+			}
+			// lichen and moss on the plates (grey-green crusts, on some trees orange ones), moss low on the damp foot
+			float lichen_noise = noise3(vec3(aa.x * 9.0, aa.y * 2.2, bark_style.x * 20.0) + 11.0);
+			float crust = smoothstep(0.58, 0.7, lichen_noise) * smoothstep(0.35, 0.7, h0) * trunk;
+			paint = mix(paint, vec3(0.2, 0.24, 0.17) * (0.8 + 0.5 * tone), crust * 0.7 * realism);
+			float orange = smoothstep(0.62, 0.74, noise3(vec3(aa.x * 14.0, aa.y * 3.5, 4.0 + bark_style.y * 9.0))) * smoothstep(0.55, 0.8, bark_style.x);
+			paint = mix(paint, vec3(0.5, 0.17, 0.03) * (0.7 + 0.5 * tone), orange * smoothstep(0.3, 0.8, h0) * 0.8 * realism * trunk);
+			float damp = noise3(vec3(world_pos.xz * 0.6, world_pos.y * 0.3));
+			float moss = smoothstep(0.5, 0.72, damp + (1.6 - obj_pos.y) * 0.18) * smoothstep(2.4, 0.2, obj_pos.y) * trunk;
+			paint = mix(paint, vec3(0.1, 0.2, 0.05) * (0.7 + 0.6 * shade), moss * realism * (0.4 + 0.5 * crack));
+		}
 	} else if (realism > 0.001 && sway < 0.1 && (UV.x < 0.001)) { // (a fallen leaf has a UV: not stone)
 		float brown = smoothstep(0.02, 0.1, paint.r - paint.b);
 		if (planks) {
@@ -360,6 +473,9 @@ void fragment() {
 		smooth_normal = -smooth_normal;
 	}
 	NORMAL = normalize(mix(flat_normal, smooth_normal, realism));
+	if (has_pom) {
+		NORMAL = normalize(pom_a * pom_normal.x + pom_l * pom_normal.y + NORMAL * pom_normal.z);
+	}
 	if (is_card && UV2.y < 3.5 && abs(card_lean) > 0.001) {
 		// a leaf of a cluster is round across its midrib and rippled along it: tip the normal across the leaf (the card's
 		// UV directions from the derivatives of the position and the UV)
