@@ -576,10 +576,25 @@ func solid_spawn(dir: Vector3) -> Vector3:
 	return find_spawn()
 
 
-## A direction for the player to start on: green country (mild, wet enough) that is not a dead flat
+## A direction for the player to start on (`in_desert`: the first solid desert spot of a spiral):
+## green country (mild, wet enough) that is not a dead flat
 ## plain: a little above the sea, with hills round it, and a river or the sea within a few
 ## kilometres, the best of the places found by a spiral over the planet.
-func find_spawn() -> Vector3:
+func find_spawn(in_desert := false) -> Vector3:
+	if in_desert:
+		for index in 3000:
+			var y := 1.0 - 2.0 * (float(index) + 0.5) / 3000.0
+			var ring := sqrt(maxf(1.0 - y * y, 0.0))
+			var angle := float(index) * 2.399963
+			var dir := Vector3(cos(angle) * ring, y, sin(angle) * ring)
+			var h := height(dir.x, dir.y, dir.z)
+			if h < 5.0 or h > relief * 0.15:
+				continue
+			if biome(dir.x, dir.y, dir.z, h, 0.05) != TerrainNoise.Biome.DESERT:
+				continue
+			var spot := solid_spawn(dir)
+			if spot.dot(dir) > 0.99999:
+				return spot
 	var best := Vector3(0.0, 0.0, 1.0)
 	var best_score := -INF
 	for index in 2500:

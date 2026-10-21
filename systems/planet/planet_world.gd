@@ -44,6 +44,8 @@ var rebases := 0 ## how many times the planet has been turned (labs and tests)
 ## false: the character starts exactly where `start` is asked to put them, in the sea if that is
 ## where it is (the swim check)
 var spawn_on_solid_ground := true
+## true: a new game starts on the dunes, not in green country (a saved game keeps its place)
+var start_in_desert := false
 var loading := false ## the player is held still while the ground around them is made
 var map_first := true ## the map opens first, the ground is built once it is closed (a window only)
 
@@ -189,7 +191,9 @@ func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector
 	if direction == Vector3.ZERO and restored.has("direction"):
 		var saved: Array = restored["direction"]
 		direction = Vector3(saved[0], saved[1], saved[2]).normalized()
-	var dir := direction if direction != Vector3.ZERO else noise.find_spawn()
+	var dir := direction
+	if dir == Vector3.ZERO:
+		dir = noise.find_spawn(start_in_desert)
 	if target is Player and altitude <= 0.0 and spawn_on_solid_ground:
 		dir = noise.solid_spawn(dir) # the character starts on solid ground, never in the sea or a river
 	var reach := settings.radius + noise.height(dir.x, dir.y, dir.z) + 1.0
