@@ -347,7 +347,7 @@ void fragment() {
 		vec2 pom_relief = vec2(0.0); // the slope of the plates where the ray met them (a metre of height in a metre across, along the ground's axes)
 		float pom_depth = 0.0; // how deep the hit is, 0..1
 		if (mosaic_on && mosaic_height > 0.0005) {
-			float pom_fade = pow(1.0 - smoothstep(0.4, mosaic_range, length(VERTEX)), 1.5) * (1.0 - smoothstep(0.25, 0.5, slope)) * plates_here; // (by distance only: fading by view angle drew a ring round the walker)
+			float pom_fade = pow(1.0 - smoothstep(0.4, mosaic_range, length(VERTEX)), 1.5) * (1.0 - smoothstep(0.1, 0.3, slope)) * plates_here; // (by distance only: fading by view angle drew a ring round the walker)
 			float pom_height = mosaic_height * pom_fade; // (the heights fade with the distance, so every plate sinks into the ground smoothly and there is no ring)
 			if (pom_fade > 0.02) {
 				vec3 pm_up = normalize(anchor_up);
