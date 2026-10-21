@@ -135,9 +135,11 @@ func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int) -> void
 func _let_go(here: Vector3) -> void:
 	for key: int in _chunks.keys():
 		var entry: Dictionary = _chunks[key]
-		var holder: Node3D = entry["holder"]
-		var gone := not is_instance_valid(holder) or not holder.is_inside_tree()
+		var holder_value: Variant = entry["holder"] # (a tile that has gone is a freed object)
+		var gone := not is_instance_valid(holder_value)
+		gone = gone or not (holder_value as Node3D).is_inside_tree()
 		if not gone:
+			var holder: Node3D = holder_value
 			var local := _grid_of(entry["grid"], holder.to_local(here))
 			gone = Vector2(local.x, local.z).distance_to(entry["at"]) > _leave() + CHUNK * 0.4
 		if gone:
