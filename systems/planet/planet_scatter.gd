@@ -478,7 +478,7 @@ func _rock_at(biome: int, steep: float, at: Vector3, near: bool) -> void:
 			elif feature == FloraMeshes.Kind.STUMP:
 				box.size = Vector3(0.8, 0.8, 0.8) * scale
 			else:
-				box.size = Vector3(1.6, 5.0, 1.6) * scale
+				box.size = Vector3(1.8, 4.0, 1.8) * scale
 			_add_box(box, at + Vector3(0.0, box.size.y * 0.4, 0.0), yaw)
 
 

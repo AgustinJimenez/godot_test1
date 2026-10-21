@@ -1705,33 +1705,37 @@ Dictionary PlantMeshNative::scenery(int p_kind, int p_variant, bool p_detailed) 
 			break;
 		}
 		case KIND_SPIRE: {
-			// rock formations of cut, jagged blocks (never a smooth cone): 0 a tor, a stack of boulders that weathering has
-			// left balanced; 1 a cluster of columns of different heights; 2 a leaning slab with a fallen one beside it
+			// rock formations of cut, jagged stone (never a smooth egg, never boulders piled up): 0 a big weathered outcrop, broad
+			// and low with a few broken blocks round its foot; 1 a cluster of tapering fins and columns, each one piece of stone,
+			// leaning a little; 2 a leaning slab with a fallen one beside it
 			Color stone = Color(0.42f, 0.4f, 0.4f).lerp(Color(0.6f, 0.55f, 0.5f), (float)(p_variant / 3.0));
 			Color low = still(stone.darkened(0.25f)), high = still(stone.lightened(0.1f));
 			if (p_variant == 0) {
-				const double widths[4] = { 1.7, 1.35, 1.05, 0.75 };
-				double y = 0.0;
-				for (int block = 0; block < 4; block++) {
-					const double w = widths[block] * rng.range(0.9, 1.1);
-					const double h = w * rng.range(0.7, 0.95);
-					m.rock(Vector3((real_t)rng.range(-0.25, 0.25), (real_t)(y + h * 0.8), (real_t)rng.range(-0.25, 0.25)),
-							Vector3((real_t)w, (real_t)h, (real_t)(w * rng.range(0.8, 1.1))), low, high, rng, 7 + block % 2);
-					y += h * 1.35;
+				m.rock(Vector3(0, 0.7f, 0), Vector3((real_t)rng.range(1.7, 2.2), (real_t)rng.range(1.0, 1.4), (real_t)rng.range(1.3, 1.8)), low, high, rng, 10);
+				for (int block = 0; block < 3; block++) {
+					const double angle = rng.randf() * TAU_D;
+					const double size = rng.range(0.3, 0.6);
+					m.rock(Vector3((real_t)(std::cos(angle) * 2.0), (real_t)(size * 0.4), (real_t)(std::sin(angle) * 1.6)),
+							Vector3((real_t)size, (real_t)(size * 0.75), (real_t)(size * 0.9)), low, high, rng, 7);
 				}
 			} else if (p_variant == 1) {
-				const int count = 6 + (int)(rng.randf() * 4.0);
+				const int count = 3 + (int)(rng.randf() * 3.0);
 				for (int pillar = 0; pillar < count; pillar++) {
 					const double angle = rng.randf() * TAU_D;
-					const double reach = 1.3 * std::sqrt(rng.randf());
-					const double h = rng.range(2.5, 7.5) * (1.0 - 0.45 * reach / 1.3);
-					const double w = rng.range(0.4, 0.65);
-					m.rock(Vector3((real_t)(std::cos(angle) * reach), (real_t)(h * 0.5), (real_t)(std::sin(angle) * reach)),
-							Vector3((real_t)w, (real_t)(h * 0.5), (real_t)(w * rng.range(0.8, 1.2))), low, high, rng, 9);
+					const double reach = 1.4 * std::sqrt(rng.randf());
+					const double h = rng.range(1.8, 5.0) * (1.0 - 0.35 * reach / 1.4);
+					const double w = rng.range(0.55, 0.95);
+					const double lean = rng.range(-0.12, 0.12);
+					m.place(Transform3D(Basis(Vector3(0, 0, 1), (real_t)lean) * Basis(Vector3(1, 0, 0), (real_t)rng.range(-0.1, 0.1)),
+							Vector3((real_t)(std::cos(angle) * reach), -0.15f, (real_t)(std::sin(angle) * reach))));
+					const double shade = rng.range(0.88, 1.08);
+					m.frustum(Vector3(), h, w, w * rng.range(0.3, 0.55), 5, still(scaled(stone.darkened(0.3f), shade)),
+							still(scaled(stone.lightened(0.05f), shade)), CAP_TOP, &rng, 0.2);
+					m.unplace();
 				}
 			} else {
 				m.place(Transform3D(Basis(Vector3(0, 0, 1), (real_t)rng.range(0.14, 0.24)), Vector3(0, 0, 0)));
-				m.rock(Vector3(0, 2.5f, 0), Vector3(0.5f, 2.6f, (real_t)rng.range(1.2, 1.7)), low, high, rng, 9);
+				m.rock(Vector3(0, 1.7f, 0), Vector3(0.8f, 1.8f, (real_t)rng.range(1.1, 1.5)), low, high, rng, 11);
 				m.unplace();
 				m.place(Transform3D(Basis(Vector3(1, 0, 0), (real_t)rng.range(1.3, 1.5)), Vector3(2.4f, 0.3f, 0.4f)));
 				m.rock(Vector3(0, 0, 0), Vector3(0.45f, 1.7f, 1.0f), low, high, rng, 8);

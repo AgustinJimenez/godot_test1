@@ -72,34 +72,10 @@ func take(at: Vector3, forward: Vector3, up: Vector3) -> PackedByteArray:
 	return profile_of(picture.get_data())
 
 
-## From the grey levels (RGBA bytes) to a profile; empty if almost nothing is there. The lowest
-## point is the level the lowest few percent of the pixels reach (a speck of a stray pixel does not
-## count), and anything lower than that is left out.
+## natively (PlanetImprintNative): the lowest point is the level the lowest few percent of pixels
+## reach (a speck of a stray pixel does not count), and anything lower is left out.
+## reach (a speck of a stray pixel does not count), and anything lower than that is left out.
 static func profile_of(levels: PackedByteArray) -> PackedByteArray:
-	var count := PlanetDents.TILE * PlanetDents.TILE
-	var histogram := PackedInt32Array()
-	histogram.resize(256)
-	var touching := 0
-	for index in count:
-		var level := levels[index * 4]
-		if level < NOTHING:
-			touching += 1
-			histogram[level] += 1
-	if touching < 40:
-		return PackedByteArray()
-	var lowest := 0
-	var below := 0
-	var wanted := maxi(4, touching / 33)
-	while lowest < 255 and below + histogram[lowest] < wanted:
-		below += histogram[lowest]
-		lowest += 1
-	if lowest > REACH: # (a foot in the air, a stone high up: no print)
-		return PackedByteArray()
-	var span := SINK / SLAB * 255.0
-	var profile := PackedByteArray()
-	profile.resize(count)
-	for index in count:
-		var level := levels[index * 4]
-		if level < NOTHING and level >= lowest - 3:
-			profile[index] = int(clampf(1.0 - float(level - lowest) / span, 0.0, 1.0) * 255.0)
-	return profile
+	var maker: Object = ClassDB.instantiate(&"PlanetImprintNative")
+	return maker.call(&"profile_of", levels, PlanetDents.TILE, NOTHING, REACH,
+			SINK / SLAB * 255.0)

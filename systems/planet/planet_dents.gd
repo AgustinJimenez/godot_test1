@@ -101,37 +101,14 @@ func update(delta: float, near: Vector3) -> void:
 	_material.set_shader_parameter(&"dent_count", count)
 
 
-## A bare foot as a profile: a heel, a narrow arch, the ball and five toes, in the picture's
-## frame (x across, y down the page is backward). `side` +1 right, -1 left.
+## A bare foot as a profile (a heel, a narrow arch, the ball and five toes; PlanetImprintNative
+## draws it). `side` +1 right, -1 left.
 static func sole_profile(side: float) -> PackedByteArray:
 	var key := signf(side)
-	if _soles.has(key):
-		return _soles[key]
-	var bytes := PackedByteArray()
-	bytes.resize(TILE * TILE)
-	var toes := [Vector3(0.032, 0.125, 0.017), Vector3(0.012, 0.133, 0.0125),
-			Vector3(-0.006, 0.13, 0.0115), Vector3(-0.022, 0.123, 0.0105),
-			Vector3(-0.036, 0.113, 0.0095)] # (across, along, radius)
-	for row in TILE:
-		var along := (0.5 - (float(row) + 0.5) / TILE) * SPAN
-		for column in TILE:
-			var across := ((float(column) + 0.5) / TILE - 0.5) * SPAN * key
-			var heel := Vector2(across / 0.036, (along + 0.09) / 0.048).length()
-			var ball := Vector2((across - 0.004) / 0.05, (along - 0.04) / 0.065).length()
-			var arch := Vector2((across + 0.012) / 0.022, (along + 0.02) / 0.06).length()
-			var depth := 0.0
-			if heel < 1.0:
-				depth = 1.0
-			if ball < 1.0:
-				depth = 1.0
-			if arch < 1.0:
-				depth = maxf(depth, 0.35)
-			for toe: Vector3 in toes:
-				if Vector2(across - toe.x, along - toe.y).length() < toe.z:
-					depth = maxf(depth, 0.8)
-			bytes[row * TILE + column] = int(depth * 255.0)
-	_soles[key] = bytes
-	return bytes
+	if not _soles.has(key):
+		var maker: Object = ClassDB.instantiate(&"PlanetImprintNative")
+		_soles[key] = maker.call(&"sole_profile", key, TILE, SPAN)
+	return _soles[key]
 
 
 static func _distance(at: PackedFloat64Array, near: Vector3) -> float:
