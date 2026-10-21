@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://mck0g66hfwa5"
+path="res://.godot/imported/planet_sun_glow.glsl-c7aefd6926c3c1abbe1297b33f446e1d.res"
+
+[deps]
+
+source_file="res://shaders/compute/planet_sun_glow.glsl"
+dest_files=["res://.godot/imported/planet_sun_glow.glsl-c7aefd6926c3c1abbe1297b33f446e1d.res"]
+
+[params]
+

@@ -68,3 +68,8 @@ walk check), commit and push each step.
 ## Out of scope for now
 Nanite-style cluster rendering, full Lumen, virtual shadow maps (task 079 step 3 gives far terrain shadows instead), hardware
 tessellation (not in Godot; parallax and geomorphing cover most of it), Chaos physics, hair and cloth.
+
+### Post stack: first part BUILT 2026-10-21 (sun glow and flare)
+- `PlanetSunGlow` (CompositorEffect, POST_TRANSPARENT so it runs in HDR before tone mapping) + `shaders/compute/planet_sun_glow.glsl`: adds a glow (exp + 1/r² + wide tail) round the sun and four soft flare ghosts along the line through the screen centre. The sun counts only where the depth picture shows sky round its pixel (9 taps, so a hill crest cuts it off smoothly). `PlanetAtmosphere._sun_glow` creates it, sets the `Compositor` on the world environment and feeds direction, colour and strength (`glow_strength` 1.5 x light_energy/sun_strength, so clouds, eclipses and dusk dim it; 0 under water). `NO_SUN_GLOW=1` switches it off.
+- Traps found: the Godot projection in the compositor callback is y-up in clip space but the image is y-down: screen y = (0.5 + ndc.y/2) * h (the picture's own pixel size is the internal render size, not the window's); a `.glsl` edit needs `godot --headless --import` to be seen (cached SPIR-V).
+- Open: a graphics setting for it, anamorphic streak, bloom of other bright lights, DoF, motion blur, grain/vignette.

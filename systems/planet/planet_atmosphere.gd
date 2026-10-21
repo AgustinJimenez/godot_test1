@@ -27,6 +27,8 @@ var clouds_hidden := false ## the debug switch: no clouds, in the sky or from ab
 var haze_wanted := 1.0
 var dust_wanted := 0.0
 var mist_wanted := 0.0 ## 0 .. 1: the morning mist of wet low ground (adds to the fog, eased in)
+var glow_strength := 1.5 ## how bright the sun's glow is (task 081)
+var _glow: PlanetSunGlow
 var _mist := 0.0
 var _haze := 1.0
 var _dust := 0.0
@@ -121,6 +123,21 @@ func _shafts() -> void:
 
 ## Gives a material that draws the clouds (the sky's, the shell's) the numbers they share: where the
 ## layer is, how the wind has carried it, how dark it is, the star's light and the planet.
+## The glow and flare ghosts round the sun (PlanetSunGlow): fainter as clouds, an eclipse or the
+## horizon take the sun's light, none at night or under water.
+func _sun_glow(sun_dir: Vector3) -> void:
+	if OS.get_environment("NO_SUN_GLOW") != "":
+		return
+	if _glow == null:
+		_glow = PlanetSunGlow.new()
+		var compositor := Compositor.new()
+		compositor.compositor_effects = [_glow]
+		_world_environment.compositor = compositor
+	_glow.sun_direction = sun_dir
+	_glow.tint = sun.light_color
+	_glow.strength = 0.0 if underwater else glow_strength * sun.light_energy / sun_strength
+
+
 func set_cloud_parameters(material: ShaderMaterial) -> void:
 	material.set_shader_parameter(&"planet_centre", planet_centre)
 	material.set_shader_parameter(&"planet_radius", radius)
@@ -235,6 +252,7 @@ func _apply() -> void:
 	# from it it stays the blue of the air: the warm / cool split of a real landscape
 	environment.fog_sun_scatter = clampf(0.55 * (1.0 - overcast), 0.0, 0.55) if not underwater else 0.0
 	_shafts()
+	_sun_glow(sun_dir)
 	environment.fog_sky_affect = 0.0 if altitude > air_top() else 0.35
 	if underwater:
 		environment.fog_light_color = Color(0.05, 0.3, 0.4) * lerpf(0.25, 1.0, 1.0 - _night_amount)
