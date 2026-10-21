@@ -1668,6 +1668,7 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 		const PackedByteArray &p_materials) const {
 	const bool have_materials = p_materials.size() >= (p_cells + 3) * (p_cells + 3) * 10;
 	PackedByteArray custom1, custom2;
+	PackedFloat32Array morph; // how far each vertex would move (up, m) to lie on the tile twice as coarse (geomorphing)
 	const int side = p_cells + 3;
 	const int count = p_cells * p_cells * 2;
 	PackedVector3Array vertices;
@@ -1683,6 +1684,23 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 	custom.resize((count + skirt_count) * 3 * 4);
 	custom1.resize(have_materials ? (count + skirt_count) * 3 * 4 : 0);
 	custom2.resize(have_materials ? (count + skirt_count) * 3 * 4 : 0);
+	morph.resize((count + skirt_count) * 3);
+	std::vector<float> coarse((size_t)side * side, 0.0f);
+	for (int row = 1; row <= p_cells + 1; row++) { // (the grid of a tile twice as coarse: the odd vertices take the middle of their neighbours)
+		for (int column = 1; column <= p_cells + 1; column++) {
+			const int i = row * side + column;
+			const bool odd_row = ((row - 1) & 1) != 0, odd_column = ((column - 1) & 1) != 0;
+			float middle = p_positions[i].y;
+			if (odd_row && odd_column) {
+				middle = 0.5f * (p_positions[i - side + 1].y + p_positions[i + side - 1].y); // (along the quads' diagonal)
+			} else if (odd_row) {
+				middle = 0.5f * (p_positions[i - side].y + p_positions[i + side].y);
+			} else if (odd_column) {
+				middle = 0.5f * (p_positions[i - 1].y + p_positions[i + 1].y);
+			}
+			coarse[(size_t)i] = middle - p_positions[i].y;
+		}
+	}
 	faces.resize(count * 3);
 	int at = 0;
 	for (int row = 1; row <= p_cells; row++) {
@@ -1718,6 +1736,7 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 					const int out = at * 3 + slot;
 					vertices[out] = corner_points[k];
 					normals[out] = p_normals[corner[k]];
+						morph[out] = coarse[(size_t)corner[k]];
 					flats[out] = mean;
 					const Color smooth = p_colours[corner[k]];
 					custom[out * 4] = (uint8_t)(int)(smooth.r * 255.0f);
@@ -1749,6 +1768,7 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 			const Vector3 points[3] = { p_a, p_c, p_b }; // (the builder's order a, c, b)
 			for (int slot = 0; slot < 3; slot++) {
 				vertices[out_at] = points[slot];
+					morph[out_at] = coarse[(size_t)p_point];
 				normals[out_at] = p_normal;
 				flats[out_at] = p_colour;
 				custom[out_at * 4] = (uint8_t)(int)(p_colour.r * 255.0f);
@@ -1795,6 +1815,7 @@ Dictionary PlanetCrustNative::triangles(const PackedVector3Array &p_positions,
 	result["custom"] = custom;
 	result["custom1"] = custom1;
 	result["custom2"] = custom2;
+	result["morph"] = morph;
 	result["faces"] = faces;
 	return result;
 }

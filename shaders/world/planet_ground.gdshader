@@ -161,7 +161,12 @@ vec4 triplanar(sampler2D map, vec3 at, vec3 facing, float scale) {
 	return vec4(tilt, sx.a * w.x + sy.a * w.y + sz.a * w.z);
 }
 
+instance uniform vec2 lod_morph = vec2(0.0); // metres from the eye: where this tile starts and ends sliding to the surface of the tile twice as coarse (geomorphing, planet_tile.gd); 0: not at all
+
 void vertex() {
+	if (lod_morph.y > 0.0) { // (a tile gives way to a bigger one: its vertices go to where that one's surface is, and the swap is not seen)
+		VERTEX.y += CUSTOM3.x * smoothstep(lod_morph.x, lod_morph.y, length((MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz));
+	}
 	smooth_color = CUSTOM0.rgb;
 	geology = CUSTOM1;
 	soil_organic = CUSTOM0.a;

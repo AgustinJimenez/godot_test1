@@ -31,7 +31,8 @@ walk check), commit and push each step.
   scatter-as-gather, McGuire's motion blur, physically based lens flare (Hullin et al. 2011).
 - Needs a graphics setting for each (the settings menu has the presets).
 
-## 4. Tile geomorphing (no popping of the ground as you approach)
+## 4. Tile geomorphing (no popping of the ground as you approach). BUILT 2026-10-21 (see below)
+- Built: native `triangles` gives each vertex `morph` (metres up to the surface of the tile twice as coarse: odd vertices take the middle of their neighbours, along the quads' diagonal for the odd-odd ones); `MeshBuilder` puts it in CUSTOM3 (R_FLOAT); `PlanetTile._set_morph` sets the instance uniform `lod_morph` (start, end: the last tile width before the bigger tile takes over, 2 * split_factor widths from the tile's middle minus 0.75 width); the ground vertex shader slides the vertex. Checked: forcing the morph to 1 shows the coarse surface (no spikes), the visual baselines hold, planet_check --quick passes. NOT yet seen in motion (a walk over tile swaps); if the user still sees the ground rise, look at it with a screen recording.
 - What: where a finer ground tile replaces a coarser one the vertices slide from the coarse positions to the fine ones, so the
   ground no longer rises or pops (probably the "sand rising" the user saw close to slopes).
 - Research: CDLOD (Strugar 2010) and geomorphing in clipmaps, how `planet_tile.gd` / `planet_surface.gd` choose levels and what

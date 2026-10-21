@@ -212,7 +212,8 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 				packed_colours, cells,
 				0.0 if collide else _skirt_drop(), materials)
 		builder.append_smooth(made["vertices"], made["normals"], made["colours"], made["custom"],
-				made.get("custom1", PackedByteArray()), made.get("custom2", PackedByteArray()))
+				made.get("custom1", PackedByteArray()), made.get("custom2", PackedByteArray()),
+				made.get("morph", PackedFloat32Array()))
 		faces = made["faces"]
 	else:
 		for row in range(1, cells + 1):
@@ -228,6 +229,7 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.mesh = builder.commit()
 	mesh_instance.material_override = ground_material()
+	_set_morph(mesh_instance)
 	ground_instance = mesh_instance # (PlanetShells copies it)
 	if not collide and level < _settings.max_level() - 1:
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -251,6 +253,17 @@ func build(f: int, lvl: int, x: int, y: int, noise: PlanetNoise, collide: bool) 
 		body.add_child(collision)
 		add_child(body)
 	return self
+
+
+## Geomorphing: this tile is shown until the player is 2 * split_factor tile widths away (then the
+## tile twice as big takes its place). Over the last tile width before that its vertices slide to
+## where that bigger tile has its surface (the vertex shader reads `lod_morph` and the CUSTOM3 of
+## each vertex), so the ground does not jump when a tile is swapped. Top tiles have no bigger one.
+func _set_morph(instance: MeshInstance3D) -> void:
+	if level == 0:
+		return
+	var end := 2.0 * _settings.split_factor * size - 0.75 * size
+	instance.set_instance_shader_parameter(&"lod_morph", Vector2(end - size, end))
 
 
 ## Plants this tile (on any thread): a node full of plants for `detail`, not yet in the tree.

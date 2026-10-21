@@ -16,6 +16,7 @@ var _normals := PackedVector3Array()
 var _colors := PackedColorArray()
 var _custom := PackedByteArray() # smooth per-vertex colour (CUSTOM0) for the smooth terrain
 var _custom2 := PackedByteArray() # where stones lie (CUSTOM2: stoniness, soil depth, river gravel)
+var _custom3 := PackedFloat32Array() # metres a vertex moves up to lie on the coarser tile (CUSTOM3)
 # what the ground is made of (CUSTOM1: stones angular, coarse, pale, flaky)
 var _custom1 := PackedByteArray()
 var _uvs := PackedVector2Array() # only leaves have them (see add_tri_uv); everything else is (0, 0)
@@ -34,6 +35,7 @@ func reset() -> void:
 	_custom.clear()
 	_custom1.clear()
 	_custom2.clear()
+	_custom3.clear()
 	_uvs.clear()
 	_uv2s.clear()
 	xf = Transform3D.IDENTITY
@@ -192,13 +194,15 @@ func add_tri_smooth(a: Vector3, b: Vector3, c: Vector3, flat: Color, normals: Ar
 ## colour bytes.
 func append_smooth(vertices: PackedVector3Array, normals: PackedVector3Array,
 		flat: PackedColorArray, smooth_bytes: PackedByteArray,
-		material_bytes := PackedByteArray(), place_bytes := PackedByteArray()) -> void:
+		material_bytes := PackedByteArray(), place_bytes := PackedByteArray(),
+		morph := PackedFloat32Array()) -> void:
 	_vertices.append_array(vertices)
 	_normals.append_array(normals)
 	_colors.append_array(flat)
 	_custom.append_array(smooth_bytes)
 	_custom1.append_array(material_bytes)
 	_custom2.append_array(place_bytes)
+	_custom3.append_array(morph)
 
 
 ## Water triangles calculated natively. Keep the same normal smoothing and UV layout as add_tri_uv.
@@ -237,6 +241,9 @@ func commit() -> ArrayMesh:
 			if _custom2.size() == _custom.size():
 				arrays[Mesh.ARRAY_CUSTOM2] = _custom2
 				flags |= Mesh.ARRAY_CUSTOM_RGBA8_UNORM << Mesh.ARRAY_FORMAT_CUSTOM2_SHIFT
+				if _custom3.size() * 4 == _custom.size():
+					arrays[Mesh.ARRAY_CUSTOM3] = _custom3
+					flags |= Mesh.ARRAY_CUSTOM_R_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM3_SHIFT
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 	return mesh
 
