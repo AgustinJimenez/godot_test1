@@ -923,3 +923,35 @@ bark change made the forest lab view about 1 ms faster). The recipe, first used 
   characters (skin, cloth, leather: needs a UV unwrap that is not stretched; check the seams first).
 - **Look at it:** `tests/manual/world/bark_view.tscn -- --species=0 --kind=N --dist=1.4 --shot=PATH`;
   compare a render with the photograph side by side before calling it good.
+
+### Procedural surfaces fitted to photographs ("photo-to-procedural", bark first)
+
+A generator copies a real material's look so the image files can go, every tree can differ, and the
+look can change with species, age or weather. Built for bark (`AGENT_TASKS/085`, files in `tools/bark/`);
+the same pipeline is meant for rock, soil, leaf litter, cliffs and buildings. The loop:
+1. **Reference:** Poly Haven CC0 diffuse + displacement, real size from `/info/<name>`. Keep the downloads
+   out of the repo (scratch folder).
+2. **Measure:** `analyze_flakes.py` cuts the height map into flakes (local threshold + watershed) and reports
+   size, aspect, direction, coverage in centimetres. Python is `E:\anaconda3\python.exe` (numpy, scipy,
+   cv2, numba, torch + CUDA, `cma`; scikit-image is broken there).
+3. **Generator:** `procedural_bark.py` (reference maths, 27 parameters) and `bark_fast.py` (the same in numba,
+   20 times faster, identical output). Design it like the real thing (shingled, overlapping flakes with
+   ragged edges, grooves, splits), with a few parameters that span the real variety.
+4. **Fit:** `bark_perceptual.py`: CMA-ES over the parameters; the loss is the VGG19 Gram matrices of the
+   generated height picture against the photo's (the look) plus a cheap size term (the Gram matrices do
+   not see scale). A statistics-only loss (sizes, spreads) does NOT work: the search finds shapes with
+   the right numbers that look wrong. Judge every fit with your own eyes: render generator and photo side
+   by side (`gen_vs_photo*.png`) before trusting a loss.
+5. **Colour:** `export_fit.py` takes from the photo the mean colour, a ramp by height, how brightness follows
+   the cavity and a slow mottling, and writes `systems/world_gen/bark_fits.gd` (generated, never edit).
+6. **Game:** `shaders/world/bark_bake.gdshader` is the generator in GLSL (it tiles: every scale a whole number
+   of repeats, cell hashes wrapped); `BarkBaker` draws it once into a tile at load (5 to 20 ms a bark) and
+   builds the texture array the plant shader samples (`BarkBaker.make_array`, called by
+   `PlanetWorld._bake_the_bark`). Bake once and sample: do NOT run the generator inside the parallax march
+   (about 30 calls a pixel).
+7. **Check:** `bark_view.tscn` (F6 in the editor: photographs left, baked procedural right; `--kind=N`,
+   `--rise=M` for an angled view, `--species=N`); `--fps` forest view must not get slower; planet_check and
+   visual check.
+Status: oak (willow) is procedural in the game; pine reads as leaves and ash is too rough with a tile seam,
+both stay photographs; maple, palm and cedar have no fit yet. Tool scripts must `quit()` on every path
+(a script that errors in `_init` hangs).

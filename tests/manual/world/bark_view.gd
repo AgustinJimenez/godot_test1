@@ -11,6 +11,7 @@ func _ready() -> void:
 	var shot := ""
 	var height := 1.0
 	var dist := 3.4 if OS.get_cmdline_user_args().is_empty() else 1.3
+	var rise := 0.0
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--species="):
 			number = int(argument.get_slice("=", 1))
@@ -20,6 +21,8 @@ func _ready() -> void:
 			height = float(argument.get_slice("=", 1))
 		elif argument.begins_with("--dist="):
 			dist = float(argument.get_slice("=", 1))
+		elif argument.begins_with("--rise="): # (camera metres above the target: an angled view)
+			rise = float(argument.get_slice("=", 1))
 	var registry := SpeciesRegistry.new(1337, 60)
 	var trees: Array[PlantSpecies] = []
 	for one in registry.species:
@@ -66,7 +69,7 @@ func _ready() -> void:
 	camera.environment = environment
 	camera.fov = 40.0
 	add_child(camera)
-	camera.look_at_from_position(Vector3(dist * 0.6, height, dist), Vector3(0.0, height, 0.0))
+	camera.look_at_from_position(Vector3(dist * 0.6, height + rise, dist), Vector3(0.0, height, 0.0))
 	if shot != "":
 		await get_tree().create_timer(1.5).timeout
 		get_viewport().get_texture().get_image().save_png(shot)

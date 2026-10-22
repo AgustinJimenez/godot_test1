@@ -144,3 +144,21 @@ Forest lab view with the baked oak: fps 67 to 68, gpu 14.2 to 15.3 ms (no change
 (full) and the visual check pass. The atlas PNG is still needed for the other five slots.
 Next: the ash seam; a pine model (square-topped scales, no serrated edge); fits for maple, palm and cedar
 (`export_fit.py` takes any number of barks); then the atlas can be deleted.
+
+## Pipeline improvements to look at before fitting the other barks (2026-10-22)
+The angled close-up (`bark_view --rise=1.6 --compare`) holds up: trunk and branches of the baked oak look as
+good as the photograph from above and from the side. Ideas to make the PIPELINE better, in the order I would try:
+1. A texture style loss in TWO resolutions plus an edge/gradient loss (steps in height) so the sharp splintered
+   edges of real flakes are asked for, not only the Gram statistics.
+2. A second photo of the same bark as a held-out check: fit on one crop, judge the loss on another, so we know
+   the fit generalises and the generator is not copying one patch.
+3. Fit the COLOUR with the same neural loss (RGB picture against the photo) instead of the hand model
+   (mean, ramp, cavity, mottle): the moss, lichen and flake tone patterns the photo has are missing.
+4. A normal-map / height loss through the actual shader: bake, light it from two angles in the game's
+   renderer and compare with the photo lit the same way (the look under light is what matters).
+5. A differentiable generator in torch (soft floors, the hashes fixed): gradient descent from the CMA result
+   would polish the last 20 % in seconds; CMA stays for the discrete shape choices.
+6. Per-species families: one generator with a species vector (aspect, scale, blockiness, groove) interpolated
+   between fitted barks, so a new tree species is a point between barks, not a new fit.
+7. Automate: one command `fit_bark.py <polyhaven name> <tile m>` that downloads, measures, fits, writes the
+   fit, and renders the comparison sheet.
