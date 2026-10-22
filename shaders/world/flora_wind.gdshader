@@ -190,7 +190,18 @@ float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float 
 	vec2 p = vec2(across_m, aa.y);
 	float fine = 0.65 * smooth_noise(vec2(p.x * 50.0, p.y * 50.0 / along) + style * 17.0)
 			+ 0.35 * smooth_noise(vec2(p.x * 0.8 + p.y * 0.6 / along, p.y * 0.8 / along - p.x * 0.6) * 130.0 + style * 31.0 + 7.0); // (turned, so no square grid shows)
-	return clamp(mix(cells, 0.5, 0.22) + (fine - 0.5) * 0.4, 0.0, 1.0);
+	float height = clamp(mix(cells, 0.5, 0.22) + (fine - 0.5) * 0.4, 0.0, 1.0);
+	if (kind == 0) {
+		// oak: a few deep furrows running mostly along the trunk, wandering, with long smooth bark between them
+		float lane_u = p.x * 6.0 + 1.3 * smooth_noise(vec2(p.x * 3.0, p.y * 0.9) + style * 23.0) + style.x * 7.0;
+		float lane = floor(lane_u + 0.5);
+		float line = 1.0 - smoothstep(0.0, 0.07, abs(lane_u - lane));
+		float where = smoothstep(0.52, 0.7, smooth_noise(vec2(lane * 3.7, p.y * 0.55) + style * 9.0)); // (a lane has a furrow for a stretch, then none)
+		float furrow = line * where;
+		height = mix(height, 0.0, furrow * 0.85);
+		crack = min(crack, 1.0 - furrow);
+	}
+	return height;
 }
 
 

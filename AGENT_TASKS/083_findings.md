@@ -170,3 +170,11 @@ Ideas to copy later (procedural, own code):
 4. Lichen on rock and bark: blotches that follow the cracks, yellow-green, not round spots.
 Not done: no ground-shader code changed (the sand and the golden grade are the user's choices;
 the ground shader is 1000 lines and any change has to pass the visual check).
+
+Oak fissures (2026-10-22), from the Poly Haven oak/hackberry look (a few deep furrows, long
+smoother bark between): lanes round the trunk (6 per metre, wandering with a slow noise); a lane
+has a furrow for a stretch of about a metre, then none; the furrow pulls the height to the floor
+(85 %) and the `crack` value to 0 so the colour and the cavity AO follow. Two first tries failed:
+a contour line of value noise covers huge areas (value noise stays near 0.5) and makes a big dark
+block; with a narrow threshold the contours close into ovals. Lanes avoid both. Not verified:
+other oak trunks and forest view; the effect is subtle at 1.5 m.
