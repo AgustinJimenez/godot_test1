@@ -44,3 +44,17 @@ a view with the sun low behind a single tree, and the frame cost (a few ALU per 
 - Result on bark_view (species 0 and 2, 1.5 m and 4 m): look the same head-on, branches slightly
   crisper at the edges. Not measured: GPU time (expected a small saving head-on, a small cost at
   grazing angles), grazing views of thin limbs, self shadow of the bumps (still open).
+
+## Specular occlusion and bark in the cracks (question 2), done 2026-10-22
+What I read: `ReflectionEnvironmentShared.ush` has a small function for specular occlusion: it
+takes the ambient occlusion, the angle between the view and the surface and the roughness, and
+gives how much of the reflected light can really arrive; deep creases reflect little, and the
+effect is stronger when looking at the surface edge-on (the reflection vector would point into
+the surface wall). So a surface that is dark in its cracks also stops shining in them.
+Ours: the bark shader never set an ambient occlusion, so cracks lit and shone like plate tops.
+Done: `AO` = the bark's cavity (low deep in cracks, 1 on plate tops, faded to 1 beyond about
+40 m) and `AO_LIGHT_AFFECT` 0.5 on bark, so the sun is also a little less strong in the cracks,
+a cheap stand-in for the plates shading each other (the self shadow still open in 083).
+Godot applies AO to ambient light and to reflections, which gives the specular occlusion.
+Result on bark_view: cracks slightly darker, plates read as more raised. Not measured: GPU cost
+(one multiply), a forest view from a distance of 10 to 30 m (the fade could be tuned).

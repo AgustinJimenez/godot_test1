@@ -402,6 +402,7 @@ void fragment() {
 	vec3 pom_l = vec3(0.0, 1.0, 0.0);
 	vec3 pom_normal = vec3(0.0, 0.0, 1.0);
 	bool has_pom = false;
+	float cavity = 1.0; // how open to the sky the bark is here: 1 on a plate top, low deep in a crack
 	vec2 bump = vec2(0.0);
 	float bump_amount = 0.0;
 	float surface_height = 0.0;
@@ -475,6 +476,7 @@ void fragment() {
 			float crack;
 			float tone;
 			float h0 = bark_height(aa, radius, bark_style, crack, tone);
+			cavity = mix(1.0, mix(0.3, 1.0, smoothstep(0.05, 0.7, h0)), smoothstep(40.0, 12.0, length(VERTEX)));
 			float ea = 0.004 / len_a;
 			float c1, t1;
 			float ha = bark_height(aa + vec2(ea, 0.0), radius, bark_style, c1, t1);
@@ -600,6 +602,10 @@ void fragment() {
 	}
 	ROUGHNESS = mix(0.92, 0.78, realism);
 	SPECULAR = 0.2;
+	// the cracks of the bark: less ambient light and less shine (the sky does not reach into them), and a
+	// little less of the sun too, as if the plates shaded each other
+	AO = mix(1.0, cavity, realism);
+	AO_LIGHT_AFFECT = is_bark ? 0.5 * realism : 0.0;
 	float leafy_part = is_bark ? 0.0 : 1.0;
 	// light through the leaves: a steady glow, and more of it when the eye looks along the sun's ray
 	// through the leaf (the sun behind the canopy): a lobe on how opposed the view and the sun are
