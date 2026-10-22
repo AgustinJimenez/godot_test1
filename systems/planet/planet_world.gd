@@ -66,6 +66,7 @@ func _ready() -> void:
 	FloraMeshes.fine_trees = (
 			int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 1
 			and not OS.has_environment("PLANET_LIGHT_TREES"))
+	_bake_the_bark()
 	noise = PlanetNoise.new(settings)
 	clock.day_seconds = settings.day_seconds
 	clock.year_days = settings.year_days
@@ -129,6 +130,17 @@ func target() -> Node3D:
 ## the point of the planet closest to it is `nearest_point(position)`, and its distance to the
 ## ground is the altitude: the tiles are chosen for that point and that height, so the ground
 ## under the target and the planet's coarse shape are what is made first, however far away.
+## The procedural barks are drawn once into the plant shader (the photo atlas shows till then).
+func _bake_the_bark() -> void:
+	if OS.has_environment("PLANET_PHOTO_BARK") or DisplayServer.get_name() == "headless":
+		return
+	var baker := BarkBaker.new()
+	add_child(baker)
+	var array: Texture2DArray = await baker.make_array()
+	FloraMeshes.material().set_shader_parameter(&"bark_photo", array)
+	baker.queue_free()
+
+
 func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector3:
 	# the materials tiles share are made here, on the main thread: a worker thread making one
 	# first could read it half made while another does (a null shader error on a river tile)

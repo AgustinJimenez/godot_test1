@@ -130,3 +130,17 @@ GLSL (`flake_height`) and compare with `bark_view --compare`.
   gives each tree its own tile if wanted). NOT wired into flora_wind.gdshader yet: the atlas is
   still what the game draws. Next: pine fix, ash contrast, then feed the baked tiles to the existing
   `bark_photo` array instead of the png, compare in `bark_view --compare` and in the forest.
+
+## Round 6 (2026-10-22): the procedural willow bark is in the game
+`PlanetWorld._bake_the_bark()` bakes the fitted bark at load and sets it as `bark_photo` (the oak slot
+only: `BarkBaker.make_array()` keeps the photographed atlas in the other five slots). Env
+`PLANET_PHOTO_BARK=1` keeps the photographs for oak too. `bark_view.tscn --compare` now shows the
+photographs (left) against the baked procedural bark (right). Judged side by side in the viewer:
+- oak (willow): the right looks like the left, same flake character and colour; kept in the game.
+- pine: leaves, not bark: NOT in the game.
+- ash: too rough and stringy, and a visible horizontal seam where the tile repeats along the trunk
+  (the tile is 1 m high; a mismatch there, to find: probably the mip/lod at the tile edge): NOT in the game.
+Forest lab view with the baked oak: fps 67 to 68, gpu 14.2 to 15.3 ms (no change). planet_check
+(full) and the visual check pass. The atlas PNG is still needed for the other five slots.
+Next: the ash seam; a pine model (square-topped scales, no serrated edge); fits for maple, palm and cedar
+(`export_fit.py` takes any number of barks); then the atlas can be deleted.

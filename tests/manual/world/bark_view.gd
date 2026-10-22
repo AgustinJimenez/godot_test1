@@ -1,7 +1,7 @@
 extends Node3D
 ## Looks at the bark of one tree species close up, in the plant shader: `--species=N` (the Nth tree
 ## of seed 1337), `--shot=PATH` saves a picture, `--height=M` where on the trunk, `--dist=M`,
-## `--compare`: the same tree twice, photographed bark left, procedural right. With no options
+## `--compare`: the same tree twice, photographs left, baked procedural bark right. With no options
 ## (F6 in the editor) it shows that comparison of tree 0 at 3.4 m.
 
 func _ready() -> void:
@@ -42,7 +42,9 @@ func _ready() -> void:
 		var plain := MeshInstance3D.new()
 		plain.mesh = instance.mesh
 		var procedural := FloraMeshes.material().duplicate() as ShaderMaterial
-		procedural.set_shader_parameter(&"bark_photo_on", 0.0)
+		var baker := BarkBaker.new()
+		add_child(baker)
+		procedural.set_shader_parameter(&"bark_photo", await baker.make_array())
 		plain.material_override = procedural
 		plain.position.x = 0.9
 		add_child(plain)
