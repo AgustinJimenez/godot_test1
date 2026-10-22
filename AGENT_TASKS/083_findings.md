@@ -95,3 +95,42 @@ not pixel exact, run to run 9 % of sampled pixels differ, with flutter 19 %), wh
 runs stem to tip on every leaf kind (it does on the leaf surface mesh; pinnate / cards use their
 own UV and are not touched), frame cost (a few ALU in the vertex stage).
 Not done yet from item 2: crown-wide ambient darkening (needs the crown's size per tree).
+
+## Poly Haven bark study (2026-10-22): what real bark height looks like, and the procedural copy
+Source: polyhaven.com (CC0, "absolute freedom", no attribution needed), API at
+api.polyhaven.com (assets list, /files/<name> for direct links). Catalog: 886 textures; the bark
+ones are chinese_hackberry_bark, eucalyptus_bark, fever_tree_bark, japanese_cedar_bark,
+jolcham_oak_bark_01, metasequoia_bark, palm_tree_bark, tree_bark_03, trident_maple_bark. Also
+useful later: forest_ground_04..06, forest_leaves_02..04, rock_* / rocks_ground_*, mud, moss
+sets. Downloaded the 1k diffuse + displacement of the nine barks to the scratchpad only (not in
+the repo) and measured the height maps (256 px, std dev of height, and the distance where the
+autocorrelation falls below 0.5, across and along):
+
+| bark | std | across px | along px | along/across |
+| oak (jolcham) | 0.059 | 2 | 4 | 2.0 |
+| maple (trident) | 0.077 | 3 | 10 | 3.3 |
+| cedar (japanese) | 0.050 | 2 | 5 | 2.5 |
+| metasequoia | 0.056 | 4 | >120 | very long ropes |
+| eucalyptus | 0.039 | 2 | 4 | 2.0 |
+| fever tree | 0.009 | 2 | 1 | almost smooth |
+| hackberry | 0.033 | 4 | 5 | 1.2 |
+| palm | 0.072 | 20 | 7 | 0.3 (horizontal bands) |
+| tree_bark_03 (ash-like) | 0.052 | 2 | 6 | 3.0 |
+
+What the pattern is: (1) low contrast, a soft relief, not hard tiles; (2) the features are small,
+1 to 4 cm if a tile is about 1 m, with 2 to 3 times longer reach along the trunk in most barks;
+(3) a few deep fissures only (hackberry, oak have them, eucalyptus and the fever tree almost none);
+(4) colour is low saturation with big mottled patches (lichen, moss) and tiny speckle, darker
+and warmer in the crevices. Our bark was made of Voronoi plates with hard edges: high contrast,
+large blocks, square-ish: that is the "pebble / low poly" look.
+Done: `bark_height` now wraps the old plates (`bark_height_cells`) and adds two layers of
+anisotropic value noise (about 2 and 1 cm across, stretched along the trunk by a ratio per kind:
+oak 2, maple/ash/pine 3, cedar 8, palm 0.3, birch 0.6), the second layer turned so no square
+grid shows, and flattens the plates by 22 % toward mid height. Result on bark_view: oak reads as
+stringy natural bark, cedar as real fibrous bark. Not verified: forest views at 10 to 30 m (the
+visual check passes, the forest baseline did not change beyond its threshold), GPU cost (two
+value-noise samples per height evaluation, about 27 evaluations per bark pixel within 20 m: it
+replaced nothing, so it adds cost; to measure), thin branches.
+Next: (a) the colour: large lichen/moss patches and a warm tint in the crevices; (b) kind-specific
+fissures (oak, hackberry) as sparse deep cracks; (c) maple still has broad squared patches from
+the plate layer; (d) the same study for ground: forest_ground_*, forest_leaves_*, rocks.
