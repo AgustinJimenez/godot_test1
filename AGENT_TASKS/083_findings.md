@@ -325,3 +325,13 @@ extreme flight loses some. Likely cause (not proven): about 70 % more nodes and 
 cell. Kept at 64 m. To dig: profile the flight (render CPU ms, process ms by frame), count
 sway_sets per tile, try cells only for tiles within 150 m, or one node per species per cell
 ring. The user should say if the flight feel is worse in play.
+
+Cells: trees only, plants behind a switch (2026-10-22). Measured (lab forest, 64 m cells):
+| setting | standing fps | GPU ms | draw calls | slow frames in the 18 km flight |
+| no cells | 57 | 17.65 | 1763 | 510, 338 |
+| trees only (shipped) | 61 | 15.5 | 1941 | 363, 399 |
+| all plants too | 67 | 13.9 | 3231 | 644, 734 |
+So the plant cells are what costs smoothness in a fast flight (many more nodes); the tree cells
+are almost free. `CELL_PLANTS` in planet_scatter.gd (default false) switches the plant cells on:
+a good setting for a walker, not for a fast flyer. Worth a graphics option or an automatic
+switch by player speed later. The full planet_check and the visual check pass.
