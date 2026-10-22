@@ -21,6 +21,7 @@ uniform float star_k = 1.0; // 0 .. 1: how many stars are shown (cloud and glare
 #include "res://shaders/world/planet_cloud_march.gdshaderinc"
 uniform float cloud_on = 0.0; // 0 none .. 1 (the shell round the planet draws them from the layer upward)
 
+uniform float multi_scatter = 0.0; // 0 off .. 1: the light that bounced more than once (an even, colourless fill of the sky; deep twilight is not black)
 const vec3 BETA_R = vec3(5.8e-6, 13.5e-6, 33.1e-6);
 const float BETA_M = 21e-6;
 // ozone takes the green and some red out of long paths: a blue horizon, a pink sunset (see PlanetAir)
@@ -102,7 +103,9 @@ vec3 scatter(vec3 origin, vec3 dir, vec3 sun, float radius, float top) {
 			sum_m += attenuation * hm;
 		}
 	}
-	return (sum_r * BETA_R * phase_r + sum_m * BETA_M * phase_m) / air_scale;
+	vec3 single_scatter = sum_r * BETA_R * phase_r + sum_m * BETA_M * phase_m;
+	vec3 bounced = (sum_r * BETA_R + sum_m * BETA_M) * (0.5 / (4.0 * PI)); // (the same energy sent every way, a share of it)
+	return (single_scatter + bounced * multi_scatter) / air_scale;
 }
 
 // Smooth value noise in 3D (for the Milky Way: only asked where the sky is dark).

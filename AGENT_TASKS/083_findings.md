@@ -253,3 +253,11 @@ Differences that matter for the look:
 Not changed: the golden sun and sky grade is the user's choice, so no code here. Next candidate if
 asked: (1) as a uniform `multi_scatter` default 0 so it can be tried live; (2) a fog colour from
 the sky's own function.
+
+Multiple scattering option (2026-10-22, planet_sky.gdshader): uniform `multi_scatter`, default 0
+(the current look is unchanged). With 1: the single-scatter energy sent every way, half of it,
+added to the sky. Seen at 18:36, looking east and 25 degrees up from 2 m: the sky is brighter and
+paler, the warm tint near the sun fades; at 12:00 almost the same. Set it on the sky material
+(`material.set_shader_parameter(&"multi_scatter", 0.3)` in planet_atmosphere.gd) to try a value;
+not wired to a setting or the debug menu. Not verified: deep twilight (the case it is for), the
+ground and clouds under it (they use their own lighting), cost (a few ALU per sky pixel).
