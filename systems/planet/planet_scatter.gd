@@ -16,6 +16,7 @@ const SMALL_PLANT := 1.4
 const TREE_FULL := 80.0 ## m: beyond this a tree is drawn as its lighter version
 const SMALL_VISIBLE := 220.0 ## m: shrubs and ground cover are gone beyond this
 const TREE_LIGHT := 220.0 ## m: beyond this, as the cheap far tree (a cone or a ball on a trunk)
+const TREE_FADE := 6.0 ## m: overlap where a tree dithers from one version to the next
 const SPACING := {
 	PlantSpecies.Layer.CANOPY: 6.5, PlantSpecies.Layer.UNDERSTORY: 5.0,
 	PlantSpecies.Layer.GRASS: 1.7, PlantSpecies.Layer.MEADOW: 3.2, PlantSpecies.Layer.COVER: 2.6,
@@ -632,6 +633,8 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 			var light := _light_trees(buffer, id, variant % 2)
 			if PlantMeshes.has_far(_species.by_id(id)):
 				light.visibility_range_end = TREE_LIGHT
+				light.visibility_range_end_margin = TREE_FADE * 2.0
+				light.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 				far_parts.append([_species.far_mesh(id, variant % 2), buffer])
 			continue
 		var mesh: ArrayMesh
@@ -660,10 +663,16 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 		else:
 			# near trees: the full tree close up, the lighter one (no shadow) further out
 			instance.visibility_range_end = TREE_FULL
+			instance.visibility_range_end_margin = TREE_FADE
+			instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 			var light := _light_trees(buffer, id, variant % 2)
 			light.visibility_range_begin = TREE_FULL * 0.95
+			light.visibility_range_begin_margin = TREE_FADE
+			light.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 			if PlantMeshes.has_far(_species.by_id(id)):
 				light.visibility_range_end = TREE_LIGHT
+				light.visibility_range_end_margin = TREE_FADE * 2.0
+				light.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 				far_parts.append([_species.far_mesh(id, variant % 2), buffer])
 	_commit_far(far_parts, TREE_LIGHT * 0.95)
 	_commit_far(horizon_parts, 0.0)
@@ -718,6 +727,9 @@ func _commit_far(parts: Array, begin: float) -> void:
 	instance.material_override = FloraMeshes.material()
 	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	instance.visibility_range_begin = begin
+	instance.visibility_range_begin_margin = TREE_FADE * 2.0 if begin > 0.0 else 0.0
+	instance.visibility_range_fade_mode = (GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF if begin > 0.0
+			else GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED)
 	_tile.add_child(instance)
 
 

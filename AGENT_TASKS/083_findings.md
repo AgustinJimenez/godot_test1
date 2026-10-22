@@ -261,3 +261,19 @@ paler, the warm tint near the sun fades; at 12:00 almost the same. Set it on the
 (`material.set_shader_parameter(&"multi_scatter", 0.3)` in planet_atmosphere.gd) to try a value;
 not wired to a setting or the debug menu. Not verified: deep twilight (the case it is for), the
 ground and clouds under it (they use their own lighting), cost (a few ALU per sky pixel).
+
+## Two corrections to the earlier notes (2026-10-22)
+- Gravel size spread (Poly Haven idea 2): already heavy-tailed in `gravel_chunk` (radius from the
+  dice cubed: many small, few large, capped at 5 cm on purpose). Nothing to do.
+- Fog colour (sky study gap 2): `planet_atmosphere._apply` already takes the fog colour from the
+  same sky function (PlanetAir.sky_color toward and away from the sun, a warm / cool split with
+  fog_sun_scatter, dust and overcast tints). The remaining difference is only that the fog is one
+  colour per frame, not per view direction and depth as Unreal's camera volume; small.
+
+## Dithered cross-fade between tree versions (open item 3, part 2), done 2026-10-22
+planet_scatter.gd: the near tree (to 80 m), the lighter tree (80 to 220 m) and the far tree
+(beyond) now overlap by TREE_FADE (6 m; 12 m at the far switch) with Godot's visibility-range
+fade (dither), so a tree no longer jumps from one version to the next. Cost measured: GPU
+16.9 -> 17.65 ms (+0.7 ms, about 4 %: the fade variant of the plant shader). Seen in a still
+view: no visible dither band. Not verified in motion (the pop itself), at night, and with
+shadows (the lighter version casts none).
