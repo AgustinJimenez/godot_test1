@@ -277,3 +277,13 @@ fade (dither), so a tree no longer jumps from one version to the next. Cost meas
 16.9 -> 17.65 ms (+0.7 ms, about 4 %: the fade variant of the plant shader). Seen in a still
 view: no visible dither band. Not verified in motion (the pop itself), at night, and with
 shadows (the lighter version casts none).
+
+Silver Oak in species_gallery (seed 1337) looked far bigger than its neighbours: not a bug. The
+species generator has an "ancient live oak" archetype (the Angel Oak: huge short trunk, limbs as
+thick as small trees, tree_archetypes.gd / species_generator.gd), and that species drew it.
+
+Triangle groups of the lab forest view at frame 1000 (mesh totals, not what is in view): plants
+1.17 M (314 nodes), trees 4k+ tris 1.0 M (63), trees 2k+ 0.76 M (69), PlantsOf 0.54 M, trees 5k+
+0.17 M, trees 3k+ 0.08 M. Trees and plants are where the triangles are; a real saving needs a
+per-distance count of what is drawn (not yet done): next performance step is to log triangles
+by distance band (0 to 20, 20 to 80, 80 to 220 m) before cutting anything.
