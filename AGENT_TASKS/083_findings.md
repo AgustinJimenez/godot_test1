@@ -58,3 +58,19 @@ a cheap stand-in for the plates shading each other (the self shadow still open i
 Godot applies AO to ambient light and to reflections, which gives the specular occlusion.
 Result on bark_view: cracks slightly darker, plates read as more raised. Not measured: GPU cost
 (one multiply), a forest view from a distance of 10 to 30 m (the fade could be tuned).
+
+## Contact shadows and ambient occlusion (questions 2 and "ambient light"), read 2026-10-22
+- Unreal's contact shadows (`ScreenSpaceShadows.usf`) are a screen-space march in the depth
+  buffer from each pixel toward the light, about 60 samples over a short distance, started from
+  the light's screen position, with a few "hard" samples near the surface and a fade over the last
+  ones, plus a surface thickness so thin things do not cast. They add the small dark creases that
+  a shadow map is too coarse to give (the foot of a plant, pebbles, bark plates).
+- Godot has no screen-space contact shadow switch for the sun that I could find; it would need our
+  own compute pass (like the sun glow pass). Not done; the bark cavity AO (above) covers the bark.
+- Ambient occlusion: Godot's SSAO is already on at default quality (graphics setting `ssao`) with
+  the engine's default radius 1 m and intensity 2. Tried tuned values in the lab:
+  radius 1.6 / intensity 2.6: no visible change; radius 2 / intensity 6: plant feet and trunk
+  bases darker, but the sand close-up gets grainier and darker; radius 4 / intensity 40: far too
+  dark. Reverted, nothing shipped: the sand look is the user's choice and the win was small.
+  Open: apply a stronger SSAO only above the forest floor (plants/trees), or per material through
+  the shader's own `AO` output like the bark now does (safer than a global setting).
