@@ -160,3 +160,49 @@ Same rules: read, note in our own words, rewrite from scratch. Paths from memory
 3. Sky atmosphere and fog (079).
 4. Water (081).
 5. Post stack (081), then particles for dust.
+
+## Added after talking it over (2026-10-22)
+
+### Ambient light and bounce (ties to 081 light probes)
+- Ambient occlusion: how the screen-space version (GTAO-like) is built, its radius, and how it is
+  combined with the sky light so creases and the foot of a trunk darken. Compare with Godot's SSAO
+  settings before writing anything of our own.
+- Bounced light: a cheap tint of sun colour from the ground onto the undersides of leaves and
+  trunks, and sky occlusion under a canopy (dark under dense trees, bright in clearings).
+- Reflection and ambient probes for far / shaded areas; how the sky is captured and filtered.
+
+### Shadows (079 far shadows)
+- Virtual shadow maps and cascaded shadow maps: how resolution follows the pixel, how far shadows
+  fade out, caching of static shadows. Goal: far trees keep soft ground shadows cheaply.
+- Contact shadows on small things (pebbles, grass roots) as a short screen-space ray.
+
+### Cliff and rock materials (rocks, spires, hill lines)
+- Triplanar sampling with sharpened blending so steep faces are not stretched; strata (layer
+  bands) driven by height and a noise warp; how snow / moss are masked by the normal's up part.
+- Rock layers on the landscape: cliff material chosen by slope, with a height-based blend into the
+  soil above. Check how they avoid the straight "belt" lines where a slope threshold flips.
+
+### More ideas worth adding
+- Anti-tiling and macro variation: stochastic or hex-tiled texture sampling and a large-scale
+  colour/roughness noise so large flat ground does not show repeats (important for 6 km views).
+- Wet surfaces and weather on materials: darkening, gloss and puddle fill after rain; frost and
+  snow settling by up-facing normal. Ties to the 080 "weather on ground" item.
+- Seasons and age: per-tree and per-plant colour drift (autumn, dry), leaf density change.
+- Overdraw and alpha cost: how leaf cards are made cheap (alpha-to-coverage, dithered fade,
+  coverage-preserving mipmaps so far leaves do not thin out). Our leaf work cost 11 % more
+  primitives and about 2.5 ms GPU, so this is where to win it back.
+- Colour grading: a look-up-table grade after tone mapping (we have a hand-picked golden grade;
+  see how a LUT lets us tune it live and keep it per time of day).
+- Lens and camera: lens dirt, chromatic fringe, vignette, exposure compensation, so shots look
+  photographed (small, cheap, large effect on "realism").
+- Debug views: how they show shader complexity, light complexity, overdraw and instance counts,
+  so we can name what costs frame time (extends the "engineering practice" item).
+
+### Outside Unreal (to read next to it)
+- Godot's own renderer source (`servers/rendering/renderer_rd/`): SSAO, SSIL, SDFGI, glow, DOF
+  already exist there; read before building a post effect so we do not rebuild what is a
+  setting. Same rule: understand, do not paste (Godot is MIT so reuse is allowed there with the
+  licence kept, but prefer a setting).
+- Public papers and talks (SIGGRAPH, GDC, GPU Gems / GPU Pro): the primary sources for the
+  techniques above (parallax occlusion, GTAO, sky atmosphere, octahedral impostors). Learning
+  from a paper carries no licence risk.
