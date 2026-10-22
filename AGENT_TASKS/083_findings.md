@@ -74,3 +74,12 @@ Result on bark_view: cracks slightly darker, plates read as more raised. Not mea
   dark. Reverted, nothing shipped: the sand look is the user's choice and the win was small.
   Open: apply a stronger SSAO only above the forest floor (plants/trees), or per material through
   the shader's own `AO` output like the bark now does (safer than a global setting).
+
+## Bark self shadow (open item 1), done 2026-10-22 (published idea, own code)
+From the hit point of the parallax march, four steps toward the sun across the bark height: where
+the bark surface stands higher than the ray, a plate is in the way. The result darkens the bark's
+`cavity` (which feeds AO and the direct light share), at most to 55 %, fading with distance with
+the parallax (near). Result on bark_view at 1.2 m: furrows are darker on the side away from the
+sun; no errors. Cost: four more bark_height evaluations per bark pixel within about 20 m. Not
+measured: GPU time in a forest view; the shadow direction is only right for the sun, not for
+other lights (a lamp would need its own march); thin limbs.

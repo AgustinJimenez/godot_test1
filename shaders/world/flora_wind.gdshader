@@ -478,6 +478,25 @@ void fragment() {
 			float tone;
 			float h0 = bark_height(aa, radius, bark_style, crack, tone);
 			cavity = mix(1.0, mix(0.3, 1.0, smoothstep(0.05, 0.7, h0)), smoothstep(40.0, 12.0, length(VERTEX)));
+			// the plates shade each other: from the point the eye hit, walk a few steps toward the sun
+			// across the bark's own height; where the surface stands higher than the ray, a plate is in the way
+			float sun_len_b = length(cloud_sun_world);
+			if (near > 0.05 && sun_len_b > 0.5) {
+				vec3 sun_b = (VIEW_MATRIX * vec4(cloud_sun_world / sun_len_b, 0.0)).xyz;
+				float up_b = dot(sun_b, n0);
+				if (up_b > 0.05) {
+					vec2 toward = vec2(dot(sun_b, pom_a), dot(sun_b, pom_l)) / max(up_b, 0.25) * plate_depth;
+					vec2 per_unit = vec2(toward.x / len_a, toward.y / len_l);
+					float lit = 1.0;
+					for (int s = 0; s < 4; s++) {
+						float t = 0.12 + 0.27 * float(s);
+						float c2, t2;
+						float h_s = bark_height(aa + per_unit * t, radius, bark_style, c2, t2);
+						lit = min(lit, 1.0 - smoothstep(0.0, 0.12, h_s - (h0 + t)));
+					}
+					cavity *= mix(0.55, 1.0, mix(1.0, lit, near));
+				}
+			}
 			float ea = 0.004 / len_a;
 			float c1, t1;
 			float ha = bark_height(aa + vec2(ea, 0.0), radius, bark_style, c1, t1);
