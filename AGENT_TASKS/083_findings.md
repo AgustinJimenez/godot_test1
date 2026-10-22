@@ -314,3 +314,14 @@ So far from the 17.65 ms / 57 fps before the cells: about 3.7 ms less GPU. Full 
 visual check pass. Not measured: other biomes, the one-time cost of splitting per tile while
 flying fast (native, small), hitches. Open: rocks and the small ground clutter, and a per-cell
 frustum test is already done by Godot (one more reason cells help).
+
+Trade-off found for the cells (2026-10-22, `--fly-check --fps`, an 18 km fast flight, frames over
+33 ms; single runs, noisy): without cells 510 and 338, with 64 m cells 644 and 734, with 96 m
+cells 729 and 791; the worst frame is 142 to 150 ms either way. A time budget for adopting plant
+holders (3 ms a frame) changed nothing (780, 739), so the slow frames do not come from the
+adoption batch. The standing forest view gains a lot (57 -> 67 fps, GPU 17.65 -> 13.9 ms), the
+extreme flight loses some. Likely cause (not proven): about 70 % more nodes and draw calls
+(1763 -> 3231 at 64 m) cost CPU while the scene changes fast, or PlanetSway walks one set per
+cell. Kept at 64 m. To dig: profile the flight (render CPU ms, process ms by frame), count
+sway_sets per tile, try cells only for tiles within 150 m, or one node per species per cell
+ring. The user should say if the flight feel is worse in play.
