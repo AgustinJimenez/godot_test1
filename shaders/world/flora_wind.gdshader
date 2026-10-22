@@ -84,7 +84,7 @@ vec2 hash22(vec2 p) {
 // a whole one so the pattern closes), each cell a plate with its own height, the gaps between them deep cracks. `style` (from the
 // tree's own place) makes one tree's plates broad and short, another's narrow and long. Returns the height (1 the top of a
 // plate, 0 the bottom of a crack); crack: 0 in a crack .. 1 on a plate; tone: the plate's own shade (0..1).
-float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float tone) {
+float bark_height_cells(vec2 aa, float radius, vec2 style, out float crack, out float tone) {
 	int kind = int(bark_kind + 0.5);
 	float spread = 1.0;
 	float stretch_lo = 2.0;
@@ -177,6 +177,20 @@ float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float 
 	float top = 0.55 + 0.4 * tone;
 	float plate = kind == 4 ? 0.35 : 0.5;
 	return clamp(smoothstep(0.0, plate, edge) * top + (0.04 * (flakes - 0.5) + 0.035 * (strands - 0.5)) * smoothstep(0.0, 0.4, edge), 0.0, 1.0);
+}
+
+// The plates, with the fine relief real bark has (measured on nine photographed barks: low contrast, features 1 to 4 cm,
+// stretched along the trunk 2 to 3 times in most, far more in a stringy one, across in a palm). The plates' own edges are
+// softened a little, so a plate is a swelling and not a tile.
+float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float tone) {
+	float cells = bark_height_cells(aa, radius, style, crack, tone);
+	int kind = int(bark_kind + 0.5);
+	float along = kind == 6 ? 8.0 : (kind == 4 || kind == 3 || kind == 2 ? 3.0 : (kind == 5 ? 0.3 : (kind == 1 ? 0.6 : 2.0)));
+	float across_m = aa.x * 6.2832 * max(radius, 0.05); // (metres round the trunk)
+	vec2 p = vec2(across_m, aa.y);
+	float fine = 0.65 * smooth_noise(vec2(p.x * 50.0, p.y * 50.0 / along) + style * 17.0)
+			+ 0.35 * smooth_noise(vec2(p.x * 0.8 + p.y * 0.6 / along, p.y * 0.8 / along - p.x * 0.6) * 130.0 + style * 31.0 + 7.0); // (turned, so no square grid shows)
+	return clamp(mix(cells, 0.5, 0.22) + (fine - 0.5) * 0.4, 0.0, 1.0);
 }
 
 
@@ -332,6 +346,13 @@ void vertex() {
 		float strength = tip * (0.07 + wind_strength * 0.45);
 		push = vec3(wind_direction.x, 0.0, wind_direction.y) * strength * (0.55 + 0.45 * swell + 0.18 * ripple)
 				+ vec3(-wind_direction.y, 0.0, wind_direction.x) * strength * 0.3 * ripple;
+	}
+	if (UV2.y > 1.5 && UV2.y <= 3.5 && UV.x > -0.5) {
+		// a leaf: the blade flutters about its own stem, the tip (UV.y runs from the stem out) moving most
+		float tip_f = clamp(UV.y, 0.0, 1.0);
+		float phase = dot(world.xz, vec2(2.3, 1.7)) + world.y * 1.9;
+		float beat = sin(TIME * sway_speed * 4.0 + phase) + 0.5 * sin(TIME * sway_speed * 7.1 + phase * 1.7);
+		push += (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz * beat * tip_f * tip_f * weight * (0.006 + wind_strength * 0.035);
 	}
 	face_up = (MODEL_MATRIX * vec4(NORMAL, 0.0)).y;
 	VERTEX += inverse(mat3(MODEL_MATRIX)) * push;

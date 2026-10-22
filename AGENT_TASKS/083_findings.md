@@ -83,3 +83,15 @@ the parallax (near). Result on bark_view at 1.2 m: furrows are darker on the sid
 sun; no errors. Cost: four more bark_height evaluations per bark pixel within about 20 m. Not
 measured: GPU time in a forest view; the shadow direction is only right for the sun, not for
 other lights (a lamp would need its own march); thin limbs.
+
+## Leaf flutter about its own stem (open item 2, part 1), done 2026-10-22
+Idea (from how vegetation shaders are layered: trunk sway, branch sway, then a small per-leaf
+motion): a leaf should not move as a rigid block with its branch; its tip moves more than its
+stem end. Our wind moved every vertex of a leaf the same. Done: for leaf geometry (UV2.y in
+1.5..3.5, not bark) the vertex is pushed along its normal by two summed sines (own phase from
+position), times the square of how far along the blade it is (UV.y), times the sway weight, with
+amplitude 0.006 + 0.035 x wind m. Not verified: how it looks in motion (stills only; the lab is
+not pixel exact, run to run 9 % of sampled pixels differ, with flutter 19 %), whether UV.y really
+runs stem to tip on every leaf kind (it does on the leaf surface mesh; pinnate / cards use their
+own UV and are not touched), frame cost (a few ALU in the vertex stage).
+Not done yet from item 2: crown-wide ambient darkening (needs the crown's size per tree).
