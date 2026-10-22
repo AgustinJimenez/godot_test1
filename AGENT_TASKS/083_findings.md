@@ -193,3 +193,8 @@ other oak trunks and forest view; the effect is subtle at 1.5 m.
 Lesson: every per-pixel loop needs a distance gate; check `--fps` after each shader change.
 Leaf flutter: dropped, the idea is documented above in case a cheaper way appears (e.g. in the
 leaf mesh's baked vertex colour, no per-vertex trig).
+
+Full regression run (2026-10-22, after a9bc782: bark parallax/AO/self shadow/relief/colour/fissures,
+cedar, light through leaves, plants loaded to 6 km, more plant workers): the whole
+`scripts/planet_check.sh` (not --quick) passes, including walk (413 m), swim and fly (18 km).
+Note: the script needs LOG_DIR to exist (`mkdir -p`).
