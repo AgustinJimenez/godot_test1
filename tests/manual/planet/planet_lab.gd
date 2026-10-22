@@ -28,6 +28,8 @@ extends Node3D
 ##   -- --planet-page  the Planet page of the Esc menu open from the start
 ##   -- --fly-check   the same in free mode at 100 m/s, 300 sprinting (the free speed slider)
 ##   -- --walk-check  (use --fixed-fps 60) the real player walks forward for 90 s (WALK_CHECK)
+##   -- --plants --grounded --forest-walk[=SECONDS] --fixed-fps 60  a person walks round the forest
+##      steering round trunks (FOREST_WALK: fps, 1% low, frame ms percentiles, GPU ms)
 ##   -- --planet-check (headless) stands the player on the planet, walks it in steps (turning the
 ##                     planet under them) and prints one PLANET_CHECK line.
 
@@ -788,9 +790,7 @@ func _map_check_step() -> void:
 
 func _physics_process(_delta: float) -> void:
 	_frame += 1
-	PlanetLabChecks.sway_step(planet, player, _frame)
-	PlanetLabChecks.turf_step(planet, _frame)
-	PlanetLabChecks.guard_step(planet, player, _frame)
+	PlanetLabChecks.frame_step(planet, player, _frame)
 	if _map_check:
 		_map_check_step()
 		return

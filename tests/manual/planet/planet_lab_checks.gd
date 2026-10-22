@@ -232,3 +232,11 @@ static func _triangles(mesh: Mesh) -> int:
 			var indices := (mesh as ArrayMesh).surface_get_array_index_len(surface)
 			total += (indices if indices > 0 else (mesh as ArrayMesh).surface_get_array_len(surface)) / 3
 	return total
+
+
+## Every physics frame of the lab: the checks that watch the world as it runs.
+static func frame_step(planet: PlanetWorld, player: Player, frame: int) -> void:
+	sway_step(planet, player, frame)
+	turf_step(planet, frame)
+	guard_step(planet, player, frame)
+	PlanetLabForest.step(planet, player, frame)

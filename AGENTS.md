@@ -868,6 +868,11 @@ Earth, `--start-menu` for the menu) with the map open first; scripted runs alway
 - **Hitches (streaming):** `--walk-check` and `--fly-check` print `HITCH worst_frame=... frames over 33 ms`
   after the loading; it is noisy (4-38 slow frames between identical runs): run it three times and compare
   the middle values.
+- **A person walking round the forest (the real-use performance test):** `-- --plants --grounded --forest-walk=45
+  --fixed-fps 60` (add `--run` to jog, `--calm` for no wind). The player walks with the real physics, steers
+  round trunks with rays, wanders, unsticks itself, in a gusty wind; after a warm-up it prints `FOREST_WALK`:
+  average fps and 1 % low, frame ms p50/p95/p99/worst, slow frames, GPU ms, render CPU ms, draw calls,
+  primitives. Counts rendered frames (not physics steps). Run it three times and compare the middle values.
 - **Pictures:** `-- --shot-frame=N --shot=E:/path/x.png` saves the screen at frame N and quits; read the PNG
   to look at it. Set the scene with `--hour=`, `--year=`, `--weather=rain|snow|storm`, `--view-alt=`,
   `--view-pitch=`, `--radius=`, `--seed=`, `--planet-page`, `--start-menu`. Take one before and one after a

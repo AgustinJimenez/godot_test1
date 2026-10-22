@@ -379,3 +379,17 @@ noise), 68 fps. Full planet_check passes; baseline of the forest view accepted (
 bark photos). Not verified: close up on the gallery, the junction between a limb and the trunk
 (a visible stub), the cut ends of branches (flat), twigs of level 2 (not smoothed).
 Next: a branch collar (a flare where a limb leaves the trunk), rounded tips instead of flat cuts.
+
+## Performance test: a person walking round the forest in wind (2026-10-22, user's request)
+`tests/manual/planet/planet_lab_forest.gd`, run `planet_lab.tscn -- --plants --grounded
+--forest-walk=45 --weather=clear --hour=11 --fixed-fps 60` (`--run`, `--calm`). Real player and
+physics, rays steer round trunks, a wander, unsticking, a gusty wind (0.4 +- 0.35, turning
+direction). 7 s warm-up, then every rendered frame is timed (physics steps that repeat a picture
+are skipped: counting them first gave a false 60 fps).
+First numbers (two runs, seed from the lab default, 45 s, 11:00, clear): avg 50 fps, 1 % low 22
+fps, frame ms p50 18.4, p95 31, p99 42, worst 59 to 67, 87 to 93 frames over 33 ms (of 2700);
+GPU 16.3 ms avg (p95 20), render CPU 3.9 ms, draw calls about 1850, primitives about 12.2 M, the
+GPU busy about 82 % of the frame. The standing view of the same forest is 65 fps and 14.5 ms, so
+walking through it in wind costs about 2 ms GPU and a worse tail (the slow frames are when tiles
+and plants stream in and the player sways trees). Next: run it before and after each change in
+planet rendering; look at what the p99 frames are (streaming adoption, sway, shadows).
