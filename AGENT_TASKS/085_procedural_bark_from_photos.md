@@ -72,3 +72,13 @@ cracks) as its own term in the loss; (3) compare renders of the generator at the
 photo in the game viewer, not only the height picture: the colour matters as much; (4) the colour
 (a ramp by height and a slow mottling, fitted per bark) before porting to GLSL.
 Honest status: not yet good enough to replace the photographs; the photo bark stays in the game.
+
+## Round 2 (2026-10-22): a `block` parameter (lens 0 .. rectangle 1)
+Pine now gets broad blocky scales with rough edges, much closer to its photo (loss 1.6). Willow and
+ash still come out as long wavy "flames" (loss 2.4 and 2.7): the slow warp and the long thin flakes
+the search likes bend them; the photos have short straight splintered flakes in rows with dark
+grooves. The random search keeps finding statistics-matching shapes that look wrong, so the next step
+is not more search but a better model for those two: (a) grooves as a separate line network along the
+trunk (long dark cracks, flakes between them), (b) flakes cut by short transverse breaks (the photos'
+horizontal splits), (c) warp limited to 1 cm, (d) a loss term on the gap network (share and length of
+dark lines). Pine is the candidate to port first.

@@ -56,6 +56,7 @@ def _flakes_at(px, py, q, seed):
         q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], q[8], q[9], q[10], q[11], q[12])
     rag_amp, rag_cm, warp_cm, warp_scale = q[13], q[14], q[15], q[16]
     fine_amp, fine_cm = q[17], q[18]
+    block = q[19]
     wx = (_noise(px / warp_scale, py / warp_scale, seed + 11.0) - 0.5) * 2.0
     wy = (_noise(px / warp_scale + 31.7, py / warp_scale, seed + 13.0) - 0.5) * 2.0
     x = px + wx * warp_cm
@@ -86,7 +87,7 @@ def _flakes_at(px, py, q, seed):
             u = rx / half_w + bite_u * rag_amp * 4.0
             v = ry / half_l + bite_v * rag_amp * 2.0
             av = min(max(abs(v), 0.0), 1.0)
-            half = 1.0 - av ** tip
+            half = (1.0 - block) * (1.0 - av ** tip) + block * (1.0 - av ** 8.0)
             if abs(v) < 1.0 and abs(u) < half:
                 d = 1.0 - abs(u) / max(half, 1e-3)
                 rim = _smooth(0.0, soft, d)
