@@ -28,6 +28,8 @@ static func material() -> ShaderMaterial:
 		_material.shader = preload("res://shaders/world/flora_wind.gdshader")
 		var Photos: Texture = preload("res://assets/textures/bark/bark_atlas.png")
 		_material.set_shader_parameter(&"bark_photo", Photos)
+		var Rocks: Texture = preload("res://assets/textures/rock/rock_atlas.png")
+		_material.set_shader_parameter(&"rock_photo", Rocks)
 	return _material
 
 

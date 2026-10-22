@@ -30,6 +30,10 @@ varying float obj_up;
 varying vec2 bark_style; // from the tree's own place: which bark it has
 varying float bark_kind; // 0 oak, 1 birch, 2 pine, 3 ash, 4 maple, 5 rings (palm), 6 cedar (the grower writes it in UV2.y of a trunk)
 varying float view_dist; // metres from the eye (the photo's mip level)
+varying vec3 obj_normal; // the surface normal in the mesh's own space (a rock's triplanar picture)
+varying float obj_scale; // metres per mesh unit (a rock's size: the picture keeps its real size)
+uniform sampler2DArray rock_photo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float rock_photo_on = 1.0; // 0: only the procedural stone
 uniform sampler2DArray bark_photo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float bark_photo_on = 1.0; // 0: only the procedural bark
 uniform float bark_pom = 1.0; // 0: no parallax march and no bump shadow (a tool: what they cost)
@@ -215,6 +219,37 @@ float photo_height(vec2 aa, float radius, vec2 style, int layer, out float crack
 	return p.a;
 }
 
+// Real rock (Poly Haven, CC0; assets/textures/rock/rock_atlas.png, tools/build_bark_atlas.gd): six slots, the colour in rgb and
+// the height in alpha. ROCK_TILE is the metres a picture covers. A rock has no UV: the picture is projected along the three axes
+// of the rock's own space and blended by the way the surface faces.
+const float ROCK_TILE[6] = float[6](1.8, 2.0, 1.5, 1.5, 1.0, 2.0);
+
+// Which slot a rock is, from the colour its mesh gives it (pale grey, brown, grey-tan, sandstone, red, dark) and a hash of its place.
+int rock_slot(vec3 paint, float hash) {
+	float lum = dot(paint, vec3(0.3, 0.6, 0.1));
+	float warm = paint.r / (paint.b + 0.01);
+	if (lum < 0.05) {
+		return 5;
+	}
+	if (warm > 2.2) {
+		return hash > 0.5 ? 3 : 4;
+	}
+	if (lum > 0.2) {
+		return 0;
+	}
+	return warm > 1.5 ? 1 : 2;
+}
+
+vec4 rock_sample(vec3 p, vec3 n, int slot, vec2 style) {
+	vec3 w = pow(abs(n), vec3(4.0));
+	w /= max(w.x + w.y + w.z, 0.001);
+	float tile = ROCK_TILE[slot];
+	vec3 q = p / tile + vec3(style.x * 7.0, style.y * 5.0, style.x * 3.0);
+	float layer = float(slot);
+	return texture(rock_photo, vec3(q.yz, layer)) * w.x + texture(rock_photo, vec3(q.xz, layer)) * w.y
+			+ texture(rock_photo, vec3(q.xy, layer)) * w.z;
+}
+
 // The plates, with the fine relief real bark has (measured on nine photographed barks: low contrast, features 1 to 4 cm,
 // stretched along the trunk 2 to 3 times in most, far more in a stringy one, across in a palm). The plates' own edges are
 // softened a little, so a plate is a swelling and not a tile.
@@ -395,6 +430,8 @@ void vertex() {
 	sway = COLOR.a;
 	obj_pos = VERTEX;
 	obj_up = NORMAL.y;
+	obj_normal = NORMAL;
+	obj_scale = length(MODEL_MATRIX[0].xyz);
 	bark_kind = UV.x < -0.5 ? floor(UV2.y * 10.0 + 0.5) : 2.0;
 	view_dist = length((MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
 	if (bark_force >= 0.0) {
@@ -642,10 +679,19 @@ void fragment() {
 			float patch = smooth_noise(world_pos.xz * 1.6 + world_pos.y * 1.3);
 			float shade = (0.78 + 0.3 * bands) * (0.82 + 0.3 * grain) * (0.9 + 0.2 * speck) * (1.0 - 0.4 * crack)
 					* (0.88 + 0.24 * patch);
+			if (rock_photo_on > 0.5) {
+				// the photographed rock: its own colour, tinted a little by the mesh's, and its height as the bump
+				int slot = rock_slot(paint, bark_style.x);
+				vec4 photo = rock_sample(obj_pos * obj_scale, normalize(obj_normal), slot, bark_style);
+				paint = photo.rgb * (0.85 + 0.3 * bark_style.y);
+				surface_height = (photo.a - 0.5) * 0.5;
+				surface_bump = realism * 2.0;
+			} else {
 			paint *= mix(1.0, shade * 1.4, realism); // (lighter: the vertex brown alone made every trunk near black)
 			paint = mix(paint, paint * vec3(0.7, 1.0, 0.55), realism * smoothstep(0.62, 0.8, patch) * 0.45 * smoothstep(0.2, 0.9, obj_up));
 			surface_height = broad * 0.4 + bands * 0.15 + grain * 0.15 + speck * 0.1 - crack * 0.5;
 			surface_bump = realism * 1.3;
+			}
 		}
 	}
 	ALBEDO = mix(paint, vec3(0.8, 0.84, 0.9), snow_cover * smoothstep(0.35, 0.75, face_up) * 0.9);

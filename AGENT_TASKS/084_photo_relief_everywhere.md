@@ -27,3 +27,18 @@ check `--fps` and the visual baselines, write findings.
 Measured costs to keep in mind: bark photos made the forest lab view GPU 15.5 -> 14.5 ms; the
 procedural height it replaced cost more than a texture read. Do not add a per-pixel loop without a
 distance gate.
+
+## Done 2026-10-22: rocks (item 1)
+`assets/textures/rock/rock_atlas.png` (+ .import), six Poly Haven rocks (rock_boulder_dry, rock_face_04,
+rock_08, rock_06, rock_pitted_mossy, dark_rock_02; masonry walls were not used), built with
+`tools/build_bark_atlas.gd --out=... --slots=...` (now generic). In `flora_wind.gdshader` the stone
+branch uses `rock_sample`: the photo projected along the rock's three axes (no UV), weighted by the
+surface normal, at its real size (`obj_scale`), a slot chosen from the mesh colour (dark, warm,
+pale...) and a hash, the height as the screen-space bump. `rock_photo_on` = 0 returns the old noise
+stone. Viewer: `tests/manual/world/rock_view.tscn -- --dist=9 [--procedural]`. The procedural
+stone had cartoon crack loops and an even speckle; the photographed one has weathering, veins and
+real stone colours. GPU in the forest lab view unchanged (14.6 to 15.2 ms). Full planet_check and
+visual check pass. Not verified: rocks in the desert and snow biomes, the large cliffs of the
+terrain (planet_cliff.gdshaderinc is separate), the stone of buildings.
+Lesson: a tool script that errors in `_init` does not quit by itself (it hung 8 minutes): make
+tools `quit()` on every path. Next in 084: the terrain scans / cliffs, birch, buildings.
