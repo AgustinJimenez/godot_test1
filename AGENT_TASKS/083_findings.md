@@ -335,3 +335,12 @@ So the plant cells are what costs smoothness in a fast flight (many more nodes);
 are almost free. `CELL_PLANTS` in planet_scatter.gd (default false) switches the plant cells on:
 a good setting for a walker, not for a fast flyer. Worth a graphics option or an automatic
 switch by player speed later. The full planet_check and the visual check pass.
+
+Forest-floor needles (2026-10-22, planet_ground.gdshader, inside the existing litter block so only
+wooded ground gets it): a third `sticks()` layer of fine thin lines (28 per metre, 3.5 cm), orange
+brown, fading out by 5 to 11 m. From the Poly Haven needle litter (forest_leaves_04: many thin
+needles over soil). Result in the lab forest at 1.7 m looking down: a faint orange speckle in the
+sunlit patches, not obvious; no baseline moved, GPU 15.5 ms unchanged, quick planet_check passes.
+Not verified: under conifers (it is not tied to species yet, only to woodland), at night.
+Could be made stronger or driven by the conifer share near the tile; left subtle on purpose
+because the ground look is the user's.

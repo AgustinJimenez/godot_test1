@@ -748,6 +748,10 @@ void fragment() {
 				sticks(hit + 91.0, 14.0, 1024.0 * 14.0, 0.55, 0.16, st_h, st_lean, st_tone, st_halo); // bark chips and small sticks
 				float chip_cover = smoothstep(0.0, 0.2, st_h) * litter_zone * litter_fade * crumbly * (1.0 - smoothstep(8.0, 16.0, crumb_dist));
 				paint = mix(paint, paint * vec3(0.32, 0.25, 0.2) * (0.6 + 0.9 * st_tone), chip_cover);
+				// needles and fine litter (Poly Haven forest floors: thin orange-brown lines in every direction over the soil)
+				sticks(hit + 31.0, 28.0, 1024.0 * 28.0, 0.45, 0.035, st_h, st_lean, st_tone, st_halo);
+				float needle_cover = smoothstep(0.0, 0.25, st_h) * litter_zone * litter_fade * (1.0 - smoothstep(5.0, 11.0, crumb_dist)) * 0.8;
+				paint = mix(paint, paint * vec3(1.5, 0.85, 0.45) * (0.7 + 0.6 * st_tone), needle_cover);
 				float leaf_fade = litter_fade * (0.3 + 0.7 * forest_floor);
 				vec3 leaves = leaf_litter(hit + 53.0, normalize(anchor_up), 9.0);
 				float leaf_cover = leaves.x * litter_zone * leaf_fade * mix(0.6, 1.0, crumbly);
