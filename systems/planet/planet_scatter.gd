@@ -17,7 +17,7 @@ const TREE_FULL := 80.0 ## m: beyond this a tree is drawn as its lighter version
 const SMALL_VISIBLE := 220.0 ## m: shrubs and ground cover are gone beyond this
 const TREE_LIGHT := 220.0 ## m: beyond this, as the cheap far tree (a cone or a ball on a trunk)
 const TREE_FADE := 6.0 ## m: overlap where a tree dithers from one version to the next
-const TREE_CELL := 40.0 ## m: near trees are drawn in cells of this size, each with its own range
+const TREE_CELL := 64.0 ## m: near trees and plants are drawn in cells of this size, own range each
 const SPACING := {
 	PlantSpecies.Layer.CANOPY: 6.5, PlantSpecies.Layer.UNDERSTORY: 5.0,
 	PlantSpecies.Layer.GRASS: 1.7, PlantSpecies.Layer.MEADOW: 3.2, PlantSpecies.Layer.COVER: 2.6,
@@ -616,14 +616,13 @@ func _buffer_of(key: int) -> PackedFloat32Array:
 ## the far trees
 ## merged into one mesh.
 func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
-	# near trees in cells: the distance range works on a whole node, so a tile's trees as one node were
-	# all drawn in full detail while any part of the tile was near (about a third of the triangles)
+	# near plants in cells: a distance range works on a whole node, so a tile's plants as one node
+	# were all drawn in full detail while any part of the tile was near
 	var cell_keys := PackedInt32Array()
 	var cell_buffers: Array = []
 	for at in keys.size():
 		var batch_key := keys[at]
-		if (near and batch_key >= PLANT_KEY and batch_key < FAR_KEY
-				&& _species.by_id((batch_key - PLANT_KEY) / 100).is_tree()):
+		if near and batch_key >= PLANT_KEY and batch_key < FAR_KEY:
 			for part: PackedFloat32Array in _tree_cells(buffers[at]):
 				cell_keys.append(batch_key)
 				cell_buffers.append(part)

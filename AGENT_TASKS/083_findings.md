@@ -301,3 +301,16 @@ Measured (lab forest, --fps, frame 1500): GPU 17.65 -> 15.2 ms, fps 57 -> 62, pr
 fly included). Not measured: other biomes, CPU time of the cell split per tile (native, small),
 hitches while flying (no new ones in the checks). Next: the same idea for plants (`SMALL_VISIBLE`
 batches) and for rocks; try 32 and 64 m cells; the lab prints NEAR_TREES (rough, node bounds).
+
+Cells for all near plants, not only trees (2026-10-22): the same split for shrubs and ground
+cover (every plant batch of the near ground, not stones/litter), and the cell size tried
+(lab forest, --fps, frame 1500):
+| cell | fps | draw calls | primitives | render CPU ms | GPU ms |
+| none (trees only, 40 m) | 62 | 2028 | 10.11 M | | 15.2 |
+| 24 m | 61 | 5988 | 7.35 M | 11.9 | 14.2 |
+| 40 m | 66-69 | 4778 | 7.56 M | | 14.5 |
+| 64 m (chosen) | 67 | 3231 | 8.13 M | 6.6 | 13.9 |
+So far from the 17.65 ms / 57 fps before the cells: about 3.7 ms less GPU. Full planet_check and
+visual check pass. Not measured: other biomes, the one-time cost of splitting per tile while
+flying fast (native, small), hitches. Open: rocks and the small ground clutter, and a per-cell
+frustum test is already done by Godot (one more reason cells help).
