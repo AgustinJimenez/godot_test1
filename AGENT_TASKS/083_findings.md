@@ -134,3 +134,9 @@ replaced nothing, so it adds cost; to measure), thin branches.
 Next: (a) the colour: large lichen/moss patches and a warm tint in the crevices; (b) kind-specific
 fissures (oak, hackberry) as sparse deep cracks; (c) maple still has broad squared patches from
 the plate layer; (d) the same study for ground: forest_ground_*, forest_leaves_*, rocks.
+
+Bark colour from the Poly Haven look (2026-10-22): crevices tinted warmer and redder
+(x1.28, x0.94, x0.78 times the crack depth, up to 55 %), and a trunk-wide mottling in patches
+about a hand to a forearm across (0.8 to 1.2 brightness, own noise per tree). Applied on trunks
+only (not thin branches). Result on bark_view (oak, 1.5 m): slightly warmer crevices, softer big
+patches; no errors. Not verified: forest view and other kinds side by side with the photos.

@@ -531,6 +531,11 @@ void fragment() {
 			shade *= 0.85 + 0.3 * noise3(vec3(aa.x * 40.0, aa.y * 9.0, tone * 7.0));
 			paint = mix(paint, vec3(0.34, 0.3, 0.26) * (0.55 + 0.9 * tone), smoothstep(0.4, 0.85, h0) * 0.55 * trunk * realism); // (the weathered tops of the plates)
 			paint *= mix(1.0, shade * 1.4, realism); // (lighter: the vertex brown alone made every trunk near black)
+			// (as in photographed bark: the crevices are warmer and redder, and the trunk is mottled in patches a
+			// hand to a forearm across, on top of the plates' own tones)
+			paint *= mix(vec3(1.0), vec3(1.28, 0.94, 0.78), (1.0 - crack) * 0.55 * realism * trunk);
+			float mottle = noise3(vec3(aa.x * radius * 6.0, aa.y * 2.2, bark_style.y * 13.0 + 3.0));
+			paint *= mix(1.0, 0.8 + 0.4 * mottle, realism * trunk);
 			if (bark_debug > 0.5) {
 				paint = bark_debug > 1.5 ? vec3(tone, crack, h0) : vec3(h0);
 			}
