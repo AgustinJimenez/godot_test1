@@ -257,3 +257,16 @@ Still open (need a decision from the user, or are bigger):
 5. Contact shadow compute pass of our own.
 6. Gravel size spread, crack networks on dry ground, lichen following cracks (Poly Haven ideas).
 7. Water: nothing found missing; foam/wave layers could be compared against Unreal's water later.
+
+## Status update 3 (2026-10-22, evening): performance
+
+Done: tree cells (64 m, native `split_cells`): standing GPU 17.65 -> 15.5 ms, fps 57 -> 61, no extra
+slow frames in a fast flight; plant cells behind `CELL_PLANTS` (off: 13.9 ms standing but about
+twice the slow frames in a very fast flight); dithered tree version fades (+0.7 ms); the bark
+march made cheap. GPU in the lab forest is now about 15.5 ms against 17.5 to 18 before the study,
+with the bark, crown, light and impostor improvements kept.
+Ideas not done: plant cells chosen by player speed or a graphics option; rocks and clutter in
+cells; measure the real cost of shadows (the lab flag `--no-shadow` did not change the primitive
+count in one try, so the test was inconclusive); profile the fast flight by frame.
+Still waiting for a decision from the user: the forest-floor needle layer, film grain / vignette,
+the fog colour per view direction, a contact shadow pass.
