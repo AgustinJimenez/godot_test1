@@ -167,7 +167,7 @@ static func _report(player: Player) -> void:
 			sorted[int(count * 0.99)], sorted[count - 1], slow])
 	print("FOREST_WALK gpu ms avg=%.1f p95=%.1f | draw calls avg=%.0f primitives avg=%.0f" % [
 			gpu_total / count, gpu[int(count * 0.95)], _calls / count, _prims / count])
-	print(("FOREST_WALK cpu ms per frame: render %.1f | scripts %.1f | physics %.1f (engine monitors)  "
+	print(("FOREST_WALK cpu ms per frame: render %.1f | scripts %.1f | physics %.1f  "
 			+ "(a frame is %.1f ms: gpu busy %.0f %%)") % [
 			_render_cpu / count, _process_ms / count, _physics_ms / count, total / count,
 			100.0 * gpu_total / maxf(total, 0.001)])
