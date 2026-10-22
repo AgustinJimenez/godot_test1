@@ -82,3 +82,81 @@ from memory and must be checked against the checkout.
 ## Not done yet
 
 Everything: no source read, no findings, no code. This file is the plan only.
+
+## More things to study (added 2026-10-22), grouped by what they would give us
+
+Same rules: read, note in our own words, rewrite from scratch. Paths from memory, to verify.
+
+### Terrain and ground (our crust, tiles, ground plates)
+- Landscape material layer blending: height-based blending (the layer with the taller bumps wins
+  at the border, so grass sits between pebbles instead of a soft mix) and how many layers are
+  sampled per pixel. Ours blends by weight only.
+- Runtime virtual textures: baking ground colour/normal into a cache so far ground costs one
+  sample (our "BAKE_UP_TO" plates are the same idea: compare cache sizing and refresh).
+- Procedural Content Generation (PCG) framework and the older Procedural Foliage Tool: how they
+  spawn by density, slope, height and *competition between species* (seeds, shade, ages). Ours is
+  the native scatter; compare the ecology model and the clustering (plants grow in groups).
+- Landscape grass types: grass spawned from the layer under the camera only, culled by distance and
+  how the density is faded with distance (compare with our turf chunks, 26/36 m).
+
+### World streaming and big worlds (our floating origin, tile pop-in)
+- Large World Coordinates: how they keep precision far from the origin (ours: `PlanetFrame`
+  rebase). Look for ideas that remove rebase hitches.
+- World Partition / HLOD: streaming cells, hierarchical LODs for far cells, the loading budget per
+  frame. Directly relevant to tree pop-in and the 6 km plant range (task: smoother arrival).
+- Instanced static mesh culling: hierarchical instance culling, per-instance LOD, "start/end cull
+  distance" with random offset so instances do not vanish in a visible ring; dithered LOD fade.
+
+### Vegetation motion and detail
+- Wind in vegetation: how trunk, branch and leaf wind are layered (pivot-based vertex animation
+  stores each leaf's pivot so a leaf flutters about its own stem, not the tree). Ours uses a single
+  vertex-colour weight; study the pivot idea for leaves.
+- Foliage normal fixing: flattened or spherical normals on a canopy so a tree shades as one volume
+  not as many cards (we noticed cards look flat).
+- Impostors: octahedral impostor atlas (views over the whole sphere, not only a ring), depth stored
+  for correct parallax and shadowing. Ours is an 8-view yaw ring: elevation views are the open
+  item in 081.
+
+### Sky, atmosphere, light
+- Sky atmosphere (the single-scattering LUT model): transmittance, multi-scattering and sky-view
+  lookup tables, aerial perspective volume. Compare with our atmosphere and the sun glow pass.
+- Volumetric clouds and their shadows on the ground; cloud layer lighting (silver lining, dark
+  base) for task 079.
+- Exponential height fog with a second layer and the inscattering colour from the sun.
+- Auto exposure (histogram) and the tone mapper's filmic curve: why the same scene looks richer.
+
+### Water
+- The Water plugin and single-layer water shading: refraction from the opaque scene, depth-based
+  absorption colour, shore foam, wave normals from several scrolling layers or Gerstner waves.
+  Ours is the open "water" item in 081.
+
+### Effects and ground interaction
+- Niagara-style GPU particles for dust, sandstorm, leaves, rain splashes; collision against the
+  depth buffer (cheap) and lit particles.
+- Deferred decals and how footprints / impacts are projected (compare with our native imprint).
+- Snow / sand deformation using a render target under the character (compare with our dents).
+
+### Post and image quality
+- Bloom (convolution vs. dual filter), depth of field (circle of confusion, bokeh), per-object
+  motion blur, TAA vs. TSR upscaling, film grain, vignette: our 081 post stack list. Look for the
+  cheap, good-looking versions.
+
+### Characters (for later, the user has foot IK work)
+- Skin subsurface scattering (screen-space profile) and eye shading; hair card shading.
+- Control Rig / foot placement IK: how the pelvis offset and foot rotation to the slope are solved
+  (compare with our foot IK v2; only reading, our version is the reference we keep).
+- Physics-based ragdoll blending (not now).
+
+### Engineering practice
+- Shader permutation / quality switches: how a feature falls back on low settings (we have
+  quality levels for the sun glow and shadows).
+- GPU profiling markers and stat commands: how they split a frame so a cost has a name (we only
+  have `--fps`).
+
+## Suggested order for the next reading sessions
+
+1. Vegetation: pivot wind, foliage normals, impostors (biggest visible gain for forest scenes).
+2. Streaming and instance culling (fixes pop-in, which the user reported).
+3. Sky atmosphere and fog (079).
+4. Water (081).
+5. Post stack (081), then particles for dust.
