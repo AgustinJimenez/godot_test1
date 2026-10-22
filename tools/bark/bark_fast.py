@@ -57,6 +57,8 @@ def _flakes_at(px, py, q, seed):
     rag_amp, rag_cm, warp_cm, warp_scale = q[13], q[14], q[15], q[16]
     fine_amp, fine_cm = q[17], q[18]
     block = q[19]
+    groove_cm, groove_w, groove_cover, split_cm, split_w, split_cover, cut_depth = (
+        q[20], q[21], q[22], q[23], q[24], q[25], q[26])
     wx = (_noise(px / warp_scale, py / warp_scale, seed + 11.0) - 0.5) * 2.0
     wy = (_noise(px / warp_scale + 31.7, py / warp_scale, seed + 13.0) - 0.5) * 2.0
     x = px + wx * warp_cm
@@ -93,6 +95,19 @@ def _flakes_at(px, py, q, seed):
                 rim = _smooth(0.0, soft, d)
                 value = h4 * z_var + (base + crown * d + slope * v) * rim
                 best = max(best, value)
+    lane_u = x / groove_cm + (_noise(x / 9.0, y / 30.0, seed + 51.0) - 0.5) * 1.2
+    lane = np.floor(lane_u)
+    fl = lane_u - lane
+    open_n = _noise(lane * 3.7 + 0.5, y / (groove_cm * 10.0), seed + 53.0)
+    open_ = 1.0 - _smooth(groove_cover - 0.05, groove_cover + 0.05, open_n)
+    groove = (1.0 - _smooth(0.0, groove_w, min(fl, 1.0 - fl) * 2.0)) * open_
+    split_v = y / split_cm + (_noise(x / 7.0, y / 20.0, seed + 55.0) - 0.5) * 0.6
+    row = np.floor(split_v)
+    fv = split_v - row
+    column = np.floor(x / (groove_cm * 0.8))
+    on = 1.0 - _smooth(split_cover - 0.03, split_cover + 0.03, _hash(column, row, seed + 57.0))
+    split = (1.0 - _smooth(0.0, split_w, min(fv, 1.0 - fv) * 2.0)) * on
+    best = best * (1.0 - cut_depth * max(groove, split))
     fine = _noise(px / fine_cm, py / (fine_cm * 2.0), seed + 29.0)
     if best > 0.05:
         best += (fine - 0.5) * fine_amp

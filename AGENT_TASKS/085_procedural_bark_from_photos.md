@@ -82,3 +82,20 @@ is not more search but a better model for those two: (a) grooves as a separate l
 trunk (long dark cracks, flakes between them), (b) flakes cut by short transverse breaks (the photos'
 horizontal splits), (c) warp limited to 1 cm, (d) a loss term on the gap network (share and length of
 dark lines). Pine is the candidate to port first.
+
+## Round 3 (2026-10-22): grooves and transverse splits added to the generator
+Seven new parameters (groove spacing/width/cover, split spacing/width/cover, cut depth); warp limited
+to 1.2 cm. Fit losses: willow 1.20, pine 1.12, ash 2.23 (before 2.4 / 1.6 / 2.7). Pictures
+(`gen_vs_photo7.png`): pine has broad scales cut by faint grooves and splits, willow is still a field
+of pointed lenses with hairline cuts, ash is a mass of small spikes. The cuts came out as thin
+hairlines because the loss never asks for them (the statistics do not see lines), so the optimiser
+picks small depths. Three rounds in, the generator reproduces the numbers but not the look of the
+willow and ash photos; pine is the closest.
+Honest assessment: the remaining gap is the part that makes the photograph convincing (broken,
+irregular edges, flakes that lift away, shadowed gaps), which a hand-built noise model will keep
+missing. Options: (A) keep the photographs (the user likes them) and use the generator only where a
+photo is missing or to add variety (thin branches, far trees, birch, bark that must not repeat), no
+atlas replacement; (B) keep going: a loss on the dark-line network, a learned model (DiffMat-style
+fit with torch+CUDA on a differentiable version of the generator) and a style loss on a neural
+feature of the photo; likely days, uncertain; (C) bake the generator into a tile at load time and
+blend it with the photo to break repeats. Recommendation: A + C.

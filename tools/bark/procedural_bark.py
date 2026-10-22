@@ -37,13 +37,22 @@ PARAMS = {
     "fine_amp": 0.05,
     "fine_cm": 0.6,
     "block": 0.3,         # 0: a lens with pointed ends, 1: a block with square ends
+    "groove_cm": 5.0,     # spacing of the long grooves across the trunk
+    "groove_w": 0.25,     # their width (share of the spacing)
+    "groove_cover": 0.5,  # how much of each groove's length is open (the rest is bridged)
+    "split_cm": 12.0,     # spacing of the short transverse splits along the trunk
+    "split_w": 0.12,      # their width
+    "split_cover": 0.3,   # share of the places that split
+    "cut_depth": 0.6,     # how deep grooves and splits cut into the flakes
 }
 RANGES = {
     "cell_cm": (0.5, 12.0), "cell_aspect": (1.0, 4.0), "len": (0.7, 3.0), "wid": (0.4, 1.6),
     "size_var": (0.0, 3.0), "jit": (0.4, 1.0), "angle": (0.0, 0.8), "tip": (1.0, 3.5),
     "soft": (0.03, 0.3), "z_var": (0.1, 1.2), "base": (0.2, 1.0), "crown": (0.0, 0.2),
-    "slope": (-0.25, 0.25), "rag_amp": (0.03, 0.09), "rag_cm": (0.8, 3.0), "warp_cm": (0.0, 3.0),
+    "slope": (-0.25, 0.25), "rag_amp": (0.03, 0.09), "rag_cm": (0.8, 3.0), "warp_cm": (0.0, 1.2),
     "warp_scale_cm": (10.0, 40.0), "fine_amp": (0.0, 0.03), "fine_cm": (0.4, 2.0), "block": (0.0, 1.0),
+    "groove_cm": (1.5, 14.0), "groove_w": (0.05, 0.5), "groove_cover": (0.1, 0.9), "split_cm": (4.0, 40.0),
+    "split_w": (0.03, 0.3), "split_cover": (0.0, 0.7), "cut_depth": (0.0, 1.0),
 }
 
 
@@ -104,12 +113,29 @@ def flakes(x_cm, y_cm, p, seed):
     return best
 
 
+def cuts(x, y, p, seed):
+    """1 on the flakes, lower where a long groove or a short transverse split cuts them."""
+    lane_u = x / p["groove_cm"] + (value_noise(x / 9.0, y / 30.0, seed + 51.0) - 0.5) * 1.2
+    lane = np.floor(lane_u)
+    f = lane_u - lane
+    open_n = value_noise(lane * 3.7 + 0.5, y / (p["groove_cm"] * 10.0), seed + 53.0)
+    open_ = 1.0 - smooth(p["groove_cover"] - 0.05, p["groove_cover"] + 0.05, open_n)
+    groove = (1.0 - smooth(0.0, p["groove_w"], np.minimum(f, 1.0 - f) * 2.0)) * open_
+    split_v = y / p["split_cm"] + (value_noise(x / 7.0, y / 20.0, seed + 55.0) - 0.5) * 0.6
+    row = np.floor(split_v)
+    fv = split_v - row
+    column = np.floor(x / (p["groove_cm"] * 0.8))
+    on = 1.0 - smooth(p["split_cover"] - 0.03, p["split_cover"] + 0.03, hash2(column, row, seed + 57.0))
+    split = (1.0 - smooth(0.0, p["split_w"], np.minimum(fv, 1.0 - fv) * 2.0)) * on
+    return 1.0 - p["cut_depth"] * np.maximum(groove, split)
+
+
 def bark_height(x_cm, y_cm, p, seed=1.0):
     wx = (value_noise(x_cm / p["warp_scale_cm"], y_cm / p["warp_scale_cm"], seed + 11.0) - 0.5) * 2.0
     wy = (value_noise(x_cm / p["warp_scale_cm"] + 31.7, y_cm / p["warp_scale_cm"], seed + 13.0) - 0.5) * 2.0
     x = x_cm + wx * p["warp_cm"]
     y = y_cm + wy * p["warp_cm"] * 1.5
-    height = flakes(x, y, p, seed)
+    height = flakes(x, y, p, seed) * cuts(x, y, p, seed)
     fine = value_noise(x_cm / p["fine_cm"], y_cm / (p["fine_cm"] * 2.0), seed + 29.0)
     return height + (fine - 0.5) * p["fine_amp"] * (height > 0.05)
 
