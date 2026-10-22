@@ -114,3 +114,19 @@ the flakes are lenses); willow flakes are too uniformly pointed; the colour is n
 the shader yet. Next: lower the ragged-edge frequency range, add a flake shape that is cut square at
 the top (pine, willow), colour from the photo by height, then port ash first (it is the closest) to
 GLSL (`flake_height`) and compare with `bark_view --compare`.
+
+## Round 5 (2026-10-22): the generator runs in the game's own renderer (a bake at load time)
+- `shaders/world/bark_bake.gdshader`: the flake model in GLSL, tiling (every scale is a whole number of
+  repeats in the tile, cell hashes wrapped), plus a colour model from the photo: the mean colour, a ramp
+  by height, the brightness following the cavity (how far a point sits below its surroundings), a slow
+  mottling, a tone per flake, dark gaps. Draws colour in rgb and height in alpha: the atlas layout.
+- `systems/world_gen/bark_baker.gd`: `await bake(name)` draws one tile (1024 px) in a SubViewport once:
+  5 to 20 ms on the GPU for each bark (the first one pays the shader compile, about 350 ms).
+- `systems/world_gen/bark_fits.gd` (generated, do not edit) from `tools/bark/export_fit.py`: the fitted
+  numbers per bark. `tests/manual/world/bark_bake_view.tscn -- --out=DIR` saves the baked tiles.
+- Result next to the photos (`baked_colour_vs_photo.png`): willow reads as willow bark in colour and
+  flake character; ash is right but too contrasty; pine still reads as leaves.
+- So the procedural bark can replace the 15 MB atlas at load time with no repetition problem (the seed
+  gives each tree its own tile if wanted). NOT wired into flora_wind.gdshader yet: the atlas is
+  still what the game draws. Next: pine fix, ash contrast, then feed the baked tiles to the existing
+  `bark_photo` array instead of the png, compare in `bark_view --compare` and in the forest.
