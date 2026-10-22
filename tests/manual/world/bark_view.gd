@@ -1,6 +1,7 @@
 extends Node3D
 ## Looks at the bark of one tree species close up, in the plant shader: `--species=N` (the Nth tree
-## of seed 1337), `--shot=PATH` saves a picture, `--height=M` where on the trunk, `--dist=M`.
+## of seed 1337), `--shot=PATH` saves a picture, `--height=M` where on the trunk, `--dist=M`,
+## `--compare`: the same tree twice, photographed bark left, procedural right.
 
 func _ready() -> void:
 	FloraMeshes.detailed = true
@@ -34,6 +35,15 @@ func _ready() -> void:
 	instance.mesh = registry.mesh(chosen.id, 0, true, 0)
 	instance.material_override = FloraMeshes.material()
 	add_child(instance)
+	if "--compare" in OS.get_cmdline_user_args():
+		instance.position.x = -0.9
+		var plain := MeshInstance3D.new()
+		plain.mesh = instance.mesh
+		var procedural := FloraMeshes.material().duplicate() as ShaderMaterial
+		procedural.set_shader_parameter(&"bark_photo_on", 0.0)
+		plain.material_override = procedural
+		plain.position.x = 0.9
+		add_child(plain)
 	var ground := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(40.0, 40.0)
