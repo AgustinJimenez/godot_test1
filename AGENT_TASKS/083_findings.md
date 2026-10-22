@@ -140,3 +140,33 @@ Bark colour from the Poly Haven look (2026-10-22): crevices tinted warmer and re
 about a hand to a forearm across (0.8 to 1.2 brightness, own noise per tree). Applied on trunks
 only (not thin branches). Result on bark_view (oak, 1.5 m): slightly warmer crevices, softer big
 patches; no errors. Not verified: forest view and other kinds side by side with the photos.
+
+## Poly Haven ground, litter and rock study (2026-10-22): forest_ground_04..06, forest_leaves_03/04,
+## rocks_ground_01, rock_boulder_cracked, mossy_rock (1k diffuse + displacement, scratchpad only)
+What the pattern is:
+- Forest soil (forest_ground_05/06): almost flat, very fine speckle, rare small bright flecks and
+  tiny twigs; height range tiny. Colour mean about (88,68,46): yellow-brown, blue about half of
+  red. forest_ground_04 (path-like): fine gravel and flakes on brown, mean (107,90,68).
+- Leaf litter (forest_leaves_03): dense overlapping small leaves, dark brown with olive, the
+  height is soft and blobby with large dark pockets, no sharp edges; mean (68,53,32).
+  forest_leaves_04 (needle litter): orange-brown, many thin needles and twigs in random
+  directions over bare soil, mean (130,94,58).
+- Gravel pavement (rocks_ground_01): angular stones of very mixed sizes (a few big, many small)
+  in a dark fine matrix, mean (135,125,110). Cracked mud (rock_boulder_cracked): a network of
+  thin dark cracks around slightly domed polygons, mean (187,148,112). Mossy rock: yellow-green
+  lichen in blotches that follow the cracks, dark thin cracks, soft big swellings.
+Compared with ours (sampled from a lab forest picture, bare soil in sun): (108,77,66): the
+blue is about 60 % of red against about 50 % in the photographs, so ours is slightly pinker and
+greyer; this includes the sun and sky colour of the golden grade (the user's choice), so I left
+the soil colour alone.
+Ideas to copy later (procedural, own code):
+1. Forest floor: the ground shader's soil could take a needle layer (thin random lines, orange
+   brown, strongest under conifers) and a soft leaf-litter blob layer (dark brown / olive) with
+   no hard edges, instead of only fine speckle. There is already a `scan_leaf_c` litter scan.
+2. Gravel: stone sizes follow a heavy-tailed distribution (a few big, many small); check our
+   gravel chips' size spread (planet_scatter gravel_chunk spacing is uniform).
+3. Mud / dry ground: thin dark crack network around domes (we have `cracked_red_ground`-like
+   desert? check) with the crack width fading with distance.
+4. Lichen on rock and bark: blotches that follow the cracks, yellow-green, not round spots.
+Not done: no ground-shader code changed (the sand and the golden grade are the user's choices;
+the ground shader is 1000 lines and any change has to pass the visual check).
