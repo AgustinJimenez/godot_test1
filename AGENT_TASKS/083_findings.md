@@ -209,3 +209,8 @@ Result: lab forest view and the visual-check forest view show deeper crowns, not
 Not verified: other species and sizes (the formula uses the tree's own crown radius and height
 but the leaf position is assumed to be in tree space with the trunk at x=z=0), winter / bare trees,
 and a night view. Baseline for green_country accepted.
+
+Crown shading check on other species (2026-10-22, species_gallery page 1, low-poly mode):
+spruces, oaks, birch and palms all render with normal leaf colours, none turned dark or
+uneven. Bare trees skip the shading (the leaf function returns before it). Still not looked at:
+the realistic (D) mode of the gallery, other seeds, and a night view.
