@@ -434,29 +434,44 @@ void fragment() {
 			vec3 to_eye = normalize(-VERTEX);
 			float vz = max(dot(to_eye, n0), 0.28);
 			vec2 slide = vec2(-dot(to_eye, pom_a), -dot(to_eye, pom_l)) / vz * plate_depth;
-			vec2 per_layer = vec2(slide.x / len_a, slide.y / len_l) / 20.0 * near;
+			// (fewer steps when the eye looks straight at the bark, more when it grazes: the ray crosses
+			// the depth over a longer way, and a coarse march would skip the thin cracks)
+			float steps = mix(9.0, 24.0, smoothstep(0.9, 0.3, vz));
+			float step_size = 1.0 / steps;
+			vec2 per_layer = vec2(slide.x / len_a, slide.y / len_l) * step_size * near;
 			// parallax occlusion: step down through the bark until the ray meets a plate
 			vec2 here = aa;
 			float crack_here;
 			float tone_here;
 			float h_here = bark_height(here, radius, bark_style, crack_here, tone_here);
 			float layer = 0.0;
-			float layer_height = h_here;
 			vec2 last = here;
-			float last_diff = 0.0;
-			for (int i = 0; i < 20; i++) {
-				if (layer >= 1.0 - h_here) {
+			for (int i = 0; i < 24; i++) {
+				if (layer >= 1.0 - h_here || float(i) >= steps) {
 					break;
 				}
 				last = here;
-				last_diff = (1.0 - h_here) - layer;
 				here += per_layer;
-				layer += 1.0 / 20.0;
+				layer += step_size;
 				h_here = bark_height(here, radius, bark_style, crack_here, tone_here);
 			}
-			float after = (1.0 - h_here) - layer; // (how far the ray is below the surface now, <= 0)
-			float mix_at = clamp(last_diff / max(last_diff - after, 1e-4), 0.0, 1.0);
-			aa = mix(last, here, mix_at);
+			// the ray crossed the surface between `last` and `here`: halve that gap twice, so the
+			// edge of a plate is sharp and not a staircase of steps
+			float lo = max(layer - step_size, 0.0);
+			float hi = layer;
+			for (int j = 0; j < 2; j++) {
+				float mid = 0.5 * (lo + hi);
+				vec2 at = last + per_layer * ((mid - lo) / step_size);
+				float h_mid = bark_height(at, radius, bark_style, crack_here, tone_here);
+				if (mid >= 1.0 - h_mid) {
+					hi = mid;
+					here = at;
+				} else {
+					lo = mid;
+					last = at;
+				}
+			}
+			aa = here;
 			float crack;
 			float tone;
 			float h0 = bark_height(aa, radius, bark_style, crack, tone);

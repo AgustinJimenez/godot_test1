@@ -37,3 +37,10 @@ Tuning result (2026-10-22): at x1.1 the change against the sun was barely visibl
 mild (leaves slightly brighter): most leaves on that view are in the shade of other canopy, so
 only a few receive direct sun to pass through. Settled on 0.3 + 2.5 * lobe^4. Not verified:
 a view with the sun low behind a single tree, and the frame cost (a few ALU per leaf pixel).
+
+## Bark parallax (question 1), done 2026-10-22 from the published technique, not Unreal's code
+- Steps now adapt to the view angle: 9 head-on up to 24 at grazing (was a fixed 20), and two
+  halving steps after the march replace the one straight-line guess, so plate edges are sharper.
+- Result on bark_view (species 0 and 2, 1.5 m and 4 m): look the same head-on, branches slightly
+  crisper at the edges. Not measured: GPU time (expected a small saving head-on, a small cost at
+  grazing angles), grazing views of thin limbs, self shadow of the bumps (still open).
