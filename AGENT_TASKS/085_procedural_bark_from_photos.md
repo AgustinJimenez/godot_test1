@@ -50,3 +50,25 @@ Risks: the real flake overlap (shingles) is hard to get from a 2D noise; the par
 height 20 to 30 times a pixel, so a heavy generator may cost more than the texture. A cheap
 alternative to keep in mind: bake the procedural result into a small tile at load time
 (one-time compute on the GPU) and sample that: no repeat visible if the tile is made per tree.
+
+## Progress 2026-10-22 (evening): the generator and the fast fit
+Files: `tools/bark/procedural_bark.py` (numpy generator, measurements, loss), `tools/bark/bark_fast.py`
+(the same maths in numba: 20 times faster, identical output, and a fit on all 6 cores), `analyze_flakes.py`.
+Python is `E:\anaconda3\python.exe` (numpy, scipy, cv2, numba, torch+CUDA all there).
+Speed: one picture 0.5 s (numpy) -> 0.025 s (numba); a fit of 3 barks x 1200 tries 20 min -> 2.7 min.
+Generator design (v3): flakes are pointed lenses (width, length, tip sharpness, soft rim) on a jittered
+grid with 3 x 5 cells asked per pixel, each with its own size (heavy tail), turn and height; the
+highest wins (the shingle), ragged edges, a slow warp, fine noise. 19 parameters per bark.
+What the pictures say (gen vs photo, `scratchpad/ph/gen_vs_photo5.png`): the structure is right
+(overlapping flakes pointing along the trunk) but the match is partial:
+- willow: our flakes are too regular and lens-shaped; the photo has irregular blocky and splintered flakes.
+- pine: ours are tall spikes; the photo has broad, rounded-rectangular scales with dark gaps between.
+- ash: ours is wavy and stringy; the photo is rows of short ridges with deep grooves.
+Lessons: fitting only statistics (size, aspect, spread) lets the optimiser cheat with shapes that
+score well and look wrong; the loss needs shape terms (edge sharpness, flat share, the gap network),
+and the flake SHAPE has to vary per bark (a blockiness parameter between lens and rectangle).
+Next: (1) a blockiness / corner parameter and per-bark shape families; (2) a gap network (dark
+cracks) as its own term in the loss; (3) compare renders of the generator at the same scale as the
+photo in the game viewer, not only the height picture: the colour matters as much; (4) the colour
+(a ramp by height and a slow mottling, fitted per bark) before porting to GLSL.
+Honest status: not yet good enough to replace the photographs; the photo bark stays in the game.
