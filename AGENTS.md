@@ -887,3 +887,30 @@ Earth, `--start-menu` for the menu) with the map open first; scripted runs alway
 - Record the numbers in the doc or task you are working on (`planet_lessons.md` has the measured history),
   and keep new measuring tools as lab arguments. A single script that runs everything and compares to a
   budget is planned: `AGENT_TASKS/046`.
+
+### Surface relief from photographs (parallax occlusion, "SPOM")
+
+Real surfaces beat procedural ones: a photographed height map read by the parallax march looks far more
+natural than any plate or noise we wrote, and a texture read is cheaper than the procedural height (the
+bark change made the forest lab view about 1 ms faster). The recipe, first used for tree bark
+(`AGENT_TASKS/084`, findings in `AGENT_TASKS/083_findings.md`), works for anything with a surface:
+- **Source:** CC0 maps from Poly Haven (`polyhaven.com`, API `api.polyhaven.com/assets?t=textures`,
+  `/files/<name>` for direct links, `/info/<name>` for the real size in mm). Diffuse + displacement at 1k.
+  Download to a scratch folder, never commit the downloads, only the packed result.
+- **Pack:** one atlas, colour in rgb and the height in alpha, built by a script in `tools/` (see
+  `tools/build_bark_atlas.gd`: stretches the height to the full range, lifts dark photos to a real albedo
+  of about 0.1 linear luminance). Import it as a Texture2DArray by writing the `.import` with
+  `importer="2d_array_texture"` and `slices/horizontal` / `slices/vertical`, then run `godot --headless
+  --import`. Sample it as `sampler2DArray ... : source_color`; use `textureLod` inside the march with a
+  mip level worked out from the distance (a varying), never derivatives in a loop.
+- **Map:** keep the real size of the picture in metres (a table next to the sampler); tile a WHOLE number
+  of times round a closed shape so no seam shows; shift each object its own way (a per-object hash) so
+  neighbours do not match; gate the march by distance (one step beyond the fade range: every loop needs a
+  distance gate, check `--fps` after the change).
+- **Use:** the height drives the parallax march, the self shadow, the slope normal and the cavity ambient
+  occlusion; the colour is the albedo. Keep a procedural fallback for what has no photo.
+- **Where it applies, not yet done:** rocks and cliffs (`AGENT_TASKS/084`), the terrain's scans in
+  `planet_ground.gdshader` (it has its own parallax already), buildings and props, ground litter, and
+  characters (skin, cloth, leather: needs a UV unwrap that is not stretched; check the seams first).
+- **Look at it:** `tests/manual/world/bark_view.tscn -- --species=0 --kind=N --dist=1.4 --shot=PATH`;
+  compare a render with the photograph side by side before calling it good.
