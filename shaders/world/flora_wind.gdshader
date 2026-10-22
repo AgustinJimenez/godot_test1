@@ -135,14 +135,15 @@ float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float 
 			crack = smoothstep(0.0, 0.5, 1.0 - g * g) * 0.7 + 0.3;
 			return 0.35 + 0.5 * smoothstep(0.1, 0.8, g);
 		}
-		float u = aa.x * count * 7.0 + (noise3(vec3(aa.x * count, aa.y * 1.3, 5.0)) - 0.5) * 3.0;
+		float u = aa.x * count * 2.6 + (noise3(vec3(aa.x * count * 0.6, aa.y * 0.5, 5.0)) - 0.5) * 1.4; // (broad ropes, a slow sway: finer ones read as reeds up close)
 		float strand = floor(u);
 		float f = fract(u);
-		float broken = noise3(vec3(strand * 0.7, aa.y * 5.0, 8.0));
+		float broken = noise3(vec3(strand * 0.7, aa.y * 1.8, 8.0)); // (long fibres, broken far apart)
+		float furrow = 0.7 + 0.5 * noise3(vec3(aa.x * count * 0.45, aa.y * 0.35, 3.0)); // (wide shallow furrows across the ropes)
 		tone = cell_hash(vec2(strand, floor(aa.y * 3.0 + cell_hash(vec2(strand, 1.0)) * 4.0)));
 		float ridge = smoothstep(0.0, 0.35, f) * smoothstep(1.0, 0.65, f);
 		crack = mix(0.5, 1.0, ridge) * smoothstep(0.1, 0.4, broken + 0.2);
-		return 0.3 + 0.35 * ridge * (0.55 + 0.45 * tone) * smoothstep(0.1, 0.45, broken + 0.2);
+		return 0.3 + 0.35 * ridge * furrow * (0.55 + 0.45 * tone) * smoothstep(0.1, 0.45, broken + 0.2);
 	}
 	float edge_sharp = crack_edge;
 	float shift = cell_hash(vec2(floor(aa.x * count), 3.7 + style.x)) * (kind == 0 ? 3.0 : 0.0);
