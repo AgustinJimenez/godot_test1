@@ -20,12 +20,16 @@ void vertex() {
 	vec3 along = normalize(m[0].xyz);
 	vec3 across = cross(along, up);
 	vec3 to_camera = INV_VIEW_MATRIX[3].xyz - origin;
+	// seen from above, a flat card turned about the up axis would be an edge: lean it toward the eye as the eye climbs
+	float elevation = asin(clamp(dot(normalize(to_camera), up), -1.0, 1.0));
+	float lean = smoothstep(0.45, 1.25, elevation) * 0.85;
 	vec3 flat_to = to_camera - up * dot(to_camera, up);
 	flat_to = length(flat_to) > 0.001 ? normalize(flat_to) : along;
 	vec3 right = cross(up, flat_to);
 	phase = fract(atan(dot(flat_to, across), dot(flat_to, along)) / TAU) * views;
 	lit_normal = normalize(mix(up, flat_to, 0.55));
-	vec3 world = origin + up * VERTEX.y * scale + right * VERTEX.x * scale;
+	vec3 top = normalize(mix(up, normalize(to_camera), lean));
+	vec3 world = origin + top * VERTEX.y * scale + right * VERTEX.x * scale;
 	POSITION = PROJECTION_MATRIX * VIEW_MATRIX * vec4(world, 1.0);
 }
 

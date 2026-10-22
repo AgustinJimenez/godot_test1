@@ -214,3 +214,13 @@ Crown shading check on other species (2026-10-22, species_gallery page 1, low-po
 spruces, oaks, birch and palms all render with normal leaf colours, none turned dark or
 uneven. Bare trees skip the shading (the leaf function returns before it). Still not looked at:
 the realistic (D) mode of the gallery, other seeds, and a night view.
+
+## Impostors seen from above (open item 3, part 1), done 2026-10-22 (planet_impostor.gdshader)
+The billboard turned only about the tree's up axis, so from the air a tree card was an edge-on
+strip. Now the quad's top leans toward the eye as the eye rises above the tree (elevation 26 to
+72 degrees, up to 85 % lean), so the side picture always faces the viewer. Seen at 110 m altitude
+looking 22 degrees down: the thin strips in the 80 to 220 m ring now fill out. At 250 m the
+trees on screen are the cheap horizon meshes, not impostors, so that view cannot show it.
+Cost: nothing measured (a few ALU in the vertex stage on far trees only). Not done: pictures
+actually taken from above (true elevation views in the atlas), the dither cross-fade at 80 m, a
+220 m+ tier, shadows. Not verified in motion or at 60 degrees looking down.
