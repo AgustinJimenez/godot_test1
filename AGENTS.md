@@ -873,6 +873,10 @@ Earth, `--start-menu` for the menu) with the map open first; scripted runs alway
   round trunks with rays, wanders, unsticks itself, in a gusty wind; after a warm-up it prints `FOREST_WALK`:
   average fps and 1 % low, frame ms p50/p95/p99/worst, slow frames, GPU ms, render CPU ms, draw calls,
   primitives. Counts rendered frames (not physics steps). Run it three times and compare the middle values.
+- **Where the GPU time goes (by taking things away):** `scripts/gpu_breakdown.sh [SECONDS]` runs that walk once per
+  switched-off thing (trees, ground, plants, water, clouds, sun glow, impostors, bark parallax, bark photos) and
+  prints each one's GPU ms and share. One run per line is noisy (about 0.4 ms); never run two at once (one GPU).
+  Per-pass GPU times are not readable from scripts: use the editor's Debugger > Visual Profiler.
 - **Pictures:** `-- --shot-frame=N --shot=E:/path/x.png` saves the screen at frame N and quits; read the PNG
   to look at it. Set the scene with `--hour=`, `--year=`, `--weather=rain|snow|storm`, `--view-alt=`,
   `--view-pitch=`, `--radius=`, `--seed=`, `--planet-page`, `--start-menu`. Take one before and one after a

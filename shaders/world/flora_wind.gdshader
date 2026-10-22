@@ -32,6 +32,7 @@ varying float bark_kind; // 0 oak, 1 birch, 2 pine, 3 ash, 4 maple, 5 rings (pal
 varying float view_dist; // metres from the eye (the photo's mip level)
 uniform sampler2DArray bark_photo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float bark_photo_on = 1.0; // 0: only the procedural bark
+uniform float bark_pom = 1.0; // 0: no parallax march and no bump shadow (a tool: what they cost)
 
 float cell_hash(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -519,7 +520,7 @@ void fragment() {
 			// (fewer steps when the eye looks straight at the bark, more when it grazes: the ray crosses
 			// the depth over a longer way, and a coarse march would skip the thin cracks)
 			float steps = mix(9.0, 24.0, smoothstep(0.9, 0.3, vz));
-			steps = near < 0.02 ? 1.0 : steps; // (beyond the fade range the march moves nothing: do one step, not twenty)
+			steps = (near < 0.02 || bark_pom < 0.5) ? 1.0 : steps; // (beyond the fade range the march moves nothing: do one step, not twenty)
 			float step_size = 1.0 / steps;
 			vec2 per_layer = vec2(slide.x / len_a, slide.y / len_l) * step_size * near;
 			// parallax occlusion: step down through the bark until the ray meets a plate
@@ -562,7 +563,7 @@ void fragment() {
 			// the plates shade each other: from the point the eye hit, walk a few steps toward the sun
 			// across the bark's own height; where the surface stands higher than the ray, a plate is in the way
 			float sun_len_b = length(cloud_sun_world);
-			if (near > 0.05 && sun_len_b > 0.5) {
+			if (near > 0.05 && sun_len_b > 0.5 && bark_pom > 0.5) {
 				vec3 sun_b = (VIEW_MATRIX * vec4(cloud_sun_world / sun_len_b, 0.0)).xyz;
 				float up_b = dot(sun_b, n0);
 				if (up_b > 0.05) {

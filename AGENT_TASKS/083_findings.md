@@ -393,3 +393,28 @@ GPU busy about 82 % of the frame. The standing view of the same forest is 65 fps
 walking through it in wind costs about 2 ms GPU and a worse tail (the slow frames are when tiles
 and plants stream in and the player sways trees). Next: run it before and after each change in
 planet rendering; look at what the p99 frames are (streaming adoption, sway, shadows).
+
+## Where the GPU time goes in the forest walk (2026-10-22): `scripts/gpu_breakdown.sh`
+Same person, same path (fixed wander seed), 25 s a run, once per thing switched off (one run
+each, noise about +-0.4 ms; one stray set of 5 parallel runs was killed and redone clean):
+| switched off | fps | gpu ms | saved | of total |
+| everything on | 45.1 | 15.9 | | |
+| trees hidden | 55.1 | 10.6 | 5.3 | 33 % |
+| ground hidden | 54.4 | 10.9 | 5.0 | 31 % |
+| small plants + grass hidden | 52.3 | 13.5 | 2.4 | 15 % |
+| water hidden | 43.2 | 15.7 | 0.2 | 1 % |
+| clouds / sun glow pass | | 16.2 / 16.1 | noise | 0 |
+| bark parallax off | 45.4 | 15.7 | 0.2 | 1 % (noise) |
+| sun shadows off (`--no-shadow`) | 44.8 | 15.9 | 0.0 | 0 % (flag likely not effective) |
+| tree impostors off | 45.8 | 20.8 | -4.9 | impostors SAVE 31 % |
+| bark photos off (procedural bark) | 35.2 | 20.2 | -4.3 | the photo bark SAVES 27 % |
+Reading: the game's GPU time is mostly trees (a third) and the ground (a third), then small
+plants and grass (a seventh). The bark parallax itself is about free (the march is gated by
+distance); the photo bark is far cheaper than the procedural one it replaced; impostors pay for
+themselves. Water, clouds and the sun glow are in the noise. Not covered: shadows (the flag did
+not change anything: needs a test through the graphics setting), post (SSAO, glow, tonemap), the
+sky, the character (skinning), and everything on the CPU (planet and plant generation run on
+worker threads, foot IK is CPU: they do not show in GPU time). Godot gives scripts no per-pass GPU
+times; the editor's Debugger > Visual Profiler does (run the game from the editor), use it for
+shadows and post. The ground is the surprise: next, look at what in `planet_ground.gdshader`
+costs (the parallax, the scans, the litter).

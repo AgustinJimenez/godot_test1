@@ -39,6 +39,8 @@ static var _prev := Vector3.ZERO
 static func step(planet: PlanetWorld, player: Player, frame: int) -> void:
 	if frame == 1:
 		_seconds = _argument_seconds()
+		seed(1234) # (the same wander every run: the runs are compared)
+		_bark_switches()
 	if _seconds < 0.0 or player == null:
 		return
 	if frame == 2:
@@ -172,6 +174,16 @@ static func _report(player: Player) -> void:
 			_render_cpu / count, _process_ms / count, _physics_ms / count, total / count,
 			100.0 * gpu_total / maxf(total, 0.001)])
 	player.get_tree().quit(0 if verdict == "PASS" else 1)
+
+
+## `--bark=pom-off` (no parallax march), `--bark=photo-off` (the procedural bark): what they cost.
+static func _bark_switches() -> void:
+	var material := FloraMeshes.material()
+	for argument in OS.get_cmdline_user_args():
+		if argument == "--bark=pom-off":
+			material.set_shader_parameter(&"bark_pom", 0.0)
+		if argument == "--bark=photo-off":
+			material.set_shader_parameter(&"bark_photo_on", 0.0)
 
 
 static func _argument_seconds() -> float:
