@@ -69,6 +69,36 @@ double smoothstep_d(double lo, double hi, double v) {
 	return t * t * (3.0 - 2.0 * t);
 }
 
+// A branch's path made smooth: between every two points `parts - 1` more, on a Catmull-Rom curve through them (the end
+// points stay where they are), the radii and colours blended along. A limb of six rings bends in straight stretches with
+// sharp elbows; the realistic look draws it as a curve.
+void smooth_path(std::vector<Vector3> &points, std::vector<double> &radii, std::vector<Color> &colors, int parts) {
+	const int count = (int)points.size();
+	if (count < 2 || parts < 2) {
+		return;
+	}
+	std::vector<Vector3> out_points;
+	std::vector<double> out_radii;
+	std::vector<Color> out_colors;
+	for (int i = 0; i < count - 1; i++) {
+		const Vector3 &p0 = points[(size_t)std::max(i - 1, 0)], &p1 = points[(size_t)i], &p2 = points[(size_t)(i + 1)],
+				&p3 = points[(size_t)std::min(i + 2, count - 1)];
+		for (int j = 0; j < parts; j++) {
+			const real_t t = (real_t)j / (real_t)parts, t2 = t * t, t3 = t2 * t;
+			out_points.push_back(((p1 * 2.0f) + (p2 - p0) * t + (p0 * 2.0f - p1 * 5.0f + p2 * 4.0f - p3) * t2
+					+ (p1 * 3.0f - p0 - p2 * 3.0f + p3) * t3) * 0.5f);
+			out_radii.push_back(lerpd(radii[(size_t)i], radii[(size_t)(i + 1)], t));
+			out_colors.push_back(colors[(size_t)i].lerp(colors[(size_t)(i + 1)], t));
+		}
+	}
+	out_points.push_back(points.back());
+	out_radii.push_back(radii.back());
+	out_colors.push_back(colors.back());
+	points = out_points;
+	radii = out_radii;
+	colors = out_colors;
+}
+
 Color with_alpha(Color p_color, double p_alpha) {
 	p_color.a = (float)p_alpha;
 	return p_color;
@@ -88,7 +118,7 @@ struct Genome {
 	double limb_length = 1, limb_thickness = 0.7, twist = 0, twig_radius = 1, child_radius = 0.6;
 	double child_length_a = 1.25, child_length_b = 0.5, children_from = 0.3, children_to = 0.85;
 	double child_forward = 0.4, child_side = 0.9, child_up = 0.25, bury = 0.4;
-	int rings[3] = { 6, 5, 3 }, sides[3] = { 11, 8, 5 }, sides_real[3] = { 12, 10, 6 }, children[3] = { 4, 4, 0 };
+	int rings[3] = { 6, 5, 3 }, sides[3] = { 11, 8, 5 }, sides_real[3] = { 16, 12, 8 }, children[3] = { 4, 4, 0 };
 	double curve[3] = { 0.5, 0.8, 1.2 }, wander[3] = { 0.06, 0.08, 0.1 }, lift[3] = { 0.08, 0.05, 0 };
 	double sag[3] = { 0, 0.04, 0.1 }, droop_sag[3] = { 0, 0.14, 0.3 }, sway[3] = { 0.16, 0.2, 0.22 };
 	double tip_radius[3] = { 0.4, 0.25, 0.05 }, child_length[3] = { 0.55, 0.5, 0 };
@@ -1460,7 +1490,13 @@ struct Grower {
 		sides = std::max(sides - 3 * lod, 3);
 		bool last_level = level == depth - 1;
 		int closed = (last_level || !g->carry_on) ? CAP_TOP : 0;
-		b->tube(points, radii, colors, sides, *rng, 0.0, closed, false, 0, std::vector<double>());
+		std::vector<Vector3> shape = points; // (the curve the tube follows; the children and the colliders keep the plain points)
+		std::vector<double> shape_radii = radii;
+		std::vector<Color> shape_colors = colors;
+		if (fine && lod == 0 && level < 2) {
+			smooth_path(shape, shape_radii, shape_colors, 2);
+		}
+		b->tube(shape, shape_radii, shape_colors, sides, *rng, 0.0, closed, false, 0, std::vector<double>());
 		// thick limbs that a person can walk into (low and 7 cm or thicker): kept as capsules for the colliders
 		for (size_t ring = 0; ring + 1 < points.size(); ring++) {
 			const double r = 0.5 * (radii[ring] + radii[ring + 1]);

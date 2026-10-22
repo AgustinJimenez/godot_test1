@@ -368,3 +368,14 @@ tree_bark_03 repeats round big trunks; birch is still the old look; a smooth tru
 cedar is dark in shade. Repo size: the atlas is 15.7 MB (could be made smaller with WebP).
 Next: lichen/moss as a separate layer over the photo; a second picture per kind to avoid
 repetition on very large trunks; birch from a photo (Poly Haven has birch bark).
+
+## Smooth branches (2026-10-22, native `smooth_path` in plant_mesh_native.cpp)
+The user saw the branch forms as low poly once the bark looked real: a limb of six rings bent in
+straight stretches with sharp elbows, 12 sides. Realistic look only (`fine`, lod 0, levels 0 and
+1): the tube follows a Catmull-Rom curve with two parts per segment (end points fixed; children,
+colliders and sway keep the plain points), and `sides_real` is now 16, 12, 8 (was 12, 10, 6).
+Measured (lab forest): primitives 10.19 M -> 10.55 M (+3.5 %), GPU 14.6 ms (unchanged within
+noise), 68 fps. Full planet_check passes; baseline of the forest view accepted (also holds the
+bark photos). Not verified: close up on the gallery, the junction between a limb and the trunk
+(a visible stub), the cut ends of branches (flat), twigs of level 2 (not smoothed).
+Next: a branch collar (a flare where a limb leaves the trunk), rounded tips instead of flat cuts.
