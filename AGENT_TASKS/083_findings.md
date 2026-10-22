@@ -224,3 +224,32 @@ trees on screen are the cheap horizon meshes, not impostors, so that view cannot
 Cost: nothing measured (a few ALU in the vertex stage on far trees only). Not done: pictures
 actually taken from above (true elevation views in the atlas), the dither cross-fade at 80 m, a
 220 m+ tier, shadows. Not verified in motion or at 60 degrees looking down.
+
+## Sky atmosphere (open item 4, read 2026-10-22): `Engine/Shaders/Private/SkyAtmosphere.usf` and
+## `SkyAtmosphereCommon.ush` compared with our `shaders/world/planet_sky.gdshader`
+How Unreal builds it (own words): three layers of density (air molecules, haze, and an ozone layer
+that only absorbs), all as exponential or tent profiles of height; the expensive integrals are
+done once into small look-up tables and then read by every pixel: (1) a transmittance table (how
+much sun light reaches a point at a given height and sun angle), (2) a multiple-scattering table
+(the light that bounced more than once, which keeps shadowed air and twilight from going black),
+(3) a sky-view table (the whole sky around the camera as a latitude/longitude picture with extra
+rows near the horizon, where a sunset changes fastest), and (4) a camera volume (a 3D texture of
+in-scattering and transmittance by depth in front of the camera) that is applied to every opaque
+surface and translucent thing, so distant mountains and trees take the sky's colour and fade
+exactly as the sky behind them does.
+Ours: one pixel does the whole march (14 steps crowded toward the eye, a 5-step light march at
+each), single scattering with the three layers including ozone (a blue horizon, pink sunset), a
+Mie lobe, ground and planet shadow. Good model; costs per sky pixel.
+Differences that matter for the look:
+1. No multiple scattering: the sky next to the sun's shadow and at deep twilight is darker and
+   less colourful than real air. A cheap copy (own formula): add an isotropic term of the
+   single-scatter energy times a factor of about 0.3 to 0.6 (the geometric series of bounces).
+2. Aerial perspective: our ground, trees and clouds are faded by a separate exponential fog
+   (planet_atmosphere `fog_*`), not by the same integral as the sky, so a far mountain's colour
+   and the sky behind it can disagree (the usual hint: a visible band at the horizon).
+   Copy: sample the same single-scatter function once per pixel for the fog colour, or bake it
+   into a small table by height and sun angle and have the fog read it.
+3. Cost: tables mean the sky costs a fixed small amount; ours depends on the screen share of sky.
+Not changed: the golden sun and sky grade is the user's choice, so no code here. Next candidate if
+asked: (1) as a uniform `multi_scatter` default 0 so it can be tried live; (2) a fog colour from
+the sky's own function.
