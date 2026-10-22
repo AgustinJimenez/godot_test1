@@ -1,7 +1,8 @@
 extends Node3D
 ## Looks at the bark of one tree species close up, in the plant shader: `--species=N` (the Nth tree
 ## of seed 1337), `--shot=PATH` saves a picture, `--height=M` where on the trunk, `--dist=M`,
-## `--compare`: the same tree twice, photographed bark left, procedural right.
+## `--compare`: the same tree twice, photographed bark left, procedural right. With no options
+## (F6 in the editor) it shows that comparison of tree 0 at 3.4 m.
 
 func _ready() -> void:
 	FloraMeshes.detailed = true
@@ -9,7 +10,7 @@ func _ready() -> void:
 	var number := 0
 	var shot := ""
 	var height := 1.0
-	var dist := 1.3
+	var dist := 3.4 if OS.get_cmdline_user_args().is_empty() else 1.3
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--species="):
 			number = int(argument.get_slice("=", 1))
@@ -35,7 +36,8 @@ func _ready() -> void:
 	instance.mesh = registry.mesh(chosen.id, 0, true, 0)
 	instance.material_override = FloraMeshes.material()
 	add_child(instance)
-	if "--compare" in OS.get_cmdline_user_args():
+	var args := OS.get_cmdline_user_args()
+	if "--compare" in args or args.is_empty(): # (run from the editor, no options: the comparison)
 		instance.position.x = -0.9
 		var plain := MeshInstance3D.new()
 		plain.mesh = instance.mesh
