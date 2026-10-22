@@ -192,3 +192,43 @@ static func guard_step(planet: PlanetWorld, player: Player, frame: int) -> void:
 	print("GUARD_CHECK %s rescues=%d below_ground=%.1f m" % ["PASS" if ok else "FAIL",
 			guard.rescues if guard else -1, ground_y - player.global_position.y])
 	planet.get_tree().quit(0 if ok else 1)
+
+
+## `--fps`: how many triangles of the near-tree nodes belong to trees farther than the near range
+## (a visibility range works on a whole node: a node that is partly near is drawn whole).
+static func far_in_near(planet: PlanetWorld) -> String:
+	var camera := planet.get_viewport().get_camera_3d()
+	if camera == null:
+		return ""
+	var near_total := 0
+	var far_total := 0
+	var nodes := 0
+	var limit := PlanetScatter.TREE_FULL
+	for node in planet.find_children("*", "MultiMeshInstance3D", true, false):
+		var multi: MultiMesh = node.multimesh
+		if multi == null or multi.mesh == null or node.visibility_range_end != limit:
+			continue
+		var each := _triangles(multi.mesh)
+		if each < 1500 or not node.is_visible_in_tree():
+			continue
+		var centre: Vector3 = node.global_transform * multi.get_aabb().get_center()
+		if camera.global_position.distance_to(centre) > limit + multi.get_aabb().size.length() * 0.5:
+			continue # (the node is out of range as a whole)
+		nodes += 1
+		for index in multi.instance_count:
+			var at: Vector3 = (node.global_transform * multi.get_instance_transform(index)).origin
+			if camera.global_position.distance_to(at) > limit:
+				far_total += each
+			else:
+				near_total += each
+	return "NEAR_TREES nodes=%d  triangles within %d m: %d  farther (drawn in full anyway): %d" % [
+			nodes, int(limit), near_total, far_total]
+
+
+static func _triangles(mesh: Mesh) -> int:
+	var total := 0
+	for surface in mesh.get_surface_count():
+		if mesh is ArrayMesh:
+			var indices := (mesh as ArrayMesh).surface_get_array_index_len(surface)
+			total += (indices if indices > 0 else (mesh as ArrayMesh).surface_get_array_len(surface)) / 3
+	return total

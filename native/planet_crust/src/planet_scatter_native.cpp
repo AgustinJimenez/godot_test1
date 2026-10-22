@@ -87,6 +87,7 @@ void PlanetScatterNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("setup", "config"), &PlanetScatterNative::setup);
 	ClassDB::bind_method(D_METHOD("scatter", "tile"), &PlanetScatterNative::scatter);
 	ClassDB::bind_method(D_METHOD("merge_far", "parts"), &PlanetScatterNative::merge_far);
+	ClassDB::bind_method(D_METHOD("split_cells", "buffer", "cell"), &PlanetScatterNative::split_cells);
 	ClassDB::bind_method(D_METHOD("drag", "stems", "x", "z"), &PlanetScatterNative::drag);
 	ClassDB::bind_method(D_METHOD("gravel_chunk", "positions", "field", "cells", "size", "x0", "z0", "x1", "z1", "spacing", "density", "seed", "variants", "stones"),
 			&PlanetScatterNative::gravel_chunk, DEFVAL(PackedFloat32Array()));
@@ -1034,4 +1035,37 @@ double PlanetScatterNative::drag(const PackedFloat32Array &p_stems, double p_x, 
 		}
 	}
 	return 1.0 - free;
+}
+
+// A batch of instances (16 floats each: the transform's rows, then the colour) split into the square cells of the ground they stand on
+// (their x and z, floats 3 and 11): one buffer for each cell that has instances. The near trees are drawn in cells, so the distance range
+// works on a few trees and not on a whole tile.
+Array PlanetScatterNative::split_cells(const PackedFloat32Array &p_buffer, double p_cell) const {
+	Array out;
+	const int64_t count = p_buffer.size() / 16;
+	if (count == 0 || p_cell <= 0.0) {
+		return out;
+	}
+	const float *source = p_buffer.ptr();
+	std::unordered_map<int64_t, std::vector<float>> cells;
+	std::vector<int64_t> order; // (the cells in the order they first appear: the result does not depend on the hash)
+	for (int64_t i = 0; i < count; i++) {
+		const float *item = source + i * 16;
+		const int64_t cx = (int64_t)std::floor(item[3] / p_cell), cz = (int64_t)std::floor(item[11] / p_cell);
+		const int64_t key = (cx + 100000) * 1000003LL + (cz + 100000);
+		auto found = cells.find(key);
+		if (found == cells.end()) {
+			order.push_back(key);
+			found = cells.emplace(key, std::vector<float>()).first;
+		}
+		found->second.insert(found->second.end(), item, item + 16);
+	}
+	for (const int64_t key : order) {
+		const std::vector<float> &part = cells[key];
+		PackedFloat32Array one;
+		one.resize((int64_t)part.size());
+		memcpy(one.ptrw(), part.data(), part.size() * sizeof(float));
+		out.push_back(one);
+	}
+	return out;
 }

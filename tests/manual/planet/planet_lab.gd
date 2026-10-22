@@ -146,7 +146,7 @@ func _print_triangle_groups() -> void:
 	for tile: PlanetTile in planet.surface.tiles.values():
 		var label := "level %d plants %d" % [tile.level, tile.plant_detail]
 		by_level[label] = int(by_level.get(label, 0)) + 1
-	print("TILES %s" % [by_level])
+	print("TILES %s  %s" % [by_level, PlanetLabChecks.far_in_near(planet)])
 	var keys := groups.keys()
 	keys.sort_custom(func(a: String, b: String) -> bool: return groups[a][0] > groups[b][0])
 	for key: String in keys.slice(0, 14):

@@ -60,6 +60,7 @@ public:
 	Dictionary scatter(const Dictionary &p_tile) const;
 	// The far trees of a tile as one mesh: parts are {vertices, normals, colors, buffer} (a mesh and the instances of it).
 	Dictionary merge_far(const Array &p_parts) const;
+	Array split_cells(const PackedFloat32Array &p_buffer, double p_cell) const;
 	// How much a walker at (x, z) of the tile (its own frame) is held back by the undergrowth round it: `p_stems` is the tile's
 	// "stems" (x, z, reach, drag each); 0 in the open, up to 1 in a thicket.
 	double drag(const PackedFloat32Array &p_stems, double p_x, double p_z) const;

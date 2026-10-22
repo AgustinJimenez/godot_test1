@@ -287,3 +287,17 @@ Triangle groups of the lab forest view at frame 1000 (mesh totals, not what is i
 0.17 M, trees 3k+ 0.08 M. Trees and plants are where the triangles are; a real saving needs a
 per-distance count of what is drawn (not yet done): next performance step is to log triangles
 by distance band (0 to 20, 20 to 80, 80 to 220 m) before cutting anything.
+
+## Near trees in cells (performance), done 2026-10-22 (planet_scatter.gd `_hang`, native `split_cells`)
+Finding: a visibility range is tested on a whole node. A tile's near trees were one MultiMesh, so
+while any part of a 128 m tile was within 80 m, every tree of the tile was drawn in full detail,
+also those 100 m or more away (the lab count showed about a third of the near-tree triangles
+belonged to trees beyond the near range). Fix: the near trees of a tile are split into cells of
+40 m (`TREE_CELL`; native `PlanetScatterNative.split_cells`, a GDScript version hung the load),
+each cell its own MultiMesh with its own range (and its own light version). Godot evidently tests
+the range at the node's bounds, since the cost fell.
+Measured (lab forest, --fps, frame 1500): GPU 17.65 -> 15.2 ms, fps 57 -> 62, primitives 11.15 M
+-> 10.11 M, draw calls 1763 -> 2028 (more nodes). Full planet_check and visual check pass (sway and
+fly included). Not measured: other biomes, CPU time of the cell split per tile (native, small),
+hitches while flying (no new ones in the checks). Next: the same idea for plants (`SMALL_VISIBLE`
+batches) and for rocks; try 32 and 64 m cells; the lab prints NEAR_TREES (rough, node bounds).
