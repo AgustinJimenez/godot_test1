@@ -232,3 +232,28 @@ Still open, in the order I would take them:
 4. Sky atmosphere / aerial perspective / height fog read (079).
 5. Post: film grain, vignette, lens dirt in a compositor effect like the sun glow (081).
 6. Contact shadow compute pass (own pass, no engine switch).
+
+## Status update (2026-10-22, later)
+
+Done since the last status (details and measurements in 083_findings.md):
+- Bark: plates shade each other (self shadow); fine relief and colour from the Poly Haven bark
+  study; oak furrows in lanes; cedar made broad; march made cheap (one step beyond the fade
+  range): GPU now about 17 ms against 17.5 to 18 before the study.
+- Crown interior shading (native, free at render time).
+- Impostors lean toward the eye from above.
+- Sky read (Unreal's tables, multiple scattering, aerial perspective); `multi_scatter` option in
+  planet_sky.gdshader, default off.
+- Poly Haven study: bark (measured), forest ground / litter / rock (colours measured, ideas).
+- Leaf flutter tried and removed (cost 0.9 to 1.5 ms, motion of a few millimetres).
+- Full planet_check passes.
+
+Still open (need a decision from the user, or are bigger):
+1. Forest floor needle layer and soft leaf litter in planet_ground.gdshader (touches the sand
+   shader file and the visual baselines): needs go-ahead.
+2. Fog colour from the sky's own function, so distant mountains agree with the sky (aerial
+   perspective): touches the fog setup in planet_atmosphere.gd.
+3. Octahedral impostor atlas (real views from above), dither cross-fade at 80 m, a 220 m+ tier.
+4. Post: film grain, vignette, lens dirt (compositor effect like the sun glow); depth of field.
+5. Contact shadow compute pass of our own.
+6. Gravel size spread, crack networks on dry ground, lichen following cracks (Poly Haven ideas).
+7. Water: nothing found missing; foam/wave layers could be compared against Unreal's water later.
