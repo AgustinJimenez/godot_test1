@@ -29,6 +29,9 @@ varying vec3 obj_pos;
 varying float obj_up;
 varying vec2 bark_style; // from the tree's own place: which bark it has
 varying float bark_kind; // 0 oak, 1 birch, 2 pine, 3 ash, 4 maple, 5 rings (palm), 6 cedar (the grower writes it in UV2.y of a trunk)
+varying float view_dist; // metres from the eye (the photo's mip level)
+uniform sampler2DArray bark_photo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float bark_photo_on = 1.0; // 0: only the procedural bark
 
 float cell_hash(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -179,12 +182,48 @@ float bark_height_cells(vec2 aa, float radius, vec2 style, out float crack, out 
 	return clamp(smoothstep(0.0, plate, edge) * top + (0.04 * (flakes - 0.5) + 0.035 * (strands - 0.5)) * smoothstep(0.0, 0.4, edge), 0.0, 1.0);
 }
 
+// Real bark (Poly Haven, CC0; assets/textures/bark/bark_atlas.png, built by tools/build_bark_atlas.gd): one 1024 px slot a bark
+// kind, the photo's colour in rgb and its height in alpha. BARK_TILE is the metres one picture covers (width, height).
+const vec2 BARK_TILE[6] = vec2[6](vec2(2.15, 2.15), vec2(2.0, 2.0), vec2(1.0, 1.0), vec2(1.8, 1.8), vec2(1.3, 1.3), vec2(1.0, 2.0));
+
+// The slot of a bark kind: oak 0, pine 1, ash 2, maple 3, palm 4, cedar 5; -1 (birch) keeps the procedural bark.
+int photo_layer(int kind) {
+	if (bark_photo_on < 0.5) {
+		return -1;
+	}
+	return kind == 0 ? 0 : (kind == 2 ? 1 : (kind == 3 ? 2 : (kind == 4 ? 3 : (kind == 5 ? 4 : (kind == 6 ? 5 : -1)))));
+}
+
+// The photo at a place on the trunk (aa: the way round 0..1, metres along). It tiles a whole number of times round the trunk,
+// each tree shifted its own way, and is cut to the pixel's size by the mip level.
+vec4 photo_sample(vec2 aa, float radius, vec2 style, int layer) {
+	vec2 tile = BARK_TILE[layer];
+	float circ = 6.2832 * max(radius, 0.02);
+	float count = max(floor(circ / tile.x + 0.5), 1.0);
+	float stretch = circ / (count * tile.x);
+	vec2 uv = vec2(aa.x * count + style.x * 7.0, aa.y / (tile.y * stretch) + style.y * 13.0);
+	float texel = tile.x * stretch / 1024.0;
+	float lod = clamp(log2(max(view_dist * 0.0012 / texel, 1.0)), 0.0, 9.0);
+	return textureLod(bark_photo, vec3(uv, float(layer)), lod);
+}
+
+float photo_height(vec2 aa, float radius, vec2 style, int layer, out float crack, out float tone) {
+	vec4 p = photo_sample(aa, radius, style, layer);
+	crack = smoothstep(0.08, 0.4, p.a);
+	tone = clamp(dot(p.rgb, vec3(0.33)) * 3.0, 0.0, 1.0);
+	return p.a;
+}
+
 // The plates, with the fine relief real bark has (measured on nine photographed barks: low contrast, features 1 to 4 cm,
 // stretched along the trunk 2 to 3 times in most, far more in a stringy one, across in a palm). The plates' own edges are
 // softened a little, so a plate is a swelling and not a tile.
 float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float tone) {
-	float cells = bark_height_cells(aa, radius, style, crack, tone);
 	int kind = int(bark_kind + 0.5);
+	int photo = photo_layer(kind);
+	if (photo >= 0) {
+		return photo_height(aa, radius, style, photo, crack, tone);
+	}
+	float cells = bark_height_cells(aa, radius, style, crack, tone);
 	float along = kind == 6 ? 8.0 : (kind == 4 || kind == 3 || kind == 2 ? 3.0 : (kind == 5 ? 0.3 : (kind == 1 ? 0.6 : 2.0)));
 	float across_m = aa.x * 6.2832 * max(radius, 0.05); // (metres round the trunk)
 	vec2 p = vec2(across_m, aa.y);
@@ -207,8 +246,12 @@ float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float 
 // The same height for the steps of the parallax march and the shadow march (about thirty lookups a pixel): the plates and
 // one layer of the fine relief, without the second layer and the furrows (the hit point is then shaded with `bark_height`).
 float bark_height_march(vec2 aa, float radius, vec2 style, out float crack, out float tone) {
-	float cells = bark_height_cells(aa, radius, style, crack, tone);
 	int kind = int(bark_kind + 0.5);
+	int photo = photo_layer(kind);
+	if (photo >= 0) {
+		return photo_height(aa, radius, style, photo, crack, tone);
+	}
+	float cells = bark_height_cells(aa, radius, style, crack, tone);
 	float along = kind == 6 ? 8.0 : (kind == 4 || kind == 3 || kind == 2 ? 3.0 : (kind == 5 ? 0.3 : (kind == 1 ? 0.6 : 2.0)));
 	vec2 p = vec2(aa.x * 6.2832 * max(radius, 0.05), aa.y);
 	float fine = 0.65 * smooth_noise(vec2(p.x * 50.0, p.y * 50.0 / along) + style * 17.0) + 0.175;
@@ -352,6 +395,7 @@ void vertex() {
 	obj_pos = VERTEX;
 	obj_up = NORMAL.y;
 	bark_kind = UV.x < -0.5 ? floor(UV2.y * 10.0 + 0.5) : 2.0;
+	view_dist = length((MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
 	if (bark_force >= 0.0) {
 		bark_kind = bark_force;
 	}

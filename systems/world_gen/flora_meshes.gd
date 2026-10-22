@@ -26,6 +26,8 @@ static func material() -> ShaderMaterial:
 	if _material == null:
 		_material = ShaderMaterial.new()
 		_material.shader = preload("res://shaders/world/flora_wind.gdshader")
+		var Photos: Texture = preload("res://assets/textures/bark/bark_atlas.png")
+		_material.set_shader_parameter(&"bark_photo", Photos)
 	return _material
 
 

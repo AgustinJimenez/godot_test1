@@ -344,3 +344,27 @@ sunlit patches, not obvious; no baseline moved, GPU 15.5 ms unchanged, quick pla
 Not verified: under conifers (it is not tied to species yet, only to woodland), at night.
 Could be made stronger or driven by the conifer share near the tile; left subtle on purpose
 because the ground look is the user's.
+
+## Real bark photos on the trunks (2026-10-22, user asked to replace the procedural look)
+Their screenshot showed rectangular strips with straight horizontal seams, harsh contrast and a
+saturated orange blotch: tiles, nothing overlapping. Poly Haven's willow, pine and tree_bark_03
+(and maple, palm, cedar) show overlapping pointed flakes, broad uneven scales and soft fine
+flakes.
+Done (CC0 data, `assets/textures/bark/bark_atlas.png`, built by `tools/build_bark_atlas.gd` from
+the 1k downloads): one 1024 px slot a kind, colour in rgb, height in alpha (stretched to the full
+range, colours lifted to a bark albedo of about 0.1 linear luminance, cedar x2.4, maple x1.9),
+imported as a Texture2DArray (3x2 slices, VRAM compressed). Kinds: oak = willow, pine = pine
+bark, ash = tree_bark_03, maple = trident maple, palm = palm bark, cedar = japanese cedar. Birch
+stays procedural. flora_wind.gdshader: `photo_sample` tiles the picture a whole number of times
+round the trunk (so no seam), shifted per tree, mip level from the view distance; the parallax
+march, the shadow march, the slope and the colour read it (the procedural plates, lichen, moss
+and mottle are skipped for these kinds). Branches use the same picture shrunk to their girth.
+Tile sizes in metres from Poly Haven's info: willow 2.15, pine 2.0, bark_03 1.0, maple 1.8,
+palm 1.3, cedar 1.0 x 2.0.
+Measured: forest lab view GPU 14.4 to 14.7 ms, 65 fps (before 15.5 ms / 61 fps): a texture read
+is cheaper than the procedural height. Full planet_check and the visual check pass.
+Not verified: other biomes and night; thin twigs (sub-pixel, mip only); the moss band of
+tree_bark_03 repeats round big trunks; birch is still the old look; a smooth trunk with the
+cedar is dark in shade. Repo size: the atlas is 15.7 MB (could be made smaller with WebP).
+Next: lichen/moss as a separate layer over the photo; a second picture per kind to avoid
+repetition on very large trunks; birch from a photo (Poly Haven has birch bark).
