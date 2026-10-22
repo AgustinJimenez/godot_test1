@@ -418,3 +418,24 @@ worker threads, foot IK is CPU: they do not show in GPU time). Godot gives scrip
 times; the editor's Debugger > Visual Profiler does (run the game from the editor), use it for
 shadows and post. The ground is the surprise: next, look at what in `planet_ground.gdshader`
 costs (the parallax, the scans, the litter).
+
+## The ground's GPU share, taken apart (2026-10-22): `scripts/gpu_ground_breakdown.sh`
+`planet_ground.gdshader` has `cost_off` (bits of work left out; set from env PLANET_GROUND_OFF in
+planet_tile.gd; default 0 = everything). Forest walk, 25 s, one run each (noise +-0.4 ms), full
+shader 15.3 ms:
+| left out | gpu ms | saved |
+| plates' parallax march | 15.3 | 0.0 |
+| scans (photographic soil) | 15.5 | -0.2 |
+| chips' parallax | 15.8 | -0.5 |
+| all the crumbly gravel (scans, chips, litter inside) | 14.6 | 0.7 (5 %) |
+| litter (twigs, leaves, needles) | 15.5 | -0.2 |
+| fine bump, meadow, rock, snow | 15.4 | -0.1 |
+| cloud shadows | 15.7 | -0.4 |
+| ALL the near detail | 12.9 | 2.4 (16 %) |
+Reading: no single layer of the near ground detail is expensive (each is inside the noise); together
+they cost about 2.4 ms. Hiding the whole ground saved 5.0 ms earlier, so about 2.6 ms is the rest
+of the ground: the tile meshes and their shadow and depth passes, the base colour work (climate,
+soil, the cliffs, the sand) and the far tiles. The needle layer and the photo-bark are not a
+problem. Next if the ground is to be made cheaper: count the ground triangles (the 354 tiles) and
+their cost in the shadow pass (hide only the ground's shadow casting), and gate the cliff and sand
+blocks the same way.

@@ -55,6 +55,7 @@ uniform float scan_blend_depth : hint_range(0.02, 1.0) = 0.25; // how soft the m
 // switches for each layer of the near ground (the ground lab has a checkbox for each, to find which one is which)
 uniform bool layer_patches = true; // the soft colour patches over the soil
 uniform bool layer_bump = true; // the broad bump of the surface
+uniform int cost_off = 0; // a tool: bits of work to leave out, to measure what they cost (scripts/gpu_ground_breakdown.sh)
 uniform bool layer_micro = true; // the fine bump
 uniform bool layer_surface = true; // the texture maps of rock, soil and sand (triplanar)
 uniform bool layer_meadow = true; // the painted patches of yellow grass and flowers
@@ -339,7 +340,7 @@ void fragment() {
 	float sand_ground = max(smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(0.0, 0.05, paint.g - paint.r + 0.02)),
 			sand_share) * smoothstep(0.3, 0.55, world_normal.y) * (1.0 - smoothstep(0.05, 0.4, woodland));
 	float plates_here = 1.0 - 0.98 * max(sand_ground, sand_share) * (1.0 - smoothstep(0.3, 0.9, lie.x));
-	if (strength > 0.001) {
+	if (strength > 0.001 && (cost_off & 128) == 0) {
 		vec3 near_anchor = (anchor_from_world * vec4(world_pos, 1.0)).xyz;
 		vec3 on_planet = near_anchor + anchor_wrap; // the planet position, to the noise's period
 		float foot_m = length(fwidth(near_anchor)); // metres of ground one pixel covers (huge at a flat angle): a detail finer than this only sparkles, so it fades out
@@ -352,7 +353,7 @@ void fragment() {
 		float pom_shadow = 0.0;
 		vec2 pom_relief = vec2(0.0); // the slope of the plates where the ray met them (a metre of height in a metre across, along the ground's axes)
 		float pom_depth = 0.0; // how deep the hit is, 0..1
-		if (mosaic_on && mosaic_height > 0.0005) {
+		if (mosaic_on && mosaic_height > 0.0005 && (cost_off & 1) == 0) {
 			float pom_fade = pow(1.0 - smoothstep(0.4, mosaic_range, length(VERTEX)), 1.5) * (1.0 - smoothstep(0.1, 0.3, slope)) * plates_here; // (by distance only: fading by view angle drew a ring round the walker)
 			float pom_height = mosaic_height * pom_fade; // (the heights fade with the distance, so every plate sinks into the ground smoothly and there is no ring)
 			if (pom_fade > 0.02) {
@@ -523,14 +524,14 @@ void fragment() {
 				* (1.0 - smoothstep(0.0, 0.1, paint.r - paint.b) * (1.0 - smoothstep(-0.03, 0.0, paint.g - paint.r)) * 0.7);
 		float crumbly = mix(0.45, 1.0, soil_iron) * (1.0 - 0.35 * max((soil_organic - 0.5) * 2.0, 0.0)) * crumb_bare;
 		crumbly *= plates_here;
-		if (crumbly > 0.02 && crumb_dist < 52.0) {
+		if (crumbly > 0.02 && crumb_dist < 52.0 && (cost_off & 8) == 0) {
 			float zone_big = noise3(on_planet * 0.0625 + 3.0, 64.0); // tens of metres: which size dominates, how thick
 			float zone_mid = noise3(on_planet * 0.3125 + 9.0, 320.0); // a few metres: how pale, how grey, how dense the fine
 			float zone_far = noise3(on_planet * 0.015625 + 21.0, 16.0); // hundreds of metres: the hue of the soil
 			paint *= mix(vec3(0.93, 0.99, 1.05), vec3(1.12, 0.98, 0.82), zone_far);
 			// the scans: which one the soil is (red iron soil, dark forest earth, otherwise grey gravel), near the walker only
 			float scan_fade = (1.0 - smoothstep(10.0, 32.0, crumb_dist)) * scan_strength * crumb_bare;
-			if (scan_fade > 0.01) {
+			if (scan_fade > 0.01 && (cost_off & 2) == 0) {
 				vec3 facing_scan = normalize(mat3(anchor_from_world) * world_normal);
 				float w_red = smoothstep(0.25, 0.75, soil_iron);
 				float w_leaf = smoothstep(0.5, 0.75, soil_organic) * (1.0 - w_red);
@@ -600,7 +601,7 @@ void fragment() {
 			float shadow = 0.0;
 			float parallax_fade = mosaic_on ? 0.0 : 1.0 - smoothstep(3.0, 7.0, crumb_dist); // (the mosaic has its own march, below)
 			vec3 facing_anchor = normalize(mat3(anchor_from_world) * world_normal);
-			if (parallax_fade > 0.02) {
+			if (parallax_fade > 0.02 && (cost_off & 4) == 0) {
 				// the view ray into the height of the chunks (the surface is the top, 3 cm above the soil)
 				vec3 ray = normalize(mat3(anchor_from_world) * (INV_VIEW_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
 				float slant = max(dot(-ray, facing_anchor), 0.12);
@@ -733,7 +734,7 @@ void fragment() {
 			float forest_floor = smoothstep(0.42, 0.68, soil_organic) * 0.8 + 0.2;
 			float litter_zone = smoothstep(0.25, 0.75, noise3(on_planet * 0.1875 + 13.0, 192.0)) * (0.35 + 0.65 * forest_floor) * smoothstep(0.05, 0.45, woodland);
 			float litter_fade = 1.0 - smoothstep(14.0, 30.0, crumb_dist);
-			if (litter_zone > 0.02 && litter_fade > 0.01) {
+			if (litter_zone > 0.02 && litter_fade > 0.01 && (cost_off & 16) == 0) {
 				float st_h;
 				vec3 st_lean;
 				float st_tone;
@@ -763,7 +764,7 @@ void fragment() {
 				paint = mix(paint, paint * leaf_tint, clamp(leaf_cover * 1.2, 0.0, 0.97));
 			}
 		}
-		if (level > 1.5) {
+		if (level > 1.5 && (cost_off & 32) == 0) {
 			// the finer ground (High and up): a bump a hand wide, crevices that are darker, ripples
 			// in the sand, glints in the snow; all fade out within a few tens of metres
 			float fine = 1.0 - smoothstep(28.0, 60.0, length(VERTEX));
@@ -964,7 +965,7 @@ void fragment() {
 	if (cloud_shadow.x > 0.01) {
 		// the ground under a cloud is darker (the direct light is the part the cloud takes: the sky's light stays)
 		float sun_up = clamp(dot(normalize(world_pos - cloud_centre), normalize(cloud_sun_world)) * 4.0, 0.0, 1.0);
-		float shade = cloud_shade_at(world_pos - cloud_centre) * cloud_shadow.x * sun_up
+		float shade = ((cost_off & 64) == 0 ? cloud_shade_at(world_pos - cloud_centre) : 0.0) * cloud_shadow.x * sun_up
 				* (1.0 - cloud_shadow.z); // (a full overcast already dims the sun itself)
 		col *= 1.0 - shade * (0.5 + 0.2 * cloud_shadow.y);
 	}
