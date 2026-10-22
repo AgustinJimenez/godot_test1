@@ -11,6 +11,7 @@ global uniform float snow_cover;
 global uniform float autumn;
 global uniform float realism;
 global uniform vec2 wind_direction;
+global uniform vec3 cloud_sun_world; // toward the star, world space (the planet sets it)
 uniform float sway_speed = 1.3;
 uniform float bark_debug = 0.0; // 1: the bark's height as grey, 2: the cells (a tool)
 uniform float bark_force = -1.0; // >= 0: every bark gets this look (a tool)
@@ -585,7 +586,13 @@ void fragment() {
 	ROUGHNESS = mix(0.92, 0.78, realism);
 	SPECULAR = 0.2;
 	float leafy_part = is_bark ? 0.0 : 1.0;
-	BACKLIGHT = paint * 0.35 * realism * smoothstep(0.1, 0.5, sway) * leafy_part; // light through the leaves
+	// light through the leaves: a steady glow, and more of it when the eye looks along the sun's ray
+	// through the leaf (the sun behind the canopy): a lobe on how opposed the view and the sun are
+	float sun_len = length(cloud_sun_world);
+	vec3 sun_view = (VIEW_MATRIX * vec4(cloud_sun_world / max(sun_len, 0.001), 0.0)).xyz;
+	float against_sun = sun_len > 0.5 ? clamp(dot(sun_view, -VIEW), 0.0, 1.0) : 0.0;
+	float glow = 0.3 + 2.5 * pow(against_sun, 4.0);
+	BACKLIGHT = paint * glow * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
 	RIM = 0.25 * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
 	RIM_TINT = 0.5;
 }

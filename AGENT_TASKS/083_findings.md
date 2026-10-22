@@ -1,0 +1,39 @@
+# 083 findings (own words; no Unreal code copied)
+
+Source: checkout of EpicGames/UnrealEngine, branch `release`, at `E:\repo\UnrealEngine`
+(shallow clone). Read 2026-10-22.
+
+## Parallax occlusion (question 1): the repo has no POM
+
+- The engine source only has the simple "bump offset" parallax (one shift of the texture
+  coordinate along the view). The full parallax occlusion node is a material function stored in
+  binary content (`.uasset`), which is not in the repository. So nothing to read there.
+- Plan: use public papers instead (parallax occlusion mapping: Tatarchuk; relief mapping with
+  secant refinement; cone step mapping). Questions stay open in 083 (adaptive steps, edge
+  refinement, self shadow).
+
+## Light through leaves (question 2): two-sided foliage shading
+
+What I read: `Engine/Shaders/Private/ShadingModels.ush` (the two-sided foliage model).
+- The model lights the leaf normally from the front, then adds a separate "transmission" term for
+  light that arrives from the *other side* of the leaf.
+- Transmission has two parts: (1) a wrapped diffuse on the back face, i.e. the cosine of the angle
+  to the back normal with a wrap of 0.5 so the glow does not die at grazing angles (and divided
+  by (1 + wrap)^2 to keep energy); (2) a forward-scatter lobe that is strongest when the viewer
+  looks straight toward the light through the leaf (view and light opposed) and falls off fast
+  otherwise (a GGX-shaped lobe with roughness about 0.6).
+- Both are multiplied by a "subsurface colour" (the leaf's own tint), so backlit leaves glow in
+  their colour (yellow-green) instead of white.
+Why it looks better: a canopy seen against the sun lights up like stained glass, while the same
+canopy from the sun's side stays plain. Without the view-dependent lobe, the glow is the same from
+every angle and reads flat.
+Our state: `BACKLIGHT` in `flora_wind.gdshader` is Godot's built-in wrapped transmission, constant
+in the view (0.35 x paint). It has no forward-scatter lobe.
+Cost: a few ALU per leaf pixel, no texture, no extra pass.
+Done (task 083 a): our own forward-scatter term from the sun direction (`cloud_sun_world`) and the
+view; see the shader comment. Verified: see git log.
+
+Tuning result (2026-10-22): at x1.1 the change against the sun was barely visible, at x8 it was
+mild (leaves slightly brighter): most leaves on that view are in the shade of other canopy, so
+only a few receive direct sun to pass through. Settled on 0.3 + 2.5 * lobe^4. Not verified:
+a view with the sun low behind a single tree, and the frame cost (a few ALU per leaf pixel).
