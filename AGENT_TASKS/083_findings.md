@@ -178,3 +178,18 @@ has a furrow for a stretch of about a metre, then none; the furrow pulls the hei
 a contour line of value noise covers huge areas (value noise stays near 0.5) and makes a big dark
 block; with a narrow threshold the contours close into ovals. Lanes avoid both. Not verified:
 other oak trunks and forest view; the effect is subtle at 1.5 m.
+
+## Cost of the study's shader changes, measured (2026-10-22, lab forest, --fps, 11:00, plants on,
+## render_gpu_ms at frame 1500, noise about +-0.5 ms between runs)
+- before the study (d6b0e01): 17.5 to 18.1 ms, 55 fps.
+- after parallax steps + cavity AO + self shadow (c696895): 19.1 ms.
+- after leaf flutter + fine bark relief (815bf78): 21.4 ms (+2.8). The flutter alone was about
+  1.5 ms (vertex stage on 11 M primitives; a cheaper version with a 35 m cut still cost 0.9 ms);
+  its tip motion is only a few millimetres, so it was REMOVED. The bark march steps now use a
+  lighter height (`bark_height_march`: plates plus one noise layer, no furrows).
+- the march ran all its steps even beyond the fade range, where the offset is zero: now one step
+  there (`near < 0.02`). Result: 16.4 to 17.3 ms, 58 to 59 fps: faster than before the study,
+  with all the bark improvements kept.
+Lesson: every per-pixel loop needs a distance gate; check `--fps` after each shader change.
+Leaf flutter: dropped, the idea is documented above in case a cheaper way appears (e.g. in the
+leaf mesh's baked vertex colour, no per-vertex trig).

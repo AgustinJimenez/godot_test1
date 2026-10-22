@@ -204,6 +204,17 @@ float bark_height(vec2 aa, float radius, vec2 style, out float crack, out float 
 	return height;
 }
 
+// The same height for the steps of the parallax march and the shadow march (about thirty lookups a pixel): the plates and
+// one layer of the fine relief, without the second layer and the furrows (the hit point is then shaded with `bark_height`).
+float bark_height_march(vec2 aa, float radius, vec2 style, out float crack, out float tone) {
+	float cells = bark_height_cells(aa, radius, style, crack, tone);
+	int kind = int(bark_kind + 0.5);
+	float along = kind == 6 ? 8.0 : (kind == 4 || kind == 3 || kind == 2 ? 3.0 : (kind == 5 ? 0.3 : (kind == 1 ? 0.6 : 2.0)));
+	vec2 p = vec2(aa.x * 6.2832 * max(radius, 0.05), aa.y);
+	float fine = 0.65 * smooth_noise(vec2(p.x * 50.0, p.y * 50.0 / along) + style * 17.0) + 0.175;
+	return clamp(mix(cells, 0.5, 0.22) + (fine - 0.5) * 0.4, 0.0, 1.0);
+}
+
 
 // A cluster of small leaves on a card (UV 0..1, the stalk at the bottom): leaves in a 5 x 5 grid, each
 // with its own size, turn (mostly pointing out from the stalk), shade, curve, wavy margin, veins and
@@ -358,13 +369,6 @@ void vertex() {
 		push = vec3(wind_direction.x, 0.0, wind_direction.y) * strength * (0.55 + 0.45 * swell + 0.18 * ripple)
 				+ vec3(-wind_direction.y, 0.0, wind_direction.x) * strength * 0.3 * ripple;
 	}
-	if (UV2.y > 1.5 && UV2.y <= 3.5 && UV.x > -0.5) {
-		// a leaf: the blade flutters about its own stem, the tip (UV.y runs from the stem out) moving most
-		float tip_f = clamp(UV.y, 0.0, 1.0);
-		float phase = dot(world.xz, vec2(2.3, 1.7)) + world.y * 1.9;
-		float beat = sin(TIME * sway_speed * 4.0 + phase) + 0.5 * sin(TIME * sway_speed * 7.1 + phase * 1.7);
-		push += (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz * beat * tip_f * tip_f * weight * (0.006 + wind_strength * 0.035);
-	}
 	face_up = (MODEL_MATRIX * vec4(NORMAL, 0.0)).y;
 	VERTEX += inverse(mat3(MODEL_MATRIX)) * push;
 }
@@ -471,13 +475,14 @@ void fragment() {
 			// (fewer steps when the eye looks straight at the bark, more when it grazes: the ray crosses
 			// the depth over a longer way, and a coarse march would skip the thin cracks)
 			float steps = mix(9.0, 24.0, smoothstep(0.9, 0.3, vz));
+			steps = near < 0.02 ? 1.0 : steps; // (beyond the fade range the march moves nothing: do one step, not twenty)
 			float step_size = 1.0 / steps;
 			vec2 per_layer = vec2(slide.x / len_a, slide.y / len_l) * step_size * near;
 			// parallax occlusion: step down through the bark until the ray meets a plate
 			vec2 here = aa;
 			float crack_here;
 			float tone_here;
-			float h_here = bark_height(here, radius, bark_style, crack_here, tone_here);
+			float h_here = bark_height_march(here, radius, bark_style, crack_here, tone_here);
 			float layer = 0.0;
 			vec2 last = here;
 			for (int i = 0; i < 24; i++) {
@@ -487,7 +492,7 @@ void fragment() {
 				last = here;
 				here += per_layer;
 				layer += step_size;
-				h_here = bark_height(here, radius, bark_style, crack_here, tone_here);
+				h_here = bark_height_march(here, radius, bark_style, crack_here, tone_here);
 			}
 			// the ray crossed the surface between `last` and `here`: halve that gap twice, so the
 			// edge of a plate is sharp and not a staircase of steps
@@ -496,7 +501,7 @@ void fragment() {
 			for (int j = 0; j < 2; j++) {
 				float mid = 0.5 * (lo + hi);
 				vec2 at = last + per_layer * ((mid - lo) / step_size);
-				float h_mid = bark_height(at, radius, bark_style, crack_here, tone_here);
+				float h_mid = bark_height_march(at, radius, bark_style, crack_here, tone_here);
 				if (mid >= 1.0 - h_mid) {
 					hi = mid;
 					here = at;
@@ -523,7 +528,7 @@ void fragment() {
 					for (int s = 0; s < 4; s++) {
 						float t = 0.12 + 0.27 * float(s);
 						float c2, t2;
-						float h_s = bark_height(aa + per_unit * t, radius, bark_style, c2, t2);
+						float h_s = bark_height_march(aa + per_unit * t, radius, bark_style, c2, t2);
 						lit = min(lit, 1.0 - smoothstep(0.0, 0.12, h_s - (h0 + t)));
 					}
 					cavity *= mix(0.55, 1.0, mix(1.0, lit, near));
