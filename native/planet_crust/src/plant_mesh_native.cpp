@@ -64,6 +64,10 @@ struct Rng {
 
 double lerpd(double a, double b, double t) { return a + (b - a) * t; }
 double clampd(double v, double lo, double hi) { return v < lo ? lo : (v > hi ? hi : v); }
+double smoothstep_d(double lo, double hi, double v) {
+	double t = clampd((v - lo) / (hi - lo), 0.0, 1.0);
+	return t * t * (3.0 - 2.0 * t);
+}
 
 Color with_alpha(Color p_color, double p_alpha) {
 	p_color.a = (float)p_alpha;
@@ -1571,6 +1575,13 @@ struct Grower {
 		normal = (normal - axis * axis.dot(normal)).normalized();
 		Color tone = mix(g->leaf, g->leaf.lightened(0.14f), rf());
 		tone = tone.darkened((float)rr(0.0, 0.18));
+		if (g->crown > 1.5) {
+			// the inside of a crown is shaded by the leaves around it: darker near the trunk, and lower down
+			double outer = clampd(std::sqrt((double)(at.x * at.x + at.z * at.z)) / g->crown, 0.0, 1.0);
+			double high = clampd((double)at.y / std::max(g->height, 1.0), 0.0, 1.0);
+			double open = (0.55 + 0.45 * smoothstep_d(0.2, 0.9, outer)) * (0.8 + 0.2 * smoothstep_d(0.3, 0.9, high));
+			tone = tone.darkened((float)(1.0 - open));
+		}
 		Color base_color = with_alpha(tone.darkened(0.3f), sway);
 		Color tip_color = with_alpha(mix(g->leaf_tip, tone, 0.4), std::min(sway + LEAF_SWAY, 1.0));
 		double curl = fine ? -0.12 : 0.0;

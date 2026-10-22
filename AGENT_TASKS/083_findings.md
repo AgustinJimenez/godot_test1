@@ -198,3 +198,14 @@ Full regression run (2026-10-22, after a9bc782: bark parallax/AO/self shadow/rel
 cedar, light through leaves, plants loaded to 6 km, more plant workers): the whole
 `scripts/planet_check.sh` (not --quick) passes, including walk (413 m), swim and fly (18 km).
 Note: the script needs LOG_DIR to exist (`mkdir -p`).
+
+## Crown interior shading (open item 2, part 2), done 2026-10-22, native (plant_mesh_native.cpp `leaf`)
+Idea: the inside of a crown gets little light (leaves above and around block it); a sky/sun lit
+outer skin against a darker interior is what makes a canopy read as a volume. Done where the
+leaves are made, so it is free at render time (baked into the leaf colour): for trees with a
+crown wider than 1.5 m, a leaf's colour is darkened by up to 45 % near the trunk axis (distance
+from the axis over the crown radius, smoothstep 0.2 to 0.9) and up to 20 % low down the tree.
+Result: lab forest view and the visual-check forest view show deeper crowns, not harsh.
+Not verified: other species and sizes (the formula uses the tree's own crown radius and height
+but the leaf position is assumed to be in tree space with the trunk at x=z=0), winter / bare trees,
+and a night view. Baseline for green_country accepted.
