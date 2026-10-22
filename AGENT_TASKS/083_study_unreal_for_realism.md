@@ -206,3 +206,29 @@ Same rules: read, note in our own words, rewrite from scratch. Paths from memory
 - Public papers and talks (SIGGRAPH, GDC, GPU Gems / GPU Pro): the primary sources for the
   techniques above (parallax occlusion, GTAO, sky atmosphere, octahedral impostors). Learning
   from a paper carries no licence risk.
+
+## Status after the first reading sessions (2026-10-22)
+
+Done (details in 083_findings.md):
+- Light through leaves: forward-scatter glow toward the sun (flora_wind.gdshader).
+- Bark parallax: adaptive steps + two halving refinement steps.
+- Bark specular/ambient occlusion from crack depth (AO + AO_LIGHT_AFFECT).
+- Cedar bark made broader (user's screenshot showed reed-like strands).
+- Contact shadows read; SSAO tuning tried and reverted (no clear win).
+- POM source check: Unreal's repo has no POM (binary content), so used the published technique.
+
+Already in the project, checked, nothing to add now:
+- Anti-tiling of ground textures: `unrepeated()` and triplanar sampling in planet_ground.gdshader.
+- Water: depth absorption, bed refraction, shore and crest foam in planet_water.gdshader.
+- Foliage normals leaned toward the sky and across the card (flora_wind.gdshader fragment).
+- Glow/bloom and SSAO are on; SSAO tuned values are a risk for the sand look.
+
+Still open, in the order I would take them:
+1. Bark self shadow of the plates (a short second march toward the sun) and the plate edge on
+   silhouettes; check on a forest view at 10 to 30 m.
+2. Leaf pivot wind (each leaf flutters about its own stem) and a whole-crown ambient darkening
+   (sun-facing outer leaves lighter, inner ones darker).
+3. Octahedral impostors (views from above too) and a dithered cross-fade (081).
+4. Sky atmosphere / aerial perspective / height fog read (079).
+5. Post: film grain, vignette, lens dirt in a compositor effect like the sun glow (081).
+6. Contact shadow compute pass (own pass, no engine switch).
