@@ -99,3 +99,18 @@ atlas replacement; (B) keep going: a loss on the dark-line network, a learned mo
 fit with torch+CUDA on a differentiable version of the generator) and a style loss on a neural
 feature of the photo; likely days, uncertain; (C) bake the generator into a tile at load time and
 blend it with the photo to break repeats. Recommendation: A + C.
+
+## Round 4 (2026-10-22): the smarter fit (neural style loss + CMA-ES), `tools/bark/bark_perceptual.py`
+The loss is the Gram matrices of VGG19 features (relu1_1 .. relu5_1, weights from torchvision, cached in
+E:\repo\ai_models\torch\hub) of the generated height picture against crops of the photo's height map, plus
+a cheap size term (autocorrelation lengths across and along, FFT) because Gram matrices barely see
+scale. The search is CMA-ES (`pip install cma` in the anaconda python), 20 candidates a generation,
+pictures from the numba renderer, the network on the GPU (CUDA): 0.5 s a generation, 220 generations
+(2 to 4 minutes) a bark. Fitted parameters are saved in `tools/bark/fits/<bark>.json` (round 4).
+Result (`gen_vs_photo9.png`): clearly better than the statistics fit: ragged, splintered edges, dark
+crevices, rows of ridges (ash) and tall splintered flakes (willow); the size now follows the photo.
+Still wrong: pine reads as overlapping serrated LEAVES (the ragged-edge noise is too regular and
+the flakes are lenses); willow flakes are too uniformly pointed; the colour is not done; nothing is in
+the shader yet. Next: lower the ragged-edge frequency range, add a flake shape that is cut square at
+the top (pine, willow), colour from the photo by height, then port ash first (it is the closest) to
+GLSL (`flake_height`) and compare with `bark_view --compare`.
