@@ -176,3 +176,17 @@ Wood with the within-board drift (loss 1.24): worse than the capped fit (1.16): 
 takes over, with dark seam bands. The previous `oak_wood_planks_wood_good.json` (22 params file: first 20 used)
 stays the wood to use; the drift parameters default to 0.15 / 30 cm there (add them to the GLSL port with the
 fit's values).
+
+## Status after the 2026-10-23 stretch (see 085 round 27 for the details)
+- Bark: oak, maple and cedar procedural in the game; pine (plates), palm (rings) and the leaf litter have procedural
+  versions behind opt-in switches (`PLANET_PROCEDURAL_PINE`, `_PALM`, `_LITTER`), the same GPU cost as the photographs;
+  ash and birch (no photograph) have none that works.
+- Rocks and cliffs: the rock generator (blocks + cracks + rubble) does not reproduce smooth lumps with creased valleys;
+  a refit with its ranges tweaked gave a lower loss and a worse picture. They need a new model, not tuning.
+- Wood: the buildings' planks are procedural in the plant shader already; the fitted board generator (`WoodBaker`) is
+  not wired to buildings. Leaves: procedural in the plant shader already.
+- Ground: the leaf scan can be replaced by the baked litter (opt-in); the red and gravel scans have no fit yet
+  (soil_gen has a forest-soil fit only).
+- Tools added: `measure_scale.py` (feature size and repeat spacing of a photograph: use it to cap scale parameters
+  before a fit; it found the palm scale bug), the speckle floor rule (no height detail below about 8 px per cell in a
+  parallax-mapped bake).
