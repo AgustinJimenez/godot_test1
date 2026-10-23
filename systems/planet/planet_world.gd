@@ -132,6 +132,17 @@ func target() -> Node3D:
 ## under the target and the planet's coarse shape are what is made first, however far away.
 ## The procedural barks and rocks are drawn once into the plant shader (photo atlases till then).
 func _bake_the_bark() -> void:
+	if OS.has_environment("PLANET_PROCEDURAL_LITTER") and DisplayServer.get_name() != "headless":
+		var litter := GroundBaker.new() # (the forest floor's leaf scan from the fitted generator)
+		add_child(litter)
+		var maps: Array[Image] = await litter.bake_litter()
+		for image in maps:
+			image.generate_mipmaps()
+		PlanetTile.ground_material().set_shader_parameter(&"scan_leaf_c",
+				ImageTexture.create_from_image(maps[0]))
+		PlanetTile.ground_material().set_shader_parameter(&"scan_leaf_n",
+				ImageTexture.create_from_image(maps[1]))
+		litter.queue_free()
 	if OS.has_environment("PLANET_PHOTO_BARK") or DisplayServer.get_name() == "headless":
 		return # (the photographs for every bark; the procedural oak is the default: AGENT_TASKS/085)
 	var baker := BarkBaker.new()
