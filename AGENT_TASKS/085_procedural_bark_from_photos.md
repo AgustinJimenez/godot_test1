@@ -392,3 +392,27 @@ the generator makes bristling pale spikes, the photograph is a fine diagonal rid
 Pine: orange and grey scales with the right look in colour, larger and more regular than the photograph's:
 stays photograph for now. Palm: no ring family yet.
 In the game: oak, maple, cedar procedural; pine, ash, palm and all rocks photographs.
+
+Round 27 (2026-10-23): new generator families for the barks the flake model could not do, and the rest of the list.
+- Ash: a flake refit with flakes turned both ways (`fit_ash.py`) and a ridge family (`ridge_gen.py`) both failed
+  (spikes; smooth tubes with square cuts). Photograph stays.
+- Pine: `plate_gen.py` (Voronoi plates stretched along the trunk, thin cracks, ragged edges) + `fit_pine_plate.py`: the
+  right structure (flat plates side by side). Cell size capped to 3-6 cm (the free fit chose 8 and a lower loss; the
+  picture with 3-6 matches the photograph). Baked in the viewer (`plate_bake.gdshader`, `PlateBaker`, `PlateFits`,
+  `export_plate.py`) with a per-plate palette (orange, tan, grey), an edge shadow and a height stretched x1.6. Colour
+  matches the photograph's mean; relief still shallower. Not in the game.
+- Palm: `ring_gen.py` + `fit_palm.py`: thin bright ring line with a slow dark ramp below, over vertical streaks. The free
+  fit chose 50 cm between rings while the photograph (2048 x 1024 px at 0.063 cm/px) has them 11-16 cm apart: capped.
+  Baked in the viewer (`ring_bake.gdshader`, `RingBaker`, `RingFits`, `export_ring.py`). Too clean. Not in the game.
+- Litter: `fit_litter.py` with leaf-sized ranges (cell 0.8-2.2 cm, len 1.0-2.4, wid 0.3-0.8, flake_cover 1.15-1.25,
+  base_amp <= 0.02): tone and leaf size close to Poly Haven forest_leaves_03. `GroundBaker` + `ground_maps.gdshader` make
+  the ground shader's scan maps from it; opt-in `PLANET_PROCEDURAL_LITTER=1` (the shader's `scan_leaf_mean` and
+  `scan_leaf_size` are uniforms now). Not yet seen on a dark forest floor.
+- Rocks: a refit with pits off and rubble forced got a lower loss and a worse picture (three smooth blocks). Rocks stay
+  photographs; they need a different model (smooth lumps with creased valleys), not range tweaks.
+- Leaves: already procedural in the plant shader (`leaf_cluster`); nothing to replace.
+- Lessons: (1) every free fit that lowered the loss by making features bigger or simpler (50 cm ring spacing, 8 cm
+  plates, giant leaves, huge dark blobs, three rock blocks) looked wrong: cap the SCALE parameters from a measurement
+  of the photograph (pixels per feature) before fitting; (2) the same search repeatedly traded detail for loss, so
+  always compare at the same crop and scale; (3) a `&&` chain after a failing lint still pushed: run lint on its own.
+In the game: oak, maple, cedar procedural; pine, ash, palm, rocks and the ground scans photographs.
