@@ -80,6 +80,7 @@ func _ready() -> void:
 		var baker := BarkBaker.new()
 		add_child(baker)
 		procedural.set_shader_parameter(&"bark_photo", await baker.make_array(true))
+		procedural.set_shader_parameter(&"tall_slot", 1.0) # (the baked cedar is a square metre)
 		plain.material_override = procedural
 		_materials.append(procedural)
 		plain.position.x = 0.9

@@ -190,7 +190,8 @@ float bark_height_cells(vec2 aa, float radius, vec2 style, out float crack, out 
 
 // Real bark (Poly Haven, CC0; assets/textures/bark/bark_atlas.png, built by tools/build_bark_atlas.gd): one 1024 px slot a bark
 // kind, the photo's colour in rgb and its height in alpha. BARK_TILE is the metres one picture covers (width, height).
-const vec2 BARK_TILE[6] = vec2[6](vec2(2.15, 2.15), vec2(2.0, 2.0), vec2(1.0, 1.0), vec2(1.8, 1.8), vec2(1.3, 1.3), vec2(1.0, 2.0));
+const vec2 BARK_TILE[6] = vec2[6](vec2(2.15, 2.15), vec2(2.0, 2.0), vec2(1.0, 1.0), vec2(1.8, 1.8), vec2(1.3, 1.3), vec2(1.0, 1.0));
+uniform float tall_slot = 2.0; // the cedar photograph is 1 x 2 m squeezed into a square slot: its height in metres (1 for a baked square tile)
 
 // The slot of a bark kind: oak 0, pine 1, ash 2, maple 3, palm 4, cedar 5; -1 (birch) keeps the procedural bark.
 int photo_layer(int kind) {
@@ -204,6 +205,9 @@ int photo_layer(int kind) {
 // each tree shifted its own way, and is cut to the pixel's size by the mip level.
 vec4 photo_sample(vec2 aa, float radius, vec2 style, int layer) {
 	vec2 tile = BARK_TILE[layer];
+	if (layer == 5) {
+		tile.y *= tall_slot;
+	}
 	float circ = 6.2832 * max(radius, 0.02);
 	float count = max(floor(circ / tile.x + 0.5), 1.0);
 	float stretch = circ / (count * tile.x);

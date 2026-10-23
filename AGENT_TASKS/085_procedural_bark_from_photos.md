@@ -350,3 +350,13 @@ Round 22: cedar baked with the best flake fit (`japanese_cedar_bark_flakes_good.
 brown and vertical grain but is smooth: the photograph's fine fibrous strips are not resolved by the 1 cm flakes at
 the tile's 1 mm/px. Stays a photograph. `BarkBaker.make_array(true)` now bakes every fit for the viewer only; the
 game bakes the oak alone.
+
+Round 23 (2026-10-23): THE CEDAR WAS A SCALE BUG, now procedural in the game. The cedar's photograph is 1 x 2 m
+squeezed into a square atlas slot, so the plant shader stretched any square tile 2x along the trunk
+(BARK_TILE[5] = (1, 2)): the baked cedar looked smooth because its 1 cm flakes were 2 cm long strips stretched.
+Now BARK_TILE[5] = (1, 1) with a uniform `tall_slot` (2 for the photograph, set to 1 when the procedural bark is
+baked: PlanetWorld and the viewer). With the right scale the baked cedar (fit: flakes everywhere, `_flakes_good`)
+shows the photograph's fine vertical fibres, the same dark brown (`cmp14_k6.png`): in the game by default beside
+the oak. Forest view 70 fps, GPU 14.1 ms, planet_check and visual check pass.
+Lesson: when a baked tile looks smoother or blurrier than its fit, check the tile's metres per pixel in the
+shader (BARK_TILE) before refitting.
