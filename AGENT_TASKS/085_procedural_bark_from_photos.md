@@ -385,3 +385,10 @@ Forest lab view 70 fps, GPU 14.2 ms; planet_check and the visual check pass. Thi
 the session for every tree: bark now has the photographs' real colours.
 Lesson: verify that an edit applied (grep the result) before judging what it does; a "no effect" in a fit is a
 signal that the pipeline never reached the screen.
+
+Round 26: with the real colours (round 25) the fair viewer shows: maple procedural (`cmp17_k4.png`) close to the
+photograph in colour and mottled relief (softer): now baked in the game with oak and cedar. Ash (`cmp17_k3.png`):
+the generator makes bristling pale spikes, the photograph is a fine diagonal ridge pattern: stays photograph.
+Pine: orange and grey scales with the right look in colour, larger and more regular than the photograph's:
+stays photograph for now. Palm: no ring family yet.
+In the game: oak, maple, cedar procedural; pine, ash, palm and all rocks photographs.

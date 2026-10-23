@@ -970,4 +970,4 @@ Lessons from fitting bark, rock, soil and litter (2026-10-23):
 - **Loss:** the style loss must see a lit view of the height (hillshade): raw heights drift to smooth blobs. An outlier
   term in the loss made things worse (grey fog).
 - **Always** write and look at the side-by-side picture; every statistics-only or number-only success so far looked wrong.
-- **In the game now:** the oak and cedar barks are procedural (baked at load from `bark_fits.gd`, fitted with the detail-profile loss; `PLANET_PHOTO_BARK=1` returns to the photographs); every other bark and all rocks are photographs (`PLANET_PROCEDURAL_ROCKS=1` bakes the rocks). Always compare with `bark_view.tscn` (same lichen on both trees).
+- **In the game now:** the oak, maple and cedar barks are procedural (baked at load from `bark_fits.gd`, fitted with the detail-profile loss; `PLANET_PHOTO_BARK=1` returns to the photographs); every other bark and all rocks are photographs (`PLANET_PROCEDURAL_ROCKS=1` bakes the rocks). Always compare with `bark_view.tscn` (same lichen on both trees).
