@@ -64,5 +64,5 @@ void fragment() {
 	int i0 = int(floor(t));
 	int i1 = min(i0 + 1, 7);
 	vec3 colour = mix(ramp[i0], ramp[i1], t - float(i0));
-	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
+	COLOR = vec4(clamp(colour, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 1.8, 0.0, 1.0)); // (a deeper relief than the fitted height)
 }
