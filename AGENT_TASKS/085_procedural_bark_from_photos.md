@@ -360,3 +360,14 @@ shows the photograph's fine vertical fibres, the same dark brown (`cmp14_k6.png`
 the oak. Forest view 70 fps, GPU 14.1 ms, planet_check and visual check pass.
 Lesson: when a baked tile looks smoother or blurrier than its fit, check the tile's metres per pixel in the
 shader (BARK_TILE) before refitting.
+
+Round 24 (2026-10-23): per-flake palette for the pine (`PALETTE_MIX` in BarkBaker, k-means colours with a chroma
+feature from the photograph in `export_fit.clusters_of`, `bark_bake` `palette`, `palette_shares`, `palette_mix`):
+the baked pine TILE now has orange scales among grey-brown ones (`pine_tile_vs3.png`), like the photograph's
+colour mixture (the flakes are still pointed lenses and the gaps too light). Oak, cedar unchanged (mix 0).
+But in the fair viewer the pine trunk is STILL pale grey-green with no orange (`cmp15_k2.png`): the plant shader's
+lichen / moss / mottle paint (flora_wind, `crust`, `moss`, `mottle`, `orange` blocks, which read the baked height
+as `h0` and the colour) covers the baked colour: the baked heights have a different histogram than the photograph's
+(alpha_map matches mean and spread only). Next: in `bark_view` use `--debug=` (bark_debug 1: the height as grey, 2: the
+cells) to compare the heights, then skip the lichen paint for baked kinds (it duplicates what the photo colour
+already holds) or scale it by the baked tile's own lichen share.

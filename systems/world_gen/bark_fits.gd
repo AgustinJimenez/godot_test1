@@ -28,7 +28,13 @@ static func fits() -> Dictionary:
 			],
 			"mean": Color(0.5188, 0.4626, 0.4090),
 			"gain": 0.402, "mottle": 0.063,
-			"alpha_scale": 0.889, "alpha_from": 0.549, "alpha_to": 0.540},
+			"alpha_scale": 0.889, "alpha_from": 0.549, "alpha_to": 0.540,
+			"palette": [
+				Color(0.6159, 0.5591, 0.5057),
+				Color(0.5223, 0.4625, 0.4064),
+				Color(0.4400, 0.3881, 0.3366),
+			],
+			"palette_shares": [0.261, 0.401, 0.338]},
 		"pine_bark": {
 			"kind": 2, "tile_cm": 200.0,
 			"params": PackedFloat32Array([
@@ -52,7 +58,13 @@ static func fits() -> Dictionary:
 			],
 			"mean": Color(0.4161, 0.3370, 0.2613),
 			"gain": 0.067, "mottle": 0.017,
-			"alpha_scale": 0.578, "alpha_from": 0.687, "alpha_to": 0.642},
+			"alpha_scale": 0.578, "alpha_from": 0.687, "alpha_to": 0.642,
+			"palette": [
+				Color(0.4382, 0.3550, 0.2774),
+				Color(0.4844, 0.3292, 0.2292),
+				Color(0.3757, 0.3190, 0.2508),
+			],
+			"palette_shares": [0.456, 0.107, 0.436]},
 		"tree_bark_03": {
 			"kind": 3, "tile_cm": 100.0,
 			"params": PackedFloat32Array([
@@ -76,7 +88,13 @@ static func fits() -> Dictionary:
 			],
 			"mean": Color(0.5588, 0.5291, 0.3983),
 			"gain": 0.492, "mottle": 0.078,
-			"alpha_scale": 0.972, "alpha_from": 0.489, "alpha_to": 0.466},
+			"alpha_scale": 0.972, "alpha_from": 0.489, "alpha_to": 0.466,
+			"palette": [
+				Color(0.6167, 0.5837, 0.4900),
+				Color(0.5148, 0.4824, 0.3515),
+				Color(0.4587, 0.4499, 0.1670),
+			],
+			"palette_shares": [0.502, 0.374, 0.124]},
 		"trident_maple_bark": {
 			"kind": 4, "tile_cm": 180.0,
 			"params": PackedFloat32Array([
@@ -100,7 +118,13 @@ static func fits() -> Dictionary:
 			],
 			"mean": Color(0.4282, 0.3340, 0.2359),
 			"gain": -0.078, "mottle": 0.045,
-			"alpha_scale": 0.894, "alpha_from": 0.573, "alpha_to": 0.473},
+			"alpha_scale": 0.894, "alpha_from": 0.573, "alpha_to": 0.473,
+			"palette": [
+				Color(0.4694, 0.3670, 0.2608),
+				Color(0.4228, 0.3276, 0.2286),
+				Color(0.3802, 0.2984, 0.2129),
+			],
+			"palette_shares": [0.309, 0.464, 0.227]},
 		"japanese_cedar_bark": {
 			"kind": 6, "tile_cm": 100.0,
 			"params": PackedFloat32Array([
@@ -124,7 +148,13 @@ static func fits() -> Dictionary:
 			],
 			"mean": Color(0.4363, 0.3205, 0.2175),
 			"gain": 0.428, "mottle": 0.017,
-			"alpha_scale": 0.402, "alpha_from": 0.452, "alpha_to": 0.252},
+			"alpha_scale": 0.402, "alpha_from": 0.452, "alpha_to": 0.252,
+			"palette": [
+				Color(0.4550, 0.3474, 0.2459),
+				Color(0.4499, 0.3268, 0.2153),
+				Color(0.4021, 0.2884, 0.1938),
+			],
+			"palette_shares": [0.257, 0.405, 0.338]},
 	}
 
 

@@ -57,7 +57,7 @@ NL = chr(10)
 T = chr(9)
 
 
-def entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle, alpha_gamma=1.0, stats=(0.5, 0.5)):
+def entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle, alpha_gamma=1.0, stats=(0.5, 0.5), centres=None, shares=None):
     """The lines of one bark (every line short: the project's lint)."""
     out = [T * 2 + '"%s": {' % name, T * 3 + '"kind": %s, "tile_cm": %.1f,' % (kind, float(tile_m) * 100)]
     out.append(T * 3 + '"params": PackedFloat32Array([')
@@ -71,8 +71,28 @@ def entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle, 
     out.append(T * 3 + "],")
     out.append(T * 3 + '"mean": Color(%.4f, %.4f, %.4f),' % tuple(mean_colour))
     out.append(T * 3 + '"gain": %.3f, "mottle": %.3f,' % (gain, mottle))
-    out.append(T * 3 + '"alpha_scale": %.3f, "alpha_from": %.3f, "alpha_to": %.3f},' % (alpha_gamma, stats[0], stats[1]))
+    out.append(T * 3 + '"alpha_scale": %.3f, "alpha_from": %.3f, "alpha_to": %.3f,' % (alpha_gamma, stats[0], stats[1]))
+    out.append(T * 3 + '"palette": [')
+    for c in centres:
+        out.append(T * 4 + "Color(%.4f, %.4f, %.4f)," % tuple(c))
+    out.append(T * 3 + "],")
+    out.append(T * 3 + '"palette_shares": [%s]},' % ", ".join("%.3f" % x for x in shares))
     return out
+
+
+def clusters_of(folder, name, k=3):
+    """The photograph's main colours (k-means in linear RGB), brightest first, with their shares: the per-flake palette."""
+    colour = cv2.imread(f"{folder}/{name}_diff.jpg").astype(np.float32)[:, :, ::-1] / 255.0
+    small = cv2.resize(colour, (128, 128), interpolation=cv2.INTER_AREA).reshape(-1, 3)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01)
+    chroma = (small.max(axis=1) - small.min(axis=1))[:, None]
+    features = np.hstack([small, 2.5 * chroma]).astype(np.float32)  # (saturated colours form their own cluster)
+    _, labels, _ = cv2.kmeans(features, k, None, criteria, 4, cv2.KMEANS_PP_CENTERS)
+    labels = labels.ravel()
+    centres = np.array([small[labels == i].mean(axis=0) if (labels == i).any() else small.mean(axis=0) for i in range(k)])
+    shares = np.bincount(labels, minlength=k) / labels.size
+    order = np.argsort(-centres @ np.array([0.2126, 0.7152, 0.0722]))
+    return [list(map(float, centres[i])) for i in order], [float(shares[i]) for i in order]
 
 
 def main():
@@ -107,7 +127,9 @@ def main():
         print(name, "height mean %.2f/%.2f std %.2f/%.2f -> scale %.2f" % (norm.mean(), photo.mean(), norm.std(), photo.std(), k))
         print("   (the exporter writes scale and the mean pair)")
         stats = (float(norm.mean()), float(photo.mean()))
-        lines += entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle, alpha_gamma, stats)
+        centres, shares = clusters_of(folder, name)
+        centres = [lifted(c, lift) for c in centres]
+        lines += entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle, alpha_gamma, stats, centres, shares)
     lines += [T + "}", "", "", "const KEYS := ["] + [T + '"%s",' % k for k in keys] + ["]", ""]
     open(out, "w").write("\n".join(lines))
     print("wrote", out)

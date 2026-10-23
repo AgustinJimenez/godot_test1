@@ -3,9 +3,11 @@ extends Node
 ## Draws the procedural barks (BarkFits, fitted to photographs by tools/bark) once, each into
 ## a tile: colour in rgb, the height in alpha (the layout of the photographed atlas). Add the node
 ## to the tree and `await bake(name)` for an Image.
-
 const SHADER := preload("res://shaders/world/bark_bake.gdshader")
 const SIZE := 1024
+## how much each flake takes its own colour from the photograph's palette (only barks whose
+## colour is not a function of the height: the pine's orange scales on grey)
+const PALETTE_MIX := {"pine_bark": 0.85}
 
 
 ## The tile of one fitted bark (`name` is a key of BarkFits.FITS) as an Image (RGBA8).
@@ -28,6 +30,14 @@ func bake(name: String, seed_value := 1.0) -> Image:
 		colours.append(Vector3(colour.r, colour.g, colour.b))
 	material.set_shader_parameter(&"ramp", colours)
 	material.set_shader_parameter(&"seed", seed_value)
+	if fit.has("palette"):
+		var palette := PackedVector3Array()
+		for colour: Color in fit["palette"]:
+			palette.append(Vector3(colour.r, colour.g, colour.b))
+		var shares: Array = fit["palette_shares"]
+		material.set_shader_parameter(&"palette", palette)
+		material.set_shader_parameter(&"palette_shares", Vector3(shares[0], shares[1], shares[2]))
+		material.set_shader_parameter(&"palette_mix", float(PALETTE_MIX.get(name, 0.0)))
 	material.set_shader_parameter(&"alpha_map", Vector3(float(fit.get("alpha_scale", 1.0)),
 			float(fit.get("alpha_from", 0.5)), float(fit.get("alpha_to", 0.5))))
 	var mean: Color = fit["mean"]
