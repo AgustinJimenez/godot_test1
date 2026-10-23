@@ -156,3 +156,11 @@ Masonry round 3 (wobbly outlines, no chips; loss 0.94): reads as a coursed stone
 mortar gaps (`fits/rock_wall_17_wall_good_vs.png`, kept as `_good`); still more regular than the photo's
 dry-stone (stones of similar height inside a course, no tilted slabs). Good enough for building walls once baked
 (GLSL port + baker like the wood: not done).
+
+Refit with the detail loss (2026-10-23; rock_gen's own fit loop now has it too: it did not before, the first
+"refit" repeated the old numbers): rock_face_04 0.95, rock_boulder_dry 1.02, rock_08 0.85, oak planks 1.62
+(`fits/*_vs.png`, `refit_rocks_wood.png`). Rocks: the same smooth plates + cracks + rubble patches (the model, not
+the loss, limits them: the photos have organic bulges and deep irregular cracks, the generator straight
+Voronoi cracks). Wood: still has two near-black boards (board_tone and seam_depth exploited; caps wanted).
+The detail loss fixed the "empty tile" exploit for flakes; the board exploit is a different one (the tone of a
+whole board): add a per-board mean-tone term (the 10/50/90 percentiles of the 6 x 6 block means vs the photo).

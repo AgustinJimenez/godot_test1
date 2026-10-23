@@ -185,6 +185,7 @@ def fit(folder, name, tile_m, generations, out):
         crops.append(target[:, :, y0:y0 + size, x0:x0 + size])
     target_grams = [g.mean(dim=0, keepdim=True) for g in perceptual.grams(net, torch.cat(crops))]
     target_q = np.percentile(height, [5, 50, 99.0, 99.8])
+    target_profile = perceptual.detail_profile(torch.cat(crops)).mean(dim=0, keepdim=True)
     target_ac = pb.autocorrelation_lengths(height, cm_per_px)
 
     def evaluate(vectors):
@@ -201,7 +202,10 @@ def fit(folder, name, tile_m, generations, out):
         total = torch.zeros(len(vectors), device=perceptual.DEVICE)
         for gen, tar in zip(perceptual.grams(net, batch), target_grams):
             total += ((gen - tar) ** 2).sum(dim=(1, 2)) / (tar ** 2).sum()
-        return [float(t) + 0.3 * e for t, e in zip(total.cpu().numpy(), extra)]
+        profile = perceptual.detail_profile(batch)
+        scale = torch.clamp(target_profile.abs(), min=0.01)
+        detail = (torch.abs(profile - target_profile) / scale).mean(dim=1)
+        return [float(t) + 0.3 * e + 0.6 * float(d) for t, e, d in zip(total.cpu().numpy(), extra, detail.cpu().numpy())]
 
     start = np.clip(np.array([(PARAMS[k] - RANGES[k][0]) / (RANGES[k][1] - RANGES[k][0]) for k in KEYS]),
                     0.01, 0.99)
