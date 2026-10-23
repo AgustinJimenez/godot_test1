@@ -25,8 +25,8 @@ PARAMS = {
     "fine_amp": 0.05, "fine_cm": 0.6, "swell_amp": 0.2, "swell_cm": 40.0, "pore_amp": 0.1, "pore_cm": 0.25,
 }
 RANGES = {
-    "board_cm": (6.0, 40.0), "board_var": (0.0, 0.6), "seam_w": (0.01, 0.15), "seam_depth": (0.0, 0.55),
-    "board_tone": (0.0, 0.3), "grain_cm": (0.3, 3.0), "grain_amp": (0.0, 0.6), "grain_wave_cm": (10.0, 90.0),
+    "board_cm": (10.0, 24.0), "board_var": (0.0, 0.6), "seam_w": (0.01, 0.15), "seam_depth": (0.0, 0.55),
+    "board_tone": (0.0, 0.3), "grain_cm": (0.3, 1.4), "grain_amp": (0.0, 0.6), "grain_wave_cm": (10.0, 90.0),
     "grain_wave": (0.0, 3.0), "grain_sharp": (0.5, 4.0), "knot_cm": (25.0, 70.0), "knot_cover": (0.0, 0.5),
     "knot_rings": (3.0, 9.0), "knot_amp": (0.0, 0.12), "fine_amp": (0.0, 0.2), "fine_cm": (0.2, 2.0),
     "swell_amp": (0.0, 0.08), "swell_cm": (10.0, 40.0), "pore_amp": (0.0, 0.4), "pore_cm": (0.1, 0.8),

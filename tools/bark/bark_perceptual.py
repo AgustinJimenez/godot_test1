@@ -83,7 +83,11 @@ def detail_profile(pictures):
         if window == 12:
             blocks = torch.nn.functional.adaptive_avg_pool2d(std, 6).flatten(1)
             unevenness = blocks.std(dim=1) / torch.clamp(blocks.mean(dim=1), min=1e-4)
-    return torch.cat(out + [unevenness.unsqueeze(1), torch.zeros_like(unevenness).unsqueeze(1)][:1], dim=1)
+    # the tone of each part of the picture: the percentiles of the 6 x 6 block MEANS of the heights (a board or a
+    # patch that is far darker or lighter than the photograph's parts shows here)
+    tone = torch.nn.functional.adaptive_avg_pool2d(pictures, 6).flatten(1)
+    tone_q = torch.quantile(tone, torch.tensor([0.05, 0.5, 0.95], device=pictures.device), dim=1).t()
+    return torch.cat(out + [unevenness.unsqueeze(1), tone_q], dim=1)
 
 
 def decode(vector):

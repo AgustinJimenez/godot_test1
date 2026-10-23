@@ -164,3 +164,6 @@ the loss, limits them: the photos have organic bulges and deep irregular cracks,
 Voronoi cracks). Wood: still has two near-black boards (board_tone and seam_depth exploited; caps wanted).
 The detail loss fixed the "empty tile" exploit for flakes; the board exploit is a different one (the tone of a
 whole board): add a per-board mean-tone term (the 10/50/90 percentiles of the 6 x 6 block means vs the photo).
+Wood with the board-tone term (loss 1.12): no near-black boards any more, grain and ring ovals in two boards, but only
+two boards across the tile (board_cm up to 40): capped at 10..24 cm and grain at 0.3..1.4 cm and refitting.
+Soil with the detail loss: loss 0.83 (`forest_ground_05_soilgen_detail`).
