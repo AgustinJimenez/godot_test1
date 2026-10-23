@@ -1,10 +1,10 @@
 shader_type canvas_item;
 render_mode blend_disabled; // the height is written in alpha: no blending
 // Procedural rock face (smooth lumps, creased valleys, rubble in the creases), drawn once into a tile (LumpBaker):
-// colour in rgb, height in alpha. The same model as tools/bark/lump_gen.py (the reference the 13 numbers were fitted
+// colour in rgb, height in alpha. The same model as tools/bark/lump_gen.py (the reference the 15 numbers were fitted
 // with, LumpFits.KEYS), made to tile: every scale is a whole number of repeats in the tile and the hashes wrap.
 
-uniform float p[13];
+uniform float p[15];
 uniform float tile_cm = 200.0;
 uniform vec3 ramp[8];
 uniform vec2 height_range = vec2(0.0, 1.0);
@@ -70,6 +70,8 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 	h += p[9] * (best_id - 0.5) * reach;
 	fragment = best_id * reach;
 	h += p[12] * (vnoise(at, max(p[11], 1.6), s + 17.0) - 0.5);
+	float mid = max(p[13], 2.0);
+	h += p[14] * (0.5 * vnoise(w, mid, s + 19.0) + 0.5 * vnoise(vec2(w.y * 1.3 + 5.0, w.x * 0.8), mid, s + 21.0) - 0.5);
 	return h;
 }
 
@@ -90,7 +92,7 @@ void fragment() {
 	colour = mix(colour, ramp[3], 0.7); // (the photograph's colour does not follow its height: near the mean)
 	// each lump its own tone, the creases dark, the rubble lighter and varied fragment by fragment
 	colour *= 0.7 * (0.6 + 0.9 * tone); // (0.7: the albedo lift for bark is too bright for this rock)
-	colour *= 1.0 - 0.55 * in_crease;
-	colour = mix(colour, ramp[7] * (0.8 + 0.8 * fragment), 0.5 * smoothstep(0.05, 0.4, fragment));
+	colour *= 1.0 - 0.55 * in_crease * clamp(p[6] * 2.0, 0.0, 1.0); // (no crease in the height: none in the colour)
+	colour = mix(colour, ramp[7] * (0.8 + 0.8 * fragment), 0.5 * smoothstep(0.05, 0.4, fragment) * clamp(p[9] * 5.0, 0.0, 1.0));
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }

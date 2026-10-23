@@ -18,13 +18,13 @@ import rock_gen as rg
 PARAMS = {
     "lump_cm": 40.0, "lump_amp": 0.5, "warp_cm": 30.0, "warp_amp": 0.5, "crease_cm": 35.0, "crease_w": 0.08,
     "crease_depth": 0.5, "crease_warp": 0.4, "rub_cm": 2.5, "rub_amp": 0.3, "rub_reach": 0.5,
-    "grain_cm": 3.0, "grain_amp": 0.04,
+    "grain_cm": 3.0, "grain_amp": 0.04, "mid_cm": 9.0, "mid_amp": 0.0,
 }
 RANGES = {
     "lump_cm": (15.0, 90.0), "lump_amp": (0.1, 0.8), "warp_cm": (10.0, 80.0), "warp_amp": (0.0, 1.0),
     "crease_cm": (15.0, 80.0), "crease_w": (0.02, 0.2), "crease_depth": (0.1, 1.0), "crease_warp": (0.0, 1.0),
     "rub_cm": (1.2, 5.0), "rub_amp": (0.0, 0.6), "rub_reach": (0.1, 1.0), "grain_cm": (1.5, 8.0),
-    "grain_amp": (0.0, 0.1),
+    "grain_amp": (0.0, 0.1), "mid_cm": (4.0, 16.0), "mid_amp": (0.0, 0.5),
 }
 KEYS = list(PARAMS.keys())
 
@@ -59,6 +59,7 @@ def _smooth(e0, e1, x):
 def _lump_at(px, py, q, seed):
     lump_cm, lump_amp, warp_cm, warp_amp, crease_cm, crease_w, crease_depth = q[0], q[1], q[2], q[3], q[4], q[5], q[6]
     crease_warp, rub_cm, rub_amp, rub_reach, grain_cm, grain_amp = q[7], q[8], q[9], q[10], q[11], q[12]
+    mid_cm, mid_amp = q[13], q[14]
     wx = px + warp_amp * warp_cm * (_noise(px / warp_cm, py / warp_cm, seed + 1.0) - 0.5)
     wy = py + warp_amp * warp_cm * (_noise(px / warp_cm + 7.0, py / warp_cm, seed + 2.0) - 0.5)
     lumps = _noise(wx / lump_cm, wy / lump_cm, seed + 3.0) + 0.5 * _noise(wx / (lump_cm * 0.5), wy / (lump_cm * 0.5), seed + 4.0)
@@ -85,6 +86,8 @@ def _lump_at(px, py, q, seed):
     reach = _smooth(1.0 - rub_reach, 1.0, crease)
     h += rub_amp * (best_id - 0.5) * reach
     h += grain_amp * (_noise(px / grain_cm, py / grain_cm, seed + 17.0) - 0.5)
+    # a middle octave: the cloudy mottling of weathered stone (two noises, the second turned, so it has no grid)
+    h += mid_amp * (0.5 * _noise(wx / mid_cm, wy / mid_cm, seed + 19.0) + 0.5 * _noise(wy / mid_cm * 1.3 + 5.0, wx / mid_cm * 0.8, seed + 21.0) - 0.5)
     return h
 
 

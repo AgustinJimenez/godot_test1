@@ -50,12 +50,13 @@ func make_array() -> Texture2DArray:
 	if OS.has_environment("PLANET_PROCEDURAL_ROCKS"): # (the blocks-and-cracks fits: not good yet)
 		for name: String in fits:
 			baked[int(fits[name]["slot"])] = name
-	var lumps := LumpBaker.new() # (the smooth-lump rock face, slot 1: closer to the photograph)
+	var lumps := LumpBaker.new() # (smooth lumps: the rock face, the two mottled boulders)
 	add_child(lumps)
+	var lump_slots := {0: "rock_boulder_dry", 1: "rock_face_04", 2: "rock_08"}
 	for slot in 6:
 		var image: Image = null
-		if slot == 1 and OS.has_environment("PLANET_PROCEDURAL_LUMPS"):
-			image = await lumps.bake("rock_face_04")
+		if lump_slots.has(slot) and OS.has_environment("PLANET_PROCEDURAL_LUMPS"):
+			image = await lumps.bake(lump_slots[slot])
 		elif baked.has(slot):
 			image = await bake(baked[slot])
 		else:
