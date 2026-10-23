@@ -70,3 +70,17 @@ photo, then no guide, guide 16 x 16, 32 x 32, 64 x 64):
 So a 16 x 16 guide (256 bytes per channel) is enough to bring back the layout. Dropping the guide = `guide_mix 0` = fully procedural.
 The plate outlines and cracks are still the generator's own, so this is not a copy of the photograph (the pictures differ in the
 details). Not in the shader yet (a 16 x 16 `uniform sampler2D` or float array would do).
+
+## Plain-square comparison sheets (2026-10-23, at the user's suggestion)
+`tools/bark/compare_sheet.py <folder> <name> <plate|lump|chip|ring|ledge|bark> <fit json> <tile m> <out png> [baked colour png]`
+writes `fits/sheets/<name>.png`: photograph colour, the baked colour (if given), BOTH heights lit from the upper left at the
+same strength, 1:1 crops of the same place, and the measured feature sizes with their ratio. No object, no projection.
+First sheets, honest reading (the object views had been kinder):
+- **pine plates**: the procedural is tiled blocks of the same size with a fine pebbly grain; the photograph is long fibrous
+  ridges with deep dark grooves between them (ratio 1.29 across, 0.83 along). The "close to the photograph" of the earlier
+  object view came from the colour; in height the two differ. The grain (`fine`) should go and the grooves be much deeper.
+- **rock_face_04** (lump + straight cracks): cracks are wider and more regular than the photograph's hairline cracks, and the
+  lit height shows almost no relief in the photograph itself (it is a flat, stained slab): a colour-driven look.
+- ratios (procedural / photograph feature size, across and along): rock_face 1.29 / 0.96, boulder_dry 1.16 / 1.03, rock_08 0.89 / 0.87,
+  gravel 0.69 / 0.64, pine 1.29 / 0.83, palm 5.07 / 0.59 (the palm sheet crops a 2:1 photograph: the ratio is not valid there).
+Use the sheet BEFORE the object view for every new fit.
