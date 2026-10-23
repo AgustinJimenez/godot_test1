@@ -19,13 +19,14 @@ import rock_gen as rg
 PARAMS = {
     "course_cm": 22.0, "course_var": 0.35, "stone_cm": 32.0, "stone_var": 0.5, "gap_cm": 3.0, "gap_depth": 0.5,
     "round": 0.35, "face_var": 0.25, "tilt": 0.2, "swell": 0.2, "grain_cm": 2.0, "grain_amp": 0.06,
-    "skew": 0.3, "chip_cover": 0.15, "chip_depth": 0.2,
+    "skew": 0.3, "chip_cover": 0.0, "chip_depth": 0.0, "wob_cm": 3.0, "wob_amp": 0.4,
 }
 RANGES = {
     "course_cm": (8.0, 22.0), "course_var": (0.2, 0.7), "stone_cm": (10.0, 38.0), "stone_var": (0.3, 0.9),
     "gap_cm": (0.5, 8.0), "gap_depth": (0.1, 1.0), "round": (0.05, 0.9), "face_var": (0.0, 0.6),
     "tilt": (0.0, 0.5), "swell": (0.0, 0.5), "grain_cm": (0.5, 6.0), "grain_amp": (0.0, 0.2),
-    "skew": (0.0, 1.0), "chip_cover": (0.0, 0.5), "chip_depth": (0.0, 0.5),
+    "skew": (0.0, 1.0), "chip_cover": (0.0, 0.001), "chip_depth": (0.0, 0.001), "wob_cm": (1.5, 12.0),
+    "wob_amp": (0.0, 1.0),
 }
 KEYS = list(PARAMS.keys())
 
@@ -61,6 +62,9 @@ def _wall_at(px, py, q, seed):
     course_cm, course_var, stone_cm, stone_var, gap_cm, gap_depth = q[0], q[1], q[2], q[3], q[4], q[5]
     rnd, face_var, tilt, swell, grain_cm, grain_amp, skew, chip_cover, chip_depth = (
         q[6], q[7], q[8], q[9], q[10], q[11], q[12], q[13], q[14])
+    wob_cm, wob_amp = q[15], q[16]
+    px = px + wob_amp * 5.0 * (_noise(px / wob_cm, py / wob_cm, seed + 31.0) - 0.5)
+    py = py + wob_amp * 5.0 * (_noise(px / wob_cm + 17.0, py / wob_cm, seed + 33.0) - 0.5)
     # the course: rows of jittered height (the edges between rows move with the x position a little: skew)
     ycur = py + skew * 6.0 * (_noise(px / 60.0, py / 60.0, seed + 5.0) - 0.5)
     row = np.floor(ycur / course_cm)

@@ -152,3 +152,7 @@ Masonry round 2 (loss 1.45, `fits/rock_wall_17_wall_vs.png`): stones now the rig
 but too regular (rectangular pillows of one shape) and the fit exploits the `chip` term for dark squares. Needs:
 irregular polygon outlines (per-stone cut corners and a jittered edge), drop the chip squares, per-stone height
 steps, mortar width variation. A brick-like wall for now, not a dry-stone one. Not in the game.
+Masonry round 3 (wobbly outlines, no chips; loss 0.94): reads as a coursed stone wall with irregular stones and
+mortar gaps (`fits/rock_wall_17_wall_good_vs.png`, kept as `_good`); still more regular than the photo's
+dry-stone (stones of similar height inside a course, no tilted slabs). Good enough for building walls once baked
+(GLSL port + baker like the wood: not done).
