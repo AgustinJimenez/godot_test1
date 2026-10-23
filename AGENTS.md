@@ -959,3 +959,15 @@ both stay photographs; maple, palm and cedar have no fit yet. Tool scripts must 
 Resource limits for the tools: `tools/bark/limits.py` (imported first by the fit scripts) caps the CPU cores
 (`BARK_CORES`, default 3 of 6) and lowers the priority; a fit of 10 generations took 24 s at 3 cores. The Godot
 runs of the lab use the GPU; no cap there (run one at a time).
+
+Lessons from fitting bark, rock, soil and litter (2026-10-23):
+- **Which generator family:** flaky barks (willow/oak) and soft mottled barks (maple) work with the flake generator
+  (`procedural_bark.py`, 37 parameters: flakes, swelling + flakes, fibres); leaf litter works with the SAME generator
+  turned isotropic (`fit_litter.py`: small cells, flakes turned in any direction); the rock generator (`rock_gen.py`:
+  blocks, cracks, strata, rubble) fits rocks numerically but baked it shows a pixel mosaic and a turtle-shell crack
+  network, so the game keeps the rock photographs (`PLANET_PROCEDURAL_ROCKS=1` to try). Fibres (cedar) and rings
+  (palm) and fine soil speckle still need their own families. Pick the family by LOOKING at the photo first.
+- **Loss:** the style loss must see a lit view of the height (hillshade): raw heights drift to smooth blobs. An outlier
+  term in the loss made things worse (grey fog).
+- **Always** write and look at the side-by-side picture; every statistics-only or number-only success so far looked wrong.
+- **In the game now:** oak and maple bark are baked procedural (BarkBaker); everything else is photographs.
