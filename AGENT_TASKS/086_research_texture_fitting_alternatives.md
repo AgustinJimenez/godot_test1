@@ -57,3 +57,16 @@ and more memory, while the aim is LESS image data. It also does not move us towa
 It is worth revisiting only if visible tiling of the photographed bark becomes a complaint (a tree's trunk repeats once
 per 1-2 m around, so it is hidden in most views). Step A (sliced Wasserstein loss in the fitter) is the useful part and
 stays on the list. The test switches (`PLANET_STOCH_BARK`, `--stoch`) stay in as documented experiments, off by default.
+
+## Guide map experiment (2026-10-23): deterministic layout from a tiny picture, procedural detail on top
+`tools/bark/plate_guided.py` = the pine plate generator that reads a small picture of the photograph's height (percentile-
+stretched) and gives each plate the guide's value at the plate's centre (`guide_mix` 1 = all from the guide). Measured as the
+correlation of the low-passed render with the low-passed photograph (the LAYOUT, not the fine detail; `fits/pine_guided_vs.png`:
+photo, then no guide, guide 16 x 16, 32 x 32, 64 x 64):
+- no guide: 0.07 (the plates' tones are unrelated to the photograph)
+- 16 x 16 guide: 0.56 (about 0.3 KB at 8 bit: the big dark and light areas now sit where the photograph's do)
+- 32 x 32: 0.52, 64 x 64: 0.32 (finer guides get WORSE: a plate's centre samples single pixels of the photograph, and plate
+  tones then follow noise, not the layout; low-pass the guide to the plate size first)
+So a 16 x 16 guide (256 bytes per channel) is enough to bring back the layout. Dropping the guide = `guide_mix 0` = fully procedural.
+The plate outlines and cracks are still the generator's own, so this is not a copy of the photograph (the pictures differ in the
+details). Not in the shader yet (a 16 x 16 `uniform sampler2D` or float array would do).
