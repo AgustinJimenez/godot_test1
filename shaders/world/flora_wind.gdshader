@@ -703,7 +703,7 @@ void fragment() {
 		float brown = smoothstep(0.02, 0.1, paint.r - paint.b);
 		if (planks && wood_tile_on > 0.5) {
 			vec4 w = texture(wood_tile, vec2(obj_pos.x + obj_pos.z, obj_pos.y) / wood_tile_m);
-			float board_wood = brown * (1.0 - smoothstep(0.14, 0.24, paint.r - paint.g)); // (not the red roof)
+			float board_wood = brown * smoothstep(0.3, 0.42, paint.g / max(paint.r, 0.01)); // (not the red roof)
 			paint = mix(paint, w.rgb * (0.85 + 0.3 * paint.r), realism * board_wood);
 			bump = vec2(0.0, (w.a - 0.5) * 1.2);
 			bump_amount = realism * board_wood;
