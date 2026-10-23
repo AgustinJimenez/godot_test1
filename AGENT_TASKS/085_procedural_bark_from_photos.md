@@ -302,3 +302,9 @@ and fine vertical streaks come out right in structure, but one board (the top ha
 rest (board_tone and the seam are exploited), and the scratches and pits are missing. A palm-specific ring
 family would be: bands every 8 to 14 cm with a bright lip on one edge, a slow tone drift along the trunk, fine
 vertical streaks, sparse scratches. Not built; palm stays a photograph.
+
+Cedar via the wood generator on a rotated photo (2026-10-23): loss 3.24, wrong (boards of one tone with a knot; the
+photo is a dense field of thin overlapping strips). The cedar's strips are flake-like (long thin overlapping
+flakes) not grain; the flake generator with `aspect` up to 8 and tiny `cell_cm` (0.4-1.5 cm) is the right family
+and was never given those ranges. Next try: a `fit_bark` variant with cell_cm (0.4, 1.5), cell_aspect (3, 9),
+len (1.0, 2.5), angle (0, 0.3), no fibres.
