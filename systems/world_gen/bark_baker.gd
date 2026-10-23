@@ -65,14 +65,12 @@ func make_array(all_fits := false) -> Texture2DArray:
 	var plate_images := {}
 	var baked := {"bark_willow_02": 0, "trident_maple_bark": 3, "japanese_cedar_bark": 5}
 	if all_fits: # (the viewer: every fitted bark, to compare with the photographs)
-		baked = {"bark_willow_02": 0, "tree_bark_03": 2, "trident_maple_bark": 3,
+		baked = {"bark_willow_02": 0, "pine_bark": 1, "tree_bark_03": 2, "trident_maple_bark": 3,
 				"japanese_cedar_bark": 5}
-	# the plated pine and the ringed palm: in the viewer, or opt-in in the game (not as good as
+	# the pine and the ringed palm: in the viewer, or opt-in in the game (not as good as
 	# the photographs yet)
-	if all_fits or OS.has_environment("PLANET_PROCEDURAL_PINE"):
-		var plates := PlateBaker.new() # (the pine: plates side by side, not flakes)
-		add_child(plates)
-		plate_images[1] = await plates.bake("pine_bark")
+	if OS.has_environment("PLANET_PROCEDURAL_PINE"): # (long narrow flakes, a plain-square sheet match)
+		baked["pine_bark"] = 1
 	if all_fits or OS.has_environment("PLANET_PROCEDURAL_PALM"):
 		var rings := RingBaker.new() # (the palm: ring bands, not flakes)
 		add_child(rings)
