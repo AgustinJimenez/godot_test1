@@ -87,3 +87,10 @@ the starting point; fit its few numbers rather than rebuilding. Not done.
 Order of what is left: board family (planks), speckle family (soil), ring family (palm), rounded
 outlines (pine), cedar fibres, leaves (the plant leaf shader is procedural already: compare its veins and
 outline with the photographs of leaves the user gave, and fit `leaf_cluster` numbers).
+
+## Wood board family (2026-10-23): `tools/bark/wood_gen.py`
+Horizontal boards with jittered seams, per-board tone, waving grain lines bent round knots (growth
+rings), swell, fine and pore noise (20 parameters, numba, 0.02 s a picture); fit through rock_gen's loop.
+First fit (loss 1.08): reads as oak planks: boards with seams, waving grain, ring ovals; too much large
+blotchy swell (capped at 0.2 and refitting). Not in the game yet (needs GLSL + baker like the bark; the
+building planks branch of the plant shader would take the baked tile).
