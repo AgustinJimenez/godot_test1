@@ -149,6 +149,16 @@ func _bake_the_bark() -> void:
 		PlanetTile.ground_material().set_shader_parameter(&"scan_leaf_size",
 				GroundBaker.LITTER_TILE_M)
 		litter.queue_free()
+	if OS.has_environment("PLANET_PROCEDURAL_WOOD") and DisplayServer.get_name() != "headless":
+		var wood := WoodBaker.new() # (the cabins' boards from the fitted generator)
+		add_child(wood)
+		var tile: Image = await wood.bake("oak_wood_planks")
+		tile.generate_mipmaps()
+		var boards := FloraMeshes.structure_material()
+		boards.set_shader_parameter(&"wood_tile", ImageTexture.create_from_image(tile))
+		boards.set_shader_parameter(&"wood_tile_on", 1.0)
+		boards.set_shader_parameter(&"wood_tile_m", 1.2)
+		wood.queue_free()
 	if OS.has_environment("PLANET_PHOTO_BARK") or DisplayServer.get_name() == "headless":
 		return # (the photographs for every bark; the procedural oak is the default: AGENT_TASKS/085)
 	var baker := BarkBaker.new()

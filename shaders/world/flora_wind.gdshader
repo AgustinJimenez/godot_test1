@@ -16,6 +16,9 @@ uniform float sway_speed = 1.3;
 uniform float bark_debug = 0.0; // 1: the bark's height as grey, 2: the cells (a tool)
 uniform float bark_force = -1.0; // >= 0: every bark gets this look (a tool)
 uniform vec2 bark_style_force = vec2(-1.0); // x >= 0: every tree gets this bark_style (a tool: a fair side-by-side)
+uniform sampler2D wood_tile : source_color, filter_linear_mipmap_anisotropic, repeat_enable; // the baked procedural boards (WoodBaker), colour in rgb, height in alpha
+uniform float wood_tile_on = 0.0; // 1: the baked boards replace the plain ones (a cabin)
+uniform float wood_tile_m = 1.2; // metres one tile covers
 uniform bool planks = false; // wood boards (a cabin) instead of tree bark
 // A tree near the walker, bent branch by branch (PlantSway): row 0 of the texture holds each branch's foot and its parent's id, row 1
 // its turn (a rotation vector about the foot, relative to the parent). A vertex's branch is CUSTOM0.x (0: the trunk, never moves).
@@ -698,7 +701,13 @@ void fragment() {
 		}
 	} else if (realism > 0.001 && sway < 0.1 && (UV.x < 0.001)) { // (a fallen leaf has a UV: not stone)
 		float brown = smoothstep(0.02, 0.1, paint.r - paint.b);
-		if (planks) {
+		if (planks && wood_tile_on > 0.5) {
+			vec4 w = texture(wood_tile, vec2(obj_pos.x + obj_pos.z, obj_pos.y) / wood_tile_m);
+			float board_wood = brown * (1.0 - smoothstep(0.14, 0.24, paint.r - paint.g)); // (not the red roof)
+			paint = mix(paint, w.rgb * (0.85 + 0.3 * paint.r), realism * board_wood);
+			bump = vec2(0.0, (w.a - 0.5) * 1.2);
+			bump_amount = realism * board_wood;
+		} else if (planks) {
 			// boards: lines every 25 cm, a grain along the board and a different tone per board
 			float board = floor(obj_pos.y * 4.0 + 0.5);
 			float edge = smoothstep(0.0, 0.08, abs(fract(obj_pos.y * 4.0 + 0.5) - 0.5) * 2.0);
