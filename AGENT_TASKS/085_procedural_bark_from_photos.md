@@ -259,3 +259,11 @@ colour is a pale grey-green against the photograph's red-brown with orange scale
 (mean + ramp by height) cannot give the two-tone scales (orange tops, dark grey gaps). Kept as
 photograph in the game. Next for pine: a colour ramp in two hues chosen by flake height AND flake id
 (each flake a tone), taken from the photo by fitting the neural loss on RGB (improvement 3 in this file).
+
+Correction to round 14 (checked): the baked pine TILE has the right colour (mean 0.44, 0.36, 0.28 against
+the photograph's 0.40, 0.33, 0.25), so the colour model is not the cause of the pale grey-green trunk in the
+viewer. The cause is unknown: something between the baked tile and the trunk (the tile's mipmaps made by
+`Image.generate_mipmaps` on RGBA with a height in alpha, or the plant shader's use of the height for the
+cavity AO and the lichen mask, which differ from the photographs' height stretch: the baked heights have a
+mean of 0.67 against the atlas' ~0.5). To check next: bake pine with the atlas' height stretch (mean
+0.5), compare the trunk colour again.
