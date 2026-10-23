@@ -242,3 +242,11 @@ then wood planks, soil, leaf litter, cliffs, leaves.
 All three remain photographs in the game. The generator's flake outline needs a "rounded rectangle with
 ragged sides" option (a superellipse with exponent 3 to 6 and a noise on its half width) to match pine
 and ash; the diamond (|v|^tip) and the `block` blend are not enough. Next: that outline, then refit.
+
+## Round 13 (2026-10-23): wider scale-outline exponent for pine: worse
+tip range 1..9 (rounder scales): the fit went back to pointed leaf-like scales with odd dark crack arcs
+(the groove term). Reverted to 1..3.5 and the earlier pine fit. The outline family is not what limits
+the pine; the photo's scales are ragged on the SIDES (jagged vertical edges, the lit loss sees them),
+which needs a side-edge noise much stronger than `rag_amp` allows (max 0.09). Next try: rag_amp up to 0.3
+with its own scale per axis. Bark work is in diminishing returns: 2 of 6 barks replaced; continue the
+list with leaves and soil, come back with the side-ragged outline.
