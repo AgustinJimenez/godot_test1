@@ -14,6 +14,8 @@ Usage:
 import json
 import sys
 
+import limits  # (first: the core limit must be set before numba and torch load)
+
 import cma
 import numpy as np
 import torch
@@ -95,6 +97,7 @@ def fit(folder, name, tile_m, generations, out):
         return [float(t) + 0.35 * s for t, s in zip(total.cpu().numpy(), stat_loss)]
 
     start = encode(pb.PARAMS)
+    torch.set_num_threads(limits.CORES)
     es = cma.CMAEvolutionStrategy(start, 0.25, {"bounds": [0, 1], "popsize": 20, "verbose": -9, "seed": 3})
     best_value, best_vector = 1e9, start
     for generation in range(generations):

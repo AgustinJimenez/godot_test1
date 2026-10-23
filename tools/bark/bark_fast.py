@@ -11,6 +11,8 @@ Usage:
 """
 import json
 import sys
+
+import limits  # (first: the core limit must be set before numba and torch load)
 import time
 from multiprocessing import Pool
 
@@ -146,7 +148,7 @@ def fit(folder, name, tile_m, generations, out):
     size = 384
     rng = np.random.default_rng(11)
     best_p, best_loss = dict(pb.PARAMS), 1e9
-    workers = 6
+    workers = limits.CORES
     batch = 24
     with Pool(workers) as pool:
         for generation in range(generations):

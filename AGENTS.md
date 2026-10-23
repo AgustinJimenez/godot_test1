@@ -955,3 +955,6 @@ the same pipeline is meant for rock, soil, leaf litter, cliffs and buildings. Th
 Status: oak (willow) is procedural in the game; pine reads as leaves and ash is too rough with a tile seam,
 both stay photographs; maple, palm and cedar have no fit yet. Tool scripts must `quit()` on every path
 (a script that errors in `_init` hangs).
+Resource limits for the tools: `tools/bark/limits.py` (imported first by the fit scripts) caps the CPU cores
+(`BARK_CORES`, default 3 of 6) and lowers the priority; a fit of 10 generations took 24 s at 3 cores. The Godot
+runs of the lab use the GPU; no cap there (run one at a time).
