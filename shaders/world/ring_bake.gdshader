@@ -49,7 +49,7 @@ float rings(vec2 at, float s) {
 	float band = line - ramp_d * (0.4 + 1.2 * p[6]);
 	float fib = vnoise(at, p[7], p[9], s + 6.0) - 0.5;
 	float blotch = vnoise(at, p[10], p[10], s + 7.0) - 0.5;
-	float fine = vnoise(at, p[12], p[12], s + 8.0) - 0.5;
+	float fine = vnoise(at, max(p[12], 1.6), max(p[12], 1.6), s + 8.0) - 0.5; // (finer cells made the parallax a mosaic)
 	return 0.5 + p[3] * band + p[8] * fib + p[11] * blotch + p[13] * fine;
 }
 
