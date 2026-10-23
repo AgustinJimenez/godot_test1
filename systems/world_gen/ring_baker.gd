@@ -1,6 +1,6 @@
 class_name RingBaker
 extends Node
-## Draws the procedural ringed trunk (palm) (RingFits, fitted to photographs by tools/bark) once into a
+## Draws the procedural ringed trunk (palm; RingFits, fitted to photographs by tools/bark) once into a
 ## tile: colour in rgb, the height in alpha.
 
 const SHADER := preload("res://shaders/world/ring_bake.gdshader")
