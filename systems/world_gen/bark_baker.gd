@@ -11,8 +11,8 @@ const PALETTE_MIX := {"pine_bark": 0.85}
 
 
 ## The tile of one fitted bark (`name` is a key of BarkFits.FITS) as an Image (RGBA8).
-func bake(name: String, seed_value := 1.0) -> Image:
-	var fit: Dictionary = BarkFits.fits()[name]
+func bake(name: String, seed_value := 1.0, source := {}) -> Image:
+	var fit: Dictionary = (source if not source.is_empty() else BarkFits.fits())[name]
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(SIZE, SIZE)
 	viewport.disable_3d = true
