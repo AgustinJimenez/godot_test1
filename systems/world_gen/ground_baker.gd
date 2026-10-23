@@ -7,6 +7,8 @@ extends Node
 const SHADER := preload("res://shaders/world/ground_maps.gdshader")
 ## the litter tile in metres (the fit was made on 2.3 m of ground)
 const LITTER_TILE_M := 2.3
+## the gravel tile in metres
+const GRAVEL_TILE_M := 1.0
 
 
 ## [colour map, normal map] (Images) of the fitted leaf litter.
@@ -20,6 +22,19 @@ func bake_litter() -> Array[Image]:
 	fits["forest_leaves_03"]["mottle"] = 0.0
 	var tile: Image = await baker.bake("forest_leaves_03", 1.0, fits)
 	baker.queue_free()
+	return await _maps(tile)
+
+
+## [colour map, normal map] (Images) of the fitted gravel (ChipFits).
+func bake_gravel() -> Array[Image]:
+	var chips := ChipBaker.new()
+	add_child(chips)
+	var tile: Image = await chips.bake("gravel_soil")
+	chips.queue_free()
+	return await _maps(tile)
+
+
+func _maps(tile: Image) -> Array[Image]:
 	var texture := ImageTexture.create_from_image(tile)
 	var maps: Array[Image] = []
 	for mode in 2:

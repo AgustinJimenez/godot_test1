@@ -149,6 +149,18 @@ func _bake_the_bark() -> void:
 		PlanetTile.ground_material().set_shader_parameter(&"scan_leaf_size",
 				GroundBaker.LITTER_TILE_M)
 		litter.queue_free()
+	if OS.has_environment("PLANET_PROCEDURAL_GRAVEL") and DisplayServer.get_name() != "headless":
+		var gravel := GroundBaker.new() # (the gravel scan from the fitted chips)
+		add_child(gravel)
+		var gravel_maps: Array[Image] = await gravel.bake_gravel()
+		for image in gravel_maps:
+			image.generate_mipmaps()
+		var ground := PlanetTile.ground_material()
+		ground.set_shader_parameter(&"scan_gravel_c", ImageTexture.create_from_image(gravel_maps[0]))
+		ground.set_shader_parameter(&"scan_gravel_n", ImageTexture.create_from_image(gravel_maps[1]))
+		ground.set_shader_parameter(&"scan_gravel_mean", GroundBaker.mean_linear(gravel_maps[0]))
+		ground.set_shader_parameter(&"scan_gravel_size", GroundBaker.GRAVEL_TILE_M)
+		gravel.queue_free()
 	if OS.has_environment("PLANET_PROCEDURAL_WOOD") and DisplayServer.get_name() != "headless":
 		var wood := WoodBaker.new() # (the cabins' boards from the fitted generator)
 		add_child(wood)

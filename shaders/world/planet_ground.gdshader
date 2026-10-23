@@ -52,6 +52,8 @@ uniform float cliff_scale = 0.33; // tiles a metre
 uniform float scan_strength : hint_range(0.0, 1.0) = 0.85;
 uniform float scan_scale = 0.7; // tiles a metre
 uniform vec3 scan_leaf_mean = vec3(0.1943, 0.1288, 0.0655); // (the leaf scan's own mean colour, linear)
+uniform vec3 scan_gravel_mean = vec3(0.1452, 0.1181, 0.0898); // (the gravel scan's own mean colour, linear)
+uniform float scan_gravel_size = 1.0; // the gravel scan's tile in metres, over the shared one
 uniform float scan_leaf_size = 1.0; // the leaf scan's tile in metres, over the shared one
 uniform float scan_blend_depth : hint_range(0.02, 1.0) = 0.25; // how soft the meeting of two soils is (height blending)
 // switches for each layer of the near ground (the ground lab has a checkbox for each, to find which one is which)
@@ -558,7 +560,7 @@ void fragment() {
 						continue;
 					}
 					if (soil_index == 0) {
-						scan_triplanar(scan_gravel_c, scan_gravel_n, on_planet, facing_scan, scan_scale, vec3(0.1452, 0.1181, 0.0898), ratios[0], aos[0], tilts[0], roughs[0]);
+						scan_triplanar(scan_gravel_c, scan_gravel_n, on_planet, facing_scan, scan_scale / scan_gravel_size, scan_gravel_mean, ratios[0], aos[0], tilts[0], roughs[0]);
 					} else if (soil_index == 1) {
 						scan_triplanar(scan_red_c, scan_red_n, on_planet, facing_scan, scan_scale, vec3(0.3041, 0.2007, 0.1305), ratios[1], aos[1], tilts[1], roughs[1]);
 					} else {
