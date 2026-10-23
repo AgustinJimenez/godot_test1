@@ -19,14 +19,14 @@ import rock_gen as rg
 PARAMS = {
     "ledge_cm": 18.0, "ledge_var": 0.5, "tilt": 0.3, "lip_w": 0.12, "lip_depth": 0.4, "block_cm": 30.0,
     "block_var": 0.5, "joint_w": 0.05, "joint_depth": 0.4, "joint_cover": 0.6, "warp_cm": 40.0,
-    "warp_amp": 0.4, "rub_cm": 2.5, "rub_amp": 0.2, "grain_cm": 2.0, "grain_amp": 0.03, "tone_amp": 0.15,
+    "warp_amp": 0.4, "rub_cm": 2.5, "rub_amp": 0.2, "grain_cm": 2.0, "grain_amp": 0.03, "tone_amp": 0.15, "rag_cm": 4.0, "rag_amp": 0.3,
 }
 RANGES = {
     "ledge_cm": (8.0, 40.0), "ledge_var": (0.1, 0.9), "tilt": (0.0, 0.8), "lip_w": (0.03, 0.3),
     "lip_depth": (0.1, 0.8), "block_cm": (15.0, 70.0), "block_var": (0.1, 0.9), "joint_w": (0.02, 0.12),
     "joint_depth": (0.1, 0.8), "joint_cover": (0.1, 1.0), "warp_cm": (15.0, 90.0), "warp_amp": (0.0, 1.0),
     "rub_cm": (1.2, 5.0), "rub_amp": (0.0, 0.5), "grain_cm": (1.5, 5.0), "grain_amp": (0.0, 0.08),
-    "tone_amp": (0.0, 0.4),
+    "tone_amp": (0.0, 0.4), "rag_cm": (2.0, 8.0), "rag_amp": (0.0, 0.8),
 }
 KEYS = list(PARAMS.keys())
 
@@ -62,8 +62,11 @@ def _ledge_at(px, py, q, seed):
     ledge_cm, ledge_var, tilt, lip_w, lip_depth, block_cm, block_var = q[0], q[1], q[2], q[3], q[4], q[5], q[6]
     joint_w, joint_depth, joint_cover, warp_cm, warp_amp, rub_cm, rub_amp = q[7], q[8], q[9], q[10], q[11], q[12], q[13]
     grain_cm, grain_amp, tone_amp = q[14], q[15], q[16]
+    rag_cm, rag_amp = q[17], q[18]
     x = px + warp_amp * warp_cm * (_noise(px / warp_cm, py / warp_cm, seed + 1.0) - 0.5)
     y = py + warp_amp * warp_cm * 0.6 * (_noise(px / warp_cm + 9.0, py / warp_cm, seed + 2.0) - 0.5)
+    y = y + rag_amp * ledge_cm * 0.5 * (_noise(px / rag_cm, py / (rag_cm * 3.0), seed + 23.0) - 0.5)
+    x = x + rag_amp * block_cm * 0.08 * (_noise(px / (rag_cm * 3.0), py / rag_cm, seed + 25.0) - 0.5)
     row_f = y / ledge_cm
     row = np.floor(row_f)
     edge = (_hash(row, 0.0, seed + 3.0) - 0.5) * ledge_var
