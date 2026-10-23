@@ -284,3 +284,11 @@ The closest next steps: crevice darkness (a second cavity term from the gap netw
 shorter flakes with more turn, and a fit that also sees a lit RGB render of the bark in the plant shader.
 
 Round 16: crevice darkness in bark_bake (`mix(0.3, 1.0, smoothstep(0.0, 0.5, h))`, was 0.45 / 0.25): slightly better, the baked oak (`cmp10_k0.png`) is still coarser and wavier than the photograph: the flakes are about twice as wide, with long flame shapes. The lens outline is the limit; try the fit with `cell_cm` capped to half the fitted value and `angle` larger (flakes less aligned), and `len` lower.
+
+Round 17: willow with cell_cm <= 5, len <= 2, angle <= 1.6: blobby mottled surface without flakes (worse).
+Reverted the ranges and the fit. The willow generator stays at its round-9 fit (flakes about twice too wide).
+The honest state: procedural bark matches the photographs' statistics and the right kind of structure but
+not their look at close range; the photographs stay the default. Remaining ideas (not tried): a hybrid, the
+photograph as a base tile and the procedural generator as a per-tree variation overlay (broken repeats, per
+tree colour), which uses the generator where it is good (large scale variety) and the photograph where it is
+good (fine flake detail); and a differentiable generator with a loss on lit RGB renders in the plant shader.
