@@ -4,6 +4,36 @@ extends Node3D
 ## `--compare`: the same tree twice, photographs left, baked procedural bark right. With no options
 ## (F6 in the editor) it shows that comparison of tree 0 at 3.4 m.
 
+const KIND_NAMES: Array[String] = ["oak", "birch", "pine", "ash", "maple", "palm (rings)", "cedar"]
+## kinds with a procedural version in the game (BarkBaker); the others show the photograph twice
+const PROCEDURAL: Array[int] = [0, 4]
+
+var _kind := -1
+var _materials: Array[ShaderMaterial] = []
+var _label: Label
+
+
+## Left / right arrow: the previous / next kind of bark, on both trees.
+func _unhandled_key_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key == null or not key.pressed:
+		return
+	if key.keycode == KEY_RIGHT:
+		_show_kind((_kind + 1) % KIND_NAMES.size())
+	elif key.keycode == KEY_LEFT:
+		_show_kind((_kind + KIND_NAMES.size() - 1) % KIND_NAMES.size())
+
+
+func _show_kind(kind: int) -> void:
+	_kind = kind
+	for material in _materials:
+		material.set_shader_parameter(&"bark_force", float(kind))
+	if _label != null:
+		var how := "procedural" if kind in PROCEDURAL else "(no procedural version yet)"
+		_label.text = "%s [%d/%d]  left: photo  right: %s  (arrow keys: other bark)" % [
+				KIND_NAMES[kind], kind + 1, KIND_NAMES.size(), how]
+
+
 func _ready() -> void:
 	FloraMeshes.detailed = true
 	WorldWind.set_realism(1.0)
@@ -35,6 +65,7 @@ func _ready() -> void:
 			FloraMeshes.material().set_shader_parameter(&"bark_force", float(argument.get_slice("=", 1)))
 		if argument.begins_with("--debug="):
 			FloraMeshes.material().set_shader_parameter(&"bark_debug", float(argument.get_slice("=", 1)))
+	_materials = [FloraMeshes.material()]
 	var instance := MeshInstance3D.new()
 	instance.mesh = registry.mesh(chosen.id, 0, true, 0)
 	instance.material_override = FloraMeshes.material()
@@ -49,6 +80,7 @@ func _ready() -> void:
 		add_child(baker)
 		procedural.set_shader_parameter(&"bark_photo", await baker.make_array())
 		plain.material_override = procedural
+		_materials.append(procedural)
 		plain.position.x = 0.9
 		add_child(plain)
 	var ground := MeshInstance3D.new()
@@ -70,6 +102,18 @@ func _ready() -> void:
 	camera.fov = 40.0
 	add_child(camera)
 	camera.look_at_from_position(Vector3(dist * 0.6, height + rise, dist), Vector3(0.0, height, 0.0))
+	var layer := CanvasLayer.new()
+	_label = Label.new()
+	_label.position = Vector2(16.0, 12.0)
+	_label.add_theme_font_size_override(&"font_size", 22)
+	_label.add_theme_color_override(&"font_shadow_color", Color.BLACK)
+	layer.add_child(_label)
+	add_child(layer)
+	var start_kind := 0
+	for argument in args:
+		if argument.begins_with("--kind="):
+			start_kind = int(argument.get_slice("=", 1))
+	_show_kind(clampi(start_kind, 0, KIND_NAMES.size() - 1))
 	if shot != "":
 		await get_tree().create_timer(1.5).timeout
 		get_viewport().get_texture().get_image().save_png(shot)
