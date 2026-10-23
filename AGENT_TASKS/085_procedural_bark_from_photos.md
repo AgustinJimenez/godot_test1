@@ -323,3 +323,8 @@ darker with fewer bright spots). Saved as `japanese_cedar_bark_flakes_good.json`
 tiles, one-strip textures, giant knot rings and blotchy swell is closed by one loss term: the lesson is to ask the
 loss for the thing the eye notices (even detail), not to cap the parameters.
 Next: refit pine, ash, willow, wood, soil, rocks with the new loss (their old fits used the cheating-prone loss).
+
+Round 19: pine and ash refitted with the detail loss (`refit_pair.png`): pine has the right big scales and
+even coverage (no foggy areas), ash is a plausible stringy bark. Both now show the same two artefacts: curved
+"smile" arcs (the groove/split cut terms, `cut_depth`) and vertical seams at the cell edges (the lattice of the
+swelling term). Next: cap `cut_depth` at 0.3 and `base_amp` at 0.4 for the flaky barks and refit.
