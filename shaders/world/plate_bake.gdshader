@@ -85,7 +85,7 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	float z = 0.7 + p[8] * (hashw(best_id.x, best_id.y, s + 11.0, per) - 0.5);
 	z += p[9] * (best_d.x * (hashw(best_id.x, best_id.y, s + 13.0, per) - 0.5)
 			+ best_d.y * (hashw(best_id.x, best_id.y, s + 15.0, per) - 0.5));
-	z += p[11] * (vnoise(at, p[10], s + 17.0) - 0.5);
+	z += p[11] * (vnoise(at, max(p[10], 1.6), s + 17.0) - 0.5); // (finer cells made the parallax a mosaic)
 	return z * (0.7 + 0.3 * lipf) * (1.0 - p[6] * crack);
 }
 
