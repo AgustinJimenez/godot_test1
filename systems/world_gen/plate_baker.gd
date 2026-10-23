@@ -5,6 +5,8 @@ extends Node
 
 const SHADER := preload("res://shaders/world/plate_bake.gdshader")
 const SIZE := 1024
+## how much each plate takes its tone from the 16 x 16 picture of the photograph (0: procedural)
+const GUIDE_MIX := 1.0
 ## how much each plate takes its own colour from the photograph's palette
 const PALETTE_MIX := 0.85
 
@@ -29,6 +31,8 @@ func bake(name: String, seed_value := 1.0) -> Image:
 		colours.append(Vector3(colour.r, colour.g, colour.b))
 	material.set_shader_parameter(&"ramp", colours)
 	material.set_shader_parameter(&"seed", seed_value)
+	material.set_shader_parameter(&"guide", fit["guide"])
+	material.set_shader_parameter(&"guide_mix", GUIDE_MIX)
 	var palette := PackedVector3Array()
 	for colour: Color in fit["palette"]:
 		palette.append(Vector3(colour.r, colour.g, colour.b))

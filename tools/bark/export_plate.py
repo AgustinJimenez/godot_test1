@@ -48,6 +48,13 @@ def main():
             lines.append(T * 4 + "Color(%.4f, %.4f, %.4f)," % tuple(c))
         lines.append(T * 3 + "],")
         centres, shares = ef.clusters_of(folder, name)
+        guide = cv2.resize(photo, (16, 16), interpolation=cv2.INTER_AREA)
+        lo, hi = np.percentile(guide, [2, 98])
+        guide = np.clip((guide - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+        lines.append(T * 3 + '"guide": PackedFloat32Array([')
+        for i in range(0, 256, 8):
+            lines.append(T * 4 + ", ".join("%.3f" % x for x in guide.ravel()[i:i + 8]) + ",")
+        lines.append(T * 3 + "]),")
         lines.append(T * 3 + '"palette": [')
         for c in centres:
             lines.append(T * 4 + "Color(%.4f, %.4f, %.4f)," % tuple(c))

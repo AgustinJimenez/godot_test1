@@ -9,6 +9,8 @@ uniform float tile_cm = 200.0;
 uniform vec3 ramp[8];
 uniform vec2 height_range = vec2(0.0, 1.0);
 uniform float seed = 1.0;
+uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering each plate's tone
+uniform float guide_mix = 0.0; // 0: all the plates' own tones (fully procedural); 1: the guide's
 uniform vec3 palette[3]; // the photograph's main colours, brightest first
 uniform vec3 palette_shares = vec3(0.34, 0.33, 0.33);
 uniform float palette_mix = 0.0; // 0: the ramp by height alone; 1: each plate takes one of the palette colours
@@ -59,6 +61,7 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	float d2 = 1e9;
 	vec2 best_id = vec2(0.0);
 	vec2 best_d = vec2(0.0);
+	vec2 best_f = vec2(0.0);
 	for (int oy = -1; oy <= 1; oy++) {
 		for (int ox = -1; ox <= 1; ox++) {
 			float cx = iu + float(ox);
@@ -72,6 +75,7 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 				d1 = d;
 				best_id = vec2(cx, cy);
 				best_d = dd;
+				best_f = vec2(fx, fy);
 			} else if (d < d2) {
 				d2 = d;
 			}
@@ -82,7 +86,11 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	dice = hashw(best_id.x, best_id.y, s + 19.0, per);
 	float crack = 1.0 - smoothstep(0.0, p[5], edge);
 	float lipf = smoothstep(0.0, p[7] * 0.3, edge); // (a sharp lip: a step, not a ramp)
+	vec2 centre = mod(vec2(best_f.x * cell, best_f.y * cell_v) / tile_cm, 1.0);
+	int gi = clamp(int(centre.y * 16.0), 0, 15);
+	int gj = clamp(int(centre.x * 16.0), 0, 15);
 	float z = 0.7 + p[8] * (hashw(best_id.x, best_id.y, s + 11.0, per) - 0.5);
+	z = mix(z, 0.35 + 0.7 * guide[gi * 16 + gj], guide_mix);
 	z += p[9] * (best_d.x * (hashw(best_id.x, best_id.y, s + 13.0, per) - 0.5)
 			+ best_d.y * (hashw(best_id.x, best_id.y, s + 15.0, per) - 0.5));
 	z += p[11] * (vnoise(at, max(p[10], 1.6), s + 17.0) - 0.5); // (finer cells made the parallax a mosaic)
