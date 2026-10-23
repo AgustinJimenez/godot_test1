@@ -139,11 +139,12 @@ func _bake_the_bark() -> void:
 	var array: Texture2DArray = await baker.make_array()
 	FloraMeshes.material().set_shader_parameter(&"bark_photo", array)
 	baker.queue_free()
-	var rocks := RockBaker.new()
-	add_child(rocks)
-	var rock_array: Texture2DArray = await rocks.make_array()
-	FloraMeshes.material().set_shader_parameter(&"rock_photo", rock_array)
-	rocks.queue_free()
+	if OS.has_environment("PLANET_PROCEDURAL_ROCKS"): # (not good enough yet: AGENT_TASKS/084)
+		var rocks := RockBaker.new()
+		add_child(rocks)
+		var rock_array: Texture2DArray = await rocks.make_array()
+		FloraMeshes.material().set_shader_parameter(&"rock_photo", rock_array)
+		rocks.queue_free()
 
 
 func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector3:

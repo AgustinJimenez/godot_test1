@@ -53,3 +53,13 @@ cut by dark cracks with rubble along them; the tile reads as a more regular, san
 In the rock viewer (`rock_view.tscn -- --dist=9 --baked`) the boulders look like the photographed ones.
 Next: fit the other five rocks (rock_boulder_dry, rock_08, rock_06, rock_pitted_mossy, dark_rock_02)
 with `rock_gen.py fit` (needs the photos' real sizes), export all, compare, then remove the atlas.
+
+## Rocks, all six fitted (2026-10-23) - baked result NOT good enough, the game keeps the photographs
+Fits (lit loss, 250 generations each): rock_boulder_dry 0.92, rock_face_04 0.99, rock_08 0.57, rock_06 1.22,
+rock_pitted_mossy 0.84, dark_rock_02 0.71; exported with `export_rock.py` into `rock_fits.gd`. In the rock
+viewer (`rock_view.tscn --dist=9 --baked` against the photographed rocks) the baked rocks show a visible
+pixel mosaic (the 2.5 cm rubble layer and the grain at the tile's 0.2 cm/px) and a regular network of thin
+cracks like a turtle shell; the photographs look far better. So `PlanetWorld` bakes the rocks only with
+env `PLANET_PROCEDURAL_ROCKS=1`. To fix: remove the rubble layer from rocks that have none, bake at 2048
+or filter the high frequencies, make crack networks irregular (vary `cell_cm` by zone), fit the rubble
+layer only where the photo has it, and drive the crack width by distance. Same loop: change, refit, look.
