@@ -91,7 +91,7 @@ void fragment() {
 	vec3 colour = mix(ramp[i0], ramp[i1], t - float(i0));
 	colour = mix(colour, ramp[3], 0.7); // (the photograph's colour does not follow its height: near the mean)
 	// each lump its own tone, the creases dark, the rubble lighter and varied fragment by fragment
-	colour *= 0.7 * (0.6 + 0.9 * tone); // (0.7: the albedo lift for bark is too bright for this rock)
+	colour *= mix(1.0, 0.7, clamp(p[6] * 4.0, 0.0, 1.0)) * (0.7 + 0.6 * tone); // (a creased face is darker)
 	colour *= 1.0 - 0.55 * in_crease * clamp(p[6] * 2.0, 0.0, 1.0); // (no crease in the height: none in the colour)
 	colour = mix(colour, ramp[7] * (0.8 + 0.8 * fragment), 0.5 * smoothstep(0.05, 0.4, fragment) * clamp(p[9] * 5.0, 0.0, 1.0));
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
