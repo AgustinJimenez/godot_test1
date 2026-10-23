@@ -70,6 +70,9 @@ func make_array(all_fits := false) -> Texture2DArray:
 		var plates := PlateBaker.new() # (the pine: plates side by side, not flakes)
 		add_child(plates)
 		plate_images[1] = await plates.bake("pine_bark")
+		var rings := RingBaker.new() # (the palm: ring bands, not flakes)
+		add_child(rings)
+		plate_images[4] = await rings.bake("palm_tree_bark")
 	for slot in 6:
 		var image: Image = plate_images.get(slot)
 		for name: String in baked:
