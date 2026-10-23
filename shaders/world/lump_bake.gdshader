@@ -35,7 +35,7 @@ float vnoise(vec2 at, float scale, float s) {
 	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-float lumps(vec2 at, float s) {
+float lumps(vec2 at, float s, out float tone, out float in_crease, out float fragment) {
 	float lump_cm = p[0];
 	float warp_cm = p[2];
 	float crease_cm = p[4];
@@ -45,6 +45,8 @@ float lumps(vec2 at, float s) {
 	float line = abs(vnoise(c, crease_cm, s + 7.0) - 0.5) * 2.0;
 	float crease = 1.0 - smoothstep(0.0, p[5] * 2.0, line);
 	float h = 0.5 + p[1] * (l - 0.5) - p[6] * crease;
+	tone = l;
+	in_crease = crease;
 	// rubble: sharp fragments inside and next to the creases
 	float rn = max(floor(tile_cm / p[8] + 0.5), 1.0);
 	vec2 u = at / tile_cm * rn;
@@ -66,6 +68,7 @@ float lumps(vec2 at, float s) {
 	}
 	float reach = smoothstep(1.0 - p[10], 1.0, crease);
 	h += p[9] * (best_id - 0.5) * reach;
+	fragment = best_id * reach;
 	h += p[12] * (vnoise(at, max(p[11], 1.6), s + 17.0) - 0.5);
 	return h;
 }
@@ -76,10 +79,18 @@ float norm(float h) {
 
 void fragment() {
 	vec2 at = UV * tile_cm;
-	float h = norm(lumps(at, seed));
+	float tone;
+	float in_crease;
+	float fragment;
+	float h = norm(lumps(at, seed, tone, in_crease, fragment));
 	float t = h * 7.0;
 	int i0 = int(floor(t));
 	int i1 = min(i0 + 1, 7);
 	vec3 colour = mix(ramp[i0], ramp[i1], t - float(i0));
+	colour = mix(colour, ramp[3], 0.7); // (the photograph's colour does not follow its height: near the mean)
+	// each lump its own tone, the creases dark, the rubble lighter and varied fragment by fragment
+	colour *= 0.7 * (0.6 + 0.9 * tone); // (0.7: the albedo lift for bark is too bright for this rock)
+	colour *= 1.0 - 0.55 * in_crease;
+	colour = mix(colour, ramp[7] * (0.8 + 0.8 * fragment), 0.5 * smoothstep(0.05, 0.4, fragment));
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }
