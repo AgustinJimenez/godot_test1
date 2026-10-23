@@ -267,3 +267,18 @@ viewer. The cause is unknown: something between the baked tile and the trunk (th
 cavity AO and the lichen mask, which differ from the photographs' height stretch: the baked heights have a
 mean of 0.67 against the atlas' ~0.5). To check next: bake pine with the atlas' height stretch (mean
 0.5), compare the trunk colour again.
+
+## Round 15 (2026-10-23): a FAIR comparison, and the decision: the photographs are the default again
+The viewer compared two trees at different positions, so each got its own lichen/moss pattern (bark_style comes
+from the tree's position): an unfair comparison. `bark_style_force` (a shader uniform, set by the viewer)
+gives both trees the same lichen. Fair result (`cmp9_k0.png`, `cmp9_k2.png`): the baked oak is clearly
+coarser, wavier and paler than the photographed oak; the baked pine has the right scale shapes but is paler
+and lacks the dark crevices and the red-brown tone. The user preferred the photographed look. So:
+- `PlanetWorld` bakes the procedural barks ONLY with env `PLANET_PROCEDURAL_BARK=1` (was: always for oak and
+  maple); by default the game uses the photographs for every bark.
+- Also added: `alpha_map` (export_fit now gives the baked height the photograph's mean and spread, because
+  the shader's lichen and cavity masks read it), `bark_style_force`.
+Where the procedural bark falls short of the photograph at close range: the long wavy flame shapes (the
+generator's lens flakes are too uniform in direction), too little dark in the crevices, a paler tone.
+The closest next steps: crevice darkness (a second cavity term from the gap network), per-flake colour,
+shorter flakes with more turn, and a fit that also sees a lit RGB render of the bark in the plant shader.

@@ -15,6 +15,7 @@ global uniform vec3 cloud_sun_world; // toward the star, world space (the planet
 uniform float sway_speed = 1.3;
 uniform float bark_debug = 0.0; // 1: the bark's height as grey, 2: the cells (a tool)
 uniform float bark_force = -1.0; // >= 0: every bark gets this look (a tool)
+uniform vec2 bark_style_force = vec2(-1.0); // x >= 0: every tree gets this bark_style (a tool: a fair side-by-side)
 uniform bool planks = false; // wood boards (a cabin) instead of tree bark
 // A tree near the walker, bent branch by branch (PlantSway): row 0 of the texture holds each branch's foot and its parent's id, row 1
 // its turn (a rotation vector about the foot, relative to the parent). A vertex's branch is CUSTOM0.x (0: the trunk, never moves).
@@ -438,6 +439,9 @@ void vertex() {
 		bark_kind = bark_force;
 	}
 	bark_style = vec2(hash13(MODEL_MATRIX[3].xyz * 0.37), hash13(MODEL_MATRIX[3].zyx * 0.53 + 3.0));
+	if (bark_style_force.x >= 0.0) {
+		bark_style = bark_style_force;
+	}
 	float weight = COLOR.a * smoothstep(0.0, 0.35, VERTEX.y); // (the foot of a plant stays where it grows: the sway grows with the height above the ground)
 	float gust = sin(TIME * sway_speed + dot(world.xz, vec2(0.11, 0.08))) * 0.5 + 0.5;
 	float flutter = sin(TIME * sway_speed * 3.3 + dot(world.xz, vec2(0.9, 0.7)) + VERTEX.y * 2.0);

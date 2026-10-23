@@ -28,6 +28,8 @@ func bake(name: String, seed_value := 1.0) -> Image:
 		colours.append(Vector3(colour.r, colour.g, colour.b))
 	material.set_shader_parameter(&"ramp", colours)
 	material.set_shader_parameter(&"seed", seed_value)
+	material.set_shader_parameter(&"alpha_map", Vector3(float(fit.get("alpha_scale", 1.0)),
+			float(fit.get("alpha_from", 0.5)), float(fit.get("alpha_to", 0.5))))
 	var mean: Color = fit["mean"]
 	material.set_shader_parameter(&"mean_colour", Vector3(mean.r, mean.g, mean.b))
 	material.set_shader_parameter(&"shading", Vector3(fit["gain"], fit["mottle"], 0.18))

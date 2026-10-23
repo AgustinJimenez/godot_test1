@@ -27,6 +27,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func _show_kind(kind: int) -> void:
 	_kind = kind
 	for material in _materials:
+		material.set_shader_parameter(&"bark_style_force", Vector2(0.3, 0.4)) # (same lichen both)
 		material.set_shader_parameter(&"bark_force", float(kind))
 	if _label != null:
 		var how := "procedural" if kind in PROCEDURAL else "(no procedural version yet)"

@@ -132,8 +132,8 @@ func target() -> Node3D:
 ## under the target and the planet's coarse shape are what is made first, however far away.
 ## The procedural barks and rocks are drawn once into the plant shader (photo atlases till then).
 func _bake_the_bark() -> void:
-	if OS.has_environment("PLANET_PHOTO_BARK") or DisplayServer.get_name() == "headless":
-		return
+	if not OS.has_environment("PLANET_PROCEDURAL_BARK") or DisplayServer.get_name() == "headless":
+		return # (the photographs: the procedural barks are not as good yet, AGENT_TASKS/085)
 	var baker := BarkBaker.new()
 	add_child(baker)
 	var array: Texture2DArray = await baker.make_array()

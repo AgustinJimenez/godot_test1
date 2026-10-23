@@ -57,7 +57,7 @@ NL = chr(10)
 T = chr(9)
 
 
-def entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle):
+def entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle, alpha_gamma=1.0, stats=(0.5, 0.5)):
     """The lines of one bark (every line short: the project's lint)."""
     out = [T * 2 + '"%s": {' % name, T * 3 + '"kind": %s, "tile_cm": %.1f,' % (kind, float(tile_m) * 100)]
     out.append(T * 3 + '"params": PackedFloat32Array([')
@@ -70,7 +70,8 @@ def entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle):
         out.append(T * 4 + "Color(%.4f, %.4f, %.4f)," % tuple(c))
     out.append(T * 3 + "],")
     out.append(T * 3 + '"mean": Color(%.4f, %.4f, %.4f),' % tuple(mean_colour))
-    out.append(T * 3 + '"gain": %.3f, "mottle": %.3f},' % (gain, mottle))
+    out.append(T * 3 + '"gain": %.3f, "mottle": %.3f,' % (gain, mottle))
+    out.append(T * 3 + '"alpha_scale": %.3f, "alpha_from": %.3f, "alpha_to": %.3f},' % (alpha_gamma, stats[0], stats[1]))
     return out
 
 
@@ -98,7 +99,15 @@ def main():
         mean_colour = lifted(mean_colour, lift)
         print(name, "albedo lift x%.2f" % lift)
         print(name, "gain %.2f mottle %.3f contrast %.3f" % (gain, mottle, contrast))
-        lines += entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle)
+        norm = (h - h.min()) / max(float(h.max() - h.min()), 1e-6)
+        # the stored height gets the photograph's mean and spread (the plant shader's masks read it: lichen on
+        # the high parts, the cavity ambient occlusion)
+        k = float(np.clip(photo.std() / max(float(norm.std()), 1e-3), 0.2, 1.5))
+        alpha_gamma = k
+        print(name, "height mean %.2f/%.2f std %.2f/%.2f -> scale %.2f" % (norm.mean(), photo.mean(), norm.std(), photo.std(), k))
+        print("   (the exporter writes scale and the mean pair)")
+        stats = (float(norm.mean()), float(photo.mean()))
+        lines += entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle, alpha_gamma, stats)
     lines += [T + "}", "", "", "const KEYS := ["] + [T + '"%s",' % k for k in keys] + ["]", ""]
     open(out, "w").write("\n".join(lines))
     print("wrote", out)

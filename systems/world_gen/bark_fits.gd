@@ -27,7 +27,8 @@ static func fits() -> Dictionary:
 				Color(0.5460, 0.4871, 0.4294),
 			],
 			"mean": Color(0.5188, 0.4626, 0.4090),
-			"gain": 0.402, "mottle": 0.063},
+			"gain": 0.402, "mottle": 0.063,
+			"alpha_scale": 0.926, "alpha_from": 0.667, "alpha_to": 0.540},
 		"pine_bark": {
 			"kind": 2, "tile_cm": 200.0,
 			"params": PackedFloat32Array([
@@ -50,7 +51,8 @@ static func fits() -> Dictionary:
 				Color(0.4145, 0.3386, 0.2656),
 			],
 			"mean": Color(0.4161, 0.3370, 0.2613),
-			"gain": 0.067, "mottle": 0.017},
+			"gain": 0.067, "mottle": 0.017,
+			"alpha_scale": 0.610, "alpha_from": 0.659, "alpha_to": 0.642},
 		"tree_bark_03": {
 			"kind": 3, "tile_cm": 100.0,
 			"params": PackedFloat32Array([
@@ -73,7 +75,8 @@ static func fits() -> Dictionary:
 				Color(0.5919, 0.5620, 0.4277),
 			],
 			"mean": Color(0.5588, 0.5291, 0.3983),
-			"gain": 0.492, "mottle": 0.078},
+			"gain": 0.492, "mottle": 0.078,
+			"alpha_scale": 0.911, "alpha_from": 0.466, "alpha_to": 0.466},
 		"trident_maple_bark": {
 			"kind": 4, "tile_cm": 180.0,
 			"params": PackedFloat32Array([
@@ -96,7 +99,8 @@ static func fits() -> Dictionary:
 				Color(0.4204, 0.3271, 0.2296),
 			],
 			"mean": Color(0.4282, 0.3340, 0.2359),
-			"gain": -0.078, "mottle": 0.045},
+			"gain": -0.078, "mottle": 0.045,
+			"alpha_scale": 0.894, "alpha_from": 0.573, "alpha_to": 0.473},
 	}
 
 
