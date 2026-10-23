@@ -344,3 +344,9 @@ scales but pale and flat, with a smooth blotchy surface: stays photograph. Ash (
 detail) and maple stay photographs for now; both are in `bark_fits.gd` so `bark_view` shows them.
 Next: pine colour (two-tone), the comparison for ash and maple with the new fits, refit rocks/wood/soil with the
 detail loss, then the hybrid.
+
+Round 22: cedar baked with the best flake fit (`japanese_cedar_bark_flakes_good.json`, now copied over
+`fits/japanese_cedar_bark.json` and exported to slot 5 / kind 6): in the fair viewer the trunk has the right dark
+brown and vertical grain but is smooth: the photograph's fine fibrous strips are not resolved by the 1 cm flakes at
+the tile's 1 mm/px. Stays a photograph. `BarkBaker.make_array(true)` now bakes every fit for the viewer only; the
+game bakes the oak alone.

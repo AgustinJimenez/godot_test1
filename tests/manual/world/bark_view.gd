@@ -6,7 +6,7 @@ extends Node3D
 
 const KIND_NAMES: Array[String] = ["oak", "birch", "pine", "ash", "maple", "palm (rings)", "cedar"]
 ## kinds with a procedural version in the game (BarkBaker); the others show the photograph twice
-const PROCEDURAL: Array[int] = [0]
+const PROCEDURAL: Array[int] = [0, 2, 3, 4, 6]
 
 var _kind := -1
 var _materials: Array[ShaderMaterial] = []
@@ -79,7 +79,7 @@ func _ready() -> void:
 		var procedural := FloraMeshes.material().duplicate() as ShaderMaterial
 		var baker := BarkBaker.new()
 		add_child(baker)
-		procedural.set_shader_parameter(&"bark_photo", await baker.make_array())
+		procedural.set_shader_parameter(&"bark_photo", await baker.make_array(true))
 		plain.material_override = procedural
 		_materials.append(procedural)
 		plain.position.x = 0.9

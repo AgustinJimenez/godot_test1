@@ -45,14 +45,17 @@ func bake(name: String, seed_value := 1.0) -> Image:
 
 ## The six-slot bark array of the plant shader: the fitted procedural barks baked into their slots
 ## and the photographed atlas kept in the others (slots: oak, pine, ash, maple, palm, cedar).
-## `await baker.make_array()`; set the result as `bark_photo` on FloraMeshes.material().
-func make_array() -> Texture2DArray:
+## `await baker.make_array()` (`true`: every fit, for the viewer); set it as `bark_photo`.
+func make_array(all_fits := false) -> Texture2DArray:
 	var layers: Array[Image] = []
 	var atlas := Image.load_from_file("res://assets/textures/bark/bark_atlas.png")
 	var fits := BarkFits.fits()
 	# only the barks whose procedural look has been judged as good as the photograph (willow so far;
 	# pine reads as leaves and ash is too rough, see AGENT_TASKS/085)
 	var baked := {"bark_willow_02": 0}
+	if all_fits: # (the viewer: every fitted bark, to compare with the photographs)
+		baked = {"bark_willow_02": 0, "pine_bark": 1, "tree_bark_03": 2, "trident_maple_bark": 3,
+				"japanese_cedar_bark": 5}
 	for slot in 6:
 		var image: Image = null
 		for name: String in baked:
