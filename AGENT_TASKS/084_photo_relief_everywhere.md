@@ -94,3 +94,9 @@ rings), swell, fine and pore noise (20 parameters, numba, 0.02 s a picture); fit
 First fit (loss 1.08): reads as oak planks: boards with seams, waving grain, ring ovals; too much large
 blotchy swell (capped at 0.2 and refitting). Not in the game yet (needs GLSL + baker like the bark; the
 building planks branch of the plant shader would take the baked tile).
+
+Wood fits, three rounds: (1) swell uncapped: planks look right but blotchy (loss 1.08); (2) swell capped 0.2 and
+knots free: one giant ring dominates (0.72, wrong); (3) knots capped: boards and waving grain right, still
+blotchy (0.95). The lowest loss was the worst picture again. Swell now capped at 0.08 / 40 cm for the next
+refit (queued by the next run). The fit's best number is not the best picture: keep every `_vs.png` and
+keep the file of the fit I like (copy it to fits/<name>_good.json before refitting).
