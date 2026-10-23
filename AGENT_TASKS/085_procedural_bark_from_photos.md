@@ -328,3 +328,9 @@ Round 19: pine and ash refitted with the detail loss (`refit_pair.png`): pine ha
 even coverage (no foggy areas), ash is a plausible stringy bark. Both now show the same two artefacts: curved
 "smile" arcs (the groove/split cut terms, `cut_depth`) and vertical seams at the cell edges (the lattice of the
 swelling term). Next: cap `cut_depth` at 0.3 and `base_amp` at 0.4 for the flaky barks and refit.
+
+Round 20: willow with the detail loss (`bark_willow_02_vs.png`): the best willow so far: even coverage of long
+pointed flakes of mixed size, dark crevices between them, the right grey range; the photograph still has more
+angular, straight-edged slabs and a more visible diagonal criss-cross of flake direction (the generator's flakes
+are all within +-0.4 rad of vertical, `angle` cap 0.8). Pine and ash are refitting with `cut_depth` <= 0.3 and
+`base_amp` <= 0.4 (the arcs and seams).
