@@ -65,9 +65,13 @@ def _ring_at(px, py, q, seed):
     row = np.floor(y / ring_cm)
     centre = (row + 0.5 + (_hash(row, 0.0, seed + 2.0) - 0.5) * ring_var) * ring_cm
     width = ring_cm * ring_w * (0.6 + 0.8 * _hash(row, 0.0, seed + 3.0))
-    band = 1.0 - _smooth(0.0, width, abs(y - centre))
-    sign = 1.0 if _hash(row, 0.0, seed + 4.0) < 0.5 else -0.6
-    tone = (_hash(row, 0.0, seed + 5.0) - 0.5) * tone_amp
+    d = y - centre
+    # a thin bright edge line, and a slow dark ramp below it (down the trunk), as in the photograph
+    line = 1.0 - _smooth(0.0, width * 0.25, abs(d))
+    ramp = (1.0 - _smooth(0.0, ring_cm * 0.4, d)) if d > 0.0 else 0.0
+    band = line * 1.0 - ramp * (0.4 + 1.2 * tone_amp)
+    sign = 1.0
+    tone = 0.0
     # fibres: vertical streaks, each column with its own strength, long along y
     fib = _noise(px / fibre_cm, py / fibre_len, seed + 6.0) - 0.5
     blotch = _noise(px / blotch_cm, py / blotch_cm, seed + 7.0) - 0.5
