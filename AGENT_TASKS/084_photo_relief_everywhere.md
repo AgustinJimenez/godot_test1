@@ -167,3 +167,8 @@ whole board): add a per-board mean-tone term (the 10/50/90 percentiles of the 6 
 Wood with the board-tone term (loss 1.12): no near-black boards any more, grain and ring ovals in two boards, but only
 two boards across the tile (board_cm up to 40): capped at 10..24 cm and grain at 0.3..1.4 cm and refitting.
 Soil with the detail loss: loss 0.83 (`forest_ground_05_soilgen_detail`).
+Wood, capped (loss 1.16, `fits/oak_wood_planks_wood_detail_vs.png`): five boards of the right width (~19 cm) with
+waving cathedral grain and ring ovals, boards of different tone, thin dark seams; the photograph's grain is darker
+and denser and its tone varies WITHIN a board (the generator's boards are flat in tone, the tone jumps at the seams).
+Saved as `oak_wood_planks_wood_good.json` (replacing the older one) for the baker. A within-board tone drift (a slow
+noise along and across the board) is the next addition.
