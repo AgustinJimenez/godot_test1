@@ -106,3 +106,12 @@ that wave and bend, boards of different tones, fine pores; seams too thick and b
 between boards too big (capped now at 0.55 / 0.3 for the next refit). Kept as
 `tools/bark/fits/oak_wood_planks_wood_good.json` (+ `_good_vs.png`). Not in the game: GLSL port + a wood
 baker for the building planks, and a colour ramp (export_fit's colour model works the same way).
+
+Wood in the game's renderer (2026-10-23): `shaders/world/wood_bake.gdshader` (tiling GLSL), `WoodBaker`,
+`wood_fits.gd` (from `export_wood.py`), `tests/manual/world/wood_bake_view.tscn`. The baked tile
+(`baked_oak_wood_planks.png`) shows five boards with seams, cathedral grain and knot rings: reads as wood but
+as a stylised, embossed one: the grain lines are too regular and strongly contrasted (the lit view of a height
+with sharp steps), the colour is flat (the photo's colour barely follows its height). Not wired into the
+building planks yet. To improve: take the grain contrast from the photo's colour (a colour model on the
+brightness of grain lines), soften the lines (grain_sharp lower), per-board colour shift, and a gradient
+in the grain thickness.
