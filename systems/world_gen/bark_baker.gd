@@ -7,7 +7,7 @@ const SHADER := preload("res://shaders/world/bark_bake.gdshader")
 const SIZE := 1024
 ## how much each flake takes its own colour from the photograph's palette (only barks whose
 ## colour is not a function of the height: the pine's orange scales on grey)
-const PALETTE_MIX := {"pine_bark": 0.85, "forest_leaves_03": 0.9}
+const PALETTE_MIX := {"pine_bark": 0.7, "forest_leaves_03": 0.9}
 
 
 ## The tile of one fitted bark (`name` is a key of BarkFits.FITS) as an Image (RGBA8).
