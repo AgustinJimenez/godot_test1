@@ -334,3 +334,13 @@ pointed flakes of mixed size, dark crevices between them, the right grey range; 
 angular, straight-edged slabs and a more visible diagonal criss-cross of flake direction (the generator's flakes
 are all within +-0.4 rad of vertical, `angle` cap 0.8). Pine and ash are refitting with `cut_depth` <= 0.3 and
 `base_amp` <= 0.4 (the arcs and seams).
+
+## Round 21 (2026-10-23): the oak is procedural in the game again
+Fair viewer (same lichen on both trees), willow refit with the detail loss, baked: the oak (kind 0) now has
+similar flake scale, grey-brown tone and dark crevices as the photograph (`cmp11_k0.png`): the best match yet, so
+`PlanetWorld._bake_the_bark` bakes it by default (env `PLANET_PHOTO_BARK=1` restores the photograph). Forest lab
+view: 70 fps, GPU 14.2 to 14.7 ms (no change); planet_check and visual check pass. Pine (cmp11_k2): the right
+scales but pale and flat, with a smooth blotchy surface: stays photograph. Ash (cmp11_k3, not yet looked at in
+detail) and maple stay photographs for now; both are in `bark_fits.gd` so `bark_view` shows them.
+Next: pine colour (two-tone), the comparison for ash and maple with the new fits, refit rocks/wood/soil with the
+detail loss, then the hybrid.

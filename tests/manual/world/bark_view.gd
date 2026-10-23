@@ -6,7 +6,7 @@ extends Node3D
 
 const KIND_NAMES: Array[String] = ["oak", "birch", "pine", "ash", "maple", "palm (rings)", "cedar"]
 ## kinds with a procedural version in the game (BarkBaker); the others show the photograph twice
-const PROCEDURAL: Array[int] = [0, 2, 4]
+const PROCEDURAL: Array[int] = [0]
 
 var _kind := -1
 var _materials: Array[ShaderMaterial] = []
