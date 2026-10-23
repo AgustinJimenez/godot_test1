@@ -107,5 +107,5 @@ void fragment() {
 	plate_colour = mix(palette[2], plate_colour, smoothstep(0.05, 0.45, h));
 	colour = mix(colour, plate_colour * (0.75 + 0.5 * h), palette_mix);
 	colour *= 1.0 - 0.45 * rim; // the shadow where one plate meets the next
-	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
+	COLOR = vec4(clamp(colour, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 1.6, 0.0, 1.0)); // (a deeper relief than the fitted height)
 }
