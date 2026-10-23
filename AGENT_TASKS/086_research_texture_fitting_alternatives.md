@@ -48,3 +48,12 @@ Licence note: papers are for learning; write the code from scratch (same rule as
   pine's histogram, then the shader blends the Gaussian values and maps back through the LUT.
 - Not adopted. Interaction to check: the parallax march reads the height many times, so tap the 3-blend only for the
   colour and keep one tap for the height march (the height can be blended once at the hit point).
+
+## Decision (2026-10-23)
+Stochastic tiling is NOT being adopted now. The Python prototype shows it removes the visible repeat and keeps the look, but
+doing it right in the game needs a Gaussianised copy of the atlas as a new array texture, a LUT texture per channel and
+layer, and 3 taps + 1 LUT fetch per sample: about +1.1 ms GPU (measured with the naive version; the LUT adds a little)
+and more memory, while the aim is LESS image data. It also does not move us towards "replace the photographs by code".
+It is worth revisiting only if visible tiling of the photographed bark becomes a complaint (a tree's trunk repeats once
+per 1-2 m around, so it is hidden in most views). Step A (sliced Wasserstein loss in the fitter) is the useful part and
+stays on the list. The test switches (`PLANET_STOCH_BARK`, `--stoch`) stay in as documented experiments, off by default.
