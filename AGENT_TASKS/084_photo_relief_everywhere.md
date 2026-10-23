@@ -190,3 +190,13 @@ fit's values).
 - Tools added: `measure_scale.py` (feature size and repeat spacing of a photograph: use it to cap scale parameters
   before a fit; it found the palm scale bug), the speckle floor rule (no height detail below about 8 px per cell in a
   parallax-mapped bake).
+
+## Honest summary (2026-10-23, after the user asked "can we make it look like the assets?")
+- Close enough to use: oak, maple, cedar bark (in the game); mottled boulders (rock slots 0-2, opt-in); cabin boards (opt-in).
+- Close but short: pine plates (relief), palm rings and gravel chips (too clean), leaf litter (not seen on a real forest floor).
+- Not working: ash (spikes vs straight ridges), layered rock, red soil (banded), birch (no photo).
+- Rule learned: every surface family needs its own generator; where the family is missing, fitting only cheats the loss.
+  Fine irregular detail (chipped edges, sand patches, leaf veins) will not match; "close at game distance" is the target.
+- Fallback for the hard ones: a small photo base plus procedural variation (stochastic tiling, task 086): the atlas shrinks
+  4-16x but does not go to zero.
+- Untested: the gravel opt-in in a gravel area (the lab test at seed 1337 was on dune sand: identical pictures, no information).
