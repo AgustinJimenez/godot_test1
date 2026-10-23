@@ -187,3 +187,16 @@ planet_check (full) and the visual check pass. In the viewer (`bark_view --kind=
 procedural maple is a plausible bark of the same family, lighter and greyer than the photograph.
 Not verified: the maple at other angles, other maple trees, the forest cost (the baked tiles are
 sampled like the photos: no change expected). Pine, ash, palm and cedar still use the photographs.
+
+## Round 9 (2026-10-22): cedar and palm fitted on all 6 cores (about 4 minutes each)
+`fit_bark.py japanese_cedar_bark` (loss 1.69) and `palm_tree_bark` (2.52). Pictures (`*_vs.png`):
+- cedar: the photo is dense, thin, dark vertical fibres with a few bright breaks; the generator makes
+  wide pale ribbons with a speckle of bright spots (the fine noise): wrong. Needs a fibre family: many
+  thin parallel strands (width 0.5 to 1 cm), each with its own length and darkness, rare gaps.
+- palm: the photo is horizontal bands (the leaf scars, 10 to 15 cm apart) with fine vertical streaks and
+  scratches; the generator makes a smooth gradient with a few splits: wrong. Needs a ring family: bands
+  across the trunk (the old shader already had one for kind 5) plus fine streaks.
+Neither goes into the game. State of the six slots: oak and maple procedural (in the game); pine (reads as
+leaves), ash (too rough), palm (bands) and cedar (fibres) stay photographs. The generator now has two
+families (flakes, swelling + flakes); a third (fibres) and a fourth (rings) are the next two additions,
+each a handful of parameters with the same fit and the same side-by-side check.
