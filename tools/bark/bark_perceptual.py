@@ -12,6 +12,7 @@ Usage:
 (then `python bark_fast.py show <json> <png>` draws it)
 """
 import json
+import os
 import sys
 
 import limits  # (first: the core limit must be set before numba and torch load)
@@ -167,6 +168,11 @@ def fit(folder, name, tile_m, generations, out):
     target_ac = pb.autocorrelation_lengths(height, cm_per_px)
     target_profile = detail_profile(torch.cat(crops)).mean(dim=0, keepdim=True)
     target_q = np.percentile(height, [5, 50, 99.0, 99.8])
+    sw_weight = float(os.environ.get("SW_WEIGHT", "0"))  # > 0: a sliced Wasserstein term next to the Gram term
+    if sw_weight > 0:
+        target_sets = [t.permute(1, 0, 2).reshape(1, t.shape[1], -1) for t in feature_sets(net, torch.cat(crops))]
+        sw_dirs = sw_directions(target_sets)
+        target_sw = sw_quantiles(target_sets, sw_dirs)
 
     def evaluate(vectors):
         pictures = []
@@ -185,6 +191,9 @@ def fit(folder, name, tile_m, generations, out):
         total = torch.zeros(len(vectors), device=DEVICE)
         for gen, tar in zip(generated, target_grams):
             total += ((gen - tar) ** 2).sum(dim=(1, 2)) / (tar ** 2).sum()
+        if sw_weight > 0:
+            with torch.no_grad():
+                total = total + sw_weight * sw_distance(sw_quantiles(feature_sets(net, batch), sw_dirs), target_sw)
         profile = detail_profile(batch)
         scale = torch.clamp(target_profile.abs(), min=0.01)
         detail = (torch.abs(profile - target_profile) / scale).mean(dim=1)
