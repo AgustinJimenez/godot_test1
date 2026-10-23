@@ -77,3 +77,13 @@ layer only where the photo has it, and drive the crack width by distance. Same l
   `scan_leaf` is the next step, with a before/after in the forest view.
 - Soil without leaves (forest_ground_05, fine speckle and tiny twigs) needs a speckle family (noise at
   two scales + sparse small bright pebbles + hair-thin twigs): not built.
+
+## Wood planks (2026-10-23)
+oak_wood_planks (1.2 m) fitted with the flake generator: a smooth gradient, nothing like the photo (horizontal
+boards 15 to 20 cm wide with seams, long grain lines and growth-ring ovals, knots). Needs a board family:
+boards (width, seam depth, per-board tone and offset) + grain (thin parallel lines with slow waves and
+ring ovals around knots). The shader's existing `planks` branch (boards every 25 cm, grain noise) is
+the starting point; fit its few numbers rather than rebuilding. Not done.
+Order of what is left: board family (planks), speckle family (soil), ring family (palm), rounded
+outlines (pine), cedar fibres, leaves (the plant leaf shader is procedural already: compare its veins and
+outline with the photographs of leaves the user gave, and fit `leaf_cluster` numbers).
