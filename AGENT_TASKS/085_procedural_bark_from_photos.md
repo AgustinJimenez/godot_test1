@@ -308,3 +308,7 @@ photo is a dense field of thin overlapping strips). The cedar's strips are flake
 flakes) not grain; the flake generator with `aspect` up to 8 and tiny `cell_cm` (0.4-1.5 cm) is the right family
 and was never given those ranges. Next try: a `fit_bark` variant with cell_cm (0.4, 1.5), cell_aspect (3, 9),
 len (1.0, 2.5), angle (0, 0.3), no fibres.
+Cedar with tiny elongated flakes (`fit_cedar_flakes.py`, loss 1.35): the flakes appear as thin pointed shards in
+one strip, the rest of the tile is foggy: the search switched the flakes off over most of the tile with
+`flake_cover` and filled the rest with the swelling. Forced `flake_cover` 1.1..1.2 (flakes everywhere) and
+`flake_amp` >= 0.6, refitting.
