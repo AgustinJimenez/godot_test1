@@ -46,7 +46,13 @@ def main():
         lines.append(T * 3 + '"ramp": [')
         for c in ramp:
             lines.append(T * 4 + "Color(%.4f, %.4f, %.4f)," % tuple(c))
-        lines.append(T * 3 + "]},")
+        lines.append(T * 3 + "],")
+        centres, shares = ef.clusters_of(folder, name)
+        lines.append(T * 3 + '"palette": [')
+        for c in centres:
+            lines.append(T * 4 + "Color(%.4f, %.4f, %.4f)," % tuple(c))
+        lines.append(T * 3 + "],")
+        lines.append(T * 3 + '"palette_shares": [%s]},' % ", ".join("%.3f" % x for x in shares))
     lines += [T + "}", "", "", "const KEYS := ["] + [T + '"%s",' % k for k in wg.KEYS] + ["]", ""]
     open(out, "w").write(NL.join(lines))
     print("wrote", out)

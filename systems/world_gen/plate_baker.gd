@@ -5,6 +5,8 @@ extends Node
 
 const SHADER := preload("res://shaders/world/plate_bake.gdshader")
 const SIZE := 1024
+## how much each plate takes its own colour from the photograph's palette
+const PALETTE_MIX := 0.85
 
 
 ## The tile of one fitted plated bark (`name` is a key of PlateFits.fits()) as an Image (RGBA8).
@@ -27,6 +29,13 @@ func bake(name: String, seed_value := 1.0) -> Image:
 		colours.append(Vector3(colour.r, colour.g, colour.b))
 	material.set_shader_parameter(&"ramp", colours)
 	material.set_shader_parameter(&"seed", seed_value)
+	var palette := PackedVector3Array()
+	for colour: Color in fit["palette"]:
+		palette.append(Vector3(colour.r, colour.g, colour.b))
+	var shares: Array = fit["palette_shares"]
+	material.set_shader_parameter(&"palette", palette)
+	material.set_shader_parameter(&"palette_shares", Vector3(shares[0], shares[1], shares[2]))
+	material.set_shader_parameter(&"palette_mix", PALETTE_MIX)
 	rect.material = material
 	viewport.add_child(rect)
 	add_child(viewport)
