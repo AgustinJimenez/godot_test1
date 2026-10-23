@@ -296,3 +296,9 @@ good (fine flake detail); and a differentiable generator with a loss on lit RGB 
 Birch (2026-10-23): Poly Haven has no birch bark; eucalyptus_bark (smooth, peeling strips) fitted as the nearest
 (`fits/eucalyptus_bark.json`): the picture has the right kind of mottle with small peeled patches but a much higher
 contrast than the photograph. Not used: birch keeps its existing procedural look (kind 1 in flora_wind.gdshader).
+
+Palm (2026-10-23): the wood board generator fitted to palm_tree_bark (loss 1.44): horizontal bands about 10 cm apart
+and fine vertical streaks come out right in structure, but one board (the top half) is far darker than the
+rest (board_tone and the seam are exploited), and the scratches and pits are missing. A palm-specific ring
+family would be: bands every 8 to 14 cm with a bright lip on one edge, a slow tone drift along the trunk, fine
+vertical streaks, sparse scratches. Not built; palm stays a photograph.
