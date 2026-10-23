@@ -282,3 +282,5 @@ Where the procedural bark falls short of the photograph at close range: the long
 generator's lens flakes are too uniform in direction), too little dark in the crevices, a paler tone.
 The closest next steps: crevice darkness (a second cavity term from the gap network), per-flake colour,
 shorter flakes with more turn, and a fit that also sees a lit RGB render of the bark in the plant shader.
+
+Round 16: crevice darkness in bark_bake (`mix(0.3, 1.0, smoothstep(0.0, 0.5, h))`, was 0.45 / 0.25): slightly better, the baked oak (`cmp10_k0.png`) is still coarser and wavier than the photograph: the flakes are about twice as wide, with long flame shapes. The lens outline is the limit; try the fit with `cell_cm` capped to half the fitted value and `angle` larger (flakes less aligned), and `len` lower.

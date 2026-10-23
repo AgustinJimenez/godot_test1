@@ -157,7 +157,7 @@ void fragment() {
 	float mottle = vnoise(at, 14.0, 28.0, seed + 61.0) - 0.5;
 	float tone = (b.y - 0.5) * 2.0;
 	float light = (1.0 + shading.x * cavity * 6.0) * (1.0 + shading.y * mottle * 6.0) * (1.0 + shading.z * tone);
-	light *= mix(0.45, 1.0, smoothstep(0.0, 0.25, h)); // the gaps between the flakes are dark
+	light *= mix(0.3, 1.0, smoothstep(0.0, 0.5, h)); // the gaps and low parts between the flakes are dark
 	float t = h * 7.0;
 	int i0 = int(floor(t));
 	int i1 = min(i0 + 1, 7);
