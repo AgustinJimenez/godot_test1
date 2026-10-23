@@ -134,3 +134,7 @@ Fine soil: clods + grain + dust at three scales, sparse pebbles, hair twigs, cru
 First fit on forest_ground_05 (loss 0.66): dark speckled ground with pebbles: the right family, but the twigs
 are bold straight sticks and the clod noise shows its grid. Twigs and pebbles capped and refitting. Not in the
 game (the ground's soil layer is planet_ground's scans: a baked tile would be one more `scan_*`).
+Soil, round 2 (caps tightened, loss 0.74): dark mottled ground, sparse small bright pebbles, a few twigs, close to
+the photograph's character (`fits/forest_ground_05_soilgen_vs.png`, kept as `_soilgen_good.json`). The clod
+noise still shows faint grid alignment (value noise on a square grid): rotate the lattice per octave to fix.
+The soil family works; baking and wiring it as a ground scan is the next step if wanted.
