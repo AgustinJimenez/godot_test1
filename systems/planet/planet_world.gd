@@ -157,7 +157,8 @@ func _bake_the_bark() -> void:
 	if OS.has_environment("PLANET_PROCEDURAL_PALM"):
 		FloraMeshes.material().set_shader_parameter(&"tall_palm", 1.0) # (so are the baked rings)
 	baker.queue_free()
-	if OS.has_environment("PLANET_PROCEDURAL_ROCKS"): # (not good enough yet: AGENT_TASKS/084)
+	if (OS.has_environment("PLANET_PROCEDURAL_ROCKS")
+			or OS.has_environment("PLANET_PROCEDURAL_LUMPS")): # (not good enough yet: AGENT_TASKS/084)
 		var rocks := RockBaker.new()
 		add_child(rocks)
 		var rock_array: Texture2DArray = await rocks.make_array()

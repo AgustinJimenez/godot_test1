@@ -47,11 +47,16 @@ func make_array() -> Texture2DArray:
 	var atlas := Image.load_from_file("res://assets/textures/rock/rock_atlas.png")
 	var fits := RockFits.fits()
 	var baked := {}
-	for name: String in fits:
-		baked[int(fits[name]["slot"])] = name
+	if OS.has_environment("PLANET_PROCEDURAL_ROCKS"): # (the blocks-and-cracks fits: not good yet)
+		for name: String in fits:
+			baked[int(fits[name]["slot"])] = name
+	var lumps := LumpBaker.new() # (the smooth-lump rock face, slot 1: closer to the photograph)
+	add_child(lumps)
 	for slot in 6:
 		var image: Image = null
-		if baked.has(slot):
+		if slot == 1 and OS.has_environment("PLANET_PROCEDURAL_LUMPS"):
+			image = await lumps.bake("rock_face_04")
+		elif baked.has(slot):
 			image = await bake(baked[slot])
 		else:
 			image = atlas.get_region(Rect2i((slot % 3) * SIZE, (slot / 3) * SIZE, SIZE, SIZE))
