@@ -115,3 +115,16 @@ with sharp steps), the colour is flat (the photo's colour barely follows its hei
 building planks yet. To improve: take the grain contrast from the photo's colour (a colour model on the
 brightness of grain lines), soften the lines (grain_sharp lower), per-board colour shift, and a gradient
 in the grain thickness.
+
+## Status of the photo-to-procedural run (2026-10-23, end of the first autonomous stretch)
+In the game: photographs everywhere (a fair comparison showed the procedural oak, pine and rocks are not as
+good at close range). Procedural versions exist and are opt-in: oak + maple bark (`PLANET_PROCEDURAL_BARK=1`),
+six rocks (`PLANET_PROCEDURAL_ROCKS=1`), wood boards (WoodBaker, not wired), leaf litter (fit only).
+Tools: `tools/bark/` (generators: procedural_bark, rock_gen, wood_gen; fits: fit_bark, bark_perceptual,
+fit_litter; exports: export_fit, export_rock, export_wood; limits.py), GLSL: bark_bake, rock_bake, wood_bake.
+Best results: leaf litter (good match), wood boards (reads as oak), pine scale shapes; weakest: cedar, palm,
+birch (no photo), soil speckle.
+Next, by value: (1) the hybrid (photo base tile + procedural per-tree variation) which uses what each is good
+at; (2) wire the litter and wood tiles where they have no photograph (a new `litter` layer in planet_ground,
+building planks); (3) fit a colour model on lit RGB in the plant shader; (4) leaves (needs reference photos
+downloaded: the user's leaf photos are not on disk).
