@@ -5,6 +5,8 @@ extends Node
 
 const SHADER := preload("res://shaders/world/lump_bake.gdshader")
 const SIZE := 1024
+## how much the lumps follow the 16 x 16 picture of the photograph (0: fully procedural)
+const GUIDE_MIX := 0.8
 
 
 ## The tile of one fitted rock face (`name` is a key of LumpFits.fits()) as an Image (RGBA8).
@@ -27,6 +29,8 @@ func bake(name: String, seed_value := 1.0) -> Image:
 		colours.append(Vector3(colour.r, colour.g, colour.b))
 	material.set_shader_parameter(&"ramp", colours)
 	material.set_shader_parameter(&"seed", seed_value)
+	material.set_shader_parameter(&"guide", fit["guide"])
+	material.set_shader_parameter(&"guide_mix", GUIDE_MIX)
 	rect.material = material
 	viewport.add_child(rect)
 	add_child(viewport)

@@ -9,6 +9,8 @@ uniform float tile_cm = 200.0;
 uniform vec3 ramp[8];
 uniform vec2 height_range = vec2(0.0, 1.0);
 uniform float seed = 1.0;
+uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering the lumps
+uniform float guide_mix = 0.0; // 0: the lumps' own noise (fully procedural); 1: the guide's
 
 float fract1(float x) {
 	return x - floor(x);
@@ -35,6 +37,18 @@ float vnoise(vec2 at, float scale, float s) {
 	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
+float guide_at(vec2 at) {
+	vec2 g = at / tile_cm * 16.0 - 0.5;
+	vec2 i = floor(g);
+	vec2 f = g - i;
+	f = f * f * (3.0 - 2.0 * f);
+	int x0 = int(mod(i.x, 16.0));
+	int y0 = int(mod(i.y, 16.0));
+	int x1 = (x0 + 1) % 16;
+	int y1 = (y0 + 1) % 16;
+	return mix(mix(guide[y0 * 16 + x0], guide[y0 * 16 + x1], f.x), mix(guide[y1 * 16 + x0], guide[y1 * 16 + x1], f.x), f.y);
+}
+
 float lumps(vec2 at, float s, out float tone, out float in_crease, out float fragment) {
 	float lump_cm = p[0];
 	float warp_cm = p[2];
@@ -44,6 +58,7 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 	vec2 c = at + p[7] * crease_cm * vec2(vnoise(at, crease_cm, s + 5.0) - 0.5, vnoise(at + vec2(3.0, 0.0), crease_cm, s + 6.0) - 0.5);
 	float line = abs(vnoise(c, crease_cm, s + 7.0) - 0.5) * 2.0;
 	float crease = 1.0 - smoothstep(0.0, p[5] * 2.0, line);
+	l = mix(l, guide_at(at), guide_mix);
 	float h = 0.5 + p[1] * (l - 0.5) - p[6] * crease;
 	tone = l;
 	in_crease = crease;

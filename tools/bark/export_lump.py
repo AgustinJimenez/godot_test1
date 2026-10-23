@@ -43,6 +43,13 @@ def main():
             lines.append(T * 4 + ", ".join("%.5f" % params[k] for k in wg.KEYS[i:i + 7]) + ",")
         lines.append(T * 3 + "]),")
         lines.append(T * 3 + '"height_range": Vector2(%.4f, %.4f),' % (float(h.min()), float(h.max())))
+        guide = cv2.resize(photo, (16, 16), interpolation=cv2.INTER_AREA)
+        lo, hi = np.percentile(guide, [2, 98])
+        guide = np.clip((guide - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+        lines.append(T * 3 + '"guide": PackedFloat32Array([')
+        for i in range(0, 256, 8):
+            lines.append(T * 4 + ", ".join("%.3f" % x for x in guide.ravel()[i:i + 8]) + ",")
+        lines.append(T * 3 + "]),")
         lines.append(T * 3 + '"ramp": [')
         for c in ramp:
             lines.append(T * 4 + "Color(%.4f, %.4f, %.4f)," % tuple(c))
