@@ -100,3 +100,9 @@ knots free: one giant ring dominates (0.72, wrong); (3) knots capped: boards and
 blotchy (0.95). The lowest loss was the worst picture again. Swell now capped at 0.08 / 40 cm for the next
 refit (queued by the next run). The fit's best number is not the best picture: keep every `_vs.png` and
 keep the file of the fit I like (copy it to fits/<name>_good.json before refitting).
+
+Wood, round 4 (swell capped 0.08): the picture finally reads as real oak boards: cathedral grain lines
+that wave and bend, boards of different tones, fine pores; seams too thick and black and the tone spread
+between boards too big (capped now at 0.55 / 0.3 for the next refit). Kept as
+`tools/bark/fits/oak_wood_planks_wood_good.json` (+ `_good_vs.png`). Not in the game: GLSL port + a wood
+baker for the building planks, and a colour ramp (export_fit's colour model works the same way).
