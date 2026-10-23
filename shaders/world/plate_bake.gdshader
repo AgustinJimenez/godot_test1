@@ -39,7 +39,7 @@ float vnoise(vec2 at, float scale, float s) {
 	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-float plates(vec2 at, float s, out float dice) {
+float plates(vec2 at, float s, out float dice, out float rim) {
 	float cell = p[0];
 	float stretch = p[1];
 	float nu = max(floor(tile_cm / cell + 0.5), 1.0);
@@ -78,6 +78,7 @@ float plates(vec2 at, float s, out float dice) {
 		}
 	}
 	float edge = d2 - d1;
+	rim = 1.0 - smoothstep(0.0, p[7] * 2.5, edge);
 	dice = hashw(best_id.x, best_id.y, s + 19.0, per);
 	float crack = 1.0 - smoothstep(0.0, p[5], edge);
 	float lipf = smoothstep(0.0, p[7], edge);
@@ -95,7 +96,8 @@ float norm(float h) {
 void fragment() {
 	vec2 at = UV * tile_cm;
 	float dice;
-	float h = norm(plates(at, seed, dice));
+	float rim;
+	float h = norm(plates(at, seed, dice, rim));
 	float t = h * 7.0;
 	int i0 = int(floor(t));
 	int i1 = min(i0 + 1, 7);
@@ -104,5 +106,6 @@ void fragment() {
 			: (dice < palette_shares.x + palette_shares.y ? palette[1] : palette[2]);
 	plate_colour = mix(palette[2], plate_colour, smoothstep(0.05, 0.45, h));
 	colour = mix(colour, plate_colour * (0.75 + 0.5 * h), palette_mix);
+	colour *= 1.0 - 0.45 * rim; // the shadow where one plate meets the next
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }
