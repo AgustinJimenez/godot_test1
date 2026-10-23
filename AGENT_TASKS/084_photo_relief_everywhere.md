@@ -63,3 +63,17 @@ cracks like a turtle shell; the photographs look far better. So `PlanetWorld` ba
 env `PLANET_PROCEDURAL_ROCKS=1`. To fix: remove the rubble layer from rocks that have none, bake at 2048
 or filter the high frequencies, make crack networks irregular (vary `cell_cm` by zone), fit the rubble
 layer only where the photo has it, and drive the crack width by distance. Same loop: change, refit, look.
+
+## Soil and leaf litter (2026-10-23)
+- forest_ground_05 (fine grained soil) and forest_leaves_03 fitted with the ROCK generator: wrong (big polygon
+  cracks over fine grain; no leaves). The rock family does not span soil or litter.
+- forest_leaves_03 fitted with the FLAKE generator in a litter configuration (`tools/bark/fit_litter.py`: cell
+  0.8-6 cm, isotropic spacing, flake turn up to a full circle, no grooves or swelling): loss 0.76 and the
+  picture (`E:/Temp/claude/ground_eval/litter_vs.png`) is a good match: overlapping small pointed leaves in
+  every direction at the right size, with the large soft swells of light and dark. Saved in
+  `tools/bark/fits/forest_leaves_03_litter.json` (the same 32 numbers, so `bark_bake.gdshader` draws it
+  unchanged). Not in the game: the ground shader's litter (planet_ground `leaf_litter`, the `scan_leaf`
+  scan) is a separate system and the ground look is the user's; wiring a baked litter tile as another
+  `scan_leaf` is the next step, with a before/after in the forest view.
+- Soil without leaves (forest_ground_05, fine speckle and tiny twigs) needs a speckle family (noise at
+  two scales + sparse small bright pebbles + hair-thin twigs): not built.
