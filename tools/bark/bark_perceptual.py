@@ -37,11 +37,24 @@ def build_net():
     return net
 
 
+def shaded(pictures, strength=6.0):
+    """The height picture as the eye sees it: lit from two sides (a hillshade), so edges, cracks and steps
+    count in the style loss, not only the heights. (N, 1, H, W) in 0..1 -> (N, 3, H, W): light from the
+    upper left, from the upper right, and the height itself."""
+    kx = torch.tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]], device=pictures.device) / 8.0
+    ky = kx.t()
+    dx = torch.nn.functional.conv2d(pictures, kx.view(1, 1, 3, 3), padding=1) * strength * 4.0
+    dy = torch.nn.functional.conv2d(pictures, ky.view(1, 1, 3, 3), padding=1) * strength * 4.0
+    left = torch.clamp(0.5 - 0.7 * dx - 0.7 * dy, 0.0, 1.0)
+    right = torch.clamp(0.5 + 0.7 * dx - 0.7 * dy, 0.0, 1.0)
+    return torch.cat([left, right, pictures], dim=1)
+
+
 def grams(net, pictures):
     """pictures: (N, 1, H, W) in 0..1. Returns a list of (N, C, C) Gram matrices, one for each layer."""
     mean = torch.tensor([0.485, 0.456, 0.406], device=DEVICE).view(1, 3, 1, 1)
     std = torch.tensor([0.229, 0.224, 0.225], device=DEVICE).view(1, 3, 1, 1)
-    x = (pictures.repeat(1, 3, 1, 1) - mean) / std
+    x = (shaded(pictures) - mean) / std
     out = []
     for index, layer in enumerate(net):
         x = layer(x)
@@ -79,6 +92,7 @@ def fit(folder, name, tile_m, generations, out):
         crops.append(target_picture[:, :, y0:y0 + size, x0:x0 + size])
     target_grams = [g.mean(dim=0, keepdim=True) for g in grams(net, torch.cat(crops))]
     target_ac = pb.autocorrelation_lengths(height, cm_per_px)
+    target_q = np.percentile(height, [5, 50, 99.0, 99.8])
 
     def evaluate(vectors):
         pictures = []
@@ -88,7 +102,10 @@ def fit(folder, name, tile_m, generations, out):
             picture = fast.render(params, size, cm_per_px)
             pictures.append(torch.from_numpy(picture))
             ax, ay = pb.autocorrelation_lengths(picture, cm_per_px)  # (cheap: the size of the pattern; the Gram matrices barely see scale)
-            stat_loss.append(abs(np.log(max(ax, 1e-3) / max(target_ac[0], 1e-3))) + abs(np.log(max(ay, 1e-3) / max(target_ac[1], 1e-3))))
+            # the outliers: a few very bright strips are what the search likes to add (the picture is 0..1)
+            q = np.percentile(picture, [5, 50, 99.0, 99.8])
+            outliers = float(np.abs(q - target_q).sum())
+            stat_loss.append(abs(np.log(max(ax, 1e-3) / max(target_ac[0], 1e-3))) + abs(np.log(max(ay, 1e-3) / max(target_ac[1], 1e-3))) + 4.0 * outliers)
         batch = torch.stack(pictures).to(DEVICE).unsqueeze(1)
         generated = grams(net, batch)
         total = torch.zeros(len(vectors), device=DEVICE)

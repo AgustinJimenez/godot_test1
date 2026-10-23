@@ -937,8 +937,9 @@ the same pipeline is meant for rock, soil, leaf litter, cliffs and buildings. Th
 3. **Generator:** `procedural_bark.py` (reference maths, 27 parameters) and `bark_fast.py` (the same in numba,
    20 times faster, identical output). Design it like the real thing (shingled, overlapping flakes with
    ragged edges, grooves, splits), with a few parameters that span the real variety.
-4. **Fit:** `bark_perceptual.py`: CMA-ES over the parameters; the loss is the VGG19 Gram matrices of the
-   generated height picture against the photo's (the look) plus a cheap size term (the Gram matrices do
+4. **Fit:** `bark_perceptual.py`: CMA-ES over the parameters; the loss is the VGG19 Gram matrices of a LIT view of the
+   generated height picture (hillshade from two sides + the height; raw heights let the search drift to smooth blobs)
+   against the photo's (the look) plus a cheap size term (the Gram matrices do
    not see scale). A statistics-only loss (sizes, spreads) does NOT work: the search finds shapes with
    the right numbers that look wrong. Judge every fit with your own eyes: render generator and photo side
    by side (`gen_vs_photo*.png`) before trusting a loss.

@@ -214,3 +214,20 @@ Not in the game: cedar stays a photograph. The fibres/ring families exist but ar
 State: oak and maple are procedural in the game; ash, pine, palm and cedar remain photographs, and the
 atlas PNG stays for them. A pragmatic stopping point: 2 of 6 barks replaced, the pipeline, the viewer
 (arrow keys) and the lessons written down; the other four are each a few more rounds of the same loop.
+
+## Round 11 (2026-10-22, autonomous run): rocks, and the loss that finally works (a lit view)
+- Cedar with an outlier penalty got WORSE (grey fog): outlier terms in the loss flatten the picture. Set
+  aside; the outlier term stays at weight 4 in bark_perceptual (it may be too heavy, to retest).
+- Rocks: `tools/bark/rock_gen.py` (numba generator, 24 parameters: warp, Voronoi blocks cut by cracks,
+  strata, swelling, grain, pits, and a rubble layer of small sharp fragments that collects along the
+  cracks) with its own fit (`rock_gen.py fit <folder> <name> <tile m>`). Four fits on rock_face_04:
+  raw-height Gram loss gave a blob (1.81), +rubble patches (1.57), +rubble along cracks (1.15) were
+  all too smooth and missed the plates and cracks.
+- THE FIX: the style loss now sees a LIT view of the height (`shaded()` in bark_perceptual.py: light
+  from the upper left and upper right plus the height as the 3 channels of the network input), so edges,
+  cracks and steps count. Result (loss 0.99, `fits/rock_face_04_rock_vs.png`): smooth plates, thin dark
+  cracks, rubble polygons along the cracks: it looks like the photograph. This also applies to every
+  bark fit from now on (old bark fits used raw heights): refit pine, ash, cedar, palm with it.
+- AGENTS.md lesson: judge the look the eye sees (lit relief), not the raw heights.
+Next: the batch refit of the barks with the lit loss; GLSL port + baker for the rock generator;
+then wood planks, soil, leaf litter, cliffs, leaves.
