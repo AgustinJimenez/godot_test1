@@ -148,3 +148,7 @@ corners, mortar depth) would fit the building walls; natural cliffs should be fi
 Masonry generator (`tools/bark/masonry_gen.py`, 15 parameters): first fit on rock_wall_17 (loss 1.52): the right
 structure (courses, stones of different widths, mortar, rounded edges) but stones twice too big and too regular
 (near rectangles of one size); sizes capped (course <= 22 cm, stone <= 38 cm, more variation forced) and refitting.
+Masonry round 2 (loss 1.45, `fits/rock_wall_17_wall_vs.png`): stones now the right size and in courses with mortar,
+but too regular (rectangular pillows of one shape) and the fit exploits the `chip` term for dark squares. Needs:
+irregular polygon outlines (per-stone cut corners and a jittered edge), drop the chip squares, per-stone height
+steps, mortar width variation. A brick-like wall for now, not a dry-stone one. Not in the game.
