@@ -60,7 +60,7 @@ def decode(vector):
 
 
 def encode(params):
-    return np.clip(np.array([(params[k] - pb.RANGES[k][0]) / (pb.RANGES[k][1] - pb.RANGES[k][0]) for k in KEYS]), 0.001, 0.999)
+    return np.clip(np.array([(params.get(k, pb.PARAMS[k]) - pb.RANGES[k][0]) / (pb.RANGES[k][1] - pb.RANGES[k][0]) for k in KEYS]), 0.001, 0.999)
 
 
 def fit(folder, name, tile_m, generations, out):

@@ -50,7 +50,7 @@ func make_array() -> Texture2DArray:
 	var fits := BarkFits.fits()
 	# only the barks whose procedural look has been judged as good as the photograph (willow so far;
 	# pine reads as leaves and ash is too rough, see AGENT_TASKS/085)
-	var baked := {"bark_willow_02": 0}
+	var baked := {"bark_willow_02": 0, "trident_maple_bark": 3}
 	for slot in 6:
 		var image: Image = null
 		for name: String in baked:

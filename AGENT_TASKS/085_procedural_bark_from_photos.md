@@ -174,3 +174,16 @@ barks (maple, birch, beech, palm rings); those need another generator family (a 
 height field with scattered small flakes), not more fitting. Not added to the game.
 Lesson for the pipeline: the loss number cannot tell a good fit from a wrong model; the side-by-side
 picture is the check, and the fit script now writes it every time.
+
+## Round 8 (2026-10-22): a second generator family (smooth swelling + scattered flakes); maple in the game
+Five new parameters (base_amp, base_cm, base_stretch, flake_cover, flake_amp): a smooth anisotropic
+swelling under flakes that cover only part of the surface. The defaults reproduce the old generator
+exactly (willow unchanged, checked numba vs numpy), so one model spans flaky and mottled barks.
+Maple refit (250 generations): the picture now has the soft mottled surface and scattered small flake
+shapes of the photo (`trident_maple_bark_vs.png`), still streakier than the real small round flakes.
+In the game: the baked maple is slot 3 (kind 4) next to the baked oak (slot 0); the exporter now lifts
+a dark photograph to a bark albedo of 0.1 (maple x2.09, as the atlas did). The shader array is 32 floats.
+planet_check (full) and the visual check pass. In the viewer (`bark_view --kind=4 --compare`) the
+procedural maple is a plausible bark of the same family, lighter and greyer than the photograph.
+Not verified: the maple at other angles, other maple trees, the forest cost (the baked tiles are
+sampled like the photos: no change expected). Pine, ash, palm and cedar still use the photographs.

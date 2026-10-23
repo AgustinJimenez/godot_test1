@@ -44,6 +44,11 @@ PARAMS = {
     "split_w": 0.12,      # their width
     "split_cover": 0.3,   # share of the places that split
     "cut_depth": 0.6,     # how deep grooves and splits cut into the flakes
+    "base_amp": 0.0,      # a smooth swelling under the flakes (smooth barks: maple, birch)
+    "base_cm": 12.0,      # size of the swellings across the trunk
+    "base_stretch": 3.0,  # how much longer they are along the trunk
+    "flake_cover": 1.2,   # share of the surface that carries flakes (1.2: all of it)
+    "flake_amp": 1.0,     # the flakes' height
 }
 RANGES = {
     "cell_cm": (0.5, 12.0), "cell_aspect": (1.0, 4.0), "len": (0.7, 3.0), "wid": (0.4, 1.6),
@@ -53,6 +58,8 @@ RANGES = {
     "warp_scale_cm": (10.0, 40.0), "fine_amp": (0.0, 0.03), "fine_cm": (0.4, 2.0), "block": (0.0, 1.0),
     "groove_cm": (1.5, 14.0), "groove_w": (0.05, 0.5), "groove_cover": (0.1, 0.9), "split_cm": (4.0, 40.0),
     "split_w": (0.03, 0.3), "split_cover": (0.0, 0.7), "cut_depth": (0.0, 1.0),
+    "base_amp": (0.0, 1.0), "base_cm": (3.0, 40.0), "base_stretch": (1.0, 6.0), "flake_cover": (0.0, 1.2),
+    "flake_amp": (0.1, 1.2),
 }
 
 
@@ -135,7 +142,11 @@ def bark_height(x_cm, y_cm, p, seed=1.0):
     wy = (value_noise(x_cm / p["warp_scale_cm"] + 31.7, y_cm / p["warp_scale_cm"], seed + 13.0) - 0.5) * 2.0
     x = x_cm + wx * p["warp_cm"]
     y = y_cm + wy * p["warp_cm"] * 1.5
-    height = flakes(x, y, p, seed) * cuts(x, y, p, seed)
+    cover = 1.0 - smooth(p["flake_cover"] - 0.08, p["flake_cover"] + 0.08,
+                         value_noise(x_cm / 18.0, y_cm / 40.0, seed + 71.0))
+    base = p["base_amp"] * (value_noise(x_cm / p["base_cm"], y_cm / (p["base_cm"] * p["base_stretch"]), seed + 73.0)
+                            + 0.5 * value_noise(x_cm / (p["base_cm"] * 0.4), y_cm / (p["base_cm"] * 0.4 * p["base_stretch"]), seed + 75.0))
+    height = base + p["flake_amp"] * flakes(x, y, p, seed) * cuts(x, y, p, seed) * cover
     fine = value_noise(x_cm / p["fine_cm"], y_cm / (p["fine_cm"] * 2.0), seed + 29.0)
     return height + (fine - 0.5) * p["fine_amp"] * (height > 0.05)
 

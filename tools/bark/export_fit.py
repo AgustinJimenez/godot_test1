@@ -40,6 +40,19 @@ def colour_model(folder, name, height_norm, cm_per_px):
     return mean_colour, gain, mottle, float(lum.std() / max(mean_lum, 1e-6))
 
 
+def lifted(colour, factor):
+    """A colour (sRGB) with its linear brightness multiplied: a dark photograph is brought to a bark albedo."""
+    linear = np.power(np.clip(np.array(colour, dtype=np.float64), 0.0, 1.0), 2.2) * factor
+    return list(np.power(np.clip(linear, 0.0, 1.0), 1.0 / 2.2))
+
+
+def lift_of(mean_colour, target=0.1):
+    """The factor that brings the mean linear luminance to `target` (never darkens, at most 2.6, as the atlas)."""
+    linear = np.power(np.array(mean_colour, dtype=np.float64), 2.2)
+    lum = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+    return float(np.clip(target / max(lum, 1e-4), 1.0, 2.6))
+
+
 NL = chr(10)
 T = chr(9)
 
@@ -49,7 +62,7 @@ def entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle):
     out = [T * 2 + '"%s": {' % name, T * 3 + '"kind": %s, "tile_cm": %.1f,' % (kind, float(tile_m) * 100)]
     out.append(T * 3 + '"params": PackedFloat32Array([')
     for i in range(0, len(keys), 7):
-        out.append(T * 4 + ", ".join("%.5f" % params[k] for k in keys[i:i + 7]) + ",")
+        out.append(T * 4 + ", ".join("%.5f" % params.get(k, pb.PARAMS[k]) for k in keys[i:i + 7]) + ",")
     out.append(T * 3 + "]),")
     out.append(T * 3 + '"height_range": Vector2(%.4f, %.4f),' % (float(h.min()), float(h.max())))
     out.append(T * 3 + '"ramp": [')
@@ -71,7 +84,7 @@ def main():
     for spec in sys.argv[3:]:
         name, tile_m, kind = spec.split(":")
         data = json.load(open(f"tools/bark/fits/{name}.json"))
-        params = data["params"]
+        params = {**pb.PARAMS, **data["params"]}
         cm = data["cm_per_px"]
         h = fast._render(512, cm, fast.vector(params), 1.0)
         photo = cv2.imread(f"{folder}/{name}_disp.png", cv2.IMREAD_UNCHANGED).astype(np.float32)
@@ -80,6 +93,10 @@ def main():
         photo = (photo - photo.min()) / (photo.max() - photo.min())
         ramp = palette_of(folder, name, photo)
         mean_colour, gain, mottle, contrast = colour_model(folder, name, photo, cm)
+        lift = lift_of(mean_colour)
+        ramp = [lifted(c, lift) for c in ramp]
+        mean_colour = lifted(mean_colour, lift)
+        print(name, "albedo lift x%.2f" % lift)
         print(name, "gain %.2f mottle %.3f contrast %.3f" % (gain, mottle, contrast))
         lines += entry(name, kind, tile_m, params, keys, h, ramp, mean_colour, gain, mottle)
     lines += [T + "}", "", "", "const KEYS := ["] + [T + '"%s",' % k for k in keys] + ["]", ""]

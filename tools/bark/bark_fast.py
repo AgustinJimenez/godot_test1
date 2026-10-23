@@ -61,6 +61,7 @@ def _flakes_at(px, py, q, seed):
     block = q[19]
     groove_cm, groove_w, groove_cover, split_cm, split_w, split_cover, cut_depth = (
         q[20], q[21], q[22], q[23], q[24], q[25], q[26])
+    base_amp, base_cm, base_stretch, flake_cover, flake_amp = q[27], q[28], q[29], q[30], q[31]
     wx = (_noise(px / warp_scale, py / warp_scale, seed + 11.0) - 0.5) * 2.0
     wy = (_noise(px / warp_scale + 31.7, py / warp_scale, seed + 13.0) - 0.5) * 2.0
     x = px + wx * warp_cm
@@ -110,6 +111,10 @@ def _flakes_at(px, py, q, seed):
     on = 1.0 - _smooth(split_cover - 0.03, split_cover + 0.03, _hash(column, row, seed + 57.0))
     split = (1.0 - _smooth(0.0, split_w, min(fv, 1.0 - fv) * 2.0)) * on
     best = best * (1.0 - cut_depth * max(groove, split))
+    cover = 1.0 - _smooth(flake_cover - 0.08, flake_cover + 0.08, _noise(px / 18.0, py / 40.0, seed + 71.0))
+    base = base_amp * (_noise(px / base_cm, py / (base_cm * base_stretch), seed + 73.0)
+                       + 0.5 * _noise(px / (base_cm * 0.4), py / (base_cm * 0.4 * base_stretch), seed + 75.0))
+    best = base + flake_amp * best * cover
     fine = _noise(px / fine_cm, py / (fine_cm * 2.0), seed + 29.0)
     if best > 0.05:
         best += (fine - 0.5) * fine_amp
@@ -127,7 +132,7 @@ def _render(size, cm_per_px, q, seed):
 
 
 def vector(params):
-    return np.array([params[k] for k in KEYS], dtype=np.float64)
+    return np.array([params.get(k, pb.PARAMS[k]) for k in KEYS], dtype=np.float64)
 
 
 def render(params, size, cm_per_px, seed=1.0):

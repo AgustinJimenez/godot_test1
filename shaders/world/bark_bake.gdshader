@@ -3,10 +3,10 @@ render_mode blend_disabled; // the height is written in alpha: no blending
 // The procedural bark, drawn once into a tile (BarkBaker): colour in rgb, height in alpha. The same flake
 // model as tools/bark/procedural_bark.py (the reference the numbers were fitted with), made to tile: every
 // scale is rounded to a whole number of repeats in the tile, and the random choices of a cell are
-// hashed from the cell wrapped round the tile. The 27 numbers are the fit of one photographed bark
+// hashed from the cell wrapped round the tile. The 32 numbers are the fit of one photographed bark
 // (bark_fits.gd, made by tools/bark/export_fit.py); the order is BarkFits.KEYS.
 
-uniform float p[27];
+uniform float p[32];
 uniform float tile_cm = 100.0;
 uniform vec2 height_range = vec2(0.0, 1.0);
 uniform vec3 ramp[8];
@@ -118,7 +118,9 @@ vec2 bark(vec2 at, float s) {
 	float wy = (vnoise(at + vec2(31.7, 0.0), p[16], p[16], s + 13.0) - 0.5) * 2.0;
 	vec2 w = at + vec2(wx * p[15], wy * p[15] * 1.5);
 	vec2 fl = flakes(w, s);
-	float h = fl.x * cuts(w, s);
+	float cover = 1.0 - smoothstep(p[30] - 0.08, p[30] + 0.08, vnoise(at, 18.0, 40.0, s + 71.0));
+	float base = p[27] * (vnoise(at, p[28], p[28] * p[29], s + 73.0) + 0.5 * vnoise(at, p[28] * 0.4, p[28] * 0.4 * p[29], s + 75.0));
+	float h = base + p[31] * fl.x * cuts(w, s) * cover;
 	float fine = vnoise(at, p[18], p[18] * 2.0, s + 29.0);
 	return vec2(h + (fine - 0.5) * p[17] * (h > 0.05 ? 1.0 : 0.0), fl.y);
 }
