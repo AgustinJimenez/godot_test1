@@ -162,3 +162,15 @@ good as the photograph from above and from the side. Ideas to make the PIPELINE 
    between fitted barks, so a new tree species is a point between barks, not a new fit.
 7. Automate: one command `fit_bark.py <polyhaven name> <tile m>` that downloads, measures, fits, writes the
    fit, and renders the comparison sheet.
+
+## Round 7 (2026-10-22): `tools/bark/fit_bark.py` (improvement 7) and what the maple showed
+`python fit_bark.py <polyhaven name> [generations] [folder]` downloads the 1k maps and the real size
+(Poly Haven refuses Python's default user agent: a header is set), fits (CMA-ES, neural loss, 3 cores
+by default via limits.py: 200 generations took 6 minutes), saves `fits/<name>.json` and writes
+`<name>_vs.png` (photo left, generator right). Tried on trident_maple_bark: loss 0.79, but the picture
+is wrong: the photo is a soft mottled surface with small scattered flakes and wide shallow dips; the
+generator can only make long vertical streaks. So the flake family does not span smooth or mottled
+barks (maple, birch, beech, palm rings); those need another generator family (a low-frequency
+height field with scattered small flakes), not more fitting. Not added to the game.
+Lesson for the pipeline: the loss number cannot tell a good fit from a wrong model; the side-by-side
+picture is the check, and the fit script now writes it every time.
