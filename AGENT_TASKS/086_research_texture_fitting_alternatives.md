@@ -27,7 +27,7 @@ pictures got worse. The method, not the numbers, is the problem.
 ## Plan (smallest steps first)
 - [ ] A. Add a sliced Wasserstein term to `bark_perceptual.py` next to the Gram term (VGG19 features at 3-4 layers, 64-128
   random projections, sort and compare); refit the pine plates, the palm and a rock; compare pictures AND loss.
-- [ ] B. Try the histogram-preserving tiling (item 3) on the bark atlas as a fallback: a 256 px Gaussianised tile plus a
+- [~] B (likeness tried in Python, `tools/bark/stochastic_tile.py`: a 256 px crop of the pine photograph, per-channel Gaussianisation, three randomly shifted copies on a skewed triangle grid, variance-preserving blend, histogram restored): the repeat that a plain tiling shows (the same dark blobs every 256 px) is gone and the colour, scale and grain are kept; my triangle split still leaves faint square seams (a bug in the barycentric cases to fix). Cost in the shader: 3 reads instead of 1 per sample, x3 inside the parallax march (which samples the height many times), so measure with `gpu_breakdown.sh` before adopting; the Gaussianised tile and LUT are small, so the atlas could shrink 4x to 16x. Original plan: Try the histogram-preserving tiling (item 3) on the bark atlas as a fallback: a 256 px Gaussianised tile plus a
   colour LUT replaces each 1024 px slot; measure the memory (the atlases are 15.7 MB and 15.4 MB now) and the look.
 - [ ] C. Only if A shows the same trouble: a small node-graph generator (noise, domain warp, Voronoi, blend, levels)
   fitted by gradient descent in PyTorch, as MATch does.
