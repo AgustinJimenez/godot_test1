@@ -250,3 +250,12 @@ the pine; the photo's scales are ragged on the SIDES (jagged vertical edges, the
 which needs a side-edge noise much stronger than `rag_amp` allows (max 0.09). Next try: rag_amp up to 0.3
 with its own scale per axis. Bark work is in diminishing returns: 2 of 6 barks replaced; continue the
 list with leaves and soil, come back with the side-ragged outline.
+
+## Round 14 (2026-10-23): pine with stronger ragged edges (rag_amp up to 0.3)
+Height: much better (`fits/pine_bark_vs.png`): broad irregular scales with ragged edges and dark gaps,
+much closer to the photograph; the scales still end in points at the bottom. In the game viewer
+(`bark_view --kind=2 --compare`, baked pine on the right) the TRUNK reads as pine-like scales but its
+colour is a pale grey-green against the photograph's red-brown with orange scale faces: the colour model
+(mean + ramp by height) cannot give the two-tone scales (orange tops, dark grey gaps). Kept as
+photograph in the game. Next for pine: a colour ramp in two hues chosen by flake height AND flake id
+(each flake a tone), taken from the photo by fitting the neural loss on RGB (improvement 3 in this file).
