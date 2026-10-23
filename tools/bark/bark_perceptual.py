@@ -67,6 +67,56 @@ def grams(net, pictures):
     return out
 
 
+def feature_sets(net, pictures):
+    """The VGG features at each layer as point sets: a list of (N, C, H*W)."""
+    mean = torch.tensor([0.485, 0.456, 0.406], device=DEVICE).view(1, 3, 1, 1)
+    std = torch.tensor([0.229, 0.224, 0.225], device=DEVICE).view(1, 3, 1, 1)
+    x = (shaded(pictures) - mean) / std
+    out = []
+    for index, layer in enumerate(net):
+        x = layer(x)
+        if index in LAYERS:
+            out.append(x.reshape(x.shape[0], x.shape[1], -1))
+        if index >= max(LAYERS):
+            break
+    return out
+
+
+SW_PROJECTIONS = 64
+SW_QUANTILES = 128
+
+
+def sw_directions(sets):
+    """Fixed random unit directions in feature space, one set for each layer."""
+    generator = torch.Generator(device="cpu").manual_seed(11)
+    dirs = []
+    for features in sets:
+        d = torch.randn(features.shape[1], SW_PROJECTIONS, generator=generator)
+        dirs.append((d / d.norm(dim=0, keepdim=True)).to(DEVICE))
+    return dirs
+
+
+def sw_quantiles(sets, dirs):
+    """For each layer the sorted projections of the features on the directions, kept at SW_QUANTILES quantiles:
+    (N, SW_PROJECTIONS, SW_QUANTILES). A sliced Wasserstein distance is the mean squared difference of these between
+    two pictures (Heitz et al. 2021 use it instead of Gram matrices: it compares the whole distribution of features)."""
+    out = []
+    for features, d in zip(sets, dirs):
+        projected = torch.einsum("ncp,cd->ndp", features, d)
+        sorted_values, _ = torch.sort(projected, dim=-1)
+        positions = torch.linspace(0, projected.shape[-1] - 1, SW_QUANTILES, device=features.device).long()
+        out.append(sorted_values[..., positions])
+    return out
+
+
+def sw_distance(generated, target):
+    """(N,) sliced Wasserstein distance of generated quantiles to the target's (broadcast over N), relative."""
+    total = 0.0
+    for g, t in zip(generated, target):
+        total = total + ((g - t) ** 2).mean(dim=(1, 2)) / ((t ** 2).mean() + 1e-6)
+    return total
+
+
 def detail_profile(pictures):
     """What the Gram matrices miss, per picture (N, 1, H, W) -> (N, 9): the percentiles (10, 50, 90) of the local
     standard deviation at 3 window sizes (4, 12, 36 px) and how UNEVEN that detail is over the picture (the spread
