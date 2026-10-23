@@ -231,3 +231,14 @@ atlas PNG stays for them. A pragmatic stopping point: 2 of 6 barks replaced, the
 - AGENTS.md lesson: judge the look the eye sees (lit relief), not the raw heights.
 Next: the batch refit of the barks with the lit loss; GLSL port + baker for the rock generator;
 then wood planks, soil, leaf litter, cliffs, leaves.
+
+## Round 12 (2026-10-23): refit with the lit loss
+- pine: overlapping rhombic scales with dark gaps and the right scale and layering, better than before
+  but still lens/diamond-shaped where the photo has rounded rectangles with ragged side edges.
+- ash: ridged flakes with dark gaps, closer in character, but too uniform and with vertical bright
+  streak artefacts (the fibre/groove terms) that the photo does not have.
+- cedar: a failed fit (a thin strip of diamonds, then fog) - the outlier terms and the lit loss
+  conflict; cedar remains a photograph.
+All three remain photographs in the game. The generator's flake outline needs a "rounded rectangle with
+ragged sides" option (a superellipse with exponent 3 to 6 and a noise on its half width) to match pine
+and ash; the diamond (|v|^tip) and the `block` blend are not enough. Next: that outline, then refit.
