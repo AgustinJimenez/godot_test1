@@ -49,6 +49,11 @@ PARAMS = {
     "base_stretch": 3.0,  # how much longer they are along the trunk
     "flake_cover": 1.2,   # share of the surface that carries flakes (1.2: all of it)
     "flake_amp": 1.0,     # the flakes' height
+    "fiber_amp": 0.0,     # thin parallel strands along the trunk (stringy barks: cedar)
+    "fiber_cm": 1.0,      # strand width
+    "fiber_seg_cm": 25.0, # length of a strand's pieces
+    "fiber_break": 0.2,   # share of the pieces that are missing
+    "fiber_var": 0.6,     # how much strands differ in height
 }
 RANGES = {
     "cell_cm": (0.5, 12.0), "cell_aspect": (1.0, 4.0), "len": (0.7, 3.0), "wid": (0.4, 1.6),
@@ -60,6 +65,8 @@ RANGES = {
     "split_w": (0.03, 0.3), "split_cover": (0.0, 0.7), "cut_depth": (0.0, 1.0),
     "base_amp": (0.0, 1.0), "base_cm": (3.0, 40.0), "base_stretch": (1.0, 6.0), "flake_cover": (0.0, 1.2),
     "flake_amp": (0.1, 1.2),
+    "fiber_amp": (0.0, 0.3), "fiber_cm": (0.3, 1.2), "fiber_seg_cm": (6.0, 80.0), "fiber_break": (0.0, 0.6),
+    "fiber_var": (0.0, 1.0),
 }
 
 
@@ -137,6 +144,18 @@ def cuts(x, y, p, seed):
     return 1.0 - p["cut_depth"] * np.maximum(groove, split)
 
 
+def fibres(x, y, p, seed):
+    """Thin parallel strands along the trunk, each in pieces of its own length, some missing."""
+    u = x / p["fiber_cm"] + (value_noise(x / 7.0, y / 40.0, seed + 81.0) - 0.5) * 0.8
+    lane = np.floor(u)
+    f = u - lane
+    profile = np.sin(np.pi * f) ** 0.7
+    piece = np.floor(y / p["fiber_seg_cm"] + hash2(lane, 0.0, seed + 83.0))
+    present = (hash2(lane, piece, seed + 85.0) >= p["fiber_break"]).astype(np.float64)
+    tone = hash2(lane, piece, seed + 87.0)
+    return present * profile * (1.0 - p["fiber_var"] + p["fiber_var"] * tone)
+
+
 def bark_height(x_cm, y_cm, p, seed=1.0):
     wx = (value_noise(x_cm / p["warp_scale_cm"], y_cm / p["warp_scale_cm"], seed + 11.0) - 0.5) * 2.0
     wy = (value_noise(x_cm / p["warp_scale_cm"] + 31.7, y_cm / p["warp_scale_cm"], seed + 13.0) - 0.5) * 2.0
@@ -147,6 +166,7 @@ def bark_height(x_cm, y_cm, p, seed=1.0):
     base = p["base_amp"] * (value_noise(x_cm / p["base_cm"], y_cm / (p["base_cm"] * p["base_stretch"]), seed + 73.0)
                             + 0.5 * value_noise(x_cm / (p["base_cm"] * 0.4), y_cm / (p["base_cm"] * 0.4 * p["base_stretch"]), seed + 75.0))
     height = base + p["flake_amp"] * flakes(x, y, p, seed) * cuts(x, y, p, seed) * cover
+    height = height + p["fiber_amp"] * fibres(x_cm, y_cm, p, seed)
     fine = value_noise(x_cm / p["fine_cm"], y_cm / (p["fine_cm"] * 2.0), seed + 29.0)
     return height + (fine - 0.5) * p["fine_amp"] * (height > 0.05)
 

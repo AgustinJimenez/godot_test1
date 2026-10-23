@@ -3,10 +3,10 @@ render_mode blend_disabled; // the height is written in alpha: no blending
 // The procedural bark, drawn once into a tile (BarkBaker): colour in rgb, height in alpha. The same flake
 // model as tools/bark/procedural_bark.py (the reference the numbers were fitted with), made to tile: every
 // scale is rounded to a whole number of repeats in the tile, and the random choices of a cell are
-// hashed from the cell wrapped round the tile. The 32 numbers are the fit of one photographed bark
+// hashed from the cell wrapped round the tile. The 37 numbers are the fit of one photographed bark
 // (bark_fits.gd, made by tools/bark/export_fit.py); the order is BarkFits.KEYS.
 
-uniform float p[32];
+uniform float p[37];
 uniform float tile_cm = 100.0;
 uniform vec2 height_range = vec2(0.0, 1.0);
 uniform vec3 ramp[8];
@@ -113,6 +113,22 @@ float cuts(vec2 at, float s) {
 	return 1.0 - p[26] * max(groove, split);
 }
 
+float fibres(vec2 at, float s) {
+	float fc = whole(p[33]);
+	float lanes = tile_cm / fc;
+	float fs = whole(p[34]);
+	float rows = tile_cm / fs;
+	float u = at.x / fc + (vnoise(at, 7.0, 40.0, s + 81.0) - 0.5) * 0.8;
+	float lane = floor(u);
+	float f = u - lane;
+	float profile = pow(sin(3.14159265 * f), 0.7);
+	float piece = floor(at.y / fs + hashw(lane, 0.0, s + 83.0, vec2(lanes, 1.0)));
+	vec2 per = vec2(lanes, rows);
+	float present = hashw(lane, piece, s + 85.0, per) >= p[35] ? 1.0 : 0.0;
+	float tone = hashw(lane, piece, s + 87.0, per);
+	return present * profile * (1.0 - p[36] + p[36] * tone);
+}
+
 vec2 bark(vec2 at, float s) {
 	float wx = (vnoise(at, p[16], p[16], s + 11.0) - 0.5) * 2.0;
 	float wy = (vnoise(at + vec2(31.7, 0.0), p[16], p[16], s + 13.0) - 0.5) * 2.0;
@@ -120,7 +136,7 @@ vec2 bark(vec2 at, float s) {
 	vec2 fl = flakes(w, s);
 	float cover = 1.0 - smoothstep(p[30] - 0.08, p[30] + 0.08, vnoise(at, 18.0, 40.0, s + 71.0));
 	float base = p[27] * (vnoise(at, p[28], p[28] * p[29], s + 73.0) + 0.5 * vnoise(at, p[28] * 0.4, p[28] * 0.4 * p[29], s + 75.0));
-	float h = base + p[31] * fl.x * cuts(w, s) * cover;
+	float h = base + p[31] * fl.x * cuts(w, s) * cover + p[32] * fibres(at, s);
 	float fine = vnoise(at, p[18], p[18] * 2.0, s + 29.0);
 	return vec2(h + (fine - 0.5) * p[17] * (h > 0.05 ? 1.0 : 0.0), fl.y);
 }

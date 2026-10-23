@@ -200,3 +200,17 @@ Neither goes into the game. State of the six slots: oak and maple procedural (in
 leaves), ash (too rough), palm (bands) and cedar (fibres) stay photographs. The generator now has two
 families (flakes, swelling + flakes); a third (fibres) and a fourth (rings) are the next two additions,
 each a handful of parameters with the same fit and the same side-by-side check.
+
+## Round 10 (2026-10-22): a fibre family (cedar), three fits, not good enough
+Five new parameters (fiber_amp, fiber_cm, fiber_seg_cm, fiber_break, fiber_var): thin parallel strands
+along the trunk in pieces of their own length, some missing; in numpy, numba (identical) and GLSL
+(`bark_bake.gdshader` has 37 numbers). The cedar fit now reproduces the photograph's dark fibrous
+background, but every fit adds a few long bright strips or blocks that the photo does not have: with wide
+fibres they were blocks (loss 1.15), with narrow ones thin bright lines (1.24), with the amplitude capped
+wide pale ribbons (1.60). The optimiser uses them to imitate the photo's few bright breaks; they cost the
+look. Ideas: cap the piece length (fiber_seg_cm 6 to 25, the photo's strands are 5 to 20 cm), cap
+base_stretch, and penalise outliers in the loss (the brightest 0.5 % of the height picture).
+Not in the game: cedar stays a photograph. The fibres/ring families exist but are not yet judged good.
+State: oak and maple are procedural in the game; ash, pine, palm and cedar remain photographs, and the
+atlas PNG stays for them. A pragmatic stopping point: 2 of 6 barks replaced, the pipeline, the viewer
+(arrow keys) and the lessons written down; the other four are each a few more rounds of the same loop.

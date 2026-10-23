@@ -62,6 +62,7 @@ def _flakes_at(px, py, q, seed):
     groove_cm, groove_w, groove_cover, split_cm, split_w, split_cover, cut_depth = (
         q[20], q[21], q[22], q[23], q[24], q[25], q[26])
     base_amp, base_cm, base_stretch, flake_cover, flake_amp = q[27], q[28], q[29], q[30], q[31]
+    fiber_amp, fiber_cm, fiber_seg, fiber_break, fiber_var = q[32], q[33], q[34], q[35], q[36]
     wx = (_noise(px / warp_scale, py / warp_scale, seed + 11.0) - 0.5) * 2.0
     wy = (_noise(px / warp_scale + 31.7, py / warp_scale, seed + 13.0) - 0.5) * 2.0
     x = px + wx * warp_cm
@@ -115,6 +116,14 @@ def _flakes_at(px, py, q, seed):
     base = base_amp * (_noise(px / base_cm, py / (base_cm * base_stretch), seed + 73.0)
                        + 0.5 * _noise(px / (base_cm * 0.4), py / (base_cm * 0.4 * base_stretch), seed + 75.0))
     best = base + flake_amp * best * cover
+    fu = px / fiber_cm + (_noise(px / 7.0, py / 40.0, seed + 81.0) - 0.5) * 0.8
+    flane = np.floor(fu)
+    ff = fu - flane
+    profile = np.sin(np.pi * ff) ** 0.7
+    piece = np.floor(py / fiber_seg + _hash(flane, 0.0, seed + 83.0))
+    present = 1.0 if _hash(flane, piece, seed + 85.0) >= fiber_break else 0.0
+    ftone = _hash(flane, piece, seed + 87.0)
+    best = best + fiber_amp * present * profile * (1.0 - fiber_var + fiber_var * ftone)
     fine = _noise(px / fine_cm, py / (fine_cm * 2.0), seed + 29.0)
     if best > 0.05:
         best += (fine - 0.5) * fine_amp
