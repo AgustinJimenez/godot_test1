@@ -144,3 +144,7 @@ with mortar gaps), not a natural cliff; my pick was wrong. The rock generator ga
 long cracks: not a wall. A masonry family (courses of rectangles with random widths, per-stone tone, rounded
 corners, mortar depth) would fit the building walls; natural cliffs should be fitted from rock photos with strata
 (none of the six downloaded rocks has strong strata). Not built.
+
+Masonry generator (`tools/bark/masonry_gen.py`, 15 parameters): first fit on rock_wall_17 (loss 1.52): the right
+structure (courses, stones of different widths, mortar, rounded edges) but stones twice too big and too regular
+(near rectangles of one size); sizes capped (course <= 22 cm, stone <= 38 cm, more variation forced) and refitting.
