@@ -62,12 +62,16 @@ func make_array(all_fits := false) -> Texture2DArray:
 	var fits := BarkFits.fits()
 	# only the barks whose procedural look has been judged as good as the photograph (willow so far;
 	# pine reads as leaves and ash is too rough, see AGENT_TASKS/085)
+	var plate_images := {}
 	var baked := {"bark_willow_02": 0, "trident_maple_bark": 3, "japanese_cedar_bark": 5}
 	if all_fits: # (the viewer: every fitted bark, to compare with the photographs)
-		baked = {"bark_willow_02": 0, "pine_bark": 1, "tree_bark_03": 2, "trident_maple_bark": 3,
+		baked = {"bark_willow_02": 0, "tree_bark_03": 2, "trident_maple_bark": 3,
 				"japanese_cedar_bark": 5}
+		var plates := PlateBaker.new() # (the pine: plates side by side, not flakes)
+		add_child(plates)
+		plate_images[1] = await plates.bake("pine_bark")
 	for slot in 6:
-		var image: Image = null
+		var image: Image = plate_images.get(slot)
 		for name: String in baked:
 			if baked[name] == slot and fits.has(name):
 				image = await bake(name)
