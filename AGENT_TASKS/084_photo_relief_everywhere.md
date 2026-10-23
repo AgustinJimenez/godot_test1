@@ -128,3 +128,9 @@ Next, by value: (1) the hybrid (photo base tile + procedural per-tree variation)
 at; (2) wire the litter and wood tiles where they have no photograph (a new `litter` layer in planet_ground,
 building planks); (3) fit a colour model on lit RGB in the plant shader; (4) leaves (needs reference photos
 downloaded: the user's leaf photos are not on disk).
+
+## Soil generator (2026-10-23): `tools/bark/soil_gen.py`
+Fine soil: clods + grain + dust at three scales, sparse pebbles, hair twigs, crumbs (16 parameters, numba 0.02 s).
+First fit on forest_ground_05 (loss 0.66): dark speckled ground with pebbles: the right family, but the twigs
+are bold straight sticks and the clod noise shows its grid. Twigs and pebbles capped and refitting. Not in the
+game (the ground's soil layer is planet_ground's scans: a baked tile would be one more `scan_*`).
