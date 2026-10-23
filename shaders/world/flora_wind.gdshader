@@ -202,6 +202,35 @@ int photo_layer(int kind) {
 	return kind == 0 ? 0 : (kind == 2 ? 1 : (kind == 3 ? 2 : (kind == 4 ? 3 : (kind == 5 ? 4 : (kind == 6 ? 5 : -1)))));
 }
 
+uniform bool stoch_tiling = false; // the photo is blended from three randomly shifted copies (no visible repeat; a test, AGENT_TASKS/086)
+
+vec2 stoch_offset(vec2 cell, float k) {
+	return fract(sin(vec2(dot(cell, vec2(127.1, 311.7)) + k, dot(cell, vec2(269.5, 183.3)) + k)) * 43758.5453);
+}
+
+// Three taps on a skewed triangle grid, each shifted its own way, blended with weights that keep the variance
+// (histogram-preserving blending, Heitz and Neyret; without the Gaussian pre-transform: the contrast is a little low).
+vec4 photo_tap(vec2 uv, float layer, float lod) {
+	if (!stoch_tiling) {
+		return textureLod(bark_photo, vec3(uv, layer), lod);
+	}
+	vec2 sk = vec2(uv.x - uv.y * 0.57735027, uv.y * 1.15470054) * 2.0;
+	vec2 b = floor(sk);
+	vec2 t = sk - b;
+	float sum = t.x + t.y;
+	vec2 c0 = sum < 1.0 ? b : b + vec2(1.0);
+	vec2 c1 = sum < 1.0 ? b + vec2(0.0, 1.0) : b + vec2(1.0, 0.0);
+	vec2 c2 = sum < 1.0 ? b + vec2(1.0, 0.0) : b + vec2(0.0, 1.0);
+	vec3 w = sum < 1.0 ? vec3(1.0 - sum, t.y, t.x) : vec3(sum - 1.0, 1.0 - t.y, 1.0 - t.x);
+	vec4 a = textureLod(bark_photo, vec3(uv + stoch_offset(c0, 1.0), layer), lod);
+	vec4 d = textureLod(bark_photo, vec3(uv + stoch_offset(c1, 1.0), layer), lod);
+	vec4 e = textureLod(bark_photo, vec3(uv + stoch_offset(c2, 1.0), layer), lod);
+	vec4 mixed = a * w.x + d * w.y + e * w.z;
+	float keep = inversesqrt(dot(w, w));
+	vec4 mean = vec4(0.4, 0.4, 0.4, 0.5);
+	return mean + (mixed - mean * (w.x + w.y + w.z)) * keep;
+}
+
 // The photo at a place on the trunk (aa: the way round 0..1, metres along). It tiles a whole number of times round the trunk,
 // each tree shifted its own way, and is cut to the pixel's size by the mip level.
 vec4 photo_sample(vec2 aa, float radius, vec2 style, int layer) {
@@ -217,7 +246,7 @@ vec4 photo_sample(vec2 aa, float radius, vec2 style, int layer) {
 	vec2 uv = vec2(aa.x * count + style.x * 7.0, aa.y / (tile.y * stretch) + style.y * 13.0);
 	float texel = tile.x * stretch / 1024.0;
 	float lod = clamp(log2(max(view_dist * 0.0012 / texel, 1.0)), 0.0, 9.0);
-	return textureLod(bark_photo, vec3(uv, float(layer)), lod);
+	return photo_tap(uv, float(layer), lod);
 }
 
 float photo_height(vec2 aa, float radius, vec2 style, int layer, out float crack, out float tone) {

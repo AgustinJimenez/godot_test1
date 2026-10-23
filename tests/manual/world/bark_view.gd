@@ -64,6 +64,8 @@ func _ready() -> void:
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--kind="):
 			FloraMeshes.material().set_shader_parameter(&"bark_force", float(argument.get_slice("=", 1)))
+		if argument == "--stoch": # (the photographs blended from three shifted copies: AGENT_TASKS/086)
+			FloraMeshes.material().set_shader_parameter(&"stoch_tiling", true)
 		if argument.begins_with("--debug="):
 			FloraMeshes.material().set_shader_parameter(&"bark_debug", float(argument.get_slice("=", 1)))
 	_materials = [FloraMeshes.material()]

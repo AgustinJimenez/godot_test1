@@ -132,6 +132,8 @@ func target() -> Node3D:
 ## under the target and the planet's coarse shape are what is made first, however far away.
 ## The procedural barks and rocks are drawn once into the plant shader (photo atlases till then).
 func _bake_the_bark() -> void:
+	if OS.has_environment("PLANET_STOCH_BARK"): # (a test: AGENT_TASKS/086)
+		FloraMeshes.material().set_shader_parameter(&"stoch_tiling", true)
 	if OS.has_environment("PLANET_PROCEDURAL_LITTER") and DisplayServer.get_name() != "headless":
 		var litter := GroundBaker.new() # (the forest floor's leaf scan from the fitted generator)
 		add_child(litter)

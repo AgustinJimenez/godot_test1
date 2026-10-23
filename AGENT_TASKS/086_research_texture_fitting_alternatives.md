@@ -33,3 +33,18 @@ pictures got worse. The method, not the numbers, is the problem.
   fitted by gradient descent in PyTorch, as MATch does.
 
 Licence note: papers are for learning; write the code from scratch (same rule as the Unreal source study in 083).
+
+## Result of the in-game test of B (2026-10-23)
+- `stoch_tiling` uniform in `flora_wind.gdshader` (`photo_tap`: three taps, skewed triangle grid, variance-keeping
+  weights), switched by `PLANET_STOCH_BARK=1` (game) or `--stoch` (`bark_view.tscn`). Default off.
+- **Performance** (forest walk 30 s, photographs for every bark, `planet_lab.tscn -- --plants --grounded --forest-walk=30
+  --fixed-fps 60`): GPU 13.6 ms avg without, 14.7 ms with (+1.1 ms, about 8 %); frame rate 54.6 against 50.7.
+  Affordable for a few species, not for everything at once.
+- **Likeness**: the plain version (no Gaussian pre-transform, an assumed mean of 0.4) is WRONG in the game: the bark
+  turns black and red, contrast blown. Heitz and Neyret's method needs the atlas Gaussianised first and an inverse LUT
+  after the blend; without it the variance correction pulls everything towards the assumed mean. The Python prototype
+  (`stochastic_tile.py`) does it right (rank transform per channel) and looks right. Next step: write the
+  Gaussianised atlas (store the rank-Gaussian values, 8 bit is enough at 256 px) plus a 1D LUT per channel and the
+  pine's histogram, then the shader blends the Gaussian values and maps back through the LUT.
+- Not adopted. Interaction to check: the parallax march reads the height many times, so tap the 3-blend only for the
+  colour and keep one tap for the height march (the height can be blended once at the hit point).
