@@ -632,25 +632,34 @@ void fragment() {
 			pom_normal = normalize(vec3(-slope.x, -slope.y, 1.0));
 			pom_normal = normalize(mix(vec3(0.0, 0.0, 1.0), pom_normal, 0.85 * near + 0.15));
 			has_pom = true;
-			// the colour: plates lighter, cracks and the low ground between them dark, each plate its own tone
-			float shade = mix(0.4, 1.5, smoothstep(0.1, 0.9, h0)) * mix(0.35, 1.0, crack) * (0.78 + 0.4 * tone);
-			shade *= 0.85 + 0.3 * noise3(vec3(aa.x * 40.0, aa.y * 9.0, tone * 7.0));
-			paint = mix(paint, vec3(0.34, 0.3, 0.26) * (0.55 + 0.9 * tone), smoothstep(0.4, 0.85, h0) * 0.55 * trunk * realism); // (the weathered tops of the plates)
-			paint *= mix(1.0, shade * 1.4, realism); // (lighter: the vertex brown alone made every trunk near black)
-			// (as in photographed bark: the crevices are warmer and redder, and the trunk is mottled in patches a
-			// hand to a forearm across, on top of the plates' own tones)
-			paint *= mix(vec3(1.0), vec3(1.28, 0.94, 0.78), (1.0 - crack) * 0.55 * realism * trunk);
-			float mottle = noise3(vec3(aa.x * radius * 6.0, aa.y * 2.2, bark_style.y * 13.0 + 3.0));
-			paint *= mix(1.0, 0.8 + 0.4 * mottle, realism * trunk);
+			float shade = 1.0;
+			int photo_kind = photo_layer(int(bark_kind + 0.5));
+			if (photo_kind >= 0) {
+				// the picture's own colour (the photograph, or the bark baked from its fit): each tree a little lighter or darker
+				paint = photo_sample(aa, radius, bark_style, photo_kind).rgb * (0.85 + 0.3 * bark_style.x);
+				shade = mix(0.7, 1.2, h0);
+			} else {
+				// the colour: plates lighter, cracks and the low ground between them dark, each plate its own tone
+				float shade = mix(0.4, 1.5, smoothstep(0.1, 0.9, h0)) * mix(0.35, 1.0, crack) * (0.78 + 0.4 * tone);
+				shade *= 0.85 + 0.3 * noise3(vec3(aa.x * 40.0, aa.y * 9.0, tone * 7.0));
+				paint = mix(paint, vec3(0.34, 0.3, 0.26) * (0.55 + 0.9 * tone), smoothstep(0.4, 0.85, h0) * 0.55 * trunk * realism); // (the weathered tops of the plates)
+				paint *= mix(1.0, shade * 1.4, realism); // (lighter: the vertex brown alone made every trunk near black)
+				// (as in photographed bark: the crevices are warmer and redder, and the trunk is mottled in patches a
+				// hand to a forearm across, on top of the plates' own tones)
+				paint *= mix(vec3(1.0), vec3(1.28, 0.94, 0.78), (1.0 - crack) * 0.55 * realism * trunk);
+				float mottle = noise3(vec3(aa.x * radius * 6.0, aa.y * 2.2, bark_style.y * 13.0 + 3.0));
+				paint *= mix(1.0, 0.8 + 0.4 * mottle, realism * trunk);
+			}
 			if (bark_debug > 0.5) {
 				paint = bark_debug > 1.5 ? vec3(tone, crack, h0) : vec3(h0);
 			}
 			// lichen and moss on the plates (grey-green crusts, on some trees orange ones), moss low on the damp foot
 			float lichen_noise = noise3(vec3(aa.x * 9.0, aa.y * 2.2, bark_style.x * 20.0) + 11.0);
 			float crust = smoothstep(0.58, 0.7, lichen_noise) * smoothstep(0.35, 0.7, h0) * trunk;
-			paint = mix(paint, vec3(0.2, 0.24, 0.17) * (0.8 + 0.5 * tone), crust * 0.7 * realism);
+			float own = photo_kind >= 0 ? 0.35 : 1.0; // (a photographed bark already has its lichen)
+			paint = mix(paint, vec3(0.2, 0.24, 0.17) * (0.8 + 0.5 * tone), crust * 0.7 * realism * own);
 			float orange = smoothstep(0.62, 0.74, noise3(vec3(aa.x * 14.0, aa.y * 3.5, 4.0 + bark_style.y * 9.0))) * smoothstep(0.55, 0.8, bark_style.x);
-			paint = mix(paint, vec3(0.5, 0.17, 0.03) * (0.7 + 0.5 * tone), orange * smoothstep(0.3, 0.8, h0) * 0.8 * realism * trunk);
+			paint = mix(paint, vec3(0.5, 0.17, 0.03) * (0.7 + 0.5 * tone), orange * smoothstep(0.3, 0.8, h0) * 0.8 * realism * trunk * own);
 			float damp = noise3(vec3(world_pos.xz * 0.6, world_pos.y * 0.3));
 			float moss = smoothstep(0.5, 0.72, damp + (1.6 - obj_pos.y) * 0.18) * smoothstep(2.4, 0.2, obj_pos.y) * trunk;
 			paint = mix(paint, vec3(0.1, 0.2, 0.05) * (0.7 + 0.6 * shade), moss * realism * (0.4 + 0.5 * crack));

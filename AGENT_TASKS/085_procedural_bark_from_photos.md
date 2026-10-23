@@ -371,3 +371,17 @@ as `h0` and the colour) covers the baked colour: the baked heights have a differ
 (alpha_map matches mean and spread only). Next: in `bark_view` use `--debug=` (bark_debug 1: the height as grey, 2: the
 cells) to compare the heights, then skip the lichen paint for baked kinds (it duplicates what the photo colour
 already holds) or scale it by the baked tile's own lichen share.
+
+Round 25 (2026-10-23): A BUG THAT HID EVERY COMPARISON: the plant shader never used the bark picture's COLOUR.
+My first photo integration edit for the colour (`paint = photo_sample(...).rgb`) had silently not applied (the perl
+pattern did not match; only the height was wired), so every "photograph" and every "baked bark" trunk was drawn with
+the vertex brown shaded by the picture's HEIGHT plus the shader's lichen: the photographs never showed their own
+colour, which is why the pine looked pale grey-green on both sides and why the colour model, the palette and the
+ramp seemed to do nothing. Fixed: the colour of the picture is now the paint (`photo_kind >= 0`: rgb times a
+per-tree tone, shade from the height), the lichen and orange paint is 35 % where the picture already has its own.
+Result (`cmp16_k2.png`, `cmp16_k0.png`): the photographed pine is red-brown with orange scales (as the photograph),
+the baked pine has orange and grey scales (palette), the baked oak is grey-brown like the photographed one.
+Forest lab view 70 fps, GPU 14.2 ms; planet_check and the visual check pass. This is the biggest visual change of
+the session for every tree: bark now has the photographs' real colours.
+Lesson: verify that an edit applied (grep the result) before judging what it does; a "no effect" in a fit is a
+signal that the pipeline never reached the screen.
