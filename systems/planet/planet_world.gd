@@ -154,6 +154,8 @@ func _bake_the_bark() -> void:
 	var array: Texture2DArray = await baker.make_array()
 	FloraMeshes.material().set_shader_parameter(&"bark_photo", array)
 	FloraMeshes.material().set_shader_parameter(&"tall_slot", 1.0) # (the baked cedar is square)
+	if OS.has_environment("PLANET_PROCEDURAL_PALM"):
+		FloraMeshes.material().set_shader_parameter(&"tall_palm", 1.0) # (so are the baked rings)
 	baker.queue_free()
 	if OS.has_environment("PLANET_PROCEDURAL_ROCKS"): # (not good enough yet: AGENT_TASKS/084)
 		var rocks := RockBaker.new()
