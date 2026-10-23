@@ -5,6 +5,8 @@ extends Node
 ## in alpha): the photographed scan can then go. Add to the tree and `await bake_litter()`.
 
 const SHADER := preload("res://shaders/world/ground_maps.gdshader")
+## the litter tile in metres (the fit was made on 2.3 m of ground)
+const LITTER_TILE_M := 2.3
 
 
 ## [colour map, normal map] (Images) of the fitted leaf litter.
@@ -23,6 +25,18 @@ func bake_litter() -> Array[Image]:
 	for mode in 2:
 		maps.append(await _pass(texture, mode))
 	return maps
+
+
+## The mean colour of a colour map in linear light (the ground shader divides the scan by it).
+static func mean_linear(map: Image) -> Vector3:
+	var small := map.duplicate() as Image
+	small.resize(32, 32, Image.INTERPOLATE_LANCZOS)
+	var sum := Vector3.ZERO
+	for y in 32:
+		for x in 32:
+			var colour := small.get_pixel(x, y).srgb_to_linear()
+			sum += Vector3(colour.r, colour.g, colour.b)
+	return sum / 1024.0
 
 
 func _pass(tile: Texture2D, mode: int) -> Image:

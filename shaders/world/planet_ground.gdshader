@@ -51,6 +51,8 @@ uniform sampler2D cliff_n : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float cliff_scale = 0.33; // tiles a metre
 uniform float scan_strength : hint_range(0.0, 1.0) = 0.85;
 uniform float scan_scale = 0.7; // tiles a metre
+uniform vec3 scan_leaf_mean = vec3(0.1943, 0.1288, 0.0655); // (the leaf scan's own mean colour, linear)
+uniform float scan_leaf_size = 1.0; // the leaf scan's tile in metres, over the shared one
 uniform float scan_blend_depth : hint_range(0.02, 1.0) = 0.25; // how soft the meeting of two soils is (height blending)
 // switches for each layer of the near ground (the ground lab has a checkbox for each, to find which one is which)
 uniform bool layer_patches = true; // the soft colour patches over the soil
@@ -560,7 +562,7 @@ void fragment() {
 					} else if (soil_index == 1) {
 						scan_triplanar(scan_red_c, scan_red_n, on_planet, facing_scan, scan_scale, vec3(0.3041, 0.2007, 0.1305), ratios[1], aos[1], tilts[1], roughs[1]);
 					} else {
-						scan_triplanar(scan_leaf_c, scan_leaf_n, on_planet, facing_scan, scan_scale, vec3(0.1943, 0.1288, 0.0655), ratios[2], aos[2], tilts[2], roughs[2]);
+						scan_triplanar(scan_leaf_c, scan_leaf_n, on_planet, facing_scan, scan_scale / scan_leaf_size, scan_leaf_mean, ratios[2], aos[2], tilts[2], roughs[2]);
 					}
 					float own_height = 0.55 * aos[soil_index] + 0.45 * clamp(dot(ratios[soil_index], vec3(0.33)) * 0.5, 0.0, 1.0);
 					effective[soil_index] = own_height + 1.6 * weights[soil_index];

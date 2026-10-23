@@ -142,6 +142,10 @@ func _bake_the_bark() -> void:
 				ImageTexture.create_from_image(maps[0]))
 		PlanetTile.ground_material().set_shader_parameter(&"scan_leaf_n",
 				ImageTexture.create_from_image(maps[1]))
+		PlanetTile.ground_material().set_shader_parameter(&"scan_leaf_mean",
+				GroundBaker.mean_linear(maps[0]))
+		PlanetTile.ground_material().set_shader_parameter(&"scan_leaf_size",
+				GroundBaker.LITTER_TILE_M)
 		litter.queue_free()
 	if OS.has_environment("PLANET_PHOTO_BARK") or DisplayServer.get_name() == "headless":
 		return # (the photographs for every bark; the procedural oak is the default: AGENT_TASKS/085)
