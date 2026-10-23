@@ -292,3 +292,7 @@ not their look at close range; the photographs stay the default. Remaining ideas
 photograph as a base tile and the procedural generator as a per-tree variation overlay (broken repeats, per
 tree colour), which uses the generator where it is good (large scale variety) and the photograph where it is
 good (fine flake detail); and a differentiable generator with a loss on lit RGB renders in the plant shader.
+
+Birch (2026-10-23): Poly Haven has no birch bark; eucalyptus_bark (smooth, peeling strips) fitted as the nearest
+(`fits/eucalyptus_bark.json`): the picture has the right kind of mottle with small peeled patches but a much higher
+contrast than the photograph. Not used: birch keeps its existing procedural look (kind 1 in flora_wind.gdshader).
