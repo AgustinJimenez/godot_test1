@@ -199,4 +199,4 @@ fit's values).
   Fine irregular detail (chipped edges, sand patches, leaf veins) will not match; "close at game distance" is the target.
 - Fallback for the hard ones: a small photo base plus procedural variation (stochastic tiling, task 086): the atlas shrinks
   4-16x but does not go to zero.
-- Untested: the gravel opt-in in a gravel area (the lab test at seed 1337 was on dune sand: identical pictures, no information).
+- Untested: the gravel opt-in in a gravel area. Two lab views at seed 1337 (dune sand, and a red leaf-strewn soil at 0.7 m) never show the gravel scan; to test it pick a spot whose soil class is grey gravel (see the scan choice in `planet_ground.gdshader`, near line 560) or force `ratios` to the gravel layer with a debug uniform.
