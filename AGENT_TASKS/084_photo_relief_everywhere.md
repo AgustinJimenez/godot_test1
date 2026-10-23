@@ -42,3 +42,14 @@ visual check pass. Not verified: rocks in the desert and snow biomes, the large 
 terrain (planet_cliff.gdshaderinc is separate), the stone of buildings.
 Lesson: a tool script that errors in `_init` does not quit by itself (it hung 8 minutes): make
 tools `quit()` on every path. Next in 084: the terrain scans / cliffs, birch, buildings.
+
+## Procedural rocks (2026-10-23, autonomous run)
+`tools/bark/rock_gen.py` (numba, 24 params) + `export_rock.py` -> `systems/world_gen/rock_fits.gd`;
+`shaders/world/rock_bake.gdshader` (tiling GLSL), `RockBaker` (bake + make_array, same as the bark),
+`PlanetWorld._bake_the_bark` now also bakes rocks. One rock fitted so far: rock_face_04 (slot 1: the brown
+cracked rock); the other five slots keep the photographs. Baked tile vs photo: blocks of a similar size
+cut by dark cracks with rubble along them; the tile reads as a more regular, sandier cousin of the photo
+(whole-number block counts make the Voronoi grid-like; lighting halos on the crack rims were clamped).
+In the rock viewer (`rock_view.tscn -- --dist=9 --baked`) the boulders look like the photographed ones.
+Next: fit the other five rocks (rock_boulder_dry, rock_08, rock_06, rock_pitted_mossy, dark_rock_02)
+with `rock_gen.py fit` (needs the photos' real sizes), export all, compare, then remove the atlas.

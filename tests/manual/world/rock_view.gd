@@ -15,6 +15,10 @@ func _ready() -> void:
 			dist = argument.substr(7).to_float()
 		if argument == "--procedural":
 			FloraMeshes.material().set_shader_parameter(&"rock_photo_on", 0.0)
+		if argument == "--baked": # (the procedural rocks baked from RockFits in the photograph's place)
+			var baker := RockBaker.new()
+			add_child(baker)
+			FloraMeshes.material().set_shader_parameter(&"rock_photo", await baker.make_array())
 	var floor_mesh := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(60.0, 30.0)

@@ -130,7 +130,7 @@ func target() -> Node3D:
 ## the point of the planet closest to it is `nearest_point(position)`, and its distance to the
 ## ground is the altitude: the tiles are chosen for that point and that height, so the ground
 ## under the target and the planet's coarse shape are what is made first, however far away.
-## The procedural barks are drawn once into the plant shader (the photo atlas shows till then).
+## The procedural barks and rocks are drawn once into the plant shader (photo atlases till then).
 func _bake_the_bark() -> void:
 	if OS.has_environment("PLANET_PHOTO_BARK") or DisplayServer.get_name() == "headless":
 		return
@@ -139,6 +139,11 @@ func _bake_the_bark() -> void:
 	var array: Texture2DArray = await baker.make_array()
 	FloraMeshes.material().set_shader_parameter(&"bark_photo", array)
 	baker.queue_free()
+	var rocks := RockBaker.new()
+	add_child(rocks)
+	var rock_array: Texture2DArray = await rocks.make_array()
+	FloraMeshes.material().set_shader_parameter(&"rock_photo", rock_array)
+	rocks.queue_free()
 
 
 func start(target: Node3D, direction := Vector3.ZERO, altitude := 0.0) -> Vector3:
