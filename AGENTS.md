@@ -970,5 +970,5 @@ Lessons from fitting bark, rock, soil and litter (2026-10-23):
 - **Loss:** the style loss must see a lit view of the height (hillshade): raw heights drift to smooth blobs. An outlier
   term in the loss made things worse (grey fog).
 - **Always** write and look at the side-by-side picture; every statistics-only or number-only success so far looked wrong.
-- **Ash:** `fit_ash.py` refits the ash with flakes turned both ways (diagonal criss-cross ridges) into `fits/tree_bark_03_ridges.json`; not in the game yet (no side-by-side judged), the ash stays a photograph.
+- **Ash:** `fit_ash.py` refits the ash with flakes turned both ways (diagonal criss-cross ridges) into `fits/tree_bark_03_ridges.json`; judged against the photo: still bristling spikes, not criss-cross ridges (the photo is long vertical ridges with cross cuts), so NOT used; the ash stays a photograph. Needs a ridge family (long grooves + cross cuts), not flakes.
 - **In the game now:** the oak, maple and cedar barks are procedural (baked at load from `bark_fits.gd`, fitted with the detail-profile loss; `PLANET_PHOTO_BARK=1` returns to the photographs); every other bark and all rocks are photographs (`PLANET_PROCEDURAL_ROCKS=1` bakes the rocks). Always compare with `bark_view.tscn` (same lichen on both trees).
