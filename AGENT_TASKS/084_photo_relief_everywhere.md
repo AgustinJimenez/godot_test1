@@ -138,3 +138,9 @@ Soil, round 2 (caps tightened, loss 0.74): dark mottled ground, sparse small bri
 the photograph's character (`fits/forest_ground_05_soilgen_vs.png`, kept as `_soilgen_good.json`). The clod
 noise still shows faint grid alignment (value noise on a square grid): rotate the lattice per octave to fix.
 The soil family works; baking and wiring it as a ground scan is the next step if wanted.
+
+Cliffs (2026-10-23): rock_wall_17 turned out to be a dry-stone WALL (rounded and rectangular stones in courses
+with mortar gaps), not a natural cliff; my pick was wrong. The rock generator gave smooth plates cut by a few
+long cracks: not a wall. A masonry family (courses of rectangles with random widths, per-stone tone, rounded
+corners, mortar depth) would fit the building walls; natural cliffs should be fitted from rock photos with strata
+(none of the six downloaded rocks has strong strata). Not built.
