@@ -312,3 +312,14 @@ Cedar with tiny elongated flakes (`fit_cedar_flakes.py`, loss 1.35): the flakes 
 one strip, the rest of the tile is foggy: the search switched the flakes off over most of the tile with
 `flake_cover` and filled the rest with the swelling. Forced `flake_cover` 1.1..1.2 (flakes everywhere) and
 `flake_amp` >= 0.6, refitting.
+
+## Round 18 (2026-10-23): the fix for the cheating search: a detail-profile loss
+`detail_profile()` in bark_perceptual.py: the 10/50/90 percentiles of the local standard deviation at 4, 12 and 36 px
+windows plus how UNEVEN the detail is over a 6 x 6 grid; added (weight 0.6) to the style loss, outlier weight back to 1.
+TEST: cedar with the `flake_cover` exploit allowed again (range 0..1.2): the search chose flake_cover 1.2 (flakes
+everywhere) by itself, loss 2.23. Picture (`cedar_flakes_vs3.png`): thin long pointed flakes over the whole tile,
+vertical like the photograph's strips: the best cedar so far (still brighter and more contrasty; the photo is
+darker with fewer bright spots). Saved as `japanese_cedar_bark_flakes_good.json`. The exploit that gave foggy
+tiles, one-strip textures, giant knot rings and blotchy swell is closed by one loss term: the lesson is to ask the
+loss for the thing the eye notices (even detail), not to cap the parameters.
+Next: refit pine, ash, willow, wood, soil, rocks with the new loss (their old fits used the cheating-prone loss).

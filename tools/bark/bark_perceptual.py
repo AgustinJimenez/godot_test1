@@ -67,6 +67,25 @@ def grams(net, pictures):
     return out
 
 
+def detail_profile(pictures):
+    """What the Gram matrices miss, per picture (N, 1, H, W) -> (N, 9): the percentiles (10, 50, 90) of the local
+    standard deviation at 3 window sizes (4, 12, 36 px) and how UNEVEN that detail is over the picture (the spread
+    of the 6 x 6 block means of the 12 px detail, over their mean). A texture that is empty over most of the tile
+    (flakes only in a strip, the rest fog) has a high unevenness and low low-percentiles: the search used to
+    exploit exactly that."""
+    out = []
+    for window in (4, 12, 36):
+        mean = torch.nn.functional.avg_pool2d(pictures, window, stride=max(window // 2, 1))
+        sq = torch.nn.functional.avg_pool2d(pictures * pictures, window, stride=max(window // 2, 1))
+        std = torch.sqrt(torch.clamp(sq - mean * mean, min=0.0))
+        flat = std.flatten(1)
+        out.append(torch.quantile(flat, torch.tensor([0.1, 0.5, 0.9], device=pictures.device), dim=1).t())
+        if window == 12:
+            blocks = torch.nn.functional.adaptive_avg_pool2d(std, 6).flatten(1)
+            unevenness = blocks.std(dim=1) / torch.clamp(blocks.mean(dim=1), min=1e-4)
+    return torch.cat(out + [unevenness.unsqueeze(1), torch.zeros_like(unevenness).unsqueeze(1)][:1], dim=1)
+
+
 def decode(vector):
     return {k: float(pb.RANGES[k][0] + np.clip(v, 0.0, 1.0) * (pb.RANGES[k][1] - pb.RANGES[k][0]))
             for k, v in zip(KEYS, vector)}
@@ -92,6 +111,7 @@ def fit(folder, name, tile_m, generations, out):
         crops.append(target_picture[:, :, y0:y0 + size, x0:x0 + size])
     target_grams = [g.mean(dim=0, keepdim=True) for g in grams(net, torch.cat(crops))]
     target_ac = pb.autocorrelation_lengths(height, cm_per_px)
+    target_profile = detail_profile(torch.cat(crops)).mean(dim=0, keepdim=True)
     target_q = np.percentile(height, [5, 50, 99.0, 99.8])
 
     def evaluate(vectors):
@@ -105,13 +125,16 @@ def fit(folder, name, tile_m, generations, out):
             # the outliers: a few very bright strips are what the search likes to add (the picture is 0..1)
             q = np.percentile(picture, [5, 50, 99.0, 99.8])
             outliers = float(np.abs(q - target_q).sum())
-            stat_loss.append(abs(np.log(max(ax, 1e-3) / max(target_ac[0], 1e-3))) + abs(np.log(max(ay, 1e-3) / max(target_ac[1], 1e-3))) + 4.0 * outliers)
+            stat_loss.append(abs(np.log(max(ax, 1e-3) / max(target_ac[0], 1e-3))) + abs(np.log(max(ay, 1e-3) / max(target_ac[1], 1e-3))) + 1.0 * outliers)
         batch = torch.stack(pictures).to(DEVICE).unsqueeze(1)
         generated = grams(net, batch)
         total = torch.zeros(len(vectors), device=DEVICE)
         for gen, tar in zip(generated, target_grams):
             total += ((gen - tar) ** 2).sum(dim=(1, 2)) / (tar ** 2).sum()
-        return [float(t) + 0.35 * s for t, s in zip(total.cpu().numpy(), stat_loss)]
+        profile = detail_profile(batch)
+        scale = torch.clamp(target_profile.abs(), min=0.01)
+        detail = (torch.abs(profile - target_profile) / scale).mean(dim=1)
+        return [float(t) + 0.35 * s + 0.6 * float(d) for t, s, d in zip(total.cpu().numpy(), stat_loss, detail.cpu().numpy())]
 
     start = encode(pb.PARAMS)
     torch.set_num_threads(limits.CORES)
