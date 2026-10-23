@@ -1,10 +1,10 @@
 shader_type canvas_item;
 render_mode blend_disabled; // the height is written in alpha: no blending
 // Procedural rock face (smooth lumps, creased valleys, rubble in the creases), drawn once into a tile (LumpBaker):
-// colour in rgb, height in alpha. The same model as tools/bark/lump_gen.py (the reference the 15 numbers were fitted
+// colour in rgb, height in alpha. The same model as tools/bark/lump_gen.py (the reference the 18 numbers were fitted
 // with, LumpFits.KEYS), made to tile: every scale is a whole number of repeats in the tile and the hashes wrap.
 
-uniform float p[15];
+uniform float p[18];
 uniform float tile_cm = 200.0;
 uniform vec3 ramp[8];
 uniform vec2 height_range = vec2(0.0, 1.0);
@@ -87,6 +87,27 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 	h += p[12] * (vnoise(at, max(p[11], 1.6), s + 17.0) - 0.5);
 	float mid = max(p[13], 2.0);
 	h += p[14] * (0.5 * vnoise(w, mid, s + 19.0) + 0.5 * vnoise(vec2(w.y * 1.3 + 5.0, w.x * 0.8), mid, s + 21.0) - 0.5);
+	// a network of straight cracks: the edges of a coarse Voronoi
+	float vn = max(floor(tile_cm / p[15] + 0.5), 1.0);
+	vec2 vu = at / tile_cm * vn;
+	vec2 vi = floor(vu);
+	float e1 = 1e9;
+	float e2 = 1e9;
+	for (int oy = -1; oy <= 1; oy++) {
+		for (int ox = -1; ox <= 1; ox++) {
+			float gx = vi.x + float(ox);
+			float gy = vi.y + float(oy);
+			vec2 f = vec2(gx + 0.15 + 0.7 * hashw(gx, gy, s + 31.0, vn), gy + 0.15 + 0.7 * hashw(gx, gy, s + 33.0, vn));
+			float d = length(vu - f);
+			if (d < e1) {
+				e2 = e1;
+				e1 = d;
+			} else if (d < e2) {
+				e2 = d;
+			}
+		}
+	}
+	h -= p[17] * (1.0 - smoothstep(0.0, p[16], e2 - e1));
 	return h;
 }
 
