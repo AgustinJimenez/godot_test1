@@ -172,3 +172,7 @@ waving cathedral grain and ring ovals, boards of different tone, thin dark seams
 and denser and its tone varies WITHIN a board (the generator's boards are flat in tone, the tone jumps at the seams).
 Saved as `oak_wood_planks_wood_good.json` (replacing the older one) for the baker. A within-board tone drift (a slow
 noise along and across the board) is the next addition.
+Wood with the within-board drift (loss 1.24): worse than the capped fit (1.16): the grain lines fade and the drift
+takes over, with dark seam bands. The previous `oak_wood_planks_wood_good.json` (22 params file: first 20 used)
+stays the wood to use; the drift parameters default to 0.15 / 30 cm there (add them to the GLSL port with the
+fit's values).

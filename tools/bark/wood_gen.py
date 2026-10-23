@@ -23,6 +23,7 @@ PARAMS = {
     "grain_cm": 0.9, "grain_amp": 0.2, "grain_wave_cm": 30.0, "grain_wave": 0.8, "grain_sharp": 1.5,
     "knot_cm": 60.0, "knot_cover": 0.3, "knot_rings": 8.0, "knot_amp": 0.2,
     "fine_amp": 0.05, "fine_cm": 0.6, "swell_amp": 0.2, "swell_cm": 40.0, "pore_amp": 0.1, "pore_cm": 0.25,
+    "drift_amp": 0.15, "drift_cm": 30.0,
 }
 RANGES = {
     "board_cm": (10.0, 24.0), "board_var": (0.0, 0.6), "seam_w": (0.01, 0.15), "seam_depth": (0.0, 0.55),
@@ -30,6 +31,7 @@ RANGES = {
     "grain_wave": (0.0, 3.0), "grain_sharp": (0.5, 4.0), "knot_cm": (25.0, 70.0), "knot_cover": (0.0, 0.5),
     "knot_rings": (3.0, 9.0), "knot_amp": (0.0, 0.12), "fine_amp": (0.0, 0.2), "fine_cm": (0.2, 2.0),
     "swell_amp": (0.0, 0.08), "swell_cm": (10.0, 40.0), "pore_amp": (0.0, 0.4), "pore_cm": (0.1, 0.8),
+    "drift_amp": (0.0, 0.5), "drift_cm": (12.0, 60.0),
 }
 KEYS = list(PARAMS.keys())
 
@@ -66,6 +68,7 @@ def _wood_at(px, py, q, seed):
     grain_cm, grain_amp, wave_cm, wave, sharp = q[5], q[6], q[7], q[8], q[9]
     knot_cm, knot_cover, knot_rings, knot_amp = q[10], q[11], q[12], q[13]
     fine_amp, fine_cm, swell_amp, swell_cm, pore_amp, pore_cm = q[14], q[15], q[16], q[17], q[18], q[19]
+    drift_amp, drift_cm = q[20], q[21]
     # boards: rows across y; each row has its own width factor (a jittered row edge)
     row_f = py / board_cm
     row = np.floor(row_f)
@@ -99,7 +102,8 @@ def _wood_at(px, py, q, seed):
     swell = swell_amp * (_noise(px / swell_cm, py / (swell_cm * 0.4), seed + 31.0) - 0.5)
     fine = fine_amp * (_noise(px / fine_cm, py / (fine_cm * 0.5), seed + 41.0) - 0.5)
     pores = pore_amp * (_noise(px / pore_cm, py / (pore_cm * 3.0), seed + 51.0) - 0.5)
-    h = 0.5 + tone + grain + swell + fine + pores + knot_amp * ring * 0.2
+    drift = drift_amp * (_noise(px / drift_cm, py / (drift_cm * 0.35), seed + 61.0) - 0.5)
+    h = 0.5 + tone + grain + swell + fine + pores + drift + knot_amp * ring * 0.2
     return h * (1.0 - seam_depth * seam)
 
 
