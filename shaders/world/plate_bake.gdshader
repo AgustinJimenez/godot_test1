@@ -81,12 +81,12 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	rim = 1.0 - smoothstep(0.0, p[7] * 2.5, edge);
 	dice = hashw(best_id.x, best_id.y, s + 19.0, per);
 	float crack = 1.0 - smoothstep(0.0, p[5], edge);
-	float lipf = smoothstep(0.0, p[7], edge);
+	float lipf = smoothstep(0.0, p[7] * 0.3, edge); // (a sharp lip: a step, not a ramp)
 	float z = 0.7 + p[8] * (hashw(best_id.x, best_id.y, s + 11.0, per) - 0.5);
 	z += p[9] * (best_d.x * (hashw(best_id.x, best_id.y, s + 13.0, per) - 0.5)
 			+ best_d.y * (hashw(best_id.x, best_id.y, s + 15.0, per) - 0.5));
 	z += p[11] * (vnoise(at, max(p[10], 1.6), s + 17.0) - 0.5); // (finer cells made the parallax a mosaic)
-	return z * (0.7 + 0.3 * lipf) * (1.0 - p[6] * crack);
+	return z * (0.55 + 0.45 * lipf) * (1.0 - p[6] * crack);
 }
 
 float norm(float h) {
