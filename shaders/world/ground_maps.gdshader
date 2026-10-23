@@ -9,12 +9,13 @@ uniform int mode = 0;
 uniform float normal_strength = 6.0;
 uniform float roughness = 0.92;
 uniform float ao_depth = 0.55;
+uniform float darken = 0.6; // (the baked colours are lifted for bark; litter in a forest is darker)
 
 void fragment() {
 	vec4 t = texture(tile, UV);
 	if (mode == 0) {
 		float ao = mix(1.0 - ao_depth, 1.0, smoothstep(0.1, 0.7, t.a));
-		COLOR = vec4(t.rgb, ao);
+		COLOR = vec4(t.rgb * darken, ao);
 	} else {
 		vec2 px = 1.0 / vec2(textureSize(tile, 0));
 		float dx = texture(tile, UV + vec2(px.x, 0.0)).a - texture(tile, UV - vec2(px.x, 0.0)).a;

@@ -11,7 +11,12 @@ const SHADER := preload("res://shaders/world/ground_maps.gdshader")
 func bake_litter() -> Array[Image]:
 	var baker := BarkBaker.new()
 	add_child(baker)
-	var tile: Image = await baker.bake("forest_leaves_03", 1.0, LitterFits.fits())
+	# the bark colour model (cavity gain, mottling) is far too strong for litter: leaves take the
+	# photograph's colours one by one and nothing else
+	var fits := LitterFits.fits()
+	fits["forest_leaves_03"]["gain"] = 0.6
+	fits["forest_leaves_03"]["mottle"] = 0.0
+	var tile: Image = await baker.bake("forest_leaves_03", 1.0, fits)
 	baker.queue_free()
 	var texture := ImageTexture.create_from_image(tile)
 	var maps: Array[Image] = []
