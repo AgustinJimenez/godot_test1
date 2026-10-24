@@ -212,6 +212,11 @@ void fragment() {
 		fb += 0.7 * (vnoise(at, 0.42, 0.5, seed + 99.0) - 0.5);
 		fb += 0.55 * grain;
 		light *= clamp(1.0 + crisp * 0.34 * fb, 0.6, 1.45);
+		// angular small bits that stay sharp when zoomed (warped noise breaks the cell grid): dark crumbs and pale scales
+		vec2 warped = at + 0.5 * vec2(vnoise(at, 1.7, 1.9, seed + 171.0) - 0.5, vnoise(at, 1.9, 1.7, seed + 173.0) - 0.5) * 2.0;
+		float crumb_d = smoothstep(0.74, 0.8, vnoise(warped, 0.6, 0.8, seed + 175.0));
+		float crumb_p = smoothstep(0.78, 0.84, vnoise(warped, 0.5, 0.7, seed + 177.0));
+		light *= 1.0 - crisp * (0.45 * crumb_d) + crisp * (0.3 * crumb_p);
 		light *= clamp(1.0 - crisp * (0.24 * pits) + crisp * (0.16 * specks) + crisp * 0.22 * streak_n, 0.6, 1.35);
 	}
 	if (fine_mottle > 0.0) {
