@@ -123,6 +123,15 @@ void fragment() {
 			+ norm(gravel(at + vec2(0.0, 0.5), seed, t1)) + norm(gravel(at - vec2(0.0, 0.5), seed, t2)));
 	float edge_shade = clamp(1.0 + 1.5 * (h - around), 0.6, 1.08);
 	vec3 stone_final = stone_cool * edge_shade * (0.9 + 0.25 * sand + 0.2 * sand2 + 0.2 * sand3);
+	// crisp grit in the earth: dark grains, pale specks and a per-pixel grain (warped noise: not grid-aligned)
+	vec2 warped = at + 0.5 * vec2(vnoise(at, 1.6, seed + 151.0) - 0.5, vnoise(at, 1.8, seed + 153.0) - 0.5) * 2.0;
+	float earth_grit = smoothstep(0.8, 0.85, vnoise(warped, 0.5, seed + 155.0));
+	float speck = smoothstep(0.82, 0.87, vnoise(warped, 0.42, seed + 157.0));
+	float pixel_grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+	earth = mix(earth, earth * 0.38, 0.7 * earth_grit);
+	earth = mix(earth, vec3(0.8, 0.76, 0.68), 0.22 * speck);
+	earth *= (1.0 + 0.22 * pixel_grain) * 1.35;
+	stone_final *= 1.0 + 0.14 * pixel_grain;
 	colour = mix(earth, stone_final, chip);
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }

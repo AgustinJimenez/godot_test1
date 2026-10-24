@@ -87,6 +87,17 @@ void fragment() {
 	colour *= 1.3 + 0.28 * g1 + 0.3 * g2 + 0.3 * g3 + 0.4 * g4;
 	colour = mix(colour, colour * 0.45, 0.65 * dark_speck);
 	colour = mix(colour, vec3(0.8, 0.76, 0.68), 0.6 * pale_speck);
+	// crisp small detail that survives zoom (flecks from a warped noise, so they are not grid-aligned) and a per-pixel grain:
+	// dark grit, pale quartz, and many small red crumbs
+	vec2 warped = at + 0.5 * vec2(vnoise(at, 1.6, seed + 151.0) - 0.5, vnoise(at, 1.8, seed + 153.0) - 0.5) * 2.0;
+	float grit = smoothstep(0.8, 0.85, vnoise(warped, 0.45, seed + 155.0));
+	float quartz = smoothstep(0.74, 0.8, vnoise(warped, 0.42, seed + 157.0));
+	float crumb = smoothstep(0.76, 0.82, vnoise(warped, 0.8, seed + 159.0)) * smoothstep(0.35, 0.65, vnoise(at, 9.0, seed + 161.0));
+	float pixel_grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+	colour = mix(colour, colour * 0.3, 0.8 * grit);
+	colour = mix(colour, vec3(0.85, 0.82, 0.74), 0.55 * quartz);
+	colour = mix(colour, red_colour * 1.05, 0.85 * crumb);
+	colour *= 1.0 + 0.24 * pixel_grain;
 	colour *= 0.85 + 0.3 * smoothstep(0.2, 0.9, h);
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }
