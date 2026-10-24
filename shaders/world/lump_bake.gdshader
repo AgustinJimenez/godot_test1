@@ -15,7 +15,7 @@ uniform float dark_share = 0.0; // how much of the surface is stained (0: none)
 uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering the lumps
 uniform float rim_lobes = 0.0; // height of smooth rimmed lobes (rock boulders in the photograph); 0: none
 uniform float wiggle_cracks = 0.0; // depth of a few long wiggly cracks (the mottled rock); 0: none
-uniform float bp[39]; // the boulder's hand-set numbers (BoulderParams in GDScript lists them, with their ranges)
+uniform float bp[42]; // the boulder's hand-set numbers (BoulderParams in GDScript lists them, with their ranges)
 #define B_COVER bp[0]
 #define B_RADIUS bp[1]
 #define B_RADIUS_VAR bp[2]
@@ -53,6 +53,9 @@ uniform float bp[39]; // the boulder's hand-set numbers (BoulderParams in GDScri
 #define B_LOBE_TINT bp[34]
 #define B_EDGE_DARK bp[35]
 #define B_COLOUR_DETAIL bp[36]
+#define B_FINE_COLOUR bp[39]
+#define B_FINE_HEIGHT bp[40]
+#define B_FINE_CM bp[41]
 uniform sampler2D swell_colour_tex : filter_linear, repeat_enable; // the photograph's colour on a coarse grid (boulder_colour.bin), without the lobe tones
 uniform sampler2D edge_tex : filter_nearest; // the sharp edge points drawn as step profiles (BoulderEdges), height offsets in the normalised height
 uniform sampler2D lobe_tex : filter_nearest; // the lobes traced from the photograph (BoulderFeatures): a row each, 2 header texels then the outline
@@ -125,6 +128,16 @@ float swell_at(vec2 at) {
 		}
 	}
 	return sum;
+}
+
+// The finest scales (about 1 cm and 0.5 cm, 6 and 3 px of the 1024 tile) which the stored layout has no data for: the photograph has
+// 24 to 48 % of its energy there and a bake without them looks low resolution. Warped value noise (the warp breaks the grid, so no
+// axis-aligned marks) plus a per-pixel hash. Roughly zero-mean, about unit spread.
+float micro_texture(vec2 at, float s) {
+	vec2 w = at + 0.45 * B_FINE_CM * vec2(vnoise(at, 1.7 * B_FINE_CM, s + 511.0) - 0.5, vnoise(at, 1.9 * B_FINE_CM, s + 513.0) - 0.5) * 2.0;
+	float n = (vnoise(w, 1.1 * B_FINE_CM, s + 501.0) - 0.5) * 1.0 + (vnoise(w, 0.55 * B_FINE_CM, s + 503.0) - 0.5) * 0.9;
+	float grain = fract(sin(dot(floor(at / tile_cm * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+	return (n + 0.35 * grain) * 2.2;
 }
 
 float guide_at(vec2 at) {
@@ -338,6 +351,9 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 	float fine_k = rim_lobes > 0.0 ? B_FINE_SIZE : 1.0; // (the boulder photograph's bumps are about twice as wide and stronger)
 	float fr = (vnoise(at, 4.5 * fine_k, s + 111.0) - 0.5) * 0.5 + (vnoise(at, 2.2 * fine_k, s + 113.0) - 0.5) * 0.4 + (vnoise(at, 1.2 * fine_k, s + 115.0) - 0.5) * 0.3;
 	h += (rim_lobes > 0.0 ? B_FINE : 0.045) * fr;
+	if (rim_lobes > 0.0 && B_FEATURES > 0.5) {
+		h += B_FINE_HEIGHT * micro_texture(at, s);
+	}
 	return h;
 }
 
@@ -411,6 +427,7 @@ void fragment() {
 		// the dark line along the downhill side of every sharp edge (cavity), a light one on the uphill side
 		float edge_value = texelFetch(edge_tex, ivec2(clamp(floor(at / tile_cm * 1024.0), vec2(0.0), vec2(1023.0))), 0).r;
 		colour *= 1.0 + clamp(B_EDGE_DARK * edge_value * 3.0, -0.3, 0.2);
+		colour *= 1.0 + B_FINE_COLOUR * micro_texture(at, seed + 7.0);
 	}
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }
