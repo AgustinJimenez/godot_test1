@@ -21,7 +21,7 @@ float hash2(float ix, float iy, float s) {
 }
 
 float hashw(float ix, float iy, float s, float per) {
-	return hash2(mod(ix, per), mod(iy, per), s);
+	return hash2(ix - per * floor(ix / per + 0.001), iy - per * floor(iy / per + 0.001), s); // (not mod(): the GPU divides as x * (1 / y) and mod(75.0, 75.0) can come out 75)
 }
 
 float vnoise(vec2 at, float scale, float s) {
