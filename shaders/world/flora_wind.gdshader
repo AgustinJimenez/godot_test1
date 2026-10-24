@@ -761,6 +761,7 @@ void fragment() {
 				int slot = rock_force >= 0.0 ? int(rock_force) : rock_slot(paint, bark_style.x);
 				vec3 n_o = normalize(obj_normal);
 				vec3 p_m = obj_pos * obj_scale;
+				vec3 p_surface = p_m; // (where the mesh is: the bump below reads the height here, not at the displaced hit, whose depth jumps from pixel to pixel)
 				float near_r = smoothstep(20.0, 8.0, length(VERTEX));
 				if (rock_pom > 0.5 && near_r > 0.02) {
 					// parallax occlusion in the rock's own space: walk the ray down through the picture's height (the three
@@ -795,7 +796,7 @@ void fragment() {
 					}
 					float lo = max(layer - step_size, 0.0);
 					float hi = layer;
-					for (int j = 0; j < 2; j++) {
+					for (int j = 0; j < 5; j++) {
 						float mid = 0.5 * (lo + hi);
 						vec3 at = last + per_layer * ((mid - lo) / step_size);
 						float h_mid = rock_height(at / tile + shift, w, layer_id, lod);
@@ -831,6 +832,9 @@ void fragment() {
 				vec4 photo = rock_sample(p_m, n_o, slot, bark_style);
 				paint = photo.rgb * (0.85 + 0.3 * bark_style.y);
 				surface_height = (photo.a - 0.5) * 0.5;
+				if (rock_pom > 0.5) {
+					surface_height = (rock_sample(p_surface, n_o, slot, bark_style).a - 0.5) * 0.5;
+				}
 				surface_bump = realism * 2.0;
 			} else {
 			paint *= mix(1.0, shade * 1.4, realism); // (lighter: the vertex brown alone made every trunk near black)
