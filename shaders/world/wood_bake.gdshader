@@ -93,12 +93,30 @@ void fragment() {
 	float h = norm(wood(at, seed));
 	// the grain lines are small steps of height: show them as light and dark (brightness follows how far a point
 	// sits above its neighbours across the board), over the boards' own tones
-	float around = 0.5 * (norm(wood(at + vec2(0.0, 0.5), seed)) + norm(wood(at - vec2(0.0, 0.5), seed)));
-	float line = h - around;
-	float t = h * 7.0;
-	int i0 = int(floor(t));
-	int i1 = min(i0 + 1, 7);
-	vec3 colour = mix(ramp[i0], ramp[i1], t - float(i0));
-	colour *= clamp(1.0 + 5.0 * line, 0.55, 1.45);
+	// the colour is painted as wood, not from the ripple height: long gentle grain lines along the board, fine pores,
+	// a tone per board and slow waves; the height (the fitted relief) only shades it a little
+	float board_cm = whole(p[0]);
+	float row = floor(at.y / board_cm);
+	float board_tone = hash2(row, 0.0, seed + 91.0) - 0.5;
+	float wave = (vnoise(at, 40.0, 14.0, seed + 93.0) - 0.5) * 3.0;
+	float lines = vnoise(vec2(at.x * 0.18, at.y + wave), 160.0, 0.55, seed + 95.0) - 0.5;
+	float lines2 = vnoise(vec2(at.x * 0.35, at.y + 0.6 * wave), 90.0, 0.3, seed + 97.0) - 0.5;
+	float pores = smoothstep(0.78, 0.95, vnoise(at, 3.2, 0.3, seed + 99.0));
+	float local_row = fract(at.y / board_cm);
+	float seam = 1.0 - smoothstep(0.0, 0.02, min(local_row, 1.0 - local_row));
+	float ring = vnoise(at, 7.0, 1.6, seed + 103.0) - 0.5;
+	float cloud = vnoise(at, 36.0, 10.0, seed + 101.0) - 0.5;
+	float tone = 1.0 + 0.28 * board_tone + 0.2 * lines + 0.14 * lines2 + 0.16 * cloud;
+	vec3 colour = ramp[4] * tone * (0.9 + 0.2 * h);
+	colour *= 1.0 + 0.2 * ring;
+	colour = mix(colour, ramp[1] * 0.75, 0.35 * pores);
+	// crisp fine grain: thin dark lines along the board at 0.2-0.5 cm, bent by the slow wave, and pore dashes
+	float fine1 = vnoise(vec2(at.x * 0.1, at.y + wave * 0.7), 120.0, 0.28, seed + 105.0) - 0.5;
+	float fine2 = vnoise(vec2(at.x * 0.06, at.y + wave * 0.5), 200.0, 0.17, seed + 107.0) - 0.5;
+	float line_hard = smoothstep(0.1, 0.22, abs(fine1)) - 0.5;
+	colour *= 1.0 - 0.16 * line_hard + 0.22 * fine1 + 0.18 * fine2;
+	float dash = smoothstep(0.82, 0.95, vnoise(at, 1.8, 0.2, seed + 109.0));
+	colour = mix(colour, colour * 0.6, 0.45 * dash);
+	colour *= 1.0 - 0.45 * seam;
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }
