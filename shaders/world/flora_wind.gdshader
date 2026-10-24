@@ -38,6 +38,7 @@ varying vec3 obj_normal; // the surface normal in the mesh's own space (a rock's
 varying float obj_scale; // metres per mesh unit (a rock's size: the picture keeps its real size)
 uniform sampler2DArray rock_photo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float rock_photo_on = 1.0; // 0: only the procedural stone
+uniform float rock_force = -1.0; // >= 0: every rock uses this slot (a tool)
 uniform sampler2DArray bark_photo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float bark_photo_on = 1.0; // 0: only the procedural bark
 uniform float bark_pom = 1.0; // 0: no parallax march and no bump shadow (a tool: what they cost)
@@ -739,7 +740,7 @@ void fragment() {
 					* (0.88 + 0.24 * patch);
 			if (rock_photo_on > 0.5) {
 				// the photographed rock: its own colour, tinted a little by the mesh's, and its height as the bump
-				int slot = rock_slot(paint, bark_style.x);
+				int slot = rock_force >= 0.0 ? int(rock_force) : rock_slot(paint, bark_style.x);
 				vec4 photo = rock_sample(obj_pos * obj_scale, normalize(obj_normal), slot, bark_style);
 				paint = photo.rgb * (0.85 + 0.3 * bark_style.y);
 				surface_height = (photo.a - 0.5) * 0.5;

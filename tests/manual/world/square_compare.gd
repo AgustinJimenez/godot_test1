@@ -3,6 +3,8 @@ extends Control
 ## (no object, no projection, same size). Run it (F6) and use:
 ##   Left / Right  the previous / next surface      H  colour <-> height lit from the upper left
 ##   G  the grooved oak, maple, cedar (PLANET_BARK_GROOVES)      Z  zoom 1x / 2x / 4x      Esc  quit
+##   O  the surface as an object (rocks: a rock, barks: a trunk), photograph left, ours right: drag turns,
+##   wheel zooms, V the next rock shape / tree     `--object`, `--variant=N`, `--orbit=yaw,pitch,distance`
 ## `--surface=N` starts on the Nth surface, `--shot=PATH` saves a picture and quits, `--height`
 ## starts on the height view, `--zoom=2` or 4.
 
@@ -26,6 +28,11 @@ const SURFACES: Array = [
 	["rock: pitted (cells)", "rock_pitted_mossy", "plate", "rock_pitted_mossy"],
 	["wood boards", "oak_wood_planks", "wood", "oak_wood_planks"],
 ]
+## surfaces that also have an object (O): the photograph name -> the rock slot / the bark kind
+const ROCK_SLOTS := {"rock_boulder_dry": 0, "rock_face_04": 1, "rock_08": 2, "rock_06": 3,
+		"rock_pitted_mossy": 4}
+const BARK_KINDS := {"bark_willow_02": 0, "trident_maple_bark": 4, "japanese_cedar_bark": 6,
+		"tree_bark_03": 3, "pine_bark": 2, "palm_tree_bark": 5}
 
 var _index := 0
 var _height_mode := false
@@ -49,6 +56,17 @@ var _save_bake := ""
 var _panel: PanelContainer
 var _sliders: Array[HSlider] = []
 var _labels: Array[Label] = []
+var _object_mode := false # O: a rock or a tree trunk instead of the flat squares
+var _object_busy := false
+var _views: Array = [] # per side: [SubViewportContainer, MeshInstance3D, Camera3D]
+var _orbit := Vector3(0.6, 0.3, 5.0) # yaw, pitch, distance (drag, wheel)
+var _target := Vector3(0.0, 0.6, 0.0)
+var _variant := 0 # V: the next rock shape / tree
+var _atlas: Image
+var _bark_array: Texture2DArray
+var _bark_grooves := false
+var _registry: SpeciesRegistry
+var _trees: Array[PlantSpecies] = []
 
 
 func _ready() -> void:
@@ -74,6 +92,8 @@ func _ready() -> void:
 	column.add_child(row)
 	_left = _square(row)
 	_right = _square(row)
+	for side in 2:
+		_views.append(_object_view(row))
 	_build_panel()
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--surface="):
@@ -87,6 +107,13 @@ func _ready() -> void:
 			for index in BoulderParams.LIST.size():
 				if BoulderParams.LIST[index][0] == pair[0]:
 					BoulderParams.values[index] = float(pair[1])
+		elif argument == "--object":
+			_object_mode = true
+		elif argument.begins_with("--variant="):
+			_variant = int(argument.get_slice("=", 1))
+		elif argument.begins_with("--orbit="): # yaw,pitch,distance
+			var numbers := argument.substr(8).split(",")
+			_orbit = Vector3(float(numbers[0]), float(numbers[1]), float(numbers[2]))
 		elif argument == "--height":
 			_height_mode = true
 		elif argument.begins_with("--save-maps="):
@@ -100,7 +127,9 @@ func _ready() -> void:
 		_extra = _extra_at_start
 		_apply()
 	if _shot != "":
-		await get_tree().create_timer(0.5).timeout
+		while _object_busy:
+			await get_tree().process_frame
+		await get_tree().create_timer(1.0 if _object_mode else 0.5).timeout
 		get_viewport().get_texture().get_image().save_png(_shot)
 		if _save_bake != "":
 			_baked.get_image().save_png(_save_bake)
@@ -122,7 +151,7 @@ func _square(parent: Control) -> TextureRect:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
-	if key == null or not key.pressed or _busy:
+	if key == null or not key.pressed or _busy or _object_busy:
 		return
 	match key.keycode:
 		KEY_RIGHT:
@@ -137,6 +166,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_apply()
 		KEY_M:
 			_cycle_map()
+		KEY_O:
+			_object_mode = not _object_mode
+			_apply()
+		KEY_V:
+			_variant += 1
+			_apply()
 		KEY_Z:
 			_zoom = 2.0 if _zoom < 1.5 else (4.0 if _zoom < 3.0 else 1.0)
 			_apply()
@@ -165,7 +200,7 @@ func _show() -> void:
 	var grooves := "ON" if OS.has_environment("PLANET_BARK_GROOVES") else "off"
 	_title.text = "%s  [%d/%d]   left: photograph   right: procedural" % [
 			entry[0], _index + 1, SURFACES.size()]
-	_title.text += "   (arrows: surface, H: colour or height, M: other maps, G: grooves %s)" % grooves
+	_title.text += "   (arrows: surface, H: colour or height, M: other maps, O: object, V: other object, G: grooves %s)" % grooves
 	var colour := Image.load_from_file(PHOTOS % [entry[1], "diff.jpg"])
 	var height := Image.load_from_file(PHOTOS % [entry[1], "disp.png"])
 	_photo_colour = ImageTexture.create_from_image(colour) if colour != null else null
@@ -264,6 +299,7 @@ func _range_of(image: Image) -> Vector2:
 
 
 func _apply() -> void:
+	_update_objects()
 	var left := _left.material as ShaderMaterial
 	var right := _right.material as ShaderMaterial
 	_left.texture = _photo_height if _height_mode else _photo_colour
@@ -351,3 +387,160 @@ func _load_extra_maps(photo_name: String) -> void:
 		var image := Image.load_from_file(PHOTOS % [photo_name, pair[1]])
 		if image != null:
 			_extra_textures.append([pair[0], ImageTexture.create_from_image(image)])
+
+
+## One side of the object view: a viewport with its own world (the same scene, another material).
+func _object_view(row: Control) -> Array:
+	var container := SubViewportContainer.new()
+	container.stretch = true
+	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	container.visible = false
+	row.add_child(container)
+	var port := SubViewport.new()
+	port.own_world_3d = true
+	port.msaa_3d = Viewport.MSAA_4X
+	container.add_child(port)
+	var ground := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(40.0, 40.0)
+	ground.mesh = plane
+	var sand := StandardMaterial3D.new()
+	sand.albedo_color = Color(0.8, 0.72, 0.52)
+	ground.material_override = sand
+	port.add_child(ground)
+	var instance := MeshInstance3D.new()
+	port.add_child(instance)
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-35.0, -40.0, 0.0)
+	sun.shadow_enabled = true
+	port.add_child(sun)
+	var camera := Camera3D.new()
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_COLOR
+	environment.background_color = Color(0.5, 0.7, 0.95)
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color(0.6, 0.65, 0.75)
+	camera.environment = environment
+	camera.fov = 40.0
+	port.add_child(camera)
+	return [container, instance, camera]
+
+
+## O: shows the surface as an object when it has one (the rock of that slot, a trunk of that bark),
+## the photograph's version left and ours right; the other surfaces keep the flat squares.
+func _update_objects() -> void:
+	var photo_name: String = SURFACES[_index][1]
+	var has_object := ROCK_SLOTS.has(photo_name) or BARK_KINDS.has(photo_name)
+	var shown := _object_mode and has_object
+	_left.visible = not shown
+	_right.visible = not shown
+	for view: Array in _views:
+		(view[0] as Control).visible = shown
+	if not shown:
+		return
+	_object_busy = true
+	if ROCK_SLOTS.has(photo_name):
+		_show_rock(ROCK_SLOTS[photo_name])
+	else:
+		await _show_tree(BARK_KINDS[photo_name])
+	_orbit_cameras()
+	_object_busy = false
+
+
+func _show_rock(slot: int) -> void:
+	FloraMeshes.detailed = true
+	WorldWind.set_realism(1.0)
+	if _atlas == null:
+		_atlas = Image.load_from_file("res://assets/textures/rock/rock_atlas.png")
+	var size := RockBaker.SIZE
+	var photo := _atlas.get_region(Rect2i((slot % 3) * size, (slot / 3) * size, size, size))
+	var ours: Image = _baked.get_image() if _baked != null else photo
+	var variants := FloraMeshes.variant_count(FloraMeshes.Kind.ROCK)
+	var mesh := FloraMeshes.mesh(FloraMeshes.Kind.ROCK, _variant % variants, true)
+	_target = Vector3(0.0, 0.5, 0.0)
+	for side in 2:
+		var material := FloraMeshes.material().duplicate() as ShaderMaterial
+		material.set_shader_parameter(&"rock_photo", _rock_array(photo if side == 0 else ours))
+		material.set_shader_parameter(&"rock_force", float(slot))
+		_put_object(side, mesh, material, Vector3.ONE * 1.4)
+
+
+## The six slots of the rock array all hold this picture (rock_force picks the slot).
+func _rock_array(image: Image) -> Texture2DArray:
+	var layer := image.duplicate() as Image
+	layer.convert(Image.FORMAT_RGBA8)
+	if layer.get_width() != RockBaker.SIZE:
+		layer.resize(RockBaker.SIZE, RockBaker.SIZE, Image.INTERPOLATE_BILINEAR)
+	layer.generate_mipmaps()
+	var layers: Array[Image] = []
+	for slot in 6:
+		layers.append(layer)
+	var array := Texture2DArray.new()
+	array.create_from_images(layers)
+	return array
+
+
+func _show_tree(kind: int) -> void:
+	FloraMeshes.detailed = true
+	WorldWind.set_realism(1.0)
+	var grooves := OS.has_environment("PLANET_BARK_GROOVES")
+	if _bark_array == null or grooves != _bark_grooves:
+		_title.text = "baking the bark of every tree ... (a few seconds)"
+		var baker := BarkBaker.new()
+		add_child(baker)
+		_bark_array = await baker.make_array(true)
+		_bark_grooves = grooves
+		baker.queue_free()
+		_title.text = "%s  [%d/%d]   left: photograph   right: procedural" % [
+				SURFACES[_index][0], _index + 1, SURFACES.size()]
+	if _registry == null:
+		_registry = SpeciesRegistry.new(1337, 60)
+		for one in _registry.species:
+			if one.is_tree():
+				_trees.append(one)
+	var chosen: PlantSpecies = _trees[_variant % _trees.size()]
+	var mesh := _registry.mesh(chosen.id, 0, true, 0)
+	_target = Vector3(0.0, 1.0, 0.0)
+	for side in 2:
+		var material := FloraMeshes.material().duplicate() as ShaderMaterial
+		material.set_shader_parameter(&"bark_style_force", Vector2(0.3, 0.4)) # (same lichen both)
+		material.set_shader_parameter(&"bark_force", float(kind))
+		if side == 1:
+			material.set_shader_parameter(&"bark_photo", _bark_array)
+			material.set_shader_parameter(&"tall_slot", 1.0) # (the baked cedar is a square metre)
+			material.set_shader_parameter(&"tall_palm", 1.0)
+		_put_object(side, mesh, material, Vector3.ONE)
+
+
+func _put_object(side: int, mesh: Mesh, material: Material, object_scale: Vector3) -> void:
+	var instance := _views[side][1] as MeshInstance3D
+	instance.mesh = mesh
+	instance.material_override = material
+	instance.scale = object_scale
+
+
+func _orbit_cameras() -> void:
+	for view: Array in _views:
+		var camera := view[2] as Camera3D
+		var offset := Vector3(sin(_orbit.x) * cos(_orbit.y), sin(_orbit.y), cos(_orbit.x) * cos(_orbit.y))
+		camera.look_at_from_position(_target + offset * _orbit.z, _target)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not _object_mode:
+		return
+	var motion := event as InputEventMouseMotion
+	if motion != null and (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		_orbit.x -= motion.relative.x * 0.01
+		_orbit.y = clampf(_orbit.y + motion.relative.y * 0.01, 0.05, 1.4)
+		_orbit_cameras()
+	var button := event as InputEventMouseButton
+	if button != null and button.pressed:
+		if button.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_orbit.z = maxf(_orbit.z * 0.9, 0.8)
+			_orbit_cameras()
+		elif button.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_orbit.z = minf(_orbit.z * 1.1, 12.0)
+			_orbit_cameras()
