@@ -63,6 +63,8 @@ var _orbit := Vector3(0.6, 0.3, 5.0) # yaw, pitch, distance (drag, wheel)
 var _target := Vector3(0.0, 0.6, 0.0)
 var _variant := 0 # V: the next rock shape / tree
 var _resolution := 1024 # X: the lump rocks baked at 1024 or 2048 pixels (the photograph stays as it is)
+var _turn := true # T: the camera turns round the object by itself (a drag turns it by hand)
+var _dragging := false
 var _pom := true # P: parallax and self-shadow on the rocks (rock_pom)
 var _pom_depth := 0.05 # [ and ]: metres the rock's whole relief is worth (rock_pom_depth)
 var _atlas: Image
@@ -77,6 +79,7 @@ func _ready() -> void:
 	var back := ColorRect.new()
 	back.color = Color(0.12, 0.12, 0.13)
 	back.set_anchors_preset(Control.PRESET_FULL_RECT)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE # (a drag on the object view must reach _unhandled_input)
 	add_child(back)
 	var column := VBoxContainer.new()
 	column.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -114,6 +117,8 @@ func _ready() -> void:
 			_object_mode = true
 		elif argument.begins_with("--res="):
 			_resolution = int(argument.get_slice("=", 1))
+		elif argument == "--no-turn":
+			_turn = false
 		elif argument == "--no-pom":
 			_pom = false
 		elif argument.begins_with("--pom-depth="):
@@ -184,6 +189,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_P:
 			_pom = not _pom
 			_apply()
+		KEY_T:
+			_turn = not _turn
 		KEY_X:
 			_resolution = 2048 if _resolution < 2000 else 1024
 			await _rebake()
@@ -221,7 +228,7 @@ func _show() -> void:
 	var grooves := "ON" if OS.has_environment("PLANET_BARK_GROOVES") else "off"
 	_title.text = "%s  [%d/%d]   left: photograph   right: procedural" % [
 			entry[0], _index + 1, SURFACES.size()]
-	_title.text += "   (arrows: surface, H: colour or height, M: other maps, O: object, V: other object, P: parallax %s ([ ] depth %.0f mm), G: grooves %s)" % [
+	_title.text += "   (arrows: surface, H: colour or height, M: other maps, O: object, V: other object, P: parallax %s ([ ] depth %.0f mm), T: turn, G: grooves %s)" % [
 			"on" if _pom else "off", _pom_depth * 1000.0, grooves]
 	var colour := Image.load_from_file(PHOTOS % [entry[1], "diff.jpg"])
 	var height := Image.load_from_file(PHOTOS % [entry[1], "disp.png"])
@@ -556,6 +563,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not _object_mode:
 		return
 	var motion := event as InputEventMouseMotion
+	_dragging = motion != null and (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0
 	if motion != null and (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 		_orbit.x -= motion.relative.x * 0.01
 		_orbit.y = clampf(_orbit.y + motion.relative.y * 0.01, 0.05, 1.4)
@@ -568,3 +576,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif button.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_orbit.z = minf(_orbit.z * 1.1, 12.0)
 			_orbit_cameras()
+
+
+## The turntable: a slow turn round the object (T stops it, a drag takes over while the button is down).
+func _process(delta: float) -> void:
+	if _object_mode and _turn and not _dragging and not _object_busy and _shot == "":
+		_orbit.x += delta * 0.35
+		_orbit_cameras()
