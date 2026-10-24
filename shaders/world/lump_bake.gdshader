@@ -15,7 +15,7 @@ uniform float dark_share = 0.0; // how much of the surface is stained (0: none)
 uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering the lumps
 uniform float rim_lobes = 0.0; // height of smooth rimmed lobes (rock boulders in the photograph); 0: none
 uniform float wiggle_cracks = 0.0; // depth of a few long wiggly cracks (the mottled rock); 0: none
-uniform float bp[49]; // the boulder's hand-set numbers (BoulderParams in GDScript lists them, with their ranges)
+uniform float bp[51]; // the boulder's hand-set numbers (BoulderParams in GDScript lists them, with their ranges)
 #define B_COVER bp[0]
 #define B_RADIUS bp[1]
 #define B_RADIUS_VAR bp[2]
@@ -60,6 +60,9 @@ uniform float bp[49]; // the boulder's hand-set numbers (BoulderParams in GDScri
 #define B_LIP_DEPTH bp[45]
 #define B_LIP_CM bp[46]
 #define B_PIT_IRREGULAR bp[48]
+#define B_CRACK_COLOUR bp[49]
+#define B_CRACK_DEPTH bp[50]
+uniform sampler2D crack_tex : filter_nearest; // the thin cracks (BoulderCracks.bin), strength 0..1 per texel
 uniform sampler2D swell_colour_tex : filter_linear, repeat_enable; // the photograph's colour on a coarse grid (boulder_colour.bin), without the lobe tones
 uniform sampler2D edge_tex : filter_nearest; // the sharp edge points drawn as step profiles (BoulderEdges), height offsets in the normalised height
 uniform sampler2D lobe_tex : filter_nearest; // the lobes traced from the photograph (BoulderFeatures): a row each, 2 header texels then the outline
@@ -360,6 +363,7 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 	h += (rim_lobes > 0.0 ? B_FINE : 0.045) * fr;
 	if (rim_lobes > 0.0 && B_FEATURES > 0.5) {
 		h += B_FINE_HEIGHT * micro_texture(at, s);
+		h -= B_CRACK_DEPTH * texelFetch(crack_tex, ivec2(clamp(floor(at / tile_cm * 1024.0), vec2(0.0), vec2(1023.0))), 0).r;
 		// rare crisp pits with a sharp lip (the photograph's height is very peaky at 1 px: kurtosis 39, a few extreme features on a calm ground)
 		float cell_cm = B_LIP_CM * 3.0;
 		float cn = max(floor(tile_cm / cell_cm + 0.5), 1.0);
@@ -454,6 +458,8 @@ void fragment() {
 		float edge_value = texelFetch(edge_tex, ivec2(clamp(floor(at / tile_cm * 1024.0), vec2(0.0), vec2(1023.0))), 0).r;
 		colour *= 1.0 + clamp(B_EDGE_DARK * edge_value * 3.0, -0.3, 0.2);
 		colour *= 1.0 + B_FINE_COLOUR * micro_texture(at, seed + 7.0);
+		float crack = texelFetch(crack_tex, ivec2(clamp(floor(at / tile_cm * 1024.0), vec2(0.0), vec2(1023.0))), 0).r;
+		colour *= 1.0 - B_CRACK_COLOUR * crack;
 	}
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }

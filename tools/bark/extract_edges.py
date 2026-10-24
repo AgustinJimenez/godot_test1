@@ -59,6 +59,13 @@ def main():
             contour = ef.snap_to_edges(np.array(lobe["contour"], np.int32).reshape(-1, 1, 2), h)
             cv2.polylines(mask, [contour], True, 1, 13)
         keep &= mask == 0
+    # leave out the thin cracks (extract_cracks.py draws those as their own crisp line; as edges they made a fuzzy band)
+    if len(sys.argv) > 5:
+        data = np.fromfile(sys.argv[5], dtype=np.uint8).reshape(-1, 6)
+        crack = np.zeros(h.shape, np.uint8)
+        for row in data:
+            crack[int(row[2]) | (int(row[3]) << 8), int(row[0]) | (int(row[1]) << 8)] = 1
+        keep &= cv2.dilate(crack, np.ones((13, 13), np.uint8)) == 0
     # thin to one point a cell, take the step across the edge (smoothed height 6 px either side of it, along the uphill normal)
     wide = cv2.GaussianBlur(sharp, (0, 0), 1.5)
     points = []

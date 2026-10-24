@@ -10,6 +10,7 @@ const SIZE := 1024
 var _edge_tex: ImageTexture # kept from the bake: the boulder's derived maps read the same layout
 var _lobe_tex: ImageTexture
 var _lobe_count := 0
+var _crack_tex: ImageTexture
 ## how much of the photograph's staining each rock shows (the others keep the plain tones)
 const STAIN_AMOUNT := {"rock_06": 1.0}
 ## how much the lumps follow the 16 x 16 picture of the photograph (0: fully procedural)
@@ -117,6 +118,8 @@ func _set_features(material: ShaderMaterial) -> void:
 	for y in grid:
 		for x in grid:
 			swell.set_pixel(x, y, Color(values[y * grid + x], 0, 0, 0))
+	_crack_tex = _crack_texture()
+	material.set_shader_parameter(&"crack_tex", _crack_tex)
 	_edge_tex = _edge_texture()
 	material.set_shader_parameter(&"edge_tex", _edge_tex)
 	var rgb := FileAccess.get_file_as_bytes("res://systems/world_gen/boulder_colour.bin")
@@ -217,6 +220,7 @@ func derive_map(baked: Image, mode: int) -> Image:
 	material.set_shader_parameter(&"texel", 1.0 / float(baked.get_width()))
 	material.set_shader_parameter(&"tile_px", float(baked.get_width()))
 	material.set_shader_parameter(&"edge_tex", _edge_tex)
+	material.set_shader_parameter(&"crack_tex", _crack_tex)
 	material.set_shader_parameter(&"lobe_tex", _lobe_tex)
 	material.set_shader_parameter(&"n_lobes", _lobe_count)
 	rect.material = material
@@ -227,3 +231,31 @@ func derive_map(baked: Image, mode: int) -> Image:
 	var image := viewport.get_texture().get_image()
 	viewport.queue_free()
 	return image
+
+
+## The thin cracks (x, y, strength, width; 6 bytes each, from extract_cracks.py) as an image.
+## Each crack pixel is a small cross so that the lines stay continuous at any slope.
+func _crack_texture() -> ImageTexture:
+	var size := 1024
+	var data := FileAccess.get_file_as_bytes("res://systems/world_gen/boulder_cracks.bin")
+	var field := PackedFloat32Array()
+	field.resize(size * size)
+	for i in data.size() / 6:
+		var base := i * 6
+		var cx := data.decode_u16(base)
+		var cy := data.decode_u16(base + 2)
+		var strength := float(data[base + 4]) / 255.0
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var x := cx + dx
+				var y := cy + dy
+				if x < 0 or y < 0 or x >= size or y >= size:
+					continue
+				var weight := 0.3
+				if dx == 0 and dy == 0:
+					weight = 1.0
+				elif dx == 0 or dy == 0:
+					weight = 0.55
+				field[y * size + x] = maxf(field[y * size + x], strength * weight)
+	var image := Image.create_from_data(size, size, false, Image.FORMAT_RF, field.to_byte_array())
+	return ImageTexture.create_from_image(image)

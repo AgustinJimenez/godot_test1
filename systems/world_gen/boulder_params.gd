@@ -28,6 +28,7 @@ const LIST: Array = [
 	["lip_cover", 0.005, 0.0, 0.5], ["lip_depth", 0.11, 0.0, 0.2], ["lip_cm", 0.6, 0.3, 1.5],
 	["cavity_up", 0.5, 0.0, 1.5],
 	["pit_irregular", 0.6, 0.0, 1.5],
+	["crack_colour", 0.25, 0.0, 0.6], ["crack_depth", 0.004, 0.0, 0.03],
 ]
 
 ## The sliders that still change the bake while `traced_features` is on. The others drive the old
@@ -39,7 +40,7 @@ const LIVE_WHEN_TRACED: Array[String] = [
 	"cavity_colour", "cavity_chroma", "fine_colour", "fine_height", "fine_cm",
 	"cavity_clip", "cavity_small",
 	"lip_cover", "lip_depth", "lip_cm", "cavity_up",
-	"pit_irregular",
+	"pit_irregular", "crack_colour", "crack_depth",
 ]
 
 ## On/off switches: two positions, 0 and 1 (the shader only checks above or below 0.5).

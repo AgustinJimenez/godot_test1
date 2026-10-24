@@ -17,6 +17,8 @@ const float AO_BIAS = 1.0013;
 const float AO_MEAN = 0.9291;
 const float AO_GAIN = 1.87; // the fit shrinks the spread (0.019 against the photograph's 0.035): put it back
 uniform sampler2D edge_tex : filter_nearest; // the edge layer (LumpBaker._edge_texture)
+uniform sampler2D crack_tex : filter_nearest; // the thin cracks (LumpBaker._crack_texture)
+uniform float w_crack = 0.17; // the occlusion a crack adds (the photograph's cracks: -0.048 against their surroundings)
 uniform sampler2D lobe_tex : filter_nearest; // the traced lobes (row: header, box, 48 outline points in tile units)
 uniform int n_lobes = 0;
 uniform float tile_px = 1024.0;
@@ -77,7 +79,8 @@ float occlusion(vec2 uv) {
 		ao += W_LOBE[2] * exp(-pow(inside / 5.0, 2.0)) + W_LOBE[3] * exp(-pow(outside / 5.0, 2.0));
 		ao += W_LOBE[4] * exp(-pow(inside / 12.0, 2.0)) + W_LOBE[5] * exp(-pow(outside / 12.0, 2.0));
 	}
-	return clamp(AO_MEAN + AO_GAIN * (ao - AO_MEAN), 0.0, 1.0);
+	float crack = texelFetch(crack_tex, ivec2(clamp(floor(uv * tile_px), vec2(0.0), vec2(tile_px - 1.0))), 0).r;
+	return clamp(AO_MEAN + AO_GAIN * (ao - AO_MEAN) - w_crack * crack, 0.0, 1.0);
 }
 
 float roughness(vec2 uv) {
