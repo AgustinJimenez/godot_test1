@@ -82,7 +82,8 @@ float hash2(float ix, float iy, float s) {
 }
 
 float hashw(float ix, float iy, float s, float per) {
-	return hash2(mod(ix, per), mod(iy, per), s);
+	// (not mod(): the GPU divides as x * (1 / y), so mod(75.0, 75.0) can come out 75 and the noise breaks at the tile edge)
+	return hash2(ix - per * floor(ix / per + 0.001), iy - per * floor(iy / per + 0.001), s);
 }
 
 float vnoise(vec2 at, float scale, float s) {
@@ -209,7 +210,7 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 	fragment = best_id * reach;
 	h += p[12] * (vnoise(at, max(p[11], 1.6), s + 17.0) - 0.5);
 	float mid = max(p[13], 2.0);
-	h += p[14] * (0.5 * vnoise(w, mid, s + 19.0) + 0.5 * vnoise(vec2(w.y * 1.3 + 5.0, w.x * 0.8), mid, s + 21.0) - 0.5);
+	h += p[14] * (0.5 * vnoise(w, mid, s + 19.0) + 0.5 * vnoise(vec2(w.y + 5.0, w.x), mid, s + 21.0) - 0.5);
 	if (rim_lobes > 0.0) {
 		float lobe_on = B_FEATURES > 0.5 ? 0.0 : 1.0; // (with the traced features the procedural lobes, ridge and pits are off)
 		// the boulder's rounded plates: lobes of different sizes whose falloffs ADD, so neighbours merge into chains and branches; the

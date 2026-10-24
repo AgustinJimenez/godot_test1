@@ -19,7 +19,7 @@ float ring_mean(vec2 uv, float radius_px) {
 	for (int i = 0; i < 12; i++) {
 		float a = 6.2831853 * (float(i) + 0.5 * float(i % 2)) / 12.0;
 		float r = radius_px * (i % 2 == 0 ? 1.0 : 0.55);
-		sum += texture(first_pass, uv + vec2(cos(a), sin(a)) * r * texel).a;
+		sum += texture(first_pass, fract(uv + vec2(cos(a), sin(a)) * r * texel)).a; // (fract: the tile wraps)
 	}
 	return sum / 13.0;
 }

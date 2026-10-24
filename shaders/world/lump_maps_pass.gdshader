@@ -24,7 +24,7 @@ uniform int n_lobes = 0;
 uniform float tile_px = 1024.0;
 
 float height_at(vec2 uv) {
-	return texture(baked, uv).a;
+	return texture(baked, fract(uv)).a; // (the tile wraps)
 }
 
 float ring_mean(vec2 uv, float radius_px) {

@@ -157,13 +157,9 @@ func _edge_texture() -> ImageTexture:
 		var nx := cos(angle)
 		var ny := sin(angle)
 		for dy in range(-EDGE_RADIUS, EDGE_RADIUS + 1):
-			var y := cy + dy
-			if y < 0 or y >= size:
-				continue
+			var y := posmod(cy + dy, size) # (the tile wraps: a stamp at the border continues on the other side)
 			for dx in range(-EDGE_RADIUS, EDGE_RADIUS + 1):
-				var x := cx + dx
-				if x < 0 or x >= size:
-					continue
+				var x := posmod(cx + dx, size)
 				var across := dx * nx + dy * ny
 				var along := -dx * ny + dy * nx
 				var weight := exp(-0.5 * pow(along / EDGE_TANGENT_SIGMA, 2.0)) * norm
@@ -247,10 +243,8 @@ func _crack_texture() -> ImageTexture:
 		var strength := float(data[base + 4]) / 255.0
 		for dy in range(-1, 2):
 			for dx in range(-1, 2):
-				var x := cx + dx
-				var y := cy + dy
-				if x < 0 or y < 0 or x >= size or y >= size:
-					continue
+				var x := posmod(cx + dx, size)
+				var y := posmod(cy + dy, size)
 				var weight := 0.3
 				if dx == 0 and dy == 0:
 					weight = 1.0
