@@ -19,7 +19,7 @@ import numpy as np
 import measure_scale as ms
 
 MODULES = {"plate": "plate_gen", "lump": "lump_gen", "chip": "chip_gen", "ring": "ring_gen",
-           "ledge": "ledge_gen", "ridge": "ridge_gen", "bark": "bark_fast"}
+           "ledge": "ledge_gen", "wood": "wood_gen", "ridge": "ridge_gen", "bark": "bark_fast"}
 
 
 def load_height(path):
