@@ -62,6 +62,8 @@ var _views: Array = [] # per side: [SubViewportContainer, MeshInstance3D, Camera
 var _orbit := Vector3(0.6, 0.3, 5.0) # yaw, pitch, distance (drag, wheel)
 var _target := Vector3(0.0, 0.6, 0.0)
 var _variant := 0 # V: the next rock shape / tree
+var _seed := 1.0 # the variation seed (settings row): the boulder rolled and turned, the other lumps re-drawn
+var _seed_box: SpinBox
 var _resolution := 1024 # X: the lump rocks baked at 1024 or 2048 pixels (the photograph stays as it is)
 var _turn := true # T: the camera turns round the object by itself (a drag turns it by hand)
 var _dragging := false
@@ -122,6 +124,8 @@ func _ready() -> void:
 					BoulderParams.values[index] = float(pair[1])
 		elif argument == "--object":
 			_object_mode = true
+		elif argument.begins_with("--seed="):
+			_seed = float(argument.get_slice("=", 1))
 		elif argument.begins_with("--res="):
 			_resolution = int(argument.get_slice("=", 1))
 		elif argument == "--no-turn":
@@ -383,6 +387,8 @@ func _bake(kind: String, surface: String) -> Image:
 	var image: Image
 	if kind == "litter":
 		image = await (node as GroundBaker).litter_tile()
+	elif kind == "lump":
+		image = await (node as LumpBaker).bake(surface, _seed)
 	else:
 		image = await node.bake(surface)
 	_derived.clear()
@@ -615,6 +621,18 @@ func _build_settings() -> HBoxContainer:
 		_resolution = RESOLUTIONS[index]
 		_rebake())
 	row.add_child(_res_option)
+	var seed_label := Label.new()
+	seed_label.text = "variation seed"
+	row.add_child(seed_label)
+	_seed_box = SpinBox.new()
+	_seed_box.min_value = 1.0
+	_seed_box.max_value = 999.0
+	_seed_box.step = 1.0
+	_seed_box.get_line_edit().focus_mode = Control.FOCUS_NONE
+	_seed_box.value_changed.connect(func(value: float) -> void:
+		_seed = value
+		_rebake())
+	row.add_child(_seed_box)
 	_pom_check = CheckBox.new()
 	_pom_check.text = "parallax + self-shadow (rocks)"
 	_pom_check.focus_mode = Control.FOCUS_NONE
@@ -650,6 +668,8 @@ func _sync_settings() -> void:
 		return
 	_res_option.select(maxi(RESOLUTIONS.find(_resolution), 0))
 	_res_option.disabled = SURFACES[_index][2] != "lump" # (only the lump rocks have a resolution setting)
+	_seed_box.editable = SURFACES[_index][2] == "lump"
+	_seed_box.set_value_no_signal(_seed)
 	_pom_check.set_pressed_no_signal(_pom)
 	_turn_check.set_pressed_no_signal(_turn)
 	_depth_slider.set_value_no_signal(_pom_depth * 1000.0)

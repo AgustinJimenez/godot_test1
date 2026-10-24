@@ -78,7 +78,30 @@ func bake(name: String, seed_value := 1.0) -> Image:
 	viewport.queue_free()
 	if name == "rock_boulder_dry":
 		image = await _colour_pass(image)
+		if not is_equal_approx(seed_value, 1.0):
+			image = _vary(image, seed_value)
 	return image
+
+
+## A variation of the traced boulder: its layout comes from the photograph, so the seed also rolls the tile by
+## a random offset (the tile wraps) and turns it by a random one of the eight flips and quarter turns.
+func _vary(image: Image, seed_value: float) -> Image:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(seed_value * 1000.0) + 7919
+	var size := image.get_width()
+	var rolled := Image.create(size, size, false, image.get_format())
+	var dx := rng.randi_range(0, size - 1)
+	var dy := rng.randi_range(0, size - 1)
+	for oy in [0, size]:
+		for ox in [0, size]:
+			rolled.blit_rect(image, Rect2i(0, 0, size, size), Vector2i(dx - ox, dy - oy))
+	if rng.randf() < 0.5:
+		rolled.rotate_90(CLOCKWISE)
+	if rng.randf() < 0.5:
+		rolled.flip_x()
+	if rng.randf() < 0.5:
+		rolled.flip_y()
+	return rolled
 
 
 func _guide_mix(name: String) -> float:
