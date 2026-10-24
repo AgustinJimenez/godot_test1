@@ -39,6 +39,8 @@ varying float obj_scale; // metres per mesh unit (a rock's size: the picture kee
 uniform sampler2DArray rock_photo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float rock_photo_on = 1.0; // 0: only the procedural stone
 uniform float rock_force = -1.0; // >= 0: every rock uses this slot (a tool)
+uniform float rock_pom = 1.0; // 0: no parallax march and no self-shadow on the photographed rocks (a tool: what they cost)
+uniform float rock_pom_depth = 0.05; // metres the rock's whole relief (the picture's height 0..1) is worth in the march
 uniform sampler2DArray bark_photo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float bark_photo_on = 1.0; // 0: only the procedural bark
 uniform float bark_pom = 1.0; // 0: no parallax march and no bump shadow (a tool: what they cost)
@@ -279,6 +281,21 @@ int rock_slot(vec3 paint, float hash) {
 		return 0;
 	}
 	return warm > 1.5 ? 1 : 2;
+}
+
+// The picture's height at a point q (tile units, as in rock_sample) for the parallax march: only the planes that count.
+float rock_height(vec3 q, vec3 w, float layer, float lod) {
+	float h = 0.0;
+	if (w.x > 0.04) {
+		h += textureLod(rock_photo, vec3(q.yz, layer), lod).a * w.x;
+	}
+	if (w.y > 0.04) {
+		h += textureLod(rock_photo, vec3(q.xz, layer), lod).a * w.y;
+	}
+	if (w.z > 0.04) {
+		h += textureLod(rock_photo, vec3(q.xy, layer), lod).a * w.z;
+	}
+	return h / max(dot(step(0.04, w), w), 0.001);
 }
 
 vec4 rock_sample(vec3 p, vec3 n, int slot, vec2 style) {
@@ -570,6 +587,7 @@ void fragment() {
 	float bump_amount = 0.0;
 	float surface_height = 0.0;
 	float surface_bump = 0.0;
+	bool rock_shadowed = false; // the rock's relief shades itself (rock_pom)
 	bool is_bark = UV.x < -0.5;
 	bool is_rock = UV.x < -0.1 && !is_bark; // add_rock marks its stones
 	if (realism > 0.001 && is_bark && !planks) {
@@ -741,7 +759,76 @@ void fragment() {
 			if (rock_photo_on > 0.5) {
 				// the photographed rock: its own colour, tinted a little by the mesh's, and its height as the bump
 				int slot = rock_force >= 0.0 ? int(rock_force) : rock_slot(paint, bark_style.x);
-				vec4 photo = rock_sample(obj_pos * obj_scale, normalize(obj_normal), slot, bark_style);
+				vec3 n_o = normalize(obj_normal);
+				vec3 p_m = obj_pos * obj_scale;
+				float near_r = smoothstep(20.0, 8.0, length(VERTEX));
+				if (rock_pom > 0.5 && near_r > 0.02) {
+					// parallax occlusion in the rock's own space: walk the ray down through the picture's height (the three
+					// projections blended as in rock_sample), then read the colour where it meets the surface
+					mat3 to_obj = transpose(mat3(MODEL_MATRIX));
+					vec3 eye_o = normalize(to_obj * (INV_VIEW_MATRIX * vec4(normalize(-VERTEX), 0.0)).xyz);
+					float vz = max(dot(eye_o, n_o), 0.25);
+					float depth = rock_pom_depth * near_r;
+					vec3 lateral = -(eye_o - n_o * dot(eye_o, n_o)) / vz * depth; // metres sideways per full depth
+					float tile = ROCK_TILE[slot];
+					vec3 shift = vec3(bark_style.x * 7.0, bark_style.y * 5.0, bark_style.x * 3.0);
+					vec3 w = pow(abs(n_o), vec3(4.0));
+					w /= max(w.x + w.y + w.z, 0.001);
+					float footprint = length(dFdx(p_m)) + length(dFdy(p_m));
+					float lod = clamp(log2(max(footprint, 1e-5) / tile * 1024.0), 0.0, 6.0);
+					float layer_id = float(slot);
+					float steps = mix(10.0, 24.0, smoothstep(0.9, 0.3, vz));
+					float step_size = 1.0 / steps;
+					vec3 per_layer = lateral * step_size;
+					vec3 here = p_m;
+					vec3 last = here;
+					float layer = 0.0;
+					float h_here = rock_height(here / tile + shift, w, layer_id, lod);
+					for (int i = 0; i < 24; i++) {
+						if (layer >= 1.0 - h_here || float(i) >= steps) {
+							break;
+						}
+						last = here;
+						here += per_layer;
+						layer += step_size;
+						h_here = rock_height(here / tile + shift, w, layer_id, lod);
+					}
+					float lo = max(layer - step_size, 0.0);
+					float hi = layer;
+					for (int j = 0; j < 2; j++) {
+						float mid = 0.5 * (lo + hi);
+						vec3 at = last + per_layer * ((mid - lo) / step_size);
+						float h_mid = rock_height(at / tile + shift, w, layer_id, lod);
+						if (mid >= 1.0 - h_mid) {
+							hi = mid;
+							here = at;
+						} else {
+							lo = mid;
+							last = at;
+						}
+					}
+					p_m = here;
+					// self-shadow: from the hit point walk toward the sun across the same height; where the surface stands higher
+					// than the ray the rock is in its own shade
+					float sun_len_r = length(cloud_sun_world);
+					if (sun_len_r > 0.5) {
+						vec3 sun_o = normalize(to_obj * cloud_sun_world);
+						float up_r = dot(sun_o, n_o);
+						if (up_r > 0.05) {
+							vec3 toward = (sun_o - n_o * up_r) / max(up_r, 0.25) * depth;
+							float h0 = rock_height(p_m / tile + shift, w, layer_id, lod);
+							float lit = 1.0;
+							for (int k = 0; k < 4; k++) {
+								float t = 0.12 + 0.27 * float(k);
+								float h_s = rock_height((p_m + toward * t) / tile + shift, w, layer_id, lod);
+								lit = min(lit, 1.0 - smoothstep(0.0, 0.12, h_s - (h0 + t)));
+							}
+							cavity *= mix(0.55, 1.0, mix(1.0, lit, near_r));
+							rock_shadowed = true;
+						}
+					}
+				}
+				vec4 photo = rock_sample(p_m, n_o, slot, bark_style);
 				paint = photo.rgb * (0.85 + 0.3 * bark_style.y);
 				surface_height = (photo.a - 0.5) * 0.5;
 				surface_bump = realism * 2.0;
@@ -817,7 +904,7 @@ void fragment() {
 	// the cracks of the bark: less ambient light and less shine (the sky does not reach into them), and a
 	// little less of the sun too, as if the plates shaded each other
 	AO = mix(1.0, cavity, realism);
-	AO_LIGHT_AFFECT = is_bark ? 0.5 * realism : 0.0;
+	AO_LIGHT_AFFECT = (is_bark || rock_shadowed) ? 0.5 * realism : 0.0;
 	float leafy_part = is_bark ? 0.0 : 1.0;
 	// light through the leaves: a steady glow, and more of it when the eye looks along the sun's ray
 	// through the leaf (the sun behind the canopy): a lobe on how opposed the view and the sun are

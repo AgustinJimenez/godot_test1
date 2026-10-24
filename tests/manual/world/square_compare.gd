@@ -62,6 +62,8 @@ var _views: Array = [] # per side: [SubViewportContainer, MeshInstance3D, Camera
 var _orbit := Vector3(0.6, 0.3, 5.0) # yaw, pitch, distance (drag, wheel)
 var _target := Vector3(0.0, 0.6, 0.0)
 var _variant := 0 # V: the next rock shape / tree
+var _pom := true # P: parallax and self-shadow on the rocks (rock_pom)
+var _pom_depth := 0.05 # [ and ]: metres the rock's whole relief is worth (rock_pom_depth)
 var _atlas: Image
 var _bark_array: Texture2DArray
 var _bark_grooves := false
@@ -109,6 +111,10 @@ func _ready() -> void:
 					BoulderParams.values[index] = float(pair[1])
 		elif argument == "--object":
 			_object_mode = true
+		elif argument == "--no-pom":
+			_pom = false
+		elif argument.begins_with("--pom-depth="):
+			_pom_depth = float(argument.get_slice("=", 1))
 		elif argument.begins_with("--variant="):
 			_variant = int(argument.get_slice("=", 1))
 		elif argument.begins_with("--orbit="): # yaw,pitch,distance
@@ -172,6 +178,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_V:
 			_variant += 1
 			_apply()
+		KEY_P:
+			_pom = not _pom
+			_apply()
+		KEY_BRACKETLEFT:
+			_pom_depth *= 0.5
+			_apply()
+		KEY_BRACKETRIGHT:
+			_pom_depth *= 2.0
+			_apply()
 		KEY_Z:
 			_zoom = 2.0 if _zoom < 1.5 else (4.0 if _zoom < 3.0 else 1.0)
 			_apply()
@@ -200,7 +215,8 @@ func _show() -> void:
 	var grooves := "ON" if OS.has_environment("PLANET_BARK_GROOVES") else "off"
 	_title.text = "%s  [%d/%d]   left: photograph   right: procedural" % [
 			entry[0], _index + 1, SURFACES.size()]
-	_title.text += "   (arrows: surface, H: colour or height, M: other maps, O: object, V: other object, G: grooves %s)" % grooves
+	_title.text += "   (arrows: surface, H: colour or height, M: other maps, O: object, V: other object, P: parallax %s ([ ] depth %.0f mm), G: grooves %s)" % [
+			"on" if _pom else "off", _pom_depth * 1000.0, grooves]
 	var colour := Image.load_from_file(PHOTOS % [entry[1], "diff.jpg"])
 	var height := Image.load_from_file(PHOTOS % [entry[1], "disp.png"])
 	_photo_colour = ImageTexture.create_from_image(colour) if colour != null else null
@@ -464,6 +480,8 @@ func _show_rock(slot: int) -> void:
 		var material := FloraMeshes.material().duplicate() as ShaderMaterial
 		material.set_shader_parameter(&"rock_photo", _rock_array(photo if side == 0 else ours))
 		material.set_shader_parameter(&"rock_force", float(slot))
+		material.set_shader_parameter(&"rock_pom", 1.0 if _pom else 0.0)
+		material.set_shader_parameter(&"rock_pom_depth", _pom_depth)
 		_put_object(side, mesh, material, Vector3.ONE * 1.4)
 
 
