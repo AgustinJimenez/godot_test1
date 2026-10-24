@@ -76,7 +76,7 @@ void fragment() {
 	float lump = vnoise(at, 6.0, seed + 31.0) * 0.55 + vnoise(at, 2.5, seed + 33.0) * 0.25 + (ragged - 0.5) * 0.35 + 0.1;
 	float edge = 0.6 - 0.9 * (red_share - 0.19);
 	float red = smoothstep(edge - 0.015, edge + 0.015, lump);
-	vec3 colour = mix(sand_colour, red_colour, red);
+	vec3 colour = mix(sand_colour * 0.94, red_colour * 0.92, red);
 	// fine detail at every size: sand grains, dark and pale specks, pebbles' own tones
 	float g1 = vnoise(at, 0.55, seed + 67.0) - 0.5;
 	float g2 = vnoise(at, 1.1, seed + 69.0) - 0.5;
@@ -84,8 +84,8 @@ void fragment() {
 	float g4 = vnoise(at, 4.0, seed + 35.0) - 0.5;
 	float dark_speck = smoothstep(0.7, 0.95, vnoise(at, 2.2, seed + 73.0)) * smoothstep(0.55, 0.8, vnoise(at, 1.0, seed + 74.0));
 	float pale_speck = smoothstep(0.78, 0.95, vnoise(at, 1.6, seed + 75.0)) * smoothstep(0.55, 0.8, vnoise(at, 0.8, seed + 76.0));
-	colour *= 1.3 + 0.28 * g1 + 0.3 * g2 + 0.3 * g3 + 0.4 * g4;
-	colour = mix(colour, colour * 0.45, 0.65 * dark_speck);
+	colour *= mix(vec3(1.04, 0.94, 0.82), vec3(0.98, 0.84, 0.78), red) * (1.3 + 0.28 * g1 + 0.3 * g2 + 0.3 * g3 + 0.4 * g4);
+	colour = mix(colour, colour * 0.5, 0.45 * dark_speck);
 	colour = mix(colour, vec3(0.8, 0.76, 0.68), 0.6 * pale_speck);
 	// crisp small detail that survives zoom (flecks from a warped noise, so they are not grid-aligned) and a per-pixel grain:
 	// dark grit, pale quartz, and many small red crumbs
@@ -94,9 +94,9 @@ void fragment() {
 	float quartz = smoothstep(0.74, 0.8, vnoise(warped, 0.42, seed + 157.0));
 	float crumb = smoothstep(0.76, 0.82, vnoise(warped, 0.8, seed + 159.0)) * smoothstep(0.35, 0.65, vnoise(at, 9.0, seed + 161.0));
 	float pixel_grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
-	colour = mix(colour, colour * 0.3, 0.8 * grit);
+	colour = mix(colour, colour * 0.3, 0.85 * grit);
 	colour = mix(colour, vec3(0.85, 0.82, 0.74), 0.55 * quartz);
-	colour = mix(colour, red_colour * 1.05, 0.85 * crumb);
+	colour = mix(colour, red_colour * 0.88, 0.85 * crumb);
 	colour *= 1.0 + 0.24 * pixel_grain;
 	colour *= 0.85 + 0.3 * smoothstep(0.2, 0.9, h);
 	// the photograph's relief is coarse and rough: broad lumps 4-9 cm with a crumbly rough surface (warped noise, so no contours)
