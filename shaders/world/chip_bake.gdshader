@@ -133,5 +133,8 @@ void fragment() {
 	earth *= (1.0 + 0.22 * pixel_grain) * 1.35;
 	stone_final *= 1.0 + 0.14 * pixel_grain;
 	colour = mix(earth, stone_final, chip);
+	// crumbly relief in the earth between the stones (warped noise from 1 cm up: no grid, no mosaic in the parallax march)
+	float crumbs = (vnoise(warped, 1.0, seed + 171.0) - 0.5) * 0.6 + (vnoise(warped, 2.2, seed + 173.0) - 0.5) * 0.4;
+	h = clamp(h + 0.07 * crumbs * (1.0 - chip), 0.0, 1.0);
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }
