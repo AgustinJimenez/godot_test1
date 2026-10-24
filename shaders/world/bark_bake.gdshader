@@ -15,6 +15,7 @@ uniform vec3 shading = vec3(0.4, 0.05, 0.2); // cavity gain, mottle, flake tone 
 uniform float seed = 1.0;
 uniform vec3 palette[3]; // the photograph's main colours, brightest first
 uniform vec3 palette_shares = vec3(0.34, 0.33, 0.33);
+uniform float palette_flat = 0.0; // 1: the palette colour as it is (leaf litter: no height gating, no cavity gain)
 uniform float palette_mix = 0.0; // 0: the ramp by height alone; 1: each flake takes one of the palette colours
 uniform vec3 alpha_map = vec3(1.0, 0.5, 0.5); // the stored height: scale about the generator's mean, moved to the photograph's mean (the shading reads it)
 
@@ -168,7 +169,8 @@ void fragment() {
 	// each flake one colour of the palette (by its own dice and its height: low parts take the darkest)
 	float dice = fract(b.y * 7.31 + 0.37);
 	vec3 flake_colour = dice < palette_shares.x ? palette[0] : (dice < palette_shares.x + palette_shares.y ? palette[1] : palette[2]);
-	flake_colour = mix(palette[2], flake_colour, smoothstep(0.05, 0.45, h));
-	ramp_colour = mix(ramp_colour, flake_colour * (0.75 + 0.5 * h) * (ramp_colour.g / max(mean_colour.g, 0.05)), palette_mix);
+	flake_colour = mix(mix(palette[2], flake_colour, smoothstep(0.05, 0.45, h)), flake_colour, palette_flat);
+	vec3 flake_final = flake_colour * (0.75 + 0.5 * h) * mix(ramp_colour.g / max(mean_colour.g, 0.05), 1.0, palette_flat);
+	ramp_colour = mix(ramp_colour, flake_final, palette_mix);
 	COLOR = vec4(clamp(ramp_colour * light, 0.0, 1.0), clamp(alpha_map.z + (h - alpha_map.y) * alpha_map.x, 0.0, 1.0));
 }

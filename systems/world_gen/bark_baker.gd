@@ -38,6 +38,7 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 		material.set_shader_parameter(&"palette", palette)
 		material.set_shader_parameter(&"palette_shares", Vector3(shares[0], shares[1], shares[2]))
 		material.set_shader_parameter(&"palette_mix", float(PALETTE_MIX.get(name, 0.0)))
+		material.set_shader_parameter(&"palette_flat", 1.0 if name == "forest_leaves_03" else 0.0)
 	material.set_shader_parameter(&"alpha_map", Vector3(float(fit.get("alpha_scale", 1.0)),
 			float(fit.get("alpha_from", 0.5)), float(fit.get("alpha_to", 0.5))))
 	var mean: Color = fit["mean"]
