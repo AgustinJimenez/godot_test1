@@ -15,6 +15,11 @@ const RED_TILE_M := 1.0
 
 ## [colour map, normal map] (Images) of the fitted leaf litter.
 func bake_litter() -> Array[Image]:
+	return await _maps(await litter_tile())
+
+
+## The baked leaf-litter tile (colour in rgb, height in alpha).
+func litter_tile() -> Image:
 	var baker := BarkBaker.new()
 	add_child(baker)
 	# the bark colour model (cavity gain, mottling) is far too strong for litter: leaves take the
@@ -24,7 +29,7 @@ func bake_litter() -> Array[Image]:
 	fits["forest_leaves_03"]["mottle"] = 0.0
 	var tile: Image = await baker.bake("forest_leaves_03", 1.0, fits)
 	baker.queue_free()
-	return await _maps(tile)
+	return tile
 
 
 ## [colour map, normal map] (Images) of the fitted gravel (ChipFits).

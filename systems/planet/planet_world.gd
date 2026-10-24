@@ -131,7 +131,26 @@ func target() -> Node3D:
 ## ground is the altitude: the tiles are chosen for that point and that height, so the ground
 ## under the target and the planet's coarse shape are what is made first, however far away.
 ## The procedural barks and rocks are drawn once into the plant shader (photo atlases till then).
+## Every procedural surface that has an opt-in (its PLANET_PROCEDURAL_* / PLANET_BARK_* switch).
+const PROCEDURAL_SWITCHES: Array[String] = [
+	"PLANET_PROCEDURAL_PINE", "PLANET_PROCEDURAL_ASH", "PLANET_PROCEDURAL_PALM",
+	"PLANET_PROCEDURAL_LITTER", "PLANET_PROCEDURAL_GRAVEL", "PLANET_PROCEDURAL_RED",
+	"PLANET_PROCEDURAL_WOOD", "PLANET_PROCEDURAL_LUMPS", "PLANET_PROCEDURAL_CELLS",
+	"PLANET_BARK_GROOVES"]
+
+
+## One switch for all of them: the environment variable PLANET_PROCEDURAL_ALL, or a file named
+## `procedural_all` in the project folder (from the editor: create it, run, delete it).
+func _procedural_all_requested() -> bool:
+	return (OS.has_environment("PLANET_PROCEDURAL_ALL")
+			or FileAccess.file_exists("res://procedural_all"))
+
+
 func _bake_the_bark() -> void:
+	if _procedural_all_requested():
+		for switch in PROCEDURAL_SWITCHES:
+			OS.set_environment(switch, "1")
+		print("PROCEDURAL_ALL: every procedural surface is on")
 	if OS.has_environment("PLANET_STOCH_BARK"): # (a test: AGENT_TASKS/086)
 		FloraMeshes.material().set_shader_parameter(&"stoch_tiling", true)
 	if OS.has_environment("PLANET_PROCEDURAL_LITTER") and DisplayServer.get_name() != "headless":

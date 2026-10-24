@@ -12,14 +12,18 @@ const DEPTH_BOOST := {"pine_bark": 1.0, "tree_bark_03": 0.5}
 ## how much more the baked height is spread than the photograph's (a deeper parallax and masks)
 const HEIGHT_SPREAD := {"pine_bark": 2.2}
 ## the dark groove network round every raised flake (0..1)
-const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 1.0}
+const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 0.4}
 ## a whole-bark darkening where the albedo lift of the colour model comes out too light
-const BRIGHTNESS := {"pine_bark": 0.62, "tree_bark_03": 0.8}
+const BRIGHTNESS := {"pine_bark": 0.92, "tree_bark_03": 1.0}
 ## the same options tried on the barks that ship (opt-in: PLANET_BARK_GROOVES=1)
 const GROOVED_EDGE := {
 	"bark_willow_02": 0.6, "trident_maple_bark": 0.5, "japanese_cedar_bark": 0.4}
 const GROOVED_BRIGHTNESS := {
-	"bark_willow_02": 0.85, "trident_maple_bark": 0.8, "japanese_cedar_bark": 0.8}
+	"bark_willow_02": 1.0, "trident_maple_bark": 0.8, "japanese_cedar_bark": 0.72}
+## less contrast where the bake is far more contrasty than the photograph (0..1)
+const FLATTEN := {"pine_bark": 0.3, "tree_bark_03": 0.65}
+const GROOVED_FLATTEN := {
+	"bark_willow_02": 0.3, "trident_maple_bark": 0.0, "japanese_cedar_bark": 0.4}
 const PALETTE_MIX := {"pine_bark": 0.95, "forest_leaves_03": 0.9}
 
 
@@ -57,6 +61,10 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 	if OS.has_environment("PLANET_BARK_GROOVES"):
 		brightness = float(GROOVED_BRIGHTNESS.get(name, brightness))
 		edge = float(GROOVED_EDGE.get(name, edge))
+	var flat: float = float(FLATTEN.get(name, 0.0))
+	if OS.has_environment("PLANET_BARK_GROOVES"):
+		flat = float(GROOVED_FLATTEN.get(name, flat))
+	material.set_shader_parameter(&"flatten", flat)
 	material.set_shader_parameter(&"brightness", brightness)
 	material.set_shader_parameter(&"edge_dark", edge)
 	material.set_shader_parameter(&"depth_boost", float(DEPTH_BOOST.get(name, 0.0)))

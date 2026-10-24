@@ -15,6 +15,7 @@ uniform vec3 shading = vec3(0.4, 0.05, 0.2); // cavity gain, mottle, flake tone 
 uniform float seed = 1.0;
 uniform vec3 palette[3]; // the photograph's main colours, brightest first
 uniform vec3 palette_shares = vec3(0.34, 0.33, 0.33);
+uniform float flatten = 0.0; // 0..1: pull the colours toward the photograph's mean colour (less contrast)
 uniform float brightness = 1.0; // a whole-bark darkening (the colour model's albedo lift is too light for some barks)
 uniform float edge_dark = 0.0; // 0..1: darken the ground beside every raised flake (the groove network round the plates of a craggy bark)
 uniform float depth_boost = 0.0; // 0..1: deeper fissures (stronger cavity shading, darker gaps) for craggy barks
@@ -186,5 +187,7 @@ void fragment() {
 	float gap = mix(1.0, 0.3 + 0.7 * smoothstep(0.05, 0.3, h), palette_flat);
 	vec3 flake_final = flake_colour * leaf_tone * gap * (0.75 + 0.5 * h) * mix(ramp_colour.g / max(mean_colour.g, 0.05), 1.0, palette_flat);
 	ramp_colour = mix(ramp_colour, flake_final, palette_mix);
-	COLOR = vec4(clamp(ramp_colour * light * brightness, 0.0, 1.0), clamp(alpha_map.z + (h - alpha_map.y) * alpha_map.x, 0.0, 1.0));
+	vec3 final_colour = ramp_colour * light * brightness;
+	final_colour = mix(final_colour, mean_colour, flatten);
+	COLOR = vec4(clamp(final_colour, 0.0, 1.0), clamp(alpha_map.z + (h - alpha_map.y) * alpha_map.x, 0.0, 1.0));
 }
