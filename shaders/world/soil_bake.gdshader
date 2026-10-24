@@ -71,13 +71,22 @@ void fragment() {
 	vec2 at = UV * tile_cm;
 	float pid;
 	float h = norm(soil(at, seed, pid));
-	// red lumps: where a coarse noise is high, and the pebbles that are red ones
-	float lump = vnoise(at, 6.0, seed + 31.0) * 0.7 + vnoise(at, 2.5, seed + 33.0) * 0.3;
-	float edge = 0.6 - 0.9 * (red_share - 0.19); // (the value noise spreads about 0.5 +- 0.12: the threshold for the share)
-	float red = smoothstep(edge - 0.04, edge + 0.04, lump);
+	// red lumps: a coarse noise made ragged by finer octaves, so the lump edges are broken like crumbled brick
+	float ragged = vnoise(at, 1.8, seed + 61.0) * 0.55 + vnoise(at, 0.9, seed + 63.0) * 0.35 + vnoise(at, 0.5, seed + 65.0) * 0.1;
+	float lump = vnoise(at, 6.0, seed + 31.0) * 0.55 + vnoise(at, 2.5, seed + 33.0) * 0.25 + (ragged - 0.5) * 0.35 + 0.1;
+	float edge = 0.6 - 0.9 * (red_share - 0.19);
+	float red = smoothstep(edge - 0.015, edge + 0.015, lump);
 	vec3 colour = mix(sand_colour, red_colour, red);
-	// the tone follows the coarse noise and the height only a little (the finest height cells would show as pixels)
-	colour *= 0.55 + 0.9 * (0.5 * vnoise(at, 4.0, seed + 35.0) + 0.5 * vnoise(at, 1.8, seed + 37.0));
-	colour *= 0.8 + 0.4 * smoothstep(0.2, 0.9, h);
+	// fine detail at every size: sand grains, dark and pale specks, pebbles' own tones
+	float g1 = vnoise(at, 0.55, seed + 67.0) - 0.5;
+	float g2 = vnoise(at, 1.1, seed + 69.0) - 0.5;
+	float g3 = vnoise(at, 1.5, seed + 71.0) - 0.5;
+	float g4 = vnoise(at, 4.0, seed + 35.0) - 0.5;
+	float dark_speck = smoothstep(0.7, 0.95, vnoise(at, 2.2, seed + 73.0)) * smoothstep(0.55, 0.8, vnoise(at, 1.0, seed + 74.0));
+	float pale_speck = smoothstep(0.78, 0.95, vnoise(at, 1.6, seed + 75.0)) * smoothstep(0.55, 0.8, vnoise(at, 0.8, seed + 76.0));
+	colour *= 1.3 + 0.28 * g1 + 0.3 * g2 + 0.3 * g3 + 0.4 * g4;
+	colour = mix(colour, colour * 0.45, 0.65 * dark_speck);
+	colour = mix(colour, vec3(0.8, 0.76, 0.68), 0.6 * pale_speck);
+	colour *= 0.85 + 0.3 * smoothstep(0.2, 0.9, h);
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }
