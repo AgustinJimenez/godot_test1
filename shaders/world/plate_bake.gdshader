@@ -83,9 +83,9 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 		}
 	}
 	float edge = d2 - d1;
-	rim = 1.0 - smoothstep(0.0, p[7] * 0.3, edge);
+	rim = 1.0 - smoothstep(0.0, p[7] * 0.14, edge);
 	dice = hashw(best_id.x, best_id.y, s + 19.0, per);
-	float crack = 1.0 - smoothstep(0.0, p[5] * 0.45, edge);
+	float crack = 1.0 - smoothstep(0.0, p[5] * 0.22, edge);
 	float lipf = smoothstep(0.0, p[7] * 0.12, edge); // (a sharp lip: a step, not a ramp)
 	vec2 centre = mod(vec2(best_f.x * cell, best_f.y * cell_v) / tile_cm, 1.0);
 	int gi = clamp(int(centre.y * 16.0), 0, 15);
@@ -137,6 +137,6 @@ void fragment() {
 	colour = mix(colour, vec3(0.62, 0.6, 0.6), 0.5 * grey * flat_rock);
 	colour = mix(colour, vec3(0.78, 0.78, 0.4), 0.55 * yellow * flat_rock);
 	colour *= 1.0 + 0.16 * pixel_grain * flat_rock;
-	colour *= 1.0 - mix(0.7, 0.62, flat_rock) * rim; // the shadow where one plate meets the next
+	colour *= 1.0 - mix(0.7, 0.5, flat_rock) * rim; // the shadow where one plate meets the next
 	COLOR = vec4(clamp(colour, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 2.0, 0.0, 1.0)); // (a deeper relief than the fitted height)
 }
