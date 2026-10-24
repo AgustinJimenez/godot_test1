@@ -94,6 +94,10 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	z += p[9] * (best_d.x * (hashw(best_id.x, best_id.y, s + 13.0, per) - 0.5)
 			+ best_d.y * (hashw(best_id.x, best_id.y, s + 15.0, per) - 0.5));
 	z += p[11] * (vnoise(at, max(p[10], 1.6), s + 17.0) - 0.5); // (finer cells made the parallax a mosaic)
+	// each plate is not flat: a soft dome, pitting and weathering at 1-6 cm (not finer: parallax turns pixel noise into a mosaic)
+	float dome = 1.0 - clamp(length(best_d) * 0.9, 0.0, 1.0);
+	float weather = (vnoise(at, 5.0, s + 121.0) - 0.5) * 0.5 + (vnoise(at, 2.4, s + 123.0) - 0.5) * 0.4 + (vnoise(at, 1.3, s + 125.0) - 0.5) * 0.25;
+	z += 0.06 * dome + 0.07 * weather;
 	return z * (0.55 + 0.45 * lipf) * (1.0 - p[6] * crack);
 }
 

@@ -25,7 +25,12 @@ func bake(name: String, seed_value := 1.0) -> Image:
 	material.shader = SHADER
 	material.set_shader_parameter(&"p", fit["params"])
 	material.set_shader_parameter(&"tile_cm", fit["tile_cm"])
-	material.set_shader_parameter(&"height_range", fit["height_range"])
+	# the shader adds a dome and weathering to each plate, and the guide lifts plates:
+	# widen the range so the tops are not clipped flat
+	var range_fit: Vector2 = fit["height_range"]
+	material.set_shader_parameter(&"height_range",
+			Vector2(range_fit.x - 0.5 * (range_fit.y - range_fit.x),
+					range_fit.y + 0.7 * (range_fit.y - range_fit.x)))
 	var colours := PackedVector3Array()
 	for colour: Color in fit["ramp"]:
 		colours.append(Vector3(colour.r, colour.g, colour.b))
