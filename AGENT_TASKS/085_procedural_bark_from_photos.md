@@ -416,3 +416,15 @@ Round 27 (2026-10-23): new generator families for the barks the flake model coul
   of the photograph (pixels per feature) before fitting; (2) the same search repeatedly traded detail for loss, so
   always compare at the same crop and scale; (3) a `&&` chain after a failing lint still pushed: run lint on its own.
 In the game: oak, maple, cedar procedural; pine, ash, palm, rocks and the ground scans photographs.
+
+Round 28 (2026-10-23, evening): what the later rounds changed (details in AGENTS.md "Procedural surfaces fitted to photographs").
+- New method pieces: sliced Wasserstein term (`SW_WEIGHT=0.5`, `bark_perceptual.py`), plain-square sheets
+  (`compare_sheet.py`, `fits/sheets/`), scale measuring (`measure_scale.py`), guide maps (16 x 16 picture of the height steering
+  plate/lump tones, `guide_mix` 0 = fully procedural), `depth_boost` / `HEIGHT_SPREAD` in the bark bake.
+- New generator families: plates (`plate_gen`), rings (`ring_gen`), lumps + straight cracks (`lump_gen`), ledges (`ledge_gen`),
+  gravel chips (`chip_gen`), smooth bark (`smooth_gen`); the long-narrow-flake recipe fixed pine and ash on the plain square.
+- Opt-in in the game (env switches): PINE, ASH, PALM, LITTER, GRAVEL, RED, WOOD, LUMPS (rock slots 0-3), CELLS (rock slot 4).
+  Default in the game: oak, maple, cedar. Pine and ash are NOT close enough in the object view to be default.
+- Failed for good with the current generators: birch/sakura smooth bark (5 families), layered rock slot 5 (4 families).
+- Lesson of the evening: the plain-square sheet and the object view disagree; read both by eye. A perfect feature-size ratio hid
+  both the pine's smooth relief and the ash's doubled scale. Always cap the flake size from the object view.
