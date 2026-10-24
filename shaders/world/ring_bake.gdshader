@@ -50,7 +50,7 @@ float rings(vec2 at, float s) {
 	float fib = vnoise(at, p[7], p[9], s + 6.0) - 0.5;
 	float blotch = vnoise(at, p[10], p[10], s + 7.0) - 0.5;
 	float fine = vnoise(at, max(p[12], 1.6), max(p[12], 1.6), s + 8.0) - 0.5; // (finer cells made the parallax a mosaic)
-	return 0.5 + p[3] * band + p[8] * fib + p[11] * blotch + p[13] * fine;
+	return 0.5 + p[3] * band + p[8] * 0.4 * fib + p[11] * blotch + p[13] * fine;
 }
 
 float norm(float h) {
@@ -90,5 +90,5 @@ void fragment() {
 	float lichen = drops;
 	vec3 painted = ramp[4] * tone;
 	painted = mix(painted, vec3(0.92, 0.9, 0.84), 0.95 * lichen);
-	COLOR = vec4(clamp(painted, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 1.8, 0.0, 1.0)); // (a deeper relief than the fitted height)
+	COLOR = vec4(clamp(painted, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 1.1, 0.0, 1.0)); // (a little deeper than the fitted height)
 }
