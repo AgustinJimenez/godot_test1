@@ -59,7 +59,7 @@ func make_array() -> Texture2DArray:
 		var image: Image = null
 		if slot == 4 and OS.has_environment("PLANET_PROCEDURAL_CELLS"):
 			image = await cells.bake("rock_pitted_mossy")
-		elif lump_slots.has(slot) and OS.has_environment("PLANET_PROCEDURAL_LUMPS"):
+		elif _lump_baked(slot, lump_slots):
 			image = await lumps.bake(lump_slots[slot])
 		elif baked.has(slot):
 			image = await bake(baked[slot])
@@ -70,3 +70,16 @@ func make_array() -> Texture2DArray:
 	var array := Texture2DArray.new()
 	array.create_from_images(layers)
 	return array
+
+
+## PLANET_LUMP_SLOTS=0,2 limits the procedural lumps to those slots (a test switch to judge one
+## rock alone); unset: all four.
+func _lump_wanted(slot: int) -> bool:
+	var only := OS.get_environment("PLANET_LUMP_SLOTS")
+	return only == "" or only.split(",").has(str(slot))
+
+
+func _lump_baked(slot: int, lump_slots: Dictionary) -> bool:
+	if not lump_slots.has(slot) or not OS.has_environment("PLANET_PROCEDURAL_LUMPS"):
+		return false
+	return _lump_wanted(slot)
