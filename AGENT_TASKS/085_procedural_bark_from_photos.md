@@ -428,3 +428,19 @@ Round 28 (2026-10-23, evening): what the later rounds changed (details in AGENTS
 - Failed for good with the current generators: birch/sakura smooth bark (5 families), layered rock slot 5 (4 families).
 - Lesson of the evening: the plain-square sheet and the object view disagree; read both by eye. A perfect feature-size ratio hid
   both the pine's smooth relief and the ash's doubled scale. Always cap the flake size from the object view.
+
+Round 29 (2026-10-24): sharpness and the plain squares (user: "the right square is too blurry", "do zoom").
+- `tests/manual/world/square_compare.tscn` (F6): photograph vs procedural for 15 surfaces, H colour/height, Z zoom 1/2/4x, G grooves.
+- Colour is now judged and tuned on the squares at 2-4x. New bake options in `bark_bake.gdshader` / `BarkBaker`: `crisp` (2-px
+  unsharp + five octaves down to 0.4 cm + grain), `fine_mottle`, `flatten`, `desaturate` (negative boosts saturation), `brightness`,
+  `edge_dark`; per-bark tables in `BarkBaker` (BRIGHTNESS, FLATTEN, DESATURATE, FINE_MOTTLE, EDGE_DARK, GROOVED_*).
+- Surfaces redone on the squares: palm (ring-following colour, streaks, specks), gravel (sandy earth with grains), red soil (ragged
+  lumps + grain), rocks (five octaves of grain, fine relief, hairline cracks), wood (painted grain instead of the ripple height),
+  leaf litter (dark, olive and tan leaves), cedar/ash/oak/maple/pine tones.
+- Rules learned: noise cells under about 3 px make a pixel mosaic at zoom (keep fine octaves at 0.5 cm and up); thresholded noise
+  makes L-shaped marks; do not draw colour from a height that is a fit artefact (the wood ripples); clipped heights show as flat grey
+  (widen the stored height range); an object view hides errors the squares show.
+- Checks: `planet_check` 22/22 and `visual_check` pass; forest walk 30 s: defaults GPU 14.6 ms / 50.5 fps, PLANET_PROCEDURAL_ALL
+  GPU 14.4 ms / 49.2 fps (same within noise).
+- Still different from the photographs: leaf shapes (blocky), ash (warm, shiny), pitted rock plates (a few flat), palm lichen,
+  rock swirls and lichen, wood cathedral grain.
