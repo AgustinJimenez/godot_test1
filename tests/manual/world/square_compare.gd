@@ -39,6 +39,9 @@ var _right: TextureRect
 var _title: Label
 var _busy := false
 var _shot := ""
+var _save_bake := ""
+var _panel: PanelContainer
+var _sliders: Array[HSlider] = []
 
 
 func _ready() -> void:
@@ -60,11 +63,14 @@ func _ready() -> void:
 	column.add_child(row)
 	_left = _square(row)
 	_right = _square(row)
+	_build_panel()
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--surface="):
 			_index = clampi(int(argument.get_slice("=", 1)), 0, SURFACES.size() - 1)
 		elif argument.begins_with("--shot="):
 			_shot = argument.substr(7)
+		elif argument.begins_with("--save-bake="):
+			_save_bake = argument.substr(12)
 		elif argument == "--height":
 			_height_mode = true
 		elif argument.begins_with("--zoom="):
@@ -73,6 +79,8 @@ func _ready() -> void:
 	if _shot != "":
 		await get_tree().create_timer(0.5).timeout
 		get_viewport().get_texture().get_image().save_png(_shot)
+		if _save_bake != "":
+			_baked.get_image().save_png(_save_bake)
 		get_tree().quit()
 
 
@@ -112,6 +120,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			else:
 				OS.set_environment("PLANET_BARK_GROOVES", "1")
 			await _show()
+		KEY_C:
+			var text := ""
+			for index in BoulderParams.LIST.size():
+				text += "%s=%.4f " % [BoulderParams.LIST[index][0], BoulderParams.values[index]]
+			DisplayServer.clipboard_set(text)
+		KEY_R:
+			BoulderParams.values = BoulderParams.defaults()
+			_sync_sliders()
+			await _rebake()
 		KEY_ESCAPE:
 			get_tree().quit()
 
@@ -130,6 +147,63 @@ func _show() -> void:
 	_photo_range = _range_of(height)
 	var baked: Image = await _bake(entry[2], entry[3])
 	_baked = ImageTexture.create_from_image(baked)
+	_panel.visible = entry[3] == "rock_boulder_dry" and _shot == ""
+	_apply()
+	_busy = false
+
+
+func _build_panel() -> void:
+	## The boulder's numbers as sliders (BoulderParams.LIST); the bake is redone when one is let go.
+	_panel = PanelContainer.new()
+	_panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	_panel.offset_left = -270.0
+	_panel.offset_top = 40.0
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.11, 0.97)
+	_panel.add_theme_stylebox_override(&"panel", style)
+	add_child(_panel)
+	var scroll := ScrollContainer.new()
+	_panel.add_child(scroll)
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(250.0, 0.0)
+	scroll.add_child(box)
+	var hint := Label.new()
+	hint.text = "boulder numbers (R: reset, C: copy)"
+	box.add_child(hint)
+	for index in BoulderParams.LIST.size():
+		var entry: Array = BoulderParams.LIST[index]
+		var label := Label.new()
+		label.text = "%s  %.3f" % [entry[0], BoulderParams.values[index]]
+		label.add_theme_font_size_override(&"font_size", 12)
+		box.add_child(label)
+		var slider := HSlider.new()
+		slider.min_value = entry[2]
+		slider.max_value = entry[3]
+		slider.step = (float(entry[3]) - float(entry[2])) / 200.0
+		slider.value = BoulderParams.values[index]
+		slider.value_changed.connect(_on_slider.bind(index, label))
+		slider.drag_ended.connect(func(_changed: bool) -> void: _rebake())
+		box.add_child(slider)
+		_sliders.append(slider)
+	_panel.visible = false
+
+
+func _on_slider(value: float, index: int, label: Label) -> void:
+	BoulderParams.values[index] = value
+	label.text = "%s  %.3f" % [BoulderParams.LIST[index][0], value]
+
+
+func _sync_sliders() -> void:
+	for index in _sliders.size():
+		_sliders[index].value = BoulderParams.values[index]
+
+
+func _rebake() -> void:
+	if _busy:
+		return
+	_busy = true
+	var entry: Array = SURFACES[_index]
+	_baked = ImageTexture.create_from_image(await _bake(entry[2], entry[3]))
 	_apply()
 	_busy = false
 
