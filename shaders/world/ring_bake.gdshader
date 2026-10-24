@@ -71,8 +71,24 @@ void fragment() {
 	float streak = vnoise(at, 0.5, 6.0, seed + 35.0) - 0.5;
 	float mottle = vnoise(at, 7.0, 18.0, seed + 37.0) - 0.5;
 	tone *= 1.0 + 0.22 * fine + 0.18 * fine2 + 0.2 * streak + 0.22 * mottle;
-	float lichen = smoothstep(0.7, 0.78, vnoise(at, 0.8, 1.2, seed + 39.0)) * smoothstep(0.25, 0.6, vnoise(at, 10.0, 24.0, seed + 41.0));
+	// round white drops: a jittered grid of small discs (0.9 cm cells), more of them on some rings, slightly stretched along the trunk
+	float drops = 0.0;
+	vec2 cell_size = vec2(0.9, 1.3);
+	vec2 gc = floor(at / cell_size);
+	float density = smoothstep(0.2, 0.7, vnoise(at, 10.0, 24.0, seed + 41.0));
+	for (int oy = -1; oy <= 1; oy++) {
+		for (int ox = -1; ox <= 1; ox++) {
+			vec2 cell = gc + vec2(float(ox), float(oy));
+			if (hash2(cell.x, cell.y, seed + 131.0) < 0.05 + 0.75 * density * density) {
+				vec2 centre = (cell + vec2(hash2(cell.x, cell.y, seed + 133.0), hash2(cell.x, cell.y, seed + 135.0))) * cell_size;
+				float radius = 0.1 + 0.3 * hash2(cell.x, cell.y, seed + 137.0);
+				vec2 d = (at - centre) / vec2(1.0, 1.4);
+				drops = max(drops, 1.0 - smoothstep(radius * 0.7, radius, length(d)));
+			}
+		}
+	}
+	float lichen = drops;
 	vec3 painted = ramp[4] * tone;
-	painted = mix(painted, vec3(0.78, 0.76, 0.7), 0.85 * lichen);
+	painted = mix(painted, vec3(0.92, 0.9, 0.84), 0.95 * lichen);
 	COLOR = vec4(clamp(painted, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 1.8, 0.0, 1.0)); // (a deeper relief than the fitted height)
 }
