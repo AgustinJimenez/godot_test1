@@ -85,9 +85,23 @@ generator, `cell_aspect` 2-4, size cap taken from the object view, `SW_WEIGHT` 0
   `assets/models/kaykit_fantasy_weapons/weapons_bits_texture.png.import`. Update `AGENTS.md` and these task files with each round.
 - Fit results go in `tools/bark/fits/*.json` (keep the good ones, delete the failed ones), sheets in `tools/bark/fits/sheets/`.
 
+## Progress log (2026-10-24, after the handover was first written)
+Each item was judged on `square_compare.tscn` only (colour and/or 2x lit height); none was checked in the object view.
+- Red soil: warmer tan sand, brick-red lumps (less orange), finer dark grit (`soil_bake.gdshader`); lit-height relief weights lowered
+  (was twice as contrasty as the photograph).
+- Leaf litter: `BarkBaker.BRIGHTNESS` 0.85 to 0.72 (mean matches the photograph). Still too few green leaves, leaves blocky.
+- Gravel: crumbly relief between the stones (`chip_bake.gdshader`, warped noise at 1 and 2.2 cm).
+- Boulder: `LumpBaker.CALM` (fine and mid relief x0.5) and smooth rimmed lobes (`rim_lobes` uniform, `LumpBaker.RIM_LOBES`).
+- Rock rubble: fragments tilted and bevelled instead of flat tiles (`lump_bake.gdshader`, affects every lump rock).
+- Mottled rock: a few long wiggly cracks (`wiggle_cracks`, `LumpBaker.WIGGLE_CRACKS`). A straight-crack network was tried and dropped
+  (polygon net).
+- Pitted rock: thinner cracks, smaller steps between plates (`plate_bake.gdshader`); fat shadow wedges at some crack ends remain.
+- NOT verified: `planet_check` / `visual_check` were not re-run for these changes (a run was started and then stopped, so there is no
+  result). Run both before treating the state as checked.
+
 ## What to do next (ordered)
 1. The user looks at the squares and `procedural_all` and says which sets become the default.
-2. Differences left: leaf shapes (blocky), ash (warm and shiny), a few cracks with a fat shadow (pitted rock), rock swirls and
+2. Differences left: leaf shapes (blocky, too few green), boulder plates (photograph's are larger and chain together), mottled rock (softer than the photograph), pitted rock (shadow wedges), ash (warm and shiny), a few cracks with a fat shadow (pitted rock), rock swirls and
    lichen, wood (grain not bent round knots; ripple height), gravel (too few stones, terrazzo look), red soil (larger angular red
    chips), palm height detail.
 3. Birch and rock slot 5 need a new family: thin overlapping horizontal strips plus splits (birch); a slab with slab joints
