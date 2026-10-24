@@ -73,7 +73,7 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 	var flat: float = float(FLATTEN.get(name, 0.0))
 	if OS.has_environment("PLANET_BARK_GROOVES"):
 		flat = float(GROOVED_FLATTEN.get(name, flat))
-	material.set_shader_parameter(&"crisp", CRISP if name != "forest_leaves_03" else 0.0)
+	material.set_shader_parameter(&"crisp", CRISP if name != "forest_leaves_03" else 0.55)
 	material.set_shader_parameter(&"fine_mottle", float(FINE_MOTTLE.get(name, 0.0)))
 	material.set_shader_parameter(&"desaturate", float(DESATURATE.get(name, 0.0)))
 	material.set_shader_parameter(&"flatten", flat)
