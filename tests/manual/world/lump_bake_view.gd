@@ -5,12 +5,15 @@ extends Node
 
 func _ready() -> void:
 	var out := "E:/Temp"
+	var rock := "rock_face_04"
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--out="):
 			out = argument.substr(6)
+		if argument.begins_with("--rock="):
+			rock = argument.substr(7)
 	var baker := LumpBaker.new()
 	add_child(baker)
-	var image: Image = await baker.bake("rock_face_04")
+	var image: Image = await baker.bake(rock)
 	image.save_png("%s/lump_colour.png" % out)
 	var grey := Image.create(image.get_width(), image.get_height(), false, Image.FORMAT_L8)
 	for y in image.get_height():

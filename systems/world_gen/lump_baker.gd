@@ -5,6 +5,8 @@ extends Node
 
 const SHADER := preload("res://shaders/world/lump_bake.gdshader")
 const SIZE := 1024
+## how much of the photograph's staining each rock shows (the others keep the plain tones)
+const STAIN_AMOUNT := {"rock_06": 1.0}
 ## how much the lumps follow the 16 x 16 picture of the photograph (0: fully procedural)
 const GUIDE_MIX := 0.8
 
@@ -29,6 +31,11 @@ func bake(name: String, seed_value := 1.0) -> Image:
 		colours.append(Vector3(colour.r, colour.g, colour.b))
 	material.set_shader_parameter(&"ramp", colours)
 	material.set_shader_parameter(&"seed", seed_value)
+	var light: Color = fit["light"]
+	var dark: Color = fit["dark"]
+	material.set_shader_parameter(&"light_colour", Vector3(light.r, light.g, light.b))
+	material.set_shader_parameter(&"dark_colour", Vector3(dark.r, dark.g, dark.b))
+	material.set_shader_parameter(&"dark_share", float(fit["dark_share"]) * float(STAIN_AMOUNT.get(name, 0.0)))
 	material.set_shader_parameter(&"guide", fit["guide"])
 	material.set_shader_parameter(&"guide_mix", GUIDE_MIX)
 	rect.material = material

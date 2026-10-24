@@ -9,6 +9,9 @@ uniform float tile_cm = 200.0;
 uniform vec3 ramp[8];
 uniform vec2 height_range = vec2(0.0, 1.0);
 uniform float seed = 1.0;
+uniform vec3 light_colour = vec3(0.6, 0.5, 0.4); // the rock's light colour
+uniform vec3 dark_colour = vec3(0.2, 0.17, 0.14); // its stains (the dark patches in the hollows)
+uniform float dark_share = 0.0; // how much of the surface is stained (0: none)
 uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering the lumps
 uniform float guide_mix = 0.0; // 0: the lumps' own noise (fully procedural); 1: the guide's
 
@@ -126,6 +129,11 @@ void fragment() {
 	int i1 = min(i0 + 1, 7);
 	vec3 colour = mix(ramp[i0], ramp[i1], t - float(i0));
 	colour = mix(colour, ramp[3], 0.7); // (the photograph's colour does not follow its height: near the mean)
+	// staining: coarse patches that settle in the low parts; the colour is the photograph's light and dark
+	float patch = vnoise(at, 9.0, seed + 41.0) * 0.5 + vnoise(at, 3.5, seed + 43.0) * 0.3 + vnoise(at, 1.6, seed + 45.0) * 0.2;
+	float stain = smoothstep(-0.06, 0.06, patch + 0.35 * (0.5 - h) - (0.85 - 0.7 * dark_share));
+	float stained = step(0.001, dark_share);
+	colour = mix(colour, mix(light_colour, dark_colour, stain) * 1.25, stained);
 	// each lump its own tone, the creases dark, the rubble lighter and varied fragment by fragment
 	colour *= mix(1.0, 0.7, clamp(p[6] * 4.0, 0.0, 1.0)) * (0.7 + 0.6 * tone); // (a creased face is darker)
 	colour *= 1.0 - 0.55 * in_crease * clamp(p[6] * 2.0, 0.0, 1.0); // (no crease in the height: none in the colour)
