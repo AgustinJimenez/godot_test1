@@ -34,6 +34,9 @@ const LIVE_WHEN_TRACED: Array[String] = [
 	"cavity_colour", "cavity_chroma",
 ]
 
+## On/off switches: two positions, 0 and 1 (the shader only checks above or below 0.5).
+const SWITCHES: Array[String] = ["traced_features"]
+
 static var values: Array[float] = defaults()
 
 
@@ -46,3 +49,17 @@ static func defaults() -> Array[float]:
 
 static func as_packed() -> PackedFloat32Array:
 	return PackedFloat32Array(values)
+
+
+## Whether a slider changes the bake in the current mode: with the traced features on only the
+## LIVE_WHEN_TRACED ones do, with them off the others (the old procedural controls) do instead.
+static func is_live(entry_name: String) -> bool:
+	var traced := values[traced_index()] > 0.5
+	return LIVE_WHEN_TRACED.has(entry_name) or not traced
+
+
+static func traced_index() -> int:
+	for index in LIST.size():
+		if LIST[index][0] == "traced_features":
+			return index
+	return 0

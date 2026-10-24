@@ -43,6 +43,7 @@ var _shot := ""
 var _save_bake := ""
 var _panel: PanelContainer
 var _sliders: Array[HSlider] = []
+var _labels: Array[Label] = []
 
 
 func _ready() -> void:
@@ -186,16 +187,16 @@ func _build_panel() -> void:
 		label.text = "%s  %.3f" % [entry[0], BoulderParams.values[index]]
 		label.add_theme_font_size_override(&"font_size", 12)
 		box.add_child(label)
-		var live := BoulderParams.LIVE_WHEN_TRACED.has(entry[0])
-		label.visible = live
+		label.visible = BoulderParams.is_live(entry[0])
+		_labels.append(label)
 		var slider := HSlider.new()
 		slider.min_value = entry[2]
 		slider.max_value = entry[3]
-		slider.step = (float(entry[3]) - float(entry[2])) / 200.0
-		slider.value = BoulderParams.values[index]
+		var span := float(entry[3]) - float(entry[2])
+		slider.step = 1.0 if BoulderParams.SWITCHES.has(entry[0]) else span / 200.0
 		slider.value_changed.connect(_on_slider.bind(index, label))
 		slider.drag_ended.connect(func(_changed: bool) -> void: _rebake())
-		slider.visible = live
+		slider.visible = BoulderParams.is_live(entry[0])
 		box.add_child(slider)
 		_sliders.append(slider)
 	_panel.visible = false
@@ -204,6 +205,8 @@ func _build_panel() -> void:
 func _on_slider(value: float, index: int, label: Label) -> void:
 	BoulderParams.values[index] = value
 	label.text = "%s  %.3f" % [BoulderParams.LIST[index][0], value]
+	if index == BoulderParams.traced_index():
+		_show_live_sliders()
 
 
 func _sync_sliders() -> void:
@@ -286,3 +289,10 @@ func _bake(kind: String, surface: String) -> Image:
 		image = await node.bake(surface)
 	node.queue_free()
 	return image
+
+
+func _show_live_sliders() -> void:
+	for i in _sliders.size():
+		var live := BoulderParams.is_live(BoulderParams.LIST[i][0])
+		_sliders[i].visible = live
+		_labels[i].visible = live
