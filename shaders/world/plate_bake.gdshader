@@ -9,6 +9,7 @@ uniform float tile_cm = 200.0;
 uniform vec3 ramp[8];
 uniform vec2 height_range = vec2(0.0, 1.0);
 uniform float seed = 1.0;
+uniform float flat_rock = 0.0; // 0..1: a rock's flat-lit colour (pitted rock) instead of the height ramp
 uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering each plate's tone
 uniform float guide_mix = 0.0; // 0: all the plates' own tones (fully procedural); 1: the guide's
 uniform vec3 palette[3]; // the photograph's main colours, brightest first
@@ -82,7 +83,7 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 		}
 	}
 	float edge = d2 - d1;
-	rim = 1.0 - smoothstep(0.0, p[7] * 2.5, edge);
+	rim = 1.0 - smoothstep(0.0, p[7] * 0.3, edge);
 	dice = hashw(best_id.x, best_id.y, s + 19.0, per);
 	float crack = 1.0 - smoothstep(0.0, p[5] * 0.45, edge);
 	float lipf = smoothstep(0.0, p[7] * 0.12, edge); // (a sharp lip: a step, not a ramp)
@@ -118,6 +119,13 @@ void fragment() {
 			: (dice < palette_shares.x + palette_shares.y ? palette[1] : palette[2]);
 	plate_colour = mix(palette[2], plate_colour, smoothstep(0.05, 0.45, h));
 	colour = mix(colour, plate_colour * (0.75 + 0.5 * h), palette_mix);
-	colour *= 1.0 - 0.7 * rim; // the shadow where one plate meets the next
+	// flat-lit rock plates: the colour stays near the photograph's (the height only tints a little), a grain and soft mottling,
+	// and only the cracks are dark
+	vec3 base = ramp[5] * vec3(1.18, 1.0, 0.9);
+	float g_a = vnoise(at, 1.2, seed + 141.0) - 0.5;
+	float g_b = vnoise(at, 3.5, seed + 141.0 + 7.0) - 0.5;
+	float g_c = vnoise(at, 9.0, seed + 141.0 + 13.0) - 0.5;
+	colour = mix(colour, base * (1.0 + 0.26 * g_a + 0.3 * g_b + 0.28 * g_c), flat_rock);
+	colour *= 1.0 - mix(0.7, 0.62, flat_rock) * rim; // the shadow where one plate meets the next
 	COLOR = vec4(clamp(colour, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 2.0, 0.0, 1.0)); // (a deeper relief than the fitted height)
 }

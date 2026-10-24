@@ -36,6 +36,7 @@ func bake(name: String, seed_value := 1.0) -> Image:
 		colours.append(Vector3(colour.r, colour.g, colour.b))
 	material.set_shader_parameter(&"ramp", colours)
 	material.set_shader_parameter(&"seed", seed_value)
+	material.set_shader_parameter(&"flat_rock", 0.0 if name == "pine_bark" else 0.85)
 	material.set_shader_parameter(&"guide", fit["guide"])
 	material.set_shader_parameter(&"guide_mix", GUIDE_MIX)
 	var palette := PackedVector3Array()
