@@ -6,7 +6,7 @@ extends Node
 const SHADER := preload("res://shaders/world/plate_bake.gdshader")
 const SIZE := 1024
 ## how much each plate takes its tone from the 16 x 16 picture of the photograph (0: procedural)
-const GUIDE_MIX := 1.0
+const GUIDE_MIX := 0.55
 ## how much each plate takes its own colour from the photograph's palette
 const PALETTE_MIX := 0.85
 
