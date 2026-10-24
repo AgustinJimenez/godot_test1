@@ -35,7 +35,8 @@ func bake(name: String, seed_value := 1.0) -> Image:
 	var dark: Color = fit["dark"]
 	material.set_shader_parameter(&"light_colour", Vector3(light.r, light.g, light.b))
 	material.set_shader_parameter(&"dark_colour", Vector3(dark.r, dark.g, dark.b))
-	material.set_shader_parameter(&"dark_share", float(fit["dark_share"]) * float(STAIN_AMOUNT.get(name, 0.0)))
+	var stain: float = float(fit["dark_share"]) * float(STAIN_AMOUNT.get(name, 0.0))
+	material.set_shader_parameter(&"dark_share", stain)
 	material.set_shader_parameter(&"guide", fit["guide"])
 	material.set_shader_parameter(&"guide_mix", GUIDE_MIX)
 	rect.material = material
