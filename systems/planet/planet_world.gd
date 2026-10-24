@@ -149,6 +149,18 @@ func _bake_the_bark() -> void:
 		PlanetTile.ground_material().set_shader_parameter(&"scan_leaf_size",
 				GroundBaker.LITTER_TILE_M)
 		litter.queue_free()
+	if OS.has_environment("PLANET_PROCEDURAL_RED") and DisplayServer.get_name() != "headless":
+		var red := GroundBaker.new() # (the red soil scan from the fitted soil generator)
+		add_child(red)
+		var red_maps: Array[Image] = await red.bake_red()
+		for image in red_maps:
+			image.generate_mipmaps()
+		var red_ground := PlanetTile.ground_material()
+		red_ground.set_shader_parameter(&"scan_red_c", ImageTexture.create_from_image(red_maps[0]))
+		red_ground.set_shader_parameter(&"scan_red_n", ImageTexture.create_from_image(red_maps[1]))
+		red_ground.set_shader_parameter(&"scan_red_mean", GroundBaker.mean_linear(red_maps[0]))
+		red_ground.set_shader_parameter(&"scan_red_size", GroundBaker.RED_TILE_M)
+		red.queue_free()
 	if OS.has_environment("PLANET_PROCEDURAL_GRAVEL") and DisplayServer.get_name() != "headless":
 		var gravel := GroundBaker.new() # (the gravel scan from the fitted chips)
 		add_child(gravel)

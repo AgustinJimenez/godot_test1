@@ -9,6 +9,8 @@ const SHADER := preload("res://shaders/world/ground_maps.gdshader")
 const LITTER_TILE_M := 2.3
 ## the gravel tile in metres
 const GRAVEL_TILE_M := 1.0
+## the red soil tile in metres
+const RED_TILE_M := 1.0
 
 
 ## [colour map, normal map] (Images) of the fitted leaf litter.
@@ -31,6 +33,15 @@ func bake_gravel() -> Array[Image]:
 	add_child(chips)
 	var tile: Image = await chips.bake("gravel_soil")
 	chips.queue_free()
+	return await _maps(tile)
+
+
+## [colour map, normal map] (Images) of the fitted red soil (SoilFits).
+func bake_red() -> Array[Image]:
+	var soil := SoilBaker.new()
+	add_child(soil)
+	var tile: Image = await soil.bake("red_soil")
+	soil.queue_free()
 	return await _maps(tile)
 
 
