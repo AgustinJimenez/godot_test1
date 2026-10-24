@@ -25,6 +25,15 @@ const LIST: Array = [
 	["cavity_colour", 1.0, 0.0, 3.0], ["cavity_chroma", 0.3, 0.0, 1.0],
 ]
 
+## The sliders that still change the bake while `traced_features` is on. The others drive the old
+## procedural lobes, rims, pits and cracks, which the traced features replace (checked by
+## baking each at its extreme).
+const LIVE_WHEN_TRACED: Array[String] = [
+	"fine_bumps", "fine_size", "traced_features", "traced_gain", "traced_soft_cm",
+	"edge_layer", "colour_swell", "lobe_tint", "edge_dark", "colour_detail",
+	"cavity_colour", "cavity_chroma",
+]
+
 static var values: Array[float] = defaults()
 
 

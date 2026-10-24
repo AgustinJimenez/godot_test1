@@ -71,6 +71,11 @@ func _ready() -> void:
 			_shot = argument.substr(7)
 		elif argument.begins_with("--save-bake="):
 			_save_bake = argument.substr(12)
+		elif argument.begins_with("--param="):
+			var pair := argument.substr(8).split(":")
+			for index in BoulderParams.LIST.size():
+				if BoulderParams.LIST[index][0] == pair[0]:
+					BoulderParams.values[index] = float(pair[1])
 		elif argument == "--height":
 			_height_mode = true
 		elif argument.begins_with("--zoom="):
@@ -168,7 +173,7 @@ func _build_panel() -> void:
 	box.custom_minimum_size = Vector2(250.0, 0.0)
 	scroll.add_child(box)
 	var hint := Label.new()
-	hint.text = "boulder numbers (R: reset, C: copy)"
+	hint.text = "boulder numbers (R reset, C copy): only those that change the bake"
 	box.add_child(hint)
 	for index in BoulderParams.LIST.size():
 		var entry: Array = BoulderParams.LIST[index]
@@ -176,6 +181,8 @@ func _build_panel() -> void:
 		label.text = "%s  %.3f" % [entry[0], BoulderParams.values[index]]
 		label.add_theme_font_size_override(&"font_size", 12)
 		box.add_child(label)
+		var live := BoulderParams.LIVE_WHEN_TRACED.has(entry[0])
+		label.visible = live
 		var slider := HSlider.new()
 		slider.min_value = entry[2]
 		slider.max_value = entry[3]
@@ -183,6 +190,7 @@ func _build_panel() -> void:
 		slider.value = BoulderParams.values[index]
 		slider.value_changed.connect(_on_slider.bind(index, label))
 		slider.drag_ended.connect(func(_changed: bool) -> void: _rebake())
+		slider.visible = live
 		box.add_child(slider)
 		_sliders.append(slider)
 	_panel.visible = false
@@ -203,7 +211,11 @@ func _rebake() -> void:
 		return
 	_busy = true
 	var entry: Array = SURFACES[_index]
+	var title_before := _title.text
+	_title.text = "baking ... (a few seconds)"
+	var started := Time.get_ticks_msec()
 	_baked = ImageTexture.create_from_image(await _bake(entry[2], entry[3]))
+	_title.text = title_before + "   [baked in %.1f s]" % ((Time.get_ticks_msec() - started) / 1000.0)
 	_apply()
 	_busy = false
 
