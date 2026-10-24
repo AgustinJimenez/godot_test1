@@ -568,8 +568,13 @@ func _orbit_cameras() -> void:
 		camera.look_at_from_position(_target + offset * _orbit.z, _target)
 
 
-func _unhandled_input(event: InputEvent) -> void:
+## Dragging and the wheel turn and zoom the camera. _input, not _unhandled_input: the viewports and
+## containers of the layout take mouse motion before it gets there. Not over a slider or a button.
+func _input(event: InputEvent) -> void:
 	if not _object_mode:
+		return
+	var hovered := get_viewport().gui_get_hovered_control()
+	if hovered is Range or hovered is BaseButton or (hovered != null and _panel.is_ancestor_of(hovered)):
 		return
 	var motion := event as InputEventMouseMotion
 	_dragging = motion != null and (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0
