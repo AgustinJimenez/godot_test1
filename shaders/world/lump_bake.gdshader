@@ -72,6 +72,8 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 	vec2 iu = floor(u);
 	float best = 1e9;
 	float best_id = 0.0;
+	vec2 best_dd = vec2(0.0);
+	vec2 best_tilt = vec2(0.0);
 	for (int oy = -1; oy <= 1; oy++) {
 		for (int ox = -1; ox <= 1; ox++) {
 			float gx = iu.x + float(ox);
@@ -82,11 +84,14 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 			if (d < best) {
 				best = d;
 				best_id = hashw(gx, gy, s + 15.0, rn);
+				best_dd = dd;
+				best_tilt = vec2(hashw(gx, gy, s + 17.0, rn), hashw(gx, gy, s + 19.0, rn)) - 0.5;
 			}
 		}
 	}
 	float reach = smoothstep(1.0 - p[10], 1.0, crease) * clamp(p[6] * 6.0, 0.0, 1.0); // (no rubble along a crease the height does not have)
-	h += p[9] * (best_id - 0.5) * reach;
+	// each fragment is tilted and bevelled at its edge (angular stones, not flat mosaic tiles)
+	h += p[9] * ((best_id - 0.5) + 1.2 * dot(best_dd, best_tilt) - 0.35 * smoothstep(0.3, 0.75, sqrt(best))) * reach;
 	fragment = best_id * reach;
 	h += p[12] * (vnoise(at, max(p[11], 1.6), s + 17.0) - 0.5);
 	float mid = max(p[13], 2.0);
