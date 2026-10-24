@@ -38,6 +38,7 @@ var _left: TextureRect
 var _right: TextureRect
 var _title: Label
 var _busy := false
+var _rebake_queued := false
 var _shot := ""
 var _save_bake := ""
 var _panel: PanelContainer
@@ -212,16 +213,20 @@ func _sync_sliders() -> void:
 
 func _rebake() -> void:
 	if _busy:
+		_rebake_queued = true # (released during a bake: bake again with the newest values after)
 		return
 	_busy = true
 	var entry: Array = SURFACES[_index]
-	var title_before := _title.text
 	_title.text = "baking ... (a few seconds)"
 	var started := Time.get_ticks_msec()
 	_baked = ImageTexture.create_from_image(await _bake(entry[2], entry[3]))
-	_title.text = title_before + "   [baked in %.1f s]" % ((Time.get_ticks_msec() - started) / 1000.0)
 	_apply()
+	_title.text = "%s  [%d/%d]   baked in %.1f s with the sliders' values" % [
+			entry[0], _index + 1, SURFACES.size(), (Time.get_ticks_msec() - started) / 1000.0]
 	_busy = false
+	if _rebake_queued:
+		_rebake_queued = false
+		_rebake()
 
 
 func _range_of(image: Image) -> Vector2:
