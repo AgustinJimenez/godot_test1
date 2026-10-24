@@ -107,7 +107,7 @@ void fragment() {
 		float dx = abs(at.x - cx);
 		dx = min(dx, tile_cm - dx);
 		float width = 9.0 + 13.0 * hash2(row, float(k), seed + 113.0);
-		float lift = (hash2(row, float(k), seed + 115.0) - 0.5) * 2.0 * board_cm * 0.38;
+		float lift = (hash2(row, float(k), seed + 115.0) - 0.5) * 2.0 * board_cm * 0.2;
 		arch += lift * exp(-(dx * dx) / (width * width));
 	}
 	float lines = vnoise(vec2(at.x * 0.18, at.y + wave + arch), 160.0, 0.55, seed + 95.0) - 0.5;
@@ -117,7 +117,7 @@ void fragment() {
 	float seam = 1.0 - smoothstep(0.0, 0.02, min(local_row, 1.0 - local_row));
 	float ring = vnoise(at, 7.0, 1.6, seed + 103.0) - 0.5;
 	float cloud = vnoise(at, 36.0, 10.0, seed + 101.0) - 0.5;
-	float tone = 1.0 + 0.28 * board_tone + 0.2 * lines + 0.14 * lines2 + 0.16 * cloud;
+	float tone = 1.0 + 0.28 * board_tone + 0.12 * lines + 0.1 * lines2 + 0.16 * cloud;
 	vec3 colour = ramp[4] * tone * (0.9 + 0.2 * h);
 	colour *= 1.0 + 0.2 * ring;
 	colour = mix(colour, ramp[1] * 0.75, 0.35 * pores);
@@ -125,7 +125,7 @@ void fragment() {
 	float fine1 = vnoise(vec2(at.x * 0.1, at.y + wave * 0.7 + arch), 120.0, 0.28, seed + 105.0) - 0.5;
 	float fine2 = vnoise(vec2(at.x * 0.06, at.y + wave * 0.5 + arch), 200.0, 0.17, seed + 107.0) - 0.5;
 	float line_hard = smoothstep(0.1, 0.22, abs(fine1)) - 0.5;
-	colour *= 1.0 - 0.16 * line_hard + 0.22 * fine1 + 0.18 * fine2;
+	colour *= 1.0 - 0.09 * line_hard + 0.14 * fine1 + 0.12 * fine2;
 	float dash = smoothstep(0.82, 0.95, vnoise(at, 1.8, 0.2, seed + 109.0));
 	colour = mix(colour, colour * 0.6, 0.45 * dash);
 	// a few knots: dark oval cores with ring lines round them, one candidate per 40 cm cell, on about a third of the cells
