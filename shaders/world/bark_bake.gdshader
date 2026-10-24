@@ -15,6 +15,7 @@ uniform vec3 shading = vec3(0.4, 0.05, 0.2); // cavity gain, mottle, flake tone 
 uniform float seed = 1.0;
 uniform vec3 palette[3]; // the photograph's main colours, brightest first
 uniform vec3 palette_shares = vec3(0.34, 0.33, 0.33);
+uniform float depth_boost = 0.0; // 0..1: deeper fissures (stronger cavity shading, darker gaps) for craggy barks
 uniform float palette_flat = 0.0; // 1: the palette colour as it is (leaf litter: no height gating, no cavity gain)
 uniform float palette_mix = 0.0; // 0: the ramp by height alone; 1: each flake takes one of the palette colours
 uniform vec3 alpha_map = vec3(1.0, 0.5, 0.5); // the stored height: scale about the generator's mean, moved to the photograph's mean (the shading reads it)
@@ -160,8 +161,8 @@ void fragment() {
 	float cavity = h - around;
 	float mottle = vnoise(at, 14.0, 28.0, seed + 61.0) - 0.5;
 	float tone = (b.y - 0.5) * 2.0;
-	float light = (1.0 + shading.x * cavity * 6.0) * (1.0 + shading.y * mottle * 6.0) * (1.0 + shading.z * tone);
-	light *= mix(0.3, 1.0, smoothstep(0.0, 0.5, h)); // the gaps and low parts between the flakes are dark
+	float light = (1.0 + shading.x * cavity * 6.0 * (1.0 + 2.0 * depth_boost)) * (1.0 + shading.y * mottle * 6.0) * (1.0 + shading.z * tone);
+	light *= mix(0.3 - 0.22 * depth_boost, 1.0, smoothstep(0.0, 0.5 + 0.2 * depth_boost, h)); // the gaps and low parts between the flakes are dark
 	float t = h * 7.0;
 	int i0 = int(floor(t));
 	int i1 = min(i0 + 1, 7);
