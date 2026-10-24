@@ -200,3 +200,12 @@ fit's values).
 - Fallback for the hard ones: a small photo base plus procedural variation (stochastic tiling, task 086): the atlas shrinks
   4-16x but does not go to zero.
 - Untested: the gravel opt-in in a gravel area. Two lab views at seed 1337 (dune sand, and a red leaf-strewn soil at 0.7 m) never show the gravel scan; to test it pick a spot whose soil class is grey gravel (see the scan choice in `planet_ground.gdshader`, near line 560) or force `ratios` to the gravel layer with a debug uniform.
+
+## Status at the end of the 2026-10-23 batch
+- Opt-in procedural versions (env switches, all together cost nothing measurable, `planet_check` and `visual_check` pass):
+  PINE (long flakes), ASH (long flakes), PALM (rings), LITTER, GRAVEL, RED (ground scans), WOOD (cabin boards), LUMPS (rock slots 0-2).
+  In the game by default: oak, maple, cedar.
+- Cliffs and leaves were already procedural. Not working: layered rock (slot 5), webbed rock (slot 3), pitted mossy (slot 4),
+  birch / sakura-type smooth bark.
+- Method that worked: flake generator forced long and thin + a size cap read off the object view + sliced Wasserstein loss
+  (`SW_WEIGHT=0.5`) + the plain-square sheet (`compare_sheet.py`) read by eye, before any object view.
