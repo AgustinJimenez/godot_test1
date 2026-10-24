@@ -84,7 +84,7 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 			}
 		}
 	}
-	float reach = smoothstep(1.0 - p[10], 1.0, crease);
+	float reach = smoothstep(1.0 - p[10], 1.0, crease) * clamp(p[6] * 6.0, 0.0, 1.0); // (no rubble along a crease the height does not have)
 	h += p[9] * (best_id - 0.5) * reach;
 	fragment = best_id * reach;
 	h += p[12] * (vnoise(at, max(p[11], 1.6), s + 17.0) - 0.5);
