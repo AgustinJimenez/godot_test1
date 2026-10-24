@@ -12,9 +12,9 @@ const DEPTH_BOOST := {"pine_bark": 1.0, "tree_bark_03": 0.5}
 ## how much more the baked height is spread than the photograph's (a deeper parallax and masks)
 const HEIGHT_SPREAD := {"pine_bark": 2.2}
 ## the dark groove network round every raised flake (0..1)
-const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 0.6}
+const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 1.0}
 ## a whole-bark darkening where the albedo lift of the colour model comes out too light
-const BRIGHTNESS := {"pine_bark": 0.62}
+const BRIGHTNESS := {"pine_bark": 0.62, "tree_bark_03": 0.8}
 const PALETTE_MIX := {"pine_bark": 0.7, "forest_leaves_03": 0.9}
 
 
