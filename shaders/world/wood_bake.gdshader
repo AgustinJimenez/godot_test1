@@ -128,6 +128,25 @@ void fragment() {
 	colour *= 1.0 - 0.16 * line_hard + 0.22 * fine1 + 0.18 * fine2;
 	float dash = smoothstep(0.82, 0.95, vnoise(at, 1.8, 0.2, seed + 109.0));
 	colour = mix(colour, colour * 0.6, 0.45 * dash);
+	// a few knots: dark oval cores with ring lines round them, one candidate per 40 cm cell, on about a third of the cells
+	float knot = 0.0;
+	float knot_ring = 0.0;
+	vec2 kc = floor(at / 40.0);
+	for (int oy = -1; oy <= 1; oy++) {
+		for (int ox = -1; ox <= 1; ox++) {
+			vec2 cell = kc + vec2(float(ox), float(oy));
+			float chance = hash2(cell.x, cell.y, seed + 121.0);
+			if (chance < 0.34) {
+				vec2 centre = (cell + vec2(0.2 + 0.6 * hash2(cell.x, cell.y, seed + 123.0), 0.2 + 0.6 * hash2(cell.x, cell.y, seed + 125.0))) * 40.0;
+				vec2 d = (at - centre) / vec2(2.3, 1.0);
+				float r = length(d);
+				float size = 0.9 + 1.1 * hash2(cell.x, cell.y, seed + 127.0);
+				knot = max(knot, 1.0 - smoothstep(size * 0.5, size * 0.9, r));
+				knot_ring = max(knot_ring, (1.0 - smoothstep(size * 2.2, size * 7.0, r)) * (0.5 + 0.5 * sin(r * 3.1)));
+			}
+		}
+	}
+	colour *= 1.0 - 0.5 * knot - 0.07 * knot_ring;
 	colour *= 1.0 - 0.45 * seam;
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }
