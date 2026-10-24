@@ -15,7 +15,7 @@ uniform float dark_share = 0.0; // how much of the surface is stained (0: none)
 uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering the lumps
 uniform float rim_lobes = 0.0; // height of smooth rimmed lobes (rock boulders in the photograph); 0: none
 uniform float wiggle_cracks = 0.0; // depth of a few long wiggly cracks (the mottled rock); 0: none
-uniform float bp[47]; // the boulder's hand-set numbers (BoulderParams in GDScript lists them, with their ranges)
+uniform float bp[49]; // the boulder's hand-set numbers (BoulderParams in GDScript lists them, with their ranges)
 #define B_COVER bp[0]
 #define B_RADIUS bp[1]
 #define B_RADIUS_VAR bp[2]
@@ -59,6 +59,7 @@ uniform float bp[47]; // the boulder's hand-set numbers (BoulderParams in GDScri
 #define B_LIP_COVER bp[44]
 #define B_LIP_DEPTH bp[45]
 #define B_LIP_CM bp[46]
+#define B_PIT_IRREGULAR bp[48]
 uniform sampler2D swell_colour_tex : filter_linear, repeat_enable; // the photograph's colour on a coarse grid (boulder_colour.bin), without the lobe tones
 uniform sampler2D edge_tex : filter_nearest; // the sharp edge points drawn as step profiles (BoulderEdges), height offsets in the normalised height
 uniform sampler2D lobe_tex : filter_nearest; // the lobes traced from the photograph (BoulderFeatures): a row each, 2 header texels then the outline
@@ -293,7 +294,10 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 			for (int i = 0; i < n_specks; i++) {
 				vec4 sp = texelFetch(speck_tex, ivec2(i, 0), 0);
 				float reach = max(sp.z * tile_cm * 1.3, 0.35);
-				float dd = length(at - sp.xy * tile_cm) / reach;
+				// irregular outline: the photograph's pits are not round, a warp of the distance breaks the clean disc
+				vec2 off = at - sp.xy * tile_cm;
+				off += reach * B_PIT_IRREGULAR * vec2(vnoise(at, 0.8, s + 701.0) - 0.5, vnoise(at, 0.8, s + 703.0) - 0.5) * 2.0;
+				float dd = length(off) / reach;
 				if (dd < 1.0) {
 					h += sp.w * (height_range.y - height_range.x) * B_FEAT_GAIN * (1.0 - smoothstep(0.4, 1.0, dd));
 				}
@@ -368,7 +372,8 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 				if (hashw(gx, gy, s + 601.0, cn) < B_LIP_COVER) {
 					vec2 pc = vec2(gx + hashw(gx, gy, s + 603.0, cn), gy + hashw(gx, gy, s + 605.0, cn));
 					float pr = 0.12 + 0.2 * hashw(gx, gy, s + 607.0, cn);
-					float d = length(cu - pc) / pr;
+					vec2 jitter = pr * B_PIT_IRREGULAR * vec2(vnoise(at, 0.5, s + 711.0) - 0.5, vnoise(at, 0.5, s + 713.0) - 0.5) * 2.0;
+					float d = length(cu - pc + jitter) / pr;
 					float depth = B_LIP_DEPTH * (0.4 + 0.6 * hashw(gx, gy, s + 609.0, cn));
 					h += depth * (-(1.0 - smoothstep(0.7, 1.0, d)) + 0.35 * exp(-pow((d - 1.1) / 0.12, 2.0)));
 				}

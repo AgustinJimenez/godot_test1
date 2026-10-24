@@ -189,6 +189,7 @@ func _colour_pass(first: Image) -> Image:
 	material.set_shader_parameter(&"chroma", BoulderParams.values[38])
 	material.set_shader_parameter(&"clip_level", BoulderParams.values[42])
 	material.set_shader_parameter(&"small_scale", BoulderParams.values[43])
+	material.set_shader_parameter(&"up_scale", BoulderParams.values[47])
 	rect.material = material
 	viewport.add_child(rect)
 	add_child(viewport)

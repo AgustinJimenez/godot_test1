@@ -9,6 +9,7 @@ uniform float texel = 0.0009765625; // 1 / size
 uniform vec3 gain = vec3(1.2, 1.0, 0.8); // how much each scale (small, medium, large) darkens or lightens the colour
 const float RADII_PX[3] = float[3](2.5, 6.0, 12.0);
 uniform float strength = 1.0;
+uniform float up_scale = 1.0; // how much a convex part brightens, against how much a cavity darkens (the photograph's pits are darker than they are bright)
 uniform float small_scale = 1.0; // multiplies the smallest scale's gain (its 2.5 px blobs are what makes the 1.4 to 2.8 cm band too strong)
 uniform float clip_level = 1.0; // the cavity (normalised height) beyond which its effect on the colour saturates
 uniform float chroma = 0.0; // 0: the cavity changes brightness only; 1: it also pulls the colour toward brown
@@ -29,6 +30,7 @@ void fragment() {
 	float cavity = 0.0;
 	for (int s = 0; s < 3; s++) {
 		float c = h - ring_mean(UV, RADII_PX[s]);
+		c = c > 0.0 ? c * up_scale : c; // (convex parts brighten less than cavities darken)
 		cavity += gain[s] * (s == 0 ? small_scale : 1.0) * (clip_level * tanh(c / clip_level)); // (soft limit: a few pits must not become spikes)
 	}
 	float k = clamp(1.0 + strength * cavity * 4.0, 0.55, 1.5);

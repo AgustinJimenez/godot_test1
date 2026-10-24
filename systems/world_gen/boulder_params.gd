@@ -22,10 +22,12 @@ const LIST: Array = [
 	["traced_soft_cm", 0.6, 0.1, 4.0], ["edge_layer", 1.05, 0.0, 3.0],
 	["colour_swell", 1.0, 0.0, 1.0], ["lobe_tint", 1.0, 0.0, 2.0], ["edge_dark", 0.5, 0.0, 4.0],
 	["colour_detail", 0.0, 0.0, 3.0],
-	["cavity_colour", 1.4, 0.0, 3.0], ["cavity_chroma", 0.3, 0.0, 1.0],
+	["cavity_colour", 2.0, 0.0, 3.0], ["cavity_chroma", 0.3, 0.0, 1.0],
 	["fine_colour", 0.085, 0.0, 0.5], ["fine_height", 0.0028, 0.0, 0.03],
-	["fine_cm", 0.6, 0.4, 2.0], ["cavity_clip", 0.03, 0.01, 1.0], ["cavity_small", 0.4, 0.0, 1.5],
+	["fine_cm", 0.6, 0.4, 2.0], ["cavity_clip", 0.015, 0.01, 1.0], ["cavity_small", 0.4, 0.0, 1.5],
 	["lip_cover", 0.005, 0.0, 0.5], ["lip_depth", 0.11, 0.0, 0.2], ["lip_cm", 0.6, 0.3, 1.5],
+	["cavity_up", 0.5, 0.0, 1.5],
+	["pit_irregular", 0.6, 0.0, 1.5],
 ]
 
 ## The sliders that still change the bake while `traced_features` is on. The others drive the old
@@ -36,7 +38,8 @@ const LIVE_WHEN_TRACED: Array[String] = [
 	"edge_layer", "colour_swell", "lobe_tint", "edge_dark", "colour_detail",
 	"cavity_colour", "cavity_chroma", "fine_colour", "fine_height", "fine_cm",
 	"cavity_clip", "cavity_small",
-	"lip_cover", "lip_depth", "lip_cm",
+	"lip_cover", "lip_depth", "lip_cm", "cavity_up",
+	"pit_irregular",
 ]
 
 ## On/off switches: two positions, 0 and 1 (the shader only checks above or below 0.5).
