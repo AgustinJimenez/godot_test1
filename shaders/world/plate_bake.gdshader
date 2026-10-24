@@ -85,7 +85,7 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	float edge = d2 - d1;
 	rim = 1.0 - smoothstep(0.0, p[7] * 0.14, edge);
 	dice = hashw(best_id.x, best_id.y, s + 19.0, per);
-	float crack = 1.0 - smoothstep(0.0, p[5] * 0.22, edge);
+	float crack = 1.0 - smoothstep(0.0, p[5] * 0.12, edge);
 	float lipf = smoothstep(0.0, p[7] * 0.12, edge); // (a sharp lip: a step, not a ramp)
 	vec2 centre = mod(vec2(best_f.x * cell, best_f.y * cell_v) / tile_cm, 1.0);
 	int gi = clamp(int(centre.y * 16.0), 0, 15);
@@ -98,8 +98,9 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	// each plate is not flat: a soft dome, pitting and weathering at 1-6 cm (not finer: parallax turns pixel noise into a mosaic)
 	float dome = 1.0 - clamp(length(best_d) * 0.9, 0.0, 1.0);
 	float weather = (vnoise(at, 5.0, s + 121.0) - 0.5) * 0.5 + (vnoise(at, 2.4, s + 123.0) - 0.5) * 0.4 + (vnoise(at, 1.3, s + 125.0) - 0.5) * 0.25;
+	z = mix(0.7, z, 0.55); // (neighbouring plates differ less: a big step made fat shadow wedges along the cracks)
 	z += 0.06 * dome + 0.07 * weather;
-	return z * (0.55 + 0.45 * lipf) * (1.0 - p[6] * crack);
+	return z * (0.8 + 0.2 * lipf) * (1.0 - 0.8 * p[6] * crack);
 }
 
 float norm(float h) {
