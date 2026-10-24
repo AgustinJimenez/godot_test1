@@ -15,7 +15,7 @@ uniform float dark_share = 0.0; // how much of the surface is stained (0: none)
 uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering the lumps
 uniform float rim_lobes = 0.0; // height of smooth rimmed lobes (rock boulders in the photograph); 0: none
 uniform float wiggle_cracks = 0.0; // depth of a few long wiggly cracks (the mottled rock); 0: none
-uniform float bp[44]; // the boulder's hand-set numbers (BoulderParams in GDScript lists them, with their ranges)
+uniform float bp[47]; // the boulder's hand-set numbers (BoulderParams in GDScript lists them, with their ranges)
 #define B_COVER bp[0]
 #define B_RADIUS bp[1]
 #define B_RADIUS_VAR bp[2]
@@ -56,6 +56,9 @@ uniform float bp[44]; // the boulder's hand-set numbers (BoulderParams in GDScri
 #define B_FINE_COLOUR bp[39]
 #define B_FINE_HEIGHT bp[40]
 #define B_FINE_CM bp[41]
+#define B_LIP_COVER bp[44]
+#define B_LIP_DEPTH bp[45]
+#define B_LIP_CM bp[46]
 uniform sampler2D swell_colour_tex : filter_linear, repeat_enable; // the photograph's colour on a coarse grid (boulder_colour.bin), without the lobe tones
 uniform sampler2D edge_tex : filter_nearest; // the sharp edge points drawn as step profiles (BoulderEdges), height offsets in the normalised height
 uniform sampler2D lobe_tex : filter_nearest; // the lobes traced from the photograph (BoulderFeatures): a row each, 2 header texels then the outline
@@ -353,6 +356,24 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 	h += (rim_lobes > 0.0 ? B_FINE : 0.045) * fr;
 	if (rim_lobes > 0.0 && B_FEATURES > 0.5) {
 		h += B_FINE_HEIGHT * micro_texture(at, s);
+		// rare crisp pits with a sharp lip (the photograph's height is very peaky at 1 px: kurtosis 39, a few extreme features on a calm ground)
+		float cell_cm = B_LIP_CM * 3.0;
+		float cn = max(floor(tile_cm / cell_cm + 0.5), 1.0);
+		vec2 cu = at / tile_cm * cn;
+		vec2 ci = floor(cu);
+		for (int oy = -1; oy <= 1; oy++) {
+			for (int ox = -1; ox <= 1; ox++) {
+				float gx = ci.x + float(ox);
+				float gy = ci.y + float(oy);
+				if (hashw(gx, gy, s + 601.0, cn) < B_LIP_COVER) {
+					vec2 pc = vec2(gx + hashw(gx, gy, s + 603.0, cn), gy + hashw(gx, gy, s + 605.0, cn));
+					float pr = 0.12 + 0.2 * hashw(gx, gy, s + 607.0, cn);
+					float d = length(cu - pc) / pr;
+					float depth = B_LIP_DEPTH * (0.4 + 0.6 * hashw(gx, gy, s + 609.0, cn));
+					h += depth * (-(1.0 - smoothstep(0.7, 1.0, d)) + 0.35 * exp(-pow((d - 1.1) / 0.12, 2.0)));
+				}
+			}
+		}
 	}
 	return h;
 }

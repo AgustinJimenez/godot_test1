@@ -129,7 +129,7 @@ func _set_features(material: ShaderMaterial) -> void:
 
 
 const EDGE_RADIUS := 7 # px a point's step profile reaches either side of the edge
-const EDGE_TANGENT_SIGMA := 2.0 # px along the edge
+const EDGE_TANGENT_SIGMA := 3.5 # px along the edge
 const EDGE_RISE := 1.6 # px: how sharp the step is across the edge
 const EDGE_STEP_MAX := 0.25 # the step byte 255 (extract_edges.py)
 const EDGE_SPACING := 3.0 # px between the points along a curve

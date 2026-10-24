@@ -1,6 +1,3 @@
-"""How much of the photograph's detail the boulder bake has at each size of feature (radially averaged power spectrum, ours as a percent
-of the photograph's) for colour, height and the normal map, plus the kurtosis (peakiness) of the band-passed detail. 100 % is a match.
-Bakes through square_compare with optional --param overrides:  python band_energy_check.py '{"fine_cm": 0.6}'"""
 import sys, subprocess, cv2, numpy as np
 from scipy.stats import kurtosis
 sys.path.insert(0,'E:/repo/godot_projects/godot_test1/tools/bark')
