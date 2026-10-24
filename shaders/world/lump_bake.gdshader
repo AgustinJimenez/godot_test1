@@ -13,6 +13,7 @@ uniform vec3 light_colour = vec3(0.6, 0.5, 0.4); // the rock's light colour
 uniform vec3 dark_colour = vec3(0.2, 0.17, 0.14); // its stains (the dark patches in the hollows)
 uniform float dark_share = 0.0; // how much of the surface is stained (0: none)
 uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering the lumps
+uniform float rim_lobes = 0.0; // height of smooth rimmed lobes (rock boulders in the photograph); 0: none
 uniform float guide_mix = 0.0; // 0: the lumps' own noise (fully procedural); 1: the guide's
 
 float fract1(float x) {
@@ -90,6 +91,27 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 	h += p[12] * (vnoise(at, max(p[11], 1.6), s + 17.0) - 0.5);
 	float mid = max(p[13], 2.0);
 	h += p[14] * (0.5 * vnoise(w, mid, s + 19.0) + 0.5 * vnoise(vec2(w.y * 1.3 + 5.0, w.x * 0.8), mid, s + 21.0) - 0.5);
+	if (rim_lobes > 0.0) {
+		// smooth lobes with a raised rim, a few per tile (the boulder's rounded plates), one candidate per cell
+		float ln = max(floor(tile_cm / 32.0 + 0.5), 1.0);
+		float cs = tile_cm / ln;
+		vec2 lc = floor(at / cs);
+		for (int oy = -1; oy <= 1; oy++) {
+			for (int ox = -1; ox <= 1; ox++) {
+				float cx = lc.x + float(ox);
+				float cy = lc.y + float(oy);
+				if (hashw(cx, cy, s + 301.0, ln) < 0.3) {
+					vec2 centre = vec2(cx + 0.25 + 0.5 * hashw(cx, cy, s + 303.0, ln), cy + 0.25 + 0.5 * hashw(cx, cy, s + 305.0, ln)) * cs;
+					float radius = cs * (0.22 + 0.2 * hashw(cx, cy, s + 307.0, ln));
+					vec2 d = (at - centre) / vec2(1.0, 0.55 + 0.6 * hashw(cx, cy, s + 309.0, ln));
+					float r = length(d) + 0.5 * radius * (vnoise(at, 7.0, s + 311.0) - 0.5);
+					float plateau = 1.0 - smoothstep(radius * 0.8, radius, r);
+					float t = (r - radius * 0.92) / (radius * 0.07);
+					h += rim_lobes * (0.35 * plateau + exp(-t * t));
+				}
+			}
+		}
+	}
 	// a network of straight cracks: the edges of a coarse Voronoi
 	float vn = max(floor(tile_cm / p[15] + 0.5), 1.0);
 	vec2 vu = at / tile_cm * vn;

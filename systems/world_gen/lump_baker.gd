@@ -11,6 +11,8 @@ const STAIN_AMOUNT := {"rock_06": 1.0}
 const GUIDE_MIX := 0.8
 ## how much of the fine (12) and mid (14) relief each rock keeps (the boulder is smooth)
 const CALM := {"rock_boulder_dry": 0.5}
+## height of the rimmed lobes (0: none): the boulder photograph has rounded plates with raised rims
+const RIM_LOBES := {"rock_boulder_dry": 0.045}
 
 
 ## The tile of one fitted rock face (`name` is a key of LumpFits.fits()) as an Image (RGBA8).
@@ -30,6 +32,7 @@ func bake(name: String, seed_value := 1.0) -> Image:
 	params[12] *= calm
 	params[14] *= calm
 	material.set_shader_parameter(&"p", params)
+	material.set_shader_parameter(&"rim_lobes", RIM_LOBES.get(name, 0.0))
 	material.set_shader_parameter(&"tile_cm", fit["tile_cm"])
 	# the guide and the fine relief lift parts above the fitted range: widen it, no flat clipping
 	var range_fit: Vector2 = fit["height_range"]
