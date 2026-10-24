@@ -33,6 +33,8 @@ const FINE_MOTTLE := {
 	"trident_maple_bark": 0.4, "japanese_cedar_bark": 0.15, "bark_willow_02": 0.15}
 ## pull the colour toward grey where the fitted ramp is more saturated than the photograph
 const DESATURATE := {"tree_bark_03": 0.32, "japanese_cedar_bark": 0.25, "pine_bark": -0.45}
+## moss on the barks whose photograph carries it (0..1 of the bark)
+const MOSS := {"tree_bark_03": 0.55}
 const PALETTE_MIX := {"pine_bark": 0.95, "forest_leaves_03": 0.9}
 
 
@@ -75,6 +77,7 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 		flat = float(GROOVED_FLATTEN.get(name, flat))
 	material.set_shader_parameter(&"crisp", CRISP if name != "forest_leaves_03" else 0.55)
 	material.set_shader_parameter(&"fine_mottle", float(FINE_MOTTLE.get(name, 0.0)))
+	material.set_shader_parameter(&"moss_share", float(MOSS.get(name, 0.0)))
 	material.set_shader_parameter(&"desaturate", float(DESATURATE.get(name, 0.0)))
 	material.set_shader_parameter(&"flatten", flat)
 	material.set_shader_parameter(&"brightness", brightness)

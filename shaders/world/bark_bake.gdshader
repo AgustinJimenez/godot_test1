@@ -17,6 +17,8 @@ uniform vec3 palette[3]; // the photograph's main colours, brightest first
 uniform vec3 palette_shares = vec3(0.34, 0.33, 0.33);
 uniform float crisp = 0.0; // 0..1: micro-contrast and pixel grain for a sharper look (colour only: the height is left alone)
 uniform float fine_mottle = 0.0; // 0..1: fine colour mottling at 1-4 cm (the photographed barks are speckled, the fitted shapes are large)
+uniform vec3 moss_colour = vec3(0.36, 0.4, 0.1); // moss and lichen patches (ash)
+uniform float moss_share = 0.0; // 0..1: how much of the bark carries moss, in vertical bands
 uniform float desaturate = 0.0; // 0..1: pull the colour toward grey (the fitted ramps can come out too saturated)
 uniform float flatten = 0.0; // 0..1: pull the colours toward the photograph's mean colour (less contrast)
 uniform float brightness = 1.0; // a whole-bark darkening (the colour model's albedo lift is too light for some barks)
@@ -228,5 +230,16 @@ void fragment() {
 	vec3 final_colour = ramp_colour * light * brightness;
 	final_colour = mix(final_colour, mean_colour, flatten);
 	final_colour = mix(final_colour, vec3(dot(final_colour, vec3(0.3, 0.59, 0.11))), desaturate);
+	if (moss_share > 0.0) {
+		// green moss in two or three wide vertical bands on the shaded side, ragged edges, a little lichen grey inside
+		float edge_band = 1.0 - smoothstep(0.0, 0.2, min(at.x, tile_cm - at.x) / tile_cm);
+		float band = 0.35 * vnoise(at, 33.0, 100.0, seed + 191.0) + 0.8 * edge_band;
+		float ragged_m = vnoise(at, 3.0, 5.0, seed + 193.0) * 0.5 + vnoise(at, 1.1, 1.6, seed + 195.0) * 0.3 + vnoise(at, 0.5, 0.7, seed + 197.0) * 0.2;
+		float moss = smoothstep(0.68 - 0.3 * moss_share, 0.74 - 0.3 * moss_share, band * 0.75 + ragged_m * 0.75 - 0.3);
+		float moss_tone = 0.75 + 0.5 * (vnoise(at, 0.8, 1.2, seed + 199.0) - 0.5) + 0.35 * h;
+		vec3 moss_final = moss_colour * moss_tone;
+		moss_final = mix(moss_final, vec3(0.6, 0.62, 0.55), 0.45 * smoothstep(0.62, 0.8, vnoise(at, 1.3, 1.8, seed + 201.0)));
+		final_colour = mix(final_colour, moss_final, 0.72 * moss);
+	}
 	COLOR = vec4(clamp(final_colour, 0.0, 1.0), clamp(alpha_map.z + (h - alpha_map.y) * alpha_map.x, 0.0, 1.0));
 }
