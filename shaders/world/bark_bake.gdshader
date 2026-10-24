@@ -194,7 +194,24 @@ void fragment() {
 		float micro = h - 0.25 * (norm(bark(at + vec2(0.45, 0.0), seed).x) + norm(bark(at - vec2(0.45, 0.0), seed).x)
 				+ norm(bark(at + vec2(0.0, 0.45), seed).x) + norm(bark(at - vec2(0.0, 0.45), seed).x));
 		float grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
-		light *= clamp(1.0 + crisp * (2.6 * micro + 0.12 * grain), 0.7, 1.3);
+		light *= clamp(1.0 + crisp * (2.6 * micro + 0.2 * grain), 0.7, 1.3);
+		// real small detail (the photographs have pores, specks and hairline cracks at 1-3 px): hard-edged pits, light specks
+		// and fine streaks along the trunk, at 0.4-0.9 cm
+		float pit_n = vnoise(at, 1.1, 1.5, seed + 81.0);
+		float speck_n = vnoise(at, 0.9, 0.9, seed + 83.0);
+		float streak_n = vnoise(at, 0.55, 2.6, seed + 85.0) - 0.5;
+		float pits = smoothstep(0.66, 0.86, pit_n);
+		float specks = smoothstep(0.7, 0.88, speck_n);
+		// natural detail at every size: five octaves of noise, from 6 cm down to the pixel (0.2 cm)
+		float fb = 0.0;
+		fb += 1.0 * (vnoise(at, 6.0, 8.0, seed + 91.0) - 0.5);
+		fb += 0.7 * (vnoise(at, 3.0, 4.0, seed + 93.0) - 0.5);
+		fb += 0.5 * (vnoise(at, 1.5, 2.0, seed + 95.0) - 0.5);
+		fb += 0.75 * (vnoise(at, 0.8, 1.0, seed + 97.0) - 0.5);
+		fb += 0.7 * (vnoise(at, 0.42, 0.5, seed + 99.0) - 0.5);
+		fb += 0.55 * grain;
+		light *= clamp(1.0 + crisp * 0.34 * fb, 0.6, 1.45);
+		light *= clamp(1.0 - crisp * (0.24 * pits) + crisp * (0.16 * specks) + crisp * 0.22 * streak_n, 0.6, 1.35);
 	}
 	if (fine_mottle > 0.0) {
 		float m1 = vnoise(at, 1.1, 1.1, seed + 71.0) - 0.5;

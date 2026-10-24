@@ -22,8 +22,8 @@ const GROOVED_EDGE := {
 const GROOVED_BRIGHTNESS := {
 	"bark_willow_02": 1.0, "trident_maple_bark": 0.8, "japanese_cedar_bark": 0.85}
 ## less contrast where the bake is far more contrasty than the photograph (0..1)
-const FLATTEN := {"pine_bark": 0.3, "tree_bark_03": 0.65, "japanese_cedar_bark": 0.6,
-	"trident_maple_bark": 0.25}
+const FLATTEN := {"pine_bark": 0.3, "tree_bark_03": 0.65, "japanese_cedar_bark": 0.85,
+	"trident_maple_bark": 0.3}
 const GROOVED_FLATTEN := {
 	"bark_willow_02": 0.3, "trident_maple_bark": 0.0, "japanese_cedar_bark": 0.4}
 ## sharpness: micro-contrast and pixel grain on the colour (0..1; every bark gets this default)

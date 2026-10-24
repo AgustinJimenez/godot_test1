@@ -6,6 +6,12 @@ uniform sampler2D tex : filter_linear;
 uniform int mode = 0;
 uniform vec2 height_range = vec2(0.0, 1.0);
 uniform float strength = 14.0;
+uniform float zoom = 1.0; // 1, 2, 4: look closer at the same place of both squares
+uniform vec2 zoom_centre = vec2(0.5, 0.5);
+
+vec2 zoomed(vec2 uv) {
+	return zoom_centre + (uv - 0.5) / zoom;
+}
 
 float height_at(vec2 uv) {
 	vec4 t = texture(tex, uv);
@@ -15,11 +21,12 @@ float height_at(vec2 uv) {
 
 void fragment() {
 	if (mode == 0) {
-		COLOR = vec4(texture(tex, UV).rgb, 1.0);
+		COLOR = vec4(texture(tex, zoomed(UV)).rgb, 1.0);
 	} else {
 		vec2 px = 1.0 / vec2(textureSize(tex, 0));
-		float dx = (height_at(UV + vec2(px.x, 0.0)) - height_at(UV - vec2(px.x, 0.0))) * 0.5;
-		float dy = (height_at(UV + vec2(0.0, px.y)) - height_at(UV - vec2(0.0, px.y))) * 0.5;
+		vec2 uv = zoomed(UV);
+		float dx = (height_at(uv + vec2(px.x, 0.0)) - height_at(uv - vec2(px.x, 0.0))) * 0.5;
+		float dy = (height_at(uv + vec2(0.0, px.y)) - height_at(uv - vec2(0.0, px.y))) * 0.5;
 		float shade = clamp(0.5 - strength * 2.0 * (dx + dy), 0.0, 1.0);
 		COLOR = vec4(vec3(shade), 1.0);
 	}

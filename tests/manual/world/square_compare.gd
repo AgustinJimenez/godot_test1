@@ -2,9 +2,9 @@ extends Control
 ## The photograph and the procedural version of one surface, as two plain squares side by side
 ## (no object, no projection, same size). Run it (F6) and use:
 ##   Left / Right  the previous / next surface      H  colour <-> height lit from the upper left
-##   G  the grooved oak, maple, cedar (PLANET_BARK_GROOVES)      Esc  quit
+##   G  the grooved oak, maple, cedar (PLANET_BARK_GROOVES)      Z  zoom 1x / 2x / 4x      Esc  quit
 ## `--surface=N` starts on the Nth surface, `--shot=PATH` saves a picture and quits, `--height`
-## starts on the height view.
+## starts on the height view, `--zoom=2` or 4.
 
 const SHADER := preload("res://shaders/world/square_lit.gdshader")
 const PHOTOS := "res://tools/bark/bark_downloads/%s_%s"
@@ -29,6 +29,7 @@ const SURFACES: Array = [
 
 var _index := 0
 var _height_mode := false
+var _zoom := 1.0
 var _photo_colour: Texture2D
 var _photo_height: Texture2D
 var _baked: Texture2D
@@ -66,6 +67,8 @@ func _ready() -> void:
 			_shot = argument.substr(7)
 		elif argument == "--height":
 			_height_mode = true
+		elif argument.begins_with("--zoom="):
+			_zoom = float(argument.get_slice("=", 1))
 	await _show()
 	if _shot != "":
 		await get_tree().create_timer(0.5).timeout
@@ -99,6 +102,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			await _show()
 		KEY_H:
 			_height_mode = not _height_mode
+			_apply()
+		KEY_Z:
+			_zoom = 2.0 if _zoom < 1.5 else (4.0 if _zoom < 3.0 else 1.0)
 			_apply()
 		KEY_G:
 			if OS.has_environment("PLANET_BARK_GROOVES"):
@@ -151,6 +157,8 @@ func _apply() -> void:
 	left.set_shader_parameter(&"tex", _left.texture)
 	left.set_shader_parameter(&"mode", 2 if _height_mode else 0)
 	left.set_shader_parameter(&"height_range", _photo_range)
+	left.set_shader_parameter(&"zoom", _zoom)
+	right.set_shader_parameter(&"zoom", _zoom)
 	right.set_shader_parameter(&"tex", _right.texture)
 	right.set_shader_parameter(&"mode", 1 if _height_mode else 0)
 	right.set_shader_parameter(&"height_range", Vector2(0.0, 1.0))
