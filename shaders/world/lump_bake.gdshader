@@ -14,6 +14,7 @@ uniform vec3 dark_colour = vec3(0.2, 0.17, 0.14); // its stains (the dark patche
 uniform float dark_share = 0.0; // how much of the surface is stained (0: none)
 uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering the lumps
 uniform float rim_lobes = 0.0; // height of smooth rimmed lobes (rock boulders in the photograph); 0: none
+uniform float wiggle_cracks = 0.0; // depth of a few long wiggly cracks (the mottled rock); 0: none
 uniform float guide_mix = 0.0; // 0: the lumps' own noise (fully procedural); 1: the guide's
 
 float fract1(float x) {
@@ -138,6 +139,32 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 		}
 	}
 	h -= p[17] * 0.35 * (1.0 - smoothstep(0.0, p[16] * 0.22, e2 - e1)) * smoothstep(0.35, 0.7, vnoise(at, 70.0, s + 201.0)); // (a few thin cracks, not a polygon net)
+	if (wiggle_cracks > 0.0) {
+		// a few long wiggly cracks: the edges of a warped Voronoi, kept only where a slow noise is high (not a net)
+		float wn = max(floor(tile_cm / 45.0 + 0.5), 1.0);
+		vec2 wat = at + 4.0 * vec2(vnoise(at, 9.0, s + 401.0) - 0.5, vnoise(at, 9.0, s + 403.0) - 0.5) * 2.0
+				+ 1.2 * vec2(vnoise(at, 3.0, s + 405.0) - 0.5, vnoise(at, 3.0, s + 407.0) - 0.5) * 2.0;
+		vec2 wu = wat / tile_cm * wn;
+		vec2 wi = floor(wu);
+		float w1 = 1e9;
+		float w2 = 1e9;
+		for (int oy = -1; oy <= 1; oy++) {
+			for (int ox = -1; ox <= 1; ox++) {
+				float gx = wi.x + float(ox);
+				float gy = wi.y + float(oy);
+				vec2 f = vec2(gx + 0.15 + 0.7 * hashw(gx, gy, s + 411.0, wn), gy + 0.15 + 0.7 * hashw(gx, gy, s + 413.0, wn));
+				float d = length(wu - f);
+				if (d < w1) {
+					w2 = w1;
+					w1 = d;
+				} else if (d < w2) {
+					w2 = d;
+				}
+			}
+		}
+		float keep = smoothstep(0.6, 0.72, vnoise(at, 55.0, s + 415.0));
+		h -= wiggle_cracks * (1.0 - smoothstep(0.0, 0.05, w2 - w1)) * keep;
+	}
 	// fine relief at 1-5 cm (not finer: parallax turns pixel noise into a mosaic): weathering
 	float fr = (vnoise(at, 4.5, s + 111.0) - 0.5) * 0.5 + (vnoise(at, 2.2, s + 113.0) - 0.5) * 0.4 + (vnoise(at, 1.2, s + 115.0) - 0.5) * 0.3;
 	h += 0.045 * fr;
