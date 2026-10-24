@@ -56,6 +56,10 @@ func _ready() -> void:
 	add_child(column)
 	_title = Label.new()
 	_title.add_theme_font_size_override(&"font_size", 20)
+	_title.clip_text = true # (a long or changing title must not change the layout)
+	_title.custom_minimum_size = Vector2(0.0, 28.0)
+	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	column.add_child(_title)
 	var row := HBoxContainer.new()
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
