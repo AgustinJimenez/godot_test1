@@ -20,10 +20,11 @@ const LIST: Array = [
 	["speck_cover", 0.022, 0.0, 0.8], ["speck_depth", 0.075, 0.0, 0.15],
 	["traced_features", 1.0, 0.0, 1.0], ["traced_gain", 1.0, 0.0, 3.0],
 	["traced_soft_cm", 0.6, 0.1, 4.0], ["edge_layer", 0.85, 0.0, 3.0],
-	["colour_swell", 1.0, 0.0, 1.0], ["lobe_tint", 1.0, 0.0, 2.0], ["edge_dark", 1.0, 0.0, 4.0],
+	["colour_swell", 1.0, 0.0, 1.0], ["lobe_tint", 1.0, 0.0, 2.0], ["edge_dark", 0.5, 0.0, 4.0],
 	["colour_detail", 0.0, 0.0, 3.0],
-	["cavity_colour", 1.0, 0.0, 3.0], ["cavity_chroma", 0.3, 0.0, 1.0],
-	["fine_colour", 0.085, 0.0, 0.5], ["fine_height", 0.003, 0.0, 0.03], ["fine_cm", 0.6, 0.4, 2.0],
+	["cavity_colour", 1.4, 0.0, 3.0], ["cavity_chroma", 0.3, 0.0, 1.0],
+	["fine_colour", 0.085, 0.0, 0.5], ["fine_height", 0.003, 0.0, 0.03],
+	["fine_cm", 0.6, 0.4, 2.0], ["cavity_clip", 0.03, 0.01, 1.0], ["cavity_small", 0.4, 0.0, 1.5],
 ]
 
 ## The sliders that still change the bake while `traced_features` is on. The others drive the old
@@ -33,6 +34,7 @@ const LIVE_WHEN_TRACED: Array[String] = [
 	"fine_bumps", "fine_size", "traced_features", "traced_gain", "traced_soft_cm",
 	"edge_layer", "colour_swell", "lobe_tint", "edge_dark", "colour_detail",
 	"cavity_colour", "cavity_chroma", "fine_colour", "fine_height", "fine_cm",
+	"cavity_clip", "cavity_small",
 ]
 
 ## On/off switches: two positions, 0 and 1 (the shader only checks above or below 0.5).

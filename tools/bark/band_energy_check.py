@@ -1,7 +1,8 @@
 """How much of the photograph's detail the boulder bake has at each size of feature (radially averaged power spectrum, ours as a percent
-of the photograph's) for colour, height and the normal map. 100 % is a match; a bake that looks low resolution is under 50 % at the
-finest sizes. Bakes through square_compare with optional --param overrides:  python band_energy_check.py '{"fine_cm": 0.6}'"""
+of the photograph's) for colour, height and the normal map, plus the kurtosis (peakiness) of the band-passed detail. 100 % is a match.
+Bakes through square_compare with optional --param overrides:  python band_energy_check.py '{"fine_cm": 0.6}'"""
 import sys, subprocess, cv2, numpy as np
+from scipy.stats import kurtosis
 sys.path.insert(0,'E:/repo/godot_projects/godot_test1/tools/bark')
 import extract_features as ef
 G="E:/Godot/4.7.2/Godot_v4.7.2-stable_win64_console.exe"; P="E:/repo/godot_projects/godot_test1"; D=P+'/tools/bark/bark_downloads/rock_boulder_dry_'
@@ -21,6 +22,12 @@ def run(params,tag):
     for name,a,b in (('colour',ph_col.mean(2),ob[...,:3].mean(2)),('height',ph_h,ob[...,3]),('normal',ph_n,on)):
         sa,sb=spectrum(a),spectrum(b)
         out.append('%s: '%name+' '.join('%s cm %3.0f%%'%(lab,100*sb[lo:hi].sum()/sa[lo:hi].sum()) for lo,hi,lab in bands))
+    g=lambda x,sg:cv2.GaussianBlur(x,(0,0),sg)
+    kp=[];ko=[]
+    for sg in (1.0,2.0,4.0):
+        a=ph_col.mean(2); b=ob[...,:3].mean(2); kp.append(kurtosis((g(a,sg)-g(a,2*sg)).ravel())); ko.append(kurtosis((g(b,sg)-g(b,2*sg)).ravel()))
+        a=ph_h; b=ob[...,3]; kp.append(kurtosis((g(a,sg)-g(a,2*sg)).ravel())); ko.append(kurtosis((g(b,sg)-g(b,2*sg)).ravel()))
+    out.append('kurtosis (photo | ours) colour 1/2/4px: %.1f/%.1f/%.1f | %.1f/%.1f/%.1f   height 1/2/4px: %.1f/%.1f/%.1f | %.1f/%.1f/%.1f'%(kp[0],kp[2],kp[4],ko[0],ko[2],ko[4],kp[1],kp[3],kp[5],ko[1],ko[3],ko[5]))
     return out
 if __name__=='__main__':
     import json

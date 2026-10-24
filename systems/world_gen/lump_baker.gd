@@ -187,6 +187,8 @@ func _colour_pass(first: Image) -> Image:
 	material.set_shader_parameter(&"texel", 1.0 / float(first.get_width()))
 	material.set_shader_parameter(&"strength", BoulderParams.values[37])
 	material.set_shader_parameter(&"chroma", BoulderParams.values[38])
+	material.set_shader_parameter(&"clip_level", BoulderParams.values[42])
+	material.set_shader_parameter(&"small_scale", BoulderParams.values[43])
 	rect.material = material
 	viewport.add_child(rect)
 	add_child(viewport)

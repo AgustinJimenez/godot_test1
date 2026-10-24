@@ -15,7 +15,7 @@ uniform float dark_share = 0.0; // how much of the surface is stained (0: none)
 uniform float guide[256]; // the photograph's height as a 16 x 16 picture (row by row), steering the lumps
 uniform float rim_lobes = 0.0; // height of smooth rimmed lobes (rock boulders in the photograph); 0: none
 uniform float wiggle_cracks = 0.0; // depth of a few long wiggly cracks (the mottled rock); 0: none
-uniform float bp[42]; // the boulder's hand-set numbers (BoulderParams in GDScript lists them, with their ranges)
+uniform float bp[44]; // the boulder's hand-set numbers (BoulderParams in GDScript lists them, with their ranges)
 #define B_COVER bp[0]
 #define B_RADIUS bp[1]
 #define B_RADIUS_VAR bp[2]
