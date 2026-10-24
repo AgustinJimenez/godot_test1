@@ -6,7 +6,7 @@ extends RefCounted
 static func fits() -> Dictionary:
 	return {
 		"palm_tree_bark": {
-			"tile_cm": 260.0,
+			"tile_cm": 130.0,
 			"params": PackedFloat32Array([
 				29.60204, 0.36657, 0.39998, 0.25040, 20.68456, 0.06121, 0.38452,
 				1.01989, 0.11862, 40.67272, 16.95214, 0.39998, 0.30328, 0.03703,
