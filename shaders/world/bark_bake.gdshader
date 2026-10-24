@@ -170,7 +170,10 @@ void fragment() {
 	float dice = fract(b.y * 7.31 + 0.37);
 	vec3 flake_colour = dice < palette_shares.x ? palette[0] : (dice < palette_shares.x + palette_shares.y ? palette[1] : palette[2]);
 	flake_colour = mix(mix(palette[2], flake_colour, smoothstep(0.05, 0.45, h)), flake_colour, palette_flat);
-	vec3 flake_final = flake_colour * (0.75 + 0.5 * h) * mix(ramp_colour.g / max(mean_colour.g, 0.05), 1.0, palette_flat);
+	// litter: each leaf its own brightness over a wide spread, the gaps between leaves near black
+	float leaf_tone = mix(1.0, 0.45 + 1.1 * fract(dice * 17.31 + 0.37), palette_flat);
+	float gap = mix(1.0, 0.3 + 0.7 * smoothstep(0.05, 0.3, h), palette_flat);
+	vec3 flake_final = flake_colour * leaf_tone * gap * (0.75 + 0.5 * h) * mix(ramp_colour.g / max(mean_colour.g, 0.05), 1.0, palette_flat);
 	ramp_colour = mix(ramp_colour, flake_final, palette_mix);
 	COLOR = vec4(clamp(ramp_colour * light, 0.0, 1.0), clamp(alpha_map.z + (h - alpha_map.y) * alpha_map.x, 0.0, 1.0));
 }
