@@ -64,5 +64,15 @@ void fragment() {
 	int i0 = int(floor(t));
 	int i1 = min(i0 + 1, 7);
 	vec3 colour = mix(ramp[i0], ramp[i1], t - float(i0));
-	COLOR = vec4(clamp(colour, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 1.8, 0.0, 1.0)); // (a deeper relief than the fitted height)
+	// the photographed palm is a grey-tan trunk: darker under each ring, pale streaks, white lichen specks, fine grain
+	float tone = 0.8 + 0.4 * h;
+	float fine = vnoise(at, 0.9, 0.9, seed + 31.0) - 0.5;
+	float fine2 = vnoise(at, 0.45, 0.45, seed + 33.0) - 0.5;
+	float streak = vnoise(at, 0.5, 6.0, seed + 35.0) - 0.5;
+	float mottle = vnoise(at, 7.0, 18.0, seed + 37.0) - 0.5;
+	tone *= 1.0 + 0.22 * fine + 0.18 * fine2 + 0.2 * streak + 0.22 * mottle;
+	float lichen = smoothstep(0.8, 0.86, vnoise(at, 0.7, 1.0, seed + 39.0)) * smoothstep(0.35, 0.7, vnoise(at, 12.0, 30.0, seed + 41.0));
+	vec3 painted = ramp[4] * tone;
+	painted = mix(painted, vec3(0.78, 0.76, 0.7), 0.85 * lichen);
+	COLOR = vec4(clamp(painted, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 1.8, 0.0, 1.0)); // (a deeper relief than the fitted height)
 }

@@ -107,6 +107,14 @@ void fragment() {
 	float chip = tone == 0.5 ? 0.0 : 1.0;
 	vec3 grit = ramp[1] * (0.9 + 0.3 * h);
 	vec3 stone = mix(ramp[3], ramp[7], tone) * (0.8 + 0.4 * h);
-	colour = mix(grit, stone, chip);
+	// the ground between the chips is sandy earth with grains, darker debris and a few pale specks; the chips grey-brown with grain
+	float sand = vnoise(at, 0.7, seed + 51.0) - 0.5;
+	float sand2 = vnoise(at, 1.6, seed + 53.0) - 0.5;
+	float sand3 = vnoise(at, 0.35, seed + 59.0) - 0.5;
+	float patch = vnoise(at, 24.0, seed + 55.0) - 0.5;
+	float debris = smoothstep(0.62, 0.8, vnoise(at, 5.0, seed + 57.0));
+	vec3 earth = ramp[5] * (0.95 + 0.5 * patch + 0.3 * sand2 + 0.22 * sand + 0.18 * sand3);
+	earth = mix(earth, ramp[0] * 0.6, 0.55 * debris);
+	colour = mix(earth, stone * (0.9 + 0.25 * sand + 0.2 * sand2 + 0.2 * sand3), chip);
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }
