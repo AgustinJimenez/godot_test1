@@ -5,6 +5,7 @@ extends Node
 
 const SHADER := preload("res://shaders/world/lump_bake.gdshader")
 const COLOUR_PASS := preload("res://shaders/world/lump_colour_pass.gdshader")
+const MAPS_PASS := preload("res://shaders/world/lump_maps_pass.gdshader")
 const SIZE := 1024
 ## how much of the photograph's staining each rock shows (the others keep the plain tones)
 const STAIN_AMOUNT := {"rock_06": 1.0}
@@ -180,6 +181,31 @@ func _colour_pass(first: Image) -> Image:
 	material.set_shader_parameter(&"texel", 1.0 / float(first.get_width()))
 	material.set_shader_parameter(&"strength", BoulderParams.values[37])
 	material.set_shader_parameter(&"chroma", BoulderParams.values[38])
+	rect.material = material
+	viewport.add_child(rect)
+	add_child(viewport)
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var image := viewport.get_texture().get_image()
+	viewport.queue_free()
+	return image
+
+
+## One of the boulder's other material maps derived from its bake (colour in rgb, height in alpha):
+## 0 normal (OpenGL), 1 ambient occlusion, 2 roughness, 3 the packed ARM map.
+## The relations are in lump_maps_pass.gdshader.
+func derive_map(baked: Image, mode: int) -> Image:
+	var viewport := SubViewport.new()
+	viewport.size = baked.get_size()
+	viewport.disable_3d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var rect := ColorRect.new()
+	rect.size = Vector2(baked.get_size())
+	var material := ShaderMaterial.new()
+	material.shader = MAPS_PASS
+	material.set_shader_parameter(&"baked", ImageTexture.create_from_image(baked))
+	material.set_shader_parameter(&"mode", mode)
+	material.set_shader_parameter(&"texel", 1.0 / float(baked.get_width()))
 	rect.material = material
 	viewport.add_child(rect)
 	add_child(viewport)

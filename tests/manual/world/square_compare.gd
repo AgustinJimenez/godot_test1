@@ -38,6 +38,8 @@ var _left: TextureRect
 var _right: TextureRect
 var _title: Label
 var _busy := false
+var _derived: Array = [] # our bake's roughness, AO, normal and ARM maps (the boulder only)
+var _save_maps := ""
 var _extra_at_start := 0
 var _extra := 0 # 0: colour or height (H); 1..: the photograph's other maps (M)
 var _extra_textures: Array = [] # [label, ImageTexture] of the maps found for this surface
@@ -87,6 +89,8 @@ func _ready() -> void:
 					BoulderParams.values[index] = float(pair[1])
 		elif argument == "--height":
 			_height_mode = true
+		elif argument.begins_with("--save-maps="):
+			_save_maps = argument.substr(12)
 		elif argument.begins_with("--extra="):
 			_extra_at_start = int(argument.get_slice("=", 1))
 		elif argument.begins_with("--zoom="):
@@ -268,13 +272,15 @@ func _apply() -> void:
 		_left.texture = _extra_textures[_extra - 1][1]
 		left_mode = 0 # (a plain picture of that map)
 	_right.texture = _baked
+	if _extra > 0 and _extra <= _derived.size():
+		_right.texture = _derived[_extra - 1] # (our version of the map the left square shows)
 	left.set_shader_parameter(&"tex", _left.texture)
 	left.set_shader_parameter(&"mode", left_mode)
 	left.set_shader_parameter(&"height_range", _photo_range)
 	left.set_shader_parameter(&"zoom", _zoom)
 	right.set_shader_parameter(&"zoom", _zoom)
 	right.set_shader_parameter(&"tex", _right.texture)
-	right.set_shader_parameter(&"mode", 1 if _height_mode else 0)
+	right.set_shader_parameter(&"mode", 0 if _extra > 0 else (1 if _height_mode else 0))
 	right.set_shader_parameter(&"height_range", Vector2(0.0, 1.0))
 
 
@@ -303,6 +309,14 @@ func _bake(kind: String, surface: String) -> Image:
 		image = await (node as GroundBaker).litter_tile()
 	else:
 		image = await node.bake(surface)
+	_derived.clear()
+	if kind == "lump" and surface == "rock_boulder_dry":
+		# the other maps of our bake, in the photograph's order (roughness, AO, normal, ARM)
+		for mode: int in [2, 1, 0, 3]:
+			var map_image: Image = await (node as LumpBaker).derive_map(image, mode)
+			_derived.append(ImageTexture.create_from_image(map_image))
+			if _save_maps != "":
+				map_image.save_png("%s_%d.png" % [_save_maps, mode])
 	node.queue_free()
 	return image
 
@@ -325,7 +339,7 @@ func _cycle_map() -> void:
 	var what := "colour or height (H)"
 	if _extra > 0:
 		what = String(_extra_textures[_extra - 1][0])
-	_title.text = "%s  [%d/%d]   left: the photograph's %s   right: our bake" % [
+	_title.text = "%s  [%d/%d]   left: the photograph's %s   right: ours (derived)" % [
 			entry[0], _index + 1, SURFACES.size(), what]
 
 

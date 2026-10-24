@@ -204,3 +204,12 @@ Found while working on `rock_boulder_dry` (lump rock, `lump_bake.gdshader`, `rim
   What is left to try, procedurally: crisp-edged lichen/stain patches (thresholded warped noise, pale and orange, density from a stored low-resolution map), because the photograph's patches have sharp
   borders and ours are soft; a roughness channel from the same logic; the same for the other rocks. The edge layer's points look pixelly in the colour (dots along the cavities): lower `edge_dark`
   or smooth the points. Still stored from the photograph (not procedural): the 64 x 64 height swell, 8 lobe outlines, 52 pits, 12 K edge points, the 12 KB tone map.
+- **All the photograph's maps, derived procedurally (2026-10-24, requested: use every layer and judge on the compare scene).** Poly Haven's material has colour, height, roughness, AO, normal (GL/DX) and the ARM repack.
+  Measured relations on the photograph's own maps (`tools/bark`, analysis in the session): NORMAL.xy/z = -/+ 20.2 x the height gradient (correlation 0.89 / 0.91); ROUGHNESS is a function of the colour
+  (correlation with the red channel -1.00; `rough = -0.266 R^2 - 0.438 R + 1.039`, correlation 0.997, rms 0.006); AO from the multi-scale cavity of the height (radii 1.5, 3, 6, 12, 24 px, positive and negative
+  parts, 11 weights in `lump_maps_pass.gdshader`, correlation 0.72). `shaders/world/lump_maps_pass.gdshader` + `LumpBaker.derive_map(image, mode)` make our versions from the bake; in `square_compare` the left
+  square shows the photograph's map and the right ours when you press M (`--extra=N --save-maps=PREFIX` for pictures). Our bake's height has the photograph's scale (std 0.1531 vs 0.1538), so the constants carry over.
+  Measured against the photograph's maps: roughness mean 0.633 vs 0.634, std 0.072 vs 0.069, correlation 0.64 (limited by the colour's own correlation, since roughness = f(colour)); AO mean 0.929 vs 0.929,
+  std 0.023 vs 0.035, correlation 0.38; normal.x/y std 0.089/0.091 vs 0.094/0.100, correlation 0.63/0.64, the two normals differ by 5.5 degrees on average (p90 9.6). Fine detail (sigma 2) carries 67 to 77 % of the
+  photograph's energy in each map but correlates only 0.06 to 0.22. Next: AO needs its own source (crevices of the actual layout, e.g. from the lobe outlines and the edge layer); the colour's definition
+  limits roughness; the game material should read these maps (the planet's rock atlas uses colour and height only today).
