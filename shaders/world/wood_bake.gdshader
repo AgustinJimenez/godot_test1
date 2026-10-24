@@ -99,7 +99,18 @@ void fragment() {
 	float row = floor(at.y / board_cm);
 	float board_tone = hash2(row, 0.0, seed + 91.0) - 0.5;
 	float wave = (vnoise(at, 40.0, 14.0, seed + 93.0) - 0.5) * 3.0;
-	float lines = vnoise(vec2(at.x * 0.18, at.y + wave), 160.0, 0.55, seed + 95.0) - 0.5;
+	// cathedral arches: the grain lines bend in a broad hump around two centres on each board (where the tree's rings
+	// came near the surface), so the stripes close into arches like the photographed oak
+	float arch = 0.0;
+	for (int k = 0; k < 2; k++) {
+		float cx = hash2(row, float(k), seed + 111.0) * tile_cm;
+		float dx = abs(at.x - cx);
+		dx = min(dx, tile_cm - dx);
+		float width = 9.0 + 13.0 * hash2(row, float(k), seed + 113.0);
+		float lift = (hash2(row, float(k), seed + 115.0) - 0.5) * 2.0 * board_cm * 0.38;
+		arch += lift * exp(-(dx * dx) / (width * width));
+	}
+	float lines = vnoise(vec2(at.x * 0.18, at.y + wave + arch), 160.0, 0.55, seed + 95.0) - 0.5;
 	float lines2 = vnoise(vec2(at.x * 0.35, at.y + 0.6 * wave), 90.0, 0.3, seed + 97.0) - 0.5;
 	float pores = smoothstep(0.78, 0.95, vnoise(at, 3.2, 0.3, seed + 99.0));
 	float local_row = fract(at.y / board_cm);
@@ -111,8 +122,8 @@ void fragment() {
 	colour *= 1.0 + 0.2 * ring;
 	colour = mix(colour, ramp[1] * 0.75, 0.35 * pores);
 	// crisp fine grain: thin dark lines along the board at 0.2-0.5 cm, bent by the slow wave, and pore dashes
-	float fine1 = vnoise(vec2(at.x * 0.1, at.y + wave * 0.7), 120.0, 0.28, seed + 105.0) - 0.5;
-	float fine2 = vnoise(vec2(at.x * 0.06, at.y + wave * 0.5), 200.0, 0.17, seed + 107.0) - 0.5;
+	float fine1 = vnoise(vec2(at.x * 0.1, at.y + wave * 0.7 + arch), 120.0, 0.28, seed + 105.0) - 0.5;
+	float fine2 = vnoise(vec2(at.x * 0.06, at.y + wave * 0.5 + arch), 200.0, 0.17, seed + 107.0) - 0.5;
 	float line_hard = smoothstep(0.1, 0.22, abs(fine1)) - 0.5;
 	colour *= 1.0 - 0.16 * line_hard + 0.22 * fine1 + 0.18 * fine2;
 	float dash = smoothstep(0.82, 0.95, vnoise(at, 1.8, 0.2, seed + 109.0));
