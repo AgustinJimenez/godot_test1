@@ -115,6 +115,14 @@ void fragment() {
 	float debris = smoothstep(0.62, 0.8, vnoise(at, 5.0, seed + 57.0));
 	vec3 earth = ramp[5] * (0.95 + 0.5 * patch + 0.3 * sand2 + 0.22 * sand + 0.18 * sand3);
 	earth = mix(earth, ramp[0] * 0.6, 0.55 * debris);
-	colour = mix(earth, stone * (0.9 + 0.25 * sand + 0.2 * sand2 + 0.2 * sand3), chip);
+	// the stones are cool grey, purple-grey and dark, each its own tone, with a shaded edge where it meets the earth
+	vec3 stone_cool = mix(vec3(0.17, 0.17, 0.2), vec3(0.5, 0.48, 0.5), tone);
+	float t1;
+	float t2;
+	float around = 0.25 * (norm(gravel(at + vec2(0.5, 0.0), seed, t1)) + norm(gravel(at - vec2(0.5, 0.0), seed, t2))
+			+ norm(gravel(at + vec2(0.0, 0.5), seed, t1)) + norm(gravel(at - vec2(0.0, 0.5), seed, t2)));
+	float edge_shade = clamp(1.0 + 1.5 * (h - around), 0.6, 1.08);
+	vec3 stone_final = stone_cool * edge_shade * (0.9 + 0.25 * sand + 0.2 * sand2 + 0.2 * sand3);
+	colour = mix(earth, stone_final, chip);
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
 }
