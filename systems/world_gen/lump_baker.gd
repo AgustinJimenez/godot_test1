@@ -7,6 +7,9 @@ const SHADER := preload("res://shaders/world/lump_bake.gdshader")
 const COLOUR_PASS := preload("res://shaders/world/lump_colour_pass.gdshader")
 const MAPS_PASS := preload("res://shaders/world/lump_maps_pass.gdshader")
 const SIZE := 1024
+var _edge_tex: ImageTexture # kept from the bake: the boulder's derived maps read the same layout
+var _lobe_tex: ImageTexture
+var _lobe_count := 0
 ## how much of the photograph's staining each rock shows (the others keep the plain tones)
 const STAIN_AMOUNT := {"rock_06": 1.0}
 ## how much the lumps follow the 16 x 16 picture of the photograph (0: fully procedural)
@@ -102,7 +105,9 @@ func _set_features(material: ShaderMaterial) -> void:
 		var at := i * BoulderFeatures.SPECK_STRIDE
 		specks.set_pixel(i, 0,
 				Color(points[at], points[at + 1], points[at + 2], points[at + 3]))
-	material.set_shader_parameter(&"lobe_tex", ImageTexture.create_from_image(lobes))
+	_lobe_tex = ImageTexture.create_from_image(lobes)
+	_lobe_count = lobe_count
+	material.set_shader_parameter(&"lobe_tex", _lobe_tex)
 	material.set_shader_parameter(&"speck_tex", ImageTexture.create_from_image(specks))
 	material.set_shader_parameter(&"n_lobes", lobe_count)
 	material.set_shader_parameter(&"n_specks", speck_count)
@@ -112,7 +117,8 @@ func _set_features(material: ShaderMaterial) -> void:
 	for y in grid:
 		for x in grid:
 			swell.set_pixel(x, y, Color(values[y * grid + x], 0, 0, 0))
-	material.set_shader_parameter(&"edge_tex", _edge_texture())
+	_edge_tex = _edge_texture()
+	material.set_shader_parameter(&"edge_tex", _edge_tex)
 	var rgb := FileAccess.get_file_as_bytes("res://systems/world_gen/boulder_colour.bin")
 	var colour_grid := int(sqrt(rgb.size() / 3.0))
 	var grid_image := Image.create_from_data(
@@ -206,6 +212,10 @@ func derive_map(baked: Image, mode: int) -> Image:
 	material.set_shader_parameter(&"baked", ImageTexture.create_from_image(baked))
 	material.set_shader_parameter(&"mode", mode)
 	material.set_shader_parameter(&"texel", 1.0 / float(baked.get_width()))
+	material.set_shader_parameter(&"tile_px", float(baked.get_width()))
+	material.set_shader_parameter(&"edge_tex", _edge_tex)
+	material.set_shader_parameter(&"lobe_tex", _lobe_tex)
+	material.set_shader_parameter(&"n_lobes", _lobe_count)
 	rect.material = material
 	viewport.add_child(rect)
 	add_child(viewport)

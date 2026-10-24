@@ -9,9 +9,17 @@ uniform int mode = 0; // 0 normal (OpenGL), 1 ambient occlusion, 2 roughness, 3 
 uniform float texel = 0.0009765625;
 uniform float normal_scale = 20.2;
 const float RADII[5] = float[5](1.5, 3.0, 6.0, 12.0, 24.0);
-const float W_CAV[5] = float[5](-5.7978, 1.3898, -0.3779, -0.1797, 0.1535);
-const float W_NEG[5] = float[5](20.9312, -3.1205, 2.4958, 0.1829, 0.3182);
-const float AO_BIAS = 0.9473;
+const float W_CAV[5] = float[5](0.8282, -3.0277, 0.2367, 0.0662, 0.1667);
+const float W_NEG[5] = float[5](-2.9735, 7.9815, -1.5221, -0.5613, 0.4294);
+const float W_EDGE[3] = float[3](0.552, 1.4408, -0.8888); // the edge layer value, its negative part, its positive part
+const float W_LOBE[6] = float[6](0.0117, -0.0668, -0.0624, -0.0043, -0.0117, 0.0053); // inside, outside at 2, 5, 12 px
+const float AO_BIAS = 1.0013;
+const float AO_MEAN = 0.9291;
+const float AO_GAIN = 1.87; // the fit shrinks the spread (0.019 against the photograph's 0.035): put it back
+uniform sampler2D edge_tex : filter_nearest; // the edge layer (LumpBaker._edge_texture)
+uniform sampler2D lobe_tex : filter_nearest; // the traced lobes (row: header, box, 48 outline points in tile units)
+uniform int n_lobes = 0;
+uniform float tile_px = 1024.0;
 
 float height_at(vec2 uv) {
 	return texture(baked, uv).a;
@@ -27,6 +35,25 @@ float ring_mean(vec2 uv, float radius_px) {
 	return sum / 13.0;
 }
 
+// signed distance (px) from a point (px) to the outline of lobe `row`, negative inside
+float lobe_distance(vec2 pos, int row) {
+	float best = 1e9;
+	bool inside = false;
+	vec2 a = texelFetch(lobe_tex, ivec2(2 + 47, row), 0).xy * tile_px;
+	for (int k = 0; k < 48; k++) {
+		vec2 b = texelFetch(lobe_tex, ivec2(2 + k, row), 0).xy * tile_px;
+		vec2 e = b - a;
+		vec2 w = pos - a;
+		float t = clamp(dot(w, e) / max(dot(e, e), 1e-6), 0.0, 1.0);
+		best = min(best, length(w - e * t));
+		if ((a.y > pos.y) != (b.y > pos.y) && pos.x < (b.x - a.x) * (pos.y - a.y) / (b.y - a.y) + a.x) {
+			inside = !inside;
+		}
+		a = b;
+	}
+	return inside ? -best : best;
+}
+
 float occlusion(vec2 uv) {
 	float h = height_at(uv);
 	float ao = AO_BIAS;
@@ -34,7 +61,23 @@ float occlusion(vec2 uv) {
 		float cavity = h - ring_mean(uv, RADII[i]);
 		ao += W_CAV[i] * cavity + W_NEG[i] * min(cavity, 0.0);
 	}
-	return clamp(ao, 0.0, 1.0);
+	float edge = texelFetch(edge_tex, ivec2(clamp(floor(uv * tile_px), vec2(0.0), vec2(tile_px - 1.0))), 0).r;
+	ao += W_EDGE[0] * edge + W_EDGE[1] * min(edge, 0.0) + W_EDGE[2] * max(edge, 0.0);
+	float sd = 1e9;
+	for (int i = 0; i < n_lobes; i++) {
+		float d = lobe_distance(uv * tile_px, i);
+		if (abs(d) < abs(sd)) {
+			sd = d;
+		}
+	}
+	if (n_lobes > 0) {
+		float inside = max(-sd, 0.0);
+		float outside = max(sd, 0.0);
+		ao += W_LOBE[0] * exp(-pow(inside / 2.0, 2.0)) + W_LOBE[1] * exp(-pow(outside / 2.0, 2.0));
+		ao += W_LOBE[2] * exp(-pow(inside / 5.0, 2.0)) + W_LOBE[3] * exp(-pow(outside / 5.0, 2.0));
+		ao += W_LOBE[4] * exp(-pow(inside / 12.0, 2.0)) + W_LOBE[5] * exp(-pow(outside / 12.0, 2.0));
+	}
+	return clamp(AO_MEAN + AO_GAIN * (ao - AO_MEAN), 0.0, 1.0);
 }
 
 float roughness(vec2 uv) {

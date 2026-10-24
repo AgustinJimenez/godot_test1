@@ -213,3 +213,9 @@ Found while working on `rock_boulder_dry` (lump rock, `lump_bake.gdshader`, `rim
   std 0.023 vs 0.035, correlation 0.38; normal.x/y std 0.089/0.091 vs 0.094/0.100, correlation 0.63/0.64, the two normals differ by 5.5 degrees on average (p90 9.6). Fine detail (sigma 2) carries 67 to 77 % of the
   photograph's energy in each map but correlates only 0.06 to 0.22. Next: AO needs its own source (crevices of the actual layout, e.g. from the lobe outlines and the edge layer); the colour's definition
   limits roughness; the game material should read these maps (the planet's rock atlas uses colour and height only today).
+- **AO, second model (2026-10-24):** `tools/bark/ao_fit.py` fits the photograph's AO map on (a) the multi-scale cavity of the height and (b) the stored layout (edge layer value and its signed parts, distance profiles inside
+  and outside the 8 lobe outlines at 2, 5, 12 px, the pits). On the PHOTOGRAPH's height: cavities alone 0.718, layout alone 0.476, both 0.743 (the layout adds little where the height is already the real one). On OUR
+  bake's height the weights have to be refitted: cavities alone 0.443, + layout 0.535 (+ luminance 0.536; 10 radii 0.540, so the radii are not the limit). `lump_maps_pass.gdshader` now uses the refit weights, the
+  edge layer and the lobe outlines (kept by `LumpBaker` for `derive_map`), and puts the contrast back (the fit shrinks the spread to 0.019: gain 1.87 gives 0.036 against the photograph's 0.035).
+  Result in the compare scene: AO correlation 0.38 -> 0.54, mean 0.929 both, std 0.036 vs 0.035, but the fine detail (sigma 2) still correlates only 0.06 (66 % of the energy): the lobe borders are now crisp lines
+  like the photograph's, the arcs and curved edges outside the 8 lobes and the photograph's fine pits and mottling are not. The ceiling is the height: the photograph's AO was baked from the scan's real geometry.
