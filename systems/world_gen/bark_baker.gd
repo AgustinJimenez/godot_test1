@@ -14,16 +14,23 @@ const HEIGHT_SPREAD := {"pine_bark": 2.2}
 ## the dark groove network round every raised flake (0..1)
 const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 0.4}
 ## a whole-bark darkening where the albedo lift of the colour model comes out too light
-const BRIGHTNESS := {"pine_bark": 0.92, "tree_bark_03": 1.0}
+const BRIGHTNESS := {"pine_bark": 0.92, "tree_bark_03": 1.0, "trident_maple_bark": 0.75,
+	"japanese_cedar_bark": 0.85}
 ## the same options tried on the barks that ship (opt-in: PLANET_BARK_GROOVES=1)
 const GROOVED_EDGE := {
 	"bark_willow_02": 0.6, "trident_maple_bark": 0.5, "japanese_cedar_bark": 0.4}
 const GROOVED_BRIGHTNESS := {
-	"bark_willow_02": 1.0, "trident_maple_bark": 0.8, "japanese_cedar_bark": 0.72}
+	"bark_willow_02": 1.0, "trident_maple_bark": 0.8, "japanese_cedar_bark": 0.85}
 ## less contrast where the bake is far more contrasty than the photograph (0..1)
-const FLATTEN := {"pine_bark": 0.3, "tree_bark_03": 0.65}
+const FLATTEN := {"pine_bark": 0.3, "tree_bark_03": 0.65, "japanese_cedar_bark": 0.6,
+	"trident_maple_bark": 0.25}
 const GROOVED_FLATTEN := {
 	"bark_willow_02": 0.3, "trident_maple_bark": 0.0, "japanese_cedar_bark": 0.4}
+## sharpness: micro-contrast and pixel grain on the colour (0..1; every bark gets this default)
+const CRISP := 1.0
+## fine colour mottling where the fitted shapes are much larger than the photograph's speckle
+const FINE_MOTTLE := {
+	"trident_maple_bark": 0.4, "japanese_cedar_bark": 0.15, "bark_willow_02": 0.15}
 const PALETTE_MIX := {"pine_bark": 0.95, "forest_leaves_03": 0.9}
 
 
@@ -64,6 +71,8 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 	var flat: float = float(FLATTEN.get(name, 0.0))
 	if OS.has_environment("PLANET_BARK_GROOVES"):
 		flat = float(GROOVED_FLATTEN.get(name, flat))
+	material.set_shader_parameter(&"crisp", CRISP if name != "forest_leaves_03" else 0.0)
+	material.set_shader_parameter(&"fine_mottle", float(FINE_MOTTLE.get(name, 0.0)))
 	material.set_shader_parameter(&"flatten", flat)
 	material.set_shader_parameter(&"brightness", brightness)
 	material.set_shader_parameter(&"edge_dark", edge)

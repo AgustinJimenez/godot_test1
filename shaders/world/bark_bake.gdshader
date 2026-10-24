@@ -15,6 +15,8 @@ uniform vec3 shading = vec3(0.4, 0.05, 0.2); // cavity gain, mottle, flake tone 
 uniform float seed = 1.0;
 uniform vec3 palette[3]; // the photograph's main colours, brightest first
 uniform vec3 palette_shares = vec3(0.34, 0.33, 0.33);
+uniform float crisp = 0.0; // 0..1: micro-contrast and pixel grain for a sharper look (colour only: the height is left alone)
+uniform float fine_mottle = 0.0; // 0..1: fine colour mottling at 1-4 cm (the photographed barks are speckled, the fitted shapes are large)
 uniform float flatten = 0.0; // 0..1: pull the colours toward the photograph's mean colour (less contrast)
 uniform float brightness = 1.0; // a whole-bark darkening (the colour model's albedo lift is too light for some barks)
 uniform float edge_dark = 0.0; // 0..1: darken the ground beside every raised flake (the groove network round the plates of a craggy bark)
@@ -187,6 +189,19 @@ void fragment() {
 	float gap = mix(1.0, 0.3 + 0.7 * smoothstep(0.05, 0.3, h), palette_flat);
 	vec3 flake_final = flake_colour * leaf_tone * gap * (0.75 + 0.5 * h) * mix(ramp_colour.g / max(mean_colour.g, 0.05), 1.0, palette_flat);
 	ramp_colour = mix(ramp_colour, flake_final, palette_mix);
+	if (crisp > 0.0) {
+		// micro cavity: how far the point sits below its neighbours 0.45 cm away (about 2 px), an unsharp mask on the light
+		float micro = h - 0.25 * (norm(bark(at + vec2(0.45, 0.0), seed).x) + norm(bark(at - vec2(0.45, 0.0), seed).x)
+				+ norm(bark(at + vec2(0.0, 0.45), seed).x) + norm(bark(at - vec2(0.0, 0.45), seed).x));
+		float grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+		light *= clamp(1.0 + crisp * (2.6 * micro + 0.12 * grain), 0.7, 1.3);
+	}
+	if (fine_mottle > 0.0) {
+		float m1 = vnoise(at, 1.1, 1.1, seed + 71.0) - 0.5;
+		float m2 = vnoise(at, 2.6, 3.4, seed + 73.0) - 0.5;
+		float m3 = vnoise(at, 0.5, 0.5, seed + 75.0) - 0.5;
+		light *= clamp(1.0 + fine_mottle * (0.9 * m1 + 1.1 * m2 + 0.6 * m3), 0.55, 1.5);
+	}
 	vec3 final_colour = ramp_colour * light * brightness;
 	final_colour = mix(final_colour, mean_colour, flatten);
 	COLOR = vec4(clamp(final_colour, 0.0, 1.0), clamp(alpha_map.z + (h - alpha_map.y) * alpha_map.x, 0.0, 1.0));
