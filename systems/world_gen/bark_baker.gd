@@ -15,7 +15,7 @@ const HEIGHT_SPREAD := {"pine_bark": 2.2}
 const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 0.4}
 ## a whole-bark darkening where the albedo lift of the colour model comes out too light
 const BRIGHTNESS := {"forest_leaves_03": 0.85, "pine_bark": 0.92, "tree_bark_03": 1.0,
-	"trident_maple_bark": 0.75, "japanese_cedar_bark": 0.62}
+	"trident_maple_bark": 0.52, "japanese_cedar_bark": 0.62, "bark_willow_02": 0.92}
 ## the same options tried on the barks that ship (opt-in: PLANET_BARK_GROOVES=1)
 const GROOVED_EDGE := {
 	"bark_willow_02": 0.6, "trident_maple_bark": 0.5, "japanese_cedar_bark": 0.4}
@@ -23,7 +23,7 @@ const GROOVED_BRIGHTNESS := {
 	"bark_willow_02": 1.0, "trident_maple_bark": 0.8, "japanese_cedar_bark": 0.85}
 ## less contrast where the bake is far more contrasty than the photograph (0..1)
 const FLATTEN := {"pine_bark": 0.3, "tree_bark_03": 0.65, "japanese_cedar_bark": 0.45,
-	"trident_maple_bark": 0.3}
+	"trident_maple_bark": 0.3, "bark_willow_02": 0.4}
 const GROOVED_FLATTEN := {
 	"bark_willow_02": 0.3, "trident_maple_bark": 0.0, "japanese_cedar_bark": 0.4}
 ## sharpness: micro-contrast and pixel grain on the colour (0..1; every bark gets this default)
@@ -32,7 +32,7 @@ const CRISP := 1.0
 const FINE_MOTTLE := {
 	"trident_maple_bark": 0.4, "japanese_cedar_bark": 0.15, "bark_willow_02": 0.15}
 ## pull the colour toward grey where the fitted ramp is more saturated than the photograph
-const DESATURATE := {"tree_bark_03": 0.2, "japanese_cedar_bark": 0.25, "pine_bark": 0.1}
+const DESATURATE := {"tree_bark_03": 0.2, "japanese_cedar_bark": 0.25, "pine_bark": -0.45}
 const PALETTE_MIX := {"pine_bark": 0.95, "forest_leaves_03": 0.9}
 
 
