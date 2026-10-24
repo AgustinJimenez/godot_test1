@@ -15,6 +15,11 @@ const HEIGHT_SPREAD := {"pine_bark": 2.2}
 const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 1.0}
 ## a whole-bark darkening where the albedo lift of the colour model comes out too light
 const BRIGHTNESS := {"pine_bark": 0.62, "tree_bark_03": 0.8}
+## the same options tried on the barks that ship (opt-in: PLANET_BARK_GROOVES=1)
+const GROOVED_EDGE := {
+	"bark_willow_02": 0.6, "trident_maple_bark": 0.5, "japanese_cedar_bark": 0.4}
+const GROOVED_BRIGHTNESS := {
+	"bark_willow_02": 0.85, "trident_maple_bark": 0.8, "japanese_cedar_bark": 0.8}
 const PALETTE_MIX := {"pine_bark": 0.7, "forest_leaves_03": 0.9}
 
 
@@ -47,8 +52,13 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 		material.set_shader_parameter(&"palette_shares", Vector3(shares[0], shares[1], shares[2]))
 		material.set_shader_parameter(&"palette_mix", float(PALETTE_MIX.get(name, 0.0)))
 		material.set_shader_parameter(&"palette_flat", 1.0 if name == "forest_leaves_03" else 0.0)
-	material.set_shader_parameter(&"brightness", float(BRIGHTNESS.get(name, 1.0)))
-	material.set_shader_parameter(&"edge_dark", float(EDGE_DARK.get(name, 0.0)))
+	var brightness: float = float(BRIGHTNESS.get(name, 1.0))
+	var edge: float = float(EDGE_DARK.get(name, 0.0))
+	if OS.has_environment("PLANET_BARK_GROOVES"):
+		brightness = float(GROOVED_BRIGHTNESS.get(name, brightness))
+		edge = float(GROOVED_EDGE.get(name, edge))
+	material.set_shader_parameter(&"brightness", brightness)
+	material.set_shader_parameter(&"edge_dark", edge)
 	material.set_shader_parameter(&"depth_boost", float(DEPTH_BOOST.get(name, 0.0)))
 	material.set_shader_parameter(&"alpha_map", Vector3(
 			float(fit.get("alpha_scale", 1.0)) * float(HEIGHT_SPREAD.get(name, 1.0)),
