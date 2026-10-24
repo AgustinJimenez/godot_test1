@@ -9,6 +9,8 @@ const SIZE := 1024
 const STAIN_AMOUNT := {"rock_06": 1.0}
 ## how much the lumps follow the 16 x 16 picture of the photograph (0: fully procedural)
 const GUIDE_MIX := 0.8
+## how much of the fine (12) and mid (14) relief each rock keeps (the boulder is smooth)
+const CALM := {"rock_boulder_dry": 0.5}
 
 
 ## The tile of one fitted rock face (`name` is a key of LumpFits.fits()) as an Image (RGBA8).
@@ -23,7 +25,11 @@ func bake(name: String, seed_value := 1.0) -> Image:
 	rect.size = Vector2(SIZE, SIZE)
 	var material := ShaderMaterial.new()
 	material.shader = SHADER
-	material.set_shader_parameter(&"p", fit["params"])
+	var params: PackedFloat32Array = fit["params"].duplicate()
+	var calm: float = CALM.get(name, 1.0)
+	params[12] *= calm
+	params[14] *= calm
+	material.set_shader_parameter(&"p", params)
 	material.set_shader_parameter(&"tile_cm", fit["tile_cm"])
 	# the guide and the fine relief lift parts above the fitted range: widen it, no flat clipping
 	var range_fit: Vector2 = fit["height_range"]
