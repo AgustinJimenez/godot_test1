@@ -11,6 +11,10 @@ const SIZE := 1024
 const DEPTH_BOOST := {"pine_bark": 1.0, "tree_bark_03": 0.5}
 ## how much more the baked height is spread than the photograph's (a deeper parallax and masks)
 const HEIGHT_SPREAD := {"pine_bark": 2.2}
+## the dark groove network round every raised flake (0..1)
+const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 0.6}
+## a whole-bark darkening where the albedo lift of the colour model comes out too light
+const BRIGHTNESS := {"pine_bark": 0.62}
 const PALETTE_MIX := {"pine_bark": 0.7, "forest_leaves_03": 0.9}
 
 
@@ -43,6 +47,8 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 		material.set_shader_parameter(&"palette_shares", Vector3(shares[0], shares[1], shares[2]))
 		material.set_shader_parameter(&"palette_mix", float(PALETTE_MIX.get(name, 0.0)))
 		material.set_shader_parameter(&"palette_flat", 1.0 if name == "forest_leaves_03" else 0.0)
+	material.set_shader_parameter(&"brightness", float(BRIGHTNESS.get(name, 1.0)))
+	material.set_shader_parameter(&"edge_dark", float(EDGE_DARK.get(name, 0.0)))
 	material.set_shader_parameter(&"depth_boost", float(DEPTH_BOOST.get(name, 0.0)))
 	material.set_shader_parameter(&"alpha_map", Vector3(
 			float(fit.get("alpha_scale", 1.0)) * float(HEIGHT_SPREAD.get(name, 1.0)),

@@ -15,6 +15,8 @@ uniform vec3 shading = vec3(0.4, 0.05, 0.2); // cavity gain, mottle, flake tone 
 uniform float seed = 1.0;
 uniform vec3 palette[3]; // the photograph's main colours, brightest first
 uniform vec3 palette_shares = vec3(0.34, 0.33, 0.33);
+uniform float brightness = 1.0; // a whole-bark darkening (the colour model's albedo lift is too light for some barks)
+uniform float edge_dark = 0.0; // 0..1: darken the ground beside every raised flake (the groove network round the plates of a craggy bark)
 uniform float depth_boost = 0.0; // 0..1: deeper fissures (stronger cavity shading, darker gaps) for craggy barks
 uniform float palette_flat = 0.0; // 1: the palette colour as it is (leaf litter: no height gating, no cavity gain)
 uniform float palette_mix = 0.0; // 0: the ramp by height alone; 1: each flake takes one of the palette colours
@@ -160,8 +162,14 @@ void fragment() {
 			+ norm(bark(at + vec2(0.0, 2.0), seed).x) + norm(bark(at - vec2(0.0, 2.0), seed).x));
 	float cavity = h - around;
 	float mottle = vnoise(at, 14.0, 28.0, seed + 61.0) - 0.5;
+	float rise = 0.0;
+	if (edge_dark > 0.0) {
+		rise = max(max(norm(bark(at + vec2(0.7, 0.0), seed).x), norm(bark(at - vec2(0.7, 0.0), seed).x)),
+				max(norm(bark(at + vec2(0.0, 0.7), seed).x), norm(bark(at - vec2(0.0, 0.7), seed).x))) - h;
+	}
 	float tone = (b.y - 0.5) * 2.0;
 	float light = (1.0 + shading.x * cavity * 6.0 * (1.0 + 2.0 * depth_boost)) * (1.0 + shading.y * mottle * 6.0) * (1.0 + shading.z * tone);
+	light *= 1.0 - edge_dark * 0.9 * smoothstep(0.01, 0.12, rise);
 	light *= mix(0.3 - 0.22 * depth_boost, 1.0, smoothstep(0.0, 0.5 + 0.2 * depth_boost, h)); // the gaps and low parts between the flakes are dark
 	float t = h * 7.0;
 	int i0 = int(floor(t));
@@ -178,5 +186,5 @@ void fragment() {
 	float gap = mix(1.0, 0.3 + 0.7 * smoothstep(0.05, 0.3, h), palette_flat);
 	vec3 flake_final = flake_colour * leaf_tone * gap * (0.75 + 0.5 * h) * mix(ramp_colour.g / max(mean_colour.g, 0.05), 1.0, palette_flat);
 	ramp_colour = mix(ramp_colour, flake_final, palette_mix);
-	COLOR = vec4(clamp(ramp_colour * light, 0.0, 1.0), clamp(alpha_map.z + (h - alpha_map.y) * alpha_map.x, 0.0, 1.0));
+	COLOR = vec4(clamp(ramp_colour * light * brightness, 0.0, 1.0), clamp(alpha_map.z + (h - alpha_map.y) * alpha_map.x, 0.0, 1.0));
 }
