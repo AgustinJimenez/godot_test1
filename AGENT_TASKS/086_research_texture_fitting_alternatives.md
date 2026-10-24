@@ -84,3 +84,13 @@ First sheets, honest reading (the object views had been kinder):
 - ratios (procedural / photograph feature size, across and along): rock_face 1.29 / 0.96, boulder_dry 1.16 / 1.03, rock_08 0.89 / 0.87,
   gravel 0.69 / 0.64, pine 1.29 / 0.83, palm 5.07 / 0.59 (the palm sheet crops a 2:1 photograph: the ratio is not valid there).
 Use the sheet BEFORE the object view for every new fit.
+
+## Outcome of the research plan (2026-10-24)
+- A (sliced Wasserstein term, `SW_WEIGHT`): kept; it made the long-flake pine and ash fits and the plate pine possible; it did
+  nothing for rocks (the generator was the limit there).
+- B (stochastic tiling): prototyped in Python and as a shader switch (`PLANET_STOCH_BARK`); not adopted (needs a Gaussianised
+  atlas + LUT, +1.1 ms GPU).
+- Guide maps (16 x 16 picture steering plate and lump tones, `guide_mix` 0 = fully procedural): done for the pine plates and the
+  lump rocks; the way to "match the photograph first, then remove the matching part".
+- C (differentiable node graph, MATch-style): not started; the hand-built families (flakes, plates, rings, lumps, chips, ledges,
+  soil) covered what could be covered. Revisit only if a new surface needs a family we do not have.
