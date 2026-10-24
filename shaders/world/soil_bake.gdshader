@@ -99,5 +99,10 @@ void fragment() {
 	colour = mix(colour, red_colour * 1.05, 0.85 * crumb);
 	colour *= 1.0 + 0.24 * pixel_grain;
 	colour *= 0.85 + 0.3 * smoothstep(0.2, 0.9, h);
-	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
+	// the photograph's relief is coarse and rough: broad lumps 4-9 cm with a crumbly rough surface (warped noise, so no contours)
+	vec2 warp = at + 1.4 * vec2(vnoise(at, 3.0, seed + 181.0) - 0.5, vnoise(at, 3.4, seed + 183.0) - 0.5);
+	float lumpy = vnoise(warp, 6.0, seed + 185.0) * 0.5 + vnoise(warp, 2.6, seed + 187.0) * 0.3 + vnoise(warp, 1.2, seed + 189.0) * 0.2;
+	float rough = vnoise(warp, 0.8, seed + 191.0) - 0.5;
+	float relief = 0.5 + 0.6 * (lumpy - 0.5) + 0.14 * rough + 0.25 * (h - 0.5);
+	COLOR = vec4(clamp(colour, 0.0, 1.0), clamp(relief, 0.0, 1.0));
 }
