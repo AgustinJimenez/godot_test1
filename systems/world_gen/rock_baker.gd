@@ -53,9 +53,13 @@ func make_array() -> Texture2DArray:
 	var lumps := LumpBaker.new() # (smooth lumps: the rock face, the two mottled boulders)
 	add_child(lumps)
 	var lump_slots := {0: "rock_boulder_dry", 1: "rock_face_04", 2: "rock_08"}
+	var cells := PlateBaker.new() # (rounded cells with a crack network: the pitted mossy rock, slot 4)
+	add_child(cells)
 	for slot in 6:
 		var image: Image = null
-		if lump_slots.has(slot) and OS.has_environment("PLANET_PROCEDURAL_LUMPS"):
+		if slot == 4 and OS.has_environment("PLANET_PROCEDURAL_CELLS"):
+			image = await cells.bake("rock_pitted_mossy")
+		elif lump_slots.has(slot) and OS.has_environment("PLANET_PROCEDURAL_LUMPS"):
 			image = await lumps.bake(lump_slots[slot])
 		elif baked.has(slot):
 			image = await bake(baked[slot])

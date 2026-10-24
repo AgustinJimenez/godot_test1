@@ -10,7 +10,7 @@ import limits  # (first)
 import fit_bark
 import plate_gen as pg
 
-pg.RANGES.update({"cell_cm": (9.0, 14.0), "stretch": (1.0, 1.1), "crack_w": (0.02, 0.07), "crack_depth": (0.2, 0.45),
+pg.RANGES.update({"cell_cm": (12.0, 18.0), "stretch": (1.0, 1.1), "crack_w": (0.02, 0.04), "crack_depth": (0.15, 0.3),
                   "lip": (0.05, 0.25), "z_var": (0.05, 0.25), "tilt": (0.0, 0.1), "warp_amp": (0.1, 0.4),
                   "warp_cm": (6.0, 20.0), "fine_amp": (0.03, 0.12), "fine_cm": (1.0, 2.2), "rag_amp": (0.05, 0.3)})
 folder, name, tile_m = sys.argv[1], sys.argv[2], float(sys.argv[3])
