@@ -38,6 +38,9 @@ var _left: TextureRect
 var _right: TextureRect
 var _title: Label
 var _busy := false
+var _extra_at_start := 0
+var _extra := 0 # 0: colour or height (H); 1..: the photograph's other maps (M)
+var _extra_textures: Array = [] # [label, ImageTexture] of the maps found for this surface
 var _rebake_queued := false
 var _shot := ""
 var _save_bake := ""
@@ -84,9 +87,14 @@ func _ready() -> void:
 					BoulderParams.values[index] = float(pair[1])
 		elif argument == "--height":
 			_height_mode = true
+		elif argument.begins_with("--extra="):
+			_extra_at_start = int(argument.get_slice("=", 1))
 		elif argument.begins_with("--zoom="):
 			_zoom = float(argument.get_slice("=", 1))
 	await _show()
+	if _extra_at_start > 0:
+		_extra = _extra_at_start
+		_apply()
 	if _shot != "":
 		await get_tree().create_timer(0.5).timeout
 		get_viewport().get_texture().get_image().save_png(_shot)
@@ -121,7 +129,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			await _show()
 		KEY_H:
 			_height_mode = not _height_mode
+			_extra = 0
 			_apply()
+		KEY_M:
+			_cycle_map()
 		KEY_Z:
 			_zoom = 2.0 if _zoom < 1.5 else (4.0 if _zoom < 3.0 else 1.0)
 			_apply()
@@ -150,12 +161,13 @@ func _show() -> void:
 	var grooves := "ON" if OS.has_environment("PLANET_BARK_GROOVES") else "off"
 	_title.text = "%s  [%d/%d]   left: photograph   right: procedural" % [
 			entry[0], _index + 1, SURFACES.size()]
-	_title.text += "   (arrows: surface, H: colour or height, G: grooves %s)" % grooves
+	_title.text += "   (arrows: surface, H: colour or height, M: other maps, G: grooves %s)" % grooves
 	var colour := Image.load_from_file(PHOTOS % [entry[1], "diff.jpg"])
 	var height := Image.load_from_file(PHOTOS % [entry[1], "disp.png"])
 	_photo_colour = ImageTexture.create_from_image(colour) if colour != null else null
 	_photo_height = ImageTexture.create_from_image(height) if height != null else null
 	_photo_range = _range_of(height)
+	_load_extra_maps(entry[1])
 	var baked: Image = await _bake(entry[2], entry[3])
 	_baked = ImageTexture.create_from_image(baked)
 	_panel.visible = entry[3] == "rock_boulder_dry" and _shot == ""
@@ -251,9 +263,13 @@ func _apply() -> void:
 	var left := _left.material as ShaderMaterial
 	var right := _right.material as ShaderMaterial
 	_left.texture = _photo_height if _height_mode else _photo_colour
+	var left_mode := 2 if _height_mode else 0
+	if _extra > 0 and _extra <= _extra_textures.size():
+		_left.texture = _extra_textures[_extra - 1][1]
+		left_mode = 0 # (a plain picture of that map)
 	_right.texture = _baked
 	left.set_shader_parameter(&"tex", _left.texture)
-	left.set_shader_parameter(&"mode", 2 if _height_mode else 0)
+	left.set_shader_parameter(&"mode", left_mode)
 	left.set_shader_parameter(&"height_range", _photo_range)
 	left.set_shader_parameter(&"zoom", _zoom)
 	right.set_shader_parameter(&"zoom", _zoom)
@@ -296,3 +312,28 @@ func _show_live_sliders() -> void:
 		var live := BoulderParams.is_live(BoulderParams.LIST[i][0])
 		_sliders[i].visible = live
 		_labels[i].visible = live
+
+
+## M: the left square shows the photograph's other maps in turn.
+## The right square keeps our bake: it has no roughness, occlusion or normal map of its own yet.
+func _cycle_map() -> void:
+	if _extra_textures.is_empty():
+		return
+	_extra = (_extra + 1) % (_extra_textures.size() + 1)
+	_apply()
+	var entry: Array = SURFACES[_index]
+	var what := "colour or height (H)"
+	if _extra > 0:
+		what = String(_extra_textures[_extra - 1][0])
+	_title.text = "%s  [%d/%d]   left: the photograph's %s   right: our bake" % [
+			entry[0], _index + 1, SURFACES.size(), what]
+
+
+func _load_extra_maps(photo_name: String) -> void:
+	_extra = 0
+	_extra_textures.clear()
+	for pair: Array in [["roughness", "rough.jpg"], ["ambient occlusion", "ao.jpg"],
+			["normal map (OpenGL)", "nor_gl.jpg"], ["packed arm map", "arm.jpg"]]:
+		var image := Image.load_from_file(PHOTOS % [photo_name, pair[1]])
+		if image != null:
+			_extra_textures.append([pair[0], ImageTexture.create_from_image(image)])
