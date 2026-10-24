@@ -10,7 +10,7 @@ const SIZE := 1024
 ## deeper fissures for the craggy barks (cavity shading and gap darkness, 0..1)
 const DEPTH_BOOST := {"pine_bark": 1.0, "tree_bark_03": 0.5}
 ## how much more the baked height is spread than the photograph's (a deeper parallax and masks)
-const HEIGHT_SPREAD := {"pine_bark": 2.2}
+const HEIGHT_SPREAD := {"pine_bark": 2.2, "japanese_cedar_bark": 1.6}
 ## the dark groove network round every raised flake (0..1)
 const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 0.4}
 ## a whole-bark darkening where the albedo lift of the colour model comes out too light
