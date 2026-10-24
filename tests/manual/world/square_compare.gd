@@ -62,6 +62,7 @@ var _views: Array = [] # per side: [SubViewportContainer, MeshInstance3D, Camera
 var _orbit := Vector3(0.6, 0.3, 5.0) # yaw, pitch, distance (drag, wheel)
 var _target := Vector3(0.0, 0.6, 0.0)
 var _variant := 0 # V: the next rock shape / tree
+var _resolution := 1024 # X: the lump rocks baked at 1024 or 2048 pixels (the photograph stays as it is)
 var _pom := true # P: parallax and self-shadow on the rocks (rock_pom)
 var _pom_depth := 0.05 # [ and ]: metres the rock's whole relief is worth (rock_pom_depth)
 var _atlas: Image
@@ -111,6 +112,8 @@ func _ready() -> void:
 					BoulderParams.values[index] = float(pair[1])
 		elif argument == "--object":
 			_object_mode = true
+		elif argument.begins_with("--res="):
+			_resolution = int(argument.get_slice("=", 1))
 		elif argument == "--no-pom":
 			_pom = false
 		elif argument.begins_with("--pom-depth="):
@@ -181,6 +184,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_P:
 			_pom = not _pom
 			_apply()
+		KEY_X:
+			_resolution = 2048 if _resolution < 2000 else 1024
+			await _rebake()
 		KEY_BRACKETLEFT:
 			_pom_depth *= 0.5
 			_apply()
@@ -287,12 +293,13 @@ func _rebake() -> void:
 		return
 	_busy = true
 	var entry: Array = SURFACES[_index]
-	_title.text = "baking ... (a few seconds)"
+	_title.text = "baking at %d px ... (a few seconds)" % _resolution
 	var started := Time.get_ticks_msec()
 	_baked = ImageTexture.create_from_image(await _bake(entry[2], entry[3]))
 	_apply()
-	_title.text = "%s  [%d/%d]   baked in %.1f s with the sliders' values" % [
-			entry[0], _index + 1, SURFACES.size(), (Time.get_ticks_msec() - started) / 1000.0]
+	_title.text = "%s  [%d/%d]   %d px, baked in %.1f s with the sliders' values (X: 1024 / 2048)" % [
+			entry[0], _index + 1, SURFACES.size(), _baked.get_width(),
+			(Time.get_ticks_msec() - started) / 1000.0]
 	_busy = false
 	if _rebake_queued:
 		_rebake_queued = false
@@ -349,6 +356,7 @@ func _bake(kind: String, surface: String) -> Image:
 			node = SoilBaker.new()
 		"lump":
 			node = LumpBaker.new()
+			(node as LumpBaker).resolution = _resolution
 		"plate":
 			node = PlateBaker.new()
 		"wood":
@@ -489,8 +497,6 @@ func _show_rock(slot: int) -> void:
 func _rock_array(image: Image) -> Texture2DArray:
 	var layer := image.duplicate() as Image
 	layer.convert(Image.FORMAT_RGBA8)
-	if layer.get_width() != RockBaker.SIZE:
-		layer.resize(RockBaker.SIZE, RockBaker.SIZE, Image.INTERPOLATE_BILINEAR)
 	layer.generate_mipmaps()
 	var layers: Array[Image] = []
 	for slot in 6:

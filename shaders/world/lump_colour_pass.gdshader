@@ -9,6 +9,7 @@ uniform float texel = 0.0009765625; // 1 / size
 uniform vec3 gain = vec3(1.2, 1.0, 0.8); // how much each scale (small, medium, large) darkens or lightens the colour
 const float RADII_PX[3] = float[3](2.5, 6.0, 12.0);
 uniform float strength = 1.0;
+uniform float px_scale = 1.0; // resolution / 1024: the radii are 1024-tile pixels
 uniform float up_scale = 1.0; // how much a convex part brightens, against how much a cavity darkens (the photograph's pits are darker than they are bright)
 uniform float small_scale = 1.0; // multiplies the smallest scale's gain (its 2.5 px blobs are what makes the 1.4 to 2.8 cm band too strong)
 uniform float clip_level = 1.0; // the cavity (normalised height) beyond which its effect on the colour saturates
@@ -18,7 +19,7 @@ float ring_mean(vec2 uv, float radius_px) {
 	float sum = texture(first_pass, uv).a;
 	for (int i = 0; i < 12; i++) {
 		float a = 6.2831853 * (float(i) + 0.5 * float(i % 2)) / 12.0;
-		float r = radius_px * (i % 2 == 0 ? 1.0 : 0.55);
+		float r = radius_px * px_scale * (i % 2 == 0 ? 1.0 : 0.55);
 		sum += texture(first_pass, fract(uv + vec2(cos(a), sin(a)) * r * texel)).a; // (fract: the tile wraps)
 	}
 	return sum / 13.0;

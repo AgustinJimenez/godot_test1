@@ -7,6 +7,8 @@ const SHADER := preload("res://shaders/world/lump_bake.gdshader")
 const COLOUR_PASS := preload("res://shaders/world/lump_colour_pass.gdshader")
 const MAPS_PASS := preload("res://shaders/world/lump_maps_pass.gdshader")
 const SIZE := 1024
+## pixels along the tile (the game keeps 1024; the compare scene can bake 2048). Set before bake().
+var resolution := SIZE
 var _edge_tex: ImageTexture # kept from the bake: the boulder's derived maps read the same layout
 var _lobe_tex: ImageTexture
 var _lobe_count := 0
@@ -29,12 +31,12 @@ const RIM_LOBES := {"rock_boulder_dry": 0.045}
 func bake(name: String, seed_value := 1.0) -> Image:
 	var fit: Dictionary = LumpFits.fits()[name]
 	var viewport := SubViewport.new()
-	viewport.size = Vector2i(SIZE, SIZE)
+	viewport.size = Vector2i(resolution, resolution)
 	viewport.disable_3d = true
 	viewport.transparent_bg = true
 	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	var rect := ColorRect.new()
-	rect.size = Vector2(SIZE, SIZE)
+	rect.size = Vector2(resolution, resolution)
 	var material := ShaderMaterial.new()
 	material.shader = SHADER
 	var params: PackedFloat32Array = fit["params"].duplicate()
@@ -44,6 +46,7 @@ func bake(name: String, seed_value := 1.0) -> Image:
 	material.set_shader_parameter(&"p", params)
 	material.set_shader_parameter(&"wiggle_cracks", WIGGLE_CRACKS.get(name, 0.0))
 	material.set_shader_parameter(&"bp", BoulderParams.as_packed())
+	material.set_shader_parameter(&"res", float(resolution))
 	if name == "rock_boulder_dry":
 		_set_features(material)
 	material.set_shader_parameter(&"rim_lobes", RIM_LOBES.get(name, 0.0))
@@ -167,6 +170,8 @@ func _edge_texture() -> ImageTexture:
 				profile *= exp(-pow(across / float(EDGE_RADIUS), 2.0))
 				field[y * size + x] += profile * weight
 	var image := Image.create_from_data(size, size, false, Image.FORMAT_RF, field.to_byte_array())
+	if resolution != size: # (the stored points are on the 1024 grid: the field is drawn there, then enlarged)
+		image.resize(resolution, resolution, Image.INTERPOLATE_BILINEAR)
 	return ImageTexture.create_from_image(image)
 
 
@@ -184,6 +189,7 @@ func _colour_pass(first: Image) -> Image:
 	material.shader = COLOUR_PASS
 	material.set_shader_parameter(&"first_pass", ImageTexture.create_from_image(first))
 	material.set_shader_parameter(&"texel", 1.0 / float(first.get_width()))
+	material.set_shader_parameter(&"px_scale", float(first.get_width()) / 1024.0)
 	material.set_shader_parameter(&"strength", BoulderParams.values[37])
 	material.set_shader_parameter(&"chroma", BoulderParams.values[38])
 	material.set_shader_parameter(&"clip_level", BoulderParams.values[42])
@@ -252,4 +258,6 @@ func _crack_texture() -> ImageTexture:
 					weight = 0.55
 				field[y * size + x] = maxf(field[y * size + x], strength * weight)
 	var image := Image.create_from_data(size, size, false, Image.FORMAT_RF, field.to_byte_array())
+	if resolution != size: # (the stored points are on the 1024 grid: the field is drawn there, then enlarged)
+		image.resize(resolution, resolution, Image.INTERPOLATE_BILINEAR)
 	return ImageTexture.create_from_image(image)

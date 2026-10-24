@@ -6,6 +6,7 @@ render_mode blend_disabled; // the height is written in alpha: no blending
 
 uniform float p[18];
 uniform float tile_cm = 200.0;
+uniform float res = 1024.0; // pixels along the tile (LumpBaker.resolution)
 uniform vec3 ramp[8];
 uniform vec2 height_range = vec2(0.0, 1.0);
 uniform float seed = 1.0;
@@ -144,7 +145,7 @@ float swell_at(vec2 at) {
 float micro_texture(vec2 at, float s) {
 	vec2 w = at + 0.45 * B_FINE_CM * vec2(vnoise(at, 1.7 * B_FINE_CM, s + 511.0) - 0.5, vnoise(at, 1.9 * B_FINE_CM, s + 513.0) - 0.5) * 2.0;
 	float n = (vnoise(w, 1.1 * B_FINE_CM, s + 501.0) - 0.5) * 1.0 + (vnoise(w, 0.55 * B_FINE_CM, s + 503.0) - 0.5) * 0.9;
-	float grain = fract(sin(dot(floor(at / tile_cm * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+	float grain = fract(sin(dot(floor(at / tile_cm * res), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
 	return (n + 0.35 * grain) * 2.2;
 }
 
@@ -284,7 +285,7 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 			}
 		}
 		if (B_FEATURES > 0.5) {
-			h += B_EDGE_LAYER * texelFetch(edge_tex, ivec2(clamp(floor(at / tile_cm * 1024.0), vec2(0.0), vec2(1023.0))), 0).r * (height_range.y - height_range.x);
+			h += B_EDGE_LAYER * texelFetch(edge_tex, ivec2(clamp(floor(at / tile_cm * res), vec2(0.0), vec2(res - 1.0))), 0).r * (height_range.y - height_range.x);
 			for (int i = 0; i < n_lobes; i++) {
 				vec4 box = texelFetch(lobe_tex, ivec2(1, i), 0);
 				vec2 low = box.xy * tile_cm - vec2(B_FEAT_SOFT * 3.0);
@@ -364,7 +365,7 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 	h += (rim_lobes > 0.0 ? B_FINE : 0.045) * fr;
 	if (rim_lobes > 0.0 && B_FEATURES > 0.5) {
 		h += B_FINE_HEIGHT * micro_texture(at, s);
-		h -= B_CRACK_DEPTH * texelFetch(crack_tex, ivec2(clamp(floor(at / tile_cm * 1024.0), vec2(0.0), vec2(1023.0))), 0).r;
+		h -= B_CRACK_DEPTH * texelFetch(crack_tex, ivec2(clamp(floor(at / tile_cm * res), vec2(0.0), vec2(res - 1.0))), 0).r;
 		// rare crisp pits with a sharp lip (the photograph's height is very peaky at 1 px: kurtosis 39, a few extreme features on a calm ground)
 		float cell_cm = B_LIP_CM * 3.0;
 		float cn = max(floor(tile_cm / cell_cm + 0.5), 1.0);
@@ -428,7 +429,7 @@ void fragment() {
 	vec2 warped = at + 0.55 * vec2(vnoise(at, 1.7, seed + 151.0) - 0.5, vnoise(at, 1.9, seed + 153.0) - 0.5) * 2.0;
 	float fleck_d = smoothstep(0.74, 0.8, vnoise(warped, 0.55, seed + 155.0)) * smoothstep(0.4, 0.62, vnoise(at, 7.0, seed + 157.0));
 	float fleck_p = smoothstep(0.78, 0.83, vnoise(warped, 0.45, seed + 159.0)) * smoothstep(0.55, 0.75, vnoise(at, 5.0, seed + 161.0));
-	float pixel_grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+	float pixel_grain = fract(sin(dot(floor(UV * res), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
 	float busy = rim_lobes > 0.0 ? B_SPECKS : 1.0; // (the boulder photograph is smooth and pale with few dark specks)
 	colour = mix(colour, colour * 0.5, 0.6 * fleck_d * busy);
 	colour = mix(colour, vec3(0.86, 0.83, 0.77), 0.4 * fleck_p);
@@ -456,10 +457,10 @@ void fragment() {
 			colour *= mix(vec3(1.0), texelFetch(lobe_tex, ivec2(50, i), 0).rgb, inside * B_LOBE_TINT);
 		}
 		// the dark line along the downhill side of every sharp edge (cavity), a light one on the uphill side
-		float edge_value = texelFetch(edge_tex, ivec2(clamp(floor(at / tile_cm * 1024.0), vec2(0.0), vec2(1023.0))), 0).r;
+		float edge_value = texelFetch(edge_tex, ivec2(clamp(floor(at / tile_cm * res), vec2(0.0), vec2(res - 1.0))), 0).r;
 		colour *= 1.0 + clamp(B_EDGE_DARK * edge_value * 3.0, -0.3, 0.2);
 		colour *= 1.0 + B_FINE_COLOUR * micro_texture(at, seed + 7.0);
-		float crack = texelFetch(crack_tex, ivec2(clamp(floor(at / tile_cm * 1024.0), vec2(0.0), vec2(1023.0))), 0).r;
+		float crack = texelFetch(crack_tex, ivec2(clamp(floor(at / tile_cm * res), vec2(0.0), vec2(res - 1.0))), 0).r;
 		colour *= 1.0 - B_CRACK_COLOUR * crack;
 	}
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);

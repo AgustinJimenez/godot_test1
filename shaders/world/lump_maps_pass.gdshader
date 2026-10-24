@@ -31,7 +31,7 @@ float ring_mean(vec2 uv, float radius_px) {
 	float sum = height_at(uv);
 	for (int i = 0; i < 12; i++) {
 		float a = 6.2831853 * (float(i) + 0.5 * float(i % 2)) / 12.0;
-		float r = radius_px * (i % 2 == 0 ? 1.0 : 0.55);
+		float r = radius_px * (tile_px / 1024.0) * (i % 2 == 0 ? 1.0 : 0.55);
 		sum += height_at(uv + vec2(cos(a), sin(a)) * r * texel);
 	}
 	return sum / 13.0;

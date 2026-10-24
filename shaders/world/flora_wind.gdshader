@@ -775,7 +775,7 @@ void fragment() {
 					vec3 w = pow(abs(n_o), vec3(4.0));
 					w /= max(w.x + w.y + w.z, 0.001);
 					float footprint = length(dFdx(p_m)) + length(dFdy(p_m));
-					float lod = clamp(log2(max(footprint, 1e-5) / tile * 1024.0), 0.0, 6.0);
+					float lod = clamp(log2(max(footprint, 1e-5) / tile * float(textureSize(rock_photo, 0).x)), 0.0, 6.0);
 					float layer_id = float(slot);
 					float steps = mix(10.0, 24.0, smoothstep(0.9, 0.3, vz));
 					float step_size = 1.0 / steps;
