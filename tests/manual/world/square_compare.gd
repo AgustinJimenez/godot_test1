@@ -65,6 +65,12 @@ var _variant := 0 # V: the next rock shape / tree
 var _resolution := 1024 # X: the lump rocks baked at 1024 or 2048 pixels (the photograph stays as it is)
 var _turn := true # T: the camera turns round the object by itself (a drag turns it by hand)
 var _dragging := false
+const RESOLUTIONS: Array[int] = [512, 1024, 2048]
+var _res_option: OptionButton
+var _pom_check: CheckBox
+var _turn_check: CheckBox
+var _depth_slider: HSlider
+var _depth_label: Label
 var _pom := true # P: parallax and self-shadow on the rocks (rock_pom)
 var _pom_depth := 0.05 # [ and ]: metres the rock's whole relief is worth (rock_pom_depth)
 var _atlas: Image
@@ -92,6 +98,7 @@ func _ready() -> void:
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	column.add_child(_title)
+	column.add_child(_build_settings())
 	var row := HBoxContainer.new()
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	row.add_theme_constant_override(&"separation", 10)
@@ -191,6 +198,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_apply()
 		KEY_T:
 			_turn = not _turn
+			_sync_settings()
 		KEY_X:
 			_resolution = 2048 if _resolution < 2000 else 1024
 			await _rebake()
@@ -329,6 +337,7 @@ func _range_of(image: Image) -> Vector2:
 
 
 func _apply() -> void:
+	_sync_settings()
 	_update_objects()
 	var left := _left.material as ShaderMaterial
 	var right := _right.material as ShaderMaterial
@@ -583,3 +592,60 @@ func _process(delta: float) -> void:
 	if _object_mode and _turn and not _dragging and not _object_busy and _shot == "":
 		_orbit.x += delta * 0.35
 		_orbit_cameras()
+
+
+## The settings row: the lump bake's resolution (it rebakes), parallax, the turntable and the relief depth.
+## No control takes the keyboard focus, so the arrow keys still change the surface.
+func _build_settings() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override(&"separation", 14)
+	var res_label := Label.new()
+	res_label.text = "bake resolution (px)"
+	row.add_child(res_label)
+	_res_option = OptionButton.new()
+	_res_option.focus_mode = Control.FOCUS_NONE
+	for value in RESOLUTIONS:
+		_res_option.add_item(str(value), value)
+	_res_option.item_selected.connect(func(index: int) -> void:
+		_resolution = RESOLUTIONS[index]
+		_rebake())
+	row.add_child(_res_option)
+	_pom_check = CheckBox.new()
+	_pom_check.text = "parallax + self-shadow (rocks)"
+	_pom_check.focus_mode = Control.FOCUS_NONE
+	_pom_check.toggled.connect(func(on: bool) -> void:
+		_pom = on
+		_update_objects())
+	row.add_child(_pom_check)
+	_depth_label = Label.new()
+	row.add_child(_depth_label)
+	_depth_slider = HSlider.new()
+	_depth_slider.focus_mode = Control.FOCUS_NONE
+	_depth_slider.custom_minimum_size = Vector2(140.0, 0.0)
+	_depth_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_depth_slider.min_value = 5.0
+	_depth_slider.max_value = 300.0
+	_depth_slider.step = 1.0
+	_depth_slider.value_changed.connect(func(value: float) -> void:
+		_depth_label.text = "relief depth %d mm" % int(value))
+	_depth_slider.drag_ended.connect(func(_changed: bool) -> void:
+		_pom_depth = _depth_slider.value / 1000.0
+		_update_objects())
+	row.add_child(_depth_slider)
+	_turn_check = CheckBox.new()
+	_turn_check.text = "turntable"
+	_turn_check.focus_mode = Control.FOCUS_NONE
+	_turn_check.toggled.connect(func(on: bool) -> void: _turn = on)
+	row.add_child(_turn_check)
+	return row
+
+
+func _sync_settings() -> void:
+	if _res_option == null:
+		return
+	_res_option.select(maxi(RESOLUTIONS.find(_resolution), 0))
+	_res_option.disabled = SURFACES[_index][2] != "lump" # (only the lump rocks have a resolution setting)
+	_pom_check.set_pressed_no_signal(_pom)
+	_turn_check.set_pressed_no_signal(_turn)
+	_depth_slider.set_value_no_signal(_pom_depth * 1000.0)
+	_depth_label.text = "relief depth %d mm" % int(_pom_depth * 1000.0)
