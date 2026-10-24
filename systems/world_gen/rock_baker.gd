@@ -52,7 +52,7 @@ func make_array() -> Texture2DArray:
 			baked[int(fits[name]["slot"])] = name
 	var lumps := LumpBaker.new() # (smooth lumps: the rock face, the two mottled boulders)
 	add_child(lumps)
-	var lump_slots := {0: "rock_boulder_dry", 1: "rock_face_04", 2: "rock_08"}
+	var lump_slots := {0: "rock_boulder_dry", 1: "rock_face_04", 2: "rock_08", 3: "rock_06"}
 	var cells := PlateBaker.new() # (rounded cells with a crack network: the pitted mossy rock, slot 4)
 	add_child(cells)
 	for slot in 6:
