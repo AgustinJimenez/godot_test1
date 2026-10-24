@@ -69,6 +69,8 @@ func make_array(all_fits := false) -> Texture2DArray:
 				"japanese_cedar_bark": 5}
 	# the pine and the ringed palm: in the viewer, or opt-in in the game (not as good as
 	# the photographs yet)
+	if OS.has_environment("PLANET_PROCEDURAL_ASH"): # (long narrow ridged flakes: close on the sheet)
+		baked["tree_bark_03"] = 2
 	if OS.has_environment("PLANET_PROCEDURAL_PINE"): # (long narrow flakes, a plain-square sheet match)
 		baked["pine_bark"] = 1
 	if all_fits or OS.has_environment("PLANET_PROCEDURAL_PALM"):
