@@ -236,7 +236,11 @@ void fragment() {
 		float band = 0.35 * vnoise(at, 33.0, 100.0, seed + 191.0) + 0.8 * edge_band;
 		float ragged_m = vnoise(at, 3.0, 5.0, seed + 193.0) * 0.5 + vnoise(at, 1.1, 1.6, seed + 195.0) * 0.3 + vnoise(at, 0.5, 0.7, seed + 197.0) * 0.2;
 		float moss = smoothstep(0.68 - 0.3 * moss_share, 0.74 - 0.3 * moss_share, band * 0.75 + ragged_m * 0.75 - 0.3);
-		float moss_tone = 0.75 + 0.5 * (vnoise(at, 0.8, 1.2, seed + 199.0) - 0.5) + 0.35 * h;
+		// fluffy: clumps at three sizes, bright tips and dark gaps, a per-pixel grain
+		float clump = (vnoise(at, 2.4, 2.4, seed + 211.0) - 0.5) * 0.7 + (vnoise(at, 1.1, 1.1, seed + 213.0) - 0.5) * 0.6
+				+ (vnoise(at, 0.55, 0.55, seed + 215.0) - 0.5) * 0.5;
+		float grain_m = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+		float moss_tone = 0.85 + 1.0 * clump + 0.25 * grain_m + 0.3 * h;
 		vec3 moss_final = moss_colour * moss_tone;
 		moss_final = mix(moss_final, vec3(0.6, 0.62, 0.55), 0.45 * smoothstep(0.62, 0.8, vnoise(at, 1.3, 1.8, seed + 201.0)));
 		final_colour = mix(final_colour, moss_final, 0.72 * moss);
