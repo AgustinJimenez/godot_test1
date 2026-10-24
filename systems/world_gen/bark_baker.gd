@@ -14,8 +14,8 @@ const HEIGHT_SPREAD := {"pine_bark": 2.2}
 ## the dark groove network round every raised flake (0..1)
 const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 0.4}
 ## a whole-bark darkening where the albedo lift of the colour model comes out too light
-const BRIGHTNESS := {"pine_bark": 0.92, "tree_bark_03": 1.0, "trident_maple_bark": 0.75,
-	"japanese_cedar_bark": 0.85}
+const BRIGHTNESS := {"forest_leaves_03": 0.85, "pine_bark": 0.92, "tree_bark_03": 1.0,
+	"trident_maple_bark": 0.75, "japanese_cedar_bark": 0.85}
 ## the same options tried on the barks that ship (opt-in: PLANET_BARK_GROOVES=1)
 const GROOVED_EDGE := {
 	"bark_willow_02": 0.6, "trident_maple_bark": 0.5, "japanese_cedar_bark": 0.4}
