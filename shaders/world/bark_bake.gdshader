@@ -17,6 +17,7 @@ uniform vec3 palette[3]; // the photograph's main colours, brightest first
 uniform vec3 palette_shares = vec3(0.34, 0.33, 0.33);
 uniform float crisp = 0.0; // 0..1: micro-contrast and pixel grain for a sharper look (colour only: the height is left alone)
 uniform float fine_mottle = 0.0; // 0..1: fine colour mottling at 1-4 cm (the photographed barks are speckled, the fitted shapes are large)
+uniform float desaturate = 0.0; // 0..1: pull the colour toward grey (the fitted ramps can come out too saturated)
 uniform float flatten = 0.0; // 0..1: pull the colours toward the photograph's mean colour (less contrast)
 uniform float brightness = 1.0; // a whole-bark darkening (the colour model's albedo lift is too light for some barks)
 uniform float edge_dark = 0.0; // 0..1: darken the ground beside every raised flake (the groove network round the plates of a craggy bark)
@@ -221,5 +222,6 @@ void fragment() {
 	}
 	vec3 final_colour = ramp_colour * light * brightness;
 	final_colour = mix(final_colour, mean_colour, flatten);
+	final_colour = mix(final_colour, vec3(dot(final_colour, vec3(0.3, 0.59, 0.11))), desaturate);
 	COLOR = vec4(clamp(final_colour, 0.0, 1.0), clamp(alpha_map.z + (h - alpha_map.y) * alpha_map.x, 0.0, 1.0));
 }
