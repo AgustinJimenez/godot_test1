@@ -164,12 +164,12 @@ void fragment() {
 	float mottle = vnoise(at, 14.0, 28.0, seed + 61.0) - 0.5;
 	float rise = 0.0;
 	if (edge_dark > 0.0) {
-		rise = max(max(norm(bark(at + vec2(0.7, 0.0), seed).x), norm(bark(at - vec2(0.7, 0.0), seed).x)),
-				max(norm(bark(at + vec2(0.0, 0.7), seed).x), norm(bark(at - vec2(0.0, 0.7), seed).x))) - h;
+		rise = max(max(norm(bark(at + vec2(1.1, 0.0), seed).x), norm(bark(at - vec2(1.1, 0.0), seed).x)),
+				max(norm(bark(at + vec2(0.0, 1.1), seed).x), norm(bark(at - vec2(0.0, 1.1), seed).x))) - h;
 	}
 	float tone = (b.y - 0.5) * 2.0;
 	float light = (1.0 + shading.x * cavity * 6.0 * (1.0 + 2.0 * depth_boost)) * (1.0 + shading.y * mottle * 6.0) * (1.0 + shading.z * tone);
-	light *= 1.0 - edge_dark * 0.9 * smoothstep(0.01, 0.12, rise);
+	light *= 1.0 - edge_dark * 0.62 * smoothstep(0.01, 0.12, rise);
 	light *= mix(0.3 - 0.22 * depth_boost, 1.0, smoothstep(0.0, 0.5 + 0.2 * depth_boost, h)); // the gaps and low parts between the flakes are dark
 	float t = h * 7.0;
 	int i0 = int(floor(t));

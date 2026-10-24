@@ -20,7 +20,7 @@ const GROOVED_EDGE := {
 	"bark_willow_02": 0.6, "trident_maple_bark": 0.5, "japanese_cedar_bark": 0.4}
 const GROOVED_BRIGHTNESS := {
 	"bark_willow_02": 0.85, "trident_maple_bark": 0.8, "japanese_cedar_bark": 0.8}
-const PALETTE_MIX := {"pine_bark": 0.7, "forest_leaves_03": 0.9}
+const PALETTE_MIX := {"pine_bark": 0.95, "forest_leaves_03": 0.9}
 
 
 ## The tile of one fitted bark (`name` is a key of BarkFits.FITS) as an Image (RGBA8).
