@@ -151,6 +151,15 @@ void fragment() {
 	float pit = smoothstep(0.72, 0.84, vnoise(at, 1.3, seed + 101.0));
 	float mineral = smoothstep(0.82, 0.92, vnoise(at, 2.4, seed + 103.0));
 	colour *= clamp(0.88 + 0.4 * rg, 0.5, 1.5);
+	// crisp small detail that survives zoom: speckles and flecks from a warped noise (the warp breaks the grid alignment of the
+	// cells), plus a per-pixel grain; the dark ones are pits and mineral grains, the pale ones quartz flecks
+	vec2 warped = at + 0.55 * vec2(vnoise(at, 1.7, seed + 151.0) - 0.5, vnoise(at, 1.9, seed + 153.0) - 0.5) * 2.0;
+	float fleck_d = smoothstep(0.74, 0.8, vnoise(warped, 0.55, seed + 155.0)) * smoothstep(0.4, 0.62, vnoise(at, 7.0, seed + 157.0));
+	float fleck_p = smoothstep(0.78, 0.83, vnoise(warped, 0.45, seed + 159.0)) * smoothstep(0.55, 0.75, vnoise(at, 5.0, seed + 161.0));
+	float pixel_grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+	colour = mix(colour, colour * 0.5, 0.6 * fleck_d);
+	colour = mix(colour, vec3(0.86, 0.83, 0.77), 0.4 * fleck_p);
+	colour *= 1.0 + 0.2 * pixel_grain;
 	colour = mix(colour, colour * 0.55, 0.5 * pit);
 	colour = mix(colour, vec3(0.85, 0.82, 0.76), 0.1 * mineral);
 	COLOR = vec4(clamp(colour, 0.0, 1.0), h);
