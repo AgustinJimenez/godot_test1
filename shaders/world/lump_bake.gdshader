@@ -110,7 +110,10 @@ float lumps(vec2 at, float s, out float tone, out float in_crease, out float fra
 			}
 		}
 	}
-	h -= p[17] * (1.0 - smoothstep(0.0, p[16], e2 - e1));
+	h -= p[17] * (1.0 - smoothstep(0.0, p[16] * 0.4, e2 - e1));
+	// fine relief at 1-5 cm (not finer: parallax turns pixel noise into a mosaic): weathering
+	float fr = (vnoise(at, 4.5, s + 111.0) - 0.5) * 0.5 + (vnoise(at, 2.2, s + 113.0) - 0.5) * 0.4 + (vnoise(at, 1.2, s + 115.0) - 0.5) * 0.3;
+	h += 0.045 * fr;
 	return h;
 }
 

@@ -84,8 +84,8 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	float edge = d2 - d1;
 	rim = 1.0 - smoothstep(0.0, p[7] * 2.5, edge);
 	dice = hashw(best_id.x, best_id.y, s + 19.0, per);
-	float crack = 1.0 - smoothstep(0.0, p[5], edge);
-	float lipf = smoothstep(0.0, p[7] * 0.3, edge); // (a sharp lip: a step, not a ramp)
+	float crack = 1.0 - smoothstep(0.0, p[5] * 0.45, edge);
+	float lipf = smoothstep(0.0, p[7] * 0.12, edge); // (a sharp lip: a step, not a ramp)
 	vec2 centre = mod(vec2(best_f.x * cell, best_f.y * cell_v) / tile_cm, 1.0);
 	int gi = clamp(int(centre.y * 16.0), 0, 15);
 	int gj = clamp(int(centre.x * 16.0), 0, 15);
