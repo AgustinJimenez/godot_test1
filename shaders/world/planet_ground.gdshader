@@ -49,6 +49,7 @@ uniform sampler2D scan_leaf_n : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D cliff_c : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D cliff_n : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float cliff_scale = 0.33; // tiles a metre
+uniform int force_scan = -1; // a test: 0 gravel, 1 red soil, 2 leaf earth everywhere (-1: by the soil)
 uniform float scan_strength : hint_range(0.0, 1.0) = 0.85;
 uniform float scan_scale = 0.7; // tiles a metre
 uniform vec3 scan_leaf_mean = vec3(0.1943, 0.1288, 0.0655); // (the leaf scan's own mean colour, linear)
@@ -548,6 +549,9 @@ void fragment() {
 				float aos[3];
 				float roughs[3];
 				float weights[3] = float[3](w_gravel, w_red, w_leaf);
+				if (force_scan >= 0) {
+					weights = float[3](force_scan == 0 ? 1.0 : 0.0, force_scan == 1 ? 1.0 : 0.0, force_scan == 2 ? 1.0 : 0.0);
+				}
 				float effective[3];
 				float top = -1.0;
 				for (int soil_index = 0; soil_index < 3; soil_index++) {

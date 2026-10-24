@@ -48,6 +48,9 @@ static func ground_material() -> ShaderMaterial:
 	if _ground_material == null:
 		_ground_material = ShaderMaterial.new()
 		_ground_material.shader = preload("res://shaders/world/planet_ground.gdshader")
+		if OS.has_environment("PLANET_FORCE_SCAN"): # (a test: which soil scan shows everywhere)
+			_ground_material.set_shader_parameter(&"force_scan",
+					OS.get_environment("PLANET_FORCE_SCAN").to_int())
 		if OS.has_environment("PLANET_GROUND_OFF"): # (a tool: scripts/gpu_ground_breakdown.sh)
 			var off := OS.get_environment("PLANET_GROUND_OFF").to_int()
 			_ground_material.set_shader_parameter(&"cost_off", off)

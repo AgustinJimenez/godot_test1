@@ -171,6 +171,8 @@ void fragment() {
 	vec3 flake_colour = dice < palette_shares.x ? palette[0] : (dice < palette_shares.x + palette_shares.y ? palette[1] : palette[2]);
 	flake_colour = mix(mix(palette[2], flake_colour, smoothstep(0.05, 0.45, h)), flake_colour, palette_flat);
 	// litter: each leaf its own brightness over a wide spread, the gaps between leaves near black
+	// a few olive leaves (3 % of them, the photograph's own green: 0.31, 0.305, 0.13) for the litter
+	flake_colour = mix(flake_colour, vec3(0.31, 0.305, 0.13) * 1.15, palette_flat * step(fract(dice * 29.7 + 0.11), 0.03));
 	float leaf_tone = mix(1.0, 0.45 + 1.1 * fract(dice * 17.31 + 0.37), palette_flat);
 	float gap = mix(1.0, 0.3 + 0.7 * smoothstep(0.05, 0.3, h), palette_flat);
 	vec3 flake_final = flake_colour * leaf_tone * gap * (0.75 + 0.5 * h) * mix(ramp_colour.g / max(mean_colour.g, 0.05), 1.0, palette_flat);
