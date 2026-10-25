@@ -73,7 +73,7 @@ vec2 chips(vec2 at, float cell_cm, float cover, float s) {
 float gravel(vec2 at, float s, out float tone) {
 	float h = 0.25 + p[10] * (vnoise(at, p[11], s + 1.0) - 0.5) + p[13] * (vnoise(at, max(p[12], 1.6), s + 2.0) - 0.5);
 	tone = 0.5;
-	vec2 c = chips(at, max(p[4], 2.0), p[5], s + 10.0);
+	vec2 c = chips(at, max(p[4], 1.0), p[5], s + 10.0);
 	if (c.x > 0.0) {
 		h = max(h, 0.3 + 0.3 * c.x);
 		tone = c.y;
@@ -115,8 +115,9 @@ void fragment() {
 	float debris = smoothstep(0.62, 0.8, vnoise(at, 5.0, seed + 57.0));
 	vec3 earth = ramp[5] * (0.95 + 0.5 * patch + 0.3 * sand2 + 0.22 * sand + 0.18 * sand3);
 	earth = mix(earth, ramp[0] * 0.6, 0.55 * debris);
+	earth = mix(earth, vec3(dot(earth, vec3(0.33))), 0.3);
 	// the stones are cool grey, purple-grey and dark, each its own tone, with a shaded edge where it meets the earth
-	vec3 stone_cool = mix(vec3(0.17, 0.17, 0.2), vec3(0.5, 0.48, 0.5), tone);
+	vec3 stone_cool = mix(vec3(0.14, 0.13, 0.17), vec3(0.38, 0.36, 0.4), tone);
 	float t1;
 	float t2;
 	float around = 0.25 * (norm(gravel(at + vec2(0.5, 0.0), seed, t1)) + norm(gravel(at - vec2(0.5, 0.0), seed, t2))
@@ -130,7 +131,7 @@ void fragment() {
 	float pixel_grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
 	earth = mix(earth, earth * 0.38, 0.7 * earth_grit);
 	earth = mix(earth, vec3(0.8, 0.76, 0.68), 0.22 * speck);
-	earth *= (1.0 + 0.22 * pixel_grain) * 1.35;
+	earth *= (1.0 + 0.22 * pixel_grain) * 1.1;
 	stone_final *= 1.0 + 0.14 * pixel_grain;
 	colour = mix(earth, stone_final, chip);
 	// crumbly relief in the earth between the stones (warped noise from 1 cm up: no grid, no mosaic in the parallax march)
