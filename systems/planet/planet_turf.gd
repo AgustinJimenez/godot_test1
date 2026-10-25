@@ -25,6 +25,9 @@ const GRAVEL_SPACING := 0.12
 const GRAVEL_DRAWN := 14.0 ## m: how far a stone is drawn (its size is under a pixel beyond)
 const LOOK_EVERY := 0.3 ## s
 const MAKE_EACH_LOOK := 3 ## chunks made at most in each look: the walker is never held up
+const NEAR := 12.0 ## m: chunks this close are made at once, whatever the budget
+const VIEW_COS := 0.35 ## a chunk within about 70 degrees of where the camera looks counts as in view
+const VIEW_BONUS := 30.0 ## m: how much sooner an in-view chunk is made than one out of view
 
 var planet: PlanetWorld
 var player: Player
@@ -54,7 +57,15 @@ func _physics_process(delta: float) -> void:
 	_since = 0.0
 	var here := player.global_position
 	_let_go(here)
-	var made := 0
+	var camera := get_viewport().get_camera_3d()
+	var way := Vector3.ZERO # where the camera looks, flat (the chunks it sees are made first)
+	if camera != null:
+		way = -camera.global_transform.basis.z
+		way.y = 0.0
+		way = way.normalized()
+	# every chunk wanted and not yet made, nearest and most in view first: a walker never waits for the
+	# patch in front of them while chunks behind (or off to the side) are made in the order of the grid
+	var wanted: Array = []
 	for tile: PlanetTile in planet.surface.tiles.values():
 		var holder := tile.plant_holder
 		if holder == null or not holder.has_meta(&"turf"):
@@ -70,18 +81,30 @@ func _physics_process(delta: float) -> void:
 		var to_x := mini(int(floorf((local.x + _enter()) / CHUNK)), int(ceilf(size / CHUNK)) - 1)
 		var from_z := maxi(int(floorf((local.z - _enter()) / CHUNK)), 0)
 		var to_z := mini(int(floorf((local.z + _enter()) / CHUNK)), int(ceilf(size / CHUNK)) - 1)
+		var ahead := Vector2.ZERO # the camera's way in this grid's axes
+		if way != Vector3.ZERO:
+			var moved := _grid_of(grid, holder.to_local(here + way))
+			ahead = Vector2(moved.x - local.x, moved.z - local.z).normalized()
 		for iz in range(from_z, to_z + 1):
 			for ix in range(from_x, to_x + 1):
 				var key := holder.get_instance_id() * 10000 + ix * 100 + iz
 				if _chunks.has(key):
 					continue
 				var middle := Vector2((ix + 0.5) * CHUNK, (iz + 0.5) * CHUNK)
-				if middle.distance_to(Vector2(local.x, local.z)) > _enter() + CHUNK * 0.4:
+				var offset := middle - Vector2(local.x, local.z)
+				var distance := offset.length()
+				if distance > _enter() + CHUNK * 0.4:
 					continue
-				if made >= MAKE_EACH_LOOK:
-					return
-				made += 1
-				_make(key, holder, grid, ix, iz)
+				var seen := distance < CHUNK or (ahead != Vector2.ZERO and offset.normalized().dot(ahead) > VIEW_COS)
+				wanted.append([distance - (VIEW_BONUS if seen else 0.0), distance, key, holder, grid, ix, iz])
+	wanted.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	var made := 0
+	for item: Array in wanted:
+		# (the chunks round the walker's feet are never held back; the rest are made a few at a look)
+		if made >= MAKE_EACH_LOOK and float(item[1]) > NEAR:
+			break
+		made += 1
+		_make(item[2], item[3], item[4], item[5], item[6])
 
 
 ## Make the chunk (ix, iz) of the tile whose grid is `grid`, hanging in `holder`.
