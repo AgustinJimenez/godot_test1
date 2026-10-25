@@ -245,3 +245,12 @@ itself, so no key, no second model, no extra cost. What exists now:
 - First journal entry: pitted rock, score 4 (flat relief, confetti pits, desaturated colour), from my reading of the 2026-10-25 square (the vision-model call agreed).
 - Not automated on purpose: the agent edits the generator. What would make it more reliable (not built): a metrics block next to the sheet (the numbers the loss uses,
   histogram of the heights), and a `try` command that applies a candidate json, matches, makes a sheet and reverts if the score drops.
+
+## First run of the agent loop (2026-10-25, user: "can we try?"): pitted rock, `review.py` journal 4 -> 4 -> 5 -> 6
+
+Tool use: `pipeline.py match` -> `review.py sheet` -> Read the png -> `review.py record` -> ONE change in `plate_bake.gdshader` -> repeat (about 4 minutes a round, mostly the
+Godot bakes). Rounds: (1) baked hillshade of the plate heights + sparser, fainter pits: relief reads raised in the object view but the square got wavy toothpaste ridges
+(score stayed 4); (2) hillshade halved: calmer (5); (3) per-plate tint between salmon-pink and ochre, grey-blue patches instead of grey: colour close (6). Stopped at
+6: the remaining gap is structural (borders are soft ridges with a pale glow where the photo has dark sharp cracks, plates are smooth where the photo's faces are chipped
+and rough) and would need a new height model, not constants. `visual_check` passes. Observations on the loop: the checklist forced a different question each round and the journal
+kept me honest (round 1 felt like a win in the object view and scored 4 on the square); a metrics block and a `try` command (apply, bake, sheet, revert if lower) would save the manual steps.

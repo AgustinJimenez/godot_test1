@@ -143,13 +143,13 @@ void fragment() {
 	// each plate has its own tone (pinker, browner, paler) and the rock is patched with grey: the photograph's colour
 	// moves in hue as well as in brightness
 	float dice2 = fract(dice * 7.31 + 0.17);
-	vec3 tint = vec3(1.0 + 0.10 * (dice2 - 0.5), 1.0 + 0.05 * (dice - 0.5), 1.0 - 0.18 * (dice2 - 0.5) + 0.06 * (dice - 0.5));
-	tint *= 0.92 + 0.16 * dice;
+	vec3 tint = mix(vec3(1.06, 0.9, 0.9), vec3(1.05, 0.99, 0.78), dice2); // (each plate between salmon-pink and orange-ochre)
+	tint *= 0.82 + 0.36 * dice;
 	colour = mix(colour, base * tint * (1.0 + 0.12 * g_a + 0.2 * g_b + 0.16 * g_c), flat_rock);
 	float patch_a = smoothstep(0.56, 0.8, vnoise(at + vec2(31.0, 7.0), 2.6, seed + 171.0));
 	float patch_b = smoothstep(0.6, 0.85, vnoise(at + vec2(3.0, 41.0), 6.0, seed + 173.0));
 	float luma = dot(colour, vec3(0.3, 0.59, 0.11));
-	colour = mix(colour, vec3(luma) * vec3(1.0, 0.95, 0.9) * 0.95, flat_rock * (0.3 * patch_a + 0.15 * patch_b));
+	colour = mix(colour, vec3(luma) * vec3(0.9, 0.95, 1.05) * 0.95, flat_rock * (0.4 * patch_a + 0.2 * patch_b));
 	colour = mix(colour, colour * vec3(0.8, 0.66, 0.5), flat_rock * 0.18 * smoothstep(0.62, 0.85, vnoise(at, 4.0, seed + 175.0))); // (rust stains)
 	// crisp small detail that survives zoom (warped noise: no grid alignment) on the flat-lit rock: dark pits and mineral grains,
 	// grey and pale lichen flecks, and a per-pixel grain
@@ -171,7 +171,7 @@ void fragment() {
 		for (int ox = -1; ox <= 1; ox++) {
 			float cx = pit_i.x + float(ox);
 			float cy = pit_i.y + float(oy);
-			if (hashw(cx, cy, seed + 201.0, vec2(pit_n)) < 0.13) {
+			if (hashw(cx, cy, seed + 201.0, vec2(pit_n)) < 0.05) {
 				vec2 k = vec2(cx + 0.2 + 0.6 * hashw(cx, cy, seed + 203.0, vec2(pit_n)), cy + 0.2 + 0.6 * hashw(cx, cy, seed + 205.0, vec2(pit_n)));
 				float r = 0.12 + 0.3 * hashw(cx, cy, seed + 207.0, vec2(pit_n));
 				float d = length(pit_u - k);
@@ -180,7 +180,7 @@ void fragment() {
 			}
 		}
 	}
-	colour = mix(colour, colour * 0.5, 0.6 * pit_hole * flat_rock);
+	colour = mix(colour, colour * 0.55, 0.45 * pit_hole * flat_rock);
 	colour *= 1.0 + 0.14 * pit_lip * flat_rock;
 	h -= 0.12 * pit_hole * flat_rock;
 	colour = mix(colour, colour * 0.5, 0.55 * pit * flat_rock);
@@ -188,6 +188,12 @@ void fragment() {
 	colour = mix(colour, vec3(0.62, 0.6, 0.6), 0.3 * grey * flat_rock);
 	colour = mix(colour, vec3(0.78, 0.78, 0.4), 0.55 * yellow * flat_rock);
 	colour *= 1.0 + 0.16 * pixel_grain * flat_rock;
+	// the rock is lit from the upper left: a hillshade of the plate heights (1.5 cm apart) makes the blocks read as raised and stepped
+	float d_rim;
+	float d_dice;
+	float hx = norm(plates(at + vec2(1.5, 0.0), seed, d_dice, d_rim)) - norm(plates(at - vec2(1.5, 0.0), seed, d_dice, d_rim));
+	float hy = norm(plates(at + vec2(0.0, 1.5), seed, d_dice, d_rim)) - norm(plates(at - vec2(0.0, 1.5), seed, d_dice, d_rim));
+	colour *= 1.0 + flat_rock * clamp(-0.8 * hx - 0.8 * hy, -0.25, 0.25);
 	// the shadow where one plate meets the next: it fades in and out along the crack, wider in places
 	float crack_fade = mix(1.0, 0.25 + 0.75 * smoothstep(0.25, 0.65, vnoise(at + vec2(17.0, 3.0), 7.0, seed + 191.0)), flat_rock);
 	colour *= 1.0 - mix(0.7, 0.3, flat_rock) * rim * crack_fade;
