@@ -1,0 +1,382 @@
+[
+  {
+    "name": "Idle_Relaxed",
+    "category": "Idle",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They stand relaxed, weight evenly on both feet, arms loose, breathing gently, with tiny natural sways. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Idle_Alert",
+    "category": "Idle",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They stand alert with knees slightly bent and hands raised a little, glancing around. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Idle_Tired",
+    "category": "Idle",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They stand tired, shoulders slumped, shifting weight from foot to foot and exhaling. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Idle_LookAround",
+    "category": "Idle",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They stand and slowly turn their head left and right, looking around curiously, feet planted. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Walk_Forward",
+    "category": "Walk",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They walk steadily and calmly toward the camera at a normal pace, arms swinging naturally. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Walk_Slow",
+    "category": "Walk",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They walk slowly and carefully toward the camera, cautious steps. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Walk_Confident",
+    "category": "Walk",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They walk confidently toward the camera with a relaxed, wide stride. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Walk_Left",
+    "category": "Walk",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They walk across the frame from right to left, seen from the side, at a normal pace. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Walk_Right",
+    "category": "Walk",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They walk across the frame from left to right, seen from the side, at a normal pace. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Walk_Backward",
+    "category": "Walk",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They walk backward away from the camera, facing it, with small careful steps. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Run_Forward",
+    "category": "Run",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They jog toward the camera at a steady pace, arms pumping. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Run_Fast",
+    "category": "Run",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They run fast toward the camera in a full sprint, leaning forward. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Run_Left",
+    "category": "Run",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They run across the frame from right to left, seen from the side. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Run_Right",
+    "category": "Run",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They run across the frame from left to right, seen from the side. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Jump_InPlace",
+    "category": "Jump",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They crouch slightly, jump straight up with arms swinging, and land softly on both feet. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Jump_Forward",
+    "category": "Jump",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They take a step and leap forward, landing on both feet and stopping. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Jump_Long",
+    "category": "Jump",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They run two steps and make a long jump forward, landing in a crouch. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Crouch_Enter",
+    "category": "Crouch",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They stand, then lower smoothly into a low crouch and hold still. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Crouch_Idle",
+    "category": "Crouch",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They stay in a low crouch, breathing quietly, looking around. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Crouch_Walk",
+    "category": "Crouch",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They crouch low and sneak forward toward the camera with small careful steps. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Crouch_Exit",
+    "category": "Crouch",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They rise from a low crouch to a standing position and relax. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Turn_Left",
+    "category": "Turn",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They stand and turn in place to the left, pivoting a quarter turn on their feet, then stop. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Turn_Right",
+    "category": "Turn",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They stand and turn in place to the right, pivoting a quarter turn on their feet, then stop. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Turn_Around",
+    "category": "Turn",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They stand and turn around in place a half turn with small steps, then stop. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Climb_Ledge",
+    "category": "Climb",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They face a low waist-high wall edge, place both hands on top and pull themselves up and over onto it. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Climb_Vault",
+    "category": "Climb",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They run two steps and vault over a waist-high wall with a hand on top, landing on the far side. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Crawl_Forward",
+    "category": "Crawl",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They crawl forward on their hands and knees toward the camera, one limb at a time. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Crawl_Low",
+    "category": "Crawl",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They crawl low on their elbows and knees toward the camera, body close to the floor. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Sword_SlashDown",
+    "category": "Sword",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They hold a plain straight sword in the right hand and swing it in a strong overhead slash, then recover. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Sword_SlashSide",
+    "category": "Sword",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They hold a plain straight sword in the right hand and swing it in a wide horizontal slash, then recover. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Sword_Thrust",
+    "category": "Sword",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They hold a plain straight sword in the right hand and lunge forward with a thrust, then step back. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Sword_Block",
+    "category": "Sword",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They hold a plain straight sword in the right hand and raise it in a quick defensive block, then lower it. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Hurt_Stagger",
+    "category": "Hurt",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They are hit from the front, flinch and stagger back a step, grabbing their chest, then recover. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Hurt_Fall",
+    "category": "Hurt",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They are struck, stumble backward and drop to one knee, holding their side. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Hurt_Flinch",
+    "category": "Hurt",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They flinch sharply as if struck on the shoulder, then straighten up. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Object_PickUp",
+    "category": "Object",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They bend down, pick up a plain cardboard box from the floor with both hands and hold it against their chest. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Object_Push",
+    "category": "Object",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They push a large plain wooden crate across the floor with both hands, leaning into it. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  },
+  {
+    "name": "Object_Carry",
+    "category": "Object",
+    "prompt": "A person wearing simple, plain neutral clothing, with a plain sleeveless top and trousers, on an empty, seamless white studio floor. The camera holds a static medium wide shot facing them, framing their whole body from head to feet throughout, with no cuts and no slow motion. Bright, even, soft studio lighting, no harsh shadows. They carry a plain cardboard box in both arms and walk toward the camera. The background is a clean, minimal white backdrop with no text, signage or clutter.",
+    "frames": 97,
+    "steps": 8,
+    "resolution": "832x448",
+    "seed": -1,
+    "status": "pending"
+  }
+]
