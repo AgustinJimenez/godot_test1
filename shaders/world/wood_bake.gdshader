@@ -147,7 +147,7 @@ void fragment() {
 		}
 	}
 	colour *= 1.0 - 0.5 * knot - 0.07 * knot_ring;
-	colour *= 1.0 - 0.45 * seam;
+	colour *= 1.0 - 0.25 * seam;
 	// the stored height: wood is nearly flat, the relief is the grain lines (dark lines sit lower), the pores and the seams; the
 	// fitted ripple height made the boards bump like water
 	float flat_height = 0.5 + 0.35 * (dot(colour, vec3(0.3, 0.59, 0.11)) - dot(ramp[4], vec3(0.3, 0.59, 0.11)) * tone) - 0.28 * seam - 0.12 * dash;

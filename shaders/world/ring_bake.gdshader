@@ -80,7 +80,7 @@ void fragment() {
 	for (int oy = -1; oy <= 1; oy++) {
 		for (int ox = -1; ox <= 1; ox++) {
 			vec2 cell = gc + vec2(float(ox), float(oy));
-			if (hashw(cell.x, cell.y, seed + 131.0, drop_n) < 0.05 + 0.75 * density * density) {
+			if (hashw(cell.x, cell.y, seed + 131.0, drop_n) < 0.02 + 0.4 * density * density) {
 				vec2 centre = (cell + vec2(hashw(cell.x, cell.y, seed + 133.0, drop_n), hashw(cell.x, cell.y, seed + 135.0, drop_n))) * cell_size;
 				float radius = 0.1 + 0.3 * hashw(cell.x, cell.y, seed + 137.0, drop_n);
 				vec2 d = (at - centre) / vec2(1.0, 1.4);
@@ -90,6 +90,6 @@ void fragment() {
 	}
 	float lichen = drops;
 	vec3 painted = ramp[4] * tone;
-	painted = mix(painted, vec3(0.92, 0.9, 0.84), 0.95 * lichen);
+	painted = mix(painted, vec3(0.86, 0.82, 0.74), 0.7 * lichen);
 	COLOR = vec4(clamp(painted, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 1.1, 0.0, 1.0)); // (a little deeper than the fitted height)
 }

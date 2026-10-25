@@ -458,3 +458,6 @@ Round 30 (2026-10-25): gravel and red soil.
 - Pitted rock (round 30, loop step): `plate_bake.gdshader` got ragged weathering pits (jittered tileable grid, warped, 13 % of cells,
   0.7-2.5 cm, dark inside, lit lip, also dips the height) and a pinker base tint; colour fit redone. First try (30 % of cells, round,
   dark 0.85) read as polka dots: keep them few, ragged and shallow. Next: palm, wood, visual_check, game atlas.
+- Palm (`ring_bake.gdshader`): fewer, softer white drops (the polka dots of round 29 are gone; tan-white 0.7) - the fit then asks for detail
+  1.6 (clamped), so the fine grain is strong; the photograph's smooth horizontal weathering bands and dark streaks are still missing.
+- Wood (`wood_bake.gdshader`): board seams 0.45 -> 0.25 dark (the photograph's seams are faint). Cathedral grain still missing.
