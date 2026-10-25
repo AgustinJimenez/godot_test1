@@ -99,6 +99,15 @@
   "hands": "relaxed"
  },
  {
+  "name": "GetUp",
+  "category": "GetUp",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
   "name": "Hurt_Fall",
   "category": "Hurt",
   "rating": "usable",
@@ -279,6 +288,15 @@
   "hands": "fist"
  },
  {
+  "name": "Object_OpenDoor",
+  "category": "Object",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
   "name": "Object_PickUp",
   "category": "Object",
   "rating": "ok",
@@ -295,6 +313,24 @@
   "in_place": false,
   "speed": 0.0,
   "hands": "fist"
+ },
+ {
+  "name": "Object_Throw",
+  "category": "Object",
+  "rating": "weak",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Roll",
+  "category": "Roll",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
  },
  {
   "name": "Run_Armed",
