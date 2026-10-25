@@ -8,7 +8,8 @@ extends RefCounted
 ## Everything is drawn with one MultiMesh per species and variant, in the tile's local space.
 
 const BANK := 4.0 ## m from a river edge inside which nothing grows (the bank can be higher)
-const GRASS_VISIBLE := 110.0
+## m: the tall grass and the meadow flowers are gone beyond this (the finest tiles that carry them reach 2 x tile_max = 256 m; it was 110; PLANET_GRASS_VISIBLE: another, to try)
+const GRASS_VISIBLE := 260.0
 const PEBBLE_VISIBLE := 45.0 ## m: small stones are gone beyond this
 ## m: plants lower than this (grass, ferns, flowers, low shrubs) bend only a little way from the
 ## walker
@@ -676,7 +677,8 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 			instance.visibility_range_end = PEBBLE_VISIBLE
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif layer == PlantSpecies.Layer.GRASS or layer == PlantSpecies.Layer.MEADOW:
-			instance.visibility_range_end = GRASS_VISIBLE
+			instance.visibility_range_end = (OS.get_environment("PLANET_GRASS_VISIBLE").to_float()
+					if OS.has_environment("PLANET_GRASS_VISIBLE") else GRASS_VISIBLE)
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif not near:
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
