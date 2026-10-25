@@ -73,7 +73,7 @@ the worst case: the generator has no structure for rounded blocky ridges, so no 
       pipeline for them, decide per file whether the json or the committed file is the truth (a hand edit like the plate cell size
       should go into the fit script/json, not only into the generated .gd, or the next export silently undoes it).
       `match` verified on the pitted rock: same colour fit as the hand-run `refit.sh`, no change in `systems/world_gen`.
-- [ ] 3. PyTorch plates generator + GLSL parity test (the pitted rock is the target). Gradient fit against colour + height.
+- [x] 3. PyTorch plates generator + GLSL parity test + gradient fit (done 2026-10-25, details below).
 - [~] 4. (partly done, see 085 round 30 'round 2') Fix the pitted rock structure: rounded blocky ridges with few cracks (the user: "still looks bad compared to the og image").
       Round 30 got colour and plate size close; the crack network is still too regular and thin with a dotted parallax edge, no deep pits.
 - [ ] 5. Derive AO, normal, roughness from the fitted height in the pipeline output; compare with the scanned ones where they exist
@@ -132,3 +132,26 @@ Observations for the next steps:
 - The ambientCG scans are inputs the generators are NOT fitted to: we could fit the gravel/red/leaf generators to them too (they carry all five maps).
 - Families by count: bark flakes 7 (incl. litter), lumps 4, chips 1, soil 1, rings 1, plates 1, wood 1. Plates is used once, so step 3's PyTorch
   plates generator pays off mainly for the pitted rock (and as a template); flakes covers the most surfaces, so step 7 may deserve a higher priority.
+
+## Step 3 result (2026-10-25): differentiable plates generator
+
+- `tools/bark/torch_plates.py`: the shader's `plates()`, pits and final alpha in PyTorch, line by line. To make it exact the plate shader's
+  hash is now an INTEGER hash (`plate_bake.gdshader` `hash2`, uint arithmetic) instead of `fract(sin(..) * 43758.5)`: the sin hash gives
+  different low bits on the GPU and the CPU and the fract of a big product turns that into a different random number. Same params, tile and
+  seed: `tools/bark/torch_plates_parity.py` (Godot bake alpha vs the torch render, 1024 px): mean abs diff 0.00098, max 0.0022 (an 8-bit
+  alpha step is 0.0039), correlation 0.99996. Pitted rock layout changed once because of the new hash (a different random draw, same statistics).
+- `tools/bark/fit_plates_torch.py <folder> <name> [steps]`: whole-number structure (cells per tile `NU=3,4` env, stretch, noise scales) searched
+  on a grid, the nine continuous numbers (jit, warp_amp, crack_w, crack_depth, lip, z_var, tilt, fine_amp, rag_amp) by Adam on VGG Gram +
+  sliced Wasserstein (`bark_perceptual.py`) of the hillshaded, contrast-stretched height, two seeds per step, fully procedural (no guide map).
+  A 120-step run takes about 1.5 min per cell count on the 4090 (the black-box fits took hours). Writes `fits/<name>_plate_torch.json` with the
+  numbers by name and the shader's own `height_range` (`export_plate.py` now uses it when present; before it used the older numba model's range).
+- Result on the pitted rock: loss 10.4 (the hand-set numbers) -> 6.0. Two free runs went wrong in ways the loss could not see, found by looking:
+  (1) z_var at its upper bound 0.6 gave hard tone steps between blocks; (2) crack_depth fitted down to its lower bound 0.2, so the cracks all but
+  disappeared in colour. The final run caps z_var at 0.3 (`ZVAR_MAX`) and crack_depth at >= 0.5. LESSON (same as 085): the style loss weighs fine
+  grain over the few thin cracks that make the photograph read as cracked rock; bound those parameters from what the eye needs, or add a
+  crack term (percentile / hillshade-edge statistics) to the loss.
+- Adopted: `fits/rock_pitted_mossy_plate.json` is now the torch fit (cell 33.3 cm = 3 per tile, crack_depth 0.5.., see the file), `plate_fits.gd`
+  re-exported (`pipeline.py export --check`: IDENTICAL), colour fit redone, `visual_check` PASS. In the object view the rock reads as rounded
+  cushion blocks with thin dark cracks and pits, the best so far; on the flat square the cracks are fainter than in the photograph.
+- Decision: keep the gradient route for the other plate-like surfaces only after a parity-tested torch port of their shader; the next
+  candidates by value are the bark flakes (7 surfaces) and chips (gravel). Step 7.

@@ -20,8 +20,16 @@ float fract1(float x) {
 	return x - floor(x);
 }
 
+// an integer hash (the same arithmetic in tools/bark/torch_plates.py, so the differentiable fit draws the same plates; a sin() hash differs
+// between the GPU and the CPU in the low bits, and the fract() of a big product turns that into a different random number)
 float hash2(float ix, float iy, float s) {
-	return fract1(sin(ix * 127.1 + iy * 311.7 + s * 74.7) * 43758.5453);
+	uint x = uint(int(floor(ix + 0.5))) * 0x9E3779B1u ^ uint(int(floor(iy + 0.5))) * 0x85EBCA77u ^ uint(int(floor(s * 64.0 + 0.5))) * 0xC2B2AE3Du;
+	x ^= x >> 16u;
+	x *= 0x7feb352du;
+	x ^= x >> 15u;
+	x *= 0x846ca68bu;
+	x ^= x >> 16u;
+	return float(x >> 8u) / 16777216.0;
 }
 
 float hashw(float ix, float iy, float s, vec2 per) {

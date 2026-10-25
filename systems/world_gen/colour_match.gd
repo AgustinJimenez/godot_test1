@@ -6,7 +6,7 @@ extends RefCounted
 
 const SHADER := preload("res://shaders/world/colour_match.gdshader")
 const FITS := {
-	"plate_rock_pitted_mossy": {"mean": Vector3(0.7640, 0.5930, 0.4695), "gain": Vector3(1.0018, 1.0318, 0.9859), "low": 1.032, "detail": 1.120, "sat": 0.812},
+	"plate_rock_pitted_mossy": {"mean": Vector3(0.7783, 0.6099, 0.4826), "gain": Vector3(0.9833, 1.0032, 0.9591), "low": 0.926, "detail": 1.099, "sat": 0.761},
 	"palm_tree_bark": {"mean": Vector3(0.6193, 0.5716, 0.5128), "gain": Vector3(0.9892, 0.9879, 0.9872), "low": 1.408, "detail": 1.600, "sat": 1.026},
 	"oak_wood_planks": {"mean": Vector3(0.6282, 0.4525, 0.3202), "gain": Vector3(1.0122, 1.0181, 1.0232), "low": 0.751, "detail": 0.732, "sat": 1.015},
 	"pine_bark": {"mean": Vector3(0.4295, 0.3099, 0.2535), "gain": Vector3(0.9361, 1.0498, 0.9940), "low": 0.304, "detail": 0.400, "sat": 0.500},

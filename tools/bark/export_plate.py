@@ -42,7 +42,9 @@ def main():
         for i in range(0, len(wg.KEYS), 7):
             lines.append(T * 4 + ", ".join("%.5f" % params[k] for k in wg.KEYS[i:i + 7]) + ",")
         lines.append(T * 3 + "]),")
-        lines.append(T * 3 + '"height_range": Vector2(%.4f, %.4f),' % (float(h.min()), float(h.max())))
+        # a torch fit (fit_plates_torch.py) stores the range of the shader's own height; the numba render below is only the older model
+        low, high = data.get("height_range", (float(h.min()), float(h.max())))
+        lines.append(T * 3 + '"height_range": Vector2(%.4f, %.4f),' % (low, high))
         lines.append(T * 3 + '"ramp": [')
         for c in ramp:
             lines.append(T * 4 + "Color(%.4f, %.4f, %.4f)," % tuple(c))
