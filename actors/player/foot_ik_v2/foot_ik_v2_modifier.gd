@@ -77,7 +77,6 @@ const STANCE_SHIFT_STEP := 0.05
 const STANCE_RELEASE_SPEED := 0.6
 ## How far ahead of the toe bone the shoe's tip is (matches the lab's orange/green tip sphere).
 const TOE_TIP_FORWARD := 0.035
-## A clearance "penetration" bigger than this is a riser, not a slope: retreat instead of lifting.
 const RISER_PENETRATION := 0.04
 const SOLE_GAP_TOLERANCE := 0.001 # leave this much float once the true lowest sole vertex clears
 const SOLE_SINK_SAMPLES := 40 # sole-level vertices ray-cast per scan (a stride past this many)
@@ -137,6 +136,7 @@ var debug_align: Dictionary = {}
 var _legs: Dictionary = {}
 var _sole: Dictionary = {} # side -> the cached skinned sole (foot_ik_v2_sole.gd)
 var _ray_query: PhysicsRayQueryParameters3D
+var _core = null if OS.has_environment("FOOT_IK_V2_GDSCRIPT") else NATIVE.make(&"FootIKV2CoreNative", Callable()) # the pass in C++; null: the GDScript
 ## Base animation poses, captured once per frame before anything is modified.
 var _frame := -1
 var _base: Dictionary = {}
@@ -179,6 +179,8 @@ func _ready() -> void:
 		player_body = get_skeleton().get_parent() as PlayerBody if get_skeleton() != null else null
 	ledge.ray = _ray
 	_build_legs()
+	if _core != null:
+		_core.reset()
 
 
 func _build_legs() -> void:
@@ -223,6 +225,11 @@ func _process_modification_with_delta(_delta: float) -> void:
 	if skel == null or _legs.is_empty():
 		return
 	var t0 := DEBUG_TIMER.begin()
+	if _core != null:
+		_core.process(skel, self, _delta)
+		DEBUG_TIMER.end(&"total", t0)
+		DEBUG_TIMER.frame_tick()
+		return
 	if enabled:
 		debug_last_frame = Engine.get_physics_frames()
 		debug_passes += 1
@@ -878,13 +885,6 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 
 ## At rest, lower until the true lowest point of the skinned sole is `SOLE_GAP_TOLERANCE` up.
 func _sink_to_true_sole(skel: Skeleton3D, side: StringName, leg: Dictionary, base: Dictionary,
-		to_world: Transform3D, hip_world: Vector3) -> void:
-	var t0 := DEBUG_TIMER.begin()
-	_sink_to_true_sole_impl(skel, side, leg, base, to_world, hip_world)
-	DEBUG_TIMER.end(&"sink", t0)
-
-
-func _sink_to_true_sole_impl(skel: Skeleton3D, side: StringName, leg: Dictionary, base: Dictionary,
 		to_world: Transform3D, hip_world: Vector3) -> void:
 	for attempt in SOLE_SINK_ATTEMPTS:
 		# Each sole-level vertex against the floor UNDER IT; the smallest gap is how far it may go.

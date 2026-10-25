@@ -15,4 +15,4 @@ static func available() -> bool:
 static func make(native_name: StringName, fallback: Callable) -> Variant:
 	if available() and ClassDB.class_exists(native_name):
 		return ClassDB.instantiate(native_name)
-	return fallback.call()
+	return fallback.call() if fallback.is_valid() else null

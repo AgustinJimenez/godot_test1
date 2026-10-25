@@ -102,3 +102,17 @@ Stages:
 - D: switch `foot_ik_v2_install.gd` to the native modifier (flag `FOOT_IK_V2_NATIVE`, default on when the library is loaded), then COMPARE: a lab flag that runs the same sequences with both and reports the per-frame
   ankle/knee difference from the traces (`foot_ik_v2_check.jsonl`), target < 1 mm; the suite must give the baseline set.
 - E: delete the GDScript logic only after D is green for the whole suite and the fuzz gives the same failures; keep tiny GDScript wrappers for names the other scripts use. Then 037 stage 1 in C++.
+
+## Progress 2026-10-25 (stage B+C done): the whole pass in C++ (`FootIKV2CoreNative`)
+
+Design change from the plan above: the GDScript `FootIKV2Modifier` stays as a THIN SHELL (class_name, the `@export` settings, every `debug_*` / `final_*` / `_legs` / `_base` / `_sole` member, `_build_legs`, the ledge, `_ray`),
+because ~15 scripts type their variables `FootIKV2Modifier` and read those members by name. The per-frame pass lives in `FootIKV2CoreNative` (`native/planet_crust/src/foot_ik_core_native.{h,cpp}`, a line-by-line port of
+`_process_modification_with_delta` and everything under it: snapshot, pelvis drop, body lag, stance plan, place foot, solve, align, toe clearance, flatten, sink, step limit, ease correction, ground/ray sampling). The core reads the
+shell's settings with `owner.get(...)` once per pass and SHARES the shell's Dictionaries (a Dictionary is a reference), so the lab, the traces and the checks read what the native pass wrote; it writes the few scalars back with
+`owner.set(...)` (`debug_pelvis_drop`, `debug_body_lag`, `debug_last_frame`, `debug_passes`, `final_frame`, `final_basis`, `_is_moving`).
+- The shell runs the core when `FootIKV2CoreNative` exists and `PLANET_NO_NATIVE` / `FOOT_IK_V2_GDSCRIPT` are unset (`FOOT_IK_V2_GDSCRIPT=1` forces the GDScript reference path: use it for A/B runs).
+- Result (headless lab, 900 frames): total 0.695 -> 0.435 ms/frame; from the original 1.01 ms that is -57 %.
+- Full suite with the core: SAME PASS/FAIL set as the baseline (red: project checks, floor-walk jerk 0.209, ramp strafe, stairs turn dz=0); the measured numbers differ only in the last digit of float noise (6 of ~60
+  rows: reversals 11 -> 10, foot_max 0.113 -> 0.115, knee_max 14.2 -> 14.0): C++ does the vector maths in float32 where GDScript did scalar maths in double between the vector steps.
+- Still GDScript at runtime: the leg set-up (`_build_legs`, once), the sole object (`foot_ik_v2_sole.gd` wraps the native sole; the core calls its `level_points` / `lowest_world_y`), the ledge (called only when a foot is over a drop), the shell
+  properties. Next: stage D/E: A/B trace comparison, run the fuzz with both, delete the GDScript pass when equal, then 037 in C++.
