@@ -15,6 +15,7 @@ extends Node3D
 ##   -- --no-shadow  no sun shadows   --no-clouds  hide the clouds
 ##   -- --procedural / --photos  the procedural surfaces (bark, rock, gravel, red soil, litter, wood) are ON for a person; --shot runs use the photographs unless --procedural; --photos forces them
 ##   -- --plants / --animals / --sea / --water  switch those on (off by default); --bare: no plants
+##   -- --trees  trees and shrubs grow (a person at the lab gets only the grass, rocks and the rest by default; --shot, -check and --forest runs keep their trees)
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
 ##   -- --tile-cells=N --tile-max=M  the ground resolution: quads a tile, widest finest tile (m)
 ##   -- --spawn-alt=N  start N metres above the ground there (up to the other side of space)
@@ -543,6 +544,15 @@ func _procedural_by_default(user_args: PackedStringArray) -> void:
 	OS.set_environment("PLANET_PROCEDURAL_ALL", "1")
 
 
+## For a person at the lab no trees grow (only the grass, rocks and the rest), so the ground can be looked at: `--trees` brings them back. The runs that measure
+## or photograph (`--shot`, any `-check`, `--forest...`) keep their trees.
+func _trees_by_default(user_args: PackedStringArray) -> void:
+	var automatic := "--trees" in user_args
+	for arg in user_args:
+		automatic = automatic or arg.begins_with("--shot") or arg.ends_with("-check") or arg.contains("-check=") or arg.begins_with("--forest")
+	PlanetScatter.trees_on = automatic
+
+
 func _ready() -> void:
 	var detail := 3.0 if PlanetLabChecks.plain_open() else -1.0 # (per run, not saved)
 	if OS.has_environment("LAB_GROUND"):
@@ -557,6 +567,7 @@ func _ready() -> void:
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()
 	_procedural_by_default(user_args)
+	_trees_by_default(user_args)
 	if not asked and user_args.is_empty() and not UniverseStartMenu.requested:
 		# no menu for now: the default planet (seed 1337, 20 km) on foot, with plants (--start-menu: menu;
 		# PLANET_SCALE=0.1..1: a random-seed Earth that size instead)

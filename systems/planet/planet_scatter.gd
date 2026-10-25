@@ -35,6 +35,9 @@ const FAR_KEY := 200000
 
 enum Detail { NONE, FAR, TREES, ALL } ## FAR: only the cheap horizon trees, sparse
 
+## false: no trees and no shrubs are placed, only the grass, rocks and the rest (the planet lab's default; `--trees` turns them on)
+static var trees_on := true
+
 var _tile: Node3D
 var _noise: PlanetNoise
 var _species: SpeciesRegistry
@@ -175,7 +178,7 @@ static func _shade_tolerance(form: PlantSpecies.Form) -> float:
 func _populate_native(key: int, detail: Detail, collide: bool) -> void:
 	var placed: Dictionary = _noise.scatter_native.call(&"scatter", {
 		"key": key, "positions": _packed_positions, "dirs": _packed_dirs, "heights": _heights,
-		"cells": _cells, "size": _size, "detail": int(detail), "collide": collide,
+		"cells": _cells, "size": _size, "detail": int(detail), "collide": collide, "trees": trees_on,
 		"clearing": _noise.clearing,
 		"fine": int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 2,
 		"grass_fine": FloraMeshes.detailed})

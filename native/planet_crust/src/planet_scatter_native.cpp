@@ -195,6 +195,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	t.collide = p_tile.get("collide", false);
 	bool fine = p_tile.get("fine", false);
 	bool grass_fine = p_tile.get("grass_fine", false);
+	const bool trees = p_tile.get("trees", true); // false: no canopy, no understory and no horizon trees (a debugging view of the grass)
 	t.rng.seed((uint64_t)((int64_t)world_seed * 73856093LL) ^ ((uint64_t)(int64_t)key * 19349663ULL) ^ 0x9E3779B97F4A7C15ULL);
 	if ((int)positions.size() < t.side * t.side || (int)dirs.size() < t.side * t.side || (int)heights.size() < t.side * t.side) {
 		return Dictionary();
@@ -713,11 +714,15 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	};
 
 	if (detail == FAR) {
-		scatter_far();
+		if (trees) {
+			scatter_far();
+		}
 	} else {
 		double stretch = detail == ALL ? 1.0 : 2.0;
-		scatter_layer(CANOPY, stretch);
-		scatter_layer(UNDERSTORY, stretch);
+		if (trees) {
+			scatter_layer(CANOPY, stretch);
+			scatter_layer(UNDERSTORY, stretch);
+		}
 		if (detail != NONE) {
 			scatter_rocks(detail == ALL);
 		}
