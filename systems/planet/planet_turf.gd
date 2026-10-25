@@ -23,10 +23,16 @@ const DRAWN := 32.0 ## m: how far a tuft is drawn (it fades out)
 ## the grass seen from afar follows the camera, not a ring round the walker: inside the cone of the view (FAR_COS) chunks are made out to
 ## FAR_ENTER and drawn out to FAR_DRAWN, thinner (FAR_THIN times the spacing: a tuft is small there); they are let go beyond FAR_LEAVE, or beyond
 ## LEAVE once they fall out of the wider cone LEAVE_COS
-const FAR_ENTER := 62.0
-const FAR_LEAVE := 78.0
+## level 1 (out to MID_ENTER, drawn to FAR_DRAWN): FAR_THIN times the spacing; level 2 (out to FAR_ENTER, drawn to VERY_DRAWN): VERY_THIN times the
+## spacing and VERY_BIG times the size (a speck of green on a hillside, not a tuft)
+const MID_ENTER := 62.0
+const FAR_ENTER := 130.0
+const FAR_LEAVE := 150.0
 const FAR_DRAWN := 68.0
+const VERY_DRAWN := 140.0
 const FAR_THIN := 2.0
+const VERY_THIN := 4.0
+const VERY_BIG := 2.2
 const FAR_COS := 0.62 ## about 50 degrees either side of where the camera looks
 const LEAVE_COS := 0.1 ## about 84 degrees
 ## m: one stone for each spot of a jittered grid of this (the odds make them thin where grass grows)
@@ -106,17 +112,17 @@ func _physics_process(delta: float) -> void:
 				var offset := middle - Vector2(local.x, local.z)
 				var distance := offset.length()
 				if _chunks.has(key):
-					# (a thin chunk made for the view that the walker has come up to is made again, in full)
-					if distance > _enter() or not bool((_chunks[key] as Dictionary).get("far", false)):
+					# (a thin chunk made for the view that the walker has come up to is made again, finer)
+					if int((_chunks[key] as Dictionary).get("level", 0)) <= _level_of(distance):
 						continue
 					_drop(key)
 				var facing := 1.0 if ahead == Vector2.ZERO else offset.normalized().dot(ahead)
-				var far := distance > _enter() + CHUNK * 0.4
+				var far := _level_of(distance) > 0
 				if far and (distance > reach + CHUNK * 0.4 or ahead == Vector2.ZERO or facing < FAR_COS):
 					continue
 				var seen := distance < CHUNK or (ahead != Vector2.ZERO and facing > VIEW_COS)
 				wanted.append([distance - (VIEW_BONUS if seen else 0.0), distance, key, holder, grid, ix, iz,
-						distance > _enter() + CHUNK * 0.4])
+						_level_of(distance)])
 	wanted.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	var made := 0
 	for item: Array in wanted:
@@ -128,8 +134,24 @@ func _physics_process(delta: float) -> void:
 
 
 ## Make the chunk (ix, iz) of the tile whose grid is `grid`, hanging in `holder`.
-## `far`: a chunk beyond the walker's ring, seen from afar (thinner, drawn farther).
-func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int, far := false) -> void:
+## How fine a chunk `distance` away is made: 0 the walker's ring, 1 thinner out to MID_ENTER, 2 thinner and bigger out to FAR_ENTER (the stones: 0).
+func _level_of(distance: float) -> int:
+	if gravel or distance <= _enter() + CHUNK * 0.4:
+		return 0
+	return 1 if distance <= MID_ENTER + CHUNK * 0.4 else 2
+
+
+## The tufts of a buffer (16 floats each: the basis's rows with the position at 3, 7 and 11) made `factor` times bigger on the spot.
+static func _bigger(buffer: PackedFloat32Array, factor: float) -> PackedFloat32Array:
+	var made := buffer.duplicate()
+	for at in range(0, made.size(), 16):
+		for index in [0, 1, 2, 4, 5, 6, 8, 9, 10]:
+			made[at + index] *= factor
+	return made
+
+
+## `level`: 0 the walker's ring, 1 and 2 the chunks seen from afar (thinner, drawn farther, and the farthest bigger).
+func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int, level := 0) -> void:
 	var size: float = grid["size"]
 	var buffers: Array
 	var native := planet.noise.scatter_native
@@ -141,9 +163,12 @@ func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int, far := 
 	else:
 		buffers = native.call(&"turf_chunk", grid["positions"], grid["field"], grid["cells"], size,
 				ix * CHUNK, iz * CHUNK, minf((ix + 1) * CHUNK, size), minf((iz + 1) * CHUNK, size),
-				_spacing() * (FAR_THIN if far else 1.0), DENSITY, key ^ int(grid["key"]), FloraMeshes.TURF_VARIANTS)
-	far = far and not gravel
-	var entry := {"far": far, "nodes": [], "holder": holder, "grid": grid, "at": Vector2((ix + 0.5) * CHUNK,
+				_spacing() * [1.0, FAR_THIN, VERY_THIN][level], DENSITY, key ^ int(grid["key"]), FloraMeshes.TURF_VARIANTS)
+		if level == 2:
+			for variant in buffers.size():
+				buffers[variant] = _bigger(buffers[variant], VERY_BIG)
+	level = 0 if gravel else level
+	var entry := {"level": level, "nodes": [], "holder": holder, "grid": grid, "at": Vector2((ix + 0.5) * CHUNK,
 			(iz + 0.5) * CHUNK), "buffers": [], "shadows": []}
 	for variant in buffers.size():
 		var buffer: PackedFloat32Array = buffers[variant]
@@ -160,7 +185,7 @@ func _make(key: int, holder: Node3D, grid: Dictionary, ix: int, iz: int, far := 
 		instance.material_override = FloraMeshes.chip_material() if gravel else FloraMeshes.material()
 		instance.cast_shadow = (GeometryInstance3D.SHADOW_CASTING_SETTING_ON if gravel
 				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
-		instance.visibility_range_end = GRAVEL_DRAWN if gravel else (FAR_DRAWN if far else DRAWN)
+		instance.visibility_range_end = GRAVEL_DRAWN if gravel else [DRAWN, FAR_DRAWN, VERY_DRAWN][level]
 		instance.visibility_range_end_margin = 6.0
 		instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		holder.add_child(instance)
@@ -187,7 +212,7 @@ func _let_go(here: Vector3, way: Vector3) -> void:
 			var holder: Node3D = holder_value
 			var local := _grid_of(entry["grid"], holder.to_local(here))
 			var offset: Vector2 = (entry["at"] as Vector2) - Vector2(local.x, local.z)
-			if bool(entry.get("far", false)) and way != Vector3.ZERO:
+			if int(entry.get("level", 0)) > 0 and way != Vector3.ZERO:
 				# (a chunk made for the view stays while it is in the wide cone of it, or close)
 				var moved := _grid_of(entry["grid"], holder.to_local(here + way))
 				var ahead := Vector2(moved.x - local.x, moved.z - local.z).normalized()
@@ -253,6 +278,6 @@ func tuft_count() -> int:
 func far_count() -> int:
 	var total := 0
 	for entry: Dictionary in _chunks.values():
-		if bool(entry.get("far", false)):
+		if int(entry.get("level", 0)) > 0:
 			total += 1
 	return total
