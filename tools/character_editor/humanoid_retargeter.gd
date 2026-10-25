@@ -261,6 +261,10 @@ static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 		# aimed along the source's world direction (turned by the facing difference), which removes the drift that
 		# copying rotations between two different rest poses leaves along a limb (GVHMR's SMPL-X onto a Mixamo rig)
 		for chain: Array in direction_chains:
+			if chain[0] == "twist":
+				_twist_bone_to_axis(anim, src_skeleton, target_skeleton, target_global, out_rot_track,
+						chain, frame_turn)
+				continue
 			var from_idx := src_skeleton.find_bone(StringName(chain[0]))
 			var to_idx := src_skeleton.find_bone(StringName(chain[1]))
 			var bone_idx := target_skeleton.find_bone(StringName(chain[2]))
@@ -649,6 +653,40 @@ static func _solve_two_bone_ik(shoulder: Vector3, upper_len: float, lower_len: f
 		"elbow": shoulder + elbow_dir * upper_len,
 		"wrist": shoulder + target_dir * clamped_reach,
 	}
+
+
+## A "twist" entry of direction_chains: ["twist", source bone A, source bone B, target bone A, target bone B,
+## target bone to turn, its child]. Aiming a bone along a direction leaves its roll about that direction open (a
+## chest that twists in a crouch); this rolls the target bone about its own axis (bone -> child) until the line from
+## target A to target B, seen along that axis, points where the source's A -> B line does (turned by `turn`).
+static func _twist_bone_to_axis(anim: Animation, src_skel: Skeleton3D, target_skel: Skeleton3D,
+		target_global: Dictionary, out_rot_track: Dictionary, chain: Array, turn: Basis) -> void:
+	var sa := src_skel.find_bone(StringName(chain[1]))
+	var sb := src_skel.find_bone(StringName(chain[2]))
+	var ta := target_skel.find_bone(StringName(chain[3]))
+	var tb := target_skel.find_bone(StringName(chain[4]))
+	var bone_idx := target_skel.find_bone(StringName(chain[5]))
+	var child_idx := target_skel.find_bone(StringName(chain[6]))
+	if sa < 0 or sb < 0 or ta < 0 or tb < 0 or bone_idx < 0 or child_idx < 0:
+		return
+	var bone_global := _manual_global_pose(target_skel, bone_idx)
+	var axis := (_manual_global_pose(target_skel, child_idx).origin - bone_global.origin).normalized()
+	var wanted: Vector3 = turn * (_manual_global_pose(src_skel, sb).origin - _manual_global_pose(src_skel, sa).origin)
+	var current := _manual_global_pose(target_skel, tb).origin - _manual_global_pose(target_skel, ta).origin
+	wanted -= axis * axis.dot(wanted)
+	current -= axis * axis.dot(current)
+	if wanted.length() < 0.0001 or current.length() < 0.0001:
+		return
+	var angle := current.signed_angle_to(wanted, axis)
+	var parent_idx := target_skel.get_bone_parent(bone_idx)
+	var parent_global := _manual_global_pose(target_skel, parent_idx) if parent_idx >= 0 else Transform3D()
+	var local_rotation := (parent_global.basis.inverse() * (Basis(axis, angle) * bone_global.basis)).get_rotation_quaternion()
+	target_skel.set_bone_pose_rotation(bone_idx, local_rotation)
+	target_global[bone_idx] = _manual_global_pose(target_skel, bone_idx)
+	var bone_name := target_skel.get_bone_name(bone_idx)
+	if out_rot_track.has(bone_name):
+		var track: int = out_rot_track[bone_name]
+		anim.track_set_key_value(track, anim.track_get_key_count(track) - 1, local_rotation)
 
 
 static func _aim_bone_at_direction(anim: Animation, target_skel: Skeleton3D,

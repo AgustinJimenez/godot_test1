@@ -33,6 +33,7 @@ func _ready() -> void:
 	var chains: Array = [
 		["pelvis", "spine1", map["Hips"], map["Spine"]], ["spine1", "spine2", map["Spine"], map["Spine1"]],
 		["spine2", "spine3", map["Spine1"], map["Spine2"]], ["spine3", "neck", map["Spine2"], map["Neck"]],
+		["twist", "left_collar", "right_collar", map["LeftShoulder"], map["RightShoulder"], map["Spine2"], map["Neck"]],
 		["neck", "head", map["Neck"], map["Head"]],
 	]
 	for side: Array in [["left", "Left"], ["right", "Right"]]:
