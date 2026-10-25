@@ -147,3 +147,9 @@ Fuzz metric script `/e/Temp/tx/fuzz_score.py` (sums the idle-check lines of a `s
 `pelvis_attack_speed` 1.5 (today) / 4 / 12 m/s on `--stairs-turn=0`: clip 0.049 / 0.026 / 0.026 m, float 0.068 / 0.068 / 0.068, foot_step_max 0.060 / 0.093 / 0.180 (limit 0.060): the float stays and a sharper sink only adds one-frame foot motion. So the
 hover is not caused by the sink RATE alone; the earlier reading (a rate-limited chase) was wrong or incomplete. The target tread decision (which tread the foot is aimed at while the foot is half over an edge) is the remaining suspect: stage 1 (decide
 the tread once) is the next experiment, not stage 3. The experiment switch was removed again (no code change committed).
+
+## 037 stage 1 footprint experiment (2026-10-25, later): no effect on the dz=0 failure
+A resting foot took the HIGHEST walkable tread among 4 extra rays (+-10 cm along the foot, +-5 cm across, within 25 cm) instead of the single ankle ray (temporary env switch, removed again).
+`--stairs-turn=0`: identical numbers to the baseline (clip 0.049, float 0.068, step 0.060), so the target tread is not what differs: the hover/clip comes from the reach/pelvis/toe-clearance path,
+not from which tread is sampled. Both cheap theories (pelvis rate, tread choice) are now ruled out. Next, only if wanted: trace frames 284-297 for `debug_reach_check` + `debug_toe_lift`
+and make the pelvis drop use the post-clearance target (a real 037 stage 3 change, not a patch). No code change committed.
