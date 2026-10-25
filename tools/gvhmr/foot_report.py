@@ -64,7 +64,9 @@ def contacts(world, fps):
     speed = np.zeros_like(low)
     speed[1:] = np.linalg.norm(np.diff(toe[:, :, [0, 2]], axis=0), axis=2) * fps
     speed[0] = speed[1]
-    return (low < floor + 0.04) & (speed < 0.2), floor
+    # the speed limit follows how fast the feet swing in this clip (a run's stance foot is faster than a idle's)
+    limit = np.clip(0.2 * np.percentile(speed, 95), 0.2, 0.6)
+    return (low < floor + 0.05) & (speed < limit), floor
 
 
 def report(world, fps):

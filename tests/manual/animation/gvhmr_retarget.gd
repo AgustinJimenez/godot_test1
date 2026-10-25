@@ -58,26 +58,20 @@ func _ready() -> void:
 		var contacts: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(options["contacts"]))
 		foot_lock = {"planted": contacts["planted"], "fps": contacts["fps"], "blend": 3, "legs": [
 			[map["LeftUpLeg"], map["LeftLeg"], map["LeftFoot"]], [map["RightUpLeg"], map["RightLeg"], map["RightFoot"]]]}
+	var hips_args := ["left_hip", "right_hip", map["LeftUpLeg"], map["RightUpLeg"]]
 	var result := HumanoidRetargeter.retarget_clip(source_skeleton, animation, target_skeleton, config,
 			options.get("force_loop", "false") == "true", options.get("arm_ik", "false") == "true",
-			[] if options.get("aim", "true") != "true" else chains,
-			["left_hip", "right_hip", map["LeftUpLeg"], map["RightUpLeg"]], foot_lock)
+			[] if options.get("aim", "true") != "true" else chains, hips_args, {})
 	var wanted_speed := float(options.get("speed", "0"))
 	if wanted_speed > 0.0: # GVHMR's static-camera travel under-reads: rescale the hips' horizontal travel to a target m/s
-		for track in result.get_track_count():
-			if result.track_get_type(track) != Animation.TYPE_POSITION_3D or result.track_get_key_count(track) < 2:
-				continue
-			var first: Vector3 = result.track_get_key_value(track, 0)
-			var last: Vector3 = result.track_get_key_value(track, result.track_get_key_count(track) - 1)
-			var measured := Vector2(last.x - first.x, last.z - first.z).length() / maxf(result.length, 0.001)
-			if measured < 0.05:
-				break
+		var measured := _hips_speed(result)
+		if measured >= 0.05:
 			var factor := wanted_speed / measured
 			print("speed %.2f -> %.2f m/s (travel x%.2f)" % [measured, wanted_speed, factor])
-			for key in result.track_get_key_count(track):
-				var v: Vector3 = result.track_get_key_value(track, key)
-				result.track_set_key_value(track, key, Vector3(first.x + (v.x - first.x) * factor, v.y, first.z + (v.z - first.z) * factor))
-			break
+			_scale_source_travel(animation, factor) # (the source's own track: the foot lock below then sees the final motion)
+	result = HumanoidRetargeter.retarget_clip(source_skeleton, animation, target_skeleton, config,
+			options.get("force_loop", "false") == "true", options.get("arm_ik", "false") == "true",
+			[] if options.get("aim", "true") != "true" else chains, hips_args, foot_lock)
 	if options.get("inplace", "false") == "true": # idles and turns: GVHMR's translation drifts, keep the clip on the spot
 		HumanoidRetargeter.make_clip_in_place(result)
 	if options.get("hands", "") != "":
@@ -87,3 +81,24 @@ func _ready() -> void:
 	print("RETARGET_OK ", options["output"], " length=%.2f tracks=%d save=%d" % [
 			result.length, result.get_track_count(), saved])
 	get_tree().quit()
+
+
+func _hips_speed(animation: Animation) -> float:
+	for track in animation.get_track_count():
+		if animation.track_get_type(track) == Animation.TYPE_POSITION_3D and animation.track_get_key_count(track) >= 2:
+			var first: Vector3 = animation.track_get_key_value(track, 0)
+			var last: Vector3 = animation.track_get_key_value(track, animation.track_get_key_count(track) - 1)
+			return Vector2(last.x - first.x, last.z - first.z).length() / maxf(animation.length, 0.001)
+	return 0.0
+
+
+## Scales the horizontal travel of the first position track (the pelvis) about its first key.
+func _scale_source_travel(animation: Animation, factor: float) -> void:
+	for track in animation.get_track_count():
+		if animation.track_get_type(track) != Animation.TYPE_POSITION_3D:
+			continue
+		var first: Vector3 = animation.track_get_key_value(track, 0)
+		for key in animation.track_get_key_count(track):
+			var v: Vector3 = animation.track_get_key_value(track, key)
+			animation.track_set_key_value(track, key, Vector3(first.x + (v.x - first.x) * factor, v.y, first.z + (v.z - first.z) * factor))
+		return

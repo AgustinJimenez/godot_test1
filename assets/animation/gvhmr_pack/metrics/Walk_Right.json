@@ -1,15 +1,15 @@
 {
  "frames": 121,
  "seconds": 4.03,
- "root_travel_m": 2.4,
+ "root_travel_m": 2.38,
  "head_height_min_m": 1.54,
  "head_height_max_m": 1.61,
- "limb_accel_median": 12.1,
+ "limb_accel_median": 2.6,
  "limb_accel_spikes": 0.0,
- "floor_shift_m": 0.003,
+ "floor_shift_m": 0.004,
  "feet": [
   "floor (lowest foot) 0.003 m",
-  "left foot: planted 6% of frames in 8 stretches, drifts 0.0 cm per stretch while planted",
-  "right foot: planted 14% of frames in 13 stretches, drifts 0.1 cm per stretch while planted"
+  "left foot: planted 14% of frames in 6 stretches, drifts 0.6 cm per stretch while planted",
+  "right foot: planted 33% of frames in 4 stretches, drifts 2.4 cm per stretch while planted"
  ]
 }

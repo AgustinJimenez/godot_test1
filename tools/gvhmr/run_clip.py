@@ -34,6 +34,7 @@ parser.add_argument("--name")
 parser.add_argument("--targets", default="brute,motusman")
 parser.add_argument("--no-sheet", action="store_true")
 parser.add_argument("--speed", default="auto", help="target root speed m/s, auto (by clip name), or 0 to keep GVHMR's")
+parser.add_argument("--smooth", type=float, default=1.0, help="gaussian sigma in frames over the rotations (0 = off)")
 parser.add_argument("--inplace", action="store_true", help="remove the horizontal travel (idles, turns, jumps in place)")
 parser.add_argument("--hands", default="relaxed", help="hand preset written into the finger tracks (relaxed|fist|none)")
 args = parser.parse_args()
@@ -59,6 +60,9 @@ subprocess.run([sys.executable, os.path.join(HERE, "smplx_motion_to_json.py"), S
 sys.path.insert(0, HERE)
 import foot_report  # noqa: E402
 
+if args.smooth > 0:
+    import smooth_clip
+    smooth_clip.smooth(clip_json, args.smooth)
 floor_shift = foot_report.ground_clip(clip_json)  # (GVHMR's height drifts: put the lowest feet on y = 0)
 contacts = os.path.join(PACK, "json", name + "_contacts.json")
 foot = subprocess.run([sys.executable, os.path.join(HERE, "foot_report.py"), clip_json, contacts],

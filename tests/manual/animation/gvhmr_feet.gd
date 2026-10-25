@@ -21,6 +21,8 @@ func _ready() -> void:
 	var skeleton := character.find_child("Skeleton3D", true, false) as Skeleton3D
 	var map: Dictionary = manifest["humanoid_map"]
 	var toes := [skeleton.find_bone(map.get("LeftToeBase", map["LeftFoot"])), skeleton.find_bone(map.get("RightToeBase", map["RightFoot"]))]
+	if options.get("bone", "toe") == "ankle": # the ankle is what the foot lock pins
+		toes = [skeleton.find_bone(map["LeftFoot"]), skeleton.find_bone(map["RightFoot"])]
 	var planted: Array = contacts["planted"]
 	var fps: float = contacts["fps"]
 	var drift := [[], []]
