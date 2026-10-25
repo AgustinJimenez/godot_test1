@@ -50,3 +50,7 @@ epo\gvhmr\inputs\walking_man_test.mp4.
   - pilot (WSL run): 62 frames, retargeted OK onto Brute and MotusMan (assets/animation/gvhmr_test/out/pilot_walk_*.res, json/pilot_walk.json made at 30 fps = too fast; redo from the Windows output).
   - prior art: unity project Pipeline/wan2gp has animation_list.json (the wanted clip list), batch_generate.py, manifests.
   - SMPL-X rest origin is not on the floor: the json loader lifts the rest pose so the feet stand on y=0.
+
+## Results (one line per clip: ok / usable / failed; metrics from assets/animation/gvhmr_pack/metrics, sheets in .../sheets)
+Process a clip: `python tools/gvhmr/run_clip.py E:/repo/gvhmr_work/videos/anim_<Name>.mp4 --name <Name> --hands relaxed|fist`
+- Idle_Relaxed: ok - 4.0 s, root travel 0.18 m, head 1.60-1.63 m, limb accel median 4 (calm); stands and sways; head slightly bowed on the Brute (check later).
