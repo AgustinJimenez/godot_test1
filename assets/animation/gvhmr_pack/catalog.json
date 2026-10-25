@@ -270,6 +270,15 @@
   "hands": "fist"
  },
  {
+  "name": "Run_Armed",
+  "category": "Run",
+  "rating": "usable",
+  "loop": true,
+  "in_place": true,
+  "speed": 3.6,
+  "hands": "relaxed"
+ },
+ {
   "name": "Run_Fast",
   "category": "Run",
   "rating": "ok",
@@ -315,7 +324,34 @@
   "hands": "relaxed"
  },
  {
+  "name": "Run_Tired",
+  "category": "Run",
+  "rating": "usable",
+  "loop": true,
+  "in_place": true,
+  "speed": 3.0,
+  "hands": "relaxed"
+ },
+ {
   "name": "Sword_Block",
+  "category": "Sword",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Sword_Combo",
+  "category": "Sword",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Sword_Parry",
   "category": "Sword",
   "rating": "ok",
   "loop": false,
