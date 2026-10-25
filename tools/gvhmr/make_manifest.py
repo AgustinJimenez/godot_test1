@@ -77,7 +77,65 @@ CLIPS = {
     ],
 }
 
+# second pass: retries of the weak/failed clips with sharper wording, plus more variants per category
+CLIPS_V2 = {
+    "Retry": [
+        ("Climb_Ledge2", "A waist-high plain grey stone wall stands in front of them. They step up to it, put both forearms on top, "
+                        "kick up one knee, pull their whole body up onto the top of the wall and kneel there."),
+        ("Jump_Forward2", "They crouch deeply, then spring forward with a powerful jump, both feet clearly leaving the floor for a "
+                          "moment with arms swinging up, and land with both feet in a bent-knee landing."),
+        ("Jump_InPlace2", "They bend their knees deeply, then explode upward in a big vertical jump with both feet high off the floor "
+                          "and arms thrown up, then land and absorb the impact with bent knees."),
+        ("Crouch_Idle2", "From the very first frame they are already in a deep crouch, knees bent low and body lowered, staying in "
+                         "the crouch and looking around slowly without standing up."),
+        ("Object_Carry2", "They hold a large plain cardboard box against their chest with both arms wrapped around it in front of "
+                          "their body and walk slowly toward the camera, carrying it."),
+        ("Run_Left2", "They run in a straight line across the frame from right to left at a steady pace, seen from the side, "
+                      "feet always touching the floor."),
+        ("Crawl_Low2", "They crawl on their hands and knees along the floor toward the camera, torso low, one hand and the opposite "
+                       "knee moving together, steady slow rhythm."),
+    ],
+    "Idle": [
+        ("Idle_Stretch", "They stand and stretch, raising both arms overhead, arching slightly and then relaxing the arms down."),
+        ("Idle_CheckWatch", "They stand and glance at their left wrist, then look up and shift their weight, bored."),
+        ("Idle_Combat", "They stand in a combat-ready stance, knees bent, weight forward, fists raised near the chest, swaying slightly."),
+    ],
+    "Walk": [
+        ("Walk_Limp", "They walk toward the camera with a limp, favouring their right leg, one shoulder dropped."),
+        ("Walk_Sneak", "They sneak toward the camera on tiptoe with careful quiet steps, body slightly hunched."),
+        ("Walk_Heavy", "They trudge toward the camera with heavy tired steps and hanging arms."),
+        ("Walk_Armed", "They walk toward the camera holding a plain straight sword low in the right hand, alert."),
+    ],
+    "Run": [
+        ("Run_Tired", "They jog toward the camera slowly with heavy tired strides, head down."),
+        ("Run_Armed", "They run toward the camera holding a plain straight sword in the right hand, arm swinging less."),
+    ],
+    "Sword": [
+        ("Sword_Combo", "They hold a plain straight sword in the right hand and perform a quick two-hit combo: a diagonal slash then a "
+                        "back-hand slash, then return to guard."),
+        ("Sword_Parry", "They hold a plain straight sword in the right hand and parry sharply to the left then return to guard."),
+        ("Sword_Kick", "They hold a plain straight sword in the right hand, kick forward with the right foot and return to guard."),
+    ],
+    "Hurt": [
+        ("Hurt_Knockback", "They are hit hard from the front, are thrown backward a few steps with arms flung out and stumble to a stop."),
+        ("Hurt_GrabArm", "They clutch their left upper arm with the right hand, grimace and hunch over, then slowly straighten."),
+    ],
+    "Object": [
+        ("Object_Drag", "They grab a heavy plain sack on the floor with both hands and drag it backward toward the camera, leaning back."),
+        ("Object_Throw", "They pick up a small plain ball and throw it forward overhand, following through, then lower the arm."),
+        ("Object_OpenDoor", "They reach out, grab a door handle on a plain white door in front of them, pull the door open toward them "
+                            "and step back."),
+    ],
+    "Misc": [
+        ("GetUp", "They lie on their back on the floor, then roll over and push themselves up to a standing position."),
+        ("Roll", "They run two steps and dive into a forward roll, coming up to a crouch."),
+        ("Climb_Ladder", "A plain vertical wooden ladder stands in front of them. They climb up it hand over hand and foot over foot."),
+    ],
+}
+
 entries = []
+if len(sys.argv) > 2 and sys.argv[2] == "v2":
+    CLIPS = CLIPS_V2
 for category, clips in CLIPS.items():
     for name, action in clips:
         entries.append({
