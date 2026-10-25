@@ -141,3 +141,9 @@ Fuzz metric script `/e/Temp/tx/fuzz_score.py` (sums the idle-check lines of a `s
   chase) together with stage 1 (decide the tread once); neither is a quick patch, and each trial costs a 1-4 minute headless run.
 - Not started: stages 1-4 of 037. Since the port is done and verified, they can now be done in `foot_ik_core_native.cpp` only (no second implementation to keep in sync). Suggested order: (a) pelvis solved from the planned targets in one step with the
   attack rate only applied while MOVING; check dz=0 and the fuzz; (b) plant-once footprint sampling; (c) inertialization.
+
+## 037 pelvis-attack experiment (2026-10-25, later): a faster pelvis sink does NOT fix the dz=0 turn failure
+
+`pelvis_attack_speed` 1.5 (today) / 4 / 12 m/s on `--stairs-turn=0`: clip 0.049 / 0.026 / 0.026 m, float 0.068 / 0.068 / 0.068, foot_step_max 0.060 / 0.093 / 0.180 (limit 0.060): the float stays and a sharper sink only adds one-frame foot motion. So the
+hover is not caused by the sink RATE alone; the earlier reading (a rate-limited chase) was wrong or incomplete. The target tread decision (which tread the foot is aimed at while the foot is half over an edge) is the remaining suspect: stage 1 (decide
+the tread once) is the next experiment, not stage 3. The experiment switch was removed again (no code change committed).
