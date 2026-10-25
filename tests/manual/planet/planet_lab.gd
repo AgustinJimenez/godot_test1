@@ -15,8 +15,7 @@ extends Node3D
 ##   -- --no-shadow  no sun shadows   --no-clouds  hide the clouds
 ##   -- --procedural / --photos  the procedural surfaces (bark, rock, gravel, red soil, litter, wood) are ON for a person; --shot runs use the photographs unless --procedural; --photos forces them
 ##   -- --plants / --animals / --sea / --water  switch those on (off by default); --bare: no plants
-##   -- --no-trees  no trees even in a --shot or -check run
-##   -- --trees  trees and shrubs grow (a person at the lab gets only the grass, rocks and the rest by default; --shot, -check and --forest runs keep their trees)
+##   -- --no-trees  no trees or shrubs (only the grass, rocks and the rest), to look at the ground; they grow by default
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
 ##   -- --tile-cells=N --tile-max=M  the ground resolution: quads a tile, widest finest tile (m)
 ##   -- --spawn-alt=N  start N metres above the ground there (up to the other side of space)
@@ -545,13 +544,9 @@ func _procedural_by_default(user_args: PackedStringArray) -> void:
 	OS.set_environment("PLANET_PROCEDURAL_ALL", "1")
 
 
-## For a person at the lab no trees grow (only the grass, rocks and the rest), so the ground can be looked at: `--trees` brings them back. The runs that measure
-## or photograph (`--shot`, any `-check`, `--forest...`) keep their trees.
+## Trees and shrubs grow by default; `--no-trees` turns them off (only the grass, rocks and the rest), to look at the ground.
 func _trees_by_default(user_args: PackedStringArray) -> void:
-	var automatic := "--trees" in user_args
-	for arg in user_args:
-		automatic = automatic or arg.begins_with("--shot") or arg.ends_with("-check") or arg.contains("-check=") or arg.begins_with("--forest")
-	PlanetScatter.trees_on = automatic and not "--no-trees" in user_args
+	PlanetScatter.trees_on = not "--no-trees" in user_args
 
 
 func _ready() -> void:
