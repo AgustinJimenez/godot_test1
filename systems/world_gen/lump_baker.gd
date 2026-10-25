@@ -80,6 +80,7 @@ func bake(name: String, seed_value := 1.0) -> Image:
 		image = await _colour_pass(image)
 		if not is_equal_approx(seed_value, 1.0):
 			image = _vary(image, seed_value)
+	image = await ColourMatch.apply(self, image, name)
 	return image
 
 

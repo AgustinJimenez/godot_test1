@@ -96,6 +96,7 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 	await RenderingServer.frame_post_draw
 	var image := viewport.get_texture().get_image()
 	viewport.queue_free()
+	image = await ColourMatch.apply(self, image, name)
 	return image
 
 

@@ -128,6 +128,8 @@ func _ready() -> void:
 			_seed = float(argument.get_slice("=", 1))
 		elif argument.begins_with("--res="):
 			_resolution = int(argument.get_slice("=", 1))
+		elif argument == "--no-match":
+			ColourMatch.enabled = false
 		elif argument == "--no-turn":
 			_turn = false
 		elif argument == "--no-pom":
