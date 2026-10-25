@@ -158,7 +158,8 @@ func colour(dir: Vector3, ground: float, steep: float, speckle: float,
 	# plant cover: dry grass, grass, the dark of forests, by rain and warmth; none on steep rock, in
 	# the desert or the cold (the snow below covers it where it lies)
 	var wet := clampf(rain / 0.9, 0.0, 1.0)
-	var cover := on_land * smoothstep(-3.0, 6.0, cold) * smoothstep(0.12, 0.55, wet)
+	# (the cover ramps up over the first few metres of land, not over 200 m like the rock stripes and the soil: lowland meadows are green from afar too)
+	var cover := smoothstep(0.5, 10.0, ground) * smoothstep(-3.0, 6.0, cold) * smoothstep(0.12, 0.55, wet)
 	cover *= 1.0 - smoothstep(0.3, 0.65, steep)
 	var green := STEPPE.lerp(MEADOW, smoothstep(0.3, 0.7, wet))
 	green = green.lerp(FOREST, smoothstep(0.7, 1.0, wet) * smoothstep(8.0, 16.0, cold) * 0.8)

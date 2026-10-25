@@ -755,7 +755,8 @@ Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, doub
 	b += (soil_b - b) * (float)soil;
 	// plant cover: dry grass, grass, the dark of forests, by rain and warmth (PlanetRock.colour)
 	const double wet_cover = clampd(grid_at(rain_grid, p_dir, 0.5) / 0.9, 0.0, 1.0);
-	double cover = on_land * smooth(-3.0, 6.0, cold) * smooth(0.12, 0.55, wet_cover);
+	// (the cover ramps up over the first few metres of land, not over 200 m like the rock stripes and the soil: lowland meadows are green from afar too)
+	double cover = smooth(0.5, 10.0, p_ground) * smooth(-3.0, 6.0, cold) * smooth(0.12, 0.55, wet_cover);
 	cover *= 1.0 - smooth(0.3, 0.65, p_steep);
 	const double meadow_k = smooth(0.3, 0.7, wet_cover);
 	const double forest_k = smooth(0.7, 1.0, wet_cover) * smooth(8.0, 16.0, cold) * 0.8;
