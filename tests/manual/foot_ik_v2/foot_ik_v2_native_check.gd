@@ -2,7 +2,7 @@ extends SceneTree
 ## The native foot IK maths (FootIKV2Native, native/planet_crust) against the GDScript reference, on random legs and a random cached sole.
 ## godot --headless --path . --script res://tests/manual/foot_ik_v2/foot_ik_v2_native_check.gd   -> FOOT_IK_V2_NATIVE_CHECK PASS (or SKIP when the library is not built)
 
-const SOLVER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_solver.gd")
+const REFERENCE := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_solver_reference.gd")
 const TOLERANCE := 0.0001 # metres: single precision floats in both, so the two agree to about 1e-6; leave room for the acos/cos paths
 
 
@@ -23,8 +23,8 @@ func _initialize() -> void:
 		var flex := 0.0 if trial % 3 == 0 else 150.0
 		var swing := 0.0 if trial % 2 == 0 else 100.0
 		var free := rng.randf()
-		var a: Dictionary = SOLVER.solve_script(hip, knee, target, upper, lower, Vector3.FORWARD, flex, swing, Vector3.DOWN, free)
-		var b: Dictionary = SOLVER.solve(hip, knee, target, upper, lower, Vector3.FORWARD, flex, swing, Vector3.DOWN, free)
+		var a: Dictionary = REFERENCE.solve(hip, knee, target, upper, lower, Vector3.FORWARD, flex, swing, Vector3.DOWN, free)
+		var b: Dictionary = FootIKV2Solver.solve(hip, knee, target, upper, lower, Vector3.FORWARD, flex, swing, Vector3.DOWN, free)
 		for key in ["knee", "ankle", "direction", "pole"]:
 			worst_solve = maxf(worst_solve, (a[key] as Vector3).distance_to(b[key] as Vector3))
 		worst_solve = maxf(worst_solve, absf(float(a["distance"]) - float(b["distance"])))

@@ -6,7 +6,6 @@ extends SceneTree
 ## Run: godot --headless --path . --script \
 ##      res://tests/manual/foot_ik_v2/foot_ik_v2_solver_check.gd
 
-const SOLVER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_solver.gd")
 const EPS := 0.0005
 const UPPER := 0.45
 const LOWER := 0.45
@@ -37,7 +36,7 @@ func _initialize() -> void:
 ## A target within reach must be reached exactly - the whole point of the solve.
 func _reachable_target() -> void:
 	var target := Vector3(0.0, 0.35, 0.22)
-	var solved := SOLVER.solve(HIP, ANIMATED_KNEE, target, UPPER, LOWER, REST_POLE)
+	var solved := FootIKV2Solver.solve(HIP, ANIMATED_KNEE, target, UPPER, LOWER, REST_POLE)
 	_check("reachable_target_lands_on_target",
 			(solved["ankle"] as Vector3).distance_to(target) <= EPS,
 			"error=%.6f" % (solved["ankle"] as Vector3).distance_to(target))
@@ -45,7 +44,7 @@ func _reachable_target() -> void:
 
 ## Past the leg's length the ankle stops at full extension, not past it.
 func _unreachable_target_clamps_to_reach() -> void:
-	var solved := SOLVER.solve(HIP, ANIMATED_KNEE, Vector3(0.0, -1.0, 0.0),
+	var solved := FootIKV2Solver.solve(HIP, ANIMATED_KNEE, Vector3(0.0, -1.0, 0.0),
 			UPPER, LOWER, REST_POLE)
 	var reach := (solved["ankle"] as Vector3).distance_to(HIP)
 	_check("unreachable_target_clamps_to_reach", absf(reach - (UPPER + LOWER - 0.001)) <= EPS,
@@ -54,7 +53,7 @@ func _unreachable_target_clamps_to_reach() -> void:
 
 ## A target tighter than the bones allow stops at the minimum fold, so the leg never inverts.
 func _collapsed_target_clamps_to_minimum() -> void:
-	var solved := SOLVER.solve(HIP, ANIMATED_KNEE, HIP + Vector3(0.0, -0.001, 0.0),
+	var solved := FootIKV2Solver.solve(HIP, ANIMATED_KNEE, HIP + Vector3(0.0, -0.001, 0.0),
 			UPPER, LOWER, REST_POLE)
 	var reach := (solved["ankle"] as Vector3).distance_to(HIP)
 	_check("collapsed_target_clamps_to_minimum",
@@ -63,7 +62,7 @@ func _collapsed_target_clamps_to_minimum() -> void:
 
 ## Both segments keep their bone length whatever the target.
 func _knee_keeps_bone_lengths() -> void:
-	var solved := SOLVER.solve(HIP, ANIMATED_KNEE, Vector3(0.0, 0.35, 0.22),
+	var solved := FootIKV2Solver.solve(HIP, ANIMATED_KNEE, Vector3(0.0, 0.35, 0.22),
 			UPPER, LOWER, REST_POLE)
 	var upper_error := absf((solved["knee"] as Vector3).distance_to(HIP) - UPPER)
 	var lower_error := absf((solved["ankle"] as Vector3).distance_to(solved["knee"] as Vector3)
@@ -75,7 +74,7 @@ func _knee_keeps_bone_lengths() -> void:
 ## The knee bends toward the side the ANIMATED knee was on, so the pose keeps its own style instead
 ## of always folding one fixed way.
 func _knee_stays_on_the_animated_side() -> void:
-	var solved := SOLVER.solve(HIP, ANIMATED_KNEE, Vector3(0.0, 0.35, 0.22),
+	var solved := FootIKV2Solver.solve(HIP, ANIMATED_KNEE, Vector3(0.0, 0.35, 0.22),
 			UPPER, LOWER, REST_POLE)
 	var direction := solved["direction"] as Vector3
 	var animated_pole := ANIMATED_KNEE - HIP
@@ -90,7 +89,7 @@ func _knee_stays_on_the_animated_side() -> void:
 func _straight_leg_falls_back_to_the_rest_pole() -> void:
 	var target := Vector3(0.0, 0.3, 0.0)
 	var straight_knee := HIP + (target - HIP).normalized() * UPPER
-	var solved := SOLVER.solve(HIP, straight_knee, target, UPPER, LOWER, REST_POLE)
+	var solved := FootIKV2Solver.solve(HIP, straight_knee, target, UPPER, LOWER, REST_POLE)
 	var direction := solved["direction"] as Vector3
 	var solved_pole := (solved["knee"] as Vector3) - HIP
 	solved_pole -= direction * solved_pole.dot(direction)
@@ -101,7 +100,7 @@ func _straight_leg_falls_back_to_the_rest_pole() -> void:
 ## An animated knee that projects BEHIND the hip-to-target line (the foot moved a long way in, or
 ## the hips dropped) must not fold the leg backward: the rest pole takes over.
 func _knee_never_bends_backward() -> void:
-	var solved := SOLVER.solve(HIP, BACKWARD_KNEE, Vector3(0.0, 0.35, 0.22), UPPER, LOWER, REST_POLE)
+	var solved := FootIKV2Solver.solve(HIP, BACKWARD_KNEE, Vector3(0.0, 0.35, 0.22), UPPER, LOWER, REST_POLE)
 	var direction := solved["direction"] as Vector3
 	var solved_pole := (solved["knee"] as Vector3) - HIP
 	solved_pole -= direction * solved_pole.dot(direction)
@@ -111,7 +110,7 @@ func _knee_never_bends_backward() -> void:
 
 ## A target close under the hip would fold the knee past the flexion cap: the foot stops short.
 func _knee_flexion_is_capped() -> void:
-	var solved := SOLVER.solve(HIP, ANIMATED_KNEE, HIP + Vector3(0.0, -0.10, 0.05), UPPER, LOWER,
+	var solved := FootIKV2Solver.solve(HIP, ANIMATED_KNEE, HIP + Vector3(0.0, -0.10, 0.05), UPPER, LOWER,
 			REST_POLE, 100.0)
 	var knee := solved["knee"] as Vector3
 	var ankle := solved["ankle"] as Vector3
@@ -121,7 +120,7 @@ func _knee_flexion_is_capped() -> void:
 
 ## A target far out to the side would swing the thigh past the cone: the knee is pulled back in.
 func _hip_swing_is_capped() -> void:
-	var solved := SOLVER.solve(HIP, ANIMATED_KNEE, HIP + Vector3(0.0, -0.05, 0.85), UPPER, LOWER,
+	var solved := FootIKV2Solver.solve(HIP, ANIMATED_KNEE, HIP + Vector3(0.0, -0.05, 0.85), UPPER, LOWER,
 			REST_POLE, 0.0, 70.0)
 	var swing := rad_to_deg(Vector3.DOWN.angle_to(((solved["knee"] as Vector3) - HIP).normalized()))
 	_check("hip_swing_is_capped", swing <= 70.5, "swing=%.1f (cap 70)" % swing)

@@ -14,6 +14,7 @@
 #include "foot_ik_helpers_native.h"
 #include "foot_ik_ledge_native.h"
 #include "foot_ik_core_native.h"
+#include "foot_ik_modifier_native.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
@@ -46,6 +47,9 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(FootIKV2CoreNative);
 	GDREGISTER_CLASS(FootIKV2LedgeNative);
 	GDREGISTER_CLASS(FootIKV2SoleNative);
+	GDREGISTER_CLASS(FootIKV2Modifier);
+	GDREGISTER_CLASS(FootIKV2Solver);
+	GDREGISTER_CLASS(FootIKV2Debug);
 }
 
 void uninitialize_planet_crust_module(ModuleInitializationLevel p_level) {

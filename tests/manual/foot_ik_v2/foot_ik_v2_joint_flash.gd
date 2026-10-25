@@ -4,6 +4,8 @@ extends Node3D
 ## cycle, times MARGIN) flashes a red sphere that fades out. Turns are in skeleton space, so the
 ## body moving or turning never counts. Reads the modifier's poses. Headless: prints instead.
 
+const SIDES: Array[StringName] = [&"left", &"right"]
+const BODY_ROLES: Array[StringName] = [&"Hips", &"Spine", &"Spine1", &"Spine2", &"LeftShoulder", &"RightShoulder", &"LeftArm", &"RightArm"]
 const WINDOW := 120
 const MARGIN := 1.5
 const FLOOR_DEG := 4.0
@@ -41,7 +43,7 @@ func _process(delta: float) -> void:
 	for side: StringName in _modifier._base:
 		for role: StringName in ROLES:
 			_check(side, role)
-	for role: StringName in FootIKV2Modifier.BODY_ROLES.slice(1):
+	for role: StringName in BODY_ROLES.slice(1):
 		_check_body(role)
 	for flash: Dictionary in _flashes.duplicate():
 		flash["age"] = float(flash["age"]) + delta

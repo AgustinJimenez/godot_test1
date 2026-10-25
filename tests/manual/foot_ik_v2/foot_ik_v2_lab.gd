@@ -1,7 +1,8 @@
 extends Node3D
 ## Acceptance scene for v2 foot IK: flat, ramps 15/30/45 deg, three staircases. F6 toggles it.
 ## Headless `-- --foot-ik-v2-check` (and other flags below) walk / replay it and grade it.
-const DEBUG_TIMER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_debug.gd")
+const SIDES: Array[StringName] = [&"left", &"right"]
+const BODY_ROLES: Array[StringName] = [&"Hips", &"Spine", &"Spine1", &"Spine2", &"LeftShoulder", &"RightShoulder", &"LeftArm", &"RightArm"]
 const POSE_DUMP := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_pose_dump.gd")
 const TURN_CHECK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_turn_check.gd")
 const SPAWN := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_spawn.gd")
@@ -259,7 +260,7 @@ func _ready() -> void:
 	if "--foot-ik-v2-no-reach-when-moving" in OS.get_cmdline_user_args():
 		_v2.reach_when_moving = false
 	if "--foot-ik-v2-perf" in OS.get_cmdline_user_args():
-		DEBUG_TIMER.enabled = true
+		FootIKV2Debug.set_enabled(true)
 	add_child(PERF_PROBE.new()) # no-op unless FOOT_IK_V2_PERF_LOG=1 or --foot-ik-v2-perf
 	_mode = "ramp_check" if _ramp_checking else ("forward_check" if _checking else "live")
 	_run_id = "%s_%d" % [Time.get_datetime_string_from_system(false, true).replace(" ", "T"),
@@ -297,7 +298,7 @@ func _build_toe_spheres() -> void:
 	mesh.height = 0.03
 	_tip_material_touch = _tip_material(Color(0.0, 0.9, 0.2))
 	_tip_material_air = _tip_material(Color(1.0, 0.0, 0.0))
-	for side: StringName in FootIKV2Modifier.LEGS:
+	for side: StringName in SIDES:
 		var sphere := MeshInstance3D.new()
 		sphere.mesh = mesh
 		sphere.top_level = true
@@ -581,7 +582,7 @@ func _capture() -> void:
 	frame["body"]["skeleton_scale"] = _v3(player.skeleton.global_transform.basis.get_scale())
 	frame["body"]["stair_hover_y"] = float(player.get("_stair_hover_offset_y"))
 	frame["body"]["camera_snap_y"] = player._stair_controller.camera_snap_y
-	for side: StringName in FootIKV2Modifier.LEGS:
+	for side: StringName in SIDES:
 		var leg: Dictionary = _v2._legs.get(side, {})
 		if leg.is_empty():
 			continue
@@ -664,7 +665,7 @@ func _motion_fields() -> Dictionary:
 ## Pelvis and spine as published: position, rotation, and the pelvis's height above the root.
 func _body_fields() -> Dictionary:
 	var out := {}
-	for role: StringName in FootIKV2Modifier.BODY_ROLES:
+	for role: StringName in BODY_ROLES:
 		var bone := player.skeleton.find_bone(player.body.resolve_bone_name(role))
 		if bone < 0:
 			continue
@@ -804,7 +805,7 @@ func _track_foot_step(side: StringName, spot: String, foot_world: Vector3) -> vo
 
 ## Per-frame grade for both feet: ankle error, sole tilt and toe / heel clipping.
 func _measure(name: String) -> void:
-	for side: StringName in FootIKV2Modifier.LEGS:
+	for side: StringName in SIDES:
 		var leg: Dictionary = _v2._legs.get(side, {})
 		if leg.is_empty():
 			continue
@@ -945,7 +946,7 @@ func _measure_ramp() -> void:
 		_pelvis_excess = maxf(_pelvis_excess, _v2.debug_pelvis_drop - _pelvis_limit)
 	if _walk < MEASURE_AFTER:
 		return
-	for side: StringName in FootIKV2Modifier.LEGS:
+	for side: StringName in SIDES:
 		var leg: Dictionary = _v2._legs.get(side, {})
 		if leg.is_empty():
 			continue

@@ -1,38 +1,9 @@
-class_name FootIKV2Solver
 extends RefCounted
-## Pure two-bone leg maths for the v2 foot IK. No skeleton, no physics scene: give it positions and
-## bone lengths, get back where the knee and the ankle go.
-##
-## Keeping this pure is the point - it is the one piece of v2 that can be tested exactly, so
-## `foot_ik_v2_solver_check.gd` asserts its behaviour directly instead of only through a live scene.
+## The GDScript reference of the two-bone leg maths (AGENT_TASKS/091): the runtime solver is FootIKV2Solver in native code
+## (native/planet_crust/src/foot_ik_modifier_native.cpp); foot_ik_v2_native_check.gd compares the two.
 
 
-## `animated_knee` supplies the bend plane (the animated leg's own knee direction); `rest_pole` is
-## the fallback for a straight animated leg, where that direction is undefined. Optional anatomical
-## limits (0 = off), v1's approach: `max_flexion_deg` keeps the knee's interior angle above
-## 180 - max (the foot falls short rather than fold the leg), `max_swing_deg` keeps the thigh in a
-## cone around `down` (the knee is swung back into it; the foot may then land short).
 static func solve(hip: Vector3, animated_knee: Vector3, target: Vector3,
-		upper: float, lower: float, rest_pole: Vector3, max_flexion_deg := 0.0,
-		max_swing_deg := 0.0, down := Vector3.DOWN, bend_free := 0.0) -> Dictionary:
-	if _use_native():
-		var r: PackedVector3Array = ClassDB.class_call_static(&"FootIKV2Native", &"solve", hip, animated_knee, target,
-				upper, lower, rest_pole, max_flexion_deg, max_swing_deg, down, bend_free)
-		return {"knee": r[0], "ankle": r[1], "direction": r[2], "pole": r[3], "distance": r[4].x}
-	return solve_script(hip, animated_knee, target, upper, lower, rest_pole, max_flexion_deg, max_swing_deg, down, bend_free)
-
-
-static var _native_state := -1 # -1 unknown, 0 GDScript, 1 native (FootIKV2Native in native/planet_crust; PLANET_NO_NATIVE=1 turns it off)
-
-
-static func _use_native() -> bool:
-	if _native_state < 0:
-		_native_state = 1 if ClassDB.class_exists(&"FootIKV2Native") and not OS.has_environment("PLANET_NO_NATIVE") else 0
-	return _native_state == 1
-
-
-## The reference implementation in GDScript (the native one is checked against it by foot_ik_v2_native_check.gd).
-static func solve_script(hip: Vector3, animated_knee: Vector3, target: Vector3,
 		upper: float, lower: float, rest_pole: Vector3, max_flexion_deg := 0.0,
 		max_swing_deg := 0.0, down := Vector3.DOWN, bend_free := 0.0) -> Dictionary:
 	var to_target := target - hip

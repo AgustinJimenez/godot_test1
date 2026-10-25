@@ -180,3 +180,10 @@ A resting foot kept its last tread unless the sample moved > 4 cm or the tread d
 Reason (traced): the animated ankle SAMPLE itself sweeps 7-8 cm per frame along an arc in the quick yaw sweep and crosses the 0.1 m riser twice in 8 frames (hit y 0.5 -> 0.6 -> 0.5), so a 4 cm dead band
 never holds; the foot is following a genuinely moving target at the stepper's 6 cm/frame cap (+1 cm body motion = 0.07). That fuzz fault is the quick sweep's stress, not a tread chatter; the right lever
 would be the stepper cap vs the test limit (0.06), a tuning choice, not a logic fix. Code reverted.
+
+## The rest of v2 in native code (2026-10-25, last): no foot IK logic is GDScript any more
+- `FootIKV2LedgeNative`, `FootIKV2SoleNative` (mesh walk + skinning cache), and now `FootIKV2Modifier` (the SkeletonModifier3D itself: exported settings, debug_*/final_* members, leg set-up, ledge),
+  `FootIKV2Solver` (static `solve`, same signature/Dictionary as the old script) and `FootIKV2Debug` (opt-in timer, `set_enabled`/`report`) in `foot_ik_ledge_native.*` and `foot_ik_modifier_native.*`.
+- Deleted: foot_ik_v2_modifier.gd, _sole.gd, _ledge.gd, _solver.gd, _debug.gd. Kept in GDScript: `foot_ik_v2_install.gd` (17 lines of wiring to the v1 modifier) and, in the tests,
+  `foot_ik_v2_solver_reference.gd` (the GDScript two-bone solver, the oracle `foot_ik_v2_native_check.gd` compares the native one against). Tests use `SIDES`/`BODY_ROLES` consts of their own.
+- Suite and fuzz identical to before this step (same PASS/FAIL lines; fuzz 4 ok / 8 fail, same clip/float/pop numbers).
