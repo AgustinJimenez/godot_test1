@@ -48,7 +48,10 @@ func _ready() -> void:
 	var source_skeleton := left.find_child("Skeleton3D", true, false) as Skeleton3D
 	var target_skeleton := skeleton
 	var src_axis := _axis(source_skeleton, "left_hip", "right_hip")
-	var dst_axis := _axis(target_skeleton, "mixamorig_LeftUpLeg", "mixamorig_RightUpLeg")
+	var map: Dictionary = {"LeftUpLeg": "mixamorig_LeftUpLeg", "RightUpLeg": "mixamorig_RightUpLeg"}
+	if options.has("manifest"):
+		map = JSON.parse_string(FileAccess.get_file_as_string(options["manifest"]))["humanoid_map"]
+	var dst_axis := _axis(target_skeleton, map["LeftUpLeg"], map["RightUpLeg"])
 	left.rotation.y = Vector3(src_axis.x, 0.0, src_axis.z).signed_angle_to(Vector3(dst_axis.x, 0.0, dst_axis.z), Vector3.UP)
 	await get_tree().create_timer(float(options["at"])).timeout
 	if options.has("shot"):
