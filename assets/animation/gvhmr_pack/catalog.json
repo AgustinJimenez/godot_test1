@@ -1,0 +1,344 @@
+[
+ {
+  "name": "Climb_Ledge",
+  "category": "Climb",
+  "rating": "failed",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Climb_Vault",
+  "category": "Climb",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Crawl_Forward",
+  "category": "Crawl",
+  "rating": "usable",
+  "loop": true,
+  "in_place": false,
+  "speed": 0.5,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Crawl_Low",
+  "category": "Crawl",
+  "rating": "usable",
+  "loop": true,
+  "in_place": false,
+  "speed": 0.5,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Crouch_Enter",
+  "category": "Crouch",
+  "rating": "ok",
+  "loop": false,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Crouch_Exit",
+  "category": "Crouch",
+  "rating": "ok",
+  "loop": false,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Crouch_Idle",
+  "category": "Crouch",
+  "rating": "usable",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Crouch_Walk",
+  "category": "Crouch",
+  "rating": "usable",
+  "loop": true,
+  "in_place": false,
+  "speed": 0.9,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Hurt_Fall",
+  "category": "Hurt",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Hurt_Flinch",
+  "category": "Hurt",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Hurt_Stagger",
+  "category": "Hurt",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Idle_Alert",
+  "category": "Idle",
+  "rating": "ok",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Idle_LookAround",
+  "category": "Idle",
+  "rating": "usable",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Idle_Relaxed",
+  "category": "Idle",
+  "rating": "ok",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Idle_Tired",
+  "category": "Idle",
+  "rating": "ok",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Jump_Forward",
+  "category": "Jump",
+  "rating": "weak",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Jump_InPlace",
+  "category": "Jump",
+  "rating": "usable",
+  "loop": false,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Jump_Long",
+  "category": "Jump",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Object_Carry",
+  "category": "Object",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Object_PickUp",
+  "category": "Object",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Object_Push",
+  "category": "Object",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Run_Fast",
+  "category": "Run",
+  "rating": "ok",
+  "loop": true,
+  "in_place": false,
+  "speed": 5.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Run_Forward",
+  "category": "Run",
+  "rating": "ok",
+  "loop": true,
+  "in_place": false,
+  "speed": 3.6,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Run_Left",
+  "category": "Run",
+  "rating": "usable",
+  "loop": true,
+  "in_place": false,
+  "speed": 3.6,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Run_Right",
+  "category": "Run",
+  "rating": "ok",
+  "loop": true,
+  "in_place": false,
+  "speed": 3.6,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Sword_Block",
+  "category": "Sword",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Sword_SlashDown",
+  "category": "Sword",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Sword_SlashSide",
+  "category": "Sword",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Sword_Thrust",
+  "category": "Sword",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Turn_Around",
+  "category": "Turn",
+  "rating": "ok",
+  "loop": false,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Turn_Left",
+  "category": "Turn",
+  "rating": "ok",
+  "loop": false,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Turn_Right",
+  "category": "Turn",
+  "rating": "ok",
+  "loop": false,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Walk_Backward",
+  "category": "Walk",
+  "rating": "ok",
+  "loop": true,
+  "in_place": false,
+  "speed": 1.4,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Walk_Confident",
+  "category": "Walk",
+  "rating": "usable",
+  "loop": true,
+  "in_place": false,
+  "speed": 1.4,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Walk_Forward",
+  "category": "Walk",
+  "rating": "usable",
+  "loop": true,
+  "in_place": false,
+  "speed": 1.4,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Walk_Left",
+  "category": "Walk",
+  "rating": "usable",
+  "loop": true,
+  "in_place": false,
+  "speed": 1.4,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Walk_Right",
+  "category": "Walk",
+  "rating": "ok",
+  "loop": true,
+  "in_place": false,
+  "speed": 1.4,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Walk_Slow",
+  "category": "Walk",
+  "rating": "ok",
+  "loop": true,
+  "in_place": false,
+  "speed": 0.9,
+  "hands": "relaxed"
+ }
+]
