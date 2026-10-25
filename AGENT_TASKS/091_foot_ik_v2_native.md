@@ -128,3 +128,16 @@ shell's settings with `owner.get(...)` once per pass and SHARES the shell's Dict
   `PLANET_NO_NATIVE=1` therefore also turns the foot IK off; `FOOT_IK_V2_GDSCRIPT` no longer exists. `foot_ik_v2_sole.gd` and `foot_ik_v2_solver.gd` keep their GDScript maths as fallbacks (the solver check uses them).
 - Suite after the deletion: SAME PASS/FAIL set and numerically identical rows to the previous core run. Frame time 0.46-0.50 ms (machine noise; the shell's `owner.get` of 30 settings per pass is the small remainder).
 - Next: 037 stage 1 (plant once) in `foot_ik_core_native.cpp`.
+
+## 037 stage 1 attempt on the native code (2026-10-25): measured, NOT adopted
+
+Fuzz metric script `/e/Temp/tx/fuzz_score.py` (sums the idle-check lines of a `scripts/fuzz_foot_ik_v2.sh 12 7` log). Baseline (GDScript = native): 4 ok / 8 fail, tip clip frames 2, float frames 2, 7 pop faults, max foot step 0.209 m.
+- The existing `foot_lock` (hold a resting foot's world xz, the nearest thing to "plant once") switched on in the native pass (temporary env switch, removed again): `dz=0` stairs turn: the clip is gone (0 frames) but a float of 0.046 (limit 0.040) and a
+  "foot moved 0.227 m" fault appear. That fault is partly the CHECK'S artefact: the lab measures the IK correction as final foot minus `debug_animated_ankle`, and with the lock the latter is the held anchor, which jumps 0.21 m at a re-plant while the foot itself
+  walks there at 2.5 cm/frame. The fuzz with the lock: 0 ok / 12 fail, clip frames 5, float frames 8, 10 pop faults, max step 0.311: clearly worse (same verdict as the old notes).
+- What the dz=0 failure really is (traced frame by frame, left foot, frames 284-297, yaw 127-129 deg): at a turn step the foot is `stretched` and hovers 0.17-0.19 m above its tread for ~10 frames (the resting reach needs a 0.2 m pelvis drop and the
+  pelvis only sinks at `pelvis_attack_speed` 1.5 m/s = 2.5 cm/frame: 0.079 -> 0.179), the toe clearance adds 0.07 m for 6 frames and then drops to 0 in one frame, and while the foot comes down the heel passes through the tread edge (heel clearance
+  -0.049 at frame 294). So the two float/clip frames are the end of a ~10 frame reach transient after a tread flip under the animated foot, not a single-frame bug. A real fix is the 037 stage 3 idea (solve the pelvis once from the final foot targets, no rate-limited
+  chase) together with stage 1 (decide the tread once); neither is a quick patch, and each trial costs a 1-4 minute headless run.
+- Not started: stages 1-4 of 037. Since the port is done and verified, they can now be done in `foot_ik_core_native.cpp` only (no second implementation to keep in sync). Suggested order: (a) pelvis solved from the planned targets in one step with the
+  attack rate only applied while MOVING; check dz=0 and the fuzz; (b) plant-once footprint sampling; (c) inertialization.
