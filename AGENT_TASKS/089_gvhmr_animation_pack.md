@@ -80,3 +80,7 @@ Process a clip: `python tools/gvhmr/run_clip.py E:/repo/gvhmr_work/videos/anim_<
 - Jump_Forward: weak - barely leaves the floor (head 1.59-1.79); usable as a hop at best; regenerate.
 - Jump_Long: ok - visible airborne frames, 1.9 m travel, head 1.27-1.73.
 - Batch status: 20/38 videos done, 0 failed; 25 clips processed.
+- Crouch_Exit: ok - deep squat (head 0.73 m) rising to standing, smooth.
+- Turn_Around: ok - half turn in place, calm (travel removed by --inplace). Turn_Left / Turn_Right: ok - quarter turn pivots, calm (head height constant 1.55). NOTE these are not exact 90/180 deg: check the yaw change of the pelvis per clip before using them as turn-in-place animations (TODO: measure yaw in run_clip metrics and rescale/trim to the nominal angle).
+- Climb_Ledge: FAILED - no climb visible: the person stands and leans/bends with the arms down (head 1.13-1.56, 18% limb-accel spikes = jittery); the video model did not render the wall climb. Needs another approach (start+end image mode, or a prop-free 'pull-up' phrasing, or Kimodo text-to-motion for climbing).
+- Batch status: 24/38 done, 0 failed; 30 clips processed.
