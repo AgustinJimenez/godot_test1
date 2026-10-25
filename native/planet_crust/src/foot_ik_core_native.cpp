@@ -281,11 +281,17 @@ void FootIKV2CoreNative::update_pelvis_drop() {
 	needed = std::max(needed - body_lag, 0.0);
 	stretch_hold = moving ? 0.0 : stretch_hold;
 	bool stretched = false;
-	for (const Leg &leg : legs) {
+	for (size_t li = 0; li < legs.size(); li++) {
+		const Leg &leg = legs[li];
 		const Dictionary solved = debug_solve.get(leg.side, Dictionary());
-		if (!moving && String(debug_state.get(leg.side, "")) == "stretched" && !(bool)debug_stepping.get(leg.side, false)) {
-			stretched = true;
-			stretch_hold = std::max(stretch_hold, pelvis_drop + (double)solved.get("residual", 0.0));
+		const bool stepping_leg = (bool)debug_stepping.get(leg.side, false);
+		if (!moving && String(debug_state.get(leg.side, "")) == "stretched") {
+			stretched = !stepping_leg || stretched;
+			double candidate = pelvis_drop + (double)solved.get("residual", 0.0);
+			if (stepping_leg) { // the stepper lags the foot behind its target, so its residual is not the reach: use how far the FINAL target (after the resample and toe clearance) is past the leg
+				candidate = pelvis_drop + final_shortfall[li];
+			}
+			stretch_hold = std::max(stretch_hold, candidate);
 		}
 	}
 	Array leg_solves;
@@ -566,6 +572,7 @@ void FootIKV2CoreNative::place_foot(int p_leg) {
 	solved["clamped"] = clamped;
 	debug_state[side] = miss <= 0.02 ? "at_target" : "stretched";
 	debug_ground_normal[side] = normal;
+	final_shortfall[p_leg] = std::max(0.0, (double)hip_local.distance_to(final_target) - reach);
 }
 
 void FootIKV2CoreNative::limit_step(int p_leg) {

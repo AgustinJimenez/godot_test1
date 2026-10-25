@@ -76,6 +76,7 @@ private:
 
 	// the state of the pass
 	int frame_cache = -1;
+	double final_shortfall[2] = { 0.0, 0.0 };
 	bool dicts_ready = false;
 	int hips_bone = -1;
 	Transform3D hips_base;

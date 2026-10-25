@@ -153,3 +153,12 @@ A resting foot took the HIGHEST walkable tread among 4 extra rays (+-10 cm along
 `--stairs-turn=0`: identical numbers to the baseline (clip 0.049, float 0.068, step 0.060), so the target tread is not what differs: the hover/clip comes from the reach/pelvis/toe-clearance path,
 not from which tread is sampled. Both cheap theories (pelvis rate, tread choice) are now ruled out. Next, only if wanted: trace frames 284-297 for `debug_reach_check` + `debug_toe_lift`
 and make the pelvis drop use the post-clearance target (a real 037 stage 3 change, not a patch). No code change committed.
+
+## 037 pelvis follows the FINAL target while a foot steps (2026-10-25, later): dz=0 stairs turn FIXED
+Trace of the dz=0 failure (frames 284-297): at yaw ~128 the stance shift decays to 0, the resample then finds the LOWER tread under the foot (target y 0.397 -> 0.235), the foot is `stretched`
+(miss 0.27 m) AND `stepping`; the stretch hold ignored stepping feet (`!stepping`), so the pelvis stayed at 0.079 until the stepper finished (~9 frames), hence the hover and the heel clip.
+Plan_stance could not see it either (it samples the animated ankle, not the resampled tread). Ignoring the stepping flag outright made the hold run away (residual includes the stepper lag
+and grows with the pelvis: pelvis 0.4 m, passing the check by crouching - rejected). Fix: `place_foot` records `final_shortfall[leg]` = how far the final target (after resample and toe clearance)
+is past the leg's reach; for a stretched, STEPPING foot the hold uses `pelvis_drop + final_shortfall` instead of the residual (it shrinks as the pelvis sinks, so no runaway).
+Result: dz=0 PASS (clip 0.000, float 0.021, pelvis settles at 0.223 vs 0.234); the suite differs from the baseline only by that line (+ vibration reversals +-1); fuzz 4 ok / 8 fail as before,
+clip frames 2 -> 0, float frames 2 -> 1, pop faults 7 -> 8 (one more, not chased), max step 0.209 unchanged.
