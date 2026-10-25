@@ -122,7 +122,7 @@ void fragment() {
 	colour = mix(colour, plate_colour * (0.75 + 0.5 * h), palette_mix);
 	// flat-lit rock plates: the colour stays near the photograph's (the height only tints a little), a grain and soft mottling,
 	// and only the cracks are dark
-	vec3 base = ramp[5] * vec3(1.14, 1.08, 1.0);
+	vec3 base = ramp[5] * vec3(1.14, 1.0, 0.94);
 	float g_a = vnoise(at, 2.4, seed + 141.0) - 0.5;
 	float g_b = vnoise(at, 5.0, seed + 141.0 + 7.0) - 0.5;
 	float g_c = vnoise(at, 9.0, seed + 141.0 + 13.0) - 0.5;
@@ -147,6 +147,28 @@ void fragment() {
 	float pit_b = smoothstep(0.7, 0.84, vnoise(warped + vec2(5.0, 9.0), 0.4, seed + 181.0)) * smoothstep(0.3, 0.6, vnoise(at, 4.0, seed + 183.0));
 	float rough = (vnoise(at, 0.9, seed + 185.0) - 0.5) * 0.22 + (vnoise(at, 0.45, seed + 187.0) - 0.5) * 0.22; // (the plates' rough tops)
 	colour *= 1.0 + rough * flat_rock;
+	// round weathering pits 0.6-1.6 cm (a jittered grid, tileable): dark inside, a slightly lit lip
+	float pit_n = max(floor(tile_cm / 3.0), 1.0);
+	vec2 pit_u = (warped + 0.9 * vec2(vnoise(at, 1.1, seed + 209.0) - 0.5, vnoise(at, 1.3, seed + 211.0) - 0.5)) / tile_cm * pit_n; // (warped: ragged outlines, not circles)
+	vec2 pit_i = floor(pit_u);
+	float pit_hole = 0.0;
+	float pit_lip = 0.0;
+	for (int oy = -1; oy <= 1; oy++) {
+		for (int ox = -1; ox <= 1; ox++) {
+			float cx = pit_i.x + float(ox);
+			float cy = pit_i.y + float(oy);
+			if (hashw(cx, cy, seed + 201.0, vec2(pit_n)) < 0.13) {
+				vec2 k = vec2(cx + 0.2 + 0.6 * hashw(cx, cy, seed + 203.0, vec2(pit_n)), cy + 0.2 + 0.6 * hashw(cx, cy, seed + 205.0, vec2(pit_n)));
+				float r = 0.12 + 0.3 * hashw(cx, cy, seed + 207.0, vec2(pit_n));
+				float d = length(pit_u - k);
+				pit_hole = max(pit_hole, 1.0 - smoothstep(r * 0.7, r, d));
+				pit_lip = max(pit_lip, smoothstep(r, r * 1.15, d) * (1.0 - smoothstep(r * 1.15, r * 1.5, d)));
+			}
+		}
+	}
+	colour = mix(colour, colour * 0.5, 0.6 * pit_hole * flat_rock);
+	colour *= 1.0 + 0.14 * pit_lip * flat_rock;
+	h -= 0.12 * pit_hole * flat_rock;
 	colour = mix(colour, colour * 0.5, 0.55 * pit * flat_rock);
 	colour = mix(colour, colour * 0.55, 0.5 * pit_b * flat_rock);
 	colour = mix(colour, vec3(0.62, 0.6, 0.6), 0.5 * grey * flat_rock);

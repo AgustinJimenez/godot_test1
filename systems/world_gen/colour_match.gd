@@ -6,6 +6,7 @@ extends RefCounted
 
 const SHADER := preload("res://shaders/world/colour_match.gdshader")
 const FITS := {
+	"plate_rock_pitted_mossy": {"mean": Vector3(0.7587, 0.5884, 0.4638), "gain": Vector3(1.0089, 1.0399, 0.9980), "low": 0.983, "detail": 0.976, "sat": 0.862},
 	"pine_bark": {"mean": Vector3(0.4295, 0.3099, 0.2535), "gain": Vector3(0.9361, 1.0498, 0.9940), "low": 0.304, "detail": 0.400, "sat": 0.500},
 	"red_soil": {"mean": Vector3(0.5821, 0.4750, 0.4015), "gain": Vector3(0.9808, 0.9914, 0.9642), "low": 1.098, "detail": 1.046, "sat": 0.772},
 	"gravel_soil": {"mean": Vector3(0.2201, 0.1982, 0.2195), "gain": Vector3(1.7720, 1.7838, 1.4103), "low": 1.600, "detail": 1.600, "sat": 2.000},
@@ -18,7 +19,6 @@ const FITS := {
 	"rock_face_04": {"mean": Vector3(0.3072, 0.2554, 0.1968), "gain": Vector3(1.0793, 1.0941, 1.1247), "low": 1.066, "detail": 1.206, "sat": 1.131},
 	"rock_08": {"mean": Vector3(0.4928, 0.4241, 0.3323), "gain": Vector3(1.1299, 1.1510, 1.1927), "low": 0.515, "detail": 0.949, "sat": 1.152},
 	"rock_06": {"mean": Vector3(0.5235, 0.4121, 0.3035), "gain": Vector3(0.9418, 0.9248, 0.9008), "low": 0.707, "detail": 1.162, "sat": 0.932},
-	"plate_rock_pitted_mossy": {"mean": Vector3(0.7767, 0.6224, 0.4746), "gain": Vector3(0.9854, 0.9831, 0.9752), "low": 0.948, "detail": 0.987, "sat": 0.929},
 	"oak_wood_planks": {"mean": Vector3(0.6263, 0.4507, 0.3183), "gain": Vector3(1.0152, 1.0223, 1.0291), "low": 0.714, "detail": 0.658, "sat": 1.019},
 }
 ## off while the fits are measured (square_compare --no-match)

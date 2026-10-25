@@ -455,3 +455,6 @@ Round 30 (2026-10-25): gravel and red soil.
   `godot --headless --editor --quit`.
 - Pine: palette override in `BarkBaker` (orange, mauve-grey, olive-brown; the fitted palette was a near-monochrome brown): orange plates on grey-green now, as the photograph. Still different:
   plates are narrower and more regular than the photograph; pitted rock (cracks too long and smooth, no pits), palm/wood detail, game atlas 1024 / seed 1.
+- Pitted rock (round 30, loop step): `plate_bake.gdshader` got ragged weathering pits (jittered tileable grid, warped, 13 % of cells,
+  0.7-2.5 cm, dark inside, lit lip, also dips the height) and a pinker base tint; colour fit redone. First try (30 % of cells, round,
+  dark 0.85) read as polka dots: keep them few, ragged and shallow. Next: palm, wood, visual_check, game atlas.
