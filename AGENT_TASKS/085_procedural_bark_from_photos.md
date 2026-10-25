@@ -453,5 +453,5 @@ Round 30 (2026-10-25): gravel and red soil.
 - `tools/bark/colour_match.py` keeps the fits of surfaces with no raw bake in the folder: refit one surface with
   `square_compare --surface=N --no-match --save-bake=<dir>/allbake_N.png`, then `colour_match.py <dir>`, then
   `godot --headless --editor --quit`.
-- Still different: pine (photo has orange plates on grey-green grooves, ours is uniformly brown: needs hue contrast in the palette, not
-  luminance), pitted rock (cracks too long and smooth, no pits), palm/wood detail, game atlas 1024 / seed 1.
+- Pine: palette override in `BarkBaker` (orange, mauve-grey, olive-brown; the fitted palette was a near-monochrome brown): orange plates on grey-green now, as the photograph. Still different:
+  plates are narrower and more regular than the photograph; pitted rock (cracks too long and smooth, no pits), palm/wood detail, game atlas 1024 / seed 1.

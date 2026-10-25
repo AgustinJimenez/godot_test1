@@ -36,6 +36,9 @@ const DESATURATE := {"tree_bark_03": 0.32, "japanese_cedar_bark": 0.25, "pine_ba
 ## moss on the barks whose photograph carries it (0..1 of the bark)
 const MOSS := {"tree_bark_03": 0.55}
 const PALETTE_MIX := {"pine_bark": 1.0, "forest_leaves_03": 0.9}
+## the photograph's real flake colours where the fitted palette came out a near-monochrome brown (pine: orange, mauve-grey, olive-brown)
+const PALETTE_OVERRIDE := {"pine_bark": [Color(0.74, 0.28, 0.1), Color(0.5, 0.4, 0.37), Color(0.28, 0.23, 0.14)]}
+const PALETTE_SHARES_OVERRIDE := {"pine_bark": [0.3, 0.4, 0.3]}
 
 
 ## The tile of one fitted bark (`name` is a key of BarkFits.FITS) as an Image (RGBA8).
@@ -60,9 +63,9 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 	material.set_shader_parameter(&"seed", seed_value)
 	if fit.has("palette"):
 		var palette := PackedVector3Array()
-		for colour: Color in fit["palette"]:
+		for colour: Color in PALETTE_OVERRIDE.get(name, fit["palette"]):
 			palette.append(Vector3(colour.r, colour.g, colour.b))
-		var shares: Array = fit["palette_shares"]
+		var shares: Array = PALETTE_SHARES_OVERRIDE.get(name, fit["palette_shares"])
 		material.set_shader_parameter(&"palette", palette)
 		material.set_shader_parameter(&"palette_shares", Vector3(shares[0], shares[1], shares[2]))
 		material.set_shader_parameter(&"palette_mix", float(PALETTE_MIX.get(name, 0.0)))
