@@ -89,3 +89,5 @@ Process a clip: `python tools/gvhmr/run_clip.py E:/repo/gvhmr_work/videos/anim_<
 - Crawl_Low: usable/doubtful - low posture but the body floats above its shadow in the last frames (GVHMR height drift for a low body: head 0.81-1.66, travel 2.5 m); regenerate or ground per frame.
 - Sword_SlashDown: ok - the sword goes up for the overhead wind-up and the fist grip holds it; limb accel calm (2.0); check the downward strike in the full clip later.
 - Batch status: 29/38 done, 0 failed; 34 clips processed.
+- Sword_Block: ok - arm raised with the weapon held up high and lowered again, calm (accel 1.1). Sword_SlashSide: usable - the weapon sweeps over the head at several angles (reads more like overhead swings than a flat horizontal slash). Sword_Thrust: ok - the weapon is held out level forward/side at shoulder height, small travel (0.66 m). All three use the fist preset. Body stays upright and calm (accel 1-3, no spikes).
+- Batch status: 32/38 done, 0 failed; 37 clips processed. Remaining: Hurt_* (3), Object_* (3).
