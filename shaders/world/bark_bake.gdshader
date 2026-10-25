@@ -32,7 +32,18 @@ float fract1(float x) {
 	return x - floor(x);
 }
 
+uniform bool int_hash = false; // true: the integer hash tools/bark/torch_bark.py uses (parity tests); false: the sin hash the shipped barks were drawn with
+
 float hash2(float ix, float iy, float s) {
+	if (int_hash) {
+		uint x = uint(int(floor(ix + 0.5))) * 0x9E3779B1u ^ uint(int(floor(iy + 0.5))) * 0x85EBCA77u ^ uint(int(floor(s * 64.0 + 0.5))) * 0xC2B2AE3Du;
+		x ^= x >> 16u;
+		x *= 0x7feb352du;
+		x ^= x >> 15u;
+		x *= 0x846ca68bu;
+		x ^= x >> 16u;
+		return float(x >> 8u) / 16777216.0;
+	}
 	return fract1(sin(ix * 127.1 + iy * 311.7 + s * 74.7) * 43758.5453);
 }
 

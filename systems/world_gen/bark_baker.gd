@@ -61,6 +61,7 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 		colours.append(Vector3(colour.r, colour.g, colour.b))
 	material.set_shader_parameter(&"ramp", colours)
 	material.set_shader_parameter(&"seed", seed_value)
+	material.set_shader_parameter(&"int_hash", OS.has_environment("PLANET_BARK_INT_HASH")) # (parity tests with tools/bark/torch_bark.py)
 	if fit.has("palette"):
 		var palette := PackedVector3Array()
 		for colour: Color in PALETTE_OVERRIDE.get(name, fit["palette"]):

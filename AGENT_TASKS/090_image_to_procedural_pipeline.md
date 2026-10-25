@@ -191,3 +191,17 @@ Method (the loop, run by hand with me as the vision judge; every round = a fit o
   hand-written `torch_courses.py` reuses `torch_plates.py`'s hash and noise, so a new family is mostly its own 40-60 lines. (2) the judging
   step does not automate: the loss went 43 -> 3 -> 2.8 while the picture went from "wrong" to "a wall", and the loss gave no hint of "wall".
   A vision-model comparison of the two pictures with a short list of differences is the missing automatic judge (not built).
+
+## Step 7 part 1 (2026-10-25): the flake bark in torch, parity-tested (`tools/bark/torch_bark.py`)
+
+- `torch_bark.py`: `flakes()`, `cuts()`, `fibres()`, `bark()` and the stored height of `bark_bake.gdshader`, line by line. The shader got a uniform
+  `int_hash` (default false: the shipped barks keep their sin hash, so nothing in the game changes; `BarkBaker` sets it from the environment variable
+  `PLANET_BARK_INT_HASH` for parity tests). A fit made with the integer hash gives the same statistics in the game; only the random layout differs.
+- Parity (`torch_bark_parity.py <bark> <square index> <height spread>`, 1024 px alpha vs the Godot bake with PLANET_BARK_INT_HASH=1): ash, cedar,
+  pine, oak (willow), maple all mean abs diff 0.001, max 0.002-0.008, correlation 0.9999+.
+- The one trap: the shader counts whole cells with `floor(tile / scale + 0.5)`, and for pine's groove noise `200 / 133.33 + 0.5` lands exactly on 2.0.
+  The GPU divides as `x * (1 / y)` with float32 rounding at each step (and `groove_cm` itself comes from such a division), which put it just below 2
+  (floor 1), float64 or a plain float32 division gave 2: 13 % of pine's pixels differed along vertical bands (the grooves' per-lane noise). Emulating the
+  GPU division (`gdiv`) in the cell counts fixed all five. Same hazard exists in any shader that rounds `tile / scale`: parity-test each one.
+- Next (part 2): the gradient fit of the flake bark. The flake mask (`|u| < half`, `|v| < 1`) is a hard test that blocks gradients to the shape numbers;
+  `render_height(soft=k)` replaces it with a steep sigmoid for the fit (check the result with the hard mask). Not written yet.
