@@ -73,15 +73,16 @@ void fragment() {
 	tone *= 1.0 + 0.22 * fine + 0.18 * fine2 + 0.2 * streak + 0.22 * mottle;
 	// round white drops: a jittered grid of small discs (0.9 cm cells), more of them on some rings, slightly stretched along the trunk
 	float drops = 0.0;
-	vec2 cell_size = vec2(0.9, 1.3);
+	vec2 drop_n = max(floor(vec2(tile_cm) / vec2(0.9, 1.3) + 0.5), vec2(1.0));
+	vec2 cell_size = vec2(tile_cm) / drop_n; // (a whole number of cells per tile, hashes wrapping: the tile repeats)
 	vec2 gc = floor(at / cell_size);
 	float density = smoothstep(0.2, 0.7, vnoise(at, 10.0, 24.0, seed + 41.0));
 	for (int oy = -1; oy <= 1; oy++) {
 		for (int ox = -1; ox <= 1; ox++) {
 			vec2 cell = gc + vec2(float(ox), float(oy));
-			if (hash2(cell.x, cell.y, seed + 131.0) < 0.05 + 0.75 * density * density) {
-				vec2 centre = (cell + vec2(hash2(cell.x, cell.y, seed + 133.0), hash2(cell.x, cell.y, seed + 135.0))) * cell_size;
-				float radius = 0.1 + 0.3 * hash2(cell.x, cell.y, seed + 137.0);
+			if (hashw(cell.x, cell.y, seed + 131.0, drop_n) < 0.05 + 0.75 * density * density) {
+				vec2 centre = (cell + vec2(hashw(cell.x, cell.y, seed + 133.0, drop_n), hashw(cell.x, cell.y, seed + 135.0, drop_n))) * cell_size;
+				float radius = 0.1 + 0.3 * hashw(cell.x, cell.y, seed + 137.0, drop_n);
 				vec2 d = (at - centre) / vec2(1.0, 1.4);
 				drops = max(drops, 1.0 - smoothstep(radius * 0.7, radius, length(d)));
 			}
