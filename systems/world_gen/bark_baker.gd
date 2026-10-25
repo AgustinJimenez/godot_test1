@@ -8,11 +8,11 @@ const SIZE := 1024
 ## how much each flake takes its own colour from the photograph's palette (only barks whose
 ## colour is not a function of the height: the pine's orange scales on grey)
 ## deeper fissures for the craggy barks (cavity shading and gap darkness, 0..1)
-const DEPTH_BOOST := {"pine_bark": 1.0, "tree_bark_03": 0.5}
+const DEPTH_BOOST := {"pine_bark": 0.4, "tree_bark_03": 0.5}
 ## how much more the baked height is spread than the photograph's (a deeper parallax and masks)
 const HEIGHT_SPREAD := {"pine_bark": 2.2, "japanese_cedar_bark": 1.6}
 ## the dark groove network round every raised flake (0..1)
-const EDGE_DARK := {"pine_bark": 1.0, "tree_bark_03": 0.4}
+const EDGE_DARK := {"pine_bark": 0.8, "tree_bark_03": 0.4}
 ## a whole-bark darkening where the albedo lift of the colour model comes out too light
 const BRIGHTNESS := {"forest_leaves_03": 0.72, "pine_bark": 0.92, "tree_bark_03": 1.3,
 	"trident_maple_bark": 0.52, "japanese_cedar_bark": 0.62, "bark_willow_02": 0.92}
@@ -22,7 +22,7 @@ const GROOVED_EDGE := {
 const GROOVED_BRIGHTNESS := {
 	"bark_willow_02": 1.0, "trident_maple_bark": 0.8, "japanese_cedar_bark": 0.85}
 ## less contrast where the bake is far more contrasty than the photograph (0..1)
-const FLATTEN := {"pine_bark": 0.3, "tree_bark_03": 0.8, "japanese_cedar_bark": 0.45,
+const FLATTEN := {"pine_bark": 0.0, "tree_bark_03": 0.8, "japanese_cedar_bark": 0.45,
 	"trident_maple_bark": 0.3, "bark_willow_02": 0.4}
 const GROOVED_FLATTEN := {
 	"bark_willow_02": 0.3, "trident_maple_bark": 0.0, "japanese_cedar_bark": 0.4}
@@ -35,7 +35,7 @@ const FINE_MOTTLE := {
 const DESATURATE := {"tree_bark_03": 0.32, "japanese_cedar_bark": 0.25, "pine_bark": -0.45}
 ## moss on the barks whose photograph carries it (0..1 of the bark)
 const MOSS := {"tree_bark_03": 0.55}
-const PALETTE_MIX := {"pine_bark": 0.95, "forest_leaves_03": 0.9}
+const PALETTE_MIX := {"pine_bark": 1.0, "forest_leaves_03": 0.9}
 
 
 ## The tile of one fitted bark (`name` is a key of BarkFits.FITS) as an Image (RGBA8).
