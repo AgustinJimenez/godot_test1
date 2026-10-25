@@ -122,11 +122,21 @@ void fragment() {
 	colour = mix(colour, plate_colour * (0.75 + 0.5 * h), palette_mix);
 	// flat-lit rock plates: the colour stays near the photograph's (the height only tints a little), a grain and soft mottling,
 	// and only the cracks are dark
-	vec3 base = ramp[5] * vec3(1.18, 1.0, 0.9);
+	vec3 base = ramp[5] * vec3(1.14, 1.08, 1.0);
 	float g_a = vnoise(at, 2.4, seed + 141.0) - 0.5;
 	float g_b = vnoise(at, 5.0, seed + 141.0 + 7.0) - 0.5;
 	float g_c = vnoise(at, 9.0, seed + 141.0 + 13.0) - 0.5;
-	colour = mix(colour, base * (1.0 + 0.12 * g_a + 0.26 * g_b + 0.3 * g_c), flat_rock);
+	// each plate has its own tone (pinker, browner, paler) and the rock is patched with grey: the photograph's colour
+	// moves in hue as well as in brightness
+	float dice2 = fract(dice * 7.31 + 0.17);
+	vec3 tint = vec3(1.0 + 0.10 * (dice2 - 0.5), 1.0 + 0.05 * (dice - 0.5), 1.0 - 0.18 * (dice2 - 0.5) + 0.06 * (dice - 0.5));
+	tint *= 0.92 + 0.16 * dice;
+	colour = mix(colour, base * tint * (1.0 + 0.12 * g_a + 0.2 * g_b + 0.16 * g_c), flat_rock);
+	float patch_a = smoothstep(0.56, 0.8, vnoise(at + vec2(31.0, 7.0), 2.6, seed + 171.0));
+	float patch_b = smoothstep(0.6, 0.85, vnoise(at + vec2(3.0, 41.0), 6.0, seed + 173.0));
+	float luma = dot(colour, vec3(0.3, 0.59, 0.11));
+	colour = mix(colour, vec3(luma) * vec3(1.0, 0.95, 0.9) * 0.95, flat_rock * (0.5 * patch_a + 0.25 * patch_b));
+	colour = mix(colour, colour * vec3(0.8, 0.66, 0.5), flat_rock * 0.18 * smoothstep(0.62, 0.85, vnoise(at, 4.0, seed + 175.0))); // (rust stains)
 	// crisp small detail that survives zoom (warped noise: no grid alignment) on the flat-lit rock: dark pits and mineral grains,
 	// grey and pale lichen flecks, and a per-pixel grain
 	vec2 warped = at + 0.5 * vec2(vnoise(at, 1.6, seed + 151.0) - 0.5, vnoise(at, 1.8, seed + 153.0) - 0.5) * 2.0;
@@ -134,10 +144,16 @@ void fragment() {
 	float grey = smoothstep(0.7, 0.76, vnoise(warped, 1.0, seed + 159.0)) * smoothstep(0.45, 0.7, vnoise(at, 6.0, seed + 161.0));
 	float yellow = smoothstep(0.84, 0.88, vnoise(warped, 0.5, seed + 163.0));
 	float pixel_grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
-	colour = mix(colour, colour * 0.45, 0.7 * pit * flat_rock);
+	float pit_b = smoothstep(0.7, 0.84, vnoise(warped + vec2(5.0, 9.0), 0.4, seed + 181.0)) * smoothstep(0.3, 0.6, vnoise(at, 4.0, seed + 183.0));
+	float rough = (vnoise(at, 0.9, seed + 185.0) - 0.5) * 0.22 + (vnoise(at, 0.45, seed + 187.0) - 0.5) * 0.22; // (the plates' rough tops)
+	colour *= 1.0 + rough * flat_rock;
+	colour = mix(colour, colour * 0.5, 0.55 * pit * flat_rock);
+	colour = mix(colour, colour * 0.55, 0.5 * pit_b * flat_rock);
 	colour = mix(colour, vec3(0.62, 0.6, 0.6), 0.5 * grey * flat_rock);
 	colour = mix(colour, vec3(0.78, 0.78, 0.4), 0.55 * yellow * flat_rock);
 	colour *= 1.0 + 0.16 * pixel_grain * flat_rock;
-	colour *= 1.0 - mix(0.7, 0.5, flat_rock) * rim; // the shadow where one plate meets the next
+	// the shadow where one plate meets the next: it fades in and out along the crack, wider in places
+	float crack_fade = mix(1.0, 0.25 + 0.75 * smoothstep(0.25, 0.65, vnoise(at + vec2(17.0, 3.0), 7.0, seed + 191.0)), flat_rock);
+	colour *= 1.0 - mix(0.7, 0.5, flat_rock) * rim * crack_fade;
 	COLOR = vec4(clamp(colour, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 2.0, 0.0, 1.0)); // (a deeper relief than the fitted height)
 }
