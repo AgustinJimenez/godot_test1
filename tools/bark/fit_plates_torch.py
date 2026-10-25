@@ -28,7 +28,7 @@ SIZE = 512
 NU_CHOICES = [int(x) for x in os.environ.get("NU", "3,4").split(",")]  # cells per tile to try (cap them from measure_scale.py: a free choice picks big plates)
 FREE = ["jit", "warp_amp", "crack_w", "crack_depth", "lip", "z_var", "tilt", "fine_amp", "rag_amp"]
 KEYS = pg.KEYS  # cell_cm stretch jit warp_cm warp_amp crack_w crack_depth lip z_var tilt fine_cm fine_amp rag_cm rag_amp
-LOW = {"jit": 0.3, "warp_amp": 0.0, "crack_w": 0.05, "crack_depth": 0.5, "lip": 0.02, "z_var": 0.0, "tilt": 0.0, "fine_amp": 0.0, "rag_amp": 0.0}
+LOW = {"jit": 0.3, "warp_amp": 0.0, "crack_w": 0.05, "crack_depth": float(os.environ.get("CRACK_MIN", "0.5")), "lip": 0.02, "z_var": 0.0, "tilt": 0.0, "fine_amp": 0.0, "rag_amp": 0.0}
 HIGH = {"jit": 1.0, "warp_amp": 0.6, "crack_w": 0.2, "crack_depth": 0.9, "lip": 0.5, "z_var": float(os.environ.get("ZVAR_MAX", "0.3")), "tilt": 0.8, "fine_amp": 0.15, "rag_amp": 0.2}
 
 
@@ -37,6 +37,22 @@ def stretch01(picture):
     flat = picture.flatten()
     q = torch.quantile(flat[::7], torch.tensor([0.01, 0.99], device=picture.device))
     return torch.clamp((picture - q[0]) / (q[1] - q[0] + 1e-6), 0.0, 1.0)
+
+
+def edge_stats(picture):
+    """Percentiles (50, 90, 99) of the local slope of the contrast-stretched height: the few thin cracks (steep) that the style loss
+    underweights show up in the 99th percentile. (N, 1, H, W) -> (N, 3)."""
+    kx = torch.tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]], device=picture.device).view(1, 1, 3, 3) / 8.0
+    gx = torch.nn.functional.conv2d(picture, kx, padding=1)
+    gy = torch.nn.functional.conv2d(picture, kx.transpose(2, 3), padding=1)
+    slope = torch.sqrt(gx * gx + gy * gy + 1e-10).flatten(1)[:, ::5]
+    return torch.quantile(slope, torch.tensor([0.5, 0.9, 0.99], device=picture.device), dim=1).t()
+
+
+def low_stats(picture):
+    """How much the tone differs from block to block: the spread of the 32 px block means (the style loss lets plates step in tone). (N, 1, H, W) -> (N, 2)."""
+    blocks = torch.nn.functional.avg_pool2d(picture, 32).flatten(1)
+    return torch.stack([blocks.std(dim=1), blocks.max(dim=1).values - blocks.min(dim=1).values], dim=1)
 
 
 def main():
@@ -56,6 +72,10 @@ def main():
     dirs = bp.sw_directions(target_sets)
     target_sw = bp.sw_quantiles(target_sets, dirs)
     sw_weight = float(os.environ.get("SW_WEIGHT", "0.5"))
+    edge_weight = float(os.environ.get("EDGE_WEIGHT", "0"))  # the thin-crack statistics (edge_stats)
+    target_edges = edge_stats(target)
+    low_weight = float(os.environ.get("LOW_WEIGHT", "0"))
+    target_low = low_stats(target)
 
     def loss_of(values, nu, stretch, seeds=(1.0, 2.0)):
         p = [base[k] for k in KEYS]
@@ -74,6 +94,10 @@ def main():
         for gen, tar in zip(generated, target_grams):
             total = total + (((gen - tar) ** 2).sum(dim=(1, 2)) / (tar ** 2).sum()).mean()
         total = total + sw_weight * bp.sw_distance(bp.sw_quantiles(bp.feature_sets(net, batch), dirs), target_sw).mean()
+        if edge_weight > 0:
+            total = total + edge_weight * (torch.abs(edge_stats(batch) - target_edges) / (target_edges + 1e-4)).mean()
+        if low_weight > 0:
+            total = total + low_weight * (torch.abs(low_stats(batch) - target_low) / (target_low + 1e-4)).mean()
         return total
 
     def to_values(logits):

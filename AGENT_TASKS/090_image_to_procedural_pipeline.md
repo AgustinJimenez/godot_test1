@@ -155,3 +155,8 @@ Observations for the next steps:
   cushion blocks with thin dark cracks and pits, the best so far; on the flat square the cracks are fainter than in the photograph.
 - Decision: keep the gradient route for the other plate-like surfaces only after a parity-tested torch port of their shader; the next
   candidates by value are the bark flakes (7 surfaces) and chips (gravel). Step 7.
+- Tried (same day): a thin-crack term (`EDGE_WEIGHT`: percentiles 50/90/99 of the local slope) and a block-tone term (`LOW_WEIGHT`: spread of 32 px
+  block means) in `fit_plates_torch.py`, both OFF by default (the adopted fit was made without them). With EDGE_WEIGHT=1 alone and the
+  bounds off, crack_depth stayed at 0.47 (cracks kept) but z_var went back to its upper bound 0.575 (hard tone steps); adding LOW_WEIGHT=2 the
+  loss fell to 5.2 and crack_depth went back to 0.22. So these statistics trade against each other and the loss still prefers what the eye
+  rejects: keep the hand bounds (ZVAR_MAX 0.3, CRACK_MIN 0.5) until a better judge exists (e.g. a vision-model comparison of the squares).
