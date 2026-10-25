@@ -55,6 +55,21 @@ def ground_clip(path):
     return floor
 
 
+def ground_low(path, sigma=4.0):
+    """For low bodies (crawls, a fall): GVHMR's height drifts so the body floats over or sinks under the floor. Per frame, the lowest of
+    the ankles, toes, knees, elbows and wrists is put on y = 0 (smoothed over `sigma` frames). Not for jumps: they must leave the floor."""
+    from scipy.ndimage import gaussian_filter1d
+    clip = json.load(open(path))
+    world = joints_world(clip)
+    low = world[:, [7, 8, 10, 11, 4, 5, 18, 19, 20, 21], 1].min(axis=1)
+    shift = gaussian_filter1d(low, sigma, mode="nearest")
+    transl = np.array(clip["transl"])
+    transl[:, 1] -= shift
+    clip["transl"] = np.round(transl, 5).tolist()
+    json.dump(clip, open(path, "w"), separators=(",", ":"))
+    return float(np.abs(shift).mean())
+
+
 def contacts(world, fps):
     """planted[t, side]: low and slow ankle and toe. side 0 = left, 1 = right."""
     ankle = world[:, [7, 8]]

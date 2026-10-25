@@ -29,7 +29,7 @@
  {
   "name": "Crawl_Forward",
   "category": "Crawl",
-  "rating": "usable",
+  "rating": "ok",
   "loop": true,
   "in_place": true,
   "speed": 0.5,
@@ -38,7 +38,7 @@
  {
   "name": "Crawl_Low",
   "category": "Crawl",
-  "rating": "usable",
+  "rating": "ok",
   "loop": true,
   "in_place": true,
   "speed": 0.5,

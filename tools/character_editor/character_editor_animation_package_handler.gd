@@ -7,6 +7,8 @@ const PACKAGE_DIRECTORY := "res://assets/animations/packages"
 const MENU_CREATE := 0
 const MENU_RENAME := 1
 const MENU_DELETE := 2
+## A built-in group: the clips made from generated video (GvhmrPack, assets/animation/gvhmr_pack/catalog.json), retargeted on demand.
+const GVHMR_GROUP := &"GVHMR pack (generated)"
 
 var editor: CharacterEditor
 var packages: Array[CharacterAnimationPackage] = []
@@ -44,6 +46,14 @@ func groups() -> Dictionary:
 			clips.append(clip_name)
 			_clip_display_names[clip_name] = source_path.get_file().get_basename()
 		result[StringName(package.display_name)] = clips
+	var gvhmr_clips: Array[StringName] = []
+	for entry: Dictionary in GvhmrPack.catalog():
+		if entry["rating"] in ["ok", "usable"]:
+			var clip_name := StringName("gvhmr__" + String(entry["name"]).to_snake_case())
+			gvhmr_clips.append(clip_name)
+			_clip_display_names[clip_name] = "%s [%s]" % [entry["name"], entry["rating"]]
+	if not gvhmr_clips.is_empty():
+		result[GVHMR_GROUP] = gvhmr_clips
 	return result
 
 
@@ -78,6 +88,9 @@ func add_source(source_path: String) -> StringName:
 
 
 func ensure_group_loaded(group_name: StringName) -> void:
+	if group_name == GVHMR_GROUP:
+		_ensure_gvhmr_loaded()
+		return
 	var package := _find_by_display_name(String(group_name))
 	if package == null:
 		return
@@ -90,6 +103,23 @@ func ensure_group_loaded(group_name: StringName) -> void:
 		if animation != null:
 			editor._custom_clips[clip_name] = animation
 			changed = true
+	if changed:
+		editor._import_handler.rebuild_custom_clip_library()
+
+
+func _ensure_gvhmr_loaded() -> void:
+	var changed := false
+	for entry: Dictionary in GvhmrPack.catalog():
+		var clip_name := StringName("gvhmr__" + String(entry["name"]).to_snake_case())
+		if not entry["rating"] in ["ok", "usable"] or editor._custom_clips.has(clip_name):
+			continue
+		editor._custom_clips[clip_name] = GvhmrPack.retarget(
+				GvhmrPack.DIR + "json/%s.json" % entry["name"], editor.body.skeleton, editor.body._target_humanoid_map, {
+					"contacts": GvhmrPack.DIR + "json/%s_contacts.json" % entry["name"],
+					"speed": float(entry.get("speed", 0.0)), "inplace": bool(entry.get("in_place", false)),
+					"hands": String(entry.get("hands", "relaxed")), "force_loop": bool(entry.get("loop", false)),
+				})
+		changed = true
 	if changed:
 		editor._import_handler.rebuild_custom_clip_library()
 

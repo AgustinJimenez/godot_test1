@@ -76,7 +76,11 @@ if name.startswith("Turn_"):  # the video rarely turns a clean angle: crop to th
     nominal = {"Turn_Left": -90.0, "Turn_Right": 90.0, "Turn_Around": 180.0}.get(name)
     if nominal:
         turn_note = turn_fix.crop_to(clip_json, nominal)
-floor_shift = foot_report.ground_clip(clip_json)  # (GVHMR's height drifts: put the lowest feet on y = 0)
+floor_shift = foot_report.ground_clip(clip_json)
+low_note = None
+if name.startswith(("Crawl", "Hurt_Fall", "GetUp")):  # low bodies: ground every frame by the lowest limb (not for jumps)
+    low_note = round(foot_report.ground_low(clip_json), 3)
+  # (GVHMR's height drifts: put the lowest feet on y = 0)
 contacts = os.path.join(PACK, "json", name + "_contacts.json")
 foot = subprocess.run([sys.executable, os.path.join(HERE, "foot_report.py"), clip_json, contacts],
                       capture_output=True, text=True).stdout.strip().splitlines()
@@ -92,7 +96,7 @@ spikes = float(np.mean(accel > 60.0))
 height = world[:, 15, 1] - np.percentile(np.minimum(world[:, 10, 1], world[:, 11, 1]), 2)  # head above the lowest toe
 metrics = {"frames": clip["frames"], "seconds": round(clip["frames"] / fps, 2), "root_travel_m": round(travel, 2),
            "head_height_min_m": round(float(height.min()), 2), "head_height_max_m": round(float(height.max()), 2),
-           "limb_accel_median": round(jitter, 1), "limb_accel_spikes": round(spikes, 3), "floor_shift_m": round(floor_shift, 3), "turn_crop": str(turn_note), "loop": str(loop_note), "feet": foot}
+           "limb_accel_median": round(jitter, 1), "limb_accel_spikes": round(spikes, 3), "floor_shift_m": round(floor_shift, 3), "turn_crop": str(turn_note), "loop": str(loop_note), "ground_low_mean_shift_m": low_note, "feet": foot}
 json.dump(metrics, open(os.path.join(PACK, "metrics", name + ".json"), "w"), indent=1)
 
 mapping = {"relaxed": "relaxed", "fist": "fist", "none": ""}
