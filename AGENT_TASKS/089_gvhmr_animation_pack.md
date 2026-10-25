@@ -74,3 +74,9 @@ Process a clip: `python tools/gvhmr/run_clip.py E:/repo/gvhmr_work/videos/anim_<
 - CONTACTS retuned (foot_report.py): speed limit follows the clip (0.2 x 95th percentile of toe speed, 0.2-0.6 m/s), height floor+5 cm: walks now show 14-57% planted frames per foot, idles ~80%, runs 3-14%. The SOURCE (GVHMR) feet already slide 3-10 cm per stance stretch.
 - FOOT LOCK: debug shows the IK holds the ankle within 0-3 cm at most frames, but playback drift per stance stretch only drops ~10% (ankle 3.3/5.8 -> 3.0/5.0 cm, toe 13-15 cm unchanged because the foot keeps the source's pitch). DECISION: accept ~3-6 cm ankle slide per step; the lock stays on whenever contacts are passed (it does no harm), not worth more time now.
 - SPEED NORMALISATION now scales the SOURCE pelvis track before the final retarget (so the foot lock sees the final motion); two-pass in gvhmr_retarget.gd.
+- Crouch_Enter: ok - stand to deep squat, head 1.55 -> 0.93 m, very smooth (limb accel 0.7).
+- Crouch_Idle: usable - the video model starts standing and only half-crouches (head 1.15-1.51); regenerate with 'already in a deep crouch from the first frame' if a true crouch idle is needed.
+- Crouch_Walk: usable - travel 1.06 m in 4 s (normalised to 0.9 m/s), head 1.24-1.33 (crouched), calm.
+- Jump_Forward: weak - barely leaves the floor (head 1.59-1.79); usable as a hop at best; regenerate.
+- Jump_Long: ok - visible airborne frames, 1.9 m travel, head 1.27-1.73.
+- Batch status: 20/38 videos done, 0 failed; 25 clips processed.
