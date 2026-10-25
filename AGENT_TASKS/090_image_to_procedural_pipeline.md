@@ -67,15 +67,14 @@ the worst case: the generator has no structure for rounded blocky ridges, so no 
       prints import warnings from matplotlib: harmless. `fit` is wired for ash, pine, palm, litter, gravel, red soil, the four lump
       rocks, pitted rock and wood, but NOT run (hours); oak/maple/cedar were fitted by hand (`fit_bark.py`).
       `export --check` re-exports a family file to a temp file and diffs it against the committed one. Result today:
-      IDENTICAL: bark (pine_bark call, covers all bark entries), ring (palm), soil (red soil), lump (boulder). DIFFERENT: plate (the
-      committed `rock_pitted_mossy` cell size is 25 by my hand edit; the json says 18), chip/gravel (5 lines: the committed params are not
+      IDENTICAL: bark (pine_bark call, covers all bark entries), ring (palm), soil (red soil), lump (boulder). DIFFERENT: plate (FIXED later the same day: cell size 25 moved into the json), chip/gravel (5 lines: the committed params are not
       what `fits/gravel_soil_chips.json` gives now), wood (16 lines: the json was refitted after the committed file; also new params
       `drift_amp`, `drift_cm`), litter (8 lines). So four generated files cannot be reproduced from the fit json: before relying on the
       pipeline for them, decide per file whether the json or the committed file is the truth (a hand edit like the plate cell size
       should go into the fit script/json, not only into the generated .gd, or the next export silently undoes it).
       `match` verified on the pitted rock: same colour fit as the hand-run `refit.sh`, no change in `systems/world_gen`.
 - [ ] 3. PyTorch plates generator + GLSL parity test (the pitted rock is the target). Gradient fit against colour + height.
-- [ ] 4. Fix the pitted rock structure: rounded blocky ridges with few cracks (the user: "still looks bad compared to the og image").
+- [~] 4. (partly done, see 085 round 30 'round 2') Fix the pitted rock structure: rounded blocky ridges with few cracks (the user: "still looks bad compared to the og image").
       Round 30 got colour and plate size close; the crack network is still too regular and thin with a dotted parallax edge, no deep pits.
 - [ ] 5. Derive AO, normal, roughness from the fitted height in the pipeline output; compare with the scanned ones where they exist
       (boulder; the three ambientCG sets).

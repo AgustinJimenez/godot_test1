@@ -467,3 +467,8 @@ Round 30 (2026-10-25): gravel and red soil.
   the rock), broad 7-14 cm swells in the height (lumpy, not tiled), softer plate lips, lighter crack shadow (0.5 -> 0.3), stronger 1-5 cm
   weathering, weaker grey patches and flecks; the colour fit redone. Closer in colour and plate size. Still different: the crack network
   is too regular and thin with a dotted parallax edge (the photograph has fewer cracks and broad rounded ridges), no deep pits.
+- Pitted rock, round 2 (loop step after the user's "still bad"): `plate_bake.gdshader` makes only some plate edges open cracks (opening varies
+  along the network at 6-14 cm; the rest are soft ridges) and each block a rounded cushion (`smoothstep` of the edge distance, 0.1) with
+  broad swells 0.12. In the object view the blocks now read as cushions with fewer hard cracks. Still no long flowing grooves like the
+  photograph, and a parallax dotted edge on the steepest cracks. The cell size 25 cm moved into `fits/rock_pitted_mossy_plate.json`
+  (so `pipeline.py export` reproduces `plate_fits.gd`; before, the hand edit would have been lost on the next export).

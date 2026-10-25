@@ -85,7 +85,11 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	float edge = d2 - d1;
 	rim = 1.0 - smoothstep(0.0, p[7] * 0.14, edge);
 	dice = hashw(best_id.x, best_id.y, s + 19.0, per);
-	float crack = 1.0 - smoothstep(0.0, p[5] * 0.12, edge);
+	// only some of the plate edges are open cracks (the photographed rock has soft rounded ridges between most blocks): the opening
+	// varies along the network at 10-25 cm
+	float open_edge = mix(0.12, 1.0, smoothstep(0.35, 0.62, vnoise(at + vec2(31.0, 7.0), 14.0, s + 301.0) * 0.6 + vnoise(at + vec2(3.0, 41.0), 6.0, s + 303.0) * 0.4));
+	float crack = (1.0 - smoothstep(0.0, p[5] * 0.12, edge)) * open_edge;
+	rim *= mix(0.3, 1.0, open_edge);
 	float lipf = smoothstep(0.0, p[7] * 0.3, edge); // (a sharp lip: a step, not a ramp)
 	vec2 centre = mod(vec2(best_f.x * cell, best_f.y * cell_v) / tile_cm, 1.0);
 	int gi = clamp(int(centre.y * 16.0), 0, 15);
@@ -100,7 +104,8 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	float weather = (vnoise(at, 5.0, s + 121.0) - 0.5) * 0.5 + (vnoise(at, 2.4, s + 123.0) - 0.5) * 0.4 + (vnoise(at, 1.3, s + 125.0) - 0.5) * 0.25;
 	z = mix(0.7, z, 0.55); // (neighbouring plates differ less: a big step made fat shadow wedges along the cracks)
 	float swell = (vnoise(at, 14.0, s + 127.0) - 0.5) * 0.6 + (vnoise(at, 7.0, s + 129.0) - 0.5) * 0.4; // (broad soft swells: the photographed rock is lumpy, not tiled)
-	z += 0.06 * dome + 0.12 * weather + 0.2 * swell;
+	float cushion = smoothstep(0.0, 0.7, edge); // (each block is a rounded cushion: it falls away to the edges over a few cm)
+	z += 0.06 * dome + 0.12 * weather + 0.12 * swell + 0.1 * cushion;
 	return z * (0.8 + 0.2 * lipf) * (1.0 - 0.8 * p[6] * crack);
 }
 

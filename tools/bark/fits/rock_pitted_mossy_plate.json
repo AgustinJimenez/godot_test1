@@ -4,7 +4,7 @@
  "cm_per_px": 0.09765625,
  "loss": 5.965447957561101,
  "params": {
-  "cell_cm": 17.999999921380088,
+  "cell_cm": 25.0,
   "stretch": 1.0772650030955264,
   "jit": 0.9667205543180784,
   "warp_cm": 12.134636114857784,
@@ -18,5 +18,6 @@
   "fine_amp": 0.034402905419581735,
   "rag_cm": 2.9999711749143727,
   "rag_amp": 0.05007830599786379
- }
+ },
+ "note": "cell_cm set by hand to 25 (fitted 18): on the rock the plates were half the photograph size (AGENT_TASKS/085 round 30)"
 }
