@@ -205,3 +205,18 @@ Method (the loop, run by hand with me as the vision judge; every round = a fit o
   GPU division (`gdiv`) in the cell counts fixed all five. Same hazard exists in any shader that rounds `tile / scale`: parity-test each one.
 - Next (part 2): the gradient fit of the flake bark. The flake mask (`|u| < half`, `|v| < 1`) is a hard test that blocks gradients to the shape numbers;
   `render_height(soft=k)` replaces it with a steep sigmoid for the fit (check the result with the hard mask). Not written yet.
+
+## Step 7 part 2 (2026-10-25): gradient fit of the flake bark (`tools/bark/fit_bark_torch.py`)
+
+- `fit_bark_torch.py <folder> <bark> [steps]`: the 27 continuous numbers of the 37 (the cell-count scales stay), Adam on the same loss as the plates
+  fit, flake mask as a steep sigmoid (`SOFT=40`) while fitting; the result is re-scored with the hard mask (soft and hard losses agree to ~3 %).
+  100 steps = 1-2 minutes on the 4090 (the black-box fits took hours). `compare_torch.py <bark> <fit json> <png>` draws photo | current | fitted.
+- Pine: loss 1.33 -> 0.61 (hard mask). The pictures look alike: the current fit and the new one are both grainy vertical shapes; the photograph has
+  coherent plates. The generator, not the parameters, is the limit (known from 085). Not adopted (`fits/pine_bark_torch.json` kept as a record).
+- Ash (tree_bark_03): loss 1.09 -> 0.52. Visible gain: the white vertical streaks of the current ash (fibres) are gone and the flakes read as leaning scales;
+  the photograph is a fine diagonal ridge pattern that this generator still cannot make. Not adopted (ash is opt-in; adopting needs `export_fit.py` to
+  take `height_range` from the json like `export_plate.py` does, a colour-fit refit and a look in the object view): `fits/tree_bark_03_torch.json`.
+- Conclusion for the pipeline: the differentiable route works for plates and flakes (parity-tested, minutes per surface). It lowers the style loss a lot but
+  the pictures improve only where the generator can express the structure; where it cannot (pine plates, ash ridges, dark_rock courses) the next gain is a
+  new generator family, not more fitting. Remaining: chips (gravel) and lumps (rocks) ports; the vision-model judge (step 6); wiring `torch fit -> export -> colour
+  match -> square picture` into `pipeline.py` (`fit --torch`).

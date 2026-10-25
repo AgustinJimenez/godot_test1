@@ -16,6 +16,8 @@ import torch
 
 import analyze_flakes as analysis
 import plate_gen as pg
+import procedural_bark as pb
+import torch_bark as tb
 import torch_courses as tc
 import torch_plates as tp
 
@@ -34,6 +36,19 @@ def main():
     data = json.load(open(jpath))
     photo = cv2.resize(analysis.load_height(f"{ROOT}/tools/bark/bark_downloads/{name}_disp.png"), (SIZE, SIZE), interpolation=cv2.INTER_AREA)
     with torch.no_grad():
+        if "cell_aspect" in data["params"]:  # a flake bark: photo | the bark_fits.gd numbers | the fitted numbers
+            current = tb.load_fit(name, f"{ROOT}/systems/world_gen/bark_fits.gd")
+            tile = current["tile_cm"]
+            spread = {"pine_bark": 2.2, "japanese_cedar_bark": 1.6}.get(name, 1.0)
+            keys = list(pb.PARAMS.keys())
+            old = tb.render_height(current["params"], tile, SIZE, 1.0, current["height_range"], current["alpha"], spread).cpu().numpy()
+            low, high = data.get("height_range", current["height_range"])
+            new = tb.render_height([data["params"][k] for k in keys], tile, SIZE, 1.0, (low, high), current["alpha"], spread).cpu().numpy()
+            top = np.concatenate([photo, old, new], axis=1)
+            bottom = np.concatenate([shade(photo), shade(old), shade(new)], axis=1)
+            cv2.imwrite(out, (np.concatenate([top, bottom], axis=0) * 255).astype(np.uint8))
+            print("wrote", out)
+            return
         if "course_cm" in data["params"]:
             tile = float(sys.argv[4]) if len(sys.argv) > 4 else data["tile_cm"]
             generated = tc.render_height(data["params"], tile, SIZE, 1.0).cpu().numpy()
