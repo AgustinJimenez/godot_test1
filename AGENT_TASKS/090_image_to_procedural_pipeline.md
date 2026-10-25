@@ -220,3 +220,15 @@ Method (the loop, run by hand with me as the vision judge; every round = a fit o
   the pictures improve only where the generator can express the structure; where it cannot (pine plates, ash ridges, dark_rock courses) the next gain is a
   new generator family, not more fitting. Remaining: chips (gravel) and lumps (rocks) ports; the vision-model judge (step 6); wiring `torch fit -> export -> colour
   match -> square picture` into `pipeline.py` (`fit --torch`).
+
+## Pipeline wiring (2026-10-25, after "yes" to items 1 and 2 of the open list)
+
+- `pipeline.py fit-torch <surface> [steps] [--adopt]`: runs the gradient fit (plates: pitted rock; flake bark: pine, ash, cedar, oak, maple), draws the compare
+  picture (`E:/Temp/tx/compare_<surface>.png`, photo | current | fitted), and with `--adopt` (plates only) copies the fit to the surface's fit json, exports and
+  runs the colour match. Flake bark fits stay candidates. Note: the fit writes `fits/<name>_torch.json` and overwrites the previous candidate (a short test run
+  clobbered the 100-step pine candidate once; it was restored from git: use a copy before re-running).
+- Reproducibility of `export` (checked with `export --check`): IDENTICAL for bark, litter, ring, soil, lump, plate. Gravel: the json now carries the hand-set
+  mid/small chip numbers of ca4b54a (dense stones) so `chip_fits.gd` reproduces except its `height_range` (re-exported: 0.7721 -> 0.7994, the model's own range;
+  colour match redone). Litter: the export script wrote the bark header, `pipeline.py` now fixes it after the export (class_name LitterFits). Wood: STALE: `wood_gen`
+  gained `drift_amp`/`drift_cm` after `wood_fits.gd` was exported, so a re-export changes the number order and needs `wood_bake.gdshader` updated first; `export`
+  refuses (`--force` overrides). Left for whoever touches the wood.

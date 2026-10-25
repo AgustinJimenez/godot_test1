@@ -6,10 +6,10 @@
  "params": {
   "big_cm": 28.520567246101585,
   "big_cover": 0.00010129590492454662,
-  "mid_cm": 7.222446536446657,
-  "mid_cover": 0.11815222442987616,
-  "small_cm": 1.2082572491991157,
-  "small_cover": 0.2617097141281003,
+  "mid_cm": 3.6,
+  "mid_cover": 0.38,
+  "small_cm": 1.3,
+  "small_cover": 0.62,
   "gap": 0.24274308933795039,
   "jit": 0.9954863124780651,
   "tilt": 0.510572420561735,
@@ -18,5 +18,6 @@
   "base_cm": 37.94249259149868,
   "grit_cm": 0.40005841125062935,
   "grit_amp": 0.08351304435206025
- }
+ },
+ "note": "mid/small chip sizes and covers set by hand in ca4b54a (dense 1-4 cm stones; the fitted 7.2 cm / 0.12 / 1.2 / 0.26 gave a few big chips); kept here so the export reproduces chip_fits.gd"
 }

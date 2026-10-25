@@ -6,12 +6,12 @@ extends RefCounted
 
 const SHADER := preload("res://shaders/world/colour_match.gdshader")
 const FITS := {
+	"gravel_soil": {"mean": Vector3(0.2201, 0.1983, 0.2195), "gain": Vector3(1.7719, 1.7836, 1.4102), "low": 1.600, "detail": 1.600, "sat": 2.000},
 	"plate_rock_pitted_mossy": {"mean": Vector3(0.7783, 0.6099, 0.4826), "gain": Vector3(0.9833, 1.0032, 0.9591), "low": 0.926, "detail": 1.099, "sat": 0.761},
 	"palm_tree_bark": {"mean": Vector3(0.6193, 0.5716, 0.5128), "gain": Vector3(0.9892, 0.9879, 0.9872), "low": 1.408, "detail": 1.600, "sat": 1.026},
 	"oak_wood_planks": {"mean": Vector3(0.6282, 0.4525, 0.3202), "gain": Vector3(1.0122, 1.0181, 1.0232), "low": 0.751, "detail": 0.732, "sat": 1.015},
 	"pine_bark": {"mean": Vector3(0.4295, 0.3099, 0.2535), "gain": Vector3(0.9361, 1.0498, 0.9940), "low": 0.304, "detail": 0.400, "sat": 0.500},
 	"red_soil": {"mean": Vector3(0.5821, 0.4750, 0.4015), "gain": Vector3(0.9808, 0.9914, 0.9642), "low": 1.098, "detail": 1.046, "sat": 0.772},
-	"gravel_soil": {"mean": Vector3(0.2201, 0.1982, 0.2195), "gain": Vector3(1.7720, 1.7838, 1.4103), "low": 1.600, "detail": 1.600, "sat": 2.000},
 	"bark_willow_02": {"mean": Vector3(0.4943, 0.4382, 0.3840), "gain": Vector3(1.0498, 1.0557, 1.0644), "low": 1.273, "detail": 1.020, "sat": 1.064},
 	"trident_maple_bark": {"mean": Vector3(0.2841, 0.2166, 0.1463), "gain": Vector3(1.0774, 1.1015, 1.1503), "low": 0.940, "detail": 0.913, "sat": 1.104},
 	"japanese_cedar_bark": {"mean": Vector3(0.3343, 0.2591, 0.1923), "gain": Vector3(0.8438, 0.7986, 0.7284), "low": 0.529, "detail": 0.491, "sat": 1.083},
