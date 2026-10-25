@@ -254,3 +254,9 @@ Godot bakes). Rounds: (1) baked hillshade of the plate heights + sparser, fainte
 6: the remaining gap is structural (borders are soft ridges with a pale glow where the photo has dark sharp cracks, plates are smooth where the photo's faces are chipped
 and rough) and would need a new height model, not constants. `visual_check` passes. Observations on the loop: the checklist forced a different question each round and the journal
 kept me honest (round 1 felt like a win in the object view and scored 4 on the square); a metrics block and a `try` command (apply, bake, sheet, revert if lower) would save the manual steps.
+
+## Planet lab shows the procedural surfaces by default (2026-10-25, user: "make the procedural textures appear by default in the planet lab, I will see it manually")
+
+`tests/manual/planet/planet_lab.gd` sets PLANET_PROCEDURAL_ALL for a person: ON for a plain run (`planet_lab.tscn` with or without scene arguments), OFF for any `--shot...` run
+(so `scripts/visual_check.sh` keeps comparing against its photograph baselines) unless `--procedural`; `--photos` forces the photographs anywhere. The game itself is unchanged (still
+opt-in by the PLANET_PROCEDURAL_* switches). Checked: `--procedural --shot` prints "PROCEDURAL_ALL: every procedural surface is on"; `--photos` and a bare `--shot` run do not.

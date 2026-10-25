@@ -13,6 +13,7 @@ extends Node3D
 ##   -- --weather=rain  force a weather (clear, cloudy, rain, storm, fog, snow) from the start
 ##   -- --climb=N  (with the player) lift them N metres at frame 600, looking down
 ##   -- --no-shadow  no sun shadows   --no-clouds  hide the clouds
+##   -- --procedural / --photos  the procedural surfaces (bark, rock, gravel, red soil, litter, wood) are ON for a person; --shot runs use the photographs unless --procedural; --photos forces them
 ##   -- --plants / --animals / --sea / --water  switch those on (off by default); --bare: no plants
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
 ##   -- --tile-cells=N --tile-max=M  the ground resolution: quads a tile, widest finest tile (m)
@@ -531,6 +532,17 @@ func _monsoon_swing(noise: PlanetNoise) -> float:
 	return best
 
 
+## The procedural surfaces (AGENT_TASKS/085, 090) are on by default for a person looking at the lab. Not for the automatic pictures (`--shot`: scripts/visual_check.sh compares
+## them with baselines made with the photographs): `--procedural` turns them on there, `--photos` turns them off anywhere. PLANET_PROCEDURAL_ALL=1 or the file res://procedural_all still work.
+func _procedural_by_default(user_args: PackedStringArray) -> void:
+	var automatic := false
+	for arg in user_args:
+		automatic = automatic or arg.begins_with("--shot")
+	if "--photos" in user_args or (automatic and not "--procedural" in user_args):
+		return
+	OS.set_environment("PLANET_PROCEDURAL_ALL", "1")
+
+
 func _ready() -> void:
 	var detail := 3.0 if PlanetLabChecks.plain_open() else -1.0 # (per run, not saved)
 	if OS.has_environment("LAB_GROUND"):
@@ -544,6 +556,7 @@ func _ready() -> void:
 		return
 	var asked := PlanetMenu.pending != null
 	var user_args := OS.get_cmdline_user_args()
+	_procedural_by_default(user_args)
 	if not asked and user_args.is_empty() and not UniverseStartMenu.requested:
 		# no menu for now: the default planet (seed 1337, 20 km) on foot, with plants (--start-menu: menu;
 		# PLANET_SCALE=0.1..1: a random-seed Earth that size instead)
