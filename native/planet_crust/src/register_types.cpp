@@ -11,6 +11,7 @@
 #include "planet_water_native.h"
 #include "planet_map_native.h"
 #include "foot_ik_native.h"
+#include "foot_ik_helpers_native.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
@@ -33,6 +34,13 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(PlanetWaterNative);
 	GDREGISTER_CLASS(PlanetMapNative);
 	GDREGISTER_CLASS(FootIKV2Native);
+	GDREGISTER_CLASS(FootIKV2LimiterNative);
+	GDREGISTER_CLASS(FootIKV2StepperNative);
+	GDREGISTER_CLASS(FootIKV2LockNative);
+	GDREGISTER_CLASS(FootIKV2BodySmootherNative);
+	GDREGISTER_CLASS(FootIKV2GroundFilterNative);
+	GDREGISTER_CLASS(FootIKV2KneeHintNative);
+	GDREGISTER_CLASS(FootIKV2StretchHoldNative);
 }
 
 void uninitialize_planet_crust_module(ModuleInitializationLevel p_level) {

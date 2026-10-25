@@ -86,3 +86,19 @@ Total so far 1.01 -> 0.72 ms (-29 %).
 Next (biggest remaining): move the bone-pose heavy parts (`_solve` + `_align_foot`, ~0.2 ms; `_flatten_support`, 0.11) into C++ with direct `Skeleton3D` access (`get_bone_global_pose` /
 `set_bone_global_pose` from godot-cpp), the solver already being native. That is the first step INTO the decision layer (it keeps the rules in GDScript and moves only the repeated
 leg-placement primitive), so it is safe to do before 037.
+
+## DECISION 2026-10-25 (user: "right now i'm not gonna test it manually, so I'd rather turn it ALL to C++ and then do 037")
+
+Scope is now the whole of v2 in C++, then 037 on top of the native code. The headless suite + the trace comparison are the only guard (no manual testing), so the port is staged and
+every stage must keep the SAME PASS/FAIL set and the same measured numbers as the baseline (`/e/Temp/tx/ik_suite_base.log`: red = project checks, floor-walk jerk 0.209, ramp strafe, stairs turn dz=0).
+
+Stages:
+- A (done): the small state machines native: `FootIKV2{Limiter,Stepper,Lock,BodySmoother,GroundFilter,KneeHint,StretchHold}Native` (`src/foot_ik_helpers_native.{h,cpp}`) + `FootIKV2Native.reachable`;
+  the GDScript modifier makes them through `foot_ik_v2_native.gd` `make()` (GDScript fallback kept). Suite: same set, same numbers; frame 0.72 -> 0.695 ms.
+- B: `FootIKV2NativeModifier : SkeletonModifier3D` skeleton in C++: the same `@export` properties, `player_body` / `ledge` / all `debug_*` and `final_*` members as bound properties (the lab,
+  trace tools, checks and the player read them by name), `_process_modification_with_delta`, `_build_legs`, `_take_snapshot`, `_publish_final_poses`.
+- C: the decision layer in C++, function by function from the GDScript (pelvis drop, stance plan, `_place_foot`, `_clear_toe`, `_flatten_support`, `_resample_and_correct`, `_solve`, `_align_foot`, `_aim`,
+  `_ease_correction`, sink), the ledge class, with the GDScript modifier still the reference.
+- D: switch `foot_ik_v2_install.gd` to the native modifier (flag `FOOT_IK_V2_NATIVE`, default on when the library is loaded), then COMPARE: a lab flag that runs the same sequences with both and reports the per-frame
+  ankle/knee difference from the traces (`foot_ik_v2_check.jsonl`), target < 1 mm; the suite must give the baseline set.
+- E: delete the GDScript logic only after D is green for the whole suite and the fuzz gives the same failures; keep tiny GDScript wrappers for names the other scripts use. Then 037 stage 1 in C++.

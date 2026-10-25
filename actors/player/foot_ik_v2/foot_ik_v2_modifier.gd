@@ -2,6 +2,7 @@ class_name FootIKV2Modifier
 extends SkeletonModifier3D
 ## v2 foot IK: per leg, sample the ground under the animated foot, solve hip -> knee -> ankle.
 const DEBUG_TIMER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_debug.gd")
+const NATIVE := preload("res://actors/player/foot_ik_v2/foot_ik_v2_native.gd")
 const SOLE_GAP := preload("res://actors/player/foot_ik_v2/foot_ik_v2_sole_gap.gd")
 const STEPPER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_stepper.gd")
 const LOCK := preload("res://actors/player/foot_ik_v2/foot_ik_v2_lock.gd")
@@ -96,7 +97,6 @@ const PLANT_RATE := 8.0
 ## A swinging foot is released to the animation once its weight has faded below this.
 const PLANT_RELEASE_BELOW := 0.02
 const PELVIS_REACH_MARGIN := 0.012
-## The heel is the rearmost point within this height of the shoe's lowest vertex.
 ## Only a foot the ANIMATION plants (ankle within this of the floor level) can ask for a drop.
 const PELVIS_PLANTED_TOLERANCE := 0.05
 ## Lifted more than this above the sampled ground = mid-swing, left to the animation.
@@ -119,7 +119,7 @@ var final_pose: Dictionary = {}
 var final_frame := -1
 var final_basis := Basis.IDENTITY
 var _stretch_hold := 0.0 # extra pelvis drop a resting, unreachable foot asked for
-var _hold_release := FootIKV2StretchHold.new()
+var _hold_release = NATIVE.make(&"FootIKV2StretchHoldNative", FootIKV2StretchHold.new)
 var debug_pelvis_drop := 0.0 # the pelvis drop applied this frame (m), for the trace
 var debug_solve: Dictionary = {}
 ## side -> {hip_to_target, reach}: the reach decision every frame, released or not (trace).
@@ -127,9 +127,9 @@ var debug_reach_check: Dictionary = {}
 ## side -> "released", "at_target", or "stretched" (out of reach): grades only feet meant down.
 var debug_state: Dictionary = {}
 var debug_stepping: Dictionary = {} # side -> walking a step (a graded float is expected)
-var _stepper := STEPPER.new()
-var _lock := LOCK.new()
-var _limiter := LIMITER.new()
+var _stepper = NATIVE.make(&"FootIKV2StepperNative", STEPPER.new)
+var _lock = NATIVE.make(&"FootIKV2LockNative", LOCK.new)
+var _limiter = NATIVE.make(&"FootIKV2LimiterNative", LIMITER.new)
 ## side -> {"before_deg", "after_deg", "applied"}: sole vs surface normal before/after the align.
 var debug_align: Dictionary = {}
 
@@ -146,12 +146,12 @@ var _pelvis_drop := 0.0
 ## side -> how far the foot was slid along its length to sit on one surface this frame (trace).
 var debug_support_shift: Dictionary = {}
 var _smoothed_y := NAN
-var _smoother := FootIKV2BodySmoother.new()
+var _smoother = NATIVE.make(&"FootIKV2BodySmootherNative", FootIKV2BodySmoother.new)
 var _body_lag := 0.0
 var debug_body_lag := 0.0
 var _stance_shift: Dictionary = {}
-var _ground := FootIKV2GroundFilter.new()
-var _knee_hint := FootIKV2KneeHint.new()
+var _ground = NATIVE.make(&"FootIKV2GroundFilterNative", FootIKV2GroundFilter.new)
+var _knee_hint = NATIVE.make(&"FootIKV2KneeHintNative", FootIKV2KneeHint.new)
 var ledge := FootIKV2Ledge.new() # public: the player reads its step
 var _plant_weight: Dictionary = {}
 var _plant_state: Dictionary = {}
@@ -551,7 +551,7 @@ func _place_foot(skel: Skeleton3D, side: StringName, leg: Dictionary) -> void:
 func _limit_step(skel: Skeleton3D, leg: Dictionary, base: Dictionary, side: StringName) -> void:
 	var here := skel.get_bone_global_pose(int(leg["foot"])).origin
 	var planted := not _is_moving and float(_plant_weight.get(side, 1.0)) >= SUPPORT_MIN_PLANT
-	var moved := _stepper.limit(side, Engine.get_physics_frames(), here, planted)
+	var moved: Vector3 = _stepper.limit(side, Engine.get_physics_frames(), here, planted)
 	debug_stepping[side] = _stepper.stepping.get(side, false)
 	if not moved.is_equal_approx(here):
 		_solve(skel, leg, base, moved, side)
@@ -843,7 +843,7 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 	# A resting knee bends the way the animation bends it (low-passed: foot_ik_v2_knee_hint.gd), a
 	# walking one is the animated knee itself; the blend between them is eased.
 	var animated_knee := (base["knee"] as Transform3D).origin
-	var steady := _knee_hint.steady(side, hip_pos, animated_knee, get_physics_process_delta_time(),
+	var steady: Vector3 = _knee_hint.steady(side, hip_pos, animated_knee, get_physics_process_delta_time(),
 			_hold_release.walk)
 	# On a level floor (the animation's own ground) the knee keeps the animation's bend; elsewhere, the
 	# old steady rest-pole bend (it keeps a foot clear of risers; stairs turns were sensitive to it).
@@ -855,7 +855,7 @@ func _solve(skel: Skeleton3D, leg: Dictionary, base: Dictionary, target: Vector3
 	for foot_side: StringName in _legs:
 		level = level and absf((debug_ground.get(foot_side, Vector3.ZERO) as Vector3).y
 				- skel.global_transform.origin.y) < LEVEL_TOLERANCE
-	var knee_hint := (steady if level else rest_hint).lerp(animated_knee, _hold_release.walk)
+	var knee_hint: Vector3 = (steady if level else rest_hint).lerp(animated_knee, _hold_release.walk)
 	var solved := FootIKV2Solver.solve(
 			hip_pos, knee_hint, target,
 			float(leg["upper"]), float(leg["lower"]), leg["rest_pole"] as Vector3,
@@ -912,7 +912,7 @@ func _aim(skel: Skeleton3D, bone: int, child: int, target: Vector3, animated: Ba
 		return
 	pose.basis = Basis(Quaternion(from.normalized(), to.normalized())) * pose.basis
 	var base_q := animated.get_rotation_quaternion()
-	var correction := _limiter.limit(bone, Engine.get_physics_frames(),
+	var correction: Quaternion = _limiter.limit(bone, Engine.get_physics_frames(),
 			pose.basis.get_rotation_quaternion() * base_q.inverse(),
 			0.0 if _is_moving else joint_speed_deg)
 	pose.basis = Basis(correction * base_q)

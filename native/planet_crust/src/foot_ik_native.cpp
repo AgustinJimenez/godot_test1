@@ -17,6 +17,7 @@ void FootIKV2Native::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("level_points", "foot_pose", "toe_pose", "to_world", "band"), &FootIKV2Native::level_points);
 	ClassDB::bind_method(D_METHOD("lowest_world_y", "foot_pose", "toe_pose", "to_world"), &FootIKV2Native::lowest_world_y);
 	ClassDB::bind_static_method("FootIKV2Native", D_METHOD("min_gap", "space", "query", "level", "hip_y", "ray_up", "ray_down", "samples", "sink_max"), &FootIKV2Native::min_gap);
+	ClassDB::bind_static_method("FootIKV2Native", D_METHOD("reachable", "hip", "animated", "corrected", "reach"), &FootIKV2Native::reachable);
 	ClassDB::bind_static_method("FootIKV2Native", D_METHOD("solve", "hip", "animated_knee", "target", "upper", "lower", "rest_pole", "max_flexion_deg", "max_swing_deg", "down", "bend_free"), &FootIKV2Native::solve);
 }
 
@@ -92,6 +93,25 @@ double FootIKV2Native::min_gap(PhysicsDirectSpaceState3D *p_space, const Ref<Phy
 		}
 	}
 	return gap;
+}
+
+Vector3 FootIKV2Native::reachable(const Vector3 &p_hip, const Vector3 &p_animated, const Vector3 &p_corrected, double p_reach) {
+	if (p_hip.distance_to(p_corrected) <= p_reach) {
+		return p_corrected;
+	}
+	if (p_hip.distance_to(p_animated) > p_reach) {
+		return p_animated;
+	}
+	real_t low = 0, high = 1;
+	for (int i = 0; i < 10; i++) {
+		const real_t middle = (low + high) * (real_t)0.5;
+		if (p_hip.distance_to(p_animated.lerp(p_corrected, middle)) <= p_reach) {
+			low = middle;
+		} else {
+			high = middle;
+		}
+	}
+	return p_animated.lerp(p_corrected, low);
 }
 
 static real_t smoothstep_real(real_t e0, real_t e1, real_t x) {

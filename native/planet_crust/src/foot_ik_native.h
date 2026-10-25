@@ -46,6 +46,9 @@ public:
 	static double min_gap(PhysicsDirectSpaceState3D *p_space, const Ref<PhysicsRayQueryParameters3D> &p_query, const PackedVector3Array &p_level,
 			double p_hip_y, double p_ray_up, double p_ray_down, int p_samples, double p_sink_max);
 
+	// Reach blend (foot_ik_v2_reach_blend.gd): the farthest point along animated -> corrected that the leg can still reach.
+	static Vector3 reachable(const Vector3 &p_hip, const Vector3 &p_animated, const Vector3 &p_corrected, double p_reach);
+
 	// Two-bone leg maths (foot_ik_v2_solver.gd `solve`): [knee, ankle, direction, pole, (distance, 0, 0)].
 	static PackedVector3Array solve(const Vector3 &p_hip, const Vector3 &p_animated_knee, const Vector3 &p_target, double p_upper,
 			double p_lower, const Vector3 &p_rest_pole, double p_max_flexion_deg, double p_max_swing_deg, const Vector3 &p_down,

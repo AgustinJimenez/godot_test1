@@ -7,6 +7,8 @@ extends RefCounted
 ## `animated` and `corrected` are in the same space as `hip`. Returns `animated` if even that is
 ## out of reach (nothing to blend toward), otherwise the farthest reachable point along the line.
 static func reachable(hip: Vector3, animated: Vector3, corrected: Vector3, reach: float) -> Vector3:
+	if ClassDB.class_exists(&"FootIKV2Native") and not OS.has_environment("PLANET_NO_NATIVE"):
+		return ClassDB.class_call_static(&"FootIKV2Native", &"reachable", hip, animated, corrected, reach)
 	if hip.distance_to(corrected) <= reach:
 		return corrected
 	if hip.distance_to(animated) > reach:
