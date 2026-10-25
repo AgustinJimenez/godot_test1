@@ -39,6 +39,9 @@ func _ready() -> void:
 	var camera := Camera3D.new()
 	add_child(camera)
 	camera.look_at_from_position(Vector3(0, 1.4, 5.5), Vector3(0, 0.9, 0))
+	if options.has("cam"): # cam=x,y,z,tx,ty,tz
+		var v := String(options["cam"]).split(",")
+		camera.look_at_from_position(Vector3(float(v[0]), float(v[1]), float(v[2])), Vector3(float(v[3]), float(v[4]), float(v[5])))
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = Color(0.5, 0.65, 0.85)

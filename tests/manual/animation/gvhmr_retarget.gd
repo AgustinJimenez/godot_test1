@@ -62,6 +62,8 @@ func _ready() -> void:
 			options.get("force_loop", "false") == "true", options.get("arm_ik", "false") == "true",
 			[] if options.get("aim", "true") != "true" else chains,
 			["left_hip", "right_hip", map["LeftUpLeg"], map["RightUpLeg"]], foot_lock)
+	if options.get("hands", "") != "":
+		print("hand tracks written: ", HandPresets.apply(result, target_skeleton, map, options["hands"]))
 	DirAccess.make_dir_recursive_absolute(String(options["output"]).get_base_dir())
 	var saved := ResourceSaver.save(result, options["output"])
 	print("RETARGET_OK ", options["output"], " length=%.2f tracks=%d save=%d" % [
