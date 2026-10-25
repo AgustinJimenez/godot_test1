@@ -50,6 +50,7 @@ void FootIKV2CoreNative::_bind_methods() {
 }
 
 void FootIKV2CoreNative::reset() {
+	dicts_ready = false;
 	body_bone_indices.clear();
 	body_bones_skeleton = nullptr;
 	frame_cache = -1;
@@ -110,6 +111,11 @@ void FootIKV2CoreNative::read_settings() {
 		host_node = body_node != nullptr ? body_node->get_parent() : nullptr;
 	}
 	delta_physics = owner->get_physics_process_delta_time();
+	hips_bone = owner->get("_hips_bone");
+	if (dicts_ready) { // the shell never replaces its Dictionaries: they are fetched once
+		return;
+	}
+	dicts_ready = true;
 	debug_target = owner->get("debug_target");
 	debug_skip_reason = owner->get("debug_skip_reason");
 	debug_ground_normal = owner->get("debug_ground_normal");

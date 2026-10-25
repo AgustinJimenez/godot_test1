@@ -116,3 +116,15 @@ shell's settings with `owner.get(...)` once per pass and SHARES the shell's Dict
   rows: reversals 11 -> 10, foot_max 0.113 -> 0.115, knee_max 14.2 -> 14.0): C++ does the vector maths in float32 where GDScript did scalar maths in double between the vector steps.
 - Still GDScript at runtime: the leg set-up (`_build_legs`, once), the sole object (`foot_ik_v2_sole.gd` wraps the native sole; the core calls its `level_points` / `lowest_world_y`), the ledge (called only when a foot is over a drop), the shell
   properties. Next: stage D/E: A/B trace comparison, run the fuzz with both, delete the GDScript pass when equal, then 037 in C++.
+
+## Progress 2026-10-25 (stage D/E done): A/B check, GDScript pass deleted
+
+- Fuzz `scripts/fuzz_foot_ik_v2.sh 12 7` with the native core: IDENTICAL to the GDScript run (the same 8 poses fail, the same 4 pass).
+- Per-frame trace comparison of the lab check (`--foot-ik-v2-check`, 666 trace frames, `FOOT_IK_V2_GDSCRIPT=1` vs native): the largest difference of any hip / knee / foot / toe joint position over all frames is 2.0 mm
+  (right foot, idle, frame 596; knees 1.9 mm at the landing), one sole-tilt value differs (0.25 deg vs 0 at one frame): float32 vs double rounding, no logic difference. Target was < 1 mm: not reached by a hair, judged noise.
+- DELETED the GDScript pass: `foot_ik_v2_modifier.gd` is now the 180-line shell (exports, debug_* / final_* members, `_build_legs`, the ledge, `_ray` for the ledge, `ledge_push`); `_process_modification_with_delta` calls the core.
+  The GDScript helper classes it used are removed (stepper, lock, joint limiter, reach blend, body smoother, ground filter, knee hint, stretch hold, sole gap, the native switch): they live in git history (last commit with them: 8e07f4c).
+  CONSEQUENCE (decision, user asked for everything in C++): Foot IK v2 now REQUIRES the native library (`scripts/build_native.sh`, which the git hooks run after a pull). Without it the shell logs one error and the foot IK is off.
+  `PLANET_NO_NATIVE=1` therefore also turns the foot IK off; `FOOT_IK_V2_GDSCRIPT` no longer exists. `foot_ik_v2_sole.gd` and `foot_ik_v2_solver.gd` keep their GDScript maths as fallbacks (the solver check uses them).
+- Suite after the deletion: SAME PASS/FAIL set and numerically identical rows to the previous core run. Frame time 0.46-0.50 ms (machine noise; the shell's `owner.get` of 30 settings per pass is the small remainder).
+- Next: 037 stage 1 (plant once) in `foot_ik_core_native.cpp`.

@@ -76,6 +76,7 @@ private:
 
 	// the state of the pass
 	int frame_cache = -1;
+	bool dicts_ready = false;
 	int hips_bone = -1;
 	Transform3D hips_base;
 	double pelvis_drop = 0.0, body_lag = 0.0, stretch_hold = 0.0, smoothed_y = std::numeric_limits<double>::quiet_NaN(), moving_hold = 0.0, spread_level = 0.0;
