@@ -86,7 +86,7 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	rim = 1.0 - smoothstep(0.0, p[7] * 0.14, edge);
 	dice = hashw(best_id.x, best_id.y, s + 19.0, per);
 	float crack = 1.0 - smoothstep(0.0, p[5] * 0.12, edge);
-	float lipf = smoothstep(0.0, p[7] * 0.12, edge); // (a sharp lip: a step, not a ramp)
+	float lipf = smoothstep(0.0, p[7] * 0.3, edge); // (a sharp lip: a step, not a ramp)
 	vec2 centre = mod(vec2(best_f.x * cell, best_f.y * cell_v) / tile_cm, 1.0);
 	int gi = clamp(int(centre.y * 16.0), 0, 15);
 	int gj = clamp(int(centre.x * 16.0), 0, 15);
@@ -99,7 +99,8 @@ float plates(vec2 at, float s, out float dice, out float rim) {
 	float dome = 1.0 - clamp(length(best_d) * 0.9, 0.0, 1.0);
 	float weather = (vnoise(at, 5.0, s + 121.0) - 0.5) * 0.5 + (vnoise(at, 2.4, s + 123.0) - 0.5) * 0.4 + (vnoise(at, 1.3, s + 125.0) - 0.5) * 0.25;
 	z = mix(0.7, z, 0.55); // (neighbouring plates differ less: a big step made fat shadow wedges along the cracks)
-	z += 0.06 * dome + 0.07 * weather;
+	float swell = (vnoise(at, 14.0, s + 127.0) - 0.5) * 0.6 + (vnoise(at, 7.0, s + 129.0) - 0.5) * 0.4; // (broad soft swells: the photographed rock is lumpy, not tiled)
+	z += 0.06 * dome + 0.12 * weather + 0.2 * swell;
 	return z * (0.8 + 0.2 * lipf) * (1.0 - 0.8 * p[6] * crack);
 }
 
@@ -135,7 +136,7 @@ void fragment() {
 	float patch_a = smoothstep(0.56, 0.8, vnoise(at + vec2(31.0, 7.0), 2.6, seed + 171.0));
 	float patch_b = smoothstep(0.6, 0.85, vnoise(at + vec2(3.0, 41.0), 6.0, seed + 173.0));
 	float luma = dot(colour, vec3(0.3, 0.59, 0.11));
-	colour = mix(colour, vec3(luma) * vec3(1.0, 0.95, 0.9) * 0.95, flat_rock * (0.5 * patch_a + 0.25 * patch_b));
+	colour = mix(colour, vec3(luma) * vec3(1.0, 0.95, 0.9) * 0.95, flat_rock * (0.3 * patch_a + 0.15 * patch_b));
 	colour = mix(colour, colour * vec3(0.8, 0.66, 0.5), flat_rock * 0.18 * smoothstep(0.62, 0.85, vnoise(at, 4.0, seed + 175.0))); // (rust stains)
 	// crisp small detail that survives zoom (warped noise: no grid alignment) on the flat-lit rock: dark pits and mineral grains,
 	// grey and pale lichen flecks, and a per-pixel grain
@@ -171,11 +172,11 @@ void fragment() {
 	h -= 0.12 * pit_hole * flat_rock;
 	colour = mix(colour, colour * 0.5, 0.55 * pit * flat_rock);
 	colour = mix(colour, colour * 0.55, 0.5 * pit_b * flat_rock);
-	colour = mix(colour, vec3(0.62, 0.6, 0.6), 0.5 * grey * flat_rock);
+	colour = mix(colour, vec3(0.62, 0.6, 0.6), 0.3 * grey * flat_rock);
 	colour = mix(colour, vec3(0.78, 0.78, 0.4), 0.55 * yellow * flat_rock);
 	colour *= 1.0 + 0.16 * pixel_grain * flat_rock;
 	// the shadow where one plate meets the next: it fades in and out along the crack, wider in places
 	float crack_fade = mix(1.0, 0.25 + 0.75 * smoothstep(0.25, 0.65, vnoise(at + vec2(17.0, 3.0), 7.0, seed + 191.0)), flat_rock);
-	colour *= 1.0 - mix(0.7, 0.5, flat_rock) * rim * crack_fade;
+	colour *= 1.0 - mix(0.7, 0.3, flat_rock) * rim * crack_fade;
 	COLOR = vec4(clamp(colour, 0.0, 1.0), clamp(0.5 + (h - 0.5) * 2.0, 0.0, 1.0)); // (a deeper relief than the fitted height)
 }

@@ -463,3 +463,7 @@ Round 30 (2026-10-25): gravel and red soil.
 - Wood (`wood_bake.gdshader`): board seams 0.45 -> 0.25 dark (the photograph's seams are faint). Cathedral grain still missing.
 - Checks after round 30: `scripts/visual_check.sh` PASS (the changed bakes are viewer-only or opt-in). Not done: the game atlas is still
   1024 px / seed 1 (a size or variation change needs a perf look); palm weathering bands, wood cathedral grain, pine plate shapes.
+- Pitted rock, object view (user: "still looks bad vs the og image"): plate cell 18 -> 25 cm (the plates were half the photograph's size on
+  the rock), broad 7-14 cm swells in the height (lumpy, not tiled), softer plate lips, lighter crack shadow (0.5 -> 0.3), stronger 1-5 cm
+  weathering, weaker grey patches and flecks; the colour fit redone. Closer in colour and plate size. Still different: the crack network
+  is too regular and thin with a dotted parallax edge (the photograph has fewer cracks and broad rounded ridges), no deep pits.
