@@ -25,6 +25,7 @@ import torch_plates as tp
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 SIZE = 512
+STRETCHES = [float(x) for x in os.environ.get("STRETCH", "1.0777").split(",")]  # cell height over width (below 1: wide, flat blocks)
 NU_CHOICES = [int(x) for x in os.environ.get("NU", "3,4").split(",")]  # cells per tile to try (cap them from measure_scale.py: a free choice picks big plates)
 FREE = ["jit", "warp_amp", "crack_w", "crack_depth", "lip", "z_var", "tilt", "fine_amp", "rag_amp"]
 KEYS = pg.KEYS  # cell_cm stretch jit warp_cm warp_amp crack_w crack_depth lip z_var tilt fine_cm fine_amp rag_cm rag_amp
@@ -60,9 +61,14 @@ def main():
     steps = int(sys.argv[3]) if len(sys.argv) > 3 else 150
     out = sys.argv[4] if len(sys.argv) > 4 else os.path.join(ROOT, "tools", "bark", "fits", name + "_plate_torch.json")
     device = bp.DEVICE
-    fit = tp.load_fit(name, os.path.join(ROOT, "systems/world_gen/plate_fits.gd"))
-    tile = fit["tile_cm"]
-    base = dict(zip(KEYS, fit["params"]))
+    try:
+        fit = tp.load_fit(name, os.path.join(ROOT, "systems/world_gen/plate_fits.gd"))
+        tile = fit["tile_cm"]
+        base = dict(zip(KEYS, fit["params"]))
+    except ValueError:  # a surface with no entry yet: the generator's defaults, the tile size from TILE_CM
+        tile = float(os.environ.get("TILE_CM", "200"))
+        base = dict(pg.PARAMS)
+        print(f"{name} is not in plate_fits.gd: default numbers, tile {tile} cm")
     photo = analysis.load_height(f"{folder}/{name}_disp.png")
     photo = cv2.resize(photo, (SIZE, SIZE), interpolation=cv2.INTER_AREA)
     target = stretch01(torch.from_numpy(photo).to(device)).view(1, 1, SIZE, SIZE)
@@ -105,7 +111,7 @@ def main():
 
     best = None
     for nu in NU_CHOICES:
-        for stretch in (1.0777,):
+        for stretch in STRETCHES:
             start = torch.tensor([np.clip((base[k] - LOW[k]) / (HIGH[k] - LOW[k]), 0.05, 0.95) for k in FREE], dtype=torch.float32, device=device)
             logits = torch.log(start / (1 - start)).clone().requires_grad_(True)
             optimiser = torch.optim.Adam([logits], lr=0.05)

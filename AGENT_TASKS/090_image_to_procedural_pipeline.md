@@ -171,3 +171,23 @@ Checked on the one scan with all maps, `rock_boulder_dry` (its own `_disp` as in
 - Roughness: the scan is nearly constant (mean 0.634, std 0.069); a height-derived "busy" term has correlation 0.05, so use a per-material constant (default 0.75 in the script; 0.63 for this rock).
 - `derive_maps.py make <height.png> <prefix> <tile_cm> <relief_cm>` writes `<prefix>_n.png` (normal RG + roughness B) and `<prefix>_ao.png` in the layout of the ambientCG scan textures.
   Not yet wired into `pipeline.py` or the baker; the ground scans still use the scanned maps.
+
+## Step 6 first pass (2026-10-25): the new-family loop on dark_rock_02 (no generator; four earlier families failed, 085 round 28)
+
+Method (the loop, run by hand with me as the vision judge; every round = a fit of a few minutes + one picture):
+- Look at the photo and its height (`probe` picture): dark brown-black stone, thin crack network mostly HORIZONTAL, rectangular blocks 5-25 cm, a few
+  big cliff steps and orange stains. Family guess: plates, but wide flat cells.
+- Round 1, plates generator with `STRETCH=0.5,0.8`, `NU=12,18` (`fit_plates_torch.py` now takes a surface with no entry: `TILE_CM`, `STRETCH` env):
+  loss 43; the picture is round blobs of 17 cm with no straight lines and no cliffs. REJECTED: Voronoi cells cannot make rectilinear blocks.
+- Round 2, a new generator written for it, `torch_courses.py` (rows of blocks, offset joints, thin cracks that come and go, per-block height
+  steps and tilt, broad ledges) fitted by `fit_courses_torch.py` (Gram + SW + crack-slope + block-tone terms, about 3 min for two course sizes).
+  Loss 3.1: reads as a regular brick wall. Revised: courses of varying thickness, wandering lines, per-course block width. Loss 2.8: still a
+  wall. NOT adopted; kept as a record (`fits/dark_rock_02_courses.json`, `compare_torch.py` makes the judge picture).
+- What the photograph has that the generator lacks: block sizes that vary a lot inside one course, joints that do not run straight through,
+  shingle-like overlaps, and the large cliff steps (the `ledge` term is a smooth blob, not a cliff). Next revision would need broken joints and
+  a real ledge (steep step along a wandering line), then a GLSL port (shader + baker + fits + export + square_compare entry), which is the
+  expensive part: do it only if the surface is wanted in the game.
+- Findings for the pipeline: (1) the mechanics work: write a generator in torch (an hour), fit it by gradient (minutes), judge by one picture; the
+  hand-written `torch_courses.py` reuses `torch_plates.py`'s hash and noise, so a new family is mostly its own 40-60 lines. (2) the judging
+  step does not automate: the loss went 43 -> 3 -> 2.8 while the picture went from "wrong" to "a wall", and the loss gave no hint of "wall".
+  A vision-model comparison of the two pictures with a short list of differences is the missing automatic judge (not built).
