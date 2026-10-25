@@ -1,0 +1,42 @@
+{
+ "verdict": "different",
+ "score": 4,
+ "differences": [
+  {
+   "what": "Relief and cell structure",
+   "photo": "Rock is broken into chunky plates with raised, rounded faces. Deep, dark, continuous cracks and ledges separate them, and each face has its own lighting and shading.",
+   "generated": "The surface is flat. The cell boundaries are thin, faint, wobbly lines, and the cells look like blurry colour patches rather than raised plates.",
+   "fix": "Raise the cell-border height contrast. Make the borders deeper and wider with dark, ragged crevices, and add per-cell height offsets and bevelled edges so the plates read as stepped blocks."
+  },
+  {
+   "what": "Pit density and size",
+   "photo": "Pits are sparse and mostly small. A few are deep and dark, and the rest of the surface is smooth to mildly rough rock.",
+   "generated": "Thousands of small dark speckles and blobs cover the whole surface evenly. This looks like noisy confetti or terrazzo.",
+   "fix": "Cut the pit count by about 80%. Vary pit size more (a few large, deep pits and many tiny ones). Cluster the pits instead of spreading them uniformly, and make them lower contrast."
+  },
+  {
+   "what": "Colour and tonal range",
+   "photo": "Saturated salmon and orange-pink, with bright pale highlights on the faces. There is grey-blue mottling in patches, dark orange-brown staining in the crevices, and small yellow-green lichen dots.",
+   "generated": "Washed-out, desaturated tan and beige with a hazy grey-brown overlay. Tonal range is low, with no strong highlights or deep darks.",
+   "fix": "Increase saturation and shift the hue toward pink-orange (about #d98a64). Widen the contrast, adding bright highlights on the cell tops and darker brown in the cracks, and use grey-blue as large soft patches."
+  },
+  {
+   "what": "Fine surface detail and sharpness",
+   "photo": "Crisp, granular rock grain with sharp edges, small chips and pits, and visible directional lighting on the bumps.",
+   "generated": "Soft and blurry, with a smeared look. The detail is a uniform fine noise with no edge definition or directional shading.",
+   "fix": "Add a high-frequency grain or bump layer and sharpen the height map. Use a ridged or erosion-style noise at mid scale to give chipped edges."
+  },
+  {
+   "what": "Large-scale cell shape",
+   "photo": "Large, blocky, polygonal cells with angular corners and straight-ish edges. Cell sizes vary and there are overlapping ledges.",
+   "generated": "Large, round, organic blobs with smooth curved borders. They are too uniform and visually repetitive.",
+   "fix": "Use a Voronoi with a more angular metric and less domain warp, and vary cell sizes. Add a secondary set of small sub-cracks."
+  }
+ ],
+ "keep": [
+  "Overall orange-tan hue family",
+  "Small yellow-green lichen flecks",
+  "Grey-blue patches in a few areas",
+  "Dark cracks following cell borders"
+ ]
+}

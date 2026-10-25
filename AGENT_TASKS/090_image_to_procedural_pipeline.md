@@ -232,3 +232,15 @@ Method (the loop, run by hand with me as the vision judge; every round = a fit o
   colour match redone). Litter: the export script wrote the bark header, `pipeline.py` now fixes it after the export (class_name LitterFits). Wood: STALE: `wood_gen`
   gained `drift_amp`/`drift_cm` after `wood_fits.gd` was exported, so a re-export changes the number order and needs `wood_bake.gdshader` updated first; `export`
   refuses (`--force` overrides). Left for whoever touches the wood.
+
+## Step 6 judge (2026-10-25): `tools/bark/judge.py`, `pipeline.py judge <surface>`
+
+- Sends a side-by-side picture (photo | generated) to a vision model and gets back JSON: verdict (close/different/wrong), score 0-10, 3-5 differences each with
+  what / how the photo looks / how the generated looks / one concrete fix, and a `keep` list. Backends: `ANTHROPIC_API_KEY` (HTTPS, model `JUDGE_MODEL`, default
+  claude-sonnet-5-5) or the `claude -p` command line with the Read tool (no key on this machine: the CLI path was the one tested; one call about 17 s, billed to the
+  logged-in account).
+- Tried on the pitted rock square (`fits/rock_pitted_mossy_judge_example.json`): score 4, "different". Its list matches what I saw by eye and adds two things the loss
+  never saw: the generated rock reads FLAT (borders thin and faint, no raised plates) and the pits look like confetti (uniform, too many, same contrast). Colour
+  call: desaturated tan vs the photo's saturated salmon: note this was a square after the colour match; treat as the judge's opinion.
+- Limits: it is an opinion (a second call may differ), it sees UI text if the picture has it (say so in `--what`), and the fixes are suggestions, not
+  measurements. The loop it enables (not built): fit -> compare picture -> judge -> a person or a model edits the generator from `fix` -> repeat, stopping at score >= 7.

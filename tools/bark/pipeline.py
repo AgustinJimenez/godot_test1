@@ -9,6 +9,7 @@ It does not add new maths: it runs the scripts that were run by hand (measure_sc
                                                              --check writes to a temp file and diffs against the committed one
   python tools/bark/pipeline.py match <surface> ...          raw bake, colour_match.py, class cache refresh, picture in E:/Temp/tx (needs Godot)
   python tools/bark/pipeline.py run <surface> [--fit]        measure, (fit), export, match
+  python tools/bark/pipeline.py judge <surface> [picture]    a vision model lists what differs (tools/bark/judge.py; picture defaults to the last `match`)
   python tools/bark/pipeline.py fit-torch <surface> [steps] [--adopt]   gradient fit (torch generators: plates, flake bark), a compare
                                                              picture, and with --adopt export + match (plates only; bark fits stay candidates)
 
@@ -182,6 +183,14 @@ def compare(surface, fit_json):
     print("compare picture:", "%s/compare_%s.png" % (PICTURES, surface))
 
 
+def judge_picture(surface, picture=None):
+    """Ask a vision model what differs (judge.py): the surface's last square picture (E:/Temp/tx/n<index>.png from `match`) or a given picture."""
+    picture = picture or "%s/n%d.png" % (PICTURES, SURFACES[surface][1])
+    out = "%s/judge_%s.json" % (PICTURES, surface)
+    run([PYTHON, os.path.join(BARK, "judge.py"), picture, "--what", "%s (the header text is UI, ignore it)" % surface, "--out", out])
+    print("judge result:", out)
+
+
 def match(surfaces):
     """Raw bakes (no colour match), the fit from them, a refreshed class cache, then the final pictures."""
     os.makedirs(PICTURES + "/one", exist_ok=True)
@@ -201,7 +210,7 @@ def match(surfaces):
 
 
 def main(argv):
-    if len(argv) < 2 or argv[1] not in ("list", "measure", "fit", "fit-torch", "export", "match", "run"):
+    if len(argv) < 2 or argv[1] not in ("list", "measure", "fit", "fit-torch", "export", "match", "run", "judge"):
         print(__doc__)
         return 1
     command = argv[1]
@@ -217,6 +226,8 @@ def main(argv):
         measure(surface)
     elif command == "fit":
         fit(surface, int(argv[3]) if len(argv) > 3 and argv[3].isdigit() else 200)
+    elif command == "judge":
+        judge_picture(surface, argv[3] if len(argv) > 3 else None)
     elif command == "fit-torch":
         steps = int(argv[3]) if len(argv) > 3 and argv[3].isdigit() else 120
         made = fit_torch(surface, steps, "--adopt" in argv)
