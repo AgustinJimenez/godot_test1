@@ -76,7 +76,7 @@ the worst case: the generator has no structure for rounded blocky ridges, so no 
 - [x] 3. PyTorch plates generator + GLSL parity test + gradient fit (done 2026-10-25, details below).
 - [~] 4. (partly done, see 085 round 30 'round 2') Fix the pitted rock structure: rounded blocky ridges with few cracks (the user: "still looks bad compared to the og image").
       Round 30 got colour and plate size close; the crack network is still too regular and thin with a dotted parallax edge, no deep pits.
-- [ ] 5. Derive AO, normal, roughness from the fitted height in the pipeline output; compare with the scanned ones where they exist
+- [x] 5. (done, see 'Step 5 result') Derive AO, normal, roughness from the fitted height in the pipeline output; compare with the scanned ones where they exist
       (boulder; the three ambientCG sets).
 - [ ] 6. Vision-model family classifier + the agent loop for a new family; try on one surface with no good generator (birch/sakura smooth
       bark, rock slot 5 layered rock: both "failed for good" in 085).
@@ -160,3 +160,14 @@ Observations for the next steps:
   bounds off, crack_depth stayed at 0.47 (cracks kept) but z_var went back to its upper bound 0.575 (hard tone steps); adding LOW_WEIGHT=2 the
   loss fell to 5.2 and crack_depth went back to 0.22. So these statistics trade against each other and the loss still prefers what the eye
   rejects: keep the hand bounds (ZVAR_MAX 0.3, CRACK_MIN 0.5) until a better judge exists (e.g. a vision-model comparison of the squares).
+
+## Step 5 result (2026-10-25): maps from the height (`tools/bark/derive_maps.py`)
+
+Checked on the one scan with all maps, `rock_boulder_dry` (its own `_disp` as input, 150 cm tile, relief scanned over 2-32 cm):
+- Normal from the height (Sobel, OpenGL, y up): at a relief of 4 cm the mean angle to the scanned normal is 2.7 degrees (median 1.9), xy correlation 0.905.
+  So the normal map need not be scanned or fitted: derive it from the (generated) height. 8 cm: 8 deg, 2 cm: 3.7 deg.
+- AO: cavity occlusion (how far a point lies below its blurred neighbourhood) at radii 0.5 and 1 cm, strength 1.5: correlation 0.615 with the scanned
+  AO (mean 0.946 vs 0.929). Larger radii or one radius gave 0.54 or less. A moderate match: it gets the cavities, not the broad shading.
+- Roughness: the scan is nearly constant (mean 0.634, std 0.069); a height-derived "busy" term has correlation 0.05, so use a per-material constant (default 0.75 in the script; 0.63 for this rock).
+- `derive_maps.py make <height.png> <prefix> <tile_cm> <relief_cm>` writes `<prefix>_n.png` (normal RG + roughness B) and `<prefix>_ao.png` in the layout of the ambientCG scan textures.
+  Not yet wired into `pipeline.py` or the baker; the ground scans still use the scanned maps.
