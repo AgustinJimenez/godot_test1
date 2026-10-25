@@ -30,7 +30,7 @@ static func load_clip(path: String) -> Dictionary:
 	animation.length = float(frames - 1) / fps
 	var rotations: Array = data["rotations"]
 	var transl: Array = data["transl"]
-	var pelvis_rest := _vec(rest[0]) + lift
+	var pelvis_rest := _vec(rest[0]) # (the translation already puts the feet on the floor: the lift is only for the rest pose)
 	var position_track := animation.add_track(Animation.TYPE_POSITION_3D)
 	animation.track_set_path(position_track, NodePath("Skeleton3D:" + String(names[0])))
 	var rotation_tracks: Array[int] = []

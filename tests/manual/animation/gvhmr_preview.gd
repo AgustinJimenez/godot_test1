@@ -8,13 +8,16 @@ func _ready() -> void:
 		var pair := argument.split("=", true, 1)
 		if pair.size() == 2:
 			options[pair[0]] = pair[1]
-	var left: Node3D = (load(options["source"]) as PackedScene).instantiate()
-	left.position = Vector3(-1.2, 0.0, 0.0)
-	add_child(left)
-	var left_player := left.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	left_player.play(left_player.get_animation_list()[0])
+	var left: Node3D = Node3D.new()
+	var left_player: AnimationPlayer
+	if options.has("source"): # (without a source fbx only the retargeted character is shown)
+		left = (load(options["source"]) as PackedScene).instantiate()
+		left.position = Vector3(-1.2, 0.0, 0.0)
+		add_child(left)
+		left_player = left.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		left_player.play(left_player.get_animation_list()[0])
 	var right: Node3D = (load(options["target_model"]) as PackedScene).instantiate()
-	right.position = Vector3(1.2, 0.0, 0.0)
+	right.position = Vector3(0.0, 0.0, 0.0) if not options.has("source") else Vector3(1.2, 0.0, 0.0)
 	add_child(right)
 	var right_player := right.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	var library: AnimationLibrary = right_player.get_animation_library(&"")
@@ -45,14 +48,16 @@ func _ready() -> void:
 	# the source body is turned to face the way the retargeted character does (their rest poses face different ways)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	var source_skeleton := left.find_child("Skeleton3D", true, false) as Skeleton3D
-	var target_skeleton := skeleton
-	var src_axis := _axis(source_skeleton, "left_hip", "right_hip")
-	var map: Dictionary = {"LeftUpLeg": "mixamorig_LeftUpLeg", "RightUpLeg": "mixamorig_RightUpLeg"}
-	if options.has("manifest"):
-		map = JSON.parse_string(FileAccess.get_file_as_string(options["manifest"]))["humanoid_map"]
-	var dst_axis := _axis(target_skeleton, map["LeftUpLeg"], map["RightUpLeg"])
-	left.rotation.y = Vector3(src_axis.x, 0.0, src_axis.z).signed_angle_to(Vector3(dst_axis.x, 0.0, dst_axis.z), Vector3.UP)
+	if options.has("source"):
+		var source_skeleton := left.find_child("Skeleton3D", true, false) as Skeleton3D
+		var target_skeleton := skeleton
+		var src_axis := _axis(source_skeleton, "left_hip", "right_hip")
+		var map: Dictionary = {"LeftUpLeg": "mixamorig_LeftUpLeg", "RightUpLeg": "mixamorig_RightUpLeg"}
+		if options.has("manifest"):
+			map = JSON.parse_string(FileAccess.get_file_as_string(options["manifest"]))["humanoid_map"]
+		var dst_axis := _axis(target_skeleton, map["LeftUpLeg"], map["RightUpLeg"])
+		left.rotation.y = Vector3(src_axis.x, 0.0, src_axis.z).signed_angle_to(
+				Vector3(dst_axis.x, 0.0, dst_axis.z), Vector3.UP)
 	await get_tree().create_timer(float(options["at"])).timeout
 	if options.has("shot"):
 		get_viewport().get_texture().get_image().save_png(options["shot"])
