@@ -64,8 +64,10 @@ func _initialize() -> void:
 	# A Mixamo-style source ("<prefix>Hips", e.g. mixamorig10_Hips) uses prefix+canonical-role names
 	# instead, so derive its role map from the detected prefix (HumanoidRetargeter's own Mixamo path).
 	var source_role_map: Dictionary = ALS_SOURCE_ROLE_MAP
+	if (source["skeleton"] as Skeleton3D).find_bone(&"left_collar") >= 0:
+		source_role_map = SMPLX_SOURCE_ROLE_MAP # (a GVHMR clip: SMPL-X bone names)
 	var source_prefix = HumanoidRetargeter.detect_bone_prefix(source["skeleton"] as Skeleton3D)
-	if source_prefix is String and not (source_prefix as String).is_empty():
+	if source_role_map != SMPLX_SOURCE_ROLE_MAP and source_prefix is String and not (source_prefix as String).is_empty():
 		var prefix_map := HumanoidRetargeter.prefix_role_map(
 				source["skeleton"] as Skeleton3D, source_prefix as String)
 		if not prefix_map.is_empty():
@@ -218,6 +220,33 @@ func _instantiate(path: String) -> Node:
 		return null
 	return packed.instantiate()
 
+
+## SMPL-X source skeleton (GVHMR clips exported by E:/repo/gvhmr gvhmr_blender_fbx.py): body joints only,
+## the SMPL-X fingers (left_hand_0..14) are not mapped - GVHMR does not recover them.
+const SMPLX_SOURCE_ROLE_MAP: Dictionary = {
+	&"pelvis": &"Hips",
+	&"spine1": &"Spine",
+	&"spine2": &"Spine1",
+	&"spine3": &"Spine2",
+	&"neck": &"Neck",
+	&"head": &"Head",
+	&"left_collar": &"LeftShoulder",
+	&"left_shoulder": &"LeftArm",
+	&"left_elbow": &"LeftForeArm",
+	&"left_wrist": &"LeftHand",
+	&"right_collar": &"RightShoulder",
+	&"right_shoulder": &"RightArm",
+	&"right_elbow": &"RightForeArm",
+	&"right_wrist": &"RightHand",
+	&"left_hip": &"LeftUpLeg",
+	&"left_knee": &"LeftLeg",
+	&"left_ankle": &"LeftFoot",
+	&"left_foot": &"LeftToeBase",
+	&"right_hip": &"RightUpLeg",
+	&"right_knee": &"RightLeg",
+	&"right_ankle": &"RightFoot",
+	&"right_foot": &"RightToeBase",
+}
 
 ## Deliberate duplicate of PlayerBody.BONE_MAP's non-finger-leaf entries,
 ## not a reference to it - matches HumanoidRetargeter's own stated policy
