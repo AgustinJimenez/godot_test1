@@ -6,6 +6,7 @@ extends RefCounted
 
 const SHADER := preload("res://shaders/world/colour_match.gdshader")
 const FITS := {
+	"gravel_soil": {"mean": Vector3(0.2201, 0.1982, 0.2195), "gain": Vector3(1.7720, 1.7838, 1.4103), "low": 1.600, "detail": 1.600, "sat": 2.000},
 	"bark_willow_02": {"mean": Vector3(0.4943, 0.4382, 0.3840), "gain": Vector3(1.0498, 1.0557, 1.0644), "low": 1.273, "detail": 1.020, "sat": 1.064},
 	"trident_maple_bark": {"mean": Vector3(0.2841, 0.2166, 0.1463), "gain": Vector3(1.0774, 1.1015, 1.1503), "low": 0.940, "detail": 0.913, "sat": 1.104},
 	"japanese_cedar_bark": {"mean": Vector3(0.3343, 0.2591, 0.1923), "gain": Vector3(0.8438, 0.7986, 0.7284), "low": 0.529, "detail": 0.491, "sat": 1.083},
@@ -13,7 +14,6 @@ const FITS := {
 	"pine_bark": {"mean": Vector3(0.3939, 0.3170, 0.2438), "gain": Vector3(1.0209, 1.0263, 1.0336), "low": 0.431, "detail": 0.401, "sat": 0.704},
 	"palm_tree_bark": {"mean": Vector3(0.6353, 0.5883, 0.5286), "gain": Vector3(0.9642, 0.9598, 0.9577), "low": 1.330, "detail": 1.067, "sat": 1.049},
 	"forest_leaves_03": {"mean": Vector3(0.2466, 0.1887, 0.0995), "gain": Vector3(1.0952, 1.1200, 1.2517), "low": 0.847, "detail": 1.298, "sat": 1.134},
-	"gravel_soil": {"mean": Vector3(0.3019, 0.2678, 0.2877), "gain": Vector3(1.2917, 1.3202, 1.0758), "low": 1.360, "detail": 1.600, "sat": 1.395},
 	"red_soil": {"mean": Vector3(0.5485, 0.4425, 0.3674), "gain": Vector3(1.0409, 1.0642, 1.0536), "low": 1.089, "detail": 1.313, "sat": 0.695},
 	"rock_face_04": {"mean": Vector3(0.3072, 0.2554, 0.1968), "gain": Vector3(1.0793, 1.0941, 1.1247), "low": 1.066, "detail": 1.206, "sat": 1.131},
 	"rock_08": {"mean": Vector3(0.4928, 0.4241, 0.3323), "gain": Vector3(1.1299, 1.1510, 1.1927), "low": 0.515, "detail": 0.949, "sat": 1.152},

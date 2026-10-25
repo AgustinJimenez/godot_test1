@@ -58,9 +58,13 @@ path = os.path.join(root, 'systems/world_gen/colour_match.gd')
 text = open(path, newline='').read()
 nl = '\r\n' if '\r\n' in text else '\n'
 lines = ['const FITS := {']
+# surfaces with no raw bake in the folder keep their current fit (so one surface can be refitted alone)
+old = re.search(r'const FITS := \{(.*?)\n\}', text, flags=re.S).group(1)
+kept = [l for l in old.split(nl) if l.strip() and l.split('"')[1] not in out]
 for key, (mean, gain, low, detail, sat) in out.items():
     lines.append('\t"%s": {"mean": Vector3(%.4f, %.4f, %.4f), "gain": Vector3(%.4f, %.4f, %.4f), "low": %.3f, "detail": %.3f, "sat": %.3f},'
                  % ((key,) + tuple(mean) + tuple(gain) + (low, detail, sat)))
+lines.extend(kept)
 lines.append('}')
 block = nl.join(lines)
 text = re.sub(r'const FITS := \{.*?\n\}', lambda m: block, text, count=1, flags=re.S)

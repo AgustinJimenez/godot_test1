@@ -113,11 +113,11 @@ void fragment() {
 	float sand3 = vnoise(at, 0.35, seed + 59.0) - 0.5;
 	float patch = vnoise(at, 24.0, seed + 55.0) - 0.5;
 	float debris = smoothstep(0.62, 0.8, vnoise(at, 5.0, seed + 57.0));
-	vec3 earth = ramp[5] * (0.95 + 0.5 * patch + 0.3 * sand2 + 0.22 * sand + 0.18 * sand3);
+	vec3 earth = vec3(0.24, 0.21, 0.2) * (0.95 + 0.5 * patch + 0.3 * sand2 + 0.22 * sand + 0.18 * sand3);
 	earth = mix(earth, ramp[0] * 0.6, 0.55 * debris);
-	earth = mix(earth, vec3(dot(earth, vec3(0.33))), 0.3);
+	earth = mix(earth, vec3(dot(earth, vec3(0.33))), 0.55);
 	// the stones are cool grey, purple-grey and dark, each its own tone, with a shaded edge where it meets the earth
-	vec3 stone_cool = mix(vec3(0.14, 0.13, 0.17), vec3(0.38, 0.36, 0.4), tone);
+	vec3 stone_cool = mix(vec3(0.15, 0.145, 0.17), vec3(0.36, 0.34, 0.36), tone * tone);
 	float t1;
 	float t2;
 	float around = 0.25 * (norm(gravel(at + vec2(0.5, 0.0), seed, t1)) + norm(gravel(at - vec2(0.5, 0.0), seed, t2))
@@ -134,6 +134,7 @@ void fragment() {
 	earth *= (1.0 + 0.22 * pixel_grain) * 1.1;
 	stone_final *= 1.0 + 0.14 * pixel_grain;
 	colour = mix(earth, stone_final, chip);
+	colour *= 0.68 + 0.64 * (0.6 * vnoise(at, 22.0, seed + 181.0) + 0.4 * vnoise(at, 9.0, seed + 183.0)); // (large damp and dry patches: the photograph is far from even)
 	// crumbly relief in the earth between the stones (warped noise from 1 cm up: no grid, no mosaic in the parallax march)
 	float crumbs = (vnoise(warped, 1.0, seed + 171.0) - 0.5) * 0.6 + (vnoise(warped, 2.2, seed + 173.0) - 0.5) * 0.4;
 	h = clamp(h + 0.07 * crumbs * (1.0 - chip), 0.0, 1.0);
