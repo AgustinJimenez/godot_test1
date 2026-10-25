@@ -22,6 +22,11 @@ def load(path):
     return np.asarray(Image.open(path).convert('RGB').resize((1024, 1024), Image.BILINEAR), float) / 255
 
 
+def chroma(a):
+    lum = (a @ np.array([0.3, 0.59, 0.11]))[..., None]
+    return float(np.abs(a - lum).mean())
+
+
 def parts(a):
     lum = a @ np.array([0.3, 0.59, 0.11])
     low = uniform_filter(lum, 32, mode='wrap')
@@ -37,22 +42,25 @@ for i, (label, photo, kind, baked) in enumerate(rows):
     if not (os.path.exists(pp) and os.path.exists(bp)):
         continue
     a, b = load(pp), load(bp)
+    sat = float(np.clip(chroma(a) / max(chroma(b), 1e-4), 0.5, 2.0))
+    lum_b = (b @ np.array([0.3, 0.59, 0.11]))[..., None]
+    b = lum_b + (b - lum_b) * sat  # (the shader's first step)
     ma, mb = a.reshape(-1, 3).mean(0), b.reshape(-1, 3).mean(0)
     la, da = parts(a)
     lb, db = parts(b)
     low = float(np.clip(la / max(lb, 1e-4), 0.3, 1.6))
     detail = float(np.clip(da / max(db, 1e-4), 0.4, 1.6))
     key = KEY_PREFIX.get(kind, '') + (baked or photo)
-    out[key] = (mb, ma / mb, low, detail)
+    out[key] = (mb, ma / mb, low, detail, sat)
     print(i, key, 'gain', (ma / mb).round(3), 'low %.2f detail %.2f' % (low, detail))
 
 path = os.path.join(root, 'systems/world_gen/colour_match.gd')
 text = open(path, newline='').read()
 nl = '\r\n' if '\r\n' in text else '\n'
 lines = ['const FITS := {']
-for key, (mean, gain, low, detail) in out.items():
-    lines.append('\t"%s": {"mean": Vector3(%.4f, %.4f, %.4f), "gain": Vector3(%.4f, %.4f, %.4f), "low": %.3f, "detail": %.3f},'
-                 % ((key,) + tuple(mean) + tuple(gain) + (low, detail)))
+for key, (mean, gain, low, detail, sat) in out.items():
+    lines.append('\t"%s": {"mean": Vector3(%.4f, %.4f, %.4f), "gain": Vector3(%.4f, %.4f, %.4f), "low": %.3f, "detail": %.3f, "sat": %.3f},'
+                 % ((key,) + tuple(mean) + tuple(gain) + (low, detail, sat)))
 lines.append('}')
 block = nl.join(lines)
 text = re.sub(r'const FITS := \{.*?\n\}', lambda m: block, text, count=1, flags=re.S)

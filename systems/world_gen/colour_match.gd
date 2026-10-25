@@ -6,20 +6,20 @@ extends RefCounted
 
 const SHADER := preload("res://shaders/world/colour_match.gdshader")
 const FITS := {
-	"bark_willow_02": {"mean": Vector3(0.4916, 0.4388, 0.3879), "gain": Vector3(1.0556, 1.0541, 1.0536), "low": 1.273, "detail": 1.020},
-	"trident_maple_bark": {"mean": Vector3(0.2789, 0.2177, 0.1541), "gain": Vector3(1.0974, 1.0955, 1.0919), "low": 0.940, "detail": 0.913},
-	"japanese_cedar_bark": {"mean": Vector3(0.3297, 0.2603, 0.1986), "gain": Vector3(0.8555, 0.7950, 0.7055), "low": 0.529, "detail": 0.491},
-	"tree_bark_03": {"mean": Vector3(0.5438, 0.5296, 0.4178), "gain": Vector3(1.0277, 0.9992, 0.9527), "low": 1.127, "detail": 1.012},
-	"pine_bark": {"mean": Vector3(0.4188, 0.3100, 0.2065), "gain": Vector3(0.9600, 1.0494, 1.2203), "low": 0.582, "detail": 0.535},
-	"palm_tree_bark": {"mean": Vector3(0.6336, 0.5889, 0.5319), "gain": Vector3(0.9668, 0.9589, 0.9517), "low": 1.329, "detail": 1.065},
-	"forest_leaves_03": {"mean": Vector3(0.2406, 0.1896, 0.1109), "gain": Vector3(1.1223, 1.1147, 1.1225), "low": 0.847, "detail": 1.298},
-	"gravel_soil": {"mean": Vector3(0.2929, 0.2750, 0.2867), "gain": Vector3(1.3316, 1.2860, 1.0795), "low": 1.342, "detail": 1.365},
-	"red_soil": {"mean": Vector3(0.5787, 0.4326, 0.3275), "gain": Vector3(0.9865, 1.0887, 1.1818), "low": 1.105, "detail": 0.936},
-	"rock_face_04": {"mean": Vector3(0.3023, 0.2564, 0.2047), "gain": Vector3(1.0969, 1.0896, 1.0817), "low": 1.066, "detail": 1.206},
-	"rock_08": {"mean": Vector3(0.4851, 0.4255, 0.3458), "gain": Vector3(1.1478, 1.1472, 1.1462), "low": 0.515, "detail": 0.949},
-	"rock_06": {"mean": Vector3(0.5301, 0.4105, 0.2941), "gain": Vector3(0.9302, 0.9284, 0.9299), "low": 0.707, "detail": 1.162},
-	"plate_rock_pitted_mossy": {"mean": Vector3(0.7863, 0.6201, 0.4610), "gain": Vector3(0.9734, 0.9867, 1.0041), "low": 0.948, "detail": 0.987},
-	"oak_wood_planks": {"mean": Vector3(0.6238, 0.4514, 0.3214), "gain": Vector3(1.0193, 1.0207, 1.0191), "low": 0.714, "detail": 0.658},
+	"bark_willow_02": {"mean": Vector3(0.4943, 0.4382, 0.3840), "gain": Vector3(1.0498, 1.0557, 1.0644), "low": 1.273, "detail": 1.020, "sat": 1.064},
+	"trident_maple_bark": {"mean": Vector3(0.2841, 0.2166, 0.1463), "gain": Vector3(1.0774, 1.1015, 1.1503), "low": 0.940, "detail": 0.913, "sat": 1.104},
+	"japanese_cedar_bark": {"mean": Vector3(0.3343, 0.2591, 0.1923), "gain": Vector3(0.8438, 0.7986, 0.7284), "low": 0.529, "detail": 0.491, "sat": 1.083},
+	"tree_bark_03": {"mean": Vector3(0.5496, 0.5317, 0.3907), "gain": Vector3(1.0169, 0.9952, 1.0187), "low": 1.127, "detail": 1.012, "sat": 1.261},
+	"pine_bark": {"mean": Vector3(0.3932, 0.3163, 0.2431), "gain": Vector3(1.0227, 1.0287, 1.0366), "low": 0.582, "detail": 0.535, "sat": 0.707},
+	"palm_tree_bark": {"mean": Vector3(0.6355, 0.5885, 0.5288), "gain": Vector3(0.9639, 0.9595, 0.9574), "low": 1.329, "detail": 1.065, "sat": 1.049},
+	"forest_leaves_03": {"mean": Vector3(0.2466, 0.1887, 0.0995), "gain": Vector3(1.0952, 1.1200, 1.2517), "low": 0.847, "detail": 1.298, "sat": 1.134},
+	"gravel_soil": {"mean": Vector3(0.3020, 0.2696, 0.2908), "gain": Vector3(1.2915, 1.3118, 1.0642), "low": 1.342, "detail": 1.365, "sat": 1.809},
+	"red_soil": {"mean": Vector3(0.5471, 0.4416, 0.3657), "gain": Vector3(1.0436, 1.0666, 1.0584), "low": 1.105, "detail": 0.936, "sat": 0.722},
+	"rock_face_04": {"mean": Vector3(0.3072, 0.2554, 0.1968), "gain": Vector3(1.0793, 1.0941, 1.1247), "low": 1.066, "detail": 1.206, "sat": 1.131},
+	"rock_08": {"mean": Vector3(0.4928, 0.4241, 0.3323), "gain": Vector3(1.1299, 1.1510, 1.1927), "low": 0.515, "detail": 0.949, "sat": 1.152},
+	"rock_06": {"mean": Vector3(0.5235, 0.4121, 0.3035), "gain": Vector3(0.9418, 0.9248, 0.9008), "low": 0.707, "detail": 1.162, "sat": 0.932},
+	"plate_rock_pitted_mossy": {"mean": Vector3(0.7767, 0.6224, 0.4746), "gain": Vector3(0.9854, 0.9831, 0.9752), "low": 0.948, "detail": 0.987, "sat": 0.929},
+	"oak_wood_planks": {"mean": Vector3(0.6263, 0.4507, 0.3183), "gain": Vector3(1.0152, 1.0223, 1.0291), "low": 0.714, "detail": 0.658, "sat": 1.019},
 }
 ## off while the fits are measured (square_compare --no-match)
 static var enabled := true
@@ -49,6 +49,7 @@ static func apply(host: Node, image: Image, name: String) -> Image:
 	material.set_shader_parameter(&"mean_gain", fit["gain"])
 	material.set_shader_parameter(&"low_gain", fit["low"])
 	material.set_shader_parameter(&"detail_gain", fit["detail"])
+	material.set_shader_parameter(&"sat_gain", fit.get("sat", 1.0))
 	rect.material = material
 	viewport.add_child(rect)
 	host.add_child(viewport)
