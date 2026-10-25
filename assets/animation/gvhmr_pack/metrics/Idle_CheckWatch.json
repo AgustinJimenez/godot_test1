@@ -1,0 +1,18 @@
+{
+ "frames": 75,
+ "seconds": 2.5,
+ "root_travel_m": 0.0,
+ "head_height_min_m": 1.39,
+ "head_height_max_m": 1.41,
+ "limb_accel_median": 0.6,
+ "limb_accel_spikes": 0.0,
+ "floor_shift_m": 0.009,
+ "turn_crop": "None",
+ "loop": "{'window': (1, 76), 'seconds': 2.5, 'score': 0.328, 'blend': 8}",
+ "ground_low_mean_shift_m": null,
+ "feet": [
+  "floor (lowest foot) 0.001 m",
+  "left foot: planted 73% of frames in 3 stretches, drifts 5.7 cm per stretch while planted",
+  "right foot: planted 53% of frames in 3 stretches, drifts 5.2 cm per stretch while planted"
+ ]
+}

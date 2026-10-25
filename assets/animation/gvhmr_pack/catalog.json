@@ -45,6 +45,15 @@
   "hands": "relaxed"
  },
  {
+  "name": "Crawl_Low2",
+  "category": "Crawl",
+  "rating": "ok",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.5,
+  "hands": "relaxed"
+ },
+ {
   "name": "Crouch_Enter",
   "category": "Crouch",
   "rating": "ok",
@@ -126,6 +135,24 @@
   "hands": "relaxed"
  },
  {
+  "name": "Idle_CheckWatch",
+  "category": "Idle",
+  "rating": "ok",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Idle_Combat",
+  "category": "Idle",
+  "rating": "ok",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
   "name": "Idle_LookAround",
   "category": "Idle",
   "rating": "usable",
@@ -136,6 +163,15 @@
  },
  {
   "name": "Idle_Relaxed",
+  "category": "Idle",
+  "rating": "ok",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Idle_Stretch",
   "category": "Idle",
   "rating": "ok",
   "loop": true,
@@ -255,6 +291,15 @@
   "name": "Run_Left",
   "category": "Run",
   "rating": "usable",
+  "loop": true,
+  "in_place": true,
+  "speed": 3.6,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Run_Left2",
+  "category": "Run",
+  "rating": "ok",
   "loop": true,
   "in_place": true,
   "speed": 3.6,
