@@ -62,6 +62,22 @@ func _ready() -> void:
 			options.get("force_loop", "false") == "true", options.get("arm_ik", "false") == "true",
 			[] if options.get("aim", "true") != "true" else chains,
 			["left_hip", "right_hip", map["LeftUpLeg"], map["RightUpLeg"]], foot_lock)
+	var wanted_speed := float(options.get("speed", "0"))
+	if wanted_speed > 0.0: # GVHMR's static-camera travel under-reads: rescale the hips' horizontal travel to a target m/s
+		for track in result.get_track_count():
+			if result.track_get_type(track) != Animation.TYPE_POSITION_3D or result.track_get_key_count(track) < 2:
+				continue
+			var first: Vector3 = result.track_get_key_value(track, 0)
+			var last: Vector3 = result.track_get_key_value(track, result.track_get_key_count(track) - 1)
+			var measured := Vector2(last.x - first.x, last.z - first.z).length() / maxf(result.length, 0.001)
+			if measured < 0.05:
+				break
+			var factor := wanted_speed / measured
+			print("speed %.2f -> %.2f m/s (travel x%.2f)" % [measured, wanted_speed, factor])
+			for key in result.track_get_key_count(track):
+				var v: Vector3 = result.track_get_key_value(track, key)
+				result.track_set_key_value(track, key, Vector3(first.x + (v.x - first.x) * factor, v.y, first.z + (v.z - first.z) * factor))
+			break
 	if options.get("inplace", "false") == "true": # idles and turns: GVHMR's translation drifts, keep the clip on the spot
 		HumanoidRetargeter.make_clip_in_place(result)
 	if options.get("hands", "") != "":

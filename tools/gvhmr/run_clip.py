@@ -33,6 +33,7 @@ parser.add_argument("video")
 parser.add_argument("--name")
 parser.add_argument("--targets", default="brute,motusman")
 parser.add_argument("--no-sheet", action="store_true")
+parser.add_argument("--speed", default="auto", help="target root speed m/s, auto (by clip name), or 0 to keep GVHMR's")
 parser.add_argument("--inplace", action="store_true", help="remove the horizontal travel (idles, turns, jumps in place)")
 parser.add_argument("--hands", default="relaxed", help="hand preset written into the finger tracks (relaxed|fist|none)")
 args = parser.parse_args()
@@ -78,13 +79,19 @@ metrics = {"frames": clip["frames"], "seconds": round(clip["frames"] / fps, 2), 
 json.dump(metrics, open(os.path.join(PACK, "metrics", name + ".json"), "w"), indent=1)
 
 mapping = {"relaxed": "relaxed", "fist": "fist", "none": ""}
+SPEEDS = [("Walk_Slow", 0.9), ("Crouch_Walk", 0.9), ("Crawl", 0.5), ("Walk", 1.4), ("Run_Fast", 5.0), ("Run", 3.6), ("Sprint", 5.0)]
+speed = 0.0
+if args.speed == "auto":
+    speed = next((v for prefix, v in SPEEDS if name.startswith(prefix)), 0.0)
+else:
+    speed = float(args.speed)
 for target in args.targets.split(","):
     manifest, model = TARGETS[target]
     out_res = "res://assets/animation/gvhmr_pack/out/%s_%s.res" % (name, target)
     subprocess.run([GODOT, "--headless", "--path", PROJECT, "res://tests/manual/animation/gvhmr_retarget.tscn", "--",
                     "source_json=res://assets/animation/gvhmr_pack/json/%s.json" % name, "target_manifest=" + manifest,
                     "output=" + out_res, "contacts=res://assets/animation/gvhmr_pack/json/%s_contacts.json" % name,
-                    "hands=" + mapping[args.hands], "inplace=" + ("true" if args.inplace else "false")], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    "hands=" + mapping[args.hands], "inplace=" + ("true" if args.inplace else "false"), "speed=%.2f" % (0.0 if args.inplace else speed)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if args.no_sheet:
         continue
     from PIL import Image
