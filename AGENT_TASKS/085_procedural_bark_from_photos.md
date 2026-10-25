@@ -461,3 +461,5 @@ Round 30 (2026-10-25): gravel and red soil.
 - Palm (`ring_bake.gdshader`): fewer, softer white drops (the polka dots of round 29 are gone; tan-white 0.7) - the fit then asks for detail
   1.6 (clamped), so the fine grain is strong; the photograph's smooth horizontal weathering bands and dark streaks are still missing.
 - Wood (`wood_bake.gdshader`): board seams 0.45 -> 0.25 dark (the photograph's seams are faint). Cathedral grain still missing.
+- Checks after round 30: `scripts/visual_check.sh` PASS (the changed bakes are viewer-only or opt-in). Not done: the game atlas is still
+  1024 px / seed 1 (a size or variation change needs a perf look); palm weathering bands, wood cathedral grain, pine plate shapes.
