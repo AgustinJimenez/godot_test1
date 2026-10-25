@@ -59,7 +59,7 @@ run "Foot IK v2 solver regression" "FOOT_IK_V2_SOLVER_CHECK PASS" \
 	godot --headless --path "$project_dir" --script \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_solver_check.gd
 
-run "Foot IK v2 native maths (matches the GDScript; SKIP when not built)" "FOOT_IK_V2_NATIVE_CHECK (\(PASS\|SKIP\))" \
+run "Foot IK v2 native maths (matches the GDScript; SKIP when not built)" "FOOT_IK_V2_NATIVE_CHECK \(PASS\|SKIP\)" \
 	godot --headless --path "$project_dir" --script \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_native_check.gd
 
