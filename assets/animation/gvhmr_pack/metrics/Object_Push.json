@@ -1,0 +1,15 @@
+{
+ "frames": 121,
+ "seconds": 4.03,
+ "root_travel_m": 0.19,
+ "head_height_min_m": 0.8,
+ "head_height_max_m": 1.16,
+ "limb_accel_median": 1.4,
+ "limb_accel_spikes": 0.0,
+ "floor_shift_m": -0.045,
+ "feet": [
+  "floor (lowest foot) 0.000 m",
+  "left foot: planted 62% of frames in 7 stretches, drifts 1.6 cm per stretch while planted",
+  "right foot: planted 63% of frames in 9 stretches, drifts 2.3 cm per stretch while planted"
+ ]
+}

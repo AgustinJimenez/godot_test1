@@ -93,3 +93,19 @@ Process a clip: `python tools/gvhmr/run_clip.py E:/repo/gvhmr_work/videos/anim_<
 - Batch status: 32/38 done, 0 failed; 37 clips processed. Remaining: Hurt_* (3), Object_* (3).
 - Hurt_Flinch: ok - a sharp flinch/lean away then straightens, calm (accel 0.6). Hurt_Fall: usable - drops to a kneel and holds, head 0.69-1.29 m; the clip starts already low in the first frames (video model starts mid-fall), floor shift +0.12 m. Hurt_Stagger: usable - steps back with an arm up (travel 0.67 m); fine as a reaction.
 - Batch status: 35/38 done, 0 failed; 40 clips processed. Remaining: Object_PickUp, Object_Push, Object_Carry (running).
+- Object_PickUp: ok - bends down and straightens with the arm raised holding the prop, head 0.84-1.62, calm. Object_Push: usable - sustained forward lean (head 0.80-1.16 m) reads as a push posture; the video prop is not in the Brute's hands. Object_Carry: weak/usable - a plain walk (2.7 m) with the arms hanging, NOT visibly carrying a box (no two-arm hold); the video model did not hold the box with both arms in front.
+- BATCH COMPLETE 2026-10-25 ~04:20: 38/38 videos, 0 failed, all 38 processed (json + Brute/MotusMan .res + sheets + metrics in assets/animation/gvhmr_pack/).
+
+## SUMMARY after the first full pass (38 clips)
+ok: Idle_Relaxed/Alert/Tired, Walk_Slow/Backward/Right, Run_Forward/Fast/Right, Crouch_Enter/Exit, Jump_Long, Turn_Left/Right/Around, Sword_SlashDown/Block/Thrust, Hurt_Flinch, Object_PickUp.
+usable: Idle_LookAround, Walk_Forward/Confident/Left, Run_Left(doubtful), Jump_InPlace, Crouch_Idle, Crouch_Walk, Crawl_Forward, Crawl_Low(doubtful), Climb_Vault, Sword_SlashSide, Hurt_Fall/Stagger, Object_Push, Object_Carry(weak).
+weak/failed: Jump_Forward (barely jumps), Climb_Ledge (no climb).
+
+## NEXT PHASE (plan, in priority order; the loop continues with these)
+1. HOOK INTO THE GAME: find how the player/NPC animation libraries load retargeted clips (actors/player/player_directional_locomotion_library.gd, humanoid_actor.gd, CharacterEditor animation package: tools/character_editor/character_animation_package.gd) and add a loader for assets/animation/gvhmr_pack/out/<Name>_<target>.res (per character: Brute / MotusMan / any manifest) so the clips are playable in the character editor and in game. Write a catalog json (name, category, rating, loop, root-motion, in-place flag).
+2. TURN ANGLES: measure the pelvis yaw change per Turn_* clip (run_clip metrics) and trim/scale to the nominal 90/180 deg.
+3. LOOPS: Idle/Walk/Run/Crouch_Walk/Crawl should loop: find the best loop window (min pose distance between a start and end frame, same foot phase) and crossfade or trim; store loop in/out in the catalog.
+4. LOW BODIES / GROUND: crawl and hurt-fall float or sink (GVHMR height drift): ground per frame when the body is low (use the lowest of hands/knees/feet, not only feet).
+5. RETRIES with better prompts (generate with tools/gvhmr/batch_generate.py on a new manifest; resumable): Climb_Ledge (use start+end images or a visible wall), Jump_Forward/Jump_InPlace (stronger take-off), Crouch_Idle (starts already in a deep crouch), Object_Carry (both arms hold a large box in front), Run_Left, Crawl_Low. Add more VARIANTS per category (3-6 each): idle (stretch, breathing, check watch), walk (injured limp, sneak, heavy), run (tired, zigzag), sword (combo, parry, kick), hurt (knockback, grab arm), object (drag, throw, open door), climb (ladder up/down), plus get-up and roll. Write them as an extra manifest tools/gvhmr/manifests/pack_v2.json via make_manifest.py CLIPS.
+6. H3 OPTION: try h3-studio / WanGP minimax_h3 (weights in wan2.1gp/ckpts, used in August) for the weak categories; compare with LTX-2.5.
+7. LICENCE: GVHMR/SMPL-X are non-commercial: document in the pack README; Kimodo (E:/repo/kimodo) as the commercial-friendly fallback for climb/crawl/etc.
