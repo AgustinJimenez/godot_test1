@@ -28,8 +28,25 @@ func _ready() -> void:
 	source_skeleton.set_bone_rest(pelvis, Transform3D(rest.basis, Vector3(0.0, STANDING_PELVIS_HEIGHT, 0.0)))
 	var config := HumanoidRetargeter.build_bone_map_config(
 			RetargetSmplx.ROLE_MAP, manifest["humanoid_map"] as Dictionary)
+	var map: Dictionary = manifest["humanoid_map"]
+	# parents before children; the fourth entry is the child bone the direction runs to
+	var chains: Array = [
+		["pelvis", "spine1", map["Hips"], map["Spine"]], ["spine1", "spine2", map["Spine"], map["Spine1"]],
+		["spine2", "spine3", map["Spine1"], map["Spine2"]], ["spine3", "neck", map["Spine2"], map["Neck"]],
+		["neck", "head", map["Neck"], map["Head"]],
+	]
+	for side: Array in [["left", "Left"], ["right", "Right"]]:
+		var lo: String = side[0]
+		var hi: String = side[1]
+		chains.append([lo + "_hip", lo + "_knee", map[hi + "UpLeg"], map[hi + "Leg"]])
+		chains.append([lo + "_knee", lo + "_ankle", map[hi + "Leg"], map[hi + "Foot"]])
+		chains.append([lo + "_collar", lo + "_shoulder", map[hi + "Shoulder"], map[hi + "Arm"]])
+		chains.append([lo + "_shoulder", lo + "_elbow", map[hi + "Arm"], map[hi + "ForeArm"]])
+		chains.append([lo + "_elbow", lo + "_wrist", map[hi + "ForeArm"], map[hi + "Hand"]])
 	var result := HumanoidRetargeter.retarget_clip(source_skeleton, animation, target_skeleton, config,
-			options.get("force_loop", "false") == "true")
+			options.get("force_loop", "false") == "true", options.get("arm_ik", "false") == "true",
+			[] if options.get("aim", "true") != "true" else chains,
+			["left_hip", "right_hip", map["LeftUpLeg"], map["RightUpLeg"]])
 	DirAccess.make_dir_recursive_absolute(String(options["output"]).get_base_dir())
 	var saved := ResourceSaver.save(result, options["output"])
 	print("RETARGET_OK ", options["output"], " length=%.2f tracks=%d save=%d" % [

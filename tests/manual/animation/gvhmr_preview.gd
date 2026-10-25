@@ -42,7 +42,21 @@ func _ready() -> void:
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color(0.7, 0.7, 0.75)
 	camera.environment = environment
+	# the source body is turned to face the way the retargeted character does (their rest poses face different ways)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var source_skeleton := left.find_child("Skeleton3D", true, false) as Skeleton3D
+	var target_skeleton := skeleton
+	var src_axis := _axis(source_skeleton, "left_hip", "right_hip")
+	var dst_axis := _axis(target_skeleton, "mixamorig_LeftUpLeg", "mixamorig_RightUpLeg")
+	left.rotation.y = Vector3(src_axis.x, 0.0, src_axis.z).signed_angle_to(Vector3(dst_axis.x, 0.0, dst_axis.z), Vector3.UP)
 	await get_tree().create_timer(float(options["at"])).timeout
 	if options.has("shot"):
 		get_viewport().get_texture().get_image().save_png(options["shot"])
 		get_tree().quit()
+
+
+func _axis(skeleton: Skeleton3D, left_bone: String, right_bone: String) -> Vector3:
+	var a := skeleton.get_bone_global_pose(skeleton.find_bone(left_bone)).origin
+	var b := skeleton.get_bone_global_pose(skeleton.find_bone(right_bone)).origin
+	return b - a

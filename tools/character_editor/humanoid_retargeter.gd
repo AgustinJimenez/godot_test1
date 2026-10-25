@@ -141,7 +141,8 @@ static func _role_source_name(source_role_map: Dictionary, role: String) -> Stri
 ## no reason to exist twice).
 static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 		target_skeleton: Skeleton3D, config: BoneMapConfig,
-		force_loop: bool = false, match_arm_positions: bool = true) -> Animation:
+		force_loop: bool = false, match_arm_positions: bool = true,
+		direction_chains: Array = [], hip_axis: Array = []) -> Animation:
 	var bone_tracks: Dictionary = {}
 	for t in src_animation.get_track_count():
 		var path := src_animation.track_get_path(t)
@@ -234,6 +235,44 @@ static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 		if match_arm_positions:
 			_match_arm_skeleton_positions(anim, src_skeleton, target_skeleton, target_global,
 					out_rot_track, source_to_target_facing, arm_position_scale, config)
+		# hip_axis: [source left hip, source right hip, target left upleg, target right upleg]. The facing difference is then
+		# measured from those two axes on this frame (the rest poses of a GVHMR clip carry the first frame's turn), and the
+		# hips' travel is turned by the same yaw so the character moves the way its body is facing.
+		var frame_turn := source_to_target_facing
+		if hip_axis.size() == 4:
+			var sl := src_skeleton.find_bone(StringName(hip_axis[0]))
+			var sr := src_skeleton.find_bone(StringName(hip_axis[1]))
+			var tl := target_skeleton.find_bone(StringName(hip_axis[2]))
+			var tr := target_skeleton.find_bone(StringName(hip_axis[3]))
+			if sl >= 0 and sr >= 0 and tl >= 0 and tr >= 0:
+				var src_axis := _manual_global_pose(src_skeleton, sr).origin - _manual_global_pose(src_skeleton, sl).origin
+				var dst_axis := (_manual_global_pose(target_skeleton, tr).origin
+						- _manual_global_pose(target_skeleton, tl).origin)
+				frame_turn = Basis(Vector3.UP, Vector3(src_axis.x, 0.0, src_axis.z).signed_angle_to(
+						Vector3(dst_axis.x, 0.0, dst_axis.z), Vector3.UP))
+				if out_pos_track >= 0:
+					var key := anim.track_get_key_count(out_pos_track) - 1
+					var rest_origin := target_skeleton.get_bone_rest(target_hips).origin
+					var moved: Vector3 = anim.track_get_key_value(out_pos_track, key) - rest_origin
+					var turned: Vector3 = frame_turn * Vector3(moved.x, 0.0, moved.z)
+					anim.track_set_key_value(out_pos_track, key,
+							rest_origin + Vector3(turned.x, moved.y, turned.z))
+		# direction_chains: [source from bone, source to bone, target bone] in parent-first order - the target bone is
+		# aimed along the source's world direction (turned by the facing difference), which removes the drift that
+		# copying rotations between two different rest poses leaves along a limb (GVHMR's SMPL-X onto a Mixamo rig)
+		for chain: Array in direction_chains:
+			var from_idx := src_skeleton.find_bone(StringName(chain[0]))
+			var to_idx := src_skeleton.find_bone(StringName(chain[1]))
+			var bone_idx := target_skeleton.find_bone(StringName(chain[2]))
+			if from_idx < 0 or to_idx < 0 or bone_idx < 0:
+				continue
+			var direction := (_manual_global_pose(src_skeleton, to_idx).origin
+					- _manual_global_pose(src_skeleton, from_idx).origin).normalized()
+			var child_idx := -1 # (an optional fourth entry names the child the direction runs to: Hips has legs too)
+			if chain.size() > 3:
+				child_idx = target_skeleton.find_bone(StringName(chain[3]))
+			_aim_bone_at_direction(anim, target_skeleton, target_global, out_rot_track,
+					bone_idx, frame_turn * direction, child_idx)
 	return anim
 
 
@@ -614,11 +653,11 @@ static func _solve_two_bone_ik(shoulder: Vector3, upper_len: float, lower_len: f
 
 static func _aim_bone_at_direction(anim: Animation, target_skel: Skeleton3D,
 		target_global: Dictionary, out_rot_track: Dictionary, bone_idx: int,
-		desired_direction: Vector3) -> void:
+		desired_direction: Vector3, explicit_child: int = -1) -> void:
 	var children := target_skel.get_bone_children(bone_idx)
 	if children.is_empty():
 		return
-	var child_idx: int = children[0]
+	var child_idx: int = explicit_child if explicit_child >= 0 else children[0]
 	var parent_idx := target_skel.get_bone_parent(bone_idx)
 	var parent_global := _manual_global_pose(target_skel, parent_idx)
 	var bone_global := _manual_global_pose(target_skel, bone_idx)
