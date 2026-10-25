@@ -12,6 +12,7 @@ var _foot_weight := PackedFloat32Array() # weight share on the foot bone
 var _toe_weight := PackedFloat32Array()
 var _foot_local := PackedVector3Array() # weighted bind-space position, foot part
 var _toe_local := PackedVector3Array()
+var _native: RefCounted # FootIKV2Native (native/planet_crust): the same maths in C++, used when the library is loaded (PLANET_NO_NATIVE=1: GDScript)
 
 
 func _init(skel: Skeleton3D, character: Node, foot: int, toe: int) -> void:
@@ -24,6 +25,9 @@ func _init(skel: Skeleton3D, character: Node, foot: int, toe: int) -> void:
 		if part != null and part.mesh != null and part.get_skin_reference() != null:
 			_add_mesh(skel, part)
 	_prune(skel, KEEP_BAND)
+	if ClassDB.class_exists(&"FootIKV2Native") and not OS.has_environment("PLANET_NO_NATIVE"):
+		_native = ClassDB.instantiate(&"FootIKV2Native")
+		_native.call(&"set_sole", _foot_weight, _toe_weight, _foot_local, _toe_local)
 
 
 func is_empty() -> bool:
@@ -34,6 +38,8 @@ func is_empty() -> bool:
 func points(skel: Skeleton3D, live: bool) -> PackedVector3Array:
 	var foot_pose := skel.get_bone_global_pose(_foot) if live else skel.get_bone_global_rest(_foot)
 	var toe_pose := skel.get_bone_global_pose(_toe) if live else skel.get_bone_global_rest(_toe)
+	if _native != null:
+		return _native.call(&"points", foot_pose, toe_pose)
 	var out := PackedVector3Array()
 	out.resize(_foot_weight.size())
 	for i in _foot_weight.size():
@@ -126,7 +132,9 @@ func _add_vertex(skel: Skeleton3D, skin: Skin, vertex: Vector3, bones: PackedInt
 
 ## The sole-level points in WORLD space under `to_world`: every vertex within `band` of the lowest.
 ## One pass finds the lowest, a second keeps only those, so the rest are never transformed.
-func level_points(skel: Skeleton3D, to_world: Transform3D, band: float) -> Array[Vector3]:
+func level_points(skel: Skeleton3D, to_world: Transform3D, band: float) -> PackedVector3Array:
+	if _native != null:
+		return _native.call(&"level_points", skel.get_bone_global_pose(_foot), skel.get_bone_global_pose(_toe), to_world, band)
 	var local := points(skel, true)
 	var b := to_world.basis
 	var up := Vector3(b.x.y, b.y.y, b.z.y) # the world-Y row: a point's world height is up.dot(p)
@@ -136,11 +144,21 @@ func level_points(skel: Skeleton3D, to_world: Transform3D, band: float) -> Array
 	for i in local.size():
 		heights[i] = up.dot(local[i])
 		lowest = minf(lowest, heights[i])
-	var level: Array[Vector3] = []
+	var level := PackedVector3Array()
 	for i in local.size():
 		if heights[i] <= lowest + band:
 			level.append(to_world * local[i])
 	return level
+
+
+## World height of the lowest sole point under `to_world`, from the CURRENT bone poses.
+func lowest_world_y(skel: Skeleton3D, to_world: Transform3D) -> float:
+	if _native != null:
+		return _native.call(&"lowest_world_y", skel.get_bone_global_pose(_foot), skel.get_bone_global_pose(_toe), to_world)
+	var lowest := INF
+	for point: Vector3 in points(skel, true):
+		lowest = minf(lowest, (to_world * point).y)
+	return lowest
 
 
 ## Keep only the vertices within `band` of the sole at rest: a foot pitched or rolled by the IK

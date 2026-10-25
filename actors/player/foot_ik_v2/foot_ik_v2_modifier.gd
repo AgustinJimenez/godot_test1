@@ -936,9 +936,7 @@ func _toe_on_flat(skel: Skeleton3D, leg: Dictionary) -> bool:
 ## Height of the lowest skinned-sole point relative to the ankle, at the pose's CURRENT pitch.
 func _lowest_sole_offset(skel: Skeleton3D, side: StringName, to_world: Transform3D,
 		leg: Dictionary) -> float:
-	var lowest := INF
-	for point: Vector3 in (_sole[side] as SOLE).points(skel, true):
-		lowest = minf(lowest, (to_world * point).y)
+	var lowest := (_sole[side] as SOLE).lowest_world_y(skel, to_world)
 	return lowest - (to_world * skel.get_bone_global_pose(int(leg["foot"]))).origin.y
 
 
