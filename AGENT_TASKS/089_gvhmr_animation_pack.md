@@ -30,8 +30,11 @@ upright body. Report per clip: ok / usable-with-cleanup / failed.
 
 ## State (update every wake-up)
 - [x] GVHMR clips retargeted onto Brute + MotusMan, limbs/travel/twist verified (see commits).
-- [ ] direct converter (step 3)
+- [x] direct converter (step 3): tools/gvhmr/smplx_motion_to_json.py + tests/manual/animation/smplx_json_source.gd; gvhmr_retarget.gd takes source_json=; verified against the FBX route (limbs 1-5 deg, travel matches). clip fps is 30 (the old FBXs were exported at 24).
 - [ ] pilot: ONE locomotion clip end to end (video -> motion -> game character), then judge quality
 - [ ] feet fix (step 5), fingers decision (step 6)
 - [ ] batch generation (use animation_list.json categories; resumable manifests)
+- [ ] native Windows GVHMR: venv E:epo\gvhmr_win\.venv (uv, python 3.11, torch 2.7.1 cu126, `gvhmr[preproc]==1.6.1` = the repackaging that vendors pytorch3d's maths, no WSL needed). Install runs in the background (install_*.log, install_done.log). Checkpoints: point GVHMR_CHECKPOINTS / GVHMR_BODY_MODELS at E:epo\gvhmr\inputs\checkpoints (and its body_models). Test on E:epo\gvhmr\inputs\walking_man_test.mp4.
 - Notes / findings:
+  - prior art: unity project Pipeline/wan2gp has animation_list.json (the wanted clip list), batch_generate.py, manifests.
+  - SMPL-X rest origin is not on the floor: the json loader lifts the rest pose so the feet stand on y=0.
