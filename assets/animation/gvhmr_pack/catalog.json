@@ -378,6 +378,15 @@
   "hands": "relaxed"
  },
  {
+  "name": "Walk_Armed",
+  "category": "Walk",
+  "rating": "ok",
+  "loop": true,
+  "in_place": true,
+  "speed": 1.4,
+  "hands": "relaxed"
+ },
+ {
   "name": "Walk_Backward",
   "category": "Walk",
   "rating": "ok",
@@ -405,12 +414,30 @@
   "hands": "relaxed"
  },
  {
+  "name": "Walk_Heavy",
+  "category": "Walk",
+  "rating": "usable",
+  "loop": true,
+  "in_place": true,
+  "speed": 1.0,
+  "hands": "relaxed"
+ },
+ {
   "name": "Walk_Left",
   "category": "Walk",
   "rating": "usable",
   "loop": true,
   "in_place": true,
   "speed": 1.4,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Walk_Limp",
+  "category": "Walk",
+  "rating": "usable",
+  "loop": true,
+  "in_place": true,
+  "speed": 1.1,
   "hands": "relaxed"
  },
  {
@@ -424,6 +451,15 @@
  },
  {
   "name": "Walk_Slow",
+  "category": "Walk",
+  "rating": "ok",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.9,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Walk_Sneak",
   "category": "Walk",
   "rating": "ok",
   "loop": true,

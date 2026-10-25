@@ -13,16 +13,16 @@ RATINGS = {
     "ok": ["Idle_Relaxed", "Idle_Alert", "Idle_Tired", "Walk_Slow", "Walk_Backward", "Walk_Right", "Run_Forward", "Run_Fast",
            "Run_Right", "Crouch_Enter", "Crouch_Exit", "Jump_Long", "Turn_Left", "Turn_Right", "Turn_Around",
            "Sword_SlashDown", "Sword_Block", "Sword_Thrust", "Hurt_Flinch", "Object_PickUp",
-           "Jump_Forward2", "Jump_InPlace2", "Crouch_Idle2", "Crawl_Low", "Crawl_Forward", "Crawl_Low2", "Idle_CheckWatch", "Idle_Combat", "Idle_Stretch", "Run_Left2"],
+           "Jump_Forward2", "Jump_InPlace2", "Crouch_Idle2", "Crawl_Low", "Crawl_Forward", "Crawl_Low2", "Idle_CheckWatch", "Idle_Combat", "Idle_Stretch", "Run_Left2", "Walk_Armed", "Walk_Sneak"],
     "usable": ["Idle_LookAround", "Walk_Forward", "Walk_Confident", "Walk_Left", "Run_Left", "Jump_InPlace", "Crouch_Idle",
                "Crouch_Walk", "Climb_Vault", "Sword_SlashSide", "Hurt_Fall", "Hurt_Stagger",
-               "Object_Push", "Object_Carry", "Climb_Ledge2"],
+               "Object_Push", "Object_Carry", "Climb_Ledge2", "Walk_Heavy", "Walk_Limp"],
     "weak": ["Jump_Forward", "Object_Carry2"],
     "failed": ["Climb_Ledge"],
 }
 LOOPING_PREFIXES = ("Idle", "Walk", "Run", "Crouch_Idle", "Crouch_Walk", "Crawl")
 IN_PLACE_PREFIXES = ("Idle", "Turn", "Crouch_Idle", "Crouch_Enter", "Crouch_Exit", "Jump_InPlace")
-SPEEDS = [("Walk_Slow", 0.9), ("Crouch_Walk", 0.9), ("Crawl", 0.5), ("Walk", 1.4), ("Run_Fast", 5.0), ("Run", 3.6)]
+SPEEDS = [("Walk_Slow", 0.9), ("Walk_Sneak", 0.9), ("Walk_Heavy", 1.0), ("Walk_Limp", 1.1), ("Run_Tired", 3.0), ("Crouch_Walk", 0.9), ("Crawl", 0.5), ("Walk", 1.4), ("Run_Fast", 5.0), ("Run", 3.6)]
 FIST_PREFIXES = ("Sword", "Object")
 
 rating_of = {name: rating for rating, names in RATINGS.items() for name in names}

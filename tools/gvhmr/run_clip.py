@@ -100,7 +100,7 @@ metrics = {"frames": clip["frames"], "seconds": round(clip["frames"] / fps, 2), 
 json.dump(metrics, open(os.path.join(PACK, "metrics", name + ".json"), "w"), indent=1)
 
 mapping = {"relaxed": "relaxed", "fist": "fist", "none": ""}
-SPEEDS = [("Walk_Slow", 0.9), ("Crouch_Walk", 0.9), ("Crawl", 0.5), ("Walk", 1.4), ("Run_Fast", 5.0), ("Run", 3.6), ("Sprint", 5.0)]
+SPEEDS = [("Walk_Slow", 0.9), ("Walk_Sneak", 0.9), ("Walk_Heavy", 1.0), ("Walk_Limp", 1.1), ("Run_Tired", 3.0), ("Crouch_Walk", 0.9), ("Crawl", 0.5), ("Walk", 1.4), ("Run_Fast", 5.0), ("Run", 3.6), ("Sprint", 5.0)]
 speed = 0.0
 if args.speed == "auto":
     speed = next((v for prefix, v in SPEEDS if name.startswith(prefix)), 0.0)
