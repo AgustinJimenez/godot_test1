@@ -114,7 +114,7 @@ func _ensure_gvhmr_loaded() -> void:
 		if not entry["rating"] in ["ok", "usable"] or editor._custom_clips.has(clip_name):
 			continue
 		editor._custom_clips[clip_name] = GvhmrPack.retarget(
-				GvhmrPack.DIR + "json/%s.json" % entry["name"], editor.body.skeleton, editor.body._target_humanoid_map, {
+				GvhmrPack.DIR + "json/%s.json" % entry["name"], editor.body.skeleton, _gvhmr_humanoid_map(), {
 					"contacts": GvhmrPack.DIR + "json/%s_contacts.json" % entry["name"],
 					"speed": float(entry.get("speed", 0.0)), "inplace": bool(entry.get("in_place", false)),
 					"hands": String(entry.get("hands", "relaxed")), "force_loop": bool(entry.get("loop", false)),
@@ -122,6 +122,25 @@ func _ensure_gvhmr_loaded() -> void:
 		changed = true
 	if changed:
 		editor._import_handler.rebuild_custom_clip_library()
+
+
+## role -> bone name for the current character: its own map when it has one (catalog characters, MotusMan), otherwise
+## the skeleton's prefix + role names (Mixamo rigs: mixamorig_Hips, mixamorig_LeftUpLeg...).
+func _gvhmr_humanoid_map() -> Dictionary:
+	var map: Dictionary = {}
+	if "_target_humanoid_map" in editor.body:
+		map = editor.body._target_humanoid_map
+	elif not editor.body.humanoid_map.is_empty():
+		map = editor.body.humanoid_map
+	if not map.is_empty():
+		return map
+	var skeleton: Skeleton3D = editor.body.skeleton
+	var prefix: String = HumanoidRetargeter.detect_bone_prefix(skeleton)
+	for bone_index in skeleton.get_bone_count():
+		var bone_name := skeleton.get_bone_name(bone_index)
+		if bone_name.begins_with(prefix):
+			map[bone_name.substr(prefix.length())] = bone_name
+	return map
 
 
 func clip_name_for_path(
