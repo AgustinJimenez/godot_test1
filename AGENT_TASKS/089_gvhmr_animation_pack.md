@@ -34,7 +34,12 @@ upright body. Report per clip: ok / usable-with-cleanup / failed.
 - [ ] pilot: ONE locomotion clip end to end (video -> motion -> game character), then judge quality
 - [ ] feet fix (step 5), fingers decision (step 6)
 - [ ] batch generation (use animation_list.json categories; resumable manifests)
-- [ ] native Windows GVHMR: venv E:epo\gvhmr_win\.venv (uv, python 3.11, torch 2.7.1 cu126, `gvhmr[preproc]==1.6.1` = the repackaging that vendors pytorch3d's maths, no WSL needed). Install runs in the background (install_*.log, install_done.log). Checkpoints: point GVHMR_CHECKPOINTS / GVHMR_BODY_MODELS at E:epo\gvhmr\inputs\checkpoints (and its body_models). Test on E:epo\gvhmr\inputs\walking_man_test.mp4.
+- [ ] native Windows GVHMR: venv E:
+epo\gvhmr_win\.venv (uv, python 3.11, torch 2.7.1 cu126, `gvhmr[preproc]==1.6.1` = the repackaging that vendors pytorch3d's maths, no WSL needed). Install runs in the background (install_*.log, install_done.log). Checkpoints: point GVHMR_CHECKPOINTS / GVHMR_BODY_MODELS at E:
+epo\gvhmr\inputs\checkpoints (and its body_models). Test on E:
+epo\gvhmr\inputs\walking_man_test.mp4.
+- [ ] pilot (running 2026-10-25 01:52): existing LTX walk video (unity Pipeline/wan2gp/generated/videos/Walk_Forward_ToCamera_v3_fixed.mp4) -> copied to gvhmr/inputs/demo/pilot_walk.mp4 -> WSL `bash wsl_run.sh` (log E:/Temp/obj/pilot_walk.log, output gvhmr/outputs/demo/pilot_walk/hmr4d_results.pt) -> extract_motion.py -> smplx_motion_to_json.py -> gvhmr_retarget.gd source_json= -> preview.
+- DECISION: video source for now = the proven LTX-2.3 headless pipeline (unity Pipeline/wan2gp/generate_video.py, ~30-90 s/clip, many clips already in generated/videos). H3 via h3-studio stays an upgrade option (needs its backend server running).
 - Notes / findings:
   - prior art: unity project Pipeline/wan2gp has animation_list.json (the wanted clip list), batch_generate.py, manifests.
   - SMPL-X rest origin is not on the floor: the json loader lifts the rest pose so the feet stand on y=0.
