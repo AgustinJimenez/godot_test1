@@ -6,8 +6,9 @@
  "head_height_max_m": 1.51,
  "limb_accel_median": 2.4,
  "limb_accel_spikes": 0.0,
+ "floor_shift_m": 0.002,
  "feet": [
-  "floor (lowest foot) 0.002 m",
+  "floor (lowest foot) 0.000 m",
   "left foot: planted 33% of frames in 14 stretches, drifts 0.6 cm per stretch while planted",
   "right foot: planted 28% of frames in 9 stretches, drifts 0.9 cm per stretch while planted"
  ]

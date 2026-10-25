@@ -55,12 +55,13 @@ subprocess.run([GVHMR_PY, EXTRACT, os.path.join(result_dir, "hmr4d_results.pt"),
 clip_json = os.path.join(PACK, "json", name + ".json")
 subprocess.run([sys.executable, os.path.join(HERE, "smplx_motion_to_json.py"), SMPLX, motion, clip_json, "30"],
                check=True, stdout=subprocess.DEVNULL)
+sys.path.insert(0, HERE)
+import foot_report  # noqa: E402
+
+floor_shift = foot_report.ground_clip(clip_json)  # (GVHMR's height drifts: put the lowest feet on y = 0)
 contacts = os.path.join(PACK, "json", name + "_contacts.json")
 foot = subprocess.run([sys.executable, os.path.join(HERE, "foot_report.py"), clip_json, contacts],
                       capture_output=True, text=True).stdout.strip().splitlines()
-
-sys.path.insert(0, HERE)
-import foot_report  # noqa: E402
 
 clip = json.load(open(clip_json))
 world = foot_report.joints_world(clip)
@@ -73,7 +74,7 @@ spikes = float(np.mean(accel > 60.0))
 height = world[:, 15, 1] - np.percentile(np.minimum(world[:, 10, 1], world[:, 11, 1]), 2)  # head above the lowest toe
 metrics = {"frames": clip["frames"], "seconds": round(clip["frames"] / fps, 2), "root_travel_m": round(travel, 2),
            "head_height_min_m": round(float(height.min()), 2), "head_height_max_m": round(float(height.max()), 2),
-           "limb_accel_median": round(jitter, 1), "limb_accel_spikes": round(spikes, 3), "feet": foot}
+           "limb_accel_median": round(jitter, 1), "limb_accel_spikes": round(spikes, 3), "floor_shift_m": round(floor_shift, 3), "feet": foot}
 json.dump(metrics, open(os.path.join(PACK, "metrics", name + ".json"), "w"), indent=1)
 
 mapping = {"relaxed": "relaxed", "fist": "fist", "none": ""}

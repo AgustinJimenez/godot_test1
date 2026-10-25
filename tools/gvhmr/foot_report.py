@@ -41,6 +41,20 @@ def joints_world(clip):
     return out
 
 
+def ground_clip(path):
+    """Shifts the clip's translation so the lowest feet (2nd percentile over the clip) stand on y = 0: GVHMR's height drifts
+    (a walk came out 12 cm under the floor). Rewrites the json; returns the shift in metres."""
+    clip = json.load(open(path))
+    world = joints_world(clip)
+    low = np.minimum(world[:, [7, 8, 10, 11], 1].min(axis=1), 1e9)
+    floor = float(np.percentile(low, 2))
+    transl = np.array(clip["transl"])
+    transl[:, 1] -= floor
+    clip["transl"] = np.round(transl, 5).tolist()
+    json.dump(clip, open(path, "w"), separators=(",", ":"))
+    return floor
+
+
 def contacts(world, fps):
     """planted[t, side]: low and slow ankle and toe. side 0 = left, 1 = right."""
     ankle = world[:, [7, 8]]
