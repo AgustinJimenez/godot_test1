@@ -444,3 +444,14 @@ Round 29 (2026-10-24): sharpness and the plain squares (user: "the right square 
   GPU 14.4 ms / 49.2 fps (same within noise).
 - Still different from the photographs: leaf shapes (blocky), ash (warm, shiny), pitted rock plates (a few flat), palm lichen,
   rock swirls and lichen, wood cathedral grain.
+
+Round 30 (2026-10-25): gravel and red soil.
+- Gravel (`chip_bake.gdshader`): stones darker and cooler (tone squared: more dark stones), earth browner and less saturated, large damp/dry
+  patches; the colour fit redone. Close in value and hue now; stones still too big and too few small ones (photo: many small chips).
+- Red soil (`soil_bake.gdshader`): deeper brick red, greyer sand, less dark smearing; fit sat 0.77 (was 0.67: the raw bake's own chroma
+  must be near the photograph's or the global saturation step washes the red to pink).
+- `tools/bark/colour_match.py` keeps the fits of surfaces with no raw bake in the folder: refit one surface with
+  `square_compare --surface=N --no-match --save-bake=<dir>/allbake_N.png`, then `colour_match.py <dir>`, then
+  `godot --headless --editor --quit`.
+- Still different: pine (photo has orange plates on grey-green grooves, ours is uniformly brown: needs hue contrast in the palette, not
+  luminance), pitted rock (cracks too long and smooth, no pits), palm/wood detail, game atlas 1024 / seed 1.
