@@ -66,7 +66,7 @@ static func retarget(source_json: String, target_skeleton: Skeleton3D, humanoid_
 	var result := HumanoidRetargeter.retarget_clip(source_skeleton, animation, target_skeleton, config,
 			force_loop, false, chains, hips_args, {})
 	var wanted_speed := float(options.get("speed", 0.0))
-	if wanted_speed > 0.0: # GVHMR's static-camera travel under-reads: rescale the hips' horizontal travel to a target m/s
+	if wanted_speed > 0.0 and not options.get("inplace", false): # GVHMR static-camera travel under-reads: rescale the hips travel to a target m/s
 		var measured := _hips_speed(result)
 		if measured >= 0.05:
 			_scale_source_travel(animation, wanted_speed / measured) # (the source track: the foot lock then sees the final motion)

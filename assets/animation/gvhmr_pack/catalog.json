@@ -22,7 +22,7 @@
   "category": "Crawl",
   "rating": "usable",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 0.5,
   "hands": "relaxed"
  },
@@ -31,7 +31,7 @@
   "category": "Crawl",
   "rating": "usable",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 0.5,
   "hands": "relaxed"
  },
@@ -67,7 +67,7 @@
   "category": "Crouch",
   "rating": "usable",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 0.9,
   "hands": "relaxed"
  },
@@ -193,7 +193,7 @@
   "category": "Run",
   "rating": "ok",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 5.0,
   "hands": "relaxed"
  },
@@ -202,7 +202,7 @@
   "category": "Run",
   "rating": "ok",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 3.6,
   "hands": "relaxed"
  },
@@ -211,7 +211,7 @@
   "category": "Run",
   "rating": "usable",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 3.6,
   "hands": "relaxed"
  },
@@ -220,7 +220,7 @@
   "category": "Run",
   "rating": "ok",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 3.6,
   "hands": "relaxed"
  },
@@ -292,7 +292,7 @@
   "category": "Walk",
   "rating": "ok",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 1.4,
   "hands": "relaxed"
  },
@@ -301,7 +301,7 @@
   "category": "Walk",
   "rating": "usable",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 1.4,
   "hands": "relaxed"
  },
@@ -310,7 +310,7 @@
   "category": "Walk",
   "rating": "usable",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 1.4,
   "hands": "relaxed"
  },
@@ -319,7 +319,7 @@
   "category": "Walk",
   "rating": "usable",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 1.4,
   "hands": "relaxed"
  },
@@ -328,7 +328,7 @@
   "category": "Walk",
   "rating": "ok",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 1.4,
   "hands": "relaxed"
  },
@@ -337,7 +337,7 @@
   "category": "Walk",
   "rating": "ok",
   "loop": true,
-  "in_place": false,
+  "in_place": true,
   "speed": 0.9,
   "hands": "relaxed"
  }

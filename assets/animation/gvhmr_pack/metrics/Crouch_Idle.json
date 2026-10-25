@@ -1,15 +1,17 @@
 {
- "frames": 121,
- "seconds": 4.03,
- "root_travel_m": 0.21,
- "head_height_min_m": 1.15,
- "head_height_max_m": 1.51,
- "limb_accel_median": 0.4,
+ "frames": 75,
+ "seconds": 2.5,
+ "root_travel_m": 0.0,
+ "head_height_min_m": 1.18,
+ "head_height_max_m": 1.24,
+ "limb_accel_median": 0.1,
  "limb_accel_spikes": 0.0,
- "floor_shift_m": -0.029,
+ "floor_shift_m": -0.008,
+ "turn_crop": "None",
+ "loop": "{'window': (44, 119), 'seconds': 2.5, 'score': 0.404, 'blend': 8}",
  "feet": [
   "floor (lowest foot) 0.000 m",
-  "left foot: planted 93% of frames in 2 stretches, drifts 12.2 cm per stretch while planted",
-  "right foot: planted 93% of frames in 2 stretches, drifts 12.1 cm per stretch while planted"
+  "left foot: planted 76% of frames in 2 stretches, drifts 1.0 cm per stretch while planted",
+  "right foot: planted 74% of frames in 2 stretches, drifts 0.9 cm per stretch while planted"
  ]
 }

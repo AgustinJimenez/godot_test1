@@ -30,14 +30,14 @@ for file in sorted(os.listdir(os.path.join(ROOT, "json"))):
     if not file.endswith(".json") or file.endswith("_contacts.json"):
         continue
     name = file[:-5]
-    in_place = name.startswith(IN_PLACE_PREFIXES)
+    in_place = name.startswith(IN_PLACE_PREFIXES + LOOPING_PREFIXES)  # (loops are cropped to a cycle and made in place)
     entries.append({
         "name": name,
         "category": name.split("_")[0],
         "rating": rating_of.get(name, "unrated"),
         "loop": name.startswith(LOOPING_PREFIXES),
         "in_place": in_place,
-        "speed": 0.0 if in_place else next((v for prefix, v in SPEEDS if name.startswith(prefix)), 0.0),
+        "speed": next((v for prefix, v in SPEEDS if name.startswith(prefix)), 0.0),  # (m/s the controller should move at)
         "hands": "fist" if name.startswith(FIST_PREFIXES) else "relaxed",
     })
 json.dump(entries, open(os.path.join(ROOT, "catalog.json"), "w"), indent=1)
