@@ -6,8 +6,8 @@ render_mode blend_disabled; // the height is written in alpha: no blending
 
 uniform float p[16];
 uniform float tile_cm = 100.0;
-uniform vec3 sand_colour = vec3(0.55, 0.43, 0.30);
-uniform vec3 red_colour = vec3(0.62, 0.27, 0.18);
+uniform vec3 sand_colour = vec3(0.56, 0.47, 0.38);
+uniform vec3 red_colour = vec3(0.55, 0.15, 0.07);
 uniform float red_share = 0.25; // how much of the ground the red lumps cover
 uniform vec2 height_range = vec2(0.0, 1.0);
 uniform float seed = 1.0;
@@ -84,7 +84,7 @@ void fragment() {
 	float g4 = vnoise(at, 4.0, seed + 35.0) - 0.5;
 	float dark_speck = smoothstep(0.7, 0.95, vnoise(at, 2.2, seed + 73.0)) * smoothstep(0.55, 0.8, vnoise(at, 1.0, seed + 74.0));
 	float pale_speck = smoothstep(0.78, 0.95, vnoise(at, 1.6, seed + 75.0)) * smoothstep(0.55, 0.8, vnoise(at, 0.8, seed + 76.0));
-	colour *= mix(vec3(1.04, 0.94, 0.82), vec3(0.98, 0.84, 0.78), red) * (1.3 + 0.28 * g1 + 0.3 * g2 + 0.3 * g3 + 0.4 * g4);
+	colour *= mix(vec3(1.0, 0.95, 0.9), vec3(1.0, 0.9, 0.85), red) * (1.3 + 0.28 * g1 + 0.3 * g2 + 0.3 * g3 + 0.4 * g4);
 	colour = mix(colour, colour * 0.5, 0.45 * dark_speck);
 	colour = mix(colour, vec3(0.8, 0.76, 0.68), 0.6 * pale_speck);
 	// crisp small detail that survives zoom (flecks from a warped noise, so they are not grid-aligned) and a per-pixel grain:
@@ -94,11 +94,11 @@ void fragment() {
 	float quartz = smoothstep(0.74, 0.8, vnoise(warped, 0.42, seed + 157.0));
 	float crumb = smoothstep(0.76, 0.82, vnoise(warped, 0.8, seed + 159.0)) * smoothstep(0.35, 0.65, vnoise(at, 9.0, seed + 161.0));
 	float pixel_grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
-	colour = mix(colour, colour * 0.45, 0.55 * grit);
+	colour = mix(colour, colour * 0.35, 0.75 * grit);
 	colour = mix(colour, vec3(0.85, 0.82, 0.74), 0.3 * quartz);
 	colour = mix(colour, red_colour * 0.88, 0.85 * crumb);
 	colour *= 1.0 + 0.24 * pixel_grain;
-	colour *= 0.85 + 0.3 * smoothstep(0.2, 0.9, h);
+	colour *= 0.92 + 0.16 * smoothstep(0.2, 0.9, h);
 	// the photograph's relief is coarse and rough: broad lumps 4-9 cm with a crumbly rough surface (warped noise, so no contours)
 	vec2 warp = at + 1.4 * vec2(vnoise(at, 3.0, seed + 181.0) - 0.5, vnoise(at, 3.4, seed + 183.0) - 0.5);
 	float lumpy = vnoise(warp, 6.0, seed + 185.0) * 0.5 + vnoise(warp, 2.6, seed + 187.0) * 0.3 + vnoise(warp, 1.2, seed + 189.0) * 0.2;
