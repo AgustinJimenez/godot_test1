@@ -84,3 +84,8 @@ Process a clip: `python tools/gvhmr/run_clip.py E:/repo/gvhmr_work/videos/anim_<
 - Turn_Around: ok - half turn in place, calm (travel removed by --inplace). Turn_Left / Turn_Right: ok - quarter turn pivots, calm (head height constant 1.55). NOTE these are not exact 90/180 deg: check the yaw change of the pelvis per clip before using them as turn-in-place animations (TODO: measure yaw in run_clip metrics and rescale/trim to the nominal angle).
 - Climb_Ledge: FAILED - no climb visible: the person stands and leans/bends with the arms down (head 1.13-1.56, 18% limb-accel spikes = jittery); the video model did not render the wall climb. Needs another approach (start+end image mode, or a prop-free 'pull-up' phrasing, or Kimodo text-to-motion for climbing).
 - Batch status: 24/38 done, 0 failed; 30 clips processed.
+- Climb_Vault: usable - a run-up and a leap toward the camera (4.25 m, head 1.38-1.83), no wall visible: works as a 'leap / vault over' motion; the Brute's axe swings.
+- Crawl_Forward: usable - a hunched low crawl-like move on hands and feet (head 0.76-0.99 m), travel normalised to 0.5 m/s; calm.
+- Crawl_Low: usable/doubtful - low posture but the body floats above its shadow in the last frames (GVHMR height drift for a low body: head 0.81-1.66, travel 2.5 m); regenerate or ground per frame.
+- Sword_SlashDown: ok - the sword goes up for the overhead wind-up and the fist grip holds it; limb accel calm (2.0); check the downward strike in the full clip later.
+- Batch status: 29/38 done, 0 failed; 34 clips processed.
