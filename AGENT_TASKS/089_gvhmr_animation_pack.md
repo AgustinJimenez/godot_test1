@@ -129,3 +129,28 @@ weak/failed: Jump_Forward (barely jumps), Climb_Ledge (no climb).
 - v2 batch 4: Sword_Combo ok (two sweeping hits from raised guard, calm), Sword_Parry ok (a cross-body swing and return), Run_Armed usable (1.07 s cycle, reads like a brisk walk, not a run), Run_Tired usable (1.27 s cycle, jog-walk, head low). The LTX clips for 'run' toward the camera often come out as fast walks: if a real run is needed use side runs (Run_Left2/Right) or Kimodo. v2 progress 18/27 videos.
 - v2 batch 5: Hurt_Knockback ok (arms flung out, stumbles back 0.94 m), Hurt_GrabArm usable (hunches over and straightens; the grab itself is not clear), Object_Drag usable (bends, pulls, straightens, head 0.88-1.39), Sword_Kick WEAK (stands with the sword; no kick visible). v2 progress 22/27 videos.
 - v2 batch 6: Roll ok (two running steps, a dive and a landing in a low crouch), GetUp usable (lying on the back, rolls over, ends on hands and knees: the stand-up itself is cut off; grounded per frame, head 0.11-0.73), Object_OpenDoor usable (reaching arm up with the axe, no door), Object_Throw WEAK (stands with arms down; no throw visible). v2 progress 26/27 videos (Climb_Ladder still generating).
+- v2 batch 7 (LAST): Climb_Ladder ok - a vertical climb: arms reach up alternately, legs step, the body rises to a head height of 2.19 m along an unmodelled ladder. pack_v2 is complete: 27/27 videos, 0 failed, all processed.
+
+## FINAL SUMMARY (2026-10-25, end of the autonomous session)
+WHAT EXISTS
+- 65 clips (38 first pass + 27 second pass: retries named *2 and variants), each as GVHMR motion json (assets/animation/gvhmr_pack/json/<Name>.json + _contacts.json), metrics, a 4-frame preview sheet per character, and pre-retargeted .res files for Brute and MotusMan (previews only).
+- Ratings (catalog.json): 37 ok, 23 usable, 4 weak (Jump_Forward v1, Object_Carry2, Sword_Kick, Object_Throw), 1 failed (Climb_Ledge v1). By category: Idle 7, Walk 10, Run 7, Crouch 5, Crawl 3, Jump 5, Turn 3, Climb 4, Sword 7, Hurt 5, Object 7, GetUp 1, Roll 1.
+- Run time: GvhmrPack (systems/animation/gvhmr_pack.gd) retargets any clip onto any humanoid manifest (60 ok/usable clips on the Brute in 3.5 s, MotusMan 1.4 s); the player gets them behind env PLAYER_GVHMR_PACK=1 (names gvhmr_<Name> in library 'moves'); the character editor lists a group 'GVHMR pack (generated)'.
+- Quality work: smoothing, ground fix, per-frame grounding of low bodies, speed normalisation, loops (seamless, in place, speeds in the catalog), exact turn angles (-90/+90/180), hand presets (relaxed/fist), foot contacts + optional ankle lock; limbs match the source within 1-5 degrees, shoulders ~2, travel follows the facing.
+HOW TO RUN
+- Video: python tools/gvhmr/make_manifest.py out.json [v2]; cp to E:/repo/gvhmr_work/; (cd tools/gvhmr && python batch_generate.py E:/repo/gvhmr_work/<manifest>.json) (LTX-2.5 distilled int8, local weights; resumable; ~2-3 min per clip incl. model load).
+- Clip: python tools/gvhmr/run_clip.py <video.mp4> --name <Name> [--hands relaxed|fist] [--inplace] [--no-loop] [--smooth s] [--speed auto|x] [--targets brute,motusman] (native Windows GVHMR: E:/repo/gvhmr_win/.venv; needs GVHMR_CHECKPOINTS pointing at E:/repo/gvhmr/inputs/checkpoints, set inside the script).
+- Catalog: edit RATINGS in tools/gvhmr/make_catalog.py, run it. Check: godot --headless --path . res://tests/manual/animation/gvhmr_library_check.tscn -> GVHMR_LIBRARY_CHECK PASS. Debug/preview: gvhmr_debug / gvhmr_preview / gvhmr_feet scenes (tests/manual/animation).
+KNOWN WEAKNESSES
+- The video model: 'run toward the camera' becomes a fast walk; carry/throw/kick/door are not rendered (weak or generic); no ledge/ladder/door props, so climbs are mimed in the air; turns are not clean angles (we crop+rescale).
+- GVHMR: static-camera depth under-reads travel (we rescale speeds), heights drift (we ground), feet slide 3-6 cm per step in the SOURCE already (the ankle lock helps only ~10%), fingers are only presets, no facial/hand detail.
+- The player integration is untested in a real play session (planet_check passes with the flag on; nobody looked at the animations in game). The character-editor group was only opened headlessly, not clicked.
+LICENCE
+- GVHMR, SMPL/SMPL-X (and WiLoR/MANO) are research / non-commercial: fine to prototype, NOT to ship without a licence or a replacement. Kimodo (E:/repo/kimodo, Apache code, NVIDIA open-model weights licence for the SOMA models) is the cleaner alternative; check its model licence before shipping.
+NEXT IDEAS (in order)
+1. Look at the clips in game: PLAYER_GVHMR_PACK=1, play gvhmr_<Name> from the debug/animation menu; click through the character editor group; fix what looks wrong by eye (this was not possible while the user was away).
+2. Weak/failed clips via Kimodo text-to-motion (climb ledge, carry box, throw, kick, door) - same retarget path if its SOMA output is converted to json, or its own retarget.
+3. H3 (h3-studio / wan2.1gp minimax_h3 weights exist) for the clips LTX cannot do; compare.
+4. More variants per category (the manifests are cheap: ~2.5 min per clip), blends between clips (idle<->walk<->run) and a state-machine/controller that uses catalog loop/in_place/speed.
+5. Feet: a proper foot-contact solver (the lock only reduces slide ~10%); fingers: hand tracker if a licence allows.
+6. USER DECISION NEEDED: commit 8ff65b5 accidentally pushed tools/bark/bark_downloads (Poly Haven photos) and tools/bark/fits pictures (~86 MB LFS) to main; they are untracked again in the next commit but remain in the history. Purge them (history rewrite + force push) or leave them? I did NOT rewrite history.

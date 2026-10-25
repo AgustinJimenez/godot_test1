@@ -1,5 +1,14 @@
 [
  {
+  "name": "Climb_Ladder",
+  "category": "Climb",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
   "name": "Climb_Ledge",
   "category": "Climb",
   "rating": "failed",
