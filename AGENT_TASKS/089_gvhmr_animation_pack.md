@@ -91,3 +91,5 @@ Process a clip: `python tools/gvhmr/run_clip.py E:/repo/gvhmr_work/videos/anim_<
 - Batch status: 29/38 done, 0 failed; 34 clips processed.
 - Sword_Block: ok - arm raised with the weapon held up high and lowered again, calm (accel 1.1). Sword_SlashSide: usable - the weapon sweeps over the head at several angles (reads more like overhead swings than a flat horizontal slash). Sword_Thrust: ok - the weapon is held out level forward/side at shoulder height, small travel (0.66 m). All three use the fist preset. Body stays upright and calm (accel 1-3, no spikes).
 - Batch status: 32/38 done, 0 failed; 37 clips processed. Remaining: Hurt_* (3), Object_* (3).
+- Hurt_Flinch: ok - a sharp flinch/lean away then straightens, calm (accel 0.6). Hurt_Fall: usable - drops to a kneel and holds, head 0.69-1.29 m; the clip starts already low in the first frames (video model starts mid-fall), floor shift +0.12 m. Hurt_Stagger: usable - steps back with an arm up (travel 0.67 m); fine as a reaction.
+- Batch status: 35/38 done, 0 failed; 40 clips processed. Remaining: Object_PickUp, Object_Push, Object_Carry (running).
