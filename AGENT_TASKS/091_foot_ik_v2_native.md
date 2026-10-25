@@ -174,3 +174,9 @@ clip frames 2 -> 0, float frames 2 -> 1, pop faults 7 -> 8 (one more, not chased
   entering the toe's ray in a single frame, not floor noise. Easing the toe lift growth would trade it for toe clip (limit 0.02); not done.
 - "Project checks": fails here only because `scripts/check.sh` needs `python3` (not on this shell's PATH; a wrapper at /e/Temp/bin/python3 fixes that) and then the standalone parse of player_body.gd
   reports `PlayerProfile` not found (an autoload; unrelated to the foot IK).
+
+## Tread hysteresis tried (2026-10-25, last): no effect, dropped
+A resting foot kept its last tread unless the sample moved > 4 cm or the tread differed < 4 cm in height (dead band on the first sample). `-0.68:-0.24:322:quick` still faults at frame 804 (0.070 m), dz=0 unchanged.
+Reason (traced): the animated ankle SAMPLE itself sweeps 7-8 cm per frame along an arc in the quick yaw sweep and crosses the 0.1 m riser twice in 8 frames (hit y 0.5 -> 0.6 -> 0.5), so a 4 cm dead band
+never holds; the foot is following a genuinely moving target at the stepper's 6 cm/frame cap (+1 cm body motion = 0.07). That fuzz fault is the quick sweep's stress, not a tread chatter; the right lever
+would be the stepper cap vs the test limit (0.06), a tuning choice, not a logic fix. Code reverted.
