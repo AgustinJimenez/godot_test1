@@ -162,3 +162,15 @@ and grows with the pelvis: pelvis 0.4 m, passing the check by crouching - reject
 is past the leg's reach; for a stretched, STEPPING foot the hold uses `pelvis_drop + final_shortfall` instead of the residual (it shrinks as the pelvis sinks, so no runaway).
 Result: dz=0 PASS (clip 0.000, float 0.021, pelvis settles at 0.223 vs 0.234); the suite differs from the baseline only by that line (+ vibration reversals +-1); fuzz 4 ok / 8 fail as before,
 clip frames 2 -> 0, float frames 2 -> 1, pop faults 7 -> 8 (one more, not chased), max step 0.209 unchanged.
+
+## Remaining red items after the dz=0 fix, investigated (2026-10-25): none is a native-port or pelvis bug
+- Fuzz pose -0.68:-0.24:322 (the 8th pop fault): the animated ankle crosses a riser as the body snaps its yaw, so the target tread alternates 0.597 / 0.697 every ~5 frames and the stepper walks the foot at its 6 cm/frame cap
+  (measured 0.070-0.073 against a 0.06 limit, i.e. cap + body motion). Pelvis and hold are steady (0.249), shortfall 0. NOT the ground filter (HOLD_FRAMES 3 -> 6 still faults, other frame), NOT the resample
+  (it never moves the target there), and skipping the resample while stepping changed nothing. The fuzz swapped cases (one more fault, two fewer clip/float frames); a real fix is a tread decision with
+  hysteresis in the FIRST sample (037 stage 1 proper), not a patch.
+- Ramp strafe: TURN_FAULT frames 83/246 = knee 3.1-3.6 cm behind the hip-foot line (limit 3.0) at 65 deg flexion for 5 frames, plus heel float 6-14 cm on the slope (state at_target: the sole is not pitched onto the
+  slope). Marginal pose-check overshoot plus the old slope-pitch gap; unchanged by the port.
+- Floor walk jerk 0.209 vs 0.20: frame 267, right foot walking into Ramp30's base (toe ray hits the ramp 0.13-0.2 m above the floor at the ankle, toe lift 0.008 -> 0.20 in one frame). It is the ramp edge
+  entering the toe's ray in a single frame, not floor noise. Easing the toe lift growth would trade it for toe clip (limit 0.02); not done.
+- "Project checks": fails here only because `scripts/check.sh` needs `python3` (not on this shell's PATH; a wrapper at /e/Temp/bin/python3 fixes that) and then the standalone parse of player_body.gd
+  reports `PlayerProfile` not found (an autoload; unrelated to the foot IK).
