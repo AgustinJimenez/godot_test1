@@ -12,6 +12,7 @@
 #include "planet_map_native.h"
 #include "foot_ik_native.h"
 #include "foot_ik_helpers_native.h"
+#include "foot_ik_ledge_native.h"
 #include "foot_ik_core_native.h"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -43,6 +44,8 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(FootIKV2KneeHintNative);
 	GDREGISTER_CLASS(FootIKV2StretchHoldNative);
 	GDREGISTER_CLASS(FootIKV2CoreNative);
+	GDREGISTER_CLASS(FootIKV2LedgeNative);
+	GDREGISTER_CLASS(FootIKV2SoleNative);
 }
 
 void uninitialize_planet_crust_module(ModuleInitializationLevel p_level) {

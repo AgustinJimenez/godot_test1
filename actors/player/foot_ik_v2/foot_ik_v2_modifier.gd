@@ -2,10 +2,8 @@ class_name FootIKV2Modifier
 extends SkeletonModifier3D
 ## v2 foot IK. The pass itself runs in C++ (FootIKV2CoreNative, native/planet_crust/src/foot_ik_core_native.cpp, AGENT_TASKS/091): this node is the shell the rest of
 ## the project talks to. It keeps the exported settings (the core reads them every pass), the debug_* / final_* members the lab, the traces and the checks read (the core
-## writes into the SAME Dictionaries), the leg set-up, the ledge and the ray the ledge probes with. The GDScript pass it replaced is in git history (commit 8e07f4c and before).
+## writes into the SAME Dictionaries), the leg set-up and the native ledge (the sole and the ledge are native classes too). The GDScript pass it replaced is in git history (commit 8e07f4c and before).
 const DEBUG_TIMER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_debug.gd")
-const SOLE := preload("res://actors/player/foot_ik_v2/foot_ik_v2_sole.gd")
-const LEDGE := preload("res://actors/player/foot_ik_v2/foot_ik_v2_ledge.gd")
 const LEGS := { # humanoid roles, resolved through PlayerBody for any character
 	&"left": {"hip": &"LeftUpLeg", "knee": &"LeftLeg", "foot": &"LeftFoot",
 		"toe": &"LeftToeBase"},
@@ -90,11 +88,10 @@ var debug_plant_weight: Dictionary = {} # side -> how planted the animation has 
 var debug_stance_shift: Dictionary = {} # side -> metres the foot is currently brought in toward the body (trace)
 var debug_stance_plan: Dictionary = {} # side -> [[shift, drop needed], ...] tried by the last stance plan (trace)
 var debug_toe_lift: Dictionary = {} # side -> how far the toe/tip/heel clearance pass lifted the ankle target this frame (trace)
-var ledge := LEDGE.new() # public: the player reads its step
+var ledge = ClassDB.instantiate(&"FootIKV2LedgeNative") # public: the player reads its step (FootIKV2LedgeNative)
 ## side -> {"hip", "knee", "foot", "upper", "lower", "rest_pole", ...}
 var _legs: Dictionary = {}
-var _sole: Dictionary = {} # side -> the cached skinned sole (foot_ik_v2_sole.gd)
-var _ray_query: PhysicsRayQueryParameters3D
+var _sole: Dictionary = {} # side -> the cached skinned sole (FootIKV2SoleNative)
 var _base: Dictionary = {} # side -> the animated hip / knee / foot poses captured once per frame (written by the core)
 var _hips_bone := -1
 var _is_moving := false # written by the core
@@ -104,7 +101,7 @@ var _core: RefCounted = null # FootIKV2CoreNative
 func _ready() -> void:
 	if player_body == null:
 		player_body = get_skeleton().get_parent() as PlayerBody if get_skeleton() != null else null
-	ledge.ray = _ray
+	ledge.call(&"bind", self)
 	_build_legs()
 	if ClassDB.class_exists(&"FootIKV2CoreNative") and not OS.has_environment("PLANET_NO_NATIVE"):
 		_core = ClassDB.instantiate(&"FootIKV2CoreNative")
@@ -130,9 +127,10 @@ func _build_legs() -> void:
 		var knee_rest := skel.get_bone_global_rest(knee).origin
 		var foot_rest := skel.get_bone_global_rest(foot).origin
 		var toe_bone := skel.find_bone(player_body.resolve_bone_name(roles["toe"]))
-		var sole: SOLE = SOLE.new(skel, player_body.character, foot, toe_bone)
+		var sole: RefCounted = ClassDB.instantiate(&"FootIKV2SoleNative")
+		sole.call(&"build", skel, player_body.character, foot, toe_bone)
 		_sole[side] = sole
-		var sole_depth := sole.depth(skel)
+		var sole_depth: float = sole.call(&"depth", skel)
 		if ankle_height < 0.0:
 			ankle_height = sole_depth
 		var rest_direction := (foot_rest - hip_rest).normalized()
@@ -146,7 +144,7 @@ func _build_legs() -> void:
 			"lower": knee_rest.distance_to(foot_rest),
 			"rest_pole": rest_pole.normalized(),
 			"sole_local": (skel.get_bone_global_rest(foot).basis.inverse() * Vector3.DOWN).normalized(),
-			"heel_local": sole.heel_local(skel),
+			"heel_local": sole.call(&"heel_local", skel),
 		}
 
 
@@ -162,19 +160,4 @@ func _process_modification_with_delta(delta: float) -> void:
 
 ## The horizontal way the body should walk so both feet have ground (safe zone); ZERO when they do.
 func ledge_push() -> Vector3:
-	return ledge.push() if enabled and (not _is_moving or ledge.stepping) else Vector3.ZERO
-
-
-func _ray(point: Vector3, hip: Vector3) -> Dictionary:
-	var space := get_skeleton().get_world_3d().direct_space_state
-	if space == null:
-		return {}
-	if _ray_query == null: # one query object reused (the ledge probes through it)
-		_ray_query = PhysicsRayQueryParameters3D.new()
-		_ray_query.collision_mask = ground_mask
-		var body := player_body.get_parent() as CollisionObject3D
-		if body != null:
-			_ray_query.exclude = [body.get_rid()]
-	_ray_query.from = Vector3(point.x, maxf(hip.y, point.y + ray_up), point.z)
-	_ray_query.to = point - Vector3.UP * ray_down
-	return space.intersect_ray(_ray_query)
+	return ledge.call(&"push") if enabled and (not _is_moving or ledge.get(&"stepping")) else Vector3.ZERO
