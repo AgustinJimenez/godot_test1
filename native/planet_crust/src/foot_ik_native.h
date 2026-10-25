@@ -5,6 +5,8 @@
 // foot_ik_v2_sole.gd and foot_ik_v2_solver.gd, which stay the reference: the GDScript uses these when the class exists.
 // Pure computation on its own data: any thread may call it.
 
+#include <godot_cpp/classes/physics_direct_space_state3d.hpp>
+#include <godot_cpp/classes/physics_ray_query_parameters3d.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
@@ -37,6 +39,12 @@ public:
 	PackedVector3Array level_points(const Transform3D &p_foot_pose, const Transform3D &p_toe_pose, const Transform3D &p_to_world, double p_band) const;
 	// World height of the lowest sole point under `p_to_world` (INF when there is none).
 	double lowest_world_y(const Transform3D &p_foot_pose, const Transform3D &p_toe_pose, const Transform3D &p_to_world) const;
+
+	// The smallest gap between the sole-level points and the floor under them (foot_ik_v2_modifier.gd `_sink_to_true_sole`): every
+	// `stride`-th point is ray-cast straight down with the reused query (from: above the point or the hip, to: `ray_down` below it);
+	// a gap larger than `sink_max` is a drop-off, not a lower tread, and is ignored. INF when no ray qualifies.
+	static double min_gap(PhysicsDirectSpaceState3D *p_space, const Ref<PhysicsRayQueryParameters3D> &p_query, const PackedVector3Array &p_level,
+			double p_hip_y, double p_ray_up, double p_ray_down, int p_samples, double p_sink_max);
 
 	// Two-bone leg maths (foot_ik_v2_solver.gd `solve`): [knee, ankle, direction, pole, (distance, 0, 0)].
 	static PackedVector3Array solve(const Vector3 &p_hip, const Vector3 &p_animated_knee, const Vector3 &p_target, double p_upper,

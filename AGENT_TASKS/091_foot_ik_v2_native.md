@@ -70,3 +70,19 @@ same Dictionary (the GDScript kept as `solve_script`, the reference); `_lowest_s
 - New check `tests/manual/foot_ik_v2/foot_ik_v2_native_check.gd` (in the suite; SKIP when the library is not built): 4,000 random legs and 200 random poses of a random
   sole; worst difference solve 6e-7 m, points / level_points / lowest 0.
 - Left in stage 1: the knee hint, joint limiter, reach blend, body smoother (small); the rays themselves (physics: no gain expected); the uninstrumented 0.45 ms.
+
+## Progress 2026-10-25 (later): where the rest of the time goes, and the sole ray loop in C++
+
+Per-part timing with temporary timers (inclusive, headless lab, per frame; total 0.82 ms with the timers): `_clear_toe` 0.39 (it contains the sink: 0.31, of which the sole's 16-40 rays ~0.22),
+`_solve` 0.17 (8,000 calls per 900 frames = 4.4 per foot per frame, ~21 us each: bone pose get/set in GDScript, not the maths), `_flatten_support` 0.11, `_align_foot` 0.035, `_resample_and_correct` 0.033,
+`snapshot` 0.086, ground rays 0.017, `_limit_step` 0.012, `_ease_correction` 0.008, publish 0.015. So the remaining cost is spread over the bone-pose traffic of the many `_solve` / `_align_foot`
+calls and the sole rays; no single big GDScript loop is left.
+
+Done: `FootIKV2Native.min_gap` (static): the sole-level ray loop of `_sink_to_true_sole` in C++ (reused ray query, `PhysicsDirectSpaceState3D::intersect_ray`), called through
+`foot_ik_v2_sole_gap.gd` (`gap()`, with the GDScript loop as the fallback / reference); `_ray_params()` in the modifier builds the one reused query. Modifier stays at the 1,000-line cap.
+Result: total 0.77 -> 0.72 ms/frame, `sink` 0.31 -> 0.25 ms (the physics ray queries themselves do not get faster). Full suite: SAME PASS/FAIL set and numbers as the baseline.
+Total so far 1.01 -> 0.72 ms (-29 %).
+
+Next (biggest remaining): move the bone-pose heavy parts (`_solve` + `_align_foot`, ~0.2 ms; `_flatten_support`, 0.11) into C++ with direct `Skeleton3D` access (`get_bone_global_pose` /
+`set_bone_global_pose` from godot-cpp), the solver already being native. That is the first step INTO the decision layer (it keeps the rules in GDScript and moves only the repeated
+leg-placement primitive), so it is safe to do before 037.

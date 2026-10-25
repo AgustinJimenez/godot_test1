@@ -2,6 +2,7 @@ class_name FootIKV2Modifier
 extends SkeletonModifier3D
 ## v2 foot IK: per leg, sample the ground under the animated foot, solve hip -> knee -> ankle.
 const DEBUG_TIMER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_debug.gd")
+const SOLE_GAP := preload("res://actors/player/foot_ik_v2/foot_ik_v2_sole_gap.gd")
 const STEPPER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_stepper.gd")
 const LOCK := preload("res://actors/player/foot_ik_v2/foot_ik_v2_lock.gd")
 const LIMITER := preload("res://actors/player/foot_ik_v2/foot_ik_v2_joint_limiter.gd")
@@ -807,7 +808,11 @@ func _ray(point: Vector3, hip: Vector3) -> Dictionary:
 	var space := get_skeleton().get_world_3d().direct_space_state
 	if space == null:
 		return {}
-	if _ray_query == null: # one query object reused: a fresh one per ray was most of the cost
+	return space.intersect_ray(_ray_params(point, hip))
+
+
+func _ray_params(point := Vector3.ZERO, hip := Vector3.ZERO) -> PhysicsRayQueryParameters3D:
+	if _ray_query == null: # one query object reused, aimed straight down at `point` (a fresh one per ray was most of the cost)
 		_ray_query = PhysicsRayQueryParameters3D.new()
 		_ray_query.collision_mask = ground_mask
 		var body := player_body.get_parent() as CollisionObject3D
@@ -815,7 +820,7 @@ func _ray(point: Vector3, hip: Vector3) -> Dictionary:
 			_ray_query.exclude = [body.get_rid()]
 	_ray_query.from = Vector3(point.x, maxf(hip.y, point.y + ray_up), point.z)
 	_ray_query.to = point - Vector3.UP * ray_down
-	return space.intersect_ray(_ray_query)
+	return _ray_query
 
 
 func _plausible(hit: Dictionary, anchor: Vector3) -> bool:
@@ -886,11 +891,8 @@ func _sink_to_true_sole_impl(skel: Skeleton3D, side: StringName, leg: Dictionary
 		var level := (_sole[side] as SOLE).level_points(skel, to_world, 0.005)
 		if level.is_empty():
 			return
-		var gap := INF
-		for index in range(0, level.size(), maxi(1, level.size() / SOLE_SINK_SAMPLES)):
-			var hit := _ray(level[index], hip_world)
-			if not hit.is_empty() and level[index].y - (hit["position"] as Vector3).y <= SINK_MAX:
-				gap = minf(gap, level[index].y - (hit["position"] as Vector3).y)
+		var gap := SOLE_GAP.gap(get_skeleton().get_world_3d().direct_space_state, _ray_params(), level, hip_world.y,
+				ray_up, ray_down, SOLE_SINK_SAMPLES, SINK_MAX)
 		if not is_finite(gap) or gap <= SOLE_GAP_TOLERANCE:
 			return
 		var target: Vector3 = debug_target.get(side, level[0]) as Vector3
