@@ -54,3 +54,7 @@ epo\gvhmr\inputs\walking_man_test.mp4.
 ## Results (one line per clip: ok / usable / failed; metrics from assets/animation/gvhmr_pack/metrics, sheets in .../sheets)
 Process a clip: `python tools/gvhmr/run_clip.py E:/repo/gvhmr_work/videos/anim_<Name>.mp4 --name <Name> --hands relaxed|fist`
 - Idle_Relaxed: ok - 4.0 s, root travel 0.18 m, head 1.60-1.63 m, limb accel median 4 (calm); stands and sways; head slightly bowed on the Brute (check later).
+- Idle_Alert: ok - 4.0 s, travel 0.06 m, calm; wide stance, weapon-like prop held up in the right hand on the Brute (the Brute's own held axe, not from the clip).
+- Idle_LookAround: usable - source root drifts 1.02 m over 4 s (GVHMR translation drift on a standing person); re-run with --inplace (retargeter's make_clip_in_place removes the net start->end travel; it does not remove wander, fine for loops).
+- Idle_Tired: ok - travel 0.30 m, slumped stance, calm.
+- DECISION: pass --inplace for Idle*, Turn*, Crouch_Idle, Crouch_Enter/Exit, Jump_InPlace; keep travel for Walk/Run/Crawl/Climb/Object_Carry (root motion is then read from the clip; check drift on those).

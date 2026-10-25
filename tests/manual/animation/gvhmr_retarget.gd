@@ -62,6 +62,8 @@ func _ready() -> void:
 			options.get("force_loop", "false") == "true", options.get("arm_ik", "false") == "true",
 			[] if options.get("aim", "true") != "true" else chains,
 			["left_hip", "right_hip", map["LeftUpLeg"], map["RightUpLeg"]], foot_lock)
+	if options.get("inplace", "false") == "true": # idles and turns: GVHMR's translation drifts, keep the clip on the spot
+		HumanoidRetargeter.make_clip_in_place(result)
 	if options.get("hands", "") != "":
 		print("hand tracks written: ", HandPresets.apply(result, target_skeleton, map, options["hands"]))
 	DirAccess.make_dir_recursive_absolute(String(options["output"]).get_base_dir())
