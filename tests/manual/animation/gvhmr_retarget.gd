@@ -4,6 +4,9 @@ extends Node
 ##   godot --headless --path . res://tests/manual/animation/gvhmr_retarget.tscn -- \
 ##       source=res://x.fbx target_manifest=res://y.character.json output=res://z.res [force_loop=true]
 
+const STANDING_PELVIS_HEIGHT := 1.0 # m: the SMPL-X neutral body's pelvis when standing
+
+
 func _ready() -> void:
 	var options := {}
 	for argument in OS.get_cmdline_user_args():
@@ -17,6 +20,12 @@ func _ready() -> void:
 	var source_skeleton := source_root.find_child("Skeleton3D", true, false) as Skeleton3D
 	var player := source_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	var animation := player.get_animation(player.get_animation_list()[0])
+	# gvhmr_blender_fbx.py bakes the clip's first-frame translation into the pelvis rest, so every clip's rest height
+	# differs (a crouch clip rests at 0.6 m, a standing one at 1.0 m) and the retargeter's hips delta follows it:
+	# put the pelvis rest at the SMPL-X standing height, in the middle of the body, for every clip.
+	var pelvis := source_skeleton.find_bone(&"pelvis")
+	var rest := source_skeleton.get_bone_rest(pelvis)
+	source_skeleton.set_bone_rest(pelvis, Transform3D(rest.basis, Vector3(0.0, STANDING_PELVIS_HEIGHT, 0.0)))
 	var config := HumanoidRetargeter.build_bone_map_config(
 			RetargetSmplx.ROLE_MAP, manifest["humanoid_map"] as Dictionary)
 	var result := HumanoidRetargeter.retarget_clip(source_skeleton, animation, target_skeleton, config,
