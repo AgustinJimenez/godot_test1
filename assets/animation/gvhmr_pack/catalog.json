@@ -9,6 +9,15 @@
   "hands": "relaxed"
  },
  {
+  "name": "Climb_Ledge2",
+  "category": "Climb",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
   "name": "Climb_Vault",
   "category": "Climb",
   "rating": "usable",
@@ -57,6 +66,15 @@
   "name": "Crouch_Idle",
   "category": "Crouch",
   "rating": "usable",
+  "loop": true,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Crouch_Idle2",
+  "category": "Crouch",
+  "rating": "ok",
   "loop": true,
   "in_place": true,
   "speed": 0.0,
@@ -144,9 +162,27 @@
   "hands": "relaxed"
  },
  {
+  "name": "Jump_Forward2",
+  "category": "Jump",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
   "name": "Jump_InPlace",
   "category": "Jump",
   "rating": "usable",
+  "loop": false,
+  "in_place": true,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Jump_InPlace2",
+  "category": "Jump",
+  "rating": "ok",
   "loop": false,
   "in_place": true,
   "speed": 0.0,
@@ -165,6 +201,15 @@
   "name": "Object_Carry",
   "category": "Object",
   "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Object_Carry2",
+  "category": "Object",
+  "rating": "weak",
   "loop": false,
   "in_place": false,
   "speed": 0.0,

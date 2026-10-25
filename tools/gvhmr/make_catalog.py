@@ -12,11 +12,12 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ass
 RATINGS = {
     "ok": ["Idle_Relaxed", "Idle_Alert", "Idle_Tired", "Walk_Slow", "Walk_Backward", "Walk_Right", "Run_Forward", "Run_Fast",
            "Run_Right", "Crouch_Enter", "Crouch_Exit", "Jump_Long", "Turn_Left", "Turn_Right", "Turn_Around",
-           "Sword_SlashDown", "Sword_Block", "Sword_Thrust", "Hurt_Flinch", "Object_PickUp"],
+           "Sword_SlashDown", "Sword_Block", "Sword_Thrust", "Hurt_Flinch", "Object_PickUp",
+           "Jump_Forward2", "Jump_InPlace2", "Crouch_Idle2"],
     "usable": ["Idle_LookAround", "Walk_Forward", "Walk_Confident", "Walk_Left", "Run_Left", "Jump_InPlace", "Crouch_Idle",
                "Crouch_Walk", "Crawl_Forward", "Crawl_Low", "Climb_Vault", "Sword_SlashSide", "Hurt_Fall", "Hurt_Stagger",
-               "Object_Push", "Object_Carry"],
-    "weak": ["Jump_Forward"],
+               "Object_Push", "Object_Carry", "Climb_Ledge2"],
+    "weak": ["Jump_Forward", "Object_Carry2"],
     "failed": ["Climb_Ledge"],
 }
 LOOPING_PREFIXES = ("Idle", "Walk", "Run", "Crouch_Idle", "Crouch_Walk", "Crawl")
