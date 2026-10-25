@@ -94,8 +94,8 @@ void fragment() {
 	float quartz = smoothstep(0.74, 0.8, vnoise(warped, 0.42, seed + 157.0));
 	float crumb = smoothstep(0.76, 0.82, vnoise(warped, 0.8, seed + 159.0)) * smoothstep(0.35, 0.65, vnoise(at, 9.0, seed + 161.0));
 	float pixel_grain = fract(sin(dot(floor(UV * 1024.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
-	colour = mix(colour, colour * 0.3, 0.85 * grit);
-	colour = mix(colour, vec3(0.85, 0.82, 0.74), 0.55 * quartz);
+	colour = mix(colour, colour * 0.45, 0.55 * grit);
+	colour = mix(colour, vec3(0.85, 0.82, 0.74), 0.3 * quartz);
 	colour = mix(colour, red_colour * 0.88, 0.85 * crumb);
 	colour *= 1.0 + 0.24 * pixel_grain;
 	colour *= 0.85 + 0.3 * smoothstep(0.2, 0.9, h);

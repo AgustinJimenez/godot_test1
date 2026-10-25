@@ -14,7 +14,7 @@ const FITS := {
 	"palm_tree_bark": {"mean": Vector3(0.6355, 0.5885, 0.5288), "gain": Vector3(0.9639, 0.9595, 0.9574), "low": 1.329, "detail": 1.065, "sat": 1.049},
 	"forest_leaves_03": {"mean": Vector3(0.2466, 0.1887, 0.0995), "gain": Vector3(1.0952, 1.1200, 1.2517), "low": 0.847, "detail": 1.298, "sat": 1.134},
 	"gravel_soil": {"mean": Vector3(0.3020, 0.2696, 0.2908), "gain": Vector3(1.2915, 1.3118, 1.0642), "low": 1.342, "detail": 1.365, "sat": 1.809},
-	"red_soil": {"mean": Vector3(0.5471, 0.4416, 0.3657), "gain": Vector3(1.0436, 1.0666, 1.0584), "low": 1.105, "detail": 0.936, "sat": 0.722},
+	"red_soil": {"mean": Vector3(0.5550, 0.4495, 0.3737), "gain": Vector3(1.0286, 1.0476, 1.0358), "low": 1.105, "detail": 1.157, "sat": 0.709},
 	"rock_face_04": {"mean": Vector3(0.3072, 0.2554, 0.1968), "gain": Vector3(1.0793, 1.0941, 1.1247), "low": 1.066, "detail": 1.206, "sat": 1.131},
 	"rock_08": {"mean": Vector3(0.4928, 0.4241, 0.3323), "gain": Vector3(1.1299, 1.1510, 1.1927), "low": 0.515, "detail": 0.949, "sat": 1.152},
 	"rock_06": {"mean": Vector3(0.5235, 0.4121, 0.3035), "gain": Vector3(0.9418, 0.9248, 0.9008), "low": 0.707, "detail": 1.162, "sat": 0.932},
