@@ -9,7 +9,7 @@ It does not add new maths: it runs the scripts that were run by hand (measure_sc
                                                              --check writes to a temp file and diffs against the committed one
   python tools/bark/pipeline.py match <surface> ...          raw bake, colour_match.py, class cache refresh, picture in E:/Temp/tx (needs Godot)
   python tools/bark/pipeline.py run <surface> [--fit]        measure, (fit), export, match
-  python tools/bark/pipeline.py judge <surface> [picture]    a vision model lists what differs (tools/bark/judge.py; picture defaults to the last `match`)
+  python tools/bark/pipeline.py review <surface> [picture]   the labelled review sheet + checklist for an agent (tools/bark/review.py; then `review.py record`)
   python tools/bark/pipeline.py fit-torch <surface> [steps] [--adopt]   gradient fit (torch generators: plates, flake bark), a compare
                                                              picture, and with --adopt export + match (plates only; bark fits stay candidates)
 
@@ -183,12 +183,9 @@ def compare(surface, fit_json):
     print("compare picture:", "%s/compare_%s.png" % (PICTURES, surface))
 
 
-def judge_picture(surface, picture=None):
-    """Ask a vision model what differs (judge.py): the surface's last square picture (E:/Temp/tx/n<index>.png from `match`) or a given picture."""
-    picture = picture or "%s/n%d.png" % (PICTURES, SURFACES[surface][1])
-    out = "%s/judge_%s.json" % (PICTURES, surface)
-    run([PYTHON, os.path.join(BARK, "judge.py"), picture, "--what", "%s (the header text is UI, ignore it)" % surface, "--out", out])
-    print("judge result:", out)
+def review(surface, picture=None):
+    """The review sheet for an agent (tools/bark/review.py): no model is called; the agent reads the picture and records a verdict."""
+    run([PYTHON, os.path.join(BARK, "review.py"), "sheet", surface] + ([picture] if picture else []))
 
 
 def match(surfaces):
@@ -210,7 +207,7 @@ def match(surfaces):
 
 
 def main(argv):
-    if len(argv) < 2 or argv[1] not in ("list", "measure", "fit", "fit-torch", "export", "match", "run", "judge"):
+    if len(argv) < 2 or argv[1] not in ("list", "measure", "fit", "fit-torch", "export", "match", "run", "review"):
         print(__doc__)
         return 1
     command = argv[1]
@@ -226,8 +223,8 @@ def main(argv):
         measure(surface)
     elif command == "fit":
         fit(surface, int(argv[3]) if len(argv) > 3 and argv[3].isdigit() else 200)
-    elif command == "judge":
-        judge_picture(surface, argv[3] if len(argv) > 3 else None)
+    elif command == "review":
+        review(surface, argv[3] if len(argv) > 3 else None)
     elif command == "fit-torch":
         steps = int(argv[3]) if len(argv) > 3 and argv[3].isdigit() else 120
         made = fit_torch(surface, steps, "--adopt" in argv)

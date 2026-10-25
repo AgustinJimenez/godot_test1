@@ -233,14 +233,15 @@ Method (the loop, run by hand with me as the vision judge; every round = a fit o
   gained `drift_amp`/`drift_cm` after `wood_fits.gd` was exported, so a re-export changes the number order and needs `wood_bake.gdshader` updated first; `export`
   refuses (`--force` overrides). Left for whoever touches the wood.
 
-## Step 6 judge (2026-10-25): `tools/bark/judge.py`, `pipeline.py judge <surface>`
+## Step 6 judge, redone for agents (2026-10-25: user: "maybe we make this a tool focused on agents, not APIs")
 
-- Sends a side-by-side picture (photo | generated) to a vision model and gets back JSON: verdict (close/different/wrong), score 0-10, 3-5 differences each with
-  what / how the photo looks / how the generated looks / one concrete fix, and a `keep` list. Backends: `ANTHROPIC_API_KEY` (HTTPS, model `JUDGE_MODEL`, default
-  claude-sonnet-5-5) or the `claude -p` command line with the Read tool (no key on this machine: the CLI path was the one tested; one call about 17 s, billed to the
-  logged-in account).
-- Tried on the pitted rock square (`fits/rock_pitted_mossy_judge_example.json`): score 4, "different". Its list matches what I saw by eye and adds two things the loss
-  never saw: the generated rock reads FLAT (borders thin and faint, no raised plates) and the pits look like confetti (uniform, too many, same contrast). Colour
-  call: desaturated tan vs the photo's saturated salmon: note this was a square after the colour match; treat as the judge's opinion.
-- Limits: it is an opinion (a second call may differ), it sees UI text if the picture has it (say so in `--what`), and the fixes are suggestions, not
-  measurements. The loop it enables (not built): fit -> compare picture -> judge -> a person or a model edits the generator from `fix` -> repeat, stopping at score >= 7.
+The first judge (`judge.py`, an API or `claude -p` call) was REMOVED: the tool should be driven by the agent that is already running, which can read the picture
+itself, so no key, no second model, no extra cost. What exists now:
+- `tools/bark/review.py`: `sheet <surface>` (a labelled PHOTOGRAPH | GENERATED sheet with the UI header cut, plus a 7-point checklist and the last recorded review),
+  `record <surface> <score> "<differences>" ["<keep>"]` (appends to `tools/bark/fits/review_log.jsonl` with the git head) and `history <surface>` (the trend).
+  `pipeline.py review <surface>` calls `sheet`.
+- `.claude/skills/procedural-texture/SKILL.md`: the loop for an agent (review -> decide number or generator -> change one thing -> match -> review -> record; stop when
+  the score fails to rise twice), the commands, and the rules learned. The skill is the entry point: "make this surface match its photo" should load it.
+- First journal entry: pitted rock, score 4 (flat relief, confetti pits, desaturated colour), from my reading of the 2026-10-25 square (the vision-model call agreed).
+- Not automated on purpose: the agent edits the generator. What would make it more reliable (not built): a metrics block next to the sheet (the numbers the loss uses,
+  histogram of the heights), and a `try` command that applies a candidate json, matches, makes a sheet and reverts if the score drops.
