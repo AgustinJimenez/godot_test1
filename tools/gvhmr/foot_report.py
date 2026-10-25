@@ -1,0 +1,84 @@
+"""Foot contact and sliding of a tools/gvhmr/smplx_motion_to_json.py clip (forward kinematics in numpy).
+
+Usage: python tools/gvhmr/foot_report.py <clip.json> [contacts.json]
+A foot counts as planted on a frame when its ankle and toe are low and slow; the report is how far the planted foot still
+travels over the frames it stays planted (cm) and the share of planted frames per foot.
+"""
+import json
+import sys
+
+import numpy as np
+
+
+def rodrigues(v):
+    t = np.linalg.norm(v)
+    if t < 1e-8:
+        return np.eye(3)
+    k = v / t
+    K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+    return np.eye(3) + np.sin(t) * K + (1 - np.cos(t)) * K @ K
+
+
+def joints_world(clip):
+    rest = np.array(clip["rest"])
+    parents = clip["parents"]
+    rot = np.array(clip["rotations"]).reshape(clip["frames"], -1, 3)
+    transl = np.array(clip["transl"])
+    out = np.zeros((clip["frames"], 55, 3))
+    for t in range(clip["frames"]):
+        rg = [None] * 55
+        pos = [None] * 55
+        for j in range(55):
+            local = rodrigues(rot[t, j]) if j < rot.shape[1] else np.eye(3)
+            if parents[j] < 0:
+                rg[j] = local
+                pos[j] = transl[t] + rest[0]
+            else:
+                p = parents[j]
+                rg[j] = rg[p] @ local
+                pos[j] = pos[p] + rg[p] @ (rest[j] - rest[p])
+        out[t] = np.array(pos)
+    return out
+
+
+def contacts(world, fps):
+    """planted[t, side]: low and slow ankle and toe. side 0 = left, 1 = right."""
+    ankle = world[:, [7, 8]]
+    toe = world[:, [10, 11]]
+    low = np.minimum(ankle[:, :, 1], toe[:, :, 1])
+    floor = np.percentile(low, 2)
+    speed = np.zeros_like(low)
+    speed[1:] = np.linalg.norm(np.diff(toe[:, :, [0, 2]], axis=0), axis=2) * fps
+    speed[0] = speed[1]
+    return (low < floor + 0.04) & (speed < 0.2), floor
+
+
+def report(world, fps):
+    planted, floor = contacts(world, fps)
+    toe = world[:, [10, 11]]
+    print("floor (lowest foot) %.3f m" % floor)
+    for side, name in enumerate(["left", "right"]):
+        frames = planted[:, side]
+        slide = 0.0
+        run = 0.0
+        runs = 0
+        t = 0
+        while t < len(frames):
+            if frames[t]:
+                start = t
+                while t + 1 < len(frames) and frames[t + 1]:
+                    t += 1
+                d = np.linalg.norm(toe[t, side, [0, 2]] - toe[start, side, [0, 2]])
+                slide += d
+                runs += 1
+            t += 1
+        print("%s foot: planted %d%% of frames in %d stretches, drifts %.1f cm per stretch while planted" % (
+            name, 100 * frames.mean(), runs, 100 * slide / max(runs, 1)))
+    return planted
+
+
+if __name__ == "__main__":
+    clip = json.load(open(sys.argv[1]))
+    planted = report(joints_world(clip), clip["fps"])
+    if len(sys.argv) > 2:  # a third argument writes the contacts: [[left, right] per frame] for the Godot checks
+        json.dump({"fps": clip["fps"], "planted": planted.astype(int).tolist()}, open(sys.argv[2], "w"))

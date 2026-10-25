@@ -53,10 +53,15 @@ func _ready() -> void:
 		chains.append([lo + "_collar", lo + "_shoulder", map[hi + "Shoulder"], map[hi + "Arm"]])
 		chains.append([lo + "_shoulder", lo + "_elbow", map[hi + "Arm"], map[hi + "ForeArm"]])
 		chains.append([lo + "_elbow", lo + "_wrist", map[hi + "ForeArm"], map[hi + "Hand"]])
+	var foot_lock := {}
+	if options.has("contacts"): # tools/gvhmr/foot_report.py's file: the frames each foot is planted on
+		var contacts: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(options["contacts"]))
+		foot_lock = {"planted": contacts["planted"], "fps": contacts["fps"], "blend": 3, "legs": [
+			[map["LeftUpLeg"], map["LeftLeg"], map["LeftFoot"]], [map["RightUpLeg"], map["RightLeg"], map["RightFoot"]]]}
 	var result := HumanoidRetargeter.retarget_clip(source_skeleton, animation, target_skeleton, config,
 			options.get("force_loop", "false") == "true", options.get("arm_ik", "false") == "true",
 			[] if options.get("aim", "true") != "true" else chains,
-			["left_hip", "right_hip", map["LeftUpLeg"], map["RightUpLeg"]])
+			["left_hip", "right_hip", map["LeftUpLeg"], map["RightUpLeg"]], foot_lock)
 	DirAccess.make_dir_recursive_absolute(String(options["output"]).get_base_dir())
 	var saved := ResourceSaver.save(result, options["output"])
 	print("RETARGET_OK ", options["output"], " length=%.2f tracks=%d save=%d" % [

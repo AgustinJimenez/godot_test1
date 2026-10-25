@@ -142,7 +142,7 @@ static func _role_source_name(source_role_map: Dictionary, role: String) -> Stri
 static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 		target_skeleton: Skeleton3D, config: BoneMapConfig,
 		force_loop: bool = false, match_arm_positions: bool = true,
-		direction_chains: Array = [], hip_axis: Array = []) -> Animation:
+		direction_chains: Array = [], hip_axis: Array = [], foot_lock: Dictionary = {}) -> Animation:
 	var bone_tracks: Dictionary = {}
 	for t in src_animation.get_track_count():
 		var path := src_animation.track_get_path(t)
@@ -194,6 +194,14 @@ static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 			_skeleton_height(target_skeleton, config.hips_target, config.head_target)
 			/ maxf(_skeleton_height(src_skeleton, config.hips_source, config.head_source), 0.0001))
 	var sample_count := int(ceil(src_animation.length * RETARGET_SAMPLE_HZ)) + 1
+	var foot_pins: Array = [Vector3.ZERO, Vector3.ZERO]
+	var foot_pinned: Array = [false, false]
+	var foot_floor_y: Array = [0.0, 0.0]
+	if not foot_lock.is_empty():
+		for side in 2:
+			var foot_idx := target_skeleton.find_bone(StringName((foot_lock["legs"] as Array)[side][2]))
+			if foot_idx >= 0:
+				foot_floor_y[side] = target_skeleton.get_bone_global_rest(foot_idx).origin.y
 	for i in sample_count:
 		var time: float = minf(i / RETARGET_SAMPLE_HZ, src_animation.length)
 
@@ -277,6 +285,9 @@ static func retarget_clip(src_skeleton: Skeleton3D, src_animation: Animation,
 				child_idx = target_skeleton.find_bone(StringName(chain[3]))
 			_aim_bone_at_direction(anim, target_skeleton, target_global, out_rot_track,
 					bone_idx, frame_turn * direction, child_idx)
+		if not foot_lock.is_empty():
+			_lock_planted_feet(anim, target_skeleton, target_global, out_rot_track, foot_lock, time,
+					foot_pins, foot_pinned, foot_floor_y)
 	return anim
 
 
@@ -653,6 +664,61 @@ static func _solve_two_bone_ik(shoulder: Vector3, upper_len: float, lower_len: f
 		"elbow": shoulder + elbow_dir * upper_len,
 		"wrist": shoulder + target_dir * clamped_reach,
 	}
+
+
+## foot_lock = {"planted": [[left, right] per frame, 1 = planted], "fps": the planted array's frame rate,
+## "legs": [[left upleg, left leg, left foot], [right upleg, right leg, right foot]] (target bone names),
+## "blend": frames to ease in and out}. While a foot is planted its ankle is held at the world spot it first touched
+## (on the floor), solved with a two-bone leg IK; the foot keeps its own orientation. Stops the slide that the root
+## translation's scale leaves between the retargeted feet and the floor.
+static func _lock_planted_feet(anim: Animation, skel: Skeleton3D, target_global: Dictionary,
+		out_rot_track: Dictionary, lock: Dictionary, time: float, pins: Array, pinned: Array,
+		floor_y: Array) -> void:
+	var planted: Array = lock["planted"]
+	var frame := clampi(int(round(time * float(lock["fps"]))), 0, planted.size() - 1)
+	var blend_frames: float = float(lock.get("blend", 3))
+	for side in 2:
+		var names: Array = (lock["legs"] as Array)[side]
+		var thigh := skel.find_bone(StringName(names[0]))
+		var shin := skel.find_bone(StringName(names[1]))
+		var foot := skel.find_bone(StringName(names[2]))
+		if thigh < 0 or shin < 0 or foot < 0:
+			continue
+		var on: bool = int((planted[frame] as Array)[side]) == 1
+		if not on:
+			pinned[side] = false
+			continue
+		var hip_pos := _manual_global_pose(skel, thigh).origin
+		var knee_pos := _manual_global_pose(skel, shin).origin
+		var ankle_pos := _manual_global_pose(skel, foot).origin
+		if not pinned[side]:
+			pinned[side] = true
+			pins[side] = Vector3(ankle_pos.x, floor_y[side], ankle_pos.z)
+		# ease in and out at the ends of a planted stretch
+		var from_start := 0
+		while frame - from_start - 1 >= 0 and int((planted[frame - from_start - 1] as Array)[side]) == 1 and from_start < blend_frames:
+			from_start += 1
+		var to_end := 0
+		while frame + to_end + 1 < planted.size() and int((planted[frame + to_end + 1] as Array)[side]) == 1 and to_end < blend_frames:
+			to_end += 1
+		var weight := clampf(float(mini(from_start, to_end) + 1) / (blend_frames + 1.0), 0.0, 1.0)
+		var desired: Vector3 = ankle_pos.lerp(pins[side], weight)
+		var foot_basis_before := _manual_global_pose(skel, foot).basis
+		var solved := _solve_two_bone_ik(hip_pos, hip_pos.distance_to(knee_pos), knee_pos.distance_to(ankle_pos),
+				desired, knee_pos)
+		_aim_bone_at_direction(anim, skel, target_global, out_rot_track, thigh,
+				(solved["elbow"] - hip_pos).normalized(), shin)
+		_aim_bone_at_direction(anim, skel, target_global, out_rot_track, shin,
+				(solved["wrist"] - solved["elbow"]).normalized(), foot)
+		# the foot keeps the orientation it had before the leg moved
+		var parent_global := _manual_global_pose(skel, shin)
+		var local_rotation := (parent_global.basis.inverse() * foot_basis_before).get_rotation_quaternion()
+		skel.set_bone_pose_rotation(foot, local_rotation)
+		target_global[foot] = _manual_global_pose(skel, foot)
+		var foot_name := skel.get_bone_name(foot)
+		if out_rot_track.has(foot_name):
+			var track: int = out_rot_track[foot_name]
+			anim.track_set_key_value(track, anim.track_get_key_count(track) - 1, local_rotation)
 
 
 ## A "twist" entry of direction_chains: ["twist", source bone A, source bone B, target bone A, target bone B,
