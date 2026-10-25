@@ -162,7 +162,7 @@ static func turf_step(planet: PlanetWorld, frame: int) -> void:
 			turf = node
 	var count := 0 if turf == null else turf.tuft_count()
 	var ok := count > 3000 and count < 120000
-	print("TURF_CHECK %s tufts=%d" % ["PASS" if ok else "FAIL", count])
+	print("TURF_CHECK %s tufts=%d far_chunks=%d" % ["PASS" if ok else "FAIL", count, 0 if turf == null else turf.far_count()])
 	planet.get_tree().quit(0 if ok else 1)
 
 
