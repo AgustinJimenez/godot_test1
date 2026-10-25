@@ -117,6 +117,24 @@
   "hands": "relaxed"
  },
  {
+  "name": "Hurt_GrabArm",
+  "category": "Hurt",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
+  "name": "Hurt_Knockback",
+  "category": "Hurt",
+  "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "relaxed"
+ },
+ {
   "name": "Hurt_Stagger",
   "category": "Hurt",
   "rating": "usable",
@@ -252,6 +270,15 @@
   "hands": "fist"
  },
  {
+  "name": "Object_Drag",
+  "category": "Object",
+  "rating": "usable",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
   "name": "Object_PickUp",
   "category": "Object",
   "rating": "ok",
@@ -345,6 +372,15 @@
   "name": "Sword_Combo",
   "category": "Sword",
   "rating": "ok",
+  "loop": false,
+  "in_place": false,
+  "speed": 0.0,
+  "hands": "fist"
+ },
+ {
+  "name": "Sword_Kick",
+  "category": "Sword",
+  "rating": "weak",
   "loop": false,
   "in_place": false,
   "speed": 0.0,
