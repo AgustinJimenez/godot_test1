@@ -110,8 +110,8 @@ void fragment() {
 		float lift = (hash2(row, float(k), seed + 115.0) - 0.5) * 2.0 * board_cm * 0.2;
 		arch += lift * exp(-(dx * dx) / (width * width));
 	}
-	float lines = vnoise(vec2(at.x * 0.18, at.y + wave + arch), 160.0, 0.55, seed + 95.0) - 0.5;
-	float lines2 = vnoise(vec2(at.x * 0.35, at.y + 0.6 * wave), 90.0, 0.3, seed + 97.0) - 0.5;
+	float lines = vnoise(vec2(at.x, at.y + wave + arch), tile_cm, 0.55, seed + 95.0) - 0.5;
+	float lines2 = vnoise(vec2(at.x, at.y + 0.6 * wave), tile_cm, 0.3, seed + 97.0) - 0.5;
 	float pores = smoothstep(0.78, 0.95, vnoise(at, 3.2, 0.3, seed + 99.0));
 	float local_row = fract(at.y / board_cm);
 	float seam = 1.0 - smoothstep(0.0, 0.02, min(local_row, 1.0 - local_row));
@@ -122,8 +122,8 @@ void fragment() {
 	colour *= 1.0 + 0.2 * ring;
 	colour = mix(colour, ramp[1] * 0.75, 0.35 * pores);
 	// crisp fine grain: thin dark lines along the board at 0.2-0.5 cm, bent by the slow wave, and pore dashes
-	float fine1 = vnoise(vec2(at.x * 0.1, at.y + wave * 0.7 + arch), 120.0, 0.28, seed + 105.0) - 0.5;
-	float fine2 = vnoise(vec2(at.x * 0.06, at.y + wave * 0.5 + arch), 200.0, 0.17, seed + 107.0) - 0.5;
+	float fine1 = vnoise(vec2(at.x, at.y + wave * 0.7 + arch), tile_cm, 0.28, seed + 105.0) - 0.5;
+	float fine2 = vnoise(vec2(at.x, at.y + wave * 0.5 + arch), tile_cm, 0.17, seed + 107.0) - 0.5;
 	float line_hard = smoothstep(0.1, 0.22, abs(fine1)) - 0.5;
 	colour *= 1.0 - 0.09 * line_hard + 0.14 * fine1 + 0.12 * fine2;
 	float dash = smoothstep(0.82, 0.95, vnoise(at, 1.8, 0.2, seed + 109.0));
