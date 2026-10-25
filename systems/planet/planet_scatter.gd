@@ -16,12 +16,18 @@ const PEBBLE_VISIBLE := 45.0 ## m: small stones are gone beyond this
 const SMALL_PLANT := 1.4
 const TREE_FULL := 80.0 ## m: beyond this a tree is drawn as its lighter version
 const SMALL_VISIBLE := 220.0 ## m: shrubs and ground cover are gone beyond this
-const TREE_LIGHT := 220.0 ## m: beyond this, as the cheap far tree (a cone or a ball on a trunk)
+## m: beyond this, as the cheap far tree (a cone or a ball on a trunk); before it the impostor cards (it was 220: the cones and balls looked like rocks and
+## spikes from the air; PLANET_TREE_LIGHT: another, to try)
+const TREE_LIGHT := 500.0
 const TREE_FADE := 6.0 ## m: overlap where a tree dithers from one version to the next
 const TREE_CELL := 64.0 ## m: near trees are drawn in cells of this size, each with its own range
 ## shrubs and ground cover in cells too: GPU 15.5 -> 13.9 ms standing, but about twice the
 ## slow frames in a very fast flight (more nodes to hang): off
 const CELL_PLANTS := false
+static func _tree_light() -> float:
+	return OS.get_environment("PLANET_TREE_LIGHT").to_float() if OS.has_environment("PLANET_TREE_LIGHT") else TREE_LIGHT
+
+
 const SPACING := {
 	PlantSpecies.Layer.CANOPY: 6.5, PlantSpecies.Layer.UNDERSTORY: 5.0,
 	PlantSpecies.Layer.GRASS: 1.7, PlantSpecies.Layer.MEADOW: 3.2, PlantSpecies.Layer.COVER: 2.6,
@@ -656,7 +662,7 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 			# trees beyond the near ground are only ever seen from far: the lighter version
 			var light := _light_trees(buffer, id, variant % 2)
 			if PlantMeshes.has_far(_species.by_id(id)):
-				light.visibility_range_end = TREE_LIGHT
+				light.visibility_range_end = _tree_light()
 				light.visibility_range_end_margin = TREE_FADE * 2.0
 				light.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 				far_parts.append([_species.far_mesh(id, variant % 2), buffer])
@@ -695,11 +701,11 @@ func _hang(keys: PackedInt32Array, buffers: Array, near: bool) -> void:
 			light.visibility_range_begin_margin = TREE_FADE
 			light.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 			if PlantMeshes.has_far(_species.by_id(id)):
-				light.visibility_range_end = TREE_LIGHT
+				light.visibility_range_end = _tree_light()
 				light.visibility_range_end_margin = TREE_FADE * 2.0
 				light.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 				far_parts.append([_species.far_mesh(id, variant % 2), buffer])
-	_commit_far(far_parts, TREE_LIGHT * 0.95)
+	_commit_far(far_parts, _tree_light() * 0.95)
 	_commit_far(horizon_parts, 0.0)
 
 

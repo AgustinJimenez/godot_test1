@@ -75,11 +75,14 @@ func _bake(id: int, variant: int) -> void:
 	var middle := box.position.y + box.size.y * 0.5
 	_holder.mesh = mesh
 	_camera.size = side
-	var atlas := Image.create(CELL * VIEWS, CELL, false, Image.FORMAT_RGBA8)
-	for view in VIEWS:
+	var atlas := Image.create(CELL * (VIEWS + 1), CELL, false, Image.FORMAT_RGBA8) # (the last picture: from straight above)
+	for view in VIEWS + 1:
 		var angle := TAU * float(view) / float(VIEWS)
 		var eye := Vector3(cos(angle), 0.0, sin(angle)) * 200.0 + Vector3(0.0, middle, 0.0)
-		_camera.look_at_from_position(eye, Vector3(0.0, middle, 0.0))
+		if view == VIEWS:
+			_camera.look_at_from_position(Vector3(0.0, box.end.y + 200.0, 0.0), Vector3(0.0, middle, 0.0), Vector3(0.0, 0.0, -1.0))
+		else:
+			_camera.look_at_from_position(eye, Vector3(0.0, middle, 0.0))
 		_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 		await RenderingServer.frame_post_draw
 		var picture := _viewport.get_texture().get_image()
@@ -97,6 +100,7 @@ func _bake(id: int, variant: int) -> void:
 	material.shader = preload("res://shaders/world/planet_impostor.gdshader")
 	material.set_shader_parameter(&"atlas", ImageTexture.create_from_image(atlas))
 	material.set_shader_parameter(&"views", float(VIEWS))
+	material.set_shader_parameter(&"middle", middle)
 	_registry.set_impostor(id, variant, {"mesh": quad, "material": material})
 	_swap(id, variant)
 	if OS.get_environment("IMPOSTOR_DEBUG") != "":
