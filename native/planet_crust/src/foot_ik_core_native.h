@@ -126,6 +126,7 @@ private:
 	double lowest_sole_offset(int p_leg, const Transform3D &p_to_world);
 	void ease_correction(int p_leg);
 	void note_released(const StringName &p_side);
+	bool ease_release(int p_leg, const Vector3 &p_animated_local);
 	Vector3 get_vec(const Dictionary &p_dict, const StringName &p_side, const Vector3 &p_default) const;
 };
 

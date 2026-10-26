@@ -450,6 +450,27 @@ void FootIKV2CoreNative::note_released(const StringName &p_side) {
 	}
 }
 
+// A foot given up to the animation while moving: the correction it had until now (6-16 cm at a toe-off of a jog or sprint, found by the planet soak,
+// AGENT_TASKS/093) eases out at CORRECTION_STEP a frame instead of vanishing in one frame. False when there is nothing to ease.
+bool FootIKV2CoreNative::ease_release(int p_leg, const Vector3 &p_animated_local) {
+	const StringName side = legs[p_leg].side;
+	Dictionary held = corr_last.get(side, Dictionary());
+	if (!is_moving || held.is_empty() || (int)held["frame"] < frames() - 1) {
+		return false;
+	}
+	const Vector3 last = held["end"];
+	if (last.length() <= 0.001) {
+		return false;
+	}
+	const Vector3 eased = last - last.normalized() * (real_t)std::min((double)last.length(), CORRECTION_STEP);
+	held["start"] = last;
+	held["end"] = eased;
+	held["frame"] = frames();
+	corr_last[side] = held;
+	solve(p_leg, p_animated_local + eased);
+	return true;
+}
+
 void FootIKV2CoreNative::place_foot(int p_leg) {
 	const Leg &leg = legs[p_leg];
 	const StringName side = leg.side;
@@ -523,6 +544,9 @@ void FootIKV2CoreNative::place_foot(int p_leg) {
 		debug_skip_reason[side] = "mid_swing";
 		debug_target.erase(side);
 		debug_state[side] = "released";
+		if (ease_release(p_leg, to_local.xform(animated_ankle))) {
+			return;
+		}
 		note_released(side);
 		return;
 	}
@@ -542,20 +566,8 @@ void FootIKV2CoreNative::place_foot(int p_leg) {
 				debug_skip_reason[side] = "out_of_reach";
 				debug_target.erase(side);
 				debug_state[side] = "released";
-				// the animation's own leg is straight: the correction held until now eases out (at most CORRECTION_STEP a frame) instead of vanishing in
-				// one frame (a 6-9 cm pop of the foot at every toe-off of a jog or sprint, found by the planet soak, AGENT_TASKS/093)
-				Dictionary held = corr_last.get(side, Dictionary());
-				if (is_moving && !held.is_empty() && (int)held["frame"] >= frames() - 1) {
-					const Vector3 last = held["end"];
-					if (last.length() > 0.001) {
-						const Vector3 eased = last - last.normalized() * (real_t)std::min((double)last.length(), CORRECTION_STEP);
-						held["start"] = last;
-						held["end"] = eased;
-						held["frame"] = frames();
-						corr_last[side] = held;
-						solve(p_leg, animated_local + eased);
-						return;
-					}
+				if (ease_release(p_leg, animated_local)) {
+					return;
 				}
 				note_released(side);
 				return;

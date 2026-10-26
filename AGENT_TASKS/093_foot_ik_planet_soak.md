@@ -23,3 +23,12 @@ while, read the IK logs; when something is off in the logs, find the bug and fix
   FIX (foot_ik_core_native.cpp, place_foot, out_of_reach branch): while moving, the held correction (corr_last) eases out at CORRECTION_STEP (3 cm) a frame, the leg solved
   to animation + eased. Seed 11 jog: IK_POP count 39 -> 3 in 60 s. scripts/check_foot_ik_v2.sh: same numbers as before (known fails unchanged: floor-walk jerk 0.209/0.20,
   ramp strafe, project checks).
+- Second batch (seeds 11 77 88 99 111 122): seeds 111 and 122 have no IK_POP at all; seeds 77/88/99 have 5-20 IK_POPs in jog/sprint_turn (6-10 cm), seed 11 (a 20-25 degree slope, the player
+  jogging uphill the whole time) 160 events. A frame-by-frame look (the soak prints 9 frames before and 2 after an event, with each foot's shift, plant weight, state and skip reason):
+  the remaining pops are NOT a release: the foot is "stretched"/"at_target" with the plant weight fading 0.13 a frame (PLANT_RATE / 60) while the animated ankle runs 0.5-0.7 m above the
+  ground target at toe-off, so the IK-to-animation distance shrinks by rate x distance = 6-10 cm in one frame, mostly along the ground normal (ease_correction lets the "away"
+  part through on purpose). It is the foot catching up with the animation at toe-off, bounded by 10 cm in a frame at 5.8 m/s; not a bug in the sense of a wrong pose, a tuning
+  trade-off (a slower PLANT_RATE would lengthen the lag of the planted foot behind the animation). Left as is; decision for the user.
+- Extra fix kept: ease_release() (foot_ik_core_native.cpp) also eases a `mid_swing` release; the v2 suite numbers are unchanged.
+- Not the IK, for the animation owner: the gait clips snap an ankle 0.23-0.5 m in one frame at some clip changes (stop_go: run -> walk at 5.3 m/s, walk_turn_right after a jog, strafe start). CLIP_SNAP
+  in the soak counts them; the animation tree changes clip without a blend there.

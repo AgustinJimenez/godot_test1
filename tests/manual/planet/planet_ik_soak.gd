@@ -51,6 +51,7 @@ var _step := 0
 var _turn := 0.0
 var _previous := {}
 var _recent: Array[String] = [] # the last frames, compact, printed with an event
+var _after_left := 0 # frames still to print after an event
 var _events := 0
 var _counts := {}
 var _worst := {}
@@ -170,9 +171,19 @@ func _sample() -> void:
 				_player.velocity.length(), 0.01), "pelvis": snappedf(pelvis, 0.0001),
 				"l": (now["left"] as Vector3).snapped(Vector3.ONE * 0.001),
 				"r": (now["right"] as Vector3).snapped(Vector3.ONE * 0.001)}))
-	_recent.append("f%d %s v=%.2f L=%s R=%s pelvis=%.3f" % [physics_frame, _phase, _player.velocity.length(),
-			_local(now["left"]), _local(now["right"]), pelvis])
-	if _recent.size() > 7:
+	var detail := ""
+	for side: String in _bones:
+		var shift_here := 0.0
+		if now.has(side + "_anim"):
+			shift_here = ((now[side] as Vector3) - (now[side + "_anim"] as Vector3)).length()
+		detail += " %s[shift=%.3f plant=%.2f %s %s]" % [side.left(1).to_upper(), shift_here, float((_modifier.debug_plant_weight as Dictionary).get(StringName(side), -1.0)),
+				str((_modifier.debug_state as Dictionary).get(StringName(side), "")), str((_modifier.debug_skip_reason as Dictionary).get(StringName(side), ""))]
+	_recent.append("f%d %s v=%.2f L=%s R=%s pelvis=%.3f%s" % [physics_frame, _phase, _player.velocity.length(),
+			_local(now["left"]), _local(now["right"]), pelvis, detail])
+	if _after_left > 0:
+		print("  after: ", _recent[-1])
+		_after_left -= 1
+	if _recent.size() > 9:
 		_recent.pop_front()
 	_previous = now
 
@@ -208,6 +219,7 @@ func _note(kind: String, value: float, bad: bool, side: String) -> void:
 				rad_to_deg(_player.get_floor_normal().angle_to(Vector3.UP)) if _player.is_on_floor() else -1.0])
 		if _events <= 12 and not _recent.is_empty():
 			print("  before: ", " | ".join(_recent))
+			_after_left = 2
 		if _events <= 3 or (_events <= 40 and (kind == "SNAP" or kind == "IK_POP")):
 			print("  animated=", _modifier.debug_animated_ankle, " target=", _modifier.debug_target, " state=",
 					_modifier.debug_state, " stepping=", _modifier.debug_stepping, " skip=", _modifier.debug_skip_reason,
