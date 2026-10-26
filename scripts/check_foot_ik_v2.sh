@@ -55,6 +55,11 @@ snap_check() {
 run "Project checks" "Project checks passed" \
 	"$project_dir/scripts/check.sh"
 
+# Standing on a ramp of every angle (5-70 degrees), facing six ways, no input: it must stay still up to the
+# player's floor_max_angle and slide (only downhill, never walking) past it. The old 25 cm "void" test made
+# the ledge nudge walk the body up a 44 degree ramp (1.8 m, walk clip, feet re-stepping).
+run "Foot IK v2 slope sweep (still or slide, never walk)" "FOOT_IK_V2_SLOPE_SWEEP PASS" 	godot --headless --fixed-fps 60 --path "$project_dir" 	res://tests/manual/foot_ik_v2/foot_ik_v2_slope_sweep.tscn
+
 run "Foot IK v2 solver regression" "FOOT_IK_V2_SOLVER_CHECK PASS" \
 	godot --headless --path "$project_dir" --script \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_solver_check.gd
