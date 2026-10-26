@@ -17,17 +17,21 @@ static func outline_for(shape: PlantSpecies.LeafShape, aspect: float, lobes: int
 		edge_kind: PlantSpecies.LeafEdge, detailed: bool) -> PackedVector2Array:
 	if shape == PlantSpecies.LeafShape.PALMATE:
 		return _palmate(aspect)
+	if shape == PlantSpecies.LeafShape.LOBED and detailed:
+		return _lobed_dense(aspect, maxi(lobes, 1))
 	var simple := shape in [PlantSpecies.LeafShape.OVAL, PlantSpecies.LeafShape.DIAMOND]
 	var per_side := 2 if simple else 3
 	if detailed:
 		per_side += 1
+		if shape != PlantSpecies.LeafShape.LOBED:
+			per_side = 11 # sampled finely: the width curve itself is the leaf's shape (the spline smooths the rest)
 	if shape == PlantSpecies.LeafShape.LOBED:
 		per_side = 2 * maxi(lobes, 1) + 1 # a notch, a lobe, a notch, a lobe...
 	# a serrated or wavy edge (realistic look): more points, every other one pulled in
 	var edge := 1.0
 	var toothed := edge_kind != PlantSpecies.LeafEdge.SMOOTH
 	if detailed and toothed and shape != PlantSpecies.LeafShape.LOBED:
-		per_side += 2 # the teeth replace the extra roundness of the realistic look
+		per_side += 6 if per_side > 8 else 2 # the teeth replace the extra roundness of the realistic look
 		edge = 0.8 if edge_kind == PlantSpecies.LeafEdge.SERRATED else 0.92
 	var half := 0.5 / aspect
 	var points := PackedVector2Array()
@@ -123,6 +127,10 @@ static func add_leaf(builder: MeshBuilder, outline: PackedVector2Array, base: Ve
 		axis: Vector3, normal: Vector3, length: float, fold: float, curl: float,
 		base_color: Color, tip_color: Color, asym := 0.0, skew := 0.0, width := 1.0,
 		leaf_dice := Vector2.ZERO) -> void:
+	if builder.detailed:
+		_add_leaf_smooth(builder, outline, base, axis, normal, length, fold, curl, base_color, tip_color,
+				asym, skew, width, leaf_dice)
+		return
 	var right := axis.cross(normal).normalized()
 	var corners: Array[Vector3] = []
 	var colors: Array[Color] = []
@@ -159,3 +167,132 @@ static func add_leaf(builder: MeshBuilder, outline: PackedVector2Array, base: Ve
 		var next := (index + 1) % corners.size()
 		builder.add_tri_uv(centre, corners[index], corners[next], centre_color, colors[index],
 				colors[next], centre_uv, uvs[index], uvs[next], leaf_dice)
+
+
+const SMOOTH_STEPS := 3 ## points added between two outline corners (the realistic look)
+const SMOOTH_RINGS := 3 ## rings from the midrib to the rim: the blade bends between them
+const VEIN_SLOPE := 0.45 ## how far up the leaf a rim point is from where its vein leaves the midrib, per unit across
+
+## The outline as a smooth curve: each side (stalk up to the tip) is run through a Catmull-Rom spline, `sharp` 0
+## fully round .. 1 the straight corners (a toothed or lobed edge keeps its points, a plain leaf is round). The
+## stalk and the tip stay corners. Returns the closed outline, same order as `outline`.
+static func smooth_outline(outline: PackedVector2Array, sharp: float) -> PackedVector2Array:
+	var tip := 0
+	for index in outline.size():
+		if outline[index].x == 0.0 and outline[index].y >= 0.999:
+			tip = index
+	if tip < 2:
+		return outline
+	var right := PackedVector2Array()
+	for index in range(0, tip + 1):
+		right.append(outline[index])
+	var left := PackedVector2Array()
+	left.append(outline[tip])
+	for index in range(tip + 1, outline.size()):
+		left.append(outline[index])
+	left.append(outline[0])
+	var result := _spline(right, sharp)
+	var back := _spline(left, sharp)
+	for index in range(1, back.size() - 1):
+		result.append(back[index])
+	return result
+
+
+static func _spline(points: PackedVector2Array, sharp: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for index in points.size() - 1:
+		var p0 := points[maxi(index - 1, 0)]
+		var p1 := points[index]
+		var p2 := points[index + 1]
+		var p3 := points[mini(index + 2, points.size() - 1)]
+		for step in SMOOTH_STEPS:
+			var t := float(step) / float(SMOOTH_STEPS)
+			var round_point := 0.5 * ((2.0 * p1) + (-p0 + p2) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t * t
+					+ (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t * t * t)
+			out.append(round_point.lerp(p1.lerp(p2, t), sharp))
+	out.append(points[points.size() - 1])
+	return out
+
+
+## A leaf as a grid: rings from the midrib out to the rim, so the blade can cup across and ripple between the
+## veins instead of being one flat fan. The grid lines follow the veins (a rim point is joined to the midrib
+## a little lower down, as the side veins of a leaf run up and out).
+static func _add_leaf_smooth(builder: MeshBuilder, outline: PackedVector2Array, base: Vector3,
+		axis: Vector3, normal: Vector3, length: float, fold: float, curl: float,
+		base_color: Color, tip_color: Color, asym: float, skew: float, width: float,
+		leaf_dice: Vector2) -> void:
+	var turns := 0 # how often the width stops growing and starts shrinking along the right side: a smooth leaf once, lobes and teeth many times
+	var rising := true
+	for index in range(2, outline.size()):
+		if outline[index].x <= 0.0 and outline[index].y >= 0.999:
+			break
+		var step := outline[index].x - outline[index - 1].x
+		if absf(step) > 0.0005 and (step > 0.0) != rising:
+			rising = step > 0.0
+			turns += 1
+	var toothed := turns > 2
+	var rim := smooth_outline(outline, 0.55 if toothed else 0.15)
+	var right := axis.cross(normal).normalized()
+	var widest := 0.001
+	for point in rim:
+		widest = maxf(widest, absf(point.x))
+	var count := rim.size()
+	var grid: Array = [] # ring -> Array of [position, colour, uv]
+	for ring in SMOOTH_RINGS + 1:
+		var share := float(ring) / float(SMOOTH_RINGS)
+		var row: Array = []
+		for point in rim:
+			var spine_y := clampf(point.y - VEIN_SLOPE * absf(point.x) / widest * 0.5, 0.0, 1.0)
+			if point.x == 0.0:
+				spine_y = point.y
+			var here := Vector2(point.x * share, lerpf(spine_y, point.y, share))
+			var across := here.x * width * (1.0 + asym * signf(here.x)) + skew * here.y * here.y
+			# cupped: the midrib rides high, the blade falls away to the rim, rippled between the veins
+			var ripple := sin(here.y * 17.0 + signf(here.x) * 1.7) * 0.012 * share
+			var lift := fold * (1.0 - share) * 0.4 + ripple - 0.015 * share * share
+			var spot := base + axis * (here.y * length) + right * (across * length) 					+ normal * ((lift + curl * here.y * here.y) * length)
+			var color := base_color.lerp(tip_color, here.y)
+			if ring == 0:
+				color = color.lightened(0.18)
+			elif share < 1.0:
+				color = color.lightened(0.05 * (1.0 - share))
+			row.append([spot, color, Vector2(0.5 + 0.5 * here.x / widest, here.y)])
+		grid.append(row)
+	for ring in SMOOTH_RINGS:
+		for index in count:
+			var next := (index + 1) % count
+			var a: Array = grid[ring][index]
+			var b: Array = grid[ring + 1][index]
+			var c: Array = grid[ring + 1][next]
+			var d: Array = grid[ring][next]
+			builder.add_tri_uv(a[0], b[0], c[0], a[1], b[1], c[1], a[2], b[2], c[2], leaf_dice)
+			if ring > 0 or (a[0] as Vector3).distance_squared_to(d[0] as Vector3) > 0.0000001:
+				builder.add_tri_uv(a[0], c[0], d[0], a[1], c[1], d[1], a[2], c[2], d[2], leaf_dice)
+
+
+## An oak / maple style leaf for the realistic look: an oval envelope with `lobes` rounded lobes a side, each swept
+## forward toward the tip and separated by a notch cut deeper toward the stalk, and a lobe at the tip. Sampled
+## finely (the smoothing keeps the lobe tips round); [stalk, right side up, tip, left side down] like `outline_for`.
+static func _lobed_dense(aspect: float, lobes: int) -> PackedVector2Array:
+	var half := 0.5 / aspect
+	var samples := 7 * lobes + 6
+	var right := PackedVector2Array()
+	var cycles := float(lobes) + 0.5
+	for index in range(1, samples):
+		var along := float(index) / float(samples)
+		var envelope := sin(PI * pow(along, 0.8)) * (1.0 + 0.15 * (1.0 - along))
+		# a lobe is a hump, a notch the dip between humps; the notches get shallower toward the tip
+		var phase := 0.5 + 0.5 * cos(TAU * cycles * (along - 0.12) / 0.88)
+		var depth := lerpf(0.42, 0.25, along)
+		var hump := 1.0 - depth * (1.0 - smoothstep(0.0, 1.0, phase))
+		hump = lerpf(1.0, hump, smoothstep(0.08, 0.3, along) * (1.0 - smoothstep(0.88, 1.0, along)))
+		# lobes sweep forward: a point on the rim sits further up where it is wide
+		var forward := 0.06 * smoothstep(0.0, 1.0, phase) * (1.0 - along)
+		right.append(Vector2(half * envelope * hump, minf(along + forward, 0.995)))
+	var points := PackedVector2Array()
+	points.append(Vector2.ZERO)
+	points.append_array(right)
+	points.append(Vector2(0.0, 1.0))
+	for index in range(right.size() - 1, -1, -1):
+		points.append(Vector2(-right[index].x, right[index].y))
+	return points

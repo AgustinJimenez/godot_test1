@@ -20,3 +20,13 @@ W wire, D low/realistic, A autumn, B backlight, L sun, T top view, R seed, P pic
 2. Card leaf: pick the leaf shape from the species (pass shape / aspect / lobes / edge to the shader through the card's UV2 / vertex colour), remove the dither ghosts and holes.
 3. Shader: vein relief on the normal, translucency (backlight) tinted yellow-green, a wax specular on the upper side, darker underside, edge browning.
 4. Check in the lab (all species, front / top / backlit), then in the planet at 2 m and 10 m.
+
+## Log
+- Step 1 done (mesh leaf, realistic look only; the low-poly look keeps the old fan): `PlantLeafShapes._add_leaf_smooth` builds the blade as rings from the midrib to the rim (grid lines
+  follow the veins, a rim point joins the midrib lower down), the outline goes through a Catmull-Rom spline (`smooth_outline`; lobed / toothed edges keep more of their corners), the blade
+  cups and ripples. Dense outlines: ovals are sampled at 11 points a side (the width curve is the shape), toothed +6, lobed leaves come from `_lobed_dense` (rounded lobes swept forward, notches).
+  Lab check: all 17 species of seed 1337 in the top view read as leaves (oak lobes, toothed, smooth ovals). Cost: ~120-250 triangles a leaf instead of ~14, so only where `MeshBuilder.detailed`.
+- SPOM / parallax for veins: not needed. A leaf is a thin blade seen from a few cm to many m; the veins are shallow (< 1 mm), so a normal-map / bump from the veins in the shader gives the
+  same look for no extra cost, and POM breaks at the grazing angles a leaf is seen from and at the silhouette (the silhouette is the geometry's job, and now is).
+- Left in the lab: every oval species is the same oval (the species differ in aspect only), the vein stripes are the same straight bars on every leaf (shader), the cards ignore the species'
+  leaf shape, the ghost dots and holes on cards.

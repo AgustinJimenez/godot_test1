@@ -121,10 +121,10 @@ func _show() -> void:
 	match mode:
 		Mode.LEAF:
 			instance.mesh = _leaf_mesh(one)
-			_target = Vector3(0.0, 0.5, 0.0)
+			_target = Vector3(0.0, 0.05, -0.5)
 		Mode.CARD:
 			instance.mesh = _card_mesh(one)
-			_target = Vector3(0.0, 0.5, 0.0)
+			_target = Vector3(0.0, 0.05, -0.5)
 		Mode.CROWN:
 			instance.mesh = _registry.mesh(one.id, variant, detailed)
 			_target = Vector3(0.0, 4.0, 0.0)
@@ -148,8 +148,8 @@ func _leaf_mesh(one: PlantSpecies) -> ArrayMesh:
 	tip.a = 0.0
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value * 31 + variant
-	var axis := Vector3(0.0, 0.92, -0.38).normalized()
-	var normal := Vector3(0.0, 0.38, 0.92).normalized()
+	var axis := Vector3(0.0, 0.1, -1.0).normalized()
+	var normal := Vector3(0.0, 1.0, 0.1).normalized()
 	PlantLeafShapes.add_leaf(builder, outline, Vector3.ZERO, axis, normal, 1.0, 0.1, -0.12, base, tip,
 			rng.randf_range(-0.2, 0.2), rng.randf_range(-0.14, 0.14), 1.0, Vector2(rng.randf(), rng.randf()))
 	return builder.commit()
@@ -162,8 +162,8 @@ func _card_mesh(one: PlantSpecies) -> ArrayMesh:
 	base.a = 0.0
 	var tip := one.leaf_tip.lerp(one.leaf, 0.4)
 	tip.a = 0.0
-	var axis := Vector3(0.0, 0.92, -0.38).normalized()
-	var normal := Vector3(0.0, 0.38, 0.92).normalized()
+	var axis := Vector3(0.0, 0.1, -1.0).normalized()
+	var normal := Vector3(0.0, 1.0, 0.1).normalized()
 	PlantLeafShapes.add_leaf_card(builder, Vector3.ZERO, axis, normal, 1.35, base, tip,
 			fmod(float(variant) * 0.37 + 0.11, 1.0))
 	return builder.commit()
