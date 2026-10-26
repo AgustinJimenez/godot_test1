@@ -262,7 +262,7 @@ func _setup_bake() -> void:
 ## dents=1: a trail of footprints on the sand, new ones near the camera and older ones further
 ## away (dent_age=SECONDS for the oldest, 150 by default), for repeatable renders of the dents.
 func _setup_dents() -> void:
-	_dents = PlanetDents.new(PlanetTile.ground_material())
+	_dents = PlanetDents.create(PlanetTile.ground_material())
 	_dents.clock = 1000.0
 	if not _options.has("dents"):
 		return

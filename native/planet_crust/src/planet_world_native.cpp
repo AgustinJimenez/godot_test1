@@ -3,6 +3,7 @@
 #include "planet_ground_bake_native.h"
 #include "planet_sky_native.h"
 #include "planet_nodes_native.h"
+#include "planet_prints_native.h"
 #include "planet_recorder_native.h"
 #include "planet_render_native.h"
 #include "planet_star_native.h"
@@ -225,9 +226,9 @@ Vector3 PlanetWorld::start(Node3D *p_target, const Vector3 &p_direction, double 
 		swimming->set("splash", water_splash);
 		add_child(swimming);
 		swim_id = swimming->get_instance_id();
-		Node *footprints = Object::cast_to<Node>(make_scripted("res://systems/planet/planet_footprints.gd"));
-		footprints->set("planet", this);
-		footprints->set("target", p_target);
+		PlanetFootprints *footprints = memnew(PlanetFootprints);
+		footprints->set_planet(this);
+		footprints->set_target(p_target);
 		add_child(footprints);
 		PlanetCrustGuard *guard = memnew(PlanetCrustGuard); // the player and the camera never go inside the crust
 		guard->set_planet(this);
