@@ -3,6 +3,7 @@
 #include "planet_ground_bake_native.h"
 #include "planet_sky_native.h"
 #include "planet_nodes_native.h"
+#include "planet_menu_native.h"
 #include "planet_prints_native.h"
 #include "planet_recorder_native.h"
 #include "planet_render_native.h"
@@ -292,8 +293,8 @@ Vector3 PlanetWorld::start(Node3D *p_target, const Vector3 &p_direction, double 
 	noise->set_clearing(dir);
 	Object *hud = is_player ? (Object *)p_target->get("hud") : nullptr;
 	if (hud != nullptr) {
-		Control *page = Object::cast_to<Control>(make_scripted("res://systems/planet/planet_menu.gd"));
-		page->call("setup", this);
+		PlanetMenu *page = memnew(PlanetMenu);
+		page->setup(this);
 		hud->call("add_menu_page", "Planet", page);
 	}
 	noise->set_clock(clock);

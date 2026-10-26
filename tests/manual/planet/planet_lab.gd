@@ -496,24 +496,24 @@ func _ready() -> void:
 	report_run = report_run or PlanetLabChecks.spawn_check(get_tree())
 	if report_run or _print_universe_table():
 		return
-	var asked := PlanetMenu.pending != null
+	var asked := PlanetMenu.get_pending() != null
 	var user_args := OS.get_cmdline_user_args()
 	_procedural_by_default(user_args)
 	_trees_by_default(user_args)
-	if not asked and user_args.is_empty() and not UniverseStartMenu.requested:
+	if not asked and user_args.is_empty() and not UniverseStartMenu.get_requested():
 		# no menu for now: the default planet (seed 1337, 20 km) on foot, with plants (--start-menu: menu;
 		# PLANET_SCALE=0.1..1: a random-seed Earth that size instead)
 		if OS.has_environment("PLANET_SCALE"):
 			var scale := OS.get_environment("PLANET_SCALE").to_float()
-			PlanetMenu.pending = PlanetSettings.earth(clampf(scale, 0.02, 1.0))
-			PlanetMenu.pending.world_seed = randi() % 100000
-			PlanetMenu.pending.vary() # (an Earth-like world, but no two alike)
+			PlanetMenu.set_pending(PlanetSettings.earth(clampf(scale, 0.02, 1.0)))
+			PlanetMenu.get_pending().world_seed = randi() % 100000
+			PlanetMenu.get_pending().vary() # (an Earth-like world, but no two alike)
 		else:
-			PlanetMenu.pending = PlanetSettings.new()
-		PlanetMenu.pending.plants_on = true # (the game has plants, the other lab starts not)
+			PlanetMenu.set_pending(PlanetSettings.new())
+		PlanetMenu.get_pending().plants_on = true # (the game has plants, the other lab starts not)
 		_grounded = true
 		asked = true
-	var menu_first := UniverseStartMenu.requested or user_args.is_empty()
+	var menu_first := UniverseStartMenu.get_requested() or user_args.is_empty()
 	menu_first = menu_first or "--start-menu" in user_args
 	if not asked and menu_first:
 		add_child(UniverseStartMenu.new()) # the saved planets and a new one, before anything is built
@@ -525,11 +525,11 @@ func _ready() -> void:
 					get_tree().quit())
 		return
 	var settings := PlanetSettings.new()
-	if PlanetMenu.pending != null: # a new planet asked for in the Planet page of the menu
-		settings = PlanetMenu.pending
-		PlanetMenu.pending = null
-		restored_state = PlanetMenu.pending_state
-		PlanetMenu.pending_state = {}
+	if PlanetMenu.get_pending() != null: # a new planet asked for in the Planet page of the menu
+		settings = PlanetMenu.get_pending()
+		PlanetMenu.set_pending(null)
+		restored_state = PlanetMenu.get_pending_state()
+		PlanetMenu.set_pending_state({})
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--continue" or arg.begins_with("--world="):
 			var save_name := UniverseSave.latest() if arg == "--continue" \
