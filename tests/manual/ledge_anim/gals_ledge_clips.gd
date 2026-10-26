@@ -13,6 +13,9 @@ const CLIPS := {
 	ClimbClips.GRAB: ["ledge-land-waist-contact_to_ledge-grab-idle", 1, 0.0, HANG_TILT, 1.0],
 	ClimbClips.UP: ["ledge-grab-idle_to_ledge-facing-idle-full", 0, HANG_TILT, 0.0, 0.3],
 }
+## Each hand this far from the body: between the player's grip (0.22, the clip's arms cross over the head when pulled
+## in to it) and the clip's own (0.33, the wrists then fall short of the hold).
+const HAND_HOME := 0.27
 const WRIST := 1.7 # m the wrists are above the capsule's feet in the hang
 ## The clips hold the arms angled into the wall (elbows 0.15 m past the wrists' depth); the body is baked this far out
 ## so the elbows and shoulders are not inside it, and the hand IK draws the wrists the rest of the way to the ledge.
@@ -45,7 +48,7 @@ static func apply(player: Player, on: bool) -> bool:
 	if not ClimbClips.add_to(library, player.skeleton, player.body._target_humanoid_map, stand_hips, player, overrides):
 		return false
 	if on:
-		player.climb.use_clips(WRIST, WRIST)
+		player.climb.use_clips(WRIST, WRIST, PlayerClimb.HANG_BACK, HAND_HOME)
 	else:
 		player.climb.use_clips()
 	print("CLIMB_LAB clips: ", "GALS (BVH)" if on else "Mixamo")

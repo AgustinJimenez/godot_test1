@@ -12,6 +12,7 @@ const HOP_TIME := 0.2 # s
 const LIFT := 0.08 # m a hopping hand rises off the ledge
 const IDLE_RETURN := 0.3 # s of standing still before the hands settle back
 
+var home := HOME # m each hand sits from the body when still (a clip with a wider grip sets it)
 var hops := 0 # counted for the lab checks
 var _u := {&"left": 0.0, &"right": 0.0}
 var _hop := {} # side -> {from, to, t}
@@ -19,7 +20,7 @@ var _idle := 0.0
 
 
 func reset(body_u: float) -> void:
-	_u = {&"left": body_u - HOME, &"right": body_u + HOME}
+	_u = {&"left": body_u - home, &"right": body_u + home}
 	_hop.clear()
 	_idle = 0.0
 
@@ -50,9 +51,9 @@ func update(body_u: float, moving: float, delta: float) -> void:
 	if _idle < IDLE_RETURN:
 		return
 	for side: StringName in _u:
-		var home := body_u + (-HOME if side == &"left" else HOME)
-		if absf(float(_u[side]) - home) > 0.03:
-			_start(side, home)
+		var rest := body_u + (-home if side == &"left" else home)
+		if absf(float(_u[side]) - rest) > 0.03:
+			_start(side, rest)
 			return
 
 

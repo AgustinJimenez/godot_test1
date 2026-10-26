@@ -11,6 +11,7 @@ const GALS_CLIPS := preload("res://tests/manual/ledge_anim/gals_ledge_clips.gd")
 var _gals := false
 var _demo_dir := ""
 var _demo_frame := 0
+var _demo_hold := "--demo-hold" in OS.get_cmdline_user_args() # stay in the hang for a whole idle cycle
 
 
 func _ready() -> void:
@@ -64,7 +65,7 @@ func _physics_process(_delta: float) -> void:
 				var w := player.skeleton.global_transform * player.skeleton.get_bone_global_pose(b).origin
 				if w.y < 2.45 and w.z - (WALL_Z - 1.0) > 0.02 and w.z < WALL_Z + 1.0 and player.climb.state != 0:
 					print("CLIMB_VIOL f%d st%d %s y%.2f in wall %.2f" % [_demo_frame, player.climb.state, role, w.y, w.z - (WALL_Z - 1.0)])
-	if _demo_frame in [200]:
+	if _demo_frame in [200] or (_demo_hold and _demo_frame in [86, 92, 98, 104, 110, 116, 122, 130, 140, 160]):
 		get_viewport().get_texture().get_image().save_png("%s/demo_%d.png" % [_demo_dir, _demo_frame])
 		print("CLIMB_DEMO state ", player.climb.state, " at ", player.global_position)
 		var map: Dictionary = player.body._target_humanoid_map
@@ -78,12 +79,13 @@ func _physics_process(_delta: float) -> void:
 				var target: Vector3 = player.climb.hands.targets[side]
 				var wrist: Vector3 = player.climb.hands.debug_wrist[side]
 				print("CLIMB_DEMO ", side, " target ", target, " wrist ", wrist, " off ", wrist - target)
+	if _demo_frame == (62 if _demo_hold else 150):
 		if true:
 			var camera := Camera3D.new()
 			get_parent().add_child(camera)
-			camera.look_at_from_position(Vector3(-5.5, 1.6, WALL_Z - 3.2), Vector3(-10.0, 1.4, WALL_Z - 1.0))
+			camera.look_at_from_position(Vector3(-10.0, 1.9, WALL_Z - 4.2), Vector3(-10.0, 1.6, WALL_Z - 1.0))
 			camera.make_current()
-	if _demo_frame == 270:
+	if _demo_frame == 270 and not _demo_hold:
 		player.movement_input_override = Vector2(0.0, -1.0) # W: pull up
 	elif _demo_frame == 271:
 		player.movement_input_override = Vector2.ZERO
@@ -97,7 +99,7 @@ func _physics_process(_delta: float) -> void:
 		Input.action_release(&"crouch")
 	if _demo_frame in [300, 330, 360, 390, 460, 490, 520, 550]:
 		get_viewport().get_texture().get_image().save_png("%s/demo_%d.png" % [_demo_dir, _demo_frame])
-	if _demo_frame == 620:
+	if _demo_frame == (170 if _demo_hold else 620):
 		get_tree().quit()
 
 

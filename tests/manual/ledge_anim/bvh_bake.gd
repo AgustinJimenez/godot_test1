@@ -5,6 +5,8 @@ extends RefCounted
 
 const BvhClip := preload("res://tests/manual/ledge_anim/bvh_clip.gd")
 const BvhRetarget := preload("res://tests/manual/ledge_anim/bvh_retarget.gd")
+## A standing pose in the clips' own set: the roll of the clips is read against it.
+const CALIBRATION := "ledge-facing-idle"
 const DIR := "D:/RE/game_locomotion/anims/bvh_trav_ledge/"
 
 
@@ -37,6 +39,11 @@ static func bake(file: String, retarget: BvhRetarget, track_prefix: String, wris
 	retarget.tilt = 0.0
 	retarget.wall_top = wall_height - 0.05 # the hold is at the top of the wall; the body below it keeps off the wall
 	retarget.pivot = retarget.yaw * (wrists - retarget.origin)
+	var reference: BvhClip = BvhClip.load_file(DIR + CALIBRATION + ".bvh")
+	retarget.scale = retarget.fit_scale(reference)
+	retarget.calibrate(reference, 0.0)
+	retarget.scale = retarget.fit_scale(clip)
+	retarget.carry_twist = true
 	var anim := Animation.new()
 	anim.length = float(clip.frames.size() - 1) * clip.frame_time
 	anim.loop_mode = Animation.LOOP_LINEAR if looping else Animation.LOOP_NONE
@@ -63,6 +70,7 @@ static func bake(file: String, retarget: BvhRetarget, track_prefix: String, wris
 			anim.rotation_track_insert_key(tracks[bone], time, rotation)
 		anim.position_track_insert_key(hips_track, time, skeleton.get_bone_pose_position(hips))
 	retarget.tilt = 0.0
+	retarget.carry_twist = false
 	retarget.wall_top = INF
 	skeleton.reset_bone_poses()
 	return anim

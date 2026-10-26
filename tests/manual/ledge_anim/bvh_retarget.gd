@@ -35,6 +35,11 @@ var scale := 1.0
 var origin := Vector3.ZERO ## source model-space point placed on the skeleton's origin
 var tilt := 0.0 ## radians the body swings back (feet away from where it faces) about `pivot`
 var pivot := Vector3.ZERO ## world-aligned, relative to `origin`: where the hands are (they stay put)
+var _calib_yaw := Basis.IDENTITY
+var _calib_target: Dictionary = {} ## bone -> its global basis in the calibration pose
+var _calib_source: Dictionary = {} ## bone -> the clip joint's global basis in it
+var _clip_names: PackedStringArray = []
+var carry_twist := false ## also turn each bone about its own axis the way the clip's joint does (else it keeps the rest roll)
 var wall_top := INF ## below this height above the origin a wall stands at the origin, facing back: nothing but the hands goes in
 var wall_margin := 0.1 ## m a joint keeps clear of the wall (the limbs have thickness)
 var _bone_of: Dictionary = {} ## role -> bone index
@@ -120,6 +125,7 @@ func facing_yaw(clip, time: float) -> Basis:
 
 func apply(clip, time: float, loop := true) -> void:
 	var source: Array[Transform3D] = clip.pose(time, loop)
+	_clip_names = clip.names
 	var p := func(joint: String) -> Vector3:
 		var i: int = clip.names.find(joint)
 		return to_skeleton(source[i].origin, joint) if i >= 0 else Vector3.ZERO
@@ -148,9 +154,51 @@ func apply(clip, time: float, loop := true) -> void:
 			else:
 				rest_dir = rest_global.origin - skeleton.get_bone_global_rest(skeleton.get_bone_parent(bone)).origin
 			if wanted.length() > 0.0001 and rest_dir.length() > 0.0001:
-				global = _swing(rest_dir.normalized(), wanted.normalized()) * rest_global.basis
+				if carry_twist and _calib_target.has(bone):
+					global = _twisted(source, from_joint, bone, wanted.normalized(), rest_dir.normalized(), rest_global.basis)
+				else:
+					global = _swing(rest_dir.normalized(), wanted.normalized()) * rest_global.basis
 		globals[bone] = global
 		skeleton.set_bone_pose_rotation(bone, (parent_basis.inverse() * global).get_rotation_quaternion())
+
+
+## Poses the skeleton to `clip` at `time` (a standing pose like the player's own) and remembers it: from then on
+## `carry_twist` poses turn each bone from that pose by how far the clip's joint has turned since, so the roll of
+## the arms and legs comes with the clip (the clip's own rest pose is nothing like the skeleton's, so its joint
+## angles can only be read against a pose that is known to match).
+func calibrate(clip, time: float) -> void:
+	var saved_yaw := yaw
+	var saved_twist := carry_twist
+	var saved_tilt := tilt
+	var saved_wall := wall_top
+	yaw = facing_yaw(clip, time)
+	carry_twist = false
+	tilt = 0.0
+	wall_top = INF
+	apply(clip, time, false)
+	_calib_yaw = yaw
+	_calib_target.clear()
+	_calib_source.clear()
+	var source: Array[Transform3D] = clip.pose(time, false)
+	for bone: int in _drive:
+		_calib_target[bone] = skeleton.get_bone_global_pose(bone).basis
+		_calib_source[bone] = source[clip.names.find(String((_drive[bone] as Array)[0]))].basis
+	skeleton.reset_bone_poses()
+	yaw = saved_yaw
+	carry_twist = saved_twist
+	tilt = saved_tilt
+	wall_top = saved_wall
+
+
+func _twisted(source: Array[Transform3D], joint: String, bone: int, wanted: Vector3, rest_dir: Vector3, rest_basis: Basis) -> Basis:
+	var world := Basis.IDENTITY
+	if tilt != 0.0:
+		world = Basis(target_forward().cross(Vector3.UP), -tilt)
+	var skeleton_basis := skeleton.global_basis
+	var turn: Basis = world * yaw * source[_clip_names.find(joint)].basis * (_calib_source[bone] as Basis).inverse() * _calib_yaw.inverse()
+	var turned: Basis = skeleton_basis.inverse() * turn * skeleton_basis * (_calib_target[bone] as Basis)
+	var direction := turned * rest_basis.inverse() * rest_dir
+	return _swing(direction.normalized(), wanted) * turned
 
 
 func _hips_basis(p: Callable, rest: Basis) -> Basis:
