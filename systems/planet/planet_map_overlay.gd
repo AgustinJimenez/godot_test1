@@ -28,7 +28,7 @@ static func draw_legend(view: Control, layer: int, relief: float) -> void:
 	view.draw_string(font, origin + Vector2(0.0, -4.0), labels[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
 	view.draw_string(font, origin + Vector2(width, -4.0), labels[1], HORIZONTAL_ALIGNMENT_RIGHT,
 			-1, 14)
-	view.draw_string(font, origin + Vector2(width + 14.0, 12.0), PlanetChart.NAMES[layer],
+	view.draw_string(font, origin + Vector2(width + 14.0, 12.0), PlanetChart.names()[layer],
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
 
 
