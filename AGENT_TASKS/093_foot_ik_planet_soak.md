@@ -42,3 +42,5 @@ while, read the IK logs; when something is off in the logs, find the bug and fix
   in the animation after the body stops (the clip's own foot, not the IK). Nothing new in the IK this round.
 - Fifth batch (seeds 7 42 500 777 1234): no sink, pelvis pop at most 2.5 cm; IK_POP only in jog/sprint_turn (seed 42: 37, 777: 11, 1234: 9, seeds 7/500: none), the known plant-fade
   trade-off; FLOATs are the stop-step. Nothing new in the IK.
+- Sixth batch (seeds 3 19 64 2024 9001): same picture (no sink, pelvis pop <= 2.5 cm, IK_POP 1-23 per seed only in jog/sprint_turn/walk_turn, stop-step FLOATs). Three batches in a row
+  with nothing new in the IK: the soak loop is stopped here. Open decisions for the user: install v2 by default in PlanetWorld's player; a slower plant fade for the toe-off pops.
