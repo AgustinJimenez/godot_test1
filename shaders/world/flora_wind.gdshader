@@ -402,7 +402,7 @@ float vein_net(vec2 p) {
 	return second - nearest;
 }
 
-vec4 leaf_cluster(vec2 uv, float id, float look, out vec2 across_uv) {
+vec4 leaf_cluster(vec2 uv, float id, float look, float eye, out vec2 across_uv) {
 	const float N = 5.0;
 	// the species' leaf (PlantLeafShapes.card_look): 0 = no species given, the old generic leaf
 	int look_i = int(floor(look * 2048.0 + 0.5));
@@ -468,15 +468,24 @@ vec4 leaf_cluster(vec2 uv, float id, float look, out vec2 across_uv) {
 				float dry = smoothstep(0.55, 1.0, across * (0.7 + 0.5 * h3.x) + t * t * h2.x * 0.5) * step(0.82, h.y);
 				if (across < 1.0 && h.y > best && hole < 0.5) {
 					best = h.y;
-					float rib = 1.0 - smoothstep(0.0, 0.07, abs(q.x) / width_cells);
-					float run = fract(t * 5.0 - across * 1.6 + h.x);
-					float side_vein = (1.0 - smoothstep(0.0, 0.16, min(run, 1.0 - run))) * (1.0 - across) * 0.7;
+					// the midrib: thick at the stalk, thin toward the tip
+					float rib = (1.0 - smoothstep(0.0, 0.06 * (1.0 - 0.6 * t), abs(q.x) / width_cells)) * (1.0 - 0.5 * t);
+					// side veins: they leave the midrib running up and out and curve toward the tip near the margin, thinner and fainter as they go
+					float vein_count = 6.0 + 4.0 * h.x;
+					float vein_phase = t * vein_count - pow(across, 0.75) * 1.5 * (0.8 + 0.4 * h2.y) + h.x * 7.0;
+					float vein_run = fract(vein_phase);
+					float vein_dist = min(vein_run, 1.0 - vein_run);
+					float side_vein = (1.0 - smoothstep(0.0, mix(0.11, 0.035, across), vein_dist)) * smoothstep(0.03, 0.12, across)
+							* (1.0 - smoothstep(0.55, 0.98, across));
 					// the fine net of small veins between the big ones: the borders of a field of irregular cells, as a leaf's areoles are
-					float net = vein_net(q * 26.0 + h.xy * 40.0);
-					float fine = 1.0 - 0.12 * (1.0 - smoothstep(0.0, 0.16, net)) * (1.0 - across * 0.5);
-					float shade = (0.72 + 0.5 * h2.x) * (1.0 - 0.22 * across * across) * fine + max(rib, side_vein) * 0.28;
-					// between the side veins the blade puffs up a little: a ripple along the leaf
-					float ripple = sin(t * 14.0 + h.x * 6.0) * 0.5;
+					// (only close up: from a few metres the net is finer than a pixel)
+					float net = vein_net(q * 34.0 + h.xy * 40.0);
+					float net_close = 1.0 - smoothstep(1.5, 5.0, eye);
+					float fine = 1.0 - 0.08 * (1.0 - smoothstep(0.0, 0.12, net)) * (1.0 - across * 0.5) * net_close;
+					// between two veins the blade puffs up a little, down in the groove beside each vein
+					float puff = 0.5 - 0.5 * cos(vein_run * 6.28318);
+					float shade = (0.72 + 0.5 * h2.x) * (1.0 - 0.22 * across * across) * fine * (0.95 + 0.07 * puff) + max(rib, side_vein * 0.8) * 0.3;
+					float ripple = sin(vein_phase * 6.28318) * 0.5;
 					float lean = clamp(across_raw * 0.85 + ripple * across, -1.0, 1.0);
 					result = vec4(1.0, shade * mix(1.0, 0.82, dry), dry, lean);
 					across_uv = vec2(cs, -sn); // (q.x runs along this in the card)
@@ -612,7 +621,7 @@ void fragment() {
 		} else if (is_pin) {
 			cluster.xy = pinnate(UV, rows, card_id, needles);
 		} else {
-			cluster = leaf_cluster(UV, card_id, UV2.y - 2.0, card_across);
+			cluster = leaf_cluster(UV, card_id, UV2.y - 2.0, length(VERTEX), card_across);
 		}
 		// far away the leaves are under a pixel and would shimmer: the card fills in toward a solid mass
 		float far_fill = smoothstep(0.35, 0.8, is_grass ? fwidth(UV.x) * 2.0 : (is_pin ? fwidth(UV.y) * rows : fwidth(UV.x) * 5.0));
