@@ -78,7 +78,8 @@ String PlanetRecorder::world_line() const {
 	if (settings.is_null()) {
 		return "";
 	}
-	Vector3 here = world->call("target") != Variant() ? (Vector3)world->call("planet_position") : Vector3();
+	Object *the_target = world->call("target");
+	Vector3 here = the_target != nullptr ? (Vector3)world->call("planet_position") : Vector3();
 	Vector3 unit = here.normalized();
 	Dictionary line;
 	line["kind"] = "world";
@@ -136,10 +137,10 @@ Dictionary PlanetRecorder::sample() {
 	result["fps"] = Engine::get_singleton()->get_frames_per_second();
 	result["frame"] = (int64_t)Engine::get_singleton()->get_process_frames();
 	Object *world = get_planet();
-	if (world == nullptr || world->call("target") == Variant()) {
+	Object *target = world != nullptr ? (Object *)world->call("target") : nullptr;
+	if (target == nullptr) {
 		return result;
 	}
-	Object *target = world->call("target");
 	Vector3 here = world->call("planet_position");
 	Ref<PlanetSettings> settings = world->get("settings");
 	Ref<PlanetClock> clock = world->get("clock");

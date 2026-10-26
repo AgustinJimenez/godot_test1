@@ -1,6 +1,8 @@
 #include "register_types.h"
 
 #include "planet_crust_native.h"
+#include "planet_sky_nodes_native.h"
+#include "planet_sky_nodes_native.h"
 #include "planet_prints_native.h"
 #include "planet_prints_native.h"
 #include "planet_prints_native.h"
@@ -67,6 +69,8 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(PlanetCrustNative);
+	GDREGISTER_CLASS(PlanetCloudShell);
+	GDREGISTER_CLASS(PlanetImpostors);
 	GDREGISTER_CLASS(PlanetFootprints);
 	GDREGISTER_CLASS(PlanetImprinter);
 	GDREGISTER_CLASS(PlanetDents);

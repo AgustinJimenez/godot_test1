@@ -6,6 +6,7 @@
 #include "planet_prints_native.h"
 #include "planet_recorder_native.h"
 #include "planet_render_native.h"
+#include "planet_sky_nodes_native.h"
 #include "planet_star_native.h"
 #include "planet_sway_native.h"
 #include "planet_turf_native.h"
@@ -165,8 +166,8 @@ void PlanetWorld::_ready() {
 	effects->set("atmosphere", air);
 	add_child(effects);
 	weather_id = effects->get_instance_id();
-	Node *shell = Object::cast_to<Node>(make_scripted("res://systems/planet/planet_cloud_shell.gd"));
-	shell->set("planet", this);
+	PlanetCloudShell *shell = memnew(PlanetCloudShell);
+	shell->set_planet(this);
 	add_child(shell);
 	cloud_shell_id = shell->get_instance_id();
 	Node *chart_map = Object::cast_to<Node>(make_scripted("res://systems/planet/planet_map.gd"));
@@ -212,9 +213,9 @@ Vector3 PlanetWorld::start(Node3D *p_target, const Vector3 &p_direction, double 
 		bake->setup(PlanetTile::ground_material());
 		ground_bake_id = bake->get_instance_id();
 	}
-	Node *impostors = Object::cast_to<Node>(make_scripted("res://systems/planet/planet_impostors.gd")); // far trees as pictures (081)
+	PlanetImpostors *impostors = memnew(PlanetImpostors); // far trees as pictures (081)
 	add_child(impostors);
-	impostors->call("start", noise->get_species());
+	impostors->start((Object *)noise->get_species());
 	bool is_player = p_target->has_method("set_free_mode");
 	if (is_player) {
 		Node *water_splash = Object::cast_to<Node>(make_scripted("res://systems/world_gen/water_splash.gd"));
