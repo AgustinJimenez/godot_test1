@@ -26,3 +26,15 @@
 	ClassDB::bind_method(D_METHOD("get_" #N), &CLS::get_##N); \
 	ClassDB::bind_method(D_METHOD("set_" #N, "value"), &CLS::set_##N); \
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, #N, PROPERTY_HINT_RESOURCE_TYPE, TYPE, PROPERTY_USAGE_NO_EDITOR), "set_" #N, "get_" #N);
+
+// a GDScript object held by id (a node of the scene that may be freed): the property is typed Object for scripts
+#include <godot_cpp/core/object.hpp>
+#define NP_OBJECT(N) \
+	ObjectID N##_id; \
+	Object *get_##N() const { return ObjectDB::get_instance(N##_id); } \
+	void set_##N(Object *p_v) { N##_id = p_v != nullptr ? p_v->get_instance_id() : ObjectID(); }
+
+#define NP_BIND_OBJECT(CLS, N) \
+	ClassDB::bind_method(D_METHOD("get_" #N), &CLS::get_##N); \
+	ClassDB::bind_method(D_METHOD("set_" #N, "value"), &CLS::set_##N); \
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, #N, PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR), "set_" #N, "get_" #N);

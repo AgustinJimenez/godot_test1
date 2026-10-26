@@ -1,6 +1,12 @@
 #include "register_types.h"
 
 #include "planet_crust_native.h"
+#include "planet_nodes_native.h"
+#include "planet_nodes_native.h"
+#include "planet_nodes_native.h"
+#include "planet_nodes_native.h"
+#include "planet_nodes_native.h"
+#include "planet_nodes_native.h"
 #include "planet_noise_native.h"
 #include "planet_weather_native.h"
 #include "planet_drainage_script_native.h"
@@ -44,6 +50,12 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(PlanetCrustNative);
+	GDREGISTER_CLASS(PlanetSwayTree);
+	GDREGISTER_CLASS(PlanetMotes);
+	GDREGISTER_CLASS(PlanetDust);
+	GDREGISTER_CLASS(PlanetShells);
+	GDREGISTER_CLASS(PlanetUndergrowth);
+	GDREGISTER_CLASS(PlanetCrustGuard);
 	GDREGISTER_CLASS(PlanetNoise);
 	GDREGISTER_CLASS(PlanetWeather);
 	GDREGISTER_CLASS(PlanetDrainageCache);
