@@ -1,6 +1,9 @@
 #include "register_types.h"
 
 #include "planet_crust_native.h"
+#include "planet_sky_native.h"
+#include "planet_sky_native.h"
+#include "planet_sky_native.h"
 #include "planet_star_native.h"
 #include "planet_star_native.h"
 #include "planet_star_native.h"
@@ -33,6 +36,9 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(PlanetCrustNative);
+	GDREGISTER_CLASS(PlanetAir);
+	GDREGISTER_CLASS(PlanetTides);
+	GDREGISTER_CLASS(PlanetMoon);
 	GDREGISTER_CLASS(StarSystem);
 	GDREGISTER_CLASS(StarLight);
 	GDREGISTER_CLASS(Star);

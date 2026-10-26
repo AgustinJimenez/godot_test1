@@ -156,7 +156,7 @@ func set_cloud_parameters(material: ShaderMaterial) -> void:
 	material.set_shader_parameter(&"cloud_sun", sun_strength)
 	material.set_shader_parameter(&"star_tint", Vector3(star_tint.r, star_tint.g, star_tint.b))
 	# the sun's path through the air against the Earth's (a small planet has a short one)
-	var least_radius := PlanetAir.MIN_AIR_SCALE * PlanetAir.EARTH_RADIUS
+	var least_radius := PlanetAir.get_min_air_scale() * PlanetAir.get_earth_radius()
 	material.set_shader_parameter(&"cloud_path", sqrt(minf(1.0, radius / least_radius)))
 
 
