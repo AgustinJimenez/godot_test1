@@ -539,13 +539,16 @@ void fragment() {
 		bool is_pin = UV2.y > 3.5 && !is_grass;
 		float needles = (UV2.y > 5.5 && !is_grass) ? 1.0 : 0.0;
 		float rows = (UV2.y - mix(4.0, 6.0, needles)) * 100.0;
+		// (the card's dice is the same on all its corners, but the interpolation of it differs in the last bits from pixel to pixel,
+		// and the hashes below are chaotic: snapped to a grid it is one number again, else every pixel drew its own leaves: ghost dots)
+		float card_id = floor(UV2.x * 4096.0 + 0.5) / 4096.0;
 		vec4 cluster = vec4(0.0, 1.0, 0.0, 0.0);
 		if (is_grass) {
-			cluster.xy = grass_blades(UV, UV2.x);
+			cluster.xy = grass_blades(UV, card_id);
 		} else if (is_pin) {
-			cluster.xy = pinnate(UV, rows, UV2.x, needles);
+			cluster.xy = pinnate(UV, rows, card_id, needles);
 		} else {
-			cluster = leaf_cluster(UV, UV2.x, card_across);
+			cluster = leaf_cluster(UV, card_id, card_across);
 		}
 		// far away the leaves are under a pixel and would shimmer: the card fills in toward a solid mass
 		float far_fill = smoothstep(0.35, 0.8, is_grass ? fwidth(UV.x) * 2.0 : (is_pin ? fwidth(UV.y) * rows : fwidth(UV.x) * 5.0));
@@ -560,8 +563,8 @@ void fragment() {
 	if (UV.x > 0.001 && !is_card) {
 		// every leaf has its own two random numbers (UV2): how many side veins, how they slope,
 		// how thick and how strong they are, whether the two sides line up, how dark the edge is
-		float id = UV2.x;
-		float k = UV2.y;
+		float id = floor(UV2.x * 4096.0 + 0.5) / 4096.0; // (snapped: see the card's dice)
+		float k = floor(UV2.y * 4096.0 + 0.5) / 4096.0;
 		float across = abs(UV.x - 0.5) * 2.0; // 0 on the midrib .. 1 at the edge
 		float count = mix(3.5, 9.5, fract(id * 5.7 + 0.3));
 		float slope = mix(1.4, 3.8, fract(id * 3.1 + k));

@@ -16,6 +16,8 @@ var detailed := true
 var autumn := false
 var backlight := false
 var wire := false
+var no_shadow := false
+var no_sun := false
 var top_view := false
 var species_index := 0
 var variant := 0
@@ -28,6 +30,7 @@ var _label: Label
 var _yaw := 25.0
 var _pitch := -35.0
 var _distance := 1.6
+var _distance_given := false
 var _target := Vector3(0.0, 0.5, 0.0)
 var _drag := 0
 var _shot_path := ""
@@ -51,6 +54,13 @@ func _ready() -> void:
 			backlight = true
 		elif arg == "--wire":
 			wire = true
+		elif arg.begins_with("--distance="):
+			_distance = float(arg.get_slice("=", 1))
+			_distance_given = true
+		elif arg == "--nosun":
+			no_sun = true
+		elif arg == "--noshadow":
+			no_shadow = true
 		elif arg.begins_with("--view="):
 			top_view = arg.get_slice("=", 1) == "top"
 			if arg.get_slice("=", 1) == "front":
@@ -80,7 +90,8 @@ func _build_stage() -> void:
 	world_environment.environment = environment
 	add_child(world_environment)
 	_sun = DirectionalLight3D.new()
-	_sun.shadow_enabled = true
+	_sun.shadow_enabled = not no_shadow
+	_sun.visible = not no_sun
 	add_child(_sun)
 	_camera = Camera3D.new()
 	_camera.fov = 40.0

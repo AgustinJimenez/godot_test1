@@ -30,3 +30,6 @@ W wire, D low/realistic, A autumn, B backlight, L sun, T top view, R seed, P pic
   same look for no extra cost, and POM breaks at the grazing angles a leaf is seen from and at the silhouette (the silhouette is the geometry's job, and now is).
 - Left in the lab: every oval species is the same oval (the species differ in aspect only), the vein stripes are the same straight bars on every leaf (shader), the cards ignore the species'
   leaf shape, the ghost dots and holes on cards.
+- ROOT CAUSE of the ghost dots on leaf cards found (found with the lab, debug-painting cluster.x): the card's dice (UV2.x) is the same number on all corners, but its interpolation differs
+  in the last bits from pixel to pixel, and `leaf_cluster` feeds it to chaotic hashes (`hash22(c + id * 13.7)`), so every pixel drew its own random leaves around the real ones. FIX: snap the
+  dice to a 1/4096 grid in the fragment shader (cards, pinnate, grass, and the mesh leaf's two numbers). The same noise probably made the veins of mesh leaves shimmer. Lab: `--noshadow --nosun --distance=D`.
