@@ -37,7 +37,6 @@ extends Node3D
 ##                     planet under them) and prints one PLANET_CHECK line.
 
 const PLAYER_SCENE := preload("res://actors/player/player.tscn")
-const FOOT_IK_V2 := preload("res://actors/player/foot_ik_v2/foot_ik_v2_install.gd")
 
 var planet: PlanetWorld
 var player: Player
@@ -679,9 +678,6 @@ func _ready() -> void:
 	if _swim_check:
 		planet.spawn_on_solid_ground = false # (the sea is the point)
 		_start_dir = _find_sea(planet.noise)
-	if _ik_soak != null or "--foot-ik-v2" in OS.get_cmdline_user_args():
-		# Foot IK v2 on the planet's player (the flat world installs it; the planet runs v1 unless asked)
-		FOOT_IK_V2.install(player.body, player.skeleton, player.body._foot_ik_modifier)
 	var spawn := planet.start(player, _start_dir, _spawn_alt)
 	planet.atmosphere.clouds_hidden = _no_clouds
 	if not (_grounded or _walking or _checking or _swim_check or _climb > 0.0 or _ik_soak != null):

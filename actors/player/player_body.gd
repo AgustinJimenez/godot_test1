@@ -26,6 +26,7 @@ const MOTUSMAN_MODEL_DIR := "res://assets/models/pistol_starter/"
 const FLASHLIGHT_MODEL := preload("res://assets/models/flashlight/flashlight.glb")
 const HAND_GRIP_MODIFIER := preload("res://actors/player/player_hand_grip_modifier.gd")
 const FOOT_IK_MODIFIER := preload("res://actors/player/player_foot_ik_modifier.gd")
+const FOOT_IK_V2_INSTALL := preload("res://actors/player/foot_ik_v2/foot_ik_v2_install.gd")
 const SKELETON_VISUALIZER := preload("res://actors/player/player_skeleton_debug_visualizer.gd")
 const FLASHLIGHT_HAND := &"RightHand"
 const FLASHLIGHT_MODEL_SCALE := 0.12
@@ -363,6 +364,7 @@ func _build_character_visuals() -> void:
 	_balance_counter_lean_modifier.name = &"BalanceCounterLeanModifier"
 	_balance_counter_lean_modifier.player_body = self
 	skeleton.add_child(_balance_counter_lean_modifier)
+	FOOT_IK_V2_INSTALL.install(self, skeleton, _foot_ik_modifier) # Foot IK v2 is the foot IK; v1 only keeps its ground sampler
 	_setup_held_flashlight()
 
 	var lib := AnimationLibrary.new()

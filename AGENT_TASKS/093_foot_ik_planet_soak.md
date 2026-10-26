@@ -44,3 +44,4 @@ while, read the IK logs; when something is off in the logs, find the bug and fix
   trade-off; FLOATs are the stop-step. Nothing new in the IK.
 - Sixth batch (seeds 3 19 64 2024 9001): same picture (no sink, pelvis pop <= 2.5 cm, IK_POP 1-23 per seed only in jog/sprint_turn/walk_turn, stop-step FLOATs). Three batches in a row
   with nothing new in the IK: the soak loop is stopped here. Open decisions for the user: install v2 by default in PlanetWorld's player; a slower plant fade for the toe-off pops.
+- Decision (user): v2 is the default and the only foot IK everywhere. PlayerBody installs it in _build_character_visuals (also after a skin swap); the installer is idempotent; the flat world and planet lab no longer install it themselves. v1's modifier stays only as the ground sampler the player reads for ledge safety, with its IK off.
