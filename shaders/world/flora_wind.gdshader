@@ -380,6 +380,28 @@ float leaf_profile(int shape, int lobes, float t, float bent) {
 	return sin(3.14159 * pow(t, mix(0.66, 0.9, bent)));
 }
 
+// The distance to the nearest border between the cells of a jittered grid at `p` (0 on a border): the net of small veins.
+float vein_net(vec2 p) {
+	vec2 cell = floor(p);
+	vec2 local = fract(p);
+	float nearest = 8.0;
+	float second = 8.0;
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			vec2 offset = vec2(float(i), float(j));
+			vec2 spot = offset + 0.15 + 0.7 * hash22(cell + offset);
+			float d = length(local - spot);
+			if (d < nearest) {
+				second = nearest;
+				nearest = d;
+			} else if (d < second) {
+				second = d;
+			}
+		}
+	}
+	return second - nearest;
+}
+
 vec4 leaf_cluster(vec2 uv, float id, float look, out vec2 across_uv) {
 	const float N = 5.0;
 	// the species' leaf (PlantLeafShapes.card_look): 0 = no species given, the old generic leaf
@@ -449,9 +471,9 @@ vec4 leaf_cluster(vec2 uv, float id, float look, out vec2 across_uv) {
 					float rib = 1.0 - smoothstep(0.0, 0.07, abs(q.x) / width_cells);
 					float run = fract(t * 5.0 - across * 1.6 + h.x);
 					float side_vein = (1.0 - smoothstep(0.0, 0.16, min(run, 1.0 - run))) * (1.0 - across) * 0.7;
-					// the fine net of small veins between the big ones
-					float net = abs(sin(q.x * 70.0 + q.y * 55.0)) * abs(sin(q.x * 55.0 - q.y * 70.0));
-					float fine = 1.0 - 0.09 * smoothstep(0.35, 0.0, net);
+					// the fine net of small veins between the big ones: the borders of a field of irregular cells, as a leaf's areoles are
+					float net = vein_net(q * 26.0 + h.xy * 40.0);
+					float fine = 1.0 - 0.12 * (1.0 - smoothstep(0.0, 0.16, net)) * (1.0 - across * 0.5);
 					float shade = (0.72 + 0.5 * h2.x) * (1.0 - 0.22 * across * across) * fine + max(rib, side_vein) * 0.28;
 					// between the side veins the blade puffs up a little: a ripple along the leaf
 					float ripple = sin(t * 14.0 + h.x * 6.0) * 0.5;
