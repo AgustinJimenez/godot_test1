@@ -850,7 +850,10 @@ void FootIKV2CoreNative::resample_and_correct(int p_leg, const Vector3 &p_hip_wo
 	debug_ground_normal[side] = normal;
 	const Vector3 target = again_position + normal * (real_t)P.ankle_height;
 	debug_target[side] = target;
-	const Vector3 blended = to_world.affine_inverse().xform(landed_world.lerp(target, (real_t)(P.weight * (double)plant_weight.get(side, 1.0))));
+	// (blended from the animated ankle, as place_foot does: from the landed foot the plant fade would be applied twice, and only on the frames the
+	// ground under the foot moved 5 mm, which pulled a toeing-off foot 6 cm down and let it go in one frame: found by the planet soak, task 093)
+	const Vector3 animated_world = debug_animated_ankle.get(side, landed_world);
+	const Vector3 blended = to_world.affine_inverse().xform(animated_world.lerp(target, (real_t)(P.weight * (double)plant_weight.get(side, 1.0))));
 	solve(p_leg, blended);
 	align_foot(p_leg, normal);
 }

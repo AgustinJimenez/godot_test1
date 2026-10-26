@@ -176,8 +176,12 @@ func _sample() -> void:
 		var shift_here := 0.0
 		if now.has(side + "_anim"):
 			shift_here = ((now[side] as Vector3) - (now[side + "_anim"] as Vector3)).length()
-		detail += " %s[shift=%.3f plant=%.2f %s %s]" % [side.left(1).to_upper(), shift_here, float((_modifier.debug_plant_weight as Dictionary).get(StringName(side), -1.0)),
+		detail += " %s[anim=%s shift=%.3f plant=%.2f %s %s]" % [side.left(1).to_upper(), _local(now[side + "_anim"]) if now.has(side + "_anim") else "-", shift_here, float((_modifier.debug_plant_weight as Dictionary).get(StringName(side), -1.0)),
 				str((_modifier.debug_state as Dictionary).get(StringName(side), "")), str((_modifier.debug_skip_reason as Dictionary).get(StringName(side), ""))]
+	var left_check: Dictionary = (_modifier.debug_reach_check as Dictionary).get(&"left", {})
+	var left_solve: Dictionary = (_modifier.debug_solve as Dictionary).get(&"left", {})
+	detail += " Lreach=%.3f/%.3f res=%.3f clamped=%s" % [float(left_check.get("hip_to_target", 0.0)), float(left_check.get("reach", 0.0)),
+			float(left_solve.get("residual", 0.0)), left_solve.get("clamped", false)]
 	_recent.append("f%d %s v=%.2f L=%s R=%s pelvis=%.3f%s" % [physics_frame, _phase, _player.velocity.length(),
 			_local(now["left"]), _local(now["right"]), pelvis, detail])
 	if _after_left > 0:

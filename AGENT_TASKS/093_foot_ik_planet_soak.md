@@ -32,3 +32,8 @@ while, read the IK logs; when something is off in the logs, find the bug and fix
 - Extra fix kept: ease_release() (foot_ik_core_native.cpp) also eases a `mid_swing` release; the v2 suite numbers are unchanged.
 - Not the IK, for the animation owner: the gait clips snap an ankle 0.23-0.5 m in one frame at some clip changes (stop_go: run -> walk at 5.3 m/s, walk_turn_right after a jog, strafe start). CLIP_SNAP
   in the soak counts them; the animation tree changes clip without a blend there.
+- Third fix (strafe_right / stop_go pops, 8-10 cm on a 20-24 degree slope; the soak now also prints each frame's animated ankle, reach check and residual): resample_and_correct()
+  re-solved the foot from the LANDED foot toward the re-sampled ground, so the plant fade was applied a second time, and only on the frames the ground under the foot had moved
+  5 mm or more. A toeing-off foot was pulled 6 cm below its blend for three frames, then the check fell under 5 mm and it let go in one frame (y 0.03 -> 0.16 m).
+  FIX: blend from the animated ankle, as place_foot does. Seed 11 (150 s): IK_POP 118 -> ~60 (strafe_left 15 -> 3, strafe_right 7 -> 1, walk_turn_left 11 -> 2, crouch_walk 7 -> 1);
+  seeds 77/88 no worse (88: stop_go/walk/back pops gone). The jog/sprint_turn pops left are the plant-fade trade-off above.
