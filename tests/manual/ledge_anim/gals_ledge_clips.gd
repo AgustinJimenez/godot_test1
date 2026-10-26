@@ -36,7 +36,8 @@ static func apply(player: Player, on: bool) -> bool:
 		var prefix := String(idle.track_get_path(ClimbClips.hips_track(idle))).get_slice(":", 0)
 		for clip: StringName in CLIPS:
 			var spec: Array = CLIPS[clip]
-			var anim: Animation = BVH_BAKE.bake(spec[0], retarget, prefix, WRIST, spec[1], clip == ClimbClips.IDLE, PlayerClimb.HAND_BACK - HANDS_OUT, spec[2], spec[3], spec[4])
+			var anim: Animation = BVH_BAKE.bake(spec[0], retarget, prefix, WRIST, WRIST, spec[1], clip == ClimbClips.IDLE, PlayerClimb.HAND_BACK - HANDS_OUT, spec[2], spec[3], spec[4],
+					overrides.get(ClimbClips.IDLE) if clip != ClimbClips.IDLE else null)
 			if anim == null:
 				push_warning("GALS ledge clips: could not bake %s" % spec[0])
 				return false

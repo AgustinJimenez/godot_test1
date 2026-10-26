@@ -48,7 +48,23 @@ func _physics_process(_delta: float) -> void:
 		player.global_position = Vector3(-10.0, 1.7, WALL_Z - 1.6)
 		player.rotation = Vector3(0.0, PI, 0.0)
 		player.velocity = Vector3.ZERO
-	elif _demo_frame in [200, 260]:
+	if _demo_frame > 270 and _demo_frame < 620 and _demo_frame % 5 == 0:
+		var deep := ""
+		var map2: Dictionary = player.body._target_humanoid_map
+		for role: String in ["Hips", "Spine2", "Head", "LeftArm", "LeftHand", "LeftUpLeg", "LeftLeg", "LeftFoot", "LeftToeBase", "RightLeg", "RightFoot", "RightToeBase"]:
+			var bone2 := player.skeleton.find_bone(String(map2.get(role, "")))
+			if bone2 >= 0:
+				var at2 := player.skeleton.global_transform * player.skeleton.get_bone_global_pose(bone2).origin
+				deep += " %s %+.2f" % [role.left(8), at2.z - (WALL_Z - 1.0)]
+		print("CLIMB_TRACE f%d st%d y%.2f%s" % [_demo_frame, player.climb.state, player.global_position.y, deep])
+	if _demo_frame > 60 and _demo_frame < 620:
+		for role: String in ["LeftUpLeg", "LeftLeg", "LeftFoot", "LeftToeBase", "RightUpLeg", "RightLeg", "RightFoot", "RightToeBase", "Hips", "Spine2"]:
+			var b := player.skeleton.find_bone(String(player.body._target_humanoid_map.get(role, "")))
+			if b >= 0:
+				var w := player.skeleton.global_transform * player.skeleton.get_bone_global_pose(b).origin
+				if w.y < 2.45 and w.z - (WALL_Z - 1.0) > 0.02 and w.z < WALL_Z + 1.0 and player.climb.state != 0:
+					print("CLIMB_VIOL f%d st%d %s y%.2f in wall %.2f" % [_demo_frame, player.climb.state, role, w.y, w.z - (WALL_Z - 1.0)])
+	if _demo_frame in [200]:
 		get_viewport().get_texture().get_image().save_png("%s/demo_%d.png" % [_demo_dir, _demo_frame])
 		print("CLIMB_DEMO state ", player.climb.state, " at ", player.global_position)
 		var map: Dictionary = player.body._target_humanoid_map
@@ -62,12 +78,26 @@ func _physics_process(_delta: float) -> void:
 				var target: Vector3 = player.climb.hands.targets[side]
 				var wrist: Vector3 = player.climb.hands.debug_wrist[side]
 				print("CLIMB_DEMO ", side, " target ", target, " wrist ", wrist, " off ", wrist - target)
-		if _demo_frame == 200:
+		if true:
 			var camera := Camera3D.new()
 			get_parent().add_child(camera)
 			camera.look_at_from_position(Vector3(-5.5, 1.6, WALL_Z - 3.2), Vector3(-10.0, 1.4, WALL_Z - 1.0))
 			camera.make_current()
-	elif _demo_frame == 261:
+	if _demo_frame == 270:
+		player.movement_input_override = Vector2(0.0, -1.0) # W: pull up
+	elif _demo_frame == 271:
+		player.movement_input_override = Vector2.ZERO
+	elif _demo_frame == 420: # on top: step back to the edge facing off it and crouch into a hang
+		player.global_position = Vector3(-10.0, 2.5, WALL_Z - 0.7)
+		player.rotation = Vector3.ZERO
+		player.velocity = Vector3.ZERO
+	elif _demo_frame == 440:
+		Input.action_press(&"crouch")
+	elif _demo_frame == 442:
+		Input.action_release(&"crouch")
+	if _demo_frame in [300, 330, 360, 390, 460, 490, 520, 550]:
+		get_viewport().get_texture().get_image().save_png("%s/demo_%d.png" % [_demo_dir, _demo_frame])
+	if _demo_frame == 620:
 		get_tree().quit()
 
 

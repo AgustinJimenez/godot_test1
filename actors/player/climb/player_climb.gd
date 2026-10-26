@@ -48,6 +48,7 @@ var _down_time := 0.0 # s the stick has asked for DOWN with no hold below
 var clips_ok := false # the hang clips are in the animation library
 var _hang_back := SHOULDER_BACK
 var _wrist_up := WRIST_UP
+var _foot_ik_weight := -1.0 # the foot IK weight to give back after the climb (-1 = not held)
 var _clip: StringName = &""
 var _grab_pending := false
 var _reverse := false # the pull-up clip plays backwards: lowering into a hang
@@ -70,6 +71,7 @@ func update(delta: float) -> bool:
 	if not enabled or _player == null:
 		return false
 	_cooldown = maxf(_cooldown - delta, 0.0)
+	_foot_ik_hold(state != State.FREE)
 	match state:
 		State.FREE:
 			balance.update(delta)
@@ -81,6 +83,19 @@ func update(delta: float) -> bool:
 		State.WALL:
 			_on_wall(delta)
 	return true
+
+
+## The foot IK plants feet on whatever is under them (the ledge top, the floor): off while the climb owns the legs.
+func _foot_ik_hold(hold: bool) -> void:
+	var v2 := _player.skeleton.get_node_or_null("FootIKV2")
+	if v2 == null or hold == (_foot_ik_weight >= 0.0):
+		return
+	if hold:
+		_foot_ik_weight = v2.weight
+		v2.weight = 0.0
+	else:
+		v2.weight = _foot_ik_weight
+		_foot_ik_weight = -1.0
 
 
 func _try_grab() -> bool:
