@@ -42,3 +42,6 @@ W wire, D low/realistic, A autumn, B backlight, L sun, T top view, R seed, P pic
 - The dotted midrib was undefined derivatives: `dFdx/dFdy(VERTEX/UV)` were taken inside `if (is_card && abs(card_lean) > 0.001)`, so in the 2 x 2 quads where the lean crosses zero (the
   midrib) some pixels skipped the branch and the others read garbage. They are now taken outside the branch. (Lesson: no derivatives inside a data-dependent `if`.)
 - Done in the lab: mesh leaf, card, lobed / toothed / oval species, top and front views, backlit. Next: a tree on the planet at 2 m and 10 m.
+- Planet look (planet_lab `--plants --grounded --seed=11 --shot=...`, windowed): the broadleaf crown shows the species' cards with their own leaf shapes; no ghost dots. Not yet judged:
+  a tree at a measured 2 m and 10 m (the lab has no camera flag for that; use the walking player next to a tree), the cost of the cards' extra shader work (vein net, 9 hash lookups a pixel) on a
+  slow GPU, and mesh leaves in the low-poly look (unchanged). If the cost shows, drop `vein_net` for cards past 5 m (it already fades) by skipping the call when `eye > 5.0`.
