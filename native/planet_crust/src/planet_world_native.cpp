@@ -407,8 +407,8 @@ void PlanetWorld::pick_the_weather() {
 	}
 	Ref<Script> weather_script = effects->get_script();
 	Dictionary states = weather_script->get_script_constant_map()["State"];
-	weather_text = vformat("%s  %d%% cloud  %d \xC2\xB0""C", String(states.keys()[kind]).capitalize(), (int)((double)now["cloud"] * 100.0), (int)std::round((double)now["degrees"]));
-	weather_text = String::utf8(weather_text.utf8().get_data());
+	String format = String::utf8("%s  %d%% cloud  %d \xC2\xB0""C");
+	weather_text = vformat(format, String(states.keys()[kind]).capitalize(), (int)((double)now["cloud"] * 100.0), (int)std::round((double)now["degrees"]));
 	// the haze follows the climate here: thick and soft where it is warm and wet, clear where it is cold and dry, dusty where it is hot and dry
 	Vector2 local = noise->get_climate()->sample(here);
 	double humid = CLAMP((double)local.y / 0.9, 0.0, 1.0);
