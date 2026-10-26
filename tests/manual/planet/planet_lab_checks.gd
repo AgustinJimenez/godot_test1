@@ -203,7 +203,7 @@ static func far_in_near(planet: PlanetWorld) -> String:
 	var near_total := 0
 	var far_total := 0
 	var nodes := 0
-	var limit := PlanetScatter.TREE_FULL
+	var limit := PlanetScatter.get_tree_full()
 	for node in planet.find_children("*", "MultiMeshInstance3D", true, false):
 		var multi: MultiMesh = node.multimesh
 		if multi == null or multi.mesh == null or node.visibility_range_end != limit:

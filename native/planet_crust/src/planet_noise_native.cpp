@@ -1,5 +1,6 @@
 #include "planet_noise_native.h"
 
+#include "planet_scatter_script_native.h"
 #include "planet_star_native.h"
 
 #include <godot_cpp/classes/class_db_singleton.hpp>
@@ -222,7 +223,7 @@ void PlanetNoise::make_scatter() {
 	Ref<RefCounted> made = ClassDBSingleton::get_singleton()->instantiate("PlanetScatterNative");
 	Dictionary config;
 	config["crust"] = native;
-	config["species"] = load_script_call("res://systems/planet/planet_scatter.gd", "species_table", species);
+	config["species"] = PlanetScatter::species_table((Object *)species);
 	config["temperature"] = climate->temperature_grid();
 	config["rain"] = climate->rain_grid();
 	config["width"] = PlanetClimate::WIDTH;

@@ -482,7 +482,7 @@ func _procedural_by_default(user_args: PackedStringArray) -> void:
 
 ## Trees and shrubs grow by default; `--no-trees` turns them off (only the grass, rocks and the rest), to look at the ground.
 func _trees_by_default(user_args: PackedStringArray) -> void:
-	PlanetScatter.trees_on = not "--no-trees" in user_args
+	PlanetScatter.set_trees_on(not "--no-trees" in user_args)
 
 
 func _ready() -> void:
