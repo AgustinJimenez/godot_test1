@@ -1,6 +1,7 @@
 #include "register_types.h"
 
 #include "planet_crust_native.h"
+#include "planet_settings_native.h"
 #include "planet_drainage_native.h"
 #include "planet_imprint_native.h"
 #include "planet_seasons_native.h"
@@ -27,6 +28,7 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(PlanetCrustNative);
+	GDREGISTER_CLASS(PlanetSettings);
 	GDREGISTER_CLASS(PlanetDrainageNative);
 	GDREGISTER_CLASS(PlanetImprintNative);
 	GDREGISTER_CLASS(PlanetSeasonsNative);
