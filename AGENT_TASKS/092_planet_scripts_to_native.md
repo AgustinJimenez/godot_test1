@@ -37,3 +37,25 @@ User is AFK; a 4-minute wakeup loop reminds the agent to continue. No questions:
 - [x] planet_tile (MeshBuilder reached via script new(): keep it in a Ref<RefCounted>, never a raw Object* from a temporary Variant). User asked: run my visual tests in the BACKGROUND on screen 1 (--screen 1 --windowed, run_in_background)
 - [x] planet_surface. QUEUED after the port (user request): IK on the planet: load the planet scene, walk a long while, read the Foot IK v2 logs, find what is off, fix the bug; many runs, same 4-minute loop. Write it up in AGENT_TASKS/093_foot_ik_planet_soak.md
 - [x] planet_chart (NAMES -> names(); a native Object* property is untyped for GDScript: cast with 'as Node3D' in scripts)
+- [x] planet_world (GDScript-extending nodes are made through their scripts and held by id; scripts that infer types from planet.atmosphere etc. need explicit types: find them with a load-all script /e/Temp/loadall.gd and the planet checks). Not yet re-seen on screen: vis_after_4.png
+- [x] planet_recorder. PlanetWorld::make_scripted now fails loudly instead of crashing on a script that does not load
+- [x] planet_dents, planet_imprinter, planet_footprints (await -> RenderingServer frame_post_draw one-shot + a Callable). Desert walk run in background (vis5.summary) to see dents/dust errors
+- [x] planet_impostors, planet_cloud_shell. (windowed checks of impostors/cloud shell/dents: see the visual pass)
+- [x] universe_save, universe_settings, planet_map_labels. Remaining: planet_map (994), map_tiles, map_cache, map_globe, map_overlay, map_time_bar, planet_menu, universe_start_menu; cannot be native: planet_atmosphere/swim/fauna
+- [x] planet_map_cache/tiles/overlay/time_bar (the map UI itself still script: look at it with --show-map)
+- [x] planet_map_globe. NOTE: the second monitor is not connected right now (Godot says screen_count = 1): windows open on the main screen. Map (atlas) checked on screen: works. Remaining: planet_map (994), planet_menu (275), universe_start_menu (160)
+- [x] planet_menu, universe_start_menu. Remaining: planet_map (994) + the three that cannot be native
+- [x] planet_map (native/planet_crust/src/planet_map_ui_native.*; planet_map_native.* is the older PlanetMapNative, do not overwrite it). Needs the windowed --map-check and --show-map looks
+
+## Result (end of the port session)
+Native now (all in native/planet_crust/src, the .gd files are removed): PlanetSettings, PlanetClock, PlanetTectonics, Star/StarLight/StarSystem,
+PlanetMoon/Tides/Air, PlanetFrame, PlanetRock, PlanetSeasons/Climate, PlanetDrainage(+Cache), PlanetWeather, PlanetNoise, PlanetCrustGuard,
+Undergrowth, Shells, Dust, Motes, SwayTree, Sway, MapLog, ChartProfile, GroundBake, CloudGpu, SunGlow, Turf, Scatter, Tile, Surface, Chart, World,
+Recorder, Dents, Imprinter, Footprints, Impostors, CloudShell, UniverseSave/Settings, MapLabels, MapCache/Tiles/Overlay/TimeBar, MapGlobe, Menu,
+UniverseStartMenu, Map.
+Still GDScript in systems/planet: planet_atmosphere.gd (extends WorldAtmosphere, which pulls the Sky3D add-on), planet_swim.gd (extends WorldSwim),
+planet_fauna.gd (extends WorldFauna): a native class cannot extend a script; they move only if their flat-world bases are ported too.
+Plus planet_bark_bake.gd (the baking coroutines moved out of PlanetWorld: they wait for frames).
+Checks: scripts/planet_check.sh (all PASS but lint: gdlint is not installed), noise_golden hash, windowed lab shots (forest, impostors from the
+air, the map, the start menu), --map-check.
+Not compared against the old GDScript behaviour (no reference left): ground bake, sun glow, motes/dust/dents, impostor swap timing.
