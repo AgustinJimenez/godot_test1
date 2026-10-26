@@ -48,7 +48,7 @@ func setup(planet_noise: PlanetNoise, planet_frame: PlanetFrame) -> void:
 	_settings = noise.settings
 	if ClassDB.class_exists(&"PlanetSurfaceNative") and not OS.has_environment("PLANET_NO_NATIVE"):
 		_native = ClassDB.instantiate(&"PlanetSurfaceNative")
-		for axes: Array in PlanetTile.FACES:
+		for axes: Array in PlanetTile.faces():
 			_faces.append_array(PackedVector3Array(axes))
 	if threaded and DisplayServer.get_name() != "headless":
 		var count := clampi(OS.get_processor_count() - 2, 2, 4)
