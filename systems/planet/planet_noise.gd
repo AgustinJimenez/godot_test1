@@ -60,7 +60,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 	relief = settings.relief
 	if relief <= 0.0:
 		relief = clampf(settings.radius * 0.0035, 300.0, 12000.0)
-	tectonics = PlanetTectonics.new(settings.world_seed, settings.plates)
+	tectonics = PlanetTectonics.create(settings.world_seed, settings.plates)
 	rock = PlanetRock.new(tectonics, settings.world_seed, settings.radius, relief)
 	_lap("plates and rock")
 	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
@@ -164,8 +164,8 @@ func _make_native() -> void:
 		"seeds": tectonics._seeds, "spins": PackedVector3Array(tectonics._spin),
 		"continental": PackedByteArray(tectonics._continental.map(func(land: bool) -> int:
 				return 1 if land else 0)),
-		"continent": PlanetTectonics.CONTINENT, "ocean": PlanetTectonics.OCEAN,
-		"boundary": PlanetTectonics.BOUNDARY, "soft": PlanetTectonics.SOFT,
+		"continent": PlanetTectonics.get_continent(), "ocean": PlanetTectonics.get_ocean(),
+		"boundary": PlanetTectonics.get_boundary(), "soft": PlanetTectonics.get_soft(),
 		"radius": settings.radius, "relief": relief, "sea": _sea,
 		"shore": SHORE, "shore_flat": SHORE_FLAT, "land_curve": LAND_CURVE, "deep": DEEP,
 		"massif_scale": MASSIF, "chain_scale": CHAINS, "foothill_scale": FOOTHILLS,

@@ -1,6 +1,7 @@
 #include "register_types.h"
 
 #include "planet_crust_native.h"
+#include "planet_tectonics_native.h"
 #include "planet_clock_native.h"
 #include "planet_settings_native.h"
 #include "planet_drainage_native.h"
@@ -29,6 +30,7 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(PlanetCrustNative);
+	GDREGISTER_CLASS(PlanetTectonics);
 	GDREGISTER_CLASS(PlanetClock);
 	GDREGISTER_CLASS(PlanetSettings);
 	GDREGISTER_CLASS(PlanetDrainageNative);
