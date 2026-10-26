@@ -1,6 +1,7 @@
 #include "register_types.h"
 
 #include "planet_crust_native.h"
+#include "planet_turf_native.h"
 #include "planet_render_native.h"
 #include "planet_render_native.h"
 #include "planet_ground_bake_native.h"
@@ -56,6 +57,7 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(PlanetCrustNative);
+	GDREGISTER_CLASS(PlanetTurf);
 	GDREGISTER_CLASS(PlanetSunGlow);
 	GDREGISTER_CLASS(PlanetCloudGpu);
 	GDREGISTER_CLASS(PlanetGroundBake);
