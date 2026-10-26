@@ -1,6 +1,7 @@
 #include "register_types.h"
 
 #include "planet_crust_native.h"
+#include "planet_weather_native.h"
 #include "planet_drainage_script_native.h"
 #include "planet_drainage_script_native.h"
 #include "planet_climate_native.h"
@@ -42,6 +43,7 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(PlanetCrustNative);
+	GDREGISTER_CLASS(PlanetWeather);
 	GDREGISTER_CLASS(PlanetDrainageCache);
 	GDREGISTER_CLASS(PlanetDrainage);
 	GDREGISTER_CLASS(PlanetClimate);

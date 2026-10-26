@@ -104,7 +104,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 				PlanetClimate.HEIGHT, climate.rain_grid())
 	_make_scatter()
 	_lap("climate")
-	weather = PlanetWeather.new(self)
+	weather = PlanetWeather.create(self)
 	_lap("weather")
 	_carve_valleys()
 	_lap("drainage")

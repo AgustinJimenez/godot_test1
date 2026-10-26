@@ -512,7 +512,7 @@ func _climate_check() -> bool:
 
 ## The largest rise of cloud readiness, wet season against dry season, over the tropical land.
 func _monsoon_swing(noise: PlanetNoise) -> float:
-	var weather := PlanetWeather.new(noise)
+	var weather := PlanetWeather.create(noise)
 	var clock := PlanetClock.new()
 	var best := 0.0
 	for lat_degrees in range(-30, 31, 10):

@@ -435,7 +435,7 @@ func _drift_the_clouds(clock_seconds: float) -> void:
 	var here := planet_position().normalized()
 	var lat := asin(clampf(here.y, -1.0, 1.0))
 	var east := Vector3(-here.z, 0.0, here.x).normalized()
-	var turn := PlanetWeather.zonal_wind(lat, noise.weather.wind_k()) * PlanetWeather.WIND_TURN * TAU
+	var turn := PlanetWeather.zonal_wind(lat, noise.weather.wind_k()) * PlanetWeather.get_wind_turn() * TAU
 	var speed := turn * settings.radius * cos(lat) / clock.day_seconds
 	atmosphere.cloud_drift -= east * speed * clock_seconds
 
