@@ -143,6 +143,7 @@ var _toe_spheres := {}
 var _heel_spheres := {}
 var _tip_clip_max := 0.0
 const HEEL_PUSH_OFF_PLANT := 0.9 ## plant weight under which the heel may rise (the push-off)
+var _ledge_push_frames := 0
 var _tip_float_max := 0.0
 var _tip_clip_events := 0
 var _tip_float_events := 0
@@ -189,6 +190,9 @@ func _ready() -> void:
 			# A steep ramp cannot be jumped onto from the floor: start on it (x -5.6, z -0.134).
 			_from_floor = false
 			_start = Vector3(2.4, IDLE_START_Z, IDLE_YAW_DEG)
+		for arg: String in OS.get_cmdline_user_args():
+			if arg.begins_with("--start-yaw="): # face another way at the start (across or up the ramp)
+				_start.z = arg.trim_prefix("--start-yaw=").to_float()
 		if "--uphill" in OS.get_cmdline_user_args():
 			# Facing UP the slope: the rear foot's floor is far below the flat-ground stance.
 			_from_floor = false
@@ -930,6 +934,7 @@ func _finish_ramp_check() -> void:
 		print(("  segment %-10s frames=%3d tip_clip_max=%.3f tip_float_max=%.3f "
 				+ "clip_frames=%d float_frames=%d") % [segment["name"], segment["frames"],
 				stats[0], stats[1], stats[2], stats[3]])
+	print("LEDGE_PUSH_FRAMES ", _ledge_push_frames)
 	print("FOOT_IK_V2_%s %s frames=%d %s foot_step_max=%.3f limits=clip<=%.3f,float<=%.3f" % [
 			"IDLE_CHECK" if _idle_checking else "RAMP_CHECK", "PASS" if passed else "FAIL",
 			_walk, _tip_summary(), _foot_step_max, TIP_CLIP_LIMIT, _float_limit])
@@ -944,6 +949,8 @@ func _measure_ramp() -> void:
 		_drift_excess = maxf(_drift_excess, drift - _drift_limit)
 	if _frames_in_segment >= PELVIS_GRACE_FRAMES and _v2.debug_pelvis_drop > _pelvis_limit:
 		_pelvis_excess = maxf(_pelvis_excess, _v2.debug_pelvis_drop - _pelvis_limit)
+	if _walk >= MEASURE_AFTER and not _v2.ledge_push().is_zero_approx():
+		_ledge_push_frames += 1 # the safe-zone nudge would walk the body this frame
 	if _walk < MEASURE_AFTER:
 		return
 	for side: StringName in SIDES:

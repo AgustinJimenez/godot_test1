@@ -50,3 +50,9 @@ while, read the IK logs; when something is off in the logs, find the bug and fix
   weight is under 0.9 (HEEL_PUSH_OFF_PLANT): traced, the ramp-strafe "float" is a toe-off, toe tip 1-2 cm over the ramp, sole tilt 0 -> 36 degrees over 7 frames, heel up 10-15 cm; (2) pose_fault
   BEHIND_LIMIT 0.03 -> 0.045 m: the strafe knee sits 3.1-3.6 cm behind the hip-foot line at 66 degrees flexion (knee turned sideways with the strafing foot), a wrong-way knee is ~0.2 m.
   `FOOT_IK_V2_FAULT_LOG=1` prints POSE_FAULT numbers.
+- Live log of the lab's Ramp45 (user, 2026-10-26 08:44, user://foot_ik_v2.jsonl): "the feet readjust every often on the steep slope". 456 of 646 idle frames on Ramp45 had a foot moving > 1 cm (max 45 cm),
+  the body crept 1 m up the ramp with velocity 0 and the animation flipping idle <-> walk. Cause: the ledge safe-zone nudge (PlayerLedgeNudge, walks the body away from a "void" at 1.6 m/s).
+  The void test measured the foot's ground straight down from the body root (> 0.25 m); on a 30-45 degree slope the downhill foot's ground is 0.24-0.31 m under the root (the log: drop 0.31,
+  perpendicular to the slope 0.10), so the slope read as a ledge. FIX (foot_ik_core_native.cpp, place_foot): the drop is measured along the ground normal (perpendicular off the slope).
+  Not reproduced headless (the idle harness never triggered a push, old or new code), so confirmed only by the log numbers; the lab prints LEDGE_PUSH_FRAMES for the idle/ramp checks and
+  takes `--start-yaw=DEG`. Suite green, soak unchanged. Open question for the user: should a slope past floor_max_angle (the lab sets 60, the game's default is 45) only slide?

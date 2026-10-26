@@ -496,14 +496,17 @@ void FootIKV2CoreNative::place_foot(int p_leg) {
 		return;
 	}
 	Vector3 ground_pos = hit["position"];
-	if (to_world.origin.y - ground_pos.y > LEDGE_DROP || Vector2(ground_pos.x - sample.x, ground_pos.z - sample.z).length() > LEDGE_PROBED) {
+	const Vector3 normal = hit["normal"];
+	// (the drop is measured off the slope under the foot, not straight down: on a 30-45 degree ramp the downhill foot's ground is 25+ cm under the
+	// body and read as a void, so the player was walked up the ramp by the ledge nudge: found in the user's live log of the lab's Ramp45, 456 of 646 idle frames)
+	const double drop = normal.y > 0.2f ? (double)normal.dot(to_world.origin - ground_pos) : to_world.origin.y - ground_pos.y;
+	if (drop > LEDGE_DROP || Vector2(ground_pos.x - sample.x, ground_pos.z - sample.z).length() > LEDGE_PROBED) {
 		if (ledge != nullptr) {
 			ledge->call("over_drop", side, to_world.origin, animated_ankle, hip_world);
 		}
 	} else if (ledge != nullptr) {
 		ledge->call("on_ground", side);
 	}
-	const Vector3 normal = hit["normal"];
 	ground_pos.y = P.ground_filter ? (real_t)ground->height(side, ground_pos.y) : ground_pos.y;
 	debug_ground[side] = ground_pos;
 	Node *collider = Object::cast_to<Node>((Object *)hit.get("collider", Variant()));
