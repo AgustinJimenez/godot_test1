@@ -5,7 +5,7 @@ func _init() -> void:
 	var settings := PlanetSettings.earth()
 	settings.world_seed = 8
 	var t0 := Time.get_ticks_msec()
-	var noise := PlanetNoise.new(settings)
+	var noise := PlanetNoise.create(settings)
 	print("noise built ", Time.get_ticks_msec() - t0, " ms")
 	var clock := PlanetClock.new()
 	clock.day_seconds = settings.day_seconds

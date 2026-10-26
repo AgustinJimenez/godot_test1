@@ -10,7 +10,7 @@ extends Node
 func _ready() -> void:
 	var settings := PlanetSettings.earth(0.1)
 	settings.world_seed = 8
-	var noise := PlanetNoise.new(settings)
+	var noise := PlanetNoise.create(settings)
 	var dir := Vector3(-0.665889, -0.723404, 0.182422).normalized()
 	var e1 := dir.cross(Vector3.UP).normalized()
 	var e3 := e1.cross(dir).normalized()

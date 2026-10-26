@@ -4,7 +4,7 @@ extends SceneTree
 func _init() -> void:
 	var settings := PlanetSettings.earth()
 	settings.world_seed = 8
-	var noise := PlanetNoise.new(settings)
+	var noise := PlanetNoise.create(settings)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
 	var cells := 4

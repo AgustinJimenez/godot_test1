@@ -12,7 +12,7 @@ func _init() -> void:
 			seed_value = int(arg.substr(7))
 	var settings := PlanetSettings.earth(1.0)
 	settings.world_seed = seed_value
-	var noise := PlanetNoise.new(settings)
+	var noise := PlanetNoise.create(settings)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 12345
 	var bad := 0

@@ -67,7 +67,7 @@ func _ready() -> void:
 			int(GraphicsSettings.get_graphics_value(&"ground_detail")) >= 1
 			and not OS.has_environment("PLANET_LIGHT_TREES"))
 	_bake_the_bark()
-	noise = PlanetNoise.new(settings)
+	noise = PlanetNoise.create(settings)
 	clock.day_seconds = settings.day_seconds
 	clock.year_days = settings.year_days
 	clock.axial_tilt = deg_to_rad(settings.axial_tilt)

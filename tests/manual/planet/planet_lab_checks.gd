@@ -15,7 +15,7 @@ static func water_check(tree: SceneTree) -> bool:
 			made.world_seed = arg.trim_prefix("--seed=").to_int()
 		elif arg.begins_with("--radius="):
 			made.radius = arg.trim_prefix("--radius=").to_float()
-	var noise := PlanetNoise.new(made)
+	var noise := PlanetNoise.create(made)
 	# the crust's rivers and lakes: over a spread of points of the planet there is some water (a river
 	# here and there,
 	# not everywhere), and it is rarely over the sea or under the ground (a river's mouth and its
@@ -57,7 +57,7 @@ static func spawn_check(tree: SceneTree) -> bool:
 	var made := PlanetSettings.new()
 	made.drainage_cells = 96
 	made.world_seed = 7
-	var noise := PlanetNoise.new(made)
+	var noise := PlanetNoise.create(made)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
 	var failed := 0

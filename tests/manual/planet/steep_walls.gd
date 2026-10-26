@@ -14,7 +14,7 @@ func _init() -> void:
 			scale = float(arg.substr(8))
 	var settings := PlanetSettings.earth(scale)
 	settings.world_seed = seed_value
-	var noise := PlanetNoise.new(settings)
+	var noise := PlanetNoise.create(settings)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 777
 	var walls := 0

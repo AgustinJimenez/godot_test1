@@ -66,10 +66,9 @@ run_check universe 300 "UNIVERSE_CHECK" "${lab}" --universe=42 --systems=3
 run_check climate 300 "CLIMATE_CHECK" "${lab}" --climate-check
 run_check water 300 "WATER_CHECK" "${lab}" --water-check --seed=7
 run_check spawn 300 "SPAWN_CHECK" "${lab}" --spawn-check
-# (the eroded ridges exist in the native crust only: the comparison runs without them)
-PLANET_NO_EROSION=1 run_check native 300 "NATIVE_CHECK" "${lab}" --native-check --earth
 run_check water_mesh 60 "WATER_MESH_CHECK" res://tests/manual/planet/water_mesh_native_check.tscn
 run_check generation_native 60 "GENERATION_NATIVE_CHECK" res://tests/manual/planet/generation_native_check.tscn
+run_check noise_golden 120 "NOISE_GOLDEN" res://tests/manual/planet/noise_golden.tscn
 run_check drainage 300 "DRAINAGE_CHECK" "${lab}" --drainage-check --earth --cells=128
 run_check species 600 "SPECIES_CHECK (PASS|FAIL)" res://tests/manual/world/species_check.tscn
 run_check branches 300 "BRANCH_CHECK (PASS|FAIL)" res://tests/manual/world/branch_check.tscn

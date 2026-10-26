@@ -252,7 +252,7 @@ func _drainage_check() -> bool:
 			exponent = arg.trim_prefix("--exponent=").to_float()
 		elif arg.begins_with("--drainage-image="):
 			image_path = arg.trim_prefix("--drainage-image=")
-	var noise := PlanetNoise.new(made)
+	var noise := PlanetNoise.create(made)
 	var drainage := PlanetDrainage.new()
 	var started := Time.get_ticks_msec()
 	if not drainage.build(noise, cells, exponent):
@@ -298,70 +298,6 @@ func _save_drainage_picture(drainage: PlanetDrainage, threshold: float, path: St
 	print("DRAINAGE_IMAGE ", path)
 
 
-## `--native-check` (headless): the native crust against the GDScript one on many points, printed as
-## NATIVE_CHECK (the largest differences in heights (m) and colours, and the time of each).
-func _native_check() -> bool:
-	if not "--native-check" in OS.get_cmdline_user_args():
-		return false
-	var made := PlanetSettings.new()
-	for arg in OS.get_cmdline_user_args():
-		if arg == "--earth":
-			made = PlanetSettings.earth()
-		elif arg.begins_with("--radius="):
-			made.radius = arg.trim_prefix("--radius=").to_float()
-		elif arg.begins_with("--seed="):
-			made.world_seed = arg.trim_prefix("--seed=").to_int()
-	made.drainage_cells = 0 # the native crust is compared with the script before any valley is cut
-	made.hydrology_on = false
-	var noise := PlanetNoise.new(made)
-	if noise.native == null:
-		print("NATIVE_CHECK SKIP the native library is not loaded")
-		get_tree().quit()
-		return true
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 21
-	var dirs := PackedVector3Array()
-	var steeps := PackedFloat32Array()
-	for index in 20000:
-		dirs.append(Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized())
-		steeps.append(rng.randf() * 0.8)
-	var started := Time.get_ticks_usec()
-	var fast_heights := noise.native.heights(dirs) as PackedFloat32Array
-	var fast_height_us := Time.get_ticks_usec() - started
-	started = Time.get_ticks_usec()
-	var fast_colours := noise.native.colours(dirs, fast_heights, steeps) as PackedColorArray
-	var fast_colour_us := Time.get_ticks_usec() - started
-	var saved: Object = noise.native
-	noise.native = null
-	started = Time.get_ticks_usec()
-	var slow_heights := noise.heights_of(dirs)
-	var slow_height_us := Time.get_ticks_usec() - started
-	started = Time.get_ticks_usec()
-	var slow_colours := noise.colours_of(dirs, slow_heights, steeps)
-	var slow_colour_us := Time.get_ticks_usec() - started
-	noise.native = saved
-	var worst_height := 0.0
-	var worst_colour := 0.0
-	var worst_at := 0
-	for index in dirs.size():
-		var gap := absf(fast_heights[index] - slow_heights[index])
-		if gap > worst_height:
-			worst_height = gap
-			worst_at = index
-		var a := fast_colours[index]
-		var b := slow_colours[index]
-		var gap_colour := maxf(absf(a.r - b.r), maxf(absf(a.g - b.g), absf(a.b - b.b)))
-		worst_colour = maxf(worst_colour, gap_colour)
-	var verdict := "PASS" if worst_height < 1.0 and worst_colour < 0.02 else "FAIL"
-	print("NATIVE_CHECK %s height_gap=%.4f m (at %d) colour_gap=%.4f" % [verdict, worst_height,
-			worst_at, worst_colour])
-	print("NATIVE_SPEED heights %.2f us (native) %.2f us (script); colours %.2f us %.2f us" % [
-			float(fast_height_us) / 20000.0, float(slow_height_us) / 20000.0,
-			float(fast_colour_us) / 20000.0, float(slow_colour_us) / 20000.0])
-	get_tree().quit()
-	return true
-
-
 func _terrain_check() -> bool:
 	if not "--terrain-check" in OS.get_cmdline_user_args():
 		return false
@@ -378,7 +314,7 @@ func _terrain_check() -> bool:
 		elif arg.begins_with("--crust-samples="):
 			made.crust_samples = arg.trim_prefix("--crust-samples=").to_int()
 	var started := Time.get_ticks_msec()
-	var noise := PlanetNoise.new(made)
+	var noise := PlanetNoise.create(made)
 	print("TERRAIN_BUILD_MS ", Time.get_ticks_msec() - started)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
@@ -494,7 +430,7 @@ func _save_height_picture(noise: PlanetNoise, path: String, rock_colours := fals
 func _climate_check() -> bool:
 	if not "--climate-check" in OS.get_cmdline_user_args():
 		return false
-	var noise := PlanetNoise.new(PlanetSettings.new())
+	var noise := PlanetNoise.create(PlanetSettings.new())
 	var clock := PlanetClock.new()
 	var calm := PlanetSeasons.new()
 	calm.wind = 0.0
@@ -555,7 +491,7 @@ func _ready() -> void:
 		detail = OS.get_environment("LAB_GROUND").to_float()
 	if detail >= 0.0:
 		RenderingServer.global_shader_parameter_set(&"ground_detail", detail)
-	var report_run := _drainage_check() or _native_check() or _terrain_check()
+	var report_run := _drainage_check() or _terrain_check()
 	report_run = report_run or _climate_check() or _water_check()
 	report_run = report_run or PlanetLabChecks.spawn_check(get_tree())
 	if report_run or _print_universe_table():

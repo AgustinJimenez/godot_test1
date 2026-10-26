@@ -8,7 +8,7 @@ func _ready() -> void:
 	settings.water_layer = 100.0
 	settings.drainage_cells = 0
 	settings.species_count = 12
-	var noise := PlanetNoise.new(settings)
+	var noise := PlanetNoise.create(settings)
 	if noise.native == null:
 		print("GENERATION_NATIVE_CHECK FAIL native crust missing")
 		get_tree().quit(1)
@@ -28,7 +28,7 @@ func _ready() -> void:
 		var depth := 0.0
 		for value in samples:
 			if value < level:
-				depth -= noise._shore(value - level) * noise.relief
+				depth -= noise.shore(value - level) * noise.relief
 		depth /= float(samples.size())
 		if depth < settings.water_layer:
 			low = level

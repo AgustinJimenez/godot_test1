@@ -20,3 +20,9 @@
 	ClassDB::bind_method(D_METHOD("get_" #N), &CLS::get_##N); \
 	ClassDB::bind_method(D_METHOD("set_" #N, "value"), &CLS::set_##N); \
 	ADD_PROPERTY(PropertyInfo(VT, #N, PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR), "set_" #N, "get_" #N);
+
+// an object property (a Ref to a native class of ours): typed for GDScript by its resource-type hint
+#define NP_BIND_OBJ(CLS, N, TYPE) \
+	ClassDB::bind_method(D_METHOD("get_" #N), &CLS::get_##N); \
+	ClassDB::bind_method(D_METHOD("set_" #N, "value"), &CLS::set_##N); \
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, #N, PROPERTY_HINT_RESOURCE_TYPE, TYPE, PROPERTY_USAGE_NO_EDITOR), "set_" #N, "get_" #N);

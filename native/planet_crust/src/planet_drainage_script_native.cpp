@@ -1,6 +1,7 @@
 #include "planet_drainage_script_native.h"
 
 #include "planet_climate_native.h"
+#include "planet_noise_native.h"
 
 #include <godot_cpp/classes/class_db_singleton.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
@@ -57,7 +58,7 @@ bool PlanetDrainage::build(Object *p_noise, int64_t p_cells_per_edge, double p_e
 	double relief = p_noise->get("relief");
 	cells = p_cells_per_edge;
 	native_.instantiate();
-	native_->setup((int)cells, settings->get_radius(), p_noise->call("_cube_faces"));
+	native_->setup((int)cells, settings->get_radius(), PlanetNoise::cube_faces());
 	dirs = native_->cell_dirs();
 	Dictionary both = crust->call("macro_and_tectonic_heights", dirs);
 	heights = both["macro"];
