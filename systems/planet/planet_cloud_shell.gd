@@ -32,7 +32,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if planet == null or planet.target() == null:
 		return
-	var fade := 1.0 - planet.atmosphere.cloud_on # the sky has them from under the layer
+	var fade: float = 1.0 - planet.atmosphere.cloud_on # the sky has them from under the layer
 	visible = fade > 0.0
 	if visible:
 		_place_the_shell(fade)

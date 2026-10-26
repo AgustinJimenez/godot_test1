@@ -50,8 +50,8 @@ public:
 	NP_FIELD(int64_t, tile_key, 0) // see key_of
 	NP_FIELD(Dictionary, plant_grid, Dictionary()) // the grid the plants are placed on (empty: this tile has none)
 	NP_FIELD(int64_t, plant_detail, 0) // what grows on it now (PlanetScatter.Detail)
-	NP_OBJECT(plant_holder)
-	NP_OBJECT(ground_instance) // the ground mesh of the tile (the shell layers of the near ground copy it)
+	NP_OBJECT_T(plant_holder, Node3D)
+	NP_OBJECT_T(ground_instance, MeshInstance3D) // the ground mesh of the tile (the shell layers of the near ground copy it)
 
 	PlanetTile();
 	static Array faces(); // [normal, u, v] of the six cube faces (u x v = normal)

@@ -104,12 +104,12 @@ func _sample() -> Dictionary:
 	sample["local_hour"] = snappedf(planet.clock.local_hour(here.normalized()), 0.01)
 	sample["tiles"] = planet.surface.tiles.size()
 	sample["weather"] = planet.weather_text
-	var atmosphere := planet.atmosphere
+	var atmosphere: Object = planet.atmosphere
 	sample["fog_extra"] = snappedf(atmosphere.fog_extra, 0.0001)
 	sample["cloud_on"] = snappedf(atmosphere.cloud_on, 0.01)
 	sample["overcast"] = snappedf(atmosphere.overcast, 0.01)
 	sample["underwater"] = atmosphere.underwater
-	var environment := atmosphere.environment
+	var environment: Environment = atmosphere.environment
 	sample["fog"] = {"on": environment.fog_enabled, "mode": environment.fog_mode,
 			"density": snappedf(environment.fog_density, 0.00001),
 			"begin": environment.fog_depth_begin, "end": environment.fog_depth_end,

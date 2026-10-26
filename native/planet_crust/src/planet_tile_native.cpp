@@ -47,8 +47,8 @@ void PlanetTile::_bind_methods() {
 	NP_BIND(PlanetTile, Variant::INT, tile_key)
 	NP_BIND(PlanetTile, Variant::DICTIONARY, plant_grid)
 	NP_BIND(PlanetTile, Variant::INT, plant_detail)
-	NP_BIND_OBJECT_AS(PlanetTile, plant_holder, "Node3D")
-	NP_BIND_OBJECT_AS(PlanetTile, ground_instance, "MeshInstance3D")
+	NP_BIND_OBJECT(PlanetTile, plant_holder)
+	NP_BIND_OBJECT(PlanetTile, ground_instance)
 	ClassDB::bind_static_method("PlanetTile", D_METHOD("faces"), &PlanetTile::faces);
 	ClassDB::bind_static_method("PlanetTile", D_METHOD("ground_material"), &PlanetTile::ground_material);
 	ClassDB::bind_static_method("PlanetTile", D_METHOD("water_material"), &PlanetTile::water_material);

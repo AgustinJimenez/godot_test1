@@ -752,7 +752,7 @@ func _physics_process(_delta: float) -> void:
 		return
 	if _swim_check and _frame == 300:
 		var level := planet.water_at_world(player.global_position)
-		var afloat := planet.swim != null and planet.swim.swimming
+		var afloat: bool = planet.swim != null and planet.swim.swimming
 		print("SWIM_CHECK %s swimming=%s water_y=%.2f player_y=%.2f" % ["PASS" if afloat and absf(
 				player.global_position.y - level) < 2.5 else "FAIL", afloat, level,
 				player.global_position.y])

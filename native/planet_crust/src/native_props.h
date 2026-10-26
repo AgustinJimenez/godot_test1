@@ -44,3 +44,9 @@
 	ClassDB::bind_method(D_METHOD("get_" #N), &CLS::get_##N); \
 	ClassDB::bind_method(D_METHOD("set_" #N, "value"), &CLS::set_##N); \
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, #N, PROPERTY_HINT_RESOURCE_TYPE, TYPE, PROPERTY_USAGE_NO_EDITOR, TYPE), "set_" #N, "get_" #N);
+
+// a node of the scene held by id with its own class for the getter: GDScript types the property from the getter's return
+#define NP_OBJECT_T(N, T) \
+	ObjectID N##_id; \
+	T *get_##N() const { return Object::cast_to<T>(ObjectDB::get_instance(N##_id)); } \
+	void set_##N(T *p_v) { N##_id = p_v != nullptr ? p_v->get_instance_id() : ObjectID(); }

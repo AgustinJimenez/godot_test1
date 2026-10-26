@@ -29,6 +29,7 @@ void PlanetSurface::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("build_all", "at", "near_only"), &PlanetSurface::build_all, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("progress", "ground_metres", "plant_metres"), &PlanetSurface::progress);
 	ClassDB::bind_method(D_METHOD("is_threaded"), &PlanetSurface::is_threaded);
+	ClassDB::bind_method(D_METHOD("wanted_count"), &PlanetSurface::wanted_count);
 	ClassDB::bind_method(D_METHOD("place_all"), &PlanetSurface::place_all);
 	ClassDB::bind_method(D_METHOD("work"), &PlanetSurface::work);
 	ClassDB::bind_method(D_METHOD("work_plants"), &PlanetSurface::work_plants);

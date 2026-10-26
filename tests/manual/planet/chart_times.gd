@@ -22,6 +22,6 @@ func _init() -> void:
 			while not chart.finished():
 				OS.delay_msec(5)
 			var tex := chart.texture()
-			var name: String = PlanetChart.Layer.keys()[layer]
+			var name: String = PlanetChart.names()[layer] if layer < PlanetChart.names().size() else "Cloud mask"
 			print("%dx%d %-16s %6d ms" % [dims.x, dims.y, name, Time.get_ticks_msec() - start])
 	quit()

@@ -103,6 +103,7 @@ public:
 	void build_all(const Vector3 &p_at, bool p_near_only = false);
 	double progress(double p_ground_metres, double p_plant_metres) const;
 	bool is_threaded() const { return !workers.empty(); }
+	int64_t wanted_count() const { return (int64_t)wanted.size(); }
 	void place_all();
 	void work();
 	void work_plants();

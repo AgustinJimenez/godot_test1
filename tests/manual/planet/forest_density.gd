@@ -43,7 +43,7 @@ func _ready() -> void:
 					var key := keys[index]
 					if key < 100000 or key >= 200000:
 						continue
-					var one := noise.species.by_id((key - 100000) / 100)
+					var one = noise.species.by_id((key - 100000) / 100)
 					var count: int = (placed["buffers"][index] as PackedFloat32Array).size() / 16
 					match one.layer():
 						PlantSpecies.Layer.CANOPY: totals["trees"] += count
