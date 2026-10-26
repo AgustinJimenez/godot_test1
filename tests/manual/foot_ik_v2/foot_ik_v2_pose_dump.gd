@@ -7,7 +7,7 @@ extends RefCounted
 ## toward the character's right. All angles are degrees, lengths metres.
 
 const ROLES := ["hip", "knee", "foot", "toe"]
-const BEHIND_LIMIT := 0.03 # m the knee may sit behind the hip-to-foot line
+const BEHIND_LIMIT := 0.045 # m the knee may sit behind the hip-to-foot line (a knee bent the wrong way sits ~0.2 m behind; the ramp strafe measured 3.1-3.6 cm at 66 deg flexion, a knee turned sideways with the strafing foot)
 
 
 static func describe(v2: FootIKV2Modifier, skel: Skeleton3D, side: StringName,
@@ -88,6 +88,8 @@ static func pose_fault(v2: FootIKV2Modifier, side: StringName) -> float:
 	var bad := promised.length() > 0.001 and -off.dot(promised.normalized()) > BEHIND_LIMIT
 	bad = bad or (v2.max_knee_flexion_deg > 0.0 and flexion > v2.max_knee_flexion_deg + 1.0)
 	bad = bad or (v2.max_hip_swing_deg > 0.0 and swing > v2.max_hip_swing_deg + 1.0)
+	if bad and OS.get_environment("FOOT_IK_V2_FAULT_LOG") == "1":
+		print("POSE_FAULT frame=%d side=%s behind=%.3f/%.3f flexion=%.1f/%.1f swing=%.1f/%.1f" % [Engine.get_physics_frames(), side, -off.dot(promised.normalized()) if promised.length() > 0.001 else 0.0, BEHIND_LIMIT, flexion, v2.max_knee_flexion_deg, swing, v2.max_hip_swing_deg])
 	return 9.9 if bad else 0.0
 
 

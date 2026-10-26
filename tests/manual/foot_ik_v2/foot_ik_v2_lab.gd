@@ -142,6 +142,7 @@ var _jump_pressed_at := -100
 var _toe_spheres := {}
 var _heel_spheres := {}
 var _tip_clip_max := 0.0
+const HEEL_PUSH_OFF_PLANT := 0.9 ## plant weight under which the heel may rise (the push-off)
 var _tip_float_max := 0.0
 var _tip_clip_events := 0
 var _tip_float_events := 0
@@ -491,8 +492,11 @@ func _grade_heel(side: StringName, spot: String) -> void:
 	if not (_tip_state(side)["grounded"] or at_rest):
 		return
 	var clearance: float = measured
+	# A foot that is leaving the ground (the plant weight fading) pivots on its toe and the heel rises 10-15 cm: that is the push-off, not a float
+	# (traced on the ramp strafe: the toe tip stays 1-2 cm over the ramp, the sole tilts 0 -> 36 degrees over 7 frames).
+	var toeing_off: bool = float((_v2.debug_plant_weight as Dictionary).get(side, 1.0)) < HEEL_PUSH_OFF_PLANT
 	_tip_clip_max = maxf(_tip_clip_max, -clearance)
-	_tip_float_max = maxf(_tip_float_max, 0.0 if _pitch_animated(side) else clearance)
+	_tip_float_max = maxf(_tip_float_max, 0.0 if (_pitch_animated(side) or toeing_off) else clearance)
 	var stats: Array = _tip_by_spot.get(spot, [0.0, 0.0, 0, 0])
 	stats[0] = maxf(float(stats[0]), -clearance)
 	stats[1] = maxf(float(stats[1]), clearance)
@@ -501,7 +505,7 @@ func _grade_heel(side: StringName, spot: String) -> void:
 		kind = "HEEL_CLIP"
 		_tip_clip_events += 1
 		stats[2] = int(stats[2]) + 1
-	elif clearance > TIP_FLOAT_TOLERANCE and not _pitch_animated(side):
+	elif clearance > TIP_FLOAT_TOLERANCE and not _pitch_animated(side) and not toeing_off:
 		kind = "HEEL_FLOAT"
 		_tip_float_events += 1
 		stats[3] = int(stats[3]) + 1
