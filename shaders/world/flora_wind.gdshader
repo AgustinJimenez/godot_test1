@@ -941,17 +941,19 @@ void fragment() {
 	if (has_pom) {
 		NORMAL = normalize(pom_a * pom_normal.x + pom_l * pom_normal.y + NORMAL * pom_normal.z);
 	}
-	if (is_card && UV2.y < 3.5 && abs(card_lean) > 0.001) {
+	// (the derivatives are taken for every pixel, outside any `if` on the leaf: in a branch some pixels of a 2 x 2 quad skip, the
+	// derivatives are undefined there, and the midrib, where the lean crosses zero, showed dark dots)
+	vec3 card_dq1 = dFdx(VERTEX);
+	vec3 card_dq2 = dFdy(VERTEX);
+	vec2 card_dv1 = dFdx(UV);
+	vec2 card_dv2 = dFdy(UV);
+	if (is_card && UV2.y < 3.5) {
 		// a leaf of a cluster is round across its midrib and rippled along it: tip the normal across the leaf (the card's
 		// UV directions from the derivatives of the position and the UV)
-		vec3 dq1 = dFdx(VERTEX);
-		vec3 dq2 = dFdy(VERTEX);
-		vec2 dv1 = dFdx(UV);
-		vec2 dv2 = dFdy(UV);
-		float dt = dv1.x * dv2.y - dv1.y * dv2.x;
+		float dt = card_dv1.x * card_dv2.y - card_dv1.y * card_dv2.x;
 		float sgn = dt < 0.0 ? -1.0 : 1.0;
-		vec3 along_u = normalize(dq1 * dv2.y - dq2 * dv1.y) * sgn;
-		vec3 along_v = normalize(dq2 * dv1.x - dq1 * dv2.x) * sgn;
+		vec3 along_u = normalize(card_dq1 * card_dv2.y - card_dq2 * card_dv1.y) * sgn;
+		vec3 along_v = normalize(card_dq2 * card_dv1.x - card_dq1 * card_dv2.x) * sgn;
 		vec3 across_dir3 = normalize(along_u * card_across.x + along_v * card_across.y);
 		NORMAL = normalize(NORMAL + across_dir3 * card_lean * 0.6);
 	}
