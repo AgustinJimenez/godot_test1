@@ -911,6 +911,9 @@ void fragment() {
 			}
 		}
 	}
+	if (!FRONT_FACING && !is_bark && !is_rock && ((is_card && UV2.y < 3.5) || (UV.x > 0.001 && !is_card))) {
+		paint *= mix(vec3(1.0), vec3(0.8, 0.9, 0.78), realism); // the underside of a leaf: duller and paler
+	}
 	ALBEDO = mix(paint, vec3(0.8, 0.84, 0.9), snow_cover * smoothstep(0.35, 0.75, face_up) * 0.9);
 	if (is_card) {
 		ALPHA = card_alpha;
@@ -970,8 +973,10 @@ void fragment() {
 		vec3 gradient = sign(det) * (dFdx(surface_height) * r1 + dFdy(surface_height) * r2);
 		NORMAL = normalize(abs(det) * NORMAL - strength * gradient);
 	}
-	ROUGHNESS = mix(0.92, 0.78, realism);
-	SPECULAR = 0.2;
+	// a leaf (a card of leaves, or a mesh leaf with its UV): a waxy upper side catches a sharper sheen than bark or soil does
+	float leaf_like = is_bark || is_rock ? 0.0 : ((is_card && UV2.y < 3.5) || (UV.x > 0.001 && !is_card) ? 1.0 : 0.0);
+	ROUGHNESS = mix(0.92, mix(0.78, 0.5, leaf_like), realism);
+	SPECULAR = mix(0.2, 0.3, leaf_like * realism);
 	// the cracks of the bark: less ambient light and less shine (the sky does not reach into them), and a
 	// little less of the sun too, as if the plates shaded each other
 	AO = mix(1.0, cavity, realism);
@@ -983,7 +988,9 @@ void fragment() {
 	vec3 sun_view = (VIEW_MATRIX * vec4(cloud_sun_world / max(sun_len, 0.001), 0.0)).xyz;
 	float against_sun = sun_len > 0.5 ? clamp(dot(sun_view, -VIEW), 0.0, 1.0) : 0.0;
 	float glow = 0.3 + 2.5 * pow(against_sun, 4.0);
-	BACKLIGHT = paint * glow * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
+	// the light that comes through a leaf is yellower and brighter than the leaf is lit from the front: green and red pass, blue does not
+	vec3 transmitted = mix(paint, paint * vec3(1.0, 1.12, 0.5) + vec3(0.01, 0.02, 0.0), leaf_like);
+	BACKLIGHT = transmitted * glow * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
 	RIM = 0.25 * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
 	RIM_TINT = 0.5;
 }

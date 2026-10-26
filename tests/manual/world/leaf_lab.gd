@@ -143,6 +143,7 @@ func _show() -> void:
 	_sun.rotation_degrees = Vector3(-50.0, -35.0, 0.0)
 	if backlight:
 		_sun.rotation_degrees = Vector3(-12.0, 150.0, 0.0) # low, behind the leaf
+	RenderingServer.global_shader_parameter_set(&"cloud_sun_world", _sun.global_transform.basis.z * 1000.0) # the direction to the sun, for the leaf glow
 	_label.text = _describe(one)
 	_apply_wire()
 	_place_camera()
@@ -154,9 +155,9 @@ func _leaf_mesh(one: PlantSpecies) -> ArrayMesh:
 	builder.detailed = detailed
 	var outline := PlantLeafShapes.outline(one, detailed)
 	var base := one.leaf.darkened(0.3)
-	base.a = 0.0
+	base.a = 0.5
 	var tip := one.leaf_tip.lerp(one.leaf, 0.4)
-	tip.a = 0.0
+	tip.a = 0.6
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value * 31 + variant
 	var axis := Vector3(0.0, 0.1, -1.0).normalized()
@@ -170,9 +171,9 @@ func _card_mesh(one: PlantSpecies) -> ArrayMesh:
 	var builder := MeshBuilder.new()
 	builder.detailed = detailed
 	var base := one.leaf.darkened(0.3)
-	base.a = 0.0
+	base.a = 0.5
 	var tip := one.leaf_tip.lerp(one.leaf, 0.4)
-	tip.a = 0.0
+	tip.a = 0.6
 	var axis := Vector3(0.0, 0.1, -1.0).normalized()
 	var normal := Vector3(0.0, 1.0, 0.1).normalized()
 	PlantLeafShapes.add_leaf_card(builder, Vector3.ZERO, axis, normal, 1.35, base, tip,

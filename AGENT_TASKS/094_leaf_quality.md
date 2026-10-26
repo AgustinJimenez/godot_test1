@@ -35,3 +35,6 @@ W wire, D low/realistic, A autumn, B backlight, L sun, T top view, R seed, P pic
   dice to a 1/4096 grid in the fragment shader (cards, pinnate, grass, and the mesh leaf's two numbers). The same noise probably made the veins of mesh leaves shimmer. Lab: `--noshadow --nosun --distance=D`.
 - Cards use the species' leaf now: `PlantLeafShapes.card_look(shape, aspect, lobes, edge)` packs them into one number (UV2.y of a card = 2 + it, 0 = no species = the old generic leaf), the shader's
   `leaf_cluster` / `leaf_profile` read it back (the same width curves as the mesh outline, lobes, saw teeth or waves on the edge, the aspect sets the width). Holes are rarer (10%) and ragged.
+- Fine veins of a card are the borders of a jittered cell field (areoles, `vein_net`), not a sine grid. Leaves (cards and mesh leaves with UV) got a waxy sheen (roughness 0.5, specular 0.3),
+  a yellower transmitted light (BACKLIGHT tinted), and a duller paler underside. The lab sets `cloud_sun_world` so the backlight lobe shows, and gives the leaf a sway alpha (the glow needs it).
+- Still to do: curved side veins and the leaf's vein relief in the normal, the mesh-leaf shading to match the card's, a look at it all on the planet at 2 m / 10 m, a dotted midrib seen in the card close-up.
