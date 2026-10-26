@@ -27,28 +27,12 @@ echo "==> Linting GDScript"
 "${GDLINT}" .
 
 echo "==> Parsing Python"
-while IFS= read -r script_path; do
-	python3 -c 'import ast, pathlib, sys; path = pathlib.Path(sys.argv[1]); ast.parse(path.read_text(encoding="utf-8"), filename=str(path))' \
-		"${script_path}"
-done < <(find . -type f -name '*.py' \
-	-not -path './.godot/*' \
-	-not -path '*/.venv/*' \
-	| LC_ALL=C sort)
-
-echo "==> Importing Godot resources"
-godot --headless --path . --import
-
-echo "==> Parsing GDScript"
-while IFS= read -r script_path; do
-	if ! godot --headless --path . --check-only --script "${script_path}" \
-			>"${PARSE_LOG}" 2>&1; then
-		echo "GDScript parse failed: ${script_path}" >&2
-		cat "${PARSE_LOG}" >&2
-		exit 1
-	fi
-done < <(find . -type f -name '*.gd' \
-	-not -path './.godot/*' \
-	-not -path './tools/character_editor_mcp/.venv/*' \
-	| LC_ALL=C sort)
+# One run as a scene, so the autoloads (PlayerProfile, GraphicsSettings...) exist: `--check-only --script`
+# per file cannot resolve them and failed on every script that names one.
+if ! godot --headless --path . res://scripts/parse_all.tscn >"${PARSE_LOG}" 2>&1; then
+	echo "GDScript parse failed:" >&2
+	grep -a "PARSEFAIL\|SCRIPT ERROR" "${PARSE_LOG}" >&2
+	exit 1
+fi
 
 echo "Project checks passed."
