@@ -481,7 +481,7 @@ vec4 leaf_cluster(vec2 uv, float id, float look, float eye, out vec2 across_uv) 
 					// (only close up: from a few metres the net is finer than a pixel)
 					float net = vein_net(q * 34.0 + h.xy * 40.0);
 					float net_close = 1.0 - smoothstep(1.5, 5.0, eye);
-					float fine = 1.0 - 0.08 * (1.0 - smoothstep(0.0, 0.12, net)) * (1.0 - across * 0.5) * net_close;
+					float fine = 1.0 - 0.05 * (1.0 - smoothstep(0.0, 0.12, net)) * (1.0 - across * 0.5) * net_close;
 					// between two veins the blade puffs up a little, down in the groove beside each vein
 					float puff = 0.5 - 0.5 * cos(vein_run * 6.28318);
 					float shade = (0.72 + 0.5 * h2.x) * (1.0 - 0.22 * across * across) * fine * (0.95 + 0.07 * puff) + max(rib, side_vein * 0.8) * 0.3;
@@ -646,12 +646,16 @@ void fragment() {
 		float mid_width = mix(0.07, 0.16, fract(k * 4.3 + id));
 		float edge_dark = mix(0.1, 0.34, fract(id * 2.3 + k * 5.1));
 		float sides = step(UV.x, 0.5) * fract(id * 9.1) * 0.6; // the two sides need not line up
-		float midrib = 1.0 - smoothstep(0.02, mid_width, across);
-		float run = fract(UV.y * count - across * slope + sides + id * 4.0);
-		float side_vein = (1.0 - smoothstep(0.0, thick, min(run, 1.0 - run)))
-				* smoothstep(0.06, 0.15, across) * (1.0 - smoothstep(0.6, 0.95, across));
+		float midrib = (1.0 - smoothstep(0.02 * (1.0 - 0.5 * UV.y), mid_width * (1.0 - 0.6 * UV.y), across)) * (1.0 - 0.4 * UV.y);
+		// the side veins curve toward the tip near the margin and thin out, like the card's
+		float run = fract(UV.y * count - pow(across, 0.75) * slope * 0.6 + sides + id * 4.0);
+		float side_vein = (1.0 - smoothstep(0.0, thick * mix(1.0, 0.35, across), min(run, 1.0 - run)))
+				* smoothstep(0.03, 0.12, across) * (1.0 - smoothstep(0.55, 0.98, across));
 		float vein = max(midrib * mix(0.6, 1.0, strength), side_vein * strength);
-		float shade = 1.04 - edge_dark * across * across - 0.1 * UV.y;
+		// the net of small veins (areoles), only close up
+		float net = vein_net(vec2((UV.x - 0.5) * 0.55, UV.y) * 34.0 + vec2(id, k) * 40.0);
+		float net_shade = 1.0 - 0.05 * (1.0 - smoothstep(0.0, 0.12, net)) * (1.0 - smoothstep(1.5, 5.0, length(VERTEX)));
+		float shade = (1.04 - edge_dark * across * across - 0.1 * UV.y) * net_shade;
 		paint = mix(paint * shade, paint * 1.55 + vec3(0.02, 0.03, 0.0), vein * 0.9);
 	}
 	vec3 pom_a = vec3(1.0, 0.0, 0.0); // the bark's directions and normal in view space (parallax occlusion)

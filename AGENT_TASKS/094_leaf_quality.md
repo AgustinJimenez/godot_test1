@@ -38,3 +38,7 @@ W wire, D low/realistic, A autumn, B backlight, L sun, T top view, R seed, P pic
 - Fine veins of a card are the borders of a jittered cell field (areoles, `vein_net`), not a sine grid. Leaves (cards and mesh leaves with UV) got a waxy sheen (roughness 0.5, specular 0.3),
   a yellower transmitted light (BACKLIGHT tinted), and a duller paler underside. The lab sets `cloud_sun_world` so the backlight lobe shows, and gives the leaf a sway alpha (the glow needs it).
 - Still to do: curved side veins and the leaf's vein relief in the normal, the mesh-leaf shading to match the card's, a look at it all on the planet at 2 m / 10 m, a dotted midrib seen in the card close-up.
+- Card veins: curved side veins that thin toward the margin, tapering midrib, areole net only close up (and softer), vein puffs in the lean. Mesh leaves (UV leaves) got the same veins and net.
+- The dotted midrib was undefined derivatives: `dFdx/dFdy(VERTEX/UV)` were taken inside `if (is_card && abs(card_lean) > 0.001)`, so in the 2 x 2 quads where the lean crosses zero (the
+  midrib) some pixels skipped the branch and the others read garbage. They are now taken outside the branch. (Lesson: no derivatives inside a data-dependent `if`.)
+- Done in the lab: mesh leaf, card, lobed / toothed / oval species, top and front views, backlit. Next: a tree on the planet at 2 m and 10 m.
