@@ -39,7 +39,7 @@ func _ready() -> void:
 	player = PLAYER_SCENE.instantiate() as Player
 	add_child(player)
 	player.global_position = Vector3(0.0, HEIGHT + 0.05, 2.5)
-	INSTALL_V2.install(player.body, player.skeleton, player.body._foot_ik_modifier)
+	INSTALL_V2.install(player.body, player.skeleton)
 	climb = INSTALL_CLIMB.install(player)
 	if "--balance-shots" in OS.get_cmdline_user_args():
 		var camera := Camera3D.new()

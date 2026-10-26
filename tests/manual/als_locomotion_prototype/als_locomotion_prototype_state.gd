@@ -451,7 +451,7 @@ const ALS_CAM_PITCH_MAX_DEG := 60.0
 ## face travel.
 enum RotationMode { VELOCITY_DIRECTION, LOOKING_DIRECTION }
 
-const FOOT_IK_MODIFIER := preload("res://actors/player/player_foot_ik_modifier.gd")
+const FOOT_IK_V2_INSTALL := preload("res://actors/player/foot_ik_v2/foot_ik_v2_install.gd")
 const SPINE_TWIST_MODIFIER := preload(
 		"res://tests/manual/als_locomotion_prototype/prototype_spine_twist_modifier.gd")
 const MANTLE_HAND_IK_MODIFIER := preload(
@@ -460,7 +460,7 @@ const MANTLE_HAND_IK_MODIFIER := preload(
 var _body: CharacterBody3D
 var _character: PrototypeBodyFacade
 var _anim_player: AnimationPlayer
-var _foot_ik_modifier: PlayerFootIKModifier
+var _foot_ik_modifier: FootIKV2Modifier
 var _spine_twist_modifier: PrototypeSpineTwistModifier
 var _mantle_hand_ik_modifier: PrototypeMantleHandIKModifier
 var _skeleton: Skeleton3D

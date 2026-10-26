@@ -351,8 +351,6 @@ func _animate_hang(delta: float) -> void:
 
 func _play(clip: StringName, blend: float, speed: float, reverse := false) -> void:
 	var body := _player.body
-	if body._foot_ik_modifier != null:
-		body._foot_ik_modifier.set_character_grounded(false)
 	var key := StringName("%s%s" % [clip, "<" if reverse else ">"])
 	if _clip == key:
 		return

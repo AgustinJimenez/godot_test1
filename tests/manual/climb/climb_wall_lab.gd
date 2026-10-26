@@ -50,7 +50,7 @@ func _ready() -> void:
 	player = PLAYER_SCENE.instantiate() as Player
 	add_child(player)
 	player.global_position = START
-	INSTALL_V2.install(player.body, player.skeleton, player.body._foot_ik_modifier)
+	INSTALL_V2.install(player.body, player.skeleton)
 	climb = INSTALL_CLIMB.install(player)
 	if "--wall-shots" in OS.get_cmdline_user_args():
 		var camera := Camera3D.new()

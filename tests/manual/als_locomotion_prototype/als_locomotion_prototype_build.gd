@@ -334,9 +334,7 @@ func _build_player() -> void:
 	# This runs on top of whatever pose the AnimationTree above produced, as
 	# a SkeletonModifier3D (the engine calls it automatically after
 	# animation, same as real gameplay).
-	_foot_ik_modifier = FOOT_IK_MODIFIER.new() as PlayerFootIKModifier
-	_foot_ik_modifier.player_body = _character
-	skeleton.add_child(_foot_ik_modifier)
+	_foot_ik_modifier = FOOT_IK_V2_INSTALL.install(_character, skeleton)
 
 	# Added AFTER the foot IK modifier deliberately: SkeletonModifier3D runs in
 	# sibling order, and the spine twist writes absolute global poses. Running

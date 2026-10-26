@@ -47,10 +47,7 @@ func _ready() -> void:
 	add_child(player)
 	world.set_target(player)
 	world.generator.chunks_per_frame = 8
-	if _use_v2:
-		INSTALL.install(player.body, player.skeleton, player.body._foot_ik_modifier)
-	if _off:
-		player.body._foot_ik_modifier.set_debug_enabled(false)
+	INSTALL.install(player.body, player.skeleton).enabled = _use_v2 and not _off
 	player.skeleton.skeleton_updated.connect(_sample_feet)
 	_run.call_deferred()
 

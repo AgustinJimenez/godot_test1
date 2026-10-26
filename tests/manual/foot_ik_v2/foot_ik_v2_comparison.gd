@@ -238,9 +238,9 @@ func _build_dummy(index: int, data: Array, ik_on: bool, count: int) -> void:
 	body.name = &"Body"
 	root.add_child(body)
 	body.play_debug_anim(data[1] as StringName, 0.0)
-	var v1: PlayerFootIKModifier = body._foot_ik_modifier
+	var v2 := INSTALL.install(body, body.skeleton)
 	if ik_on:
-		_modifiers.append(INSTALL.install(body, body.skeleton, v1))
+		_modifiers.append(v2)
 		_off_mods.append(_pending_off)
 		_worst.append(0.0)
 		_worst_bone.append("")
@@ -249,8 +249,7 @@ func _build_dummy(index: int, data: Array, ik_on: bool, count: int) -> void:
 		_foot.append({"deg_sum": 0.0, "deg_max": 0.0, "n": 0, "ankle_dy": 0.0, "ball_dy": 0.0,
 			"deg_now": 0.0, "ankle_now": 0.0, "drop_max": 0.0})
 	else:
-		v1.set_debug_enabled(false)
-		_pending_off = INSTALL.install(body, body.skeleton, v1)
+		_pending_off = v2
 		_pending_off.enabled = false
 	var label := Label3D.new()
 	label.text = "%s\nIK %s" % [data[0], "ON" if ik_on else "OFF"]

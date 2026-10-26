@@ -138,22 +138,6 @@ func _physics_process(delta: float) -> void:
 	_body.move_and_slide()
 
 	var on_floor := _body.is_on_floor()
-	if _foot_ik_modifier != null:
-		_foot_ik_modifier.set_character_grounded(on_floor)
-		# The solver is turned OFF entirely while crouched, not merely
-		# pose-suppressed. Measured, not assumed: running it on ALS's crouch
-		# pose drags the hips from the clip's authored 0.437m up to 0.966m -
-		# almost fully standing - because it plants the bent crouch legs and
-		# pushes the pelvis up to compensate" was a misdiagnosis - the crouch
-		# clips' arms were broken by a wrong retarget argument (see the status
-		# log), and that made the pose look wrong for an unrelated reason.
-		# Confirmed by testing directly: with the retarget fixed, leaving the
-		# modifier fully active still measures the crouch pose correctly
-		# (head 1.446 -> 0.951m above the feet). Foot IK stays on throughout
-		# crouch; only strafing suppresses the foot pose, matching PlayerBody's
-		# own condition exactly.
-		_foot_ik_modifier.set_pose_suppressed(
-				_is_crouching and on_floor and absf(input_dir.x) > 0.5)
 	if _spine_twist_modifier != null:
 		# DISABLED, and that is the faithful behaviour - see below.
 		#

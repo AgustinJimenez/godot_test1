@@ -53,7 +53,7 @@ func _ready() -> void:
 	add_child(player)
 	player.global_position = START
 	player.floor_max_angle = deg_to_rad(60.0)
-	INSTALL_V2.install(player.body, player.skeleton, player.body._foot_ik_modifier)
+	INSTALL_V2.install(player.body, player.skeleton)
 	climb = INSTALL_CLIMB.install(player)
 	if "--climb-shots" in OS.get_cmdline_user_args(): # side camera, PNGs of the hang and mantle
 		var camera := Camera3D.new()

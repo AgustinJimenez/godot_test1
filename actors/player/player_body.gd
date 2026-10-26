@@ -25,7 +25,6 @@ const SKIN_TEXTURE := "res://assets/models/pistol_starter/MotusMan/sourceimages/
 const MOTUSMAN_MODEL_DIR := "res://assets/models/pistol_starter/"
 const FLASHLIGHT_MODEL := preload("res://assets/models/flashlight/flashlight.glb")
 const HAND_GRIP_MODIFIER := preload("res://actors/player/player_hand_grip_modifier.gd")
-const FOOT_IK_MODIFIER := preload("res://actors/player/player_foot_ik_modifier.gd")
 const FOOT_IK_V2_INSTALL := preload("res://actors/player/foot_ik_v2/foot_ik_v2_install.gd")
 const SKELETON_VISUALIZER := preload("res://actors/player/player_skeleton_debug_visualizer.gd")
 const FLASHLIGHT_HAND := &"RightHand"
@@ -230,8 +229,6 @@ var _lib: AnimationLibrary
 var _held_pose: Animation
 var _look_pose_modifier: PlayerLookPoseModifier
 var _hand_grip_modifier: PlayerHandGripModifier
-var _foot_ik_modifier: PlayerFootIKModifier
-var _balance_counter_lean_modifier: PlayerBalanceCounterLeanModifier
 var _skeleton_visualizer: PlayerSkeletonDebugVisualizer
 var _flashlight_attachment: BoneAttachment3D
 var _flashlight_model: Node3D
@@ -355,16 +352,7 @@ func _build_character_visuals() -> void:
 	_look_pose_modifier.player_body = self
 	skeleton.add_child(_look_pose_modifier)
 	skeleton.set_modifier_callback_mode_process(Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_PHYSICS)
-	_foot_ik_modifier = FOOT_IK_MODIFIER.new() as PlayerFootIKModifier
-	_foot_ik_modifier.player_body = self
-	skeleton.add_child(_foot_ik_modifier)
-	# After Foot IK in child order so it reads this tick's final pelvis shift (018 finding E's
-	# same reasoning) - disabled by default, see the modifier's own doc comment.
-	_balance_counter_lean_modifier = PlayerBalanceCounterLeanModifier.new()
-	_balance_counter_lean_modifier.name = &"BalanceCounterLeanModifier"
-	_balance_counter_lean_modifier.player_body = self
-	skeleton.add_child(_balance_counter_lean_modifier)
-	FOOT_IK_V2_INSTALL.install(self, skeleton, _foot_ik_modifier) # Foot IK v2 is the foot IK; v1 only keeps its ground sampler
+	FOOT_IK_V2_INSTALL.install(self, skeleton) # the foot IK: last, so it corrects the pose every other modifier made
 	_setup_held_flashlight()
 
 	var lib := AnimationLibrary.new()
@@ -416,8 +404,6 @@ func swap_character(new_character_scene: PackedScene) -> void:
 	# .free() a second time on an already-freed object.
 	_look_pose_modifier = null
 	_hand_grip_modifier = null
-	_foot_ik_modifier = null
-	_balance_counter_lean_modifier = null
 	_skeleton_visualizer = null
 	_flashlight_attachment = null
 	_flashlight_model = null
@@ -695,8 +681,6 @@ func clamp_head_pitch(p: float) -> float:
 ## pelvis) - prefer Foot IK's final all-bone snapshot when fresh (018 finding E); the look
 ## modifier's own cache is the fallback for when Foot IK is inactive/suppressed/airborne.
 func get_visual_bone_global_pose(bone_idx: int) -> Transform3D:
-	if _foot_ik_modifier != null and _foot_ik_modifier.has_fresh_final_bone_poses():
-		return _foot_ik_modifier.get_final_bone_global_pose(bone_idx)
 	if _look_pose_modifier != null:
 		return _look_pose_modifier.get_adjusted_global_pose(bone_idx)
 	return skeleton.get_bone_global_pose(bone_idx)
@@ -708,10 +692,6 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 	set_held_flashlight_visible(torch_enabled)
 	if _hand_grip_modifier != null:
 		_hand_grip_modifier.active = false
-	if _foot_ik_modifier != null:
-		_foot_ik_modifier.set_character_grounded(on_floor or preserve_ground_pose_in_fall)
-		_foot_ik_modifier.set_pose_suppressed(
-				crouched and on_floor and absf(movement_input.x) > 0.5)
 	if _debug_preview_active:
 		if ground_speed <= 0.6 and not crouched and not armed and on_floor:
 			return
@@ -781,7 +761,7 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		else:
 			target = PlayerDirectionalLocomotionLibrary.walk_animation(_anim_input_smoothed)
 			target = PlayerStairClips.select_walk(self, target,
-					_foot_ik_modifier != null and _foot_ik_modifier.stairs_descending())
+					false)
 			rate = PlayerStairClips.walk_rate(target, ground_speed, rate)
 			var is_strafe: bool = (target != &"unarmed_walk")
 			var ref: float = PlayerTempWalk.ref_speed(target, is_strafe)

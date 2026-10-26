@@ -438,6 +438,8 @@ against `player.get_node(player.root_node).get_path_to(target_skeleton)` first -
 
 ## Foot IK and movement
 
+**v1 is gone (2026-10-26): Foot IK v2 is the only foot IK, in every scene.** `PlayerBody` installs it with each character (`actors/player/foot_ik_v2/foot_ik_v2_install.gd`, `install(body, skeleton)`, idempotent). `PlayerFootIKModifier`, `actors/player/foot_ik/*` (except `foot_ik_recorder.gd`), `tests/manual/foot_ik/*` (except `foot_ik_trace_writer.gd`) and the v1 `scripts/check_foot_ik*.sh` were deleted (recoverable from git history before that commit); the v1 paragraphs below are history, and file names in them no longer exist. Check v2 with `scripts/check_foot_ik_v2.sh`, and on the planet with `planet_lab.tscn -- --ik-soak=SECONDS` (AGENT_TASKS/093).
+
 **Foot IK v2 is the reduced, bug-free rewrite of v1 - prefer it.** The user judged v2 "so much better" than v1 on the procedural world terrain (2026-10-15). v1 has many special cases and known bugs; do not port v1 behaviour into v2, and new levels should install v2 (`FootIKV2Install.install(body, skeleton, body._foot_ik_modifier)`, preload the script). Debug any scene with `FootIkRecorder` (child of the Player): F10 records to `user://foot_ik_live.jsonl`, F11 marks a bad moment; it measures ankle/toe height above the real ground from outside, so it works for v1 and v2.
 
 **Foot IK v2 lessons (runtime `actors/player/foot_ik_v2/`; the v2 lab AND the procedural world (`levels/procedural_world.gd`) install it, every other scene still runs v1; labs `tests/manual/foot_ik_v2/`, handoff `AGENT_TASKS/035`, open hard bug `036`).** Read bone poses
@@ -645,7 +647,7 @@ stair checks, edge landing/safety, landing stability, split stance, idle seams, 
 stability while excluding the expensive known-red ramp matrices:
 
 ```sh
-scripts/check_foot_ik_fast.sh
+scripts/check_foot_ik_v2.sh
 ```
 
 Before committing confirmed Foot IK/stair changes, and whenever shared solver or ramp behavior

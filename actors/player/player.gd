@@ -506,17 +506,6 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, direction.z * speed, acceleration * delta)
 	if not is_on_floor():
 		velocity += get_gravity() * delta
-	if (ledge_safety_enabled and not is_on_floor() and velocity.y < 0.0
-			and body._foot_ik_modifier != null):
-		var predicted_safe_root: Vector3 = body._foot_ik_modifier._ground_sampler \
-				.predict_airborne_safe_root(get_world_3d().direct_space_state, 1.5)
-		if predicted_safe_root.is_finite():
-			var prediction_motion := (predicted_safe_root - global_position)
-			prediction_motion.y = 0.0
-			prediction_motion = prediction_motion.limit_length(body._foot_ik_modifier \
-					._ground_sampler._settings.landing_correction_speed * delta)
-			if not test_move(global_transform, prediction_motion):
-				global_position += prediction_motion
 	PlayerSteepSlope.block_uphill(self) # a slope past floor_max_angle stops the walk
 	var horizontal_motion := Vector3(velocity.x, 0.0, velocity.z) * delta
 	var frame_start_y := global_position.y
@@ -888,40 +877,8 @@ func _nudge_to_ledge_safe_zone(delta: float) -> void:
 	var mask: int = collision_mask | (1 << 5) | 1
 	var probe_up := 0.2
 	var probe_down := _ledge_support_probe_down(probe_up)
-	var pose_nudge := Vector3.ZERO
-	var feet_have_support: bool = (body._foot_ik_modifier != null
-			and body._foot_ik_modifier._ground_sampler.feet_have_common_current_support())
-	if body._foot_ik_modifier != null:
-		var foot_ik := body._foot_ik_modifier
-		pose_nudge = foot_ik._ground_sampler.preferred_root_nudge
-		var upper_y: float = foot_ik._ground_sampler.preferred_root_nudge_surface_y
-		var rise := upper_y - global_position.y
-		var lower_safe_zone_requested := (not pose_nudge.is_zero_approx()
-				and is_finite(upper_y) and upper_y < global_position.y - safe_margin)
-		if lower_safe_zone_requested:
-			_safe_zone_descent_active = true
-		elif is_on_floor() and not _safe_zone_descent_was_airborne:
-			_safe_zone_descent_active = false
-		if rise > 0.0 and rise <= step_height + safe_margin:
-			var rise_motion := Vector3.UP * rise
-			if not test_move(global_transform, rise_motion):
-				global_position += rise_motion
-	pose_nudge.y = 0.0
-	if feet_have_support and not pose_nudge.is_zero_approx():
-		body._foot_ik_modifier._ground_sampler.reject_split_safe_root()
-		pose_nudge = Vector3.ZERO
-	if not pose_nudge.is_zero_approx():
-		var pose_motion := pose_nudge.normalized() * (0.75 * delta)
-		var proposed := global_position + pose_motion + Vector3.UP * probe_up
-		var support_q := PhysicsRayQueryParameters3D.create(
-				proposed, proposed + Vector3.DOWN * probe_down, mask)
-		support_q.exclude = [get_rid()]
-		if not space.intersect_ray(support_q).is_empty() \
-				and not test_move(global_transform, pose_motion):
-			global_position += pose_motion
-			return
-		body._foot_ik_modifier._ground_sampler.reject_split_safe_root()
-		return
+	if is_on_floor() and not _safe_zone_descent_was_airborne:
+		_safe_zone_descent_active = false # (v1's ground sampler used to push the body to a safe root here; v2 has its own ledge nudge)
 	var center_from := global_position + Vector3.UP * probe_up
 	var center_q := PhysicsRayQueryParameters3D.create(
 			center_from, center_from + Vector3.DOWN * probe_down, mask)
@@ -942,7 +899,7 @@ func _nudge_to_ledge_safe_zone(delta: float) -> void:
 		q.exclude = [get_rid()]
 		if space.intersect_ray(q).is_empty():
 			nudge_dir -= off
-	if not feet_have_support and nudge_dir.length_squared() > 0.01:
+	if nudge_dir.length_squared() > 0.01:
 		var dir := nudge_dir.normalized()
 		var safe_p := global_position + dir * 0.25 + Vector3.UP * probe_up
 		var safe_q := PhysicsRayQueryParameters3D.create(

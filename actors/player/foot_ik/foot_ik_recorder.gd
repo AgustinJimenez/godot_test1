@@ -160,9 +160,7 @@ func _ik_state(body: PlayerBody) -> Dictionary:
 		if child is FootIKV2Modifier:
 			v2_present = true
 			v2_on = (child as FootIKV2Modifier).enabled
-	var v1 := body._foot_ik_modifier
 	return {
-		"v1_active": v1 != null and v1.active,
 		"v2_present": v2_present,
 		"v2_enabled": v2_on,
 	}

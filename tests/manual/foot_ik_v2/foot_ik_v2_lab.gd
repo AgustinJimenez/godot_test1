@@ -230,17 +230,13 @@ func _ready() -> void:
 	else:
 		_replay = RAMP_REPLAY
 		_start = Vector3(REPLAY_START_X_OFFSET, REPLAY_START_Z, REPLAY_YAW_DEG)
-	for child: Node in player.skeleton.get_children():
-		if child is PlayerFootIKModifier:
-			# v1 off: `active = false` re-enables on every landing; the debug switch sticks.
-			(child as PlayerFootIKModifier).set_debug_enabled(false)
 	# Bisect switch: `--disable-modifier=<NodeName>` turns one existing skeleton modifier off.
 	for child: Node in player.skeleton.get_children():
 		if child is SkeletonModifier3D:
 			print("[modifier] %s %s active=%s" % [child.name, child.get_class(), child.active])
 			if ("--disable-modifier=%s" % child.name) in OS.get_cmdline_user_args():
 				child.active = false
-	_v2 = INSTALL.install(player.body, player.skeleton, player.body._foot_ik_modifier)
+	_v2 = INSTALL.install(player.body, player.skeleton)
 	add_child(JOINT_FLASH.new().setup(_v2, player.skeleton)) # red flash on a joint snap
 	_v2.enabled = not ("--foot-ik-v2-off" in OS.get_cmdline_user_args())
 	if "--foot-ik-v2-no-pelvis-drop" in OS.get_cmdline_user_args():
