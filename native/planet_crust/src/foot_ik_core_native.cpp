@@ -681,6 +681,11 @@ void FootIKV2CoreNative::clear_toe(int p_leg, const Transform3D &p_to_world, con
 			return;
 		}
 		Vector3 target = debug_target.get(side, toe_point);
+		if (attempt == 0 && (double)plant_weight.get(side, 1.0) < 0.999) {
+			// a foot still fading onto the ground is only part way to its ground target: lift from where it stands, not from the full ground target
+			// (the lift of 17 cm at a heel strike landed on top of the full target while the plant weight was 0.4: floor-walk IK jerk 0.209)
+			target = foot_world.origin;
+		}
 		if (penetration > RISER_PENETRATION && retreats < RISER_MAX_RETREATS) {
 			retreats++;
 			const Vector3 ankle = foot_world.origin;

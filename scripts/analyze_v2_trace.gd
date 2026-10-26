@@ -358,6 +358,8 @@ func _cmd_snaps(frames: Array[Dictionary]) -> void:
 			var corr_a := _delta(a.get("animated_ankle"), a.get("foot_pos"))
 			var corr_b := _delta(b.get("animated_ankle"), b.get("foot_pos"))
 			(data["jerk"] as Array[float]).append((corr_b - corr_a).length())
+			if "--jerk-frames" in OS.get_cmdline_user_args() and (corr_b - corr_a).length() > 0.12:
+				print("JERK ", group, " f", cur.get("frame"), " ", side, " ", snappedf((corr_b - corr_a).length(), 0.001), " state=", b.get("state"), " skip=", b.get("skip_reason"), " plant=", b.get("plant"))
 			var body_a: Dictionary = prev.get("body", {})
 			var body_b: Dictionary = cur.get("body", {})
 			if side == "left": # body values are per frame, not per foot
