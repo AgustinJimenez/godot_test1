@@ -28,6 +28,7 @@ var _shimmy_start := 0.0
 var _shimmy_moved := 0.0
 var _checking := false
 var _shots := false
+var _shot_camera: Camera3D
 var _shot_dir := "/tmp" ## --shot-dir=PATH
 var _jump_release := false
 var _released: Array[StringName] = [] # actions pressed by the script, let go next frame
@@ -61,8 +62,9 @@ func _ready() -> void:
 	if "--climb-shots" in OS.get_cmdline_user_args(): # side camera, PNGs of the hang and mantle
 		var camera := Camera3D.new()
 		add_child(camera)
-		camera.look_at_from_position(Vector3(2.6, 1.9, 2.4), Vector3(0.0, 1.9, 0.0))
+		camera.look_at_from_position(Vector3(5.0, 1.9, 0.3) if "--shot-side" in OS.get_cmdline_user_args() else Vector3(2.6, 1.9, 2.4), Vector3(0.0, 1.9, 0.3 if "--shot-side" in OS.get_cmdline_user_args() else 0.0))
 		camera.make_current()
+		_shot_camera = camera
 		_shots = true
 		for arg in OS.get_cmdline_user_args():
 			if arg.begins_with("--shot-dir="):
@@ -206,6 +208,8 @@ func _press(action: StringName) -> void:
 
 
 func _process(_delta: float) -> void:
+	if _shot_camera != null and not _shot_camera.current:
+		_shot_camera.make_current() # the player's own camera takes over on its first frames
 	_last_hand_error = _hand_error() # the skeleton is posed by now (the physics tick runs before it)
 	if _shots and ((_phase == "hang" and _phase_frame in [5, 25])
 			or (_phase == "shimmy" and _phase_frame in [8, 16, 24, 32])

@@ -4,13 +4,16 @@ extends RefCounted
 
 const BVH_BAKE := preload("res://tests/manual/ledge_anim/bvh_bake.gd")
 const BVH_RETARGET := preload("res://tests/manual/ledge_anim/bvh_retarget.gd")
-## clip -> [BVH file, frame lined up with the wrists (0 first, 1 last)]
+## The hang swings the body out from the wall about the hands: the clips hang plumb under them, and the real wall
+## is where the chest and feet are (feet 0.5 m past the wrists).
+const HANG_TILT := deg_to_rad(20.0)
+## clip -> [BVH file, frame lined up with the wrists (0 first, 1 last), tilt at the start, tilt after the span, span (fraction of the clip)]
 const CLIPS := {
-	ClimbClips.IDLE: ["ledge-hang-idle-base", 0],
-	ClimbClips.GRAB: ["ledge-land-waist-contact_to_ledge-grab-idle", 1],
-	ClimbClips.UP: ["ledge-grab-idle_to_ledge-facing-idle-full", 0],
+	ClimbClips.IDLE: ["ledge-hang-idle-base", 0, HANG_TILT, HANG_TILT, 1.0],
+	ClimbClips.GRAB: ["ledge-land-waist-contact_to_ledge-grab-idle", 1, 0.0, HANG_TILT, 1.0],
+	ClimbClips.UP: ["ledge-grab-idle_to_ledge-facing-idle-full", 0, HANG_TILT, 0.0, 0.3],
 }
-const WRIST := 1.8 # m the wrists are above the capsule's feet in the hang
+const WRIST := 1.7 # m the wrists are above the capsule's feet in the hang
 
 
 ## `on`: the BVH clips, else the Mixamo ones back. Returns whether the swap happened.
@@ -30,7 +33,7 @@ static func apply(player: Player, on: bool) -> bool:
 		var prefix := String(idle.track_get_path(ClimbClips.hips_track(idle))).get_slice(":", 0)
 		for clip: StringName in CLIPS:
 			var spec: Array = CLIPS[clip]
-			var anim: Animation = BVH_BAKE.bake(spec[0], retarget, prefix, WRIST, spec[1], clip == ClimbClips.IDLE)
+			var anim: Animation = BVH_BAKE.bake(spec[0], retarget, prefix, WRIST, spec[1], clip == ClimbClips.IDLE, spec[2], spec[3], spec[4])
 			if anim == null:
 				push_warning("GALS ledge clips: could not bake %s" % spec[0])
 				return false

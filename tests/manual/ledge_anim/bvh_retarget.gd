@@ -33,6 +33,8 @@ var role_map: Dictionary
 var yaw := Basis.IDENTITY ## source world -> the skeleton's world (turns the clip to face where the player faces)
 var scale := 1.0
 var origin := Vector3.ZERO ## source model-space point placed on the skeleton's origin
+var tilt := 0.0 ## radians the body swings back (feet away from where it faces) about `pivot`
+var pivot := Vector3.ZERO ## world-aligned, relative to `origin`: where the hands are (they stay put)
 var _bone_of: Dictionary = {} ## role -> bone index
 var _drive: Dictionary = {} ## bone index -> [source joint, child bone index, source child joint]
 
@@ -85,7 +87,11 @@ func fit_scale(clip) -> float:
 ## The skeleton-space point of a source (BVH, model space) point. `origin` is the source point that lands on the
 ## skeleton's own origin (the clip's mover, or wherever the capsule should sit).
 func to_skeleton(point: Vector3) -> Vector3:
-	return skeleton.global_basis.inverse() * (yaw * (point - origin) * scale)
+	var moved: Vector3 = yaw * (point - origin)
+	if tilt != 0.0:
+		var right := target_forward().cross(Vector3.UP)
+		moved = pivot + Basis(right, -tilt) * (moved - pivot)
+	return skeleton.global_basis.inverse() * (moved * scale)
 
 
 ## The turn that makes the clip's body face where the skeleton faces at `time` (from the hips: up x right).
