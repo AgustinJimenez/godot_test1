@@ -384,7 +384,7 @@ func _terrain_check() -> bool:
 	rng.seed = 11
 	var heights := PackedFloat32Array()
 	var rock_count := PackedInt32Array()
-	rock_count.resize(PlanetRock.Kind.size())
+	rock_count.resize(PlanetRock.kind_count())
 	var scales := [100.0, 1000.0, 10000.0, 100000.0]
 	var slope_sum := [0.0, 0.0, 0.0, 0.0]
 	var slope_count := [0, 0, 0, 0]

@@ -61,7 +61,7 @@ func _init(planet_settings: PlanetSettings) -> void:
 	if relief <= 0.0:
 		relief = clampf(settings.radius * 0.0035, 300.0, 12000.0)
 	tectonics = PlanetTectonics.create(settings.world_seed, settings.plates)
-	rock = PlanetRock.new(tectonics, settings.world_seed, settings.radius, relief)
+	rock = PlanetRock.create(tectonics, settings.world_seed, settings.radius, relief)
 	_lap("plates and rock")
 	species = SpeciesRegistry.new(settings.world_seed, settings.species_count)
 	StarLight.apply(species.species, Star.from_mass(settings.star_mass), settings.star_readability)
@@ -174,7 +174,7 @@ func _make_native() -> void:
 		"hotspots": _hotspots(),
 		"erosion_wavelength": clampf(settings.radius * 0.005, 800.0, 40000.0) * EROSION_SCALE,
 		"valley_width": VALLEY_WIDTH, "valley_depths": depths,
-		"rock_boundary": PlanetRock.BOUNDARY, "rock_colours": PackedColorArray(PlanetRock.COLOURS),
+		"rock_boundary": PlanetRock.get_boundary(), "rock_colours": PlanetRock.colours(),
 		"warp": noise_config(tectonics._warp), "ridge": noise_config(tectonics._ridge),
 		"interior": noise_config(tectonics._interior), "rolling": noise_config(_rolling),
 		"ranges": noise_config(_ranges), "range_mask": noise_config(_range_mask),
