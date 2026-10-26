@@ -14,6 +14,9 @@ const CLIPS := {
 	ClimbClips.UP: ["ledge-grab-idle_to_ledge-facing-idle-full", 0, HANG_TILT, 0.0, 0.3],
 }
 const WRIST := 1.7 # m the wrists are above the capsule's feet in the hang
+## The clips hold the arms angled into the wall (elbows 0.15 m past the wrists' depth); the body is baked this far out
+## so the elbows and shoulders are not inside it, and the hand IK draws the wrists the rest of the way to the ledge.
+const HANDS_OUT := 0.14
 
 
 ## `on`: the BVH clips, else the Mixamo ones back. Returns whether the swap happened.
@@ -33,7 +36,7 @@ static func apply(player: Player, on: bool) -> bool:
 		var prefix := String(idle.track_get_path(ClimbClips.hips_track(idle))).get_slice(":", 0)
 		for clip: StringName in CLIPS:
 			var spec: Array = CLIPS[clip]
-			var anim: Animation = BVH_BAKE.bake(spec[0], retarget, prefix, WRIST, spec[1], clip == ClimbClips.IDLE, spec[2], spec[3], spec[4])
+			var anim: Animation = BVH_BAKE.bake(spec[0], retarget, prefix, WRIST, spec[1], clip == ClimbClips.IDLE, PlayerClimb.HAND_BACK - HANDS_OUT, spec[2], spec[3], spec[4])
 			if anim == null:
 				push_warning("GALS ledge clips: could not bake %s" % spec[0])
 				return false

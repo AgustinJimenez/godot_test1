@@ -213,6 +213,7 @@ func _process(_delta: float) -> void:
 	_last_hand_error = _hand_error() # the skeleton is posed by now (the physics tick runs before it)
 	if _shots and ((_phase == "hang" and _phase_frame in [5, 25])
 			or (_phase == "shimmy" and _phase_frame in [8, 16, 24, 32])
+			or (_phase in ["edge", "leap", "drop"] and _phase_frame in [12, 25, 40, 60, 90])
 			or (_phase == "mantle" and _phase_frame in [10, 35, 60, 85, 110])):
 		get_viewport().get_texture().get_image().save_png("%s/climb_%s_%d.png" % [_shot_dir, _phase, _phase_frame])
 

@@ -9,6 +9,8 @@ const WALL_Z := 20.0 # centre of the walls; their faces (toward the ramps) are a
 const GALS_CLIPS := preload("res://tests/manual/ledge_anim/gals_ledge_clips.gd")
 
 var _gals := false
+var _demo_dir := ""
+var _demo_frame := 0
 
 
 func _ready() -> void:
@@ -27,8 +29,46 @@ func _ready() -> void:
 	var player := lab.get_node_or_null("Player") as Player
 	if player != null and player.climb == null:
 		INSTALL_CLIMB.install(player)
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--climb-demo="):
+			_demo_dir = arg.substr(13)
 	if player != null and "--gals-ledge" in OS.get_cmdline_user_args():
 		_use_gals_clips.call_deferred(true)
+
+
+## `--climb-demo=DIR`: drop at the 2.5 m ledge, hang, and save pictures (the player's own camera, then a side one).
+func _physics_process(_delta: float) -> void:
+	if _demo_dir == "":
+		return
+	var player := get_parent().get_node_or_null("Player") as Player
+	_demo_frame += 1
+	if player == null or player.climb == null:
+		return
+	if _demo_frame == 60:
+		player.global_position = Vector3(-10.0, 1.7, WALL_Z - 1.6)
+		player.rotation = Vector3(0.0, PI, 0.0)
+		player.velocity = Vector3.ZERO
+	elif _demo_frame in [200, 260]:
+		get_viewport().get_texture().get_image().save_png("%s/demo_%d.png" % [_demo_dir, _demo_frame])
+		print("CLIMB_DEMO state ", player.climb.state, " at ", player.global_position)
+		var map: Dictionary = player.body._target_humanoid_map
+		for role: String in ["Hips", "Spine2", "Head", "LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand", "LeftUpLeg", "LeftLeg", "LeftFoot", "LeftToeBase"]:
+			var bone := player.skeleton.find_bone(String(map.get(role, "")))
+			if bone >= 0:
+				var at := player.skeleton.global_transform * player.skeleton.get_bone_global_pose(bone).origin
+				print("CLIMB_DEMO bone %-12s y %.2f  z past wall %+.2f" % [role, at.y, at.z - (WALL_Z - 1.0)])
+		for side: StringName in [&"left", &"right"]:
+			if player.climb.hands.targets.has(side) and player.climb.hands.debug_wrist.has(side):
+				var target: Vector3 = player.climb.hands.targets[side]
+				var wrist: Vector3 = player.climb.hands.debug_wrist[side]
+				print("CLIMB_DEMO ", side, " target ", target, " wrist ", wrist, " off ", wrist - target)
+		if _demo_frame == 200:
+			var camera := Camera3D.new()
+			get_parent().add_child(camera)
+			camera.look_at_from_position(Vector3(-5.5, 1.6, WALL_Z - 3.2), Vector3(-10.0, 1.4, WALL_Z - 1.0))
+			camera.make_current()
+	elif _demo_frame == 261:
+		get_tree().quit()
 
 
 func _unhandled_key_input(event: InputEvent) -> void:

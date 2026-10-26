@@ -332,11 +332,11 @@ func _on_wall(delta: float) -> void:
 
 ## Switches to the hang clips: the wrists sit WRIST_HANG above the capsule, the body HANG_BACK
 ## out from the wall face.
-func use_clips(wrist_hang := WRIST_HANG, wrist_up := WRIST_UP) -> void:
+func use_clips(wrist_hang := WRIST_HANG, wrist_up := WRIST_UP, hang_back := HANG_BACK) -> void:
 	clips_ok = true
 	_hang_drop = wrist_hang
 	_wrist_up = wrist_up
-	_hang_back = HANG_BACK
+	_hang_back = hang_back
 
 
 func _animate_hang(delta: float) -> void:
