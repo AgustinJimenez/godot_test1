@@ -542,6 +542,21 @@ void FootIKV2CoreNative::place_foot(int p_leg) {
 				debug_skip_reason[side] = "out_of_reach";
 				debug_target.erase(side);
 				debug_state[side] = "released";
+				// the animation's own leg is straight: the correction held until now eases out (at most CORRECTION_STEP a frame) instead of vanishing in
+				// one frame (a 6-9 cm pop of the foot at every toe-off of a jog or sprint, found by the planet soak, AGENT_TASKS/093)
+				Dictionary held = corr_last.get(side, Dictionary());
+				if (is_moving && !held.is_empty() && (int)held["frame"] >= frames() - 1) {
+					const Vector3 last = held["end"];
+					if (last.length() > 0.001) {
+						const Vector3 eased = last - last.normalized() * (real_t)std::min((double)last.length(), CORRECTION_STEP);
+						held["start"] = last;
+						held["end"] = eased;
+						held["frame"] = frames();
+						corr_last[side] = held;
+						solve(p_leg, animated_local + eased);
+						return;
+					}
+				}
 				note_released(side);
 				return;
 			}

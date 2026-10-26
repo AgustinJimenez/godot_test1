@@ -17,3 +17,9 @@ while, read the IK logs; when something is off in the logs, find the bug and fix
 - Run 1 (seed default, 120 s, 51 m): no sink (ankles never lower than 9.6 cm over the ground), no pelvis pop (max 5 mm a frame). SNAPs all coincide with CLIP_SNAPs: the animation
   itself jumps 0.23-0.30 m in one frame when the gait clip changes (jog -> walk, strafe start): not the IK. FLOATs: a foot finishing its step for 3 frames after the body stops
   (the clip's own step), not a bug. IK_POP 6-7 cm once per stride while sprint-turning (a stance foot held "stretched" until the leg is at full reach, then released).
+- Soak of 6 seeds (150 s each, /e/Temp/ik_many.sh): seed 11 (slopes of 13-25 degrees) had 162 events, 39 IK_POP while jogging, up to 16 cm; the other seeds 40-76 events (the same
+  clip snaps and stop-step FLOATs). Cause of the IK_POP (foot frame data: skip=out_of_reach, state released, plant weight ~0.25): when the animation's own leg is straight
+  (hip to ankle > reach) place_foot gave the foot up at once, so the correction the foot had until then (6-16 cm at toe-off, more uphill) vanished in one frame.
+  FIX (foot_ik_core_native.cpp, place_foot, out_of_reach branch): while moving, the held correction (corr_last) eases out at CORRECTION_STEP (3 cm) a frame, the leg solved
+  to animation + eased. Seed 11 jog: IK_POP count 39 -> 3 in 60 s. scripts/check_foot_ik_v2.sh: same numbers as before (known fails unchanged: floor-walk jerk 0.209/0.20,
+  ramp strafe, project checks).
