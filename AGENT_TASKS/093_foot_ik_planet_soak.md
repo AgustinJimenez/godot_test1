@@ -37,3 +37,6 @@ while, read the IK logs; when something is off in the logs, find the bug and fix
   5 mm or more. A toeing-off foot was pulled 6 cm below its blend for three frames, then the check fell under 5 mm and it let go in one frame (y 0.03 -> 0.16 m).
   FIX: blend from the animated ankle, as place_foot does. Seed 11 (150 s): IK_POP 118 -> ~60 (strafe_left 15 -> 3, strafe_right 7 -> 1, walk_turn_left 11 -> 2, crouch_walk 7 -> 1);
   seeds 77/88 no worse (88: stop_go/walk/back pops gone). The jog/sprint_turn pops left are the plant-fade trade-off above.
+- Fourth batch (seeds 99 111 122 201 305, after the resample fix): seeds 111/122/201/305 have no IK_POP and no sink; seed 99 has 20 jog pops (the plant-fade trade-off). The
+  remaining FLOATs (idle, idle_crouch, spin_in_place, up to 0.26 m) are the stop-step: spin_in_place alone (--ik-soak-only) has none, so they are the previous phase's last step finishing
+  in the animation after the body stops (the clip's own foot, not the IK). Nothing new in the IK this round.
