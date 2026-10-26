@@ -1,6 +1,7 @@
 #include "register_types.h"
 
 #include "planet_crust_native.h"
+#include "planet_map_ui_native.h"
 #include "planet_menu_native.h"
 #include "planet_menu_native.h"
 #include "planet_map_globe_native.h"
@@ -79,6 +80,7 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(PlanetCrustNative);
+	GDREGISTER_CLASS(PlanetMap);
 	GDREGISTER_CLASS(UniverseStartMenu);
 	GDREGISTER_CLASS(PlanetMenu);
 	GDREGISTER_CLASS(PlanetMapGlobe);

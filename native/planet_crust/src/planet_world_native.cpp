@@ -3,6 +3,7 @@
 #include "planet_ground_bake_native.h"
 #include "planet_sky_native.h"
 #include "planet_nodes_native.h"
+#include "planet_map_ui_native.h"
 #include "planet_menu_native.h"
 #include "planet_prints_native.h"
 #include "planet_recorder_native.h"
@@ -171,8 +172,8 @@ void PlanetWorld::_ready() {
 	shell->set_planet(this);
 	add_child(shell);
 	cloud_shell_id = shell->get_instance_id();
-	Node *chart_map = Object::cast_to<Node>(make_scripted("res://systems/planet/planet_map.gd"));
-	chart_map->set("planet", this);
+	PlanetMap *chart_map = memnew(PlanetMap);
+	chart_map->set_planet(this);
 	add_child(chart_map);
 	map_id = chart_map->get_instance_id();
 	PlanetRecorder *recorder = memnew(PlanetRecorder); // the last seconds of play, kept in a file (F9 marks)
@@ -327,7 +328,7 @@ Vector3 PlanetWorld::start(Node3D *p_target, const Vector3 &p_direction, double 
 	restored = Dictionary();
 	publish_frame();
 	PlanetSurface *ground = get_surface();
-	Object *chart_map = get_map();
+	PlanetMap *chart_map = Object::cast_to<PlanetMap>(get_map());
 	if (!(is_player && ground->is_threaded())) {
 		chart_map->call("begin");
 	}
@@ -342,8 +343,7 @@ Vector3 PlanetWorld::start(Node3D *p_target, const Vector3 &p_direction, double 
 			// the world is defined before it is built: its map, every layer, comes first, and the ground waits (map.paused) until the map is closed
 			chart_map->set("warm_up", true); // (black, with its progress, until the whole map is charted)
 			chart_map->call("begin");
-			Ref<Script> map_script = chart_map->get_script();
-			chart_map->call("show_zoom", map_script->get_script_constant_map()["MAX_ZOOM"]);
+			chart_map->show_zoom(PlanetMap::MAX_ZOOM);
 			chart_map->connect("visibility_changed", Callable(this, "cover_the_loading"), CONNECT_ONE_SHOT);
 			return dir;
 		}

@@ -1,6 +1,7 @@
 #include "planet_menu_native.h"
 
 #include "planet_clock_native.h"
+#include "planet_map_ui_native.h"
 #include "planet_star_native.h"
 #include "universe_native.h"
 
@@ -119,10 +120,9 @@ void PlanetMenu::main_menu() {
 }
 
 void PlanetMenu::open_map() {
-	Object *map = planet()->get("map");
-	map->call("toggle");
-	Ref<Script> map_script = map->get_script();
-	map->call("show_zoom", map_script->get_script_constant_map()["MAX_ZOOM"]);
+	PlanetMap *map = Object::cast_to<PlanetMap>((Object *)planet()->get("map"));
+	map->toggle();
+	map->show_zoom(PlanetMap::MAX_ZOOM);
 }
 
 void PlanetMenu::refresh() {
