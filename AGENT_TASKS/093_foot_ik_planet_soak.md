@@ -40,3 +40,5 @@ while, read the IK logs; when something is off in the logs, find the bug and fix
 - Fourth batch (seeds 99 111 122 201 305, after the resample fix): seeds 111/122/201/305 have no IK_POP and no sink; seed 99 has 20 jog pops (the plant-fade trade-off). The
   remaining FLOATs (idle, idle_crouch, spin_in_place, up to 0.26 m) are the stop-step: spin_in_place alone (--ik-soak-only) has none, so they are the previous phase's last step finishing
   in the animation after the body stops (the clip's own foot, not the IK). Nothing new in the IK this round.
+- Fifth batch (seeds 7 42 500 777 1234): no sink, pelvis pop at most 2.5 cm; IK_POP only in jog/sprint_turn (seed 42: 37, 777: 11, 1234: 9, seeds 7/500: none), the known plant-fade
+  trade-off; FLOATs are the stop-step. Nothing new in the IK.
