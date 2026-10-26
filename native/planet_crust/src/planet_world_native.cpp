@@ -3,6 +3,7 @@
 #include "planet_ground_bake_native.h"
 #include "planet_sky_native.h"
 #include "planet_nodes_native.h"
+#include "planet_recorder_native.h"
 #include "planet_render_native.h"
 #include "planet_star_native.h"
 #include "planet_sway_native.h"
@@ -111,7 +112,11 @@ PlanetWorld::PlanetWorld() {
 
 // A node made from a GDScript class (the flat world's classes the planet builds on), not yet in the tree.
 Object *PlanetWorld::make_scripted(const char *p_path) const {
-	return script_of(p_path)->call("new");
+	Ref<Script> script = script_of(p_path);
+	ERR_FAIL_COND_V_MSG(script.is_null(), nullptr, String("PlanetWorld: the script ") + p_path + " did not load");
+	Object *made = script->call("new");
+	ERR_FAIL_COND_V_MSG(made == nullptr, nullptr, String("PlanetWorld: ") + p_path + " could not be made");
+	return made;
 }
 
 Node3D *PlanetWorld::target() const {
@@ -167,8 +172,8 @@ void PlanetWorld::_ready() {
 	chart_map->set("planet", this);
 	add_child(chart_map);
 	map_id = chart_map->get_instance_id();
-	Node *recorder = Object::cast_to<Node>(make_scripted("res://systems/planet/planet_recorder.gd")); // the last seconds of play, kept in a file (F9 marks)
-	recorder->set("planet", this);
+	PlanetRecorder *recorder = memnew(PlanetRecorder); // the last seconds of play, kept in a file (F9 marks)
+	recorder->set_planet(this);
 	add_child(recorder);
 	CanvasLayer *layer = memnew(CanvasLayer);
 	layer->set_layer(80);

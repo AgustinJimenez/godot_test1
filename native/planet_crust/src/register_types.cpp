@@ -1,6 +1,8 @@
 #include "register_types.h"
 
 #include "planet_crust_native.h"
+#include "planet_recorder_native.h"
+#include "planet_recorder_native.h"
 #include "planet_world_native.h"
 #include "planet_chart_native.h"
 #include "planet_surface_script_native.h"
@@ -62,6 +64,8 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(PlanetCrustNative);
+	GDREGISTER_CLASS(PlanetRecorder);
+	GDREGISTER_CLASS(PlanetRecorderLogger);
 	GDREGISTER_CLASS(PlanetWorld);
 	GDREGISTER_CLASS(PlanetChart);
 	GDREGISTER_CLASS(PlanetSurface);
