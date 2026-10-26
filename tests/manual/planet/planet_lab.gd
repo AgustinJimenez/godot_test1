@@ -21,6 +21,7 @@ extends Node3D
 ##   -- --spawn-alt=N  start N metres above the ground there (up to the other side of space)
 ##   -- --grounded  walk instead of starting in free mode (checks always walk)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
+##   -- --foot-ik-v2  Foot IK v2 on the player (the planet runs v1 otherwise)   --ik-soak=SECONDS [--ik-soak-log=PATH]  the Foot IK soak (PlanetIKSoak, AGENT_TASKS/093)
 ##   -- --fps  print the frame rate every 300 frames
 ##   -- --star-mass=M [--star-readability=0..1]  the star in solar masses (0.15 red, 1.6 white)
 ##   -- --home=SEED [--any]  start on the home planet of that universe (Sun-like unless --any)
@@ -36,11 +37,15 @@ extends Node3D
 ##                     planet under them) and prints one PLANET_CHECK line.
 
 const PLAYER_SCENE := preload("res://actors/player/player.tscn")
+const FOOT_IK_V2 := preload("res://actors/player/foot_ik_v2/foot_ik_v2_install.gd")
 
 var planet: PlanetWorld
 var player: Player
 var _checking := false
 var _walking := false
+var _ik_soak: PlanetIKSoak ## (--ik-soak=SECONDS) the Foot IK soak: the player walks a script of moves and the IK is audited
+var _ik_soak_log := ""
+var _ik_soak_only := ""
 var _weather_name := "" ## a WorldWeather.State name to force from the start (rain, snow...)
 var _climb := 0.0 ## lift the player this many metres once the planet has loaded (they hang there)
 var _hide := "" ## trees, plants, ground or water: not drawn (to see what each costs)
@@ -625,6 +630,13 @@ func _ready() -> void:
 			settings.hydrology_on = true
 		elif arg == "--bare":
 			settings.plant_density = 0.0
+		elif arg.begins_with("--ik-soak-log="):
+			_ik_soak_log = arg.trim_prefix("--ik-soak-log=")
+		elif arg.begins_with("--ik-soak-only="):
+			_ik_soak_only = arg.trim_prefix("--ik-soak-only=")
+		elif arg.begins_with("--ik-soak"):
+			_ik_soak = PlanetIKSoak.new()
+			_ik_soak.seconds = arg.trim_prefix("--ik-soak=").to_float() if "=" in arg else 120.0
 		elif arg == "--walk-check":
 			_walking = true
 		elif arg == "--swim-check":
@@ -667,9 +679,12 @@ func _ready() -> void:
 	if _swim_check:
 		planet.spawn_on_solid_ground = false # (the sea is the point)
 		_start_dir = _find_sea(planet.noise)
+	if _ik_soak != null or "--foot-ik-v2" in OS.get_cmdline_user_args():
+		# Foot IK v2 on the planet's player (the flat world installs it; the planet runs v1 unless asked)
+		FOOT_IK_V2.install(player.body, player.skeleton, player.body._foot_ik_modifier)
 	var spawn := planet.start(player, _start_dir, _spawn_alt)
 	planet.atmosphere.clouds_hidden = _no_clouds
-	if not (_grounded or _walking or _checking or _swim_check or _climb > 0.0):
+	if not (_grounded or _walking or _checking or _swim_check or _climb > 0.0 or _ik_soak != null):
 		player.set_free_mode(true) # looking at the planet: fly (the debug menu's toggle follows)
 		player.hud.free_mode_toggle.set_pressed_no_signal(true)
 	planet.loaded.connect(func() -> void: print("LOADED after %d ms (%d tiles)" % [
@@ -757,6 +772,9 @@ func _physics_process(_delta: float) -> void:
 				player.global_position.y - level) < 2.5 else "FAIL", afloat, level,
 				player.global_position.y])
 		get_tree().quit()
+	if _ik_soak != null and player != null:
+		_ik_soak_step()
+		return
 	if _walking and player != null:
 		_walk_step()
 		if _shot != "" and _frame == _shot_frame: # (a picture of a walk, LAB_PLAIN for the sand)
@@ -885,6 +903,22 @@ func _ground_y() -> float:
 			return (hit["position"] as Vector3).y
 		skipped.append(hit["rid"] as RID)
 	return player.global_position.y
+
+
+## The Foot IK soak (PlanetIKSoak): after a minute for the ground to settle the player is driven through a script of moves, and at the end the audit's
+## summary is printed (IK_SOAK).
+func _ik_soak_step() -> void:
+	if _frame == 60:
+		_ik_soak.only = _ik_soak_only
+		if not _ik_soak.start(player, planet, _ik_soak_log):
+			get_tree().quit()
+			return
+		_ik_soak.mark_start()
+	if _frame > 60:
+		_ik_soak.drive(_frame)
+	if _ik_soak.finished():
+		_ik_soak.summary()
+		get_tree().quit()
 
 
 ## Holds the player's forward and sprint keys and watches how the walk goes (real physics, the
