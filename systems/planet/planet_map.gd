@@ -133,7 +133,7 @@ func _ready() -> void:
 	_globe_button.focus_mode = Control.FOCUS_NONE
 	_globe_button.toggled.connect(_set_globe)
 	row.add_child(_globe_button)
-	_time_bar = PlanetMapTimeBar.new(planet)
+	_time_bar = PlanetMapTimeBar.create(planet)
 	column.add_child(_time_bar)
 	_hover = Label.new()
 	_hover.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -373,8 +373,8 @@ func begin() -> void:
 	if _started or planet == null or DisplayServer.get_name() == "headless":
 		return
 	_started = true
-	_tiles = PlanetMapTiles.new(planet.noise)
-	_disk = PlanetMapCache.new(planet.settings)
+	_tiles = PlanetMapTiles.create(planet.noise)
+	_disk = PlanetMapCache.create(planet.settings)
 	_tiles.disk = _disk
 	if planet.has_signal(&"world_changed"):
 		planet.world_changed.connect(world_changed)
