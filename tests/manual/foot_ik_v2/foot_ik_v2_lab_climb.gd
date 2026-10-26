@@ -32,7 +32,7 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--climb-demo="):
 			_demo_dir = arg.substr(13)
-	if player != null and "--gals-ledge" in OS.get_cmdline_user_args():
+	if player != null and not "--mixamo-ledge" in OS.get_cmdline_user_args():
 		_use_gals_clips.call_deferred(true)
 
 
@@ -107,7 +107,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_use_gals_clips(not _gals)
 
 
-## F9: the hang, grab and pull-up clips of the reverse-engineered game in place of the Mixamo ones.
+## The hang, grab and pull-up clips are the reverse-engineered game's (needs its folder; else Mixamo). `--mixamo-ledge`
+## starts on the Mixamo ones; F9 swaps.
 func _use_gals_clips(on: bool) -> void:
 	var player := get_parent().get_node_or_null("Player") as Player
 	if GALS_CLIPS.apply(player, on):
