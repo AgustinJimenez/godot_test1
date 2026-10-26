@@ -28,6 +28,7 @@ var _shimmy_start := 0.0
 var _shimmy_moved := 0.0
 var _checking := false
 var _shots := false
+var _shot_dir := "/tmp" ## --shot-dir=PATH
 var _jump_release := false
 var _released: Array[StringName] = [] # actions pressed by the script, let go next frame
 var _hung_from_top := -1.0 # y of the body hanging after a drop from the top, -1 = never
@@ -55,12 +56,17 @@ func _ready() -> void:
 	player.floor_max_angle = deg_to_rad(60.0)
 	INSTALL_V2.install(player.body, player.skeleton)
 	climb = INSTALL_CLIMB.install(player)
+	if "--gals-ledge" in OS.get_cmdline_user_args(): # the reverse-engineered game's hang / grab / pull-up clips
+		load("res://tests/manual/ledge_anim/gals_ledge_clips.gd").apply(player, true)
 	if "--climb-shots" in OS.get_cmdline_user_args(): # side camera, PNGs of the hang and mantle
 		var camera := Camera3D.new()
 		add_child(camera)
 		camera.look_at_from_position(Vector3(2.6, 1.9, 2.4), Vector3(0.0, 1.9, 0.0))
 		camera.make_current()
 		_shots = true
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--shot-dir="):
+				_shot_dir = arg.substr(11)
 
 
 func _add_box(at: Vector3, size: Vector3) -> void:
@@ -204,7 +210,7 @@ func _process(_delta: float) -> void:
 	if _shots and ((_phase == "hang" and _phase_frame in [5, 25])
 			or (_phase == "shimmy" and _phase_frame in [8, 16, 24, 32])
 			or (_phase == "mantle" and _phase_frame in [10, 35, 60, 85, 110])):
-		get_viewport().get_texture().get_image().save_png("/tmp/climb_%s_%d.png" % [_phase, _phase_frame])
+		get_viewport().get_texture().get_image().save_png("%s/climb_%s_%d.png" % [_shot_dir, _phase, _phase_frame])
 
 
 func _next(phase: String) -> void:

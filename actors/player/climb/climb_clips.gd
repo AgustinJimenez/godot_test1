@@ -21,11 +21,14 @@ static var _paths: Dictionary = {} # clip -> [times, offsets]
 
 
 ## Adds the clips to `library`. `stand_hips` is the pose's hips position while standing idle.
+## `overrides` (clip -> Animation, already on the skeleton) replaces the Mixamo file for that clip.
 static func add_to(library: AnimationLibrary, skeleton: Skeleton3D, humanoid_map: Dictionary,
-		stand_hips: Vector3, owner: Node3D) -> bool:
+		stand_hips: Vector3, owner: Node3D, overrides := {}) -> bool:
 	var retargeted := {}
 	for clip: StringName in FILES:
-		var anim := _retarget(DIR + FILES[clip] + ".fbx", skeleton, humanoid_map, clip == IDLE)
+		var anim: Animation = overrides.get(clip)
+		if anim == null:
+			anim = _retarget(DIR + FILES[clip] + ".fbx", skeleton, humanoid_map, clip == IDLE)
 		if anim == null or hips_track(anim) < 0:
 			return false
 		retargeted[clip] = anim

@@ -154,6 +154,7 @@ func _build_player() -> void:
 		_retarget.yaw = Basis(Vector3.UP, source_forward.signed_angle_to(target_forward, Vector3.UP))
 		_retarget.scale = _retarget.fit_scale(reference)
 		print("LEDGE_LAB source forward ", source_forward, " player forward ", target_forward, " scale ", _retarget.scale)
+		print("LEDGE_LAB hips-based turn puts the feet at ", _retarget.facing_yaw(reference, 0.0) * source_forward)
 
 
 func _load() -> void:

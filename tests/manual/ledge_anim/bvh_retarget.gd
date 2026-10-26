@@ -32,6 +32,7 @@ var skeleton: Skeleton3D
 var role_map: Dictionary
 var yaw := Basis.IDENTITY ## source world -> the skeleton's world (turns the clip to face where the player faces)
 var scale := 1.0
+var origin := Vector3.ZERO ## source model-space point placed on the skeleton's origin
 var _bone_of: Dictionary = {} ## role -> bone index
 var _drive: Dictionary = {} ## bone index -> [source joint, child bone index, source child joint]
 
@@ -81,9 +82,19 @@ func fit_scale(clip) -> float:
 	return target_leg / maxf(source_leg, 0.0001)
 
 
-## The skeleton-space point of a source (BVH, model space) point.
+## The skeleton-space point of a source (BVH, model space) point. `origin` is the source point that lands on the
+## skeleton's own origin (the clip's mover, or wherever the capsule should sit).
 func to_skeleton(point: Vector3) -> Vector3:
-	return skeleton.global_transform.affine_inverse() * (yaw * point * scale)
+	return skeleton.global_basis.inverse() * (yaw * (point - origin) * scale)
+
+
+## The turn that makes the clip's body face where the skeleton faces at `time` (from the hips: up x right).
+func facing_yaw(clip, time: float) -> Basis:
+	var source: Array[Transform3D] = clip.pose(time, false)
+	var side: Vector3 = source[clip.names.find("r_upper_leg")].origin - source[clip.names.find("l_upper_leg")].origin
+	var forward := side.cross(Vector3.UP)
+	forward.y = 0.0
+	return Basis(Vector3.UP, forward.signed_angle_to(target_forward(), Vector3.UP))
 
 
 func apply(clip, time: float, loop := true) -> void:

@@ -47,6 +47,7 @@ var shuffle := ClimbHandShuffle.new() # the hands along the ledge while hanging
 var _down_time := 0.0 # s the stick has asked for DOWN with no hold below
 var clips_ok := false # the hang clips are in the animation library
 var _hang_back := SHOULDER_BACK
+var _wrist_up := WRIST_UP
 var _clip: StringName = &""
 var _grab_pending := false
 var _reverse := false # the pull-up clip plays backwards: lowering into a hang
@@ -331,9 +332,10 @@ func _on_wall(delta: float) -> void:
 
 ## Switches to the hang clips: the wrists sit WRIST_HANG above the capsule, the body HANG_BACK
 ## out from the wall face.
-func use_clips() -> void:
+func use_clips(wrist_hang := WRIST_HANG, wrist_up := WRIST_UP) -> void:
 	clips_ok = true
-	_hang_drop = WRIST_HANG
+	_hang_drop = wrist_hang
+	_wrist_up = wrist_up
 	_hang_back = HANG_BACK
 
 
@@ -365,7 +367,7 @@ func _begin_clip(reverse: bool) -> void:
 	_from = _player.global_position
 	_time = 0.0
 	_origin = _hang_position()
-	_origin.y = (_ledge["point"] as Vector3).y - WRIST_UP
+	_origin.y = (_ledge["point"] as Vector3).y - _wrist_up
 	state = State.MANTLE
 	_player.velocity = Vector3.ZERO
 	_clip = &""

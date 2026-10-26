@@ -6,6 +6,9 @@ extends Node
 
 const INSTALL_CLIMB := preload("res://actors/player/climb/player_climb_install.gd")
 const WALL_Z := 20.0 # centre of the walls; their faces (toward the ramps) are at z 19
+const GALS_CLIPS := preload("res://tests/manual/ledge_anim/gals_ledge_clips.gd")
+
+var _gals := false
 
 
 func _ready() -> void:
@@ -24,6 +27,21 @@ func _ready() -> void:
 	var player := lab.get_node_or_null("Player") as Player
 	if player != null and player.climb == null:
 		INSTALL_CLIMB.install(player)
+	if player != null and "--gals-ledge" in OS.get_cmdline_user_args():
+		_use_gals_clips.call_deferred(true)
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_F9:
+		_use_gals_clips(not _gals)
+
+
+## F9: the hang, grab and pull-up clips of the reverse-engineered game in place of the Mixamo ones.
+func _use_gals_clips(on: bool) -> void:
+	var player := get_parent().get_node_or_null("Player") as Player
+	if GALS_CLIPS.apply(player, on):
+		_gals = on
 
 
 func _wall(lab: Node, base: Vector3, size: Vector3, text: String) -> void:
