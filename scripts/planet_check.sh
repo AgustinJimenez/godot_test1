@@ -46,7 +46,7 @@ run_check() {
 	shift 4
 	local log="${LOG_DIR}/${name}.log"
 	timeout "${seconds}" "${GODOT}" --headless --path . "${scene}" -- "$@" >"${log}" 2>&1 || true
-	report "${name}" "$(grep -E "${pattern}" "${log}" | head -1)"
+	report "${name}" "$(grep -a -E "${pattern}" "${log}" | head -1)"
 }
 
 echo "logs: ${LOG_DIR}"
@@ -78,7 +78,7 @@ run_check turf 400 "TURF_CHECK" "${lab}" --plants --grounded --turf-check
 run_check guard 400 "GUARD_CHECK" "${lab}" --grounded --guard-check --fixed-fps 60
 run_check world 900 "WORLD_CHECK" res://tests/manual/world/world_lab.tscn --world-check
 run_check planet 1200 "PLANET_CHECK" "${lab}" --planet-check --fixed-fps 60
-report save "$(grep -E "SAVE_CHECK" "${LOG_DIR}/planet.log" | head -1)" # printed by the planet run
+report save "$(grep -a -E "SAVE_CHECK" "${LOG_DIR}/planet.log" | head -1)" # printed by the planet run
 run_check walk 1800 "WALK_CHECK" "${lab}" --walk-check --fixed-fps 60
 run_check swim 900 "SWIM_CHECK" "${lab}" --swim-check --fixed-fps 60
 if [[ ${quick} -eq 0 ]]; then

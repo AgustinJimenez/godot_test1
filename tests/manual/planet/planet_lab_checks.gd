@@ -120,7 +120,7 @@ static func sway_step(planet: PlanetWorld, player: Player, frame: int) -> void:
 				if instance.multimesh.mesh.get_aabb().size.y > 3.5:
 					continue # (a shrub: its branches are within reach of the body)
 				for index in buffer.size() / 16:
-					var foot := tile.plant_holder.to_global(Vector3(buffer[index * 16 + 3], buffer[index * 16 + 7],
+					var foot := (tile.plant_holder as Node3D).to_global(Vector3(buffer[index * 16 + 3], buffer[index * 16 + 7],
 							buffer[index * 16 + 11]))
 					var gap := foot.distance_to(player.global_position)
 					if gap < nearest:

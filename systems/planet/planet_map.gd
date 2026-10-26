@@ -123,7 +123,7 @@ func _ready() -> void:
 	_modes.custom_minimum_size = Vector2(190.0, 0.0)
 	for position in LAYER_ORDER.size():
 		var key_name := str((position + 1) % 10) if position < 10 else " "
-		_modes.add_item("%s  %s" % [key_name, PlanetChart.NAMES[LAYER_ORDER[position]]], position)
+		_modes.add_item("%s  %s" % [key_name, PlanetChart.names()[LAYER_ORDER[position]]], position)
 	_modes.select(LAYER_ORDER.find(_layer))
 	_modes.item_selected.connect(func(position: int) -> void: select_layer(LAYER_ORDER[position]))
 	row.add_child(_modes)
@@ -225,7 +225,7 @@ func _input(event: InputEvent) -> void:
 func toggle() -> void:
 	visible = not visible
 	if visible:
-		PlanetMapLog.begin("layer %s, globe %s" % [PlanetChart.NAMES[_layer], _globe_mode])
+		PlanetMapLog.begin("layer %s, globe %s" % [PlanetChart.names()[_layer], _globe_mode])
 	else:
 		PlanetMapLog.end()
 	if planet != null and planet.surface != null:
@@ -248,8 +248,8 @@ func toggle() -> void:
 func select_layer(layer: int) -> void:
 	if layer == _layer or _warming:
 		return
-	PlanetMapLog.line("layer %s -> %s (picture kept: %s)" % [PlanetChart.NAMES[_layer],
-			PlanetChart.NAMES[layer], _cache.has(layer)])
+	PlanetMapLog.line("layer %s -> %s (picture kept: %s)" % [PlanetChart.names()[_layer],
+			PlanetChart.names()[layer], _cache.has(layer)])
 	if _whole != null:
 		_cache[_layer] = {"whole": _whole, "pass": _whole_pass}
 	_layer = layer as PlanetChart.Layer
@@ -380,7 +380,7 @@ func begin() -> void:
 		planet.world_changed.connect(world_changed)
 	if warm_up:
 		_warming = true
-		for layer in PlanetChart.NAMES.size():
+		for layer in PlanetChart.names().size():
 			if layer != _layer:
 				_warm_queue.append(layer)
 		_warm_total = maxi(_warm_queue.size(), 1)
@@ -417,7 +417,7 @@ func _start_chart(pass_index: int) -> void:
 	_chart_layer = _layer
 	_chart_ms = Time.get_ticks_msec()
 	PlanetMapLog.line("chart whole pass %d: %d px, %s" % [pass_index, _chart.size.x,
-			PlanetChart.NAMES[_layer]])
+			PlanetChart.names()[_layer]])
 	_chart.start(planet.noise)
 
 
@@ -587,7 +587,7 @@ func _start_warm_layer(layer: int) -> void:
 	_chart_layer = layer as PlanetChart.Layer
 	_chart_is_detail = false
 	_chart_ms = Time.get_ticks_msec()
-	PlanetMapLog.line("warm-up: first picture of the %s layer" % PlanetChart.NAMES[layer])
+	PlanetMapLog.line("warm-up: first picture of the %s layer" % PlanetChart.names()[layer])
 	_chart.start(planet.noise)
 
 
@@ -623,7 +623,7 @@ func _refresh_temperature(delta: float) -> void:
 	_refresh_wait = 0.4
 	if _tiles != null:
 		_tiles.forget(int(_layer))
-	PlanetMapLog.line("time moved: charting the %s layer again" % PlanetChart.NAMES[_layer])
+	PlanetMapLog.line("time moved: charting the %s layer again" % PlanetChart.names()[_layer])
 	_whole_pass = -1
 	_detail = null
 	_detail_full = 0
@@ -637,7 +637,7 @@ func _adopt_chart() -> void:
 		if _disk != null:
 			_disk.save_whole(int(_chart_layer), PASSES[2].x, ahead)
 		PlanetMapLog.line("chart done: first picture of the %s layer in %d ms" % [
-				PlanetChart.NAMES[_chart_layer], Time.get_ticks_msec() - _chart_ms])
+				PlanetChart.names()[_chart_layer], Time.get_ticks_msec() - _chart_ms])
 		_chart = null
 		_warm_layers_done += 1
 		return
@@ -745,7 +745,7 @@ func _start_detail(rect: Rect2, across: int) -> void:
 	_chart_ms = Time.get_ticks_msec()
 	PlanetMapLog.line("chart close view (%s): %dx%d, rect %s, %s" % [
 			"preview" if _detail_full > 0 else "sharp", _chart.size.x, _chart.size.y, rect,
-			PlanetChart.NAMES[_layer]])
+			PlanetChart.names()[_layer]])
 	_chart.start(planet.noise)
 
 
