@@ -41,6 +41,7 @@ var _next_id := 0
 var _parent_id := -1
 var _origin := Vector3.ZERO ## where the stem being grown starts (a clump has several)
 var _outline := PackedVector2Array()
+var _card_look := 0.0 ## the species' leaf for the card shader (PlantLeafShapes.card_look)
 var _leaf_length := 0.3
 var _needle_length := 0.5
 
@@ -105,6 +106,7 @@ func _grow_stem(lean_to := Vector3.ZERO) -> void:
 				* _g.lean * _height
 	_outline = PlantLeafShapes.outline_for(_g.leaf_shape, _g.leaf_aspect, _g.leaf_lobes,
 			_g.leaf_edge, _fine)
+	_card_look = PlantLeafShapes.card_look(_g.leaf_shape, _g.leaf_aspect, _g.leaf_lobes, _g.leaf_edge)
 	# the low-poly look has fewer, bigger leaves and sprays (the lighter version bigger still)
 	var bigger := 1.0 + 0.8 * float(_lod)
 	# leaves grow with the crown, but slowly: a giant tree has more leaves, not door-sized ones
@@ -402,7 +404,7 @@ func _mass(at: Vector3, sway: float) -> void:
 			var facing := (Vector3.UP.cross(flat).normalized() if card != 1
 			else flat.cross(Vector3.UP).normalized())
 			PlantLeafShapes.add_leaf_card(_b, heart - tilt * size * 0.7, tilt, facing, size * 1.5, low, high,
-					_rng.randf())
+					_rng.randf(), _card_look)
 		return
 	var centre := at + Vector3(0.0, size * 0.25, 0.0)
 	var axes: Array[Vector3] = [Vector3.RIGHT, Vector3.UP * 0.35, Vector3.BACK]
@@ -704,7 +706,7 @@ func _leaf(at: Vector3, tangent: Vector3, azimuth: float, sway: float, spread :=
 		# realistic: a card of many small leaves, a little longer than one big leaf (the shader draws
 		# them)
 		PlantLeafShapes.add_leaf_card(_b, at, axis, normal, size * 1.35, base_color, tip_color,
-				_rng.randf())
+				_rng.randf(), _card_look)
 		return
 	PlantLeafShapes.add_leaf(_b, _outline, at, axis, normal, size, 0.1, curl, base_color, tip_color,
 			_rng.randf_range(-0.2, 0.2), _rng.randf_range(-0.14, 0.14) * share,

@@ -33,3 +33,5 @@ W wire, D low/realistic, A autumn, B backlight, L sun, T top view, R seed, P pic
 - ROOT CAUSE of the ghost dots on leaf cards found (found with the lab, debug-painting cluster.x): the card's dice (UV2.x) is the same number on all corners, but its interpolation differs
   in the last bits from pixel to pixel, and `leaf_cluster` feeds it to chaotic hashes (`hash22(c + id * 13.7)`), so every pixel drew its own random leaves around the real ones. FIX: snap the
   dice to a 1/4096 grid in the fragment shader (cards, pinnate, grass, and the mesh leaf's two numbers). The same noise probably made the veins of mesh leaves shimmer. Lab: `--noshadow --nosun --distance=D`.
+- Cards use the species' leaf now: `PlantLeafShapes.card_look(shape, aspect, lobes, edge)` packs them into one number (UV2.y of a card = 2 + it, 0 = no species = the old generic leaf), the shader's
+  `leaf_cluster` / `leaf_profile` read it back (the same width curves as the mesh outline, lobes, saw teeth or waves on the edge, the aspect sets the width). Holes are rarer (10%) and ragged.

@@ -105,14 +105,14 @@ static func _polar(centre: Vector2, spot: Vector2, squeeze: float) -> Vector2:
 ## on it and cuts the rest away, so a crown reads as foliage (many small leaves), not as a few huge
 ## flat ones, for a fraction of the triangles. UV2.y above 1.5 marks a card; UV2.x is its own dice.
 static func add_leaf_card(builder: MeshBuilder, base: Vector3, axis: Vector3, normal: Vector3,
-		length: float, base_color: Color, tip_color: Color, dice: float) -> void:
+		length: float, base_color: Color, tip_color: Color, dice: float, look := 0.0) -> void:
 	var right := axis.cross(normal).normalized()
 	var half := length * 0.5
 	var a := base - right * half * 0.8
 	var b := base + right * half * 0.8
 	var c := base + axis * length + right * half
 	var d := base + axis * length - right * half
-	var mark := Vector2(dice, 2.0 + dice)
+	var mark := Vector2(dice, 2.0 + look)
 	builder.add_tri_uv(a, b, c, base_color, base_color, tip_color, Vector2(0.1, 0.0),
 			Vector2(0.9, 0.0), Vector2(1.0, 1.0), mark)
 	builder.add_tri_uv(a, c, d, base_color, tip_color, tip_color, Vector2(0.1, 0.0),
@@ -296,3 +296,11 @@ static func _lobed_dense(aspect: float, lobes: int) -> PackedVector2Array:
 	for index in range(right.size() - 1, -1, -1):
 		points.append(Vector2(-right[index].x, right[index].y))
 	return points
+
+
+## The species' leaf as one number for the card shader (UV2.y of a card is 2 + this): aspect (1 .. 4 in steps of 0.2), edge,
+## shape and lobes packed in a mixed radix, over 2048 so the shader can read it back; 0 means "no species", the generic leaf.
+static func card_look(shape: PlantSpecies.LeafShape, aspect: float, lobes: int, edge: PlantSpecies.LeafEdge) -> float:
+	var aspect_step := clampi(roundi((aspect - 1.0) / 0.2), 0, 15)
+	var index := aspect_step + 16 * int(edge) + 48 * int(shape) + 288 * clampi(lobes, 0, 4)
+	return float(maxi(index, 1)) / 2048.0

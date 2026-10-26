@@ -176,7 +176,8 @@ func _card_mesh(one: PlantSpecies) -> ArrayMesh:
 	var axis := Vector3(0.0, 0.1, -1.0).normalized()
 	var normal := Vector3(0.0, 1.0, 0.1).normalized()
 	PlantLeafShapes.add_leaf_card(builder, Vector3.ZERO, axis, normal, 1.35, base, tip,
-			fmod(float(variant) * 0.37 + 0.11, 1.0))
+			fmod(float(variant) * 0.37 + 0.11, 1.0),
+			PlantLeafShapes.card_look(one.leaf_shape, one.leaf_aspect, one.leaf_lobes, one.leaf_edge))
 	return builder.commit()
 
 

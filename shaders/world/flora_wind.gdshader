@@ -359,8 +359,36 @@ float bark_height_march(vec2 aa, float radius, vec2 style, out float crack, out 
 // Returns x: 1 inside a leaf (0 outside), y: the shade, z: how worn and dry it is there (0..1), w: how
 // the surface leans across the leaf (-1 .. 1: round across the midrib, rippled along it); `across_uv` is
 // the direction across the leaf in the card's UV.
-vec4 leaf_cluster(vec2 uv, float id, out vec2 across_uv) {
+// How wide a leaf of a species is at `t` along it (0 stalk .. 1 tip), 0..1 of its widest: the species' own outline (shape 0 oval,
+// 1 lobed, 2 palmate, 3 heart, 4 lanceolate, 5 diamond), the same curves as PlantLeafShapes. `bent` is a leaf's own random lean of the curve.
+float leaf_profile(int shape, int lobes, float t, float bent) {
+	if (shape == 1 || shape == 2) {
+		float n = shape == 2 ? 2.0 : float(max(lobes, 1));
+		float envelope = sin(3.14159 * pow(t, 0.8)) * (1.0 + 0.15 * (1.0 - t));
+		float phase = 0.5 + 0.5 * cos(6.28318 * (n + 0.5) * (t - 0.12) / 0.88);
+		float depth = mix(shape == 2 ? 0.7 : 0.42, 0.25, t);
+		float hump = 1.0 - depth * (1.0 - smoothstep(0.0, 1.0, phase));
+		hump = mix(1.0, hump, smoothstep(0.08, 0.3, t) * (1.0 - smoothstep(0.88, 1.0, t)));
+		return envelope * hump;
+	} else if (shape == 3) {
+		return sin(3.14159 * pow(t, 0.55)) * (1.0 + 0.2 * (1.0 - t));
+	} else if (shape == 4) {
+		return pow(sin(3.14159 * pow(t, 0.85)), 0.8);
+	} else if (shape == 5) {
+		return t < 0.42 ? t / 0.42 : (1.0 - t) / 0.58;
+	}
+	return sin(3.14159 * pow(t, mix(0.66, 0.9, bent)));
+}
+
+vec4 leaf_cluster(vec2 uv, float id, float look, out vec2 across_uv) {
 	const float N = 5.0;
+	// the species' leaf (PlantLeafShapes.card_look): 0 = no species given, the old generic leaf
+	int look_i = int(floor(look * 2048.0 + 0.5));
+	bool species_leaf = look_i > 0;
+	float species_aspect = 1.0 + float(look_i % 16) * 0.2;
+	int species_edge = (look_i / 16) % 3;
+	int species_shape = (look_i / 48) % 6;
+	int species_lobes = (look_i / 288) % 5;
 	vec2 p = uv * N;
 	vec2 cell = floor(p);
 	float best = -1.0;
@@ -385,6 +413,9 @@ vec4 leaf_cluster(vec2 uv, float id, out vec2 across_uv) {
 			vec2 q = vec2(d.x * cs - d.y * sn, d.x * sn + d.y * cs);
 			float length_cells = 0.85 + h2.y * 0.45;
 			float width_cells = 0.34 + h.x * 0.14;
+			if (species_leaf) {
+				width_cells = clamp(length_cells / species_aspect, 0.2, 0.9) * (0.88 + 0.24 * h.x);
+			}
 			float t = q.y / length_cells + 0.5;
 			// the midrib is not straight: the leaf curves to one side and the tip droops sideways
 			q.x -= (h3.x - 0.5) * 0.3 * width_cells * sin(3.14159 * t) + (h3.y - 0.5) * 0.35 * width_cells * t * t;
@@ -393,13 +424,24 @@ vec4 leaf_cluster(vec2 uv, float id, out vec2 across_uv) {
 				float skew = mix(0.8, 1.15, h3.y) + (h3.x - 0.5) * 0.5 * t;
 				float wavy = 1.0 + 0.1 * sin(t * (9.0 + 8.0 * h3.x) + h.y * 20.0) + 0.05 * sin(t * 31.0 + h2.x * 9.0);
 				float half_width = width_cells * 0.5 * sin(3.14159 * pow(t, mix(0.6, 1.0, h3.y))) * wavy * skew;
+				if (species_leaf) {
+					half_width = width_cells * 0.5 * leaf_profile(species_shape, species_lobes, t, h3.y) * wavy * skew;
+					if (species_edge == 1) {
+						half_width *= 1.0 - 0.1 * fract(t * 15.0 + h.y * 3.0); // serrated: a row of saw teeth
+					} else if (species_edge == 2) {
+						half_width *= 1.0 + 0.05 * sin(t * 44.0 + h.y * 9.0); // wavy
+					}
+				}
 				float across_raw = q.x / max(half_width, 0.001);
 				float across = abs(across_raw);
 				// wear: a few holes bitten out, brown dry tips and edges
 				float hole = 0.0;
-				if (h2.x > 0.8) {
+				if (h2.x > 0.9) {
 					vec2 spot = vec2((h3.x - 0.5) * 0.5 * width_cells, (0.3 + 0.4 * h3.y) * length_cells - 0.5 * length_cells);
-					hole = 1.0 - smoothstep(0.02, 0.03 + 0.05 * h2.y, length(q - spot));
+					vec2 bite = q - spot;
+					// a bitten hole is ragged: its radius wobbles round it
+					float wobble = 1.0 + 0.35 * sin(atan(bite.y, bite.x) * 3.0 + h.x * 9.0) + 0.2 * sin(atan(bite.y, bite.x) * 7.0 + h.y * 5.0);
+					hole = 1.0 - smoothstep(0.02, 0.03 + 0.04 * h2.y, length(bite) / wobble);
 				}
 				float dry = smoothstep(0.55, 1.0, across * (0.7 + 0.5 * h3.x) + t * t * h2.x * 0.5) * step(0.82, h.y);
 				if (across < 1.0 && h.y > best && hole < 0.5) {
@@ -548,7 +590,7 @@ void fragment() {
 		} else if (is_pin) {
 			cluster.xy = pinnate(UV, rows, card_id, needles);
 		} else {
-			cluster = leaf_cluster(UV, card_id, card_across);
+			cluster = leaf_cluster(UV, card_id, UV2.y - 2.0, card_across);
 		}
 		// far away the leaves are under a pixel and would shimmer: the card fills in toward a solid mass
 		float far_fill = smoothstep(0.35, 0.8, is_grass ? fwidth(UV.x) * 2.0 : (is_pin ? fwidth(UV.y) * rows : fwidth(UV.x) * 5.0));
