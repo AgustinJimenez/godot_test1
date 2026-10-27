@@ -118,7 +118,7 @@ func _leg_joint(joint: String) -> bool:
 func facing_yaw(clip, time: float) -> Basis:
 	var source: Array[Transform3D] = clip.pose(time, false)
 	var side: Vector3 = source[clip.names.find("r_upper_leg")].origin - source[clip.names.find("l_upper_leg")].origin
-	var forward := side.cross(Vector3.UP)
+	var forward := Vector3.UP.cross(side) # (the clip is mirrored in `pose`: its left is where the skeleton's is)
 	forward.y = 0.0
 	return Basis(Vector3.UP, forward.signed_angle_to(target_forward(), Vector3.UP))
 

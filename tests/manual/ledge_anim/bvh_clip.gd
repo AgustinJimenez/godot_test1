@@ -2,6 +2,8 @@ extends RefCounted
 ## Reads a BVH file (the game's exported traversal clips). Every joint has six channels
 ## (Xposition Yposition Zposition Zrotation Xrotation Yrotation), Y up, metres, degrees.
 
+const MIRROR := Basis(Vector3(-1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0), Vector3(0.0, 0.0, 1.0))
+
 var names: PackedStringArray = []
 var parents: PackedInt32Array = []
 var offsets: Array[Vector3] = []
@@ -82,6 +84,8 @@ func pose(time: float, loop := true) -> Array[Transform3D]:
 		var local := Transform3D(Basis(rotation), move) # the position channels are the whole local translation (they repeat the OFFSET)
 		var parent := parents[joint]
 		out[joint] = local if parent < 0 else out[parent] * local
+	for joint in out.size(): # the clips are mirrored against the skeleton (their left is on its right): flip X
+		out[joint] = Transform3D(MIRROR * out[joint].basis * MIRROR, MIRROR * out[joint].origin)
 	return out
 
 
