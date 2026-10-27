@@ -6,7 +6,7 @@ const BVH_BAKE := preload("res://tests/manual/ledge_anim/bvh_bake.gd")
 const BVH_RETARGET := preload("res://tests/manual/ledge_anim/bvh_retarget.gd")
 ## The hang swings the body out from the wall about the hands: the clips hang plumb under them, and the real wall
 ## is where the chest and feet are (feet 0.5 m past the wrists).
-const HANG_TILT := deg_to_rad(20.0)
+const HANG_TILT := deg_to_rad(5.0)
 ## clip -> [BVH file, frame lined up with the wrists (0 first, 1 last), tilt at the start, tilt after the span, span (fraction of the clip)]
 const CLIPS := {
 	ClimbClips.IDLE: ["ledge-hang-idle-base", 0, HANG_TILT, HANG_TILT, 1.0],
