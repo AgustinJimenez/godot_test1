@@ -68,7 +68,7 @@ func _ready() -> void:
 	if "--climb-shots" in OS.get_cmdline_user_args(): # side camera, PNGs of the hang and mantle
 		var camera := Camera3D.new()
 		add_child(camera)
-		camera.look_at_from_position(Vector3(5.0, 1.9, 0.3) if "--shot-side" in OS.get_cmdline_user_args() else Vector3(2.6, 1.9, 2.4), Vector3(0.0, 1.9, 0.3 if "--shot-side" in OS.get_cmdline_user_args() else 0.0))
+		camera.look_at_from_position(Vector3(-5.0 if "--shot-left" in OS.get_cmdline_user_args() else 5.0, 1.9, 0.3) if "--shot-side" in OS.get_cmdline_user_args() else Vector3(2.6, 1.9, 2.4), Vector3(0.0, 1.9, 0.3 if "--shot-side" in OS.get_cmdline_user_args() else 0.0))
 		camera.make_current()
 		_shot_camera = camera
 		_shots = true
