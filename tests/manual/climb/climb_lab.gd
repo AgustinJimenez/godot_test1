@@ -59,6 +59,9 @@ func _ready() -> void:
 	climb = INSTALL_CLIMB.install(player)
 	if "--gals-ledge" in OS.get_cmdline_user_args(): # the reverse-engineered game's hang / grab / pull-up clips
 		load("res://tests/manual/ledge_anim/gals_ledge_clips.gd").apply(player, true)
+	if "--dump-chest" in OS.get_cmdline_user_args():
+		load("res://tests/manual/ledge_anim/dump_chest.gd").dump(player)
+		get_tree().quit()
 	if "--climb-shots" in OS.get_cmdline_user_args(): # side camera, PNGs of the hang and mantle
 		var camera := Camera3D.new()
 		add_child(camera)

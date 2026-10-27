@@ -79,7 +79,7 @@ func _physics_process(_delta: float) -> void:
 				var target: Vector3 = player.climb.hands.targets[side]
 				var wrist: Vector3 = player.climb.hands.debug_wrist[side]
 				print("CLIMB_DEMO ", side, " target ", target, " wrist ", wrist, " off ", wrist - target)
-	if _demo_frame == (62 if _demo_hold else 150):
+	if _demo_frame == (62 if _demo_hold else 150) and not "--demo-own-cam" in OS.get_cmdline_user_args():
 		if true:
 			var camera := Camera3D.new()
 			get_parent().add_child(camera)

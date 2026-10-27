@@ -40,7 +40,7 @@ var _calib_target: Dictionary = {} ## bone -> its global basis in the calibratio
 var _calib_source: Dictionary = {} ## bone -> the clip joint's global basis in it
 var _clip_names: PackedStringArray = []
 var carry_twist := false ## also turn each bone about its own axis the way the clip's joint does (else it keeps the rest roll)
-var wall_top := INF ## below this height above the origin a wall stands at the origin, facing back: nothing but the hands goes in
+var wall_top := INF ## below this height above the origin a wall stands at the origin, facing back: the legs stay out of it
 var wall_margin := 0.1 ## m a joint keeps clear of the wall (the limbs have thickness)
 var _bone_of: Dictionary = {} ## role -> bone index
 var _drive: Dictionary = {} ## bone index -> [source joint, child bone index, source child joint]
@@ -99,7 +99,7 @@ func to_skeleton(point: Vector3, joint := "") -> Vector3:
 		var right := target_forward().cross(Vector3.UP)
 		moved = pivot + Basis(right, -tilt) * (moved - pivot)
 	moved *= scale
-	if wall_top < INF and not _hand_joint(joint) and moved.y < wall_top:
+	if wall_top < INF and _leg_joint(joint) and moved.y < wall_top:
 		var forward := target_forward()
 		var depth := moved.dot(forward) + wall_margin # how far it is past the wall's near side
 		if depth > 0.0:
@@ -107,8 +107,8 @@ func to_skeleton(point: Vector3, joint := "") -> Vector3:
 	return skeleton.global_basis.inverse() * moved
 
 
-func _hand_joint(joint: String) -> bool:
-	for part in ["wrist", "palm", "thumb", "index", "middle", "ring", "pinky"]:
+func _leg_joint(joint: String) -> bool:
+	for part in ["pelvis", "upper_leg", "knee", "ankle", "ball", "toe"]:
 		if joint.contains(part):
 			return true
 	return false
