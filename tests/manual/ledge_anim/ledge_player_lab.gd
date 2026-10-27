@@ -4,12 +4,18 @@ extends Node3D
 ## Left / Right clip   Space pause   [ ] speed   Home restart   S show the source stick figure   mouse: orbit / zoom / pan
 ## --clip=text starts on the first clip whose name contains it; --at=SECONDS and --shot=PATH save a picture and quit;
 ## --yaw=DEG --distance=M --height=M set the view; --dir=PATH picks the folder.
+## Three figures, left to right: the raw BVH (stick figure), the plain retarget, and the clip baked the way the climb plays it
+## (wrists on a 1.7 m ledge, facing roll carried, the pipeline of gals_ledge_clips.gd; its hang / grab / pull-up clips get
+## their own tilt and anchor, any other clip is anchored on its first frame).
 
 const BvhClip := preload("res://tests/manual/ledge_anim/bvh_clip.gd")
 const BvhRetarget := preload("res://tests/manual/ledge_anim/bvh_retarget.gd")
 const PLAYER_SCENE := preload("res://actors/player/player.tscn")
 const DEFAULT_DIR := "D:/RE/game_locomotion/anims/bvh_trav_ledge"
 const REFERENCE := "ledge-facing-idle.bvh"
+const BvhBake := preload("res://tests/manual/ledge_anim/bvh_bake.gd")
+const GalsClips := preload("res://tests/manual/ledge_anim/gals_ledge_clips.gd")
+const SPREAD := 2.5 ## m between the figures
 const HIDDEN_PARTS := ["twist", "offset", "wrinkle", "holster", "attachment", "pinky", "ring", "middle", "index", "thumb"]
 
 var _dir := DEFAULT_DIR
@@ -31,9 +37,15 @@ var _camera: Camera3D
 var _label: Label
 var _yaw := 60.0
 var _pitch := -4.0
-var _distance := 5.0
+var _distance := 9.0
 var _target := Vector3(0.0, 1.2, 0.0)
 var _drag := 0
+var _baked_player: Player
+var _baked_retarget: BvhRetarget
+var _baked: Animation
+var _baked_ledge: MeshInstance3D
+var _row := Vector3.RIGHT ## the way the three figures are lined up (R switches it to Z: a side view of each from +X)
+var _raw_tag: Label3D
 
 
 func _ready() -> void:
@@ -53,6 +65,8 @@ func _ready() -> void:
 			_distance = float(arg.substr(11))
 		elif arg.begins_with("--height="):
 			_target.y = float(arg.substr(9))
+		elif arg == "--row=z":
+			_row = Vector3.BACK
 		elif arg == "--stick":
 			_stick = true
 	for file in DirAccess.get_files_at(_dir):
@@ -62,10 +76,14 @@ func _ready() -> void:
 	_build_stage()
 	_build_player()
 	_camera.make_current()
-	for i in _files.size():
-		if wanted != "" and _files[i].contains(wanted):
-			_index = i
-			break
+	var exact := _files.find(wanted + ".bvh")
+	if exact >= 0:
+		_index = exact
+	else:
+		for i in _files.size():
+			if wanted != "" and _files[i].contains(wanted):
+				_index = i
+				break
 	_load()
 
 
@@ -119,26 +137,54 @@ func _build_stage() -> void:
 
 
 ## The player scene, switched off: only its model and skeleton are used, posed by hand every frame.
-func _build_player() -> void:
-	_player = PLAYER_SCENE.instantiate() as Player
-	add_child(_player)
-	for extra in _player.find_children("*", "Camera3D", true, false):
+func _make_player(at: Vector3, title: String) -> Player:
+	var player := PLAYER_SCENE.instantiate() as Player
+	add_child(player)
+	player.global_position = at
+	for extra in player.find_children("*", "Camera3D", true, false):
 		(extra as Camera3D).clear_current(false) # the lab has its own camera
-	for extra in _player.find_children("*", "CanvasLayer", true, false):
+	for extra in player.find_children("*", "CanvasLayer", true, false):
 		(extra as CanvasLayer).visible = false # and no game HUD
-	_player.set_physics_process(false)
-	_player.set_process(false)
-	_player.set_process_unhandled_input(false)
-	_player.body.set_process(false)
-	_player.body.set_physics_process(false)
-	_player.body.anim_player.stop()
-	_player.body.anim_player.active = false
-	var skeleton := _player.body.skeleton
-	for child in skeleton.get_children():
+	player.set_physics_process(false)
+	player.set_process(false)
+	player.set_process_unhandled_input(false)
+	player.body.set_process(false)
+	player.body.set_physics_process(false)
+	player.body.anim_player.stop()
+	player.body.anim_player.active = false
+	for child in player.body.skeleton.get_children():
 		if child is SkeletonModifier3D:
 			(child as SkeletonModifier3D).active = false
-	for tree in _player.body.find_children("*", "AnimationTree", true, false):
+	for tree in player.body.find_children("*", "AnimationTree", true, false):
 		(tree as AnimationTree).active = false
+	var tag := Label3D.new()
+	tag.text = title
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.no_depth_test = true
+	tag.pixel_size = 0.004
+	add_child(tag)
+	player.set_meta(&"tag", tag)
+	return player
+
+
+func _build_player() -> void:
+	_player = _make_player(Vector3.ZERO, "plain retarget")
+	_raw_tag = Label3D.new()
+	_raw_tag.text = "raw BVH"
+	_raw_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_raw_tag.no_depth_test = true
+	_raw_tag.pixel_size = 0.004
+	add_child(_raw_tag)
+	_baked_player = _make_player(Vector3.ZERO, "baked (climb pipeline)")
+	_baked_ledge = MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(2.2, 6.0, 2.0)
+	_baked_ledge.mesh = box
+	_baked_ledge.material_override = _ledge.material_override
+	add_child(_baked_ledge)
+	var skeleton := _player.body.skeleton
+	_baked_retarget = BvhRetarget.new(_baked_player.body.skeleton, _baked_player.body.get("_target_humanoid_map"))
+	_layout()
 	_retarget = BvhRetarget.new(skeleton, _player.body.get("_target_humanoid_map"))
 	if not _retarget.has_roles():
 		push_error("ledge_player_lab: the player's humanoid map misses the hips / spine / legs")
@@ -164,6 +210,39 @@ func _load() -> void:
 	_clip = BvhClip.load_file(_dir + "/" + _files[_index])
 	_time = 0.0
 	_place_ledge()
+	_bake_current()
+
+
+## The clip as the climb plays it: the GALS hang / grab / pull-up use their own settings, any other clip is anchored on
+## its first frame with no tilt and no wall.
+func _bake_current() -> void:
+	_baked = null
+	if _baked_retarget == null or not _baked_retarget.has_roles() or not BvhBake.available():
+		return
+	var file := _files[_index].trim_suffix(".bvh")
+	var spec: Array = [file, 0, 0.0, 0.0, 1.0]
+	var wall := 0.0
+	var looping := file.contains("idle") and not file.contains("_to_")
+	for clip: StringName in GalsClips.CLIPS:
+		if (GalsClips.CLIPS[clip] as Array)[0] == file:
+			spec = GalsClips.CLIPS[clip]
+			wall = GalsClips.WRIST
+	_baked = BvhBake.bake(file, _baked_retarget, "Skeleton3D", GalsClips.WRIST, wall, spec[1], looping,
+			PlayerClimb.HAND_BACK - GalsClips.HANDS_OUT, spec[2], spec[3], spec[4])
+	print("LEDGE_LAB baked ", file, " wall ", wall, " tilt ", spec[2], " -> ", spec[3])
+
+
+## Poses `skeleton` from `animation` at `time` (rotation tracks per bone, the hips' position).
+func _pose_from(skeleton: Skeleton3D, animation: Animation, time: float) -> void:
+	var at := fposmod(time, animation.length) if animation.loop_mode != Animation.LOOP_NONE else minf(time, animation.length)
+	for track in animation.get_track_count():
+		var bone := skeleton.find_bone(String(animation.track_get_path(track)).get_slice(":", 1))
+		if bone < 0:
+			continue
+		if animation.track_get_type(track) == Animation.TYPE_ROTATION_3D:
+			skeleton.set_bone_pose_rotation(bone, animation.rotation_track_interpolate(track, at))
+		elif animation.track_get_type(track) == Animation.TYPE_POSITION_3D:
+			skeleton.set_bone_pose_position(bone, animation.position_track_interpolate(track, at))
 
 
 ## The ledge is where the hands grab: its top at the wrist height, its near face at the wrist depth, taken from the frame
@@ -200,7 +279,7 @@ func _place_ledge() -> void:
 	_ledge.visible = true
 	_ground.position.y = top - depth
 	var box := BoxMesh.new()
-	box.size = Vector3(6.0, depth, 2.0)
+	box.size = Vector3(2.2, depth, 2.0)
 	_ledge.mesh = box
 	var edge := Vector3(world_hands.x, 0.0, world_hands.z)
 	_ledge.global_transform = Transform3D(Basis.looking_at(world_facing, Vector3.UP),
@@ -214,8 +293,10 @@ func _process(delta: float) -> void:
 		_time += delta * _speed
 	var at := _time if _shot_at < 0.0 else _shot_at
 	_retarget.apply(_clip, at)
-	_draw_stick(_clip.pose(at, true) if _stick else [])
-	_label.text = "%s\n%d / %d   t=%.2f / %.2f s   speed %.2f%s\n[Left/Right] clip  [Space] pause  [ [ ] ] speed  [Home] restart  [S] source stick" % [
+	if _baked != null:
+		_pose_from(_baked_player.body.skeleton, _baked, at)
+	_draw_stick(_clip.pose(at, true))
+	_label.text = "%s\n%d / %d   t=%.2f / %.2f s   speed %.2f%s\n[Left/Right] clip  [Space] pause  [ [ ] ] speed  [Home] restart  [S] stick over the retarget  [R] line up along Z" % [
 			_clip.title, _index + 1, _files.size(), fposmod(at, _clip.duration()), _clip.duration(), _speed,
 			"  PAUSED" if _paused else ""]
 	_place_camera()
@@ -240,8 +321,11 @@ func _draw_stick(pose: Array) -> void:
 		var parent: int = _clip.parents[joint]
 		if parent < 0 or _hidden(_clip.names[joint]):
 			continue
-		_mesh.surface_add_vertex((_retarget.yaw * (pose[parent] as Transform3D).origin) * _retarget.scale)
-		_mesh.surface_add_vertex((_retarget.yaw * (pose[joint] as Transform3D).origin) * _retarget.scale)
+		_mesh.surface_add_vertex((_retarget.yaw * (pose[parent] as Transform3D).origin) * _retarget.scale + _raw_at())
+		_mesh.surface_add_vertex((_retarget.yaw * (pose[joint] as Transform3D).origin) * _retarget.scale + _raw_at())
+		if _stick: # over the plain retarget too
+			_mesh.surface_add_vertex((_retarget.yaw * (pose[parent] as Transform3D).origin) * _retarget.scale)
+			_mesh.surface_add_vertex((_retarget.yaw * (pose[joint] as Transform3D).origin) * _retarget.scale)
 	_mesh.surface_end()
 
 
@@ -325,3 +409,23 @@ func _report_error(at: float) -> void:
 	print("LEDGE_LAB upleg model ", m.call("LeftUpLeg"), " clip ", w.call("l_upper_leg"), " knee model ", m.call("LeftLeg"), " clip ", w.call("l_knee"), " hips model ", m.call("Hips"), " clip pelvis ", w.call("pelvis"), " thigh len model ", (m.call("LeftLeg") - m.call("LeftUpLeg")).length(), " clip ", (w.call("l_knee") - w.call("l_upper_leg")).length())
 	print("LEDGE_LAB thigh model dir ", model_dir, " wanted ", wanted_dir.normalized(), " angle ", rad_to_deg(model_dir.angle_to(wanted_dir)),
 			" skeleton scale ", skeleton.global_transform.basis.get_scale(), " bone count ", skeleton.get_bone_count(), " up parent ", skeleton.get_bone_parent(up), " hips ", skeleton.find_bone(String(map.get("Hips", ""))))
+
+
+func _raw_at() -> Vector3:
+	return -_row * SPREAD
+
+
+func _baked_at() -> Vector3:
+	return _row * SPREAD
+
+
+## Lines the three figures up along `_row`: raw to one side, the baked player (and its wall) to the other.
+func _layout() -> void:
+	_baked_player.global_position = _baked_at()
+	(_player.get_meta(&"tag") as Label3D).position = Vector3(0.0, 2.5, 0.0)
+	(_baked_player.get_meta(&"tag") as Label3D).position = _baked_at() + Vector3(0.0, 2.5, 0.0)
+	_raw_tag.position = _raw_at() + Vector3(0.0, 2.5, 0.0)
+	# the baked player's wall: its face where the player stands, its top at the wrists' height, in front of the body
+	var forward := _baked_retarget.target_forward()
+	_baked_ledge.global_transform = Transform3D(Basis.looking_at(forward, Vector3.UP),
+			_baked_at() + forward * 1.0 + Vector3.UP * (GalsClips.WRIST - 3.0))
