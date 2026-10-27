@@ -41,32 +41,34 @@ var _live_frame := 0
 var _live_idle := 0
 
 
-## While the player climbs (and for a second after), every 4th frame: the state, the playing clip and each bone's
-## position in the wall's frame (x along the wall, y up, z past the wall face: negative is out of the wall) plus the
-## chest bones' up axis, so a session's log shows the pose without a screenshot.
+## Near the ledge (standing still: a line every 30 frames as the reference; climbing, and a second after: every 3rd
+## frame): the state, the playing clip and EVERY bone's position in the wall's frame (x along the wall from the player,
+## y up from the player's feet, z past the wall face: negative is out of the wall) with its global Y and Z axes, so a
+## session's log shows how the body turns without a screenshot.
 func _log_live(player: Player) -> void:
 	if player == null or player.climb == null:
 		return
+	var near := absf(player.global_position.x + 10.0) < 4.0 and player.global_position.z > WALL_Z - 7.0 and player.global_position.z < WALL_Z + 3.0
 	_live_idle = 0 if player.climb.state != 0 else _live_idle + 1
-	if _live_idle > 60:
-		return
 	_live_frame += 1
-	if _live_frame % 4 != 0:
+	var climbing := _live_idle <= 60
+	if not climbing and not (near and _live_frame % 30 == 0):
 		return
-	var map: Dictionary = player.body._target_humanoid_map
-	var line := "CLIMB_LIVE f%d st%d clip %s %.2f/%.2f" % [_live_frame, player.climb.state, player.body.anim_player.current_animation,
-			player.body.anim_player.current_animation_position, player.body.anim_player.current_animation_length]
-	for role: String in ["Hips", "Spine1", "Spine2", "Head", "LeftShoulder", "LeftForeArm", "LeftHand", "RightShoulder", "RightForeArm", "RightHand",
-			"LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot"]:
-		var bone := player.skeleton.find_bone(String(map.get(role, "")))
-		if bone >= 0:
-			var at := player.skeleton.global_transform * player.skeleton.get_bone_global_pose(bone).origin
-			line += " | %s %+.2f %.2f %+.2f" % [role, at.x - player.global_position.x, at.y - player.global_position.y, at.z - (WALL_Z - 1.0)]
-	for role: String in ["Spine", "Spine1", "Spine2"]:
-		var bone := player.skeleton.find_bone(String(map.get(role, "")))
-		if bone >= 0:
-			var up := (player.skeleton.global_transform.basis * player.skeleton.get_bone_global_pose(bone).basis).y
-			line += " | %s_up %+.2f %+.2f %+.2f" % [role, up.x, up.y, up.z]
+	if climbing and _live_frame % 3 != 0:
+		return
+	var skeleton := player.skeleton
+	var line := "CLIMB_ALL f%d st%d clip %s %.2f/%.2f player %+.2f %.2f %+.2f yaw %.0f" % [_live_frame, player.climb.state,
+			player.body.anim_player.current_animation, player.body.anim_player.current_animation_position,
+			player.body.anim_player.current_animation_length, player.global_position.x, player.global_position.y,
+			player.global_position.z - (WALL_Z - 1.0), rad_to_deg(player.global_rotation.y)]
+	for bone in skeleton.get_bone_count():
+		var name := skeleton.get_bone_name(bone)
+		if name.contains("Index") or name.contains("Middle") or name.contains("Ring") or name.contains("Pinky") or name.contains("Thumb"):
+			continue
+		var global := skeleton.global_transform * skeleton.get_bone_global_pose(bone)
+		line += " | %s %+.2f %.2f %+.2f y %+.2f %+.2f %+.2f z %+.2f %+.2f %+.2f" % [name.trim_prefix("mixamorig_").trim_prefix("mixamorig:"),
+				global.origin.x - player.global_position.x, global.origin.y - player.global_position.y, global.origin.z - (WALL_Z - 1.0),
+				global.basis.y.x, global.basis.y.y, global.basis.y.z, global.basis.z.x, global.basis.z.y, global.basis.z.z]
 	print(line)
 
 
