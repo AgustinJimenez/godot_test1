@@ -87,6 +87,18 @@ a ball raycast-placed on the ground. Cave size NOT tuned (it looks like swiss ch
   terrain, rivers, sea, plants), texturing (triplanar), frame time on a real surface (these are noise slabs), walking a character in a cave, digging, memory after
   long flights, load time with 9+ LODs on slower machines.
 
+## Earth size on the double-precision module build (2026-10-29)
+Prebuilt `godot.windows.editor.double.x86_64.exe` from release v1.7 (Godot 4.7.2 double + Voxel Tools, 181 MB exe, 85 MB zip), same `planet.gd`, scratch copy
+`proj_module` WITHOUT the GDExtension (the module already has the classes). Radius 6,371,000 m, caves on, 12 LODs, view 4096 m:
+- Loads in 10.2 s, frame 0.92 / 2.1 ms (worst 12.7), memory 699 MB (the single build used 420 MB), video 395 MB, 2.64M triangles.
+- The ball falls and lands on the ground (gap 1.3-2.1 m) and rolls: collision and physics WORK at Earth size here, unlike on single precision (ball stuck).
+- CORRECTION: I first called the jagged surface edges on single precision a precision effect. The double build shows the SAME jagged edges in the same picture, so they come from my
+  untuned cave graph (thin cave walls, LOD), not from precision.
+- Side note: `--headless --import` of that scratch project segfaulted the double exe; the windowed run was fine.
+- Downsides: the double editor has no export templates ("double" builds come without them, see the releases page), and `voxel.gdextension`-style install does not
+  apply: it replaces our own double build in `E:\Godot\double` (which has D3D12 and our options) with a Voxel Tools build. Having both means building the voxel
+  module into OUR double engine (a custom engine build), or switching engines. Not tested: our own native libraries (`planet_crust`) against that exe.
+
 ## Not decided
 - Which route (a / b / c). Decide after the spike with the user.
 
