@@ -71,6 +71,22 @@ Terrain is the same 3D-noise slab (40 m tall), so these are FLAT-WORLD numbers, 
 - NOT measured: generation cost with a real planet generator (the noise generator is native and fast; a GDScript generator would be much slower), cost while
   digging, sphere/planet layout, memory with edits saved, colliders for LOD terrain, anything on the double precision build.
 
+## Planet-sphere test (2026-10-29, scratch `planet.gd`, official 4.7.2 + GDExtension 1.7x, single precision, Jolt)
+`VoxelLodTerrain` + `VoxelGeneratorGraph` built IN CODE (the graph class can be assembled with `create_node` / `add_connection`): a sphere SDF plus 3D hills noise
+(250 m, wavelength ~3 km) plus optional 3D-noise caves (`max(terrain, cave)`), 9-12 LOD levels, view 4096 m, viewer at the north pole flying 60 m/s for 8-10 s,
+a ball raycast-placed on the ground. Cave size NOT tuned (it looks like swiss cheese); material override did not apply to the LOD terrain (white surface).
+| radius | caves | load | frame avg / p99 | Godot / video memory | triangles | ball on the ground? |
+|---|---|---|---|---|---|---|
+| 20 km | no | ~6 s | 0.38 / 0.9 ms | 121 / 47 MB | 84k | yes (gap 1.3-1.6 m, rolls on the slope) |
+| 20 km | yes | ~6.6 s | 0.65 / 1.4 ms (worst 12.7) | 250 / 197 MB | 1.2M | yes |
+| 200 km | yes | 8 s | 0.97 / 1.4 ms (worst 12) | 429 / 400 MB | 2.5M | yes |
+| 6,371 km (Earth) | yes | 7.8 s | 0.99 / 1.5 ms | 420 / 394 MB | 2.6M | NO: the ball does not move at all (Jolt in single precision, as `docs/planet_generation.md` "Limits" already says); the terrain renders but with jagged edges |
+- The voxel planet works at 20 km (our default radius) and 200 km on the stock build: LOD terrain, caves in the sphere, collision, ray casts.
+- At Earth size on single precision the physics is stuck and the surface edges are jagged: a double-precision build is needed (see below), as for our heightmap planet.
+- NOT tested: the prebuilt double-precision module editor (`godot.windows.editor.double.x86_64.exe.zip`, 87 MB, release v1.7), real planet shape (our `PlanetSettings`
+  terrain, rivers, sea, plants), texturing (triplanar), frame time on a real surface (these are noise slabs), walking a character in a cave, digging, memory after
+  long flights, load time with 9+ LODs on slower machines.
+
 ## Not decided
 - Which route (a / b / c). Decide after the spike with the user.
 
