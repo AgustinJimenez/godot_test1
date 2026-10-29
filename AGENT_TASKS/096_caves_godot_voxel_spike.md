@@ -51,6 +51,26 @@ Stock `Godot_v4.7.2-stable_win64_console.exe`, Jolt, GDExtension 1.7x, single pr
 - NOT tested: frame time or chunk cost, a sphere/planet layout, editing (digging), LOD terrain (`VoxelLodTerrain`), the double-precision module build, how it would
   join our heightmap planet, textures/materials, walking a character into a cave.
 
+## Cost measurements (2026-10-29, scratch project, RTX 4090, vsync off, windowed, a flight of 10-12 s at 40 m/s; `bench.gd` there)
+Terrain is the same 3D-noise slab (40 m tall), so these are FLAT-WORLD numbers, not planet numbers.
+| mode | view | blocks | load | frame avg / p99 | Godot memory | draw calls / triangles |
+|---|---|---|---|---|---|---|
+| VoxelTerrain | 128 m | 1,296 | 1.3 s | 0.35 / 0.58 ms | 165 MB | 182 / 105k |
+| VoxelTerrain | 256 m | 4,624 | 2.2 s | 0.86 / 3.2 ms (worst 16 ms) | 290 MB | 672 / 404k |
+| VoxelTerrain | 512 m | 17,424 | 6.3 s | 3.2 / 19 ms (worst 31 ms) | 1,306 MB | 2,578 / 1.53M |
+| VoxelLodTerrain, 5 levels | 1 km | n/a | ~3 s | 0.38 / 1.4 ms | 132 MB | 137 / 141k |
+| VoxelLodTerrain, 7 levels | 4 km | n/a | ~3 s | 0.39 / 1.4 ms | 133 MB | 133 / 137k |
+| VoxelLodTerrain, 9 levels | 16 km | n/a | ~3 s | 0.43 / 1.4 ms | 144 MB | 195 / 184k |
+- Plain `VoxelTerrain` memory and blocks grow with the cube of the view distance (voxel data pool 51 MB, 110 MB, 744 MB at 128, 256, 512 m): fine for a cave
+  region of a few hundred metres, not for a planet.
+- `VoxelLodTerrain` stays flat (about 0.4 ms, 140 MB) out to 16 km because far blocks use coarser levels. The load time (about 3 s) is only an upper bound
+  from my detection (it waits 2 s idle); the block count is not reported for this mode. A real planet surface has far more surface per block than this slab
+  (and a sphere layout is untested), so expect higher numbers; this only shows the engine part is cheap.
+- Disk: the extension zip is 53 MB, the whole `bin` folder 130 MB (all platforms); the Windows DLLs are 10.8 MB (editor) and 9.7 MB (release template). Only the
+  Windows files would ship.
+- NOT measured: generation cost with a real planet generator (the noise generator is native and fast; a GDScript generator would be much slower), cost while
+  digging, sphere/planet layout, memory with edits saved, colliders for LOD terrain, anything on the double precision build.
+
 ## Not decided
 - Which route (a / b / c). Decide after the spike with the user.
 
