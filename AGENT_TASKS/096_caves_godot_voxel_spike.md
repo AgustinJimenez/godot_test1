@@ -99,6 +99,17 @@ Prebuilt `godot.windows.editor.double.x86_64.exe` from release v1.7 (Godot 4.7.2
   apply: it replaces our own double build in `E:\Godot\double` (which has D3D12 and our options) with a Voxel Tools build. Having both means building the voxel
   module into OUR double engine (a custom engine build), or switching engines. Not tested: our own native libraries (`planet_crust`) against that exe.
 
+## Next steps found by reading (2026-10-29, nothing built or changed yet)
+- Our own double engine source is `E:\Godot\double\src` at commit `ed1daf0` ("Bump version to 4.7.2-stable"), the SAME commit the Voxel Tools v1.7 custom
+  build was made from (`ed1daf0bf`). So adding the module is: clone godot_voxel (matching v1.7) into `E:\Godot\double\src\modulesoxel` and re-run the same
+  `scons platform=windows target=editor precision=double arch=x86_64 d3d12=yes debug_symbols=no`; the engine objects exist in `bin/obj`, so the rebuild should be partial
+  (module compile + link; time not measured). Keep the old exe by copying it first. No export templates exist for the double build either way.
+- The planet's height is "pure functions of a direction" (`PlanetNoise.height`); the native `PlanetCrustNative.heights(dirs)` returns heights for a bulk of
+  directions. A voxel generator can therefore be: SDF(p) = |p| - (R + height(dir(p))), evaluated per block. In the official build a generator has to be a GDScript
+  `VoxelGeneratorScript` (a GDExtension cannot plug into the voxel classes), calling the bulk native height for the block's voxels (4,096 per 16-voxel block, fewer
+  with a coarse grid). With the module built into our engine, a C++ generator inside the module would be possible. Both untested; the first test is the GDScript one.
+- `docs/planet_generation.md` says the project has no native GDExtensions; that is out of date (`native/planet_crust`, foot IK libraries exist). Not fixed here.
+
 ## Not decided
 - Which route (a / b / c). Decide after the spike with the user.
 
