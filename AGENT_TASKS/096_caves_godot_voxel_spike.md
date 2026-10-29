@@ -38,8 +38,21 @@ Started 2026-10-29. User: "i think it is [a goal], let's make it a task" (caves 
 5. Only then decide the integration route: (a) voxel terrain for caves only, entered through meshes on the heightmap planet; (b) caves as separate
    scenes loaded at entrances (no library, placed by hand); (c) full voxel planet (large change, only if the spike shows spherical support); (d) our own small C++ voxel/marching-cubes GDExtension for caves only.
 
+## Spike result (2026-10-29)
+Scratch project `E:\Temp\claudeoxel_spike\proj` (outside this repository; `main.gd` is the test; extension zip unzipped under `addons/zylann.voxel`).
+Stock `Godot_v4.7.2-stable_win64_console.exe`, Jolt, GDExtension 1.7x, single precision, `VoxelTerrain` + `VoxelGeneratorNoise` (3D simplex SDF) + `VoxelMesherTransvoxel`.
+- Loads on the official 4.7.2 build (all classes present). No custom engine build needed. No errors in the log.
+- Smooth terrain with pits and openings renders (screenshot checked by eye).
+- Volume, not surface: a column scan of the SDF found air under solid (caves/overhangs) in 7 of 441 sampled columns at the origin and 4 at an offset.
+- Collision with Jolt: a dropped ball fell about 80 m, slowed on the generated collision and did not fall through (still rolling at the last frame, so
+  "settled on the floor" is NOT proven; the ball might be in a cave).
+- Far from the origin (offset 1,000,000 m on x and z): still loads, collides and renders. The screenshot shows thin dotted lines along block edges that the origin
+  one does not: probably single-precision seams. Not measured further.
+- NOT tested: frame time or chunk cost, a sphere/planet layout, editing (digging), LOD terrain (`VoxelLodTerrain`), the double-precision module build, how it would
+  join our heightmap planet, textures/materials, walking a character into a cave.
+
 ## Not decided
 - Which route (a / b / c). Decide after the spike with the user.
 
 ## Log
-- 2026-10-29: task written. Nothing tested yet.
+- 2026-10-29: task written. Spike run (see Spike result): the extension works on stock 4.7.2 with Jolt; planet integration and cost still open.
