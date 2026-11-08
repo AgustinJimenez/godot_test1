@@ -7,3 +7,6 @@
 .venv/
 __pycache__/
 *.pyc
+
+# Downloaded Poly Haven photographs for the bark/surface fitting tools
+tools/bark/bark_downloads/
