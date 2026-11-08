@@ -16,6 +16,9 @@ var blocks_asked := 0
 var msec_heights := 0 # time spent asking the planet (all threads)
 ## Voxels between the planet's height samples (1: every voxel, exact; 2-4: interpolated)
 var lattice := 2
+## Turns a world direction into the planet's own direction (the identity: the same). The walking
+## test turns the planet so that its chosen spawn is at +Y, where the player's "up" is.
+var frame := Basis.IDENTITY
 var msec_asking := 0 # time spent filling the voxels (all threads)
 
 var _lock := Mutex.new()
@@ -66,7 +69,7 @@ func _interpolated_heights(origin: Vector3, size: Vector3i, step: float) -> Pack
 	for kz in mz:
 		for kx in mx:
 			for ky in my:
-				dirs[n] = (origin + Vector3(kx, ky, kz) * (s * step)).normalized()
+				dirs[n] = (frame * (origin + Vector3(kx, ky, kz) * (s * step))).normalized()
 				n += 1
 	var asked := Time.get_ticks_msec()
 	var lattice_heights: PackedFloat32Array = noise.call("heights_of", dirs)

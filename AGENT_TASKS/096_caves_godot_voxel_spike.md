@@ -167,3 +167,13 @@ Whole planet (Earth size, 12 LODs, view 4096, same spawn): loaded after 99 s (ex
 Pictures: lattice 4 blurs the distant ripples; lattice 2 keeps them (looks like the exact one). Default is 2 (`--lattice=N` sets it). Thin straight seam lines show at
 patch edges with 2 and 4 (not seen in the exact picture); not investigated (LOD borders, or the interpolation anchored per block). Pictures: `E:\Temp\claude\voxel_spike\real_lat2.png`, `real_lat4.png`.
 The block is now bound by the GDScript loops (~1.5-2 ms), not by the planet.
+
+## The real player walks on the voxel planet (2026-11-08)
+`tests/manual/voxel/voxel_walk.tscn` (`-- --secs=30 --shot=PATH [--lattice=2 --view=2048 --seed=N]`). The terrain is NOT turned: the generator asks the planet's noise
+through a rotation (`frame`, a `Basis` that sends +Y to a chosen land direction), so the spot is at the top of the world and the player's up / gravity are the world's own.
+The voxel viewer (with collisions) follows the player; the player is placed 3 m above a raycast hit once the terrain has loaded. A real `player.tscn`, sun with shadows, sky.
+Result (Earth size, spawn on land at 191 m, view 2048, lattice 2, vsync on): loaded after 25.7 s; raycast ground 191.0 m (noise 191.2); the player sprints 30 s:
+`WALK PASS travelled=147 m on_floor=91% worst_above_ground=0.03 m`, 1974 frames, worst frame 135 ms (1 frame over 33 ms; the first frames after the spawn, not looked into).
+Picture `E:\Temp\claude\voxel_spike\walk1.png`: the character runs on white hills (default material, overexposed), feet on the ground, shadow on the terrain.
+NOT done / not checked: the lab's sky, plants, water and ground shader; walking far (the terrain is not rebased: a km away the "up" is off by ~0.5 deg per km... fine for a test, wrong for
+a real game, which needs the lab's `PlanetFrame` turn); foot IK on slopes; jumping, climbing, swimming; digging; caves.
