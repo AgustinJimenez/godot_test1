@@ -151,3 +151,19 @@ Result, Earth size (R 6,371,000 m, seed 1337), spawn on land (noise height 191 m
   sky, no material, no environment light: the lighting is the unlit side, not looked into).
 - Not done: surface colours / the ground shader, sea, rivers, plants, caves, character walking, loading time (99 s is too long; ideas: heights on a coarser lattice and interpolate,
   skip voxels far from the surface, cache, native generator via the module), thread safety check of `PlanetNoise`.
+
+## Load time: heights on a coarser lattice (2026-11-08)
+The generator asks the planet for a height every `lattice` voxels along each axis of the block and interpolates between them (separable lerps in GDScript); `lattice` 1 is exact.
+Block of 18^3 voxels on land, 6 spots, near-surface (|sdf| < 3 voxels) error against the exact block:
+
+| lattice | ms/block | worst error | mean error |
+|---|---|---|---|
+| 1 | ~21 | 0 | 0 |
+| 2 | ~4.2 | 0.24 voxel (lod 6) / 0.02 (lod 0) | 0.008 |
+| 3 | ~2.2 | 0.34 | 0.013 |
+| 4 | ~1.85 | 0.40 | 0.017 |
+
+Whole planet (Earth size, 12 LODs, view 4096, same spawn): loaded after 99 s (exact) -> 25 s (lattice 2) -> 9.2 s (lattice 4). Raycast hit stays 190.7 m (noise 191.2 m).
+Pictures: lattice 4 blurs the distant ripples; lattice 2 keeps them (looks like the exact one). Default is 2 (`--lattice=N` sets it). Thin straight seam lines show at
+patch edges with 2 and 4 (not seen in the exact picture); not investigated (LOD borders, or the interpolation anchored per block). Pictures: `E:\Temp\claude\voxel_spike\real_lat2.png`, `real_lat4.png`.
+The block is now bound by the GDScript loops (~1.5-2 ms), not by the planet.

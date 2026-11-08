@@ -2,7 +2,7 @@
 ## (E:\Godot\double\src\bin\godot.windows.editor.double.x86_64.exe) and the double
 ## planet_crust library. Run (windowed), with the console exe of that folder:
 ##   --path . res://tests/manual/voxel/real_planet.tscn -- --lods=12 --view=4096 --secs=15
-##   --ball=1 --shot=PATH --seed=1337 --scale=1.0
+##   --ball=1 --shot=PATH --seed=1337 --scale=1.0 --lattice=2
 ## The planet size is PlanetSettings.earth(scale): 1.0 is Earth.
 extends Node3D
 
@@ -22,6 +22,7 @@ var _altitude := 700.0
 var _shot := ""
 var _seed := 1337
 var _scale := 1.0
+var _lattice := 2
 var _ball_on := true
 var _t := 0.0
 var _loaded_at := -1.0
@@ -47,6 +48,8 @@ func _ready() -> void:
 			_seed = int(a.substr(7))
 		elif a.begins_with("--scale="):
 			_scale = float(a.substr(8))
+		elif a.begins_with("--lattice="):
+			_lattice = int(a.substr(10))
 		elif a.begins_with("--ball="):
 			_ball_on = a.substr(7) == "1"
 	var settings: Object = ClassDB.class_call_static("PlanetSettings", "earth", _scale)
@@ -57,6 +60,7 @@ func _ready() -> void:
 	_gen = Generator.new()
 	_gen.set("radius", _radius)
 	_gen.set("noise", noise)
+	_gen.set("lattice", _lattice)
 	_terrain = ClassDB.instantiate("VoxelLodTerrain")
 	_terrain.set("lod_count", _lods)
 	_terrain.set("generator", _gen)
@@ -132,7 +136,7 @@ func _process(dt: float) -> void:
 		if _stable > 2.0:
 			_loaded_at = _t
 			print("REAL loaded after ", snappedf(_t, 0.1), " s  blocks=", _gen.get("blocks_asked"),
-					" ms_in_heights=", _gen.get("msec_asking"))
+					" ms_heights=", _gen.get("msec_heights"), " ms_filling=", _gen.get("msec_asking"))
 			if _ball_on:
 				_drop_ball()
 	else:
@@ -187,8 +191,8 @@ func _report() -> void:
 	var video := Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0
 	print("REAL mem static_MB=", snappedf(mem, 0.1), " video_MB=", snappedf(video, 0.1), " tris=",
 			int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)))
-	print("REAL generator: blocks=", _gen.get("blocks_asked"), " ms_in_heights_of=",
-			_gen.get("msec_asking"))
+	print("REAL generator: blocks=", _gen.get("blocks_asked"), " ms_heights=",
+			_gen.get("msec_heights"), " ms_filling=", _gen.get("msec_asking"))
 	if _ball != null:
 		print("REAL ball final height above radius=",
 				snappedf(_ball.position.length() - _radius, 0.1))
