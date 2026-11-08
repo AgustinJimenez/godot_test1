@@ -4,7 +4,7 @@ extends Node
 ##   godot --headless --path . res://tests/manual/animation/gvhmr_library_check.tscn
 
 const TARGETS := [
-	"res://assets/models/mixamo_characters/Brute.character.json",
+	"res://assets/models/mixamo_characters/Y Bot.character.json",
 	"res://assets/models/pistol_starter/MotusMan/MotusMan_v55.character.json",
 ]
 

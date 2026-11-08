@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://tests/manual/animation/animation_preview.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://levels/test_room.tscn" id="2_room"]
-[ext_resource type="PackedScene" path="res://assets/models/action_adventure_pack/The Boss.fbx" id="3_boss"]
+[ext_resource type="PackedScene" path="res://assets/models/mixamo_characters/Y Bot.fbx" id="3_boss"]
 [ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Animation/In-Place/W1_Stand_Aim_Idle_IPC.fbx" id="4_motusman"]
 [ext_resource type="PackedScene" path="res://assets/models/pistol_starter/Pistol/1911_01.fbx" id="5_pistol"]
 

@@ -1,7 +1,7 @@
 [gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://actors/npcs/humanoid_actor/humanoid_actor.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://assets/models/action_adventure_pack/The Boss.fbx" id="2_boss"]
+[ext_resource type="PackedScene" path="res://assets/models/mixamo_characters/Y Bot.fbx" id="2_boss"]
 [ext_resource type="Script" path="res://components/health.gd" id="3_health"]
 [ext_resource type="Script" path="res://components/perception.gd" id="4_perception"]
 [ext_resource type="Script" path="res://components/npc_controller.gd" id="5_npc_controller"]

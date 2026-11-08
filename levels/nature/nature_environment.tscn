@@ -1,4 +1,4 @@
-[gd_scene load_steps=40 format=3]
+[gd_scene load_steps=39 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/CommonTree_1.gltf" id="1_common_1"]
 [ext_resource type="PackedScene" path="res://assets/models/stylized_nature_megakit/CommonTree_2.gltf" id="2_common_2"]
@@ -29,8 +29,7 @@
 [ext_resource type="Resource" path="res://items/rusty_knife.tres" id="31_rusty_knife"]
 [ext_resource type="Script" path="res://levels/nav_bake.gd" id="27_nav_bake"]
 [ext_resource type="PackedScene" path="res://actors/npcs/humanoid_actor/humanoid_actor.tscn" id="28_npc"]
-[ext_resource type="PackedScene" path="res://assets/models/mixamo_characters/Ch10_nonPBR.fbx" id="29_ch10_zombie"]
-[ext_resource type="PackedScene" path="res://assets/models/mixamo_characters/Zombiegirl W Kurniawan.fbx" id="30_zombie_girl"]
+[ext_resource type="PackedScene" path="res://assets/models/mixamo_characters/Y Bot.fbx" id="29_y_bot"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_meadow"]
 sky_top_color = Color(0.17, 0.36, 0.55, 1)
@@ -448,19 +447,17 @@ position = Vector3(4, 0, -58)
 [node name="NPCNear" parent="NPCs" instance=ExtResource("28_npc")]
 position = Vector3(-3, 0, -10)
 patrol_points = [NodePath("../../NPCPatrols/NearA"), NodePath("../../NPCPatrols/NearB")]
-character_scene = ExtResource("29_ch10_zombie")
-character_bone_prefix = "mixamorig5_"
+character_scene = ExtResource("29_y_bot")
 
 [node name="NPCMiddle" parent="NPCs" instance=ExtResource("28_npc")]
 position = Vector3(-4, 0, -28)
 patrol_points = [NodePath("../../NPCPatrols/MiddleA"), NodePath("../../NPCPatrols/MiddleB")]
-character_scene = ExtResource("30_zombie_girl")
+character_scene = ExtResource("29_y_bot")
 
 [node name="NPCFar" parent="NPCs" instance=ExtResource("28_npc")]
 position = Vector3(-3, 0, -46)
 patrol_points = [NodePath("../../NPCPatrols/FarA"), NodePath("../../NPCPatrols/FarB")]
-character_scene = ExtResource("29_ch10_zombie")
-character_bone_prefix = "mixamorig5_"
+character_scene = ExtResource("29_y_bot")
 
 [node name="Boulders" type="Node3D" parent="."]
 

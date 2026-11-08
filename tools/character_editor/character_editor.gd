@@ -14,37 +14,23 @@ const DEFAULT_ATTACHMENT_BONE := &"RightHand"
 const DEFAULT_ANIMATION := &"unarmed_torch_idle"
 const CHARACTER_SPAWN_POSITION := Vector3(0, 0.1, 0)
 const CHARACTER_KINDS: PackedStringArray = [
-	"player", "shambler", "brute", "y_bot", "x_bot", "vanguard",
-	"parasite", "copzombie", "zombiegirl", "ch08", "ch10", "ch15",
+	"player", "y_bot", "x_bot",
 ]
 const DEFAULT_CHARACTER_KIND := "player"
 ## Every non-"player" kind maps to a bare Mixamo FBX + display name, loaded
 ## through MixamoCharacterAdapter - see that file for why this works without
-## per-character adapter code. Ch15_nonPBR belongs here too, despite living
-## alongside Ch08/10 in the same download batch: inspection showed it
-## actually uses the plain "mixamorig_" prefix, not a numbered one.
+## per-character adapter code.
 const MIXAMO_CHARACTERS := {
-	"shambler": ["res://assets/models/action_adventure_pack/The Boss.fbx", "Shambler"],
-	"brute": ["res://assets/models/mixamo_characters/Brute.fbx", "Brute"],
 	"y_bot": ["res://assets/models/mixamo_characters/Y Bot.fbx", "Y Bot"],
 	"x_bot": ["res://assets/models/mixamo_characters/X Bot.fbx", "X Bot"],
-	"vanguard": ["res://assets/models/mixamo_characters/Vanguard By T. Choonyung.fbx", "Vanguard"],
-	"parasite": ["res://assets/models/mixamo_characters/Parasite L Starkie.fbx", "Parasite"],
-	"copzombie": ["res://assets/models/mixamo_characters/copzombie_l_actisdato.fbx", "Cop Zombie"],
-	"zombiegirl": ["res://assets/models/mixamo_characters/Zombiegirl W Kurniawan.fbx", "Zombie Girl"],
-	"ch15": ["res://assets/models/mixamo_characters/Ch15_nonPBR.fbx", "Ch15"],
 }
-## Ch08/Ch10 use a numbered rig prefix ("mixamorig7_"/"mixamorig5_" -
-## Mixamo increments this per download to avoid bone-name collisions, and
-## the two ended up with different numbers despite being downloaded
-## together) instead of the plain "mixamorig_" MIXAMO_CHARACTERS share, so
+## Characters whose rig prefix is numbered ("mixamorig7_", ...) instead of the plain "mixamorig_" -
+## MIXAMO_CHARACTERS share, so
 ## they can't reuse action_adventure_pack's clips directly -
 ## RetargetedMixamoAdapter bakes a small clip library from Human Basic
 ## Motions FREE onto each one instead. Value is [model_path, display_name,
 ## bone_prefix].
 const RETARGETED_MIXAMO_CHARACTERS := {
-	"ch08": ["res://assets/models/mixamo_characters/Ch08_nonPBR.fbx", "Ch08", "mixamorig7_"],
-	"ch10": ["res://assets/models/mixamo_characters/Ch10_nonPBR.fbx", "Ch10", "mixamorig5_"],
 }
 const DEFAULT_OBJECT_SCALE := 0.12
 const DEFAULT_OBJECT_POSITION := Vector3(-0.09, -0.03, -0.01)
