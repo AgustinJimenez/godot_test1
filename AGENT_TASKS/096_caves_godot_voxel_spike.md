@@ -126,3 +126,13 @@ Prebuilt `godot.windows.editor.double.x86_64.exe` from release v1.7 (Godot 4.7.2
 - Earth-size run on OUR module build (same `planet.gd`, 6,371 km, 12 LODs, view 4096, caves on, 20 s): the ball lands (gap 1.3-1.7 m) and rolls, same as on the prebuilt exe.
   Memory 748 MB, video 421 MB, 2.6M triangles, 688 draw calls. The 16.67 ms frames are vsync (this run had it on; the earlier 0.92 ms numbers had it off), so no timing comparison.
   The last sample shows gap -2.6 m (ball slightly inside the surface on a slope or cave edge); not investigated. Picture: `E:\Temp\claude\voxel_spike\planet_ownengine.png`.
+
+## Real planet height on the voxel engine (2026-11-08)
+- The whole planet is native now (`PlanetSettings`, `PlanetNoise` with bulk `heights_of(dirs)`; the GDScript is gone), so the generator calls those directly.
+- The double precision `planet_crust` DLL in `bin/` was STALE (Oct 20, 1.9 MB, from before the planet port): no Planet* class loaded, even in the old double exe.
+  Rebuilt with `scripts/build_native.sh --double` (see README for the env vars); it failed first because godot-cpp master dropped `Math_PI` / `Math_TAU`.
+  `native/planet_crust/SConstruct` now defines them when the godot-cpp headers lack them (the single build is unchanged).
+- Check on the voxel exe (headless, project root): `ClassDB` has `PlanetNoise`, `PlanetSettings` and `VoxelLodTerrain` together; `PlanetSettings.earth(1.0)` radius 6,371,000 m, seed 1337;
+  heights of 8 directions between -3.8 km and +1.8 km; `heights_of` 20,000 directions in 17.7 ms (~0.9 us a point).
+- A scratch project needs `.godot/extension_list.cfg` listing the `.gdextension` for a headless run; an absolute DLL path in the `.gdextension` was not enough on its own in `proj_real`
+  (the classes did not appear there; the repo root works), so use the repo as the project for the next step.

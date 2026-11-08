@@ -7,6 +7,10 @@ godot_cpp = os.environ.get("GODOT_CPP", "E:/Godot/cpp/godot-cpp")  # (set GODOT_
 env = SConscript(godot_cpp + "/SConstruct")
 
 env.Append(CPPPATH=["src/"])
+# godot-cpp master (the double precision build) dropped the Math_PI / Math_TAU macros of 4.5
+_defs = os.path.join(godot_cpp, "include", "godot_cpp", "core", "math_defs.hpp")
+if os.path.exists(_defs) and "Math_PI" not in open(_defs).read():
+    env.Append(CPPDEFINES=[("Math_PI", "3.1415926535897932384626433833"), ("Math_TAU", "6.2831853071795864769252867666")])
 sources = Glob("src/*.cpp")
 suffix = env["suffix"].replace(".dev", "")
 env["SHLIBPREFIX"] = ""  # macOS adds "lib"; the .gdextension names the file without it
