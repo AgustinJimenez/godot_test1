@@ -136,3 +136,18 @@ Prebuilt `godot.windows.editor.double.x86_64.exe` from release v1.7 (Godot 4.7.2
   heights of 8 directions between -3.8 km and +1.8 km; `heights_of` 20,000 directions in 17.7 ms (~0.9 us a point).
 - A scratch project needs `.godot/extension_list.cfg` listing the `.gdextension` for a headless run; an absolute DLL path in the `.gdextension` was not enough on its own in `proj_real`
   (the classes did not appear there; the repo root works), so use the repo as the project for the next step.
+
+## Real planet as voxel terrain (2026-11-08)
+Files: `tests/manual/voxel/real_planet_generator.gd` (GDScript `VoxelGeneratorScript`: sdf = |p| - (R + `PlanetNoise.heights_of(dir)`), blocks farther than 12 km
+from the surface are filled without asking), `real_planet.gd` / `.tscn` (LOD terrain, viewer, ball with gravity toward the centre, report). Run it with the module engine
+(`--path . res://tests/manual/voxel/real_planet.tscn -- --lods=12 --view=4096 --secs=15 --ball=1 --shot=PATH`).
+Result, Earth size (R 6,371,000 m, seed 1337), spawn on land (noise height 191 m), windowed, vsync on, 12 LODs, view 4096:
+- Loads in 99 s (the loaded point: no tasks left for 2 s). The generator ran 11,947 blocks in the whole run. Calls to `heights_of` from the 3 worker threads at once did not
+  crash (no mutex), but whether the native code is thread safe is NOT verified (one earlier run with a mutex was serial and did not finish loading in 240 s).
+- Cost is the native height: 28-40 ms a near-surface block of 18^3 voxels, of which `heights_of` is ~32 ms (5.5 us a land point; random directions, mostly sea, were 0.9 us).
+  The GDScript loops around it are ~5 ms. So the generator is bound by `PlanetNoise`, not by GDScript.
+- Correct shape: a raycast on the terrain hits 190.7 m above the radius where the noise says 191.2 m. The ball lands, rolls downhill (190-196 m) with gravity toward the centre.
+- Memory 204 MB, video 247 MB, 164k triangles; 16.7 ms frames are vsync. The picture (`E:\Temp\claude\voxel_spike\real_planet2.png`) shows grey terrain with dark patches (no
+  sky, no material, no environment light: the lighting is the unlit side, not looked into).
+- Not done: surface colours / the ground shader, sea, rivers, plants, caves, character walking, loading time (99 s is too long; ideas: heights on a coarser lattice and interpolate,
+  skip voxels far from the surface, cache, native generator via the module), thread safety check of `PlanetNoise`.
