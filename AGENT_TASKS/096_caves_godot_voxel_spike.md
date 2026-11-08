@@ -115,3 +115,11 @@ Prebuilt `godot.windows.editor.double.x86_64.exe` from release v1.7 (Godot 4.7.2
 
 ## Log
 - 2026-10-29: task written. Spike run (see Spike result): the extension works on stock 4.7.2 with Jolt; planet integration and cost still open.
+
+## Module built into our own double engine (2026-11-08)
+- Cloned godot_voxel `v1.7` into `E:\Godot\double\src\modules\voxel` (engine source is at `ed1daf0`, the same commit) and re-ran the usual
+  scons line (`platform=windows target=editor precision=double arch=x86_64 d3d12=yes debug_symbols=no`). Build time: 4 min 53 s
+  (the new module changes the module list, so `main` and `gltf` recompile too). Log: `E:\Godot\double\build_voxel.log`.
+- The previous exes are in `E:\Godot\double\backup_novoxel\`.
+- Check: the new exe reports `4.7.2-stable (custom_build)` and `ClassDB` has `VoxelLodTerrain` and `VoxelGeneratorGraph`.
+- Not yet checked: the Earth-size planet test on this exe, our native `planet_crust` / foot-IK libraries against it, export templates (none built).
