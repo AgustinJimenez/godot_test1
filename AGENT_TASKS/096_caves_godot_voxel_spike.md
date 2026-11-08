@@ -123,3 +123,6 @@ Prebuilt `godot.windows.editor.double.x86_64.exe` from release v1.7 (Godot 4.7.2
 - The previous exes are in `E:\Godot\double\backup_novoxel\`.
 - Check: the new exe reports `4.7.2-stable (custom_build)` and `ClassDB` has `VoxelLodTerrain` and `VoxelGeneratorGraph`.
 - Not yet checked: the Earth-size planet test on this exe, our native `planet_crust` / foot-IK libraries against it, export templates (none built).
+- Earth-size run on OUR module build (same `planet.gd`, 6,371 km, 12 LODs, view 4096, caves on, 20 s): the ball lands (gap 1.3-1.7 m) and rolls, same as on the prebuilt exe.
+  Memory 748 MB, video 421 MB, 2.6M triangles, 688 draw calls. The 16.67 ms frames are vsync (this run had it on; the earlier 0.92 ms numbers had it off), so no timing comparison.
+  The last sample shows gap -2.6 m (ball slightly inside the surface on a slope or cave edge); not investigated. Picture: `E:\Temp\claude\voxel_spike\planet_ownengine.png`.
