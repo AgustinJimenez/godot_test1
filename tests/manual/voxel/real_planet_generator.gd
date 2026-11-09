@@ -7,6 +7,11 @@ extends VoxelGeneratorScript
 ## Farther from the surface than this (m) no ground height can change the sign, so the block is
 ## filled without asking the planet (the highest peak is about 9 km).
 const RELIEF_MARGIN := 12000.0
+const CAVE_DEPTH := 200.0 # m below the ground the tunnels reach
+const CAVE_MAX_LOD := 3 # the coarsest level that still carves them
+const CAVE_FREQUENCY := 1.0 / 110.0
+const CAVE_WIDTH := 0.06 # noise units either side of the zero surfaces (about 4 m of radius)
+const CAVE_SCALE := 110.0 / 1.5 # metres of distance per noise unit (the noise's slope)
 
 var radius := 6371000.0
 ## PlanetNoise (a native class, so not typed here: the file parses without it)
@@ -19,6 +24,11 @@ var lattice := 2
 ## Turns a world direction into the planet's own direction (the identity: the same). The walking
 ## test turns the planet so that its chosen spawn is at +Y, where the player's "up" is.
 var frame := Basis.IDENTITY
+## Tunnels (task 096): the crossing of two noise surfaces, carved out of the ground down to
+## CAVE_DEPTH m. Only at the finest levels (the tunnels are metres wide).
+var caves := false
+var cave_a := FastNoiseLite.new()
+var cave_b := FastNoiseLite.new()
 var msec_asking := 0 # time spent filling the voxels (all threads)
 
 var _lock := Mutex.new()
@@ -46,6 +56,8 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 			for y in size.y:
 				var p := origin + Vector3(x, y, z) * step
 				var sdf := (p.length() - (radius + heights[i])) / step
+				if caves and lod <= CAVE_MAX_LOD and sdf < 0.0 and sdf > -CAVE_DEPTH / step:
+					sdf = maxf(sdf, (CAVE_WIDTH - cave_field(p)) * CAVE_SCALE / step)
 				out_buffer.set_voxel_f(sdf, x, y, z, VoxelBuffer.CHANNEL_SDF)
 				i += 1
 	var spent := Time.get_ticks_msec() - started
@@ -108,3 +120,18 @@ func _interpolated_heights(origin: Vector3, size: Vector3i, step: float) -> Pack
 		for k in plane:
 			h3[to + k] = lerpf(h2[from + k], h2[from + plane + k], t)
 	return h3
+
+
+## How far a point is from the middle of a tunnel, in noise units (under CAVE_WIDTH: inside).
+func cave_field(p: Vector3) -> float:
+	return maxf(absf(cave_a.get_noise_3d(p.x, p.y, p.z)), absf(cave_b.get_noise_3d(p.x, p.y, p.z)))
+
+
+## Sets the two noises up (call once, with the planet's seed).
+func setup_caves(seed_value: int) -> void:
+	for pair in [[cave_a, 11], [cave_b, 29]]:
+		var n: FastNoiseLite = pair[0]
+		n.noise_type = FastNoiseLite.TYPE_SIMPLEX
+		n.frequency = CAVE_FREQUENCY
+		n.seed = seed_value + pair[1]
+	caves = true

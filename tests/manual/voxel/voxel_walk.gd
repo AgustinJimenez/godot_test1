@@ -32,6 +32,12 @@ var _frames := 0
 var _worst_above := 0.0
 var _worst_frame := 0.0
 var _slow := 0
+var _caves := false
+var _dig := false # dig a hole under the player and see them fall in
+var _dig_y := 0.0
+var _dig_at := -1.0
+var _visit := false # start the player inside a tunnel
+var _cave_at := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -44,6 +50,13 @@ func _ready() -> void:
 			_lattice = int(a.substr(10))
 		elif a.begins_with("--view="):
 			_view = int(a.substr(7))
+		elif a == "--caves":
+			_caves = true
+		elif a == "--dig":
+			_dig = true
+		elif a == "--cave-visit":
+			_caves = true
+			_visit = true
 		elif a.begins_with("--seed="):
 			_seed = int(a.substr(7))
 	var settings: Object = ClassDB.class_call_static("PlanetSettings", "earth", 1.0)
@@ -61,6 +74,10 @@ func _ready() -> void:
 	_gen.set("noise", _noise)
 	_gen.set("lattice", _lattice)
 	_gen.set("frame", _frame)
+	if _caves:
+		_gen.call("setup_caves", _seed)
+		if _visit:
+			_find_cave()
 	_terrain = ClassDB.instantiate("VoxelLodTerrain")
 	_terrain.set("lod_count", _lods)
 	_terrain.set("generator", _gen)
@@ -73,7 +90,7 @@ func _ready() -> void:
 	_terrain.set("bounds", AABB(Vector3.ONE * -_radius * 1.6, Vector3.ONE * _radius * 3.2))
 	add_child(_terrain)
 	add_child(_anchor)
-	_anchor.position = Vector3(0, _radius + _ground, 0)
+	_anchor.position = _cave_at if _visit else Vector3(0, _radius + _ground, 0)
 	var viewer: Node = ClassDB.instantiate("VoxelViewer")
 	viewer.set("view_distance", _view)
 	viewer.set("requires_collisions", true)
@@ -147,6 +164,20 @@ func _process(dt: float) -> void:
 		_start = _player.global_position
 		Input.action_press(&"move_forward")
 		Input.action_press(&"sprint")
+	if _dig and _dig_at < 0.0 and _t > _loaded_at + 2.0:
+		_dig_at = _t
+		_dig_y = _player.global_position.y
+		var tool: Object = _terrain.call("get_voxel_tool")
+		tool.set("mode", 1) # VoxelTool.MODE_REMOVE
+		var centre := _player.global_position + Vector3(0, -1.0, 0)
+		var before: float = tool.call("get_voxel_f", Vector3i(centre.round()))
+		tool.call("do_sphere", centre, 3.0)
+		var after: float = tool.call("get_voxel_f", Vector3i(centre.round()))
+		print("WALK dig: voxel under the player ", snappedf(before, 0.01), " -> ", snappedf(after, 0.01))
+	if _dig and _dig_at > 0.0 and _t > _dig_at + 3.0 and _dig_y > 0.0:
+		print("WALK dig: the player's height ", snappedf(_dig_y, 0.01), " -> ",
+				snappedf(_player.global_position.y, 0.01), " m (on floor: ", _player.is_on_floor(), ")")
+		_dig_y = -1.0
 	if _walk_t0 > 0.0:
 		if _player.is_on_floor():
 			_on_floor += 1
@@ -159,15 +190,24 @@ func _process(dt: float) -> void:
 func _spawn_player() -> void:
 	var tool: Object = _terrain.call("get_voxel_tool")
 	var from := Vector3(0, _radius + _ground + 1500.0, 0)
-	var hit: Object = tool.call("raycast", from, Vector3.DOWN, 3000.0)
-	var y := _radius + _ground
+	var reach := 3000.0
+	if _visit:
+		from = _cave_at
+		reach = 60.0
+		print("WALK cave voxel value at the target: ", snappedf(
+				tool.call("get_voxel_f", Vector3i(_cave_at.round())), 0.01), " (positive: air)")
+	var hit: Object = tool.call("raycast", from, Vector3.DOWN, reach)
+	var y := from.y if _visit else _radius + _ground
 	if hit != null:
 		y = float((hit.get("position") as Vector3i).y)
+	elif _visit:
+		print("WALK no floor found under the cave target")
 	print("WALK loaded after ", snappedf(_t, 0.1), " s; ground hit ", snappedf(y - _radius, 0.1),
 			" m (noise ", snappedf(_ground, 0.1), ")")
 	_player = PLAYER_SCENE.instantiate() as Player
 	add_child(_player)
-	_player.global_position = Vector3(0, y + 3.0, 0)
+	_player.global_position = Vector3(_cave_at.x if _visit else 0.0, y + (2.0 if _visit else 3.0),
+			_cave_at.z if _visit else 0.0)
 
 
 func _report() -> void:
@@ -180,3 +220,23 @@ func _report() -> void:
 	if _shot != "":
 		get_viewport().get_texture().get_image().save_png(_shot)
 
+
+
+## The most tunnel-like point 20-100 m under the ground near the spawn (the middle of a tunnel).
+func _find_cave() -> void:
+	var best := 1.0e9
+	for x in range(-300, 301, 10):
+		for z in range(-300, 301, 10):
+			var ground_y := _radius + _ground
+			for depth in range(20, 101, 5):
+				var p := Vector3(x, ground_y - depth, z)
+				p.y = sqrt(maxf(_radius * _radius - x * x - z * z, 0.0)) + (_ground - depth)
+				var above := _ground_above(p)
+				if above > -15.0:
+					continue
+				var c: float = _gen.call("cave_field", p)
+				if c < best:
+					best = c
+					_cave_at = p
+	print("WALK cave target ", _cave_at.snapped(Vector3.ONE * 0.1), " field ", snappedf(best, 0.001),
+			" ground above it ", snappedf(-_ground_above(_cave_at), 0.1), " m")

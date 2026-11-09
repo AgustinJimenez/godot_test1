@@ -177,3 +177,17 @@ Result (Earth size, spawn on land at 191 m, view 2048, lattice 2, vsync on): loa
 Picture `E:\Temp\claude\voxel_spike\walk1.png`: the character runs on white hills (default material, overexposed), feet on the ground, shadow on the terrain.
 NOT done / not checked: the lab's sky, plants, water and ground shader; walking far (the terrain is not rebased: a km away the "up" is off by ~0.5 deg per km... fine for a test, wrong for
 a real game, which needs the lab's `PlanetFrame` turn); foot IK on slopes; jumping, climbing, swimming; digging; caves.
+
+## Ground colours, caves, digging (2026-11-08), all on the walking test
+`voxel_walk.tscn -- [--caves] [--cave-visit] [--dig] --secs=N --shot=PATH`.
+- Ground colours: `shaders/voxel/voxel_ground.gdshader` set as the terrain's `material` (NOT `material_override`). Height = |world position| - radius and slope = normal against the
+  radial direction (the model matrix is in absolute world coordinates in the double engine, float precision 0.5 m at Earth size; my first try assumed camera-relative and painted
+  everything the debug colour). Sand / grass / soil / rock on slopes / snow above 2200 m, with value noise. Crude: NOT the planet's biome colours (`PlanetNoise.colours_of`), no
+  textures, no sea. Picture `walk4.png`: green hills with sand and bare patches in the distance (pale: the default sky light is bright, not tuned).
+- Caves: `RealPlanetGenerator.setup_caves(seed)`: tunnels are where two simplex noises are both near zero (one noise alone gives sheets, not tunnels), `CAVE_WIDTH` 0.06 -> about
+  4.4 m of radius, carved from the ground down to 200 m, only at LOD <= 3. `--cave-visit` finds the tunnel centre 20-100 m down near the spawn, starts the player inside it:
+  voxel value there +3.98 (air), floor found, the real player stands in it (picture `cave1.png`: rock walls around the character, 61 m under the ground). The cave interior is lit
+  by the sky ambient (no darkness), walls are the rock colour. Not done: entrances on purpose, big caverns, the cost of the cave noise in GDScript (per voxel, two noise calls;
+  load time with caves was 28.5 s against 25.8 s without).
+- Digging: `VoxelTool.mode = MODE_REMOVE; do_sphere(centre, 3)` under the player: voxel -1.19 -> +2.81, the player falls 3.3 m into the hole and stands on its floor again (3 s later).
+  Edits live in memory (no stream / save here). Not done: building, collision cost of many edits, digging at coarse LODs, saving.
