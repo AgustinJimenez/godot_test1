@@ -193,7 +193,9 @@ tag with MSVC (14 minutes on 6 cores):
     scons platform=windows target=editor precision=double arch=x86_64 d3d12=yes debug_symbols=no
 
 Output `bin/godot.windows.editor.double.x86_64.exe` (+ `.console.exe`, with `D3D12Core.dll` beside
-it). No export templates were built. The project has no native GDExtensions to rebuild, and
+it). The project's native library (`native/planet_crust`) has to be built for this precision too
+(`scripts/build_native.sh --double`, see its README; the debug library is what the editor loads).
+Export templates: none unless you build them (the voxel branch built a release one, see below).
 Jolt turns on `JPH_DOUBLE_PRECISION` itself. In a double build `Vector3` and the noise inputs are
 64-bit and `HeightMapShape3D.map_data` is a `PackedFloat64Array` (`TerrainChunk` sets it with
 `set()` so it compiles in both). Binary resources saved by a double build carry a flag: do not
@@ -477,3 +479,25 @@ fractions) or calls `PlanetMap.world_changed_at(direction, radius_metres)`: the 
 changes that happen every frame. The list of changes is not saved yet: a world that is loaded again shows the base
 terrain until its changes are replayed (save them with the world and call `world_changed` for each on load).
 
+
+
+## The voxel ground (experiment, branch `voxel-spike`, task 096)
+
+The planet's ground as a volume instead of tiles, so there can be caves and holes you dig. It needs an engine with the
+voxel module (godot_voxel v1.7) built into the double precision build (`E:\Godot\double\src\modulesoxel`), plus the
+planet generator module (`native/voxel_planet_module`, copied in by `scripts/install_voxel_planet_module.sh`); the same
+`scons` line as above builds both, ~5 minutes the first time and ~20 s after a change in the module. The release export
+template is `scons platform=windows target=template_release precision=double arch=x86_64 d3d12=yes debug_symbols=no`
+(12 minutes; a real export of a test project ran). It is Windows only so far (task 097 is the Mac).
+
+    godot.windows.editor.double.x86_64.console.exe --path . res://tests/manual/planet/planet_lab.tscn -- [--earth] --voxel [--plants] [--grounded|--walk-check] [--voxel-caves]
+
+`--voxel` swaps the ground for a `VoxelLodTerrain` whose generator asks the lab's own `PlanetNoise`: the signed distance is
+`|p| - (radius + height)` and the terrain is moved with the `PlanetFrame` (`world = rot * (q - anchor) + origin_w`), so the
+flat-world game around the player keeps working. The tiles still build (their ground mesh is hidden and their colliders
+switched off; plants, sea and rivers are the tiles' own), a black screen with a percentage covers the wait, **G** digs
+where you look and **H** fills. On a stock engine `--voxel` prints that there is no voxel module and the lab runs as before.
+Numbers (RTX 4090, 6 cores, `--earth`): ground ready after ~24 s (the GDScript generator: 67 s), the same frame rate as the
+tiles (89 against 77 fps with plants, GPU 9.7 against 12.2 ms), memory the same. Not done: the ground detail beyond the soil
+scans, cliffs, the planet's own soil data, finer colours near the player on Earth, plants placed from the voxel surface,
+a lab-wide soak. Everything measured, with the dead ends, is in `AGENT_TASKS/096_caves_godot_voxel_spike.md`.
