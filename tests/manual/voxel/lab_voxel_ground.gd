@@ -120,5 +120,5 @@ func _wait_for_ground(delta: float) -> void:
 	ground_ready = true
 	_player.global_position = (hit["position"] as Vector3) + Vector3(0, 0.05, 0)
 	_player.process_mode = Node.PROCESS_MODE_INHERIT
-	print("VOXEL ground ready: the player stands at ",
-			_player.global_position.snapped(Vector3.ONE * 0.1))
+	print("VOXEL ground ready after %d ms (the process started): the player stands at %s" % [
+			Time.get_ticks_msec(), _player.global_position.snapped(Vector3.ONE * 0.1)])

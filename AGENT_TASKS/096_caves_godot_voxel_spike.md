@@ -236,3 +236,22 @@ All on the walking test (`voxel_walk.tscn`), Earth size, seed 1337, spawn on lan
 - NOT done: river / lake carving of the heightmap ground (`--water`), the sea, the planet's biome colours and ground shader on the voxel mesh, plants placed from the voxel surface
   (they use the heightmap, 0.5 m off in places), caves in the lab, the cost against the heightmap tiles (`--fps`, the wasted tile work), the load time (26-47 s on Earth),
   foot IK on slopes, `--ik-soak`, the map and the other checks with `--voxel`.
+
+## Cost against the heightmap tiles (2026-11-08)
+`planet_lab.tscn -- [--earth] [--voxel] --plants --grounded --seed=11 --fps` with `--quit-after N` (without it a `timeout` kill loses the buffered output). The lab's `FPS` line now
+also prints `mem_mb` and `video_mb`. RTX 4090, vsync off, standing still, the same spot (altitude 831 m on Earth, 22 m small), plants on, the voxel run hides the tile ground:
+
+| | fps | GPU ms | draw calls | triangles | mem MB | video MB |
+|---|---|---|---|---|---|---|
+| small (20 km), heightmap | 124 | 7.8 | 3,657 | 10.3 M | - | - |
+| small (20 km), voxel | 131-135 | 6.6 | 4,038 | 11.0 M | - | - |
+| Earth, heightmap | 77 | 12.2 | 7,097 | 16.6 M | 834 | 2,130 |
+| Earth, voxel | 89 | 9.7 | 7,370 | 16.1 M | 808 | 2,164 |
+
+So in the lab the voxel ground costs no more than the tiles (a little less: the ground mesh is simpler). One frame over 33 ms every 300 frames in both.
+NOT measured: the CPU the heightmap tiles still use in the background in the voxel run (their building is wasted), walking (streaming), the cost with caves.
+- Load time is the real cost: small planet: the lab says LOADED after 7.1 s (tiles) but `VOXEL ground ready` only after 38.6 s since the process started; Earth took ~47 s in the walking
+  test (not re-measured in the lab: `--quit-after` ended the run first). With `voxel/threads/count/ratio_over_max=1.0` (via an `override.cfg`, since `project.godot` stays uncommitted)
+  the 6-core machine uses 5 voxel workers instead of 3: 28.0 s instead of 38.6 s (not linear: the tile building competes). A default project setting would need `project.godot`.
+- Where the time goes (block of 18^3 voxels): ~4 ms with `lattice` 2 (21 ms exact) of which ~2 ms is GDScript loops, the rest `heights_of` (~5.5 us a land point). A C++ generator
+  (a GDExtension class extending `VoxelGeneratorScript`, if the API dump of the module engine exposes it) would halve a block; fewer samples at coarse LODs would cut it more.

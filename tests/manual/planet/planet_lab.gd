@@ -814,10 +814,12 @@ func _physics_process(_delta: float) -> void:
 		var cpu := Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 		RenderingServer.viewport_set_measure_render_time(vp, true)
 		print(("FPS frame=%d fps=%d alt=%d tiles=%d draw_calls=%d primitives=%d "
-				+ "process_ms=%.1f render_cpu_ms=%.1f render_gpu_ms=%.1f") % [
+				+ "process_ms=%.1f render_cpu_ms=%.1f render_gpu_ms=%.1f mem_mb=%.0f video_mb=%.0f") % [
 				_frame, Engine.get_frames_per_second(), planet.altitude(), planet.surface.tiles.size(),
 				calls, prims, cpu, RenderingServer.viewport_get_measured_render_time_cpu(vp),
-				RenderingServer.viewport_get_measured_render_time_gpu(vp)])
+				RenderingServer.viewport_get_measured_render_time_gpu(vp),
+				Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
+				Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
 		print("PLANT_COLLIDERS ", PlanetLabChecks.plant_shapes(planet.surface))
 		print("HITCH worst_frame=%.1f ms, frames over 33 ms: %d" % [_worst_frame * 1000.0,
 				_slow_frames])
