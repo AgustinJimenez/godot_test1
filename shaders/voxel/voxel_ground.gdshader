@@ -10,6 +10,7 @@ uniform float radius = 6371000.0; // the planet's radius (m), set by script
 uniform float snow_line = 2200.0;
 uniform sampler2D colour_map : source_color, filter_linear, repeat_enable; // the planet's colours by direction (script)
 uniform bool use_map = false;
+uniform int debug_mode = 0; // a tool: 1 the height in 100 m steps, 2 the slope, 3 the map's colour, 4 the light-free albedo
 uniform mat4 world_to_planet = mat4(1.0); // the terrain's own space (the planet's) from the world's, set by script
 
 varying vec3 world_pos;
@@ -21,6 +22,10 @@ varying vec3 lab_normal;
 // still when the planet is turned under the player (planet_lab publishes these globals).
 global uniform mat4 anchor_from_world;
 global uniform vec3 anchor_wrap;
+global uniform vec3 anchor_up;
+uniform sampler2D cliff_c : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D cliff_n : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float cliff_scale = 0.33; // tiles a metre
 uniform bool detail_on = false; // set by the lab's helper (the globals above only exist there)
 uniform float detail_strength : hint_range(0.0, 1.0) = 0.85;
 uniform sampler2D scan_gravel_c : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -98,16 +103,20 @@ void fragment() {
 	if (use_map) { // the planet's own colour of the place, with the shader's grain over it
 		vec3 up_dir = normalize(world_pos);
 		vec2 map_uv = vec2(atan(up_dir.z, up_dir.x) / TAU + 0.5, 0.5 - asin(clamp(up_dir.y, -1.0, 1.0)) / PI);
-		col = texture(colour_map, map_uv).rgb * (0.82 + 0.36 * n) * 1.7; // (1.7: matched to the tiles' look, measured on the same spot)
+		col = texture(colour_map, map_uv).rgb * (0.82 + 0.36 * n) * 1.25; // (1.25: between the flat ground (1.7 matched it) and the sun-facing slopes, which clip to white above that)
 	}
-	col = mix(col, rock, smoothstep(0.18, 0.4, slope + (n - 0.5) * 0.15));
+	// (with the planet's own colours the rock is only for cliffs: a grassy hillside of 35 degrees stays green)
+	col = mix(col, rock, use_map ? smoothstep(0.42, 0.7, slope + (n - 0.5) * 0.15) : smoothstep(0.18, 0.4, slope + (n - 0.5) * 0.15));
 	col = mix(col, snow, smoothstep(snow_line, snow_line + 300.0, height + n * 150.0) * (1.0 - smoothstep(0.3, 0.6, slope)));
 	float rough = 0.92;
 	float fade = (1.0 - smoothstep(10.0, 32.0, length(VERTEX))) * detail_strength;
+	vec3 on_planet = vec3(0.0);
+	vec3 facing = vec3(0.0, 1.0, 0.0);
+	if (detail_on) {
+		on_planet = (anchor_from_world * vec4(lab_pos, 1.0)).xyz + anchor_wrap;
+		facing = normalize(mat3(anchor_from_world) * lab_normal);
+	}
 	if (detail_on && fade > 0.01) { // the soil's scan: green ground is forest earth, reddish is red soil, the rest gravel
-		vec3 near_anchor = (anchor_from_world * vec4(lab_pos, 1.0)).xyz;
-		vec3 on_planet = near_anchor + anchor_wrap;
-		vec3 facing = normalize(mat3(anchor_from_world) * lab_normal);
 		float w_leaf = smoothstep(0.0, 0.08, col.g - max(col.r, col.b));
 		float w_red = smoothstep(0.03, 0.12, col.r - col.g) * (1.0 - w_leaf);
 		float w_gravel = 1.0 - w_leaf - w_red;
@@ -136,6 +145,50 @@ void fragment() {
 		NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(tilt_world, 0.0)).xyz * 0.9 * fade);
 		rough = mix(rough, clamp(rough_sum, 0.3, 1.0), fade);
 	}
+	{
+		// the steep faces are cliff: slabs with their strata level (planet_ground.gdshader: the texture drawn on two vertical planes
+		// of the place's own frame, u along the face, v up), its colour kept as the detail over the rock's own
+		float cliff_w = smoothstep(0.45, 0.7, slope) * (1.0 - smoothstep(60.0, 140.0, length(VERTEX))) * detail_strength;
+		if (detail_on && cliff_w > 0.01) {
+			vec3 up_local = normalize(anchor_up);
+			vec3 side_ref = abs(up_local.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+			vec3 right_local = normalize(cross(side_ref, up_local));
+			vec3 forward_local = cross(up_local, right_local);
+			vec3 spot = vec3(dot(on_planet, right_local), dot(on_planet, up_local), dot(on_planet, forward_local));
+			vec2 across = vec2(abs(dot(facing, forward_local)), abs(dot(facing, right_local)));
+			vec2 plane_weight = pow(across, vec2(4.0));
+			plane_weight /= max(plane_weight.x + plane_weight.y, 0.0001);
+			vec2 uv_a = vec2(spot.x, spot.y) * cliff_scale;
+			vec2 uv_b = vec2(spot.z, spot.y) * cliff_scale;
+			vec4 col_a = unrepeated(cliff_c, uv_a);
+			vec4 col_b = unrepeated(cliff_c, uv_b);
+			vec4 nor_a = unrepeated(cliff_n, uv_a);
+			vec4 nor_b = unrepeated(cliff_n, uv_b);
+			vec3 cliff_colour = col_a.rgb * plane_weight.x + col_b.rgb * plane_weight.y;
+			float cliff_ao = col_a.a * plane_weight.x + col_b.a * plane_weight.y;
+			vec2 tilt_a = nor_a.xy * 2.0 - 1.0;
+			vec2 tilt_b = nor_b.xy * 2.0 - 1.0;
+			vec3 tilt_planet = (right_local * tilt_a.x + up_local * tilt_a.y) * plane_weight.x
+					+ (forward_local * tilt_b.x + up_local * tilt_b.y) * plane_weight.y;
+			vec3 cliff_ratio = clamp(cliff_colour / vec3(0.5716, 0.1905, 0.0373), vec3(0.4), vec3(1.5));
+			cliff_ratio = mix(vec3(dot(cliff_ratio, vec3(0.33))), cliff_ratio, 0.4);
+			col *= mix(vec3(1.0), cliff_ratio * mix(0.5, 1.0, cliff_ao), cliff_w);
+			NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(transpose(mat3(anchor_from_world)) * tilt_planet * 1.1, 0.0)).xyz * cliff_w);
+		}
+	}
 	ALBEDO = col;
+	if (debug_mode > 0) { // tools: emit flags, unlit (the albedo is lit and tone mapped, hard to read)
+		ALBEDO = vec3(0.0);
+		if (debug_mode == 1) { // R: above the snow line, G: slope past the rock threshold, B: above the sea
+			EMISSION = vec3(height + n * 150.0 > snow_line ? 1.0 : 0.0, slope > 0.3 ? 1.0 : 0.0, height > 0.0 ? 1.0 : 0.0);
+		} else if (debug_mode == 2) { // R: height over 400 m, G: height over 800 m, B: height over 1600 m
+			EMISSION = vec3(height > 400.0 ? 1.0 : 0.0, height > 800.0 ? 1.0 : 0.0, height > 1600.0 ? 1.0 : 0.0);
+		} else if (debug_mode == 3) { // the map's colour alone
+			vec3 d = normalize(world_pos);
+			EMISSION = texture(colour_map, vec2(atan(d.z, d.x) / TAU + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI)).rgb * 2.0;
+		} else { // the colour before the lighting
+			EMISSION = col;
+		}
+	}
 	ROUGHNESS = rough;
 }

@@ -30,6 +30,7 @@ var _map_task := -1
 var _map_image: Image
 var _map_rows := 0
 var _map_started := 0
+var _map_steep := 0.0 # the steepness the map's colours are for (snow and scree depend on it)
 var _map_widths: Array[int] = []
 
 
@@ -59,6 +60,9 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 	# the lab must still compile there)
 	var args := OS.get_cmdline_user_args()
 	_dig_test = "--voxel-dig-test" in args
+	for arg in args:
+		if arg.begins_with("--voxel-steep="):
+			_map_steep = float(arg.trim_prefix("--voxel-steep="))
 	var gen: Object
 	if ClassDB.class_exists("VoxelGeneratorPlanet") and not "--voxel-gdscript" in args:
 		# (C++, built into the engine: scripts/install_voxel_planet_module.sh)
@@ -232,6 +236,7 @@ func _bake_colour_map(width: int) -> void:
 		var heights := noise.heights_of(dirs)
 		var steeps := PackedFloat32Array()
 		steeps.resize(width)
+		steeps.fill(_map_steep)
 		var colours := noise.colours_of(dirs, heights, steeps)
 		for x in width:
 			_map_image.set_pixel(x, y, colours[x])
@@ -243,7 +248,7 @@ func _poll_colour_map() -> void:
 	WorkerThreadPool.wait_for_task_completion(_map_task)
 	_map_task = -1
 	_material.set_shader_parameter("colour_map", ImageTexture.create_from_image(_map_image))
-	_material.set_shader_parameter("use_map", true)
+	_material.set_shader_parameter("use_map", not "--voxel-nomap" in OS.get_cmdline_user_args())
 	print("VOXEL colour map ready (", _map_image.get_width(), " x ", _map_image.get_height(),
 			") after ", Time.get_ticks_msec() - _map_started, " ms of baking")
 
@@ -254,7 +259,13 @@ func _give_scans() -> void:
 		for kind in ["c", "n"]:
 			var path := "res://assets/textures/ground/scans/%s_%s.png" % [scan, kind]
 			_material.set_shader_parameter("scan_%s_%s" % [scan, kind], load(path))
+	for kind in ["c", "n"]: # (the steep faces' slabs)
+		_material.set_shader_parameter("cliff_%s" % kind,
+				load("res://assets/textures/ground/scans/cliff_%s.png" % kind))
 	_material.set_shader_parameter("detail_on", true)
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--voxel-debug="):
+			_material.set_shader_parameter("debug_mode", int(arg.trim_prefix("--voxel-debug=")))
 
 
 ## G digs a hole where the camera looks, H fills one (a sphere of `_dig_radius` m, up to 14 m away).

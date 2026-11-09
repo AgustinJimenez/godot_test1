@@ -305,3 +305,26 @@ User: "use 5 mins loop to remind you to continue, try to use native cpp, is fast
 - `VoxelTool.raycast` returned null in the lab (from 6 m above the ground, 14 or 80 m long, the sdf along the same ray was right: 6.5, 3.0, -0.05, ...; the same call worked from 1500 m
   above in the standalone test with an unrotated terrain). Not understood (the rotated terrain? the float precision?). The dig keys march the ray themselves with `get_voxel_f_interpolated`.
 - Water: the tiles' own sea / river meshes still draw (only the ground mesh is hidden) and `--swim-check --voxel` gives the same `SWIM_CHECK PASS swimming=true water_y=3.21 player_y=1.97` as the tiles.
+
+## Soak walk, cliff texture and the white hillside (2026-11-09, overnight)
+- Lab soak (`--earth --plants --grounded --forest-walk=240 --fixed-fps 60 --seed=11`, 14,400 frames): voxel ground against the heightmap tiles:
+
+| | voxel | heightmap |
+|---|---|---|
+| fps avg / 1% low | 77.8 / 24.4 | 77.4 / 28.2 |
+| frame ms p50 / p95 / p99 / worst | 10.8 / 28.8 / 34.5 / 110 | 12.1 / 20.7 / 29.0 / 144 |
+| frames over 33 ms | 200 | 44 |
+| GPU ms avg | 9.7 | 11.7 |
+| CPU ms: render / scripts / physics | 6.8 / 24.5 / 25.1 | 5.3 / 27.4 / 17.1 |
+| travelled | 324 m | 274 m (it steered 291 times, got stuck 12; the voxel walk 0 / 0) |
+
+  So the average is the same and the GPU lighter, but the voxel ground hitches more (200 frames over 33 ms against 44) and the physics costs 8 ms a frame more. The two walks are not
+  the same path. Suspects (not yet tested): the voxel module's main-thread time budget (`voxel/threads/main/time_budget_ms`, 8 ms by default), the collider updates, the 20-frame loop over
+  ~700 tiles in the helper. The lab prints hundreds of `Node::get_node_or_null ... caller thread` errors with `--plants` on BOTH grounds (pre-existing, from the plants' workers).
+- Cliff texture (`cliff_c` / `cliff_n`, two vertical planes of the place's frame, strata level) is in `voxel_ground.gdshader` for slopes past 0.45 (the planet shader starts at 0.35), ratio damped.
+  No steep enough place was found to show it (the steepest ground of seed 11 near land is slope 1.05 = 46 degrees at dir 0.2338,-0.1515,-0.9604, 269 m): not looked at on a real cliff.
+- The "white bands" on a far hillside were NOT the cliff, the colour map, the snow or the gain: they were my own rock rule (`smoothstep(0.18, 0.4, slope)`, 35-53 degrees) painting a 35-45 degree grassy
+  hillside bright grey under the sun. With the planet's colour map on, the rock now starts at 0.42 (`use_map`). Found with `--voxel-debug=N` (flags as emission: 1 snow / slope / above sea, 2 heights,
+  3 the map's colour, 4 the colour before the light), `--voxel-nomap`, `--voxel-steep=S` (the steepness the map is baked for). Gain of the map's colour is 1.25 (flat ground matched at 1.7 but the lit slopes
+  clipped). Same far hillside: tiles mean RGB 112/163/154, voxel 121/172/164; flat ground 77/107/54 against 82/125/76.
+- `VoxelTool.raycast`, tile cells (`--tile-cells=8` saves 2 s of the lab's own load, nothing on the voxel ready time), the colour bake (2.3 s coarse, 8.7 s fine, now staged: coarse first, fine after the ground is ready).
