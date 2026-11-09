@@ -7,6 +7,7 @@
 #   scripts/build_native.sh             build if the sources changed (debug library, what the editor loads)
 #   scripts/build_native.sh --force     build again anyway
 #   scripts/build_native.sh --release   the release library too (an exported game)
+#   scripts/build_native.sh --double --release   and the double precision RELEASE library (what an exported game loads)
 #   scripts/build_native.sh --double    the double precision library (needs GODOT_CPP_DOUBLE, the
 #                                       godot-cpp master clone, and GODOT_API_DOUBLE, the engine's
 #                                       own `--dump-extension-api` file; see native/planet_crust/README.md)
@@ -93,4 +94,5 @@ build() { # target precision
 build template_debug single
 [[ ${release} -eq 1 ]] && build template_release single
 [[ ${double} -eq 1 ]] && build template_debug double
+[[ ${double} -eq 1 && ${release} -eq 1 ]] && build template_release double
 echo "the native planet crust is ready"
