@@ -24,6 +24,8 @@ var _tiles_off := {} # instance id -> true: the tiles whose ground is already sw
 var _water: Array[Node] = [] # the sea and the rivers: thin volumes over the ground (no collision)
 var _rivers_wanted := false
 var _dig_test := false
+var _probe := false
+var _saving := false
 var _surface_test := false
 var _find := false
 var _surface_frame := 0
@@ -78,6 +80,7 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 	# the lab must still compile there)
 	var args := OS.get_cmdline_user_args()
 	_dig_test = "--voxel-dig-test" in args
+	_probe = "--voxel-probe" in args
 	_surface_test = "--voxel-surface-check" in args
 	_find = "--voxel-find" in args
 	for arg in args:
@@ -108,6 +111,7 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 	_terrain.set("generator", gen)
 	_terrain.set("mesher", ClassDB.instantiate("VoxelMesherTransvoxel"))
 	_terrain.set("view_distance", view)
+	_attach_stream(args)
 	_terrain.set("bounds", AABB(Vector3.ONE * -radius * 1.6, Vector3.ONE * radius * 3.2))
 	_material = ShaderMaterial.new()
 	_material.shader = load("res://shaders/voxel/voxel_ground.gdshader")
@@ -147,6 +151,10 @@ func _physics_process(_delta: float) -> void:
 		_begin_map_stage()
 	if _dig_test and ground_ready:
 		_dig_test_step()
+	if _probe and ground_ready:
+		_surface_frame += 1
+		if _surface_frame == 150:
+			_probe_step()
 	if _find and ground_ready:
 		_surface_frame += 1
 		if _surface_frame == 60:
@@ -196,6 +204,59 @@ func _make_water(mode: int, view: int, material: Material) -> void:
 	water.global_transform = _terrain.global_transform
 	_water.append(water)
 	print("VOXEL water ", ["", "sea", "rivers"][mode], " on, view ", view)
+
+
+## --voxel-save[=PATH]: what is dug or filled is kept in a database (VoxelStreamSQLite; the generator makes the rest) and
+## comes back the next time the same planet is opened. Saved on F5, on closing the window and at the end of the dig test.
+func _attach_stream(args: PackedStringArray) -> void:
+	for arg in args:
+		if arg != "--voxel-save" and not arg.begins_with("--voxel-save="):
+			continue
+		if not ClassDB.class_exists("VoxelStreamSQLite"):
+			print("VOXEL no VoxelStreamSQLite in this engine: edits are not kept")
+			return
+		var path := arg.trim_prefix("--voxel-save=") if arg.begins_with("--voxel-save=") else ""
+		if path == "":
+			DirAccess.make_dir_recursive_absolute("user://voxel")
+			path = ProjectSettings.globalize_path("user://voxel/edits_%d_%d.sqlite" % [_planet.settings.world_seed, int(_planet.settings.radius)])
+		var stream: Object = ClassDB.instantiate("VoxelStreamSQLite")
+		stream.set("database_path", path)
+		_terrain.set("stream", stream)
+		_saving = true
+		print("VOXEL edits are kept in ", path)
+
+
+func save_edits() -> void:
+	if _saving:
+		_terrain.call("save_modified_blocks")
+		print("VOXEL edits saved")
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		save_edits()
+
+
+## --voxel-probe: where the ground is, 6 m above the player straight down (a dig that came back from the database shows as a lower point).
+func _probe_step() -> void:
+	var tool: Object = _terrain.call("get_voxel_tool")
+	var from: Vector3 = _terrain.to_local(_player.global_position + Vector3(0, 6.0, 0))
+	var down: Vector3 = (_terrain.global_transform.basis.inverse() * Vector3.DOWN).normalized()
+	var at := _march(tool, from, down, 14.0)
+	var stock = tool.call("raycast", from, down, 14.0)
+	print("VOXEL probe: VoxelTool.raycast gives ", stock, " (", "" if stock == null else str(stock.get("distance")), "); the tool is ", tool.get_class())
+	print("VOXEL probe: the ground is ", "nothing" if at == Vector3.INF else str(snappedf(from.distance_to(at), 0.01)) + " m below the point 6 m over the player")
+	if "--voxel-caves" in OS.get_cmdline_user_args() or "--voxel-hollow" in OS.get_cmdline_user_args(): # how hollow the rock is 40-180 m down, in a 300 m square round the player
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 3
+		var empty := 0
+		var counted := 3000
+		for i in counted:
+			var spot := from + Vector3(rng.randf_range(-150, 150), -rng.randf_range(46.0, 186.0), rng.randf_range(-150, 150))
+			if float(tool.call("get_voxel_f_interpolated", spot)) > 0.0:
+				empty += 1
+		print("VOXEL probe: ", snappedf(100.0 * empty / counted, 0.1), " % of the rock 40-180 m down is hollow")
+	get_tree().quit()
 
 
 func _switch_tiles_off() -> void:
@@ -421,7 +482,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var from := camera.global_position
 	var ahead := -camera.global_basis.z
-	if event.keycode == KEY_G:
+	if event.keycode == KEY_F5:
+		save_edits()
+	elif event.keycode == KEY_G:
 		edit(from, ahead, false)
 	elif event.keycode == KEY_H:
 		edit(from, ahead, true)
@@ -474,6 +537,8 @@ func _dig_test_step() -> void:
 		if worked != Vector3.INF:
 			where = str(worked.snapped(Vector3.ONE * 0.1))
 		print("VOXEL dig test: dug at ", where)
+	elif _dig_frame == 200:
+		save_edits()
 	elif _dig_frame == 420:
 		print("VOXEL dig test: the player's height ", snappedf(_dig_y, 0.01), " -> ",
 				snappedf(_player.global_position.y, 0.01), " m, on floor ",

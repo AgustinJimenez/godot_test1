@@ -501,3 +501,7 @@ Numbers (RTX 4090, 6 cores, `--earth`): ground ready after ~24 s (the GDScript g
 tiles (89 against 77 fps with plants, GPU 9.7 against 12.2 ms), memory the same. Not done: the ground detail beyond the soil
 scans, cliffs, the planet's own soil data, finer colours near the player on Earth, plants placed from the voxel surface,
 a lab-wide soak. Everything measured, with the dead ends, is in `AGENT_TASKS/096_caves_godot_voxel_spike.md`.
+
+### Voxel ground, later additions (2026-11-09)
+Water is two more voxel terrains (a thin slab of sea, a thin slab of river over the ground, generator mode `water` 1 / 2), a colour window round the walker (2 m a pixel) refines the planet's colour map, the sand has the
+tiles' ripples, and `--voxel-save` keeps digging in a SQLite database. Details and numbers: `AGENT_TASKS/096_caves_godot_voxel_spike.md`, the last section.

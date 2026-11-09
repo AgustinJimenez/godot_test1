@@ -64,6 +64,10 @@ private:
 	static constexpr double CAVE_FREQUENCY = 1.0 / 110.0;
 	static constexpr double CAVE_WIDTH = 0.06; // noise units either side of the zero surfaces (about 4 m of radius)
 	static constexpr double CAVE_SCALE = 110.0 / 1.5; // metres of distance per noise unit
+	static constexpr double CAVERN_FREQUENCY = 1.0 / 260.0; // chambers: a slow noise, where it is high the rock is hollow
+	static constexpr double CAVERN_LEVEL = 0.52;
+	static constexpr double CAVERN_SCALE = 260.0 / 1.5;
+	static constexpr double CAVERN_ROOF = 25.0; // m of rock kept over a chamber (it shuts smoothly over 30 m more)
 	static constexpr double WATER_DEPTH = 6.0; // m of water kept under the ground line (what a dig can open)
 	static constexpr int RIVER_MAX_LOD = 3; // the coarsest level that still has the rivers
 
@@ -88,6 +92,7 @@ private:
 	Ref<RefCounted> _noise;
 	Ref<FastNoiseLite> _cave_a;
 	Ref<FastNoiseLite> _cave_b;
+	Ref<FastNoiseLite> _cavern;
 	int _cave_seed = 0;
 	int64_t _blocks_made = 0;
 	RWLock _parameters_lock;

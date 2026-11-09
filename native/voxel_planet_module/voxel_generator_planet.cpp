@@ -10,6 +10,7 @@ namespace zylann::voxel {
 VoxelGeneratorPlanet::VoxelGeneratorPlanet() {
 	_cave_a.instantiate();
 	_cave_b.instantiate();
+	_cavern.instantiate();
 	set_cave_seed(0);
 }
 
@@ -144,12 +145,14 @@ VoxelGenerator::Result VoxelGeneratorPlanet::generate_block(VoxelGenerator::Voxe
 	Ref<RefCounted> noise;
 	Ref<FastNoiseLite> cave_a;
 	Ref<FastNoiseLite> cave_b;
+	Ref<FastNoiseLite> cavern;
 	{
 		RWLockRead rlock(_parameters_lock);
 		params = _parameters;
 		noise = _noise;
 		cave_a = _cave_a;
 		cave_b = _cave_b;
+		cavern = _cavern;
 	}
 	VoxelBuffer &out_buffer = input.voxel_buffer;
 	const Vector3i size = out_buffer.get_size();
@@ -254,6 +257,12 @@ VoxelGenerator::Result VoxelGeneratorPlanet::generate_block(VoxelGenerator::Voxe
 					const double field = MAX(Math::abs((double)cave_a->get_noise_3d(p.x, p.y, p.z)),
 							Math::abs((double)cave_b->get_noise_3d(p.x, p.y, p.z)));
 					sdf = MAX(sdf, (CAVE_WIDTH - field) * CAVE_SCALE / step);
+					const double depth = -sdf_values[i] * step; // (of the rock this voxel would have: the chambers keep a roof)
+					const double shut = CLAMP((depth - CAVERN_ROOF) / 30.0, 0.0, 1.0);
+					if (shut > 0.0) {
+						const double room = (double)cavern->get_noise_3d(p.x, p.y, p.z) - CAVERN_LEVEL - (1.0 - shut) * 2.0;
+						sdf = MAX(sdf, room * CAVERN_SCALE / step);
+					}
 				}
 				out_buffer.set_voxel_f(sdf, x, y, z, VoxelBuffer::CHANNEL_SDF);
 			}
@@ -356,6 +365,9 @@ void VoxelGeneratorPlanet::set_cave_seed(int p_seed) {
 		noises[i]->set_frequency(CAVE_FREQUENCY);
 		noises[i]->set_seed(p_seed + offsets[i]);
 	}
+	_cavern->set_noise_type(FastNoiseLite::TYPE_SIMPLEX);
+	_cavern->set_frequency(CAVERN_FREQUENCY);
+	_cavern->set_seed(p_seed + 53);
 }
 int VoxelGeneratorPlanet::get_cave_seed() const {
 	RWLockRead rlock(_parameters_lock);

@@ -8,7 +8,7 @@ The voxel ground works on the real planet at Earth size, on branch `voxel-spike`
 - Lab: `planet_lab.tscn -- [--earth] --voxel [--plants] [--voxel-caves]` (G dig, H fill; helper `tests/manual/voxel/lab_voxel_ground.gd`, shader `shaders/voxel/voxel_ground.gdshader`). Stock engine: the flag is ignored.
 - Numbers (RTX 4090, 6 cores): Earth ground ready ~24 s (GDScript generator 67 s); same fps as the tiles (89 against 77 with plants), GPU 9.7 against 12.2 ms; soak walk 100 s: 79.5 fps, 1% low 28, 28 frames over 33 ms;
   caves cost ~1 s of load; digging 18 ms a hole; no holes in the collision (seam check 0 of 40,401 rays); `WALK_CHECK`, `PLANET_CHECK`, `SWIM_CHECK`, foot IK soak (41 events against 38) all as with the tiles; `planet_check.sh` 20 of 22 (the 2 fails are not ours).
-- Works but crude: ground colours (the planet's colours baked into a picture + the soil scans + cliffs; no grass patches, litter, sand ripples). Rivers / sea: the tiles' own water meshes (seen in a picture 2026-11-09: a river in a gorge fits the voxel canyon).
+- Works: ground colours (the planet's colours baked into a picture, a finer window of them round the walker, the soil scans, cliffs, sand ripples, soft patches). Water: the sea and the rivers are thin volumes of their own over the ground (see the last section); the tiles build no water meshes in voxel mode.
 - Shippable: the exported RELEASE game (double + voxel template, the double release `planet_crust` DLL) runs the Earth-size voxel planet in the lab (`WALK_CHECK PASS`, ground ready 23 s); the recipe is in "The real game exports and runs the voxel planet" (needs `include_filter="*.bin, *.json"`, the bark/rock baker fix, an `override.cfg` for the scene).
 - NOT done: finer colours near the player on Earth; macOS (task 097); the export was only run through the lab scene (not the game's own start flow); the cliff slab texture was not looked at on a wall close up (a 80 degree wall was seen from across a river, grey and smooth).
 - 2026-11-09 (day): `planet_lab` opens with the voxel ground BY DEFAULT on the voxel engine (`--no-voxel` turns it off; the stock engine ignores it). The heightmap ground is gone in that mode (see "The heightmap ground removed" at the end of the log).
@@ -412,3 +412,28 @@ Still not done: macOS (task 097), an installer / size trimming (the pack is 457 
   mesh fits the voxel canyon (no gap, no floating sheet). `--view-yaw` now also turns the walking player.
 - Checks on the voxel engine (voxel is now the default): `WALK_CHECK PASS` (412 m, 100% on floor), `planet_check.sh --quick` 20 of 22 as before (lint: gdlint not installed; noise_golden).
 - Still open: macOS; the game's own start flow in the export; the cliff slab texture on a wall close up; sea/river meshes are still tile meshes (not carved into the voxels).
+
+
+## Water as voxel volumes, colour window, sand, saved edits, caverns, the export again (2026-11-09, day)
+- Water: `VoxelGeneratorPlanet.water` = 1 (sea) or 2 (rivers), a second and third `VoxelLodTerrain` (no collision) with a generator that makes a SLAB: under the water's level and not deeper than 6 m under the
+  ground line (empty where the ground is above both). Heights and levels depend on the direction alone, so they are asked on a 2D grid across the block (tangent at its middle) and interpolated; the sea makes
+  nothing above its level, the rivers nothing above LOD 3. The river levels come from the new `PlanetNoise.river_waters_of(dirs)` (x: the level, -1e9 none). Materials: the planet's `water_material()` for the
+  sea, `shaders/voxel/voxel_river.gdshader` for rivers (the tile river's look with the ripples from the world position: a volume has no ribbon UV, so no banks and one drift direction). The tiles build neither (`voxel_ground`).
+  Cost: Earth load 23 s -> 27-29 s with both (a first 3D-lattice version took 54 s). A dig into a river bed is only 6 m deep before the slab's underside shows; the water does not follow digs.
+  Seen: the sea (waves, sun glint), a player standing in a wide river with foam at the legs, `SWIM_CHECK` still passes. Rivers are rare: `--voxel-find` prints the places (a shallow sea too).
+- Colours near the player: `_window_step` bakes a 1536 m square at 2 m a pixel (true steepness from the heights beside each point, 1 s on a worker thread) round the walker and again when they are 300 m from its
+  middle; the shader reads it by direction and fades into the coarse map at its edge. Subtle in a desert (the crust's colours vary slowly); it is the tiles' own colour data.
+- Sand: the tiles' ripples and swell (`planet_sand.gdshaderinc`, with `planet_stones.gdshaderinc` for the noise) on golden dry ground, soft light/dark patches; the shader's `radius` uniform is now `planet_radius` (the includes use `radius`).
+- Edits are kept: `--voxel-save[=PATH]` puts a `VoxelStreamSQLite` on the terrain (default `user://voxel/edits_<seed>_<radius>.sqlite`); saved on F5, on closing the window and at the end of `--voxel-dig-test`.
+  Verified: dug, saved, restarted: the player stands at -3.4 m in the hole instead of -1.0 (`--voxel-probe` prints where the ground is). The generator output itself is not stored, only what changed.
+- Caverns: the carver has a third noise (1/260, level 0.52, a roof of 25 m that shuts smoothly over 30 m more). Only the C++ generator has them (the GDScript twin does not). `--voxel-hollow` prints the hollow share
+  (the number is not reliable: unloaded rock reads as air).
+- Foot IK: the soak (60 s, seed 11) gives 31 events on the voxel ground and 28 on the heightmap, none of them FLOAT: the three FLOAT events of the first soak do not come back.
+- `VoxelTool.raycast` still returns null in the lab (`--voxel-probe` prints it); the own march is used. Cause not found.
+- Pack size: 568 MB now (more of the repo is in it). What is big: `assets/models` (modular_outfits_fantasy 180 MB, imported_characters 131 MB, dg_game_sample 100 MB, als_mannequin 87 MB,
+  pistol_starter 63 MB, stylized_nature_megakit 41 MB), textures 95 MB, `tools/character_editor_mcp` 75 MB. Every model folder is named by some script or scene, so trimming is a decision about
+  which features ship (outfits, characters), not something to do mechanically.
+- The game's own start flow from the export (release, the double template): title screen, character creator and `levels/nature_playground.tscn` each load and run 600 frames with exit 0 and no errors
+  (only navmesh warnings). That flow does not use the planet or the voxel ground: the planet is only in the lab (`planet_lab`). The export had to be rebuilt after the generator change (a stale template ignored
+  `set_water` silently: a second copy of the ground, 51 s load); after rebuilding the release template and the release `planet_crust` DLL: `WALK_CHECK PASS`, ground ready 27.6 s with both waters.
+- Checks: `planet_check.sh --quick` 20 of 22 as before (lint: gdlint missing; noise_golden).
