@@ -218,3 +218,21 @@ All on the walking test (`voxel_walk.tscn`), Earth size, seed 1337, spawn on lan
   calls, 2.64M triangles, 402 MB video memory. So a shippable double + voxel build is possible.
 - NOT done: exporting the real game (it needs `planet_crust` as a double RELEASE library: `windows.release.double` in `planet_crust.gdextension` points at
   `planet_crust.windows.template_release.double.x86_64.dll`, never built: `scripts/build_native.sh --double --release` is untried), a debug template, size of the full game.
+
+## planet_lab --voxel (2026-11-08)
+`godot.windows.editor.double.x86_64.console.exe --path . res://tests/manual/planet/planet_lab.tscn -- [--earth] --voxel [--plants] [--grounded|--walk-check] --seed=11`
+(the voxel-module engine only; with `--voxel` on the stock engine the lab prints "no voxel module" and runs as before).
+- Files: `tests/manual/voxel/lab_voxel_ground.gd` (`attach(lab, planet, player)`; the lab holds `_voxel_node`, 6 lines in `planet_lab.gd`, which stays under 1000 lines),
+  `shaders/voxel/voxel_ground.gdshader` (`world_to_planet` uniform now), the generator of the walking test.
+- How: the terrain lives in PLANET space (the generator asks the lab's own `PlanetNoise`) and its transform follows `PlanetFrame` every time the frame changes:
+  `world = rot * (q - anchor) + origin_w` -> `Transform3D(rot, origin_w - rot * anchor)`. VoxelLodTerrain accepts that rotated transform; the viewer is a child of the player.
+  The heightmap tiles are still built (wasted work) but their ground mesh is hidden and their colliders put on layer 0 every 20 frames; plants stay. The player is held until a
+  ray finds the voxel collider; the lab's frame counter waits for that (its checks count frames and raced ahead of the real-time loading before).
+- Results (`--walk-check`, seed 11, 60 fixed fps): small planet (20 km): `WALK_CHECK PASS travelled=431 m rebases=5 on_floor=100% worst_above_ground=0.07 m`, no hitch >33 ms;
+  `--earth` (6,371 km): `PASS travelled=406 m rebases=5 on_floor=100% worst_above_ground=0.10 m`. `--planet-check` passes on the stock engine (rebases 40) and with `--voxel` on the module engine.
+- With `--plants`: the lab's trees and grass stand on the voxel ground (picture `E:\Temp\claude\voxel_spike\lab_voxel_plants.png`).
+- Bugs found on the way: (1) the player was held again in the same frame it was released (lab walked a frozen player); (2) a `preload` of the generator made `planet_lab.gd` fail to
+  COMPILE on the stock engine (the generator extends `VoxelGeneratorScript`); it is `load`ed at run time now. Rule: nothing the lab preloads may name a voxel class.
+- NOT done: river / lake carving of the heightmap ground (`--water`), the sea, the planet's biome colours and ground shader on the voxel mesh, plants placed from the voxel surface
+  (they use the heightmap, 0.5 m off in places), caves in the lab, the cost against the heightmap tiles (`--fps`, the wasted tile work), the load time (26-47 s on Earth),
+  foot IK on slopes, `--ik-soak`, the map and the other checks with `--voxel`.
