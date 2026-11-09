@@ -191,3 +191,20 @@ a real game, which needs the lab's `PlanetFrame` turn); foot IK on slopes; jumpi
   load time with caves was 28.5 s against 25.8 s without).
 - Digging: `VoxelTool.mode = MODE_REMOVE; do_sphere(centre, 3)` under the player: voxel -1.19 -> +2.81, the player falls 3.3 m into the hole and stands on its floor again (3 s later).
   Edits live in memory (no stream / save here). Not done: building, collision cost of many edits, digging at coarse LODs, saving.
+
+## Verification round (2026-11-08)
+All on the walking test (`voxel_walk.tscn`), Earth size, seed 1337, spawn on land (191 m), the custom double + voxel engine.
+- Thread safety of `PlanetNoise.heights_of`: 400 jobs on 8 worker threads over 8 sets of 600 directions, compared with the single-thread answer: 0 differences (also a repeat
+  call equal). Evidence, not a proof; the generator runs without a mutex.
+- Seams / holes (`--seam-check`: 40,401 physics rays, 3 m apart over 600 m x 600 m, from 200 m above): with `lattice` 2 everywhere ONE ray found no ground, at 103 m from the player;
+  a probe with rays 0.1 m apart showed a real hole of about 0.7 m x 1.8 m in the collision. With exact heights (`lattice` 1) there were 0 misses and 0 hits off by >0.5 m; with exact
+  heights for the two finest LODs only (`exact_lods` 1, the default now): 0 misses, 11 hits off by >0.5 m (worst 0.66 m at the far grid edge, coarse LOD). Cost: load 47 s
+  (26 s with lattice 2 everywhere, 122 s exact everywhere). So the coarse lattice made the hole; it is not a Transvoxel problem.
+- Long walk with jumps (`--secs=300 --jump`): 1393 m, never below the noise's ground (lowest -0.01 m), memory flat 286 -> 296 MB, one 140 ms frame at the spawn and none after, the
+  voxel task backlog 29-153 while walking and 0 at the end.
+- Fast flight (`--fly=100`, free mode, 30 km in 100 s): the generator cannot keep up (4,703 tasks queued at 60 s) so far terrain pops in late; memory stayed flat (286 -> 249 MB).
+  (The 461 m "below ground" is the free-flying player passing through a ridge, free mode has no collision: meaningless.) A vehicle or fast flight needs a faster generator.
+- Digging at scale (`--dig-many`, 200 spheres of 3 m within 60 m): 3.6 s of calls on the main thread (18 ms each, worst call 200 ms), two frames of ~140 ms; the player kept standing.
+- Whole project on the custom engine: `planet_lab.tscn -- --planet-check` (headless, the heightmap planet) -> `PLANET_CHECK PASS steps=40 walked=2372 m rebases=39 tiles=333`.
+  So the voxel module and the rebuilt double `planet_crust` library do not break the existing planet.
+- Not verified: foot IK on slopes (looked fine in pictures only), swimming / sea, the full game scene, export (see below), macOS (task 097).
