@@ -53,6 +53,7 @@ protected:
 private:
 	// beyond this far from the surface (m) no ground height can change the sign: the block is filled without asking the planet
 	static constexpr double RELIEF_MARGIN = 12000.0;
+	static constexpr double SURFACE_BAND = 3.0; // voxels either side of the lattice's ground that the exact levels ask again
 	static constexpr double CAVE_DEPTH = 200.0; // m below the ground the tunnels reach
 	static constexpr int CAVE_MAX_LOD = 3; // the coarsest level that still carves them
 	static constexpr double CAVE_FREQUENCY = 1.0 / 110.0;
@@ -63,13 +64,14 @@ private:
 		double radius = 6371000.0;
 		Basis frame; // turns a world direction into the planet's own
 		int exact_lods = 1; // levels up to this ask for every voxel
-		int mid_lods = 2; // levels up to this use lattice_mid
+		int mid_lods = 3; // levels up to this use lattice_mid
 		int lattice_mid = 2;
 		int lattice_far = 4;
 		bool caves = false;
 	};
 
 	int lattice_for(const Parameters &p_params, int p_lod) const;
+	static bool heights_of(const Ref<RefCounted> &p_noise, const PackedVector3Array &p_dirs, PackedFloat32Array &r_heights);
 
 	Parameters _parameters;
 	Ref<RefCounted> _noise;

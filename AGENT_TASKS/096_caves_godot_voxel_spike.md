@@ -280,3 +280,28 @@ User: "load time is acceptable still, we can add it to the dark screen, continue
   Picture `E:\Temp\claude\voxel_spike\col_voxel5.png` (the foreground now has the dark leaf-earth relief like `col_.png`).
 - Cost: small planet `--voxel --plants --fps`: 142-148 fps, GPU 6.2-6.8 ms (before 131-135 / 6.6): no regression. `--walk-check` PASS (431 m, 5 rebases).
 - Not done: the cliff texture on steep faces, the sand ripples, the grass patches / meadow, litter, the crust's own soil data, the tiles' parallax and grains; the colour map is still coarse on Earth.
+
+## The planet's voxel generator in C++ (2026-11-09, overnight)
+User: "use 5 mins loop to remind you to continue, try to use native cpp, is faster".
+- `native/voxel_planet_module/` is a Godot MODULE (class `VoxelGeneratorPlanet`, derives `VoxelGenerator`) that goes in the engine's `modules/voxel_planet` next to the voxel module
+  (`scripts/install_voxel_planet_module.sh`, then rebuild the engine: `scons platform=windows target=editor precision=double arch=x86_64 d3d12=yes debug_symbols=no`, ~18 s incremental).
+  Why a module and not a GDExtension: a GDExtension needs godot-cpp bindings regenerated from the voxel engine's API dump (the voxel classes are not in godot-cpp-double's) and the
+  voxel generator classes are not meant to be extended that way; a module subclasses `VoxelGenerator` directly and calls the planet's native `PlanetNoise.heights_of` by name (one call a block).
+  The stock engine does not have the class: the lab and the walking test fall back to the GDScript generator (`--voxel-gdscript` / `--gdscript-gen` force it).
+- GOTCHA that cost an hour: the voxel module adds its option defines (`VOXEL_ENABLE_GPU`, ...) only to its OWN build environment, and its headers change layout with them. A class derived
+  from `VoxelGenerator` built without them SEGFAULTS when assigned to a terrain (`_terrain.set("generator", g)`). The module's SCsub calls the voxel module's `common.get_sources(env)` for the defines.
+- Properties: `radius`, `noise` (the lab's `PlanetNoise`), `frame` (Basis, the walking test), `exact_lods` (1), `mid_lods` (3), `lattice_mid` (2), `lattice_far` (4), `caves`, `cave_seed`;
+  `get_blocks_made()`, `get_cave_field(pos)`. Heights: levels up to `exact_lods` take the lattice (spacing `lattice_mid`) first and then ask again only for the voxels within 3 voxels of
+  that ground (the rest keep the lattice height); up to `mid_lods` the lattice `lattice_mid`; above that `lattice_far`.
+- Checked: C++ against the GDScript twin on the same blocks: identical at levels 0-2 (difference 0.0); the band refinement against asking for every voxel: 0.015 voxel worst near the surface,
+  7.2 ms against 15 ms a block at levels 0-1. Per block at coarse levels: 2.5 ms against 9 ms (level 3), 1.1 against 6.8 ms (level 5).
+- Tuning by `--seam-check` (40,401 rays over 600 m x 600 m; the hole of the lattice at level 1 is back if `exact_lods` is 0):
+  `exact 1, mid 2, far 4`: 0 gaps, 221 rays off by >0.5 m (worst 1.26 m at the far edge), load 11.7 s; **`exact 1, mid 3, far 4` (the default): 0 gaps, 11 off (worst 0.66 m), load 13.3 s**;
+  `exact 0, mid 2`: ONE gap (24 of 961 probe rays), load 20 s / 18 s: not acceptable.
+- Load times (the Earth-size walking test, vsync on): GDScript generator 46.6 s -> C++ 13.3 s. In the lab (`--earth --voxel`): ground ready after 23.6 s (was 66.7 s), small planet 14.4 s (was 38.6 s);
+  with `--voxel-caves` 24.7 s. `--walk-check` PASS in both (caves: the player fell 3 m into a natural cave opening on the way, `PASS` still: worst 3.09 m < 4).
+- Lab options added (read by `lab_voxel_ground.gd`, no lines in `planet_lab.gd`): `--voxel-caves`, `--voxel-view=N`, `--voxel-gdscript`, `--voxel-dig-test`; keys **G** digs where the camera looks, **H** fills
+  (a sphere of 2.5 m, up to 14 m away). `--voxel-dig-test` (the lab, small planet): dug under the player, the player went from -0.98 to -3.4 m and stood on the floor of the hole.
+- `VoxelTool.raycast` returned null in the lab (from 6 m above the ground, 14 or 80 m long, the sdf along the same ray was right: 6.5, 3.0, -0.05, ...; the same call worked from 1500 m
+  above in the standalone test with an unrotated terrain). Not understood (the rotated terrain? the float precision?). The dig keys march the ray themselves with `get_voxel_f_interpolated`.
+- Water: the tiles' own sea / river meshes still draw (only the ground mesh is hidden) and `--swim-check --voxel` gives the same `SWIM_CHECK PASS swimming=true water_y=3.21 player_y=1.97` as the tiles.

@@ -265,13 +265,35 @@ func edit(from: Vector3, ahead: Vector3, add: bool) -> Vector3:
 	var tool: Object = _terrain.call("get_voxel_tool")
 	var local_from: Vector3 = _terrain.to_local(from)
 	var local_ahead: Vector3 = (_terrain.global_transform.basis.inverse() * ahead).normalized()
-	var hit: Object = tool.call("raycast", local_from, local_ahead, 14.0)
-	if hit == null:
+	var at := _march(tool, local_from, local_ahead, 14.0)
+	if at == Vector3.INF:
 		return Vector3.INF
-	var at := Vector3(hit.get("position") as Vector3i)
 	tool.set("mode", 0 if add else 1) # VoxelTool.MODE_ADD / MODE_REMOVE
 	tool.call("do_sphere", at, _dig_radius)
 	return _terrain.to_global(at)
+
+
+## The first point along a ray (terrain space) where the voxel value turns negative (solid), found
+## by stepping and then halving: VoxelTool.raycast returned nothing in the lab (not looked into).
+func _march(tool: Object, origin: Vector3, direction: Vector3, reach: float) -> Vector3:
+	var previous := 0.0
+	var step := 0.4
+	var travelled := step
+	while travelled <= reach:
+		var value: float = tool.call("get_voxel_f_interpolated", origin + direction * travelled)
+		if value < 0.0:
+			var low := previous
+			var high := travelled
+			for i in 10:
+				var middle := (low + high) * 0.5
+				if float(tool.call("get_voxel_f_interpolated", origin + direction * middle)) < 0.0:
+					high = middle
+				else:
+					low = middle
+			return origin + direction * high
+		previous = travelled
+		travelled += step
+	return Vector3.INF
 
 
 ## A dig under the player's feet, then a look at whether they fell in (the lab's --voxel-dig-test).
@@ -279,7 +301,7 @@ func _dig_test_step() -> void:
 	_dig_frame += 1
 	if _dig_frame == 120:
 		_dig_y = _player.global_position.y
-		var worked := edit(_player.global_position + Vector3(0, 1.0, 0), Vector3.DOWN, false)
+		var worked := edit(_player.global_position + Vector3(0, 6.0, 0), Vector3.DOWN, false)
 		var where := "nothing"
 		if worked != Vector3.INF:
 			where = str(worked.snapped(Vector3.ONE * 0.1))

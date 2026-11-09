@@ -2,6 +2,8 @@
 
 #include "core/object/class_db.h"
 
+#include <vector>
+
 namespace zylann::voxel {
 
 VoxelGeneratorPlanet::VoxelGeneratorPlanet() {
@@ -19,6 +21,20 @@ int VoxelGeneratorPlanet::lattice_for(const Parameters &p_params, int p_lod) con
 		return 1;
 	}
 	return MAX(1, p_lod <= p_params.mid_lods ? p_params.lattice_mid : p_params.lattice_far);
+}
+
+// The planet's heights (m) in the given directions, by a call to its native `heights_of` (one call, many points).
+bool VoxelGeneratorPlanet::heights_of(const Ref<RefCounted> &p_noise, const PackedVector3Array &p_dirs, PackedFloat32Array &r_heights) {
+	Variant dirs_variant = p_dirs;
+	const Variant *args[1] = { &dirs_variant };
+	Callable::CallError error;
+	Variant answer = p_noise->callp(StringName("heights_of"), args, 1, error);
+	if (error.error != Callable::CallError::CALL_OK || answer.get_type() != Variant::PACKED_FLOAT32_ARRAY) {
+		ERR_PRINT_ONCE("VoxelGeneratorPlanet: the noise has no heights_of(dirs) -> PackedFloat32Array.");
+		return false;
+	}
+	r_heights = answer;
+	return true;
 }
 
 VoxelGenerator::Result VoxelGeneratorPlanet::generate_block(VoxelGenerator::VoxelQueryData input) {
@@ -47,8 +63,11 @@ VoxelGenerator::Result VoxelGeneratorPlanet::generate_block(VoxelGenerator::Voxe
 		return result;
 	}
 
-	// the planet's heights on a lattice of nodes `spacing` voxels apart (one more node past the block's end)
-	const int spacing = lattice_for(params, lod);
+	// the planet's heights on a lattice of nodes `spacing` voxels apart (one more node past the block's end). The finest levels
+	// (up to exact_lods) are exact at the surface: the voxels within SURFACE_BAND voxels of the lattice's ground are asked again
+	// one by one (a lattice alone left a hole in the collision), the rest keep the lattice's height.
+	const bool refine = lod <= params.exact_lods && params.lattice_mid > 1;
+	const int spacing = refine ? params.lattice_mid : lattice_for(params, lod);
 	const int mx = (size.x - 1) / spacing + 2;
 	const int my = (size.y - 1) / spacing + 2;
 	const int mz = (size.z - 1) / spacing + 2;
@@ -64,30 +83,29 @@ VoxelGenerator::Result VoxelGeneratorPlanet::generate_block(VoxelGenerator::Voxe
 			}
 		}
 	}
-	Variant dirs_variant = dirs;
-	const Variant *args[1] = { &dirs_variant };
-	Callable::CallError error;
-	Variant answer = noise->callp(StringName("heights_of"), args, 1, error);
-	if (error.error != Callable::CallError::CALL_OK || answer.get_type() != Variant::PACKED_FLOAT32_ARRAY) {
-		ERR_PRINT_ONCE("VoxelGeneratorPlanet: the noise has no heights_of(dirs) -> PackedFloat32Array.");
+	PackedFloat32Array lattice_heights;
+	if (!heights_of(noise, dirs, lattice_heights)) {
 		out_buffer.clear_channel_f(VoxelBuffer::CHANNEL_SDF, centre_dist / step);
 		return result;
 	}
-	const PackedFloat32Array lattice_heights = answer;
 	const float *node = lattice_heights.ptr();
 	auto node_at = [&](int kx, int ky, int kz) -> double {
 		return node[(kz * mx + kx) * my + ky];
 	};
 
-	const bool carve = params.caves && lod <= CAVE_MAX_LOD && cave_a.is_valid() && cave_b.is_valid();
+	const int volume = size.x * size.y * size.z;
+	std::vector<float> sdf_values(volume);
+	std::vector<int> band; // the voxels asked again
+	PackedVector3Array band_dirs;
 	const double inv_spacing = 1.0 / spacing;
+	int i = 0;
 	for (int z = 0; z < size.z; ++z) {
 		const int kz = z / spacing;
 		const double tz = (z - kz * spacing) * inv_spacing;
 		for (int x = 0; x < size.x; ++x) {
 			const int kx = x / spacing;
 			const double tx = (x - kx * spacing) * inv_spacing;
-			for (int y = 0; y < size.y; ++y) {
+			for (int y = 0; y < size.y; ++y, ++i) {
 				const int ky = y / spacing;
 				const double ty = (y - ky * spacing) * inv_spacing;
 				const double h00 = Math::lerp(node_at(kx, ky, kz), node_at(kx, ky + 1, kz), ty);
@@ -96,8 +114,38 @@ VoxelGenerator::Result VoxelGeneratorPlanet::generate_block(VoxelGenerator::Voxe
 				const double h11 = Math::lerp(node_at(kx + 1, ky, kz + 1), node_at(kx + 1, ky + 1, kz + 1), ty);
 				const double height = Math::lerp(Math::lerp(h00, h10, tx), Math::lerp(h01, h11, tx), tz);
 				const Vector3 p = origin + Vector3(x, y, z) * step;
-				double sdf = (p.length() - (params.radius + height)) / step;
+				const double sdf = (p.length() - (params.radius + height)) / step;
+				sdf_values[i] = (float)sdf;
+				if (refine && Math::abs(sdf) <= SURFACE_BAND) {
+					band.push_back(i);
+					band_dirs.push_back(params.frame.xform(p).normalized());
+				}
+			}
+		}
+	}
+	if (!band.empty()) {
+		PackedFloat32Array exact;
+		if (heights_of(noise, band_dirs, exact)) {
+			const float *exact_read = exact.ptr();
+			for (size_t k = 0; k < band.size(); ++k) {
+				const int index = band[k];
+				const int y = index % size.y;
+				const int x = (index / size.y) % size.x;
+				const int z = index / (size.y * size.x);
+				const Vector3 p = origin + Vector3(x, y, z) * step;
+				sdf_values[index] = (float)((p.length() - (params.radius + exact_read[k])) / step);
+			}
+		}
+	}
+
+	const bool carve = params.caves && lod <= CAVE_MAX_LOD && cave_a.is_valid() && cave_b.is_valid();
+	i = 0;
+	for (int z = 0; z < size.z; ++z) {
+		for (int x = 0; x < size.x; ++x) {
+			for (int y = 0; y < size.y; ++y, ++i) {
+				double sdf = sdf_values[i];
 				if (carve && sdf < 0.0 && sdf > -CAVE_DEPTH / step) {
+					const Vector3 p = origin + Vector3(x, y, z) * step;
 					const double field = MAX(Math::abs((double)cave_a->get_noise_3d(p.x, p.y, p.z)),
 							Math::abs((double)cave_b->get_noise_3d(p.x, p.y, p.z)));
 					sdf = MAX(sdf, (CAVE_WIDTH - field) * CAVE_SCALE / step);
