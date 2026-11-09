@@ -1,0 +1,20 @@
+#!/usr/bin/env python
+Import("env")
+Import("env_modules")
+
+import sys
+
+env_planet = env_modules.Clone()
+# Tell engine-agnostic code of the voxel module that Godot is the host (the voxel module's own define)
+env_planet.Append(CPPDEFINES=["ZN_GODOT"])
+
+# The voxel module's headers change layout with its options (VOXEL_ENABLE_GPU, ...), and it adds those defines to its OWN
+# build environment only. A class derived from VoxelGenerator built without them crashes at run time (a different layout).
+# So get the same defines the way its own SCsub does (its source list is not used here).
+sys.path.insert(0, Dir("#modules/voxel").abspath)
+import common
+
+common.get_sources(env_planet, env.editor_build)
+sys.path.remove(Dir("#modules/voxel").abspath)
+
+env_planet.add_source_files(env.modules_sources, "*.cpp")

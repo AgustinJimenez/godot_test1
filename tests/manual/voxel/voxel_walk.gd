@@ -13,7 +13,8 @@ var _noise: Object
 var _frame := Basis.IDENTITY
 var _ground := 0.0
 var _terrain: Node
-var _gen: VoxelGeneratorScript
+var _gen: Object
+var _native := false
 var _anchor := Node3D.new() # the voxel viewer follows this (the player once there)
 var _player: Player
 var _lods := 12
@@ -22,6 +23,8 @@ var _secs := 60.0
 var _lattice := 2
 var _seed := 1337
 var _exact_lods := 1
+var _mid_lods := 2
+var _lattice_far := 4
 var _shot := ""
 var _t := 0.0
 var _stable := 0.0
@@ -58,6 +61,10 @@ func _ready() -> void:
 			_shot = a.substr(7)
 		elif a.begins_with("--lattice="):
 			_lattice = int(a.substr(10))
+		elif a.begins_with("--mid-lods="):
+			_mid_lods = int(a.substr(11))
+		elif a.begins_with("--lattice-far="):
+			_lattice_far = int(a.substr(14))
 		elif a.begins_with("--exact-lods="):
 			_exact_lods = int(a.substr(13))
 		elif a.begins_with("--view="):
@@ -89,16 +96,31 @@ func _ready() -> void:
 		side = up.cross(Vector3.FORWARD)
 	side = side.normalized()
 	_frame = Basis(side, up, side.cross(up)) # turns +Y into the chosen direction
-	_gen = Generator.new()
-	_gen.set("radius", _radius)
-	_gen.set("noise", _noise)
-	_gen.set("lattice", _lattice)
-	_gen.set("exact_lods", _exact_lods)
-	_gen.set("frame", _frame)
-	if _caves:
-		_gen.call("setup_caves", _seed)
-		if _visit:
-			_find_cave()
+	var forced := "--gdscript-gen" in OS.get_cmdline_user_args()
+	_native = ClassDB.class_exists("VoxelGeneratorPlanet") and not forced
+	if _native:
+		_gen = ClassDB.instantiate("VoxelGeneratorPlanet")
+		_gen.call("set_radius", _radius)
+		_gen.call("set_noise", _noise)
+		_gen.call("set_frame", _frame)
+		_gen.call("set_caves", _caves)
+		_gen.call("set_cave_seed", _seed)
+		_gen.call("set_exact_lods", _exact_lods)
+		_gen.call("set_mid_lods", _mid_lods)
+		_gen.call("set_lattice_mid", _lattice)
+		_gen.call("set_lattice_far", _lattice_far)
+	else:
+		_gen = Generator.new()
+		_gen.set("radius", _radius)
+		_gen.set("noise", _noise)
+		_gen.set("lattice", _lattice)
+		_gen.set("exact_lods", _exact_lods)
+		_gen.set("frame", _frame)
+		if _caves:
+			_gen.call("setup_caves", _seed)
+	if _visit:
+		_find_cave()
+	print("WALK generator: ", "C++ module" if _native else "GDScript")
 	_terrain = ClassDB.instantiate("VoxelLodTerrain")
 	_terrain.set("lod_count", _lods)
 	_terrain.set("generator", _gen)
@@ -284,7 +306,7 @@ func _find_cave() -> void:
 				var above := _ground_above(p)
 				if above > -15.0:
 					continue
-				var c: float = _gen.call("cave_field", p)
+				var c: float = _gen.call("get_cave_field" if _native else "cave_field", p)
 				if c < best:
 					best = c
 					_cave_at = p

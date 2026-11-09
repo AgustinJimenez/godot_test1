@@ -19,6 +19,11 @@ var _frame := 0
 var _stable := 0.0
 var _announced := false
 var _peak_tasks := 0
+var _generator: Object
+var _dig_test := false
+var _dig_frame := 0
+var _dig_y := 0.0
+var _dig_radius := 2.5
 var _cover: CanvasLayer
 var _cover_label: Label
 var _map_task := -1
@@ -42,16 +47,36 @@ static func available() -> bool:
 
 
 func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--voxel-view="):
+			view = int(arg.trim_prefix("--voxel-view="))
 	_planet = planet
 	_player = player
 	var radius := planet.settings.radius
 	# (loaded here, not preloaded: that script extends a voxel class the stock engine lacks, and
 	# the lab must still compile there)
-	var gen: Object = (load("res://tests/manual/voxel/real_planet_generator.gd") as GDScript).new()
-	gen.set("radius", radius)
-	gen.set("noise", planet.noise)
-	gen.set("lattice", 2)
-	gen.set("exact_lods", 1)
+	var args := OS.get_cmdline_user_args()
+	_dig_test = "--voxel-dig-test" in args
+	var gen: Object
+	if ClassDB.class_exists("VoxelGeneratorPlanet") and not "--voxel-gdscript" in args:
+		# (C++, built into the engine: scripts/install_voxel_planet_module.sh)
+		gen = ClassDB.instantiate("VoxelGeneratorPlanet")
+		gen.call("set_radius", radius)
+		gen.call("set_noise", planet.noise)
+		gen.call("set_caves", "--voxel-caves" in args)
+		gen.call("set_cave_seed", planet.settings.world_seed)
+	else:
+		# (loaded here, not preloaded: that script extends a voxel class the stock engine lacks, and
+		# the lab must still compile there)
+		gen = (load("res://tests/manual/voxel/real_planet_generator.gd") as GDScript).new()
+		gen.set("radius", radius)
+		gen.set("noise", planet.noise)
+		gen.set("lattice", 2)
+		gen.set("exact_lods", 1)
+		if "--voxel-caves" in args:
+			gen.call("setup_caves", planet.settings.world_seed)
+	_generator = gen
+	print("VOXEL generator: ", gen.get_class() if gen.get_class() != "Resource" else "GDScript")
 	_terrain = ClassDB.instantiate("VoxelLodTerrain")
 	_terrain.set("lod_count", 12 if radius > 1.0e6 else 9)
 	_terrain.set("generator", gen)
@@ -81,6 +106,8 @@ func _physics_process(_delta: float) -> void:
 	if _frame % 20 == 0:
 		_switch_tiles_off()
 	_poll_colour_map()
+	if _dig_test and ground_ready:
+		_dig_test_step()
 	if not ground_ready:
 		_wait_for_ground(_delta)
 		_update_cover()
@@ -130,7 +157,8 @@ func _wait_for_ground(delta: float) -> void:
 		return
 	ground_ready = true
 	_lift_cover()
-	_player.global_position = (hit["position"] as Vector3) + Vector3(0, 0.05, 0)
+	if _planet.spawn_on_solid_ground: # (a swim check starts the player in the sea on purpose)
+		_player.global_position = (hit["position"] as Vector3) + Vector3(0, 0.05, 0)
 	_player.process_mode = Node.PROCESS_MODE_INHERIT
 	print("VOXEL ground ready after %d ms (the process started): the player stands at %s" % [
 			Time.get_ticks_msec(), _player.global_position.snapped(Vector3.ONE * 0.1)])
@@ -214,3 +242,50 @@ func _give_scans() -> void:
 			var path := "res://assets/textures/ground/scans/%s_%s.png" % [scan, kind]
 			_material.set_shader_parameter("scan_%s_%s" % [scan, kind], load(path))
 	_material.set_shader_parameter("detail_on", true)
+
+
+## G digs a hole where the camera looks, H fills one (a sphere of `_dig_radius` m, up to 14 m away).
+func _unhandled_input(event: InputEvent) -> void:
+	if not ground_ready or not event is InputEventKey or not event.pressed or event.echo:
+		return
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		return
+	var from := camera.global_position
+	var ahead := -camera.global_basis.z
+	if event.keycode == KEY_G:
+		edit(from, ahead, false)
+	elif event.keycode == KEY_H:
+		edit(from, ahead, true)
+
+
+## Digs (or, with `add`, fills) a sphere where a ray from `from` along `ahead` (world space) meets
+## the ground. Returns the world position it worked at, or INF when nothing was hit.
+func edit(from: Vector3, ahead: Vector3, add: bool) -> Vector3:
+	var tool: Object = _terrain.call("get_voxel_tool")
+	var local_from: Vector3 = _terrain.to_local(from)
+	var local_ahead: Vector3 = (_terrain.global_transform.basis.inverse() * ahead).normalized()
+	var hit: Object = tool.call("raycast", local_from, local_ahead, 14.0)
+	if hit == null:
+		return Vector3.INF
+	var at := Vector3(hit.get("position") as Vector3i)
+	tool.set("mode", 0 if add else 1) # VoxelTool.MODE_ADD / MODE_REMOVE
+	tool.call("do_sphere", at, _dig_radius)
+	return _terrain.to_global(at)
+
+
+## A dig under the player's feet, then a look at whether they fell in (the lab's --voxel-dig-test).
+func _dig_test_step() -> void:
+	_dig_frame += 1
+	if _dig_frame == 120:
+		_dig_y = _player.global_position.y
+		var worked := edit(_player.global_position + Vector3(0, 1.0, 0), Vector3.DOWN, false)
+		var where := "nothing"
+		if worked != Vector3.INF:
+			where = str(worked.snapped(Vector3.ONE * 0.1))
+		print("VOXEL dig test: dug at ", where)
+	elif _dig_frame == 420:
+		print("VOXEL dig test: the player's height ", snappedf(_dig_y, 0.01), " -> ",
+				snappedf(_player.global_position.y, 0.01), " m, on floor ",
+				(_player as CharacterBody3D).is_on_floor() if _player is CharacterBody3D else "?")
+		get_tree().quit()
