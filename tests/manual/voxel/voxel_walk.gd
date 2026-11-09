@@ -66,6 +66,10 @@ func _ready() -> void:
 	_terrain.set("generator", _gen)
 	_terrain.set("mesher", ClassDB.instantiate("VoxelMesherTransvoxel"))
 	_terrain.set("view_distance", _view)
+	var material := ShaderMaterial.new()
+	material.shader = load("res://shaders/voxel/voxel_ground.gdshader")
+	material.set_shader_parameter("radius", _radius)
+	_terrain.set("material", material)
 	_terrain.set("bounds", AABB(Vector3.ONE * -_radius * 1.6, Vector3.ONE * _radius * 3.2))
 	add_child(_terrain)
 	add_child(_anchor)
@@ -175,3 +179,4 @@ func _report() -> void:
 	print("WALK frames=%d worst_frame=%.1f ms over33ms=%d" % [_frames, _worst_frame * 1000.0, _slow])
 	if _shot != "":
 		get_viewport().get_texture().get_image().save_png(_shot)
+
