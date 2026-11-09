@@ -208,3 +208,13 @@ All on the walking test (`voxel_walk.tscn`), Earth size, seed 1337, spawn on lan
 - Whole project on the custom engine: `planet_lab.tscn -- --planet-check` (headless, the heightmap planet) -> `PLANET_CHECK PASS steps=40 walked=2372 m rebases=39 tiles=333`.
   So the voxel module and the rebuilt double `planet_crust` library do not break the existing planet.
 - Not verified: foot IK on slopes (looked fine in pictures only), swimming / sea, the full game scene, export (see below), macOS (task 097).
+
+## Export template for the voxel engine (2026-11-08)
+- Built `scons platform=windows target=template_release precision=double arch=x86_64 d3d12=yes debug_symbols=no` in `E:\Godot\double\src` (the voxel module is in the tree):
+  12 min, OK -> `bin\godot.windows.template_release.double.x86_64.exe` (+ console exe). Only the release template; no debug template, no other platforms.
+- Real export: the scratch project `E:\Temp\claude\voxel_spike\proj_module` (the Earth-size noise planet, no GDExtension) with an `export_presets.cfg` whose
+  `custom_template/release` points at that template, `editor.exe --headless --path proj_module --export-release "Windows Desktop"` -> a single 84 MB `planet.exe`
+  (embedded pck). Running the EXPORTED exe (`-- --radius=6371000 --lods=12 --view=4096 --caves=1 --secs=10 --ball=1`): the voxel planet loads, the ball lands and rolls, 690 draw
+  calls, 2.64M triangles, 402 MB video memory. So a shippable double + voxel build is possible.
+- NOT done: exporting the real game (it needs `planet_crust` as a double RELEASE library: `windows.release.double` in `planet_crust.gdextension` points at
+  `planet_crust.windows.template_release.double.x86_64.dll`, never built: `scripts/build_native.sh --double --release` is untried), a debug template, size of the full game.
