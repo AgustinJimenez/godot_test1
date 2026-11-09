@@ -4,7 +4,7 @@ extends Node3D
 ##   -- --seed=N       planet seed
 ##   -- --dir=x,y,z   start there (a direction from the planet's centre) instead of the spawn
 ##   -- --view-alt=N   no player: a camera N metres above the ground, looking at the horizon
-##   -- --view-pitch=N / --view-yaw=N degrees (negative pitch looks down; with --view-alt)
+##   -- --view-pitch=N / --view-yaw=N degrees (negative pitch looks down; with --view-alt; --view-yaw also turns the walker)
 ##   -- --shot=PATH    (with a window) saves a picture after the tiles have loaded, then quits
 ##   -- --show-map [--map-zoom=N] [--map-layer=N]   the planet map open from the start (M in play)
 ##   -- --time-scale=N --hour=H --year=Y   time speed, the first hour (12 noon), the year share
@@ -49,7 +49,7 @@ var _ik_soak_log := ""
 var _ik_soak_only := ""
 var _weather_name := "" ## a WorldWeather.State name to force from the start (rain, snow...)
 var _climb := 0.0 ## lift the player this many metres once the planet has loaded (they hang there)
-var _voxel := false ## (--voxel) a voxel terrain ground (voxel-module engine only, task 096)
+var _voxel := true ## a voxel terrain ground (voxel-module engine only, task 096; ignored on the stock engine). On by default on this branch; --no-voxel turns it off
 var _voxel_node: LabVoxelGround
 var _hide := "" ## trees, plants, ground or water: not drawn (to see what each costs)
 var _no_shadow := false ## the sun casts no shadows (to see what they cost)
@@ -618,6 +618,8 @@ func _ready() -> void:
 			_grounded = true
 		elif arg == "--voxel":
 			_voxel = true
+		elif arg == "--no-voxel":
+			_voxel = false
 		elif arg == "--earth":
 			var es := OS.get_environment("PLANET_SCALE").to_float() # (0.1 is the game's size)
 			settings = PlanetSettings.earth(es if es > 0.0 else 1.0) # first: it replaces the rest
@@ -696,6 +698,9 @@ func _ready() -> void:
 			settings.max_level(), planet.surface.tiles.size(), Time.get_ticks_msec() - started,
 			spawn])
 	_start_up = spawn
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--view-yaw="): # (the walker turned that way: a picture of a place seen from the side)
+			player.rotation_degrees.y = _view_yaw
 	_voxel_node = LabVoxelGround.attach(self, planet, player) if _voxel else null
 	if _save_as != "":
 		print("SAVED %s %s" % [_save_as, UniverseSave.save(planet, _save_as)])

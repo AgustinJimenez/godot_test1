@@ -55,6 +55,7 @@ public:
 	NP_FIELD(double, tile_max, 128.0)
 	NP_FIELD(double, split_factor, 2.0)
 	NP_FIELD(double, collide_tiles, 1.2)
+	NP_FIELD(bool, voxel_ground, false) // the ground is a voxel terrain (task 096): the tiles build no ground mesh nor collider, only what grows on them
 
 	void vary();
 	static Ref<PlanetSettings> earth(double p_scale = 1.0);

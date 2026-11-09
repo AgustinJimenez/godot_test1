@@ -201,6 +201,7 @@ void PlanetScatter::populate(Node3D *p_holder, int64_t p_key, const Ref<PlanetNo
 	noise = p_noise;
 	species = (Object *)noise->get_species();
 	heights = p_grid["heights"];
+	exact_ground = p_grid.get("exact", false) ? p_grid : Dictionary();
 	cells = (int)p_cells;
 	side = cells + 3;
 	size = p_size;
@@ -238,6 +239,9 @@ void PlanetScatter::populate_native(int64_t p_key, int p_detail, bool p_collide)
 	config["size"] = size;
 	config["detail"] = p_detail;
 	config["collide"] = p_collide;
+	if (!exact_ground.is_empty()) {
+		config["exact"] = exact_ground;
+	}
 	config["trees"] = get_trees_on();
 	config["clearing"] = noise->get_clearing();
 	config["fine"] = (int64_t)graphics_value("ground_detail") >= 2;

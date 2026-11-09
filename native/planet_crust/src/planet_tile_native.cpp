@@ -182,24 +182,41 @@ PlanetTile *PlanetTile::build(int64_t p_f, int64_t p_lvl, int64_t p_x, int64_t p
 	PackedFloat32Array heights = noise_->heights_of(packed_dirs); // (the crust is asked for the whole grid at once)
 	PackedVector3Array packed_positions = crust->tile_positions((int)p_f, s0, s1, t0, t1, cells, heights, origin, e1, centre, e3);
 	min_height = crust->tile_min_height(heights, cells);
-	PackedVector3Array packed_normals = crust->grid_normals(packed_positions, cells);
-	PackedColorArray packed_colours = crust->ground_colours(packed_dirs, heights, packed_normals, cells);
-	Ref<RefCounted> builder = new_builder();
-	PackedByteArray materials = crust->ground_materials(packed_dirs, heights, packed_normals, cells);
-	Dictionary made = crust->triangles(packed_positions, packed_normals, packed_colours, cells, p_collide ? 0.0 : skirt_drop(), materials);
-	builder->call("append_smooth", made["vertices"], made["normals"], made["colours"], made["custom"], made.get("custom1", PackedByteArray()),
-			made.get("custom2", PackedByteArray()), made.get("morph", PackedFloat32Array()));
-	PackedVector3Array faces_found = made["faces"];
-	MeshInstance3D *mesh_instance = memnew(MeshInstance3D);
-	mesh_instance->set_mesh(builder->call("commit"));
-	mesh_instance->set_material_override(ground_material());
-	set_morph(mesh_instance);
-	ground_instance_id = mesh_instance->get_instance_id(); // (PlanetShells copies it)
-	if (!p_collide && level < settings_->max_level() - 1) {
-		mesh_instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	const bool voxel = settings_->get_voxel_ground(); // (the voxel terrain is the ground: no mesh, no occluder, no collider here)
+	if (!voxel) {
+		PackedVector3Array packed_normals = crust->grid_normals(packed_positions, cells);
+		PackedColorArray packed_colours = crust->ground_colours(packed_dirs, heights, packed_normals, cells);
+		Ref<RefCounted> builder = new_builder();
+		PackedByteArray materials = crust->ground_materials(packed_dirs, heights, packed_normals, cells);
+		Dictionary made = crust->triangles(packed_positions, packed_normals, packed_colours, cells, p_collide ? 0.0 : skirt_drop(), materials);
+		builder->call("append_smooth", made["vertices"], made["normals"], made["colours"], made["custom"], made.get("custom1", PackedByteArray()),
+				made.get("custom2", PackedByteArray()), made.get("morph", PackedFloat32Array()));
+		PackedVector3Array faces_found = made["faces"];
+		MeshInstance3D *mesh_instance = memnew(MeshInstance3D);
+		mesh_instance->set_mesh(builder->call("commit"));
+		mesh_instance->set_material_override(ground_material());
+		set_morph(mesh_instance);
+		ground_instance_id = mesh_instance->get_instance_id(); // (PlanetShells copies it)
+		if (!p_collide && level < settings_->max_level() - 1) {
+			mesh_instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		}
+		add_child(mesh_instance);
+		if (p_collide) {
+			has_collider = true;
+			StaticBody3D *body = memnew(StaticBody3D);
+			body->set_collision_layer(1);
+			CollisionShape3D *collision = memnew(CollisionShape3D);
+			Ref<ConcavePolygonShape3D> shape;
+			shape.instantiate();
+			shape->set_faces(faces_found);
+			collision->set_shape(shape);
+			body->add_child(collision);
+			add_child(body);
+		}
+	} else if (p_collide) {
+		has_collider = true; // (the plants ask: the voxel terrain has the collision)
 	}
-	add_child(mesh_instance);
-	if (level >= settings_->max_level() - 6) {
+	if (level >= settings_->max_level() - 6) { // (a hill still hides what is behind it from the camera)
 		add_occluder(packed_positions, cells);
 	}
 	if (settings_->get_sea_on() && min_height < settings_->get_sea_level() + 0.5) {
@@ -213,18 +230,15 @@ PlanetTile *PlanetTile::build(int64_t p_f, int64_t p_lvl, int64_t p_x, int64_t p
 		plant_grid["heights"] = heights;
 		plant_grid["packed_positions"] = packed_positions;
 		plant_grid["packed_dirs"] = packed_dirs;
-	}
-	if (p_collide) {
-		has_collider = true;
-		StaticBody3D *body = memnew(StaticBody3D);
-		body->set_collision_layer(1);
-		CollisionShape3D *collision = memnew(CollisionShape3D);
-		Ref<ConcavePolygonShape3D> shape;
-		shape.instantiate();
-		shape->set_faces(faces_found);
-		collision->set_shape(shape);
-		body->add_child(collision);
-		add_child(body);
+		if (voxel) { // the plants stand on the voxel surface, which is the exact ground, not on this grid's triangles
+			plant_grid["exact"] = true;
+			plant_grid["crust"] = crust;
+			plant_grid["radius"] = radius;
+			plant_grid["origin"] = origin;
+			plant_grid["e1"] = e1;
+			plant_grid["centre"] = centre;
+			plant_grid["e3"] = e3;
+		}
 	}
 	return this;
 }

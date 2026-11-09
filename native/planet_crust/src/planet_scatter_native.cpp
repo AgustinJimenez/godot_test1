@@ -203,14 +203,34 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 
 	// ---- the tile's grid ----
 	auto index_of = [&](double fx, double fz) { return ((int)fz + 1) * t.side + (int)fx + 1; };
+	// (voxel ground: the exact height of the crust under the spot, the surface the voxels were made from, instead of the grid's triangle)
+	Dictionary exact = p_tile.get("exact", Dictionary());
+	Ref<PlanetCrustNative> exact_crust = exact.is_empty() ? Ref<PlanetCrustNative>() : Ref<PlanetCrustNative>(exact.get("crust", Variant()));
+	double exact_radius = exact.get("radius", 0.0);
+	PackedFloat64Array exact_origin = exact.get("origin", PackedFloat64Array());
+	Vector3 exact_e1 = exact.get("e1", Vector3()), exact_up = exact.get("centre", Vector3()), exact_e3 = exact.get("e3", Vector3());
+	const bool snap = exact_crust.is_valid() && exact_origin.size() == 3;
 	auto ground_at = [&](double fx, double fz) {
 		int i = index_of(fx, fz);
 		double tx = fx - std::floor(fx), tz = fz - std::floor(fz);
 		Vector3 p00 = t.positions[i], p10 = t.positions[i + 1], p01 = t.positions[i + t.side], p11 = t.positions[i + t.side + 1];
+		Vector3 at;
 		if (tx + tz <= 1.0) {
-			return p00 + (p10 - p00) * (real_t)tx + (p01 - p00) * (real_t)tz;
+			at = p00 + (p10 - p00) * (real_t)tx + (p01 - p00) * (real_t)tz;
+		} else {
+			at = p11 + (p01 - p11) * (real_t)(1.0 - tx) + (p10 - p11) * (real_t)(1.0 - tz);
 		}
-		return p11 + (p01 - p11) * (real_t)(1.0 - tx) + (p10 - p11) * (real_t)(1.0 - tz);
+		if (snap) { // (in doubles: from the tile's middle, however far from the planet's)
+			const double wx = exact_origin[0] + (double)exact_e1.x * at.x + (double)exact_up.x * at.y + (double)exact_e3.x * at.z;
+			const double wy = exact_origin[1] + (double)exact_e1.y * at.x + (double)exact_up.y * at.y + (double)exact_e3.y * at.z;
+			const double wz = exact_origin[2] + (double)exact_e1.z * at.x + (double)exact_up.z * at.y + (double)exact_e3.z * at.z;
+			const double len = std::sqrt(wx * wx + wy * wy + wz * wz);
+			const double h = exact_crust->height_at(Vector3((real_t)(wx / len), (real_t)(wy / len), (real_t)(wz / len)));
+			const double r = exact_radius + h;
+			const double dx = wx / len * r - exact_origin[0], dy = wy / len * r - exact_origin[1], dz = wz / len * r - exact_origin[2];
+			at.y = (real_t)(dx * exact_up.x + dy * exact_up.y + dz * exact_up.z);
+		}
+		return at;
 	};
 	auto height_at = [&](double fx, double fz) {
 		int i = index_of(fx, fz);

@@ -22,6 +22,9 @@ var _peak_tasks := 0
 var _generator: Object
 var _tiles_off := {} # instance id -> true: the tiles whose ground is already switched off
 var _dig_test := false
+var _surface_test := false
+var _find := false
+var _surface_frame := 0
 var _dig_frame := 0
 var _dig_y := 0.0
 var _dig_radius := 2.5
@@ -56,11 +59,15 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 			view = int(arg.trim_prefix("--voxel-view="))
 	_planet = planet
 	_player = player
+	# the tiles build no ground mesh nor collider, and the plants stand on the exact height (native planet_crust; an older library lacks it)
+	planet.settings.set("voxel_ground", true)
 	var radius := planet.settings.radius
 	# (loaded here, not preloaded: that script extends a voxel class the stock engine lacks, and
 	# the lab must still compile there)
 	var args := OS.get_cmdline_user_args()
 	_dig_test = "--voxel-dig-test" in args
+	_surface_test = "--voxel-surface-check" in args
+	_find = "--voxel-find" in args
 	for arg in args:
 		if arg.begins_with("--voxel-steep="):
 			_map_steep = float(arg.trim_prefix("--voxel-steep="))
@@ -117,6 +124,14 @@ func _physics_process(_delta: float) -> void:
 		_begin_map_stage()
 	if _dig_test and ground_ready:
 		_dig_test_step()
+	if _find and ground_ready:
+		_surface_frame += 1
+		if _surface_frame == 60:
+			_find_places()
+	if _surface_test and ground_ready:
+		_surface_frame += 1
+		if _surface_frame == 240:
+			_surface_check()
 	if not ground_ready:
 		_wait_for_ground(_delta)
 		_update_cover()
@@ -343,3 +358,73 @@ func _dig_test_step() -> void:
 				snappedf(_player.global_position.y, 0.01), " m, on floor ",
 				(_player as CharacterBody3D).is_on_floor() if _player is CharacterBody3D else "?")
 		get_tree().quit()
+
+
+## --voxel-surface-check: how far the voxel collision is from the planet's exact height (what the plants stand on), over
+## random spots round the player: SURFACE_CHECK mean / max of the difference in metres.
+func _surface_check() -> void:
+	var frame := _planet.frame
+	var anchor := Vector3(frame.anchor[0], frame.anchor[1], frame.anchor[2])
+	var inverse: Basis = (frame.rot as Basis).inverse()
+	var space := get_world_3d().direct_space_state
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var radius := _planet.settings.radius
+	var sum := 0.0
+	var worst := 0.0
+	var count := 0
+	var skipped := 0
+	for i in 400:
+		var spot := _player.global_position + Vector3(rng.randf_range(-40, 40), 0, rng.randf_range(-40, 40))
+		var query := PhysicsRayQueryParameters3D.create(spot + Vector3(0, 80, 0), spot + Vector3(0, -80, 0), 1)
+		var hit := space.intersect_ray(query)
+		if hit.is_empty() or hit.get("collider") != _terrain: # (a plant or a rock: not the ground)
+			skipped += 1
+			continue
+		var planet_point: Vector3 = inverse * ((hit["position"] as Vector3) - frame.origin_w) + anchor
+		var dir := planet_point.normalized()
+		var exact: float = radius + _planet.noise.height(dir.x, dir.y, dir.z)
+		var gap := absf(planet_point.length() - exact)
+		sum += gap
+		worst = maxf(worst, gap)
+		count += 1
+	print("SURFACE_CHECK spots ", count, " (not the terrain: ", skipped, ") mean ", snappedf(sum / maxf(count, 1), 0.001), " max ", snappedf(worst, 0.001))
+	get_tree().quit()
+
+
+## --voxel-find: places worth a picture (a river on land, a steep slope above the sea), as directions for --dir=
+func _find_places() -> void:
+	var noise: PlanetNoise = _planet.noise
+	var settings: PlanetSettings = _planet.settings
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var n := 80000
+	var step := 3.0 / settings.radius
+	var dirs := PackedVector3Array()
+	for i in n:
+		var d := Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized()
+		var t1 := d.cross(Vector3.UP if absf(d.y) < 0.9 else Vector3.RIGHT).normalized()
+		dirs.append(d)
+		dirs.append((d + t1 * step).normalized())
+		dirs.append((d + d.cross(t1) * step).normalized())
+	var h := noise.heights_of(dirs)
+	var waters := noise.get_native().river_waters(dirs) as PackedVector3Array
+	var rivers := []
+	var slopes := []
+	for i in n:
+		var h0 := h[i * 3]
+		if h0 < settings.sea_level + 3.0:
+			continue
+		var slope := rad_to_deg(atan(sqrt(pow(h[i * 3 + 1] - h0, 2) + pow(h[i * 3 + 2] - h0, 2)) / 3.0))
+		slopes.append([slope, dirs[i * 3], h0])
+		var surface := waters[i * 3].x
+		if surface > settings.sea_level and h0 < surface - 0.02:
+			rivers.append([surface - h0, dirs[i * 3], h0])
+	slopes.sort_custom(func(a, b): return a[0] > b[0])
+	rivers.sort_custom(func(a, b): return a[0] > b[0])
+	print("FIND land points ", slopes.size(), " wet river points ", rivers.size())
+	for k in mini(4, slopes.size()):
+		print("FIND slope ", snappedf(slopes[k][0], 0.1), " deg  --dir=", (slopes[k][1] as Vector3).snapped(Vector3.ONE * 1.0e-7), " ground ", snappedf(slopes[k][2], 0.1))
+	for k in mini(4, rivers.size()):
+		print("FIND river water ", snappedf(rivers[k][0], 0.01), " m over the bed  --dir=", (rivers[k][1] as Vector3).snapped(Vector3.ONE * 1.0e-7), " ground ", snappedf(rivers[k][2], 0.1))
+	get_tree().quit()

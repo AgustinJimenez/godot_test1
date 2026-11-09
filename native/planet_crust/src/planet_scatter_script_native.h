@@ -32,6 +32,7 @@ class PlanetScatter : public RefCounted {
 	StaticBody3D *body = nullptr;
 	PackedVector3Array packed_positions, packed_dirs;
 	PackedFloat32Array heights;
+	Dictionary exact_ground; // see PlanetTile::build (voxel ground): the exact height under each plant
 	int cells = 0;
 	int side = 0;
 	double size = 0.0;

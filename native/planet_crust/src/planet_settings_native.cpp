@@ -49,6 +49,7 @@ void PlanetSettings::_bind_methods() {
 	B(Variant::FLOAT, tile_max)
 	B(Variant::FLOAT, split_factor)
 	B(Variant::FLOAT, collide_tiles)
+	B(Variant::BOOL, voxel_ground)
 #undef B
 	ClassDB::bind_method(D_METHOD("vary"), &PlanetSettings::vary);
 	ClassDB::bind_static_method("PlanetSettings", D_METHOD("earth", "scale"), &PlanetSettings::earth, DEFVAL(1.0));

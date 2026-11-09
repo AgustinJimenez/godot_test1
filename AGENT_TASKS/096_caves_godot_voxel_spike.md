@@ -8,9 +8,10 @@ The voxel ground works on the real planet at Earth size, on branch `voxel-spike`
 - Lab: `planet_lab.tscn -- [--earth] --voxel [--plants] [--voxel-caves]` (G dig, H fill; helper `tests/manual/voxel/lab_voxel_ground.gd`, shader `shaders/voxel/voxel_ground.gdshader`). Stock engine: the flag is ignored.
 - Numbers (RTX 4090, 6 cores): Earth ground ready ~24 s (GDScript generator 67 s); same fps as the tiles (89 against 77 with plants), GPU 9.7 against 12.2 ms; soak walk 100 s: 79.5 fps, 1% low 28, 28 frames over 33 ms;
   caves cost ~1 s of load; digging 18 ms a hole; no holes in the collision (seam check 0 of 40,401 rays); `WALK_CHECK`, `PLANET_CHECK`, `SWIM_CHECK`, foot IK soak (41 events against 38) all as with the tiles; `planet_check.sh` 20 of 22 (the 2 fails are not ours).
-- Works but crude: ground colours (the planet's colours baked into a picture + the soil scans + cliffs; no grass patches, litter, sand ripples), rivers / sea (the tiles' own meshes, the ground follows `heights_of`, not seen with a river in a picture).
+- Works but crude: ground colours (the planet's colours baked into a picture + the soil scans + cliffs; no grass patches, litter, sand ripples). Rivers / sea: the tiles' own water meshes (seen in a picture 2026-11-09: a river in a gorge fits the voxel canyon).
 - Shippable: the exported RELEASE game (double + voxel template, the double release `planet_crust` DLL) runs the Earth-size voxel planet in the lab (`WALK_CHECK PASS`, ground ready 23 s); the recipe is in "The real game exports and runs the voxel planet" (needs `include_filter="*.bin, *.json"`, the bark/rock baker fix, an `override.cfg` for the scene).
-- NOT done: the tiles are still built in the background (wasted work, not the bottleneck); plants placed from the heightmap (up to ~0.5 m off the voxel surface); finer colours near the player on Earth; macOS (task 097); the export was only run through the lab scene (not the game's own start flow); the cliffs were never seen on a real cliff; a river was never looked at in a picture.
+- NOT done: finer colours near the player on Earth; macOS (task 097); the export was only run through the lab scene (not the game's own start flow); the cliff slab texture was not looked at on a wall close up (a 80 degree wall was seen from across a river, grey and smooth).
+- 2026-11-09 (day): `planet_lab` opens with the voxel ground BY DEFAULT on the voxel engine (`--no-voxel` turns it off; the stock engine ignores it). The heightmap ground is gone in that mode (see "The heightmap ground removed" at the end of the log).
 - Dead ends / traps: `VoxelTool.raycast` returns null in the lab (the dig keys march the ray themselves); a class derived from `VoxelGenerator` needs the voxel module's defines or it segfaults; only the tiles `preload`ed by the lab must never name a voxel class;
   the lattice at levels 0-1 left a hole in the collision (exact heights near the surface fixed it); my rock rule painted grassy hillsides white; the hitching was the helper's own tile loop.
 - Decision for the user: keep going (water in a picture, plants from the voxel surface, the real-game export, a Mac build) or stay with the heightmap and keep this branch as the record. The branch is pushed; `main` is untouched.
@@ -398,3 +399,16 @@ Problems found and fixed on the way: the bark and rock bakers read the raw atlas
 (`load(path) as TextureLayered`: `Texture2DArray` is the wrong class, the cast gave null and a RELEASE build then crashes silently on the null call instead of printing a script error: a DEBUG export prints it); `.bin` / `.json` raw files need the include filter.
 Lesson: when a release export segfaults with no message, export with the debug template (`--export-debug`) and read the script errors.
 Still not done: macOS (task 097), an installer / size trimming (the pack is 457 MB with everything), the lab is not the game's main scene (the game's own start flow was not run from the export).
+
+
+## The heightmap ground removed, plants on the voxel surface, a river and a cliff seen (2026-11-09)
+- `PlanetSettings.voxel_ground` (native, set by `lab_voxel_ground.gd` at attach, off otherwise): `PlanetTile::build` then makes NO ground mesh, normals, colours, materials, triangles or
+  collider (the costly part of a tile); it keeps the heights, the occluder, the sea and river meshes and the plant grid, and `has_collider` stays true on the finest tiles (the plants and
+  the surface logic ask for it). The helper's `_switch_tiles_off` loop now finds nothing to switch (kept as a harmless guard; the stock engine path is unchanged).
+- Plants: with `voxel_ground` the scatter snaps every placed thing to the crust's exact height under it (`height_at`, in doubles from the tile's middle) instead of the grid's triangle.
+  `--voxel-surface-check` (collision ray against `PlanetNoise.height`, 400 spots within 40 m): mean 0.004 m, max 0.02 m. So the plants stand on the voxel surface within 2 cm (was up to ~0.5 m).
+- River / cliff: `--voxel-find` scans the planet (Earth size; the 20 km default planet has no wet river points and its steepest land is 54 degrees) and prints `--dir=` places. Earth:
+  80 degree slopes and wet river points exist. Picture `--earth --grounded --dir=-0.6811864,-0.6505808,-0.3357525 [--view-yaw=-70]`: a river in a gorge with a steep rock wall; the water
+  mesh fits the voxel canyon (no gap, no floating sheet). `--view-yaw` now also turns the walking player.
+- Checks on the voxel engine (voxel is now the default): `WALK_CHECK PASS` (412 m, 100% on floor), `planet_check.sh --quick` 20 of 22 as before (lint: gdlint not installed; noise_golden).
+- Still open: macOS; the game's own start flow in the export; the cliff slab texture on a wall close up; sea/river meshes are still tile meshes (not carved into the voxels).
