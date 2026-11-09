@@ -29,6 +29,8 @@ var _cover_label: Label
 var _map_task := -1
 var _map_image: Image
 var _map_rows := 0
+var _map_started := 0
+var _map_widths: Array[int] = []
 
 
 ## The lab's one call: the voxel ground, or none (and a message) on an engine without the module.
@@ -106,6 +108,8 @@ func _physics_process(_delta: float) -> void:
 	if _frame % 20 == 0:
 		_switch_tiles_off()
 	_poll_colour_map()
+	if _map_task < 0 and ground_ready and not _map_widths.is_empty():
+		_begin_map_stage()
 	if _dig_test and ground_ready:
 		_dig_test_step()
 	if not ground_ready:
@@ -201,9 +205,17 @@ func _lift_cover() -> void:
 ## the voxel mesh has no per-vertex colours, so the shader reads this by direction. Coarse on a
 ## big planet (about 20 km a pixel on Earth): the near detail is the shader's own.
 func _start_colour_map() -> void:
-	var width := 2048 if _planet.settings.radius > 1.0e6 else 1024
+	# a quick coarse map first, the finer one (Earth) only once the ground is there: the bake and the
+	# terrain share the cores
+	_map_widths.assign([1024, 2048] if _planet.settings.radius > 1.0e6 else [1024])
+	_begin_map_stage()
+
+
+func _begin_map_stage() -> void:
+	var width: int = _map_widths.pop_front()
 	_map_image = Image.create(width, width / 2, false, Image.FORMAT_RGB8)
 	_map_rows = width / 2
+	_map_started = Time.get_ticks_msec()
 	_map_task = WorkerThreadPool.add_task(_bake_colour_map.bind(width))
 
 
@@ -232,7 +244,8 @@ func _poll_colour_map() -> void:
 	_map_task = -1
 	_material.set_shader_parameter("colour_map", ImageTexture.create_from_image(_map_image))
 	_material.set_shader_parameter("use_map", true)
-	print("VOXEL colour map ready (", _map_image.get_width(), " x ", _map_image.get_height(), ")")
+	print("VOXEL colour map ready (", _map_image.get_width(), " x ", _map_image.get_height(),
+			") after ", Time.get_ticks_msec() - _map_started, " ms of baking")
 
 
 ## The near ground's scans (the tiles' own textures) and the switch for the lab's anchor globals.
