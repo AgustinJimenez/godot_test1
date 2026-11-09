@@ -38,6 +38,16 @@ var _map_rows := 0
 var _map_started := 0
 var _map_steep := 0.0 # the steepness the map's colours are for (snow and scree depend on it)
 var _map_widths: Array[int] = []
+# the colour window: a finer map (WINDOW_SIDE m, WINDOW_METRES a pixel) of the ground round the walker, baked again when they leave its middle
+const WINDOW_SIDE := 1536.0
+const WINDOW_METRES := 2.0
+const WINDOW_REBAKE := 300.0 # m from the middle
+var _win_task := -1
+var _win_image: Image
+var _win_centre := Vector3.ZERO # planet space (m)
+var _win_axes: Array[Vector3] = []
+var _win_have := false
+var _win_started := 0
 
 
 ## The lab's one call: the voxel ground, or none (and a message) on an engine without the module.
@@ -101,7 +111,7 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 	_terrain.set("bounds", AABB(Vector3.ONE * -radius * 1.6, Vector3.ONE * radius * 3.2))
 	_material = ShaderMaterial.new()
 	_material.shader = load("res://shaders/voxel/voxel_ground.gdshader")
-	_material.set_shader_parameter("radius", radius)
+	_material.set_shader_parameter("planet_radius", radius)
 	_give_scans()
 	_terrain.set("material", _material)
 	add_child(_terrain)
@@ -132,6 +142,7 @@ func _physics_process(_delta: float) -> void:
 	if _frame % 20 == 0:
 		_switch_tiles_off()
 	_poll_colour_map()
+	_window_step()
 	if _map_task < 0 and ground_ready and not _map_widths.is_empty():
 		_begin_map_stage()
 	if _dig_test and ground_ready:
@@ -299,6 +310,80 @@ func _bake_colour_map(width: int) -> void:
 		var colours := noise.colours_of(dirs, heights, steeps)
 		for x in width:
 			_map_image.set_pixel(x, y, colours[x])
+
+
+## The walker's place on the planet (m, planet space), from the lab's frame.
+func _planet_position(world: Vector3) -> Vector3:
+	var frame := _planet.frame
+	return (frame.rot as Basis).inverse() * (world - frame.origin_w) + Vector3(frame.anchor[0], frame.anchor[1], frame.anchor[2])
+
+
+func _window_step() -> void:
+	if not ground_ready or "--voxel-nowindow" in OS.get_cmdline_user_args():
+		return
+	if _win_task >= 0: # (one being baked)
+		if WorkerThreadPool.is_task_completed(_win_task):
+			WorkerThreadPool.wait_for_task_completion(_win_task)
+			_win_task = -1
+			_material.set_shader_parameter("window_map", ImageTexture.create_from_image(_win_image))
+			_material.set_shader_parameter("window_c", _win_centre.normalized())
+			_material.set_shader_parameter("window_e1", _win_axes[0])
+			_material.set_shader_parameter("window_e2", _win_axes[1])
+			_material.set_shader_parameter("window_half", WINDOW_SIDE * 0.5 / _planet.settings.radius)
+			_material.set_shader_parameter("use_window", true)
+			_win_have = true
+			print("VOXEL colour window ready (", _win_image.get_width(), " px, ", WINDOW_METRES, " m a pixel) after ",
+					Time.get_ticks_msec() - _win_started, " ms of baking")
+		return
+	var here := _planet_position(_player.global_position)
+	if _win_have and here.distance_to(_win_centre) < WINDOW_REBAKE:
+		return
+	_win_centre = here
+	var up := here.normalized()
+	var east := up.cross(Vector3.UP if absf(up.y) < 0.9 else Vector3.RIGHT).normalized()
+	_win_axes.assign([east, up.cross(east)])
+	var side := int(WINDOW_SIDE / WINDOW_METRES)
+	_win_image = Image.create(side, side, false, Image.FORMAT_RGB8)
+	_win_started = Time.get_ticks_msec()
+	_win_task = WorkerThreadPool.add_task(_bake_window.bind(side, here, east, up.cross(east)))
+
+
+## The colours of the square round `middle`: the true steepness from the heights beside each point.
+func _bake_window(side: int, middle: Vector3, east: Vector3, north: Vector3) -> void:
+	var noise := _planet.noise
+	var radius := _planet.settings.radius
+	var up := middle.normalized()
+	var padded := side + 2
+	var origin := up * radius
+	var dirs := PackedVector3Array()
+	dirs.resize(padded * padded)
+	var half := side * 0.5
+	for row in padded:
+		var v := (row - 1 - half + 0.5) * WINDOW_METRES
+		for column in padded:
+			var u := (column - 1 - half + 0.5) * WINDOW_METRES
+			dirs[row * padded + column] = (origin + east * u + north * v).normalized()
+	var heights := noise.heights_of(dirs)
+	var picked := PackedVector3Array()
+	var grounds := PackedFloat32Array()
+	var steeps := PackedFloat32Array()
+	picked.resize(side * side)
+	grounds.resize(side * side)
+	steeps.resize(side * side)
+	for row in side:
+		for column in side:
+			var at := (row + 1) * padded + column + 1
+			var dx := (heights[at + 1] - heights[at - 1]) / (2.0 * WINDOW_METRES)
+			var dy := (heights[at + padded] - heights[at - padded]) / (2.0 * WINDOW_METRES)
+			var k := row * side + column
+			picked[k] = dirs[at]
+			grounds[k] = heights[at]
+			steeps[k] = 1.0 - 1.0 / sqrt(1.0 + dx * dx + dy * dy)
+	var colours := noise.colours_of(picked, grounds, steeps)
+	for row in side:
+		# (the image's y runs the other way from the north axis: the texture is read with q * 0.5 + 0.5)
+		for column in side:
+			_win_image.set_pixel(column, row, colours[row * side + column])
 
 
 func _poll_colour_map() -> void:

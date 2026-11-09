@@ -128,7 +128,7 @@ func _ready() -> void:
 	_terrain.set("view_distance", _view)
 	var material := ShaderMaterial.new()
 	material.shader = load("res://shaders/voxel/voxel_ground.gdshader")
-	material.set_shader_parameter("radius", _radius)
+	material.set_shader_parameter("planet_radius", _radius)
 	_terrain.set("material", material)
 	_terrain.set("bounds", AABB(Vector3.ONE * -_radius * 1.6, Vector3.ONE * _radius * 3.2))
 	add_child(_terrain)

@@ -6,10 +6,16 @@
 // sea, grass, bare soil, rock on slopes, snow high up.
 shader_type spatial;
 
-uniform float radius = 6371000.0; // the planet's radius (m), set by script
+uniform float planet_radius = 6371000.0; // the planet's radius (m), set by script
 uniform float snow_line = 2200.0;
 uniform sampler2D colour_map : source_color, filter_linear, repeat_enable; // the planet's colours by direction (script)
 uniform bool use_map = false;
+uniform sampler2D window_map : source_color, filter_linear, repeat_disable; // the colours round the walker, a finer map of a square of the planet (script)
+uniform bool use_window = false;
+uniform vec3 window_c = vec3(0.0, 1.0, 0.0); // the window's middle (a direction) and its axes
+uniform vec3 window_e1 = vec3(1.0, 0.0, 0.0);
+uniform vec3 window_e2 = vec3(0.0, 0.0, 1.0);
+uniform float window_half = 0.0001; // half its side, as an angle (radians)
 uniform int debug_mode = 0; // a tool: 1 the height in 100 m steps, 2 the slope, 3 the map's colour, 4 the light-free albedo
 uniform mat4 world_to_planet = mat4(1.0); // the terrain's own space (the planet's) from the world's, set by script
 
@@ -38,6 +44,9 @@ uniform float scan_scale = 0.7; // tiles a metre
 uniform vec3 scan_leaf_mean = vec3(0.1943, 0.1288, 0.0655);
 uniform vec3 scan_gravel_mean = vec3(0.1452, 0.1181, 0.0898);
 uniform vec3 scan_red_mean = vec3(0.3041, 0.2007, 0.1305);
+
+#include "res://shaders/world/planet_stones.gdshaderinc" // hash3, noise3, fbm3 (the tiles' ground shares them)
+#include "res://shaders/world/planet_sand.gdshaderinc" // the sand's ripples and swell
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -89,7 +98,7 @@ void vertex() {
 }
 
 void fragment() {
-	float height = length(world_pos) - radius;
+	float height = length(world_pos) - planet_radius;
 	vec2 xz = world_pos.xz;
 	float slope = 1.0 - clamp(dot(normalize(world_normal), normalize(world_pos)), 0.0, 1.0); // 0 flat, 1 a wall
 	float n = vnoise(xz * 0.015) * 0.6 + vnoise(xz * 0.11) * 0.3 + vnoise(xz * 0.9) * 0.1;
@@ -104,6 +113,13 @@ void fragment() {
 		vec3 up_dir = normalize(world_pos);
 		vec2 map_uv = vec2(atan(up_dir.z, up_dir.x) / TAU + 0.5, 0.5 - asin(clamp(up_dir.y, -1.0, 1.0)) / PI);
 		col = texture(colour_map, map_uv).rgb * (0.82 + 0.36 * n) * 1.25; // (1.25: between the flat ground (1.7 matched it) and the sun-facing slopes, which clip to white above that)
+		if (use_window && dot(up_dir, window_c) > 0.0) { // the finer map round the walker, fading into the coarse one at its edge
+			vec2 q = vec2(dot(up_dir, window_e1), dot(up_dir, window_e2)) / window_half;
+			float inside = 1.0 - smoothstep(0.75, 1.0, max(abs(q.x), abs(q.y)));
+			if (inside > 0.0) {
+				col = mix(col, texture(window_map, q * 0.5 + 0.5).rgb * (0.82 + 0.36 * n) * 1.25, inside);
+			}
+		}
 	}
 	// (with the planet's own colours the rock is only for cliffs: a grassy hillside of 35 degrees stays green)
 	col = mix(col, rock, use_map ? smoothstep(0.42, 0.7, slope + (n - 0.5) * 0.15) : smoothstep(0.18, 0.4, slope + (n - 0.5) * 0.15));
@@ -116,6 +132,10 @@ void fragment() {
 		on_planet = (anchor_from_world * vec4(lab_pos, 1.0)).xyz + anchor_wrap;
 		facing = normalize(mat3(anchor_from_world) * lab_normal);
 	}
+	// sand: golden, dry ground that is not steep (the tiles' rule from the paint): it has ripples, not the gravel's scan
+	float sand_ground = smoothstep(0.0, 0.1, col.r - col.b) * (1.0 - smoothstep(0.0, 0.05, col.g - col.r + 0.02))
+			* smoothstep(0.3, 0.55, 1.0 - slope) * (1.0 - smoothstep(0.0, 0.08, col.g - max(col.r, col.b)));
+	float scan_fade = fade * (1.0 - 0.95 * sand_ground);
 	if (detail_on && fade > 0.01) { // the soil's scan: green ground is forest earth, reddish is red soil, the rest gravel
 		float w_leaf = smoothstep(0.0, 0.08, col.g - max(col.r, col.b));
 		float w_red = smoothstep(0.03, 0.12, col.r - col.g) * (1.0 - w_leaf);
@@ -140,10 +160,19 @@ void fragment() {
 			scan_triplanar(scan_leaf_c, scan_leaf_n, on_planet, facing, scan_scale, scan_leaf_mean, r, a, t, ro);
 			ratio += r * w_leaf; tilt += t * w_leaf; ao += a * w_leaf; rough_sum += ro * w_leaf;
 		}
-		col *= mix(vec3(1.0), ratio * mix(0.55, 1.0, ao), fade);
+		col *= mix(vec3(1.0), ratio * mix(0.55, 1.0, ao), scan_fade);
+		col *= mix(1.0, mix(0.88, 1.12, fbm3(on_planet * 0.171875, 176.0)), fade); // (soft patches of lighter and darker ground, 6 m across)
 		vec3 tilt_world = transpose(mat3(anchor_from_world)) * tilt;
-		NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(tilt_world, 0.0)).xyz * 0.9 * fade);
-		rough = mix(rough, clamp(rough_sum, 0.3, 1.0), fade);
+		NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(tilt_world, 0.0)).xyz * 0.9 * scan_fade);
+		rough = mix(rough, clamp(rough_sum, 0.3, 1.0), scan_fade);
+	}
+	if (detail_on && sand_ground > 0.01) { // the wind's ripples (planet_sand) on the dune sand
+		float ripple_fade = sand_ground * sand_ripples * (1.0 - smoothstep(12.0, 45.0, length(VERTEX)));
+		float sand_h;
+		vec3 sand_tilt = transpose(mat3(anchor_from_world)) * sand_ripple_tilt(on_planet, normalize(anchor_up), sand_h);
+		NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(sand_tilt, 0.0)).xyz * ripple_fade);
+		col *= mix(1.0, mix(0.93, 1.06, sand_h), ripple_fade);
+		rough = mix(rough, 0.7, ripple_fade);
 	}
 	{
 		// the steep faces are cliff: slabs with their strata level (planet_ground.gdshader: the texture drawn on two vertical planes
