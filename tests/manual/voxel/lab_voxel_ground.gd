@@ -8,8 +8,6 @@
 ## them has a collider.
 extends Node3D
 
-const Generator := preload("res://tests/manual/voxel/real_planet_generator.gd")
-
 var ground_ready := false
 
 var _planet: PlanetWorld
@@ -41,7 +39,9 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 	_planet = planet
 	_player = player
 	var radius := planet.settings.radius
-	var gen := Generator.new()
+	# (loaded here, not preloaded: that script extends a voxel class the stock engine lacks, and
+	# the lab must still compile there)
+	var gen: Object = (load("res://tests/manual/voxel/real_planet_generator.gd") as GDScript).new()
 	gen.set("radius", radius)
 	gen.set("noise", planet.noise)
 	gen.set("lattice", 2)
