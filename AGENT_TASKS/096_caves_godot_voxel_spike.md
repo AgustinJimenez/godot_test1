@@ -347,3 +347,9 @@ same as the tiles in a walk. (`override.cfg` was used for the tests and deleted;
     rock atlas fail: `bark_baker.gd:112` and `rock_baker.gd:47` read the raw png, but it is imported as a `2d_array_texture` (compressed) and the exporter does not ship the raw file (the include filter did not
     bring it back either). This is a PRE-EXISTING limit of exporting the game (nothing to do with voxels): the procedural bark / rock bakers need the raw atlas. To fix: ship the raw pngs (a "keep" import or a
     per-file "export as is"), or slice the atlas from the imported array. NOT done. The earlier export of the small voxel test project (noise planet, no extension) ran fine, so the voxel engine and template are not the problem.
+
+## `planet_check.sh` on the custom engine (2026-11-09)
+`GODOT=<voxel engine console exe> scripts/planet_check.sh` (it ran `--import` fine on the real project): 20 of 22 PASS. The two FAILs are not regressions of the voxel work:
+`lint` (`gdlint .` over the whole repo: 1,447 problems, and `gdlint systems tests shaders` is not clean on `origin/main` either; the files of this branch lint clean) and
+`noise_golden` (the hash is the standard engine's; the double precision engine draws another planet bit-wise, see "The same planet on both builds" in docs/planet_generation.md).
+(Starting a long check from a tool call: `run_in_background` with the command itself; an inner `&` is killed when the launcher exits.)
