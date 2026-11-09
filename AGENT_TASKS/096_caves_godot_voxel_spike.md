@@ -375,3 +375,10 @@ off the ground) are the only kind the tiles did not give, not looked at (the vox
 ## Rivers (2026-11-09)
 `PlanetNoise.heights_of(dirs)` and `PlanetNoise.height(x, y, z)` agree exactly (worst difference 0.0 m over 3,000 random directions with `hydrology_on` and `sea_on`), so the voxel generator, which asks `heights_of`, carves a river
 wherever the tiles' ground is carved. A real river was NOT looked at (a standalone noise has no drainage; the lab's `PlanetWorld` sets it up): needs `--water --sea` in the lab at a river.
+
+## Export of the real game, second try (2026-11-09)
+`bark_baker.gd` and `rock_baker.gd` now read the atlas's slots from the imported `Texture2DArray` (`get_layer_data(slot)`, decompressed, RGBA8) when the raw png does not exist (an export); in the editor the raw png is
+used as before. The atlas errors are gone in the exported game, but it still segfaults after `ERROR: The Image width specified (0 pixels) must be greater than 0 pixels` / `Invalid image: image is empty`
+(`ImageTexture::create_from_image` with an empty image: another raw `res://` image read somewhere; candidates: the map code (`planet_map_support_native.cpp` `Image::load_from_file`), other
+tools). Not found (a release build has no symbols or script backtraces). The small voxel test project exports and runs fine, so this is a game export problem, not a voxel one.
+Next step if wanted: export with the DEBUG template (`scons target=template_debug ...`, ~12 min) and run with `--verbose` to get the failing call.

@@ -109,7 +109,10 @@ func bake(name: String, seed_value := 1.0, source := {}) -> Image:
 ## `await baker.make_array()` (`true`: every fit, for the viewer); set it as `bark_photo`.
 func make_array(all_fits := false) -> Texture2DArray:
 	var layers: Array[Image] = []
-	var atlas := Image.load_from_file("res://assets/textures/bark/bark_atlas.png")
+	var atlas_path := "res://assets/textures/bark/bark_atlas.png"
+	var atlas: Image = null
+	if FileAccess.file_exists(atlas_path): # (an export has no raw png)
+		atlas = Image.load_from_file(atlas_path)
 	var fits := BarkFits.fits()
 	# only the barks whose procedural look has been judged as good as the photograph (willow so far;
 	# pine reads as leaves and ash is too rough, see AGENT_TASKS/085)
@@ -134,9 +137,23 @@ func make_array(all_fits := false) -> Texture2DArray:
 			if baked[name] == slot and fits.has(name):
 				image = await bake(name)
 		if image == null:
-			image = atlas.get_region(Rect2i((slot % 3) * SIZE, (slot / 3) * SIZE, SIZE, SIZE))
+			image = _atlas_slot(atlas, atlas_path, slot)
 		image.generate_mipmaps()
 		layers.append(image)
 	var array := Texture2DArray.new()
 	array.create_from_images(layers)
 	return array
+
+
+## A slot of the photographed atlas (a 3 x 2 grid): cut from the raw png when it is there (the
+## editor); an exported game only has the imported texture array of the same six slices,
+## compressed, so the slot is read from that.
+func _atlas_slot(atlas: Image, path: String, slot: int) -> Image:
+	if atlas != null:
+		return atlas.get_region(Rect2i((slot % 3) * SIZE, (slot / 3) * SIZE, SIZE, SIZE))
+	var imported := load(path) as Texture2DArray
+	var image := imported.get_layer_data(slot)
+	if image.is_compressed():
+		image.decompress()
+	image.convert(Image.FORMAT_RGBA8)
+	return image

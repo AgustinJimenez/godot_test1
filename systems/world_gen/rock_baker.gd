@@ -44,7 +44,10 @@ func bake(name: String, seed_value := 1.0) -> Image:
 ## the photographed atlas kept in the others.
 func make_array() -> Texture2DArray:
 	var layers: Array[Image] = []
-	var atlas := Image.load_from_file("res://assets/textures/rock/rock_atlas.png")
+	var atlas_path := "res://assets/textures/rock/rock_atlas.png"
+	var atlas: Image = null
+	if FileAccess.file_exists(atlas_path): # (an export has no raw png)
+		atlas = Image.load_from_file(atlas_path)
 	var fits := RockFits.fits()
 	var baked := {}
 	if OS.has_environment("PLANET_PROCEDURAL_ROCKS"): # (the blocks-and-cracks fits: not good yet)
@@ -64,7 +67,7 @@ func make_array() -> Texture2DArray:
 		elif baked.has(slot):
 			image = await bake(baked[slot])
 		else:
-			image = atlas.get_region(Rect2i((slot % 3) * SIZE, (slot / 3) * SIZE, SIZE, SIZE))
+			image = _atlas_slot(atlas, atlas_path, slot)
 		image.generate_mipmaps()
 		layers.append(image)
 	var array := Texture2DArray.new()
@@ -83,3 +86,17 @@ func _lump_baked(slot: int, lump_slots: Dictionary) -> bool:
 	if not lump_slots.has(slot) or not OS.has_environment("PLANET_PROCEDURAL_LUMPS"):
 		return false
 	return _lump_wanted(slot)
+
+
+## A slot of the photographed atlas (a 3 x 2 grid): cut from the raw png when it is there (the
+## editor); an exported game only has the imported texture array of the same six slices,
+## compressed, so the slot is read from that.
+func _atlas_slot(atlas: Image, path: String, slot: int) -> Image:
+	if atlas != null:
+		return atlas.get_region(Rect2i((slot % 3) * SIZE, (slot / 3) * SIZE, SIZE, SIZE))
+	var imported := load(path) as Texture2DArray
+	var image := imported.get_layer_data(slot)
+	if image.is_compressed():
+		image.decompress()
+	image.convert(Image.FORMAT_RGBA8)
+	return image
