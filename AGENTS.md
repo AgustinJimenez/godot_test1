@@ -834,6 +834,11 @@ prints a `[FOOT_IK_PERF]` per-part table. Off by default = zero cost. First meas
 
 ## Procedural world, plants and planet
 
+**Voxel ground (experiment, branch `voxel-spike`, 2026-11-09):** `planet_lab.tscn -- --voxel` swaps the planet's ground tiles for a voxel terrain (caves, digging), on a CUSTOM
+engine only (`E:\Godot\double\srcin`: Godot 4.7.2 double precision + godot_voxel v1.7 + `native/voxel_planet_module`, installed by `scripts/install_voxel_planet_module.sh`); the stock engine
+ignores the flag and the lab runs as before. Read `AGENT_TASKS/096_caves_godot_voxel_spike.md` (the whole log, numbers and dead ends) and `docs/planet_generation.md` (the last section) first;
+macOS is `AGENT_TASKS/097`. Nothing the lab preloads may name a voxel class (it must compile on the stock engine).
+
 Code-only worlds: the flat streaming world (`systems/world_gen/`, `AGENT_TASKS/040`), the plants
 (`systems/world_gen/flora/`, one `TreeGrower` for every plant but mushrooms, reference
 `docs/tree_builder.md`) and a round walkable planet (`systems/planet/`, reference
