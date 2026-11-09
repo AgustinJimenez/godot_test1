@@ -353,3 +353,8 @@ same as the tiles in a walk. (`override.cfg` was used for the tests and deleted;
 `lint` (`gdlint .` over the whole repo: 1,447 problems, and `gdlint systems tests shaders` is not clean on `origin/main` either; the files of this branch lint clean) and
 `noise_golden` (the hash is the standard engine's; the double precision engine draws another planet bit-wise, see "The same planet on both builds" in docs/planet_generation.md).
 (Starting a long check from a tool call: `run_in_background` with the command itself; an inner `&` is killed when the launcher exits.)
+
+## Foot IK on the voxel ground (2026-11-09)
+`planet_lab -- --earth [--voxel] --ik-soak=90 --seed=11 --fixed-fps 60` (PlanetIKSoak, Foot IK v2, the player walks a script of moves and the IK is audited): both finish with `ISSUES`:
+heightmap tiles 38 events (31 IK_POP, 3 SNAP, 4 CLIP_SNAP), voxel ground 41 events (29 IK_POP, 4 SNAP, 5 CLIP_SNAP, **3 FLOAT**). So the IK behaves alike; the three FLOAT events (a foot that stays
+off the ground) are the only kind the tiles did not give, not looked at (the voxel mesh's collider is a trimesh of the mesh's own triangles, flatter or rougher than the tiles' heightmap shapes in places).
