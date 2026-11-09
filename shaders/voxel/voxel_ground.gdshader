@@ -8,6 +8,7 @@ shader_type spatial;
 
 uniform float radius = 6371000.0; // the planet's radius (m), set by script
 uniform float snow_line = 2200.0;
+uniform mat4 world_to_planet = mat4(1.0); // the terrain's own space (the planet's) from the world's, set by script
 
 varying vec3 world_pos;
 varying vec3 world_normal;
@@ -24,8 +25,9 @@ float vnoise(vec2 p) {
 }
 
 void vertex() {
-	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	vec4 abs_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
+	world_pos = (world_to_planet * abs_pos).xyz;
+	world_normal = normalize((world_to_planet * MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
 void fragment() {

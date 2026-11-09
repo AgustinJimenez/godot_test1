@@ -21,6 +21,7 @@ extends Node3D
 ##   -- --spawn-alt=N  start N metres above the ground there (up to the other side of space)
 ##   -- --grounded  walk instead of starting in free mode (checks always walk)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
+##   -- --voxel  the ground is a voxel terrain (only on the engine with the voxel module, task 096)
 ##   -- --foot-ik-v2  Foot IK v2 on the player (the planet runs v1 otherwise)   --ik-soak=SECONDS [--ik-soak-log=PATH]  the Foot IK soak (PlanetIKSoak, AGENT_TASKS/093)
 ##   -- --fps  print the frame rate every 300 frames
 ##   -- --star-mass=M [--star-readability=0..1]  the star in solar masses (0.15 red, 1.6 white)
@@ -37,6 +38,7 @@ extends Node3D
 ##                     planet under them) and prints one PLANET_CHECK line.
 
 const PLAYER_SCENE := preload("res://actors/player/player.tscn")
+const LabVoxelGround := preload("res://tests/manual/voxel/lab_voxel_ground.gd")
 
 var planet: PlanetWorld
 var player: Player
@@ -47,6 +49,8 @@ var _ik_soak_log := ""
 var _ik_soak_only := ""
 var _weather_name := "" ## a WorldWeather.State name to force from the start (rain, snow...)
 var _climb := 0.0 ## lift the player this many metres once the planet has loaded (they hang there)
+var _voxel := false ## (--voxel) a voxel terrain ground (voxel-module engine only, task 096)
+var _voxel_node: LabVoxelGround
 var _hide := "" ## trees, plants, ground or water: not drawn (to see what each costs)
 var _no_shadow := false ## the sun casts no shadows (to see what they cost)
 var _report_fps := false ## print the frame rate now and then
@@ -612,6 +616,8 @@ func _ready() -> void:
 			_spawn_alt = arg.trim_prefix("--spawn-alt=").to_float()
 		elif arg == "--grounded":
 			_grounded = true
+		elif arg == "--voxel":
+			_voxel = true
 		elif arg == "--earth":
 			var es := OS.get_environment("PLANET_SCALE").to_float() # (0.1 is the game's size)
 			settings = PlanetSettings.earth(es if es > 0.0 else 1.0) # first: it replaces the rest
@@ -690,6 +696,7 @@ func _ready() -> void:
 			settings.max_level(), planet.surface.tiles.size(), Time.get_ticks_msec() - started,
 			spawn])
 	_start_up = spawn
+	_voxel_node = LabVoxelGround.attach(self, planet, player) if _voxel else null
 	if _save_as != "":
 		print("SAVED %s %s" % [_save_as, UniverseSave.save(planet, _save_as)])
 	var here := planet.planet_position().normalized()
@@ -756,6 +763,8 @@ func _map_check_step() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if _voxel_node != null and not _voxel_node.ground_ready:
+		return # (the checks count frames: they start once the voxel ground is there)
 	_frame += 1
 	PlanetLabChecks.frame_step(planet, player, _frame)
 	if _map_check:
