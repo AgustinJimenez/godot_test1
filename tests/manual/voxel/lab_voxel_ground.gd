@@ -21,6 +21,8 @@ var _announced := false
 var _peak_tasks := 0
 var _generator: Object
 var _tiles_off := {} # instance id -> true: the tiles whose ground is already switched off
+var _water: Array[Node] = [] # the sea and the rivers: thin volumes over the ground (no collision)
+var _rivers_wanted := false
 var _dig_test := false
 var _surface_test := false
 var _find := false
@@ -107,6 +109,9 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 	viewer.set("view_distance", view)
 	viewer.set("requires_collisions", true)
 	player.add_child(viewer)
+	if planet.settings.sea_on and not "--voxel-no-sea" in args:
+		_make_water(1, 4096, PlanetTile.water_material())
+	_rivers_wanted = planet.settings.hydrology_on and not "--voxel-no-rivers" in args
 	_follow_frame()
 	_player.process_mode = Node.PROCESS_MODE_DISABLED
 	_make_cover()
@@ -117,6 +122,13 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 func _physics_process(_delta: float) -> void:
 	_frame += 1
 	_follow_frame()
+	if _rivers_wanted and _planet.noise.drainage != null: # (the valleys are solved on a worker thread: the water asks them)
+		_rivers_wanted = false
+		var river := ShaderMaterial.new()
+		river.shader = load("res://shaders/voxel/voxel_river.gdshader")
+		river.render_priority = 1
+		river.set_shader_parameter("sea_radius", _planet.settings.radius + _planet.settings.sea_level)
+		_make_water(2, 1024, river)
 	if _frame % 20 == 0:
 		_switch_tiles_off()
 	_poll_colour_map()
@@ -148,7 +160,31 @@ func _follow_frame() -> void:
 	var anchor := Vector3(frame.anchor[0], frame.anchor[1], frame.anchor[2])
 	var placed := Transform3D(frame.rot, frame.origin_w - frame.rot * anchor)
 	_terrain.global_transform = placed
+	for water in _water:
+		(water as Node3D).global_transform = placed
 	_material.set_shader_parameter("world_to_planet", placed.affine_inverse())
+
+
+## The sea (mode 1) or the rivers (mode 2) as a terrain of their own: a thin volume of water over the ground.
+func _make_water(mode: int, view: int, material: Material) -> void:
+	var radius := _planet.settings.radius
+	var gen: Object = ClassDB.instantiate("VoxelGeneratorPlanet")
+	gen.call("set_radius", radius)
+	gen.call("set_noise", _planet.noise)
+	gen.call("set_water", mode)
+	gen.call("set_sea_level", _planet.settings.sea_level)
+	var water: Node3D = ClassDB.instantiate("VoxelLodTerrain")
+	water.set("lod_count", _terrain.get("lod_count"))
+	water.set("generator", gen)
+	water.set("mesher", ClassDB.instantiate("VoxelMesherTransvoxel"))
+	water.set("view_distance", view)
+	water.set("bounds", AABB(Vector3.ONE * -radius * 1.6, Vector3.ONE * radius * 3.2))
+	water.set("generate_collisions", false)
+	water.set("material", material)
+	add_child(water)
+	water.global_transform = _terrain.global_transform
+	_water.append(water)
+	print("VOXEL water ", ["", "sea", "rivers"][mode], " on, view ", view)
 
 
 func _switch_tiles_off() -> void:
@@ -411,20 +447,42 @@ func _find_places() -> void:
 	var waters := noise.get_native().river_waters(dirs) as PackedVector3Array
 	var rivers := []
 	var slopes := []
+	var coasts := []
 	for i in n:
 		var h0 := h[i * 3]
 		if h0 < settings.sea_level + 3.0:
+			if h0 < settings.sea_level - 3.0 and h0 > settings.sea_level - 12.0 and coasts.size() < 3:
+				coasts.append(dirs[i * 3])
 			continue
 		var slope := rad_to_deg(atan(sqrt(pow(h[i * 3 + 1] - h0, 2) + pow(h[i * 3 + 2] - h0, 2)) / 3.0))
 		slopes.append([slope, dirs[i * 3], h0])
 		var surface := waters[i * 3].x
-		if surface > settings.sea_level and h0 < surface - 0.02:
+		if surface > settings.sea_level and h0 < surface - 0.02 and surface - h0 < 4.0: # (a river that sits on its valley, not a sheet hanging over a gorge)
 			rivers.append([surface - h0, dirs[i * 3], h0])
 	slopes.sort_custom(func(a, b): return a[0] > b[0])
 	rivers.sort_custom(func(a, b): return a[0] > b[0])
 	print("FIND land points ", slopes.size(), " wet river points ", rivers.size())
+	for coast in coasts:
+		print("FIND shallow sea --dir=", (coast as Vector3).snapped(Vector3.ONE * 1.0e-7))
 	for k in mini(4, slopes.size()):
 		print("FIND slope ", snappedf(slopes[k][0], 0.1), " deg  --dir=", (slopes[k][1] as Vector3).snapped(Vector3.ONE * 1.0e-7), " ground ", snappedf(slopes[k][2], 0.1))
 	for k in mini(4, rivers.size()):
 		print("FIND river water ", snappedf(rivers[k][0], 0.01), " m over the bed  --dir=", (rivers[k][1] as Vector3).snapped(Vector3.ONE * 1.0e-7), " ground ", snappedf(rivers[k][2], 0.1))
+	if not rivers.is_empty(): # the wet ground round the best one: a grid of 6 m over 600 m, the middle of what is wet
+		var at: Vector3 = rivers[0][1]
+		var east := at.cross(Vector3.UP if absf(at.y) < 0.9 else Vector3.RIGHT).normalized()
+		var north := at.cross(east)
+		var grid := PackedVector3Array()
+		for gz in range(-50, 51):
+			for gx in range(-50, 51):
+				grid.append((at + (east * gx + north * gz) * (6.0 / settings.radius)).normalized())
+		var grid_heights := noise.heights_of(grid)
+		var grid_waters := noise.get_native().river_waters(grid) as PackedVector3Array
+		var wet := 0
+		var sum := Vector3.ZERO
+		for k in grid.size():
+			if grid_waters[k].x > settings.sea_level and grid_heights[k] < grid_waters[k].x - 0.3:
+				wet += 1
+				sum += grid[k]
+		print("FIND river patch: ", wet, " wet spots of ", grid.size(), " (6 m apart); middle --dir=", (sum / maxf(wet, 1)).normalized().snapped(Vector3.ONE * 1.0e-7))
 	get_tree().quit()

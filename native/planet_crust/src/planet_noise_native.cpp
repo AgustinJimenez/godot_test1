@@ -57,6 +57,7 @@ void PlanetNoise::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("near_water", "dir", "ground", "margin"), &PlanetNoise::near_water);
 	ClassDB::bind_method(D_METHOD("flow_at", "dir"), &PlanetNoise::flow_at);
 	ClassDB::bind_method(D_METHOD("heights_of", "dirs"), &PlanetNoise::heights_of);
+	ClassDB::bind_method(D_METHOD("river_waters_of", "dirs"), &PlanetNoise::river_waters_of);
 	ClassDB::bind_method(D_METHOD("macro_heights_of", "dirs", "pixel"), &PlanetNoise::macro_heights_of, DEFVAL(-1.0));
 	ClassDB::bind_method(D_METHOD("colours_of", "dirs", "grounds", "steeps"), &PlanetNoise::colours_of);
 	ClassDB::bind_method(D_METHOD("height", "x", "y", "z"), &PlanetNoise::height);
@@ -376,6 +377,10 @@ bool PlanetNoise::near_water(const Vector3 &p_dir, double p_ground, double p_mar
 // The current of the river at `dir` (planet space, m/s), zero out of a river.
 Vector3 PlanetNoise::flow_at(const Vector3 &p_dir) const {
 	return native->flow_at(p_dir);
+}
+
+PackedVector3Array PlanetNoise::river_waters_of(const PackedVector3Array &p_dirs) const {
+	return native->river_waters(p_dirs);
 }
 
 PackedFloat32Array PlanetNoise::heights_of(const PackedVector3Array &p_dirs) const {

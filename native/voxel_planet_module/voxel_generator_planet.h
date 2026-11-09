@@ -42,6 +42,11 @@ public:
 	void set_caves(bool p_on);
 	bool get_caves() const;
 	void set_cave_seed(int p_seed);
+	// 0: the ground; 1: the sea; 2: the rivers (the water as a thin volume over the ground, task 096; the noise answers river_waters_of)
+	void set_water(int p_mode);
+	int get_water() const;
+	void set_sea_level(double p_level);
+	double get_sea_level() const;
 	int get_cave_seed() const;
 	int64_t get_blocks_made() const;
 	// How far a point is from the middle of a tunnel, in noise units (under 0.06: inside one)
@@ -59,6 +64,8 @@ private:
 	static constexpr double CAVE_FREQUENCY = 1.0 / 110.0;
 	static constexpr double CAVE_WIDTH = 0.06; // noise units either side of the zero surfaces (about 4 m of radius)
 	static constexpr double CAVE_SCALE = 110.0 / 1.5; // metres of distance per noise unit
+	static constexpr double WATER_DEPTH = 6.0; // m of water kept under the ground line (what a dig can open)
+	static constexpr int RIVER_MAX_LOD = 3; // the coarsest level that still has the rivers
 
 	struct Parameters {
 		double radius = 6371000.0;
@@ -68,10 +75,14 @@ private:
 		int lattice_mid = 2;
 		int lattice_far = 4;
 		bool caves = false;
+		int water = 0;
+		double sea_level = 0.0;
 	};
 
 	int lattice_for(const Parameters &p_params, int p_lod) const;
 	static bool heights_of(const Ref<RefCounted> &p_noise, const PackedVector3Array &p_dirs, PackedFloat32Array &r_heights);
+	static bool river_levels(const Ref<RefCounted> &p_noise, const PackedVector3Array &p_dirs, PackedVector3Array &r_waters);
+	void generate_water(VoxelBuffer &p_out, const Vector3 &p_origin, int p_lod, const Parameters &p_params, const Ref<RefCounted> &p_noise);
 
 	Parameters _parameters;
 	Ref<RefCounted> _noise;

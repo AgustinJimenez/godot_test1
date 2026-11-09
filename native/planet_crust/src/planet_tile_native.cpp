@@ -219,10 +219,12 @@ PlanetTile *PlanetTile::build(int64_t p_f, int64_t p_lvl, int64_t p_x, int64_t p
 	if (level >= settings_->max_level() - 6) { // (a hill still hides what is behind it from the camera)
 		add_occluder(packed_positions, cells);
 	}
-	if (settings_->get_sea_on() && min_height < settings_->get_sea_level() + 0.5) {
-		add_sea(packed_dirs, cells);
+	if (!voxel) { // (the voxel terrain has its own water: two thin volumes over the ground)
+		if (settings_->get_sea_on() && min_height < settings_->get_sea_level() + 0.5) {
+			add_sea(packed_dirs, cells);
+		}
+		add_crust_rivers(packed_dirs, heights);
 	}
-	add_crust_rivers(packed_dirs, heights);
 	if (level >= settings_->max_level() - 4) { // plants can grow here later (PlanetSurface asks for them)
 		plant_grid = Dictionary();
 		plant_grid["positions"] = Array(); // (the script fallbacks that read them are gone)

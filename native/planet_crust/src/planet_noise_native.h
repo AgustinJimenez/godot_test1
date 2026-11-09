@@ -99,6 +99,7 @@ public:
 	bool near_water(const Vector3 &p_dir, double p_ground, double p_margin) const;
 	Vector3 flow_at(const Vector3 &p_dir) const;
 	PackedFloat32Array heights_of(const PackedVector3Array &p_dirs) const;
+	PackedVector3Array river_waters_of(const PackedVector3Array &p_dirs) const; // x: the river water level (-1e9: none), the voxel water asks
 	PackedFloat32Array macro_heights_of(const PackedVector3Array &p_dirs, double p_pixel = -1.0) const;
 	PackedColorArray colours_of(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds, const PackedFloat32Array &p_steeps) const;
 	double height(double p_x, double p_y, double p_z) const;

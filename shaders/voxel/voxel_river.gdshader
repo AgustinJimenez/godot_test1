@@ -1,0 +1,83 @@
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+// The river on the voxel ground (task 096): the same look as river.gdshader, but the water is a volume
+// without a ribbon's UV, so the ripples follow the world position (no banks, and one drift direction).
+// A planet's river: a ribbon whose river_uv.x runs across it (0 bank .. 1 bank) and river_uv.y along it in
+// metres from the source. The surface streams downstream (ripples stretched along the flow that
+// drift with the time), is clear and shallow toward the banks and darker over the middle, with foam
+// along the banks and where it runs over shallows.
+
+uniform vec4 shallow_color : source_color = vec4(0.28, 0.58, 0.6, 0.45);
+uniform vec4 deep_color : source_color = vec4(0.06, 0.24, 0.32, 0.9);
+uniform vec4 foam_color : source_color = vec4(0.93, 0.97, 1.0, 1.0);
+uniform float flow_speed = 1.6; // m/s the ripples travel
+uniform float depth_fade = 2.5;
+uniform sampler2D depth_texture : hint_depth_texture, repeat_disable, filter_nearest;
+uniform float sea_radius = 20000.0; // the sea level's distance from the planet's centre
+global uniform mat4 planet_from_world;
+
+varying vec3 world_pos;
+
+float hash2(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * 0.1031);
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
+}
+
+float value_noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = smoothstep(0.0, 1.0, fract(p));
+	return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x),
+			mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+void vertex() {
+	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+
+float scene_z(vec2 uv, mat4 inv_projection) {
+	float d = texture(depth_texture, uv).r;
+	vec4 p = inv_projection * vec4(uv * 2.0 - 1.0, d, 1.0);
+	return p.z / p.w;
+}
+
+void fragment() {
+	// where the ground under the ribbon is below the sea, the sea is there: draw nothing
+	float ground_depth = texture(depth_texture, SCREEN_UV).r;
+	if (ground_depth > 0.0) {
+		vec4 ground_view = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, ground_depth, 1.0);
+		vec3 ground_world = (INV_VIEW_MATRIX * vec4(ground_view.xyz / ground_view.w, 1.0)).xyz;
+		if (length((planet_from_world * vec4(ground_world, 1.0)).xyz) < sea_radius) {
+			discard;
+		}
+	}
+	vec2 river_uv = vec2(dot(world_pos.xz, vec2(0.8, -0.6)) * 0.12, dot(world_pos.xz, vec2(0.6, 0.8)));
+	float across = 0.3; // (no banks to know)
+	// ripples stretched along the flow, sliding downstream
+	vec2 flow = vec2(river_uv.x * 7.0, river_uv.y * 0.5 - TIME * flow_speed * 0.5);
+	float n = value_noise(flow);
+	float e = 0.12;
+	vec2 slope = vec2(value_noise(flow + vec2(e, 0.0)) - n, value_noise(flow + vec2(0.0, e)) - n) / e;
+	slope += vec2(value_noise(flow * 2.3 + 7.0) - 0.5, 0.0) * 0.6;
+	vec3 view_normal = normalize((VIEW_MATRIX * vec4(-slope.x * 0.12, 1.0, -slope.y * 0.05, 0.0)).xyz);
+	NORMAL = view_normal;
+
+	float behind = scene_z(SCREEN_UV, INV_PROJECTION_MATRIX);
+	float thickness = max(VERTEX.z - behind, 0.0);
+	float depth_mix = clamp(thickness / depth_fade, 0.0, 1.0);
+	// clear toward the banks, darker over the channel
+	float middle = 1.0 - smoothstep(0.35, 1.0, across);
+	vec4 color = mix(shallow_color, deep_color, sqrt(depth_mix) * (0.35 + 0.65 * middle));
+
+	// foam: along the banks, in streaks, and where the water is thin
+	float streak = value_noise(vec2(river_uv.x * 5.0, river_uv.y * 0.25 - TIME * flow_speed * 0.25));
+	float bank_foam = smoothstep(0.72, 0.96, across) * (0.45 + 0.55 * streak);
+	float shallow_foam = (1.0 - smoothstep(0.0, 0.35, thickness)) * 0.8;
+	float foam = clamp(max(bank_foam, shallow_foam), 0.0, 1.0);
+
+	ALBEDO = mix(color.rgb, foam_color.rgb, foam);
+	ALPHA = clamp(mix(color.a, 1.0, foam) * (1.0 - smoothstep(0.88, 1.0, across) * 0.5), 0.0, 1.0);
+	ROUGHNESS = mix(0.07, 0.6, foam);
+	SPECULAR = 0.7;
+	METALLIC = 0.0;
+}
