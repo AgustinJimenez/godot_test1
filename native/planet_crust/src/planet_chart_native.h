@@ -48,6 +48,9 @@ class PlanetChart : public RefCounted {
 	PackedFloat32Array ground_of(const PackedVector3Array &p_dirs, bool p_smooth_shape) const;
 	PackedVector3Array row_dirs(double p_lat) const;
 	static Vector3 direction(double p_lat, double p_lon);
+public:
+	static void forget_heights(); // (the world changed, or is another: the kept heights of the map's pieces are dropped)
+private:
 	static Color along(double p_t, const Color *p_colors, const double *p_stops, int p_count);
 
 protected:

@@ -68,10 +68,15 @@ class PlanetMapTiles : public RefCounted {
 	Dictionary textures; // Vector4i(layer, level, x, y) -> ImageTexture
 	std::vector<Vector4i> order; // the keys, the least recently used first
 	std::vector<Vector4i> wanted; // what the view needs and is missing, nearest the centre first
-	Ref<PlanetChart> chart;
-	Vector4i chart_key;
-	uint64_t chart_ms = 0;
+	struct Flight { // a tile being charted
+		Ref<PlanetChart> chart;
+		Vector4i key;
+		uint64_t ms = 0;
+	};
+	static constexpr int MAX_FLIGHT = 2; // tiles charted at once (one leaves cores idle while it joins and tidies, and between two steps)
+	std::vector<Flight> flying;
 	std::vector<Ref<PlanetChart>> retired;
+	bool in_flight(const Vector4i &p_key) const;
 
 	Vector4i key_of(int p_level, int p_x, int p_y) const;
 	double distance(const Vector4i &p_key, const Vector2 &p_centre) const;

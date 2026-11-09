@@ -239,6 +239,7 @@ Ref<PlanetMapTiles> PlanetMapTiles::create(const Ref<PlanetNoise> &p_noise) {
 	Ref<PlanetMapTiles> made;
 	made.instantiate();
 	made->noise_ = p_noise;
+	PlanetChart::forget_heights();
 	return made;
 }
 
@@ -339,12 +340,23 @@ void PlanetMapTiles::ask(const Rect2 &p_view, int64_t p_level, const Array &p_ex
 	}
 	std::stable_sort(missing.begin(), missing.end(), [&](const Vector4i &a, const Vector4i &b) { return distance(a, centre) < distance(b, centre); });
 	wanted = missing;
-	if (chart.is_valid() && std::find(wanted.begin(), wanted.end(), chart_key) == wanted.end()) {
-		PlanetMapLog::line(vformat("tile %s given up: the view left it", name_of(chart_key)));
-		chart->cancel();
-		retired.push_back(chart);
-		chart.unref();
+	for (int index = (int)flying.size() - 1; index >= 0; index--) {
+		if (std::find(wanted.begin(), wanted.end(), flying[index].key) == wanted.end()) {
+			PlanetMapLog::line(vformat("tile %s given up: the view left it", name_of(flying[index].key)));
+			flying[index].chart->cancel();
+			retired.push_back(flying[index].chart);
+			flying.erase(flying.begin() + index);
+		}
 	}
+}
+
+bool PlanetMapTiles::in_flight(const Vector4i &p_key) const {
+	for (const Flight &one : flying) {
+		if (one.key == p_key) {
+			return true;
+		}
+	}
+	return false;
 }
 
 // One step: finishes the chart in hand and starts the next tile (true when a tile was added).
@@ -356,42 +368,61 @@ bool PlanetMapTiles::step() {
 		}
 	}
 	bool added = false;
-	if (chart.is_valid() && chart->finished()) {
-		Ref<ImageTexture> texture = chart->texture();
+	for (int index = (int)flying.size() - 1; index >= 0; index--) {
+		if (!flying[index].chart->finished()) {
+			continue;
+		}
+		Flight done = flying[index];
+		flying.erase(flying.begin() + index);
+		Ref<ImageTexture> texture = done.chart->texture();
 		if (texture.is_valid()) {
-			textures[chart_key] = texture;
+			textures[done.key] = texture;
 			if (disk.is_valid()) {
-				disk->save_tile(chart_key, texture);
+				disk->save_tile(done.key, texture);
 			}
-			use(chart_key);
+			use(done.key);
 			finished_tiles += 1;
 			added = true;
-			PlanetMapLog::line_every(String("tile"), 0.5, vformat("tile %s done in %d ms (%d kept, %d asked)", name_of(chart_key), (int64_t)(Time::get_singleton()->get_ticks_msec() - chart_ms), textures.size(), (int64_t)wanted.size()));
+			PlanetMapLog::line_every(String("tile"), 0.5, vformat("tile %s done in %d ms (%d kept, %d asked)", name_of(done.key), (int64_t)(Time::get_singleton()->get_ticks_msec() - done.ms), textures.size(), (int64_t)wanted.size()));
 		}
-		chart.unref();
-		wanted.erase(std::remove(wanted.begin(), wanted.end(), chart_key), wanted.end());
+		wanted.erase(std::remove(wanted.begin(), wanted.end(), done.key), wanted.end());
 		evict();
 	}
-	while (chart.is_null() && !wanted.empty() && disk.is_valid()) {
-		Ref<ImageTexture> kept = disk->load_tile(wanted[0]); // a tile from an earlier run: no charting
-		if (kept.is_null()) {
+	// the next tiles: the nearest to the centre first (a tile from an earlier run is taken from the disk, no charting)
+	while ((int)flying.size() < MAX_FLIGHT) {
+		Vector4i next;
+		bool found = false;
+		for (const Vector4i &key : wanted) {
+			if (!in_flight(key)) {
+				next = key;
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
 			break;
 		}
-		textures[wanted[0]] = kept;
-		use(wanted[0]);
-		finished_tiles += 1;
-		added = true;
-		wanted.erase(wanted.begin());
-	}
-	if (chart.is_null() && !wanted.empty()) {
-		chart_key = wanted[0];
-		chart.instantiate();
-		chart->set_layer(chart_key.x);
-		chart->set_clock(clock.is_valid() ? clock->copy() : Ref<PlanetClock>());
-		chart->set_rect(rect_of(chart_key.y, chart_key.z, chart_key.w));
-		chart->set_size(Vector2i(TILE, TILE));
-		chart_ms = Time::get_singleton()->get_ticks_msec();
-		chart->start(noise_);
+		if (disk.is_valid()) {
+			Ref<ImageTexture> kept = disk->load_tile(next);
+			if (kept.is_valid()) {
+				textures[next] = kept;
+				use(next);
+				finished_tiles += 1;
+				added = true;
+				wanted.erase(std::remove(wanted.begin(), wanted.end(), next), wanted.end());
+				continue;
+			}
+		}
+		Flight one;
+		one.key = next;
+		one.chart.instantiate();
+		one.chart->set_layer(next.x);
+		one.chart->set_clock(clock.is_valid() ? clock->copy() : Ref<PlanetClock>());
+		one.chart->set_rect(rect_of(next.y, next.z, next.w));
+		one.chart->set_size(Vector2i(TILE, TILE));
+		one.ms = Time::get_singleton()->get_ticks_msec();
+		one.chart->start(noise_);
+		flying.push_back(one);
 	}
 	return added;
 }
@@ -416,11 +447,14 @@ int64_t PlanetMapTiles::invalidate(const Rect2 &p_area) {
 			gone += 1;
 		}
 	}
-	if (chart.is_valid() && rect_of(chart_key.y, chart_key.z, chart_key.w).intersects(p_area)) {
-		chart->cancel();
-		retired.push_back(chart);
-		chart.unref();
+	for (int index = (int)flying.size() - 1; index >= 0; index--) {
+		if (rect_of(flying[index].key.y, flying[index].key.z, flying[index].key.w).intersects(p_area)) {
+			flying[index].chart->cancel();
+			retired.push_back(flying[index].chart);
+			flying.erase(flying.begin() + index);
+		}
 	}
+	PlanetChart::forget_heights(); // (the ground changed there)
 	if (disk.is_valid()) {
 		disk->forget_area(p_area);
 	}
@@ -437,20 +471,22 @@ void PlanetMapTiles::forget(int64_t p_which) {
 			order.erase(std::remove(order.begin(), order.end(), key), order.end());
 		}
 	}
-	if (chart.is_valid() && chart_key.x == p_which) {
-		chart->cancel();
-		retired.push_back(chart);
-		chart.unref();
+	for (int index = (int)flying.size() - 1; index >= 0; index--) {
+		if (flying[index].key.x == p_which) {
+			flying[index].chart->cancel();
+			retired.push_back(flying[index].chart);
+			flying.erase(flying.begin() + index);
+		}
 	}
 }
 
 // Waits for nothing: stops the chart in hand (the map is closed or freed).
 void PlanetMapTiles::stop() {
-	if (chart.is_valid()) {
-		chart->cancel();
-		chart->stop();
-		chart.unref();
+	for (Flight &one : flying) {
+		one.chart->cancel();
+		one.chart->stop();
 	}
+	flying.clear();
 	for (Ref<PlanetChart> &old : retired) {
 		old->cancel();
 		old->stop();

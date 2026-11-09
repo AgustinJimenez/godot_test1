@@ -65,6 +65,7 @@ var _map_layer := int(PlanetChart.Layer.ATLAS)
 var _no_clouds := false ## the debug switch for the clouds, from the start
 var _spawn_alt := 0.0 ## start this many metres above the ground (a ship arriving in space)
 var _grounded := false ## walk from the start instead of flying free
+var _map_layers := false ## (--map-layers) with the map open, the layers 2..9 one after the other (the same view): MAP_LAYERS lines time each
 var _map_check := false ## send the map the events a wheel, a pinch and two fingers make
 var _swim_check := false ## drop the player in the sea and see them float (PlanetSwim)
 var _flying := false ## the walk check in free mode (noclip) at 100 m/s
@@ -629,6 +630,8 @@ func _ready() -> void:
 			settings.tile_max = arg.trim_prefix("--tile-max=").to_float()
 		elif arg.begins_with("--drainage="):
 			settings.drainage_cells = arg.trim_prefix("--drainage=").to_int()
+		elif arg == "--map-layers":
+			_map_layers = true
 		elif arg == "--map-check":
 			_map_check = true
 		elif arg == "--sea":
@@ -772,6 +775,17 @@ func _physics_process(_delta: float) -> void:
 		return # (the checks count frames: they start once the voxel ground is there)
 	_frame += 1
 	PlanetLabChecks.frame_step(planet, player, _frame)
+	if _map_layers and _frame >= 600 and (_frame - 600) % 400 == 0:
+		var which := (_frame - 600) / 400
+		if which < 8:
+			var key := InputEventKey.new()
+			key.physical_keycode = KEY_2 + which
+			key.pressed = true
+			print("MAP_LAYERS frame ", _frame, " key ", which + 2, " at ", Time.get_ticks_msec(), " ms")
+			Input.parse_input_event(key)
+		else:
+			print("MAP_LAYERS end at ", Time.get_ticks_msec(), " ms")
+			get_tree().quit()
 	if _map_check:
 		_map_check_step()
 		return

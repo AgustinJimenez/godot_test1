@@ -8,9 +8,84 @@
 #include <godot_cpp/classes/time.hpp>
 
 #include <algorithm>
+#include <memory>
 #include <cmath>
 
 using namespace godot;
+
+// The heights of a piece of the map (a tile or a close view), kept for the next layer drawn over the same piece: the ground is most of what
+// charting costs, and every layer reads the same one. Filled by the workers of a chart; used once every worker has put its rows in.
+namespace {
+struct PieceHeights {
+	int workers = 0;
+	bool with_slope = false; // the points east and north of each pixel are in too
+	int width = 0, height = 0;
+	std::vector<char> done; // per worker
+	std::vector<float> grounds; // width * height
+	std::vector<float> east_last; // each row's point a pixel past its end
+	std::vector<float> north_first; // per worker: the row north of its first row
+	bool complete() const {
+		for (char one : done) {
+			if (!one) {
+				return false;
+			}
+		}
+		return true;
+	}
+};
+
+std::mutex pieces_mutex;
+std::vector<std::pair<String, std::shared_ptr<PieceHeights>>> pieces; // the least recently used first
+constexpr size_t MAX_PIECES = 128; // (a view of a big screen is some 30-60 tiles; a piece is 256 KB)
+
+std::shared_ptr<PieceHeights> find_piece(const String &p_key, bool p_slope) {
+	std::lock_guard<std::mutex> lock(pieces_mutex);
+	for (size_t i = 0; i < pieces.size(); i++) {
+		if (pieces[i].first == p_key && pieces[i].second->complete() && (pieces[i].second->with_slope || !p_slope)) {
+			auto entry = pieces[i];
+			pieces.erase(pieces.begin() + i);
+			pieces.push_back(entry);
+			return entry.second;
+		}
+	}
+	return nullptr;
+}
+
+// The entry the workers of a chart fill: one that is being filled already (the same numbers, written twice) or a new one; null when the piece is
+// kept already.
+std::shared_ptr<PieceHeights> open_piece(const String &p_key, int p_workers, bool p_slope, int p_width, int p_height) {
+	std::lock_guard<std::mutex> lock(pieces_mutex);
+	for (size_t i = 0; i < pieces.size(); i++) {
+		if (pieces[i].first == p_key) {
+			auto &have = pieces[i].second;
+			if (have->with_slope || !p_slope) {
+				return have->complete() ? nullptr : have;
+			}
+			pieces.erase(pieces.begin() + i); // (kept without the slope points this chart has: replaced)
+			break;
+		}
+	}
+	auto made = std::make_shared<PieceHeights>();
+	made->workers = p_workers;
+	made->with_slope = p_slope;
+	made->width = p_width;
+	made->height = p_height;
+	made->done.assign((size_t)p_workers, 0);
+	made->grounds.assign((size_t)p_width * p_height, 0.0f);
+	made->east_last.assign((size_t)p_height, 0.0f);
+	made->north_first.assign((size_t)p_workers * p_width, 0.0f);
+	pieces.push_back({ p_key, made });
+	while (pieces.size() > MAX_PIECES) {
+		pieces.erase(pieces.begin());
+	}
+	return made;
+}
+} // namespace
+
+void PlanetChart::forget_heights() {
+	std::lock_guard<std::mutex> lock(pieces_mutex);
+	pieces.clear();
+}
 
 static const double TAU_D = 6.283185307179586476925286766559;
 static const double PI_D = 3.14159265358979323846;
@@ -310,6 +385,18 @@ void PlanetChart::chart(int64_t p_worker) {
 		PlanetMapLog::line(vformat("  heights of the whole planet %dx%d: %s", size.x, size.y, use_cache ? "from the cache" : "computed"));
 	}
 	PackedFloat32Array recorded;
+	// a piece of the map (not the whole planet): the heights another layer of it kept, or the ones this chart keeps for the next
+	String piece_key;
+	std::shared_ptr<PieceHeights> kept; // (complete: read)
+	std::shared_ptr<PieceHeights> filling; // (the one this chart's workers fill)
+	if (!whole && rect != Rect2(0.0, 0.0, 1.0, 1.0)) {
+		piece_key = vformat("%d|%s|%dx%d|%d|%d", (int64_t)noise_.ptr(), String(Variant(rect)), size.x, size.y, smooth_ground ? 1 : 0, (int)workers);
+		kept = find_piece(piece_key, needs_slope);
+		if (kept == nullptr) {
+			filling = open_piece(piece_key, (int)workers, needs_slope, size.x, size.y);
+		}
+	}
+	std::vector<float> own_grounds, own_east, own_north;
 	int64_t mark = Time::get_singleton()->get_ticks_usec();
 	for (int row = from_row; row < to_row; row++) {
 		if (cancelled) {
@@ -332,6 +419,10 @@ void PlanetChart::chart(int64_t p_worker) {
 		if (use_cache) {
 			grounds = cached.slice((int64_t)row * size.x, (int64_t)(row + 1) * size.x);
 			mark = PlanetChartProfile::lap("heights from the cache", mark);
+		} else if (kept != nullptr) {
+			grounds.resize(size.x);
+			std::copy(kept->grounds.begin() + (size_t)row * size.x, kept->grounds.begin() + (size_t)(row + 1) * size.x, grounds.ptrw());
+			mark = PlanetChartProfile::lap("heights from the kept piece", mark);
 		} else {
 			grounds = ground_of(dirs, smooth_ground);
 			mark = PlanetChartProfile::lap("heights (the ground)", mark);
@@ -343,6 +434,15 @@ void PlanetChart::chart(int64_t p_worker) {
 			east_grounds.append(grounds[0]); // (the map wraps east-west)
 			int64_t previous = (int64_t)std::max(row - 1, 0) * size.x;
 			north_grounds = cached.slice(previous, previous + size.x);
+		} else if (kept != nullptr && needs_slope) {
+			east_grounds = grounds.slice(1);
+			east_grounds.append(kept->east_last[row]);
+			if (above.is_empty()) {
+				above.resize(size.x);
+				std::copy(kept->north_first.begin() + (size_t)p_worker * size.x, kept->north_first.begin() + (size_t)(p_worker + 1) * size.x, above.ptrw());
+			}
+			north_grounds = above;
+			above = grounds;
 		} else if (needs_slope) {
 			// the point a pixel east is the next pixel of the row, the one a pixel north is the same pixel of the row before (kept from the last
 			// turn): only the row's last pixel and the first row of a thread need points of their own
@@ -355,8 +455,15 @@ void PlanetChart::chart(int64_t p_worker) {
 				above = ground_of(row_dirs(lat + step_lat), smooth_ground);
 			}
 			north_grounds = above;
+			if (filling != nullptr && row == from_row) {
+				own_north.assign(north_grounds.ptr(), north_grounds.ptr() + size.x);
+			}
 			above = grounds;
 			mark = PlanetChartProfile::lap("heights east and north", mark);
+		}
+		if (filling != nullptr) {
+			own_grounds.insert(own_grounds.end(), grounds.ptr(), grounds.ptr() + size.x);
+			own_east.push_back(needs_slope ? east_grounds[size.x - 1] : 0.0f);
 		}
 		PackedFloat32Array macros = grounds;
 		if (whole && !use_cache) {
@@ -378,6 +485,16 @@ void PlanetChart::chart(int64_t p_worker) {
 		mark = PlanetChartProfile::lap("native row colours", mark);
 		std::lock_guard<std::mutex> lock(mutex);
 		rows_done += 1;
+	}
+	if (filling != nullptr && !cancelled && (int)own_east.size() == to_row - from_row && to_row > from_row) {
+		// (the workers' rows go in; the piece is used once every worker has put its own)
+		std::lock_guard<std::mutex> lock(pieces_mutex);
+		std::copy(own_grounds.begin(), own_grounds.end(), filling->grounds.begin() + (size_t)from_row * size.x);
+		std::copy(own_east.begin(), own_east.end(), filling->east_last.begin() + from_row);
+		if (needs_slope && (int)own_north.size() == size.x) {
+			std::copy(own_north.begin(), own_north.end(), filling->north_first.begin() + (size_t)p_worker * size.x);
+		}
+		filling->done[(size_t)p_worker] = 1;
 	}
 	bool last;
 	{
