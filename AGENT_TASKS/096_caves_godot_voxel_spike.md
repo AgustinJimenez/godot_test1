@@ -328,3 +328,9 @@ User: "use 5 mins loop to remind you to continue, try to use native cpp, is fast
   3 the map's colour, 4 the colour before the light), `--voxel-nomap`, `--voxel-steep=S` (the steepness the map is baked for). Gain of the map's colour is 1.25 (flat ground matched at 1.7 but the lit slopes
   clipped). Same far hillside: tiles mean RGB 112/163/154, voxel 121/172/164; flat ground 77/107/54 against 82/125/76.
 - `VoxelTool.raycast`, tile cells (`--tile-cells=8` saves 2 s of the lab's own load, nothing on the voxel ready time), the colour bake (2.3 s coarse, 8.7 s fine, now staged: coarse first, fine after the ground is ready).
+
+## The hitching was the helper's own loop (2026-11-09)
+Two 100 s forest walks (`--earth --voxel --plants --grounded --forest-walk=100`): the voxel module's `time_budget_ms` 8 -> 2 and `ratio_over_max` 1.0 changed nothing (frames over 33 ms: 87, 101, 86).
+The cause: `lab_voxel_ground.gd` walked ~700 tiles with `find_children` every 20 frames (a 29 ms frame, the p95). It now touches only tiles not seen before (a dictionary of instance ids).
+After: fps avg 79.5, 1% low 28.2 (24.6), p95 19.7 ms (28.9), p99 28.9 (34.2), over 33 ms 28 of 6000 (87), physics CPU 17.2 ms (25.1) = the heightmap ground's. So the voxel ground costs the
+same as the tiles in a walk. (`override.cfg` was used for the tests and deleted; project.godot untouched.)

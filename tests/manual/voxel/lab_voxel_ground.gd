@@ -20,6 +20,7 @@ var _stable := 0.0
 var _announced := false
 var _peak_tasks := 0
 var _generator: Object
+var _tiles_off := {} # instance id -> true: the tiles whose ground is already switched off
 var _dig_test := false
 var _dig_frame := 0
 var _dig_y := 0.0
@@ -136,11 +137,18 @@ func _follow_frame() -> void:
 
 
 func _switch_tiles_off() -> void:
+	# (only the tiles not seen before: a search of ~700 tiles cost a 29 ms frame every 20)
 	for tile: PlanetTile in _planet.surface.tiles.values():
+		var id := tile.get_instance_id()
+		if _tiles_off.has(id):
+			continue
+		_tiles_off[id] = true
 		if tile.ground_instance != null:
 			tile.ground_instance.visible = false
 		for body in tile.find_children("*", "CollisionObject3D", true, false):
 			(body as CollisionObject3D).collision_layer = 0
+	if _tiles_off.size() > 4000: # (tiles come and go: forget the old ones)
+		_tiles_off.clear()
 
 
 func _tasks() -> int:
