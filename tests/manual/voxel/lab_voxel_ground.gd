@@ -18,6 +18,12 @@ var _key := ""
 var _frame := 0
 var _stable := 0.0
 var _announced := false
+var _peak_tasks := 0
+var _cover: CanvasLayer
+var _cover_label: Label
+var _map_task := -1
+var _map_image: Image
+var _map_rows := 0
 
 
 ## The lab's one call: the voxel ground, or none (and a message) on an engine without the module.
@@ -63,6 +69,8 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 	player.add_child(viewer)
 	_follow_frame()
 	_player.process_mode = Node.PROCESS_MODE_DISABLED
+	_make_cover()
+	_start_colour_map()
 	print("VOXEL ground on: radius ", radius, " lods ", _terrain.get("lod_count"))
 
 
@@ -71,8 +79,10 @@ func _physics_process(_delta: float) -> void:
 	_follow_frame()
 	if _frame % 20 == 0:
 		_switch_tiles_off()
+	_poll_colour_map()
 	if not ground_ready:
 		_wait_for_ground(_delta)
+		_update_cover()
 		if not ground_ready and not _planet.loading:
 			_player.process_mode = Node.PROCESS_MODE_DISABLED # (the planet let them in: not yet)
 
@@ -118,7 +128,79 @@ func _wait_for_ground(delta: float) -> void:
 	if hit.is_empty():
 		return
 	ground_ready = true
+	_lift_cover()
 	_player.global_position = (hit["position"] as Vector3) + Vector3(0, 0.05, 0)
 	_player.process_mode = Node.PROCESS_MODE_INHERIT
 	print("VOXEL ground ready after %d ms (the process started): the player stands at %s" % [
 			Time.get_ticks_msec(), _player.global_position.snapped(Vector3.ONE * 0.1)])
+
+
+## The loading screen: black and a percentage, over the lab's own, until the ground is there.
+func _make_cover() -> void:
+	_cover = CanvasLayer.new()
+	_cover.layer = 100
+	var rect := ColorRect.new()
+	rect.color = Color.BLACK
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_cover.add_child(rect)
+	_cover_label = Label.new()
+	_cover_label.set_anchors_preset(Control.PRESET_CENTER)
+	_cover_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_cover_label.text = "Generating the planet's ground..."
+	_cover.add_child(_cover_label)
+	add_child(_cover)
+
+
+func _update_cover() -> void:
+	var tasks := _tasks()
+	_peak_tasks = maxi(_peak_tasks, tasks)
+	var done := 0.0 if _peak_tasks == 0 else 1.0 - float(tasks) / float(_peak_tasks)
+	var map_done := 1.0 if _map_image == null or _map_task < 0 else 0.0
+	_cover_label.text = "Generating the planet's ground...  %d %%" % int(
+			100.0 * minf(done, 0.99) * (0.9 + 0.1 * map_done))
+
+
+func _lift_cover() -> void:
+	var fade := create_tween()
+	for child in _cover.get_children():
+		if child is CanvasItem:
+			fade.parallel().tween_property(child, "modulate:a", 0.0, 0.8)
+	fade.tween_callback(_cover.queue_free)
+
+
+## The planet's own ground colours as one picture (longitude x latitude), baked on a worker thread:
+## the voxel mesh has no per-vertex colours, so the shader reads this by direction. Coarse on a
+## big planet (about 20 km a pixel on Earth): the near detail is the shader's own.
+func _start_colour_map() -> void:
+	var width := 2048 if _planet.settings.radius > 1.0e6 else 1024
+	_map_image = Image.create(width, width / 2, false, Image.FORMAT_RGB8)
+	_map_rows = width / 2
+	_map_task = WorkerThreadPool.add_task(_bake_colour_map.bind(width))
+
+
+func _bake_colour_map(width: int) -> void:
+	var noise := _planet.noise
+	var height := width / 2
+	for y in height:
+		var lat := (0.5 - (y + 0.5) / height) * PI
+		var dirs := PackedVector3Array()
+		dirs.resize(width)
+		for x in width:
+			var lon := ((x + 0.5) / width - 0.5) * TAU
+			dirs[x] = Vector3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon))
+		var heights := noise.heights_of(dirs)
+		var steeps := PackedFloat32Array()
+		steeps.resize(width)
+		var colours := noise.colours_of(dirs, heights, steeps)
+		for x in width:
+			_map_image.set_pixel(x, y, colours[x])
+
+
+func _poll_colour_map() -> void:
+	if _map_task < 0 or not WorkerThreadPool.is_task_completed(_map_task):
+		return
+	WorkerThreadPool.wait_for_task_completion(_map_task)
+	_map_task = -1
+	_material.set_shader_parameter("colour_map", ImageTexture.create_from_image(_map_image))
+	_material.set_shader_parameter("use_map", true)
+	print("VOXEL colour map ready (", _map_image.get_width(), " x ", _map_image.get_height(), ")")

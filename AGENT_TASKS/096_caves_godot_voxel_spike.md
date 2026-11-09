@@ -255,3 +255,19 @@ NOT measured: the CPU the heightmap tiles still use in the background in the vox
   the 6-core machine uses 5 voxel workers instead of 3: 28.0 s instead of 38.6 s (not linear: the tile building competes). A default project setting would need `project.godot`.
 - Where the time goes (block of 18^3 voxels): ~4 ms with `lattice` 2 (21 ms exact) of which ~2 ms is GDScript loops, the rest `heights_of` (~5.5 us a land point). A C++ generator
   (a GDExtension class extending `VoxelGeneratorScript`, if the API dump of the module engine exposes it) would halve a block; fewer samples at coarse LODs would cut it more.
+
+## Loading screen and the planet's colours on the voxel ground (2026-11-08)
+User: "load time is acceptable still, we can add it to the dark screen, continue with what's next too".
+- Loading screen: `lab_voxel_ground.gd` puts its own black `CanvasLayer` (layer 100) with "Generating the planet's ground...  N %" over the lab's, until the ground is ready, then fades it
+  out in 0.8 s. The percentage is 1 - (voxel tasks left / the most tasks seen), times 0.9 + 0.1 for the colour map. Rough: the task count is not a total. Not looked at in a picture
+  (the shot is taken after it lifts).
+- Colours: the voxel mesh has no per-vertex colours (the tiles' colours are a native per-vertex call, `ground_colours`, and the 1,033-line `planet_ground.gdshader` reads vertex
+  attributes the voxel mesh lacks), so the helper bakes the planet's colours once into an equirectangular picture (1024 x 512 small, 2048 x 1024 on Earth: ~20 km a pixel, coarse)
+  with `PlanetNoise.heights_of` + `colours_of(dirs, heights, steeps = 0)` on a worker thread; the shader (`voxel_ground.gdshader`) reads it by direction (planet space), multiplies the
+  shader's own value noise (0.82-1.18) and a gain 1.7 (matched by measuring the same open-ground region: tiles 78/109/99 RGB, voxel 73/103/86), and keeps its own rock-on-slopes and
+  snow rules on top. Same layout and hue as the tile ground (pictures `col_.png` against `col_voxel4.png`), but: NO near-ground detail (the tiles have gravel / soil scans, normal
+  maps, grass patches), flatter lighting, the shaded slope is lighter than the tiles' (33/50/34 against 16/31/23).
+- Regression with these changes: `planet_lab -- --voxel --walk-check` PASS small (436 m, 5 rebases, 100% on floor, 0.07 m) and `--earth --voxel` PASS (406 m, 5 rebases, 0.10 m);
+  Earth: the voxel ground was ready after 66.7 s (process time; 47 s in the standalone test: the lab's tile building and the colour bake share the cores).
+- Next candidates: near-ground detail on the voxel mesh (reuse the scans of `planet_ground.gdshader` triplanar in the voxel shader), stop building the unused ground tiles (native change),
+  water / the sea / rivers, a finer colour map near the player (a window), a faster generator.

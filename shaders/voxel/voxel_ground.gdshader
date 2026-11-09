@@ -8,6 +8,8 @@ shader_type spatial;
 
 uniform float radius = 6371000.0; // the planet's radius (m), set by script
 uniform float snow_line = 2200.0;
+uniform sampler2D colour_map : source_color, filter_linear, repeat_enable; // the planet's colours by direction (script)
+uniform bool use_map = false;
 uniform mat4 world_to_planet = mat4(1.0); // the terrain's own space (the planet's) from the world's, set by script
 
 varying vec3 world_pos;
@@ -42,6 +44,11 @@ void fragment() {
 	vec3 snow = vec3(0.92, 0.94, 0.97);
 	vec3 col = mix(sand, grass, smoothstep(2.0, 12.0, height));
 	col = mix(col, soil, smoothstep(0.45, 0.75, n) * smoothstep(12.0, 40.0, height) * 0.7);
+	if (use_map) { // the planet's own colour of the place, with the shader's grain over it
+		vec3 up_dir = normalize(world_pos);
+		vec2 map_uv = vec2(atan(up_dir.z, up_dir.x) / TAU + 0.5, 0.5 - asin(clamp(up_dir.y, -1.0, 1.0)) / PI);
+		col = texture(colour_map, map_uv).rgb * (0.82 + 0.36 * n) * 1.7; // (1.7: matched to the tiles' look, measured on the same spot)
+	}
 	col = mix(col, rock, smoothstep(0.18, 0.4, slope + (n - 0.5) * 0.15));
 	col = mix(col, snow, smoothstep(snow_line, snow_line + 300.0, height + n * 150.0) * (1.0 - smoothstep(0.3, 0.6, slope)));
 	ALBEDO = col;
