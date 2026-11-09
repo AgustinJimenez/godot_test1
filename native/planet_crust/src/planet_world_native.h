@@ -30,6 +30,7 @@ class PlanetWorld : public Node3D {
 	Label *load_label = nullptr;
 	ColorRect *dark = nullptr;
 	double load_time = 0.0;
+	double load_shown = 0.0; // the percentage shown while loading: it only goes up (the ratio drops when more tiles become wanted)
 	double star_disc = 1.0; // the star's disc at the semi-major distance against the Sun from the Earth
 	double weather_timer = 0.0;
 

@@ -19,6 +19,7 @@ var _frame := 0
 var _stable := 0.0
 var _announced := false
 var _peak_tasks := 0
+var _shown := 0.0 # the percentage shown: only goes up (more blocks queue as the first ones finish)
 var _generator: Object
 var _tiles_off := {} # instance id -> true: the tiles whose ground is already switched off
 var _water: Array[Node] = [] # the sea and the rivers: thin volumes over the ground (no collision)
@@ -269,7 +270,8 @@ func _switch_tiles_off() -> void:
 		if tile.ground_instance != null:
 			tile.ground_instance.visible = false
 		for body in tile.find_children("*", "CollisionObject3D", true, false):
-			(body as CollisionObject3D).collision_layer = 0
+			if body.name != &"Plants": # (the trunks, rocks and limbs stay solid: the voxels are only the ground)
+				(body as CollisionObject3D).collision_layer = 0
 	if _tiles_off.size() > 4000: # (tiles come and go: forget the old ones)
 		_tiles_off.clear()
 
@@ -324,8 +326,8 @@ func _update_cover() -> void:
 	_peak_tasks = maxi(_peak_tasks, tasks)
 	var done := 0.0 if _peak_tasks == 0 else 1.0 - float(tasks) / float(_peak_tasks)
 	var map_done := 1.0 if _map_image == null or _map_task < 0 else 0.0
-	_cover_label.text = "Generating the planet's ground...  %d %%" % int(
-			100.0 * minf(done, 0.99) * (0.9 + 0.1 * map_done))
+	_shown = maxf(_shown, minf(done, 0.99) * (0.9 + 0.1 * map_done))
+	_cover_label.text = "Generating the planet's ground...  %d %%" % int(100.0 * _shown)
 
 
 func _lift_cover() -> void:

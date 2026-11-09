@@ -221,7 +221,18 @@ static func _niche(s: PlantSpecies, rng: RandomNumberGenerator, t: float) -> voi
 
 
 ## What it looks like: sizes, counts, colours.
+const TREE_TALLER := 1.35 ## every tree species' height times this (the crown and trunk widen with the square root of it, so they do not look thin)
+
+
 static func _shape(s: PlantSpecies, rng: RandomNumberGenerator) -> void:
+	_shape_forms(s, rng)
+	if s.form in [F.CONIFER, F.BROADLEAF, F.PALM, F.BARE_TREE]:
+		s.height *= TREE_TALLER
+		s.crown *= sqrt(TREE_TALLER)
+		s.girth *= sqrt(TREE_TALLER)
+
+
+static func _shape_forms(s: PlantSpecies, rng: RandomNumberGenerator) -> void:
 	match s.form:
 		F.CONIFER:
 			var slender := rng.randf() # 0 broad, 1 tall and narrow

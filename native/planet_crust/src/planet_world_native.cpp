@@ -337,6 +337,7 @@ Vector3 PlanetWorld::start(Node3D *p_target, const Vector3 &p_direction, double 
 	if (is_player && ground->is_threaded()) {
 		loading = true;
 		load_time = 0.0;
+		load_shown = 0.0;
 		p_target->set_process_mode(Node::PROCESS_MODE_DISABLED);
 		ground->update(planet_position());
 		if (map_first && !headless) {
@@ -633,7 +634,8 @@ void PlanetWorld::wait_for_the_ground(double p_delta) {
 	}
 	ground->set_burst(true);
 	double done = ground->progress(LOAD_GROUND, load_plants());
-	load_label->set_text(vformat("Generating the planet...  %d %%", (int)(done * 100.0)));
+	load_shown = std::max(load_shown, std::min(done, 0.99));
+	load_label->set_text(vformat("Generating the planet...  %d %%", (int)(load_shown * 100.0)));
 	if (done >= 0.999 || load_time > 90.0) {
 		if (OS::get_singleton()->has_environment("PLANET_TIMING")) {
 			UtilityFunctions::print(vformat("PLANET_TIMING ground ready after %.1f s, %d tiles built, %d wanted", load_time, (int64_t)ground->get_tiles().size(), ground->wanted_count()));
