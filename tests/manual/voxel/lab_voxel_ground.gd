@@ -61,6 +61,7 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 	_material = ShaderMaterial.new()
 	_material.shader = load("res://shaders/voxel/voxel_ground.gdshader")
 	_material.set_shader_parameter("radius", radius)
+	_give_scans()
 	_terrain.set("material", _material)
 	add_child(_terrain)
 	var viewer: Node = ClassDB.instantiate("VoxelViewer")
@@ -204,3 +205,12 @@ func _poll_colour_map() -> void:
 	_material.set_shader_parameter("colour_map", ImageTexture.create_from_image(_map_image))
 	_material.set_shader_parameter("use_map", true)
 	print("VOXEL colour map ready (", _map_image.get_width(), " x ", _map_image.get_height(), ")")
+
+
+## The near ground's scans (the tiles' own textures) and the switch for the lab's anchor globals.
+func _give_scans() -> void:
+	for scan in ["gravel", "red", "leaf"]:
+		for kind in ["c", "n"]:
+			var path := "res://assets/textures/ground/scans/%s_%s.png" % [scan, kind]
+			_material.set_shader_parameter("scan_%s_%s" % [scan, kind], load(path))
+	_material.set_shader_parameter("detail_on", true)

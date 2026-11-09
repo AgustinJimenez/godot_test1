@@ -271,3 +271,12 @@ User: "load time is acceptable still, we can add it to the dark screen, continue
   Earth: the voxel ground was ready after 66.7 s (process time; 47 s in the standalone test: the lab's tile building and the colour bake share the cores).
 - Next candidates: near-ground detail on the voxel mesh (reuse the scans of `planet_ground.gdshader` triplanar in the voxel shader), stop building the unused ground tiles (native change),
   water / the sea / rivers, a finer colour map near the player (a window), a faster generator.
+
+## Near-ground detail on the voxel ground (2026-11-08)
+- `voxel_ground.gdshader` now does the planet ground shader's soil scans: gravel, red soil and leaf earth (`assets/textures/ground/scans/*`, colour + normal), triplanar, placed by the lab's own
+  `anchor_from_world` / `anchor_wrap` globals (so the pattern holds still when the planet is turned under the player and stays precise at Earth size), faded out between 10 and 32 m.
+  Which scan: from the baked colour (green = forest earth, reddish = red soil, else gravel), a weighted sum (the tiles blend by height and by the crust's soil data: not done).
+  The scans multiply the albedo, lean the normal and set the roughness. `detail_on` is set by the lab's helper only (the globals only exist in the lab; the standalone walking test keeps the plain look).
+  Picture `E:\Temp\claude\voxel_spike\col_voxel5.png` (the foreground now has the dark leaf-earth relief like `col_.png`).
+- Cost: small planet `--voxel --plants --fps`: 142-148 fps, GPU 6.2-6.8 ms (before 131-135 / 6.6): no regression. `--walk-check` PASS (431 m, 5 rebases).
+- Not done: the cliff texture on steep faces, the sand ripples, the grass patches / meadow, litter, the crust's own soil data, the tiles' parallax and grains; the colour map is still coarse on Earth.
