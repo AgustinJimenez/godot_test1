@@ -21,6 +21,8 @@ var blocks_asked := 0
 var msec_heights := 0 # time spent asking the planet (all threads)
 ## Voxels between the planet's height samples (1: every voxel, exact; 2-4: interpolated)
 var lattice := 2
+## The levels up to this one (0 is the finest) ask the planet for every voxel (exact)
+var exact_lods := 1
 ## Turns a world direction into the planet's own direction (the identity: the same). The walking
 ## test turns the planet so that its chosen spawn is at +Y, where the player's "up" is.
 var frame := Basis.IDENTITY
@@ -48,7 +50,7 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 	if absf(centre_dist) > RELIEF_MARGIN + half_diagonal:
 		out_buffer.fill_f(centre_dist / step, VoxelBuffer.CHANNEL_SDF)
 		return
-	var heights := _interpolated_heights(origin, size, step)
+	var heights := _interpolated_heights(origin, size, step, 1 if lod <= exact_lods else lattice)
 	var started := Time.get_ticks_msec()
 	var i := 0
 	for z in size.z:
@@ -70,8 +72,9 @@ func _generate_block(out_buffer: VoxelBuffer, origin_in_voxels: Vector3i, lod: i
 ## The planet's ground height (m) for every voxel of the block, in the order of the loops of
 ## `_generate_block` (z, x, y). The planet is asked every `lattice` voxels along each axis and the
 ## voxels between are interpolated (`lattice` 1 asks for every voxel: exact).
-func _interpolated_heights(origin: Vector3, size: Vector3i, step: float) -> PackedFloat32Array:
-	var s := lattice
+func _interpolated_heights(origin: Vector3, size: Vector3i, step: float,
+		spacing: int) -> PackedFloat32Array:
+	var s := spacing
 	var mx := (size.x - 1) / s + 2
 	var my := (size.y - 1) / s + 2
 	var mz := (size.z - 1) / s + 2

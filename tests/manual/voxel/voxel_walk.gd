@@ -21,6 +21,7 @@ var _view := 2048
 var _secs := 60.0
 var _lattice := 2
 var _seed := 1337
+var _exact_lods := 1
 var _shot := ""
 var _t := 0.0
 var _stable := 0.0
@@ -36,6 +37,15 @@ var _caves := false
 var _dig := false # dig a hole under the player and see them fall in
 var _dig_y := 0.0
 var _dig_at := -1.0
+var _fly := 0.0 # --fly=SPEED: free mode at this speed (m/s) instead of walking
+var _seams := false # --seam-check: physics rays over a grid against the planet's height
+var _dig_many := false # --dig-many: 200 holes round the player
+var _jump := false # --jump: jump every 2 s
+var _mem0 := 0.0
+var _next_report := 60.0
+var _min_above := 0.0
+var _hitches: PackedStringArray = []
+var _did_special := false
 var _visit := false # start the player inside a tunnel
 var _cave_at := Vector3.ZERO
 
@@ -48,10 +58,20 @@ func _ready() -> void:
 			_shot = a.substr(7)
 		elif a.begins_with("--lattice="):
 			_lattice = int(a.substr(10))
+		elif a.begins_with("--exact-lods="):
+			_exact_lods = int(a.substr(13))
 		elif a.begins_with("--view="):
 			_view = int(a.substr(7))
 		elif a == "--caves":
 			_caves = true
+		elif a.begins_with("--fly="):
+			_fly = float(a.substr(6))
+		elif a == "--seam-check":
+			_seams = true
+		elif a == "--dig-many":
+			_dig_many = true
+		elif a == "--jump":
+			_jump = true
 		elif a == "--dig":
 			_dig = true
 		elif a == "--cave-visit":
@@ -73,6 +93,7 @@ func _ready() -> void:
 	_gen.set("radius", _radius)
 	_gen.set("noise", _noise)
 	_gen.set("lattice", _lattice)
+	_gen.set("exact_lods", _exact_lods)
 	_gen.set("frame", _frame)
 	if _caves:
 		_gen.call("setup_caves", _seed)
@@ -159,9 +180,26 @@ func _process(dt: float) -> void:
 	_worst_frame = maxf(_worst_frame, dt)
 	if dt > 0.033:
 		_slow += 1
+		if dt > 0.05 and _hitches.size() < 12:
+			_hitches.append("%.0fs:%.0fms" % [_t - _loaded_at, dt * 1000.0])
+	if _seams and not _did_special and _t > _loaded_at + 4.0:
+		_did_special = true
+		_seam_check()
+		return
+	if _dig_many and not _did_special and _t > _loaded_at + 3.0:
+		_did_special = true
+		_dig_many_holes()
+	if _jump and _walk_t0 > 0.0 and int((_t - _walk_t0) * 10.0) % 20 == 0 and _player.is_on_floor():
+		Input.action_press(&"jump")
+	elif _jump:
+		Input.action_release(&"jump")
 	if _walk_t0 < 0.0 and _t > _loaded_at + 3.0:
 		_walk_t0 = _t
 		_start = _player.global_position
+		_mem0 = Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0
+		if _fly > 0.0:
+			_player.set_free_mode(true)
+			_player.free_mode_speed = _fly
 		Input.action_press(&"move_forward")
 		Input.action_press(&"sprint")
 	if _dig and _dig_at < 0.0 and _t > _loaded_at + 2.0:
@@ -181,7 +219,15 @@ func _process(dt: float) -> void:
 	if _walk_t0 > 0.0:
 		if _player.is_on_floor():
 			_on_floor += 1
-		_worst_above = maxf(_worst_above, absf(_ground_above(_player.global_position)))
+		var above := _ground_above(_player.global_position)
+		_worst_above = maxf(_worst_above, absf(above))
+		_min_above = minf(_min_above, above)
+		if _t > _walk_t0 + _next_report - 0.0 and _next_report < _secs:
+			_next_report += 60.0
+			print("WALK at ", snappedf(_t - _walk_t0, 1.0), " s: travelled ",
+					snappedf(_player.global_position.distance_to(_start), 1.0), " m, memory ",
+					snappedf(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, 0.1),
+					" MB, voxel tasks ", _tasks())
 		if _t > _walk_t0 + _secs:
 			_report()
 			get_tree().quit()
@@ -217,6 +263,10 @@ func _report() -> void:
 	print("WALK %s travelled=%.0f m on_floor=%.0f%% worst_above_ground=%.2f m" % [verdict,
 			travelled, share, _worst_above])
 	print("WALK frames=%d worst_frame=%.1f ms over33ms=%d" % [_frames, _worst_frame * 1000.0, _slow])
+	print("WALK lowest below the noise's ground: ", snappedf(_min_above, 0.01), " m; memory ",
+			snappedf(_mem0, 0.1), " -> ", snappedf(
+			Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, 0.1), " MB; hitches ",
+			", ".join(_hitches))
 	if _shot != "":
 		get_viewport().get_texture().get_image().save_png(_shot)
 
@@ -240,3 +290,85 @@ func _find_cave() -> void:
 					_cave_at = p
 	print("WALK cave target ", _cave_at.snapped(Vector3.ONE * 0.1), " field ", snappedf(best, 0.001),
 			" ground above it ", snappedf(-_ground_above(_cave_at), 0.1), " m")
+
+
+## Physics rays from above over a grid round the player: where is there no ground, or ground that
+## is not where the planet's noise says (a crack between patches shows up as a miss or a step).
+func _seam_check() -> void:
+	var space := get_world_3d().direct_space_state
+	var rays := 0
+	var misses := 0
+	var off := 0
+	var worst := 0.0
+	var worst_at := Vector2.ZERO
+	var centre := _player.global_position
+	for gx in range(-300, 301, 3):
+		for gz in range(-300, 301, 3):
+			var top := Vector3(centre.x + gx, centre.y + 200.0, centre.z + gz)
+			var query := PhysicsRayQueryParameters3D.create(top, top + Vector3(0, -400, 0))
+			query.exclude = [_player.get_rid()]
+			var hit := space.intersect_ray(query)
+			rays += 1
+			if hit.is_empty():
+				misses += 1
+				print("SEAMS no ground at ", gx, ", ", gz)
+				_probe_gap(space, centre + Vector3(gx, 0, gz))
+				continue
+			var pos: Vector3 = hit["position"]
+			var err := absf(_ground_above(pos))
+			if err > 0.5:
+				off += 1
+			if err > worst:
+				worst = err
+				worst_at = Vector2(gx, gz)
+	print("SEAMS rays=", rays, " no ground=", misses, " off by >0.5 m=", off, " worst error ",
+			snappedf(worst, 0.01), " m at ", worst_at)
+	get_tree().quit()
+
+
+## 200 holes of 3 m round the player: the cost of the edits and of the colliders updating.
+func _dig_many_holes() -> void:
+	var tool: Object = _terrain.call("get_voxel_tool")
+	tool.set("mode", 1)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var centre := _player.global_position
+	var started := Time.get_ticks_usec()
+	var worst_call := 0
+	for i in 200:
+		var at := centre + Vector3(rng.randf_range(-60, 60), -1.0, rng.randf_range(-60, 60))
+		at.y = _radius + _ground_height_at(at)
+		var t := Time.get_ticks_usec()
+		tool.call("do_sphere", at, 3.0)
+		worst_call = maxi(worst_call, Time.get_ticks_usec() - t)
+	print("WALK dig-many: 200 holes in ", (Time.get_ticks_usec() - started) / 1000, " ms (worst call ",
+			worst_call / 1000.0, " ms)")
+
+
+func _ground_height_at(world: Vector3) -> float:
+	var dir := _frame * world.normalized()
+	return _noise.call("height", dir.x, dir.y, dir.z)
+
+
+## Rays 0.1 m apart over 3 m x 3 m round a point that had no ground: how big is the gap?
+func _probe_gap(space: PhysicsDirectSpaceState3D, at: Vector3) -> void:
+	var misses := 0
+	var total := 0
+	var min_x := 99.0
+	var max_x := -99.0
+	var min_z := 99.0
+	var max_z := -99.0
+	for ix in range(-15, 16):
+		for iz in range(-15, 16):
+			var top := Vector3(at.x + ix * 0.1, at.y + 200.0, at.z + iz * 0.1)
+			var query := PhysicsRayQueryParameters3D.create(top, top + Vector3(0, -400, 0))
+			query.exclude = [_player.get_rid()]
+			total += 1
+			if space.intersect_ray(query).is_empty():
+				misses += 1
+				min_x = minf(min_x, ix * 0.1)
+				max_x = maxf(max_x, ix * 0.1)
+				min_z = minf(min_z, iz * 0.1)
+				max_z = maxf(max_z, iz * 0.1)
+	print("SEAMS gap probe: ", misses, " of ", total, " rays miss, x ", min_x, "..", max_x, " z ",
+			min_z, "..", max_z)
