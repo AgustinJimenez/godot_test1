@@ -94,7 +94,7 @@ func _lump_baked(slot: int, lump_slots: Dictionary) -> bool:
 func _atlas_slot(atlas: Image, path: String, slot: int) -> Image:
 	if atlas != null:
 		return atlas.get_region(Rect2i((slot % 3) * SIZE, (slot / 3) * SIZE, SIZE, SIZE))
-	var imported := load(path) as Texture2DArray
+	var imported := load(path) as TextureLayered
 	var image := imported.get_layer_data(slot)
 	if image.is_compressed():
 		image.decompress()

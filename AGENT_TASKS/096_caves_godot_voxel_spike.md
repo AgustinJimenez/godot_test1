@@ -382,3 +382,19 @@ used as before. The atlas errors are gone in the exported game, but it still seg
 (`ImageTexture::create_from_image` with an empty image: another raw `res://` image read somewhere; candidates: the map code (`planet_map_support_native.cpp` `Image::load_from_file`), other
 tools). Not found (a release build has no symbols or script backtraces). The small voxel test project exports and runs fine, so this is a game export problem, not a voxel one.
 Next step if wanted: export with the DEBUG template (`scons target=template_debug ...`, ~12 min) and run with `--verbose` to get the failing call.
+
+## The real game exports and runs the voxel planet (2026-11-09, third try)
+**Result: the exported RELEASE game (double + voxel template, Windows) runs the Earth-size voxel planet in the real lab: `WALK_CHECK PASS travelled=406 m rebases=5 on_floor=100% worst_above_ground=0.10 m`,
+`VOXEL ground ready after 23117 ms`, no hitch over 33 ms, no script errors.** How (nothing in the repo besides the two baker fixes; `export_presets.cfg` is a temporary untracked file, delete it after):
+1. Templates: `scons platform=windows target=template_release|template_debug precision=double arch=x86_64 d3d12=yes debug_symbols=no` (12 minutes each the first time, ~40 s after a module change); libraries:
+   `GODOT_CPP_DOUBLE=E:/Godot/cpp/godot-cpp-double GODOT_API_DOUBLE=E:/Godot/cpp/dump/extension_api.json scripts/build_native.sh --double --release`.
+2. Preset (`Windows Desktop`): `custom_template/release` = the double release template, `export_filter="all_resources"`, `include_filter="*.bin, *.json"` (the game reads `boulder_*.bin` and
+   `flashlight_grip_pose.json` as raw files), `exclude_filter="tools/bark/*, docs/*, AGENT_TASKS/*, tests/automated/*, assets/animation/gvhmr_*"` (NOT all of `tools/`: `tools/character_editor` holds classes the game uses),
+   `binary_format/embed_pck=false`. `godot...editor.double...console.exe --headless --path . --export-release "Windows Desktop"` takes ~15 s (457 MB pack + an 84 MB exe + the double release DLL beside it).
+   (The headless export process itself segfaulted at exit once; the files were complete.)
+3. To run the lab from the export: an `override.cfg` next to the exe: `[application]` / `run/main_scene="res://tests/manual/planet/planet_lab.tscn"` (a release build refuses a scene on the command line), then
+   `game.exe --fixed-fps 60 -- --earth --voxel --walk-check --seed=11`.
+Problems found and fixed on the way: the bark and rock bakers read the raw atlas png (not exported: it is imported as a compressed texture array): they now take the slot from the imported array
+(`load(path) as TextureLayered`: `Texture2DArray` is the wrong class, the cast gave null and a RELEASE build then crashes silently on the null call instead of printing a script error: a DEBUG export prints it); `.bin` / `.json` raw files need the include filter.
+Lesson: when a release export segfaults with no message, export with the debug template (`--export-debug`) and read the script errors.
+Still not done: macOS (task 097), an installer / size trimming (the pack is 457 MB with everything), the lab is not the game's main scene (the game's own start flow was not run from the export).
