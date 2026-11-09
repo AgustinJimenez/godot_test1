@@ -334,3 +334,16 @@ Two 100 s forest walks (`--earth --voxel --plants --grounded --forest-walk=100`)
 The cause: `lab_voxel_ground.gd` walked ~700 tiles with `find_children` every 20 frames (a 29 ms frame, the p95). It now touches only tiles not seen before (a dictionary of instance ids).
 After: fps avg 79.5, 1% low 28.2 (24.6), p95 19.7 ms (28.9), p99 28.9 (34.2), over 33 ms 28 of 6000 (87), physics CPU 17.2 ms (25.1) = the heightmap ground's. So the voxel ground costs the
 same as the tiles in a walk. (`override.cfg` was used for the tests and deleted; project.godot untouched.)
+
+## Release template with the generator module, the double release native library, an export of the real game (2026-11-09)
+- The release template was rebuilt with the planet generator module (37 s incremental). `scripts/build_native.sh --double --release` now also builds the double precision RELEASE library (the script only
+  built double debug before); it rebuilt all four libraries (single and double, debug and release) after the SConstruct change, ~15 minutes in total. All four DLLs are in `native/planet_crust/bin`.
+- Export of the REAL game (a temporary untracked `export_presets.cfg`, deleted again; `custom_template/release` = the double template, `export_filter=all_resources`, excluding `tools/bark`, `docs`,
+  `AGENT_TASKS`, `tests/automated` and the gvhmr folders: 13 s, a 84 MB exe + a 457 MB pack + the double release `planet_crust` DLL beside it). Findings:
+  - an exported release build cannot run another scene from the command line ("compiled without support for path overrides"): an `override.cfg` next to the exe with
+    `[application] run/main_scene="res://tests/manual/planet/planet_lab.tscn"` does it (project.godot untouched);
+  - `tools/character_editor/` must be exported (the game's scripts use `HumanoidRetargeter` and `CharacterEditorRigHandler` classes from there);
+  - the voxel parts start in the export (`VOXEL generator: VoxelGeneratorPlanet`, `ground on`, the colour map baked), then the game CRASHES (segfault) after `Image.load_from_file("res://assets/textures/bark/bark_atlas.png")` and the
+    rock atlas fail: `bark_baker.gd:112` and `rock_baker.gd:47` read the raw png, but it is imported as a `2d_array_texture` (compressed) and the exporter does not ship the raw file (the include filter did not
+    bring it back either). This is a PRE-EXISTING limit of exporting the game (nothing to do with voxels): the procedural bark / rock bakers need the raw atlas. To fix: ship the raw pngs (a "keep" import or a
+    per-file "export as is"), or slice the atlas from the imported array. NOT done. The earlier export of the small voxel test project (noise planet, no extension) ran fine, so the voxel engine and template are not the problem.
