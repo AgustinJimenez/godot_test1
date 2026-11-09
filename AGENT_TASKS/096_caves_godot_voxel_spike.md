@@ -2,6 +2,19 @@
 
 Started 2026-10-29. User: "i think it is [a goal], let's make it a task" (caves / tunnels / overhangs in the planet terrain).
 
+## STATUS (2026-11-09 morning): read this first, the sections below are the log in the order it happened
+The voxel ground works on the real planet at Earth size, on branch `voxel-spike`, with a custom engine. What exists and what was measured:
+- Engine: `E:\Godot\double\src` = Godot 4.7.2 double + godot_voxel v1.7 + our C++ generator module (`native/voxel_planet_module`, `scripts/install_voxel_planet_module.sh`). Editor + release template built; backups of older exes in `E:\Godot\doubleackup_*`.
+- Lab: `planet_lab.tscn -- [--earth] --voxel [--plants] [--voxel-caves]` (G dig, H fill; helper `tests/manual/voxel/lab_voxel_ground.gd`, shader `shaders/voxel/voxel_ground.gdshader`). Stock engine: the flag is ignored.
+- Numbers (RTX 4090, 6 cores): Earth ground ready ~24 s (GDScript generator 67 s); same fps as the tiles (89 against 77 with plants), GPU 9.7 against 12.2 ms; soak walk 100 s: 79.5 fps, 1% low 28, 28 frames over 33 ms;
+  caves cost ~1 s of load; digging 18 ms a hole; no holes in the collision (seam check 0 of 40,401 rays); `WALK_CHECK`, `PLANET_CHECK`, `SWIM_CHECK`, foot IK soak (41 events against 38) all as with the tiles; `planet_check.sh` 20 of 22 (the 2 fails are not ours).
+- Works but crude: ground colours (the planet's colours baked into a picture + the soil scans + cliffs; no grass patches, litter, sand ripples), rivers / sea (the tiles' own meshes, the ground follows `heights_of`, not seen with a river in a picture).
+- NOT done: the tiles are still built in the background (wasted work, not the bottleneck); plants placed from the heightmap (up to ~0.5 m off the voxel surface); finer colours near the player on Earth; macOS (task 097); **exporting the real game**
+  (works up to the bark / rock bakers reading raw atlases that the exporter does not ship: a pre-existing limit, see "Release template ... export of the real game"); the cliffs were never seen on a real cliff.
+- Dead ends / traps: `VoxelTool.raycast` returns null in the lab (the dig keys march the ray themselves); a class derived from `VoxelGenerator` needs the voxel module's defines or it segfaults; only the tiles `preload`ed by the lab must never name a voxel class;
+  the lattice at levels 0-1 left a hole in the collision (exact heights near the surface fixed it); my rock rule painted grassy hillsides white; the hitching was the helper's own tile loop.
+- Decision for the user: keep going (water in a picture, plants from the voxel surface, the real-game export, a Mac build) or stay with the heightmap and keep this branch as the record. The branch is pushed; `main` is untouched.
+
 ## Why a library at all
 - The planet terrain is a heightmap (`HeightMapShape3D` collision under Jolt, see `AGENTS.md` and `docs/planet_generation.md`). A heightmap stores one
   height per point, so nothing can exist underneath it: no caves, tunnels or overhangs.
@@ -358,3 +371,7 @@ same as the tiles in a walk. (`override.cfg` was used for the tests and deleted;
 `planet_lab -- --earth [--voxel] --ik-soak=90 --seed=11 --fixed-fps 60` (PlanetIKSoak, Foot IK v2, the player walks a script of moves and the IK is audited): both finish with `ISSUES`:
 heightmap tiles 38 events (31 IK_POP, 3 SNAP, 4 CLIP_SNAP), voxel ground 41 events (29 IK_POP, 4 SNAP, 5 CLIP_SNAP, **3 FLOAT**). So the IK behaves alike; the three FLOAT events (a foot that stays
 off the ground) are the only kind the tiles did not give, not looked at (the voxel mesh's collider is a trimesh of the mesh's own triangles, flatter or rougher than the tiles' heightmap shapes in places).
+
+## Rivers (2026-11-09)
+`PlanetNoise.heights_of(dirs)` and `PlanetNoise.height(x, y, z)` agree exactly (worst difference 0.0 m over 3,000 random directions with `hydrology_on` and `sea_on`), so the voxel generator, which asks `heights_of`, carves a river
+wherever the tiles' ground is carved. A real river was NOT looked at (a standalone noise has no drainage; the lab's `PlanetWorld` sets it up): needs `--water --sea` in the lab at a river.
