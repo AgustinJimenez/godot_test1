@@ -598,6 +598,9 @@ void PlanetMap::draw_whole(const Rect2 &p_view, const Vector2 &p_size) {
 	double drawn = 0.0; // the map goes round east-west: its copies are drawn until the view is full
 	while (drawn < p_size.x - 0.00001) {
 		double first_u = positive_mod_d(p_view.position.x + drawn, 1.0);
+		if (first_u > 1.0 - 1e-9) {
+			first_u = 0.0; // (a hair under the seam is the seam: a tiny negative number plus one is exactly 1, and a width of nothing never ends)
+		}
 		double width = std::min((double)p_size.x - drawn, 1.0 - first_u);
 		draw_part(whole, Rect2(0.0, 0.0, 1.0, 1.0), Rect2(first_u, p_view.position.y, width, rows), drawn);
 		drawn += width;
