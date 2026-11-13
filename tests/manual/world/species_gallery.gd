@@ -80,7 +80,7 @@ func _show() -> void:
 		_plants.queue_free()
 	WorldWind.set_realism(1.0 if detailed else 0.0)
 	WorldWind.set_autumn(1.0 if autumn else 0.0)
-	_registry = SpeciesRegistry.new(seed_value, 36)
+	_registry = SpeciesRegistry.create(seed_value, 36)
 	_plants = Node3D.new()
 	add_child(_plants)
 	var info: Dictionary = PAGES[page]
@@ -103,7 +103,7 @@ func _show() -> void:
 			_plants.add_child(instance)
 		tallest = maxf(tallest, one.height * scale)
 		var tag := Label3D.new()
-		tag.text = "%s\n%s" % [one.common_name, PlantSpecies.Form.keys()[one.form]]
+		tag.text = "%s\n%s" % [one.common_name, PlantSpecies.form_names()[one.form]]
 		tag.font_size = 48
 		tag.pixel_size = 0.0016 * gap
 		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED

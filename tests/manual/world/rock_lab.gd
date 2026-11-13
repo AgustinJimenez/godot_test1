@@ -16,15 +16,15 @@ func _initialize() -> void:
 		kind_name = args[1]
 	RenderingServer.global_shader_parameter_set(&"realism", 1.0)
 	# LAB_LOW=1: the cheaper meshes of the default ground detail
-	FloraMeshes.detailed = not OS.has_environment("LAB_LOW")
+	FloraMeshes.set_detailed(not OS.has_environment("LAB_LOW"))
 	var kind: FloraMeshes.Kind = FloraMeshes.Kind.ROCK
 	var shown := 0.0 # the height of what is shown, for the camera
 	# the plants of one growth form (form:PALM) or tree kind (arch:oak)
 	if kind_name.begins_with("form:") or kind_name.begins_with("arch:"):
-		var form: int = PlantSpecies.Form.keys().find(kind_name.trim_prefix("form:"))
+		var form: int = PlantSpecies.form_names().find(kind_name.trim_prefix("form:"))
 		var archetype := kind_name.trim_prefix("arch:") if kind_name.begins_with("arch:") else ""
 		var found := 0
-		for one in SpeciesRegistry.new(8, 36).species:
+		for one in SpeciesRegistry.create(8, 36).species:
 			if found >= 5 or (one.archetype != archetype if archetype != "" else one.form != form):
 				continue
 			var instance := MeshInstance3D.new()

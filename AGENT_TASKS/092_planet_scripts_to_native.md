@@ -59,3 +59,4 @@ Plus planet_bark_bake.gd (the baking coroutines moved out of PlanetWorld: they w
 Checks: scripts/planet_check.sh (all PASS but lint: gdlint is not installed), noise_golden hash, windowed lab shots (forest, impostors from the
 air, the map, the start menu), --map-check.
 Not compared against the old GDScript behaviour (no reference left): ground bake, sun glow, motes/dust/dents, impostor swap timing.
+- [x] planet_atmosphere (native class, no WorldAtmosphere base; world_weather.gd's atmosphere untyped), planet_fauna (native; deer/rabbit meshes via mesh_builder.gd). planet_swim stays script (Player properties each physics frame).

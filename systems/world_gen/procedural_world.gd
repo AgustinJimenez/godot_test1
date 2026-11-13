@@ -30,7 +30,7 @@ func _ready() -> void:
 	if settings == null:
 		settings = WorldSettings.new()
 	_detail_on = realism > 0.5 # a world that starts realistic builds its plants finely at once
-	FloraMeshes.detailed = _detail_on
+	FloraMeshes.set_detailed(_detail_on)
 	atmosphere = WorldAtmosphere.new()
 	atmosphere.time_of_day = time_of_day
 	atmosphere.day_seconds = day_seconds
@@ -183,7 +183,7 @@ func _update_detail() -> void:
 	var wanted := realism > 0.5
 	if wanted != _detail_on:
 		_detail_on = wanted
-		FloraMeshes.detailed = wanted
+		FloraMeshes.set_detailed(wanted)
 		_remesh = get_tree().get_nodes_in_group(&"world_flora")
 	var budget := 80
 	while budget > 0 and not _remesh.is_empty():

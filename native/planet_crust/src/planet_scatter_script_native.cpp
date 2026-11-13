@@ -1,5 +1,11 @@
+#include "flora_meshes_native.h"
+#include "species_registry_native.h"
+#include "planet_sky_nodes_native.h"
+#include "tree_archetypes_native.h"
+#include "tree_genome_native.h"
 #include "planet_scatter_script_native.h"
 
+#include "graphics_lookup.h"
 #include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/box_shape3d.hpp>
 #include <godot_cpp/classes/capsule_shape3d.hpp>
@@ -23,44 +29,22 @@
 using namespace godot;
 
 static std::atomic<bool> trees_on_flag(true);
+static std::atomic<bool> cards_flag(true); // the middle-distance trees as flat impostor cards (off: the lighter 3D tree mesh)
+static std::atomic<bool> full_trees_flag(false); // with the fake trees off: every tree is the full mesh at any distance (a stress test)
+static std::atomic<bool> fake_trees_flag(true); // the lighter, impostor and far versions of the trees (off: only the full trees near the walker show)
 
 static Ref<Script> script_of(const char *p_path) {
 	return ResourceLoader::get_singleton()->load(p_path);
 }
-static Ref<Script> flora_script() {
-	static Ref<Script> s;
-	if (s.is_null()) {
-		s = script_of("res://systems/world_gen/flora_meshes.gd");
-	}
-	return s;
-}
-static Ref<Script> meshes_script() {
-	static Ref<Script> s;
-	if (s.is_null()) {
-		s = script_of("res://systems/world_gen/flora/plant_meshes.gd");
-	}
-	return s;
-}
-static Ref<Script> archetypes_script() {
-	static Ref<Script> s;
-	if (s.is_null()) {
-		s = script_of("res://systems/world_gen/flora/tree_archetypes.gd");
-	}
-	return s;
-}
 
 // the graphics settings autoload's value (read where a worker thread may ask: it is a plain lookup)
 static Variant graphics_value(const StringName &p_key) {
-	SceneTree *tree = Object::cast_to<SceneTree>(Engine::get_singleton()->get_main_loop());
-	if (tree == nullptr) {
-		return Variant();
-	}
-	Node *settings = tree->get_root()->get_node_or_null("GraphicsSettings");
+	Node *settings = graphics_settings_node();
 	return settings != nullptr ? settings->call("get_graphics_value", p_key) : Variant();
 }
 
 static bool flora_detailed() {
-	return (bool)flora_script()->get("detailed");
+	return FloraMeshes::get_detailed();
 }
 
 void PlanetScatter::_bind_methods() {
@@ -74,6 +58,12 @@ void PlanetScatter::_bind_methods() {
 	ClassDB::bind_static_method("PlanetScatter", D_METHOD("get_tree_full"), &PlanetScatter::get_tree_full);
 	ClassDB::bind_static_method("PlanetScatter", D_METHOD("get_trees_on"), &PlanetScatter::get_trees_on);
 	ClassDB::bind_static_method("PlanetScatter", D_METHOD("set_trees_on", "on"), &PlanetScatter::set_trees_on);
+	ClassDB::bind_static_method("PlanetScatter", D_METHOD("get_impostor_cards_on"), &PlanetScatter::get_impostor_cards_on);
+	ClassDB::bind_static_method("PlanetScatter", D_METHOD("set_impostor_cards_on", "on"), &PlanetScatter::set_impostor_cards_on);
+	ClassDB::bind_static_method("PlanetScatter", D_METHOD("get_full_trees_everywhere"), &PlanetScatter::get_full_trees_everywhere);
+	ClassDB::bind_static_method("PlanetScatter", D_METHOD("set_full_trees_everywhere", "on"), &PlanetScatter::set_full_trees_everywhere);
+	ClassDB::bind_static_method("PlanetScatter", D_METHOD("get_fake_trees_on"), &PlanetScatter::get_fake_trees_on);
+	ClassDB::bind_static_method("PlanetScatter", D_METHOD("set_fake_trees_on", "on"), &PlanetScatter::set_fake_trees_on);
 	ClassDB::bind_static_method("PlanetScatter", D_METHOD("species_table", "registry"), &PlanetScatter::species_table);
 	ClassDB::bind_method(D_METHOD("populate", "holder", "key", "noise", "grid", "cells", "size", "detail", "collide"), &PlanetScatter::populate);
 }
@@ -83,6 +73,29 @@ bool PlanetScatter::get_trees_on() {
 }
 void PlanetScatter::set_trees_on(bool p_on) {
 	trees_on_flag.store(p_on);
+}
+bool PlanetScatter::get_impostor_cards_on() {
+	return cards_flag.load();
+}
+void PlanetScatter::set_impostor_cards_on(bool p_on) {
+	cards_flag.store(p_on);
+}
+bool PlanetScatter::get_full_trees_everywhere() {
+	return full_trees_flag.load();
+}
+void PlanetScatter::set_full_trees_everywhere(bool p_on) {
+	full_trees_flag.store(p_on);
+}
+bool PlanetScatter::get_fake_trees_on() {
+	return fake_trees_flag.load();
+}
+void PlanetScatter::set_fake_trees_on(bool p_on) {
+	fake_trees_flag.store(p_on);
+}
+
+static double os_double(const char *p_name, double p_default) {
+	OS *os = OS::get_singleton();
+	return os->has_environment(p_name) ? os->get_environment(p_name).to_float() : p_default;
 }
 
 double PlanetScatter::tree_light() {
@@ -142,7 +155,7 @@ static Vector2 trunk_footprint(Object *p_one) {
 	if (!(bool)p_one->call("is_tree")) {
 		return p_one->call("footprint");
 	}
-	Object *genome = archetypes_script()->call("for_species", p_one);
+	Ref<TreeGenome> genome = TreeArchetypes::for_species(Ref<PlantSpecies>(Object::cast_to<PlantSpecies>(p_one)));
 	double girth = genome->get("girth");
 	double root_flare = genome->get("root_flare");
 	bool leader = genome->get("leader");
@@ -168,7 +181,7 @@ Array PlanetScatter::species_table(Object *p_registry) {
 		row["layer"] = one->call("layer");
 		row["variants"] = one->get("variants");
 		row["tree"] = one->call("is_tree");
-		row["has_far"] = meshes_script()->call("has_far", one);
+		row["has_far"] = PlantMeshes::has_far(Ref<PlantSpecies>(Object::cast_to<PlantSpecies>(one)));
 		row["moisture"] = one->get("moisture");
 		row["moisture_tol"] = one->get("moisture_tol");
 		row["heat"] = one->get("heat");
@@ -238,6 +251,13 @@ void PlanetScatter::populate_native(int64_t p_key, int p_detail, bool p_collide)
 	config["cells"] = cells;
 	config["size"] = size;
 	config["detail"] = p_detail;
+	{ // the planet's division into tiles: the trees' lattice does not depend on the level of the tile that holds them
+		Ref<PlanetSettings> planet = noise->get_settings();
+		if (planet.is_valid()) {
+			config["max_level"] = planet->max_level();
+			config["ref_size"] = planet->get_radius() * 3.14159265358979323846 * 0.5 / (double)(1LL << planet->max_level());
+		}
+	}
 	config["collide"] = p_collide;
 	if (!exact_ground.is_empty()) {
 		config["exact"] = exact_ground;
@@ -249,6 +269,9 @@ void PlanetScatter::populate_native(int64_t p_key, int p_detail, bool p_collide)
 	Dictionary placed = noise->get_scatter_native()->call("scatter", config);
 	if (placed.is_empty()) {
 		return;
+	}
+	if (OS::get_singleton()->has_environment("PLANET_TREE_DEBUG")) {
+		UtilityFunctions::print(vformat("TREES tile %d level %d detail %d: %d trees", p_key, (int64_t)((p_key >> 40) & 31), (int64_t)p_detail, (int64_t)placed["crowns"]));
 	}
 	// the undergrowth a walker pushes through (PlanetUndergrowth)
 	tile->set_meta("stems", placed["stems"]);
@@ -380,12 +403,13 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 	Array far_parts; // [mesh, buffer] of the far trees of the near ground
 	Array horizon_parts; // the same for the horizon: no range, they are all there is
 	bool detailed = flora_detailed();
-	Ref<Script> meshes = meshes_script();
 	double light_range = tree_light();
+	bool fakes = get_fake_trees_on();
+	bool full_everywhere = !fakes && get_full_trees_everywhere();
 	for (int at = 0; at < cell_keys.size(); at++) {
 		int key = cell_keys[at];
 		PackedFloat32Array buffer = cell_buffers[at];
-		if (key >= FAR_KEY) {
+		if (key >= FAR_KEY) { // (also with the fake trees off: past the full trees the far ones are all that fills the view)
 			Array part;
 			part.append(species->call("far_mesh", (key - FAR_KEY) / 100, key % 100));
 			part.append(buffer);
@@ -398,10 +422,43 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 		Object *one = plant ? by_id(id) : nullptr;
 		int layer = plant ? (int)one->call("layer") : 0;
 		bool tree = plant && (bool)one->call("is_tree");
-		if (tree && !p_near) {
+		if (tree && full_everywhere) {
+			// beyond the near trees with the fake trees off: the same tree in steps of fewer leaves and branch segments (lod 1 to 5 of the grower:
+			// the same tree each time, no picture and no other model). A tile makes only the steps it can be seen at (its middle is 2 of its widths
+			// from the eye before it splits: no point of it is nearer than 1.29 widths, and none further than 4.8).
+			const double reach = os_double("PLANET_TREE_REACH", 8000.0); // where the last step ends
+			const double ends[5] = { 120.0, 250.0, 600.0, 1500.0, reach };
+			const double nearest = size * 1.29, farthest = size * 4.8;
+			for (int step = 0; step < 5; step++) {
+				const double begin = step == 0 ? (p_near ? TREE_FULL * 0.95 : 0.0) : ends[step - 1] * 0.95;
+				if (nearest >= ends[step] || (step > 0 && farthest < begin)) {
+					continue;
+				}
+				Ref<Mesh> same = species->call("mesh", id, variant, flora_detailed(), step + 1);
+				MultiMeshInstance3D *part = add_trees(buffer, same, false);
+				part->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+				if (step < 4) {
+					part->set_visibility_range_end(ends[step]);
+					part->set_visibility_range_end_margin(TREE_FADE * 4.0);
+					part->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+				}
+				if (begin > 0.0) {
+					part->set_visibility_range_begin(begin);
+					part->set_visibility_range_begin_margin(TREE_FADE * (step == 0 ? 1.0 : 4.0));
+					part->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+				}
+			}
+			if (!p_near) {
+				continue;
+			}
+		}
+		if (tree && !p_near && !full_everywhere) {
+			if (!fakes) {
+				continue;
+			}
 			// trees beyond the near ground are only ever seen from far: the lighter version
 			MultiMeshInstance3D *light = light_trees(buffer, id, variant % 2);
-			if ((bool)meshes->call("has_far", one)) {
+			if (PlantMeshes::has_far(Ref<PlantSpecies>(Object::cast_to<PlantSpecies>(one)))) {
 				light->set_visibility_range_end(light_range);
 				light->set_visibility_range_end_margin(TREE_FADE * 2.0);
 				light->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
@@ -416,7 +473,7 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 		if (plant) {
 			mesh = species->call("mesh", id, variant, detailed, 0);
 		} else {
-			mesh = flora_script()->call("mesh", key / 100, variant, detailed);
+			mesh = FloraMeshes::mesh(key / 100, variant, detailed);
 		}
 		MultiMeshInstance3D *instance = add_trees(buffer, mesh, true);
 		// a tree or shrub that can bend (PlanetSway takes the ones near the walker)
@@ -437,6 +494,15 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 			OS *os = OS::get_singleton();
 			instance->set_visibility_range_end(os->has_environment("PLANET_GRASS_VISIBLE") ? os->get_environment("PLANET_GRASS_VISIBLE").to_float() : GRASS_VISIBLE);
 			instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		} else if (tree && full_everywhere) {
+			// the stress test: the full tree, whatever the distance (no range, no lighter version)
+			if (!p_near) {
+				instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+			} else {
+				instance->set_visibility_range_end(TREE_FULL);
+				instance->set_visibility_range_end_margin(TREE_FADE);
+				instance->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+			}
 		} else if (!p_near) {
 			instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 			instance->set_visibility_range_end(SMALL_VISIBLE);
@@ -447,18 +513,20 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 			instance->set_visibility_range_end(TREE_FULL);
 			instance->set_visibility_range_end_margin(TREE_FADE);
 			instance->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
-			MultiMeshInstance3D *light = light_trees(buffer, id, variant % 2);
-			light->set_visibility_range_begin(TREE_FULL * 0.95);
-			light->set_visibility_range_begin_margin(TREE_FADE);
-			light->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
-			if ((bool)meshes->call("has_far", one)) {
-				light->set_visibility_range_end(light_range);
-				light->set_visibility_range_end_margin(TREE_FADE * 2.0);
+			if (fakes) {
+				MultiMeshInstance3D *light = light_trees(buffer, id, variant % 2);
+				light->set_visibility_range_begin(TREE_FULL * 0.95);
+				light->set_visibility_range_begin_margin(TREE_FADE);
 				light->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
-				Array part;
-				part.append(species->call("far_mesh", id, variant % 2));
-				part.append(buffer);
-				far_parts.append(part);
+				if (PlantMeshes::has_far(Ref<PlantSpecies>(Object::cast_to<PlantSpecies>(one)))) {
+					light->set_visibility_range_end(light_range);
+					light->set_visibility_range_end_margin(TREE_FADE * 2.0);
+					light->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+					Array part;
+					part.append(species->call("far_mesh", id, variant % 2));
+					part.append(buffer);
+					far_parts.append(part);
+				}
 			}
 		}
 	}
@@ -467,12 +535,15 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 }
 
 // The lighter trees of a variant for the middle distance: quads that show the baked impostor when PlanetImpostors has made it, else the lighter mesh.
-MultiMeshInstance3D *PlanetScatter::light_trees(const PackedFloat32Array &p_buffer, int p_id, int p_variant) {
-	Dictionary baked = species->call("impostor", p_id, p_variant);
+MultiMeshInstance3D *PlanetScatter::light_trees(const PackedFloat32Array &p_buffer, int p_id, int p_variant, bool p_force_cards) {
+	const bool cards = p_force_cards || get_impostor_cards_on();
+	Dictionary baked = cards ? Dictionary(species->call("impostor", p_id, p_variant)) : Dictionary();
 	if (baked.is_empty()) {
 		Ref<Mesh> lighter = species->call("mesh", p_id, p_variant, flora_detailed(), 1);
 		MultiMeshInstance3D *plain = add_trees(p_buffer, lighter, false);
-		species->call("wait_for_impostor", p_id, p_variant, (int64_t)plain->get_instance_id(), p_buffer);
+		if (cards) {
+			species->call("wait_for_impostor", p_id, p_variant, (int64_t)plain->get_instance_id(), p_buffer);
+		}
 		return plain;
 	}
 	MultiMeshInstance3D *instance = add_trees(p_buffer, baked["mesh"], false);
@@ -519,7 +590,7 @@ void PlanetScatter::commit_far(const Array &p_parts, double p_begin) {
 	mesh->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, arrays);
 	MeshInstance3D *instance = memnew(MeshInstance3D);
 	instance->set_mesh(mesh);
-	instance->set_material_override(flora_script()->call("material"));
+	instance->set_material_override(FloraMeshes::material());
 	instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	instance->set_visibility_range_begin(p_begin);
 	instance->set_visibility_range_begin_margin(p_begin > 0.0 ? TREE_FADE * 2.0 : 0.0);
@@ -538,7 +609,7 @@ MultiMeshInstance3D *PlanetScatter::add_trees(const PackedFloat32Array &p_buffer
 	multi->set_buffer(p_buffer);
 	MultiMeshInstance3D *instance = memnew(MultiMeshInstance3D);
 	instance->set_multimesh(multi);
-	instance->set_material_override(flora_script()->call("material"));
+	instance->set_material_override(FloraMeshes::material());
 	if (!p_shadows) {
 		instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	}

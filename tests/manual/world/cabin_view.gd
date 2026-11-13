@@ -4,7 +4,7 @@ extends Node3D
 
 
 func _ready() -> void:
-	FloraMeshes.detailed = true
+	FloraMeshes.set_detailed(true)
 	WorldWind.set_realism(1.0)
 	var shot := ""
 	for argument in OS.get_cmdline_user_args():

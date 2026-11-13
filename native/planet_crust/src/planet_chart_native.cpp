@@ -103,6 +103,7 @@ void PlanetChart::_bind_methods() {
 	BIND_ENUM_CONSTANT(SATELLITE);
 	BIND_ENUM_CONSTANT(ATLAS);
 	BIND_ENUM_CONSTANT(CLOUD_MASK);
+	BIND_ENUM_CONSTANT(CAVES);
 	NP_BIND(PlanetChart, Variant::INT, workers)
 	NP_BIND(PlanetChart, Variant::RECT2, rect)
 	NP_BIND(PlanetChart, Variant::VECTOR2I, size)
@@ -131,7 +132,7 @@ PlanetChart::~PlanetChart() {
 
 Array PlanetChart::names() {
 	Array list;
-	for (const char *name : { "Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates", "Slope", "Mean temp", "Clouds", "Satellite", "Atlas" }) {
+	for (const char *name : { "Terrain", "Elevation", "Temperature", "Rain", "Biome", "Plates", "Slope", "Mean temp", "Clouds", "Satellite", "Atlas", "Cloud mask", "Caves" }) {
 		list.append(String(name));
 	}
 	return list;
@@ -172,6 +173,11 @@ Color PlanetChart::ramp(int64_t p_which, double p_t) {
 			static const double stops[3] = { 0.0, 0.4, 1.0 };
 			return along(t, colors, stops, 3);
 		}
+		case CAVES: { // a thin tunnel to a column that is mostly chamber
+			static const Color colors[3] = { Color(0.45f, 0.15f, 0.55f), Color(0.98f, 0.5f, 0.1f), Color(1.0f, 0.97f, 0.65f) };
+			static const double stops[3] = { 0.0, 0.45, 1.0 };
+			return along(t, colors, stops, 3);
+		}
 	}
 	return Color(1, 1, 1, 1);
 }
@@ -197,6 +203,10 @@ Array PlanetChart::scale_labels(int64_t p_which, double p_relief) {
 			labels.append("flat");
 			labels.append("steep");
 			break;
+		case CAVES:
+			labels.append("a tunnel");
+			labels.append("hollow");
+			break;
 	}
 	return labels;
 }
@@ -218,6 +228,18 @@ void PlanetChart::start(const Ref<PlanetNoise> &p_noise) {
 	ground_bands.assign(workers, PackedFloat32Array());
 	if ((layer == TEMPERATURE || layer == CLOUDS || layer == SATELLITE || layer == CLOUD_MASK) && clock.is_valid()) {
 		blend = p_noise->get_climate()->get_seasons()->blended(clock->year_share());
+	}
+	if (layer == CAVES) {
+		// (the generator's three noises: VoxelGeneratorPlanet::set_cave_seed)
+		int64_t seed = p_noise->get_settings()->get_world_seed();
+		Ref<FastNoiseLite> *made[3] = { &cave_a, &cave_b, &cavern };
+		const int64_t offsets[3] = { 11, 29, 53 };
+		for (int index = 0; index < 3; index++) {
+			made[index]->instantiate();
+			(*made[index])->set_noise_type(FastNoiseLite::TYPE_SIMPLEX);
+			(*made[index])->set_frequency(index == 2 ? CAVERN_FREQUENCY : CAVE_FREQUENCY);
+			(*made[index])->set_seed((int32_t)(seed + offsets[index]));
+		}
 	}
 	for (int64_t worker = 0; worker < workers; worker++) {
 		Ref<Thread> thread;
@@ -290,7 +312,7 @@ void PlanetChart::tidy() {
 	}
 	mark = PlanetChartProfile::lap("join the bands", mark);
 	Ref<PlanetCrustNative> crust = noise_->get_native();
-	bool tidy_it = layer != PLATES && layer != CLOUD_MASK;
+	bool tidy_it = layer != PLATES && layer != CLOUD_MASK && layer != CAVES; // (a cave's mouth is a lone dot)
 	if (!cancelled && tidy_it) {
 		all = crust->despeckle(all, size.x, size.y); // (lone dots are grain)
 		mark = PlanetChartProfile::lap("despeckle", mark);
@@ -365,7 +387,7 @@ void PlanetChart::chart(int64_t p_worker) {
 	Ref<PlanetSettings> settings = noise_->get_settings();
 	double step_lon = rect.size.x * TAU_D / (double)size.x;
 	double step_lat = rect.size.y * PI_D / (double)size.y;
-	bool needs_slope = layer == TERRAIN || layer == ELEVATION || layer == BIOME || layer == SLOPE || layer == SATELLITE || layer == ATLAS;
+	bool needs_slope = layer == TERRAIN || layer == ELEVATION || layer == BIOME || layer == SLOPE || layer == SATELLITE || layer == ATLAS || layer == CAVES;
 	// a pixel wider than a few tens of metres would only alias the hills and gullies into grain: the smooth ground is drawn (shaded like an
 	// illustration); closer in, the real ground
 	bool smooth_ground = step_lon * settings->get_radius() > SMOOTH_PIXEL;
@@ -479,6 +501,11 @@ void PlanetChart::chart(int64_t p_worker) {
 		mark = PlanetChartProfile::lap("land mask", mark);
 		if (layer == TERRAIN) {
 			bytes.append_array(crust->terrain_row(dirs, grounds, east_grounds, north_grounds, step_lon, calm));
+		} else if (layer == CAVES) {
+			PackedByteArray relief = crust->terrain_row(dirs, grounds, east_grounds, north_grounds, step_lon, calm);
+			caves_over(relief, dirs, grounds, !smooth_ground); // (far out a pixel is wider than a chamber, and the heights are not the real ground's)
+			bytes.append_array(relief);
+			mark = PlanetChartProfile::lap("caves", mark);
 		} else {
 			bytes.append_array(crust->data_row((int)layer, dirs, grounds, macros, east_grounds, north_grounds, step_lon, row_params(lat, row)));
 		}
@@ -507,6 +534,50 @@ void PlanetChart::chart(int64_t p_worker) {
 	}
 	if (last) {
 		tidy();
+	}
+}
+
+// The Caves layer's row: the relief dimmed to grey, and over it how hollow the rock under each pixel is, from the ground down to CAVE_DEPTH (the
+// voxel generator's own test, asked every CAVE_STEP m of the column). A tunnel that opens at the surface is marked as a way in.
+void PlanetChart::caves_over(PackedByteArray &p_row, const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds, bool p_draw) const {
+	uint8_t *out = p_row.ptrw();
+	const Vector3 *dirs = p_dirs.ptr();
+	const float *grounds = p_grounds.ptr();
+	double radius = noise_->get_settings()->get_radius();
+	int count = (int)std::min<int64_t>(p_dirs.size(), p_row.size() / 3);
+	int steps = (int)(CAVE_DEPTH / CAVE_STEP);
+	for (int x = 0; x < count; x++) {
+		double grey = (0.3 * out[x * 3] + 0.59 * out[x * 3 + 1] + 0.11 * out[x * 3 + 2]) / 255.0 * 0.45;
+		Color colour(grey, grey, grey * 1.1);
+		if (p_draw) {
+			Vector3 dir = dirs[x];
+			double top = radius + grounds[x];
+			int hollow = 0;
+			for (int step = 0; step < steps; step++) {
+				double depth = ((double)step + 0.5) * CAVE_STEP;
+				Vector3 p = dir * (top - depth);
+				bool open = false;
+				if (std::abs((double)cave_a->get_noise_3d(p.x, p.y, p.z)) < CAVE_WIDTH && std::abs((double)cave_b->get_noise_3d(p.x, p.y, p.z)) < CAVE_WIDTH) {
+					open = true; // (a tunnel: both noises near zero)
+				} else if (depth > CAVERN_ROOF) {
+					double shut = std::min((depth - CAVERN_ROOF) / 30.0, 1.0);
+					open = (double)cavern->get_noise_3d(p.x, p.y, p.z) - CAVERN_LEVEL - (1.0 - shut) * 2.0 > 0.0; // (a chamber)
+				}
+				hollow += open ? 1 : 0;
+			}
+			if (hollow > 0) {
+				double share = (double)hollow / (double)steps;
+				Color cave = ramp(CAVES, share / CAVE_FULL);
+				colour = colour.lerp(cave, (float)CLAMP(0.1 + share * 7.0, 0.0, 1.0)); // (one tunnel crossed is faint: nearly every column crosses one)
+			}
+			Vector3 mouth = dir * (top - 1.0);
+			if (std::abs((double)cave_a->get_noise_3d(mouth.x, mouth.y, mouth.z)) < CAVE_WIDTH && std::abs((double)cave_b->get_noise_3d(mouth.x, mouth.y, mouth.z)) < CAVE_WIDTH) {
+				colour = Color(0.2f, 1.0f, 0.9f); // a way in
+			}
+		}
+		out[x * 3] = (uint8_t)CLAMP(colour.r * 255.0f, 0.0f, 255.0f);
+		out[x * 3 + 1] = (uint8_t)CLAMP(colour.g * 255.0f, 0.0f, 255.0f);
+		out[x * 3 + 2] = (uint8_t)CLAMP(colour.b * 255.0f, 0.0f, 255.0f);
 	}
 }
 

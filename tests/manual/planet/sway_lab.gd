@@ -18,11 +18,11 @@ func _initialize() -> void:
 	var kind := args[1] if args.size() > 1 else "form:SHRUB"
 	_lift = args[2].to_float() if args.size() > 2 else 0.0
 	RenderingServer.global_shader_parameter_set(&"realism", 1.0)
-	FloraMeshes.detailed = true
+	FloraMeshes.set_detailed(true)
 	var archetype := kind.trim_prefix("arch:") if kind.begins_with("arch:") else ""
-	var form: int = PlantSpecies.Form.keys().find(kind.trim_prefix("form:"))
+	var form: int = PlantSpecies.form_names().find(kind.trim_prefix("form:"))
 	var chosen: PlantSpecies = null
-	for one in SpeciesRegistry.new(8, 36).species:
+	for one in SpeciesRegistry.create(8, 36).species:
 		if (archetype != "" and one.archetype == archetype) or (archetype == "" and one.form == form):
 			chosen = one
 			break

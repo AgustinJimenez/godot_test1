@@ -13,6 +13,7 @@ layout(push_constant, std430) uniform Params {
 	vec2 sun_px; // the sun in pixels
 	vec2 size; // the picture in pixels
 	vec4 tint; // rgb colour, a strength (0 when the sun is behind the camera or gone)
+	vec4 shafts; // x strength of the light shafts (0 off), y how much of the way to the sun is marched, zw unused
 } params;
 
 float disc(vec2 p, vec2 at, float radius, float soft) {
@@ -25,6 +26,38 @@ void main() {
 		return;
 	}
 	float height = params.size.y;
+	vec3 shaft_add = vec3(0.0);
+	if (params.shafts.x > 0.0) {
+		// Light shafts (screen space): march from the pixel toward the sun's place on the screen and add up the sky the way passes through
+		// (the sky has no depth); a tree, a hill or a building on the way blocks it. The air in front of the dark things then glows in
+		// rays that fan out from the sun. Jittered per pixel (interleaved gradient noise), the steps few: the jitter is the blur.
+		vec2 to_sun = params.sun_px - (vec2(pixel) + 0.5);
+		float reach = length(to_sun);
+		float near_sun = 1.0 / (1.0 + pow(reach / (0.45 * height), 2.0)); // the shafts fade away from the sun
+		if (reach > 2.0 && near_sun > 0.02) {
+			const int STEPS = 32;
+			float jitter = fract(52.9829189 * fract(dot(vec2(pixel), vec2(0.06711056, 0.00583715))));
+			vec2 step_px = to_sun * params.shafts.y / float(STEPS);
+			vec2 at = vec2(pixel) + 0.5 + step_px * jitter;
+			float sky = 0.0;
+			float weight = 1.0;
+			float total = 0.0;
+			for (int i = 0; i < STEPS; i++) {
+				if (at.x >= 0.0 && at.y >= 0.0 && at.x < params.size.x && at.y < params.size.y) {
+					sky += weight * (texture(depth_tex, at / params.size).x <= 0.00001 ? 1.0 : 0.0);
+				}
+				total += weight;
+				weight *= 0.97;
+				at += step_px;
+			}
+			float open = sky / total;
+			// open sky all the way would only wash the sky out: a sky pixel shows rays only where something blocks part of the way (the edges
+			// of the shafts); the air in front of a dark thing shows the light that reaches it
+			bool here_sky = texture(depth_tex, (vec2(pixel) + 0.5) / params.size).x <= 0.00001;
+			float amount = here_sky ? open * (1.0 - open) * 3.0 : open;
+			shaft_add = params.tint.rgb * params.tint.a * params.shafts.x * near_sun * amount;
+		}
+	}
 	vec2 here = (vec2(pixel) + 0.5 - 0.5 * params.size) / height; // the picture's height is 1
 	vec2 sun = (params.sun_px - 0.5 * params.size) / height;
 
@@ -38,6 +71,9 @@ void main() {
 	}
 	seen /= 9.0;
 	if (seen <= 0.0) {
+		if (shaft_add != vec3(0.0)) {
+			imageStore(color_image, pixel, imageLoad(color_image, pixel) + vec4(shaft_add, 0.0));
+		}
 		return;
 	}
 
@@ -51,6 +87,6 @@ void main() {
 	ghosts += 0.15 * disc(here, sun + axis * 1.45, 0.03, 0.02);
 	ghosts += 0.1 * disc(here, sun + axis * 1.9, 0.13, 0.08);
 	float edge = 1.0 - smoothstep(0.35, 0.95, length(sun) * 1.6); // flares fade as the sun leaves the picture
-	vec3 add = params.tint.rgb * params.tint.a * seen * (glow + ghosts * edge);
+	vec3 add = params.tint.rgb * params.tint.a * seen * (glow + ghosts * edge) + shaft_add;
 	imageStore(color_image, pixel, imageLoad(color_image, pixel) + vec4(add, 0.0));
 }

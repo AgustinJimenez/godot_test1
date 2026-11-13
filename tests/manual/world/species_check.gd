@@ -26,7 +26,7 @@ func _fail(message: String) -> void:
 
 
 func _make(seed_value: int, count := 36) -> SpeciesRegistry:
-	return SpeciesRegistry.new(seed_value, count)
+	return SpeciesRegistry.create(seed_value, count)
 
 
 ## 36 species, unique names, every form and every layer present, ids 1..N.
@@ -42,10 +42,10 @@ func _check_shape_of_the_list() -> void:
 				_fail("seed %d: duplicate name %s" % [seed_value, one.common_name])
 			names[one.common_name] = true
 			forms[one.form] = true
-		if forms.size() != PlantSpecies.Form.size():
+		if forms.size() != PlantSpecies.form_names().size():
 			_fail("seed %d: only %d of %d growth forms" % [
-					seed_value, forms.size(), PlantSpecies.Form.size()])
-		for layer: int in PlantSpecies.Layer.values():
+					seed_value, forms.size(), PlantSpecies.form_names().size()])
+		for layer: int in range(5):
 			if registry.in_layer(layer as PlantSpecies.Layer).is_empty():
 				_fail("seed %d: layer %d has no species" % [seed_value, layer])
 	for count in [12, 20, 36, 60]:
@@ -81,7 +81,7 @@ func _summary(registry: SpeciesRegistry) -> String:
 func _check_coverage() -> void:
 	for seed_value: int in SEEDS:
 		var registry := _make(seed_value)
-		for layer: int in [PlantSpecies.Layer.CANOPY, PlantSpecies.Layer.GRASS]:
+		for layer: int in [PlantSpecies.Layer.CANOPY, PlantSpecies.Layer.GRASSLAND]:
 			var covered := 0
 			var total := 0
 			for wet in [0.3, 0.45, 0.6, 0.75, 0.9]:

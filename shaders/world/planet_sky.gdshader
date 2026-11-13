@@ -21,6 +21,7 @@ uniform float star_k = 1.0; // 0 .. 1: how many stars are shown (cloud and glare
 #include "res://shaders/world/planet_cloud_march.gdshaderinc"
 uniform float cloud_on = 0.0; // 0 none .. 1 (the shell round the planet draws them from the layer upward)
 
+global uniform vec3 haze_eye; // the eye from the planet's centre (world axes, metres)
 uniform float multi_scatter = 0.0; // 0 off .. 1: the light that bounced more than once (an even, colourless fill of the sky; deep twilight is not black)
 const vec3 BETA_R = vec3(5.8e-6, 13.5e-6, 33.1e-6);
 const float BETA_M = 21e-6;
@@ -65,6 +66,8 @@ vec3 scatter(vec3 origin, vec3 dir, vec3 sun, float radius, float top) {
 			/ ((2.0 + g * g) * pow(1.0 + g * g - 2.0 * g * mu, 1.5));
 	vec3 sum_r = vec3(0.0);
 	vec3 sum_m = vec3(0.0);
+	vec3 ms_r = vec3(0.0);
+	vec3 ms_m = vec3(0.0);
 	float depth_r = 0.0;
 	float depth_m = 0.0;
 	for (int i = 0; i < STEPS; i++) {
@@ -102,9 +105,32 @@ vec3 scatter(vec3 origin, vec3 dir, vec3 sun, float radius, float top) {
 			sum_r += attenuation * hr;
 			sum_m += attenuation * hm;
 		}
+		// the light that bounced once more: the air all round is lit, not only the line to the star. Taken from the lit air
+		// overhead (three scale heights up, with its own sunlight) so twilight and the shadowed side are not black
+		vec3 up = normalize(p);
+		float up_h = 3.0 * SCALE_R * air_scale;
+		vec3 q = up * (length(p) + up_h);
+		float bq = dot(q, sun);
+		if (!(bq < 0.0 && dot(q, q) - bq * bq < radius * radius)) {
+			float q_far = max(far_hit(q, sun, top), 0.0);
+			float q_step = q_far / 4.0;
+			float q_r = 0.0;
+			float q_m = 0.0;
+			for (int j = 0; j < 4; j++) {
+				float hq = length(q + sun * (float(j) + 0.5) * q_step) - radius;
+				q_r += exp(-hq / (SCALE_R * air_scale)) * q_step;
+				q_m += exp(-hq / (SCALE_M * air_scale)) * q_step;
+			}
+			float up_r = SCALE_R * air_scale * exp(-h / (SCALE_R * air_scale)) * 0.95;
+			float up_m = SCALE_M * air_scale * exp(-h / (SCALE_M * air_scale)) * 0.95;
+			vec3 tau_ms = ((BETA_R + BETA_O) * (depth_r + up_r + q_r) + BETA_M * 1.1 * (depth_m + up_m + q_m)) / air_scale;
+			vec3 att_ms = exp(-tau_ms);
+			ms_r += att_ms * hr;
+			ms_m += att_ms * hm;
+		}
 	}
 	vec3 single_scatter = sum_r * BETA_R * phase_r + sum_m * BETA_M * phase_m;
-	vec3 bounced = (sum_r * BETA_R + sum_m * BETA_M) * (0.5 / (4.0 * PI)); // (the same energy sent every way, a share of it)
+	vec3 bounced = (ms_r * BETA_R + ms_m * BETA_M) * (1.0 / (4.0 * PI)); // (the same energy sent every way)
 	return (single_scatter + bounced * multi_scatter) / air_scale;
 }
 
@@ -120,7 +146,9 @@ float sky_noise(vec3 p) {
 
 void sky() {
 	vec3 dir = normalize(EYEDIR);
-	vec3 origin = POSITION - planet_centre;
+	// the eye from the planet's centre, from PlanetAtmosphere: on the engine built with double precision the sky's POSITION is not the world's (it is
+	// camera-relative, about zero), and the cloud layer then stood at one height over the eye however high it climbed
+	vec3 origin = haze_eye;
 	float radius = planet_radius;
 	float top = planet_radius + atmosphere_top;
 	vec3 sun = normalize(sun_toward);
@@ -146,7 +174,7 @@ void sky() {
 	// the clouds, in front of the sky and the sun and the stars
 	float behind_clouds = 1.0;
 	if (!AT_CUBEMAP_PASS && cloud_on > 0.01 && !behind_planet) {
-		vec4 cloud = cloud_march(origin, dir, sun, radius, 1.0e9);
+		vec4 cloud = cloud_march(origin, dir, sun, radius, 1.0e9, cloud_jitter(FRAGCOORD.xy));
 		col = mix(col, col * cloud.a + cloud.rgb, cloud_on);
 		behind_clouds = mix(1.0, cloud.a, cloud_on);
 	}
@@ -156,7 +184,7 @@ void sky() {
 	float dark = exp(-luma * 14.0) * star_k * behind_clouds;
 	if (!behind_planet && dark > 0.01) {
 		vec3 cell = floor(dir * 140.0);
-		float star = step(0.9985, hash3(cell)) * smoothstep(0.42, 0.05, length(fract(dir * 140.0) - 0.5));
+		float star = step(0.9955, hash3(cell)) * smoothstep(0.42, 0.05, length(fract(dir * 140.0) - 0.5));
 		float twinkle = 0.65 + 0.35 * sin(TIME * 2.5 + hash3(cell + 7.0) * 40.0);
 		// stars of different brightness and colour
 		float magnitude = hash3(cell + 3.0);

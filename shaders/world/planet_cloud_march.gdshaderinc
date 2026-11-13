@@ -5,6 +5,7 @@
 
 global uniform mat4 planet_from_world;
 uniform sampler2D cover_map : filter_linear, repeat_enable, hint_default_black;
+uniform sampler3D cloud_worley : filter_linear, repeat_enable, hint_default_black; // cellular noise, 5 cells across (PlanetAtmosphere.worley_texture)
 uniform float cloud_steps_max = 16.0; // the most samples a ray takes (the graphics setting)
 uniform float clouds_off = 0.0; // 1: the debug switch has the clouds hidden
 uniform float cloud_floor = 450.0; // m above the planet's radius where the layer begins
@@ -31,6 +32,10 @@ float value_noise(vec3 p) {
 			mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
 }
 
+float billow(float n) {
+	return 1.0 - abs(2.0 * n - 1.0);
+}
+
 // how much of a noise layer whose features are `wavelength` metres across a pixel `px` metres wide
 // can show: a layer finer than the pixels is only its average (it would be a speckle)
 float resolved(float wavelength, float px) {
@@ -50,9 +55,15 @@ float cloud_density(vec3 q, float h, float px) {
 	vec3 p = (q + cloud_drift) * 0.0022; // one unit is some 450 m
 	float shape = mix(0.5, value_noise(p * 0.1 + 11.0), resolved(4500.0, px)) * 0.2;
 	shape += mix(0.5, value_noise(p * 0.25 + 23.0), resolved(1800.0, px)) * 0.15;
+	// the smaller billows are "billowy" noise (1 - |2n - 1|, folded so each cell is a rounded bump with a crease between): cauliflower tops
+	// instead of the soft smears plain value noise gives (UE5 clouds use Worley noise for the same reason)
 	shape += mix(0.5, value_noise(p), resolved(450.0, px)) * 0.4;
-	shape += mix(0.5, value_noise(p * 2.1 + 7.0), resolved(214.0, px)) * 0.15;
-	shape += mix(0.5, value_noise(p * 4.3 + 3.0), resolved(105.0, px)) * 0.1;
+	// the small billows are cellular: round bumps (1 - distance to the nearest cell centre), the shape of cumulus tops. The picture is 5 cells wide
+	// and the terms are centred on the noise's mean so the cover does not change.
+	float cells_a = 0.5 + 0.9 * ((1.0 - texture(cloud_worley, p * 2.1 * 0.2).r) - 0.45);
+	float cells_b = 0.5 + 0.9 * ((1.0 - texture(cloud_worley, p * 4.3 * 0.2 + 0.37).r) - 0.45);
+	shape += mix(0.5, cells_a, resolved(214.0, px)) * 0.15;
+	shape += mix(0.5, cells_b, resolved(105.0, px)) * 0.1;
 	float profile = smoothstep(0.0, 0.1, h) * (1.0 - smoothstep(0.55, 1.0, h));
 	float body = shape - (1.0 - cover) * 0.75 - 0.12;
 	float ragged = resolved(50.0, px);
@@ -86,7 +97,13 @@ vec3 cloud_sky_light(float height) {
 // the clouds seen along `dir` from `origin`: rgb is the light they send (faded into the haze with
 // distance), a how much of what is behind them still shows. `t_limit` is how far the way is free
 // (the ground of the scene, for the shell).
-vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
+// Interleaved gradient noise (Jimenez 2014): a per-pixel offset whose error is spread evenly over neighbouring pixels, which reads as far less
+// grain than a white hash does (the same trick as UE5's blue-noise jitter in VolumetricCloud.usf, line 804, without a texture).
+float cloud_jitter(vec2 pixel) {
+	return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+}
+
+vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit, float jitter) {
 	vec4 none = vec4(0.0, 0.0, 0.0, 1.0);
 	if (clouds_off > 0.5) {
 		return none;
@@ -106,14 +123,21 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 	float t_out1 = -b + sqrt(disc1);
 	float t0 = 0.0;
 	float t1 = t_out1;
+	float t2 = 0.0; // a second stretch, when the way dips below the layer's floor and comes up in it again (see below)
+	float len_b = 0.0;
 	if (rc > r1) { // above the layer: it begins where the ray comes in
 		t0 = -b - sqrt(disc1);
 		if (disc0 > 0.0 && -b - sqrt(disc0) > t0) {
-			t1 = -b - sqrt(disc0); // looking down: the way ends at the layer's floor
+			t1 = -b - sqrt(disc0); // looking down: the way ends at the layer's floor...
+			t2 = -b + sqrt(disc0); // ...and goes on in the layer where it comes up out of it again, far off (a ray that only grazes the
+			len_b = max(t_out1 - t2, 0.0); // floor has two stretches in the layer; with one the clouds were half as thick on the near side of the
+			// tangent: an arc across the horizon)
 		}
 	} else if (rc >= r0) { // in the layer
 		if (disc0 > 0.0 && -b - sqrt(disc0) > 0.0) {
 			t1 = -b - sqrt(disc0);
+			t2 = -b + sqrt(disc0); // (looking a little down, the way dips under the floor and comes up in the layer again far off: those clouds are
+			len_b = max(t_out1 - t2, 0.0); // what fills the sky down to the horizon; without them a band of clear sky showed under the clouds)
 		}
 	} else { // under the layer: it begins where the ray reaches its floor
 		t0 = -b + sqrt(max(disc0, 0.0));
@@ -123,10 +147,18 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 	if (disc_ground > 0.0 && -b - sqrt(disc_ground) > 0.0) {
 		t1 = min(t1, -b - sqrt(disc_ground));
 	}
+	if (disc_ground > 0.0 && -b - sqrt(disc_ground) > 0.0) {
+		len_b = 0.0; // (the planet is in the way of the far stretch)
+	}
 	t1 = min(min(t1, t_limit), t0 + 12000.0);
+	if (t_limit <= t2) {
+		len_b = 0.0;
+	}
+	len_b = clamp(min(len_b, t_limit - t2), 0.0, max(12000.0 - (t1 - t0), 0.0));
 	if (t0 > 40000.0 + horizon || t1 <= t0 || t_out1 < 0.0) {
 		return none;
 	}
+	float len_a = t1 - t0;
 	mat3 rot = mat3(planet_from_world);
 	// clear sky along the whole stretch: nothing to march through
 	float seen_cover = 0.0;
@@ -138,42 +170,71 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 	if (max(seen_cover, cloud_least) < 0.04) {
 		return none;
 	}
-	const int STEPS = 16;
-	int steps = int(clamp((t1 - t0) / 70.0, 4.0, min(float(STEPS), cloud_steps_max))); // short ways need fewer
-	float step_len = (t1 - t0) / float(steps);
+	const int STEPS = 128; // (far clouds with 16 steps of 750 m showed the jitter as a dotted grain)
+	int steps = int(clamp((len_a + len_b) / 70.0, 4.0, min(float(STEPS), cloud_steps_max * 8.0))); // short ways need fewer
+	float step_len = (len_a + len_b) / float(steps);
 	const float PIXEL = 0.0011; // the width of a pixel at a metre's distance (60 degrees, 1080 lines)
-	float sigma = 0.022 * (1.0 + cloud_dark * 0.8);
+	float sigma = 0.05 * (1.0 + cloud_dark * 0.8); // (0.022 made the clouds so thin that no light model could shade them)
 	float light_step = cloud_depth * 0.25;
 	float mu = dot(dir, sun);
 	float phase = mix(henyey_greenstein(mu, 0.55), henyey_greenstein(mu, -0.25), 0.4) * 0.5;
-	float jitter = hash3(dir * 3331.0);
 	vec3 col = vec3(0.0);
 	float seen = 1.0;
+	float near_seen = 1.0; // how much of the background shows through the first 1500 m of the way
+	bool near_set = false;
+	// (godot-simple-sky's longer steps through empty space were tried: the steps then no longer line up with the jitter and the clouds showed
+	// streaks, so every step is the same length)
+	float total = len_a + len_b;
+	float way = jitter * step_len; // (along the first stretch, then the second)
 	for (int i = 0; i < STEPS; i++) {
-		if (i >= steps) {
+		if (way >= total) {
 			break;
 		}
-		float t = t0 + (float(i) + jitter) * step_len;
+		float dstep = step_len;
+		float t = way < len_a ? t0 + way : t2 + (way - len_a);
+		way += dstep;
+		if (!near_set && t > 1500.0) {
+			near_set = true;
+			near_seen = seen;
+		}
 		vec3 p = origin + dir * t;
 		float h = (length(p) - r0) / cloud_depth;
 		if (h < 0.0 || h > 1.0) {
 			continue;
 		}
-		// the far end of the way thins out (a hard end to the march would show as an edge)
-		float density = cloud_density(rot * p, h, t * PIXEL) * (1.0 - smoothstep(5000.0 + horizon, 11000.0 + horizon, t));
+		// (detail finer than the step is faded out as it is finer than a pixel: sampled coarsely it only aliases into grain or bands)
+			// the far end of the way thins out (a hard end to the march would show as an edge)
+		float density = cloud_density(rot * p, h, max(t * PIXEL, step_len * 0.08)) * (1.0 - smoothstep(5000.0 + horizon, 11000.0 + horizon, t));
 		if (density < 0.004) {
 			continue;
 		}
+		// the light's way through the cloud: four samples that grow in length (the near ones matter most, the far ones catch the rest of the
+		// body), as UE5's volume shadow march does (x squared spacing, VolumetricCloud.usf line 1064 on)
 		float depth_to_sun = 0.0;
-		for (int j = 0; j < 2; j++) {
-			vec3 pl = p + sun * (float(j) + 0.5) * light_step;
-			depth_to_sun += cloud_density(rot * pl, (length(pl) - r0) / cloud_depth, max(t * PIXEL, 20.0)) * light_step;
+		float along = 0.0;
+		for (int j = 0; j < 4; j++) {
+			float len = light_step * (0.5 + 0.5 * float(j));
+			vec3 pl = p + sun * (along + len * 0.5);
+			depth_to_sun += cloud_density(rot * pl, (length(pl) - r0) / cloud_depth, max(t * PIXEL, 20.0)) * len;
+			along += len;
 		}
-		float direct = mix(exp(-depth_to_sun * sigma), exp(-depth_to_sun * sigma * 0.25), 0.35);
+		// multiple scattering as octaves (Wrenninge 2015, UE5 `SetupParticipatingMediaPhaseContext`): each octave scatters half as much, is
+		// attenuated half as fast and has its phase pulled toward isotropic: bright cores, a soft base, the silver lining only at thin edges
+		float o0 = exp(-depth_to_sun * sigma);
+		float o1 = exp(-depth_to_sun * sigma * 0.5);
+		float o2 = exp(-depth_to_sun * sigma * 0.25);
+		// the powder term (Horizon Zero Dawn's, and godot-simple-sky's): thin cloud where the light came through little cloud is darker at its edges
+		// than Beer's law alone says, as the light scattered into it from the sides is not there; it only touches the direct term
+		float powder = 1.0 - exp(-depth_to_sun * sigma * 2.0);
+		float direct = o0 * mix(1.0, powder, 0.5) * (0.45 + phase) + (o1 * 0.5 + o2 * 0.25) * 0.55;
+		// the silver lining: a narrow bright rim toward the star, where the light passed through thin cloud
+		direct += pow(max(mu, 0.0), 24.0) * 0.35 * o1;
 		float height = dot(normalize(p), sun);
-		vec3 lit = cloud_sun_light(height) * direct * (0.45 + phase) * (1.0 - cloud_dark * 0.55);
+		vec3 lit = cloud_sun_light(height) * direct * (1.0 - cloud_dark * 0.55);
 		vec3 shade = cloud_sky_light(height) * mix(0.55, 1.0, h);
-		float opacity = 1.0 - exp(-density * sigma * step_len);
+		// the ground's light thrown back up on the underside of the layer (green-grey, by the star's light on the ground)
+		shade += cloud_sun_light(height) * vec3(0.10, 0.11, 0.09) * (1.0 - h) * (1.0 - h) * smoothstep(-0.05, 0.3, height) * (1.0 - cloud_dark * 0.4);
+		float opacity = 1.0 - exp(-density * sigma * dstep);
 		col += seen * opacity * (lit + shade);
 		seen *= 1.0 - opacity;
 		if (seen < 0.02) {
@@ -181,12 +242,20 @@ vec4 cloud_march(vec3 origin, vec3 dir, vec3 sun, float radius, float t_limit) {
 		}
 	}
 	// far clouds melt into the air: along the way there is little of it high up
-	float mid = t0 + (t1 - t0) * 0.5;
+	// (the middle of what was marched, both stretches: the middle of the first one alone jumped where the way begins to dip under the floor, an arc)
+	float way_mid = (len_a + len_b) * 0.5;
+	float mid = way_mid < len_a ? t0 + way_mid : t2 + (way_mid - len_a);
 	float air_there = exp(-max(length(origin + dir * mid) - radius, 0.0) / 2500.0);
 	float air_path = mid;
 	if (rc > r1) {
 		air_path = min(mid, 9000.0); // above the layer, only the lower air is between
 	}
 	float haze = exp(-air_path / 9000.0 * air_there);
-	return vec4(col * haze, seen + (1.0 - haze) * (1.0 - seen));
+	// A cloud that fills the view is not see-through at a distance: the melting into the air only applies to clouds far off, with clear air
+	// between (else the horizon showed through a cloud all round the eye: the ground and the sky behind it are not the same colour).
+	if (!near_set) {
+		near_seen = seen;
+	}
+	float haze_used = mix(1.0, haze, near_seen);
+	return vec4(col * haze_used, seen + (1.0 - haze_used) * (1.0 - seen));
 }

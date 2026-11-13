@@ -182,6 +182,9 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	Tile t;
 	t.self = this;
 	int key = p_tile.get("key", 0);
+	const int64_t key64 = p_tile.get("key", 0); // (face, level, x, y: see PlanetTile.key_of)
+	const int max_level = p_tile.get("max_level", -1);
+	const double ref_size = p_tile.get("ref_size", 0.0); // a tile of the finest level, in metres, as the planet is divided (not as this one measures)
 	PackedVector3Array positions = p_tile.get("positions", PackedVector3Array());
 	PackedVector3Array dirs = p_tile.get("dirs", PackedVector3Array());
 	PackedFloat32Array heights = p_tile.get("heights", PackedFloat32Array());
@@ -524,8 +527,45 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		}
 	};
 
-	// one grid of candidate spots: the caller gets each spot's fractional grid position
-	auto for_grid = [&](double spacing, auto &&body) {
+	// one grid of candidate spots: the caller gets each spot's fractional grid position.
+	// `salt` >= 0: the spots are those of a lattice laid over the whole face of the planet (the same for a tile of any level or detail), each with its
+	// own random numbers made from where it is; so a tile that replaces another, or grows more, keeps the trees that were there (only `stride`, the
+	// lattice cells skipped, differs: a coarser tile plants a subset). Without: the tile's own grid and stream of numbers.
+	auto for_grid = [&](double spacing, auto &&body, int salt = -1, int stride = 1) {
+		const int level = (int)((key64 >> 40) & 31);
+		if (salt >= 0 && max_level >= level && ref_size > 0.0) {
+			const int face = (int)((key64 >> 40) / 32);
+			const int64_t tile_x = (key64 >> 20) & 0xFFFFF, tile_y = key64 & 0xFFFFF;
+			const int64_t across = (int64_t)std::max(1, (int)(ref_size / spacing)) << (max_level - level);
+			const double local_step = t.size / (double)across;
+			for (int64_t row = 0; row < across; row++) {
+				const int64_t global_row = tile_y * across + row;
+				if (global_row % stride != 0) {
+					continue;
+				}
+				for (int64_t column = 0; column < across; column++) {
+					const int64_t global_column = tile_x * across + column;
+					if (global_column % stride != 0) {
+						continue;
+					}
+					uint64_t h = (uint64_t)world_seed * 0x9E3779B97F4A7C15ULL + (uint64_t)face * 0xBF58476D1CE4E5B9ULL + (uint64_t)salt * 0x94D049BB133111EBULL;
+					h ^= (uint64_t)global_column * 73856093ULL + (uint64_t)global_row * 19349663ULL * 0x100000001B3ULL;
+					h ^= h >> 29;
+					h *= 0xBF58476D1CE4E5B9ULL;
+					h ^= h >> 32;
+					t.rng.seed(h);
+					const double jitter_x = t.rng.randf(), jitter_z = t.rng.randf();
+					const double x = ((double)column + jitter_x) * local_step;
+					const double z = ((double)row + jitter_z) * local_step;
+					const double fx = clampd(x / t.size * t.cells, 0.0, t.cells - 0.001);
+					const double fz = clampd(z / t.size * t.cells, 0.0, t.cells - 0.001);
+					look_at_ground(fx, fz);
+					// (the patches of a species follow where the spot is on the face, not where it is in the tile)
+					body(((double)global_column + jitter_x) * spacing + (double)face * 60000.0, ((double)global_row + jitter_z) * spacing, fx, fz);
+				}
+			}
+			return;
+		}
 		int count = (int)(t.size / spacing);
 		for (int row = 0; row < count; row++) {
 			for (int column = 0; column < count; column++) {
@@ -539,11 +579,13 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 		}
 	};
 
-	auto scatter_layer = [&](int layer, double stretch) {
+	auto scatter_layer = [&](int layer, double stretch, bool lattice) {
 		double spacing = SPACING[layer] * stretch;
 		if (layer == GRASS && grass_fine) {
 			spacing *= GRASS_FINE;
 		}
+		const int level_here = (int)((key64 >> 40) & 31);
+		const int stride = max_level >= 0 && level_here < max_level - 1 ? 2 : 1; // (a big tile far off: every other spot of the lattice)
 		for_grid(spacing, [&](double x, double z, double fx, double fz) {
 			Vector3 at = ground_at(fx, fz);
 			double ground = height_at(fx, fz);
@@ -575,7 +617,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			if (t.rng.randf() <= chance) {
 				place(species[chosen], at);
 			}
-		});
+		}, lattice ? layer + 1 : -1, stride);
 	};
 
 	auto scatter_far = [&]() {
@@ -738,10 +780,9 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			scatter_far();
 		}
 	} else {
-		double stretch = detail == ALL ? 1.0 : 2.0;
-		if (trees) {
-			scatter_layer(CANOPY, stretch);
-			scatter_layer(UNDERSTORY, stretch);
+		if (trees) { // (the same spots at every detail: the trees do not change when the undergrowth comes)
+			scatter_layer(CANOPY, 1.0, true);
+			scatter_layer(UNDERSTORY, 1.0, true);
 		}
 		if (detail != NONE) {
 			scatter_rocks(detail == ALL);
@@ -751,9 +792,9 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 			scatter_debris();
 		}
 		if (detail == ALL) {
-			scatter_layer(GRASS, 1.0);
-			scatter_layer(MEADOW, 1.0);
-			scatter_layer(COVER, 1.0);
+			scatter_layer(GRASS, 1.0, false);
+			scatter_layer(MEADOW, 1.0, false);
+			scatter_layer(COVER, 1.0, false);
 		}
 	}
 
@@ -811,6 +852,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	}
 	Dictionary result;
 	result["keys"] = keys;
+	result["crowns"] = (int64_t)crowns.size();
 	result["buffers"] = buffers;
 	result["cylinders"] = cylinders;
 	result["boxes"] = boxes;

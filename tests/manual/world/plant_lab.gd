@@ -73,9 +73,9 @@ func _ready() -> void:
 		if arg.begins_with("--seed="):
 			world_seed = int(arg.get_slice("=", 1))
 		elif arg.begins_with("--form="):
-			var index := PlantSpecies.Form.keys().find(arg.get_slice("=", 1).to_upper())
+			var index := PlantSpecies.form_names().find(arg.get_slice("=", 1).to_upper())
 			if index >= 0:
-				form = PlantSpecies.Form.values()[index]
+				form = index
 		elif arg == "--detailed":
 			detailed = true
 		elif arg == "--view=overview":
@@ -123,7 +123,7 @@ func _generate_species() -> void:
 	_species.clear()
 	var seed_try := world_seed
 	for attempt in 40:
-		var registry := SpeciesRegistry.new(seed_try, 36)
+		var registry := SpeciesRegistry.create(seed_try, 36)
 		for one in registry.species:
 			if one.form == form and _species.size() < MAX_ROWS:
 				_species.append(one)
@@ -379,7 +379,7 @@ func _update_label() -> void:
 			+ "  [T] wind  [H] leaves  [R] reset camera\n"
 			+ "[X] free camera: W A S D fly, Q down, E up, Shift fast, wheel speed, "
 			+ "hold right mouse to look") % [
-			PlantSpecies.Form.keys()[form], world_seed, "realistic" if detailed else "low-poly",
+			PlantSpecies.form_names()[form], world_seed, "realistic" if detailed else "low-poly",
 			"  autumn" if autumn else "", _species.size(), ["calm", "breeze", "gale"][wind],
 			"  FREE CAMERA" if free_camera else "", where]
 

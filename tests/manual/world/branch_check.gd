@@ -7,7 +7,7 @@ func _ready() -> void:
 	var ok := true
 	var trees := 0
 	var seen := {}
-	for one in SpeciesRegistry.new(8, 36).species:
+	for one in SpeciesRegistry.create(8, 36).species:
 		if one.is_tree():
 			if trees >= 6:
 				continue

@@ -9,6 +9,7 @@
 #include "planet_clock_native.h"
 #include "planet_noise_native.h"
 
+#include <godot_cpp/classes/fast_noise_lite.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/thread.hpp>
 #include <godot_cpp/variant/color.hpp>
@@ -40,6 +41,8 @@ class PlanetChart : public RefCounted {
 	int finishing = 0; // workers that have finished their rows (the last one tidies the picture)
 	bool tidied = false; // the picture is finished: smoothed, the coasts drawn
 	PackedByteArray picture;
+	Ref<FastNoiseLite> cave_a, cave_b, cavern; // the voxel ground's tunnels and chambers (the Caves layer)
+	void caves_over(PackedByteArray &p_row, const PackedVector3Array &p_dirs, const PackedFloat32Array &p_grounds, bool p_draw) const;
 	std::atomic<bool> cancelled{ false }; // a chart nobody wants any more: its workers skip the pixels
 
 	void cloud_cover_on_the_gpu(const Ref<PlanetNoise> &p_noise);
@@ -57,9 +60,18 @@ protected:
 	static void _bind_methods();
 
 public:
-	enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_TEMPERATURE, CLOUDS, SATELLITE, ATLAS, CLOUD_MASK }; // CLOUD_MASK is the cloud cover alone
+	enum Layer { TERRAIN, ELEVATION, TEMPERATURE, RAIN, BIOME, PLATES, SLOPE, MEAN_TEMPERATURE, CLOUDS, SATELLITE, ATLAS, CLOUD_MASK, CAVES }; // CLOUD_MASK is the cloud cover alone; CAVES is how hollow the rock under the ground is (the voxel ground's caves)
 	static constexpr double CALM_PIXEL = 2000.0; // metres a pixel spans above which the Terrain relief is shaded gently
 	static constexpr double COARSE_PIXEL = 20.0; // metres a pixel spans above which the map has no fine grain or beds
+	// The caves of the voxel ground: THE SAME NUMBERS as native/voxel_planet_module/voxel_generator_planet.h (and its set_cave_seed), which carves them.
+	static constexpr double CAVE_DEPTH = 200.0;
+	static constexpr double CAVE_FREQUENCY = 1.0 / 110.0;
+	static constexpr double CAVE_WIDTH = 0.06;
+	static constexpr double CAVERN_FREQUENCY = 1.0 / 260.0;
+	static constexpr double CAVERN_LEVEL = 0.52;
+	static constexpr double CAVERN_ROOF = 25.0;
+	static constexpr double CAVE_STEP = 4.0; // m between the points of a column the map asks
+	static constexpr double CAVE_FULL = 0.6; // the share of a column that is hollow at the bright end of the scale
 	static constexpr double SMOOTH_PIXEL = 30.0; // metres a pixel spans above which the map draws the smooth ground
 
 	NP_FIELD(int64_t, workers, 2) // threads a chart is drawn on: every core but one (the main thread), at most 8

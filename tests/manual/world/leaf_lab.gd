@@ -108,7 +108,7 @@ func _build_stage() -> void:
 
 
 func _load_species() -> void:
-	_registry = SpeciesRegistry.new(seed_value, 60)
+	_registry = SpeciesRegistry.create(seed_value, 60)
 	_species.clear()
 	for one in _registry.species:
 		if one.form == PlantSpecies.Form.BROADLEAF or one.form == PlantSpecies.Form.SHRUB:

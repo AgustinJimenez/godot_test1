@@ -498,7 +498,7 @@ func _update_objects() -> void:
 
 
 func _show_rock(slot: int) -> void:
-	FloraMeshes.detailed = true
+	FloraMeshes.set_detailed(true)
 	WorldWind.set_realism(1.0)
 	if _atlas == null:
 		_atlas = Image.load_from_file("res://assets/textures/rock/rock_atlas.png")
@@ -531,7 +531,7 @@ func _rock_array(image: Image) -> Texture2DArray:
 
 
 func _show_tree(kind: int) -> void:
-	FloraMeshes.detailed = true
+	FloraMeshes.set_detailed(true)
 	WorldWind.set_realism(1.0)
 	var grooves := OS.has_environment("PLANET_BARK_GROOVES")
 	if _bark_array == null or grooves != _bark_grooves:
@@ -544,7 +544,7 @@ func _show_tree(kind: int) -> void:
 		_title.text = "%s  [%d/%d]   left: photograph   right: procedural" % [
 				SURFACES[_index][0], _index + 1, SURFACES.size()]
 	if _registry == null:
-		_registry = SpeciesRegistry.new(1337, 60)
+		_registry = SpeciesRegistry.create(1337, 60)
 		for one in _registry.species:
 			if one.is_tree():
 				_trees.append(one)

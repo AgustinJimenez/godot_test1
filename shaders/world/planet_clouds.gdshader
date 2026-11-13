@@ -14,6 +14,8 @@ uniform float planet_radius = 20000.0;
 uniform vec3 sun_toward = vec3(0.0, 1.0, 0.0); // unit vector from the planet to the star
 uniform float fade = 1.0; // 0 under the layer .. 1 in and above it
 
+global uniform vec3 haze_eye; // the eye from the planet's centre (see planet_sky.gdshader: the camera-relative double engine)
+
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0); // the whole screen, whatever the camera's far plane
 }
@@ -29,7 +31,7 @@ void fragment() {
 		vec4 view = INV_PROJECTION_MATRIX * vec4(vec3(SCREEN_UV * 2.0 - 1.0, depth), 1.0);
 		limit = length(view.xyz / view.w);
 	}
-	vec4 cloud = cloud_march(eye - planet_centre, dir, normalize(sun_toward), planet_radius, limit);
+	vec4 cloud = cloud_march(haze_eye, dir, normalize(sun_toward), planet_radius, limit, cloud_jitter(FRAGCOORD.xy));
 	ALBEDO = cloud.rgb * fade;
 	ALPHA = (1.0 - cloud.a) * fade;
 }

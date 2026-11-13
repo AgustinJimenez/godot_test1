@@ -29,6 +29,9 @@ float value_noise(vec2 p) {
 			mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 
+global uniform vec3 cloud_sun_world; // toward the star
+#include "res://shaders/world/planet_haze.gdshaderinc" // the haze by height (FOG)
+
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
@@ -40,6 +43,7 @@ float scene_z(vec2 uv, mat4 inv_projection) {
 }
 
 void fragment() {
+	FOG = planet_haze(mat3(INV_VIEW_MATRIX) * VERTEX, cloud_sun_world);
 	// where the ground under the ribbon is below the sea, the sea is there: draw nothing
 	float ground_depth = texture(depth_texture, SCREEN_UV).r;
 	if (ground_depth > 0.0) {

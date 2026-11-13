@@ -1,3 +1,9 @@
+#include "flora_meshes_native.h"
+#include "species_generator_native.h"
+#include "species_registry_native.h"
+#include "tree_archetypes_native.h"
+#include "tree_genome_native.h"
+#include "plant_species_native.h"
 #include "register_types.h"
 
 #include "planet_crust_native.h"
@@ -19,6 +25,8 @@
 #include "planet_prints_native.h"
 #include "planet_recorder_native.h"
 #include "planet_recorder_native.h"
+#include "planet_atmosphere_native.h"
+#include "planet_fauna_native.h"
 #include "planet_world_native.h"
 #include "planet_chart_native.h"
 #include "planet_surface_script_native.h"
@@ -79,6 +87,13 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
+	GDREGISTER_CLASS(PlantSpecies);
+	GDREGISTER_CLASS(TreeGenome);
+	GDREGISTER_CLASS(TreeArchetypes);
+	GDREGISTER_CLASS(SpeciesGenerator);
+	GDREGISTER_CLASS(PlantMeshes);
+	GDREGISTER_CLASS(FloraMeshes);
+	GDREGISTER_CLASS(SpeciesRegistry);
 	GDREGISTER_CLASS(PlanetCrustNative);
 	GDREGISTER_CLASS(PlanetMap);
 	GDREGISTER_CLASS(UniverseStartMenu);
@@ -92,6 +107,8 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(UniverseSettings);
 	GDREGISTER_CLASS(UniverseSave);
 	GDREGISTER_CLASS(PlanetCloudShell);
+	GDREGISTER_CLASS(PlanetAtmosphere);
+	GDREGISTER_CLASS(PlanetFauna);
 	GDREGISTER_CLASS(PlanetImpostors);
 	GDREGISTER_CLASS(PlanetFootprints);
 	GDREGISTER_CLASS(PlanetImprinter);

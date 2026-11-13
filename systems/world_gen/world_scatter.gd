@@ -12,12 +12,12 @@ const GRASS_VISIBLE := 110.0 ## m the small plants stay drawn
 const ROCK_SPACING := 10.0
 const SPACING := {
 	PlantSpecies.Layer.CANOPY: 6.5, PlantSpecies.Layer.UNDERSTORY: 5.0,
-	PlantSpecies.Layer.GRASS: 1.7, PlantSpecies.Layer.MEADOW: 3.2, PlantSpecies.Layer.COVER: 2.6,
+	PlantSpecies.Layer.GRASSLAND: 1.7, PlantSpecies.Layer.MEADOW: 3.2, PlantSpecies.Layer.COVER: 2.6,
 }
 ## The most crowded a layer gets (the old per-biome maximums): species that fit add up to this.
 const MAX_CHANCE := {
 	PlantSpecies.Layer.CANOPY: 0.85, PlantSpecies.Layer.UNDERSTORY: 0.4,
-	PlantSpecies.Layer.GRASS: 0.95, PlantSpecies.Layer.MEADOW: 0.7, PlantSpecies.Layer.COVER: 0.5,
+	PlantSpecies.Layer.GRASSLAND: 0.95, PlantSpecies.Layer.MEADOW: 0.7, PlantSpecies.Layer.COVER: 0.5,
 }
 ## Batch keys: a rock or log is kind * 100 + variant; a species' mesh is PLANT_KEY + id * 100 +
 ## variant; its horizon version FAR_KEY + id * 100 + variant.
@@ -84,7 +84,7 @@ func populate(chunk: Node3D, noise: TerrainNoise, near: bool, heights: PackedFlo
 	_rocks()
 	_scatter(PlantSpecies.Layer.UNDERSTORY)
 	if near:
-		_scatter(PlantSpecies.Layer.GRASS)
+		_scatter(PlantSpecies.Layer.GRASSLAND)
 		_scatter(PlantSpecies.Layer.MEADOW)
 		_scatter(PlantSpecies.Layer.COVER)
 	_features()
@@ -137,7 +137,7 @@ func _pick(layer: PlantSpecies.Layer, x: float, z: float, ground: float,
 	_weights.resize(candidates.size())
 	var total := 0.0
 	for index in candidates.size():
-		var one := candidates[index]
+		var one: PlantSpecies = candidates[index]
 		var weight := one.fitness(_wet_here, warm, above, steep) * one.density
 		if weight > 0.003 and one.patch_strength > 0.0: # some plants only grow in clumps
 			var patch := _noise.detail(x * one.patch_freq + one.patch_offset.x,
@@ -162,7 +162,7 @@ func _place(plant: PlantSpecies, x: float, z: float, ground: float) -> void:
 	var yaw := _rng.randf_range(0.0, TAU)
 	var variant := _rng.randi() % plant.variants
 	var tint := Color.WHITE
-	if plant.layer() == PlantSpecies.Layer.GRASS: # dry ground browns the grass
+	if plant.layer() == PlantSpecies.Layer.GRASSLAND: # dry ground browns the grass
 		tint = Color(1.0, 1.0, 1.0).lerp(Color(1.25, 1.05, 0.7), (1.0 - _wet_here) * 0.7)
 		tint = tint.darkened(_rng.randf_range(0.0, 0.2))
 	else:
@@ -302,16 +302,16 @@ func _flush(near: bool) -> void:
 			var variant := key % 100
 			var layer := _species.by_id(id).layer()
 			var lod := _tree_lod() if layer == PlantSpecies.Layer.CANOPY else 0
-			multi.mesh = _species.mesh(id, variant, FloraMeshes.detailed, lod)
+			multi.mesh = _species.mesh(id, variant, FloraMeshes.get_detailed(), lod)
 			instance.set_meta(&"species", id)
 			instance.set_meta(&"variant", variant)
 			instance.set_meta(&"lod", lod)
 			instance.set_meta(&"tree", layer == PlantSpecies.Layer.CANOPY)
 			instance.add_to_group(&"world_flora")
-			short_range = layer == PlantSpecies.Layer.GRASS or layer == PlantSpecies.Layer.MEADOW
+			short_range = layer == PlantSpecies.Layer.GRASSLAND or layer == PlantSpecies.Layer.MEADOW
 		else:
 			var kind := key / 100 as FloraMeshes.Kind
-			multi.mesh = FloraMeshes.mesh(kind, key % 100, FloraMeshes.detailed)
+			multi.mesh = FloraMeshes.mesh(kind, key % 100, FloraMeshes.get_detailed())
 			instance.set_meta(&"kind", kind)
 			instance.set_meta(&"variant", key % 100)
 			instance.add_to_group(&"world_flora")

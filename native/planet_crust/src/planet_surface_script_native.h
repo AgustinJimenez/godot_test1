@@ -58,6 +58,7 @@ class PlanetSurface : public Node3D {
 	Ref<Semaphore> semaphore, plant_semaphore;
 	std::atomic<bool> stop{ false };
 	Vector3 near_; // the point the tiles are chosen for (planet space)
+	Vector3 view_; // unit direction the camera looks along (planet space); zero until the world says
 	double height_ = 0.0; // m the player is over the ground there
 	int tiles_per_frame = 2;
 	std::vector<Entry> inline_jobs; // without a worker thread (headless): tiles built here, a few a frame
@@ -70,7 +71,9 @@ class PlanetSurface : public Node3D {
 	void select_native(const Vector3 &p_at);
 	void queue_plants();
 	void adopt_plants();
+	void inherit_plants(PlanetTile *p_from, PlanetTile *p_to);
 	void retire(PlanetTile *p_tile);
+	int lost_near = 0; // tiles with plants retired within 500 m since the last flora_report (debugging the trees that blink)
 	void free_retired();
 	void add(PlanetTile *p_tile);
 	PlanetTile *make(const Entry &p_entry);
@@ -98,7 +101,10 @@ public:
 	void setup(const Ref<PlanetNoise> &p_noise, const Ref<PlanetFrame> &p_frame);
 	void _exit_tree() override;
 	void _process(double p_delta) override;
-	void update(const Vector3 &p_at);
+	void update(const Vector3 &p_at, const Vector3 &p_lead = Vector3());
+	Dictionary flora_report(); // how the plants are keeping up: tiles near the player still waiting for theirs, the queue, the near losses (then reset)
+	// Where the camera looks (planet space): plants are made first for the tiles in view, not just the nearest ones.
+	void set_view(const Vector3 &p_direction) { view_ = p_direction; }
 	int64_t coarse_level() const;
 	void build_all(const Vector3 &p_at, bool p_near_only = false);
 	double progress(double p_ground_metres, double p_plant_metres) const;

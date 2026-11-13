@@ -4,7 +4,7 @@ extends Node3D
 ## camera is (12), `--procedural` leaves the photographed rock out (to compare).
 
 func _ready() -> void:
-	FloraMeshes.detailed = true
+	FloraMeshes.set_detailed(true)
 	WorldWind.set_realism(1.0)
 	var dist := 12.0
 	var shot := ""

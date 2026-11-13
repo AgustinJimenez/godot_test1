@@ -222,6 +222,22 @@ cloud_sun_world={
 "type": "vec3",
 "value": Vector3(0, 1, 0)
 }
+haze_air={
+"type": "vec4",
+"value": Color(0, 1000, 0, 20000)
+}
+haze_colour={
+"type": "vec4",
+"value": Color(0.5, 0.6, 0.7, 1)
+}
+haze_sun={
+"type": "vec4",
+"value": Color(0, 0, 0, 0)
+}
+haze_eye={
+"type": "vec3",
+"value": Vector3(0, 20000, 0)
+}
 cloud_drift_planet={
 "type": "vec3",
 "value": Vector3(0, 0, 0)

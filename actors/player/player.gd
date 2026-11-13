@@ -122,6 +122,10 @@ var free_mode_enabled := false
 ## (the rooms and the flat world, where there is nothing to hold the camera up).
 var flight_floor := Callable()
 @export var free_mode_min_height: float = 3.0
+## With a planet's `flight_floor`: a ray straight down measures the distance to anything under the flyer
+## (the ground, a tree, a rock) and free mode keeps at least this many metres over it.
+@export var free_mode_clearance: float = 50.0
+var free_mode_ray_distance := INF ## what the ray measured last (INF: nothing within the ray's reach)
 var _free_mode_default_collision_layer := 0
 var _free_mode_default_collision_mask := 0
 var movement_input_override: Variant = null
@@ -627,6 +631,7 @@ func _process_free_mode(delta: float) -> void:
 		if global_position.y < lowest:
 			global_position.y = lowest
 			velocity.y = maxf(velocity.y, 0.0)
+		_hold_clearance(delta)
 
 	_eye_marker.position = head.position
 	_eye_marker.visible = _debug_cam_active
@@ -635,6 +640,25 @@ func _process_free_mode(delta: float) -> void:
 	var target := _current_interactable()
 	hud.set_prompt("[E] " + target.prompt if target else "")
 
+
+
+## A ray from the flyer straight down (to twice the clearance): when something is closer than
+## `free_mode_clearance` the flyer is lifted to that height over it.
+func _hold_clearance(delta: float) -> void:
+	var space := get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(global_position,
+			global_position + Vector3.DOWN * free_mode_clearance * 2.0)
+	query.exclude = [get_rid()]
+	query.collision_mask = 1
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		free_mode_ray_distance = INF
+		return
+	free_mode_ray_distance = global_position.distance_to(hit.position)
+	var missing := free_mode_clearance - free_mode_ray_distance
+	if missing > 0.0:
+		global_position.y += missing # (at once: 40 m is a minimum, a slope can rise faster than an eased lift)
+		velocity.y = maxf(velocity.y, 0.0)
 
 
 ## The eye as a fixed point in the head bone's own frame: from the character at rest, the head

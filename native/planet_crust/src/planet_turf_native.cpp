@@ -1,3 +1,4 @@
+#include "flora_meshes_native.h"
 #include "planet_turf_native.h"
 
 #include "planet_noise_native.h"
@@ -15,18 +16,6 @@
 
 using namespace godot;
 
-// FloraMeshes (GDScript, the world's plant meshes): its static functions and constants, reached through its script
-static Ref<Script> flora_script() {
-	static Ref<Script> script;
-	if (script.is_null()) {
-		script = ResourceLoader::get_singleton()->load("res://systems/world_gen/flora_meshes.gd");
-	}
-	return script;
-}
-
-static int64_t flora_constant(const String &p_name) {
-	return (int64_t)Dictionary(flora_script()->get_script_constant_map())[p_name];
-}
 
 void PlanetTurf::_bind_methods() {
 	NP_BIND_OBJECT(PlanetTurf, planet)
@@ -185,11 +174,11 @@ void PlanetTurf::make(int64_t p_key, Node3D *p_holder, const Dictionary &p_grid,
 	if (gravel) { // (none where the crust says there are no stones: a dune, a clean region)
 		Variant stones = p_grid.get("stones", PackedFloat32Array());
 		buffers = scatter->call("gravel_chunk", p_grid["positions"], p_grid["field"], p_grid["cells"], size, x_from, z_from, x_to, z_to, GRAVEL_SPACING, 1.0,
-				seed, flora_constant("CHIP_VARIANTS"), stones);
+				seed, FloraMeshes::CHIP_VARIANTS, stones);
 	} else {
 		static const double thin[3] = { 1.0, FAR_THIN, VERY_THIN };
 		buffers = scatter->call("turf_chunk", p_grid["positions"], p_grid["field"], p_grid["cells"], size, x_from, z_from, x_to, z_to, spacing() * thin[p_level],
-				DENSITY, seed, flora_constant("TURF_VARIANTS"));
+				DENSITY, seed, FloraMeshes::TURF_VARIANTS);
 		if (p_level == 2) {
 			for (int variant = 0; variant < buffers.size(); variant++) {
 				buffers[variant] = bigger(buffers[variant], VERY_BIG);
@@ -202,7 +191,6 @@ void PlanetTurf::make(int64_t p_key, Node3D *p_holder, const Dictionary &p_grid,
 	entry.holder = ObjectID(p_holder->get_instance_id());
 	entry.grid = p_grid;
 	entry.at = Vector2((p_ix + 0.5) * CHUNK, (p_iz + 0.5) * CHUNK);
-	Ref<Script> flora = flora_script();
 	static const double drawn[3] = { DRAWN, FAR_DRAWN, VERY_DRAWN };
 	for (int variant = 0; variant < buffers.size(); variant++) {
 		PackedFloat32Array buffer = buffers[variant];
@@ -213,12 +201,12 @@ void PlanetTurf::make(int64_t p_key, Node3D *p_holder, const Dictionary &p_grid,
 		multi.instantiate();
 		multi->set_transform_format(MultiMesh::TRANSFORM_3D);
 		multi->set_use_colors(true);
-		multi->set_mesh(gravel ? flora->call("chip", variant) : flora->call("turf_tuft", variant));
+		multi->set_mesh(gravel ? FloraMeshes::chip(variant) : FloraMeshes::turf_tuft(variant));
 		multi->set_instance_count((int)(buffer.size() / 16));
 		multi->set_buffer(buffer);
 		MultiMeshInstance3D *instance = memnew(MultiMeshInstance3D);
 		instance->set_multimesh(multi);
-		instance->set_material_override(gravel ? flora->call("chip_material") : flora->call("material"));
+		instance->set_material_override(gravel ? FloraMeshes::chip_material() : FloraMeshes::material());
 		instance->set_cast_shadows_setting(gravel ? GeometryInstance3D::SHADOW_CASTING_SETTING_ON : GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 		instance->set_visibility_range_end(gravel ? GRAVEL_DRAWN : drawn[level]);
 		instance->set_visibility_range_end_margin(6.0);
@@ -227,7 +215,7 @@ void PlanetTurf::make(int64_t p_key, Node3D *p_holder, const Dictionary &p_grid,
 		entry.nodes.push_back(ObjectID(instance->get_instance_id()));
 		entry.buffers.push_back(buffer);
 		if (gravel) {
-			MultiMeshInstance3D *patch = Object::cast_to<MultiMeshInstance3D>((Object *)flora->call("chip_shadow", buffer));
+			MultiMeshInstance3D *patch = FloraMeshes::chip_shadow(buffer);
 			patch->set_visibility_range_end(GRAVEL_DRAWN);
 			patch->set_visibility_range_end_margin(6.0);
 			patch->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);

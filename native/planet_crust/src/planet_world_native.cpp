@@ -1,4 +1,8 @@
+#include "flora_meshes_native.h"
+#include "species_registry_native.h"
 #include "planet_world_native.h"
+#include "planet_atmosphere_native.h"
+#include "planet_fauna_native.h"
 
 #include "planet_ground_bake_native.h"
 #include "planet_sky_native.h"
@@ -13,7 +17,9 @@
 #include "planet_sway_native.h"
 #include "planet_turf_native.h"
 
+#include "graphics_lookup.h"
 #include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/engine.hpp>
@@ -53,8 +59,7 @@ static Ref<Script> script_of(const char *p_path) {
 }
 
 static int64_t graphics_int(const StringName &p_key) {
-	SceneTree *tree = Object::cast_to<SceneTree>(Engine::get_singleton()->get_main_loop());
-	Node *graphics = tree != nullptr ? tree->get_root()->get_node_or_null("GraphicsSettings") : nullptr;
+	Node *graphics = graphics_settings_node();
 	return graphics != nullptr ? (int64_t)graphics->call("get_graphics_value", p_key) : 0;
 }
 
@@ -133,9 +138,8 @@ void PlanetWorld::_ready() {
 	}
 	// the plants are built in the finer, realistic look from the Fine ground detail (High and Ultra); the light meshes cost a third of the triangles
 	// for Low and Medium
-	Ref<Script> flora = script_of("res://systems/world_gen/flora_meshes.gd");
-	flora->set("detailed", graphics_int("ground_detail") >= 2);
-	flora->set("fine_trees", graphics_int("ground_detail") >= 1 && !OS::get_singleton()->has_environment("PLANET_LIGHT_TREES"));
+	FloraMeshes::set_detailed(graphics_int("ground_detail") >= 2);
+	SpeciesRegistry::set_fine_trees(graphics_int("ground_detail") >= 1 && !OS::get_singleton()->has_environment("PLANET_LIGHT_TREES"));
 	Node *bark = Object::cast_to<Node>(make_scripted("res://systems/planet/planet_bark_bake.gd"));
 	add_child(bark);
 	bark->call("run"); // (a coroutine: it carries on over the next frames)
@@ -147,21 +151,21 @@ void PlanetWorld::_ready() {
 	clock->set_eccentricity(settings->get_eccentricity());
 	clock->set_perihelion_share(settings->get_perihelion_share());
 	clock->set_month_days(settings->get_month_days());
-	Node *air = Object::cast_to<Node>(make_scripted("res://systems/planet/planet_atmosphere.gd"));
-	air->set("radius", settings->get_radius());
-	air->set("air_height", settings->get_air_height());
+	PlanetAtmosphere *air = memnew(PlanetAtmosphere);
+	air->set_radius(settings->get_radius());
+	air->set_air_height(settings->get_air_height());
 	Ref<Star> star = Star::from_mass(settings->get_star_mass());
-	air->set("star_tint", star->light_tint(settings->get_star_readability()));
+	air->set_star_tint(star->light_tint(settings->get_star_readability()));
 	star_disc = star->get_radius() * std::sqrt(settings->get_insolation() / star->get_luminosity());
-	air->set("time_of_day", time_of_day);
+	air->set_time_of_day(time_of_day);
 	add_child(air);
 	atmosphere_id = air->get_instance_id();
 	PlanetSurface *ground = memnew(PlanetSurface);
 	ground->setup(noise, frame);
 	add_child(ground);
 	surface_id = ground->get_instance_id();
-	Node *animals = Object::cast_to<Node>(make_scripted("res://systems/planet/planet_fauna.gd"));
-	animals->set("planet", this);
+	PlanetFauna *animals = memnew(PlanetFauna);
+	animals->set_planet(this);
 	add_child(animals);
 	fauna_id = animals->get_instance_id();
 	Node *effects = Object::cast_to<Node>(make_scripted("res://systems/world_gen/world_weather.gd"));
@@ -585,6 +589,9 @@ double PlanetWorld::flight_floor(const Vector3 &p_position) const {
 	if (settings->get_sea_on()) {
 		h = std::max(h, 0.0);
 	}
+	if (h > 0.0 && settings->get_plant_density() > 0.0) { // over the trees (the tallest are about 20 m)
+		h += TREE_CLEARANCE;
+	}
 	return frame->to_world(dir * (settings->get_radius() + h)).y;
 }
 
@@ -720,7 +727,25 @@ void PlanetWorld::_physics_process(double p_delta) {
 	timer -= p_delta;
 	if (timer <= 0.0 || moved) {
 		timer = 0.3;
-		ground->update(planet_position());
+		Camera3D *looking = get_viewport()->get_camera_3d();
+		if (looking != nullptr) { // the direction of the view, in planet space
+			Vector3 from = looking->get_global_position();
+			PackedFloat64Array a = frame->to_planet(from);
+			PackedFloat64Array b = frame->to_planet(from - looking->get_global_transform().basis.get_column(2) * 1000.0);
+			ground->set_view((Vector3(b[0], b[1], b[2]) - Vector3(a[0], a[1], a[2])).normalized());
+		}
+		Vector3 here = planet_position();
+		double dt = (double)(Time::get_singleton()->get_ticks_msec() - lead_msec) / 1000.0;
+		Vector3 lead;
+		if (lead_msec != 0 && dt > 0.05 && dt < 1.0) { // where a fast flyer will be soon: the ground and its plants are made for that place too
+			lead = (here - lead_at) / dt * 0.7;
+			if (lead.length() > 200.0) {
+				lead = lead.normalized() * 200.0;
+			}
+		}
+		lead_at = here;
+		lead_msec = Time::get_singleton()->get_ticks_msec();
+		ground->update(here, lead);
 	}
 	// the planet is the realistic look (smooth normals, finer plants, the sea's depth)
 	script_of("res://systems/world_gen/world_wind.gd")->call("set_realism", 1.0);

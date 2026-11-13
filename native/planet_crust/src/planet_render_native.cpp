@@ -258,6 +258,7 @@ void PlanetSunGlow::_bind_methods() {
 	NP_BIND(PlanetSunGlow, Variant::VECTOR3, sun_direction)
 	NP_BIND(PlanetSunGlow, Variant::COLOR, tint)
 	NP_BIND(PlanetSunGlow, Variant::FLOAT, strength)
+	NP_BIND(PlanetSunGlow, Variant::FLOAT, shafts)
 	ClassDB::bind_method(D_METHOD("build"), &PlanetSunGlow::build);
 }
 
@@ -325,6 +326,10 @@ void PlanetSunGlow::_render_callback(int32_t, RenderData *p_render_data) {
 	push.append(tint.g);
 	push.append(tint.b);
 	push.append(behind ? 0.0 : strength);
+	push.append(behind ? 0.0 : shafts);
+	push.append(0.85);
+	push.append(0.0);
+	push.append(0.0);
 	for (int view = 0; view < buffers->get_view_count(); view++) {
 		Ref<RDUniform> colour;
 		colour.instantiate();

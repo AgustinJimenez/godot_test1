@@ -5,6 +5,7 @@
 #include "planet_noise_native.h"
 #include "planet_tile_native.h"
 
+#include "graphics_lookup.h"
 #include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/environment.hpp>
@@ -265,8 +266,7 @@ void PlanetFootprints::_physics_process(double p_delta) {
 		clear_prints();
 		return;
 	}
-	SceneTree *tree = get_tree();
-	Node *graphics = tree->get_root()->get_node_or_null("GraphicsSettings");
+	Node *graphics = graphics_settings_node();
 	decals_on = graphics != nullptr && (bool)graphics->call("get_graphics_value", StringName("decals"));
 	if (!decals_on && !prints.empty()) {
 		clear_prints(false); // (the dents in sand are not decals: they stay on)

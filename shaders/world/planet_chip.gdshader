@@ -7,6 +7,9 @@ render_mode specular_schlick_ggx;
 varying vec3 stone_colour;
 varying vec3 stone_pos;
 
+global uniform vec3 cloud_sun_world; // toward the star
+#include "res://shaders/world/planet_haze.gdshaderinc" // the haze by height (FOG)
+
 void vertex() {
 	stone_colour = COLOR.rgb; // (the instance colour times the mesh's: white)
 	stone_pos = VERTEX;
@@ -26,6 +29,7 @@ float soft_noise(vec3 p) {
 }
 
 void fragment() {
+	FOG = planet_haze(mat3(INV_VIEW_MATRIX) * VERTEX, cloud_sun_world);
 	vec3 base = pow(stone_colour, vec3(2.2));
 	float variation = soft_noise(stone_pos * 1.6 + stone_colour * 7.0);
 	ALBEDO = base * (0.8 + 0.4 * variation);

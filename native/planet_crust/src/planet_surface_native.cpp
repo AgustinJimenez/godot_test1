@@ -17,7 +17,7 @@ const double PI_D = 3.14159265358979323846;
 
 struct Selection {
 	Vector3 near_dir;
-	double height, radius, split_factor, tile_max, collide_tiles;
+	double height, radius, split_factor, tile_max, collide_tiles, tree_reach;
 	int max_level, coarse_level;
 	bool plants_on;
 	PackedVector3Array faces;
@@ -56,8 +56,8 @@ struct Selection {
 				detail = d < tile_max * 2.0 ? 3 : 2;
 			} else if (level == max_level - 1 && d < tile_max * 10.0) {
 				detail = 2;
-			} else if (level >= max_level - 4 && level < max_level - 1 && d < tile_max * 40.0) {
-				detail = 1;
+			} else if (level >= max_level - 5 && d < tile_max * 80.0) { // far trees up to the horizon; max_level-1 beyond the near ring used to get none
+				detail = d < tree_reach ? 2 : 1;
 			}
 		}
 		entries.insert(entries.end(), { face, level, x, y });
@@ -87,6 +87,7 @@ Dictionary PlanetSurfaceNative::select(const Dictionary &p_params) const {
 	s.tile_max = p_params.get("tile_max", 128.0);
 	s.collide_tiles = p_params.get("collide_tiles", 1.2);
 	s.plants_on = p_params.get("plants_on", true);
+	s.tree_reach = p_params.get("tree_reach", 1280.0);
 	s.coarse_level = p_params.get("coarse_level", 3);
 	s.faces = p_params.get("faces", PackedVector3Array());
 	if (s.faces.size() < 18) {

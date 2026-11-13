@@ -216,7 +216,7 @@ PlanetTile *PlanetTile::build(int64_t p_f, int64_t p_lvl, int64_t p_x, int64_t p
 	} else if (p_collide) {
 		has_collider = true; // (the plants ask: the voxel terrain has the collision)
 	}
-	if (level >= settings_->max_level() - 6) { // (a hill still hides what is behind it from the camera)
+	if (level >= settings_->max_level() - 6 && !voxel) { // (a hill still hides what is behind it from the camera; the voxel ground is not this grid, and a sunk coarse copy of it hid patches of trees)
 		add_occluder(packed_positions, cells);
 	}
 	if (!voxel) { // (the voxel terrain has its own water: two thin volumes over the ground)

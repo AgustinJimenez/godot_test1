@@ -29,20 +29,19 @@ class PlanetImpostors : public Node {
 		int id = 0, variant = 0;
 	};
 	ObjectID registry_id;
-	SubViewport *viewport = nullptr;
-	Camera3D *camera = nullptr;
-	MeshInstance3D *holder = nullptr;
+	SubViewport *viewports[25] = {}; // one per view (VIEWS round the tree at each of ELEVS heights of the eye, and the one from above): a variant is baked in one frame
+	Camera3D *cameras[25] = {};
+	MeshInstance3D *holders[25] = {};
 	std::vector<Task> tasks;
 	size_t next_task = 0;
 	// the bake in hand
 	Task current;
 	Ref<Image> atlas;
-	int view = 0;
 	double side = 0.0, middle = 0.0, box_top = 0.0;
 
 	Object *species() const { return ObjectDB::get_instance(registry_id); }
 	void begin_next();
-	void aim(int p_view);
+	void aim_all();
 	void finish_bake();
 	void swap(int p_id, int p_variant);
 
@@ -51,8 +50,11 @@ protected:
 
 public:
 	static constexpr int VIEWS = 8;
-	static constexpr int CELL = 160; // pixels across one view
-	static constexpr int VARIANTS = 2; // the lighter versions a scatter uses (variant % 2)
+	static constexpr int ELEVS = 3; // how high the eye is above the horizon in the rows of the atlas: ELEV_DEG[0..2]
+	static constexpr double ELEV_DEG[3] = { 0.0, 35.0, 65.0 }; // (the shader has the same three)
+	static constexpr int TOTAL = VIEWS * ELEVS + 1; // (the last picture: from straight above)
+	static constexpr int CELL = 96; // pixels across one view
+	static constexpr int VARIANTS = 3; // the lighter versions a scatter uses (variant % 2)
 
 	void start(Object *p_registry);
 	void frame_done();

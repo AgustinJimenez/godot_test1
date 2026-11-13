@@ -1,3 +1,5 @@
+#include "flora_meshes_native.h"
+#include "species_registry_native.h"
 #include "planet_noise_native.h"
 
 #include "planet_scatter_script_native.h"
@@ -151,8 +153,7 @@ void PlanetNoise::init(const Ref<PlanetSettings> &p_settings) {
 	tectonics = PlanetTectonics::create(settings->get_world_seed(), settings->get_plates());
 	rock = PlanetRock::create(tectonics, settings->get_world_seed(), settings->get_radius(), relief);
 	lap("plates and rock");
-	Ref<Script> registry = ResourceLoader::get_singleton()->load("res://systems/world_gen/flora/species_registry.gd");
-	species = registry->call("new", settings->get_world_seed(), settings->get_species_count());
+	species = SpeciesRegistry::create(settings->get_world_seed(), settings->get_species_count());
 	Array all_species = ((Object *)species)->get("species");
 	StarLight::apply(all_species, Star::from_mass(settings->get_star_mass()), settings->get_star_readability());
 	for (int i = 0; i < all_species.size(); i++) { // a planet has many plants: more looks of each tree
@@ -215,8 +216,7 @@ void PlanetNoise::make_scatter() {
 		return;
 	}
 	Dictionary kinds;
-	Ref<Script> flora = ResourceLoader::get_singleton()->load("res://systems/world_gen/flora_meshes.gd");
-	Dictionary variants = Dictionary(flora->get_script_constant_map())["VARIANTS"];
+	Dictionary variants = FloraMeshes::variants();
 	Array keys = variants.keys();
 	for (int i = 0; i < keys.size(); i++) {
 		kinds[keys[i]] = variants[keys[i]];

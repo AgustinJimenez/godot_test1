@@ -16,6 +16,8 @@ extends Node3D
 ##   -- --procedural / --photos  the procedural surfaces (bark, rock, gravel, red soil, litter, wood) are ON for a person; --shot runs use the photographs unless --procedural; --photos forces them
 ##   -- --plants / --animals / --sea / --water  switch those on (off by default); --bare: no plants
 ##   -- --no-trees  no trees or shrubs (only the grass, rocks and the rest), to look at the ground; they grow by default
+##   -- --tree-cards  the middle-distance trees as flat impostor cards (default: the lighter 3D tree)
+##   -- --fake-trees  the lighter, impostor and far trees beyond 80 m (default for now: none, the full tree at every distance)
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
 ##   -- --tile-cells=N --tile-max=M  the ground resolution: quads a tile, widest finest tile (m)
 ##   -- --spawn-alt=N  start N metres above the ground there (up to the other side of space)
@@ -492,6 +494,11 @@ func _procedural_by_default(user_args: PackedStringArray) -> void:
 ## Trees and shrubs grow by default; `--no-trees` turns them off (only the grass, rocks and the rest), to look at the ground.
 func _trees_by_default(user_args: PackedStringArray) -> void:
 	PlanetScatter.set_trees_on(not "--no-trees" in user_args)
+	# the fake trees (impostor cards, far trees) show the forest beyond 80 m; --no-fake-trees turns them off (only the full trees near the walker)
+	# TEMPORARY test: no fake trees (cards, far trees) and the full tree at every distance, to see what that costs; --fake-trees: the usual far forest
+	PlanetScatter.set_fake_trees_on("--fake-trees" in user_args)
+	PlanetScatter.set_full_trees_everywhere(not "--fake-trees" in user_args)
+	PlanetScatter.set_impostor_cards_on("--tree-cards" in user_args) # (the middle distance is the lighter 3D tree; --tree-cards: flat impostor cards, cheaper)
 
 
 func _ready() -> void:
@@ -786,6 +793,49 @@ func _physics_process(_delta: float) -> void:
 		else:
 			print("MAP_LAYERS end at ", Time.get_ticks_msec(), " ms")
 			get_tree().quit()
+	if _frame == 30 and "--fixed-exposure" in OS.get_cmdline_user_args(): # (pictures to compare: auto exposure adapts over the frames elapsed; the saved settings are not touched)
+		GraphicsSettings._values[&"auto_exposure"] = false
+		GraphicsSettings.apply()
+	if _frame == 30:
+		for arg in OS.get_cmdline_user_args(): # --tonemapper=N: 0 linear, 1 reinhard, 2 filmic, 3 aces, 4 agx (in memory only)
+			if arg.begins_with("--tonemapper="):
+				GraphicsSettings._values[&"tone_mapper"] = arg.trim_prefix("--tonemapper=").to_int()
+	if _frame == 30 and "--ssao" in OS.get_cmdline_user_args(): # (in memory only)
+		GraphicsSettings._values[&"ssao"] = true
+		GraphicsSettings.apply()
+	if _frame == 30 and "--cloud-shadows" in OS.get_cmdline_user_args(): # (in memory only: the saved settings are not touched)
+		GraphicsSettings._values[&"cloud_shadows"] = true
+	if _frame == 200 and player != null:
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--pose="): # alt,pitch,yaw: the player lifted that many metres in free flight, looking that way (pictures from the air)
+				var pose := arg.trim_prefix("--pose=").split_floats(",")
+				player.set_free_mode(true)
+				player.global_position.y += pose[0]
+				player._look_pitch = deg_to_rad(pose[1] if pose.size() > 1 else 0.0)
+				player.third_person_arm.rotation.x = player._look_pitch
+				player._apply_yaw(deg_to_rad(pose[2] if pose.size() > 2 else 0.0))
+			if arg.begins_with("--walk="): # metres: the player moved that far the way it looks (level; after --pose; reaches a coast seen from the start)
+				var ahead: Vector3 = -player.global_transform.basis.z
+				ahead.y = 0.0
+				player.global_position += ahead.normalized() * arg.trim_prefix("--walk=").to_float()
+	if _frame == 250 and player != null:
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--height-line="): # yaw,metres,step: the planet's exact ground height over the sea level along a line from the player (HEIGHT_LINE d h)
+				_height_line(arg.trim_prefix("--height-line=").split_floats(","))
+	if _frame == _shot_frame - 5 and player != null and "--verbose-check" in OS.get_cmdline_user_args():
+		var env: Environment = planet.atmosphere.environment
+		print("AIR_STATE altitude %.0f m underwater %s fog density %.5f colour %s sky_affect %.2f sun_scatter %.2f volumetric %s (%.4f) camera %s" % [
+				planet.altitude(), planet.atmosphere.underwater, env.fog_density, env.fog_light_color, env.fog_sky_affect, env.fog_sun_scatter,
+				env.volumetric_fog_enabled, env.volumetric_fog_density, get_viewport().get_camera_3d().global_position])
+		var sun_to: Vector3 = planet.atmosphere.sun_direction
+		print("SUN_YAW %.0f elevation %.0f" % [rad_to_deg(atan2(-sun_to.x, -sun_to.z)), rad_to_deg(asin(clampf(sun_to.y, -1.0, 1.0)))]) # (the yaw for --pose that looks toward the star)
+		print("LIGHT_STATE tonemap %d exposure %.2f white %.2f ambient energy %.2f sky share %.2f sun energy %.2f colour %s glow %s ssao %s ssil %s sdfgi %s adjust %s bg energy %.2f" % [
+				env.tonemap_mode, env.tonemap_exposure, env.tonemap_white, env.ambient_light_energy, env.ambient_light_sky_contribution,
+				planet.atmosphere.sun.light_energy, planet.atmosphere.sun.light_color, env.glow_enabled, env.ssao_enabled, env.ssil_enabled,
+				env.sdfgi_enabled, env.adjustment_enabled, env.background_energy_multiplier])
+	if "--free-dir-check" in OS.get_cmdline_user_args():
+		_free_dir_step()
+		return
 	if _map_check:
 		_map_check_step()
 		return
@@ -801,6 +851,8 @@ func _physics_process(_delta: float) -> void:
 		return
 	if _walking and player != null:
 		_walk_step()
+		if "--tris" in OS.get_cmdline_user_args() and _frame == _shot_frame - 1:
+			_print_triangle_groups()
 		if _shot != "" and _frame == _shot_frame: # (a picture of a walk, LAB_PLAIN for the sand)
 			get_viewport().get_texture().get_image().save_png(_shot)
 			get_tree().quit()
@@ -956,9 +1008,22 @@ func _walk_step() -> void:
 		if _flying:
 			player.set_free_mode(true)
 			player.free_mode_speed = 100.0
-			Input.action_press(&"crouch") # dive: the flight must hold off the ground
+			for arg in OS.get_cmdline_user_args():
+				if arg.begins_with("--fly-speed="): # metres a second (the sprint doubles it)
+					player.free_mode_speed = arg.trim_prefix("--fly-speed=").to_float()
+			Input.action_press(&"jump" if "--fly-up" in OS.get_cmdline_user_args() else &"crouch") # dive: the flight must hold off the ground (--fly-up: climb instead)
 		_walk_start = planet.planet_position()
 	if _frame <= 60: return
+	if "--flora-log" in OS.get_cmdline_user_args() and _frame % 60 == 0: # how many tiles have plants (a drop between lines = trees vanishing)
+		var with_plants := 0
+		var nodes := 0
+		for tile: PlanetTile in planet.surface.tiles.values():
+			var holder := tile.plant_holder as Node
+			if holder != null:
+				with_plants += 1
+				nodes += holder.get_child_count()
+		print("FLORA frame=%d tiles=%d with_plants=%d plant_nodes=%d fps=%d" % [_frame, planet.surface.tiles.size(), with_plants, nodes, Engine.get_frames_per_second()])
+		print("FLORA_KEEPUP ", planet.surface.flora_report())
 	if player.is_on_floor():
 		_walk_floor += 1
 	if "--verbose-check" in OS.get_cmdline_user_args() and _frame % 60 == 0:
@@ -987,6 +1052,8 @@ func _walk_step() -> void:
 	var above := planet.altitude() - planet.noise.height(at.x, at.y, at.z)
 	_walk_worst = maxf(_walk_worst, absf(above))
 	if player.process_mode != Node.PROCESS_MODE_DISABLED: _fly_lowest = minf(_fly_lowest, above)
+	if _flying and _frame % 300 == 0:
+		print("FLY_RAY below=%.1f m (the clearance is %.0f)" % [player.free_mode_ray_distance, player.free_mode_clearance])
 	if _frame >= 60 + 90 * 60:
 		var travelled := planet.planet_position().distance_to(_walk_start)
 		var verdict := "PASS" if travelled > 150.0 and _walk_worst < 4.0 else "FAIL"
@@ -1014,3 +1081,70 @@ func _find_sea(noise: PlanetNoise) -> Vector3:
 		if height < -4.0 and height > -14.0:
 			return dir
 	return spawn
+
+
+## --free-dir-check: free flight in several look directions and keys; FREE_DIR lines give the angle between where the player
+## went (over the planet, turned into the world) and where the key should take it by the camera on screen.
+var _fd := {}
+const FREE_DIR_CASES := [ # yaw step (degrees), pitch (degrees), action
+	[0.0, 0.0, &"move_forward"], [90.0, 0.0, &"move_forward"], [90.0, -40.0, &"move_forward"], [90.0, 50.0, &"move_forward"],
+	[45.0, 0.0, &"move_right"], [0.0, 0.0, &"move_back"], [120.0, -70.0, &"move_forward"], [0.0, 20.0, &"move_left"],
+	[0.0, 0.0, &"jump"], [0.0, -30.0, &"crouch"]]
+func _free_dir_step() -> void:
+	const SPAN := 150
+	var index := (_frame - 120) / SPAN
+	var within := (_frame - 120) % SPAN
+	if _frame == 60:
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--free-dir-alt="): # (lifted there: the flight high over the planet)
+				player.set_free_mode(true)
+				player.global_position.y += arg.trim_prefix("--free-dir-alt=").to_float()
+	if _frame < 120:
+		return
+	if index >= FREE_DIR_CASES.size():
+		get_tree().quit()
+		return
+	var case: Array = FREE_DIR_CASES[index]
+	var action: StringName = case[2]
+	if within == 0:
+		player.set_free_mode(true)
+		player.free_mode_speed = 100.0
+		player._apply_yaw(deg_to_rad(case[0]))
+		player._look_pitch = deg_to_rad(case[1])
+		player.third_person_arm.rotation.x = player._look_pitch
+	elif within == 20:
+		Input.action_press(action)
+	elif within == 30:
+		_fd = {"from": planet.planet_position()}
+	elif within == SPAN - 10:
+		var went: Vector3 = (planet.frame.rot as Basis) * (planet.planet_position() - (_fd["from"] as Vector3))
+		var view := get_viewport().get_camera_3d()
+		var forward := -view.global_basis.z
+		var flat := Basis.looking_at(forward, Vector3.UP)
+		var wanted := {&"move_forward": forward, &"move_back": -forward, &"move_right": flat.x, &"move_left": -flat.x,
+				&"jump": Vector3.UP, &"crouch": Vector3.DOWN}
+		var off := rad_to_deg(went.normalized().angle_to(wanted[action]))
+		print("FREE_DIR %s yaw+%d pitch %d %s: went %s (%.0f m), wanted %s, off by %.1f deg, altitude %.0f m, camera %s" % [
+				"ok" if off < 3.0 else "WRONG", int(case[0]), int(case[1]), action, went.normalized().snapped(Vector3.ONE * 0.01),
+				went.length(), (wanted[action] as Vector3).snapped(Vector3.ONE * 0.01), off, planet.altitude(), view.name])
+		Input.action_release(action)
+
+
+func _height_line(spec: PackedFloat64Array) -> void:
+	var frame := planet.frame
+	var anchor := Vector3(frame.anchor[0], frame.anchor[1], frame.anchor[2])
+	var inverse: Basis = (frame.rot as Basis).inverse()
+	var yaw := deg_to_rad(spec[0])
+	var ahead := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var step := spec[2] if spec.size() > 2 else 2.0
+	var radius: float = planet.settings.radius
+	var sea: float = planet.settings.sea_level
+	var out := PackedStringArray()
+	var d := 0.0
+	while d <= spec[1]:
+		var world := player.global_position + ahead * d
+		var planet_point: Vector3 = inverse * (world - frame.origin_w) + anchor
+		var dir := planet_point.normalized()
+		out.append("%.0f:%.3f" % [d, planet.noise.height(dir.x, dir.y, dir.z) - sea])
+		d += step
+	print("HEIGHT_LINE yaw=%.0f " % spec[0], " ".join(out))

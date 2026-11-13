@@ -43,7 +43,7 @@ class PlanetScatter : public RefCounted {
 	Vector2 grid_axis(int p_step) const;
 	void hang(PackedInt32Array p_keys, Array p_buffers, bool p_near);
 	Array tree_cells(const PackedFloat32Array &p_buffer) const;
-	MultiMeshInstance3D *light_trees(const PackedFloat32Array &p_buffer, int p_id, int p_variant);
+	MultiMeshInstance3D *light_trees(const PackedFloat32Array &p_buffer, int p_id, int p_variant, bool p_force_cards = false);
 	void commit_far(const Array &p_parts, double p_begin);
 	MultiMeshInstance3D *add_trees(const PackedFloat32Array &p_buffer, const Ref<Mesh> &p_mesh, bool p_shadows);
 	Object *by_id(int p_id) const;
@@ -72,6 +72,12 @@ public:
 	// false: no trees and no shrubs are placed, only the grass, rocks and the rest (the planet lab's `--no-trees`)
 	static bool get_trees_on();
 	static void set_trees_on(bool p_on);
+	static bool get_impostor_cards_on();
+	static void set_impostor_cards_on(bool p_on);
+	static bool get_full_trees_everywhere();
+	static void set_full_trees_everywhere(bool p_on);
+	static bool get_fake_trees_on();
+	static void set_fake_trees_on(bool p_on);
 	static Array species_table(Object *p_registry);
 
 	void populate(Node3D *p_holder, int64_t p_key, const Ref<PlanetNoise> &p_noise, const Dictionary &p_grid, int64_t p_cells, double p_size,

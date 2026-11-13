@@ -2,8 +2,8 @@ extends Node3D
 ## Looks at fallen leaves (FloraMeshes.Kind.LITTER) in the plant shader, close up: `--shot=PATH`.
 
 func _ready() -> void:
-	FloraMeshes.detailed = not OS.has_environment("LAB_LOW")
-	WorldWind.set_realism(1.0 if FloraMeshes.detailed else 0.0)
+	FloraMeshes.set_detailed(not OS.has_environment("LAB_LOW"))
+	WorldWind.set_realism(1.0 if FloraMeshes.get_detailed() else 0.0)
 	var material: Material
 	material = FloraMeshes.material()
 	var floor_mesh := MeshInstance3D.new()
@@ -16,7 +16,7 @@ func _ready() -> void:
 	add_child(floor_mesh)
 	for index in 3:
 		var instance := MeshInstance3D.new()
-		instance.mesh = FloraMeshes.mesh(FloraMeshes.Kind.LITTER, index + 1, FloraMeshes.detailed)
+		instance.mesh = FloraMeshes.mesh(FloraMeshes.Kind.LITTER, index + 1, FloraMeshes.get_detailed())
 		instance.material_override = material
 		instance.position = Vector3(-6.0 + index * 6.0, 0.0, 0.0)
 		instance.scale = Vector3.ONE * 5.0

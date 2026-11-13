@@ -21,6 +21,9 @@ varying vec3 world_pos;
 varying vec3 soil;
 varying float iron;
 
+global uniform vec3 cloud_sun_world; // toward the star
+#include "res://shaders/world/planet_haze.gdshaderinc" // the haze by height (FOG)
+
 void vertex() {
 	soil = CUSTOM0.rgb;
 	iron = COLOR.a;
@@ -29,6 +32,7 @@ void vertex() {
 }
 
 void fragment() {
+	FOG = planet_haze(mat3(INV_VIEW_MATRIX) * VERTEX, cloud_sun_world);
 	float dist = length(VERTEX);
 	float dither = fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453);
 	if (dist > reach || dist > reach * (0.75 + 0.25 * dither) || ground_detail < 0.5) {

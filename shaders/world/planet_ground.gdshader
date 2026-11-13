@@ -14,17 +14,8 @@ global uniform float snow_cover;
 global uniform float rain_fall;
 global uniform float autumn;
 global uniform float realism;
-// the clouds' shadow on the ground (the same layer the sky and the shell draw, planet_cloud_march.gdshaderinc):
-// cloud_shadow = (strength 0..1, cloud darkness, least cover, 0), cloud_layer = (planet radius, layer floor,
-// depth, 0), cloud_centre = the planet's centre in the world, cloud_sun_world = toward the star
-global uniform sampler2D cloud_cover_map : filter_linear, repeat_enable;
-global uniform vec4 cloud_shadow;
-global uniform vec4 cloud_layer;
-global uniform vec3 cloud_centre;
-global uniform vec3 cloud_sun_world;
-global uniform vec3 cloud_drift_planet;
+#include "res://shaders/world/planet_cloud_shade.gdshaderinc" // the clouds' shadow on the ground (and planet_from_world)
 global uniform float ground_detail; // 0 plain .. 3 finest (GraphicsSettings: Low 1, Medium 1, High 2, Ultra 3)
-global uniform mat4 planet_from_world;
 global uniform mat4 world_from_planet;
 // the detail noise is read near the player, where numbers stay small (a float cannot hold a planet's
 // 6 million metres to better than half a metre): the position from the anchor, the anchor wrapped
@@ -113,47 +104,6 @@ vec2 ripple(vec2 p, float rate) {
 	return normalize(from_centre + 0.0001) * wave * live;
 }
 
-float cloud_shadow_hash(vec3 p) {
-	p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
-	p *= 17.0;
-	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
-}
-
-float cloud_shadow_noise(vec3 p) {
-	vec3 i = floor(p);
-	vec3 f = smoothstep(0.0, 1.0, fract(p));
-	return mix(mix(mix(cloud_shadow_hash(i), cloud_shadow_hash(i + vec3(1, 0, 0)), f.x),
-			mix(cloud_shadow_hash(i + vec3(0, 1, 0)), cloud_shadow_hash(i + vec3(1, 1, 0)), f.x), f.y),
-			mix(mix(cloud_shadow_hash(i + vec3(0, 0, 1)), cloud_shadow_hash(i + vec3(1, 0, 1)), f.x),
-			mix(cloud_shadow_hash(i + vec3(0, 1, 1)), cloud_shadow_hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-}
-
-// How much of the star's light the clouds take from the point `from_centre` (world axes, metres from the
-// planet's centre): the ray to the star crosses the middle of the layer, and the cloud there (the cloud
-// density of planet_cloud_march.gdshaderinc, the coarse octaves) shades the ground under it.
-float cloud_shade_at(vec3 from_centre) {
-	vec3 sun = normalize(cloud_sun_world);
-	float r_mid = cloud_layer.x + cloud_layer.y + cloud_layer.z * 0.35;
-	float b = dot(from_centre, sun);
-	float c = dot(from_centre, from_centre) - r_mid * r_mid;
-	float disc = b * b - c;
-	if (disc <= 0.0 || length(from_centre) > r_mid) {
-		return 0.0;
-	}
-	vec3 hit = from_centre + sun * (-b + sqrt(disc));
-	vec3 q = mat3(planet_from_world) * hit;
-	vec3 d = normalize(q);
-	vec2 uv = vec2(atan(d.z, d.x) / TAU + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI);
-	float cover = max(textureLod(cloud_cover_map, uv, 0.0).r, cloud_shadow.z);
-	vec3 p = (q + cloud_drift_planet) * 0.0022;
-	// the same layers of noise as the clouds themselves (planet_cloud_march.gdshaderinc)
-	float shape = cloud_shadow_noise(p * 0.1 + 11.0) * 0.2 + cloud_shadow_noise(p * 0.25 + 23.0) * 0.15
-			+ cloud_shadow_noise(p) * 0.4 + cloud_shadow_noise(p * 2.1 + 7.0) * 0.15
-			+ cloud_shadow_noise(p * 4.3 + 3.0) * 0.1;
-	float body = shape - (1.0 - cover) * 0.75 - 0.12;
-	return clamp(body * 3.2, 0.0, 1.0);
-}
-
 // A surface texture (RGB normal, A brightness) projected along the three axes of the planet and blended by
 // the way the ground faces: returns the tilt (planet axes) in xyz and the brightness in w.
 vec4 triplanar(sampler2D map, vec3 at, vec3 facing, float scale) {
@@ -170,6 +120,8 @@ vec4 triplanar(sampler2D map, vec3 at, vec3 facing, float scale) {
 }
 
 instance uniform vec2 lod_morph = vec2(0.0); // metres from the eye: where this tile starts and ends sliding to the surface of the tile twice as coarse (geomorphing, planet_tile.gd); 0: not at all
+
+#include "res://shaders/world/planet_haze.gdshaderinc" // the haze by height (FOG)
 
 void vertex() {
 	if (lod_morph.y > 0.0) { // (a tile gives way to a bigger one: its vertices go to where that one's surface is, and the swap is not seen)
@@ -302,6 +254,7 @@ void scan_triplanar(sampler2D colour_map, sampler2D normal_map, vec3 at, vec3 fa
 }
 
 void fragment() {
+	FOG = planet_haze(mat3(INV_VIEW_MATRIX) * VERTEX, cloud_sun_world);
 	float pom_push = 0.0; // how much farther along the view ray the soil is than the mesh (m): the depth written, so that the stones on the ground stand on the soil, not above it
 	vec3 flat_normal = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
 	if (dot(flat_normal, VIEW) < 0.0) {
@@ -972,12 +925,8 @@ void fragment() {
 		vec3 tilt = (VIEW_MATRIX * vec4(slope.x, 0.0, slope.y, 0.0)).xyz * 0.35 * puddle;
 		view_normal = normalize(view_normal + tilt);
 	}
-	if (cloud_shadow.x > 0.01) {
-		// the ground under a cloud is darker (the direct light is the part the cloud takes: the sky's light stays)
-		float sun_up = clamp(dot(normalize(world_pos - cloud_centre), normalize(cloud_sun_world)) * 4.0, 0.0, 1.0);
-		float shade = ((cost_off & 64) == 0 ? cloud_shade_at(world_pos - cloud_centre) : 0.0) * cloud_shadow.x * sun_up
-				* (1.0 - cloud_shadow.z); // (a full overcast already dims the sun itself)
-		col *= 1.0 - shade * (0.5 + 0.2 * cloud_shadow.y);
+	if (cloud_shadow.x > 0.01 && (cost_off & 64) == 0) {
+		col *= cloud_shade_keep(haze_eye + mat3(INV_VIEW_MATRIX) * VERTEX); // the ground under a cloud is darker
 	}
 	NORMAL = mix(view_normal, normalize(mix(view_normal, normalize(NORMAL), 0.8)), puddle);
 	ALBEDO = col;

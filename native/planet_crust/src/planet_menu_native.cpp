@@ -121,8 +121,7 @@ void PlanetMenu::main_menu() {
 
 void PlanetMenu::open_map() {
 	PlanetMap *map = Object::cast_to<PlanetMap>((Object *)planet()->get("map"));
-	map->toggle();
-	map->show_zoom(PlanetMap::MAX_ZOOM);
+	map->toggle(); // (it keeps the zoom it was left at)
 }
 
 void PlanetMenu::refresh() {

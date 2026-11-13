@@ -48,7 +48,7 @@ func _ready() -> void:
 					match one.layer():
 						PlantSpecies.Layer.CANOPY: totals["trees"] += count
 						PlantSpecies.Layer.UNDERSTORY: totals["shrubs"] += count
-						PlantSpecies.Layer.GRASS: totals["grass"] += count
+						PlantSpecies.Layer.GRASSLAND: totals["grass"] += count
 						PlantSpecies.Layer.MEADOW: totals["flowers"] += count
 						_: totals["cover"] += count
 		var per_hectare := 10000.0 / (size * size * tiles)

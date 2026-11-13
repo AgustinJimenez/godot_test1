@@ -42,6 +42,9 @@ var _map_started := 0
 var _map_steep := 0.0 # the steepness the map's colours are for (snow and scree depend on it)
 var _map_widths: Array[int] = []
 # the colour window: a finer map (WINDOW_SIDE m, WINDOW_METRES a pixel) of the ground round the walker, baked again when they leave its middle
+## How far each level of detail of the WATER reaches (godot_voxel's lod_distance, 48 by default): the sea's coarse blocks cut the shore into bricks of sand and water (tens of metres across); finer
+## water pushed out removes them. Only the water: the same for the ground costs 8x the load time and 15x the frame time and changes nothing (findings file, shore_lod).
+const WATER_LOD_DISTANCE := 96.0
 const WINDOW_SIDE := 1536.0
 const WINDOW_METRES := 2.0
 const WINDOW_REBAKE := 300.0 # m from the middle
@@ -93,7 +96,7 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 		gen = ClassDB.instantiate("VoxelGeneratorPlanet")
 		gen.call("set_radius", radius)
 		gen.call("set_noise", planet.noise)
-		gen.call("set_caves", "--voxel-caves" in args)
+		gen.call("set_caves", not "--no-voxel-caves" in args) # (on unless asked off: the lab is run with Play Scene, no flags)
 		gen.call("set_cave_seed", planet.settings.world_seed)
 	else:
 		# (loaded here, not preloaded: that script extends a voxel class the stock engine lacks, and
@@ -103,7 +106,7 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 		gen.set("noise", planet.noise)
 		gen.set("lattice", 2)
 		gen.set("exact_lods", 1)
-		if "--voxel-caves" in args:
+		if not "--no-voxel-caves" in args:
 			gen.call("setup_caves", planet.settings.world_seed)
 	_generator = gen
 	print("VOXEL generator: ", gen.get_class() if gen.get_class() != "Resource" else "GDScript")
@@ -125,7 +128,12 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 	viewer.set("requires_collisions", true)
 	player.add_child(viewer)
 	if planet.settings.sea_on and not "--voxel-no-sea" in args:
-		_make_water(1, 4096, PlanetTile.water_material())
+		if "--voxel-calm" in args:
+			PlanetTile.water_material().set_shader_parameter(&"wave_height", 0.0)
+		if not "--voxel-no-water-mesh" in args:
+			_make_water(1, 1024, PlanetTile.water_material())
+		if not "--voxel-no-far-sea" in args:
+			_make_far_sea(PlanetTile.water_material())
 	_rivers_wanted = planet.settings.hydrology_on and not "--voxel-no-rivers" in args
 	_follow_frame()
 	_player.process_mode = Node.PROCESS_MODE_DISABLED
@@ -182,7 +190,26 @@ func _follow_frame() -> void:
 	_terrain.global_transform = placed
 	for water in _water:
 		(water as Node3D).global_transform = placed
-	_material.set_shader_parameter("world_to_planet", placed.affine_inverse())
+
+
+## The sea beyond the water terrain's view (4096 m): a plain sphere at sea level (half a metre under the voxel water's surface, so the two
+## never fight), drawn with the same water material. Without it the far sea is the seabed painted ocean blue: no waves, no surf, no glints.
+func _make_far_sea(material: Material) -> void:
+	var sphere := SphereMesh.new()
+	var level := _planet.settings.sea_level
+	sphere.radius = _planet.settings.radius + level - 0.5
+	sphere.height = sphere.radius * 2.0
+	sphere.radial_segments = 384
+	sphere.rings = 192
+	var far_sea := MeshInstance3D.new()
+	far_sea.mesh = sphere
+	var sea_material := material.duplicate() as ShaderMaterial
+	sea_material.set_shader_parameter(&"thickness_bias", 0.5) # (the sphere is 0.5 m under the sea's level: the water's depth tint matches the voxel water's)
+	far_sea.material_override = sea_material
+	far_sea.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(far_sea)
+	far_sea.global_transform = _terrain.global_transform
+	_water.append(far_sea)
 
 
 ## The sea (mode 1) or the rivers (mode 2) as a terrain of their own: a thin volume of water over the ground.
@@ -198,6 +225,7 @@ func _make_water(mode: int, view: int, material: Material) -> void:
 	water.set("generator", gen)
 	water.set("mesher", ClassDB.instantiate("VoxelMesherTransvoxel"))
 	water.set("view_distance", view)
+	water.set("lod_distance", WATER_LOD_DISTANCE)
 	water.set("bounds", AABB(Vector3.ONE * -radius * 1.6, Vector3.ONE * radius * 3.2))
 	water.set("generate_collisions", false)
 	water.set("material", material)
@@ -344,7 +372,7 @@ func _lift_cover() -> void:
 func _start_colour_map() -> void:
 	# a quick coarse map first, the finer one (Earth) only once the ground is there: the bake and the
 	# terrain share the cores
-	_map_widths.assign([1024, 2048] if _planet.settings.radius > 1.0e6 else [1024])
+	_map_widths.assign([1024, 2048] if _planet.settings.radius > 1.0e6 else [1024, 4096]) # (a small planet: 30 m a pixel in the end, the edges of its lands no longer in 120 m steps)
 	_begin_map_stage()
 
 
@@ -394,6 +422,7 @@ func _window_step() -> void:
 			_material.set_shader_parameter("window_e2", _win_axes[1])
 			_material.set_shader_parameter("window_half", WINDOW_SIDE * 0.5 / _planet.settings.radius)
 			_material.set_shader_parameter("use_window", true)
+			_push_material()
 			_win_have = true
 			print("VOXEL colour window ready (", _win_image.get_width(), " px, ", WINDOW_METRES, " m a pixel) after ",
 					Time.get_ticks_msec() - _win_started, " ms of baking")
@@ -449,6 +478,13 @@ func _bake_window(side: int, middle: Vector3, east: Vector3, north: Vector3) -> 
 			_win_image.set_pixel(column, row, colours[row * side + column])
 
 
+## The terrain gives every block its own copy of the material, with the values it had when the block was made: a value set later on
+## `_material` reaches no block that is there already. A new material (a copy with the new values) makes the terrain hand out fresh copies.
+func _push_material() -> void:
+	_material = _material.duplicate() as ShaderMaterial
+	_terrain.set("material", _material)
+
+
 func _poll_colour_map() -> void:
 	if _map_task < 0 or not WorkerThreadPool.is_task_completed(_map_task):
 		return
@@ -456,6 +492,7 @@ func _poll_colour_map() -> void:
 	_map_task = -1
 	_material.set_shader_parameter("colour_map", ImageTexture.create_from_image(_map_image))
 	_material.set_shader_parameter("use_map", not "--voxel-nomap" in OS.get_cmdline_user_args())
+	_push_material()
 	print("VOXEL colour map ready (", _map_image.get_width(), " x ", _map_image.get_height(),
 			") after ", Time.get_ticks_msec() - _map_started, " ms of baking")
 

@@ -1,7 +1,7 @@
 extends Node3D
 ## One tree and every trait that makes it, live. The panel on the left has a slider for each trait
 ## of
-## the TreeGenome (see systems/world_gen/flora/tree_genome.gd); move one and the tree is grown again
+## the TreeGenome (native TreeGenome, tree_genome_native.cpp); move one and the tree is grown again
 ## at once. "Generate random" draws all the traits at random (from a leafy or a conifer start), "New
 ## dice" keeps the traits and only regrows the branches differently, the presets go back to a
 ## leafy tree or a conifer. Mouse: drag the left button over the tree to turn around it, wheel to
@@ -130,7 +130,7 @@ func _ready() -> void:
 		elif arg == "--lowpoly":
 			detailed = false
 	_random.seed = seed_value
-	var registry := SpeciesRegistry.new(seed_value, 36)
+	var registry := SpeciesRegistry.create(seed_value, 36)
 	for one in registry.species:
 		if one.form == PlantSpecies.Form.BROADLEAF and _species_leafy == null:
 			_species_leafy = one
@@ -243,7 +243,7 @@ func _build_panel() -> void:
 	kinds.visible = false
 	outer.add_child(kinds)
 	kinds_toggle.toggled.connect(func(on: bool) -> void: kinds.visible = on)
-	for kind in TreeArchetypes.NAMES.slice(2):
+	for kind in TreeArchetypes.names().slice(2):
 		_button(kinds, kind.capitalize(), func() -> void: _archetype(kind))
 	_slider_row(outer, "randomness", randomness, func(value: float) -> void: randomness = value)
 	_slider_row(outer, "exoticness", exotic, func(value: float) -> void: exotic = value)
@@ -404,8 +404,8 @@ func _archetype(kind: String) -> void:
 func _generate_random() -> void:
 	var info: Array = []
 	var pool: Array[String] = []
-	for kind in TreeArchetypes.NAMES:
-		if _pool == 0 or (kind in TreeArchetypes.PLANTS) == (_pool == 2):
+	for kind in TreeArchetypes.names():
+		if _pool == 0 or (kind in TreeArchetypes.plants()) == (_pool == 2):
 			pool.append(kind)
 	genome = TreeArchetypes.draw(_random, _species_leafy, _species_conifer, randomness, exotic,
 			info, pool)
@@ -470,16 +470,13 @@ func _regrow() -> void:
 	if genome == null:
 		return
 	_apply_globals()
-	var builder := MeshBuilder.new()
-	builder.detailed = detailed
-	builder.leafless = leafless
-	var rng := RandomNumberGenerator.new()
-	rng.seed = dice
-	var capped := TreeGrower.build(builder, genome, rng, lod)
-	_mesh.mesh = builder.commit()
+	var grown: Dictionary = ClassDB.instantiate(&"PlantMeshNative").grow(genome.to_dictionary(), dice,
+			detailed, leafless, lod, true)
+	var capped: bool = grown["capped"]
+	_mesh.mesh = PlantMeshes.mesh_from(grown)
 	_target = Vector3(0.0, genome.height * 0.45, 0.0)
 	_place_camera()
-	_panel_info.text = "%d triangles%s   (%s, %s)   %s" % [builder.triangle_count(),
+	_panel_info.text = "%d triangles%s   (%s, %s)   %s" % [int(grown["triangles"]),
 			"  CAPPED: too many branches and leaves" if capped else "",
 			"realistic" if detailed else "low-poly", "distance version" if lod == 1 else "full", _recipe]
 

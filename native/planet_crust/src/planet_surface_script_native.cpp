@@ -3,6 +3,8 @@
 #include <godot_cpp/classes/class_db_singleton.hpp>
 #include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/time.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -24,7 +26,7 @@ void PlanetSurface::_bind_methods() {
 	NP_BIND_STATE(PlanetSurface, Variant::BOOL, paused)
 	NP_BIND_STATE(PlanetSurface, Variant::BOOL, burst)
 	ClassDB::bind_method(D_METHOD("setup", "planet_noise", "planet_frame"), &PlanetSurface::setup);
-	ClassDB::bind_method(D_METHOD("update", "at"), &PlanetSurface::update);
+	ClassDB::bind_method(D_METHOD("update", "at", "lead"), &PlanetSurface::update, DEFVAL(Vector3()));
 	ClassDB::bind_method(D_METHOD("coarse_level"), &PlanetSurface::coarse_level);
 	ClassDB::bind_method(D_METHOD("build_all", "at", "near_only"), &PlanetSurface::build_all, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("progress", "ground_metres", "plant_metres"), &PlanetSurface::progress);
@@ -33,6 +35,7 @@ void PlanetSurface::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("place_all"), &PlanetSurface::place_all);
 	ClassDB::bind_method(D_METHOD("work"), &PlanetSurface::work);
 	ClassDB::bind_method(D_METHOD("work_plants"), &PlanetSurface::work_plants);
+	ClassDB::bind_method(D_METHOD("flora_report"), &PlanetSurface::flora_report);
 }
 
 PlanetSurface::PlanetSurface() {
@@ -65,7 +68,10 @@ void PlanetSurface::setup(const Ref<PlanetNoise> &p_noise, const Ref<PlanetFrame
 			worker->start(Callable(this, "work"));
 			workers.push_back(worker);
 		}
-		for (int index = 0; index < count; index++) {
+		// ONE planting thread: with several, the engine crashed within seconds of low flight (freeing a MultiMeshInstance3D: a heap corruption that
+		// one thread never showed in 90 s over 18 km). A tile's plants take 4 ms (median) to 28 ms (mean), so one keeps up. PLANET_PLANT_THREADS tries more.
+		int plant_count = OS::get_singleton()->has_environment("PLANET_PLANT_THREADS") ? OS::get_singleton()->get_environment("PLANET_PLANT_THREADS").to_int() : 1;
+		for (int index = 0; index < plant_count; index++) {
 			Ref<Thread> planter;
 			planter.instantiate();
 			planter->start(Callable(this, "work_plants"));
@@ -95,14 +101,14 @@ void PlanetSurface::_exit_tree() {
 }
 
 // Chooses the tiles for a player at `at` (planet space) and queues what is missing.
-void PlanetSurface::update(const Vector3 &p_at) {
+void PlanetSurface::update(const Vector3 &p_at, const Vector3 &p_lead) {
 	near_ = p_at;
 	// how high the player is over the ground under them: detail follows the distance in space, so up in the air the ground is coarse and nothing
 	// grows (the trees below are far away)
 	Vector3 here = p_at.normalized();
 	height_ = std::max(p_at.length() - settings_->get_radius() - noise->height(here.x, here.y, here.z), 0.0);
 	wanted.clear();
-	select_native(p_at);
+	select_native(p_lead.is_zero_approx() ? p_at : p_at + p_lead);
 	std::vector<Entry> missing;
 	PackedFloat64Array sorts;
 	for (const auto &pair : wanted) {
@@ -157,6 +163,10 @@ void PlanetSurface::select_native(const Vector3 &p_at) {
 	config["tile_max"] = settings_->get_tile_max();
 	config["collide_tiles"] = settings_->get_collide_tiles();
 	config["plants_on"] = settings_->get_plants_on();
+	{ // real trees this far round the player (PLANET_TREE_REACH: another, to try); further out the far trees
+		OS *os = OS::get_singleton();
+		config["tree_reach"] = os->has_environment("PLANET_TREE_REACH") ? os->get_environment("PLANET_TREE_REACH").to_float() : 8000.0;
+	}
 	config["coarse_level"] = coarse_level();
 	config["faces"] = faces_;
 	Dictionary picked = native_->call("select", config);
@@ -195,10 +205,12 @@ void PlanetSurface::build_all(const Vector3 &p_at, bool p_near_only) {
 		}
 		PlanetTile *built = tile_at(pair.first);
 		if (built == nullptr || (entry.collides && !built->get_has_collider())) {
+			PlanetTile *fresh = make(entry);
 			if (built != nullptr) {
 				retire(built);
 			}
-			add(make(entry));
+			add(fresh);
+			inherit_plants(built, fresh);
 		}
 	}
 	drop_stale();
@@ -213,10 +225,12 @@ void PlanetSurface::_process(double) {
 		int64_t key = PlanetTile::key_of(entry.face, entry.level, entry.x, entry.y);
 		if (wanted.count(key)) {
 			PlanetTile *built = tile_at(key);
+			PlanetTile *fresh = make(entry);
 			if (built != nullptr) {
 				retire(built);
 			}
-			add(make(entry));
+			add(fresh);
+			inherit_plants(built, fresh);
 			added += 1;
 		}
 	}
@@ -243,11 +257,13 @@ void PlanetSurface::_process(double) {
 			retire(existing);
 		}
 		add(tile);
+		inherit_plants(existing, tile);
 		added += 1;
 	}
 	adopt_plants();
 	free_retired();
 	if (added > 0) {
+		queue_plants(); // (at once: not up to a third of a second later)
 		drop_stale();
 	}
 }
@@ -270,7 +286,16 @@ void PlanetSurface::queue_plants() {
 			continue;
 		}
 		if (!tile->get_plant_grid().is_empty()) {
-			wishes.push_back({ tile, wanted_detail, pair.second.distance });
+			double distance = pair.second.distance;
+			if (tile->get_plant_detail() >= 2) { // the trees are there: the undergrowth (detail 3, a third of the planting time) comes after every bare tile has its trees
+				distance += 1.0e6;
+			}
+			if (view_.length_squared() > 0.5 && distance > 80.0) { // tiles behind the camera wait for the ones it sees (the ones underfoot never do)
+				Vector3 to = tile->get_centre() * settings_->get_radius() - near_;
+				double c = to.length_squared() > 0.0 ? view_.dot(to.normalized()) : 1.0;
+				distance *= 1.0 + 3.0 * CLAMP(0.5 - c, 0.0, 1.0);
+			}
+			wishes.push_back({ tile, wanted_detail, distance });
 		}
 	}
 	std::sort(wishes.begin(), wishes.end(), [](const Wish &a, const Wish &b) { return a.distance < b.distance; });
@@ -301,7 +326,7 @@ void PlanetSurface::queue_plants() {
 // Puts the grown plants into their tiles (a few a frame).
 void PlanetSurface::adopt_plants() {
 	int adopted = 0;
-	while (adopted < 4) {
+	while (adopted < 8) {
 		PlantDone finished;
 		bool have = false;
 		if (!plant_inline.empty()) {
@@ -338,6 +363,10 @@ void PlanetSurface::adopt_plants() {
 		}
 		Node *old = Object::cast_to<Node>(tile->get_plant_holder());
 		if (old != nullptr) {
+			if (OS::get_singleton()->has_environment("PLANET_FLORA_DEBUG")) {
+				UtilityFunctions::print(vformat("FLORA_SWAP tile level %d: detail %d -> %d, nodes %d -> %d", (int64_t)tile->get_level(), (int64_t)tile->get_plant_detail(), finished.detail,
+						old->get_child_count(), finished.holder->get_child_count()));
+			}
 			old->queue_free();
 		}
 		tile->add_child(finished.holder);
@@ -387,7 +416,95 @@ void PlanetSurface::place_all() {
 }
 
 // Takes a tile out of the world. It is freed later, once no worker is still planting it.
+Dictionary PlanetSurface::flora_report() {
+	int starved = 0;
+	int starved_wanted_trees = 0;
+	double nearest = 1.0e9;
+	for (const auto &pair : wanted) {
+		if (pair.second.plants == 0) {
+			continue;
+		}
+		PlanetTile *tile = tile_at(pair.first);
+		if (tile == nullptr || tile->get_plant_grid().is_empty()) {
+			continue;
+		}
+		if (tile->get_plant_detail() < pair.second.plants) {
+			starved++;
+			if (OS::get_singleton()->has_environment("PLANET_STARVED_DEBUG")) {
+				UtilityFunctions::print(vformat("STARVED level %d d %d m: has %d wants %d pending %d inside %d collides %d", (int64_t)pair.second.level, (int)pair.second.distance, (int64_t)tile->get_plant_detail(),
+						(int64_t)pair.second.plants, (int)plant_pending.count(tile->get_instance_id()), (int)tile->is_inside_tree(), (int)tile->get_has_collider()));
+			}
+			nearest = std::min(nearest, pair.second.distance);
+			if (pair.second.plants >= 2) {
+				starved_wanted_trees++;
+			}
+		}
+	}
+	String by_level; // level: tiles wanted with far/trees/all, and how many of them have any plants, nearest first
+	for (int level = 0; level <= (int)settings_->max_level(); level++) {
+		int wanted_far = 0, wanted_more = 0, with_plants = 0, bare = 0, built_count = 0;
+		double nearest_wanted = 1.0e9;
+		for (const auto &pair : wanted) {
+			if (pair.second.level != level) {
+				continue;
+			}
+			PlanetTile *tile = tile_at(pair.first);
+			if (tile != nullptr) {
+				built_count++;
+			}
+			if (pair.second.plants == 0) {
+				bare++;
+				continue;
+			}
+			(pair.second.plants == 1 ? wanted_far : wanted_more)++;
+			nearest_wanted = std::min(nearest_wanted, pair.second.distance);
+			if (tile != nullptr && tile->get_plant_detail() > 0) {
+				with_plants++;
+			}
+		}
+		if (wanted_far + wanted_more + bare > 0) {
+			by_level += vformat("L%d wanted[far %d, trees+ %d, none %d] built %d planted %d nearest %d m; ", level, wanted_far, wanted_more, bare, built_count, with_plants, (int)nearest_wanted);
+		}
+	}
+	Dictionary report;
+	report["by_level"] = by_level;
+	report["starved"] = starved;
+	report["starved_trees"] = starved_wanted_trees;
+	report["nearest_starved_m"] = nearest;
+	report["queued"] = (int64_t)plant_pending.size();
+	report["lost_near"] = lost_near;
+	report["retired_waiting"] = (int64_t)retired.size();
+	lost_near = 0;
+	return report;
+}
+
+// The same tile made again (now with its collider) keeps the trees of the one it replaces until its own are grown: the ground is the same, only the
+// trunks' colliders are missing, so the trees must not blink out when the walker comes near.
+void PlanetSurface::inherit_plants(PlanetTile *p_from, PlanetTile *p_to) {
+	if (p_from == nullptr || p_to == nullptr || p_from == p_to) {
+		return;
+	}
+	Node3D *holder = p_from->get_plant_holder();
+	if (holder == nullptr || p_to->get_plant_holder() != nullptr || p_to->get_plant_grid().is_empty() || !p_to->is_inside_tree()) {
+		return;
+	}
+	if (holder->get_parent() != nullptr) {
+		holder->get_parent()->remove_child(holder);
+	}
+	p_to->add_child(holder);
+	p_to->set_plant_holder(holder);
+	p_to->set_plant_detail(std::max((int64_t)0, std::min(p_from->get_plant_detail(), (int64_t)2) - 1)); // (one short of what it has: the planter makes it again, with trunks)
+	p_from->set_plant_holder(nullptr);
+	p_from->set_plant_detail(0);
+	if ((p_from->get_centre() * settings_->get_radius() - near_).length() < 500.0) {
+		lost_near--; // (retire counted it)
+	}
+}
+
 void PlanetSurface::retire(PlanetTile *p_tile) {
+	if (p_tile->get_plant_holder() != nullptr && (p_tile->get_centre() * settings_->get_radius() - near_).length() < 500.0) {
+		lost_near++;
+	}
 	if (tile_at(p_tile->get_tile_key()) == p_tile) {
 		tiles.erase(p_tile->get_tile_key());
 	}
@@ -438,7 +555,12 @@ bool PlanetSurface::covered(PlanetTile *p_tile) const {
 		if (pair.second.face != p_tile->get_face() || !overlap(p_tile, pair.second)) {
 			continue;
 		}
-		if (tile_at(pair.first) == nullptr) {
+		PlanetTile *replacement = tile_at(pair.first);
+		if (replacement == nullptr) {
+			return false;
+		}
+		// the old tile keeps its trees until the new one has its own (else patches of trees blink out as the ground detail changes)
+		if (pair.second.plants != 0 && !replacement->get_plant_grid().is_empty() && replacement->get_plant_detail() < std::min(pair.second.plants, 2)) { // (the trees; the undergrowth may follow)
 			return false;
 		}
 	}
@@ -509,7 +631,11 @@ void PlanetSurface::work_plants() {
 		if (!have) {
 			continue;
 		}
+		uint64_t began = Time::get_singleton()->get_ticks_usec();
 		Node3D *holder = job.tile->grow_plants(job.detail);
+		if (OS::get_singleton()->has_environment("PLANET_FLORA_DEBUG")) {
+			UtilityFunctions::print(vformat("FLORA_GROW %.0f ms detail %d level %d nodes %d", (Time::get_singleton()->get_ticks_usec() - began) / 1000.0, job.detail, (int64_t)job.tile->get_level(), holder->get_child_count()));
+		}
 		std::lock_guard<std::mutex> lock(mutex);
 		plant_done.push_back({ job.tile->get_instance_id(), holder, job.detail });
 	}

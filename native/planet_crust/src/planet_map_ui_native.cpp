@@ -14,6 +14,7 @@
 #include <godot_cpp/classes/input_map.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/panel_container.hpp>
+#include <godot_cpp/classes/class_db_singleton.hpp>
 #include <godot_cpp/classes/theme_db.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/v_box_container.hpp>
@@ -31,8 +32,14 @@ static const double PI_D = 3.14159265358979323846;
 static const char *ACTION_NAME = "planet_map";
 static const Vector2i PASSES[4] = { Vector2i(320, 160), Vector2i(640, 320), Vector2i(1024, 512), Vector2i(2048, 1024) };
 // the layers as the buttons and the keys 1.. list them (the Atlas first, the rest are extra)
-static const int LAYER_ORDER[11] = { PlanetChart::ATLAS, PlanetChart::TERRAIN, PlanetChart::ELEVATION, PlanetChart::TEMPERATURE, PlanetChart::RAIN, PlanetChart::BIOME,
-	PlanetChart::PLATES, PlanetChart::SLOPE, PlanetChart::MEAN_TEMPERATURE, PlanetChart::CLOUDS, PlanetChart::SATELLITE };
+static const int LAYER_COUNT = 12;
+static const int LAYER_ORDER[LAYER_COUNT] = { PlanetChart::ATLAS, PlanetChart::TERRAIN, PlanetChart::ELEVATION, PlanetChart::TEMPERATURE, PlanetChart::RAIN, PlanetChart::BIOME,
+	PlanetChart::PLATES, PlanetChart::SLOPE, PlanetChart::MEAN_TEMPERATURE, PlanetChart::CLOUDS, PlanetChart::SATELLITE, PlanetChart::CAVES };
+
+// The Caves layer is only there with the voxel ground (the engine with the voxel module: the tiled ground has no caves).
+static bool has_caves() {
+	return ClassDBSingleton::get_singleton()->class_exists("VoxelGeneratorPlanet");
+}
 
 static double positive_mod_d(double p_x, double p_y) {
 	double value = std::fmod(p_x, p_y);
@@ -43,7 +50,7 @@ static double positive_mod_d(double p_x, double p_y) {
 }
 
 static int layer_position(int p_layer) {
-	for (int i = 0; i < 11; i++) {
+	for (int i = 0; i < LAYER_COUNT; i++) {
 		if (LAYER_ORDER[i] == p_layer) {
 			return i;
 		}
@@ -116,7 +123,10 @@ void PlanetMap::_ready() {
 	modes->set_focus_mode(Control::FOCUS_NONE);
 	modes->set_custom_minimum_size(Vector2(190.0, 0.0));
 	Array names = PlanetChart::names();
-	for (int position = 0; position < 11; position++) {
+	for (int position = 0; position < LAYER_COUNT; position++) {
+		if (LAYER_ORDER[position] == PlanetChart::CAVES && !has_caves()) {
+			continue;
+		}
 		String key_name = position < 10 ? String::num_int64((position + 1) % 10) : String(" ");
 		modes->add_item(vformat("%s  %s", key_name, names[LAYER_ORDER[position]]), position);
 	}
@@ -221,10 +231,10 @@ void PlanetMap::_input(const Ref<InputEvent> &p_event) {
 		} else if (code == KEY_MINUS || code == KEY_KP_SUBTRACT) {
 			zoom_at(view->get_size() * 0.5, 0.8);
 			get_viewport()->set_input_as_handled();
-		} else if (code >= KEY_1 && code <= KEY_9 && code - KEY_1 < 11) {
+		} else if (code >= KEY_1 && code <= KEY_9 && code - KEY_1 < LAYER_COUNT) {
 			select_layer(LAYER_ORDER[code - KEY_1]); // (1 is the Atlas, then the extra modes)
 			get_viewport()->set_input_as_handled();
-		} else if (code == KEY_0 && 11 > 9) {
+		} else if (code == KEY_0 && LAYER_COUNT > 9) {
 			select_layer(LAYER_ORDER[9]);
 			get_viewport()->set_input_as_handled();
 		}
@@ -247,7 +257,8 @@ void PlanetMap::toggle() {
 	if (is_visible()) {
 		mouse_before = Input::get_singleton()->get_mouse_mode();
 		Input::get_singleton()->set_mouse_mode(Input::MOUSE_MODE_VISIBLE);
-		go_home();
+		centre = where_is_the_player().get("uv", Vector2(0.5, 0.5)); // (the player's place, at the zoom it was left at: go_home is the button)
+		clamp_centre();
 		revealed = false; // (the loading note until the sharp picture of this view is ready)
 		unsharp_time = 0.0;
 		if (world != nullptr) {
@@ -410,9 +421,9 @@ void PlanetMap::begin() {
 	}
 	if (warm_up) {
 		warming = true;
-		int count = (int)PlanetChart::names().size();
-		for (int layer = 0; layer < count; layer++) {
-			if (layer != layer_now) {
+		for (int position = 0; position < LAYER_COUNT; position++) {
+			int layer = LAYER_ORDER[position];
+			if (layer != layer_now && layer != PlanetChart::CAVES) { // (far out the Caves layer shows no caves)
 				warm_queue.push_back(layer);
 			}
 		}
@@ -982,6 +993,18 @@ void PlanetMap::draw_view() {
 	PlanetMapOverlay::draw_grid(view, zoom_now, centre, visible_size(), on_screen_call);
 	draw_names();
 	PlanetMapOverlay::draw_legend(view, layer_now, world->get_noise()->get_relief());
+	if (layer_now == PlanetChart::CAVES) {
+		// (the caves are drawn where a pixel of the picture is under PlanetChart::SMOOTH_PIXEL metres)
+		double pixel = TAU_D * world->get_settings()->get_radius() / (256.0 * std::pow(2.0, (double)tile_level() + 1.0));
+		Ref<Font> font = ThemeDB::get_singleton()->get_fallback_font();
+		Vector2 at(18.0, view->get_size().y - 62.0);
+		if (!tile_mode() || pixel > PlanetChart::SMOOTH_PIXEL) {
+			view->draw_string(font, at, "Zoom in to see the caves", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1.0f, 0.9f, 0.5f));
+		} else {
+			view->draw_rect(Rect2(at + Vector2(0.0, -12.0), Vector2(14.0, 14.0)), Color(0.2f, 1.0f, 0.9f));
+			view->draw_string(font, at + Vector2(20.0, 0.0), "a way in from the surface", HORIZONTAL_ALIGNMENT_LEFT, -1, 14);
+		}
+	}
 	if (layer_now == PlanetChart::ATLAS) { // the atlas is an old map: a burnt frame round it
 		PlanetMapOverlay::draw_parchment_frame(view);
 	}

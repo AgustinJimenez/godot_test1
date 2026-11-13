@@ -1,3 +1,4 @@
+#include "flora_meshes_native.h"
 #include "planet_sky_nodes_native.h"
 
 #include "planet_imprint_native.h"
@@ -28,13 +29,6 @@ using namespace godot;
 
 static const double TAU_D = 6.283185307179586476925286766559;
 
-static Ref<Script> flora_script() {
-	static Ref<Script> s;
-	if (s.is_null()) {
-		s = ResourceLoader::get_singleton()->load("res://systems/world_gen/flora_meshes.gd");
-	}
-	return s;
-}
 
 // ---- PlanetImpostors ----
 
@@ -57,35 +51,40 @@ void PlanetImpostors::start(Object *p_registry) {
 	if (debug) {
 		UtilityFunctions::print("IMPOSTORS start ", all.size());
 	}
-	viewport = memnew(SubViewport);
-	viewport->set_size(Vector2i(CELL, CELL));
-	viewport->set_use_own_world_3d(true);
-	viewport->set_transparent_background(true);
-	viewport->set_msaa_3d(Viewport::MSAA_DISABLED);
-	viewport->set_update_mode(SubViewport::UPDATE_DISABLED);
-	viewport->set_positional_shadow_atlas_size(0);
-	add_child(viewport);
-	Ref<Environment> environment;
-	environment.instantiate();
-	environment->set_background(Environment::BG_COLOR);
-	environment->set_bg_color(Color(0, 0, 0, 0));
-	environment->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
-	environment->set_ambient_light_color(Color(0.62f, 0.66f, 0.72f));
-	environment->set_tonemapper(Environment::TONE_MAPPER_LINEAR);
-	camera = memnew(Camera3D);
-	camera->set_projection(Camera3D::PROJECTION_ORTHOGONAL);
-	camera->set_near(0.05);
-	camera->set_far(400.0);
-	camera->set_environment(environment);
-	viewport->add_child(camera);
-	DirectionalLight3D *sun = memnew(DirectionalLight3D);
-	sun->set_param(Light3D::PARAM_ENERGY, 0.9);
-	sun->set_shadow(false);
-	viewport->add_child(sun);
-	sun->set_rotation_degrees(Vector3(-50.0, 35.0, 0.0));
-	holder = memnew(MeshInstance3D);
-	holder->set_material_override(flora_script()->call("material"));
-	viewport->add_child(holder);
+	for (int v = 0; v < TOTAL; v++) {
+		SubViewport *viewport = memnew(SubViewport);
+		viewport->set_size(Vector2i(CELL, CELL));
+		viewport->set_use_own_world_3d(true);
+		viewport->set_transparent_background(true);
+		viewport->set_msaa_3d(Viewport::MSAA_DISABLED);
+		viewport->set_update_mode(SubViewport::UPDATE_DISABLED);
+		viewport->set_positional_shadow_atlas_size(0);
+		add_child(viewport);
+		Ref<Environment> environment;
+		environment.instantiate();
+		environment->set_background(Environment::BG_COLOR);
+		environment->set_bg_color(Color(0, 0, 0, 0));
+		environment->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
+		environment->set_ambient_light_color(Color(0.62f, 0.66f, 0.72f));
+		environment->set_tonemapper(Environment::TONE_MAPPER_LINEAR);
+		Camera3D *camera = memnew(Camera3D);
+		camera->set_projection(Camera3D::PROJECTION_ORTHOGONAL);
+		camera->set_near(0.05);
+		camera->set_far(400.0);
+		camera->set_environment(environment);
+		viewport->add_child(camera);
+		DirectionalLight3D *sun = memnew(DirectionalLight3D);
+		sun->set_param(Light3D::PARAM_ENERGY, 0.9);
+		sun->set_shadow(false);
+		viewport->add_child(sun);
+		sun->set_rotation_degrees(Vector3(-50.0, 35.0, 0.0));
+		MeshInstance3D *holder = memnew(MeshInstance3D);
+		holder->set_material_override(FloraMeshes::material());
+		viewport->add_child(holder);
+		viewports[v] = viewport;
+		cameras[v] = camera;
+		holders[v] = holder;
+	}
 	for (int i = 0; i < all.size(); i++) {
 		Object *one = all[i];
 		if (!(bool)one->call("is_tree")) {
@@ -95,6 +94,7 @@ void PlanetImpostors::start(Object *p_registry) {
 			tasks.push_back({ (int)(int64_t)one->get("id"), variant });
 		}
 	}
+	std::stable_sort(tasks.begin(), tasks.end(), [](const Task &a, const Task &b) { return a.variant < b.variant; }); // (every tree's first variant first: the far forest fills in evenly)
 	call_deferred("begin_next");
 }
 
@@ -106,21 +106,28 @@ void PlanetImpostors::begin_next() {
 	}
 	while (next_task < tasks.size()) {
 		current = tasks[next_task++];
-		Ref<ArrayMesh> mesh = reg->call("mesh", current.id, current.variant, (bool)flora_script()->get("detailed"), 1);
+		Ref<ArrayMesh> mesh = reg->call("mesh", current.id, current.variant, FloraMeshes::get_detailed(), 1);
 		AABB box = mesh->get_aabb();
 		if (box.size.y <= 0.1) {
 			continue;
 		}
 		double reach = std::max(std::abs((double)box.position.x), std::abs((double)box.get_end().x));
 		reach = std::max(reach, std::max(std::abs((double)box.position.z), std::abs((double)box.get_end().z)));
-		side = std::max((double)box.size.y, reach * 2.0) * 1.06;
+		// the picture's size covers the tree seen from every height of the eye (a tall tree seen from above is shorter and wider)
+		side = std::max((double)box.size.y, reach * 2.0);
+		for (int e = 1; e < ELEVS; e++) {
+			const double el = Math::deg_to_rad(ELEV_DEG[e]);
+			side = std::max(side, (double)box.size.y * std::cos(el) + reach * 2.0 * std::sin(el));
+		}
+		side *= 1.06;
 		middle = box.position.y + box.size.y * 0.5;
 		box_top = box.get_end().y;
-		holder->set_mesh(mesh);
-		camera->set_size(side);
-		atlas = Image::create(CELL * (VIEWS + 1), CELL, false, Image::FORMAT_RGBA8); // (the last picture: from straight above)
-		view = 0;
-		aim(view);
+		atlas = Image::create(CELL * (VIEWS + 1), CELL * ELEVS, false, Image::FORMAT_RGBA8);
+		for (int v = 0; v < TOTAL; v++) {
+			holders[v]->set_mesh(mesh);
+			cameras[v]->set_size(side);
+		}
+		aim_all();
 		return;
 	}
 	if (OS::get_singleton()->get_environment("IMPOSTOR_DEBUG") != "") {
@@ -128,27 +135,28 @@ void PlanetImpostors::begin_next() {
 	}
 }
 
-// Points the camera for one view and asks for the picture a frame later.
-void PlanetImpostors::aim(int p_view) {
-	double angle = TAU_D * (double)p_view / (double)VIEWS;
-	if (p_view == VIEWS) {
-		camera->look_at_from_position(Vector3(0.0, box_top + 200.0, 0.0), Vector3(0.0, middle, 0.0), Vector3(0.0, 0.0, -1.0));
-	} else {
-		Vector3 eye = Vector3(std::cos(angle), 0.0, std::sin(angle)) * 200.0 + Vector3(0.0, middle, 0.0);
-		camera->look_at_from_position(eye, Vector3(0.0, middle, 0.0));
+// Points every camera at its view and asks for the pictures a frame later.
+void PlanetImpostors::aim_all() {
+	for (int e = 0; e < ELEVS; e++) {
+		const double el = Math::deg_to_rad(ELEV_DEG[e]);
+		for (int v = 0; v < VIEWS; v++) {
+			double angle = TAU_D * (double)v / (double)VIEWS;
+			Vector3 eye = Vector3(std::cos(angle) * std::cos(el), std::sin(el), std::sin(angle) * std::cos(el)) * 200.0 + Vector3(0.0, middle, 0.0);
+			cameras[e * VIEWS + v]->look_at_from_position(eye, Vector3(0.0, middle, 0.0));
+			viewports[e * VIEWS + v]->set_update_mode(SubViewport::UPDATE_ONCE);
+		}
 	}
-	viewport->set_update_mode(SubViewport::UPDATE_ONCE);
+	cameras[TOTAL - 1]->look_at_from_position(Vector3(0.0, box_top + 200.0, 0.0), Vector3(0.0, middle, 0.0), Vector3(0.0, 0.0, -1.0));
+	viewports[TOTAL - 1]->set_update_mode(SubViewport::UPDATE_ONCE);
 	RenderingServer::get_singleton()->connect("frame_post_draw", Callable(this, "frame_done"), CONNECT_ONE_SHOT);
 }
 
 void PlanetImpostors::frame_done() {
-	Ref<Image> picture = viewport->get_texture()->get_image();
-	picture->convert(Image::FORMAT_RGBA8);
-	atlas->blit_rect(picture, Rect2i(0, 0, CELL, CELL), Vector2i(view * CELL, 0));
-	view += 1;
-	if (view <= VIEWS) {
-		aim(view);
-		return;
+	for (int v = 0; v < TOTAL; v++) {
+		Ref<Image> picture = viewports[v]->get_texture()->get_image();
+		picture->convert(Image::FORMAT_RGBA8);
+		Vector2i at = v == TOTAL - 1 ? Vector2i(VIEWS * CELL, 0) : Vector2i((v % VIEWS) * CELL, (v / VIEWS) * CELL);
+		atlas->blit_rect(picture, Rect2i(0, 0, CELL, CELL), at);
 	}
 	finish_bake();
 	begin_next();
@@ -160,6 +168,9 @@ void PlanetImpostors::finish_bake() {
 	// (the see-through texels take the colour of the solid ones: no dark fringe when filtered)
 	PackedByteArray bled = maker->call("bleed", atlas->get_data(), atlas->get_width(), atlas->get_height(), 3);
 	atlas = Image::create_from_data(atlas->get_width(), atlas->get_height(), false, Image::FORMAT_RGBA8, bled);
+	if (OS::get_singleton()->get_environment("IMPOSTOR_DUMP") != "" && current.id == 1 && current.variant == 0) {
+		atlas->save_png(OS::get_singleton()->get_environment("IMPOSTOR_DUMP"));
+	}
 	atlas->generate_mipmaps();
 	Ref<QuadMesh> quad;
 	quad.instantiate();
@@ -170,6 +181,7 @@ void PlanetImpostors::finish_bake() {
 	material->set_shader(ResourceLoader::get_singleton()->load("res://shaders/world/planet_impostor.gdshader"));
 	material->set_shader_parameter("atlas", ImageTexture::create_from_image(atlas));
 	material->set_shader_parameter("views", (double)VIEWS);
+	material->set_shader_parameter("rows", (double)ELEVS);
 	material->set_shader_parameter("middle", middle);
 	Dictionary baked;
 	baked["mesh"] = quad;
@@ -208,6 +220,9 @@ void PlanetImpostors::swap(int p_id, int p_variant) {
 		quads->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 		quads->set_visibility_range_begin(old->get_visibility_range_begin());
 		quads->set_visibility_range_end(old->get_visibility_range_end());
+		quads->set_visibility_range_begin_margin(old->get_visibility_range_begin_margin());
+		quads->set_visibility_range_end_margin(old->get_visibility_range_end_margin());
+		quads->set_visibility_range_fade_mode(old->get_visibility_range_fade_mode());
 		old->get_parent()->add_child(quads);
 		old->queue_free();
 	}

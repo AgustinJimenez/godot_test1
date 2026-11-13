@@ -34,7 +34,7 @@ var forced_wind := Vector2.ZERO ## a planet gives the real wind direction here (
 var state := State.CLEAR
 var clouds := WorldClouds.new()
 var rain := RainEffect.new()
-var atmosphere: WorldAtmosphere
+var atmosphere
 var noise: TerrainNoise
 var wetness := 0.0 # 0 dry .. 1 soaked
 var snow := 0.0 # 0 bare .. 1 covered

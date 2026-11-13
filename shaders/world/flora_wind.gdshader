@@ -536,6 +536,8 @@ vec3 turn_by(vec3 rotation, vec3 v) {
 	return v * cos(angle) + cross(axis, v) * sin(angle) + axis * dot(axis, v) * (1.0 - cos(angle));
 }
 
+#include "res://shaders/world/planet_haze.gdshaderinc" // the haze by height (FOG)
+
 void vertex() {
 	if (bendable) {
 		float branch = CUSTOM0.x;
@@ -590,6 +592,7 @@ void vertex() {
 }
 
 void fragment() {
+	FOG = planet_haze(mat3(INV_VIEW_MATRIX) * VERTEX, cloud_sun_world);
 	vec3 paint = pow(COLOR.rgb, vec3(2.2)); // the palette is written in sRGB
 	// autumn: whatever is green turns yellow, orange and brown
 	float leafy = smoothstep(0.0, 0.08, paint.g - max(paint.r, paint.b));
@@ -990,7 +993,7 @@ void fragment() {
 	}
 	// a leaf (a card of leaves, or a mesh leaf with its UV): a waxy upper side catches a sharper sheen than bark or soil does
 	float leaf_like = is_bark || is_rock ? 0.0 : ((is_card && UV2.y < 3.5) || (UV.x > 0.001 && !is_card) ? 1.0 : 0.0);
-	ROUGHNESS = mix(0.92, mix(0.78, 0.5, leaf_like), realism);
+	ROUGHNESS = mix(0.92, mix(0.78, 0.64, leaf_like), realism); // (leaves: a soft sheen: at 0.5 flat leaves mirrored the bright sky in white patches)
 	SPECULAR = mix(0.2, 0.3, leaf_like * realism);
 	// the cracks of the bark: less ambient light and less shine (the sky does not reach into them), and a
 	// little less of the sun too, as if the plates shaded each other
@@ -1002,10 +1005,10 @@ void fragment() {
 	float sun_len = length(cloud_sun_world);
 	vec3 sun_view = (VIEW_MATRIX * vec4(cloud_sun_world / max(sun_len, 0.001), 0.0)).xyz;
 	float against_sun = sun_len > 0.5 ? clamp(dot(sun_view, -VIEW), 0.0, 1.0) : 0.0;
-	float glow = 0.3 + 2.5 * pow(against_sun, 4.0);
+	float glow = 0.3 + 0.6 * pow(against_sun, 1.5) + 2.2 * pow(against_sun, 6.0); // (a wide soft lobe and a tight bright core: a canopy glows a little from any side against the sun, and blazes along the ray)
 	// the light that comes through a leaf is yellower and brighter than the leaf is lit from the front: green and red pass, blue does not
 	vec3 transmitted = mix(paint, paint * vec3(1.0, 1.12, 0.5) + vec3(0.01, 0.02, 0.0), leaf_like);
 	BACKLIGHT = transmitted * glow * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
-	RIM = 0.25 * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
+	RIM = 0.15 * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
 	RIM_TINT = 0.5;
 }

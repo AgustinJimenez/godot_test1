@@ -36,7 +36,7 @@ func _show_kind(kind: int) -> void:
 
 
 func _ready() -> void:
-	FloraMeshes.detailed = true
+	FloraMeshes.set_detailed(true)
 	WorldWind.set_realism(1.0)
 	var number := 0
 	var shot := ""
@@ -54,7 +54,7 @@ func _ready() -> void:
 			dist = float(argument.get_slice("=", 1))
 		elif argument.begins_with("--rise="): # (camera metres above the target: an angled view)
 			rise = float(argument.get_slice("=", 1))
-	var registry := SpeciesRegistry.new(1337, 60)
+	var registry := SpeciesRegistry.create(1337, 60)
 	var trees: Array[PlantSpecies] = []
 	for one in registry.species:
 		if one.is_tree():

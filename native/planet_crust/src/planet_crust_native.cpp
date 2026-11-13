@@ -483,7 +483,29 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 }
 
 // The ground before any water has cut it (PlanetNoise.base_height with no hydrology).
+// The ground as the voxel levels and the water see it. Within a couple of metres of the sea level the small relief (a few decimetres over
+// 2-30 m) is blurred away: on the beaches' gentle slope (2 %) that relief moved the waterline by metres, and the coarse levels cut it into
+// polygons of sand and water (the "cells" of the shallows). The blur is the mean of four neighbours 15 m round, which keeps a plain slope.
 double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
+	const double ground = ground_height_raw(p_dir);
+	const double near_sea = 1.0 - smooth(0.6, 2.2, std::abs(ground));
+	if (near_sea <= 0.0) {
+		return ground;
+	}
+	const Vector3 up = p_dir.normalized();
+	const Vector3 e1 = up.cross(std::abs(up.y) < 0.9f ? Vector3(0, 1, 0) : Vector3(1, 0, 0)).normalized();
+	const Vector3 e2 = up.cross(e1);
+	const real_t reach = (real_t)(15.0 / radius);
+	double mean = 0.0;
+	mean += ground_height_raw((up + e1 * reach).normalized());
+	mean += ground_height_raw((up - e1 * reach).normalized());
+	mean += ground_height_raw((up + e2 * reach).normalized());
+	mean += ground_height_raw((up - e2 * reach).normalized());
+	mean *= 0.25;
+	return ground + (mean - ground) * near_sea;
+}
+
+double PlanetCrustNative::ground_height_raw(const Vector3 &p_dir) const {
 	double units = tectonic_height(p_dir) - sea;
 	Vector3 p = p_dir * (real_t)radius;
 	double land = smooth(-0.02, 0.05, units);

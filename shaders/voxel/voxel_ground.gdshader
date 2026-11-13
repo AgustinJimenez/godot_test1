@@ -5,6 +5,7 @@
 // at Earth size) and the slope (the normal against the radial direction). Crude on purpose: sand by the
 // sea, grass, bare soil, rock on slopes, snow high up.
 shader_type spatial;
+render_mode cull_disabled; // (a crack between two LODs shows the back of the surface, ground-coloured, instead of the black inside of the planet)
 
 uniform float planet_radius = 6371000.0; // the planet's radius (m), set by script
 uniform float snow_line = 2200.0;
@@ -17,7 +18,8 @@ uniform vec3 window_e1 = vec3(1.0, 0.0, 0.0);
 uniform vec3 window_e2 = vec3(0.0, 0.0, 1.0);
 uniform float window_half = 0.0001; // half its side, as an angle (radians)
 uniform int debug_mode = 0; // a tool: 1 the height in 100 m steps, 2 the slope, 3 the map's colour, 4 the light-free albedo
-uniform mat4 world_to_planet = mat4(1.0); // the terrain's own space (the planet's) from the world's, set by script
+// (the planet's own space from the world's is the global planet_from_world: the terrain gives every block a copy of this material, made when the
+// block is, so a uniform set later by script never reaches the blocks that are there already)
 
 varying vec3 world_pos;
 varying vec3 world_normal;
@@ -45,6 +47,7 @@ uniform vec3 scan_leaf_mean = vec3(0.1943, 0.1288, 0.0655);
 uniform vec3 scan_gravel_mean = vec3(0.1452, 0.1181, 0.0898);
 uniform vec3 scan_red_mean = vec3(0.3041, 0.2007, 0.1305);
 
+#include "res://shaders/world/planet_cloud_shade.gdshaderinc" // the clouds' shadow (the lab publishes its globals)
 #include "res://shaders/world/planet_stones.gdshaderinc" // hash3, noise3, fbm3 (the tiles' ground shares them)
 #include "res://shaders/world/planet_sand.gdshaderinc" // the sand's ripples and swell
 
@@ -89,15 +92,18 @@ void scan_triplanar(sampler2D scan_c, sampler2D scan_n, vec3 at, vec3 facing, fl
 	rough = nx.b * w.x + ny.b * w.y + nz.b * w.z;
 }
 
+#include "res://shaders/world/planet_haze.gdshaderinc" // the haze by height (FOG)
+
 void vertex() {
 	vec4 abs_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
-	world_pos = (world_to_planet * abs_pos).xyz;
+	world_pos = (planet_from_world * abs_pos).xyz;
 	lab_pos = abs_pos.xyz;
 	lab_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
-	world_normal = normalize((world_to_planet * MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	world_normal = normalize((planet_from_world * MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
 void fragment() {
+	FOG = planet_haze(mat3(INV_VIEW_MATRIX) * VERTEX, cloud_sun_world);
 	float height = length(world_pos) - planet_radius;
 	vec2 xz = world_pos.xz;
 	float slope = 1.0 - clamp(dot(normalize(world_normal), normalize(world_pos)), 0.0, 1.0); // 0 flat, 1 a wall
@@ -204,6 +210,9 @@ void fragment() {
 			col *= mix(vec3(1.0), cliff_ratio * mix(0.5, 1.0, cliff_ao), cliff_w);
 			NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(transpose(mat3(anchor_from_world)) * tilt_planet * 1.1, 0.0)).xyz * cliff_w);
 		}
+	}
+	if (detail_on) { // (the lab: the clouds are there)
+		col *= cloud_shade_keep(haze_eye + mat3(INV_VIEW_MATRIX) * VERTEX);
 	}
 	ALBEDO = col;
 	if (debug_mode > 0) { // tools: emit flags, unlit (the albedo is lit and tone mapped, hard to read)

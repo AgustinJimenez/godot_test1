@@ -3,6 +3,7 @@
 #include "planet_frame_native.h"
 #include "planet_settings_native.h"
 
+#include "graphics_lookup.h"
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/curve.hpp>
 #include <godot_cpp/classes/gradient.hpp>
@@ -397,7 +398,7 @@ void PlanetMotes::_process(double) {
 	Vector3 atmosphere_position = Object::cast_to<Node3D>(atmosphere)->get_global_position();
 	double sun_up = CLAMP(sun_direction.dot((atmosphere_position - centre).normalized()) * 6.0, 0.0, 1.0);
 	double calm = 1.0 - std::max((double)atmosphere->get("overcast"), (double)atmosphere->get("fog_extra") * 60.0);
-	Node *graphics = get_node_or_null("/root/GraphicsSettings");
+	Node *graphics = graphics_settings_node();
 	bool particles = graphics != nullptr && (bool)graphics->call("get_graphics_value", StringName("particles"));
 	bool wanted = particles && sun_up > 0.05 && calm > 0.3 && !(bool)atmosphere->get("underwater") && (double)planet_object->call("altitude") < 2500.0;
 	set_emitting(wanted);

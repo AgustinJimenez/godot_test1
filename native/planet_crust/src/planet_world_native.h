@@ -54,6 +54,9 @@ public:
 	static constexpr double BAKE_UP_TO = 10.0; // m above the ground: higher up the ground plates have no parallax
 	static constexpr double RAIN_UP_TO = 1500.0; // m above the ground: higher up there is no rain
 	static constexpr double LOAD_GROUND = 2000.0; // m of ground and water built before the player is let in
+	Vector3 lead_at; // where the target was at the last tile update, and when (the lead of a fast flyer)
+	uint64_t lead_msec = 0;
+	static constexpr double TREE_CLEARANCE = 30.0; // m free flight stays over the ground where trees grow
 	static constexpr double LOAD_PLANTS_DEFAULT = 6000.0; // m round the player planted before they are let in
 
 	NP_FIELD(Ref<PlanetSettings>, settings, Ref<PlanetSettings>())

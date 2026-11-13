@@ -54,6 +54,7 @@ public:
 	NP_FIELD(Vector3, sun_direction, Vector3(0, 1, 0)) // towards the sun, world axes
 	NP_FIELD(Color, tint, Color(1, 1, 1, 1)) // the sun's colour
 	NP_FIELD(double, strength, 0.0)
+	NP_FIELD(double, shafts, 0.0) // the screen-space light shafts' strength (0 off)
 
 	PlanetSunGlow();
 	~PlanetSunGlow();

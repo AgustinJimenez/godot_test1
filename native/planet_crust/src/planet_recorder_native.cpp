@@ -21,6 +21,7 @@
 using namespace godot;
 
 static const char *RECORD_PATH = "user://planet_live.jsonl";
+static const char *RECORD_LAB_PATH = "user://planet_live_lab.jsonl";
 static const char *MARKS_DIR = "user://planet_marks"; // a copy of the file for every F9 (the live file is overwritten by the next run)
 
 static double snapped(double p_value, double p_step) {
@@ -154,6 +155,13 @@ Dictionary PlanetRecorder::sample() {
 	result["local_hour"] = snapped(clock->local_hour(here.normalized()), 0.01);
 	Dictionary tiles = surface->get("tiles");
 	result["tiles"] = tiles.size();
+	{ // the trees: how many wanted tiles have none yet, and how many trees were lost within 500 m since the last sample (blinking patches show here)
+		Dictionary flora = surface->call("flora_report");
+		result["trees_starved"] = flora.get("starved_trees", 0);
+		result["trees_nearest_starved_m"] = flora.get("nearest_starved_m", 0);
+		result["tiles_lost_near"] = flora.get("lost_near", 0);
+		result["plant_queue"] = flora.get("queued", 0);
+	}
 	result["weather"] = world->get("weather_text");
 	Object *atmosphere = world->get("atmosphere");
 	result["fog_extra"] = snapped((double)atmosphere->get("fog_extra"), 0.0001);
@@ -192,10 +200,8 @@ void PlanetRecorder::add(Dictionary p_entry) {
 }
 
 void PlanetRecorder::write() {
-	if (in_a_lab()) {
-		return;
-	}
-	Ref<FileAccess> file = FileAccess::open(RECORD_PATH, FileAccess::WRITE);
+	// (a lab or check writes its own file: the real session's is not overwritten, and a play of a lab scene still leaves a record)
+	Ref<FileAccess> file = FileAccess::open(in_a_lab() ? RECORD_LAB_PATH : RECORD_PATH, FileAccess::WRITE);
 	if (file.is_null()) {
 		return;
 	}

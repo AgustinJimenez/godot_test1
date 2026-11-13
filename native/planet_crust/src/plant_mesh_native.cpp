@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <array>
 #include <map>
@@ -318,6 +319,10 @@ struct MeshData {
 	Transform3D xf; // applied to everything added (a placed part)
 	bool moved = false;
 	bool detailed = false;
+	int lite_step = 0; // the middle-distance tree: 2 (every other point of a leaf's margin) or 4; 0: the full tree
+	bool mute = false; // the part being drawn is left out (the plainer tree): its triangles only count against the budget
+	int phantom = 0; // the triangles the full leaves would have added, counted against the budget so a plain tree grows as many leaves as the full one
+	bool lite = false; // the middle-distance tree: the same tree (branches, leaves, outlines), each leaf a plain fan of a simpler outline
 	bool leafless = false;
 	bool leaf_cards = true;
 	std::vector<Vector3> vertices, normals;
@@ -328,7 +333,7 @@ struct MeshData {
 	int bark_kind = 2; // the look of the bark (flora_wind.gdshader bark_kind), written in UV2.y of every tube vertex
 	bool has_uv = false;
 
-	int triangle_count() const { return (int)vertices.size() / 3; }
+	int triangle_count() const { return (int)vertices.size() / 3 + phantom; }
 	void reset() {
 		vertices.clear();
 		normals.clear();
@@ -338,11 +343,16 @@ struct MeshData {
 		branch_of.clear();
 		current_branch = 0.0f;
 		has_uv = false;
+		phantom = 0;
 	}
 
 	// the corners come counter clockwise seen from outside; Godot wants clockwise, so b and c swap
 	void tri(const Vector3 &a, const Vector3 &b, const Vector3 &c, const Color &ca, const Color &cb,
 			const Color &cc) {
+		if (mute) {
+			phantom++;
+			return;
+		}
 		const Vector3 pa = moved ? xf.xform(a) : a, pb = moved ? xf.xform(b) : b, pc = moved ? xf.xform(c) : c;
 		Vector3 normal = (pb - pa).cross(pc - pa).normalized();
 		vertices.push_back(pa);
@@ -367,6 +377,10 @@ struct MeshData {
 	void tri(const Vector3 &a, const Vector3 &b, const Vector3 &c, const Color &col) { tri(a, b, c, col, col, col); }
 	void tri_uv(const Vector3 &a, const Vector3 &b, const Vector3 &c, const Color &ca, const Color &cb,
 			const Color &cc, const Vector2 &ua, const Vector2 &ub, const Vector2 &uc, const Vector2 &dice) {
+		if (mute) {
+			phantom++;
+			return;
+		}
 		tri(a, b, c, ca, cb, cc);
 		size_t at = vertices.size() - 3;
 		uvs[at] = ua;
@@ -382,6 +396,10 @@ struct MeshData {
 	void tri_uv_n(const Vector3 &a, const Vector3 &b, const Vector3 &c, const Color &ca, const Color &cb, const Color &cc,
 			const Vector2 &ua, const Vector2 &ub, const Vector2 &uc, const Vector2 &dice, const Vector3 &na,
 			const Vector3 &nb, const Vector3 &nc) {
+		if (mute) {
+			phantom++;
+			return;
+		}
 		tri_uv(a, b, c, ca, cb, cc, ua, ub, uc, dice);
 		const size_t at = vertices.size() - 3;
 		normals[at] = moved ? xf.basis.xform(na) : na;
@@ -530,6 +548,10 @@ struct MeshData {
 		if (refine && detailed && sides >= 5 && sides < 12) {
 			sides *= 2;
 		}
+		const int full_sides = sides; // (the plainer tree draws fewer sides but throws the same dice, so it stays the same tree)
+		if (lite_step > 0 && full_sides >= 6 && flutes == 0) {
+			sides = lite_step >= 8 ? std::max(3, full_sides / 4) : std::max(4, full_sides / (lite_step >= 4 ? 3 : 2));
+		}
 		int count = (int)centres.size();
 		std::vector<std::vector<Vector3>> rings;
 		Vector3 side;
@@ -549,9 +571,12 @@ struct MeshData {
 			last_tangent = tangent;
 			Vector3 across = side.cross(tangent);
 			std::vector<Vector3> points(sides);
-			for (int i = 0; i < sides; i++) {
-				double angle = TAU_D * i / sides;
+			for (int i = 0; i < full_sides; i++) {
 				double jitter = 1.0 + rng.range(-wobble, wobble);
+				if (i >= sides) {
+					continue;
+				}
+				double angle = TAU_D * i / sides;
 				if (flutes > 0 && !flute_depths.empty()) {
 					double depth = flute_depths[std::min(ring, (int)flute_depths.size() - 1)];
 					jitter *= 1.0 + depth * cos(flutes * angle + ring * 0.12);
@@ -559,6 +584,16 @@ struct MeshData {
 				points[i] = centres[ring] + (side * (real_t)cos(angle) + across * (real_t)sin(angle)) * (real_t)(radii[ring] * jitter);
 			}
 			rings.push_back(points);
+		}
+		if (lite_step >= 8) { // the farthest step leaves the thin branches out (their leaves stay; the dice above were thrown, so the tree is the same tree)
+			double thickest = 0.0;
+			for (double r : radii) {
+				thickest = std::max(thickest, r);
+			}
+			static const double thin = [] { const char *e = std::getenv("PLANT_LOD3_THIN"); return e != nullptr ? std::atof(e) : 0.06; }();
+			if (thickest < thin * (lite_step >= 32 ? 7.0 : (lite_step >= 16 ? 2.5 : 1.0))) {
+				return;
+			}
 		}
 		// the bark's coordinates (see flora_wind.gdshader): UV.x = -(1 + the way round, 0..1), UV.y = metres
 		// along the tube, UV2.x = its radius there. Every triangle has its own corners, so the seam closes.
@@ -568,17 +603,25 @@ struct MeshData {
 		}
 		auto bark = [&](int ring, double round_) { return Vector2((real_t)(-1.0 - round_), (real_t)along[ring]); };
 		auto girth = [&](int ring) { return Vector2((real_t)radii[ring], (real_t)(bark_kind * 0.1)); };
-		for (int ring = 0; ring < count - 1; ring++) {
+		// (the farthest step draws every other ring of the tube: the same path, fewer segments)
+		std::vector<int> drawn;
+		for (int ring = 0; ring < count; ring += lite_step >= 32 ? 4 : (lite_step >= 16 ? 3 : (lite_step >= 8 ? 2 : 1))) {
+			drawn.push_back(ring);
+		}
+		if (drawn.size() < 2 || drawn.back() != count - 1) {
+			drawn.push_back(count - 1);
+		}
+		for (size_t at = 0; at + 1 < drawn.size() && count > 1; at++) {
+			const int ring = drawn[at], up = drawn[at + 1];
 			for (int i = 0; i < sides; i++) {
 				int next = (i + 1) % sides;
 				double u0 = (double)i / sides, u1 = (double)(i + 1) / sides;
 				const Color &low = colors_in[ring];
-				const Color &high = colors_in[ring + 1];
-				tri(rings[ring][i], rings[ring + 1][i], rings[ring][next], low, high, low);
-				set_uv(bark(ring, u0), bark(ring + 1, u0), bark(ring, u1), girth(ring), girth(ring + 1), girth(ring));
-				tri(rings[ring][next], rings[ring + 1][i], rings[ring + 1][next], low, high, high);
-				set_uv(bark(ring, u1), bark(ring + 1, u0), bark(ring + 1, u1), girth(ring), girth(ring + 1),
-						girth(ring + 1));
+				const Color &high = colors_in[up];
+				tri(rings[ring][i], rings[up][i], rings[ring][next], low, high, low);
+				set_uv(bark(ring, u0), bark(up, u0), bark(ring, u1), girth(ring), girth(up), girth(ring));
+				tri(rings[ring][next], rings[up][i], rings[up][next], low, high, high);
+				set_uv(bark(ring, u1), bark(up, u0), bark(up, u1), girth(ring), girth(up), girth(up));
 			}
 		}
 		for (int i = 0; i < sides; i++) {
@@ -714,6 +757,16 @@ std::vector<Vector2> leaf_outline(int shape, double aspect, int lobes, int edge_
 // A cluster of leaves as one card; the plant shader draws the leaves on it
 void add_leaf_card(MeshData &b, const Vector3 &base, const Vector3 &axis, const Vector3 &normal, double length,
 		const Color &base_color, const Color &tip_color, double dice) {
+	if (b.lite_step > 0) { // the plainer tree (SpeedTree's way): every other card (every fourth, further out) stays, bigger, so the leaf cloud is the same; chosen by place, so the tree is the same
+		const int share = b.lite_step >= 8 ? b.lite_step : (b.lite_step >= 4 ? 4 : 2);
+		const uint32_t h = (uint32_t)(int)(base.x * 977.0f) * 73856093u ^ (uint32_t)(int)(base.y * 977.0f) * 19349663u ^ (uint32_t)(int)(base.z * 977.0f) * 83492791u;
+		b.phantom += 2; // (counted against the budget as before, so the same leaves grow)
+		if (((h >> 7) % (uint32_t)share) != 0) {
+			return;
+		}
+		b.phantom -= 2;
+		length *= std::sqrt((double)share);
+	}
 	Vector3 right = axis.cross(normal).normalized();
 	real_t half = (real_t)(length * 0.5);
 	Vector3 a = base - right * half * 0.8f;
@@ -730,12 +783,35 @@ void add_leaf_card(MeshData &b, const Vector3 &base, const Vector3 &axis, const 
 // turned a little, all different from leaf to leaf (`dice`); the normals are the average of the faces at each point so the
 // light runs smoothly over it, and the veins and colour are the shader's job.
 void add_leaf_surface(MeshData &b, const std::vector<Vector2> &outline, const Vector3 &base, const Vector3 &axis,
-		const Vector3 &normal, double length, double fold, double curl, const Color &base_color, const Color &tip_color,
+		const Vector3 &normal, double p_length, double fold, double curl, const Color &base_color, const Color &tip_color,
 		double asym, double skew, double width, const Vector2 &dice) {
 	const Vector3 right = axis.cross(normal).normalized();
-	const size_t n = outline.size();
+	std::vector<Vector2> kept;
+	if (b.lite && outline.size() > 8) { // every other (or fourth) point of the margin (the base and the tip stay): the same silhouette
+		const size_t tip = outline.size() / 2;
+		for (size_t i = 0; i < outline.size(); i++) {
+			if (i == 0 || i == tip || i % (size_t)std::max(b.lite_step, 2) == 0) {
+				kept.push_back(outline[i]);
+			}
+		}
+	}
+	const std::vector<Vector2> &used = kept.empty() ? outline : kept;
+	if (b.lite) {
+		b.phantom += (int)(3 * outline.size()) - (int)used.size(); // (what the full leaf has: three faces a point; this one: a fan)
+	}
+	double length = p_length;
+	if (b.lite_step >= 4) { // the far step (SpeedTree's way): half the leaves, the rest bigger, the same leaf cloud (by the leaf's place, not the dice: the tree stays the same)
+		const uint32_t h = (uint32_t)(int)(base.x * 977.0f) * 73856093u ^ (uint32_t)(int)(base.y * 977.0f) * 19349663u ^ (uint32_t)(int)(base.z * 977.0f) * 83492791u;
+		const uint32_t mask = b.lite_step >= 8 ? (uint32_t)(b.lite_step / 2 - 1) : 1u; // (the far steps keep one leaf in 4, 8, 16, longer)
+		if ((h >> 7) & mask) {
+			b.phantom += (int)used.size();
+			return;
+		}
+		length *= b.lite_step >= 8 ? std::sqrt((double)b.lite_step / 2.0) : 1.41;
+	}
+	const size_t n = used.size();
 	double widest = 0.001;
-	for (const Vector2 &p : outline) {
+	for (const Vector2 &p : used) {
 		widest = std::max(widest, (double)std::abs(p.x));
 	}
 	const double phase = dice.x * 6.28318, wave_amp = 0.012 + 0.03 * dice.y, wave_freq = 5.0 + 5.0 * dice.x;
@@ -756,14 +832,14 @@ void add_leaf_surface(MeshData &b, const std::vector<Vector2> &outline, const Ve
 	std::vector<Vector2> uv;
 	position.reserve(2 * n + 1);
 	for (size_t i = 0; i < n; i++) {
-		position.push_back(place(outline[i].x, outline[i].y));
-		colour.push_back(mix(base_color, tip_color, outline[i].y).darkened(0.05f));
-		uv.push_back(Vector2((real_t)(0.5 + 0.5 * outline[i].x / widest), outline[i].y));
+		position.push_back(place(used[i].x, used[i].y));
+		colour.push_back(mix(base_color, tip_color, used[i].y).darkened(0.05f));
+		uv.push_back(Vector2((real_t)(0.5 + 0.5 * used[i].x / widest), used[i].y));
 	}
-	const bool rings = b.detailed; // (the light look: a fan from the centre, the close one adds a ring half way in)
+	const bool rings = b.detailed && !b.lite; // (the light look: a fan from the centre, the close one adds a ring half way in)
 	if (rings) {
 		for (size_t i = 0; i < n; i++) {
-			const double x = outline[i].x * 0.5, y = outline[i].y * 0.92 + 0.04;
+			const double x = used[i].x * 0.5, y = used[i].y * 0.92 + 0.04;
 			position.push_back(place(x, y));
 			colour.push_back(mix(base_color, tip_color, y));
 			uv.push_back(Vector2((real_t)(0.5 + 0.5 * x / widest), (real_t)y));
@@ -1493,7 +1569,7 @@ struct Grower {
 		std::vector<Vector3> shape = points; // (the curve the tube follows; the children and the colliders keep the plain points)
 		std::vector<double> shape_radii = radii;
 		std::vector<Color> shape_colors = colors;
-		if (fine && lod == 0 && level < 2) {
+		if (fine && lod == 0 && level < 2 && b->lite_step == 0) {
 			smooth_path(shape, shape_radii, shape_colors, 2);
 		}
 		b->tube(shape, shape_radii, shape_colors, sides, *rng, 0.0, closed, false, 0, std::vector<double>());
@@ -1637,6 +1713,7 @@ struct Grower {
 
 	void feather(const Vector3 &at, const Vector3 &axis, const Vector3 &normal, double length,
 			const Color &base_color, const Color &tip_color) {
+		Muted muted(b, thin_out(at, length));
 		Vector3 across = axis.cross(normal).normalized();
 		if (cards) {
 			// realistic: the leaflets of a feather leaf as one strip each side of its stalk, drawn by the shader
@@ -1682,10 +1759,32 @@ struct Grower {
 				stalk_end + axis * (real_t)(length * 0.22), tip_color, tip_color, tip_color);
 	}
 
+	// The plainer tree's way (SpeedTree's): of the leaf clusters every other one (every fourth, further out) stays, bigger, so the leaf cloud is
+	// the same; chosen by the place (the dice are still thrown, so the tree is the same tree). Returns whether this one is left out.
+	bool thin_out(const Vector3 &at, double &size) const {
+		if (b->lite_step <= 0 || !cards) {
+			return false;
+		}
+		const int share = b->lite_step >= 8 ? b->lite_step : (b->lite_step >= 4 ? 4 : 2);
+		const uint32_t h = (uint32_t)(int)(at.x * 977.0f) * 73856093u ^ (uint32_t)(int)(at.y * 977.0f) * 19349663u ^ (uint32_t)(int)(at.z * 977.0f) * 83492791u;
+		if (((h >> 7) % (uint32_t)share) != 0) {
+			return true;
+		}
+		size *= std::sqrt((double)share);
+		return false;
+	}
+	struct Muted {
+		MeshData *mesh;
+		bool was;
+		Muted(MeshData *p_mesh, bool p_on) : mesh(p_mesh), was(p_mesh->mute) { mesh->mute = was || p_on; }
+		~Muted() { mesh->mute = was; }
+	};
+
 	void spray(const Vector3 &base, const Vector3 &axis, double length, double sway) {
 		if (b->leafless || full()) {
 			return;
 		}
+		Muted muted(b, thin_out(base, length));
 		int count = fine ? 11 : (9 - 3 * lod);
 		Vector3 side = axis.cross(UP);
 		if (side.length_squared() < 0.0001f) {
@@ -2057,7 +2156,10 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 	Genome genome;
 	genome.read(p_genome);
 	MeshData mesh;
+	const bool lite = p_detailed && p_lod >= 1 && p_lod <= 5;
 	mesh.detailed = p_detailed;
+	mesh.lite = lite;
+	mesh.lite_step = lite ? (p_lod >= 3 ? 8 << (p_lod - 3) : 2 * p_lod) : 0; // (lod 3, 4, 5: 8, 16, 32: the far steps, the same tree, an eighth, a sixteenth... of its leaves)
 	mesh.leafless = p_leafless;
 	mesh.leaf_cards = p_leaf_cards;
 	Rng rng;
@@ -2088,8 +2190,8 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 		grower.g = &g;
 		grower.b = &mesh;
 		grower.rng = &rng;
-		grower.lod = p_lod;
-		grower.fine = p_detailed && p_lod == 0;
+		grower.lod = lite ? 0 : p_lod; // (lod 1 and 2 of a detailed tree are the same tree with plainer leaves, not a different one)
+		grower.fine = p_detailed && (p_lod == 0 || lite);
 		grower.cards = p_detailed && p_leaf_cards;
 		grower.depth = g.depth;
 		grower.thrift = thrift;
