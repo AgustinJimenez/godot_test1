@@ -45,6 +45,10 @@ var _map_widths: Array[int] = []
 ## How far each level of detail of the WATER reaches (godot_voxel's lod_distance, 48 by default): the sea's coarse blocks cut the shore into bricks of sand and water (tens of metres across); finer
 ## water pushed out removes them. Only the water: the same for the ground costs 8x the load time and 15x the frame time and changes nothing (findings file, shore_lod).
 const WATER_LOD_DISTANCE := 96.0
+## How far under the sea's level the far sea's sphere sits. Not less: its facets (100 m wide) dip up to 6 cm under a true sphere and its waves move them, so at 0.08 they poked through the voxel water as polygons (findings file)
+const FAR_SEA_DROP := 0.5
+## How far the voxel water of the sea is drawn (m; 0: all the way). Its shader cuts it there (the view distance of a water terrain does not limit it) and the far sea sphere does the rest. Off since the voxel generator makes the water slab at least two voxels thick (the rows and bricks at coarse levels are gone); kept as a switch.
+const SEA_MESH_CUT := 0.0
 const WINDOW_SIDE := 1536.0
 const WINDOW_METRES := 2.0
 const WINDOW_REBAKE := 300.0 # m from the middle
@@ -131,7 +135,9 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 		if "--voxel-calm" in args:
 			PlanetTile.water_material().set_shader_parameter(&"wave_height", 0.0)
 		if not "--voxel-no-water-mesh" in args:
-			_make_water(1, 1024, PlanetTile.water_material())
+			var near_sea := PlanetTile.water_material().duplicate() as ShaderMaterial
+			near_sea.set_shader_parameter(&"cut_beyond", SEA_MESH_CUT)
+			_make_water(1, 1024, near_sea)
 		if not "--voxel-no-far-sea" in args:
 			_make_far_sea(PlanetTile.water_material())
 	_rivers_wanted = planet.settings.hydrology_on and not "--voxel-no-rivers" in args
@@ -197,14 +203,14 @@ func _follow_frame() -> void:
 func _make_far_sea(material: Material) -> void:
 	var sphere := SphereMesh.new()
 	var level := _planet.settings.sea_level
-	sphere.radius = _planet.settings.radius + level - 0.5
+	sphere.radius = _planet.settings.radius + level - FAR_SEA_DROP
 	sphere.height = sphere.radius * 2.0
 	sphere.radial_segments = 384
 	sphere.rings = 192
 	var far_sea := MeshInstance3D.new()
 	far_sea.mesh = sphere
 	var sea_material := material.duplicate() as ShaderMaterial
-	sea_material.set_shader_parameter(&"thickness_bias", 0.5) # (the sphere is 0.5 m under the sea's level: the water's depth tint matches the voxel water's)
+	sea_material.set_shader_parameter(&"thickness_bias", FAR_SEA_DROP) # (the sphere is that much under the sea's level: the water's depth tint matches the voxel water's)
 	far_sea.material_override = sea_material
 	far_sea.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(far_sea)

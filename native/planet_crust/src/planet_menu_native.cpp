@@ -376,6 +376,7 @@ void UniverseStartMenu::_bind_methods() {
 	ClassDB::bind_static_method("UniverseStartMenu", D_METHOD("get_requested"), &UniverseStartMenu::get_requested);
 	ClassDB::bind_static_method("UniverseStartMenu", D_METHOD("set_requested", "value"), &UniverseStartMenu::set_requested);
 	ClassDB::bind_method(D_METHOD("open_selected"), &UniverseStartMenu::open_selected);
+	ClassDB::bind_method(D_METHOD("continue_latest"), &UniverseStartMenu::continue_latest);
 	ClassDB::bind_method(D_METHOD("delete_selected"), &UniverseStartMenu::delete_selected);
 	ClassDB::bind_method(D_METHOD("create_typed"), &UniverseStartMenu::create_typed);
 	ClassDB::bind_method(D_METHOD("create_random"), &UniverseStartMenu::create_random);
@@ -423,7 +424,8 @@ void UniverseStartMenu::_ready() {
 	column->add_theme_constant_override("separation", 8);
 	centre->add_child(column);
 	add_label(column, "Universe", 32);
-	add_label(column, "Saved universes", 16);
+	add_button(column, "Continue the latest world", "continue_latest");
+	add_label(column, "Saved worlds (double click to start)", 16);
 	saves = memnew(ItemList);
 	saves->set_custom_minimum_size(Vector2(0, 190));
 	saves->connect("item_activated", Callable(this, "saves_activated"));
@@ -433,7 +435,14 @@ void UniverseStartMenu::_ready() {
 	add_button(row, "Open", "open_selected");
 	add_button(row, "Delete", "delete_selected");
 	column->add_child(memnew(HSeparator));
-	add_label(column, "New universe (it starts on one planet)", 16);
+	add_label(column, "New world (it is saved under its name, and listed above next time)", 16);
+	HBoxContainer *name_row = memnew(HBoxContainer);
+	column->add_child(name_row);
+	add_label(name_row, "name ", 16);
+	name_field = memnew(LineEdit);
+	name_field->set_placeholder("world_<seed>");
+	name_field->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	name_row->add_child(name_field);
 	HBoxContainer *fields = memnew(HBoxContainer);
 	column->add_child(fields);
 	add_label(fields, "seed", 16);
@@ -518,6 +527,16 @@ void UniverseStartMenu::open_selected() {
 	begin(UniverseSave::settings_from(data), data.get("state", Dictionary()));
 }
 
+void UniverseStartMenu::continue_latest() {
+	String name = UniverseSave::latest();
+	Dictionary data = name != "" ? UniverseSave::load_data(name) : Dictionary();
+	if (data.is_empty()) {
+		note->set_text("No saved world yet: create one below");
+		return;
+	}
+	begin(UniverseSave::settings_from(data), data.get("state", Dictionary()));
+}
+
 void UniverseStartMenu::delete_selected() {
 	String name = selected_save();
 	if (name != "") {
@@ -537,7 +556,8 @@ void UniverseStartMenu::create(const String &p_seed_text) {
 	if (radius_field->get_text().strip_edges().is_valid_float()) {
 		settings->set_radius(CLAMP(radius_field->get_text().to_float(), 2000.0, 6.4e6));
 	}
-	begin(settings, Dictionary());
+	String typed = name_field->get_text().strip_edges();
+	begin(settings, Dictionary(), typed != "" ? typed : vformat("world_%d", (int64_t)universe->get_universe_seed()));
 }
 
 void UniverseStartMenu::create_typed() {
@@ -551,14 +571,17 @@ void UniverseStartMenu::create_random() {
 void UniverseStartMenu::quick_start() {
 	Ref<PlanetSettings> settings;
 	settings.instantiate();
-	begin(settings, Dictionary());
+	begin(settings, Dictionary(), "default_planet");
 }
 
 void UniverseStartMenu::new_earth() {
-	begin(PlanetSettings::earth(), Dictionary());
+	begin(PlanetSettings::earth(), Dictionary(), "earth");
 }
 
-void UniverseStartMenu::begin(const Ref<PlanetSettings> &p_settings, const Dictionary &p_state) {
+void UniverseStartMenu::begin(const Ref<PlanetSettings> &p_settings, const Dictionary &p_state, const String &p_save_name) {
+	if (p_save_name != "") {
+		UniverseSave::save_settings(p_settings, p_save_name, p_state); // (a new world is kept at once: the menu lists it next time)
+	}
 	menu_state()->pending = p_settings;
 	menu_state()->pending_state = p_state;
 	menu_state()->requested = false;

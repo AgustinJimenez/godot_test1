@@ -36,6 +36,8 @@ public:
 	static String get_old_dir() { return "user://planets"; } // the first saves (one planet, no universe): still read
 	static String path_for(const String &p_save_name, const String &p_folder = "user://universes");
 	static bool save(Object *p_planet, const String &p_save_name);
+	// A save of a planet that is not built yet (the start menu's new world): its settings and, if given, the moment on it.
+	static bool save_settings(const Ref<PlanetSettings> &p_settings, const String &p_save_name, const Dictionary &p_state = Dictionary());
 	static Dictionary load_data(const String &p_save_name);
 	static Ref<PlanetSettings> settings_from(const Dictionary &p_data);
 	static TypedArray<Dictionary> list();

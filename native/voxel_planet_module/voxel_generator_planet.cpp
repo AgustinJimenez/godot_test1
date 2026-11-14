@@ -63,6 +63,9 @@ void VoxelGeneratorPlanet::generate_water(VoxelBuffer &p_out, const Vector3 &p_o
 	const double half = Vector3(size).length() * step * 0.5;
 	const double centre_length = centre.length();
 	const double none = 1000.0; // (outside the water: positive, however far)
+	// the slab of water is at least two voxels thick: at the coarse levels of detail a voxel is wider than WATER_DEPTH, and a slab thinner than a voxel is cut by
+	// the mesher into bricks and holes of water and sand over the shallows
+	const double depth = MAX(WATER_DEPTH, step * 2.0);
 	// no sea above its level, no river far above the ground or under it
 	if (p_params.water == 1 && centre_length - half > p_params.radius + p_params.sea_level) {
 		p_out.clear_channel_f(VoxelBuffer::CHANNEL_SDF, none);
@@ -113,7 +116,7 @@ void VoxelGeneratorPlanet::generate_water(VoxelBuffer &p_out, const Vector3 &p_o
 		}
 	}
 	// (spacing of slack: the ground between the grid's points can dip under what they show)
-	if (!any || centre_length - half > p_params.radius + highest + 1.0 || centre_length + half < p_params.radius + lowest_ground - WATER_DEPTH - spacing) {
+	if (!any || centre_length - half > p_params.radius + highest + 1.0 || centre_length + half < p_params.radius + lowest_ground - depth - spacing) {
 		p_out.clear_channel_f(VoxelBuffer::CHANNEL_SDF, none);
 		return;
 	}
@@ -133,7 +136,7 @@ void VoxelGeneratorPlanet::generate_water(VoxelBuffer &p_out, const Vector3 &p_o
 				const double ground = Math::lerp(Math::lerp((double)ground_read[at], (double)ground_read[at + 1], tu), Math::lerp((double)ground_read[at + n], (double)ground_read[at + n + 1], tu), tv);
 				const double level = Math::lerp(Math::lerp((double)levels[at], (double)levels[at + 1], tu), Math::lerp((double)levels[at + n], (double)levels[at + n + 1], tu), tv);
 				const double distance = p.length() - p_params.radius;
-				p_out.set_voxel_f((float)(MAX(distance - level, (ground - WATER_DEPTH) - distance) / step), x, y, z, VoxelBuffer::CHANNEL_SDF);
+				p_out.set_voxel_f((float)(MAX(distance - level, (ground - depth) - distance) / step), x, y, z, VoxelBuffer::CHANNEL_SDF);
 			}
 		}
 	}
@@ -252,13 +255,20 @@ VoxelGenerator::Result VoxelGeneratorPlanet::generate_block(VoxelGenerator::Voxe
 		for (int x = 0; x < size.x; ++x) {
 			for (int y = 0; y < size.y; ++y, ++i) {
 				double sdf = sdf_values[i];
+				// No tunnel or chamber opens near the sea: a coast is one smooth slope into the water, and a tunnel's mouth there is a pit in the beach or the
+				// seabed. The ground over a voxel (its surface height over the sea level) lets caves in only well inland (none under 30 m, all above 70 m).
+				double inland = 0.0;
 				if (carve && sdf < 0.0 && sdf > -CAVE_DEPTH / step) {
+					const double surface = (origin + Vector3(x, y, z) * step).length() - params.radius - sdf_values[i] * step;
+					inland = Math::smoothstep(30.0, 70.0, surface - params.sea_level);
+				}
+				if (inland > 0.0) {
 					const Vector3 p = origin + Vector3(x, y, z) * step;
 					const double field = MAX(Math::abs((double)cave_a->get_noise_3d(p.x, p.y, p.z)),
 							Math::abs((double)cave_b->get_noise_3d(p.x, p.y, p.z)));
-					sdf = MAX(sdf, (CAVE_WIDTH - field) * CAVE_SCALE / step);
+					sdf = MAX(sdf, (CAVE_WIDTH * inland - field) * CAVE_SCALE / step);
 					const double depth = -sdf_values[i] * step; // (of the rock this voxel would have: the chambers keep a roof)
-					const double shut = CLAMP((depth - CAVERN_ROOF) / 30.0, 0.0, 1.0);
+					const double shut = CLAMP((depth - CAVERN_ROOF) / 30.0, 0.0, 1.0) * inland;
 					if (shut > 0.0) {
 						const double room = (double)cavern->get_noise_3d(p.x, p.y, p.z) - CAVERN_LEVEL - (1.0 - shut) * 2.0;
 						sdf = MAX(sdf, room * CAVERN_SCALE / step);

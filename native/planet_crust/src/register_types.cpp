@@ -107,6 +107,7 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(UniverseSettings);
 	GDREGISTER_CLASS(UniverseSave);
 	GDREGISTER_CLASS(PlanetCloudShell);
+	GDREGISTER_CLASS(PlanetTerrainShade);
 	GDREGISTER_CLASS(PlanetAtmosphere);
 	GDREGISTER_CLASS(PlanetFauna);
 	GDREGISTER_CLASS(PlanetImpostors);

@@ -48,6 +48,7 @@ uniform vec3 scan_gravel_mean = vec3(0.1452, 0.1181, 0.0898);
 uniform vec3 scan_red_mean = vec3(0.3041, 0.2007, 0.1305);
 
 #include "res://shaders/world/planet_cloud_shade.gdshaderinc" // the clouds' shadow (the lab publishes its globals)
+#include "res://shaders/world/planet_terrain_shade.gdshaderinc" // the hills' long shadows
 #include "res://shaders/world/planet_stones.gdshaderinc" // hash3, noise3, fbm3 (the tiles' ground shares them)
 #include "res://shaders/world/planet_sand.gdshaderinc" // the sand's ripples and swell
 
@@ -213,6 +214,9 @@ void fragment() {
 	}
 	if (detail_on) { // (the lab: the clouds are there)
 		col *= cloud_shade_keep(haze_eye + mat3(INV_VIEW_MATRIX) * VERTEX);
+		// the long shadow of a hill (the sun's own shadow map reaches 150-250 m): the star's light is most of the light, the sky's stays
+		float hill_light = terrain_light(haze_eye + mat3(INV_VIEW_MATRIX) * VERTEX);
+		col *= mix(0.3, 1.0, hill_light);
 	}
 	ALBEDO = col;
 	if (debug_mode > 0) { // tools: emit flags, unlit (the albedo is lit and tone mapped, hard to read)

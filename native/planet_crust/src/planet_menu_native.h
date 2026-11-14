@@ -86,13 +86,14 @@ class UniverseStartMenu : public CanvasLayer {
 	ItemList *saves = nullptr;
 	LineEdit *seed_field = nullptr;
 	LineEdit *radius_field = nullptr;
+	LineEdit *name_field = nullptr;
 	OptionButton *home = nullptr;
 	HSlider *readability = nullptr;
 	Label *note = nullptr;
 
 	void fill_saves();
 	String selected_save() const;
-	void begin(const Ref<PlanetSettings> &p_settings, const Dictionary &p_state);
+	void begin(const Ref<PlanetSettings> &p_settings, const Dictionary &p_state, const String &p_save_name = String());
 	void create(const String &p_seed_text);
 	Label *add_label(Node *p_parent, const String &p_text, int p_size);
 	Button *add_button(Node *p_parent, const String &p_text, const StringName &p_method);
@@ -106,6 +107,7 @@ public:
 
 	void _ready() override;
 	void open_selected();
+	void continue_latest();
 	void delete_selected();
 	void create_typed();
 	void create_random();

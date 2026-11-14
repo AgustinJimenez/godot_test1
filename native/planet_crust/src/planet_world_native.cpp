@@ -144,6 +144,8 @@ void PlanetWorld::_ready() {
 	add_child(bark);
 	bark->call("run"); // (a coroutine: it carries on over the next frames)
 	noise = PlanetNoise::create(settings);
+	terrain_shade.instantiate();
+	terrain_shade->setup(noise, settings->get_radius());
 	clock->set_day_seconds(settings->get_day_seconds());
 	clock->set_year_days(settings->get_year_days());
 	clock->set_axial_tilt(Math::deg_to_rad(settings->get_axial_tilt()));
@@ -637,6 +639,7 @@ void PlanetWorld::wait_for_the_ground(double p_delta) {
 	PlanetSurface *ground = get_surface();
 	if (timer <= 0.0) {
 		timer = 0.3;
+		terrain_shade->update(planet_position().normalized(), clock->sun_in_body());
 		ground->update(planet_position());
 	}
 	ground->set_burst(true);
@@ -694,6 +697,9 @@ void PlanetWorld::update_now() {
 }
 
 void PlanetWorld::_exit_tree() {
+	if (terrain_shade.is_valid()) {
+		terrain_shade->stop();
+	}
 	PlanetCloudGpu::stop();
 }
 

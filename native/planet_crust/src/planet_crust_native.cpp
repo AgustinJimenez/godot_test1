@@ -379,7 +379,13 @@ double PlanetCrustNative::seamounts(const Vector3 &p_dir, double p_units) const 
 		const double age = along / trail;
 		const double start = smooth(0.0, 0.05, along); // (the first volcano rises, it does not end in a cliff)
 		const double clump = smooth(0.0, 0.5, (double)interior.at(p_dir * (real_t)9.0) * 0.5 + 0.3);
-		const double bump = std::exp(-(d / 0.018) * (d / 0.018)) * (1.0 - age) * (0.35 + 0.65 * clump) * start;
+		// separate volcanoes along the trail, not a ridge: one every 0.06 rad (about 1.2 km here), round (as wide along the trail as across it), each its own height
+		const double cell = along / 0.06;
+		const double within = (cell - std::floor(cell)) - 0.5;
+		const double seed = std::sin((std::floor(cell) + 17.0 * index) * 12.9898) * 43758.5453;
+		const double own = 0.3 + 0.7 * (seed - std::floor(seed));
+		const double pearl = std::exp(-(within / 0.3) * (within / 0.3)) * own;
+		const double bump = std::exp(-(d / 0.018) * (d / 0.018)) * pearl * (1.0 - age) * (0.35 + 0.65 * clump) * start;
 		best = bump > best ? bump : best;
 	}
 	return best * relief * 0.55 * smooth(-0.12, -0.2, p_units);
@@ -488,20 +494,26 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 // polygons of sand and water (the "cells" of the shallows). The blur is the mean of four neighbours 15 m round, which keeps a plain slope.
 double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 	const double ground = ground_height_raw(p_dir);
-	const double near_sea = 1.0 - smooth(0.6, 2.2, std::abs(ground));
+	// The sea wears the ground down: in the shallows (to about 30 m deep) and on the beach (to a few metres up) every bump and hollow smaller than
+	// about a hundred metres is smoothed away, the more the nearer the sea level, so a coast is one smooth slope and not a rough bed with pits.
+	// (The small relief also moved the waterline by metres on a 2 % slope and the coarse levels cut it into polygons of sand and water.)
+	const double near_sea = ground >= 0.0 ? 1.0 - smooth(1.5, 5.0, ground) : 1.0 - smooth(12.0, 32.0, -ground);
 	if (near_sea <= 0.0) {
 		return ground;
 	}
 	const Vector3 up = p_dir.normalized();
 	const Vector3 e1 = up.cross(std::abs(up.y) < 0.9f ? Vector3(0, 1, 0) : Vector3(1, 0, 0)).normalized();
 	const Vector3 e2 = up.cross(e1);
-	const real_t reach = (real_t)(15.0 / radius);
 	double mean = 0.0;
-	mean += ground_height_raw((up + e1 * reach).normalized());
-	mean += ground_height_raw((up - e1 * reach).normalized());
-	mean += ground_height_raw((up + e2 * reach).normalized());
-	mean += ground_height_raw((up - e2 * reach).normalized());
-	mean *= 0.25;
+	const double rings[2] = { 30.0, 85.0 };
+	for (int r = 0; r < 2; r++) {
+		const real_t reach = (real_t)(rings[r] / radius);
+		mean += ground_height_raw((up + e1 * reach).normalized());
+		mean += ground_height_raw((up - e1 * reach).normalized());
+		mean += ground_height_raw((up + e2 * reach).normalized());
+		mean += ground_height_raw((up - e2 * reach).normalized());
+	}
+	mean *= 0.125;
 	return ground + (mean - ground) * near_sea;
 }
 

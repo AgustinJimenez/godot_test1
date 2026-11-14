@@ -516,7 +516,7 @@ func _ready() -> void:
 	var user_args := OS.get_cmdline_user_args()
 	_procedural_by_default(user_args)
 	_trees_by_default(user_args)
-	if not asked and user_args.is_empty() and not UniverseStartMenu.get_requested():
+	if not asked and user_args.is_empty() and not UniverseStartMenu.get_requested() and OS.has_environment("PLANET_NO_MENU"):
 		# no menu for now: the default planet (seed 1337, 20 km) on foot, with plants (--start-menu: menu;
 		# PLANET_SCALE=0.1..1: a random-seed Earth that size instead)
 		if OS.has_environment("PLANET_SCALE"):
@@ -543,6 +543,9 @@ func _ready() -> void:
 	var settings := PlanetSettings.new()
 	if PlanetMenu.get_pending() != null: # a new planet asked for in the Planet page of the menu
 		settings = PlanetMenu.get_pending()
+		if user_args.is_empty(): # (chosen in the start menu of a plain Play: the game's own way, on foot, with plants)
+			settings.plants_on = true
+			_grounded = true
 		PlanetMenu.set_pending(null)
 		restored_state = PlanetMenu.get_pending_state()
 		PlanetMenu.set_pending_state({})

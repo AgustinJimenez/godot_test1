@@ -988,3 +988,72 @@ Order of work if wanted: (a) first, as a cheap test of the look; then decide on 
 - Strength: `PlanetSunGlow.shafts` = glow strength x 0.22 (env `PLANET_SHAFT_GAIN` overrides the 0.22; `NO_SUN_SHAFTS=1` turns it off). It follows the glow's gating (off at night, underwater, on Off/Low shadow quality, sun behind the camera).
 - Checked: compiles, runs, no errors. Lab shots at 07:30 and 06:24 with the sun in view showed NO visible rays, even at gain 1.5: those scenes (a flat grass plain, one character) have nothing tall across the sun, and clouds are not occluders in this method (they have no depth). The effect is unproven on trees; look at it in a forest with a low sun.
 - Cost not measured (32 depth taps per pixel within about 0.45 screen heights of the sun).
+
+## Long hill shadows (terrain shade map, 2026-11-13)
+
+- Problem: the sun's shadow map reaches 150-250 m, so past that no hill shades anything.
+- `PlanetTerrainShade` (native, owned by PlanetWorld): a thread bakes a 768x768 gnomonic picture of the ground heights round the player (28 km square, 37 m pixels; smaller on a small planet), then marches from every pixel toward the star over those heights on the CPU (48 steps, softening with distance, `smoothstep` penumbra) and publishes an R8 "how much of the star is seen" picture. Rebaked when the player is a quarter of the half side from the middle or the star has moved 0.2 degree (a bake takes about a second; measured only by eye: no hitch seen).
+- Shaders read it with one texture tap, `shaders/world/planet_terrain_shade.gdshaderinc` (`terrain_light(from_centre)`): `planet_ground` (in the direct light only, like the plate shadows), `voxel_ground` (albedo x 0.3..1) and `flora_wind` (albedo and backlight x 0.3..1, so trees and plants in a hill's shadow darken too). Not done: water, rocks that are not `flora_wind`, the player.
+- Globals added to `project.godot`: `terrain_shade_map`, `terrain_shade_c/_e1/_e2`, `terrain_shade`. `NO_TERRAIN_SHADE=1` turns it off.
+- Seen: lab at a hilly spot (`--dir=0.1215,-0.2291,-0.9658`, 285 m peaks, 06:36, 700 m up, `ts_h1` against `ts_h0` with it off): a broad dark band of shadow lies across the grass; without it the ground is evenly lit. This planet's relief is small (peaks 250-300 m), so shadows are a few km long at most; bigger planets get far longer ones.
+- Limits: shadows come from the planet's height function only (not trees or buildings); the picture is 37 m a pixel, so small hills do not cast; sea and the sky's ambient are untouched; the window is 28 km, so shadows from peaks farther than 14 km do not reach.
+
+## Rows and bricks on the far shallows, fixed in the lab (2026-11-13)
+
+- User: the coasts in the screenshots show lines at a distance. Seen at 700 m up (`ts_h0`): the shallows are cut into rows and dashes of water and sand, and fine rows run over the sea.
+- Isolated with the lab flags at the same view: `--voxel-no-far-sea` (the voxel water only) shows the rows; `--voxel-no-water-mesh` (the far sea's sphere only) shows a clean sea and a natural shoreline. So the rows come from the voxel water's coarse levels of detail (the thin slab the mesher cannot cut: the cause already in the findings above), which `WATER_LOD_DISTANCE` only pushes out at a cost.
+- A water terrain's `view_distance` did NOT limit it (48 m or 200 m gave the same picture as 1024), so the limit is done in the shader: `planet_water.gdshader` has `cut_beyond` (metres, 0 = off; dithered over its last fifth, so no hard line), and `lab_voxel_ground.gd` gives the voxel sea a copy of the water material with `SEA_MESH_CUT` = 140 m. Beyond that the sphere (the same water shader) is the sea. Result (`ts_sea6` against `ts_h0`): no rows, a clean shoreline.
+- Also: the sphere sits `FAR_SEA_DROP` = 0.08 m under the level (was 0.5), so where the sphere shows through it covers the shallows to within a hand's breadth of the shore.
+- Not checked: the hand-over at 140 m from the ground at a real coast (a tint step or a seam is possible); the first shot at 700 m up does not show it. Also the proper cure (a slab at least 2 voxels thick at coarse levels in `VoxelGeneratorPlanet::generate_water`) needs the voxel module rebuilt into the engine, which needs the editor closed: not done.
+
+## Sun glitter on the sea, seen from a coast (2026-11-13)
+
+- Site found with a scan of the planet's heights (`--dir=0.0687,0.4741,0.8778`, land 1 m high beside the sea, `--hour=7.3`, `--pose=ALT,PITCH,90` looks at the sea with the sun above it): `sg_near` (10 m up) and `sg_far` (160 m up) in the scratchpad `shots/`.
+- Seen: a real glitter path under the sun (bright sparks on the wave faces that lean toward it, widening with distance). Problems: (1) at 160 m the glints sit in a regular lattice of cells and rows, so the path reads as a grid; (2) near the surface (10 m) there are regularly spaced dark oval patches over the whole sea (not seen in earlier fixes; cause not found; not the voxel water cut, they are well inside 112 m).
+- Tried: `sea_warp` in `planet_water.gdshader` (the six swells are read at positions moved by a slow noise). 22 m at 0.006 /m: barely visible. 60 m at 0.013 /m: concentric ring moire (worse). Kept 35 m at 0.006: a small gain only. The slope ignores the warp's own slope, which is why a strong warp makes rings.
+- Next candidates: replace the short swells (K2, K3, K4) with a noise-driven slope (a spectrum, not plane waves); find the dark ovals (try with `mirror_of_the_land` off, with `ripples` off, and with the roughness at 0.05).
+
+## Sea: dark ovals fixed, glint lattice still there (2026-11-13)
+
+- Dark ovals over the sea near the surface (`sg_near`): CAUSE FOUND and fixed. Not the land mirror and not the ripples (both switched off in turn: no change). A wave leaning toward the eye mirrors what lies under the horizon, the dark ground half of the sky. `planet_water.gdshader` now tips such a normal up until the mirrored ray just clears the horizon (`mirrored < 0.04`). `ov_fix_near`: the ovals are nearly gone (faint rims remain).
+- The two short swells (K2, K3) are now drifting noise (`short_swell`) instead of plane waves. It changed the picture very little, so they were not the lattice.
+- Glint lattice at 160 m (`ov_fix_far`): unchanged, so it comes from the long swells (K0, K1, K4, K5 cross in a regular pattern; a position warp of 35 m only dims it, 60 m makes rings). Next: more waves of odd directions at smaller amplitudes, or slowly turning each swell's direction by a noise.
+
+## Polygon holes on the shore (user screenshot, 2026-11-13)
+
+- User picture: light-blue polygons lying on the sand and darker polygon holes in the shallows near the player. In the lab (`holes_a`, same coast, 14 m up, pitch -38) the same polygons; with `--voxel-calm` (no wave height) the shore is clean, so the cause is the swell moving the water MESH (vertices up and down by `waves() * roll * near_swell`) in water too shallow for it, plus my earlier 0.08 m drop of the far sea sphere (its 100 m facets dip up to 6 cm under a true sphere and its own waves move them, so they poked through).
+- Fixes: `roll = COLOR.r * smoothstep(0.45, 0.95, map_roll(...))` in `planet_water.gdshader` (the swell dies out well before the shore); `FAR_SEA_DROP` back to 0.5 in `lab_voxel_ground.gd`. `holes_c`/`holes_e`: clean shore. Both changes are in the working copy, not tested over many coasts.
+
+## Voxel sea slab fixed in the engine (2026-11-13)
+
+- `native/voxel_planet_module/voxel_generator_planet.cpp` `generate_water`: the water slab is now `max(WATER_DEPTH, 2 x voxel)` thick (`depth`), also in the early-out. Installed (`scripts/install_voxel_planet_module.sh`) and the engine rebuilt: `scons platform=windows target=editor precision=double arch=x86_64 d3d12=yes accesskit=no debug_symbols=no`, run from PowerShell (in Git Bash `MSYSTEM` makes the build look for D3D12 deps in the wrong folder), 56 s. `accesskit=no` because the existing exe has no accesskit and its dependency is not installed. The old exe was overwritten (older copies: `E:\Godot\double\backup_voxel`).
+- Result (`ts_slab` against `ts_h0`, 700 m up, same view, the shader cut of the voxel sea switched off): the rows and bricks in the shallows are GONE, a natural shore. So `SEA_MESH_CUT` is 0 now (the voxel water reaches its full range again); `cut_beyond` stays in the water shader as a switch.
+- Still seen near the shore at 14 m (`holes_f`): a few darker, faceted patches in the shallows and a brown pool of wet sand. They are at the same places as before the engine change, so they come from the (low-poly) seabed and the terrain's levels of detail, not from the water slab. Not fixed.
+- Other copies of the engine and templates (`template_release`, `template_debug`) were NOT rebuilt: an exported game still has the old generator.
+
+## The sea wears the coast smooth (user: "the water must erode all heights", 2026-11-13)
+
+- User picture (`holes_f`): the shallows were a rough bed with pits and a wet pool on the beach. `PlanetCrustNative::ground_height` smoothed only within +-2 m of the sea level with one 15 m ring. Now every bump and hollow smaller than about a hundred metres is smoothed in a wide band: weight 1 from the sea level to 1.5 m up (fading out by 5 m) and from the level down to 12 m deep (fading out by 32 m); the smoothing is the mean of eight neighbours on two rings (30 m and 85 m).
+- Seen (`coast_smooth2` against `holes_f`, same coast): a smooth beach, a gradual turquoise shelf, no wet pool or polygons on the sand. A few small dark pits remain in the mid shallows (faint). Foam speckle is the shader's, by design.
+- Not checked: the cost of the 8 extra height reads (only within the band), plants and rocks on the beach (their heights come from the same function, so they follow), the tiled ground (not the voxel one) and the map's Elevation layer.
+
+## The "holes" on the coast were cave mouths (2026-11-13)
+
+- The dark pits left in the shallows after the smoothing were not seabed relief: the same coast with `--no-voxel-caves` (`nocaves` against `coast_smooth2`) has none, and the height profile along the view lines (`--height-line`) is smooth. The voxel generator carves tunnels and chambers from just under the ground down 200 m (caves are ON by default in the lab), so their mouths opened in the beach and the seabed.
+- Fix in `native/voxel_planet_module/voxel_generator_planet.cpp` `generate_block`: caves only where the ground over the voxel is well above the sea (`inland = smoothstep(30, 70, surface - sea_level)`; the tunnel width and the chamber roof scale with it). Nothing opens on a coast, in the shallows or on a low plain. Engine rebuilt (20 s; same scons line, PowerShell, `accesskit=no`).
+- Seen (`cv_0..5`, three coasts, 18 m up, pitch -30, four yaws, 11 h): smooth beaches, an even turquoise shelf, no pits or polygons. Caves inland (above 30-70 m) are unchanged. Export templates still have the old generator.
+
+## Twelve coast pictures from many angles (2026-11-13, after the cave, slab and coast fixes)
+
+`c12_0..11` in the scratchpad `shots/` (grids `c12_grid0.jpg`, `c12_grid1.jpg`): three coasts, 40 to 3000 m up, pitches -10 to -60, eight yaws, 9-17 h, no clouds.
+- Clean: the beaches and the shelf from 40 m to 3 km (one smooth slope, even turquoise, no pits, no polygons, no rows).
+- Seen: (1) a lighter angular band where the voxel sea ends and the far sphere takes over at the horizon (`c12_2`, `c12_5`, `c12_8`), a tint step, straight-edged; (2) a dense fine moire of rows and rings in the sun's glitter on the far sea (`c12_2`, `c12_5`, `c12_9`, `c12_11`), swell aliasing at distance; (3) light turquoise blobs in the deep sea (`c12_8`, `c12_11`), probably seamounts (`seamounts()` in the crust), not checked.
+
+## Far-sea band, glitter moire (fixes after the twelve coast pictures)
+
+- **Light band with straight edges at the sea horizon**: not the voxel-to-sphere handover. Water is transparent and wrote no depth, so past the seabed's range the depth picture was empty and the atmosphere pass painted sky over the far sea. `planet_water.gdshader` now uses `depth_draw_always`, and `scene_z` returns "infinitely deep" for an empty depth (the far plane's 0/0 read as no water). Verified at 2.5 km: the sea is one even tone to the horizon; a 20 m shot still shows the bed through the water.
+- **Moire in the far glitter**: each long swell in `wave_slope` fades once a pixel (`foot`, from `dFdx(world_pos.xz)`) covers more than a third of its wavelength; roughness grows with `foot`. Far sea is smoother; rows remain within a few hundred metres of the coast.
+- **Not fixed**: the pale turquoise diamonds in the deep sea (unchanged by fading the sun glow, so probably shallow seabed at coarse detail, unchecked) and the small dark ovals at 100-300 m on calm water (unchanged by raising the below-horizon clamp to 0.09, which is kept).
+- **Turquoise diamonds in the deep sea are real seabed**: a thickness picture of the water (t and thickness/100) shows the dark (thin water) patches exactly under them, and the planet's own heights near that site (100x100 samples over 10 km) show thin diagonal ridges that rise to -15..0 m out of 60-350 m of water. Not a rendering bug: shallow ridges lit turquoise through coarse-level terrain. Open: whether open-sea ridges should be allowed that close to the surface.
+- **Seamounts are separate volcanoes now** (`PlanetCrustNative::seamounts`): the hotspot trail was one thin continuous ridge (0.018 rad wide, 0.9 rad long); it is now a string of round volcanoes, one every 0.06 rad, each with its own height (hash of the cell and hotspot). Shallow (-15..0 m) cells in the 10 km test patch dropped from 177 to 126 and the diagonal ridge lines are gone; the deep-sea diamonds no longer show in the 3 km picture. Existing worlds get different seamounts (only under the open sea).
+- **Dark ovals on calm water (fixed)**: found by switching terms off (emission, short swells and ripples were not it) and painting the mirrored ray's height: the ovals were exactly where the mirrored ray ended up at or under the horizon, because the single push in the below-horizon fix did not clear it where a wave leans far toward the eye (the mirrored sky there is the dark ground half). Now up to five pushes until the ray clears 0.09, measured against the world's up (the sky is read in world axes). Verified at 20 m: no ovals.

@@ -12,6 +12,7 @@
 #include "planet_noise_native.h"
 #include "planet_settings_native.h"
 #include "planet_surface_script_native.h"
+#include "planet_terrain_shade_native.h"
 
 #include <godot_cpp/classes/color_rect.hpp>
 #include <godot_cpp/classes/label.hpp>
@@ -27,6 +28,7 @@ class PlanetWorld : public Node3D {
 
 	ObjectID target_id;
 	double timer = 0.0;
+	Ref<PlanetTerrainShade> terrain_shade; // the ground's height round the player, for the long shadows of the hills
 	Label *load_label = nullptr;
 	ColorRect *dark = nullptr;
 	double load_time = 0.0;

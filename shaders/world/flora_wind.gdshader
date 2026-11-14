@@ -537,6 +537,7 @@ vec3 turn_by(vec3 rotation, vec3 v) {
 }
 
 #include "res://shaders/world/planet_haze.gdshaderinc" // the haze by height (FOG)
+#include "res://shaders/world/planet_terrain_shade.gdshaderinc" // the hills' long shadows
 
 void vertex() {
 	if (bendable) {
@@ -1008,7 +1009,10 @@ void fragment() {
 	float glow = 0.3 + 0.6 * pow(against_sun, 1.5) + 2.2 * pow(against_sun, 6.0); // (a wide soft lobe and a tight bright core: a canopy glows a little from any side against the sun, and blazes along the ray)
 	// the light that comes through a leaf is yellower and brighter than the leaf is lit from the front: green and red pass, blue does not
 	vec3 transmitted = mix(paint, paint * vec3(1.0, 1.12, 0.5) + vec3(0.01, 0.02, 0.0), leaf_like);
-	BACKLIGHT = transmitted * glow * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
+	// the long shadow of a hill (the sun's own shadow map reaches 150-250 m): the star's light is most of the light, the sky's stays
+	float hill_keep = mix(0.3, 1.0, terrain_light(haze_eye + mat3(INV_VIEW_MATRIX) * VERTEX));
+	ALBEDO *= hill_keep;
+	BACKLIGHT = transmitted * glow * realism * smoothstep(0.1, 0.5, sway) * leafy_part * hill_keep;
 	RIM = 0.15 * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
 	RIM_TINT = 0.5;
 }

@@ -137,8 +137,8 @@ read. The Planet page of the Esc menu has "Save here", a list of saves with Open
 `PlanetWorld.restored` puts the player back). The player is put on the ground at the saved place,
 whatever their height was. Opening still builds the ground from the seed, so the loading screen is
 the same; what a save spares is choosing the planet, the place and the time.
-The lab (started with no arguments, or with `-- --start-menu`, or from "Main menu" in the Planet
-page) shows `UniverseStartMenu` first: the list of saved universes (Open, Delete, double click), a new planet
+The lab (started with no arguments, which is Play Scene, or with `-- --start-menu`, or from "Main menu" in the Planet
+page) shows `UniverseStartMenu` first (set `PLANET_NO_MENU=1` for the old straight start on the default planet; the scripted lab runs with arguments never show it). A new world is saved at once under its name (the name field, else `world_<seed>`; Quick start is `default_planet`, New Earth `earth`) by `UniverseSave.save_settings`, so the list has it next time, and "Continue the latest world" opens the newest. Choosing a world from the menu starts it on foot with plants, as plain Play does. The save stores the settings only: opening still builds the ground from the seed (measured on a run: planet noise 1.8 s, colour map 2.6 s, tiles and plants 18 s, voxel ground ready at 33 s). The menu is: the list of saved universes (Open, Delete, double click), a new planet
 (seed and radius, a random seed) and a quick start with the default planet; choosing sets
 `PlanetMenu.pending` and reloads the scene. Other lab options: `-- --world=NAME` or `-- --continue`
 (the newest), `-- --save-as=NAME`; `--planet-check` also runs `SAVE_CHECK`.

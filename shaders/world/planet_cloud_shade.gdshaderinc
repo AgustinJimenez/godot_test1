@@ -8,7 +8,10 @@ global uniform vec4 cloud_layer;
 global uniform vec3 cloud_centre;
 global uniform vec3 cloud_sun_world;
 global uniform vec3 cloud_drift_planet;
+#ifndef PLANET_FROM_WORLD_DECLARED
+#define PLANET_FROM_WORLD_DECLARED
 global uniform mat4 planet_from_world;
+#endif
 
 float cloud_shadow_hash(vec3 p) {
 	p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));

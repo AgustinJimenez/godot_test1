@@ -29,6 +29,7 @@ void UniverseSave::_bind_methods() {
 	ClassDB::bind_static_method("UniverseSave", D_METHOD("get_old_dir"), &UniverseSave::get_old_dir);
 	ClassDB::bind_static_method("UniverseSave", D_METHOD("path_for", "save_name", "folder"), &UniverseSave::path_for, DEFVAL("user://universes"));
 	ClassDB::bind_static_method("UniverseSave", D_METHOD("save", "planet", "save_name"), &UniverseSave::save);
+	ClassDB::bind_static_method("UniverseSave", D_METHOD("save_settings", "settings", "save_name", "state"), &UniverseSave::save_settings, DEFVAL(Dictionary()));
 	ClassDB::bind_static_method("UniverseSave", D_METHOD("load_data", "save_name"), &UniverseSave::load_data);
 	ClassDB::bind_static_method("UniverseSave", D_METHOD("settings_from", "data"), &UniverseSave::settings_from);
 	ClassDB::bind_static_method("UniverseSave", D_METHOD("list"), &UniverseSave::list);
@@ -64,11 +65,16 @@ Dictionary UniverseSave::settings_to_dictionary(const Ref<PlanetSettings> &p_set
 // Writes the universe `planet` belongs to as the save `save_name` (its planet and the moment on it; the other planets an existing save of that
 // name has are kept). True if it was written.
 bool UniverseSave::save(Object *p_planet, const String &p_save_name) {
+	Ref<PlanetSettings> settings = p_planet->get("settings");
+	return save_settings(settings, p_save_name, p_planet->call("snapshot"));
+}
+
+bool UniverseSave::save_settings(const Ref<PlanetSettings> &p_settings, const String &p_save_name, const Dictionary &p_state) {
 	DirAccess::make_dir_recursive_absolute(get_dir());
 	Dictionary kept = load_data(p_save_name);
 	Array planets = kept.get("planets", Array());
 	String planet_id = kept.get("current", String("planet_1"));
-	Ref<PlanetSettings> settings = p_planet->get("settings");
+	Ref<PlanetSettings> settings = p_settings;
 	Dictionary entry;
 	entry["id"] = planet_id;
 	entry["settings"] = settings_to_dictionary(settings);
@@ -94,12 +100,12 @@ bool UniverseSave::save(Object *p_planet, const String &p_save_name) {
 	data["universe"] = universe;
 	data["planets"] = planets;
 	data["current"] = planet_id;
-	data["state"] = p_planet->call("snapshot");
+	data["state"] = p_state;
 	Ref<FileAccess> file = FileAccess::open(path_for(p_save_name), FileAccess::WRITE);
 	if (file.is_null()) {
 		return false;
 	}
-	file->store_string(JSON::stringify(data, "\t"));
+	file->store_string(JSON::stringify(data, "	"));
 	return true;
 }
 

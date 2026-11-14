@@ -15,6 +15,7 @@ global uniform float rain_fall;
 global uniform float autumn;
 global uniform float realism;
 #include "res://shaders/world/planet_cloud_shade.gdshaderinc" // the clouds' shadow on the ground (and planet_from_world)
+#include "res://shaders/world/planet_terrain_shade.gdshaderinc" // the hills' long shadows
 global uniform float ground_detail; // 0 plain .. 3 finest (GraphicsSettings: Low 1, Medium 1, High 2, Ultra 3)
 global uniform mat4 world_from_planet;
 // the detail noise is read near the player, where numbers stay small (a float cannot hold a planet's
@@ -64,6 +65,7 @@ uniform float detail_range = 260.0; // m: the detail is gone by twice this
 
 varying vec3 smooth_color;
 varying float light_specular; // SPECULAR as the fragment set it (light() cannot read it)
+varying float terrain_vis; // how much of the star the hills leave (set in fragment(), used in light())
 varying float plate_shadow; // how much of the direct light the plates take (set in fragment(), used in light())
 varying vec3 world_pos;
 varying vec3 world_normal;
@@ -945,6 +947,7 @@ void fragment() {
 	light_specular = SPECULAR;
 	vec4 pom_clip = PROJECTION_MATRIX * vec4(VERTEX + normalize(VERTEX) * pom_push, 1.0);
 	DEPTH = pom_clip.z / pom_clip.w;
+	terrain_vis = terrain_light(haze_eye + mat3(INV_VIEW_MATRIX) * VERTEX);
 }
 
 
@@ -957,7 +960,7 @@ float light_fresnel(float u) {
 }
 
 void light() {
-	float shadowed = 1.0 - 0.8 * plate_shadow;
+	float shadowed = (1.0 - 0.8 * plate_shadow) * terrain_vis;
 	float n_dot_l = clamp(dot(NORMAL, LIGHT), 0.0, 1.0);
 	float n_dot_v = max(dot(NORMAL, VIEW), 0.0001);
 	vec3 half_vector = normalize(VIEW + LIGHT);

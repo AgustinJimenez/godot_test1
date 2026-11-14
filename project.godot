@@ -238,6 +238,26 @@ haze_eye={
 "type": "vec3",
 "value": Vector3(0, 20000, 0)
 }
+terrain_shade_map={
+"type": "sampler2D",
+"value": ""
+}
+terrain_shade_c={
+"type": "vec3",
+"value": Vector3(0, 1, 0)
+}
+terrain_shade_e1={
+"type": "vec3",
+"value": Vector3(1, 0, 0)
+}
+terrain_shade_e2={
+"type": "vec3",
+"value": Vector3(0, 0, 1)
+}
+terrain_shade={
+"type": "vec4",
+"value": Color(1, 1, 0, 0)
+}
 cloud_drift_planet={
 "type": "vec3",
 "value": Vector3(0, 0, 0)
