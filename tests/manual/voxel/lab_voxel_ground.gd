@@ -19,6 +19,11 @@ var _frame := 0
 var _stable := 0.0
 var _announced := false
 var _peak_tasks := 0
+var _last_pct_log := -1
+var _planet_done_at := -1 # (ms) when the planet's own loading reached 99 %
+var _ready_cap := float(OS.get_environment("LAB_VOXEL_CAP")) if OS.has_environment("LAB_VOXEL_CAP") else 25.0 # (s after that: ready whatever the queue)
+var _ready_left := float(OS.get_environment("LAB_VOXEL_LEFT")) if OS.has_environment("LAB_VOXEL_LEFT") else 0.3 # (the share of the queue's peak that may still be queued when the ground counts as ready)
+var _queue_best := 0.0 # the most the voxel queue part of the percentage has reached
 var _shown := 0.0 # the percentage shown: only goes up (more blocks queue as the first ones finish)
 var _generator: Object
 var _tiles_off := {} # instance id -> true: the tiles whose ground is already switched off
@@ -36,6 +41,7 @@ var _dig_radius := 2.5
 var _cover: CanvasLayer
 var _cover_label: Label
 var _map_task := -1
+var _quitting := false ## the scene is leaving: the bake threads stop
 var _map_image: Image
 var _map_rows := 0
 var _map_started := 0
@@ -76,6 +82,10 @@ static func available() -> bool:
 
 
 func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
+	# (task 101) the "Terrain distance" setting: 0 short 1 km, 1 normal 2 km, 2 far 4 km (--voxel-view= still wins)
+	var settings_node: Node = get_node_or_null(^"/root/GraphicsSettings")
+	if settings_node != null:
+		view = [1024, 2048, 4096][clampi(int(settings_node.call(&"get_graphics_value", &"terrain_range")), 0, 2)]
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--voxel-view="):
 			view = int(arg.trim_prefix("--voxel-view="))
@@ -108,8 +118,8 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 		gen = (load("res://tests/manual/voxel/real_planet_generator.gd") as GDScript).new()
 		gen.set("radius", radius)
 		gen.set("noise", planet.noise)
-		gen.set("lattice", 2)
-		gen.set("exact_lods", 1)
+		gen.set("lattice", int(OS.get_environment("LAB_VOXEL_LATTICE")) if OS.has_environment("LAB_VOXEL_LATTICE") else 2) # (task 101 knobs: LAB_VOXEL_LATTICE / LAB_VOXEL_EXACT)
+		gen.set("exact_lods", int(OS.get_environment("LAB_VOXEL_EXACT")) if OS.has_environment("LAB_VOXEL_EXACT") else 1)
 		if not "--no-voxel-caves" in args:
 			gen.call("setup_caves", planet.settings.world_seed)
 	_generator = gen
@@ -119,6 +129,8 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 	_terrain.set("generator", gen)
 	_terrain.set("mesher", ClassDB.instantiate("VoxelMesherTransvoxel"))
 	_terrain.set("view_distance", view)
+	# (task 101) mesh blocks of 32 voxels instead of 16: the Low walk went 47 -> 52-54 fps, 1% low 20 -> 26, worst frame 100 -> 50 ms (LAB_VOXEL_BLOCK=16 for the old one)
+	_terrain.set("mesh_block_size", int(OS.get_environment("LAB_VOXEL_BLOCK")) if OS.has_environment("LAB_VOXEL_BLOCK") else 32)
 	_attach_stream(args)
 	_terrain.set("bounds", AABB(Vector3.ONE * -radius * 1.6, Vector3.ONE * radius * 3.2))
 	_material = ShaderMaterial.new()
@@ -151,7 +163,8 @@ func setup(planet: PlanetWorld, player: Node3D, view := 2048) -> void:
 func _physics_process(_delta: float) -> void:
 	_frame += 1
 	_follow_frame()
-	if _rivers_wanted and _planet.noise.drainage != null: # (the valleys are solved on a worker thread: the water asks them)
+	# (task 101) the rivers start once the player is in, not under the black screen: half of the voxel load was their valley work (LAB_RIVERS_EARLY=1 = as before)
+	if _rivers_wanted and (ground_ready or OS.has_environment("LAB_RIVERS_EARLY")) and _planet.noise.drainage != null: # (the valleys are solved on a worker thread: the water asks them)
 		_rivers_wanted = false
 		var river := ShaderMaterial.new()
 		river.shader = load("res://shaders/voxel/voxel_river.gdshader")
@@ -272,6 +285,15 @@ func _notification(what: int) -> void:
 		save_edits()
 
 
+## (task 101) The bakes run on worker threads: stop them and wait before the tree is taken down (a lab that quit during one crashed
+## about 1 run in 3: `set_pixel` on an image that was already gone).
+func _exit_tree() -> void:
+	_quitting = true
+	for task in [_map_task, _win_task]:
+		if task >= 0:
+			WorkerThreadPool.wait_for_task_completion(task)
+
+
 ## --voxel-probe: where the ground is, 6 m above the player straight down (a dig that came back from the database shows as a lower point).
 func _probe_step() -> void:
 	var tool: Object = _terrain.call("get_voxel_tool")
@@ -321,8 +343,17 @@ func _tasks() -> int:
 
 
 func _wait_for_ground(delta: float) -> void:
-	_stable = _stable + delta if _tasks() == 0 else 0.0
-	if _stable < 2.0:
+	# (task 101) ready when most of the queue is done, not all of it: the blocks load nearest first, so what is left is the far detail levels
+	# (the whole queue, 12 levels out to the view distance, took over 100 s). LAB_VOXEL_LEFT = the share of the peak allowed to be still queued (0 = all).
+	var left := _tasks()
+	var planet_done := float(_planet.call(&"get_load_fraction")) >= 0.99
+	if planet_done and _planet_done_at < 0:
+		_planet_done_at = Time.get_ticks_msec()
+	# a time cap: the queue can sit above the threshold for minutes (it plateaued at ~2400 tasks for 60 s), and the player must not wait for it:
+	# LAB_VOXEL_CAP seconds after the planet's own loading is done the ground is ready as soon as the collision under the player is
+	var capped := _planet_done_at >= 0 and (Time.get_ticks_msec() - _planet_done_at) / 1000.0 >= _ready_cap
+	_stable = _stable + delta if (left <= int(_ready_left * float(_peak_tasks)) and _peak_tasks > 0 and planet_done) or capped else 0.0
+	if _stable < 1.0:
 		return
 	var space := get_world_3d().direct_space_state
 	var from := _player.global_position + Vector3(0, 60, 0)
@@ -335,8 +366,12 @@ func _wait_for_ground(delta: float) -> void:
 	if _planet.spawn_on_solid_ground: # (a swim check starts the player in the sea on purpose)
 		_player.global_position = (hit["position"] as Vector3) + Vector3(0, 0.05, 0)
 	_player.process_mode = Node.PROCESS_MODE_INHERIT
+	print("LOAD_VOXEL ground ready %.1f s after its loading screen came up (%d blocks at the peak)" % [(Time.get_ticks_msec() - _cover_started) / 1000.0, _peak_tasks])
 	print("VOXEL ground ready after %d ms (the process started): the player stands at %s" % [
 			Time.get_ticks_msec(), _player.global_position.snapped(Vector3.ONE * 0.1)])
+
+
+var _cover_started := 0 ## (ms) when the voxel loading screen came up, for the time it shows
 
 
 ## The loading screen: black and a percentage, over the lab's own, until the ground is there.
@@ -351,6 +386,8 @@ func _make_cover() -> void:
 	_cover_label.set_anchors_preset(Control.PRESET_CENTER)
 	_cover_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_cover_label.text = "Generating the planet's ground..."
+	_cover_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_cover_started = Time.get_ticks_msec()
 	_cover.add_child(_cover_label)
 	add_child(_cover)
 
@@ -358,10 +395,40 @@ func _make_cover() -> void:
 func _update_cover() -> void:
 	var tasks := _tasks()
 	_peak_tasks = maxi(_peak_tasks, tasks)
-	var done := 0.0 if _peak_tasks == 0 else 1.0 - float(tasks) / float(_peak_tasks)
+	# (task 101) the percentage is the sum of real parts, each only ever growing: the planet's own tile counts (terrain, shape, plants: 70 %),
+	# the voxel queue draining (20 %: it only counts once the planet's part is far along, the queue keeps getting new blocks until then) and the
+	# colour map (10 %). It was the queue alone, capped at 89 % until the map was baked, and the queue goes up and down.
+	var planet_part := clampf(float(_planet.call(&"get_load_fraction")), 0.0, 1.0)
+	var queue_part := 0.0 if _peak_tasks == 0 or planet_part < 0.5 else clampf((1.0 - float(tasks) / float(_peak_tasks)) / (1.0 - _ready_left), 0.0, 1.0)
+	_queue_best = maxf(_queue_best, queue_part)
 	var map_done := 1.0 if _map_image == null or _map_task < 0 else 0.0
-	_shown = maxf(_shown, minf(done, 0.99) * (0.9 + 0.1 * map_done))
-	_cover_label.text = "Generating the planet's ground...  %d %%" % int(100.0 * _shown)
+	_shown = maxf(_shown, minf(0.7 * planet_part + 0.2 * _queue_best + 0.1 * map_done, 0.99))
+	# (task 101) what is being made and for how long: the voxel terrain tasks, and the colour map bake
+	var seconds := (Time.get_ticks_msec() - _cover_started) / 1000
+	if seconds != _last_pct_log: # (the log shows how the percentage moves)
+		_last_pct_log = seconds
+		var made: int = int(_generator.call("get_blocks_made")) if _generator != null and _generator.has_method("get_blocks_made") else -1
+		print("LOAD_PCT %d s: %d %% (planet %.2f, queue %d of %d, best %.2f, map %s, blocks made %d)" % [seconds, int(100.0 * _shown), planet_part, tasks, _peak_tasks, _queue_best, str(map_done), made])
+		if seconds % 10 == 0:
+			var engine: Object = Engine.get_singleton("VoxelEngine")
+			if engine != null:
+				print("LOAD_TASKS ", (engine.call("get_stats") as Dictionary).get("tasks", {}))
+	var text := "Generating the planet's ground...  %d %%   %d:%02d" % [int(100.0 * _shown), seconds / 60, seconds % 60]
+	text += "
+Voxel terrain: %d blocks in the queue (most so far %d; it goes up and down while blocks hand over to meshing)" % [tasks, _peak_tasks]
+	if _map_image != null and _map_task >= 0:
+		var baking := (Time.get_ticks_msec() - _map_started) / 1000
+		text += "
+Colour map: %d px wide, baking %d s" % [_map_image.get_width(), baking]
+	elif _map_image != null:
+		text += "
+Colour map: ready"
+	var planet_text: String = _planet.call(&"get_loading_text") # (the planet's own stages: terrain tiles, planet shape, plants, with their times)
+	if planet_text != "":
+		text += "
+
+" + planet_text
+	_cover_label.text = text
 
 
 func _lift_cover() -> void:
@@ -394,6 +461,8 @@ func _bake_colour_map(width: int) -> void:
 	var noise := _planet.noise
 	var height := width / 2
 	for y in height:
+		if _quitting: # (the scene is going: the image and the noise would be gone under this thread)
+			return
 		var lat := (0.5 - (y + 0.5) / height) * PI
 		var dirs := PackedVector3Array()
 		dirs.resize(width)

@@ -1,3 +1,4 @@
+#include "frame_timer.h"
 #include "flora_meshes_native.h"
 #include "species_registry_native.h"
 #include "planet_sky_nodes_native.h"
@@ -41,6 +42,81 @@ static Ref<Script> script_of(const char *p_path) {
 static Variant graphics_value(const StringName &p_key) {
 	Node *settings = graphics_settings_node();
 	return settings != nullptr ? settings->call("get_graphics_value", p_key) : Variant();
+}
+
+// (task 101) how far the shrubs and ground cover are drawn: the "Plant distance" setting (0 near, 1 medium, 2 far = the whole SMALL_VISIBLE); PLANET_SMALL_VISIBLE=metres overrides
+static double small_visible() {
+	OS *os = OS::get_singleton();
+	if (os->has_environment("PLANET_SMALL_VISIBLE")) {
+		return os->get_environment("PLANET_SMALL_VISIBLE").to_float();
+	}
+	Variant range = graphics_value("plant_range");
+	const int64_t level = range.get_type() == Variant::NIL ? 2 : (int64_t)range;
+	const double share[3] = { 0.4, 0.65, 1.0 };
+	return PlanetScatter::SMALL_VISIBLE * share[level < 0 ? 0 : (level > 2 ? 2 : level)];
+}
+
+// (task 101) where the last step of the far trees ends: the "Tree distance" setting (0 short 1500 m, 1 medium 3000 m, 2 far 8000 m = to the horizon); PLANET_TREE_REACH=metres overrides
+static double tree_reach() {
+	OS *os = OS::get_singleton();
+	if (os->has_environment("PLANET_TREE_REACH")) {
+		return os->get_environment("PLANET_TREE_REACH").to_float();
+	}
+	Variant range = graphics_value("tree_range");
+	const int64_t level = range.get_type() == Variant::NIL ? 2 : (int64_t)range;
+	const double reach[3] = { 1500.0, 3000.0, 8000.0 };
+	return reach[level < 0 ? 0 : (level > 2 ? 2 : level)];
+}
+
+// (task 101) the "Fade vegetation in and out" setting (PLANET_NO_FADE=1 too): off = ranges cut at once instead of dithering out (the fade costs overdraw)
+static GeometryInstance3D::VisibilityRangeFadeMode fade_mode() {
+	if (OS::get_singleton()->has_environment("PLANET_NO_FADE") || graphics_level("vegetation_fade", 1) == 0) {
+		return GeometryInstance3D::VISIBILITY_RANGE_FADE_DISABLED;
+	}
+	return GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF;
+}
+
+// (task 101) the "Grass distance" setting: the share of the full grass range (0 short half, 1 three quarters, 2 all)
+static double grass_share() {
+	const int level = graphics_level("grass_range", 2);
+	const double share[3] = { 0.5, 0.75, 1.0 };
+	return share[level < 0 ? 0 : (level > 2 ? 2 : level)];
+}
+
+// (task 101) the "Distant tree density" setting: beyond the middle distance every Nth tree is drawn (0 all, 1 every second, 2 every fourth), PLANET_FAR_THIN=N overrides
+static int far_tree_keep_every() {
+	OS *os = OS::get_singleton();
+	if (os->has_environment("PLANET_FAR_THIN")) {
+		return os->get_environment("PLANET_FAR_THIN").to_int();
+	}
+	const int level = graphics_level("far_tree_density", 0);
+	return level <= 0 ? 1 : (level == 1 ? 2 : 4);
+}
+
+// (task 101) PLANET_FAR_THIN=N: beyond the middle distance only every Nth tree is drawn, scaled up so the canopy covers the same ground (to see what the per-instance
+// cost of the far steps is). The buffer is 16 floats an instance: three rows of (basis row, origin) and the colour.
+static PackedFloat32Array thin_buffer(const PackedFloat32Array &p_buffer, int p_keep_every) {
+	if (p_keep_every <= 1) {
+		return p_buffer;
+	}
+	const float scale = (float)std::sqrt((double)p_keep_every);
+	PackedFloat32Array out;
+	const int64_t count = p_buffer.size() / 16;
+	for (int64_t i = 0; i < count; i++) {
+		// (which trees stay is chosen by the place, not the order of the buffer: a tree cut down or burnt later leaves the same others standing)
+		const uint32_t h = (uint32_t)(int)(p_buffer[i * 16 + 3] * 131.0f) * 73856093u ^ (uint32_t)(int)(p_buffer[i * 16 + 7] * 131.0f) * 19349663u ^ (uint32_t)(int)(p_buffer[i * 16 + 11] * 131.0f) * 83492791u;
+		if (((h >> 9) % (uint32_t)p_keep_every) != 0) {
+			continue;
+		}
+		for (int k = 0; k < 16; k++) {
+			float value = p_buffer[i * 16 + k];
+			if (k < 12 && (k % 4) != 3) {
+				value *= scale;
+			}
+			out.push_back(value);
+		}
+	}
+	return out;
 }
 
 static bool flora_detailed() {
@@ -196,6 +272,18 @@ Array PlanetScatter::species_table(Object *p_registry) {
 		row["patch_offset"] = one->get("patch_offset");
 		row["footprint"] = trunk_footprint(one);
 		row["crown"] = crown;
+		{
+			// (task 099) the radius a tree's crown really covers, for the spacing of trees and the shade under them: the species' `crown` number is
+			// much smaller than the mesh (measured on seed 8: the farthest limb tip reaches 1.2 x the crown on a conifer, 2-3.5 x on a broadleaf, 5.5 x on a live oak)
+			const String kind = one->get("archetype");
+			double factor = 1.0;
+			if (form == 0) { // CONIFER
+				factor = kind == "pine" ? 1.2 : 1.1;
+			} else if (form == 1) { // BROADLEAF
+				factor = kind == "ancient" ? 2.6 : (kind == "willow" || kind == "oak" || kind == "beech" || kind == "elm" || kind == "buttress" || kind == "maple" || kind == "leafy") ? 1.6 : 1.35;
+			}
+			row["canopy"] = crown * factor;
+		}
 		row["shade_tolerance"] = shade_tolerance(form);
 		row["drag"] = drag_of(form);
 		row["stem_radius"] = form == 4 ? CLAMP(crown * 0.7, 0.3, 1.2) : CLAMP(crown, 0.2, 0.7);
@@ -383,6 +471,7 @@ Array PlanetScatter::tree_cells(const PackedFloat32Array &p_buffer) const {
 
 // Hangs the batches (a key and its instances' buffer each) on the tile: a multimesh for each, and the far trees merged into one mesh.
 void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) {
+	FRAME_TIMER("hang");
 	// near trees in cells: the distance range works on a whole node, so a tile's trees as one node were all drawn in full detail while any part of
 	// the tile was near (about a third of the triangles)
 	PackedInt32Array cell_keys;
@@ -406,6 +495,12 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 	double light_range = tree_light();
 	bool fakes = get_fake_trees_on();
 	bool full_everywhere = !fakes && get_full_trees_everywhere();
+	// (task 099) the far steps of a tree (from this step on) are drawn from fewer, fuller multimeshes: the instances of every variant of a species that this
+	// tile holds share one node, of `far_variants` meshes (1: one shape for the species at that distance, the default; 4 or more: the old way, a node for each variant)
+	const int merge_from = (int)os_double("PLANET_FAR_MERGE_FROM", 3.0);
+	const int far_variants = (int)os_double("PLANET_FAR_VARIANTS", 1.0);
+	const double far_cell = os_double("PLANET_FAR_CELL", 0.0); // m: the cells the merged far trees are cut into (0: none; tested 384 and 160: more calls, no saving in triangles)
+	std::map<int, PackedFloat32Array> far_groups; // id * 100 + variant shape -> every instance of that species and shape of this tile
 	for (int at = 0; at < cell_keys.size(); at++) {
 		int key = cell_keys[at];
 		PackedFloat32Array buffer = cell_buffers[at];
@@ -426,26 +521,30 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 			// beyond the near trees with the fake trees off: the same tree in steps of fewer leaves and branch segments (lod 1 to 5 of the grower:
 			// the same tree each time, no picture and no other model). A tile makes only the steps it can be seen at (its middle is 2 of its widths
 			// from the eye before it splits: no point of it is nearer than 1.29 widths, and none further than 4.8).
-			const double reach = os_double("PLANET_TREE_REACH", 8000.0); // where the last step ends
-			const double ends[5] = { 120.0, 250.0, 600.0, 1500.0, reach };
+			const double reach = tree_reach(); // where the last step ends
+			const double ends[5] = { 120.0, 250.0, 600.0, std::min(1500.0, reach), reach }; // (task 101: the tree distance cuts the steps)
 			const double nearest = size * 1.29, farthest = size * 4.8;
 			for (int step = 0; step < 5; step++) {
 				const double begin = step == 0 ? (p_near ? TREE_FULL * 0.95 : 0.0) : ends[step - 1] * 0.95;
 				if (nearest >= ends[step] || (step > 0 && farthest < begin)) {
 					continue;
 				}
+				if (far_variants < 4 && step >= merge_from) {
+					far_groups[id * 100 + variant % std::max(far_variants, 1)].append_array(buffer); // (made once below, for the steps that apply)
+					continue;
+				}
 				Ref<Mesh> same = species->call("mesh", id, variant, flora_detailed(), step + 1);
 				MultiMeshInstance3D *part = add_trees(buffer, same, false);
 				part->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
-				if (step < 4) {
+				if (step < 4 || ends[4] < 7999.0) { // (the last step has no end unless the tree distance is cut: task 101)
 					part->set_visibility_range_end(ends[step]);
 					part->set_visibility_range_end_margin(TREE_FADE * 4.0);
-					part->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+					part->set_visibility_range_fade_mode(fade_mode());
 				}
 				if (begin > 0.0) {
 					part->set_visibility_range_begin(begin);
 					part->set_visibility_range_begin_margin(TREE_FADE * (step == 0 ? 1.0 : 4.0));
-					part->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+					part->set_visibility_range_fade_mode(fade_mode());
 				}
 			}
 			if (!p_near) {
@@ -461,7 +560,7 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 			if (PlantMeshes::has_far(Ref<PlantSpecies>(Object::cast_to<PlantSpecies>(one)))) {
 				light->set_visibility_range_end(light_range);
 				light->set_visibility_range_end_margin(TREE_FADE * 2.0);
-				light->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+				light->set_visibility_range_fade_mode(fade_mode());
 				Array part;
 				part.append(species->call("far_mesh", id, variant % 2));
 				part.append(buffer);
@@ -476,6 +575,13 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 			mesh = FloraMeshes::mesh(key / 100, variant, detailed);
 		}
 		MultiMeshInstance3D *instance = add_trees(buffer, mesh, true);
+		{ // (task 101) the "Foliage shadows" setting: 0 none, 1 trees only, 2 everything (small plants and shrubs cast a shadow only then)
+			Variant mode = graphics_value("plant_shadows");
+			const int64_t casters = mode.get_type() == Variant::NIL ? 2 : (int64_t)mode;
+			if (casters == 0 || (casters == 1 && !tree)) {
+				instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+			}
+		}
 		// a tree or shrub that can bend (PlanetSway takes the ones near the walker)
 		if (plant && mesh->has_meta("branches")) {
 			Array sets = tile->get_meta("sway_sets", Array());
@@ -486,14 +592,78 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 			sets.append(entry);
 			tile->set_meta("sway_sets", sets);
 		}
+		// (task 101) shrubs and ground cover beyond the grass: the same plant in the grower's lite steps (lod 1 to 3: fewer leaves, bigger, thinner stems)
+		// instead of ONE full mesh to the plant distance. A step ends at 8, 16 and 40 heights (at least 16, 32 and 80 m): the tree steps scaled to the plant's size.
+		// Only with the detailed meshes (ground detail 2 and up); PLANET_PLANT_STEPS=0 turns it off. The first node keeps the shadow and the sway (the walker's reach).
+		auto plant_steps = [&](double p_reach) {
+			instance->set_visibility_range_end(p_reach);
+			if (!plant || tree || !detailed || os_double("PLANET_PLANT_STEPS", 1.0) <= 0.0) {
+				return;
+			}
+			const double height = mesh->get_aabb().size.y;
+			const double scale = os_double("PLANET_PLANT_STEP_SCALE", 2.0); // (the user saw patches of plants change within a few metres: the steps can be pushed out)
+			const double e1 = std::max(height * 8.0, 16.0) * scale, e2 = std::max(height * 16.0, 32.0) * scale, e3 = std::max(height * 40.0, 80.0) * scale;
+			if (e3 + 20.0 > p_reach) {
+				return;
+			}
+			Ref<ArrayMesh> steps[3];
+			for (int at = 0; at < 3; at++) {
+				steps[at] = species->call("mesh", id, variant, detailed, at + 1);
+			}
+			auto vertices = [](const Ref<ArrayMesh> &p_mesh) -> int64_t { return p_mesh.is_valid() && p_mesh->get_surface_count() > 0 ? p_mesh->surface_get_array_len(0) : 0; };
+			if (vertices(steps[2]) <= 0 || vertices(steps[2]) >= vertices(mesh) * 0.7) { // (a species the grower makes no lighter: no steps)
+				return;
+			}
+			const bool casts = instance->get_cast_shadows_setting() != GeometryInstance3D::SHADOW_CASTING_SETTING_OFF;
+			instance->set_meta("step_first", Vector2((real_t)e1, (real_t)p_reach)); // (the lab switches the steps off and on by these)
+			instance->set_visibility_range_end(e1);
+			instance->set_visibility_range_end_margin(3.0);
+			instance->set_visibility_range_fade_mode(fade_mode());
+			const double begins[3] = { e1, e2, e3 }, ends[3] = { e2, e3, p_reach };
+			for (int at = 0; at < 3; at++) {
+				MultiMeshInstance3D *part = add_trees(buffer, steps[at], casts && at < 2);
+				part->set_meta("step_part", true);
+				part->set_visibility_range_begin(begins[at] * 0.95);
+				part->set_visibility_range_begin_margin(3.0);
+				part->set_visibility_range_end(ends[at]);
+				part->set_visibility_range_end_margin(3.0);
+				part->set_visibility_range_fade_mode(fade_mode());
+			}
+		};
 		int kind = key / 100;
 		if (!plant && (kind == 16 || kind == 17 || kind == 18)) { // PEBBLES, LITTER, TWIGS
 			instance->set_visibility_range_end(PEBBLE_VISIBLE);
 			instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 		} else if (layer == 2 || layer == 3) { // GRASS, MEADOW
 			OS *os = OS::get_singleton();
-			instance->set_visibility_range_end(os->has_environment("PLANET_GRASS_VISIBLE") ? os->get_environment("PLANET_GRASS_VISIBLE").to_float() : GRASS_VISIBLE);
+			const double reach = os->has_environment("PLANET_GRASS_VISIBLE") ? os->get_environment("PLANET_GRASS_VISIBLE").to_float() : GRASS_VISIBLE * grass_share();
+			instance->set_visibility_range_end(reach);
 			instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+			// (task 101) the grass in steps, the way the trees are: the tuft was ONE mesh (about 590 triangles) from the walker's feet to 260 m, and the near
+			// meadow was the heaviest thing in a frame (3 to 5 ms of GPU on High). From STEP1 metres (16 by default) the lite step (half the blades, wider, no fold), from STEP2 the
+			// thin one (a quarter or less). PLANET_GRASS_STEP1=0 turns the steps off (the old single mesh).
+			const double step1 = os_double("PLANET_GRASS_STEP1", 30.0), step2 = os_double("PLANET_GRASS_STEP2", 80.0);
+			if (plant && !tree && detailed && step1 > 0.0 && reach > step2 * 1.2) {
+				Ref<ArrayMesh> lite = species->call("mesh", id, variant, detailed, 1);
+				Ref<ArrayMesh> thin = species->call("mesh", id, variant, detailed, 2);
+				auto vertices = [](const Ref<ArrayMesh> &p_mesh) -> int64_t { return p_mesh.is_valid() && p_mesh->get_surface_count() > 0 ? p_mesh->surface_get_array_len(0) : 0; };
+				if (lite.is_valid() && thin.is_valid() && vertices(thin) > 0 && vertices(thin) < vertices(mesh) * 0.8) { // (a species the grower makes no lighter: no steps)
+					instance->set_meta("step_first", Vector2((real_t)step1, (real_t)reach));
+					instance->set_visibility_range_end(step1);
+					instance->set_visibility_range_end_margin(4.0);
+					instance->set_visibility_range_fade_mode(fade_mode());
+					for (int part_step = 1; part_step <= 2; part_step++) {
+						MultiMeshInstance3D *part = add_trees(buffer, part_step == 1 ? lite : thin, false);
+						part->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+						part->set_meta("step_part", true);
+						part->set_visibility_range_begin((part_step == 1 ? step1 : step2) * 0.95);
+						part->set_visibility_range_begin_margin(4.0);
+						part->set_visibility_range_end(part_step == 1 ? step2 : reach);
+						part->set_visibility_range_end_margin(4.0);
+						part->set_visibility_range_fade_mode(fade_mode());
+					}
+				}
+			}
 		} else if (tree && full_everywhere) {
 			// the stress test: the full tree, whatever the distance (no range, no lighter version)
 			if (!p_near) {
@@ -501,31 +671,66 @@ void PlanetScatter::hang(PackedInt32Array p_keys, Array p_buffers, bool p_near) 
 			} else {
 				instance->set_visibility_range_end(TREE_FULL);
 				instance->set_visibility_range_end_margin(TREE_FADE);
-				instance->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+				instance->set_visibility_range_fade_mode(fade_mode());
 			}
 		} else if (!p_near) {
 			instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
-			instance->set_visibility_range_end(SMALL_VISIBLE);
+			plant_steps(small_visible());
 		} else if (!tree) {
-			instance->set_visibility_range_end(SMALL_VISIBLE);
+			plant_steps(small_visible());
 		} else {
 			// near trees: the full tree close up, the lighter one (no shadow) further out
 			instance->set_visibility_range_end(TREE_FULL);
 			instance->set_visibility_range_end_margin(TREE_FADE);
-			instance->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+			instance->set_visibility_range_fade_mode(fade_mode());
 			if (fakes) {
 				MultiMeshInstance3D *light = light_trees(buffer, id, variant % 2);
 				light->set_visibility_range_begin(TREE_FULL * 0.95);
 				light->set_visibility_range_begin_margin(TREE_FADE);
-				light->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+				light->set_visibility_range_fade_mode(fade_mode());
 				if (PlantMeshes::has_far(Ref<PlantSpecies>(Object::cast_to<PlantSpecies>(one)))) {
 					light->set_visibility_range_end(light_range);
 					light->set_visibility_range_end_margin(TREE_FADE * 2.0);
-					light->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+					light->set_visibility_range_fade_mode(fade_mode());
 					Array part;
 					part.append(species->call("far_mesh", id, variant % 2));
 					part.append(buffer);
 					far_parts.append(part);
+				}
+			}
+		}
+	}
+	if (!far_groups.empty()) {
+		const double reach = tree_reach();
+		const double ends[5] = { 120.0, 250.0, 600.0, std::min(1500.0, reach), reach }; // (task 101: the tree distance cuts the steps)
+		const double nearest = size * 1.29, farthest = size * 4.8;
+		for (const auto &group : far_groups) {
+			const int id = group.first / 100, shape = group.first % 100;
+			for (int step = std::max(merge_from, 1); step < 5; step++) {
+				const double begin = ends[step - 1] * 0.95;
+				if (nearest >= ends[step] || farthest < begin) {
+					continue;
+				}
+				Ref<Mesh> same = species->call("mesh", id, shape, flora_detailed(), step + 1);
+				// in square cells of the ground (a node is culled whole: a merged node over a whole big tile kept every triangle of its far corner)
+				Array cells;
+				const PackedFloat32Array shown = step >= 3 ? thin_buffer(group.second, far_tree_keep_every()) : group.second;
+				if (noise->get_scatter_native().is_valid() && far_cell > 0.0) {
+					cells = noise->get_scatter_native()->call("split_cells", shown, far_cell);
+				} else {
+					cells.append(shown);
+				}
+				for (int cell = 0; cell < cells.size(); cell++) {
+					MultiMeshInstance3D *part = add_trees(cells[cell], same, false);
+					part->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+					if (step < 4 || ends[4] < 7999.0) { // (the last step has no end unless the tree distance is cut: task 101)
+						part->set_visibility_range_end(ends[step]);
+						part->set_visibility_range_end_margin(TREE_FADE * 4.0);
+						part->set_visibility_range_fade_mode(fade_mode());
+					}
+					part->set_visibility_range_begin(begin);
+					part->set_visibility_range_begin_margin(TREE_FADE * 4.0);
+					part->set_visibility_range_fade_mode(fade_mode());
 				}
 			}
 		}
@@ -594,7 +799,7 @@ void PlanetScatter::commit_far(const Array &p_parts, double p_begin) {
 	instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	instance->set_visibility_range_begin(p_begin);
 	instance->set_visibility_range_begin_margin(p_begin > 0.0 ? TREE_FADE * 2.0 : 0.0);
-	instance->set_visibility_range_fade_mode(p_begin > 0.0 ? GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF : GeometryInstance3D::VISIBILITY_RANGE_FADE_DISABLED);
+	instance->set_visibility_range_fade_mode(p_begin > 0.0 ? fade_mode() : GeometryInstance3D::VISIBILITY_RANGE_FADE_DISABLED);
 	tile->add_child(instance);
 }
 
@@ -610,7 +815,7 @@ MultiMeshInstance3D *PlanetScatter::add_trees(const PackedFloat32Array &p_buffer
 	MultiMeshInstance3D *instance = memnew(MultiMeshInstance3D);
 	instance->set_multimesh(multi);
 	instance->set_material_override(FloraMeshes::material());
-	if (!p_shadows) {
+	if (!p_shadows || OS::get_singleton()->has_environment("PLANET_NO_PLANT_SHADOW")) { // (PLANET_NO_PLANT_SHADOW: task 101 experiment)
 		instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	}
 	tile->add_child(instance);

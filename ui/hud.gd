@@ -32,6 +32,15 @@ var _selected := -1
 var _toast_tween: Tween
 var _hurt_tween: Tween
 var _fps_refresh_left := 0.0
+## (task 101) the live GPU breakdown: a running average of the milliseconds each render pass takes (shadows, opaque, SSAO, sky, glow...),
+## from the renderer's own timestamps (needs the engine's RenderingServer.get_frame_profile_areas; empty on the stock engine).
+var _gpu_passes := {}
+var _gpu_frame_seen := -1
+## Set by whatever measures the cost of each KIND of thing (the planet lab's probe, key F7): lines shown under the pass list.
+var probe_text := ""
+var _perf_detail := false ## (task 101) the "Detailed performance" switch: GPU / CPU / RAM / VRAM lines under the FPS
+var _perf_cpu_last := -1.0 ## the process CPU seconds and the time of the last refresh, for the CPU load
+var _perf_time_last := 0.0
 var _last_escape_time := -1.0
 var _extra_pages: Array[Control] = []
 var _mouse_mode_before_escape := Input.MOUSE_MODE_CAPTURED
@@ -183,15 +192,22 @@ func _ready() -> void:
 	character_back_button.pressed.connect(_show_debug_page)
 	show_fps_toggle.button_pressed = show_fps_debug
 	fps_label.visible = show_fps_debug
+	var detail_toggle := CheckButton.new() # (task 101) next to "show FPS": the GPU, CPU, RAM and VRAM numbers
+	detail_toggle.text = "Detailed performance (GPU, CPU, RAM, VRAM)"
+	detail_toggle.toggled.connect(_on_perf_detail_toggled)
+	show_fps_toggle.get_parent().add_child(detail_toggle)
+	show_fps_toggle.get_parent().move_child(detail_toggle, show_fps_toggle.get_index() + 1)
 
 
 func _process(delta: float) -> void:
 	if not fps_label.visible:
 		return
+	if _perf_detail:
+		_sample_gpu_passes()
 	_fps_refresh_left -= delta
 	if _fps_refresh_left <= 0.0:
-		fps_label.text = "%d FPS" % roundi(Engine.get_frames_per_second())
-		_fps_refresh_left = 0.25
+		fps_label.text = _perf_text() if _perf_detail else "%d FPS" % roundi(Engine.get_frames_per_second())
+		_fps_refresh_left = 0.5 if _perf_detail else 0.25
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -785,6 +801,91 @@ func _on_fov_gizmo_button_pressed() -> void:
 		return
 	player.toggle_fov_gizmo()
 	fov_gizmo_button.text = "FOV Gizmo: ON" if player.show_fov_gizmo else "FOV Gizmo: OFF"
+
+
+func _on_perf_detail_toggled(enabled: bool) -> void:
+	_perf_detail = enabled
+	_gpu_passes.clear()
+	if RenderingServer.has_method(&"set_frame_profiling_enabled"):
+		RenderingServer.call(&"set_frame_profiling_enabled", enabled) # (the renderer stamps each pass; costs a little: only while shown)
+	var viewport_rid := get_viewport().get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(viewport_rid, enabled) # (the GPU time costs a little: only while shown)
+	_perf_cpu_last = -1.0
+	if enabled: # (the lines are wide: the label spans the top right corner and its text ends at the edge)
+		fps_label.anchor_left = 1.0
+		fps_label.anchor_right = 1.0
+		fps_label.offset_left = -420.0
+		fps_label.offset_right = -14.0
+		fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	if enabled and not fps_label.visible:
+		show_fps_toggle.button_pressed = true
+	_fps_refresh_left = 0.0
+
+
+## FPS, frame time, GPU time, the render thread's CPU time, draw calls, triangles, VRAM, RAM and the process's CPU load (all cores = 100 %).
+func _perf_text() -> String:
+	var viewport_rid := get_viewport().get_viewport_rid()
+	var fps := Engine.get_frames_per_second()
+	var gpu := RenderingServer.viewport_get_measured_render_time_gpu(viewport_rid)
+	var render_cpu := RenderingServer.viewport_get_measured_render_time_cpu(viewport_rid)
+	var visible := RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE
+	var calls := RenderingServer.viewport_get_render_info(viewport_rid, visible, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
+	var prims := RenderingServer.viewport_get_render_info(viewport_rid, visible, RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME)
+	var video := Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0
+	var ram: float = PerfProbe.memory_mb()
+	var load_text := "n/a"
+	var cpu_now: float = PerfProbe.cpu_seconds()
+	var now := Time.get_ticks_msec() / 1000.0
+	if cpu_now >= 0.0 and _perf_cpu_last >= 0.0 and now > _perf_time_last:
+		load_text = "%d %%" % roundi(100.0 * (cpu_now - _perf_cpu_last) / ((now - _perf_time_last) * maxf(float(PerfProbe.cores()), 1.0)))
+	_perf_cpu_last = cpu_now
+	_perf_time_last = now
+	return "%d FPS  (%.1f ms)
+GPU %.1f ms | render CPU %.1f ms
+CPU load %s (%d cores)
+Draw calls %d | %.1f M triangles
+VRAM %d MB | RAM %d MB" % [
+			roundi(fps), 1000.0 / maxf(fps, 1.0), gpu, render_cpu, load_text, OS.get_processor_count(), calls, prims / 1.0e6, roundi(video), roundi(ram)] + _pass_text() + probe_text
+
+
+## Reads the renderer's per-pass timestamps once a frame: each area's time is the gap to the next stamp (names that start with < or > only mark a span).
+func _sample_gpu_passes() -> void:
+	if not RenderingServer.has_method(&"get_frame_profile_areas"):
+		return
+	var frame: int = RenderingServer.call(&"get_frame_profile_frame")
+	if frame == _gpu_frame_seen:
+		return
+	_gpu_frame_seen = frame
+	var areas: Array = RenderingServer.call(&"get_frame_profile_areas")
+	var now := {}
+	for index in range(areas.size() - 1):
+		var name := String(areas[index]["name"])
+		if name.begins_with("<") or name.begins_with(">"):
+			continue
+		now[name] = float(now.get(name, 0.0)) + float(areas[index + 1]["gpu_msec"]) - float(areas[index]["gpu_msec"])
+	for name in _gpu_passes.keys():
+		if not now.has(name):
+			now[name] = 0.0
+	for name in now.keys():
+		_gpu_passes[name] = lerpf(float(_gpu_passes.get(name, now[name])), float(now[name]), 0.05) # (a running average: steady numbers)
+
+
+## The passes by cost, each with its share of the GPU time and a bar: where a frame goes.
+func _pass_text() -> String:
+	if _gpu_passes.is_empty():
+		return ""
+	var names: Array = _gpu_passes.keys()
+	var total := 0.0
+	for name in names:
+		total += float(_gpu_passes[name])
+	names.sort_custom(func(a, b): return _gpu_passes[a] > _gpu_passes[b])
+	var text := "
+-- GPU by pass (%.1f ms) --" % total
+	for index in mini(names.size(), 10):
+		var share := float(_gpu_passes[names[index]]) / maxf(total, 0.001)
+		text += "
+%s %4.1f ms %3d %%  %s" % [String(names[index]).left(22).rpad(22), float(_gpu_passes[names[index]]), roundi(share * 100.0), "█".repeat(roundi(share * 14.0))]
+	return text
 
 
 func _on_show_fps_toggled(enabled: bool) -> void:

@@ -53,7 +53,7 @@ protected:
 
 public:
 	static constexpr double BANK = 4.0; // m from a river edge inside which nothing grows
-	static constexpr double GRASS_VISIBLE = 260.0; // m: the tall grass and the meadow flowers are gone beyond this (PLANET_GRASS_VISIBLE: another)
+	static constexpr double GRASS_VISIBLE = 520.0; // m: the tall grass and the meadow flowers are gone beyond this (PLANET_GRASS_VISIBLE: another)
 	static constexpr double PEBBLE_VISIBLE = 45.0; // m: small stones are gone beyond this
 	static constexpr double SMALL_PLANT = 1.4; // m: plants lower than this bend only a little way from the walker
 	static constexpr double TREE_FULL = 80.0; // m: beyond this a tree is drawn as its lighter version

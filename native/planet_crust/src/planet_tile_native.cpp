@@ -221,7 +221,7 @@ PlanetTile *PlanetTile::build(int64_t p_f, int64_t p_lvl, int64_t p_x, int64_t p
 	}
 	if (!voxel) { // (the voxel terrain has its own water: two thin volumes over the ground)
 		if (settings_->get_sea_on() && min_height < settings_->get_sea_level() + 0.5) {
-			add_sea(packed_dirs, cells);
+			add_sea(packed_dirs, cells, heights);
 		}
 		add_crust_rivers(packed_dirs, heights);
 	}
@@ -299,8 +299,8 @@ void PlanetTile::add_water_mesh(Object *p_builder, const Ref<ShaderMaterial> &p_
 }
 
 // The sea over this tile: a coarse patch at sea level, bent like the ground.
-void PlanetTile::add_sea(const PackedVector3Array &p_dirs, int p_cells) {
-	Dictionary made = noise_->get_water_native()->sea_mesh(p_dirs, p_cells, size, settings_->get_radius(), settings_->get_sea_level(), origin, e1, centre, e3);
+void PlanetTile::add_sea(const PackedVector3Array &p_dirs, int p_cells, const PackedFloat32Array &p_heights) {
+	Dictionary made = noise_->get_water_native()->sea_mesh(p_dirs, p_cells, size, settings_->get_radius(), settings_->get_sea_level(), origin, e1, centre, e3, p_heights);
 	Ref<RefCounted> builder = new_builder();
 	builder->call("append_water", made["vertices"], made["normals"], made["colours"]);
 	add_water_mesh(builder.ptr(), water_material());

@@ -14,5 +14,7 @@ if os.path.exists(_defs) and "Math_PI" not in open(_defs).read():
 sources = Glob("src/*.cpp")
 suffix = env["suffix"].replace(".dev", "")
 env["SHLIBPREFIX"] = ""  # macOS adds "lib"; the .gdextension names the file without it
+if env["platform"] == "windows":
+    env.Append(LIBS=["psapi"]) # (PerfProbe: the process's memory)
 library = env.SharedLibrary("bin/planet_crust{}{}".format(suffix, env["SHLIBSUFFIX"]), source=sources)
 Default(library)

@@ -1,4 +1,6 @@
+#include "frame_timer.h"
 #include "flora_meshes_native.h"
+#include "graphics_lookup.h"
 #include "planet_turf_native.h"
 
 #include "planet_noise_native.h"
@@ -36,15 +38,26 @@ double PlanetTurf::leave() const {
 
 // The farthest a chunk of grass is made, in the view (the stones: no farther than ever).
 double PlanetTurf::far_reach() const {
-	return gravel ? enter() : FAR_ENTER;
+	if (gravel) {
+		return enter();
+	}
+	const int level = graphics_level("grass_range", 2); // (task 101: the "Grass distance" setting: half, three quarters or all of the farthest chunk)
+	const double share[3] = { 0.5, 0.75, 1.0 };
+	return FAR_ENTER * share[level < 0 ? 0 : (level > 2 ? 2 : level)];
 }
 
 double PlanetTurf::spacing() {
 	OS *os = OS::get_singleton();
-	return os->has_environment("PLANET_TURF_SPACING") ? os->get_environment("PLANET_TURF_SPACING").to_float() : SPACING;
+	if (os->has_environment("PLANET_TURF_SPACING")) {
+		return os->get_environment("PLANET_TURF_SPACING").to_float();
+	}
+	const int level = graphics_level("grass_density", 1); // (task 101: the "Grass density" setting: sparse 1.5x the spacing, normal, dense 0.8x)
+	const double factor[3] = { 1.5, 1.0, 0.8 };
+	return SPACING * factor[level < 0 ? 0 : (level > 2 ? 2 : level)];
 }
 
 void PlanetTurf::_physics_process(double p_delta) {
+	FRAME_TIMER("turf");
 	Object *planet_object = get_planet();
 	Node3D *player_node = Object::cast_to<Node3D>(get_player());
 	if (player_node == nullptr || planet_object == nullptr) {

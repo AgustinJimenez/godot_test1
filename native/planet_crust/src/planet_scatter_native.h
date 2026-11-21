@@ -30,6 +30,7 @@ public:
 		double patch_x = 0.0, patch_y = 0.0, foot_x = 0.0, foot_y = 0.0;
 		double drag = 0.0, stem_radius = 0.3; // what pushing through it costs the walker (0 nothing .. 1 a wall), how far it reaches (m)
 		double crown = 2.0; // radius of the crown (m): trees keep their crowns apart and shade what is under them
+		double canopy = 2.0; // the radius the crown really covers (m): what the spacing of trees and the shade use (crown is the species number, smaller than the mesh)
 		double shade_tolerance = 1.0; // 0 a plant of the open, 1 grows as well under a canopy
 		double fitness(double p_wet, double p_warm, double p_above, double p_steep) const;
 	};

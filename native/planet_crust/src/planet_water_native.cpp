@@ -68,6 +68,20 @@ struct MeshData {
 		}
 	}
 
+	// the same with a colour for each corner (given in the order a, b, c)
+	void triangle(Vector3 a, Vector3 b, Vector3 c, const Color &p_a, const Color &p_b, const Color &p_c) {
+		const Vector3 normal = (b - a).cross(c - a).normalized();
+		vertices.push_back(a);
+		vertices.push_back(c);
+		vertices.push_back(b);
+		for (int i = 0; i < 3; i++) {
+			normals.push_back(normal);
+		}
+		colours.push_back(p_a);
+		colours.push_back(p_c);
+		colours.push_back(p_b);
+	}
+
 	Dictionary result() const {
 		Dictionary out;
 		out["vertices"] = vertices;
@@ -89,14 +103,14 @@ double smooth(double p_from, double p_to, double p_x) {
 
 void PlanetWaterNative::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("sea_mesh", "dirs", "cells", "size", "radius", "sea_level",
-			"origin", "e1", "up", "e3"), &PlanetWaterNative::sea_mesh);
+			"origin", "e1", "up", "e3", "heights"), &PlanetWaterNative::sea_mesh, DEFVAL(PackedFloat32Array()));
 	ClassDB::bind_method(D_METHOD("river_mesh", "dirs", "heights", "samples", "cells", "radius",
 			"sea_level", "origin", "e1", "up", "e3"), &PlanetWaterNative::river_mesh);
 }
 
 Dictionary PlanetWaterNative::sea_mesh(const PackedVector3Array &p_dirs, int p_cells, double p_size,
 		double p_radius, double p_sea_level, const PackedFloat64Array &p_origin,
-		const Vector3 &p_e1, const Vector3 &p_up, const Vector3 &p_e3) const {
+		const Vector3 &p_e1, const Vector3 &p_up, const Vector3 &p_e3, const PackedFloat32Array &p_heights) const {
 	MeshData mesh;
 	const int side = p_cells + 3;
 	if (p_cells <= 0 || p_dirs.size() < side * side) {
@@ -107,18 +121,33 @@ Dictionary PlanetWaterNative::sea_mesh(const PackedVector3Array &p_dirs, int p_c
 	const Color roll((real_t)(1.0 - smooth(6.0, 14.0, facet)), 1.0, 1.0);
 	const TileFrame frame = frame_of(p_radius, p_origin, p_e1, p_up, p_e3);
 	std::vector<Vector3> grid((steps + 1) * (steps + 1));
+	std::vector<Color> tint((steps + 1) * (steps + 1), roll);
+	const bool has_heights = p_heights.size() >= side * side;
 	for (int row = 0; row <= steps; row++) {
 		for (int column = 0; column <= steps; column++) {
 			const int at = (1 + row * p_cells / steps) * side + 1 + column * p_cells / steps;
 			grid[row * (steps + 1) + column] = frame.local(p_dirs[at], p_sea_level);
+			if (has_heights) {
+				// green = the water over the ground here, in quarters of 4 m (0 = dry): the highest ground within a facet of the corner, so a
+				// dip of the sand under the sea's level does not count as water deep enough for the swell to lift (the shader holds the swell to it)
+				const int row_a = std::max(1 + (row - 1) * p_cells / steps, 0), row_b = std::min(1 + (row + 1) * p_cells / steps, side - 1);
+				const int column_a = std::max(1 + (column - 1) * p_cells / steps, 0), column_b = std::min(1 + (column + 1) * p_cells / steps, side - 1);
+				float highest = -1.0e30f;
+				for (int r = row_a; r <= row_b; r++) {
+					for (int c = column_a; c <= column_b; c++) {
+						highest = std::max(highest, p_heights[r * side + c]);
+					}
+				}
+				tint[row * (steps + 1) + column] = Color(roll.r, (real_t)std::clamp((p_sea_level - (double)highest) / 4.0, 0.0, 1.0), 1.0);
+			}
 		}
 	}
 	for (int row = 0; row < steps; row++) {
 		for (int column = 0; column < steps; column++) {
 			const int i00 = row * (steps + 1) + column;
 			const int i01 = i00 + steps + 1;
-			mesh.triangle(grid[i00], grid[i01], grid[i00 + 1], roll);
-			mesh.triangle(grid[i00 + 1], grid[i01], grid[i01 + 1], roll);
+			mesh.triangle(grid[i00], grid[i01], grid[i00 + 1], tint[i00], tint[i01], tint[i00 + 1]);
+			mesh.triangle(grid[i00 + 1], grid[i01], grid[i01 + 1], tint[i00 + 1], tint[i01], tint[i01 + 1]);
 		}
 	}
 	return mesh.result();

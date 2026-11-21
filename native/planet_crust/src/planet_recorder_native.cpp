@@ -184,6 +184,9 @@ Dictionary PlanetRecorder::sample() {
 		result["speed"] = snapped(velocity.length(), 0.1);
 		result["free_mode"] = target->get("free_mode_enabled");
 		result["on_floor"] = target->call("is_on_floor");
+		if (target->has_method("get_stair_debug")) { // which stair condition slows the walk, the floor's angle, the clip's playback scale
+			result["stair"] = target->call("get_stair_debug");
+		}
 	}
 	return result;
 }

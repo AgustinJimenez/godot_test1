@@ -32,6 +32,8 @@ class PlanetWorld : public Node3D {
 	Label *load_label = nullptr;
 	ColorRect *dark = nullptr;
 	double load_time = 0.0;
+	double stage_done_at[3] = { -1.0, -1.0, -1.0 }; // (task 101) when each part of the loading finished (s), for the loading text
+	bool rendering_off = false; // (task 101) the 3D world is not drawn while the black loading screen is up
 	double load_shown = 0.0; // the percentage shown while loading: it only goes up (the ratio drops when more tiles become wanted)
 	double star_disc = 1.0; // the star's disc at the semi-major distance against the Sun from the Earth
 	double weather_timer = 0.0;
@@ -44,6 +46,8 @@ class PlanetWorld : public Node3D {
 	void wait_for_the_ground(double p_delta);
 	void stand_on_the_ground();
 	void cover_the_loading();
+	double get_load_fraction() const;
+	String get_loading_text() const;
 	static double load_plants();
 	Object *make_scripted(const char *p_path) const;
 

@@ -35,4 +35,14 @@ inline Node *graphics_settings_node() {
 	return settings;
 }
 
+// (task 101) one setting of the autoload, as a small integer level (`p_default` when the autoload is not there: a tool or a worker thread that has not seen it)
+inline int graphics_level(const char *p_key, int p_default) {
+	Node *settings = graphics_settings_node();
+	if (settings == nullptr) {
+		return p_default;
+	}
+	Variant value = settings->call("get_graphics_value", StringName(p_key));
+	return value.get_type() == Variant::NIL ? p_default : (int)(int64_t)value;
+}
+
 } // namespace godot

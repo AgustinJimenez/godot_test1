@@ -29,9 +29,12 @@ const char *const NAME_LIST[] = { "leafy", "conifer", "umbrella", "giant", "oak"
 	"clump", "palm",
 	"dead", "cactus", "fern", "grass", "lawn", "meadow", "reed", "pampas", "tussock", "wildflower",
 	"cherry", "blossom",
-	"raintree", "buttress" };
+	"raintree", "buttress",
+	"birch", "maple", "spruce", "juniper", "baobab", "elm", "eucalyptus",
+	"bamboo", "sedge", "lavender", "poppy", "daisy", "bracken",
+	"pine", "poplar", "olive", "bristlecone", "beech", "linden", "lupine", "bell" };
 const char *const PLANT_LIST[] = { "shrub", "groundcover", "fern", "grass", "lawn", "meadow", "reed",
-	"pampas", "tussock", "wildflower" };
+	"pampas", "tussock", "wildflower", "bamboo", "sedge", "lavender", "poppy", "daisy", "bracken", "lupine", "bell" };
 
 // Plausible range of each numeric trait: [min, max]. A draw never leaves it. (The order is the script's: the dice are thrown in it.)
 struct Range {
@@ -53,9 +56,9 @@ const Range RANGES[] = {
 	{ "children", 1, 7 }, { "twig_radius", 0.2, 1.0 }, { "child_radius", 0.3, 0.9 },
 	{ "child_length", 0.2, 0.9 },
 	{ "child_forward", 0.0, 1.5 }, { "child_side", 0.0, 1.5 }, { "child_up", -0.5, 1.0 },
-	{ "leaf_aspect", 0.8, 5.0 }, { "leaf_size", 0.08, 0.45 }, { "needle_size", 0.2, 1.5 },
+	{ "leaf_aspect", 0.8, 5.0 }, { "leaf_size", 0.08, 0.45 }, { "needle_size", 0.2, 3.0 },
 	{ "leaf_density", 0.0, 1.0 }, { "rib_width", 0.005, 0.06 }, { "flower_size", 0.02, 0.15 },
-	{ "bark_rough", 0.5, 3.0 }, { "petals", 4, 10 }, { "flower_cup", 0.0, 1.0 },
+	{ "bark_rough", 0.5, 3.0 }, { "petals", 3, 10 }, { "flower_cup", 0.0, 1.0 },
 	{ "blossom_size", 0.03, 0.4 }, { "blossom_density", 0.1, 1.0 }, { "fronds", 6, 24 },
 	{ "frond_length", 0.2, 8.0 },
 	{ "frond_arch", 0.1, 1.0 }, { "frond_droop", 0.1, 1.0 }, { "leaflet", 0.0, 0.4 },
@@ -295,6 +298,283 @@ Ref<TreeGenome> TreeArchetypes::make(const String &p_kind, const Ref<PlantSpecie
 		g.nodes_spacing = 0.6;
 		g.limbs = 4;
 		g.droop = 0.0;
+	} else if (kind == "birch") {
+		// a birch: slender white trunk with dark marks, a long clean stem, a narrow airy crown of small leaves on upswept limbs
+		made = TreeGenome::from_species(p_leafy);
+		TreeGenome &g = *made.ptr();
+		g.height = 14.0;
+		g.girth = 0.3;
+		g.taper = 0.72;
+		g.trunk_part = 0.5;
+		g.crown = 2.6;
+		g.aspect = 1.35;
+		g.limbs = 5;
+		g.limb_angle = 48.0;
+		g.limb_length = 0.9;
+		g.limb_thickness = 0.55;
+		g.curve = nums3(0.6, 0.8, 1.0);
+		g.lift = nums3(0.2, 0.1, 0.0);
+		g.sag = nums3(0.0, 0.04, 0.1);
+		g.leaf_size = 0.09;
+		g.leaf_density = 0.7;
+		g.leaf = Color(0.34f, 0.5f, 0.16f);
+		g.leaf_tip = Color(0.5f, 0.65f, 0.25f);
+		g.bark = Color(0.88f, 0.87f, 0.82f);
+		g.bark_rough = 0.5;
+		g.marked_bark = true;
+	} else if (kind == "maple") {
+		// a maple: a short straight trunk and a dense rounded crown of large lobed leaves
+		made = TreeGenome::from_species(p_leafy);
+		TreeGenome &g = *made.ptr();
+		g.height = 13.0;
+		g.girth = 0.45;
+		g.taper = 0.65;
+		g.trunk_part = 0.35;
+		g.root_flare = 0.15;
+		g.crown = 4.4;
+		g.aspect = 0.95;
+		g.limbs = 6;
+		g.limb_angle = 58.0;
+		g.limb_length = 1.0;
+		g.limb_thickness = 0.8;
+		g.curve = nums3(0.9, 1.0, 1.2);
+		g.lift = nums3(0.15, 0.06, 0.0);
+		g.leaf_size = 0.2;
+		g.leaf_density = 0.85;
+		g.leaf_shape = PlantSpecies::PALMATE;
+		g.leaf_edge = PlantSpecies::SERRATED;
+		g.leaf = Color(0.26f, 0.44f, 0.13f);
+		g.leaf_tip = Color(0.4f, 0.58f, 0.2f);
+	} else if (kind == "spruce") {
+		// a spruce: one straight leader to a spire, short drooping boughs all the way down, a dense narrow cone
+		made = TreeGenome::from_species(p_conifer);
+		TreeGenome &g = *made.ptr();
+		g.height = 22.0;
+		g.girth = 0.55;
+		g.column = 0.12;
+		g.trunk_part = 0.03;
+		g.nodes_from = 0.04;
+		g.crown = 2.7;
+		g.nodes_spacing = 0.55;
+		g.limbs = 5;
+		g.limb_angle = 80.0;
+		g.droop = 0.35;
+	} else if (kind == "juniper") {
+		// a juniper: a small, dense, ragged blue-green column close to the ground
+		made = TreeGenome::from_species(p_conifer);
+		TreeGenome &g = *made.ptr();
+		g.height = 7.0;
+		g.girth = 0.3;
+		g.column = 0.35;
+		g.lean = 0.04;
+		g.trunk_part = 0.08;
+		g.nodes_from = 0.1;
+		g.crown = 1.8;
+		g.nodes_spacing = 0.4;
+		g.limbs = 5;
+		g.droop = 0.0;
+		g.leaf = Color(0.2f, 0.36f, 0.3f);
+		g.leaf_tip = Color(0.3f, 0.48f, 0.4f);
+	} else if (kind == "baobab") {
+		// a baobab: a vast bottle-shaped bare trunk and a small sparse crown of stubby limbs at the very top
+		made = TreeGenome::from_species(p_leafy);
+		TreeGenome &g = *made.ptr();
+		g.height = 16.0;
+		g.girth = 2.4;
+		g.taper = 0.85;
+		g.trunk_part = 0.75;
+		g.root_flare = 0.4;
+		g.crown = 3.6;
+		g.aspect = 0.5;
+		g.limbs = 6;
+		g.limb_angle = 68.0;
+		g.limb_length = 0.9;
+		g.limb_thickness = 0.55;
+		g.trunk_lumps = 0.3;
+		g.leaf_density = 0.45;
+		g.leaf_size = 0.12;
+		g.bark = Color(0.5f, 0.42f, 0.36f);
+		g.bark_rough = 0.4;
+	} else if (kind == "elm") {
+		// an elm: a vase, the trunk dividing low into limbs that sweep up and out then arch over at the ends
+		made = TreeGenome::from_species(p_leafy);
+		TreeGenome &g = *made.ptr();
+		g.height = 18.0;
+		g.girth = 0.55;
+		g.taper = 0.5;
+		g.trunk_part = 0.28;
+		g.crown = 5.0;
+		g.aspect = 1.15;
+		g.limbs = 5;
+		g.limb_angle = 38.0;
+		g.limb_length = 1.2;
+		g.limb_thickness = 0.8;
+		g.curve = nums3(1.0, 1.0, 1.2);
+		g.lift = nums3(0.3, 0.1, 0.0);
+		g.sag = nums3(0.0, 0.05, 0.12);
+		g.leaf_size = 0.12;
+		g.leaf_edge = PlantSpecies::SERRATED;
+	} else if (kind == "eucalyptus") {
+		// a eucalyptus: tall, a long pale crooked trunk, a thin crown of drooping narrow leaves
+		made = TreeGenome::from_species(p_leafy);
+		TreeGenome &g = *made.ptr();
+		g.height = 26.0;
+		g.girth = 0.5;
+		g.taper = 0.5;
+		g.trunk_part = 0.6;
+		g.trunk_bend = 0.15;
+		g.crown = 3.4;
+		g.aspect = 1.4;
+		g.droop = 0.25;
+		g.limbs = 5;
+		g.limb_angle = 45.0;
+		g.limb_length = 0.9;
+		g.leaf_density = 0.45;
+		g.leaf_size = 0.18;
+		g.leaf_shape = PlantSpecies::LANCEOLATE;
+		g.leaf_edge = PlantSpecies::SMOOTH;
+		g.leaf_aspect = 3.2;
+		g.leaf = Color(0.3f, 0.42f, 0.28f);
+		g.leaf_tip = Color(0.42f, 0.54f, 0.36f);
+		g.bark = Color(0.7f, 0.68f, 0.62f);
+	} else if (kind == "pine") {
+		// a pine: a tall bare orange-brown trunk, a flat irregular crown of limbs with tufts of needles at their ends
+		made = TreeGenome::from_species(p_conifer);
+		TreeGenome &g = *made.ptr();
+		g.height = 24.0;
+		g.girth = 0.5;
+		g.leader = false;
+		g.whorled = false;
+		g.tips_only = true;
+		g.frosted = false;
+		g.trunk_part = 0.62;
+		g.trunk_bend = 0.08;
+		g.crown = 5.5;
+		g.limbs = 8;
+		g.limb_angle = 62.0;
+		g.limb_length = 1.0;
+		g.limb_thickness = 0.7;
+		g.needle_size = 2.6;
+		g.curve = nums3(0.9, 1.0, 1.1);
+		g.lift = nums3(0.2, 0.1, 0.0);
+		g.bark = Color(0.5f, 0.3f, 0.19f);
+		g.bark_rough = 0.7;
+		g.leaf = Color(0.17f, 0.33f, 0.2f);
+		g.leaf_tip = Color(0.27f, 0.45f, 0.26f);
+	} else if (kind == "poplar") {
+		// a Lombardy poplar: a tall slim column, limbs rising close to the trunk from near the ground, small shimmering leaves
+		made = TreeGenome::from_species(p_leafy);
+		TreeGenome &g = *made.ptr();
+		g.height = 22.0;
+		g.girth = 0.38;
+		g.taper = 0.5;
+		g.trunk_part = 0.12;
+		g.crown = 1.7;
+		g.aspect = 2.4;
+		g.limbs = 6;
+		g.limb_angle = 22.0;
+		g.limb_length = 1.0;
+		g.limb_thickness = 0.6;
+		g.lift = nums3(0.35, 0.2, 0.05);
+		g.leaf_size = 0.1;
+		g.leaf_density = 0.8;
+		g.leaf = Color(0.3f, 0.46f, 0.15f);
+		g.leaf_tip = Color(0.46f, 0.62f, 0.24f);
+		g.bark = Color(0.45f, 0.4f, 0.34f);
+	} else if (kind == "olive") {
+		// an olive: short, a thick gnarled twisting trunk, a round crown of narrow silver-green leaves
+		made = TreeGenome::from_species(p_leafy);
+		TreeGenome &g = *made.ptr();
+		g.height = 6.5;
+		g.girth = 0.65;
+		g.taper = 0.6;
+		g.trunk_part = 0.25;
+		g.trunk_bend = 0.25;
+		g.trunk_lumps = 0.4;
+		g.crown = 3.2;
+		g.aspect = 0.8;
+		g.limbs = 5;
+		g.limb_angle = 55.0;
+		g.limb_length = 1.0;
+		g.leaf_shape = PlantSpecies::LANCEOLATE;
+		g.leaf_edge = PlantSpecies::SMOOTH;
+		g.leaf_aspect = 3.5;
+		g.leaf_size = 0.08;
+		g.leaf_density = 0.7;
+		g.leaf = Color(0.4f, 0.48f, 0.34f);
+		g.leaf_tip = Color(0.55f, 0.62f, 0.48f);
+		g.bark = Color(0.5f, 0.46f, 0.4f);
+		g.bark_rough = 0.8;
+	} else if (kind == "bristlecone") {
+		// a bristlecone pine: small, twisted, weathered, a few bare grey limbs with tufts of needles at the tips
+		made = TreeGenome::from_species(p_conifer);
+		TreeGenome &g = *made.ptr();
+		g.height = 7.0;
+		g.girth = 0.7;
+		g.leader = false;
+		g.whorled = false;
+		g.tips_only = true;
+		g.needle_size = 2.6;
+		g.frosted = false;
+		g.trunk_part = 0.45;
+		g.trunk_bend = 0.3;
+		g.trunk_lumps = 0.35;
+		g.lean = 0.08;
+		g.crown = 2.6;
+		g.limbs = 4;
+		g.limb_angle = 70.0;
+		g.curve = nums3(1.2, 1.3, 1.4);
+		g.bark = Color(0.6f, 0.5f, 0.4f);
+		g.bark_rough = 0.9;
+		g.leaf = Color(0.2f, 0.34f, 0.22f);
+	} else if (kind == "beech") {
+		// a beech: a smooth grey trunk with a wide flare, a very broad dense dome of limbs, glossy oval leaves with a wavy edge
+		made = TreeGenome::from_species(p_leafy);
+		TreeGenome &g = *made.ptr();
+		g.height = 22.0;
+		g.girth = 0.6;
+		g.taper = 0.55;
+		g.trunk_part = 0.3;
+		g.root_flare = 0.3;
+		g.crown = 6.2;
+		g.aspect = 0.85;
+		g.limbs = 7;
+		g.limb_angle = 58.0;
+		g.limb_length = 1.1;
+		g.limb_thickness = 0.8;
+		g.curve = nums3(0.9, 1.0, 1.1);
+		g.lift = nums3(0.15, 0.06, 0.0);
+		g.leaf_shape = PlantSpecies::OVAL;
+		g.leaf_edge = PlantSpecies::WAVY;
+		g.leaf_size = 0.13;
+		g.leaf_density = 0.9;
+		g.leaf = Color(0.2f, 0.4f, 0.12f);
+		g.leaf_tip = Color(0.34f, 0.54f, 0.2f);
+		g.bark = Color(0.6f, 0.58f, 0.53f);
+		g.bark_rough = 0.25;
+	} else if (kind == "linden") {
+		// a linden: a short trunk, a dense rounded crown that sweeps to the ground, large heart-shaped leaves
+		made = TreeGenome::from_species(p_leafy);
+		TreeGenome &g = *made.ptr();
+		g.height = 19.0;
+		g.girth = 0.5;
+		g.taper = 0.6;
+		g.trunk_part = 0.25;
+		g.crown = 5.4;
+		g.aspect = 1.0;
+		g.limbs = 8;
+		g.limb_angle = 52.0;
+		g.limb_length = 1.0;
+		g.limb_thickness = 0.75;
+		g.droop = 0.15;
+		g.leaf_shape = PlantSpecies::HEART;
+		g.leaf_edge = PlantSpecies::SERRATED;
+		g.leaf_size = 0.2;
+		g.leaf_density = 0.9;
+		g.leaf = Color(0.24f, 0.44f, 0.14f);
+		g.leaf_tip = Color(0.38f, 0.58f, 0.22f);
+		g.bark = Color(0.42f, 0.36f, 0.3f);
+		g.bark_rough = 0.6;
 	} else if (kind == "umbrella") {
 		made = TreeGenome::from_species(p_leafy);
 		TreeGenome &g = *made.ptr();
@@ -476,7 +756,7 @@ Ref<TreeGenome> TreeArchetypes::make(const String &p_kind, const Ref<PlantSpecie
 		g.bark_rough = 0.3;
 		g.leaf_density = 0.0;
 		g.bark = Color(0.25f, 0.45f, 0.25f);
-	} else if (kind == "fern" || kind == "grass" || kind == "lawn" || kind == "meadow" || kind == "reed" || kind == "pampas" || kind == "tussock" || kind == "wildflower") {
+	} else if (kind == "fern" || kind == "grass" || kind == "lawn" || kind == "meadow" || kind == "reed" || kind == "pampas" || kind == "tussock" || kind == "wildflower" || kind == "bamboo" || kind == "sedge" || kind == "lavender" || kind == "poppy" || kind == "daisy" || kind == "bracken" || kind == "lupine" || kind == "bell") {
 		// low plants of fronds or blades straight from the ground
 		made = make("palm", p_leafy, p_conifer);
 		TreeGenome &g = *made.ptr();
@@ -551,6 +831,120 @@ Ref<TreeGenome> TreeArchetypes::make(const String &p_kind, const Ref<PlantSpecie
 			g.rib_width = 0.035;
 			g.leaf = Color(0.4f, 0.55f, 0.18f);
 			g.leaf_tip = Color(0.58f, 0.68f, 0.28f);
+		} else if (kind == "bamboo") {
+			// bamboo: tall stiff green canes with slender leaves at the tops
+			g.fronds = 12;
+			g.frond_length = 3.2;
+			g.frond_arch = 0.22;
+			g.frond_droop = 0.3;
+			g.leaflet = 0.0;
+			g.rib_width = 0.05;
+			g.leaf = Color(0.34f, 0.5f, 0.16f);
+			g.leaf_tip = Color(0.52f, 0.64f, 0.24f);
+		} else if (kind == "sedge") {
+			// sedge: dark arching blades in a wet tuft
+			g.fronds = 30;
+			g.frond_length = 0.7;
+			g.frond_arch = 0.45;
+			g.frond_droop = 0.8;
+			g.leaflet = 0.0;
+			g.rib_width = 0.03;
+			g.leaf = Color(0.16f, 0.36f, 0.14f);
+			g.leaf_tip = Color(0.3f, 0.5f, 0.2f);
+		} else if (kind == "lupine") {
+			// lupine: a tuft of fingered leaves and tall spikes of small florets (petals == 3 marks the spike look for the builder)
+			g.fronds = 10;
+			g.frond_length = 0.7;
+			g.frond_arch = 0.2;
+			g.frond_droop = 0.15;
+			g.leaflet = 0.0;
+			g.rib_width = 0.025;
+			g.leaf = Color(0.28f, 0.46f, 0.2f);
+			g.leaf_tip = Color(0.4f, 0.58f, 0.28f);
+			g.flower = Color(0.45f, 0.35f, 0.85f, 1.0f);
+			g.flower_size = 0.045;
+			g.petals = 3;
+			g.flower_cup = 0.9;
+		} else if (kind == "bell") {
+			// a bellflower: arching stalks, each ending in a nodding cup (petals == 6 with a deep cup marks the hanging look for the builder)
+			g.fronds = 8;
+			g.frond_length = 0.65;
+			g.frond_arch = 0.5;
+			g.frond_droop = 0.3;
+			g.leaflet = 0.0;
+			g.rib_width = 0.02;
+			g.leaf = Color(0.3f, 0.48f, 0.22f);
+			g.leaf_tip = Color(0.42f, 0.6f, 0.3f);
+			g.flower = Color(0.5f, 0.4f, 0.85f, 1.0f);
+			g.flower_size = 0.07;
+			g.petals = 6;
+			g.flower_cup = 0.97;
+		} else if (kind == "lavender") {
+			// lavender: a grey-green tuft of narrow leaves with purple spikes
+			g.fronds = 16;
+			g.frond_length = 0.4;
+			g.frond_arch = 0.3;
+			g.frond_droop = 0.3;
+			g.leaflet = 0.0;
+			g.rib_width = 0.02;
+			g.leaf = Color(0.36f, 0.46f, 0.32f);
+			g.leaf_tip = Color(0.5f, 0.58f, 0.44f);
+			g.flower = Color(0.55f, 0.4f, 0.8f, 1.0f);
+			g.flower_size = 0.06;
+			g.petals = 7;
+			g.flower_cup = 0.9;
+		} else if (kind == "wildflower") {
+			// (task 099) it had no form of its own and fell through to the palm's wide stiff blades: a buttercup-like meadow flower, thin stems with leaves, open five-petal heads
+			g.fronds = 7;
+			g.frond_length = 0.38;
+			g.frond_arch = 0.25;
+			g.frond_droop = 0.12;
+			g.leaflet = 0.0;
+			g.rib_width = 0.03;
+			g.leaf = Color(0.3f, 0.5f, 0.2f);
+			g.leaf_tip = Color(0.44f, 0.62f, 0.28f);
+			g.flower = Color(0.97f, 0.8f, 0.1f, 1.0f);
+			g.flower_size = 0.075;
+			g.petals = 5;
+			g.flower_cup = 0.4;
+			g.flower_centre = Color(0.85f, 0.5f, 0.05f);
+		} else if (kind == "poppy") {
+			g.fronds = 8;
+			g.frond_length = 0.45;
+			g.frond_arch = 0.15;
+			g.frond_droop = 0.1;
+			g.leaflet = 0.0;
+			g.rib_width = 0.03;
+			g.leaf = Color(0.3f, 0.5f, 0.2f);
+			g.leaf_tip = Color(0.44f, 0.6f, 0.28f);
+			g.flower = Color(0.9f, 0.14f, 0.1f, 1.0f);
+			g.flower_size = 0.1;
+			g.petals = 4; // (a poppy: four wide cupped petals round a dark centre)
+			g.flower_cup = 0.75;
+			g.flower_centre = Color(0.1f, 0.06f, 0.05f);
+		} else if (kind == "daisy") {
+			g.fronds = 9;
+			g.frond_length = 0.35;
+			g.frond_arch = 0.1;
+			g.frond_droop = 0.0;
+			g.leaflet = 0.0;
+			g.rib_width = 0.03;
+			g.leaf = Color(0.32f, 0.52f, 0.2f);
+			g.leaf_tip = Color(0.46f, 0.64f, 0.28f);
+			g.flower = Color(0.97f, 0.97f, 0.92f, 1.0f);
+			g.flower_size = 0.07;
+			g.petals = 14; // (task 100: a daisy is many thin flat petals round a yellow disc)
+			g.flower_cup = 0.0;
+			g.flower_centre = Color(0.95f, 0.72f, 0.08f);
+		} else if (kind == "bracken") {
+			// bracken: tall coarse fronds in a spreading stand
+			g.fronds = 8;
+			g.frond_length = 1.1;
+			g.frond_arch = 0.7;
+			g.frond_droop = 0.9;
+			g.leaflet = 0.3;
+			g.leaf = Color(0.28f, 0.46f, 0.16f);
+			g.leaf_tip = Color(0.42f, 0.56f, 0.22f);
 		} else {
 			g.fronds = 7;
 			g.frond_length = 0.5;
@@ -562,6 +956,10 @@ Ref<TreeGenome> TreeArchetypes::make(const String &p_kind, const Ref<PlantSpecie
 			g.leaf_tip = Color(0.5f, 0.65f, 0.28f);
 			g.flower = Color(0.95f, 0.8f, 0.2f, 1.0f);
 			g.flower_size = 0.08;
+		}
+		if (kind == "fern" || kind == "lawn" || kind == "meadow" || kind == "reed" || kind == "tussock" || kind == "grass" || kind == "bamboo" || kind == "sedge" || kind == "bracken") {
+			// (task 099) these were cloned from the palm and kept its flowers: a reed or a fern tuft with petals at the tips of its blades
+			g.flower = Color(0, 0, 0, 0);
 		}
 	} else if (kind == "raintree") {
 		// a rain tree: a short thick trunk, then a vast dome of feathery leaves on spreading limbs
@@ -728,7 +1126,23 @@ Ref<TreeGenome> TreeArchetypes::for_species(const Ref<PlantSpecies> &p_species) 
 	Ref<RandomNumberGenerator> rng;
 	rng.instantiate();
 	rng->set_seed(s.seed ^ 0x7A11);
+	const int64_t petals_before = g.petals;
+	const double cup_before = g.flower_cup;
+	const Color centre_before = g.flower_centre;
 	nudge(g, rng, 0.08);
+	if (s.archetype == String("daisy") || s.archetype == String("poppy") || s.archetype == String("lupine") || s.archetype == String("lavender") || s.archetype == String("bell")) {
+		// (task 100) `vary_flowers` inside `nudge` re-draws petals, cup and centre for every flowering genome; these kinds have a fixed flower shape
+		g.petals = petals_before;
+		g.flower_cup = cup_before;
+		g.flower_centre = centre_before;
+	}
+	if (s.archetype == String("wildflower")) {
+		// the builder reads petals 3 (lupine spike), 7 (lavender) and 6 with a deep cup (bell) as the shape of those plants: a wildflower must not draw them by chance
+		if (g.petals == 3 || g.petals == 7) {
+			g.petals += 1;
+		}
+		g.flower_cup = Math::min(g.flower_cup, 0.85);
+	}
 	if (s.archetype != String("cactus") && s.archetype != String("dead")) {
 		g.leaf = s.leaf;
 		g.leaf_tip = s.leaf_tip;
@@ -742,8 +1156,9 @@ Ref<TreeGenome> TreeArchetypes::for_species(const Ref<PlantSpecies> &p_species) 
 		g.frond_parts = 4; // a world has thousands of these: short, few
 		g.fronds = Math::min(g.fronds, (int64_t)16);
 		if (g.leaflet < 0.02) { // a blade of grass: wider, stands straighter
-			g.rib_width = Math::max(g.rib_width * 2.0, 0.05);
-			g.frond_droop *= 0.5;
+			g.rib_width = Math::max(g.rib_width * 1.1, 0.028); // (task 099: was x2, min 0.05: stiff wide slabs)
+			g.frond_droop *= 0.7;
+			g.frond_parts = 6; // a smooth curve
 		}
 	}
 	settle(g);

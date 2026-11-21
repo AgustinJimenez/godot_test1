@@ -1,3 +1,4 @@
+#include "frame_timer.h"
 #include "planet_nodes_native.h"
 
 #include "planet_frame_native.h"
@@ -53,6 +54,7 @@ void PlanetCrustGuard::_ready() {
 }
 
 void PlanetCrustGuard::_physics_process(double) {
+	FRAME_TIMER("guard_phys");
 	Object *planet_object = get_planet();
 	if (planet_object == nullptr) {
 		return;
@@ -74,6 +76,7 @@ void PlanetCrustGuard::_physics_process(double) {
 }
 
 void PlanetCrustGuard::_process(double) {
+	FRAME_TIMER("guard");
 	Object *planet_object = get_planet();
 	if (get_target() == nullptr || planet_object == nullptr || (bool)planet_object->get("loading")) {
 		return;
@@ -103,6 +106,7 @@ void PlanetUndergrowth::_ready() {
 }
 
 void PlanetUndergrowth::_physics_process(double p_delta) {
+	FRAME_TIMER("undergrowth");
 	Object *player_object = get_player();
 	if (player_object == nullptr || get_planet() == nullptr) {
 		return;
@@ -380,6 +384,7 @@ void PlanetMotes::_ready() {
 }
 
 void PlanetMotes::_process(double) {
+	FRAME_TIMER("motes");
 	Object *planet_object = get_planet();
 	if (planet_object == nullptr) {
 		return;
@@ -468,7 +473,9 @@ void PlanetSwayTree::step(const PackedFloat32Array &p_body_local, double p_delta
 	PackedByteArray data = feet;
 	data.append_array(sway->turns(state).to_byte_array());
 	image->set_data((int)table.size() / 10, 2, false, Image::FORMAT_RGBAF, data);
-	texture->update(image);
+	if (!OS::get_singleton()->has_environment("PLANET_SWAY_NO_UPLOAD")) { // (task 101 experiment)
+		texture->update(image);
+	}
 }
 
 // The most any branch is turned now (radians): for the checks.

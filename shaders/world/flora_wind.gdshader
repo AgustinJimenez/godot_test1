@@ -8,6 +8,7 @@ render_mode cull_disabled, specular_schlick_ggx;
 
 global uniform float wind_strength;
 global uniform float snow_cover;
+global uniform float ground_wetness;
 global uniform float autumn;
 global uniform float realism;
 global uniform vec2 wind_direction;
@@ -40,6 +41,12 @@ uniform sampler2DArray rock_photo : source_color, filter_linear_mipmap_anisotrop
 uniform float rock_photo_on = 1.0; // 0: only the procedural stone
 uniform float rock_force = -1.0; // >= 0: every rock uses this slot (a tool)
 uniform float rock_pom = 1.0; // 0: no parallax march and no self-shadow on the photographed rocks (a tool: what they cost)
+uniform float leaf_fold_scale = 1.0; // how big the leaf mesh is next to a real leaf of 15 cm (the leaf lab shows one a metre long: 6.5): the fold of a leaf in the wind scales with it
+uniform float debug_veins = 0.0; // 1: show only the vein pattern (white lines on black), for the leaf lab
+uniform float canopy_soften = 0.3; // 0..1: a leaf's normal leans toward "away from the crown's centre" (a crown shades as one soft ball, not as leaf-sized facets); 0 = off (a test)
+uniform float crown_dark = 0.4; // 0..1: how much darker the leaves near the trunk axis are (the inside of a crown is in shade)
+uniform float canopy_center_frac = 0.72; // the crown's centre as a share of a leaf's own height on the trunk axis (no per-tree data needed: a leaf high in the crown leans up, a low one leans out)
+uniform float canopy_center_y = 3.0; // the crown's centre height in the mesh's own space, on the trunk's axis (a test: one number for the whole material)
 uniform float rock_pom_depth = 0.05; // metres the rock's whole relief (the picture's height 0..1) is worth in the march
 uniform sampler2DArray bark_photo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float bark_photo_on = 1.0; // 0: only the procedural bark
@@ -402,7 +409,64 @@ float vein_net(vec2 p) {
 	return second - nearest;
 }
 
-vec4 leaf_cluster(vec2 uv, float id, float look, float eye, out vec2 across_uv) {
+// A bead of water on a wet leaf (rain, dew), one possible drop per cell of `grid`: x inside the drop, y its dark thin rim, z the bright glint of the sky on its
+// dome (toward the upper left). The whole drop stays inside its cell. `wet` 0..1 is how many cells carry one.
+vec3 water_drop(vec2 grid, float seed, float wet) {
+	vec2 cell = floor(grid);
+	vec2 h = hash22(cell + seed * 7.0);
+	if (h.x < 1.0 - 0.3 * wet) {
+		return vec3(0.0);
+	}
+	vec2 h2 = hash22(cell * 1.7 + 3.1 + seed);
+	float r = 0.12 + 0.1 * h.y;
+	vec2 centre = (h2 - 0.5) * 2.0 * (0.5 - r) * 0.9;
+	vec2 d = fract(grid) - 0.5 - centre;
+	float dist = length(d);
+	float inside = 1.0 - smoothstep(r * 0.88, r, dist);
+	float rim = smoothstep(r * 0.55, r * 0.95, dist) * inside;
+	float glint = (1.0 - smoothstep(0.0, r * 0.32, length(d - vec2(-0.3, -0.3) * r))) * inside;
+	return vec3(inside, rim, glint);
+}
+
+// The veins of a leaf as a TREE (a backlit macro photo of a leaf): the midrib leaves the base, the secondary veins leave the midrib running up and out (the
+// caller draws those: `phase` is constant along each one, `band` = floor(phase) is the strip between two of them), and every finer level starts on the
+// level before it and ends on it, never crossing it: tertiary veins are the rungs of a ladder between two secondaries, the next veins cross a rung's cell from
+// rung to rung, the next again cross those, so each branch stops where it meets a parent: nested T-junctions, as in a real leaf. `across` 0 on the midrib .. 1 at
+// the margin. Lines come out pale 0..1, the finer levels fade out with the distance.
+float vein_tree(float phase, float across_unit, float eye, float seed, float iso) {
+	// `iso` keeps the cells the same size in metres: across_unit is 0..1 of the leaf's own width, which is narrow near the tip and the base, so the same number of
+	// cells across a narrow part made them small across and long along (the 'stretched' look); iso = the local half-width in metres over a fixed fraction of the length
+	float across = across_unit * iso;
+	float band = floor(phase);
+	float f = fract(phase); // 0..1 across a strip, from one secondary vein to the next
+	float hb = cell_hash(vec2(band, seed * 17.0 + 3.0));
+	// tertiary veins: the rungs between two secondaries, slanted (a rung leaves the lower secondary and meets the upper one further out, toward the margin)
+	// and wobbling, never a straight perpendicular grid
+	float wob = (smooth_noise(vec2(band * 1.7 + seed * 9.0, f * 2.0 + across * 1.5)) - 0.5) * 0.06;
+	float a = across + (f - 0.5) * 0.28 * (0.7 + 0.6 * hb) + wob;
+	float lines = 0.0;
+	float m2 = a * (4.0 + 2.5 * hb) + hb * 6.0;
+	float r = fract(m2);
+	if (eye < 12.0) {
+		lines += (1.0 - smoothstep(0.012, 0.05, min(r, 1.0 - r))) * (1.0 - smoothstep(6.0, 12.0, eye));
+	}
+	// the finer veins: polygon cells inside the strip (areoles), irregular, in the grain of the leaf (cells follow the strip: longer along it than across)
+	vec2 pg = vec2(f * 4.0 + hb * 20.0, a * 9.0 + band * 5.3);
+	// how many cells of the first net fall in a pixel: when the cells are only a few pixels wide their thin lines alias (chunky dots): the line edges are
+	// widened by about a pixel and a net fades out before its cells are smaller than ~2-3 pixels (the net 2.1 times finer fades first)
+	float px = max(fwidth(pg.x), fwidth(pg.y));
+	float fade1 = 1.0 - smoothstep(0.18, 0.45, px);
+	float fade2 = 1.0 - smoothstep(0.18, 0.45, px * 2.1);
+	if (eye < 7.0) {
+		lines += 0.8 * (1.0 - smoothstep(0.02, 0.09 + px * 0.6, vein_net(pg))) * (1.0 - smoothstep(3.5, 7.0, eye)) * fade1;
+	}
+	if (eye < 3.5) {
+		lines += 0.55 * (1.0 - smoothstep(0.03, 0.11 + px * 1.3, vein_net(pg * 2.1 + 7.7))) * (1.0 - smoothstep(1.5, 3.5, eye)) * fade2;
+	}
+	return clamp(lines, 0.0, 1.0);
+}
+
+vec4 leaf_cluster(vec2 uv, float id, float look, float eye, float against, out vec2 across_uv, out vec3 trans) {
 	const float N = 5.0;
 	// the species' leaf (PlantLeafShapes.card_look): 0 = no species given, the old generic leaf
 	int look_i = int(floor(look * 2048.0 + 0.5));
@@ -416,6 +480,7 @@ vec4 leaf_cluster(vec2 uv, float id, float look, float eye, out vec2 across_uv) 
 	float best = -1.0;
 	vec4 result = vec4(0.0, 1.0, 0.0, 0.0);
 	across_uv = vec2(1.0, 0.0);
+	trans = vec3(0.0); // for the light through the leaf: x the bright fine net of small veins, y how much of a big vein is here (dark against the light)
 	for (int j = -1; j <= 1; j++) {
 		for (int i = -1; i <= 1; i++) {
 			vec2 c = cell + vec2(float(i), float(j));
@@ -462,9 +527,43 @@ vec4 leaf_cluster(vec2 uv, float id, float look, float eye, out vec2 across_uv) 
 					vec2 spot = vec2((h3.x - 0.5) * 0.5 * width_cells, (0.3 + 0.4 * h3.y) * length_cells - 0.5 * length_cells);
 					vec2 bite = q - spot;
 					// a bitten hole is ragged: its radius wobbles round it
-					float wobble = 1.0 + 0.35 * sin(atan(bite.y, bite.x) * 3.0 + h.x * 9.0) + 0.2 * sin(atan(bite.y, bite.x) * 7.0 + h.y * 5.0);
+					float wobble = 1.0 + 0.12 * sin(atan(bite.y, bite.x) * 2.0 + h.x * 9.0) + 0.1 * sin(atan(bite.y, bite.x) * 5.0 + h.y * 5.0); // (a 3-lobed wobble read as a clover)
 					hole = 1.0 - smoothstep(0.02, 0.03 + 0.04 * h2.y, length(bite) / wobble);
 				}
+				// (task 099, from photos of real damaged leaves) more wear, close up only: round shot-holes, a bite out of the margin, brown leaf spots with a pale
+				// halo, now and then a yellowing leaf; the leaves of a distant crown stay clean (nothing of this is visible from afar and the loops cost)
+				float spots = 0.0;
+				float halo = 0.0;
+				float near_wear = 1.0 - smoothstep(12.0, 22.0, eye);
+				if (near_wear > 0.0) {
+					if (h.x > 0.8) {
+						for (int sh = 0; sh < 3; sh++) {
+							vec2 hh = hash22(c * 3.7 + float(sh) * 5.1 + id * 2.9);
+							vec2 sp = vec2((hh.x - 0.5) * 0.8 * width_cells, (0.2 + 0.6 * hh.y) * length_cells - 0.5 * length_cells);
+							float r = 0.016 + 0.02 * hh.x;
+							vec2 bd = q - sp; float wob = 1.0 + 0.1 * sin(atan(bd.y, bd.x) * 2.0 + hh.y * 9.0) + 0.08 * sin(atan(bd.y, bd.x) * 5.0 + hh.x * 7.0);
+							hole = max(hole, (1.0 - smoothstep(r * 0.7, r, length(bd) / wob)) * near_wear);
+						}
+					}
+					if (h2.y > 0.86) {
+						float side = h3.x > 0.5 ? 1.0 : -1.0;
+						vec2 sp = vec2(side * half_width * 0.95, (0.25 + 0.5 * h3.y) * length_cells - 0.5 * length_cells);
+						hole = max(hole, (1.0 - smoothstep(0.05, 0.085, length(q - sp))) * near_wear);
+					}
+					if (h3.y > 0.7) {
+						for (int sh = 0; sh < 3; sh++) {
+							vec2 hh = hash22(c * 5.3 + float(sh) * 3.1 + id * 1.3);
+							vec2 sp = vec2((hh.x - 0.5) * 0.7 * width_cells, (0.15 + 0.7 * hh.y) * length_cells - 0.5 * length_cells);
+							float r = 0.025 + 0.03 * hh.x;
+							float dist = length(q - sp);
+							spots += 1.0 - smoothstep(r * 0.55, r, dist);
+							halo += 1.0 - smoothstep(r, r * 1.8, dist);
+						}
+						spots = min(spots, 1.0) * near_wear;
+						halo = min(halo, 1.0) * near_wear;
+					}
+				}
+				float yellowing = step(0.93, h3.x) * 0.4;
 				float dry = smoothstep(0.55, 1.0, across * (0.7 + 0.5 * h3.x) + t * t * h2.x * 0.5) * step(0.82, h.y);
 				if (across < 1.0 && h.y > best && hole < 0.5) {
 					best = h.y;
@@ -475,20 +574,24 @@ vec4 leaf_cluster(vec2 uv, float id, float look, float eye, out vec2 across_uv) 
 					float vein_phase = t * vein_count - pow(across, 0.75) * 1.5 * (0.8 + 0.4 * h2.y) + h.x * 7.0;
 					float vein_run = fract(vein_phase);
 					float vein_dist = min(vein_run, 1.0 - vein_run);
-					float side_vein = (1.0 - smoothstep(0.0, mix(0.11, 0.035, across), vein_dist)) * smoothstep(0.03, 0.12, across)
+					float side_vein = (1.0 - smoothstep(0.012, mix(0.05, 0.022, across), vein_dist)) * smoothstep(0.03, 0.12, across)
 							* (1.0 - smoothstep(0.55, 0.98, across));
 					// the fine net of small veins between the big ones: the borders of a field of irregular cells, as a leaf's areoles are
 					// (only close up: from a few metres the net is finer than a pixel)
-					float net = vein_net(q * 34.0 + h.xy * 40.0);
-					float net_close = 1.0 - smoothstep(1.5, 5.0, eye);
-					float fine = 1.0 - 0.05 * (1.0 - smoothstep(0.0, 0.12, net)) * (1.0 - across * 0.5) * net_close;
+					float net_lines = vein_tree(vein_phase, across, eye, h.x, 1.0);
+					float fine = 1.0 + 0.42 * net_lines * (1.0 - across * 0.3); // (the small veins are pale, as in the photos)
 					// between two veins the blade puffs up a little, down in the groove beside each vein
 					float puff = 0.5 - 0.5 * cos(vein_run * 6.28318);
-					float shade = (0.72 + 0.5 * h2.x) * (1.0 - 0.22 * across * across) * fine * (0.95 + 0.07 * puff) + max(rib, side_vein * 0.8) * 0.3;
+					float shade = (0.72 + 0.5 * h2.x) * (1.0 - 0.22 * across * across) * fine * (0.95 + 0.07 * puff) + max(rib, side_vein * 0.8) * 0.3 * (1.0 - 1.5 * against); // (against the light the big veins are dark)
 					float ripple = sin(vein_phase * 6.28318) * 0.5;
 					float lean = clamp(across_raw * 0.85 + ripple * across, -1.0, 1.0);
-					result = vec4(1.0, shade * mix(1.0, 0.82, dry), dry, lean);
+					float wear = clamp(max(dry, max(spots * 0.9, yellowing)), 0.0, 1.0);
+					result = vec4(1.0, shade * mix(1.0, 0.82, wear) * (1.0 + 0.18 * halo * (1.0 - spots)), wear, lean);
 					across_uv = vec2(cs, -sn); // (q.x runs along this in the card)
+					// z: the soft relief of the big veins for the bump (smooth heights: a channel along the midrib, a narrow shallow groove along the side veins)
+					float soft_rib = 1.0 - smoothstep(0.0, 0.12 * (1.0 - 0.6 * t), abs(q.x) / width_cells);
+					float soft_side = (1.0 - smoothstep(0.0, mix(0.11, 0.05, across) * 1.8, vein_dist)) * (1.0 - smoothstep(0.55, 0.98, across));
+					trans = vec3(net_lines, max(rib, side_vein), 0.9 * soft_rib * (1.0 - 0.4 * t) + 0.28 * soft_side);
 				}
 			}
 		}
@@ -590,24 +693,64 @@ void vertex() {
 	}
 	face_up = (MODEL_MATRIX * vec4(NORMAL, 0.0)).y;
 	VERTEX += inverse(mat3(MODEL_MATRIX)) * push;
+	if (UV.x > 0.001 && UV2.y <= 1.5) {
+		// (task 099) a mesh leaf folds a little in a gust: its two halves lift along the midrib, the more the farther from it, and the more toward the tip
+		float across_v = abs(UV.x - 0.5) * 2.0;
+		float gust_fold = 0.5 + 0.5 * sin(TIME * sway_speed * 1.7 + dot(world.xz, vec2(0.37, 0.29)) + UV2.x * 20.0);
+		float fold = (0.003 + 0.016 * wind_strength * gust_fold) * leaf_fold_scale * pow(across_v, 1.4) * (0.35 + 0.65 * UV.y) * smoothstep(0.1, 0.4, COLOR.a);
+		VERTEX += NORMAL * fold;
+	}
 }
 
+uniform float range_fade_dither = 1.0; // (task 101: 1 the fade is a dither; 0 the old way, where the leaf cards ignored the fade; a test switch)
+
 void fragment() {
+	// (task 101) the engine fades a tree in and out through ALPHA (it starts as the fade, 1 when none), and this shader sets ALPHA itself for the leaf cards, which threw the
+	// fade away: the leaves popped in and out at the end of the range while only the plain parts faded. The fade is a dither now: a pixel goes when the fade is below a screen noise.
+	float range_fade = ALPHA;
+	if (range_fade_dither > 0.5 && range_fade < 0.999 && range_fade < fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))))) {
+		discard;
+	}
 	FOG = planet_haze(mat3(INV_VIEW_MATRIX) * VERTEX, cloud_sun_world);
 	vec3 paint = pow(COLOR.rgb, vec3(2.2)); // the palette is written in sRGB
 	// autumn: whatever is green turns yellow, orange and brown
 	float leafy = smoothstep(0.0, 0.08, paint.g - max(paint.r, paint.b));
 	vec3 warm = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float which = smooth_noise(warm.xz * 0.035);
-	vec3 turned = mix(vec3(paint.g * 1.6, paint.g * 1.0, paint.g * 0.2),
-			vec3(paint.g * 1.3, paint.g * 0.38, paint.g * 0.1), which);
-	paint = mix(paint, turned, autumn * leafy);
+	// (task 099/100: the colour also varies from leaf to leaf, like a real crown: yellow, orange and red together, a few leaves still green)
+	float leaf_n = smooth_noise(warm.xz * 2.3 + warm.y * 1.7);
+	float local_tone = clamp(which + (leaf_n - 0.5) * 1.1, 0.0, 1.0);
+	vec3 autumn_yellow = vec3(paint.g * 1.6, paint.g * 1.0, paint.g * 0.2);
+	vec3 autumn_orange = vec3(paint.g * 1.5, paint.g * 0.62, paint.g * 0.12);
+	vec3 autumn_red = vec3(paint.g * 1.3, paint.g * 0.3, paint.g * 0.1);
+	vec3 turned = local_tone < 0.5 ? mix(autumn_yellow, autumn_orange, local_tone * 2.0) : mix(autumn_orange, autumn_red, local_tone * 2.0 - 1.0);
+	float turn_now = clamp(autumn * 1.35 - 0.5 * smooth_noise(warm.xz * 3.1 - warm.y * 2.3 + 7.0), 0.0, 1.0);
+	paint = mix(paint, turned, turn_now * leafy);
 	// the realistic look: leaf-scale variation, lighter tips
 	float speckle = smooth_noise(world_pos.xz * 5.0 + world_pos.y * 3.0);
 	paint *= mix(1.0, 0.8 + 0.4 * speckle, realism);
 	// leaves (they have a UV, nothing else does): a light midrib, side veins running up and out from
 	// it, and the blade a little lighter along the middle and darker toward the edge
 	bool is_card = UV2.y > 1.5;
+	// how much the light comes from behind the leaf (0 from the front .. 1 straight through it), early: the big veins are pale in front light and dark against it
+	float pre_sun_len = length(cloud_sun_world);
+	vec3 pre_sun_view = (VIEW_MATRIX * vec4(cloud_sun_world / max(pre_sun_len, 0.001), 0.0)).xyz;
+	float pre_against = pre_sun_len > 0.5 ? clamp(dot(pre_sun_view, -VIEW), 0.0, 1.0) : 0.0;
+	float drop_mask = 0.0; // beads of water on a wet leaf (rain, dew): 1 inside a drop
+	float drop_rim = 0.0; // its dark thin rim
+	float drop_glint = 0.0; // its bright glint
+	float leaf_vein_height = 0.0; // the veins' relief for the bump below (grooves in the upper side)
+	float net_light = 0.0; // 1 on the fine net of small veins: they glow when the light comes through the leaf
+	float vein_dark = 0.0; // 1 on a vein: against the light a vein is dark, the blade glows
+	float crown_inside = 0.0; // 0 outer .. 1 deep inside a crown (leaves only): also darkens the backlight glow below
+	// (task 099/100) leaf-to-leaf colour in a crown: some leaves yellower and lighter, some cooler and darker, like a real one
+	if (realism > 0.001 && ((UV2.y > 1.5 && UV2.y < 3.5) || (UV.x > 0.001 && UV2.y <= 1.5))) {
+		float tone_var = smooth_noise(world_pos.xz * 2.1 + world_pos.y * 1.9 + 11.0) - 0.5;
+		paint *= mix(vec3(1.0), vec3(1.0 + 1.3 * tone_var, 1.0 + 0.9 * tone_var, 1.0 - 1.4 * tone_var), realism);
+		// (task 099, idea 2) a crown is darker inside: leaves near the trunk axis, under the top, get less light
+		crown_inside = 1.0 - smoothstep(0.15, 0.65, length(obj_pos.xz) / (0.28 * max(obj_pos.y, 0.0) + 1.0));
+		paint *= mix(1.0, 1.0 - crown_dark * crown_inside, realism);
+	}
 	float card_alpha = 1.0;
 	vec2 card_across = vec2(1.0, 0.0);
 	float card_lean = 0.0;
@@ -625,17 +768,32 @@ void fragment() {
 		} else if (is_pin) {
 			cluster.xy = pinnate(UV, rows, card_id, needles);
 		} else {
-			cluster = leaf_cluster(UV, card_id, UV2.y - 2.0, length(VERTEX), card_across);
+			vec3 card_trans = vec3(0.0);
+			cluster = leaf_cluster(UV, card_id, UV2.y - 2.0, length(VERTEX), pre_against, card_across, card_trans);
+			net_light = card_trans.x;
+			vein_dark = card_trans.y;
+			leaf_vein_height = -card_trans.z;
 		}
 		// far away the leaves are under a pixel and would shimmer: the card fills in toward a solid mass
 		float far_fill = smoothstep(0.35, 0.8, is_grass ? fwidth(UV.x) * 2.0 : (is_pin ? fwidth(UV.y) * rows : fwidth(UV.x) * 5.0));
 		far_fill *= smoothstep(5.0, 18.0, length(VERTEX)); // (a card seen edge on near the eye is not a distant one)
 		far_fill *= is_grass ? 0.0 : 1.0; // (a tuft is only drawn near: its blades stay blades, not a solid card)
-		card_alpha = mix(cluster.x, 0.62, far_fill);
+		// (task 099: the far fill was a flat 0.62, over the 0.5 scissor, so a distant needle spray became a solid dark block; now a ragged half-coverage)
+		float far_cover = 0.3 + 0.55 * smooth_noise(world_pos.xz * 6.5 + world_pos.y * 4.7 + UV.x * 3.0);
+		card_alpha = mix(cluster.x, far_cover, far_fill);
+		if (ground_wetness > 0.02 && !is_grass && !is_pin) {
+			// (photos of leaves in rain / dew: round beads, a dark rim and a glint) drops on the leaves of a card, close up only
+			vec3 drop = water_drop(UV * 60.0, card_id, ground_wetness) * (1.0 - smoothstep(4.0, 10.0, length(VERTEX))) * cluster.x;
+			drop_mask = drop.x;
+			drop_rim = drop.y;
+			drop_glint = drop.z;
+		}
 		paint *= mix(cluster.y, 0.9, far_fill);
 		// dry brown tips and edges, and the lean of the leaf's surface for the normal
 		paint = mix(paint, vec3(paint.g * 0.95, paint.g * 0.6, paint.g * 0.22), cluster.z * 0.7 * (1.0 - far_fill));
-		card_lean = cluster.w * (1.0 - far_fill);
+		// (task 099) the leaves of a card fold a little in a gust: the surface rounds more across the midrib (shading, the card is flat)
+		float fold_gust = (0.5 + 0.5 * sin(TIME * sway_speed * 1.7 + dot(world_pos.xz, vec2(0.37, 0.29)) + card_id * 6.0)) * wind_strength;
+		card_lean = cluster.w * (1.0 - far_fill) * (1.0 + 2.4 * fold_gust);
 	}
 	if (UV.x > 0.001 && !is_card) {
 		// every leaf has its own two random numbers (UV2): how many side veins, how they slope,
@@ -645,22 +803,50 @@ void fragment() {
 		float across = abs(UV.x - 0.5) * 2.0; // 0 on the midrib .. 1 at the edge
 		float count = mix(3.5, 9.5, fract(id * 5.7 + 0.3));
 		float slope = mix(1.4, 3.8, fract(id * 3.1 + k));
-		float thick = mix(0.1, 0.3, fract(k * 7.9));
+		float thick = mix(0.03, 0.065, fract(k * 7.9)); // (was 0.1-0.3: the secondary veins were fat soft bands that read as waves)
 		float strength = mix(0.3, 1.0, fract(id * 11.3 + k * 2.0));
 		float mid_width = mix(0.07, 0.16, fract(k * 4.3 + id));
 		float edge_dark = mix(0.1, 0.34, fract(id * 2.3 + k * 5.1));
 		float sides = step(UV.x, 0.5) * fract(id * 9.1) * 0.6; // the two sides need not line up
 		float midrib = (1.0 - smoothstep(0.02 * (1.0 - 0.5 * UV.y), mid_width * (1.0 - 0.6 * UV.y), across)) * (1.0 - 0.4 * UV.y);
 		// the side veins curve toward the tip near the margin and thin out, like the card's
-		float run = fract(UV.y * count - pow(across, 0.75) * slope * 0.6 + sides + id * 4.0);
-		float side_vein = (1.0 - smoothstep(0.0, thick * mix(1.0, 0.35, across), min(run, 1.0 - run)))
+		float leaf_phase = UV.y * count - pow(across, 0.75) * slope * 0.6 + sides + id * 4.0;
+		float run = fract(leaf_phase);
+		float side_vein = (1.0 - smoothstep(thick * 0.35, thick * mix(1.0, 0.45, across), min(run, 1.0 - run)))
 				* smoothstep(0.03, 0.12, across) * (1.0 - smoothstep(0.55, 0.98, across));
 		float vein = max(midrib * mix(0.6, 1.0, strength), side_vein * strength);
+		vein_dark = vein;
+		paint *= 0.9 + 0.2 * smooth_noise(vec2(UV.x * 5.0 + id * 17.0, UV.y * 7.0 + k * 11.0)); // (the blade is mottled between the veins)
 		// the net of small veins (areoles), only close up
-		float net = vein_net(vec2((UV.x - 0.5) * 0.55, UV.y) * 34.0 + vec2(id, k) * 40.0);
-		float net_shade = 1.0 - 0.05 * (1.0 - smoothstep(0.0, 0.12, net)) * (1.0 - smoothstep(1.5, 5.0, length(VERTEX)));
+		// the metres per unit of UV.x (across the leaf) and of UV.y (along it) from the screen-space derivatives: how wide the leaf is right here next to its length
+		// (from `obj_pos`, the leaf's rest position, not VERTEX: the fold in the wind moves VERTEX and the cells would drift with it)
+		vec3 leaf_dpx = dFdx(obj_pos);
+		vec3 leaf_dpy = dFdy(obj_pos);
+		vec2 leaf_dux = dFdx(UV);
+		vec2 leaf_duy = dFdy(UV);
+		float leaf_det = leaf_dux.x * leaf_duy.y - leaf_dux.y * leaf_duy.x;
+		float iso = 1.0;
+		if (abs(leaf_det) > 1e-12) {
+			float width_m = length((leaf_dpx * leaf_duy.y - leaf_dpy * leaf_dux.y) / leaf_det);
+			float length_m = length((leaf_dpy * leaf_dux.x - leaf_dpx * leaf_duy.x) / leaf_det);
+			iso = clamp(0.5 * width_m / max(0.28 * length_m, 1e-5), 0.3, 1.5);
+		}
+		net_light = vein_tree(leaf_phase, across, length(VERTEX), id, iso);
+		if (ground_wetness > 0.02) {
+			// beads of water on a wet mesh leaf, round in metres: the grid follows the leaf's measured width and length
+			vec3 drop = water_drop(vec2(UV.x * 32.0 * iso, UV.y * 34.0), id, ground_wetness) * (1.0 - smoothstep(4.0, 10.0, length(VERTEX)));
+			drop_mask = drop.x;
+			drop_rim = drop.y;
+			drop_glint = drop.z;
+		}
+		float net_shade = 1.0 + 0.42 * net_light; // (pale small veins)
 		float shade = (1.04 - edge_dark * across * across - 0.1 * UV.y) * net_shade;
-		paint = mix(paint * shade, paint * 1.55 + vec3(0.02, 0.03, 0.0), vein * 0.9);
+		paint = mix(paint * shade, paint * mix(1.8, 0.25, pre_against) + vec3(0.02, 0.03, 0.0) * (1.0 - pre_against), vein * 0.95); // (pale in front light, dark against it) // (task 099: 1.55 -> 1.8: the veins were faint)
+		// the relief of the big veins for the bump, from SMOOTH heights (a wide soft groove, not the hard lines of the vein drawing, which gave dashed dark lines):
+		// the midrib a broad channel, the secondary veins narrower and shallower, the blade between them puffing up a little
+		float soft_mid = 1.0 - smoothstep(0.0, mid_width * 1.6 * (1.0 - 0.5 * UV.y), across);
+		float soft_side = (1.0 - smoothstep(0.0, thick * 1.8, min(run, 1.0 - run))) * (1.0 - smoothstep(0.55, 0.98, across));
+		leaf_vein_height = -(0.9 * soft_mid * (1.0 - 0.4 * UV.y) + 0.28 * strength * soft_side) + 0.04 * (0.5 - 0.5 * cos(run * 6.28318));
 	}
 	vec3 pom_a = vec3(1.0, 0.0, 0.0); // the bark's directions and normal in view space (parallax occlusion)
 	vec3 pom_l = vec3(0.0, 1.0, 0.0);
@@ -671,6 +857,10 @@ void fragment() {
 	float bump_amount = 0.0;
 	float surface_height = 0.0;
 	float surface_bump = 0.0;
+	if (leaf_vein_height != 0.0) {
+		surface_height = leaf_vein_height * 0.5; // (a groove along the midrib and the side veins: a leaf up close is not smooth)
+		surface_bump = realism * (is_card ? 0.12 : 0.55) * (1.0 - smoothstep(2.0, 8.0, length(VERTEX))); // (smooth heights now: the hard-line version drew dashed lines)
+	}
 	bool rock_shadowed = false; // the rock's relief shades itself (rock_pom)
 	bool is_bark = UV.x < -0.5;
 	bool is_rock = UV.x < -0.1 && !is_bark; // add_rock marks its stones
@@ -818,7 +1008,7 @@ void fragment() {
 			paint *= mix(1.0, (0.78 + 0.3 * cell_hash(vec2(board, 3.0))) * (0.85 + 0.3 * grain) * (0.6 + 0.4 * edge), realism * brown);
 			bump = vec2(0.0, (edge - 0.5) * 0.6);
 			bump_amount = realism * brown;
-		} else if (!is_rock && brown > 0.5 && abs(obj_up) < 0.5) {
+		} else if (!is_rock && brown > 0.5) { // (task 099: was also abs(obj_up) < 0.5, which sent the upward face of a fallen log to the stone branch: a white top)
 			// bark: long furrows around the trunk, bright ridges between them
 			float around = atan(obj_pos.x, obj_pos.z) * 4.0;
 			float furrow = smooth_noise(vec2(around, obj_pos.y * 0.7));
@@ -935,6 +1125,9 @@ void fragment() {
 	if (is_card) {
 		ALPHA = card_alpha;
 		ALPHA_SCISSOR_THRESHOLD = 0.5;
+	} else if (range_fade_dither > 0.5) {
+		ALPHA = 1.0; // (the fade is done by the dither above, not by blending)
+		ALPHA_SCISSOR_THRESHOLD = 0.5;
 	}
 	// normals: flat facets, or the mesh's smooth ones
 	vec3 flat_normal = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
@@ -946,6 +1139,11 @@ void fragment() {
 		smooth_normal = -smooth_normal;
 	}
 	NORMAL = normalize(mix(flat_normal, smooth_normal, realism));
+	if (canopy_soften > 0.001 && !is_bark && !is_rock && ((is_card && UV2.y < 3.5) || (UV.x > 0.001 && !is_card))) {
+		vec3 away_obj = normalize(obj_pos - vec3(0.0, max(obj_pos.y * canopy_center_frac, 0.5), 0.0));
+		vec3 away_view = normalize((VIEW_MATRIX * MODEL_MATRIX * vec4(away_obj, 0.0)).xyz);
+		NORMAL = normalize(mix(NORMAL, away_view, canopy_soften * realism));
+	}
 	if (has_pom) {
 		NORMAL = normalize(pom_a * pom_normal.x + pom_l * pom_normal.y + NORMAL * pom_normal.z);
 	}
@@ -996,6 +1194,9 @@ void fragment() {
 	float leaf_like = is_bark || is_rock ? 0.0 : ((is_card && UV2.y < 3.5) || (UV.x > 0.001 && !is_card) ? 1.0 : 0.0);
 	ROUGHNESS = mix(0.92, mix(0.78, 0.64, leaf_like), realism); // (leaves: a soft sheen: at 0.5 flat leaves mirrored the bright sky in white patches)
 	SPECULAR = mix(0.2, 0.3, leaf_like * realism);
+	ROUGHNESS = mix(ROUGHNESS, ROUGHNESS * 0.75, ground_wetness * leaf_like * realism); // a wet leaf shines a little
+	ROUGHNESS = mix(ROUGHNESS, 0.05, drop_mask * realism);
+	SPECULAR = mix(SPECULAR, 0.95, drop_mask * realism);
 	// the cracks of the bark: less ambient light and less shine (the sky does not reach into them), and a
 	// little less of the sun too, as if the plates shaded each other
 	AO = mix(1.0, cavity, realism);
@@ -1006,13 +1207,20 @@ void fragment() {
 	float sun_len = length(cloud_sun_world);
 	vec3 sun_view = (VIEW_MATRIX * vec4(cloud_sun_world / max(sun_len, 0.001), 0.0)).xyz;
 	float against_sun = sun_len > 0.5 ? clamp(dot(sun_view, -VIEW), 0.0, 1.0) : 0.0;
-	float glow = 0.3 + 0.6 * pow(against_sun, 1.5) + 2.2 * pow(against_sun, 6.0); // (a wide soft lobe and a tight bright core: a canopy glows a little from any side against the sun, and blazes along the ray)
+	float glow = 0.3 + 0.9 * pow(against_sun, 1.5) + 3.0 * pow(against_sun, 6.0); // (a wide soft lobe and a tight bright core: a canopy glows a little from any side against the sun, and blazes along the ray)
 	// the light that comes through a leaf is yellower and brighter than the leaf is lit from the front: green and red pass, blue does not
 	vec3 transmitted = mix(paint, paint * vec3(1.0, 1.12, 0.5) + vec3(0.01, 0.02, 0.0), leaf_like);
 	// the long shadow of a hill (the sun's own shadow map reaches 150-250 m): the star's light is most of the light, the sky's stays
 	float hill_keep = mix(0.3, 1.0, terrain_light(haze_eye + mat3(INV_VIEW_MATRIX) * VERTEX));
 	ALBEDO *= hill_keep;
-	BACKLIGHT = transmitted * glow * realism * smoothstep(0.1, 0.5, sway) * leafy_part * hill_keep;
+	ALBEDO = mix(ALBEDO, ALBEDO * 0.4, drop_rim * realism); // (a bead of water: a thin dark rim, a clear dome, a bright glint; its shine is also the roughness / specular below)
+	EMISSION += vec3(drop_glint * 0.7 * realism);
+	if (debug_veins > 0.5) {
+		float shown = clamp(max(vein_dark, 0.85 * net_light), 0.0, 1.0);
+		ALBEDO = vec3(0.0);
+		EMISSION = vec3(shown);
+	}
+	BACKLIGHT = (debug_veins > 0.5 ? 0.0 : 1.6) * transmitted * glow * realism * smoothstep(0.1, 0.5, sway) * leafy_part * hill_keep * (1.0 - 0.8 * crown_dark * crown_inside) * (1.0 - 0.7 * vein_dark) * (1.0 + 0.9 * net_light * (1.0 - vein_dark));
 	RIM = 0.15 * realism * smoothstep(0.1, 0.5, sway) * leafy_part;
 	RIM_TINT = 0.5;
 }

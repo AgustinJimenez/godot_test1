@@ -4,8 +4,11 @@ extends Node3D
 ##   Mouse: left drag orbits, wheel zooms, middle/right drag moves.   Left / Right: species   Up / Down: variant
 ##   1 one mesh leaf   2 one leaf card (the shader draws a dozen leaves on it)   3 the whole crown, close
 ##   W wireframe   D low-poly / realistic   A autumn   B backlight (sun behind the leaf)   L sun moves round
+##   K rain: drops of water on the leaf (--wet=0..1)
+##   G ground plane on / off (the leaf's shadow falls on it)
+##   Shift + left drag: MOVE THE LIGHT (a small ball shows where it is), to look at the leaf lit from the front, the side, or through it
 ##   T top / front view   R new seed   P save a picture to user://leaf_lab_<n>.png
-## Command line (after --): --species=N --mode=1|2|3 --seed=N --low --autumn --backlight --wire
+## Command line (after --): --species=N --mode=1|2|3 --seed=N --low --autumn --backlight --light=yaw,pitch --wire
 ##   --view=top|front|angle --shot=PATH (save the picture, then quit) --all=DIR (one picture per species)
 
 enum Mode { LEAF, CARD, CROWN }
@@ -26,6 +29,13 @@ var _species: Array[PlantSpecies] = []
 var _stage: Node3D
 var _camera: Camera3D
 var _sun: DirectionalLight3D
+var _light_yaw := -35.0 ## the light's direction (degrees): Shift + left drag moves it, or --light=yaw,pitch
+var _light_pitch := -50.0
+var _light_marker: MeshInstance3D ## a small bright ball where the light is
+var no_ground := false ## --noground / G: a ground plane under the leaf, so its shadow shows (and the depth)
+var _ground: MeshInstance3D
+var wet := 0.0 ## 0..1: rain on the leaf (drops of water): --wet=1 or K
+var veins_only := false ## V: only the pattern of the veins (white on black), best with T (top view)
 var _label: Label
 var _yaw := 25.0
 var _pitch := -35.0
@@ -52,6 +62,27 @@ func _ready() -> void:
 			autumn = true
 		elif arg == "--backlight":
 			backlight = true
+			_light_yaw = 150.0
+			_light_pitch = -12.0
+		elif arg.begins_with("--wind="): # the wind (0..1): a leaf folds a little in a gust
+			WorldWind.set_wind(float(arg.get_slice("=", 1)), Vector2(1.0, 0.3).normalized())
+		elif arg.begins_with("--cam="): # yaw,pitch,distance of the camera (degrees, degrees, metres)
+			var cam := arg.get_slice("=", 1).split(",")
+			if cam.size() >= 3:
+				_yaw = float(cam[0])
+				_pitch = float(cam[1])
+				_distance = float(cam[2])
+		elif arg == "--noground":
+			no_ground = true
+		elif arg.begins_with("--wet="):
+			wet = float(arg.get_slice("=", 1))
+		elif arg == "--veins":
+			veins_only = true
+		elif arg.begins_with("--light="):
+			var angles := arg.get_slice("=", 1).split(",")
+			if angles.size() >= 2:
+				_light_yaw = float(angles[0])
+				_light_pitch = float(angles[1])
 		elif arg == "--wire":
 			wire = true
 		elif arg.begins_with("--distance="):
@@ -90,9 +121,30 @@ func _build_stage() -> void:
 	world_environment.environment = environment
 	add_child(world_environment)
 	_sun = DirectionalLight3D.new()
+	_sun.light_energy = 2.2 # about a noon sun of the planet (the default 1.0 made a backlit leaf look dim)
 	_sun.shadow_enabled = not no_shadow
 	_sun.visible = not no_sun
 	add_child(_sun)
+	_ground = MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(12.0, 12.0)
+	_ground.mesh = plane
+	var ground_material := StandardMaterial3D.new()
+	ground_material.albedo_color = Color(0.62, 0.6, 0.55)
+	ground_material.roughness = 1.0
+	_ground.material_override = ground_material
+	add_child(_ground)
+	_light_marker = MeshInstance3D.new()
+	var ball := SphereMesh.new()
+	ball.radius = 0.04
+	ball.height = 0.08
+	_light_marker.mesh = ball
+	var glow := StandardMaterial3D.new()
+	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow.albedo_color = Color(1.0, 0.95, 0.7)
+	_light_marker.material_override = glow
+	_light_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_light_marker)
 	_camera = Camera3D.new()
 	_camera.fov = 40.0
 	_camera.near = 0.01
@@ -120,6 +172,7 @@ func _show() -> void:
 	if _stage != null:
 		_stage.queue_free()
 	WorldWind.set_realism(1.0 if detailed else 0.0)
+	WorldWind.set_surface(wet, 0.0, wet)
 	WorldWind.set_autumn(1.0 if autumn else 0.0)
 	_stage = Node3D.new()
 	add_child(_stage)
@@ -129,6 +182,8 @@ func _show() -> void:
 	var one := _species[species_index]
 	var instance := MeshInstance3D.new()
 	instance.material_override = FloraMeshes.material()
+	(FloraMeshes.material() as ShaderMaterial).set_shader_parameter(&"debug_veins", 1.0 if veins_only else 0.0)
+	(FloraMeshes.material() as ShaderMaterial).set_shader_parameter(&"leaf_fold_scale", 6.5 if mode == Mode.LEAF else 1.0) # (the lab leaf is a metre long, a real one 15 cm)
 	match mode:
 		Mode.LEAF:
 			instance.mesh = _leaf_mesh(one)
@@ -140,10 +195,9 @@ func _show() -> void:
 			instance.mesh = _registry.mesh(one.id, variant, detailed)
 			_target = Vector3(0.0, 4.0, 0.0)
 	_stage.add_child(instance)
-	_sun.rotation_degrees = Vector3(-50.0, -35.0, 0.0)
-	if backlight:
-		_sun.rotation_degrees = Vector3(-12.0, 150.0, 0.0) # low, behind the leaf
-	RenderingServer.global_shader_parameter_set(&"cloud_sun_world", _sun.global_transform.basis.z * 1000.0) # the direction to the sun, for the leaf glow
+	_ground.visible = not no_ground
+	_ground.position.y = 0.0 if mode == Mode.CROWN else -0.55
+	_update_light()
 	_label.text = _describe(one)
 	_apply_wire()
 	_place_camera()
@@ -186,8 +240,8 @@ func _describe(one: PlantSpecies) -> String:
 	return ("%s   species %d / %d  (id %d)   variant %d   seed %d\nshape %s  aspect %.2f  lobes %d  edge %s\n"
 			+ "%s   %s%s%s%s\n[1] leaf [2] card [3] crown  [W] wire [D] realistic [A] autumn [B] backlight [L] sun [T] top [R] seed [P] picture") % [
 			one.name if "name" in one else "species", species_index + 1, _species.size(), one.id, variant,
-			seed_value, PlantSpecies.LeafShape.keys()[one.leaf_shape], one.leaf_aspect, one.leaf_lobes,
-			PlantSpecies.LeafEdge.keys()[one.leaf_edge], Mode.keys()[mode],
+			seed_value, ClassDB.class_get_enum_constants(&"PlantSpecies", &"LeafShape")[one.leaf_shape], one.leaf_aspect, one.leaf_lobes,
+			ClassDB.class_get_enum_constants(&"PlantSpecies", &"LeafEdge")[one.leaf_edge], Mode.keys()[mode],
 			"realistic" if detailed else "low-poly", "  autumn" if autumn else "", "  backlight" if backlight else "",
 			"  wire" if wire else ""]
 
@@ -206,6 +260,15 @@ func _place_camera() -> void:
 
 func _process(_delta: float) -> void:
 	_place_camera()
+	_update_light()
+
+
+## The sun follows the light's two angles; the ball shows where it is; the leaf glow (the shader's `cloud_sun_world`) gets its direction.
+func _update_light() -> void:
+	_sun.rotation_degrees = Vector3(_light_pitch, _light_yaw, 0.0)
+	var toward := _sun.global_transform.basis.z
+	_light_marker.global_position = _target + toward * 2.2
+	RenderingServer.global_shader_parameter_set(&"cloud_sun_world", toward * 1000.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -219,7 +282,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_drag = button.button_index if button.pressed else 0
 	elif event is InputEventMouseMotion and _drag != 0:
 		var motion := event as InputEventMouseMotion
-		if _drag == MOUSE_BUTTON_LEFT:
+		if _drag == MOUSE_BUTTON_LEFT and Input.is_key_pressed(KEY_SHIFT):
+			_light_yaw -= motion.relative.x * 0.4
+			_light_pitch = clampf(_light_pitch - motion.relative.y * 0.4, -89.0, 89.0)
+		elif _drag == MOUSE_BUTTON_LEFT:
 			_yaw -= motion.relative.x * 0.4
 			_pitch = clampf(_pitch - motion.relative.y * 0.4, -89.0, 89.0)
 		else:
@@ -259,10 +325,18 @@ func _key(code: Key) -> void:
 			autumn = not autumn
 		KEY_B:
 			backlight = not backlight
+			_light_yaw = 150.0 if backlight else -35.0
+			_light_pitch = -12.0 if backlight else -50.0
 		KEY_T:
 			top_view = not top_view
+		KEY_V:
+			veins_only = not veins_only
+		KEY_K:
+			wet = 0.0 if wet > 0.0 else 1.0
+		KEY_G:
+			no_ground = not no_ground
 		KEY_L:
-			_sun.rotation_degrees.y += 30.0
+			_light_yaw += 30.0
 			return
 		KEY_R:
 			seed_value = randi() % 100000

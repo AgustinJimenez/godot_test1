@@ -1,3 +1,4 @@
+#include "perf_probe_native.h"
 #include "flora_meshes_native.h"
 #include "species_generator_native.h"
 #include "species_registry_native.h"
@@ -73,6 +74,12 @@
 #include "planet_map_native.h"
 #include "foot_ik_native.h"
 #include "foot_ik_helpers_native.h"
+#include "player_stair_controller_native.h"
+#include "player_body_pose_math_native.h"
+#include "player_locomotion_transition_native.h"
+#include "player_stair_clips_native.h"
+#include "player_temp_walk_native.h"
+#include "player_walk_pace_native.h"
 #include "foot_ik_ledge_native.h"
 #include "foot_ik_core_native.h"
 #include "foot_ik_modifier_native.h"
@@ -95,6 +102,7 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(FloraMeshes);
 	GDREGISTER_CLASS(SpeciesRegistry);
 	GDREGISTER_CLASS(PlanetCrustNative);
+	GDREGISTER_CLASS(PerfProbe);
 	GDREGISTER_CLASS(PlanetMap);
 	GDREGISTER_CLASS(UniverseStartMenu);
 	GDREGISTER_CLASS(PlanetMenu);
@@ -167,6 +175,12 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(FootIKV2BodySmootherNative);
 	GDREGISTER_CLASS(FootIKV2GroundFilterNative);
 	GDREGISTER_CLASS(FootIKV2KneeHintNative);
+	GDREGISTER_CLASS(PlayerStairControllerNative);
+	GDREGISTER_CLASS(PlayerBodyPoseMathNative);
+	GDREGISTER_CLASS(PlayerLocomotionTransitionNative);
+	GDREGISTER_CLASS(PlayerStairClipsNative);
+	GDREGISTER_CLASS(PlayerTempWalkNative);
+	GDREGISTER_CLASS(PlayerWalkPaceNative);
 	GDREGISTER_CLASS(FootIKV2StretchHoldNative);
 	GDREGISTER_CLASS(FootIKV2CoreNative);
 	GDREGISTER_CLASS(FootIKV2LedgeNative);

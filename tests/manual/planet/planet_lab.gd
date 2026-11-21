@@ -21,7 +21,8 @@ extends Node3D
 ##   -- --earth  the Earth: 6,371 km, a real day and year (put it before the other arguments)
 ##   -- --tile-cells=N --tile-max=M  the ground resolution: quads a tile, widest finest tile (m)
 ##   -- --spawn-alt=N  start N metres above the ground there (up to the other side of space)
-##   -- --grounded  walk instead of starting in free mode (checks always walk)
+##   -- --free  start in free flight (the default is on foot since 2026-11-18)   --temp-spawn  the old debug spawn: a fixed spot (maybe over the sea), 50 m up in free flight
+##   -- --grounded  walk (the default now; kept so the old recipes still read)
 ##   -- --hide=trees|plants|ground|water  not drawn (what each costs)
 ##   -- --voxel  the ground is a voxel terrain (only on the engine with the voxel module, task 096)
 ##   -- --foot-ik-v2  Foot IK v2 on the player (the planet runs v1 otherwise)   --ik-soak=SECONDS [--ik-soak-log=PATH]  the Foot IK soak (PlanetIKSoak, AGENT_TASKS/093)
@@ -51,8 +52,25 @@ var _ik_soak_log := ""
 var _ik_soak_only := ""
 var _weather_name := "" ## a WorldWeather.State name to force from the start (rain, snow...)
 var _climb := 0.0 ## lift the player this many metres once the planet has loaded (they hang there)
-var _voxel := true ## a voxel terrain ground (voxel-module engine only, task 096; ignored on the stock engine). On by default on this branch; --no-voxel turns it off
+var _voxel := true ## a voxel terrain ground (voxel-module engine only, task 096; ignored on the stock engine). On by default on this branch (the "Voxel ground" graphics setting, off in Low); --no-voxel turns it off
+var _perf_shown := false
+var _loading_shot_done := false
+var _voxel_flag := false ## (--voxel or --no-voxel was given: it wins over the graphics setting)
 var _voxel_node: LabVoxelGround
+## The cost probe (key F7, task 101): hides one kind of thing at a time for a moment and times the GPU, to show live what each one costs.
+var PROBE_KINDS: Array = ["trees", "plants", "ground", "water", "shadows", "clouds", "shafts"] # (env LAB_PROBE_KINDS="a,b" picks others, e.g. the size kinds)
+const PROBE_CYCLE := 80 ## frames of one hide/show cycle: 40 hidden, 40 shown (the GPU time of the last 20 of each is kept)
+const PROBE_SAMPLE := 20
+const PROBE_CYCLES := 3 ## a kind is flipped this many times (the view must not move: in the lab the walker steers and swings the camera unless --stand)
+var _probe_samples: Array[float] = []
+var _probe_hidden: Array[float] = []
+var _probe_shown: Array[float] = []
+var _probe_cost: Array[float] = [] # per kind: the mean GPU time shown minus hidden
+var _probe_base: Array[float] = [] # per kind: the mean shown
+var _probe_frame := -1 # -1 = not running
+var _probe_shadow := true
+var _probe_shafts := true
+var _probe_shadow_quality := 2
 var _hide := "" ## trees, plants, ground or water: not drawn (to see what each costs)
 var _no_shadow := false ## the sun casts no shadows (to see what they cost)
 var _report_fps := false ## print the frame rate now and then
@@ -92,14 +110,280 @@ var _placed := true
 var _view_alt := 0.0
 var _shot := ""
 var _start_dir := Vector3.ZERO
+var _temp_look := false ## TEMPORARY spawn: the camera angle is set at frame 200 (the player resets it before that)
 var _shot_frame := 360
 var _view_pitch := -18.0
 var _view_yaw := 0.0
 
 
+## F7: starts the cost probe (stand still: it takes about 12 s).
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F7 and _probe_frame < 0 and player != null:
+		player.hud.call(&"_on_perf_detail_toggled", true) # (the GPU time and the pass list)
+		_probe_start()
+
+
+func _probe_start() -> void:
+	if OS.has_environment("LAB_PROBE_KINDS"):
+		PROBE_KINDS = Array(OS.get_environment("LAB_PROBE_KINDS").split(","))
+	_probe_cost.clear()
+	_probe_base.clear()
+	_probe_shadow = planet.atmosphere.sun.shadow_enabled
+	_probe_shadow_quality = int(GraphicsSettings.get_graphics_value(&"shadow_quality"))
+	_probe_shafts = GraphicsSettings.get_graphics_value(&"volumetric_fog") == true
+	_probe_frame = 0
+
+
+## Hides (or shows again) the kinds the probe times that are not meshes: the sun's shadows, the clouds, the light shafts (volumetric fog).
+## The shafts go through the in-memory value only: the saved settings are not touched.
+func _probe_toggle(kind: String, hidden: bool) -> void:
+	match kind:
+		"shadows":
+			# (the atmosphere sets the sun's shadow from the setting every frame: go through the in-memory setting, not the light)
+			GraphicsSettings._values[&"shadow_quality"] = 0 if hidden else _probe_shadow_quality
+		"clouds":
+			planet.atmosphere.clouds_hidden = hidden or _no_clouds
+		"shafts":
+			GraphicsSettings._values[&"volumetric_fog"] = _probe_shafts and not hidden
+
+
+var _lod_cache := {}
+
+
+## The grass steps (task 101) switched to the old way and back, live: the first step's node (it ends at 24 m) is drawn to its old reach and the two lighter steps
+## (they begin at 22.8 m and 66.5 m) are hidden = one mesh to 260 m. old = true: the old way; false: the steps.
+func _grass_steps_old(old: bool) -> void:
+	for node in planet.find_children("*", "MultiMeshInstance3D", true, false):
+		var instance := node as MultiMeshInstance3D
+		if instance.has_meta(&"step_part"):
+			instance.visible = not old
+		elif instance.has_meta(&"step_first"):
+			var reach: Vector2 = instance.get_meta(&"step_first") # x: where the first node ends with the steps, y: the old reach
+			instance.visibility_range_end = reach.y if old else reach.x
+
+
+var _probe_plain: Material
+var _probe_plain_unshaded: Material
+
+
+func _probe_far_trees(mode: String, kinds: String, on: bool) -> void:
+	if _probe_plain == null:
+		var lit := StandardMaterial3D.new()
+		lit.albedo_color = Color(0.25, 0.35, 0.15)
+		lit.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_probe_plain = lit
+		var flat := StandardMaterial3D.new()
+		flat.albedo_color = Color(0.25, 0.35, 0.15)
+		flat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		flat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_probe_plain_unshaded = flat
+	var wanted: Array = ["ft_c", "ft_d"] if kinds == "ft_cd" else [kinds]
+	for node in planet.find_children("*", "MultiMeshInstance3D", true, false):
+		var instance := node as MultiMeshInstance3D
+		if instance.multimesh == null or instance.multimesh.mesh == null or not _size_kind(instance) in wanted:
+			continue
+		match mode:
+			"opaque":
+				instance.material_override = _probe_plain if on else null
+			"unshaded":
+				instance.material_override = _probe_plain_unshaded if on else null
+			"half":
+				if not instance.has_meta(&"probe_count"):
+					instance.set_meta(&"probe_count", instance.multimesh.instance_count)
+				var all: int = instance.get_meta(&"probe_count")
+				instance.multimesh.visible_instance_count = all / 2 if on else -1
+
+
+func _probe_lods(size_prefix: String, simplified: bool) -> void:
+	for node in planet.find_children("*", "MultiMeshInstance3D", true, false):
+		var instance := node as MultiMeshInstance3D
+		if instance.multimesh == null or instance.multimesh.mesh == null or not _size_kind(instance).begins_with(size_prefix):
+			continue
+		var original: Mesh = instance.multimesh.mesh
+		if simplified:
+			if not _lod_cache.has(original):
+				var importer := ImporterMesh.new()
+				for surface in original.get_surface_count():
+					importer.add_surface(original.surface_get_primitive_type(surface), original.surface_get_arrays(surface), [], {}, original.surface_get_material(surface))
+				importer.generate_lods(60.0, 25.0, [])
+				_lod_cache[original] = importer.get_mesh()
+			instance.set_meta(&"probe_mesh", original)
+			instance.multimesh.mesh = _lod_cache[original]
+		elif instance.has_meta(&"probe_mesh"):
+			instance.multimesh.mesh = instance.get_meta(&"probe_mesh")
+
+
+func _probe_tree_split(metres: float, split: bool) -> void:
+	for node in planet.find_children("*", "MultiMeshInstance3D", true, false):
+		var instance := node as MultiMeshInstance3D
+		if instance.multimesh == null or instance.multimesh.mesh == null:
+			continue
+		if not (instance.has_meta(&"split_end") or instance.has_meta(&"split_begin")):
+			var tall := instance.multimesh.mesh.get_aabb().size.y > 12.0
+			if tall and is_equal_approx(instance.visibility_range_begin, 570.0):
+				instance.set_meta(&"split_end", instance.visibility_range_end)
+			elif tall and is_equal_approx(instance.visibility_range_begin, 1425.0):
+				instance.set_meta(&"split_begin", instance.visibility_range_begin)
+		if instance.has_meta(&"split_end"):
+			instance.visibility_range_end = metres if split else float(instance.get_meta(&"split_end"))
+		if instance.has_meta(&"split_begin"):
+			instance.visibility_range_begin = metres * 0.95 if split else float(instance.get_meta(&"split_begin"))
+
+
+func _probe_range(size_kind: String, metres: float, shorten: bool) -> void:
+	for node in planet.find_children("*", "MultiMeshInstance3D", true, false):
+		var instance := node as MultiMeshInstance3D
+		if instance.multimesh == null or instance.multimesh.mesh == null or _size_kind(instance) != size_kind:
+			continue
+		if shorten:
+			if not instance.has_meta(&"probe_end"):
+				instance.set_meta(&"probe_end", instance.visibility_range_end)
+			instance.visibility_range_end = minf(metres, instance.visibility_range_end) if instance.visibility_range_end > 0.0 else metres
+		elif instance.has_meta(&"probe_end"):
+			instance.visibility_range_end = instance.get_meta(&"probe_end")
+
+
+## One frame of the probe: a kind is hidden for 40 frames and shown for 40, three times; the GPU time of the last 20 frames of each half is kept
+## (the measurement lags a little). The cost of the kind is the mean shown minus the mean hidden. The VIEW must stay put: the walker's steering
+## swung the camera and the triangles in view moved between 30 M and 55 M, which looked like a drifting frame time and fooled the first versions.
+func _probe_step() -> void:
+	var per_kind := PROBE_CYCLE * PROBE_CYCLES
+	var step := _probe_frame / per_kind
+	var local := _probe_frame % per_kind
+	var hud := player.hud
+	if step >= PROBE_KINDS.size():
+		_probe_frame = -1
+		hud.set(&"probe_text", _probe_table())
+		print("PROBE_COST ", PROBE_KINDS, _probe_cost, _probe_base)
+		print("PROBE", _probe_table())
+		if "--probe" in OS.get_cmdline_user_args():
+			get_tree().quit()
+		return
+	var kind: String = PROBE_KINDS[step]
+	var phase := local % PROBE_CYCLE
+	if local == 0:
+		_probe_hidden.clear()
+		_probe_shown.clear()
+		hud.set(&"probe_text", "
+probing (stand still): %s  %d / %d" % [kind, step + 1, PROBE_KINDS.size()])
+	if phase == 0 or phase == PROBE_CYCLE / 2:
+		var hide := phase == 0
+		if kind in ["shadows", "clouds", "shafts"]:
+			_probe_toggle(kind, hide)
+		elif kind.begins_with("param:"): # "param:bark_pom:0:1": a shader parameter of the flora material, 0 while "hidden", 1 while shown (what a shader feature costs)
+			var bits := kind.split(":")
+			(FloraMeshes.material() as ShaderMaterial).set_shader_parameter(bits[1], float(bits[2]) if hide else float(bits[3]))
+		elif kind.begins_with("ft_split:"): # "ft_split:900": the 4th tree step (lod 4, 570-1500 m) ends at 900 m and the 5th (lod 5) begins there, while "hidden"
+			_probe_tree_split(float(kind.get_slice(":", 1)), hide)
+		elif kind == "grass_steps_old":
+			_grass_steps_old(hide)
+		elif kind.begins_with("opaque:") or kind.begins_with("half:") or kind.begins_with("unshaded:"):
+			# (task 101) far-tree cost test: opaque: plain lit opaque material while "hidden" (leaf shader + alpha cut cost), unshaded: no lighting, half: every second tree (instance cost). kinds ft_c ft_d ft_cd
+			_probe_far_trees(kind.get_slice(":", 0), kind.get_slice(":", 1), hide)
+		elif kind.ends_with("_lod"): # "tiny_lod": the small plants get the engine's automatic mesh levels of detail (meshoptimizer) instead of one mesh to 260 m
+			_probe_lods(kind.trim_suffix("_lod"), hide)
+		elif ":" in kind: # "tiny_far:120": instead of hiding the kind, draw it only out to 120 m (a cheap-option test, the range is a live property)
+			_probe_range(kind.get_slice(":", 0), float(kind.get_slice(":", 1)), hide)
+		elif kind != "":
+			_hide = kind
+			_hide_kind(not hide)
+			_hide = ""
+	if phase >= PROBE_CYCLE / 2 - PROBE_SAMPLE and phase < PROBE_CYCLE / 2:
+		_probe_hidden.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
+	elif phase >= PROBE_CYCLE - PROBE_SAMPLE:
+		_probe_shown.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
+	if local == per_kind - 1:
+		var shown := 0.0
+		var hidden := 0.0
+		for value in _probe_shown:
+			shown += value
+		for value in _probe_hidden:
+			hidden += value
+		shown /= maxf(_probe_shown.size(), 1)
+		hidden /= maxf(_probe_hidden.size(), 1)
+		_probe_cost.append(shown - hidden)
+		_probe_base.append(shown)
+		if kind in ["shadows", "clouds", "shafts"]:
+			_probe_toggle(kind, false)
+	_probe_frame += 1
+
+
+## The probe's result: the GPU time each kind of thing adds, as shares of the frame. The kinds overlap a little (hiding trees also removes
+## their shadows), so read it as a ranking.
+func _probe_table() -> String:
+	var baseline := 0.0
+	for value in _probe_base:
+		baseline += value
+	baseline /= maxf(_probe_base.size(), 1)
+	var named := 0.0
+	for cost in _probe_cost:
+		named += maxf(cost, 0.0)
+	var fit := minf(1.0, baseline / maxf(named, 0.001))
+	var text := "
+-- GPU by item (hide test, F7; frame %.1f ms) --" % baseline
+	for index in _probe_cost.size():
+		text += _probe_line(String(PROBE_KINDS[index]), maxf(_probe_cost[index], 0.0) * fit, baseline)
+	text += _probe_line("the rest", maxf(baseline - named * fit, 0.0), baseline)
+	if fit < 1.0:
+		text += "
+(the kinds overlap: scaled to fit the frame)"
+	return text
+
+
+func _probe_line(label: String, cost: float, baseline: float) -> String:
+	var share := cost / maxf(baseline, 0.001)
+	return "
+%s %4.1f ms %3d %%  %s" % [label.rpad(8), cost, roundi(share * 100.0), "█".repeat(roundi(share * 14.0))]
+
+
+## (a test) the triangles the camera sees, by size kind (in range and in the view): which group comes and goes while the player stands.
+func _kind_triangles() -> Dictionary:
+	var result := {}
+	var eye := get_viewport().get_camera_3d()
+	for node in planet.find_children("*", "MultiMeshInstance3D", true, false):
+		var instance := node as MultiMeshInstance3D
+		if instance.multimesh == null or instance.multimesh.mesh == null or not instance.is_visible_in_tree():
+			continue
+		var away := eye.global_position.distance_to(instance.global_position)
+		if (instance.visibility_range_end > 0.0 and away >= instance.visibility_range_end) or away < instance.visibility_range_begin:
+			continue
+		if not eye.is_position_in_frustum(instance.global_position + Vector3.UP * 5.0):
+			continue
+		var kind := _size_kind(instance)
+		var tris := _mesh_triangles(instance.multimesh.mesh)
+		var count := instance.multimesh.visible_instance_count
+		result[kind] = int(result.get(kind, 0)) + tris * (instance.multimesh.instance_count if count < 0 else count) / 1000
+	return result
+
+
+## The size kinds: tiny (< 0.6 m), plant (< 2.5 m), shrub (< 12 m) near (the range begins under 100 m), far_small (the same sizes, begin from 100 m: the merged far groups),
+## near_tree and far_tree (> 12 m).
+const SIZE_KINDS := ["tiny", "plant", "shrub", "far_small", "near_tree", "far_tree", "ft_a", "ft_b", "ft_c", "ft_d", "tiny_turf", "tiny_near", "tiny_far"]
+
+
+func _size_kind(node: MultiMeshInstance3D) -> String:
+	var height := node.multimesh.mesh.get_aabb().size.y
+	var far := node.visibility_range_begin >= 100.0
+	if height > 12.0:
+		if not far:
+			return "near_tree"
+		var begin := node.visibility_range_begin # (the steps of the far trees: from 114, 238, 570, 1425 m)
+		return "ft_a" if begin < 200.0 else ("ft_b" if begin < 500.0 else ("ft_c" if begin < 1000.0 else "ft_d"))
+	if far:
+		return "far_small"
+	if height <= 0.6: # the small ground cover by how far it is drawn: 68 m (turf), 143 m, 260 m
+		var finish := node.visibility_range_end
+		return "tiny_turf" if finish <= 100.0 else ("tiny_near" if finish <= 200.0 else "tiny_far")
+	return "plant" if height <= 2.5 else "shrub"
+
+
 ## Hides one kind of thing (`--hide=`), the new tiles too: trees, plants, ground or water.
-func _hide_kind() -> void:
+func _hide_kind(restore := false) -> void: # (restore: show that kind again)
 	for node in planet.find_children("*", "GeometryInstance3D", true, false):
+		if _hide in SIZE_KINDS: # (task 101) the plants by size and distance: the mesh's height class and where its range begins
+			if node is MultiMeshInstance3D and node.multimesh != null and node.multimesh.mesh != null and _size_kind(node) == _hide:
+				node.visible = restore
+			continue
 		var tris := 0
 		if node is MultiMeshInstance3D and node.multimesh != null and node.multimesh.mesh != null:
 			tris = _mesh_triangles(node.multimesh.mesh)
@@ -121,7 +405,7 @@ func _hide_kind() -> void:
 		elif "ater" in str(node.name) or "ater" in str(node.get_parent().name):
 			kind = "water"
 		if kind == _hide or (_hide == "trees" and kind in ["full", "light", "midtrees"]):
-			node.visible = false
+			node.visible = restore
 
 
 ## The triangles the scene holds, by kind of node (a mesh's, times its instances for a multimesh):
@@ -366,7 +650,7 @@ func _terrain_check() -> bool:
 			slopes += " %dm=%.3f" % [int(scales[k]), slope_sum[k] / float(slope_count[k])]
 	print(slopes)
 	print("TERRAIN_ROCK ", rock_count, " = basalt, andesite, granite, gneiss, schist,"
-			+ " limestone, sandstone, red sandstone, shale")
+			+ " limestone, sandstone, red sandstone, shale, marble, slate, quartzite, gabbro, diorite, rhyolite, chalk, obsidian, pumice, conglomerate, scoria")
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--terrain-image="):
 			_save_height_picture(noise, arg.trim_prefix("--terrain-image="), false)
@@ -491,8 +775,35 @@ func _procedural_by_default(user_args: PackedStringArray) -> void:
 	OS.set_environment("PLANET_PROCEDURAL_ALL", "1")
 
 
+## Whether this run is one of the `--...-check` runs (they test the real defaults).
+## `--forest-walk`: a person walking on LAND needs the normal spawn on solid ground, not the debug spawn over the sea.
+## (task 101) the voxel ground follows the "Voxel ground" graphics setting (Low turns it off: ~5 ms of CPU a frame); `--voxel` / `--no-voxel` still win.
+func _voxel_from_settings() -> bool:
+	var tree := Engine.get_main_loop() as SceneTree
+	var settings: Node = tree.root.get_node_or_null(^"GraphicsSettings") if tree != null else null
+	if settings == null:
+		return true
+	var wanted := bool(settings.call(&"get_graphics_value", &"voxel_ground"))
+	return wanted
+
+
+func _forest_walk_asked() -> bool:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--forest-walk"):
+			return true
+	return false
+
+
+func _is_check_run(user_args: PackedStringArray) -> bool:
+	for arg in user_args:
+		if arg.ends_with("-check") or arg.contains("-check="):
+			return true
+	return false
+
+
 ## Trees and shrubs grow by default; `--no-trees` turns them off (only the grass, rocks and the rest), to look at the ground.
 func _trees_by_default(user_args: PackedStringArray) -> void:
+	# (2026-11-18: trees are on by default again, so a plain Play shows the forest to walk and fly over; `--no-trees` turns them off to look at the ground alone)
 	PlanetScatter.set_trees_on(not "--no-trees" in user_args)
 	# the fake trees (impostor cards, far trees) show the forest beyond 80 m; --no-fake-trees turns them off (only the full trees near the walker)
 	# TEMPORARY test: no fake trees (cards, far trees) and the full tree at every distance, to see what that costs; --fake-trees: the usual far forest
@@ -629,8 +940,10 @@ func _ready() -> void:
 			_grounded = true
 		elif arg == "--voxel":
 			_voxel = true
+			_voxel_flag = true
 		elif arg == "--no-voxel":
 			_voxel = false
+			_voxel_flag = true
 		elif arg == "--earth":
 			var es := OS.get_environment("PLANET_SCALE").to_float() # (0.1 is the game's size)
 			settings = PlanetSettings.earth(es if es > 0.0 else 1.0) # first: it replaces the rest
@@ -699,9 +1012,17 @@ func _ready() -> void:
 	if _swim_check:
 		planet.spawn_on_solid_ground = false # (the sea is the point)
 		_start_dir = _find_sea(planet.noise)
+	# TEMPORARY (2026-11-14): spawn at the place of the last live log unless --dir says otherwise (it is a spot of the menu-made world,
+	# seed 1278676733; in any other world it is just some place). `--no-temp-spawn` gives the normal spawn back.
+	var temp_spawn := "--temp-spawn" in OS.get_cmdline_user_args() and _start_dir == Vector3.ZERO and not _swim_check and not "--no-temp-spawn" in OS.get_cmdline_user_args() and not _is_check_run(OS.get_cmdline_user_args()) and not _forest_walk_asked()
+	if temp_spawn:
+		planet.spawn_on_solid_ground = false # (the spot may be over the sea: the log was taken in free flight)
+		_start_dir = Vector3(0.0623, 0.4287, 0.9013).normalized() # the last live log: seed 1278676733, radius 16741 (a world made in the menu)
 	var spawn := planet.start(player, _start_dir, _spawn_alt)
+	_temp_look = temp_spawn
 	planet.atmosphere.clouds_hidden = _no_clouds
-	if not (_grounded or _walking or _checking or _swim_check or _climb > 0.0 or _ik_soak != null):
+	# (2026-11-18: walking is the default; `--free` starts in free flight, and the debug menu's toggle still flies)
+	if "--free" in OS.get_cmdline_user_args() and not (_walking or _checking or _swim_check or _climb > 0.0 or _ik_soak != null):
 		player.set_free_mode(true) # looking at the planet: fly (the debug menu's toggle follows)
 		player.hud.free_mode_toggle.set_pressed_no_signal(true)
 	planet.loaded.connect(func() -> void: print("LOADED after %d ms (%d tiles)" % [
@@ -714,7 +1035,7 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--view-yaw="): # (the walker turned that way: a picture of a place seen from the side)
 			player.rotation_degrees.y = _view_yaw
-	_voxel_node = LabVoxelGround.attach(self, planet, player) if _voxel else null
+	_voxel_node = LabVoxelGround.attach(self, planet, player) if (_voxel if _voxel_flag else _voxel_from_settings()) else null
 	if _save_as != "":
 		print("SAVED %s %s" % [_save_as, UniverseSave.save(planet, _save_as)])
 	var here := planet.planet_position().normalized()
@@ -736,6 +1057,21 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	for argument in OS.get_cmdline_user_args(): # (task 101) `--loading-shot=PATH`: a picture of the black loading screen (its stage lines) 15 s into the load
+		if argument.begins_with("--loading-shot=") and planet != null and planet.loading and Time.get_ticks_msec() > 27000 and not _loading_shot_done:
+			_loading_shot_done = true
+			get_viewport().get_texture().get_image().save_png(argument.trim_prefix("--loading-shot="))
+	if _frame >= 1000 and _frame % 120 == 0 and _frame < 1400 and "--gpu-passes" in OS.get_cmdline_user_args(): # (task 101) per-pass GPU times, if the renderer exposes them
+		var device := RenderingServer.get_rendering_device()
+		if device != null:
+			var count := device.get_captured_timestamps_count()
+			var line := "GPU_PASSES count=%d:" % count
+			for index in count:
+				line += " [%s %.2f]" % [device.get_captured_timestamp_name(index), device.get_captured_timestamp_gpu_time(index) / 1.0e6]
+			print(line)
+	if _frame >= 800 and not _perf_shown and "--perf-overlay" in OS.get_cmdline_user_args() and player != null: # (task 101) the detailed performance lines on the HUD
+		_perf_shown = true
+		player.hud.call(&"_on_perf_detail_toggled", true)
 	if _frame == 700: # the loading screen is over
 		_worst_frame = 0.0
 		_slow_frames = 0
@@ -784,6 +1120,10 @@ func _physics_process(_delta: float) -> void:
 	if _voxel_node != null and not _voxel_node.ground_ready:
 		return # (the checks count frames: they start once the voxel ground is there)
 	_frame += 1
+	if _frame == 2 and OS.has_environment("LAB_FADE_OLD"): # (task 101) the old fade (the leaf cards ignoring it), to compare
+		(FloraMeshes.material() as ShaderMaterial).set_shader_parameter("range_fade_dither", 0.0)
+	_fly_step(_delta)
+	_pop_step()
 	PlanetLabChecks.frame_step(planet, player, _frame)
 	if _map_layers and _frame >= 600 and (_frame - 600) % 400 == 0:
 		var which := (_frame - 600) / 400
@@ -808,6 +1148,12 @@ func _physics_process(_delta: float) -> void:
 		GraphicsSettings.apply()
 	if _frame == 30 and "--cloud-shadows" in OS.get_cmdline_user_args(): # (in memory only: the saved settings are not touched)
 		GraphicsSettings._values[&"cloud_shadows"] = true
+	if _frame == 200 and player != null and _temp_look: # 50 m up in free flight, looking where the last log says (yaw 150.7, pitch -41.5)
+		player.set_free_mode(true)
+		player.global_position.y += 48.0
+		player._look_pitch = deg_to_rad(-41.5)
+		player.third_person_arm.rotation.x = player._look_pitch
+		player._apply_yaw(deg_to_rad(150.7))
 	if _frame == 200 and player != null:
 		for arg in OS.get_cmdline_user_args():
 			if arg.begins_with("--pose="): # alt,pitch,yaw: the player lifted that many metres in free flight, looking that way (pictures from the air)
@@ -872,6 +1218,112 @@ func _physics_process(_delta: float) -> void:
 		player.process_mode = Node.PROCESS_MODE_DISABLED
 		player.global_position.y += _climb
 		player.head.rotation.x = -1.0 # look down
+	if _frame == 3200 and "--probe" in OS.get_cmdline_user_args() and _probe_frame < 0 and player != null: # (a test: start the probe by itself)
+		player.process_mode = Node.PROCESS_MODE_DISABLED # (frozen: the walker settles for a long while)
+		player.hud.call(&"_on_perf_detail_toggled", true)
+		_probe_start()
+	if _frame >= 2400 and _frame < 3400 and "--gpu-trace" in OS.get_cmdline_user_args(): # (a test: the GPU time of every frame, to look for a rhythm)
+		if _frame == 2400:
+			player.hud.call(&"_on_perf_detail_toggled", true)
+		print("GPUTRACE %d %.2f %.2f" % [_frame, RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()), get_process_delta_time() * 1000.0])
+		if _frame % 20 == 0:
+			print("GPUKINDS %d %s" % [_frame, _kind_triangles()])
+			var passes: Dictionary = player.hud.get(&"_gpu_passes")
+			var line := "GPUPASSES %d" % _frame
+			for key in ["Render Opaque Pass", "Render Depth Pre-Pass", "Render Directional/Spot Shadows", "Render 3D Transparent Pass"]:
+				for name in passes.keys():
+					if String(name).begins_with(key.left(18)):
+						line += " %s=%.1f" % [String(name).left(14), passes[name]]
+			print(line, " tris=", RenderingServer.viewport_get_render_info(get_viewport().get_viewport_rid(), RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE, RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME), " calls=", RenderingServer.viewport_get_render_info(get_viewport().get_viewport_rid(), RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME))
+		if _frame == 3399:
+			get_tree().quit()
+	if OS.has_environment("LAB_TONE_PAIR"): # (a test, task 101: the same view with our filmic tone mapper and with the village article's AgX values, two pictures)
+		var tone_prefix := OS.get_environment("LAB_TONE_PAIR")
+		if _frame == 2650:
+			get_viewport().get_texture().get_image().save_png(tone_prefix + "_filmic.png")
+		if _frame == 2651:
+			var environment: Environment = planet.atmosphere.environment
+			var parts := OS.get_environment("LAB_TONE").split(",") # "4,1.12,1.32": mapper, exposure, AgX contrast
+			environment.tonemap_mode = int(parts[0]) as Environment.ToneMapper
+			environment.tonemap_exposure = float(parts[1])
+			environment.tonemap_agx_contrast = float(parts[2])
+			GraphicsSettings._values[&"tone_mapper"] = int(parts[0]) # (in memory only; the atmosphere re-applies the mapper from it)
+		if _frame == 2750:
+			get_viewport().get_texture().get_image().save_png(tone_prefix + "_agx.png")
+			get_tree().quit()
+	if OS.has_environment("LAB_SHADOW_TEST") and _frame >= 2400: # (a test: what the shadow filter and the shadow map size cost, one run, 80 frames each, the last 40 kept)
+		var configs := [[3, 4096], [1, 4096], [5, 4096], [3, 2048], [3, 8192], [0, 4096], [3, 4096]]
+		var step := (_frame - 2400) / 80
+		var local := (_frame - 2400) % 80
+		if step >= configs.size():
+			get_tree().quit()
+		else:
+			if local == 0:
+				RenderingServer.directional_soft_shadow_filter_set_quality(configs[step][0] as RenderingServer.ShadowQuality)
+				RenderingServer.directional_shadow_atlas_set_size(configs[step][1], true)
+				if step == 0:
+					player.hud.call(&"_on_perf_detail_toggled", true)
+				_probe_samples.clear()
+			if local >= 40:
+				_probe_samples.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
+			if local == 79:
+				var total := 0.0
+				for value in _probe_samples:
+					total += value
+				print("SHADOW_TEST filter=%d atlas=%d gpu=%.2f" % [configs[step][0], configs[step][1], total / maxf(_probe_samples.size(), 1)])
+	if _frame == 700 and "--tree-lods" in OS.get_cmdline_user_args(): # (a test, task 101: triangles of the trees at lod 0..5, and the far mesh)
+		var tree_registry: Object = planet.noise.get("species")
+		var shown := 0
+		for one: Object in tree_registry.get("species"):
+			if not bool(one.call("is_tree")) or shown >= 12:
+				continue
+			shown += 1
+			var counts: Array[int] = []
+			for lod in 6:
+				counts.append(_mesh_triangles(tree_registry.call("mesh", int(one.get("id")), 0, true, lod)))
+			print("TREE_LODS id=%d form=%s lod0..5 = %s far=%d" % [int(one.get("id")), str(one.get("form")), str(counts), _mesh_triangles(tree_registry.call("far_mesh", int(one.get("id")), 0))])
+		get_tree().quit()
+	if _frame == 700 and "--plant-lods" in OS.get_cmdline_user_args(): # (a test, task 101: triangles of each small plant species at lod 0..3)
+		var registry: Object = planet.noise.get("species")
+		var totals := [0, 0, 0, 0]
+		var lines: Array[String] = []
+		for one: Object in registry.get("species"):
+			if bool(one.call("is_tree")):
+				continue
+			var counts: Array[int] = []
+			for lod in 4:
+				var mesh: Mesh = registry.call("mesh", int(one.get("id")), 0, true, lod)
+				counts.append(_mesh_triangles(mesh))
+				totals[lod] += counts[lod]
+			lines.append("PLANT_LODS id=%d layer=%d form=%s h=%.2f tris lod0..3 = %s" % [int(one.get("id")), int(one.call("layer")), str(one.get("form")), (registry.call("mesh", int(one.get("id")), 0, true, 0) as Mesh).get_aabb().size.y, str(counts)])
+		for line in lines:
+			print(line)
+		print("PLANT_LODS totals ", totals)
+		get_tree().quit()
+	if OS.has_environment("LAB_LOD_PAIR"): # (a test: the same view before and after the small plants get automatic mesh levels, two pictures)
+		var prefix := OS.get_environment("LAB_LOD_PAIR")
+		if _frame == 3100:
+			player.process_mode = Node.PROCESS_MODE_DISABLED # (the walker still settles for a long while after the start: freeze it, the view must not move)
+			player.hud.call(&"_on_perf_detail_toggled", true)
+		if _frame == 3140:
+			if OS.has_environment("LAB_SPLIT"):
+				_probe_tree_split(float(OS.get_environment("LAB_SPLIT")), false)
+			else:
+				_grass_steps_old(true)
+		if _frame == 3200:
+			get_viewport().get_texture().get_image().save_png(prefix + "_before.png")
+		if _frame == 3201:
+			if OS.has_environment("LAB_SPLIT"):
+				_probe_tree_split(float(OS.get_environment("LAB_SPLIT")), true)
+			else:
+				_grass_steps_old(false)
+		if _frame == 3300:
+			get_viewport().get_texture().get_image().save_png(prefix + "_after.png")
+			get_tree().quit()
+	if OS.has_environment("LAB_TINY_LOD") and _frame >= 2000 and _frame % 60 == 0: # (a test: the small plants with automatic mesh levels of detail, for a picture)
+		_probe_lods("tiny", true)
+	if _probe_frame >= 0:
+		_probe_step()
 	if _hide != "" and _frame % 60 == 0:
 		_hide_kind()
 	if _no_shadow and _frame % 60 == 0:
@@ -1005,7 +1457,12 @@ func _ik_soak_step() -> void:
 ## Holds the player's forward and sprint keys and watches how the walk goes (real physics, the
 ## real player: the planet turns under it every 80 m).
 func _walk_step() -> void:
-	if _frame == 60:
+	# (task 101) --walk-from=N: the walk/flight starts at frame N (the planet needs to finish loading first, for a video); --fly-height=M: the flight holds M metres over the ground
+	var from := 60
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--walk-from="):
+			from = arg.trim_prefix("--walk-from=").to_int()
+	if _frame == from:
 		Input.action_press(&"move_forward")
 		Input.action_press(&"sprint")
 		if _flying:
@@ -1014,9 +1471,12 @@ func _walk_step() -> void:
 			for arg in OS.get_cmdline_user_args():
 				if arg.begins_with("--fly-speed="): # metres a second (the sprint doubles it)
 					player.free_mode_speed = arg.trim_prefix("--fly-speed=").to_float()
+			for arg in OS.get_cmdline_user_args():
+				if arg.begins_with("--fly-height="):
+					player.free_mode_min_height = arg.trim_prefix("--fly-height=").to_float()
 			Input.action_press(&"jump" if "--fly-up" in OS.get_cmdline_user_args() else &"crouch") # dive: the flight must hold off the ground (--fly-up: climb instead)
 		_walk_start = planet.planet_position()
-	if _frame <= 60: return
+	if _frame <= from: return
 	if "--flora-log" in OS.get_cmdline_user_args() and _frame % 60 == 0: # how many tiles have plants (a drop between lines = trees vanishing)
 		var with_plants := 0
 		var nodes := 0
@@ -1057,7 +1517,7 @@ func _walk_step() -> void:
 	if player.process_mode != Node.PROCESS_MODE_DISABLED: _fly_lowest = minf(_fly_lowest, above)
 	if _flying and _frame % 300 == 0:
 		print("FLY_RAY below=%.1f m (the clearance is %.0f)" % [player.free_mode_ray_distance, player.free_mode_clearance])
-	if _frame >= 60 + 90 * 60:
+	if _frame >= from + 90 * 60:
 		var travelled := planet.planet_position().distance_to(_walk_start)
 		var verdict := "PASS" if travelled > 150.0 and _walk_worst < 4.0 else "FAIL"
 		if _flying:
@@ -1151,3 +1611,118 @@ func _height_line(spec: PackedFloat64Array) -> void:
 		out.append("%.0f:%.3f" % [d, planet.noise.height(dir.x, dir.y, dir.z) - sea])
 		d += step
 	print("HEIGHT_LINE yaw=%.0f " % spec[0], " ".join(out))
+
+
+# --fly-test=speed,seconds: from frame 300 the player flies level (free mode, at that many m/s along the way it looks) for that long, then stops; once a second
+# FLY prints the voxel engine's tasks, the tiles and the fps, and FLY_DRAINED how long after the stop the voxel tasks took to run out (is the streaming
+# working on the places the player only passed over?)
+var _fly_spec := PackedFloat64Array()
+var _fly_started := -1.0
+var _fly_stopped := -1.0
+var _fly_last := 0.0
+var _fly_quiet := 0.0
+var _fly_peak := 0
+
+
+var _pop_state := {}
+var _pop_counts := {}
+var _pop_log_lines := 0
+
+
+## --pop-log (task 101): while the player flies, every big tree node that goes in or out of its visibility range (as the engine decides it: the distance of the node's box
+## centre against begin/end) is logged: kind, trees in the node, the node's size, the distance. Summary POP_SUMMARY at the end of the flight.
+func _pop_step() -> void:
+	if player == null or _frame < 400 or not "--pop-log" in OS.get_cmdline_user_args():
+		return
+	var eye := get_viewport().get_camera_3d()
+	if eye == null:
+		return
+	for node in planet.find_children("*", "MultiMeshInstance3D", true, false):
+		var instance := node as MultiMeshInstance3D
+		if instance.multimesh == null or instance.multimesh.mesh == null or not instance.is_visible_in_tree():
+			continue
+		var mesh_height := instance.multimesh.mesh.get_aabb().size.y
+		if mesh_height < 12.0:
+			continue
+		var box := instance.global_transform * instance.get_aabb()
+		var away := eye.global_position.distance_to(box.get_center())
+		var inside := away >= instance.visibility_range_begin and (instance.visibility_range_end <= 0.0 or away < instance.visibility_range_end)
+		var id := instance.get_instance_id()
+		if _pop_state.has(id) and _pop_state[id] != inside:
+			var kind := _size_kind(instance)
+			var key := "%s %s" % [kind, "in" if inside else "out"]
+			_pop_counts[key] = int(_pop_counts.get(key, 0)) + 1
+			var count := instance.multimesh.instance_count
+			var entry := "%s trees=%d box=%.0fx%.0f m away=%.0f begin=%.0f end=%.0f fade=%d margins %.0f/%.0f" % [key, count, box.size.x, box.size.z, away,
+					instance.visibility_range_begin, instance.visibility_range_end, instance.visibility_range_fade_mode,
+					instance.visibility_range_begin_margin, instance.visibility_range_end_margin]
+			# (a tree that goes out while a tree of the node is much nearer than the range end: the node's box centre is far, a tree of it is near)
+			if kind == "near_tree" and not inside and count <= 8:
+				var nearest := INF
+				for index in count:
+					var at := instance.global_transform * instance.multimesh.get_instance_transform(index).origin
+					nearest = minf(nearest, eye.global_position.distance_to(at))
+				if nearest < instance.visibility_range_end * 0.8 and instance.visibility_range_end > 0.0:
+					print("POP_NEAR f=%d a tree of the node is at %.0f m, the node's centre at %.0f m, range end %.0f m, trees %d" % [_frame, nearest, away, instance.visibility_range_end, count])
+			if _pop_log_lines < 60:
+				_pop_log_lines += 1
+				print("POP f=%d %s" % [_frame, entry])
+		_pop_state[id] = inside
+	if _frame % 600 == 0:
+		print("POP_SUMMARY f=%d %s" % [_frame, _pop_counts])
+
+
+func _fly_step(delta: float) -> void:
+	if player == null or _frame < 300:
+		return
+	if _fly_spec.is_empty():
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--fly-test="):
+				_fly_spec = arg.trim_prefix("--fly-test=").split_floats(",")
+		if _fly_spec.is_empty():
+			_fly_spec = PackedFloat64Array([0.0])
+	if _fly_spec.size() < 2:
+		return
+	var now := Time.get_ticks_msec() / 1000.0
+	if _fly_started < 0.0:
+		_fly_started = now
+		player.set_free_mode(true)
+		for arg in OS.get_cmdline_user_args(): # --fly-lift=M: up that many metres first (a path that does not follow the ground: the same on every run)
+			if arg.begins_with("--fly-lift="):
+				var frame_now := planet.frame
+				var up_now: Vector3 = (frame_now.rot as Basis) * (((frame_now.rot as Basis).inverse() * (player.global_position - frame_now.origin_w) + Vector3(frame_now.anchor[0], frame_now.anchor[1], frame_now.anchor[2])).normalized())
+				player.global_position += up_now * arg.trim_prefix("--fly-lift=").to_float()
+		print("FLY start at %.1f s (engine frame %d): %.0f m/s for %.0f s" % [now, Engine.get_frames_drawn(), _fly_spec[0], _fly_spec[1]])
+	var flying := now - _fly_started < _fly_spec[1]
+	if flying:
+		var frame := planet.frame
+		var inverse: Basis = (frame.rot as Basis).inverse()
+		var anchor := Vector3(frame.anchor[0], frame.anchor[1], frame.anchor[2])
+		var altitude_before: float = planet.altitude()
+		var ahead: Vector3 = -player.global_transform.basis.z
+		var up_world: Vector3 = (frame.rot as Basis) * ((inverse * (player.global_position - frame.origin_w) + anchor).normalized())
+		ahead = (ahead - up_world * ahead.dot(up_world)).normalized()
+		player.global_position += ahead * float(_fly_spec[0]) * delta
+		player.global_position += up_world * (altitude_before - float(planet.altitude()))
+	elif _fly_stopped < 0.0:
+		_fly_stopped = now
+		print("FLY stop at %.1f s" % now)
+	var tasks: int = _voxel_node._tasks() if _voxel_node != null else -1
+	_fly_peak = maxi(_fly_peak, tasks)
+	if now - _fly_last >= 1.0:
+		_fly_last = now
+		var since := int(now - _fly_started)
+		if _voxel_node != null and since in [3, 19, 40, 80, 120]:
+			var engine: Object = Engine.get_singleton("VoxelEngine")
+			print("FLY_STATS t=%d engine=%s" % [since, engine.call("get_stats")])
+			print("FLY_STATS t=%d ground=%s" % [since, _voxel_node._terrain.call("get_statistics")])
+		print("FLY t=%.0f flying=%s tasks=%d peak=%d tiles=%d fps=%d altitude=%.0f" % [now - _fly_started, flying, tasks, _fly_peak,
+				planet.surface.tiles.size(), Engine.get_frames_per_second(), planet.altitude()])
+	if _fly_stopped >= 0.0:
+		_fly_quiet = _fly_quiet + delta if tasks == 0 else 0.0
+		if _fly_quiet > 2.0:
+			print("FLY_DRAINED %.1f s after the stop (peak tasks %d)" % [now - _fly_stopped, _fly_peak])
+			get_tree().quit()
+		elif now - _fly_stopped > 240.0:
+			print("FLY_NOT_DRAINED after 240 s: tasks %d" % tasks)
+			get_tree().quit()

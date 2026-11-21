@@ -21,6 +21,10 @@ var detailed := false
 var autumn := false
 var closeup := false
 var focus := 0
+var only := -1
+var broadleaf_only := false
+var soften := 0.0
+var only_form := ""
 var _registry: SpeciesRegistry
 var _plants: Node3D
 var _camera: Camera3D
@@ -37,6 +41,16 @@ func _ready() -> void:
 			page = clampi(int(arg.get_slice("=", 1)) - 1, 0, PAGES.size() - 1)
 		elif arg == "--detailed":
 			detailed = true
+		elif arg.begins_with("--only="): # one species of the page, framed whole (a before / after picture)
+			only = int(arg.get_slice("=", 1))
+		elif arg.begins_with("--soften="): # canopy_soften of the flora shader (0 = the look without it)
+			soften = float(arg.get_slice("=", 1))
+		elif arg == "--autumn":
+			autumn = true
+		elif arg.begins_with("--form="): # only one growth form of the page, by name (mushroom, fern...)
+			only_form = arg.get_slice("=", 1).to_lower()
+		elif arg == "--broadleaf": # only the broadleaf trees (with --only=N: the Nth of them)
+			broadleaf_only = true
 	_build_stage()
 	for arg in args:
 		if arg.begins_with("--shot="):
@@ -88,6 +102,16 @@ func _show() -> void:
 	for one in _registry.species:
 		if one.form in (info["forms"] as Array):
 			shown.append(one)
+	if broadleaf_only:
+		shown = shown.filter(func(s: PlantSpecies) -> bool: return s.form == PlantSpecies.Form.BROADLEAF)
+	if only_form != "":
+		shown = shown.filter(func(s: PlantSpecies) -> bool: return PlantSpecies.form_names()[s.form].to_lower() == only_form)
+	if only >= 0 and only < shown.size():
+		shown = [shown[only]]
+	if not shown.is_empty():
+		var mat := FloraMeshes.material() as ShaderMaterial
+		mat.set_shader_parameter(&"canopy_soften", soften)
+		mat.set_shader_parameter(&"canopy_center_y", shown[0].height * 0.62)
 	var gap: float = info["gap"]
 	var scale: float = info["scale"]
 	var tallest := 1.0

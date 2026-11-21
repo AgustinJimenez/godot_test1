@@ -1,10 +1,13 @@
+#include "frame_timer.h"
 #include "planet_sway_native.h"
 
+#include "graphics_lookup.h"
 #include "planet_nodes_native.h"
 
 #include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -18,6 +21,18 @@ static const double ENTERS[3] = { PlanetSway::ENTER, PlanetSway::ENTER_SMALL, Pl
 static const double LEAVES[3] = { PlanetSway::LEAVE, PlanetSway::LEAVE_SMALL, PlanetSway::LEAVE_TURF };
 static const double TOUCHES[3] = { PlanetSway::TOUCH, PlanetSway::TOUCH_SMALL, PlanetSway::TOUCH_TURF };
 static const int MAXES[3] = { PlanetSway::MAX_LIVE, PlanetSway::MAX_SMALL, PlanetSway::MAX_TURF };
+
+// (task 101) how many trees bend under the walker: the "Plants bend" setting (0 none, 1 a few = a tenth of the caps, 2 all); each live tree is stepped and its bend texture
+// uploaded every physics frame, which cost ~29 ms of a frame in a dense forest. PLANET_NO_SWAY=1 is the same as none.
+static double bend_share() {
+	Node *settings = graphics_settings_node();
+	if (settings == nullptr) {
+		return 1.0;
+	}
+	Variant level = settings->call("get_graphics_value", StringName("plant_bend"));
+	const int64_t at = level.get_type() == Variant::NIL ? 2 : (int64_t)level;
+	return at <= 0 ? 0.0 : (at == 1 ? 0.1 : 1.0);
+}
 
 PlanetSway::PlanetSway() {
 	sway.instantiate();
@@ -40,6 +55,7 @@ void PlanetSway::_ready() {
 }
 
 void PlanetSway::_physics_process(double p_delta) {
+	FRAME_TIMER("sway");
 	Node3D *player_node = Object::cast_to<Node3D>(get_player());
 	Object *planet_object = get_planet();
 	if (player_node == nullptr || planet_object == nullptr) {
@@ -47,10 +63,13 @@ void PlanetSway::_physics_process(double p_delta) {
 	}
 	Vector3 here = player_node->get_global_position();
 	since += p_delta;
+	const uint64_t began = Time::get_singleton()->get_ticks_usec();
+	uint64_t looked = 0;
 	if (since >= LOOK_EVERY) {
 		since = 0.0;
 		give_back(here);
 		take(here);
+		looked = Time::get_singleton()->get_ticks_usec() - began;
 		if (OS::get_singleton()->has_environment("PLANET_TIMING")) {
 			int64_t sets = 0;
 			Object *surface = planet_object->get("surface");
@@ -76,6 +95,15 @@ void PlanetSway::_physics_process(double p_delta) {
 			body = body_in(tree, here);
 		}
 		tree->step(body, p_delta);
+	}
+	if (OS::get_singleton()->has_environment("PLANET_TIMING")) { // (task 101) where the sway time goes: looking for trees (every 0.25 s) and stepping the live ones
+		look_us += looked;
+		total_us += Time::get_singleton()->get_ticks_usec() - began;
+		if (++timed_ticks >= 120) {
+			UtilityFunctions::print(vformat("PLANET_TIMING sway per tick: look %.2f ms, whole %.2f ms, live=%d", look_us / 120000.0, total_us / 120000.0, (int64_t)live.size()));
+			look_us = total_us = 0;
+			timed_ticks = 0;
+		}
 	}
 }
 
@@ -151,8 +179,9 @@ void PlanetSway::take_kind(Node3D *p_holder, const Array &p_kind, const Vector3 
 	int klass = p_kind[2]; // (the plants' batches say only true for the small ones)
 	PackedFloat32Array buffer = p_kind[1];
 	PackedInt32Array near_ones = sway->within(buffer, p_local.x, p_local.z, ENTERS[klass]);
+	const int cap = (int)(MAXES[klass] * bend_share());
 	for (int i = 0; i < near_ones.size(); i++) {
-		if (counts[klass] >= MAXES[klass]) {
+		if (counts[klass] >= cap) {
 			break;
 		}
 		int index = near_ones[i];
@@ -176,9 +205,11 @@ void PlanetSway::go_live(Node3D *p_holder, MultiMeshInstance3D *p_instance, cons
 		return;
 	}
 	tree->set_transform(original);
-	tree->set_cast_shadows_setting(p_instance->get_cast_shadows_setting());
+	tree->set_cast_shadows_setting(OS::get_singleton()->has_environment("PLANET_SWAY_NO_SHADOW") ? GeometryInstance3D::SHADOW_CASTING_SETTING_OFF : p_instance->get_cast_shadows_setting()); // (PLANET_SWAY_NO_SHADOW: task 101 experiment)
 	p_holder->add_child(tree);
+	if (!OS::get_singleton()->has_environment("PLANET_SWAY_NO_HIDE")) { // (task 101 experiment: what the multimesh edit costs)
 	multi->set_instance_transform(p_index, Transform3D(Basis::from_scale(Vector3()), original.origin));
+	}
 	Live entry;
 	entry.tree = tree->get_instance_id();
 	entry.instance = p_instance->get_instance_id();

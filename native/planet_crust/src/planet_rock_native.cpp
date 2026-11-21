@@ -26,7 +26,7 @@ static const Color FOREST(0.11f, 0.24f, 0.09f); // very wet and warm: the dark o
 static const Color SAND(0.80f, 0.72f, 0.52f); // beaches: low, level ground by the sea
 static const Color SNOW(0.93f, 0.95f, 0.98f); // permanent snow and ice
 
-static const Color COLOURS[9] = {
+static const Color COLOURS[20] = {
 	Color(0.25f, 0.24f, 0.26f), // basalt
 	Color(0.38f, 0.35f, 0.33f), // andesite
 	Color(0.64f, 0.56f, 0.52f), // granite
@@ -36,6 +36,17 @@ static const Color COLOURS[9] = {
 	Color(0.74f, 0.58f, 0.40f), // sandstone
 	Color(0.61f, 0.34f, 0.24f), // red sandstone
 	Color(0.33f, 0.32f, 0.31f), // shale
+	Color(0.84f, 0.82f, 0.79f), // marble
+	Color(0.30f, 0.33f, 0.37f), // slate
+	Color(0.78f, 0.72f, 0.66f), // quartzite
+	Color(0.20f, 0.21f, 0.22f), // gabbro
+	Color(0.52f, 0.52f, 0.51f), // diorite
+	Color(0.66f, 0.50f, 0.45f), // rhyolite
+	Color(0.93f, 0.92f, 0.88f), // chalk
+	Color(0.08f, 0.08f, 0.10f), // obsidian
+	Color(0.78f, 0.74f, 0.68f), // pumice
+	Color(0.58f, 0.50f, 0.42f), // conglomerate
+	Color(0.36f, 0.20f, 0.16f), // scoria
 };
 
 void PlanetRock::_bind_methods() {
@@ -48,6 +59,17 @@ void PlanetRock::_bind_methods() {
 	BIND_ENUM_CONSTANT(SANDSTONE);
 	BIND_ENUM_CONSTANT(RED_SANDSTONE);
 	BIND_ENUM_CONSTANT(SHALE);
+	BIND_ENUM_CONSTANT(MARBLE);
+	BIND_ENUM_CONSTANT(SLATE);
+	BIND_ENUM_CONSTANT(QUARTZITE);
+	BIND_ENUM_CONSTANT(GABBRO);
+	BIND_ENUM_CONSTANT(DIORITE);
+	BIND_ENUM_CONSTANT(RHYOLITE);
+	BIND_ENUM_CONSTANT(CHALK);
+	BIND_ENUM_CONSTANT(OBSIDIAN);
+	BIND_ENUM_CONSTANT(PUMICE);
+	BIND_ENUM_CONSTANT(CONGLOMERATE);
+	BIND_ENUM_CONSTANT(SCORIA);
 	ClassDB::bind_static_method("PlanetRock", D_METHOD("get_boundary"), &PlanetRock::get_boundary);
 	ClassDB::bind_static_method("PlanetRock", D_METHOD("colours"), &PlanetRock::colours);
 	ClassDB::bind_static_method("PlanetRock", D_METHOD("kind_count"), &PlanetRock::kind_count);
@@ -66,7 +88,7 @@ void PlanetRock::_bind_methods() {
 
 PackedColorArray PlanetRock::colours() {
 	PackedColorArray all;
-	for (int i = 0; i < 9; i++) {
+	for (int i = 0; i < 20; i++) {
 		all.append(COLOURS[i]);
 	}
 	return all;
@@ -91,7 +113,7 @@ Ref<PlanetRock> PlanetRock::create(const Ref<PlanetTectonics> &p_tectonics, int6
 	return made;
 }
 
-// How much of each rock (see `Kind`) is at the unit direction `dir`, on ground `ground` (m above the sea): nine weights that add up to 1.
+// How much of each rock (see `Kind`) is at the unit direction `dir`, on ground `ground` (m above the sea): twenty weights that add up to 1.
 PackedFloat32Array PlanetRock::weights(const Vector3 &p_dir, double p_ground) const {
 	Vector3 plate = tectonics->plate_at(p_dir);
 	bool continental = plate.z > 0.5;
@@ -101,7 +123,7 @@ PackedFloat32Array PlanetRock::weights(const Vector3 &p_dir, double p_ground) co
 	double old = smooth_step(-0.15, 0.3, craton_noise->get_noise_3d(p.x, p.y, p.z));
 	double regional = CLAMP(0.5 + 1.1 * basin_noise->get_noise_3d(p.x, p.y, p.z), 0.0, 1.0);
 	PackedFloat32Array w;
-	w.resize(9);
+	w.resize(20);
 	w.fill(0.0f);
 	if (!continental) {
 		// young crust under a cover of sediment that thickens toward the continents' feet
@@ -129,16 +151,54 @@ PackedFloat32Array PlanetRock::weights(const Vector3 &p_dir, double p_ground) co
 		w[ANDESITE] = near_edge * 0.3;
 	}
 	double total = 0.0;
-	for (int i = 0; i < 9; i++) {
+	for (int i = 0; i < 20; i++) {
 		total += w[i];
 	}
 	if (total <= 0.0001) {
 		w[GRANITE] = 1.0;
 		total = 1.0;
 	}
-	for (int i = 0; i < 9; i++) {
+	for (int i = 0; i < 20; i++) {
 		w[i] = (double)w[i] / total;
 	}
+	// the variants, carved out of the rock they come from: the sediments near a plate boundary are metamorphosed (marble, slate, quartzite), the deep
+	// sea floor is gabbro under its basalt, the arcs' andesite has its coarse diorite and its pale rhyolite (the same maths in PlanetCrustNative::rock_weights)
+	const double metamorphic = near_edge * 0.8;
+	const double sea_cover = smooth_step(-0.2, 0.0, p_ground / relief);
+	const double move_from[4] = { (double)w[LIMESTONE], (double)w[SHALE], (double)w[SANDSTONE], (double)w[RED_SANDSTONE] };
+	w[LIMESTONE] = (float)(move_from[0] - move_from[0] * metamorphic);
+	w[MARBLE] = (float)(move_from[0] * metamorphic);
+	w[SHALE] = (float)(move_from[1] - move_from[1] * metamorphic);
+	w[SLATE] = (float)(move_from[1] * metamorphic);
+	w[SANDSTONE] = (float)(move_from[2] - move_from[2] * metamorphic);
+	w[RED_SANDSTONE] = (float)(move_from[3] - move_from[3] * metamorphic);
+	w[QUARTZITE] = (float)((move_from[2] + move_from[3]) * metamorphic);
+	const double basalt = (double)w[BASALT];
+	const double gabbro = continental ? 0.0 : basalt * 0.4 * (1.0 - sea_cover);
+	w[BASALT] = (float)(basalt - gabbro);
+	w[GABBRO] = (float)gabbro;
+	const double andesite = (double)w[ANDESITE];
+	w[ANDESITE] = (float)(andesite * 0.4);
+	w[DIORITE] = (float)(andesite * 0.35);
+	w[RHYOLITE] = (float)(andesite * 0.25);
+	// the finer variants: chalk from the limestone of the deepest warm sea, obsidian and pumice from the rhyolite, conglomerate from the sandstone
+	// at the foot of high ground, scoria from the basalt along the arcs (the same maths in PlanetCrustNative::rock_weights)
+	const double limestone = (double)w[LIMESTONE];
+	const double chalk = limestone * smooth_step(0.8, 0.95, regional);
+	w[LIMESTONE] = (float)(limestone - chalk);
+	w[CHALK] = (float)chalk;
+	const double rhyolite = (double)w[RHYOLITE];
+	w[OBSIDIAN] = (float)(rhyolite * 0.2);
+	w[PUMICE] = (float)(rhyolite * 0.15);
+	w[RHYOLITE] = (float)(rhyolite * 0.65);
+	const double sandstone = (double)w[SANDSTONE];
+	const double conglomerate = sandstone * 0.3 * smooth_step(0.1, 0.4, tall);
+	w[SANDSTONE] = (float)(sandstone - conglomerate);
+	w[CONGLOMERATE] = (float)conglomerate;
+	const double basalt_left = (double)w[BASALT];
+	const double scoria = basalt_left * near_edge * 0.3;
+	w[BASALT] = (float)(basalt_left - scoria);
+	w[SCORIA] = (float)scoria;
 	return w;
 }
 
@@ -160,7 +220,7 @@ Color PlanetRock::colour(const Vector3 &p_dir, double p_ground, double p_steep, 
 		double p_rain) const {
 	PackedFloat32Array w = weights(p_dir, p_ground);
 	Color rock(0.0f, 0.0f, 0.0f);
-	for (int i = 0; i < 9; i++) {
+	for (int i = 0; i < 20; i++) {
 		rock += COLOURS[i] * (float)w[i];
 	}
 	// the beds: bands that run level, in the sedimentary rocks

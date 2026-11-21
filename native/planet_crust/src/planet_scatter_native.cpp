@@ -30,8 +30,9 @@ enum Biome { BEACH = 0, MEADOW_BIOME = 1, FOREST = 2, ROCKY = 3, SNOW = 4, MARSH
 enum Kind { ROCK = 5, STUMP = 10, LOG = 14, SPIRE = 15, PEBBLES = 16, LITTER = 17, TWIGS = 18 };
 enum Detail { NONE = 0, FAR = 1, TREES = 2, ALL = 3 };
 
-const double SPACING[5] = { 6.5, 5.0, 1.7, 3.2, 2.6 };
-const double MAX_CHANCE[5] = { 0.85, 0.4, 0.95, 0.7, 0.5 };
+// (task 100: the cover layer (ferns, mushrooms, tall grass) was 2.6 m / 0.5: a forest floor with almost no ferns)
+const double SPACING[5] = { 6.5, 5.0, 1.7, 3.2, 1.7 };
+const double MAX_CHANCE[5] = { 0.85, 0.4, 0.95, 0.7, 0.7 };
 const double GRASS_FINE = 0.6;
 
 struct Rng {
@@ -128,6 +129,7 @@ void PlanetScatterNative::setup(const Dictionary &p_config) {
 		s.foot_x = foot.x;
 		s.foot_y = foot.y;
 		s.crown = d.get("crown", 2.0);
+		s.canopy = d.get("canopy", s.crown);
 		s.drag = d.get("drag", 0.0);
 		s.stem_radius = d.get("stem_radius", 0.3);
 		s.shade_tolerance = d.get("shade_tolerance", 1.0);
@@ -488,7 +490,7 @@ Dictionary PlanetScatterNative::scatter(const Dictionary &p_tile) const {
 	auto place = [&](const Species &plant, const Vector3 &at) {
 		double scale = 1.0 + t.rng.range(-plant.size_spread, plant.size_spread);
 		if (plant.layer == CANOPY) { // a tree keeps its crown clear of its neighbours'
-			const double radius_here = plant.crown * scale;
+			const double radius_here = plant.canopy * scale;
 			if (crowded(at.x, at.z, radius_here)) {
 				return;
 			}

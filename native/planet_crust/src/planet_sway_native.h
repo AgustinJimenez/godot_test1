@@ -30,6 +30,8 @@ class PlanetSway : public Node {
 	Ref<PlantSwayNative> sway;
 	std::vector<Live> live;
 	double since = 0.0;
+	uint64_t look_us = 0, total_us = 0; // (PLANET_TIMING, task 101)
+	int timed_ticks = 0;
 	Dictionary keys; // the live ones by batch and index, to ask quickly
 	ObjectID turf; // the PlanetTurf (grass tufts), found among the planet's children
 	int counts[3] = { 0, 0, 0 }; // how many of the live ones are of each class

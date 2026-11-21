@@ -3,6 +3,7 @@
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 
@@ -16,6 +17,7 @@
 #include <limits>
 
 using namespace godot;
+
 
 namespace {
 
@@ -153,7 +155,7 @@ void PlanetCrustNative::setup(const Dictionary &p_config) {
 	}
 	rock_boundary = p_config["rock_boundary"];
 	PackedColorArray colours_in = p_config["rock_colours"];
-	for (int index = 0; index < 9; index++) {
+	for (int index = 0; index < 20; index++) {
 		rock_colours[index] = colours_in[index];
 	}
 	configure(warp, p_config["warp"]);
@@ -175,6 +177,83 @@ void PlanetCrustNative::setup(const Dictionary &p_config) {
 	cube_faces = p_config["faces"];
 	configure(craton, p_config["craton"]);
 	configure(basin, p_config["basin"]);
+	build_tectonic_grid();
+}
+
+// (task 101) The cube the plates' height is kept on. A face is the unit square at distance 1 along its axis seen from the centre (u, v in -1..1),
+// the faces' tangents below; a direction is mapped to the face of its largest axis.
+namespace {
+const Vector3 TECT_AXES[6] = { Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 1, 0), Vector3(0, -1, 0), Vector3(0, 0, 1), Vector3(0, 0, -1) };
+const Vector3 TECT_U[6] = { Vector3(0, 1, 0), Vector3(0, 1, 0), Vector3(1, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 0) };
+const Vector3 TECT_V[6] = { Vector3(0, 0, 1), Vector3(0, 0, 1), Vector3(0, 0, 1), Vector3(0, 0, 1), Vector3(0, 1, 0), Vector3(0, 1, 0) };
+} // namespace
+
+void PlanetCrustNative::build_tectonic_grid() {
+	tect_grid.clear();
+	if (OS::get_singleton()->has_environment("PLANET_NO_TECT_CACHE") || seeds.is_empty()) {
+		return;
+	}
+	const int nodes = TECT_NODES;
+	const double step = 2.0 / TECT_CELLS;
+	tect_grid.assign((size_t)6 * nodes * nodes, 0.0f);
+	std::atomic<int> next(0);
+	auto work = [&]() {
+		for (int row = next++; row < 6 * nodes; row = next++) {
+			const int face = row / nodes, j = row % nodes;
+			const double v = -1.0 + (j - 2) * step;
+			for (int i = 0; i < nodes; i++) {
+				const double u = -1.0 + (i - 2) * step;
+				const Vector3 dir = (TECT_AXES[face] + TECT_U[face] * (real_t)u + TECT_V[face] * (real_t)v).normalized();
+				tect_grid[((size_t)face * nodes + j) * nodes + i] = (float)tectonic_height(dir);
+			}
+		}
+	};
+	const int count = std::max(1, std::min(8, (int)std::thread::hardware_concurrency()));
+	std::vector<std::thread> threads;
+	for (int index = 1; index < count; index++) {
+		threads.emplace_back(work);
+	}
+	work();
+	for (std::thread &thread : threads) {
+		thread.join();
+	}
+}
+
+double PlanetCrustNative::tectonic_cached(const Vector3 &p_dir) const {
+	if (tect_grid.empty()) {
+		return tectonic_height(p_dir);
+	}
+	const double ax = std::abs((double)p_dir.x), ay = std::abs((double)p_dir.y), az = std::abs((double)p_dir.z);
+	int face;
+	if (ax >= ay && ax >= az) {
+		face = p_dir.x >= 0.0f ? 0 : 1;
+	} else if (ay >= az) {
+		face = p_dir.y >= 0.0f ? 2 : 3;
+	} else {
+		face = p_dir.z >= 0.0f ? 4 : 5;
+	}
+	const double along = p_dir.dot(TECT_AXES[face]);
+	const double u = p_dir.dot(TECT_U[face]) / along, v = p_dir.dot(TECT_V[face]) / along;
+	const double inverse = TECT_CELLS / 2.0;
+	const double fu = (u + 1.0) * inverse + 2.0, fv = (v + 1.0) * inverse + 2.0;
+	const int i0 = (int)fu, j0 = (int)fv;
+	const double tu = fu - i0, tv = fv - j0;
+	auto weights = [](double t, double w[4]) { // Catmull-Rom
+		w[0] = 0.5 * (-t * t * t + 2.0 * t * t - t);
+		w[1] = 0.5 * (3.0 * t * t * t - 5.0 * t * t + 2.0);
+		w[2] = 0.5 * (-3.0 * t * t * t + 4.0 * t * t + t);
+		w[3] = 0.5 * (t * t * t - t * t);
+	};
+	double wu[4], wv[4];
+	weights(tu, wu);
+	weights(tv, wv);
+	const float *base = tect_grid.data() + (size_t)face * TECT_NODES * TECT_NODES;
+	double value = 0.0;
+	for (int dj = 0; dj < 4; dj++) {
+		const float *row = base + (size_t)(j0 - 1 + dj) * TECT_NODES + (i0 - 1);
+		value += wv[dj] * (wu[0] * row[0] + wu[1] * row[1] + wu[2] * row[2] + wu[3] * row[3]);
+	}
+	return value;
 }
 
 // The direction pushed about by the slow noise (the plate edges wander).
@@ -493,7 +572,8 @@ double PlanetCrustNative::macro_ground(double p_units, const Vector3 &p_point, d
 // 2-30 m) is blurred away: on the beaches' gentle slope (2 %) that relief moved the waterline by metres, and the coarse levels cut it into
 // polygons of sand and water (the "cells" of the shallows). The blur is the mean of four neighbours 15 m round, which keeps a plain slope.
 double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
-	const double ground = ground_height_raw(p_dir);
+	const double tectonic = tectonic_height(p_dir);
+	const double ground = ground_height_from(p_dir, tectonic);
 	// The sea wears the ground down: in the shallows (to about 30 m deep) and on the beach (to a few metres up) every bump and hollow smaller than
 	// about a hundred metres is smoothed away, the more the nearer the sea level, so a coast is one smooth slope and not a rough bed with pits.
 	// (The small relief also moved the waterline by metres on a 2 % slope and the coarse levels cut it into polygons of sand and water.)
@@ -506,19 +586,26 @@ double PlanetCrustNative::ground_height(const Vector3 &p_dir) const {
 	const Vector3 e2 = up.cross(e1);
 	double mean = 0.0;
 	const double rings[2] = { 30.0, 85.0 };
+	// the plates' height of each neighbour: the exact one here plus the grid's difference to it (the grid's own error is the same at both)
+	const bool shortcut = !tect_grid.empty();
+	const double here = shortcut ? tectonic_cached(up) : 0.0;
 	for (int r = 0; r < 2; r++) {
 		const real_t reach = (real_t)(rings[r] / radius);
-		mean += ground_height_raw((up + e1 * reach).normalized());
-		mean += ground_height_raw((up - e1 * reach).normalized());
-		mean += ground_height_raw((up + e2 * reach).normalized());
-		mean += ground_height_raw((up - e2 * reach).normalized());
+		const Vector3 around[4] = { (up + e1 * reach).normalized(), (up - e1 * reach).normalized(), (up + e2 * reach).normalized(), (up - e2 * reach).normalized() };
+		for (int k = 0; k < 4; k++) {
+			mean += shortcut ? ground_height_from(around[k], tectonic + (tectonic_cached(around[k]) - here)) : ground_height_raw(around[k]);
+		}
 	}
 	mean *= 0.125;
 	return ground + (mean - ground) * near_sea;
 }
 
 double PlanetCrustNative::ground_height_raw(const Vector3 &p_dir) const {
-	double units = tectonic_height(p_dir) - sea;
+	return ground_height_from(p_dir, tectonic_height(p_dir));
+}
+
+double PlanetCrustNative::ground_height_from(const Vector3 &p_dir, double p_tectonic) const {
+	double units = p_tectonic - sea;
 	Vector3 p = p_dir * (real_t)radius;
 	double land = smooth(-0.02, 0.05, units);
 	double hill_height = land > 0.0 ? hills.at(p) * clampd(relief * 0.04, 14.0, 45.0) * valley_floor(p_dir) : 0.0;
@@ -693,7 +780,7 @@ Color PlanetCrustNative::illustrated_colour(const Vector3 &p_dir, double p_groun
 	return Color((float)mix(cr, 0.90, sand), (float)mix(cg, 0.82, sand), (float)mix(cb, 0.55, sand), 1.0f);
 }
 
-// How much of each of the nine rocks (basalt, andesite, granite, gneiss, schist, limestone, sandstone, red sandstone, shale)
+// How much of each of the twenty rocks (basalt, andesite, granite, gneiss, schist, limestone, sandstone, red sandstone, shale, marble, slate, quartzite, gabbro, diorite, rhyolite, chalk, obsidian, pumice, conglomerate, scoria)
 // is at a direction on ground of height `p_ground`: weights that add up to 1 (PlanetRock.weights).
 void PlanetCrustNative::rock_weights(const Vector3 &p_dir, double p_ground, float *w) const {
 	int plate = 0;
@@ -705,8 +792,8 @@ void PlanetCrustNative::rock_weights(const Vector3 &p_dir, double p_ground, floa
 	Vector3 p = p_dir * (real_t)radius;
 	double old = smooth(-0.15, 0.3, craton.at(p));
 	double regional = clampd(0.5 + 1.1 * (double)basin.at(p), 0.0, 1.0);
-	enum { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE };
-	for (int index = 0; index < 9; index++) {
+	enum { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE, MARBLE, SLATE, QUARTZITE, GABBRO, DIORITE, RHYOLITE, CHALK, OBSIDIAN, PUMICE, CONGLOMERATE, SCORIA };
+	for (int index = 0; index < 20; index++) {
 		w[index] = 0.0f;
 	}
 	if (!is_continental) {
@@ -732,25 +819,60 @@ void PlanetCrustNative::rock_weights(const Vector3 &p_dir, double p_ground, floa
 		w[ANDESITE] = (float)(near_edge * 0.3);
 	}
 	double total = 0.0;
-	for (int index = 0; index < 9; index++) {
+	for (int index = 0; index < 20; index++) {
 		total += w[index];
 	}
 	if (total <= 0.0001) {
 		w[GRANITE] = 1.0f;
 		total = 1.0;
 	}
-	for (int index = 0; index < 9; index++) {
+	for (int index = 0; index < 20; index++) {
 		w[index] = (float)((double)w[index] / total);
 	}
+	// the variants carved out of the rock they come from (the same maths as PlanetRock.weights)
+	const double metamorphic = near_edge * 0.8;
+	const double sea_cover = smooth(-0.2, 0.0, p_ground / relief);
+	const double move_from[4] = { (double)w[LIMESTONE], (double)w[SHALE], (double)w[SANDSTONE], (double)w[RED_SANDSTONE] };
+	w[LIMESTONE] = (float)(move_from[0] - move_from[0] * metamorphic);
+	w[MARBLE] = (float)(move_from[0] * metamorphic);
+	w[SHALE] = (float)(move_from[1] - move_from[1] * metamorphic);
+	w[SLATE] = (float)(move_from[1] * metamorphic);
+	w[SANDSTONE] = (float)(move_from[2] - move_from[2] * metamorphic);
+	w[RED_SANDSTONE] = (float)(move_from[3] - move_from[3] * metamorphic);
+	w[QUARTZITE] = (float)((move_from[2] + move_from[3]) * metamorphic);
+	const double basalt = (double)w[BASALT];
+	const double gabbro = is_continental ? 0.0 : basalt * 0.4 * (1.0 - sea_cover);
+	w[BASALT] = (float)(basalt - gabbro);
+	w[GABBRO] = (float)gabbro;
+	const double andesite = (double)w[ANDESITE];
+	w[ANDESITE] = (float)(andesite * 0.4);
+	w[DIORITE] = (float)(andesite * 0.35);
+	w[RHYOLITE] = (float)(andesite * 0.25);
+	const double limestone = (double)w[LIMESTONE];
+	const double chalk = limestone * smooth(0.8, 0.95, regional);
+	w[LIMESTONE] = (float)(limestone - chalk);
+	w[CHALK] = (float)chalk;
+	const double rhyolite = (double)w[RHYOLITE];
+	w[OBSIDIAN] = (float)(rhyolite * 0.2);
+	w[PUMICE] = (float)(rhyolite * 0.15);
+	w[RHYOLITE] = (float)(rhyolite * 0.65);
+	const double sandstone = (double)w[SANDSTONE];
+	const double conglomerate = sandstone * 0.3 * smooth(0.1, 0.4, tall);
+	w[SANDSTONE] = (float)(sandstone - conglomerate);
+	w[CONGLOMERATE] = (float)conglomerate;
+	const double basalt_left = (double)w[BASALT];
+	const double scoria = basalt_left * near_edge * 0.3;
+	w[BASALT] = (float)(basalt_left - scoria);
+	w[SCORIA] = (float)scoria;
 }
 
 Color PlanetCrustNative::rock_colour(const Vector3 &p_dir, double p_ground, double p_steep, double p_speckle, bool p_strata) const {
-	float w[9];
+	float w[20];
 	rock_weights(p_dir, p_ground, w);
-	enum { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE };
+	enum { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE, MARBLE, SLATE, QUARTZITE, GABBRO, DIORITE, RHYOLITE, CHALK, OBSIDIAN, PUMICE, CONGLOMERATE, SCORIA };
 	const double tall = clampd(p_ground / relief, 0.0, 1.0);
 	Color rock(0.0f, 0.0f, 0.0f, 0.0f);
-	for (int index = 0; index < 9; index++) {
+	for (int index = 0; index < 20; index++) {
 		rock += rock_colours[index] * w[index];
 	}
 	double sedimentary = (double)w[LIMESTONE] + w[SANDSTONE] + w[RED_SANDSTONE] + w[SHALE];
@@ -1905,13 +2027,16 @@ PackedColorArray PlanetCrustNative::ground_colours(const PackedVector3Array &p_d
 // The surface numbers of one point (see `ground_materials`): ten bytes written at `at`.
 void PlanetCrustNative::material_at(const Vector3 &dir, double ground, double steep, uint8_t *at) const {
 	// per rock: angular, coarse, pale, flaky
-	static const float TABLE[9][4] = { { 0.8f, 0.35f, 0.0f, 0.1f }, { 0.75f, 0.45f, 0.25f, 0.1f }, { 0.85f, 0.85f, 0.65f, 0.0f },
+	static const float TABLE[20][4] = { { 0.8f, 0.35f, 0.0f, 0.1f }, { 0.75f, 0.45f, 0.25f, 0.1f }, { 0.85f, 0.85f, 0.65f, 0.0f },
 		{ 0.7f, 0.6f, 0.5f, 0.35f }, { 0.5f, 0.35f, 0.4f, 0.9f }, { 0.2f, 0.55f, 0.95f, 0.1f }, { 0.3f, 0.15f, 0.7f, 0.4f },
-		{ 0.3f, 0.15f, 0.45f, 0.4f }, { 0.4f, 0.2f, 0.15f, 1.0f } };
-	float w[9];
+		{ 0.3f, 0.15f, 0.45f, 0.4f }, { 0.4f, 0.2f, 0.15f, 1.0f },
+		{ 0.25f, 0.5f, 0.9f, 0.15f }, { 0.5f, 0.25f, 0.25f, 1.0f }, { 0.85f, 0.6f, 0.7f, 0.05f }, { 0.8f, 0.45f, 0.0f, 0.05f },
+		{ 0.75f, 0.55f, 0.35f, 0.05f }, { 0.7f, 0.4f, 0.55f, 0.1f },
+		{ 0.15f, 0.4f, 1.0f, 0.1f }, { 0.95f, 0.2f, 0.0f, 0.05f }, { 0.4f, 0.7f, 0.8f, 0.0f }, { 0.35f, 0.9f, 0.5f, 0.1f }, { 0.8f, 0.5f, 0.1f, 0.0f } };
+	float w[20];
 	rock_weights(dir, ground, w);
 	float mixed[4] = { 0, 0, 0, 0 };
-	for (int rock = 0; rock < 9; rock++) {
+	for (int rock = 0; rock < 20; rock++) {
 		for (int k = 0; k < 4; k++) {
 			mixed[k] += TABLE[rock][k] * w[rock];
 		}

@@ -1,4 +1,6 @@
 extends Node3D
+
+const LAYER_COUNT := 5 # PlantSpecies.Layer: CANOPY, UNDERSTORY, GRASSLAND, MEADOW, COVER (a native enum has no size())
 ## Procedural world lab. `-- --world-check` (headless): builds the world around the origin,
 ## prints one WORLD_CHECK line (chunk count, build time, the player standing on the ground).
 ## `-- --world-shots` (with a window): saves /tmp/world_*.png from a few viewpoints.
@@ -183,9 +185,9 @@ func _print_flora() -> void:
 	for id: int in seen.keys():
 		rows.append("%s x%d" % [registry.by_id(id).common_name, seen[id]])
 	rows.sort()
-	var enough := seen.size() >= 14 and layers.size() == PlantSpecies.Layer.size()
+	var enough := seen.size() >= 14 and layers.size() == LAYER_COUNT
 	print("FLORA_CHECK %s species=%d of %d layers=%d/%d" % ["PASS" if enough else "FAIL", seen.size(),
-			registry.species.size(), layers.size(), PlantSpecies.Layer.size()])
+			registry.species.size(), layers.size(), LAYER_COUNT])
 	if "--flora" in OS.get_cmdline_user_args():
 		print("  ", ", ".join(rows))
 

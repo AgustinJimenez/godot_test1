@@ -53,7 +53,7 @@ const int FORM_ORDER[FORM_COUNT] = {
 	PlantSpecies::CACTUS, PlantSpecies::GRASS, PlantSpecies::TALL_GRASS, PlantSpecies::REED, PlantSpecies::FLOWER,
 	PlantSpecies::FERN, PlantSpecies::MUSHROOM
 };
-const int QUOTA[FORM_COUNT] = { 3, 4, 1, 1, 6, 2, 4, 2, 2, 6, 3, 2 };
+const int QUOTA[FORM_COUNT] = { 3, 6, 1, 1, 6, 2, 4, 2, 2, 6, 3, 2 }; // (task 100: broadleaf 4 -> 6, more kinds of leafy tree per world)
 
 // Every tree species' height times this (the crown and trunk widen with the square root of it, so they do not look thin).
 const double TREE_TALLER = 1.35;
@@ -63,7 +63,9 @@ bool kind_noun(const String &p_kind, String &r_noun) {
 	static const char *kinds[][2] = {
 		{ "umbrella", "Acacia" }, { "dragon", "Dragon Tree" }, { "raintree", "Rain Tree" }, { "buttress", "Fig" },
 		{ "willow", "Willow" }, { "cherry", "Cherry" }, { "blossom", "Plum" }, { "ancient", "Live Oak" },
-		{ "oak", "Oak" }, { "cypress", "Cypress" }, { "giant", "Redwood" }
+		{ "oak", "Oak" }, { "cypress", "Cypress" }, { "giant", "Redwood" },
+		{ "birch", "Birch" }, { "maple", "Maple" }, { "spruce", "Spruce" }, { "juniper", "Juniper" }, { "baobab", "Baobab" }, { "elm", "Elm" }, { "eucalyptus", "Eucalyptus" },
+		{ "moss", "Moss" }, { "lupine", "Lupine" }, { "bell", "Bellflower" }, { "beech", "Beech" }, { "linden", "Linden" }, { "pine", "Pine" }, { "poplar", "Poplar" }, { "olive", "Olive" }, { "bristlecone", "Bristlecone Pine" }
 	};
 	for (const auto &pair : kinds) {
 		if (p_kind == String(pair[0])) {
@@ -134,14 +136,37 @@ Color rhsv(const Dice &p_rng, double p_hue_from, double p_hue_to, double p_sat_f
 	return hsv(hue, saturation, value);
 }
 
-// A flower or berry colour: anywhere on the wheel except the greens.
+// A flower or berry colour: the colours real meadow flowers and berries have (task 100: it was any hue but green, which made cyan and
+// magenta neon): white, yellow, orange, red, pink, violet, blue; muted a little, never the full-strength screen colours.
 Color bright(const Dice &p_rng) {
-	double hue = p_rng->randf();
-	while (hue > 0.2 && hue < 0.45) {
-		hue = p_rng->randf();
+	struct Tone {
+		double hue_from, hue_to, sat_from, sat_to, val_from, val_to, weight;
+	};
+	static const Tone tones[] = {
+		{ 0.0, 1.0, 0.0, 0.08, 0.9, 1.0, 2.0 }, // white
+		{ 0.12, 0.16, 0.7, 0.92, 0.85, 1.0, 2.5 }, // yellow
+		{ 0.06, 0.09, 0.75, 0.9, 0.85, 0.98, 1.0 }, // orange
+		{ 0.99, 1.01, 0.7, 0.88, 0.7, 0.9, 1.0 }, // red
+		{ 0.9, 0.96, 0.35, 0.65, 0.85, 1.0, 1.5 }, // pink
+		{ 0.72, 0.8, 0.4, 0.7, 0.6, 0.85, 1.5 }, // violet
+		{ 0.58, 0.66, 0.5, 0.75, 0.65, 0.9, 1.0 }, // blue
+	};
+	double total = 0.0;
+	for (const Tone &t : tones) {
+		total += t.weight;
 	}
-	const double saturation = rr(p_rng, 0.55, 0.95);
-	const double value = rr(p_rng, 0.8, 1.0);
+	double roll = p_rng->randf() * total;
+	const Tone *pick = &tones[0];
+	for (const Tone &t : tones) {
+		roll -= t.weight;
+		if (roll <= 0.0) {
+			pick = &t;
+			break;
+		}
+	}
+	const double hue = rr(p_rng, pick->hue_from, pick->hue_to);
+	const double saturation = rr(p_rng, pick->sat_from, pick->sat_to);
+	const double value = rr(p_rng, pick->val_from, pick->val_to);
 	return hsv(hue, saturation, value);
 }
 
@@ -229,7 +254,7 @@ void niche(PlantSpecies &s, const Dice &rng, double t) {
 			s.above_min = 1.5;
 			s.above_max = 55.0;
 			s.slope_max = 0.5;
-			s.density = lerpf(0.14, 0.4, t);
+			s.density = lerpf(0.2, 0.55, t); // (task 100)
 			s.patch_freq = rr(rng, 1.6, 2.6);
 			s.patch_strength = rr(rng, 0.0, 0.4);
 			break;
@@ -287,7 +312,7 @@ void niche(PlantSpecies &s, const Dice &rng, double t) {
 			s.above_min = 1.5;
 			s.above_max = 32.0;
 			s.slope_max = 0.4;
-			s.density = rr(rng, 0.5, 0.75);
+			s.density = rr(rng, 0.65, 0.95); // (task 100)
 			s.patch_freq = rr(rng, 2.0, 3.0);
 			s.patch_strength = rr(rng, 0.75, 0.9);
 			break;
@@ -299,7 +324,7 @@ void niche(PlantSpecies &s, const Dice &rng, double t) {
 			s.above_min = 1.5;
 			s.above_max = 45.0;
 			s.slope_max = 0.5;
-			s.density = rr(rng, 0.25, 0.42);
+			s.density = rr(rng, 0.4, 0.68); // (task 100: a fuller forest floor)
 			s.patch_freq = rr(rng, 1.2, 2.0);
 			s.patch_strength = 0.3;
 			break;
@@ -311,7 +336,7 @@ void niche(PlantSpecies &s, const Dice &rng, double t) {
 			s.above_min = 1.2;
 			s.above_max = 40.0;
 			s.slope_max = 0.5;
-			s.density = rr(rng, 0.1, 0.2);
+			s.density = rr(rng, 0.2, 0.36); // (task 100)
 			s.patch_freq = rr(rng, 2.0, 3.0);
 			s.patch_strength = 0.7;
 			break;
@@ -329,10 +354,10 @@ void shape_forms(PlantSpecies &s, const Dice &rng) {
 			s.crown = lerpf(2.7, 1.1, slender) * rr(rng, 0.9, 1.1);
 			s.count = (int64_t)lerpf(4.0, 8.0, slender) + ri(rng, 0, 1);
 			s.girth = rr(rng, 0.2, 0.38);
-			s.bare = rr(rng, 0.14, 0.26);
+			s.bare = rr(rng, 0.28, 0.45); // (task 099: forest conifers lose their lower branches)
 			s.droop = rr(rng, 0.2, 0.9);
 			s.wobble = rr(rng, 0.1, 0.22);
-			s.bark = rhsv(rng, 0.05, 0.08, 0.5, 0.65, 0.2, 0.34);
+			s.bark = rhsv(rng, 0.05, 0.09, 0.15, 0.62, 0.17, 0.34); // (task 099: grey-brown spruce bark as well as the orange-brown of a pine)
 			const double hue = rr(rng, 0.33, 0.47);
 			const double saturation = rr(rng, 0.55, 0.75);
 			const double value = rr(rng, 0.22, 0.36);
@@ -484,8 +509,8 @@ void shape_forms(PlantSpecies &s, const Dice &rng) {
 		case PlantSpecies::MUSHROOM: {
 			static const Color caps[5] = { Color(0.82f, 0.18f, 0.15f), Color(0.62f, 0.42f, 0.25f), Color(0.9f, 0.78f, 0.55f),
 				Color(0.85f, 0.5f, 0.2f), Color(0.55f, 0.35f, 0.6f) };
-			s.height = rr(rng, 0.1, 0.3);
-			s.crown = rr(rng, 0.9, 1.3); // cap radius per stalk height
+			s.height = rr(rng, 0.08, 0.22);
+			s.crown = rr(rng, 0.5, 0.85); // cap radius per stalk height (task 100: was 0.9-1.3 and 0.1-0.3 m: caps 0.6 m wide)
 			s.count = ri(rng, 1, 4);
 			s.droop = rr(rng, 0.3, 0.9); // 0 flat cap .. 1 tall dome
 			s.accent = caps[rng->randi() % 5];
@@ -519,7 +544,7 @@ void archetype_of(PlantSpecies &s) {
 	switch (s.form) {
 		case PlantSpecies::BROADLEAF:
 			if (s.marked_bark) {
-				weights = { { "leafy", 1.0 } }; // a birch
+				weights = { { "birch", 3.0 }, { "leafy", 1.0 } }; // a birch
 			} else if (s.droop > 0.4) {
 				weights = { { "willow", 1.0 } };
 			} else {
@@ -533,11 +558,21 @@ void archetype_of(PlantSpecies &s) {
 					{ "cherry", !hot ? 1.0 : 0.0 },
 					{ "blossom", !hot ? 1.0 : 0.0 },
 					{ "ancient", s.moisture > 0.5 ? 0.3 : 0.0 },
+					{ "maple", !hot ? 2.0 : 0.0 },
+					{ "elm", (!hot && s.moisture > 0.3) ? 1.5 : 0.0 },
+					{ "baobab", (hot && s.moisture < 0.5) ? 2.0 : 0.0 },
+					{ "eucalyptus", (hot && s.moisture >= 0.25 && s.moisture <= 0.7) ? 2.0 : 0.0 },
+					{ "poplar", (!hot && s.moisture > 0.45) ? 1.5 : 0.0 },
+					{ "beech", (!hot && s.moisture > 0.45) ? 2.0 : 0.0 },
+					{ "linden", (!hot && s.moisture > 0.35) ? 1.5 : 0.0 },
+					{ "olive", (hot && s.moisture < 0.6) ? 1.5 : 0.0 },
 				};
 			}
 			break;
 		case PlantSpecies::CONIFER:
-			weights = { { "conifer", 4.0 }, { "cypress", s.heat > 0.4 ? 3.0 : 0.0 }, { "giant", s.moisture > 0.7 ? 0.25 : 0.0 } };
+			weights = { { "conifer", 4.0 }, { "cypress", s.heat > 0.4 ? 3.0 : 0.0 }, { "giant", s.moisture > 0.7 ? 0.25 : 0.0 },
+				{ "spruce", s.heat < 0.5 ? 3.0 : 0.0 }, { "juniper", s.moisture < 0.55 ? 2.5 : 0.0 },
+				{ "pine", s.moisture < 0.75 ? 2.0 : 0.3 }, { "bristlecone", 0.0 } }; // (task 100: pine on again with the bottle-brush pads; bristlecone still off)
 			break;
 		case PlantSpecies::PALM:
 			weights = { { "palm", 1.0 } };
@@ -558,13 +593,16 @@ void archetype_of(PlantSpecies &s) {
 			weights = { { "meadow", 3.0 }, { "pampas", 2.0 }, { "tussock", 1.0 } };
 			break;
 		case PlantSpecies::REED:
-			weights = { { "reed", 1.0 } };
+			weights = { { "reed", 2.0 }, { "sedge", 1.5 }, { "bamboo", s.heat > 0.6 ? 2.0 : 0.0 } };
 			break;
 		case PlantSpecies::FLOWER:
-			weights = { { "wildflower", 1.0 } };
+			weights = { { "wildflower", 2.0 }, { "daisy", 1.5 }, { "poppy", 1.0 }, { "lavender", s.moisture < 0.5 ? 1.5 : 0.0 }, { "lupine", 1.5 }, { "bell", 1.2 } };
 			break;
 		case PlantSpecies::FERN:
-			weights = { { "fern", 1.0 } };
+			weights = { { "fern", 2.0 }, { "bracken", 1.0 } };
+			break;
+		case PlantSpecies::MUSHROOM:
+			weights = { { "mushroom", 3.0 }, { "moss", s.moisture > 0.5 ? 2.0 : 0.5 } };
 			break;
 		default:
 			return;
@@ -721,6 +759,7 @@ void SpeciesGenerator::apply_leaf_traits(const Ref<PlantSpecies> &p_species, con
 	PlantSpecies &s = *p_species.ptr();
 	const Dice &dice = p_dice;
 	s.limb_count = ri(dice, 4, 5);
+	bool generic_leaf = false;
 	if (p_noun == "Oak") {
 		leaf(s, PlantSpecies::LOBED, dice, 1.7, 0.2, 3, 62.0);
 	} else if (p_noun == "Maple") {
@@ -741,9 +780,28 @@ void SpeciesGenerator::apply_leaf_traits(const Ref<PlantSpecies> &p_species, con
 		leaf(s, PlantSpecies::LANCEOLATE, dice, 4.5, 0.17, 0, 58.0);
 		s.droop = s.droop > 0.7 ? s.droop : 0.7; // a willow weeps
 	} else {
-		leaf(s, PlantSpecies::OVAL, dice, 1.8, 0.2, 0, 50.0);
+		// (task 099) a tree with no leaf of its own by name draws one of the common leaf shapes, not always the same oval
+		const double roll = dice->randf() * 8.0;
+		if (roll < 3.0) {
+			leaf(s, PlantSpecies::OVAL, dice, 1.8, 0.2, 0, 50.0);
+		} else if (roll < 4.6) {
+			leaf(s, PlantSpecies::HEART, dice, 1.1, 0.21, 0, 48.0);
+		} else if (roll < 5.6) {
+			leaf(s, PlantSpecies::DIAMOND, dice, 1.25, 0.17, 0, 34.0);
+		} else if (roll < 6.8) {
+			leaf(s, PlantSpecies::LANCEOLATE, dice, 3.2, 0.19, 0, 46.0);
+		} else if (roll < 7.6) {
+			leaf(s, PlantSpecies::LOBED, dice, 1.6, 0.2, 3, 58.0);
+		} else {
+			leaf(s, PlantSpecies::PALMATE, dice, 1.0, 0.17, 2, 52.0);
+		}
+		generic_leaf = true;
 	}
 	s.leaf_edge = PlantSpecies::SMOOTH;
+	if (generic_leaf) {
+		const double edge = dice->randf();
+		s.leaf_edge = edge < 0.4 ? PlantSpecies::SMOOTH : (edge < 0.75 ? PlantSpecies::SERRATED : PlantSpecies::WAVY);
+	}
 	if (p_noun == "Elm" || p_noun == "Birch" || p_noun == "Poplar" || p_noun == "Linden") {
 		s.leaf_edge = PlantSpecies::SERRATED;
 	} else if (p_noun == "Beech" || p_noun == "Willow") {

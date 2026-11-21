@@ -130,6 +130,22 @@ func _ready() -> void:
 		elif arg == "--lowpoly":
 			detailed = false
 	_random.seed = seed_value
+	var kind := ""
+	var shot := ""
+	var focus_y := -1.0
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--kind="): # a named kind of TreeArchetypes, drawn at once
+			kind = arg.get_slice("=", 1)
+		elif arg.begins_with("--dist="): # camera distance, in tree-sizes
+			_distance = float(arg.get_slice("=", 1))
+		elif arg.begins_with("--yaw="):
+			_yaw = deg_to_rad(float(arg.get_slice("=", 1)))
+		elif arg.begins_with("--pitch="):
+			_pitch = deg_to_rad(float(arg.get_slice("=", 1)))
+		elif arg.begins_with("--focus="): # the height looked at, as a share of the tree's height (a trunk or leaf closeup)
+			focus_y = float(arg.get_slice("=", 1))
+		elif arg.begins_with("--shot="):
+			shot = arg.substr(7)
 	var registry := SpeciesRegistry.create(seed_value, 36)
 	for one in registry.species:
 		if one.form == PlantSpecies.Form.BROADLEAF and _species_leafy == null:
@@ -139,6 +155,20 @@ func _ready() -> void:
 	_build_stage()
 	_build_panel()
 	_preset(false)
+	if kind != "":
+		_archetype(kind)
+		if focus_y >= 0.0:
+			_target = Vector3(0.0, genome.height * focus_y, 0.0)
+			_place_camera()
+	if shot != "":
+		_shoot.call_deferred(shot)
+
+
+## `--shot=PATH`: saves the picture after a moment and quits.
+func _shoot(path: String) -> void:
+	await get_tree().create_timer(2.5).timeout
+	get_viewport().get_texture().get_image().save_png(path)
+	get_tree().quit()
 
 
 func _slider_row(parent: Control, title: String, start: float, apply: Callable) -> void:
@@ -434,10 +464,11 @@ func _show_genome() -> void:
 
 ## Every trait of the tree as text, onto the clipboard (to paste into a note or a message).
 func _copy_properties() -> void:
-	var names := {"leaf_shape": PlantSpecies.LeafShape.keys(),
-			"leaf_edge": PlantSpecies.LeafEdge.keys(),
-			"leaf_pattern": PlantSpecies.LeafPattern.keys(), "foliage": TreeGenome.Foliage.keys(),
-			"profile": TreeGenome.Profile.keys()}
+	var names := {"leaf_shape": ClassDB.class_get_enum_constants(&"PlantSpecies", &"LeafShape"),
+			"leaf_edge": ClassDB.class_get_enum_constants(&"PlantSpecies", &"LeafEdge"),
+			"leaf_pattern": ClassDB.class_get_enum_constants(&"PlantSpecies", &"LeafPattern"),
+			"foliage": ClassDB.class_get_enum_constants(&"TreeGenome", &"Foliage"),
+			"profile": ClassDB.class_get_enum_constants(&"TreeGenome", &"Profile")}
 	var lines: PackedStringArray = ["TreeGenome (tree_builder_lab)"]
 	for info: Dictionary in genome.get_property_list():
 		if not (int(info["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE):

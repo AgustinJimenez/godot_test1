@@ -17,6 +17,9 @@ if [[ -z "${GODOT}" ]]; then
 		GODOT="${DEFAULT_GODOT}"
 	fi
 fi
+if [[ -z "${GDLINT:-}" && -x "${PROJECT_ROOT}/.venv/bin/gdlint" ]]; then # the same one scripts/check.sh uses
+	GDLINT="${PROJECT_ROOT}/.venv/bin/gdlint"
+fi
 GDLINT="${GDLINT:-gdlint}"
 LOG_DIR="${LOG_DIR:-$(mktemp -d)}"
 quick=0

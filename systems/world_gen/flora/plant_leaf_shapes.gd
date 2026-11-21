@@ -249,7 +249,8 @@ static func _add_leaf_smooth(builder: MeshBuilder, outline: PackedVector2Array, 
 			var across := here.x * width * (1.0 + asym * signf(here.x)) + skew * here.y * here.y
 			# cupped: the midrib rides high, the blade falls away to the rim, rippled between the veins
 			var ripple := sin(here.y * 17.0 + signf(here.x) * 1.7) * 0.012 * share
-			var lift := fold * (1.0 - share) * 0.4 + ripple - 0.015 * share * share
+			# (the fold fades out toward the stalk: at the base the blade is a few millimetres wide, a full cupping there made a steep wall, a hard crease)
+			var lift := fold * (1.0 - share) * 0.4 * smoothstep(0.0, 0.3, here.y) + ripple - 0.015 * share * share
 			var spot := base + axis * (here.y * length) + right * (across * length) 					+ normal * ((lift + curl * here.y * here.y) * length)
 			var color := base_color.lerp(tip_color, here.y)
 			if ring == 0:

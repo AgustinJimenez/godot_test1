@@ -1,3 +1,4 @@
+#include "frame_timer.h"
 #include "planet_atmosphere_native.h"
 
 #include "graphics_lookup.h"
@@ -171,6 +172,7 @@ void PlanetAtmosphere::own_every_look_setting() {
 }
 
 void PlanetAtmosphere::_process(double p_delta) {
+	FRAME_TIMER("atmosphere");
 	if (day_seconds > 0.0) {
 		time_of_day = Math::fposmod(time_of_day + p_delta * 24.0 / day_seconds, 24.0);
 	}
@@ -408,10 +410,13 @@ void PlanetAtmosphere::apply() {
 	sun_light->set_shadow(shadows > 0);
 	static const double reach[4] = { 0.0, 90.0, 160.0, 300.0 };
 	sun_light->set_param(Light3D::PARAM_SHADOW_MAX_DISTANCE, reach[CLAMP(shadows, 0, 3)]);
-	sun_light->set_param(Light3D::PARAM_SIZE, 0.5); //(the sun is half a degree wide: shadow edges soften with the distance from what casts them, as in UE5's PCSS)
+	sun_light->set_param(Light3D::PARAM_SIZE, OS::get_singleton()->has_environment("PLANET_SUN_SIZE") ? OS::get_singleton()->get_environment("PLANET_SUN_SIZE").to_float() : 0.5); // (PLANET_SUN_SIZE: task 101, what the soft shadow search costs) //(the sun is half a degree wide: shadow edges soften with the distance from what casts them, as in UE5's PCSS)
 	if (shadows == 1 || shadows == 2) { // Low / Medium: two cascades, the near one for what is close (sharp), the far one out to 1.7 times the old reach
 		sun_light->set_shadow_mode(DirectionalLight3D::SHADOW_PARALLEL_2_SPLITS);
-		sun_light->set_param(Light3D::PARAM_SHADOW_MAX_DISTANCE, shadows == 1 ? 150.0 : 250.0);
+		{
+			const double scale = OS::get_singleton()->has_environment("PLANET_SHADOW_SCALE") ? OS::get_singleton()->get_environment("PLANET_SHADOW_SCALE").to_float() : 1.0; // (task 101: what the shadow reach costs)
+			sun_light->set_param(Light3D::PARAM_SHADOW_MAX_DISTANCE, (shadows == 1 ? 150.0 : 250.0) * scale);
+		}
 		sun_light->set_param(Light3D::PARAM_SHADOW_SPLIT_1_OFFSET, 0.2);
 	}
 	if (shadows >= 3) { // High: four cascades out to 1.5 km, long dune and ridge shadows (+3 ms in forest)

@@ -108,6 +108,8 @@ public:
 	int64_t coarse_level() const;
 	void build_all(const Vector3 &p_at, bool p_near_only = false);
 	double progress(double p_ground_metres, double p_plant_metres) const;
+	// (task 101) the same count in its three parts for the loading text: [ground have, need, coarse planet have, need, plants have, need]
+	PackedInt32Array progress_parts(double p_ground_metres, double p_plant_metres) const;
 	bool is_threaded() const { return !workers.empty(); }
 	int64_t wanted_count() const { return (int64_t)wanted.size(); }
 	void place_all();

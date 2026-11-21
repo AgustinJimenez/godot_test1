@@ -1,3 +1,4 @@
+#include "frame_timer.h"
 #include "planet_prints_native.h"
 
 #include "planet_imprint_native.h"
@@ -253,6 +254,7 @@ void PlanetFootprints::_bind_methods() {
 }
 
 void PlanetFootprints::_physics_process(double p_delta) {
+	FRAME_TIMER("footprints");
 	Object *planet_object = get_planet();
 	follow(p_delta);
 	if (dents.is_null() && planet_object != nullptr) {

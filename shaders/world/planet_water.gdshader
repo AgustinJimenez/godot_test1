@@ -143,7 +143,12 @@ void vertex() {
 	// the geometry swells only near: far off the vertices are tens or hundreds of metres apart and a swell of 6-28 m sampled that coarsely
 	// aliases into a moire of rows (the far sea mesh and the coarse water blocks); the normals carry the swell there
 	float near_swell = 1.0 - smoothstep(60.0, 300.0, length((MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz));
-	VERTEX.y += waves(world_pos.xz, TIME * wave_speed) * wave_height * roll * near_swell;
+	// (over a beach that falls 1 m in 500 a crest of a metre shows through the sand for hundreds of metres inland, and a trough sinks under it: the swell is held to what the
+	// water over this ground can hold, from the depth of the ground under it (vertex colour), fading out from 2.5 m of water to none at half a metre (a centimetre of lift moves the waterline five metres on a 1:500 shelf), and never past the depth)
+	float depth_here = COLOR.g * 4.0; // (the sea mesh of a planet tile carries the water over the ground in green, in quarters of 4 m; a plain white plane reads 4: deep)
+	float room = max(depth_here - 0.4, 0.0);
+	float lift = waves(world_pos.xz, TIME * wave_speed) * wave_height * roll * near_swell * smoothstep(0.5, 2.5, depth_here);
+	VERTEX.y += clamp(lift, -room, room);
 }
 
 // view-space z of the scene behind the water at a screen position
@@ -211,7 +216,11 @@ void fragment() {
 	float fine_keep = 1.0 - smoothstep(10.0, 160.0, away); // (the ripples are a few pixels across by 160 m on this 20 km planet; any further they aliased into white glints)
 	float long_keep = 1.0 - 0.7 * smoothstep(80.0, 600.0, away); // (kept far out: the long waves are what a far sea glitters on; roughness filters them)
 	float short_gain = (0.25 + 1.5 * ripple_noise(world_pos.xz * 0.012 + vec2(TIME * 0.02, -TIME * 0.015))) * (1.0 - 1.0 * smoothstep(30.0, 250.0, away)); // (far off the short swells are a few pixels wide: regular rows of glints)
-	vec2 slope = wave_slope(world_pos.xz, TIME * wave_speed, short_gain, foot) * wave_height * 1.1 * roll * long_keep;
+	float behind = scene_z(SCREEN_UV, INV_PROJECTION_MATRIX);
+	float thickness = max(VERTEX.z - behind, 0.0) + thickness_bias; // (the far sea's sphere sits a little under the sea's level: it adds that back, so the two match at the hand-over)
+	// (the geometry's swell dies out over shallows near the eye; past it (the shore seen from far off) the slopes die out the same way, from the water's thickness over the bed)
+	float shallow_keep = mix(smoothstep(0.1, 1.5, thickness), 1.0, smoothstep(1500.0, 3500.0, away));
+	vec2 slope = wave_slope(world_pos.xz, TIME * wave_speed, short_gain, foot) * wave_height * 1.1 * roll * long_keep * shallow_keep;
 	slope += ripples(world_pos.xz, TIME) * mix(0.35, 1.0, roll) * fine_keep;
 	vec3 smooth_normal = normalize((VIEW_MATRIX * vec4(-slope.x, 1.0, -slope.y, 0.0)).xyz);
 	NORMAL = normalize(mix(flat_normal, smooth_normal, 1.0)); // planet water: smooth glint, no facet squares
@@ -227,8 +236,6 @@ void fragment() {
 			NORMAL = normalize(NORMAL + up_eye * (0.09 - mirrored) * 2.0);
 		}
 	}
-	float behind = scene_z(SCREEN_UV, INV_PROJECTION_MATRIX);
-	float thickness = max(VERTEX.z - behind, 0.0) + thickness_bias; // (the far sea's sphere sits a little under the sea's level: it adds that back, so the two match at the hand-over)
 	float t = clamp(thickness / depth_fade, 0.0, 1.0);
 	vec4 color = mix(shallow_color, deep_color, sqrt(t));
 
@@ -236,6 +243,10 @@ void fragment() {
 	float swell = 0.5 + 0.5 * sin(TIME * 1.4 + world_pos.x * 0.17 + world_pos.z * 0.13);
 	float torn = ripple_noise(world_pos.xz * 1.7 + vec2(TIME * 0.2, -TIME * 0.15));
 	float edge = foam_width * mix(1.0, 0.45 + 1.1 * swell, realism) * mix(1.0, 0.55 + 0.9 * torn, realism);
+	// (the band is a depth, so over a flat shelf (1 m in 500) it covered hundreds of metres of sand under a film of water, breathing in and out with the swell:
+	// waves that came and went in the middle of dry-looking ground. A swash is a few metres wide: its depth is the bed's slope times that width)
+	float bed_slope = length(vec2(dFdx(thickness), dFdy(thickness))) / max(foot, 0.05); // metres of depth per metre of shore
+	edge = min(edge, max(bed_slope * 5.0, 0.05));
 	float foam = 1.0 - smoothstep(0.0, edge, thickness);
 	// foam on the wave crests of open water, in streaks that drift
 	float crest = smoothstep(0.45, 0.95, waves(world_pos.xz, TIME * wave_speed)) * roll * roll;

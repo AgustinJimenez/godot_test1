@@ -1,3 +1,4 @@
+#include "frame_timer.h"
 #include "flora_meshes_native.h"
 #include "species_registry_native.h"
 #include "planet_world_native.h"
@@ -112,6 +113,8 @@ void PlanetWorld::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("altitude"), &PlanetWorld::altitude);
 	ClassDB::bind_method(D_METHOD("update_now"), &PlanetWorld::update_now);
 	ClassDB::bind_method(D_METHOD("cover_the_loading"), &PlanetWorld::cover_the_loading);
+	ClassDB::bind_method(D_METHOD("get_load_fraction"), &PlanetWorld::get_load_fraction);
+	ClassDB::bind_method(D_METHOD("get_loading_text"), &PlanetWorld::get_loading_text);
 }
 
 PlanetWorld::PlanetWorld() {
@@ -360,6 +363,16 @@ Vector3 PlanetWorld::start(Node3D *p_target, const Vector3 &p_direction, double 
 	return dir;
 }
 
+// (task 101) the loading text (the planet'"'"'s own stage lines), for a loading screen drawn over it
+String PlanetWorld::get_loading_text() const {
+	return loading && load_label != nullptr ? load_label->get_text() : String();
+}
+
+// (task 101) how far the planet's own loading is, 0..0.99, only ever going up: the voxel loading screen builds its percentage on it
+double PlanetWorld::get_load_fraction() const {
+	return load_shown;
+}
+
 // Black screen and the loading text while the ground round the player is made.
 void PlanetWorld::cover_the_loading() {
 	load_label->set_visible(true);
@@ -367,6 +380,11 @@ void PlanetWorld::cover_the_loading() {
 	colour.a = 1.0;
 	dark->set_modulate(colour);
 	dark->set_visible(true);
+	// (task 101) nothing of the 3D world is seen under the black, so it is not drawn: it kept the GPU above 90 % for the whole load
+	if (get_viewport() != nullptr && OS::get_singleton()->get_environment("PLANET_LOAD_RENDER") == "") {
+		get_viewport()->set_disable_3d(true);
+		rendering_off = true;
+	}
 }
 
 // The point of the planet closest to `position` (metres from the planet's centre, anywhere in space): the unit direction to start over.
@@ -645,10 +663,45 @@ void PlanetWorld::wait_for_the_ground(double p_delta) {
 	ground->set_burst(true);
 	double done = ground->progress(LOAD_GROUND, load_plants());
 	load_shown = std::max(load_shown, std::min(done, 0.99));
-	load_label->set_text(vformat("Generating the planet...  %d %%", (int)(load_shown * 100.0)));
+	{ // (task 101) what is being made and for how long: the three parts of the loading, each with its count and its time (running, then the time it took)
+		const PackedInt32Array parts = ground->progress_parts(LOAD_GROUND, load_plants());
+		const char *names[3] = { "Terrain (ground tiles)", "Shape of the planet (distant tiles)", "Plants" };
+		auto clock_text = [](double p_seconds) { return vformat("%d:%02d", (int)p_seconds / 60, (int)p_seconds % 60); };
+		String text = vformat("Generating the planet...  %d %%   %s", (int)(load_shown * 100.0), clock_text(load_time));
+		for (int k = 0; k < 3; k++) {
+			const int have = parts[k * 2], need = parts[k * 2 + 1];
+			if (need > 0 && have >= need && stage_done_at[k] < 0.0) {
+				stage_done_at[k] = load_time;
+				UtilityFunctions::print(vformat("LOAD_STAGE %s: %d tiles done after %s", names[k], need, clock_text(load_time))); // (task 101: every run's log shows it)
+			}
+			if (need == 0 && stage_done_at[k] < 0.0 && load_time > 1.0) {
+				continue; // (nothing of this part is wanted)
+			}
+			text += vformat("\n%s: %d / %d   %s%s", names[k], have, need, clock_text(stage_done_at[k] >= 0.0 ? stage_done_at[k] : load_time), stage_done_at[k] >= 0.0 ? "  done" : "");
+		}
+		load_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+		load_label->set_text(text);
+	}
 	if (done >= 0.999 || load_time > 90.0) {
 		if (OS::get_singleton()->has_environment("PLANET_TIMING")) {
 			UtilityFunctions::print(vformat("PLANET_TIMING ground ready after %.1f s, %d tiles built, %d wanted", load_time, (int64_t)ground->get_tiles().size(), ground->wanted_count()));
+		}
+		{ // (task 101) the loading in one line, on the console and appended to user://planet_load.log (what each part took, the whole time)
+			String line = vformat("LOAD_SUMMARY total %.1f s |", load_time);
+			const char *labels[3] = { "terrain", "planet shape", "plants" };
+			for (int k = 0; k < 3; k++) {
+				line += vformat(" %s %s", labels[k], stage_done_at[k] >= 0.0 ? vformat("%.1f s", stage_done_at[k]) : String("n/a"));
+			}
+			line += vformat(" | %d tiles", (int64_t)ground->get_tiles().size());
+			UtilityFunctions::print(line);
+			Ref<FileAccess> log_file = FileAccess::open("user://planet_load.log", FileAccess::READ_WRITE);
+			if (log_file.is_null()) {
+				log_file = FileAccess::open("user://planet_load.log", FileAccess::WRITE);
+			}
+			if (log_file.is_valid()) {
+				log_file->seek_end();
+				log_file->store_line(Time::get_singleton()->get_datetime_string_from_system() + " " + line);
+			}
 		}
 		stand_on_the_ground();
 		loading = false;
@@ -656,6 +709,10 @@ void PlanetWorld::wait_for_the_ground(double p_delta) {
 		PlanetCloudGpu::warm_up();
 		ground->set_burst(false);
 		load_label->set_visible(false);
+		if (rendering_off && get_viewport() != nullptr) {
+			get_viewport()->set_disable_3d(false);
+			rendering_off = false;
+		}
 		target()->set_process_mode(Node::PROCESS_MODE_INHERIT);
 		Ref<Tween> fade = create_tween(); // the dark lifts
 		fade->tween_property(dark, "modulate:a", 0.0, 0.8);
@@ -704,6 +761,7 @@ void PlanetWorld::_exit_tree() {
 }
 
 void PlanetWorld::_physics_process(double p_delta) {
+	FRAME_TIMER("world_phys");
 	Node3D *player = target();
 	if (player == nullptr) {
 		return;

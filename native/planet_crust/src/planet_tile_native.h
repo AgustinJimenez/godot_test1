@@ -29,7 +29,7 @@ class PlanetTile : public Node3D {
 	double skirt_drop() const;
 	void set_morph(MeshInstance3D *p_instance) const;
 	void add_occluder(const PackedVector3Array &p_positions, int p_cells);
-	void add_sea(const PackedVector3Array &p_dirs, int p_cells);
+	void add_sea(const PackedVector3Array &p_dirs, int p_cells, const PackedFloat32Array &p_heights);
 	void add_crust_rivers(const PackedVector3Array &p_dirs, const PackedFloat32Array &p_heights);
 	void add_water_mesh(Object *p_builder, const Ref<ShaderMaterial> &p_material);
 

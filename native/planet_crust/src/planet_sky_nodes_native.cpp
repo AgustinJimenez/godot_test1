@@ -1,3 +1,4 @@
+#include "frame_timer.h"
 #include "flora_meshes_native.h"
 #include "planet_sky_nodes_native.h"
 
@@ -249,6 +250,7 @@ void PlanetCloudShell::_ready() {
 }
 
 void PlanetCloudShell::_process(double p_delta) {
+	FRAME_TIMER("clouds");
 	Object *world = get_planet();
 	if (world == nullptr) {
 		return;

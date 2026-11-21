@@ -13,6 +13,8 @@ const SNAP := 40.0 ## m, the middle snaps to this grid
 const DEEP := 5.0 ## m under the sea at which a texel counts as open water
 const BLUR := 5 ## texels: how far around a spot the water has to reach to count as open
 const CALM_MIN := 0.2 ## the least a basin or shallow bay rolls
+const FULL_DEPTH := 3.0 ## m of water at the spot itself for the waves to roll fully: the swell lifts the surface about a metre, so over a flat beach
+## shallower than that it would show through the sand (patches of sea on dry ground, moving with the waves); the blurred map alone cannot tell
 
 var terrain: TerrainNoise ## without it every water rolls fully
 var sea_level := 0.0
@@ -79,17 +81,20 @@ func _cells(middle: Vector2, ground: TerrainNoise) -> PackedByteArray:
 	var corner := middle - Vector2.ONE * float(CELLS) * CELL * 0.5
 	var open := PackedFloat32Array()
 	open.resize(CELLS * CELLS)
+	var here := PackedFloat32Array() # the depth at the texel itself, not blurred
+	here.resize(CELLS * CELLS)
 	for row in CELLS:
 		for column in CELLS:
 			var depth := sea_level - ground.base_height(corner.x + (float(column) + 0.5) * CELL,
 					corner.y + (float(row) + 0.5) * CELL)
 			open[row * CELLS + column] = clampf(depth / DEEP, 0.0, 1.0)
+			here[row * CELLS + column] = clampf(depth / FULL_DEPTH, 0.0, 1.0)
 	var across := _blur(open, true)
 	var blurred := _blur(across, false)
 	var bytes := PackedByteArray()
 	bytes.resize(CELLS * CELLS)
 	for index in CELLS * CELLS:
-		bytes[index] = int(255.0 * lerpf(CALM_MIN, 1.0, smoothstep(0.3, 0.75, blurred[index])))
+		bytes[index] = int(255.0 * lerpf(CALM_MIN, 1.0, smoothstep(0.3, 0.75, blurred[index])) * here[index])
 	return bytes
 
 

@@ -1,3 +1,4 @@
+#include "frame_timer.h"
 #include "planet_surface_script_native.h"
 
 #include <godot_cpp/classes/class_db_singleton.hpp>
@@ -70,7 +71,7 @@ void PlanetSurface::setup(const Ref<PlanetNoise> &p_noise, const Ref<PlanetFrame
 		}
 		// ONE planting thread: with several, the engine crashed within seconds of low flight (freeing a MultiMeshInstance3D: a heap corruption that
 		// one thread never showed in 90 s over 18 km). A tile's plants take 4 ms (median) to 28 ms (mean), so one keeps up. PLANET_PLANT_THREADS tries more.
-		int plant_count = OS::get_singleton()->has_environment("PLANET_PLANT_THREADS") ? OS::get_singleton()->get_environment("PLANET_PLANT_THREADS").to_int() : 1;
+		int plant_count = OS::get_singleton()->has_environment("PLANET_PLANT_THREADS") ? OS::get_singleton()->get_environment("PLANET_PLANT_THREADS").to_int() : 3; // (task 101: 3 plant threads halve the loading, 34 s -> 18 s; they sleep when nothing is queued)
 		for (int index = 0; index < plant_count; index++) {
 			Ref<Thread> planter;
 			planter.instantiate();
@@ -102,6 +103,7 @@ void PlanetSurface::_exit_tree() {
 
 // Chooses the tiles for a player at `at` (planet space) and queues what is missing.
 void PlanetSurface::update(const Vector3 &p_at, const Vector3 &p_lead) {
+	FRAME_TIMER("surf_update");
 	near_ = p_at;
 	// how high the player is over the ground under them: detail follows the distance in space, so up in the air the ground is coarse and nothing
 	// grows (the trees below are far away)
@@ -217,6 +219,7 @@ void PlanetSurface::build_all(const Vector3 &p_at, bool p_near_only) {
 }
 
 void PlanetSurface::_process(double) {
+	FRAME_TIMER("surface");
 	int added = 0;
 	int limit = burst ? BURST_TILES : tiles_per_frame;
 	while (added < limit && !inline_jobs.empty()) {
@@ -270,6 +273,7 @@ void PlanetSurface::_process(double) {
 
 // Asks for the plants of the built tiles that should have more than they have (nearest first).
 void PlanetSurface::queue_plants() {
+	FRAME_TIMER("queue_pl");
 	struct Wish {
 		PlanetTile *tile;
 		int detail;
@@ -325,8 +329,12 @@ void PlanetSurface::queue_plants() {
 
 // Puts the grown plants into their tiles (a few a frame).
 void PlanetSurface::adopt_plants() {
+	FRAME_TIMER("adopt");
 	int adopted = 0;
-	while (adopted < 8) {
+	// (task 101) a time box: hanging a plant set into the tree costs milliseconds each (thousands of nodes), and eight in one frame were a hitch while walking; after
+	// the budget the rest wait for the next frame (at least one a frame, so nothing starves)
+	const uint64_t began = Time::get_singleton()->get_ticks_usec();
+	while (adopted < 8 && (adopted == 0 || Time::get_singleton()->get_ticks_usec() - began < 2500)) {
 		PlantDone finished;
 		bool have = false;
 		if (!plant_inline.empty()) {
@@ -404,6 +412,38 @@ double PlanetSurface::progress(double p_ground_metres, double p_plant_metres) co
 		}
 	}
 	return need == 0 ? 1.0 : (double)have / (double)need;
+}
+
+// The parts of `progress` (the loading screen shows them): ground tiles built, the planet's coarse shape, the plants.
+PackedInt32Array PlanetSurface::progress_parts(double p_ground_metres, double p_plant_metres) const {
+	int counts[6] = { 0, 0, 0, 0, 0, 0 };
+	for (const auto &pair : wanted) {
+		const Entry &entry = pair.second;
+		PlanetTile *built = tile_at(pair.first);
+		if (entry.distance < p_ground_metres) {
+			counts[1] += 1;
+			if (built != nullptr && (!entry.collides || built->get_has_collider())) {
+				counts[0] += 1;
+			}
+		}
+		if (entry.distance >= p_ground_metres && entry.level <= coarse_level()) {
+			counts[3] += 1;
+			if (built != nullptr) {
+				counts[2] += 1;
+			}
+		}
+		if (entry.distance < p_plant_metres && entry.plants != 0) {
+			counts[5] += 1;
+			if (built != nullptr && (built->get_plant_grid().is_empty() || built->get_plant_detail() >= entry.plants)) {
+				counts[4] += 1;
+			}
+		}
+	}
+	PackedInt32Array parts;
+	for (int k = 0; k < 6; k++) {
+		parts.push_back(counts[k]);
+	}
+	return parts;
 }
 
 // Puts every tile where the frame says it is (after the frame moved).
@@ -515,6 +555,7 @@ void PlanetSurface::retire(PlanetTile *p_tile) {
 }
 
 void PlanetSurface::free_retired() {
+	FRAME_TIMER("free_ret");
 	for (int index = (int)retired.size() - 1; index >= 0; index--) {
 		PlanetTile *tile = retired[index];
 		if (!plant_pending.count(tile->get_instance_id())) {

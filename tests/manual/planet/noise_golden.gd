@@ -6,7 +6,7 @@ extends Node
 
 
 ## The hash of the values when this was written (the port of PlanetNoise to C++); update it when the planet's numbers change on purpose.
-const EXPECTED := "3047faf41f6ef97e2d3d77a214f85bcb"
+const EXPECTED := "77ab297209e779dc0bbe766ef4a9abad"
 
 
 func _ready() -> void:

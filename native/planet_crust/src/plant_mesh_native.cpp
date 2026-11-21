@@ -821,7 +821,7 @@ void add_leaf_surface(MeshData &b, const std::vector<Vector2> &outline, const Ve
 		const double sign = x > 0 ? 1.0 : (x < 0 ? -1.0 : 0.0);
 		const double across = x * width * (1.0 + asym * sign) + skew * y * y;
 		const double u = std::min(std::abs(x) / widest, 1.0); // 0 on the midrib .. 1 at the edge
-		double lift = fold * length * (1.0 - std::pow(u, 1.3)); // folded up along the midrib
+		double lift = fold * length * (1.0 - std::pow(u, 1.3)) * smoothstep_d(0.0, 0.3, y); // folded up along the midrib, the fold fading out toward the stalk (a full fold at the base was a steep wall)
 		lift += wave_amp * length * std::sin(y * wave_freq + phase + u * 2.0) * u; // rippled toward the edge
 		lift += curl * droop * y * y * length; // the tip droops
 		lift += twist * x * y * length; // the blade is turned a little
@@ -946,6 +946,7 @@ struct Grower {
 	double thrift = 1.0;
 	int budget = BUDGET;
 	int lod = 0;
+	double blade_widen = 1.0; // (task 101) the blades left in a lite step of a grass tuft are this much wider, so the tuft keeps its cover
 	bool fine = false;
 	bool cards = false; // the realistic look's leaves as cards and strips drawn by the shader (every level of detail)
 	int depth = 3;
@@ -1002,9 +1003,10 @@ struct Grower {
 		double bigger = 1.0 + 0.8 * lod;
 		double leaf_basis = 2.0 * pow(std::max(g->crown, 0.2) / 2.0, 0.55);
 		leaf_basis *= pow(std::max(g->crown / 3.5, 1.0), 0.6);
-		leaf_length = leaf_basis * g->leaf_size * (fine || cards ? 1.7 : 2.5) * bigger;
+		leaf_basis = std::min(leaf_basis, 3.2); // (task 099: the leaf grew with the crown to 1.7 m of card on a big broadleaf; real leaves are a hand)
+		leaf_length = leaf_basis * g->leaf_size * (fine || cards ? 1.1 : 2.5) * bigger; // (task 099: 1.7 -> 1.1 for the realistic leaf cards)
 		double stout = pow(std::max(g->girth / 0.4, 1.0), 0.75);
-		double needle = clampd(leaf_basis * g->needle_size, 0.6, 1.1) * stout;
+		double needle = clampd(leaf_basis * g->needle_size, 0.6, g->needle_size > 2.0 ? 1.7 : 1.1) * stout; // (task 100: a pine's crown pads are bigger than the usual cap)
 		needle_length = needle * (fine ? 1.0 : 1.2) * bigger;
 		trunk();
 		if (g->foliage == FROND) {
@@ -1058,8 +1060,42 @@ struct Grower {
 		double bend_phase = rf() * TAU_D;
 		double lump_phase = rf() * TAU_D;
 		std::vector<double> flute_depths;
+		// (task 099) the dark bands of a marked bark (birch) are rows of the trunk tube itself, coloured: a separate band put around the trunk could not follow its wobble, and floated off it
+		const bool marked = g->marked_bark && !g->leader && lod == 0;
+		std::vector<double> alongs;
+		std::vector<double> band_dark;
 		for (int index = 0; index < rings; index++) {
-			double along = (double)index / (rings - 1);
+			alongs.push_back((double)index / (rings - 1));
+			band_dark.push_back(0.0);
+		}
+		if (marked) {
+			const int marks = (int)(trunk_length / 0.8);
+			for (int mark = 0; mark < marks; mark++) {
+				const double mid = (mark * 0.8 + 0.4) / trunk_length;
+				const double core = 0.05 / trunk_length, edge = 0.09 / trunk_length;
+				const double offsets[4] = { -edge, -core, core, edge };
+				const double dark[4] = { 0.0, 1.0, 1.0, 0.0 };
+				for (int k = 0; k < 4; k++) {
+					alongs.push_back(std::min(1.0, std::max(0.0, mid + offsets[k])));
+					band_dark.push_back(dark[k]);
+				}
+			}
+			std::vector<int> order(alongs.size());
+			for (size_t k = 0; k < order.size(); k++) {
+				order[k] = (int)k;
+			}
+			std::sort(order.begin(), order.end(), [&](int l, int r) { return alongs[l] < alongs[r]; });
+			std::vector<double> sorted_along, sorted_dark;
+			for (int k : order) {
+				sorted_along.push_back(alongs[k]);
+				sorted_dark.push_back(band_dark[k]);
+			}
+			alongs = sorted_along;
+			band_dark = sorted_dark;
+			rings = (int)alongs.size();
+		}
+		for (int index = 0; index < rings; index++) {
+			double along = alongs[index];
 			Vector3 centre = axis_at(trunk_length * along);
 			if (g->trunk_bend > 0.0) {
 				double sway_by = g->girth * 2.0 * g->trunk_bend * sin(along * PI_D * 1.6 + bend_phase) * along;
@@ -1072,7 +1108,11 @@ struct Grower {
 			}
 			flute_depths.push_back(g->flute_depth * (1.0 - 0.6 * along));
 			radii.push_back(trunk_radius(along) * lumps * (ringed ? 1.0 + 0.08 * (index % 2) : 1.0));
-			colors.push_back(still(g->bark.darkened((float)(g->trunk_dark * (1.0 - along) + ((ringed && index % 2 == 1) ? 0.12 : 0.0)))));
+			Color ring_colour = g->bark.darkened((float)(g->trunk_dark * (1.0 - along) + ((ringed && index % 2 == 1) ? 0.12 : 0.0)));
+			if (band_dark[index] > 0.0) {
+				ring_colour = ring_colour.lerp(Color(0.12f, 0.12f, 0.1f), (float)band_dark[index]);
+			}
+			colors.push_back(still(ring_colour));
 		}
 		if (!g->leader) {
 			double top_radius = g->girth * g->taper;
@@ -1092,15 +1132,6 @@ struct Grower {
 		b->tube(centres, radii, colors, trunk_sides, *rng, g->trunk_wobble * g->bark_rough, CAP_TOP, false, flutes,
 				flute_depths);
 		roots();
-		if (g->marked_bark && !g->leader && lod == 0) {
-			int marks = (int)(trunk_length / 0.8);
-			for (int mark = 0; mark < marks; mark++) {
-				double at = mark * 0.8 + 0.4;
-				double radius = trunk_radius(at / trunk_length) * 1.04;
-				Color patch = still(Color(0.12f, 0.12f, 0.1f));
-				b->frustum(axis_at(at), 0.12, radius, radius * 0.99, g->trunk_sides, patch, patch, 0);
-			}
-		}
 	}
 
 	void roots() {
@@ -1123,12 +1154,23 @@ struct Grower {
 			for (int step = 0; step < parts; step++) {
 				double t = (double)step / (parts - 1);
 				double distance = g->girth * (0.5 + 1.0 * g->root_flare) + reach * t;
-				double h = rise * pow(1.0 - t, 2.2) - 0.12 * t;
+				const double ring_radius = thick * lerpd(1.0, 0.18, pow(t, 0.8)) * (1.0 + 0.5 * (1.0 - t) * (1.0 - t));
+				// (task 099) the root is sunk by a share of its own radius all along, not by a hand's breadth: it follows a flat plane while the ground may slope, and
+				// the downhill side of a root floated above the ground (gaps under the buttresses); its crest is kept up by a higher rise
+				double h = rise * 1.2 * pow(1.0 - t, 2.2) - 0.12 * t - 0.5 * ring_radius;
 				centres.push_back(origin + out * (real_t)distance + side * (real_t)(wander * reach * t * t) + Vector3(0, (real_t)h, 0));
-				radii.push_back(thick * lerpd(1.0, 0.18, pow(t, 0.8)) * (1.0 + 0.5 * (1.0 - t) * (1.0 - t)));
+				radii.push_back(ring_radius);
 				colors.push_back(still(g->bark.darkened((float)(0.12 + 0.1 * t))));
 			}
 			b->tube(centres, radii, colors, 6, *rng, 0.08, CAP_TOP, false, 0, std::vector<double>());
+			// (task 099) a root a person can bump into is a collider too, like the thick low limbs: a buttress used to be walked into (only the trunk had a cylinder)
+			for (size_t ring = 0; ring + 2 < centres.size(); ring += 2) { // (two capsules a root: the thick foot and the middle; the thin tail has none)
+				const double r = (radii[ring] + radii[ring + 1] + radii[ring + 2]) / 3.0 * 0.9;
+				if (r >= 0.07) {
+					low_limbs.push_back({ (float)centres[ring].x, (float)centres[ring].y, (float)centres[ring].z, (float)centres[ring + 2].x,
+						(float)centres[ring + 2].y, (float)centres[ring + 2].z, (float)r });
+				}
+			}
 		}
 	}
 
@@ -1166,6 +1208,11 @@ struct Grower {
 		if (tuft) {
 			count = std::min(count * 2, 40);
 		}
+		// (task 101) the lite steps of a grass tuft (lod 1 and up, drawn beyond 25 m or so): a blade is a pixel wide there and the tuft was the heaviest thing in
+		// the meadow (about 590 triangles, the same at every distance). Every `keep`th blade stays (chosen by its place in the tuft, after the dice, so the
+		// blades that stay are the same blades), each wider by the root of that, with fewer segments and no fold: the same tuft, an eighth of the triangles.
+		const int keep = tuft && b->lite_step > 0 ? std::max(1, std::min(b->lite_step, count / 6)) : 1;
+		blade_widen = keep > 1 ? std::sqrt((double)keep) : 1.0;
 		double phase = rf() * TAU_D;
 		for (int index = 0; index < count; index++) {
 			double yaw = phase + index * GOLDEN_ANGLE;
@@ -1174,11 +1221,14 @@ struct Grower {
 			double length = g->frond_length * rr(0.85, 1.1);
 			double steep = pow(rf(), 1.5);
 			if (g->flower.a > 0.0f) {
-				steep = lerpd(0.55, 0.95, rf());
+				steep = lerpd(0.4, 0.85, rf()); // (task 099: the blades of a flowering plant arch over, not stand like stakes)
 			}
 			int parts = std::max(g->frond_parts - 3 * lod, 2);
+			if (g->flower.a > 0.0f && g->leaflet < 0.02 && lod == 0) {
+				parts = std::max(parts, 5); // (a smooth curve, not two straight facets)
+			}
 			if (tuft) {
-				parts = std::max(parts, 6);
+				parts = std::max(parts, keep >= 4 ? 3 : (keep >= 2 ? 4 : 6));
 				length *= rr(0.55, 1.0); // blades of all lengths
 			}
 			std::vector<Vector3> points;
@@ -1192,23 +1242,71 @@ struct Grower {
 				}
 				points.push_back(spot);
 			}
+			if (keep > 1 && index % keep != 0) {
+				continue; // (this blade is left out of the lite step)
+			}
 			frond(points, side);
 		}
+		blade_widen = 1.0;
+		if (low && g->leaflet >= 0.02 && fine && !b->leafless && !full()) {
+			// (task 100) fiddleheads: young fronds still rolled up, rising from the middle of the crown (the reference photos of ferns have them)
+			const int heads = 2 + (int)(rf() * 3.0);
+			for (int head = 0; head < heads; head++) {
+				const double yaw = rf() * TAU_D;
+				const Vector3 out((real_t)cos(yaw), 0, (real_t)sin(yaw));
+				const Vector3 foot = top + out * (real_t)(g->frond_length * rr(0.04, 0.16));
+				const double rise = g->frond_length * rr(0.22, 0.38), curl = rise * 0.2;
+				std::vector<Vector3> spiral;
+				std::vector<double> spiral_radii;
+				std::vector<Color> spiral_colors;
+				const int steps = 12;
+				for (int step = 0; step <= steps; step++) {
+					const double t = (double)step / steps;
+					Vector3 spot;
+					if (t < 0.45) {
+						spot = foot + Vector3(0, (real_t)(rise * (t / 0.45)), 0);
+					} else {
+						const double a = (t - 0.45) / 0.55 * 4.2, r = curl * (1.0 - 0.55 * (t - 0.45) / 0.55);
+						spot = foot + Vector3(0, (real_t)rise, 0) + out * (real_t)(r * (1.0 - cos(a))) + Vector3(0, (real_t)(r * sin(a)), 0);
+					}
+					spiral.push_back(spot);
+					spiral_radii.push_back(0.016 * (1.0 - 0.6 * t));
+					spiral_colors.push_back(with_alpha(mix(g->leaf, g->leaf_tip, 0.5).lightened(0.1f), 0.3));
+				}
+				// a thin ribbon along the curl (the tube builder marks its surface as bark, which the realistic look paints grey-white)
+				const Vector3 across((real_t)-sin(yaw), 0, (real_t)cos(yaw));
+				for (int step = 0; step < steps; step++) {
+					const Vector3 &a = spiral[(size_t)step];
+					const Vector3 &c = spiral[(size_t)step + 1];
+					const Vector3 wa = across * (real_t)spiral_radii[(size_t)step], wc = across * (real_t)spiral_radii[(size_t)step + 1];
+					b->tri(a - wa, a + wa, c + wc, spiral_colors[(size_t)step], spiral_colors[(size_t)step], spiral_colors[(size_t)step + 1]);
+					b->tri(a - wa, c + wc, c - wc, spiral_colors[(size_t)step], spiral_colors[(size_t)step + 1], spiral_colors[(size_t)step + 1]);
+				}
+			}
+		}
 	}
+
+	// true for the plants whose leaves are long narrow blades (lavender, lupine spikes, bell): they keep blades
+	bool cards_only_blades() const { return g->petals == 3 || g->petals == 7 || (g->petals == 6 && g->flower_cup > 0.9); }
 
 	void frond(const std::vector<Vector3> &points, const Vector3 &side) {
 		if (b->leafless || full()) {
 			return;
 		}
 		double length = (points.back() - points.front()).length();
-		double rib = length * g->rib_width * (fine && g->leaflet < 0.02 && g->height < 1.5 ? 0.5 : 1.0);
+		double rib = length * g->rib_width * (fine && g->leaflet < 0.02 && g->height < 1.5 ? 0.5 : 1.0) * blade_widen;
+		// (task 099) a flowering plant's frond is a thin stem carrying real leaves (the same mesh leaves as a tree's, with veins), not a grass blade
+		const bool leafy_stem = g->flower.a > 0.0f && g->leaflet < 0.02 && g->height < 1.5 && !outline.empty() && !cards_only_blades();
+		if (g->flower.a > 0.0f && g->leaflet < 0.02 && g->height < 1.5) {
+			rib *= leafy_stem ? 0.12 : 0.6; // (a stem; or narrower blades under a flower: they were wide stiff slabs)
+		}
 		Color dark = g->leaf.darkened(0.35f);
 		Color tone = mix(g->leaf, g->leaf.lightened(0.12f), rf());
 		int segments = (int)points.size() - 1;
 		bool low_plant = g->height < 1.5;
 		// the realistic look: a tall frond's leaflets are a strip along the rib, drawn on it by the shader
 		// (UV2.y 4 + rows / 100: a pinnate strip, see flora_wind.gdshader), not a triangle for each leaflet
-		bool strip = cards && !low_plant && g->leaflet >= 0.02;
+		bool strip = cards && g->leaflet >= 0.02; // (task 100: ferns too, so their leaflets are the fine strip and not big oval leaves)
 		double rows = clampd(length / 0.08, 10.0, 80.0);
 		double pin_dice = rf();
 		// the frond bends in up to three places (a chain of branches, each carrying what is further out): a blade of grass
@@ -1235,11 +1333,37 @@ struct Grower {
 			Vector3 tangent = (c - a).normalized();
 			Color base = with_alpha(dark, sway);
 			Color tip = with_alpha(dark, std::min(sway + 0.1, 1.0));
-			double narrow = g->flower.a > 0.0f ? 0.4 : 0.9;
+			double narrow = g->flower.a > 0.0f ? 0.78 : 0.9; // (a flowering plant's frond is leaf at the foot, thin stem toward the flower)
 			Vector3 wide_a = side * (real_t)(rib * (1.0 - narrow * t));
 			Vector3 wide_b = side * (real_t)(rib * (1.0 - narrow * (t + 1.0 / segments)));
-			b->tri(a - wide_a, a + wide_a, c + wide_b, base, base, tip);
-			b->tri(a - wide_a, c + wide_b, c - wide_b, base, tip, tip);
+			if (g->leaflet < 0.02 && lod == 0 && blade_widen < 2.0 && wide_a.length() > 0.004f) { // (task 101: no fold in the thin far steps of a tuft)
+				// (task 099) a blade is not a flat ribbon: it is folded along its midrib (a V, the crease raised), so it shades across its width
+				Vector3 up_n = tangent.cross(side).normalized();
+				if (up_n.y < 0) { up_n = -up_n; }
+				const Vector3 ra = up_n * (real_t)(wide_a.length() * 0.55), rc = up_n * (real_t)(wide_b.length() * 0.55);
+				const Color mid_a = base.lightened(0.08f), mid_c = tip.lightened(0.08f);
+				if (g->flower.a > 0.0f && !strip && !leafy_stem) {
+					// the leaves of a flowering plant are real leaves for the shader (UV across 0..1 with the midrib at 0.5, along 0..1, UV2.y <= 1: veins, net,
+					// translucency, wear, drops), tinted green (not the dark stem colour) from a darker foot to a lighter tip
+					const Color leaf_a = with_alpha(mix(g->leaf, g->leaf_tip, std::min(t * 1.2, 1.0)), sway);
+					const Color leaf_c = with_alpha(mix(g->leaf, g->leaf_tip, std::min((t + 1.0 / segments) * 1.2, 1.0)), std::min(sway + 0.1, 1.0));
+					const Color mid_la = leaf_a.lightened(0.06f), mid_lc = leaf_c.lightened(0.06f);
+					const float ya = (float)t, yc = (float)(t + 1.0 / segments);
+					const Vector2 dice_uv((real_t)pin_dice, (real_t)(0.2 + 0.6 * pin_dice));
+					b->tri_uv(a - wide_a, a + ra, c + rc, leaf_a, mid_la, mid_lc, Vector2(0.02f, ya), Vector2(0.5f, ya), Vector2(0.5f, yc), dice_uv);
+					b->tri_uv(a - wide_a, c + rc, c - wide_b, leaf_a, mid_lc, leaf_c, Vector2(0.02f, ya), Vector2(0.5f, yc), Vector2(0.02f, yc), dice_uv);
+					b->tri_uv(a + ra, a + wide_a, c + wide_b, mid_la, leaf_a, leaf_c, Vector2(0.5f, ya), Vector2(1.0f, ya), Vector2(1.0f, yc), dice_uv);
+					b->tri_uv(a + ra, c + wide_b, c + rc, mid_la, leaf_c, mid_lc, Vector2(0.5f, ya), Vector2(1.0f, yc), Vector2(0.5f, yc), dice_uv);
+				} else {
+					b->tri(a - wide_a, a + ra, c + rc, base, mid_a, mid_c);
+					b->tri(a - wide_a, c + rc, c - wide_b, base, mid_c, tip);
+					b->tri(a + ra, a + wide_a, c + wide_b, mid_a, base, tip);
+					b->tri(a + ra, c + wide_b, c + rc, mid_a, tip, mid_c);
+				}
+			} else {
+				b->tri(a - wide_a, a + wide_a, c + wide_b, base, base, tip);
+				b->tri(a - wide_a, c + wide_b, c - wide_b, base, tip, tip);
+			}
 			if (strip) {
 				double t2 = t + 1.0 / segments;
 				double size_a = length * g->leaflet * pow(sin(PI_D * clampd(t, 0.05, 0.98)), 0.7) * 1.15;
@@ -1282,8 +1406,42 @@ struct Grower {
 				}
 			}
 		}
+		if (leafy_stem && lod <= 1 && rf() < 0.75) {
+			// two to four leaves up the lower part of the stem, alternate sides, smaller toward the flower
+			const int pairs = 2 + (int)(rf() * 3.0);
+			for (int pair = 0; pair < pairs && !full(); pair++) {
+				const double along = 0.08 + 0.5 * (pair + rf() * 0.5) / pairs;
+				const Vector3 at = point_along(points, along);
+				const Vector3 tangent = (point_along(points, std::min(along + 0.05, 1.0)) - at).normalized();
+				const double sign_side = (pair % 2 == 0) ? 1.0 : -1.0;
+				const Vector3 dir = (side * (real_t)(sign_side * 0.9) + tangent * 0.45f + UP * 0.1f).normalized();
+				const Vector3 up = (UP - dir * dir.dot(UP)).normalized();
+				const double size = std::min(length * 0.24, 0.16) * (1.0 - 0.45 * along) * rr(0.8, 1.15);
+				const Color from_colour = with_alpha(tone.darkened(0.2f), 0.45 + 0.4 * along);
+				const Color tip_colour = with_alpha(mix(g->leaf_tip, tone, 0.3), std::min(0.55 + 0.4 * along, 1.0));
+				add_leaf(*b, outline, at, dir, up, size, 0.1, -0.16, from_colour, tip_colour, rr(-0.15, 0.15), 0.0, rr(0.9, 1.25), Vector2((real_t)rf(), (real_t)rf()));
+			}
+		}
 		if (g->flower.a > 0.0f) {
-			bloom(points.back(), UP, g->flower_size, g->flower, g->flower_centre, g->petals, g->flower_cup, 0.9);
+			if (g->petals == 3) {
+				// (task 100) a spike of florets down the last quarter of the stalk, each turned out to a different side (a lupine)
+				const Vector3 stalk_up = (points.back() - points[points.size() / 2]).normalized();
+				for (int floret = 0; floret < 9; floret++) {
+					const double along = 1.0 - 0.28 * floret / 8.0;
+					const double turn = floret * 2.4;
+					const Vector3 out((real_t)cos(turn), 0, (real_t)sin(turn));
+					const Vector3 at = point_along(points, along) + out * (real_t)(g->flower_size * 0.5);
+					bloom(at, (out * 0.8f + stalk_up * 0.4f).normalized(), g->flower_size * (1.0 - 0.45 * floret / 8.0), g->flower,
+							g->flower, 5, g->flower_cup, 0.9);
+				}
+			} else if (g->petals == 6 && g->flower_cup > 0.9) {
+				// (task 100) a bellflower's cup hangs from the end of its arching stalk
+				bloom(points.back() + DOWN * (real_t)(g->flower_size * 0.6), DOWN, g->flower_size, g->flower, g->flower_centre, 6, g->flower_cup, 0.9);
+			} else {
+				// (task 099) the head faces up and out along the stem, not flat on the ground, and sits a little above the stem's end
+			const Vector3 head_dir = (UP * 0.8f + (points.back() - points[points.size() - 2]).normalized() * 0.45f).normalized();
+			bloom(points.back() + head_dir * (real_t)(g->flower_size * 0.1), head_dir, g->flower_size, g->flower, g->flower_centre, g->petals, g->flower_cup, 0.9);
+			}
 		}
 		b->current_branch = 0.0f;
 	}
@@ -1310,10 +1468,36 @@ struct Grower {
 			Vector3 side = v * (real_t)cos(angle) - u * (real_t)sin(angle);
 			Vector3 base = at + dir * (real_t)(size * lerpd(0.2, 0.1, cup));
 			Vector3 tip = at + dir * (real_t)(size * lerpd(1.0, 0.7, cup)) + normal * (real_t)(size * lerpd(0.35, 1.0, cup));
-			b->tri(base + side * (real_t)(size * 0.24), base - side * (real_t)(size * 0.24), tip, inner, inner, outer);
-			if (fine) {
-				b->tri(heart, at + dir * (real_t)(size * 0.2),
-						at + (u * (real_t)cos(next) + v * (real_t)sin(next)) * (real_t)(size * 0.2), middle, middle, middle);
+			// (task 100) a rounded petal: narrow at the foot, widest at 60 % of its length, then a point: three triangles instead of one
+			{
+				Vector3 widest = base + (tip - base) * 0.6f + normal * (real_t)(size * 0.04);
+				Color middle_tone = inner.lerp(outer, 0.6f);
+				Vector3 bl = base - side * (real_t)(size * 0.09), br = base + side * (real_t)(size * 0.09);
+				Vector3 ml = widest - side * (real_t)(size * 0.3), mr = widest + side * (real_t)(size * 0.3);
+				b->tri(bl, br, mr, inner, inner, middle_tone);
+				b->tri(bl, mr, ml, inner, middle_tone, middle_tone);
+				b->tri(ml, mr, tip, middle_tone, middle_tone, outer);
+			}
+			{
+				// the centre is a low dome (a ring raised to a crown), darker at its rim, not a flat disc
+				const Vector3 rim_a = at + dir * (real_t)(size * 0.2) + normal * (real_t)(size * 0.04);
+				const Vector3 rim_b = at + (u * (real_t)cos(next) + v * (real_t)sin(next)) * (real_t)(size * 0.2) + normal * (real_t)(size * 0.04);
+				const Vector3 crown = at + normal * (real_t)(size * (0.16 + 0.08 * cup));
+				const Color dome = middle.lightened(0.18f);
+				b->tri(rim_a, rim_b, crown, middle, middle, dome);
+			}
+			if (petals >= 5 && lod == 0 && size > 0.03) {
+				// an inner ring of shorter petals, between the outer ones and raised: the flower has depth, not one flat layer
+				const double mid_angle = TAU_D * (index + 0.5) / petals;
+				const Vector3 mdir = u * (real_t)cos(mid_angle) + v * (real_t)sin(mid_angle);
+				const Vector3 mside = v * (real_t)cos(mid_angle) - u * (real_t)sin(mid_angle);
+				const Vector3 ib = at + mdir * (real_t)(size * 0.12) + normal * (real_t)(size * 0.06);
+				const Vector3 itip = at + mdir * (real_t)(size * lerpd(0.62, 0.45, cup)) + normal * (real_t)(size * lerpd(0.42, 0.85, cup));
+				const Vector3 iw = ib + (itip - ib) * 0.55f + normal * (real_t)(size * 0.03);
+				const Color ic = outer.lightened(0.08f);
+				b->tri(ib - mside * (real_t)(size * 0.07), ib + mside * (real_t)(size * 0.07), iw + mside * (real_t)(size * 0.22), inner, inner, ic);
+				b->tri(ib - mside * (real_t)(size * 0.07), iw + mside * (real_t)(size * 0.22), iw - mside * (real_t)(size * 0.22), inner, ic, ic);
+				b->tri(iw - mside * (real_t)(size * 0.22), iw + mside * (real_t)(size * 0.22), itip, ic, ic, outer);
 			}
 		}
 	}
@@ -1541,9 +1725,15 @@ struct Grower {
 				solid_radii.push_back(here);
 				solid_ids.push_back(my_id);
 			}
+			if (next.y < ground + radius * 3.0 && heading.y < 0.3 && level < 2) {
+				// (task 099: a limb nearing the ground turns up gently before it would be clamped, so there is no kink)
+				heading = (heading + UP * 0.3f).normalized();
+				next = points[ring] + heading * (real_t)(length / (rings - 1));
+			}
 			if (next.y < ground && level < 2) {
 				next.y = (real_t)ground;
-				heading = Vector3(heading.x, std::max(heading.y, (real_t)0), heading.z).normalized();
+				// (task 099: a limb that met the ground ran along it as a flat board; it now rises away from it)
+				heading = Vector3(heading.x, std::max(heading.y, (real_t)0.45), heading.z).normalized();
 			}
 			points.push_back(next);
 			tangents.push_back(heading);
@@ -1564,6 +1754,9 @@ struct Grower {
 		int sides_level = continues ? level - 1 : level;
 		int sides = fine ? g->sides_real[sides_level] : g->sides[sides_level];
 		sides = std::max(sides - 3 * lod, 3);
+		if (fine && lod == 0 && radius > 0.12) {
+			sides = std::max(sides, radius > 0.3 ? 10 : 9); // (task 099: thick limbs seen close up showed 6-7 flat facets)
+		}
 		bool last_level = level == depth - 1;
 		int closed = (last_level || !g->carry_on) ? CAP_TOP : 0;
 		std::vector<Vector3> shape = points; // (the curve the tube follows; the children and the colliders keep the plain points)
@@ -1593,6 +1786,10 @@ struct Grower {
 				spray(point_along(points, 0.55), tangent_along(tangents, 0.55), needle_length * 0.8,
 						sway + g->sway[0] * 0.55);
 			}
+		}
+		if (g->foliage == NEEDLE && g->needle_size > 2.0 && !last_level) {
+			// (task 100) a pine carries pads along its twigs too, not only at the very ends
+			spray(point_along(points, 0.6), tangent_along(tangents, 0.6), needle_length * 0.7, tip_sway);
 		}
 		if (last_level) {
 			if (g->foliage == BLADE) {
@@ -1644,7 +1841,7 @@ struct Grower {
 	void leaves_along(const std::vector<Vector3> &points, const std::vector<Vector3> &tangents, double sway, int level) {
 		blossoms(points, tangents, sway);
 		mass(points.back(), sway);
-		int nodes = std::max((int)std::lround((fine ? 5 : (4 - lod)) * thrift), 2);
+		int nodes = std::max((int)std::lround((fine ? 7 : (4 - lod)) * thrift), 2); // (task 099: 5 -> 7 leaves along a near twig: the smaller leaves need more of them)
 		if (g->crown > 3.5) {
 			nodes += 1;
 		}
@@ -1801,6 +1998,30 @@ struct Grower {
 			// 6 + rows / 100), the one along the spray and one turned each way, the outer ones a little shorter
 			double dice = rf();
 			Vector2 mark((real_t)dice, (real_t)(6.0 + 14.0 * 0.01));
+			if (g->needle_size > 2.0 || g->leader) {
+				// (task 100) a pine's pad: a bottle brush of short strips turned all the way round the twig, not a fan of three
+				const int strips = g->leader ? 6 : 8;
+				for (int k = 0; k < strips; k++) {
+					double around = TAU_D * k / strips + rr(-0.2, 0.2);
+					Vector3 radial = side * (real_t)cos(around) + up * (real_t)sin(around);
+					Vector3 dir = (axis * 0.75f + radial * (real_t)rr(0.45, 0.75)).normalized();
+					double reach = length * rr(0.75, 1.0);
+					Vector3 across = dir.cross(axis);
+					if (across.length_squared() < 0.0001f) {
+						across = dir.cross(up);
+					}
+					across = across.normalized() * (real_t)(reach * 0.3);
+					Vector3 tip = base + dir * (real_t)reach + DOWN * (real_t)(reach * 0.05);
+					for (int sgn = 0; sgn < 2; sgn++) {
+						Vector3 spread = across * (real_t)(sgn == 0 ? -1.0 : 1.0);
+						Vector3 out_base = base + spread * 0.5f;
+						Vector3 out_tip = tip + spread * 0.55f;
+						b->tri_uv(base, tip, out_tip, base_color, tip_color, tip_color, Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), mark);
+						b->tri_uv(base, out_tip, out_base, base_color, tip_color, base_color, Vector2(0, 0), Vector2(1, 1), Vector2(1, 0), mark);
+					}
+				}
+				return;
+			}
 			for (int k = -1; k <= 1; k++) {
 				double turn = k * 0.6 + rr(-0.1, 0.1);
 				double lift = rr(-0.05, 0.3);
@@ -1971,10 +2192,55 @@ Dictionary PlantMeshNative::scenery(int p_kind, int p_variant, bool p_detailed) 
 			break;
 		}
 		case KIND_LOG: {
+			// (task 099) a fallen trunk with the photo bark of a tree: a slightly sagging, tapering tube (it was a flat-coloured 7-sided cone)
 			double length = rng.range(2.5, 4.5);
-			Color wood(0.4f, 0.3f, 0.22f);
+			m.bark_kind = rng.randf() < 0.5 ? 2 : 0;
+			const int rings = 6;
+			const double foot = rng.range(0.24, 0.34), phase = rng.randf() * TAU_D;
+			std::vector<Vector3> centres;
+			std::vector<double> radii;
+			std::vector<Color> colors;
+			for (int ring = 0; ring < rings; ring++) {
+				const double t = (double)ring / (rings - 1);
+				centres.push_back(Vector3(0, (real_t)(length * t), (real_t)(0.05 * std::sin(t * 3.1 + phase))));
+				radii.push_back(foot * (1.0 - 0.2 * t) * (1.0 + 0.04 * rng.range(-1.0, 1.0)));
+				colors.push_back(still(Color(0.4f, 0.31f, 0.24f).darkened((float)(0.12 * (1.0 - t)))));
+			}
 			m.place(Transform3D(Basis(Vector3(0, 0, 1), (real_t)(PI_D * 0.5)), Vector3((real_t)(-length * 0.5), 0.3f, 0)));
-			m.frustum(Vector3(), length, 0.3, 0.26, 7, still(wood), still(wood.lightened(0.08f)), CAP_TOP | CAP_BOTTOM, &rng, 0.06);
+			m.tube(centres, radii, colors, 9, rng, 0.03, CAP_TOP | CAP_BOTTOM, false, 0, std::vector<double>());
+			// the cut ends: pale wood with darker growth rings (flat discs a hair outside the bark tube; sway 0.105 so the realistic look does not take them for stone)
+			for (int end = 0; end < 2; end++) {
+				const double at_y = end == 0 ? -0.01 : length + 0.01;
+				const double end_radius = end == 0 ? radii.front() : radii.back();
+				for (int ring = 0; ring < 3; ring++) {
+					const double r = end_radius * (0.87 - 0.3 * ring);
+					const Color tone = ring % 2 == 0 ? Color(0.62f, 0.48f, 0.32f) : Color(0.5f, 0.36f, 0.22f);
+					const double lift = (end == 0 ? -0.002 : 0.002) * ring;
+					m.frustum(Vector3(0, (real_t)(at_y + lift), 0), 0.002, r, r, 9, with_alpha(tone, 0.105f), with_alpha(tone, 0.105f), end == 0 ? CAP_BOTTOM : CAP_TOP);
+				}
+			}
+			// (task 100) shelf fungus: a few stacked brackets growing out of the side of the log (the reference photos of forest floors have them)
+			{
+				const Transform3D log_xf(Basis(Vector3(0, 0, 1), (real_t)(PI_D * 0.5)), Vector3((real_t)(-length * 0.5), 0.3f, 0));
+				const int clusters = (int)rng.range(2.0, 5.0);
+				for (int cluster = 0; cluster < clusters; cluster++) {
+					// on a side of the log (local x is the world's up after the log is laid down, so the sides are where x is about 0), with the disc's axis vertical
+					const double phi = (rng.randf() < 0.5 ? 0.5 * PI_D : 1.5 * PI_D) + rng.range(-0.35, 0.35);
+					const double y = rng.range(0.25, 0.75) * length;
+					const double r = foot * (1.0 - 0.2 * (y / length));
+					const int tiers = 2 + (int)rng.range(0.0, 2.0);
+					const Color top = Color(0.78f, 0.6f, 0.36f), under = Color(0.9f, 0.84f, 0.7f);
+					for (int tier = 0; tier < tiers; tier++) {
+						const double size = 0.17 * (1.0 - 0.15 * tier) * rng.range(0.9, 1.25);
+						const Basis face = Basis(Vector3(0, 0, 1), (real_t)(-PI_D * 0.5)); // the disc's thickness axis along the world's up
+						const Vector3 outward((real_t)cos(phi), 0, (real_t)(-sin(phi)));
+						// (local x is up: a tier higher on the log is a bigger x)
+						const Vector3 where = outward * (real_t)(r + size * 0.45) + Vector3((real_t)(tier * 0.05 + 0.02), (real_t)(y + rng.range(-0.05, 0.05)), 0);
+						m.place(log_xf * Transform3D(face, where));
+						m.frustum(Vector3(), 0.035, size, size * 0.85, 9, with_alpha(under, 0.105f), with_alpha(top.darkened((float)(0.12 * tier)), 0.105f), CAP_TOP, &rng, 0.08);
+					}
+				}
+			}
 			m.unplace();
 			break;
 		}
@@ -2112,6 +2378,26 @@ Dictionary PlantMeshNative::mushroom(const Dictionary &p_species, int64_t p_seed
 	double height0 = p_species.get("height", 0.3), crown = p_species.get("crown", 0.6), droop = p_species.get("droop", 0.3);
 	int count = p_species.get("count", 3);
 	Color accent = p_species.get("accent", Color(0.8f, 0.2f, 0.2f));
+	if (String(p_species.get("archetype", "")) == "moss") {
+		// (task 100) a moss mat: a loose patch of low rounded cushions in two greens, the realistic look's stone rule avoided by a sway just above 0.1
+		auto soft_moss = [](Color p_color) { return with_alpha(p_color, 0.105f); };
+		const int cushions = 10 + (int)(rng.randf() * 6.0);
+		const double spread = 0.28 + 0.1 * (double)count;
+		for (int index = 0; index < cushions; index++) {
+			const double angle = rng.randf() * TAU_D;
+			const double reach = spread * std::sqrt(rng.randf());
+			const double radius = rng.range(0.09, 0.2) * (1.4 - 0.7 * reach / spread);
+			const double high = radius * rng.range(0.3, 0.55);
+			const double tone = rng.randf();
+			const Color dark = Color(0.12f + 0.06f * (float)tone, 0.3f + 0.1f * (float)tone, 0.07f);
+			const Color light = Color(0.28f + 0.12f * (float)tone, 0.52f + 0.1f * (float)tone, 0.14f);
+			Vector3 at((real_t)(std::cos(angle) * reach), 0, (real_t)(std::sin(angle) * reach));
+			m.frustum(at, high * 0.6, radius, radius * 0.82, 9, soft_moss(dark), soft_moss(dark.lerp(light, 0.5f)), 0, &rng, 0.12);
+			m.frustum(at + Vector3(0, (real_t)(high * 0.6), 0), high * 0.4, radius * 0.82, 0.0, 9, soft_moss(dark.lerp(light, 0.5f)),
+					soft_moss(light), 0, &rng, 0.1);
+		}
+		return package(m, false);
+	}
 	struct Spot {
 		double x, z, height, radius;
 	};
@@ -2142,11 +2428,40 @@ Dictionary PlantMeshNative::mushroom(const Dictionary &p_species, int64_t p_seed
 		}
 		spots.push_back({ x, z, height, radius });
 	}
+	// (task 100) a bulbous foot and a tapering stalk, a rounded cap in three rings with a pale underside, and white flecks on a red cap
+	// (realistic look: a vertex with a sway under 0.1 and no UV is shaded as stone, so a mushroom carries a sway just above it)
+	auto soft = [](Color p_color) { return with_alpha(p_color, 0.105f); };
+	const bool flecked = accent.r > 0.7f && accent.g < 0.3f;
 	for (const Spot &spot : spots) {
 		Vector3 at((real_t)spot.x, 0, (real_t)spot.z);
-		m.frustum(at, spot.height, 0.035, 0.03, 5, still(Color(0.9f, 0.88f, 0.8f)), still(Color(0.92f, 0.9f, 0.84f)), 0);
-		m.frustum(at + Vector3(0, (real_t)spot.height, 0), spot.height * lerpd(0.3, 0.9, droop), spot.height * crown, 0.02, 7,
-				still(accent.darkened(0.15f)), still(accent), 0, &rng, 0.05);
+		const double lean = rng.range(0.0, 1.0);
+		const Color stalk_foot = Color(0.62f, 0.55f, 0.42f), stalk_top = Color(0.93f, 0.9f, 0.82f);
+		const double foot = spot.height * 0.28;
+		m.frustum(at, foot, spot.radius * 0.17, 0.034, 6, soft(stalk_foot), soft(stalk_top), 0);
+		m.frustum(at + Vector3(0, (real_t)foot, 0), spot.height - foot, 0.034, 0.027 + 0.01 * lean, 6, soft(stalk_top),
+				soft(Color(0.95f, 0.93f, 0.86f)), 0);
+		const double cap_height = spot.height * lerpd(0.3, 0.9, droop);
+		const double radius = spot.radius;
+		Vector3 cap = at + Vector3(0, (real_t)spot.height, 0);
+		const Color gills = Color(0.85f, 0.78f, 0.66f);
+		m.frustum(cap - Vector3(0, (real_t)(cap_height * 0.06), 0), cap_height * 0.06, radius * 0.45, radius, 8, soft(gills),
+				soft(gills.darkened(0.1f)), 0);
+		m.frustum(cap, cap_height * 0.3, radius, radius * 0.88, 8, soft(accent.darkened(0.2f)), soft(accent.darkened(0.08f)), 0);
+		m.frustum(cap + Vector3(0, (real_t)(cap_height * 0.3), 0), cap_height * 0.4, radius * 0.88, radius * 0.5, 8,
+				soft(accent.darkened(0.08f)), soft(accent), 0);
+		m.frustum(cap + Vector3(0, (real_t)(cap_height * 0.7), 0), cap_height * 0.3, radius * 0.5, 0.0, 8, soft(accent),
+				soft(accent.lightened(0.08f)), 0);
+		if (flecked) {
+			for (int fleck = 0; fleck < 7; fleck++) {
+				const double angle = TAU_D * fleck / 7.0 + rng.range(-0.3, 0.3);
+				const double along = rng.range(0.25, 0.7);
+				const double ring = radius * (0.88 - 0.4 * along);
+				const double y = cap_height * (0.3 + 0.4 * along) + cap_height * 0.02;
+				Vector3 fleck_at = cap + Vector3((real_t)(std::cos(angle) * ring), (real_t)y, (real_t)(std::sin(angle) * ring));
+				m.frustum(fleck_at, radius * 0.05, radius * 0.11, radius * 0.07, 5, soft(Color(0.96f, 0.95f, 0.9f)),
+						soft(Color(0.98f, 0.97f, 0.93f)), 0);
+			}
+		}
 	}
 	return package(m, false);
 }
@@ -2205,10 +2520,11 @@ Dictionary PlantMeshNative::grow(const Dictionary &p_genome, int64_t p_seed, boo
 		}
 	}
 	Dictionary result = package(mesh, capped);
-	// the six thickest low limbs, for the colliders (two points and a radius each, in the mesh's own space)
+	// the thickest low limbs and roots, for the colliders (two points and a radius each, in the mesh's own space): 6, and up to 16 when the tree has buttress roots
 	std::sort(limbs.begin(), limbs.end(), [](const std::array<float, 7> &a, const std::array<float, 7> &b) { return a[6] > b[6]; });
+	const bool has_roots = genome.roots > 0;
 	PackedFloat32Array capsules;
-	for (size_t i = 0; i < limbs.size() && i < 6; i++) {
+	for (size_t i = 0; i < limbs.size() && i < (size_t)(has_roots ? 16 : 6); i++) {
 		for (int k = 0; k < 7; k++) {
 			capsules.push_back(limbs[i][k]);
 		}

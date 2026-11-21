@@ -37,6 +37,7 @@ Ref<ArrayMesh> PlantMeshes::build(const Ref<PlantSpecies> &p_species, int p_vari
 		one["droop"] = p_species->droop;
 		one["count"] = p_species->count;
 		one["accent"] = p_species->accent;
+		one["archetype"] = p_species->archetype;
 		return mesh_from(maker->mushroom(one, dice, p_detailed));
 	}
 	// every other plant is grown by the tree grower; the small ones always in the light version

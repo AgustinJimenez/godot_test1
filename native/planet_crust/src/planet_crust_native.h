@@ -15,6 +15,7 @@
 #include <godot_cpp/variant/vector3.hpp>
 
 #include "FastNoiseLite.h"
+#include <vector>
 
 namespace godot {
 
@@ -71,7 +72,7 @@ private:
 	double valley_depth[3] = { 0.0, 0.0, 0.0 };
 	// the rock
 	double rock_boundary = 0.08;
-	Color rock_colours[9];
+	Color rock_colours[20];
 
 	Noise warp, ridge, interior; // the plates'
 	Noise rolling, ranges, range_mask, hills, gullies, detail; // the ground's
@@ -113,7 +114,16 @@ private:
 
 	static void configure(Noise &r_noise, const Array &p_config);
 	Vector3 plate_shift(const Vector3 &p_dir) const;
-	double tectonic_height(const Vector3 &p_dir) const;
+	double tectonic_height(const Vector3 &p_dir) const; // the plates themselves
+	// (task 101) The plates' height on a cube (6 faces of TECT_NODES x TECT_NODES, a margin of 2 nodes round each so the cubic lookup never leaves its
+	// face). It is NOT used for a height (the plates have creases a grid rounds off: up to hundreds of metres): only for the DIFFERENCE between a point
+	// and a neighbour 30-85 m away, which near a coast the ground's smoothing needs 8 times a sample (the plates were 16 of its 28 us).
+	double tectonic_cached(const Vector3 &p_dir) const;
+	double ground_height_from(const Vector3 &p_dir, double p_tectonic) const; // ground_height_raw with the plates' height given
+	static constexpr int TECT_CELLS = 320;
+	static constexpr int TECT_NODES = TECT_CELLS + 1 + 4;
+	std::vector<float> tect_grid;
+	void build_tectonic_grid();
 	double boundary_effect(int p_a, int p_b, const Vector3 &p_q, double p_edge) const;
 	void plate_at(const Vector3 &p_dir, int &r_plate, real_t &r_edge, bool &r_continental) const;
 	double shore_curve(double p_units) const;

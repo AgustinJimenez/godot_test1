@@ -1,6 +1,6 @@
 #pragma once
 
-// PlanetRock (was systems/planet/planet_rock.gd): the crust's rock, from the setting it formed in, and its colour. A mix of nine rocks
+// PlanetRock (was systems/planet/planet_rock.gd): the crust's rock, from the setting it formed in, and its colour. A mix of twenty rocks (nine, and eleven variants carved out of them: marble, slate, quartzite, gabbro, diorite, rhyolite, chalk, obsidian, pumice, conglomerate, scoria)
 // weighed by what makes them (sea floor basalt, volcanic boundaries, cratons, sedimentary basins, stripped high ground), blended by weight,
 // with soil, cover, snow, ice and sand over it. A pure function of the position. (The native crust has the same maths for the bulk work.)
 
@@ -30,12 +30,12 @@ protected:
 	static void _bind_methods();
 
 public:
-	enum Kind { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE };
+	enum Kind { BASALT, ANDESITE, GRANITE, GNEISS, SCHIST, LIMESTONE, SANDSTONE, RED_SANDSTONE, SHALE, MARBLE, SLATE, QUARTZITE, GABBRO, DIORITE, RHYOLITE, CHALK, OBSIDIAN, PUMICE, CONGLOMERATE, SCORIA };
 	static constexpr double BOUNDARY = 0.08; // radians: how far a boundary's rock reaches
 	static constexpr double LAPSE = 0.0065; // degrees C the air cools a metre higher
 
 	static double get_boundary() { return BOUNDARY; }
-	static int64_t kind_count() { return 9; }
+	static int64_t kind_count() { return 20; }
 	static PackedColorArray colours();
 
 	// `PlanetRock.new(tectonics, world_seed, radius, relief)` of the script
