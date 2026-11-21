@@ -170,6 +170,7 @@ void PlanetSurface::select_native(const Vector3 &p_at) {
 		config["tree_reach"] = os->has_environment("PLANET_TREE_REACH") ? os->get_environment("PLANET_TREE_REACH").to_float() : 8000.0;
 	}
 	config["coarse_level"] = coarse_level();
+	config["patch"] = OS::get_singleton()->has_environment("PLANET_PATCH") ? OS::get_singleton()->get_environment("PLANET_PATCH").to_float() : 0.0; // (the small forest lab: --patch=metres in planet_lab)
 	config["faces"] = faces_;
 	Dictionary picked = native_->call("select", config);
 	PackedInt32Array entries = picked["entries"];

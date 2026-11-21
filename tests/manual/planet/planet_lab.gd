@@ -944,6 +944,11 @@ func _ready() -> void:
 		elif arg == "--no-voxel":
 			_voxel = false
 			_voxel_flag = true
+		elif arg.begins_with("--patch="): # (task 101) the small forest lab: plants and trees only this many metres round the spawn, bare ground beyond, and no voxel ground (a quick load)
+			OS.set_environment("PLANET_PATCH", arg.trim_prefix("--patch="))
+			if not _voxel_flag:
+				_voxel = false
+				_voxel_flag = true
 		elif arg == "--earth":
 			var es := OS.get_environment("PLANET_SCALE").to_float() # (0.1 is the game's size)
 			settings = PlanetSettings.earth(es if es > 0.0 else 1.0) # first: it replaces the rest
@@ -1124,6 +1129,8 @@ func _physics_process(_delta: float) -> void:
 		(FloraMeshes.material() as ShaderMaterial).set_shader_parameter("range_fade_dither", 0.0)
 	_fly_step(_delta)
 	_pop_step()
+	if _frame == 3300 and "--frustum-census" in OS.get_cmdline_user_args():
+		_frustum_census()
 	PlanetLabChecks.frame_step(planet, player, _frame)
 	if _map_layers and _frame >= 600 and (_frame - 600) % 400 == 0:
 		var which := (_frame - 600) / 400
@@ -1622,6 +1629,42 @@ var _fly_stopped := -1.0
 var _fly_last := 0.0
 var _fly_quiet := 0.0
 var _fly_peak := 0
+
+
+## --frustum-census (task 101): of the multimesh nodes the engine draws (in their range, their box touching the view), how many instances and triangles are really inside the
+## camera's view? (A node is drawn whole: every instance in it is sent to the GPU, only the clipping removes the ones outside.) FRUSTUM_CENSUS per size kind.
+func _frustum_census() -> void:
+	var eye := get_viewport().get_camera_3d()
+	var rows := {}
+	for node in planet.find_children("*", "MultiMeshInstance3D", true, false):
+		var instance := node as MultiMeshInstance3D
+		if instance.multimesh == null or instance.multimesh.mesh == null or not instance.is_visible_in_tree() or not instance.visible:
+			continue
+		var away := eye.global_position.distance_to(instance.global_position)
+		if (instance.visibility_range_end > 0.0 and away >= instance.visibility_range_end + instance.visibility_range_end_margin) or away < instance.visibility_range_begin - instance.visibility_range_begin_margin:
+			continue
+		var tris := _mesh_triangles(instance.multimesh.mesh)
+		var count := instance.multimesh.visible_instance_count
+		if count < 0:
+			count = instance.multimesh.instance_count
+		var inside := 0
+		for index in count:
+			var at := instance.global_transform * instance.multimesh.get_instance_transform(index).origin
+			if eye.is_position_in_frustum(at + Vector3.UP * 2.0) or eye.is_position_in_frustum(at):
+				inside += 1
+		if inside == 0:
+			continue # (the node is probably culled whole: its box does not touch the view)
+		var kind := _size_kind(instance)
+		var row: Array = rows.get(kind, [0, 0, 0, 0, 0])
+		row[0] += 1
+		row[1] += count
+		row[2] += inside
+		row[3] += tris * count
+		row[4] += tris * inside
+		rows[kind] = row
+	for kind in rows:
+		var row: Array = rows[kind]
+		print("FRUSTUM_CENSUS %s nodes=%d instances_sent=%d in_view=%d (%.0f %%) tris_sent=%.1f M in_view_tris=%.1f M" % [kind, row[0], row[1], row[2], 100.0 * row[2] / maxf(row[1], 1.0), row[3] / 1.0e6, row[4] / 1.0e6])
 
 
 var _pop_state := {}

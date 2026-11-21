@@ -18,6 +18,7 @@ const double PI_D = 3.14159265358979323846;
 struct Selection {
 	Vector3 near_dir;
 	double height, radius, split_factor, tile_max, collide_tiles, tree_reach;
+	double patch = 0.0; // (task 101: > 0, the small forest lab: plants and trees only this far (m) round the player, bare ground beyond)
 	int max_level, coarse_level;
 	bool plants_on;
 	PackedVector3Array faces;
@@ -60,6 +61,9 @@ struct Selection {
 				detail = d < tree_reach ? 2 : 1;
 			}
 		}
+		if (patch > 0.0 && d > patch) {
+			detail = 0;
+		}
 		entries.insert(entries.end(), { face, level, x, y });
 		distance.push_back(d);
 		collides.push_back(collide ? 1 : 0);
@@ -89,6 +93,7 @@ Dictionary PlanetSurfaceNative::select(const Dictionary &p_params) const {
 	s.plants_on = p_params.get("plants_on", true);
 	s.tree_reach = p_params.get("tree_reach", 1280.0);
 	s.coarse_level = p_params.get("coarse_level", 3);
+	s.patch = p_params.get("patch", 0.0);
 	s.faces = p_params.get("faces", PackedVector3Array());
 	if (s.faces.size() < 18) {
 		return Dictionary();
