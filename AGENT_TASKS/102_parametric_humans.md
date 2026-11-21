@@ -1,0 +1,165 @@
+# Task 102: parametric humans (Blender/MPFB to Godot): bodies, sliders, base underwear
+
+Goal (user, 2026-11-21): keep the game procedural, so human characters are generated from parameters the player picks (gender, height,
+weight, muscle, later more), not hand-made one by one. First spike: two base bodies in a Godot scene with sliders. Detail for the
+tools and the Blender setup is in `docs/blender_workflow.md` (read it first; this file is the handoff).
+
+Rules: nothing committed yet (the user has not confirmed); one Godot lab window at a time, close my earlier ones first (memory
+close-old-godot-windows), launch on the second monitor in the background (`--screen 1 --windowed`); keep generator scripts in
+`tools/blender/` (a PC crash once wiped the scratchpad); stage explicit paths only.
+
+## Design (agreed in chat)
+
+Bake in Blender, blend in Godot. Blender and MPFB cannot run inside the game, so a headless Blender run (once, offline) exports each
+base body with blend shapes (a stored "move every vertex by this" shape); in Godot the sliders only set shape weights, nothing is rebuilt.
+Rejected: a hand-written parametric mesh (slower, worse than MakeHuman's data). Skin, eyes and hair should also be procedural in Godot.
+
+## State (2026-11-21)
+
+Working and checked by screenshots (not by hand-dragging the sliders):
+- Blender 5.3 + MPFB 2 installed headless (`--online-mode` needed; the addon entry must exist before enabling, see the docs).
+- `tools/blender/make_bodies.py`: per gender, MPFB human at the macro extremes, vertex deltas stored as shape keys, helper geometry cut
+  (13,380 vertices), exported to `assets/models/humans/{male,female}_body.glb`. Six shapes: `height_short/tall`, `weight_light/heavy`,
+  `muscle_low/high`. Male 1.75 m, female 1.61 m; `height_tall` adds 0.70 m, `height_short` removes 0.36 m.
+- `tools/blender/make_underwear.py`: briefs (both) + bandeau (female) cut from the body's own faces by flat planes, 4 mm out along the
+  normal, same shapes as the body so it follows every slider. Bakes waistband/hem masks into the vertex colour (currently unused).
+- `shaders/human_underwear_fabric.gdshader`: plain single-colour knit cotton (model-space triplanar weave, faint bump, light sheen that
+  fades by pixel footprint). The user wants it very basic: no dark waistband line, no stitching.
+- Lab `tests/manual/humans/human_body_lab.tscn/.gd`: Female/Male buttons, Height/Weight/Muscle sliders, right-drag turn, wheel zoom,
+  underwear always on (the user removed the toggle). Capture flags: `-- --capture=<png> --gender= --height= --weight= --muscle= --close`.
+- Slider mapping (lab constants): height -1..1 maps to 0.6 of a full shape; weight heavy x3.0, light x1.25; muscle high x2.0, low x1.25.
+  Pushing a light shape to x3 folded the female waist/hips, so light stays near its designed range. Extremes of weight and muscle were
+  checked on both bodies at slider -1 and +1: clean, cloth follows. The bandeau is slightly rumpled at high muscle (cloth copies bumps).
+
+- Eyes (done 2026-11-21): `tools/blender/make_eyes.py` -> `{male,female}_eyes.glb` (two spheres following all six shapes via the saved eye landmarks), `shaders/human_eye.gdshader` (procedural iris/pupil/sclera, colour and pupil size are parameters), lab eye colour picker + pupil slider. Checked on both bodies at several colours and at height -1/+1. Brows, lashes, hair not started.
+- Eye controls added (2026-11-21): per-eye colour, iris size, pupil, sclera tint, veins (lab UI + shader parameters; see docs). Veins/sclera effects are subtle because the lids hide the eye.
+- Brows and lashes (2026-11-21, second version): real hair strips (320 per brow, curled tapered lashes), `tools/blender/make_face_hair.py`, `shaders/human_face_hair.gdshader`, lab colour picker + brow density + Face close-up toggle. Checked close up and far on both bodies. Known: faint dotted outer-corner lashes, one long thin tail hair on the left brow. Head hair not started.
+- Head hair (2026-11-21, NATIVE C++): `HumanHair` in `native/planet_crust` (see docs/blender_workflow.md), `shaders/human_hair.gdshader` (Kajiya-Kay two-highlight lighting, wind + head-inertia sway in the vertex stage, root darkening), lab presets/sliders/Wind/Shake, check `tests/manual/humans/human_hair_check.gd` PASS. DRAPES over the head now (rewritten 2026-11-21 after the user said it stayed straight and did not fall over the head): strands start along the scalp, gravity bends them each step, the head holds them up, a neck column keeps back hair behind the neck. Long hair, bob and the short cut look right from front, side, top and back. The "beard" under the chin was a scalp-detection bug (head centre pulled forward by the face, roots below the hairline, jaw underside), fixed. Earlier: long hair with a parting looks best; the Short preset is a short back and sides (side_trim) with a swept top. Motion: `components/hair_sway.gd` (HairSway) swings the hair from a character's movement and turning (verified in the lab only; no real character uses these humans yet). Dyed ends added (tip colour/amount); side and back views checked (the "bald patch" from behind is the ear showing through a short back and sides). Curly now has real coils (helix around each strand, radius scales with curl and length). Highlight streaks fixed (tinted, clamped, shine 0.4). Release + single + double (debug and release) libraries built without errors 2026-11-21 (double build not yet loaded in the double engine); any later C++ edit needs the rebuild again. Open: grey cap showing over the ear, a few flyaways, hair does not collide with clothing/shoulders beyond a nearest-vertex push, no LOD. Only the single debug DLL was rebuilt; release + `--double` libraries still to rebuild.
+- KNOWN ISSUE found while checking eyes: weight +1 and muscle +1 together (gains x3 and x2) make the male shoulders lumpy/faceted. Single extremes were clean; combined extremes need a cap on the summed shape weights.
+
+## Not done / next
+
+- Height extremes and all three sliders at their extremes together: not checked. A real hand-drag of the sliders: not done.
+- Rig: the bodies have none, so no animation, Foot IK or retargeting yet. Next big step: a rig that follows the height (check
+  `HumanoidRetargeter`, the Character Editor and `docs/asset_budgets.md` first so there is one body system, not two; the mesh is 13k
+  vertices, may be heavy for crowds).
+- More sliders (age, proportions, race, face) and procedural skin (tone, age, freckles; the Blender skin prototype is only a start and its
+  nodes do not export). Eyes, brows, lashes and head hair exist (see State); the skin in the lab is a plain Godot material.
+- Licence: MakeHuman targets are said to be CC0 and the addon code GPL; confirm before shipping (nothing but the data is shipped).
+- Official Blender Lab MCP (needs Blender 5.1+, GUI-installed add-on): its page returned 403, not read, not installed. 6xvl/blender-skill
+  has useful notes but its bridge has telemetry on by default (`DISABLE_TELEMETRY=1`); nothing from either is installed.
+- Commit: the untracked files are `assets/models/humans/` (glb + .import), `tests/manual/humans/`, `tools/blender/`,
+  `shaders/human_underwear_fabric.gdshader(.uid)`, `docs/blender_workflow.md`, this file, and the `AGENTS.md` pointer line.
+  Wait for the user's go-ahead. `bash.exe.stackdump` in the root is a stray crash dump, not ours.
+
+## Earlier item (DONE, option B was taken): eyes, eyebrows, eyelashes, hair (user, 2026-11-21: "first hair, brows, lashes, eyes, at least we must be able to change the colour of the default ones")
+
+Option A (preferred if the licence and download work): the MakeHuman system assets, CC0, as MPFB asset packs (MPFB's own addon ships none):
+"MakeHuman system assets" (proxies, eyes, teeth), Eyebrows 01, Eyelashes 01, Hair 01/02/03 and the hair/eye material packs. Eye materials 01
+and 02 are CC0 but "System eye materials 03" is CC-BY (attribution needed): avoid or credit it. Each asset is fitted to the base mesh, so for
+the sliders re-fit it at every morph (the way `make_bodies.py` samples the body: `HumanService.add_mhclo_asset`) and store shape keys. In
+Godot the colour must be a parameter: a shader/material colour (iris, brow, lash, hair tint), not baked into a texture.
+Option B: build eyes (sphere + iris shader), brows and lashes (cards) and a hair cap in `tools/blender/` and Godot shaders ourselves; no
+download, fully procedural, but hair quality is the hard part.
+Source for pack names and licences: https://static.makehumancommunity.org/assets/assetpacks/index.html. Packs read (2026-11-21), zips at
+`https://files2.makehumancommunity.org/asset_packs/<pack>/<pack>_cc0.zip` (files.makehumancommunity.org is the other mirror; the site said
+its community services shut down 2026-10-21, so mirrors may move): `makehuman_system_assets` 267 MB CC0 (eyes blue/brown/green/grey/ice...,
+teeth, tongue, proxies, hair short01-04/long01/bob01-02/ponytail01/afro01/braid01, eyebrow001-012, eyelashes01-04), `eyebrows01` 10 MB CC0,
+`eyelashes01` 3 MB CC0, `hair01` 217 MB CC0, `system_hair_materials01` 82 MB CC0, `system_eye_materials01` 13 MB CC0. `hair02` and `hair03` are
+CC-BY (credit needed). Whether packs can be installed without the Blender GUI (unzip into a folder) is not confirmed: the pages only describe
+the "apply assets > library settings > asset packs" button; check the Asset Packs FAQ or MPFB's source.
+Colour pickers per part exist in the lab (eyes, brows/lashes, hair). Option A (the MakeHuman asset packs) was not used.
+
+## Future task items (ideas listed 2026-11-21, in the order I suggested; the user asked for them to be written down)
+
+1. A rig that follows the body (scales with height) so the bodies animate, with Foot IK and retargeting. Check `HumanoidRetargeter`, the
+   Character Editor and `docs/asset_budgets.md` first: one body system, not two.
+2. (done, see State) eyes, brows, lashes, hair with changeable colours.
+3. More body sliders: age (MPFB has it, most visible after weight), proportions, chest and hip size (same bake as height/weight), later face shape.
+4. Procedural skin: tone, age, freckles as shader parameters; replaces the plain lab material (the Blender skin nodes do not export).
+5. Procedural outer clothing cut from the body the same way as the underwear (t-shirt, trousers); loose clothing needs the existing cloth fitting.
+6. A random-person button: roll every slider within sensible limits, save the result as a small recipe (foundation for NPC crowds).
+7. Housekeeping: height extremes and all sliders together at their extremes; a lower-detail mesh for crowds; confirm the MakeHuman data
+   licence before shipping; smooth the bandeau at high muscle; commit the work once the user says so.
+
+## Log
+
+- 2026-11-21: MPFB spike, body shape keys, lab, underwear (ragged hems fixed with plane cuts), fabric shader (simplified at the user's
+  request), weight gain split after the female min-weight fold, muscle shapes added. A PC crash lost the scratchpad (underwear script was
+  rewritten into `tools/blender/`).
+
+## Status snapshot (2026-11-21, late)
+
+- Done and checked by screenshots (never by hand-dragging sliders): bodies with six blend shapes, underwear, eyes, brows, lashes, procedural head hair (native `HumanHair`, drapes over the head, curls, dyed ends, wind and head sway via `components/hair_sway.gd`).
+- Hair bugs found and fixed through measurement, not guessing: hair under the chin (scalp detection: head centre pulled forward by the face, roots below the hairline, jaw underside), flat plates on Buzz (ribbon wider than hair), pale streaks (highlight term).
+- Builds: single debug, single release, double debug and double release libraries built without errors. The double build was not loaded in the double engine. Any later C++ edit needs the rebuild again (`GODOT_CPP_DOUBLE=E:/Godot/cpp/godot-cpp-double GODOT_API_DOUBLE=E:/Godot/cpp/dump/extension_api.json scripts/build_native.sh --release --double`).
+- Review pending: an Opus 5.5 (xhigh) read-only review of all the humans work was started; its findings go here, real bugs first. The reviewed files were frozen while it ran.
+- Open: grey scalp cap over the ear on short cuts, a few flyaways, jagged edge ahead of the ear, no LOD (about 55k vertices per head), no collision with clothing or shoulders beyond a nearest-vertex push, hair not used by any real character yet, skin and body textures still a plain material, head hair/brows/lashes share no colour link.
+- Not committed. Untracked: `assets/models/humans/`, `tests/manual/humans/`, `tools/blender/`, `native/planet_crust/src/hair_sway_native.{h,cpp}` and `human_hair_native.{h,cpp}`, `shaders/human_*.gdshader(.uid)`, `tools/blender/landmarks/`, `scripts/humans_check.sh`, `docs/blender_workflow.md`, this file. Modified: `AGENTS.md` (one pointer line), `native/planet_crust/src/register_types.cpp`. Stage explicit paths only.
+
+## Opus 5.5 xhigh review (2026-11-21) and what was done about it (second pass 2026-11-21: all below fixed unless marked OPEN)
+
+Read-only review of all humans work. Fixed already (native debug DLL rebuilt, `human_hair_check.gd` PASS with new checks):
+- B1 FIXED: hair blend shapes are now NORMALIZED with full positions and the base normals/tangents (zero normal/tangent deltas decoded to a backward vector and pulled every hair normal back at non-zero sliders; mesh bounds came from the offsets, so tall bodies could cull the hair). Check now asserts shape normals == base and bounds contain the `height_tall` hair.
+- B2 FIXED: `human_hair.gdshader` `light()` no longer multiplies by ALBEDO (the engine multiplies diffuse light by albedo itself, so it was albedo squared). Brightness changed: shine/ambient may need re-tuning; captures were started (`s_*.png` in the scratchpad) but NOT yet looked at.
+- B4 FIXED: one `Dice` per lock (`seed + lock * 0x2545F4914F6CDD1D`) so a float rounding difference cannot shift every later lock; seed read through int64; lock count computed in double and clamped; index bounds validated at the start of `build`.
+STILL TO DO (in priority order):
+1. Re-look at the hair after B2 (captures `s_male_short`, `s_female_long`, `s_male_tall_heavy`, `s_female_blond_bob`), re-tune `shine`; check tall/heavy for the normals fix.
+2. B3: `build()` reads the body through `surface_get_arrays`/`surface_get_blend_shape_arrays`, which stall the GPU and are not worker-thread safe; read the body once into packed arrays per gender, cache them, pass arrays in, build the ArrayMesh on the main thread; use `ptr()`/`std::vector` in the loops; measure build time (docs claim "a few ms", unmeasured; Buzz is ~68k vertices, Curly ~94k).
+3. B5: hair rigidly follows ONE body vertex per lock, so it will not scale with the head at Height +-1 or follow shoulders at Weight/Muscle +1: fit a similarity transform per shape from the scalp offsets, blend toward nearby body vertex offsets; look at the hair at Height +-1 and Weight/Muscle +1. When the rig exists copy bone weights from the bound vertex (bind by position, the importer reorders vertices).
+4. B6 `components/hair_sway.gd`: convert movement into the hair mesh's space (actors face -Z, hair +Z), sample in `_physics_process` or use the interpolated transform, use `instance uniform` for sway/wind. B7: eye/underwear/hair-cap shaders draw patterns in model space (will slide once skinned): store rest-pose coordinates in UV2.
+5. Scalp/collision are tuned in absolute metres for two bodies: derive from eye landmarks (landmarks JSON, `eye_drop` has three different defaults), distance field instead of nearest-vertex push, neck column radius per angle; ear-rim vertices count as scalp; combing vector collapses where the normal is parallel to it (likely flyaways); cap uses full strand lighting with an arbitrary tangent (likely the grey cap over the ear): give the cap no highlight.
+6. Housekeeping: commit `*_landmarks.json` (needed to re-run make_eyes/make_face_hair), remove dead code (`centre_sum`, `centre_x`, String fallback in `param`, `make()` in make_bodies.py), fix docs that disagree (blender_workflow.md says "pure", "a few ms", "curl wobbles"; make_underwear.py header; lab header says four shapes), wire `human_hair_check.gd` into a suite, `_process(delta)` -> `_delta` in the lab, replace stale sections of this file (the "bald and eyeless" line and "Current item ... Not started"), add `human_hair_native.*`, `register_types.cpp`, `hair_sway.gd` and the hair/face-hair/eye shaders to the commit list, do not stage `bash.exe.stackdump`.
+- Rebuild release + double after these C++ edits: `GODOT_CPP_DOUBLE=E:/Godot/cpp/godot-cpp-double GODOT_API_DOUBLE=E:/Godot/cpp/dump/extension_api.json scripts/build_native.sh --release --double`.
+
+### Update after the review fixes (2026-11-21, last tick)
+- Shader: with the duplicate ALBEDO gone, `light()` diffuse is `LIGHT_COLOR * ATTENUATION * diffuse * 0.15` (was `/pi` with albedo squared; 0.42 was tried and was too bright, an arithmetic slip of mine). Dark brown now reads brown; blond (c8a050) still reads lemon-yellow and saturated: next, desaturate bright hair (tip lightening multiplies linear channels) and re-tune `shine`.
+- Tall + heavy male (Height +1, Weight +1): hair still present and lit sensibly (blend-shape normals/bounds fix works); not yet checked at Height -1 or Muscle +1, nor close-up of the neck/shoulders (review item B5).
+- All C++ edits since the last full build (NORMALIZED shapes, per-lock dice, bounds checks) are in the single debug DLL only: rebuild release + double with the command above before anything else uses them.
+- Remaining list from the review is unchanged (B3 cached body arrays, B5 binding, B6/B7, scalp/collision constants, housekeeping).
+
+## Review follow-up (2026-11-21, user: "there was a review, and bugs to fix, do that, and any godot script that was written, turn it into native cpp")
+
+Fixed (checked by `scripts/humans_check.sh` = PASS, and by captures of both bodies at Height/Weight/Muscle extremes):
+- Hair after B2: re-looked at male/female, short/long/bob/buzz, tall/short, heavy+muscle. First finding: the hair rendered WHITE in every capture, not because of B2 but because my own cap fix put a `return` in `light()` (a shader compile error); restructured with an `if`. With the shader compiling the hair is brown and the highlights are quiet at `shine` 0.4 (no re-tune needed; a very light blond is a bit saturated).
+- B3 DONE: `HumanHair.prepare(body)` reads the body once into plain arrays (kept in the mesh's meta), `build_arrays(data, params)` grows the hair on any thread (the check runs it on a `Thread` and compares), `make_mesh(built)` makes the mesh on the main thread; the loops use `std::vector`. Measured on a debug build: grow 30-100 ms, make mesh 15-40 ms per rebuild (the docs claimed "a few ms": corrected).
+- B5 DONE: every hair vertex follows each blend shape by a least-squares fit of the whole scalp (scale + move) plus the local residual of its root vertex (fading along the strand), and hair hanging near the neck/shoulders follows the nearest body vertex. The check asserts the scalp cap moves with the body's head in every shape (within 2 cm); captures at Height +-1 and Weight/Muscle +1 show the hair on the head.
+- B6 DONE and converted to C++: `HairSway` (`hair_sway_native.{h,cpp}`, `components/hair_sway.gd` deleted): samples movement in `_physics_process`, converts into the hair mesh's own space (`forward` property: the glb faces +Z), spring in `_process`, writes the shader's `instance uniform vec3 sway` on the hair MeshInstance3D (it takes `hair`, not a material). The lab's Shake button still swings the hair (checked by capture).
+- Item 5 partly: `eye_drop` has one source now (`default_params_for("male"|"female")`: 0.108 / 0.107 from the eye landmarks, asserted by the check); the combing direction no longer collapses where it is parallel to the normal; the scalp cap gets no highlight (the grey patch over the ear; look at the side view: gone in the capture).
+- Item 6 DONE: landmarks committed to `tools/blender/landmarks/` (they only existed in an old scratchpad), dead code removed (`centre_sum`, `centre_x`, String key fallback, `make()` in make_bodies.py), docs corrected (`blender_workflow.md`: pure/threads, ms, curl, HairSway), lab header (six shapes), `_process(_delta)`, stale sections of this file replaced, `scripts/humans_check.sh`.
+- GDScript to native: the only runtime GDScript written for the humans was `HairSway`; the lab (`human_body_lab.gd`) and the check (`human_hair_check.gd`) stay GDScript (test tools, like the planet lab).
+OPEN:
+- B7 (eye/underwear/hair-cap patterns drawn in model space slide once the body is skinned): needs rest-pose coordinates in a custom vertex channel; do it with the rig, when the meshes are re-exported.
+- Item 5 rest: scalp/hairline constants are still absolute metres for two bodies, the neck column radius per angle, ear-rim vertices counted as scalp, distance field instead of nearest vertex, collision with clothing.
+- Jagged hairline ahead of the ear, a few flyaways, no LOD, `HairSway` and `HumanHair` not used by a real character yet.
+- Builds: debug double, release double, debug single, release single built by PowerShell scons (the Git Bash build script cannot start the compiler since the 2026-11-21 outage; see AGENTS.md).
+
+## Rig (2026-11-21, user: "yes, install Blender Skills and start the rig with MPFB's rigs")
+
+- Blender Skills (EL4CTEO, MIT, 28 skills): cloned into the scratchpad and read (names and README) but NOT installed: installing it as a Claude Code plugin is the user's command (`/plugin marketplace add EL4CTEO/blender-skills`,
+  `/plugin install blender-agent-skills@blender-agent-skills`); the rig was made from MPFB's own rig files, no skill was needed yet.
+- Done and checked: `tools/blender/make_rig.py` (MPFB Mixamo rig, 52 bones, refitted at all six macro extremes), `assets/models/humans/{male,female}_rigged.glb` + `_rig.json`, native `HumanRig` (setup/apply/shape_weights/load_data),
+  `human_rig_check.gd` PASS (in `scripts/humans_check.sh`), `human_rig_lab` (bones inside the body at height -1/0/+1, arms up and squat deform correctly on both bodies). Details: `docs/blender_workflow.md` "Rig".
+- Next: skin the underwear (copy the body weights), attach eyes/brows/lashes/hair to the head bone, retarget a Mixamo walk onto this skeleton with `HumanoidRetargeter` (names match; proportions differ), Foot IK on the rig, export filter for the JSON,
+  then B7 (rest-pose coordinates for the shaders). SkinTokens (rigs arbitrary meshes) is only for creatures.
+
+## Rig, second step (2026-11-21): clothes and head items skinned, Mixamo walk retargeted (user: "yes")
+
+- Done and checked (`human_rig_check.gd` PASS with new asserts: the underwear has bones and weights that add up to 1 and a skin of its own under the skeleton; turning the head bone moves the rigid eyes): `HumanRig.transfer_skin /
+  skin_to_bone / attach_skinned / attach_rigid`; `human_rig_lab` shows the body with underwear, eyes, brows, lashes and hair on the rig, poses (arms up, squat) and `walk` (key 4, retargeted by `HumanoidRetargeter`).
+  Captures: both bodies, height -1/0/+1, heavy and muscular: the clothes deform with the body, the head items stay on the head, the walk reads as a walk.
+- Known: small slits in the underwear in extreme poses at heavy weight (nearest-vertex weights); model-space shader patterns slide in poses (B7); the retargeted clip is made per skeleton shape (proportions follow Height); the hair is rigid on the
+  head (long hair does not swing from the skeleton, `HairSway` only); `human_body_lab` still shows the unskinned bodies (the rig lab is the one with poses).
+- Next: Foot IK on this skeleton (v2 is the only foot IK; check it accepts the Mixamo-named skeleton), put a `Player`/NPC on these humans (HumanoidActor's clip library already takes a skeleton prefix), smooth the weight transfer, B7,
+  export filter for the rig JSON, commit when the user says so.
+
+- 2026-11-21 (after the limit reset): bright hair colours are pulled toward grey by luminance in `human_hair.gdshader` (blond c8a050 now reads pale blond, not lemon; it is slightly washed, tune if wanted). Checked the female body at Height -1 with the short cut: hair sits on the scalp, nothing floating (B5 worry not seen at this extreme; Height +1 on the female, Weight/Muscle +1 close-ups and the neck/shoulders are still unchecked). Release + double rebuild for the review's C++ fixes was started (log `build_all2.log` in the scratchpad); confirm it printed "the native planet crust is ready" before relying on it.
+- PARALLEL WORK DETECTED (2026-11-21 ~19:55): another session ported `HairSway` to native C++ (`native/planet_crust/src/hair_sway_native.*`, replaces `components/hair_sway.gd`, which no longer exists), added `human_rig_native.*` (HumanRig), `scripts/humans_check.sh` and a rig check, and updated the lab (`_hair_sway.hair = _hair_mesh`). Two `scripts/build_native.sh --release --double` runs were active at once (one was mine); if a library looks corrupt or a link fails, wait for all scons processes to end and run `scripts/build_native.sh --force --release --double` once. Do not edit hair_sway/rig files from the hair session without checking `git status` first. My removed `hair_space` line in the lab was for the old GDScript class.
+- Hair binding at slider extremes (review item B5), looked at 2026-11-21: female Height +1 with the Buzz cut covers the scalp; female Height -1 with the short cut sits on the scalp; male Weight +1 + Muscle +1 with Long hair rests on the traps/shoulders with at most a few strands near them. No visible failure, so the binding was NOT rewritten (keep an eye on the neck/shoulder strands and Height +1 with long hair). The other session already did the review's B3 split (`prepare` / `build_arrays` / `make_mesh`, worker-thread safe) and B6 (native `HairSway`); `human_hair_check.gd` PASS prints build times: about 25-50 ms to grow plus 10-17 ms to make the mesh (docs corrected from "a few ms"). Remaining hair work: scalp/collision constants in absolute metres (derive from eye landmarks), neck column radius per angle, cap highlight (grey over the ear), flyaways where the combing vector collapses, LOD, colour link between head hair, brows and lashes.
+- 2026-11-21: grey scalp cap over the ear is GONE (the other session's `cap_flag` in `human_hair.gdshader` = no strand highlight on the cap): short male front and side views show clean hair, ear fully visible, a tidy edge. Remove "grey cap over the ear" from the open list. Still open: scalp/collision constants (absolute metres), neck column per angle, flyaways where combing collapses, LOD, head hair/brow/lash colour link.
+
+## Second review (Opus 5.5 high, 2026-11-21): findings fixed
+
+Details in `docs/blender_workflow.md` "Second hair review". Bugs fixed: skinned hair/eyes culled at Height +-1 (custom_aabb), hair attached after setup moved twice (`HumanRig.adopt`, `setup` re-callable), curly ribbons flipped their side (side carried point to point), near-body follow lookup too small (9 cm grid), HairSway turn kick (change of turning speed, velocity held at the limit, runtime class), seed shift (dice mixes the seed), zero-length locks, locks clamp 9000, cap diffuse and UV2 rest place in the shader, stale `prepare` cache, docs. New checks: `human_sway_check.gd`, curly/seed/side_trim/custom_aabb/adopt/re-setup asserts, `scripts/humans_check.sh --render` (shader errors). All libraries rebuilt.
+Still open: B7 for eyes/underwear shaders, scalp constants in absolute metres, ear-rim scalp vertices, collision with clothing, weight smoothing for the underwear transfer, Foot IK on the rig, a real character wearing these humans.
+

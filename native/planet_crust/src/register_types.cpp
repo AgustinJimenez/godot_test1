@@ -1,5 +1,8 @@
 #include "perf_probe_native.h"
 #include "flora_meshes_native.h"
+#include "hair_sway_native.h"
+#include "human_hair_native.h"
+#include "human_rig_native.h"
 #include "species_generator_native.h"
 #include "species_registry_native.h"
 #include "tree_archetypes_native.h"
@@ -100,6 +103,10 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(SpeciesGenerator);
 	GDREGISTER_CLASS(PlantMeshes);
 	GDREGISTER_CLASS(FloraMeshes);
+	GDREGISTER_RUNTIME_CLASS(HairSway); // (no spring running in the editor, writing `sway` on hair of an edited scene)
+	GDREGISTER_CLASS(HumanHairBody);
+	GDREGISTER_CLASS(HumanHair);
+	GDREGISTER_CLASS(HumanRig);
 	GDREGISTER_CLASS(SpeciesRegistry);
 	GDREGISTER_CLASS(PlanetCrustNative);
 	GDREGISTER_CLASS(PerfProbe);

@@ -107,6 +107,15 @@ about 5 times slower to build and has no river valleys, and the game prints one 
   after adding a `class_name` script; write multi-line edit scripts to a file instead of a shell heredoc; keep lab and
   check files under 1000 lines (`tests/manual/planet/planet_lab_checks.gd` takes the overflow).
 
+Blender work (headless scripts, MPFB humans, skin, glb export): read and extend `docs/blender_workflow.md`; the active handoff is `AGENT_TASKS/102_parametric_humans.md`.
+
+Parametric humans (task 102): the bodies (male/female MPFB, six blend shapes for height, weight and muscle), underwear, eyes, brows, lashes, a Mixamo rig that follows the sliders, and native head hair.
+The runtime parts are C++ in `native/planet_crust/src` (`HumanHair`, `HumanRig`, `HairSway`, registered in `register_types.cpp`); the Blender generators are in `tools/blender/` (`make_bodies.py`, `make_rig.py`,
+`make_eyes.py`, `make_face_hair.py`, `make_underwear.py`; the eye landmarks in `tools/blender/landmarks/`); labs `tests/manual/humans/human_body_lab.tscn` (sliders, colours, hair) and
+`human_rig_lab.tscn` (rig, poses, a retargeted Mixamo walk; `--face --sweep=40` for a close-up video). Run `scripts/humans_check.sh` (`--render` also draws the rig lab and fails on a shader error) after any change to
+those classes, the shaders `shaders/human_*.gdshader` or the generators; it needs the native library built for the engine's precision (all four are built from PowerShell when Git Bash cannot start the compiler: see "Build trouble on
+Windows" above). Details, measurements and open items: `docs/blender_workflow.md` and the task file. Runtime logic for humans is written in C++, not GDScript (the labs and checks are GDScript).
+
 There are no unit tests. Persistent acceptance scenes live under `tests/manual/<domain>/`.
 Temporary capture scenes may use `tests/manual/_<name>_demo.tscn` but must be removed before commit.
 After launching a verification scene, stop the game before handing control back to the user.
