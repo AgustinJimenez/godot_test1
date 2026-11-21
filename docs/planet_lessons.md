@@ -217,3 +217,16 @@ repeated runs.
   normalize(VERTEX) * push, 1.0)`, z over w) and the objects stand in it. Cost 0.3 ms in the lab; early depth rejection is lost for that material.
 - Tune a new look by the difference to the old picture, not by eye alone: a first dust and a first strata were both invisible (0.03 and
   0.27 / 255 of change) because a mask was too strict (strata) and the ground's colour mixing weakens a multiplier (about a third came through).
+
+
+## 13. Visibility-range fade and a shader that writes ALPHA (2026-11-21)
+
+- `visibility_range_fade_mode = SELF` fades a node through the shader's `ALPHA`, which starts as the fade value (1 when none) and is drawn as an alpha-pass
+  item while it is under 1. A custom shader that assigns `ALPHA` itself (leaf cards: `ALPHA = card_alpha` with a scissor) throws the fade away: the plain parts
+  fade and the leaves pop out at the end of the range. Read `ALPHA` first (`float range_fade = ALPHA;`), dither (`discard` when it is below a screen noise) and
+  write `ALPHA = 1` with the scissor for the parts that should not blend. `flora_wind.gdshader` does this (`range_fade_dither`, 0 = the old way for an A/B).
+- The fade is centred on the range: begin and end each fade over `range +- margin`. The distance is that of the node's box centre, so a node with many
+  instances changes all at once: keep nodes small where a swap must not show.
+- Lighter steps (fewer, wider blades) swapped within a few metres of a walking player show as patches changing; the grass and plant steps start at 30 m and
+  80 m (x2 for plants) for that reason. In a walk the steps cost draw calls (CPU) as much as they save in GPU: measure fps, not only GPU ms.
+

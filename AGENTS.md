@@ -72,6 +72,10 @@ about 5 times slower to build and has no river valleys, and the game prints one 
 - **The user is on the Windows PC, sometimes by remote control from a Mac** (the game runs on the PC: the
   Windows libraries in `native/planet_crust/bin` are the ones that matter), and has a clone on a Mac too (the
   macOS build is written but not yet run there).
+- **Build trouble on Windows (task 101):** if `scripts/build_native.sh` fails in Git Bash with "El sistema no puede encontrar el archivo especificado"
+  (scons cannot start the compiler), run the venv's `scons.exe` from PowerShell with `C:\ProgramData\mingw64\mingw64in` first in `PATH` (`platform=windows
+  arch=x86_64 use_mingw=yes target=template_debug precision=double custom_api_file=...`, `GODOT_CPP` the double clone). With the editor open the dll
+  is locked: rename it (`locked_*.dll.bak`, ignored by git) and link the new one under the old name.
 - **After any change to the C++, rebuild and compare**: `scripts/build_native.sh`, then
   `planet_lab.tscn -- --native-check --earth` (`NATIVE_CHECK PASS`, part of `scripts/planet_check.sh`). The
   library must match the engine's precision: the standard editor needs the single library, the custom
@@ -884,6 +888,23 @@ Earth, `--start-menu` for the menu) with the map open first; scripted runs alway
   switched-off thing (trees, ground, plants, water, clouds, sun glow, impostors, bark parallax, bark photos) and
   prints each one's GPU ms and share. One run per line is noisy (about 0.4 ms); never run two at once (one GPU).
   Per-pass GPU times are not readable from scripts: use the editor's Debugger > Visual Profiler.
+  (task 101) The custom engine in `E:\Godot\double\src` has a RenderingServer binding for per-pass GPU times
+  (`set_frame_profiling_enabled`, `get_frame_profile_areas`), built so far only into the separate
+  `godot.windows.editor.double.x86_64.gpuprof.console.exe` (the normal exe needs the same rebuild with the editor closed): the detailed
+  perf panel of the HUD then lists the passes with a bar, and `F7` (or `--probe`) in the lab hides and shows each kind (trees by
+  distance step ft_a..ft_d, plants, grass, shadows, clouds, shafts...) and prints each one's GPU cost. Standing view only (`--stand`, the player
+  frozen); compare numbers inside one run, never across runs (the spot differs: 22-26 ms baselines).
+- **Small forest lab (task 101):** `-- --earth --plants --trees --seed=8 --grounded --patch=2000 --forest-walk=20` makes plants and trees only
+  2000 m round the spawn (bare ground beyond, no voxel ground): about 20 s to load and a measurement in a minute, against 5-6 minutes for the
+  full planet. For anything about far trees (beyond 2 km) use the full planet.
+- **More lab switches (task 101):** `--frustum-census` (instances/triangles sent to the GPU against those in view, per size kind),
+  `--pop-log` (which tree nodes go in or out of their visibility range while flying), `--fly-test=SPEED,SECONDS --fly-lift=M` (a flight that
+  ignores the ground: the same path every run), `--fly-check --fly-height=M`, `--walk-from=N`; `LAB_FADE_OLD=1` brings back the old fade;
+  planet-size env switches `PLANET_GRASS_STEP1/2`, `PLANET_PLANT_STEPS`, `PLANET_PLANT_STEP_SCALE`, `PLANET_FAR_THIN`, `PLANET_GRASS_VISIBLE`.
+  A video: `--write-movie out.avi --fixed-fps 30 --quit-after N` (ffmpeg turns it into mp4).
+- **Runs must not touch the user's settings or focus:** any script that touches the `GraphicsSettings` autoload runs with `PLANET_PRESET=high|medium|...`
+  (ephemeral) or it overwrites `settings.cfg`; windowed runs use a temporary `override.cfg` (`[display] window/size/no_focus=true`), `--screen 1`,
+  a timeout, and delete it after; one game instance at a time.
 - **Pictures:** `-- --shot-frame=N --shot=E:/path/x.png` saves the screen at frame N and quits; read the PNG
   to look at it. Set the scene with `--hour=`, `--year=`, `--weather=rain|snow|storm`, `--view-alt=`,
   `--view-pitch=`, `--radius=`, `--seed=`, `--planet-page`, `--start-menu`. Take one before and one after a
