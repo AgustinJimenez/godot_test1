@@ -22,7 +22,7 @@ using namespace godot;
 namespace {
 // constants of foot_ik_v2_modifier.gd
 const double SUPPORT_STEP = 0.02, SUPPORT_RATE = 0.3, SUPPORT_TOLERANCE = 0.03, SUPPORT_MIN_PLANT = 0.9, SINK_MIN = 0.04, SINK_MAX = 0.25;
-const double LEDGE_DROP = 0.25, LEDGE_PROBED = 0.16, BODY_LAG_SNAP = 0.4, MOVING_HOLD_SECONDS = 0.3, CORRECTION_STEP = 0.03, KNEE_FOLLOWS_FOOT = 0.1;
+const double LEDGE_DROP = 0.25, LEDGE_PROBED = 0.16, BODY_LAG_SNAP = 0.4, MOVING_HOLD_SECONDS = 0.3, CORRECTION_STEP = 0.03, UP_HALF_LIFE = 0.05, TILT_HALF_LIFE = 0.06, PELVIS_ACCEL = 20.0, LANDING_MIN_SPEED = 1.5, LANDING_ABSORB = 0.6, LANDING_MAX_SPEED = 2.0, MAX_LANDING_DIP = 0.10, LANDING_SECONDS = 0.35, KNEE_FOLLOWS_FOOT = 0.1;
 const double LEVEL_TOLERANCE = 0.03, SOFT_PELVIS_DROP = 0.10, STANCE_SHIFT_STEP = 0.05, STANCE_RELEASE_SPEED = 0.6, TOE_TIP_FORWARD = 0.035;
 const double RISER_PENETRATION = 0.04, SOLE_GAP_TOLERANCE = 0.001, RISER_RETREAT_STEP = 0.012, JUMP_SPEED_EPSILON = 0.5;
 const double PLANT_FADE_START = 0.03, TOE_TIP_REACH = 0.10, PLANT_FADE_END = 0.14, PLANT_RATE = 8.0, PLANT_RELEASE_BELOW = 0.02;
@@ -99,6 +99,7 @@ void FootIKV2CoreNative::read_settings() {
 	GETD("max_stance_shift", max_stance_shift);
 	GETD("reach_when_still", reach_when_still);
 	GETD("reach_when_moving", reach_when_moving);
+	GETD("stretch_when_moving", stretch_when_moving);
 	GETD("plant_fade", plant_fade);
 	GETD("reach_clamp_plant_min", reach_clamp_plant_min);
 	GETD("ground_filter", ground_filter);
@@ -285,6 +286,11 @@ void FootIKV2CoreNative::update_pelvis_drop() {
 		const Leg &leg = legs[li];
 		const Dictionary solved = debug_solve.get(leg.side, Dictionary());
 		const bool stepping_leg = (bool)debug_stepping.get(leg.side, false);
+		// a planted leg that cannot reach its ground while walking (a ramp's trailing foot) lowers the pelvis by the shortfall, as when standing; the
+		// open-loop estimate of the drop alone let it come back up under a foot that was still 13 cm short
+		if (moving && P.stretch_when_moving && (double)plant_weight.get(leg.side, 1.0) >= 0.9 && String(debug_state.get(leg.side, "")) == "stretched") {
+			stretch_hold = std::max(stretch_hold, pelvis_drop + (double)solved.get("residual", 0.0));
+		}
 		if (!moving && String(debug_state.get(leg.side, "")) == "stretched") {
 			stretched = !stepping_leg || stretched;
 			double candidate = pelvis_drop + (double)solved.get("residual", 0.0);
@@ -302,12 +308,41 @@ void FootIKV2CoreNative::update_pelvis_drop() {
 	if (moving) {
 		needed = std::min(needed, P.moving_pelvis_drop);
 	}
+	// Landing: the capsule stops dead from the fall speed in one frame (3 m/s -> 0 was a visible snap in the lab's jump, AGENT_TASKS/098), so the pelvis keeps
+	// going down at a share of that speed and stops at the pelvis acceleration: the knees take the landing. The dip then fades out over LANDING_SECONDS.
+	if (host != nullptr) {
+		const bool on_floor = host->is_on_floor();
+		if (on_floor && !was_floor && last_vy < -LANDING_MIN_SPEED) {
+			const double v = std::min(-last_vy * LANDING_ABSORB, LANDING_MAX_SPEED);
+			landing_kick = v; // applied from the NEXT frame: the capsule's own last fall step is already in this one
+			landing_dip = std::min(v * v / (2.0 * PELVIS_ACCEL), MAX_LANDING_DIP);
+			landing_left = LANDING_SECONDS;
+		}
+		was_floor = on_floor;
+		last_vy = host->get_velocity().y;
+	}
+	if (landing_kick > 0.0 && landing_left < LANDING_SECONDS) {
+		pelvis_speed = std::max(pelvis_speed, landing_kick);
+		landing_kick = 0.0;
+	}
+	if (landing_left > 0.0) {
+		needed = std::min(std::max(needed, landing_dip * landing_left / LANDING_SECONDS), P.max_pelvis_drop);
+		landing_left = std::max(landing_left - delta, 0.0);
+	}
 	const double attack = moving ? P.moving_pelvis_rate : P.pelvis_attack_speed;
 	const double release = (moving && !jumpish) ? P.moving_pelvis_rate : P.pelvis_release_speed;
-	if (needed > pelvis_drop) {
-		pelvis_drop = std::min(needed, pelvis_drop + attack * delta);
+	// The speed limits above still hold, but the speed now builds up and dies away at PELVIS_ACCEL instead of starting at once at the full rate
+	// (a 20 cm dip on a 30 degree ramp began at 1.5 m/s on one frame: a lurch, AGENT_TASKS/098); the speed is also kept low enough to stop at `needed`.
+	const double error = needed - pelvis_drop;
+	const double top = error > 0.0 ? attack : release;
+	const double wanted_speed = (error > 0.0 ? 1.0 : -1.0) * std::min(top, std::sqrt(2.0 * PELVIS_ACCEL * std::abs(error)));
+	pelvis_speed = move_toward_d(pelvis_speed, wanted_speed, PELVIS_ACCEL * delta);
+	const double stepped = pelvis_drop + pelvis_speed * delta;
+	if ((error > 0.0 && stepped >= needed) || (error < 0.0 && stepped <= needed) || error == 0.0) {
+		pelvis_drop = needed;
+		pelvis_speed = 0.0;
 	} else {
-		pelvis_drop = std::max(needed, pelvis_drop - release * delta);
+		pelvis_drop = stepped;
 	}
 	owner->set("debug_pelvis_drop", pelvis_drop);
 	if (hips_bone < 0) {
@@ -451,7 +486,7 @@ void FootIKV2CoreNative::note_released(const StringName &p_side) {
 }
 
 // A foot given up to the animation while moving: the correction it had until now (6-16 cm at a toe-off of a jog or sprint, found by the planet soak,
-// AGENT_TASKS/093) eases out at CORRECTION_STEP a frame instead of vanishing in one frame. False when there is nothing to ease.
+// AGENT_TASKS/093) eases out at CORRECTION_STEP per 1/60 s instead of vanishing in one frame. False when there is nothing to ease.
 bool FootIKV2CoreNative::ease_release(int p_leg, const Vector3 &p_animated_local) {
 	const StringName side = legs[p_leg].side;
 	Dictionary held = corr_last.get(side, Dictionary());
@@ -462,7 +497,11 @@ bool FootIKV2CoreNative::ease_release(int p_leg, const Vector3 &p_animated_local
 	if (last.length() <= 0.001) {
 		return false;
 	}
-	const Vector3 eased = last - last.normalized() * (real_t)std::min((double)last.length(), CORRECTION_STEP);
+	if ((int)held["frame"] == frames()) { // already eased this frame (a second call must not step again)
+		solve(p_leg, p_animated_local + last);
+		return true;
+	}
+	const Vector3 eased = last - last.normalized() * (real_t)std::min((double)last.length(), (CORRECTION_STEP * delta_physics * 60.0));
 	held["start"] = last;
 	held["end"] = eased;
 	held["frame"] = frames();
@@ -489,7 +528,12 @@ void FootIKV2CoreNative::place_foot(int p_leg) {
 		debug_skip_reason[side] = "no_ground";
 		debug_target.erase(side);
 		debug_state[side] = "released";
-		note_released(side);
+		// a foot that was lifted off the ground by a correction (a swing foot over a ramp) eases back to the animation like an out-of-reach one, not in one frame
+		// (found by the per-frame foot step: 0.228 m at the step onto the 45 degree ramp with the stair clip)
+		const bool eased = ease_release(p_leg, to_local.xform(animated_ankle));
+		if (!eased) {
+			note_released(side);
+		}
 		if (ledge != nullptr) {
 			ledge->call("over_drop", side, to_world.origin, animated_ankle, hip_world);
 		}
@@ -537,7 +581,7 @@ void FootIKV2CoreNative::place_foot(int p_leg) {
 	double plant = plant_state.get(side, wanted);
 	const int frame_now = frames();
 	if (P.plant_fade && (int)plant_frame.get(side, -1) != frame_now) {
-		plant = move_toward_d(plant, wanted, PLANT_RATE / 60.0);
+		plant = move_toward_d(plant, wanted, PLANT_RATE * delta_physics);
 		plant_state[side] = plant;
 		plant_frame[side] = frame_now;
 	}
@@ -585,7 +629,8 @@ void FootIKV2CoreNative::place_foot(int p_leg) {
 	debug_animated_ankle[side] = animated_ankle;
 	debug_ground[side] = ground_pos;
 	solve(p_leg, blended);
-	align_foot(p_leg, normal);
+	const Vector3 tilt = smooth_tilt(side, normal);
+	align_foot(p_leg, tilt);
 	resample_and_correct(p_leg, hip_world);
 	flatten_support(p_leg, to_world, hip_world);
 	debug_toe_lift[side] = 0.0;
@@ -601,8 +646,34 @@ void FootIKV2CoreNative::place_foot(int p_leg) {
 	solved["residual"] = miss;
 	solved["clamped"] = clamped;
 	debug_state[side] = miss <= 0.02 ? "at_target" : "stretched";
-	debug_ground_normal[side] = normal;
+	debug_ground_normal[side] = tilt;
 	final_shortfall[p_leg] = std::max(0.0, (double)hip_local.distance_to(final_target) - reach);
+}
+
+// The ground's tilt under a foot, eased: the normal of the single ankle ray turned with a half-life instead of whole (a height-map or voxel
+// collider has one normal per triangle, so the foot twitched a few degrees at every triangle edge, AGENT_TASKS/098). Advances once a frame.
+Vector3 FootIKV2CoreNative::smooth_tilt(const StringName &p_side, const Vector3 &p_raw) {
+	const int frame = frames();
+	Dictionary record = tilt_state.get(p_side, Dictionary());
+	if (record.is_empty() || (int)record["frame"] < frame - 3) {
+		Dictionary fresh;
+		fresh["frame"] = frame;
+		fresh["start"] = p_raw;
+		fresh["out"] = p_raw;
+		tilt_state[p_side] = fresh;
+		return p_raw;
+	}
+	if ((int)record["frame"] != frame) {
+		record["start"] = record["out"];
+		record["frame"] = frame;
+	}
+	const Vector3 start = record["start"];
+	const double follow = 1.0 - std::pow(0.5, delta_physics / TILT_HALF_LIFE);
+	Vector3 out = start.lerp(p_raw, (real_t)follow);
+	out = out.length() > 0.0001f ? out.normalized() : p_raw;
+	record["out"] = out;
+	tilt_state[p_side] = record;
+	return out;
 }
 
 void FootIKV2CoreNative::limit_step(int p_leg) {
@@ -741,7 +812,7 @@ void FootIKV2CoreNative::flatten_support(int p_leg, const Transform3D &p_to_worl
 			const double flat = support_spread(points, foot_world.origin, forward, slope, shift, p_hip_world);
 			glide = flat <= SUPPORT_TOLERANCE && std::abs(wanted_level - spread_level) <= SINK_MIN;
 		}
-		shift = glide ? move_toward_d(shift, wanted, SUPPORT_RATE / 60.0) : wanted;
+		shift = glide ? move_toward_d(shift, wanted, SUPPORT_RATE * delta_physics) : wanted;
 		support_last[side] = shift;
 		support_frame[side] = frames();
 	}
@@ -855,7 +926,8 @@ void FootIKV2CoreNative::resample_and_correct(int p_leg, const Vector3 &p_hip_wo
 		return;
 	}
 	debug_ground[side] = again_position;
-	debug_ground_normal[side] = normal;
+	const Vector3 tilt = smooth_tilt(side, normal);
+	debug_ground_normal[side] = tilt;
 	const Vector3 target = again_position + normal * (real_t)P.ankle_height;
 	debug_target[side] = target;
 	// (blended from the animated ankle, as place_foot does: from the landed foot the plant fade would be applied twice, and only on the frames the
@@ -863,7 +935,7 @@ void FootIKV2CoreNative::resample_and_correct(int p_leg, const Vector3 &p_hip_wo
 	const Vector3 animated_world = debug_animated_ankle.get(side, landed_world);
 	const Vector3 blended = to_world.affine_inverse().xform(animated_world.lerp(target, (real_t)(P.weight * (double)plant_weight.get(side, 1.0))));
 	solve(p_leg, blended);
-	align_foot(p_leg, normal);
+	align_foot(p_leg, tilt);
 }
 
 bool FootIKV2CoreNative::is_walkable(const Vector3 &p_normal) const {
@@ -1036,6 +1108,7 @@ void FootIKV2CoreNative::ease_correction(int p_leg) {
 	const Pose3 &b = base[p_leg];
 	const int frame = frames();
 	const Vector3 animated = b.foot.origin;
+	const double step = CORRECTION_STEP * delta_physics * 60.0;
 	const Vector3 landed = skel->get_bone_global_pose(leg.foot).origin;
 	const Vector3 correction = landed - animated;
 	Dictionary record = corr_last.get(side, Dictionary());
@@ -1054,10 +1127,12 @@ void FootIKV2CoreNative::ease_correction(int p_leg) {
 	const Vector3 start = record["start"];
 	const Vector3 change = correction - start;
 	const Vector3 normal = skel->get_global_transform().basis.orthonormalized().inverse().xform(get_vec(debug_ground_normal, side, up()));
-	const Vector3 away = normal * (real_t)std::max((double)change.dot(normal), 0.0);
+	// Away from the ground used to pass whole (a tread edge or ramp foot hopped up in one frame, AGENT_TASKS/098); now it follows with a half-life.
+	const double follow = 1.0 - std::pow(0.5, delta_physics / UP_HALF_LIFE);
+	const Vector3 away = normal * (real_t)(std::max((double)change.dot(normal), 0.0) * follow);
 	Vector3 eased_part = change - away;
-	if (eased_part.length() > CORRECTION_STEP) {
-		eased_part = eased_part.normalized() * (real_t)CORRECTION_STEP;
+	if (eased_part.length() > step) {
+		eased_part = eased_part.normalized() * (real_t)step;
 	}
 	Vector3 eased = start + away + eased_part;
 	record["end"] = eased;
@@ -1068,8 +1143,8 @@ void FootIKV2CoreNative::ease_correction(int p_leg) {
 		const Transform3D to_world = skel->get_global_transform();
 		clear_toe(p_leg, to_world, to_world.xform(b.hip.origin));
 		Vector3 extra = skel->get_bone_global_pose(leg.foot).origin - animated - eased;
-		if (extra.length() > CORRECTION_STEP) {
-			eased += extra.normalized() * (real_t)CORRECTION_STEP;
+		if (extra.length() > step) {
+			eased += extra.normalized() * (real_t)step;
 			solve(p_leg, animated + eased);
 			align_foot(p_leg, get_vec(debug_ground_normal, side, up()));
 			extra = Vector3();

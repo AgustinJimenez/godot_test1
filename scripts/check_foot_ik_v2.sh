@@ -72,39 +72,62 @@ run "Foot IK v2 lab (all surfaces)" "FOOT_IK_V2_CHECK PASS" \
 	godot --headless --fixed-fps 60 --quit-after 1600 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-check
 
+# The walk the player really sees in a window is the Mixamo temp walk; headless uses the UAL one unless --temp-walk (AGENT_TASKS/098).
+# Printed, not graded yet: the right toe sinks ~8 cm into stair step 3 and the sole clip is 3-5 cm on the stairs with it.
+idx=0
+for lane in flat ramp15 ramp30 ramp45 stair010 stair020; do
+	printf 'INFO real walk %s: %s\n' "$lane" "$(godot --headless --fixed-fps 60 --quit-after 600 --path "$project_dir" \
+		res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-check --temp-walk --spot="$idx" 2>&1 |
+		grep -o 'ankle_err=[^ ]* \|clip=[0-9.]*@[a-z0-9]* \|tip_clip_max=[0-9.]* tip_float_max=[0-9.]*' | tr '\n' ' ')"
+	idx=$((idx + 1))
+done
+
+run "Foot IK v2 lab (all surfaces, the walk the player sees)" "FOOT_IK_V2_CHECK PASS" \
+	godot --headless --fixed-fps 60 --quit-after 1600 --path "$project_dir" \
+	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-check --temp-walk
+
 snap_check "Foot IK v2 floor walk vibration" floor unarmed_walk 0.20 11.0 30.0 3.0 0.036 0.20
 
+# The same replay at other physics rates (the rates were written for 60; AGENT_TASKS/098 tick-rate check).
+for hz in 30 120; do
+	run "Foot IK v2 idle replay at $hz Hz (run)" "FOOT_IK_V2_IDLE_CHECK PASS" \
+		godot --headless --fixed-fps "$hz" --path "$project_dir" \
+		res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --ticks="$hz"
+done
+
 # A continuous walk up the 0.10 m stairs (the live stairs): see snap_check.
-run "Foot IK v2 stairs walk (run)" "FOOT_IK_V2_IDLE_CHECK" \
+run "Foot IK v2 stairs walk (run)" "FOOT_IK_V2_IDLE_CHECK PASS" \
 	godot --headless --fixed-fps 60 --quit-after 600 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs-walk=0
 snap_check "Foot IK v2 stairs walk vibration" stairs unarmed_walk 0.25 8.5 25.0 5.5 0.055 0.19
 
 # The same stairs walked DOWN from the top tread (a stuck foot used to snap forward on release).
-run "Foot IK v2 stairs walk down (run)" "FOOT_IK_V2_IDLE_CHECK" \
+run "Foot IK v2 stairs walk down (run)" "FOOT_IK_V2_IDLE_CHECK PASS" \
 	godot --headless --fixed-fps 60 --quit-after 600 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs-walk=0:down
 snap_check "Foot IK v2 stairs walk down vibration" stairs unarmed_walk 0.18 10.0 26.0 5.5 0.04 0.17
 
 # The live log of a leg shake: idle on the top tread, then walk BACKWARD down while the speed builds
 # (0.05 m further along the treads gave a 45 deg knee snap at the idle -> walk switch; now 22 deg).
-run "Foot IK v2 stairs walk backward (run)" "FOOT_IK_V2_IDLE_CHECK" \
+run "Foot IK v2 stairs walk backward (run)" "FOOT_IK_V2_IDLE_CHECK PASS" \
 	godot --headless --fixed-fps 60 --quit-after 700 --path "$project_dir" \
 	res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check --stairs-walk=0:back:0.05
 snap_check "Foot IK v2 stairs walk backward vibration" stairs unarmed_walk 0.30 11.0 28.0 5.5 0.045 0.28
 
 # Strafing sideways along a tread and climbing at 45 degrees (the keys the live play used on the
 # stairs): the IK jerk is the number that was 3x the flat floor's in the live log.
+# (sidedown jerk limit 0.065 since the height spring, AGENT_TASKS/098: the typical per-frame change rose 0.034 -> 0.060 because a hop is spread over
+# several frames, while the worst frame fell 0.107 -> 0.079)
 for mode in sidel:unarmed_walk_left:0.32:16.0:36.0:6.5:0.08:0.25 \
 	sider:unarmed_walk_right:0.26:15.0:33.0:6.5:0.04:0.14 \
 	diagl:unarmed_walk:0.14:10.0:22.0:6.5:0.045:0.15 \
 	diagr:unarmed_walk:0.14:11.0:23.0:6.5:0.045:0.09 \
 	sideup:unarmed_walk_left:0.30:13.0:36.0:15.0:0.10:0.29 \
-	sidedown:unarmed_walk_right:0.24:14.5:31.0:9.5:0.05:0.20; do
+	sidedown:unarmed_walk_right:0.24:14.5:31.0:9.5:0.065:0.20; do
 	IFS=: read -r name anim foot knee knee_max rev jerk jerk_max <<EOT
 $mode
 EOT
-	run "Foot IK v2 stairs walk $name (run)" "FOOT_IK_V2_IDLE_CHECK" \
+	run "Foot IK v2 stairs walk $name (run)" "FOOT_IK_V2_IDLE_CHECK PASS" \
 		godot --headless --fixed-fps 60 --quit-after 900 --path "$project_dir" \
 		res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check \
 		--stairs-walk=0:$name
@@ -289,13 +312,25 @@ fi
 # The knee's sideways offset over the same idle run (frames 100+) must stay steady: it used to swing
 # 0.00 .. 0.115 m side to side because the animated knee swayed with the hips (limit 4 cm spread).
 trace=$(ls "$HOME/Library/Application Support/Godot/app_userdata/"*/foot_ik_v2_check.jsonl \
-	"$HOME/.local/share/godot/app_userdata/"*/foot_ik_v2_check.jsonl 2>/dev/null | head -1)
+	"$HOME/.local/share/godot/app_userdata/"*/foot_ik_v2_check.jsonl \
+	"${APPDATA:-/nonexistent}/Godot/app_userdata/"*/foot_ik_v2_check.jsonl 2>/dev/null | head -1)
 spread=$(jq -r '.feet.right.pose.final.knee_offset_right_m // empty' "$trace" | tail -n +100 |
 	awk 'NR == 1 { lo = hi = $1 } { if ($1 < lo) lo = $1; if ($1 > hi) hi = $1 } END { print hi - lo }')
-if [ -n "$spread" ] && awk -v s="$spread" 'BEGIN { exit !(s <= 0.04) }'; then
+if [ -n "$trace" ] && [ -n "$spread" ] && awk -v s="$spread" 'BEGIN { exit !(s <= 0.04) }'; then
 	printf 'PASS Foot IK v2 idle knee sway: side offset spread %s m\n' "$spread"
 else
 	printf 'FAIL Foot IK v2 idle knee sway: side offset spread %s m (limit 0.04)\n' "${spread:-?}"
+	status=1
+fi
+
+# The pelvis through the replay's landings (AGENT_TASKS/098): it used to stop dead from fall speed in one frame (a snap) and now eases down,
+# so it must neither jump between frames nor dip past the landing dip (LANDING_ABSORB / MAX_LANDING_DIP 0.10 + the usual 0.02-0.05 drop).
+godot --headless --fixed-fps 60 --path "$project_dir" res://tests/manual/foot_ik_v2/foot_ik_v2_lab.tscn -- --foot-ik-v2-idle-check >"$log" 2>&1 # its own 60 Hz replay: the trace is of this run
+landing=$(jq -r '.body.pelvis_drop // empty' "$trace" | awk 'NR > 1 { d = $1 - prev; if (d < 0) d = -d; if (d > step) step = d } { prev = $1; if ($1 > top) top = $1 } END { printf "%.3f %.3f", top, step }')
+if [ -n "$trace" ] && awk -v s="$landing" 'BEGIN { split(s, v, " "); exit !(v[1] > 0 && v[1] <= 0.13 && v[2] <= 0.035) }'; then
+	printf 'PASS Foot IK v2 landing: pelvis drop max / largest one-frame change %s m\n' "$landing"
+else
+	printf 'FAIL Foot IK v2 landing: pelvis drop max / largest one-frame change %s m (limits 0.13 / 0.035)\n' "${landing:-?}"
 	status=1
 fi
 

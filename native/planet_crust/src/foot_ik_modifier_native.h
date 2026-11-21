@@ -55,6 +55,7 @@ public:
 	FIK_PROP(double, max_stance_shift, 0.30)
 	FIK_PROP(bool, reach_when_still, true)
 	FIK_PROP(bool, reach_when_moving, true)
+	FIK_PROP(bool, stretch_when_moving, false)
 	FIK_PROP(bool, plant_fade, true)
 	FIK_PROP(double, reach_clamp_plant_min, 0.85)
 	FIK_PROP(bool, ground_filter, true)
@@ -100,6 +101,7 @@ public:
 	void _ready() override;
 	void _process_modification_with_delta(double p_delta) override;
 	void build_legs();
+	void reset_state(); // a fresh core: the held feet, springs and pelvis of the old position are forgotten (after a teleport)
 	Vector3 ledge_push();
 };
 

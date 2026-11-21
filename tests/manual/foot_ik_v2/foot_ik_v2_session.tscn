@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/manual/foot_ik_v2/foot_ik_v2_session_runner.gd" id="1"]
+
+[node name="Session" type="Node"]
+script = ExtResource("1")

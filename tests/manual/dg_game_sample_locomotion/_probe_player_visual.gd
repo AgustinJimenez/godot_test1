@@ -44,4 +44,26 @@ func _run() -> void:
 	var pl: AnimationPlayer = vis.player
 	print("animation count: ", pl.get_animation_list().size())
 	print("player speed_scale: ", pl.speed_scale)
+
+	# --- air: jump, fall, land -------------------------------------------------
+	body.set_move_input(Vector3.ZERO, 0.0)
+	for i in 30:
+		vis.sync(1.0 / 60.0)
+		await physics_frame
+	print("state before jump: ", vis.playback_name(), " on_floor ", body.is_on_floor())
+
+	var seq: Array[StringName] = []
+	body.request_jump()
+	var airborne := 0
+	for i in 240:
+		vis.sync(1.0 / 60.0)
+		await physics_frame
+		var s := vis.playback_name()
+		if seq.is_empty() or seq[seq.size() - 1] != s:
+			seq.append(s)
+		if not body.is_on_floor():
+			airborne += 1
+	print("air sequence: ", seq)
+	print("airborne frames: ", airborne, " (+-", airborne / 60.0, " s)")
+	print("state after landing: ", vis.playback_name(), " on_floor ", body.is_on_floor())
 	quit()

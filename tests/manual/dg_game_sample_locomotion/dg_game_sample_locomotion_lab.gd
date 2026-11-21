@@ -109,8 +109,9 @@ func _hud_text() -> String:
 		"state        %s" % state,
 		"speed        %5.2f m/s   (ratio %.2f)" % [speed, body.get_speed_ratio()],
 		"heading      %6.1f deg" % heading,
+		"slope        %6.1f deg" % body.get_slope_deg(),
 		"capsule      %4.2f m" % body.get_capsule_height(),
-		"grounded     %s" % ("yes" if body.is_on_floor() else "no"),
+		"grounded     %s" % ("yes" if body.is_grounded() else "no"),
 		"",
 		"WASD move | Shift sprint | Ctrl crouch | Space jump | F3 hud | Esc cursor",
 	])
@@ -210,11 +211,14 @@ func _build_environment() -> void:
 	add_child(environment)
 
 	_add_box(Vector3(60.0, 0.4, 60.0), Vector3(0.0, -0.2, 0.0), 0.0, GROUND_COLOR)
-	# 20 deg ramp.
-	_add_box(Vector3(6.0, 0.4, 8.0), Vector3(8.0, 0.95, -2.0), -20.0, RAMP_COLOR)
-	# Four stairs, 0.2 m rise each.
+	# Two ramps, both rising toward -Z: 20 deg (comfortable) and 40 deg (near the 44.765 deg
+	# walkable limit recovered from the game).
+	_add_ramp(20.0, 10.0, 7.0)
+	_add_ramp(40.0, 10.0, 14.0)
+	# Four stairs, 0.3 m rise each: above what a rounded capsule can roll over, under the
+	# recovered 0.45 m MaxStepHeight, so the step-up assist is doing the work.
 	for step in 4:
-		var height := 0.2 * float(step + 1)
+		var height := 0.3 * float(step + 1)
 		_add_box(
 			Vector3(3.0, height, 0.6),
 			Vector3(-7.0, height * 0.5, -2.0 - 0.6 * float(step)),
@@ -225,17 +229,17 @@ func _build_environment() -> void:
 	_add_box(Vector3(3.2, 0.3, 4.0), Vector3(0.0, 1.55, -9.0), 0.0, PROP_COLOR)
 	_add_box(Vector3(0.3, 1.4, 4.0), Vector3(-1.6, 0.7, -9.0), 0.0, PROP_COLOR)
 	_add_box(Vector3(0.3, 1.4, 4.0), Vector3(1.6, 0.7, -9.0), 0.0, PROP_COLOR)
-	# Pillars: turn-in-place landmarks.
+	# Pillars: turn-in-place landmarks, kept behind the spawn so the walkway to the tunnel is clear.
 	for index in 6:
 		var angle := TAU * float(index) / 6.0
-		var position := Vector3(sin(angle) * 7.0, 1.0, 6.0 + cos(angle) * 7.0)
+		var position := Vector3(sin(angle) * 6.5, 1.0, 9.0 + cos(angle) * 6.5)
 		_add_box(Vector3(0.5, 2.0, 0.5), position, 0.0, PROP_COLOR)
 
 
-func _add_box(size: Vector3, position: Vector3, rotation_deg: float, color: Color) -> void:
+func _add_box(size: Vector3, position: Vector3, rotation_x_deg: float, color: Color) -> void:
 	var static_body := StaticBody3D.new()
 	static_body.position = position
-	static_body.rotation_degrees.z = rotation_deg
+	static_body.rotation_degrees.x = rotation_x_deg
 	add_child(static_body)
 
 	var mesh := BoxMesh.new()
@@ -252,3 +256,16 @@ func _add_box(size: Vector3, position: Vector3, rotation_deg: float, color: Colo
 	box.size = size
 	shape.shape = box
 	static_body.add_child(shape)
+
+
+## A ramp whose top surface reaches y = 0 at z = 0 and rises toward -Z, so walking forward
+## from the spawn goes uphill. Sunk by its own thickness: only the surface matters here.
+func _add_ramp(angle_deg: float, length: float, x: float, width := 4.0) -> void:
+	var theta := deg_to_rad(angle_deg)
+	var thickness := 0.4
+	var centre := Vector3(
+		x,
+		length * 0.5 * sin(theta) - thickness * 0.5 * cos(theta),
+		-length * 0.5 * cos(theta) - thickness * 0.5 * sin(theta)
+	)
+	_add_box(Vector3(width, thickness, length), centre, rad_to_deg(theta), RAMP_COLOR)

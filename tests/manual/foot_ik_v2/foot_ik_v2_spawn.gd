@@ -8,8 +8,10 @@ extends RefCounted
 const EDGE_TURN := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_edge_turn.gd")
 
 
+const SESSION := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_session.gd")
+
 static func place(player: Node3D) -> void:
-	var args := OS.get_cmdline_user_args()
+	var args := SESSION.user_args()
 	if "--spawn=ramp-edge-turn" in args or "--spawn=flat-turn" in args:
 		player.get_parent().add_child(EDGE_TURN.new().setup(player))
 	if "--spawn=flat-turn" in args: # the control: the same turns on open floor

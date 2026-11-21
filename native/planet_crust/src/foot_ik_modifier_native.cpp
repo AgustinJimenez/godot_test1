@@ -61,6 +61,7 @@ void FootIKV2Modifier::_bind_methods() {
 	FIK_BIND(Variant::FLOAT, max_stance_shift)
 	FIK_BIND(Variant::BOOL, reach_when_still)
 	FIK_BIND(Variant::BOOL, reach_when_moving)
+	FIK_BIND(Variant::BOOL, stretch_when_moving)
 	FIK_BIND(Variant::BOOL, plant_fade)
 	FIK_BIND_HINT(Variant::FLOAT, reach_clamp_plant_min, PROPERTY_HINT_RANGE, "0,1,0.05")
 	FIK_BIND(Variant::BOOL, ground_filter)
@@ -103,6 +104,7 @@ void FootIKV2Modifier::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("ledge_push"), &FootIKV2Modifier::ledge_push);
 	ClassDB::bind_method(D_METHOD("build_legs"), &FootIKV2Modifier::build_legs);
+	ClassDB::bind_method(D_METHOD("reset_state"), &FootIKV2Modifier::reset_state);
 }
 
 FootIKV2Modifier::FootIKV2Modifier() {
@@ -122,6 +124,22 @@ void FootIKV2Modifier::_ready() {
 		}
 	}
 	build_legs();
+	core.instantiate();
+	core->reset();
+}
+
+void FootIKV2Modifier::reset_state() {
+	build_legs();
+	// The core keeps part of its per-leg memory (plant weight, support and stance shift, toe lift, held state...) in the shell's Dictionaries.
+	Dictionary *memory[] = { &debug_target, &debug_skip_reason, &debug_ground_normal, &debug_animated_ankle, &debug_ground, &debug_surface,
+		&final_pose, &debug_solve, &debug_reach_check, &debug_state, &debug_stepping, &debug_align, &debug_support_shift, &debug_plant_weight,
+		&debug_stance_shift, &debug_stance_plan, &debug_toe_lift, &_base };
+	for (Dictionary *dict : memory) {
+		dict->clear();
+	}
+	debug_pelvis_drop = 0.0;
+	debug_body_lag = 0.0;
+	final_frame = -1;
 	core.instantiate();
 	core->reset();
 }

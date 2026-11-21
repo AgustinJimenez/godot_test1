@@ -64,6 +64,21 @@ extends Resource
 @export var capsule_radius := 0.34
 @export var crouch_transition_time := 0.12
 
+@export_group("Floor and steps (recovered)")
+## UCharacterMovementComponent's default block, found as a run of field writes at
+## VA 0x14279041E: WalkableFloorAngle = 44.765083 deg, WalkableFloorZ = 0.71,
+## MaxStepHeight = 45 cm. The game's own component constructor never touches them, so the
+## runtime uses these stock values (RE workspace reports/floor-params.txt, OBSERVED there).
+## Godot's 45 deg default is within 0.25 deg, so setting this is fidelity, not a fix.
+@export var floor_max_angle_deg := 44.765083
+## No UE4 equivalent: UE4 keeps the character glued to the floor through its own moving
+## average. Godot needs a snap length or the capsule launches off every downhill lip.
+## 0.40 m covers a 45 deg descent at walking speed within one 60 Hz step (6.3 cm).
+@export var floor_snap_length := 0.40
+## MaxStepHeight. CharacterBody3D does not step up at all, so `DGGameSampleLocomotionBody`
+## runs its own UE4-style step pass (`_try_step_up`) with this limit.
+@export var max_step_height := 0.45
+
 
 ## Turn-rate multiplier for a heading offset, sampled from the exported curve.
 func turn_rate_scale_for_angle(angle_deg: float) -> float:

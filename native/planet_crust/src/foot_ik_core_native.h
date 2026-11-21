@@ -1,10 +1,9 @@
 #pragma once
 
-// Foot IK v2, the whole per-frame pass in native code (AGENT_TASKS/091): FootIKV2CoreNative is what FootIKV2Modifier (GDScript, a thin shell
-// that keeps the exported settings, the debug_* members the lab and the trace tools read, the leg set-up and the ledge) calls from
-// `_process_modification_with_delta`. A line-by-line port of foot_ik_v2_modifier.gd, which stays as the reference path: the shell runs it when
-// the library is not loaded or PLANET_NO_NATIVE=1. The shell's Dictionaries (debug_*, _base, _legs, final_pose...) are SHARED with this class
-// (a Dictionary is a reference), so a trace or a check reads exactly what the native pass wrote.
+// Foot IK v2, the whole per-frame pass in native code: FootIKV2CoreNative is what FootIKV2Modifier (a thin shell that keeps the
+// exported settings, the debug_* members the lab and the trace tools read, the leg set-up and the ledge) calls from
+// `_process_modification_with_delta`. The shell's Dictionaries (debug_*, _base, _legs, final_pose...) are SHARED with this class (a Dictionary
+// is a reference), so a trace or a check reads exactly what the native pass wrote. There is no GDScript copy of the maths any more.
 
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/physics_direct_space_state3d.hpp>
@@ -47,7 +46,7 @@ private:
 	};
 	struct Params {
 		bool enabled = true, foot_lock = false, jump_counts_as_moving = true, body_smooth = true, support_snap = true, reach_when_still = true,
-			 reach_when_moving = true, plant_fade = true, ground_filter = true;
+			 reach_when_moving = true, plant_fade = true, ground_filter = true, stretch_when_moving = false;
 		double max_knee_flexion_deg = 150, max_hip_swing_deg = 140, joint_speed_deg = 60, fallback_floor_max_angle_deg = 46, max_surface_drop = 0.45,
 			   ray_up = 0.5, ray_down = 1.2, ankle_height = -1, weight = 1, max_pelvis_drop = 0.4, moving_pelvis_drop = 0.06, still_speed = 0.5,
 			   body_follow_rate = 12, body_max_lag = 0.18, support_search = 0.16, pelvis_attack_speed = 1.5, moving_pelvis_rate = 0.25,
@@ -80,9 +79,11 @@ private:
 	bool dicts_ready = false;
 	int hips_bone = -1;
 	Transform3D hips_base;
-	double pelvis_drop = 0.0, body_lag = 0.0, stretch_hold = 0.0, smoothed_y = std::numeric_limits<double>::quiet_NaN(), moving_hold = 0.0, spread_level = 0.0;
+	double last_vy = 0.0, landing_dip = 0.0, landing_left = 0.0, landing_kick = 0.0; // landing absorb (AGENT_TASKS/098)
+	bool was_floor = true;
+	double pelvis_drop = 0.0, pelvis_speed = 0.0, body_lag = 0.0, stretch_hold = 0.0, smoothed_y = std::numeric_limits<double>::quiet_NaN(), moving_hold = 0.0, spread_level = 0.0;
 	bool is_moving = false;
-	Dictionary stance_shift, plant_weight, plant_state, plant_frame, support_last, support_frame, keep_pitch, keep_rotation, corr_last;
+	Dictionary stance_shift, plant_weight, plant_state, plant_frame, support_last, support_frame, keep_pitch, keep_rotation, corr_last, tilt_state;
 
 	Ref<FootIKV2StretchHoldNative> hold_release;
 	Ref<FootIKV2StepperNative> stepper;
@@ -108,6 +109,7 @@ private:
 	void place_foot(int p_leg);
 	void limit_step(int p_leg);
 	void align_foot(int p_leg, const Vector3 &p_normal);
+	Vector3 smooth_tilt(const StringName &p_side, const Vector3 &p_raw);
 	void clear_toe(int p_leg, const Transform3D &p_to_world, const Vector3 &p_hip_world);
 	void flatten_support(int p_leg, const Transform3D &p_to_world, const Vector3 &p_hip_world);
 	void sink_to_sole_level(int p_leg, const Transform3D &p_to_world, const PackedVector3Array &p_points);

@@ -15,14 +15,10 @@ const ACTION_PACK_STAND_CLIPS := {
 
 
 static func walk_animation(movement_input: Vector2) -> StringName:
-	var experiment := PlayerTempWalk.directional(movement_input) # temporary ALS directional walks
-	if experiment != &"":
-		return experiment
 	if movement_input.is_zero_approx():
 		return &"unarmed_walk"
 	var norm := movement_input.normalized()
-	if norm.y < -0.2 or PlayerTempWalk.side_is_forward_walk(norm) \
-			or PlayerTempWalk.back_diagonal(norm):
+	if norm.y < -0.2 or PlayerTempWalkNative.back_diagonal(norm):
 		return &"unarmed_walk"
 	if absf(norm.x) > 0.2:
 		return &"unarmed_walk_left" if norm.x < 0.0 else &"unarmed_walk_right"

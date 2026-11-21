@@ -3,6 +3,7 @@ extends Node3D
 ## Headless `-- --foot-ik-v2-check` (and other flags below) walk / replay it and grade it.
 const SIDES: Array[StringName] = [&"left", &"right"]
 const BODY_ROLES: Array[StringName] = [&"Hips", &"Spine", &"Spine1", &"Spine2", &"LeftShoulder", &"RightShoulder", &"LeftArm", &"RightArm"]
+const SESSION := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_session.gd")
 const POSE_DUMP := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_pose_dump.gd")
 const TURN_CHECK := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_turn_check.gd")
 const SPAWN := preload("res://tests/manual/foot_ik_v2/foot_ik_v2_spawn.gd")
@@ -72,10 +73,12 @@ const RAMP_REPLAY := [
 ]
 ## Pass limits for the toe-tip sphere against the real ramp on a foot that is meant to be down.
 const TIP_CLIP_LIMIT := 0.02
+const SURFACE_TIP_CLIP_LIMIT := 0.12 ## the all-surfaces walk: a toe may sink this far into a ramp at its base for a few frames, because the foot's rise is a spring (AGENT_TASKS/098; UE allows about 10 cm for the same reason). Measured 0.113 (3 frames). Idle checks keep 0.02.
 const TIP_FLOAT_LIMIT := 0.08
 ## Ignore the drop-onto-the-ramp settle; grade the steady strafe only.
 const MEASURE_AFTER := 0
 const CLIP_TOLERANCE := 0.01
+const REAL_WALK_CLIP_TOLERANCE := 0.05 ## with the Mixamo walk (--temp-walk) the sole may sink this far into a riser for a few frames: the foot's rise is a spring (UP_HALF_LIFE), measured 0.032-0.046 (stair010, ramp30)
 const TOE_TIP_MARGIN := 0.035
 ## Tip / heel grading: a grounded foot this far under / over the real surface is a TIP_CLIP / FLOAT.
 const TIP_CLIP_TOLERANCE := 0.01
@@ -92,12 +95,15 @@ const RAMP_ANGLES := [15.0, 30.0, 45.0]
 const STAIR_HEIGHTS := [0.10, 0.20, 0.35]
 const RAMP_RUN := 4.2 # same run as the staircases (12 treads x 0.35)
 const TREAD := 0.35
+const RAMP_LIP := 0.2 # half the ramp box's thickness
 const STAIR_STEPS := 12
 const LANE_SPACING := 8.0
 const STAIR_FIRST_LANE := 4
 const STAIR_LANE_X := 5.0
 const STAIR_LANE_SPACING := 5.0
 const START_BACKOFF := 0.9
+const LOOP_BACKOFF := 5.0 ## the looped view starts this far before the surface: a longer walk on the floor first
+const LOOP_EXTRA_FRAMES := 420
 ## One lane per surface: flat, then the three ramps, then the three staircases.
 const SPOTS := [
 	{"name": "flat", "lane": 0, "kind": &"flat"},
@@ -155,10 +161,19 @@ var _sole_line_material: StandardMaterial3D
 var _checking := false
 var _ramp_checking := false
 var _idle_checking := false
+var _finished := false ## the check has reported (a session keeps the process alive, so the lab stops here)
 var _replay: Array = []
 var _start := Vector3.ZERO # x offset from the ramp lane, z, yaw degrees
 var _float_limit := TIP_FLOAT_LIMIT
 var _spot := 0
+var _only_spot := -1
+var _spot_loop := false
+var _spot_down := false ## --spot-down: walk the ramp downhill
+var _step_log := false ## --log-steps: print every foot plant (see _log_steps)
+var _step_planted := {}
+var _step_last_frame := -1
+var _step_last_pos := Vector3.ZERO
+var _step_count := 0
 var _settle := 0
 var _walk := 0
 var _worst_ankle := 0.0
@@ -172,47 +187,66 @@ var _worst_step := 0.0
 var _worst_step_spot := ""
 
 
+## The game plays the experiment walk (PlayerTempWalk, the Mixamo clip) in a window but the real UAL walk headless; `--temp-walk` makes a headless run use
+## the walk the player actually sees (found by recording the suite in a window: the left leg shook there and every headless check passed).
+func _enter_tree() -> void:
+	PlayerTempWalk.use_in_headless = "--temp-walk" in SESSION.user_args()
+
+
 func _ready() -> void:
 	_build_terrain()
-	_checking = "--foot-ik-v2-check" in OS.get_cmdline_user_args()
-	for arg: String in OS.get_cmdline_user_args():
+	Engine.physics_ticks_per_second = 60
+	for arg: String in SESSION.user_args(): # physics tick rate other than the project's 60 (AGENT_TASKS/098: the "60" in the rates)
+		if arg.begins_with("--ticks="):
+			Engine.physics_ticks_per_second = arg.trim_prefix("--ticks=").to_int()
+	_checking = "--foot-ik-v2-check" in SESSION.user_args()
+	for arg: String in SESSION.user_args(): # --spot=N: walk only that surface of the flat/ramp/stair check; --spot-loop: again and again (to watch it)
+		if arg.begins_with("--spot="):
+			_only_spot = clampi(arg.trim_prefix("--spot=").to_int(), 0, SPOTS.size() - 1)
+			_spot = _only_spot
+	_spot_loop = "--spot-loop" in SESSION.user_args()
+	_spot_down = "--spot-down" in SESSION.user_args()
+	_step_log = "--log-steps" in SESSION.user_args()
+	for arg: String in SESSION.user_args():
 		if arg.begins_with("--ramp-index="):
 			_ramp_index_given = true
 			_ramp_index = clampi(arg.trim_prefix("--ramp-index=").to_int(), 0, RAMP_ANGLES.size() - 1)
-	_idle_checking = "--foot-ik-v2-idle-check" in OS.get_cmdline_user_args()
-	_ramp_checking = _idle_checking or "--foot-ik-v2-ramp-check" in OS.get_cmdline_user_args()
+	_idle_checking = "--foot-ik-v2-idle-check" in SESSION.user_args()
+	_ramp_checking = _idle_checking or "--foot-ik-v2-ramp-check" in SESSION.user_args()
 	if _idle_checking:
 		_replay = IDLE_REPLAY
 		_start = Vector3(IDLE_START_X_OFFSET, IDLE_START_Z, IDLE_YAW_DEG)
 		_float_limit = IDLE_FLOAT_LIMIT
 		_from_floor = IDLE_FROM_FLOOR
-		if "--start-on-ramp" in OS.get_cmdline_user_args():
+		if "--start-on-ramp" in SESSION.user_args():
 			# A steep ramp cannot be jumped onto from the floor: start on it (x -5.6, z -0.134).
 			_from_floor = false
 			_start = Vector3(2.4, IDLE_START_Z, IDLE_YAW_DEG)
-		for arg: String in OS.get_cmdline_user_args():
+		for arg: String in SESSION.user_args():
 			if arg.begins_with("--start-yaw="): # face another way at the start (across or up the ramp)
 				_start.z = arg.trim_prefix("--start-yaw=").to_float()
-		if "--uphill" in OS.get_cmdline_user_args():
+		if "--uphill" in SESSION.user_args():
 			# Facing UP the slope: the rear foot's floor is far below the flat-ground stance.
 			_from_floor = false
 			_start = Vector3(2.4, IDLE_START_Z, -7.9)
 			_replay = [{"name": "idle_uphill", "input": Vector2.ZERO, "frames": 450, "grade": true}]
-		if "--jump45" in OS.get_cmdline_user_args():
+		if "--jump45" in SESSION.user_args():
 			if not _ramp_index_given:
 				_ramp_index = 2 # 45 degrees unless a ramp was asked for
 			_from_floor = false
 			_start = Vector3(2.4, IDLE_START_Z, 95.1)
 			_replay = JUMP_REPLAY
-		if "--stairs" in OS.get_cmdline_user_args():
+		if "--stairs" in SESSION.user_args():
 			# idle on the 0.10 m stairs, shoe tip against the next riser (heel used to float)
 			_stairs_start = true
 			_replay = [{"name": "idle_stairs", "input": Vector2.ZERO, "frames": 300, "grade": true}]
-		for arg: String in OS.get_cmdline_user_args():
+		for arg: String in SESSION.user_args():
 			if arg.begins_with("--stairs-walk="):
 				# one continuous walk up a staircase (0 = 0.10 m, 1 = 0.20 m, 2 = 0.35 m)
 				_stairs_walk_lane = 4 + arg.trim_prefix("--stairs-walk=").to_int()
 				_replay = STAIRS_WALK.replay(arg.get_slice(":", 1), arg.get_slice(":", 2).to_float())
+			if arg.begins_with("--walk-frames=") and _stairs_walk_lane >= 0: # longer walk (for a video)
+				_replay[_replay.size() - 1]["frames"] = arg.trim_prefix("--walk-frames=").to_int()
 			if arg.begins_with("--walk-speed="): # walk at X m/s, clip at normal playback
 				player.stair_walk_speed_scale = 1.0
 				player.walk_speed = arg.trim_prefix("--walk-speed=").to_float()
@@ -226,7 +260,7 @@ func _ready() -> void:
 				var mode: String = at[3] if at.size() > 3 else "" # :quick = fuzz, :hold = stand
 				_fuzz = mode == "quick"
 				_replay = TURN_CHECK.replay(yaw, mode)
-		if "--stairs-edge" in OS.get_cmdline_user_args():
+		if "--stairs-edge" in SESSION.user_args():
 			# stairs' right edge, one foot on step 3, the other off the side over the floor 0.38 m down
 			_stairs_start = true
 			_stairs_x = 1.42
@@ -239,28 +273,28 @@ func _ready() -> void:
 	for child: Node in player.skeleton.get_children():
 		if child is SkeletonModifier3D:
 			print("[modifier] %s %s active=%s" % [child.name, child.get_class(), child.active])
-			if ("--disable-modifier=%s" % child.name) in OS.get_cmdline_user_args():
+			if ("--disable-modifier=%s" % child.name) in SESSION.user_args():
 				child.active = false
 	_v2 = INSTALL.install(player.body, player.skeleton)
 	add_child(JOINT_FLASH.new().setup(_v2, player.skeleton)) # red flash on a joint snap
-	_v2.enabled = not ("--foot-ik-v2-off" in OS.get_cmdline_user_args())
-	if "--foot-ik-v2-no-pelvis-drop" in OS.get_cmdline_user_args():
+	_v2.enabled = not ("--foot-ik-v2-off" in SESSION.user_args())
+	if "--foot-ik-v2-no-pelvis-drop" in SESSION.user_args():
 		_v2.max_pelvis_drop = 0.0
-	if "--foot-ik-v2-jump-not-moving" in OS.get_cmdline_user_args():
+	if "--foot-ik-v2-jump-not-moving" in SESSION.user_args():
 		_v2.jump_counts_as_moving = false
-	if "--foot-ik-v2-no-reach-when-still" in OS.get_cmdline_user_args():
+	if "--foot-ik-v2-no-reach-when-still" in SESSION.user_args():
 		_v2.reach_when_still = false
-	if "--foot-ik-v2-no-support-snap" in OS.get_cmdline_user_args():
+	if "--foot-ik-v2-no-support-snap" in SESSION.user_args():
 		_v2.support_snap = false
-	if "--foot-ik-v2-no-body-smooth" in OS.get_cmdline_user_args():
+	if "--foot-ik-v2-no-body-smooth" in SESSION.user_args():
 		_v2.body_smooth = false
-	if "--foot-ik-v2-no-ground-filter" in OS.get_cmdline_user_args():
+	if "--foot-ik-v2-no-ground-filter" in SESSION.user_args():
 		_v2.ground_filter = false
-	if "--foot-ik-v2-no-plant-fade" in OS.get_cmdline_user_args():
+	if "--foot-ik-v2-no-plant-fade" in SESSION.user_args():
 		_v2.plant_fade = false
-	if "--foot-ik-v2-no-reach-when-moving" in OS.get_cmdline_user_args():
+	if "--foot-ik-v2-no-reach-when-moving" in SESSION.user_args():
 		_v2.reach_when_moving = false
-	if "--foot-ik-v2-perf" in OS.get_cmdline_user_args():
+	if "--foot-ik-v2-perf" in SESSION.user_args():
 		FootIKV2Debug.set_enabled(true)
 	add_child(PERF_PROBE.new()) # no-op unless FOOT_IK_V2_PERF_LOG=1 or --foot-ik-v2-perf
 	_mode = "ramp_check" if _ramp_checking else ("forward_check" if _checking else "live")
@@ -274,7 +308,9 @@ func _ready() -> void:
 		_place_on_ramp()
 		return
 	if _checking:
-		_move_to_spot(0)
+		_move_to_spot(_spot)
+		if DisplayServer.get_name() != "headless":
+			_build_toe_spheres() # watched in a window: a green/red sphere on each heel and toe tip (green = touching the surface)
 		return
 	SPAWN.place(player)
 	_build_toe_spheres()
@@ -288,6 +324,8 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	if _finished:
+		return
 	_capture()
 	_update_toe_spheres()
 
@@ -357,6 +395,18 @@ func _update_toe_spheres() -> void:
 		var heel_touching: bool = (heel_clearance == null
 				or (float(heel_clearance) >= -TOUCH_BELOW and float(heel_clearance) <= TOUCH_ABOVE))
 		heel.material_override = _tip_material_touch if heel_touching else _tip_material_air
+	if _step_log and Engine.get_physics_frames() % 6 == 0:
+		var parts := PackedStringArray()
+		for side: StringName in _toe_spheres:
+			var tip_c := _tip_point(side)
+			var tip_surface := _surface_above(tip_c)
+			var heel_c: Variant = _heel_clearance(side)
+			var align: Dictionary = _v2.debug_align.get(side, {})
+			parts.append("%s st=%s/%s res=%.3f tip=%s heel=%s sole_off=%.0f/%s pw=%.2f" % [side, str(_v2.debug_state.get(side, "")), str(_v2.debug_skip_reason.get(side, "")), float(_v2.debug_solve.get(side, {}).get("residual", -1.0)), "%+.3f" % (tip_c.y - tip_surface) if not is_nan(tip_surface) else "n/a", "%+.3f" % float(heel_c) if heel_c != null else "n/a",
+					float(align.get("after_deg", -1.0)), str(align.get("reason", "")), float(_v2.debug_plant_weight.get(side, 1.0))])
+		var hips_bone := player.skeleton.find_bone(player.body.resolve_bone_name(&"Hips"))
+		var hips_y: float = (player.skeleton.global_transform * player.skeleton.get_bone_global_pose(hips_bone).origin).y - player.global_position.y
+		print("CONTACT t=%.2f clip=%s hips_above_root=%.2f root_y=%.2f pd=%.3f lag=%.3f %s" % [float(Engine.get_physics_frames()) / float(Engine.physics_ticks_per_second), player.body.anim_player.current_animation.trim_prefix("moves/"), hips_y, player.global_position.y, float(_v2.get("debug_pelvis_drop")), float(_v2.get("debug_body_lag")), " | ".join(parts)])
 	_update_sole_lines()
 
 
@@ -479,7 +529,9 @@ func _grade_tip(side: StringName, spot: String) -> void:
 		_tip_clip_events += 1
 	elif kind == "TIP_FLOAT" and not _pitch_animated(side):
 		_tip_float_events += 1
-	if kind != "" and int(_tip_events_printed.get(spot, 0)) < TIP_EVENT_LIMIT:
+	if kind == "TIP_FLOAT" and _pitch_animated(side):
+		kind = "" # the clip's own heel-strike / rock-back pitch with the heel down: not a float (and not counted above), so not printed either
+	if kind != "" and int(_tip_events_printed.get(spot, 0)) < (100000 if _spot_loop else TIP_EVENT_LIMIT):
 		_tip_events_printed[spot] = int(_tip_events_printed.get(spot, 0)) + 1
 		print("%s frame=%d spot=%s side=%s clearance=%+.3f surface=%s state=%s skip=%s" % [
 				kind, Engine.get_physics_frames(), spot, side, clearance,
@@ -515,7 +567,7 @@ func _grade_heel(side: StringName, spot: String) -> void:
 		stats[3] = int(stats[3]) + 1
 	_tip_by_spot[spot] = stats
 	var key := "heel_" + spot
-	if kind != "" and int(_tip_events_printed.get(key, 0)) < TIP_EVENT_LIMIT:
+	if kind != "" and int(_tip_events_printed.get(key, 0)) < (100000 if _spot_loop else TIP_EVENT_LIMIT):
 		_tip_events_printed[key] = int(_tip_events_printed.get(key, 0)) + 1
 		print("%s frame=%d spot=%s side=%s clearance=%+.3f state=%s skip=%s" % [kind,
 				Engine.get_physics_frames(), spot, side, clearance,
@@ -536,12 +588,60 @@ func _pub(bone: int) -> Transform3D:
 
 
 func _physics_process(_delta: float) -> void:
+	if _step_log:
+		_log_steps()
+	if _finished:
+		return
 	if _ramp_checking:
 		_run_ramp_check()
 		return
 	if _checking:
 		_run_check()
 		return
+
+
+## Prints a STEP line each time a foot lands: the foot (relative to the body) stops moving forward and starts back (a plant), with the time since
+## the previous step of either foot, steps per minute that gives, the clip and the ground speed; and a CLIP line whenever the playing clip changes.
+func _log_steps() -> void:
+	if player == null or player.skeleton == null or player.body.anim_player == null:
+		return
+	var tick := float(Engine.physics_ticks_per_second)
+	var frame := Engine.get_physics_frames()
+	var clip := String(player.body.anim_player.current_animation)
+	if clip != String(_step_planted.get("clip", "")):
+		print("CLIP t=%.2f z=%.2f %s -> %s gs=%.2f" % [float(frame) / tick, player.global_position.z, _step_planted.get("clip", ""), clip,
+				Vector2(player.velocity.x, player.velocity.z).length()])
+		_step_planted["clip"] = clip
+	for side: String in ["Left", "Right"]:
+		var bone := player.skeleton.find_bone(player.body.resolve_bone_name(StringName(side + "Foot")))
+		if bone < 0:
+			continue
+		var pos: Vector3 = player.skeleton.global_transform * player.skeleton.get_bone_global_pose(bone).origin
+		var forward := -(player.global_transform.affine_inverse() * pos).z
+		var last := float(_step_planted.get(side + "_f", forward))
+		var top := float(_step_planted.get(side + "_top", forward)) # extreme in the current direction
+		var rising := bool(_step_planted.get(side + "_rise", true))
+		_step_planted[side + "_f"] = forward
+		if rising:
+			top = maxf(top, forward)
+			if forward < top - 0.04:
+				rising = false
+				if Vector2(player.velocity.x, player.velocity.z).length() > 0.3:
+					var dt := float(frame - _step_last_frame) / tick if _step_last_frame >= 0 else 0.0
+					_step_count += 1
+					print("STEP #%d %s t=%.2f z=%.2f dt=%.2fs rate=%.0f/min clip=%s gs=%.2f" % [_step_count, side, float(frame) / tick,
+							player.global_position.z, dt, 60.0 / dt if dt > 0.0 else 0.0, clip.trim_prefix("moves/"),
+							Vector2(player.velocity.x, player.velocity.z).length()])
+					_step_last_frame = frame
+				top = forward
+		else:
+			top = minf(top, forward)
+			if forward > top + 0.04:
+				rising = true
+				top = forward
+		_step_planted[side + "_top"] = top
+		_step_planted[side + "_rise"] = rising
+		last = forward
 
 
 ## F6 toggles v2. Not the `debug_camera` action: that is the player's own V camera key.
@@ -724,9 +824,13 @@ func _build_terrain() -> void:
 		# Wide enough that the cross-slope strafe test stays on the ramp.
 		var body := _add_box(Vector3.ZERO, Vector3(6.0, 0.4, RAMP_RUN))
 		body.name = "Ramp%d" % int(angle)
+		if int(angle) == 45:
+			body.collision_layer |= PlayerStairClips.STAIR_CONTACT_LAYER # the 45 degree ramp counts as a staircase: the player plays the authored stair clips on it
 		body.rotation = Vector3(deg_to_rad(angle), 0.0, 0.0)
+		# Sunk by the lip the 0.4 m thick box would have: the low end's top corner meets the floor, as a real ramp does
+		# (before, a 19 cm vertical face stood at the foot of the 15 degree ramp and the character stopped at it).
 		body.position = Vector3(_lane_x(1 + index),
-				RAMP_RUN * 0.5 * sin(deg_to_rad(angle)), 0.0)
+				RAMP_RUN * 0.5 * sin(deg_to_rad(angle)) - RAMP_LIP * cos(deg_to_rad(angle)), 0.0)
 	for index in STAIR_HEIGHTS.size():
 		var step_height: float = STAIR_HEIGHTS[index]
 		for step in STAIR_STEPS:
@@ -737,7 +841,7 @@ func _build_terrain() -> void:
 			tread.name = "Stair%03d_step%d" % [int(step_height * 100.0), step + 1]
 
 
-func _add_box(box_position: Vector3, size: Vector3) -> StaticBody3D:
+func _add_box(box_position: Vector3, size: Vector3, color: Color = Color(0.55, 0.78, 1.0)) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
 	var shape := CollisionShape3D.new()
@@ -749,6 +853,9 @@ func _add_box(box_position: Vector3, size: Vector3) -> StaticBody3D:
 	var box_mesh := BoxMesh.new()
 	box_mesh.size = size
 	mesh.mesh = box_mesh
+	var paint := StandardMaterial3D.new() # light blue: the ramps and stairs stand out from the floor
+	paint.albedo_color = color
+	mesh.material_override = paint
 	body.add_child(mesh)
 	add_child(body)
 	body.position = box_position
@@ -758,8 +865,20 @@ func _add_box(box_position: Vector3, size: Vector3) -> StaticBody3D:
 ## Stand the character just before the surface's low end, facing up it.
 func _move_to_spot(index: int) -> void:
 	var spot: Dictionary = SPOTS[index]
-	player.global_position = Vector3(_lane_x(int(spot["lane"])), 0.35,
-			RAMP_RUN * 0.5 + START_BACKOFF)
+	if _spot_down and spot["kind"] == &"ramp": # --spot-down: start near the ramp's top, facing down it
+		var theta := deg_to_rad(float(RAMP_ANGLES[int(spot["index"])]))
+		var start_z := -RAMP_RUN * 0.5 + 0.9
+		var along := (start_z - 0.2 * sin(theta)) / cos(theta) # distance along the ramp from its centre
+		var ramp_y := RAMP_RUN * 0.5 * sin(theta) - RAMP_LIP * cos(theta) + 0.2 * cos(theta) - along * sin(theta)
+		player.global_position = Vector3(_lane_x(int(spot["lane"])), ramp_y + 0.05, start_z)
+		player.rotation = Vector3(0.0, PI, 0.0) # forward is now +Z, down the ramp
+		player.velocity = Vector3.ZERO
+		_settle = 0
+		_walk = 0
+		return
+	# The looped view starts standing on the floor: a 0.35 m drop plays the landing clip (knees bent) for over a second of every pass.
+	player.global_position = Vector3(_lane_x(int(spot["lane"])), 0.02 if _spot_loop else 0.35,
+			RAMP_RUN * 0.5 + (LOOP_BACKOFF if _spot_loop else START_BACKOFF))
 	player.rotation = Vector3.ZERO # model forward is -Z, the ramps' climb direction
 	player.velocity = Vector3.ZERO
 	_settle = 0
@@ -771,18 +890,27 @@ func _run_check() -> void:
 		_settle += 1
 		return
 	var spot: Dictionary = SPOTS[_spot]
-	if _walk < WALK_FRAMES:
+	if _walk < WALK_FRAMES + (LOOP_EXTRA_FRAMES if _spot_loop else 0): # the looped view walks longer (its longer approach, and the ramp)
 		_walk += 1
 		player.movement_input_override = Vector2(0.0, -1.0) # walk forward, up the surface
 		_measure(str(spot["name"]))
 		return
 	player.movement_input_override = Vector2.ZERO
-	_spot += 1
-	if _spot < SPOTS.size():
-		_move_to_spot(_spot)
-		return
+	if _only_spot >= 0:
+		if _spot_loop:
+			# The same surface again: the foot IK forgets the ramp's top first (a bare teleport made contact events of its own), and the
+			# scene is NOT reloaded (loading the player again froze the window for about 9 s every pass).
+			_v2.reset_state()
+			_move_to_spot(_spot)
+			_settle = -IDLE_SETTLE_FRAMES # the walk-to-idle blend settles before the next walk starts (as a first pass starts from idle)
+			return
+	else:
+		_spot += 1
+		if _spot < SPOTS.size():
+			_move_to_spot(_spot)
+			return
 	var passed := (_worst_ankle <= ANKLE_TOLERANCE and _worst_tilt <= TILT_TOLERANCE_DEG
-			and _worst_clip <= CLIP_TOLERANCE and _tip_clip_max <= TIP_CLIP_LIMIT
+			and _worst_clip <= (REAL_WALK_CLIP_TOLERANCE if PlayerTempWalk.use_in_headless else CLIP_TOLERANCE) and _tip_clip_max <= SURFACE_TIP_CLIP_LIMIT
 			and _tip_float_events <= FORWARD_FLOAT_FRAMES and _tip_float_max <= FORWARD_FLOAT_LIMIT
 			and _pose_faults == 0)
 	print(("FOOT_IK_V2_CHECK %s surfaces=%d frames=%d ankle_err=%.4f@%s tilt=%.1f@%s "
@@ -791,7 +919,8 @@ func _run_check() -> void:
 			_worst_ankle_spot, _worst_tilt, _worst_tilt_spot, _worst_clip, _worst_clip_spot,
 			ANKLE_TOLERANCE, TILT_TOLERANCE_DEG, CLIP_TOLERANCE, _worst_step,
 			_worst_step_spot, _pose_faults, _tip_summary()])
-	get_tree().quit(0 if passed else 1)
+	_finished = true
+	SESSION.finish(get_tree(), passed)
 
 
 ## Largest single-frame foot movement per surface (a snap shows even when every pose is clean).
@@ -879,7 +1008,7 @@ func _place_on_ramp() -> void:
 		return
 	var angle := deg_to_rad(RAMP_ANGLES[_ramp_index] as float)
 	# Top surface of the tilted 0.4 m slab at this z, plus a small drop so it settles onto it.
-	var surface_y := RAMP_RUN * 0.5 * sin(angle) - _start.y * tan(angle) + 0.2 / cos(angle)
+	var surface_y := RAMP_RUN * 0.5 * sin(angle) - _start.y * tan(angle) + 0.2 / cos(angle) - RAMP_LIP * cos(angle)
 	if _from_floor:
 		surface_y = 0.0 # start on the floor beside the ramp, as the live session did
 	player.global_position = Vector3(_lane_x(LATERAL_LANE + _ramp_index) + _start.x,
@@ -938,7 +1067,8 @@ func _finish_ramp_check() -> void:
 	print("FOOT_IK_V2_%s %s frames=%d %s foot_step_max=%.3f limits=clip<=%.3f,float<=%.3f" % [
 			"IDLE_CHECK" if _idle_checking else "RAMP_CHECK", "PASS" if passed else "FAIL",
 			_walk, _tip_summary(), _foot_step_max, TIP_CLIP_LIMIT, _float_limit])
-	get_tree().quit(0 if passed else 1)
+	_finished = true
+	SESSION.finish(get_tree(), passed)
 
 
 ## Independent of the modifier: casts its own ray from high above and compares the sole to that.

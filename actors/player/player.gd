@@ -5,7 +5,6 @@ extends CharacterBody3D
 
 const STAND_CAPSULE_HEIGHT := 1.8
 const CROUCH_CAPSULE_HEIGHT := 1.2
-const STAIR_CONTROLLER := preload("res://actors/player/player_stair_controller.gd")
 ## How far out to draw the FOV wireframe in the debug view - purely visual,
 ## does not affect the camera's actual near/far planes.
 const FOV_GIZMO_DISTANCE := 2.5
@@ -37,7 +36,7 @@ func set_eye_offset(v: Vector3) -> void:
 @export var roll_cooldown: float = 0.4
 ## Clears the ~0.33m worst generated riser; taller walls still block.
 @export var step_height: float = 0.4
-## Spreads a step-up's rise over several frames in PlayerStairController.
+## Spreads a step-up's rise over several frames in PlayerStairControllerNative.
 @export_range(0.5, 3.0, 0.1) var step_rise_rate: float = 2.8
 ## Collision steps immediately; this eases only the camera presentation.
 @export_range(1.0, 30.0, 0.5) var stair_hover_speed: float = 12.0
@@ -45,10 +44,10 @@ func set_eye_offset(v: Vector3) -> void:
 ## foot IK. Hips, legs, collision, and contact timing remain authoritative.
 @export_range(0.0, 0.05, 0.005) var stair_balance_limit: float = 0.03
 @export_range(0.0, 0.75, 0.05) var stair_balance_strength: float = 0.75
-## Walk-speed multiplier around stairs; the clip plays at speed / STAIR_STEP_SPEED so each foot
+## Walk-speed multiplier around stairs; the clip plays at speed / 0.7 (STAIR_STEP_SPEED in player_walk_pace_native.cpp) so each foot
 ## stays on its step (slowing body and clip alike left them sliding ~0.7 m a step). 1.0 = off.
 @export_range(0.25, 1.0, 0.05) var stair_walk_speed_scale: float = 0.375
-const STAIR_STEP_SPEED := 0.7 # m/s of ground the clip's steps cover at normal playback (--slide)
+const STAIR_CLIP_MAX_RATE := 1.7 # the stair clip never plays faster than this (the game's stair design: 1.2 m/s over 0.7 m/s of steps)
 @export_range(0.0, 3.0, 0.05) var punch_delay_min: float = 0.25
 @export_range(0.0, 3.0, 0.05) var punch_delay_max: float = 0.75
 ## Prevents walking or sliding off elevated platforms/stairs into the void.
@@ -134,7 +133,8 @@ var _smoothed_input_dir := Vector2.ZERO
 var _ledge_direction_blocked := false
 var _ledge_commit := PlayerLedgeCommit.new() # holding into a blocked drop commits to the fall
 var gameplay_action_input_enabled := true
-var _stair_controller := STAIR_CONTROLLER.new()
+var _stair_controller = ClassDB.instantiate(&"PlayerStairControllerNative") # native (native/planet_crust/src/player_stair_controller_native.cpp)
+var _walk_pace = ClassDB.instantiate(&"PlayerWalkPaceNative") # native: uphill slowdown, stair slowdown, clip playback scale
 var _stair_hover_offset_y: float:
 	get:
 		return _stair_controller.hover_offset_y
@@ -386,6 +386,25 @@ func _set_third_person_zoom(length: float) -> void:
 ## further input carries over 1:1 into rotating the body instead. This way
 ## total camera yaw always tracks the mouse exactly, whether it comes from
 ## the head, the body, or a mix of both mid-turn.
+## What the live log records about the stair slowdown (planet recorder): which condition holds it on, the
+## floor's angle and the clip's playback scale. Only plain numbers and booleans (the log is JSON).
+func get_stair_debug() -> Dictionary:
+	var state: Dictionary = _stair_controller.get_debug_state()
+	var cam := get_viewport().get_camera_3d()
+	var ahead := -cam.global_transform.basis.z if cam != null else Vector3.FORWARD
+	return {
+		# where the camera looks, in the lab's `--pose` convention (yaw 0 looks down -Z, positive turns left; pitch up is positive)
+		"look_yaw_deg": snappedf(rad_to_deg(atan2(-ahead.x, -ahead.z)), 0.1),
+		"look_pitch_deg": snappedf(rad_to_deg(asin(clampf(ahead.y, -1.0, 1.0))), 0.1),
+		"slowed": _stair_controller.has_recent_transition(),
+		"climbing": state["climbing"],
+		"step_down_pending": is_finite(float(state["pending_step_down_y"])),
+		"hover_cm": snappedf(_stair_controller.hover_offset_y * 100.0, 0.1),
+		"floor_deg": snappedf(rad_to_deg(get_floor_normal().angle_to(Vector3.UP)), 0.1) if is_on_floor() else -1.0,
+		"playback": snappedf(body.locomotion_playback_scale, 0.01),
+	}
+
+
 func _apply_yaw(delta_yaw: float) -> void:
 	var limit := deg_to_rad(head_yaw_limit_deg)
 	var new_head_yaw := _look_yaw + delta_yaw
@@ -414,8 +433,8 @@ func _catch_up_body_yaw(input_dir: Vector2, sprinting: bool, delta: float) -> vo
 	var target_offset := _look_yaw
 	if sprinting:
 		target_offset = _look_yaw + travel_angle
-	elif not _crouched and PlayerTempWalk.turns_body(input_dir):
-		target_offset = _look_yaw + PlayerTempWalk.body_turn(input_dir, travel_angle)
+	elif not _crouched and PlayerTempWalkNative.turns_body(input_dir):
+		target_offset = _look_yaw + PlayerTempWalkNative.body_turn(input_dir, travel_angle)
 	if is_zero_approx(target_offset):
 		return
 	var step := clampf(target_offset, -max_step, max_step)
@@ -482,12 +501,24 @@ func _physics_process(delta: float) -> void:
 		_crouched = false
 		velocity.y = jump_velocity
 	var speed := crouch_speed if _crouched else (sprint_speed if sprinting else walk_speed)
-	var stair_walk_slowed := (not _crouched and not sprinting
-			and _stair_controller.has_recent_transition())
-	if stair_walk_slowed:
-		speed *= stair_walk_speed_scale
-	var stair_cadence := stair_walk_slowed and not is_equal_approx(stair_walk_speed_scale, 1.0)
-	body.locomotion_playback_scale = speed / STAIR_STEP_SPEED if stair_cadence else 1.0
+	# The walk slows progressively with the uphill gradient under the feet (eased, and the clip follows the ground speed). The stair slowdown stays
+	# an on/off switch: easing it made the stairs' IK jerk twice as large (AGENT_TASKS/098; the clip's pace and the ground speed disagree half-way).
+	var walking_pace := not _crouched and not sprinting
+	# Only when a stair is close AND the character is moving there (a floor snap on natural terrain also sets the transition flag, which slowed the walk there).
+	# A surface on the stair collision layer plays the stair clip (PlayerStairClips.select_walk), so it takes the stair pace too (a ramp has no step-up transition).
+	var moving_here: bool = Vector2(velocity.x, velocity.z).length() > 0.2
+	var on_stairs: bool = moving_here and ((_stair_controller.has_recent_transition() and _stair_controller.is_near_stairs()) or PlayerStairClips.on_staircase(self))
+	var wish := look_basis * Vector3(_smoothed_input_dir.x, 0.0, _smoothed_input_dir.y) if _smoothed_input_dir.length_squared() > 0.01 else Vector3.ZERO
+	# The stair clip's steps cover little ground (PlayerStairClips.ref_speed); past STAIR_CLIP_MAX_RATE times that the legs step far faster than on the flat.
+	var stair_scale := stair_walk_speed_scale
+	if on_stairs and PlayerStairClips.on_staircase(self): # only while the stair clip itself plays (the flat walk on other stairs keeps its pace)
+		stair_scale = minf(stair_scale, STAIR_CLIP_MAX_RATE * PlayerStairClips.ref_speed(&"unarmed_stair_up") / maxf(speed, 0.1))
+	var pace: PackedFloat64Array = _walk_pace.pace(speed, walking_pace, on_stairs, is_on_floor(), get_floor_normal(), wish, delta, stair_scale)
+	speed = pace[0]
+	# The uphill / downhill clips step slowly (PlayerSlopeClips.ref_speed): past SLOPE_CLIP_MAX_RATE times that the legs race, so the climb takes their pace.
+	if walking_pace:
+		speed = minf(speed, body.slope_pace_cap())
+	body.locomotion_playback_scale = pace[1]
 	# Movement follows where you look (body yaw + the head offset), not the body facing:
 	# otherwise glancing sideways while walking forward would strafe.
 	var direction := (look_basis * Vector3(
@@ -516,9 +547,9 @@ func _physics_process(delta: float) -> void:
 	var frame_start_xz := Vector2(global_position.x, global_position.z)
 	var preserved_horizontal_velocity := Vector2(velocity.x, velocity.z)
 	_stair_controller.begin_frame()
-	var stepped_up := _stair_controller.apply_step_up(
+	var stepped_up: float = _stair_controller.apply_step_up(
 			horizontal_motion, delta, step_height, step_rise_rate)
-	var stepped_down := _stair_controller.apply_step_down(
+	var stepped_down: float = _stair_controller.apply_step_down(
 			horizontal_motion, delta, step_height, step_rise_rate,
 			JUMP_VELOCITY_THRESHOLD) if stepped_up <= 0.0 else 0.0
 	if _stair_controller.consumed_horizontal_motion:
@@ -537,7 +568,7 @@ func _physics_process(delta: float) -> void:
 	if stepped_up > 0.0:
 		_stair_controller.record_presentation_delta(
 				-stepped_up, step_height, stair_balance_strength, stair_balance_limit)
-		var snap := stepped_up + frame_start_y - global_position.y # floor snap after the climb
+		var snap: float = stepped_up + frame_start_y - global_position.y # floor snap after the climb
 		if snap > 0.0 and snap < 0.1:
 			_stair_controller.camera_snap_y += snap # camera only: the body IK is sensitive
 	elif stepped_down > 0.0:
@@ -562,6 +593,12 @@ func _physics_process(delta: float) -> void:
 	var jumped := velocity.y > JUMP_VELOCITY_THRESHOLD
 	var report_on_floor := (
 			is_on_floor() or (not jumped and _airborne_time < AIRBORNE_ANIMATION_GRACE))
+	var floor_normal := get_floor_normal()
+	var slope_flat := Vector2(floor_normal.x, floor_normal.z)
+	var slope_deg := rad_to_deg(acos(clampf(floor_normal.y, -1.0, 1.0))) if is_on_floor() else 0.0
+	# uphill when moving against the way the ground tilts down (the normal leans downhill)
+	body.floor_slope_deg = slope_deg if Vector2(velocity.x, velocity.z).dot(slope_flat) < 0.0 else -slope_deg
+	body.ahead_slope_deg = _ahead_slope_deg()
 	body.update_motion(_crouched, weapon.equipped,
 			PlayerLedgeNudge.speed(self, Vector2(velocity.x, velocity.z).length()), sprinting,
 			report_on_floor, velocity.y, delta, flashlight.visible,
@@ -585,6 +622,33 @@ func _physics_process(delta: float) -> void:
 	body.head_yaw = _look_yaw
 
 	_place_head()
+
+
+## The slope of the ground just ahead (deg, + uphill, - downhill; 0 when it is not one smooth ramp): two floor probes ahead of the walk that agree on a tilt.
+## A ramp tilts both; stair treads read flat, so the slope clips can start before the feet reach the ramp (and stairs never trip them).
+func _ahead_slope_deg() -> float:
+	var flat := Vector2(velocity.x, velocity.z)
+	if not is_on_floor() or flat.length() < 0.5:
+		return 0.0
+	var dir := Vector3(flat.x, 0.0, flat.y).normalized()
+	var space := get_world_3d().direct_space_state
+	var angles: Array[float] = []
+	var downhill_lean := 0.0
+	for distance: float in [0.5, 0.9]:
+		var from := global_position + dir * distance + Vector3.UP * 1.0
+		var query := PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 1.6, collision_mask, [get_rid()])
+		var hit := space.intersect_ray(query)
+		if hit.is_empty():
+			return 0.0
+		var normal: Vector3 = hit["normal"]
+		var angle := rad_to_deg(acos(clampf(normal.y, -1.0, 1.0)))
+		if angle < 10.0 or angle > 50.0:
+			return 0.0
+		angles.append(angle)
+		downhill_lean += Vector2(normal.x, normal.z).dot(flat.normalized())
+	if absf(angles[0] - angles[1]) > 4.0:
+		return 0.0
+	return (angles[0] + angles[1]) * 0.5 * (1.0 if downhill_lean < 0.0 else -1.0)
 
 
 func _update_stair_hover(delta: float) -> void:

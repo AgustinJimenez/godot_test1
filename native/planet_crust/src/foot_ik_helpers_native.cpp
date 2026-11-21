@@ -136,7 +136,8 @@ void FootIKV2GroundFilterNative::_bind_methods() {
 
 double FootIKV2GroundFilterNative::height(const StringName &p_side, double p_raw) {
 	const double RATE = 3.0, SAME_LEVEL = 0.04, FOLLOW = 0.06, SNAP = 0.45;
-	const int HOLD_FRAMES = 3;
+	const double ticks = std::max((double)Engine::get_singleton()->get_physics_ticks_per_second(), 1.0);
+	const int HOLD_FRAMES = (int)std::ceil(0.05 * ticks); // 3 frames at 60 Hz
 	const int frame_now = (int)Engine::get_singleton()->get_physics_frames();
 	if ((int)frame_of.get(p_side, -1) == frame_now) {
 		return (double)state_.get(p_side, p_raw);
@@ -164,7 +165,7 @@ double FootIKV2GroundFilterNative::height(const StringName &p_side, double p_raw
 	}
 	pending[p_side] = entry;
 	if ((int)entry["count"] >= HOLD_FRAMES) {
-		state_[p_side] = move_toward_d(current, p_raw, RATE / 60.0);
+		state_[p_side] = move_toward_d(current, p_raw, RATE / ticks);
 	}
 	return (double)state_[p_side];
 }
@@ -189,7 +190,12 @@ void FootIKV2KneeHintNative::_bind_methods() {
 Vector3 FootIKV2KneeHintNative::steady(const StringName &p_side, const Vector3 &p_hip, const Vector3 &p_knee, double p_delta, double p_walk) {
 	const double RATE = 0.4, WALK_RATE = 12.0;
 	const Vector3 now = (p_knee - p_hip).normalized();
-	Vector3 current = direction.get(p_side, now);
+	const int frame_now = (int)Engine::get_singleton()->get_physics_frames();
+	if ((int)frame_of.get(p_side, -1) != frame_now) {
+		frame_start[p_side] = direction.get(p_side, now);
+		frame_of[p_side] = frame_now;
+	}
+	Vector3 current = frame_start.get(p_side, now);
 	const double rate = RATE + (WALK_RATE - RATE) * p_walk;
 	current = (current != now) ? current.slerp(now, (real_t)(1.0 - std::exp(-rate * p_delta))) : now;
 	direction[p_side] = current;

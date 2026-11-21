@@ -2,11 +2,10 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cgdhg1ihw18ke"
-path.s3tc="res://.godot/imported/player_locomotion_deacon_head_c.png-c95f6ac3a3e69286f462afac21419313.s3tc.ctex"
+uid="uid://cm7at5n6nxo0e"
+path="res://.godot/imported/player_locomotion_player_head_c.png-71cecbcad8d1379aeb68ebd869e83dc8.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 generator_parameters={
 "md5": "811aa90b5a4a6a03e228a0127d57b043"
@@ -14,12 +13,12 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/models/dg_game_sample/player_locomotion_deacon_head_c.png"
-dest_files=["res://.godot/imported/player_locomotion_deacon_head_c.png-c95f6ac3a3e69286f462afac21419313.s3tc.ctex"]
+source_file="res://assets/models/dg_game_sample/player_locomotion_player_head_c.png"
+dest_files=["res://.godot/imported/player_locomotion_player_head_c.png-71cecbcad8d1379aeb68ebd869e83dc8.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -41,4 +40,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

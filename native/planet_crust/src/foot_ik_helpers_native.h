@@ -1,9 +1,8 @@
 #pragma once
 
-// The small state machines of Foot IK v2 in native code (AGENT_TASKS/091): the joint speed limiter, the foot stepper, the foot lock, the
-// body height smoother, the floor height filter, the resting knee hint and the stretch hold. The same maths as the GDScript files of
-// actors/player/foot_ik_v2/ (foot_ik_v2_joint_limiter.gd, _stepper.gd, _lock.gd, _body_smoother.gd, _ground_filter.gd, _knee_hint.gd,
-// _stretch_hold.gd), which stay the reference; each GDScript file has a `create()` that returns the native object when the class exists.
+// The small state machines of Foot IK v2 in native code: the joint speed limiter, the foot stepper, the foot lock, the body height smoother,
+// the floor height filter, the resting knee hint and the stretch hold. They have no GDScript copies any more; actors/player/foot_ik_v2/
+// only holds the install script.
 
 #include <godot_cpp/classes/character_body3d.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
@@ -79,7 +78,7 @@ public:
 
 class FootIKV2KneeHintNative : public RefCounted {
 	GDCLASS(FootIKV2KneeHintNative, RefCounted)
-	Dictionary direction;
+	Dictionary direction, frame_start, frame_of; // frame_start: where the smoothing started this frame, so a second solve in a frame does not advance it again
 
 protected:
 	static void _bind_methods();

@@ -42,7 +42,7 @@ var _hole_mesh: QuadMesh
 
 
 func _ready() -> void:
-	_base_fov = camera.fov
+	_base_fov = _chosen_fov(camera.fov)
 	visible = false
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.04, 0.04, 0.045)
@@ -75,7 +75,14 @@ func reserve() -> int:
 	return _inventory.count_of(ammo_item)
 
 
+## The field of view the player chose in the graphics settings (the scene's own when there is no such service).
+func _chosen_fov(fallback: float) -> float:
+	var settings := get_node_or_null(^"/root/GraphicsSettings")
+	return float(settings.call(&"get_graphics_value", &"fov")) if settings != null else fallback
+
+
 func _process(delta: float) -> void:
+	_base_fov = _chosen_fov(_base_fov)
 	_cooldown = maxf(_cooldown - delta, 0.0)
 	if _flash_left > 0.0:
 		_flash_left -= delta

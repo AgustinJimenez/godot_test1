@@ -11,7 +11,6 @@ signal action_contact(animation_name: StringName)
 ## index or the skeleton reference itself needs this to recompute rather than keep pointing stale.
 signal character_changed
 const CLIP_DIR := "res://assets/models/pistol_starter/Animation/In-Place/"
-const LocomotionTransition := preload("res://actors/player/player_locomotion_transition.gd")
 const CLIPS := {
 	&"relaxed_idle": "W1_Stand_Relaxed_Idle_IPC",
 	&"aim_idle": "W1_Stand_Aim_Idle_IPC",
@@ -282,6 +281,28 @@ var _target_humanoid_map: Dictionary
 ## Tool instances can disable gameplay idle to expose the imported pose.
 var autoplay_default_animation := true
 var locomotion_playback_scale := 1.0 # Per-instance tool slow motion; gameplay stays 1.0.
+## Signed slope under the feet in degrees (player.gd): positive going uphill, negative going downhill, 0 in the air.
+var floor_slope_deg := 0.0
+var ahead_slope_deg := 0.0 ## the ground just ahead, when it is one smooth ramp (Player._ahead_slope_deg)
+const SLOPE_ENTER_DEG := 10.0 ## the game's own thresholds (task 095)
+const SLOPE_EXIT_DEG := 7.0
+const SLOPE_SMOOTHING := 4.0
+const SLOPE_FLAT_DEG := 4.0
+## On a ramp the foot IK may sink the pelvis this far while walking (its default, 0.06 m, leaves the trailing foot hanging in the air), and its
+## ground-height filter (made for steps and pits, it lets a foot's ground follow a drop only at 3 m/s) is off: it kept planted feet 5-15 cm up.
+const SLOPE_IK_PELVIS_DROP := 0.3
+const SLOPE_IK_PELVIS_RATE := 1.0 ## m/s the pelvis may move while walking a ramp (default 0.25)
+## Crossfade into and out of the slope clips: they differ most from the flat walk, a quick blend pops the pose.
+const SLOPE_BLEND_TIME := 0.4
+const SLOPE_HOLD_TIME := 0.6
+const SLOPE_CLIP_MAX_RATE := 0.85 ## playback rate the slope clips reach at the capped climb speed
+var _slope_tilted_time := 0.0
+var _slope_smoothed := 0.0
+var _slope_clip: StringName = &""
+var _foot_ik: FootIKV2Modifier
+var _foot_ik_pelvis_drop := 0.06 ## the foot IK's own walking pelvis drop / ground filter, restored off a slope
+var _foot_ik_ground_filter := true
+var _foot_ik_pelvis_rate := 0.25
 @export_range(0.0, 1.0, 0.05) var stair_cadence_match := 0.5 # stairs: 1 = clips step alike, 0 = old
 ## Instantiates character_scene and finds its Skeleton3D/AnimationPlayer/mesh generically - mesh
 ## is "the first MeshInstance3D found", matching MotusMan's own single-mesh shape today.
@@ -352,7 +373,10 @@ func _build_character_visuals() -> void:
 	_look_pose_modifier.player_body = self
 	skeleton.add_child(_look_pose_modifier)
 	skeleton.set_modifier_callback_mode_process(Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_PHYSICS)
-	FOOT_IK_V2_INSTALL.install(self, skeleton) # the foot IK: last, so it corrects the pose every other modifier made
+	_foot_ik = FOOT_IK_V2_INSTALL.install(self, skeleton) # the foot IK: last, so it corrects the pose every other modifier made
+	_foot_ik_pelvis_drop = _foot_ik.moving_pelvis_drop
+	_foot_ik_ground_filter = _foot_ik.ground_filter
+	_foot_ik_pelvis_rate = _foot_ik.moving_pelvis_rate
 	_setup_held_flashlight()
 
 	var lib := AnimationLibrary.new()
@@ -382,6 +406,7 @@ func _build_character_visuals() -> void:
 	PlayerDirectionalLocomotionLibrary.add_directional_crouch_clips(
 			lib, skeleton, _target_humanoid_map)
 	PlayerTempWalk.apply_side(lib, self) # after the strafe clips, which would overwrite it
+	PlayerSlopeClips.add_to(lib, self)
 	_lib = lib
 	anim_player.add_animation_library(&"moves", lib)
 	anim_player.animation_finished.connect(_on_animation_finished)
@@ -564,7 +589,7 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 						skeleton.find_bone(LEG_SWING_MAP[target_name]))
 			else:
 				var src_rest := src_skeleton.get_bone_global_rest(src_idx)
-				var src_pose_global := PlayerBodyPoseMath.manual_global_pose(src_skeleton, src_idx)
+				var src_pose_global := PlayerBodyPoseMathNative.manual_global_pose(src_skeleton, src_idx)
 				var delta := src_rest.basis.inverse() * src_pose_global.basis
 				target_basis = target_rest.basis * delta
 				if target_name == &"Hips":
@@ -585,7 +610,7 @@ func _retarget_clip(fbx_path: String, anim_name: StringName, held_pose: Animatio
 	clip_root.free()
 	if hand_retarget_mode == HandRetarget.FROZEN:
 		for hand_bone in HAND_BONES:
-			PlayerBodyPoseMath.bake_held_track(anim, hand_bone, held_pose, src.length)
+			PlayerBodyPoseMathNative.bake_held_track(anim, hand_bone, held_pose, src.length)
 	return anim
 
 
@@ -634,9 +659,9 @@ func _swing_retarget(src_skel: Skeleton3D, src_idx: int, target_skel: Skeleton3D
 		return target_rest.basis
 	var src_rest_dir := (src_skel.get_bone_global_rest(src_child_idx).origin
 			- src_skel.get_bone_global_rest(src_idx).origin).normalized()
-	var src_pose_dir := (PlayerBodyPoseMath.manual_global_pose(src_skel, src_child_idx).origin
-			- PlayerBodyPoseMath.manual_global_pose(src_skel, src_idx).origin).normalized()
-	var swing := PlayerBodyPoseMath.swing_between(src_rest_dir, src_pose_dir)
+	var src_pose_dir := (PlayerBodyPoseMathNative.manual_global_pose(src_skel, src_child_idx).origin
+			- PlayerBodyPoseMathNative.manual_global_pose(src_skel, src_idx).origin).normalized()
+	var swing := PlayerBodyPoseMathNative.swing_between(src_rest_dir, src_pose_dir)
 	return swing * target_rest.basis
 
 
@@ -732,7 +757,8 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		return
 	var target: StringName
 	var rate := 1.0
-	var moving_input := (ground_speed > 0.6
+	# the slope clips walk below the usual 0.6 m/s (they run at 0.4x), which must not read as standing still
+	var moving_input := (ground_speed > (0.2 if _slope_clip != &"" else 0.6)
 			or (crouched and movement_input.length() > 0.1))
 	if moving_input:
 		_locomotion_active = true
@@ -757,14 +783,19 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 			rate = minf(ground_speed / CROUCH_REF_SPEED, 1.0)
 		elif sprinting:
 			target = &"unarmed_sprint"
-			rate = ground_speed / PlayerTempWalk.sprint_ref(SPRINT_REF_SPEED)
+			rate = ground_speed / PlayerTempWalkNative.sprint_ref(SPRINT_REF_SPEED)
 		else:
 			target = PlayerDirectionalLocomotionLibrary.walk_animation(_anim_input_smoothed)
 			target = PlayerStairClips.select_walk(self, target,
 					false)
+			target = _slope_walk(target, delta)
 			rate = PlayerStairClips.walk_rate(target, ground_speed, rate)
 			var is_strafe: bool = (target != &"unarmed_walk")
-			var ref: float = PlayerTempWalk.ref_speed(target, is_strafe)
+			var ref: float = PlayerTempWalkNative.ref_speed(target, STRAFE_REF_SPEED if is_strafe else WALK_REF_SPEED)
+			if PlayerStairClips.is_stair_target(target):
+				ref = PlayerStairClips.ref_speed(target)
+			elif PlayerSlopeClips.is_slope_clip(target):
+				ref = PlayerSlopeClips.ref_speed(target)
 			rate = ground_speed / ref
 			# Backward movement: play the forward walk in reverse so feet step
 			# backward naturally without needing a separate authored clip.
@@ -777,14 +808,72 @@ func update_motion(crouched: bool, armed: bool, ground_speed: float,
 		target = &"unarmed_torch_idle" if torch_enabled else &"unarmed_idle"
 	if _hand_grip_modifier != null:
 		_hand_grip_modifier.active = target == &"unarmed_torch_idle"
+	# slope clips follow the ground speed exactly (the clamp's 0.8x floor would keep a slow walk's feet racing)
+	var on_slope := _slope_clip != &"" and target == _slope_clip
+	if _foot_ik != null:
+		_foot_ik.moving_pelvis_drop = maxf(_foot_ik_pelvis_drop, SLOPE_IK_PELVIS_DROP) if on_slope else _foot_ik_pelvis_drop
+		_foot_ik.ground_filter = _foot_ik_ground_filter and not on_slope
+		_foot_ik.moving_pelvis_rate = maxf(_foot_ik_pelvis_rate, SLOPE_IK_PELVIS_RATE) if on_slope else _foot_ik_pelvis_rate
+		_foot_ik.stretch_when_moving = on_slope
+	var play_rate := rate if on_slope else PlayerStairClips.clamp_rate(self, target, rate)
 	_play_motion(target,
 			MOVING_LANDING_BLEND_TIME if moving_landing else LOCOMOTION_BLEND_TIME,
-			PlayerStairClips.clamp_rate(self, target, rate))
+			play_rate)
+
+
+## Fastest ground speed the active slope clip may be walked at (INF when none plays).
+func slope_pace_cap() -> float:
+	return PlayerSlopeClips.ref_speed(_slope_clip) * SLOPE_CLIP_MAX_RATE if _slope_clip != &"" else INF
+
+
+## The uphill / downhill cycle on a slope steeper than SLOPE_ENTER_DEG (until it flattens below SLOPE_EXIT_DEG); the flat walk otherwise.
+func _slope_walk(target: StringName, delta: float) -> StringName:
+	# smoothed: a stair's rounded edges report a tilted floor for a frame or two, a ramp holds its angle
+	_slope_smoothed = lerpf(_slope_smoothed, floor_slope_deg, minf(delta * SLOPE_SMOOTHING, 1.0))
+	if target != &"unarmed_walk" or not _lib.has_animation(PlayerSlopeClips.clip_name(&"uphill", 30)) or PlayerStairClips.on_staircase(self):
+		_slope_clip = &""
+		return target
+	# stairs report flat treads between their tilted edges, a ramp never does: a slope is a floor that stayed tilted a while
+	_slope_tilted_time = 0.0 if absf(floor_slope_deg) < SLOPE_FLAT_DEG else _slope_tilted_time + delta
+	var steep := absf(_slope_smoothed) if _slope_tilted_time >= SLOPE_HOLD_TIME or _slope_clip != &"" else 0.0
+	if absf(ahead_slope_deg) >= SLOPE_ENTER_DEG: # a ramp seen ahead starts its clip before the feet are on it, and keeps it while it is still ahead
+		_slope_clip = PlayerSlopeClips.clip_for(ahead_slope_deg, _slope_clip)
+		return _slope_clip
+	if _slope_clip == &"" and steep >= SLOPE_ENTER_DEG or _slope_clip != &"" and steep >= SLOPE_EXIT_DEG:
+		_slope_clip = PlayerSlopeClips.clip_for(_slope_smoothed, _slope_clip)
+		return _slope_clip
+	_slope_clip = &""
+	return target
 
 
 func _play_motion(target: StringName, blend_time: float, speed: float = 1.0) -> void:
-	LocomotionTransition.play(anim_player, target, blend_time)
+	var from_name := String(anim_player.current_animation)
+	var to_name := "moves/" + String(target)
+	var sync_phase := -1.0
+	if from_name != to_name and (PlayerSlopeClips.is_slope_clip(StringName(from_name.trim_prefix("moves/"))) or PlayerSlopeClips.is_slope_clip(target)):
+		# the flat walk and the slope clips all start on the left foot forward; a slope clip holds two strides to the walk's one
+		blend_time = maxf(blend_time, SLOPE_BLEND_TIME)
+		sync_phase = _stride_phase(from_name, to_name)
+	PlayerLocomotionTransitionNative.play(anim_player, target, blend_time) # native: phase-matched crossfade between clips of one gait
+	if sync_phase >= 0.0 and String(anim_player.current_animation) == to_name:
+		anim_player.seek(sync_phase * anim_player.current_animation_length, true)
 	anim_player.speed_scale = speed
+
+
+## Where in `to_name` the same step of the gait is, given where `from_name` is now; -1 when either clip is not one of the walk/slope cycles.
+func _stride_phase(from_name: String, to_name: String) -> float:
+	var from_strides := _clip_strides(from_name)
+	var to_strides := _clip_strides(to_name)
+	var from_length := anim_player.current_animation_length
+	if from_strides == 0 or to_strides == 0 or from_length <= 0.0:
+		return -1.0
+	return fposmod(anim_player.current_animation_position / from_length * from_strides / to_strides, 1.0)
+
+
+func _clip_strides(clip: String) -> int:
+	if PlayerSlopeClips.is_slope_clip(StringName(clip.trim_prefix("moves/"))):
+		return 2
+	return 1 if clip == "moves/unarmed_walk" else 0
 
 ## See SKIN_TEXTURE's doc comment for why this only reapplies MotusMan's own
 ## diffuse, and only when the mesh's own imported material genuinely has no
