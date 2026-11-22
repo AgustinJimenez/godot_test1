@@ -64,6 +64,9 @@ public:
 	//   fringe (0.0 .. 1.0, 0.4) how much of the front hair falls forward over the forehead (0 = combed back)
 	//   parting (-1 .. 1, 0.0) where the parting is, across the head
 	//   gravity (0.0 .. 2.0, 1) how much the hair falls
+	//   strands (int, 0)       0 = wide ribbons (locks). >0: each guide lock grows this many single hairs (hair-thin ribbons), up to 6000 guides
+	//   strand_width (m, 0.0009) the width of one hair in strands mode; clump (m, 0.007): how far the hairs of one guide spread apart
+	//   points (int, 0)        points per hair (3..16, 2 vertices each); 0 = automatic (up to 11, 7 in strands mode)
 	//   side_trim (0.0 .. 1.0, 0) how much shorter the sides and back are than the top (a short back and sides; 1 leaves them bald: locks under 4 mm are not made)
 	//   eye_drop (m, 0.105)    how far the eyes are below the top of the head (sets the hairline); default_params_for("male") 0.108, ("female") 0.107 (both from the eye landmarks)
 	static Ref<HumanHairBody> prepare(const Ref<ArrayMesh> &p_body, bool p_refresh = false);

@@ -231,6 +231,10 @@ Dictionary HumanHair::default_params() {
 	d["gravity"] = 1.0;
 	d["side_trim"] = 0.0;
 	d["eye_drop"] = 0.105;
+	d["strands"] = 0;
+	d["points"] = 0;
+	d["strand_width"] = 0.0009;
+	d["clump"] = 0.007;
 	return d;
 }
 
@@ -281,7 +285,12 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double requested_width = std::max(0.002, param(p_params, "lock_width", 0.018));
 	// very short hair gets narrower locks (a ribbon wider than the hair is long looks like a flat plate) and more of them
 	const double lock_width = std::min(requested_width, 0.002 + length * 0.25);
-	const int lock_count = int(std::min(9000.0, double(requested_locks) * requested_width / lock_width));
+	// strands mode: every guide lock grows `strands` single hairs (thin ribbons of strand_width) that follow it, clumped within `clump` metres
+	const int strands = int(Math::clamp(param(p_params, "strands", 0), 0.0, 16.0));
+	const double strand_width = Math::clamp(param(p_params, "strand_width", 0.0009), 0.0002, 0.004);
+	const double clump = Math::clamp(param(p_params, "clump", 0.007), 0.0, 0.03);
+	const int plain_lock_count = int(std::min(9000.0, double(requested_locks) * requested_width / lock_width));
+	const int lock_count = strands > 0 ? std::min(plain_lock_count, 6000) : plain_lock_count;
 	const double volume = std::max(0.0, param(p_params, "volume", 1.0));
 	const double curl = std::max(0.0, param(p_params, "curl", 0.0));
 	const double fringe = Math::clamp(param(p_params, "fringe", 0.4), 0.0, 1.0);
@@ -323,7 +332,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		const double side_y = eye_y + 0.014;
 		const double back_y = eye_y - 0.065;
 		const double a = Math::clamp((azimuth - 0.9) / 0.6, 0.0, 1.0);       // front .. side
-		const double b = Math::clamp((azimuth - 1.8) / 0.9, 0.0, 1.0);       // side .. back
+		const double b = Math::clamp((azimuth - 1.3) / 0.9, 0.0, 1.0);       // side .. back
 		const double front_side = front_y + (side_y - front_y) * (a * a * (3.0 - 2.0 * a));
 		return front_side + (back_y - side_y) * (b * b * (3.0 - 2.0 * b));
 	};
@@ -394,6 +403,10 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	std::vector<int> out_bound;
 	std::vector<float> out_s; // 0 at the root (and on the cap), 1 at the tip
 	std::vector<char> out_cap;
+	std::vector<float> out_guide; // the guide strand each hair vertex follows when the hair is simulated (-1: the scalp layer, which does not move)
+	std::vector<Vector3> guide_rest; // the rest points of every guide strand (`steps` per guide, in the body's space)
+	int current_guide = -1;
+	int guide_count = 0;
 
 	auto add_vertex = [&](const Vector3 &p_position, const Vector3 &p_normal, const Vector2 &p_uv, const Color &p_color, int p_bound, const Vector3 &p_tangent, float p_s, bool p_cap) {
 		out_vertices.push_back(p_position);
@@ -404,6 +417,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		out_bound.push_back(p_bound);
 		out_s.push_back(p_s);
 		out_cap.push_back(p_cap ? 1 : 0);
+		out_guide.push_back(p_cap ? -1.0f : float(current_guide));
 		return int(out_vertices.size()) - 1;
 	};
 
@@ -425,7 +439,11 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	// --- the locks
 	const int plain_steps = std::max(5, std::min(11, int(length / 0.02) + 5));
 	// curls need more points per strand: a coil drawn with four points a turn is a zigzag
-	const int steps = curl > 0.05 ? std::max(plain_steps, std::min(18, int(length / 0.008) + 5)) : plain_steps;
+	const int steps_plain = curl > 0.05 ? std::max(plain_steps, std::min(18, int(length / 0.008) + 5)) : plain_steps;
+	// single hairs are many: fewer points each (a hair is nearly straight over a few millimetres) keeps the vertex count in check
+	// `points` (3..16) sets the points per hair directly (2 vertices each): fewer is cheaper, more drapes smoother. 0 = automatic.
+	const int points_param = int(Math::clamp(param(p_params, "points", 0), 0.0, 16.0));
+	const int steps = points_param >= 3 ? points_param : (strands > 0 ? std::min(steps_plain, 7) : steps_plain);
 	const double gravity_amount = Math::clamp(length / 0.15, 0.25, 1.6) * gravity;
 	const double head_scale_x = std::max(half_width, 0.05);
 	for (int lock = 0; lock < lock_count; lock++) {
@@ -493,7 +511,18 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		if (this_length < 0.004) {
 			continue; // (a lock shorter than 4 mm: side_trim 1 on the sides and back)
 		}
-		const double step_length = this_length / (steps - 1);
+		const double step_length = this_length / (steps - 1);   // the mean segment (the coil radius below scales with it)
+		// Short segments near the root, longer toward the tip: a long straight first segment is a chord across the skull (a head is about 9 cm in radius), so the hair
+		// would leave the crown at once instead of lying along it. Segment k is `segment[k]` metres.
+		std::vector<double> segment(size_t(steps - 1));
+		double segment_sum = 0.0;
+		for (int k = 0; k < steps - 1; k++) {
+			segment[size_t(k)] = 0.3 + 1.4 * double(k) / double(std::max(steps - 2, 1)); // 0.3 x the mean at the root, 1.7 x at the tip
+			segment_sum += segment[size_t(k)];
+		}
+		for (int k = 0; k < steps - 1; k++) {
+			segment[size_t(k)] *= this_length / segment_sum;
+		}
 		const double phase = dice.range(0.0, 6.2831853);
 		const double stiffness = dice.range(0.9, 1.1);
 		std::vector<Vector3> points;
@@ -501,7 +530,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		// The hair drapes: it starts lying along the scalp in the combed direction, gravity pulls it down a little more every step, and the head
 		// holds it up (it is pushed out of the surface and walks along it), so it follows the curve of the skull and falls freely where the head ends.
 		Vector3 position = root + normal * 0.002f;
-		Vector3 direction = (flow * 0.95f + normal * 0.15f).normalized();
+		Vector3 direction = (flow * 0.95f + normal * 0.04f).normalized();
 		points.push_back(position);
 		const double pull = Math::clamp(0.26 + 0.2 * gravity_amount, 0.06, 0.6) / stiffness; // how much of each step bends toward the ground
 		const double curl_radius = curl * (0.004 + 0.3 * step_length);                      // the radius of the coil the strand is wound into afterwards
@@ -509,7 +538,8 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		for (int k = 1; k < steps; k++) {
 			const double s = double(k) / (steps - 1);
 			direction = (direction * real_t(1.0 - pull) + Vector3(0.0f, -1.0f, 0.0f) * real_t(pull) + flow * 0.05f).normalized();
-			Vector3 step = direction * real_t(step_length);
+			const double seg = segment[size_t(k - 1)];
+			Vector3 step = direction * real_t(seg);
 			Vector3 candidate = position + step;
 			// a little volume: stay off the head by a margin that grows along the strand
 			Vector3 from_centre = candidate - head_centre;
@@ -539,7 +569,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			Vector3 moved = candidate - position;
 			if (moved.length() > 1e-6f) {
 				direction = moved.normalized();
-				candidate = position + direction * real_t(step_length);
+				candidate = position + direction * real_t(seg);
 			}
 			position = candidate;
 			points.push_back(position);
@@ -559,11 +589,37 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const Vector3 up = side.cross(tangent).normalized();
 				const double angle = phase + k * turn;
 				const double ramp = std::min(1.0, k / 3.0);
-				points[k] = spine[k] + (side * real_t(std::cos(angle)) + up * real_t(std::sin(angle))) * real_t(curl_radius * ramp);
+				// the coil is only as wide as the segments allow (a coil bigger than the segment flips the ribbon, and the segments near the root are short)
+				const double fit = std::min(1.0, segment[size_t(k - 1)] / std::max(step_length, 1e-6));
+				points[k] = spine[k] + (side * real_t(std::cos(angle)) + up * real_t(std::sin(angle))) * real_t(curl_radius * ramp * fit);
 			}
 		}
 
-		// the ribbon
+		// the ribbon (strands mode: `strands` single hairs around the guide, each one a hair-thin ribbon)
+		const int copies = strands > 0 ? strands : 1;
+		const std::vector<Vector3> guide_points = points;
+		current_guide = guide_count++;
+		for (int k = 0; k < steps; k++) {
+			guide_rest.push_back(guide_points[size_t(k)]);
+		}
+		for (int copy = 0; copy < copies; copy++) {
+		if (strands > 0) {
+			const double angle0 = dice.range(0.0, 6.2831853);
+			const double radius0 = clump * std::sqrt(dice.unit());
+			for (int k = 0; k < steps; k++) {
+				const double s = double(k) / (steps - 1);
+				const Vector3 tan_k = (guide_points[std::min(k + 1, steps - 1)] - guide_points[std::max(k - 1, 0)]).normalized();
+				Vector3 side_k = tan_k.cross(Vector3(0.0f, 1.0f, 0.0f));
+				if (side_k.length() < 1e-4f) {
+					side_k = Vector3(1.0f, 0.0f, 0.0f);
+				}
+				side_k = side_k.normalized();
+				const Vector3 up_k = side_k.cross(tan_k).normalized();
+				const double ramp = Math::clamp(s * 3.0, 0.0, 1.0) * (0.6 + 0.4 * s); // the hairs leave the root together and spread toward the tips
+				const double wobble = angle0 + s * 0.35; // nearly parallel to the guide: a spiral here makes the hairs frizz
+				points[k] = guide_points[k] + (side_k * float(std::cos(wobble)) + up_k * float(std::sin(wobble))) * float(radius0 * ramp);
+			}
+		}
 		const float brightness = float(dice.unit());
 		const float chance = float(dice.unit());
 		const int first = int(out_vertices.size());
@@ -581,7 +637,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				side = -side; // (the coil sweeps the strand through "outward" every turn: keep the ribbon's side from the point before)
 			}
 			previous_side = side;
-			const double width = lock_width * (1.0 - 0.65 * std::pow(s, 1.6)) * (0.75 + 0.25 * std::min(1.0, s * 6.0));
+			const double width = strands > 0 ? strand_width * (1.0 - 0.7 * s) : lock_width * (1.0 - 0.65 * std::pow(s, 1.6)) * (0.75 + 0.25 * std::min(1.0, s * 6.0));
 			const Vector3 face = side.cross(tangent).normalized();
 			const Color color(brightness, chance, 0.0f, 1.0f);
 			add_vertex(points[k] - side * real_t(width * 0.5), face, Vector2(0.0f, float(s)), color, bound, tangent, float(s), false);
@@ -596,6 +652,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			out_indices.push_back(r1);
 			out_indices.push_back(l1);
 		}
+		} // (one hair, or one ribbon)
 	}
 
 	// --- the blend shapes. Each hair vertex follows the head by a fit of the whole scalp (scale and move) to the shape, plus the residual of the body vertex its lock
@@ -716,6 +773,77 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	arrays[Mesh::ARRAY_TEX_UV] = uv_array;
 	arrays[Mesh::ARRAY_TEX_UV2] = rest_array;
 	arrays[Mesh::ARRAY_INDEX] = index_array;
+	// CUSTOM0 (4 floats a vertex): x = the guide strand this vertex follows (-1 = none), y = the point along it (0 at the root .. steps - 1 at the tip)
+	PackedFloat32Array custom_array;
+	custom_array.resize(int64_t(out_count) * 4);
+	{
+		float *cw = custom_array.ptrw();
+		for (int i = 0; i < out_count; i++) {
+			cw[i * 4] = out_guide[size_t(i)];
+			cw[i * 4 + 1] = out_cap[size_t(i)] != 0 ? 0.0f : out_s[size_t(i)] * float(steps - 1);
+			cw[i * 4 + 2] = 0.0f;
+			cw[i * 4 + 3] = 0.0f;
+		}
+	}
+	arrays[Mesh::ARRAY_CUSTOM0] = custom_array;
+	PackedVector3Array guide_array;
+	guide_array.resize(int64_t(guide_rest.size()));
+	for (size_t i = 0; i < guide_rest.size(); i++) {
+		guide_array[int64_t(i)] = guide_rest[i];
+	}
+	built["guides"] = guide_array;
+	built["guide_count"] = guide_count;
+	built["guide_steps"] = steps;
+	// Colliders for the hair simulation, in the body's space: capsules (ax, ay, az, bx, by, bz, radius): the head, the neck and the shoulders.
+	PackedFloat32Array collider_array;
+	auto add_capsule = [&](const Vector3 &a, const Vector3 &b, double r) {
+		collider_array.push_back(a.x);
+		collider_array.push_back(a.y);
+		collider_array.push_back(a.z);
+		collider_array.push_back(b.x);
+		collider_array.push_back(b.y);
+		collider_array.push_back(b.z);
+		collider_array.push_back(float(r));
+	};
+	add_capsule(head_centre + Vector3(0.0f, 0.02f, 0.0f), head_centre + Vector3(0.0f, 0.02f, 0.0f), half_width * 1.02);
+	if (neck_count > 20) {
+		add_capsule(Vector3(real_t(neck_x), real_t(neck_bottom - 0.05), real_t(neck_z)), Vector3(real_t(neck_x), real_t(neck_top), real_t(neck_z)), neck_radius * 1.02);
+	}
+	{
+		// the shoulders: a horizontal capsule through the band of the body just under the neck (where the shoulders are widest)
+		double x_low = 1e9, x_high = -1e9, z_low = 1e9, z_high = -1e9, y_sum = 0.0;
+		int band = 0;
+		for (int i = 0; i < vertex_count; i++) {
+			const Vector3 v = vertices[i];
+			if (v.y > top_y - 0.36 && v.y < top_y - 0.26) {
+				x_low = std::min(x_low, double(v.x));
+				x_high = std::max(x_high, double(v.x));
+				z_low = std::min(z_low, double(v.z));
+				z_high = std::max(z_high, double(v.z));
+				y_sum += v.y;
+				band++;
+			}
+		}
+		if (band > 50) {
+			const double r = Math::clamp((z_high - z_low) * 0.42, 0.035, 0.09);
+			const double y = y_sum / band;
+			const double z = 0.5 * (z_low + z_high);
+			add_capsule(Vector3(real_t(x_low + r), real_t(y), real_t(z)), Vector3(real_t(x_high - r), real_t(y), real_t(z)), r);
+		}
+	}
+	built["colliders"] = collider_array;
+	// The body surface under the head (points and normals), for the hair simulation: hair must not go through the chest, breasts or arms either.
+	{
+		PackedVector3Array surface_points, surface_normals;
+		for (int i = 0; i < vertex_count; i++) {
+			if (vertices[i].y > top_y - 0.75) {
+				surface_points.push_back(vertices[i]);
+				surface_normals.push_back(normals[i]);
+			}
+		}
+		built["surface_points"] = surface_points;
+		built["surface_normals"] = surface_normals;
+	}
 	built["arrays"] = arrays;
 	built["blend_arrays"] = blend_arrays;
 	built["blend_names"] = blend_names;
@@ -735,7 +863,17 @@ Ref<ArrayMesh> HumanHair::make_mesh(const Dictionary &p_built) {
 		result->add_blend_shape(StringName(blend_names[i]));
 	}
 	result->set_blend_shape_mode(Mesh::BLEND_SHAPE_MODE_NORMALIZED);
-	result->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, arrays, blend_arrays);
+	const uint64_t flags = uint64_t(Mesh::ARRAY_CUSTOM_RGBA_FLOAT) << Mesh::ARRAY_FORMAT_CUSTOM0_SHIFT;
+	result->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, arrays, blend_arrays, Dictionary(), flags);
+	// what a hair simulation needs, kept with the mesh
+	if (p_built.has("guides")) {
+		result->set_meta("hair_guides", p_built["guides"]);
+		result->set_meta("hair_guide_count", p_built["guide_count"]);
+		result->set_meta("hair_guide_steps", p_built["guide_steps"]);
+		result->set_meta("hair_colliders", p_built["colliders"]);
+		result->set_meta("hair_surface_points", p_built["surface_points"]);
+		result->set_meta("hair_surface_normals", p_built["surface_normals"]);
+	}
 	return result;
 }
 

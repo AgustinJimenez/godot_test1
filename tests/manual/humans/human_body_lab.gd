@@ -61,6 +61,23 @@ var _head_hair_color: Color = Color(0.13, 0.08, 0.045)
 var _head_hair_density: float = 1.0
 var _hair_dirty: bool = false
 var _hair_enabled: bool = true
+var _sim: HairSim   # the real hair simulation (native HairSim): guide strands with gravity, inertia and collisions
+var _sim_enabled: bool = true
+var _solo: bool = false      # --solo: grow exactly one hair and put the camera on it
+var _solo_root: bool = false # --solo-root: ... and go in close on its root
+var _aim: Vector3 = Vector3.ZERO
+var _use_aim: bool = false
+var _spin: bool = false      # --spin: hide the panel, hold still 3 s, then turn the body once in 4 s (for recording a video)
+var _spin_time: float = 0.0
+var _osc_period: float = 0.0   # --osc=<seconds a half turn (180 degrees) takes>: random turns of 90..180 degrees either way with short pauses (the same sequence every run), panel hidden, to watch the hair swing
+var _osc_rng := RandomNumberGenerator.new()
+var _osc_from: float = 0.3
+var _osc_to: float = 0.3
+var _osc_t: float = 0.0
+var _osc_dur: float = 0.0
+var _osc_pause: float = 1.0
+var _ui_layer: CanvasLayer
+var _panel: Control   # the control panel: the mouse wheel over it scrolls it instead of zooming the camera
 # hair motion: wind (metres of bend at the tips) and a small spring that swings the hair when the head turns
 var _wind: float = 0.0
 var _shake_side: float = 1.0
@@ -99,6 +116,7 @@ var _capture_frames: int = 0
 
 
 func _ready() -> void:
+	get_viewport().msaa_3d = Viewport.MSAA_4X   # hair-thin strands alias into dots without it
 	_hair_style = HumanHair.default_params()
 	for key: StringName in HAIR_PRESETS["Short"]:
 		_hair_style[key] = HAIR_PRESETS["Short"][key]
@@ -127,6 +145,22 @@ func _ready() -> void:
 			_hair_color = Color.html(arg.trim_prefix("--brow="))
 		elif arg.begins_with("--density="):
 			_brow_density = float(arg.trim_prefix("--density="))
+		elif arg == "--solo":
+			_solo = true
+			_hair_style[&"locks"] = 1
+			_hair_style[&"strands"] = 1
+		elif arg == "--solo-root":
+			_solo = true
+			_solo_root = true
+			_yaw = 0.0
+			_hair_style[&"locks"] = 1
+			_hair_style[&"strands"] = 1
+		elif arg.begins_with("--osc="):
+			_osc_period = float(arg.trim_prefix("--osc="))
+		elif arg == "--nosim":
+			_sim_enabled = false
+		elif arg == "--spin":
+			_spin = true
 		elif arg == "--nohair":
 			_hair_enabled = false
 		elif arg.begins_with("--hair-preset="):
@@ -147,6 +181,8 @@ func _ready() -> void:
 			_wind = float(arg.trim_prefix("--wind="))
 		elif arg.begins_with("--hair-colour="):
 			_head_hair_color = Color.html(arg.trim_prefix("--hair-colour="))
+		elif arg.begins_with("--strands="):
+			_hair_style[&"strands"] = float(arg.trim_prefix("--strands="))
 		elif arg.begins_with("--hair-set="):
 			# --hair-set=key:value (any HumanHair parameter), e.g. --hair-set=length:0.2
 			var pair: PackedStringArray = arg.trim_prefix("--hair-set=").split(":")
@@ -239,9 +275,12 @@ func _build_material() -> void:
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	_ui_layer = layer
+	layer.visible = not (_spin or _osc_period > 0.0)
 	var panel := PanelContainer.new()
 	panel.position = Vector2(16.0, 16.0)
 	layer.add_child(panel)
+	_panel = panel
 	# many controls: the panel scrolls
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(330.0, 840.0)
@@ -303,6 +342,10 @@ func _build_ui() -> void:
 	_add_hair_slider(box, "Curl", &"curl", 0.0, 1.0)
 	_add_hair_slider(box, "Fringe (front falls forward)", &"fringe", 0.0, 1.0)
 	_add_hair_slider(box, "Parting", &"parting", -1.0, 1.0)
+	_add_hair_slider(box, "Guide locks (how many places hair grows from)", &"locks", 200.0, 6000.0)
+	_add_hair_slider(box, "Individual hairs per lock (0 = ribbons)", &"strands", 0.0, 12.0)
+	_add_hair_slider(box, "Points per hair (0 = auto; fewer = cheaper)", &"points", 0.0, 16.0)
+	_add_hair_slider(box, "Hair spread (clump)", &"clump", 0.0, 0.02)
 	_add_hair_slider(box, "Fall (gravity)", &"gravity", 0.0, 2.0)
 	_add_hair_slider(box, "Sides and back shorter", &"side_trim", 0.0, 1.0)
 	_add_range_slider(box, "Hair density", 0.3, 1.0, _head_hair_density, _on_head_hair_density_changed)
@@ -327,6 +370,7 @@ func _add_slider(parent: Control, label_text: String, callback: Callable) -> voi
 	label.text = label_text
 	parent.add_child(label)
 	var slider := HSlider.new()
+	slider.scrollable = false
 	slider.min_value = -1.0
 	slider.max_value = 1.0
 	slider.step = 0.01
@@ -410,6 +454,7 @@ func _add_range_slider(parent: Control, label_text: String, low: float, high: fl
 	label.text = label_text
 	parent.add_child(label)
 	var slider := HSlider.new()
+	slider.scrollable = false
 	slider.min_value = low
 	slider.max_value = high
 	slider.step = (high - low) / 100.0
@@ -451,6 +496,7 @@ func _add_hair_slider(parent: Control, label_text: String, key: StringName, low:
 	label.text = label_text
 	parent.add_child(label)
 	var slider := HSlider.new()
+	slider.scrollable = false
 	slider.min_value = low
 	slider.max_value = high
 	slider.step = (high - low) / 100.0
@@ -517,6 +563,58 @@ func _on_head_hair_density_changed(value: float) -> void:
 
 
 # Builds the head hair from the body's own mesh in native code (a few ms), as a sibling of the body mesh with the same blend shapes.
+# --solo: look at the one hair from close by (the real width is about 1 mm, so it is thin; the camera goes to about 25 cm from it).
+func _frame_solo_hair(built: ArrayMesh) -> void:
+	var vertices: PackedVector3Array = built.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var colors: PackedColorArray = built.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+	var low := Vector3(INF, INF, INF)
+	var high := Vector3(-INF, -INF, -INF)
+	for i: int in vertices.size():
+		if colors[i].b < 0.5:   # the hair itself, not the scalp layer
+			low = low.min(vertices[i])
+			high = high.max(vertices[i])
+	if low.x == INF:
+		print("SOLO no hair grown (the one lock was dropped); try another --hair-set=seed:N")
+		return
+	var centre: Vector3 = (low + high) * 0.5
+	print("SOLO hair: %.1f cm long, root at y %.3f" % [(high - low).length() * 100.0, high.y])
+	_face_mode = false
+	_cam_y = centre.y
+	_look_y = centre.y
+	_distance = maxf(0.22, (high - low).length() * 2.2)
+	if _solo_root:
+		# the root is the end of the hair that is nearest the scalp (its first points: lowest strand position in the UV)
+		var uvs: PackedVector2Array = built.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV]
+		var root: Vector3 = Vector3.ZERO
+		var best: float = INF
+		for i: int in vertices.size():
+			if colors[i].b < 0.5 and uvs[i].y < best:
+				best = uvs[i].y
+				root = vertices[i]
+		_aim = root + Vector3(0.0, -0.004, 0.0)
+		_use_aim = true
+		_distance = 0.15
+		print("SOLO root at ", root)
+	_update_camera()
+
+
+# The simulation drives the hair through the texture `sim_tex` of its material (the shader moves every hair by its guide).
+func _attach_sim() -> void:
+	if _sim == null:
+		_sim = HairSim.new()
+		add_child(_sim)
+	if _sim_enabled:
+		# looser than the defaults: the pull back to the style is what makes hair look stiff
+		_sim.root_stiffness = 0.22
+		_sim.tip_stiffness = 0.004
+		_sim.damping = 0.99
+		_sim.hair = _hair_mesh
+		_sim.material = _head_hair_material
+	else:
+		_sim.hair = null
+		_head_hair_material.set_shader_parameter(&"use_sim", false)
+
+
 func _rebuild_hair() -> void:
 	_hair_dirty = false
 	if _hair_mesh != null:
@@ -526,12 +624,16 @@ func _rebuild_hair() -> void:
 		return
 	var params: Dictionary = _hair_style.duplicate()
 	params["eye_drop"] = HumanHair.default_params_for(_gender)["eye_drop"]
+	_head_hair_material.set_shader_parameter(&"single_hairs", int(_hair_style.get(&"strands", 0)) > 0)
 	var built: ArrayMesh = HumanHair.build(_mesh.mesh as ArrayMesh, params)
 	if built == null:
 		return
 	_hair_mesh = MeshInstance3D.new()
 	_hair_mesh.mesh = built
+	if _solo:
+		_frame_solo_hair(built)
 	_hair_mesh.material_override = _head_hair_material
+	_attach_sim()
 	_body.add_child(_hair_mesh)
 	_hair_sway.hair = _hair_mesh # (the swing goes to this mesh's own `sway` instance uniform)
 	_apply()
@@ -629,6 +731,11 @@ func _set_shape(shape_name: StringName, value: float) -> void:
 
 
 func _update_camera() -> void:
+	if _use_aim:
+		# in close on a point: a little above and in front of it, looking at it
+		_camera.position = _aim + Vector3(0.0, 0.035, 0.05) * (_distance / 0.06)
+		_camera.look_at(_aim)
+		return
 	_camera.position = Vector3(0.0, _cam_y, _distance)
 	_camera.look_at(Vector3(0.0, _look_y, 0.0))
 
@@ -641,6 +748,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_body.rotation.y = _yaw
 	elif event is InputEventMouseButton:
 		var wheel := event as InputEventMouseButton
+		if _panel != null and _panel.get_global_rect().has_point(wheel.position):
+			return
 		if wheel.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_distance = clampf(_distance * 0.9, 0.2, 8.0)
 			_update_camera()
@@ -649,7 +758,32 @@ func _unhandled_input(event: InputEvent) -> void:
 			_update_camera()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _osc_period > 0.0 and _body != null:
+		_spin_time += delta
+		if _spin_time == delta:
+			_osc_rng.seed = 7
+		if _osc_pause > 0.0:
+			_osc_pause -= delta
+		elif _osc_t >= _osc_dur:
+			# the next turn: 90 to 180 degrees, either way (a little more often to the right), speed set by --osc
+			_osc_from = _osc_to
+			var angle := _osc_rng.randf_range(PI * 0.5, PI) * (1.0 if _osc_rng.randf() < 0.55 else -1.0)
+			_osc_to = _osc_from + angle
+			_osc_dur = maxf(absf(angle) / PI * _osc_period, 0.05)
+			_osc_t = 0.0
+		if _osc_pause <= 0.0 and _osc_t < _osc_dur:
+			_osc_t = minf(_osc_t + delta, _osc_dur)
+			var k := _osc_t / _osc_dur
+			_yaw = lerpf(_osc_from, _osc_to, k * k * (3.0 - 2.0 * k))
+			_body.rotation.y = _yaw
+			if _osc_t >= _osc_dur:
+				_osc_pause = _osc_rng.randf_range(0.0, 0.5) # a short rest before the next turn
+	if _spin and _body != null:
+		_spin_time += delta
+		if _spin_time > 3.0 and _spin_time <= 7.0:
+			_yaw = 0.3 + TAU * (_spin_time - 3.0) / 4.0
+			_body.rotation.y = _yaw
 	if _hair_dirty:
 		_rebuild_hair()
 	if _capture_path == "":

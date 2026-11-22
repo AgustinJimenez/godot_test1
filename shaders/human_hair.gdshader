@@ -15,7 +15,8 @@ uniform float tip_lightening : hint_range(0.0, 1.0) = 0.15;     // the tips are 
 uniform float density : hint_range(0.2, 1.0) = 1.0;             // share of the locks that are drawn
 uniform vec3 tip_color : source_color = vec3(0.8, 0.2, 0.45);    // the dyed ends
 uniform float tip_mix : hint_range(0.0, 1.0) = 0.0;             // how much of the ends are dyed (0 = none)
-uniform float strands = 14.0;                                   // strands across one lock
+uniform float strands = 14.0;
+uniform bool single_hairs = false;                              // strands mode: each ribbon IS one hair (no strand lanes inside it)                                   // strands across one lock
 uniform float shine : hint_range(0.0, 1.0) = 0.4;               // strength of the two highlights
 uniform float shift_primary = -0.08;                            // how far each highlight is slid along the normal
 uniform float shift_secondary = 0.22;
@@ -23,6 +24,8 @@ uniform float exponent_primary = 90.0;                          // how tight eac
 uniform float exponent_secondary = 28.0;
 uniform vec3 wind = vec3(0.0);                                  // wind in model space, metres of bend at the tip
 uniform float wind_speed = 1.6;
+uniform sampler2D sim_tex : filter_nearest;   // the hair simulation (HairSim): one row per guide strand, one pixel per point: its offset from the rest place, in model space
+uniform bool use_sim = false;
 instance uniform vec3 sway = vec3(0.0);                          // inertia swing in model space, metres at the tip (one per character: HairSway writes it on the mesh instance)
 
 varying vec2 rest_pos;       // the rest-pose place (UV2: x + y, z + y), for the cap's noise: stays on the hair when the head moves
@@ -42,7 +45,17 @@ void vertex() {
 	float phase = COLOR.r * 6.2831 + UV2.x * 9.0 + UV2.y * 7.0;
 	float gust = 0.55 + 0.45 * sin(TIME * wind_speed * 0.37 + (UV2.x - UV2.y) * 4.0);
 	vec3 flutter = vec3(sin(TIME * wind_speed + phase), 0.35 * sin(TIME * wind_speed * 1.3 + phase * 1.7), cos(TIME * wind_speed * 0.8 + phase));
-	VERTEX += (wind * gust + wind * 0.25 * flutter + sway) * loose;
+	VERTEX += (wind * gust + wind * 0.25 * flutter + (use_sim ? vec3(0.0) : sway)) * loose;
+	if (use_sim && CUSTOM0.x >= 0.0) {
+		// the simulated guide this hair follows: its offset at this point of the strand (between two points)
+		int guide = int(CUSTOM0.x + 0.5);
+		float kf = CUSTOM0.y;
+		int k0 = int(floor(kf));
+		int k1 = min(k0 + 1, textureSize(sim_tex, 0).x - 1);
+		vec3 d0 = texelFetch(sim_tex, ivec2(k0, guide), 0).rgb;
+		vec3 d1 = texelFetch(sim_tex, ivec2(k1, guide), 0).rgb;
+		VERTEX += mix(d0, d1, kf - float(k0));
+	}
 	hair_tangent = normalize((MODELVIEW_MATRIX * vec4(TANGENT, 0.0)).xyz);
 }
 
@@ -53,10 +66,14 @@ void fragment() {
 		// The scalp cap: dark, ragged at the hairline.
 		float n = hash(floor(rest_pos * 350.0));
 		alpha = COLOR.a * 1.25 - 0.1 - 0.4 * n;
+		if (single_hairs) {
+			alpha = clamp(COLOR.a * 4.0, 0.0, 1.0);   // strand hair: a solid hair-coloured layer under the strands (no skin between them), only the very edge of the hairline fades
+			color = hair_color * 0.45;                // darker than the strands on top, so a thin spot reads as depth in the hair, not as a pale patch
+		}
 		color *= 0.7;
 		strand_shift = 0.0;
 	} else {
-		float across = UV.x * strands;
+		float across = single_hairs ? 0.5 : UV.x * strands;
 		float id = floor(across);
 		float lane = fract(across);
 		float random_a = hash(vec2(id, 3.0));
@@ -67,6 +84,10 @@ void fragment() {
 		float tip = 1.0 - smoothstep(cut - 0.1, cut, UV.y);
 		float edge = smoothstep(0.0, 0.12, UV.x) * smoothstep(0.0, 0.12, 1.0 - UV.x);
 		alpha = clamp(0.42 + 0.7 * strand, 0.0, 1.0) * tip * edge * 1.3;
+		if (single_hairs) {
+			// one hair: a soft line across the ribbon, fading out at its tip; the lock-level ragged cut is not needed
+			alpha = 1.0;   // opaque across the whole ribbon: the geometry (width, taper) sets the thickness; a soft edge + the scissor left only the middle 40% of a hair-thin ribbon
+		}
 		alpha *= step(COLOR.g, density);
 		color = mix(color, color * (1.0 + 1.6 * tip_lightening), smoothstep(0.3, 1.0, UV.y));
 		color = mix(color, tip_color, tip_mix * smoothstep(0.5, 0.85, UV.y));       // ombre: dyed ends
