@@ -21,7 +21,7 @@ uniform float shine : hint_range(0.0, 1.0) = 0.4;               // strength of t
 uniform float shift_primary = -0.08;                            // how far each highlight is slid along the normal
 uniform float shift_secondary = 0.22;
 uniform float exponent_primary = 90.0;                          // how tight each highlight is
-uniform float exponent_secondary = 28.0;
+uniform float exponent_secondary = 60.0;
 uniform vec3 wind = vec3(0.0);                                  // wind in model space, metres of bend at the tip
 uniform float wind_speed = 1.6;
 uniform sampler2D sim_tex : filter_nearest;   // the hair simulation (HairSim): one row per guide strand, one pixel per point: its offset from the rest place, in model space
@@ -65,11 +65,9 @@ void fragment() {
 	if (COLOR.b > 0.5) {
 		// The scalp cap: dark, ragged at the hairline.
 		float n = hash(floor(rest_pos * 350.0));
-		alpha = COLOR.a * 1.25 - 0.1 - 0.4 * n;
-		if (single_hairs) {
-			alpha = clamp(COLOR.a * 4.0, 0.0, 1.0);   // strand hair: a solid hair-coloured layer under the strands (no skin between them), only the very edge of the hairline fades
-			color = hair_color * 0.45;                // darker than the strands on top, so a thin spot reads as depth in the hair, not as a pale patch
-		}
+		// a solid hair-coloured layer under the locks (no skin or sky between them: short hair left pale, see-through patches over the ears and temples); only the very edge of the hairline fades
+		alpha = clamp(COLOR.a * 4.0 - 0.5 * n, 0.0, 1.0);
+		color = hair_color * 0.45;                    // darker than the hair on top, so a thin spot reads as depth in the hair, not as a pale patch
 		color *= 0.7;
 		strand_shift = 0.0;
 	} else {
@@ -96,7 +94,7 @@ void fragment() {
 		// bright colours go lemon-yellow once the strand and tip multipliers push linear channels past 1: pull them toward grey as they get brighter
 		float luma = dot(color, vec3(0.3, 0.59, 0.11));
 		color = mix(color, vec3(luma), clamp(luma * 1.2, 0.0, 0.45));
-		strand_shift = (random_a - 0.5) * 0.35 + (hash(vec2(floor(UV.y * 22.0), id)) - 0.5) * 0.25;
+		strand_shift = (random_a - 0.5) * 0.7 + (hash(vec2(floor(UV.y * 22.0), id)) - 0.5) * 0.25;
 	}
 	ALBEDO = color;
 	ALPHA = alpha;
@@ -125,7 +123,7 @@ void light() {
 		float spec1 = pow(sqrt(max(0.0, 1.0 - d1 * d1)), exponent_primary);
 		float spec2 = pow(sqrt(max(0.0, 1.0 - d2 * d2)), exponent_secondary);
 		float lit = smoothstep(-0.05, 0.25, dot(n, LIGHT));
-		vec3 highlight = (mix(vec3(0.8), ALBEDO * 4.0, 0.5) * spec1 * 0.2 + ALBEDO * 1.3 * spec2 * 0.28) * shine;   // the first highlight is half tinted by the hair colour
+		vec3 highlight = (mix(vec3(0.8), ALBEDO * 4.0, 0.8) * spec1 * 0.11 + ALBEDO * 1.3 * spec2 * 0.2) * shine;   // the first highlight is half tinted by the hair colour
 		// back-lit glow (the "TT" lobe of Marschner et al.): light that comes through the strand toward the viewer
 		float through = pow(clamp(dot(-LIGHT, VIEW), 0.0, 1.0), 5.0);
 		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * through * 0.25;

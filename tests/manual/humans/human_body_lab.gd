@@ -17,11 +17,12 @@ const UNDERWEAR_SCENES: Dictionary = {
 }
 ## Starting points for the head hair; every entry is a HumanHair parameter (the native class documents them).
 const HAIR_PRESETS: Dictionary = {
-	"Buzz": {&"side_trim": 0.0, &"length": 0.025, &"volume": 0.2, &"curl": 0.0, &"fringe": 0.3, &"gravity": 0.2, &"parting": 0.0},
-	"Short": {&"side_trim": 0.55, &"length": 0.07, &"volume": 1.0, &"curl": 0.0, &"fringe": 0.35, &"gravity": 0.7, &"parting": 0.2},
-	"Bob": {&"side_trim": 0.0, &"length": 0.17, &"volume": 1.0, &"curl": 0.0, &"fringe": 0.3, &"gravity": 1.0, &"parting": 0.0},
-	"Long": {&"side_trim": 0.0, &"length": 0.32, &"volume": 0.9, &"curl": 0.2, &"fringe": 0.2, &"gravity": 1.0, &"parting": 0.0},
-	"Curly": {&"side_trim": 0.1, &"length": 0.12, &"volume": 1.3, &"curl": 0.9, &"fringe": 0.6, &"gravity": 0.6, &"parting": 0.0},
+	"Buzz": {&"side_trim": 0.0, &"length": 0.025, &"volume": 0.2, &"curl": 0.0, &"fringe": 0.3, &"sweep": 0.0, &"gravity": 0.2, &"parting": 0.0},
+	"Short": {&"side_trim": 0.55, &"length": 0.07, &"volume": 1.0, &"curl": 0.0, &"fringe": 0.35, &"sweep": 0.0, &"gravity": 0.7, &"parting": 0.2},
+	"Bob": {&"side_trim": 0.0, &"length": 0.17, &"volume": 1.0, &"curl": 0.0, &"fringe": 0.3, &"sweep": 0.0, &"gravity": 1.0, &"parting": 0.0},
+	"Long": {&"side_trim": 0.0, &"length": 0.32, &"volume": 0.9, &"curl": 0.2, &"fringe": 0.2, &"sweep": 0.0, &"gravity": 1.0, &"parting": 0.0},
+	"Slick back": {&"side_trim": 0.85, &"length": 0.15, &"volume": 0.8, &"curl": 0.0, &"fringe": 0.0, &"sweep": 1.0, &"gravity": 0.8, &"parting": 0.0},
+	"Curly": {&"side_trim": 0.1, &"length": 0.12, &"volume": 1.3, &"curl": 0.9, &"fringe": 0.6, &"sweep": 0.0, &"gravity": 0.6, &"parting": 0.0},
 }
 const EYE_SCENES: Dictionary = {
 	"Female": "res://assets/models/humans/female_eyes.glb",
@@ -60,6 +61,12 @@ var _hair_sliders: Dictionary = {}
 var _head_hair_color: Color = Color(0.13, 0.08, 0.045)
 var _head_hair_density: float = 1.0
 var _hair_dirty: bool = false
+var _hair_friction: float = 0.2   # friction on small movements (Motion tab): 0 = none, higher = small wiggles die out faster
+var _hair_bend: float = 0.5   # bending stiffness (Motion section): how firmly a hair keeps its shape along its length
+var _hair_root_stiffness: float = 0.22   # how firmly the roots hold the style (the tips are left free)
+var _hair_weight: float = 1.0   # how heavy the hair is (Motion tab): the simulation sags more and swings longer when heavy
+var _hair_build_ms: float = 0.0   # how long the last hair build took
+var _hair_next_build_ms: int = 0   # not before this time (Time.get_ticks_msec)
 var _hair_enabled: bool = true
 var _sim: HairSim   # the real hair simulation (native HairSim): guide strands with gravity, inertia and collisions
 var _sim_enabled: bool = true
@@ -70,6 +77,7 @@ var _use_aim: bool = false
 var _spin: bool = false      # --spin: hide the panel, hold still 3 s, then turn the body once in 4 s (for recording a video)
 var _spin_time: float = 0.0
 var _osc_period: float = 0.0   # --osc=<seconds a half turn (180 degrees) takes>: random turns of 90..180 degrees either way with short pauses (the same sequence every run), panel hidden, to watch the hair swing
+var _hide_panel: bool = false   # --nopanel: no control panel in the picture
 var _osc_rng := RandomNumberGenerator.new()
 var _osc_from: float = 0.3
 var _osc_to: float = 0.3
@@ -104,12 +112,32 @@ var _height: float = 0.0
 var _weight: float = 0.0
 var _muscle: float = 0.0
 var _yaw: float = 0.3
+const FACE_DISTANCE := 0.35        # camera distance (m) for the eyes and brows close-up
+const FACE_DISTANCE_HAIR := 0.55   # ... and for the hair tab: a little farther back
+const FACE_HAIR_LIFT := 0.0        # ... (extra camera height for the hair tab: none, the eyes stay in the centre and the hair fits above them)
+var _face_hair: bool = false
+var _settle_override: int = -1   # --settle=N: steps the hair simulation runs at start (default: the native default)
+var _start_tab: String = ""   # --tab=Hair: start on that tab (Body, Eyes, Brows, Hair)
 var _distance: float = 3.6
 var _look_y: float = 0.95
 var _cam_y: float = 1.0
 var _face_mode: bool = false
 var _camera: Camera3D
 var _readout: Label
+var _fps_label: Label
+var _fps_accum: float = 0.0
+var _fps_frames: int = 0
+var _fps_label_fps: float = 0.0
+var _bench_seconds: float = 0.0   # --bench=<seconds>: measure fps and GPU/CPU frame time for that long (after 3 s warm-up), print it and quit
+var _bench_time: float = 0.0
+var _bench_n: int = 0
+var _bench_rebuilds: int = 0
+var _bench_since: float = 0.0
+var _bench_spike: float = 0.0
+var _bench_gpu: float = 0.0
+var _bench_cpu: float = 0.0
+var _bench_fps: float = 0.0
+var _hair_info: String = "" # how much hair there is (shown under the readout)
 var _material: StandardMaterial3D
 var _capture_path: String = ""
 var _capture_frames: int = 0
@@ -155,8 +183,20 @@ func _ready() -> void:
 			_yaw = 0.0
 			_hair_style[&"locks"] = 1
 			_hair_style[&"strands"] = 1
+		elif arg == "--nopanel":
+			_hide_panel = true
 		elif arg.begins_with("--osc="):
 			_osc_period = float(arg.trim_prefix("--osc="))
+		elif arg.begins_with("--weight="):
+			_hair_weight = float(arg.trim_prefix("--weight="))
+		elif arg.begins_with("--friction="):
+			_hair_friction = float(arg.trim_prefix("--friction="))
+		elif arg.begins_with("--settle="):
+			_settle_override = int(arg.trim_prefix("--settle="))
+		elif arg.begins_with("--tab="):
+			_start_tab = arg.trim_prefix("--tab=")
+		elif arg.begins_with("--bench="):
+			_bench_seconds = float(arg.trim_prefix("--bench="))
 		elif arg == "--nosim":
 			_sim_enabled = false
 		elif arg == "--spin":
@@ -273,21 +313,22 @@ func _build_material() -> void:
 
 
 func _build_ui() -> void:
+	_make_fps_label()
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	_ui_layer = layer
-	layer.visible = not (_spin or _osc_period > 0.0)
+	layer.visible = not (_spin or _osc_period > 0.0 or _hide_panel)
 	var panel := PanelContainer.new()
 	panel.position = Vector2(16.0, 16.0)
 	layer.add_child(panel)
 	_panel = panel
 	# many controls: the panel scrolls
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(330.0, 840.0)
+	scroll.custom_minimum_size = Vector2(440.0, 840.0)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(scroll)
 	var box := VBoxContainer.new()
-	box.custom_minimum_size = Vector2(300.0, 0.0)
+	box.custom_minimum_size = Vector2(410.0, 0.0)
 	scroll.add_child(box)
 	var title := Label.new()
 	title.text = "Human body lab"
@@ -303,66 +344,97 @@ func _build_ui() -> void:
 		button.name = gender_name
 		button.add_to_group(&"gender_buttons")
 		gender_row.add_child(button)
-	var face_check := CheckBox.new()
-	face_check.text = "Face close-up"
-	face_check.button_pressed = _face_mode
-	face_check.toggled.connect(_on_face_toggled)
-	box.add_child(face_check)
-	_add_slider(box, "Height", _on_height_changed)
-	_add_slider(box, "Weight", _on_weight_changed)
-	_add_slider(box, "Muscle", _on_muscle_changed)
-	_add_color_row(box, "Eye colour", _eye_color, _on_eye_color_changed)
+	# one tab per part of the character, so the list stays short
+	var tabs := TabContainer.new()
+	tabs.custom_minimum_size = Vector2(410.0, 0.0)
+	box.add_child(tabs)
+	var start_face := _face_mode # (adding the first tab fires tab_changed, which would turn the close-up off)
+	tabs.tab_changed.connect(_on_tab_changed.bind(tabs))
+	var body_tab := _add_tab(tabs, "Body")
+	_add_slider(body_tab, "Height", _on_height_changed)
+	_add_slider(body_tab, "Weight", _on_weight_changed)
+	_add_slider(body_tab, "Muscle", _on_muscle_changed)
+	var eyes_tab := _add_tab(tabs, "Eyes")
+	_add_color_row(eyes_tab, "Eye colour", _eye_color, _on_eye_color_changed)
 	var different := CheckBox.new()
 	different.text = "Different colour per eye"
 	different.button_pressed = _different_eyes
 	different.toggled.connect(_on_different_eyes_toggled)
-	box.add_child(different)
-	_second_eye_row = _add_color_row(box, "Second eye colour", _eye_color_other, _on_eye_color_other_changed)
+	eyes_tab.add_child(different)
+	_second_eye_row = _add_color_row(eyes_tab, "Second eye colour", _eye_color_other, _on_eye_color_other_changed)
 	_second_eye_row.visible = _different_eyes
-	_add_range_slider(box, "Iris size", 18.0, 34.0, _iris_deg, _on_iris_changed)
-	_add_range_slider(box, "Pupil size", 0.15, 0.7, _pupil, _on_pupil_changed)
-	_add_range_slider(box, "Sclera tint (yellowing)", 0.0, 1.0, _sclera_tint, _on_sclera_changed)
-	_add_range_slider(box, "Visible veins", 0.0, 1.0, _veins, _on_veins_changed)
-	_add_color_row(box, "Brow and lash colour", _hair_color, _on_hair_color_changed)
-	_add_range_slider(box, "Brow density", 0.2, 1.0, _brow_density, _on_brow_density_changed)
-	# head hair (the native HumanHair class)
-	var hair_title := Label.new()
-	hair_title.text = "Head hair"
-	box.add_child(hair_title)
+	_add_range_slider(eyes_tab, "Iris size", 18.0, 34.0, _iris_deg, _on_iris_changed)
+	_add_range_slider(eyes_tab, "Pupil size", 0.15, 0.7, _pupil, _on_pupil_changed)
+	_add_range_slider(eyes_tab, "Sclera tint (yellowing)", 0.0, 1.0, _sclera_tint, _on_sclera_changed)
+	_add_range_slider(eyes_tab, "Visible veins", 0.0, 1.0, _veins, _on_veins_changed)
+	var brows_tab := _add_tab(tabs, "Brows")
+	_add_color_row(brows_tab, "Brow and lash colour", _hair_color, _on_hair_color_changed)
+	_add_range_slider(brows_tab, "Brow density", 0.2, 1.0, _brow_density, _on_brow_density_changed)
+	# head hair (the native HumanHair class): the style and look in one tab, the amount of hair (and its cost) in another
+	var hair_tab := _add_tab(tabs, "Hair")
 	var presets := HBoxContainer.new()
-	box.add_child(presets)
+	hair_tab.add_child(presets)
 	for preset_name: String in HAIR_PRESETS:
 		var preset_button := Button.new()
 		preset_button.text = preset_name
 		preset_button.pressed.connect(_on_hair_preset.bind(preset_name))
 		presets.add_child(preset_button)
-	_add_color_row(box, "Hair colour", _head_hair_color, _on_head_hair_color_changed)
-	_add_hair_slider(box, "Length", &"length", 0.02, 0.35)
-	_add_hair_slider(box, "Volume", &"volume", 0.0, 1.5)
-	_add_hair_slider(box, "Curl", &"curl", 0.0, 1.0)
-	_add_hair_slider(box, "Fringe (front falls forward)", &"fringe", 0.0, 1.0)
-	_add_hair_slider(box, "Parting", &"parting", -1.0, 1.0)
-	_add_hair_slider(box, "Guide locks (how many places hair grows from)", &"locks", 200.0, 6000.0)
-	_add_hair_slider(box, "Individual hairs per lock (0 = ribbons)", &"strands", 0.0, 12.0)
-	_add_hair_slider(box, "Points per hair (0 = auto; fewer = cheaper)", &"points", 0.0, 16.0)
-	_add_hair_slider(box, "Hair spread (clump)", &"clump", 0.0, 0.02)
-	_add_hair_slider(box, "Fall (gravity)", &"gravity", 0.0, 2.0)
-	_add_hair_slider(box, "Sides and back shorter", &"side_trim", 0.0, 1.0)
-	_add_range_slider(box, "Hair density", 0.3, 1.0, _head_hair_density, _on_head_hair_density_changed)
-	_add_color_row(box, "Dyed ends colour", _tip_color, _on_tip_color_changed)
-	_add_range_slider(box, "Dyed ends amount", 0.0, 1.0, _tip_mix, _on_tip_mix_changed)
-	_add_range_slider(box, "Hair shine", 0.0, 1.0, 0.4, _on_hair_shine_changed)
-	_add_range_slider(box, "Wind", 0.0, 0.08, _wind, _on_wind_changed)
-	var shake := Button.new()
-	shake.text = "Shake head (swing the hair)"
-	shake.pressed.connect(_on_shake_pressed)
-	box.add_child(shake)
+	_add_color_row(hair_tab, "Hair colour", _head_hair_color, _on_head_hair_color_changed)
+	_add_hair_slider(hair_tab, "Length", &"length", 0.0, 0.35)
+	_add_hair_slider(hair_tab, "Volume", &"volume", 0.0, 1.5)
+	_add_hair_slider(hair_tab, "Curl", &"curl", 0.0, 1.0)
+	_add_hair_slider(hair_tab, "Fringe (front falls forward)", &"fringe", 0.0, 1.0)
+	_add_hair_slider(hair_tab, "Combed back (0 = away from the crown)", &"sweep", 0.0, 1.0)
+	_add_hair_slider(hair_tab, "Parting", &"parting", -1.0, 1.0)
+	_add_hair_slider(hair_tab, "Fall (gravity)", &"gravity", 0.0, 2.0)
+	_add_hair_slider(hair_tab, "Sides and back shorter", &"side_trim", 0.0, 1.0)
+	_add_color_row(hair_tab, "Dyed ends colour", _tip_color, _on_tip_color_changed)
+	_add_range_slider(hair_tab, "Dyed ends amount", 0.0, 1.0, _tip_mix, _on_tip_mix_changed)
+	_add_range_slider(hair_tab, "Hair shine", 0.0, 1.0, 0.4, _on_hair_shine_changed)
 	var new_seed := Button.new()
 	new_seed.text = "New hair (other dice)"
 	new_seed.pressed.connect(_on_new_hair_seed)
-	box.add_child(new_seed)
+	hair_tab.add_child(new_seed)
+	_add_section_label(hair_tab, "Amount of hair")
+	var amount_tab: Control = hair_tab
+	_add_hair_slider(amount_tab, "Guide locks (how many places hair grows from)", &"locks", 200.0, 6000.0)
+	_add_hair_slider(amount_tab, "Individual hairs per lock (0 = ribbons)", &"strands", 0.0, 24.0)
+	_add_hair_slider(amount_tab, "Points per hair (0 = auto; fewer = cheaper)", &"points", 0.0, 16.0)
+	_add_hair_slider(amount_tab, "Hair spread (clump)", &"clump", 0.0, 0.02)
+	_add_range_slider(amount_tab, "Hair density", 0.3, 1.0, _head_hair_density, _on_head_hair_density_changed)
+	_add_section_label(hair_tab, "Motion")
+	var motion_tab: Control = hair_tab
+	_add_range_slider(motion_tab, "Wind", 0.0, 0.08, _wind, _on_wind_changed)
+	_add_range_slider(motion_tab, "Hair weight (1 = normal)", 0.5, 2.0, _hair_weight, _on_hair_weight_changed)
+	_add_range_slider(motion_tab, "Friction on small movements", 0.0, 0.5, _hair_friction, _on_hair_friction_changed)
+	_add_range_slider(motion_tab, "Bending stiffness (keeps its shape)", 0.0, 1.0, _hair_bend, _on_hair_bend_changed)
+	_add_range_slider(motion_tab, "Root stiffness (less swing near the head)", 0.1, 0.9, _hair_root_stiffness, _on_hair_root_stiffness_changed)
+	var shake := Button.new()
+	shake.text = "Shake head (swing the hair)"
+	shake.pressed.connect(_on_shake_pressed)
+	motion_tab.add_child(shake)
+	for i in tabs.get_child_count():
+		if tabs.get_child(i).name == _start_tab:
+			tabs.current_tab = i
+	if start_face and _start_tab == "":
+		tabs.current_tab = 1 # --face: start on the Eyes tab (the close-up follows the tab)
 	_readout = Label.new()
 	box.add_child(_readout)
+
+
+func _add_section_label(parent: Control, text: String) -> void:
+	parent.add_child(HSeparator.new())
+	var label := Label.new()
+	label.text = text
+	label.add_theme_color_override(&"font_color", Color(0.75, 0.85, 1.0))
+	parent.add_child(label)
+
+
+func _add_tab(tabs: TabContainer, tab_name: String) -> VBoxContainer:
+	var page := VBoxContainer.new()
+	page.name = tab_name
+	tabs.add_child(page)
+	return page
 
 
 func _add_slider(parent: Control, label_text: String, callback: Callable) -> void:
@@ -479,10 +551,26 @@ func _apply_hair_parameters() -> void:
 	_brow_material.set_shader_parameter(&"brow_density", _brow_density)
 
 
+# The Eyes, Brows and Hair tabs are about the head: the camera goes to the face; the other tabs show the whole body.
+func _on_tab_changed(index: int, tabs: TabContainer) -> void:
+	var tab_name: String = tabs.get_child(index).name
+	var wants_face: bool = tab_name in ["Eyes", "Brows", "Hair"]
+	# Eyes and Brows keep the tight framing; Hair stands back a little and looks higher so the whole head of hair is in the picture
+	var wants_hair: bool = tab_name == "Hair"
+	if wants_face != _face_mode:
+		_face_hair = wants_hair
+		_on_face_toggled(wants_face)
+	elif wants_face and wants_hair != _face_hair:
+		_face_hair = wants_hair
+		_distance = FACE_DISTANCE_HAIR if wants_hair else FACE_DISTANCE
+		_apply()
+		_update_camera()
+
+
 func _on_face_toggled(pressed: bool) -> void:
 	_face_mode = pressed
 	if pressed:
-		_distance = 0.35
+		_distance = FACE_DISTANCE_HAIR if _face_hair else FACE_DISTANCE
 	else:
 		_distance = 3.6
 		_cam_y = 1.0
@@ -534,10 +622,44 @@ func _on_hair_shine_changed(value: float) -> void:
 	_head_hair_material.set_shader_parameter(&"shine", value)
 
 
+# The wind pushes the simulated hair (so the head stops it); without the simulation it is the old vertex-shader bend.
+func _apply_wind() -> void:
+	var direction := Vector3(1.0, 0.0, 0.35)
+	if _sim_enabled and _sim != null and _hair_mesh != null:
+		_sim.wind = direction * _wind * 100.0   # 0.08 -> about 8 m/s2, near gravity
+		_head_hair_material.set_shader_parameter(&"wind", Vector3.ZERO)
+	else:
+		_head_hair_material.set_shader_parameter(&"wind", direction * _wind)
+
+
+func _on_hair_bend_changed(value: float) -> void:
+	_hair_bend = value
+	if _sim != null:
+		_sim.bend_stiffness = value
+
+
+func _on_hair_root_stiffness_changed(value: float) -> void:
+	_hair_root_stiffness = value
+	if _sim != null:
+		_sim.root_stiffness = value
+
+
+func _on_hair_friction_changed(value: float) -> void:
+	_hair_friction = value
+	if _sim != null:
+		_sim.calm_damping = 1.0 - value
+
+
+func _on_hair_weight_changed(value: float) -> void:
+	_hair_weight = value
+	if _sim != null:
+		_sim.weight = value
+
+
 func _on_wind_changed(value: float) -> void:
 	_wind = value
 	# the wind blows from the character's right, a little from the front, in the body's own space
-	_head_hair_material.set_shader_parameter(&"wind", Vector3(1.0, 0.0, 0.35) * value)
+	_apply_wind()
 
 
 func _on_shake_pressed() -> void:
@@ -605,9 +727,15 @@ func _attach_sim() -> void:
 		add_child(_sim)
 	if _sim_enabled:
 		# looser than the defaults: the pull back to the style is what makes hair look stiff
-		_sim.root_stiffness = 0.22
+		_sim.root_stiffness = _hair_root_stiffness
+		_sim.bend_stiffness = _hair_bend
 		_sim.tip_stiffness = 0.004
 		_sim.damping = 0.99
+		_sim.weight = _hair_weight
+		_apply_wind()
+		_sim.calm_damping = 1.0 - _hair_friction
+		if _settle_override >= 0:
+			_sim.settle_steps = _settle_override
 		_sim.hair = _hair_mesh
 		_sim.material = _head_hair_material
 	else:
@@ -615,7 +743,22 @@ func _attach_sim() -> void:
 		_head_hair_material.set_shader_parameter(&"use_sim", false)
 
 
+func _thousands(n: int) -> String:
+	var s: String = str(absi(n))
+	var out: String = ""
+	while s.length() > 3:
+		out = "," + s.substr(s.length() - 3) + out
+		s = s.substr(0, s.length() - 3)
+	return ("-" if n < 0 else "") + s + out
+
+
 func _rebuild_hair() -> void:
+	var build_started := Time.get_ticks_usec()
+	_rebuild_hair_now()
+	_hair_build_ms = (Time.get_ticks_usec() - build_started) / 1000.0
+
+
+func _rebuild_hair_now() -> void:
 	_hair_dirty = false
 	if _hair_mesh != null:
 		_hair_mesh.queue_free()
@@ -627,7 +770,17 @@ func _rebuild_hair() -> void:
 	_head_hair_material.set_shader_parameter(&"single_hairs", int(_hair_style.get(&"strands", 0)) > 0)
 	var built: ArrayMesh = HumanHair.build(_mesh.mesh as ArrayMesh, params)
 	if built == null:
+		_hair_info = "Hair: none (bald)"
+		if _sim != null:
+			_sim.hair = null
 		return
+	var strands: int = int(_hair_style.get(&"strands", 0))
+	var guides: int = int(built.get_meta(&"hair_guide_count", 0))
+	var verts: int = built.surface_get_array_len(0) if built.get_surface_count() > 0 else 0
+	if strands > 0 and guides > 0:
+		_hair_info = "Hair: %s hairs (%s guides x %d)   %s vertices" % [_thousands(guides * strands), _thousands(guides), strands, _thousands(verts)]
+	else:
+		_hair_info = "Hair: ribbon locks, %s vertices" % _thousands(verts)
 	_hair_mesh = MeshInstance3D.new()
 	_hair_mesh.mesh = built
 	if _solo:
@@ -712,9 +865,11 @@ func _apply() -> void:
 	# base height and how far each height shape moves the head (measured in Blender).
 	var height_m: float = float(BASE_HEIGHT[_gender]) + tall * HEIGHT_TALL_M + short * -HEIGHT_SHORT_M
 	_readout.text = "%s   height %.2f m" % [_gender, height_m]
+	if _hair_enabled and _hair_info != "":
+		_readout.text += "\n" + _hair_info
 	if _face_mode:
 		# keep the camera on the eyes: eye height is 0.937 of the base height and moves with the head shapes
-		_cam_y = float(BASE_HEIGHT[_gender]) * 0.937 + tall * 0.67 - short * 0.343
+		_cam_y = float(BASE_HEIGHT[_gender]) * 0.937 + tall * 0.67 - short * 0.343 + (FACE_HAIR_LIFT if _face_hair else 0.0)
 		_look_y = _cam_y
 		_update_camera()
 
@@ -758,7 +913,60 @@ func _unhandled_input(event: InputEvent) -> void:
 			_update_camera()
 
 
+func _make_fps_label() -> void:
+	# frames per second and the time the GPU and CPU spend on a frame: always visible (top right), even with the panel hidden
+	var layer := CanvasLayer.new()
+	layer.layer = 5
+	add_child(layer)
+	_fps_label = Label.new()
+	_fps_label.anchor_left = 1.0
+	_fps_label.anchor_right = 1.0
+	_fps_label.offset_left = -330.0
+	_fps_label.offset_right = -12.0
+	_fps_label.offset_top = 8.0
+	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_fps_label.add_theme_color_override(&"font_color", Color(1, 1, 0.6))
+	_fps_label.add_theme_color_override(&"font_outline_color", Color(0, 0, 0))
+	_fps_label.add_theme_constant_override(&"outline_size", 5)
+	layer.add_child(_fps_label)
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+
+
+func _update_fps_label(delta: float) -> void:
+	_fps_accum += delta
+	_fps_frames += 1
+	if _fps_accum < 0.5:
+		return
+	var vp := get_viewport().get_viewport_rid()
+	var gpu_ms: float = RenderingServer.viewport_get_measured_render_time_gpu(vp)
+	var cpu_ms: float = RenderingServer.viewport_get_measured_render_time_cpu(vp)
+	_fps_label_fps = _fps_frames / _fps_accum
+	_fps_label.text = "%d fps  (%.1f ms)\nGPU %.1f ms   CPU %.1f ms" % [roundi(_fps_frames / _fps_accum), 1000.0 * _fps_accum / _fps_frames, gpu_ms, cpu_ms]
+	_fps_accum = 0.0
+	_fps_frames = 0
+	if _bench_seconds > 0.0:
+		_bench_time += 0.5
+		if _bench_time > 3.0: # skip the first 3 s (shader compile, hair build)
+			_bench_n += 1
+			_bench_gpu += gpu_ms
+			_bench_cpu += cpu_ms
+			_bench_fps += _fps_label_fps
+		if _bench_time >= 3.0 + _bench_seconds:
+			print("HUMAN_LAB bench: %s | tip offset %.4f m | build %.0f ms | longest frame %.0f ms | avg %.0f fps  GPU %.2f ms  CPU %.2f ms" % [_hair_info, (_sim.get_mean_tip_offset() if _sim != null else -1.0), _hair_build_ms, _bench_spike, _bench_fps / maxi(_bench_n, 1), _bench_gpu / maxi(_bench_n, 1), _bench_cpu / maxi(_bench_n, 1)])
+			get_tree().quit()
+
+
 func _process(delta: float) -> void:
+	_update_fps_label(delta)
+	if _bench_seconds > 0.0 and _bench_time > 2.0 and _bench_rebuilds < 6:
+		# --bench: change the hair a few times (like dragging a slider) and keep the longest frame
+		_bench_spike = maxf(_bench_spike, delta * 1000.0) if _bench_rebuilds > 0 else 0.0
+		_bench_since += delta
+		if _bench_since > 0.5:
+			_bench_since = 0.0
+			_bench_rebuilds += 1
+			_hair_style[&"length"] = float(_hair_style[&"length"]) + 0.01
+			_hair_dirty = true
 	if _osc_period > 0.0 and _body != null:
 		_spin_time += delta
 		if _spin_time == delta:
@@ -784,8 +992,10 @@ func _process(delta: float) -> void:
 		if _spin_time > 3.0 and _spin_time <= 7.0:
 			_yaw = 0.3 + TAU * (_spin_time - 3.0) / 4.0
 			_body.rotation.y = _yaw
-	if _hair_dirty:
+	# while a hair slider is dragged, rebuild at most as often as the last build allows (it waits 4x as long as the build took), so the frame rate stays up; the last value is always built
+	if _hair_dirty and Time.get_ticks_msec() >= _hair_next_build_ms:
 		_rebuild_hair()
+		_hair_next_build_ms = Time.get_ticks_msec() + int(_hair_build_ms * 4.0)
 	if _capture_path == "":
 		return
 	_capture_frames += 1
@@ -793,5 +1003,7 @@ func _process(delta: float) -> void:
 		_on_shake_pressed()
 	if _capture_frames == 20:
 		get_viewport().get_texture().get_image().save_png(_capture_path)
-		print("HUMAN_LAB readout: ", _readout.text)
+		print("HUMAN_LAB readout: ", _readout.text.replace("\n", " | "))
+		if _sim != null:
+			print("HUMAN_LAB sim: guides ", _sim.get_guide_count(), " use_sim ", _head_hair_material.get_shader_parameter(&"use_sim"), " tex ", _head_hair_material.get_shader_parameter(&"sim_tex"), " hair ", _sim.hair, " material ", _sim.material, " tip ", _sim.get_mean_tip_vector())
 		get_tree().quit()

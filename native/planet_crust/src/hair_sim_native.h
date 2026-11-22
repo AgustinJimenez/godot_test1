@@ -14,6 +14,7 @@
 // Set `hair` (the MeshInstance3D of the hair) and `material` (its ShaderMaterial: it gets `sim_tex` and `use_sim`).
 
 #include <godot_cpp/classes/geometry_instance3d.hpp>
+#include <godot_cpp/core/math.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/node3d.hpp>
@@ -21,7 +22,7 @@
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
-#include <unordered_map>
+#include <algorithm>
 #include <vector>
 
 namespace godot {
@@ -33,9 +34,16 @@ class HairSim : public Node {
 	ObjectID material_id;
 	double gravity = 9.8; // m/s2
 	double damping = 0.985; // the share of the velocity kept each step
+	Vector3 wind; // wind as an acceleration (m/s2, world space): pushes every point like gravity does, with gusts; the body collision keeps the hair out of the head
+	double wind_time = 0.0;
+	double weight = 1.0; // how heavy the hair is (1 = normal): heavier sags more, is harder to pull back to its style and loses less speed to the air, so it swings longer
+	double bend_stiffness = 0.0; // 0..1: how firmly each point keeps its rest distance from the point two places along the strand, so a hair resists bending sharply (0 = a loose rope)
+	double calm_damping = 0.8; // the share of the velocity kept per step by a point that moves slowly (small movements die out fast, like friction between hairs); 1 = no extra friction
+	double calm_speed = 0.003; // metres per step: above this speed (18 cm/s) the normal damping applies, below it the damping blends toward calm_damping
 	double root_stiffness = 0.55; // the pull back to the style at the root (per step)
 	double tip_stiffness = 0.02; // ... and at the tip: low, so the ends swing free
 	int iterations = 4; // length constraint passes per step
+	int settle_steps = 30; // steps run at once when the hair starts, so it appears already hanging (no sag in view)
 	double collision_margin = 0.004; // metres kept between a hair point and a collider
 	double max_displacement = 0.35; // metres: a safety limit on how far a point may be from its rest place
 
@@ -43,16 +51,45 @@ class HairSim : public Node {
 	int steps = 0;
 	std::vector<Vector3> rest; // local rest points of all guides (steps each)
 	std::vector<double> link; // rest length of each link (steps - 1 each)
+	std::vector<double> link2; // rest distance between a point and the one two places before it (steps each; the first two are unused)
 	std::vector<Vector3> pos; // world
 	std::vector<Vector3> prev; // world
+	std::vector<Vector3> snap; // world: the points before the last step (the picture is drawn between this and `pos`, so it does not jump with the step rate)
+	double drawn_alpha = 1.0; // how far between the last two steps the picture is
+	Transform3D step_prev_xf, step_last_xf; // the head's transform at the step before the last, and at the last one
+	std::vector<Vector3> carry; // offsets from the rest places inherited from the previous hair (head frame), used when the simulation primes
 	std::vector<float> capsules; // local: ax ay az bx by bz r
 	// the body surface (local): points and normals, in a hash grid (cell = surface_cell), so hair is pushed out of the chest, breasts and arms
 	std::vector<Vector3> surface_p;
 	std::vector<Vector3> surface_n;
-	std::unordered_map<int64_t, std::vector<int>> surface_grid;
+	// flat grid (counting sort): cell (x,y,z) holds the vertices grid_items[grid_start[c] .. grid_start[c+1]); cells outside the box are empty
+	std::vector<int> grid_start;
+	std::vector<int> grid_items;
+	int grid_min[3] = { 0, 0, 0 };
+	int grid_dim[3] = { 0, 0, 0 };
+	int nearest_surface(const Vector3 &p_local, double &r_d2) const;
+	// per-step data shared by the worker threads (a step is split in chunks of guides)
+	struct StepData {
+		Transform3D xf, inverse;
+		Vector3 g_dt2;
+		Vector3 wind_dt2; // wind x dt^2 (already divided by the weight)
+		double time = 0.0;
+		double damping = 0.985; // after the weight
+		double stiffness_scale = 1.0; // 1 / weight
+		struct Capsule {
+			Vector3 a, b;
+			double r;
+		};
+		std::vector<Capsule> world;
+	} sd;
+	static constexpr int kMaxSteps = 16; // points per guide the fixed buffers allow
+	static constexpr int kChunks = 32; // pieces a step is split in for the worker threads
+	void step_chunk(int p_chunk);
+	void step_guide(int p_guide);
 	double surface_cell = 0.04;
 	bool surface_collision = true;
-	double surface_margin = 0.009; // metres kept between a hair point and the skin (more than the 4 mm cloth shell on top of it)
+	double surface_margin = 0.006; // metres kept between a hair point and the skin (a little more than the 4 mm cloth shell on top of it)
+	bool capsule_collision = false; // the rough capsules (head, neck, shoulders) from the mesh: off by default, they stand out from the real body (an invisible shoulder)
 	void build_surface_grid();
 	void collide_surface(Vector3 &p_world, const Transform3D &p_xf, const Transform3D &p_inv) const;
 	Transform3D last_transform;
@@ -64,7 +101,7 @@ class HairSim : public Node {
 
 	void bind_mesh();
 	void step(double p_dt, const Transform3D &p_xf);
-	void upload(const Transform3D &p_xf);
+	void upload(double p_alpha);
 
 protected:
 	static void _bind_methods();
@@ -74,6 +111,16 @@ public:
 	Object *get_hair() const;
 	void set_material(Object *p_material);
 	Object *get_material() const;
+	void set_wind(const Vector3 &p_value) { wind = p_value; }
+	Vector3 get_wind() const { return wind; }
+	void set_weight(double p_value) { weight = std::max(0.1, p_value); }
+	double get_weight() const { return weight; }
+	void set_bend_stiffness(double p_value) { bend_stiffness = Math::clamp(p_value, 0.0, 1.0); }
+	double get_bend_stiffness() const { return bend_stiffness; }
+	void set_calm_damping(double p_value) { calm_damping = p_value; }
+	double get_calm_damping() const { return calm_damping; }
+	void set_calm_speed(double p_value) { calm_speed = std::max(1e-5, p_value); }
+	double get_calm_speed() const { return calm_speed; }
 	void set_gravity(double p_value) { gravity = p_value; }
 	double get_gravity() const { return gravity; }
 	void set_damping(double p_value) { damping = p_value; }
@@ -84,10 +131,16 @@ public:
 	double get_tip_stiffness() const { return tip_stiffness; }
 	void set_iterations(int p_value) { iterations = p_value; }
 	int get_iterations() const { return iterations; }
+	void set_settle_steps(int p_value) { settle_steps = p_value; }
+	int get_settle_steps() const { return settle_steps; }
 	void set_collisions(const PackedFloat32Array &p_capsules); // replace the colliders (local, 7 floats each)
+	void set_capsule_collision(bool p_value) { capsule_collision = p_value; }
+	bool get_capsule_collision() const { return capsule_collision; }
 	void set_surface_collision(bool p_value) { surface_collision = p_value; }
 	bool get_surface_collision() const { return surface_collision; }
 	int get_penetration_count(); // hair points inside the body surface (for tests)
+	Vector3 get_mean_tip_vector() const; // the mean of the absolute components of the tip offsets (head frame): the size of the swing along each axis, left and right not cancelling
+	double get_mean_tip_offset() const; // metres: how far the hair tips are from their rest places on average, in the head's frame (for tests and tuning the swing)
 	int get_guide_count() const { return guide_count; }
 	// Re-reads the guides from the hair mesh (call after the hair mesh was replaced).
 	void rebind() { bind_mesh(); }
