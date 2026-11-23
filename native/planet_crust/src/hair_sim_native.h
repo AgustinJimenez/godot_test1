@@ -20,6 +20,8 @@
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_vector3_array.hpp>
+#include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <algorithm>
@@ -38,6 +40,10 @@ class HairSim : public Node {
 	double wind_time = 0.0;
 	double weight = 1.0; // how heavy the hair is (1 = normal): heavier sags more, is harder to pull back to its style and loses less speed to the air, so it swings longer
 	double bend_stiffness = 0.0; // 0..1: how firmly each point keeps its rest distance from the point two places along the strand, so a hair resists bending sharply (0 = a loose rope)
+	double max_swing = 1.0; // how far a point may leave its place in the style, as a share of the strand length up to it (1 = hardly limited, 0.3 = a short swing)
+	double air_drag = 0.0; // 0..: drag of the air on the movement across a strand (quadratic in the speed): a swing slows down like real hair, tips more than roots
+	double strand_damping = 0.0; // 0..1: the share of the difference in velocity between neighbouring points removed each step (stops the strand's own wobble, not the swing of the whole)
+	double local_stiffness = 0.0; // 0..1: how firmly each segment keeps its angle to the previous one (TressFX "local shape"): the style's bends and curls hold along the strand
 	double calm_damping = 0.8; // the share of the velocity kept per step by a point that moves slowly (small movements die out fast, like friction between hairs); 1 = no extra friction
 	double calm_speed = 0.003; // metres per step: above this speed (18 cm/s) the normal damping applies, below it the damping blends toward calm_damping
 	double root_stiffness = 0.55; // the pull back to the style at the root (per step)
@@ -53,6 +59,7 @@ class HairSim : public Node {
 	std::vector<double> link; // rest length of each link (steps - 1 each)
 	std::vector<double> link2; // rest distance between a point and the one two places before it (steps each; the first two are unused)
 	std::vector<Vector3> pos; // world
+	std::vector<int> calm_steps; // per guide: how many steps in a row it hardly moved (after a while with the head still it sleeps: a strand that creeps a fraction of a millimetre every step is seen as shaking)
 	std::vector<Vector3> prev; // world
 	std::vector<Vector3> snap; // world: the points before the last step (the picture is drawn between this and `pos`, so it does not jump with the step rate)
 	double drawn_alpha = 1.0; // how far between the last two steps the picture is
@@ -88,7 +95,7 @@ class HairSim : public Node {
 	void step_guide(int p_guide);
 	double surface_cell = 0.04;
 	bool surface_collision = true;
-	double surface_margin = 0.006; // metres kept between a hair point and the skin (a little more than the 4 mm cloth shell on top of it)
+	double surface_margin = 0.0035; // metres kept between a hair point and the skin (a little more than the 4 mm cloth shell on top of it)
 	bool capsule_collision = false; // the rough capsules (head, neck, shoulders) from the mesh: off by default, they stand out from the real body (an invisible shoulder)
 	void build_surface_grid();
 	void collide_surface(Vector3 &p_world, const Transform3D &p_xf, const Transform3D &p_inv) const;
@@ -111,25 +118,33 @@ public:
 	Object *get_hair() const;
 	void set_material(Object *p_material);
 	Object *get_material() const;
-	void set_wind(const Vector3 &p_value) { wind = p_value; }
+	void set_wind(const Vector3 &p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); wind = p_value; }
 	Vector3 get_wind() const { return wind; }
-	void set_weight(double p_value) { weight = std::max(0.1, p_value); }
+	void set_weight(double p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); weight = std::max(0.1, p_value); }
 	double get_weight() const { return weight; }
-	void set_bend_stiffness(double p_value) { bend_stiffness = Math::clamp(p_value, 0.0, 1.0); }
+	void set_bend_stiffness(double p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); bend_stiffness = Math::clamp(p_value, 0.0, 1.0); }
 	double get_bend_stiffness() const { return bend_stiffness; }
-	void set_calm_damping(double p_value) { calm_damping = p_value; }
+	void set_local_stiffness(double p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); local_stiffness = Math::clamp(p_value, 0.0, 1.0); }
+	double get_local_stiffness() const { return local_stiffness; }
+	void set_max_swing(double p_value) { max_swing = Math::clamp(p_value, 0.02, 4.0); std::fill(calm_steps.begin(), calm_steps.end(), 0); }
+	double get_max_swing() const { return max_swing; }
+	void set_air_drag(double p_value) { air_drag = Math::clamp(p_value, 0.0, 1.0); std::fill(calm_steps.begin(), calm_steps.end(), 0); }
+	double get_air_drag() const { return air_drag; }
+	void set_strand_damping(double p_value) { strand_damping = Math::clamp(p_value, 0.0, 1.0); std::fill(calm_steps.begin(), calm_steps.end(), 0); }
+	double get_strand_damping() const { return strand_damping; }
+	void set_calm_damping(double p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); calm_damping = p_value; }
 	double get_calm_damping() const { return calm_damping; }
-	void set_calm_speed(double p_value) { calm_speed = std::max(1e-5, p_value); }
+	void set_calm_speed(double p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); calm_speed = std::max(1e-5, p_value); }
 	double get_calm_speed() const { return calm_speed; }
-	void set_gravity(double p_value) { gravity = p_value; }
+	void set_gravity(double p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); gravity = p_value; }
 	double get_gravity() const { return gravity; }
-	void set_damping(double p_value) { damping = p_value; }
+	void set_damping(double p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); damping = p_value; }
 	double get_damping() const { return damping; }
-	void set_root_stiffness(double p_value) { root_stiffness = p_value; }
+	void set_root_stiffness(double p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); root_stiffness = p_value; }
 	double get_root_stiffness() const { return root_stiffness; }
-	void set_tip_stiffness(double p_value) { tip_stiffness = p_value; }
+	void set_tip_stiffness(double p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); tip_stiffness = p_value; }
 	double get_tip_stiffness() const { return tip_stiffness; }
-	void set_iterations(int p_value) { iterations = p_value; }
+	void set_iterations(int p_value) { std::fill(calm_steps.begin(), calm_steps.end(), 0); iterations = p_value; }
 	int get_iterations() const { return iterations; }
 	void set_settle_steps(int p_value) { settle_steps = p_value; }
 	int get_settle_steps() const { return settle_steps; }
@@ -140,6 +155,8 @@ public:
 	bool get_surface_collision() const { return surface_collision; }
 	int get_penetration_count(); // hair points inside the body surface (for tests)
 	Vector3 get_mean_tip_vector() const; // the mean of the absolute components of the tip offsets (head frame): the size of the swing along each axis, left and right not cancelling
+	PackedVector3Array get_guide_points(int p_guide) const; // world positions of one guide (tests)
+	Vector3 get_busiest_guide() const; // (largest step motion, its guide, guides still moving) for tests
 	double get_mean_tip_offset() const; // metres: how far the hair tips are from their rest places on average, in the head's frame (for tests and tuning the swing)
 	int get_guide_count() const { return guide_count; }
 	// Re-reads the guides from the hair mesh (call after the hair mesh was replaced).

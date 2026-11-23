@@ -227,3 +227,356 @@ Still open: B7 for eyes/underwear shaders, scalp constants in absolute metres, e
 ### Wind drives the simulation
 - The lab's wind used to be a vertex-shader bend (no collision), so hair clipped into the head. `HairSim.wind` (Vector3, m/s2, world space) now pushes every point like gravity does, with gusts (per-guide phase) and more on the tips; divided by weight; the body collision keeps the hair out of the head (test: wind 8 m/s2 -> tips 5.6 cm out, 0 points inside the body, 2278 without collision). Lab wind slider 0..0.08 -> 0..8 m/s2; the shader wind is only used with `--nosim`.
 - Weight at rest: hair that already hangs along gravity has nothing to sag, so tip offset at rest is exactly 0 for any weight/friction; they only show while the hair moves (an earlier note labelled the post-turn drift "resting sag": that was wrong).
+
+### Bending stiffness (from TressFX's local shape constraints)
+- `HairSim.bend_stiffness` (0..1): each point keeps its rest distance from the point two places back, so a hair resists kinks and keeps its shape. Alone it barely changes the whole-strand swing (90 degree turn, 20 cm hair, original damping: peak 6.2 / 6.0 / 5.9 / 5.8 cm for bend 0 / 0.25 / 0.5 / 1.0). Combined with a stiffer root (tips free) it does more: bend 1.0 with root stiffness 0.22 / 0.4 / 0.6 / 0.8 -> 5.8 / 5.2 / 4.6 / 4.2 cm.
+- Lab (Hair tab, Motion section): "Bending stiffness" (default 0.5) and "Root stiffness" (default 0.22, as before). Collision still holds under wind (0 inside); 100k hairs still 60 fps.
+
+### TressFX comparison (lab --tressfx, addons/tressfx, tests/manual/humans/tressfx_bridge.gd)
+- Our guides are written as a .tfx (16 points per strand, power-spaced toward the root so the two pinned points stay short; `root_density` 2.5), 15 follow hairs, fibre radius 0.3 mm, whole strand held to the authored shape (global_range 1.0, global_stiffness 0.9); our dark scalp layer is drawn under the strands. `--tfx=name:value,...` sets any TressFXHair property (`mat_` prefix = strand material parameter; `nocollider:1`, `showours:1`, `root_density:N` are bridge options).
+- Found with an overlay: TressFX draws our guides exactly (strands run along the middle of our ribbons). The short hair standing off the skull and hanging straight down is the shape of OUR guides (gravity drape from the crown), not TressFX. New HumanHair parameter `hug` (0..1): pulls the strand toward the skull like `sweep` does; lab slider "Hugs the head", Short preset 0.7.
+
+### Hair round (2026-11-22, evening): feel, quiff, presets, hairline
+
+- HairSim (native): added `local_stiffness` (TressFX-style local shape: each segment keeps its angle to the previous one), `air_drag`
+  (quadratic drag across a strand), `strand_damping`, `max_swing` (limit on the distance from the style place, share of the strand length),
+  exact strand lengths (root-to-tip pass after solving and again after the skin push, no stretching in fast turns), sleeping guides
+  (a still guide stops being simulated after 0.5 s, wakes with head movement, wind, kicks or any setter), skin collision smoothed over the
+  vertices within 1.4 cm in one scan (the old nearest-vertex push made strands creep: 2 collision checks per step, 58 fps while turning
+  against 12 fps for the first version of the smoothing), pushes out of the skin lose their speed and sideways slide, `get_busiest_guide` and
+  `get_guide_points` for tests.
+- Lab: right mouse drag tilts the camera (`--pitch`), `--sim=prop:value` (any HairSim setter), `--style=key:value` (hair values after the
+  preset), `--captureat=<frame>`, sliders for tip stiffness, air drag, strand damping, max swing, local shape, quiff, swept. Stiffer defaults
+  (root 0.35, tip 0.25, local 0.5, bend 0.8) because the first ones moved like a liquid (slow, no spring).
+- HumanHair (native): `quiff` (the front lifts off the forehead and rolls back: less gravity and skull pull near the root, a volume bulge,
+  a cap of 1.2 + 3.4 cm rise) and `swept` (the front falls to the side away from the parting); hair at the very top of the head lies closer
+  to the skull (volume lifts the sides, not the crown: no tuft ridge); the scalp cap's cut now follows the true hairline (signed height in
+  the vertex alpha, smooth value noise in the shader) instead of stepping by triangle.
+- Presets: Dapper (default, individual hairs 5 per lock, parting 0.5), Pompadour, Side part, Undercut, Crew cut, Messy crop, Wavy medium, Afro.
+- UE5 source (E:\repo\UnrealEngine, study only): Niagara hair solver uses constraint-relative damping, anisotropic air drag, angular springs, a
+  volume constraint on four points and velocity/pressure grids for hair-to-hair; ideas copied in words only.
+- Open: sides and back of the new presets not checked, temple edge still angular on short styles, motion of the new styles untested.
+- Round 2: checked the backs of Dapper, Pompadour, Undercut and Afro (covered, no holes). The shaved part of the Undercut read as a black hole; the scalp layer
+  (cap) is now 1.8x brighter (hair colour x 0.56) so it reads as dark stubble.
+- Round 3: motion check of the presets (lab capture at frame 400, `busiest` = guides still moving). Dapper, Pompadour and Afro had 2-3 strands that never
+  stopped (up to 7 mm per step): the strands ride 3-8 mm over the skull and the simulation kept them 6 mm off it, so the pull to the style and the skin
+  fought (creep). The skin margin in HairSim is now 3.5 mm: Pompadour and Afro settle completely, Dapper has one guide at 0.8 mm per step; penetration
+  test still 0 points inside the body (with collision). fps with the head turning: 55-56 for Dapper, Pompadour, Wavy medium, Afro, Long.
+- Round 4: sides of Pompadour, Crew cut, Messy crop, Side part checked (covered; the sideburn in front of the ear is a deep square-ish notch, the ear top has a few
+  stray hairs: open). New presets: Curtains, Quiff, Fade, Shaggy (12 in all with Buzz, Short, Bob, Long, Slick back, Curly, Dapper, Pompadour, Side part,
+  Undercut, Crew cut, Messy crop, Wavy medium, Afro = 16 total). Curtains and Shaggy fringes were hiding the eyes: lowered (0.55, 0.4).
+- Round 5: sideburn slope is longer (azimuth 1.15..1.55 instead of 1.3..1.5, ends 1.2 cm above the old low point): the notch in front of the ear has no square corners
+  any more. Fade: side_trim near 1 gives a longer gradient (3.5 cm + 4 cm x side_trim) and shorter ends; hairs down to 1.5 mm are grown (was 4 mm) so stubble
+  exists at the edge of a cut. Still open: the cap under a fade is a flat dark brown (no gradient into skin colour), ear-top strays.
+- Round 6: shaved areas look like stubble over skin: the builder writes how shaved each scalp vertex is (side_trim x (1 - height on the head)) in the cap's
+  vertex colour green, the shader (`human_hair.gdshader`, uniform `stubble_skin`) lightens the scalp layer there and mixes in some skin with noise, where
+  unshaved scalp stays as dark as before (a first try lightened all of it and the top of every style looked thin). Fade and Undercut read as clippered sides.
+- Round 7 (lab window of the user was open, so no DLL build this round): natural hair colour swatches in the Hair tab (Black, Dark brown, Brown, Auburn, Ginger,
+  Blonde, Platinum, Grey, White; sRGB values as the picker shows them) that also update the picker. Colours checked by capture with `--hair-colour`.
+- Round 8: the stubble tint (round 6) also lit the cap behind the front hairline of styles with a lifted front (Dapper looked sparse there, the scalp showed
+  through as a lighter patch): "shaved" is now multiplied by (1 - how far to the front the vertex is), so only the sides and back are clippered.
+- Round 9: the stray hairs at the top of the ear came from the ear's own top-rim triangles counted as scalp: the hairline over the ear is 2 cm above the eye line (was
+  1.1 cm) and the bump ends at azimuth 1.86 (was 1.93 + 0.2 slope), so the stubble/hair wraps behind the ear. A small pale bite of bare skin remains above the ear on
+  the fade styles (a ~1 cm sliver); still open: the hard line between hair and clippered sides on the Fade.
+- Round 10: presets Bowl cut, Side fringe (fringe lowered to 0.25: the first version hid the eyes), Bedhead; 19 presets in all. Long fringes are sparse (the scalp shows
+  between the bangs): open (more locks at the front for long hair).
+- Round 11: long hair with a fringe grows extra locks along the front hairline (fringe_extra = locks x (1.5 + 3 x fringe), kept only in the first 4.5 cm of the
+  front hairline, thinned by the fringe amount): Bowl cut, Side fringe and Curtains have a curtain of bangs instead of a few thin locks (about 10,000 hairs, 190k
+  vertices on these styles).
+- Round 12: hair density back to ~100k hairs (the user had it working before; my estimate of 20 ms GPU was wrong): strands presets use 40 hairs per lock x 5 points
+  (long-hair styles 32 x 6): Dapper 97,960 hairs / 588k vertices, 57 fps with the head turning, GPU 2.9 ms, build 0.44 s; Bowl cut 87k hairs / 786k vertices, GPU 3.1 ms;
+  Afro 98k hairs, GPU 3.4 ms. Slider "Individual hairs per lock" now goes to 48. A preset now also resets `strands` and `points` when it does not name them (the ribbon
+  styles had kept the individual-hair mode of the style before them).
+- Round 13: checked the dense (~100k hairs) styles: smoother, solid masses of fine strands. Dapper showed a flat dark block of scalp layer at the front parting (the hard split
+  opened a 2 cm gap and the lifted quiff left the front hairline bare). Fixes: the sideways push right at the parting line is softened (30% at the line, full from 2.2 cm
+  away); the extra front locks (round 11) also grow for a quiff (front_density = max(fringe, 0.8 x quiff)): Dapper is now 105k hairs, no block. Scalp layer base colour a little
+  lighter (x 0.43 of the hair colour) so the whorl at the crown does not read as a dark spot.
+- Round 14: motion of the dense styles (head still, frame 420): Dapper had 4 guides flapping up to 12 mm per step (the quiff strand tips toggling between two folded
+  positions: 5-point guides with big angles cannot hold local shape 0.5 + bend 0.8). 6 points per hair (was 5) fixes it (Dapper 0.6 mm, 1 guide; Pompadour 1 mm; Quiff,
+  Messy crop 0); 7 points gives 0. Dapper at 106k hairs, 761k vertices: 57 fps, GPU 0.9-3 ms.
+- Round 14 (user: "remove the paint you added on the head"): the solid scalp layer (cap) under the hair read as paint on the head. New shader uniform `scalp_layer` (0..1,
+  multiplies the cap's alpha; 0 = the cap is not drawn) and a lab slider "Scalp layer under the hair (0 = none)", default 0. Dapper, Undercut and Bowl cut look natural
+  without it (skin shows where there is no hair: the clippered sides are skin, with hair roots at the edge); a few pale specks of skin show between hairs at the part.
+  The stubble tint and the shaved factor in the cap (round 6) only matter when the slider is above 0.
+- Round 15: with the scalp layer off, a top view of Dapper showed slits of skin at the crown/part (the hair splays out from the whorl). Extra locks around the crown (root within 5 cm
+  of the crown point, accepted 15%) fill them: Dapper is 120k hairs / 868k vertices, 59 fps with the head turning (GPU 1.5 ms); a few thin slits remain at the part line itself.
+- Round 16 (user: "can we see how it looks at 150k hairs", then "i see some bald spots behind"): `strands` 50 on Dapper = 150k hairs / 868k vertices, 59 fps, GPU 1.2 ms (60 per lock =
+  181k hairs, same GPU time: the vertex count is set by the guides, the hairs per lock are drawn from them); the slider goes to 64. Bald spots: with the scalp layer off, speckled slits
+  of skin showed at the nape and lower back (the hair is cut short there and tapers into the hairline). Extra locks (30%) in the lowest 7 cm above the hairline at the back fill them:
+  Dapper is now 160,920 hairs / 1.16M vertices, 59 fps with the head turning (GPU 1.7 ms).
+- Round 17: backs of 8 presets (Pompadour, Undercut, Fade, Afro, Wavy medium, Bowl cut, Messy crop, Shaggy) checked at yaw 200: no bald spots (a few specks near the ears of Pompadour).
+  A full build of the dense hair takes 0.4-0.8 s, so dragging a hair slider stalled: while a slider moves the lab now builds a preview with a sixth of the hairs per lock (min 4) and
+  the full hair 0.3 s after the last move (`_hair_preview`, `_hair_last_change_ms`). Not tried by hand (no drag in the capture runs): check it when dragging Length or Volume.
+- Round 18: Shaggy was long straight hair with a fringe: now length 12 cm, volume 1.7, curl 0.4, gravity 0.55, fringe 0.25. A coil needs points (6 per hair flattened every curl): Shaggy, Wavy
+  medium and Afro use 10 points per hair; Afro now has clear curls (120k hairs, 1.44M vertices); wavy hair is only slightly wavy at curl 0.4. The crown of the long styles (Wavy medium) still
+  shows a few slits at the part.
+- Round 19: Shaggy (curl 0.6) and Wavy medium (curl 0.7) now read as tousled/wavy with 10 points per hair. Crown extra locks are densest at the whorl (4% + 30% x closeness^2). A bare
+  star of skin remains at the exact whorl on the long styles when seen from above (Wavy medium, Shaggy): not explained by root density (about 40 extra locks within 1 cm); to check: whether
+  the simulation or the first segment direction at the crown (flow undefined there) leaves it. Build time of dense hair (1.4-1.9 s with 10 points) is a freeze when clicking a preset.
+- Round 20 (user: "from behind-below i see bald patches", "must we use 1 cm hair to see how it is covered?", "maybe shorter"): a coverage test with short hair (`--style=length:0.012,side_trim:0,
+  quiff:0,swept:0,sweep:0`, also 5 mm) shows the head covered except for small clusters of skin at the crown/upper back (same spots at 12 mm, 5 mm and with `--nosim`, so it is the generation,
+  not the simulation). A root map (top view, 8 mm cells, `roots.gd` in the scratchpad) shows 3-9 guides in every cell: roots are everywhere, so the gaps are not missing roots. Changes: the nape
+  hairline is 2.3 cm lower (eye_y - 0.088: hair to the middle of the neck's back), a thin random fill (2% of 3 x locks draws) everywhere, triangles with one corner above the hairline count when
+  their middle is above it, the sideways push of the parting fades toward the back (it split the hair along a line down the back), first point of a strand 3.5 mm above the skin and clearance
+  +2 mm (the nearest-vertex plane runs under the skin in a dent). Only reduced the crown specks. Open: why the crown cluster stays (strands near the whorl may be pushed under the skin by the
+  ellipsoid margin push or the first-segment direction; try drawing the roots as points, or hairs from the crown with a fixed outward direction).
+- Round 21: where do the crown specks come from? A map of drawn hair vertices (top view, 6 mm cells, `cover.gd` in the scratchpad) shows more than 30 hair vertices in every cell over the head,
+  and no cell where the hair's highest point is under the skin: the hair is there, but the ribbons leave pixel gaps. Wider ribbons shrink them (1.8 mm and 3.5 mm tests), so the default
+  `strand_width` is 0.0014 (was 0.0009): only a few thin slits remain at the whorl in Dapper. Added a whorl to the flow: within 3.5 cm of the crown the combing direction spirals (up to 1.4 x a
+  sideways component) instead of fanning straight out (no visible change in the short-hair test, kept: the top view shows a natural whorl).
+- Round 22: motion check of 17 presets with the head still (frame 420, `busiest` = largest move of one guide in a step / guides still moving): Dapper 7-9 mm (12-14 guides), Fade 10 mm (9),
+  Undercut 6 mm (6), Crew cut 2.4 mm (12), Bedhead 5-7 mm (1), Long 19-38 mm (1 guide), the rest under 2 mm. Dapper was 0.6 mm before the quiff extra front locks of round 14: with
+  `front_density = fringe` only it is 0.9 mm (4 guides), so the extra locks that stand up add unstable strands; Fade (quiff 0.5, parting 0.35) is unstable without them. Tried and not
+  working: halving a step that reverses the previous one, damping that grows with the time a strand keeps moving, easing the quiff ceiling (`headroom` scale on the rise): the first
+  two removed again, the third kept (harmless). Pompadour, Quiff (parting 0 / 0.1) are stable; the unstable ones have a parting of 0.3-0.5, so the sideways split or the `part_soft` push is the
+  next suspect (strands that cross the parting line). Long: one guide swings 2-4 cm per step: look at it.
+- Round 23: found the cause of the strands that never settle (Dapper, Fade, Undercut, Crew cut, Bedhead): the local shape constraint at 0.5. With the head still, `--sim=` runs on Dapper:
+  local_stiffness 0.3 or lower, air_drag 0.4 or iterations 8 each make it settle; bend, tip and root stiffness, strand damping and weight do not. The lab default `_hair_local` is now 0.3 (was
+  0.5): Dapper, Undercut 0 guides moving, Fade 2 at 0.5 mm, Crew cut 1, Bedhead 3 at 0.8 mm. (Earlier note: the parting was a suspect; parting 0 only reduced it.) Long still has one guide that
+  swings 4 cm per step: its first point is 1-3 cm from the scalp place and moves between frames, so it is not pinned (a lock grown on the neck? to check: its root is at the level of the eyes, far
+  to the side).
+- Round 24: (1) the "Long swings 4 cm" of round 23 was a measuring artefact: `busiest` returns a different guide every frame, so a trace that follows it mixes guides (the "root that moves"
+  was two guides); followed alone, guide 1786 of Long has a 1 cm jitter at the tip only. Earlier round-22 traces had the same flaw: the per-guide numbers stand, the traces do not.
+  (2) Overview of the 21 presets showed the old ribbon styles (Buzz, Short, Bob, Long, Slick back, Curly) as sparse and ragged next to the dense ones: they now use individual hairs too (Buzz 22
+  hairs per lock, Short 40, Bob 32, Long 28 x 9 points, Slick back 40, Curly 36 x 10 points): 120k-165k hairs each (Buzz 155k, Curly 147k). (3) Hairline edge of single hairs: whole locks are no
+  longer dropped by chance near the edge; instead the hairs per lock fall with the distance to the hairline (10% at the edge, full from 1.6 cm), and a short lock spreads its hairs less
+  (clump x min(1, length / 5 cm)): Dapper has a clean edge. Buzz, Short and Fade still show separate dark blobs along the front hairline and a V of bare skin at the part (short fronts with
+  a parting 0.2-0.35).
+- Round 25: tried to even out the ragged front hairline of Buzz, Short and Fade (single hairs): extra thin locks along the hairline (30% of draws within 1.4 cm of it), hairs per lock at the edge
+  40% (was 10%), the parting's sideways push softer at the line (50% instead of 30%). The captures hardly changed: the blobs are not a matter of density at the edge. Likely cause: front
+  hair of a short style is combed back (fringe 0.35 / 0.2 lerps the front flow toward the back), so the hairs rooted at the hairline run away from it and the strip just behind the edge is covered
+  by few strands; a real hairline is covered by hairs that start in front of it (growth direction forward, then falling back). To try: for the first 1.5 cm from the hairline, make the strands start
+  in the forward direction (flow.z > 0 for 1-2 segments) before they turn back.
+- Round 26: build time of the dense hair had grown to 1.5-2.7 s per click (HumanHair.build: `build_arrays` 1.17 s of 1.4 s for 1.2M vertices, `make_mesh` 0.24 s). The two halves were
+  already separate (pure data, then the mesh), so the lab now builds on a worker thread: `HumanHair.prepare` on the main thread, `WorkerThreadPool.add_task(HumanHair.build_arrays)`,
+  `HumanHair.make_mesh` when it is done (`_hair_task_id`, `_poll_hair_task`, `_finish_hair_task`). The old hair stays until the new one is ready, one build at a time (the dirty flag
+  starts the next). First hair and captures wait for it. Test `--switch=Long --bench=12` (a preset change 2.5 s in): longest frame 17 ms, avg 59 fps (build 2.3 s in the background).
+  (A precomputed frame per guide in the strands loop did not change the time: the cost is per vertex.)
+- Round 27: the V of bare skin at the front of Short, Fade and Buzz (not a parting problem: halving the sideways push, capping it at 0.3 and making it zero at the line changed nothing) came from
+  the fringe branch: `if (flow.z > 0) flow = lerp(swept_back, flow, fringe)` turned the whole forward half of the head back toward the crown, so the combing flow reversed at the crown line
+  and left a hole where the two halves meet (a vertex-density map of Short showed the front-centre cells at a fifth of the density at the sides; `fringe:1` removed the hole). The flip now only
+  applies at the front of the head (front_here > 0.45): the V is closed in Short/Fade/Buzz except for a thin streak at the hairline; but the flow now fans out of the real crown, and a bare patch of
+  about 2 cm shows there (back of the top of the head, seen from the front and above) in Short, Fade, Buzz and a smaller one in Dapper. The swirl at the crown (round 21, now 0.15 radial + 1.6 tangent at
+  the centre, radius 5 cm) did not close it: next, try roots at the crown with a fixed forward direction, or an extra ring of short locks around the crown, or cap the crown flow angle.
+  Also in this round: the parting push is capped at 0.3 and scaled by the hair length (short hair splits less); it is zero at the line and full 3 cm away.
+- Round 28: the bare patch at the crown (round 27) is closed: within 9 cm of the crown the flow goes back (lerp toward the along-the-scalp "back" direction, 1.4 x closeness, max 0.95), and the
+  parting does nothing on hair shorter than 3 cm (`part_length_scale` = (length - 3 cm) / 10 cm, 0..1): a top view at pitch 75 of Buzz, Short, Crew cut, Dapper and Side part shows an even
+  swirl-free cover. Remaining: a few specks at the back of the top of the head and a hole at the lower back (crown-to-nape, seen at pitch 75) in Side part (parting 0.55) and a thin streak in Buzz.
+- Round 29: the parting push is now zero behind the crown (fades over 5 cm behind it): the back of Side part, Buzz and Pompadour (yaw 180, pitch 40) is covered, with only a few specks at the nape.
+  Correction to round 28: the "hole at the lower back" of Side part seen at pitch 75 is the front (the camera looks from the front, so the bottom of the picture is the forehead): it is the
+  parting V at the front hairline of Side part (parting 0.55), still open.
+- Round 30: extra locks along the parting line (|x - crown.x| < 2.5 cm, 35% of the extra draws) fill the strip where the hair diverges: Side part's V is closed except a few specks;
+  Undercut has a small notch at the front end of the line; Pompadour (parting 0.1, quiff 1) still has a 1.5 cm bare strip along the line (it is 216k hairs / 1.45M vertices now: the quiff extra
+  front locks and these add up). Next: cap the total of extra locks, and fill the line by making the two sides' flow converge toward the line instead of away from it near the crown.
+- Round 31: speed with the extra locks: Pompadour 217k hairs 59 fps (GPU 3.6 ms), Dapper 213k 58 fps (3.7 ms), Short 147k 59 fps (2.9 ms): no cap on the extra locks needed. The parting slit
+  came from the sideways push at the line (with `sweep:0` Pompadour had none): the two sides now lean slightly toward each other at the line (part_soft -0.5 at the line, 0 at 6 mm, 1 from 3 cm),
+  so the hair crosses over it: Dapper, Undercut and Side part are closed (a few specks), Pompadour (quiff 1, sweep 0.5) still has a 1.5 cm slit near the crown: probably the quiff ceiling / lift
+  (it has `lift` only in the first 10 cm from the hairline, so the slit is just behind it): next try is a wider cross-over for quiff styles.
+- Round 32: the cross-over at the parting is wider and stronger with the quiff (width 3 + 3 x quiff cm, lean -0.5 - 0.5 x quiff): Quiff and Dapper are closed, Pompadour's slit is down to about 5 mm.
+  Open: Fade (side_trim 1, parting 0.35, quiff 0.5, length 7 cm) has a 1.5 cm bare patch at the crown and a streak to the front hairline.
+- Round 33: Fade's patch at the crown: tried side_trim 0.5, quiff 0, parting 0, sweep 0, hug 0.2: no change; length 0.07 -> 0.10 closes it, so the preset is now 10 cm on top (the crown hairs
+  of a 7 cm style, trimmed by the side/crown taper, are too short to cover the gap the flow leaves there). A generator fix would be to keep a minimum length near the crown.
+- Round 34: tried the generator fix noted in round 33 (hair near the crown is never trimmed: `crown_keep`, 7 cm radius): no change for a 7 cm Fade, so the trim was not the cause; the 10 cm preset
+  stays (longer hair drapes over the gap). The crown_keep rule is kept (harmless). Cause still unknown: 7 cm hair with a crown flow going back leaves a 1.5 cm hole, 10 cm closes it, so the
+  strands near the crown are too short in the plane of the scalp to reach over it: try growing them longer along the first segments (a flatter start) near the crown.
+- Round 35 (research pass, the user asked for open-source/docs references): searched the web; no open-source generator models whorls/partings. The Blender "Hair Tool" docs (read) place
+  roots with Poisson spacing (a `Min Distance` that drops roots closer than it, and a relax step; the Stubble thesis PDF is over the fetch size limit, not read; TressFX, VHair (MIT, Unity),
+  oxiphysics-softbody (Apache-2.0) and HairStrandsRendering (MIT) are the permissive references). Applied the idea: roots were drawn purely at random by area (white noise: clumps and gaps =
+  the bare specks); the main locks now use dart throwing with `min_gap` = 0.7 x sqrt(scalp area / locks) (hash grid; up to 3x draws until `lock_count` are accepted; extras after).
+  Result: Fade at 7 cm (no 10 cm workaround any more) has only a few specks at the crown (before: a 1.5 cm hole); Pompadour/Crew cut still have a small patch; Buzz (2.5 cm hair) is
+  speckled: the hair is too short to bridge the spacing (Buzz now 40 hairs per lock: 152k hairs/1.87M vertices, 58 fps, GPU 3.2 ms, build 1.8 s).
+- Round 36: after the even root spacing, the remaining bare spots are a few mm at the exact crown point (Side part, Undercut, Messy crop, Bedhead; Short/Dapper are closed). More crown extras
+  (6 x locks draws, 70% extra acceptance within 1.5 cm of the crown) made the holes smaller (about 5 mm) but not gone: strands that grow out of the crown lie flat, so nothing covers the very
+  point. Idea: a few short upright "cover" hairs there, or a root-less cap texture under the crown only (the old scalp layer, limited to 1.5 cm around the crown).
+- Round 37 (user: "can we see the follicles?"): lab option `--follicles` / checkbox "Show follicles (hair roots), hide hair" (Hair tab): the first point of every guide strand as a cyan dot
+  (MultiMesh of small spheres, 3.2 mm; hair hidden). Dapper: 6,392 follicles. The dot map shows the density is uneven: packed at the hairline and the crown (the extra locks), loose at the
+  upper sides and back (where the main locks are spaced by `min_gap`) - the back and sides are the areas where each guide has to cover the most scalp with 40 hairs.
+- Round 38 (user: "it must be evenly distributed, right? 150k?"): new generator parameter `extras` (1 = the extra locks of rounds 11-36 at hairline/part/crown/nape, 0 = only the
+  Poisson-spaced follicles). Lab default now `extras` 0 and `locks` 4200 (about 3.7k guides x 40 hairs = 149k hairs for Dapper; 2.6k guides = 103k hairs for Fade (smaller scalp area:
+  the spacing is by area); Crew cut / Buzz 5.2k guides x 32-40). The follicle map is even (no clusters). Cost: the slits come back along the parting and at the front hairline/crown (the
+  extras were hiding them); a lab checkbox "Extra locks at hairline, part, crown" turns them on again (those add 30-60% more hairs). Open: close the slits by geometry instead (hair flow
+  crossing at the part, hairs rooted at the hairline growing forward first).
+- Round 39: with even follicles (extras 0) the hairs of a follicle within 1.8 cm of the parting line or 3 cm of the crown spread up to 2.6x wider (`radius0 = clump x (1 + 1.6 x closeness)`): Dapper
+  and Bedhead are closed, Fade, Undercut, Side part and Short have only specks; Pompadour (quiff 1) keeps a 7 mm slit, Buzz/Crew cut (short hair) a few specks at the crown and the front hairline.
+  Side effect: the top silhouette is a little frayed (spiky tips above the crown). Note for builds: the DLL link fails while any Godot window is open (kill the lab first, check `tasklist`).
+- Round 40: (1) check at ~150k: with extras off, Dapper/Pompadour/Afro 148,960 hairs (57-59 fps while turning, GPU 2.8-4.5 ms, build 1-1.9 s), Fade 103,720 (smaller scalp area), Bowl cut 119k,
+  Long 104k; Buzz was 210k because a short style's lock width (2 mm + 25% of length) multiplied the follicle count: for single hairs `lock_count` is now exactly `locks` (4200 asked, about 3.7k
+  accepted by the spacing), so every 40-hair style has 148,960 hairs (Crew cut now 40 hairs too, Curly 36, Bob 32, Long 28). (2) Short hair (2-3 cm) spreads its hairs wider
+  (clump x (0.8 + 0.2 x min(1, length/5 cm)) x (1 + 1.5 x max(0, 1 - length/4 cm))): Buzz, Crew cut, Short and Dapper are covered at the front and crown (a few specks at the crown) where
+  before Buzz and Crew cut had a 4-5 cm bare triangle behind the front hairline. Still frayed tips at the silhouette.
+- Round 41: overview of the 21 presets: the long styles (Bob, Long, Curtains, Wavy medium) had a fringe of separate strings. Long hair now spreads the hairs of a follicle wider
+  (x (1 + 2.2 x clamp((length - 8 cm) / 20 cm))) and the hairs are up to 2.3x wider (strand_width x (1 + 1.3 x same ramp)), Bob and Long have 40 hairs per lock (7 and 8 points): 148,960 hairs,
+  1.2M / 1.37M vertices, 58 fps with the head turning (GPU 4.3-4.4 ms, build 1.6-2.0 s). Looks like a mass of hair with a lighter fringe now; the top still has a few stiff upward strands
+  (antennas) on Long and a stray fan of hairs at the sides of the head (thin lines at the silhouette).
+- Round 42: the stiff upward strands on top of the long styles came from hairs spread out of their follicle's lock (the offset around the guide has an "up" component): in strands mode a hair
+  point no longer rises above top_y + 8 mm + 4 mm x volume (not for a quiff: its hair is allowed to stand). Profile captures of Long, Bob, Wavy medium and Shaggy show a smooth top line.
+- Round 43: colour/shine check (Dapper in near-black #1a1008 and blond #c8a060, Wavy medium ginger #8a3a14, Pompadour brown from behind): colours read correctly, the highlight is soft but visible on the
+  brown/ginger, nearly none on black; the ginger is flat and very saturated (little variation between strands). No change made. Ideas: per-strand hue/brightness variation from the dye (COLOR.r
+  is only brightness), a darker root zone for light colours, a stronger highlight for dark hair (`shine` per colour luminance).
+- Round 44: `human_hair.gdshader`: dark hair has a stronger and whiter highlight (`dark` = 1 - smoothstep(0.05, 0.35, luminance): primary highlight x (0.3 + 0.18 x dark), a white lobe of the second
+  highlight x 0.08 x dark) so near-black hair shows its shine instead of a flat mass; every strand gets a little hue shift (red +-5%, blue -+7% by `random_b`) so ginger/brown are not one flat colour.
+- Round 45: motion check of all 21 presets with the head still (frame 420) after the generator changes of rounds 35-44: no preset has a guide moving more than 1.7 mm per step (worst Side part 1.7 mm,
+  Fade 1.6, Dapper/Wavy medium 0; at most 4 of 3,700 guides move; the earlier 6-14 mm flapping is gone).
+- Round 46: presets French crop (5 cm, short fringe straight down, sides cut), Slick undercut (16 cm combed back, sides off, small quiff) and Mop top (14 cm, thick fringe to the brows, volume 1.3): 24 in all.
+  All look like the names in the captures; Mop top has a grey-white glare band on the fringe (the highlight of long flat hair facing the light): open.
+- Round 47: the grey-white band on the fringe of Mop top (and the side of Pompadour from behind) is the specular highlight: with `--shine=0` it is gone. The highlight cap in `light()` is now
+  0.06 + 0.12 x `dark` (was 0.3, then 0.16): the band is dimmer and beige instead of white; black hair keeps a visible shine (cap 0.18); the TT glow, `specular_disabled` and the environment
+  were not the cause (tested). The band's width is what is left (straight parallel hair gives a wide highlight): narrower exponents or a normal wobble per strand would break it up.
+- Round 48: the highlight's per-strand shift (`strand_shift`) is spread twice as wide (random_a x 1.5 and a 0.45 step noise along the strand): the glare on Mop top and Pompadour is now a patchy
+  sparkle of strands instead of one band, black hair keeps its shine. No script/shader errors.
+- Round 49: the crown specks/slits are covered with a small dark patch under the hair (not paint over the whole head): the scalp-cap vertex alpha is now 0 except within 3 cm of the crown and along
+  the parting line (1.2 cm each side, from 4 cm behind the crown forward); the lab slider is now "Crown patch under the hair (0 = none)", default 1 (the shader uniform `scalp_layer` is unchanged).
+  Top views of Undercut, Pompadour, Side part, Fade (pitch 25) have no skin showing at the crown or along the part. The whole-head layer the user asked to remove stays removed.
+- Round 50: white speckles at the silhouette of short brown hair (seen with shine 0.4, gone with shine 0): the highlight cap is now 0.035 + 0.14 x `dark` and the highlight is tinted by the hair colour
+  more (mix factor 0.9 - 0.6 x dark^2): brown/ginger have a soft sheen, black keeps its shine; a few pale strands remain at the far silhouette (back-lit). (The loop prompt arrived about ten times in a row: one round done.)
+- Round 51: check of the 24 presets' newest members. Still head: Mop top, French crop, Slick undercut, Curly, Long, Pompadour: at most 4 guides moving, 1.5 mm per step at worst. Turning (bench): Mop top 149k hairs 59 fps
+  (GPU 4.7 ms), Curly 134k 58 fps (5.2 ms), Slick undercut 104k 55 fps (GPU 5.9 ms: 7 points per hair, the heaviest so far). All above 55 fps; the frame is GPU-bound around 5-6 ms for the 7-10 point styles.
+- Round 52: looked at pale edges on the silhouette from below (Dapper, Pompadour, Afro, Wavy medium, camera pitch -15). Dimming the back-lit glow (`through` x 0.07, scaled by hair brightness; was x 0.25)
+  changed nothing visible, so the pale edge is not the TT lobe: it is the thin tips (width 4% of the hair, alpha-blended with the light sky behind) and the tip lightening. Kept the dimmer glow. Open: a
+  minimum tip width (or a darker tip colour) to keep the silhouette from washing out against a light background.
+- Round 53: the pale silhouette edge (round 52): tip lightening 0.15 -> 0.04 (shader default) and the tip width 4% -> 15% of the hair width (`1 - 0.85 x s^1.4`): Pompadour and Afro edges are brown now; Dapper keeps a
+  pale fringe at the top edge (sky-blended single hairs seen from below). Hairs are a little blunter at the tip than the pointed tips of round 4 (15% instead of 4%).
+- Round 54: presets Pixie (6 cm, swept side fringe), Ivy league (9 cm, clear side part) and Long waves (30 cm, curl 0.18, 12 points: 134k hairs, 2.06M vertices, 58 fps, GPU 5.2 ms): 27 presets. Pixie
+  and Ivy league look right. Long waves (and any long curled hair) looks like straw: the flat ribbons of long hair (up to 2.3x wide) and the coils are coarse and angular; at curl 0.5 it was worse. Open: smooth
+  the coil (more points per turn, less ramp) or draw long hair as bundles instead.
+- Round 55: the straw look of long hair came mostly from the width: long-hair ribbons grew to 2.3x (round 41) and showed as flat sticks with a glare when turned to the light. Now x (1 + 0.5 x ramp) (1.5x
+  at 28 cm): Long and Bob are fine strands again, Long waves is softer; a glare patch remains on the side of Long waves (curled strands face the light at many angles). The coil radius is small (2 mm at
+  curl 0.18), so the coil was not the cause.
+- Round 56: backs of Buzz, Slick back, Curly, Afro, Shaggy, Bedhead (yaw 160): covered, no bald spots. All show a pale glare patch low on the side of the head (the light is from the front-left); default shine is now
+  0.28 (was 0.4, shader and lab slider): the patch is softer. A lighting-independent look would need the highlight to depend less on the view direction.
+- Round 57: full-frame capture of Wavy medium showed the hair covering the whole face (preset: fringe 0, swept 0.7): swept lowered to 0.2; long hair now combs the whole forward half back by `fringe`
+  (front_here threshold 0.45 - 0.4 x clamp((length - 10 cm) / 10 cm)): Long (fringe 0.2) shows the face with a split fringe. Wavy medium, Long waves and Shaggy-like curled long presets STILL fall over the face
+  with fringe 0 / 0.2, swept 0, parting 0, curl 0 (tested one by one): the difference from Long (28 hairs, 8 points, volume 0.9, curl 0.2) is not explained; check points/strands (36, 12 points) and the lab's
+  preset reset keys (strands/points/curl/volume are overwritten by each preset, `fringe` too). Open.
+- Round 58: tested Long with the Long-waves values one by one: `strands:36,points:12` alone makes the hair fall over the face (curl/volume/length did not). Cause: the gravity bend is applied per step, so
+  more points bend the strand more over the same length. The bend is now scaled by min(1, 5 / (points - 1)) (`pull_here`): Long (8 points) now parts at the sides and shows the forehead, Afro is unchanged
+  (10 points, curl); Long waves and Wavy medium still cover the face (the bend is smaller but not enough): next try a stronger forward-flow limit for the front hairs of long hair (clamp the first 3 segments' downward turn).
+- Round 59: MEASURING ERROR FOUND. The `--hair-preset=` command-line path did not reset `quiff`/`swept`/`hug`/`sweep`/`strands`/`points` for presets that do not name them (the preset BUTTON did): captures
+  of Buzz, Short, Bob, Long, Slick back and Curly (the presets without a quiff key) were made with the starting Dapper's quiff 0.8 / swept 0.3. That is why Long looked parted and "Long waves"/"Wavy
+  medium" (which do name them) covered the face, and why round 58 chased the point count (the points change was real but not the cause; kept). Fixed the CLI path to reset them. Real Long (no quiff)
+  covers the face entirely. Long, Wavy medium and Long waves now have quiff 0.6, swept 0.6, parting 0.4, fringe 0: the front lifts and the hair falls to both sides, the face and eyes are visible.
+  Earlier captures of those six presets (rounds 24, 40, 41 and the all-presets overviews) were not what the buttons produce: re-check Bob, Short, Buzz, Slick back and Curly by button values.
+- Round 60: re-checked Buzz, Short, Slick back, Curly, Crew cut with the corrected command-line path (button values): all fine (covered, forehead and eyes free; Curly is a curly mop). Bob (fringe 0.3) covered
+  the eyes: now fringe 0, parting 0.3, swept 0.6, quiff 0.5: a bob with a lifted, side-swept fringe, eyes visible.
+- Round 61: the white stripe on the lower side/neck hair of Curtains, Bowl cut, Mop top, Bedhead (seen in the corrected-path overview; the same one as the "glare patch" of rounds 47-56): it is the highlight
+  (`shine 0` removes it), but not NaN (isnan/safe-normalize guards did not change it) and not large: with a cap of 0.04 on the specular term it is still a white stripe, with 0.0001 it is gone. The units
+  here are far smaller than I assumed (a cap of 0.04 reads as white on brown hair whose albedo is about 0.05). `light()` now clamps the glint to 0.003 + 0.25 x the hair's luminance (brown about
+  0.015): the stripe is a soft sheen, black hair keeps a dim sheen. This replaces all earlier cap values (0.3, 0.16, 0.06, 0.035 + 0.14 x dark) which were still far too strong: rounds 47, 50 and 56 only
+  made the stripe narrower. The NaN guards (h, t1, t2 divided by max(length, ...)) are kept.
+- Round 62: with the small glint cap black hair looked flat: cap + 0.008 x `dark` (0.003 + 0.25 x luminance + 0.008 x dark): black hair has a grey sheen on the lower side hair, brown/ginger/blond a soft one, no white
+  stripes (Dapper in #0a0806, #3a2410, Curtains black, Pompadour ginger, Afro blond, Long brown checked).
+- Round 63: top views (pitch 35) of Fade, Undercut, Slick undercut, Pixie, Ivy league, French crop, Quiff, Side part with the corrected path: all covered with a natural whorl; only a few light specks at the crown
+  of Undercut and Slick undercut and a dark band (scalp patch) along the front hairline of Slick undercut/Ivy league. No code change.
+- Round 64: the crown/parting patch (round 49) now stops 6 cm in front of the crown (was: to the hairline). The grey band along the front hairline of Ivy league and Side part stays: it is the sheen
+  (glint cap of round 62) of the combed-back front hair, not the patch.
+- Round 65: regression check after rounds 55-64 (corrected path). Turning: Dapper/Pompadour 149k hairs 57 fps (GPU 3.8-4.0 ms), Long waves 134k 58 fps (4.8 ms), Curly 134k 58 fps, Mop top 149k 59 fps, Afro 149k 58 fps.
+  Head still: at most 7 guides moving (Long waves, 2.6 mm per step), others 0-1 mm. No regression.
+- Round 66 (user sent a crop: thin angular ghost lines above the top of long hair; "it must be more circular, not sharp, the curves"): the offset-height clamp and an outward-offset removal for spread hairs changed
+  nothing (identical captures); the sharp corners are in the guide path itself (drape moves one point at a time: pushed off the head, held under the ceiling, turned by gravity). Fix: 3 passes of neighbour averaging
+  of the strand points after the drape (0.5 own + 0.25 each neighbour, root fixed, tip drawn toward the extrapolation of its neighbours), before the curl. Long and Bob top lines are smooth curves now; Wavy medium
+  has one ghost polyline left at the crown, and some small tufts at the front crown stand up in sharp zigzags (the quiff lift / the crown flow turn): next.
+- Round 67: side views of Wavy medium, Pompadour, Dapper, Afro, Curly, Long waves after the path smoothing: Pompadour/Dapper quiffs are soft tufts, Afro/Curly rounded masses, Long waves a smooth dome. A single
+  thin ghost polyline still stands above the crown of Wavy medium (a curl-0.7 hair: the helix is added after the smoothing, so its corners are not rounded). Idea: smooth once more after the curl, lightly.
+- Round 68: one more neighbour-averaging pass on each single hair's own path (after the spread and the clamps, strands mode only): the ghost polyline above the crown of Wavy medium is a faint thin curve now;
+  Long's top is a smooth dome, Afro rounded curls. Cost: none at runtime (build time only).
+- Round 69: front views (distance 0.7) of Dapper, Curly, Buzz after the smoothing: clean hairlines (a slight rectangular corner at the temples of Dapper/Buzz: the hairline model's temple step), settled with
+  the head still (0-1 guides moving). Open: round the temple corners (the hairline function has a sharp step between the front and the sideburn).
+- Round 70: the temple corner: the hairline now slopes from the front down to the sideburn over azimuth 0.7..1.4 (was 0.9..1.3) and the sideburn starts at 1.05 (was 1.15): the temples of Dapper, Buzz and Short
+  are round curves in the front, three-quarter and side captures; no skin gap above the ear. The widow's-peak notch in the middle of the front hairline of Dapper (parting) stays.
+- Round 71: side views of 8 short presets: Fade and Undercut (side_trim 1) showed bare skin behind the ear with a hard outline. The cut sides and back now keep stubble: a lock's length is at least 3.2 mm x side_trim
+  (x 0.8-1.2, thinner toward the hairline) where side_trim > 0.5 and the root is on the lower 60% of the head. Fade, Undercut and Slick undercut now have a dark stubble area under the longer top (a gradient
+  from the top). The stubble is a little heavy (reads as a short beard-like mass behind the ear): lower the minimum or fade it faster toward the skin.
+- Round 72: stubble minimum lowered to 2.2 mm x side_trim (x 0.7-1.2, x (0.3 + 0.7 x feather)): the sides of Fade/Undercut look like short dark stubble that thins at the hairline. The mass still reads dense because
+  the hairs of short locks are spread 1.5-2.5x wider than long ones (round 40) and are 1.4 mm wide: for stubble a narrower spread would show more skin through it.
+- Round 73: stubble does not fan out (the extra spread of short locks, round 40, now only applies from 4 mm of length: spread x (1 + 1.5 x short-ness x clamp((length - 4 mm) / 12 mm))): the cut sides of Fade and
+  Undercut are speckled stubble with skin showing through, like clippered hair; Buzz/Crew cut (2-3 cm) are unchanged and covered, with one 3 mm bare spot at the crown of Crew cut.
+- Round 74: check after the stubble/spread changes: Fade 144.5k hairs 57 fps (GPU 2.3 ms), Undercut 144.6k 57 fps, Crew cut and Buzz 148k 57-58 fps, Dapper 148k 57 fps, Afro 148k 58 fps (GPU 3.8 ms);
+  builds 0.9-1.5 s; head still: 0-2 guides moving, 0.9 mm at worst. No regression.
+- Round 75: female body (`--gender=Female`): Dapper, Long, Bob, Afro, Pixie, Curtains all grow and cover correctly on the female head (hairline, ears, parting follow the mesh). Long on the female has a few
+  stray long strands across the face; no code change. The presets are tuned on the male head: a female default style (and per-gender defaults) is not set up yet.
+- Round 76: pressing the Female / Male button now also applies that body's default style (`DEFAULT_STYLE`: Male Dapper, Female Long waves) once per switch (`_style_gender`): the female no longer keeps the
+  male's short style. Long waves on the female: long wavy hair with a lifted, side-split fringe; a spiky tuft at the crown and a thin white strip at the left temple (skin through a gap) remain.
+- Round 77 (after the PC restart): top views at pitch 30 of female Long waves, Bob and male Long waves with quiff 0: a small white (not skin-pink) speck at the exact crown, 5-8 mm, on every long style. Widening
+  the crown patch (cap alpha within 4.5 cm of the crown instead of 3 cm) did not change it, so it is not the cap alpha: the speck is bright white like an unlit surface. Suspects: a hole in the body mesh at
+  the top of the scalp (look at the body alone from above), or the cap triangle there being culled/degenerate (the crown point is a pole of the head mesh). Check with `--nohair` from above.
+- Round 78: the white hole at the crown/parting (1-2 cm on Bob, Dapper, Pompadour, Long waves with `extras` 0): `extras:1` closes it, `extras:0` leaves it; the scalp patch under the hair does not cover it (the mesh is too
+  coarse there for vertex alpha: it stays at the crown pole), and neither does a thicker cap (3.5 mm: reverted). The two extra-lock groups that matter are now always on, whatever `extras` says: the crown
+  group (6 x locks draws) and the parting line group (|x| < 2.5 cm, 35%). Dapper, Undercut, Fade, Bob, female Long waves have a small speck or none; Pompadour keeps a 1 cm slit. Cost: about 30% more hairs
+  (Dapper 197k, 180-199k on the others).
+- Round 79: all 27 presets built and ran 5 s each with no script or engine errors (button-equivalent `--hair-preset`, frame 300). The generator, simulation and lab are stable enough to commit: everything
+  since 7516c3e is still uncommitted (hair_sim_native, human_hair_native, human_hair.gdshader, human_body_lab.gd, notes, addons/tressfx + tressfx_bridge.gd).
+- Round 80: tried a wider/denser parting-line fill for quiff styles (width 2.5 + 1.2 x quiff cm, 35 + 25 x quiff %): Pompadour went to 242k hairs and kept its slit (a zigzag along the line), so it was reverted.
+  The slit is geometric (the two sides' flow crosses the line at an angle): needs the hair of a quiff style to cross the line in the first segments, not more hairs.
+- Round 81: the cross-over lean for quiff styles is stronger (part_soft at the line -0.5 - 1.2 x quiff, was -0.5 - 0.5 x quiff): Pompadour's crown slit is closed (194k hairs, as before), Dapper has a small
+  speck, Quiff a few specks where the lifted front meets the crown.
+- Round 82: check after the cross-over and the always-on crown/part extras: Pompadour 195k hairs 57 fps (GPU 4.0 ms), Dapper 198k 57 fps (3.8), Slick undercut 192k 57 fps (3.9), Quiff and Afro 165k 57-58 fps
+  (2.9 / 4.0); head still: at most 5 guides moving, 1.8 mm per step at worst. No regression.
+- Round 83: presets Spiky (7 cm, volume 1.6, gravity 0.05, quiff 0.5) and Surfer (17 cm, curl 0.3, combed back 0.6, 9 points): 29 in all. Surfer reads as medium swept-back hair; Spiky is a tousled short cut, not
+  spikes (strands follow the head, gravity does not stand them up): real spikes need a "stand off the skin" control (a per-style outward direction for the first segments).
+- Round 84: new generator control `spike` (0..1, lab slider "Spikes (stands off the skin)"): the first segments point away from the head (direction = flow x (0.95 - 0.5 x spike) + normal x (0.04 + 1.4 x
+  spike)), the gravity/skull pull on the first 75% of the strand is cut by up to 85%, and the height ceiling over the crown rises by up to 3.5 cm. Spiky preset (spike 0.75, 7 points, quiff 0): the hair radiates
+  from the crown in spikes; spike 1 with 9 cm hair is a spiky crop. Not tested: spike with long hair or with the simulation under a fast turn (the sim pulls the strands back to the style, the strands are stiff).
+- Round 85: spike under motion and with other lengths: Spiky 165k hairs 58 fps while turning (GPU 2.8 ms), 2 guides moving at 0.8 mm with the head still. Captured during the oscillating turn (back views): the spikes keep
+  their shape (no stretch, no collapse). Spike 0.5 with 16 cm hair is a round mushroom cap (the standing part falls at the 75% mark), spike 1 with 10 cm and side_trim 0.9 a flat-top: the control is meant
+  for 5-9 cm hair; on longer hair it gives a hat shape (a limit on the slider or a length-dependent fall would help).
+- Round 86: `spike` is faded out with the hair length (full up to 8 cm, zero from 18 cm): the 16 cm test is a normal bob with a few strands standing at the crown (no mushroom), spike 1 with 10 cm a spiky crop,
+  the Spiky preset (7 cm) is unchanged. A pair of stray strands lies flat out to the left at the crown of the 16 cm case (spiked strands that the fade leaves half-stood): minor.
+- Round 87: all 29 presets (now with Spiky and Surfer, and the `spike` control and its length fade) run 200 frames each with no script or engine errors.
+- Round 88: female body with Surfer, Spiky, Ivy league and Mop top: all grow and cover correctly (Spiky is a short spiky cut, Mop top a bob with a full fringe to the brows, Ivy league a neat short cut with a bang). No change.
+- Round 89: new presets Feathered (20 cm, side-swept, layered volume) and Cropped waves (9 cm, curl 0.45): 31 in all. Feathered grew wings: long hair sticking out horizontally at both temples; cause found by
+  elimination: `sweep` (the "comb holds hair against gravity" term `held`) on 20 cm hair. `held` now fades with length (full to 12 cm, none from 25 cm) and Feathered has sweep 0.15: wings gone. Slick undercut,
+  Slick back and Surfer keep their combed look.
+- Round 90: Feathered checked after the `held` fade: wings gone, but with sweep 0.15 / quiff 0.4 the front hair covered the eyes; preset now sweep 0.3, quiff 0.6 (side-swept front, eyes and forehead free,
+  no wings). Cropped waves (9 cm, curl 0.45): a neat short wavy cut, covered.
+- Round 91: profile overview of all 31 presets (yaw -90): the long styles show a grey translucent patch over the cheek (the highlight; `shine 0` removes it). Cause: the glint was clamped per channel to the cap, which
+  turns a brown (r > g > b) glint into grey; it is now scaled (`min(1, cap / max channel)`), and the highlight is tinted by the hair colour except for near-black hair (mix 0.97 - 0.75 x blackness). The patch is
+  now a warm sheen on brown/ginger, a soft grey on black; blond has none. Also seen in the overview: speckled stubble sides on Fade/Undercut (fine), a few specks at the back of Pompadour.
+- Round 92: re-captured the three Curtains colours after the glint change (the round-91 picture was stale): ginger has no grey patch, brown a faint cool one over the cheek, black a soft grey sheen. A capture run
+  sometimes leaves no PNG (2 of 3 missing once): re-run it.
+- Round 93: speed of the newest presets while turning: Feathered 176k hairs 58 fps (GPU 4.4 ms, build 2.0 s), Surfer 175k 58 fps (4.6), Spiky 165k 59 fps (2.9), Cropped waves 165k 59 fps (3.0), Long waves 177k 57 fps (4.5,
+  build 2.6 s). No regression.
+- Round 94: lowering the glint cap (0.002 + 0.16 x luminance) did not change the grey patch over the cheek of long brown/black hair (identical captures): so it is not limited by the cap, the raw glint is below it and
+  the patch is its natural size; reverted to 0.003 + 0.25 x luminance. A real reduction needs a lower `shine` for those colours or a narrower lobe (exponent), not the cap.
+- Round 95: tighter highlight lobes (exponents 160 / 110 instead of 90 / 60) did not shrink the grey patch over the cheek either (captures nearly identical); reverted. The patch is gone with `shine 0` but neither the cap
+  nor the exponent moves it: suspect the second highlight (`spec2`, tinted by ALBEDO x 1.3, no cap on its share) or the strand_shift spread making many strands catch the light; next test: zero spec2 alone, then zero spec1 alone.
+- Round 96: zeroing each part of the light() code one at a time on brown Curtains (profile): without the first highlight (`spec1`, 0.3 x white-ish) the patch over the cheek turns warm brown; without the second highlight
+  or the back-lit glow it stays. So the grey is `spec1`: its strength is halved (x 0.5).
+- Round 97: all 31 presets re-run (150 frames each) after the highlight changes of rounds 91-96 (glint scaling, spec1 x 0.5): no script, engine or shader errors.
+- Round 98: stubble density: locks shorter than 6 mm grow 80% of the hairs (0.5 made lace-like holes, 0.8 gave the same look as 0.5 in captures: the speckle is by lock, not by hair, since each short lock is a small clump).
+  The cut sides of Fade/Undercut/Slick undercut are speckled dark stubble with skin showing, like a clippered head; the stubble reads sparse near the top of the cut, dense at the nape.
+- Round 99: final check of the current build (stubble change included): all 31 presets run 150 frames without errors; Fade 192k hairs 57 fps (GPU 2.6 ms), Dapper 198k 57 fps (3.1 ms), Long waves 177k 58 fps (4.2 ms).
+- Round 100 (user: "slick undercut, on the back side I see skin spots"): the spots were the speckled stubble band at the back where the long top meets the cut hair (my own rounds 72, 73, 98: fewer hairs, no fan-out,
+  thinner minimum). Reverted toward a solid cover: stubble hairs fan out again (spread ramp from 1 mm, not 4 mm), full hair count, stubble minimum 3.0 mm x side_trim (0.5 + 0.5 x feather). Back views of Slick
+  undercut, Fade, Undercut, Pixie, Crew cut: no skin spots; the cut area reads as short dark hair with a visible edge under the top. Slick undercut 195k hairs, 59 fps turning (GPU 3.9 ms).
+  Lesson: the "clippered with skin showing" look is not wanted; coverage over realism of stubble.
+- Round 101 (user screenshot, Hair shine slider near its maximum, seen from below at the side: the back/side hair is flat grey-beige): the shine slider was at ~1. At shine 1 and 0.28 the glint was the same
+  grey, so it was sitting AT the cap (any shine above a small value saturates it): the cap was the real strength. The cap is now 0.001 + 0.06 x luminance + 0.006 x dark (was 0.003 + 0.25 x luminance + 0.008 x dark) and
+  the white lobe of the 2nd highlight fades with the hair brightness (not `dark`): from below, the hair is brown with a faint grey sheen, at shine 0 pure brown. The slider now only matters below about 0.3.
+  (Round 94 lowered the cap and saw "no change": that capture was probably stale: always check the file time.)
+- Round 102 (user: "maybe make hair shine to 0 by default"): default `shine` is 0 in the shader and in the lab slider (was 0.28): hair is matte brown from every angle; the slider still brings the highlight back.
+- Round 103 (user: the skin shows through gaps where the hair is stiff; "the paint was noticeable, find a better way"): a dark scalp as the SKIN'S OWN colour, nothing drawn over the head. HumanHair now writes
+  `hair_scalp_weight` (per body vertex: 0 at the hairline, smoothstep to 1 over 2.5 cm above it; mesh meta). New `shaders/human_skin.gdshader` replaces the lab's StandardMaterial3D skin (same albedo 0.6/0.4/0.32,
+  roughness 0.55, SSS 0.2) and mixes in `scalp_color` (= hair colour x 0.55, follows the colour picker) by that weight, read from a texture by VERTEX_ID (width 1024, R32F). The old "crown patch" layer defaults to 0 now.
+  Top/side/back views of Pompadour and Fade: no pale specks at the crown or the part, the face skin is unchanged. Open: the skin shader is only in the lab: the game's body materials need the same shader + upload.
+- Round 104 (user: "i still see some skin"): the scalp weight now starts at 0.55 at the hairline (was 0) and rises to 1 over 2.5 cm: the edge row of the scalp is half dark. Captures (Dapper front/side, Fade side,
+  Buzz top, Pompadour back) show no pale skin through the hair; left: a dark star hole at the crown of Buzz and a thin light line along its front hairline. Without a screenshot of the exact angle and style I cannot
+  tell which spots the user sees: ask for one (style, angle, and whether the head was moving: hair that lags behind a turn exposes the scalp, which is dark now but still skin-lit).
+- Round 105: (1) the white specks the user showed (Dapper, quiff base, seen from the left-top side: my captures had used the wrong side): they were scalp skin seen at a grazing angle, glossy (specular + SSS), so white
+  even though the scalp colour is dark. The skin shader now makes the scalp matte (roughness -> 1, specular 0, SSS off with the scalp weight): the specks are tiny tan dots now. (2) CORRECTION OF EVERY HAIR COUNT IN
+  THESE NOTES: the lab readout was guides x hairs-per-lock, but near the hairline a lock grows fewer hairs than that, so it overstated. Real hairs = (vertices - ~600) / (2 x points): Dapper 113.7k (not 197k), Pompadour
+  112k, Long waves 113k, Buzz 95.8k, Afro 95.8k, Fade 112.7k. The "150k" of rounds 38-77 was really ~90-100k; the always-on crown/part extras of round 78 raised it to ~110k, not 30% to 200k. The readout is fixed.
+- Round 106 (user: "make sure we have always like 150k or 200k"): FOUND A CAP: the generator clamped `strands` (hairs per lock) to 24 (human_hair_native.cpp, `Math::clamp(..., 0.0, 24.0)`), so every "40 per lock" preset had
+  really been 24, and the "60 per lock = same GPU time" test of round 16 was the same cap. The cap is now 96. The lab aims every style at TARGET_HAIRS = 170,000 REAL hairs: it scales the preset's hairs per lock by
+  `_strand_scale` (learned: after a build more than 8% off the target it rescales and builds again, twice at most; reset when a slider moves), up to 96 per lock. Result: Dapper 170.8k, Fade 169.1k, Long waves 169.7k,
+  Curly 171.8k, Buzz and Afro 159.8k (6% under: the per-lock cap), all at 58-60 fps while turning (GPU 4.2-5.0 ms); builds 1.7-3.8 s (Long waves). Vertices 2.0M (Dapper) to 4.1M (Long waves: 12 points).
+  Every earlier hair/vertex count in these notes before this round is for 24 per lock at most.
+- Round 107 (user: "a person can have any hairstyle but always the same follicles, right?"): yes. The follicle set no longer depends on the style: the style-dependent extras are gone (fringe/quiff front extras are
+  a fixed set as for a medium fringe, the parting-line extras always, the old fill/back/edge extras off), a lock is never dropped for being short (min length 1.5 mm: a cut style makes the hair short, it does not
+  remove it), and the lab uses one hairs-per-lock for all styles (40 x the learned scale). Real hairs per style are now within ~2% of each other: Dapper 171.6k, Fade 169.4k, Buzz 167.9k, Long waves 169.7k, Afro 167.9k,
+  Pompadour 168.4k, Bob 168.9k (6.15-6.3k guides). Dapper 58 fps (GPU 3.6 ms, build 1.5 s), Long waves 60 fps (5.2 ms, build 3.6 s). Fringes and bobs are fuller. All presets run without errors.
+  The `extras` parameter remains in the generator but is ignored.
+- Round 108 (user: "how thick are the hairs? like real life?"): no: a hair was a ribbon 1.4 mm wide (real 0.05-0.1 mm), because thin ribbons at the old (24 per lock, <120k) counts left gaps. Added the lab slider
+  "Hair thickness" (`strand_width`, 0.2-3 mm) and compared 1.4 / 0.9 / 0.6 / 0.4 mm at 170k hairs: no gaps at the crown, part or silhouette down to 0.4 mm; thinner is finer and a little darker. Default now 0.8 mm
+  (generator default and fallback). Side effect of the fixed follicles (round 107) + thinner hair: long styles with fringe 0 let front strands fall over the eyes (Long waves, Long, Wavy medium); front extras now
+  use front_density 0.15 (was 0.45) and these three presets use swept 1, quiff 0.9, parting 0.5, sweep 0.3: eyes and brows free. Build note: a build fails ("scons: building terminated") while ANY lab window is open
+  (kill them all first, including the windowed `Godot_v4.7.2-stable_win64.exe`).

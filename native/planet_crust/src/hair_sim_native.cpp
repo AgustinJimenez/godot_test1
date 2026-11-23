@@ -29,6 +29,14 @@ void HairSim::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_weight"), &HairSim::get_weight);
 	ClassDB::bind_method(D_METHOD("set_bend_stiffness", "value"), &HairSim::set_bend_stiffness);
 	ClassDB::bind_method(D_METHOD("get_bend_stiffness"), &HairSim::get_bend_stiffness);
+	ClassDB::bind_method(D_METHOD("set_local_stiffness", "value"), &HairSim::set_local_stiffness);
+	ClassDB::bind_method(D_METHOD("get_local_stiffness"), &HairSim::get_local_stiffness);
+	ClassDB::bind_method(D_METHOD("set_air_drag", "value"), &HairSim::set_air_drag);
+	ClassDB::bind_method(D_METHOD("get_air_drag"), &HairSim::get_air_drag);
+	ClassDB::bind_method(D_METHOD("set_max_swing", "value"), &HairSim::set_max_swing);
+	ClassDB::bind_method(D_METHOD("get_max_swing"), &HairSim::get_max_swing);
+	ClassDB::bind_method(D_METHOD("set_strand_damping", "value"), &HairSim::set_strand_damping);
+	ClassDB::bind_method(D_METHOD("get_strand_damping"), &HairSim::get_strand_damping);
 	ClassDB::bind_method(D_METHOD("set_calm_damping", "value"), &HairSim::set_calm_damping);
 	ClassDB::bind_method(D_METHOD("get_calm_damping"), &HairSim::get_calm_damping);
 	ClassDB::bind_method(D_METHOD("set_calm_speed", "value"), &HairSim::set_calm_speed);
@@ -52,6 +60,8 @@ void HairSim::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_surface_collision"), &HairSim::get_surface_collision);
 	ClassDB::bind_method(D_METHOD("get_penetration_count"), &HairSim::get_penetration_count);
 	ClassDB::bind_method(D_METHOD("get_mean_tip_offset"), &HairSim::get_mean_tip_offset);
+	ClassDB::bind_method(D_METHOD("get_busiest_guide"), &HairSim::get_busiest_guide);
+	ClassDB::bind_method(D_METHOD("get_guide_points", "guide"), &HairSim::get_guide_points);
 	ClassDB::bind_method(D_METHOD("get_mean_tip_vector"), &HairSim::get_mean_tip_vector);
 	ClassDB::bind_method(D_METHOD("get_guide_count"), &HairSim::get_guide_count);
 	ClassDB::bind_method(D_METHOD("rebind"), &HairSim::rebind);
@@ -65,6 +75,10 @@ void HairSim::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "wind"), "set_wind", "get_wind");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "weight"), "set_weight", "get_weight");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "bend_stiffness"), "set_bend_stiffness", "get_bend_stiffness");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "local_stiffness"), "set_local_stiffness", "get_local_stiffness");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "air_drag"), "set_air_drag", "get_air_drag");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "max_swing"), "set_max_swing", "get_max_swing");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "strand_damping"), "set_strand_damping", "get_strand_damping");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "calm_damping"), "set_calm_damping", "get_calm_damping");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "calm_speed"), "set_calm_speed", "get_calm_speed");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "iterations"), "set_iterations", "get_iterations");
@@ -173,13 +187,52 @@ void HairSim::collide_surface(Vector3 &p_world, const Transform3D &p_xf, const T
 		return;
 	}
 	const Vector3 p = p_inv.xform(p_world);
-	double best_d2 = 0.0;
-	const int best = nearest_surface(p, best_d2);
+	const int cx = int(std::floor(double(p.x) / surface_cell)) - grid_min[0];
+	const int cy = int(std::floor(double(p.y) / surface_cell)) - grid_min[1];
+	const int cz = int(std::floor(double(p.z) / surface_cell)) - grid_min[2];
+	if (cx < -1 || cy < -1 || cz < -1 || cx > grid_dim[0] || cy > grid_dim[1] || cz > grid_dim[2]) {
+		return;
+	}
+	// the skin around the point, smoothed (one scan): the vertices within a centimetre or so weighted by closeness. A point that slides between two vertices would otherwise be pushed along a different normal each step and shake.
+	constexpr float kRadius = 0.014f;
+	constexpr float kRadius2 = kRadius * kRadius;
+	Vector3 sum_p, sum_n;
+	float sum_w = 0.0f;
+	float best_d2 = float(surface_cell * surface_cell);
+	int best = -1;
+	const int x0 = std::max(cx - 1, 0), x1 = std::min(cx + 1, grid_dim[0] - 1);
+	const int y0 = std::max(cy - 1, 0), y1 = std::min(cy + 1, grid_dim[1] - 1);
+	const int z0 = std::max(cz - 1, 0), z1 = std::min(cz + 1, grid_dim[2] - 1);
+	for (int x = x0; x <= x1; x++) {
+		for (int y = y0; y <= y1; y++) {
+			const size_t row = (size_t(x) * size_t(grid_dim[1]) + size_t(y)) * size_t(grid_dim[2]);
+			for (int k = grid_start[row + size_t(z0)]; k < grid_start[row + size_t(z1) + 1]; k++) {
+				const size_t i = size_t(grid_items[size_t(k)]);
+				const float d2 = (p - surface_p[i]).length_squared();
+				if (d2 < best_d2) {
+					best_d2 = d2;
+					best = int(i);
+				}
+				if (d2 < kRadius2) {
+					const float t = 1.0f - d2 / kRadius2; // (a smooth fall-off that needs no square root)
+					const float w = t * t;
+					sum_p += surface_p[i] * w;
+					sum_n += surface_n[i] * w;
+					sum_w += w;
+				}
+			}
+		}
+	}
 	if (best < 0) {
 		return;
 	}
-	const Vector3 &n = surface_n[size_t(best)];
-	const double depth = double((p - surface_p[size_t(best)]).dot(n));
+	Vector3 n = surface_n[size_t(best)];
+	Vector3 on_skin = surface_p[size_t(best)];
+	if (sum_w > 1e-9f && sum_n.length_squared() > 1e-12f) {
+		n = sum_n.normalized();
+		on_skin = sum_p / sum_w;
+	}
+	const double depth = double((p - on_skin).dot(n));
 	if (depth < surface_margin) {
 		const Vector3 fixed = p + n * real_t(surface_margin - depth);
 		p_world = p_xf.xform(fixed);
@@ -223,6 +276,39 @@ Vector3 HairSim::get_mean_tip_vector() const { // (the mean of the ABSOLUTE comp
 	return sum / real_t(guide_count);
 }
 
+PackedVector3Array HairSim::get_guide_points(int p_guide) const {
+	PackedVector3Array out;
+	if (p_guide < 0 || p_guide >= guide_count) {
+		return out;
+	}
+	for (int k = 0; k < steps; k++) {
+		out.push_back(pos[size_t(p_guide) * size_t(steps) + size_t(k)]);
+	}
+	return out;
+}
+
+Vector3 HairSim::get_busiest_guide() const {
+	// x: the largest distance any point moved in the last step (metres), y: the guide it belongs to, z: how many guides moved more than 0.1 mm in the last step (for finding hair that never settles)
+	double best = 0.0;
+	int best_guide = -1;
+	int moving = 0;
+	const size_t n = size_t(steps);
+	for (int g = 0; g < guide_count; g++) {
+		double guide_best = 0.0;
+		for (size_t k = 1; k < n; k++) {
+			guide_best = std::max(guide_best, double((pos[size_t(g) * n + k] - prev[size_t(g) * n + k]).length()));
+		}
+		if (guide_best > 1e-4) {
+			moving++;
+		}
+		if (guide_best > best) {
+			best = guide_best;
+			best_guide = g;
+		}
+	}
+	return Vector3(real_t(best), real_t(best_guide), real_t(moving));
+}
+
 double HairSim::get_mean_tip_offset() const {
 	if (!bound || !primed || guide_count <= 0) {
 		return 0.0;
@@ -238,6 +324,7 @@ double HairSim::get_mean_tip_offset() const {
 
 void HairSim::kick(const Vector3 &p_impulse) {
 	// a velocity change: move the previous positions back
+	std::fill(calm_steps.begin(), calm_steps.end(), 0);
 	for (size_t i = 0; i < pos.size(); i++) {
 		if (i % size_t(std::max(steps, 1)) != 0) {
 			prev[i] -= p_impulse * real_t(1.0 / 60.0);
@@ -308,6 +395,7 @@ void HairSim::bind_mesh() {
 	build_surface_grid();
 	pos.assign(rest.size(), Vector3());
 	prev.assign(rest.size(), Vector3());
+	calm_steps.assign(size_t(guide_count), 0);
 	if (!inherited.empty() && guide_count == old_guides && old_steps >= 2) {
 		if (steps == old_steps) {
 			carry = inherited;
@@ -351,11 +439,46 @@ void HairSim::step_guide(int g) {
 	for (size_t k = 0; k < n; k++) {
 		target[k] = p_xf.xform(r[k]);
 	}
+	// a guide that has hardly moved for half a second, with the head still and no wind, sleeps (it wakes as soon as the head moves)
+	int &calm = calm_steps[size_t(g)];
+	if (calm >= 30 && sd.wind_dt2.length_squared() == 0.0f && (target[0] - p[0]).length_squared() < 1e-10f) {
+		for (size_t k = 1; k < n; k++) {
+			q[k] = p[k];
+		}
+		return;
+	}
+	Vector3 start[kMaxSteps];
+	for (size_t k = 0; k < n; k++) {
+		start[k] = p[k];
+	}
 	// the root follows the scalp
 	p[0] = target[0];
 	q[0] = p[0];
+	// velocities (m per step); neighbouring points lose their difference in velocity (damping inside the strand: it stops the strand's own wobble, not its swing as a whole)
+	Vector3 vel[kMaxSteps];
 	for (size_t k = 1; k < n; k++) {
-		Vector3 velocity = p[k] - q[k];
+		vel[k] = p[k] - q[k];
+	}
+	if (strand_damping > 0.0) {
+		const real_t share = real_t(0.5 * strand_damping);
+		for (size_t k = 2; k < n; k++) {
+			const Vector3 rel = (vel[k] - vel[k - 1]) * share;
+			vel[k] -= rel;
+			vel[k - 1] += rel;
+		}
+	}
+	for (size_t k = 1; k < n; k++) {
+		Vector3 velocity = vel[k];
+		// the air: moving across the strand costs far more than along it, and the faster the more (quadratic), so a swing slows the way real hair does
+		if (air_drag > 0.0) {
+			const Vector3 tangent_raw = p[k] - p[k - 1];
+			if (tangent_raw.length_squared() > 1e-12f) {
+				const Vector3 tangent = tangent_raw.normalized();
+				const Vector3 across = velocity - tangent * velocity.dot(tangent);
+				const double across_speed = double(across.length()) * 60.0; // m/s
+				velocity -= across * real_t(std::min(0.6, air_drag * (0.4 + across_speed) * sd.stiffness_scale));
+			}
+		}
 		// small movements die out fast (friction between the hairs), big swings keep the normal damping
 		const double speed_ratio = std::min(1.0, double(velocity.length()) / calm_speed);
 		const double blend = speed_ratio * speed_ratio * (3.0 - 2.0 * speed_ratio);
@@ -373,6 +496,28 @@ void HairSim::step_guide(int g) {
 		const double along = double(k) / double(n - 1);
 		const double stiff = std::min(0.95, (root_stiffness + (tip_stiffness - root_stiffness) * along) * sd.stiffness_scale);
 		p[k] += (target[k] - p[k]) * real_t(stiff);
+	}
+	// local shape (as in AMD TressFX): each segment keeps its angle to the one before it, so a curve or a bend at the root holds along the whole strand
+	if (local_stiffness > 0.0) {
+		for (size_t k = 2; k < n; k++) {
+			const Vector3 rest_prev = target[k - 1] - target[k - 2];
+			const Vector3 now_prev = p[k - 1] - p[k - 2];
+			if (rest_prev.length_squared() < 1e-12f || now_prev.length_squared() < 1e-12f) {
+				continue;
+			}
+			const Vector3 from_dir = rest_prev.normalized();
+			const Vector3 to_dir = now_prev.normalized();
+			if (from_dir.dot(to_dir) < -0.9f) {
+				continue; // the segment is turned back on itself: no sensible rotation between them (the rotation would not even be unit length)
+			}
+			const Quaternion turn = Quaternion(from_dir, to_dir).normalized();
+			const Vector3 wanted = p[k - 1] + turn.xform(target[k] - target[k - 1]);
+			const Vector3 move = (wanted - p[k]) * real_t(local_stiffness);
+			p[k] += move;
+			if (k > 2) {
+				p[k - 1] -= move * real_t(0.25);
+			}
+		}
 	}
 	// a longer chain needs more passes to stay as stiff in length (about half a pass per point)
 	const int passes = std::max(iterations, int(n) / 2);
@@ -425,22 +570,74 @@ void HairSim::step_guide(int g) {
 				}
 			}
 		}
+		if (it == passes - 1) {
+			// the skin is part of the last passes, so the length constraints settle against it (collision only after them left the strand fighting the skin and creeping)
+			for (size_t k = 1; k < n; k++) {
+				collide_surface(p[k], p_xf, inverse);
+			}
+		}
 		p[0] = target[0];
 	}
-	// a safety limit: never farther from the rest place than max_displacement
+	// no stretching, whatever the head did: from the root out, every point is put back at its exact distance from the one before it (a fast turn moves the root by centimetres in one step and the few passes above cannot pull the whole chain along)
 	for (size_t k = 1; k < n; k++) {
+		Vector3 d = p[k] - p[k - 1];
+		const double dl = double(d.length());
+		if (dl > 1e-9) {
+			p[k] = p[k - 1] + d * real_t(len[k - 1] / dl);
+		}
+	}
+	// a safety limit: never farther from the rest place than max_displacement
+	// ... and a limit on the swing: a point may leave its place in the style by at most `max_swing` x the length of the strand up to that point (the tip of a short lock cannot dance away), then the lengths are restored
+	double arc = 0.0;
+	bool clamped = false;
+	for (size_t k = 1; k < n; k++) {
+		arc += len[k - 1];
+		const double limit = std::min(max_displacement, 0.004 + max_swing * arc);
 		Vector3 off = p[k] - target[k];
 		const double ol = double(off.length());
-		if (ol > max_displacement) {
-			p[k] = target[k] + off * real_t(max_displacement / ol);
+		if (ol > limit) {
+			p[k] = target[k] + off * real_t(limit / ol);
+			clamped = true;
 		}
 	}
-	// last word: out of the skin, after everything else moved the points (twice: a push can end next to another vertex)
-	for (int pass = 0; pass < 2; pass++) {
+	if (clamped) {
 		for (size_t k = 1; k < n; k++) {
-			collide_surface(p[k], p_xf, inverse);
+			Vector3 d = p[k] - p[k - 1];
+			const double dl = double(d.length());
+			if (dl > 1e-9) {
+				p[k] = p[k - 1] + d * real_t(len[k - 1] / dl);
+			}
 		}
 	}
+	// last word: out of the skin, after everything else moved the points
+	for (int pass = 0; pass < 1; pass++) {
+		for (size_t k = 1; k < n; k++) {
+			const Vector3 before = p[k];
+			collide_surface(p[k], p_xf, inverse);
+			if (before.distance_squared_to(p[k]) > 1e-12f) {
+				// pushed out of the skin: the push must not turn into speed (the pull to the style would drive the point back in, and it would bounce on the skin every step)
+				// and the point rests on the skin instead of sliding on it (friction: most of this step's sideways movement is undone), so it does not creep between two vertices' planes
+				const Vector3 push = (p[k] - before).normalized();
+				const Vector3 moved = p[k] - q[k];
+				p[k] -= (moved - push * moved.dot(push)) * real_t(0.9);
+				q[k] = p[k];
+			}
+		}
+	}
+	// the skin pushes may have stretched a strand (fast turns): once more, exact lengths (the skin gives way a little instead of the hair stretching)
+	for (size_t k = 1; k < n; k++) {
+		Vector3 d = p[k] - p[k - 1];
+		const double dl = double(d.length());
+		if (dl > 1e-9) {
+			p[k] = p[k - 1] + d * real_t(len[k - 1] / dl);
+		}
+	}
+	double moved_most = 0.0;
+	for (size_t k = 1; k < n; k++) {
+		moved_most = std::max(moved_most, double((p[k] - start[k]).length()));
+	}
+	calm = (moved_most < 6e-4 && (target[0] - start[0]).length_squared() < 1e-10f) ? calm + 1 : 0;
+
 }
 
 void HairSim::step_chunk(int p_chunk) {
