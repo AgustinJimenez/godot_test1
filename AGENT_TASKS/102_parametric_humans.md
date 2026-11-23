@@ -580,3 +580,146 @@ Still open: B7 for eyes/underwear shaders, scalp constants in absolute metres, e
   (generator default and fallback). Side effect of the fixed follicles (round 107) + thinner hair: long styles with fringe 0 let front strands fall over the eyes (Long waves, Long, Wavy medium); front extras now
   use front_density 0.15 (was 0.45) and these three presets use swept 1, quiff 0.9, parting 0.5, sweep 0.3: eyes and brows free. Build note: a build fails ("scons: building terminated") while ANY lab window is open
   (kill them all first, including the windowed `Godot_v4.7.2-stable_win64.exe`).
+- Round 109 (brows and lashes loop, first round): baked finer face hair with `tools/blender/make_face_hair.py` (run: copy `assets/models/humans/{male,female}_body.glb` and `tools/blender/landmarks/*_landmarks.json` into one scratch
+  folder, `blender -b --factory-startup --python tools/blender/make_face_hair.py -- <folder>`, copy the four `*_brows.glb` / `*_lashes.glb` back to `assets/models/humans`, then `godot --headless --path . --import`: the lab
+  does NOT see new glb files until they are re-imported). Brows: 560 hairs per brow (was 320), 6.8 mm long (5.2), 0.55 mm wide (0.9); lashes: 34 upper roots x 2 (24 x 3), 18 lower roots (12), 0.6 mm wide (1.1). The brow's
+  outer end is 3.5 mm shorter (the long thin tail seen from the side). Front and side captures: fuller, finer brows with a short tail, lashes a fine fringe, no heavy black spikes. Still: the upper lashes in the middle
+  of the lid are longer and darker (spidery); brow colour is the lab's own colour (not tied to the head hair colour); brows have no gradient from a darker root to a lighter tip.
+- Round 110 (brows and lashes): brows and lashes now follow the head hair colour (lab: `_hair_color` = head colour lightened 10% at start and whenever the head colour changes, unless `--brow=` is given; the Brows tab picker can still
+  override it); face-hair shader: a hair is darker at the root and lighter at the tip (x0.7 .. x1.12), lash_darken 0.55 -> 0.42 (lashes were jet black); upper lashes 7.8 mm (9). Checked on brown/ginger-blond, black and blond heads:
+  the brows match the hair; the black head's brow reads dark grey (the 10% lightening and the tip shading) - could be less. Rebaked glb files (the four), re-imported.
+- Round 111 (brows): the brows looked silver-grey, much lighter than the head hair even with the same colour: the face-hair shader had SPECULAR 0.3 / ROUGHNESS 0.55, so the sun made a white sheen on thin dark strips. Now
+  SPECULAR 0.04, ROUGHNESS 0.8; the lab's brow colour is the head colour lightened only 3% (was 10%). Front and three-quarter close-ups: the brows are dark brown like the hair, with visible strands and a darker root.
+- Round 112 (lashes): a fuller and more uneven fringe: 46 upper roots x 2 (was 34), 26 lower roots (18) 3.4 mm long (4.0), length per lash x0.6-1.05 (was 0.75-1.1). Close-ups of both bodies, front and three-quarter: a dense
+  natural fringe with longer lashes toward the outer lid, a soft lower row; no isolated heavy spikes. Re-baked and re-imported. Lashes are still one colour (the head colour, darkened by 42%): no curl control in the lab yet.
+- Round 113 (brows, light hair colours): blond hair gave lemon-yellow brows and lashes (the brightness multipliers pushed channels past 1) and brows the same colour as the hair. Fixed: `human_face_hair.gdshader` pulls
+  bright colours toward grey (as the head hair shader does); the lab derives the brow colour from the head colour with `_brow_colour_for` (light hair gets darker brows: darkened by up to 50% by luminance). Close-ups
+  of blond, ginger and white hair: dark-blond/olive brows, copper brows, grey brows; dark hair is unchanged. The blond brows read a little olive-green (the grey pull keeps the hue of a yellow-brown): could be warmer.
+- Round 114 (brows, blond hair): the grey pull of the face-hair shader now goes toward a warm grey (x1.12, 1, 0.8) and the lab's `_brow_colour_for` adds a little red for light hair (+12% red, -8% green, -12% blue at full
+  light): blond heads get honey-brown brows, white heads grey ones, ginger and brown unchanged. (+25% red looked orange, +4% still olive: 12% is the middle.)
+
+## Licence rules for outside references (2026-11-23)
+- The repo is PUBLIC on GitHub (AgustinJimenez/godot_test1) and has NO licence file yet; the runtime code is C++ (GDExtension), the labs are GDScript.
+- Reading other projects for IDEAS is fine (techniques and methods are not copyrightable). Copying code, porting it to C++, or shipping its assets is not, unless the licence allows it:
+  - MIT / Apache-2.0 / BSD (TressFX, VHair, oxiphysics-softbody): may be read and adapted with attribution.
+  - GPL / AGPL (CharMorph code is GPL-3.0, its database and the MB-Lab meshes/json are AGPL-3.0): a port to C++ is still a derivative work; assets in the repo would make the repo AGPL. DO NOT copy, translate or ship them. Only note ideas in our own words.
+  - Unreal Engine source (E:\repo\UnrealEngine): study only, nothing pasted (see 083).
+- If the owner decides to take GPL/AGPL material, that needs a licence file and an owner decision first.
+
+### CharMorph (https://github.com/Upliner/CharMorph), read 2026-11-23, ideas only
+- Blender addon (author Upliner); base meshes and morphs from MB-Lab, own database format; hairstyles, real-time asset fitting, Rigify face rig; the rig is added only when the character is finalized.
+- Hair = Blender hair particle systems (not cards) kept in a library .blend; each style is a named particle system copied onto the character; the "scalp" is built from a vertex group on the MORPHED body and the hair is re-fitted (shrinkwrap, offset per character) after each morph.
+- Not found yet: eyebrows, eyelashes, shape-key names, the hair library (the data is a separate repo, CharMorph-db). Next: read the data repo layout and conventions (no copying).
+- CharMorph data repo (CharMorph-db, a submodule), read 2026-11-23, ideas only: layout = `characters/` (antonia, mb_female, mb_male, reom + aliases.yaml), `tweaks/` (YAML: eyes, muscles, rigify_default), `textures/`,
+  `hair_colors.yaml`, `mb_bones.yaml`, `shared_lib.blend`; no top-level hair/clothes/rig folders. A character export is YAML (or MB-Lab JSON): `type`, a `morphs` map (name -> value), `meta`, `materials`.
+  Hair: one particle system per style on a library hair object; scalp built from vertex group `scalp[_name]` of the morphed body (else the whole body); density/length painted in vertex groups `hair_<character type>` / `hair`;
+  default HAIR type, interpolated children, root radius 0.01; "refit" re-runs the fit; optional shrinkwrap (project, outside surface, per-character offset). Hair colour = a table of 12 named entries (`hair_colors.yaml`: Blender
+  hair BSDF, MELANIN / COLOR / ABSORPTION, tint, roughness, ior, viewport colour). Assets (clothes) have a "fitter": binder soft/hard, mask none/per-asset/combined, weights none/original/object; each asset has a `license` field.
+  Nothing found about eyebrows, eyelashes or beards. Not read: morphing.py, rig.py, lib/fitting, the character folders, any asset licence value, the db licence (no LICENSE file visible at its root).
+  Ideas we could use in our own words: (1) a table of named hair colours (melanin-style: dark brown, blond, ginger, grey) instead of free colour picking: our lab swatches are the start of this; (2) density and length painted per
+  region (we use hairline and side_trim functions: a paintable weight map would let artists shape a cut without code); (3) saving a character as a small data file (type + morph values) rather than scene state.
+
+### Blender Character Project docs (https://blendercharacterproject.org/docs/html/Hair.html, = the CharMorph 0.2 documentation), read 2026-11-23
+- The Hair page is only a gallery of which characters ship which hair; it does NOT explain the hair system, parameters, colour model or numbers.
+- Code: GPL (version not named). Per-character content licences: Antonia CC-BY 4.0, Reom CC-BY 4.0, Vitruvian CC0, MB-Lab AGPL 3.0. The docs pages carry no licence statement.
+- Hair is stored as curves/strands (Reom, Vitruvian: hairstyles converted to curves); Reom's eyebrows are Blender hair systems modelled on the MakeHuman eyebrows (12 styles, Eyebrows001-012); Vitruvian's are MakeHuman
+  "mind_eyebrows" meshes (by Mindfront) converted to strands (14 variants, default mind_eyebrows_11). Eyelashes and beards: not covered.
+- Possibly reusable in a public repo: Vitruvian (CC0 at character level), but its eyebrows/hairstyles are credited to third parties (Mindfront via MakeHuman, Renderosity Zoro_d, MakeHuman 04Saken) with no licence given on the page:
+  check each asset's own source/licence (the MakeHuman asset packs list the CC0 eyebrow, eyelash and hair packs) before using anything.
+
+### MakeHuman asset packs (https://static.makehumancommunity.org/assets/assetpacks/), read 2026-11-23, from the pack pages (zips not opened yet)
+| pack | author | licence | size | items | note |
+|---|---|---|---|---|---|
+| Eyebrows 01 (eyebrows01_cc0.zip) | Mindfront | CC0 | 10 MB | 14 (mindfront_eyebrows_01..14), typed "clothes" | the same eyebrows Vitruvian uses |
+| Eyelashes 01 (eyelashes01_cc0.zip) | Mindfront | CC0 | 3 MB | 5 (mindfront_eyelashes_01..05) | page text says "high-res eyebrows" (copy-paste error) |
+| Hair 01 (hair01_cc0.zip) | Cortu, culturalibre, Elvaerwyn, Faydaen, learning, littleright, punkduck, RehmanPolanski, sonntag78, MargaretToigo | CC0 | 217 MB | 25 (bobs, braids, buns, bangs...) | low-poly, stylized |
+| Hair 02 (hair02_ccby.zip) | Elvaerwyn | CC-BY | 68 MB | 21 | high-poly: needs credit |
+| Hair 03 (hair03_ccby.zip) | culturalibre, grinsegold, punkduck | CC-BY | 38 MB | 14 | needs credit |
+| Bodyparts 05 (bodyparts05_cc0.zip) | culturalibre, grinsegold, RehmanPolanski, WDG | CC0 | 6 MB | 5 beards / moustaches | become "clothes" in MPFB2 |
+| Hair editor (functional) | Tomas Klecer | page names none; index says functional packs are CC0 | 18 MB | hair.blend, fur.blend (geometry nodes) | |
+- Downloads: files.makehumancommunity.org/asset_packs/<pack>/<pack>_cc0.zip (or _ccby.zip), mirror files2.makehumancommunity.org. MPFB2: "apply assets" -> library settings -> "install asset pack" (pick the zip);
+  MakeHuman 1.x: unzip into data/. The site announced (2026-10-21, 2026-11-08) that community services shut down / move to Discord: download hosts may disappear.
+- Core assets are CC0 (code: MPFB GPL, MakeHuman AGPL). Unknown until opened: file types (.mhclo/.obj/.mhmat/.png), mesh vs cards vs strands. CC-BY attribution wording: not on the pages (old wiki FAQ).
+- Rule kept: nothing goes into the repo unless its own item says CC0 (or CC-BY with a credits file written). Downloads go to the session scratchpad first.
+- OPENED the Mindfront packs (downloaded to the session scratchpad only: `mh_eyebrows/`, `mh_eyelashes/`, nothing in the repo): each item folder has `<name>.mhclo` (header says `# author Mindfront (Sweden)` and `# license CC0`),
+  `<name>.obj`, `<name>.mhmat`, `<name>.thumb`. The meshes are real geometry, no textures (mhmat: black diffuse, no maps): eyebrows_11 = 24,984 vertices / 18,567 faces (both brows, about 12.5k verts each); eyelashes_01 =
+  11,088 vertices / 8,316 faces. They are in MakeHuman units (dm, y up: the brow sits at y 7.42) and are fitted to the MakeHuman base mesh `hm08` through the mhclo: for each of the obj's vertices, three base-mesh vertex
+  indices, three barycentric weights and an offset (scaled by x_scale/y_scale/z_scale from reference vertex distances). OUR BODY KEEPS THE hm08 BODY VERTICES FIRST (13,380 body verts, then helpers: `make_bodies.py` BODY_VERTS),
+  so the mhclo indices (e.g. 181, 208, 209: forehead height z=1.65 m in our glb) point at the same places on our mesh: the Mindfront brows and lashes can be fitted to our bodies and bound to our shape keys exactly like
+  `make_face_hair.py` does. First 3 reference vertices of the eyelashes (6814, 6828, 6837) are at foot height in our mesh, so lash mhclo may use a different index set: check before binding.
+  Plan: a Blender script `tools/blender/fit_mindfront.py` (our own code, no MakeHuman code) that reads the CC0 mhclo/obj, rebuilds each vertex = sum(weight x our vertex) + offset x scale, adds UVs/vertex colours our face-hair shader needs,
+  binds it to our shape keys and writes `*_brows_mf.glb` / `*_lashes_mf.glb` to compare against ours; credit Mindfront in a CREDITS file if we keep them (CC0 does not require it, but it is the right thing).
+- Round 115 (MakeHuman CC0 packs, FIRST FITTED RESULT): the Mindfront CC0 brows and lashes are fitted to our bodies and look much better than ours: lower, fuller, natural brow shape, a fine real-looking lash fringe.
+  Findings: (1) each Mindfront hair is a 3-sided tube of 3-4 rings (0.08 mm thick): 2,139 hairs in the 14-item brows (about 1,070 per brow), 924 lashes in eyelashes_01; (2) the mhclo indices refer to the MakeHuman base
+  mesh in ITS OWN order, not to our glb (the glTF round trip splits and re-orders vertices: the first attempt put hairs on the feet); `tools/blender/fit_mindfront.py` (new, our code) re-creates the base mesh with MPFB
+  (to get hm08 order), rebuilds every vertex = sum(weights x base) + offset x scale (axes MakeHuman x,y,z -> ours x,z,-y; units dm -> m), takes each hair's ring centres as a polyline, builds OUR tapered strips (width 0.4 mm
+  brows / 0.3 mm lashes, a parameter), and binds them to our shape keys with the same nearest-vertex method as make_face_hair.py; (3) outputs `{male,female}_brows_mf.glb` and `{male,female}_lashes_mf.glb` in
+  assets/models/humans (about 2.3 MB and 1 MB each); `assets/models/humans/CREDITS.md` credits Mindfront (CC0). The lab uses them by default now (`--classic-face-hair` loads ours). Run: `blender -b --factory-startup --python
+  tools/blender/fit_mindfront.py -- assets/models/humans <unzipped item folder> <label> <out folder> [width_m]` then copy and `godot --headless --import`. Other brow styles (01-14) and lash sets (01-05) are in the
+  scratchpad zips: try them by changing the item folder. Not yet checked: shape-key following at height +/-1, the female face, the head-hair colour link and density slider (green channel = random 0..1 is set).
+- Round 116 (Mindfront brows, checks): (1) the fitted brows follow the body shape keys: height +1 / -1, weight +1 and muscle +1 captures (close-ups, distance 0.3) keep the brows on the brow ridge, no floating or sinking,
+  and the density slider thins them (density 0.4 visibly sparser); (2) more styles baked from the same CC0 pack and selectable in the lab with `--face-hair=_mf03|_mf06|_mf09` (default `_mf` = style 11): 03 = thin and
+  straight, 06 = thick and arched, 09 = medium arched, 11 = thick, flat and low (default). Files `{male,female}_brows_mf03/06/09.glb` added to assets/models/humans (2.3 MB each); the lashes are shared (`_mf`).
+  Brow style could become a lab selector (with all 14) and a generator parameter: not done. Hair 01 (CC0, 217 MB) not downloaded yet.
+
+### Hair 01 pack opened (downloaded to the scratchpad only, 228 MB): THE PACK PAGE SAYS CC0 BUT SEVERAL ITEMS DO NOT (2026-11-23)
+Each item's `.mhclo` header carries its own licence line. Rule from now on: read the header of EVERY item before using it; the pack page is not enough.
+- Eyebrows 01 (14) and Eyelashes 01 (5): all 19 headers say CC0 (author Mindfront). OK to use (done: credits in assets/models/humans/CREDITS.md).
+- Hair 01 (25 items): CC0 per header: toigo_inverted_bob, toigo_inverted_bob_with_bangs, toigo_blunt_bob, toigo_blunt_bob_with_bangs, toigo_curled_under_bob, toigo_curled_under_bob_with_bangs (MRT), faydaen_hair_1,
+  culturalibre_hair_05, culturalibre_hair_06; cortu_short_messy_hair says "Cortu Johnstone - CC0" (the other cortu_* items and the cloud/shaggy/bangs ones have no licence line: assume nothing, check the page).
+  NOT usable: AGPL3 in the header: sonntag78_blond_with_headband, sonntag78_junglebook_hair, learning_anime_hair, littleright_bobcut_hair, elvs_double_mh_braid, elvs_unkempt_french_braid,
+  elvs_french_braid_variation, culturalibre_hair_01, culturalibre_hair_02, rehmanpolanski_hair_bun_brown; CC BY 4.0 (credit needed): o4saken_long01, elvs_reverse_french_braid_bun (header "CC_by").
+- What the hair items are: low-poly shell/card meshes with textures (not strands): e.g. cortu_short_messy_hair 832 vertices / 546 faces, 0.5 MB diffuse + normal map, alpha-to-coverage; toigo bobs 1.5k vertices with three
+  10 MB PNGs each (diffuse, normal, specular); culturalibre_hair_05 2.6k vertices, a 5 KB texture. Fitted to the MakeHuman base mesh through the mhclo the same way as the brows (tools/blender/fit_mindfront.py works for it).
+- What they would give us: styles we cannot grow (bobs with bangs, buns), as low-cost far-LOD or card hair; as REFERENCE shapes the bobs and the short messy cut are useful to compare with our Bob / Messy crop.
+  Big textures (30 MB) would not be copied into the repo; if used, only the CC0 items, textures downscaled, credits added.
+- Round 118 (Hair 01, first fitted hair shell): `tools/blender/fit_mh_mesh.py` (new, our code, same mhclo fitting as fit_mindfront.py but keeps the obj's faces and UVs as one mesh) fitted the CC0 `cortu_short_messy_hair`
+  (832 vertices, 546 faces, diffuse 0.5 MB) to both bodies and bound it to our shape keys; lab option `--mh-hair=hair_messy:short_messy_diff.png` shows it (alpha-scissor material) in place of our hair. Result: it sits on the head
+  and follows the body shape keys; it looks like a loose, ragged cap of long thin cards, thin and light (the texture is white/pink: it is a tintable grayscale-ish map, we do not tint it yet) with stray single wisps; our hair
+  is a solid 170k-strand mass, much denser and darker, which is what we want for near views. The shell is useful as a far-LOD or as a style we cannot grow (bangs, wisps). Files: assets/models/humans/mh_hair/ (2 glb, 1 png),
+  credited in assets/models/humans/CREDITS.md. Next (optional): tint the texture with the lab hair colour, and try toigo_blunt_bob (CC0, 1.5k vertices, three 10 MB textures: downscale first).
+
+### MakeHuman asset packs: the full index (2026-11-23, index page + 4 pack pages read; about 77 packs; remember: licence is per ITEM header, see the Hair 01 warning)
+Page for each pack: https://static.makehumancommunity.org/assets/assetpacks/<slug>.html
+- System (CC0 per page): `makehuman_system_assets` (267 MB, about 98 items: proxies, eyes, eyebrows, eyelashes, teeth, tongue, hair, clothes, skins), `makehuman_system_poses`, `system_clothes_materials01`,
+  `system_hair_materials01` / `02`, `system_eye_materials01` (13 MB, 13 human eye materials by bobby_03, Mindfront, Nyloseth, spamrakuen, WojackOWL), `system_eye_materials02` (non-human). CC-BY: `system_eye_materials03`.
+- Skins (CC0 per page): `skins01` natural female (99 MB, 23 items; MargaretToigo, CutOff3D, OnlyTheGhosts, Nyloseth...), `skins02` natural male, `skins03` non-natural.
+- Targets (CC0): `ears01`, `nose01`, `cheek01`, `arms01`, `hands01`, `animal01`; CC-BY: `animal02-04` (JALdMIC). Poses (CC0): `poses01-05`.
+- Meshes CC0: `eyebrows01`, `eyelashes01` (Mindfront), `hair01`, `bodyparts01/04/05` (horns, nails, beards), `hats01/02`, `glasses01`, `gloves01`, `jewelry01`, `masks01`, `pants01`, `shirts01`, `shoes01`, `skirts01`, `suits01/02/05`,
+  `dress01`, `equipment01`, `underwear01/04`. Mesh CC-BY: `hair02/03`, `bodyparts02/03/06`, `dress02/03`, `hats03/04`, `shirts02/03`, `shoes02/03`, `pants02/03`, `suits03/04`, `underwear02/03`, `glasses02`, `jewelry02`, `masks02`, `skirts02`, `equipment02/03`.
+- Functional (CC0 per the index): `haireditor`, `visemes01` (Microsoft), `visemes02` (Meta/Oculus), `faceunits01` (ARKit-style face units).
+- What could help us next: `ears01`/`nose01`/`cheek01` (face shape targets, our bodies have only 6 shape keys), `skins01/02` (skin textures; we have a flat colour), `faceunits01`/`visemes` (face expressions and lip sync: our face has none),
+  `system_eye_materials01` (more eye looks), `bodyparts05` (CC0 beards and moustaches: facial hair), `underwear01`, clothes. Each item's own header must say CC0 before use; targets/skins also need their per-item licence checked.
+- Not read: skins02/03 pages, the 73 other pack pages (sizes/authors), the system-assets zips (not downloaded), the Asset Packs FAQ release notes.
+- Round 120 (skins02, natural male skins, page says CC0 for all 13 items; 76 MB zip downloaded to the scratchpad only): each skin is a 2048 x 2048 PNG diffuse (Mindfront and Aksel also ship NRM and SPEC maps, 2k each); the
+  .mhmat files carry no licence line except `rehmanpolanski_skin_viking_tattoos`, whose header says AGPLv3 (DO NOT USE it); the rest rely on the pack page's per-item table (CC0). The skins use the MakeHuman UV layout, which OUR BODY
+  KEEPS: the diffuse maps map straight onto our male body (tested in the lab: `--skin-tex=<absolute png>` loads a png from outside the project into the new `skin_tex` uniform of `shaders/human_skin.gdshader`). Result: a huge step
+  from the flat skin colour: toigo_light_skin_male_bronze gives a warm tan, mindfront_skin_male_african_middleage gives pores, creases and colour variation on the forehead and around the eyes (close-ups, front/3-4). NOT added to
+  the repo (4 MB each; the licence evidence for most is the page table only): decide with the owner which skins to ship (downscaled to 1k, credited in CREDITS.md). The head-hair scalp tint still works on top of it.
+  To do: use the NRM and SPEC maps (normal_texture, roughness from spec), a skin selector in the lab, skins for the female body (skins01: 23 items, 99 MB), check the eyelid/lip region for UV stretching, the hair-root colour vs the skin.
+- Round 121 (bodyparts05 beards and moustaches + faceunits01; downloaded beards zip 6.6 MB to the scratchpad only): the page says CC0 for all 5, but the item headers disagree again:
+  CC0 per header: rehmanpolanski_beard_viking (6,557 vertices), rehmanpolanski_moustache_viking (1,598), culturalibre_faun_beard (5,218; header "CC-0"). AGPL3 per header (DO NOT USE): wdg_scruffy_beard, grinsegold_beard_sigmund_wip.
+  They are clothes-type meshes (mhclo + obj + textures), so tools/blender/fit_mh_mesh.py fits them as is; they are card/shell beards like the hair shells (no strands). Not fitted yet.
+  faceunits01 (Mika Suominen, 0.2 MB, "ARKit style faceunits", targets usable standalone): the page states NO licence: do not use until the licence is confirmed (the licence page was not read). Would give us face expressions / lip sync.
+  Both site news items "Community services shut down" (2026-10-21) and "moving to discord": the zip mirrors may disappear, so keep any CC0 file we depend on in the repo with its credit.
+- Round 122 (beard fitted): `rehmanpolanski_beard_viking` (CC0 per header, 6,557 vertices, 2,841 faces, 1 MB texture) fitted to both bodies with fit_mh_mesh.py and shown in the lab (`--mh-hair=beard_viking:BeardViking.png`).
+  It sits on the jaw and cheek and follows the body, but it is a ragged card beard with visible edges, light grey texture (needs tinting by hair colour) and it covers only the sideburn/jaw side in the captures (the front view
+  was not checked). Useful as a shape reference for a native strand beard (our HumanHair could grow beard strands from a jaw weight map using this card layout as the guide). Files in assets/models/humans/mh_hair/ (not staged yet), credited.
+- Round 123 (haireditor, system_hair_materials01, opengameart): 
+  `haireditor` (functional pack, https://files.makehumancommunity.org/functional/haireditor.zip): Tomas Klecer's Blender geometry-nodes `hair.blend` and `fur.blend` template styles (needs an 18 MB geometry-nodes file); NO licence stated on the page: do not use,
+  and it is Blender node setups, no use for our native C++ runtime anyway (could only be a visual reference for style shapes).
+  `system_hair_materials01` (82 MB, 38 materials, every row CC0, zip name ends _cc0): colour textures for system hair by MargaretToigo (braid01 x10 colours, long_01 x8, short_04 x6), dariush086 (ponytail01 x8), bogdan666 (short_02 x3),
+  culturalibre, joepal, MTKnife: textures for the card hairs (not strands), so only useful for the shell-hair comparison; formats not stated, not downloaded.
+  OpenGameArt: found only third-party uploads (e.g. "MakeHuman System Assets (Eyes)" CC0, https://opengameart.org/content/makehuman-system-assets-eyes) and the official licence page https://static.makehumancommunity.org/about/license.html:
+  core assets are CC0, extras per item (the FAQ says CC0 of the core does NOT cover assets downloaded from the user-contributed repositories: each needs its own licence check, as found). An opengameart upload's licence line must be read per upload.
+  Reading of the pack catalogue is now complete enough: remaining useful steps are fitting work, not more reading. The MPFB asset list (MPFB's own downloads) is not read.
+- Round 124 (MPFB asset documentation, search only): MPFB's asset pages are https://static.makehumancommunity.org/mpfb/docs/assets.html (concepts), the Asset Packs FAQ https://static.makehumancommunity.org/assets/assetpacks/faq.html and release notes
+  (e.g. release_20221122.html: binaries moved host, all packs listed on the Asset Packs index). A pack is just the user-contributed assets zipped for convenience; the MPFB asset downloader fetches single items. They were opened in MPFB2 and MakeHuman
+  with a cursory check only, so the per-item licence rule still stands. Nothing to add to our pipeline: the packs I already unzipped are the same data. The reading part of this investigation is finished.
+- Hair colour jump between the quiff and the back (user report, round 125): the lit side of a lock that sticks up toward the key light was much brighter than the back mass (wrapped diffuse dot*0.5+0.5). Flattened the wrap to dot*0.25+0.75 in shaders/human_hair.gdshader light(): the jump is smaller, whole head a little brighter and flatter. Still visible a bit at the quiff boundary: next idea is to fade the root-shade term with the strand's distance from the scalp.
+- Round 126: hair width 0.1 mm test (user asked). Lowered the clamps to 0.05 mm (native strand_width min and the lab slider). At 0.1 mm (real hair is 0.07 mm) with the same 170k hairs the mass gets see-through: skin shows at the hairline, temple and nape, the edge is a haze of single hairs; 0.8 mm is solid. A real head would need more hairs or each hair a thicker ribbon in screen space (pixel-width minimum in the shader).
+- Round 127: hair width 0.4 mm (user choice): solid from behind and 3/4 front (no skin at hairline/temple/nape), finer texture and softer edge than 0.8 mm. Set --hair-set=strand_width:0.0004 in the lab to see it; the default in human_hair_native.cpp is still 0.0008 (not changed yet).
+- Round 128 (comparison with Unsplash reference photos viewed in Chrome DevTools, nothing downloaded): missing in ours = lock-level clumps, broad highlights, short fade/taper at sides and nape, layered messy top, crisp single hairs at the edge, warm streaks. Done first: per-lock clump variation in shaders/human_hair.gdshader (varying lock_rand from the guide index CUSTOM0.x: brightness 0.72..1.28, warm/cool shift, and the highlight shift per lock). Visible now as lighter and darker streaks. Next: taper at sides/nape in HumanHair (native), broader highlights.
+- Round 129: the back hairline rises with side_trim (back_y += 0.045 * side_trim^2 in human_hair_native.cpp hairline lambda): Fade (1.0) now ends well above the nape with a clear neckline like the reference photos, Dapper (0.75) a little higher. DLL rebuilt. Still to do: stubble/skin gradient below the clipper line, broader highlight bands.
+- Round 130 (reference page 'Realistic 3D hair' by Lakshya Digital / Techland Dying Light renders, viewed in Chrome only): pro hair shows warm golden lighter locks between darker ones, big sheets of swept hair with clear highlights, a distinct short clippered patch at the back, flyaway strands on the silhouette. Added to human_hair.gdshader: one lock in five is a lighter, warmer streak (x1.4, 1.28, 1.05) and a wider per-lock brightness range (0.6..1.3). Next: clipper-patch stubble texture, broad highlight sheets, flyaways.
+- Round 131: default hair width now 0.4 mm (C++ default and clamp fallback); clippered scalp stubble shows follicle dots (human_hair.gdshader, cap branch); back of Fade/Undercut now reads as a short clippered patch below a clear neckline. Committed after this round.

@@ -33,6 +33,7 @@ instance uniform vec3 sway = vec3(0.0);                          // inertia swin
 varying vec2 rest_pos;       // the rest-pose place (UV2: x + y, z + y), for the cap's noise: stays on the hair when the head moves
 varying vec3 hair_tangent;     // view space, for light()
 varying float strand_shift;    // per-strand random highlight shift
+varying float lock_rand;   // one random number per guide lock (all the hairs of a lock share it): clumps of hair differ in brightness and shine
 varying float cap_flag;        // 1 on the scalp cap (no strands there, so no highlight)
 
 float hash(vec2 p) {
@@ -49,6 +50,7 @@ float value_noise(vec2 p) {
 
 void vertex() {
 	rest_pos = UV2;
+	lock_rand = CUSTOM0.x >= 0.0 ? hash(vec2(floor(CUSTOM0.x + 0.5), 11.0)) : 0.5;
 	cap_flag = COLOR.b > 0.5 ? 1.0 : 0.0;
 	// how loose this vertex is: 0 at the root, 1 at the tip; the scalp cap does not move
 	float loose = COLOR.b > 0.5 ? 0.0 : pow(clamp(UV.y, 0.0, 1.0), 1.4);
@@ -79,7 +81,10 @@ void fragment() {
 		alpha = clamp((COLOR.a - 0.5) * 2.0 * 4.0 - 0.5 * n + 0.35, 0.0, 1.0) * step(0.001, scalp_layer);   // COLOR.a: 0.5 on the hairline, up = above it
 		color = hair_color * 0.45 * 0.95;              // darker than the hair on top, so a thin spot reads as depth in the hair, not as a pale patch
 		// where the hair is cut short (COLOR.g from the builder): lighter, with some skin through it, broken up by noise, like stubble
-		vec3 stubble = mix(hair_color * 0.56, stubble_skin * 0.5, 0.3 * (0.6 + 0.4 * value_noise(rest_pos * 900.0)));
+		// clippered stubble: dark follicle dots on skin, denser and darker where the hair is a little longer (the fade), not a flat grey wash
+		float dots = smoothstep(0.42, 0.72, value_noise(rest_pos * 2600.0));
+		float fade_in = clamp(COLOR.g * 1.3, 0.0, 1.0);
+		vec3 stubble = mix(stubble_skin * 0.55, hair_color * 0.5, mix(0.3, 0.9, dots) * mix(1.0, 0.55, fade_in * fade_in));
 		color = mix(color, stubble, clamp(COLOR.g * 1.3, 0.0, 1.0));
 		strand_shift = 0.0;
 	} else {
@@ -103,11 +108,15 @@ void fragment() {
 		color = mix(color, tip_color, tip_mix * smoothstep(0.5, 0.85, UV.y));       // ombre: dyed ends
 		color *= (0.7 + 0.6 * COLOR.r) * (0.85 + 0.3 * random_a);
 		color *= vec3(1.0 + 0.1 * (random_b - 0.5), 1.0, 1.0 - 0.14 * (random_b - 0.5));   // each strand a little warmer or cooler: dyed and natural hair is never one flat colour
+		// clumps: the hairs of one lock are lighter or darker, warmer or cooler together, so the head reads as locks, not one even fuzz
+		float streak = smoothstep(0.78, 1.0, lock_rand);   // about one lock in five is a sun-lit, golden streak (the reference game hair has them: lighter, warmer locks between darker ones)
+		color *= (0.6 + 0.7 * lock_rand) * vec3(1.0 + 0.09 * (lock_rand - 0.5), 1.0, 1.0 - 0.18 * (lock_rand - 0.5));
+		color *= mix(vec3(1.0), vec3(1.4, 1.28, 1.05), streak);
 		color *= mix(0.45, 1.0, smoothstep(0.0, 0.4, UV.y));       // roots are in the shade of the hair above them
 		// bright colours go lemon-yellow once the strand and tip multipliers push linear channels past 1: pull them toward grey as they get brighter
 		float luma = dot(color, vec3(0.3, 0.59, 0.11));
 		color = mix(color, vec3(luma), clamp(luma * 1.2, 0.0, 0.45));
-		strand_shift = (random_a - 0.5) * 1.5 + (hash(vec2(floor(UV.y * 22.0), id)) - 0.5) * 0.45;   // (a wide spread: parallel strands catch the light at different places, so the highlight is a sparkle of strands, not one band)
+		strand_shift = (lock_rand - 0.5) * 0.9 + (random_a - 0.5) * 1.5 + (hash(vec2(floor(UV.y * 22.0), id)) - 0.5) * 0.45;   // (a wide spread: parallel strands catch the light at different places, so the highlight is a sparkle of strands, not one band)
 	}
 	ALBEDO = color;
 	ALPHA = alpha;
@@ -124,7 +133,7 @@ void light() {
 	// Kajiya-Kay diffuse (the sine of the angle between strand and light), wrapped so the back of the head is not black
 	float t_dot_l = dot(t, LIGHT);
 	float diffuse_kk = sqrt(max(0.0, 1.0 - t_dot_l * t_dot_l));
-	float wrapped = clamp(dot(n, LIGHT) * 0.5 + 0.5, 0.0, 1.0);
+	float wrapped = clamp(dot(n, LIGHT) * 0.25 + 0.75, 0.0, 1.0);   // (a flatter wrap: a lock that sticks up toward the light must not turn a lot lighter than the hair behind it)
 	float diffuse = cap_flag > 0.5 ? wrapped * 0.7 : mix(wrapped, diffuse_kk, 0.4); // (the cap has no strands: its tangent is arbitrary, so no strand diffuse there either)
 	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * diffuse * 0.15;   // no ALBEDO here: the engine multiplies the diffuse light by albedo itself after the light loop
 	if (cap_flag < 0.5) { // (the scalp cap has no strands: its tangent is arbitrary, so a highlight on it is a grey patch, seen over the ear)

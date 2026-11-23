@@ -12,6 +12,9 @@ uniform float sss_strength : hint_range(0.0, 1.0) = 0.2;
 uniform sampler2D scalp_tex : filter_nearest;
 uniform int scalp_width = 1024;
 uniform bool has_scalp = false;
+uniform sampler2D skin_tex : source_color, filter_linear_mipmap, repeat_disable;   // an optional skin diffuse map (MakeHuman UV layout)
+uniform bool has_skin_tex = false;
+uniform sampler2D skin_spec : hint_default_white, filter_linear_mipmap, repeat_disable;
 
 varying float scalp;
 
@@ -23,7 +26,11 @@ void vertex() {
 }
 
 void fragment() {
-	ALBEDO = mix(skin_color, scalp_color, clamp(scalp * scalp_amount, 0.0, 1.0));
+	vec3 base = skin_color;
+	if (has_skin_tex) {
+		base = texture(skin_tex, UV).rgb;
+	}
+	ALBEDO = mix(base, scalp_color, clamp(scalp * scalp_amount, 0.0, 1.0));
 	float scalp_here = clamp(scalp * scalp_amount, 0.0, 1.0);
 	ROUGHNESS = mix(roughness_value, 1.0, scalp_here);   // the scalp is matte: seen at a grazing angle through a gap in the hair, a glossy skin showed up as a white speck
 	SPECULAR = mix(0.5, 0.0, scalp_here);

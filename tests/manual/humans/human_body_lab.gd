@@ -96,6 +96,9 @@ var _hair_mesh: MeshInstance3D
 var _head_hair_material: ShaderMaterial
 var _hair_style: Dictionary = {}
 var _hair_sliders: Dictionary = {}
+var _hair_defaults: Dictionary = {}   # the style parameters a fresh lab starts with (Reset hair)
+var _hair_slider_labels: Dictionary = {}   # key -> [Label, base text]: the label shows the slider value
+var _slider_label_time: float = 0.0
 var _head_hair_color: Color = Color(0.13, 0.08, 0.045)
 var _hair_color_row: Control = null
 var _scalp_layer: float = 0.0   # the solid base under the hair (0 = none): it read as paint on the head
@@ -161,6 +164,10 @@ var _shine_override: float = -1.0
 var _brow_material: ShaderMaterial
 var _lash_material: ShaderMaterial
 var _hair_color: Color = Color(0.16, 0.1, 0.06)
+var _mh_hair: String = ""   # --mh-hair=hair_messy:short_messy_diff.png: a CC0 MakeHuman hair shell (tools/blender/fit_mh_mesh.py) instead of our hair, for comparison
+var _skin_tex_path: String = ""   # --skin-tex=<absolute png>: a skin diffuse map (e.g. a CC0 MakeHuman skin) read from outside the project, for a comparison
+var _brow_given: bool = false
+var _face_hair_suffix: String = "_mf"   # the Mindfront (CC0, MakeHuman) brow and lash layout fitted by tools/blender/fit_mindfront.py (*_brows_mf.glb)
 var _brow_density: float = 0.8
 var _eye_material: ShaderMaterial
 var _eye_color: Color = Color(0.32, 0.2, 0.1)
@@ -214,6 +221,7 @@ func _ready() -> void:
 	_hair_style["locks"] = 4200     # follicles: with 40 hairs each, about 150,000 hairs
 	for key: StringName in HAIR_PRESETS["Dapper"]:
 		_hair_style[key] = HAIR_PRESETS["Dapper"][key]
+	_hair_defaults = _hair_style.duplicate()
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--capture="):
 			_capture_path = arg.trim_prefix("--capture=")
@@ -247,6 +255,7 @@ func _ready() -> void:
 			_distance = float(arg.trim_prefix("--distance="))
 		elif arg.begins_with("--brow="):
 			_hair_color = Color.html(arg.trim_prefix("--brow="))
+			_brow_given = true
 		elif arg.begins_with("--density="):
 			_brow_density = float(arg.trim_prefix("--density="))
 		elif arg == "--solo":
@@ -299,6 +308,15 @@ func _ready() -> void:
 			_show_follicles = true
 		elif arg.begins_with("--switch="):
 			_switch_preset = arg.trim_prefix("--switch=")
+		elif arg.begins_with("--face-hair="):
+			_face_hair_suffix = arg.trim_prefix("--face-hair=")   # e.g. _mf03: another Mindfront brow style (preview)
+		elif arg.begins_with("--mh-hair="):
+			_mh_hair = arg.trim_prefix("--mh-hair=")
+			_hair_enabled = false
+		elif arg.begins_with("--skin-tex="):
+			_skin_tex_path = arg.trim_prefix("--skin-tex=")
+		elif arg == "--classic-face-hair":
+			_face_hair_suffix = ""   # our own first brows and lashes (make_face_hair.py)
 		elif arg.begins_with("--sim="):
 			for pair in arg.trim_prefix("--sim=").split(","):
 				var kv := pair.split(":")
@@ -381,6 +399,12 @@ func _build_environment() -> void:
 func _build_material() -> void:
 	_material = ShaderMaterial.new()
 	_material.shader = load("res://shaders/human_skin.gdshader")
+	if _skin_tex_path != "":
+		var skin_image := Image.load_from_file(_skin_tex_path)
+		if skin_image != null:
+			skin_image.generate_mipmaps()
+			_material.set_shader_parameter(&"skin_tex", ImageTexture.create_from_image(skin_image))
+			_material.set_shader_parameter(&"has_skin_tex", true)
 	_cloth_material = ShaderMaterial.new()
 	_cloth_material.shader = load("res://shaders/human_underwear_fabric.gdshader")
 	_eye_material = ShaderMaterial.new()
@@ -392,6 +416,8 @@ func _build_material() -> void:
 	_lash_material = ShaderMaterial.new()
 	_lash_material.shader = hair_shader
 	_lash_material.set_shader_parameter(&"is_lash", true)
+	if not _brow_given:
+		_hair_color = _brow_colour_for(_head_hair_color)
 	_apply_hair_parameters()
 	_head_hair_material = ShaderMaterial.new()
 	_head_hair_material.shader = load("res://shaders/human_hair.gdshader")
@@ -469,6 +495,10 @@ func _build_ui() -> void:
 	var hair_tab := _add_tab(tabs, "Hair")
 	var presets := HFlowContainer.new()
 	hair_tab.add_child(presets)
+	var reset_button := Button.new()
+	reset_button.text = "Reset hair settings"
+	reset_button.pressed.connect(_on_hair_reset)
+	presets.add_child(reset_button)
 	for preset_name: String in HAIR_PRESETS:
 		var preset_button := Button.new()
 		preset_button.text = preset_name
@@ -509,7 +539,7 @@ func _build_ui() -> void:
 	_add_hair_slider(amount_tab, "Individual hairs per lock (0 = ribbons)", &"strands", 0.0, 96.0)
 	_add_hair_slider(amount_tab, "Points per hair (0 = auto; fewer = cheaper)", &"points", 0.0, 16.0)
 	_add_hair_slider(amount_tab, "Hair spread (clump)", &"clump", 0.0, 0.02)
-	_add_hair_slider(amount_tab, "Hair thickness (metres; real hair is 0.00007)", &"strand_width", 0.0002, 0.003)
+	_add_hair_slider(amount_tab, "Hair thickness (metres; real hair is 0.00007)", &"strand_width", 0.00005, 0.003)
 	_add_range_slider(amount_tab, "Hair density", 0.3, 1.0, _head_hair_density, _on_head_hair_density_changed)
 	_add_section_label(hair_tab, "Motion")
 	var motion_tab: Control = hair_tab
@@ -612,13 +642,25 @@ func _set_gender(gender_name: String) -> void:
 	_body.add_child(eyes)
 	_eyes_mesh = _find_mesh(eyes)
 	_eyes_mesh.material_override = _eye_material
+	if _mh_hair != "":
+		var pieces: PackedStringArray = _mh_hair.split(":")
+		var shell: Node3D = (load("res://assets/models/humans/mh_hair/%s_%s.glb" % [gender_name.to_lower(), pieces[0]]) as PackedScene).instantiate() as Node3D
+		_body.add_child(shell)
+		var shell_mesh: MeshInstance3D = _find_mesh(shell)
+		var shell_material := StandardMaterial3D.new()
+		shell_material.albedo_texture = load("res://assets/models/humans/mh_hair/" + pieces[1]) as Texture2D
+		shell_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		shell_material.alpha_scissor_threshold = 0.5
+		shell_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+		shell_material.roughness = 0.8
+		shell_mesh.material_override = shell_material
 	# Brows and lashes: hair cards bound to the face, same shape names again.
 	var base_path: String = "res://assets/models/humans/%s_" % gender_name.to_lower()
-	var brows: Node3D = (load(base_path + "brows.glb") as PackedScene).instantiate() as Node3D
+	var brows: Node3D = (load(base_path + "brows" + _face_hair_suffix + ".glb") as PackedScene).instantiate() as Node3D
 	_body.add_child(brows)
 	_brows_mesh = _find_mesh(brows)
 	_brows_mesh.material_override = _brow_material
-	var lashes: Node3D = (load(base_path + "lashes.glb") as PackedScene).instantiate() as Node3D
+	var lashes: Node3D = (load(base_path + "lashes" + ("_mf" if _face_hair_suffix != "" else "") + ".glb") as PackedScene).instantiate() as Node3D
 	_body.add_child(lashes)
 	_lashes_mesh = _find_mesh(lashes)
 	_lashes_mesh.material_override = _lash_material
@@ -730,12 +772,36 @@ func _add_hair_slider(parent: Control, label_text: String, key: StringName, low:
 	slider.value_changed.connect(_on_hair_param.bind(key))
 	parent.add_child(slider)
 	_hair_sliders[key] = slider
+	_hair_slider_labels[key] = [label, label_text]
+	_show_slider_value(key)
+
+
+func _show_slider_value(key: StringName) -> void:
+	var entry: Array = _hair_slider_labels[key]
+	var value: float = (_hair_sliders[key] as HSlider).value
+	var shown: String = "%.5f" % value if absf(value) < 0.01 and value != 0.0 else "%.3f" % value
+	var text: String = "%s: %s" % [entry[1], shown]
+	if (entry[0] as Label).text != text:
+		(entry[0] as Label).text = text
 
 
 func _on_hair_param(value: float, key: StringName) -> void:
+	_show_slider_value(key)
 	_hair_retry = 0
 	_hair_style[key] = value
 	_hair_last_change_ms = Time.get_ticks_msec()
+	_hair_dirty = true
+
+
+# Every hair slider (and the style of the current body) back to what the lab starts with.
+func _on_hair_reset() -> void:
+	_hair_style = _hair_defaults.duplicate()
+	_on_hair_preset(DEFAULT_STYLE.get(_gender, "Dapper"))
+	for key: StringName in _hair_sliders:
+		if _hair_style.has(key):
+			(_hair_sliders[key] as HSlider).set_value_no_signal(float(_hair_style[key]))
+		_show_slider_value(key)
+	_hair_retry = 0
 	_hair_dirty = true
 
 
@@ -933,8 +999,19 @@ func _on_hair_colour_swatch(color: Color) -> void:
 	_on_head_hair_color_changed(color)
 
 
+# Brows and lashes follow the head hair, but light hair has darker brows and lashes (blond brows are not the colour of blond hair).
+func _brow_colour_for(head: Color) -> Color:
+	var luma: float = head.r * 0.3 + head.g * 0.59 + head.b * 0.11
+	var base: Color = head.darkened(0.45 * clampf(luma * 2.2, 0.0, 1.0))
+	# a blond head has light brown brows (not olive): move the hue of a yellow towards orange and add some red
+	var light: float = clampf(luma * 2.2, 0.0, 1.0)
+	return Color(base.r * (1.0 + 0.12 * light), base.g * (1.0 - 0.08 * light), base.b * (1.0 - 0.12 * light))
+
+
 func _on_head_hair_color_changed(color: Color) -> void:
 	_head_hair_color = color
+	_hair_color = _brow_colour_for(color)   # brows and lashes follow the head hair (a little lighter); the Brows tab picker can still override
+	_apply_hair_parameters()
 	_update_scalp_colour()
 	if _tressfx:
 		_hair_dirty = true   # (the scalp layer and the TressFX hair take the colour when they are made)
@@ -1301,6 +1378,11 @@ func _update_fps_label(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	_slider_label_time += delta
+	if _slider_label_time > 0.25:   # a preset or a style change moves sliders without a signal: keep the labels right
+		_slider_label_time = 0.0
+		for slider_key: StringName in _hair_slider_labels:
+			_show_slider_value(slider_key)
 	_update_fps_label(delta)
 	if _bench_seconds > 0.0 and _bench_time > 2.0 and _bench_rebuilds < 6:
 		# --bench: change the hair a few times (like dragging a slider) and keep the longest frame

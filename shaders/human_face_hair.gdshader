@@ -9,7 +9,7 @@ render_mode cull_disabled, blend_mix;
 
 uniform bool is_lash = false;
 uniform vec3 hair_color : source_color = vec3(0.16, 0.1, 0.06);
-uniform float lash_darken : hint_range(0.0, 1.0) = 0.55;   // lashes are drawn this much darker than the brows
+uniform float lash_darken : hint_range(0.0, 1.0) = 0.42;   // lashes are drawn this much darker than the brows
 uniform float brow_density : hint_range(0.2, 1.0) = 0.8;    // share of the brow hairs that are drawn
 
 void fragment() {
@@ -29,14 +29,18 @@ void fragment() {
 		alpha *= 1.0 - smoothstep(0.88, 1.0, UV.y);
 		alpha *= smoothstep(0.0, 0.06, UV.y);
 		color *= 0.65 + 0.7 * COLOR.r;
+		color *= mix(0.7, 1.12, smoothstep(0.0, 0.8, UV.y));   // a hair is darker at the root (in the skin's shade) and a little lighter toward the tip
 		if (is_lash) {
 			color *= (1.0 - lash_darken);
 		} else {
 			alpha *= step(COLOR.g, brow_density);
 		}
 	}
+	// bright colours go lemon-yellow once the brightness multipliers push the channels past 1: pull them toward grey as they get brighter (as in human_hair.gdshader)
+	float luma = dot(color, vec3(0.3, 0.59, 0.11));
+	color = mix(color, luma * vec3(1.12, 1.0, 0.8), clamp(luma * 1.2, 0.0, 0.45));   // (toward a WARM grey: a plain grey left blond brows olive)
 	ALBEDO = color;
 	ALPHA = alpha;
-	ROUGHNESS = 0.55;
-	SPECULAR = 0.3;
+	ROUGHNESS = 0.8;
+	SPECULAR = 0.04;   // (a glossy brow looked silver-grey against the head hair)
 }

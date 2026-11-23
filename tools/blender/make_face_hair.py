@@ -21,17 +21,17 @@ SKIN_OFFSET = 0.0006      # metres a brow hair sits above the skin at its root
 BROW_CURVE_STEPS = 40
 # Left-eye brow (the +X side) as offsets from the eye centre: x outward, z up, half-height of the brow there (metres).
 BROW_POINTS = [(-0.0165, 0.0215, 0.0058), (-0.0085, 0.0252, 0.0054), (0.0020, 0.0275, 0.0050),
-		(0.0140, 0.0270, 0.0042), (0.0255, 0.0235, 0.0028), (0.0325, 0.0190, 0.0014)]
-BROW_HAIRS = 320          # per brow
-BROW_HAIR_LENGTH = 0.0052
-BROW_HAIR_WIDTH = 0.0009
-UPPER_ROOTS = 24          # lash roots per upper lid; each root grows UPPER_PER_ROOT lashes
-UPPER_PER_ROOT = 3
-LOWER_ROOTS = 12
+		(0.0140, 0.0270, 0.0042), (0.0242, 0.0235, 0.0026), (0.0290, 0.0208, 0.0012)]
+BROW_HAIRS = 560          # per brow
+BROW_HAIR_LENGTH = 0.0068
+BROW_HAIR_WIDTH = 0.00055
+UPPER_ROOTS = 46          # lash roots per upper lid; each root grows UPPER_PER_ROOT lashes
+UPPER_PER_ROOT = 2
+LOWER_ROOTS = 26
 LOWER_PER_ROOT = 2
-UPPER_LENGTH = 0.0090
-LOWER_LENGTH = 0.0040
-LASH_WIDTH = 0.0011
+UPPER_LENGTH = 0.0078
+LOWER_LENGTH = 0.0034
+LASH_WIDTH = 0.0006
 SEGMENTS = 3              # quads along one hair
 
 
@@ -197,7 +197,7 @@ def build(folder: str, name: str) -> None:
 					jitter = Vector((rng.uniform(-0.25, 0.25), 0.0, rng.uniform(-0.2, 0.2)))
 					direction = Vector((outward.x * flare, -1.0, outward.z * 0.9 + 0.15 * upward)) + jitter
 					direction.normalize()
-					size = length * shape * rng.uniform(0.75, 1.1)
+					size = length * shape * rng.uniform(0.6, 1.05)
 					along = direction.cross(Vector((0.0, 0.0, 1.0))).normalized()
 					base = root + along * rng.uniform(-0.0006, 0.0006) + direction * 0.0004
 					curl = Vector((0.0, 0.0, upward)) * size * rng.uniform(0.35, 0.6)

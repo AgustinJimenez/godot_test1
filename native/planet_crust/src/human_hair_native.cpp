@@ -239,7 +239,7 @@ Dictionary HumanHair::default_params() {
 	d["eye_drop"] = 0.105;
 	d["strands"] = 0;
 	d["points"] = 0;
-	d["strand_width"] = 0.0008; // (a hair wider than a real one: with fewer hairs than a head, thin ribbons left specks of skin between them)
+	d["strand_width"] = 0.0004; // (still wider than a real hair, 0.07 mm: with fewer hairs than a head, thinner ribbons left specks of skin between them; 0.4 mm is solid)
 	d["clump"] = 0.007;
 	return d;
 }
@@ -296,7 +296,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double lock_width = std::min(requested_width, 0.002 + length * 0.25);
 	// strands mode: every guide lock grows `strands` single hairs (thin ribbons of strand_width) that follow it, clumped within `clump` metres
 	const int strands = int(Math::clamp(param(p_params, "strands", 0), 0.0, 96.0));
-	const double strand_width = Math::clamp(param(p_params, "strand_width", 0.0008), 0.0002, 0.004);
+	const double strand_width = Math::clamp(param(p_params, "strand_width", 0.0004), 0.00005, 0.004);
 	const double clump = Math::clamp(param(p_params, "clump", 0.007), 0.0, 0.03);
 	const int plain_lock_count = int(std::min(9000.0, double(requested_locks) * requested_width / lock_width));
 	const int lock_count = strands > 0 ? std::min(requested_locks, 6000) : plain_lock_count; // (single hairs: the number of follicles is what was asked, whatever the lock width of a short style)
@@ -344,7 +344,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		const double azimuth = std::abs(std::atan2(double(v.x), double(v.z - centre_z))); // 0 front .. pi back
 		const double front_y = eye_y + 0.068;
 		const double side_y = eye_y + 0.014;
-		const double back_y = eye_y - 0.088; // (the nape: real hair grows down to about the middle of the back of the neck)
+		const double back_y = eye_y - 0.088 + 0.045 * side_trim * side_trim; // (the nape: real hair grows down to about the middle of the back of the neck; a short back and sides (fade) is clippered higher up)
 		const double a = Math::clamp((azimuth - 0.7) / 0.7, 0.0, 1.0);       // front .. side (down to the sideburn by the front of the ear): a long slope, so the temple is a round curve, not a corner
 		const double b = Math::clamp((azimuth - 1.3) / 0.9, 0.0, 1.0);       // side .. back
 		const double front_side = front_y + (side_y - front_y) * (a * a * (3.0 - 2.0 * a));
