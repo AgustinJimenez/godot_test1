@@ -1718,6 +1718,9 @@ func _update_camera() -> void:
 		_camera.look_at(_aim)
 		return
 	var centre := Vector3(0.0, _look_y, 0.0)
+	if _beard_view:
+		# the body turns about its own axis, the beard is in front of it: look at the beard's place (10 cm in front of the axis, a little below the middle of the jaw) so it stays in the middle of the picture whatever the yaw
+		centre = Vector3(0.0, _look_y - 0.03, 0.1).rotated(Vector3.UP, _yaw)
 	_camera.position = centre + Vector3(0.0, _cam_y - _look_y, _distance).rotated(Vector3.RIGHT, -_pitch)
 	_camera.look_at(centre)
 

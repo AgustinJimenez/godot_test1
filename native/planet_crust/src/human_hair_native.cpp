@@ -1425,11 +1425,11 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				if (dy > -0.047 - 0.022 && dy < -0.047 + 0.003 && ax_root < 0.04) {
 					want = Vector3(real_t(side * 0.9), -0.3f, 0.1f); // (the moustache: out from the middle and only a little down, so it does not hang over the lips)
 				} else if (normal.y < -0.35f) {
-					want = Vector3(real_t(side * 0.1), -0.25f, 1.0f); // (under the jaw: toward the chin)
+					want = Vector3(real_t(side * 0.1), -1.0f, 0.35f); // (under the jaw: down, a little toward the chin; a stronger forward component made long beards stick out in front instead of hanging)
 				} else if (ax_root < 0.022 && dy < -0.09) {
 					want = Vector3(real_t(side * 0.25), -1.0f, 0.35f); // (the chin: down and a little forward and out)
 				} else if (dy < beard_floor(double(root.z)) + 0.03) {
-					want = Vector3(real_t(-side * 0.3), -0.5f, 0.7f); // (the jawline: along the jaw toward the chin and a little down)
+					want = Vector3(real_t(-side * 0.3), -0.9f, 0.35f); // (the jawline: down and a little along the jaw)
 				} else if (dy < -0.135) {
 					want = Vector3(0.0f, -1.0f, 0.1f); // (the neck: down)
 				} else {
@@ -1439,7 +1439,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				if (along.length() < 0.2f) {
 					along = Vector3(real_t(root.x >= 0.0f ? 1.0f : -1.0f), 0.0f, 0.0f) - normal * real_t(normal.x);
 				}
-				const Vector3 direction = (along.normalized() * 0.9f + normal * 0.2f + Vector3(real_t(dice.range(-0.16, 0.16)), real_t(dice.range(-0.08, 0.08)), real_t(dice.range(-0.16, 0.16)))).normalized();   // (a beard hair lies along the skin: little push off it, little random)
+				const Vector3 direction = (along.normalized() * 0.9f + normal * real_t(0.2 * Math::clamp(1.2 - beard_length / 0.03, 0.1, 1.0)) + Vector3(real_t(dice.range(-0.16, 0.16)), real_t(dice.range(-0.08, 0.08)), real_t(dice.range(-0.16, 0.16)))).normalized();   // (a beard hair lies along the skin: little push off it, little random)
 				// locks: follicles in the same ~7 mm cell form a lock: they share a sideways bend of the whole hair and (mostly) a brightness, so the beard reads as locks that flow together instead of independent bristles
 				const int lock_x = int(std::floor(double(root.x) / 0.007)), lock_y = int(std::floor(double(root.y) / 0.007)), lock_z = int(std::floor(double(root.z) / 0.007));
 				auto lock_hash = [&](double salt) {
@@ -1463,7 +1463,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					for (int k = 1; k < beard_steps; k++) {
 						// gravity: every step turns the hair toward the ground, more so along the hair and for longer hairs (a long beard falls over like hair; the first points still lie along the skin)
 						const double along_hair = double(k) / double(beard_steps - 1);
-						const double pull = in_moustache ? 0.04 : Math::clamp((0.06 + 4.5 * hair_length) * (0.35 + 0.65 * along_hair), 0.04, 0.6);
+						const double pull = in_moustache ? 0.04 : Math::clamp((0.14 + 5.0 * hair_length) * (0.4 + 0.6 * along_hair), 0.08, 0.75);
 						dir = (dir * real_t(1.0 - pull) + Vector3(0.0f, -1.0f, 0.0f) * real_t(pull) + Vector3(real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.04, 0.04)), real_t(dice.range(-0.1, 0.1)))).normalized();
 						const double skin_hold = hair_length < 0.03 ? 0.12 : (hair_length < 0.06 ? 0.12 * (1.0 - along_hair) : 0.0);   // (stiff short hair rests on the skin; a long one hangs free)
 						dir = (dir - normal * real_t(dir.dot(normal) * skin_hold)).normalized();
@@ -1495,8 +1495,8 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						Vector3 bend = normal.cross((bp[size_t(beard_steps - 1)] - bp[0]).normalized());
 						if (bend.length() > 1e-3f) {
 							bend = bend.normalized();
-							const double lean = hair_length * dice.range(-0.3, 0.3) * region_curl;
-							const double lock_lean = hair_length * lock_bend * 0.5;   // (every hair of the lock leans the same way: the lock)
+							const double lean = hair_length * dice.range(-0.3, 0.3) * region_curl / (1.0 + 15.0 * hair_length);
+							const double lock_lean = hair_length * lock_bend * 0.5 / (1.0 + 12.0 * hair_length);   // (every hair of the lock leans the same way: the lock)
 							bp[1] += bend * real_t(lean * 0.5 + lock_lean * 0.6);
 							bp[size_t(beard_steps - 1)] += bend * real_t(lean * 0.5 * dice.range(-0.4, 1.2) + lock_lean);
 						}
