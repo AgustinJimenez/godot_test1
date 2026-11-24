@@ -445,6 +445,8 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	// the middle of the skull, between the front of the face and the back of the head (an average of the vertices would be pulled forward by the face)
 	const double centre_z = 0.5 * (z_front + z_back);
 	const Vector3 head_centre(0.0f, real_t(eye_y), real_t(centre_z));
+	// the scale of "how far to the front" (front_here, front_share, ...): from the head DEPTH, not its width: a wide head (head_wide) made front_here smaller everywhere, so fewer roots counted as the front and the fringe fell over the face. 0.8 x the half depth equals the half width of the default heads (0.0883 / 0.1103).
+	const double front_scale = std::max(0.8 * 0.5 * (z_front - z_back), 0.05);
 	const Vector3 crown(real_t(parting * half_width * 0.45), real_t(top_y), real_t(centre_z - 0.015));
 
 	// --- the scalp: the vertices above the hairline (low at the nape, higher at the temples and the forehead)
@@ -567,7 +569,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const double fade = 0.5 + 0.5 * Math::clamp((double(vertices[v].y) - hairline(vertices[v])) / 0.014, -1.0, 1.0);
 				// how shaved the scalp is here (the hair there is cut short by side_trim): the shader shows more stubble and skin where it is high
 				const double cap_topness = Math::clamp((double(vertices[v].y) - (eye_y + 0.03)) / std::max(top_y - eye_y - 0.03, 0.02), 0.0, 1.0);
-				const double cap_front = Math::clamp((double(vertices[v].z) - centre_z) / std::max(half_width, 0.05), 0.0, 1.0);
+				const double cap_front = Math::clamp((double(vertices[v].z) - centre_z) / front_scale, 0.0, 1.0);
 				const double shaved = side_trim * (1.0 - cap_topness) * (1.0 - cap_front); // (the front hairline keeps its hair: only the sides and back are clippered)
 				cap_index[v] = add_vertex(vertices[v] + normals[v] * 0.0018f, normals[v], Vector2(0.5f, 0.5f), Color(0.5f, float(shaved), 1.0f, float(fade)), v, cap_tangent(normals[v]), 0.0f, true);
 			}
@@ -674,7 +676,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		}
 		if (lock >= main_draws && !is_fill) {
 			// the extra locks: along the front hairline (the first 4.5 cm of the forehead's hair, thinned by how much fringe there is) and around the crown
-			const double extra_front = Math::clamp((double(root.z) - centre_z) / std::max(half_width, 0.05), 0.0, 1.0);
+			const double extra_front = Math::clamp((double(root.z) - centre_z) / front_scale, 0.0, 1.0);
 			const bool front_ok = extra_front >= 0.55 && above_hairline <= 0.045 + 0.06 * quiff && dice.unit() <= (0.25 + 0.5 * front_density) * (1.0 + 1.5 * quiff); // (a quiff lifts the front hair off the scalp: more roots over the area it leaves, or the skin shows under the lift)
 			const double crown_dist = std::hypot(double(root.x) - double(crown.x), double(root.z) - double(crown.z));
 			const double crown_near = std::max(0.0, 1.0 - crown_dist / 0.05);
@@ -772,7 +774,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				flow = flow.lerp(along_back.normalized(), real_t(sweep)).normalized();
 			}
 		}
-		const double front_here = Math::clamp((double(root.z) - centre_z) / std::max(half_width, 0.05), 0.0, 1.0);
+		const double front_here = Math::clamp((double(root.z) - centre_z) / front_scale, 0.0, 1.0);
 		const double near_front_edge = Math::clamp(1.0 - above_hairline / 0.10, 0.0, 1.0); // the lift is strongest at the hairline and fades over the next 10 cm
 		const double lift = quiff * front_here * near_front_edge;
 		const double lift_start = lift;
@@ -796,7 +798,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			side_of_part += (away - side_of_part) * swept;
 		}
 		// the front splits at the parting: hair there is pushed to either side so it does not hang straight over the face
-		const double front_share = Math::clamp((double(root.z) - centre_z) / std::max(half_width, 0.05), 0.0, 1.0);
+		const double front_share = Math::clamp((double(root.z) - centre_z) / front_scale, 0.0, 1.0);
 		// right at the parting line the hair splits gently (a hard push opened a 2 cm gap that showed the scalp layer as a flat block); farther from it the full push
 		const double part_soft = Math::clamp(1.5 * std::abs(double(root.x) - double(crown.x)) / (0.03 + 0.03 * quiff) - 0.5 - 1.2 * quiff, -0.5 - 1.2 * quiff, 1.0); // (a wider, stronger cross-over on a quiff: its hair stands up and leaves a slit along the line) // the two sides lean slightly toward each other at the line (-0.5), neutral 6 mm away, full push 3 cm away: the hair crosses over the line, so there is no slit
 		const double part_push = (1.0 - Math::clamp((0.0 - (double(root.z) - double(crown.z))) / 0.05, 0.0, 1.0)) * std::min(0.3, (0.14 * Math::clamp(front_share * 2.5, 0.0, 1.0) + 0.7 * front_share) * part_soft * part_length_scale); // (a cap: the front hair goes back more than it goes to the side)
@@ -848,7 +850,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		}
 		this_length *= strip_length;
 		if (back_long > 0.0) {
-			this_length *= 1.0 + 0.6 * back_long * Math::clamp((centre_z - double(root.z)) / std::max(half_width, 0.05) + 0.1, 0.0, 1.0) * (1.0 - topness * 0.7); // (longer behind the crown, shorter on top)
+			this_length *= 1.0 + 0.6 * back_long * Math::clamp((centre_z - double(root.z)) / front_scale + 0.1, 0.0, 1.0) * (1.0 - topness * 0.7); // (longer behind the crown, shorter on top)
 		}
 		if (messy > 0.0) {
 			this_length *= 1.0 + messy * dice.range(-0.3, 0.3); // (a messy head: no two locks are as long)
