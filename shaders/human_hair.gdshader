@@ -122,6 +122,8 @@ void fragment() {
 			// a beard hair (blue 0.3): short and packed, so the look comes from depth: dark in the thicket near the skin, lit at the tips, and clumps (patches of a few mm) that are darker or lighter
 			float clump = value_noise(rest_pos * 160.0) * 0.6 + value_noise(rest_pos * 520.0) * 0.4;
 			color *= mix(0.45, 1.2, clump) * mix(0.3, 1.0, smoothstep(0.0, 0.85, UV.y));
+			float streak_b = smoothstep(0.55, 0.9, value_noise(rest_pos * vec2(60.0, 240.0) + 3.0));   // (lighter streaks that run along the beard: a few mm wide, tens of mm long, like the light/dark bands of a groomed beard)
+			color *= mix(1.0, 1.45, streak_b * smoothstep(0.3, 0.9, UV.y));
 		}
 		color *= mix(0.45, 1.0, smoothstep(0.0, 0.4, UV.y));       // roots are in the shade of the hair above them
 		color *= mix(1.0, 0.55, wet);   // wet hair is darker
