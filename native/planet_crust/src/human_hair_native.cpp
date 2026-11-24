@@ -1014,6 +1014,22 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 
 		// the ribbon (strands mode: `strands` single hairs around the guide, each one a hair-thin ribbon)
 		const int copies = strands > 0 ? std::max(2, int(double(strands) * (0.6 + 0.4 * feather) * 1.0)) : 1; // (stubble: fewer hairs, so the skin shows through it as it does on a clippered head)
+		if (front_share > 0.25 && length > 0.14) {
+			// long hair must not hang straight down over the middle of the face: a lock with a point in front of the forehead/brow box moves sideways from there on (to the side it started on), so it frames the face
+			const double face_z = centre_z + 0.8 * (z_front - centre_z);
+			for (int k = 1; k < steps; k++) {
+				const Vector3 &pt = points[size_t(k)];
+				if (double(pt.z) > face_z && std::abs(double(pt.x)) < 0.05 && double(pt.y) < eye_y + 0.075 && double(pt.y) > eye_y - 0.09) {
+					const double sgn = (root.x - crown.x) >= 0.0f ? 1.0 : -1.0;
+					const double sweep_x = sgn * (0.05 - std::abs(double(pt.x)) + 0.01);
+					for (int j = k; j < steps; j++) {
+						points[size_t(j)].x += real_t(sweep_x * std::min(1.0, double(j - k + 1) / 3.0));
+						points[size_t(j)].z -= real_t(0.012 * std::min(1.0, double(j - k + 1) / 3.0));
+					}
+					break;
+				}
+			}
+		}
 		const std::vector<Vector3> guide_points = points;
 		if (guides_only) {
 			for (const Vector3 &g : guide_points) {
@@ -1048,7 +1064,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			const double near_crown = Math::clamp(1.0 - std::hypot(double(root.x) - double(crown.x), double(root.z) - double(crown.z)) / 0.03, 0.0, 1.0);
 			// flyaways: about one hair in a hundred strays from its lock, wider and lifting off the head, so the outline is not a clean edge (a hash of the root, so the dice of the other hairs do not shift)
 			const double stray_hash = std::abs(std::sin(double(root.x) * 127.1 + double(root.z) * 311.7 + double(copy) * 17.3 + double(root.y) * 71.9)) * 43758.5453;
-			const bool flyaway = (stray_hash - std::floor(stray_hash)) < (0.006 + 0.05 * wisps) * (1.0 - 0.6 * wetness) && this_length > 0.02;
+			const bool flyaway = (stray_hash - std::floor(stray_hash)) < (0.006 + 0.05 * wisps) * (1.0 - 0.6 * wetness) && this_length > 0.02 && front_share < 0.35; // (no stray hairs from the front: on long hair they were single straight lines across the forehead)
 			const double radius0 = clump * (1.0 - 0.6 * gaps) * (1.0 - 0.65 * wetness) * (1.0 - 0.7 * std::min(1.0, 2.0 * lift_start)) * (1.0 + 1.6 * std::max(near_line, near_crown)) * (0.8 + 0.2 * std::min(1.0, this_length / 0.05)) * (1.0 + 1.5 * std::max(0.0, 1.0 - this_length / 0.04) * Math::clamp((this_length - 0.001) / 0.004, 0.0, 1.0)) * (1.0 + 2.2 * Math::clamp((this_length - 0.08) / 0.2, 0.0, 1.0)) * std::sqrt(dice.unit()); // (long hair too: the hairs of one follicle fan out as they lengthen, so a fringe is a curtain, not separate strings) // (short hair spreads wider, not narrower: at 2-3 cm the hairs are shorter than the gap between follicles) // (hairs of a follicle at the parting line or the crown spread wider, over the slit) // (a short lock spreads less: its hairs fanned out into small stars at the hairline)
 			for (int k = 0; k < steps; k++) {
 				const double s = double(k) / (steps - 1);
