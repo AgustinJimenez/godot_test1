@@ -30,6 +30,10 @@ const FACE_SLIDERS: Array = [
 	["Lips (thin .. full)", "lips_thin", "lips_full"],
 ]
 const FACE_AGE_EYE_DY: Dictionary = {"Male": {"young": -0.1964, "old": -0.0235}, "Female": {"young": -0.1664, "old": -0.0083}}
+const BEARD_STYLES: Array = [   # name, amount, length (m), zone (0 full, 1 goatee)
+	["None", 0.0, 0.012, 0.0], ["Stubble", 0.45, 0.003, 0.0], ["Short", 0.8, 0.007, 0.0], ["Full", 0.9, 0.012, 0.0],
+	["Long", 1.0, 0.03, 0.0], ["Goatee", 0.9, 0.01, 1.0],
+]
 const SKIN_FILES: Array = [   # CC0 MakeHuman skins, 1k (assets/models/humans/skins/CREDITS.md); both bodies share the MakeHuman UV layout
 	["Male: light bronze", "male_light_bronze"], ["Male: light freckles", "male_light_freckles"], ["Male: light ginger", "male_light_ginger"],
 	["Male: african", "male_african_middleage"],
@@ -714,6 +718,13 @@ func _build_ui() -> void:
 		face_slider.value_changed.connect(_on_face_slider.bind(entry, face_label))
 		face_tab.add_child(face_slider)
 	var beard_tab := _add_tab(tabs, "Beard")   # (a tab of its own; the colour of the beard is the hair colour)
+	var beard_styles := HFlowContainer.new()
+	beard_tab.add_child(beard_styles)
+	for style_entry: Array in BEARD_STYLES:
+		var style_button := Button.new()
+		style_button.text = style_entry[0]
+		style_button.pressed.connect(_on_beard_style.bind(style_entry))
+		beard_styles.add_child(style_button)
 	_add_hair_slider(beard_tab, "Beard amount (0 = none)", &"beard", 0.0, 1.0)
 	_add_hair_slider(beard_tab, "Beard length (metres)", &"beard_length", 0.002, 0.04)
 	var amount_tab: Control = hair_tab
@@ -1202,6 +1213,20 @@ func _add_value_slider(parent: Control, label_text: String, low: float, high: fl
 	slider.value_changed.connect(callback)
 	parent.add_child(slider)
 	return slider
+
+
+func _on_beard_style(entry: Array) -> void:
+	_hair_style[&"beard"] = float(entry[1])
+	_hair_style[&"beard_length"] = float(entry[2])
+	_hair_style[&"beard_zone"] = float(entry[3])
+	for key: StringName in [&"beard", &"beard_length"]:
+		if _hair_sliders.has(key):
+			(_hair_sliders[key] as HSlider).set_value_no_signal(float(_hair_style[key]))
+		if _hair_slider_labels.has(key):
+			_show_slider_value(key)
+	_hair_retry = 0
+	_hair_last_change_ms = Time.get_ticks_msec()
+	_hair_dirty = true
 
 
 func _on_face_slider(value: float, entry: Array, label: Label) -> void:

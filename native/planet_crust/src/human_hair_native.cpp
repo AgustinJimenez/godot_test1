@@ -260,6 +260,7 @@ Dictionary HumanHair::default_params() {
 	d["back_length"] = 0.0; // 0..1: the hair behind the crown is longer than the top (up to +60%), a layered cut
 	d["beard"] = 0.0;        // 0..1: a short beard and moustache on the jaw, cheeks and chin (0: none; the amount is the density)
 	d["beard_length"] = 0.012; // metres
+	d["beard_zone"] = 0.0;     // 0: full beard (cheeks, jaw, chin, moustache); 1: goatee (moustache and a chin patch, bare cheeks)
 	d["strips"] = 0.0; // 0..1: the front hair falls as separate strips (about 1.3 cm wide) with gaps between them, each strip its own length
 	d["gaps"] = 0.0;  // 0..1: patches of the scalp grow no locks and the rest clump tighter, so the hair parts into separate clumps with the layer below showing between them
 	d["wisps"] = 0.0; // 0..1: more hairs stray from their lock as long, wavy wisps
@@ -416,6 +417,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double beard = Math::clamp(param(p_params, "beard", 0.0), 0.0, 1.0);
 	const double back_long = Math::clamp(param(p_params, "back_length", 0.0), 0.0, 1.0);
 	const double beard_length = Math::clamp(param(p_params, "beard_length", 0.012), 0.002, 0.06);
+	const bool goatee = param(p_params, "beard_zone", 0.0) > 0.5;
 	const double wisps = Math::clamp(param(p_params, "wisps", 0.0), 0.0, 1.0);
 	const double eye_drop = param(p_params, "eye_drop", 0.105);
 
@@ -1258,6 +1260,13 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			}
 			if (n.z < -0.3f && n.y > -0.3f) {
 				return false; // (facing away: the side of the neck)
+			}
+			if (goatee) {
+				const bool moustache_band = ax < 0.034 && dy > -0.075 && dy < -0.044;
+				const bool chin_patch = ax < 0.014 + 0.006 * Math::clamp((-0.085 - dy) / 0.03, 0.0, 1.0) && dy < -0.078;
+				if (!moustache_band && !chin_patch) {
+					return false; // (a goatee: no cheeks, no jaw line)
+				}
 			}
 			const double lip_x = ax / 0.03, lip_y = (dy + 0.072) / 0.011; // (lips; the band between nose and lips gets the moustache)
 			if (lip_x * lip_x + lip_y * lip_y < 1.0) {
