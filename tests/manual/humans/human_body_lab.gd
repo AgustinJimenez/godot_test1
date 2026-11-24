@@ -141,6 +141,15 @@ var _lod: int = 0
 var _lod_forced: int = -1   # --lod=N or the slider: a fixed level (-1 = by the camera distance)
 var _target_hairs: int = DEFAULT_TARGET_HAIRS   # a preset can ask for fewer, thicker hairs (wet, clumped hair is drawn with fewer hairs so that single strands show)
 var _strand_scale: float = 1.0   # learned: real hairs = guides x strands x about 0.58 (fewer hairs per lock near the hairline), so the first guess is 1 / 0.58
+const MAX_HAIR_VERTICES: int = 4150000   # the hair mesh limit of the simulation (65,535 compute groups x 64 vertices = 4,194,240)
+var _hair_guard_retry: int = 0
+var _crowd: int = 0              # --crowd=N: N-1 more copies of the body and the hair (shared meshes, not simulated) in a grid: a cost test for several characters
+var _crowd_nodes: Array = []
+var _fade_old: MeshInstance3D = null   # the previous level, still drawn while the new one fades in
+var _fade_t: float = 1.0
+var _fade_pending: bool = false         # set when the level changed: the next finished build cross-fades
+var _lod_switch_to: int = -1
+var _fade_hold: float = -1.0            # --fade-hold=0..1: freeze the cross-fade at this point (tests)
 var _hair_retry: int = 0
 var _hair_task_id: int = -1   # the hair is built on a worker thread (HumanHair.build_arrays is pure data), so the lab does not freeze for 1-3 s
 var _hair_task_result: Dictionary = {}
@@ -326,6 +335,12 @@ func _ready() -> void:
 			_scalp_layer = _scalp_arg
 		elif arg.begins_with("--shadows="):
 			_shadows_arg = arg.trim_prefix("--shadows=")
+		elif arg.begins_with("--crowd="):
+			_crowd = int(arg.trim_prefix("--crowd="))
+		elif arg.begins_with("--fade-hold="):
+			_fade_hold = float(arg.trim_prefix("--fade-hold="))
+		elif arg.begins_with("--lod-switch="):
+			_lod_switch_to = int(arg.trim_prefix("--lod-switch="))   # --lod-switch=N: 3 s after the start force level N (tests the cross-fade)
 		elif arg.begins_with("--lod="):
 			_lod_forced = int(arg.trim_prefix("--lod="))
 			_lod = clampi(_lod_forced, 0, HAIR_LODS.size() - 1)
@@ -1255,6 +1270,30 @@ func _lod_for_distance(distance: float) -> int:
 	return level
 
 
+# A cost test for several characters: copies of the body and of the current hair mesh in a grid behind and beside the first (the meshes and materials are shared; only the first hair is simulated).
+func _make_crowd() -> void:
+	for node in _crowd_nodes:
+		(node as Node).queue_free()
+	_crowd_nodes.clear()
+	if _hair_mesh == null or _mesh == null:
+		return
+	var columns: int = 4
+	for index in range(1, _crowd):
+		var holder := Node3D.new()
+		holder.position = Vector3(float(index % columns - 1) * 0.9 - 0.45, 0.0, -float(index / columns + 1) * 0.9)
+		_body.get_parent().add_child(holder)
+		var body_copy := MeshInstance3D.new()
+		body_copy.mesh = _mesh.mesh
+		body_copy.material_override = _mesh.material_override
+		body_copy.skeleton = NodePath()
+		holder.add_child(body_copy)
+		var hair_copy := MeshInstance3D.new()
+		hair_copy.mesh = _hair_mesh.mesh
+		hair_copy.material_override = _head_hair_material
+		holder.add_child(hair_copy)
+		_crowd_nodes.append(holder)
+
+
 func _rebuild_hair() -> void:
 	_rebuild_hair_now()   # (starts the build on a worker thread; _finish_hair_task sets _hair_build_ms when it is done)
 
@@ -1279,7 +1318,7 @@ func _rebuild_hair_now() -> void:
 		var own: int = int(params.get(&"points", 0))
 		params[&"points"] = cap if own < 3 else mini(own, cap)
 		params[&"strand_width"] = float(params.get(&"strand_width", 0.0004)) * float(lod_row[2])
-		params[&"locks"] = int(float(params.get(&"locks", 4200)) * pow(float(lod_row[0]), 0.3))   # (fewer follicles too, but not as many fewer as hairs: fewer guides to build and to simulate, and the gaps between them stay small)
+		params[&"lock_share"] = pow(float(lod_row[0]), 0.4)   # (a SUBSET of the full hair's follicles: the same guides, so the style does not change between levels; the hairs per lock carry the rest of the reduction)
 		if not bool(lod_row[3]):
 			params[&"beard"] = 0.0
 		params[&"wisps"] = float(params.get(&"wisps", 0.0)) * float(lod_row[4])
@@ -1310,9 +1349,23 @@ func _finish_hair_task(wait: bool) -> void:
 	_hair_task_id = -1
 	var built: ArrayMesh = HumanHair.make_mesh(_hair_task_result)
 	_hair_task_result = {}
+	if _fade_old != null:
+		_fade_old.queue_free()   # (a build finished in the middle of a cross-fade: drop the old level)
+		_fade_old = null
+	var fading: bool = false
 	if _hair_mesh != null:
-		_hair_mesh.queue_free()
+		if _fade_pending and built != null and not _tressfx:
+			# keep the old level on screen (static: its own copy of the material without the simulation) and fade it out while the new one fades in
+			var old_material := _head_hair_material.duplicate() as ShaderMaterial
+			old_material.set_shader_parameter(&"use_sim", false)
+			old_material.set_shader_parameter(&"wind", Vector3.ZERO)
+			_hair_mesh.material_override = old_material
+			_fade_old = _hair_mesh
+			fading = true
+		else:
+			_hair_mesh.queue_free()
 		_hair_mesh = null
+	_fade_pending = false
 	if built == null:
 		_hair_info = "LOD %d  Hair: " % _lod + "none (bald)"
 		if _sim != null:
@@ -1321,6 +1374,15 @@ func _finish_hair_task(wait: bool) -> void:
 	var strands: int = int(_hair_style.get(&"strands", 0))
 	var guides: int = int(built.get_meta(&"hair_guide_count", 0))
 	var verts: int = built.surface_get_array_len(0) if built.get_surface_count() > 0 else 0
+	if verts > MAX_HAIR_VERTICES and _hair_guard_retry < 6:
+		# the hair simulation dispatches one compute group per 64 vertices and the device allows 65,535 groups (4,194,240 vertices in all): above that the simulation fails and the head comes out bald
+		_hair_guard_retry += 1
+		_strand_scale = clampf(_strand_scale * float(MAX_HAIR_VERTICES) / float(verts) * 0.93, 0.08, 3.0)
+		print("HUMAN_LAB hair guard: ", verts, " vertices is over the limit, hairs per lock scale -> ", snappedf(_strand_scale, 0.001))
+		_hair_info = "Hair: too many vertices (%s), rebuilding with fewer hairs" % _thousands(verts)
+		_hair_dirty = true
+		return
+	_hair_guard_retry = 0
 	if strands > 0 and guides > 0:
 		# the real number of hairs: every hair is a ribbon of `steps` points (2 vertices each); near the hairline a lock grows fewer hairs than `strands`, so guides x strands overstates it
 		var steps_meta: int = maxi(int(built.get_meta(&"hair_guide_steps", 1)), 1)
@@ -1346,7 +1408,13 @@ func _finish_hair_task(wait: bool) -> void:
 	_hair_mesh.material_override = _head_hair_material
 	_attach_sim()
 	_body.add_child(_hair_mesh)
+	if fading:
+		_fade_t = 0.0
+		print("HUMAN_LAB lod cross-fade started, new level ", _lod)
+		_hair_mesh.set_instance_shader_parameter(&"lod_fade", 0.0)
 	_hair_sway.hair = _hair_mesh # (the swing goes to this mesh's own `sway` instance uniform)
+	if _crowd > 1:
+		_make_crowd()
 	if _tressfx:
 		# the same guide strands, drawn and simulated by the TressFX addon instead of ours
 		if _tfx_root != null:
@@ -1550,11 +1618,24 @@ func _update_fps_label(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	if _fade_old != null:
+		_fade_t = minf(1.0, _fade_t + delta / 0.45)
+		var shown: float = _fade_hold if _fade_hold >= 0.0 else _fade_t
+		_fade_old.set_instance_shader_parameter(&"lod_fade", 1.0 - shown)
+		if _hair_mesh != null:
+			_hair_mesh.set_instance_shader_parameter(&"lod_fade", shown)
+		if _fade_t >= 1.0 and _fade_hold < 0.0:
+			_fade_old.queue_free()
+			_fade_old = null
+	if _lod_switch_to >= 0 and Time.get_ticks_msec() > 4500:
+		_lod_forced = _lod_switch_to
+		_lod_switch_to = -1
 	var wanted_lod: int = _lod_forced if _lod_forced >= 0 else _lod_for_distance(_distance)
 	wanted_lod = clampi(wanted_lod, 0, HAIR_LODS.size() - 1)
 	if wanted_lod != _lod and _hair_task_id < 0 and _hair_mesh != null:
 		_strand_scale = clampf(_strand_scale * float(HAIR_LODS[wanted_lod][0]) / float(HAIR_LODS[_lod][0]), 0.08, 3.0)   # (the first guess for the new level; the build then corrects it)
 		_lod = wanted_lod
+		_fade_pending = true
 		_hair_retry = 0
 		_hair_dirty = true
 	_slider_label_time += delta

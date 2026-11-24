@@ -31,6 +31,7 @@ uniform vec3 wind = vec3(0.0);                                  // wind in model
 uniform float wind_speed = 1.6;
 uniform sampler2D sim_tex : filter_nearest;   // the hair simulation (HairSim): one row per guide strand, one pixel per point: its offset from the rest place, in model space
 uniform bool use_sim = false;
+instance uniform float lod_fade : hint_range(0.0, 1.0) = 1.0;   // the level-of-detail cross-fade: each hair has a random number (COLOR.g) and is drawn while it is below this value, so the old level thins out as the new one thickens (no pop)
 instance uniform vec3 sway = vec3(0.0);                          // inertia swing in model space, metres at the tip (one per character: HairSway writes it on the mesh instance)
 
 varying vec2 rest_pos;       // the rest-pose place (UV2: x + y, z + y), for the cap's noise: stays on the hair when the head moves
@@ -108,7 +109,7 @@ void fragment() {
 			// one hair: a soft line across the ribbon, fading out at its tip; the lock-level ragged cut is not needed
 			alpha = 1.0;   // opaque across the whole ribbon: the geometry (width, taper) sets the thickness; a soft edge + the scissor left only the middle 40% of a hair-thin ribbon
 		}
-		alpha *= step(COLOR.g, density);
+		alpha *= step(COLOR.g, density) * step(COLOR.g, lod_fade);
 		color = mix(color, color * (1.0 + 1.6 * tip_lightening), smoothstep(0.3, 1.0, UV.y));
 		color = mix(color, tip_color, tip_mix * smoothstep(0.5, 0.85, UV.y));       // ombre: dyed ends
 		color *= (0.7 + 0.6 * COLOR.r) * (0.85 + 0.3 * random_a);
