@@ -31,7 +31,7 @@ const FACE_SLIDERS: Array = [
 ]
 const FACE_AGE_EYE_DY: Dictionary = {"Male": {"young": -0.1964, "old": -0.0235}, "Female": {"young": -0.1664, "old": -0.0083}}
 const BEARD_STYLES: Array = [   # name, amount, length (m), zone (0 full, 1 goatee)
-	["None", 0.0, 0.012, 0.0], ["Stubble", 0.45, 0.003, 0.0], ["Short", 0.8, 0.007, 0.0], ["Full", 0.9, 0.012, 0.0],
+	["None", 0.0, 0.012, 0.0], ["Stubble", 0.7, 0.003, 0.0], ["Short", 0.8, 0.007, 0.0], ["Full", 0.9, 0.012, 0.0],
 	["Long", 1.0, 0.03, 0.0], ["Goatee", 0.9, 0.01, 1.0],
 ]
 const SKIN_FILES: Array = [   # CC0 MakeHuman skins, 1k (assets/models/humans/skins/CREDITS.md); both bodies share the MakeHuman UV layout

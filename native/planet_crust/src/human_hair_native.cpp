@@ -1393,17 +1393,18 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				if (along.length() < 0.2f) {
 					along = Vector3(real_t(root.x >= 0.0f ? 1.0f : -1.0f), 0.0f, 0.0f) - normal * real_t(normal.x);
 				}
-				const Vector3 direction = (along.normalized() * 0.9f + normal * 0.25f + Vector3(real_t(dice.range(-0.18, 0.18)), real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.18, 0.18)))).normalized();
+				const Vector3 direction = (along.normalized() * 0.9f + normal * 0.08f + Vector3(real_t(dice.range(-0.16, 0.16)), real_t(dice.range(-0.08, 0.08)), real_t(dice.range(-0.16, 0.16)))).normalized();   // (a beard hair lies along the skin: little push off it, little random)
 				const int hairs = in_moustache ? 6 : 6;
 				for (int h = 0; h < hairs; h++) {
 					beard_hair_total++;
 					std::vector<Vector3> bp;
 					Vector3 position = root + normal * 0.0008f + Vector3(real_t(dice.range(-0.0012, 0.0012)), real_t(dice.range(-0.0012, 0.0012)), real_t(dice.range(-0.0012, 0.0012)));
-					Vector3 dir = (direction + Vector3(real_t(dice.range(-0.6, 0.6)), real_t(dice.range(-0.3, 0.3)), real_t(dice.range(-0.6, 0.6)))).normalized();
+					Vector3 dir = (direction + Vector3(real_t(dice.range(-0.32, 0.32)), real_t(dice.range(-0.14, 0.14)), real_t(dice.range(-0.32, 0.32)))).normalized();
 					bp.push_back(position);
 					const double seg = hair_length * dice.range(0.8, 1.15) / (beard_steps - 1);
 					for (int k = 1; k < beard_steps; k++) {
-						dir = (dir * 0.7f + Vector3(0.0f, in_moustache ? -0.06f : -0.2f, 0.0f) + Vector3(real_t(dice.range(-0.3, 0.3)), real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.3, 0.3)))).normalized();
+						dir = (dir * 0.7f + Vector3(0.0f, in_moustache ? -0.06f : real_t(-0.15 - 5.0 * hair_length), 0.0f) + Vector3(real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.04, 0.04)), real_t(dice.range(-0.1, 0.1)))).normalized();
+						dir = (dir - normal * real_t(dir.dot(normal) * 0.3)).normalized();   // (it keeps lying along the skin: a stiff hair rests on the surface)
 						position += dir * real_t(seg);
 						grid.push_out(position, 0.0010);
 						bp.push_back(position);
@@ -1413,7 +1414,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						Vector3 bend = normal.cross((bp[size_t(beard_steps - 1)] - bp[0]).normalized());
 						if (bend.length() > 1e-3f) {
 							bend = bend.normalized();
-							const double lean = hair_length * dice.range(-0.45, 0.45);
+							const double lean = hair_length * dice.range(-0.3, 0.3);
 							bp[1] += bend * real_t(lean);
 							bp[size_t(beard_steps - 1)] += bend * real_t(lean * dice.range(-0.4, 1.2));
 						}
@@ -1447,7 +1448,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						}
 						side = side.normalized();
 						const Vector3 face = side.cross(tangent).normalized();
-						const double width = std::min(strand_width, 0.0004) * 0.7 * (1.0 - 0.5 * std::pow(sv, 1.6));   // (a rounder tip: a beard hair is blunt where it was cut)
+						const double width = std::min(strand_width, 0.0004) * 0.7 * Math::clamp(hair_length / 0.012, 0.45, 1.0) * (1.0 - 0.5 * std::pow(sv, 1.6));   // (stubble is finer than a full beard)   // (a rounder tip: a beard hair is blunt where it was cut)
 						const Color color(brightness, chance, 0.3f, 1.0f); // (blue 0.3 marks a beard hair for the shader: depth shading, clumps)
 						add_vertex(bp[size_t(k)] - side * real_t(width * 0.5), face, Vector2(0.0f, float(sv)), color, bound, tangent, float(sv), false);
 						add_vertex(bp[size_t(k)] + side * real_t(width * 0.5), face, Vector2(1.0f, float(sv)), color, bound, tangent, float(sv), false);
