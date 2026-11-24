@@ -215,6 +215,7 @@ var _hair_color: Color = Color(0.16, 0.1, 0.06)
 var _mh_hair: String = ""   # --mh-hair=hair_messy:short_messy_diff.png: a CC0 MakeHuman hair shell (tools/blender/fit_mh_mesh.py) instead of our hair, for comparison
 var _face_values: Dictionary = {}   # shape key -> weight (the face sliders): applied as blend shapes to the body/eyes/brows and BAKED into the body the hair is built on
 var _face_arg: String = ""
+var _beard_colour_arg: String = ""
 var _skin_file: String = ""      # --skin=male_light_bronze: one of the shipped skins (assets/models/humans/skins)
 var _skin_tex_path: String = ""   # --skin-tex=<absolute png>: a skin diffuse map (e.g. a CC0 MakeHuman skin) read from outside the project, for a comparison
 var _wet: float = 0.0
@@ -414,6 +415,8 @@ func _ready() -> void:
 			_hair_enabled = false
 		elif arg.begins_with("--face="):
 			_face_arg = arg.trim_prefix("--face=")   # --face=nose_wide:1.5,age_old:0.5
+		elif arg.begins_with("--beard-colour="):
+			_beard_colour_arg = arg.trim_prefix("--beard-colour=")   # --beard-colour=grey:0.5,ginger:0.3 (tests)
 		elif arg.begins_with("--skin="):
 			_skin_file = arg.trim_prefix("--skin=")
 		elif arg.begins_with("--skin-tex="):
@@ -571,6 +574,10 @@ func _build_material() -> void:
 	_head_hair_material.set_shader_parameter(&"tip_mix", _tip_mix)
 	if _shine_override >= 0.0:
 		_head_hair_material.set_shader_parameter(&"shine", _shine_override)
+	for pair in _beard_colour_arg.split(",", false):
+		var parts: PackedStringArray = pair.split(":")
+		if parts.size() == 2:
+			_head_hair_material.set_shader_parameter(StringName("beard_" + parts[0]), float(parts[1]))
 	_head_hair_material.set_shader_parameter(&"wet", _wet)
 	_head_hair_material.set_shader_parameter(&"wrap_k", _wrap_arg if _wrap_arg >= 0.0 else (0.7 if _real_env else 0.25))
 	_head_hair_material.set_shader_parameter(&"sun_gain", _sun_gain_arg if _sun_gain_arg >= 0.0 else (0.45 if _real_env else 0.15))
@@ -726,6 +733,8 @@ func _build_ui() -> void:
 		style_button.pressed.connect(_on_beard_style.bind(style_entry))
 		beard_styles.add_child(style_button)
 	_add_hair_slider(beard_tab, "Beard amount (0 = none)", &"beard", 0.0, 1.0)
+	_add_value_slider(beard_tab, "Greying (grey locks)", 0.0, 1.0, 0.0, func(v: float) -> void: _head_hair_material.set_shader_parameter(&"beard_grey", v))
+	_add_value_slider(beard_tab, "Ginger locks", 0.0, 1.0, 0.0, func(v: float) -> void: _head_hair_material.set_shader_parameter(&"beard_ginger", v))
 	_add_hair_slider(beard_tab, "Beard curl (0 straight .. 1 tight curls)", &"beard_curl", 0.0, 1.0)
 	_add_hair_slider(beard_tab, "Neck beard (under the jaw)", &"neck_beard", 0.0, 1.0)
 	_add_hair_slider(beard_tab, "Beard length (metres)", &"beard_length", 0.002, 0.04)

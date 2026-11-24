@@ -19,6 +19,8 @@ uniform vec3 stubble_skin : source_color = vec3(0.75, 0.52, 0.42);   // skin ton
 uniform float scalp_layer : hint_range(0.0, 1.0) = 1.0;      // the solid base layer under the hair (0 = none: only the hairs are drawn)
 uniform float strands = 14.0;
 uniform bool single_hairs = false;                              // strands mode: each ribbon IS one hair (no strand lanes inside it)                                   // strands across one lock
+uniform float beard_grey : hint_range(0.0, 1.0) = 0.0;     // the share of beard locks that are grey/white (stronger toward the tips)
+uniform float beard_ginger : hint_range(0.0, 1.0) = 0.0;   // the share of beard locks that are warm ginger (a beard is often redder than the head hair)
 uniform float wet : hint_range(0.0, 1.0) = 0.0;                // wet or oily hair: darker, with thin, bright, sharp highlights
 uniform float wrap_k : hint_range(0.05, 1.0) = 0.25;               // how much the side of a lock turned away from the sun is darker (0.25: flat, the old grey room; 0.6-1.0: a lock shades the one under it)
 uniform float sun_gain = 0.15;                                 // how much the sun lights the strands (a grey room tuned it low; a real sun-lit scene wants more, so the shadow between locks shows)
@@ -124,6 +126,14 @@ void fragment() {
 			color *= mix(0.45, 1.2, clump) * mix(0.3, 1.0, smoothstep(0.0, 0.85, UV.y));
 			float streak_b = smoothstep(0.55, 0.9, value_noise(rest_pos * vec2(60.0, 240.0) + 3.0));   // (lighter streaks that run along the beard: a few mm wide, tens of mm long, like the light/dark bands of a groomed beard)
 			color *= mix(1.0, 1.45, streak_b * smoothstep(0.3, 0.9, UV.y));
+			color *= mix(1.0, 1.28, smoothstep(0.55, 1.0, UV.y));   // (the tips are lighter and warmer: the sun-bleached ends of the beard)
+			// grey and ginger LOCKS (COLOR.r carries the lock's number: 70% lock, 30% hair): the high end of the range greys, the low end reddens
+			float lock_n = COLOR.r;
+			float grey_here = smoothstep(1.0 - 0.7 * beard_grey, 1.0, lock_n + 0.25 * smoothstep(0.3, 1.0, UV.y) * beard_grey);
+			float luma_b = dot(color, vec3(0.3, 0.59, 0.11));
+			color = mix(color, vec3(luma_b * 2.4 + 0.02) * vec3(1.0, 1.0, 1.02), grey_here * 0.85);
+			float ginger_here = smoothstep(1.0 - 0.75 * beard_ginger, 1.0, 1.0 - lock_n);
+			color = mix(color, vec3(luma_b * 3.6, luma_b * 1.45, luma_b * 0.35) + vec3(0.03, 0.008, 0.0), ginger_here * 0.9);
 		}
 		color *= mix(0.45, 1.0, smoothstep(0.0, 0.4, UV.y));       // roots are in the shade of the hair above them
 		color *= mix(1.0, 0.55, wet);   // wet hair is darker
