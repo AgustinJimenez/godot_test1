@@ -839,7 +839,7 @@ NOT DONE / OPEN: far shell LOD; normal/spec maps for skins; eyeballs do not foll
 FAILED / CAVEATS: Chrome DevTools screenshots hang unless the tab is brought to the front (select_page bringToFront first); the side-profile Unsplash page loaded only once.
 
 ### SECOND QUEUE (set 2026-11-24 by the user: 'continue with a loop on the open problems and the beard'; a 6-minute loop; commit + push after each finished item; same rules as the OVERNIGHT QUEUE)
-A. [ ] CHIN HAIRS across the mouth (beard): the lip exclusion is a plain ellipse; hairs from the chin grow up/forward across the lower lip. Fix (growth direction under the lip, shorter/none right below the lip, clip hairs that cross the mouth gap).
+A. [x] DONE 2026-11-24 (hairs under the lip are shorter (x0.45 at the lip rising to 1 at 1.8 cm below), and any hair with a point inside a slightly larger lip ellipse is pulled back to 55% up to 3 times; the mouth is clean from the front, 3/4, below and the side) CHIN HAIRS across the mouth (beard): the lip exclusion is a plain ellipse; hairs from the chin grow up/forward across the lower lip. Fix (growth direction under the lip, shorter/none right below the lip, clip hairs that cross the mouth gap).
 B. [ ] EYEBALLS follow eye_small/big and the lid shapes (and a narrowed/wide head): make_eyes.py should move/scale the spheres by the body's eye-region deltas (use the landmarks of the eyes_* keys; eyes_big/small should scale the sphere radius a little), re-bake and check.
 C. [ ] FRINGE OVER THE FACE on a wide head (Long waves with head_wide 1.5): find why (hair built on the baked head: half_width / eye_y / crown measures) and fix.
 D. [ ] LONG WAVES forehead strands at the parting.
@@ -847,3 +847,4 @@ E. [ ] RIGGED GLBS: re-run tools/blender/make_rig.py on the new 24-key bodies if
 F. [ ] BEARD: keep improving with MANY image refs (a clean diagonal cheek line from sideburn to mouth corner, trimmed styles: stubble, short boxed, full; hair wave; colour variation; a beard style selector in the Beard tab: stubble / short / full / goatee).
 G. [ ] SKIN normal/spec maps for the two mindfront skins (CC0 per page table), roughness from spec; per-skin tint for the scalp/stubble.
 End: add 'SECOND NIGHT SUMMARY' to this file and CronDelete the loop.
+- SECOND QUEUE A DONE: native beard block: below_lip length factor and an across-the-mouth pull-back; checked at 0.3 m front, 3/4, from below and 0.5 m side (ca_sheet.png): no hair across the lips, the beard under the lip is slightly thinner/shorter. Cost: negligible.

@@ -1337,7 +1337,8 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					out_indices.push_back(d2);
 					out_indices.push_back(d3);
 				}
-				const double hair_length = beard_length * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (in_moustache ? 1.0 : 1.0);
+				const double below_lip = Math::clamp(((dy + 0.072) / 0.011 + 1.0) / 1.6, 0.0, 1.0); // (0 at the lower lip, 1 about 1.8 cm under it: right under the lip the hairs are short, they would lie across the mouth)
+				const double hair_length = beard_length * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (0.45 + 0.55 * below_lip) * (in_moustache ? 1.0 : 1.0);
 				// the growth direction (a field over the face): on the cheeks down and a little back toward the ear, under the jaw down and forward toward the chin, on the chin down and out,
 				// on the moustache band outward from the middle (and down); each follicle's hairs fan out a little. The field is projected onto the skin.
 				const double ax_root = std::abs(double(root.x));
@@ -1379,6 +1380,23 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 							const double lean = hair_length * dice.range(-0.45, 0.45);
 							bp[1] += bend * real_t(lean);
 							bp[size_t(beard_steps - 1)] += bend * real_t(lean * dice.range(-0.4, 1.2));
+						}
+					}
+					// no hair may lie across the mouth gap: a point of the hair inside the lip ellipse (made a little larger) pulls the whole hair back toward its root
+					for (int pass = 0; pass < 3; pass++) {
+						bool across = false;
+						for (int k = 1; k < beard_steps; k++) {
+							const double pdy = (double(bp[size_t(k)].y) - eye_y) / face_scale;
+							const double qx = std::abs(double(bp[size_t(k)].x)) / 0.034, qy = (pdy + 0.072) / 0.0135;
+							if (qx * qx + qy * qy < 1.0 && double(bp[size_t(k)].z) > centre_z + 0.5 * half_width) {
+								across = true;
+							}
+						}
+						if (!across) {
+							break;
+						}
+						for (int k = 1; k < beard_steps; k++) {
+							bp[size_t(k)] = bp[0] + (bp[size_t(k)] - bp[0]) * 0.55f;
 						}
 					}
 					const float brightness = float(dice.unit());
