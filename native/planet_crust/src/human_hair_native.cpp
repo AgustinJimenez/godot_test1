@@ -260,6 +260,7 @@ Dictionary HumanHair::default_params() {
 	d["back_length"] = 0.0; // 0..1: the hair behind the crown is longer than the top (up to +60%), a layered cut
 	d["beard"] = 0.0;        // 0..1: a short beard and moustache on the jaw, cheeks and chin (0: none; the amount is the density)
 	d["beard_length"] = 0.012; // metres
+	d["neck_beard"] = 0.0;     // 0..1: the beard continues under the jaw onto the neck (the neck beard region; 0 = it stops at the jaw)
 	d["beard_zone"] = 0.0;     // 0: full beard (cheeks, jaw, chin, moustache); 1: goatee (moustache and a chin patch, bare cheeks)
 	d["strips"] = 0.0; // 0..1: the front hair falls as separate strips (about 1.3 cm wide) with gaps between them, each strip its own length
 	d["gaps"] = 0.0;  // 0..1: patches of the scalp grow no locks and the rest clump tighter, so the hair parts into separate clumps with the layer below showing between them
@@ -417,7 +418,10 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double beard = Math::clamp(param(p_params, "beard", 0.0), 0.0, 1.0);
 	const double back_long = Math::clamp(param(p_params, "back_length", 0.0), 0.0, 1.0);
 	const double beard_length = Math::clamp(param(p_params, "beard_length", 0.012), 0.002, 0.06);
-	const bool goatee = param(p_params, "beard_zone", 0.0) > 0.5;
+	const double beard_zone_value = param(p_params, "beard_zone", 0.0);
+	const bool goatee = beard_zone_value > 0.5;          // 1: goatee (moustache + soul patch + chin); 2: circle beard (the same plus the connectors at the mouth corners)
+	const bool circle_beard = beard_zone_value > 1.5;
+	const double neck_beard = Math::clamp(param(p_params, "neck_beard", 0.0), 0.0, 1.0);
 	const double wisps = Math::clamp(param(p_params, "wisps", 0.0), 0.0, 1.0);
 	const double eye_drop = param(p_params, "eye_drop", 0.105);
 
@@ -1264,7 +1268,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		double beard_total = 0.0;
 		// the neckline: the beard stops at a line under the jaw that rises from the chin toward the neck (real beards end above the Adam's apple, the neck below is clean)
 		auto beard_floor = [&](double z) {
-			return -0.135 + 0.05 * Math::clamp(((z_front - 0.035) - z) / 0.07, 0.0, 1.0);
+			return -0.135 - 0.07 * neck_beard + 0.05 * (1.0 - 0.6 * neck_beard) * Math::clamp(((z_front - 0.035) - z) / 0.07, 0.0, 1.0);   // (the neck beard region lowers the floor onto the neck)
 		};
 		auto in_beard_region = [&](const Vector3 &c, const Vector3 &n) {
 			const double dy = (double(c.y) - eye_y) / face_scale;
@@ -1282,7 +1286,8 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			if (goatee) {
 				const bool moustache_band = ax < 0.034 && dy > -0.075 && dy < -0.044;
 				const bool chin_patch = ax < 0.014 + 0.006 * Math::clamp((-0.085 - dy) / 0.03, 0.0, 1.0) && dy < -0.078;
-				if (!moustache_band && !chin_patch) {
+				const bool connector = circle_beard && ax > 0.026 && ax < 0.042 && dy > -0.1 && dy < -0.05;   // (the strips that link the moustache to the chin at the mouth corners)
+				if (!moustache_band && !chin_patch && !connector) {
 					return false; // (a goatee: no cheeks, no jaw line)
 				}
 			}
@@ -1309,7 +1314,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			current_guide = -1; // (static hairs)
 			int beard_hair_total = 0;
 			// (no flat layer under the beard: a dim dot around each follicle instead, below)
-			const int follicles = int(24000.0 * beard);
+			const int follicles = int(30000.0 * beard);
 			const int beard_steps = 3;
 			for (int f = 0; f < follicles; f++) {
 				Dice dice(seed + 0xBEA2DULL + uint64_t(f) * 0x2545F4914F6CDD1DULL);
@@ -1373,7 +1378,8 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					out_indices.push_back(d2);
 					out_indices.push_back(d3);
 				}
-				const double below_lip = Math::clamp(((dy + 0.072) / 0.011 + 1.0) / 1.6, 0.0, 1.0); // (0 at the lower lip, 1 about 1.8 cm under it: right under the lip the hairs are short, they would lie across the mouth)
+				const bool soul_patch = std::abs(double(root.x)) < 0.012 && dy < -0.08 && dy > -0.1;   // (the small patch under the lower lip: full length, it is a region of its own)
+				const double below_lip = soul_patch ? 1.0 : Math::clamp(((dy + 0.072) / 0.011 + 1.0) / 1.6, 0.0, 1.0); // (0 at the lower lip, 1 about 1.8 cm under it: right under the lip the hairs are short, they would lie across the mouth)
 				const double hair_length = beard_length * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (0.45 + 0.55 * below_lip) * (in_moustache ? 1.0 : 1.0);
 				// the growth direction (a field over the face): on the cheeks down and a little back toward the ear, under the jaw down and forward toward the chin, on the chin down and out,
 				// on the moustache band outward from the middle (and down); each follicle's hairs fan out a little. The field is projected onto the skin.
@@ -1393,7 +1399,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				if (along.length() < 0.2f) {
 					along = Vector3(real_t(root.x >= 0.0f ? 1.0f : -1.0f), 0.0f, 0.0f) - normal * real_t(normal.x);
 				}
-				const Vector3 direction = (along.normalized() * 0.9f + normal * 0.08f + Vector3(real_t(dice.range(-0.16, 0.16)), real_t(dice.range(-0.08, 0.08)), real_t(dice.range(-0.16, 0.16)))).normalized();   // (a beard hair lies along the skin: little push off it, little random)
+				const Vector3 direction = (along.normalized() * 0.9f + normal * 0.2f + Vector3(real_t(dice.range(-0.16, 0.16)), real_t(dice.range(-0.08, 0.08)), real_t(dice.range(-0.16, 0.16)))).normalized();   // (a beard hair lies along the skin: little push off it, little random)
 				const int hairs = in_moustache ? 6 : 6;
 				for (int h = 0; h < hairs; h++) {
 					beard_hair_total++;
@@ -1404,7 +1410,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					const double seg = hair_length * dice.range(0.8, 1.15) / (beard_steps - 1);
 					for (int k = 1; k < beard_steps; k++) {
 						dir = (dir * 0.7f + Vector3(0.0f, in_moustache ? -0.06f : real_t(-0.15 - 5.0 * hair_length), 0.0f) + Vector3(real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.04, 0.04)), real_t(dice.range(-0.1, 0.1)))).normalized();
-						dir = (dir - normal * real_t(dir.dot(normal) * 0.3)).normalized();   // (it keeps lying along the skin: a stiff hair rests on the surface)
+						dir = (dir - normal * real_t(dir.dot(normal) * 0.12)).normalized();   // (it keeps lying along the skin: a stiff hair rests on the surface)
 						position += dir * real_t(seg);
 						grid.push_out(position, 0.0010);
 						bp.push_back(position);
