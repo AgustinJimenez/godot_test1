@@ -1346,7 +1346,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const double upper_edge = upper_edge_base + std::max(0.0, 0.028 - upper_edge_base) * sideburn_r;
 				double region_width = 1.0;
 				const bool in_moustache = std::abs(double(root.x)) < 0.04 && dy > -0.075 && dy < -0.044; // (the band between the nose and the lips)
-				const double edge_plain = std::min(std::min(Math::clamp((upper_edge - dy) / 0.014, 0.0, 1.0), Math::clamp((dy - beard_floor(double(root.z))) / 0.05, 0.3, 1.0)), Math::clamp((double(root.z) - (centre_z - 0.12 * half_width)) / (0.5 * half_width), 0.0, 1.0)); // (a soft edge along the cheek line above, the jaw below and toward the ear) // (the cheek line: shorter and thinner right at the edge)
+				const double edge_plain = std::min(std::min(Math::clamp((upper_edge - dy) / 0.014, 0.0, 1.0), Math::clamp((dy - beard_floor(double(root.z))) / 0.05, 0.3, 1.0)), std::pow(Math::clamp((double(root.z) - (centre_z - 0.12 * half_width)) / (0.9 * half_width), 0.0, 1.0), 0.8)); // (a soft edge along the cheek line above, the jaw below and toward the ear) // (the cheek line: shorter and thinner right at the edge)
 				const double edge = in_moustache ? std::max(edge_plain, 0.95 * Math::clamp((upper_edge - dy) / 0.012, 0.0, 1.0)) : edge_plain; // (the moustache is full right up to the nose, not faded like the cheek line)
 				if (dice.unit() > 0.2 + 0.8 * edge * edge) {
 					continue;
@@ -1412,7 +1412,8 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const double chin_tuft = Math::clamp((-0.082 - dy) / 0.045, 0.0, 1.0) * Math::clamp(1.0 - (std::abs(double(root.x)) - 0.012) / 0.03, 0.0, 1.0);
 				const double jaw_band = Math::clamp(1.0 - (dy - beard_floor(double(root.z))) / 0.04, 0.0, 1.0);
 				const double gradient = 1.0 + 1.5 * chin_tuft + 0.25 * jaw_band;
-				const double hair_length = beard_length * gradient * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (0.45 + 0.55 * below_lip) * (in_moustache ? 1.35 : 1.0) * (in_moustache ? 1.0 : 1.0);
+				const double ear_fade = Math::clamp((double(root.z) - (centre_z - 0.12 * half_width)) / (0.6 * half_width), 0.35, 1.0);   // (toward the ear the hairs get shorter: a soft end, not a cut)
+				const double hair_length = beard_length * gradient * ear_fade * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (0.45 + 0.55 * below_lip) * (in_moustache ? 1.35 : 1.0) * (in_moustache ? 1.0 : 1.0);
 				// the growth direction (a field over the face): on the cheeks down and a little back toward the ear, under the jaw down and forward toward the chin, on the chin down and out,
 				// on the moustache band outward from the middle (and down); each follicle's hairs fan out a little. The field is projected onto the skin.
 				const double ax_root = std::abs(double(root.x));
@@ -1442,7 +1443,11 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					const double h = std::sin(double(lock_x) * 127.1 + double(lock_y) * 311.7 + double(lock_z) * 74.7 + salt * 19.19) * 43758.5453;
 					return h - std::floor(h);
 				};
-				const double lock_bend = (lock_hash(1.0) - 0.5) * 2.0;       // -1..1: which way and how much the lock leans
+				// a second, larger level of locks (~2 cm cells): the photos have centimetre-scale locks that flow together; its lean adds to the small lock's
+				const int big_x = int(std::floor(double(root.x) / 0.02)), big_y = int(std::floor(double(root.y) / 0.02)), big_z = int(std::floor(double(root.z) / 0.02));
+				const double big_h = std::sin(double(big_x) * 91.7 + double(big_y) * 233.3 + double(big_z) * 57.1) * 43758.5453;
+				const double big_bend = (big_h - std::floor(big_h) - 0.5) * 2.0;
+				const double lock_bend = Math::clamp((lock_hash(1.0) - 0.5) * 2.0 * 0.6 + big_bend * 0.9, -1.4, 1.4);       // -1.4..1.4: which way and how much the lock leans
 				const double lock_light = lock_hash(2.0);
 				const int hairs = in_moustache ? 8 : int(std::round(6.0 * std::max(1.0, region_density)));
 				for (int h = 0; h < hairs; h++) {
@@ -1484,7 +1489,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						if (bend.length() > 1e-3f) {
 							bend = bend.normalized();
 							const double lean = hair_length * dice.range(-0.3, 0.3) * region_curl;
-							const double lock_lean = hair_length * lock_bend * 0.35;   // (every hair of the lock leans the same way: the lock)
+							const double lock_lean = hair_length * lock_bend * 0.5;   // (every hair of the lock leans the same way: the lock)
 							bp[1] += bend * real_t(lean * 0.5 + lock_lean * 0.6);
 							bp[size_t(beard_steps - 1)] += bend * real_t(lean * 0.5 * dice.range(-0.4, 1.2) + lock_lean);
 						}
@@ -1506,7 +1511,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 							bp[size_t(k)] = bp[0] + (bp[size_t(k)] - bp[0]) * 0.55f;
 						}
 					}
-					const float brightness = float(0.3 * dice.unit() + 0.7 * lock_light);   // (a lock is lighter or darker as a whole)
+					const float brightness = float(0.2 * dice.unit() + 0.5 * lock_light + 0.3 * (0.5 + 0.5 * big_bend));   // (a lock is lighter or darker as a whole)
 					const float chance = float(dice.unit());
 					const int first = int(out_vertices.size());
 					for (int k = 0; k < beard_steps; k++) {
