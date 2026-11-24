@@ -1379,8 +1379,8 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					// a tapered moustache: full at the middle, thinning out toward the mouth corners and toward the nose, so it is an arch and not a block
 					const double ax_m = std::abs(double(root.x));
 					const double taper = 1.0 - 0.45 * Math::clamp((ax_m - 0.015) / 0.025, 0.0, 1.0);   // (thick: it only thins a little toward the corners, where it merges with the cheek hair)
-					const double band_top = Math::clamp((-0.044 - dy) / 0.01, 0.0, 1.0);
-					if (dice.unit() > taper * (0.35 + 0.65 * band_top)) {
+					const double band_top = Math::clamp((-0.041 - dy) / 0.008, 0.0, 1.0);
+					if (dice.unit() > taper * (0.5 + 0.5 * band_top)) {
 						continue;
 					}
 				}
@@ -1409,6 +1409,13 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					out_indices.push_back(d2);
 					out_indices.push_back(d3);
 				}
+				if (!in_moustache && dy < -0.07 && !(std::abs(double(root.x)) < 0.012 && dy > -0.1)) {
+					// the beard does not start with a straight cut under the lower lip: its presence rises over ~2.5 cm away from the mouth (the soul patch is kept full)
+					const double mouth_r = std::hypot(std::abs(double(root.x)) / 0.034, (dy + 0.072) / 0.014);
+					if (dice.unit() > Math::clamp((mouth_r - 1.0) / 0.9, 0.2, 1.0)) {
+						continue;
+					}
+				}
 				const bool soul_patch = std::abs(double(root.x)) < 0.012 && dy < -0.08 && dy > -0.1;   // (the small patch under the lower lip: full length, it is a region of its own)
 				const double below_lip = soul_patch ? 1.0 : Math::clamp(((dy + 0.072) / 0.011 + 1.0) / 1.6, 0.0, 1.0); // (0 at the lower lip, 1 about 1.8 cm under it: right under the lip the hairs are short, they would lie across the mouth)
 				// the length gradient of a real beard: the cheeks have the length of the slider, the jaw a little more, the chin and the soul patch grow into a tuft up to 2.5 x longer (a wedge below the jaw)
@@ -1423,7 +1430,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const double side = root.x >= 0.0f ? 1.0 : -1.0;
 				Vector3 want(0.0f, -1.0f, 0.0f);
 				if (dy > -0.047 - 0.022 && dy < -0.047 + 0.003 && ax_root < 0.04) {
-					want = Vector3(real_t(side * 0.9), -0.3f, 0.1f); // (the moustache: out from the middle and only a little down, so it does not hang over the lips)
+					want = Vector3(real_t(side * 0.9 * Math::clamp(ax_root / 0.014, 0.12, 1.0)), -0.3f, 0.1f);   // (hairs in the middle fall straight down: the two halves meet, no gap under the nose) // (the moustache: out from the middle and only a little down, so it does not hang over the lips)
 				} else if (normal.y < -0.35f) {
 					want = Vector3(real_t(side * 0.1), -1.0f, 0.35f); // (under the jaw: down, a little toward the chin; a stronger forward component made long beards stick out in front instead of hanging)
 				} else if (ax_root < 0.022 && dy < -0.09) {
@@ -1504,7 +1511,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					// a trimmed moustache: men who wear one trim it above the lip so they can eat; no hair of the moustache or the cheeks may reach below the trim line (the top edge of the upper lip),
 					// whatever its length: the hair is cut where it would cross the line (a clean straight edge, like scissors)
 					if (std::abs(double(root.x)) < 0.045 && dy > -0.075) {
-						const double trim_line = -0.0535;   // (below the eye line, in face scale: just above the red of the upper lip)
+						const double trim_line = -0.066;   // (below the eye line, in face scale: measured on the render: the red of the upper lip starts at about -0.073, so the trim is 7 mm above it)
 						for (int k = 1; k < beard_steps; k++) {
 							const double pdy_k = (double(bp[size_t(k)].y) - eye_y) / face_scale;
 							if (pdy_k < trim_line) {
@@ -1547,7 +1554,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						side = side.normalized();
 						const Vector3 face = side.cross(tangent).normalized();
 						const double width = std::min(strand_width, 0.0004) * 0.85 * region_width * Math::clamp(hair_length / 0.012, 0.45, 1.0) * (1.0 - 0.5 * std::pow(sv, 1.6));   // (stubble is finer than a full beard)   // (a rounder tip: a beard hair is blunt where it was cut)
-						const Color color(brightness, chance, 0.3f, 1.0f); // (blue 0.3 marks a beard hair for the shader: depth shading, clumps)
+						const Color color(brightness, chance, 0.3f, float(Math::clamp(hair_length / 0.012, 0.25, 1.0))); // (blue 0.3 marks a beard hair for the shader: depth shading, clumps)
 						add_vertex(bp[size_t(k)] - side * real_t(width * 0.5), face, Vector2(0.0f, float(sv)), color, bound, tangent, float(sv), false);
 						add_vertex(bp[size_t(k)] + side * real_t(width * 0.5), face, Vector2(1.0f, float(sv)), color, bound, tangent, float(sv), false);
 					}

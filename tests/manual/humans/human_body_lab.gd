@@ -254,6 +254,7 @@ var _shadow_bias: float = 0.001
 var _shadow_normal_bias: float = 0.05
 var _real_env: bool = false     # --env=real: a sky, shadows from the sun, ambient occlusion and a filmic tonemap (a place to judge the hair in, not a grey room)
 var _scalp_arg: float = -1.0    # --scalp-layer=0..1: overrides the preset value (tests)
+var _beard_look_dy: float = -0.03   # --look-dy=m: the Beard camera aims this far above (+) or below (-) the beard view height (+0.07 looks at the mouth)
 var _beard_view: bool = false   # the Beard tab is open: the camera looks at the jaw
 var _look_y: float = 0.95
 var _cam_y: float = 1.0
@@ -415,6 +416,8 @@ func _ready() -> void:
 			_hair_enabled = false
 		elif arg.begins_with("--face="):
 			_face_arg = arg.trim_prefix("--face=")   # --face=nose_wide:1.5,age_old:0.5
+		elif arg.begins_with("--look-dy="):
+			_beard_look_dy = float(arg.trim_prefix("--look-dy="))
 		elif arg.begins_with("--beard-colour="):
 			_beard_colour_arg = arg.trim_prefix("--beard-colour=")   # --beard-colour=grey:0.5,ginger:0.3 (tests)
 		elif arg.begins_with("--skin="):
@@ -1720,7 +1723,7 @@ func _update_camera() -> void:
 	var centre := Vector3(0.0, _look_y, 0.0)
 	if _beard_view:
 		# the body turns about its own axis, the beard is in front of it: look at the beard's place (10 cm in front of the axis, a little below the middle of the jaw) so it stays in the middle of the picture whatever the yaw
-		centre = Vector3(0.0, _look_y - 0.03, 0.1).rotated(Vector3.UP, _yaw)
+		centre = Vector3(0.0, _look_y + _beard_look_dy, 0.1).rotated(Vector3.UP, _yaw)
 	_camera.position = centre + Vector3(0.0, _cam_y - _look_y, _distance).rotated(Vector3.RIGHT, -_pitch)
 	_camera.look_at(centre)
 
