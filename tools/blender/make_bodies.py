@@ -79,9 +79,28 @@ for name, g in (("female",0.0),("male",1.0)):
         ids[key] = [v.index for v in base.data.vertices if any(vg.group == gi for vg in v.groups)]
     def centres(pts):
         return {key: [sum(pts[i][a] for i in members) / len(members) for a in range(3)] for key, members in ids.items()}
-    landmarks = {"basis": centres(base_pts)}
+    # the helper eyeball of the MakeHuman mesh moves and scales with the eye keys (the joint vertices do not): its centre and size per shape drive our eyeballs
+    helper_ids = {}
+    for side in ("l", "r"):
+        gi_h = base.vertex_groups[f"helper-{side}-eye"].index
+        helper_ids[side] = [v.index for v in base.data.vertices if any(vg.group == gi_h for vg in v.groups)]
+    def helper_info(pts):
+        info = {}
+        for side, members in helper_ids.items():
+            c = [sum(pts[i][a] for i in members) / len(members) for a in range(3)]
+            r = sum(((pts[i][0]-c[0])**2 + (pts[i][1]-c[1])**2 + (pts[i][2]-c[2])**2) ** 0.5 for i in members) / len(members)
+            info[side] = (c, r)
+        return info
+    base_helper = helper_info(base_pts)
+    def with_helper(entry, pts):
+        h = helper_info(pts)
+        for side in ("l", "r"):
+            entry[f"eye_{side}_helper"] = h[side][0]
+            entry[f"eye_{side}_scale"] = h[side][1] / base_helper[side][1]
+        return entry
+    landmarks = {"basis": with_helper(centres(base_pts), base_pts)}
     for key, pts in variants.items():
-        landmarks[key] = centres(pts)
+        landmarks[key] = with_helper(centres(pts), pts)
     helper_eye = base.vertex_groups["helper-l-eye"].index
     eye_ids = [v.index for v in base.data.vertices if any(vg.group == helper_eye for vg in v.groups)]
     centre_l = landmarks["basis"]["eye_l"]

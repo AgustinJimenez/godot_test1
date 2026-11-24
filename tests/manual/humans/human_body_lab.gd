@@ -20,7 +20,7 @@ const TressFXBridge := preload("res://tests/manual/humans/tressfx_bridge.gd")
 # The face and age sliders (signed: negative = the first key, positive = the second). The keys come from tools/blender/make_bodies.py (MakeHuman targets). The deltas are small at 1.0 (mm to cm): the range goes to 1.5 (at 2 the narrowed head pushed an eyeball out of its socket).
 const FACE_SLIDERS: Array = [
 	["Age (young .. old)", "age_young", "age_old"],
-	["Head width", "head_narrow", "head_wide"],
+	["Head width", "head_narrow", "head_wide", 1.0],   # (the optional 4th number is the slider range: a narrower head than 1.0 squeezes the eye socket until the eyeball shows through the cheek)
 	["Nose width", "nose_narrow", "nose_wide"],
 	["Nose length", "nose_short", "nose_long"],
 	["Ear size", "ears_small", "ears_big"],
@@ -706,8 +706,9 @@ func _build_ui() -> void:
 		face_tab.add_child(face_label)
 		var face_slider := HSlider.new()
 		face_slider.scrollable = false
-		face_slider.min_value = -1.5
-		face_slider.max_value = 1.5
+		var face_range: float = float(entry[3]) if entry.size() > 3 else 1.5
+		face_slider.min_value = -face_range
+		face_slider.max_value = face_range
 		face_slider.step = 0.04
 		face_slider.value = 0.0
 		face_slider.value_changed.connect(_on_face_slider.bind(entry, face_label))

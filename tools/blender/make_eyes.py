@@ -15,6 +15,8 @@ import bpy
 from mathutils import Vector
 
 EYE_RADIUS_SCALE = 0.9  # the MPFB helper eye is a bit large for a real eyeball; shrink it a little
+EYE_KEY_X_SCALE = {"head_narrow": 0.8, "head_wide": 1.1}   # the sphere is squashed sideways with the head width (a narrowed head squeezes the eye socket: the full-width ball poked through the cheek)
+EYE_KEY_SCALE = {"eyes_small": 0.92, "eyes_big": 1.1}   # the sphere grows/shrinks a little with the eye-size keys (the lids open/close with the body target)
 SEGMENTS = 40
 RINGS = 28
 
@@ -52,8 +54,14 @@ def build(folder: str, name: str) -> None:
 		shape = obj.shape_key_add(name=key, from_mix=False)
 		for i, vertex in enumerate(mesh.vertices):
 			side = "eye_l" if i < half else "eye_r"
-			offset = [centres[side][a] - basis[side][a] for a in range(3)]
-			shape.data[i].co = vertex.co + Vector(offset)
+			# the helper eyeball of the body mesh: where its centre moved and how much it grew (the eye keys scale it; the joint vertices do not move)
+			c_new = Vector(centres.get(side + "_helper", centres[side]))
+			c_old = Vector(basis.get(side + "_helper", basis[side]))
+			# measured (make_bodies.py landmarks): the helper eyeball does NOT change with eyes_small/eyes_big (the targets only move the lids and the skin) and it shrinks 20% with head_narrow (a squash, not a smaller eye): so the eyeball size comes from a fixed factor per key
+			scale = EYE_KEY_SCALE.get(key, 1.0)
+			local = (vertex.co - Vector(basis[side])) * scale
+			local.x *= EYE_KEY_X_SCALE.get(key, 1.0)
+			shape.data[i].co = local + Vector(basis[side]) + (c_new - c_old)
 		shape.value = 0.0
 	bpy.ops.object.select_all(action="DESELECT")
 	obj.select_set(True)
