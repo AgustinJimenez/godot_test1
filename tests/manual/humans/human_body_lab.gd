@@ -1268,6 +1268,8 @@ func _on_skin_chosen(file_name: String) -> void:
 		return
 	if file_name == "":
 		_material.set_shader_parameter(&"has_skin_tex", false)
+		_material.set_shader_parameter(&"has_skin_normal", false)
+		_material.set_shader_parameter(&"has_skin_spec", false)
 		return
 	var texture := load("res://assets/models/humans/skins/%s.jpg" % file_name) as Texture2D
 	if texture == null:
@@ -1275,6 +1277,17 @@ func _on_skin_chosen(file_name: String) -> void:
 		return
 	_material.set_shader_parameter(&"skin_tex", texture)
 	_material.set_shader_parameter(&"has_skin_tex", true)
+	# the optional maps of the same skin (only the Mindfront skins ship them): <name>_n.png (normal) and <name>_s.jpg (specular)
+	var normal_path := "res://assets/models/humans/skins/%s_n.png" % file_name
+	var spec_path := "res://assets/models/humans/skins/%s_s.jpg" % file_name
+	var has_normal: bool = ResourceLoader.exists(normal_path)
+	var has_spec: bool = ResourceLoader.exists(spec_path)
+	_material.set_shader_parameter(&"has_skin_normal", has_normal)
+	_material.set_shader_parameter(&"has_skin_spec", has_spec)
+	if has_normal:
+		_material.set_shader_parameter(&"skin_normal", load(normal_path) as Texture2D)
+	if has_spec:
+		_material.set_shader_parameter(&"skin_spec", load(spec_path) as Texture2D)
 
 
 func _on_wet_changed(value: float) -> void:

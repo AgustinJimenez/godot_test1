@@ -14,7 +14,11 @@ uniform int scalp_width = 1024;
 uniform bool has_scalp = false;
 uniform sampler2D skin_tex : source_color, filter_linear_mipmap, repeat_disable;   // an optional skin diffuse map (MakeHuman UV layout)
 uniform bool has_skin_tex = false;
-uniform sampler2D skin_spec : hint_default_white, filter_linear_mipmap, repeat_disable;
+uniform sampler2D skin_spec : hint_default_white, filter_linear_mipmap, repeat_disable;   // an optional specular map (MakeHuman): bright = shinier skin (oily forehead, lips), dark = matte
+uniform bool has_skin_spec = false;
+uniform sampler2D skin_normal : hint_normal, filter_linear_mipmap, repeat_disable;       // an optional tangent normal map (pores, wrinkles)
+uniform bool has_skin_normal = false;
+uniform float normal_strength : hint_range(0.0, 2.0) = 1.0;
 
 varying float scalp;
 
@@ -32,7 +36,15 @@ void fragment() {
 	}
 	ALBEDO = mix(base, scalp_color, clamp(scalp * scalp_amount, 0.0, 1.0));
 	float scalp_here = clamp(scalp * scalp_amount, 0.0, 1.0);
-	ROUGHNESS = mix(roughness_value, 1.0, scalp_here);   // the scalp is matte: seen at a grazing angle through a gap in the hair, a glossy skin showed up as a white speck
+	float rough = roughness_value;
+	if (has_skin_spec) {
+		rough = mix(0.85, 0.35, texture(skin_spec, UV).r);   // (MakeHuman spec maps are mostly mid-grey: 0.5 gives the old roughness of 0.6)
+	}
+	if (has_skin_normal) {
+		NORMAL_MAP = texture(skin_normal, UV).rgb;
+		NORMAL_MAP_DEPTH = normal_strength;
+	}
+	ROUGHNESS = mix(rough, 1.0, scalp_here);   // the scalp is matte: seen at a grazing angle through a gap in the hair, a glossy skin showed up as a white speck
 	SPECULAR = mix(0.5, 0.0, scalp_here);
 	SSS_STRENGTH = sss_strength * (1.0 - scalp_here);
 }

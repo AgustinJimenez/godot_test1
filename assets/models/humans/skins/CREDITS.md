@@ -9,5 +9,6 @@ The diffuse maps are downscaled from 2048 x 2048 to 1024 x 1024 JPEG (quality 90
 - female_light_bronze, female_light_freckles, female_light_ginger = toigo_light_skin_female_bronze / _freckles / _ginger (MargaretToigo)
 - female_midtoned = callharvey3d_midtoned_female (callharvey3d); female_caucasian = darthfurby_caucasian_female (darthfurby)
 - female_young_eurasian = onlytheghosts_young_eurasian_female (OnlyTheGhosts); female_indian = cutoff3d_indian_female_skin (CutOff3D)
+The normal map (male_african_middleage_n.png) and the specular map (male_african_middleage_s.jpg) are from the same item, mindfront_skin_male_african_middleage (Mindfront), downscaled to 1024 x 1024 (PNG / JPEG).
 `mindfront_aksel_skin` was tried and dropped (its texture has a dark bruise-like eye makeup).
 Items whose names or material files mention genitals (onlytheghosts_old_eurasian_male, skalldyrssuppe_creamy_female and the *_with_genitals items) were left out.
