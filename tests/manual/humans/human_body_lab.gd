@@ -211,6 +211,8 @@ var _settle_override: int = -1   # --settle=N: steps the hair simulation runs at
 var _start_tab: String = ""   # --tab=Hair: start on that tab (Body, Eyes, Brows, Hair, Beard)
 var _distance: float = 3.6
 var _shadows_arg: String = ""
+var _wrap_arg: float = -1.0   # --wrap=: the hair shader's wrap_k (0.25 grey room, 0.7 in --env=real)
+var _sun_gain_arg: float = -1.0   # --sun-gain=: the hair shader's sun strength (default 0.15, 0.45 in --env=real)
 var _shadow_dist: float = 1.2   # --shadow-dist=m: how far the sun shadow map reaches (a small value = fine texels on the head)
 var _shadow_bias: float = 0.001
 var _shadow_normal_bias: float = 0.05
@@ -313,6 +315,10 @@ func _ready() -> void:
 			_shadow_bias = float(arg.trim_prefix("--shadow-bias="))
 		elif arg.begins_with("--shadow-nbias="):
 			_shadow_normal_bias = float(arg.trim_prefix("--shadow-nbias="))
+		elif arg.begins_with("--wrap="):
+			_wrap_arg = float(arg.trim_prefix("--wrap="))
+		elif arg.begins_with("--sun-gain="):
+			_sun_gain_arg = float(arg.trim_prefix("--sun-gain="))
 		elif arg == "--env=real":
 			_real_env = true
 		elif arg.begins_with("--scalp-layer="):
@@ -429,8 +435,10 @@ func _build_environment() -> void:
 		env.sky = sky
 		env.background_mode = Environment.BG_SKY
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-		env.ambient_light_energy = 0.9
+		env.ambient_light_energy = 1.3
 		env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+		env.tonemap_exposure = 1.6   # (filmic darkens: the skin read as dark copper at exposure 1)
+		env.tonemap_white = 6.0
 		env.ssao_enabled = true
 		env.ssao_radius = 0.12
 		env.ssao_intensity = 3.0
@@ -447,7 +455,7 @@ func _build_environment() -> void:
 	sun.rotation_degrees = Vector3(-35.0, 35.0, 0.0)
 	sun.light_energy = 0.8
 	if _real_env:
-		sun.light_energy = 1.5
+		sun.light_energy = 2.4
 		sun.rotation_degrees = Vector3(-42.0, 38.0, 0.0)
 		sun.shadow_enabled = true
 		sun.directional_shadow_max_distance = _shadow_dist
@@ -513,6 +521,8 @@ func _build_material() -> void:
 	if _shine_override >= 0.0:
 		_head_hair_material.set_shader_parameter(&"shine", _shine_override)
 	_head_hair_material.set_shader_parameter(&"wet", _wet)
+	_head_hair_material.set_shader_parameter(&"wrap_k", _wrap_arg if _wrap_arg >= 0.0 else (0.7 if _real_env else 0.25))
+	_head_hair_material.set_shader_parameter(&"sun_gain", _sun_gain_arg if _sun_gain_arg >= 0.0 else (0.45 if _real_env else 0.15))
 	_head_hair_material.set_shader_parameter(&"wind", Vector3(1.0, 0.0, 0.35) * _wind)
 	_hair_sway = HairSway.new()
 	add_child(_hair_sway)

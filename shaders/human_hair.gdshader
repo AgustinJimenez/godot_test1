@@ -20,6 +20,8 @@ uniform float scalp_layer : hint_range(0.0, 1.0) = 1.0;      // the solid base l
 uniform float strands = 14.0;
 uniform bool single_hairs = false;                              // strands mode: each ribbon IS one hair (no strand lanes inside it)                                   // strands across one lock
 uniform float wet : hint_range(0.0, 1.0) = 0.0;                // wet or oily hair: darker, with thin, bright, sharp highlights
+uniform float wrap_k : hint_range(0.05, 1.0) = 0.25;               // how much the side of a lock turned away from the sun is darker (0.25: flat, the old grey room; 0.6-1.0: a lock shades the one under it)
+uniform float sun_gain = 0.15;                                 // how much the sun lights the strands (a grey room tuned it low; a real sun-lit scene wants more, so the shadow between locks shows)
 uniform float shine : hint_range(0.0, 1.0) = 0.25;              // strength of the two highlights
 uniform float shift_primary = -0.08;                            // how far each highlight is slid along the normal
 uniform float shift_secondary = 0.22;
@@ -142,9 +144,9 @@ void light() {
 	// Kajiya-Kay diffuse (the sine of the angle between strand and light), wrapped so the back of the head is not black
 	float t_dot_l = dot(t, LIGHT);
 	float diffuse_kk = sqrt(max(0.0, 1.0 - t_dot_l * t_dot_l));
-	float wrapped = clamp(dot(n, LIGHT) * 0.25 + 0.75, 0.0, 1.0);   // (a flatter wrap: a lock that sticks up toward the light must not turn a lot lighter than the hair behind it)
+	float wrapped = clamp(dot(n, LIGHT) * wrap_k + (1.0 - wrap_k), 0.0, 1.0);   // (a flatter wrap: a lock that sticks up toward the light must not turn a lot lighter than the hair behind it)
 	float diffuse = cap_flag > 0.5 ? wrapped * 0.7 : mix(wrapped, diffuse_kk, 0.4); // (the cap has no strands: its tangent is arbitrary, so no strand diffuse there either)
-	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * diffuse * 0.15;   // no ALBEDO here: the engine multiplies the diffuse light by albedo itself after the light loop
+	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * diffuse * sun_gain;   // no ALBEDO here: the engine multiplies the diffuse light by albedo itself after the light loop
 	if (cap_flag < 0.5) { // (the scalp cap has no strands: its tangent is arbitrary, so a highlight on it is a grey patch, seen over the ear)
 		// two highlights: the tangent slid along the normal, then 1 - dot^2 under a power
 		vec3 t1 = t + n * (shift_primary + strand_shift);
