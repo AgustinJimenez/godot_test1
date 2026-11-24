@@ -1404,7 +1404,11 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				}
 				const bool soul_patch = std::abs(double(root.x)) < 0.012 && dy < -0.08 && dy > -0.1;   // (the small patch under the lower lip: full length, it is a region of its own)
 				const double below_lip = soul_patch ? 1.0 : Math::clamp(((dy + 0.072) / 0.011 + 1.0) / 1.6, 0.0, 1.0); // (0 at the lower lip, 1 about 1.8 cm under it: right under the lip the hairs are short, they would lie across the mouth)
-				const double hair_length = beard_length * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (0.45 + 0.55 * below_lip) * (in_moustache ? 1.0 : 1.0);
+				// the length gradient of a real beard: the cheeks have the length of the slider, the jaw a little more, the chin and the soul patch grow into a tuft up to 2.5 x longer (a wedge below the jaw)
+				const double chin_tuft = Math::clamp((-0.082 - dy) / 0.045, 0.0, 1.0) * Math::clamp(1.0 - (std::abs(double(root.x)) - 0.012) / 0.03, 0.0, 1.0);
+				const double jaw_band = Math::clamp(1.0 - (dy - beard_floor(double(root.z))) / 0.04, 0.0, 1.0);
+				const double gradient = 1.0 + 1.5 * chin_tuft + 0.25 * jaw_band;
+				const double hair_length = beard_length * gradient * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (0.45 + 0.55 * below_lip) * (in_moustache ? 1.0 : 1.0);
 				// the growth direction (a field over the face): on the cheeks down and a little back toward the ear, under the jaw down and forward toward the chin, on the chin down and out,
 				// on the moustache band outward from the middle (and down); each follicle's hairs fan out a little. The field is projected onto the skin.
 				const double ax_root = std::abs(double(root.x));
