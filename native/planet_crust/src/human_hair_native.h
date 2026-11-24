@@ -72,6 +72,9 @@ public:
 	static Ref<HumanHairBody> prepare(const Ref<ArrayMesh> &p_body, bool p_refresh = false);
 	static Dictionary build_arrays(const Ref<HumanHairBody> &p_body, const Dictionary &p_params);
 	static Ref<ArrayMesh> make_mesh(const Dictionary &p_built);
+	// bake_shapes(body, names, values): a copy of the body mesh with the given blend shapes applied to its vertices (basis + sum of value x delta) and only the hair-following shapes
+	// (height, weight, muscle) kept as blend shapes. The face and age shapes reach the hair this way: the hair is rebuilt on the baked head (see HAIR_SHAPES in the .cpp).
+	static Ref<ArrayMesh> bake_shapes(const Ref<ArrayMesh> &p_body, const PackedStringArray &p_names, const PackedFloat32Array &p_values);
 	// Returns an ArrayMesh with one surface and the body's blend shapes (empty when the body has no usable surface).
 	static Ref<ArrayMesh> build(const Ref<ArrayMesh> &p_body, const Dictionary &p_params);
 	static Dictionary default_params();

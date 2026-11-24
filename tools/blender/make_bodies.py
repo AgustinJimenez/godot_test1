@@ -10,8 +10,32 @@ out = sys.argv[sys.argv.index("--")+1]
 e = bpy.context.preferences.addons.new(); e.module = "bl_ext.blender_org.mpfb"
 addon_utils.enable("bl_ext.blender_org.mpfb")
 HS = importlib.import_module("bl_ext.blender_org.mpfb.services.humanservice").HumanService
+TS = importlib.import_module("bl_ext.blender_org.mpfb.services.targetservice").TargetService
 BODY_VERTS = 13380   # MakeHuman base: body verts first, helper geometry after
 RACE = {"asian":0.0,"caucasian":1.0,"african":0.0}
+
+# Face and age shape keys (the user's editor): each key is one end of a signed slider (decr/incr pairs become two keys). `age` is a macro (MPFB age 0.5 = 25 years, 0.1875 = 11, 1.0 = 90);
+# the others load MakeHuman core targets (CC0, MPFB data/targets) at weight 1, both sides for the l-/r- pairs. Keep the list short: every key is a blend shape on the body, the eyes, the brows and the lashes.
+FACE_KEYS = {
+    "age_young": {"macro": {"age": 0.34}},
+    "age_old": {"macro": {"age": 0.85}},
+    "head_narrow": {"targets": ["head-scale-horiz-decr"]},
+    "head_wide": {"targets": ["head-scale-horiz-incr"]},
+    "nose_narrow": {"targets": ["nose-scale-horiz-decr"]},
+    "nose_wide": {"targets": ["nose-scale-horiz-incr"]},
+    "nose_short": {"targets": ["nose-scale-vert-decr"]},
+    "nose_long": {"targets": ["nose-scale-vert-incr"]},
+    "ears_small": {"targets": ["l-ear-scale-decr", "r-ear-scale-decr"]},
+    "ears_big": {"targets": ["l-ear-scale-incr", "r-ear-scale-incr"]},
+    "chin_receding": {"targets": ["chin-prominent-decr"]},
+    "chin_prominent": {"targets": ["chin-prominent-incr"]},
+    "cheeks_hollow": {"targets": ["l-cheek-volume-decr", "r-cheek-volume-decr"]},
+    "cheeks_full": {"targets": ["l-cheek-volume-incr", "r-cheek-volume-incr"]},
+    "eyes_small": {"targets": ["l-eye-scale-decr", "r-eye-scale-decr"]},
+    "eyes_big": {"targets": ["l-eye-scale-incr", "r-eye-scale-incr"]},
+    "lips_thin": {"targets": ["mouth-lowerlip-volume-decr", "mouth-upperlip-volume-decr"]},
+    "lips_full": {"targets": ["mouth-lowerlip-volume-incr", "mouth-upperlip-volume-incr"]},
+}
 
 def positions(o):
     # shape keys mixed: read through the key-block mix via evaluated object with modifiers disabled
@@ -33,6 +57,16 @@ for name, g in (("female",0.0),("male",1.0)):
     variants = {}
     for key,(h,w,mu) in {"height_short":(0.0,0.5,0.5),"height_tall":(1.0,0.5,0.5),"weight_light":(0.5,0.0,0.5),"weight_heavy":(0.5,1.0,0.5),"muscle_low":(0.5,0.5,0.0),"muscle_high":(0.5,0.5,1.0)}.items():
         tmp = HS.create_human(macro_detail_dict={"gender":g,"age":0.5,"muscle":mu,"weight":w,"proportions":0.5,"height":h,"cupsize":0.5,"firmness":0.5,"race":RACE})
+        variants[key] = positions(tmp)
+        bpy.data.objects.remove(tmp, do_unlink=True)
+    for key, spec in FACE_KEYS.items():
+        macro = {"gender":g,"age":0.5,"muscle":0.5,"weight":0.5,"proportions":0.5,"height":0.5,"cupsize":0.5,"firmness":0.5,"race":RACE}
+        macro.update(spec.get("macro", {}))
+        tmp = HS.create_human(macro_detail_dict=macro)
+        for target in spec.get("targets", []):
+            path = TS.target_full_path(target)
+            assert path, "target not found: " + target
+            TS.load_target(tmp, path, weight=1.0)
         variants[key] = positions(tmp)
         bpy.data.objects.remove(tmp, do_unlink=True)
     # Landmarks for things that sit on the body (eyes now; brows, lashes, hair later): the centre of a few helper

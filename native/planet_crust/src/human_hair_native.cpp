@@ -167,6 +167,12 @@ bool HumanHairBody::is_valid() const {
 	return !vertices.empty() && normals.size() == vertices.size() && indices.size() >= 3;
 }
 
+// the body shapes the hair follows as blend shapes (a cheap head fit per shape); all other shapes (face, age) are baked into the body before the hair is built
+static bool is_hair_shape(const StringName &p_name) {
+	const String name(p_name);
+	return name.begins_with("height_") || name.begins_with("weight_") || name.begins_with("muscle_");
+}
+
 Ref<HumanHairBody> HumanHairBody::from_mesh(const Ref<ArrayMesh> &p_mesh) {
 	Ref<HumanHairBody> body;
 	body.instantiate();
@@ -196,6 +202,9 @@ Ref<HumanHairBody> HumanHairBody::from_mesh(const Ref<ArrayMesh> &p_mesh) {
 	Array shapes = p_mesh->surface_get_blend_shape_arrays(0);
 	const bool normalized = p_mesh->get_blend_shape_mode() == Mesh::BLEND_SHAPE_MODE_NORMALIZED;
 	for (int s = 0; s < shape_count && s < shapes.size(); s++) {
+		if (!is_hair_shape(p_mesh->get_blend_shape_name(s))) {
+			continue; // the face and age shapes are not blend shapes of the hair (each costs ~40 bytes per hair vertex, millions of vertices): they are baked into the body the hair is built on
+		}
 		Array shape = shapes[s];
 		PackedVector3Array positions = shape[Mesh::ARRAY_VERTEX];
 		std::vector<Vector3> delta(count);
@@ -214,6 +223,7 @@ void HumanHair::_bind_methods() {
 	ClassDB::bind_static_method("HumanHair", D_METHOD("prepare", "body", "refresh"), &HumanHair::prepare, DEFVAL(false));
 	ClassDB::bind_static_method("HumanHair", D_METHOD("build_arrays", "body_data", "params"), &HumanHair::build_arrays);
 	ClassDB::bind_static_method("HumanHair", D_METHOD("make_mesh", "built"), &HumanHair::make_mesh);
+	ClassDB::bind_static_method("HumanHair", D_METHOD("bake_shapes", "body", "names", "values"), &HumanHair::bake_shapes);
 	ClassDB::bind_static_method("HumanHair", D_METHOD("build", "body", "params"), &HumanHair::build);
 	ClassDB::bind_static_method("HumanHair", D_METHOD("default_params"), &HumanHair::default_params);
 	ClassDB::bind_static_method("HumanHair", D_METHOD("default_params_for", "gender"), &HumanHair::default_params_for);
@@ -282,6 +292,76 @@ Ref<HumanHairBody> HumanHair::prepare(const Ref<ArrayMesh> &p_body, bool p_refre
 	Ref<HumanHairBody> body = HumanHairBody::from_mesh(p_body);
 	p_body->set_meta(meta_key, body);
 	return body;
+}
+
+Ref<ArrayMesh> HumanHair::bake_shapes(const Ref<ArrayMesh> &p_body, const PackedStringArray &p_names, const PackedFloat32Array &p_values) {
+	Ref<ArrayMesh> out;
+	if (p_body.is_null() || p_body->get_surface_count() < 1) {
+		return out;
+	}
+	Array arrays = p_body->surface_get_arrays(0);
+	PackedVector3Array positions = arrays[Mesh::ARRAY_VERTEX];
+	const int count = int(positions.size());
+	const bool normalized = p_body->get_blend_shape_mode() == Mesh::BLEND_SHAPE_MODE_NORMALIZED;
+	Array shapes = p_body->surface_get_blend_shape_arrays(0);
+	const int shape_count = p_body->get_blend_shape_count();
+	std::vector<Vector3> baked(positions.ptr(), positions.ptr() + count);
+	std::vector<std::vector<Vector3>> kept_deltas;
+	std::vector<StringName> kept_names;
+	for (int s = 0; s < shape_count && s < shapes.size(); s++) {
+		const StringName shape_name = p_body->get_blend_shape_name(s);
+		Array shape = shapes[s];
+		PackedVector3Array shape_positions = shape[Mesh::ARRAY_VERTEX];
+		if (shape_positions.size() != count) {
+			continue;
+		}
+		std::vector<Vector3> delta(count);
+		for (int i = 0; i < count; i++) {
+			delta[size_t(i)] = normalized ? shape_positions[i] - positions[i] : shape_positions[i];
+		}
+		double weight = 0.0;
+		for (int n = 0; n < p_names.size() && n < p_values.size(); n++) {
+			if (StringName(p_names[n]) == shape_name) {
+				weight = double(p_values[n]);
+			}
+		}
+		if (weight != 0.0) {
+			for (int i = 0; i < count; i++) {
+				baked[size_t(i)] += delta[size_t(i)] * real_t(weight);
+			}
+		}
+		if (is_hair_shape(shape_name)) {
+			kept_deltas.push_back(std::move(delta));
+			kept_names.push_back(shape_name);
+		}
+	}
+	PackedVector3Array new_positions;
+	new_positions.resize(count);
+	for (int i = 0; i < count; i++) {
+		new_positions[i] = baked[size_t(i)];
+	}
+	arrays[Mesh::ARRAY_VERTEX] = new_positions;
+	Array blend;
+	for (size_t k = 0; k < kept_deltas.size(); k++) {
+		Array shape;
+		shape.resize(Mesh::ARRAY_MAX);
+		PackedVector3Array shape_positions;
+		shape_positions.resize(count);
+		for (int i = 0; i < count; i++) {
+			shape_positions[i] = baked[size_t(i)] + kept_deltas[k][size_t(i)];
+		}
+		shape[Mesh::ARRAY_VERTEX] = shape_positions;
+		PackedVector3Array shape_normals = arrays[Mesh::ARRAY_NORMAL];
+		shape[Mesh::ARRAY_NORMAL] = shape_normals;
+		blend.push_back(shape);
+	}
+	out.instantiate();
+	for (size_t k = 0; k < kept_names.size(); k++) {
+		out->add_blend_shape(kept_names[k]);
+	}
+	out->set_blend_shape_mode(Mesh::BLEND_SHAPE_MODE_NORMALIZED);
+	out->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, arrays, blend);
+	return out;
 }
 
 Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dictionary &p_params) {
@@ -1169,7 +1249,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		auto in_beard_region = [&](const Vector3 &c, const Vector3 &n) {
 			const double dy = (double(c.y) - eye_y) / face_scale;
 			const double ax = std::abs(double(c.x));
-			if (double(c.z) < centre_z + 0.15 * half_width) {
+			if (double(c.z) < centre_z - 0.05 * half_width) {
 				return false; // (the front of the head only; the sideburns belong to the scalp hair)
 			}
 			const double upper = -0.047 + 0.042 * Math::clamp((ax - 0.03) / 0.04, 0.0, 1.0); // the cheek line rises toward the ears
@@ -1227,7 +1307,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const double dy = (double(root.y) - eye_y) / face_scale;
 				const double upper_edge = -0.047 + 0.042 * Math::clamp((std::abs(double(root.x)) - 0.03) / 0.04, 0.0, 1.0);
 				const bool in_moustache = std::abs(double(root.x)) < 0.04 && dy > -0.075 && dy < -0.044; // (the band between the nose and the lips)
-				const double edge_plain = std::min(std::min(Math::clamp((upper_edge - dy) / 0.03, 0.0, 1.0), Math::clamp((dy - beard_floor(double(root.z))) / 0.05, 0.3, 1.0)), Math::clamp((double(root.z) - (centre_z + 0.15 * half_width)) / 0.035, 0.15, 1.0)); // (a soft edge along the cheek line above, the jaw below and toward the ear) // (the cheek line: shorter and thinner right at the edge)
+				const double edge_plain = std::min(std::min(Math::clamp((upper_edge - dy) / 0.03, 0.0, 1.0), Math::clamp((dy - beard_floor(double(root.z))) / 0.05, 0.3, 1.0)), Math::clamp((double(root.z) - (centre_z - 0.05 * half_width)) / 0.06, 0.15, 1.0)); // (a soft edge along the cheek line above, the jaw below and toward the ear) // (the cheek line: shorter and thinner right at the edge)
 				const double edge = in_moustache ? std::max(edge_plain, 0.95 * Math::clamp((upper_edge - dy) / 0.012, 0.0, 1.0)) : edge_plain; // (the moustache is full right up to the nose, not faded like the cheek line)
 				if (dice.unit() > 0.2 + 0.8 * edge * edge) {
 					continue;

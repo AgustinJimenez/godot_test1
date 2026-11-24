@@ -17,6 +17,19 @@ const UNDERWEAR_SCENES: Dictionary = {
 }
 ## Starting points for the head hair; every entry is a HumanHair parameter (the native class documents them).
 const TressFXBridge := preload("res://tests/manual/humans/tressfx_bridge.gd")
+# The face and age sliders (signed: negative = the first key, positive = the second). The keys come from tools/blender/make_bodies.py (MakeHuman targets). The deltas are small at 1.0 (mm to cm): the range goes to 1.5 (at 2 the narrowed head pushed an eyeball out of its socket).
+const FACE_SLIDERS: Array = [
+	["Age (young .. old)", "age_young", "age_old"],
+	["Head width", "head_narrow", "head_wide"],
+	["Nose width", "nose_narrow", "nose_wide"],
+	["Nose length", "nose_short", "nose_long"],
+	["Ear size", "ears_small", "ears_big"],
+	["Chin (receding .. prominent)", "chin_receding", "chin_prominent"],
+	["Cheeks (hollow .. full)", "cheeks_hollow", "cheeks_full"],
+	["Eye size", "eyes_small", "eyes_big"],
+	["Lips (thin .. full)", "lips_thin", "lips_full"],
+]
+const FACE_AGE_EYE_DY: Dictionary = {"Male": {"young": -0.1964, "old": -0.0235}, "Female": {"young": -0.1664, "old": -0.0083}}
 const SKIN_FILES: Array = [   # CC0 MakeHuman skins, 1k (assets/models/humans/skins/CREDITS.md); both bodies share the MakeHuman UV layout
 	["Male: light bronze", "male_light_bronze"], ["Male: light freckles", "male_light_freckles"], ["Male: light ginger", "male_light_ginger"],
 	["Male: african", "male_african_middleage"],
@@ -196,6 +209,8 @@ var _brow_material: ShaderMaterial
 var _lash_material: ShaderMaterial
 var _hair_color: Color = Color(0.16, 0.1, 0.06)
 var _mh_hair: String = ""   # --mh-hair=hair_messy:short_messy_diff.png: a CC0 MakeHuman hair shell (tools/blender/fit_mh_mesh.py) instead of our hair, for comparison
+var _face_values: Dictionary = {}   # shape key -> weight (the face sliders): applied as blend shapes to the body/eyes/brows and BAKED into the body the hair is built on
+var _face_arg: String = ""
 var _skin_file: String = ""      # --skin=male_light_bronze: one of the shipped skins (assets/models/humans/skins)
 var _skin_tex_path: String = ""   # --skin-tex=<absolute png>: a skin diffuse map (e.g. a CC0 MakeHuman skin) read from outside the project, for a comparison
 var _wet: float = 0.0
@@ -393,6 +408,8 @@ func _ready() -> void:
 		elif arg.begins_with("--mh-hair="):
 			_mh_hair = arg.trim_prefix("--mh-hair=")
 			_hair_enabled = false
+		elif arg.begins_with("--face="):
+			_face_arg = arg.trim_prefix("--face=")   # --face=nose_wide:1.5,age_old:0.5
 		elif arg.begins_with("--skin="):
 			_skin_file = arg.trim_prefix("--skin=")
 		elif arg.begins_with("--skin-tex="):
@@ -443,6 +460,10 @@ func _ready() -> void:
 	if _lod_forced < 0:
 		_lod = clampi(_lod_for_distance(_distance), 0, HAIR_LODS.size() - 1)   # (the first hair is built for the starting distance: no full hair first and then a cheaper one)
 		_strand_scale = clampf(_strand_scale * float(HAIR_LODS[_lod][0]), 0.08, 3.0)
+	for pair in _face_arg.split(",", false):
+		var parts: PackedStringArray = pair.split(":")
+		if parts.size() == 2:
+			_face_values[StringName(parts[0])] = float(parts[1])
 	_set_gender(_gender)
 
 
@@ -678,6 +699,19 @@ func _build_ui() -> void:
 		skin_button.text = entry[0]
 		skin_button.pressed.connect(_on_skin_chosen.bind(entry[1]))
 		skin_buttons.add_child(skin_button)
+	var face_tab := _add_tab(tabs, "Face")
+	for entry: Array in FACE_SLIDERS:
+		var face_label := Label.new()
+		face_label.text = "%s: 0.00" % entry[0]
+		face_tab.add_child(face_label)
+		var face_slider := HSlider.new()
+		face_slider.scrollable = false
+		face_slider.min_value = -1.5
+		face_slider.max_value = 1.5
+		face_slider.step = 0.04
+		face_slider.value = 0.0
+		face_slider.value_changed.connect(_on_face_slider.bind(entry, face_label))
+		face_tab.add_child(face_slider)
 	var beard_tab := _add_tab(tabs, "Beard")   # (a tab of its own; the colour of the beard is the hair colour)
 	_add_hair_slider(beard_tab, "Beard amount (0 = none)", &"beard", 0.0, 1.0)
 	_add_hair_slider(beard_tab, "Beard length (metres)", &"beard_length", 0.002, 0.04)
@@ -881,7 +915,7 @@ func _apply_hair_parameters() -> void:
 # The Eyes, Brows, Hair and Beard tabs are about the head: the camera goes to the face; the other tabs show the whole body.
 func _on_tab_changed(index: int, tabs: TabContainer) -> void:
 	var tab_name: String = tabs.get_child(index).name
-	var wants_face: bool = tab_name in ["Eyes", "Brows", "Hair", "Beard"]
+	var wants_face: bool = tab_name in ["Eyes", "Brows", "Hair", "Beard", "Face"]
 	# Eyes and Brows keep the tight framing; Hair stands back a little and looks higher so the whole head of hair is in the picture
 	var wants_hair: bool = tab_name == "Hair"
 	_beard_view = tab_name == "Beard"
@@ -1169,6 +1203,40 @@ func _add_value_slider(parent: Control, label_text: String, low: float, high: fl
 	return slider
 
 
+func _on_face_slider(value: float, entry: Array, label: Label) -> void:
+	label.text = "%s: %.2f" % [entry[0], value]
+	_face_values[StringName(entry[1])] = maxf(-value, 0.0)
+	_face_values[StringName(entry[2])] = maxf(value, 0.0)
+	_apply_face_shapes()
+	_apply()
+	_hair_retry = 0
+	_hair_last_change_ms = Time.get_ticks_msec()
+	_hair_dirty = true   # (the hair is rebuilt on the new head; while a slider moves a light preview, then the full hair)
+
+
+# The face keys as blend shapes on every mesh that has them (body, eyes, brows, lashes, underwear); the hair has none of them: it is built on a body with them baked in.
+func _apply_face_shapes() -> void:
+	for target: MeshInstance3D in [_mesh, _underwear_mesh, _eyes_mesh, _brows_mesh, _lashes_mesh]:
+		if target == null:
+			continue
+		for key: StringName in _face_values:
+			var index: int = target.find_blend_shape_by_name(key)
+			if index >= 0:
+				target.set_blend_shape_value(index, float(_face_values[key]))
+
+
+func _hair_body_mesh() -> ArrayMesh:
+	var names := PackedStringArray()
+	var values := PackedFloat32Array()
+	for key: StringName in _face_values:
+		if absf(float(_face_values[key])) > 0.0001:
+			names.append(String(key))
+			values.append(float(_face_values[key]))
+	if names.is_empty():
+		return _mesh.mesh as ArrayMesh
+	return HumanHair.bake_shapes(_mesh.mesh as ArrayMesh, names, values)
+
+
 func _on_skin_chosen(file_name: String) -> void:
 	if _material == null:
 		return
@@ -1365,7 +1433,7 @@ func _rebuild_hair_now() -> void:
 	_head_hair_material.set_shader_parameter(&"single_hairs", int(_hair_style.get(&"strands", 0)) > 0)
 	if not _hair_preview and int(params.get(&"strands", 0)) > 8:
 		params[&"strands"] = clampi(int(round(40.0 * _strand_scale)), 3, 96)   # (every style has the same follicles and the same hairs per follicle)
-	var body_data = HumanHair.prepare(_mesh.mesh as ArrayMesh)   # (on this thread: it reads the body mesh)
+	var body_data = HumanHair.prepare(_hair_body_mesh())   # (on this thread: it reads the body mesh)
 	_hair_task_started_us = Time.get_ticks_usec()
 	_hair_task_id = WorkerThreadPool.add_task(_hair_task_run.bind(body_data, params), false, "hair build")
 	# the first hair, a capture and a benchmark wait for the result; while the lab runs the old hair stays until the new one is ready
@@ -1558,6 +1626,7 @@ func _apply() -> void:
 	_set_shape(&"weight_light", light)
 	_set_shape(&"muscle_high", maxf(_muscle, 0.0) * MUSCLE_GAIN_HIGH)
 	_set_shape(&"muscle_low", maxf(-_muscle, 0.0) * MUSCLE_GAIN_LOW)
+	_apply_face_shapes()
 	# The mesh's own bounding box spans every blend shape, so work the height out from the
 	# base height and how far each height shape moves the head (measured in Blender).
 	var height_m: float = float(BASE_HEIGHT[_gender]) + tall * HEIGHT_TALL_M + short * -HEIGHT_SHORT_M
@@ -1567,6 +1636,9 @@ func _apply() -> void:
 	if _face_mode:
 		# keep the camera on the eyes: eye height is 0.937 of the base height and moves with the head shapes
 		_cam_y = float(BASE_HEIGHT[_gender]) * 0.937 + tall * 0.67 - short * 0.343 + (FACE_HAIR_LIFT if _face_hair else 0.0)
+		# the age shapes move the head up/down (eye height from the landmarks: young -0.196 / -0.166 m, old -0.024 / -0.008 m, male / female)
+		var age_dy: Dictionary = FACE_AGE_EYE_DY[_gender]
+		_cam_y += float(_face_values.get(&"age_young", 0.0)) * float(age_dy["young"]) + float(_face_values.get(&"age_old", 0.0)) * float(age_dy["old"])
 		_look_y = _cam_y - (BEARD_LOOK_DROP if _beard_view else 0.0)
 		_cam_y = _look_y if _beard_view else _cam_y
 		_update_camera()
