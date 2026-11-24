@@ -1,3 +1,4 @@
+#include <chrono>
 #include "human_hair_native.h"
 
 #include <godot_cpp/classes/mesh.hpp>
@@ -494,6 +495,12 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		out_indices.push_back(cap_index[indices[t + 2]]);
 	}
 
+	const auto build_clock = std::chrono::steady_clock::now();
+	auto lap = [&](const char *name) {
+		if (cover_debug) {
+			godot::UtilityFunctions::print("HUMAN_TIME ", name, " at ms ", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - build_clock).count());
+		}
+	};
 	// --- the locks
 	const int plain_steps = std::max(7, std::min(14, int(length / 0.015) + 6));
 	// curls need more points per strand: a coil drawn with four points a turn is a zigzag
@@ -1146,6 +1153,9 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	}
 	} // (the passes)
 
+	lap("locks done");
+	const auto beard_clock_start = std::chrono::steady_clock::now();
+	const int vertices_before_beard = int(out_vertices.size());
 	// --- the beard: short single hairs on the lower face (static: they do not simulate), from follicles spread by area over the jaw, chin and cheeks, growing down and out along the skin
 	if (beard > 0.0) {
 		const double face_scale = Math::clamp(half_width / 0.0883, 0.85, 1.15); // (the face features sit at distances from the eye line that go with the size of the head: the numbers below are for the male body)
@@ -1325,6 +1335,11 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		}
 	}
 
+	const int beard_vertex_count = int(out_vertices.size()) - vertices_before_beard;
+	if (cover_debug) {
+		godot::UtilityFunctions::print("HUMAN_TIME beard block ms ", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - beard_clock_start).count(), " (vertices so far ", int(out_vertices.size()), ")");
+	}
+	lap("beard done");
 	// --- the blend shapes. Each hair vertex follows the head by a fit of the whole scalp (scale and move) to the shape, plus the residual of the body vertex its lock
 	// starts on (fading out along the strand: roots stay on the scalp, tips follow the head), and hair that hangs below the eyes on the neck and shoulders follows
 	// the nearest body vertex instead (Weight and Muscle grow the shoulders, which the head fit does not know about).
@@ -1340,7 +1355,14 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			continue;
 		}
 		double distance_squared = 0.0;
-		const int nearest = near_grid.nearest(out_vertices[i], distance_squared);
+		int nearest;
+		if (i >= vertices_before_beard && i < vertices_before_beard + beard_vertex_count) {
+			// a beard hair is a few mm from the body vertex it was bound to (the nearest to its root): no grid search for these 480,000 vertices (it was most of the beard's build time)
+			nearest = out_bound[i];
+			distance_squared = double((vertices[nearest] - out_vertices[i]).length_squared());
+		} else {
+			nearest = near_grid.nearest(out_vertices[i], distance_squared);
+		}
 		if (nearest < 0) {
 			continue;
 		}
@@ -1394,6 +1416,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		blend_names.push_back(String(p_body->shape_names[s]));
 	}
 
+	lap("blend shapes done");
 	// --- the arrays of the surface
 	PackedVector3Array vertex_array;
 	PackedVector3Array normal_array;
@@ -1473,6 +1496,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		scalp_weight[i] = w;
 	}
 	built["scalp_weight"] = scalp_weight;
+	built["beard_vertices"] = beard_vertex_count;
 	built["guides"] = guide_array;
 	built["guide_count"] = guide_count;
 	built["guide_steps"] = steps;
@@ -1529,6 +1553,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	built["arrays"] = arrays;
 	built["blend_arrays"] = blend_arrays;
 	built["blend_names"] = blend_names;
+	lap("arrays done");
 	return built;
 }
 
@@ -1551,6 +1576,7 @@ Ref<ArrayMesh> HumanHair::make_mesh(const Dictionary &p_built) {
 	if (p_built.has("guides")) {
 		result->set_meta("hair_guides", p_built["guides"]);
 		result->set_meta("hair_scalp_weight", p_built["scalp_weight"]);
+		result->set_meta("hair_beard_vertices", p_built.get("beard_vertices", 0));
 		result->set_meta("hair_guide_count", p_built["guide_count"]);
 		result->set_meta("hair_guide_steps", p_built["guide_steps"]);
 		result->set_meta("hair_colliders", p_built["colliders"]);

@@ -1386,7 +1386,7 @@ func _finish_hair_task(wait: bool) -> void:
 	if strands > 0 and guides > 0:
 		# the real number of hairs: every hair is a ribbon of `steps` points (2 vertices each); near the hairline a lock grows fewer hairs than `strands`, so guides x strands overstates it
 		var steps_meta: int = maxi(int(built.get_meta(&"hair_guide_steps", 1)), 1)
-		var real_hairs: int = (verts - 600) / (2 * steps_meta)
+		var real_hairs: int = (verts - 600 - int(built.get_meta(&"hair_beard_vertices", 0))) / (2 * steps_meta)   # (the beard is not head hair: counting its vertices made the first build look 25% too hairy and cost a second build)
 		_hair_info = "LOD %d  Hair: " % _lod + "%s hairs (%s guides, up to %d each)   %s vertices" % [_thousands(real_hairs), _thousands(guides), strands, _thousands(verts)]
 		# aim for the target: when the count is off by more than 8%, learn a better scale and build again (five times at most)
 		print("HUMAN_LAB hair count: LOD ", _lod, " real ", real_hairs, " target ", _effective_target(), " scale ", snappedf(_strand_scale, 0.001), " retry ", _hair_retry)
