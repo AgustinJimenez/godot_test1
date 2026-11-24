@@ -1375,7 +1375,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				if (in_moustache) {
 					// a tapered moustache: full at the middle, thinning out toward the mouth corners and toward the nose, so it is an arch and not a block
 					const double ax_m = std::abs(double(root.x));
-					const double taper = 1.0 - 0.85 * Math::clamp((ax_m - 0.012) / 0.024, 0.0, 1.0);
+					const double taper = 1.0 - 0.45 * Math::clamp((ax_m - 0.015) / 0.025, 0.0, 1.0);   // (thick: it only thins a little toward the corners, where it merges with the cheek hair)
 					const double band_top = Math::clamp((-0.044 - dy) / 0.01, 0.0, 1.0);
 					if (dice.unit() > taper * (0.35 + 0.65 * band_top)) {
 						continue;
@@ -1412,14 +1412,14 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const double chin_tuft = Math::clamp((-0.082 - dy) / 0.045, 0.0, 1.0) * Math::clamp(1.0 - (std::abs(double(root.x)) - 0.012) / 0.03, 0.0, 1.0);
 				const double jaw_band = Math::clamp(1.0 - (dy - beard_floor(double(root.z))) / 0.04, 0.0, 1.0);
 				const double gradient = 1.0 + 1.5 * chin_tuft + 0.25 * jaw_band;
-				const double hair_length = beard_length * gradient * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (0.45 + 0.55 * below_lip) * (in_moustache ? 1.0 : 1.0);
+				const double hair_length = beard_length * gradient * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (0.45 + 0.55 * below_lip) * (in_moustache ? 1.35 : 1.0) * (in_moustache ? 1.0 : 1.0);
 				// the growth direction (a field over the face): on the cheeks down and a little back toward the ear, under the jaw down and forward toward the chin, on the chin down and out,
 				// on the moustache band outward from the middle (and down); each follicle's hairs fan out a little. The field is projected onto the skin.
 				const double ax_root = std::abs(double(root.x));
 				const double side = root.x >= 0.0f ? 1.0 : -1.0;
 				Vector3 want(0.0f, -1.0f, 0.0f);
 				if (dy > -0.047 - 0.022 && dy < -0.047 + 0.003 && ax_root < 0.04) {
-					want = Vector3(real_t(side * 0.9), -0.12f, 0.05f); // (the moustache: out from the middle and only a little down, so it does not hang over the lips)
+					want = Vector3(real_t(side * 0.9), -0.3f, 0.1f); // (the moustache: out from the middle and only a little down, so it does not hang over the lips)
 				} else if (normal.y < -0.35f) {
 					want = Vector3(real_t(side * 0.1), -0.25f, 1.0f); // (under the jaw: toward the chin)
 				} else if (ax_root < 0.022 && dy < -0.09) {
@@ -1444,7 +1444,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				};
 				const double lock_bend = (lock_hash(1.0) - 0.5) * 2.0;       // -1..1: which way and how much the lock leans
 				const double lock_light = lock_hash(2.0);
-				const int hairs = in_moustache ? 6 : int(std::round(6.0 * std::max(1.0, region_density)));
+				const int hairs = in_moustache ? 8 : int(std::round(6.0 * std::max(1.0, region_density)));
 				for (int h = 0; h < hairs; h++) {
 					beard_hair_total++;
 					std::vector<Vector3> bp;
@@ -1453,7 +1453,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					bp.push_back(position);
 					const double seg = hair_length * dice.range(0.8, 1.15) / (beard_steps - 1);
 					for (int k = 1; k < beard_steps; k++) {
-						dir = (dir * 0.7f + Vector3(0.0f, in_moustache ? -0.06f : real_t(-0.15 - 5.0 * hair_length), 0.0f) + Vector3(real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.04, 0.04)), real_t(dice.range(-0.1, 0.1)))).normalized();
+						dir = (dir * 0.7f + Vector3(0.0f, in_moustache ? -0.14f : real_t(-0.15 - 5.0 * hair_length), 0.0f) + Vector3(real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.04, 0.04)), real_t(dice.range(-0.1, 0.1)))).normalized();
 						dir = (dir - normal * real_t(dir.dot(normal) * 0.12)).normalized();   // (it keeps lying along the skin: a stiff hair rests on the surface)
 						position += dir * real_t(seg);
 						grid.push_out(position, 0.0010);
@@ -1494,7 +1494,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						bool across = false;
 						for (int k = 1; k < beard_steps; k++) {
 							const double pdy = (double(bp[size_t(k)].y) - eye_y) / face_scale;
-							const double qx = std::abs(double(bp[size_t(k)].x)) / 0.034, qy = (pdy + 0.072) / 0.0135;
+							const double qx = std::abs(double(bp[size_t(k)].x)) / 0.030, qy = (pdy + 0.0715) / 0.0105;   // (the mouth opening itself: the moustache may overhang the upper lip a little, not the opening)
 							if (qx * qx + qy * qy < 1.0 && double(bp[size_t(k)].z) > centre_z + 0.5 * half_width) {
 								across = true;
 							}
