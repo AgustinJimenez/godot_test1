@@ -1339,6 +1339,15 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				if (dice.unit() > 0.2 + 0.8 * edge * edge) {
 					continue;
 				}
+				if (in_moustache) {
+					// a tapered moustache: full at the middle, thinning out toward the mouth corners and toward the nose, so it is an arch and not a block
+					const double ax_m = std::abs(double(root.x));
+					const double taper = 1.0 - 0.85 * Math::clamp((ax_m - 0.012) / 0.024, 0.0, 1.0);
+					const double band_top = Math::clamp((-0.044 - dy) / 0.01, 0.0, 1.0);
+					if (dice.unit() > taper * (0.35 + 0.65 * band_top)) {
+						continue;
+					}
+				}
 				{
 					// a dim dot of hair colour on the skin around this follicle (about 2 mm): the shadow of the roots, so the skin between the hairs is not pale but the paint is only where there are hairs
 					Vector3 axis_u = normal.cross(Vector3(0.0f, 1.0f, 0.0f));
@@ -1385,7 +1394,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					along = Vector3(real_t(root.x >= 0.0f ? 1.0f : -1.0f), 0.0f, 0.0f) - normal * real_t(normal.x);
 				}
 				const Vector3 direction = (along.normalized() * 0.9f + normal * 0.25f + Vector3(real_t(dice.range(-0.18, 0.18)), real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.18, 0.18)))).normalized();
-				const int hairs = in_moustache ? 9 : 6;
+				const int hairs = in_moustache ? 6 : 6;
 				for (int h = 0; h < hairs; h++) {
 					beard_hair_total++;
 					std::vector<Vector3> bp;
