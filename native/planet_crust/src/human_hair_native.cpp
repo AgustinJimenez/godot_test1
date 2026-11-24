@@ -1338,10 +1338,32 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				}
 				const double dy = (double(root.y) - eye_y) / face_scale;
 				const double upper_edge = -0.047 + 0.042 * Math::clamp((std::abs(double(root.x)) - 0.03) / 0.04, 0.0, 1.0);
+				double region_width = 1.0;
 				const bool in_moustache = std::abs(double(root.x)) < 0.04 && dy > -0.075 && dy < -0.044; // (the band between the nose and the lips)
 				const double edge_plain = std::min(std::min(Math::clamp((upper_edge - dy) / 0.014, 0.0, 1.0), Math::clamp((dy - beard_floor(double(root.z))) / 0.05, 0.3, 1.0)), Math::clamp((double(root.z) - (centre_z - 0.05 * half_width)) / 0.06, 0.15, 1.0)); // (a soft edge along the cheek line above, the jaw below and toward the ear) // (the cheek line: shorter and thinner right at the edge)
 				const double edge = in_moustache ? std::max(edge_plain, 0.95 * Math::clamp((upper_edge - dy) / 0.012, 0.0, 1.0)) : edge_plain; // (the moustache is full right up to the nose, not faded like the cheek line)
 				if (dice.unit() > 0.2 + 0.8 * edge * edge) {
+					continue;
+				}
+				// per-region hair properties (after the way beard hair differs from scalp hair: coarser, less dense, irregular, and different on every part of the face):
+				// density (share of follicles kept), width (x), curl (x). The chin is dense and coarse, the upper cheeks fine and sparse, the neck coarse, sparse and curly.
+				double region_density = 1.0;
+				double region_curl = 1.0;
+				if (normal.y < -0.35f || dy < -0.135) {
+					region_density = 0.8;
+					region_width = 1.2;
+					region_curl = 1.5;     // (neck beard)
+				} else if (in_moustache) {
+					region_width = 1.1;
+					region_curl = 0.6;
+				} else if (std::abs(double(root.x)) < 0.026 && dy < -0.078) {
+					region_density = 1.25;
+					region_width = 1.25;   // (chin and soul patch)
+				} else if (dy > -0.04) {
+					region_density = 0.65;
+					region_width = 0.8;    // (upper cheek: fine and sparse)
+				}
+				if (region_density < 1.0 && dice.unit() > region_density) {
 					continue;
 				}
 				if (in_moustache) {
@@ -1400,7 +1422,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					along = Vector3(real_t(root.x >= 0.0f ? 1.0f : -1.0f), 0.0f, 0.0f) - normal * real_t(normal.x);
 				}
 				const Vector3 direction = (along.normalized() * 0.9f + normal * 0.2f + Vector3(real_t(dice.range(-0.16, 0.16)), real_t(dice.range(-0.08, 0.08)), real_t(dice.range(-0.16, 0.16)))).normalized();   // (a beard hair lies along the skin: little push off it, little random)
-				const int hairs = in_moustache ? 6 : 6;
+				const int hairs = in_moustache ? 6 : int(std::round(6.0 * std::max(1.0, region_density)));
 				for (int h = 0; h < hairs; h++) {
 					beard_hair_total++;
 					std::vector<Vector3> bp;
@@ -1420,7 +1442,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						Vector3 bend = normal.cross((bp[size_t(beard_steps - 1)] - bp[0]).normalized());
 						if (bend.length() > 1e-3f) {
 							bend = bend.normalized();
-							const double lean = hair_length * dice.range(-0.3, 0.3);
+							const double lean = hair_length * dice.range(-0.3, 0.3) * region_curl;
 							bp[1] += bend * real_t(lean);
 							bp[size_t(beard_steps - 1)] += bend * real_t(lean * dice.range(-0.4, 1.2));
 						}
@@ -1454,7 +1476,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						}
 						side = side.normalized();
 						const Vector3 face = side.cross(tangent).normalized();
-						const double width = std::min(strand_width, 0.0004) * 0.7 * Math::clamp(hair_length / 0.012, 0.45, 1.0) * (1.0 - 0.5 * std::pow(sv, 1.6));   // (stubble is finer than a full beard)   // (a rounder tip: a beard hair is blunt where it was cut)
+						const double width = std::min(strand_width, 0.0004) * 0.85 * region_width * Math::clamp(hair_length / 0.012, 0.45, 1.0) * (1.0 - 0.5 * std::pow(sv, 1.6));   // (stubble is finer than a full beard)   // (a rounder tip: a beard hair is blunt where it was cut)
 						const Color color(brightness, chance, 0.3f, 1.0f); // (blue 0.3 marks a beard hair for the shader: depth shading, clumps)
 						add_vertex(bp[size_t(k)] - side * real_t(width * 0.5), face, Vector2(0.0f, float(sv)), color, bound, tangent, float(sv), false);
 						add_vertex(bp[size_t(k)] + side * real_t(width * 0.5), face, Vector2(1.0f, float(sv)), color, bound, tangent, float(sv), false);
