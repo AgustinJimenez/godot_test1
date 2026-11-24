@@ -1414,8 +1414,12 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					want = Vector3(real_t(side * 0.1), -0.25f, 1.0f); // (under the jaw: toward the chin)
 				} else if (ax_root < 0.022 && dy < -0.09) {
 					want = Vector3(real_t(side * 0.25), -1.0f, 0.35f); // (the chin: down and a little forward and out)
+				} else if (dy < beard_floor(double(root.z)) + 0.03) {
+					want = Vector3(real_t(-side * 0.3), -0.5f, 0.7f); // (the jawline: along the jaw toward the chin and a little down)
+				} else if (dy < -0.135) {
+					want = Vector3(0.0f, -1.0f, 0.1f); // (the neck: down)
 				} else {
-					want = Vector3(real_t(side * 0.2), -1.0f, -0.35f); // (the cheeks: down, a little back and out)
+					want = Vector3(real_t(-side * 0.18), -1.0f, 0.3f); // (the cheeks: down and a little forward, toward the middle of the face (the growth pattern of the beard body))
 				}
 				Vector3 along = want - normal * real_t(want.dot(normal));
 				if (along.length() < 0.2f) {
