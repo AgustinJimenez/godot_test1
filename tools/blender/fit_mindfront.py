@@ -7,7 +7,7 @@ offset (scaled per axis by the distance between two reference vertices): our bod
 so the same indices work on them.
 
 Run headless:
-  blender -b --factory-startup --python tools/blender/fit_mindfront.py -- <folder with {male,female}_body.glb> <item folder> <label> <out folder> [width_m]
+  blender -b --factory-startup --python tools/blender/fit_mindfront.py -- <folder with {male,female}_body.glb> <item folder> <label> <out folder> [width_m] [length_scale]
   <item folder> holds <name>.mhclo and <name>.obj (an unzipped MakeHuman pack item); <label> becomes {male,female}_<label>.glb.
 Vertex colour as in make_face_hair.py: red = random brightness, green = random 0..1 (brow density), blue = 0 (no base layer).
 """
@@ -24,6 +24,7 @@ from mathutils import Vector, kdtree
 args = sys.argv[sys.argv.index("--") + 1:]
 body_folder, item_folder, label, out_folder = args[:4]
 WIDTH = float(args[4]) if len(args) > 4 else 0.0004
+LENGTH_SCALE = float(args[5]) if len(args) > 5 else 1.0   # stretch every hair from its root (lashes: the CC0 ones are short)
 TAPER = (1.0, 0.9, 0.6, 0.2)
 DM = 0.1   # MakeHuman units are decimetres
 RACE = {"asian": 0.0, "caucasian": 1.0, "african": 0.0}
@@ -144,6 +145,9 @@ for gender in ("male", "female"):
 			centres = centres[1:]
 		if len(centres) < 2:
 			continue
+		if LENGTH_SCALE != 1.0:
+			scale = LENGTH_SCALE if centres[-1].z >= centres[0].z - 0.0005 else 1.0 + (LENGTH_SCALE - 1.0) * 0.2   # (a lower lash, pointing down, stays short; an upper one grows)
+			centres = [centres[0] + (c - centres[0]) * scale for c in centres]
 		color = (rng.random(), rng.random(), 0.0)
 		count = len(centres)
 		previous = None

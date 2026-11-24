@@ -17,16 +17,19 @@ const UNDERWEAR_SCENES: Dictionary = {
 }
 ## Starting points for the head hair; every entry is a HumanHair parameter (the native class documents them).
 const TressFXBridge := preload("res://tests/manual/humans/tressfx_bridge.gd")
-const HAIR_COLOURS: Array = [   # (as the colour picker shows them, sRGB)
+const HAIR_COLOURS: Array = [   # natural colours only (names after the Fischer-Saller scale's groups: black, brown, blond, red, red-blond; grey and white from age). sRGB as the picker shows them, chosen by how they RENDER on the head (lighter than the swatch)
 	["Black", Color(0.04, 0.035, 0.03)],
 	["Dark brown", Color(0.15, 0.09, 0.05)],
-	["Brown", Color(0.27, 0.16, 0.09)],
-	["Auburn", Color(0.4, 0.15, 0.08)],
-	["Ginger", Color(0.62, 0.27, 0.1)],
-	["Blonde", Color(0.78, 0.63, 0.38)],
-	["Platinum", Color(0.9, 0.85, 0.7)],
-	["Grey", Color(0.6, 0.6, 0.62)],
-	["White", Color(0.9, 0.9, 0.9)],
+	["Medium brown", Color(0.2, 0.12, 0.075)],
+	["Light brown", Color(0.33, 0.22, 0.14)],
+	["Auburn", Color(0.21, 0.09, 0.06)],
+	["Red", Color(0.35, 0.16, 0.08)],
+	["Strawberry blonde", Color(0.53, 0.35, 0.24)],
+	["Dark blonde", Color(0.43, 0.32, 0.19)],
+	["Blonde", Color(0.58, 0.45, 0.26)],
+	["Light blonde", Color(0.68, 0.57, 0.36)],
+	["Grey", Color(0.43, 0.43, 0.44)],
+	["White", Color(0.66, 0.66, 0.66)],
 ]
 
 const HAIR_PRESETS: Dictionary = {
@@ -51,15 +54,16 @@ const HAIR_PRESETS: Dictionary = {
 	"Mop top": {&"side_trim": 0.2, &"length": 0.14, &"volume": 1.3, &"curl": 0.1, &"fringe": 0.9, &"sweep": 0.0, &"hug": 0.0, &"gravity": 0.9, &"parting": 0.0, &"quiff": 0.0, &"swept": 0.0, &"strands": 40, &"points": 7},
 	"Pixie": {&"side_trim": 0.8, &"length": 0.06, &"volume": 1.2, &"curl": 0.1, &"fringe": 0.5, &"sweep": 0.0, &"hug": 0.1, &"gravity": 0.6, &"parting": 0.4, &"quiff": 0.2, &"swept": 0.8, &"strands": 40, &"points": 6},
 	"Ivy league": {&"side_trim": 0.7, &"length": 0.09, &"volume": 0.9, &"curl": 0.0, &"fringe": 0.3, &"sweep": 0.3, &"hug": 0.4, &"gravity": 0.8, &"parting": 0.6, &"quiff": 0.0, &"swept": 0.6, &"strands": 40, &"points": 6},
-	"Long waves": {&"side_trim": 0.0, &"length": 0.3, &"volume": 1.1, &"curl": 0.18, &"fringe": 0.0, &"sweep": 0.3, &"hug": 0.0, &"gravity": 1.0, &"parting": 0.5, &"quiff": 0.9, &"swept": 1.0, &"strands": 36, &"points": 12},
+	"Long waves": {&"side_trim": 0.0, &"length": 0.3, &"volume": 1.1, &"curl": 0.18, &"fringe": 0.0, &"sweep": 0.3, &"hug": 0.0, &"gravity": 1.0, &"parting": 0.5, &"quiff": 0.5, &"swept": 1.0, &"strands": 36, &"points": 12},
 	"Spiky": {&"side_trim": 0.6, &"length": 0.07, &"volume": 1.6, &"curl": 0.0, &"fringe": 0.1, &"sweep": 0.0, &"hug": 0.0, &"gravity": 0.05, &"parting": 0.0, &"quiff": 0.0, &"swept": 0.0, &"spike": 0.75, &"strands": 40, &"points": 7},
 	"Surfer": {&"side_trim": 0.1, &"length": 0.17, &"volume": 1.2, &"curl": 0.3, &"fringe": 0.0, &"sweep": 0.6, &"hug": 0.1, &"gravity": 0.7, &"parting": 0.1, &"quiff": 0.3, &"swept": 0.0, &"strands": 36, &"points": 9},
 	"Feathered": {&"side_trim": 0.3, &"length": 0.2, &"volume": 1.3, &"curl": 0.1, &"fringe": 0.0, &"sweep": 0.3, &"hug": 0.0, &"gravity": 0.8, &"parting": 0.35, &"quiff": 0.6, &"swept": 0.8, &"strands": 36, &"points": 9},
 	"Cropped waves": {&"side_trim": 0.6, &"length": 0.09, &"volume": 1.2, &"curl": 0.45, &"fringe": 0.2, &"sweep": 0.0, &"hug": 0.2, &"gravity": 0.7, &"parting": 0.0, &"quiff": 0.2, &"swept": 0.0, &"strands": 40, &"points": 9},
 	"Afro": {&"side_trim": 0.1, &"length": 0.09, &"volume": 2.0, &"curl": 1.0, &"fringe": 0.1, &"sweep": 0.0, &"hug": 0.0, &"gravity": 0.1, &"parting": 0.0, &"quiff": 0.0, &"swept": 0.0, &"strands": 40, &"points": 10},
 	"Bob": {&"side_trim": 0.0, &"length": 0.17, &"volume": 1.0, &"curl": 0.0, &"fringe": 0.0, &"sweep": 0.0, &"hug": 0.0, &"gravity": 1.0, &"parting": 0.3, &"strands": 40, &"points": 7, &"swept": 0.6, &"quiff": 0.5},
-	"Long": {&"side_trim": 0.0, &"length": 0.32, &"volume": 0.9, &"curl": 0.2, &"fringe": 0.0, &"sweep": 0.3, &"hug": 0.0, &"gravity": 1.0, &"parting": 0.5, &"strands": 40, &"points": 8, &"swept": 1.0, &"quiff": 0.9},
+	"Long": {&"side_trim": 0.0, &"length": 0.32, &"volume": 0.9, &"curl": 0.2, &"fringe": 0.0, &"sweep": 0.3, &"hug": 0.0, &"gravity": 1.0, &"parting": 0.5, &"strands": 40, &"points": 8, &"swept": 1.0, &"quiff": 0.5},
 	"Slick back": {&"side_trim": 0.85, &"length": 0.15, &"volume": 0.8, &"curl": 0.0, &"fringe": 0.0, &"sweep": 1.0, &"gravity": 0.8, &"parting": 0.0, &"strands": 40, &"points": 6},
+	"Wet messy": {&"side_trim": 0.55, &"length": 0.18, &"volume": 0.6, &"curl": 0.0, &"fringe": 0.3, &"sweep": 0.1, &"quiff": 0.3, &"swept": 0.1, &"hug": 0.6, &"gravity": 1.7, &"parting": 0.2, &"messy": 0.45, &"wave": 0.6, &"gaps": 0.6, &"wisps": 0.5, &"strips": 1.0, &"wet": 0.8, &"scalp_layer": 1.0, &"shine": 0.6, &"back_length": 0.5, &"tousle": 0.8, &"colour": Color(0.09, 0.07, 0.055), &"target_hairs": 40000, &"strand_width": 0.0011, &"strands": 40, &"points": 14},
 	"Curly": {&"side_trim": 0.1, &"length": 0.12, &"volume": 1.3, &"curl": 0.9, &"fringe": 0.6, &"sweep": 0.0, &"hug": 0.0, &"gravity": 0.6, &"parting": 0.0, &"strands": 36, &"points": 10},
 }
 const EYE_SCENES: Dictionary = {
@@ -101,7 +105,7 @@ var _hair_slider_labels: Dictionary = {}   # key -> [Label, base text]: the labe
 var _slider_label_time: float = 0.0
 var _head_hair_color: Color = Color(0.13, 0.08, 0.045)
 var _hair_color_row: Control = null
-var _scalp_layer: float = 0.0   # the solid base under the hair (0 = none): it read as paint on the head
+var _scalp_layer: float = 1.0   # the solid base under the hair (0 = none): it read as paint on the head
 var _head_hair_density: float = 1.0
 var _hair_dirty: bool = false
 var _hair_friction: float = 0.05   # friction on small movements (Motion tab): 0 = none, higher = small wiggles die out faster
@@ -123,7 +127,19 @@ var _switch_done: bool = false
 var _show_follicles: bool = false   # the roots of the guide strands as dots, hair hidden (a check of where the hair grows from)
 var _follicle_node: MultiMeshInstance3D = null
 var _style_gender: String = "Male"   # the body the current style was picked for
-const TARGET_HAIRS: int = 170000   # the real number of hairs every style aims for (a head has 100,000-150,000): hairs per lock are scaled to reach it
+const DEFAULT_TARGET_HAIRS: int = 170000   # the real number of hairs every style aims for (a head has 100,000-150,000): hairs per lock are scaled to reach it
+# Hair levels of detail (LOD): the lower levels draw fewer, wider hairs with fewer points each, so the cost falls with the distance and the coverage stays.
+#   level: share of the hairs, points per hair (cap), width x, beard, wisps
+const HAIR_LODS: Array = [
+	[1.0, 16, 1.0, true, 1.0],
+	[0.35, 8, 1.6, true, 0.6],
+	[0.1, 5, 3.0, false, 0.2],
+	[0.03, 4, 6.0, false, 0.0],
+]
+const LOD_DISTANCES: Array = [2.2, 4.5, 9.0]   # camera distance (m) above which the next level starts
+var _lod: int = 0
+var _lod_forced: int = -1   # --lod=N or the slider: a fixed level (-1 = by the camera distance)
+var _target_hairs: int = DEFAULT_TARGET_HAIRS   # a preset can ask for fewer, thicker hairs (wet, clumped hair is drawn with fewer hairs so that single strands show)
 var _strand_scale: float = 1.0   # learned: real hairs = guides x strands x about 0.58 (fewer hairs per lock near the hairline), so the first guess is 1 / 0.58
 var _hair_retry: int = 0
 var _hair_task_id: int = -1   # the hair is built on a worker thread (HumanHair.build_arrays is pure data), so the lab does not freeze for 1-3 s
@@ -166,6 +182,8 @@ var _lash_material: ShaderMaterial
 var _hair_color: Color = Color(0.16, 0.1, 0.06)
 var _mh_hair: String = ""   # --mh-hair=hair_messy:short_messy_diff.png: a CC0 MakeHuman hair shell (tools/blender/fit_mh_mesh.py) instead of our hair, for comparison
 var _skin_tex_path: String = ""   # --skin-tex=<absolute png>: a skin diffuse map (e.g. a CC0 MakeHuman skin) read from outside the project, for a comparison
+var _wet: float = 0.0
+var _wet_slider: HSlider = null
 var _brow_given: bool = false
 var _face_hair_suffix: String = "_mf"   # the Mindfront (CC0, MakeHuman) brow and lash layout fitted by tools/blender/fit_mindfront.py (*_brows_mf.glb)
 var _brow_density: float = 0.8
@@ -185,11 +203,20 @@ var _muscle: float = 0.0
 var _yaw: float = 0.3
 const FACE_DISTANCE := 0.35        # camera distance (m) for the eyes and brows close-up
 const FACE_DISTANCE_HAIR := 0.55   # ... and for the hair tab: a little farther back
+const FACE_DISTANCE_BEARD := 0.26   # the beard tab: closer, and looking at the jaw
+const BEARD_LOOK_DROP := 0.095      # ... how far below the eyes the camera looks (the middle of the beard)
 const FACE_HAIR_LIFT := 0.0        # ... (extra camera height for the hair tab: none, the eyes stay in the centre and the hair fits above them)
 var _face_hair: bool = false
 var _settle_override: int = -1   # --settle=N: steps the hair simulation runs at start (default: the native default)
-var _start_tab: String = ""   # --tab=Hair: start on that tab (Body, Eyes, Brows, Hair)
+var _start_tab: String = ""   # --tab=Hair: start on that tab (Body, Eyes, Brows, Hair, Beard)
 var _distance: float = 3.6
+var _shadows_arg: String = ""
+var _shadow_dist: float = 1.2   # --shadow-dist=m: how far the sun shadow map reaches (a small value = fine texels on the head)
+var _shadow_bias: float = 0.001
+var _shadow_normal_bias: float = 0.05
+var _real_env: bool = false     # --env=real: a sky, shadows from the sun, ambient occlusion and a filmic tonemap (a place to judge the hair in, not a grey room)
+var _scalp_arg: float = -1.0    # --scalp-layer=0..1: overrides the preset value (tests)
+var _beard_view: bool = false   # the Beard tab is open: the camera looks at the jaw
 var _look_y: float = 0.95
 var _cam_y: float = 1.0
 var _face_mode: bool = false
@@ -280,6 +307,22 @@ func _ready() -> void:
 			_settle_override = int(arg.trim_prefix("--settle="))
 		elif arg.begins_with("--tab="):
 			_start_tab = arg.trim_prefix("--tab=")
+		elif arg.begins_with("--shadow-dist="):
+			_shadow_dist = float(arg.trim_prefix("--shadow-dist="))
+		elif arg.begins_with("--shadow-bias="):
+			_shadow_bias = float(arg.trim_prefix("--shadow-bias="))
+		elif arg.begins_with("--shadow-nbias="):
+			_shadow_normal_bias = float(arg.trim_prefix("--shadow-nbias="))
+		elif arg == "--env=real":
+			_real_env = true
+		elif arg.begins_with("--scalp-layer="):
+			_scalp_arg = float(arg.trim_prefix("--scalp-layer="))
+			_scalp_layer = _scalp_arg
+		elif arg.begins_with("--shadows="):
+			_shadows_arg = arg.trim_prefix("--shadows=")
+		elif arg.begins_with("--lod="):
+			_lod_forced = int(arg.trim_prefix("--lod="))
+			_lod = clampi(_lod_forced, 0, HAIR_LODS.size() - 1)
 		elif arg.begins_with("--bench="):
 			_bench_seconds = float(arg.trim_prefix("--bench="))
 		elif arg == "--nosim":
@@ -290,11 +333,20 @@ func _ready() -> void:
 			_hair_enabled = false
 		elif arg.begins_with("--hair-preset="):
 			var preset: Dictionary = HAIR_PRESETS[arg.trim_prefix("--hair-preset=")]
-			for reset_key: StringName in [&"quiff", &"swept", &"spike", &"hug", &"sweep", &"strands", &"points"]:   # what the preset does not name is off (as the button does), not what the starting style left
+			for reset_key: StringName in [&"quiff", &"swept", &"spike", &"hug", &"sweep", &"strands", &"points", &"messy", &"wave", &"gaps", &"wisps", &"strips", &"back_length", &"tousle"]:   # what the preset does not name is off (as the button does), not what the starting style left
 				if not preset.has(reset_key):
 					_hair_style[reset_key] = 0.0
 			for key: StringName in preset:
 				_hair_style[key] = preset[key]
+			_wet = float(preset.get(&"wet", 0.0))
+			_scalp_layer = float(preset.get(&"scalp_layer", 1.0))
+			if preset.has(&"colour"):
+				_head_hair_color = preset[&"colour"]
+				_hair_color = _brow_colour_for(_head_hair_color)
+			if preset.has(&"shine") and _shine_override < 0.0:
+				_shine_override = float(preset[&"shine"])
+			_target_hairs = int(preset.get(&"target_hairs", DEFAULT_TARGET_HAIRS))
+			_strand_scale = float(_target_hairs) / float(DEFAULT_TARGET_HAIRS) * 0.6   # (the first guess: the build then learns the real value)
 		elif arg.begins_with("--tip="):
 			_tip_color = Color.html(arg.trim_prefix("--tip="))
 		elif arg.begins_with("--tip-amount="):
@@ -358,12 +410,32 @@ func _ready() -> void:
 	_build_environment()
 	_build_material()
 	_build_ui()
+	if _lod_forced < 0:
+		_lod = clampi(_lod_for_distance(_distance), 0, HAIR_LODS.size() - 1)   # (the first hair is built for the starting distance: no full hair first and then a cheaper one)
+		_strand_scale = clampf(_strand_scale * float(HAIR_LODS[_lod][0]), 0.08, 3.0)
 	_set_gender(_gender)
 
 
 func _build_environment() -> void:
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
+	if _real_env:
+		var sky_material := ProceduralSkyMaterial.new()
+		sky_material.sky_top_color = Color(0.32, 0.5, 0.85)
+		sky_material.sky_horizon_color = Color(0.72, 0.8, 0.9)
+		sky_material.ground_horizon_color = Color(0.62, 0.62, 0.6)
+		sky_material.ground_bottom_color = Color(0.3, 0.3, 0.3)
+		var sky := Sky.new()
+		sky.sky_material = sky_material
+		env.sky = sky
+		env.background_mode = Environment.BG_SKY
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+		env.ambient_light_energy = 0.9
+		env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+		env.ssao_enabled = true
+		env.ssao_radius = 0.12
+		env.ssao_intensity = 3.0
+		env.ssao_detail = 1.0
+	env.background_mode = Environment.BG_SKY if _real_env else Environment.BG_COLOR
 	env.background_color = Color(0.22, 0.23, 0.26)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.55, 0.55, 0.6)
@@ -374,10 +446,22 @@ func _build_environment() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-35.0, 35.0, 0.0)
 	sun.light_energy = 0.8
+	if _real_env:
+		sun.light_energy = 1.5
+		sun.rotation_degrees = Vector3(-42.0, 38.0, 0.0)
+		sun.shadow_enabled = true
+		sun.directional_shadow_max_distance = _shadow_dist
+		sun.shadow_bias = _shadow_bias
+		sun.shadow_normal_bias = _shadow_normal_bias
+		sun.shadow_blur = 1.2
+	if _shadows_arg == "on":
+		sun.shadow_enabled = true   # --shadows=on|off: the sun casts shadows (the hair is a shadow caster and receiver: tests)
+	elif _shadows_arg == "off":
+		sun.shadow_enabled = false
 	add_child(sun)
 	var fill := DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(-10.0, -140.0, 0.0)
-	fill.light_energy = 0.25
+	fill.light_energy = 0.0 if _real_env else 0.25
 	add_child(fill)
 	var floor_mesh := MeshInstance3D.new()
 	var disc := CylinderMesh.new()
@@ -428,6 +512,7 @@ func _build_material() -> void:
 	_head_hair_material.set_shader_parameter(&"tip_mix", _tip_mix)
 	if _shine_override >= 0.0:
 		_head_hair_material.set_shader_parameter(&"shine", _shine_override)
+	_head_hair_material.set_shader_parameter(&"wet", _wet)
 	_head_hair_material.set_shader_parameter(&"wind", Vector3(1.0, 0.0, 0.35) * _wind)
 	_hair_sway = HairSway.new()
 	add_child(_hair_sway)
@@ -504,7 +589,9 @@ func _build_ui() -> void:
 		preset_button.text = preset_name
 		preset_button.pressed.connect(_on_hair_preset.bind(preset_name))
 		presets.add_child(preset_button)
-	_hair_color_row = _add_color_row(hair_tab, "Hair colour", _head_hair_color, _on_head_hair_color_changed)
+	var colour_label := Label.new()
+	colour_label.text = "Hair colour"
+	hair_tab.add_child(colour_label)   # (natural colours only: the swatches below, no free colour picker)
 	var swatches := HFlowContainer.new()   # natural colours in one click (linear colour values, as the shader takes them)
 	hair_tab.add_child(swatches)
 	for swatch: Array in HAIR_COLOURS:
@@ -514,6 +601,7 @@ func _build_ui() -> void:
 		swatch_button.custom_minimum_size = Vector2(0.0, 24.0)
 		swatch_button.pressed.connect(_on_hair_colour_swatch.bind(swatch[1]))
 		swatches.add_child(swatch_button)
+	_wet_slider = _add_value_slider(hair_tab, "Wet look (dark, thin sharp highlights)", 0.0, 1.0, _wet, _on_wet_changed)
 	_add_hair_slider(hair_tab, "Length", &"length", 0.0, 0.35)
 	_add_hair_slider(hair_tab, "Volume", &"volume", 0.0, 2.2)
 	_add_hair_slider(hair_tab, "Curl", &"curl", 0.0, 1.0)
@@ -525,15 +613,23 @@ func _build_ui() -> void:
 	_add_hair_slider(hair_tab, "Spikes (stands off the skin)", &"spike", 0.0, 1.0)
 	_add_hair_slider(hair_tab, "Parting", &"parting", -1.0, 1.0)
 	_add_hair_slider(hair_tab, "Fall (gravity)", &"gravity", 0.0, 2.0)
+	_add_hair_slider(hair_tab, "Messy (locks differ and cross)", &"messy", 0.0, 1.0)
+	_add_hair_slider(hair_tab, "Wave (a slow wave in every hair)", &"wave", 0.0, 1.0)
+	_add_hair_slider(hair_tab, "Gaps (patches without locks, tighter clumps)", &"gaps", 0.0, 1.0)
+	_add_hair_slider(hair_tab, "Wisps (long loose wavy hairs)", &"wisps", 0.0, 1.0)
+	_add_hair_slider(hair_tab, "Tousle (locks on top lift and arch)", &"tousle", 0.0, 1.0)
+	_add_hair_slider(hair_tab, "Longer behind (layers)", &"back_length", 0.0, 1.0)
+	_add_hair_slider(hair_tab, "Fringe strips (separate strips with gaps)", &"strips", 0.0, 1.0)
 	_add_hair_slider(hair_tab, "Sides and back shorter", &"side_trim", 0.0, 1.0)
-	_add_color_row(hair_tab, "Dyed ends colour", _tip_color, _on_tip_color_changed)
-	_add_range_slider(hair_tab, "Dyed ends amount", 0.0, 1.0, _tip_mix, _on_tip_mix_changed)
 	_add_range_slider(hair_tab, "Hair shine", 0.0, 1.0, 0.0, _on_hair_shine_changed)
 	var new_seed := Button.new()
 	new_seed.text = "New hair (other dice)"
 	new_seed.pressed.connect(_on_new_hair_seed)
 	hair_tab.add_child(new_seed)
 	_add_section_label(hair_tab, "Amount of hair")
+	var beard_tab := _add_tab(tabs, "Beard")   # (a tab of its own; the colour of the beard is the hair colour)
+	_add_hair_slider(beard_tab, "Beard amount (0 = none)", &"beard", 0.0, 1.0)
+	_add_hair_slider(beard_tab, "Beard length (metres)", &"beard_length", 0.002, 0.04)
 	var amount_tab: Control = hair_tab
 	_add_hair_slider(amount_tab, "Guide locks (how many places hair grows from)", &"locks", 200.0, 6000.0)
 	_add_hair_slider(amount_tab, "Individual hairs per lock (0 = ribbons)", &"strands", 0.0, 96.0)
@@ -731,18 +827,19 @@ func _apply_hair_parameters() -> void:
 	_brow_material.set_shader_parameter(&"brow_density", _brow_density)
 
 
-# The Eyes, Brows and Hair tabs are about the head: the camera goes to the face; the other tabs show the whole body.
+# The Eyes, Brows, Hair and Beard tabs are about the head: the camera goes to the face; the other tabs show the whole body.
 func _on_tab_changed(index: int, tabs: TabContainer) -> void:
 	var tab_name: String = tabs.get_child(index).name
-	var wants_face: bool = tab_name in ["Eyes", "Brows", "Hair"]
+	var wants_face: bool = tab_name in ["Eyes", "Brows", "Hair", "Beard"]
 	# Eyes and Brows keep the tight framing; Hair stands back a little and looks higher so the whole head of hair is in the picture
 	var wants_hair: bool = tab_name == "Hair"
+	_beard_view = tab_name == "Beard"
 	if wants_face != _face_mode:
 		_face_hair = wants_hair
 		_on_face_toggled(wants_face)
-	elif wants_face and wants_hair != _face_hair:
+	elif wants_face:
 		_face_hair = wants_hair
-		_distance = FACE_DISTANCE_HAIR if wants_hair else FACE_DISTANCE
+		_distance = FACE_DISTANCE_BEARD if _beard_view else (FACE_DISTANCE_HAIR if wants_hair else FACE_DISTANCE)
 		_apply()
 		_update_camera()
 
@@ -750,7 +847,7 @@ func _on_tab_changed(index: int, tabs: TabContainer) -> void:
 func _on_face_toggled(pressed: bool) -> void:
 	_face_mode = pressed
 	if pressed:
-		_distance = FACE_DISTANCE_HAIR if _face_hair else FACE_DISTANCE
+		_distance = FACE_DISTANCE_BEARD if _beard_view else (FACE_DISTANCE_HAIR if _face_hair else FACE_DISTANCE)
 	else:
 		_distance = 3.6
 		_cam_y = 1.0
@@ -807,7 +904,7 @@ func _on_hair_reset() -> void:
 
 func _on_hair_preset(preset_name: String) -> void:
 	var preset: Dictionary = HAIR_PRESETS[preset_name]
-	for reset_key: StringName in [&"quiff", &"swept", &"spike", &"hug", &"sweep", &"strands", &"points"]:   # what a preset does not name goes back to off
+	for reset_key: StringName in [&"quiff", &"swept", &"spike", &"hug", &"sweep", &"strands", &"points", &"messy", &"wave", &"gaps", &"wisps", &"strips", &"back_length", &"tousle"]:   # what a preset does not name goes back to off
 		if not preset.has(reset_key):
 			_hair_style[reset_key] = 0.0
 			if _hair_sliders.has(reset_key):
@@ -816,6 +913,19 @@ func _on_hair_preset(preset_name: String) -> void:
 		_hair_style[key] = preset[key]
 		if _hair_sliders.has(key):
 			(_hair_sliders[key] as HSlider).set_value_no_signal(float(preset[key]))
+	if preset.has(&"colour"):
+		_on_hair_colour_swatch(preset[&"colour"])   # (a preset can carry a hair colour; the others keep the one picked)
+	var new_target: int = int(preset.get(&"target_hairs", DEFAULT_TARGET_HAIRS))
+	_strand_scale = clampf(_strand_scale * float(new_target) / float(_target_hairs), 0.08, 3.0)   # (keep what the lab learned about hairs per lock: only the target changes. Resetting it to a guess built 600,000 hairs, more than the simulation can handle, and the head came out bald)
+	_target_hairs = new_target
+	_hair_style[&"wet"] = float(preset.get(&"wet", 0.0))
+	_scalp_layer = float(preset.get(&"scalp_layer", 1.0))   # (a solid hair-coloured layer under the hair: wet, swept hair leaves bare patches that the skin tint does not cover)
+	_head_hair_material.set_shader_parameter(&"scalp_layer", _scalp_layer)
+	_wet = float(preset.get(&"wet", 0.0))   # (a preset with a wet look sets it; every other preset dries the hair)
+	_head_hair_material.set_shader_parameter(&"wet", _wet)
+	_head_hair_material.set_shader_parameter(&"shine", float(preset.get(&"shine", 0.25)))   # (a preset can ask for a glossier look; the others go back to the default)
+	if _wet_slider != null:
+		_wet_slider.set_value_no_signal(_wet)
 	_hair_dirty = true
 
 
@@ -991,6 +1101,32 @@ func _update_scalp_colour() -> void:
 		_material.set_shader_parameter(&"scalp_color", _head_hair_color * 0.55)
 
 
+# A slider whose label shows its value (the plain range slider does not).
+func _add_value_slider(parent: Control, label_text: String, low: float, high: float, value: float, callback: Callable) -> HSlider:
+	var label := Label.new()
+	label.text = "%s: %.2f" % [label_text, value]
+	parent.add_child(label)
+	var slider := HSlider.new()
+	slider.scrollable = false
+	slider.min_value = low
+	slider.max_value = high
+	slider.step = (high - low) / 100.0
+	slider.value = value
+	slider.value_changed.connect(func(v: float) -> void: label.text = "%s: %.2f" % [label_text, v])
+	slider.value_changed.connect(callback)
+	parent.add_child(slider)
+	return slider
+
+
+func _on_wet_changed(value: float) -> void:
+	_wet = value
+	_hair_style[&"wet"] = value   # (the shape of wet hair is built in C++: clumps, pointed tips, heavy fall)
+	_hair_last_change_ms = Time.get_ticks_msec()
+	_hair_retry = 0
+	_hair_dirty = true
+	_head_hair_material.set_shader_parameter(&"wet", value)
+
+
 func _on_hair_colour_swatch(color: Color) -> void:
 	if _hair_color_row != null:
 		for child in _hair_color_row.get_children():
@@ -1097,6 +1233,18 @@ func _thousands(n: int) -> String:
 	return ("-" if n < 0 else "") + s + out
 
 
+func _effective_target() -> int:
+	return maxi(int(float(_target_hairs) * float(HAIR_LODS[_lod][0])), 1500)
+
+
+func _lod_for_distance(distance: float) -> int:
+	var level: int = 0
+	for d: float in LOD_DISTANCES:
+		if distance > d * (1.0 if level >= _lod else 0.9):   # (a little hysteresis: the level does not flicker at a border)
+			level += 1
+	return level
+
+
 func _rebuild_hair() -> void:
 	_rebuild_hair_now()   # (starts the build on a worker thread; _finish_hair_task sets _hair_build_ms when it is done)
 
@@ -1114,9 +1262,20 @@ func _rebuild_hair_now() -> void:
 	if _hair_preview and int(params.get(&"strands", 0)) > 8:
 		params[&"strands"] = maxi(int(params[&"strands"]) / 6, 4)   # (the preview while dragging)
 	params["eye_drop"] = HumanHair.default_params_for(_gender)["eye_drop"]
+	var lod_row: Array = HAIR_LODS[_lod]
+	_head_hair_material.set_shader_parameter(&"scalp_layer", _scalp_arg if _scalp_arg >= 0.0 else maxf(_scalp_layer, 1.0 if _lod > 0 else 0.0))   # (the lower levels have fewer hairs: a solid hair-coloured layer under them keeps the scalp from showing)
+	if _lod > 0:
+		var cap: int = int(lod_row[1])
+		var own: int = int(params.get(&"points", 0))
+		params[&"points"] = cap if own < 3 else mini(own, cap)
+		params[&"strand_width"] = float(params.get(&"strand_width", 0.0004)) * float(lod_row[2])
+		params[&"locks"] = int(float(params.get(&"locks", 4200)) * pow(float(lod_row[0]), 0.3))   # (fewer follicles too, but not as many fewer as hairs: fewer guides to build and to simulate, and the gaps between them stay small)
+		if not bool(lod_row[3]):
+			params[&"beard"] = 0.0
+		params[&"wisps"] = float(params.get(&"wisps", 0.0)) * float(lod_row[4])
 	_head_hair_material.set_shader_parameter(&"single_hairs", int(_hair_style.get(&"strands", 0)) > 0)
 	if not _hair_preview and int(params.get(&"strands", 0)) > 8:
-		params[&"strands"] = clampi(int(round(40.0 * _strand_scale)), 8, 96)   # (every style has the same follicles and the same hairs per follicle)
+		params[&"strands"] = clampi(int(round(40.0 * _strand_scale)), 3, 96)   # (every style has the same follicles and the same hairs per follicle)
 	var body_data = HumanHair.prepare(_mesh.mesh as ArrayMesh)   # (on this thread: it reads the body mesh)
 	_hair_task_started_us = Time.get_ticks_usec()
 	_hair_task_id = WorkerThreadPool.add_task(_hair_task_run.bind(body_data, params), false, "hair build")
@@ -1145,7 +1304,7 @@ func _finish_hair_task(wait: bool) -> void:
 		_hair_mesh.queue_free()
 		_hair_mesh = null
 	if built == null:
-		_hair_info = "Hair: none (bald)"
+		_hair_info = "LOD %d  Hair: " % _lod + "none (bald)"
 		if _sim != null:
 			_sim.hair = null
 		return
@@ -1156,18 +1315,20 @@ func _finish_hair_task(wait: bool) -> void:
 		# the real number of hairs: every hair is a ribbon of `steps` points (2 vertices each); near the hairline a lock grows fewer hairs than `strands`, so guides x strands overstates it
 		var steps_meta: int = maxi(int(built.get_meta(&"hair_guide_steps", 1)), 1)
 		var real_hairs: int = (verts - 600) / (2 * steps_meta)
-		_hair_info = "Hair: %s hairs (%s guides, up to %d each)   %s vertices" % [_thousands(real_hairs), _thousands(guides), strands, _thousands(verts)]
-		# aim for TARGET_HAIRS: when the count is off by more than 8%, learn a better scale and build again (twice at most)
-		if not _hair_preview and _hair_retry < 2 and absf(float(real_hairs) / float(TARGET_HAIRS) - 1.0) > 0.08:
-			var used: int = clampi(int(round(40.0 * _strand_scale)), 8, 96)
-			if used < 96 or real_hairs > TARGET_HAIRS:
-				_strand_scale = clampf(_strand_scale * float(TARGET_HAIRS) / float(maxi(real_hairs, 1)), 0.4, 3.0)
+		_hair_info = "LOD %d  Hair: " % _lod + "%s hairs (%s guides, up to %d each)   %s vertices" % [_thousands(real_hairs), _thousands(guides), strands, _thousands(verts)]
+		# aim for the target: when the count is off by more than 8%, learn a better scale and build again (five times at most)
+		print("HUMAN_LAB hair count: LOD ", _lod, " real ", real_hairs, " target ", _effective_target(), " scale ", snappedf(_strand_scale, 0.001), " retry ", _hair_retry)
+		var tolerance: float = 0.08 if int(round(40.0 * _strand_scale)) >= 12 else 0.3   # (a few hairs per lock: one more or less is a big step, so do not chase the number)
+		if not _hair_preview and _hair_retry < 5 and absf(float(real_hairs) / float(_effective_target()) - 1.0) > tolerance:
+			var used: int = clampi(int(round(40.0 * _strand_scale)), 3, 96)
+			if used < 96 or real_hairs > _effective_target():
+				_strand_scale = clampf(_strand_scale * float(_effective_target()) / float(maxi(real_hairs, 1)), 0.08, 3.0)
 				_hair_retry += 1
 				_hair_dirty = true
-		elif absf(float(real_hairs) / float(TARGET_HAIRS) - 1.0) <= 0.08:
+		elif absf(float(real_hairs) / float(_effective_target()) - 1.0) <= tolerance:
 			_hair_retry = 0
 	else:
-		_hair_info = "Hair: ribbon locks, %s vertices" % _thousands(verts)
+		_hair_info = "LOD %d  Hair: " % _lod + "ribbon locks, %s vertices" % _thousands(verts)
 	_hair_mesh = MeshInstance3D.new()
 	_hair_mesh.mesh = built
 	if _solo:
@@ -1288,7 +1449,8 @@ func _apply() -> void:
 	if _face_mode:
 		# keep the camera on the eyes: eye height is 0.937 of the base height and moves with the head shapes
 		_cam_y = float(BASE_HEIGHT[_gender]) * 0.937 + tall * 0.67 - short * 0.343 + (FACE_HAIR_LIFT if _face_hair else 0.0)
-		_look_y = _cam_y
+		_look_y = _cam_y - (BEARD_LOOK_DROP if _beard_view else 0.0)
+		_cam_y = _look_y if _beard_view else _cam_y
 		_update_camera()
 
 
@@ -1378,6 +1540,13 @@ func _update_fps_label(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	var wanted_lod: int = _lod_forced if _lod_forced >= 0 else _lod_for_distance(_distance)
+	wanted_lod = clampi(wanted_lod, 0, HAIR_LODS.size() - 1)
+	if wanted_lod != _lod and _hair_task_id < 0 and _hair_mesh != null:
+		_strand_scale = clampf(_strand_scale * float(HAIR_LODS[wanted_lod][0]) / float(HAIR_LODS[_lod][0]), 0.08, 3.0)   # (the first guess for the new level; the build then corrects it)
+		_lod = wanted_lod
+		_hair_retry = 0
+		_hair_dirty = true
 	_slider_label_time += delta
 	if _slider_label_time > 0.25:   # a preset or a style change moves sliders without a signal: keep the labels right
 		_slider_label_time = 0.0

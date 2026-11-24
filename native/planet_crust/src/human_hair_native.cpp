@@ -241,6 +241,17 @@ Dictionary HumanHair::default_params() {
 	d["points"] = 0;
 	d["strand_width"] = 0.0004; // (still wider than a real hair, 0.07 mm: with fewer hairs than a head, thinner ribbons left specks of skin between them; 0.4 mm is solid)
 	d["clump"] = 0.007;
+	d["messy"] = 0.0; // 0..1: every lock gets its own length, drift and wobble, so locks differ and cross (wet, tousled hair)
+	d["cover"] = 0.0;  // (off by default: it added about 6% guides and showed no visible gain yet) 0..1: after the hair is shaped, patches of the scalp with little hair near them (under a lifted quiff, beside a parting) get extra roots; 0 = off
+	d["tousle"] = 0.0; // 0..1: some locks on the top of the head lift off the scalp and arch over (a tousled pile), the others lie as combed
+	d["wet"] = 0.0;  // 0..1: wet hair: the hairs of a lock stick together and end in a point, it hangs heavy and flat, fewer stray hairs, smooth waves
+	d["back_length"] = 0.0; // 0..1: the hair behind the crown is longer than the top (up to +60%), a layered cut
+	d["beard"] = 0.0;        // 0..1: a short beard and moustache on the jaw, cheeks and chin (0: none; the amount is the density)
+	d["beard_length"] = 0.012; // metres
+	d["strips"] = 0.0; // 0..1: the front hair falls as separate strips (about 1.3 cm wide) with gaps between them, each strip its own length
+	d["gaps"] = 0.0;  // 0..1: patches of the scalp grow no locks and the rest clump tighter, so the hair parts into separate clumps with the layer below showing between them
+	d["wisps"] = 0.0; // 0..1: more hairs stray from their lock as long, wavy wisps
+	d["wave"] = 0.0;  // 0..1: every hair gets a slow sideways wave of its own (waves of 3-6 cm, a few mm wide)
 	return d;
 }
 
@@ -300,7 +311,11 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double clump = Math::clamp(param(p_params, "clump", 0.007), 0.0, 0.03);
 	const int plain_lock_count = int(std::min(9000.0, double(requested_locks) * requested_width / lock_width));
 	const int lock_count = strands > 0 ? std::min(requested_locks, 6000) : plain_lock_count; // (single hairs: the number of follicles is what was asked, whatever the lock width of a short style)
-	const double volume = std::max(0.0, param(p_params, "volume", 1.0));
+	const double wetness = Math::clamp(param(p_params, "wet", 0.0), 0.0, 1.0);
+	const double tousle = Math::clamp(param(p_params, "tousle", 0.0), 0.0, 1.0);
+	const double cover = Math::clamp(param(p_params, "cover", 0.0), 0.0, 1.0);
+	const bool cover_debug = param(p_params, "cover_debug", 0.0) > 0.5;
+	const double volume = std::max(0.0, param(p_params, "volume", 1.0)) * (1.0 - 0.45 * wetness); // (wet hair is heavy: it lies on the head)
 	const double curl = std::max(0.0, param(p_params, "curl", 0.0));
 	const double fringe = Math::clamp(param(p_params, "fringe", 0.4), 0.0, 1.0);
 	const double hug = Math::clamp(param(p_params, "hug", 0.0), 0.0, 1.0); // 0: hair hangs from the crown; 1: it follows the curve of the skull (short, stiff hair lying on the head)
@@ -309,8 +324,16 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double swept = Math::clamp(param(p_params, "swept", 0.0), 0.0, 1.0); // 0: the front splits at the parting, to both sides; 1: all of it falls over to the side away from the parting
 	const double sweep = Math::clamp(param(p_params, "sweep", 0.0), 0.0, 1.0); // 0: combed away from the crown; 1: all of it combed straight back (slicked back)
 	const double parting = Math::clamp(param(p_params, "parting", 0.0), -1.0, 1.0);
-	const double gravity = std::max(0.0, param(p_params, "gravity", 1.0));
+	const double gravity = std::max(0.0, param(p_params, "gravity", 1.0)) * (1.0 + 0.6 * wetness);
 	const double side_trim = Math::clamp(param(p_params, "side_trim", 0.0), 0.0, 1.0);
+	const double messy = Math::clamp(param(p_params, "messy", 0.0), 0.0, 1.0);
+	const double wave = Math::clamp(param(p_params, "wave", 0.0), 0.0, 1.0);
+	const double gaps = Math::clamp(param(p_params, "gaps", 0.0), 0.0, 1.0);
+	const double strips = Math::clamp(param(p_params, "strips", 0.0), 0.0, 1.0);
+	const double beard = Math::clamp(param(p_params, "beard", 0.0), 0.0, 1.0);
+	const double back_long = Math::clamp(param(p_params, "back_length", 0.0), 0.0, 1.0);
+	const double beard_length = Math::clamp(param(p_params, "beard_length", 0.012), 0.002, 0.06);
+	const double wisps = Math::clamp(param(p_params, "wisps", 0.0), 0.0, 1.0);
 	const double eye_drop = param(p_params, "eye_drop", 0.105);
 
 	// --- the head: top, centre and size, found from the body itself
@@ -358,7 +381,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		const double sideburn = smooth((azimuth - 1.05) / 0.5) * (1.0 - smooth((azimuth - 1.6) / 0.1)); // (a longer slope down into the sideburn: a notch with square corners looked cut out)
 		double h = line + ((eye_y - 0.012) - line) * sideburn;
 		const double ear = smooth((azimuth - 1.6) / 0.1) * (1.0 - smooth((azimuth - 1.86) / 0.1));
-		h = std::max(h, h + (eye_y + 0.02 - h) * ear);
+		h = std::max(h, h + (eye_y + (0.006) - h) * ear); // (the hair comes down to the top of the ear: higher left a bare notch of skin above it, lower covered the ear like a muff)
 		return h;
 	};
 	std::vector<char> scalp(vertex_count, 0);
@@ -461,7 +484,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const double cap_topness = Math::clamp((double(vertices[v].y) - (eye_y + 0.03)) / std::max(top_y - eye_y - 0.03, 0.02), 0.0, 1.0);
 				const double cap_front = Math::clamp((double(vertices[v].z) - centre_z) / std::max(half_width, 0.05), 0.0, 1.0);
 				const double shaved = side_trim * (1.0 - cap_topness) * (1.0 - cap_front); // (the front hairline keeps its hair: only the sides and back are clippered)
-				cap_index[v] = add_vertex(vertices[v] + normals[v] * 0.0018f, normals[v], Vector2(0.5f, 0.5f), Color(0.5f, float(shaved), 1.0f, (std::hypot(double(vertices[v].x) - double(crown.x), double(vertices[v].z) - double(crown.z)) < 0.045 || (std::abs(double(vertices[v].x) - double(crown.x)) < 0.012 && double(vertices[v].z) > double(crown.z) - 0.04 && double(vertices[v].z) < double(crown.z) + 0.06)) ? float(fade) : 0.0f), v, cap_tangent(normals[v]), 0.0f, true);
+				cap_index[v] = add_vertex(vertices[v] + normals[v] * 0.0018f, normals[v], Vector2(0.5f, 0.5f), Color(0.5f, float(shaved), 1.0f, float(fade)), v, cap_tangent(normals[v]), 0.0f, true);
 			}
 		}
 		out_indices.push_back(cap_index[indices[t]]);
@@ -483,7 +506,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double front_density = 0.15; // (fixed: a head has the same follicles whatever the style; the style only changes how the hairs lie)
 	(void)fringe; // (a quiff stands up and leaves the front hairline bare too)
 	const bool use_extras = false; // (the style-dependent extras are off: only the fixed follicle set below)
-	const int fringe_extra = int(double(lock_count) * (1.5 + 3.0 * front_density));
+	const int fringe_extra = int(double(lock_count) * (1.5 + 3.0 * front_density) * (1.0 + 1.5 * quiff));
 	const int crown_extra = lock_count * 6; // (always: the whorl is where every direction of the flow meets, and a few locks there are needed whatever else is off) // extra locks around the crown: the hair there splays out from the whorl and leaves slits of skin
 	// roots by dart throwing (the "Poisson" spacing the Blender hair add-on uses): a root closer than `min_gap` to an accepted one is dropped. Roots chosen purely at random clump and leave gaps
 	// (the bare specks), at the same number of locks. The main locks draw up to 3x as often, until `lock_count` are accepted; the extra locks come after.
@@ -492,7 +515,24 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	std::unordered_map<int64_t, std::vector<Vector3>> root_cells;
 	auto cell_key = [&](int cx, int cy, int cz) { return (int64_t(cx) * 73856093LL) ^ (int64_t(cy) * 19349663LL) ^ (int64_t(cz) * 83492791LL); };
 	int accepted_main = 0;
-	for (int lock = 0; lock < main_draws + fringe_extra + crown_extra; lock++) {
+	// Coverage pass: the hair is first grown as guides only (cheap) to see which patches of the scalp end up with little hair near them (a lifted quiff, a parting, an ear notch);
+	// extra roots are then added there and the real build runs. Roots alone leave gaps wherever the hair is shaped away from them.
+	struct FillRoot {
+		int t;
+		double u, w;
+	};
+	std::vector<FillRoot> fills;
+	std::vector<Vector3> cover_points;
+	const int base_total = main_draws + fringe_extra + crown_extra;
+	int fill_count = 0;
+	const int passes = cover > 0.0 ? 2 : 1;
+	for (int pass = 0; pass < passes; pass++) {
+	const bool guides_only = passes == 2 && pass == 0;
+	if (pass == passes - 1) {
+		root_cells.clear();
+		accepted_main = 0;
+	}
+	for (int lock = 0; lock < base_total + fill_count; lock++) {
 		if (lock < main_draws && accepted_main >= lock_count) {
 			lock = main_draws - 1; // (enough locks: on to the extras)
 			continue;
@@ -500,14 +540,19 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		// one dice per lock: whether a lock is kept near a float rounding edge cannot shift the numbers of every lock after it
 		Dice dice(seed + uint64_t(lock) * 0x2545F4914F6CDD1DULL);
 		// a root on the scalp, chosen by area
+		const bool is_fill = lock >= base_total;
 		const double pick = dice.unit() * total_area;
 		const int tri = int(std::lower_bound(cumulative_area.begin(), cumulative_area.end(), pick) - cumulative_area.begin());
-		const int t = scalp_triangles[std::min(tri, int(scalp_triangles.size()) - 1)];
+		const int t = is_fill ? fills[size_t(lock - base_total)].t : scalp_triangles[std::min(tri, int(scalp_triangles.size()) - 1)];
 		const int ia = indices[t], ib = indices[t + 1], ic = indices[t + 2];
 		double u = dice.unit(), w = dice.unit();
 		if (u + w > 1.0) {
 			u = 1.0 - u;
 			w = 1.0 - w;
+		}
+		if (is_fill) {
+			u = fills[size_t(lock - base_total)].u;
+			w = fills[size_t(lock - base_total)].w;
 		}
 		const double a_weight = 1.0 - u - w;
 		const Vector3 root = vertices[ia] * real_t(a_weight) + vertices[ib] * real_t(u) + vertices[ic] * real_t(w);
@@ -518,20 +563,20 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		if (above_hairline <= 0.0 || (strands == 0 && dice.unit() > 0.15 + 0.85 * feather)) { // never below the hairline (single hairs thin out toward the edge by hairs per lock instead, below: a few whole locks left a row of separate blobs)
 			continue;
 		}
-		if (lock >= main_draws) {
+		if (lock >= main_draws && !is_fill) {
 			// the extra locks: along the front hairline (the first 4.5 cm of the forehead's hair, thinned by how much fringe there is) and around the crown
 			const double extra_front = Math::clamp((double(root.z) - centre_z) / std::max(half_width, 0.05), 0.0, 1.0);
-			const bool front_ok = extra_front >= 0.55 && above_hairline <= 0.045 && dice.unit() <= 0.25 + 0.5 * front_density;
+			const bool front_ok = extra_front >= 0.55 && above_hairline <= 0.045 + 0.06 * quiff && dice.unit() <= (0.25 + 0.5 * front_density) * (1.0 + 1.5 * quiff); // (a quiff lifts the front hair off the scalp: more roots over the area it leaves, or the skin shows under the lift)
 			const double crown_dist = std::hypot(double(root.x) - double(crown.x), double(root.z) - double(crown.z));
 			const double crown_near = std::max(0.0, 1.0 - crown_dist / 0.05);
 			const bool crown_ok = crown_dist < 0.05 && dice.unit() < 0.04 + 0.3 * crown_near * crown_near + (crown_dist < 0.015 ? 0.7 : 0.0); // (densest right at the whorl, where the hair splays most)
 			// the nape and the lower back: the hair is cut short there and tapers into the hairline, so a plain share of locks left slits of skin
 			const bool back_ok = double(root.z) < centre_z - 0.4 * half_width && above_hairline < 0.07 && dice.unit() < 0.3;
 			const bool fill_ok = dice.unit() < 0.02; // a thin random fill everywhere: the odd gap between locks (a speck of skin) is covered
-			const bool edge_ok = strands > 0 && above_hairline < 0.014 && dice.unit() < 0.3; // more (thin) locks along the hairline itself: an even edge instead of one tuft per lock
+			const bool edge_ok = strands > 0 && above_hairline < 0.02 && dice.unit() < 0.5; // (the edge of the hairline, most of all above the ears and at the temples: sparse there it read as a bald patch) // more (thin) locks along the hairline itself: an even edge instead of one tuft per lock
 			// along the parting line the hair diverges, so a strip there is thin: more locks that lie close to the line fill it
 			const bool part_ok = std::abs(double(root.x) - double(crown.x)) < 0.025 && double(root.z) > double(crown.z) - 0.03 && dice.unit() < 0.35;
-			if (!crown_ok && !part_ok && !front_ok) { // (the whorl and the parting line always get their extra locks: the scalp patch under them is too coarse for the mesh there)
+			if (!crown_ok && !part_ok && !front_ok && !edge_ok) { // (the whorl and the parting line always get their extra locks: the scalp patch under them is too coarse for the mesh there)
 				continue;
 			}
 		}
@@ -648,6 +693,36 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		const double part_push = (1.0 - Math::clamp((0.0 - (double(root.z) - double(crown.z))) / 0.05, 0.0, 1.0)) * std::min(0.3, (0.14 * Math::clamp(front_share * 2.5, 0.0, 1.0) + 0.7 * front_share) * part_soft * part_length_scale); // (a cap: the front hair goes back more than it goes to the side)
 		flow = (flow + Vector3(real_t(side_of_part * part_push), 0.0f, 0.0f)).normalized();
 
+		double strip_length = 1.0;
+		if (strips > 0.0 && front_share > 0.25) {
+			// the fringe: strips across the forehead (a hash of the strip number, so every lock of a strip agrees): some strips are missing, the others differ in length
+			const int strip_id = int(std::floor((double(root.x) - double(crown.x)) / 0.013));
+			auto strip_hash = [](int id, double salt) {
+				const double h = std::sin(double(id) * 78.233 + salt * 12.9898) * 43758.5453;
+				return h - std::floor(h);
+			};
+			const double above_line = Math::clamp((double(root.y) - hairline(root)) / 0.035, 0.0, 1.0); // (right at the hairline no strip is missing: its roots are what covers the forehead's edge, a gap there shows bare skin)
+			if (strip_hash(strip_id, 1.0) < strips * 0.4 * Math::clamp((front_share - 0.25) * 4.0, 0.0, 1.0) * above_line) {
+				continue;
+			}
+			strip_length = 1.0 + strips * (strip_hash(strip_id, 5.0) - 0.4) * 0.8 * Math::clamp((front_share - 0.25) * 4.0, 0.0, 1.0);
+		}
+		if (gaps > 0.0) {
+			// clump gaps: a smooth patchy field over the head (patches of about 2.5 cm): where it is low no lock grows, so the hair splits into clumps with gaps between them
+			auto cell = [](int ix, int iy) {
+				const double h = std::sin(double(ix) * 127.1 + double(iy) * 311.7) * 43758.5453;
+				return h - std::floor(h);
+			};
+			const double gx = (double(root.x) + double(root.y)) * 40.0, gy = (double(root.z) + double(root.y)) * 40.0;
+			const int ix = int(std::floor(gx)), iy = int(std::floor(gy));
+			double fx = gx - ix, fy = gy - iy;
+			fx = fx * fx * (3.0 - 2.0 * fx);
+			fy = fy * fy * (3.0 - 2.0 * fy);
+			const double patch = (cell(ix, iy) * (1.0 - fx) + cell(ix + 1, iy) * fx) * (1.0 - fy) + (cell(ix, iy + 1) * (1.0 - fx) + cell(ix + 1, iy + 1) * fx) * fy;
+			if (patch < gaps * 0.75 && double(root.y) < top_y - 0.012) {
+				continue; // (not on the very top: the crown has to stay covered)
+			}
+		}
 		// grow it
 		// the top keeps its length; the sides and back are trimmed by side_trim (a short back and sides)
 		const double topness = Math::clamp((double(root.y) - (eye_y + 0.03)) / std::max(top_y - eye_y - 0.03, 0.02), 0.0, 1.0);
@@ -661,6 +736,13 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		if (side_trim > 0.5 && topness < 0.6) {
 			// a clipper cut leaves stubble, not bare skin: the cut sides and back keep a few millimetres of hair
 			this_length = std::max(this_length, 0.0030 * side_trim * dice.range(0.8, 1.2) * (0.5 + 0.5 * feather));
+		}
+		this_length *= strip_length;
+		if (back_long > 0.0) {
+			this_length *= 1.0 + 0.6 * back_long * Math::clamp((centre_z - double(root.z)) / std::max(half_width, 0.05) + 0.1, 0.0, 1.0) * (1.0 - topness * 0.7); // (longer behind the crown, shorter on top)
+		}
+		if (messy > 0.0) {
+			this_length *= 1.0 + messy * dice.range(-0.3, 0.3); // (a messy head: no two locks are as long)
 		}
 		this_length = std::max(this_length, 0.0015); // (a follicle always grows a hair: a cut style makes it short, it does not remove it)
 		if (this_length < 0.0015) {
@@ -685,7 +767,16 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		// The hair drapes: it starts lying along the scalp in the combed direction, gravity pulls it down a little more every step, and the head
 		// holds it up (it is pushed out of the surface and walks along it), so it follows the curve of the skull and falls freely where the head ends.
 		Vector3 position = root + normal * 0.0035f;
-		Vector3 direction = (flow * real_t(0.95 - 0.5 * spike) + normal * real_t(0.04 + 1.4 * spike)).normalized();
+		// tousle: a share of the locks on the top (the more tousle, the more of them) stands up off the scalp, each by its own amount, and gravity then bends it over (an arch)
+		double tousle_lock = 0.0;
+		if (tousle > 0.0) {
+			const double chance_up = dice.unit();
+			const double amount_up = dice.range(0.3, 1.0);
+			if (chance_up < 0.15 + 0.6 * tousle) {
+				tousle_lock = tousle * amount_up * Math::clamp((topness - 0.35) / 0.4, 0.0, 1.0);
+			}
+		}
+		Vector3 direction = (flow * real_t(0.95 - 0.5 * spike - 0.3 * tousle_lock) + normal * real_t(0.04 + 1.4 * spike + 2.4 * tousle_lock)).normalized();
 		points.push_back(position);
 		const double pull = Math::clamp(0.26 + 0.2 * gravity_amount, 0.06, 0.6) / stiffness; // how much of each step bends toward the ground
 		const double curl_radius = curl * (0.004 + 0.3 * step_length);                      // the radius of the coil the strand is wound into afterwards
@@ -703,7 +794,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					direction = (direction - outward.normalized() * real_t(0.35 * attract)).normalized();
 				}
 			}
-			const double pull_here = pull * std::min(1.0, 5.0 / double(steps - 1)) * held * (1.0 - 0.85 * spike * (1.0 - Math::clamp(s * 1.3, 0.0, 1.0))) * (1.0 - 0.6 * lift_start * (1.0 - Math::clamp(s * 1.6, 0.0, 1.0))); // a quiff stands up first and only then falls (gravity hardly bends it near the root)
+			const double pull_here = pull * std::min(1.0, 5.0 / double(steps - 1)) * held * (1.0 - 0.85 * spike * (1.0 - Math::clamp(s * 1.3, 0.0, 1.0))) * (1.0 - 0.95 * tousle_lock * (1.0 - Math::clamp(s * 1.0, 0.0, 1.0))) * (1.0 - 0.6 * lift_start * (1.0 - Math::clamp(s * 1.6, 0.0, 1.0))); // a quiff stands up first and only then falls (gravity hardly bends it near the root)
 			direction = (direction * real_t(1.0 - pull_here) + Vector3(0.0f, -1.0f, 0.0f) * real_t(pull_here) + flow * real_t(0.05 + 0.3 * sweep * (1.0 - s))).normalized();
 			const double seg = segment[size_t(k - 1)];
 			Vector3 step = direction * real_t(seg);
@@ -726,7 +817,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			grid.push_out(candidate, clearance);
 			grid.push_out(candidate, clearance);
 			// nothing grows higher over the crown than the volume allows (a few locks rooted right at the top were lifted off the scalp by the push-out, step after step, and stood up like antennas)
-			candidate.y = std::min(candidate.y, real_t(top_y + 0.002 + 0.004 * volume + 0.035 * spike));
+			candidate.y = std::min(candidate.y, real_t(top_y + 0.002 + 0.004 * volume + 0.035 * spike + 0.09 * tousle_lock));
 			if (lift_start > 0.0) {
 				candidate.y = std::min(candidate.y, real_t(root.y + 0.012 + 0.034 * lift_start)); // a quiff stands a few cm off the forehead, not like an antenna
 			}
@@ -765,6 +856,31 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			points = smoothed;
 		}
 
+		// messy: each lock drifts away from the way it was combed and wobbles, so neighbouring locks cross and part (the lock keeps its root)
+		if (messy > 0.0 && steps > 3) {
+			const double drift_angle = dice.range(0.0, 6.2831853);
+			const double wobble_phase_a = dice.range(0.0, 6.2831853);
+			const double wobble_phase_b = dice.range(0.0, 6.2831853);
+			const double wobble_rate = dice.range(1.0, 2.2);
+			const double amount = messy * Math::clamp(this_length / 0.10, 0.3, 1.8) * 0.032;
+			const std::vector<Vector3> spine = points;
+			for (int k = 1; k < steps; k++) {
+				const double s = double(k) / (steps - 1);
+				const Vector3 tangent = (spine[std::min(k + 1, steps - 1)] - spine[k - 1]).normalized();
+				Vector3 side = tangent.cross(Vector3(0.0f, 1.0f, 0.0f));
+				if (side.length() < 1e-4f) {
+					side = Vector3(1.0f, 0.0f, 0.0f);
+				}
+				side = side.normalized();
+				const Vector3 up = side.cross(tangent).normalized();
+				const double ramp = s * s * (3.0 - 2.0 * s);
+				const double sway = std::sin(wobble_phase_a + s * 5.0 * wobble_rate) * 0.6 + std::sin(wobble_phase_b + s * 9.0) * 0.4;
+				const Vector3 push = (side * real_t(std::cos(drift_angle)) + up * real_t(0.45 * std::sin(drift_angle))) * real_t(amount * (0.8 * s + sway * ramp)); // (mostly sideways: a drift away from the head puffed the top up)
+				points[k] = spine[k] + push;
+				grid.push_out(points[k], clearance);
+			}
+		}
+
 		// curls: wind the strand into a helix around its spine (the root stays on the scalp, the coil grows over the first few points)
 		if (curl > 0.0) {
 			const std::vector<Vector3> spine = points;
@@ -786,8 +902,14 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		}
 
 		// the ribbon (strands mode: `strands` single hairs around the guide, each one a hair-thin ribbon)
-		const int copies = strands > 0 ? std::max(2, int(double(strands) * (0.4 + 0.6 * feather) * 1.0)) : 1; // (stubble: fewer hairs, so the skin shows through it as it does on a clippered head)
+		const int copies = strands > 0 ? std::max(2, int(double(strands) * (0.6 + 0.4 * feather) * 1.0)) : 1; // (stubble: fewer hairs, so the skin shows through it as it does on a clippered head)
 		const std::vector<Vector3> guide_points = points;
+		if (guides_only) {
+			for (const Vector3 &g : guide_points) {
+				cover_points.push_back(g);
+			}
+			continue; // (the coverage pass only needs where the guides go)
+		}
 		current_guide = guide_count++;
 		for (int k = 0; k < steps; k++) {
 			guide_rest.push_back(guide_points[size_t(k)]);
@@ -813,7 +935,10 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			const double angle0 = dice.range(0.0, 6.2831853);
 			const double near_line = parting != 0.0 ? Math::clamp(1.0 - std::abs(double(root.x) - double(crown.x)) / 0.018, 0.0, 1.0) : 0.0;
 			const double near_crown = Math::clamp(1.0 - std::hypot(double(root.x) - double(crown.x), double(root.z) - double(crown.z)) / 0.03, 0.0, 1.0);
-			const double radius0 = clump * (1.0 + 1.6 * std::max(near_line, near_crown)) * (0.8 + 0.2 * std::min(1.0, this_length / 0.05)) * (1.0 + 1.5 * std::max(0.0, 1.0 - this_length / 0.04) * Math::clamp((this_length - 0.001) / 0.004, 0.0, 1.0)) * (1.0 + 2.2 * Math::clamp((this_length - 0.08) / 0.2, 0.0, 1.0)) * std::sqrt(dice.unit()); // (long hair too: the hairs of one follicle fan out as they lengthen, so a fringe is a curtain, not separate strings) // (short hair spreads wider, not narrower: at 2-3 cm the hairs are shorter than the gap between follicles) // (hairs of a follicle at the parting line or the crown spread wider, over the slit) // (a short lock spreads less: its hairs fanned out into small stars at the hairline)
+			// flyaways: about one hair in a hundred strays from its lock, wider and lifting off the head, so the outline is not a clean edge (a hash of the root, so the dice of the other hairs do not shift)
+			const double stray_hash = std::abs(std::sin(double(root.x) * 127.1 + double(root.z) * 311.7 + double(copy) * 17.3 + double(root.y) * 71.9)) * 43758.5453;
+			const bool flyaway = (stray_hash - std::floor(stray_hash)) < (0.006 + 0.05 * wisps) * (1.0 - 0.6 * wetness) && this_length > 0.02;
+			const double radius0 = clump * (1.0 - 0.6 * gaps) * (1.0 - 0.65 * wetness) * (1.0 - 0.7 * std::min(1.0, 2.0 * lift_start)) * (1.0 + 1.6 * std::max(near_line, near_crown)) * (0.8 + 0.2 * std::min(1.0, this_length / 0.05)) * (1.0 + 1.5 * std::max(0.0, 1.0 - this_length / 0.04) * Math::clamp((this_length - 0.001) / 0.004, 0.0, 1.0)) * (1.0 + 2.2 * Math::clamp((this_length - 0.08) / 0.2, 0.0, 1.0)) * std::sqrt(dice.unit()); // (long hair too: the hairs of one follicle fan out as they lengthen, so a fringe is a curtain, not separate strings) // (short hair spreads wider, not narrower: at 2-3 cm the hairs are shorter than the gap between follicles) // (hairs of a follicle at the parting line or the crown spread wider, over the slit) // (a short lock spreads less: its hairs fanned out into small stars at the hairline)
 			for (int k = 0; k < steps; k++) {
 				const double s = double(k) / (steps - 1);
 				const Vector3 &side_k = frame_side[size_t(k)];
@@ -826,13 +951,20 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					const double room = Math::clamp((double(top_y) + 0.004 - double(guide_points[k].y)) / 0.02, 0.0, 1.0);
 					offset.y *= real_t(room);
 				}
-				if (lift_start <= 0.0) {
+				if (lift_start <= 0.0 && !flyaway) {
 					// a hair spread out of its lock slides along the head, it does not leave it: the part of the offset that points away from the head is mostly removed (hairs floated a few cm off the dome as thin ghost lines)
 					const Vector3 away = (guide_points[k] - head_centre).normalized();
 					const real_t out = offset.dot(away);
 					if (out > 0.0f) {
 						offset -= away * out * real_t(0.9 * (1.0 - std::min(1.0, s * 1.5)));
 					}
+				}
+				if (flyaway) {
+					const Vector3 away_k = (guide_points[k] - head_centre).normalized();
+					offset = offset * real_t(2.0 + 3.0 * wisps) + away_k * float((0.006 + 0.02 * wisps) * s * s) + side_k * float((0.006 + 0.02 * wisps) * s * std::sin(angle0)) + up_k * float(0.012 * wisps * s * std::sin(angle0 * 2.3 + s * 11.0));
+				}
+				if (wetness > 0.0) {
+					offset *= real_t(1.0 - 0.85 * wetness * s * s); // (wet: the hairs of a lock converge toward the tip and end in a point)
 				}
 				points[k] = guide_points[k] + offset;
 			}
@@ -847,6 +979,17 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		}
 		const float brightness = float(dice.unit());
 		const float chance = float(dice.unit());
+		if (strands > 0 && wave > 0.0 && steps > 3) {
+			// the wave goes on AFTER the path was rounded, so the smoothing cannot flatten it: a slow wave of the lock's own (shared phase, a little of the hair's own), growing toward the tip
+			const double wave_phase = phase + double(brightness) * 0.75 * (1.0 - 0.85 * wetness);
+			const double wave_rate = 0.8 + 0.6 * (phase * 0.37 - std::floor(phase * 0.37));
+			for (int k = 1; k < steps; k++) {
+				const double s = double(k) / (steps - 1);
+				const double ramp = Math::clamp(s * 3.0, 0.0, 1.0) * (0.6 + 0.4 * s);
+				const double wave_amp = wave * 0.017 * ramp * s;
+				points[size_t(k)] += frame_side[size_t(k)] * real_t(wave_amp * std::sin(wave_phase + s * 6.2831853 * wave_rate * 2.2)) + frame_up[size_t(k)] * real_t(wave_amp * 0.5 * std::cos(wave_phase * 1.3 + s * 6.2831853 * wave_rate * 1.7));
+			}
+		}
 		const int first = int(out_vertices.size());
 		Vector3 previous_side;
 		for (int k = 0; k < steps; k++) {
@@ -878,6 +1021,288 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			out_indices.push_back(l1);
 		}
 		} // (one hair, or one ribbon)
+	}
+	if (guides_only) {
+		const double reach = 0.012; // a scalp spot is covered by the hair whose guide points are within this distance, up to 1.5 cm above it
+		const double shell = 0.015;
+		std::unordered_map<int64_t, std::vector<int>> point_cells;
+		for (int i = 0; i < int(cover_points.size()); i++) {
+			const Vector3 &g = cover_points[size_t(i)];
+			point_cells[cell_key(int(std::floor(double(g.x) / reach)), int(std::floor(double(g.y) / reach)), int(std::floor(double(g.z) / reach)))].push_back(i);
+		}
+		struct Spot {
+			int t;
+			double u, w;
+			Vector3 position, normal;
+			int count;
+		};
+		std::vector<Spot> spots;
+		const int spot_count = 9000;
+		for (int k = 0; k < spot_count; k++) {
+			Dice sd(seed + 0xC0FEULL + uint64_t(k) * 0x9E3779B97F4A7C15ULL);
+			const double pick = sd.unit() * total_area;
+			const int tri = int(std::lower_bound(cumulative_area.begin(), cumulative_area.end(), pick) - cumulative_area.begin());
+			const int t = scalp_triangles[std::min(tri, int(scalp_triangles.size()) - 1)];
+			double u = sd.unit(), w = sd.unit();
+			if (u + w > 1.0) {
+				u = 1.0 - u;
+				w = 1.0 - w;
+			}
+			const int a = indices[t], b = indices[t + 1], c = indices[t + 2];
+			const double aw = 1.0 - u - w;
+			const Vector3 position = vertices[a] * real_t(aw) + vertices[b] * real_t(u) + vertices[c] * real_t(w);
+			if (double(position.y) - hairline(position) <= 0.012) {
+				continue; // (the hairline edge has its own roots)
+			}
+			const Vector3 normal = (normals[a] * real_t(aw) + normals[b] * real_t(u) + normals[c] * real_t(w)).normalized();
+			int count = 0;
+			const int cx = int(std::floor(double(position.x) / reach)), cy = int(std::floor(double(position.y) / reach)), cz = int(std::floor(double(position.z) / reach));
+			for (int dx = -1; dx <= 1; dx++) {
+				for (int dy = -1; dy <= 1; dy++) {
+					for (int dz = -1; dz <= 1; dz++) {
+						auto it = point_cells.find(cell_key(cx + dx, cy + dy, cz + dz));
+						if (it == point_cells.end()) {
+							continue;
+						}
+						for (int index : it->second) {
+							const Vector3 d = cover_points[size_t(index)] - position;
+							const double height = double(d.dot(normal));
+							if (double(d.length()) < reach && height > -0.002 && height < shell) {
+								count++;
+							}
+						}
+					}
+				}
+			}
+			spots.push_back({ t, u, w, position, normal, count });
+		}
+		if (!spots.empty()) {
+			std::vector<int> sorted_counts;
+			for (const Spot &sp : spots) {
+				sorted_counts.push_back(sp.count);
+			}
+			std::nth_element(sorted_counts.begin(), sorted_counts.begin() + sorted_counts.size() / 2, sorted_counts.end());
+			const double median = double(sorted_counts[sorted_counts.size() / 2]);
+			const double wanted = (0.3 + 0.4 * cover) * median;
+			std::vector<Vector3> taken;
+			const size_t fill_cap = size_t(std::max(1, lock_count / 3));
+			for (const Spot &sp : spots) {
+				if (double(sp.count) >= wanted || fills.size() >= fill_cap) {
+					continue;
+				}
+				bool near_taken = false;
+				for (const Vector3 &q : taken) {
+					if ((q - sp.position).length() < real_t(reach * 0.6)) {
+						near_taken = true;
+						break;
+					}
+				}
+				if (near_taken) {
+					continue;
+				}
+				taken.push_back(sp.position);
+				const int add = Math::clamp(int(std::ceil((wanted - double(sp.count)) / 3.0)), 1, 3);
+				fills.push_back({ sp.t, sp.u, sp.w });
+				for (int extra = 1; extra < add; extra++) {
+					Dice jd(seed + 0xF111ULL + uint64_t(fills.size()) * 0x2545F4914F6CDD1DULL);
+					double u2 = std::clamp(sp.u + jd.range(-0.15, 0.15), 0.0, 1.0), w2 = std::clamp(sp.w + jd.range(-0.15, 0.15), 0.0, 1.0);
+					if (u2 + w2 > 1.0) {
+						const double scale = 1.0 / (u2 + w2);
+						u2 *= scale;
+						w2 *= scale;
+					}
+					fills.push_back({ sp.t, u2, w2 });
+				}
+			}
+			fill_count = int(fills.size());
+			if (cover_debug) {
+				int below = 0;
+				for (const Spot &sp : spots) {
+					below += double(sp.count) < wanted ? 1 : 0;
+				}
+				godot::UtilityFunctions::print("HUMAN_COVER spots ", int(spots.size()), " median ", median, " wanted ", wanted, " below ", below, " fills ", fill_count);
+			}
+		}
+	}
+	} // (the passes)
+
+	// --- the beard: short single hairs on the lower face (static: they do not simulate), from follicles spread by area over the jaw, chin and cheeks, growing down and out along the skin
+	if (beard > 0.0) {
+		const double face_scale = Math::clamp(half_width / 0.0883, 0.85, 1.15); // (the face features sit at distances from the eye line that go with the size of the head: the numbers below are for the male body)
+		std::vector<int> beard_triangles;
+		std::vector<double> beard_area;
+		double beard_total = 0.0;
+		// the neckline: the beard stops at a line under the jaw that rises from the chin toward the neck (real beards end above the Adam's apple, the neck below is clean)
+		auto beard_floor = [&](double z) {
+			return -0.135 + 0.05 * Math::clamp(((z_front - 0.035) - z) / 0.07, 0.0, 1.0);
+		};
+		auto in_beard_region = [&](const Vector3 &c, const Vector3 &n) {
+			const double dy = (double(c.y) - eye_y) / face_scale;
+			const double ax = std::abs(double(c.x));
+			if (double(c.z) < centre_z + 0.15 * half_width) {
+				return false; // (the front of the head only; the sideburns belong to the scalp hair)
+			}
+			const double upper = -0.047 + 0.03 * Math::clamp((ax - 0.035) / 0.04, 0.0, 1.0); // the cheek line rises toward the ears
+			if (dy > upper || dy < beard_floor(double(c.z)) || ax > half_width * 0.98) {
+				return false;
+			}
+			if (n.z < -0.3f && n.y > -0.3f) {
+				return false; // (facing away: the side of the neck)
+			}
+			const double lip_x = ax / 0.03, lip_y = (dy + 0.072) / 0.011; // (lips; the band between nose and lips gets the moustache)
+			if (lip_x * lip_x + lip_y * lip_y < 1.0) {
+				return false; // (the mouth: no hair on the lips)
+			}
+			return true;
+		};
+		for (int t = 0; t + 2 < index_count; t += 3) {
+			const int a = indices[t], b = indices[t + 1], c = indices[t + 2];
+			const Vector3 centre = (vertices[a] + vertices[b] + vertices[c]) / 3.0f;
+			const Vector3 n = (normals[a] + normals[b] + normals[c]).normalized();
+			if (in_beard_region(centre, n)) {
+				beard_total += 0.5 * (vertices[b] - vertices[a]).cross(vertices[c] - vertices[a]).length();
+				beard_triangles.push_back(t);
+				beard_area.push_back(beard_total);
+			}
+		}
+		if (cover_debug) {
+			godot::UtilityFunctions::print("HUMAN_BEARD half_width ", half_width, " eye_drop ", top_y - eye_y, " head height ", top_y, " z_front ", z_front, " centre_z ", centre_z);
+		}
+		if (!beard_triangles.empty()) {
+			current_guide = -1; // (static hairs)
+			int beard_hair_total = 0;
+			// (no flat layer under the beard: a dim dot around each follicle instead, below)
+			const int follicles = int(24000.0 * beard);
+			const int beard_steps = 3;
+			for (int f = 0; f < follicles; f++) {
+				Dice dice(seed + 0xBEA2DULL + uint64_t(f) * 0x2545F4914F6CDD1DULL);
+				const double pick = dice.unit() * beard_total;
+				const int tri = int(std::lower_bound(beard_area.begin(), beard_area.end(), pick) - beard_area.begin());
+				const int t = beard_triangles[std::min(tri, int(beard_triangles.size()) - 1)];
+				const int ia = indices[t], ib = indices[t + 1], ic = indices[t + 2];
+				double u = dice.unit(), w = dice.unit();
+				if (u + w > 1.0) {
+					u = 1.0 - u;
+					w = 1.0 - w;
+				}
+				const double aw = 1.0 - u - w;
+				const Vector3 root = vertices[ia] * real_t(aw) + vertices[ib] * real_t(u) + vertices[ic] * real_t(w);
+				const Vector3 normal = (normals[ia] * real_t(aw) + normals[ib] * real_t(u) + normals[ic] * real_t(w)).normalized();
+				int bound = ia;
+				if (u >= aw && u >= w) {
+					bound = ib;
+				} else if (w >= aw && w >= u) {
+					bound = ic;
+				}
+				const double dy = (double(root.y) - eye_y) / face_scale;
+				const double upper_edge = -0.047 + 0.03 * Math::clamp((std::abs(double(root.x)) - 0.035) / 0.04, 0.0, 1.0);
+				const bool in_moustache = std::abs(double(root.x)) < 0.04 && dy > -0.075 && dy < -0.044; // (the band between the nose and the lips)
+				const double edge_plain = std::min(std::min(Math::clamp((upper_edge - dy) / 0.03, 0.0, 1.0), Math::clamp((dy - beard_floor(double(root.z))) / 0.05, 0.3, 1.0)), Math::clamp((double(root.z) - (centre_z + 0.15 * half_width)) / 0.035, 0.15, 1.0)); // (a soft edge along the cheek line above, the jaw below and toward the ear) // (the cheek line: shorter and thinner right at the edge)
+				const double edge = in_moustache ? std::max(edge_plain, 0.95 * Math::clamp((upper_edge - dy) / 0.012, 0.0, 1.0)) : edge_plain; // (the moustache is full right up to the nose, not faded like the cheek line)
+				if (dice.unit() > 0.2 + 0.8 * edge * edge) {
+					continue;
+				}
+				{
+					// a dim dot of hair colour on the skin around this follicle (about 2 mm): the shadow of the roots, so the skin between the hairs is not pale but the paint is only where there are hairs
+					Vector3 axis_u = normal.cross(Vector3(0.0f, 1.0f, 0.0f));
+					if (axis_u.length() < 1e-3f) {
+						axis_u = Vector3(1.0f, 0.0f, 0.0f);
+					}
+					axis_u = axis_u.normalized();
+					const Vector3 axis_v = normal.cross(axis_u).normalized();
+					const double turn = dice.range(0.0, 6.2831853);
+					const real_t dot_radius = real_t(0.0016 * dice.range(0.8, 1.3));
+					const Vector3 ring_u = (axis_u * real_t(std::cos(turn)) + axis_v * real_t(std::sin(turn))) * dot_radius;
+					const Vector3 ring_v = (axis_v * real_t(std::cos(turn)) - axis_u * real_t(std::sin(turn))) * dot_radius;
+					const Color dot_colour(0.5f, 0.0f, 1.0f, float(0.5 + 0.018 * edge)); // (the cap shader turns this into a low, mottled opacity)
+					const Vector3 dot_centre = root + normal * 0.0012f;
+					const int d0 = add_vertex(dot_centre - ring_u - ring_v, normal, Vector2(0.5f, 0.5f), dot_colour, bound, cap_tangent(normal), 0.0f, true);
+					const int d1 = add_vertex(dot_centre + ring_u - ring_v, normal, Vector2(0.5f, 0.5f), dot_colour, bound, cap_tangent(normal), 0.0f, true);
+					const int d2 = add_vertex(dot_centre + ring_u + ring_v, normal, Vector2(0.5f, 0.5f), dot_colour, bound, cap_tangent(normal), 0.0f, true);
+					const int d3 = add_vertex(dot_centre - ring_u + ring_v, normal, Vector2(0.5f, 0.5f), dot_colour, bound, cap_tangent(normal), 0.0f, true);
+					out_indices.push_back(d0);
+					out_indices.push_back(d1);
+					out_indices.push_back(d2);
+					out_indices.push_back(d0);
+					out_indices.push_back(d2);
+					out_indices.push_back(d3);
+				}
+				const double hair_length = beard_length * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (in_moustache ? 1.3 : 1.0);
+				// the growth direction (a field over the face): on the cheeks down and a little back toward the ear, under the jaw down and forward toward the chin, on the chin down and out,
+				// on the moustache band outward from the middle (and down); each follicle's hairs fan out a little. The field is projected onto the skin.
+				const double ax_root = std::abs(double(root.x));
+				const double side = root.x >= 0.0f ? 1.0 : -1.0;
+				Vector3 want(0.0f, -1.0f, 0.0f);
+				if (dy > -0.047 - 0.022 && dy < -0.047 + 0.003 && ax_root < 0.04) {
+					want = Vector3(real_t(side * 0.9), -0.45f, 0.1f); // (the moustache: out from the middle, over the lip)
+				} else if (normal.y < -0.35f) {
+					want = Vector3(real_t(side * 0.1), -0.25f, 1.0f); // (under the jaw: toward the chin)
+				} else if (ax_root < 0.022 && dy < -0.09) {
+					want = Vector3(real_t(side * 0.25), -1.0f, 0.35f); // (the chin: down and a little forward and out)
+				} else {
+					want = Vector3(real_t(side * 0.2), -1.0f, -0.35f); // (the cheeks: down, a little back and out)
+				}
+				Vector3 along = want - normal * real_t(want.dot(normal));
+				if (along.length() < 0.2f) {
+					along = Vector3(real_t(root.x >= 0.0f ? 1.0f : -1.0f), 0.0f, 0.0f) - normal * real_t(normal.x);
+				}
+				const Vector3 direction = (along.normalized() * 0.9f + normal * 0.25f + Vector3(real_t(dice.range(-0.18, 0.18)), real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.18, 0.18)))).normalized();
+				const int hairs = in_moustache ? 9 : 6;
+				for (int h = 0; h < hairs; h++) {
+					beard_hair_total++;
+					std::vector<Vector3> bp;
+					Vector3 position = root + normal * 0.0008f + Vector3(real_t(dice.range(-0.0012, 0.0012)), real_t(dice.range(-0.0012, 0.0012)), real_t(dice.range(-0.0012, 0.0012)));
+					Vector3 dir = (direction + Vector3(real_t(dice.range(-0.6, 0.6)), real_t(dice.range(-0.3, 0.3)), real_t(dice.range(-0.6, 0.6)))).normalized();
+					bp.push_back(position);
+					const double seg = hair_length * dice.range(0.8, 1.15) / (beard_steps - 1);
+					for (int k = 1; k < beard_steps; k++) {
+						dir = (dir * 0.7f + Vector3(0.0f, -0.2f, 0.0f) + Vector3(real_t(dice.range(-0.3, 0.3)), real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.3, 0.3)))).normalized();
+						position += dir * real_t(seg);
+						grid.push_out(position, 0.0010);
+						bp.push_back(position);
+					}
+					// a curl: the middle and the tip of the hair bend sideways (to one side, by an amount of its own), so the hairs are not straight combed strands
+					{
+						Vector3 bend = normal.cross((bp[size_t(beard_steps - 1)] - bp[0]).normalized());
+						if (bend.length() > 1e-3f) {
+							bend = bend.normalized();
+							const double lean = hair_length * dice.range(-0.45, 0.45);
+							bp[1] += bend * real_t(lean);
+							bp[size_t(beard_steps - 1)] += bend * real_t(lean * dice.range(-0.4, 1.2));
+						}
+					}
+					const float brightness = float(dice.unit());
+					const float chance = float(dice.unit());
+					const int first = int(out_vertices.size());
+					for (int k = 0; k < beard_steps; k++) {
+						const double sv = double(k) / (beard_steps - 1);
+						const Vector3 tangent = (bp[size_t(std::min(k + 1, beard_steps - 1))] - bp[size_t(std::max(k - 1, 0))]).normalized();
+						Vector3 side = tangent.cross(normal);
+						if (side.length() < 1e-5f) {
+							side = Vector3(1.0f, 0.0f, 0.0f);
+						}
+						side = side.normalized();
+						const Vector3 face = side.cross(tangent).normalized();
+						const double width = std::min(strand_width, 0.0004) * 0.7 * (1.0 - 0.5 * std::pow(sv, 1.6));   // (a rounder tip: a beard hair is blunt where it was cut)
+						const Color color(brightness, chance, 0.3f, 1.0f); // (blue 0.3 marks a beard hair for the shader: depth shading, clumps)
+						add_vertex(bp[size_t(k)] - side * real_t(width * 0.5), face, Vector2(0.0f, float(sv)), color, bound, tangent, float(sv), false);
+						add_vertex(bp[size_t(k)] + side * real_t(width * 0.5), face, Vector2(1.0f, float(sv)), color, bound, tangent, float(sv), false);
+					}
+					for (int k = 0; k + 1 < beard_steps; k++) {
+						const int l0 = first + 2 * k, r0 = l0 + 1, l1 = l0 + 2, r1 = l0 + 3;
+						out_indices.push_back(l0);
+						out_indices.push_back(r0);
+						out_indices.push_back(r1);
+						out_indices.push_back(l0);
+						out_indices.push_back(r1);
+						out_indices.push_back(l1);
+					}
+				}
+			}
+			if (cover_debug) {
+				godot::UtilityFunctions::print("HUMAN_BEARD hairs ", beard_hair_total, " triangles ", int(beard_triangles.size()), " area cm2 ", beard_total * 10000.0, " width mm ", std::min(strand_width, 0.0004) * 0.7 * 1000.0);
+			}
+		}
 	}
 
 	// --- the blend shapes. Each hair vertex follows the head by a fit of the whole scalp (scale and move) to the shape, plus the residual of the body vertex its lock

@@ -19,11 +19,12 @@ uniform vec3 stubble_skin : source_color = vec3(0.75, 0.52, 0.42);   // skin ton
 uniform float scalp_layer : hint_range(0.0, 1.0) = 1.0;      // the solid base layer under the hair (0 = none: only the hairs are drawn)
 uniform float strands = 14.0;
 uniform bool single_hairs = false;                              // strands mode: each ribbon IS one hair (no strand lanes inside it)                                   // strands across one lock
-uniform float shine : hint_range(0.0, 1.0) = 0.0;               // strength of the two highlights
+uniform float wet : hint_range(0.0, 1.0) = 0.0;                // wet or oily hair: darker, with thin, bright, sharp highlights
+uniform float shine : hint_range(0.0, 1.0) = 0.25;              // strength of the two highlights
 uniform float shift_primary = -0.08;                            // how far each highlight is slid along the normal
 uniform float shift_secondary = 0.22;
-uniform float exponent_primary = 90.0;                          // how tight each highlight is
-uniform float exponent_secondary = 60.0;
+uniform float exponent_primary = 55.0;                          // how tight each highlight is
+uniform float exponent_secondary = 35.0;
 uniform vec3 wind = vec3(0.0);                                  // wind in model space, metres of bend at the tip
 uniform float wind_speed = 1.6;
 uniform sampler2D sim_tex : filter_nearest;   // the hair simulation (HairSim): one row per guide strand, one pixel per point: its offset from the rest place, in model space
@@ -33,6 +34,7 @@ instance uniform vec3 sway = vec3(0.0);                          // inertia swin
 varying vec2 rest_pos;       // the rest-pose place (UV2: x + y, z + y), for the cap's noise: stays on the hair when the head moves
 varying vec3 hair_tangent;     // view space, for light()
 varying float strand_shift;    // per-strand random highlight shift
+varying float lock_rough;   // a second per-lock random number: some locks are glossier, some duller
 varying float lock_rand;   // one random number per guide lock (all the hairs of a lock share it): clumps of hair differ in brightness and shine
 varying float cap_flag;        // 1 on the scalp cap (no strands there, so no highlight)
 
@@ -50,6 +52,7 @@ float value_noise(vec2 p) {
 
 void vertex() {
 	rest_pos = UV2;
+	lock_rough = CUSTOM0.x >= 0.0 ? hash(vec2(floor(CUSTOM0.x + 0.5), 29.0)) : 0.5;
 	lock_rand = CUSTOM0.x >= 0.0 ? hash(vec2(floor(CUSTOM0.x + 0.5), 11.0)) : 0.5;
 	cap_flag = COLOR.b > 0.5 ? 1.0 : 0.0;
 	// how loose this vertex is: 0 at the root, 1 at the tip; the scalp cap does not move
@@ -78,13 +81,13 @@ void fragment() {
 		// The scalp cap: dark, ragged at the hairline.
 		float n = 0.6 * value_noise(rest_pos * 420.0) + 0.4 * value_noise(rest_pos * 1100.0 + 7.0);
 		// a solid hair-coloured layer under the locks (no skin or sky between them: short hair left pale, see-through patches over the ears and temples); only the very edge of the hairline fades
-		alpha = clamp((COLOR.a - 0.5) * 2.0 * 4.0 - 0.5 * n + 0.35, 0.0, 1.0) * step(0.001, scalp_layer);   // COLOR.a: 0.5 on the hairline, up = above it
-		color = hair_color * 0.45 * 0.95;              // darker than the hair on top, so a thin spot reads as depth in the hair, not as a pale patch
+		alpha = clamp((COLOR.a - 0.5) * 2.0 * 4.0 - 0.5 * n + 0.35, 0.0, 1.0) * clamp(scalp_layer * 1.0, 0.0, 1.0);   // (the layer's own strength: 0 off, 1 solid under the hair)   // COLOR.a: 0.5 on the hairline, up = above it
+		color = hair_color * 0.45 * 0.95 * mix(1.0, 0.55, wet);              // darker than the hair on top, so a thin spot reads as depth in the hair, not as a pale patch
 		// where the hair is cut short (COLOR.g from the builder): lighter, with some skin through it, broken up by noise, like stubble
 		// clippered stubble: dark follicle dots on skin, denser and darker where the hair is a little longer (the fade), not a flat grey wash
 		float dots = smoothstep(0.42, 0.72, value_noise(rest_pos * 2600.0));
 		float fade_in = clamp(COLOR.g * 1.3, 0.0, 1.0);
-		vec3 stubble = mix(stubble_skin * 0.55, hair_color * 0.5, mix(0.3, 0.9, dots) * mix(1.0, 0.55, fade_in * fade_in));
+		vec3 stubble = mix(stubble_skin * 0.22, hair_color * 0.5, mix(0.82, 1.0, dots) * mix(1.0, 0.8, fade_in * fade_in));   // (mostly hair colour with a little skin between the dots: bright skin-coloured dots read as orange pimples once the cap covers the whole scalp)
 		color = mix(color, stubble, clamp(COLOR.g * 1.3, 0.0, 1.0));
 		strand_shift = 0.0;
 	} else {
@@ -112,11 +115,17 @@ void fragment() {
 		float streak = smoothstep(0.78, 1.0, lock_rand);   // about one lock in five is a sun-lit, golden streak (the reference game hair has them: lighter, warmer locks between darker ones)
 		color *= (0.6 + 0.7 * lock_rand) * vec3(1.0 + 0.09 * (lock_rand - 0.5), 1.0, 1.0 - 0.18 * (lock_rand - 0.5));
 		color *= mix(vec3(1.0), vec3(1.4, 1.28, 1.05), streak);
+		if (COLOR.b > 0.1) {
+			// a beard hair (blue 0.3): short and packed, so the look comes from depth: dark in the thicket near the skin, lit at the tips, and clumps (patches of a few mm) that are darker or lighter
+			float clump = value_noise(rest_pos * 160.0) * 0.6 + value_noise(rest_pos * 520.0) * 0.4;
+			color *= mix(0.45, 1.2, clump) * mix(0.3, 1.0, smoothstep(0.0, 0.85, UV.y));
+		}
 		color *= mix(0.45, 1.0, smoothstep(0.0, 0.4, UV.y));       // roots are in the shade of the hair above them
+		color *= mix(1.0, 0.55, wet);   // wet hair is darker
 		// bright colours go lemon-yellow once the strand and tip multipliers push linear channels past 1: pull them toward grey as they get brighter
 		float luma = dot(color, vec3(0.3, 0.59, 0.11));
 		color = mix(color, vec3(luma), clamp(luma * 1.2, 0.0, 0.45));
-		strand_shift = (lock_rand - 0.5) * 0.9 + (random_a - 0.5) * 1.5 + (hash(vec2(floor(UV.y * 22.0), id)) - 0.5) * 0.45;   // (a wide spread: parallel strands catch the light at different places, so the highlight is a sparkle of strands, not one band)
+		strand_shift = (lock_rand - 0.5) * 0.3 + (value_noise(rest_pos * 22.0) - 0.5) * 0.5 + (random_a - 0.5) * 0.45 * (1.0 - 0.85 * wet) + (hash(vec2(floor(UV.y * 22.0), id)) - 0.5) * 0.2;   // (a small spread: neighbouring strands catch the light together, so the highlight is a broad sheet that follows the head, broken at the locks)   // (a wide spread: parallel strands catch the light at different places, so the highlight is a sparkle of strands, not one band)
 	}
 	ALBEDO = color;
 	ALPHA = alpha;
@@ -144,19 +153,25 @@ void light() {
 		t2 = t2 / max(length(t2), 0.2);
 		float d1 = dot(t1, h);
 		float d2 = dot(t2, h);
-		float spec1 = pow(sqrt(max(0.0, 1.0 - d1 * d1)), exponent_primary);
-		float spec2 = pow(sqrt(max(0.0, 1.0 - d2 * d2)), exponent_secondary);
-		float lit = smoothstep(-0.05, 0.25, dot(n, LIGHT));
+		float rough_k = mix(1.25, 0.8, lock_rough) * (1.0 + 1.8 * wet);   // (wet: much tighter highlights)   // roughness variation per lock: a smaller exponent is a wider, duller highlight
+		float spec1 = pow(sqrt(max(0.0, 1.0 - d1 * d1)), exponent_primary * rough_k);
+		float spec2 = pow(sqrt(max(0.0, 1.0 - d2 * d2)), exponent_secondary * rough_k);
+		float lit = smoothstep(-0.3, 0.6, dot(n, LIGHT));   // (a wide ramp: a narrow one drew a hard-edged lit patch on the head where the normal crosses it)
 		float dark = 1.0 - smoothstep(0.05, 0.35, dot(ALBEDO, vec3(0.3, 0.59, 0.11)));   // dark hair has a whiter, stronger highlight (a black strand shows only its shine)
-		vec3 highlight = (mix(vec3(0.8), ALBEDO * 4.0, 0.97 - 0.75 * (1.0 - smoothstep(0.004, 0.04, dot(ALBEDO, vec3(0.3, 0.59, 0.11))))) * spec1 * 0.5 * (0.3 + 0.18 * dark) + ALBEDO * 1.3 * spec2 * 0.35 + vec3(0.6) * spec2 * 0.08 * (1.0 - smoothstep(0.004, 0.04, dot(ALBEDO, vec3(0.3, 0.59, 0.11))))) * shine;   // the first highlight is half tinted by the hair colour
+		vec3 highlight = (mix(vec3(0.75, 0.6, 0.4), ALBEDO * 4.0, 0.97 - 0.75 * (1.0 - smoothstep(0.004, 0.04, dot(ALBEDO, vec3(0.3, 0.59, 0.11))))) * spec1 * 0.5 * (0.3 + 0.18 * dark) + ALBEDO * 1.3 * spec2 * 0.35 + vec3(0.6, 0.48, 0.32) * spec2 * 0.08 * (1.0 - smoothstep(0.004, 0.04, dot(ALBEDO, vec3(0.3, 0.59, 0.11))))) * shine;   // the first highlight is half tinted by the hair colour
 		// back-lit glow (the "TT" lobe of Marschner et al.): light that comes through the strand toward the viewer
 		float through = pow(clamp(dot(-LIGHT, VIEW), 0.0, 1.0), 5.0);
 		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * through * 0.07 * (0.4 + 0.6 * dot(ALBEDO, vec3(0.3, 0.59, 0.11)) * 4.0);
+		// the highlights layer: the sun-lit golden locks (see the colour streaks) also shine warmer and stronger
+		float golden = smoothstep(0.78, 1.0, lock_rand);
+		highlight *= mix(vec3(1.0), vec3(1.2, 1.08, 0.85), golden);
+		highlight *= 1.0 + 2.5 * wet;
+		highlight = mix(highlight, vec3(dot(highlight, vec3(0.34))) * vec3(1.0, 0.97, 0.93), wet);   // (the shine of wet hair is near white, not the warm khaki of dry brown hair)
 		vec3 glint = highlight * LIGHT_COLOR * ATTENUATION * lit;
 		if (any(isnan(glint)) || any(isinf(glint))) {
 			glint = vec3(0.0);   // (a NaN from the strand maths showed as a white stripe)
 		}
-		float glint_cap = 0.001 + 0.06 * dot(ALBEDO, vec3(0.3, 0.59, 0.11)) + 0.006 * dark;
+		float glint_cap = (0.001 + 0.06 * dot(ALBEDO, vec3(0.3, 0.59, 0.11)) + 0.006 * dark) * (1.0 + 9.0 * wet);   // (wet hair: long bright highlights along the strands, much more than the dry cap allows)
 		float glint_max = max(max(glint.r, glint.g), max(glint.b, 1e-6));
 		SPECULAR_LIGHT += max(glint, vec3(0.0)) * min(1.0, glint_cap / glint_max);   // scaled, not clamped per channel: clamping a brown glint turned it into grey
 	}
