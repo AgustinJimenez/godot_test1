@@ -17,6 +17,12 @@ const UNDERWEAR_SCENES: Dictionary = {
 }
 ## Starting points for the head hair; every entry is a HumanHair parameter (the native class documents them).
 const TressFXBridge := preload("res://tests/manual/humans/tressfx_bridge.gd")
+const SKIN_FILES: Array = [   # CC0 MakeHuman skins, 1k (assets/models/humans/skins/CREDITS.md); both bodies share the MakeHuman UV layout
+	["Male: light bronze", "male_light_bronze"], ["Male: light freckles", "male_light_freckles"], ["Male: light ginger", "male_light_ginger"],
+	["Male: african", "male_african_middleage"],
+	["Female: light bronze", "female_light_bronze"], ["Female: light freckles", "female_light_freckles"], ["Female: light ginger", "female_light_ginger"],
+	["Female: midtoned", "female_midtoned"], ["Female: caucasian", "female_caucasian"], ["Female: young eurasian", "female_young_eurasian"], ["Female: indian", "female_indian"],
+]
 const HAIR_COLOURS: Array = [   # natural colours only (names after the Fischer-Saller scale's groups: black, brown, blond, red, red-blond; grey and white from age). sRGB as the picker shows them, chosen by how they RENDER on the head (lighter than the swatch)
 	["Black", Color(0.04, 0.035, 0.03)],
 	["Dark brown", Color(0.15, 0.09, 0.05)],
@@ -190,6 +196,7 @@ var _brow_material: ShaderMaterial
 var _lash_material: ShaderMaterial
 var _hair_color: Color = Color(0.16, 0.1, 0.06)
 var _mh_hair: String = ""   # --mh-hair=hair_messy:short_messy_diff.png: a CC0 MakeHuman hair shell (tools/blender/fit_mh_mesh.py) instead of our hair, for comparison
+var _skin_file: String = ""      # --skin=male_light_bronze: one of the shipped skins (assets/models/humans/skins)
 var _skin_tex_path: String = ""   # --skin-tex=<absolute png>: a skin diffuse map (e.g. a CC0 MakeHuman skin) read from outside the project, for a comparison
 var _wet: float = 0.0
 var _wet_slider: HSlider = null
@@ -386,6 +393,8 @@ func _ready() -> void:
 		elif arg.begins_with("--mh-hair="):
 			_mh_hair = arg.trim_prefix("--mh-hair=")
 			_hair_enabled = false
+		elif arg.begins_with("--skin="):
+			_skin_file = arg.trim_prefix("--skin=")
 		elif arg.begins_with("--skin-tex="):
 			_skin_tex_path = arg.trim_prefix("--skin-tex=")
 		elif arg == "--classic-face-hair":
@@ -512,6 +521,8 @@ func _build_material() -> void:
 			skin_image.generate_mipmaps()
 			_material.set_shader_parameter(&"skin_tex", ImageTexture.create_from_image(skin_image))
 			_material.set_shader_parameter(&"has_skin_tex", true)
+	if _skin_file != "":
+		_on_skin_chosen(_skin_file)
 	_cloth_material = ShaderMaterial.new()
 	_cloth_material.shader = load("res://shaders/human_underwear_fabric.gdshader")
 	_eye_material = ShaderMaterial.new()
@@ -652,6 +663,21 @@ func _build_ui() -> void:
 	new_seed.pressed.connect(_on_new_hair_seed)
 	hair_tab.add_child(new_seed)
 	_add_section_label(hair_tab, "Amount of hair")
+	var skin_tab := _add_tab(tabs, "Skin")
+	var skin_label := Label.new()
+	skin_label.text = "Skin (CC0 MakeHuman textures)"
+	skin_tab.add_child(skin_label)
+	var skin_buttons := HFlowContainer.new()
+	skin_tab.add_child(skin_buttons)
+	var flat_button := Button.new()
+	flat_button.text = "Flat colour"
+	flat_button.pressed.connect(_on_skin_chosen.bind(""))
+	skin_buttons.add_child(flat_button)
+	for entry: Array in SKIN_FILES:
+		var skin_button := Button.new()
+		skin_button.text = entry[0]
+		skin_button.pressed.connect(_on_skin_chosen.bind(entry[1]))
+		skin_buttons.add_child(skin_button)
 	var beard_tab := _add_tab(tabs, "Beard")   # (a tab of its own; the colour of the beard is the hair colour)
 	_add_hair_slider(beard_tab, "Beard amount (0 = none)", &"beard", 0.0, 1.0)
 	_add_hair_slider(beard_tab, "Beard length (metres)", &"beard_length", 0.002, 0.04)
@@ -1141,6 +1167,20 @@ func _add_value_slider(parent: Control, label_text: String, low: float, high: fl
 	slider.value_changed.connect(callback)
 	parent.add_child(slider)
 	return slider
+
+
+func _on_skin_chosen(file_name: String) -> void:
+	if _material == null:
+		return
+	if file_name == "":
+		_material.set_shader_parameter(&"has_skin_tex", false)
+		return
+	var texture := load("res://assets/models/humans/skins/%s.jpg" % file_name) as Texture2D
+	if texture == null:
+		push_warning("skin not found: " + file_name)
+		return
+	_material.set_shader_parameter(&"skin_tex", texture)
+	_material.set_shader_parameter(&"has_skin_tex", true)
 
 
 func _on_wet_changed(value: float) -> void:

@@ -1172,7 +1172,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			if (double(c.z) < centre_z + 0.15 * half_width) {
 				return false; // (the front of the head only; the sideburns belong to the scalp hair)
 			}
-			const double upper = -0.047 + 0.03 * Math::clamp((ax - 0.035) / 0.04, 0.0, 1.0); // the cheek line rises toward the ears
+			const double upper = -0.047 + 0.042 * Math::clamp((ax - 0.03) / 0.04, 0.0, 1.0); // the cheek line rises toward the ears
 			if (dy > upper || dy < beard_floor(double(c.z)) || ax > half_width * 0.98) {
 				return false;
 			}
@@ -1225,7 +1225,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					bound = ic;
 				}
 				const double dy = (double(root.y) - eye_y) / face_scale;
-				const double upper_edge = -0.047 + 0.03 * Math::clamp((std::abs(double(root.x)) - 0.035) / 0.04, 0.0, 1.0);
+				const double upper_edge = -0.047 + 0.042 * Math::clamp((std::abs(double(root.x)) - 0.03) / 0.04, 0.0, 1.0);
 				const bool in_moustache = std::abs(double(root.x)) < 0.04 && dy > -0.075 && dy < -0.044; // (the band between the nose and the lips)
 				const double edge_plain = std::min(std::min(Math::clamp((upper_edge - dy) / 0.03, 0.0, 1.0), Math::clamp((dy - beard_floor(double(root.z))) / 0.05, 0.3, 1.0)), Math::clamp((double(root.z) - (centre_z + 0.15 * half_width)) / 0.035, 0.15, 1.0)); // (a soft edge along the cheek line above, the jaw below and toward the ear) // (the cheek line: shorter and thinner right at the edge)
 				const double edge = in_moustache ? std::max(edge_plain, 0.95 * Math::clamp((upper_edge - dy) / 0.012, 0.0, 1.0)) : edge_plain; // (the moustache is full right up to the nose, not faded like the cheek line)
