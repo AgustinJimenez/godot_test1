@@ -418,7 +418,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double strips = Math::clamp(param(p_params, "strips", 0.0), 0.0, 1.0);
 	const double beard = Math::clamp(param(p_params, "beard", 0.0), 0.0, 1.0);
 	const double back_long = Math::clamp(param(p_params, "back_length", 0.0), 0.0, 1.0);
-	const double beard_length = Math::clamp(param(p_params, "beard_length", 0.012), 0.002, 0.06);
+	const double beard_length = Math::clamp(param(p_params, "beard_length", 0.012), 0.002, 0.12);
 	const double beard_zone_value = param(p_params, "beard_zone", 0.0);
 	const bool goatee = beard_zone_value > 0.5;          // 1: goatee (moustache + soul patch + chin); 2: circle beard (the same plus the connectors at the mouth corners)
 	const bool circle_beard = beard_zone_value > 1.5;
@@ -1319,7 +1319,10 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			int beard_hair_total = 0;
 			// (no flat layer under the beard: a dim dot around each follicle instead, below)
 			const int follicles = int(30000.0 * beard);
-			const int beard_steps = beard_curl > 0.55 ? 6 : (beard_curl > 0.15 ? 5 : 3);   // (a coil needs points: 3 points can only bend)
+			// points per hair: a coil needs points (3 can only bend), and so does a long beard that hangs (the longest tuft is 2.5 x the length slider)
+			const int curl_steps = beard_curl > 0.55 ? 6 : (beard_curl > 0.15 ? 5 : 3);
+			const int hang_steps = beard_length > 0.07 ? 9 : (beard_length > 0.04 ? 7 : (beard_length > 0.025 ? 5 : (beard_length > 0.015 ? 4 : 3)));
+			const int beard_steps = std::max(curl_steps, hang_steps);
 			for (int f = 0; f < follicles; f++) {
 				Dice dice(seed + 0xBEA2DULL + uint64_t(f) * 0x2545F4914F6CDD1DULL);
 				const double pick = dice.unit() * beard_total;
@@ -1458,8 +1461,12 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					bp.push_back(position);
 					const double seg = hair_length * dice.range(0.8, 1.15) / (beard_steps - 1);
 					for (int k = 1; k < beard_steps; k++) {
-						dir = (dir * 0.7f + Vector3(0.0f, in_moustache ? -0.14f : real_t(-0.15 - 5.0 * hair_length), 0.0f) + Vector3(real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.04, 0.04)), real_t(dice.range(-0.1, 0.1)))).normalized();
-						dir = (dir - normal * real_t(dir.dot(normal) * 0.12)).normalized();   // (it keeps lying along the skin: a stiff hair rests on the surface)
+						// gravity: every step turns the hair toward the ground, more so along the hair and for longer hairs (a long beard falls over like hair; the first points still lie along the skin)
+						const double along_hair = double(k) / double(beard_steps - 1);
+						const double pull = in_moustache ? 0.04 : Math::clamp((0.06 + 4.5 * hair_length) * (0.35 + 0.65 * along_hair), 0.04, 0.6);
+						dir = (dir * real_t(1.0 - pull) + Vector3(0.0f, -1.0f, 0.0f) * real_t(pull) + Vector3(real_t(dice.range(-0.1, 0.1)), real_t(dice.range(-0.04, 0.04)), real_t(dice.range(-0.1, 0.1)))).normalized();
+						const double skin_hold = hair_length < 0.03 ? 0.12 : (hair_length < 0.06 ? 0.12 * (1.0 - along_hair) : 0.0);   // (stiff short hair rests on the skin; a long one hangs free)
+						dir = (dir - normal * real_t(dir.dot(normal) * skin_hold)).normalized();
 						position += dir * real_t(seg);
 						grid.push_out(position, 0.0010);
 						bp.push_back(position);
@@ -1492,6 +1499,22 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 							const double lock_lean = hair_length * lock_bend * 0.5;   // (every hair of the lock leans the same way: the lock)
 							bp[1] += bend * real_t(lean * 0.5 + lock_lean * 0.6);
 							bp[size_t(beard_steps - 1)] += bend * real_t(lean * 0.5 * dice.range(-0.4, 1.2) + lock_lean);
+						}
+					}
+					// a trimmed moustache: men who wear one trim it above the lip so they can eat; no hair of the moustache or the cheeks may reach below the trim line (the top edge of the upper lip),
+					// whatever its length: the hair is cut where it would cross the line (a clean straight edge, like scissors)
+					if (std::abs(double(root.x)) < 0.045 && dy > -0.075) {
+						const double trim_line = -0.0535;   // (below the eye line, in face scale: just above the red of the upper lip)
+						for (int k = 1; k < beard_steps; k++) {
+							const double pdy_k = (double(bp[size_t(k)].y) - eye_y) / face_scale;
+							if (pdy_k < trim_line) {
+								const double prev_y = (double(bp[size_t(k - 1)].y) - eye_y) / face_scale;
+								const double t = prev_y > trim_line ? (prev_y - trim_line) / std::max(prev_y - pdy_k, 1e-6) : 0.0;
+								for (int j = k; j < beard_steps; j++) {
+									bp[size_t(j)] = bp[size_t(k - 1)] + (bp[size_t(k)] - bp[size_t(k - 1)]) * real_t(t);   // (the rest of the hair folds onto the cut point: zero length)
+								}
+								break;
+							}
 						}
 					}
 					// no hair may lie across the mouth gap: a point of the hair inside the lip ellipse (made a little larger) pulls the whole hair back toward its root

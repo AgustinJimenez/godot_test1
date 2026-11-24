@@ -737,7 +737,7 @@ func _build_ui() -> void:
 	_add_value_slider(beard_tab, "Ginger locks", 0.0, 1.0, 0.0, func(v: float) -> void: _head_hair_material.set_shader_parameter(&"beard_ginger", v))
 	_add_hair_slider(beard_tab, "Beard curl (0 straight .. 1 tight curls)", &"beard_curl", 0.0, 1.0)
 	_add_hair_slider(beard_tab, "Neck beard (under the jaw)", &"neck_beard", 0.0, 1.0)
-	_add_hair_slider(beard_tab, "Beard length (metres)", &"beard_length", 0.002, 0.04)
+	_add_hair_slider(beard_tab, "Beard length (metres; the chin tuft is 2.5x)", &"beard_length", 0.002, 0.1)
 	var amount_tab: Control = hair_tab
 	_add_hair_slider(amount_tab, "Guide locks (how many places hair grows from)", &"locks", 200.0, 6000.0)
 	_add_hair_slider(amount_tab, "Individual hairs per lock (0 = ribbons)", &"strands", 0.0, 96.0)
