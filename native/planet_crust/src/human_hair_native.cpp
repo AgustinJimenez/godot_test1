@@ -1432,6 +1432,14 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					along = Vector3(real_t(root.x >= 0.0f ? 1.0f : -1.0f), 0.0f, 0.0f) - normal * real_t(normal.x);
 				}
 				const Vector3 direction = (along.normalized() * 0.9f + normal * 0.2f + Vector3(real_t(dice.range(-0.16, 0.16)), real_t(dice.range(-0.08, 0.08)), real_t(dice.range(-0.16, 0.16)))).normalized();   // (a beard hair lies along the skin: little push off it, little random)
+				// locks: follicles in the same ~7 mm cell form a lock: they share a sideways bend of the whole hair and (mostly) a brightness, so the beard reads as locks that flow together instead of independent bristles
+				const int lock_x = int(std::floor(double(root.x) / 0.007)), lock_y = int(std::floor(double(root.y) / 0.007)), lock_z = int(std::floor(double(root.z) / 0.007));
+				auto lock_hash = [&](double salt) {
+					const double h = std::sin(double(lock_x) * 127.1 + double(lock_y) * 311.7 + double(lock_z) * 74.7 + salt * 19.19) * 43758.5453;
+					return h - std::floor(h);
+				};
+				const double lock_bend = (lock_hash(1.0) - 0.5) * 2.0;       // -1..1: which way and how much the lock leans
+				const double lock_light = lock_hash(2.0);
 				const int hairs = in_moustache ? 6 : int(std::round(6.0 * std::max(1.0, region_density)));
 				for (int h = 0; h < hairs; h++) {
 					beard_hair_total++;
@@ -1472,8 +1480,9 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						if (bend.length() > 1e-3f) {
 							bend = bend.normalized();
 							const double lean = hair_length * dice.range(-0.3, 0.3) * region_curl;
-							bp[1] += bend * real_t(lean);
-							bp[size_t(beard_steps - 1)] += bend * real_t(lean * dice.range(-0.4, 1.2));
+							const double lock_lean = hair_length * lock_bend * 0.35;   // (every hair of the lock leans the same way: the lock)
+							bp[1] += bend * real_t(lean * 0.5 + lock_lean * 0.6);
+							bp[size_t(beard_steps - 1)] += bend * real_t(lean * 0.5 * dice.range(-0.4, 1.2) + lock_lean);
 						}
 					}
 					// no hair may lie across the mouth gap: a point of the hair inside the lip ellipse (made a little larger) pulls the whole hair back toward its root
@@ -1493,7 +1502,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 							bp[size_t(k)] = bp[0] + (bp[size_t(k)] - bp[0]) * 0.55f;
 						}
 					}
-					const float brightness = float(dice.unit());
+					const float brightness = float(0.3 * dice.unit() + 0.7 * lock_light);   // (a lock is lighter or darker as a whole)
 					const float chance = float(dice.unit());
 					const int first = int(out_vertices.size());
 					for (int k = 0; k < beard_steps; k++) {
