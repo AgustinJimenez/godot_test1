@@ -32,7 +32,7 @@ const FACE_SLIDERS: Array = [
 const FACE_AGE_EYE_DY: Dictionary = {"Male": {"young": -0.1964, "old": -0.0235}, "Female": {"young": -0.1664, "old": -0.0083}}
 const BEARD_STYLES: Array = [   # name, amount, length (m), zone (0 full, 1 goatee, 2 circle beard), neck beard
 	["None", 0.0, 0.012, 0.0, 0.0], ["Stubble", 0.7, 0.003, 0.0, 0.5], ["Short", 0.8, 0.007, 0.0, 0.3], ["Full", 0.9, 0.012, 0.0, 0.3],
-	["Long", 1.0, 0.03, 0.0, 0.6], ["Goatee", 0.9, 0.01, 1.0, 0.0], ["Circle beard", 0.9, 0.01, 2.0, 0.0],
+	["Long", 1.0, 0.03, 0.0, 0.6], ["Goatee", 0.9, 0.01, 1.0, 0.0], ["Circle beard", 0.9, 0.01, 2.0, 0.0], ["Curly", 0.95, 0.02, 0.0, 0.3, 0.8],
 ]
 const SKIN_FILES: Array = [   # CC0 MakeHuman skins, 1k (assets/models/humans/skins/CREDITS.md); both bodies share the MakeHuman UV layout
 	["Male: light bronze", "male_light_bronze"], ["Male: light freckles", "male_light_freckles"], ["Male: light ginger", "male_light_ginger"],
@@ -726,6 +726,7 @@ func _build_ui() -> void:
 		style_button.pressed.connect(_on_beard_style.bind(style_entry))
 		beard_styles.add_child(style_button)
 	_add_hair_slider(beard_tab, "Beard amount (0 = none)", &"beard", 0.0, 1.0)
+	_add_hair_slider(beard_tab, "Beard curl (0 straight .. 1 tight curls)", &"beard_curl", 0.0, 1.0)
 	_add_hair_slider(beard_tab, "Neck beard (under the jaw)", &"neck_beard", 0.0, 1.0)
 	_add_hair_slider(beard_tab, "Beard length (metres)", &"beard_length", 0.002, 0.04)
 	var amount_tab: Control = hair_tab
@@ -1221,6 +1222,9 @@ func _on_beard_style(entry: Array) -> void:
 	_hair_style[&"beard_length"] = float(entry[2])
 	_hair_style[&"beard_zone"] = float(entry[3])
 	_hair_style[&"neck_beard"] = float(entry[4])
+	_hair_style[&"beard_curl"] = float(entry[5]) if entry.size() > 5 else 0.0
+	if _hair_sliders.has(&"beard_curl"):
+		(_hair_sliders[&"beard_curl"] as HSlider).set_value_no_signal(float(_hair_style[&"beard_curl"]))
 	if _hair_sliders.has(&"neck_beard"):
 		(_hair_sliders[&"neck_beard"] as HSlider).set_value_no_signal(float(entry[4]))
 	for key: StringName in [&"beard", &"beard_length"]:

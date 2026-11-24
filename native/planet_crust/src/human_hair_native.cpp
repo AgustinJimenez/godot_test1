@@ -260,6 +260,7 @@ Dictionary HumanHair::default_params() {
 	d["back_length"] = 0.0; // 0..1: the hair behind the crown is longer than the top (up to +60%), a layered cut
 	d["beard"] = 0.0;        // 0..1: a short beard and moustache on the jaw, cheeks and chin (0: none; the amount is the density)
 	d["beard_length"] = 0.012; // metres
+	d["beard_curl"] = 0.0;     // 0..1: the beard hairs coil (0: straight with a small bend; 1: tight curls). More points per hair above 0.15.
 	d["neck_beard"] = 0.0;     // 0..1: the beard continues under the jaw onto the neck (the neck beard region; 0 = it stops at the jaw)
 	d["beard_zone"] = 0.0;     // 0: full beard (cheeks, jaw, chin, moustache); 1: goatee (moustache and a chin patch, bare cheeks)
 	d["strips"] = 0.0; // 0..1: the front hair falls as separate strips (about 1.3 cm wide) with gaps between them, each strip its own length
@@ -422,6 +423,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const bool goatee = beard_zone_value > 0.5;          // 1: goatee (moustache + soul patch + chin); 2: circle beard (the same plus the connectors at the mouth corners)
 	const bool circle_beard = beard_zone_value > 1.5;
 	const double neck_beard = Math::clamp(param(p_params, "neck_beard", 0.0), 0.0, 1.0);
+	const double beard_curl = Math::clamp(param(p_params, "beard_curl", 0.0), 0.0, 1.0);
 	const double wisps = Math::clamp(param(p_params, "wisps", 0.0), 0.0, 1.0);
 	const double eye_drop = param(p_params, "eye_drop", 0.105);
 
@@ -1315,7 +1317,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			int beard_hair_total = 0;
 			// (no flat layer under the beard: a dim dot around each follicle instead, below)
 			const int follicles = int(30000.0 * beard);
-			const int beard_steps = 3;
+			const int beard_steps = beard_curl > 0.55 ? 6 : (beard_curl > 0.15 ? 5 : 3);   // (a coil needs points: 3 points can only bend)
 			for (int f = 0; f < follicles; f++) {
 				Dice dice(seed + 0xBEA2DULL + uint64_t(f) * 0x2545F4914F6CDD1DULL);
 				const double pick = dice.unit() * beard_total;
@@ -1440,6 +1442,25 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						position += dir * real_t(seg);
 						grid.push_out(position, 0.0010);
 						bp.push_back(position);
+					}
+					if (beard_curl > 0.0) {
+						// a coil around the hair's own line (the radius grows from the root), a turn of its own phase and tightness per hair
+						const std::vector<Vector3> spine = bp;
+						const double phase = dice.range(0.0, 6.2831853);
+						const double turn = (1.1 + 1.6 * beard_curl) * dice.range(0.85, 1.15);
+						const double radius = beard_curl * (0.0009 + 0.16 * hair_length) * region_curl;
+						for (int k = 1; k < beard_steps; k++) {
+							const Vector3 tangent = (spine[size_t(std::min(k + 1, beard_steps - 1))] - spine[size_t(k - 1)]).normalized();
+							Vector3 side_c = tangent.cross(normal);
+							if (side_c.length() < 1e-4f) {
+								side_c = Vector3(1.0f, 0.0f, 0.0f);
+							}
+							side_c = side_c.normalized();
+							const Vector3 up_c = side_c.cross(tangent).normalized();
+							const double angle = phase + double(k) * turn;
+							const double ramp = std::min(1.0, double(k) / 2.0);
+							bp[size_t(k)] = spine[size_t(k)] + (side_c * real_t(std::cos(angle)) + up_c * real_t(std::sin(angle))) * real_t(radius * ramp);
+						}
 					}
 					// a curl: the middle and the tip of the hair bend sideways (to one side, by an amount of its own), so the hairs are not straight combed strands
 					{
