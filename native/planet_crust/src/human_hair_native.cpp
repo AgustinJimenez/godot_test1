@@ -282,6 +282,7 @@ Dictionary HumanHair::default_params() {
 	d["gaps"] = 0.0;  // 0..1: patches of the scalp grow no locks and the rest clump tighter, so the hair parts into separate clumps with the layer below showing between them
 	d["wisps"] = 0.0; // 0..1: more hairs stray from their lock as long, wavy wisps
 	d["wave"] = 0.0;  // 0..1: every hair gets a slow sideways wave of its own (waves of 3-6 cm, a few mm wide)
+	d["depth_shade"] = 0.6; // 0..1: hair under the outer layer is in the shade of the hair above it (inner layers and the gaps between clumps read darker, the mass gets depth)
 	d["clumping"] = 0.6; // 0..1: lived-in hair: neighbouring locks gather into clumps (and those into sub-clumps) that close toward the tips and end in points; 0 is freshly washed and blow-dried, every hair separate
 	return d;
 }
@@ -1362,6 +1363,72 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 
 	lap("locks done");
 	const auto beard_clock_start = std::chrono::steady_clock::now();
+	// depth in the hair (self-shadowing, cheap): every head-hair point is binned by its direction from the head centre; the outer surface of the hair in that direction is
+	// the 90th percentile of the distances there (not the furthest point: one stray hair would put everything else "deep"); a point below that surface is in the shade of the
+	// hair above it, darker the deeper it is (full at 2.5 cm). It goes into the vertex alpha with the clump light (both are "how much light reaches this hair").
+	{
+		const double depth_shade = Math::clamp(param(p_params, "depth_shade", 0.6), 0.0, 1.0);
+		const int hair_vertex_end = int(out_vertices.size());
+		if (depth_shade > 0.0 && hair_vertex_end > 0) {
+			const int bins_az = 72, bins_el = 36;
+			auto bin_of = [&](const Vector3 &v, double &r) {
+				const Vector3 d = v - head_centre;
+				r = double(d.length());
+				const double az = std::atan2(double(d.x), double(d.z));
+				const double el = std::asin(Math::clamp(double(d.y) / std::max(r, 1e-6), -1.0, 1.0));
+				const int ia = std::min(bins_az - 1, int((az + Math_PI) / (2.0 * Math_PI) * bins_az));
+				const int ie = std::min(bins_el - 1, int((el + 0.5 * Math_PI) / Math_PI * bins_el));
+				return ie * bins_az + ia;
+			};
+			std::vector<std::vector<float>> radii(size_t(bins_az * bins_el));
+			for (int i = 0; i < hair_vertex_end; i++) {
+				if (out_colors[size_t(i)].b > 0.1f) {
+					continue; // (the scalp cap)
+				}
+				double r = 0.0;
+				radii[size_t(bin_of(out_vertices[size_t(i)], r))].push_back(float(r));
+			}
+			std::vector<float> surface(radii.size(), 0.0f);
+			for (size_t b = 0; b < radii.size(); b++) {
+				std::vector<float> &list = radii[b];
+				if (list.empty()) {
+					continue;
+				}
+				const size_t at = std::min(list.size() - 1, size_t(double(list.size()) * 0.9));
+				std::nth_element(list.begin(), list.begin() + int64_t(at), list.end());
+				surface[b] = list[at];
+				std::vector<float>().swap(list);
+			}
+			// (the surface of a bin is at least that of its neighbours a little: a thin bin at the edge of the hair is not all "surface")
+			std::vector<float> smooth_surface = surface;
+			for (int ie = 0; ie < bins_el; ie++) {
+				for (int ia = 0; ia < bins_az; ia++) {
+					float best = surface[size_t(ie * bins_az + ia)];
+					for (int de = -1; de <= 1; de++) {
+						for (int da = -1; da <= 1; da++) {
+							const int je = ie + de, ja = (ia + da + bins_az) % bins_az;
+							if (je < 0 || je >= bins_el) {
+								continue;
+							}
+							best = std::max(best, surface[size_t(je * bins_az + ja)] - 0.004f);
+						}
+					}
+					smooth_surface[size_t(ie * bins_az + ia)] = best;
+				}
+			}
+			for (int i = 0; i < hair_vertex_end; i++) {
+				Color &c = out_colors[size_t(i)];
+				if (c.b > 0.1f) {
+					continue;
+				}
+				double r = 0.0;
+				const int b = bin_of(out_vertices[size_t(i)], r);
+				const double depth = std::max(0.0, double(smooth_surface[size_t(b)]) - r);
+				const double t = Math::clamp(depth / 0.025, 0.0, 1.0);
+				c.a *= float(1.0 - depth_shade * 0.75 * t * (2.0 - t));
+			}
+		}
+	}
 	const int vertices_before_beard = int(out_vertices.size());
 	std::vector<float> beard_mask;
 	std::vector<Vector3> beard_roots; // where each beard follicle is on the skin (a debug view in the lab: mesh meta "hair_beard_roots")
