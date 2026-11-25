@@ -210,8 +210,33 @@ func _check_body(gender: String) -> void:
 	var huge: Dictionary = params.duplicate()
 	huge.merge({"locks": 9000, "strands": 0, "beard": 1.0, "beard_length": 0.1, "curl": 0.5, "length": 0.3}, true)
 	var huge_hair: ArrayMesh = HumanHair.build(body, huge)
-	var huge_count: int = (huge_hair.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() if huge_hair != null and huge_hair.get_surface_count() > 0 else 0
-	_expect(huge_count > 0 and huge_count <= 4194240, "%s: an extreme request made %d vertices (limit 4194240)" % [gender, huge_count])
+	var huge_count: int = 0
+	if huge_hair != null:
+		for si: int in huge_hair.get_surface_count():
+			huge_count = maxi(huge_count, huge_hair.surface_get_array_len(si))
+	_expect(huge_count > 0 and huge_count <= 4194240, "%s: an extreme request made a surface of %d vertices (limit 4194240 a surface)" % [gender, huge_count])
+	# waves: the hair is drawn with more points than its guide (a curve through the guide's points), a big mesh is cut into surfaces under the limit, and every
+	# drawn point still names a point of its guide (CUSTOM0.y from 0 to steps - 1, fractional between two)
+	var wavy: Dictionary = params.duplicate()
+	wavy.merge({"length": 0.3, "wave": 0.8, "strands": 40}, true)
+	var wavy_hair: ArrayMesh = HumanHair.build(body, wavy)
+	_expect(wavy_hair != null and int(wavy_hair.get_meta(&"hair_render_steps", 0)) > int(wavy_hair.get_meta(&"hair_guide_steps", 0)), "%s: wavy hair is not drawn with more points than its guide" % gender)
+	if wavy_hair != null:
+		var wavy_steps: int = int(wavy_hair.get_meta(&"hair_guide_steps", 0))
+		var fractional: int = 0
+		var outside: int = 0
+		var wavy_total: int = 0
+		for si: int in wavy_hair.get_surface_count():
+			_expect(wavy_hair.surface_get_array_len(si) <= 4194240, "%s: a wavy surface has %d vertices (limit 4194240)" % [gender, wavy_hair.surface_get_array_len(si)])
+			wavy_total += wavy_hair.surface_get_array_len(si)
+			var custom: PackedFloat32Array = wavy_hair.surface_get_arrays(si)[Mesh.ARRAY_CUSTOM0]
+			for i: int in range(1, custom.size(), 4):
+				if custom[i] < -0.001 or custom[i] > float(wavy_steps - 1) + 0.001:
+					outside += 1
+				elif absf(custom[i] - roundf(custom[i])) > 0.01:
+					fractional += 1
+		_expect(outside == 0 and fractional > 0, "%s: wavy hair: %d points outside the guide, %d between guide points" % [gender, outside, fractional])
+		print("HUMAN_HAIR_CHECK %s wavy: %d surfaces, %d vertices, %d points a hair (guide %d)" % [gender, wavy_hair.get_surface_count(), wavy_total, int(wavy_hair.get_meta(&"hair_render_steps", 0)), wavy_steps])
 	# how long the hair takes (the docs said "a few ms": measured here; the body is already read, so this is the growing alone)
 	var timings: String = ""
 	for style: Array in [["default", {}], ["buzz", {"length": 0.025, "locks": 2600}], ["curly", {"curl": 0.9, "volume": 1.3}], ["long", {"length": 0.3}]]:

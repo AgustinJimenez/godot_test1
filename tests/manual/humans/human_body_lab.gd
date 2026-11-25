@@ -86,7 +86,7 @@ const HAIR_PRESETS: Dictionary = {
 	"Bob": {&"side_trim": 0.0, &"length": 0.17, &"volume": 1.0, &"curl": 0.0, &"fringe": 0.0, &"sweep": 0.0, &"hug": 0.0, &"gravity": 1.0, &"parting": 0.3, &"strands": 40, &"points": 7, &"swept": 0.6, &"quiff": 0.5},
 	"Long": {&"side_trim": 0.0, &"length": 0.32, &"volume": 0.9, &"curl": 0.2, &"fringe": 0.0, &"sweep": 0.3, &"hug": 0.0, &"gravity": 1.0, &"parting": 0.5, &"strands": 40, &"points": 8, &"swept": 1.0, &"quiff": 0.5},
 	"Slick back": {&"side_trim": 0.85, &"length": 0.15, &"volume": 0.8, &"curl": 0.0, &"fringe": 0.0, &"sweep": 1.0, &"gravity": 0.8, &"parting": 0.0, &"strands": 40, &"points": 6},
-	"Wet messy": {&"side_trim": 0.55, &"length": 0.18, &"volume": 0.6, &"curl": 0.0, &"fringe": 0.3, &"sweep": 0.1, &"quiff": 0.3, &"swept": 0.1, &"hug": 0.6, &"gravity": 1.7, &"parting": 0.2, &"messy": 0.45, &"wave": 0.6, &"gaps": 0.6, &"wisps": 0.5, &"strips": 1.0, &"wet": 0.8, &"scalp_layer": 1.0, &"shine": 0.6, &"back_length": 0.5, &"tousle": 0.8, &"colour": Color(0.09, 0.07, 0.055), &"target_hairs": 40000, &"strand_width": 0.0011, &"strands": 40, &"points": 14},
+	"Wet messy": {&"side_trim": 0.55, &"length": 0.18, &"volume": 0.6, &"curl": 0.0, &"fringe": 0.3, &"sweep": 0.1, &"quiff": 0.3, &"swept": 0.1, &"hug": 0.6, &"gravity": 1.7, &"parting": 0.2, &"messy": 0.45, &"wave": 0.6, &"gaps": 0.6, &"wisps": 0.5, &"strips": 1.0, &"wet": 0.8, &"scalp_layer": 1.0, &"shine": 0.6, &"back_length": 0.5, &"tousle": 0.8, &"target_hairs": 40000, &"strand_width": 0.0011, &"strands": 40, &"points": 14},
 	"Curly": {&"side_trim": 0.1, &"length": 0.12, &"volume": 1.3, &"curl": 0.9, &"fringe": 0.6, &"sweep": 0.0, &"hug": 0.0, &"gravity": 0.6, &"parting": 0.0, &"strands": 36, &"points": 10},
 }
 const EYE_SCENES: Dictionary = {
@@ -172,7 +172,7 @@ var _lod: int = 0
 var _lod_forced: int = -1   # --lod=N or the slider: a fixed level (-1 = by the camera distance)
 var _target_hairs: int = DEFAULT_TARGET_HAIRS   # a preset can ask for fewer, thicker hairs (wet, clumped hair is drawn with fewer hairs so that single strands show)
 var _strand_scale: float = 1.0   # learned: real hairs = guides x strands x about 0.58 (fewer hairs per lock near the hairline), so the first guess is 1 / 0.58
-const MAX_HAIR_VERTICES: int = 4150000   # the hair mesh limit of the simulation (65,535 compute groups x 64 vertices = 4,194,240)
+const MAX_HAIR_VERTICES: int = 4150000   # the vertex limit of ONE hair surface (65,535 compute groups x 64 vertices = 4,194,240; the builder cuts bigger meshes into several surfaces)
 var _hair_guard_retry: int = 0
 var _crowd: int = 0              # --crowd=N: N-1 more copies of the body and the hair (shared meshes, not simulated) in a grid: a cost test for several characters
 var _crowd_nodes: Array = []
@@ -392,6 +392,7 @@ func _ready() -> void:
 			_hair_enabled = false
 		elif arg.begins_with("--hair-preset="):
 			var preset: Dictionary = HAIR_PRESETS[arg.trim_prefix("--hair-preset=")]
+			_hair_preset_name = arg.trim_prefix("--hair-preset=")
 			for reset_key: StringName in [&"quiff", &"swept", &"spike", &"hug", &"sweep", &"strands", &"points", &"messy", &"wave", &"gaps", &"wisps", &"strips", &"back_length", &"tousle"]:   # what the preset does not name is off (as the button does), not what the starting style left
 				if not preset.has(reset_key):
 					_hair_style[reset_key] = 0.0
@@ -399,9 +400,6 @@ func _ready() -> void:
 				_hair_style[key] = preset[key]
 			_wet = float(preset.get(&"wet", 0.0))
 			_scalp_layer = float(preset.get(&"scalp_layer", 1.0))
-			if preset.has(&"colour"):
-				_head_hair_color = preset[&"colour"]
-				_hair_color = _brow_colour_for(_head_hair_color)
 			if preset.has(&"shine") and _shine_override < 0.0:
 				_shine_override = float(preset[&"shine"])
 			_target_hairs = int(preset.get(&"target_hairs", DEFAULT_TARGET_HAIRS))
@@ -672,17 +670,24 @@ func _build_ui() -> void:
 	_add_range_slider(brows_tab, "Brow density", 0.2, 1.0, _brow_density, _on_brow_density_changed)
 	# head hair (the native HumanHair class): the style and look in one tab, the amount of hair (and its cost) in another
 	var hair_tab := _add_tab(tabs, "Hair")
-	var presets := HFlowContainer.new()
+	# the hairstyle: one dropdown (a row of a dozen buttons was confusing), with the reset beside it
+	var presets := HBoxContainer.new()
 	hair_tab.add_child(presets)
+	var style_label := Label.new()
+	style_label.text = "Hairstyle"
+	presets.add_child(style_label)
+	_hair_preset_option = OptionButton.new()
+	_hair_preset_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for preset_name: String in HAIR_PRESETS:
+		_hair_preset_option.add_item(preset_name)
+	_hair_preset_option.selected = HAIR_PRESETS.keys().find(_hair_preset_name)
+	_hair_preset_option.item_selected.connect(func(index: int) -> void: _on_hair_preset(_hair_preset_option.get_item_text(index)))
+	presets.add_child(_hair_preset_option)
 	var reset_button := Button.new()
-	reset_button.text = "Reset hair settings"
+	reset_button.text = "Reset"
+	reset_button.tooltip_text = "Reset the hair settings to the body's default style"
 	reset_button.pressed.connect(_on_hair_reset)
 	presets.add_child(reset_button)
-	for preset_name: String in HAIR_PRESETS:
-		var preset_button := Button.new()
-		preset_button.text = preset_name
-		preset_button.pressed.connect(_on_hair_preset.bind(preset_name))
-		presets.add_child(preset_button)
 	var colour_label := Label.new()
 	colour_label.text = "Hair colour"
 	hair_tab.add_child(colour_label)   # (natural colours only: the swatches below, no free colour picker)
@@ -860,6 +865,8 @@ func _add_slider(parent: Control, label_text: String, callback: Callable) -> voi
 	parent.add_child(slider)
 
 
+var _hair_preset_option: OptionButton = null   # the Hair tab's hairstyle dropdown
+var _hair_preset_name: String = "Dapper"   # the style last picked (shown in the dropdown; the start style and --hair-preset are set before the panel exists)
 const DEFAULT_STYLE: Dictionary = {"Male": "Dapper", "Female": "Long waves"}   # the style a body starts with when its button is pressed
 
 
@@ -1086,6 +1093,12 @@ func _on_hair_reset() -> void:
 
 func _on_hair_preset(preset_name: String) -> void:
 	_beard_only_change = false
+	_hair_preset_name = preset_name
+	if _hair_preset_option != null:
+		# the dropdown shows the style however it was chosen (the dropdown, a body button, Reset, --hair-preset)
+		for index: int in _hair_preset_option.item_count:
+			if _hair_preset_option.get_item_text(index) == preset_name:
+				_hair_preset_option.select(index)
 	var preset: Dictionary = HAIR_PRESETS[preset_name]
 	for reset_key: StringName in [&"quiff", &"swept", &"spike", &"hug", &"sweep", &"strands", &"points", &"messy", &"wave", &"gaps", &"wisps", &"strips", &"back_length", &"tousle"]:   # what a preset does not name goes back to off
 		if not preset.has(reset_key):
@@ -1096,8 +1109,7 @@ func _on_hair_preset(preset_name: String) -> void:
 		_hair_style[key] = preset[key]
 		if _hair_sliders.has(key):
 			(_hair_sliders[key] as HSlider).set_value_no_signal(float(preset[key]))
-	if preset.has(&"colour"):
-		_on_hair_colour_swatch(preset[&"colour"])   # (a preset can carry a hair colour; the others keep the one picked)
+	# (a hairstyle never changes the hair colour: the colour is the swatches' alone)
 	var new_target: int = int(preset.get(&"target_hairs", DEFAULT_TARGET_HAIRS))
 	_strand_scale = clampf(_strand_scale * float(new_target) / float(_target_hairs), 0.08, 3.0)   # (keep what the lab learned about hairs per lock: only the target changes. Resetting it to a guess built 600,000 hairs, more than the simulation can handle, and the head came out bald)
 	_target_hairs = new_target
@@ -1796,11 +1808,16 @@ func _finish_hair_task(wait: bool) -> void:
 		return
 	var strands: int = int(_hair_style.get(&"strands", 0))
 	var guides: int = int(built.get_meta(&"hair_guide_count", 0))
-	var verts: int = built.surface_get_array_len(0) if built.get_surface_count() > 0 else 0
-	if verts > MAX_HAIR_VERTICES and _hair_guard_retry < 6:
-		# the hair simulation dispatches one compute group per 64 vertices and the device allows 65,535 groups (4,194,240 vertices in all): above that the simulation fails and the head comes out bald
+	var verts: int = 0
+	var biggest_surface: int = 0
+	for si: int in built.get_surface_count():
+		verts += built.surface_get_array_len(si)
+		biggest_surface = maxi(biggest_surface, built.surface_get_array_len(si))
+	if biggest_surface > MAX_HAIR_VERTICES and _hair_guard_retry < 6:
+		# the engine moves a surface's vertices with one compute group per 64 vertices and the device allows 65,535 groups (4,194,240 vertices a surface): above that the hair fails and the head comes out bald
+		# (the builder cuts a big mesh into several surfaces, so this only catches a mesh it could not cut)
 		_hair_guard_retry += 1
-		_strand_scale = clampf(_strand_scale * float(MAX_HAIR_VERTICES) / float(verts) * 0.93, 0.08, 3.0)
+		_strand_scale = clampf(_strand_scale * float(MAX_HAIR_VERTICES) / float(biggest_surface) * 0.93, 0.08, 3.0)
 		print("HUMAN_LAB hair guard: ", verts, " vertices is over the limit, hairs per lock scale -> ", snappedf(_strand_scale, 0.001))
 		_hair_info = "Hair: too many vertices (%s), rebuilding with fewer hairs" % _thousands(verts)
 		_hair_dirty = true
@@ -1808,7 +1825,7 @@ func _finish_hair_task(wait: bool) -> void:
 	_hair_guard_retry = 0
 	if strands > 0 and guides > 0:
 		# the real number of hairs: every hair is a ribbon of `steps` points (2 vertices each); near the hairline a lock grows fewer hairs than `strands`, so guides x strands overstates it
-		var steps_meta: int = maxi(int(built.get_meta(&"hair_guide_steps", 1)), 1)
+		var steps_meta: int = maxi(int(built.get_meta(&"hair_render_steps", built.get_meta(&"hair_guide_steps", 1))), 1)
 		var head_vertices: int = int(built.get_meta(&"hair_head_vertices", 0))   # (the head hair alone, from the builder: whatever the beard has)
 		var real_hairs: int = (head_vertices - 600) / (2 * steps_meta) if head_vertices > 0 else (verts - 600 - int(built.get_meta(&"hair_beard_vertices", 0))) / (2 * steps_meta)   # (the beard is not head hair: counting its vertices made the first build look 25% too hairy and cost a second build)
 		_hair_info = "LOD %d  Hair: " % _lod + "%s hairs (%s guides, up to %d each)   %s vertices" % [_thousands(real_hairs), _thousands(guides), strands, _thousands(verts)]
