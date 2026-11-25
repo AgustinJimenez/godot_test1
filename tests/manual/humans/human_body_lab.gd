@@ -709,6 +709,7 @@ func _build_ui() -> void:
 	_add_hair_slider(hair_tab, "Fall (gravity)", &"gravity", 0.0, 2.0)
 	_add_hair_slider(hair_tab, "Messy (locks differ and cross)", &"messy", 0.0, 1.0)
 	_add_hair_slider(hair_tab, "Wave (a slow wave in every hair)", &"wave", 0.0, 1.0)
+	_add_hair_slider(hair_tab, "Clumping (lived-in: hairs gather into locks)", &"clumping", 0.0, 1.0)
 	_add_hair_slider(hair_tab, "Gaps (patches without locks, tighter clumps)", &"gaps", 0.0, 1.0)
 	_add_hair_slider(hair_tab, "Wisps (long loose wavy hairs)", &"wisps", 0.0, 1.0)
 	_add_hair_slider(hair_tab, "Tousle (locks on top lift and arch)", &"tousle", 0.0, 1.0)

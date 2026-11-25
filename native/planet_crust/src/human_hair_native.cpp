@@ -282,6 +282,7 @@ Dictionary HumanHair::default_params() {
 	d["gaps"] = 0.0;  // 0..1: patches of the scalp grow no locks and the rest clump tighter, so the hair parts into separate clumps with the layer below showing between them
 	d["wisps"] = 0.0; // 0..1: more hairs stray from their lock as long, wavy wisps
 	d["wave"] = 0.0;  // 0..1: every hair gets a slow sideways wave of its own (waves of 3-6 cm, a few mm wide)
+	d["clumping"] = 0.6; // 0..1: lived-in hair: neighbouring locks gather into clumps (and those into sub-clumps) that close toward the tips and end in points; 0 is freshly washed and blow-dried, every hair separate
 	return d;
 }
 
@@ -415,6 +416,39 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double lock_share = Math::clamp(param(p_params, "lock_share", 1.0), 0.01, 1.0);
 	const int lock_count = strands > 0 ? std::min(requested_locks, 6000) : plain_lock_count; // (single hairs: the number of follicles is what was asked, whatever the lock width of a short style)
 	const double wetness = Math::clamp(param(p_params, "wet", 0.0), 0.0, 1.0);
+	const double clumping = Math::clamp(param(p_params, "clumping", 0.6), 0.0, 1.0);
+	// the clump field: jittered seeds on a 3D grid (a Voronoi field over the scalp). Every root belongs to the nearest seed of a coarse grid (clumps of ~2.4 cm) and of a fine grid
+	// (sub-clumps of ~1 cm); its lock is pulled toward both seeds, more toward the tip, so the hairs of neighbouring follicles gather into clumps with a shared shape.
+	auto clump_seed = [](const Vector3 &p, double cell, uint64_t salt, double &hash_out, double &border_out) {
+		const int cx = int(std::floor(double(p.x) / cell)), cy = int(std::floor(double(p.y) / cell)), cz = int(std::floor(double(p.z) / cell));
+		double best = 1e30, second = 1e30;
+		Vector3 best_seed = p;
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dy = -1; dy <= 1; dy++) {
+				for (int dz = -1; dz <= 1; dz++) {
+					uint64_t h = (uint64_t(int64_t(cx + dx)) * 0x9E3779B97F4A7C15ULL) ^ (uint64_t(int64_t(cy + dy)) * 0xC2B2AE3D27D4EB4FULL) ^ (uint64_t(int64_t(cz + dz)) * 0x165667B19E3779F9ULL) ^ salt;
+					auto next = [&h]() {
+						h ^= h >> 33;
+						h *= 0xFF51AFD7ED558CCDULL;
+						h ^= h >> 33;
+						return double(h >> 11) * (1.0 / 9007199254740992.0);
+					};
+					const Vector3 seed((float)((cx + dx + next()) * cell), (float)((cy + dy + next()) * cell), (float)((cz + dz + next()) * cell));
+					const double d2 = double((seed - p).length_squared());
+					if (d2 < best) {
+						second = best;
+						best = d2;
+						best_seed = seed;
+						hash_out = next();
+					} else if (d2 < second) {
+						second = d2;
+					}
+				}
+			}
+		}
+		border_out = std::sqrt(best / std::max(second, 1e-12)); // (0 on the seed, 1 on the border between two cells)
+		return best_seed;
+	};
 	const double tousle = Math::clamp(param(p_params, "tousle", 0.0), 0.0, 1.0);
 	const double cover = Math::clamp(param(p_params, "cover", 0.0), 0.0, 1.0);
 	const int beard_debug = int(param(p_params, "beard_debug", 0.0)); // (bit 4: the old straight moustache trim line, bit 2: no pull-back from the mouth: to find what leaves bare skin beside the lips)
@@ -898,7 +932,21 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		for (int k = 0; k < steps - 1; k++) {
 			segment[size_t(k)] *= this_length / segment_sum;
 		}
-		const double phase = dice.range(0.0, 6.2831853);
+		const double own_phase = dice.range(0.0, 6.2831853);
+		// clumps: where this lock's root gathers to (see `clump_seed`). A lock of a clump shares the clump's wave and curl phase (the hairs of a clump move as one), and about one lock
+		// in eight stays out of every clump (loose hairs between the clumps). Short hair hardly clumps (the pull grows with the length up to 10 cm).
+		double coarse_hash = 0.0, fine_hash = 0.0, coarse_border = 0.0, fine_border = 0.0;
+		const Vector3 coarse_seed = clump_seed(root, 0.030, 0x51A7ULL, coarse_hash, coarse_border);
+		const Vector3 fine_seed = clump_seed(root, 0.012, 0xB0B5ULL, fine_hash, fine_border);
+		const double loose_hash = std::abs(std::sin(double(root.x) * 91.7 + double(root.y) * 37.3 + double(root.z) * 157.9)) * 24634.6345;
+		const bool loose_lock = (loose_hash - std::floor(loose_hash)) < 0.12;
+		const double clump_amount = loose_lock ? 0.0 : clumping * Math::clamp((this_length - 0.02) / 0.08, 0.0, 1.0);
+		// the light inside the clump (vertex alpha of a head hair, 1 = fully lit): a lock rooted near its clump's seed is the clump's lit core, one rooted near the edge of its cell
+		// runs along the outside of the clump and in the crevice between two clumps, in their shade (the dark gaps that make lived-in hair read as clumps)
+		const double fine_edge = Math::clamp((fine_border - 0.35) / 0.55, 0.0, 1.0);
+		const double coarse_edge = Math::clamp((coarse_border - 0.35) / 0.55, 0.0, 1.0);
+		const float clump_light = float(1.0 - clump_amount * (0.55 * fine_edge * fine_edge + 0.45 * coarse_edge * coarse_edge));
+		const double phase = own_phase + clump_amount * std::remainder(coarse_hash * 6.2831853 + 0.6 * fine_hash - own_phase, 6.2831853);
 		const double stiffness = dice.range(0.9, 1.1);
 		std::vector<Vector3> points;
 		points.reserve(steps);
@@ -1068,6 +1116,22 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				}
 			}
 		}
+		if (clump_amount > 0.0 && steps > 2) {
+			// the clump pull: the lock moves toward its sub-clump and clump seeds, nothing at the root, all of it from ~60% of the length, so neighbouring locks meet and run
+			// together to the tip. Only along the head (the part toward or away from the head is removed: clumps lie on the hair, they do not sink or lift) and across the lock.
+			const Vector3 normal = (root - head_centre).normalized();
+			Vector3 pull = (fine_seed - root) * real_t(0.9) + (coarse_seed - root) * real_t(0.6);
+			pull -= normal * pull.dot(normal);
+			// (the pull grows smoothly along the whole length, strongest at the tip: a pull that was complete by mid-length bent the few points of a lock into zig-zags on top of the head)
+			const std::vector<Vector3> before_pull = points;
+			for (int k = 1; k < steps; k++) {
+				const double s = double(k) / double(steps - 1);
+				const double ramp = s * (2.0 - s);
+				const Vector3 tangent = (before_pull[size_t(std::min(k + 1, steps - 1))] - before_pull[size_t(k - 1)]).normalized();
+				const Vector3 across = pull - tangent * pull.dot(tangent);
+				points[size_t(k)] += across * real_t(clump_amount * ramp);
+			}
+		}
 		const std::vector<Vector3> guide_points = points;
 		if (guides_only) {
 			for (const Vector3 &g : guide_points) {
@@ -1103,7 +1167,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			// flyaways: about one hair in a hundred strays from its lock, wider and lifting off the head, so the outline is not a clean edge (a hash of the root, so the dice of the other hairs do not shift)
 			const double stray_hash = std::abs(std::sin(double(root.x) * 127.1 + double(root.z) * 311.7 + double(copy) * 17.3 + double(root.y) * 71.9)) * 43758.5453;
 			const bool flyaway = (stray_hash - std::floor(stray_hash)) < (0.006 + 0.05 * wisps) * (1.0 - 0.6 * wetness) && this_length > 0.02 && front_share < 0.35; // (no stray hairs from the front: on long hair they were single straight lines across the forehead)
-			const double radius0 = clump * (1.0 - 0.6 * gaps) * (1.0 - 0.65 * wetness) * (1.0 - 0.7 * std::min(1.0, 2.0 * lift_start)) * (1.0 + 1.6 * std::max(near_line, near_crown)) * (0.8 + 0.2 * std::min(1.0, this_length / 0.05)) * (1.0 + 1.5 * std::max(0.0, 1.0 - this_length / 0.04) * Math::clamp((this_length - 0.001) / 0.004, 0.0, 1.0)) * (1.0 + 2.2 * Math::clamp((this_length - 0.08) / 0.2, 0.0, 1.0)) * std::sqrt(dice.unit()); // (long hair too: the hairs of one follicle fan out as they lengthen, so a fringe is a curtain, not separate strings) // (short hair spreads wider, not narrower: at 2-3 cm the hairs are shorter than the gap between follicles) // (hairs of a follicle at the parting line or the crown spread wider, over the slit) // (a short lock spreads less: its hairs fanned out into small stars at the hairline)
+			const double radius0 = clump * (1.0 - 0.6 * gaps) * (1.0 - 0.65 * wetness) * (1.0 - 0.7 * std::min(1.0, 2.0 * lift_start)) * (1.0 + 1.6 * std::max(near_line, near_crown)) * (0.8 + 0.2 * std::min(1.0, this_length / 0.05)) * (1.0 + 1.5 * std::max(0.0, 1.0 - this_length / 0.04) * Math::clamp((this_length - 0.001) / 0.004, 0.0, 1.0)) * (1.0 + 2.2 * Math::clamp((this_length - 0.08) / 0.2, 0.0, 1.0)) * (1.0 - 0.75 * clump_amount) * std::sqrt(dice.unit()); // (clumped hair: the hairs of a lock stay together) // (long hair too: the hairs of one follicle fan out as they lengthen, so a fringe is a curtain, not separate strings) // (short hair spreads wider, not narrower: at 2-3 cm the hairs are shorter than the gap between follicles) // (hairs of a follicle at the parting line or the crown spread wider, over the slit) // (a short lock spreads less: its hairs fanned out into small stars at the hairline)
 			for (int k = 0; k < steps; k++) {
 				const double s = double(k) / (steps - 1);
 				const Vector3 &side_k = frame_side[size_t(k)];
@@ -1131,6 +1195,9 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				if (wetness > 0.0) {
 					offset *= real_t(1.0 - 0.85 * wetness * s * s); // (wet: the hairs of a lock converge toward the tip and end in a point)
 				}
+				if (clump_amount > 0.0 && !flyaway) {
+					offset *= real_t(1.0 - 0.9 * clump_amount * s * (2.0 - s)); // (lived-in hair: the hairs of a lock close up toward the tip too, so every clump ends in a point)
+				}
 				points[k] = guide_points[k] + offset;
 			}
 		}
@@ -1142,7 +1209,9 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			}
 			points = soft;
 		}
-		const float brightness = float(dice.unit());
+		float brightness = float(dice.unit());
+		// the hairs of a clump are lit and coloured together (the light and dark bands of lived-in hair): the brightness is mostly the clump's, a little the sub-clump's and the hair's
+		brightness = float(Math::lerp(double(brightness), 0.75 * coarse_hash + 0.25 * fine_hash, 0.8 * clump_amount));
 		const float chance = float(dice.unit());
 		if (strands > 0 && wave > 0.0 && steps > 3) {
 			// the wave goes on AFTER the path was rounded, so the smoothing cannot flatten it: a slow wave of the lock's own (shared phase, a little of the hair's own), growing toward the tip
@@ -1172,7 +1241,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			previous_side = side;
 			const double width = strands > 0 ? strand_width * (1.0 + 0.5 * Math::clamp((length - 0.08) / 0.2, 0.0, 1.0)) * (1.0 - 0.85 * std::pow(s, 1.4)) : lock_width * (1.0 - 0.9 * std::pow(s, 1.6)) * (0.75 + 0.25 * std::min(1.0, s * 6.0));
 			const Vector3 face = side.cross(tangent).normalized();
-			const Color color(brightness, chance, 0.0f, 1.0f);
+			const Color color(brightness, chance, 0.0f, clump_light); // (alpha: the light inside the clump, see `clump_light`)
 			add_vertex(points[k] - side * real_t(width * 0.5), face, Vector2(0.0f, float(s)), color, bound, tangent, float(s), false);
 			add_vertex(points[k] + side * real_t(width * 0.5), face, Vector2(1.0f, float(s)), color, bound, tangent, float(s), false);
 		}

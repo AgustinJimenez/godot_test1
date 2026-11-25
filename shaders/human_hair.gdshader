@@ -120,6 +120,10 @@ void fragment() {
 		float streak = smoothstep(0.78, 1.0, lock_rand);   // about one lock in five is a sun-lit, golden streak (the reference game hair has them: lighter, warmer locks between darker ones)
 		color *= (0.6 + 0.7 * lock_rand) * vec3(1.0 + 0.09 * (lock_rand - 0.5), 1.0, 1.0 - 0.18 * (lock_rand - 0.5));
 		color *= mix(vec3(1.0), vec3(1.4, 1.28, 1.05), streak);
+		if (COLOR.b < 0.1) {
+			// a head hair: COLOR.a is the light inside its clump (1 = the lit core of a clump, low = the outside of a clump and the crevice between two, in their shade); not at the root, where the root shade already is
+			color *= mix(1.0, mix(0.2, 1.0, COLOR.a * COLOR.a), smoothstep(0.05, 0.35, UV.y));
+		}
 		if (COLOR.b > 0.1) {
 			// a beard hair (blue 0.3): short and packed, so the look comes from depth: dark in the thicket near the skin, lit at the tips, and clumps (patches of a few mm) that are darker or lighter
 			float clump = value_noise(rest_pos * 160.0) * 0.6 + value_noise(rest_pos * 520.0) * 0.4;
@@ -141,7 +145,8 @@ void fragment() {
 		// bright colours go lemon-yellow once the strand and tip multipliers push linear channels past 1: pull them toward grey as they get brighter
 		float luma = dot(color, vec3(0.3, 0.59, 0.11));
 		color = mix(color, vec3(luma), clamp(luma * 1.2, 0.0, 0.45));
-		strand_shift = (lock_rand - 0.5) * 0.3 + (value_noise(rest_pos * 22.0) - 0.5) * 0.5 + (random_a - 0.5) * 0.45 * (1.0 - 0.85 * wet) + (hash(vec2(floor(UV.y * 22.0), id)) - 0.5) * 0.2;   // (a small spread: neighbouring strands catch the light together, so the highlight is a broad sheet that follows the head, broken at the locks)   // (a wide spread: parallel strands catch the light at different places, so the highlight is a sparkle of strands, not one band)
+		strand_shift = (mix(lock_rand, COLOR.r, 0.7) - 0.5) * 0.4 +   // (COLOR.r is mostly the clump's number on clumped hair: a clump catches the light as one sheet)
+			 (value_noise(rest_pos * 22.0) - 0.5) * 0.5 + (random_a - 0.5) * 0.45 * (1.0 - 0.85 * wet) + (hash(vec2(floor(UV.y * 22.0), id)) - 0.5) * 0.2;   // (a small spread: neighbouring strands catch the light together, so the highlight is a broad sheet that follows the head, broken at the locks)   // (a wide spread: parallel strands catch the light at different places, so the highlight is a sparkle of strands, not one band)
 	}
 	ALBEDO = color;
 	ALPHA = alpha;
