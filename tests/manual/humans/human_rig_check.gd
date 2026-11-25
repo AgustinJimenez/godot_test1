@@ -160,7 +160,19 @@ func _check(gender: String) -> void:
 	var hair := MeshInstance3D.new()
 	hair.mesh = HumanHair.build(mesh.mesh as ArrayMesh, HumanHair.default_params_for(gender))
 	skeleton.add_child(hair)
+	var built_hair: ArrayMesh = hair.mesh as ArrayMesh
+	var built_count: int = (built_hair.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+	var built_meta: PackedStringArray = built_hair.get_meta_list()
+	var built_custom: bool = (built_hair.surface_get_format(0) >> Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) & Mesh.ARRAY_FORMAT_CUSTOM_MASK != 0
 	_expect(HumanRig.attach_rigid(hair, skeleton, &"mixamorig_Head"), "%s: attach_rigid of the hair failed" % gender)
+	# the rigged hair must still BE a mesh: it lost its surface when the CUSTOM0 format flag was not passed on ("Invalid array format for surface")
+	var rigged_hair: ArrayMesh = hair.mesh as ArrayMesh
+	_expect(rigged_hair != null and rigged_hair.get_surface_count() == 1, "%s: the attached hair has %d surfaces" % [gender, rigged_hair.get_surface_count() if rigged_hair != null else -1])
+	if rigged_hair != null and rigged_hair.get_surface_count() == 1:
+		_expect((rigged_hair.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() == built_count, "%s: the attached hair has other vertices" % gender)
+		_expect(built_custom == ((rigged_hair.surface_get_format(0) >> Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) & Mesh.ARRAY_FORMAT_CUSTOM_MASK != 0), "%s: the attached hair lost its CUSTOM0 channel" % gender)
+		for key: String in built_meta:
+			_expect(rigged_hair.has_meta(StringName(key)), "%s: the attached hair lost its meta %s" % [gender, key])
 	_expect(rig.adopt(hair), "%s: adopt failed" % gender)
 	rig.apply({&"height_tall": 0.3})
 	var head_bone: int = skeleton.find_bone("mixamorig_Head")

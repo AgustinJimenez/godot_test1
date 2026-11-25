@@ -44,7 +44,8 @@ func _check_body(gender: String) -> void:
 	var data: HumanHairBody = HumanHair.prepare(body)
 	_expect(data.is_valid() and data.get_vertex_count() == (body.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size(), "%s: prepare did not read the body" % gender)
 	_expect(HumanHair.prepare(body) == data, "%s: prepare did not keep the body data" % gender)
-	_expect(data.get_shape_count() == body.get_blend_shape_count(), "%s: prepare read %d shapes of %d" % [gender, data.get_shape_count(), body.get_blend_shape_count()])
+	var kept_names: Array[StringName] = _hair_shape_names(body)
+	_expect(kept_names.size() == 6 and data.get_shape_count() == kept_names.size(), "%s: prepare read %d shapes, the body has %d height/weight/muscle shapes" % [gender, data.get_shape_count(), kept_names.size()])
 	var hair: ArrayMesh = HumanHair.build(body, params)
 	if hair == null or hair.get_surface_count() != 1:
 		_fail("%s: build returned no surface" % gender)
@@ -67,10 +68,11 @@ func _check_body(gender: String) -> void:
 	_expect(high < top_y + 0.12, "%s: hair reaches %.2f above the crown" % [gender, high - top_y])
 	_expect(low > top_y - 0.55, "%s: hair reaches %.2f below the crown" % [gender, top_y - low])
 	# the same blend shapes as the body, so the body's sliders move the hair
-	_expect(hair.get_blend_shape_count() == body.get_blend_shape_count() and body.get_blend_shape_count() > 0,
-			"%s: %d blend shapes against the body's %d" % [gender, hair.get_blend_shape_count(), body.get_blend_shape_count()])
-	for i: int in body.get_blend_shape_count():
-		_expect(hair.get_blend_shape_name(i) == body.get_blend_shape_name(i), "%s: blend shape %d is named differently" % [gender, i])
+	# (the face and age keys of the body are not hair blend shapes: they are baked into the body the hair is built on)
+	_expect(hair.get_blend_shape_count() == kept_names.size() and kept_names.size() > 0,
+			"%s: %d blend shapes against the body's %d height/weight/muscle shapes" % [gender, hair.get_blend_shape_count(), kept_names.size()])
+	for i: int in hair.get_blend_shape_count():
+		_expect(hair.get_blend_shape_name(i) == kept_names[i], "%s: blend shape %d is named %s, the body's is %s" % [gender, i, hair.get_blend_shape_name(i), kept_names[i]])
 	# blend shapes are NORMALIZED: full positions, and the normals and tangents of the base (a zero normal delta used to pull hair normals backwards)
 	var base_normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
 	var shape_arrays: Array = hair.surface_get_blend_shape_arrays(0)
@@ -82,9 +84,9 @@ func _check_body(gender: String) -> void:
 			worst = maxf(worst, (shape_normals[i] - base_normals[i]).length())
 		_expect(worst < 0.01, "%s: shape %d normals differ from the base by %.3f" % [gender, s, worst])
 	# the mesh bounds must contain the body-moved hair (the engine grows them from the shape arrays)
-	var tall_index: int = -1
-	for i: int in body.get_blend_shape_count():
-		if body.get_blend_shape_name(i) == &"height_tall":
+	var tall_index: int = -1 # (an index into the HAIR's shapes)
+	for i: int in hair.get_blend_shape_count():
+		if hair.get_blend_shape_name(i) == &"height_tall":
 			tall_index = i
 	_expect(tall_index >= 0, "%s: the body has no height_tall shape" % gender)
 	if tall_index < 0:
@@ -109,7 +111,14 @@ func _check_body(gender: String) -> void:
 		# the same measure on the body: the average vertical move of the vertices of the head (the top 14 cm)
 		var body_move: float = 0.0
 		var head_count: int = 0
-		var body_shape_vertices: PackedVector3Array = (body_shapes[s] as Array)[Mesh.ARRAY_VERTEX]
+		var body_index: int = -1 # (the same shape in the body, by name)
+		for b: int in body.get_blend_shape_count():
+			if body.get_blend_shape_name(b) == hair.get_blend_shape_name(s):
+				body_index = b
+		_expect(body_index >= 0, "%s: the body has no shape %s" % [gender, hair.get_blend_shape_name(s)])
+		if body_index < 0:
+			continue
+		var body_shape_vertices: PackedVector3Array = (body_shapes[body_index] as Array)[Mesh.ARRAY_VERTEX]
 		for i: int in body_vertices.size():
 			if body_vertices[i].y > top_y - 0.14:
 				body_move += body_shape_vertices[i].y - (body_vertices[i].y if body.get_blend_shape_mode() == Mesh.BLEND_SHAPE_MODE_NORMALIZED else 0.0)
@@ -118,7 +127,7 @@ func _check_body(gender: String) -> void:
 		_expect(absf(hair_move - body_move) < 0.02, "%s: shape %d moves the head %.3f m but the hair cap %.3f m" % [gender, s, body_move, hair_move])
 	# the three steps give the same hair as build(), and build_arrays touches no engine object (it may run on a worker thread)
 	var built: Dictionary = HumanHair.build_arrays(data, params)
-	_expect(built.has("arrays") and built.has("blend_arrays") and (built["blend_names"] as PackedStringArray).size() == body.get_blend_shape_count(), "%s: build_arrays result is incomplete" % gender)
+	_expect(built.has("arrays") and built.has("blend_arrays") and (built["blend_names"] as PackedStringArray).size() == kept_names.size(), "%s: build_arrays result is incomplete" % gender)
 	var stepped: ArrayMesh = HumanHair.make_mesh(built)
 	_expect(stepped != null and (stepped.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array) == vertices, "%s: build_arrays + make_mesh differ from build" % gender)
 	var worker_ok: bool = false
@@ -179,6 +188,30 @@ func _check_body(gender: String) -> void:
 		if n.length() < 0.5:
 			zero_normals += 1
 	_expect(zero_normals == 0, "%s: %d zero normals with side_trim 1" % [gender, zero_normals])
+	# a bald head can have a beard (length 0: no head hair and no scalp cap, the beard is still made)
+	var bald_beard: Dictionary = params.duplicate()
+	bald_beard.merge({"length": 0.0, "beard": 1.0, "beard_length": 0.03}, true)
+	var bald_hair: ArrayMesh = HumanHair.build(body, bald_beard)
+	_expect(bald_hair != null and bald_hair.get_surface_count() == 1, "%s: a bald head with a beard made no mesh" % gender)
+	if bald_hair != null and bald_hair.get_surface_count() == 1:
+		var bald_arrays: Array = bald_hair.surface_get_arrays(0)
+		_expect((bald_arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() > 1000, "%s: a bald head's beard has only %d vertices" % [gender, (bald_arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()])
+	var no_hair: Dictionary = params.duplicate()
+	no_hair.merge({"length": 0.0, "beard": 0.0}, true)
+	_expect(HumanHair.build(body, no_hair) == null or HumanHair.build(body, no_hair).get_surface_count() == 0, "%s: a bald head without a beard made a mesh" % gender)
+	# a long curly ribbon hair keeps to the 16 points per guide the simulation holds (it asked for 18 and froze in its rest pose)
+	var curly_long: Dictionary = params.duplicate()
+	curly_long.merge({"length": 0.2, "curl": 0.9, "strands": 0}, true)
+	var curly_hair: ArrayMesh = HumanHair.build(body, curly_long)
+	_expect(curly_hair != null and curly_hair.has_meta(&"hair_guide_steps"), "%s: the curly hair has no hair_guide_steps meta" % gender)
+	if curly_hair != null and curly_hair.has_meta(&"hair_guide_steps"):
+		_expect(int(curly_hair.get_meta(&"hair_guide_steps")) <= 16, "%s: %d points per guide, the simulation holds 16" % [gender, int(curly_hair.get_meta(&"hair_guide_steps"))])
+	# the vertex budget: an extreme request is built again with fewer hairs instead of coming out bald (the simulation draws 65,535 groups of 64 vertices)
+	var huge: Dictionary = params.duplicate()
+	huge.merge({"locks": 9000, "strands": 0, "beard": 1.0, "beard_length": 0.1, "curl": 0.5, "length": 0.3}, true)
+	var huge_hair: ArrayMesh = HumanHair.build(body, huge)
+	var huge_count: int = (huge_hair.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() if huge_hair != null and huge_hair.get_surface_count() > 0 else 0
+	_expect(huge_count > 0 and huge_count <= 4194240, "%s: an extreme request made %d vertices (limit 4194240)" % [gender, huge_count])
 	# how long the hair takes (the docs said "a few ms": measured here; the body is already read, so this is the growing alone)
 	var timings: String = ""
 	for style: Array in [["default", {}], ["buzz", {"length": 0.025, "locks": 2600}], ["curly", {"curl": 0.9, "volume": 1.3}], ["long", {"length": 0.3}]]:
@@ -192,8 +225,29 @@ func _check_body(gender: String) -> void:
 		timings += " %s %.0f+%.0f ms" % [style[0], grow_ms, (Time.get_ticks_usec() - start) / 1000.0]
 		_expect(grow_ms < 1500.0, "%s: %s hair took %.0f ms to grow" % [gender, style[0], grow_ms])
 	print("%s build times (grow + make mesh):%s" % [gender, timings])
+	for amount: float in [0.0, 0.85]:
+		var beard_params: Dictionary = params.duplicate()
+		beard_params.merge({"beard": amount, "beard_length": 0.02}, true)
+		if OS.get_environment("HAIR_TIMES") != "":
+			beard_params["cover_debug"] = 1.0   # (HAIR_TIMES=1: the builder prints its own laps)
+		var beard_start: int = Time.get_ticks_usec()
+		var beard_built: Dictionary = HumanHair.build_arrays(data, beard_params)
+		var beard_grow: float = (Time.get_ticks_usec() - beard_start) / 1000.0
+		beard_start = Time.get_ticks_usec()
+		HumanHair.make_mesh(beard_built)
+		print("%s beard %.2f: grow %.0f ms + mesh %.0f ms" % [gender, amount, beard_grow, (Time.get_ticks_usec() - beard_start) / 1000.0])
 	print("%s: %d vertices, hair y %.3f .. %.3f (crown %.3f), long hair down to %.3f" % [gender, vertices.size(), low, high, top_y, long_low])
 	root.free()
+
+
+# The body's blend shapes the hair keeps: height_, weight_ and muscle_ (the face and age keys are baked into the body the hair is built on).
+func _hair_shape_names(body: ArrayMesh) -> Array[StringName]:
+	var names: Array[StringName] = []
+	for i: int in body.get_blend_shape_count():
+		var shape_name: String = String(body.get_blend_shape_name(i))
+		if shape_name.begins_with("height_") or shape_name.begins_with("weight_") or shape_name.begins_with("muscle_"):
+			names.append(StringName(shape_name))
+	return names
 
 
 func _find_mesh(node: Node) -> ArrayMesh:

@@ -1,5 +1,6 @@
 #include "hair_sim_native.h"
 
+#include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/array_mesh.hpp>
@@ -669,6 +670,13 @@ void HairSim::step(double p_dt, const Transform3D &p_xf) {
 		c.b = p_xf.xform(Vector3(capsules[i + 3], capsules[i + 4], capsules[i + 5]));
 		c.r = double(capsules[i + 6]) * scale + collision_margin;
 		sd.world.push_back(c);
+	}
+	if (steps > kMaxSteps) {
+		static bool warned = false; // (once: a guide with more points than the buffers hold is left out of the simulation and keeps its rest pose)
+		if (!warned) {
+			warned = true;
+			UtilityFunctions::push_warning("HairSim: ", steps, " points per guide, the simulation holds ", kMaxSteps, ": the hair is not simulated");
+		}
 	}
 	if (guide_count < 256 || steps > kMaxSteps) {
 		for (int g = 0; g < guide_count && steps <= kMaxSteps; g++) {

@@ -1,5 +1,6 @@
 #include <chrono>
 #include "human_hair_native.h"
+#include "hair_sim_native.h"
 
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -26,6 +27,9 @@
 namespace godot {
 
 namespace {
+
+// measured: a build of 5,494,653 vertices needed 85,854 compute groups of 64 vertices and the device allows 65,535 per dispatch: 65,535 x 64 vertices for the whole mesh (head hair, beard, cap)
+constexpr int MAX_MESH_VERTICES = 4194240;
 
 // A small deterministic dice (SplitMix64): the same numbers on every engine build, whatever its float precision.
 struct Dice {
@@ -173,6 +177,16 @@ static bool is_hair_shape(const StringName &p_name) {
 	return name.begins_with("height_") || name.begins_with("weight_") || name.begins_with("muscle_");
 }
 
+static int hair_shape_count(const Ref<ArrayMesh> &p_mesh) {
+	int count = 0;
+	for (int s = 0; s < p_mesh->get_blend_shape_count(); s++) {
+		if (is_hair_shape(p_mesh->get_blend_shape_name(s))) {
+			count++;
+		}
+	}
+	return count;
+}
+
 Ref<HumanHairBody> HumanHairBody::from_mesh(const Ref<ArrayMesh> &p_mesh) {
 	Ref<HumanHairBody> body;
 	body.instantiate();
@@ -258,7 +272,8 @@ Dictionary HumanHair::default_params() {
 	d["tousle"] = 0.0; // 0..1: some locks on the top of the head lift off the scalp and arch over (a tousled pile), the others lie as combed
 	d["wet"] = 0.0;  // 0..1: wet hair: the hairs of a lock stick together and end in a point, it hangs heavy and flat, fewer stray hairs, smooth waves
 	d["back_length"] = 0.0; // 0..1: the hair behind the crown is longer than the top (up to +60%), a layered cut
-	d["beard"] = 0.0;        // 0..1: a short beard and moustache on the jaw, cheeks and chin (0: none; the amount is the density)
+	d["beard_follicles"] = 15000.0; // how many beard follicles (a lower number is a quick preview)
+	d["beard"] = 0.0;        // a beard and moustache on the jaw, cheeks and chin: 0 none, above 0 the whole beard area is covered (the value is not a density any more)
 	d["beard_length"] = 0.012; // metres
 	d["beard_curl"] = 0.0;     // 0..1: the beard hairs coil (0: straight with a small bend; 1: tight curls). More points per hair above 0.15.
 	d["neck_beard"] = 0.0;     // 0..1: the beard continues under the jaw onto the neck (the neck beard region; 0 = it stops at the jaw)
@@ -288,7 +303,7 @@ Ref<HumanHairBody> HumanHair::prepare(const Ref<ArrayMesh> &p_body, bool p_refre
 	if (!p_refresh && p_body->has_meta(meta_key)) {
 		Ref<HumanHairBody> cached = p_body->get_meta(meta_key);
 		// (the meta survives duplicate(): a copy with other vertices or shapes must not get the old read)
-		if (cached.is_valid() && cached->get_vertex_count() == int64_t(p_body->surface_get_array_len(0)) && cached->get_shape_count() == int64_t(p_body->get_blend_shape_count())) {
+		if (cached.is_valid() && cached->get_vertex_count() == int64_t(p_body->surface_get_array_len(0)) && cached->get_shape_count() == int64_t(hair_shape_count(p_body))) { // (the hair keeps the height, weight and muscle shapes only: the face and age keys are baked in)
 			return cached;
 		}
 	}
@@ -382,8 +397,10 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	if (p_params.has(StringName("seed"))) {
 		seed = uint64_t(int64_t(p_params[StringName("seed")]));
 	}
-	if (param(p_params, "length", 0.12) < 0.005) {
-		return built; // a length of (nearly) zero is a bald head: no hair, no scalp layer
+	// a length of (nearly) zero is a bald head: no head hair and no scalp layer, but the beard is still made (a bald man with a long beard)
+	const bool bald = param(p_params, "length", 0.12) < 0.005;
+	if (bald && param(p_params, "beard", 0.0) <= 0.0) {
+		return built;
 	}
 	const double length = std::max(0.01, param(p_params, "length", 0.12));
 	const int requested_locks = int(Math::clamp(param(p_params, "locks", 2600), 1.0, 9000.0));
@@ -400,6 +417,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double wetness = Math::clamp(param(p_params, "wet", 0.0), 0.0, 1.0);
 	const double tousle = Math::clamp(param(p_params, "tousle", 0.0), 0.0, 1.0);
 	const double cover = Math::clamp(param(p_params, "cover", 0.0), 0.0, 1.0);
+	const int beard_debug = int(param(p_params, "beard_debug", 0.0)); // (bit 4: the old straight moustache trim line, bit 2: no pull-back from the mouth: to find what leaves bare skin beside the lips)
 	const bool cover_debug = param(p_params, "cover_debug", 0.0) > 0.5;
 	const double volume = std::max(0.0, param(p_params, "volume", 1.0)) * (1.0 - 0.45 * wetness); // (wet hair is heavy: it lies on the head)
 	const double curl = std::max(0.0, param(p_params, "curl", 0.0));
@@ -416,7 +434,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double wave = Math::clamp(param(p_params, "wave", 0.0), 0.0, 1.0);
 	const double gaps = Math::clamp(param(p_params, "gaps", 0.0), 0.0, 1.0);
 	const double strips = Math::clamp(param(p_params, "strips", 0.0), 0.0, 1.0);
-	const double beard = Math::clamp(param(p_params, "beard", 0.0), 0.0, 1.0);
+	const double beard = param(p_params, "beard", 0.0) > 0.0 ? 1.0 : 0.0;   // (on or off: a beard always covers the whole beard area; the amount slider is gone, patches of bare skin may come later)
 	const double back_long = Math::clamp(param(p_params, "back_length", 0.0), 0.0, 1.0);
 	const double beard_length = Math::clamp(param(p_params, "beard_length", 0.012), 0.002, 0.12);
 	const double beard_zone_value = param(p_params, "beard_zone", 0.0);
@@ -568,6 +586,9 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	// --- the cap: the scalp triangles lifted a hair's breadth, fading out toward the hairline (alpha), blue = 1 marks it for the shader
 	std::vector<int> cap_index(vertex_count, -1);
 	for (int t : scalp_triangles) {
+		if (bald) {
+			break; // (no scalp layer on a bald head)
+		}
 		for (int k = 0; k < 3; k++) {
 			const int v = indices[t + k];
 			if (cap_index[v] < 0) {
@@ -598,12 +619,12 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	// single hairs are many: fewer points each (a hair is nearly straight over a few millimetres) keeps the vertex count in check
 	// `points` (3..16) sets the points per hair directly (2 vertices each): fewer is cheaper, more drapes smoother. 0 = automatic.
 	const int points_param = int(Math::clamp(param(p_params, "points", 0), 0.0, 16.0));
-	const int steps = points_param >= 3 ? points_param : (strands > 0 ? std::min(steps_plain, 9) : steps_plain);
+	const int steps = std::min(HairSim::MAX_POINTS, points_param >= 3 ? points_param : (strands > 0 ? std::min(steps_plain, 9) : steps_plain)); // (HairSim holds 16 points per guide: a curly ribbon of 10 cm and more asked for 18 and was skipped by the simulation without a word)
 	if (strands > 0) {
 		// a guard against too many hairs: the simulation draws the hair with one compute group per few thousand vertices and the device allows 65,535 groups; a request of 560,000+ hairs
 		// (a bad guess of hairs per lock) built so many vertices that the simulation failed and the head came out bald. Keep the vertex count under a budget by lowering the hairs per lock.
 		// measured: the failing build had 5,494,653 vertices in 85,854 groups = 64 vertices per group, so the limit is 65,535 x 64 = 4,194,240 vertices for the whole mesh (head hair, beard, cap)
-		const double beard_vertices = 500000.0 * Math::clamp(param(p_params, "beard", 0.0), 0.0, 1.0);
+		const double beard_vertices = 500000.0 * (param(p_params, "beard", 0.0) > 0.0 ? 1.0 : 0.0);
 		const double max_vertices = Math::clamp(param(p_params, "max_vertices", 4150000.0), 200000.0, 12000000.0) - beard_vertices;
 		const double expected_vertices = double(lock_count) * 1.4 * double(strands) * 0.8 * 2.0 * double(steps); // (1.4 guides per lock is the least seen: the real count varies from 1.4 to 2.4 with the style, so this only catches absurd requests; the lab checks the real vertex count after the build)
 		if (expected_vertices > max_vertices) {
@@ -616,11 +637,11 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double front_density = 0.15; // (fixed: a head has the same follicles whatever the style; the style only changes how the hairs lie)
 	(void)fringe; // (a quiff stands up and leaves the front hairline bare too)
 	const bool use_extras = false; // (the style-dependent extras are off: only the fixed follicle set below)
-	const int fringe_extra = int(double(lock_count) * (1.5 + 3.0 * front_density) * (1.0 + 1.5 * quiff));
-	const int crown_extra = lock_count * 6; // (always: the whorl is where every direction of the flow meets, and a few locks there are needed whatever else is off) // extra locks around the crown: the hair there splays out from the whorl and leaves slits of skin
+	const int fringe_extra = bald ? 0 : int(double(lock_count) * (1.5 + 3.0 * front_density) * (1.0 + 1.5 * quiff));
+	const int crown_extra = bald ? 0 : lock_count * 6; // (always: the whorl is where every direction of the flow meets, and a few locks there are needed whatever else is off) // extra locks around the crown: the hair there splays out from the whorl and leaves slits of skin
 	// roots by dart throwing (the "Poisson" spacing the Blender hair add-on uses): a root closer than `min_gap` to an accepted one is dropped. Roots chosen purely at random clump and leave gaps
 	// (the bare specks), at the same number of locks. The main locks draw up to 3x as often, until `lock_count` are accepted; the extra locks come after.
-	const int main_draws = lock_count * 3;
+	const int main_draws = bald ? 0 : lock_count * 3;
 	const double min_gap = 0.7 * std::sqrt(total_area / double(std::max(lock_count, 1)));
 	std::unordered_map<int64_t, std::vector<Vector3>> root_cells;
 	auto cell_key = [&](int cx, int cy, int cz) { return (int64_t(cx) * 73856093LL) ^ (int64_t(cy) * 19349663LL) ^ (int64_t(cz) * 83492791LL); };
@@ -760,12 +781,12 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		{
 			// the crown: hair within 9 cm of it (more and more toward it) goes the same way (back), so it covers the crown itself; fanning out of one point left a bare patch there
 			const double crown_dist = std::hypot(double(root.x) - double(crown.x), double(root.z) - double(crown.z));
-			const double crown_core = Math::clamp(1.0 - crown_dist / 0.09, 0.0, 1.0);
+			const double crown_core = Math::clamp(1.0 - crown_dist / 0.06, 0.0, 1.0);   // (6 cm, was 9: the pull toward "back" is what hid the whorl)
 			if (crown_core > 0.0) {
 				const Vector3 back_dir(0.0f, 0.0f, -1.0f);
 				Vector3 along = back_dir - normal * real_t(back_dir.dot(normal));
 				if (along.length() > 0.25f) {
-					flow = flow.lerp(along.normalized(), real_t(std::min(0.95, 1.4 * crown_core))).normalized();
+					flow = flow.lerp(along.normalized(), real_t(std::min(0.4, 0.8 * crown_core))).normalized();   // (at most 40%: the spiral above stays visible)
 				}
 			}
 		}
@@ -995,6 +1016,17 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const Vector3 push = (side * real_t(std::cos(drift_angle)) + up * real_t(0.45 * std::sin(drift_angle))) * real_t(amount * (0.8 * s + sway * ramp)); // (mostly sideways: a drift away from the head puffed the top up)
 				points[k] = spine[k] + push;
 				grid.push_out(points[k], clearance);
+			}
+		}
+
+		// the sideways wobble of messy and wet hair is sampled by few points: its corners made the hair look like bent wire. A couple of smoothing passes (the root and the tip stay)
+		// turn the corners into curves (an unsmoothed strand turns by 60 degrees and more between two points).
+		if (messy > 0.2 || wetness > 0.3 || tousle > 0.5) {
+			for (int pass = 0; pass < 2; pass++) {
+				const std::vector<Vector3> before = points;
+				for (int k = 1; k + 1 < steps; k++) {
+					points[k] = before[k - 1] * 0.25f + before[k] * 0.5f + before[k + 1] * 0.25f;
+				}
 			}
 		}
 
@@ -1262,8 +1294,11 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	lap("locks done");
 	const auto beard_clock_start = std::chrono::steady_clock::now();
 	const int vertices_before_beard = int(out_vertices.size());
+	std::vector<float> beard_mask;
+	std::vector<Vector3> beard_roots; // where each beard follicle is on the skin (a debug view in the lab: mesh meta "hair_beard_roots")
+	std::vector<float> beard_skin(size_t(vertex_count), 0.0f); // the beard hairs rooted at each body vertex (the skin under a beard is darkened: it reads as stubble, not as pale dust between a few hairs)
 	// --- the beard: short single hairs on the lower face (static: they do not simulate), from follicles spread by area over the jaw, chin and cheeks, growing down and out along the skin
-	if (beard > 0.0) {
+	if (true) { // (also with beard 0: the follicles and the beard area are made for the lab's debug views; with no amount they grow no hairs)
 		const double face_scale = Math::clamp(half_width / 0.0883, 0.85, 1.15); // (the face features sit at distances from the eye line that go with the size of the head: the numbers below are for the male body)
 		std::vector<int> beard_triangles;
 		std::vector<double> beard_area;
@@ -1281,7 +1316,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			const double sideburn_c = Math::clamp((ax - 0.065) / 0.015, 0.0, 1.0) * Math::clamp((centre_z + 0.2 * half_width - double(c.z)) / 0.04, 0.0, 1.0); // (the sideburn: in front of the ear the beard goes up to the temple)
 			const double upper_base = -0.047 + 0.042 * Math::clamp((ax - 0.03) / 0.04, 0.0, 1.0);
 			const double upper = upper_base + std::max(0.0, 0.028 - upper_base) * sideburn_c; // the cheek line rises toward the ears (and up to the temple in front of the ear)
-			if (dy > upper || dy < beard_floor(double(c.z)) || ax > half_width * 0.98) {
+			if (dy > upper || dy < beard_floor(double(c.z)) || ax > half_width * 0.8) { // (more than 0.8 half widths out is the ear)
 				return false;
 			}
 			if (n.z < -0.3f && n.y > -0.3f) {
@@ -1295,18 +1330,46 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					return false; // (a goatee: no cheeks, no jaw line)
 				}
 			}
-			const double lip_x = ax / 0.03, lip_y = (dy + 0.072) / 0.011; // (lips; the band between nose and lips gets the moustache)
-			if (lip_x * lip_x + lip_y * lip_y < 1.0) {
-				return false; // (the mouth: no hair on the lips)
-			}
+			// (the lips are NOT cut out of the region here: the region is blurred over the mesh, and a hole there faded the beard for a centimetre around the mouth, a bare band above and below the lips;
+			// the follicles keep out of the lips themselves, below)
 			return true;
 		};
+		// the region as a smooth field: the rules above are tested at every body vertex (0 or 1), then blurred over the mesh (a few passes over the neighbours), so the edge of the beard is a
+		// soft gradient that follows the surface, not the staircase of whole triangles that a per-triangle test gave. The follicles are drawn with the interpolated value as their chance.
+		std::vector<float> region_mask(size_t(vertex_count), 0.0f);
+		for (int i = 0; i < vertex_count; i++) {
+			region_mask[size_t(i)] = in_beard_region(vertices[i], normals[i]) ? 1.0f : 0.0f;
+		}
+		for (int pass = 0; pass < 4; pass++) {
+			std::vector<float> sum(size_t(vertex_count), 0.0f), count(size_t(vertex_count), 0.0f);
+			for (int t = 0; t + 2 < index_count; t += 3) {
+				for (int e = 0; e < 3; e++) {
+					const int from = indices[t + e], to = indices[t + (e + 1) % 3];
+					sum[size_t(from)] += region_mask[size_t(to)];
+					count[size_t(from)] += 1.0f;
+					sum[size_t(to)] += region_mask[size_t(from)];
+					count[size_t(to)] += 1.0f;
+				}
+			}
+			for (int i = 0; i < vertex_count; i++) {
+				if (count[size_t(i)] > 0.0f) {
+					region_mask[size_t(i)] = 0.4f * region_mask[size_t(i)] + 0.6f * sum[size_t(i)] / count[size_t(i)];
+				}
+			}
+		}
+		beard_mask = region_mask;
+		// no beard on the ears: the lateral vertices (more than 0.8 half widths from the middle, measured: all of them lie at the ear, behind the head centre) get no beard, the blur
+		// above must not carry it over there either
+		for (int i = 0; i < vertex_count; i++) {
+			if (std::abs(double(vertices[i].x)) > 0.8 * half_width && (double(vertices[i].z) - centre_z) / half_width < 0.1) {
+				region_mask[size_t(i)] = 0.0f;
+			}
+		}
 		for (int t = 0; t + 2 < index_count; t += 3) {
 			const int a = indices[t], b = indices[t + 1], c = indices[t + 2];
-			const Vector3 centre = (vertices[a] + vertices[b] + vertices[c]) / 3.0f;
-			const Vector3 n = (normals[a] + normals[b] + normals[c]).normalized();
-			if (in_beard_region(centre, n)) {
-				beard_total += 0.5 * (vertices[b] - vertices[a]).cross(vertices[c] - vertices[a]).length();
+			const float average = (region_mask[size_t(a)] + region_mask[size_t(b)] + region_mask[size_t(c)]) / 3.0f;
+			if (std::max(region_mask[size_t(a)], std::max(region_mask[size_t(b)], region_mask[size_t(c)])) > 0.15f) {
+				beard_total += 0.5 * (vertices[b] - vertices[a]).cross(vertices[c] - vertices[a]).length() * double(average);
 				beard_triangles.push_back(t);
 				beard_area.push_back(beard_total);
 			}
@@ -1315,15 +1378,87 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			godot::UtilityFunctions::print("HUMAN_BEARD half_width ", half_width, " eye_drop ", top_y - eye_y, " head height ", top_y, " z_front ", z_front, " centre_z ", centre_z);
 		}
 		if (!beard_triangles.empty()) {
+			// the beard area itself (a debug view in the lab: mesh metas "hair_beard_area" (three points per triangle, lifted 0.6 mm off the skin) and "hair_beard_area_colors": per point the colour of its
+			// region (after the reference chart: sideburns pink, moustache light blue, cheeks green, connectors yellow, soul patch purple, chin orange, jawline blue, neck lilac) and the blurred mask as alpha)
+			PackedVector3Array area_points;
+			PackedColorArray area_colors;
+			auto region_colour = [&](const Vector3 &c, const Vector3 &n) {
+				const double cdy = (double(c.y) - eye_y) / face_scale;
+				const double cax = std::abs(double(c.x));
+				const double cside = Math::clamp((cax - 0.065) / 0.015, 0.0, 1.0) * Math::clamp((centre_z + 0.2 * half_width - double(c.z)) / 0.04, 0.0, 1.0);
+				if (cdy < -0.125 || (n.y < -0.35f && cdy < -0.1)) {
+					return Color(0.7f, 0.45f, 1.0f); // (neck beard)
+				}
+				if (cside > 0.12) {
+					return Color(1.0f, 0.4f, 0.62f); // (sideburns: the strip in front of the ear)
+				}
+				if (cax < 0.034 && cdy > -0.076 && cdy < -0.042) {
+					return Color(0.3f, 0.78f, 1.0f); // (moustache: the width of the mouth, above the upper lip)
+				}
+				if (cax < 0.011 && cdy < -0.08 && cdy > -0.102) {
+					return Color(0.9f, 0.1f, 0.75f); // (soul patch: small, just under the lower lip)
+				}
+				if (cax < 0.03 && cdy < -0.078) {
+					return Color(1.0f, 0.55f, 0.08f); // (chin / goatee: a rounded patch)
+				}
+				if (cax >= 0.03 && cax < 0.04 && cdy > -0.13 && cdy < -0.05) {
+					return Color(1.0f, 0.92f, 0.05f); // (connectors: thin strips from the moustache down the mouth corners to the jaw)
+				}
+				if (cdy < beard_floor(double(c.z)) + 0.02) {
+					return Color(0.15f, 0.35f, 1.0f); // (jawline: a band along the lower jaw)
+				}
+				if (cside > 0.5) {
+					return Color(1.0f, 0.45f, 0.65f); // (sideburns)
+				}
+				return Color(0.25f, 0.8f, 0.35f); // (cheeks / beard body)
+			};
+			// the region colours blurred over the mesh too (the rules switch at hard lines; the chart's regions blend into each other)
+			std::vector<Color> area_vertex_colour(static_cast<size_t>(vertex_count), Color(0, 0, 0, 1));
+			for (int i = 0; i < vertex_count; i++) {
+				area_vertex_colour[size_t(i)] = region_colour(vertices[i], normals[i]);
+			}
+			for (int pass = 0; pass < 0; pass++) {
+				std::vector<Color> sum(size_t(vertex_count), Color(0, 0, 0, 0));
+				std::vector<float> count(size_t(vertex_count), 0.0f);
+				for (int t = 0; t + 2 < index_count; t += 3) {
+					for (int e = 0; e < 3; e++) {
+						const int from = indices[t + e], to = indices[t + (e + 1) % 3];
+						sum[size_t(from)] += area_vertex_colour[size_t(to)];
+						count[size_t(from)] += 1.0f;
+						sum[size_t(to)] += area_vertex_colour[size_t(from)];
+						count[size_t(to)] += 1.0f;
+					}
+				}
+				for (int i = 0; i < vertex_count; i++) {
+					if (count[size_t(i)] > 0.0f) {
+						area_vertex_colour[size_t(i)] = area_vertex_colour[size_t(i)] * 0.4f + sum[size_t(i)] * (0.6f / count[size_t(i)]);
+					}
+				}
+			}
+			for (const int t : beard_triangles) {
+				for (int c = 0; c < 3; c++) {
+					const int vi = indices[t + c];
+					area_points.push_back(vertices[vi] + normals[vi] * 0.0006f);
+					Color col = area_vertex_colour[size_t(vi)];
+					const double fade = Math::clamp((double(region_mask[size_t(vi)]) - 0.1) / 0.5, 0.0, 1.0);
+					col.a = float(0.65 * fade);
+					area_colors.push_back(col);
+				}
+			}
+			built["beard_area"] = area_points;
+			built["beard_area_colors"] = area_colors;
 			current_guide = -1; // (static hairs)
 			int beard_hair_total = 0;
 			// (no flat layer under the beard: a dim dot around each follicle instead, below)
-			const int follicles = int(30000.0 * beard);
+			// a fixed number of follicles whatever the beard amount (a person's follicles do not change with the slider): the sampling goes on until 15,000 have been placed, spread over the whole
+			// beard area with the region densities and edge fades below (they only decide WHERE the follicles are, not how many). The amount sets how many hairs each follicle grows.
+			const int follicle_target = int(Math::clamp(param(p_params, "beard_follicles", 15000.0), 200.0, 30000.0)); // (15,000: the lab asks for fewer while a slider is dragged, a quick preview)
+			const int follicles = follicle_target * 60; // (attempts: the most that are tried, in case a tiny region cannot take them all)
 			// points per hair: a coil needs points (3 can only bend), and so does a long beard that hangs (the longest tuft is 2.5 x the length slider)
 			const int curl_steps = beard_curl > 0.55 ? 6 : (beard_curl > 0.15 ? 5 : 3);
 			const int hang_steps = beard_length > 0.07 ? 9 : (beard_length > 0.04 ? 7 : (beard_length > 0.025 ? 5 : (beard_length > 0.015 ? 4 : 3)));
 			const int beard_steps = std::max(curl_steps, hang_steps);
-			for (int f = 0; f < follicles; f++) {
+			for (int f = 0; f < follicles && int(beard_roots.size()) < follicle_target; f++) {
 				Dice dice(seed + 0xBEA2DULL + uint64_t(f) * 0x2545F4914F6CDD1DULL);
 				const double pick = dice.unit() * beard_total;
 				const int tri = int(std::lower_bound(beard_area.begin(), beard_area.end(), pick) - beard_area.begin());
@@ -1344,6 +1479,17 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					bound = ic;
 				}
 				const double dy = (double(root.y) - eye_y) / face_scale;
+				{
+					const float mask_here = region_mask[size_t(ia)] * float(aw) + region_mask[size_t(ib)] * float(u) + region_mask[size_t(ic)] * float(w);
+					const double keep = Math::clamp((double(mask_here) - 0.25) / 0.5, 0.0, 1.0);   // (a soft edge: the chance of a follicle falls from 1 to 0 over the blurred border)
+					if (dice.unit() > keep * keep * (3.0 - 2.0 * keep)) {
+						continue;
+					}
+					const double lip_fx = std::abs(double(root.x)) / 0.03, lip_fy = (dy + 0.072) / 0.011;
+					if (lip_fx * lip_fx + lip_fy * lip_fy < 1.0) {
+						continue; // (the mouth itself: no hair on the lips; the blurred mask would let some in)
+					}
+				}
 				const double sideburn_r = Math::clamp((std::abs(double(root.x)) - 0.065) / 0.015, 0.0, 1.0) * Math::clamp((centre_z + 0.2 * half_width - double(root.z)) / 0.04, 0.0, 1.0);
 				const double upper_edge_base = -0.047 + 0.042 * Math::clamp((std::abs(double(root.x)) - 0.03) / 0.04, 0.0, 1.0);
 				const double upper_edge = upper_edge_base + std::max(0.0, 0.028 - upper_edge_base) * sideburn_r;
@@ -1351,9 +1497,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const bool in_moustache = std::abs(double(root.x)) < 0.04 && dy > -0.075 && dy < -0.044; // (the band between the nose and the lips)
 				const double edge_plain = std::min(std::min(Math::clamp((upper_edge - dy) / 0.014, 0.0, 1.0), Math::clamp((dy - beard_floor(double(root.z))) / 0.05, 0.3, 1.0)), std::pow(Math::clamp((double(root.z) - (centre_z - 0.12 * half_width)) / (0.9 * half_width), 0.0, 1.0), 0.8)); // (a soft edge along the cheek line above, the jaw below and toward the ear) // (the cheek line: shorter and thinner right at the edge)
 				const double edge = in_moustache ? std::max(edge_plain, 0.95 * Math::clamp((upper_edge - dy) / 0.012, 0.0, 1.0)) : edge_plain; // (the moustache is full right up to the nose, not faded like the cheek line)
-				if (dice.unit() > 0.2 + 0.8 * edge * edge) {
-					continue;
-				}
+				// (no follicle is dropped at the edge or in a sparse region any more: the whole marked area must be covered; the edge only makes the hairs shorter, below, and the blurred region mask above is the border)
 				// per-region hair properties (after the way beard hair differs from scalp hair: coarser, less dense, irregular, and different on every part of the face):
 				// density (share of follicles kept), width (x), curl (x). The chin is dense and coarse, the upper cheeks fine and sparse, the neck coarse, sparse and curly.
 				double region_density = 1.0;
@@ -1372,19 +1516,15 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					region_density = 0.65;
 					region_width = 0.8;    // (upper cheek: fine and sparse)
 				}
-				if (region_density < 1.0 && dice.unit() > region_density) {
-					continue;
-				}
 				if (in_moustache) {
 					// a tapered moustache: full at the middle, thinning out toward the mouth corners and toward the nose, so it is an arch and not a block
 					const double ax_m = std::abs(double(root.x));
 					const double taper = 1.0 - 0.45 * Math::clamp((ax_m - 0.015) / 0.025, 0.0, 1.0);   // (thick: it only thins a little toward the corners, where it merges with the cheek hair)
 					const double band_top = Math::clamp((-0.041 - dy) / 0.008, 0.0, 1.0);
-					if (dice.unit() > taper * (0.5 + 0.5 * band_top)) {
-						continue;
-					}
+					(void)taper;
+					(void)band_top;
 				}
-				{
+				if (beard > 0.0) {
 					// a dim dot of hair colour on the skin around this follicle (about 2 mm): the shadow of the roots, so the skin between the hairs is not pale but the paint is only where there are hairs
 					Vector3 axis_u = normal.cross(Vector3(0.0f, 1.0f, 0.0f));
 					if (axis_u.length() < 1e-3f) {
@@ -1412,9 +1552,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				if (!in_moustache && dy < -0.07 && !(std::abs(double(root.x)) < 0.012 && dy > -0.1)) {
 					// the beard does not start with a straight cut under the lower lip: its presence rises over ~2.5 cm away from the mouth (the soul patch is kept full)
 					const double mouth_r = std::hypot(std::abs(double(root.x)) / 0.034, (dy + 0.072) / 0.014);
-					if (dice.unit() > Math::clamp((mouth_r - 1.0) / 0.9, 0.2, 1.0)) {
-						continue;
-					}
+					(void)mouth_r; // (no follicle dropped here either: the hairs just start shorter under the lip, below)
 				}
 				const bool soul_patch = std::abs(double(root.x)) < 0.012 && dy < -0.08 && dy > -0.1;   // (the small patch under the lower lip: full length, it is a region of its own)
 				const double below_lip = soul_patch ? 1.0 : Math::clamp(((dy + 0.072) / 0.011 + 1.0) / 1.6, 0.0, 1.0); // (0 at the lower lip, 1 about 1.8 cm under it: right under the lip the hairs are short, they would lie across the mouth)
@@ -1423,7 +1561,8 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const double jaw_band = Math::clamp(1.0 - (dy - beard_floor(double(root.z))) / 0.04, 0.0, 1.0);
 				const double gradient = 1.0 + 1.5 * chin_tuft + 0.25 * jaw_band;
 				const double ear_fade = Math::clamp((double(root.z) - (centre_z - 0.12 * half_width)) / (0.6 * half_width), 0.35, 1.0);   // (toward the ear the hairs get shorter: a soft end, not a cut)
-				const double hair_length = beard_length * gradient * ear_fade * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (0.45 + 0.55 * below_lip) * (in_moustache ? 1.35 : 1.0) * (in_moustache ? 1.0 : 1.0);
+				double hair_length = beard_length * gradient * ear_fade * dice.range(0.5, 1.6) * (0.5 + 0.5 * edge) * (0.75 + 0.25 * below_lip) * (in_moustache ? 1.35 : 1.0) * (in_moustache ? 1.0 : 1.0);
+				hair_length = std::max(hair_length, 0.0004 + 0.5 * beard_length); // (a floor that goes with the slider: a 1-2 day stubble (1-2 mm) stays that short; a flat 7 mm floor made every beard at least a week old) // (every follicle shows a hair: the edge fades, the ear fade and the lip fade made hairs of 1-2 mm that were thinner than a pixel, so follicles looked empty)
 				// the growth direction (a field over the face): on the cheeks down and a little back toward the ear, under the jaw down and forward toward the chin, on the chin down and out,
 				// on the moustache band outward from the middle (and down); each follicle's hairs fan out a little. The field is projected onto the skin.
 				const double ax_root = std::abs(double(root.x));
@@ -1459,7 +1598,12 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const double big_bend = (big_h - std::floor(big_h) - 0.5) * 2.0;
 				const double lock_bend = Math::clamp((lock_hash(1.0) - 0.5) * 2.0 * 0.6 + big_bend * 0.9, -1.4, 1.4);       // -1.4..1.4: which way and how much the lock leans
 				const double lock_light = lock_hash(2.0);
-				const int hairs = in_moustache ? 8 : int(std::round(6.0 * std::max(1.0, region_density)));
+				// hairs per follicle: about 4 (5 on the moustache) at amount 1, fewer below it, down to none: the fraction is a chance, so a tiny amount is a few hairs spread over the follicles,
+				// not one hair on every follicle (an amount of 0.01 made a full beard)
+				const double hairs_exact = (in_moustache ? 5.0 : 4.0 * region_density) * beard;
+				const int hairs = beard <= 0.0 ? 0 : std::max(1, int(std::round(hairs_exact))); // (every follicle grows at least one hair: the whole area is covered, the amount makes it thicker)
+				beard_skin[size_t(bound)] += float(hairs);
+				beard_roots.push_back(root);
 				for (int h = 0; h < hairs; h++) {
 					beard_hair_total++;
 					std::vector<Vector3> bp;
@@ -1475,7 +1619,15 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						const double skin_hold = hair_length < 0.03 ? 0.12 : (hair_length < 0.06 ? 0.12 * (1.0 - along_hair) : 0.0);   // (stiff short hair rests on the skin; a long one hangs free)
 						dir = (dir - normal * real_t(dir.dot(normal) * skin_hold)).normalized();
 						position += dir * real_t(seg);
-						grid.push_out(position, 0.0010);
+						if (hair_length < 0.03) {
+							// a short hair stays near its root: keep it above the skin plane there (one dot product; the grid search below looks in 27 hash cells per point and was most of the beard's build time)
+							const double above = double((position - root).dot(normal));
+							if (above < 0.0010) {
+								position += normal * real_t(0.0010 - above);
+							}
+						} else {
+							grid.push_out(position, 0.0010);
+						}
 						bp.push_back(position);
 					}
 					if (beard_curl > 0.0) {
@@ -1510,8 +1662,8 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 					}
 					// a trimmed moustache: men who wear one trim it above the lip so they can eat; no hair of the moustache or the cheeks may reach below the trim line (the top edge of the upper lip),
 					// whatever its length: the hair is cut where it would cross the line (a clean straight edge, like scissors)
-					if (std::abs(double(root.x)) < 0.045 && dy > -0.075) {
-						const double trim_line = -0.066;   // (below the eye line, in face scale: measured on the render: the red of the upper lip starts at about -0.073, so the trim is 7 mm above it)
+					if ((beard_debug & 4) && std::abs(double(root.x)) < 0.045 && dy > -0.0705) { // (off by default: the trim cut every moustache hair at one straight line, which left a strip of bare skin and a hard edge at the sides of the lips; bit 4 brings it back) // (only hairs rooted above the line: a root below it folded to nothing, a bare strip of skin beside the lips)
+						const double trim_line = -0.070;   // (below the eye line, in face scale: measured on the render: the red of the upper lip starts at about -0.073, so the trim is 7 mm above it)
 						for (int k = 1; k < beard_steps; k++) {
 							const double pdy_k = (double(bp[size_t(k)].y) - eye_y) / face_scale;
 							if (pdy_k < trim_line) {
@@ -1525,7 +1677,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						}
 					}
 					// no hair may lie across the mouth gap: a point of the hair inside the lip ellipse (made a little larger) pulls the whole hair back toward its root
-					for (int pass = 0; pass < 3; pass++) {
+					for (int pass = 0; pass < ((beard_debug & 2) ? 0 : 3); pass++) {
 						bool across = false;
 						for (int k = 1; k < beard_steps; k++) {
 							const double pdy = (double(bp[size_t(k)].y) - eye_y) / face_scale;
@@ -1553,7 +1705,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 						}
 						side = side.normalized();
 						const Vector3 face = side.cross(tangent).normalized();
-						const double width = std::min(strand_width, 0.0004) * 0.85 * region_width * Math::clamp(hair_length / 0.012, 0.45, 1.0) * (1.0 - 0.5 * std::pow(sv, 1.6));   // (stubble is finer than a full beard)   // (a rounder tip: a beard hair is blunt where it was cut)
+						const double width = std::min(strand_width, 0.0004) * 0.85 * region_width * Math::clamp(hair_length / 0.012, 0.7, 1.0) * (1.0 - 0.5 * std::pow(sv, 1.6));   // (stubble is finer than a full beard)   // (a rounder tip: a beard hair is blunt where it was cut)
 						const Color color(brightness, chance, 0.3f, float(Math::clamp(hair_length / 0.012, 0.25, 1.0))); // (blue 0.3 marks a beard hair for the shader: depth shading, clumps)
 						add_vertex(bp[size_t(k)] - side * real_t(width * 0.5), face, Vector2(0.0f, float(sv)), color, bound, tangent, float(sv), false);
 						add_vertex(bp[size_t(k)] + side * real_t(width * 0.5), face, Vector2(1.0f, float(sv)), color, bound, tangent, float(sv), false);
@@ -1735,8 +1887,37 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		}
 		scalp_weight[i] = w;
 	}
+	// the skin under the beard: the more beard hairs are rooted at a body vertex, the darker the skin there (saturating at 60% of the densest vertex), so a short or sparse beard
+	// reads as a shadow of stubble on the face, with soft edges, and not as single pale or dark specks on bright skin. Strength: the beard amount (a long full beard hides the skin anyway).
+	if (beard > 0.0) {
+		float peak = 0.0f;
+		for (int i = 0; i < vertex_count; i++) {
+			peak = std::max(peak, beard_skin[size_t(i)]);
+		}
+		if (peak > 0.0f) {
+			const float strength = float(0.75 * beard);
+			for (int i = 0; i < vertex_count; i++) {
+				const float share = Math::clamp(beard_skin[size_t(i)] / (0.6f * peak), 0.0f, 1.0f);
+				scalp_weight[i] = std::max(scalp_weight[i], strength * share * share * (3.0f - 2.0f * share));
+			}
+		}
+	}
 	built["scalp_weight"] = scalp_weight;
 	built["beard_vertices"] = beard_vertex_count;
+	built["crown"] = crown;
+	built["head_vertices"] = vertices_before_beard; // (the head hair alone: a lab counts hairs from this, not from the total with the beard)
+	{
+		const double mouth_scale = Math::clamp(half_width / 0.0883, 0.85, 1.15);
+		built["mouth"] = Vector3(real_t(eye_y - 0.0715 * mouth_scale), real_t(centre_z + 0.3 * half_width), real_t(mouth_scale)); // (lip centre height, the z in front of which the lips are, face scale: the skin shader tints the lips)
+	}
+	if (!beard_roots.empty()) {
+		PackedVector3Array roots;
+		roots.resize(int64_t(beard_roots.size()));
+		for (size_t i = 0; i < beard_roots.size(); i++) {
+			roots[int64_t(i)] = beard_roots[i];
+		}
+		built["beard_roots"] = roots;
+	}
 	built["guides"] = guide_array;
 	built["guide_count"] = guide_count;
 	built["guide_steps"] = steps;
@@ -1790,6 +1971,11 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		built["surface_points"] = surface_points;
 		built["surface_normals"] = surface_normals;
 	}
+	built["vertex_count"] = out_count;
+	built["over_budget"] = out_count > MAX_MESH_VERTICES;
+	if (out_count > MAX_MESH_VERTICES) {
+		UtilityFunctions::push_warning("HumanHair: ", out_count, " vertices, over the ", MAX_MESH_VERTICES, " the simulation can draw (the head would come out bald): lower the strands, the locks or the beard");
+	}
 	built["arrays"] = arrays;
 	built["blend_arrays"] = blend_arrays;
 	built["blend_names"] = blend_names;
@@ -1817,6 +2003,12 @@ Ref<ArrayMesh> HumanHair::make_mesh(const Dictionary &p_built) {
 		result->set_meta("hair_guides", p_built["guides"]);
 		result->set_meta("hair_scalp_weight", p_built["scalp_weight"]);
 		result->set_meta("hair_beard_vertices", p_built.get("beard_vertices", 0));
+		result->set_meta("hair_beard_area", p_built.get("beard_area", PackedVector3Array()));
+		result->set_meta("hair_beard_area_colors", p_built.get("beard_area_colors", PackedColorArray()));
+		result->set_meta("hair_head_vertices", p_built.get("head_vertices", 0));
+		result->set_meta("hair_crown", p_built.get("crown", Vector3()));
+		result->set_meta("hair_mouth", p_built.get("mouth", Vector3()));
+		result->set_meta("hair_beard_roots", p_built.get("beard_roots", PackedVector3Array()));
 		result->set_meta("hair_guide_count", p_built["guide_count"]);
 		result->set_meta("hair_guide_steps", p_built["guide_steps"]);
 		result->set_meta("hair_colliders", p_built["colliders"]);
@@ -1827,7 +2019,20 @@ Ref<ArrayMesh> HumanHair::make_mesh(const Dictionary &p_built) {
 }
 
 Ref<ArrayMesh> HumanHair::build(const Ref<ArrayMesh> &p_body, const Dictionary &p_params) {
-	return make_mesh(build_arrays(prepare(p_body), p_params));
+	// over the vertex budget the build is made again with fewer hairs (strands, or locks in ribbon mode), a few times, instead of returning a mesh the simulation cannot draw
+	Dictionary params = p_params.duplicate();
+	Ref<HumanHairBody> body = prepare(p_body);
+	Dictionary built = build_arrays(body, params);
+	for (int attempt = 0; attempt < 5 && bool(built.get("over_budget", false)); attempt++) {
+		const double strands = param(params, "strands", 0.0);
+		if (strands > 2.0) {
+			params["strands"] = std::max(2.0, std::floor(strands * 0.6));
+		} else {
+			params["locks"] = std::max(1.0, std::floor(param(params, "locks", 2600.0) * 0.6));
+		}
+		built = build_arrays(body, params);
+	}
+	return make_mesh(built);
 }
 
 } // namespace godot

@@ -31,7 +31,7 @@ const FACE_SLIDERS: Array = [
 ]
 const FACE_AGE_EYE_DY: Dictionary = {"Male": {"young": -0.1964, "old": -0.0235}, "Female": {"young": -0.1664, "old": -0.0083}}
 const BEARD_STYLES: Array = [   # name, amount, length (m), zone (0 full, 1 goatee, 2 circle beard), neck beard
-	["None", 0.0, 0.012, 0.0, 0.0], ["Stubble", 0.7, 0.003, 0.0, 0.5], ["Short", 0.8, 0.007, 0.0, 0.3], ["Full", 0.9, 0.012, 0.0, 0.3],
+	["None", 0.0, 0.0, 0.0, 0.0], ["Stubble", 0.7, 0.003, 0.0, 0.5], ["Short", 0.8, 0.007, 0.0, 0.12], ["Full", 0.9, 0.012, 0.0, 0.3],
 	["Long", 1.0, 0.03, 0.0, 0.6], ["Goatee", 0.9, 0.01, 1.0, 0.0], ["Circle beard", 0.9, 0.01, 2.0, 0.0], ["Curly", 0.95, 0.02, 0.0, 0.3, 0.8],
 ]
 const SKIN_FILES: Array = [   # CC0 MakeHuman skins, 1k (assets/models/humans/skins/CREDITS.md); both bodies share the MakeHuman UV layout
@@ -149,6 +149,14 @@ var _switch_preset: String = ""   # --switch=Name: apply this preset 2.5 s after
 var _switch_done: bool = false
 var _show_follicles: bool = false   # the roots of the guide strands as dots, hair hidden (a check of where the hair grows from)
 var _follicle_node: MultiMeshInstance3D = null
+var _scalp_debug_shown: bool = false   # the Hair tab's debug box: scalp regions (coloured after the reference chart) and the growth direction of the guides as arrows
+var _scalp_debug_node: Node3D = null
+var _beard_only_change: bool = false   # the change that made the hair dirty was a beard one: no cheaper head-hair preview then (the head must not thin out while the beard length moves)
+var _beard_tab: VBoxContainer = null   # (disabled on the female body: no beard there)
+var _beard_follicles_shown: bool = false   # the Beard tab's debug box: the roots of the beard hairs as dots, hair hidden
+var _beard_follicle_node: MultiMeshInstance3D = null
+var _beard_area_shown: bool = false   # the Beard tab's second debug box: the skin area the beard grows on, tinted
+var _beard_area_node: MeshInstance3D = null
 var _style_gender: String = "Male"   # the body the current style was picked for
 const DEFAULT_TARGET_HAIRS: int = 170000   # the real number of hairs every style aims for (a head has 100,000-150,000): hairs per lock are scaled to reach it
 # Hair levels of detail (LOD): the lower levels draw fewer, wider hairs with fewer points each, so the cost falls with the distance and the coverage stays.
@@ -252,6 +260,7 @@ var _sun_gain_arg: float = -1.0   # --sun-gain=: the hair shader's sun strength 
 var _shadow_dist: float = 1.2   # --shadow-dist=m: how far the sun shadow map reaches (a small value = fine texels on the head)
 var _shadow_bias: float = 0.001
 var _shadow_normal_bias: float = 0.05
+var _ssao_arg: String = ""
 var _real_env: bool = false     # --env=real: a sky, shadows from the sun, ambient occlusion and a filmic tonemap (a place to judge the hair in, not a grey room)
 var _scalp_arg: float = -1.0    # --scalp-layer=0..1: overrides the preset value (tests)
 var _beard_look_dy: float = -0.03   # --look-dy=m: the Beard camera aims this far above (+) or below (-) the beard view height (+0.07 looks at the mouth)
@@ -283,6 +292,7 @@ var _capture_frames: int = 0
 func _ready() -> void:
 	get_viewport().msaa_3d = Viewport.MSAA_4X   # hair-thin strands alias into dots without it
 	_hair_style = HumanHair.default_params()
+	_hair_style["beard_length"] = 0.0   # (shaved until a beard style or the length slider says otherwise)
 	_hair_style["extras"] = 0.0     # only the evenly spaced follicles (no extra locks crowding the hairline, crown and nape)
 	_hair_style["locks"] = 4200     # follicles: with 40 hairs each, about 150,000 hairs
 	for key: StringName in HAIR_PRESETS["Dapper"]:
@@ -407,6 +417,12 @@ func _ready() -> void:
 					_hair_style[StringName(skv[0])] = float(skv[1])
 		elif arg == "--follicles":
 			_show_follicles = true
+		elif arg == "--scalp-debug":
+			_scalp_debug_shown = true
+		elif arg == "--beard-area":
+			_beard_area_shown = true
+		elif arg == "--beard-follicles":
+			_beard_follicles_shown = true   # (the Beard tab's debug box, on from the start: tests)
 		elif arg.begins_with("--switch="):
 			_switch_preset = arg.trim_prefix("--switch=")
 		elif arg.begins_with("--face-hair="):
@@ -462,6 +478,8 @@ func _ready() -> void:
 			_sclera_tint = float(arg.trim_prefix("--sclera="))
 		elif arg.begins_with("--veins="):
 			_veins = float(arg.trim_prefix("--veins="))
+		elif arg.begins_with("--ssao="):
+			_ssao_arg = arg.trim_prefix("--ssao=")
 		elif arg.begins_with("--gender="):
 			_gender = arg.trim_prefix("--gender=")
 	_build_environment()
@@ -475,6 +493,7 @@ func _ready() -> void:
 		if parts.size() == 2:
 			_face_values[StringName(parts[0])] = float(parts[1])
 	_set_gender(_gender)
+	_update_beard_enabled()
 
 
 func _build_environment() -> void:
@@ -498,6 +517,10 @@ func _build_environment() -> void:
 		env.ssao_radius = 0.12
 		env.ssao_intensity = 3.0
 		env.ssao_detail = 1.0
+		if _ssao_arg == "off":
+			env.ssao_enabled = false   # --ssao=off: tests (the ambient occlusion shows the triangles of the coarse body as diagonal bands)
+		elif _ssao_arg != "":
+			env.ssao_intensity = float(_ssao_arg)
 	env.background_mode = Environment.BG_SKY if _real_env else Environment.BG_COLOR
 	env.background_color = Color(0.22, 0.23, 0.26)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -727,7 +750,9 @@ func _build_ui() -> void:
 		face_slider.value = 0.0
 		face_slider.value_changed.connect(_on_face_slider.bind(entry, face_label))
 		face_tab.add_child(face_slider)
-	var beard_tab := _add_tab(tabs, "Beard")   # (a tab of its own; the colour of the beard is the hair colour)
+	var beard_tab := _add_tab(tabs, "Beard")
+	_beard_tab = beard_tab   # (a tab of its own; the colour of the beard is the hair colour)
+	_add_hair_slider(beard_tab, "Beard length", &"beard_length", 0.0, 0.1)   # (the first row; 0 is shaved)
 	var beard_styles := HFlowContainer.new()
 	beard_tab.add_child(beard_styles)
 	for style_entry: Array in BEARD_STYLES:
@@ -735,12 +760,22 @@ func _build_ui() -> void:
 		style_button.text = style_entry[0]
 		style_button.pressed.connect(_on_beard_style.bind(style_entry))
 		beard_styles.add_child(style_button)
-	_add_hair_slider(beard_tab, "Beard amount (0 = none)", &"beard", 0.0, 1.0)
 	_add_value_slider(beard_tab, "Greying (grey locks)", 0.0, 1.0, 0.0, func(v: float) -> void: _head_hair_material.set_shader_parameter(&"beard_grey", v))
 	_add_value_slider(beard_tab, "Ginger locks", 0.0, 1.0, 0.0, func(v: float) -> void: _head_hair_material.set_shader_parameter(&"beard_ginger", v))
 	_add_hair_slider(beard_tab, "Beard curl (0 straight .. 1 tight curls)", &"beard_curl", 0.0, 1.0)
 	_add_hair_slider(beard_tab, "Neck beard (under the jaw)", &"neck_beard", 0.0, 1.0)
-	_add_hair_slider(beard_tab, "Beard length (metres; the chin tuft is 2.5x)", &"beard_length", 0.002, 0.1)
+	var beard_follicle_check := CheckBox.new()
+	beard_follicle_check.text = "Debug: show beard follicles (hair roots), hide hair"
+	beard_follicle_check.button_pressed = _beard_follicles_shown
+	beard_follicle_check.toggled.connect(_on_beard_follicles_toggled)
+	beard_tab.add_child(beard_follicle_check)
+	var beard_area_check := CheckBox.new()
+	beard_area_check.text = "Debug: mark the beard area (regions)"
+	beard_area_check.button_pressed = _beard_area_shown
+	beard_area_check.toggled.connect(func(pressed: bool) -> void:
+		_beard_area_shown = pressed
+		_update_beard_area())
+	beard_tab.add_child(beard_area_check)
 	var amount_tab: Control = hair_tab
 	_add_hair_slider(amount_tab, "Guide locks (how many places hair grows from)", &"locks", 200.0, 6000.0)
 	_add_hair_slider(amount_tab, "Individual hairs per lock (0 = ribbons)", &"strands", 0.0, 96.0)
@@ -768,6 +803,13 @@ func _build_ui() -> void:
 	follicle_check.button_pressed = _show_follicles
 	follicle_check.toggled.connect(_on_follicles_toggled)
 	hair_tab.add_child(follicle_check)
+	var scalp_debug_check := CheckBox.new()
+	scalp_debug_check.text = "Debug: scalp regions and growth direction (arrows)"
+	scalp_debug_check.button_pressed = _scalp_debug_shown
+	scalp_debug_check.toggled.connect(func(pressed: bool) -> void:
+		_scalp_debug_shown = pressed
+		_update_scalp_debug())
+	hair_tab.add_child(scalp_debug_check)
 	_add_range_slider(hair_tab, "Crown patch under the hair (0 = none)", 0.0, 1.0, _scalp_layer, _on_scalp_layer_changed)
 	_add_range_slider(motion_tab, "Max swing (share of the length)", 0.05, 1.5, _hair_max_swing, _on_hair_max_swing_changed)
 	_add_range_slider(motion_tab, "Tip stiffness (springiness)", 0.0, 0.5, _hair_tip, _on_hair_tip_changed)
@@ -822,9 +864,34 @@ const DEFAULT_STYLE: Dictionary = {"Male": "Dapper", "Female": "Long waves"}   #
 
 func _on_gender_button(gender_name: String) -> void:
 	_set_gender(gender_name)
+	_update_beard_enabled()
 	if DEFAULT_STYLE.has(gender_name) and gender_name != _style_gender:
 		_style_gender = gender_name
 		_on_hair_preset(DEFAULT_STYLE[gender_name])
+
+
+# The female body has no beard: the Beard tab's controls are disabled (and the debug views off), and the hair is built with beard 0.
+func _update_beard_enabled() -> void:
+	var female: bool = _gender == "Female"
+	if female:
+		_hair_style[&"beard"] = 0.0
+		_beard_follicles_shown = false
+		_beard_area_shown = false
+		_update_beard_follicles()
+		_update_beard_area()
+	if _beard_tab != null:
+		_set_disabled_deep(_beard_tab, female)
+
+
+func _set_disabled_deep(node: Node, disabled: bool) -> void:
+	if node is BaseButton:
+		(node as BaseButton).disabled = disabled
+		if disabled and node is CheckBox:
+			(node as CheckBox).button_pressed = false
+	elif node is Range:
+		(node as Range).editable = not disabled
+	for child in node.get_children():
+		_set_disabled_deep(child, disabled)
 
 
 func _set_gender(gender_name: String) -> void:
@@ -975,7 +1042,7 @@ func _add_hair_slider(parent: Control, label_text: String, key: StringName, low:
 	slider.scrollable = false
 	slider.min_value = low
 	slider.max_value = high
-	slider.step = (high - low) / 100.0
+	slider.step = 0.0005 if key == &"beard_length" else (high - low) / 100.0
 	slider.value = float(_hair_style[key])
 	slider.value_changed.connect(_on_hair_param.bind(key))
 	parent.add_child(slider)
@@ -989,6 +1056,8 @@ func _show_slider_value(key: StringName) -> void:
 	var value: float = (_hair_sliders[key] as HSlider).value
 	var shown: String = "%.5f" % value if absf(value) < 0.01 and value != 0.0 else "%.3f" % value
 	var text: String = "%s: %s" % [entry[1], shown]
+	if key == &"beard_length":
+		text = "%s: %.2f cm" % [entry[1], value * 100.0]   # (centimetres)
 	if (entry[0] as Label).text != text:
 		(entry[0] as Label).text = text
 
@@ -998,6 +1067,7 @@ func _on_hair_param(value: float, key: StringName) -> void:
 	_hair_retry = 0
 	_hair_style[key] = value
 	_hair_last_change_ms = Time.get_ticks_msec()
+	_beard_only_change = key in [&"beard_length", &"beard_curl", &"neck_beard", &"beard"]
 	_hair_dirty = true
 
 
@@ -1014,6 +1084,7 @@ func _on_hair_reset() -> void:
 
 
 func _on_hair_preset(preset_name: String) -> void:
+	_beard_only_change = false
 	var preset: Dictionary = HAIR_PRESETS[preset_name]
 	for reset_key: StringName in [&"quiff", &"swept", &"spike", &"hug", &"sweep", &"strands", &"points", &"messy", &"wave", &"gaps", &"wisps", &"strips", &"back_length", &"tousle"]:   # what a preset does not name goes back to off
 		if not preset.has(reset_key):
@@ -1147,7 +1218,7 @@ func _update_follicles() -> void:
 		_follicle_node.queue_free()
 		_follicle_node = null
 	if _hair_mesh != null:
-		_hair_mesh.visible = not _show_follicles
+		_hair_mesh.visible = not (_show_follicles or _beard_follicles_shown or _scalp_debug_shown)
 	if not _show_follicles or _hair_mesh == null or not (_hair_mesh.mesh is ArrayMesh):
 		return
 	var mesh := _hair_mesh.mesh as ArrayMesh
@@ -1178,6 +1249,180 @@ func _update_follicles() -> void:
 	_apply()
 
 
+# The skin triangles the beard grows on (HumanHair keeps them as the mesh meta "hair_beard_area"), as a translucent green layer just above the skin; the hair stays visible.
+func _update_beard_area() -> void:
+	if _beard_area_node != null:
+		_beard_area_node.queue_free()
+		_beard_area_node = null
+	if not _beard_area_shown or _hair_mesh == null or not (_hair_mesh.mesh is ArrayMesh):
+		return
+	var points: PackedVector3Array = (_hair_mesh.mesh as ArrayMesh).get_meta(&"hair_beard_area", PackedVector3Array())
+	if points.is_empty():
+		return
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = points
+	arrays[Mesh.ARRAY_COLOR] = (_hair_mesh.mesh as ArrayMesh).get_meta(&"hair_beard_area_colors", PackedColorArray())
+	var area_mesh := ArrayMesh.new()
+	area_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.vertex_color_use_as_albedo = true
+	material.vertex_color_is_srgb = true
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	area_mesh.surface_set_material(0, material)
+	_beard_area_node = MeshInstance3D.new()
+	_beard_area_node.mesh = area_mesh
+	_body.add_child(_beard_area_node)
+
+
+# Scalp regions after the reference chart, from the guide roots (dots, coloured) and the growth direction of every guide (an arrow along its first segment). The regions are
+# worked out from where a root is in the head's own box (front/back, height, side), so they follow the head size; the hair is hidden while this shows.
+func _update_scalp_debug() -> void:
+	if _scalp_debug_node != null:
+		_scalp_debug_node.queue_free()
+		_scalp_debug_node = null
+	if _hair_mesh != null:
+		_hair_mesh.visible = not (_scalp_debug_shown or _show_follicles or _beard_follicles_shown)
+	if not _scalp_debug_shown or _hair_mesh == null or not (_hair_mesh.mesh is ArrayMesh):
+		return
+	var mesh := _hair_mesh.mesh as ArrayMesh
+	var guides: PackedVector3Array = mesh.get_meta(&"hair_guides", PackedVector3Array())
+	var steps: int = int(mesh.get_meta(&"hair_guide_steps", 1))
+	var count: int = int(mesh.get_meta(&"hair_guide_count", 0))
+	if count == 0 or steps < 2:
+		return
+	var low := Vector3(1e9, 1e9, 1e9)
+	var high := Vector3(-1e9, -1e9, -1e9)
+	for g in count:
+		var root: Vector3 = guides[g * steps]
+		low = low.min(root)
+		high = high.max(root)
+	var centre_z: float = 0.5 * (low.z + high.z)
+	var half_depth: float = 0.5 * (high.z - low.z)
+	var half_width: float = maxf(absf(low.x), absf(high.x))
+	var crown := Vector3.ZERO
+	var crown_n: int = 0
+	for g in count:
+		var root: Vector3 = guides[g * steps]
+		if root.y > high.y - 0.012:
+			crown += root
+			crown_n += 1
+	if crown_n > 0:
+		crown /= float(crown_n)
+	if mesh.has_meta(&"hair_crown"):
+		crown = mesh.get_meta(&"hair_crown")   # (the crown the builder uses)
+	var dot := SphereMesh.new()
+	dot.radius = 0.0013
+	dot.height = 0.0026
+	dot.radial_segments = 5
+	dot.rings = 3
+	var dot_material := StandardMaterial3D.new()
+	dot_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dot_material.vertex_color_use_as_albedo = true
+	dot_material.vertex_color_is_srgb = true
+	dot.material = dot_material
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.use_colors = true
+	multi.mesh = dot
+	multi.instance_count = count
+	var lines := PackedVector3Array()
+	for g in count:
+		var root: Vector3 = guides[g * steps]
+		var u: float = (root.z - centre_z) / maxf(half_depth, 0.001)      # +1 front .. -1 back
+		var h: float = (root.y - low.y) / maxf(high.y - low.y, 0.001)      # 0 lowest root .. 1 top
+		var side: float = absf(root.x) / maxf(half_width, 0.001)          # 0 middle .. 1 side
+		var crown_d: float = Vector2(root.x - crown.x, root.z - crown.z).length()
+		var colour := Color(1.0, 0.9, 0.3)                                # parietal
+		if crown_d < 0.035:
+			colour = Color(0.9, 0.3, 0.85)                                # vertex / crown whorl
+		elif u < -0.35 and h < 0.2:
+			colour = Color(1.0, 0.55, 0.7)                                # nape
+		elif u < -0.2 and h < 0.55:
+			colour = Color(0.3, 0.5, 0.95)                                # occipital
+		elif side > 0.72 and h < 0.55 and u > 0.1:
+			colour = Color(0.55, 0.9, 0.3)                                # temples
+		elif side > 0.72 and h < 0.6:
+			colour = Color(0.3, 0.85, 0.6)                                # temporal
+		elif u > 0.35 and h < 0.45:
+			colour = Color(0.45, 0.75, 1.0)                               # frontal hairline
+		elif u > 0.05:
+			colour = Color(0.7, 0.4, 0.95)                                # frontal top
+		multi.set_instance_transform(g, Transform3D(Basis(), root))
+		multi.set_instance_color(g, colour)
+		if g % 14 == 0:
+			var direction: Vector3 = (guides[g * steps + mini(4, steps - 1)] - root).normalized()
+			var tip: Vector3 = root + direction * 0.03
+			lines.push_back(root)
+			lines.push_back(tip)
+			var side_dir: Vector3 = direction.cross(Vector3.UP).normalized() * 0.004   # (a small head for the arrow)
+			lines.push_back(tip)
+			lines.push_back(tip - direction * 0.006 + side_dir)
+			lines.push_back(tip)
+			lines.push_back(tip - direction * 0.006 - side_dir)
+	_scalp_debug_node = Node3D.new()
+	var dots_node := MultiMeshInstance3D.new()
+	dots_node.multimesh = multi
+	_scalp_debug_node.add_child(dots_node)
+	var line_arrays: Array = []
+	line_arrays.resize(Mesh.ARRAY_MAX)
+	line_arrays[Mesh.ARRAY_VERTEX] = lines
+	var line_mesh := ArrayMesh.new()
+	line_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, line_arrays)
+	var line_material := StandardMaterial3D.new()
+	line_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	line_material.albedo_color = Color(1.0, 1.0, 1.0)
+	line_mesh.surface_set_material(0, line_material)
+	var lines_node := MeshInstance3D.new()
+	lines_node.mesh = line_mesh
+	_scalp_debug_node.add_child(lines_node)
+	_body.add_child(_scalp_debug_node)
+
+
+func _on_beard_follicles_toggled(pressed: bool) -> void:
+	_beard_follicles_shown = pressed
+	_update_beard_follicles()
+
+
+# The beard's follicles: where each beard hair group is rooted on the skin (HumanHair keeps them as the mesh meta "hair_beard_roots"; every dot grows several hairs).
+# Orange dots; the hair is hidden while they show. They are rebuilt with the hair (a slider moves, a style is picked).
+func _update_beard_follicles() -> void:
+	if _beard_follicle_node != null:
+		_beard_follicle_node.queue_free()
+		_beard_follicle_node = null
+	if _hair_mesh != null:
+		_hair_mesh.visible = not (_beard_follicles_shown or _show_follicles or _scalp_debug_shown)
+	if not _beard_follicles_shown or _hair_mesh == null or not (_hair_mesh.mesh is ArrayMesh):
+		return
+	var roots: PackedVector3Array = (_hair_mesh.mesh as ArrayMesh).get_meta(&"hair_beard_roots", PackedVector3Array())
+	if roots.is_empty():
+		_hair_info = "Beard follicles: none (the beard amount is 0)"
+		_apply()
+		return
+	var dot := SphereMesh.new()
+	dot.radius = 0.0007
+	dot.height = 0.0014
+	dot.radial_segments = 5
+	dot.rings = 3
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color(1.0, 0.55, 0.05)
+	dot.material = material
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.mesh = dot
+	multi.instance_count = roots.size()
+	for f in roots.size():
+		multi.set_instance_transform(f, Transform3D(Basis(), roots[f]))
+	_beard_follicle_node = MultiMeshInstance3D.new()
+	_beard_follicle_node.multimesh = multi
+	_body.add_child(_beard_follicle_node)
+	_hair_info = "Beard follicles: %s (each roots several hairs)" % _thousands(roots.size())
+	_apply()
+
+
 func _on_scalp_layer_changed(value: float) -> void:
 	_scalp_layer = value
 	_head_hair_material.set_shader_parameter(&"scalp_layer", value)
@@ -1204,6 +1449,10 @@ func _upload_scalp(built: ArrayMesh) -> void:
 	var image := Image.create_from_data(width, height, false, Image.FORMAT_RF, padded.to_byte_array())
 	_material.set_shader_parameter(&"scalp_tex", ImageTexture.create_from_image(image))
 	_material.set_shader_parameter(&"scalp_width", width)
+	if built.has_meta(&"hair_mouth"):
+		var mouth: Vector3 = built.get_meta(&"hair_mouth")
+		_material.set_shader_parameter(&"lip_info", mouth)
+		_material.set_shader_parameter(&"has_lips", mouth != Vector3.ZERO)
 	_material.set_shader_parameter(&"has_scalp", true)
 
 
@@ -1230,6 +1479,7 @@ func _add_value_slider(parent: Control, label_text: String, low: float, high: fl
 
 
 func _on_beard_style(entry: Array) -> void:
+	_beard_only_change = true
 	_hair_style[&"beard"] = float(entry[1])
 	_hair_style[&"beard_length"] = float(entry[2])
 	_hair_style[&"beard_zone"] = float(entry[3])
@@ -1489,6 +1739,11 @@ func _rebuild_hair_now() -> void:
 		if not bool(lod_row[3]):
 			params[&"beard"] = 0.0
 		params[&"wisps"] = float(params.get(&"wisps", 0.0)) * float(lod_row[4])
+	# the beard length is the switch: 0 is shaved (no beard), anything above it covers the whole beard area
+	params[&"beard"] = 1.0 if float(params.get(&"beard_length", 0.0)) > 0.00005 else 0.0
+	if _gender == "Female":
+		params[&"beard"] = 0.0
+	# (no cheaper beard preview while a slider moves: the beard builds in ~80 ms, and a 2,500-follicle preview showed an almost empty beard for seconds before the full one came)
 	_head_hair_material.set_shader_parameter(&"single_hairs", int(_hair_style.get(&"strands", 0)) > 0)
 	if not _hair_preview and int(params.get(&"strands", 0)) > 8:
 		params[&"strands"] = clampi(int(round(40.0 * _strand_scale)), 3, 96)   # (every style has the same follicles and the same hairs per follicle)
@@ -1553,7 +1808,8 @@ func _finish_hair_task(wait: bool) -> void:
 	if strands > 0 and guides > 0:
 		# the real number of hairs: every hair is a ribbon of `steps` points (2 vertices each); near the hairline a lock grows fewer hairs than `strands`, so guides x strands overstates it
 		var steps_meta: int = maxi(int(built.get_meta(&"hair_guide_steps", 1)), 1)
-		var real_hairs: int = (verts - 600 - int(built.get_meta(&"hair_beard_vertices", 0))) / (2 * steps_meta)   # (the beard is not head hair: counting its vertices made the first build look 25% too hairy and cost a second build)
+		var head_vertices: int = int(built.get_meta(&"hair_head_vertices", 0))   # (the head hair alone, from the builder: whatever the beard has)
+		var real_hairs: int = (head_vertices - 600) / (2 * steps_meta) if head_vertices > 0 else (verts - 600 - int(built.get_meta(&"hair_beard_vertices", 0))) / (2 * steps_meta)   # (the beard is not head hair: counting its vertices made the first build look 25% too hairy and cost a second build)
 		_hair_info = "LOD %d  Hair: " % _lod + "%s hairs (%s guides, up to %d each)   %s vertices" % [_thousands(real_hairs), _thousands(guides), strands, _thousands(verts)]
 		# aim for the target: when the count is off by more than 8%, learn a better scale and build again (five times at most)
 		print("HUMAN_LAB hair count: LOD ", _lod, " real ", real_hairs, " target ", _effective_target(), " scale ", snappedf(_strand_scale, 0.001), " retry ", _hair_retry)
@@ -1614,6 +1870,12 @@ func _finish_hair_task(wait: bool) -> void:
 	_update_scalp_colour()
 	if _show_follicles:
 		_update_follicles()
+	if _scalp_debug_shown:
+		_update_scalp_debug()
+	if _beard_follicles_shown:
+		_update_beard_follicles()
+	if _beard_area_shown:
+		_update_beard_area()
 
 
 func _on_hair_color_changed(color: Color) -> void:
@@ -1859,12 +2121,12 @@ func _process(delta: float) -> void:
 	# while a hair slider is dragged, rebuild at most as often as the last build allows (it waits 4x as long as the build took), so the frame rate stays up; the last value is always built
 	if _hair_dirty and Time.get_ticks_msec() >= _hair_next_build_ms:
 		# while a slider is moving, build a cheap preview (a sixth of the hairs); a quarter of a second after the last move, the full hair
-		var dragging: bool = Time.get_ticks_msec() - _hair_last_change_ms < 300
+		var dragging: bool = Time.get_ticks_msec() - _hair_last_change_ms < 300 and not _beard_only_change   # (a beard change builds the full hair at once: the preview thinned the head hair out while the beard moved)
 		_hair_preview = dragging
 		_rebuild_hair()
 		if dragging:
 			_hair_dirty = true   # (the full build still has to come)
-		_hair_next_build_ms = Time.get_ticks_msec() + int(_hair_build_ms * (1.5 if dragging else 4.0))
+		_hair_next_build_ms = Time.get_ticks_msec() + int(_hair_build_ms * (1.5 if dragging else 2.0))
 	if _capture_path == "":
 		return
 	_capture_frames += 1

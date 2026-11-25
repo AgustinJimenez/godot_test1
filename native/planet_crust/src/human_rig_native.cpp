@@ -48,8 +48,24 @@ Ref<ArrayMesh> with_skin(const Ref<ArrayMesh> &p_mesh, const PackedInt32Array &p
 		result->add_blend_shape(p_mesh->get_blend_shape_name(i));
 	}
 	result->set_blend_shape_mode(p_mesh->get_blend_shape_mode());
-	result->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, arrays, shapes);
+	// The custom channels keep their format: an array in CUSTOM0 (the hair's guide data, a float RGBA) is refused ("Invalid array format for surface") and the surface is
+	// not made at all when the flags say nothing about it (the hair could not be attached to the rig).
+	const uint64_t source_format = p_mesh->surface_get_format(0);
+	uint64_t flags = 0;
+	const uint64_t shifts[4] = { Mesh::ARRAY_FORMAT_CUSTOM0_SHIFT, Mesh::ARRAY_FORMAT_CUSTOM1_SHIFT, Mesh::ARRAY_FORMAT_CUSTOM2_SHIFT, Mesh::ARRAY_FORMAT_CUSTOM3_SHIFT };
+	for (int c = 0; c < 4; c++) {
+		flags |= ((source_format >> shifts[c]) & uint64_t(Mesh::ARRAY_FORMAT_CUSTOM_MASK)) << shifts[c];
+	}
+	result->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, arrays, shapes, Dictionary(), flags);
+	if (result->get_surface_count() < 1) {
+		return Ref<ArrayMesh>(); // (the callers return false instead of leaving the instance with an empty mesh)
+	}
 	result->surface_set_material(0, p_mesh->surface_get_material(0));
+	// what the hair carries as meta (hair_guides, hair_scalp_weight: the simulation and the scalp darkening read them from the mesh)
+	PackedStringArray metas = p_mesh->get_meta_list();
+	for (int m = 0; m < metas.size(); m++) {
+		result->set_meta(StringName(metas[m]), p_mesh->get_meta(StringName(metas[m])));
+	}
 	return result;
 }
 

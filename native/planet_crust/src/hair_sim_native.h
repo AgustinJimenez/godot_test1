@@ -89,7 +89,7 @@ class HairSim : public Node {
 		};
 		std::vector<Capsule> world;
 	} sd;
-	static constexpr int kMaxSteps = 16; // points per guide the fixed buffers allow
+	static constexpr int kMaxSteps = 16; // points per guide the fixed buffers allow (= MAX_POINTS, public)
 	static constexpr int kChunks = 32; // pieces a step is split in for the worker threads
 	void step_chunk(int p_chunk);
 	void step_guide(int p_guide);
@@ -114,6 +114,7 @@ protected:
 	static void _bind_methods();
 
 public:
+	static constexpr int MAX_POINTS = 16; // points per guide the simulation holds (the build clamps the points of a hair to this)
 	void set_hair(Object *p_hair);
 	Object *get_hair() const;
 	void set_material(Object *p_material);
