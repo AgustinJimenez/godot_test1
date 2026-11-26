@@ -19,6 +19,18 @@ out="$(timeout 300 "${GODOT}" --headless --path . -s res://tests/manual/humans/h
 echo "${out}" | grep -a "HUMAN_RIG_CHECK"
 echo "${out}" | grep -aq "HUMAN_RIG_CHECK PASS" || status=1
 
+out="$(timeout 120 "${GODOT}" --headless --path . -s res://tests/manual/humans/hair_style_store_check.gd 2>&1)"
+echo "${out}" | grep -a "HAIR_STYLE_STORE_CHECK"
+echo "${out}" | grep -aq "HAIR_STYLE_STORE_CHECK PASS" || status=1
+
+out="$(timeout 120 "${GODOT}" --headless --path . -s res://tests/manual/humans/human_body_hair_check.gd 2>&1)"
+echo "${out}" | grep -a "HUMAN_BODY_HAIR_CHECK"
+echo "${out}" | grep -aq "HUMAN_BODY_HAIR_CHECK PASS" || status=1
+
+out="$(timeout 120 "${GODOT}" --headless --path . -s res://tests/manual/humans/character_store_check.gd 2>&1)"
+echo "${out}" | grep -a "CHARACTER_STORE_CHECK"
+echo "${out}" | grep -aq "CHARACTER_STORE_CHECK PASS" || status=1
+
 out="$(timeout 120 "${GODOT}" --headless --fixed-fps 60 --path . -s res://tests/manual/humans/human_sway_check.gd 2>&1)"
 echo "${out}" | grep -a "HUMAN_SWAY_CHECK"
 echo "${out}" | grep -aq "HUMAN_SWAY_CHECK PASS" || status=1
@@ -26,7 +38,20 @@ echo "${out}" | grep -aq "HUMAN_SWAY_CHECK PASS" || status=1
 if [[ ${render} -eq 1 ]]; then
 	printf '[display]\nwindow/size/no_focus=true\n' > override.cfg
 	out="$(timeout 180 "${GODOT}" --path . --rendering-driver vulkan --screen 1 --resolution 900x900 res://tests/manual/humans/human_rig_lab.tscn -- --capture=/tmp/human_rig_check.png --pose=walk 2>&1)"
+	# the body lab too: the skin shader (procedural face zones) is only compiled there
+	out+="$(timeout 180 "${GODOT}" --path . --rendering-driver vulkan --screen 1 --resolution 900x900 res://tests/manual/humans/human_body_lab.tscn -- --capture=/tmp/human_body_check.png --close --face --nopanel --skin-set=freckles:0.5,age:0.6 2>&1)"
+	# a gender switch while the lab runs (male to female): it must neither crash nor hang (an old bug freed the scene's root when the brows were swapped), and the new hair must arrive
+	switch_out="$(timeout 120 "${GODOT}" --path . --rendering-driver vulkan --screen 1 --resolution 900x900 --quit-after 600 res://tests/manual/humans/human_body_lab.tscn -- --switch-gender=Female 2>&1)"
+	switch_code=$?
 	rm -f override.cfg
+	if [[ ${switch_code} -ne 0 ]] || ! echo "${switch_out}" | grep -aq "GENDER_SWITCH hair ready"; then
+		echo "HUMAN_GENDER_SWITCH_CHECK FAIL (exit ${switch_code})"
+		echo "${switch_out}" | grep -a "GENDER_SWITCH\|SCRIPT ERROR" | head -5
+		status=1
+	else
+		echo "HUMAN_GENDER_SWITCH_CHECK PASS"
+	fi
+	out+="${switch_out}"
 	if echo "${out}" | grep -aq "SHADER ERROR\|SCRIPT ERROR\|setup failed"; then
 		echo "HUMAN_RENDER_CHECK FAIL"
 		echo "${out}" | grep -a "SHADER ERROR\|SCRIPT ERROR\|setup failed" | head -5

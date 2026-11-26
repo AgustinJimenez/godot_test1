@@ -10,3 +10,7 @@
   Only used by the lab's comparison option `--mh-hair=hair_messy:short_messy_diff.png`.
 - `mh_hair/*_beard_viking.glb` and `mh_hair/BeardViking.png`: MakeHuman community item `rehmanpolanski_beard_viking` by **Rehman Polanski**, licence **CC0** (its `.mhclo` header: "# license CC0"; pack "Bodyparts 05",
   https://static.makehumancommunity.org/assets/assetpacks/bodyparts05.html), fitted with `tools/blender/fit_mh_mesh.py`. Lab comparison only: `--mh-hair=beard_viking:BeardViking.png`.
+- The lab's flat skin colours (`SKIN_TONES` in `tests/manual/humans/human_body_lab.gd`): the ten swatches of the **Monk Skin Tone Scale** by Dr. Ellis Monk and Google,
+  licence **CC-BY 4.0** (https://skintone.google/), tinted a little warmer by our code.
+- The face and body-proportion blend shapes (jaw, cheekbones, eye spacing and height, brows, mouth, nose bridge/tip/nostrils, forehead, face length, neck, shoulders, waist, hips,
+  belly, bust) are MakeHuman core targets (CC0) loaded by MPFB in `tools/blender/make_bodies.py`.

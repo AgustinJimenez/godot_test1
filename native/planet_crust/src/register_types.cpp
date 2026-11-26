@@ -3,6 +3,7 @@
 #include "hair_sway_native.h"
 #include "hair_sim_native.h"
 #include "human_hair_native.h"
+#include "human_body_hair_native.h"
 #include "human_rig_native.h"
 #include "species_generator_native.h"
 #include "species_registry_native.h"
@@ -108,6 +109,7 @@ void initialize_planet_crust_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_RUNTIME_CLASS(HairSim); // (the hair simulation, runtime only)
 	GDREGISTER_CLASS(HumanHairBody);
 	GDREGISTER_CLASS(HumanHair);
+	GDREGISTER_CLASS(HumanBodyHair);
 	GDREGISTER_CLASS(HumanRig);
 	GDREGISTER_CLASS(SpeciesRegistry);
 	GDREGISTER_CLASS(PlanetCrustNative);

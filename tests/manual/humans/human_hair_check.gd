@@ -262,6 +262,7 @@ func _check_body(gender: String) -> void:
 		HumanHair.make_mesh(beard_built)
 		print("%s beard %.2f: grow %.0f ms + mesh %.0f ms" % [gender, amount, beard_grow, (Time.get_ticks_usec() - beard_start) / 1000.0])
 	print("%s: %d vertices, hair y %.3f .. %.3f (crown %.3f), long hair down to %.3f" % [gender, vertices.size(), low, high, top_y, long_low])
+	_check_zones(gender, body, params)
 	root.free()
 
 
@@ -293,3 +294,151 @@ func _expect(condition: bool, message: String) -> void:
 func _fail(message: String) -> void:
 	_failures += 1
 	print("HUMAN_HAIR_CHECK failed: ", message)
+
+
+# Hair zones (front, top, crown, left_side, right_side, back, nape = 0..6): the builder sorts every guide's root into a zone; the character faces +Z, so its left is +X.
+const ZONE_FRONT: int = 0
+const ZONE_TOP: int = 1
+const ZONE_CROWN: int = 2
+const ZONE_LEFT: int = 3
+const ZONE_RIGHT: int = 4
+const ZONE_BACK: int = 5
+const ZONE_NAPE: int = 6
+
+
+# The roots of a hair mesh's guides, by zone: {zone: [root, ...]}.
+func _roots_by_zone(hair: ArrayMesh) -> Dictionary:
+	var by_zone: Dictionary = {}
+	if hair == null:
+		return by_zone
+	var guides: PackedVector3Array = hair.get_meta(&"hair_guides", PackedVector3Array())
+	var steps: int = int(hair.get_meta(&"hair_guide_steps", 0))
+	var zones: PackedByteArray = hair.get_meta(&"hair_guide_zones", PackedByteArray())
+	for g: int in zones.size():
+		if not by_zone.has(zones[g]):
+			by_zone[zones[g]] = []
+		(by_zone[zones[g]] as Array).append(guides[g * steps])
+	return by_zone
+
+
+func _mean_root(roots: Array) -> Vector3:
+	var sum := Vector3.ZERO
+	for r: Vector3 in roots:
+		sum += r
+	return sum / maxf(1.0, float(roots.size()))
+
+
+func _check_zones(gender: String, body: ArrayMesh, params: Dictionary) -> void:
+	var zoned: Dictionary = params.duplicate()
+	zoned.merge({"length": 0.15, "strands": 8}, true)
+	var hair: ArrayMesh = HumanHair.build(body, zoned)
+	# (f) a near-bald head with one long zone still grows that zone (the bald test must look at the zones' lengths too)
+	var near_bald: Dictionary = params.duplicate()
+	near_bald.merge({"length": 0.003, "strands": 8, "zones": {"top": {&"length": 0.2}}}, true)
+	var top_only: ArrayMesh = HumanHair.build(body, near_bald)
+	_expect(top_only != null and int(top_only.get_meta(&"hair_guide_count", 0)) > 50, "%s: zones: a 3 mm head with a 20 cm top grew %d guides" % [gender, int(top_only.get_meta(&"hair_guide_count", 0)) if top_only != null else -1])
+	var zones: PackedByteArray = hair.get_meta(&"hair_guide_zones", PackedByteArray()) if hair != null else PackedByteArray()
+	_expect(hair != null and zones.size() == int(hair.get_meta(&"hair_guide_count", -1)), "%s: zones: %d guide zones for %d guides" % [gender, zones.size(), int(hair.get_meta(&"hair_guide_count", -1)) if hair != null else -1])
+	var by_zone: Dictionary = _roots_by_zone(hair)
+	for z: int in 7:
+		_expect((by_zone.get(z, []) as Array).size() >= 20, "%s: zones: zone %d has %d guides (want 20+)" % [gender, z, (by_zone.get(z, []) as Array).size()])
+	for r: Vector3 in by_zone.get(ZONE_LEFT, []):
+		if r.x <= 0.02:
+			_fail("%s: zones: a left_side root at x %.3f" % [gender, r.x])
+			break
+	for r: Vector3 in by_zone.get(ZONE_RIGHT, []):
+		if r.x >= -0.02:
+			_fail("%s: zones: a right_side root at x %.3f" % [gender, r.x])
+			break
+	var front: Vector3 = _mean_root(by_zone.get(ZONE_FRONT, []))
+	var top: Vector3 = _mean_root(by_zone.get(ZONE_TOP, []))
+	var back: Vector3 = _mean_root(by_zone.get(ZONE_BACK, []))
+	var nape: Vector3 = _mean_root(by_zone.get(ZONE_NAPE, []))
+	_expect(front.z > top.z and top.z > back.z, "%s: zones: mean z front %.3f, top %.3f, back %.3f (want front > top > back)" % [gender, front.z, top.z, back.z])
+	_expect(nape.y < back.y, "%s: zones: mean y nape %.3f, back %.3f (want nape lower)" % [gender, nape.y, back.y])
+	# --- per-zone settings
+	# (a) no zones is the same build as an empty zone list
+	var plain: ArrayMesh = HumanHair.build(body, zoned)
+	var empty_zones: Dictionary = zoned.duplicate()
+	empty_zones["zones"] = {}
+	_expect(_vertices(plain) == _vertices(HumanHair.build(body, empty_zones)), "%s: zones: an empty zone list changed the build" % gender)
+	# (e) unknown zone names and keys are ignored
+	var unknown: Dictionary = zoned.duplicate()
+	unknown["zones"] = {"nowhere": {"curl": 1.0}, "top": {"bogus": 3.0}}
+	_expect(_vertices(plain) == _vertices(HumanHair.build(body, unknown)), "%s: zones: unknown zone names or keys changed the build" % gender)
+	# (b) amount 0 on the left side: no hair grows there, the right side keeps its hair, the scalp layer fades out over the left side
+	var bare_left: Dictionary = zoned.duplicate()
+	bare_left["zones"] = {"left_side": {"amount": 0.0}}
+	var bare_hair: ArrayMesh = HumanHair.build(body, bare_left)
+	var bare_by_zone: Dictionary = _roots_by_zone(bare_hair)
+	# (only the soft border, ~1.5 cm wide, keeps a little hair: the guides rooted on the left side drop by 90% or more)
+	var left_before: int = (by_zone.get(ZONE_LEFT, []) as Array).size()
+	var left_after: int = (bare_by_zone.get(ZONE_LEFT, []) as Array).size()
+	_expect(left_after <= int(0.10 * left_before), "%s: zones: amount 0 on the left side kept %d of its %d guides (want 10%% at most: the soft border)" % [gender, left_after, left_before])
+	var right_before: int = (by_zone.get(ZONE_RIGHT, []) as Array).size()
+	var right_after: int = (bare_by_zone.get(ZONE_RIGHT, []) as Array).size()
+	_expect(right_after >= int(0.8 * right_before), "%s: zones: the right side went from %d to %d guides when only the left was bare" % [gender, right_before, right_after])
+	var cap_alpha: float = 0.0
+	var cap_count: int = 0
+	if bare_hair != null:
+		var arrays: Array = bare_hair.surface_get_arrays(0)
+		var cap_vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var cap_colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		var cap_custom: PackedFloat32Array = arrays[Mesh.ARRAY_CUSTOM0]
+		for i: int in cap_vertices.size():
+			if cap_colors[i].b > 0.9 and int(round(cap_custom[i * 4 + 2])) == ZONE_LEFT + 1 and cap_vertices[i].x > 0.06:
+				cap_alpha += cap_colors[i].a
+				cap_count += 1
+	_expect(cap_count > 0 and cap_alpha / maxf(1.0, float(cap_count)) < 0.1, "%s: zones: the scalp layer over a bare left side has alpha %.2f over %d vertices (want < 0.1)" % [gender, cap_alpha / maxf(1.0, float(cap_count)), cap_count])
+	# the skin's dark scalp (hair_scalp_weight, the hair colour under the hair) goes with the hair: over the left side zone it drops by 60% or more
+	var body_vertices: PackedVector3Array = body.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var plain_weight: PackedFloat32Array = plain.get_meta(&"hair_scalp_weight", PackedFloat32Array())
+	var bare_weight: PackedFloat32Array = bare_hair.get_meta(&"hair_scalp_weight", PackedFloat32Array()) if bare_hair != null else PackedFloat32Array()
+	var body_zones: PackedByteArray = plain.get_meta(&"hair_body_zones", PackedByteArray())
+	var side_plain: float = 0.0
+	var side_bare: float = 0.0
+	for i: int in mini(body_vertices.size(), mini(plain_weight.size(), bare_weight.size())):
+		if i < body_zones.size() and body_zones[i] == ZONE_LEFT and plain_weight[i] > 0.5:
+			side_plain += plain_weight[i]
+			side_bare += bare_weight[i]
+	_expect(side_plain > 0.0 and side_bare <= 0.4 * side_plain, "%s: zones: the dark scalp on a bare left side is %.0f%% of normal (want 40%% at most)" % [gender, 100.0 * side_bare / maxf(side_plain, 0.001)])
+	# (c) a long top over short hair
+	var long_top: Dictionary = zoned.duplicate()
+	long_top.merge({"length": 0.06, "zones": {"top": {"length": 0.2}}}, true)
+	var top_hair: ArrayMesh = HumanHair.build(body, long_top)
+	var top_len: float = _mean_guide_length(top_hair, ZONE_TOP)
+	var back_len: float = _mean_guide_length(top_hair, ZONE_BACK)
+	_expect(top_len > 2.0 * back_len, "%s: zones: a long top is %.3f m against the back's %.3f m (want 2x)" % [gender, top_len, back_len])
+	# (d) a wave in one zone draws the hair with more points than its guide
+	var wavy_back: Dictionary = zoned.duplicate()
+	wavy_back.merge({"length": 0.25, "zones": {"back": {"wave": 0.8}}}, true)
+	var wavy_hair: ArrayMesh = HumanHair.build(body, wavy_back)
+	_expect(wavy_hair != null and int(wavy_hair.get_meta(&"hair_render_steps", 0)) > int(wavy_hair.get_meta(&"hair_guide_steps", 0)), "%s: zones: a wave in one zone is not drawn with extra points" % gender)
+
+
+# Every surface's vertices, in order (the hair is split into several surfaces under the per-surface vertex limit).
+func _vertices(hair: ArrayMesh) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	if hair == null:
+		return out
+	for surface: int in hair.get_surface_count():
+		out.append_array(hair.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX])
+	return out
+
+
+# The mean length of the guides rooted in one zone (along their points).
+func _mean_guide_length(hair: ArrayMesh, zone: int) -> float:
+	if hair == null:
+		return 0.0
+	var guides: PackedVector3Array = hair.get_meta(&"hair_guides", PackedVector3Array())
+	var steps: int = int(hair.get_meta(&"hair_guide_steps", 0))
+	var zones: PackedByteArray = hair.get_meta(&"hair_guide_zones", PackedByteArray())
+	var total: float = 0.0
+	var count: int = 0
+	for g: int in zones.size():
+		if zones[g] != zone:
+			continue
+		for k: int in range(1, steps):
+			total += guides[g * steps + k].distance_to(guides[g * steps + k - 1])
+		count += 1
+	return total / maxf(1.0, float(count))

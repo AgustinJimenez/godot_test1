@@ -1,7 +1,7 @@
 extends Node3D
 ## Human rig lab: a rigged base body (assets/models/humans/*_rigged.glb) whose skeleton follows the Height / Weight / Muscle sliders (native HumanRig).
 ## Left drag turns the body, wheel zooms. Keys: 1 rest pose, 2 arms up, 3 squat, 4 Mixamo walk (retargeted onto this skeleton), B bones on/off, G gender, Up/Down height.
-## Capture mode: `-- --capture=<png> --gender=Male|Female --height= --weight= --muscle= --pose=rest|armsup|squat|walk --time=<seconds into the walk> --bones --yaw=<deg> --face (the camera on the head and shoulders) --sweep=<deg> (the body turns back and forth that far while the lab runs: for a video) --distance=<m>` saves one frame and quits.
+## Capture mode: `-- --capture=<png> --gender=Male|Female --height= --weight= --muscle= --pose=rest|armsup|squat|walk --time=<seconds into the walk> --bones --yaw=<deg> --face (the camera on the head and shoulders) --sweep=<deg> (the body turns back and forth that far while the lab runs: for a video) --distance=<m> --clothes=villager|underwear --cloth (the clothes simulated by the GPU cloth add-on, task 103; the walk then plays and the frame is taken after --capture-frame=, 150)` saves one frame and quits.
 
 const WALK_CLIP: String = "res://assets/models/action_adventure_pack/walking.fbx" # (a Mixamo clip: the same "mixamorig_" names as this skeleton)
 const BODIES: Dictionary = {
@@ -34,6 +34,13 @@ var _sweep: float = 0.0
 var _base_yaw: float = 0.0
 var _top: float = 1.7
 var _clock: float = 0.0
+var _body_turn: float = 0.0   # the body's own turn (left drag, --sweep): the cloth reacts to it
+var _clothes: String = "villager"   # the villager shirt and trousers (task 102), or "underwear"
+var _cloth: bool = false   # --cloth: simulate the villager clothes (addons/godot_gpu_cloth, task 103)
+var _cloth_root: Node3D = null
+var _capture_frame: int = 12
+var _shirt: MeshInstance3D = null
+var _pants: MeshInstance3D = null
 
 
 func _ready() -> void:
@@ -60,6 +67,13 @@ func _ready() -> void:
 			_bones_shown = true
 		elif arg == "--face":
 			_face = true
+		elif arg == "--cloth":
+			_cloth = true
+			_capture_frame = 150
+		elif arg.begins_with("--capture-frame="):
+			_capture_frame = int(arg.trim_prefix("--capture-frame="))
+		elif arg.begins_with("--clothes="):
+			_clothes = arg.trim_prefix("--clothes=").to_lower()
 		elif arg.begins_with("--sweep="):
 			_sweep = deg_to_rad(float(arg.trim_prefix("--sweep=")))
 	var environment := WorldEnvironment.new()
@@ -104,6 +118,23 @@ func _build() -> void:
 	var underwear: MeshInstance3D = _take_mesh(base + "underwear.glb", _material_of("res://shaders/human_underwear_fabric.gdshader"))
 	_accessories.append(underwear)
 	HumanRig.attach_skinned(underwear, _mesh, _skeleton)
+	_shirt = null
+	_pants = null
+	if _clothes == "villager":
+		# the villager clothes, skinned with the body's weights like the underwear (which they hide); task 103 simulates them as cloth
+		underwear.visible = false
+		var colours: Array = [Color(0.72, 0.66, 0.55), Color(0.33, 0.25, 0.18)] if _gender == "Male" else [Color(0.62, 0.55, 0.45), Color(0.3, 0.27, 0.23)]
+		for i in 2:
+			var cloth_material: ShaderMaterial = _material_of("res://shaders/human_clothes.gdshader")
+			cloth_material.set_shader_parameter(&"cloth_color", colours[i])
+			cloth_material.set_shader_parameter(&"imperfection", 0.3)
+			var piece: MeshInstance3D = _take_mesh(base + ("shirt.glb" if i == 0 else "pants.glb"), cloth_material)
+			_accessories.append(piece)
+			HumanRig.attach_skinned(piece, _mesh, _skeleton)
+			if i == 0:
+				_shirt = piece
+			else:
+				_pants = piece
 	var face_hair: Shader = load("res://shaders/human_face_hair.gdshader")
 	var lash_material := ShaderMaterial.new()
 	lash_material.shader = face_hair
@@ -128,6 +159,93 @@ func _build() -> void:
 	if not _rig.setup(_skeleton, skinned, HumanRig.load_data(entry[1])):
 		push_error("HumanRig.setup failed")
 	_apply()
+	if _cloth and _shirt != null and _pants != null:
+		_add_cloth()
+
+
+# The villager clothes as cloth (task 103): one GPU solver per garment, the cloth weight from the vertex colour's blue (make_clothes.py: 0 glued to the
+# skinned body, 1 free), the body as a collider, the shirt and the trousers colliding with each other. The solver draws the garment with our clothes
+# material (human_clothes.gdshader reads its simulated positions).
+func _add_cloth() -> void:
+	if _cloth_root != null:
+		_cloth_root.queue_free()
+	_cloth_root = Node3D.new()
+	_cloth_root.name = "Cloth"
+	add_child(_cloth_root)
+	var solvers: Array = []
+	for piece: MeshInstance3D in [_shirt, _pants]:
+		var solver := GPUClothSolver.new()
+		solver.name = "ShirtCloth" if piece == _shirt else "PantsCloth"
+		solver.target_mesh = piece.get_path()
+		solver.skeleton = _skeleton.get_path()
+		solver.body_mesh = _mesh.get_path()
+		solver.cloth_weight_channel = int(_arg_value("--cloth-channel", "2"))   # (2: make_clothes.py's weight; 0, the belt mask, glues almost everything: a test)
+		solver.cloth_material = piece.material_override
+		solver.flip_normals = _arg_value("--cloth-flip", "on") == "on"   # (on: the solver's own normals for our garments' winding point INTO the body without it; the lit shirt was dark with bright specks. An early test that saw no change ran while the simulation was hidden)
+		piece.material_override = null   # (the solver puts its copy of the material on the mesh's surface: an override would draw over it, the plain skinned cloth)
+		solver.solver_iterations = int(_arg_value("--cloth-iterations", "4"))   # (8 x 4 looked the same and cost 4.5 ms a frame instead of 1.7)
+		solver.substeps = int(_arg_value("--cloth-substeps", "2"))
+		solver.stiffness = 0.9
+		solver.bend_stiffness = 0.6
+		solver.damping = 0.985   # (0.96 and 4 cm of travel: the hem barely swung)
+		solver.max_travel_distance = float(_arg_value("--cloth-travel", "0.04"))
+		solver.cloth_skin_offset = 0.0
+		solver.weld_epsilon = float(_arg_value("--cloth-weld", "0.001"))
+		solver.bend_stiffness = float(_arg_value("--cloth-bend", "0.6"))
+		solver.cloth_render_offset = float(_arg_value("--cloth-render-offset", "0.004"))   # (drawn this far out along the normal: hides the skin where free cloth sinks onto capsules inside the body)
+		var collider_kind: String = _arg_value("--cloth-collider", "capsules")   # capsules | mesh | none (task 103: the mesh collider costs ~13 ms of CPU a frame)
+		solver.body_collider_voxel_resolution = 48 if collider_kind == "mesh" else 0   # (12 left 224 triangles of the body: too coarse under a close shirt)
+		solver.auto_collider_lod = 1 if collider_kind == "capsules" else 0
+		# (a capsule is round, a torso oval: radii that reach the chest's width bulged out front and back, and the solver pushes even glued cloth out of
+		# its colliders: boxy, puffed shoulders. Smaller capsules sit inside the body)
+		# (the legs are nearly round: the trousers keep the add-on's full-size capsules, or the shins pushed through the cloth)
+		var shirt: bool = piece == _shirt
+		# (the trousers: small capsules at the hips too (full ones pushed the waistband out over the shirt's hem), full ones on the legs (or the shins
+		# poke through): per bone, a local patch in the add-on)
+		solver.auto_collider_radius_percentile = float(_arg_value("--cloth-capsule-percentile", "0.5"))
+		solver.auto_collider_radius_scale = float(_arg_value("--cloth-capsule-scale", "0.8"))
+		if not shirt:
+			var leg_fit := Vector2(float(_arg_value("--cloth-leg-percentile", "0.85")), float(_arg_value("--cloth-leg-scale", "1.0")))
+			var bones: PackedStringArray = _arg_value("--cloth-leg-bones", "LeftLeg,RightLeg").split(",")   # (the thighs too pushed the waistband out again)
+			for bone: String in bones:
+				solver.auto_collider_bone_overrides["mixamorig_" + bone] = leg_fit
+		if _arg_value("--cloth-peers", "on") == "off":
+			solver.peer_collider_voxel_resolution = 0
+		solver.body_collider_thickness = 0.006
+		solver.peer_collider_voxel_resolution = int(_arg_value("--cloth-peer-res", "8"))
+		solver.collider_friction = 0.5
+		solvers.append(solver)
+	if _arg_value("--cloth-peers", "on") != "off":
+		(solvers[0] as GPUClothSolver).peer_cloth_solvers = [NodePath("../PantsCloth")]
+		(solvers[1] as GPUClothSolver).peer_cloth_solvers = [NodePath("../ShirtCloth")]
+	for solver: GPUClothSolver in solvers:
+		_cloth_root.add_child(solver)
+
+
+# (debug, --cloth-dump) the simulated particles that sit furthest from their rest place, along the rest normal (+ out, - in) and in all
+func _dump_cloth() -> void:
+	for solver: GPUClothSolver in _cloth_root.get_children():
+		var data: PackedFloat32Array = solver._rd.buffer_get_data(solver._positions_buffer).to_float32_array()
+		var rest: PackedVector3Array = solver._welded_positions
+		var rows: Array = []
+		for i in rest.size():
+			var p := Vector3(data[i * 4], data[i * 4 + 1], data[i * 4 + 2])
+			rows.append([p.distance_to(rest[i]), rest[i], p - rest[i]])
+		rows.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
+		var mean := 0.0
+		for row: Array in rows:
+			mean += float(row[0])
+		print("CLOTH_DUMP ", solver.name, " particles ", rest.size(), " mean move ", mean / rows.size())
+		for k in 12:
+			print("CLOTH_DUMP   ", "%.4f" % rows[k][0], " rest ", rows[k][1], " move ", rows[k][2])
+		for centre: Vector3 in [Vector3(0.063, 1.273, 0.168), Vector3(-0.063, 1.273, 0.168), Vector3(0.0, 1.05, 0.13)]:
+			var near: Array = []
+			for i in rest.size():
+				if rest[i].distance_to(centre) < 0.03:
+					var p := Vector3(data[i * 4], data[i * 4 + 1], data[i * 4 + 2])
+					near.append([rest[i], p - rest[i]])
+			near.sort_custom(func(a: Array, b: Array) -> bool: return (a[1] as Vector3).length() > (b[1] as Vector3).length())
+			print("CLOTH_DUMP near ", centre, " count ", near.size(), " largest ", near.slice(0, 4))
 
 
 func _material_of(shader_path: String) -> ShaderMaterial:
@@ -180,7 +298,7 @@ func _play_walk() -> void:
 	_skeleton.get_parent().add_child(_player) # (its paths are "<skeleton name>:<bone>", read from the skeleton's parent)
 	_player.root_node = NodePath("..")
 	_player.play(&"walk")
-	if _capture_path != "":
+	if _capture_path != "" and not _cloth:
 		_player.pause()
 		_player.seek(_walk_time, true)
 
@@ -240,13 +358,24 @@ func _draw_bones() -> void:
 
 func _process(delta: float) -> void:
 	_draw_bones()
+	if OS.get_cmdline_user_args().has("--cloth-dump") and Engine.get_process_frames() == 80 and _cloth_root != null:
+		RenderingServer.call_on_render_thread(_dump_cloth)
+	if OS.get_cmdline_user_args().has("--gpu-time"):
+		# (task 103: what the cloth costs) the GPU time of the frame, every 60 frames, from the viewport's measured render time
+		# (the viewport's measured GPU time leaves the solver's compute passes out: the whole frame, uncapped, is the honest number)
+		if Engine.get_process_frames() == 1:
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+			Engine.max_fps = 0
+		if Engine.get_process_frames() % 120 == 0:
+			print("RIG_LAB_FPS %.0f (%.2f ms a frame, process %.2f ms)" % [Engine.get_frames_per_second(), 1000.0 / maxf(Engine.get_frames_per_second(), 1.0), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0])
 	if _sweep > 0.0:
+		# (--sweep turns the body back and forth, not the camera: the cloth swings with it)
 		_clock += delta
-		_yaw = _base_yaw + _sweep * sin(_clock * 0.9)
-		_update_camera(_top)
+		_body_turn = _sweep * sin(_clock * 2.2)
+		_body.rotation.y = _body_turn
 	if _capture_path != "":
 		_frames += 1
-		if _frames == 12:
+		if _frames == _capture_frame:
 			get_viewport().get_texture().get_image().save_png(_capture_path)
 			print("HUMAN_RIG_LAB ", _label.text)
 			get_tree().quit()
@@ -254,8 +383,9 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and (event as InputEventMouseMotion).button_mask & MOUSE_BUTTON_MASK_LEFT:
-		_yaw -= (event as InputEventMouseMotion).relative.x * 0.01
-		_apply()
+		# the drag turns the BODY (the camera stays): the simulated cloth swings with a real turn (turning the camera moved nothing it could feel)
+		_body_turn += (event as InputEventMouseMotion).relative.x * 0.01
+		_body.rotation.y = _body_turn
 	elif event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
 		match (event as InputEventMouseButton).button_index:
 			MOUSE_BUTTON_WHEEL_UP:
@@ -285,3 +415,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_DOWN:
 				_height = maxf(_height - 0.25, -1.0)
 		_apply()
+
+
+func _arg_value(key: String, fallback: String) -> String:
+	for arg: String in OS.get_cmdline_user_args():
+		if arg.begins_with(key + "="):
+			return arg.trim_prefix(key + "=")
+	return fallback

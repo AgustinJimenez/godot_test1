@@ -12,6 +12,7 @@ uniform vec3 hair_color : source_color = vec3(0.16, 0.1, 0.06);
 uniform float lash_darken : hint_range(0.0, 1.0) = 0.42;   // lashes are drawn this much darker than the brows
 uniform float brow_density : hint_range(0.2, 1.0) = 0.8;    // share of the brow hairs that are drawn
 uniform float softness : hint_range(0.0, 1.0) = 0.5;        // 0: every hair fully opaque in the hair colour (marker strokes); 1: hairs thinned out and tinted toward the skin
+uniform float grey : hint_range(0.0, 1.0) = 0.0;   // greying brows (the share of single hairs that are grey; lashes grey much later)
 
 void fragment() {
 	vec3 color = hair_color;
@@ -33,6 +34,9 @@ void fragment() {
 		color *= mix(0.7, 1.12, smoothstep(0.0, 0.8, UV.y));   // a hair is darker at the root (in the skin's shade) and a little lighter toward the tip
 		// (a real hair is thin and half transparent against the skin: fully opaque dark strokes read as drawn with a marker)
 		color = mix(color, vec3(0.36, 0.2, 0.14) * (0.6 + 0.8 * COLOR.r), 0.22 * softness);
+		// greying: single hairs (COLOR.g is the hair's own random number) turn a set grey
+		float grey_share = is_lash ? grey * 0.25 : grey;
+		color = mix(color, vec3(0.42, 0.41, 0.39) * (0.75 + 0.5 * COLOR.r), step(1.0 - grey_share, fract(COLOR.g * 9.73 + 0.17)) * 0.9);
 		if (is_lash) {
 			color *= (1.0 - lash_darken * (1.0 - 0.3 * softness));
 			alpha *= 1.0 - 0.25 * softness;

@@ -951,3 +951,233 @@ Tests missing: the beard, HairSim, strands mode, the LOD subsets, `bake_shapes`,
   - Wave frame: tangent x outward-from-the-head, on the drawn guide. The spread frame (tangent x up) swings on hanging hair.
   - Wave phase: a field in space (height / 9.5 cm, with a slow drift around the head) plus a little per clump and per hair, NOT the lock's own. Locks overlap, so per-lock phases crossed hairs everywhere (back view `r_w8b.png` vs `s_w8b.png`).
 - SURFACE SPLIT: the 4,194,240-vertex limit is per SURFACE (Godot's blend/skin compute is dispatched per surface). make_mesh now cuts a big mesh into surfaces of at most 4M vertices, between whole hairs, all with the same material_override. The native max_vertices guard went from 4.15M to 12M. The lab guard checks the largest surface. Long waves at wave 0.8: 171k hairs, 11.6M vertices, 3 surfaces, GPU 3.7 -> 6.0 ms. human_hair_check has a wavy test: surfaces under the limit, CUSTOM0.y inside the guide and fractional.
+
+- HAIR ZONES (2026-11-25, user: "the user must be able to make any hairstyle in every detail: a mohawk, curly lower sides with a straight top"). Approach A (fixed named zones) was picked over painted layers.
+  - Spec: `docs/superpowers/specs/2026-11-25-hair-zones-design.md`. Plan: `docs/superpowers/plans/2026-11-25-hair-zones.md`.
+  - Native: `hair_zones.h/.cpp`.
+    - 7 zones: front, top, crown, left_side (+X, the character's left), right_side, back, nape. They are cut from the head landmarks.
+    - Soft weights come from 13 samples within 1.5 cm.
+    - `HairLook` holds 17 per-zone settings: length, volume, curl, wave, clumping, fringe, sweep, hug, quiff, swept, spike, gravity, messy, gaps, wisps, tousle, amount.
+    - `params["zones"] = {zone: {setting: value}}`. Unknown zones and settings are ignored.
+    - In the lock loop, the lock's look shadows the whole-head constants of the same names.
+    - Guide and drawn point counts follow the maximum over the zones.
+    - `amount`: a hash per lock, applied after the Poisson spacing, so other zones keep exactly their locks.
+    - Both the cap alpha and the skin's dark scalp (`hair_scalp_weight`) follow the amount.
+    - Meta: `hair_guide_zones` (per guide) and `hair_body_zones` (per body scalp vertex). CUSTOM0.z = zone + 1, which drives the shader's `zone_tint`.
+    - With no zones the build is identical (checked).
+  - Lab, Hair tab:
+    - "Editing: Whole head / zone" dropdown; Reset zone; "Show the zone" (cyan tint); a Hair amount slider (zones only).
+    - Values a zone does not change show "(head)". Parting, side trim, longer behind, fringe strips and wet are whole-head only.
+    - Picking a hairstyle clears the zones.
+    - Saved styles: `HairStyleStore` (`tests/manual/humans/hair_style_store.gd`), JSON in `user://hair_styles`. They are listed under "Your hairstyles" and managed with Save as... and Delete. A saved style holds the settings, zones, wet, target hairs, shine and scalp layer; never the colour or the beard.
+  - Flags:
+    - `--hair-zone=zone:key:value,...`
+    - `--zone-edit=zone`
+    - `--styles-dir=`
+    - `--save-style=Name`
+    - `--hair-preset` also accepts a saved style's name.
+  - Checks:
+    - human_hair_check `_check_zones`: zones present and placed right; no-zone identity; unknown names ignored; a bare left side keeps 10% or less (the border band) with the cap and skin scalp faded; a long top over short hair; a wave in one zone gets the extra points.
+    - New `hair_style_store_check.gd` in humans_check.sh.
+  - Mohawk recipe: Spiky + left_side, right_side, back and nape amount 0 + top spike 1, length 0.08 (`z_mohawk5.png`). Spikes fade out on hair longer than 8 cm, so a long top just falls over the sides.
+  - Open:
+    - Zone curl on Long waves is hidden under the long top hair, and the curl itself is still the weak open item.
+    - Zone shapes are fixed (painting is approach B/C).
+    - The built-in styles are not yet zone styles.
+
+## Procedural skin detail (2026-11-26, user: "let's try A, maybe procedural"; design docs/superpowers/specs/2026-11-26-procedural-skin-design.md)
+- Compared with real close-up photos (Bing Images; Google asked for a captcha). Ours was one even colour, one soft shine, grey shadows, the same pores everywhere, and showed faint bands from the coarse mesh.
+- `human_skin.gdshader` (render_mode sss_mode_skin) now places zones on the face from three landmarks the lab finds in the body mesh (`_set_face_frame`: nose tip = frontmost middle-line vertex, head top, chin). The zones are in the mesh's own space and scaled by face height (reference = male, 0.2247 m).
+  - Redness: nose, cheeks, ears, a little chin, plus sparse tiny red spots.
+  - Eye shadow: under the eye and on the lid.
+  - Shave shadow: under a nose-to-sideburn line, down to the throat, not on the lips; follicle dots up close. Male default 0.75.
+  - Oily shine: clearcoat 0.22 at roughness 0.62 on the forehead centre, nose and cheekbones.
+  - Pores: cell pits, soft noise and criss-cross creases; deeper on the nose and cheeks.
+  - Wrinkles with age²: crow's feet, forehead lines, nose-to-mouth fold, a line under the eye. They bend the normal using screen-space derivatives of a height.
+  - Freckles: clustered on the nose and cheeks, varied sizes, a few moles.
+  - Light through the skin: transmittance on the ears.
+- The lab uses high-quality subsurface scattering. Skin tab sliders: Redness, Shadows round the eyes, Shave shadow, Oily shine, Pores, Age, Freckles, Light through the skin, plus "Show the skin zones" (debug colours). Flag `--skin-set=key:value,...`.
+- `humans_check.sh --render` also draws the body lab, so the skin shader is compiled and checked. A deliberately broken shader made it fail (verified).
+- Open:
+  - The ripples across the female belly are in the MakeHuman diffuse texture itself (the same with pores off).
+  - A reddish rim inside the nostrils (scattering in the crease).
+- FOREHEAD BANDS: real cause found (2026-11-26), and it corrects the "SKIN BANDING FOUND AND FIXED" note above. The bands were shadow acne from the real environment's `shadow_bias = 0.001`, not the mesh's triangles.
+  - How it was bisected in the lab, with the forehead and a smooth test sphere:
+    - Shading-normal debug: bands.
+    - Flat face-normal debug: the triangles are about 3x larger than the bands and don't line up with them.
+    - A plain StandardMaterial3D, with no hair: still banded.
+    - A 256-segment sphere next to the head: banded too.
+    - The same sphere in a stand-alone scene: smooth.
+    - The lab's default environment: smooth.
+    - Then each part of the real environment in turn. Only the sun's bias mattered: --shadows=off kept the bands as long as the bias was 0.001.
+  - The fix: --env=real now uses bias 0.05, and the forehead is smooth. The earlier notes record that the small bias gave the hair almost no self-shadow (about 270 px), so nothing is lost there. The --shadow-bias= flag still overrides it.
+  - New debug views: skin_debug 2 (the shading normal) and 3 (the flat triangles).
+- Still open: a faint diagonal crease on the female forehead (it shows on the flat colour too, so it is in the mesh, not the texture). The belly ripples I first blamed on the texture were the same shadow acne: they are gone with the 0.05 bias.
+- The skin zones now follow the body sliders. Each time a slider changes the body (`_apply_face_shapes`), the landmarks are found again on the body with every current blend shape baked in (`_shaped_body_mesh`): height, weight, muscle and face. Checked with Height 1, a long nose, a wide head and a big chin: the zones stay on the nose, eyes, ears and jaw.
+- Nose close-up fixes:
+  - The pores lit like bumps. UV v runs down the texture while a normal map's y runs up, so the pore normal's y slope is now flipped and the pits read as pits.
+  - An orange outline round the nostril opening came from scattering at the dark edge. The scattering is now 85% weaker in a nostril zone, and transmittance is limited to the ears.
+  - The lips had skin pores. They are now 80% fainter on the lips.
+- The female forehead line: it is a real edge in the mesh's shape, not triangle-edge shading. A baked PN-triangle smooth-normal map (a curved normal per triangle, in mesh space) left it unchanged, so it was reverted. Softening it needs a denser or reshaped head mesh (option C, not approved yet).
+
+## Character editor, more of it (2026-11-26; user: "character editor in general, hair, beard, eyes, body, fat, muscle... maybe even a face edit")
+- Skin tone:
+  - Skin tab "Skin tone": the flat colour along the Monk Skin Tone scale (10 swatches, CC-BY 4.0, credited in assets/models/humans/CREDITS.md), warmed and dimmed in `_apply_skin_tone`.
+  - "Undertone": pink .. neutral .. olive.
+  - The lips follow the skin: darker on dark skin.
+  - "Peach fuzz": Godot's RIM on the skin.
+  - The redness tint is softer, and the zone edges are wider (a pink blob showed on pale skin).
+- 40 new blend shapes (MakeHuman CC0 targets via MPFB, `tools/blender/make_bodies.py` FACE_KEYS):
+  - Face: jaw, chin width, cheekbones, eye spacing and height, brow height and angle, mouth width and corners, nose bridge, tip and nostrils, forehead height, face length, neck.
+  - Body (Body tab "Proportions"): shoulders, waist, hips, belly (range 0.6: the target at 1 is a pregnancy), bust (cupsize macro).
+  - Rebuilt:
+    - bodies, landmarks, eyes, underwear, classic brows and lashes;
+    - Mindfront brows 11, 03, 06 and 09 (fit_mindfront.py with the scratchpad packs of session 82360aae);
+    - lashes 01 (width 0.0004, length 1.3).
+  - Every rebuilt file was compared with the old one: the base geometry and all 24 old shapes are identical (difference 0.0), and only the new shapes were added. The body glb grew from 6 to 13 MB.
+  - The hair keeps only height, weight and muscle shapes; the new keys are baked into the hair build with the face keys (`_face_values`).
+  - The rig (`*_rigged.glb`, make_rig.py) still carries only the 6 body shapes.
+- Face tab:
+  - Headings (Head, Eyes and brows, Nose, Mouth, cheeks and jaw).
+  - "Random face" (mostly small changes, seeded with `--random-face=<seed>`) and "Reset face".
+  - Slider step 0.05: 0.04 did not land on 0 for a +-1.5 range, so every "neutral" face had 0.02 of age, ears, eyes, nose, chin, cheeks and lips.
+- Saved characters (`CharacterStore`, `tests/manual/humans/character_store.gd`, JSON in user://characters):
+  - The whole editor state: body, face and body shapes, skin, eyes, brows, hair with zones and colour, beard.
+  - The row under Male/Female: load dropdown, name, Save, Delete.
+  - Loading reloads the scene with the state applied at start (a static variable carries it over), so every control starts at its value.
+  - Flags: `--characters-dir=`, `--save-character=`, `--load-character=`, `--test-reload-character=` (the panel's reload path).
+  - Checks: `character_store_check.gd` (in humans_check.sh); a save then load round trip and the reload path gave the same render.
+- Brows tab "Brow style": the four Mindfront layouts (thick flat 11, thin straight 03, thick arched 06, medium arched 09). The swap reloads only the brows and lashes (`_load_face_hair`, `--test-brow-style=<i>`); our first generated brows are left out of the picker (they look poor next to these).
+- Eye shape (6 more keys, 70 shapes in all): eye slant (outer corners, MakeHuman corner2), eyelid fold, eye bags. The chain is rebuilt by `tools/blender/rebuild_humans.sh <work> <packs>`. Compared again: the old shapes and base geometry are identical.
+- Saved characters also keep the beard's grey and ginger locks (they were material-only before) and the hair density.
+- Beard styles 3-5 (native `beard_zone`, human_hair_native.cpp `in_beard_region`; lab BEARD_STYLES buttons):
+  - Moustache: above the upper lip only, 8 mm.
+  - Mutton chops: cheeks and sideburns, ax > 0.04, no chin or moustache.
+  - Chin strap: a band 0.045 above `beard_floor`, plus a strip up to the sideburn at ax > 0.064.
+  - Tuned from renders: the first moustache reached the mouth corners, and the first chin strap covered the whole lower cheek. The native library was rebuilt (template_debug only, by build_native.sh).
+- Greying and one Age:
+  - Hair tab "Grey hair (salt and pepper)": the new `hair_grey` uniform in human_hair.gdshader. Single head hairs (COLOR.g = the hair's own random number), biased by the lock, turn a set grey before the clump light and root shade.
+  - Body tab "Age (whole character)": moves the face age shape, the skin's wrinkles and the head and beard grey together (`_on_whole_age`, `--whole-age=`). Each can still be set alone.
+  - Fixed: the beard's Greying slider barely greyed anything. The threshold was on COLOR.r, the lock brightness (about 0.3-0.7, not 0..1), and the grey was the dark beard's own brightness x2.4 (still near black). It is now a per-hair random draw with a set grey.
+  - Saved characters keep the hair grey.
+  - Not done: the brows do not grey.
+- Brows grey with age (face-hair shader `grey`; the lashes grey a quarter as much). Set by the whole-character Age at 0.6 of the hair grey, and saved with characters.
+- Eyes tab: eight natural iris swatches (EYE_COLOURS). The browns were made warmer after a render showed them slate-coloured.
+- Fixed: white specks on the shaded upper eyelid. The pores' relief caught the light there; pores are now 85% fainter on the eyelid skin (`eyelid_skin` zone in human_skin.gdshader).
+- Makeup (Skin tab, MAKEUP list; human_skin.gdshader `lipstick`, `blush`, `eyeshadow`, `eyeliner` and their colours, kept in `_skin_values` and saved with characters):
+  - Lipstick (with a sheen), blush on the apples of the cheeks, eyeshadow on the upper lid toward the crease, and eyeliner just above the lash roots.
+- The eye zones are now placed from the real eyeball centre: `face_eye` comes from the eye mesh with its current blend shapes (`_set_eye_centre`).
+  - The fixed point (0.032, 0.036) had been about 5 mm low on the male and 5 mm high on the female, so the female eye zones sat 1 cm too high (the first eyeshadow and liner landed on the brow bone).
+  - The old zones keep their offsets from the point they were tuned on the male: the male renders as before.
+  - The lash line is about 6-7 mm above the eyeball centre with the eye open. The debug view (skin_debug 1) now shows the liner in black and the eyeshadow in yellow.
+- Body joints on the skin (Skin tab "Knees, elbows, knuckles", `joint_tone` 0.5):
+  - Effect: kneecaps redder (front only), elbow points darker and rougher (back only), knuckles a little redder.
+  - Landmarks: the joints come from the rig file's bone heads, moved by the height/weight/muscle shapes the body shows (`_set_joints`). The proportion shapes do not move them.
+  - The knuckle zone is wide (the joint centre lies about 1 cm under the skin). Seen in the debug view (knees red, elbows blue, knuckles green): only the index and little-finger knuckles show clearly in the A-pose.
+- "Random" button (character row; `_on_random_character`, `--random-character=<seed>`): a random character of the same gender, loaded through the saved-character path (reload). Its rolls:
+  - Body and face: height, weight, muscle and every face and proportion shape, mostly small; age -0.6..0.7.
+  - Skin: any tone, an undertone, and freckles on 30% of light skins.
+  - Colours: hair (dark on most dark skins; never grey or white, greying follows age) and eyes (brown on dark skin and 45% of the rest).
+  - Style: a brow style, a hairstyle from a per-gender list (RANDOM_STYLES), and a beard for half the men.
+  - Four seeded rolls rendered as four plausible, different people.
+- Fingernails (human_skin.gdshader `nails[10]`, `nail_backs[10]`; Makeup "Nail polish" with a colour):
+  - Look: a lighter, pinker plate and smoother; polish is glossy.
+  - Placement: a nail is centred 6.5 mm behind each fingertip (the rig's finger3 tail) and 5 mm toward the back of the finger.
+  - Direction: the back of the hand is the normal of the plane through the wrist and the index and little-finger knuckles, on the side away from the body (in the rest pose the palms face the thighs). The first rule, "the thumb is on the palm side", was wrong and put the finger nails on the pads; checked from above and from the side after the fix. The thumb uses its own direction, away from the index finger (the first try put its nail on the side of the thumb).
+  - The random undertone now stays between -0.35 and 0.6 (a strong pink with the default redness gave a red nose).
+- Second photo comparison (Pexels close-up vs the default male, same framing). What we lacked: uneven colour, fine texture at mid distance, small spots, deep eye sockets. Changes:
+  - Mottling at three sizes: about 2 cm patches (UV*38), "blood" (redder, UV*52 and *150) and "pigment" (browner, UV*44 and *170) fields that do not line up, and a fine grain at 0.22 x the pore scale that stays visible after the pores themselves fade.
+  - "Small spots and moles" (default 0.35): sparse brown dots anywhere. Freckles stay a separate slider.
+  - Eye shadow default 0.5 -> 0.65.
+  - At 1:1 the cheek now has pores and patchy variation; at normal size it reads natural, not dirty.
+  - Not addressed: the eye sockets are shallow (mesh shape, not the shader).
+- Eye depth (eye push1 in/out) and brow ridge (eyebrows trans forward/backward), 74 shapes now. Rebuilt with rebuild_humans.sh; the old shapes are identical. In profile, deep-set plus a stronger ridge (0.6 each) gives the deeper sockets the photo had. The ridge slider stops at 0.6 (at 1 it is a ledge).
+- Performance: re-finding the skin's landmarks bakes every blend shape into the body (about 50 ms, eyes 7 ms; measured with a headless probe). That ran on every slider event and made dragging stutter. It now waits until the shapes rest for 0.15 s (`_update_landmarks` from `_process`). The eye-zone debug render is unchanged (mean pixel difference 0.003).
+- Code review (/code-review medium) of the uncommitted work, fixes:
+  - Hair zones, bald test: a head under 5 mm counted as bald even with a long zone (no hair at all). Now bald = head length < 5 mm and no zone sets a length. New check (f) "a 3 mm head with a 20 cm top grows guides": RED (no mesh) then GREEN. The first attempt used hair_look_max, which clamps lengths to 1 cm and so broke the bald check.
+  - Hair zones, ribbon width: it now follows each lock's zone length (`lock_width_here`), so a short zone on long hair is not drawn as plates. Ribbon mode only; not covered by a test.
+  - Skin: the always-on nose-to-mouth fold also landed on the nape (missing `front`).
+  - Random character kept the last character's beard when it rolled none. It now applies "None" and resets the beard grey and ginger (checked with seeds 5-7 after a full beard).
+  - `_set_face_frame`: no nose vertex now turns the face zones off instead of sending -INF (NaN skin).
+  - The hair check's `_vertices` reads every surface, not only surface 0.
+  - Shader comments that had moved onto the wrong lines are back on their own lines.
+  - Not fixed: project.godot lost "Double Precision" from config/features. That file is the user's and is never committed.
+- All 11 photo-texture skins rendered with the new layers: none breaks. Our redness and eye shadow are halved on texture skins (`painted`): the textures carry their own, and ours doubled it (dark rings on male_african_middleage).
+- Veins (Skin tab "Veins (hands, forearms)", default 0.3; `wrists[2]`, `hand_mids[2]` from the rig):
+  - A ridged, stretched noise along the hand (wrist to middle knuckle) and the forearm (elbow to wrist), tinted blue-grey.
+  - First version invisible: the region stopped at 3.15 cm from the bone line and the forearm's skin is 3-4 cm out (a pixel diff showed the lines very faint). The reach is now 5 / 7.5 cm.
+  - Still subtle: faint at 1 on fair skin, about invisible at the default and on dark skin.
+- Palms and soles: little pigment, so the lighter of the skin and a pale pinkish beige (much lighter on dark skin, a little pinker on light skin).
+  - Palms: the side of the hand away from its back, wrist to 2x the wrist-to-middle-knuckle distance.
+  - Soles: skin facing down within 2.5-5 cm of the ground.
+  - Checked in the debug view (yellow on the palm side only) and on dark skin (the palm clearly lighter); soles seen from below with the new `--nofloor` flag: lighter and pinker on dark skin, as meant.
+- The shave shadow follows the hair colour (from `scalp_color`, the hair colour x0.55: hair_dark = 1 - luminance/0.09, clamped 0.15..1). Dark hair is full, blond about a third, light red in between; checked with dark, blond and red hair.
+- Lip creases: fine vertical grooves on the lips, about 1.3 mm apart and a little wavy, fading toward the edge and the corners (wrinkle height 0.06 mm, through the existing bump). Visible on the lower lip in a close-up.
+- The lip colour sat 9 mm low on the female face: its centre was the hair builder's estimate (eye height - 7.15 cm x face scale), right for the male only.
+  - The lab now measures the mouth line on the mesh (`mouth_y`): the deepest point of the middle-line profile below the upper lip's most forward point. It walks down 1 mm at a time, stops where the profile comes forward 0.5 mm (the lower lip), and skips steps 4 mm deeper than both neighbours (the inside of the mouth).
+  - Result: male 29 mm and female 32 mm below the nose tip.
+  - Two wrong first tries: the lower lip's most forward point (it landed on the underside of the upper lip), and a 1 mm turn (the female lower lip comes forward only 0.9 mm, so it ran to the chin groove).
+  - Both lips now take the colour on both faces.
+- Nipples (`nipples[2]`: the most forward vertex of each side of the chest, 15-30 cm below the chin, 5-14 cm out): a pinkish-brown areola 13 mm across with a darker centre. Plausible on fair and dark male chests. On the female body they are under the bra.
+- New capture flags: `--look-y=` (the camera's target height) and `--nofloor`. Note that `--close` means a close camera aimed at the hips, not "close the app".
+- Armpits a little darker (`armpits[2]`: the rig's shoulder joint, 2.5 cm in, 5.5 cm down and 0.5 cm back, within 2.3 cm of the skin; falloff 2-5 cm). Seen in the debug view from below (orange); subtle in the normal render.
+
+## Heavy body rebuilt (2026-11-26)
+- The user saw "weird shapes on the sides" at max weight. Cause: `weight_heavy` was MakeHuman's max-weight macro alone, which is mild (at most 2.8 cm male /
+  2.1 cm female, measured in Blender), pushed to 3.0 in the lab and in `HumanRig::shape_weights`. Pushing a shape past 1 exaggerates its small bumps: hard
+  lumps on the flanks with a crease above them, while the profile stayed flat and the arms and legs stayed thin.
+- Now `weight_heavy` = max-weight macro + MakeHuman core fat / girth targets (CC0), in `tools/blender/heavy_mix.py`, shared by `make_bodies.py` and
+  `make_rig.py`: belly (pregnant 0.5, navel down 0.3), waist / hips / under-bust / bust girth, torso depth 0.8, buttocks, upper / lower arm and leg fat
+  (male; the female has her own pear mix: hips, outer thighs via the upper-leg scale targets, seat, lower belly, upper arms, cup size 0.7, less on the upper torso), double chin, neck girth, cheeks. Fitted by eye against front / side clinical
+  photos of obese bodies (Wikimedia Commons "obese man"; Bing image search returns nothing for body-shape queries). The gain is 1.0 in both places now.
+- Rebuilt with `rebuild_humans.sh` and `make_rig.py`; compared with the old assets: only `weight_heavy` changed (body up to 9 cm, underwear 4-6 cm, female
+  lashes 0.1 mm; brows, eyes, landmarks and every other shape identical). Rig joints at full weight move up to 2.0 cm (was 0.6 cm x 3).
+- Also this round: Forest background in the body lab (Forest / Sky / Studio dropdown; FXAA in the Forest: MSAA and TAA misbehave with the plants' shader),
+  the hair colour dropdown, a flash logger (F8), and the skin shader's SSS_TRANSMITTANCE_DEPTH kept above 0 (it was 0 outside the ears: NaN pixels at the
+  wrist and armpit, smeared into striped blocks, flashing as the trees' shadows changed).
+
+## Body hair (2026-11-26)
+- `HumanBodyHair` (native, `human_body_hair_native.cpp`): short single hairs on the chest, belly line, back, upper arms, forearms, thighs, shins and
+  armpits of the base body, bound to the body vertex under each root (the result carries the height / weight / muscle shapes; `HumanRig.attach_skinned`
+  can give it the bound vertices' bone weights - not wired into the rig lab yet). Same vertex layout as the beard (COLOR.b 0.3: beard colour, grey,
+  ginger; COLOR.g 0: never thinned by the head hair's density), built with `HumanHair.prepare` / `make_mesh`, ~0.1 s for ~41,000 hairs.
+- Areas from the rig joints (`tests/manual/humans/body_hair_joints.gd`): limbs are bands round the joint lines; the torso is cut by the nipples, the
+  neck, the hips. Distribution after Wikipedia "Body hair" / "Chest hair" (Setty 1961, 1,400 men: sternal 74%, pectoral 77%, infraclavicular 63%,
+  circumareolar 16%; the pecto-sterno-infraclavicular pattern 57%): the amount spreads the hair (breastbone and nipples first, then the breast, then up
+  under the collar bones; the belly line thin above the navel and wider below it, the belly round it filling in only on hairy men), forearm hair densest
+  at the wrist end and on the back of the arm, little on the upper arm and the inner thigh, the chest's parting on the upper breastbone (hair above it
+  grows up and out, below it down and in; blended over 4 cm: a hard switch drew a pale line).
+- Lab: Beard tab "Body hair" (amount, chest, belly line, back, arms, legs, armpits, curl, length mm), men only, saved with characters, random for men,
+  `--body-hair=amount`; default amount 0.3. Check: `human_body_hair_check.gd` (in humans_check.sh).
+- Gender switch fixed: `_load_face_hair` walked up from the old brows looking for `_body`, which was already the new body, and freed the scene root
+  (the lab froze or crashed). The switch also no longer waits for the head hair (the body is bald for ~1.3 s) and the face frame is cached per mesh.
+  `--switch-gender=` and a GENDER_SWITCH check in `humans_check.sh --render`.
+
+## Villager clothes by default (2026-11-26)
+- `tools/blender/make_clothes.py` (in rebuild_humans.sh): a long-sleeved shirt (V neck, to the hips) and trousers (waist to above the ankles, a
+  leather belt band), each a shell cut from the body like the underwear, so it carries every body shape. The pieces come from the rigged body's skin
+  weights (same vertex order; a hem's new vertices take the nearest original vertex's label): a distance-to-bone test took bits of the hips for the
+  hand that hangs beside them (holes, cloth scraps on the hands). Straight hems from planes square to the forearm / shin; off the skin (shirt 1.6 cm,
+  sleeves 1.9, trousers 1.2 widening to the cuffs) and smoothed 16 passes so the cloth bridges hollows (8 left the nipples showing); the shirt kept
+  2.6 cm out over the trousers' top (the smoothing and the heavy belly pulled it in and the belt showed through as dark slits). Ending the shirt
+  lower wrapped each thigh like shorts: a shell cannot hang across the gap between the legs (a real tunic or skirt needs other geometry).
+- `shaders/human_clothes.gdshader`: plain-weave linen / wool (fades under a pixel), uneven dye, slubs, wear and dirt toward the hems and the lower legs,
+  stitched hems (vertex colour green), the belt and a buckle (red). Colours per gender in the lab (CLOTHES_COLOURS).
+- Lab: "Clothes" dropdown next to Background (Villager default, Underwear), `--clothes=`, saved with characters; under clothes the underwear and the
+  body hair are not shown. Not in the rig lab yet (`HumanRig.attach_skinned` would do it, as for the underwear).
+- Imperfections (2026-11-26): the clothes shader places stains (darker rims), faded / thinned cloth at the elbows and knees (the lab sends the joints),
+  small ragged holes (discard, mostly where worn, frayed ring), mended patches of earthy scrap cloth (hand-cut edges, stitched border) and frayed hems,
+  all from `flaw_seed`; lab: Body tab "Clothes" (Imperfections, Wear, New flaws), saved and randomised per character, `--cloth-flaws=amount,seed`.
+- No cloth simulation: the clothes are static shells (they follow the shapes and, skinned, the skeleton). Open edges now have a 4 mm rolled lip turned
+  in toward the skin (make_clothes.py RIM_DEPTH), and the shader draws the inside of the cloth (darker) but only within the hem band: elsewhere a back
+  face is where the sleeve's and the body's shells overlap at the armpit. A real drape (folds, swing) needs simulation: tests/manual/outfit_cloth has a
+  GPU cloth experiment to start from.
+- Clothes artefacts fixed (2026-11-26): the glb body is split along its UV seams (14,517 vertices for 13,380): every seam was an open edge in Blender, pinned out
+  of the smoothing (a "layer line" across the back) and given a hem lip (slits along the sleeves): make_clothes.py welds them first. The imported custom split
+  normals were the SKIN's (the vertebrae and nipples shaded through smooth cloth): cleared, sharp marks removed. Smoothing is Taubin (lambda 0.5 / mu -0.53,
+  40 passes; plain averaging shrank the cloth and needed a floor that tented it over the nipples). The shapes are exported without their own normals (dark
+  blotches on the heavy belly). The shader blends its three weave planes (a hard switch drew rectangles) and draws a hole's fray only where holes can be.
+  Left: at full weight the heavy thigh reaches the hanging hand in the rest pose and a fingertip pokes through the trouser leg (the pose, not the cloth).
+- Openings close in (2026-11-26): seen from below, a loose sleeve showed the empty gap to the arm and, past the inside the shader draws near a hem, the sky
+  through the sleeve. The sleeves, the neckline and the trouser legs now narrow to 4 mm off the skin over their last 6 cm (3 cm at the neck): gathered
+  cuffs, a neckband, bound trouser cuffs. The shirt's hem at the hips stays loose (the trousers are under it). Still no cloth simulation.

@@ -1,6 +1,7 @@
 #include <chrono>
 #include "human_hair_native.h"
 #include "hair_sim_native.h"
+#include "hair_zones.h"
 
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -277,7 +278,7 @@ Dictionary HumanHair::default_params() {
 	d["beard_length"] = 0.012; // metres
 	d["beard_curl"] = 0.0;     // 0..1: the beard hairs coil (0: straight with a small bend; 1: tight curls). More points per hair above 0.15.
 	d["neck_beard"] = 0.0;     // 0..1: the beard continues under the jaw onto the neck (the neck beard region; 0 = it stops at the jaw)
-	d["beard_zone"] = 0.0;     // 0: full beard (cheeks, jaw, chin, moustache); 1: goatee (moustache and a chin patch, bare cheeks)
+	d["beard_zone"] = 0.0;     // 0: full beard (cheeks, jaw, chin, moustache); 1: goatee (moustache and a chin patch, bare cheeks); 2: circle beard; 3: moustache; 4: mutton chops; 5: chin strap
 	d["strips"] = 0.0; // 0..1: the front hair falls as separate strips (about 1.3 cm wide) with gaps between them, each strip its own length
 	d["gaps"] = 0.0;  // 0..1: patches of the scalp grow no locks and the rest clump tighter, so the hair parts into separate clumps with the layer below showing between them
 	d["wisps"] = 0.0; // 0..1: more hairs stray from their lock as long, wavy wisps
@@ -400,7 +401,14 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		seed = uint64_t(int64_t(p_params[StringName("seed")]));
 	}
 	// a length of (nearly) zero is a bald head: no head hair and no scalp layer, but the beard is still made (a bald man with a long beard)
-	const bool bald = param(p_params, "length", 0.12) < 0.005;
+	bool long_zone = false;   // (a zone with its own length: a short head with one long zone still grows that zone; zone lengths are clamped to 1 cm and up)
+	{
+		const HairZoneLooks looks = hair_zone_looks(p_params);
+		for (int z = 0; z < ZONE_COUNT; z++) {
+			long_zone = long_zone || (looks.set[z][0] && looks.zone[z].length > 0.0101);
+		}
+	}
+	const bool bald = param(p_params, "length", 0.12) < 0.005 && !long_zone;
 	if (bald && param(p_params, "beard", 0.0) <= 0.0) {
 		return built;
 	}
@@ -473,11 +481,21 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	const double back_long = Math::clamp(param(p_params, "back_length", 0.0), 0.0, 1.0);
 	const double beard_length = Math::clamp(param(p_params, "beard_length", 0.012), 0.002, 0.12);
 	const double beard_zone_value = param(p_params, "beard_zone", 0.0);
-	const bool goatee = beard_zone_value > 0.5;          // 1: goatee (moustache + soul patch + chin); 2: circle beard (the same plus the connectors at the mouth corners)
-	const bool circle_beard = beard_zone_value > 1.5;
+	const int beard_zone = int(Math::round(beard_zone_value));
+	const bool goatee = beard_zone == 1 || beard_zone == 2;   // 1: goatee (moustache + soul patch + chin); 2: circle beard (the same plus the connectors at the mouth corners)
+	const bool circle_beard = beard_zone == 2;
+	const bool moustache_only = beard_zone == 3;           // 3: a moustache alone
+	const bool mutton_chops = beard_zone == 4;             // 4: sideburns grown down the cheeks to the jaw; chin and upper lip shaved
+	const bool chin_strap = beard_zone == 5;               // 5: a narrow band along the jaw line and under the chin; cheeks and upper lip shaved
 	const double neck_beard = Math::clamp(param(p_params, "neck_beard", 0.0), 0.0, 1.0);
 	const double beard_curl = Math::clamp(param(p_params, "beard_curl", 0.0), 0.0, 1.0);
 	const double wisps = Math::clamp(param(p_params, "wisps", 0.0), 0.0, 1.0);
+	// zone overrides (params "zones"): every lock reads its own settings below, from the zones its root is in. The build-wide point counts follow the
+	// longest, curliest and wavier hair of any zone. (With no zones every lock reads exactly the values above.)
+	const HairZoneLooks zone_looks = hair_zone_looks(p_params);
+	const double build_length = hair_look_max(zone_looks, 0);
+	const double build_curl = hair_look_max(zone_looks, 2);
+	const double build_wave = hair_look_max(zone_looks, 3);
 	const double eye_drop = param(p_params, "eye_drop", 0.105);
 
 	// --- the head: top, centre and size, found from the body itself
@@ -507,6 +525,13 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	// the scale of "how far to the front" (front_here, front_share, ...): from the head DEPTH, not its width: a wide head (head_wide) made front_here smaller everywhere, so fewer roots counted as the front and the fringe fell over the face. 0.8 x the half depth equals the half width of the default heads (0.0883 / 0.1103).
 	const double front_scale = std::max(0.8 * 0.5 * (z_front - z_back), 0.05);
 	const Vector3 crown(real_t(parting * half_width * 0.45), real_t(top_y), real_t(centre_z - 0.015));
+	// the scalp's zones (front, top, crown, sides, back, nape): a hairstyle can change its settings zone by zone (hair_zones.h)
+	HairZoneFrame zone_frame;
+	zone_frame.crown = Vector3(0.0f, real_t(top_y), real_t(centre_z - 0.015)); // (the zones do not move with the parting)
+	zone_frame.centre_z = centre_z;
+	zone_frame.front_scale = front_scale;
+	zone_frame.eye_y = eye_y;
+	zone_frame.top_y = top_y;
 
 	// --- the scalp: the vertices above the hairline (low at the nape, higher at the temples and the forehead)
 	auto hairline = [&](const Vector3 &v) {
@@ -601,6 +626,9 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	std::vector<float> out_s; // 0 at the root (and on the cap), 1 at the tip
 	std::vector<char> out_cap;
 	std::vector<float> out_guide; // the guide strand each hair vertex follows when the hair is simulated (-1: the scalp layer, which does not move)
+	std::vector<float> out_zone;  // the zone of each vertex's root + 1 (0: no zone, the beard), for the lab's zone tint (CUSTOM0.z)
+	int vertex_zone = 0;          // (what add_vertex stores in out_zone)
+	std::vector<uint8_t> guide_zones; // the zone of each guide's root
 	std::vector<Vector3> guide_rest; // the rest points of every guide strand (`steps` per guide, in the body's space)
 	int current_guide = -1;
 	int guide_count = 0;
@@ -615,6 +643,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		out_s.push_back(p_s);
 		out_cap.push_back(p_cap ? 1 : 0);
 		out_guide.push_back(p_cap ? -1.0f : float(current_guide));
+		out_zone.push_back(float(vertex_zone));
 		return int(out_vertices.size()) - 1;
 	};
 
@@ -627,13 +656,18 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		for (int k = 0; k < 3; k++) {
 			const int v = indices[t + k];
 			if (cap_index[v] < 0) {
+				vertex_zone = hair_zone_at(zone_frame, vertices[v]) + 1;
 				// signed height above the hairline, -1..1 for +-1.4 cm, stored as 0..1: below the line it keeps counting down, so the shader's cut runs along the true hairline across a triangle (clamping at 0 pushed the cut into steps of one triangle)
 				const double fade = 0.5 + 0.5 * Math::clamp((double(vertices[v].y) - hairline(vertices[v])) / 0.014, -1.0, 1.0);
 				// how shaved the scalp is here (the hair there is cut short by side_trim): the shader shows more stubble and skin where it is high
 				const double cap_topness = Math::clamp((double(vertices[v].y) - (eye_y + 0.03)) / std::max(top_y - eye_y - 0.03, 0.02), 0.0, 1.0);
 				const double cap_front = Math::clamp((double(vertices[v].z) - centre_z) / front_scale, 0.0, 1.0);
 				const double shaved = side_trim * (1.0 - cap_topness) * (1.0 - cap_front); // (the front hairline keeps its hair: only the sides and back are clippered)
-				cap_index[v] = add_vertex(vertices[v] + normals[v] * 0.0018f, normals[v], Vector2(0.5f, 0.5f), Color(0.5f, float(shaved), 1.0f, float(fade)), v, cap_tangent(normals[v]), 0.0f, true);
+				// a zone with less hair: the scalp layer fades out with it (a bare zone shows skin, not a hair-coloured patch)
+				const double cap_amount = zone_looks.any ? hair_look_at(zone_looks, hair_zone_weights(zone_frame, vertices[v])).amount : 1.0;
+				const double cap_keep = Math::clamp(cap_amount / 0.6, 0.0, 1.0);
+				const double cap_fade = fade * cap_keep * cap_keep * (3.0 - 2.0 * cap_keep);
+				cap_index[v] = add_vertex(vertices[v] + normals[v] * 0.0018f, normals[v], Vector2(0.5f, 0.5f), Color(0.5f, float(shaved), 1.0f, float(cap_fade)), v, cap_tangent(normals[v]), 0.0f, true);
 			}
 		}
 		out_indices.push_back(cap_index[indices[t]]);
@@ -648,9 +682,9 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		}
 	};
 	// --- the locks
-	const int plain_steps = std::max(7, std::min(14, int(length / 0.015) + 6));
+	const int plain_steps = std::max(7, std::min(14, int(build_length / 0.015) + 6));
 	// curls need more points per strand: a coil drawn with four points a turn is a zigzag
-	const int steps_plain = curl > 0.05 ? std::max(plain_steps, std::min(18, int(length / 0.008) + 5)) : plain_steps;
+	const int steps_plain = build_curl > 0.05 ? std::max(plain_steps, std::min(18, int(build_length / 0.008) + 5)) : plain_steps;
 	// single hairs are many: fewer points each (a hair is nearly straight over a few millimetres) keeps the vertex count in check
 	// `points` (3..16) sets the points per hair directly (2 vertices each): fewer is cheaper, more drapes smoother. 0 = automatic.
 	const int points_param = int(Math::clamp(param(p_params, "points", 0), 0.0, 16.0));
@@ -659,7 +693,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	// A wave needs ~8 points a cycle to be a curve: drawn with the guide's 9 points it came out as corners that crossed the neighbouring hairs. Straight hair keeps the guide's points (no cost).
 	// `render_points` (0 = automatic) sets the points per hair; the shader follows the simulation between two guide points (CUSTOM0.y is fractional there), so the extra points move with it.
 	const int render_points_param = int(Math::clamp(param(p_params, "render_points", 0), 0.0, 64.0));
-	const int render_target = render_points_param >= 3 ? render_points_param : (wave > 0.0 && strands > 0 ? std::min(32, std::max(steps, int(length / 0.009) + 2)) : steps);
+	const int render_target = render_points_param >= 3 ? render_points_param : (build_wave > 0.0 && strands > 0 ? std::min(32, std::max(steps, int(build_length / 0.009) + 2)) : steps);
 	const int render_sub = strands > 0 && steps > 1 ? Math::clamp((render_target - 1 + steps - 2) / (steps - 1), 1, 6) : 1;
 	const int render_steps = (steps - 1) * render_sub + 1;
 	// a Catmull-Rom curve through the points, `sub` drawn points a segment (the guide's own points are kept exactly, so the drawn hair meets the simulated guide at every one)
@@ -752,6 +786,29 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		const double a_weight = 1.0 - u - w;
 		const Vector3 root = vertices[ia] * real_t(a_weight) + vertices[ib] * real_t(u) + vertices[ic] * real_t(w);
 		Vector3 normal = (normals[ia] * real_t(a_weight) + normals[ib] * real_t(u) + normals[ic] * real_t(w)).normalized();
+		const HairZoneWeights lock_zone_w = hair_zone_weights(zone_frame, root);
+		const int lock_zone = hair_zone_dominant(lock_zone_w);
+		vertex_zone = lock_zone + 1;
+		// this lock's settings (they shadow the whole-head values of the same names for the rest of the lock; derived the same way as above)
+		const HairLook look = hair_look_at(zone_looks, lock_zone_w);
+		const double length = look.length;
+		const double lock_width_here = std::min(requested_width, 0.002 + std::max(0.01, length) * 0.25);   // (narrower for this zone's length: a short zone on long hair is not drawn as plates)
+		const double volume = look.volume * (1.0 - 0.45 * wetness);
+		const double curl = look.curl;
+		const double wave = look.wave;
+		const double clumping = look.clumping;
+		const double fringe = look.fringe;
+		const double sweep = look.sweep;
+		const double hug = look.hug;
+		const double quiff = look.quiff;
+		const double swept = look.swept;
+		const double spike = look.spike * Math::clamp(1.0 - (length - 0.08) / 0.1, 0.0, 1.0);
+		const double gravity = look.gravity * (1.0 + 0.6 * wetness);
+		const double messy = look.messy;
+		const double gaps = look.gaps;
+		const double wisps = look.wisps;
+		const double tousle = look.tousle;
+		const double gravity_amount = Math::clamp(length / 0.15, 0.25, 1.6) * gravity;
 		// the hairline fades out: few, short locks right at its edge instead of a hard line
 		const double above_hairline = double(root.y) - hairline(root);
 		const double feather = Math::clamp(above_hairline / 0.016, 0.0, 1.0);
@@ -806,6 +863,14 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			}
 			root_cells[cell_key(cx, cy, cz)].push_back(root);
 			accepted_main++;
+		}
+		if (look.amount < 1.0) {
+			// a zone with less hair: a share of its locks does not grow (after the spacing test, so the root still holds its place and the other zones keep
+			// exactly their locks; a hash of the lock, not its dice, so no other number moves)
+			const double keep = std::sin(double(lock) * 91.3458 + 47.21) * 43758.5453;
+			if (keep - std::floor(keep) >= look.amount) {
+				continue;
+			}
 		}
 		int bound = ia;
 		if (u >= a_weight && u >= w) {
@@ -1170,6 +1235,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 			continue; // (the coverage pass only needs where the guides go)
 		}
 		current_guide = guide_count++;
+		guide_zones.push_back(uint8_t(lock_zone));
 		for (int k = 0; k < steps; k++) {
 			guide_rest.push_back(guide_points[size_t(k)]);
 		}
@@ -1303,7 +1369,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				side = -side; // (the coil sweeps the strand through "outward" every turn: keep the ribbon's side from the point before)
 			}
 			previous_side = side;
-			const double width = strands > 0 ? strand_width * (1.0 + 0.5 * Math::clamp((length - 0.08) / 0.2, 0.0, 1.0)) * (1.0 - 0.85 * std::pow(s, 1.4)) : lock_width * (1.0 - 0.9 * std::pow(s, 1.6)) * (0.75 + 0.25 * std::min(1.0, s * 6.0));
+			const double width = strands > 0 ? strand_width * (1.0 + 0.5 * Math::clamp((length - 0.08) / 0.2, 0.0, 1.0)) * (1.0 - 0.85 * std::pow(s, 1.4)) : lock_width_here * (1.0 - 0.9 * std::pow(s, 1.6)) * (0.75 + 0.25 * std::min(1.0, s * 6.0));
 			const Vector3 face = side.cross(tangent).normalized();
 			const Color color(brightness, chance, 0.0f, clump_light); // (alpha: the light inside the clump, see `clump_light`)
 			add_vertex(hair[k] - side * real_t(width * 0.5), face, Vector2(0.0f, float(s)), color, bound, tangent, float(s), false);
@@ -1496,6 +1562,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	std::vector<float> beard_mask;
 	std::vector<Vector3> beard_roots; // where each beard follicle is on the skin (a debug view in the lab: mesh meta "hair_beard_roots")
 	std::vector<float> beard_skin(size_t(vertex_count), 0.0f); // the beard hairs rooted at each body vertex (the skin under a beard is darkened: it reads as stubble, not as pale dust between a few hairs)
+	vertex_zone = 0; // (the beard has no zone)
 	// --- the beard: short single hairs on the lower face (static: they do not simulate), from follicles spread by area over the jaw, chin and cheeks, growing down and out along the skin
 	if (true) { // (also with beard 0: the follicles and the beard area are made for the lab's debug views; with no amount they grow no hairs)
 		const double face_scale = Math::clamp(half_width / 0.0883, 0.85, 1.15); // (the face features sit at distances from the eye line that go with the size of the head: the numbers below are for the male body)
@@ -1527,6 +1594,19 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 				const bool connector = circle_beard && ax > 0.026 && ax < 0.042 && dy > -0.1 && dy < -0.05;   // (the strips that link the moustache to the chin at the mouth corners)
 				if (!moustache_band && !chin_patch && !connector) {
 					return false; // (a goatee: no cheeks, no jaw line)
+				}
+			}
+			if (moustache_only && !(ax < 0.03 - 0.25 * std::max(0.0, -0.05 - dy) && dy > -0.064 && dy < -0.044)) {   // (above the upper lip only, a little narrower toward the lip)
+				return false;
+			}
+			if (mutton_chops && (ax < 0.04 || dy < -0.115)) {
+				return false; // (no chin, no moustache: the cheeks and sideburns only)
+			}
+			if (chin_strap) {
+				const bool moustache_band = ax < 0.036 && dy > -0.078;
+				const bool jaw_band = dy < beard_floor(double(c.z)) + 0.045 || (ax > 0.064 && dy < -0.02);   // (a band just above the beard's lower edge under the jaw, and a strip up to the sideburn)
+				if (moustache_band || !jaw_band) {
+					return false;
 				}
 			}
 			// (the lips are NOT cut out of the region here: the region is blurred over the mesh, and a hole there faded the beard for a centimetre around the mouth, a bare band above and below the lips;
@@ -2065,7 +2145,7 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		for (int i = 0; i < out_count; i++) {
 			cw[i * 4] = out_guide[size_t(i)];
 			cw[i * 4 + 1] = out_cap[size_t(i)] != 0 ? 0.0f : out_s[size_t(i)] * float(steps - 1);
-			cw[i * 4 + 2] = 0.0f;
+			cw[i * 4 + 2] = out_zone[size_t(i)];
 			cw[i * 4 + 3] = 0.0f;
 		}
 	}
@@ -2083,6 +2163,11 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		if (scalp[i]) {
 			w = float(Math::clamp((double(vertices[i].y) - hairline(vertices[i])) / 0.025, 0.0, 1.0));
 			w = 0.55f + 0.45f * (w * w * (3.0f - 2.0f * w)); // (already half dark at the hairline: hairs there are the most spread out, and the edge row of the scalp is where skin showed)
+			if (zone_looks.any) {
+				// a zone with less hair: less dark scalp too (a bare zone is skin, not a hair-coloured patch)
+				const double keep = Math::clamp(hair_look_at(zone_looks, hair_zone_weights(zone_frame, vertices[i])).amount / 0.6, 0.0, 1.0);
+				w *= float(keep * keep * (3.0 - 2.0 * keep));
+			}
 		}
 		scalp_weight[i] = w;
 	}
@@ -2102,6 +2187,15 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 		}
 	}
 	built["scalp_weight"] = scalp_weight;
+	{
+		// the zone of every scalp vertex of the body (255 elsewhere): for the checks and tools that need to know where a zone is on the skin
+		PackedByteArray body_zones;
+		body_zones.resize(vertex_count);
+		for (int i = 0; i < vertex_count; i++) {
+			body_zones[i] = scalp[i] ? uint8_t(hair_zone_at(zone_frame, vertices[i])) : uint8_t(255);
+		}
+		built["body_zones"] = body_zones;
+	}
 	built["beard_vertices"] = beard_vertex_count;
 	built["crown"] = crown;
 	built["head_vertices"] = vertices_before_beard; // (the head hair alone: a lab counts hairs from this, not from the total with the beard)
@@ -2119,6 +2213,14 @@ Dictionary HumanHair::build_arrays(const Ref<HumanHairBody> &p_body, const Dicti
 	}
 	built["guides"] = guide_array;
 	built["guide_count"] = guide_count;
+	{
+		PackedByteArray zone_bytes;
+		zone_bytes.resize(int64_t(guide_zones.size()));
+		for (size_t i = 0; i < guide_zones.size(); i++) {
+			zone_bytes[int64_t(i)] = guide_zones[i];
+		}
+		built["guide_zones"] = zone_bytes;
+	}
 	built["guide_steps"] = steps;
 	built["render_steps"] = render_steps; // (the points a head hair is drawn with: the guide's, or more for waves)
 	// Colliders for the hair simulation, in the body's space: capsules (ax, ay, az, bx, by, bz, radius): the head, the neck and the shoulders.
@@ -2288,6 +2390,8 @@ Ref<ArrayMesh> HumanHair::make_mesh(const Dictionary &p_built) {
 		result->set_meta("hair_mouth", p_built.get("mouth", Vector3()));
 		result->set_meta("hair_beard_roots", p_built.get("beard_roots", PackedVector3Array()));
 		result->set_meta("hair_guide_count", p_built["guide_count"]);
+		result->set_meta("hair_guide_zones", p_built.get("guide_zones", PackedByteArray()));
+		result->set_meta("hair_body_zones", p_built.get("body_zones", PackedByteArray()));
 		result->set_meta("hair_guide_steps", p_built["guide_steps"]);
 		result->set_meta("hair_render_steps", p_built.get("render_steps", p_built["guide_steps"]));
 		result->set_meta("hair_colliders", p_built["colliders"]);

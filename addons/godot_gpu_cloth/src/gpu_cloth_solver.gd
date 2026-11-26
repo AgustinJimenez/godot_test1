@@ -229,6 +229,10 @@ extends Node3D
 ## [member cloth_render_offset] and [member cloth_skin_offset] as the three
 ## body-clearance knobs.
 @export_range(0.5, 2.0) var auto_collider_radius_scale: float = 1.0
+## LOCAL PATCH (godot_test1, task 103): per-bone (percentile, scale) for the auto capsules, by bone name, overriding the two above for that bone.
+## One garment can need different fits: trousers want small capsules at the hips (round ones push the waistband out over the shirt) and full ones
+## on the legs (or the shins poke through).
+@export var auto_collider_bone_overrides: Dictionary = {}
 ## Minimum bone-weight a vertex needs to be claimed by that bone for radius
 ## fitting. Verts in joint regions (knee, elbow, neck-to-shoulder) often have
 ## split weights between two bones (e.g., 0.55 / 0.45) — without a tight
@@ -1269,7 +1273,7 @@ func _initialize() -> void:
 
 	if cloth_material is ShaderMaterial:
 		var cand := cloth_material as ShaderMaterial
-		if cand.shader and cand.shader.resource_path in v3_paths:
+		if cand.shader and (cand.shader.resource_path in v3_paths or _declares_substrate(cand.shader)):
 			base_mat = cand
 		else:
 			push_warning("[GPUCloth] cloth_material's shader is not v3-compatible; force-replacing with cloth_surface_textured. Use cloth_surface.gdshader or cloth_surface_textured.gdshader to keep your shader_parameter assignments. (Auto-port skipped because cloth_material was explicitly assigned.)")
@@ -2663,10 +2667,14 @@ func _build_auto_colliders() -> void:
 		var radius := 0.01
 		if perp_sqs.size() > 0:
 			perp_sqs.sort()
+			var fit := Vector2(auto_collider_radius_percentile, auto_collider_radius_scale)
+			var bone_name := String(_skeleton_node.get_bone_name(bone_idx))
+			if auto_collider_bone_overrides.has(bone_name):   # (LOCAL PATCH, see auto_collider_bone_overrides)
+				fit = auto_collider_bone_overrides[bone_name]
 			var pct_idx: int = clampi(
-				floori(perp_sqs.size() * auto_collider_radius_percentile),
+				floori(perp_sqs.size() * fit.x),
 				0, perp_sqs.size() - 1)
-			radius = maxf(sqrt(perp_sqs[pct_idx]) * auto_collider_radius_scale, 0.01)
+			radius = maxf(sqrt(perp_sqs[pct_idx]) * fit.y, 0.01)
 
 		_auto_colliders.append({
 			bone_a = bone_idx,
@@ -3449,3 +3457,16 @@ func _draw_capsule_wireframe(im: ImmediateMesh, a: Vector3, b: Vector3, r: float
 			var bq1 := by * (cos(t1) * r) + axis_dir * (sin(t1) * r)
 			im.surface_set_color(color); im.surface_add_vertex(b + bq0)
 			im.surface_set_color(color); im.surface_add_vertex(b + bq1)
+
+
+# LOCAL PATCH (godot_test1, task 103; see UPSTREAM.md): any shader that declares the substrate uniforms the solver wires (`gpu_driven`, `positions_tex`,
+# `normals_tex`, `welded_index_tex`, `skel_to_mesh_transform`) is v3-compatible, not only the two plugin shaders: our human_clothes.gdshader carries the
+# same vertex hook.
+func _declares_substrate(shader: Shader) -> bool:
+	var names: Array = []
+	for uniform: Dictionary in shader.get_shader_uniform_list():
+		names.append(String(uniform.get("name", "")))
+	for needed: String in ["gpu_driven", "positions_tex", "normals_tex", "welded_index_tex", "skel_to_mesh_transform"]:
+		if not names.has(needed):
+			return false
+	return true

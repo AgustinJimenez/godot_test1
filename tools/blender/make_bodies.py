@@ -11,6 +11,9 @@ e = bpy.context.preferences.addons.new(); e.module = "bl_ext.blender_org.mpfb"
 addon_utils.enable("bl_ext.blender_org.mpfb")
 HS = importlib.import_module("bl_ext.blender_org.mpfb.services.humanservice").HumanService
 TS = importlib.import_module("bl_ext.blender_org.mpfb.services.targetservice").TargetService
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import heavy_mix   # the weight_heavy shape: max-weight macro plus fat / girth targets (shared with make_rig.py)
 BODY_VERTS = 13380   # MakeHuman base: body verts first, helper geometry after
 RACE = {"asian":0.0,"caucasian":1.0,"african":0.0}
 
@@ -35,6 +38,58 @@ FACE_KEYS = {
     "eyes_big": {"targets": ["l-eye-scale-incr", "r-eye-scale-incr"]},
     "lips_thin": {"targets": ["mouth-lowerlip-volume-decr", "mouth-upperlip-volume-decr"]},
     "lips_full": {"targets": ["mouth-lowerlip-volume-incr", "mouth-upperlip-volume-incr"]},
+    # more of the face (2026-11-26): jaw, cheekbones, eyes, brows, mouth, nose, forehead, face length, neck
+    "jaw_narrow": {"targets": ["chin-bones-decr"]},
+    "jaw_wide": {"targets": ["chin-bones-incr"]},
+    "chin_narrow": {"targets": ["chin-width-decr"]},
+    "chin_wide": {"targets": ["chin-width-incr"]},
+    "cheekbones_low": {"targets": ["l-cheek-bones-decr", "r-cheek-bones-decr"]},
+    "cheekbones_high": {"targets": ["l-cheek-bones-incr", "r-cheek-bones-incr"]},
+    "eyes_close": {"targets": ["l-eye-trans-in", "r-eye-trans-in"]},
+    "eyes_apart": {"targets": ["l-eye-trans-out", "r-eye-trans-out"]},
+    "eyes_down": {"targets": ["l-eye-trans-down", "r-eye-trans-down"]},
+    "eyes_up": {"targets": ["l-eye-trans-up", "r-eye-trans-up"]},
+    "brows_down": {"targets": ["eyebrows-trans-down"]},
+    "brows_up": {"targets": ["eyebrows-trans-up"]},
+    "brows_angle_down": {"targets": ["eyebrows-angle-down"]},
+    "brows_angle_up": {"targets": ["eyebrows-angle-up"]},
+    "mouth_narrow": {"targets": ["mouth-scale-horiz-decr"]},
+    "mouth_wide": {"targets": ["mouth-scale-horiz-incr"]},
+    "mouth_corners_down": {"targets": ["mouth-angles-down"]},
+    "mouth_corners_up": {"targets": ["mouth-angles-up"]},
+    "nose_hump_less": {"targets": ["nose-hump-decr"]},
+    "nose_hump_more": {"targets": ["nose-hump-incr"]},
+    "nose_tip_down": {"targets": ["nose-point-down"]},
+    "nose_tip_up": {"targets": ["nose-point-up"]},
+    "nostrils_narrow": {"targets": ["nose-flaring-decr"]},
+    "nostrils_wide": {"targets": ["nose-flaring-incr"]},
+    "forehead_low": {"targets": ["forehead-scale-vert-decr"]},
+    "forehead_high": {"targets": ["forehead-scale-vert-incr"]},
+    "face_short": {"targets": ["head-scale-vert-decr"]},
+    "face_long": {"targets": ["head-scale-vert-incr"]},
+    "neck_thin": {"targets": ["measure-neck-circ-decr"]},
+    "neck_thick": {"targets": ["measure-neck-circ-incr"]},
+    "eyes_slant_down": {"targets": ["l-eye-corner2-down", "r-eye-corner2-down"]},   # (corner2 = the outer corner)
+    "eyes_slant_up": {"targets": ["l-eye-corner2-up", "r-eye-corner2-up"]},
+    "eyelids_low": {"targets": ["l-eye-eyefold-down", "r-eye-eyefold-down"]},
+    "eyelids_high": {"targets": ["l-eye-eyefold-up", "r-eye-eyefold-up"]},
+    "eye_bags_less": {"targets": ["l-eye-bag-decr", "r-eye-bag-decr"]},
+    "eye_bags_more": {"targets": ["l-eye-bag-incr", "r-eye-bag-incr"]},
+    "brow_ridge_less": {"targets": ["eyebrows-trans-backward"]},
+    "brow_ridge_more": {"targets": ["eyebrows-trans-forward"]},
+    "eyes_shallow": {"targets": ["l-eye-push1-out", "r-eye-push1-out"]},
+    "eyes_deep": {"targets": ["l-eye-push1-in", "r-eye-push1-in"]},
+    # the body's proportions (same mechanism; the lab bakes them into the hair build like the face keys)
+    "shoulders_narrow": {"targets": ["measure-shoulder-dist-decr"]},
+    "shoulders_wide": {"targets": ["measure-shoulder-dist-incr"]},
+    "waist_narrow": {"targets": ["measure-waist-circ-decr"]},
+    "waist_wide": {"targets": ["measure-waist-circ-incr"]},
+    "hips_narrow": {"targets": ["measure-hips-circ-decr"]},
+    "hips_wide": {"targets": ["measure-hips-circ-incr"]},
+    "belly_flat": {"targets": ["stomach-pregnant-decr"]},
+    "belly_round": {"targets": ["stomach-pregnant-incr"]},
+    "bust_small": {"macro": {"cupsize": 0.0}},
+    "bust_big": {"macro": {"cupsize": 1.0}},
 }
 
 def positions(o):
@@ -56,7 +111,12 @@ for name, g in (("female",0.0),("male",1.0)):
     print(name, "verts", len(base_pts), "dims", tuple(round(d,2) for d in base.dimensions))
     variants = {}
     for key,(h,w,mu) in {"height_short":(0.0,0.5,0.5),"height_tall":(1.0,0.5,0.5),"weight_light":(0.5,0.0,0.5),"weight_heavy":(0.5,1.0,0.5),"muscle_low":(0.5,0.5,0.0),"muscle_high":(0.5,0.5,1.0)}.items():
-        tmp = HS.create_human(macro_detail_dict={"gender":g,"age":0.5,"muscle":mu,"weight":w,"proportions":0.5,"height":h,"cupsize":0.5,"firmness":0.5,"race":RACE})
+        macro = {"gender":g,"age":0.5,"muscle":mu,"weight":w,"proportions":0.5,"height":h,"cupsize":0.5,"firmness":0.5,"race":RACE}
+        if key == "weight_heavy":
+            macro.update(heavy_mix.macros_for(g))
+        tmp = HS.create_human(macro_detail_dict=macro)
+        if key == "weight_heavy":
+            heavy_mix.load_heavy(tmp, g, TS)
         variants[key] = positions(tmp)
         bpy.data.objects.remove(tmp, do_unlink=True)
     for key, spec in FACE_KEYS.items():

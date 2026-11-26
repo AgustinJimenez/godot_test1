@@ -24,6 +24,10 @@ entry = bpy.context.preferences.addons.new()
 entry.module = "bl_ext.blender_org.mpfb"
 addon_utils.enable("bl_ext.blender_org.mpfb")
 HS = importlib.import_module("bl_ext.blender_org.mpfb.services.humanservice").HumanService
+TS = importlib.import_module("bl_ext.blender_org.mpfb.services.targetservice").TargetService
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import heavy_mix   # the weight_heavy shape: max-weight macro plus fat / girth targets (the same as make_bodies.py)
 
 BODY_VERTS = 13380  # MakeHuman base: body verts first, helper geometry after
 RACE = {"asian": 0.0, "caucasian": 1.0, "african": 0.0}
@@ -41,7 +45,12 @@ SHAPES = {
 def human(gender, height=0.5, weight=0.5, muscle=0.5):
     macros = {"gender": gender, "age": 0.5, "muscle": muscle, "weight": weight, "proportions": 0.5, "height": height,
               "cupsize": 0.5, "firmness": 0.5, "race": RACE}
-    return HS.create_human(macro_detail_dict=macros)
+    if weight >= 1.0:
+        macros.update(heavy_mix.macros_for(gender))
+    made = HS.create_human(macro_detail_dict=macros)
+    if weight >= 1.0:
+        heavy_mix.load_heavy(made, gender, TS)   # (the rig is then fitted to, and the mesh variant baked from, the heavy body with its targets)
+    return made
 
 
 def godot(v):

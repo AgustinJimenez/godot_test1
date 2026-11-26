@@ -269,7 +269,8 @@ bool HumanRig::attach_skinned(MeshInstance3D *p_cloth, MeshInstance3D *p_body, S
 }
 
 Dictionary HumanRig::shape_weights(double p_height, double p_weight, double p_muscle) {
-	const double height_range = 0.6, gain_heavy = 3.0, gain_light = 1.25, muscle_high = 2.0, muscle_low = 1.25;
+	// (gain_heavy 1.0: weight_heavy is built heavy in Blender now, tools/blender/heavy_mix.py; it was MakeHuman's mild max-weight pushed to 3.0, which made lumps)
+	const double height_range = 0.6, gain_heavy = 1.0, gain_light = 1.25, muscle_high = 2.0, muscle_low = 1.25;
 	Dictionary weights;
 	weights[StringName("height_tall")] = std::max(p_height, 0.0) * height_range;
 	weights[StringName("height_short")] = std::max(-p_height, 0.0) * height_range;

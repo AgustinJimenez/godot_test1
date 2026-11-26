@@ -21,6 +21,7 @@ uniform float strands = 14.0;
 uniform bool single_hairs = false;                              // strands mode: each ribbon IS one hair (no strand lanes inside it)                                   // strands across one lock
 uniform float beard_grey : hint_range(0.0, 1.0) = 0.0;     // the share of beard locks that are grey/white (stronger toward the tips)
 uniform float beard_ginger : hint_range(0.0, 1.0) = 0.0;   // the share of beard locks that are warm ginger (a beard is often redder than the head hair)
+uniform float hair_grey : hint_range(0.0, 1.0) = 0.0;   // greying head hair: the share of single hairs that are white-grey (salt and pepper; some locks grey sooner than others)
 uniform float wet : hint_range(0.0, 1.0) = 0.0;                // wet or oily hair: darker, with thin, bright, sharp highlights
 uniform float wrap_k : hint_range(0.05, 1.0) = 0.25;               // how much the side of a lock turned away from the sun is darker (0.25: flat, the old grey room; 0.6-1.0: a lock shades the one under it)
 uniform float sun_gain = 0.15;                                 // how much the sun lights the strands (a grey room tuned it low; a real sun-lit scene wants more, so the shadow between locks shows)
@@ -33,6 +34,7 @@ uniform vec3 wind = vec3(0.0);                                  // wind in model
 uniform float wind_speed = 1.6;
 uniform sampler2D sim_tex : filter_nearest;   // the hair simulation (HairSim): one row per guide strand, one pixel per point: its offset from the rest place, in model space
 uniform bool use_sim = false;
+uniform int zone_tint = -1;   // the lab's hair-zone editor: the hair and scalp of this zone (0..6, as CUSTOM0.z - 1) are tinted; -1 = off
 instance uniform float lod_fade : hint_range(0.0, 1.0) = 1.0;   // the level-of-detail cross-fade: each hair has a random number (COLOR.g) and is drawn while it is below this value, so the old level thins out as the new one thickens (no pop)
 instance uniform vec3 sway = vec3(0.0);                          // inertia swing in model space, metres at the tip (one per character: HairSway writes it on the mesh instance)
 
@@ -41,6 +43,7 @@ varying vec3 hair_tangent;     // view space, for light()
 varying float strand_shift;    // per-strand random highlight shift
 varying float lock_rough;   // a second per-lock random number: some locks are glossier, some duller
 varying float lock_rand;   // one random number per guide lock (all the hairs of a lock share it): clumps of hair differ in brightness and shine
+varying float zone_id;         // the zone of the hair's root + 1 (CUSTOM0.z; 0 = the beard)
 varying float cap_flag;        // 1 on the scalp cap (no strands there, so no highlight)
 
 float hash(vec2 p) {
@@ -56,6 +59,7 @@ float value_noise(vec2 p) {
 }
 
 void vertex() {
+	zone_id = CUSTOM0.z;
 	rest_pos = UV2;
 	lock_rough = CUSTOM0.x >= 0.0 ? hash(vec2(floor(CUSTOM0.x + 0.5), 29.0)) : 0.5;
 	lock_rand = CUSTOM0.x >= 0.0 ? hash(vec2(floor(CUSTOM0.x + 0.5), 11.0)) : 0.5;
@@ -120,6 +124,13 @@ void fragment() {
 		float streak = smoothstep(0.78, 1.0, lock_rand);   // about one lock in five is a sun-lit, golden streak (the reference game hair has them: lighter, warmer locks between darker ones)
 		color *= (0.6 + 0.7 * lock_rand) * vec3(1.0 + 0.09 * (lock_rand - 0.5), 1.0, 1.0 - 0.18 * (lock_rand - 0.5));
 		color *= mix(vec3(1.0), vec3(1.4, 1.28, 1.05), streak);
+		if (COLOR.b < 0.1 && hair_grey > 0.0) {
+			// greying: single hairs (COLOR.g is each hair's own random number) turn white-grey, a lock that greys early has more of them; before the clump light and root shade, so they are shaded like the rest
+			float hair_n = fract(COLOR.g * 13.37 + 0.31);
+			float grey_share = clamp(hair_grey * mix(0.6, 1.4, lock_rand), 0.0, 1.0);
+			float grey_hair = step(1.0 - grey_share, hair_n);
+			color = mix(color, vec3(0.46, 0.45, 0.43) * (0.7 + 0.5 * fract(hair_n * 7.7)), grey_hair * 0.95);
+		}
 		if (COLOR.b < 0.1) {
 			// a head hair: COLOR.a is the light inside its clump (1 = the lit core of a clump, low = the outside of a clump and the crevice between two, in their shade); not at the root, where the root shade already is
 			color *= mix(1.0, mix(0.2, 1.0, COLOR.a * COLOR.a), smoothstep(0.05, 0.35, UV.y));
@@ -134,9 +145,11 @@ void fragment() {
 			color *= mix(1.0, 1.28, smoothstep(0.55, 1.0, UV.y));   // (the tips are lighter and warmer: the sun-bleached ends of the beard)
 			// grey and ginger LOCKS (COLOR.r carries the lock's number: 70% lock, 30% hair): the high end of the range greys, the low end reddens
 			float lock_n = COLOR.r;
-			float grey_here = smoothstep(1.0 - 0.7 * beard_grey, 1.0, lock_n + 0.25 * smoothstep(0.3, 1.0, UV.y) * beard_grey);
+			// (COLOR.r is the lock's brightness, mostly 0.3-0.7, not an even 0..1 number: a threshold on it greyed almost nothing; a per-hair random draw, biased by the lock, does)
+			float hair_rnd = fract(sin(dot(vec2(COLOR.r, COLOR.g), vec2(12.9898, 78.233))) * 43758.5453);
+			float grey_here = step(hair_rnd, beard_grey * mix(0.7, 1.3, lock_n)) * (0.8 + 0.2 * smoothstep(0.3, 1.0, UV.y));
 			float luma_b = dot(color, vec3(0.3, 0.59, 0.11));
-			color = mix(color, vec3(luma_b * 2.4 + 0.02) * vec3(1.0, 1.0, 1.02), grey_here * 0.85);
+			color = mix(color, vec3(0.4, 0.395, 0.38) * (0.7 + 0.6 * hair_rnd), grey_here * 0.9);   // (a set grey, not the dark beard's own brightness x2.4: on dark hair that was still near black)
 			float ginger_here = smoothstep(1.0 - 0.75 * beard_ginger, 1.0, 1.0 - lock_n);
 			color = mix(color, vec3(luma_b * 3.6, luma_b * 1.45, luma_b * 0.35) + vec3(0.03, 0.008, 0.0), ginger_here * 0.9);
 		}
@@ -147,6 +160,9 @@ void fragment() {
 		color = mix(color, vec3(luma), clamp(luma * 1.2, 0.0, 0.45));
 		strand_shift = (mix(lock_rand, COLOR.r, 0.7) - 0.5) * 0.4 +   // (COLOR.r is mostly the clump's number on clumped hair: a clump catches the light as one sheet)
 			 (value_noise(rest_pos * 22.0) - 0.5) * 0.5 + (random_a - 0.5) * 0.45 * (1.0 - 0.85 * wet) + (hash(vec2(floor(UV.y * 22.0), id)) - 0.5) * 0.2;   // (a small spread: neighbouring strands catch the light together, so the highlight is a broad sheet that follows the head, broken at the locks)   // (a wide spread: parallel strands catch the light at different places, so the highlight is a sparkle of strands, not one band)
+	}
+	if (zone_tint >= 0 && abs(zone_id - float(zone_tint + 1)) < 0.5) {
+		color = mix(color, vec3(0.1, 0.75, 1.0), 0.45);   // (the zone being edited)
 	}
 	ALBEDO = color;
 	ALPHA = alpha;
