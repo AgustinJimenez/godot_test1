@@ -123,6 +123,8 @@ Vector3 vector_of(const Variant &p_value) {
 } // namespace
 
 void HumanRig::_bind_methods() {
+	ClassDB::bind_static_method("HumanRig", D_METHOD("prepare_cloth_arms", "data"), &HumanRig::prepare_cloth_arms);
+	ClassDB::bind_static_method("HumanRig", D_METHOD("skin_cloth_arms", "data", "poses"), &HumanRig::skin_cloth_arms);
 	ClassDB::bind_static_method("HumanRig", D_METHOD("load_data", "path"), &HumanRig::load_data);
 	ClassDB::bind_static_method("HumanRig", D_METHOD("shape_weights", "height", "weight", "muscle"), &HumanRig::shape_weights);
 	ClassDB::bind_static_method("HumanRig", D_METHOD("skin_to_bone", "mesh"), &HumanRig::skin_to_bone);

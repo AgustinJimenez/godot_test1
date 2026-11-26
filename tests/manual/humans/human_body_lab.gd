@@ -1511,6 +1511,7 @@ func _set_gender(gender_name: String) -> void:
 		laps.append("%s %.0f" % [what, (now - int(lap[0])) / 1000.0])
 		lap[0] = now
 	_gender = gender_name
+	_stop_cloth()   # Clear references before the previous body frees its skeleton and garments.
 	if _body != null:
 		_body.queue_free()
 	var packed: PackedScene = load(BODY_SCENES[gender_name])
@@ -2558,6 +2559,7 @@ func _shaped_body_mesh(instance: MeshInstance3D = null) -> ArrayMesh:
 # drawn with the head hair's material (it is marked like the beard: the beard's colour, grey and ginger). About 0.1 s for 45,000 hairs.
 # The clothes for this body: the villager shirt and trousers (the underwear stays under them, hidden), or the underwear alone.
 func _load_clothes() -> void:
+	_stop_cloth()
 	for old: MeshInstance3D in [_shirt_mesh, _pants_mesh]:
 		if old != null and is_instance_valid(old) and _body != null and _body.is_ancestor_of(old):
 			var root: Node = old
@@ -2617,7 +2619,7 @@ const CLOTH_BODY_SHAPES: Array = [&"height_tall", &"height_short", &"weight_heav
 # the garments and the rigged mesh are BAKED to the current shapes (the solver reads a mesh's base vertices: blend shapes are not part of its rest
 # shape), skinned to that skeleton, and simulated. The body turns, the skeleton with it, the cloth swings. A slider change restarts it once the slider
 # rests; so do the gender and the clothes.
-func _restart_cloth() -> void:
+func _stop_cloth() -> void:
 	for solver: Node in _cloth_solvers:
 		if is_instance_valid(solver):
 			solver.queue_free()
@@ -2627,6 +2629,10 @@ func _restart_cloth() -> void:
 		_cloth_rig.queue_free()
 	_cloth_rig = null
 	_cloth_restart_ms = -1
+
+
+func _restart_cloth() -> void:
+	_stop_cloth()
 	var simulate: bool = _cloth_sim and _clothes == "Villager" and _body != null and _shirt_mesh != null and _pants_mesh != null
 	for static_piece: MeshInstance3D in [_shirt_mesh, _pants_mesh]:
 		if static_piece != null and is_instance_valid(static_piece):
@@ -2689,15 +2695,23 @@ func _restart_cloth() -> void:
 		solver.max_travel_distance = 0.04
 		solver.cloth_skin_offset = 0.0
 		solver.cloth_render_offset = 0.004   # (drawn 4 mm out along the normal: hides the skin where free cloth sinks onto capsules inside the body)
-		solver.body_collider_voxel_resolution = 0   # (bone capsules: the body mesh collider costs ~13 ms a frame)
+		solver.body_collider_voxel_resolution = 0   # Capsule support; the shirt adds native arm contact below.
 		solver.auto_collider_lod = 1
 		# (the torso is oval, a capsule round: small capsules, inside the body, or they push the shirt out like a cape and the trousers' waistband out
 		# over the shirt's hem; the shins full ones, or they poke through: per bone, a local patch in the add-on)
 		solver.auto_collider_radius_percentile = 0.5
 		solver.auto_collider_radius_scale = 0.8
-		if i == 1:
+		if i == 0:
+			# Exact arm surface, weighted like the visible body, packed in native code.
+			solver.body_collider_voxel_resolution = 1
+			solver.body_collider_preparer = func(data: Dictionary) -> Dictionary:
+				return HumanRig.prepare_cloth_arms(data)
+			solver.body_collider_packer = func(data: Dictionary, poses: Array) -> PackedByteArray:
+				return HumanRig.skin_cloth_arms(data, poses)
+			solver.cloth_render_offset = 0.001
+		else:
 			solver.auto_collider_bone_overrides = {"mixamorig_LeftLeg": Vector2(0.85, 1.0), "mixamorig_RightLeg": Vector2(0.85, 1.0)}
-		solver.body_collider_thickness = 0.006
+		solver.body_collider_thickness = 0.004 if i == 0 else 0.006
 		solver.peer_collider_voxel_resolution = 8
 		solver.collider_friction = 0.5
 		_cloth_solvers.append(solver)

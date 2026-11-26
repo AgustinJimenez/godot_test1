@@ -5,6 +5,12 @@ dated line whenever something is learned; keep it short and factual.
 
 ## Setup on this machine
 
+- Sleeve resolution (2026-11-26, task 103): shirts subdivide only arm edges to 12 mm before offsets, smoothing, hems and masks; BMesh interpolates shape/deform layers. Use `use_single_edge=True` and triangulate new polygons between passes, otherwise export diagonals stay long. The rest ray check uses centimetres around its origin because Godot's absolute intersection epsilon missed small triangles in metres. Rest passes; walking face/edge checks still expose contact defects, so refinement alone is not a completed moving-cloth fix.
+
+- Sleeve drape (2026-11-26, task 103): vertex colour B is fully free beyond the shoulder seam; a 0.4 sleeve weight was pulling the fabric back to a shell ~2 cm above the arm every frame. Keep wrists open. The labs use exact arm contact from native `HumanRig.prepare_cloth_arms` / `skin_cloth_arms` (four bone weights and current shapes); the earlier undersized cylinders cannot support free cloth at the elbows. `make_clothes.py ... <rig-folder> --garment=shirt` rebuilds only the shirts.
+
+- Cloth review (2026-11-26, task 103): GPU normals are sums of triangle cross products and therefore scale with triangle area. The add-on's old squared-length cutoff (1e-8) replaced valid normals on small garment triangles with UP. Fixed normalization in `cloth_output.glsl`; do not remesh a garment merely to hide this lighting bug. `scripts/cloth_check.sh` covers small-area normals and body-lab simulation restarts on a real GPU.
+
 - Blender 5.3.0 at `C:\Program Files\Blender Foundation\Blender 5.3\blender.exe` (Python 3.13). The user keeps
   one GUI window open; headless runs are separate processes (`blender -b ... --python script.py -- args`).
 - Headless runs always use `--factory-startup` for a clean scene, so the default `Cube`, `Camera` and `Light`

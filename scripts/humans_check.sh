@@ -19,6 +19,10 @@ out="$(timeout 300 "${GODOT}" --headless --path . -s res://tests/manual/humans/h
 echo "${out}" | grep -a "HUMAN_RIG_CHECK"
 echo "${out}" | grep -aq "HUMAN_RIG_CHECK PASS" || status=1
 
+out="$(timeout 120 "${GODOT}" --headless --path . -s res://tests/manual/humans/human_cloth_native_check.gd 2>&1)"
+echo "${out}" | grep -a "HUMAN_CLOTH_NATIVE_CHECK"
+echo "${out}" | grep -aq "HUMAN_CLOTH_NATIVE_CHECK PASS" || status=1
+
 out="$(timeout 120 "${GODOT}" --headless --path . -s res://tests/manual/humans/hair_style_store_check.gd 2>&1)"
 echo "${out}" | grep -a "HAIR_STYLE_STORE_CHECK"
 echo "${out}" | grep -aq "HAIR_STYLE_STORE_CHECK PASS" || status=1
@@ -59,5 +63,7 @@ if [[ ${render} -eq 1 ]]; then
 	else
 		echo "HUMAN_RENDER_CHECK PASS"
 	fi
+	# Exercise the actual GPU simulation and restarts, not only garment rendering.
+	GODOT="${GODOT}" bash scripts/cloth_check.sh || status=1
 fi
 exit "${status}"

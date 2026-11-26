@@ -34,12 +34,17 @@ layout(set = 0, binding = 4, std430) restrict readonly buffer SkinnedTris {
 layout(set = 0, binding = 5, std430) restrict readonly buffer ClothWeights {
     vec4 cloth_weights[];
 };
+layout(set = 0, binding = 6, std430) restrict readonly buffer SkinnedTargets {
+    vec4 skinned_targets[];
+};
 
 layout(push_constant, std430) uniform Params {
     uint  particle_count;
     uint  tri_count;
     float thickness;     // base thickness; multiplied by cloth_weights[idx].x per-particle
     float friction;      // Coulomb μ; 0 = frictionless
+    float recovery_distance; // >0: outward-wound native surface, signed contact
+    float pad0, pad1, pad2;
 };
 
 // Standard closest-point-on-triangle (Ericson, Real-Time Collision Detection).
@@ -100,6 +105,46 @@ void main() {
     if (pthk < 1e-6) return;  // cw=0 case; nothing to push (already handled by w<0.001 guard above for true pin)
 
     vec3 substep_start = positions[idx].xyz;
+
+    if (recovery_distance > 0.0) {
+        // Select the nearest body surface once, then enforce its outside.
+        // Two-sided distance shells can let a free sleeve settle on the
+        // INSIDE of the arm. The animated target limits contact to the nearby
+        // body region, so the arm mesh cannot pull unrelated torso fabric.
+        float best = 3.402823e38;
+        vec3 contact = pos;
+        vec3 normal = vec3(0.0);
+        float target_distance = best;
+        for (uint t = 0u; t < tri_count; t++) {
+            vec3 a = tri_verts[t * 3u].xyz;
+            vec3 b = tri_verts[t * 3u + 1u].xyz;
+            vec3 c = tri_verts[t * 3u + 2u].xyz;
+            vec3 face = cross(b - a, c - a);
+            float nl = length(face);
+            if (nl <= 1e-12) continue;
+            vec3 point = closest_point_on_triangle(pos, a, b, c);
+            float distance2 = dot(pos - point, pos - point);
+            if (distance2 < best) {
+                best = distance2;
+                contact = point;
+                normal = face / nl;
+                vec3 skin_point = closest_point_on_triangle(skinned_targets[idx].xyz, a, b, c);
+                target_distance = length(skinned_targets[idx].xyz - skin_point);
+            }
+        }
+        float signed_distance = dot(pos - contact, normal);
+        if (best < 3.402823e38 && target_distance <= recovery_distance && signed_distance < pthk) {
+            vec3 before = pos;
+            pos = contact + normal * pthk;
+            float push = length(pos - before);
+            vec3 motion = pos - substep_start;
+            vec3 tangent = motion - normal * dot(motion, normal);
+            float tl = length(tangent);
+            if (tl > 1e-6) pos -= tangent * min(push * friction / tl, 1.0);
+        }
+        predicted[idx] = vec4(pos, w);
+        return;
+    }
 
     for (uint t = 0u; t < tri_count; t++) {
         vec3 a = tri_verts[t * 3u + 0u].xyz;

@@ -233,6 +233,14 @@ extends Node3D
 ## One garment can need different fits: trousers want small capsules at the hips (round ones push the waistband out over the shirt) and full ones
 ## on the legs (or the shins poke through).
 @export var auto_collider_bone_overrides: Dictionary = {}
+## Optional native body-contact adapter. Preparation returns compact skinned
+## triangle data; packing receives that data and the current bone poses.
+@export var body_collider_preparer: Callable
+@export var body_collider_packer: Callable
+## Native signed contact affects only the body region near the animated target.
+## Separate from max_travel_distance: an unlimited leash must still collide.
+@export var body_collider_contact_reach: float = 0.04
+var _native_collider_data: Dictionary = {}
 ## Minimum bone-weight a vertex needs to be claimed by that bone for radius
 ## fitting. Verts in joint regions (knee, elbow, neck-to-shoulder) often have
 ## split weights between two bones (e.g., 0.55 / 0.45) — without a tight
@@ -616,6 +624,12 @@ func _exit_tree() -> void:
 	if not _gpu_init_done:
 		return
 	_gpu_init_done = false
+	# Stop sampling the output before releasing its GPU textures.
+	if _surf_mat:
+		_surf_mat.set_shader_parameter("gpu_driven", false)
+		_surf_mat.set_shader_parameter("positions_tex", null)
+		_surf_mat.set_shader_parameter("normals_tex", null)
+		_surf_mat.set_shader_parameter("welded_index_tex", null)
 	# Capture every RID into a list so the lambda stays safe after this node is freed.
 	# Hazard 8 — every free_rid must run on the render thread that owns the main RD.
 	var rids: Array = [
@@ -630,12 +644,6 @@ func _exit_tree() -> void:
 		_lambda_buffer,
 		_positions_img_rid, _normals_img_rid,
 		_collider_tri_buffer,
-		_skin_uniform_set, _predict_uniform_set, _solve_uniform_set,
-		_update_uniform_set, _collide_uniform_set, _warm_start_uniform_set,
-		_normals_uniform_set, _output_uniform_set,
-		_fishing_uniform_set, _pin_override_uniform_set,
-		_skin_collide_uniform_set, _collide_tris_uniform_set, _skin_collide_tris_uniform_set,
-		_self_collide_uniform_set,
 		_skin_pipeline, _predict_pipeline, _solve_pipeline,
 		_update_pipeline, _collide_pipeline, _warm_start_pipeline,
 		_normals_pipeline, _output_pipeline,
@@ -649,28 +657,31 @@ func _exit_tree() -> void:
 		_skin_collide_shader, _collide_tris_shader, _skin_collide_tris_shader,
 		_peer_collide_shader, _peer_skin_collide_shader,
 	]
-	# Per-peer uniform sets reference RIDs we don't own (the peer's
-	# positions/indices buffers). When the peer's _exit_tree runs first, the
-	# RD auto-invalidates every uniform set that referenced those freed
-	# buffers — so by the time our own teardown runs the uniform sets we hold
-	# may already be stale, and free_rid would push "Attempted to free invalid
-	# ID" errors. _gpu_init_done is cleared at the top of _exit_tree, so a
-	# peer with _gpu_init_done == false (or one that's been queued for delete)
-	# has already either freed its buffers or is about to — skip its uniform
-	# sets to avoid the cascade.
+	# Free uniform sets BEFORE buffers: freeing a buffer automatically destroys
+	# the sets that reference it. RID.is_valid() only tests for a nonzero handle,
+	# so it cannot detect those destroyed sets (including sets owned by peers).
+	var uniform_sets: Array = [
+		_skin_uniform_set, _predict_uniform_set, _solve_uniform_set,
+		_update_uniform_set, _collide_uniform_set, _warm_start_uniform_set,
+		_normals_uniform_set, _output_uniform_set,
+		_fishing_uniform_set, _pin_override_uniform_set,
+		_skin_collide_uniform_set, _collide_tris_uniform_set, _skin_collide_tris_uniform_set,
+		_self_collide_uniform_set,
+	]
 	for p in _peers:
-		var peer: Object = p.solver
-		var peer_alive: bool = is_instance_valid(peer) and peer._gpu_init_done
-		if not peer_alive:
-			continue
-		if p.uniform_set.is_valid():
-			rids.append(p.uniform_set)
-		if p.has("sanitize_uniform_set") and p.sanitize_uniform_set.is_valid():
-			rids.append(p.sanitize_uniform_set)
+		uniform_sets.append(p.uniform_set)
+		if p.has("sanitize_uniform_set"):
+			uniform_sets.append(p.sanitize_uniform_set)
+	var textures: Array = [_positions_tex, _normals_tex, _welded_index_tex]
 	RenderingServer.call_on_render_thread(func() -> void:
 		var rd := RenderingServer.get_rendering_device()
 		if not rd:
 			return
+		for texture: Texture2DRD in textures:
+			texture.texture_rd_rid = RID()
+		for uniform_set: RID in uniform_sets:
+			if uniform_set.is_valid() and rd.uniform_set_is_valid(uniform_set):
+				rd.free_rid(uniform_set)
 		for rid: RID in rids:
 			if rid.is_valid():
 				rd.free_rid(rid)
@@ -1160,6 +1171,7 @@ func _initialize() -> void:
 	_auto_colliders.clear()
 	_auto_spheres.clear()
 	_collider_tris.clear()
+	_native_collider_data.clear()
 	if auto_collider_lod > 0 or body_sphere_lod > 0:
 		if not _use_skinning:
 			push_warning("[GPUCloth] auto_collider_lod / body_sphere_lod is set but the solver is in unrigged mode (no skeleton). Body-derived colliders require a skeleton; ignoring.")
@@ -1349,11 +1361,12 @@ func _initialize() -> void:
 	# Skinned mesh collider push constant and per-frame skinned-vert byte buffer.
 	# 3 vec4 per triangle = 48 bytes per triangle. Reused each frame.
 	if _collider_tris.size() > 0:
-		_collide_tris_push = PackedByteArray(); _collide_tris_push.resize(16)
+		_collide_tris_push = PackedByteArray(); _collide_tris_push.resize(32)
 		_collide_tris_push.encode_u32(0, _particle_count)
 		_collide_tris_push.encode_u32(4, _collider_tris.size())
 		_collide_tris_push.encode_float(8, body_collider_thickness)
 		_collide_tris_push.encode_float(12, collider_friction)
+		_collide_tris_push.encode_float(16, body_collider_contact_reach if not _native_collider_data.is_empty() else 0.0)
 		_collider_tri_bytes = PackedByteArray()
 		_collider_tri_bytes.resize(_collider_tris.size() * 48)
 
@@ -1612,6 +1625,7 @@ func _gpu_do_init(init_data: Dictionary) -> void:
 			_make_uniform(1, _predicted_buffer),
 			_make_uniform(4, _collider_tri_buffer),
 			_make_uniform(5, _cloth_weights_buffer),
+			_make_uniform(6, _skinned_targets_buffer),
 		])
 		# Triangle-collider sanitizer uniform set: skinned_targets (RW) + tri verts (RO).
 		_skin_collide_tris_uniform_set = _create_uniform_set(_skin_collide_tris_shader, [
@@ -1948,10 +1962,12 @@ func _gpu_do_simulate(
 			# Skinned mesh collider — runs in the same iter slot as capsule/box
 			# collide so cloth particles get pushed out of body triangles before
 			# the next solve iter pulls them back via structural constraints.
-			if _collider_tris.size() > 0:
+			# Native signed contact is final per substep; repeating its nearest-
+			# surface search inside every stretch iteration is redundant.
+			if _collider_tris.size() > 0 and _native_collider_data.is_empty():
 				_rd.compute_list_bind_compute_pipeline(cl, _collide_tris_pipeline)
 				_rd.compute_list_bind_uniform_set(cl, _collide_tris_uniform_set, 0)
-				_rd.compute_list_set_push_constant(cl, _collide_tris_push, 16)
+				_rd.compute_list_set_push_constant(cl, _collide_tris_push, 32)
 				_rd.compute_list_dispatch(cl, groups, 1, 1)
 				_rd.compute_list_add_barrier(cl)
 				_rd.compute_list_bind_compute_pipeline(cl, _solve_pipeline)
@@ -1995,6 +2011,15 @@ func _gpu_do_simulate(
 			_rd.compute_list_bind_compute_pipeline(cl, _peer_collide_pipeline)
 			_rd.compute_list_bind_uniform_set(cl, _self_collide_uniform_set, 0)
 			_rd.compute_list_set_push_constant(cl, _self_collide_push, 32)
+			_rd.compute_list_dispatch(cl, groups, 1, 1)
+			_rd.compute_list_add_barrier(cl)
+
+		# Fishing/peer constraints can move cloth after the per-iteration body
+		# contact. Restore body contact last, before committing free particles.
+		if not _native_collider_data.is_empty():
+			_rd.compute_list_bind_compute_pipeline(cl, _collide_tris_pipeline)
+			_rd.compute_list_bind_uniform_set(cl, _collide_tris_uniform_set, 0)
+			_rd.compute_list_set_push_constant(cl, _collide_tris_push, 32)
 			_rd.compute_list_dispatch(cl, groups, 1, 1)
 			_rd.compute_list_add_barrier(cl)
 
@@ -2726,6 +2751,34 @@ func _build_collider_mesh() -> void:
 	if s_verts.is_empty() or s_indices.size() < 3 or s_bones.is_empty():
 		push_warning("[GPUCloth] body_mesh has no usable triangle / bone data; triangle mesh collider skipped.")
 		return
+	if body_collider_preparer.is_valid() and body_collider_packer.is_valid():
+		var bind_poses: Array = []
+		for i in src_bind_count:
+			bind_poses.append(src_skin.get_bind_pose(i))
+		var bone_names := PackedStringArray()
+		for i in _skeleton_node.get_bone_count():
+			bone_names.append(_skeleton_node.get_bone_name(i))
+		var shape_vertices: Array = []
+		var shape_weights := PackedFloat32Array()
+		var source: ArrayMesh = src_mi.mesh as ArrayMesh
+		if source != null:
+			var shape_arrays: Array = source.surface_get_blend_shape_arrays(0)
+			for i in source.get_blend_shape_count():
+				shape_vertices.append((shape_arrays[i] as Array)[Mesh.ARRAY_VERTEX])
+				shape_weights.append(src_mi.get_blend_shape_value(i))
+		_native_collider_data = body_collider_preparer.call({
+			"vertices": s_verts, "indices": s_indices, "bones": s_bones, "weights": s_weights,
+			"bind_poses": bind_poses, "bind_to_bone": src_bind_to_bone, "bone_names": bone_names,
+			"shape_vertices": shape_vertices, "shape_weights": shape_weights,
+			"relative_shapes": source != null and source.blend_shape_mode == Mesh.BLEND_SHAPE_MODE_RELATIVE,
+		})
+		var indices: PackedInt32Array = _native_collider_data.get("indices", PackedInt32Array())
+		if indices.is_empty() or indices.size() % 3 != 0:
+			push_error("[GPUCloth] Native body contact preparation returned no usable triangles.")
+			return
+		_collider_tris.resize(indices.size() / 3)
+		print("[GPUCloth] Native body contact: %d triangles" % _collider_tris.size())
+		return
 
 	# ── Voxel clustering decimation ──
 	# Map each vert to a grid cell; verts in the same cell collapse to one
@@ -3105,6 +3158,11 @@ func _ensure_peer_uniform_sets() -> void:
 func _pack_collider_tris() -> PackedByteArray:
 	if _collider_tris.is_empty():
 		return PackedByteArray()
+	if not _native_collider_data.is_empty() and body_collider_packer.is_valid():
+		var poses: Array = []
+		for i in _skeleton_node.get_bone_count():
+			poses.append(_skeleton_node.get_bone_global_pose(i))
+		return body_collider_packer.call(_native_collider_data, poses)
 	# Cache each bone's pose just once per frame — many tris share bones.
 	var bone_poses: Dictionary = {}
 	var write := 0

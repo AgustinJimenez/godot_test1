@@ -40,7 +40,11 @@ void main() {
 	for (uint t = 0u; t < count; t++) {
 		normal += face_normals[vert_tri_list[offset + t]].xyz;
 	}
-	float nl = dot(normal, normal);
-	normal = (nl > 1e-8) ? normal * inversesqrt(nl) : vec3(0.0, 1.0, 0.0);
+	// Face normals carry triangle AREA, not unit length. An absolute squared-
+	// length cutoff of 1e-8 rejected valid millimetre/centimetre triangles and
+	// lit them as upward-facing cloth. Scale first so normalisation does not
+	// depend on tessellation density (and avoids squaring very small values).
+	float scale = max(abs(normal.x), max(abs(normal.y), abs(normal.z)));
+	normal = (scale > 0.0) ? normalize(normal / scale) : vec3(0.0, 1.0, 0.0);
 	imageStore(normals_img, coord, vec4(normal, 0.0));
 }

@@ -204,14 +204,21 @@ func _add_cloth() -> void:
 		# poke through): per bone, a local patch in the add-on)
 		solver.auto_collider_radius_percentile = float(_arg_value("--cloth-capsule-percentile", "0.5"))
 		solver.auto_collider_radius_scale = float(_arg_value("--cloth-capsule-scale", "0.8"))
-		if not shirt:
+		if shirt:
+			solver.body_collider_voxel_resolution = 1
+			solver.body_collider_preparer = func(data: Dictionary) -> Dictionary:
+				return HumanRig.prepare_cloth_arms(data)
+			solver.body_collider_packer = func(data: Dictionary, poses: Array) -> PackedByteArray:
+				return HumanRig.skin_cloth_arms(data, poses)
+			solver.cloth_render_offset = 0.001
+		else:
 			var leg_fit := Vector2(float(_arg_value("--cloth-leg-percentile", "0.85")), float(_arg_value("--cloth-leg-scale", "1.0")))
 			var bones: PackedStringArray = _arg_value("--cloth-leg-bones", "LeftLeg,RightLeg").split(",")   # (the thighs too pushed the waistband out again)
 			for bone: String in bones:
 				solver.auto_collider_bone_overrides["mixamorig_" + bone] = leg_fit
 		if _arg_value("--cloth-peers", "on") == "off":
 			solver.peer_collider_voxel_resolution = 0
-		solver.body_collider_thickness = 0.006
+		solver.body_collider_thickness = 0.004 if shirt else 0.006
 		solver.peer_collider_voxel_resolution = int(_arg_value("--cloth-peer-res", "8"))
 		solver.collider_friction = 0.5
 		solvers.append(solver)

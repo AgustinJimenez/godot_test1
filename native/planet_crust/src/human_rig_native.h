@@ -19,6 +19,7 @@
 #include <godot_cpp/classes/skeleton3d.hpp>
 #include <godot_cpp/classes/skin.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
@@ -56,6 +57,9 @@ public:
 	// full shape (a full one adds 0.70 m or takes 0.36 m: too much); weight heavy x3 and light x1.25, muscle high x2 and low x1.25 (the shapes are small; pushing a
 	// light shape to x3 folded the female waist and hips).
 	static Dictionary shape_weights(double p_height, double p_weight, double p_muscle);
+	// Pure array computations for accurate cloth contact against the arms.
+	static Dictionary prepare_cloth_arms(const Dictionary &p_data);
+	static PackedByteArray skin_cloth_arms(const Dictionary &p_data, const Array &p_poses);
 	// Skinning the other meshes of a human to this skeleton (call these first, then pass the mesh instances to setup() so the skins follow the sliders):
 	//   skin_to_bone(mesh)            a copy of the ArrayMesh (blend shapes kept) with every vertex bound to bind 0, weight 1: for what moves rigidly with a bone
 	//   transfer_skin(cloth, body)    a copy of the cloth with every vertex given the bones and weights of the nearest vertex of the body (both in the base pose): clothes

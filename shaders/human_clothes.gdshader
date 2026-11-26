@@ -200,13 +200,6 @@ void fragment() {
 	float fz = fbm(fold_p + vec3(0.0, 0.0, 0.13)) - fbm(fold_p - vec3(0.0, 0.0, 0.13));
 	vec3 bend = vec3(fx, 0.0, fz) * folds * 1.4 * (1.0 - belt);
 	vec3 weave_bend = vec3((weave - 0.5) * 0.25 * fade * weave_depth);
-	if (gpu_driven) {
-		// the simulated normals (the solver sums the face normals round each particle) go wrong in a few specks where the shell's triangles are tiny
-		// (over the nipples, the navel, the rolled hems) and lit them as bright dots: where a normal turns far from its triangle's own facing, the facing
-		vec3 face_n = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
-		face_n = face_n.z < 0.0 ? -face_n : face_n;   // (toward the camera: the side being drawn)
-		NORMAL = normalize(mix(face_n, NORMAL, smoothstep(0.55, 0.85, dot(NORMAL, face_n))));
-	}
 	NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(bend, 0.0)).xyz + weave_bend * 0.2);
 	RIM = sheen * (1.0 - belt);
 	RIM_TINT = 0.6;

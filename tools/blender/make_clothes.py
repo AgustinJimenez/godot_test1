@@ -3,9 +3,10 @@
 Run after make_bodies.py and make_rig.py, headless:
   blender -b --factory-startup --python tools/blender/make_clothes.py -- <folder with {male,female}_body.glb> <folder with {male,female}_rig.json>
 Writes {male,female}_shirt.glb and {male,female}_pants.glb into the first folder.
+Optional third argument: --garment=shirt or --garment=pants to rebuild only that garment.
 
-Like the underwear (make_underwear.py), each garment is a shell taken from the body's own faces: the same vertex order where it comes from and the same
-blend shapes (height, weight, muscle and every face shape), so it follows the sliders exactly. What makes it read as cloth and not as paint:
+Like the underwear (make_underwear.py), each garment is a shell taken from the body's own faces, retaining its
+blend shapes (height, weight, muscle and every face shape). Sleeve subdivision interpolates those shapes. What makes it read as cloth and not as paint:
 - it stands off the skin (the shirt more than the trousers), and the shell is smoothed so it bridges the hollows (the spine, between the pecs, the
   small of the back) instead of following them;
 - the shirt is a tunic: it hangs out over the trousers to the top of the thighs and flares a little toward its hem;
@@ -24,9 +25,13 @@ from mathutils import Vector, kdtree
 ARGS = sys.argv[sys.argv.index("--") + 1:]
 FOLDER = ARGS[0]
 RIG_FOLDER = ARGS[1] if len(ARGS) > 1 else ARGS[0]
+GARMENTS = [arg.split("=", 1)[1] for arg in ARGS[2:] if arg.startswith("--garment=")] or ["shirt", "pants"]
+if any(garment not in ("shirt", "pants") for garment in GARMENTS):
+	raise ValueError("--garment must be shirt or pants")
 
 SHIRT_OFFSET = 0.016     # metres off the skin
 SLEEVE_OFFSET = 0.019    # the sleeves hang a little looser
+SLEEVE_EDGE_LENGTH = 0.012  # collision samples must also support the faces across a bent elbow
 SHIRT_FLARE = 0.012      # extra toward the hem (the shirt hangs away from the hips)
 SLEEVE_END = 0.9         # the sleeve ends at this share of the forearm (from the elbow): just above the wrist
 SHIRT_HEM_BELOW_HIPS = 0.0    # metres below the hip joints' height: at the hips (a shell taken from the body cannot hang across the gap between the legs:
@@ -229,6 +234,26 @@ def build(name, garment):
 		bmesh.ops.delete(bm, geom=drop, context="VERTS")
 	bm.verts.ensure_lookup_table()
 	print(name, garment, "islands", sorted(len(c) for c in islands), "kept verts", len(bm.verts), "faces", len(bm.faces))
+	if garment == "shirt":
+		# Interpolate the existing shape/deform layers rather than remeshing away
+		# their correspondence. Keep the torso's original resolution.
+		sleeve_faces = [f for f in bm.faces if all(part_of(v.co, j)[0] == "arm" for v in f.verts)]
+		bmesh.ops.triangulate(bm, faces=sleeve_faces)
+		for _ in range(8):
+			edges = [e for e in bm.edges if e.calc_length() > SLEEVE_EDGE_LENGTH
+				and all(part_of(v.co, j)[0] == "arm" for v in e.verts)]
+			if not edges:
+				break
+			bmesh.ops.subdivide_edges(bm, edges=edges, cuts=1, use_grid_fill=True, use_single_edge=True)
+			# Subdivision can leave polygons whose export diagonals would still
+			# span the elbow. Include those diagonals in the next length check.
+			bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 3
+				and any(part_of(v.co, j)[0] == "arm" for v in f.verts)])
+		else:
+			raise RuntimeError("Sleeve refinement did not converge")
+		bm.verts.ensure_lookup_table()
+		bm.verts.index_update()
+		print(name, "refined sleeves", len(bm.verts), "verts", len(bm.faces), "faces")
 
 	# distance (along the surface) from every vertex to the nearest open edge (a hem) and, for the trousers, to the waistband
 	import heapq
@@ -338,9 +363,13 @@ def build(name, garment):
 		closed_edge = 1.0 - min(max((edge_distance - 0.01) / 0.04, 0.0), 1.0)   # (the gathered cuffs and the neckband stay on the skin)
 		if garment == "shirt":
 			if part[0] == "arm":
-				along = part[2]   # (the forearm's share; -1 on the upper arm)
-				w = 0.0 if along < 0.0 else 0.4 * min(max(along / 0.6, 0.0), 1.0)   # (0.85: the open sleeve sagged off the arm in the A pose, the skin showed on top)   # (the upper arm and the shoulder glued: at 0.2 the shoulders sagged and boxed out)
-				return w   # (an open sleeve: its end is free too)
+				# Hold only the shoulder seam, then let the sleeve rest on the arm's
+				# collider. A partial weight all along the sleeve pulls it back to
+				# its inflated rest shell every frame, leaving an even air gap.
+				side = part[1]
+				along, _ = segment_t(p, j["shoulder_" + side], j["elbow_" + side])
+				t = min(max((along - 0.05) / 0.3, 0.0), 1.0)
+				return t * t * (3.0 - 2.0 * t)
 			if p.z > neck.z - 0.16:
 				return 0.0 * (1.0 - closed_edge)
 			hang = min(max((chest_z - p.z) / (chest_z - hem_z), 0.0), 1.0)   # (0 at the chest, 1 at the hem)
@@ -406,6 +435,6 @@ def build(name, garment):
 
 
 for gender in ("male", "female"):
-	for piece in ("shirt", "pants"):
+	for piece in GARMENTS:
 		build(gender, piece)
 print("DONE")
