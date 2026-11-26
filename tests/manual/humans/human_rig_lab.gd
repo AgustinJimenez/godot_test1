@@ -204,6 +204,7 @@ func _add_cloth() -> void:
 		# poke through): per bone, a local patch in the add-on)
 		solver.auto_collider_radius_percentile = float(_arg_value("--cloth-capsule-percentile", "0.5"))
 		solver.auto_collider_radius_scale = float(_arg_value("--cloth-capsule-scale", "0.8"))
+		solver.auto_collider_bone_overrides = {"mixamorig_Hips": Vector2(0.0, 0.1), "mixamorig_Spine2": Vector2(0.0, 0.1)}   # (lopsided pelvis and upper spine capsules: see the body lab)
 		if shirt:
 			solver.body_collider_voxel_resolution = 1
 			solver.body_collider_preparer = func(data: Dictionary) -> Dictionary:
@@ -365,6 +366,8 @@ func _draw_bones() -> void:
 
 func _process(delta: float) -> void:
 	_draw_bones()
+	if OS.get_cmdline_user_args().has("--cloth-overlap") and Engine.get_process_frames() % 10 == 0 and Engine.get_process_frames() >= 60 and _cloth_root != null:
+		RenderingServer.call_on_render_thread(ClothOverlapProbe.measure.bind(_cloth_root.get_child(0), _cloth_root.get_child(1)))
 	if OS.get_cmdline_user_args().has("--cloth-dump") and Engine.get_process_frames() == 80 and _cloth_root != null:
 		RenderingServer.call_on_render_thread(_dump_cloth)
 	if OS.get_cmdline_user_args().has("--gpu-time"):

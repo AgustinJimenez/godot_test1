@@ -84,8 +84,8 @@ void fragment() {
 	float hem = COLOR.g;
 	float belt = COLOR.r;
 	if (!FRONT_FACING && hem < 0.03 && COLOR.a < 0.5) {
-		discard;   // (the torso's inside is only seen near an opening: elsewhere a back face is where the sleeve and the body's shell overlap at the armpit;
-		// the sleeves (vertex alpha 1) show their whole inside: a look up a loose sleeve sees cloth, not the sky through it)
+		discard;   // (vertex alpha 0: the shirt's armpits, where the sleeve and the body's shell overlap and a back face is not the cloth's inside; and
+		// the trousers away from their openings. Everywhere else the inside is drawn: a look up a loose sleeve or under the hem sees cloth)
 	}
 	vec3 seed_shift = vec3(flaw_seed * 17.31, flaw_seed * 5.17, flaw_seed * 9.73);
 	// --- where cloth wears: the elbows and the knees (bent and rubbed every day), the hems a little

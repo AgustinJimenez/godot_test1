@@ -18,9 +18,11 @@ import json
 import math
 import sys
 
+import os
 import bmesh
 import bpy
 from mathutils import Vector, kdtree
+from mathutils.bvhtree import BVHTree
 
 ARGS = sys.argv[sys.argv.index("--") + 1:]
 FOLDER = ARGS[0]
@@ -39,9 +41,18 @@ SHIRT_HEM_BELOW_HIPS = 0.0    # metres below the hip joints' height: at the hips
 NECK_DROP_BACK = 0.03    # metres below the neck joint at the back and sides
 NECK_DROP_FRONT = 0.085  # a V neckline in front: its point this far below the neck joint, rising to the back's height NECK_FRONT_WIDTH out
 NECK_FRONT_WIDTH = 0.07
+NECK_EASE = 0.01         # the neckline at the back and the sides: round, this far out from the neck's own surface (a level cut across the slope of the
+# shoulders stood off the skin and left raised corners: the user saw a gap where the shirt starts at the neck)
 PANTS_OFFSET = 0.012
 PANTS_FLARE = 0.01       # extra toward the cuffs (loose trousers)
 PANTS_END = 0.9          # the trousers end at this share of the shin (from the knee): above the ankle
+SHIRT_OVER_PANTS = 0.012   # (8 mm: the trousers are drawn 3 mm further out than the shirt (render offsets) and a turning hem dips a little) the shirt stays at least this far outside the finished trousers where it covers them (the floor along the body's normal
+# left the hem up to 2 cm INSIDE the trousers at the middle of the back, where the trousers bridge the lower back's hollow; the simulated cloth showed
+# the trousers through the shirt there)
+PANTS_KNEE_FREEDOM = float(os.environ.get("PANTS_KNEE_FREEDOM", "0.3"))   # the trousers' cloth freedom at the knee (vertex colour B)
+PANTS_SHIN_FREEDOM = float(os.environ.get("PANTS_SHIN_FREEDOM", "0.45"))   # and at the bottom of the leg, above the bound cuff
+ARMPIT_NO_INSIDE = 0.09   # the shirt's inside is drawn everywhere but within this of each armpit (the sleeve and the body's shell overlap there)
+SHIRT_OVER_PANTS_FREEDOM = float(os.environ.get("SHIRT_OVER_PANTS_FREEDOM", "0.3"))   # the most cloth freedom (vertex colour B) where the shirt covers the trousers
 PANTS_WAIST_ABOVE_HIPS = 0.035  # metres above the hip joints' height: the waistband (only a little under the shirt: the heavy belly folded the shirt into a larger overlap)
 HEM_WIDTH = 0.025        # metres: the hem / cuff band the shader stitches
 CUFF_OFFSET = 0.004      # metres: how far a cuff, the neckband and the trouser cuffs stand off the skin at their edge
@@ -62,7 +73,7 @@ def joints_of(name):
 		rig = json.load(handle)
 	bones = rig["bones"]
 	out = {}
-	for key, bone in (("hips", "Hips"), ("neck", "Neck"),
+	for key, bone in (("hips", "Hips"), ("neck", "Neck"), ("head", "Head"),
 			("shoulder_l", "LeftArm"), ("elbow_l", "LeftForeArm"), ("wrist_l", "LeftHand"),
 			("shoulder_r", "RightArm"), ("elbow_r", "RightForeArm"), ("wrist_r", "RightHand"),
 			("hip_l", "LeftUpLeg"), ("knee_l", "LeftLeg"), ("ankle_l", "LeftFoot"),
@@ -139,6 +150,20 @@ def part_of(p, j):
 	return ("leg", side, t)
 
 
+# The finished trousers of this body (built first), as a surface to keep the shirt outside of; their top's height.
+def pants_surface(name):
+	before = set(bpy.data.objects)
+	bpy.ops.import_scene.gltf(filepath=f"{FOLDER}/{name}_pants.glb")
+	added = [o for o in bpy.data.objects if o not in before]
+	pants = max((o for o in added if o.type == "MESH"), key=lambda o: len(o.data.vertices))
+	vertices = [pants.matrix_world @ v.co for v in pants.data.vertices]
+	tree = BVHTree.FromPolygons(vertices, [list(f.vertices) for f in pants.data.polygons])
+	top = max(v.z for v in vertices)
+	for ob in added:
+		bpy.data.objects.remove(ob, do_unlink=True)
+	return tree, top
+
+
 def build(name, garment):
 	global LABELS, TREE
 	LABELS, TREE = bone_labels(name)
@@ -170,7 +195,7 @@ def build(name, garment):
 			axis = (j["ankle_" + side] - j["knee_" + side]).normalized()
 			cuts.append((j["knee_" + side] + (j["ankle_" + side] - j["knee_" + side]) * PANTS_END, axis))
 	if garment == "shirt":
-		cuts += [(Vector((0, 0, hem_z)), Vector((0, 0, 1))), (Vector((0, 0, neck.z - NECK_DROP_BACK)), Vector((0, 0, 1)))]
+		cuts += [(Vector((0, 0, hem_z)), Vector((0, 0, 1)))]   # (the neckline at the back is round: below)
 		# the V: two planes through the point in front, rising to the back's height NECK_FRONT_WIDTH to each side
 		rise = (NECK_DROP_FRONT - NECK_DROP_BACK) / NECK_FRONT_WIDTH
 		cuts += [(Vector((0, 0, neck.z - NECK_DROP_FRONT)), Vector((-rise, 0, 1)).normalized()), (Vector((0, 0, neck.z - NECK_DROP_FRONT)), Vector((rise, 0, 1)).normalized())]
@@ -179,6 +204,44 @@ def build(name, garment):
 	for co, no in cuts:
 		bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces), dist=1e-6, plane_co=co, plane_no=no)
 	bm.verts.ensure_lookup_table()
+	if garment == "shirt":
+		# the round neckline: a cylinder round the neck's axis (the neck joint to the head joint), the neck's own radius plus NECK_EASE. Edges that
+		# cross it are split exactly on it and the split points joined across their faces, so the edge comes out clean (a vertex-by-vertex cut is
+		# ragged)
+		neck_axis = (j["head"] - neck).normalized()
+		def axis_distance(p):
+			d = p - neck
+			return (d - neck_axis * d.dot(neck_axis)).length
+		neck_band = [axis_distance(v.co) for v in bm.verts if 0.2 < (v.co - neck).dot(neck_axis) / max((j["head"] - neck).length, 1e-6) < 0.5]
+		neck_band.sort()
+		collar_r = neck_band[len(neck_band) // 2] + NECK_EASE if neck_band else 0.07
+		# (the axis, carried on down, runs through the upper back: the cut stops NECK_DROP_BACK below the neck joint, or it opened the back along the spine)
+		def collar_f(p):
+			return max(axis_distance(p) - collar_r, (neck.z - NECK_DROP_BACK) - p.z)   # (< 0: cut away)
+		def in_collar(p):
+			return collar_f(p) < 0.0
+		# (triangles first: a crossing quad can get more than two split points, which are not joined, and the edge came out ragged)
+		bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if any(v.co.z > neck.z - NECK_DROP_BACK - 0.03 for v in f.verts)])
+		crossing = [e for e in bm.edges if in_collar(e.verts[0].co) != in_collar(e.verts[1].co)]
+		new_verts = []
+		for e in crossing:
+			a, b = e.verts
+			fa, fb = collar_f(a.co), collar_f(b.co)
+			if abs(fa - fb) < 1e-9:
+				continue
+			t = min(max(fa / (fa - fb), 0.0), 1.0)
+			e_new, v_new = bmesh.utils.edge_split(e, a, t)
+			new_verts.append(v_new)
+		for f in {f for v in new_verts for f in v.link_faces}:
+			on = [v for v in f.verts if v in set(new_verts)]
+			if len(on) == 2:
+				try:
+					bmesh.ops.connect_verts(bm, verts=on)
+				except Exception:
+					pass
+		collar_edge = set(new_verts)   # (the split points ARE the edge: kept whatever the interpolation left their value at, or some went and it was ragged)
+		bm.verts.ensure_lookup_table()
+		print(name, "round neckline radius %.3f m, %d edges split" % (collar_r, len(new_verts)))
 
 	def keep_shirt(v):
 		p = v.co
@@ -189,12 +252,16 @@ def build(name, garment):
 			return False
 		if p.z < hem_z - 1e-4:
 			return False
-		# the neckline: level at the back and the sides, a V in front
-		front = p.y < neck.y - 0.02
-		drop = NECK_DROP_BACK
+		# the neckline: round at the back and the sides (round the base of the neck), a V in front
+		if collar_f(p) < -1e-4 and v not in collar_edge:
+			return False
+		if p.z > neck.z + 0.02:
+			return False   # (the head)
+		front = p.y < neck.y - 0.02 and abs(p.x) < NECK_FRONT_WIDTH   # (only inside the V: outside it the round neckline is the edge, or a level step was left)
 		if front:
 			drop = max(NECK_DROP_BACK, NECK_DROP_FRONT - (NECK_DROP_FRONT - NECK_DROP_BACK) * abs(p.x) / NECK_FRONT_WIDTH)
-		return p.z <= neck.z - drop + 1e-4
+			return p.z <= neck.z - drop + 1e-4
+		return True
 
 	def keep_pants(v):
 		p = v.co
@@ -302,7 +369,17 @@ def build(name, garment):
 			length = NECK_BAND if near_neck else CUFF_LENGTH
 			t = min(max(dist[v] / length, 0.0), 1.0)
 			offset[v] = CUFF_OFFSET + (offset[v] - CUFF_OFFSET) * t * t * (3.0 - 2.0 * t)
-	placed = {v: skin[v] + normal[v] * offset[v] for v in bm.verts}
+	hips_axis = Vector((0.0, j["hips"].y, 0.0))   # (the body's vertical middle line at the hips, for the shirt's floor over the trousers)
+	def place_dir(v):
+		# (the shirt over the hips is placed out from the body's middle: at the top of the cleft between the buttocks the skin's normals face each
+		# other and the placed points crossed over, a fold the smoothing never untangled)
+		if garment == "shirt" and v.co.z < hips_z + PANTS_WAIST_ABOVE_HIPS + 0.04 and part_of(v.co, j)[0] != "arm":
+			radial = Vector((v.co.x - hips_axis.x, v.co.y - hips_axis.y, 0.0))
+			if radial.length > 1e-6:
+				blend = min(max((hips_z + PANTS_WAIST_ABOVE_HIPS + 0.04 - v.co.z) / 0.03, 0.0), 1.0)
+				return normal[v].lerp(radial.normalized(), blend).normalized()
+		return normal[v]
+	placed = {v: skin[v] + place_dir(v) * offset[v] for v in bm.verts}
 	smoothed = dict(placed)
 	for step in range(SMOOTH_PASSES):
 		# Taubin smoothing: a smoothing step, then a slightly larger step back out (lambda 0.5, mu -0.53), so small bumps go but the garment does not
@@ -318,14 +395,73 @@ def build(name, garment):
 			p = smoothed[v].lerp(mean, weight)
 			# never closer to the skin than half the offset (the smoothing pulls a shell over a bump back into it), and the shirt never inside the
 			# trousers where it covers them (the smoothing pulled it in over the round of the hip and the belt showed through as a dark slit)
-			lift = (p - skin[v]).dot(normal[v])
+			push_dir = normal[v]
 			floor = offset[v] * 0.15   # (0.5 held the cloth over every vertebra, 0.3 still tented it over the nipples)
 			if garment == "shirt" and v.co.z < hips_z + PANTS_WAIST_ABOVE_HIPS + 0.04:
 				floor = max(floor, PANTS_OFFSET + 0.014)
+				# (out from the body's middle, not along the skin's own normal: in the hollow of the lower back the two sides of the spine's groove face
+				# each other, the pushes crossed at the middle and folded the cloth over; from under the hem the fold showed the shirt's outside)
+				radial = Vector((skin[v].x - hips_axis.x, skin[v].y - hips_axis.y, 0.0))
+				if radial.length > 1e-6:
+					push_dir = radial.normalized()
+			lift = (p - skin[v]).dot(push_dir)
 			if lift < floor:
-				p += normal[v] * (floor - lift)
+				p += push_dir * (floor - lift)
 			nxt[v] = p
 		smoothed = nxt
+	if garment == "shirt" and os.path.exists(f"{FOLDER}/{name}_pants.glb"):
+		pants_tree, pants_top = pants_surface(name)
+		# the push is spread over the cloth round it (single points moved up to 2 cm folded their triangles over: from inside the shirt the fold
+		# showed the outside, from outside the inside), a few passes until nothing is closer than SHIRT_OVER_PANTS
+		pushed = set()
+		for rounds in range(12):
+			move = {}
+			for v in bm.verts:
+				p = smoothed[v]
+				if p.z > pants_top + 0.01:
+					continue
+				loc, nrm, idx, d = pants_tree.find_nearest(p)
+				if loc is None or d > 0.08:
+					continue
+				outside = (p - loc).dot(nrm)
+				if outside < SHIRT_OVER_PANTS:
+					move[v] = nrm * (SHIRT_OVER_PANTS - outside)
+			if not move:
+				break
+			pushed.update(move)
+			spread = dict(move)
+			for ring_pass in range(6):   # (about 6 rings of neighbours, fading)
+				nxt = dict(spread)
+				for v in list(spread):
+					for e in v.link_edges:
+						o = e.other_vert(v)
+						if dist[o] < 1e-6:
+							continue   # (the cut hem edge stays)
+						cand = spread[v] * 0.7
+						if o not in nxt or cand.length > nxt[o].length:
+							nxt[o] = cand
+				spread = nxt
+			for v, m in spread.items():
+				smoothed[v] = smoothed[v] + m
+		print(name, garment, "pushed outside the trousers", len(pushed), "in", rounds + 1, "rounds")
+	# unfold: where the smoothing still folds a few triangles over (they face into the body: at the front of the hem), their corners are relaxed onto
+	# their neighbours; from under the hem a fold showed the shirt's outside where its inside belongs (the lower back's fold was the placement: above)
+	for unfold in range(60):
+		folded = set()
+		for f in bm.faces:
+			vs = f.verts
+			n_face = (smoothed[vs[1]] - smoothed[vs[0]]).cross(smoothed[vs[2]] - smoothed[vs[0]])
+			n_skin = sum((normal[v] for v in vs), Vector())
+			if n_face.length < 1e-12 or n_face.normalized().dot(n_skin.normalized()) < 0.0:
+				folded.update(v for v in vs if dist[v] > 1e-6)
+		if not folded:
+			break
+		relaxed = {}
+		for v in folded:
+			ring = [e.other_vert(v) for e in v.link_edges]
+			relaxed[v] = sum((smoothed[o] for o in ring), Vector()) / len(ring)
+		smoothed.update(relaxed)
+	print(name, garment, "unfold passes", unfold, "folded corners left", len(folded))
 	for v in bm.verts:
 		move = smoothed[v] - skin[v]
 		v.co = smoothed[v]
@@ -373,13 +509,20 @@ def build(name, garment):
 			if p.z > neck.z - 0.16:
 				return 0.0 * (1.0 - closed_edge)
 			hang = min(max((chest_z - p.z) / (chest_z - hem_z), 0.0), 1.0)   # (0 at the chest, 1 at the hem)
-			return 0.6 * hang * hang   # (fully free, the hem curled up over the belt and showed the shirt's dark inside)
+			w = 0.6 * hang * hang   # (fully free, the hem curled up over the belt and showed the shirt's dark inside)
+			# where the shirt covers the trousers it is held closer: a fast turn swung the free hem in by more than its clearance over them, and the
+			# trousers showed through it for a moment (the collision between the two garments is too coarse to stop it)
+			over_pants = min(max((hips_z + PANTS_WAIST_ABOVE_HIPS + 0.03 - p.z) / 0.03, 0.0), 1.0)
+			return w + (min(w, SHIRT_OVER_PANTS_FREEDOM) - w) * over_pants
 		# the trousers: the seat and the waist glued, freer down the leg, the bound cuff glued
 		if part[0] == "leg":
+			# (0.45 at the knee to 0.85 down the shin: a quick turn swung the free lower leg into the back of the calf, up to 7 mm in, past the 4 mm
+			# the trousers are drawn out; the calf bulges behind the shin's round capsule. Held closer now: PANTS_KNEE_FREEDOM to PANTS_SHIN_FREEDOM)
 			if part[2] < 0.0:
 				thigh = min(max((hips_z - p.z) / 0.35, 0.0), 1.0)
-				return 0.45 * thigh
-			return (0.45 + 0.4 * min(max(part[2] / 0.6, 0.0), 1.0)) * (1.0 - closed_edge)
+				return PANTS_KNEE_FREEDOM * thigh
+			along = min(max(part[2] / 0.6, 0.0), 1.0)
+			return (PANTS_KNEE_FREEDOM + (PANTS_SHIN_FREEDOM - PANTS_KNEE_FREEDOM) * along) * (1.0 - closed_edge)
 		return 0.0
 	# the masks: green = how close to a hem (1 at the edge, 0 one hem width in); red = the trousers' waistband (the belt)
 	attribute = me.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
@@ -411,7 +554,18 @@ def build(name, garment):
 			if belt > 0.0:
 				near_hem = 0.0
 		# alpha: 1 on the sleeves (the shader draws their inside: a look up a loose sleeve sees cloth, not the sky through it), 0 elsewhere
-		sleeve = 1.0 if garment == "shirt" and part_of(v.co, j)[0] == "arm" else 0.0
+		# alpha: 1 where the shader draws the cloth's inside. The whole shirt but the armpits (there the sleeve and the body's shell overlap and the
+		# inside showed through as a dark patch); before, only the sleeves and a hem's width at the openings: a look up under the hem passed that band
+		# and saw straight through to the far side's outside
+		sleeve = 0.0
+		if garment == "shirt":
+			sleeve = 1.0
+			if part_of(v.co, j)[0] != "arm":
+				for side in ("l", "r"):
+					sh = j["shoulder_" + side]
+					armpit = Vector((sh.x * 0.85, sh.y, sh.z - 0.07))
+					if (v.co - armpit).length < ARMPIT_NO_INSIDE:
+						sleeve = 0.0
 		attribute.data[v.index].color = (belt, near_hem, cloth_weight(v.co, dist2[v.index]), sleeve)
 	bm2.free()
 	me.color_attributes.active_color = attribute
@@ -435,6 +589,6 @@ def build(name, garment):
 
 
 for gender in ("male", "female"):
-	for piece in GARMENTS:
+	for piece in sorted(GARMENTS, key=lambda g: g != "pants"):   # (the trousers first: the shirt is kept outside them)
 		build(gender, piece)
 print("DONE")

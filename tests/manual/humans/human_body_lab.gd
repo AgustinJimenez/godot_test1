@@ -301,6 +301,8 @@ var _spin_time: float = 0.0
 var _capture_at: int = 20   # --captureat=<frame>: the frame a --capture is taken (later = the hair has had time to settle)
 var _sim_overrides: Dictionary = {}   # --sim=gravity:0,bend_stiffness:0: any HairSim property, for tests
 var _pitch: float = 0.0   # camera height angle (radians): drag up/down with the right mouse button
+var _wiggle := Vector2.ZERO   # --wiggle=<degrees>,<seconds>: the body swings that many degrees in that time and back, over and over (a quick back-and-forth flick: the shirt clipped through the trousers for a moment)
+var _wiggle_time: float = 0.0
 var _osc_period: float = 0.0   # --osc=<seconds a half turn (180 degrees) takes>: random turns of 90..180 degrees either way with short pauses (the same sequence every run), panel hidden, to watch the hair swing
 var _hide_panel: bool = false   # --nopanel: no control panel in the picture
 var _osc_rng := RandomNumberGenerator.new()
@@ -484,6 +486,9 @@ func _ready() -> void:
 			_hair_style[&"strands"] = 1
 		elif arg == "--nopanel":
 			_hide_panel = true
+		elif arg.begins_with("--wiggle="):
+			var wiggle_parts: PackedStringArray = arg.trim_prefix("--wiggle=").split(",")
+			_wiggle = Vector2(float(wiggle_parts[0]), float(wiggle_parts[1]) if wiggle_parts.size() > 1 else 0.3)
 		elif arg.begins_with("--osc="):
 			_osc_period = float(arg.trim_prefix("--osc="))
 		elif arg.begins_with("--weight="):
@@ -2694,13 +2699,21 @@ func _restart_cloth() -> void:
 		solver.damping = 0.985
 		solver.max_travel_distance = 0.04
 		solver.cloth_skin_offset = 0.0
-		solver.cloth_render_offset = 0.004   # (drawn 4 mm out along the normal: hides the skin where free cloth sinks onto capsules inside the body)
+		solver.cloth_render_offset = _cloth_debug_arg("--cloth-pants-offset=", 0.004)   # (drawn 4 mm out along the normal: hides the skin where free cloth sinks onto capsules inside the body)
 		solver.body_collider_voxel_resolution = 0   # Capsule support; the shirt adds native arm contact below.
 		solver.auto_collider_lod = 1
 		# (the torso is oval, a capsule round: small capsules, inside the body, or they push the shirt out like a cape and the trousers' waistband out
 		# over the shirt's hem; the shins full ones, or they poke through: per bone, a local patch in the add-on)
 		solver.auto_collider_radius_percentile = 0.5
 		solver.auto_collider_radius_scale = 0.8
+		# (the pelvis bone's capsule runs from the pelvis to the RIGHT thigh (the add-on takes its child with the most weighted vertices): lopsided, it
+		# pushed the glued trousers out at one hip, through the shirt's hem. Shrunk to nothing: the thighs' and the spine's capsules cover the hips)
+		solver.auto_collider_bone_overrides = {"mixamorig_Hips": Vector2(0.0, 0.1), "mixamorig_Spine2": Vector2(0.0, 0.1)}
+		# (the upper spine's capsule is lopsided the same way, from the spine to the LEFT collarbone, 7.5 cm round: it pushed the glued neck band up
+		# into flaps at the sides of the neck. Shrunk too: the lower spine's capsules stay)
+		for arg: String in OS.get_cmdline_user_args():
+			if arg.begins_with("--cloth-no-capsule="):   # (debug: --cloth-no-capsule=<bone without the mixamorig_ prefix>, more than once)
+				solver.auto_collider_bone_overrides["mixamorig_" + arg.trim_prefix("--cloth-no-capsule=")] = Vector2(0.0, 0.1)
 		if i == 0:
 			# Exact arm surface, weighted like the visible body, packed in native code.
 			solver.body_collider_voxel_resolution = 1
@@ -2710,9 +2723,10 @@ func _restart_cloth() -> void:
 				return HumanRig.skin_cloth_arms(data, poses)
 			solver.cloth_render_offset = 0.001
 		else:
-			solver.auto_collider_bone_overrides = {"mixamorig_LeftLeg": Vector2(0.85, 1.0), "mixamorig_RightLeg": Vector2(0.85, 1.0)}
+			var shin_fit := Vector2(_cloth_debug_arg("--cloth-shin-pct=", 0.85), _cloth_debug_arg("--cloth-shin-scale=", 1.0))
+			solver.auto_collider_bone_overrides.merge({"mixamorig_LeftLeg": shin_fit, "mixamorig_RightLeg": shin_fit})
 		solver.body_collider_thickness = 0.004 if i == 0 else 0.006
-		solver.peer_collider_voxel_resolution = 8
+		solver.peer_collider_voxel_resolution = int(_cloth_debug_arg("--cloth-peer-res=", 8))
 		solver.collider_friction = 0.5
 		_cloth_solvers.append(solver)
 	# (paths set before the solvers enter the tree: they start on their own _ready)
@@ -2721,10 +2735,18 @@ func _restart_cloth() -> void:
 		solver.target_mesh = NodePath("../" + String(_cloth_rig.get_path_to(_cloth_pieces[i])))
 		solver.skeleton = NodePath("../" + String(_cloth_rig.get_path_to(skeleton)))
 		solver.body_mesh = NodePath("../" + String(_cloth_rig.get_path_to(collider)))
-	(_cloth_solvers[0] as GPUClothSolver).peer_cloth_solvers = [NodePath("../PantsCloth")]
-	(_cloth_solvers[1] as GPUClothSolver).peer_cloth_solvers = [NodePath("../ShirtCloth")]
+	if not OS.get_cmdline_user_args().has("--cloth-peers=off"):
+		(_cloth_solvers[0] as GPUClothSolver).peer_cloth_solvers = [NodePath("../PantsCloth")]
+		(_cloth_solvers[1] as GPUClothSolver).peer_cloth_solvers = [NodePath("../ShirtCloth")]
 	for solver: GPUClothSolver in _cloth_solvers:
 		_cloth_rig.add_child(solver)
+
+
+func _cloth_debug_arg(prefix: String, fallback: float) -> float:
+	for arg: String in OS.get_cmdline_user_args():
+		if arg.begins_with(prefix):
+			return float(arg.trim_prefix(prefix))
+	return fallback
 
 
 func _cloth_key(weights: Dictionary) -> String:
@@ -3674,6 +3696,15 @@ func _update_fps_label(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_flash_log_step(delta)
+	if OS.get_cmdline_user_args().has("--cloth-legs") and Engine.get_process_frames() % 6 == 0 and _cloth_solvers.size() == 2 and _cloth_rig != null 			and is_instance_valid(_cloth_solvers[1]) and (_cloth_solvers[1] as GPUClothSolver)._rd != null:
+		var collider: MeshInstance3D = null
+		for candidate: MeshInstance3D in _cloth_rig.find_children("*", "MeshInstance3D", true, false):
+			if not candidate.visible and (collider == null or (candidate.mesh as ArrayMesh).surface_get_array_len(0) > (collider.mesh as ArrayMesh).surface_get_array_len(0)):
+				collider = candidate
+		RenderingServer.call_on_render_thread(ClothOverlapProbe.legs.bind(_cloth_solvers[1], collider))
+	if OS.get_cmdline_user_args().has("--cloth-overlap") and Engine.get_process_frames() % 10 == 0 and _cloth_solvers.size() == 2 			and is_instance_valid(_cloth_solvers[0]) and (_cloth_solvers[0] as GPUClothSolver)._rd != null:
+		RenderingServer.call_on_render_thread(ClothOverlapProbe.measure.bind(_cloth_solvers[0], _cloth_solvers[1]))
+		RenderingServer.call_on_render_thread(ClothOverlapProbe.back_hem.bind(_cloth_solvers[0]))
 	if _cloth_restart_ms >= 0 and Time.get_ticks_msec() >= _cloth_restart_ms:
 		_restart_cloth()
 	if _switch_gender_arg != "" and not _switch_gender_done and Time.get_ticks_msec() > 2500:
@@ -3724,6 +3755,12 @@ func _process(delta: float) -> void:
 			_bench_rebuilds += 1
 			_hair_style[&"length"] = float(_hair_style[&"length"]) + 0.01
 			_hair_dirty = true
+	if _wiggle.y > 0.0 and _body != null and Time.get_ticks_msec() > 3000:   # (after the cloth has settled)
+		_wiggle_time += delta
+		# right, left, right, left: at a steady speed, turning back at once at each end (a sine lingered at the ends: it read as right, right, left, left)
+		var phase: float = fposmod(_wiggle_time / _wiggle.y + 0.5, 2.0)   # (starts in the middle, going right)
+		var swing: float = -1.0 + 2.0 * phase if phase < 1.0 else 3.0 - 2.0 * phase   # (-1 to 1 in one swing, then back)
+		_body.rotation.y = _yaw + deg_to_rad(_wiggle.x) * 0.5 * swing
 	if _osc_period > 0.0 and _body != null:
 		_spin_time += delta
 		if _spin_time == delta:
