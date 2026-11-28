@@ -23,7 +23,7 @@ func _run() -> void:
 		await physics_frame
 	await RenderingServer.frame_post_draw
 	paused = true
-	var solver: GPUClothSolver = (lab.get("_cloth_root") as Node).get_child(0)
+	var solver: GPUClothSolver = ClothSetup.sleeve_solver((lab.get("_cloth_root") as Node).get_children())
 	var skeleton: Skeleton3D = lab.get("_skeleton")
 	var poses: Array = []
 	for i in skeleton.get_bone_count():

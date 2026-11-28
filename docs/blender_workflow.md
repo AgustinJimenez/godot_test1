@@ -7,7 +7,7 @@ dated line whenever something is learned; keep it short and factual.
 
 - Sleeve resolution (2026-11-26, task 103): shirts subdivide only arm edges to 12 mm before offsets, smoothing, hems and masks; BMesh interpolates shape/deform layers. Use `use_single_edge=True` and triangulate new polygons between passes, otherwise export diagonals stay long. The rest ray check uses centimetres around its origin because Godot's absolute intersection epsilon missed small triangles in metres. Rest passes; walking face/edge checks still expose contact defects, so refinement alone is not a completed moving-cloth fix.
 
-- Sleeve drape (2026-11-26, task 103): vertex colour B is fully free beyond the shoulder seam; a 0.4 sleeve weight was pulling the fabric back to a shell ~2 cm above the arm every frame. Keep wrists open. The labs use exact arm contact from native `HumanRig.prepare_cloth_arms` / `skin_cloth_arms` (four bone weights and current shapes); the earlier undersized cylinders cannot support free cloth at the elbows. `make_clothes.py ... <rig-folder> --garment=shirt` rebuilds only the shirts.
+- Sleeve drape (2026-11-26, task 103): vertex colour B is fully free beyond the shoulder seam; a 0.4 sleeve weight was pulling the fabric back to a shell ~2 cm above the arm every frame. Keep wrists open. The labs use exact arm contact from native `HumanRig.prepare_cloth_arms` / `skin_cloth_arms` (four bone weights and current shapes); the earlier undersized cylinders cannot support free cloth at the elbows. Clothes are recipes now (below, "Garments").
 
 - Cloth review (2026-11-26, task 103): GPU normals are sums of triangle cross products and therefore scale with triangle area. The add-on's old squared-length cutoff (1e-8) replaced valid normals on small garment triangles with UP. Fixed normalization in `cloth_output.glsl`; do not remesh a garment merely to hide this lighting bug. `scripts/cloth_check.sh` covers small-area normals and body-lab simulation restarts on a real GPU.
 
@@ -16,6 +16,68 @@ dated line whenever something is learned; keep it short and factual.
 - Headless runs always use `--factory-startup` for a clean scene, so the default `Cube`, `Camera` and `Light`
   exist: delete them in any script that saves a `.blend` (the user saw them in the GUI).
 - Write scratch scripts and outputs to the session scratchpad, not the repo. Copy only finished assets in.
+
+## Garments (recipes, 2026-11-26)
+
+Every garment is a recipe and every outfit a list of them (design: `docs/superpowers/specs/2026-11-26-garment-recipes-design.md`).
+- A garment: `assets/models/humans/garments/<name>.json` (`layer`, `shape`, `covers` regions, `top` neck or waist, `neckline`, `bottom`,
+  `sleeve_end`, `leg_end`, `ease`, `openings` open / bound, `material`, `belt`, `overrides.freedom` per region). Materials (stiffness, freedom scale, lip depth, the
+  shader's look) are in `garments/materials.json`; the sliders' strongest shapes in `assets/models/humans/body_shapes.json`.
+- An outfit: `assets/models/humans/outfits/<name>.json` (`garments` and their `colours` per gender). The body lab's Clothes list shows every outfit.
+- Build: `blender -b --factory-startup --python tools/blender/build_outfit.py -- <folder with the bodies> assets/models/humans <outfit.json>`
+  writes `<gender>_<outfit>_<garment>.glb` (inside out: each garment stays 12 mm outside the ones under it, in every body shape). Check with
+  `tools/blender/garment_check.py -- <folder> <gender> <outfit.json>`; `rebuild_humans.sh` does both for every outfit. Copy the glbs into
+  `assets/models/humans` and run `godot --headless --import`.
+- Tests: `python -I tools/blender/garments/test_recipe.py`, `test_freedom.py`; `bash tools/blender/garments/test_build.sh <folder with the bodies>`.
+- Footwear: `covers` ["foot"], `top` {"at": "ankle", "shin": share}, `shoe` {sole, toe_point, toe_shape (pointed | almond | round |
+  square), opening_below_ankle, throat, lace, welt, outsole, heel}. The outline and the height along the foot are a designed template, not
+  traced: a straight axis from the heel's centre to the toes' tip (the second toe; `AXIS_HEEL`, `AXIS_TIP`), the inner and the outer
+  widths each their own curve through four measurements of the foot (heel, waist, ball, toes: `WIDTH_STATIONS`; heights `HEIGHT_STATIONS`),
+  smoothed a little (`TEMPLATE_SMOOTH`), and a broad smooth swell added wherever the foot still stands out (`TEMPLATE_SWELL`); the toe's
+  shape past the toes (`_toe_shape`, `TOE_LENGTH`); the cross-section a rounded rectangle, big rounds at the top (`TOP_ROUND`), small at the
+  sole (`SOLE_ROUND`) (a 16th-century low shoe: opening below the ankle back to the throat, a thong across it, welt / outsole / heel as their own
+  solid under the upper; `cords` still wind ropes round a collar for a recipe that has one). A shoe has its own mesh
+  (`tools/blender/garments/footwear.py`): a lofted last (slices heel to toe from the foot's extents plus the ease; the sole outline a designed
+  template: four width stations (heel, waist, ball, toes) per side of a straight heel-to-toe axis, joined by a monotone cubic (`_pchip`) and
+  raised where the foot would stand out; the heel a half circle of the heel's own width taken from the first `HEEL_REACH` of the foot only
+  (more took in the start of the widening and made the heel as wide as the ball); the toe `(1-u^p)^(1/p)` per `toe_shape`; the cross-section a
+  rounded rectangle with a flat sole); the sole outline waisted (`WAIST_PINCH`) with the wall at every height at least as wide as the foot there (`NEED_HEIGHTS`, `need_at`: the foot's width
+  measured per height band, so the upper bulges out over the waisted sole and the foot never shows at the arch); the opening's topline a curve (`TOPLINE`: higher at the heel counter, dipping at the ankle bones, rising to the throat; cut on a level plane
+  after dropping every point by the curve, then lifted back) and a toe that closes in a convex, domed nose (height and width together; `TOP_ROUND` 0.85 rounds the cross-section: a flat topline, a vertical toe wall and a flat-topped box read as a slab, real low shoes are one continuous dome over the toes) and a collar up the ankle (the leg's outline plus room, flared a
+  little into the last); the two built as closed solids and fused into one surface (voxel remesh 4 mm, 15 volume-keeping smoothing passes; two
+  overlapping shapes showed a hard line where the collar met the last), the top cut level and rolled in; the flat sole 4 mm under the foot's;
+  the last's height from the foot up to 2 cm above the ankle joint, the collar's outline from 8 cm behind to 10 cm in front of it (the instep
+  in front of the ankle fell between them and showed through); cords 2.5 mm thick, 1.5 mm off the surface (thinner and closer they sank in and
+  read as wrinkles). Skin weights and body-shape moves are averaged from the 8 nearest body points. The body's own foot
+  surface pushed into shape kept the toes' gaps, and in game each point followed its toe bone: the toes tore. A material with `"simulated": false` is drawn as the skinned mesh, no solver; `"shader"` picks the shader
+  (`human_leather.gdshader`: `footwear` 1 for shoes; `human_mail.gdshader` for ring mail). A torso-only garment gets plane-cut armholes.
+- Outfits now: `villager` (trousers, shirt, shoes), `woodsman` (+ leather jerkin), `man_at_arms` (+ ring mail).
+- Feet (the body lab's Feet tab, design `docs/superpowers/specs/2026-11-27-feet-tab-design.md`): six body shapes from MakeHuman's foot targets in
+  `make_bodies.py`, `feet_small`/`feet_big` (size), `feet_short`/`feet_long` (length, "depth"), `feet_narrow`/`feet_wide` (width, "horiz"), both
+  feet together; every mesh rebuilt with `rebuild_humans.sh` carries them, so the shoes follow. The bones do not move. The tab's sliders are
+  limited (size +-0.5, length +-0.35, width +-0.8: at full weight the male's 26.2 cm foot goes 21.5 .. 33.3 cm); it reads the foot's length (from
+  the body mesh's blend shapes, heel to toe tip) and the EU size (1.5 x (cm + 1.5)); the camera frames the feet while it is open.
+- Shoes lift the wearer: the shoe's floor and sole lie under the foot, so a character in shoes stands on the outsole, raised by
+  `ClothSetup.footwear_lift(garments)` (the upper's sole drop + outsole + heel; both labs set the body's height from it). Standing on the
+  ground barefoot-high, the ground's grass was drawn inside the shoe over its floor. The game's character controller must do the same when it
+  dresses characters. The default shoe has a flat sole (`heel` 0: a heel hanging below the outsole sank into the ground).
+- Looking inside garments: the body lab's `--hide-body` draws the garments alone (AGENTS.md "Clothes": check every item from all round and
+  into its openings).
+- Spotting bumps and dents: the body lab's Body tab "Debug: bumps heatmap" (or `--bumps`) colours every garment by its distance from a heavily
+  smoothed copy of itself (`ClothSetup.bump_texture`, Taubin, 60 passes): red sticks out, blue sinks in, white is smooth, full colour at 3 mm
+  (`bump_debug_range` in the garment shaders). Computed per garment the first time it is switched on (a second or two). Edges, rolled lips and
+  cords show colour by nature; look for patches where the cloth should be smooth.
+- General fit rules in the builder (`tools/blender/garments/fit.py`), for every garment, each with a recipe override; design:
+  `docs/superpowers/specs/2026-11-27-crotch-and-sleeve-taper-design.md`. Change a rule here, not in one garment, and rebuild every outfit.
+  - Groin (garments covering the thighs): across the front and the seat each horizontal slice spans the legs (its outer envelope across x)
+    instead of dipping into the groin like leggings; full from just above the body's crotch, faded in from `crotch_drop` below it
+    (`CROTCH_DROP` 3.5 cm; 0 = skin-tight hose) and out over `GROIN_FADE_TOP` above the hips joint; bridged, smoothed and bridged again twice,
+    triangles the flattened cleft turned inward spread apart. Check: `groin: front dips / seat dips` at most 8 mm.
+  - Sleeves (garments covering the forearm): the room tapers from the upper arm to `sleeve_taper` of it at the wrist (`SLEEVE_TAPER` 0.7,
+    from 0.3 along the arm; 1 = a straight tube, mail's flared short sleeve). Check: `sleeve room` less by the sleeve's end than over the upper arm.
+  - Stiff materials (`bridge` in materials.json: leather) span the body's hollows in side view (under the bust, the spine).
+  - Rolled lips stop `LIP_CLEARANCE` (7 mm) outside any lower layer, measured at the lip's own point.
+  - At outfit load the labs draw an under-layer 1 cm in where a higher layer covers it (`ClothSetup.apply_covered`, shader `covered_inset`).
 
 ## MPFB (MakeHuman plugin for Blender), 2026-11-21
 

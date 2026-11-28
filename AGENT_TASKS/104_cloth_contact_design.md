@@ -23,3 +23,8 @@ Evidence: `C:/Users/agus_/.codex/scratch/cloth_sleeves/` (`refined_suite.log`, `
 3. Gate each stage on existing rest/lifecycle/normal checks plus walking vertex, edge and face samples for both bodies at frames 90 and 150. Review a short rendered walk and whole-frame cost before acceptance. Keep open wrists and the loose underside.
 
 No new collision implementation has been made for this stage. User agreement on this diagnostic/design stage is needed before continuing it; the user explicitly requested committing/pushing the existing progress on 2026-11-26, without accepting this next implementation stage.
+
+## Agreed (2026-11-26)
+
+User agreed to the proposed next stage ("fix first"): make the exact contact reliable before it is extended from the arms to the legs and torso
+for the garment recipes (`docs/superpowers/specs/2026-11-26-garment-recipes-design.md`, collision budget option C: exact contact near the camera).

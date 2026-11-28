@@ -1,0 +1,9 @@
+{
+	"_note": "The strongest each body slider drives its shape (tests/manual/humans/human_body_lab.gd: HEIGHT_RANGE, WEIGHT_GAIN_*, MUSCLE_GAIN_*). The garment builder keeps every layer apart at these strengths; change them together.",
+	"height_tall": 0.6,
+	"height_short": 0.6,
+	"weight_heavy": 1.0,
+	"weight_light": 1.25,
+	"muscle_high": 2.0,
+	"muscle_low": 1.25
+}

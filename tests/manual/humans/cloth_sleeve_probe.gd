@@ -18,7 +18,7 @@ func _ready() -> void:
 	for frame in 150:
 		await get_tree().physics_frame
 	await RenderingServer.frame_post_draw
-	var solver: GPUClothSolver = (_lab.get("_cloth_root") as Node).get_child(0)
+	var solver: GPUClothSolver = ClothSetup.sleeve_solver((_lab.get("_cloth_root") as Node).get_children())
 	RenderingServer.call_on_render_thread(func() -> void:
 		var data: PackedFloat32Array = solver._rd.buffer_get_data(
 			solver._positions_buffer).to_float32_array()

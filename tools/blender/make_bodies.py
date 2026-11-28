@@ -90,6 +90,13 @@ FACE_KEYS = {
     "belly_round": {"targets": ["stomach-pregnant-incr"]},
     "bust_small": {"macro": {"cupsize": 0.0}},
     "bust_big": {"macro": {"cupsize": 1.0}},
+    # the feet (the lab's Feet tab): MakeHuman's foot targets, both feet together; size, length (depth) and width (horiz)
+    "feet_small": {"targets": ["l-foot-scale-decr", "r-foot-scale-decr"]},
+    "feet_big": {"targets": ["l-foot-scale-incr", "r-foot-scale-incr"]},
+    "feet_short": {"targets": ["l-foot-scale-depth-decr", "r-foot-scale-depth-decr"]},
+    "feet_long": {"targets": ["l-foot-scale-depth-incr", "r-foot-scale-depth-incr"]},
+    "feet_narrow": {"targets": ["l-foot-scale-horiz-decr", "r-foot-scale-horiz-decr"]},
+    "feet_wide": {"targets": ["l-foot-scale-horiz-incr", "r-foot-scale-horiz-incr"]},
 }
 
 def positions(o):

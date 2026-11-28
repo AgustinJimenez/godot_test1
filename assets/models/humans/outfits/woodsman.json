@@ -1,0 +1,10 @@
+{
+	"name": "woodsman",
+	"garments": ["trousers", "shirt", "jerkin", "shoes"],
+	"colours": {
+		"shirt": {"male": [0.7, 0.66, 0.58], "female": [0.66, 0.62, 0.54]},
+		"trousers": {"male": [0.26, 0.24, 0.2], "female": [0.28, 0.25, 0.21]},
+		"jerkin": {"male": [0.33, 0.22, 0.14], "female": [0.36, 0.24, 0.15]},
+		"shoes": {"male": [0.3, 0.22, 0.16], "female": [0.32, 0.23, 0.17]}
+	}
+}

@@ -109,6 +109,20 @@ about 5 times slower to build and has no river valleys, and the game prints one 
 
 Blender work (headless scripts, MPFB humans, skin, glb export): read and extend `docs/blender_workflow.md`; the active handoff is `AGENT_TASKS/102_parametric_humans.md`.
 
+Clothes (garment recipes, the builder, the cloth labs; task 103): read `docs/blender_workflow.md` "Garments" first, and the designs in
+`docs/superpowers/specs/` (`2026-11-26-garment-recipes-design.md`, `2026-11-27-crotch-and-sleeve-taper-design.md`). Fit is made by general rules in
+`tools/blender/garments/fit.py` that apply to every garment (groin bridge, sleeve taper, stiff bridging, lip clearance), with recipe overrides: change
+the rule, not one garment, rebuild every outfit and run `tools/blender/garments/test_build.sh`, `scripts/humans_check.sh` and `scripts/cloth_check.sh`.
+No flat, painted surfaces on clothes and gear (the user: "it must not, we must use SPOM"): every material's surface detail (a weave, leather grain,
+a lace, a rope, rings of mail, a stitch line) has real depth - parallax occlusion with its own shadows (SPOM) in the shader, as
+`human_clothes.gdshader` (weave) and `human_leather.gdshader` (crease network) do, or real geometry (the shoes' twisted ropes, the sole layers).
+A colour-only pattern on a plain surface is not acceptable, even on small parts. Check new surfaces close up in low light and with the body lab's
+bump heatmap.
+Every garment, shoe or piece of gear is also checked from all round and from above and below, and looking into each of its openings (into a
+shoe from above, up a sleeve, under a hem, into a neckline): its inside must be drawn - inner walls, a shoe's inner floor - and nothing may show
+through to the ground or the background (the user, from above into a shoe: "the 'floor' is invisible, i see the grass below"). With the foot
+or limb inside and, where the lab allows, with the body hidden.
+
 Parametric humans (task 102): the bodies (male/female MPFB, six blend shapes for height, weight and muscle), underwear, eyes, brows, lashes, a Mixamo rig that follows the sliders, and native head hair.
 The runtime parts are C++ in `native/planet_crust/src` (`HumanHair`, `HumanRig`, `HairSway`, registered in `register_types.cpp`); the Blender generators are in `tools/blender/` (`make_bodies.py`, `make_rig.py`,
 `make_eyes.py`, `make_face_hair.py`, `make_underwear.py`; the eye landmarks in `tools/blender/landmarks/`); labs `tests/manual/humans/human_body_lab.tscn` (sliders, colours, hair) and

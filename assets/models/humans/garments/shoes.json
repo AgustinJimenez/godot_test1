@@ -1,0 +1,34 @@
+{
+	"name": "shoes",
+	"layer": 0,
+	"shape": "shell",
+	"covers": [
+	 "foot"
+	],
+	"top": {
+	 "at": "ankle",
+	 "shin": 0.92
+	},
+	"ease": {
+	 "torso": 0.0,
+	 "limb": 0.0035,
+	 "flare_torso": 0.0,
+	 "flare_limb": 0.0
+	},
+	"openings": {
+	 "cuffs": "open"
+	},
+	"material": "shoe_leather",
+	"shoe": {
+	 "sole": 0.003,
+	 "toe_point": 0.035,
+	 "toe_shape": "almond",
+	 "opening_below_ankle": 0.026,
+	 "throat": 0.62,
+	 "tongue": 0.0,
+	 "lace": 0.0016,
+	 "welt": 0.003,
+	 "outsole": 0.005,
+	 "heel": 0.0
+	}
+}

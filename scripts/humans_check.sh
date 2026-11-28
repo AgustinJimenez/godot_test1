@@ -11,6 +11,15 @@ render=0
 [[ "${1:-}" == "--render" ]] && render=1
 status=0
 
+# the garment recipes and the freedom rule (plain Python)
+for test in test_recipe test_freedom; do
+	if python -I "tools/blender/garments/${test}.py" > /dev/null 2>&1; then
+		echo "GARMENT_${test^^} PASS"
+	else
+		echo "GARMENT_${test^^} FAIL"; status=1
+	fi
+done
+
 out="$(timeout 300 "${GODOT}" --headless --path . -s res://tests/manual/humans/human_hair_check.gd 2>&1)"
 echo "${out}" | grep -a "HUMAN_HAIR_CHECK\|build times|beard 0"
 echo "${out}" | grep -aq "HUMAN_HAIR_CHECK PASS" || status=1

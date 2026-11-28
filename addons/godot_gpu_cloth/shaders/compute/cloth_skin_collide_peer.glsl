@@ -37,6 +37,10 @@ layout(push_constant, std430) uniform Params {
     uint  peer_tri_count;
     float thickness;
     float pad0;
+    uint  pad1;              // (the collide pass's is_self: the same push constants)
+    float side;              // 0: unsigned. +1 / -1: this cloth is layered over / under the peer (see cloth_collide_peer.glsl)
+    float normal_sign;
+    float reach;
 };
 
 vec3 closest_point_on_triangle(vec3 p, vec3 a, vec3 b, vec3 c) {
@@ -87,6 +91,42 @@ void main() {
 
     vec3 pos = skinned_targets[idx].xyz;
     float w  = skinned_targets[idx].w;
+
+    if (side != 0.0) {
+        // layered: the nearest peer triangle; the target kept on our side of it (an unsigned push sent a shirt's anchors out through mail
+        // that had sagged onto them)
+        float best = reach;
+        vec3 best_closest = vec3(0.0);
+        vec3 best_n = vec3(0.0);
+        for (uint t = 0u; t < peer_tri_count; t++) {
+            vec3 a = peer_pos[peer_idx[t * 3u + 0u]].xyz;
+            vec3 b = peer_pos[peer_idx[t * 3u + 1u]].xyz;
+            vec3 c = peer_pos[peer_idx[t * 3u + 2u]].xyz;
+            vec3 closest = closest_point_on_triangle(pos, a, b, c);
+            float dist = length(pos - closest);
+            if (dist < best) {
+                vec3 n = cross(b - a, c - a);
+                float nl = length(n);
+                if (nl > 1e-12) {
+                    best = dist;
+                    best_closest = closest;
+                    best_n = n / nl * normal_sign;
+                }
+            }
+        }
+        if (best < reach) {
+            vec3 diff = pos - best_closest;
+            float dist = length(diff);
+            if (dist < thickness || abs(dot(diff, best_n)) > 0.85 * dist) {
+                float signed_d = dot(diff, best_n) * side;
+                if (signed_d < thickness) {
+                    pos += best_n * side * (thickness - signed_d);
+                }
+            }
+        }
+        skinned_targets[idx] = vec4(pos, w);
+        return;
+    }
 
     for (uint t = 0u; t < peer_tri_count; t++) {
         uint i0 = peer_idx[t * 3u + 0u];

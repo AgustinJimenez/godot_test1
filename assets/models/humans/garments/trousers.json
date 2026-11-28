@@ -1,0 +1,12 @@
+{
+	"name": "trousers",
+	"layer": 0,
+	"shape": "shell",
+	"covers": ["torso", "thigh", "shin"],
+	"top": {"at": "waist", "above_hips": 0.035},
+	"leg_end": 0.9,
+	"ease": {"torso": 0.012, "limb": 0.012, "flare_torso": 0.0, "flare_limb": 0.01},
+	"openings": {"waist": "bound", "cuffs": "bound"},
+	"material": "wool",
+	"belt": true
+}

@@ -1,0 +1,13 @@
+{
+	"name": "shirt",
+	"layer": 1,
+	"shape": "shell",
+	"covers": ["torso", "upper_arm", "forearm"],
+	"top": {"at": "neck"},
+	"neckline": {"round_ease": 0.01, "v_depth": 0.085, "v_width": 0.07},
+	"bottom": {"below_hips": 0.0},
+	"sleeve_end": 0.9,
+	"ease": {"torso": 0.016, "limb": 0.019, "flare_torso": 0.012, "flare_limb": 0.0},
+	"openings": {"neck": "bound", "sleeves": "open", "hem": "open"},
+	"material": "linen"
+}

@@ -1,0 +1,10 @@
+{
+	"name": "man_at_arms",
+	"garments": ["trousers", "shirt", "mail", "shoes"],
+	"colours": {
+		"shirt": {"male": [0.62, 0.55, 0.42], "female": [0.6, 0.53, 0.4]},
+		"trousers": {"male": [0.22, 0.2, 0.18], "female": [0.24, 0.21, 0.18]},
+		"mail": {"male": [0.56, 0.57, 0.6], "female": [0.56, 0.57, 0.6]},
+		"shoes": {"male": [0.24, 0.17, 0.12], "female": [0.26, 0.18, 0.13]}
+	}
+}

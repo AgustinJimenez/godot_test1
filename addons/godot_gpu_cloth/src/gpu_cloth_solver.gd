@@ -310,6 +310,12 @@ var _native_collider_data: Dictionary = {}
 ## per peer per iter; see [member peer_collider_voxel_resolution] to decimate
 ## the peer-facing triangle count and recover FPS in cloth-on-cloth scenes.
 @export var peer_cloth_solvers: Array[NodePath] = []
+## The garment's layer (0 innermost). When this solver and a peer both have one and they differ, their contact is one-sided: the higher
+## layer is kept outside the lower one's surface and the lower inside the higher's, whichever side a particle is on (an unsigned push holds
+## a particle on the wrong side once a fast move carried it through). -1: unsigned, as before.
+@export var peer_layer: int = -1
+## The contact distance between layered peers (see [member peer_layer]); the unsigned contact uses [member body_collider_thickness].
+@export_range(0.001, 0.05) var layered_peer_thickness: float = 0.008
 ## Cloth-on-itself collision. When enabled, the solver dispatches a self-
 ## collide pass each substep that pushes its own particles out of its own
 ## decimated proxy mesh — the same proxy peers bind via
@@ -1720,7 +1726,7 @@ func _gpu_do_warm_start() -> void:
 		_rd.compute_list_bind_compute_pipeline(cl, _peer_skin_collide_pipeline)
 		for p in _peers:
 			_rd.compute_list_bind_uniform_set(cl, p.sanitize_uniform_set, 0)
-			_rd.compute_list_set_push_constant(cl, p.push, 16)
+			_rd.compute_list_set_push_constant(cl, p.push, 32)
 			_rd.compute_list_dispatch(cl, groups, 1, 1)
 			_rd.compute_list_add_barrier(cl)
 
@@ -1916,7 +1922,7 @@ func _gpu_do_simulate(
 		_rd.compute_list_bind_compute_pipeline(cl, _peer_skin_collide_pipeline)
 		for p in _peers:
 			_rd.compute_list_bind_uniform_set(cl, p.sanitize_uniform_set, 0)
-			_rd.compute_list_set_push_constant(cl, p.push, 16)
+			_rd.compute_list_set_push_constant(cl, p.push, 32)
 			_rd.compute_list_dispatch(cl, groups, 1, 1)
 			_rd.compute_list_add_barrier(cl)
 
@@ -3095,6 +3101,28 @@ func _build_peer_proxy_indices() -> PackedInt32Array:
 	return deduped
 
 
+# +1 if this cloth's welded triangles (cross(b - a, c - a)) mostly face away from its middle (out of the garment), -1 if in. Read once
+# by layered peers (peer_layer) to tell this cloth's outside from its inside.
+var _outward_winding_cache: float = 0.0
+func _outward_winding() -> float:
+	if _outward_winding_cache != 0.0:
+		return _outward_winding_cache
+	if _welded_positions.is_empty() or _welded_indices.size() < 3:
+		return 1.0
+	var middle := Vector3.ZERO
+	for v in _welded_positions:
+		middle += v
+	middle /= float(_welded_positions.size())
+	var score := 0.0
+	for t in _welded_indices.size() / 3:
+		var a: Vector3 = _welded_positions[_welded_indices[t * 3]]
+		var b: Vector3 = _welded_positions[_welded_indices[t * 3 + 1]]
+		var c: Vector3 = _welded_positions[_welded_indices[t * 3 + 2]]
+		score += (b - a).cross(c - a).dot((a + b + c) / 3.0 - middle)
+	_outward_winding_cache = 1.0 if score >= 0.0 else -1.0
+	return _outward_winding_cache
+
+
 # Lazy init for peer-cloth collision. Runs on the render thread once both this
 # solver AND its peers have completed _gpu_do_init (peers' _positions_buffer
 # and _indices_gpu_buffer must exist before we can bind them). Idempotent —
@@ -3141,6 +3169,14 @@ func _ensure_peer_uniform_sets() -> void:
 		push.encode_float(8, body_collider_thickness)
 		push.encode_float(12, collider_friction)
 		push.encode_u32(16, 0)  # is_self = 0 — real peer; never skip "vert-of-me" triangles
+		var side := 0.0
+		if peer_layer >= 0 and peer.peer_layer >= 0 and peer_layer != peer.peer_layer:
+			side = 1.0 if peer_layer > peer.peer_layer else -1.0
+		if side != 0.0:   # (layered: at least a layer's room apart; the proxies' flat facets cut a few mm inside a curved sleeve)
+			push.encode_float(8, maxf(body_collider_thickness, layered_peer_thickness))
+		push.encode_float(20, side)
+		push.encode_float(24, peer._outward_winding())
+		push.encode_float(28, maxf(body_collider_thickness * 6.0, 0.03))
 		_peers.append({
 			solver = peer,
 			uniform_set = us,

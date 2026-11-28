@@ -38,7 +38,11 @@ layout(push_constant, std430) uniform Params {
     float thickness;         // base; multiplied by cloth_weights[idx].x per particle
     float friction;          // Coulomb μ at cloth-cloth contact
     uint  is_self;           // 1 when "peer" is THIS solver — skip tris containing idx as a vert
-    uint  pad0; uint pad1; uint pad2;
+    float side;              // 0: push out to whichever side we are on (unsigned). +1: we are layered OVER this peer (kept outside its
+                             // surface), -1: UNDER it (kept inside). A fast turn carried a shirt particle through the mail and the
+                             // unsigned push then held it outside.
+    float normal_sign;       // the peer's triangles' winding: +1 if cross(b-a, c-a) points out of the garment, -1 if in
+    float reach;             // sided: only the nearest peer triangle within this distance counts
 };
 
 vec3 closest_point_on_triangle(vec3 p, vec3 a, vec3 b, vec3 c) {
@@ -94,6 +98,54 @@ void main() {
     if (pthk < 1e-6) return;
 
     vec3 substep_start = positions[idx].xyz;
+
+    if (side != 0.0) {
+        // layered: the nearest peer triangle; the particle kept on its side of it (over: outside by the thickness, under: inside)
+        float best = reach;
+        vec3 best_closest = vec3(0.0);
+        vec3 best_n = vec3(0.0);
+        for (uint t = 0u; t < peer_tri_count; t++) {
+            vec3 a = peer_pos[peer_idx[t * 3u + 0u]].xyz;
+            vec3 b = peer_pos[peer_idx[t * 3u + 1u]].xyz;
+            vec3 c = peer_pos[peer_idx[t * 3u + 2u]].xyz;
+            vec3 closest = closest_point_on_triangle(pos, a, b, c);
+            float dist = length(pos - closest);
+            if (dist < best) {
+                vec3 n = cross(b - a, c - a);
+                float nl = length(n);
+                if (nl > 1e-12) {
+                    best = dist;
+                    best_closest = closest;
+                    best_n = n / nl * normal_sign;
+                }
+            }
+        }
+        if (best < reach) {
+            vec3 diff = pos - best_closest;
+            float dist = length(diff);
+            // only where the peer's surface faces us squarely: past its edge (the shirt's sleeve beyond the mail's) or beside it (a
+            // sleeveless jerkin's armhole by the shirt's sleeve) the nearest point is off to the side, and keeping "our side" of it pushed
+            // the jerkin into the chest (0.5 let those through)
+            if (dist < pthk || abs(dot(diff, best_n)) > 0.85 * dist) {
+                float signed_d = dot(diff, best_n) * side;   // (how far on our own side)
+                if (signed_d < pthk) {
+                    float push_mag = pthk - signed_d;
+                    vec3 push_dir = best_n * side;
+                    pos += push_dir * push_mag;
+                    if (friction > 0.0) {
+                        vec3 motion = pos - substep_start;
+                        vec3 tangent = motion - push_dir * dot(motion, push_dir);
+                        float tan_len = length(tangent);
+                        if (tan_len > 1e-6) {
+                            pos -= tangent * min(push_mag * friction / tan_len, 1.0);
+                        }
+                    }
+                }
+            }
+        }
+        predicted[idx] = vec4(pos, w);
+        return;
+    }
 
     for (uint t = 0u; t < peer_tri_count; t++) {
         uint i0 = peer_idx[t * 3u + 0u];

@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://i67oex80vn1x"
-path="res://.godot/imported/male_pants.glb-241b69b7512749bbc5587de75f05bb34.scn"
+uid="uid://bjg27nm84dynm"
+path="res://.godot/imported/female_villager_shirt.glb-d17d09811e62ace144b9c609a92bf4d1.scn"
 
 [deps]
 
-source_file="res://assets/models/humans/male_pants.glb"
-dest_files=["res://.godot/imported/male_pants.glb-241b69b7512749bbc5587de75f05bb34.scn"]
+source_file="res://assets/models/humans/female_villager_shirt.glb"
+dest_files=["res://.godot/imported/female_villager_shirt.glb-d17d09811e62ace144b9c609a92bf4d1.scn"]
 
 [params]
 

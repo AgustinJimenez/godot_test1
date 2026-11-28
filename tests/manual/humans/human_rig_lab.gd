@@ -1,7 +1,7 @@
 extends Node3D
 ## Human rig lab: a rigged base body (assets/models/humans/*_rigged.glb) whose skeleton follows the Height / Weight / Muscle sliders (native HumanRig).
 ## Left drag turns the body, wheel zooms. Keys: 1 rest pose, 2 arms up, 3 squat, 4 Mixamo walk (retargeted onto this skeleton), B bones on/off, G gender, Up/Down height.
-## Capture mode: `-- --capture=<png> --gender=Male|Female --height= --weight= --muscle= --pose=rest|armsup|squat|walk --time=<seconds into the walk> --bones --yaw=<deg> --face (the camera on the head and shoulders) --sweep=<deg> (the body turns back and forth that far while the lab runs: for a video) --distance=<m> --clothes=villager|underwear --cloth (the clothes simulated by the GPU cloth add-on, task 103; the walk then plays and the frame is taken after --capture-frame=, 150)` saves one frame and quits.
+## Capture mode: `-- --capture=<png> --gender=Male|Female --height= --weight= --muscle= --pose=rest|armsup|squat|walk --time=<seconds into the walk> --bones --yaw=<deg> --face (the camera on the head and shoulders) --sweep=<deg> (the body turns back and forth that far while the lab runs: for a video) --distance=<m> --clothes=<outfit>|underwear --cloth (the clothes simulated by the GPU cloth add-on, task 103; the walk then plays and the frame is taken after --capture-frame=, 150)` saves one frame and quits.
 
 const WALK_CLIP: String = "res://assets/models/action_adventure_pack/walking.fbx" # (a Mixamo clip: the same "mixamorig_" names as this skeleton)
 const BODIES: Dictionary = {
@@ -35,12 +35,13 @@ var _base_yaw: float = 0.0
 var _top: float = 1.7
 var _clock: float = 0.0
 var _body_turn: float = 0.0   # the body's own turn (left drag, --sweep): the cloth reacts to it
-var _clothes: String = "villager"   # the villager shirt and trousers (task 102), or "underwear"
+var _clothes: String = "villager"   # an outfit (assets/models/humans/outfits), or "underwear"
 var _cloth: bool = false   # --cloth: simulate the villager clothes (addons/godot_gpu_cloth, task 103)
 var _cloth_root: Node3D = null
 var _capture_frame: int = 12
-var _shirt: MeshInstance3D = null
-var _pants: MeshInstance3D = null
+var _sun_dir := Vector3(0.35, 0.8, 0.45)
+var _garments: Array = []   # the outfit's garments (recipes, inside out)
+var _garment_pieces: Array = []   # their meshes, skinned to the skeleton (the cloth solvers draw them)
 
 
 func _ready() -> void:
@@ -87,6 +88,7 @@ func _ready() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-40, -35, 0)
 	add_child(sun)
+	_sun_dir = sun.transform.basis.z.normalized()   # (toward the sun: the clothes' close-up weave shadows)
 	_camera = Camera3D.new()
 	add_child(_camera)
 	_lines = MeshInstance3D.new()
@@ -118,23 +120,34 @@ func _build() -> void:
 	var underwear: MeshInstance3D = _take_mesh(base + "underwear.glb", _material_of("res://shaders/human_underwear_fabric.gdshader"))
 	_accessories.append(underwear)
 	HumanRig.attach_skinned(underwear, _mesh, _skeleton)
-	_shirt = null
-	_pants = null
-	if _clothes == "villager":
-		# the villager clothes, skinned with the body's weights like the underwear (which they hide); task 103 simulates them as cloth
+	_garments = []
+	_garment_pieces = []
+	var outfit: Dictionary = {} if _clothes == "underwear" else ClothSetup.load_outfit(_clothes)
+	for garment: Dictionary in outfit.get("garments", []):
+		if not ResourceLoader.exists(base + "%s_%s.glb" % [outfit["name"], garment["name"]]):
+			push_warning("Clothes: %s%s_%s.glb is not built (tools/blender/build_outfit.py): the underwear instead" % [base, outfit["name"], garment["name"]])
+			outfit = {}
+			break
+	if not (outfit.get("garments", []) as Array).is_empty():
+		# the outfit's garments, skinned with the body's weights like the underwear (which they hide); task 103 simulates them as cloth
 		underwear.visible = false
-		var colours: Array = [Color(0.72, 0.66, 0.55), Color(0.33, 0.25, 0.18)] if _gender == "Male" else [Color(0.62, 0.55, 0.45), Color(0.3, 0.27, 0.23)]
-		for i in 2:
-			var cloth_material: ShaderMaterial = _material_of("res://shaders/human_clothes.gdshader")
-			cloth_material.set_shader_parameter(&"cloth_color", colours[i])
+		var materials: Dictionary = ClothSetup.materials()
+		for garment: Dictionary in outfit["garments"]:
+			var cloth_material: ShaderMaterial = _material_of(ClothSetup.shader_path(garment))
+			var look: Dictionary = materials.get(String(garment.get("material", "linen")), {}).get("look", {})
+			for key: String in look:
+				cloth_material.set_shader_parameter(StringName(key), float(look[key]))
+			var colour: Array = (outfit.get("colours", {}) as Dictionary).get(garment["name"], {}).get(_gender.to_lower(), [0.6, 0.55, 0.45])
+			cloth_material.set_shader_parameter(&"cloth_color", Color(float(colour[0]), float(colour[1]), float(colour[2])))
 			cloth_material.set_shader_parameter(&"imperfection", 0.3)
-			var piece: MeshInstance3D = _take_mesh(base + ("shirt.glb" if i == 0 else "pants.glb"), cloth_material)
+			cloth_material.set_shader_parameter(&"sun_dir_world", _sun_dir)
+			var piece: MeshInstance3D = _take_mesh(base + "%s_%s.glb" % [outfit["name"], garment["name"]], cloth_material)
 			_accessories.append(piece)
 			HumanRig.attach_skinned(piece, _mesh, _skeleton)
-			if i == 0:
-				_shirt = piece
-			else:
-				_pants = piece
+			_garments.append(garment)
+			_garment_pieces.append(piece)
+		_body.position.y = ClothSetup.footwear_lift(_garments)   # (in shoes, standing on their soles)
+		ClothSetup.apply_covered(_garments, _garment_pieces, _garment_pieces.map(func(p: MeshInstance3D) -> Material: return p.material_override))
 	var face_hair: Shader = load("res://shaders/human_face_hair.gdshader")
 	var lash_material := ShaderMaterial.new()
 	lash_material.shader = face_hair
@@ -159,11 +172,11 @@ func _build() -> void:
 	if not _rig.setup(_skeleton, skinned, HumanRig.load_data(entry[1])):
 		push_error("HumanRig.setup failed")
 	_apply()
-	if _cloth and _shirt != null and _pants != null:
+	if _cloth and not _garment_pieces.is_empty():
 		_add_cloth()
 
 
-# The villager clothes as cloth (task 103): one GPU solver per garment, the cloth weight from the vertex colour's blue (make_clothes.py: 0 glued to the
+# The outfit's garments as cloth (task 103): one GPU solver per garment, the cloth weight from the vertex colour's blue (build_outfit.py: 0 held to the
 # skinned body, 1 free), the body as a collider, the shirt and the trousers colliding with each other. The solver draws the garment with our clothes
 # material (human_clothes.gdshader reads its simulated positions).
 func _add_cloth() -> void:
@@ -173,59 +186,36 @@ func _add_cloth() -> void:
 	_cloth_root.name = "Cloth"
 	add_child(_cloth_root)
 	var solvers: Array = []
-	for piece: MeshInstance3D in [_shirt, _pants]:
+	var pieces: Array = []   # (only the garments simulated as cloth: the shoes follow the skeleton)
+	var garments: Array = []
+	for i in _garments.size():
+		if ClothSetup.is_simulated(_garments[i]):
+			pieces.append(_garment_pieces[i])
+			garments.append(_garments[i])
+	for i in pieces.size():
+		var piece: MeshInstance3D = pieces[i]
 		var solver := GPUClothSolver.new()
-		solver.name = "ShirtCloth" if piece == _shirt else "PantsCloth"
+		solver.name = String(garments[i]["name"]) + "Cloth"
 		solver.target_mesh = piece.get_path()
 		solver.skeleton = _skeleton.get_path()
 		solver.body_mesh = _mesh.get_path()
-		solver.cloth_weight_channel = int(_arg_value("--cloth-channel", "2"))   # (2: make_clothes.py's weight; 0, the belt mask, glues almost everything: a test)
+		ClothSetup.configure(solver, garments[i])
 		solver.cloth_material = piece.material_override
-		solver.flip_normals = _arg_value("--cloth-flip", "on") == "on"   # (on: the solver's own normals for our garments' winding point INTO the body without it; the lit shirt was dark with bright specks. An early test that saw no change ran while the simulation was hidden)
-		piece.material_override = null   # (the solver puts its copy of the material on the mesh's surface: an override would draw over it, the plain skinned cloth)
-		solver.solver_iterations = int(_arg_value("--cloth-iterations", "4"))   # (8 x 4 looked the same and cost 4.5 ms a frame instead of 1.7)
-		solver.substeps = int(_arg_value("--cloth-substeps", "2"))
-		solver.stiffness = 0.9
-		solver.bend_stiffness = 0.6
-		solver.damping = 0.985   # (0.96 and 4 cm of travel: the hem barely swung)
-		solver.max_travel_distance = float(_arg_value("--cloth-travel", "0.04"))
-		solver.cloth_skin_offset = 0.0
-		solver.weld_epsilon = float(_arg_value("--cloth-weld", "0.001"))
-		solver.bend_stiffness = float(_arg_value("--cloth-bend", "0.6"))
-		solver.cloth_render_offset = float(_arg_value("--cloth-render-offset", "0.004"))   # (drawn this far out along the normal: hides the skin where free cloth sinks onto capsules inside the body)
-		var collider_kind: String = _arg_value("--cloth-collider", "capsules")   # capsules | mesh | none (task 103: the mesh collider costs ~13 ms of CPU a frame)
-		solver.body_collider_voxel_resolution = 48 if collider_kind == "mesh" else 0   # (12 left 224 triangles of the body: too coarse under a close shirt)
-		solver.auto_collider_lod = 1 if collider_kind == "capsules" else 0
-		# (a capsule is round, a torso oval: radii that reach the chest's width bulged out front and back, and the solver pushes even glued cloth out of
-		# its colliders: boxy, puffed shoulders. Smaller capsules sit inside the body)
-		# (the legs are nearly round: the trousers keep the add-on's full-size capsules, or the shins pushed through the cloth)
-		var shirt: bool = piece == _shirt
-		# (the trousers: small capsules at the hips too (full ones pushed the waistband out over the shirt's hem), full ones on the legs (or the shins
-		# poke through): per bone, a local patch in the add-on)
-		solver.auto_collider_radius_percentile = float(_arg_value("--cloth-capsule-percentile", "0.5"))
-		solver.auto_collider_radius_scale = float(_arg_value("--cloth-capsule-scale", "0.8"))
-		solver.auto_collider_bone_overrides = {"mixamorig_Hips": Vector2(0.0, 0.1), "mixamorig_Spine2": Vector2(0.0, 0.1)}   # (lopsided pelvis and upper spine capsules: see the body lab)
-		if shirt:
-			solver.body_collider_voxel_resolution = 1
-			solver.body_collider_preparer = func(data: Dictionary) -> Dictionary:
-				return HumanRig.prepare_cloth_arms(data)
-			solver.body_collider_packer = func(data: Dictionary, poses: Array) -> PackedByteArray:
-				return HumanRig.skin_cloth_arms(data, poses)
-			solver.cloth_render_offset = 0.001
-		else:
-			var leg_fit := Vector2(float(_arg_value("--cloth-leg-percentile", "0.85")), float(_arg_value("--cloth-leg-scale", "1.0")))
-			var bones: PackedStringArray = _arg_value("--cloth-leg-bones", "LeftLeg,RightLeg").split(",")   # (the thighs too pushed the waistband out again)
-			for bone: String in bones:
-				solver.auto_collider_bone_overrides["mixamorig_" + bone] = leg_fit
-		if _arg_value("--cloth-peers", "on") == "off":
-			solver.peer_collider_voxel_resolution = 0
-		solver.body_collider_thickness = 0.004 if shirt else 0.006
+		piece.material_override = null   # (the solver puts its copy of the material on the mesh's surface: an override would draw over it)
+		# (tuning switches, the defaults being ClothSetup's)
+		if _arg_value("--cloth-iterations", "") != "":
+			solver.solver_iterations = int(_arg_value("--cloth-iterations", "4"))
+		if _arg_value("--cloth-substeps", "") != "":
+			solver.substeps = int(_arg_value("--cloth-substeps", "2"))
+		if _arg_value("--cloth-travel", "") != "":
+			solver.max_travel_distance = float(_arg_value("--cloth-travel", "0.04"))
+		if _arg_value("--cloth-collider", "capsules") == "none":
+			solver.auto_collider_lod = 0
+			solver.body_collider_voxel_resolution = 0
 		solver.peer_collider_voxel_resolution = int(_arg_value("--cloth-peer-res", "8"))
-		solver.collider_friction = 0.5
 		solvers.append(solver)
 	if _arg_value("--cloth-peers", "on") != "off":
-		(solvers[0] as GPUClothSolver).peer_cloth_solvers = [NodePath("../PantsCloth")]
-		(solvers[1] as GPUClothSolver).peer_cloth_solvers = [NodePath("../ShirtCloth")]
+		ClothSetup.connect_peers(solvers)
 	for solver: GPUClothSolver in solvers:
 		_cloth_root.add_child(solver)
 
@@ -254,6 +244,42 @@ func _dump_cloth() -> void:
 					near.append([rest[i], p - rest[i]])
 			near.sort_custom(func(a: Array, b: Array) -> bool: return (a[1] as Vector3).length() > (b[1] as Vector3).length())
 			print("CLOTH_DUMP near ", centre, " count ", near.size(), " largest ", near.slice(0, 4))
+
+
+const LIMBS: Array = [["elbow", "l", "LeftArm", "LeftForeArm", "LeftHand"], ["elbow", "r", "RightArm", "RightForeArm", "RightHand"],
+		["knee", "l", "LeftUpLeg", "LeftLeg", "LeftFoot"], ["knee", "r", "RightUpLeg", "RightLeg", "RightFoot"]]
+
+
+# The clothes' joints (the wear at the elbows and the knees, the bend wrinkles): where each joint is and the limb's direction in the rest shape
+# (the cloth's pattern lies on its rest shape), and how bent it is now, every frame (a walk bends the knees and the elbows).
+func _update_cloth_joints() -> void:
+	if _garment_pieces.is_empty() or _skeleton == null:
+		return
+	var materials: Array = []
+	if _cloth_root != null:
+		for solver: Node in _cloth_root.get_children():
+			if solver is GPUClothSolver and (solver as GPUClothSolver)._surf_mat != null:
+				materials.append((solver as GPUClothSolver)._surf_mat)
+	for piece: MeshInstance3D in _garment_pieces:
+		if piece.material_override is ShaderMaterial:
+			materials.append(piece.material_override)
+	if materials.is_empty():
+		return
+	var params: Dictionary = {"has_joints": true}
+	for limb: Array in LIMBS:
+		var bones: Array = []
+		for bone_name: String in [limb[2], limb[3], limb[4]]:
+			bones.append(_skeleton.find_bone("mixamorig_" + bone_name))
+		if bones.has(-1):
+			continue
+		var rest: Array = bones.map(func(b: int) -> Vector3: return _skeleton.get_bone_global_rest(b).origin)
+		var now: Array = bones.map(func(b: int) -> Vector3: return _skeleton.get_bone_global_pose(b).origin)
+		params["%s_%s" % [limb[0], limb[1]]] = rest[1]
+		params["%s_axis_%s" % [limb[0], limb[1]]] = ClothSetup.limb_bend(rest[0], rest[1], rest[2])[0]
+		params["%s_bend_%s" % [limb[0], limb[1]]] = ClothSetup.limb_bend(now[0], now[1], now[2])[1]
+	for material: ShaderMaterial in materials:
+		for key: String in params:
+			material.set_shader_parameter(StringName(key), params[key])
 
 
 func _material_of(shader_path: String) -> ShaderMaterial:
@@ -366,8 +392,9 @@ func _draw_bones() -> void:
 
 func _process(delta: float) -> void:
 	_draw_bones()
+	_update_cloth_joints()
 	if OS.get_cmdline_user_args().has("--cloth-overlap") and Engine.get_process_frames() % 10 == 0 and Engine.get_process_frames() >= 60 and _cloth_root != null:
-		RenderingServer.call_on_render_thread(ClothOverlapProbe.measure.bind(_cloth_root.get_child(0), _cloth_root.get_child(1)))
+		RenderingServer.call_on_render_thread(ClothOverlapProbe.measure_layers.bind(_cloth_root.get_children()))
 	if OS.get_cmdline_user_args().has("--cloth-dump") and Engine.get_process_frames() == 80 and _cloth_root != null:
 		RenderingServer.call_on_render_thread(_dump_cloth)
 	if OS.get_cmdline_user_args().has("--gpu-time"):

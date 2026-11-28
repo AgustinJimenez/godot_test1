@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Rebuilds every human asset that carries the body's blend shapes, in order, into a work folder:
-#   bodies + landmarks (make_bodies.py) -> eyes -> underwear -> clothes -> our classic brows/lashes -> the Mindfront brows (styles 11, 03, 06, 09) and lashes.
+#   bodies + landmarks (make_bodies.py) -> eyes -> underwear -> clothes (every outfit, build_outfit.py, then garment_check.py) -> our classic brows/lashes -> the Mindfront brows (styles 11, 03, 06, 09) and lashes.
 # Run after changing the shape keys in make_bodies.py. Does NOT copy anything into the project: compare, then copy the .glb files into
 # assets/models/humans and the landmarks into tools/blender/landmarks, and run `godot --headless --import`.
 #   bash tools/blender/rebuild_humans.sh <work folder> <folder with the unzipped Mindfront packs: mh_eyebrows/x, mh_eyelashes/x>
@@ -26,7 +26,13 @@ run() {
 run bodies tools/blender/make_bodies.py -- "${work}"
 run eyes tools/blender/make_eyes.py -- "${work}"
 run underwear tools/blender/make_underwear.py -- "${work}"
-run clothes tools/blender/make_clothes.py -- "${work}" "$(pwd)/assets/models/humans"   # (villager shirt and trousers; the skin weights come from the rigged bodies in the project)
+for outfit in assets/models/humans/outfits/*.json; do   # (every outfit's garments, inside out; the skin weights come from the rigged bodies in the project)
+	name="$(basename "${outfit}" .json)"
+	run "outfit_${name}" tools/blender/build_outfit.py -- "${work}" "$(pwd)/assets/models/humans" "$(pwd)/${outfit}"
+	for gender in male female; do
+		run "check_${name}_${gender}" tools/blender/garment_check.py -- "${work}" "${gender}" "$(pwd)/${outfit}"
+	done
+done
 run face_hair tools/blender/make_face_hair.py -- "${work}"
 run brows_mf tools/blender/fit_mindfront.py -- "${work}" "${packs}/mh_eyebrows/x/eyebrows/mindfront_eyebrows_11" brows_mf "${work}"
 for style in 03 06 09; do

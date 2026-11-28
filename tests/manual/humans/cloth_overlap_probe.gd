@@ -3,9 +3,125 @@ extends RefCounted
 ## (debug, --cloth-overlap in the rig and body labs; call on the render thread) where the shirt covers the trousers: for every shirt particle below the trousers' top, the nearest trouser particle; how
 ## far the shirt is outside it (along the horizontal direction from the body's axis), and how far each moved in or out from its rest place
 static var _rest_done: Dictionary = {}
+static var last_inside: int = -1   # (count_inside's result, read by the checks)
+static var last_worst: String = ""   # (and where the deepest point was)
 
 
-static func measure(shirt: GPUClothSolver, pants: GPUClothSolver) -> void:
+## The garments of an outfit, inside out (each solver carries its garment's recipe as meta, ClothSetup).
+static func _by_layer(solvers: Array) -> Array:
+	var layered: Array = solvers.filter(func(s: Node) -> bool: return is_instance_valid(s) and s.has_meta(&"garment"))
+	layered.sort_custom(func(a: Node, b: Node) -> bool: return int(a.get_meta(&"garment")["layer"]) < int(b.get_meta(&"garment")["layer"]))
+	return layered
+
+
+## Every pair of adjacent layers measured (printed).
+static func measure_layers(solvers: Array) -> void:
+	var layered := _by_layer(solvers)
+	for k in range(1, layered.size()):
+		measure(layered[k], layered[k - 1])
+
+
+## The points of every garment inside the garment under it, all pairs together, into last_inside (for the checks): measured against the lower
+## garment's own triangles as they are now (the nearest point on its surface, signed by the face's outward side). The nearest-particle measure of
+## measure() misread the shirt's rolled hem lip over the belly as inside the trousers at the slider extremes.
+static func count_inside(solvers: Array) -> void:
+	var layered := _by_layer(solvers)
+	var total := 0
+	last_worst = ""
+	for k in range(1, layered.size()):
+		total += _surface_inside(layered[k], layered[k - 1])
+	last_inside = total
+
+
+static func _surface_inside(upper: GPUClothSolver, lower: GPUClothSolver) -> int:
+	var up: PackedFloat32Array = upper._rd.buffer_get_data(upper._positions_buffer).to_float32_array()
+	var lp: PackedFloat32Array = lower._rd.buffer_get_data(lower._positions_buffer).to_float32_array()
+	var lower_points := PackedVector3Array()
+	lower_points.resize(lp.size() / 4)
+	var top := -1e9
+	var centre := Vector3.ZERO
+	for i in lower_points.size():
+		lower_points[i] = Vector3(lp[i * 4], lp[i * 4 + 1], lp[i * 4 + 2])
+		top = maxf(top, lower_points[i].y)
+		centre += lower_points[i]
+	centre /= maxf(lower_points.size(), 1)
+	# the lower garment's triangles near its top (where an upper layer can cover it), in particle indices
+	var tris: Array = []
+	for t in lower._src_indices.size() / 3:
+		var a: int = lower._original_to_welded[lower._src_indices[t * 3]]
+		var b: int = lower._original_to_welded[lower._src_indices[t * 3 + 1]]
+		var c: int = lower._original_to_welded[lower._src_indices[t * 3 + 2]]
+		if lower_points[a].y > top - 0.2:
+			tris.append(Vector3i(a, b, c))
+	var inside := 0
+	var worst := 0.0
+	for i in up.size() / 4:
+		var p := Vector3(up[i * 4], up[i * 4 + 1], up[i * 4 + 2])
+		if p.y > top - 0.015:
+			continue   # (from 1.5 cm under the lower garment's top: at its edge the nearest feature is the edge itself and in / out has no sign)
+		var best_d := 1e9
+		var best_gap := 1e9
+		var best_q := Vector3.ZERO
+		for tri: Vector3i in tris:
+			var a: Vector3 = lower_points[tri.x]
+			if a.distance_squared_to(p) > 0.01:   # (more than 10 cm away: not the nearest)
+				continue
+			var b: Vector3 = lower_points[tri.y]
+			var c: Vector3 = lower_points[tri.z]
+			var q := _closest_on_triangle(p, a, b, c)
+			var d := q.distance_squared_to(p)
+			if d < best_d:
+				var n := (b - a).cross(c - a)
+				if n.length_squared() < 1e-14:
+					continue
+				n = -n.normalized()   # (our garments' winding gives inward normals: the solver's flip_normals is on for them)
+				if absf(n.y) > 0.7:
+					continue   # (the rolled lip on top of a waistband faces up: "under" it is not inside the garment; the sides decide)
+				best_d = d
+				best_gap = (p - q).dot(n)
+				best_q = q
+		if best_gap < -0.001:   # (1 mm: the sleeve checks' tolerance; the lab's particle surface and Blender's disagree by that much at a slope)
+			inside += 1
+			if best_gap < worst:
+				worst = best_gap
+				last_worst = "%s %.1f mm inside %s at %s (rest %s); the lower layer's top %.3f, nearest on it %s" % [upper.name, -best_gap * 1000.0, lower.name, p, upper._welded_positions[i], top, best_q]
+	return inside
+
+
+static func _closest_on_triangle(p: Vector3, a: Vector3, b: Vector3, c: Vector3) -> Vector3:
+	# (Ericson, Real-Time Collision Detection 5.1.5)
+	var ab := b - a
+	var ac := c - a
+	var ap := p - a
+	var d1 := ab.dot(ap)
+	var d2 := ac.dot(ap)
+	if d1 <= 0.0 and d2 <= 0.0:
+		return a
+	var bp := p - b
+	var d3 := ab.dot(bp)
+	var d4 := ac.dot(bp)
+	if d3 >= 0.0 and d4 <= d3:
+		return b
+	var vc := d1 * d4 - d3 * d2
+	if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+		return a + ab * (d1 / (d1 - d3))
+	var cp := p - c
+	var d5 := ab.dot(cp)
+	var d6 := ac.dot(cp)
+	if d6 >= 0.0 and d5 <= d6:
+		return c
+	var vb := d5 * d2 - d1 * d6
+	if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+		return a + ac * (d2 / (d2 - d6))
+	var va := d3 * d6 - d5 * d4
+	if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+		return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)))
+	var denom := 1.0 / (va + vb + vc)
+	return a + ab * (vb * denom) + ac * (vc * denom)
+
+
+## `shirt`: the upper garment, `pants`: the one under it. Returns how many of the upper one's points are inside the lower one.
+static func measure(shirt: GPUClothSolver, pants: GPUClothSolver, quiet := false) -> int:
 	var sp: PackedFloat32Array = shirt._rd.buffer_get_data(shirt._positions_buffer).to_float32_array()
 	var pp: PackedFloat32Array = pants._rd.buffer_get_data(pants._positions_buffer).to_float32_array()
 	var s_rest: PackedVector3Array = shirt._welded_positions
@@ -46,6 +162,8 @@ static func measure(shirt: GPUClothSolver, pants: GPUClothSolver) -> void:
 		if gap < 0.0:
 			inside += 1
 		worst.append([gap, s_rest[i], s_move, p_move])
+	if quiet:
+		return inside
 	if not _rest_done.has(shirt.get_instance_id()):
 		_rest_done[shirt.get_instance_id()] = true
 		# the same at rest, from the garments' own shapes: where the shirt is built inside the trousers
@@ -69,6 +187,7 @@ static func measure(shirt: GPUClothSolver, pants: GPUClothSolver) -> void:
 	print("CLOTH_OVERLAP frame ", Engine.get_process_frames(), " shirt particles over the trousers ", count, " inside ", inside)
 	for k in mini(4, worst.size()):
 		print("CLOTH_OVERLAP   gap %.4f at rest %s  shirt moved %+.4f out, trousers %+.4f out" % [worst[k][0], worst[k][1], worst[k][2], worst[k][3]])
+	return inside
 
 
 

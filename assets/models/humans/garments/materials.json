@@ -1,0 +1,7 @@
+{
+	"linen": {"simulated": true, "freedom_scale": 1.0, "stiffness": 0.9, "bend_stiffness": 0.6, "rim_depth": 0.003, "look": {}},
+	"wool": {"simulated": true, "freedom_scale": 1.0, "stiffness": 0.9, "bend_stiffness": 0.6, "rim_depth": 0.003, "look": {"threads_per_metre": 600.0, "roughness_base": 0.93, "sheen": 0.35}},
+	"leather": {"simulated": true, "freedom_scale": 0.12, "stiffness": 0.95, "bend_stiffness": 0.9, "rim_depth": 0.005, "bridge": 80, "shader": "res://shaders/human_leather.gdshader", "look": {"creases": 0.35, "wear": 0.3}},
+	"mail": {"simulated": true, "freedom_scale": 0.3, "stiffness": 0.85, "bend_stiffness": 0.2, "rim_depth": 0.003, "shader": "res://shaders/human_mail.gdshader", "look": {}},
+	"shoe_leather": {"simulated": false, "freedom_scale": 0.0, "stiffness": 1.0, "bend_stiffness": 1.0, "rim_depth": 0.004, "shader": "res://shaders/human_leather.gdshader", "look": {"footwear": 1.0}}
+}

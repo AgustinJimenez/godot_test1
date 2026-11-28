@@ -11,17 +11,9 @@ const BODY_SCENES: Dictionary = {
 	"Female": "res://assets/models/humans/female_body.glb",
 	"Male": "res://assets/models/humans/male_body.glb",
 }
-## Plain villager clothes (tools/blender/make_clothes.py): a long-sleeved tunic shirt and trousers with a belt, cut from the body like the underwear (same blend shapes).
-const CLOTHES_SCENES: Dictionary = {
-	"Female": ["res://assets/models/humans/female_shirt.glb", "res://assets/models/humans/female_pants.glb"],
-	"Male": ["res://assets/models/humans/male_shirt.glb", "res://assets/models/humans/male_pants.glb"],
-}
-const CLOTHES: Array = ["Villager", "Underwear"]
-## (shirt colour, trousers colour) of the villager clothes: undyed linen and brown wool for him, a darker linen and grey-brown wool for her
-const CLOTHES_COLOURS: Dictionary = {
-	"Male": [Color(0.72, 0.66, 0.55), Color(0.33, 0.25, 0.18)],
-	"Female": [Color(0.62, 0.55, 0.45), Color(0.3, 0.27, 0.23)],
-}
+## Clothes: the outfits in assets/models/humans/outfits (recipes, docs/superpowers/specs/2026-11-26-garment-recipes-design.md; built by
+## tools/blender/build_outfit.py into <gender>_<outfit>_<garment>.glb, cut from the body like the underwear, same blend shapes), or the underwear.
+const GARMENT_GLB := "res://assets/models/humans/%s_%s_%s.glb"
 const UNDERWEAR_SCENES: Dictionary = {
 	"Female": "res://assets/models/humans/female_underwear.glb",
 	"Male": "res://assets/models/humans/male_underwear.glb",
@@ -75,6 +67,18 @@ const BODY_SHAPE_SLIDERS: Array = [
 	["Belly (flat .. round)", "belly_flat", "belly_round", 0.6],   # (the MakeHuman target at full weight is a pregnancy)
 	["Bust", "bust_small", "bust_big", 1.0],
 ]
+# The Feet tab (MakeHuman's foot targets, make_bodies.py): size, length and width, both feet together. The ranges keep an adult foot within about
+# 22-30 cm (the readout shows the length and the EU size).
+const FEET_SHAPE_SLIDERS: Array = [
+	["Feet"],
+	["Size (small .. big)", "feet_small", "feet_big", 0.5],   # (the male's 26.2 cm foot: 23.9 .. 29.7 cm; at full weight 21.5 .. 33.3)
+	["Length (short .. long)", "feet_short", "feet_long", 0.35],
+	["Width (narrow .. wide)", "feet_narrow", "feet_wide", 0.8],
+]
+const FEET_KEYS: Array = ["feet_small", "feet_big", "feet_short", "feet_long", "feet_narrow", "feet_wide"]
+const FEET_DISTANCE := 1.0    # the Feet tab's camera: this far from the feet
+const FEET_LOOK_Y := 0.07     # ... looking at this height
+const FEET_CAM_Y := 0.5       # ... from this height (a little above and in front)
 const FACE_AGE_EYE_DY: Dictionary = {"Male": {"young": -0.1964, "old": -0.0235}, "Female": {"young": -0.1664, "old": -0.0083}}
 const BEARD_STYLES: Array = [   # name, amount, length (m), zone (0 full, 1 goatee, 2 circle beard, 3 moustache, 4 mutton chops, 5 chin strap), neck beard
 	["None", 0.0, 0.0, 0.0, 0.0], ["Stubble", 0.7, 0.003, 0.0, 0.5], ["Short", 0.8, 0.007, 0.0, 0.12], ["Full", 0.9, 0.012, 0.0, 0.3],
@@ -279,12 +283,13 @@ var _cloth_solvers: Array = []
 var _cloth_pieces: Array = []   # the simulated shirt and trousers (the static ones are hidden while these run)
 var _cloth_restart_ms: int = -1   # when the simulation restarts (a slider moved: it waits until the slider rests)
 var _cloth_shape_key: String = ""   # the body shapes the running simulation was built for
-var _clothes: String = "Villager"   # "Villager" (a shirt and trousers) or "Underwear" (--clothes=underwear)
-var _shirt_mesh: MeshInstance3D = null
-var _pants_mesh: MeshInstance3D = null
-var _shirt_material: ShaderMaterial
-var _cloth_flaws: Dictionary = {"seed": 1.0, "imperfection": 0.5, "wear": 0.5}   # the clothes' stains, holes, patches and wear (each character its own seed)
-var _pants_material: ShaderMaterial
+var _clothes: String = "villager"   # an outfit's name (assets/models/humans/outfits) or "Underwear" (--clothes=<outfit>|underwear)
+var _sun_dir := Vector3(0.35, 0.8, 0.45)   # toward the sun, world space (the clothes' close-up weave shadows)
+var _clothes_list: Array = []   # the outfits there are, then "Underwear" (the Clothes dropdown)
+var _outfit: Dictionary = {}   # the outfit worn (ClothSetup.load_outfit): its garments inside out, its colours
+var _garment_meshes: Array = []   # the outfit's garments as static meshes, inside out (hidden while the simulation runs)
+var _garment_materials: Array = []   # one clothes material per garment (the simulated pieces draw with the solvers' copies)
+var _cloth_flaws: Dictionary = {"seed": 1.0, "imperfection": 0.5, "wear": 0.5}   # the clothes' stains, holes and wear (each character its own seed)
 var _body_hair_dirty_ms: int = -1   # a body hair setting changed at this time (rebuilt 200 ms after the last change)
 var _hair_ever_built: bool = false   # after the first hair: later builds never block the frame (a gender switch showed a frozen lab for ~1 s)
 var _hair_preview: bool = false   # building the cheap version (a sixth of the hairs) while a slider is being dragged
@@ -404,6 +409,14 @@ var _bark_baked: bool = false
 var _scalp_arg: float = -1.0    # --scalp-layer=0..1: overrides the preset value (tests)
 var _beard_look_dy: float = -0.03   # --look-dy=m: the Beard camera aims this far above (+) or below (-) the beard view height (+0.07 looks at the mouth)
 var _beard_view: bool = false   # the Beard tab is open: the camera looks at the jaw
+var _bump_checks: Array = []   # (the heatmap check boxes on the Body and Feet tabs: kept in step)
+var _bump_passes: int = 12   # --bump-passes=n: how far the reference surface is smoothed (fewer passes = it follows finer detail: ~1 cm at 12)
+var _bump_recompute_ms: int = -1   # when the heatmap is recomputed (the detail slider moved: it waits until the slider rests)
+var _bump_range: float = 0.001   # --bump-range=m: the heatmap's full colour
+var _bump_debug: bool = false   # --bumps or the Body tab's check: the garments coloured by their bumps and dents (debug)
+var _feet_view: bool = false   # the Feet tab is open: the camera looks at the feet
+var _feet_label: Label = null   # the Feet tab's readout: the foot's length and EU size
+var _feet_lengths: Dictionary = {}   # "" (the base) and each feet key at full weight -> the foot's length (m), measured from the body mesh
 var _look_y: float = 0.95
 var _cam_y: float = 1.0
 var _face_mode: bool = false
@@ -497,6 +510,12 @@ func _ready() -> void:
 			_hair_friction = float(arg.trim_prefix("--friction="))
 		elif arg.begins_with("--settle="):
 			_settle_override = int(arg.trim_prefix("--settle="))
+		elif arg == "--bumps":
+			_bump_debug = true
+		elif arg.begins_with("--bump-passes="):
+			_bump_passes = maxi(int(arg.trim_prefix("--bump-passes=")), 1)
+		elif arg.begins_with("--bump-range="):
+			_bump_range = float(arg.trim_prefix("--bump-range="))
 		elif arg.begins_with("--tab="):
 			_start_tab = arg.trim_prefix("--tab=")
 		elif arg.begins_with("--shadow-dist="):
@@ -605,9 +624,7 @@ func _ready() -> void:
 		elif arg == "--cloth=off":
 			_cloth_sim = false
 		elif arg.begins_with("--clothes="):
-			_clothes = arg.trim_prefix("--clothes=").capitalize()
-			if not CLOTHES.has(_clothes):
-				_clothes = "Villager"
+			_clothes = _clothes_name(arg.trim_prefix("--clothes="))
 		elif arg.begins_with("--body-hair="):
 			_body_hair["amount"] = clampf(float(arg.trim_prefix("--body-hair=")), 0.0, 1.0)
 		elif arg.begins_with("--switch-gender="):
@@ -804,6 +821,9 @@ func _build_environment() -> void:
 		sun.shadow_bias = _shadow_bias
 		sun.shadow_normal_bias = _shadow_normal_bias
 		sun.shadow_blur = 1.2
+	_sun_dir = sun.transform.basis.z.normalized()   # (a light shines along its -Z: toward it is +Z)
+	for cloth: ShaderMaterial in _garment_materials:
+		cloth.set_shader_parameter(&"sun_dir_world", _sun_dir)
 	if _shadows_arg == "on":
 		sun.shadow_enabled = true   # --shadows=on|off: the sun casts shadows (the hair is a shadow caster and receiver: tests)
 	elif _shadows_arg == "off":
@@ -940,14 +960,6 @@ func _build_material() -> void:
 		_on_skin_chosen(_skin_file)
 	_cloth_material = ShaderMaterial.new()
 	_cloth_material.shader = load("res://shaders/human_underwear_fabric.gdshader")
-	var clothes_shader: Shader = load("res://shaders/human_clothes.gdshader")
-	_shirt_material = ShaderMaterial.new()
-	_shirt_material.shader = clothes_shader
-	_pants_material = ShaderMaterial.new()
-	_pants_material.shader = clothes_shader
-	_pants_material.set_shader_parameter(&"threads_per_metre", 600.0)   # (wool: thicker yarn than the linen)
-	_pants_material.set_shader_parameter(&"roughness_base", 0.93)
-	_pants_material.set_shader_parameter(&"sheen", 0.35)
 	_eye_material = ShaderMaterial.new()
 	_eye_material.shader = load("res://shaders/human_eye.gdshader")
 	_apply_eye_parameters()
@@ -1040,9 +1052,10 @@ func _build_ui() -> void:
 	background_row.add_child(clothes_label)
 	var clothes_option := OptionButton.new()
 	clothes_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	for clothes_name: String in CLOTHES:
-		clothes_option.add_item(clothes_name)
-	clothes_option.select(CLOTHES.find(_clothes))
+	_clothes = _clothes_name(_clothes)
+	for clothes_name: String in _clothes_list:
+		clothes_option.add_item(clothes_name.capitalize())
+	clothes_option.select(_clothes_list.find(_clothes))
 	clothes_option.item_selected.connect(_on_clothes_selected)
 	background_row.add_child(clothes_option)
 	var cloth_box := CheckBox.new()
@@ -1096,15 +1109,22 @@ func _build_ui() -> void:
 	_add_value_slider(body_tab, "Age (whole character: young .. old)", -1.0, 1.0, 0.0, _on_whole_age)
 	_add_shape_sliders(body_tab, BODY_SHAPE_SLIDERS)
 	_add_section_label(body_tab, "Clothes")
-	_add_value_slider(body_tab, "Imperfections (stains, holes, patches)", 0.0, 1.0, float(_cloth_flaws["imperfection"]), func(v: float) -> void:
+	_add_value_slider(body_tab, "Imperfections (stains, holes)", 0.0, 1.0, float(_cloth_flaws["imperfection"]), func(v: float) -> void:
 		_cloth_flaws["imperfection"] = v
 		_apply_cloth_flaws())
 	_add_value_slider(body_tab, "Wear (faded, dirty hems)", 0.0, 1.0, float(_cloth_flaws["wear"]), func(v: float) -> void:
 		_cloth_flaws["wear"] = v
 		_apply_cloth_flaws())
+	var bumps := CheckBox.new()
+	bumps.text = "Debug: bumps heatmap (red out, blue in, 1 mm full)"
+	bumps.tooltip_text = "Every garment coloured by how far it sits above or below a smoothed copy of itself: irregular bumps and dents stand out"
+	bumps.button_pressed = _bump_debug
+	bumps.toggled.connect(_on_bump_debug_toggled)
+	body_tab.add_child(bumps)
+	_bump_checks.append(bumps)
 	var new_flaws := Button.new()
 	new_flaws.text = "New flaws"
-	new_flaws.tooltip_text = "Other stains, holes and patches in the same amount"
+	new_flaws.tooltip_text = "Other stains and holes in the same amount"
 	new_flaws.pressed.connect(func() -> void:
 		_cloth_flaws["seed"] = float(randi() % 10000)
 		_apply_cloth_flaws())
@@ -1303,6 +1323,27 @@ func _build_ui() -> void:
 	reset_face.pressed.connect(_on_reset_face)
 	face_buttons.add_child(reset_face)
 	_add_shape_sliders(face_tab, FACE_SLIDERS)
+	var feet_tab := _add_tab(tabs, "Feet")
+	_add_shape_sliders(feet_tab, FEET_SHAPE_SLIDERS)
+	_feet_label = Label.new()
+	feet_tab.add_child(_feet_label)
+	var feet_debug := VBoxContainer.new()   # (temporary debug fields, hidden unless the lab is started with --bumps)
+	feet_debug.visible = _bump_debug
+	feet_tab.add_child(feet_debug)
+	var feet_bumps := CheckBox.new()   # (a temporary debug switch, the same as the Body tab's: see the shoes' bumps and dents)
+	feet_bumps.text = "Debug: bumps heatmap (red out, blue in, 1 mm full)"
+	feet_bumps.tooltip_text = "Every garment coloured by how far it sits above or below a smoothed copy of itself (--bump-range=m sets the full colour)"
+	feet_bumps.button_pressed = _bump_debug
+	feet_bumps.toggled.connect(_on_bump_debug_toggled)
+	feet_debug.add_child(feet_bumps)
+	_bump_checks.append(feet_bumps)
+	_add_value_slider(feet_debug, "Heatmap range (mm for full colour)", 0.1, 3.0, clampf(_bump_range * 1000.0, 0.1, 3.0), func(v: float) -> void:
+		_bump_range = v * 0.001
+		_apply_bump_debug())
+	_add_value_slider(feet_debug, "Heatmap detail (smoothing passes: fewer = finer, about 1 cm at 12)", 2.0, 60.0, float(_bump_passes), func(v: float) -> void:
+		_bump_passes = maxi(int(round(v)), 1)
+		_bump_recompute_ms = Time.get_ticks_msec() + 300)
+	_update_feet_readout()
 	var beard_tab := _add_tab(tabs, "Beard")
 	_beard_tab = beard_tab   # (a tab of its own; the colour of the beard is the hair colour)
 	_add_hair_slider(beard_tab, "Beard length", &"beard_length", 0.0, 0.1)   # (the first row; 0 is shaved)
@@ -1522,8 +1563,11 @@ func _set_gender(gender_name: String) -> void:
 	var packed: PackedScene = load(BODY_SCENES[gender_name])
 	_body = packed.instantiate() as Node3D
 	add_child(_body)
+	_feet_lengths = {}   # (the new body's feet are measured on the next readout)
 	_hair_sway.target = _body
 	_mesh = _find_mesh(_body)
+	if OS.get_cmdline_user_args().has("--hide-body"):
+		_mesh.visible = false   # (debug: the garments alone, to look into them: a shoe's inner floor, up a sleeve - AGENTS.md "Clothes")
 	_mesh.material_override = _material
 	mark.call("body")
 	_set_face_frame(_mesh.mesh)
@@ -1674,6 +1718,19 @@ func _on_tab_changed(index: int, tabs: TabContainer) -> void:
 	# Eyes and Brows keep the tight framing; Hair stands back a little and looks higher so the whole head of hair is in the picture
 	var wants_hair: bool = tab_name == "Hair"
 	_beard_view = tab_name == "Beard"
+	var was_feet := _feet_view
+	_feet_view = tab_name == "Feet"
+	if _feet_view:
+		if _face_mode:
+			_on_face_toggled(false)
+		_distance = FEET_DISTANCE
+		_look_y = FEET_LOOK_Y
+		_cam_y = FEET_CAM_Y
+		_update_camera()
+		return
+	if was_feet and not wants_face:
+		_on_face_toggled(false)   # (back to the whole body)
+		return
 	if wants_face != _face_mode:
 		_face_hair = wants_hair
 		_on_face_toggled(wants_face)
@@ -2331,8 +2388,8 @@ func _apply_character_state(state: Dictionary) -> void:
 		for key: String in state["cloth_flaws"]:
 			if _cloth_flaws.has(key):
 				_cloth_flaws[key] = float(state["cloth_flaws"][key])
-	if state.get("clothes") is String and CLOTHES.has(state["clothes"]):
-		_clothes = state["clothes"]
+	if state.get("clothes") is String:
+		_clothes = _clothes_name(state["clothes"])   # (older saves say "Villager")
 	if state.get("body_hair") is Dictionary:
 		for key: String in state["body_hair"]:
 			if _body_hair.has(key):
@@ -2523,7 +2580,7 @@ func _on_face_slider(value: float, entry: Array, label: Label) -> void:
 
 # The face keys as blend shapes on every mesh that has them (body, eyes, brows, lashes, underwear); the hair has none of them: it is built on a body with them baked in.
 func _apply_face_shapes() -> void:
-	for target: MeshInstance3D in [_mesh, _underwear_mesh, _eyes_mesh, _brows_mesh, _lashes_mesh, _shirt_mesh, _pants_mesh]:
+	for target: MeshInstance3D in [_mesh, _underwear_mesh, _eyes_mesh, _brows_mesh, _lashes_mesh] + _garment_meshes:
 		if target == null:
 			continue
 		for key: StringName in _face_values:
@@ -2531,6 +2588,55 @@ func _apply_face_shapes() -> void:
 			if index >= 0:
 				target.set_blend_shape_value(index, float(_face_values[key]))
 	_landmarks_dirty_ms = Time.get_ticks_msec()   # (the skin's landmarks follow once the sliders rest: _update_landmarks)
+	_update_feet_readout()
+
+
+# The foot's length (heel to toe tip, the left foot) in the base shape and with each feet key at full weight, from the body mesh's blend shapes;
+# the current length is the base plus each key's change times its weight (the keys are near linear).
+func _measure_feet() -> void:
+	_feet_lengths = {}
+	if _mesh == null or _mesh.mesh == null:
+		return
+	var mesh := _mesh.mesh as ArrayMesh
+	var base: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var foot := PackedInt32Array()
+	for i in base.size():
+		if base[i].y < 0.12 and base[i].x > 0.03:
+			foot.append(i)
+	if foot.is_empty():
+		return
+	var length := func(points: PackedVector3Array, relative: bool) -> float:
+		var lo := 1e9
+		var hi := -1e9
+		for i in foot:
+			var z: float = (base[i].z + points[i].z) if relative else points[i].z
+			lo = minf(lo, z)
+			hi = maxf(hi, z)
+		return hi - lo
+	_feet_lengths[""] = length.call(base, false)
+	var shapes: Array = mesh.surface_get_blend_shape_arrays(0)
+	var relative := mesh.blend_shape_mode == Mesh.BLEND_SHAPE_MODE_RELATIVE
+	for k in mesh.get_blend_shape_count():
+		var key := String(mesh.get_blend_shape_name(k))
+		if key in FEET_KEYS:
+			_feet_lengths[key] = length.call((shapes[k] as Array)[Mesh.ARRAY_VERTEX], relative)
+
+
+func _update_feet_readout() -> void:
+	if _feet_label == null:
+		return
+	if _feet_lengths.is_empty():
+		_measure_feet()
+	if not _feet_lengths.has(""):
+		_feet_label.text = "Foot length: (no feet shapes in this body: rebuild with make_bodies.py)"
+		return
+	var base_length: float = _feet_lengths[""]
+	var foot: float = base_length
+	for key: String in FEET_KEYS:
+		if _feet_lengths.has(key):
+			foot += float(_face_values.get(StringName(key), 0.0)) * (float(_feet_lengths[key]) - base_length)
+	var cm := foot * 100.0
+	_feet_label.text = "Foot length %.1f cm, EU size %d" % [cm, int(round(1.5 * (cm + 1.5)))]
 
 
 # The skin's landmarks from the reshaped body (face frame, eye centre, joints). Baking every blend shape into the body costs about 50 ms, so it waits
@@ -2563,55 +2669,105 @@ func _shaped_body_mesh(instance: MeshInstance3D = null) -> ArrayMesh:
 # The body hair (men only): HumanBodyHair grown on the base body (it carries the height / weight / muscle shapes, so the sliders do not rebuild it),
 # drawn with the head hair's material (it is marked like the beard: the beard's colour, grey and ginger). About 0.1 s for 45,000 hairs.
 # The clothes for this body: the villager shirt and trousers (the underwear stays under them, hidden), or the underwear alone.
+# An outfit's name as the list has it ("Villager" from an older save, any case), or "Underwear"; an unknown one falls back to the first outfit.
+func _clothes_name(wanted: String) -> String:
+	if _clothes_list.is_empty():
+		_clothes_list = Array(ClothSetup.outfit_names()) + ["Underwear"]
+	for known: String in _clothes_list:
+		if known.to_lower() == wanted.to_lower():
+			return known
+	return _clothes_list[0]
+
+
+# The material of one garment: the clothes shader with its material's look (materials.json: wool's thicker yarn, ...) and its colour.
+func _garment_material(garment: Dictionary) -> ShaderMaterial:
+	var cloth := ShaderMaterial.new()
+	cloth.shader = load(ClothSetup.shader_path(garment))
+	var look: Dictionary = ClothSetup.materials().get(String(garment.get("material", "linen")), {}).get("look", {})
+	for key: String in look:
+		cloth.set_shader_parameter(StringName(key), float(look[key]))
+	var colours: Dictionary = _outfit.get("colours", {})
+	var colour: Array = colours.get(garment["name"], {}).get(_gender.to_lower(), [0.6, 0.55, 0.45])
+	cloth.set_shader_parameter(&"cloth_color", Color(float(colour[0]), float(colour[1]), float(colour[2])))
+	cloth.set_shader_parameter(&"sun_dir_world", _sun_dir)
+	return cloth
+
+
 func _load_clothes() -> void:
 	_stop_cloth()
-	for old: MeshInstance3D in [_shirt_mesh, _pants_mesh]:
+	for old: MeshInstance3D in _garment_meshes:
 		if old != null and is_instance_valid(old) and _body != null and _body.is_ancestor_of(old):
 			var root: Node = old
 			while root != null and root.get_parent() != _body:
 				root = root.get_parent()
 			if root != null:
 				root.queue_free()
-	_shirt_mesh = null
-	_pants_mesh = null
-	var clothed: bool = _clothes == "Villager"
+	_garment_meshes = []
+	_garment_materials = []
+	_clothes = _clothes_name(_clothes)
+	_outfit = {} if _clothes == "Underwear" else ClothSetup.load_outfit(_clothes)
+	for garment: Dictionary in _outfit.get("garments", []):
+		var glb: String = GARMENT_GLB % [_gender.to_lower(), _outfit["name"], garment["name"]]
+		if not ResourceLoader.exists(glb):
+			# (an outfit listed before its garments are built, or built for the other body only: the underwear, and say which file is missing)
+			push_warning("Clothes: %s is not built (tools/blender/build_outfit.py): the underwear instead" % glb)
+			_clothes = "Underwear"
+			_outfit = {}
+			break
+	var clothed: bool = not (_outfit.get("garments", []) as Array).is_empty()
 	if _underwear_mesh != null:
 		_underwear_mesh.visible = not clothed
+	if _body != null:
+		_body.position.y = 0.0   # (barefoot on the ground; shoes lift it below)
 	if not clothed or _body == null:
 		return
-	var colours: Array = CLOTHES_COLOURS[_gender]
-	_shirt_material.set_shader_parameter(&"cloth_color", colours[0])
-	_pants_material.set_shader_parameter(&"cloth_color", colours[1])
+	for garment: Dictionary in _outfit["garments"]:
+		_garment_materials.append(_garment_material(garment))
 	_apply_cloth_flaws()
-	var paths: Array = CLOTHES_SCENES[_gender]
-	for i in 2:
-		var piece: Node3D = (load(paths[i]) as PackedScene).instantiate() as Node3D
+	if _mesh != null:
+		_set_joints()   # (the new materials need the joints too: the wear at the elbows and knees, the bend wrinkles)
+	for i in _outfit["garments"].size():
+		var garment: Dictionary = _outfit["garments"][i]
+		var piece: Node3D = (load(GARMENT_GLB % [_gender.to_lower(), _outfit["name"], garment["name"]]) as PackedScene).instantiate() as Node3D
 		_body.add_child(piece)
 		var mesh: MeshInstance3D = _find_mesh(piece)
-		mesh.material_override = _shirt_material if i == 0 else _pants_material
-		if i == 0:
-			_shirt_mesh = mesh
-		else:
-			_pants_mesh = mesh
+		mesh.material_override = _garment_materials[i]
+		_garment_meshes.append(mesh)
+	ClothSetup.apply_covered(_outfit["garments"], _garment_meshes, _garment_materials)   # (under-layers drawn in where a higher one covers them)
+	_body.position.y = ClothSetup.footwear_lift(_outfit["garments"])   # (in shoes, standing on their soles)
+	_apply_bump_debug()
 	_cloth_shape_key = ""
 	_cloth_restart_ms = Time.get_ticks_msec() + 100   # (after the shapes are set on the new pieces)
 
 
+func _on_bump_debug_toggled(on: bool) -> void:
+	_bump_debug = on
+	for check: CheckBox in _bump_checks:
+		check.set_pressed_no_signal(on)
+	_apply_bump_debug()
+
+
+# The bump heatmap on every garment (or off): computed per garment the first time (ClothSetup.bump_texture), then a shader switch.
+func _apply_bump_debug() -> void:
+	for i in _garment_materials.size():
+		var material: ShaderMaterial = _garment_materials[i]
+		if _bump_debug and not material.has_meta(&"bump_tex") and i < _garment_meshes.size() and _garment_meshes[i] != null:
+			var texture := ClothSetup.bump_texture(_garment_meshes[i].mesh, _bump_passes)
+			material.set_meta(&"bump_tex", texture)
+			material.set_shader_parameter(&"bump_debug_tex", texture)
+			material.set_shader_parameter(&"bump_debug_width", ClothSetup.COVERED_TEX_WIDTH)
+		material.set_shader_parameter(&"bump_debug", 1.0 if _bump_debug else 0.0)
+		material.set_shader_parameter(&"bump_debug_range", _bump_range)
+	if _cloth_rig != null:
+		_cloth_restart_ms = Time.get_ticks_msec() + 400   # (the simulated pieces draw with copies of these materials)
+
+
 func _apply_cloth_flaws() -> void:
-	for i in 2:
-		var cloth: ShaderMaterial = _shirt_material if i == 0 else _pants_material
-		if cloth == null:
-			continue
-		cloth.set_shader_parameter(&"flaw_seed", float(_cloth_flaws["seed"]) + float(i) * 7.3)   # (the shirt and the trousers have different flaws)
+	for i in _garment_materials.size():
+		var cloth: ShaderMaterial = _garment_materials[i]
+		cloth.set_shader_parameter(&"flaw_seed", float(_cloth_flaws["seed"]) + float(i) * 7.3)   # (each garment its own flaws)
 		cloth.set_shader_parameter(&"imperfection", float(_cloth_flaws["imperfection"]))
 		cloth.set_shader_parameter(&"wear", float(_cloth_flaws["wear"]))
-		# a patch is a scrap of some other cloth: a little darker or lighter than the garment, its own tint
-		var rng := RandomNumberGenerator.new()
-		rng.seed = int(float(_cloth_flaws["seed"]) * 1000.0) + i
-		var garment: Color = CLOTHES_COLOURS[_gender][i]
-		var scraps: Array = [Color(0.66, 0.6, 0.5), Color(0.4, 0.31, 0.22), Color(0.3, 0.28, 0.26), Color(0.5, 0.45, 0.38), Color(0.36, 0.33, 0.24), Color(0.42, 0.26, 0.2)]   # (undyed linen, brown, grey wool, oatmeal, a dull green-brown, a faded madder red)
-		var scrap: Color = scraps[rng.randi() % scraps.size()]
-		cloth.set_shader_parameter(&"patch_color", scrap * rng.randf_range(0.85, 1.05))
 	if _cloth_rig != null:
 		_cloth_restart_ms = Time.get_ticks_msec() + 400   # (the simulated pieces draw with copies of these materials: rebuilt with the new flaws)
 
@@ -2638,10 +2794,18 @@ func _stop_cloth() -> void:
 
 func _restart_cloth() -> void:
 	_stop_cloth()
-	var simulate: bool = _cloth_sim and _clothes == "Villager" and _body != null and _shirt_mesh != null and _pants_mesh != null
-	for static_piece: MeshInstance3D in [_shirt_mesh, _pants_mesh]:
+	# only the garments simulated as cloth (the shoes follow the skeleton: they stay static meshes)
+	var all_garments: Array = _outfit.get("garments", [])
+	var sim_index: Array = []
+	for i in all_garments.size():
+		if ClothSetup.is_simulated(all_garments[i]):
+			sim_index.append(i)
+	var garments: Array = sim_index.map(func(i: int) -> Dictionary: return all_garments[i])
+	var simulate: bool = _cloth_sim and _body != null and not sim_index.is_empty() and _garment_meshes.size() == all_garments.size()
+	for i in _garment_meshes.size():
+		var static_piece: MeshInstance3D = _garment_meshes[i]
 		if static_piece != null and is_instance_valid(static_piece):
-			static_piece.visible = not simulate
+			static_piece.visible = not (simulate and sim_index.has(i))
 	if not simulate:
 		return
 	var weights: Dictionary = {}
@@ -2661,13 +2825,12 @@ func _restart_cloth() -> void:
 		if count > largest:   # (the male rigged glb carries a small extra mesh: the body is the largest)
 			largest = count
 			collider = candidate
-	var materials: Array = [_shirt_material, _pants_material]
-	for i in 2:
-		var scene: Node = (load(CLOTHES_SCENES[_gender][i]) as PackedScene).instantiate()
+	for i in garments.size():
+		var scene: Node = (load(GARMENT_GLB % [_gender.to_lower(), _outfit["name"], garments[i]["name"]]) as PackedScene).instantiate()
 		var piece: MeshInstance3D = _find_mesh(scene)
 		piece.get_parent().remove_child(piece)
 		scene.free()
-		piece.name = "ShirtSim" if i == 0 else "PantsSim"
+		piece.name = String(garments[i]["name"]) + "Sim"
 		skeleton.add_child(piece)
 		HumanRig.attach_skinned(piece, collider, skeleton)
 		_cloth_pieces.append(piece)
@@ -2685,59 +2848,25 @@ func _restart_cloth() -> void:
 	rig.apply(weights)   # (the bones and the skin binds follow the shapes)
 	for target: MeshInstance3D in skinned:
 		target.mesh = _baked_mesh(target)
-	for i in 2:
-		var piece: MeshInstance3D = _cloth_pieces[i]
+	for i in garments.size():
 		var solver := GPUClothSolver.new()
-		solver.name = "ShirtCloth" if i == 0 else "PantsCloth"
-		solver.cloth_weight_channel = 2   # (make_clothes.py: vertex colour blue, 0 glued .. 1 free)
-		solver.cloth_material = materials[i]
-		solver.flip_normals = true   # (without it the solver's normals for our garments point into the body: a dark shirt with bright specks)
-		solver.solver_iterations = 4
-		solver.substeps = 2
-		solver.stiffness = 0.9
-		solver.bend_stiffness = 0.6
-		solver.damping = 0.985
-		solver.max_travel_distance = 0.04
-		solver.cloth_skin_offset = 0.0
-		solver.cloth_render_offset = _cloth_debug_arg("--cloth-pants-offset=", 0.004)   # (drawn 4 mm out along the normal: hides the skin where free cloth sinks onto capsules inside the body)
-		solver.body_collider_voxel_resolution = 0   # Capsule support; the shirt adds native arm contact below.
-		solver.auto_collider_lod = 1
-		# (the torso is oval, a capsule round: small capsules, inside the body, or they push the shirt out like a cape and the trousers' waistband out
-		# over the shirt's hem; the shins full ones, or they poke through: per bone, a local patch in the add-on)
-		solver.auto_collider_radius_percentile = 0.5
-		solver.auto_collider_radius_scale = 0.8
-		# (the pelvis bone's capsule runs from the pelvis to the RIGHT thigh (the add-on takes its child with the most weighted vertices): lopsided, it
-		# pushed the glued trousers out at one hip, through the shirt's hem. Shrunk to nothing: the thighs' and the spine's capsules cover the hips)
-		solver.auto_collider_bone_overrides = {"mixamorig_Hips": Vector2(0.0, 0.1), "mixamorig_Spine2": Vector2(0.0, 0.1)}
-		# (the upper spine's capsule is lopsided the same way, from the spine to the LEFT collarbone, 7.5 cm round: it pushed the glued neck band up
-		# into flaps at the sides of the neck. Shrunk too: the lower spine's capsules stay)
+		solver.name = String(garments[i]["name"]) + "Cloth"
+		ClothSetup.configure(solver, garments[i])
+		solver.cloth_material = _garment_materials[sim_index[i]]
+		# (debug switches: a bone's capsule shrunk, the peers' resolution)
 		for arg: String in OS.get_cmdline_user_args():
-			if arg.begins_with("--cloth-no-capsule="):   # (debug: --cloth-no-capsule=<bone without the mixamorig_ prefix>, more than once)
+			if arg.begins_with("--cloth-no-capsule="):
 				solver.auto_collider_bone_overrides["mixamorig_" + arg.trim_prefix("--cloth-no-capsule=")] = Vector2(0.0, 0.1)
-		if i == 0:
-			# Exact arm surface, weighted like the visible body, packed in native code.
-			solver.body_collider_voxel_resolution = 1
-			solver.body_collider_preparer = func(data: Dictionary) -> Dictionary:
-				return HumanRig.prepare_cloth_arms(data)
-			solver.body_collider_packer = func(data: Dictionary, poses: Array) -> PackedByteArray:
-				return HumanRig.skin_cloth_arms(data, poses)
-			solver.cloth_render_offset = 0.001
-		else:
-			var shin_fit := Vector2(_cloth_debug_arg("--cloth-shin-pct=", 0.85), _cloth_debug_arg("--cloth-shin-scale=", 1.0))
-			solver.auto_collider_bone_overrides.merge({"mixamorig_LeftLeg": shin_fit, "mixamorig_RightLeg": shin_fit})
-		solver.body_collider_thickness = 0.004 if i == 0 else 0.006
 		solver.peer_collider_voxel_resolution = int(_cloth_debug_arg("--cloth-peer-res=", 8))
-		solver.collider_friction = 0.5
 		_cloth_solvers.append(solver)
 	# (paths set before the solvers enter the tree: they start on their own _ready)
-	for i in 2:
+	for i in garments.size():
 		var solver: GPUClothSolver = _cloth_solvers[i]
 		solver.target_mesh = NodePath("../" + String(_cloth_rig.get_path_to(_cloth_pieces[i])))
 		solver.skeleton = NodePath("../" + String(_cloth_rig.get_path_to(skeleton)))
 		solver.body_mesh = NodePath("../" + String(_cloth_rig.get_path_to(collider)))
 	if not OS.get_cmdline_user_args().has("--cloth-peers=off"):
-		(_cloth_solvers[0] as GPUClothSolver).peer_cloth_solvers = [NodePath("../PantsCloth")]
-		(_cloth_solvers[1] as GPUClothSolver).peer_cloth_solvers = [NodePath("../ShirtCloth")]
+		ClothSetup.connect_peers(_cloth_solvers)
 	for solver: GPUClothSolver in _cloth_solvers:
 		_cloth_rig.add_child(solver)
 
@@ -2781,7 +2910,7 @@ func _baked_mesh(target: MeshInstance3D) -> ArrayMesh:
 
 
 func _on_clothes_selected(index: int) -> void:
-	_clothes = CLOTHES[index]
+	_clothes = _clothes_list[index]
 	_load_clothes()
 	_apply_face_shapes()   # (the new pieces start with no shape set)
 	_apply()
@@ -2947,13 +3076,19 @@ func _set_joints() -> void:
 		return p
 	_material.set_shader_parameter(&"knee_l", joint.call("LeftLeg"))
 	_material.set_shader_parameter(&"knee_r", joint.call("RightLeg"))
-	for cloth: ShaderMaterial in [_shirt_material, _pants_material]:
+	for cloth: ShaderMaterial in _garment_materials:
 		if cloth != null:
 			cloth.set_shader_parameter(&"elbow_l", joint.call("LeftForeArm"))
 			cloth.set_shader_parameter(&"elbow_r", joint.call("RightForeArm"))
 			cloth.set_shader_parameter(&"knee_l", joint.call("LeftLeg"))
 			cloth.set_shader_parameter(&"knee_r", joint.call("RightLeg"))
 			cloth.set_shader_parameter(&"has_joints", true)
+			# the bend wrinkles: each limb's direction through its joint, and how bent it is (the rest pose's own bend)
+			for limb: Array in [["elbow", "l", "LeftArm", "LeftForeArm", "LeftHand"], ["elbow", "r", "RightArm", "RightForeArm", "RightHand"],
+					["knee", "l", "LeftUpLeg", "LeftLeg", "LeftFoot"], ["knee", "r", "RightUpLeg", "RightLeg", "RightFoot"]]:
+				var bend: Array = ClothSetup.limb_bend(joint.call(limb[2]), joint.call(limb[3]), joint.call(limb[4]))
+				cloth.set_shader_parameter(StringName("%s_axis_%s" % [limb[0], limb[1]]), bend[0])
+				cloth.set_shader_parameter(StringName("%s_bend_%s" % [limb[0], limb[1]]), bend[1])
 	_material.set_shader_parameter(&"elbow_l", joint.call("LeftForeArm"))
 	_material.set_shader_parameter(&"elbow_r", joint.call("RightForeArm"))
 	var knuckles := PackedVector3Array()
@@ -3500,13 +3635,13 @@ func _apply() -> void:
 	_set_shape(&"muscle_high", maxf(_muscle, 0.0) * MUSCLE_GAIN_HIGH)
 	_set_shape(&"muscle_low", maxf(-_muscle, 0.0) * MUSCLE_GAIN_LOW)
 	_apply_face_shapes()
-	if _cloth_sim and _clothes == "Villager":
+	if _cloth_sim and not _garment_meshes.is_empty():
 		var key: String = _cloth_key({&"height_tall": tall, &"height_short": short, &"weight_heavy": heavy, &"weight_light": light,
 			&"muscle_high": maxf(_muscle, 0.0) * MUSCLE_GAIN_HIGH, &"muscle_low": maxf(-_muscle, 0.0) * MUSCLE_GAIN_LOW})
 		if key != _cloth_shape_key:
 			_cloth_restart_ms = Time.get_ticks_msec() + 400   # (a slider being dragged: wait until it rests)
-			for static_piece: MeshInstance3D in [_shirt_mesh, _pants_mesh]:
-				if static_piece != null:
+			for static_piece: MeshInstance3D in _garment_meshes:
+				if is_instance_valid(static_piece):
 					static_piece.visible = true   # (the static clothes follow the slider meanwhile)
 			for piece: MeshInstance3D in _cloth_pieces:
 				if is_instance_valid(piece):
@@ -3529,7 +3664,7 @@ func _apply() -> void:
 
 
 func _set_shape(shape_name: StringName, value: float) -> void:
-	for target: MeshInstance3D in [_mesh, _underwear_mesh, _eyes_mesh, _brows_mesh, _lashes_mesh, _hair_mesh, _body_hair_mesh, _shirt_mesh, _pants_mesh]:
+	for target: MeshInstance3D in [_mesh, _underwear_mesh, _eyes_mesh, _brows_mesh, _lashes_mesh, _hair_mesh, _body_hair_mesh] + _garment_meshes:
 		if target == null:
 			continue
 		var index: int = target.find_blend_shape_by_name(shape_name)
@@ -3696,15 +3831,27 @@ func _update_fps_label(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_flash_log_step(delta)
-	if OS.get_cmdline_user_args().has("--cloth-legs") and Engine.get_process_frames() % 6 == 0 and _cloth_solvers.size() == 2 and _cloth_rig != null 			and is_instance_valid(_cloth_solvers[1]) and (_cloth_solvers[1] as GPUClothSolver)._rd != null:
+	var legs_solver: GPUClothSolver = null   # (the garment covering the shins)
+	for solver: Node in _cloth_solvers:
+		if is_instance_valid(solver) and (solver.get_meta(&"garment", {}) as Dictionary).get("covers", []).has("shin"):
+			legs_solver = solver
+	if OS.get_cmdline_user_args().has("--cloth-legs") and Engine.get_process_frames() % 6 == 0 and legs_solver != null and _cloth_rig != null and legs_solver._rd != null:
 		var collider: MeshInstance3D = null
 		for candidate: MeshInstance3D in _cloth_rig.find_children("*", "MeshInstance3D", true, false):
 			if not candidate.visible and (collider == null or (candidate.mesh as ArrayMesh).surface_get_array_len(0) > (collider.mesh as ArrayMesh).surface_get_array_len(0)):
 				collider = candidate
-		RenderingServer.call_on_render_thread(ClothOverlapProbe.legs.bind(_cloth_solvers[1], collider))
-	if OS.get_cmdline_user_args().has("--cloth-overlap") and Engine.get_process_frames() % 10 == 0 and _cloth_solvers.size() == 2 			and is_instance_valid(_cloth_solvers[0]) and (_cloth_solvers[0] as GPUClothSolver)._rd != null:
-		RenderingServer.call_on_render_thread(ClothOverlapProbe.measure.bind(_cloth_solvers[0], _cloth_solvers[1]))
-		RenderingServer.call_on_render_thread(ClothOverlapProbe.back_hem.bind(_cloth_solvers[0]))
+		RenderingServer.call_on_render_thread(ClothOverlapProbe.legs.bind(legs_solver, collider))
+	if OS.get_cmdline_user_args().has("--cloth-overlap") and Engine.get_process_frames() % 10 == 0 and _cloth_solvers.size() >= 2 and is_instance_valid(_cloth_solvers[0]) and (_cloth_solvers[0] as GPUClothSolver)._rd != null:
+		RenderingServer.call_on_render_thread(ClothOverlapProbe.measure_layers.bind(_cloth_solvers))
+		for solver: Node in _cloth_solvers:   # (every garment with a hem over the hips)
+			if is_instance_valid(solver) and (solver.get_meta(&"garment", {}) as Dictionary).has("bottom"):
+				RenderingServer.call_on_render_thread(ClothOverlapProbe.back_hem.bind(solver))
+	if _bump_recompute_ms >= 0 and Time.get_ticks_msec() >= _bump_recompute_ms:
+		_bump_recompute_ms = -1
+		for material: ShaderMaterial in _garment_materials:
+			material.remove_meta(&"bump_tex")   # (computed again with the new detail size)
+		if _bump_debug:
+			_apply_bump_debug()
 	if _cloth_restart_ms >= 0 and Time.get_ticks_msec() >= _cloth_restart_ms:
 		_restart_cloth()
 	if _switch_gender_arg != "" and not _switch_gender_done and Time.get_ticks_msec() > 2500:

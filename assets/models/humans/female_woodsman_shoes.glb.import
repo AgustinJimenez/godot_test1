@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://burpybjtv6nt6"
-path="res://.godot/imported/female_pants.glb-7f6fada37540287092b233f87cac40b6.scn"
+uid="uid://x6sbtr52s1kq"
+path="res://.godot/imported/female_woodsman_shoes.glb-c9d6b3d3fd01cb349c3c046f5b72ce15.scn"
 
 [deps]
 
-source_file="res://assets/models/humans/female_pants.glb"
-dest_files=["res://.godot/imported/female_pants.glb-7f6fada37540287092b233f87cac40b6.scn"]
+source_file="res://assets/models/humans/female_woodsman_shoes.glb"
+dest_files=["res://.godot/imported/female_woodsman_shoes.glb-c9d6b3d3fd01cb349c3c046f5b72ce15.scn"]
 
 [params]
 

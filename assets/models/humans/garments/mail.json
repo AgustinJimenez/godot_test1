@@ -1,0 +1,14 @@
+{
+	"name": "mail",
+	"layer": 2,
+	"shape": "shell",
+	"covers": ["torso", "upper_arm", "forearm"],
+	"top": {"at": "neck"},
+	"neckline": {"round_ease": 0.02, "v_depth": 0.03, "v_width": 0.05},
+	"bottom": {"below_hips": 0.05},
+	"sleeve_end": 0.3,
+	"sleeve_taper": 1.0,
+	"ease": {"torso": 0.026, "limb": 0.026, "flare_torso": 0.02, "flare_limb": 0.01},
+	"openings": {"neck": "open", "sleeves": "open", "hem": "open"},
+	"material": "mail"
+}
